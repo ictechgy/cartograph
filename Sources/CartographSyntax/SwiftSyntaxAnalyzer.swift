@@ -168,6 +168,14 @@ final class DeclarationCollector: SyntaxVisitor {
     }
     override func visitPost(_ node: InitializerDeclSyntax) { pop() }
 
+    override func visit(_ node: OperatorDeclSyntax) -> SyntaxVisitorContinueKind {
+        // 연산자는 인덱스에 심볼로 남지만 구문 쪽에 대응이 없어, public 연산자가
+        // internal 로 분석되어 미사용으로 보고됐다. 문맥은 쌓지 않는다.
+        // 연산자 선언에는 접근 제어자가 붙지 않으므로 빈 목록을 넘긴다.
+        record(name: node.name.text, node: node, attributes: [], modifiers: DeclModifierListSyntax([]))
+        return .visitChildren
+    }
+
     override func visit(_ node: DeinitializerDeclSyntax) -> SyntaxVisitorContinueKind {
         push(name: "deinit", node: node, attributes: commonAttributes(node), modifiers: node.modifiers)
     }
@@ -241,6 +249,33 @@ final class DeclarationCollector: SyntaxVisitor {
         if contexts.count > 1 { contexts.removeLast() }
     }
 
+    /// 백틱으로 감싼 식별자에서 백틱을 뗀다.
+    static func unescaped(_ name: String) -> String {
+        guard name.hasPrefix("`"), name.hasSuffix("`"), name.count > 1 else { return name }
+        return String(name.dropFirst().dropLast())
+    }
+
+    /// 함수 본문이나 접근자, 클로저 안의 지역 선언인지 확인한다.
+    ///
+    /// 지역 선언은 인덱스가 `.local` 로 걸러 내 정점이 되지 않는다. 그런데도 구문
+    /// 정보로 남겨 두면, 이름이 같은 멤버를 찾을 때 줄 번호가 더 가깝다는 이유로
+    /// 지역 변수의 정보가 멤버에 붙을 수 있다. public 프로퍼티가 internal 이 되거나,
+    /// 지역 변수에 단 무시 주석이 멤버와 그 하위 전체를 덮는다.
+    static func isInsideBody(_ node: some SyntaxProtocol) -> Bool {
+        var current = node.parent
+        while let syntax = current {
+            // 계산 프로퍼티의 암시적 게터는 CodeBlock 이 아니라 AccessorBlock 아래에 있다.
+            if syntax.is(CodeBlockSyntax.self)
+                || syntax.is(AccessorBlockSyntax.self)
+                || syntax.is(AccessorDeclSyntax.self)
+                || syntax.is(ClosureExprSyntax.self) {
+                return true
+            }
+            current = syntax.parent
+        }
+        return false
+    }
+
     @discardableResult
     private func record(
         name: String,
@@ -255,12 +290,15 @@ final class DeclarationCollector: SyntaxVisitor {
         if modifiers.contains(where: { $0.name.text == "dynamic" }) { resolved.insert(.dynamicDispatch) }
 
         let facts = DeclarationFacts(
-            name: name,
+            // SwiftSyntax 는 `` `default` `` 의 백틱까지 이름에 담지만 인덱스는 담지 않는다.
+            name: Self.unescaped(name),
             line: node.startLocation(converter: converter).line,
             accessibility: accessibility(from: modifiers),
             attributes: resolved
         )
-        declarations.append(facts)
+        // 지역 선언은 정점이 되지 않으므로 기록하지 않는다. 남겨 두면 이름이 같은
+        // 멤버를 찾을 때 이쪽이 더 가깝다는 이유로 선택될 수 있다.
+        if !Self.isInsideBody(node) { declarations.append(facts) }
         return facts
     }
 

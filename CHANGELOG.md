@@ -40,6 +40,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `SourceLocation.relative(to:)` handles the macOS `/tmp` ↔ `/private/tmp` duality, so report
   paths are relativized in both spellings.
 - Mermaid labels escape `#` first, so a name containing an entity-like sequence is not eaten.
+- Escaped identifiers (`` `default` ``) and failable initializers (`init?(rawValue:)`) now match
+  their syntax declarations. Neither matched before, so a public declaration was analyzed as
+  internal and reported unused.
+- Declarations inside function bodies, accessors and closures are no longer recorded as syntax
+  facts. A local sharing a member's name could be nearer to the index line and hijack the match,
+  overwriting the member's accessibility or attaching a `cartograph:ignore` meant for the local.
+- Operator declarations are recorded like every other declaration.
+- DerivedData ownership matching tolerates case differences, symlinked checkouts and XML entities
+  in `WorkspacePath`. Any of those made the check fall back to every same-named directory.
 
 ## [0.2.0] - 2026-09-02
 

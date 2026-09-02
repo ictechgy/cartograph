@@ -96,13 +96,45 @@ public struct IndexStoreLocator: Sendable {
               let openRange = contents.range(of: "<string>", range: keyRange.upperBound..<contents.endIndex),
               let closeRange = contents.range(of: "</string>", range: openRange.upperBound..<contents.endIndex)
         else { return nil }
-        return String(contents[openRange.upperBound..<closeRange.lowerBound])
+        return decodingEntities(String(contents[openRange.upperBound..<closeRange.lowerBound]))
+    }
+
+    /// XML 기본 엔티티를 되돌린다.
+    ///
+    /// `/work/R&D` 는 속성 목록에 `/work/R&amp;D` 로 저장된다. 그대로 비교하면 절대
+    /// 같아지지 않아, 소유권 판정이 실패하고 이름이 같은 다른 체크아웃까지 후보로
+    /// 되돌아간다.
+    static func decodingEntities(_ value: String) -> String {
+        var result = value
+        for (entity, character) in [
+            ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"), ("&amp;", "&"),
+        ] {
+            result = result.replacingOccurrences(of: entity, with: character)
+        }
+        return result
     }
 
     /// 워크스페이스 경로가 이 프로젝트 안에 있는지 확인한다.
     static func workspacePath(_ workspacePath: String, belongsTo projectPath: String) -> Bool {
-        let normalized = projectPath.hasSuffix("/") ? String(projectPath.dropLast()) : projectPath
-        return workspacePath == normalized || workspacePath.hasPrefix(normalized + "/")
+        // Xcode 가 심볼릭 링크로 열었으면 링크 경로가 기록되고, 우리는 실제 경로와
+        // 비교한다. APFS 는 기본이 대소문자 구분 없음이라 표기만 다른 경우도 흔하다.
+        // 어느 쪽이든 어긋나면 소유권 판정이 통째로 무효가 되어, 이 코드가 막으려던
+        // "이름이 같은 다른 체크아웃" 상황으로 되돌아간다.
+        let candidates = Set([workspacePath, canonical(workspacePath)])
+        let bases = Set([projectPath, canonical(projectPath)]).map {
+            $0.hasSuffix("/") ? String($0.dropLast()) : $0
+        }
+        for candidate in candidates {
+            for base in bases where candidate.compare(base, options: .caseInsensitive) == .orderedSame
+                || candidate.lowercased().hasPrefix(base.lowercased() + "/") {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func canonical(_ path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
     }
 
     /// DerivedData 디렉터리 이름이 이 프로젝트의 것인지 판단한다.

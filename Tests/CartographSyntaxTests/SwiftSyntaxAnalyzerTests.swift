@@ -257,6 +257,51 @@ struct SwiftSyntaxAnalyzerTests {
         #expect(facts.declaration(named: "other")?.attributes.contains(.ignoreComment) == false)
     }
 
+    @Test("백틱 식별자와 실패 가능 이니셜라이저도 매칭된다")
+    func matchesEscapedIdentifiersAndFailableInitializers() {
+        // 매칭이 안 되면 구문 정보가 붙지 않아 public 선언이 internal 로 분석되고,
+        // 그대로 미사용으로 보고된다.
+        let facts = analyze("""
+            public struct Money {
+                public init?(rawValue: String) { nil }
+                public func `default`() {}
+            }
+            """)
+        #expect(facts.declaration(matchingIndexName: "init?(rawValue:)", nearLine: 2)?.name == "init")
+        #expect(facts.declaration(matchingIndexName: "default()", nearLine: 3)?.accessibility == .publicLevel)
+        #expect(SourceFileFacts.baseName(ofIndexName: "init?(rawValue:)") == "init")
+        #expect(SourceFileFacts.baseName(ofIndexName: "init(from:)") == "init")
+    }
+
+    @Test("본문 안의 지역 선언은 기록하지 않는다")
+    func doesNotRecordDeclarationsInsideBodies() {
+        // 지역 선언은 인덱스가 걸러 내 정점이 되지 않는다. 그런데도 남겨 두면
+        // 이름이 같은 멤버를 찾을 때 줄이 더 가깝다는 이유로 선택되어, public
+        // 프로퍼티가 internal 이 되거나 무시 주석이 엉뚱한 곳에 붙는다.
+        let facts = analyze("""
+            struct Screen {
+                @MainActor
+                @available(macOS 14, *)
+                public var scale: Double = 1
+                func render() {
+                    let scale = 2.0        // cartograph:ignore
+                    _ = scale
+                }
+                var computed: Int { let scale = 1; return scale }
+            }
+            """)
+        let scales = facts.declarations.filter { $0.name == "scale" }
+        #expect(scales.count == 1)
+        #expect(scales.first?.accessibility == .publicLevel)
+        #expect(scales.first?.attributes.contains(.ignoreComment) == false)
+    }
+
+    @Test("연산자 선언도 기록한다")
+    func recordsOperatorDeclarations() {
+        let facts = analyze("infix operator <->\n")
+        #expect(facts.declaration(named: "<->") != nil)
+    }
+
     @Test("deinit 도 선언으로 기록한다")
     func recordsDeinitializers() {
         let facts = analyze("""

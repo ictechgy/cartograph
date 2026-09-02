@@ -68,6 +68,10 @@ public struct SourceFileFacts: Sendable, Equatable {
     /// 이름에 넣는다. 구문 분석은 `emit`, `init`, `found` 만 안다. 괄호 앞만 보면
     /// 두 이름을 맞출 수 있다.
     public static func baseName(ofIndexName indexName: String) -> String {
-        String(indexName.prefix { $0 != "(" })
+        // 실패 가능 이니셜라이저는 인덱스에서 `init?(rawValue:)` 로 온다. 물음표를
+        // 떼지 않으면 구문 쪽 `init` 과 영영 만나지 못해, public 이니셜라이저가
+        // internal 로 분석되어 미사용으로 보고된다.
+        let base = String(indexName.prefix { $0 != "(" })
+        return base.hasSuffix("?") || base.hasSuffix("!") ? String(base.dropLast()) : base
     }
 }

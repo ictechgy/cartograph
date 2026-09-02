@@ -162,6 +162,27 @@ struct DerivedDataMatchingTests {
         #expect(candidates.allSatisfy { !$0.contains("App-bbbbbb") })
     }
 
+    @Test("표기가 달라도 같은 체크아웃으로 알아본다")
+    func ownershipSurvivesSpellingDifferences() {
+        // 대소문자, XML 엔티티, 끝 슬래시 중 하나만 어긋나도 소유권 판정이 통째로
+        // 무효가 되어, 막으려던 "이름이 같은 다른 체크아웃" 상황으로 되돌아간다.
+        #expect(IndexStoreLocator.workspacePath("/src/App/App.xcodeproj", belongsTo: "/src/App"))
+        #expect(IndexStoreLocator.workspacePath("/SRC/app/App.xcodeproj", belongsTo: "/src/App"))
+        #expect(IndexStoreLocator.workspacePath("/src/App", belongsTo: "/src/App/"))
+        #expect(!IndexStoreLocator.workspacePath("/src/Other/App.xcodeproj", belongsTo: "/src/App"))
+        // 접두사만 겹치는 다른 디렉터리를 삼키지 않는다.
+        #expect(!IndexStoreLocator.workspacePath("/src/AppExtra/App.xcodeproj", belongsTo: "/src/App"))
+    }
+
+    @Test("속성 목록의 XML 엔티티를 되돌린다")
+    func decodesPropertyListEntities() {
+        let plist = "<key>WorkspacePath</key><string>/work/R&amp;D/App.xcodeproj</string>"
+        #expect(
+            IndexStoreLocator.stringValue(forKey: "WorkspacePath", inPropertyList: plist)
+                == "/work/R&D/App.xcodeproj"
+        )
+    }
+
     @Test("info.plist 를 읽을 수 없으면 예전처럼 모두 후보로 둔다")
     func keepsEveryCandidateWhenOwnershipIsUnknown() {
         // 예전 Xcode 는 이 파일을 남기지 않는다. 못 읽는다고 후보를 다 버리면
