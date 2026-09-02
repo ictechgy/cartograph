@@ -169,4 +169,20 @@ struct PathNormalizationTests {
         #expect(!GlobPattern("").matches("A.swift"))
         #expect(PathFilter(include: [""]).allows("Sources/A.swift") == false)
     }
+    @Test("슬래시 없는 패턴은 경로의 어느 요소에나 맞는다")
+    func slashlessPatternMatchesAnyComponent() {
+        // gitignore 는 디렉터리 이름 하나로 그 아래 전부를 잡는다. 마지막 요소만
+        // 보면 `retained_files: ["Generated"]` 가 아무것도 보존하지 못해, 지켜
+        // 달라고 지정한 파일이 미사용으로 보고된다.
+        #expect(GlobPattern("Pods").matches("/x/App/Pods/Alamofire/Source/Request.swift"))
+        #expect(GlobPattern("Pods").matches("/x/App/Pods"))
+        #expect(GlobPattern("Generated").matches("/x/App/Generated/API.swift"))
+        #expect(!GlobPattern("Pods").matches("/x/App/PodsHelper/A.swift"))
+        #expect(!GlobPattern("Pods").matches("/x/App/Sources/A.swift"))
+        // 파일 이름 패턴은 그대로 동작한다.
+        #expect(GlobPattern("*.swift").matches("/x/a/b.swift"))
+        // 심볼 이름에는 구분자가 없어 영향이 없다.
+        #expect(GlobPattern("*ViewController").matches("HomeViewController"))
+    }
+
 }

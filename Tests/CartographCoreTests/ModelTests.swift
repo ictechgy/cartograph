@@ -104,4 +104,18 @@ struct SymbolNameTests {
         #expect(GraphNode(id: "a", name: "buildBlock(_:)", kind: .method).baseName == "buildBlock")
         #expect(GraphNode(id: "a", name: "wrappedValue", kind: .property).baseName == "wrappedValue")
     }
+    @Test("상대 경로 변환은 /private 표기 차이를 흡수한다")
+    func relativePathHandlesPrivatePrefix() {
+        // 인덱스 스토어는 /private/tmp 로, 설정은 /tmp 로 같은 곳을 가리킨다.
+        // 접두사를 그대로 비교하면 필터는 통과한 파일이 리포트에는 절대 경로로 찍힌다.
+        let indexed = SourceLocation(path: "/private/tmp/proj/Sources/A.swift", line: 3, column: 1)
+        #expect(indexed.relative(to: "/tmp/proj").path == "Sources/A.swift")
+
+        let configured = SourceLocation(path: "/tmp/proj/Sources/A.swift", line: 3, column: 1)
+        #expect(configured.relative(to: "/private/tmp/proj").path == "Sources/A.swift")
+
+        // 관계없는 경로는 그대로 둔다.
+        #expect(indexed.relative(to: "/elsewhere").path == "/private/tmp/proj/Sources/A.swift")
+    }
+
 }

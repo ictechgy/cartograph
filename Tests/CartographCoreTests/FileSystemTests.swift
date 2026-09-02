@@ -106,4 +106,30 @@ struct SymlinkTraversalTests {
         )
         #expect(files.count == 1)
     }
+    @Test("끊어진 심볼릭 링크는 파일로 세지 않는다")
+    func skipsDanglingSymlinks() throws {
+        // "디렉터리가 아니다"만으로 파일이라고 보면 끊어진 링크가 소스 목록에 들어와
+        // 읽기 실패나 유령 정점이 된다.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cartograph-symlink-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try "struct A {}".write(to: root.appendingPathComponent("A.swift"), atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(
+            atPath: root.appendingPathComponent("stale.swift").path,
+            withDestinationPath: root.appendingPathComponent("gone.swift").path
+        )
+        try FileManager.default.createSymbolicLink(
+            atPath: root.appendingPathComponent("link.swift").path,
+            withDestinationPath: root.appendingPathComponent("A.swift").path
+        )
+
+        let found = LocalFileSystem().recursiveFiles(under: root.path, isIncluded: { $0.hasSuffix(".swift") })
+        let names = Set(found.map { ($0 as NSString).lastPathComponent })
+        #expect(!names.contains("stale.swift"))
+        // 같은 파일을 가리키는 두 이름은 한 번만 센다.
+        #expect(found.count == 1)
+    }
+
 }

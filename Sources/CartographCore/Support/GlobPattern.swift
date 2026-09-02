@@ -24,8 +24,13 @@ public struct GlobPattern: Hashable, Sendable, CustomStringConvertible {
     /// 주어진 문자열이 패턴과 일치하는지 판단한다.
     public func matches(_ value: String) -> Bool {
         if matchesLastComponentOnly {
-            let lastComponent = value.split(separator: "/").last.map(String.init) ?? value
-            return Self.matchSegment(Array(segments[0]), Array(lastComponent))
+            // gitignore 는 슬래시 없는 패턴을 경로의 어느 요소에나 맞춰 보고,
+            // 그것이 디렉터리면 그 아래 전부를 함께 잡는다. 마지막 요소만 보면
+            // `exclude: ["Pods"]` 가 `Pods/` 아래 파일을 하나도 걸러 내지 못하고,
+            // `retained_files: ["Generated"]` 는 아무것도 보존하지 못한다.
+            // 뒤쪽은 지켜 달라고 지정한 파일이 미사용으로 보고되는 방향이라 더 비싸다.
+            let component = Array(segments[0])
+            return value.split(separator: "/").contains { Self.matchSegment(component, Array($0)) }
         }
         let valueSegments = value.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         return Self.matchSegments(segments, valueSegments)

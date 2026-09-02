@@ -56,6 +56,7 @@ extension FileSystem {
         // 파일 하나짜리 트리가 서른 개 경로로 부풀어 오르는 것을 실제로 확인했다.
         // 실제 경로 기준으로 방문 여부를 기록해 한 번씩만 본다.
         var visited: Set<String> = []
+        var visitedFiles: Set<String> = []
 
         while let directory = pending.popLast() {
             guard visited.insert(Self.canonicalPath(directory)).inserted,
@@ -64,7 +65,11 @@ extension FileSystem {
             for entry in entries {
                 if directoryExists(at: entry) {
                     if shouldDescend(entry) { pending.append(entry) }
-                } else if isIncluded(entry) {
+                } else if fileExists(at: entry), isIncluded(entry) {
+                    // "디렉터리가 아니다"만으로 파일이라고 보면 끊어진 심볼릭 링크가
+                    // 소스 파일 목록에 들어온다. 읽는 쪽에서 실패하거나 유령 정점이 된다.
+                    // 같은 파일을 가리키는 두 이름은 한 번만 센다.
+                    guard visitedFiles.insert(Self.canonicalPath(entry)).inserted else { continue }
                     result.append(entry)
                 }
             }
