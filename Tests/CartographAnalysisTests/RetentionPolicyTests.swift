@@ -140,6 +140,21 @@ struct RetentionPolicyTests {
         #expect(retained["Elsewhere"] == nil)
     }
 
+    @Test("CaseIterable 열거형의 케이스를 보존한다")
+    func caseIterableCasesAreRetained() {
+        // 케이스를 소스에서 한 번도 이름으로 부르지 않고 `allCases` 로만 쓰는 것은 흔하다.
+        // 합성된 `allCases` 의 몸통은 소스 범위가 없어 인덱스에 참조를 남기지 않는다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Mode", kind: .enumType, attributes: [.caseIterable])
+        builder.symbol("Mode.slow", name: "slow", kind: .enumCase, parent: "Mode")
+        builder.symbol("Plain", kind: .enumType)
+        builder.symbol("Plain.one", name: "one", kind: .enumCase, parent: "Plain")
+
+        let retained = reasons(builder.build())
+        #expect(retained["Mode.slow"] == .caseIterableEnumCase)
+        #expect(retained["Plain.one"] == nil)
+    }
+
     @Test("익스텐션에 선언한 준수도 타입 본체에 적용된다")
     func conformanceDeclaredInAnExtensionReachesTheType() {
         // `extension Money: Codable {}` 는 흔한 스타일이다. 표식이 익스텐션에만

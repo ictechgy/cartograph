@@ -365,7 +365,8 @@ final class DeclarationCollector: SyntaxVisitor {
             case "NSManaged", "Observable", "Model", "ObservationTracked",
                  // SwiftUI 가 델리게이트를 대신 만들어 들고 있다. 코드 어디에서도
                  // 이 프로퍼티를 읽지 않지만 지우면 앱이 델리게이트를 잃는다.
-                 "NSApplicationDelegateAdaptor", "UIApplicationDelegateAdaptor":
+                 "NSApplicationDelegateAdaptor", "UIApplicationDelegateAdaptor",
+                 "WKApplicationDelegateAdaptor", "WKExtensionDelegateAdaptor":
                 result.insert(.runtimeManaged)
             default: break
             }
@@ -384,6 +385,9 @@ final class DeclarationCollector: SyntaxVisitor {
 
         if inherited.contains(where: codableProtocols.contains) { result.insert(.codable) }
         if inherited.contains("CodingKey") { result.insert(.codingKey) }
+        // 케이스를 소스에서 한 번도 이름으로 부르지 않고 `allCases` 로만 쓰는 것은 흔하다.
+        // 합성된 `allCases` 의 몸통은 소스 범위가 없어 인덱스에 참조를 남기지 않는다.
+        if inherited.contains("CaseIterable") { result.insert(.caseIterable) }
         if inherited.contains("PreviewProvider") { result.insert(.preview) }
         if isEnum, inherited.contains(where: { rawValueTypes.contains($0) || $0 == "RawRepresentable" }) {
             result.insert(.rawRepresentable)

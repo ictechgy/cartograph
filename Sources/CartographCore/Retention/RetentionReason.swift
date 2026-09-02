@@ -20,6 +20,7 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     case compilerSynthesized
     /// 원시값 열거형의 케이스. `init(rawValue:)` 로 동적 생성될 수 있다.
     case rawRepresentableEnumCase
+    case caseIterableEnumCase
     /// `CodingKey` 열거형 케이스.
     case codingKey
     /// Codable 타입의 저장 프로퍼티. 합성된 인코딩/디코딩이 참조를 남기지 않는다.
@@ -54,6 +55,7 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         case .interfaceBuilder: "connectable from Interface Builder"
         case .compilerSynthesized: "synthesized by the compiler"
         case .rawRepresentableEnumCase: "a case of a raw-representable enum, constructible via init(rawValue:)"
+        case .caseIterableEnumCase: "a case of a CaseIterable enum, enumerated by allCases"
         case .codingKey: "a CodingKey case used by synthesized Codable conformance"
         case .codableProperty: "a stored property of a Codable type, read by synthesized coding"
         case .runtimeManaged: "stored and read by a runtime (Core Data, SwiftData or Observation)"

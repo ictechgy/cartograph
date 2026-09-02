@@ -44,6 +44,8 @@ public enum SymbolAttribute: String, Codable, Sendable, CaseIterable {
     case preview
     /// 원시값(rawValue)을 가진 열거형. 케이스가 동적으로 생성될 수 있다.
     case rawRepresentable
+    /// `CaseIterable` 를 준수한다. 케이스가 `allCases` 로만 소비될 수 있다.
+    case caseIterable
     /// `CodingKey` 를 준수하는 중첩 열거형.
     case codingKey
     /// 저장소를 런타임이 관리하는 선언.

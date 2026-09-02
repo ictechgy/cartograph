@@ -310,6 +310,22 @@ struct SwiftSyntaxAnalyzerTests {
         #expect(facts.declaration(named: "iosDelegate")?.attributes.contains(.runtimeManaged) == true)
     }
 
+    @Test("CaseIterable 준수와 watchOS 델리게이트 어댑터를 알아본다")
+    func recognizesCaseIterableAndWatchAdaptors() {
+        let facts = analyze("""
+            enum Mode: CaseIterable { case fast }
+            enum Plain { case one }
+            struct W {
+                @WKApplicationDelegateAdaptor(D.self) var watchDelegate
+                @WKExtensionDelegateAdaptor(D.self) var extensionDelegate
+            }
+            """)
+        #expect(facts.declaration(named: "Mode")?.attributes.contains(.caseIterable) == true)
+        #expect(facts.declaration(named: "Plain")?.attributes.contains(.caseIterable) == false)
+        #expect(facts.declaration(named: "watchDelegate")?.attributes.contains(.runtimeManaged) == true)
+        #expect(facts.declaration(named: "extensionDelegate")?.attributes.contains(.runtimeManaged) == true)
+    }
+
     @Test("연산자 선언도 기록한다")
     func recordsOperatorDeclarations() {
         let facts = analyze("infix operator <->\n")

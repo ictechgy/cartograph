@@ -151,6 +151,7 @@ public struct RetentionPolicy: Sendable {
         }
         if node.kind == .enumCase {
             if conformances.contains(.codingKey) { return .codingKey }
+            if conformances.contains(.caseIterable) { return .caseIterableEnumCase }
             if options.retainRawRepresentableEnumCases, conformances.contains(.rawRepresentable) {
                 return .rawRepresentableEnumCase
             }
@@ -205,7 +206,7 @@ public struct RetentionPolicy: Sendable {
 
     /// 익스텐션에서 타입으로 옮겨 오는 표식.
     static let conformanceDerivedAttributes: Set<SymbolAttribute> = [
-        .codable, .codingKey, .rawRepresentable,
+        .codable, .codingKey, .rawRepresentable, .caseIterable,
     ]
 
     /// 포함 관계를 거슬러 의미상의 부모 선언을 찾는다.

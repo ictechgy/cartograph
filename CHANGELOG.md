@@ -14,8 +14,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   so SwiftUI state that is plainly in use was reported as dead. Only the projected value is folded
   into the wrapped property — backing storage (`_name`) is referenced by the synthesized memberwise
   initializer, and folding that would hide genuinely unused properties.
-- `@NSApplicationDelegateAdaptor` and `@UIApplicationDelegateAdaptor` properties are retained.
-  SwiftUI owns the delegate; no code reads the property, but removing it breaks the app.
+- `@NSApplicationDelegateAdaptor`, `@UIApplicationDelegateAdaptor`, `@WKApplicationDelegateAdaptor`
+  and `@WKExtensionDelegateAdaptor` properties are retained. SwiftUI owns the delegate; no code
+  reads the property, but removing it breaks the app.
+- Cases of a `CaseIterable` enum are retained. A case consumed only through `allCases` has no
+  reference in the index, because the synthesized `allCases` body has no source range — the same
+  mechanism as raw-representable enums.
 
 ### Performance
 
