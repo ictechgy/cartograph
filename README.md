@@ -220,7 +220,8 @@ thresholds:
   max_instability: 0.9
   max_distance: 0.8
 
-baseline: .cartograph-baseline.json
+baseline_path: .cartograph-baseline.json
+derived_data_path: DerivedData    # where CI put -derivedDataPath
 report_format: text               # text json xcode checkstyle github-actions sarif
 graph_format: dot                 # dot mermaid json html
 strict: false
@@ -264,8 +265,14 @@ protocol looks dead — which is exactly what happened the first time this tool 
 
 ## CI
 
-Exit codes are `0` success, `1` findings with `--strict`, `2` tool failure — so a script can tell
-"your code has problems" from "the tool did not run".
+Exit codes let a script tell "your code has problems" from "the tool did not run":
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | Findings with `--strict`, or a configured threshold exceeded |
+| `2` | Tool failure — no index store, unreadable index, invalid configuration |
+| `64` | Usage error — unknown option, unknown subcommand, invalid value |
 
 ```yaml
 - run: swift build -Xswiftc -index-store-path -Xswiftc .index-store
@@ -307,6 +314,27 @@ line coverage gate reachable without a single fixture Xcode project: analysis ru
 snapshots.
 
 `CartographKit` is a public library product — you can embed the pipeline instead of shelling out.
+Its query API returns values, not rendered text:
+
+```swift
+import CartographKit
+
+let service = CartographService(configuration: configuration)
+let context = try service.loadContext()          // reads the index once
+
+let (graph, cycles) = service.cycles(in: context)
+let (_, unused) = service.unusedCode(in: context)
+let (_, metrics, _) = service.metrics(in: context)
+```
+
+Baselines, thresholds and output formatting are CI policy and live in the separate command API
+(`detectCycles()`, `detectUnusedCode()`, …), so a programmatic caller never has to parse a table.
+
+## Project language
+
+Documentation and user-facing output are in English. Source comments are in Korean, which is the
+maintainer's working language; identifiers are always English. Pull requests may be written in
+either language.
 
 ## Contributing
 

@@ -223,8 +223,14 @@ UIKit 프로젝트에서 거짓 양성의 가장 큰 원인이었습니다. 아�
 
 ## CI
 
-종료 코드는 `0` 정상, `1` `--strict` 상태에서 문제 발견, `2` 도구 오류입니다. 스크립트가
-"코드에 문제가 있음"과 "도구가 못 돌았음"을 구분할 수 있어야 하기 때문입니다.
+종료 코드로 "코드에 문제가 있음"과 "도구가 못 돌았음"을 구분할 수 있습니다.
+
+| 코드 | 의미 |
+|---|---|
+| `0` | 정상 |
+| `1` | `--strict` 상태에서 문제 발견, 또는 설정한 임계값 초과 |
+| `2` | 도구 실패 — 인덱스 스토어 없음, 읽기 실패, 설정 오류 |
+| `64` | 사용 오류 — 알 수 없는 옵션·하위 명령·값 |
 
 ```yaml
 - run: swift build -Xswiftc -index-store-path -Xswiftc .index-store
@@ -245,7 +251,27 @@ CartographCore  ←  Config · Syntax · Analysis · Export · IndexStore  ←  
 프로젝트 하나 없이도 90% 커버리지 게이트를 지킬 수 있습니다. 분석은 손으로 만든 스냅샷 위에서
 돌아갑니다.
 
-`CartographKit` 은 공개 라이브러리 제품이라 CLI 를 호출하는 대신 파이프라인을 직접 임베드할 수 있습니다.
+`CartographKit` 은 공개 라이브러리 제품이라 CLI 를 호출하는 대신 파이프라인을 직접 임베드할 수
+있습니다. 질의 API 는 렌더링된 텍스트가 아니라 값을 돌려줍니다.
+
+```swift
+import CartographKit
+
+let service = CartographService(configuration: configuration)
+let context = try service.loadContext()          // 인덱스를 한 번만 읽는다
+
+let (graph, cycles) = service.cycles(in: context)
+let (_, unused) = service.unusedCode(in: context)
+let (_, metrics, _) = service.metrics(in: context)
+```
+
+베이스라인·임계값·출력 형식은 CI 정책이라 별도의 명령 API(`detectCycles()` 등)에 있습니다.
+프로그램에서 호출하는 쪽이 표를 파싱할 일은 없습니다.
+
+## 프로젝트 언어
+
+문서와 사용자에게 보이는 출력은 영어, 소스 주석은 메인테이너의 작업 언어인 한국어,
+식별자는 항상 영어입니다. PR 은 두 언어 중 아무거나 써도 됩니다.
 
 ## 기여
 

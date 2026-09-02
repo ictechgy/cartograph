@@ -12,7 +12,20 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .executable(name: "cartograph", targets: ["CartographCLI"]),
-        .library(name: "CartographKit", targets: ["CartographKit"]),
+        // 임베더가 반환 타입을 이름으로 부를 수 있어야 한다. Kit 타깃만 내보내면
+        // CodeGraph, Diagnostic 같은 타입을 import 할 방법이 없어 API 가 사실상 잠긴다.
+        .library(
+            name: "CartographKit",
+            targets: [
+                "CartographKit",
+                "CartographCore",
+                "CartographConfig",
+                "CartographSyntax",
+                "CartographAnalysis",
+                "CartographExport",
+                "CartographIndexStore",
+            ]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),

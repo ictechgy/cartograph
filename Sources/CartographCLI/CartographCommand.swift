@@ -19,7 +19,11 @@ struct CartographCommand: ParsableCommand {
               swift build -Xswiftc -index-store-path -Xswiftc .index-store
               xcodebuild build COMPILER_INDEX_STORE_ENABLE=YES -derivedDataPath DerivedData
 
-            Exit codes: 0 success, 1 findings with --strict, 2 tool failure.
+            Exit codes:
+              0   success
+              1   findings with --strict, or a configured threshold exceeded
+              2   tool failure — no index store, unreadable index, invalid configuration
+              64  usage error — unknown option, unknown subcommand, invalid value
             """,
         version: Cartograph.version,
         subcommands: [
@@ -35,20 +39,34 @@ struct CartographCommand: ParsableCommand {
         // DOT 덤프가 아니라 "이 도구로 무엇을 할 수 있는지"이다.
     )
 
-    /// 도구 오류와 "문제 발견"을 서로 다른 종료 코드로 구분한다.
+    /// 종료 코드를 세 부류로 나눈다.
     ///
-    /// ArgumentParser 의 기본 처리는 모든 실패를 1 로 내보낸다. 그러면 CI 스크립트가
-    /// "분석 결과 문제가 있음"과 "도구가 아예 못 돌았음"을 구분할 수 없다.
-    /// 인자 오류와 --help/--version 은 ArgumentParser 규약을 그대로 따른다.
+    /// - 인자 파싱, `--help`, `--version`, 유효성 오류: ArgumentParser 규약 그대로.
+    ///   사용 오류는 관례대로 64(EX_USAGE)로 끝난다.
+    /// - 분석 결과 문제 발견(`--strict`, 임계값 초과): 1.
+    /// - 그 밖의 실행 실패: 2.
+    ///
+    /// ArgumentParser 기본 처리는 실행 중 실패를 전부 1 로 내보낸다. 그러면 CI
+    /// 스크립트가 "코드에 문제가 있음"과 "도구가 아예 못 돌았음"을 구분할 수 없다.
     static func main() {
+        var command: any ParsableCommand
         do {
-            var command = try parseAsRoot()
-            try command.run()
-        } catch let error as CartographError {
-            FileHandle.standardError.write(Data(("error: " + CommandSupport.describe(error) + "\n").utf8))
-            Foundation.exit(CommandSupport.failureExitCode)
+            command = try parseAsRoot()
         } catch {
             exit(withError: error)
+        }
+
+        do {
+            try command.run()
+        } catch let error as ExitCode {
+            exit(withError: error)
+        } catch let error as CleanExit {
+            exit(withError: error)
+        } catch let error as ValidationError {
+            exit(withError: error)
+        } catch {
+            FileHandle.standardError.write(Data(("error: " + CommandSupport.describe(error) + "\n").utf8))
+            Foundation.exit(CommandSupport.failureExitCode)
         }
     }
 }
