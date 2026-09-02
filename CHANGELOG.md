@@ -7,6 +7,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-02
+
+### Changed
+
+- Analysis results move with this release. The accessor and `main.swift` fixes add edges that were
+  previously missing, so findings that were false positives disappear. Regenerate any baseline with
+  `cartograph baseline`.
+- `IndexStoreProvider.defaultDatabasePath(forStore:libraryPath:libraryModificationDate:)` no longer
+  defaults its toolchain arguments. Callers must supply them, because a DerivedData store path is
+  stable across Xcode upgrades and omitting the identity silently reopened a cache written by an
+  older toolchain.
+
 ### Fixed
 
 - Declarations referenced only from inside a computed property's getter or setter, or from a
@@ -87,5 +99,6 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.1.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/ictechgy/cartograph/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/ictechgy/cartograph/releases/tag/0.1.0

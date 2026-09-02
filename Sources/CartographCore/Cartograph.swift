@@ -4,7 +4,7 @@
 /// 공통으로 사용되므로 한 곳에서만 정의한다.
 public enum Cartograph {
     /// 배포 버전(SemVer).
-    public static let version = "0.1.0"
+    public static let version = "0.2.0"
 
     /// 리포트/설정 파일에 기록되는 도구 식별자.
     public static let toolName = "cartograph"
