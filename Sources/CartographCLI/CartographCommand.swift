@@ -30,8 +30,9 @@ struct CartographCommand: ParsableCommand {
             RulesCommand.self,
             BaselineCommand.self,
             InitCommand.self,
-        ],
-        defaultSubcommand: GraphCommand.self
+        ]
+        // 기본 하위 명령을 두지 않는다. 인자 없이 실행한 사용자가 원하는 것은
+        // DOT 덤프가 아니라 "이 도구로 무엇을 할 수 있는지"이다.
     )
 
     /// 도구 오류와 "문제 발견"을 서로 다른 종료 코드로 구분한다.

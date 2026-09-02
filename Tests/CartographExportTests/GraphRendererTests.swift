@@ -127,6 +127,27 @@ struct GraphRendererTests {
         #expect(output.contains("\"nodeCount\":2"))
     }
 
+    @Test("HTML 도 상한을 넘으면 연결이 많은 정점부터 남긴다")
+    func htmlTruncatesLargeGraphs() throws {
+        // 힘 기반 배치는 정점 수의 제곱에 비례한다. 심볼 그래프를 그대로 넘기면
+        // 브라우저가 멈춘다.
+        var adjacency: [String: [String]] = ["hub": []]
+        for index in 0..<12 {
+            adjacency["leaf\(index)"] = ["hub"]
+        }
+        let graph = TestGraph.make(adjacency)
+        let output = try HTMLGraphRenderer(nodeLimit: 4).render(graph)
+        #expect(output.contains("truncated from 13 nodes"))
+        #expect(output.contains("\"nodeCount\":4"))
+        #expect(output.contains("hub"))
+    }
+
+    @Test("상한 안에서는 잘라 냈다는 표시가 없다")
+    func htmlWithinLimitHasNoNotice() throws {
+        let output = try HTMLGraphRenderer().render(sampleGraph())
+        #expect(!output.contains("truncated from"))
+    }
+
     @Test("HTML 은 데이터 안의 스크립트 종료 태그를 무력화한다")
     func htmlEscapesClosingScriptTag() {
         let escaped = HTMLGraphRenderer.escapeForScriptTag("{\"name\":\"</script><script>alert(1)</script>\"}")

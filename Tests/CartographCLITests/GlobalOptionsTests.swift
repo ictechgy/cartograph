@@ -98,7 +98,9 @@ struct CommandConfigurationTests {
     func subcommandsAreRegistered() {
         let names = CartographCommand.configuration.subcommands.map { $0.configuration.commandName }
         #expect(names == ["graph", "cycles", "dead", "metrics", "rules", "baseline", "init"])
-        #expect(CartographCommand.configuration.defaultSubcommand?.configuration.commandName == "graph")
+        // 인자 없이 실행하면 도움말이 나와야 한다. 기본 하위 명령이 있으면
+        // 처음 써 보는 사용자가 DOT 덤프를 마주하게 된다.
+        #expect(CartographCommand.configuration.defaultSubcommand == nil)
     }
 
     @Test("도움말에 인덱스 생성 방법과 종료 코드가 적혀 있다")

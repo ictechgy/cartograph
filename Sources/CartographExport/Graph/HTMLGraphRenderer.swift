@@ -7,13 +7,43 @@ import Foundation
 /// 곳에서 열어야 하는 경우가 실제로 많고, 그림 하나 보자고 외부 스크립트를
 /// 불러오는 것은 보안 검토를 통과하기도 어렵다.
 public struct HTMLGraphRenderer: GraphRendering {
-    public init() {}
+    /// 그릴 최대 정점 수.
+    ///
+    /// 힘 기반 배치는 매 프레임 정점 쌍을 모두 훑으므로 비용이 정점 수의 제곱에
+    /// 비례한다. 심볼 레벨 그래프를 그대로 넘기면 브라우저가 멈춘다.
+    /// 잘라 낸 사실은 페이지에 그대로 적어 사용자가 오해하지 않게 한다.
+    public static let defaultNodeLimit = 400
+
+    private let nodeLimit: Int
+
+    public init(nodeLimit: Int = HTMLGraphRenderer.defaultNodeLimit) {
+        self.nodeLimit = nodeLimit
+    }
 
     public func render(_ graph: CodeGraph) throws -> String {
+        let (limited, truncated) = Self.limiting(graph, to: nodeLimit)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        let payload = String(decoding: try encoder.encode(GraphDocument(graph: graph)), as: UTF8.self)
-        return Self.document(payload: payload, level: graph.level.rawValue)
+        let payload = String(decoding: try encoder.encode(GraphDocument(graph: limited)), as: UTF8.self)
+        return Self.document(
+            payload: payload,
+            level: graph.level.rawValue,
+            truncatedFrom: truncated ? graph.nodeCount : nil
+        )
+    }
+
+    /// 상한을 넘으면 연결이 많은 정점부터 남긴다.
+    ///
+    /// 임의로 자르면 그림이 의미를 잃는다. 연결이 많은 정점이 구조를 가장 잘 설명한다.
+    static func limiting(_ graph: CodeGraph, to limit: Int) -> (graph: CodeGraph, truncated: Bool) {
+        guard graph.nodeCount > limit else { return (graph, false) }
+        let ranked = graph.sortedNodes.sorted { lhs, rhs in
+            let lhsDegree = graph.inDegree(of: lhs.id) + graph.outDegree(of: lhs.id)
+            let rhsDegree = graph.inDegree(of: rhs.id) + graph.outDegree(of: rhs.id)
+            return lhsDegree != rhsDegree ? lhsDegree > rhsDegree : lhs.id < rhs.id
+        }
+        let kept = Set(ranked.prefix(limit).map(\.id))
+        return (graph.filteringNodes { kept.contains($0.id) }, true)
     }
 
     /// `</script>` 가 데이터 안에 들어가면 문서가 그 자리에서 끊긴다.
@@ -21,8 +51,13 @@ public struct HTMLGraphRenderer: GraphRendering {
         json.replacingOccurrences(of: "</", with: "<\\/")
     }
 
-    private static func document(payload: String, level: String) -> String {
+    private static func document(payload: String, level: String, truncatedFrom: Int?) -> String {
         let data = escapeForScriptTag(payload)
+        let truncationNotice = truncatedFrom.map { total in
+            "<span class=\"stat\">truncated from \(total) nodes, keeping the most connected — "
+                + "use --format dot for the full graph</span>"
+        } ?? ""
+
         return #"""
             <!DOCTYPE html>
             <html lang="en">
@@ -55,6 +90,7 @@ public struct HTMLGraphRenderer: GraphRendering {
             <header>
               <h1>Cartograph</h1>
               <span class="stat" id="summary"></span>
+              \#(truncationNotice)
               <input id="search" type="search" placeholder="Filter nodes by name" autocomplete="off">
             </header>
             <canvas id="canvas"></canvas>
