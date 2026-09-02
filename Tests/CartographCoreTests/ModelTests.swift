@@ -92,3 +92,16 @@ struct ModelTests {
         #expect(json.contains("\"entryPoint\",\"implicit\",\"objc\""))
     }
 }
+
+@Suite("심볼 이름 정규화")
+struct SymbolNameTests {
+    @Test("인자 목록을 뗀 이름을 제공한다")
+    func baseNameStripsArgumentList() {
+        // 인덱스는 함수 이름을 main(), describe(_:) 처럼 인자 라벨까지 붙여 준다.
+        // 이름으로 규칙을 거는 쪽에서는 그 꼬리가 늘 걸림돌이 된다.
+        #expect(GraphNode(id: "a", name: "main()", kind: .method).baseName == "main")
+        #expect(GraphNode(id: "a", name: "describe(_:)", kind: .method).baseName == "describe")
+        #expect(GraphNode(id: "a", name: "buildBlock(_:)", kind: .method).baseName == "buildBlock")
+        #expect(GraphNode(id: "a", name: "wrappedValue", kind: .property).baseName == "wrappedValue")
+    }
+}

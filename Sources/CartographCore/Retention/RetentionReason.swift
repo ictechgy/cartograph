@@ -65,14 +65,3 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         }
     }
 }
-
-/// 정점 하나에 대한 보존 결정.
-public struct RetentionDecision: Hashable, Sendable, Codable {
-    public let node: NodeID
-    public let reason: RetentionReason
-
-    public init(node: NodeID, reason: RetentionReason) {
-        self.node = node
-        self.reason = reason
-    }
-}

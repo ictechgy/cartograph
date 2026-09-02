@@ -137,3 +137,52 @@ struct ReachabilityAnalyzerTests {
         #expect(unusedNames(report) == ["unused"])
     }
 }
+
+@Suite("프로토콜 구현 도달성")
+struct ProtocolWitnessReachabilityTests {
+    /// 프로토콜을 통해 호출되는 구현.
+    ///
+    /// 인덱스는 `provider.load()` 호출을 요구사항 심볼에 대한 참조로만 기록한다.
+    /// 구현체 메서드로 향하는 참조는 어디에도 없다.
+    private func makeSnapshot() -> IndexSnapshot {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Providing", kind: .protocolType)
+        builder.symbol("Providing.load", name: "load", kind: .method, parent: "Providing")
+        builder.symbol("Impl", kind: .structType)
+        builder.symbol("Impl.load", name: "load", kind: .method, parent: "Impl")
+        builder.symbol("Impl.helper", name: "helper", kind: .method, parent: "Impl")
+
+        builder.reference(from: "App", to: "Providing", kind: .reference)
+        builder.reference(from: "App", to: "Providing.load", kind: .call)
+        builder.reference(from: "App", to: "Impl", kind: .reference)
+        builder.reference(from: "Impl", to: "Providing", kind: .conformance)
+        builder.reference(from: "Impl.load", to: "Providing.load", kind: .overrides)
+        builder.reference(from: "Impl.load", to: "Impl.helper", kind: .call)
+        return builder.build()
+    }
+
+    private func analyze(followOverridesInReverse: Bool) -> UnusedCodeReport {
+        let snapshot = makeSnapshot()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        return ReachabilityAnalyzer(options: .init(followOverridesInReverse: followOverridesInReverse))
+            .analyze(graph: graph, snapshot: snapshot)
+    }
+
+    @Test("프로토콜 요구사항이 쓰이면 구현도 쓰인 것으로 본다")
+    func requirementUsageReachesImplementation() {
+        let report = analyze(followOverridesInReverse: true)
+        #expect(report.unused.isEmpty)
+    }
+
+    @Test("구현에서 이어지는 호출까지 함께 살아난다")
+    func cascadesThroughImplementation() {
+        // 구현이 살아나야 그 안에서 호출하는 것들도 살아난다.
+        // 이 연쇄가 끊기면 미사용 보고가 눈덩이처럼 불어난다.
+        let withInversion = analyze(followOverridesInReverse: true)
+        #expect(!withInversion.unused.contains { $0.name == "helper" })
+
+        let without = analyze(followOverridesInReverse: false)
+        #expect(without.unused.map(\.name).sorted() == ["helper", "load"])
+    }
+}

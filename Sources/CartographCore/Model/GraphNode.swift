@@ -39,6 +39,15 @@ public struct GraphNode: Hashable, Sendable, Codable, Identifiable {
         self.isExternal = isExternal
     }
 
+    /// 인자 목록을 뗀 이름.
+    ///
+    /// 인덱스는 함수 이름을 `main()`, `describe(_:)` 처럼 인자 라벨까지 붙여 준다.
+    /// 이름으로 규칙을 거는 쪽에서는 그 꼬리가 늘 걸림돌이 된다.
+    public var baseName: String {
+        guard let parenthesis = name.firstIndex(of: "(") else { return name }
+        return String(name[name.startIndex..<parenthesis])
+    }
+
     /// 리포트에 표시할 한 줄 이름. 모듈이 있으면 `Module.Name` 형태가 된다.
     public var qualifiedName: String {
         guard let module, kind != .module, !module.isEmpty else { return name }

@@ -1,0 +1,50 @@
+# Cartograph 가 자기 자신을 분석할 때 쓰는 설정.
+#
+# 이 저장소는 라이브러리 제품(CartographKit)을 함께 내보내므로 public API 를
+# 보존한다. 그렇지 않으면 아직 외부에서만 쓰이는 API 가 전부 미사용으로 보고된다.
+
+level: module
+
+include:
+  - "Sources/**"
+exclude:
+  - "**/.build/**"
+  - "**/Tests/**"
+
+retention:
+  retain_public: true
+  retain_tests: true
+  # 테스트 지원 모듈은 테스트 타깃에서만 쓰인다. 테스트를 분석 범위에서 뺐으므로
+  # 여기서 보존하지 않으면 전부 미사용으로 보고된다.
+  retained_files:
+    - "Sources/CartographTestSupport/**"
+
+layers:
+  - name: Domain
+    match: ["CartographCore"]
+  - name: Feature
+    match: ["CartographConfig", "CartographSyntax", "CartographAnalysis", "CartographExport", "CartographIndexStore"]
+  - name: Assembly
+    match: ["CartographKit"]
+  - name: Interface
+    match: ["CartographCLI"]
+  - name: TestSupport
+    match: ["CartographTestSupport"]
+
+rules:
+  - name: 도메인 계층은 어떤 상위 계층에도 의존하지 않는다
+    from: Domain
+    allow: []
+  - name: 기능 계층은 도메인에만 의존한다
+    from: Feature
+    allow: [Domain]
+  - name: 조립 계층은 인터페이스를 알지 못한다
+    from: Assembly
+    deny: [Interface]
+
+thresholds:
+  max_cycles: 0
+  max_rule_violations: 0
+
+report_format: text
+graph_format: dot

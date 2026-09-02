@@ -10,9 +10,12 @@ import CartographCore
 /// 왜 살아남았는지 되짚을 수 있어야 하기 때문이다.
 public struct RetentionPolicy: Sendable {
     private let options: RetentionOptions
+    /// 파일 글롭을 상대 경로로도 맞춰 보기 위한 기준 디렉터리.
+    private let basePath: String?
 
-    public init(options: RetentionOptions = .default) {
+    public init(options: RetentionOptions = .default, basePath: String? = nil) {
         self.options = options
+        self.basePath = basePath
     }
 
     /// 보존해야 할 정점과 그 근거.
@@ -87,8 +90,13 @@ public struct RetentionPolicy: Sendable {
     // MARK: - 개별 규칙
 
     private func isUserRetained(_ node: GraphNode) -> Bool {
-        if let path = node.location?.path, options.retainedFiles.matchesAny(path) { return true }
+        if let path = node.location?.path,
+           PathFilter.matchCandidates(for: path, relativeTo: basePath)
+               .contains(where: { options.retainedFiles.matchesAny($0) }) {
+            return true
+        }
         return options.retainedNames.matchesAny(node.name)
+            || options.retainedNames.matchesAny(node.baseName)
             || options.retainedNames.matchesAny(node.qualifiedName)
     }
 
@@ -112,16 +120,21 @@ public struct RetentionPolicy: Sendable {
     private func parentDrivenReason(for node: GraphNode, in graph: CodeGraph) -> RetentionReason? {
         guard let parent = parent(of: node, in: graph) else { return nil }
 
+        // @main 타입의 static main() 은 런타임이 부르므로 코드 어디에도 참조가 없다.
+        if parent.attributes.contains(.entryPoint), node.baseName == Self.entryPointMethodName {
+            return .entryPoint
+        }
         if node.kind == .enumCase {
             if parent.attributes.contains(.codingKey) { return .codingKey }
             if options.retainRawRepresentableEnumCases, parent.attributes.contains(.rawRepresentable) {
                 return .rawRepresentableEnumCase
             }
         }
-        if parent.attributes.contains(.propertyWrapper), Self.propertyWrapperMembers.contains(node.name) {
+        if parent.attributes.contains(.propertyWrapper),
+           Self.propertyWrapperMembers.contains(node.baseName) {
             return .propertyWrapperRequirement
         }
-        if parent.attributes.contains(.resultBuilder), node.name.hasPrefix("build") {
+        if parent.attributes.contains(.resultBuilder), node.baseName.hasPrefix("build") {
             return .resultBuilderRequirement
         }
         if options.retainCodableProperties, parent.attributes.contains(.codable), node.kind == .property {
@@ -151,4 +164,6 @@ public struct RetentionPolicy: Sendable {
 
     /// `@propertyWrapper` 규약이 요구하는 멤버 이름.
     static let propertyWrapperMembers: Set<String> = ["wrappedValue", "projectedValue"]
+    /// `@main` 타입이 제공해야 하는 진입 메서드 이름.
+    static let entryPointMethodName = "main"
 }

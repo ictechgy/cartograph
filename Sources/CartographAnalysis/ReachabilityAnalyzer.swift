@@ -77,13 +77,22 @@ public struct ReachabilityAnalyzer: Sendable {
         public var reportMembersOfUnusedTypes: Bool
         /// 보고에서 제외할 선언 종류.
         public var excludedKinds: Set<SymbolKind>
+        /// 오버라이드 관계를 역방향으로도 따라갈지 여부.
+        ///
+        /// 인덱스는 프로토콜 요구사항 호출을 요구사항 심볼에 대한 참조로 기록한다.
+        /// 구현체 메서드로 향하는 참조는 어디에도 없다. 정방향만 따라가면
+        /// 프로토콜을 통해 호출되는 모든 구현이 미사용으로 보고된다.
+        /// Periphery 가 프로토콜 준수 참조를 뒤집어 해결한 것과 같은 문제다.
+        public var followOverridesInReverse: Bool
 
         public init(
             reportMembersOfUnusedTypes: Bool = false,
-            excludedKinds: Set<SymbolKind> = [.parameter, .file, .module, .extensionDeclaration]
+            excludedKinds: Set<SymbolKind> = [.parameter, .file, .module, .extensionDeclaration],
+            followOverridesInReverse: Bool = true
         ) {
             self.reportMembersOfUnusedTypes = reportMembersOfUnusedTypes
             self.excludedKinds = excludedKinds
+            self.followOverridesInReverse = followOverridesInReverse
         }
     }
 
@@ -150,6 +159,15 @@ public struct ReachabilityAnalyzer: Sendable {
                 if reachable.insert(edge.target).inserted {
                     predecessors[edge.target] = current
                     queue.append(edge.target)
+                }
+            }
+
+            // 요구사항이나 상위 선언이 쓰이면 그것을 구현/오버라이드한 쪽도 쓰인다.
+            guard options.followOverridesInReverse else { continue }
+            for edge in graph.incomingEdges(to: current) where edge.kind == .overrides {
+                if reachable.insert(edge.source).inserted {
+                    predecessors[edge.source] = current
+                    queue.append(edge.source)
                 }
             }
         }

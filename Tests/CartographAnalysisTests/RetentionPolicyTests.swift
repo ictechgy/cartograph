@@ -20,6 +20,18 @@ struct RetentionPolicyTests {
         #expect(reasons(builder.build())["App"] == .entryPoint)
     }
 
+    @Test("@main 타입의 static main() 도 함께 보존된다")
+    func entryPointMethodIsRetained() {
+        // 런타임이 부르는 메서드라 코드 어디에도 참조가 없다.
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("App.main", name: "main()", kind: .method, parent: "App")
+        builder.symbol("App.other", name: "other()", kind: .method, parent: "App")
+        let retained = reasons(builder.build())
+        #expect(retained["App.main"] == .entryPoint)
+        #expect(retained["App.other"] == nil)
+    }
+
     @Test("테스트 선언은 기본으로 보존되고 끌 수 있다")
     func testDeclarationsAreRetainedByDefault() {
         var builder = SnapshotBuilder()
@@ -118,7 +130,7 @@ struct RetentionPolicyTests {
         builder.symbol("Wrapper.projectedValue", name: "projectedValue", kind: .property, parent: "Wrapper")
         builder.symbol("Wrapper.helper", name: "helper", kind: .method, parent: "Wrapper")
         builder.symbol("Builder", kind: .enumType, attributes: [.resultBuilder])
-        builder.symbol("Builder.buildBlock", name: "buildBlock", kind: .method, parent: "Builder")
+        builder.symbol("Builder.buildBlock", name: "buildBlock(_:)", kind: .method, parent: "Builder")
 
         let retained = reasons(builder.build())
         #expect(retained["Wrapper.wrappedValue"] == .propertyWrapperRequirement)
@@ -220,5 +232,28 @@ struct RetentionPolicyTests {
         for reason in RetentionReason.allCases {
             #expect(!reason.explanation.isEmpty)
         }
+    }
+}
+
+@Suite("보존 규칙의 경로 매칭")
+struct RetentionPathMatchingTests {
+    @Test("파일 보존 글롭은 프로젝트 상대 경로로도 맞는다")
+    func retainedFilesMatchRelativePaths() {
+        // 인덱스는 절대 경로를 주지만 설정에는 상대 경로를 쓴다.
+        // 한쪽만 지원하면 같은 패턴이 설정 위치에 따라 다르게 동작한다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Helper", kind: .structType, path: "/p/Sources/TestSupport/Helper.swift")
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        var options = RetentionOptions.default
+        options.retainedFiles = ["Sources/TestSupport/**"]
+
+        let withoutBase = RetentionPolicy(options: options).retainedNodes(in: graph, snapshot: snapshot)
+        #expect(withoutBase["Helper"] == nil)
+
+        let withBase = RetentionPolicy(options: options, basePath: "/p")
+            .retainedNodes(in: graph, snapshot: snapshot)
+        #expect(withBase["Helper"] == .userConfigured)
     }
 }

@@ -77,7 +77,7 @@ public struct CartographService: Sendable {
     /// "이 파일 전체가 안 쓰인다" 정도밖에 말할 수 없다.
     public func detectUnusedCode() throws -> CommandOutcome {
         let (result, snapshot) = try buildGraph(level: .symbol)
-        let report = ReachabilityAnalyzer(policy: RetentionPolicy(options: configuration.retention))
+        let report = ReachabilityAnalyzer(policy: makeRetentionPolicy())
             .analyze(graph: result.graph, snapshot: snapshot)
         let diagnostics = AnalysisDiagnostics.diagnostics(for: report)
 
@@ -95,7 +95,7 @@ public struct CartographService: Sendable {
     public func explainRetention(of subject: String) throws -> CommandOutcome {
         let (result, snapshot) = try buildGraph(level: .symbol)
         let graph = result.graph
-        let report = ReachabilityAnalyzer(policy: RetentionPolicy(options: configuration.retention))
+        let report = ReachabilityAnalyzer(policy: makeRetentionPolicy())
             .analyze(graph: graph, snapshot: snapshot)
 
         guard let node = Self.findNode(matching: subject, in: graph) else {
@@ -223,7 +223,7 @@ public struct CartographService: Sendable {
             in: moduleResult.graph
         )
         diagnostics += AnalysisDiagnostics.diagnostics(
-            for: ReachabilityAnalyzer(policy: RetentionPolicy(options: configuration.retention))
+            for: ReachabilityAnalyzer(policy: makeRetentionPolicy())
                 .analyze(graph: symbolResult.graph, snapshot: snapshot)
         )
         diagnostics += AnalysisDiagnostics.diagnostics(
@@ -234,6 +234,11 @@ public struct CartographService: Sendable {
     }
 
     // MARK: - 내부 구현
+
+    /// 설정과 프로젝트 경로를 반영한 보존 규칙.
+    private func makeRetentionPolicy() -> RetentionPolicy {
+        RetentionPolicy(options: configuration.retention, basePath: projectPath)
+    }
 
     private func loadBaseline() throws -> Baseline? {
         try BaselineStore(fileSystem: environment.fileSystem).loadIfPresent(at: configuration.baselinePath)
@@ -248,7 +253,9 @@ public struct CartographService: Sendable {
     /// 사용자는 USR 을 외우지 않는다. 타입 이름으로 물어볼 수 있어야 한다.
     static func findNode(matching subject: String, in graph: CodeGraph) -> GraphNode? {
         if let exact = graph.node(NodeID(subject)) { return exact }
-        return graph.sortedNodes.first { $0.name == subject || $0.qualifiedName == subject }
+        return graph.sortedNodes.first {
+            $0.name == subject || $0.baseName == subject || $0.qualifiedName == subject
+        }
     }
 
     private func makeIndexProvider() throws -> any IndexProviding {
