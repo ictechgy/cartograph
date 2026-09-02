@@ -34,11 +34,16 @@ public struct MermaidGraphRenderer: GraphRendering {
             lines.append("    \(identifier)\(shape(node.kind, label: node.name))")
         }
 
+        // 종류가 달라도 화살표 모양이 같으면 같은 줄이 된다. 중복은 그림만 어지럽힌다.
+        var renderedEdges: Set<String> = []
         for edge in graph.edges {
             guard keptIDs.contains(edge.source), keptIDs.contains(edge.target),
                   let source = identifiers[edge.source], let target = identifiers[edge.target]
             else { continue }
-            lines.append("    \(source) \(EdgeStyle.mermaidArrow(for: edge.kind)) \(target)")
+            let line = "    \(source) \(EdgeStyle.mermaidArrow(for: edge.kind)) \(target)"
+            if renderedEdges.insert(line).inserted {
+                lines.append(line)
+            }
         }
 
         return lines.joined(separator: "\n") + "\n"

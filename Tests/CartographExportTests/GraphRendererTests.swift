@@ -68,6 +68,24 @@ struct GraphRendererTests {
         #expect(!output.contains("Array<\"T\">"))
     }
 
+    @Test("Mermaid 는 같은 모양으로 그려지는 중복 간선을 합친다")
+    func mermaidDeduplicatesEdges() throws {
+        // call 과 reference 는 화살표 모양이 같아 그대로 두면 같은 줄이 두 번 나온다.
+        let graph = CodeGraph(
+            level: .module,
+            nodes: [
+                GraphNode(id: "a", name: "A", kind: .module),
+                GraphNode(id: "b", name: "B", kind: .module),
+            ],
+            edges: [
+                GraphEdge(source: "a", target: "b", kind: .call),
+                GraphEdge(source: "a", target: "b", kind: .reference),
+            ]
+        )
+        let lines = try MermaidGraphRenderer().render(graph).split(separator: "\n")
+        #expect(lines.filter { $0.contains("-->") }.count == 1)
+    }
+
     @Test("Mermaid 는 상한을 넘으면 연결이 많은 정점부터 남긴다")
     func mermaidTruncatesByConnectivity() throws {
         var adjacency: [String: [String]] = ["hub": []]
