@@ -139,3 +139,19 @@ struct GraphBuilderTests {
         #expect(graph.isEmpty)
     }
 }
+
+@Suite("GraphBuilder.BuildResult")
+struct GraphBuildResultTests {
+    @Test("USR 매핑으로 정점에 접힌 심볼을 되짚을 수 있다")
+    func nodeIDMappingIsExposed() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Type", kind: .structType, module: "App")
+        builder.symbol("Type.method", name: "method", kind: .method, module: "App", parent: "Type")
+        let result = GraphBuilder(options: .init(level: .type)).buildResult(from: builder.build())
+
+        #expect(result.nodeIDByUSR["Type.method"] == NodeID("Type"))
+        #expect(result.usrs(for: "Type") == ["Type", "Type.method"])
+        #expect(result.usrs(for: "없음").isEmpty)
+        #expect(result.graph.nodeCount == 1)
+    }
+}

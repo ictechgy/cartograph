@@ -38,7 +38,32 @@ public struct GraphBuilder: Sendable {
         self.options = options
     }
 
+    /// 그래프와, 그 그래프를 만들 때 쓴 USR → 정점 매핑을 함께 담는다.
+    ///
+    /// 데드코드 분석과 아키텍처 지표는 "이 정점에 어떤 심볼들이 접혔는가"를
+    /// 알아야 하는데, 매핑 규칙을 두 곳에서 따로 구현하면 반드시 어긋난다.
+    public struct BuildResult: Sendable {
+        public let graph: CodeGraph
+        /// 분석에 포함된 심볼의 USR → 정점 식별자.
+        public let nodeIDByUSR: [String: NodeID]
+
+        public init(graph: CodeGraph, nodeIDByUSR: [String: NodeID]) {
+            self.graph = graph
+            self.nodeIDByUSR = nodeIDByUSR
+        }
+
+        /// 정점 하나에 접힌 심볼들의 USR 목록.
+        public func usrs(for node: NodeID) -> [String] {
+            nodeIDByUSR.filter { $0.value == node }.keys.sorted()
+        }
+    }
+
+    /// 그래프만 필요할 때 쓰는 간편 진입점.
     public func build(from snapshot: IndexSnapshot) -> CodeGraph {
+        buildResult(from: snapshot).graph
+    }
+
+    public func buildResult(from snapshot: IndexSnapshot) -> BuildResult {
         let symbolsByUSR = snapshot.symbolsByUSR()
         let extensionTargets = Self.extensionTargets(in: snapshot)
         let includedSymbols = snapshot.symbols.filter { isIncluded($0) }
@@ -83,7 +108,8 @@ public struct GraphBuilder: Sendable {
             }
         }
 
-        return CodeGraph(level: options.level, nodes: Array(nodesByID.values), edges: edges)
+        let graph = CodeGraph(level: options.level, nodes: Array(nodesByID.values), edges: edges)
+        return BuildResult(graph: graph, nodeIDByUSR: nodeIDByUSR)
     }
 
     // MARK: - 내부 구현

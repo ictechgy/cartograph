@@ -46,6 +46,11 @@ public enum SymbolAttribute: String, Codable, Sendable, CaseIterable {
     case rawRepresentable
     /// `CodingKey` 를 준수하는 중첩 열거형.
     case codingKey
+    /// Codable/Encodable/Decodable 을 준수하는 타입.
+    ///
+    /// 합성된 `init(from:)`/`encode(to:)` 는 저장 프로퍼티 참조를 인덱스에 남기지
+    /// 않으므로, 이 표식이 붙은 타입의 프로퍼티는 미사용으로 오인되기 쉽다.
+    case codable
     /// `override` 제어자.
     case overrideDeclaration
     /// `// cartograph:ignore` 주석으로 사용자가 제외한 선언.
