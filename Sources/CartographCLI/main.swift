@@ -1,2 +1,1 @@
-import CartographKit
-print(CartographKitModule.name)
+print("cartograph")

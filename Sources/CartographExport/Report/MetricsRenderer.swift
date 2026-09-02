@@ -52,7 +52,10 @@ public struct MetricsRenderer: Sendable {
         return output.joined(separator: "\n") + "\n"
     }
 
-    public func renderJSON(_ metrics: [NodeMetrics]) throws -> String {
+    /// 지표와 임계값 위반을 한 문서에 담는다.
+    ///
+    /// 두 개의 JSON 문서를 이어 붙이면 어떤 파서도 읽지 못한다.
+    public func renderJSON(_ metrics: [NodeMetrics], diagnostics: [Diagnostic] = []) throws -> String {
         struct Entry: Encodable {
             let node: String
             let name: String
@@ -70,6 +73,7 @@ public struct MetricsRenderer: Sendable {
             let version: String
             let tolerance: Double
             let metrics: [Entry]
+            let diagnostics: [Diagnostic]
         }
 
         let document = Document(
@@ -89,7 +93,8 @@ public struct MetricsRenderer: Sendable {
                     typeCount: entry.composition.total,
                     abstractTypeCount: entry.composition.abstract
                 )
-            }
+            },
+            diagnostics: diagnostics.sorted()
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]

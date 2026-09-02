@@ -1,0 +1,230 @@
+import CartographCore
+@testable import CartographKit
+import CartographTestSupport
+import Foundation
+import Testing
+
+@Suite("분석 파이프라인")
+struct CartographServiceTests {
+    /// Presentation → Domain → Data 로 흐르고, Data 가 Presentation 을 되참조하는
+    /// 작은 프로젝트. 순환·레이어 위반·데드코드를 한 번에 담고 있다.
+    private func makeSnapshot() -> IndexSnapshot {
+        var builder = SnapshotBuilder()
+        builder.symbol(
+            "HomeView", kind: .structType, module: "Presentation",
+            path: "/p/Features/HomeView.swift", attributes: [.entryPoint]
+        )
+        builder.symbol("UserService", kind: .classType, module: "Domain", path: "/p/Domain/UserService.swift")
+        builder.symbol("UserRepository", kind: .classType, module: "Data", path: "/p/Data/UserRepository.swift")
+        builder.symbol("DeadHelper", kind: .structType, module: "Domain", path: "/p/Domain/DeadHelper.swift")
+        builder.reference(from: "HomeView", to: "UserService", kind: .call)
+        builder.reference(from: "UserService", to: "UserRepository", kind: .call)
+        builder.reference(from: "UserRepository", to: "HomeView", kind: .reference)
+        return builder.build()
+    }
+
+    private func makeService(
+        configure: (inout CartographConfiguration) -> Void = { _ in },
+        fileSystem: InMemoryFileSystem = InMemoryFileSystem()
+    ) -> CartographService {
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        configure(&configuration)
+        return CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(
+                fileSystem: fileSystem,
+                indexProviderOverride: StaticIndexProvider(makeSnapshot())
+            )
+        )
+    }
+
+    @Test("그래프를 설정된 형식으로 내보낸다")
+    func rendersGraph() throws {
+        let outcome = try makeService().renderGraph()
+        #expect(outcome.output.hasPrefix("digraph Cartograph {"))
+        #expect(outcome.output.contains("Presentation"))
+        #expect(!outcome.hasFindings)
+    }
+
+    @Test("형식과 해상도를 인자로 덮어쓸 수 있다")
+    func overridesFormatAndLevel() throws {
+        let outcome = try makeService().renderGraph(level: .type, format: .mermaid)
+        #expect(outcome.output.hasPrefix("flowchart LR"))
+        #expect(outcome.output.contains("HomeView"))
+    }
+
+    @Test("순환 의존성을 찾아 보고한다")
+    func detectsCycles() throws {
+        let outcome = try makeService().detectCycles()
+        #expect(outcome.findingCount == 1)
+        #expect(outcome.output.contains("Circular dependency"))
+        #expect(outcome.output.contains("cycles: 1 error"))
+    }
+
+    @Test("순환 임계값을 넘으면 오류를 던진다")
+    func cycleThresholdFails() {
+        let service = makeService { $0.thresholds.maxCycles = 0 }
+        #expect(throws: CartographError.self) { try service.detectCycles() }
+    }
+
+    @Test("도달할 수 없는 선언을 보고한다")
+    func detectsUnusedCode() throws {
+        let outcome = try makeService().detectUnusedCode()
+        #expect(outcome.findingCount == 1)
+        #expect(outcome.output.contains("'Domain.DeadHelper' is never used"))
+        #expect(outcome.output.contains("reachable"))
+    }
+
+    @Test("데드코드 결과는 프로젝트 상대 경로로 보고된다")
+    func reportsRelativePaths() throws {
+        let outcome = try makeService().detectUnusedCode()
+        #expect(outcome.output.contains("Domain/DeadHelper.swift"))
+        #expect(!outcome.output.contains("/p/Domain/DeadHelper.swift"))
+    }
+
+    @Test("살아 있는 이유를 사람이 읽는 문장으로 설명한다")
+    func explainsRetention() throws {
+        let service = makeService()
+        #expect(try service.explainRetention(of: "HomeView").output
+            .contains("is retained because it is declared as an application entry point"))
+        #expect(try service.explainRetention(of: "UserRepository").output
+            .contains("Presentation.HomeView → Domain.UserService → Data.UserRepository"))
+
+        let dead = try service.explainRetention(of: "DeadHelper")
+        #expect(dead.output.contains("not reachable"))
+        #expect(dead.hasFindings)
+        #expect(try service.explainRetention(of: "없는이름").output.contains("No declaration matches"))
+    }
+
+    @Test("아키텍처 지표를 표로 낸다")
+    func measuresMetrics() throws {
+        let outcome = try makeService().measureMetrics()
+        #expect(outcome.output.contains("NODE"))
+        #expect(outcome.output.contains("Presentation"))
+        #expect(outcome.output.contains("Ca afferent coupling"))
+    }
+
+    @Test("지표를 JSON 으로 낼 때 진단을 같은 문서에 담는다")
+    func metricsJSONIsSingleDocument() throws {
+        // 두 개의 JSON 문서를 이어 붙이면 어떤 파서도 읽지 못한다.
+        let service = makeService {
+            $0.reportFormat = .json
+            $0.thresholds.maxInstability = 0.1
+        }
+        let outcome = try service.measureMetrics()
+        let object = try JSONSerialization.jsonObject(with: Data(outcome.output.utf8)) as? [String: Any]
+        #expect(object?["metrics"] != nil)
+        #expect(object?["diagnostics"] != nil)
+        #expect(outcome.hasFindings)
+    }
+
+    @Test("레이어 규칙 위반을 보고한다")
+    func checksLayerRules() throws {
+        let service = makeService {
+            $0.layers = [
+                LayerDefinition(name: "Presentation", patterns: ["Presentation"]),
+                LayerDefinition(name: "Data", patterns: ["Data"]),
+            ]
+            $0.rules = [LayerRule(from: "Data", deny: ["Presentation"])]
+        }
+        let outcome = try service.checkRules()
+        #expect(outcome.findingCount == 1)
+        #expect(outcome.output.contains("must not depend on Presentation"))
+    }
+
+    @Test("레이어 미지정은 정보로만 알리고 임계값에 세지 않는다")
+    func unassignedLayersAreInformational() throws {
+        let service = makeService {
+            $0.layers = [LayerDefinition(name: "Data", patterns: ["Data"])]
+            $0.rules = [LayerRule(from: "Data", allow: [])]
+            $0.thresholds.maxRuleViolations = 0
+        }
+        // Presentation 과 Domain 은 레이어가 없지만 그 자체로는 실패가 아니다.
+        let outcome = try service.checkRules()
+        #expect(outcome.output.contains("does not belong to any layer"))
+        #expect(outcome.findingCount == 0)
+    }
+
+    @Test("정의되지 않은 레이어를 참조하면 규칙 검사가 실패한다")
+    func rulesValidateLayerNames() {
+        let service = makeService {
+            $0.rules = [LayerRule(from: "Nowhere", deny: ["Data"])]
+        }
+        #expect(throws: CartographError.self) { try service.checkRules() }
+    }
+
+    @Test("베이스라인에 있는 진단은 걸러지고 개수로만 알린다")
+    func baselineSuppressesKnownFindings() throws {
+        let fileSystem = InMemoryFileSystem()
+        let service = makeService(fileSystem: fileSystem)
+        let diagnostics = try service.collectAllDiagnostics()
+        _ = try service.writeBaseline(diagnostics: diagnostics, to: "/p/baseline.json")
+
+        let withBaseline = makeService(
+            configure: { $0.baselinePath = "/p/baseline.json" },
+            fileSystem: fileSystem
+        )
+        let outcome = try withBaseline.detectUnusedCode()
+        #expect(outcome.findingCount == 0)
+        #expect(outcome.suppressedCount == 1)
+        #expect(outcome.output.contains("suppressed by baseline"))
+    }
+
+    @Test("베이스라인 파일을 기록한다")
+    func writesBaselineFile() throws {
+        let fileSystem = InMemoryFileSystem()
+        let service = makeService(fileSystem: fileSystem)
+        let outcome = try service.writeBaseline(
+            diagnostics: try service.collectAllDiagnostics(),
+            to: "/p/baseline.json"
+        )
+        #expect(outcome.output.contains("/p/baseline.json"))
+        #expect(fileSystem.fileExists(at: "/p/baseline.json"))
+    }
+
+    @Test("모든 명령의 진단을 한 번에 모은다")
+    func collectsDiagnosticsFromEveryCommand() throws {
+        let service = makeService {
+            $0.layers = [
+                LayerDefinition(name: "Presentation", patterns: ["Presentation"]),
+                LayerDefinition(name: "Data", patterns: ["Data"]),
+            ]
+            $0.rules = [LayerRule(from: "Data", deny: ["Presentation"])]
+        }
+        let identifiers = Set(try service.collectAllDiagnostics().map(\.ruleIdentifier))
+        #expect(identifiers == ["cycle", "unused-symbol", "layer-violation"])
+    }
+
+    @Test("프로젝트 경로가 없으면 현재 디렉터리를 쓴다")
+    func fallsBackToCurrentDirectory() {
+        let service = CartographService(
+            configuration: .default,
+            environment: CartographEnvironment(
+                fileSystem: InMemoryFileSystem(currentDirectoryPath: "/here"),
+                indexProviderOverride: StaticIndexProvider(IndexSnapshot())
+            )
+        )
+        #expect(service.projectPath == "/here")
+    }
+
+    @Test("인덱스 스토어를 찾지 못하면 안내가 담긴 오류를 낸다")
+    func missingIndexStoreIsExplained() {
+        let service = CartographService(
+            configuration: {
+                var configuration = CartographConfiguration.default
+                configuration.projectPath = "/p"
+                return configuration
+            }(),
+            environment: CartographEnvironment(fileSystem: InMemoryFileSystem())
+        )
+        #expect(throws: CartographError.self) { try service.renderGraph() }
+    }
+
+    @Test("USR 로도 이름으로도 정점을 찾는다")
+    func findsNodeByUSROrName() throws {
+        let graph = TestGraph.make(["App": []])
+        #expect(CartographService.findNode(matching: "App", in: graph)?.id == NodeID("App"))
+        #expect(CartographService.findNode(matching: "없음", in: graph) == nil)
+    }
+}
