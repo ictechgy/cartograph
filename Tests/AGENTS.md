@@ -1,6 +1,6 @@
 # Tests/AGENTS.md
 
-테스트 작성 규칙입니다. 루트 [AGENTS.md](../AGENTS.md) 를 먼저 읽으세요.
+테스트 작성 규칙입니다. 루트 [AGENTS.md](../AGENTS.md)를 먼저 읽으세요.
 
 ## 기본 규칙
 
@@ -8,13 +8,13 @@
 - 테스트 이름은 한국어 문장으로, **무엇을 보장하는지**를 씁니다.
   `@Test("순환이 없으면 아무것도 보고하지 않는다")` 처럼요.
   `testDetectCycles` 같은 이름은 실패했을 때 아무것도 알려 주지 않습니다.
-- 테스트 타깃은 소스 모듈과 1:1 로 대응합니다.
+- 테스트 타깃은 소스 모듈과 1:1로 대응합니다.
 - 픽스처 Xcode 프로젝트를 만들지 마세요. 인덱스 스토어가 필요해 보이는 테스트는 대개
   스냅샷을 손으로 만들면 됩니다.
 
 ## 도구
 
-`CartographTestSupport` 에 세 가지가 있습니다.
+`CartographTestSupport`에 세 가지가 있습니다.
 
 ```swift
 // 인덱스 스냅샷을 손으로 조립
@@ -29,7 +29,7 @@ let graph = TestGraph.make(["A": ["B"], "B": ["A"]])
 let fileSystem = InMemoryFileSystem(files: ["/p/.cartograph.yml": "level: type"])
 ```
 
-`IndexStoreDB` 의 `Symbol` 과 `SymbolOccurrence` 는 공개 이니셜라이저가 있습니다.
+`IndexStoreDB`의 `Symbol`과 `SymbolOccurrence`는 공개 이니셜라이저가 있습니다.
 인덱스 어댑터의 변환 규칙도 실제 스토어 없이 테스트하세요
 (`Tests/CartographIndexStoreTests/IndexStoreMappingTests.swift` 참고).
 
@@ -45,8 +45,8 @@ let fileSystem = InMemoryFileSystem(files: ["/p/.cartograph.yml": "level: type"]
 - 프로토콜 구현 오탐 → 요구사항 호출이 구현까지 도달하는지
 - 절대/상대 경로 글롭 → 두 형태 모두 매칭되는지
 
-**커버리지 숫자를 위한 테스트는 쓰지 마세요.** 기준은 90% 이고 현재 93% 대입니다.
-CLI 껍데기와 인덱스 스토어 입출력은 의도적으로 비워 두고 CI 의 자기 분석 잡에 맡깁니다.
+**커버리지 숫자를 위한 테스트는 쓰지 마세요.** 기준은 90%이고 현재 93% 대입니다.
+CLI 껍데기와 인덱스 스토어 입출력은 의도적으로 비워 두고 CI의 자기 분석 잡에 맡깁니다.
 
 ## 결정성
 
