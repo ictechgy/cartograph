@@ -1,0 +1,44 @@
+name: False positive
+description: Cartograph reported a declaration as unused, but it is used
+labels: ["false-positive"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        False positives are the most important bugs in this project. A dead-code tool
+        nobody trusts is worse than no tool, so these get priority.
+
+        Before filing, please run `cartograph dead --explain <name>` — the output tells us
+        whether the declaration was unreachable or retained for the wrong reason.
+  - type: textarea
+    id: declaration
+    attributes:
+      label: The declaration
+      description: The smallest Swift snippet that reproduces it.
+      render: swift
+    validations:
+      required: true
+  - type: textarea
+    id: usage
+    attributes:
+      label: How it is actually used
+      description: Interface Builder, a selector, a macro, dependency injection, reflection…
+    validations:
+      required: true
+  - type: textarea
+    id: explain
+    attributes:
+      label: Output of `cartograph dead --explain`
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Cartograph and Xcode versions
+      placeholder: "cartograph 0.1.0, Xcode 27.0"
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Your .cartograph.yml
+      render: yaml
