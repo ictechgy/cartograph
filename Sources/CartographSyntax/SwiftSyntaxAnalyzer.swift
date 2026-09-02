@@ -66,11 +66,22 @@ final class DeclarationCollector: SyntaxVisitor {
         var inheritsObjectiveCExposure: Bool
         /// `cartograph:ignore` 가 걸린 선언 내부인지 여부.
         var isIgnored: Bool
+        /// XCTest 메서드가 있을 수 있는 본문 안인지 여부.
+        ///
+        /// 클래스와 익스텐션이 해당한다. 익스텐션은 확장 대상이 클래스인지
+        /// 구문만으로는 알 수 없으니 포함한다. 테스트를 미사용으로 보고하는 쪽이
+        /// 제품 코드를 남겨 두는 쪽보다 훨씬 비싸다.
+        var allowsTestMethods: Bool
     }
 
     private(set) var declarations: [DeclarationFacts] = []
     private var contexts: [Context] = [
-        Context(accessibility: .internalLevel, inheritsObjectiveCExposure: false, isIgnored: false)
+        Context(
+            accessibility: .internalLevel,
+            inheritsObjectiveCExposure: false,
+            isIgnored: false,
+            allowsTestMethods: false
+        )
     ]
     private let converter: SourceLocationConverter
     private let testCaseBaseClasses: Set<String>
@@ -90,7 +101,13 @@ final class DeclarationCollector: SyntaxVisitor {
         attributes.formUnion(Self.inheritanceAttributes(node.inheritanceClause, isEnum: false))
         if node.genericParameterClause != nil { attributes.insert(.generic) }
         if isTestCase(node.inheritanceClause) { attributes.insert(.unitTest) }
-        return push(name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers)
+        return push(
+            name: node.name.text,
+            node: node,
+            attributes: attributes,
+            modifiers: node.modifiers,
+            allowsTestMethods: true
+        )
     }
     override func visitPost(_ node: ClassDeclSyntax) { pop() }
 
@@ -128,7 +145,8 @@ final class DeclarationCollector: SyntaxVisitor {
             name: node.extendedType.trimmedDescription,
             node: node,
             attributes: attributes,
-            modifiers: node.modifiers
+            modifiers: node.modifiers,
+            allowsTestMethods: true
         )
     }
     override func visitPost(_ node: ExtensionDeclSyntax) { pop() }
@@ -138,8 +156,7 @@ final class DeclarationCollector: SyntaxVisitor {
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         var attributes = commonAttributes(node)
         if node.genericParameterClause != nil { attributes.insert(.generic) }
-        if node.name.text.hasPrefix("test"), node.signature.parameterClause.parameters.isEmpty {
-            // XCTest 는 인자 없는 test 접두사 메서드만 테스트로 실행한다.
+        if context.allowsTestMethods, Self.isXCTestMethod(node, modifiers: node.modifiers) {
             attributes.insert(.unitTest)
         }
         return push(name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers)
@@ -150,6 +167,11 @@ final class DeclarationCollector: SyntaxVisitor {
         push(name: "init", node: node, attributes: commonAttributes(node), modifiers: node.modifiers)
     }
     override func visitPost(_ node: InitializerDeclSyntax) { pop() }
+
+    override func visit(_ node: DeinitializerDeclSyntax) -> SyntaxVisitorContinueKind {
+        push(name: "deinit", node: node, attributes: commonAttributes(node), modifiers: node.modifiers)
+    }
+    override func visitPost(_ node: DeinitializerDeclSyntax) { pop() }
 
     override func visit(_ node: SubscriptDeclSyntax) -> SyntaxVisitorContinueKind {
         var attributes = commonAttributes(node)
@@ -199,7 +221,8 @@ final class DeclarationCollector: SyntaxVisitor {
         name: String,
         node: some SyntaxProtocol,
         attributes: Set<SymbolAttribute>,
-        modifiers: DeclModifierListSyntax
+        modifiers: DeclModifierListSyntax,
+        allowsTestMethods: Bool = false
     ) -> SyntaxVisitorContinueKind {
         let resolved = record(name: name, node: node, attributes: attributes, modifiers: modifiers)
         contexts.append(
@@ -207,7 +230,8 @@ final class DeclarationCollector: SyntaxVisitor {
                 accessibility: resolved.accessibility,
                 inheritsObjectiveCExposure: context.inheritsObjectiveCExposure
                     || resolved.attributes.contains(.objcMembers),
-                isIgnored: resolved.attributes.contains(.ignoreComment)
+                isIgnored: resolved.attributes.contains(.ignoreComment),
+                allowsTestMethods: allowsTestMethods
             )
         )
         return .visitChildren
@@ -251,13 +275,33 @@ final class DeclarationCollector: SyntaxVisitor {
     }
 
     /// 속성 목록과 주석에서 공통 표식을 읽는다.
+    ///
+    /// 주석은 선언 위와 줄 끝 양쪽을 본다. 줄 끝 주석은 SwiftSyntax 에서 그 선언의
+    /// 후행 트리비아에 들어가므로 앞 트리비아만 읽으면 조용히 무시된다.
+    /// 사용자는 무시했다고 믿는데 그대로 미사용으로 보고되는 상황이 된다.
     private func commonAttributes(_ node: some WithAttributesSyntax & SyntaxProtocol) -> Set<SymbolAttribute> {
         var result = Self.attributes(from: node.attributes)
-        if SwiftSyntaxAnalyzer.commentLines(in: node.leadingTrivia)
-            .contains(where: { CommentCommand.parse(comment: $0) != nil }) {
+        let comments = SwiftSyntaxAnalyzer.commentLines(in: node.leadingTrivia)
+            + SwiftSyntaxAnalyzer.commentLines(in: node.trailingTrivia)
+        if comments.contains(where: { CommentCommand.parse(comment: $0) != nil }) {
             result.insert(.ignoreComment)
         }
         return result
+    }
+
+    /// XCTest 가 실제로 실행하는 메서드인지 판단한다.
+    ///
+    /// 이름만 보면 `struct Pipeline { func testData() -> Data }` 같은 제품 코드가
+    /// 테스트로 잡혀 영원히 보존된다. XCTest 는 인스턴스 메서드 중 인자가 없고
+    /// 값을 돌려주지 않는 `test` 접두사 메서드만 실행한다.
+    static func isXCTestMethod(_ node: FunctionDeclSyntax, modifiers: DeclModifierListSyntax) -> Bool {
+        guard node.name.text.hasPrefix("test"),
+              node.signature.parameterClause.parameters.isEmpty,
+              node.genericParameterClause == nil,
+              !modifiers.contains(where: { ["static", "class"].contains($0.name.text) })
+        else { return false }
+        guard let returnClause = node.signature.returnClause else { return true }
+        return ["Void", "()"].contains(returnClause.type.trimmedDescription)
     }
 
     /// 선언 속성(`@objc`, `@main` 등)을 표식으로 옮긴다.

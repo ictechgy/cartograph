@@ -209,6 +209,63 @@ struct SwiftSyntaxAnalyzerTests {
         let facts = analyze("struct Broken { func missing(")
         #expect(facts.path == "/p/Test.swift")
     }
+    @Test("제품 코드의 test 접두사 메서드는 테스트로 보지 않는다")
+    func doesNotTreatProductionCodeAsTests() {
+        let facts = analyze("""
+            struct Pipeline {
+                func testData() -> Int { 0 }
+                func testRun() {}
+            }
+            class Runner {
+                static func testAll() {}
+                func testOnce() {}
+            }
+            func testFree() {}
+            """)
+        // 값을 돌려주면 XCTest 가 실행하지 않는다.
+        #expect(facts.declaration(named: "testData")?.attributes.contains(.unitTest) == false)
+        // 구조체에는 XCTestCase 가 있을 수 없다.
+        #expect(facts.declaration(named: "testRun")?.attributes.contains(.unitTest) == false)
+        // 타입 메서드는 실행되지 않는다.
+        #expect(facts.declaration(named: "testAll")?.attributes.contains(.unitTest) == false)
+        // 최상위 함수도 마찬가지다.
+        #expect(facts.declaration(named: "testFree")?.attributes.contains(.unitTest) == false)
+        // 클래스의 인스턴스 메서드는 남긴다. 기반 클래스가 다른 모듈에 있어도
+        // 테스트를 미사용으로 보고하면 안 되기 때문이다.
+        #expect(facts.declaration(named: "testOnce")?.attributes.contains(.unitTest) == true)
+    }
+
+    @Test("익스텐션에 선언한 테스트 메서드도 남긴다")
+    func keepsTestMethodsDeclaredInExtensions() {
+        let facts = analyze("""
+            extension MySpec {
+                func testMore() {}
+            }
+            """)
+        #expect(facts.declaration(named: "testMore")?.attributes.contains(.unitTest) == true)
+    }
+
+    @Test("줄 끝 무시 주석도 그 선언에 적용된다")
+    func trailingIgnoreCommentAppliesToItsOwnDeclaration() {
+        // 줄 끝 주석은 그 선언의 후행 트리비아에 들어간다. 앞 트리비아만 읽으면
+        // 사용자는 무시했다고 믿는데 아무 효과가 없다.
+        let facts = analyze("""
+            func used() {}        // cartograph:ignore
+            func other() {}
+            """)
+        #expect(facts.declaration(named: "used")?.attributes.contains(.ignoreComment) == true)
+        #expect(facts.declaration(named: "other")?.attributes.contains(.ignoreComment) == false)
+    }
+
+    @Test("deinit 도 선언으로 기록한다")
+    func recordsDeinitializers() {
+        let facts = analyze("""
+            private class Resource {
+                deinit {}
+            }
+            """)
+        #expect(facts.declaration(named: "deinit")?.accessibility == .privateLevel)
+    }
 }
 
 @Suite("주석 명령")
