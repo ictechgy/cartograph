@@ -12,7 +12,16 @@ public protocol FileSystem: Sendable {
     func write(_ data: Data, to path: String) throws
     /// 디렉터리 바로 아래 항목들의 전체 경로. 순서는 정렬되어 있다.
     func contentsOfDirectory(at path: String) throws -> [String]
+    /// 최종 수정 시각. 알 수 없으면 nil.
+    ///
+    /// 후보가 여러 개인 인덱스 스토어 중 가장 최근 것을 고르는 데 쓴다.
+    func modificationDate(at path: String) -> Date?
     var currentDirectoryPath: String { get }
+}
+
+extension FileSystem {
+    /// 수정 시각을 알 수 없는 구현을 위한 기본값.
+    public func modificationDate(at path: String) -> Date? { nil }
 }
 
 extension FileSystem {
@@ -93,6 +102,10 @@ public struct LocalFileSystem: FileSystem {
         try FileManager.default.contentsOfDirectory(atPath: path)
             .map { (path as NSString).appendingPathComponent($0) }
             .sorted()
+    }
+
+    public func modificationDate(at path: String) -> Date? {
+        try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date
     }
 
     public var currentDirectoryPath: String {

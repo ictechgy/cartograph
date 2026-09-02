@@ -47,6 +47,19 @@ public final class InMemoryFileSystem: FileSystem, @unchecked Sendable {
         lock.withLock { files[path] = data }
     }
 
+    /// 테스트에서 지정할 수 있는 경로별 수정 시각.
+    ///
+    /// 저장소 전체가 잠금 뒤에 있어야 하므로 외부에서는 메서드로만 설정한다.
+    private var modificationDates: [String: Date] = [:]
+
+    public func setModificationDate(_ date: Date, for path: String) {
+        lock.withLock { modificationDates[path] = date }
+    }
+
+    public func modificationDate(at path: String) -> Date? {
+        lock.withLock { modificationDates[path] }
+    }
+
     public func contentsOfDirectory(at path: String) throws -> [String] {
         let prefix = path.hasSuffix("/") ? path : path + "/"
         return lock.withLock {
