@@ -90,16 +90,32 @@ public struct IndexStoreProvider: IndexProviding {
         includeExternalSymbols: Bool
     ) -> IndexSnapshot {
         var symbolsByUSR: [String: IndexedSymbol] = [:]
+        var definedUSRs: Set<String> = []
         var references: [IndexedReference] = []
 
         for occurrence in occurrences {
             if let symbol = IndexStoreMapping.indexedSymbol(from: occurrence) {
-                if symbolsByUSR[symbol.usr] == nil {
-                    symbolsByUSR[symbol.usr] = symbol
-                } else if symbolsByUSR[symbol.usr]?.parentUSR == nil, symbol.parentUSR != nil {
-                    // 같은 심볼이라도 부모 정보가 붙은 발생이 더 쓸모 있다.
+                let isDefinition = occurrence.roles.contains(.definition)
+                if let existing = symbolsByUSR[symbol.usr] {
+                    // 정의의 위치를 우선한다. 선언만 있는 발생의 줄 번호로는
+                    // 구문 정보를 붙일 때 엉뚱한 자리를 짚는다.
+                    let base = isDefinition && !definedUSRs.contains(symbol.usr) ? symbol : existing
+                    symbolsByUSR[symbol.usr] = IndexedSymbol(
+                        usr: base.usr,
+                        name: base.name,
+                        kind: base.kind,
+                        module: base.module,
+                        location: base.location,
+                        // 같은 심볼이라도 부모 정보가 붙은 발생이 더 쓸모 있다.
+                        parentUSR: existing.parentUSR ?? symbol.parentUSR,
+                        isExternal: base.isExternal,
+                        accessibility: base.accessibility,
+                        attributes: existing.attributes.union(symbol.attributes)
+                    )
+                } else {
                     symbolsByUSR[symbol.usr] = symbol
                 }
+                if isDefinition { definedUSRs.insert(symbol.usr) }
             }
             references.append(contentsOf: IndexStoreMapping.references(from: occurrence))
         }
@@ -164,16 +180,20 @@ public struct IndexStoreProvider: IndexProviding {
     /// 보장되어, 툴체인이 바뀐 뒤 예전 캐시를 그대로 열면 조용히 잘못된 결과가 나온다.
     /// 툴체인이 제자리에서 업데이트되는 경우(같은 경로, 새 버전)까지 잡으려면
     /// 경로만으로는 부족하다.
+    ///
+    /// 라이브러리 정보에 기본값을 두지 않는다. Xcode 의 DerivedData 경로는 툴체인이
+    /// 바뀌어도 그대로라, 빠뜨리면 이 함수가 막으려던 바로 그 상황이 조용히 벌어진다.
+    /// 갱신 시각은 읽지 못할 수 있어 옵셔널로 둔다.
     public static func defaultDatabasePath(
         forStore storePath: String,
-        libraryPath: String? = nil,
-        libraryModificationDate: Date? = nil
+        libraryPath: String,
+        libraryModificationDate: Date?
     ) -> String {
         let directory = (NSTemporaryDirectory() as NSString)
             .appendingPathComponent("cartograph-index-db")
         let identity = [
             storePath,
-            libraryPath ?? "",
+            libraryPath,
             libraryModificationDate.map { String($0.timeIntervalSince1970) } ?? "",
         ].joined(separator: "\u{0}")
         return (directory as NSString).appendingPathComponent(stableHash(identity))

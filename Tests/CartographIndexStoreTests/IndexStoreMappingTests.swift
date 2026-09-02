@@ -288,12 +288,45 @@ struct IndexStoreMappingTests {
         #expect(try #require(snapshot.symbols.first).parentUSR == "Type")
     }
 
+    @Test("정의의 위치를 선언의 위치보다 우선한다")
+    func prefersTheDefinitionLocation() throws {
+        // 선언만 있는 발생의 줄 번호를 쓰면 구문 정보를 붙일 때 엉뚱한 자리를 짚는다.
+        let occurrences = [
+            occurrence(symbol("m", kind: .instanceMethod), roles: .declaration, location: location(line: 10)),
+            occurrence(symbol("m", kind: .instanceMethod), roles: .definition, location: location(line: 20)),
+        ]
+        let snapshot = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+        #expect(try #require(snapshot.symbols.first).location.line == 20)
+    }
+
+    @Test("정의를 대표로 삼아도 부모 정보는 잃지 않는다")
+    func keepsTheParentWhenUpgradingToTheDefinition() throws {
+        let occurrences = [
+            occurrence(
+                symbol("m", kind: .instanceMethod),
+                roles: .declaration,
+                location: location(line: 10),
+                relations: [SymbolRelation(symbol: symbol("Type"), roles: .childOf)]
+            ),
+            occurrence(symbol("m", kind: .instanceMethod), roles: .definition, location: location(line: 20)),
+        ]
+        let symbol = try #require(IndexStoreProvider.snapshot(
+            from: occurrences, includeExternalSymbols: false
+        ).symbols.first)
+        #expect(symbol.location.line == 20)
+        #expect(symbol.parentUSR == "Type")
+    }
+
     @Test("경로 해시는 실행마다 같은 값을 준다")
     func stableHashIsDeterministic() {
         // Swift 의 Hasher 는 실행마다 시드가 달라 파일 이름으로 쓸 수 없다.
         #expect(IndexStoreProvider.stableHash("/a/b") == IndexStoreProvider.stableHash("/a/b"))
         #expect(IndexStoreProvider.stableHash("/a/b") != IndexStoreProvider.stableHash("/a/c"))
-        #expect(IndexStoreProvider.defaultDatabasePath(forStore: "/a/b").contains("cartograph-index-db"))
+        #expect(
+            IndexStoreProvider
+                .defaultDatabasePath(forStore: "/a/b", libraryPath: "/lib.dylib", libraryModificationDate: nil)
+                .contains("cartograph-index-db")
+        )
     }
 }
 
@@ -336,8 +369,10 @@ struct IndexDatabasePathTests {
     @Test("인덱스 스토어가 다르면 캐시도 다르다")
     func differentStoresUseDifferentCaches() {
         #expect(
-            IndexStoreProvider.defaultDatabasePath(forStore: "/a")
-                != IndexStoreProvider.defaultDatabasePath(forStore: "/b")
+            IndexStoreProvider
+                .defaultDatabasePath(forStore: "/a", libraryPath: "/lib.dylib", libraryModificationDate: nil)
+                != IndexStoreProvider
+                .defaultDatabasePath(forStore: "/b", libraryPath: "/lib.dylib", libraryModificationDate: nil)
         )
     }
 }
