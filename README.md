@@ -1,5 +1,319 @@
 # Cartograph
 
-IndexStoreDB 기반 Swift/iOS 코드 정적 분석 및 의존성 그래프 도구.
+**A queryable dependency graph for Swift and iOS codebases.**
 
-> 준비 중입니다. 자세한 내용은 곧 추가됩니다.
+[한국어 문서](README.ko.md)
+
+Cartograph reads the index store your compiler already produces and turns it into a graph you can
+ask questions of. Unused code, circular dependencies, architecture metrics and layering rules are
+not four separate tools — they are four queries over one graph.
+
+```console
+$ cartograph cycles --strict
+Sources/Features/Home/HomeCoordinator.swift:14:1: error: Circular dependency: App.Home → App.Session → App.Home
+    weakest link: App.Session → App.Home (reference, 2 references)
+
+cycles: 1 error — module graph · 9 nodes · 36 edges
+```
+
+---
+
+## Why another tool
+
+[Periphery](https://github.com/peripheryapp/periphery) was the best unused-code detector Swift had,
+and its archived source is still the best documentation of the problem. It went commercial in 2026.
+Cartograph is not a fork — it is a different framing of the same machinery.
+
+Periphery's product sentence was *"find unused declarations."* The graph was a private means to that
+end. Cartograph's is *"here is your dependency graph"* — and dead code is the first query on it.
+
+What that buys you:
+
+| | Periphery (OSS, archived) | Cartograph |
+|---|---|---|
+| Dead code | ✅ the product | ✅ reachability from tagged roots |
+| Why is this retained? | not answerable | `dead --explain` prints the reason or the path |
+| Circular dependencies | — | ✅ with the weakest link to cut |
+| Architecture metrics | — | ✅ Ca, Ce, instability, abstractness, distance |
+| Layering rules in CI | — | ✅ ArchUnit-style rules in YAML |
+| Graph export | — | ✅ DOT, Mermaid, JSON, self-contained HTML |
+| SARIF for code scanning | — | ✅ |
+| `@objc` retained by default | ❌ opt-in | ✅ on by default |
+
+The retention rules — the genuinely hard-won knowledge about what *looks* unused but must not be
+deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
+
+## Install
+
+Requires macOS 14+ and a Swift 6.4 toolchain (Xcode 27).
+
+```bash
+git clone https://github.com/coden/cartograph
+cd cartograph
+swift build -c release
+cp .build/release/cartograph /usr/local/bin/
+```
+
+## Quick start
+
+Cartograph never drives your build. It reads an index store your compiler already wrote, so it
+cannot disagree with what actually compiled — and it does not fight Xcode over DerivedData.
+
+**Swift Package Manager**
+
+```bash
+swift build -Xswiftc -index-store-path -Xswiftc .index-store
+cartograph graph --index-store .index-store
+```
+
+**Xcode project or workspace**
+
+```bash
+xcodebuild build -scheme MyApp \
+  COMPILER_INDEX_STORE_ENABLE=YES \
+  -derivedDataPath DerivedData
+cartograph graph --index-store DerivedData/Index.noindex/DataStore
+```
+
+Omit `--index-store` and Cartograph looks in the usual places — `.build/index/store`,
+`.build/debug/index/store`, `.build/out`, and `~/Library/Developer/Xcode/DerivedData/<project>-*`.
+When several exist it takes the most recently written one, because analyzing a stale index fails
+quietly rather than loudly.
+
+Then:
+
+```bash
+cartograph init          # write a commented .cartograph.yml
+```
+
+## Commands
+
+### `graph` — render the dependency graph
+
+```bash
+cartograph graph --level module --format dot   -o graph.dot
+cartograph graph --level type   --format mermaid            # paste into a PR description
+cartograph graph --level symbol --format json  -o graph.json
+cartograph graph --level module --format html  -o graph.html
+```
+
+Four resolutions: `module`, `file`, `type`, `symbol`. The HTML export is a single self-contained
+file with no CDN references — it opens on an air-gapped machine and passes a security review.
+
+### `cycles` — find circular dependencies
+
+```bash
+cartograph cycles --level module --strict
+```
+
+Reports a representative shortest cycle for each strongly connected component, plus the edge with
+the fewest references as the cheapest one to cut. A component of twenty mutually tangled types is
+technically accurate and practically useless; one concrete cycle you can act on is not.
+
+### `dead` — find unused declarations
+
+```bash
+cartograph dead --report-format xcode
+cartograph dead --explain UserRepository
+```
+
+Dead code is defined as *unreachable from a retained root*, not *zero references*. A cluster of
+declarations that only reference each other has plenty of references and is still dead.
+
+`--explain` answers the question Periphery could not:
+
+```console
+$ cartograph dead --explain HomeViewController
+Presentation.HomeViewController is retained because it is connectable from Interface Builder.
+
+$ cartograph dead --explain UserRepository
+Data.UserRepository is reachable:
+  Presentation.HomeView → Domain.UserService → Data.UserRepository
+```
+
+### `metrics` — architecture metrics
+
+```bash
+cartograph metrics --level module
+```
+
+Robert C. Martin's package metrics, computed on your graph. Run against this repository:
+
+```
+NODE                   Ca  Ce     I     A     D           ZONE
+---------------------  --  --  ----  ----  ----  -------------
+CartographCore          8   0  0.00  0.05  0.95   zone-of-pain
+CartographAnalysis      2   1  0.33  0.00  0.67   zone-of-pain
+CartographConfig        1   1  0.50  0.00  0.50   zone-of-pain
+CartographIndexStore    1   1  0.50  0.00  0.50   zone-of-pain
+CartographSyntax        1   1  0.50  0.00  0.50   zone-of-pain
+CartographExport        1   2  0.67  0.06  0.27  main-sequence
+CartographKit           1   5  0.83  0.00  0.17  main-sequence
+CartographCLI           0   3  1.00  0.00  0.00  main-sequence
+```
+
+`CartographCore` sitting deep in the zone of pain is honest: it is a concrete domain model that
+everything depends on. The metric is a question to answer, not a rule to obey.
+
+### `rules` — enforce architecture in CI
+
+```yaml
+# .cartograph.yml
+layers:
+  - name: Presentation
+    match: ["Features/**", "*ViewController"]
+  - name: Domain
+    match: ["Domain/**"]
+  - name: Data
+    match: ["Data/**", "*Repository"]
+
+rules:
+  - name: Presentation must not reach the data layer directly
+    from: Presentation
+    deny: [Data]
+  - from: Domain
+    allow: []          # the domain layer depends on nothing
+```
+
+```bash
+cartograph rules --strict
+```
+
+Layers are matched against node name, module name **and** file path, because teams define layers
+sometimes by directory and sometimes by naming convention. Nodes that match no layer are reported
+as `info` — if you do not know what your rules fail to cover, a passing run means very little.
+
+### `baseline` — adopt on an existing codebase
+
+```bash
+cartograph baseline --write .cartograph-baseline.json
+```
+
+Records today's findings so only *new* ones fail the build. Fingerprints are USR-based, so moving
+code up and down a file does not resurrect a suppressed finding.
+
+## Configuration
+
+`.cartograph.yml` in the project root. Run `cartograph init` for a commented template.
+Command-line options always win over the file.
+
+```yaml
+level: module
+include: ["Sources/**"]
+exclude: ["**/.build/**", "**/*.generated.swift"]
+
+retention:
+  retain_public: false            # turn on for libraries
+  retain_objc_accessible: true    # on by default; see below
+  retain_interface_builder: true
+  retain_tests: true
+  retain_previews: true
+  retain_codable_properties: true
+  retain_raw_representable_enum_cases: true
+  retained_names: ["*.shared"]
+  retained_files: ["Sources/Generated/**"]
+
+thresholds:
+  max_cycles: 0
+  max_unused_symbols: 0
+  max_rule_violations: 0
+  max_instability: 0.9
+  max_distance: 0.8
+
+baseline: .cartograph-baseline.json
+report_format: text               # text json xcode checkstyle github-actions sarif
+graph_format: dot                 # dot mermaid json html
+strict: false
+```
+
+Unknown keys are reported as warnings, not errors. A typo should tell you what was ignored, not
+stop your build.
+
+## Retention rules
+
+The index store only records what the compiler saw. Runtime selectors, synthesized `Codable`,
+Interface Builder connections and raw-value enum construction are all invisible to it. These rules
+fill that gap, and every one of them records *why* so `--explain` can answer for it.
+
+| Kept | Reason |
+|---|---|
+| `@main`, `@UIApplicationMain`, `@NSApplicationMain` and the type's `main()` | entry point |
+| `XCTestCase` subclasses and no-argument `test…()` methods | XCTest |
+| `@Test`, `@Suite` | swift-testing |
+| `public` / `open` when `retain_public` | public API |
+| `@objc`, `@objcMembers` (cascading to members), Clang `c:` USRs | Objective-C runtime |
+| `@IBOutlet`, `@IBAction`, `@IBInspectable`, `@IBSegueAction` | Interface Builder |
+| Cases of raw-value enums | `init(rawValue:)` is dynamic |
+| `CodingKeys` cases | synthesized `Codable` |
+| `wrappedValue`, `projectedValue` on `@propertyWrapper` types | wrapper contract |
+| `build*` on `@resultBuilder` types | builder contract |
+| Stored properties of `Codable` types | synthesized coding leaves no reference |
+| Overrides and conformances whose base lies outside the analyzed code | the framework calls them |
+| `subscript(dynamicMember:)`, `@_dynamicReplacement`, `dynamic` | dynamic dispatch |
+| Compiler-synthesized declarations | you cannot delete them |
+| `// cartograph:ignore`, `// cartograph:ignore:all` | you said so |
+| `retained_names`, `retained_files` globs | you said so |
+
+**`retain_objc_accessible` defaults to on.** Periphery defaulted it off, which made mixed-language
+UIKit projects its largest source of false positives. A dead-code tool nobody trusts is worse than
+no tool, so Cartograph errs toward keeping code.
+
+Protocol requirements are handled by walking override relations in reverse: if a requirement is
+called, every implementation of it is reachable. Without that one rule, every type behind a
+protocol looks dead — which is exactly what happened the first time this tool analyzed itself.
+
+## CI
+
+Exit codes are `0` success, `1` findings with `--strict`, `2` tool failure — so a script can tell
+"your code has problems" from "the tool did not run".
+
+```yaml
+- run: swift build -Xswiftc -index-store-path -Xswiftc .index-store
+- run: cartograph dead   --index-store .index-store --strict --report-format github-actions
+- run: cartograph cycles --index-store .index-store --strict
+- run: cartograph rules  --index-store .index-store --strict
+```
+
+For GitHub code scanning, emit SARIF:
+
+```yaml
+- run: cartograph dead --index-store .index-store --report-format sarif -o cartograph.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: cartograph.sarif
+```
+
+## Architecture
+
+Dependencies flow one way only:
+
+```
+CartographCore  ←  Config · Syntax · Analysis · Export · IndexStore  ←  Kit  ←  CLI
+```
+
+| Module | Responsibility |
+|---|---|
+| `CartographCore` | Graph model, index abstraction, configuration types. No external dependencies. |
+| `CartographConfig` | `.cartograph.yml` loading (Yams). |
+| `CartographSyntax` | Accessibility and attributes via SwiftSyntax. |
+| `CartographAnalysis` | Cycles, reachability, retention, metrics, layer rules, baseline. |
+| `CartographExport` | Graph renderers and diagnostic reporters. |
+| `CartographIndexStore` | The only module that touches IndexStoreDB. |
+| `CartographKit` | Pipeline assembly. Ships as a library so you can embed it. |
+| `CartographCLI` | Argument parsing and exit codes. |
+
+The domain and the algorithms do not know IndexStoreDB exists. That is what makes 94% line coverage
+possible without a single fixture Xcode project: analysis runs on hand-written snapshots.
+
+`CartographKit` is a public library product — you can embed the pipeline instead of shelling out.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Agents working in this repository should read
+[AGENTS.md](AGENTS.md) first.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+Cartograph is an independent project. It is not affiliated with Periphery or Apple.
