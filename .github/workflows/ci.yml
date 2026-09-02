@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build, test and gate coverage
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      # indexstore-db 와 swift-syntax 는 빌드가 길다. 해석 결과를 캐시한다.
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build
+        run: swift build --build-tests
+
+      - name: Test with coverage gate
+        run: Scripts/coverage.sh
+
+  self-analysis:
+    name: Analyze this repository with itself
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-selfcheck-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: spm-selfcheck-${{ runner.os }}-
+
+      # 도구가 읽을 인덱스를 만든다. 이 단계가 곧 도구의 전제 조건 문서이기도 하다.
+      - name: Build with indexing enabled
+        run: swift build -Xswiftc -index-store-path -Xswiftc .index-store
+
+      - name: Install
+        run: cp "$(swift build --show-bin-path)/cartograph" /usr/local/bin/cartograph
+
+      # CLI 껍데기와 인덱스 스토어 입출력은 단위 테스트로 덮기 어렵다.
+      # 실제 빌드된 도구로 이 저장소를 분석해 그 경로를 끝까지 태운다.
+      - name: Circular dependencies
+        run: cartograph cycles --index-store .index-store --strict
+
+      - name: Unused declarations
+        run: cartograph dead --index-store .index-store --strict
+
+      - name: Architecture rules
+        run: cartograph rules --index-store .index-store --strict
+
+      - name: Architecture metrics
+        run: cartograph metrics --index-store .index-store
+
+      - name: Export graphs
+        run: |
+          cartograph graph --index-store .index-store --format dot   -o build/graph.dot
+          cartograph graph --index-store .index-store --format json  -o build/graph.json
+          cartograph graph --index-store .index-store --format html  -o build/graph.html
+          cartograph graph --index-store .index-store --format mermaid -o build/graph.mmd
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-graph
+          path: build/
