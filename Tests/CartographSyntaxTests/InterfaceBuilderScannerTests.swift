@@ -37,6 +37,55 @@ struct InterfaceBuilderScannerTests {
         #expect(!references.isEmpty)
     }
 
+    @Test("등호 주변 공백과 작은따옴표도 읽는다")
+    func readsNonCanonicalAttributeSpellings() {
+        // XML 이 허용하는 형태다. 손으로 고쳤거나 정렬 도구를 거친 문서에서
+        // 이름을 놓치면 스토리보드 전용 화면이 미사용으로 보고된다.
+        let document = """
+            <button customClass = 'ThemedButton'/>
+            <label customClass\t=\t"TitleLabel"/>
+            <view customClass='PlainView'/>
+            """
+        let references = InterfaceBuilderScanner.references(in: document)
+        #expect(references.customClassNames == ["ThemedButton", "TitleLabel", "PlainView"])
+    }
+
+    @Test("주석 안의 이름은 읽지 않는다")
+    func ignoresNamesInsideComments() {
+        let document = """
+            <!-- <view customClass="LegacyView"/> -->
+            <view customClass="LiveView"/>
+            """
+        #expect(InterfaceBuilderScanner.references(in: document).customClassNames == ["LiveView"])
+    }
+
+    @Test("닫히지 않은 주석 뒤는 전부 버린다")
+    func dropsEverythingAfterAnUnterminatedComment() {
+        let document = """
+            <view customClass="LiveView"/>
+            <!-- <view customClass="LegacyView"/>
+            """
+        #expect(InterfaceBuilderScanner.references(in: document).customClassNames == ["LiveView"])
+    }
+
+    @Test("속성 이름의 꼬리만 걸리는 경우는 무시한다")
+    func doesNotMatchAttributeNameSuffixes() {
+        let document = "<view myproperty=\"ghost\" property=\"real\"/>"
+        #expect(InterfaceBuilderScanner.references(in: document).outletNames == ["real"])
+    }
+
+    @Test("확장자는 대소문자를 가리지 않는다")
+    func documentExtensionMatchingIsCaseInsensitive() {
+        // APFS 는 기본이 대소문자 구분 없음이라 `Main.XIB` 가 실제로 존재한다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/Main.XIB": "<view customClass=\"UpperCase\"/>",
+            "/p/Other.Storyboard": "<view customClass=\"MixedCase\"/>",
+            "/p/Ignored.swift": "<view customClass=\"NotADocument\"/>",
+        ])
+        let references = InterfaceBuilderScanner(fileSystem: fileSystem).scan(roots: ["/p"])
+        #expect(references.customClassNames == ["UpperCase", "MixedCase"])
+    }
+
     @Test("빈 문서에서는 아무것도 나오지 않는다")
     func emptyDocument() {
         #expect(InterfaceBuilderScanner.references(in: "").isEmpty)
