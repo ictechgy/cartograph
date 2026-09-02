@@ -66,41 +66,38 @@ jobs:
           restore-keys: spm-${{ runner.os }}-
 
       # 도구가 읽을 인덱스를 만든다. 이 단계가 곧 도구의 전제 조건 문서이기도 하다.
-      # 인덱스는 무언가 컴파일될 때만 만들어진다. 새 체크아웃이라 항상 컴파일되지만,
-      # 캐시 구성을 바꾸다 이 전제가 깨지면 조용히 "인덱스 없음"으로 실패하므로 확인한다.
-      - name: Build with indexing enabled
+      # -Xswiftc -index-store-path 는 빌드 시스템에 따라 무시된다(Swift 6.4 기본값에서 그렇다).
+      # 플래그를 쓰지 않고 평범하게 빌드한 뒤 도구의 자동 탐색에 맡긴다.
+      # 인덱스가 없으면 도구가 종료 코드 2 로 실패하므로 다음 단계가 그대로 게이트가 된다.
+      - name: Build
         run: |
-          swift build -Xswiftc -index-store-path -Xswiftc .index-store
-          if [ ! -d .index-store ]; then
-            echo "인덱스 스토어가 만들어지지 않았습니다. 컴파일이 실제로 일어났는지 확인하세요." >&2
-            exit 1
-          fi
+          swift build
           echo "CARTOGRAPH=$(swift build --show-bin-path)/cartograph" >> "$GITHUB_ENV"
 
       # CLI 껍데기와 인덱스 스토어 입출력은 단위 테스트로 덮기 어렵다.
       # 실제 빌드된 도구로 이 저장소를 분석해 그 경로를 끝까지 태운다.
       - name: Circular dependencies
         run: |
-          "$CARTOGRAPH" cycles --index-store .index-store --strict
+          "$CARTOGRAPH" cycles --strict
 
       - name: Unused declarations
         run: |
-          "$CARTOGRAPH" dead --index-store .index-store --strict
+          "$CARTOGRAPH" dead --strict
 
       - name: Architecture rules
         run: |
-          "$CARTOGRAPH" rules --index-store .index-store --strict
+          "$CARTOGRAPH" rules --strict
 
       - name: Architecture metrics
         run: |
-          "$CARTOGRAPH" metrics --index-store .index-store
+          "$CARTOGRAPH" metrics
 
       - name: Export graphs
         run: |
-          "$CARTOGRAPH" graph --index-store .index-store --format dot     -o build/graph.dot
-          "$CARTOGRAPH" graph --index-store .index-store --format json    -o build/graph.json
-          "$CARTOGRAPH" graph --index-store .index-store --format html    -o build/graph.html
-          "$CARTOGRAPH" graph --index-store .index-store --format mermaid -o build/graph.mmd
+          "$CARTOGRAPH" graph --format dot     -o build/graph.dot
+          "$CARTOGRAPH" graph --format json    -o build/graph.json
+          "$CARTOGRAPH" graph --format html    -o build/graph.html
+          "$CARTOGRAPH" graph --format mermaid -o build/graph.mmd
 
       - uses: actions/upload-artifact@v7
         with:

@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and release"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish the release binary
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Select the newest Xcode
+        run: |
+          latest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          swift --version
+
+      - name: Resolve version
+        run: |
+          version="${{ github.event.inputs.tag }}"
+          if [ -z "$version" ]; then version="${GITHUB_REF_NAME}"; fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          # 소스의 버전 상수와 태그가 어긋나면 사용자가 --version 으로 잘못된 값을 본다.
+          declared="$(grep -oE 'version = "[^"]+"' Sources/CartographCore/Cartograph.swift | head -1 | cut -d'"' -f2)"
+          if [ "$declared" != "$version" ]; then
+            echo "태그($version)와 Cartograph.version($declared)이 다릅니다." >&2
+            exit 1
+          fi
+
+      # Intel Mac 사용자도 받아 쓸 수 있도록 두 아키텍처를 한 바이너리에 담는다.
+      - name: Build universal binary
+        run: swift build -c release --arch arm64 --arch x86_64
+
+      - name: Package
+        run: |
+          binary="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/cartograph"
+          lipo -info "$binary"
+          mkdir -p dist/cartograph
+          cp "$binary" dist/cartograph/
+          cp LICENSE README.md dist/cartograph/
+          archive="cartograph-${VERSION}-macos-universal.tar.gz"
+          tar -C dist -czf "$archive" cartograph
+          echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
+          echo "SHA256=$(shasum -a 256 "$archive" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
+      # 배포하기 전에 그 바이너리가 실제로 도는지 확인한다.
+      - name: Smoke test the packaged binary
+        run: |
+          tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/cartograph/cartograph" --version
+          "$RUNNER_TEMP/cartograph/cartograph" --help > /dev/null
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<NOTES
+          See [CHANGELOG.md](https://github.com/ictechgy/cartograph/blob/${VERSION}/CHANGELOG.md).
+
+          ## Install
+
+          \`\`\`bash
+          brew install ictechgy/tap/cartograph
+          # or
+          mint install ictechgy/cartograph@${VERSION}
+          \`\`\`
+
+          ## Asset
+
+          \`${ARCHIVE}\` — macOS universal (arm64 + x86_64), macOS 14 or later.
+
+          \`\`\`
+          sha256  ${SHA256}
+          \`\`\`
+          NOTES
+          gh release create "$VERSION" "$ARCHIVE" --title "$VERSION" --notes-file notes.md --verify-tag
+
+      # tap 저장소는 다른 저장소라 기본 GITHUB_TOKEN 으로는 쓸 수 없다.
+      # HOMEBREW_TAP_TOKEN 시크릿이 있을 때만 formula 를 갱신하고, 없으면 조용히 건너뛴다.
+      - name: Update the Homebrew tap
+        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/ictechgy/homebrew-tap.git" tap
+          cd tap
+          sed -i '' \
+            -e "s|url \".*\"|url \"https://github.com/ictechgy/cartograph/releases/download/${VERSION}/${ARCHIVE}\"|" \
+            -e "s|sha256 \".*\"|sha256 \"${SHA256}\"|" \
+            -e "s|version \".*\"|version \"${VERSION}\"|" \
+            Formula/cartograph.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "cartograph ${VERSION}"
+          git push
+
+      - name: Formula values for a manual tap update
+        if: ${{ secrets.HOMEBREW_TAP_TOKEN == '' }}
+        run: |
+          echo "HOMEBREW_TAP_TOKEN 이 없어 tap 갱신을 건너뜁니다. 아래 값으로 직접 고치세요."
+          echo "  url    https://github.com/ictechgy/cartograph/releases/download/${VERSION}/${ARCHIVE}"
+          echo "  sha256 ${SHA256}"
+          echo "  version ${VERSION}"
