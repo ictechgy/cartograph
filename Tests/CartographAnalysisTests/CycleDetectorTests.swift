@@ -155,3 +155,59 @@ struct CycleDetectorTests {
         #expect(CycleDetector().detectCycles(in: CodeGraph(level: .module, nodes: [], edges: [])).isEmpty)
     }
 }
+
+@Suite("자기 순환이 섞인 요소")
+struct CycleDetectorSelfLoopRegressionTests {
+    /// 여러 정점 요소 안의 자기 순환이 진짜 순환을 덮어써 요소 전체가 사라지던 결함.
+    ///
+    /// 시작점을 여러 개 시도하면서, 자기 순환을 가진 정점에서 얻은 길이 1 경로가
+    /// 더 짧다는 이유로 채택되고, 그 뒤 최소 길이 필터에 걸려 보고가 통째로 없어졌다.
+    @Test("자기 순환이 있어도 요소의 진짜 순환을 보고한다")
+    func selfLoopDoesNotHideRealCycle() {
+        let graph = CodeGraph(
+            level: .type,
+            nodes: ["A", "B", "C"].map { GraphNode(id: NodeID($0), name: $0, kind: .classType) },
+            edges: [
+                GraphEdge(source: "A", target: "B", kind: .call),
+                GraphEdge(source: "B", target: "C", kind: .call),
+                GraphEdge(source: "C", target: "A", kind: .call),
+                GraphEdge(source: "C", target: "C", kind: .call),
+            ]
+        )
+        let cycles = CycleDetector().detectCycles(in: graph)
+        #expect(cycles.count == 1)
+        #expect(cycles[0].length == 3)
+        #expect(Set(cycles[0].path) == [NodeID("A"), NodeID("B"), NodeID("C")])
+    }
+
+    @Test("자기 순환을 가진 정점이 사전순 첫 시작점이어도 마찬가지다")
+    func selfLoopOnFirstStartNode() {
+        // func a() { a(); b() }; func b() { a() } 가 정확히 이 그래프다.
+        let graph = CodeGraph(
+            level: .symbol,
+            nodes: ["A", "B"].map { GraphNode(id: NodeID($0), name: $0, kind: .function) },
+            edges: [
+                GraphEdge(source: "A", target: "A", kind: .call),
+                GraphEdge(source: "A", target: "B", kind: .call),
+                GraphEdge(source: "B", target: "A", kind: .call),
+            ]
+        )
+        let cycles = CycleDetector().detectCycles(in: graph)
+        #expect(cycles.count == 1)
+        #expect(cycles[0].path == [NodeID("A"), NodeID("B")])
+    }
+
+    @Test("정점 하나짜리 자기 순환은 여전히 옵션으로만 보고된다")
+    func singleNodeSelfLoopStillOptional() {
+        let graph = CodeGraph(
+            level: .symbol,
+            nodes: [GraphNode(id: "A", name: "A", kind: .function)],
+            edges: [GraphEdge(source: "A", target: "A", kind: .call)]
+        )
+        #expect(CycleDetector().detectCycles(in: graph).isEmpty)
+        #expect(
+            CycleDetector(options: .init(includeSelfLoops: true, minimumLength: 1))
+                .detectCycles(in: graph).count == 1
+        )
+    }
+}

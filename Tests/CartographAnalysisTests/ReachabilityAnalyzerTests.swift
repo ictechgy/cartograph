@@ -186,3 +186,98 @@ struct ProtocolWitnessReachabilityTests {
         #expect(without.unused.map(\.name).sorted() == ["helper", "load"])
     }
 }
+
+@Suite("증인 도달성의 경계")
+struct WitnessReachabilityBoundaryTests {
+    private func analyze(_ snapshot: IndexSnapshot) -> (report: UnusedCodeReport, graph: CodeGraph) {
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        return (ReachabilityAnalyzer().analyze(graph: graph, snapshot: snapshot), graph)
+    }
+
+    @Test("한 번도 만들어지지 않는 타입의 구현은 바깥 심볼을 되살리지 않는다")
+    func deadWitnessDoesNotReviveOutsideSymbols() {
+        // protocol P { func f() }
+        // struct Live: P { func f() {} }
+        // struct NeverBuilt: P { func f() { actuallyDead() } }
+        // 요구사항이 쓰였다고 NeverBuilt.f 까지 살리면 actuallyDead 가 조용히 되살아난다.
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("P", kind: .protocolType)
+        builder.symbol("P.f", name: "f()", kind: .method, parent: "P")
+        builder.symbol("Live", kind: .structType)
+        builder.symbol("Live.f", name: "f()", kind: .method, parent: "Live")
+        builder.symbol("NeverBuilt", kind: .structType)
+        builder.symbol("NeverBuilt.f", name: "f()", kind: .method, parent: "NeverBuilt")
+        builder.symbol("actuallyDead", name: "actuallyDead()", kind: .function)
+
+        builder.reference(from: "App", to: "P", kind: .reference)
+        builder.reference(from: "App", to: "P.f", kind: .call)
+        builder.reference(from: "App", to: "Live", kind: .reference)
+        builder.reference(from: "Live.f", to: "P.f", kind: .overrides)
+        builder.reference(from: "NeverBuilt.f", to: "P.f", kind: .overrides)
+        builder.reference(from: "NeverBuilt.f", to: "actuallyDead", kind: .call)
+
+        let (report, _) = analyze(builder.build())
+        let unused = report.unused.map(\.name).sorted()
+        #expect(unused.contains("actuallyDead()"))
+        #expect(unused.contains("NeverBuilt"))
+        // 살아 있는 타입의 구현은 그대로 살아 있어야 한다.
+        #expect(!unused.contains("f()"))
+    }
+
+    @Test("소유 타입이 나중에 살아나면 그 구현도 함께 살아난다")
+    func witnessRevivesWhenItsTypeBecomesReachable() {
+        // 탐색 순서에 따라 타입이 요구사항보다 늦게 도달할 수 있다.
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("P", kind: .protocolType)
+        builder.symbol("P.f", name: "f()", kind: .method, parent: "P")
+        builder.symbol("Impl", kind: .structType)
+        builder.symbol("Impl.f", name: "f()", kind: .method, parent: "Impl")
+        builder.symbol("Helper", kind: .structType)
+
+        builder.reference(from: "App", to: "P", kind: .reference)
+        builder.reference(from: "App", to: "P.f", kind: .call)
+        builder.reference(from: "Impl.f", to: "P.f", kind: .overrides)
+        builder.reference(from: "Impl.f", to: "Helper", kind: .reference)
+        // 타입은 요구사항보다 뒤에 도달한다.
+        builder.reference(from: "P.f", to: "Impl", kind: .reference)
+
+        let (report, _) = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+    }
+
+    @Test("살아 있는 타입의 deinit 은 런타임이 부르므로 보존된다")
+    func deinitOfReachableTypeIsRetained() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Box", kind: .classType)
+        builder.symbol("Box.deinit", name: "deinit", kind: .deinitializer, parent: "Box")
+        builder.symbol("Dead", kind: .classType)
+        builder.symbol("Dead.deinit", name: "deinit", kind: .deinitializer, parent: "Dead")
+        builder.reference(from: "App", to: "Box", kind: .reference)
+
+        let (report, _) = analyze(builder.build())
+        // 살아 있는 타입의 deinit 은 보고되지 않고, 죽은 타입은 타입 한 줄로만 남는다.
+        #expect(report.unused.map(\.name) == ["Dead"])
+    }
+
+    @Test("멤버 때문에 살아난 타입은 그 사실을 설명한다")
+    func inheritedRetentionIsExplained() {
+        // 조상은 보존 목록에도, 도달 경로에도 없다. 근거를 남기지 않으면
+        // explain 이 "도달 불가"라고 답해 보고 결과와 어긋난다.
+        var builder = SnapshotBuilder()
+        builder.symbol("ViewController", kind: .classType)
+        builder.symbol(
+            "ViewController.tap", name: "tap()", kind: .method,
+            parent: "ViewController", attributes: [.interfaceBuilderAction]
+        )
+        let (report, graph) = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+
+        let explanation = report.explain("ViewController", in: graph)
+        #expect(explanation == .retainedByMember(
+            InheritedRetention(member: "ViewController.tap", reason: .interfaceBuilder)
+        ))
+    }
+}

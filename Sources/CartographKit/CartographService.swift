@@ -272,6 +272,11 @@ public struct CartographService: Sendable {
         switch explanation {
         case let .retained(reason):
             return CommandOutcome(output: "\(name) is retained because it is \(reason.explanation).\n")
+        case let .retainedByMember(inherited):
+            let member = graph.node(inherited.member)?.qualifiedName ?? inherited.member.rawValue
+            return CommandOutcome(
+                output: "\(name) is retained because its member \(member) is \(inherited.reason.explanation).\n"
+            )
         case let .reachable(path):
             let trail = path.map { graph.node($0)?.qualifiedName ?? $0.rawValue }.joined(separator: " → ")
             return CommandOutcome(output: "\(name) is reachable:\n  \(trail)\n")

@@ -201,6 +201,10 @@ public struct CycleDetector: Sendable {
 
         for start in component.prefix(max(1, options.maximumSearchStarts)) {
             guard let path = breadthFirstCycle(from: start, within: members, graph: graph) else { continue }
+            // 정점이 둘 이상인 요소에서 길이 1 은 자기 순환이며, 요소가 설명하는
+            // 진짜 순환이 아니다. 이것을 최단으로 채택하면 요소 전체가 최소 길이
+            // 필터에 걸려 사라진다.
+            guard path.count >= 2 else { continue }
             if best == nil || path.count < best.unsafelyUnwrapped.count {
                 best = path
             }
@@ -240,7 +244,10 @@ public struct CycleDetector: Sendable {
             let current = queue[head]
             head += 1
             for successor in successors(of: current, in: graph) where members.contains(successor) {
-                if successor == start {
+                // 시작 정점의 자기 순환은 여기서 답이 아니다. 정점 하나짜리 요소는
+                // 위쪽 분기가 따로 처리하고, 여러 정점 요소에서는 자기 순환이
+                // 요소를 설명하지 못한다.
+                if successor == start, current != start {
                     return reconstructPath(to: current, from: start, predecessors: predecessors)
                 }
                 if visited.insert(successor).inserted {

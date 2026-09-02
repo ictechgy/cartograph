@@ -1,9 +1,23 @@
 import CartographCore
 
+/// 멤버가 보존되어 그 조상까지 함께 살아남은 경우의 근거.
+public struct InheritedRetention: Hashable, Sendable {
+    /// 실제로 보존 규칙에 걸린 멤버.
+    public let member: NodeID
+    public let reason: RetentionReason
+
+    public init(member: NodeID, reason: RetentionReason) {
+        self.member = member
+        self.reason = reason
+    }
+}
+
 /// 어떤 선언이 왜 살아 있는지(또는 없는지)에 대한 설명.
 public enum ReachabilityExplanation: Sendable, Equatable {
     /// 보존 규칙이 뿌리로 지정했다.
     case retained(RetentionReason)
+    /// 자신이 아니라 안쪽 멤버가 보존되어 함께 살아남았다.
+    case retainedByMember(InheritedRetention)
     /// 뿌리에서 이 경로를 따라 도달했다. 경로의 첫 원소가 뿌리다.
     case reachable(path: [NodeID])
     /// 어디에서도 도달할 수 없다.
@@ -22,6 +36,8 @@ public struct UnusedCodeReport: Sendable, Equatable {
     public let reachableCount: Int
     /// 분석 대상 정점 수.
     public let totalCount: Int
+    /// 멤버가 보존되어 함께 살아남은 조상들.
+    public let inheritedRetentions: [NodeID: InheritedRetention]
     /// 도달 경로 복원을 위한 선행 정점 사전.
     private let predecessors: [NodeID: NodeID]
 
@@ -30,12 +46,14 @@ public struct UnusedCodeReport: Sendable, Equatable {
         retentions: [NodeID: RetentionReason],
         reachableCount: Int,
         totalCount: Int,
+        inheritedRetentions: [NodeID: InheritedRetention] = [:],
         predecessors: [NodeID: NodeID] = [:]
     ) {
         self.unused = unused
         self.retentions = retentions
         self.reachableCount = reachableCount
         self.totalCount = totalCount
+        self.inheritedRetentions = inheritedRetentions
         self.predecessors = predecessors
     }
 
@@ -51,6 +69,7 @@ public struct UnusedCodeReport: Sendable, Equatable {
     public func explain(_ node: NodeID, in graph: CodeGraph) -> ReachabilityExplanation {
         guard graph.contains(node) else { return .unknown }
         if let reason = retentions[node] { return .retained(reason) }
+        if let inherited = inheritedRetentions[node] { return .retainedByMember(inherited) }
         guard predecessors[node] != nil else { return .unreachable }
 
         var path: [NodeID] = [node]
@@ -106,8 +125,8 @@ public struct ReachabilityAnalyzer: Sendable {
 
     public func analyze(graph: CodeGraph, snapshot: IndexSnapshot) -> UnusedCodeReport {
         let retentions = policy.retainedNodes(in: graph, snapshot: snapshot)
-        let roots = rootNodes(retentions: retentions, graph: graph)
-        let traversal = traverse(from: roots, in: graph)
+        let inherited = inheritedRetentions(retentions: retentions, graph: graph)
+        let traversal = traverse(from: Set(retentions.keys).union(inherited.keys), in: graph)
 
         let unreachable = graph.sortedNodes.filter { !traversal.reachable.contains($0.id) }
         let reported = filterReportable(unreachable, unreachableIDs: Set(unreachable.map(\.id)), graph: graph)
@@ -117,27 +136,35 @@ public struct ReachabilityAnalyzer: Sendable {
             retentions: retentions,
             reachableCount: traversal.reachable.count,
             totalCount: graph.nodeCount,
+            inheritedRetentions: inherited,
             predecessors: traversal.predecessors
         )
     }
 
     // MARK: - 내부 구현
 
-    /// 보존된 정점과 그 조상들을 뿌리로 삼는다.
+    /// 보존된 멤버 때문에 함께 살아남는 조상들과 그 근거.
     ///
     /// 멤버 하나가 보존되었는데 그것을 감싸는 타입이 죽은 것으로 보고되면
-    /// 결과가 서로 모순된다. 조상까지 함께 살린다.
-    private func rootNodes(retentions: [NodeID: RetentionReason], graph: CodeGraph) -> Set<NodeID> {
-        var roots: Set<NodeID> = []
-        for node in retentions.keys {
-            var current: NodeID? = node
-            var guardSet: Set<NodeID> = []
-            while let identifier = current, guardSet.insert(identifier).inserted {
-                roots.insert(identifier)
-                current = graph.incomingEdges(to: identifier).first { $0.kind == .member }?.source
+    /// 결과가 서로 모순된다. 조상까지 함께 살리되, 왜 살았는지도 남긴다.
+    /// 근거를 남기지 않으면 `explain` 이 "도달 불가"라고 답해 보고 결과와 어긋난다.
+    private func inheritedRetentions(
+        retentions: [NodeID: RetentionReason],
+        graph: CodeGraph
+    ) -> [NodeID: InheritedRetention] {
+        var result: [NodeID: InheritedRetention] = [:]
+        for (node, reason) in retentions.sorted(by: { $0.key < $1.key }) {
+            var current = node
+            var visited: Set<NodeID> = [node]
+            while let parent = graph.incomingEdges(to: current).first(where: { $0.kind == .member })?.source,
+                  visited.insert(parent).inserted {
+                if retentions[parent] == nil, result[parent] == nil {
+                    result[parent] = InheritedRetention(member: node, reason: reason)
+                }
+                current = parent
             }
         }
-        return roots
+        return result
     }
 
     private struct Traversal {
@@ -151,27 +178,53 @@ public struct ReachabilityAnalyzer: Sendable {
         var predecessors: [NodeID: NodeID] = [:]
         var queue = roots.sorted()
         var head = 0
+        /// 소유 타입이 아직 살아나지 않은 구현체들. 타입이 살아나면 그때 함께 살린다.
+        var pendingWitnesses: [NodeID: [(witness: NodeID, requirement: NodeID)]] = [:]
+
+        func visit(_ node: NodeID, from previous: NodeID) {
+            guard reachable.insert(node).inserted else { return }
+            predecessors[node] = previous
+            queue.append(node)
+        }
 
         while head < queue.count {
             let current = queue[head]
             head += 1
-            for edge in graph.outgoingEdges(from: current) where edge.kind.impliesUsage {
-                if reachable.insert(edge.target).inserted {
-                    predecessors[edge.target] = current
-                    queue.append(edge.target)
+
+            for edge in graph.outgoingEdges(from: current) {
+                if edge.kind.impliesUsage {
+                    visit(edge.target, from: current)
+                } else if edge.kind == .member, graph.node(edge.target)?.kind == .deinitializer {
+                    // 살아 있는 타입의 deinit 은 런타임이 부른다. 코드 어디에도 참조가 없다.
+                    visit(edge.target, from: current)
                 }
             }
 
-            // 요구사항이나 상위 선언이 쓰이면 그것을 구현/오버라이드한 쪽도 쓰인다.
-            guard options.followOverridesInReverse else { continue }
-            for edge in graph.incomingEdges(to: current) where edge.kind == .overrides {
-                if reachable.insert(edge.source).inserted {
-                    predecessors[edge.source] = current
-                    queue.append(edge.source)
+            if options.followOverridesInReverse {
+                for edge in graph.incomingEdges(to: current) where edge.kind == .overrides {
+                    let witness = edge.source
+                    guard !reachable.contains(witness) else { continue }
+                    // 요구사항이 쓰였다고 해서 "한 번도 만들어지지 않는 타입"의 구현까지
+                    // 살리면, 그 구현이 호출하는 바깥 심볼들이 줄줄이 되살아난다.
+                    // 소유 타입이 살아 있을 때만 구현을 살린다.
+                    if let owner = owningType(of: witness, in: graph), !reachable.contains(owner) {
+                        pendingWitnesses[owner, default: []].append((witness, current))
+                    } else {
+                        visit(witness, from: current)
+                    }
                 }
+            }
+
+            for entry in pendingWitnesses.removeValue(forKey: current) ?? [] {
+                visit(entry.witness, from: entry.requirement)
             }
         }
         return Traversal(reachable: reachable, predecessors: predecessors)
+    }
+
+    /// 포함 관계 간선을 거슬러 올라간 직계 부모.
+    private func owningType(of node: NodeID, in graph: CodeGraph) -> NodeID? {
+        graph.incomingEdges(to: node).first { $0.kind == .member }?.source
     }
 
     /// 사람이 실제로 행동할 수 있는 항목만 남긴다.
