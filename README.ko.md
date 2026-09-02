@@ -43,13 +43,44 @@ Cartograph 의 한 문장은 *"여기 당신의 의존성 그래프가 있다"* 
 
 ## 설치
 
-macOS 14 이상, Swift 6.3 이상이 필요합니다. CI 는 Swift 6.3.3 에서, 개발은 6.4 에서 돌아갑니다.
+macOS 14 이상과, 실행 시점에 Swift 툴체인(Xcode 또는 Command Line Tools)이 필요합니다.
+`libIndexStore` 를 거기서 불러오기 때문입니다. CI 는 Swift 6.3.3, 개발은 6.4 에서 돌아갑니다.
+
+**Homebrew** — 미리 빌드된 유니버설 바이너리, 수 초면 끝납니다.
+
+```bash
+brew install ictechgy/tap/cartograph
+```
+
+**Mint** — tap 추가 없이 소스에서 빌드합니다.
+
+```bash
+mint install ictechgy/cartograph@0.1.0
+```
+
+**설치 없이 쓰기** — Swift 패키지라면 의존성으로 넣고 커맨드 플러그인을 쓰면 됩니다.
+팀원과 CI 가 같은 버전을 쓰게 됩니다.
+
+```swift
+// Package.swift
+.package(url: "https://github.com/ictechgy/cartograph", from: "0.1.0"),
+```
+
+```bash
+swift package cartograph dead --strict
+swift package cartograph graph --format mermaid > graph.mmd
+```
+
+플러그인은 쓰기 권한을 선언하지 않아 승인 절차가 없습니다. 결과를 파일로 남기려면
+리다이렉션을 쓰세요.
+
+**소스에서 빌드:**
 
 ```bash
 git clone https://github.com/ictechgy/cartograph
 cd cartograph
 swift build -c release
-cp .build/release/cartograph /usr/local/bin/
+cp "$(swift build -c release --show-bin-path)/cartograph" /usr/local/bin/
 ```
 
 ## 빠른 시작
@@ -60,9 +91,13 @@ Cartograph 는 빌드를 대신 돌리지 않습니다. 컴파일러가 이미 �
 **Swift Package Manager**
 
 ```bash
-swift build -Xswiftc -index-store-path -Xswiftc .index-store
-cartograph graph --index-store .index-store
+swift build          # SwiftPM 이 부산물로 인덱스 스토어를 남깁니다
+cartograph graph     # 자동으로 찾습니다
 ```
+
+> `-Xswiftc -index-store-path` 는 SwiftPM 의 native 빌드 시스템에서만 동작합니다. Swift 6.4 부터
+> 기본이 된 Xcode 기반 빌드 시스템은 이 플래그를 **무시**하고 `<스크래치 경로>/out` 에 남깁니다.
+> 자동 탐색에 맡기거나 `--index-store .build/out` 을 쓰세요.
 
 **Xcode 프로젝트/워크스페이스**
 
@@ -79,11 +114,12 @@ cartograph graph --index-store DerivedData/Index.noindex/DataStore
 틀리기 때문입니다. 최근 SwiftPM 은 인덱스를 자동으로 남기므로, Swift 패키지라면
 `cartograph graph` 만으로도 대개 동작합니다.
 
-> **인덱스는 무언가 컴파일될 때만 만들어집니다.** 이미 최신인 빌드에서
-> `swift build -Xswiftc -index-store-path -Xswiftc .index-store` 를 돌리면 아무 일도 일어나지 않고
-> 그 디렉터리는 생기지 않습니다. CI 에서는 새 체크아웃이라 항상 컴파일되므로 문제가 없습니다.
-> 로컬에서는 써 본 적 없는 경로로 빌드하거나, 평소 빌드가 이미 남긴 스토어를 자동 탐색에
-> 맡기세요.
+> **인덱스는 무언가 컴파일될 때만 만들어집니다.** 이미 최신인 패키지를 빌드하면 새 인덱스
+> 데이터가 생기지 않습니다. CI 에서는 새 체크아웃이라 항상 컴파일되므로 문제가 없습니다.
+>
+> **인덱스 스토어에는 낡은 유닛이 남습니다.** 파일을 옮기거나 지워도 예전 기록이 남아, 지운
+> 타입이 유령 정점으로 보일 수 있습니다. 결과가 말이 안 될 때는 새 스크래치 경로로
+> 빌드하세요(`swift build --scratch-path .build-fresh`).
 
 ```bash
 cartograph init          # 주석 달린 .cartograph.yml 생성
@@ -148,7 +184,7 @@ NODE                   Ca  Ce     I     A     D           ZONE
 CartographCore          8   0  0.00  0.05  0.95   zone-of-pain
 CartographAnalysis      2   1  0.33  0.00  0.67   zone-of-pain
 CartographKit           1   5  0.83  0.00  0.17  main-sequence
-CartographCLI           0   3  1.00  0.00  0.00  main-sequence
+cartograph              0   3  1.00  0.00  0.00  main-sequence
 ```
 
 `CartographCore` 가 고통의 영역 깊숙이 있는 것은 정직한 결과입니다. 모두가 의존하는 구체적인
@@ -254,10 +290,10 @@ UIKit 프로젝트에서 거짓 양성의 가장 큰 원인이었습니다. 아�
 | `64` | 사용 오류 — 알 수 없는 옵션·하위 명령·값 |
 
 ```yaml
-- run: swift build -Xswiftc -index-store-path -Xswiftc .index-store
-- run: cartograph dead   --index-store .index-store --strict --report-format github-actions
-- run: cartograph cycles --index-store .index-store --strict
-- run: cartograph rules  --index-store .index-store --strict
+- run: swift build
+- run: cartograph dead   --strict --report-format github-actions
+- run: cartograph cycles --strict
+- run: cartograph rules  --strict
 ```
 
 ## 구조

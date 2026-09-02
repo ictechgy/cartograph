@@ -28,19 +28,21 @@ Scripts/coverage.sh
 ```
 
 ```bash
-swift build -Xswiftc -index-store-path -Xswiftc .index-store \
-  && swift run cartograph dead   --index-store .index-store --strict \
-  && swift run cartograph cycles --index-store .index-store --strict \
-  && swift run cartograph rules  --index-store .index-store --strict
+swift build \
+  && swift run cartograph dead   --strict \
+  && swift run cartograph cycles --strict \
+  && swift run cartograph rules  --strict
 ```
 
 두 번째가 이 저장소의 자기 분석입니다. 이 도구가 실제로 발견한 결함은 전부 여기서만
 드러났고 단위 테스트는 하나도 잡지 못했습니다. 건너뛰지 마세요.
 
-이미 빌드가 최신이면 컴파일이 일어나지 않아 `.index-store` 가 생기지 않습니다.
-그 상태로 도구를 돌리면 종료 코드 2("인덱스 스토어를 찾지 못했다")가 나오는데,
-분석이 실패한 것으로 오해하기 쉽습니다. 로컬에서는 `--index-store` 를 빼고
-평소 빌드가 남긴 `.build/out` 을 자동 탐색에 맡기세요.
+`-Xswiftc -index-store-path` 는 Swift 6.4 기본 빌드 시스템에서 무시됩니다. 요청한 디렉터리가
+아예 생기지 않고, 그 상태로 도구를 돌리면 종료 코드 2 가 나와 분석 실패로 오해하기 쉽습니다.
+`--index-store` 를 빼고 자동 탐색에 맡기세요.
+
+인덱스에는 낡은 유닛이 남습니다. 파일을 옮기거나 지운 뒤 유령 정점이 보이면
+`swift build --scratch-path .build-fresh` 로 새 인덱스를 만들어 확인하세요.
 
 ## 출력을 읽을 때 주의할 점
 
@@ -65,11 +67,11 @@ swift test 2>&1 | grep -E "error:|issue at|Test run with"
 
 ```bash
 # 특정 심볼이 왜 살아 있는지
-swift run cartograph dead --index-store .index-store --explain <이름 또는 USR>
+swift run cartograph dead --explain <이름 또는 USR>
 
 # 모듈 구조를 한눈에
-swift run cartograph graph --index-store .index-store --level module --format mermaid
+swift run cartograph graph --level module --format mermaid
 
 # 특정 모듈만 잘라서 보기
-swift run cartograph graph --index-store .index-store --level type --include 'Sources/CartographAnalysis/**'
+swift run cartograph graph --level type --include 'Sources/CartographAnalysis/**'
 ```

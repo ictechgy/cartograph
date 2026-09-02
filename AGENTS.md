@@ -36,21 +36,24 @@ Scripts/coverage.sh --report    # 파일별 커버리지
 
 ```bash
 Scripts/coverage.sh
-swift build -Xswiftc -index-store-path -Xswiftc .index-store \
-  && swift run cartograph dead   --index-store .index-store --strict \
-  && swift run cartograph cycles --index-store .index-store --strict \
-  && swift run cartograph rules  --index-store .index-store --strict
+swift build \
+  && swift run cartograph dead   --strict \
+  && swift run cartograph cycles --strict \
+  && swift run cartograph rules  --strict
 ```
 
 두 번째가 자기 분석(dogfooding)입니다. 이 도구가 실제로 발견한 결함 세 가지 —
 프로토콜 구현 오탐, `@main` 오탐, 절대/상대 경로 글롭 불일치 — 는 전부 이 단계에서만
 드러났습니다. 단위 테스트는 하나도 잡지 못했습니다.
 
-**인덱스는 무언가 컴파일될 때만 만들어집니다.** 이미 최신인 빌드에서
-`-index-store-path` 를 붙여 돌리면 아무 일도 일어나지 않고 그 디렉터리는 생기지 않습니다.
-그 상태로 도구를 돌리면 "인덱스 스토어를 찾지 못했다"(종료 코드 2)가 나오는데,
-분석이 실패한 것으로 오해하기 쉽습니다. 로컬에서는 `--index-store` 를 생략해
-평소 빌드가 남긴 `.build/out` 을 쓰는 편이 간단합니다.
+**`-Xswiftc -index-store-path` 를 믿지 마세요.** Swift 6.4 부터 기본이 된 Xcode 기반 빌드
+시스템은 이 플래그를 무시하고 `<스크래치 경로>/out` 에 인덱스를 남깁니다. 요청한 경로는
+아예 생기지 않습니다. `--index-store` 를 생략해 자동 탐색에 맡기세요.
+
+**인덱스는 무언가 컴파일될 때만 만들어집니다.** 이미 최신인 패키지를 빌드하면 새 인덱스
+데이터가 생기지 않습니다. **낡은 유닛도 남습니다** — 파일을 옮기거나 지워도 예전 기록이 남아
+유령 정점으로 보입니다. 결과가 말이 안 되면 `swift build --scratch-path .build-fresh` 로
+새 인덱스를 만들어 확인하세요.
 
 ## 절대 하지 말 것
 

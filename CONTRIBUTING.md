@@ -31,10 +31,10 @@ boundary are deliberately left to the end-to-end job that analyzes this reposito
 ## Analyze the repository with itself
 
 ```bash
-swift build -Xswiftc -index-store-path -Xswiftc .index-store
-swift run cartograph dead   --index-store .index-store --strict
-swift run cartograph cycles --index-store .index-store --strict
-swift run cartograph rules  --index-store .index-store --strict
+swift build
+swift run cartograph dead   --strict
+swift run cartograph cycles --strict
+swift run cartograph rules  --strict
 ```
 
 All three must pass. `.cartograph.yml` in the repository root configures this.

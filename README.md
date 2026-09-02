@@ -45,13 +45,43 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 
 ## Install
 
-Requires macOS 14+ and Swift 6.3 or later. CI runs on Swift 6.3.3; development happens on 6.4.
+Requires macOS 14+ and a Swift toolchain (Xcode or the Command Line Tools) at run time —
+Cartograph loads `libIndexStore` from it. CI runs on Swift 6.3.3; development happens on 6.4.
+
+**Homebrew** — a prebuilt universal binary, installs in seconds:
+
+```bash
+brew install ictechgy/tap/cartograph
+```
+
+**Mint** — builds from source, no tap to add:
+
+```bash
+mint install ictechgy/cartograph@0.1.0
+```
+
+**No install at all** — for a Swift package, add Cartograph as a dependency and use the command
+plugin. Everyone on the team and CI then runs the same version:
+
+```swift
+// Package.swift
+.package(url: "https://github.com/ictechgy/cartograph", from: "0.1.0"),
+```
+
+```bash
+swift package cartograph dead --strict
+swift package cartograph graph --format mermaid > graph.mmd
+```
+
+The plugin declares no write permission, so it never prompts; redirect stdout to save output.
+
+**From source:**
 
 ```bash
 git clone https://github.com/ictechgy/cartograph
 cd cartograph
 swift build -c release
-cp .build/release/cartograph /usr/local/bin/
+cp "$(swift build -c release --show-bin-path)/cartograph" /usr/local/bin/
 ```
 
 ## Quick start
@@ -62,9 +92,13 @@ cannot disagree with what actually compiled — and it does not fight Xcode over
 **Swift Package Manager**
 
 ```bash
-swift build -Xswiftc -index-store-path -Xswiftc .index-store
-cartograph graph --index-store .index-store
+swift build          # SwiftPM writes an index store as a side effect
+cartograph graph     # found automatically
 ```
+
+> `-Xswiftc -index-store-path` is honored by SwiftPM's native build system but **ignored** by the
+> Xcode-based one that became the default in Swift 6.4 — there the store goes to
+> `<scratch path>/out` regardless. Rely on auto-detection, or pass `--index-store .build/out`.
 
 **Xcode project or workspace**
 
@@ -81,11 +115,12 @@ When several exist it takes the most recently written one, because analyzing a s
 quietly rather than loudly. Recent SwiftPM writes an index automatically, so for a Swift package
 `cartograph graph` alone usually works.
 
-> **An index is only written when something compiles.** Running
-> `swift build -Xswiftc -index-store-path -Xswiftc .index-store` on an already up-to-date build
-> does nothing and leaves the directory missing. In CI that is fine — a fresh checkout always
-> compiles. Locally, build into a directory you have not used before, or just let auto-detection
-> find the store your normal build already produced.
+> **An index is only written when something compiles.** Building an already up-to-date package
+> produces no new index data. In CI that is fine — a fresh checkout always compiles.
+>
+> **Index stores keep stale units.** Renaming or deleting a file leaves its old records behind, so
+> a deleted type can linger as a phantom node. Build into a fresh scratch path
+> (`swift build --scratch-path .build-fresh`) when a result looks impossible.
 
 Then:
 
@@ -156,7 +191,8 @@ CartographIndexStore    1   1  0.50  0.00  0.50   zone-of-pain
 CartographSyntax        1   1  0.50  0.00  0.50   zone-of-pain
 CartographExport        1   2  0.67  0.06  0.27  main-sequence
 CartographKit           1   5  0.83  0.00  0.17  main-sequence
-CartographCLI           0   3  1.00  0.00  0.00  main-sequence
+CartographTestSupport   0   1  1.00  0.00  0.00  main-sequence
+cartograph              0   3  1.00  0.00  0.00  main-sequence
 ```
 
 `CartographCore` sitting deep in the zone of pain is honest: it is a concrete domain model that
@@ -299,16 +335,16 @@ Exit codes let a script tell "your code has problems" from "the tool did not run
 | `64` | Usage error — unknown option, unknown subcommand, invalid value |
 
 ```yaml
-- run: swift build -Xswiftc -index-store-path -Xswiftc .index-store
-- run: cartograph dead   --index-store .index-store --strict --report-format github-actions
-- run: cartograph cycles --index-store .index-store --strict
-- run: cartograph rules  --index-store .index-store --strict
+- run: swift build
+- run: cartograph dead   --strict --report-format github-actions
+- run: cartograph cycles --strict
+- run: cartograph rules  --strict
 ```
 
 For GitHub code scanning, emit SARIF:
 
 ```yaml
-- run: cartograph dead --index-store .index-store --report-format sarif -o cartograph.sarif
+- run: cartograph dead --report-format sarif -o cartograph.sarif
 - uses: github/codeql-action/upload-sarif@v3
   with:
     sarif_file: cartograph.sarif
@@ -331,7 +367,7 @@ CartographCore  ←  Config · Syntax · Analysis · Export · IndexStore  ←  
 | `CartographExport` | Graph renderers and diagnostic reporters. |
 | `CartographIndexStore` | The only module that touches IndexStoreDB. |
 | `CartographKit` | Pipeline assembly. Ships as a library so you can embed it. |
-| `CartographCLI` | Argument parsing and exit codes. |
+| `cartograph` | Argument parsing and exit codes. |
 
 The domain and the algorithms do not know IndexStoreDB exists. That is what makes the enforced 90%
 line coverage gate reachable without a single fixture Xcode project: analysis runs on hand-written

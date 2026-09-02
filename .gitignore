@@ -1,5 +1,6 @@
 # ─── SwiftPM ────────────────────────────────────────────────────────────────
 .build/
+.build-*/
 .swiftpm/
 Package.resolved.backup
 *.o
