@@ -1,0 +1,101 @@
+import Foundation
+
+/// 파일 접근을 한 겹 감싼 추상화.
+///
+/// 디스크를 건드리지 않고도 설정 로딩·베이스라인·리포트 출력을 테스트할 수 있게 한다.
+/// FileManager 를 직접 쓰면 테스트가 임시 디렉터리에 의존하게 되고,
+/// 병렬 실행에서 서로 간섭하기 쉽다.
+public protocol FileSystem: Sendable {
+    func fileExists(at path: String) -> Bool
+    func directoryExists(at path: String) -> Bool
+    func readData(at path: String) throws -> Data
+    func write(_ data: Data, to path: String) throws
+    /// 디렉터리 바로 아래 항목들의 전체 경로. 순서는 정렬되어 있다.
+    func contentsOfDirectory(at path: String) throws -> [String]
+    var currentDirectoryPath: String { get }
+}
+
+extension FileSystem {
+    /// UTF-8 텍스트로 읽는다.
+    public func readText(at path: String) throws -> String {
+        String(decoding: try readData(at: path), as: UTF8.self)
+    }
+
+    /// UTF-8 텍스트로 쓴다.
+    public func write(text: String, to path: String) throws {
+        try write(Data(text.utf8), to: path)
+    }
+
+    /// 디렉터리 트리를 재귀적으로 훑어 조건에 맞는 파일 경로를 모은다.
+    ///
+    /// - Parameters:
+    ///   - root: 탐색 시작 경로. 파일이면 그 파일만 후보가 된다.
+    ///   - isIncluded: 파일 경로 필터.
+    ///   - shouldDescend: 하위 디렉터리로 내려갈지 결정한다. 빌드 산출물처럼
+    ///     들어가 봐야 소용없는 디렉터리를 통째로 건너뛰기 위해 쓴다.
+    public func recursiveFiles(
+        under root: String,
+        isIncluded: (String) -> Bool,
+        shouldDescend: (String) -> Bool = { _ in true }
+    ) -> [String] {
+        guard directoryExists(at: root) else {
+            return fileExists(at: root) && isIncluded(root) ? [root] : []
+        }
+        var result: [String] = []
+        var pending = [root]
+        while let directory = pending.popLast() {
+            guard let entries = try? contentsOfDirectory(at: directory) else { continue }
+            for entry in entries {
+                if directoryExists(at: entry) {
+                    if shouldDescend(entry) { pending.append(entry) }
+                } else if isIncluded(entry) {
+                    result.append(entry)
+                }
+            }
+        }
+        return result.sorted()
+    }
+}
+
+/// 실제 디스크를 사용하는 기본 구현.
+///
+/// 상태를 갖지 않으므로 그대로 Sendable 이다. FileManager.default 는
+/// 여기서 쓰는 연산에 한해 스레드 안전하다.
+public struct LocalFileSystem: FileSystem {
+    public init() {}
+
+    public func fileExists(at path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+        return exists && !isDirectory.boolValue
+    }
+
+    public func directoryExists(at path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+        return exists && isDirectory.boolValue
+    }
+
+    public func readData(at path: String) throws -> Data {
+        try Data(contentsOf: URL(fileURLWithPath: path))
+    }
+
+    public func write(_ data: Data, to path: String) throws {
+        let url = URL(fileURLWithPath: path)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: url, options: .atomic)
+    }
+
+    public func contentsOfDirectory(at path: String) throws -> [String] {
+        try FileManager.default.contentsOfDirectory(atPath: path)
+            .map { (path as NSString).appendingPathComponent($0) }
+            .sorted()
+    }
+
+    public var currentDirectoryPath: String {
+        FileManager.default.currentDirectoryPath
+    }
+}
