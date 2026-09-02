@@ -48,7 +48,7 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 Requires macOS 14+ and a Swift 6.4 toolchain (Xcode 27).
 
 ```bash
-git clone https://github.com/coden/cartograph
+git clone https://github.com/ictechgy/cartograph
 cd cartograph
 swift build -c release
 cp .build/release/cartograph /usr/local/bin/

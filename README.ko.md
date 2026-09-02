@@ -46,7 +46,7 @@ Cartograph 의 한 문장은 *"여기 당신의 의존성 그래프가 있다"* 
 macOS 14 이상, Swift 6.4 툴체인(Xcode 27)이 필요합니다.
 
 ```bash
-git clone https://github.com/coden/cartograph
+git clone https://github.com/ictechgy/cartograph
 cd cartograph
 swift build -c release
 cp .build/release/cartograph /usr/local/bin/

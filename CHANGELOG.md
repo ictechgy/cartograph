@@ -51,5 +51,5 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/coden/cartograph/compare/0.1.0...HEAD
-[0.1.0]: https://github.com/coden/cartograph/releases/tag/0.1.0
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.1.0...HEAD
+[0.1.0]: https://github.com/ictechgy/cartograph/releases/tag/0.1.0

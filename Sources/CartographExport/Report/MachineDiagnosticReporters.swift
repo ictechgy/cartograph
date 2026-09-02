@@ -129,7 +129,7 @@ public struct SARIFDiagnosticReporter: DiagnosticReporting {
                         driver: .init(
                             name: Cartograph.toolName,
                             version: Cartograph.version,
-                            informationUri: "https://github.com/coden/cartograph",
+                            informationUri: "https://github.com/ictechgy/cartograph",
                             rules: Self.rules(in: sorted)
                         )
                     ),
