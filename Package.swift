@@ -103,7 +103,7 @@ let package = Package(
         ),
         .testTarget(
             name: "CartographCLITests",
-            dependencies: ["CartographKit", "CartographTestSupport"]
+            dependencies: ["CartographCLI", "CartographTestSupport"]
         ),
     ]
 )

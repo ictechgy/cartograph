@@ -121,3 +121,32 @@ struct CodeGraphTests {
         #expect(graph.incomingEdges(to: "nope").isEmpty)
     }
 }
+
+@Suite("GraphEdge")
+struct GraphEdgeTests {
+    @Test("가중치만 바꾼 복사본을 만든다")
+    func withWeight() {
+        let edge = GraphEdge(source: "a", target: "b", kind: .call)
+        let heavier = edge.withWeight(7)
+        #expect(heavier.weight == 7)
+        #expect(heavier.source == edge.source)
+        #expect(heavier.kind == edge.kind)
+        #expect(edge.weight == 1)
+    }
+
+    @Test("자기 순환을 알아본다")
+    func selfLoopDetection() {
+        #expect(GraphEdge(source: "a", target: "a", kind: .call).isSelfLoop)
+        #expect(!GraphEdge(source: "a", target: "b", kind: .call).isSelfLoop)
+    }
+
+    @Test("정렬 순서는 출발점, 도착점, 종류 순이다")
+    func ordering() {
+        let first = GraphEdge(source: "a", target: "b", kind: .call)
+        let second = GraphEdge(source: "a", target: "c", kind: .call)
+        let third = GraphEdge(source: "b", target: "a", kind: .call)
+        #expect([third, second, first].sorted() == [first, second, third])
+        #expect(GraphEdge(source: "a", target: "b", kind: .call)
+            < GraphEdge(source: "a", target: "b", kind: .reference))
+    }
+}
