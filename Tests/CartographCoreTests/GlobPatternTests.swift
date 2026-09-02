@@ -1,0 +1,104 @@
+import CartographCore
+import Foundation
+import Testing
+
+@Suite("GlobPattern")
+struct GlobPatternTests {
+    @Test("구분자 없는 패턴은 마지막 경로 요소에만 적용된다")
+    func matchesLastComponentOnly() {
+        let pattern = GlobPattern("*.swift")
+        #expect(pattern.matches("Sources/App/Main.swift"))
+        #expect(pattern.matches("Main.swift"))
+        #expect(!pattern.matches("Sources/App/Main.m"))
+    }
+
+    @Test("단일 별표는 경로 구분자를 넘지 않는다")
+    func singleStarDoesNotCrossSeparator() {
+        let pattern = GlobPattern("Sources/*/Main.swift")
+        #expect(pattern.matches("Sources/App/Main.swift"))
+        #expect(!pattern.matches("Sources/App/Nested/Main.swift"))
+    }
+
+    @Test("이중 별표는 세그먼트를 0개 이상 소비한다")
+    func doubleStarMatchesAnyDepth() {
+        let pattern = GlobPattern("Sources/**/Main.swift")
+        #expect(pattern.matches("Sources/Main.swift"))
+        #expect(pattern.matches("Sources/App/Main.swift"))
+        #expect(pattern.matches("Sources/App/Feature/Main.swift"))
+        #expect(!pattern.matches("Tests/App/Main.swift"))
+    }
+
+    @Test("접미 이중 별표는 하위 전체를 포함한다")
+    func trailingDoubleStar() {
+        let pattern = GlobPattern("Sources/**")
+        #expect(pattern.matches("Sources"))
+        #expect(pattern.matches("Sources/App/Main.swift"))
+        #expect(!pattern.matches("Tests/App/Main.swift"))
+    }
+
+    @Test("물음표는 문자 하나에만 대응한다")
+    func questionMarkMatchesSingleCharacter() {
+        let pattern = GlobPattern("File?.swift")
+        #expect(pattern.matches("File1.swift"))
+        #expect(!pattern.matches("File12.swift"))
+        #expect(!pattern.matches("File.swift"))
+    }
+
+    @Test("정규식 특수문자는 문자 그대로 취급한다")
+    func regexMetacharactersAreLiteral() {
+        #expect(GlobPattern("a.b").matches("a.b"))
+        #expect(!GlobPattern("a.b").matches("axb"))
+        #expect(GlobPattern("Foo+Bar").matches("Foo+Bar"))
+        #expect(GlobPattern("(x)").matches("(x)"))
+    }
+
+    @Test("백트래킹이 필요한 패턴도 해결한다")
+    func backtracking() {
+        #expect(GlobPattern("*View*Controller").matches("HomeViewSubController"))
+        #expect(GlobPattern("*a*b*c").matches("xxaxxbxxc"))
+        #expect(!GlobPattern("*a*b*c").matches("xxaxxb"))
+    }
+
+    @Test("빈 패턴 목록은 어떤 값과도 일치하지 않는다")
+    func emptyPatternListMatchesNothing() {
+        let patterns: [GlobPattern] = []
+        #expect(!patterns.matchesAny("anything"))
+    }
+
+    @Test("문자열 리터럴과 코딩을 지원한다")
+    func literalAndCodable() throws {
+        let pattern: GlobPattern = "Sources/**"
+        let data = try JSONEncoder().encode(pattern)
+        let decoded = try JSONDecoder().decode(GlobPattern.self, from: data)
+        #expect(decoded == pattern)
+        #expect(decoded.pattern == "Sources/**")
+    }
+}
+
+@Suite("PathFilter")
+struct PathFilterTests {
+    @Test("include 가 비면 exclude 만 적용된다")
+    func excludeOnly() {
+        let filter = PathFilter(exclude: ["**/.build/**"])
+        #expect(filter.allows("Sources/App/Main.swift"))
+        #expect(!filter.allows("project/.build/checkouts/Foo.swift"))
+    }
+
+    @Test("include 가 있으면 화이트리스트로 동작한다")
+    func includeActsAsAllowList() {
+        let filter = PathFilter(include: ["Sources/**"])
+        #expect(filter.allows("Sources/App/Main.swift"))
+        #expect(!filter.allows("Tests/AppTests/MainTests.swift"))
+    }
+
+    @Test("exclude 가 include 보다 우선한다")
+    func excludeWinsOverInclude() {
+        let filter = PathFilter(include: ["Sources/**"], exclude: ["**/Generated/**"])
+        #expect(!filter.allows("Sources/Generated/API.swift"))
+    }
+
+    @Test("passthrough 는 아무것도 거르지 않는다")
+    func passthroughAllowsEverything() {
+        #expect(PathFilter.passthrough.allows("any/path.swift"))
+    }
+}
