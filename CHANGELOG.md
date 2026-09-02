@@ -45,9 +45,9 @@ First release.
   largest source of false positives.
 - Exit codes: `0` success, `1` findings with `--strict` or a threshold exceeded, `2` tool failure,
   `64` usage error.
-- Supported toolchain: Swift 6.4 / Xcode 27 on macOS 14+. `indexstore-db` publishes no semantic
-  version tags, so `Package.swift` pins the `release/6.4.1` branch. Each Swift release moves that
-  pin and gets a changelog entry.
+- Supported toolchain: Swift 6.3 or later on macOS 14+, verified on 6.3.3 in CI and 6.4 in
+  development. `indexstore-db` publishes no semantic version tags, so `Package.swift` pins the
+  `release/6.4.1` branch. Each Swift release moves that pin and gets a changelog entry.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 

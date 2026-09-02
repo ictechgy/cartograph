@@ -43,7 +43,7 @@ Cartograph 의 한 문장은 *"여기 당신의 의존성 그래프가 있다"* 
 
 ## 설치
 
-macOS 14 이상, Swift 6.4 툴체인(Xcode 27)이 필요합니다.
+macOS 14 이상, Swift 6.3 이상이 필요합니다. CI 는 Swift 6.3.3 에서, 개발은 6.4 에서 돌아갑니다.
 
 ```bash
 git clone https://github.com/ictechgy/cartograph

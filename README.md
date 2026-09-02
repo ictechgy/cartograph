@@ -45,7 +45,7 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 
 ## Install
 
-Requires macOS 14+ and a Swift 6.4 toolchain (Xcode 27).
+Requires macOS 14+ and Swift 6.3 or later. CI runs on Swift 6.3.3; development happens on 6.4.
 
 ```bash
 git clone https://github.com/ictechgy/cartograph

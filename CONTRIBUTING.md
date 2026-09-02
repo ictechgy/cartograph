@@ -5,12 +5,13 @@ Thanks for taking the time. This document covers what you need to build, test an
 ## Prerequisites
 
 - macOS 14 or later
-- Xcode 27 / Swift 6.4 toolchain
+- Swift 6.3 or later (CI runs 6.3.3; development happens on 6.4)
 
 `indexstore-db` has no semantic version tags — it tracks Swift releases on branches. `Package.swift`
-pins `release/6.4.1` to match the toolchain above. If you upgrade the toolchain, move that pin and
-delete any cached index database (`$TMPDIR/cartograph-index-db`): the index format is
-backward-compatible but never forward-compatible.
+pins `release/6.4.1`, which compiles and runs correctly on 6.3.3 as well; CI proves that on every
+push. When you move the pin, delete any cached index database (`$TMPDIR/cartograph-index-db`): the
+index format is backward-compatible but never forward-compatible, so a newer store read with an
+older `libIndexStore` fails or, worse, reads nothing.
 
 ## Build and test
 
