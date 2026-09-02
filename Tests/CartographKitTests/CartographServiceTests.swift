@@ -62,10 +62,21 @@ struct CartographServiceTests {
         #expect(outcome.output.contains("cycles: 1 error"))
     }
 
-    @Test("순환 임계값을 넘으면 오류를 던진다")
-    func cycleThresholdFails() {
-        let service = makeService { $0.thresholds.maxCycles = 0 }
-        #expect(throws: CartographError.self) { try service.detectCycles() }
+    @Test("임계값을 넘겨도 무엇이 문제인지 먼저 보여 준다")
+    func thresholdFailureStillReportsFindings() throws {
+        // 임계값을 넘겼다는 사실만 알리고 내용을 숨기면, 사용자는 임계값을 풀고
+        // 다시 돌리는 수밖에 없다.
+        let outcome = try makeService { $0.thresholds.maxCycles = 0 }.detectCycles()
+        #expect(outcome.output.contains("Circular dependency"))
+        #expect(outcome.thresholdFailure != nil)
+        #expect(outcome.thresholdFailure?.errorDescription?.contains("found 1, allowed at most 0") == true)
+    }
+
+    @Test("임계값 안이면 실패 사유가 없다")
+    func withinThresholdHasNoFailure() throws {
+        let outcome = try makeService { $0.thresholds.maxCycles = 5 }.detectCycles()
+        #expect(outcome.thresholdFailure == nil)
+        #expect(outcome.hasFindings)
     }
 
     @Test("도달할 수 없는 선언을 보고한다")

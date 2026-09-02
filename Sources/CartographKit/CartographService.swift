@@ -190,18 +190,31 @@ public struct CartographService: Sendable {
         let counted = countedRules.map { rules in
             reported.filter { rules.contains($0.ruleIdentifier) }
         } ?? reported
-        try AnalysisDiagnostics.enforceCountThreshold(
-            counted.count,
-            limit: thresholdLimit,
-            rule: thresholdRule
-        )
+
+        // 임계값 초과를 여기서 던지면 리포트가 출력되지 않아 무엇이 문제인지 알 수 없다.
+        // 사유만 실어 보내고 출력은 그대로 만든다.
+        var thresholdFailure: CartographError?
+        do {
+            try AnalysisDiagnostics.enforceCountThreshold(
+                counted.count,
+                limit: thresholdLimit,
+                rule: thresholdRule
+            )
+        } catch let error as CartographError {
+            thresholdFailure = error
+        }
 
         let reporter = DiagnosticReporterFactory.make(configuration.reportFormat)
         let output = try reporter.report(
             reported.map { $0.relative(to: projectPath) },
             summary: ReportSummary(command: command, subject: subject, suppressedCount: suppressed)
         )
-        return CommandOutcome(output: output, findingCount: counted.count, suppressedCount: suppressed)
+        return CommandOutcome(
+            output: output,
+            findingCount: counted.count,
+            suppressedCount: suppressed,
+            thresholdFailure: thresholdFailure
+        )
     }
 
     /// 현재 진단 상태를 베이스라인 파일로 기록한다.
@@ -274,7 +287,11 @@ public struct CartographService: Sendable {
         return IndexStoreProvider(
             configuration: .init(
                 storePath: storePath,
-                databasePath: IndexStoreProvider.defaultDatabasePath(forStore: storePath),
+                databasePath: IndexStoreProvider.defaultDatabasePath(
+                    forStore: storePath,
+                    libraryPath: libraryPath,
+                    libraryModificationDate: environment.fileSystem.modificationDate(at: libraryPath)
+                ),
                 libraryPath: libraryPath,
                 sourceRoots: [projectPath],
                 pathFilter: configuration.pathFilter
