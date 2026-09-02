@@ -12,6 +12,7 @@ public enum AnalysisDiagnostics {
         public static let unassignedLayer = "unassigned-layer"
         public static let instability = "instability"
         public static let mainSequenceDistance = "main-sequence-distance"
+        public static let metricThreshold = "metric-threshold"
     }
 
     /// 순환 의존성 → 진단.

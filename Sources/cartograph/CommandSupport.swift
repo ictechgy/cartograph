@@ -64,6 +64,12 @@ enum CommandSupport {
             print(outcome.output, terminator: "")
         }
 
+        // 없는 이름을 물어본 것은 코드의 문제가 아니라 인자의 문제다. 사용 오류로
+        // 끝내야 CI 스크립트의 오타가 드러난다. 설명은 이미 출력한 뒤다.
+        if outcome.subjectNotFound {
+            throw ValidationError("no declaration matches the value passed to --explain")
+        }
+
         // 임계값 초과는 코드에 대한 판정이지 도구의 실패가 아니다.
         // 리포트를 다 보여 준 뒤에 사유를 알리고 "문제 발견" 코드로 끝낸다.
         if let failure = outcome.thresholdFailure {

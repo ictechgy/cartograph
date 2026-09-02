@@ -289,6 +289,60 @@ struct CartographServiceTests {
         let identifiers = Set(try service.collectAllDiagnostics().map(\.ruleIdentifier))
         #expect(identifiers.contains("instability"))
     }
+
+    @Test("지표 임계값을 넘기면 --strict 없이도 실패로 표시한다")
+    func metricThresholdsFailTheBuild() throws {
+        // 같은 설정 파일 안에서 어떤 임계값은 빌드를 세우고 어떤 임계값은 세우지 않으면
+        // 사용자는 어느 쪽인지 알 수 없다.
+        let service = makeService { $0.thresholds.maxDistanceFromMainSequence = 0.01 }
+        let outcome = try service.measureMetrics()
+        #expect(outcome.findingCount > 0)
+        #expect(outcome.thresholdFailure != nil)
+
+        let relaxed = try makeService { $0.thresholds.maxDistanceFromMainSequence = 1.0 }.measureMetrics()
+        #expect(relaxed.thresholdFailure == nil)
+    }
+
+    @Test("지표를 SARIF 로 요청하면 진단 형식으로 낸다")
+    func metricsHonorMachineDiagnosticFormats() throws {
+        // 예전에는 확장자만 .sarif 인 지표 JSON 이 나와 코드 스캐닝이 거부했다.
+        let service = makeService {
+            $0.thresholds.maxDistanceFromMainSequence = 0.01
+            $0.reportFormat = .sarif
+        }
+        let output = try service.measureMetrics().output
+        #expect(output.contains("2.1.0"))
+        #expect(output.contains("runs"))
+        #expect(!output.contains("afferentCoupling"))
+    }
+
+    @Test("없는 이름을 설명하라고 하면 사실을 알린다")
+    func explainReportsAnUnknownSubject() throws {
+        let outcome = try makeService().explainRetention(of: "NoSuchThing")
+        #expect(outcome.subjectNotFound)
+        #expect(outcome.findingCount == 0)
+    }
+
+    @Test("explain 도 베이스라인을 따른다")
+    func explainRespectsTheBaseline() throws {
+        // 같은 저장소, 같은 베이스라인인데 보고 방식에 따라 반대 판정이 나오면 안 된다.
+        #expect(try makeService().detectUnusedCode().findingCount == 1)
+
+        let fileSystem = InMemoryFileSystem()
+        let baselined = makeService(
+            configure: { $0.baselinePath = "/p/baseline.json" },
+            fileSystem: fileSystem
+        )
+        _ = try baselined.writeBaseline(
+            diagnostics: try baselined.collectAllDiagnostics(),
+            to: "/p/baseline.json"
+        )
+        #expect(try baselined.detectUnusedCode().findingCount == 0)
+
+        let explained = try baselined.explainRetention(of: "DeadHelper")
+        #expect(explained.findingCount == 0)
+        #expect(explained.output.contains("DeadHelper"))
+    }
 }
 
 /// 인덱스를 몇 번 읽었는지 세는 공급자.

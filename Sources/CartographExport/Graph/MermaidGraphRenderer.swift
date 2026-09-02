@@ -78,6 +78,8 @@ public struct MermaidGraphRenderer: GraphRendering {
     /// Mermaid 라벨에서 문제를 일으키는 문자를 정리한다.
     private func escape(_ value: String) -> String {
         value
+            // `#` 이 먼저다. 뒤 치환들이 스스로 `#` 을 만들어 내기 때문이다.
+            .replacingOccurrences(of: "#", with: "#35;")
             .replacingOccurrences(of: "\"", with: "#quot;")
             .replacingOccurrences(of: "<", with: "#lt;")
             .replacingOccurrences(of: ">", with: "#gt;")

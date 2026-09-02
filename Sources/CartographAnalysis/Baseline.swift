@@ -90,6 +90,12 @@ public struct BaselineStore: Sendable {
     public func write(_ baseline: Baseline, to path: String) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try fileSystem.write(try encoder.encode(baseline), to: path)
+        do {
+            try fileSystem.write(try encoder.encode(baseline), to: path)
+        } catch {
+            // 래핑하지 않으면 파일 쓰기 실패가 종료 코드 1 로 나간다. CI 는 그것을
+            // "코드에 문제가 있음"으로 읽는다. 도구가 실패한 것은 2 여야 한다.
+            throw CartographError.outputUnwritable(path: path, underlying: "\(error)")
+        }
     }
 }

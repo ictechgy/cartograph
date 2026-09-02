@@ -140,7 +140,7 @@ public struct CartographService: Sendable {
 
         switch lookup {
         case .notFound:
-            return CommandOutcome(output: "No declaration matches '\(subject)'.\n")
+            return CommandOutcome(output: "No declaration matches '\(subject)'.\n", subjectNotFound: true)
         case let .ambiguous(candidates):
             let list = candidates.map { "  \($0.qualifiedName)  \($0.usr ?? $0.id.rawValue)" }
             return CommandOutcome(
@@ -148,8 +148,28 @@ public struct CartographService: Sendable {
                     + "Pass one of these USRs instead:\n" + list.joined(separator: "\n") + "\n"
             )
         case let .found(node):
-            return Self.describeExplanation(explanation, for: node, in: graph)
+            let outcome = Self.describeExplanation(explanation, for: node, in: graph)
+            guard outcome.hasFindings, let baseline = try loadBaseline() else { return outcome }
+            // 베이스라인이 억제한 문제를 --explain 만 다시 살려 내면, 같은 저장소·같은
+            // 베이스라인인데 보고 방식에 따라 반대 판정이 나온다. 설명은 그대로 두고
+            // 판정만 맞춘다.
+            let suppressed = baseline.filtering([Self.unusedDiagnostic(for: node)]).isEmpty
+            guard suppressed else { return outcome }
+            return CommandOutcome(output: outcome.output, findingCount: 0, suppressedCount: 1)
         }
+    }
+
+    /// `dead` 가 이 정점에 대해 만들어 낼 진단.
+    ///
+    /// 베이스라인 지문이 같아야 하므로 `AnalysisDiagnostics` 와 같은 방식으로 만든다.
+    private static func unusedDiagnostic(for node: GraphNode) -> Diagnostic {
+        Diagnostic(
+            ruleIdentifier: AnalysisDiagnostics.Rule.unusedSymbol,
+            severity: .warning,
+            message: "\(node.kind.rawValue) '\(node.qualifiedName)' is never used",
+            location: node.location,
+            subject: node.usr ?? node.id.rawValue
+        )
     }
 
     public func measureMetrics(level: GraphLevel? = nil) throws -> CommandOutcome {
@@ -161,23 +181,39 @@ public struct CartographService: Sendable {
         let reported = baseline?.filtering(diagnostics) ?? diagnostics
         let suppressed = diagnostics.count - reported.count
 
+        let summary = ReportSummary(
+            command: "metrics",
+            subject: describe(graph),
+            suppressedCount: suppressed
+        )
+        // sarif/checkstyle/xcode/github-actions 는 진단을 담는 형식이지 지표표를 담는 형식이
+        // 아니다. 예전에는 이 형식들이 지표 JSON 을 그대로 받아, 확장자만 `.sarif` 인
+        // 코드 스캐닝이 거부하는 문서가 나왔다.
         let output: String = switch configuration.reportFormat {
-        case .json, .sarif, .checkstyle:
+        case .json:
             try renderer.renderJSON(metrics, diagnostics: reported, suppressedCount: suppressed)
-        default:
+        case .sarif, .checkstyle, .xcode, .githubActions:
+            try DiagnosticReporterFactory.make(configuration.reportFormat).report(reported, summary: summary)
+        case .text:
             renderer.renderTable(metrics)
                 + (reported.isEmpty
                     ? ""
-                    : "\n" + (try DiagnosticReporterFactory.make(.text).report(
-                        reported,
-                        summary: ReportSummary(
-                            command: "metrics",
-                            subject: describe(graph),
-                            suppressedCount: suppressed
-                        )
-                    )))
+                    : "\n" + (try DiagnosticReporterFactory.make(.text).report(reported, summary: summary)))
         }
-        return CommandOutcome(output: output, findingCount: reported.count, suppressedCount: suppressed)
+        // 다른 명령과 달리 지표 임계값만 CI 를 막지 못했다. 같은 설정 파일 안에서
+        // 어떤 임계값은 빌드를 세우고 어떤 임계값은 세우지 않는 상태였다.
+        let thresholdFailure: CartographError? = reported.isEmpty
+            ? nil
+            : .thresholdExceeded(
+                rule: AnalysisDiagnostics.Rule.metricThreshold,
+                message: "\(reported.count) metric threshold(s) exceeded"
+            )
+        return CommandOutcome(
+            output: output,
+            findingCount: reported.count,
+            suppressedCount: suppressed,
+            thresholdFailure: thresholdFailure
+        )
     }
 
     public func checkRules(level: GraphLevel? = nil) throws -> CommandOutcome {

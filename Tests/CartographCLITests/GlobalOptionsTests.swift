@@ -129,4 +129,16 @@ struct CommandConfigurationTests {
         struct Boom: Error {}
         #expect(!CommandSupport.describe(Boom()).isEmpty)
     }
+    @Test("프로젝트 경로를 절대 경로로 바꾼다")
+    func makesProjectPathAbsolute() {
+        // libIndexStore 는 상대 경로를 받으면 어서션으로 프로세스를 죽인다.
+        // 종료 코드 계약을 지킬 기회조차 없으므로 인덱스 계층에 닿기 전에 막아야 한다.
+        #expect(GlobalOptions.absolutePath(".", relativeTo: "/work/proj") == "/work/proj")
+        #expect(GlobalOptions.absolutePath("sub", relativeTo: "/work/proj") == "/work/proj/sub")
+        #expect(GlobalOptions.absolutePath("../other", relativeTo: "/work/proj") == "/work/other")
+        #expect(GlobalOptions.absolutePath("/already/absolute", relativeTo: "/work") == "/already/absolute")
+        #expect(GlobalOptions.absolutePath("/a/./b/../c", relativeTo: "/work") == "/a/c")
+        #expect(GlobalOptions.absolutePath("~", relativeTo: "/work").hasPrefix("/"))
+    }
+
 }

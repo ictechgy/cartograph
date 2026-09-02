@@ -207,4 +207,18 @@ struct RendererEscapingHardeningTests {
         let output = try DOTGraphRenderer().render(graph)
         #expect(output.contains("subgraph \"cluster_Weird\\\"Module\""))
     }
+    @Test("Mermaid 는 이름 속 #을 먼저 escape 한다")
+    func mermaidEscapesHashFirst() {
+        // Mermaid 는 라벨 안의 `#code;` 를 엔티티로 읽는다. `#` 을 먼저 바꾸지 않으면
+        // 이름의 일부가 통째로 사라진 라벨이 나온다.
+        let graph = CodeGraph(
+            level: .file,
+            nodes: [GraphNode(id: NodeID("a"), name: "spec#usd;draft.swift", kind: .structType, module: "M")],
+            edges: []
+        )
+        let output = MermaidGraphRenderer().render(graph)
+        #expect(output.contains("#35;usd;"))
+        #expect(!output.contains("\"spec#usd;draft.swift\""))
+    }
+
 }

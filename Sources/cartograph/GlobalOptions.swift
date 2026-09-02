@@ -1,6 +1,7 @@
 import ArgumentParser
 import CartographConfig
 import CartographCore
+import Foundation
 
 /// 모든 분석 명령이 공유하는 옵션.
 ///
@@ -52,13 +53,22 @@ struct GlobalOptions: ParsableArguments {
     func resolveConfiguration(
         fileSystem: any FileSystem
     ) throws -> (configuration: CartographConfiguration, warnings: [String]) {
-        let searchDirectory = projectPath ?? fileSystem.currentDirectoryPath
+        // libIndexStore 는 상대 경로를 받으면 어서션으로 프로세스를 즉시 죽인다
+        // ("passed relative path without working-dir"). 종료 코드 계약을 지킬 기회조차
+        // 없으므로, 인덱스 계층에 닿기 전에 여기서 절대 경로로 바꾼다.
+        let searchDirectory = Self.absolutePath(
+            projectPath ?? fileSystem.currentDirectoryPath,
+            relativeTo: fileSystem.currentDirectoryPath
+        )
         let loaded = try ConfigurationLoader(fileSystem: fileSystem)
             .load(explicitPath: configPath, searchDirectory: searchDirectory)
 
         let overrides = ConfigurationOverrides(
             indexStorePath: indexStorePath,
-            projectPath: projectPath ?? loaded.configuration.projectPath ?? searchDirectory,
+            projectPath: Self.absolutePath(
+                projectPath ?? loaded.configuration.projectPath ?? searchDirectory,
+                relativeTo: fileSystem.currentDirectoryPath
+            ),
             derivedDataPath: derivedDataPath,
             level: level,
             include: include.isEmpty ? nil : include.map { GlobPattern($0) },
@@ -70,5 +80,19 @@ struct GlobalOptions: ParsableArguments {
             retainPublic: retainPublic ? true : nil
         )
         return (loaded.configuration.applying(overrides), loaded.warnings)
+    }
+
+    /// 사용자가 준 경로를 절대 경로로 바꾼다.
+    ///
+    /// `~` 를 풀고, `.` 과 `..` 를 정리한다. 이미 절대 경로면 정리만 한다.
+    static func absolutePath(_ path: String, relativeTo currentDirectory: String) -> String {
+        let expanded = (path as NSString).expandingTildeInPath
+        guard !expanded.hasPrefix("/") else {
+            return URL(fileURLWithPath: expanded).standardizedFileURL.path
+        }
+        // 기준 URL 을 디렉터리로 표시하지 않으면 마지막 구성요소를 파일 이름으로 보고
+        // 버린다. "sub" 가 "/work/proj/sub" 가 아니라 "/work/sub" 가 된다.
+        let base = URL(fileURLWithPath: currentDirectory, isDirectory: true)
+        return URL(fileURLWithPath: expanded, relativeTo: base).standardizedFileURL.path
     }
 }
