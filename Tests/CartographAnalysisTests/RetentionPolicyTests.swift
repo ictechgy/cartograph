@@ -122,6 +122,24 @@ struct RetentionPolicyTests {
         #expect(reasons(builder.build())["CodingKeys.name"] == .codingKey)
     }
 
+    @Test("main.swift 의 최상위 선언은 진입점으로 본다")
+    func topLevelDeclarationsInMainSwiftAreEntryPoints() {
+        // Swift 는 main.swift 에서만 최상위 코드를 허용하고 그것이 진입점이다.
+        // 표식이 붙지 않으므로 그냥 두면 실행 파일 전체가 미사용이 된다.
+        var builder = SnapshotBuilder()
+        builder.symbol("service", name: "service", kind: .variable, path: "/p/main.swift", line: 6)
+        builder.symbol("Helper", kind: .structType, path: "/p/main.swift", line: 2)
+        builder.symbol("Helper.member", name: "member", kind: .method, path: "/p/main.swift", parent: "Helper")
+        builder.symbol("Elsewhere", kind: .structType, path: "/p/Other.swift")
+
+        let retained = reasons(builder.build())
+        #expect(retained["service"] == .entryPoint)
+        #expect(retained["Helper"] == .entryPoint)
+        // 그 파일 안의 타입 멤버까지 살려 두면 분석이 멎는다.
+        #expect(retained["Helper.member"] == nil)
+        #expect(retained["Elsewhere"] == nil)
+    }
+
     @Test("익스텐션에 선언한 준수도 타입 본체에 적용된다")
     func conformanceDeclaredInAnExtensionReachesTheType() {
         // `extension Money: Codable {}` 는 흔한 스타일이다. 표식이 익스텐션에만

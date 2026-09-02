@@ -117,7 +117,18 @@ public struct IndexStoreProvider: IndexProviding {
                 }
                 if isDefinition { definedUSRs.insert(symbol.usr) }
             }
-            references.append(contentsOf: IndexStoreMapping.references(from: occurrence))
+            let occurrenceReferences = IndexStoreMapping.references(from: occurrence)
+            references.append(contentsOf: occurrenceReferences)
+
+            // 최상위 문장이 실제로 참조를 만들었을 때만 가상 심볼을 세운다.
+            let topLevelUSR = IndexStoreMapping.topLevelCodeUSR(forFile: occurrence.location.path)
+            if symbolsByUSR[topLevelUSR] == nil,
+               occurrenceReferences.contains(where: { $0.sourceUSR == topLevelUSR }) {
+                symbolsByUSR[topLevelUSR] = IndexStoreMapping.topLevelCodeSymbol(
+                    path: occurrence.location.path,
+                    module: occurrence.location.moduleName
+                )
+            }
         }
 
         if includeExternalSymbols {
@@ -129,9 +140,14 @@ public struct IndexStoreProvider: IndexProviding {
             }
         }
 
+        let resolved = IndexStoreMapping.resolvingAccessors(
+            references,
+            owners: IndexStoreMapping.accessorOwners(in: occurrences)
+        )
+
         return IndexSnapshot(
             symbols: symbolsByUSR.values.sorted { $0.usr < $1.usr },
-            references: references.sorted {
+            references: resolved.sorted {
                 ($0.sourceUSR, $0.targetUSR, $0.kind.rawValue)
                     < ($1.sourceUSR, $1.targetUSR, $1.kind.rawValue)
             }

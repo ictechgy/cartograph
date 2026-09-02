@@ -288,6 +288,91 @@ struct IndexStoreMappingTests {
         #expect(try #require(snapshot.symbols.first).parentUSR == "Type")
     }
 
+    @Test("제네릭 파라미터는 정점으로 만들지 않는다")
+    func skipsGenericTypeParameters() {
+        // 인덱스에는 타입 별칭으로 남지만 따로 지울 수 있는 선언이 아니다.
+        let occurrence = occurrence(
+            symbol("T", kind: .typealias, subKind: .swiftGenericTypeParam),
+            roles: .definition
+        )
+        #expect(IndexStoreMapping.indexedSymbol(from: occurrence) == nil)
+    }
+
+    @Test("접근자에서 나온 호출을 그 프로퍼티의 것으로 옮긴다")
+    func resolvesAccessorEdgesToTheirProperty() {
+        // 계산 프로퍼티의 게터는 정점이 아니다. 그대로 두면 게터에서만 부르는
+        // 함수가 미사용으로 보고된다.
+        let getter = symbol("getter", kind: .instanceMethod, subKind: .accessorGetter)
+        let occurrences = [
+            occurrence(
+                getter,
+                roles: .definition,
+                relations: [SymbolRelation(symbol: symbol("property"), roles: .accessorOf)]
+            ),
+            occurrence(
+                symbol("helper", kind: .function),
+                roles: [.reference, .call],
+                relations: [SymbolRelation(symbol: getter, roles: .calledBy)]
+            ),
+        ]
+        let snapshot = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+        #expect(snapshot.references.contains { $0.sourceUSR == "property" && $0.targetUSR == "helper" })
+        #expect(!snapshot.references.contains { $0.sourceUSR == "getter" })
+    }
+
+    @Test("프로퍼티가 자기 자신을 가리키게 된 간선은 버린다")
+    func dropsSelfEdgesCreatedByAccessorResolution() {
+        let getter = symbol("getter", kind: .instanceMethod, subKind: .accessorGetter)
+        let occurrences = [
+            occurrence(
+                getter,
+                roles: .definition,
+                relations: [SymbolRelation(symbol: symbol("property"), roles: .accessorOf)]
+            ),
+            occurrence(
+                symbol("property"),
+                roles: [.reference],
+                relations: [SymbolRelation(symbol: getter, roles: .containedBy)]
+            ),
+        ]
+        let snapshot = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+        #expect(snapshot.references.isEmpty)
+    }
+
+    @Test("main.swift 의 최상위 문장은 가상 심볼에서 나온 것으로 본다")
+    func attributesTopLevelStatementsToASyntheticSymbol() throws {
+        // 최상위 문장은 감싸는 선언이 없어 관계가 비어 있다. 그대로 두면
+        // 실행 파일이 실제로 부르는 코드가 통째로 미사용으로 보고된다.
+        let occurrences = [
+            occurrence(
+                symbol("run", kind: .instanceMethod),
+                roles: [.reference, .call],
+                location: location("/p/main.swift")
+            )
+        ]
+        let snapshot = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+        let topLevelUSR = IndexStoreMapping.topLevelCodeUSR(forFile: "/p/main.swift")
+        #expect(snapshot.symbols.contains { $0.usr == topLevelUSR && $0.name == "top-level code" })
+        let reference = try #require(snapshot.references.first)
+        #expect(reference.sourceUSR == topLevelUSR)
+        #expect(reference.targetUSR == "run")
+        #expect(reference.kind == .call)
+    }
+
+    @Test("다른 파일의 관계 없는 참조는 가상 심볼을 만들지 않는다")
+    func doesNotSynthesizeTopLevelCodeOutsideMainSwift() {
+        let occurrences = [
+            occurrence(
+                symbol("run", kind: .instanceMethod),
+                roles: [.reference, .call],
+                location: location("/p/Other.swift")
+            )
+        ]
+        let snapshot = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+        #expect(snapshot.symbols.isEmpty)
+        #expect(snapshot.references.isEmpty)
+    }
+
     @Test("정의의 위치를 선언의 위치보다 우선한다")
     func prefersTheDefinitionLocation() throws {
         // 선언만 있는 발생의 줄 번호를 쓰면 구문 정보를 붙일 때 엉뚱한 자리를 짚는다.

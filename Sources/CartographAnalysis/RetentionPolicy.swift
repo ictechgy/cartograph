@@ -65,6 +65,7 @@ public struct RetentionPolicy: Sendable {
         if isUserRetained(node) { return .userConfigured }
         if node.attributes.contains(.implicit) { return .compilerSynthesized }
         if node.attributes.contains(.entryPoint) { return .entryPoint }
+        if isTopLevelCode(node, in: graph) { return .entryPoint }
 
         if options.retainTests {
             if node.attributes.contains(.unitTest) { return .xcTest }
@@ -100,6 +101,28 @@ public struct RetentionPolicy: Sendable {
             || options.retainedNames.matchesAny(node.baseName)
             || options.retainedNames.matchesAny(node.qualifiedName)
     }
+
+    /// `main.swift` 의 최상위 선언인지 확인한다.
+    ///
+    /// Swift 는 `main.swift` 에서만 최상위 코드를 허용하고, 그것이 실행 파일의
+    /// 진입점이다. 여기에 `@main` 같은 표식은 붙지 않으므로 그냥 두면 시작점이
+    /// 하나도 없는 그래프가 되어 실행 파일 전체가 미사용으로 보고된다.
+    ///
+    /// 최상위 선언만 본다. `main.swift` 안에 정의한 타입의 멤버까지 살려 두면
+    /// 그 파일에 무엇을 넣든 분석이 멎는다.
+    private func isTopLevelCode(_ node: GraphNode, in graph: CodeGraph) -> Bool {
+        guard let path = node.location?.path,
+              Self.lastComponent(of: path) == Self.topLevelCodeFileName
+        else { return false }
+        return graph.semanticParent(of: node.id) == nil
+    }
+
+    static func lastComponent(of path: String) -> String {
+        path.split(separator: "/").last.map(String.init) ?? path
+    }
+
+    /// Swift 가 최상위 코드를 허용하는 유일한 파일 이름.
+    static let topLevelCodeFileName = "main.swift"
 
     private func isObjectiveCAccessible(_ node: GraphNode) -> Bool {
         if node.attributes.contains(where: \.isObjectiveCRelated) { return true }

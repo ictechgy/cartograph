@@ -63,6 +63,10 @@ public enum IndexStoreMapping {
         }
         guard !isAccessor(occurrence.symbol.subKind) else { return nil }
         guard !occurrence.symbol.properties.contains(.local) else { return nil }
+        // 제네릭 파라미터는 인덱스에 타입 별칭으로 남지만 따로 지울 수 있는 선언이
+        // 아니다. 정점으로 두면 `struct Reactive<Base>` 의 `Base` 가 미사용으로
+        // 보고된다.
+        guard occurrence.symbol.subKind != .swiftGenericTypeParam else { return nil }
 
         let kind = symbolKind(occurrence.symbol.kind, subKind: occurrence.symbol.subKind)
         guard kind != .parameter else { return nil }
@@ -150,7 +154,58 @@ public enum IndexStoreMapping {
                 )
             }
         }
+
+        if result.isEmpty, let topLevel = topLevelCodeReference(from: occurrence, location: location) {
+            result.append(topLevel)
+        }
         return result
+    }
+
+    /// `main.swift` 의 최상위 문장에서 나온 참조.
+    ///
+    /// `service.run()` 같은 최상위 문장은 감싸는 선언이 없어 관계가 비어 있다.
+    /// 그대로 두면 간선이 하나도 생기지 않아, 실행 파일이 실제로 부르는 코드가
+    /// 통째로 미사용으로 보고된다. 파일을 대표하는 가상 심볼에 붙여 시작점으로 삼는다.
+    static func topLevelCodeReference(
+        from occurrence: SymbolOccurrence,
+        location: SourceLocation
+    ) -> IndexedReference? {
+        guard isTopLevelCodeFile(occurrence.location.path),
+              occurrence.roles.contains(.reference) || occurrence.roles.contains(.call),
+              !occurrence.roles.contains(.definition),
+              !occurrence.roles.contains(.declaration)
+        else { return nil }
+
+        return IndexedReference(
+            sourceUSR: topLevelCodeUSR(forFile: occurrence.location.path),
+            targetUSR: occurrence.symbol.usr,
+            kind: occurrence.roles.contains(.call) ? .call : .reference,
+            location: location
+        )
+    }
+
+    /// 최상위 코드를 대표하는 가상 심볼.
+    public static func topLevelCodeSymbol(path: String, module: String) -> IndexedSymbol {
+        IndexedSymbol(
+            usr: topLevelCodeUSR(forFile: path),
+            name: "top-level code",
+            kind: .function,
+            module: module,
+            location: SourceLocation(path: path, line: 1, column: 1),
+            accessibility: .privateLevel
+        )
+    }
+
+    /// 파일마다 하나씩 두는 가상 심볼의 USR.
+    public static func topLevelCodeUSR(forFile path: String) -> String {
+        topLevelCodeUSRPrefix + path
+    }
+
+    static let topLevelCodeUSRPrefix = "cartograph:top-level-code:"
+
+    /// Swift 가 최상위 코드를 허용하는 유일한 파일 이름.
+    static func isTopLevelCodeFile(_ path: String) -> Bool {
+        path.hasSuffix("/main.swift") || path == "main.swift"
     }
 
     /// 선언을 감싸는 부모 심볼의 USR.
@@ -160,6 +215,39 @@ public enum IndexStoreMapping {
             return relation.symbol.usr
         }
         return nil
+    }
+
+    /// 접근자 USR 을 그 프로퍼티의 USR 로 옮기는 표.
+    ///
+    /// 계산 프로퍼티의 게터 안에서 부른 것은 인덱스에 "게터가 부른다"로 남는다.
+    /// 게터는 정점이 아니므로 그 간선은 통째로 버려지고, 게터에서만 부르는 함수가
+    /// 미사용으로 보고된다. `willSet`/`didSet` 도 마찬가지다.
+    public static func accessorOwners(in occurrences: [SymbolOccurrence]) -> [String: String] {
+        var result: [String: String] = [:]
+        for occurrence in occurrences where isAccessor(occurrence.symbol.subKind) {
+            guard result[occurrence.symbol.usr] == nil, let owner = parentUSR(of: occurrence) else { continue }
+            result[occurrence.symbol.usr] = owner
+        }
+        return result
+    }
+
+    /// 참조의 양 끝에 있는 접근자를 그 프로퍼티로 바꾼다.
+    ///
+    /// 프로퍼티 자신을 가리키게 된 간선은 버린다. 게터가 자기 프로퍼티를 읽는 것은
+    /// 의존 관계가 아니다.
+    public static func resolvingAccessors(
+        _ references: [IndexedReference],
+        owners: [String: String]
+    ) -> [IndexedReference] {
+        guard !owners.isEmpty else { return references }
+        return references.compactMap { reference in
+            let source = owners[reference.sourceUSR] ?? reference.sourceUSR
+            let target = owners[reference.targetUSR] ?? reference.targetUSR
+            guard source != target else { return nil }
+            return IndexedReference(
+                sourceUSR: source, targetUSR: target, kind: reference.kind, location: reference.location
+            )
+        }
     }
 
     static func isAccessor(_ subKind: IndexSymbolSubKind) -> Bool {
