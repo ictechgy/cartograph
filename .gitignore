@@ -50,3 +50,6 @@ Icon
 .omc/
 !.omc/skills/
 .claude/settings.local.json
+
+# CI 산출물
+/build/
