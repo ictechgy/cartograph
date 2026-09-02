@@ -121,3 +121,36 @@ struct IndexStoreLocatorTests {
         #expect(XcodeEnvironment.developerDirectory(environment: ["DEVELOPER_DIR": ""]) != "")
     }
 }
+
+@Suite("DerivedData 이름 대조")
+struct DerivedDataMatchingTests {
+    @Test("이름이 접두사로 겹치는 다른 프로젝트를 집어삼키지 않는다")
+    func prefixCollisionIsRejected() {
+        // 접두사만 보면 App 이 App-Extension 의 디렉터리까지 가져가, 더 최근에
+        // 빌드된 다른 프로젝트를 분석하게 된다.
+        #expect(IndexStoreLocator.isDerivedDataDirectory("App-abcdefghijklmnop", forProject: "App"))
+        #expect(!IndexStoreLocator.isDerivedDataDirectory("App-Extension-abcdef", forProject: "App"))
+        #expect(!IndexStoreLocator.isDerivedDataDirectory("Application-abcdef", forProject: "App"))
+        #expect(!IndexStoreLocator.isDerivedDataDirectory("App", forProject: "App"))
+        #expect(!IndexStoreLocator.isDerivedDataDirectory("App-", forProject: "App"))
+    }
+
+    @Test("대소문자만 다른 표기도 같은 프로젝트로 본다")
+    func matchingIsCaseInsensitive() {
+        // APFS 는 기본이 대소문자 구분 없음이라 표기가 어긋나는 경우가 흔하다.
+        #expect(IndexStoreLocator.isDerivedDataDirectory("cartograph-abcdef", forProject: "Cartograph"))
+        #expect(IndexStoreLocator.isDerivedDataDirectory("Cartograph-abcdef", forProject: "cartograph"))
+    }
+
+    @Test("후보 목록이 겹치는 프로젝트를 걸러 낸다")
+    func candidateListExcludesOtherProjects() {
+        let fileSystem = InMemoryFileSystem(files: [
+            "/dd/App-aaaaaa/Index.noindex/DataStore/units/a": "",
+            "/dd/App-Extension-bbbbbb/Index.noindex/DataStore/units/a": "",
+        ])
+        let candidates = IndexStoreLocator(fileSystem: fileSystem)
+            .derivedDataCandidates(projectName: "App", derivedDataPath: "/dd")
+        #expect(candidates.allSatisfy { !$0.contains("App-Extension") })
+        #expect(candidates.contains("/dd/App-aaaaaa/Index.noindex/DataStore"))
+    }
+}

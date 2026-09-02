@@ -9,22 +9,31 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Package.swift 는 툴체인(Swift 6.4)에 대응하는 indexstore-db 릴리스 브랜치를 고정한다.
+# 러너 기본 Xcode 가 그보다 낮으면 빌드가 실패하므로, 이미지에 있는 가장 새로운
+# Xcode 를 명시적으로 고른다. Swift 릴리스마다 고정을 옮길 때 이 잡이 먼저 알려 준다.
 jobs:
   test:
     name: Build, test and gate coverage
-    runs-on: macos-15
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Show toolchain
-        run: swift --version
+      - name: Select the newest Xcode
+        run: |
+          latest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          swift --version
 
-      # indexstore-db 와 swift-syntax 는 빌드가 길다. 해석 결과를 캐시한다.
-      - name: Cache SwiftPM
+      # 해석된 의존성 소스만 캐시한다. .build 전체에는 러너 작업 경로가 절대 경로로
+      # 박힌 빌드 상태가 들어 있어, 잡 사이에 옮기면 조용히 깨진 증분 빌드가 된다.
+      - name: Cache resolved dependencies
         uses: actions/cache@v4
         with:
-          path: .build
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          path: |
+            .build/checkouts
+            .build/repositories
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
       - name: Build
@@ -35,44 +44,55 @@ jobs:
 
   self-analysis:
     name: Analyze this repository with itself
-    runs-on: macos-15
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache SwiftPM
+      - name: Select the newest Xcode
+        run: |
+          latest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          swift --version
+
+      - name: Cache resolved dependencies
         uses: actions/cache@v4
         with:
-          path: .build
-          key: spm-selfcheck-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: spm-selfcheck-${{ runner.os }}-
+          path: |
+            .build/checkouts
+            .build/repositories
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
 
       # 도구가 읽을 인덱스를 만든다. 이 단계가 곧 도구의 전제 조건 문서이기도 하다.
       - name: Build with indexing enabled
-        run: swift build -Xswiftc -index-store-path -Xswiftc .index-store
-
-      - name: Install
-        run: cp "$(swift build --show-bin-path)/cartograph" /usr/local/bin/cartograph
+        run: |
+          swift build -Xswiftc -index-store-path -Xswiftc .index-store
+          echo "CARTOGRAPH=$(swift build --show-bin-path)/cartograph" >> "$GITHUB_ENV"
 
       # CLI 껍데기와 인덱스 스토어 입출력은 단위 테스트로 덮기 어렵다.
       # 실제 빌드된 도구로 이 저장소를 분석해 그 경로를 끝까지 태운다.
       - name: Circular dependencies
-        run: cartograph cycles --index-store .index-store --strict
+        run: |
+          "$CARTOGRAPH" cycles --index-store .index-store --strict
 
       - name: Unused declarations
-        run: cartograph dead --index-store .index-store --strict
+        run: |
+          "$CARTOGRAPH" dead --index-store .index-store --strict
 
       - name: Architecture rules
-        run: cartograph rules --index-store .index-store --strict
+        run: |
+          "$CARTOGRAPH" rules --index-store .index-store --strict
 
       - name: Architecture metrics
-        run: cartograph metrics --index-store .index-store
+        run: |
+          "$CARTOGRAPH" metrics --index-store .index-store
 
       - name: Export graphs
         run: |
-          cartograph graph --index-store .index-store --format dot   -o build/graph.dot
-          cartograph graph --index-store .index-store --format json  -o build/graph.json
-          cartograph graph --index-store .index-store --format html  -o build/graph.html
-          cartograph graph --index-store .index-store --format mermaid -o build/graph.mmd
+          "$CARTOGRAPH" graph --index-store .index-store --format dot     -o build/graph.dot
+          "$CARTOGRAPH" graph --index-store .index-store --format json    -o build/graph.json
+          "$CARTOGRAPH" graph --index-store .index-store --format html    -o build/graph.html
+          "$CARTOGRAPH" graph --index-store .index-store --format mermaid -o build/graph.mmd
 
       - uses: actions/upload-artifact@v4
         with:

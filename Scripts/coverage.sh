@@ -73,9 +73,11 @@ COVERAGE_JSON="$(mktemp -t cartograph-coverage)"
 trap 'rm -f "$COVERAGE_JSON"' EXIT
 
 echo "==> llvm-cov export (${#BINARIES[@]} test bundles)"
+# macOS 기본 bash 3.2 는 set -u 아래에서 빈 배열 확장을 미정의 변수로 본다.
+# 테스트 타깃이 하나뿐인 프로젝트에서 여기서 죽는다.
 xcrun llvm-cov export \
     "${BINARIES[0]}" \
-    "${OBJECT_ARGS[@]}" \
+    ${OBJECT_ARGS[@]+"${OBJECT_ARGS[@]}"} \
     -instr-profile "$PROFDATA" \
     -ignore-filename-regex='/(Tests|checkouts|\.build)/' \
     "$(pwd)/Sources" > "$COVERAGE_JSON"
