@@ -64,9 +64,15 @@ jobs:
           restore-keys: spm-${{ runner.os }}-
 
       # 도구가 읽을 인덱스를 만든다. 이 단계가 곧 도구의 전제 조건 문서이기도 하다.
+      # 인덱스는 무언가 컴파일될 때만 만들어진다. 새 체크아웃이라 항상 컴파일되지만,
+      # 캐시 구성을 바꾸다 이 전제가 깨지면 조용히 "인덱스 없음"으로 실패하므로 확인한다.
       - name: Build with indexing enabled
         run: |
           swift build -Xswiftc -index-store-path -Xswiftc .index-store
+          if [ ! -d .index-store ]; then
+            echo "인덱스 스토어가 만들어지지 않았습니다. 컴파일이 실제로 일어났는지 확인하세요." >&2
+            exit 1
+          fi
           echo "CARTOGRAPH=$(swift build --show-bin-path)/cartograph" >> "$GITHUB_ENV"
 
       # CLI 껍데기와 인덱스 스토어 입출력은 단위 테스트로 덮기 어렵다.

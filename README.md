@@ -78,7 +78,14 @@ cartograph graph --index-store DerivedData/Index.noindex/DataStore
 Omit `--index-store` and Cartograph looks in the usual places — `.build/index/store`,
 `.build/debug/index/store`, `.build/out`, and `~/Library/Developer/Xcode/DerivedData/<project>-*`.
 When several exist it takes the most recently written one, because analyzing a stale index fails
-quietly rather than loudly.
+quietly rather than loudly. Recent SwiftPM writes an index automatically, so for a Swift package
+`cartograph graph` alone usually works.
+
+> **An index is only written when something compiles.** Running
+> `swift build -Xswiftc -index-store-path -Xswiftc .index-store` on an already up-to-date build
+> does nothing and leaves the directory missing. In CI that is fine — a fresh checkout always
+> compiles. Locally, build into a directory you have not used before, or just let auto-detection
+> find the store your normal build already produced.
 
 Then:
 

@@ -76,7 +76,14 @@ cartograph graph --index-store DerivedData/Index.noindex/DataStore
 `--index-store` 를 생략하면 흔한 위치를 모두 찾습니다. `.build/index/store`,
 `.build/debug/index/store`, `.build/out`, `~/Library/Developer/Xcode/DerivedData/<project>-*`.
 여러 개가 있으면 가장 최근에 갱신된 것을 씁니다. 오래된 인덱스로 분석하면 결과가 조용히
-틀리기 때문입니다.
+틀리기 때문입니다. 최근 SwiftPM 은 인덱스를 자동으로 남기므로, Swift 패키지라면
+`cartograph graph` 만으로도 대개 동작합니다.
+
+> **인덱스는 무언가 컴파일될 때만 만들어집니다.** 이미 최신인 빌드에서
+> `swift build -Xswiftc -index-store-path -Xswiftc .index-store` 를 돌리면 아무 일도 일어나지 않고
+> 그 디렉터리는 생기지 않습니다. CI 에서는 새 체크아웃이라 항상 컴파일되므로 문제가 없습니다.
+> 로컬에서는 써 본 적 없는 경로로 빌드하거나, 평소 빌드가 이미 남긴 스토어를 자동 탐색에
+> 맡기세요.
 
 ```bash
 cartograph init          # 주석 달린 .cartograph.yml 생성
