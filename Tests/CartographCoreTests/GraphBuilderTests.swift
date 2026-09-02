@@ -174,3 +174,37 @@ struct ExtensionRollupEdgeCaseTests {
         #expect(result.nodeIDByUSR["M"] == NodeID("T"))
     }
 }
+
+@Suite("롤업과 경로 필터")
+struct RollupFilterTests {
+    @Test("제외된 소유 타입으로 접지 않는다")
+    func excludedOwnerIsNotPulledIn() {
+        // 익스텐션 멤버가 제외된 파일의 타입을 소유자로 끌어오면 exclude 가
+        // 조용히 무력화된다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Foo", kind: .structType, path: "/p/Generated/Foo.swift")
+        builder.symbol("ext", name: "Foo", kind: .extensionDeclaration, path: "/p/Sources/FooExt.swift")
+        builder.symbol("ext.bar", name: "bar()", kind: .method, path: "/p/Sources/FooExt.swift", parent: "ext")
+        builder.reference(from: "ext", to: "Foo", kind: .extends)
+
+        let graph = GraphBuilder(options: .init(
+            level: .type,
+            pathFilter: PathFilter(exclude: ["**/Generated/**"])
+        )).build(from: builder.build())
+
+        #expect(graph.node("Foo") == nil)
+        #expect(graph.node("ext.bar") != nil)
+    }
+
+    @Test("포함된 소유 타입으로는 정상적으로 접는다")
+    func includedOwnerStillRollsUp() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Foo", kind: .structType, path: "/p/Sources/Foo.swift")
+        builder.symbol("ext", name: "Foo", kind: .extensionDeclaration, path: "/p/Sources/FooExt.swift")
+        builder.symbol("ext.bar", name: "bar()", kind: .method, path: "/p/Sources/FooExt.swift", parent: "ext")
+        builder.reference(from: "ext", to: "Foo", kind: .extends)
+
+        let graph = GraphBuilder(options: .init(level: .type)).build(from: builder.build())
+        #expect(graph.nodeIDs == [NodeID("Foo")])
+    }
+}

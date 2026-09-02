@@ -142,3 +142,31 @@ struct PathFilterRelativeMatchingTests {
         #expect(PathFilter(include: ["Sources/**"], basePath: "/p").allows("/p/Sources/A.swift"))
     }
 }
+
+@Suite("경로 정규화")
+struct PathNormalizationTests {
+    @Test("심볼릭 링크로 지정한 기준 경로도 매칭된다")
+    func symlinkedBasePathMatches() {
+        // macOS 의 /tmp 는 /private/tmp 로의 심볼릭 링크다. 기준 경로 하나만 보면
+        // 접두사가 맞지 않아 include 가 아무것도 고르지 않고 "정점 0개"가 된다.
+        let filter = PathFilter(include: ["Sources/**"], basePath: "/tmp")
+        #expect(filter.allows("/private/tmp/Sources/A.swift"))
+        #expect(filter.allows("/tmp/Sources/A.swift"))
+        #expect(!filter.allows("/private/tmp/Tests/A.swift"))
+    }
+
+    @Test("물결표 기준 경로도 풀어서 본다")
+    func tildeBasePathIsExpanded() {
+        let home = NSHomeDirectory()
+        let filter = PathFilter(include: ["Sources/**"], basePath: "~")
+        #expect(filter.allows("\(home)/Sources/A.swift"))
+    }
+
+    @Test("빈 패턴은 크래시하지 않고 아무것도 고르지 않는다")
+    func emptyPatternIsSafe() {
+        // 빈 패턴은 실질적으로 아무것도 고르지 않는다. 크래시하지 않는 것이 요점이다.
+        #expect(!GlobPattern("").matches("Sources/A.swift"))
+        #expect(!GlobPattern("").matches("A.swift"))
+        #expect(PathFilter(include: [""]).allows("Sources/A.swift") == false)
+    }
+}

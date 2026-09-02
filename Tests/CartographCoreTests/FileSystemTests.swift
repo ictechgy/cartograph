@@ -82,3 +82,28 @@ struct FileSystemTests {
         #expect(!fileSystem.currentDirectoryPath.isEmpty)
     }
 }
+
+@Suite("심볼릭 링크 순환")
+struct SymlinkTraversalTests {
+    @Test("상위를 가리키는 심볼릭 링크에서 같은 파일을 반복해서 담지 않는다", .timeLimit(.minutes(1)))
+    func parentSymlinkDoesNotDuplicateFiles() throws {
+        // 파일 하나짜리 트리가 서른 개 경로로 부풀어 오르는 것을 실제로 확인했다.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cartograph-symlink-\(UUID().uuidString)")
+        let nested = root.appendingPathComponent("sub")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try Data("// x".utf8).write(to: nested.appendingPathComponent("A.swift"))
+        try FileManager.default.createSymbolicLink(
+            at: nested.appendingPathComponent("up"),
+            withDestinationURL: root
+        )
+
+        let files = LocalFileSystem().recursiveFiles(
+            under: root.path,
+            isIncluded: { $0.hasSuffix(".swift") }
+        )
+        #expect(files.count == 1)
+    }
+}

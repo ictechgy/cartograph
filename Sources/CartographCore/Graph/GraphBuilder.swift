@@ -152,7 +152,12 @@ public struct GraphBuilder: Sendable {
                 symbolsByUSR: symbolsByUSR,
                 extensionTargets: extensionTargets
             )
-            let owner = symbolsByUSR[ownerUSR] ?? symbol
+            // 소유 타입이 분석 범위 밖이면 그것으로 접지 않는다. 그러지 않으면
+            // 명시적으로 제외한 파일의 선언이 익스텐션 멤버를 통해 그래프로 끌려 들어와
+            // exclude 가 조용히 무력화된다.
+            guard let owner = symbolsByUSR[ownerUSR], isIncluded(owner) else {
+                return Self.node(for: symbol)
+            }
             return Self.node(for: owner)
         case .symbol:
             return Self.node(for: symbol)

@@ -52,8 +52,15 @@ extension FileSystem {
         }
         var result: [String] = []
         var pending = [root]
+        // 심볼릭 링크가 상위 디렉터리를 가리키면 같은 트리를 끝없이 다시 걷는다.
+        // 파일 하나짜리 트리가 서른 개 경로로 부풀어 오르는 것을 실제로 확인했다.
+        // 실제 경로 기준으로 방문 여부를 기록해 한 번씩만 본다.
+        var visited: Set<String> = []
+
         while let directory = pending.popLast() {
-            guard let entries = try? contentsOfDirectory(at: directory) else { continue }
+            guard visited.insert(Self.canonicalPath(directory)).inserted,
+                  let entries = try? contentsOfDirectory(at: directory)
+            else { continue }
             for entry in entries {
                 if directoryExists(at: entry) {
                     if shouldDescend(entry) { pending.append(entry) }
@@ -63,6 +70,13 @@ extension FileSystem {
             }
         }
         return result.sorted()
+    }
+}
+
+extension FileSystem {
+    /// 심볼릭 링크를 푼 경로. 방문 여부 판정에만 쓴다.
+    static func canonicalPath(_ path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
     }
 }
 
