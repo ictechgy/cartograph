@@ -220,3 +220,36 @@ struct CommentCommandTests {
         #expect(CommentCommand.parse(comment: "// 그냥 주석") == nil)
     }
 }
+
+@Suite("런타임 관리 속성과 외부 테스트 기반 클래스")
+struct RuntimeAttributeSyntaxTests {
+    @Test("런타임이 저장소를 관리하는 속성을 알아본다")
+    func recognizesRuntimeManagedAttributes() {
+        let facts = SwiftSyntaxAnalyzer().analyze(
+            source: """
+                @Observable final class Store { var items: [Int] = [] }
+                @Model final class Item { var title = "" }
+                final class Person: NSManagedObject {
+                    @NSManaged var name: String
+                }
+                """,
+            path: "/p/A.swift"
+        )
+        #expect(facts.declaration(named: "Store")?.attributes.contains(.runtimeManaged) == true)
+        #expect(facts.declaration(named: "Item")?.attributes.contains(.runtimeManaged) == true)
+        #expect(facts.declaration(named: "name")?.attributes.contains(.runtimeManaged) == true)
+        #expect(facts.declaration(named: "Person")?.attributes.contains(.runtimeManaged) == false)
+    }
+
+    @Test("설정한 외부 테스트 기반 클래스도 테스트로 본다")
+    func recognizesExternalTestCaseClasses() {
+        // 팀 공통 상위 클래스가 다른 모듈에 있으면 상속 관계를 인덱스에서 따라갈 수 없다.
+        let source = "final class MySpec: BaseTestCase { func testThing() {} }"
+        let withoutConfiguration = SwiftSyntaxAnalyzer().analyze(source: source, path: "/p/A.swift")
+        #expect(withoutConfiguration.declaration(named: "MySpec")?.attributes.contains(.unitTest) == false)
+
+        let configured = SwiftSyntaxAnalyzer(externalTestCaseClasses: ["BaseTestCase"])
+            .analyze(source: source, path: "/p/A.swift")
+        #expect(configured.declaration(named: "MySpec")?.attributes.contains(.unitTest) == true)
+    }
+}

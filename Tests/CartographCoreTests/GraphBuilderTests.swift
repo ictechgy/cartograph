@@ -155,3 +155,22 @@ struct GraphBuildResultTests {
         #expect(result.graph.nodeCount == 1)
     }
 }
+
+@Suite("익스텐션 롤업의 경계")
+struct ExtensionRollupEdgeCaseTests {
+    @Test("익스텐션이 서로를 확장하는 비정상 인덱스에서도 소유 타입을 찾는다")
+    func mutuallyExtendingExtensionsStillResolveToOwner() {
+        // 정상 Swift 인덱스에서는 일어나지 않지만, 손상된 인덱스에서 이 가드가
+        // 없으면 멤버가 소유 타입 대신 익스텐션 정점에 남는다.
+        var builder = SnapshotBuilder()
+        builder.symbol("T", kind: .structType)
+        builder.symbol("E1", name: "T", kind: .extensionDeclaration, parent: "T")
+        builder.symbol("E2", name: "T", kind: .extensionDeclaration, parent: "T")
+        builder.symbol("M", name: "m()", kind: .method, parent: "E1")
+        builder.reference(from: "E1", to: "E2", kind: .extends)
+        builder.reference(from: "E2", to: "E1", kind: .extends)
+
+        let result = GraphBuilder(options: .init(level: .type)).buildResult(from: builder.build())
+        #expect(result.nodeIDByUSR["M"] == NodeID("T"))
+    }
+}

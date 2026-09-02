@@ -32,7 +32,8 @@ public struct CartographService: Sendable {
     /// 인덱스를 읽고 구문 정보로 보강한 스냅샷.
     public func loadSnapshot() throws -> IndexSnapshot {
         let raw = try makeIndexProvider().loadSnapshot()
-        return SnapshotEnricher(fileSystem: environment.fileSystem).enrich(raw)
+        return SnapshotEnricher(fileSystem: environment.fileSystem, retention: configuration.retention)
+            .enrich(raw)
     }
 
     /// 인덱스를 한 번만 읽어 만든 분석 문맥.

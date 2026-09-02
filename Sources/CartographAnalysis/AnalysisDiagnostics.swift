@@ -97,7 +97,8 @@ public enum AnalysisDiagnostics {
         thresholds: Thresholds
     ) -> [Diagnostic] {
         var diagnostics: [Diagnostic] = []
-        for entry in metrics {
+        // 고립 정점은 결합도 지표가 정의되지 않으므로 임계값 판정에서 제외한다.
+        for entry in metrics where !entry.isIsolated {
             if let limit = thresholds.maxInstability, entry.instability > limit {
                 diagnostics.append(
                     Diagnostic(

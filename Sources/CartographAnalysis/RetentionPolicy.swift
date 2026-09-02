@@ -79,6 +79,7 @@ public struct RetentionPolicy: Sendable {
             return .interfaceBuilder
         }
         if isDynamicallyDispatched(node) { return .dynamicDispatch }
+        if node.attributes.contains(.runtimeManaged) { return .runtimeManaged }
 
         if let reason = parentDrivenReason(for: node, in: graph) { return reason }
         if let reason = externalRelationReason(for: node, symbolsWithExternalBase: symbolsWithExternalBase) {
@@ -130,15 +131,21 @@ public struct RetentionPolicy: Sendable {
                 return .rawRepresentableEnumCase
             }
         }
-        if parent.attributes.contains(.propertyWrapper),
-           Self.propertyWrapperMembers.contains(node.baseName) {
-            return .propertyWrapperRequirement
+        if parent.attributes.contains(.propertyWrapper) {
+            // 래퍼를 붙이는 자리에서 컴파일러가 부르는 init(wrappedValue:)는
+            // 인덱스에 호출로 남지 않는다.
+            if Self.propertyWrapperMembers.contains(node.baseName) || node.kind == .initializer {
+                return .propertyWrapperRequirement
+            }
         }
         if parent.attributes.contains(.resultBuilder), node.baseName.hasPrefix("build") {
             return .resultBuilderRequirement
         }
         if options.retainCodableProperties, parent.attributes.contains(.codable), node.kind == .property {
             return .codableProperty
+        }
+        if parent.attributes.contains(.runtimeManaged), node.kind == .property {
+            return .runtimeManaged
         }
         return nil
     }

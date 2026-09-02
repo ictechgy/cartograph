@@ -24,6 +24,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     case codingKey
     /// Codable 타입의 저장 프로퍼티. 합성된 인코딩/디코딩이 참조를 남기지 않는다.
     case codableProperty
+    /// 저장소를 런타임이 관리하는 선언(Core Data, SwiftData, Observation).
+    case runtimeManaged
     /// `@propertyWrapper` 가 요구하는 멤버.
     case propertyWrapperRequirement
     /// `@resultBuilder` 가 요구하는 멤버.
@@ -54,6 +56,7 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         case .rawRepresentableEnumCase: "a case of a raw-representable enum, constructible via init(rawValue:)"
         case .codingKey: "a CodingKey case used by synthesized Codable conformance"
         case .codableProperty: "a stored property of a Codable type, read by synthesized coding"
+        case .runtimeManaged: "stored and read by a runtime (Core Data, SwiftData or Observation)"
         case .propertyWrapperRequirement: "required by the @propertyWrapper contract"
         case .resultBuilderRequirement: "required by the @resultBuilder contract"
         case .externalOverride: "overrides a declaration outside the analyzed code"

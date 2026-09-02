@@ -27,6 +27,11 @@ public enum MetricsZone: String, Sendable, Codable, CaseIterable {
     case zoneOfPain = "zone-of-pain"
     /// 추상적인데 아무도 의존하지 않는다. 대개 죽은 추상화다.
     case zoneOfUselessness = "zone-of-uselessness"
+    /// 들어오는 의존도 나가는 의존도 없다. 결합도 지표가 정의되지 않는다.
+    ///
+    /// 별도 영역으로 두지 않으면 고립 정점이 D=1 로 계산되어 "고통의 영역" 1위를
+    /// 차지한다. 실제로는 아무와도 얽혀 있지 않은 정점이라 정반대 상황이다.
+    case isolated
 }
 
 /// Robert C. Martin 의 패키지 지표.
@@ -64,8 +69,14 @@ public struct NodeMetrics: Sendable, Equatable, Codable {
         abs(abstractness + instability - 1)
     }
 
+    /// 들어오는 의존도 나가는 의존도 없는 정점인지 여부.
+    public var isIsolated: Bool {
+        afferentCoupling == 0 && efferentCoupling == 0
+    }
+
     /// 주어진 허용 오차 기준으로 어느 영역에 있는지 판단한다.
     public func zone(tolerance: Double) -> MetricsZone {
+        if isIsolated { return .isolated }
         guard distanceFromMainSequence > tolerance else { return .mainSequence }
         return abstractness + instability < 1 ? .zoneOfPain : .zoneOfUselessness
     }
@@ -106,9 +117,13 @@ public struct ArchitectureMetricsCalculator: Sendable {
                 )
             }
             .sorted { lhs, rhs in
-                lhs.distanceFromMainSequence != rhs.distanceFromMainSequence
-                    ? lhs.distanceFromMainSequence > rhs.distanceFromMainSequence
-                    : lhs.node < rhs.node
+                // 고립 정점은 결합도 이야기가 없으므로 순위 맨 아래로 보낸다.
+                // 그러지 않으면 D=1 이 되어 정작 봐야 할 정점을 가린다.
+                if lhs.isIsolated != rhs.isIsolated { return rhs.isIsolated }
+                if lhs.distanceFromMainSequence != rhs.distanceFromMainSequence {
+                    return lhs.distanceFromMainSequence > rhs.distanceFromMainSequence
+                }
+                return lhs.node < rhs.node
             }
     }
 

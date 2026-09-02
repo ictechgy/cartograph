@@ -257,3 +257,48 @@ struct RetentionPathMatchingTests {
         #expect(withBase["Helper"] == .userConfigured)
     }
 }
+
+@Suite("런타임이 관리하는 저장소")
+struct RuntimeManagedRetentionTests {
+    private func reasons(_ snapshot: IndexSnapshot) -> [NodeID: RetentionReason] {
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        return RetentionPolicy().retainedNodes(in: graph, snapshot: snapshot)
+    }
+
+    @Test("@NSManaged 프로퍼티를 보존한다")
+    func nsManagedPropertyIsRetained() {
+        // 값을 읽고 쓰는 주체가 컴파일된 코드가 아니라 Core Data 런타임이라
+        // 인덱스에 참조가 남지 않는다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Person", kind: .classType)
+        builder.symbol(
+            "Person.name", name: "name", kind: .property,
+            parent: "Person", attributes: [.runtimeManaged]
+        )
+        #expect(reasons(builder.build())["Person.name"] == .runtimeManaged)
+    }
+
+    @Test("@Observable / @Model 타입의 저장 프로퍼티를 보존한다")
+    func observableStoredPropertiesAreRetained() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Store", kind: .classType, attributes: [.runtimeManaged])
+        builder.symbol("Store.items", name: "items", kind: .property, parent: "Store")
+        builder.symbol("Store.reload", name: "reload()", kind: .method, parent: "Store")
+
+        let retained = reasons(builder.build())
+        #expect(retained["Store.items"] == .runtimeManaged)
+        // 메서드는 여전히 참조가 있어야 살아남는다.
+        #expect(retained["Store.reload"] == nil)
+    }
+
+    @Test("프로퍼티 래퍼의 init(wrappedValue:)를 보존한다")
+    func propertyWrapperInitializerIsRetained() {
+        // 래퍼를 붙이는 자리에서 컴파일러가 부르는 초기화는 인덱스에 호출로 남지 않는다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Clamped", kind: .structType, attributes: [.propertyWrapper])
+        builder.symbol(
+            "Clamped.init", name: "init(wrappedValue:)", kind: .initializer, parent: "Clamped"
+        )
+        #expect(reasons(builder.build())["Clamped.init"] == .propertyWrapperRequirement)
+    }
+}

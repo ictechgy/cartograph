@@ -13,6 +13,14 @@ public struct SnapshotEnricher: Sendable {
         self.analyzer = analyzer
     }
 
+    /// 보존 설정에서 필요한 정보만 받아 분석기를 구성한다.
+    public init(fileSystem: any FileSystem = LocalFileSystem(), retention: RetentionOptions) {
+        self.init(
+            fileSystem: fileSystem,
+            analyzer: SwiftSyntaxAnalyzer(externalTestCaseClasses: retention.externalTestCaseClasses)
+        )
+    }
+
     /// 스냅샷에 등장하는 소스 파일을 읽어 구문 정보를 붙인다.
     ///
     /// 읽지 못한 파일은 조용히 건너뛴다. 인덱스에는 남아 있지만 이미 삭제된

@@ -46,6 +46,11 @@ public enum SymbolAttribute: String, Codable, Sendable, CaseIterable {
     case rawRepresentable
     /// `CodingKey` 를 준수하는 중첩 열거형.
     case codingKey
+    /// 저장소를 런타임이 관리하는 선언.
+    ///
+    /// `@NSManaged`(Core Data), `@Model`(SwiftData), `@Observable`(Observation)이 여기 속한다.
+    /// 값을 읽고 쓰는 주체가 컴파일된 코드가 아니라 런타임이라 인덱스에 참조가 남지 않는다.
+    case runtimeManaged
     /// Codable/Encodable/Decodable 을 준수하는 타입.
     ///
     /// 합성된 `init(from:)`/`encode(to:)` 는 저장 프로퍼티 참조를 인덱스에 남기지

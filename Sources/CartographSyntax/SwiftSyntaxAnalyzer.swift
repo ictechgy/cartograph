@@ -9,12 +9,23 @@ import SwiftSyntax
 /// Periphery 가 인덱스와 SwiftSyntax 를 함께 쓴 것과 같은 이유다.
 /// 이 타입은 파일 내용만 입력으로 받으므로 문자열 리터럴로 완전히 테스트된다.
 public struct SwiftSyntaxAnalyzer: Sendable {
-    public init() {}
+    /// XCTestCase 외에 테스트 기반 클래스로 볼 이름들.
+    ///
+    /// 팀마다 `BaseTestCase` 같은 공통 상위 클래스를 두고, 그것이 다른 모듈에 있어
+    /// 상속 관계를 인덱스에서 따라갈 수 없는 경우가 흔하다.
+    private let externalTestCaseClasses: Set<String>
+
+    public init(externalTestCaseClasses: [String] = []) {
+        self.externalTestCaseClasses = Set(externalTestCaseClasses)
+    }
 
     public func analyze(source: String, path: String) -> SourceFileFacts {
         let tree = Parser.parse(source: source)
         let converter = SourceLocationConverter(fileName: path, tree: tree)
-        let collector = DeclarationCollector(converter: converter)
+        let collector = DeclarationCollector(
+            converter: converter,
+            testCaseBaseClasses: externalTestCaseClasses.union(["XCTestCase"])
+        )
         collector.walk(tree)
         return SourceFileFacts(
             path: path,
@@ -62,9 +73,11 @@ final class DeclarationCollector: SyntaxVisitor {
         Context(accessibility: .internalLevel, inheritsObjectiveCExposure: false, isIgnored: false)
     ]
     private let converter: SourceLocationConverter
+    private let testCaseBaseClasses: Set<String>
 
-    init(converter: SourceLocationConverter) {
+    init(converter: SourceLocationConverter, testCaseBaseClasses: Set<String>) {
         self.converter = converter
+        self.testCaseBaseClasses = testCaseBaseClasses
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -76,7 +89,7 @@ final class DeclarationCollector: SyntaxVisitor {
         var attributes = commonAttributes(node)
         attributes.formUnion(Self.inheritanceAttributes(node.inheritanceClause, isEnum: false))
         if node.genericParameterClause != nil { attributes.insert(.generic) }
-        if Self.isXCTestCase(node.inheritanceClause) { attributes.insert(.unitTest) }
+        if isTestCase(node.inheritanceClause) { attributes.insert(.unitTest) }
         return push(name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers)
     }
     override func visitPost(_ node: ClassDeclSyntax) { pop() }
@@ -266,6 +279,9 @@ final class DeclarationCollector: SyntaxVisitor {
             case "_dynamicReplacement": result.insert(.dynamicReplacement)
             case "Test": result.insert(.testFunction)
             case "Suite": result.insert(.testSuite)
+            // 저장소를 런타임이 관리하므로 컴파일된 코드에 참조가 남지 않는다.
+            case "NSManaged", "Observable", "Model", "ObservationTracked":
+                result.insert(.runtimeManaged)
             default: break
             }
         }
@@ -290,8 +306,9 @@ final class DeclarationCollector: SyntaxVisitor {
         return result
     }
 
-    private static func isXCTestCase(_ clause: InheritanceClauseSyntax?) -> Bool {
-        clause?.inheritedTypes.contains { $0.type.trimmedDescription == "XCTestCase" } ?? false
+    /// 테스트 기반 클래스를 상속하는지 확인한다.
+    private func isTestCase(_ clause: InheritanceClauseSyntax?) -> Bool {
+        clause?.inheritedTypes.contains { testCaseBaseClasses.contains($0.type.trimmedDescription) } ?? false
     }
 
     static let codableProtocols: Set<String> = ["Codable", "Encodable", "Decodable"]

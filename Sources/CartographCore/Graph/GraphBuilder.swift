@@ -203,7 +203,12 @@ public struct GraphBuilder: Sendable {
         var visited: Set<String> = []
 
         while let symbol = symbolsByUSR[current], visited.insert(current).inserted {
-            if symbol.kind == .extensionDeclaration, let extended = extensionTargets[current] {
+            // 익스텐션은 확장 대상으로 건너뛴다. 다만 이미 지나온 정점으로 돌아가는
+            // 비정상 인덱스에서는 건너뛰기를 포기하고 부모를 따라간다. 그대로 두면
+            // 멤버가 소유 타입 대신 익스텐션 정점에 남는다.
+            if symbol.kind == .extensionDeclaration,
+               let extended = extensionTargets[current],
+               !visited.contains(extended) {
                 current = extended
                 continue
             }

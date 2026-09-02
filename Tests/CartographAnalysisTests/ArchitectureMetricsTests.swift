@@ -133,3 +133,54 @@ struct ArchitectureMetricsTests {
         #expect(ArchitectureMetricsCalculator().tolerance == 0.3)
     }
 }
+
+@Suite("고립 정점 지표")
+struct IsolatedNodeMetricsTests {
+    private func isolatedConcrete() -> NodeMetrics {
+        NodeMetrics(
+            node: "Alone", name: "Alone", afferentCoupling: 0, efferentCoupling: 0,
+            composition: TypeComposition(total: 3, abstract: 0)
+        )
+    }
+
+    @Test("고립 정점은 별도 영역으로 분류한다")
+    func isolatedNodesGetTheirOwnZone() {
+        // 고립 + 구체는 I=0, A=0 이라 D=1 이 되어 "고통의 영역" 1위를 차지한다.
+        // 실제로는 아무와도 얽혀 있지 않아 정반대 상황이다.
+        let metrics = isolatedConcrete()
+        #expect(metrics.isIsolated)
+        #expect(metrics.distanceFromMainSequence == 1)
+        #expect(metrics.zone(tolerance: 0.3) == .isolated)
+    }
+
+    @Test("고립 정점은 순위 맨 아래로 간다")
+    func isolatedNodesRankLast() {
+        let graph = CodeGraph(
+            level: .module,
+            nodes: [
+                GraphNode(id: "Alone", name: "Alone", kind: .module),
+                GraphNode(id: "A", name: "A", kind: .module),
+                GraphNode(id: "B", name: "B", kind: .module),
+            ],
+            edges: [GraphEdge(source: "A", target: "B", kind: .call)]
+        )
+        let metrics = ArchitectureMetricsCalculator().calculate(
+            graph: graph,
+            compositions: [
+                NodeID("Alone"): TypeComposition(total: 3, abstract: 0),
+                NodeID("A"): TypeComposition(total: 1, abstract: 0),
+                NodeID("B"): TypeComposition(total: 1, abstract: 0),
+            ]
+        )
+        #expect(metrics.last?.node == NodeID("Alone"))
+    }
+
+    @Test("고립 정점은 임계값 판정에서 제외된다")
+    func isolatedNodesAreExemptFromThresholds() {
+        let diagnostics = AnalysisDiagnostics.diagnostics(
+            for: [isolatedConcrete()],
+            thresholds: Thresholds(maxInstability: 0.0, maxDistanceFromMainSequence: 0.1)
+        )
+        #expect(diagnostics.isEmpty)
+    }
+}
