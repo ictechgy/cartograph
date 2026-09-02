@@ -1,0 +1,52 @@
+# ─── SwiftPM ────────────────────────────────────────────────────────────────
+.build/
+.swiftpm/
+Package.resolved.backup
+*.o
+*.a
+*.dylib
+
+# ─── Xcode ──────────────────────────────────────────────────────────────────
+*.xcodeproj/
+*.xcworkspace/
+!*.xcodeproj/project.pbxproj
+xcuserdata/
+DerivedData/
+*.xcuserstate
+*.xcscmblueprint
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# ─── 인덱스 스토어 / 분석 산출물 ─────────────────────────────────────────────
+# Cartograph 가 생성하는 인덱스와 리포트는 소스가 아니므로 추적하지 않는다.
+.index-store/
+IndexStore/
+*.dot
+*.svg
+cartograph-report.*
+coverage/
+*.profdata
+*.profraw
+*.lcov
+
+# ─── 도구 / 에디터 ──────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*~
+
+# ─── macOS ──────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# ─── 에이전트 작업 산출물 ────────────────────────────────────────────────────
+# oh-my-claudecode 등 에이전트 런타임 상태는 저장소에 포함하지 않는다.
+.omc/
+!.omc/skills/
+.claude/settings.local.json
