@@ -244,6 +244,7 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | `public` / `open` when `retain_public` | public API |
 | `@objc`, `@objcMembers` (cascading to members), Clang `c:` USRs | Objective-C runtime |
 | `@IBOutlet`, `@IBAction`, `@IBInspectable`, `@IBSegueAction` | Interface Builder |
+| Types named by `customClass` in a `.xib` or `.storyboard` | only Interface Builder references them |
 | Cases of raw-value enums | `init(rawValue:)` is dynamic |
 | `CodingKeys` cases | synthesized `Codable` |
 | `wrappedValue`, `projectedValue` on `@propertyWrapper` types | wrapper contract |
@@ -260,8 +261,24 @@ UIKit projects its largest source of false positives. A dead-code tool nobody tr
 no tool, so Cartograph errs toward keeping code.
 
 Protocol requirements are handled by walking override relations in reverse: if a requirement is
-called, every implementation of it is reachable. Without that one rule, every type behind a
-protocol looks dead — which is exactly what happened the first time this tool analyzed itself.
+called, every implementation of it is reachable — but only once the implementing type itself is
+reachable, so a type that is never constructed does not resurrect everything it calls. Without the
+first half of that rule, every type behind a protocol looks dead; without the second half, dead code
+hides behind unused conformances. Both halves were found by running the tool on itself and by
+adversarial review.
+
+### Known limitations
+
+- **`#Preview` macro bodies.** Types used only inside a `#Preview` block are kept only when the
+  compiler recorded the reference during macro expansion. `PreviewProvider` conformances are
+  detected directly; `#Preview` is not.
+- **Interface Builder connections are not matched individually.** Every `@IBOutlet` and `@IBAction`
+  is kept when `retain_interface_builder` is on, whether or not a xib actually connects it, so
+  disconnected outlets are not reported. Custom classes *are* matched by name.
+- **Objective-C sources are not analyzed.** `.m` and `.h` files are invisible; Swift declarations
+  they reach are covered by `retain_objc_accessible`, which is on by default.
+- **`#if` branches that did not compile do not exist.** The index store only knows the
+  configuration you built.
 
 ## CI
 

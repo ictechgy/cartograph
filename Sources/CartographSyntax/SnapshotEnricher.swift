@@ -25,13 +25,47 @@ public struct SnapshotEnricher: Sendable {
     ///
     /// 읽지 못한 파일은 조용히 건너뛴다. 인덱스에는 남아 있지만 이미 삭제된
     /// 파일이 있을 수 있고, 그것 때문에 전체 분석이 실패해서는 안 된다.
-    public func enrich(_ snapshot: IndexSnapshot) -> IndexSnapshot {
+    ///
+    /// - Parameter interfaceBuilderRoots: xib/storyboard 를 찾을 디렉터리들.
+    ///   비우면 Interface Builder 참조를 수집하지 않는다.
+    public func enrich(
+        _ snapshot: IndexSnapshot,
+        interfaceBuilderRoots: [String] = [],
+        pathFilter: PathFilter = .passthrough
+    ) -> IndexSnapshot {
         var facts: [String: SourceFileFacts] = [:]
         for path in snapshot.filePaths where path.hasSuffix(".swift") {
             guard let source = try? fileSystem.readText(at: path) else { continue }
             facts[path] = analyzer.analyze(source: source, path: path)
         }
-        return Self.enrich(snapshot, with: facts)
+
+        let enriched = Self.enrich(snapshot, with: facts)
+        guard !interfaceBuilderRoots.isEmpty else { return enriched }
+
+        let references = InterfaceBuilderScanner(fileSystem: fileSystem)
+            .scan(roots: interfaceBuilderRoots, pathFilter: pathFilter)
+        return Self.marking(enriched, interfaceBuilderReferences: references)
+    }
+
+    /// Interface Builder 문서가 이름으로 지목한 타입에 표식을 붙인다.
+    ///
+    /// 스토리보드에서만 쓰이는 화면은 Swift 코드 어디에도 참조가 없다.
+    /// 이 표식이 없으면 앱의 화면 상당수가 미사용으로 보고된다.
+    public static func marking(
+        _ snapshot: IndexSnapshot,
+        interfaceBuilderReferences references: InterfaceBuilderReferences
+    ) -> IndexSnapshot {
+        guard !references.customClassNames.isEmpty else { return snapshot }
+        var result = snapshot
+        result.symbols = snapshot.symbols.map { symbol in
+            guard symbol.kind.isTypeDeclaration,
+                  references.customClassNames.contains(symbol.name)
+            else { return symbol }
+            var updated = symbol
+            updated.attributes.insert(.interfaceBuilderAnnotated)
+            return updated
+        }
+        return result
     }
 
     /// 이미 분석된 구문 정보로 스냅샷을 보강한다.

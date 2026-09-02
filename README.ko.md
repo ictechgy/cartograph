@@ -202,6 +202,7 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 | `retain_public` 일 때 `public`/`open` | 공개 API |
 | `@objc`, `@objcMembers`(멤버로 전파), Clang `c:` USR | Objective-C 런타임 |
 | `@IBOutlet`, `@IBAction`, `@IBInspectable`, `@IBSegueAction` | Interface Builder |
+| `.xib`/`.storyboard` 의 `customClass` 로 지정된 타입 | Interface Builder 만 참조 |
 | 원시값 열거형의 케이스 | `init(rawValue:)` 가 동적 |
 | `CodingKeys` 케이스 | 합성된 `Codable` |
 | `@propertyWrapper` 의 `wrappedValue`, `projectedValue` | 래퍼 규약 |
@@ -218,8 +219,21 @@ UIKit 프로젝트에서 거짓 양성의 가장 큰 원인이었습니다. 아�
 없는 것보다 나쁩니다.
 
 프로토콜 요구사항은 오버라이드 관계를 역방향으로 따라가 처리합니다. 요구사항이 호출되면 그
-구현체 전부가 도달 가능해집니다. 이 규칙 하나가 없으면 프로토콜 뒤의 모든 타입이 죽은 것처럼
-보입니다. 실제로 이 도구가 자기 자신을 처음 분석했을 때 그렇게 나왔습니다.
+구현체가 도달 가능해지되, 구현체를 소유한 타입이 살아 있을 때만 그렇습니다. 한 번도 만들어지지
+않는 타입의 구현이 호출하는 것까지 되살리면 데드코드가 조용히 숨습니다. 앞쪽 절반이 없으면
+프로토콜 뒤의 모든 타입이 죽은 것처럼 보이고, 뒤쪽 절반이 없으면 죽은 코드가 안 쓰이는 준수
+뒤에 숨습니다. 둘 다 자기 분석과 외부 리뷰에서 드러났습니다.
+
+### 알려진 한계
+
+- **`#Preview` 매크로 본문.** `#Preview` 안에서만 쓰이는 타입은 매크로 확장 시 컴파일러가
+  참조를 남긴 경우에만 보존됩니다. `PreviewProvider` 준수는 직접 인식하지만 `#Preview` 는 아닙니다.
+- **Interface Builder 연결을 개별로 대조하지 않습니다.** `retain_interface_builder` 가 켜져 있으면
+  실제 연결 여부와 무관하게 모든 `@IBOutlet`·`@IBAction` 을 보존하므로, 연결이 끊긴 아웃렛은
+  보고되지 않습니다. 커스텀 클래스는 이름으로 대조합니다.
+- **Objective-C 소스는 분석하지 않습니다.** `.m`/`.h` 는 보이지 않으며, 그쪽에서 닿는 Swift
+  선언은 기본값이 켜진 `retain_objc_accessible` 이 덮습니다.
+- **컴파일되지 않은 `#if` 분기는 존재하지 않습니다.** 인덱스 스토어는 당신이 빌드한 구성만 압니다.
 
 ## CI
 

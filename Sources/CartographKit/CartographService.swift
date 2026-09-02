@@ -33,7 +33,11 @@ public struct CartographService: Sendable {
     public func loadSnapshot() throws -> IndexSnapshot {
         let raw = try makeIndexProvider().loadSnapshot()
         return SnapshotEnricher(fileSystem: environment.fileSystem, retention: configuration.retention)
-            .enrich(raw)
+            .enrich(
+                raw,
+                interfaceBuilderRoots: configuration.retention.retainInterfaceBuilder ? [projectPath] : [],
+                pathFilter: configuration.pathFilter
+            )
     }
 
     /// 인덱스를 한 번만 읽어 만든 분석 문맥.
