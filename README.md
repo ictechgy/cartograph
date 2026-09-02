@@ -302,8 +302,9 @@ CartographCore  ←  Config · Syntax · Analysis · Export · IndexStore  ←  
 | `CartographKit` | Pipeline assembly. Ships as a library so you can embed it. |
 | `CartographCLI` | Argument parsing and exit codes. |
 
-The domain and the algorithms do not know IndexStoreDB exists. That is what makes 94% line coverage
-possible without a single fixture Xcode project: analysis runs on hand-written snapshots.
+The domain and the algorithms do not know IndexStoreDB exists. That is what makes the enforced 90%
+line coverage gate reachable without a single fixture Xcode project: analysis runs on hand-written
+snapshots.
 
 `CartographKit` is a public library product — you can embed the pipeline instead of shelling out.
 

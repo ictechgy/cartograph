@@ -242,7 +242,8 @@ CartographCore  ←  Config · Syntax · Analysis · Export · IndexStore  ←  
 ```
 
 도메인과 알고리즘 계층은 IndexStoreDB 가 존재한다는 사실조차 모릅니다. 그래서 픽스처 Xcode
-프로젝트 하나 없이도 라인 커버리지 94% 가 가능합니다. 분석은 손으로 만든 스냅샷 위에서 돌아갑니다.
+프로젝트 하나 없이도 90% 커버리지 게이트를 지킬 수 있습니다. 분석은 손으로 만든 스냅샷 위에서
+돌아갑니다.
 
 `CartographKit` 은 공개 라이브러리 제품이라 CLI 를 호출하는 대신 파이프라인을 직접 임베드할 수 있습니다.
 
