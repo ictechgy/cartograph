@@ -6,6 +6,10 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
     public var indexStorePath: String?
     /// 분석 대상 프로젝트 루트. 비우면 현재 디렉터리.
     public var projectPath: String?
+    /// Xcode DerivedData 경로. 인덱스 스토어 자동 탐색에 쓴다.
+    ///
+    /// CI 는 대개 `-derivedDataPath` 로 위치를 옮기므로 설정으로 지정할 수 있어야 한다.
+    public var derivedDataPath: String?
     /// 기본 그래프 해상도.
     public var level: GraphLevel
     /// 분석에 포함할 소스 경로 글롭.
@@ -28,6 +32,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
     public init(
         indexStorePath: String? = nil,
         projectPath: String? = nil,
+        derivedDataPath: String? = nil,
         level: GraphLevel = .module,
         include: [GlobPattern] = [],
         exclude: [GlobPattern] = CartographConfiguration.defaultExcludes,
@@ -35,7 +40,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
         retention: RetentionOptions = .default,
         layers: [LayerDefinition] = [],
         rules: [LayerRule] = [],
-        thresholds: Thresholds = .none,
+        thresholds: Thresholds = .disabled,
         baselinePath: String? = nil,
         reportFormat: ReportFormat = .text,
         graphFormat: GraphFormat = .dot,
@@ -43,6 +48,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
     ) {
         self.indexStorePath = indexStorePath
         self.projectPath = projectPath
+        self.derivedDataPath = derivedDataPath
         self.level = level
         self.include = include
         self.exclude = exclude
@@ -97,6 +103,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case indexStorePath = "index_store_path"
         case projectPath = "project_path"
+        case derivedDataPath = "derived_data_path"
         case level
         case include
         case exclude
@@ -105,7 +112,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
         case layers
         case rules
         case thresholds
-        case baselinePath = "baseline"
+        case baselinePath = "baseline_path"
         case reportFormat = "report_format"
         case graphFormat = "graph_format"
         case strict
@@ -117,6 +124,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
         self.init(
             indexStorePath: try container.decodeIfPresent(String.self, forKey: .indexStorePath),
             projectPath: try container.decodeIfPresent(String.self, forKey: .projectPath),
+            derivedDataPath: try container.decodeIfPresent(String.self, forKey: .derivedDataPath),
             level: try container.decodeIfPresent(GraphLevel.self, forKey: .level) ?? fallback.level,
             include: try container.decodeIfPresent([GlobPattern].self, forKey: .include) ?? [],
             exclude: try container.decodeIfPresent([GlobPattern].self, forKey: .exclude) ?? fallback.exclude,
@@ -124,7 +132,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
             retention: try container.decodeIfPresent(RetentionOptions.self, forKey: .retention) ?? .default,
             layers: try container.decodeIfPresent([LayerDefinition].self, forKey: .layers) ?? [],
             rules: try container.decodeIfPresent([LayerRule].self, forKey: .rules) ?? [],
-            thresholds: try container.decodeIfPresent(Thresholds.self, forKey: .thresholds) ?? .none,
+            thresholds: try container.decodeIfPresent(Thresholds.self, forKey: .thresholds) ?? .disabled,
             baselinePath: try container.decodeIfPresent(String.self, forKey: .baselinePath),
             reportFormat: try container.decodeIfPresent(ReportFormat.self, forKey: .reportFormat)
                 ?? fallback.reportFormat,
@@ -138,6 +146,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(indexStorePath, forKey: .indexStorePath)
         try container.encodeIfPresent(projectPath, forKey: .projectPath)
+        try container.encodeIfPresent(derivedDataPath, forKey: .derivedDataPath)
         try container.encode(level, forKey: .level)
         try container.encode(include, forKey: .include)
         try container.encode(exclude, forKey: .exclude)

@@ -162,7 +162,7 @@ struct AnalysisDiagnosticsTests {
             NodeMetrics(node: "B", name: "B", afferentCoupling: 2, efferentCoupling: 2,
                         composition: TypeComposition(total: 2, abstract: 1)),
         ]
-        let none = AnalysisDiagnostics.diagnostics(for: metrics, thresholds: .none)
+        let none = AnalysisDiagnostics.diagnostics(for: metrics, thresholds: .disabled)
         #expect(none.isEmpty)
 
         let strict = AnalysisDiagnostics.diagnostics(

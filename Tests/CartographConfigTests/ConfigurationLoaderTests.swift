@@ -29,7 +29,8 @@ struct ConfigurationLoaderTests {
         thresholds:
           max_cycles: 0
           max_instability: 0.75
-        baseline: .cartograph-baseline.json
+        baseline_path: .cartograph-baseline.json
+        derived_data_path: DerivedData
         report_format: github-actions
         graph_format: mermaid
         strict: true
@@ -52,6 +53,7 @@ struct ConfigurationLoaderTests {
         #expect(configuration.thresholds.maxCycles == 0)
         #expect(configuration.thresholds.maxInstability == 0.75)
         #expect(configuration.baselinePath == ".cartograph-baseline.json")
+        #expect(configuration.derivedDataPath == "DerivedData")
         #expect(configuration.reportFormat == .githubActions)
         #expect(configuration.graphFormat == .mermaid)
         #expect(configuration.strict)

@@ -29,7 +29,10 @@ public struct Thresholds: Sendable, Codable, Equatable {
         self.maxDistanceFromMainSequence = maxDistanceFromMainSequence
     }
 
-    public static let none = Thresholds()
+    /// 아무 임계값도 검사하지 않는 설정.
+    ///
+    /// `none` 으로 두면 호출부에서 `Optional.none` 과 헷갈린다.
+    public static let disabled = Thresholds()
 
     private enum CodingKeys: String, CodingKey {
         case maxCycles = "max_cycles"

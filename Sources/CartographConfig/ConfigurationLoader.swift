@@ -82,9 +82,9 @@ public struct ConfigurationLoader: Sendable {
 
     /// 설정 스키마에서 인정하는 키 목록. 중첩 매핑은 별도로 검사한다.
     private static let knownTopLevelKeys: Set<String> = [
-        "index_store_path", "project_path", "level", "include", "exclude", "edge_kinds",
-        "retention", "layers", "rules", "thresholds", "baseline", "report_format",
-        "graph_format", "strict",
+        "index_store_path", "project_path", "derived_data_path", "level", "include", "exclude",
+        "edge_kinds", "retention", "layers", "rules", "thresholds", "baseline_path",
+        "report_format", "graph_format", "strict",
     ]
     private static let knownRetentionKeys: Set<String> = [
         "retain_public", "retain_objc_accessible", "retain_interface_builder", "retain_tests",

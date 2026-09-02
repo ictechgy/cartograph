@@ -232,10 +232,79 @@ struct CartographServiceTests {
         #expect(throws: CartographError.self) { try service.renderGraph() }
     }
 
-    @Test("USR 로도 이름으로도 정점을 찾는다")
-    func findsNodeByUSROrName() throws {
-        let graph = TestGraph.make(["App": []])
-        #expect(CartographService.findNode(matching: "App", in: graph)?.id == NodeID("App"))
-        #expect(CartographService.findNode(matching: "없음", in: graph) == nil)
+    @Test("같은 이름의 정점이 여럿이면 임의로 고르지 않고 후보를 보여 준다")
+    func ambiguousNameIsReported() throws {
+        // 임의로 하나를 고르면 사용자는 자기가 물어본 것과 다른 답을 받고도 알아채지 못한다.
+        var builder = SnapshotBuilder()
+        builder.symbol("s:A", name: "Repository", kind: .classType, module: "Data")
+        builder.symbol("s:B", name: "Repository", kind: .classType, module: "Domain")
+        let service = CartographService(
+            configuration: {
+                var configuration = CartographConfiguration.default
+                configuration.projectPath = "/p"
+                return configuration
+            }(),
+            environment: CartographEnvironment(
+                fileSystem: InMemoryFileSystem(),
+                indexProviderOverride: StaticIndexProvider(builder.build())
+            )
+        )
+        let outcome = try service.explainRetention(of: "Repository")
+        #expect(outcome.output.contains("matches 2 declarations"))
+        #expect(outcome.output.contains("s:A"))
+        #expect(outcome.output.contains("s:B"))
+    }
+
+    @Test("이름으로 찾은 정점이 하나면 그대로 설명한다")
+    func uniqueNameResolves() throws {
+        let outcome = try makeService().explainRetention(of: "HomeView")
+        #expect(outcome.output.contains("is retained because"))
+    }
+
+    @Test("인덱스를 한 번만 읽어 모든 진단을 모은다")
+    func collectsDiagnosticsWithSingleIndexRead() throws {
+        // 인덱스 읽기가 파이프라인에서 가장 느린 단계다. 명령마다 다시 읽으면
+        // baseline 처럼 여러 분석을 묶는 경로에서 그 비용이 그대로 반복된다.
+        let counting = CountingIndexProvider(snapshot: makeSnapshot())
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        let service = CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(
+                fileSystem: InMemoryFileSystem(),
+                indexProviderOverride: counting
+            )
+        )
+        _ = try service.collectAllDiagnostics()
+        #expect(counting.loadCount == 1)
+    }
+
+    @Test("지표 임계값 위반도 베이스라인에 기록된다")
+    func baselineIncludesMetricFindings() throws {
+        // metrics 는 베이스라인을 적용하는데 baseline 이 그것을 기록하지 못하면
+        // 영원히 억제할 수 없는 진단이 생긴다.
+        let service = makeService {
+            $0.thresholds.maxInstability = 0.1
+        }
+        let identifiers = Set(try service.collectAllDiagnostics().map(\.ruleIdentifier))
+        #expect(identifiers.contains("instability"))
+    }
+}
+
+/// 인덱스를 몇 번 읽었는지 세는 공급자.
+private final class CountingIndexProvider: IndexProviding, @unchecked Sendable {
+    private let snapshot: IndexSnapshot
+    private let lock = NSLock()
+    private var count = 0
+
+    init(snapshot: IndexSnapshot) {
+        self.snapshot = snapshot
+    }
+
+    var loadCount: Int { lock.withLock { count } }
+
+    func loadSnapshot() throws -> IndexSnapshot {
+        lock.withLock { count += 1 }
+        return snapshot
     }
 }

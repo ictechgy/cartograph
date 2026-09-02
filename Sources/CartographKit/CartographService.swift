@@ -8,8 +8,11 @@ import Foundation
 
 /// 설정에서 출력까지의 전체 파이프라인을 조립한다.
 ///
-/// 각 명령은 "그래프를 만들고 → 분석하고 → 베이스라인을 적용하고 → 형식을 입힌다"는
-/// 같은 골격을 공유한다. 그 골격을 여기 한 번만 쓰고 명령마다 다른 부분만 갈아 끼운다.
+/// 두 층으로 나뉜다.
+/// - 질의 API(`cycles(in:)`, `unusedCode(in:)` …)는 값을 그대로 돌려준다.
+///   라이브러리로 임베드하는 쪽은 이쪽만 쓰면 된다.
+/// - 명령 API(`detectCycles()` …)는 그 위에 베이스라인·임계값·출력 형식을 얹는다.
+///   CI 정책이므로 질의 경로에 섞지 않는다.
 public struct CartographService: Sendable {
     private let configuration: CartographConfiguration
     private let environment: CartographEnvironment
@@ -24,108 +27,131 @@ public struct CartographService: Sendable {
         configuration.projectPath ?? environment.fileSystem.currentDirectoryPath
     }
 
-    // MARK: - 인덱스와 그래프
+    // MARK: - 인덱스
 
     /// 인덱스를 읽고 구문 정보로 보강한 스냅샷.
     public func loadSnapshot() throws -> IndexSnapshot {
-        let provider = try makeIndexProvider()
-        let raw = try provider.loadSnapshot()
+        let raw = try makeIndexProvider().loadSnapshot()
         return SnapshotEnricher(fileSystem: environment.fileSystem).enrich(raw)
     }
 
-    /// 지정한 해상도의 그래프. 레벨을 주지 않으면 설정값을 쓴다.
-    public func buildGraph(level: GraphLevel? = nil, includeExternal: Bool = false) throws
-        -> (result: GraphBuilder.BuildResult, snapshot: IndexSnapshot) {
-        let snapshot = try loadSnapshot()
-        let options = GraphBuilder.Options(
-            level: level ?? configuration.level,
+    /// 인덱스를 한 번만 읽어 만든 분석 문맥.
+    public func loadContext() throws -> AnalysisContext {
+        AnalysisContext(
+            snapshot: try loadSnapshot(),
             pathFilter: configuration.pathFilter,
-            edgeKinds: configuration.edgeKinds,
-            includeExternal: includeExternal
+            edgeKinds: configuration.edgeKinds
         )
-        return (GraphBuilder(options: options).buildResult(from: snapshot), snapshot)
     }
 
-    // MARK: - 명령
+    // MARK: - 질의 API
+
+    /// 순환 의존성.
+    public func cycles(
+        in context: AnalysisContext,
+        level: GraphLevel? = nil
+    ) -> (graph: CodeGraph, cycles: [DependencyCycle]) {
+        let graph = context.buildGraph(level: level ?? configuration.level).graph
+        let detector = CycleDetector(options: .init(edgeKinds: configuration.edgeKinds))
+        return (graph, detector.detectCycles(in: graph))
+    }
+
+    /// 미사용 선언. 언제나 심볼 레벨에서 본다.
+    ///
+    /// 모듈이나 파일 단위로는 "이 파일이 통째로 안 쓰인다" 이상을 말할 수 없다.
+    public func unusedCode(in context: AnalysisContext) -> (graph: CodeGraph, report: UnusedCodeReport) {
+        let graph = context.buildGraph(level: .symbol).graph
+        let analyzer = ReachabilityAnalyzer(policy: makeRetentionPolicy())
+        return (graph, analyzer.analyze(graph: graph, snapshot: context.snapshot))
+    }
+
+    /// 아키텍처 지표.
+    public func metrics(
+        in context: AnalysisContext,
+        level: GraphLevel? = nil
+    ) -> (graph: CodeGraph, metrics: [NodeMetrics], tolerance: Double) {
+        let result = context.buildGraph(level: level ?? configuration.level)
+        let calculator = ArchitectureMetricsCalculator()
+        return (result.graph, calculator.calculate(result: result, snapshot: context.snapshot), calculator.tolerance)
+    }
+
+    /// 레이어 규칙 위반과, 어느 레이어에도 속하지 않은 정점.
+    public func layerViolations(
+        in context: AnalysisContext,
+        level: GraphLevel? = nil
+    ) throws -> (graph: CodeGraph, violations: [LayerViolation], unassigned: [NodeID]) {
+        try configuration.validate()
+        let graph = context.buildGraph(level: level ?? configuration.level).graph
+        let evaluator = LayerRuleEvaluator(layers: configuration.layers, rules: configuration.rules)
+        return (graph, evaluator.evaluate(graph: graph), evaluator.unassignedNodes(in: graph))
+    }
+
+    /// 특정 선언이 살아 있는 이유.
+    public func retentionExplanation(
+        of subject: String,
+        in context: AnalysisContext
+    ) -> (lookup: NodeLookup, explanation: ReachabilityExplanation?) {
+        let (graph, report) = unusedCode(in: context)
+        let lookup = NodeLookup.resolve(subject, in: graph)
+        guard case let .found(node) = lookup else { return (lookup, nil) }
+        return (lookup, report.explain(node.id, in: graph))
+    }
+
+    // MARK: - 명령 API
 
     /// 그래프를 지정한 형식으로 내보낸다.
     public func renderGraph(level: GraphLevel? = nil, format: GraphFormat? = nil) throws -> CommandOutcome {
-        let (result, _) = try buildGraph(level: level)
+        let graph = try loadContext().buildGraph(level: level ?? configuration.level).graph
         let renderer = GraphRendererFactory.make(format ?? configuration.graphFormat)
-        return CommandOutcome(output: try renderer.render(result.graph))
+        return CommandOutcome(output: try renderer.render(graph))
     }
 
-    /// 순환 의존성을 찾는다.
     public func detectCycles(level: GraphLevel? = nil) throws -> CommandOutcome {
-        let (result, _) = try buildGraph(level: level)
-        let cycles = CycleDetector(options: .init(edgeKinds: configuration.edgeKinds))
-            .detectCycles(in: result.graph)
-        let diagnostics = AnalysisDiagnostics.diagnostics(for: cycles, in: result.graph)
-
+        let (graph, cycles) = cycles(in: try loadContext(), level: level)
         return try finish(
-            diagnostics,
+            AnalysisDiagnostics.diagnostics(for: cycles, in: graph),
             command: "cycles",
-            subject: describe(result.graph),
+            subject: describe(graph),
             thresholdLimit: configuration.thresholds.maxCycles,
             thresholdRule: AnalysisDiagnostics.Rule.cycle
         )
     }
 
-    /// 미사용 선언을 찾는다.
-    ///
-    /// 데드코드는 반드시 심볼 레벨에서 본다. 모듈이나 파일 단위로는
-    /// "이 파일 전체가 안 쓰인다" 정도밖에 말할 수 없다.
     public func detectUnusedCode() throws -> CommandOutcome {
-        let (result, snapshot) = try buildGraph(level: .symbol)
-        let report = ReachabilityAnalyzer(policy: makeRetentionPolicy())
-            .analyze(graph: result.graph, snapshot: snapshot)
-        let diagnostics = AnalysisDiagnostics.diagnostics(for: report)
-
+        let (graph, report) = unusedCode(in: try loadContext())
         return try finish(
-            diagnostics,
+            AnalysisDiagnostics.diagnostics(for: report),
             command: "dead",
-            subject: "\(describe(result.graph)) · "
-                + "\(report.reachableCount)/\(report.totalCount) reachable",
+            subject: "\(describe(graph)) · \(report.reachableCount)/\(report.totalCount) reachable",
             thresholdLimit: configuration.thresholds.maxUnusedSymbols,
             thresholdRule: AnalysisDiagnostics.Rule.unusedSymbol
         )
     }
 
-    /// 특정 선언이 왜 살아 있는지 설명한다.
+    /// 특정 선언이 왜 살아 있는지 사람이 읽는 문장으로 설명한다.
     public func explainRetention(of subject: String) throws -> CommandOutcome {
-        let (result, snapshot) = try buildGraph(level: .symbol)
-        let graph = result.graph
-        let report = ReachabilityAnalyzer(policy: makeRetentionPolicy())
-            .analyze(graph: graph, snapshot: snapshot)
+        let context = try loadContext()
+        let graph = context.buildGraph(level: .symbol).graph
+        let (lookup, explanation) = retentionExplanation(of: subject, in: context)
 
-        guard let node = Self.findNode(matching: subject, in: graph) else {
+        switch lookup {
+        case .notFound:
             return CommandOutcome(output: "No declaration matches '\(subject)'.\n")
-        }
-
-        let name = node.qualifiedName
-        switch report.explain(node.id, in: graph) {
-        case let .retained(reason):
-            return CommandOutcome(output: "\(name) is retained because it is \(reason.explanation).\n")
-        case let .reachable(path):
-            let trail = path.map { graph.node($0)?.qualifiedName ?? $0.rawValue }.joined(separator: " → ")
-            return CommandOutcome(output: "\(name) is reachable:\n  \(trail)\n")
-        case .unreachable:
-            return CommandOutcome(output: "\(name) is not reachable from any retained root.\n", findingCount: 1)
-        case .unknown:
-            return CommandOutcome(output: "No declaration matches '\(subject)'.\n")
+        case let .ambiguous(candidates):
+            let list = candidates.map { "  \($0.qualifiedName)  \($0.usr ?? $0.id.rawValue)" }
+            return CommandOutcome(
+                output: "'\(subject)' matches \(candidates.count) declarations. "
+                    + "Pass one of these USRs instead:\n" + list.joined(separator: "\n") + "\n"
+            )
+        case let .found(node):
+            return Self.describeExplanation(explanation, for: node, in: graph)
         }
     }
 
-    /// 아키텍처 지표를 계산한다.
     public func measureMetrics(level: GraphLevel? = nil) throws -> CommandOutcome {
-        let (result, snapshot) = try buildGraph(level: level)
-        let calculator = ArchitectureMetricsCalculator()
-        let metrics = calculator.calculate(result: result, snapshot: snapshot)
-        let diagnostics = AnalysisDiagnostics.diagnostics(
-            for: metrics,
-            thresholds: configuration.thresholds
-        )
-        let renderer = MetricsRenderer(tolerance: calculator.tolerance)
+        let (graph, metrics, tolerance) = metrics(in: try loadContext(), level: level)
+        let diagnostics = AnalysisDiagnostics.diagnostics(for: metrics, thresholds: configuration.thresholds)
+        let renderer = MetricsRenderer(tolerance: tolerance)
 
         let baseline = try loadBaseline()
         let reported = baseline?.filtering(diagnostics) ?? diagnostics
@@ -142,7 +168,7 @@ public struct CartographService: Sendable {
                         reported,
                         summary: ReportSummary(
                             command: "metrics",
-                            subject: describe(result.graph),
+                            subject: describe(graph),
                             suppressedCount: suppressed
                         )
                     )))
@@ -150,21 +176,15 @@ public struct CartographService: Sendable {
         return CommandOutcome(output: output, findingCount: reported.count, suppressedCount: suppressed)
     }
 
-    /// 레이어 규칙 위반을 찾는다.
     public func checkRules(level: GraphLevel? = nil) throws -> CommandOutcome {
-        try configuration.validate()
-        let (result, _) = try buildGraph(level: level)
-        let evaluator = LayerRuleEvaluator(layers: configuration.layers, rules: configuration.rules)
-        var diagnostics = AnalysisDiagnostics.diagnostics(for: evaluator.evaluate(graph: result.graph))
-        diagnostics += AnalysisDiagnostics.unassignedLayerDiagnostics(
-            for: evaluator.unassignedNodes(in: result.graph),
-            in: result.graph
-        )
+        let (graph, violations, unassigned) = try layerViolations(in: try loadContext(), level: level)
+        var diagnostics = AnalysisDiagnostics.diagnostics(for: violations)
+        diagnostics += AnalysisDiagnostics.unassignedLayerDiagnostics(for: unassigned, in: graph)
 
         return try finish(
             diagnostics,
             command: "rules",
-            subject: describe(result.graph),
+            subject: describe(graph),
             thresholdLimit: configuration.thresholds.maxRuleViolations,
             thresholdRule: AnalysisDiagnostics.Rule.layerViolation,
             // 레이어 미지정은 정보성이라 임계값 계산에 넣지 않는다.
@@ -172,7 +192,33 @@ public struct CartographService: Sendable {
         )
     }
 
-    // MARK: - 공통 마무리
+    // MARK: - 베이스라인
+
+    /// 모든 명령의 진단을 한 번의 인덱스 읽기로 모은다.
+    ///
+    /// 지표 임계값 위반도 함께 담는다. `metrics` 는 베이스라인을 적용하는데
+    /// `baseline` 이 그것을 기록하지 못하면 영원히 억제할 수 없는 진단이 생긴다.
+    public func collectAllDiagnostics() throws -> [Diagnostic] {
+        let context = try loadContext()
+        let (moduleGraph, foundCycles) = cycles(in: context)
+        let (_, unused) = unusedCode(in: context)
+        let (_, metricValues, _) = metrics(in: context)
+        let (_, violations, _) = try layerViolations(in: context)
+
+        return AnalysisDiagnostics.diagnostics(for: foundCycles, in: moduleGraph)
+            + AnalysisDiagnostics.diagnostics(for: unused)
+            + AnalysisDiagnostics.diagnostics(for: violations)
+            + AnalysisDiagnostics.diagnostics(for: metricValues, thresholds: configuration.thresholds)
+    }
+
+    /// 현재 진단 상태를 베이스라인 파일로 기록한다.
+    public func writeBaseline(diagnostics: [Diagnostic], to path: String) throws -> CommandOutcome {
+        let baseline = Baseline.capturing(diagnostics)
+        try BaselineStore(fileSystem: environment.fileSystem).write(baseline, to: path)
+        return CommandOutcome(output: "Wrote \(baseline.fingerprints.count) findings to \(path)\n")
+    }
+
+    // MARK: - 내부 구현
 
     /// 베이스라인 적용 → 임계값 검사 → 형식 적용.
     private func finish(
@@ -217,36 +263,24 @@ public struct CartographService: Sendable {
         )
     }
 
-    /// 현재 진단 상태를 베이스라인 파일로 기록한다.
-    public func writeBaseline(diagnostics: [Diagnostic], to path: String) throws -> CommandOutcome {
-        let baseline = Baseline.capturing(diagnostics)
-        try BaselineStore(fileSystem: environment.fileSystem).write(baseline, to: path)
-        return CommandOutcome(
-            output: "Wrote \(baseline.fingerprints.count) findings to \(path)\n"
-        )
+    private static func describeExplanation(
+        _ explanation: ReachabilityExplanation?,
+        for node: GraphNode,
+        in graph: CodeGraph
+    ) -> CommandOutcome {
+        let name = node.qualifiedName
+        switch explanation {
+        case let .retained(reason):
+            return CommandOutcome(output: "\(name) is retained because it is \(reason.explanation).\n")
+        case let .reachable(path):
+            let trail = path.map { graph.node($0)?.qualifiedName ?? $0.rawValue }.joined(separator: " → ")
+            return CommandOutcome(output: "\(name) is reachable:\n  \(trail)\n")
+        case .unreachable:
+            return CommandOutcome(output: "\(name) is not reachable from any retained root.\n", findingCount: 1)
+        case .unknown, nil:
+            return CommandOutcome(output: "No declaration matches '\(name)'.\n")
+        }
     }
-
-    /// 모든 명령의 진단을 모아 베이스라인 후보로 만든다.
-    public func collectAllDiagnostics() throws -> [Diagnostic] {
-        let (moduleResult, _) = try buildGraph()
-        let (symbolResult, snapshot) = try buildGraph(level: .symbol)
-
-        var diagnostics = AnalysisDiagnostics.diagnostics(
-            for: CycleDetector().detectCycles(in: moduleResult.graph),
-            in: moduleResult.graph
-        )
-        diagnostics += AnalysisDiagnostics.diagnostics(
-            for: ReachabilityAnalyzer(policy: makeRetentionPolicy())
-                .analyze(graph: symbolResult.graph, snapshot: snapshot)
-        )
-        diagnostics += AnalysisDiagnostics.diagnostics(
-            for: LayerRuleEvaluator(layers: configuration.layers, rules: configuration.rules)
-                .evaluate(graph: moduleResult.graph)
-        )
-        return diagnostics
-    }
-
-    // MARK: - 내부 구현
 
     /// 설정과 프로젝트 경로를 반영한 보존 규칙.
     private func makeRetentionPolicy() -> RetentionPolicy {
@@ -261,16 +295,6 @@ public struct CartographService: Sendable {
         "\(graph.level.rawValue) graph · \(graph.nodeCount) nodes · \(graph.edgeCount) edges"
     }
 
-    /// USR 완전 일치를 먼저 보고, 없으면 이름으로 찾는다.
-    ///
-    /// 사용자는 USR 을 외우지 않는다. 타입 이름으로 물어볼 수 있어야 한다.
-    static func findNode(matching subject: String, in graph: CodeGraph) -> GraphNode? {
-        if let exact = graph.node(NodeID(subject)) { return exact }
-        return graph.sortedNodes.first {
-            $0.name == subject || $0.baseName == subject || $0.qualifiedName == subject
-        }
-    }
-
     private func makeIndexProvider() throws -> any IndexProviding {
         if let override = environment.indexProviderOverride { return override }
 
@@ -278,7 +302,7 @@ public struct CartographService: Sendable {
         let storePath = try locator.locate(
             explicitPath: configuration.indexStorePath,
             projectPath: projectPath,
-            derivedDataPath: environment.derivedDataPath
+            derivedDataPath: configuration.derivedDataPath ?? environment.derivedDataPath
         )
         let libraryPath = try locator.locateLibrary(
             explicitPath: nil,

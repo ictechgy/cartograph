@@ -38,6 +38,20 @@ CartographCLI
   `FileSystem` 프로토콜로 주입받으세요.
 - **여러 모듈이 함께 쓰는 값 타입인가** → `CartographCore`. 단, 외부 의존성이 필요하면 아닙니다.
 
+## 라이브러리 API 를 건드릴 때
+
+`CartographKit` 은 임베드용 공개 제품이다. 두 층을 섞지 마세요.
+
+- **질의 API** (`cycles(in:)`, `unusedCode(in:)`, `metrics(in:)`, `layerViolations(in:)`):
+  값을 그대로 돌려줍니다. 렌더링·베이스라인·임계값을 여기 넣지 마세요.
+- **명령 API** (`detectCycles()` 등): 질의 결과에 CI 정책과 출력 형식을 얹습니다.
+
+인덱스 읽기는 파이프라인에서 가장 느립니다. 여러 분석을 묶어 돌리는 코드는
+`loadContext()` 로 스냅샷을 한 번만 읽고 문맥을 넘겨 쓰세요.
+
+패키지의 `CartographKit` 제품에는 구성 타깃이 모두 들어 있어야 합니다. Kit 만 내보내면
+임베더가 반환 타입의 이름조차 부를 수 없습니다.
+
 ## 새 분석을 추가할 때
 
 1. `CartographAnalysis` 에 `(CodeGraph, IndexSnapshot) -> 결과` 형태의 순수 타입을 만듭니다.

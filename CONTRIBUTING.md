@@ -89,7 +89,9 @@ Work on a branch (`feature/…`, `fix/…`, `refactor/…`), never directly on `
 ## Code style
 
 - Four spaces, 120 column limit.
-- Comments in Korean, identifiers in English.
+- **Project language:** documentation and user-facing output in English, source comments in Korean
+  (the maintainer's working language), identifiers always in English. Pull requests may be written
+  in either language.
 - Document *why*, not *what*. `// 순환을 끊을 후보 간선을 고른다` is noise next to a function called
   `suggestedEdgeToBreak`; the reason it picks the lowest-weight edge is not.
 - Every public type and function carries a doc comment.

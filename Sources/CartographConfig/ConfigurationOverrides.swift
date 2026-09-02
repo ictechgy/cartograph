@@ -7,6 +7,7 @@ import CartographCore
 public struct ConfigurationOverrides: Sendable, Equatable {
     public var indexStorePath: String?
     public var projectPath: String?
+    public var derivedDataPath: String?
     public var level: GraphLevel?
     public var include: [GlobPattern]?
     public var exclude: [GlobPattern]?
@@ -20,6 +21,7 @@ public struct ConfigurationOverrides: Sendable, Equatable {
     public init(
         indexStorePath: String? = nil,
         projectPath: String? = nil,
+        derivedDataPath: String? = nil,
         level: GraphLevel? = nil,
         include: [GlobPattern]? = nil,
         exclude: [GlobPattern]? = nil,
@@ -32,6 +34,7 @@ public struct ConfigurationOverrides: Sendable, Equatable {
     ) {
         self.indexStorePath = indexStorePath
         self.projectPath = projectPath
+        self.derivedDataPath = derivedDataPath
         self.level = level
         self.include = include
         self.exclude = exclude
@@ -50,6 +53,7 @@ extension CartographConfiguration {
         var result = self
         if let value = overrides.indexStorePath { result.indexStorePath = value }
         if let value = overrides.projectPath { result.projectPath = value }
+        if let value = overrides.derivedDataPath { result.derivedDataPath = value }
         if let value = overrides.level { result.level = value }
         if let value = overrides.include { result.include = value }
         if let value = overrides.exclude { result.exclude = value }

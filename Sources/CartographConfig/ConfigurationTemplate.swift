@@ -12,6 +12,8 @@ public enum ConfigurationTemplate {
         # Where the compiler wrote its index store.
         # Leave empty to auto-detect (.build/index/store, .build/out, DerivedData).
         # index_store_path: .build/index/store
+        # CI 가 -derivedDataPath 로 위치를 옮겼다면 여기에 적는다.
+        # derived_data_path: DerivedData
 
         # Default graph resolution: module | file | type | symbol
         level: module
@@ -64,7 +66,7 @@ public enum ConfigurationTemplate {
         #  max_instability: 0.8
         #  max_distance: 0.7
 
-        # baseline: \(Cartograph.defaultBaselineFileName)
+        # baseline_path: \(Cartograph.defaultBaselineFileName)
         report_format: text
         graph_format: dot
         strict: false

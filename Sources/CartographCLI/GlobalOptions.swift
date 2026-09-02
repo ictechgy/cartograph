@@ -15,6 +15,9 @@ struct GlobalOptions: ParsableArguments {
     @Option(name: [.customShort("c"), .customLong("config")], help: "Configuration file path.")
     var configPath: String?
 
+    @Option(name: .customLong("derived-data"), help: "DerivedData directory to search for an index store.")
+    var derivedDataPath: String?
+
     @Option(help: "Graph resolution: module, file, type or symbol.")
     var level: GraphLevel?
 
@@ -56,6 +59,7 @@ struct GlobalOptions: ParsableArguments {
         let overrides = ConfigurationOverrides(
             indexStorePath: indexStorePath,
             projectPath: projectPath ?? loaded.configuration.projectPath ?? searchDirectory,
+            derivedDataPath: derivedDataPath,
             level: level,
             include: include.isEmpty ? nil : include.map { GlobPattern($0) },
             exclude: exclude.isEmpty ? nil : exclude.map { GlobPattern($0) },
