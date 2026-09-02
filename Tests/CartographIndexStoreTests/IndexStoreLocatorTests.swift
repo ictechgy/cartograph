@@ -145,6 +145,69 @@ struct DerivedDataMatchingTests {
         #expect(IndexStoreLocator.isDerivedDataDirectory("Cartograph-abcdef", forProject: "cartograph"))
     }
 
+    @Test("이름이 같은 다른 체크아웃의 DerivedData 를 쓰지 않는다")
+    func picksTheDerivedDataDirectoryOfThisCheckout() {
+        // 같은 프로젝트를 두 곳에 체크아웃하면 이름만으로는 구분되지 않는다.
+        // 최근 빌드된 쪽을 고르는 규칙 때문에 다른 브랜치의 인덱스로 분석하고도
+        // 아무 표시가 나지 않는다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/dd/App-aaaaaa/info.plist": Self.infoPlist(workspacePath: "/src/main/App/App.xcodeproj"),
+            "/dd/App-aaaaaa/Index.noindex/DataStore/units/a": "",
+            "/dd/App-bbbbbb/info.plist": Self.infoPlist(workspacePath: "/src/feature/App/App.xcodeproj"),
+            "/dd/App-bbbbbb/Index.noindex/DataStore/units/a": "",
+        ])
+        let candidates = IndexStoreLocator(fileSystem: fileSystem)
+            .derivedDataCandidates(projectName: "App", derivedDataPath: "/dd", projectPath: "/src/main/App")
+        #expect(candidates.contains("/dd/App-aaaaaa/Index.noindex/DataStore"))
+        #expect(candidates.allSatisfy { !$0.contains("App-bbbbbb") })
+    }
+
+    @Test("info.plist 를 읽을 수 없으면 예전처럼 모두 후보로 둔다")
+    func keepsEveryCandidateWhenOwnershipIsUnknown() {
+        // 예전 Xcode 는 이 파일을 남기지 않는다. 못 읽는다고 후보를 다 버리면
+        // 멀쩡히 있는 인덱스를 못 찾는다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/dd/App-aaaaaa/Index.noindex/DataStore/units/a": "",
+            "/dd/App-bbbbbb/Index.noindex/DataStore/units/a": "",
+        ])
+        let candidates = IndexStoreLocator(fileSystem: fileSystem)
+            .derivedDataCandidates(projectName: "App", derivedDataPath: "/dd", projectPath: "/src/main/App")
+        #expect(candidates.contains("/dd/App-aaaaaa/Index.noindex/DataStore"))
+        #expect(candidates.contains("/dd/App-bbbbbb/Index.noindex/DataStore"))
+    }
+
+    @Test("트리플 디렉터리 아래의 인덱스도 후보로 본다")
+    func perTripleCandidatesAreIncluded() throws {
+        // 예전 SwiftPM 은 `.build/<트리플>/debug/index/store` 에 인덱스를 뒀다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/.build/arm64-apple-macosx/debug/index/store/units/a": "",
+            "/p/.build/checkouts/other/file": "",
+        ])
+        let locator = IndexStoreLocator(fileSystem: fileSystem)
+        let candidates = locator.projectCandidates(projectPath: "/p")
+        #expect(candidates.contains("/p/.build/arm64-apple-macosx/debug/index/store"))
+        // 트리플이 아닌 디렉터리는 오류 메시지를 늘리지 않도록 제외한다.
+        #expect(candidates.allSatisfy { !$0.contains("checkouts") })
+
+        let located = try locator.locate(explicitPath: nil, projectPath: "/p")
+        #expect(located == "/p/.build/arm64-apple-macosx/debug/index/store")
+    }
+
+    /// DerivedData 디렉터리에 Xcode 가 남기는 속성 목록.
+    private static func infoPlist(workspacePath: String) -> String {
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <plist version="1.0">
+        <dict>
+        \t<key>LastAccessedDate</key>
+        \t<date>2026-09-01T16:45:55Z</date>
+        \t<key>WorkspacePath</key>
+        \t<string>\(workspacePath)</string>
+        </dict>
+        </plist>
+        """
+    }
+
     @Test("후보 목록이 겹치는 프로젝트를 걸러 낸다")
     func candidateListExcludesOtherProjects() {
         let fileSystem = InMemoryFileSystem(files: [

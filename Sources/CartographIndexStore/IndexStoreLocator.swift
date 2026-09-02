@@ -18,7 +18,7 @@ public struct IndexStoreLocator: Sendable {
     /// SwiftPM 은 툴체인과 빌드 러너에 따라 위치가 달라져 왔다.
     /// 하나만 가정하면 어떤 환경에서는 반드시 실패한다.
     public func projectCandidates(projectPath: String) -> [String] {
-        [
+        let fixed = [
             ".build/index/store",
             ".build/debug/index/store",
             ".build/release/index/store",
@@ -26,19 +26,83 @@ public struct IndexStoreLocator: Sendable {
             ".index-store",
             "IndexStore",
         ].map { (projectPath as NSString).appendingPathComponent($0) }
+        return fixed + perTripleCandidates(projectPath: projectPath)
+    }
+
+    /// 트리플별 디렉터리 아래의 인덱스 스토어 후보.
+    ///
+    /// SwiftPM 은 한동안 `.build/arm64-apple-macosx/debug/index/store` 처럼
+    /// 트리플 디렉터리 밑에 인덱스를 뒀다. 고정 목록만 보면 멀쩡한 스토어를
+    /// 놓친다. 애플 플랫폼 트리플에는 항상 `-apple-` 이 들어가므로, 그 이름만
+    /// 훑어 못 찾았을 때의 오류 메시지가 길어지지 않게 한다.
+    func perTripleCandidates(projectPath: String) -> [String] {
+        let buildRoot = (projectPath as NSString).appendingPathComponent(".build")
+        let entries = (try? fileSystem.contentsOfDirectory(at: buildRoot)) ?? []
+        return entries
+            .filter { ($0 as NSString).lastPathComponent.contains("-apple-") }
+            .flatMap { entry in
+                ["index/store", "debug/index/store", "release/index/store"]
+                    .map { (entry as NSString).appendingPathComponent($0) }
+            }
     }
 
     /// DerivedData 안의 인덱스 스토어 후보.
     ///
     /// Xcode 14 부터 `Index.noindex/DataStore` 이고 그 이전은 `Index/DataStore` 다.
-    public func derivedDataCandidates(projectName: String, derivedDataPath: String) -> [String] {
+    public func derivedDataCandidates(
+        projectName: String,
+        derivedDataPath: String,
+        projectPath: String? = nil
+    ) -> [String] {
         guard let entries = try? fileSystem.contentsOfDirectory(at: derivedDataPath) else { return [] }
-        return entries
+        let matching = entries
             .filter { Self.isDerivedDataDirectory(($0 as NSString).lastPathComponent, forProject: projectName) }
+        return owned(matching, byProjectAt: projectPath)
             .flatMap { entry in
                 ["Index.noindex/DataStore", "Index/DataStore"]
                     .map { (entry as NSString).appendingPathComponent($0) }
             }
+    }
+
+    /// 같은 이름의 프로젝트가 여럿일 때 이 체크아웃의 것만 남긴다.
+    ///
+    /// 한 프로젝트를 두 곳에 체크아웃하면 `App-<해시A>` 와 `App-<해시B>` 가
+    /// 함께 생기고, 이름만으로는 구분되지 않는다. 최근 빌드된 쪽을 고르는 규칙
+    /// 때문에 다른 브랜치의 인덱스로 분석하고도 아무 표시가 나지 않는다.
+    ///
+    /// Xcode 가 각 디렉터리에 남기는 `info.plist` 의 `WorkspacePath` 가 유일한
+    /// 단서다. 읽을 수 없는 경우(예전 Xcode)에는 예전처럼 전부 후보로 둔다.
+    private func owned(_ entries: [String], byProjectAt projectPath: String?) -> [String] {
+        guard let projectPath else { return entries }
+        let matched = entries.filter { entry in
+            guard let workspacePath = workspacePath(inDerivedDataDirectory: entry) else { return false }
+            return Self.workspacePath(workspacePath, belongsTo: projectPath)
+        }
+        return matched.isEmpty ? entries : matched
+    }
+
+    /// DerivedData 디렉터리가 가리키는 워크스페이스 경로.
+    func workspacePath(inDerivedDataDirectory entry: String) -> String? {
+        let plistPath = (entry as NSString).appendingPathComponent("info.plist")
+        guard let contents = try? fileSystem.readText(at: plistPath) else { return nil }
+        return Self.stringValue(forKey: "WorkspacePath", inPropertyList: contents)
+    }
+
+    /// 속성 목록에서 키 하나에 대응하는 문자열 값을 읽는다.
+    ///
+    /// 값 하나만 필요해 XML 파서를 들이지 않는다.
+    static func stringValue(forKey key: String, inPropertyList contents: String) -> String? {
+        guard let keyRange = contents.range(of: "<key>\(key)</key>"),
+              let openRange = contents.range(of: "<string>", range: keyRange.upperBound..<contents.endIndex),
+              let closeRange = contents.range(of: "</string>", range: openRange.upperBound..<contents.endIndex)
+        else { return nil }
+        return String(contents[openRange.upperBound..<closeRange.lowerBound])
+    }
+
+    /// 워크스페이스 경로가 이 프로젝트 안에 있는지 확인한다.
+    static func workspacePath(_ workspacePath: String, belongsTo projectPath: String) -> Bool {
+        let normalized = projectPath.hasSuffix("/") ? String(projectPath.dropLast()) : projectPath
+        return workspacePath == normalized || workspacePath.hasPrefix(normalized + "/")
     }
 
     /// DerivedData 디렉터리 이름이 이 프로젝트의 것인지 판단한다.
@@ -81,7 +145,11 @@ public struct IndexStoreLocator: Sendable {
             // DerivedData 이름과 맞는다.
             let canonicalPath = URL(fileURLWithPath: projectPath).resolvingSymlinksInPath().path
             let projectName = (canonicalPath as NSString).lastPathComponent
-            candidates += derivedDataCandidates(projectName: projectName, derivedDataPath: derivedDataPath)
+            candidates += derivedDataCandidates(
+                projectName: projectName,
+                derivedDataPath: derivedDataPath,
+                projectPath: canonicalPath
+            )
         }
 
         let existing = candidates.filter { fileSystem.directoryExists(at: $0) }
