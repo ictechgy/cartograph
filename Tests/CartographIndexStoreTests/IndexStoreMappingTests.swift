@@ -296,3 +296,48 @@ struct IndexStoreMappingTests {
         #expect(IndexStoreProvider.defaultDatabasePath(forStore: "/a/b").contains("cartograph-index-db"))
     }
 }
+
+@Suite("인덱스 캐시 경로")
+struct IndexDatabasePathTests {
+    @Test("같은 입력이면 같은 캐시 경로를 준다")
+    func stableForSameInput() {
+        let first = IndexStoreProvider.defaultDatabasePath(
+            forStore: "/store", libraryPath: "/lib.dylib",
+            libraryModificationDate: Date(timeIntervalSince1970: 100)
+        )
+        let second = IndexStoreProvider.defaultDatabasePath(
+            forStore: "/store", libraryPath: "/lib.dylib",
+            libraryModificationDate: Date(timeIntervalSince1970: 100)
+        )
+        #expect(first == second)
+    }
+
+    @Test("툴체인이 바뀌면 캐시도 갈린다")
+    func toolchainChangeInvalidatesCache() {
+        // 인덱스 포맷은 하위 호환만 보장된다. 툴체인이 바뀐 뒤 예전 캐시를 그대로
+        // 열면 조용히 잘못된 결과가 나온다.
+        let base = IndexStoreProvider.defaultDatabasePath(
+            forStore: "/store", libraryPath: "/Xcode26/lib.dylib",
+            libraryModificationDate: Date(timeIntervalSince1970: 100)
+        )
+        let otherPath = IndexStoreProvider.defaultDatabasePath(
+            forStore: "/store", libraryPath: "/Xcode27/lib.dylib",
+            libraryModificationDate: Date(timeIntervalSince1970: 100)
+        )
+        // 같은 경로가 제자리에서 업데이트되는 경우까지 잡으려면 경로만으로는 부족하다.
+        let updatedInPlace = IndexStoreProvider.defaultDatabasePath(
+            forStore: "/store", libraryPath: "/Xcode26/lib.dylib",
+            libraryModificationDate: Date(timeIntervalSince1970: 900)
+        )
+        #expect(base != otherPath)
+        #expect(base != updatedInPlace)
+    }
+
+    @Test("인덱스 스토어가 다르면 캐시도 다르다")
+    func differentStoresUseDifferentCaches() {
+        #expect(
+            IndexStoreProvider.defaultDatabasePath(forStore: "/a")
+                != IndexStoreProvider.defaultDatabasePath(forStore: "/b")
+        )
+    }
+}

@@ -149,13 +149,26 @@ public struct IndexStoreProvider: IndexProviding {
 
     /// 인덱스 스토어마다 안정적으로 대응되는 캐시 디렉터리 경로.
     ///
-    /// 매번 새로 만들면 대규모 프로젝트에서 초기화 비용이 크고,
-    /// 한곳에 고정하면 스토어가 바뀔 때 낡은 캐시와 섞인다.
-    /// 경로 해시를 이름에 넣어 둘 다 피한다.
-    public static func defaultDatabasePath(forStore storePath: String) -> String {
+    /// 매번 새로 만들면 대규모 프로젝트에서 초기화 비용이 크고, 한곳에 고정하면
+    /// 스토어가 바뀔 때 낡은 캐시와 섞인다. 경로 해시를 이름에 넣어 둘 다 피한다.
+    ///
+    /// 해시에는 libIndexStore 의 경로와 갱신 시각도 넣는다. 인덱스 포맷은 하위 호환만
+    /// 보장되어, 툴체인이 바뀐 뒤 예전 캐시를 그대로 열면 조용히 잘못된 결과가 나온다.
+    /// 툴체인이 제자리에서 업데이트되는 경우(같은 경로, 새 버전)까지 잡으려면
+    /// 경로만으로는 부족하다.
+    public static func defaultDatabasePath(
+        forStore storePath: String,
+        libraryPath: String? = nil,
+        libraryModificationDate: Date? = nil
+    ) -> String {
         let directory = (NSTemporaryDirectory() as NSString)
             .appendingPathComponent("cartograph-index-db")
-        return (directory as NSString).appendingPathComponent(stableHash(storePath))
+        let identity = [
+            storePath,
+            libraryPath ?? "",
+            libraryModificationDate.map { String($0.timeIntervalSince1970) } ?? "",
+        ].joined(separator: "\u{0}")
+        return (directory as NSString).appendingPathComponent(stableHash(identity))
     }
 
     /// 경로용 안정 해시(FNV-1a 64비트).
