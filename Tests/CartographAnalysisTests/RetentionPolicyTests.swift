@@ -122,6 +122,30 @@ struct RetentionPolicyTests {
         #expect(reasons(builder.build())["CodingKeys.name"] == .codingKey)
     }
 
+    @Test("익스텐션에 선언한 준수도 타입 본체에 적용된다")
+    func conformanceDeclaredInAnExtensionReachesTheType() {
+        // `extension Money: Codable {}` 는 흔한 스타일이다. 표식이 익스텐션에만
+        // 붙어 있으면 Codable 타입의 저장 프로퍼티가 통째로 미사용이 된다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Money", kind: .structType)
+        builder.symbol("Money.amount", name: "amount", kind: .property, parent: "Money")
+        builder.symbol("Money.ext", name: "Money", kind: .extensionDeclaration, attributes: [.codable])
+        builder.reference(from: "Money.ext", to: "Money", kind: .extends)
+
+        #expect(reasons(builder.build())["Money.amount"] == .codableProperty)
+    }
+
+    @Test("익스텐션의 원시값 준수도 열거형 케이스에 적용된다")
+    func rawRepresentableDeclaredInAnExtensionReachesTheCases() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Status", kind: .enumType)
+        builder.symbol("Status.active", name: "active", kind: .enumCase, parent: "Status")
+        builder.symbol("Status.ext", name: "Status", kind: .extensionDeclaration, attributes: [.rawRepresentable])
+        builder.reference(from: "Status.ext", to: "Status", kind: .extends)
+
+        #expect(reasons(builder.build())["Status.active"] == .rawRepresentableEnumCase)
+    }
+
     @Test("프로퍼티 래퍼와 결과 빌더의 규약 멤버를 보존한다")
     func propertyWrapperAndResultBuilderMembers() {
         var builder = SnapshotBuilder()

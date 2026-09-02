@@ -120,14 +120,15 @@ public struct RetentionPolicy: Sendable {
     /// Codable 타입의 저장 프로퍼티가 여기에 해당한다.
     private func parentDrivenReason(for node: GraphNode, in graph: CodeGraph) -> RetentionReason? {
         guard let parent = parent(of: node, in: graph) else { return nil }
+        let conformances = conformanceAttributes(of: parent, in: graph)
 
         // @main 타입의 static main() 은 런타임이 부르므로 코드 어디에도 참조가 없다.
         if parent.attributes.contains(.entryPoint), node.baseName == Self.entryPointMethodName {
             return .entryPoint
         }
         if node.kind == .enumCase {
-            if parent.attributes.contains(.codingKey) { return .codingKey }
-            if options.retainRawRepresentableEnumCases, parent.attributes.contains(.rawRepresentable) {
+            if conformances.contains(.codingKey) { return .codingKey }
+            if options.retainRawRepresentableEnumCases, conformances.contains(.rawRepresentable) {
                 return .rawRepresentableEnumCase
             }
         }
@@ -141,7 +142,7 @@ public struct RetentionPolicy: Sendable {
         if parent.attributes.contains(.resultBuilder), node.baseName.hasPrefix("build") {
             return .resultBuilderRequirement
         }
-        if options.retainCodableProperties, parent.attributes.contains(.codable), node.kind == .property {
+        if options.retainCodableProperties, conformances.contains(.codable), node.kind == .property {
             return .codableProperty
         }
         if parent.attributes.contains(.runtimeManaged), node.kind == .property {
@@ -161,6 +162,28 @@ public struct RetentionPolicy: Sendable {
         guard let usr = node.usr, symbolsWithExternalBase.contains(usr) else { return nil }
         return node.attributes.contains(.overrideDeclaration) ? .externalOverride : .externalConformance
     }
+
+    /// 부모 타입 본체와 그 익스텐션들이 함께 선언한 준수 표식.
+    ///
+    /// `extension Money: Codable {}` 처럼 준수를 익스텐션에 선언하는 것은 흔한
+    /// 스타일이다. 이때 표식은 익스텐션 쪽에 붙어, 타입 본체만 보면 Codable
+    /// 타입의 저장 프로퍼티가 통째로 미사용으로 보고된다.
+    ///
+    /// 상속/준수 절에서만 나오는 표식으로 한정한다. `@main`, `@propertyWrapper`
+    /// 같은 것은 익스텐션에 붙을 수 없어 옮겨 올 이유가 없다.
+    private func conformanceAttributes(of parent: GraphNode, in graph: CodeGraph) -> Set<SymbolAttribute> {
+        var result = parent.attributes.intersection(Self.conformanceDerivedAttributes)
+        for edge in graph.incomingEdges(to: parent.id) where edge.kind == .extends {
+            guard let extensionNode = graph.node(edge.source) else { continue }
+            result.formUnion(extensionNode.attributes.intersection(Self.conformanceDerivedAttributes))
+        }
+        return result
+    }
+
+    /// 익스텐션에서 타입으로 옮겨 오는 표식.
+    static let conformanceDerivedAttributes: Set<SymbolAttribute> = [
+        .codable, .codingKey, .rawRepresentable,
+    ]
 
     /// 포함 관계를 거슬러 의미상의 부모 선언을 찾는다.
     ///
