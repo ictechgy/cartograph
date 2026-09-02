@@ -1,5 +1,5 @@
 import ArgumentParser
-@testable import CartographCLI
+@testable import cartograph
 import CartographCore
 import CartographTestSupport
 import Testing
@@ -106,7 +106,7 @@ struct CommandConfigurationTests {
     @Test("도움말에 인덱스 생성 방법과 종료 코드가 적혀 있다")
     func helpExplainsPrerequisitesAndExitCodes() {
         let discussion = CartographCommand.configuration.discussion
-        #expect(discussion.contains("index-store-path"))
+        #expect(discussion.contains("swift build"))
         #expect(discussion.contains("COMPILER_INDEX_STORE_ENABLE"))
         #expect(discussion.contains("Exit codes"))
     }

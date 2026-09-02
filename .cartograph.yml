@@ -27,7 +27,7 @@ layers:
   - name: Assembly
     match: ["CartographKit"]
   - name: Interface
-    match: ["CartographCLI"]
+    match: ["cartograph"]
   - name: TestSupport
     match: ["CartographTestSupport"]
 

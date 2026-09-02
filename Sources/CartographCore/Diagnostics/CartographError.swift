@@ -26,10 +26,12 @@ public enum CartographError: Error, Equatable, LocalizedError {
             return """
                 Could not find an index store. Searched:
                 \(searchedPaths.map { "  - \($0)" }.joined(separator: "\n"))
-                Build with indexing enabled first, for example:
-                  swift build -Xswiftc -index-store-path -Xswiftc .index-store
+                Build first so the compiler writes an index store:
+                  swift build
                   xcodebuild build COMPILER_INDEX_STORE_ENABLE=YES -derivedDataPath <path>
-                Then pass --index-store <path>.
+                Then run again, or pass --index-store <path> to point at it directly.
+                Note: with SwiftPM's Xcode-based build system, -Xswiftc -index-store-path is
+                ignored; the store goes to <scratch path>/out.
                 """
         case let .indexStoreUnreadable(path, underlying):
             return """

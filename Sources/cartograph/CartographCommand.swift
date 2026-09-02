@@ -15,9 +15,11 @@ struct CartographCommand: ParsableCommand {
             queryable dependency graph. Unused code, circular dependencies, architecture metrics \
             and layering rules are all queries over that one graph.
 
-            Build with indexing enabled first:
-              swift build -Xswiftc -index-store-path -Xswiftc .index-store
+            Build first so the compiler writes an index store, then query it:
+              swift build                                              # SwiftPM writes one for you
               xcodebuild build COMPILER_INDEX_STORE_ENABLE=YES -derivedDataPath DerivedData
+
+            Cartograph finds the store on its own. Pass --index-store only to override it.
 
             Exit codes:
               0   success

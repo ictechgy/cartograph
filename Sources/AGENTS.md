@@ -13,7 +13,7 @@ CartographConfig · CartographSyntax · CartographAnalysis · CartographExport �
   ↑
 CartographKit
   ↑
-CartographCLI
+cartograph
 ```
 
 ## 모듈별 책임과 금지 사항
@@ -27,7 +27,7 @@ CartographCLI
 | `CartographExport` | 그래프 렌더러와 진단 리포터 | 분석 로직 |
 | `CartographIndexStore` | IndexStoreDB 어댑터, 스토어·라이브러리 경로 탐색 | 도메인 판단 |
 | `CartographKit` | 파이프라인 조립, 환경 주입 | 알고리즘 |
-| `CartographCLI` | 인자 파싱, 종료 코드, 표준 출력 | 그 외 모든 것 |
+| `cartograph` | 인자 파싱, 종료 코드, 표준 출력 | 그 외 모든 것 |
 | `CartographTestSupport` | 테스트용 빌더와 메모리 파일 시스템 | 프로덕션 코드가 이것을 참조하는 일 |
 
 ## 새 코드를 어디에 둘지
@@ -59,7 +59,7 @@ CartographCLI
    키가 되므로 한 번 정하면 바꾸기 어렵습니다.
 3. `CartographService` 에 명령을 추가합니다. 베이스라인·임계값·리포터 처리는 `finish(...)` 가
    이미 담당하므로 다시 쓰지 마세요.
-4. `CartographCLI` 에 하위 명령을 추가합니다.
+4. `cartograph` 실행 타깃에 하위 명령을 추가합니다.
 5. 임계값이 필요하면 `Thresholds` 와 `ConfigurationTemplate` 양쪽에 넣고 두 README 에 적습니다.
 
 ## 새 출력 형식을 추가할 때

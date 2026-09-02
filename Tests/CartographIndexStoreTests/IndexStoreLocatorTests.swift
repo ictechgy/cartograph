@@ -53,7 +53,10 @@ struct IndexStoreLocatorTests {
         } catch let error as CartographError {
             let description = error.errorDescription ?? ""
             #expect(description.contains("/p/.build/index/store"))
-            #expect(description.contains("swift build -Xswiftc -index-store-path"))
+            // 안내는 실제로 인덱스를 만드는 명령이어야 한다. -Xswiftc -index-store-path 는
+            // Swift 6.4 기본 빌드 시스템에서 무시되므로 그것만 알려 주면 사용자가 막힌다.
+            #expect(description.contains("swift build"))
+            #expect(description.contains("-index-store-path is"))
         } catch {
             Issue.record("예상하지 못한 오류: \(error)")
         }

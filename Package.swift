@@ -11,7 +11,8 @@ let package = Package(
     name: "Cartograph",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "cartograph", targets: ["CartographCLI"]),
+        .executable(name: "cartograph", targets: ["cartograph"]),
+        .plugin(name: "CartographCommandPlugin", targets: ["CartographCommandPlugin"]),
         // 임베더가 반환 타입을 이름으로 부를 수 있어야 한다. Kit 타깃만 내보내면
         // CodeGraph, Diagnostic 같은 타입을 import 할 방법이 없어 API 가 사실상 잠긴다.
         .library(
@@ -74,12 +75,28 @@ let package = Package(
                 "CartographIndexStore",
             ]
         ),
+        // 실행 타깃 이름을 제품 이름과 맞춘다. 커맨드 플러그인은 실행 파일을
+        // 제품 이름으로 찾는데, 같은 패키지의 제품은 의존성으로 선언할 수 없다.
+        // 이름이 어긋나 있으면 플러그인이 도구를 찾지 못한다.
         .executableTarget(
-            name: "CartographCLI",
+            name: "cartograph",
             dependencies: [
                 "CartographKit",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
+        ),
+
+        // MARK: - SwiftPM 커맨드 플러그인
+        // 패키지에 의존성으로 추가하면 설치 없이 `swift package plugin cartograph` 로 쓸 수 있다.
+        .plugin(
+            name: "CartographCommandPlugin",
+            capability: .command(
+                intent: .custom(
+                    verb: "cartograph",
+                    description: "Analyze this package's dependency graph."
+                )
+            ),
+            dependencies: ["cartograph"]
         ),
 
         // MARK: - 테스트 지원 (커버리지 집계에서 제외)
@@ -116,7 +133,7 @@ let package = Package(
         ),
         .testTarget(
             name: "CartographCLITests",
-            dependencies: ["CartographCLI", "CartographTestSupport"]
+            dependencies: ["cartograph", "CartographTestSupport"]
         ),
     ]
 )
