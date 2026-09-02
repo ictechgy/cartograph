@@ -12,7 +12,7 @@ public enum ConfigurationTemplate {
         # Where the compiler wrote its index store.
         # Leave empty to auto-detect (.build/index/store, .build/out, DerivedData).
         # index_store_path: .build/index/store
-        # CI 가 -derivedDataPath 로 위치를 옮겼다면 여기에 적는다.
+        # Where CI put -derivedDataPath, if it is not the Xcode default.
         # derived_data_path: DerivedData
 
         # Default graph resolution: module | file | type | symbol
