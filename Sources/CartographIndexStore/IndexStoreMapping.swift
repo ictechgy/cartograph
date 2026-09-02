@@ -231,11 +231,52 @@ public enum IndexStoreMapping {
         return result
     }
 
-    /// 참조의 양 끝에 있는 접근자를 그 프로퍼티로 바꾼다.
+    /// 프로퍼티 래퍼가 만들어 낸 곁가지 심볼을 원래 프로퍼티로 옮기는 표.
     ///
-    /// 프로퍼티 자신을 가리키게 된 간선은 버린다. 게터가 자기 프로퍼티를 읽는 것은
-    /// 의존 관계가 아니다.
-    public static func resolvingAccessors(
+    /// `@State var name` 은 `name` 외에 `$name`(투영값)과 `_name`·`__name`(저장소)을
+    /// 함께 만든다. SwiftUI 코드는 `Child(text: $name)` 처럼 `$name` 만 쓰는 일이 흔한데,
+    /// 인덱스에는 `$name` 으로만 참조가 남아 정작 `name` 은 아무도 안 쓰는 것으로 보인다.
+    /// 실제로 살아 있는 SwiftUI 상태가 통째로 미사용으로 보고되는 가장 흔한 오탐이다.
+    ///
+    /// 곁가지는 컴파일러가 만든 것이라 `.implicit` 이 붙는다. 사용자가 직접 `_foo` 라고
+    /// 이름 지은 프로퍼티는 implicit 이 아니므로 건드리지 않는다.
+    public static func propertyWrapperFacets(in symbols: [IndexedSymbol]) -> [String: String] {
+        var declaredByParentAndName: [String: String] = [:]
+        for symbol in symbols where !symbol.attributes.contains(.implicit) {
+            declaredByParentAndName[facetKey(parent: symbol.parentUSR, name: symbol.name)] = symbol.usr
+        }
+
+        var result: [String: String] = [:]
+        for symbol in symbols where symbol.attributes.contains(.implicit) {
+            guard let wrapped = wrappedName(ofFacet: symbol.name),
+                  let owner = declaredByParentAndName[facetKey(parent: symbol.parentUSR, name: wrapped)],
+                  owner != symbol.usr
+            else { continue }
+            result[symbol.usr] = owner
+        }
+        return result
+    }
+
+    /// 곁가지 이름에서 원래 프로퍼티 이름을 얻는다. 곁가지가 아니면 nil.
+    ///
+    /// 투영값(`$name`)만 본다. 저장소(`_name`, `__name`)는 컴파일러가 합성한
+    /// 멤버와이즈 이니셜라이저가 늘 참조하므로, 그것까지 접으면 아무도 쓰지 않는
+    /// 프로퍼티도 전부 살아 있는 것으로 보인다. 실제로 미탐을 만드는 것을 확인했다.
+    /// `$name` 은 사용자가 직접 써야만 참조가 생기므로 사용 신호로 신뢰할 수 있다.
+    static func wrappedName(ofFacet name: String) -> String? {
+        guard name.hasPrefix("$"), name.count > 1 else { return nil }
+        return String(name.dropFirst())
+    }
+
+    private static func facetKey(parent: String?, name: String) -> String {
+        (parent ?? "") + "\u{0}" + name
+    }
+
+    /// 참조의 양 끝에 있는 합성 심볼을 그 선언으로 바꾼다.
+    ///
+    /// 선언 자신을 가리키게 된 간선은 버린다. 게터가 자기 프로퍼티를 읽거나
+    /// 투영값이 자기 저장소를 읽는 것은 의존 관계가 아니다.
+    public static func resolvingSynthesizedSymbols(
         _ references: [IndexedReference],
         owners: [String: String]
     ) -> [IndexedReference] {

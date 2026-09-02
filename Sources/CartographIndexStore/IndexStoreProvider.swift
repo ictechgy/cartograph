@@ -140,10 +140,10 @@ public struct IndexStoreProvider: IndexProviding {
             }
         }
 
-        let resolved = IndexStoreMapping.resolvingAccessors(
-            references,
-            owners: IndexStoreMapping.accessorOwners(in: occurrences)
-        )
+        // 접근자와 프로퍼티 래퍼 곁가지를 모두 원래 선언으로 되돌린다.
+        let owners = IndexStoreMapping.accessorOwners(in: occurrences)
+            .merging(IndexStoreMapping.propertyWrapperFacets(in: Array(symbolsByUSR.values))) { first, _ in first }
+        let resolved = IndexStoreMapping.resolvingSynthesizedSymbols(references, owners: owners)
 
         return IndexSnapshot(
             symbols: symbolsByUSR.values.sorted { $0.usr < $1.usr },

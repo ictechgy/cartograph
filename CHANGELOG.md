@@ -7,6 +7,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A property used only through its projected value (`Child(text: $name)`) is no longer reported as
+  unused. The index records the reference against `$name`, and nothing linked it back to `name`,
+  so SwiftUI state that is plainly in use was reported as dead. Only the projected value is folded
+  into the wrapped property — backing storage (`_name`) is referenced by the synthesized memberwise
+  initializer, and folding that would hide genuinely unused properties.
+- `@NSApplicationDelegateAdaptor` and `@UIApplicationDelegateAdaptor` properties are retained.
+  SwiftUI owns the delegate; no code reads the property, but removing it breaks the app.
+
+### Performance
+
+- Source discovery no longer calls `stat` twice per directory entry. It now reads each entry's type
+  from the single enumeration that already knows it. On a 13,000-symbol project whose repository
+  contains 210,000 entries, `dead` went from 33s to 2.2s — a profile showed the whole runtime was
+  file-tree traversal, not analysis.
+
 ### Changed
 
 - Layer-violation baseline fingerprints now include the rule name and the edge kind. Two rules

@@ -362,7 +362,10 @@ final class DeclarationCollector: SyntaxVisitor {
             case "Test": result.insert(.testFunction)
             case "Suite": result.insert(.testSuite)
             // 저장소를 런타임이 관리하므로 컴파일된 코드에 참조가 남지 않는다.
-            case "NSManaged", "Observable", "Model", "ObservationTracked":
+            case "NSManaged", "Observable", "Model", "ObservationTracked",
+                 // SwiftUI 가 델리게이트를 대신 만들어 들고 있다. 코드 어디에서도
+                 // 이 프로퍼티를 읽지 않지만 지우면 앱이 델리게이트를 잃는다.
+                 "NSApplicationDelegateAdaptor", "UIApplicationDelegateAdaptor":
                 result.insert(.runtimeManaged)
             default: break
             }

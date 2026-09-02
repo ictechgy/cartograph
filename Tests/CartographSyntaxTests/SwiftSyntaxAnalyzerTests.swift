@@ -296,6 +296,20 @@ struct SwiftSyntaxAnalyzerTests {
         #expect(scales.first?.attributes.contains(.ignoreComment) == false)
     }
 
+    @Test("SwiftUI 앱 델리게이트 어댑터는 런타임이 관리한다")
+    func applicationDelegateAdaptorIsRuntimeManaged() {
+        // SwiftUI 가 델리게이트를 대신 만들어 들고 있어 코드 어디에서도 읽지 않지만,
+        // 지우면 앱이 델리게이트를 잃는다. 실제 두 프로젝트에서 오탐으로 나왔다.
+        let facts = analyze("""
+            struct App1 {
+                @NSApplicationDelegateAdaptor(D.self) private var macDelegate
+                @UIApplicationDelegateAdaptor(D.self) private var iosDelegate
+            }
+            """)
+        #expect(facts.declaration(named: "macDelegate")?.attributes.contains(.runtimeManaged) == true)
+        #expect(facts.declaration(named: "iosDelegate")?.attributes.contains(.runtimeManaged) == true)
+    }
+
     @Test("연산자 선언도 기록한다")
     func recordsOperatorDeclarations() {
         let facts = analyze("infix operator <->\n")

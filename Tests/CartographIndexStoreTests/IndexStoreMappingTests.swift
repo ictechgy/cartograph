@@ -339,6 +339,58 @@ struct IndexStoreMappingTests {
         #expect(snapshot.references.isEmpty)
     }
 
+    @Test("투영값으로만 쓰인 프로퍼티도 쓰인 것으로 본다")
+    func projectedValueUsageReachesTheWrappedProperty() {
+        // SwiftUI 는 `Child(text: $name)` 처럼 `$name` 만 쓰는 일이 흔하다. 인덱스에는
+        // `$name` 으로만 참조가 남아, 실제로 살아 있는 상태가 미사용으로 보고됐다.
+        let symbols = [
+            IndexedSymbol(usr: "name", name: "name", kind: .property, module: "M",
+                          location: SourceLocation(path: "/p/A.swift", line: 1, column: 1),
+                          parentUSR: "View"),
+            IndexedSymbol(usr: "$name", name: "$name", kind: .property, module: "M",
+                          location: SourceLocation(path: "/p/A.swift", line: 1, column: 1),
+                          parentUSR: "View", attributes: [.implicit]),
+        ]
+        let facets = IndexStoreMapping.propertyWrapperFacets(in: symbols)
+        #expect(facets["$name"] == "name")
+
+        let rewritten = IndexStoreMapping.resolvingSynthesizedSymbols(
+            [IndexedReference(sourceUSR: "body", targetUSR: "$name", kind: .call,
+                              location: SourceLocation(path: "/p/A.swift", line: 5, column: 1))],
+            owners: facets
+        )
+        #expect(rewritten.first?.targetUSR == "name")
+    }
+
+    @Test("저장소 곁가지는 접지 않는다")
+    func doesNotFoldBackingStorage() {
+        // `_name` 은 컴파일러가 합성한 멤버와이즈 이니셜라이저가 늘 참조한다. 접으면
+        // 아무도 쓰지 않는 프로퍼티까지 살아 있는 것으로 보여 미탐이 된다.
+        let symbols = [
+            IndexedSymbol(usr: "name", name: "name", kind: .property, module: "M",
+                          location: SourceLocation(path: "/p/A.swift", line: 1, column: 1),
+                          parentUSR: "View"),
+            IndexedSymbol(usr: "_name", name: "_name", kind: .property, module: "M",
+                          location: SourceLocation(path: "/p/A.swift", line: 1, column: 1),
+                          parentUSR: "View", attributes: [.implicit]),
+        ]
+        #expect(IndexStoreMapping.propertyWrapperFacets(in: symbols).isEmpty)
+    }
+
+    @Test("사용자가 직접 이름 붙인 프로퍼티는 건드리지 않는다")
+    func leavesExplicitlyNamedPropertiesAlone() {
+        let symbols = [
+            IndexedSymbol(usr: "name", name: "name", kind: .property, module: "M",
+                          location: SourceLocation(path: "/p/A.swift", line: 1, column: 1),
+                          parentUSR: "T"),
+            // implicit 이 아니므로 곁가지가 아니다.
+            IndexedSymbol(usr: "dollar", name: "$name", kind: .property, module: "M",
+                          location: SourceLocation(path: "/p/A.swift", line: 2, column: 1),
+                          parentUSR: "T"),
+        ]
+        #expect(IndexStoreMapping.propertyWrapperFacets(in: symbols).isEmpty)
+    }
+
     @Test("main.swift 의 최상위 문장은 가상 심볼에서 나온 것으로 본다")
     func attributesTopLevelStatementsToASyntheticSymbol() throws {
         // 최상위 문장은 감싸는 선언이 없어 관계가 비어 있다. 그대로 두면
