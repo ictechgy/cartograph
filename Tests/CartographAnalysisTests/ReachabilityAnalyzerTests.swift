@@ -281,3 +281,74 @@ struct WitnessReachabilityBoundaryTests {
         ))
     }
 }
+
+@Suite("익스텐션 소유 관계")
+struct ExtensionOwnershipTests {
+    private func analyze(_ snapshot: IndexSnapshot) -> (report: UnusedCodeReport, graph: CodeGraph) {
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        return (ReachabilityAnalyzer().analyze(graph: graph, snapshot: snapshot), graph)
+    }
+
+    /// `extension T { … }` 안의 선언들. T 는 앱에서 쓰인다.
+    private func makeSnapshot(extensionMembers: [(usr: String, name: String, kind: SymbolKind)])
+        -> IndexSnapshot {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("T", kind: .structType)
+        builder.symbol("ext", name: "T", kind: .extensionDeclaration)
+        builder.reference(from: "App", to: "T", kind: .reference)
+        builder.reference(from: "ext", to: "T", kind: .extends)
+        for member in extensionMembers {
+            builder.symbol(member.usr, name: member.name, kind: member.kind, parent: "ext")
+        }
+        return builder.build()
+    }
+
+    @Test("살아 있는 타입의 익스텐션 안 미사용 메서드를 보고한다")
+    func uncalledMethodInExtensionIsReported() {
+        // 익스텐션 정점을 소유자로 보면 아무도 익스텐션을 "사용"하지 않으므로,
+        // 살아 있는 타입의 익스텐션 멤버가 통째로 조상 필터에 가려 사라졌다.
+        // Swift 에서 익스텐션은 어디에나 있으므로 데드코드 상당수가 조용히 묻힌다.
+        let (report, _) = analyze(
+            makeSnapshot(extensionMembers: [("ext.f", "neverCalled()", .method)])
+        )
+        #expect(report.unused.map(\.name) == ["neverCalled()"])
+    }
+
+    @Test("익스텐션 안 프로토콜 구현도 타입이 살아 있으면 함께 살아난다")
+    func witnessInExtensionRevivesWithItsType() {
+        // 증인의 소유자를 익스텐션으로 보면 타입이 살아나도 증인이 되살아나지 못한다.
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("P", kind: .protocolType)
+        builder.symbol("P.f", name: "f()", kind: .method, parent: "P")
+        builder.symbol("T", kind: .structType)
+        builder.symbol("ext", name: "T", kind: .extensionDeclaration)
+        builder.symbol("ext.f", name: "f()", kind: .method, parent: "ext")
+        builder.symbol("Helper", kind: .structType)
+
+        builder.reference(from: "App", to: "P", kind: .reference)
+        builder.reference(from: "App", to: "P.f", kind: .call)
+        builder.reference(from: "App", to: "T", kind: .reference)
+        builder.reference(from: "ext", to: "T", kind: .extends)
+        builder.reference(from: "ext.f", to: "P.f", kind: .overrides)
+        builder.reference(from: "ext.f", to: "Helper", kind: .reference)
+
+        let (report, _) = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+    }
+
+    @Test("익스텐션 안 열거형 케이스도 본체의 성질을 따른다")
+    func enumCaseInExtensionFollowsItsEnum() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Status", kind: .enumType, attributes: [.rawRepresentable])
+        builder.symbol("ext", name: "Status", kind: .extensionDeclaration)
+        builder.symbol("ext.active", name: "active", kind: .enumCase, parent: "ext")
+        builder.reference(from: "ext", to: "Status", kind: .extends)
+        let snapshot = builder.build()
+
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        let retained = RetentionPolicy().retainedNodes(in: graph, snapshot: snapshot)
+        #expect(retained["ext.active"] == .rawRepresentableEnumCase)
+    }
+}

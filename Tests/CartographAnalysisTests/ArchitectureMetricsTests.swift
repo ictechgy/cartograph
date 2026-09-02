@@ -184,3 +184,50 @@ struct IsolatedNodeMetricsTests {
         #expect(diagnostics.isEmpty)
     }
 }
+
+@Suite("결합도가 세는 간선")
+struct CouplingEdgeKindTests {
+    @Test("포함 관계는 결합도로 세지 않는다")
+    func containmentIsNotCoupling() {
+        // 멤버가 많은 타입일수록 원심 결합도가 커져 심볼 레벨 지표가 뒤집혔다.
+        // 실제로 모든 멤버가 소유 타입으로부터 Ca=1 을 받아 고통의 영역에 몰렸다.
+        let graph = CodeGraph(
+            level: .symbol,
+            nodes: [
+                GraphNode(id: "T", name: "T", kind: .classType),
+                GraphNode(id: "m1", name: "m1()", kind: .method),
+                GraphNode(id: "m2", name: "m2()", kind: .method),
+                GraphNode(id: "Dep", name: "Dep", kind: .structType),
+            ],
+            edges: [
+                GraphEdge(source: "T", target: "m1", kind: .member),
+                GraphEdge(source: "T", target: "m2", kind: .member),
+                GraphEdge(source: "m1", target: "Dep", kind: .call),
+            ]
+        )
+        let metrics = ArchitectureMetricsCalculator().calculate(graph: graph, compositions: [:])
+        let byNode = Dictionary(uniqueKeysWithValues: metrics.map { ($0.node, $0) })
+
+        // 멤버를 담고 있다는 이유로 의존한다고 보지 않는다.
+        #expect(byNode["T"]?.efferentCoupling == 0)
+        // 담겨 있다는 이유로 의존받는다고 보지 않는다.
+        #expect(byNode["m2"]?.afferentCoupling == 0)
+        // 실제 호출은 그대로 센다.
+        #expect(byNode["m1"]?.efferentCoupling == 1)
+        #expect(byNode["Dep"]?.afferentCoupling == 1)
+    }
+
+    @Test("보존 합성 간선도 결합도에서 뺀다")
+    func retentionEdgesAreNotCoupling() {
+        let graph = CodeGraph(
+            level: .symbol,
+            nodes: [
+                GraphNode(id: "A", name: "A", kind: .structType),
+                GraphNode(id: "B", name: "B", kind: .structType),
+            ],
+            edges: [GraphEdge(source: "A", target: "B", kind: .retention)]
+        )
+        let metrics = ArchitectureMetricsCalculator().calculate(graph: graph, compositions: [:])
+        #expect(metrics.allSatisfy { $0.afferentCoupling == 0 && $0.efferentCoupling == 0 })
+    }
+}

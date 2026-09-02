@@ -211,3 +211,24 @@ struct CycleDetectorSelfLoopRegressionTests {
         )
     }
 }
+
+@Suite("자기 순환과 최소 길이")
+struct SelfLoopMinimumLengthTests {
+    @Test("자기 순환도 최소 길이 규칙을 따른다")
+    func selfLoopRespectsMinimumLength() {
+        // 예외를 두면 minimumLength 를 올려도 자기 순환만 계속 보고된다.
+        let graph = CodeGraph(
+            level: .symbol,
+            nodes: [GraphNode(id: "A", name: "A", kind: .function)],
+            edges: [GraphEdge(source: "A", target: "A", kind: .call)]
+        )
+        #expect(
+            CycleDetector(options: .init(includeSelfLoops: true, minimumLength: 1))
+                .detectCycles(in: graph).count == 1
+        )
+        #expect(
+            CycleDetector(options: .init(includeSelfLoops: true, minimumLength: 2))
+                .detectCycles(in: graph).isEmpty
+        )
+    }
+}

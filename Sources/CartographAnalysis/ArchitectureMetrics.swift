@@ -105,14 +105,22 @@ public struct ArchitectureMetricsCalculator: Sendable {
     ///
     /// 주계열 거리가 큰 순으로 정렬해 돌려준다. 지표는 "가장 위험한 것부터"
     /// 보는 것이 유일하게 쓸모 있는 순서다.
+    /// 결합도로 세는 간선 종류.
+    ///
+    /// 포함 관계(member)는 의존이 아니라 소유다. 이것을 세면 멤버가 많은 타입일수록
+    /// 원심 결합도가 커져 심볼 레벨 지표가 통째로 뒤집힌다. 실제로 모든 멤버가
+    /// 소유 타입으로부터 Ca=1 을 받아 "고통의 영역"에 몰려 있었다.
+    static let couplingEdgeKinds: Set<EdgeKind> = Set(EdgeKind.allCases.filter(\.impliesUsage))
+        .subtracting([.retention])
+
     public func calculate(graph: CodeGraph, compositions: [NodeID: TypeComposition]) -> [NodeMetrics] {
         graph.sortedNodes
             .map { node in
                 NodeMetrics(
                     node: node.id,
                     name: node.qualifiedName,
-                    afferentCoupling: graph.inDegree(of: node.id),
-                    efferentCoupling: graph.outDegree(of: node.id),
+                    afferentCoupling: graph.inDegree(of: node.id, kinds: Self.couplingEdgeKinds),
+                    efferentCoupling: graph.outDegree(of: node.id, kinds: Self.couplingEdgeKinds),
                     composition: compositions[node.id] ?? TypeComposition(total: 0, abstract: 0)
                 )
             }

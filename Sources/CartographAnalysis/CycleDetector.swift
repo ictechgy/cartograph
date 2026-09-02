@@ -83,7 +83,10 @@ public struct CycleDetector: Sendable {
 
         for component in components {
             if component.count == 1 {
+                // 자기 순환도 다른 순환과 같은 최소 길이 규칙을 따라야 한다.
+                // 예외를 두면 minimumLength 를 올려도 자기 순환만 계속 보고된다.
                 guard options.includeSelfLoops,
+                      options.minimumLength <= 1,
                       let node = component.first,
                       let selfEdge = edges(from: node, in: graph).first(where: { $0.target == node })
                 else { continue }

@@ -162,11 +162,12 @@ public struct RetentionPolicy: Sendable {
         return node.attributes.contains(.overrideDeclaration) ? .externalOverride : .externalConformance
     }
 
-    /// 포함 관계 간선을 거슬러 부모 선언을 찾는다.
+    /// 포함 관계를 거슬러 의미상의 부모 선언을 찾는다.
+    ///
+    /// 익스텐션을 건너뛴다. `extension Status { }` 안의 케이스도 열거형 본체의
+    /// 성질(원시값, CodingKey)을 따라야 하기 때문이다.
     private func parent(of node: GraphNode, in graph: CodeGraph) -> GraphNode? {
-        graph.incomingEdges(to: node.id)
-            .first { $0.kind == .member }
-            .flatMap { graph.node($0.source) }
+        graph.semanticParent(of: node.id).flatMap { graph.node($0) }
     }
 
     /// `@propertyWrapper` 규약이 요구하는 멤버 이름.

@@ -96,6 +96,38 @@ public struct CodeGraph: Sendable {
         Set(incomingEdges(to: id).filter { !$0.isSelfLoop }.map(\.source)).count
     }
 
+    /// 포함 관계를 거슬러 올라간 의미상의 부모.
+    ///
+    /// 익스텐션은 그 자체가 소유자가 아니다. `extension T { func f() }` 에서 f 의
+    /// 어휘적 부모는 익스텐션이지만 의미상의 소유자는 T 다. 익스텐션 정점을
+    /// 그대로 부모로 쓰면, 아무도 익스텐션을 "사용"하지 않으므로 살아 있는 타입의
+    /// 익스텐션 멤버가 통째로 죽은 것으로 취급된다.
+    public func semanticParent(of id: NodeID) -> NodeID? {
+        guard let parent = incomingEdges(to: id).first(where: { $0.kind == .member })?.source else {
+            return nil
+        }
+        guard node(parent)?.kind == .extensionDeclaration else { return parent }
+        return outgoingEdges(from: parent).first { $0.kind == .extends }?.target ?? parent
+    }
+
+    /// 나가는 간선의 서로 다른 대상 개수. 종류를 주면 그 종류만 센다.
+    public func outDegree(of id: NodeID, kinds: Set<EdgeKind>) -> Int {
+        Set(
+            outgoingEdges(from: id)
+                .filter { kinds.contains($0.kind) && !$0.isSelfLoop }
+                .map(\.target)
+        ).count
+    }
+
+    /// 들어오는 간선의 서로 다른 출발점 개수. 종류를 주면 그 종류만 센다.
+    public func inDegree(of id: NodeID, kinds: Set<EdgeKind>) -> Int {
+        Set(
+            incomingEdges(to: id)
+                .filter { kinds.contains($0.kind) && !$0.isSelfLoop }
+                .map(\.source)
+        ).count
+    }
+
     /// 조건에 맞는 정점만 남긴 부분 그래프. 양 끝이 남은 간선만 유지된다.
     public func filteringNodes(_ isIncluded: (GraphNode) -> Bool) -> CodeGraph {
         let keptNodes = sortedNodes.filter(isIncluded)

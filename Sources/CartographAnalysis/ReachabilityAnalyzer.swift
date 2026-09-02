@@ -156,8 +156,7 @@ public struct ReachabilityAnalyzer: Sendable {
         for (node, reason) in retentions.sorted(by: { $0.key < $1.key }) {
             var current = node
             var visited: Set<NodeID> = [node]
-            while let parent = graph.incomingEdges(to: current).first(where: { $0.kind == .member })?.source,
-                  visited.insert(parent).inserted {
+            while let parent = graph.semanticParent(of: current), visited.insert(parent).inserted {
                 if retentions[parent] == nil, result[parent] == nil {
                     result[parent] = InheritedRetention(member: node, reason: reason)
                 }
@@ -222,9 +221,12 @@ public struct ReachabilityAnalyzer: Sendable {
         return Traversal(reachable: reachable, predecessors: predecessors)
     }
 
-    /// 포함 관계 간선을 거슬러 올라간 직계 부모.
+    /// 포함 관계를 거슬러 올라간 의미상의 소유 타입.
+    ///
+    /// 익스텐션을 건너뛴다. 익스텐션 정점을 소유자로 쓰면, 아무도 익스텐션을
+    /// 사용하지 않으므로 증인이 영원히 되살아나지 못한다.
     private func owningType(of node: NodeID, in graph: CodeGraph) -> NodeID? {
-        graph.incomingEdges(to: node).first { $0.kind == .member }?.source
+        graph.semanticParent(of: node)
     }
 
     /// 사람이 실제로 행동할 수 있는 항목만 남긴다.
@@ -256,7 +258,7 @@ public struct ReachabilityAnalyzer: Sendable {
     ) -> Bool {
         var current = node.id
         var visited: Set<NodeID> = [current]
-        while let parent = graph.incomingEdges(to: current).first(where: { $0.kind == .member })?.source {
+        while let parent = graph.semanticParent(of: current) {
             guard visited.insert(parent).inserted else { return false }
             if unreachableIDs.contains(parent) { return true }
             current = parent
