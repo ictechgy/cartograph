@@ -34,13 +34,22 @@ First release.
 - Diagnostic output as text, JSON, Xcode, Checkstyle, GitHub Actions or SARIF.
 - Index store auto-detection across SwiftPM layouts and Xcode DerivedData, preferring the most
   recently written store.
-- `CartographKit` ships as a library product for embedding the pipeline directly.
+- `CartographKit` ships as a library product for embedding the pipeline directly. Its query API
+  (`cycles(in:)`, `unusedCode(in:)`, `metrics(in:)`, `layerViolations(in:)`) returns values;
+  baselines, thresholds and formatting live in a separate command API so an embedder never parses
+  rendered text. `loadContext()` reads the index once and serves every resolution from it.
 
 ### Notes
 
 - `retain_objc_accessible` defaults to on, unlike Periphery. Mixed-language UIKit projects were its
   largest source of false positives.
-- Exit codes: `0` success, `1` findings with `--strict`, `2` tool failure.
+- Exit codes: `0` success, `1` findings with `--strict` or a threshold exceeded, `2` tool failure,
+  `64` usage error.
+- Supported toolchain: Swift 6.4 / Xcode 27 on macOS 14+. `indexstore-db` publishes no semantic
+  version tags, so `Package.swift` pins the `release/6.4.1` branch. Each Swift release moves that
+  pin and gets a changelog entry.
+- macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
+  specific.
 
 [Unreleased]: https://github.com/coden/cartograph/compare/0.1.0...HEAD
 [0.1.0]: https://github.com/coden/cartograph/releases/tag/0.1.0
