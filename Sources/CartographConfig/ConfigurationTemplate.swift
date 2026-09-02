@@ -18,9 +18,11 @@ public enum ConfigurationTemplate {
         # Default graph resolution: module | file | type | symbol
         level: module
 
-        # Source paths to analyze. Empty means "everything the index store knows".
-        include:
-          - "Sources/**"
+        # Source paths to analyze. Omit this key to analyze everything the index
+        # store knows about. Uncomment only if you mean to narrow the scope — an
+        # include that matches nothing reports "no findings" and exits 0.
+        # include:
+        #   - "Sources/**"
         exclude:
           - "**/.build/**"
           - "**/Pods/**"

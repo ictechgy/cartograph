@@ -94,6 +94,8 @@ public struct ConfigurationLoader: Sendable {
     private static let knownThresholdKeys: Set<String> = [
         "max_cycles", "max_unused_symbols", "max_rule_violations", "max_instability", "max_distance",
     ]
+    private static let knownLayerKeys: Set<String> = ["name", "match"]
+    private static let knownRuleKeys: Set<String> = ["name", "from", "allow", "deny", "severity"]
 
     static func unknownKeyWarnings(in yaml: String, path: String) throws -> [String] {
         guard let root = try Yams.load(yaml: yaml) as? [String: Any] else { return [] }
@@ -104,7 +106,26 @@ public struct ConfigurationLoader: Sendable {
         if let thresholds = root["thresholds"] as? [String: Any] {
             warnings += unknown(keys: thresholds.keys, allowed: knownThresholdKeys, scope: "thresholds", path: path)
         }
+        // 규칙과 레이어도 봐야 한다. `deny` 를 `denyed` 로 잘못 쓰면 필수 키가 아니라서
+        // 조용히 비어 있는 규칙이 되고, `rules` 는 아무것도 막지 않은 채 통과한다.
+        // CI 가 초록인데 보호는 하나도 없는 상태가 가장 나쁘다.
+        warnings += unknownInSequence(root["layers"], allowed: knownLayerKeys, scope: "layers", path: path)
+        warnings += unknownInSequence(root["rules"], allowed: knownRuleKeys, scope: "rules", path: path)
         return warnings.sorted()
+    }
+
+    /// 매핑의 배열(`layers`, `rules`)에 들어 있는 알 수 없는 키.
+    private static func unknownInSequence(
+        _ value: Any?,
+        allowed: Set<String>,
+        scope: String,
+        path: String
+    ) -> [String] {
+        guard let entries = value as? [Any] else { return [] }
+        return entries.enumerated().flatMap { index, entry -> [String] in
+            guard let mapping = entry as? [String: Any] else { return [] }
+            return unknown(keys: mapping.keys, allowed: allowed, scope: "\(scope)[\(index)]", path: path)
+        }
     }
 
     private static func unknown(

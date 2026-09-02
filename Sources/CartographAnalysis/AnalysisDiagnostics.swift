@@ -68,7 +68,11 @@ public enum AnalysisDiagnostics {
                 severity: violation.rule.severity,
                 message: violation.message,
                 location: violation.location,
-                subject: "\(violation.edge.source.rawValue)->\(violation.edge.target.rawValue)",
+                // 규칙 이름과 간선 종류를 지문에 넣는다. 이것이 없으면 같은 두 모듈
+                // 사이의 위반이 전부 한 지문으로 뭉쳐, 하나를 베이스라인에 넣는 순간
+                // 아직 보지 못한 위반까지 함께 묻힌다.
+                subject: "\(violation.rule.displayName)|\(violation.edge.kind.rawValue)|"
+                    + "\(violation.edge.source.rawValue)->\(violation.edge.target.rawValue)",
                 details: ["rule: \(violation.rule.displayName)"]
             )
         }

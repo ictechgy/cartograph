@@ -7,6 +7,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Layer-violation baseline fingerprints now include the rule name and the edge kind. Two rules
+  denying the same edge used to share one fingerprint, so baselining one silently suppressed the
+  other. Regenerate layer-rule baselines with `cartograph baseline`.
+- `cartograph init` no longer writes an active `include:` key. An include that matches nothing
+  reports "no findings" and exits 0 — a false all-clear in an Xcode project with no `Sources/`
+  directory.
+
+### Fixed
+
+- A relative `--project` path (`--project .`) aborted the process. libIndexStore asserts on
+  relative paths, so the run died with SIGABRT before the exit-code contract could apply. Project
+  paths are now resolved to absolute before reaching the index layer.
+- A glob with no separator now matches any path component, as gitignore does. `exclude: ["Pods"]`
+  used to filter nothing under `Pods/`, and `retained_files: ["Generated"]` retained nothing at
+  all — files the user asked to protect were reported as unused.
+- Unknown keys inside `layers` and `rules` are now reported. A typo such as `denyed:` left the
+  rule inert with no warning, so `rules` passed with no enforcement at all.
+- `metrics` now fails when a configured threshold is exceeded, matching every other command. The
+  same config file previously contained thresholds that gate CI and thresholds that do not.
+- `metrics --report-format sarif` (and `checkstyle`, `xcode`, `github-actions`) now emits that
+  format instead of the metrics JSON document, which code scanning rejected.
+- `dead --explain` now applies the baseline, so `--strict` no longer reaches opposite verdicts for
+  the same repository depending on the reporting flag.
+- `dead --explain` on a name that matches nothing now exits 64 instead of 0, so a typo in a CI
+  script is visible.
+- Baseline write failures are reported as tool failures (exit 2) instead of findings (exit 1).
+- Broken symlinks are no longer returned as source files, and two names for the same file are
+  counted once.
+- `SourceLocation.relative(to:)` handles the macOS `/tmp` ↔ `/private/tmp` duality, so report
+  paths are relativized in both spellings.
+- Mermaid labels escape `#` first, so a name containing an entity-like sequence is not eaten.
+
 ## [0.2.0] - 2026-09-02
 
 ### Changed

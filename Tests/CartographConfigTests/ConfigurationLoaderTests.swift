@@ -93,6 +93,27 @@ struct ConfigurationLoaderTests {
         #expect(result.warnings.contains { $0.contains("'thresholds.max_cyles'") })
     }
 
+    @Test("규칙과 레이어의 알 수 없는 키도 경고한다")
+    func warnsAboutUnknownKeysInRulesAndLayers() throws {
+        // `deny` 를 `denyed` 로 잘못 쓰면 필수 키가 아니라서 조용히 비어 있는 규칙이
+        // 된다. CI 는 초록인데 보호는 하나도 없는 상태가 가장 나쁘다.
+        let yaml = """
+            layers:
+              - name: Presentation
+                match: ["Features/**"]
+                matches: ["oops"]
+            rules:
+              - name: no data access
+                from: Presentation
+                denyed: [Data]
+            """
+        let result = try ConfigurationLoader().load(yaml: yaml, path: "/p/.cartograph.yml")
+        #expect(result.warnings.contains { $0.contains("'rules[0].denyed'") })
+        #expect(result.warnings.contains { $0.contains("'layers[0].matches'") })
+        #expect(!result.warnings.contains { $0.contains("'layers[0].name'") })
+        #expect(!result.warnings.contains { $0.contains("'rules[0].from'") })
+    }
+
     @Test("잘못된 타입은 고칠 위치를 알려 주는 오류가 된다")
     func typeMismatchReportsPath() {
         #expect(throws: CartographError.self) {
