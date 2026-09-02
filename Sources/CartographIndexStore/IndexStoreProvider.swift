@@ -131,13 +131,21 @@ public struct IndexStoreProvider: IndexProviding {
         }
 
         do {
+            // 일회성 CLI 에 맞는 조합이다. IndexDatastoreImpl::init 을 보면
+            // listenToUnitEvents 가 거짓이고 wait 가 참일 때 초기 스캔을 동기로 한 번
+            // 수행하고 끝난다. 참으로 두면 FSEvents 리스너와 백그라운드 워커가 뜨고,
+            // 빌드가 동시에 스토어를 쓰면 파일마다 다른 시점의 데이터를 읽게 된다.
+            //
+            // readonly 는 거짓이어야 한다. 참이면 같은 함수가 유닛을 넣기 전에
+            // 곧바로 반환해 빈 인덱스가 된다. 여기서 쓰는 데이터베이스는 우리가
+            // 만드는 캐시이므로 쓰기가 필요하다.
             return try IndexStoreDB(
                 storePath: configuration.storePath,
                 databasePath: configuration.databasePath,
                 library: library,
                 waitUntilDoneInitializing: true,
                 readonly: false,
-                listenToUnitEvents: true
+                listenToUnitEvents: false
             )
         } catch {
             throw CartographError.indexStoreUnreadable(

@@ -31,15 +31,31 @@ public struct IndexStoreLocator: Sendable {
     /// DerivedData 안의 인덱스 스토어 후보.
     ///
     /// Xcode 14 부터 `Index.noindex/DataStore` 이고 그 이전은 `Index/DataStore` 다.
-    /// 프로젝트 이름으로 시작하는 디렉터리를 모두 후보로 본다.
     public func derivedDataCandidates(projectName: String, derivedDataPath: String) -> [String] {
         guard let entries = try? fileSystem.contentsOfDirectory(at: derivedDataPath) else { return [] }
         return entries
-            .filter { ($0 as NSString).lastPathComponent.hasPrefix(projectName + "-") }
+            .filter { Self.isDerivedDataDirectory(($0 as NSString).lastPathComponent, forProject: projectName) }
             .flatMap { entry in
                 ["Index.noindex/DataStore", "Index/DataStore"]
                     .map { (entry as NSString).appendingPathComponent($0) }
             }
+    }
+
+    /// DerivedData 디렉터리 이름이 이 프로젝트의 것인지 판단한다.
+    ///
+    /// 이름은 `<프로젝트명>-<해시>` 형태다. 접두사만 보면 `App` 이 `App-Extension`
+    /// 의 디렉터리까지 집어삼켜, 더 최근에 빌드된 다른 프로젝트를 분석하게 된다.
+    /// 해시 부분은 영숫자만 있고 하이픈이 없다는 점으로 구분한다.
+    ///
+    /// APFS 는 기본이 대소문자 구분 없음이라, 디렉터리 표기가 프로젝트 이름과
+    /// 대소문자만 다른 경우가 흔하다. 비교도 대소문자를 구분하지 않는다.
+    static func isDerivedDataDirectory(_ name: String, forProject projectName: String) -> Bool {
+        let prefix = projectName + "-"
+        guard name.count > prefix.count,
+              name.prefix(prefix.count).lowercased() == prefix.lowercased()
+        else { return false }
+        let suffix = name.dropFirst(prefix.count)
+        return suffix.allSatisfy { $0.isLetter || $0.isNumber }
     }
 
     /// 인덱스 스토어 경로를 결정한다.
@@ -61,7 +77,10 @@ public struct IndexStoreLocator: Sendable {
 
         var candidates = projectCandidates(projectPath: projectPath)
         if let derivedDataPath {
-            let projectName = (projectPath as NSString).lastPathComponent
+            // 프로젝트 경로가 심볼릭 링크면 링크 이름이 아니라 실제 디렉터리 이름이
+            // DerivedData 이름과 맞는다.
+            let canonicalPath = URL(fileURLWithPath: projectPath).resolvingSymlinksInPath().path
+            let projectName = (canonicalPath as NSString).lastPathComponent
             candidates += derivedDataCandidates(projectName: projectName, derivedDataPath: derivedDataPath)
         }
 
