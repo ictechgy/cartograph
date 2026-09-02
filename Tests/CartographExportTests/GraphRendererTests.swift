@@ -152,7 +152,7 @@ struct GraphRendererTests {
     func htmlEscapesClosingScriptTag() {
         let escaped = HTMLGraphRenderer.escapeForScriptTag("{\"name\":\"</script><script>alert(1)</script>\"}")
         #expect(!escaped.contains("</script>"))
-        #expect(escaped.contains("<\\/script>"))
+        #expect(escaped.contains("\\u003c/script>"))
     }
 
     @Test("팩토리가 형식에 맞는 렌더러를 만든다")
@@ -169,5 +169,42 @@ struct GraphRendererTests {
         for format in GraphFormat.allCases {
             #expect(!(try GraphRendererFactory.make(format).render(empty)).isEmpty)
         }
+    }
+}
+
+@Suite("렌더러 이스케이프 강화")
+struct RendererEscapingHardeningTests {
+    @Test("HTML 은 데이터 안의 모든 여는 꺾쇠를 무력화한다")
+    func htmlEscapesEveryOpeningAngleBracket() {
+        // `</` 만 막으면 부족하다. `<!--<script` 가 들어오면 토크나이저가
+        // script 이중 이스케이프 상태로 들어가 문서의 진짜 </script> 를 삼킨다.
+        let escaped = HTMLGraphRenderer.escapeForScriptTag("{\"n\":\"<!--<script>x</script>\"}")
+        #expect(!escaped.contains("<"))
+        #expect(escaped.contains("\\u003c"))
+    }
+
+    @Test("HTML 페이로드는 여전히 유효한 JSON 이다")
+    func htmlPayloadStaysValidJSON() throws {
+        let graph = CodeGraph(
+            level: .symbol,
+            nodes: [GraphNode(id: "a", name: "<!--<script>", kind: .structType)],
+            edges: []
+        )
+        let output = try HTMLGraphRenderer().render(graph)
+        let opening = try #require(output.range(of: "<script id=\"graph-data\" type=\"application/json\">"))
+        let closing = try #require(output.range(of: "</script>", range: opening.upperBound..<output.endIndex))
+        let payload = String(output[opening.upperBound..<closing.lowerBound])
+        _ = try JSONSerialization.jsonObject(with: Data(payload.utf8))
+    }
+
+    @Test("DOT 은 클러스터 이름도 따옴표 처리한다")
+    func dotQuotesClusterNames() throws {
+        let graph = CodeGraph(
+            level: .type,
+            nodes: [GraphNode(id: "a", name: "A", kind: .structType, module: "Weird\"Module")],
+            edges: []
+        )
+        let output = try DOTGraphRenderer().render(graph)
+        #expect(output.contains("subgraph \"cluster_Weird\\\"Module\""))
     }
 }

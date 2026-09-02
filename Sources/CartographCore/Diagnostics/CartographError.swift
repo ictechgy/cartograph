@@ -19,6 +19,8 @@ public enum CartographError: Error, Equatable, LocalizedError {
     case unknownLayer(name: String, definedLayers: [String])
     /// 분석 결과 문제가 발견되어 실패로 종료(`--strict`).
     case thresholdExceeded(rule: String, message: String)
+    /// 결과를 파일로 쓰지 못함.
+    case outputUnwritable(path: String, underlying: String)
 
     public var errorDescription: String? {
         switch self {
@@ -56,6 +58,8 @@ public enum CartographError: Error, Equatable, LocalizedError {
                 """
         case let .thresholdExceeded(rule, message):
             return "Threshold exceeded for '\(rule)': \(message)"
+        case let .outputUnwritable(path, underlying):
+            return "Could not write to \(path): \(underlying)"
         }
     }
 }

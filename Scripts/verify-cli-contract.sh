@@ -78,8 +78,12 @@ expect_status 64 "잘못된 형식 값"      dead --report-format yaml
 echo "종료 코드 2 — 도구 실패"
 MISSING="$(mktemp -d)"
 trap 'rm -rf "$MISSING"' EXIT
+printf '{ not json' > "$MISSING/broken.json"
 expect_status 2 "인덱스 스토어 없음"   cycles --project "$MISSING"
 expect_status 2 "없는 인덱스 경로"     cycles --index-store "$MISSING/nope"
+# 파일을 못 쓴 것과 순환을 찾은 것이 CI 에서 같은 신호가 되어서는 안 된다.
+expect_status 2 "출력 파일 쓰기 실패"  graph --index-store "$MISSING/nope" -o "$MISSING/no/dir/out.dot"
+expect_status 2 "깨진 베이스라인"      cycles --project "$MISSING" --baseline "$MISSING/broken.json"
 
 echo "출력 내용"
 expect_output "cartograph"      "도움말에 도구 이름"           --help

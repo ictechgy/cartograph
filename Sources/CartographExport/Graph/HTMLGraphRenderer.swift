@@ -46,9 +46,15 @@ public struct HTMLGraphRenderer: GraphRendering {
         return (graph.filteringNodes { kept.contains($0.id) }, true)
     }
 
-    /// `</script>` 가 데이터 안에 들어가면 문서가 그 자리에서 끊긴다.
+    /// 데이터 안의 여는 꺾쇠를 전부 JSON 이스케이프로 바꾼다.
+    ///
+    /// `</` 만 막으면 부족하다. `<!--<script` 가 들어오면 HTML 토크나이저가
+    /// script 이중 이스케이프 상태로 들어가, 문서에 실제로 있는 `</script>` 를
+    /// 태그로 보지 않고 삼킨다. 그 뒤 페이지 전체가 스크립트 안으로 빨려 들어가
+    /// 빈 화면이 된다. `\u003c` 는 적법한 JSON 문자열 이스케이프이므로
+    /// 파싱 결과는 그대로이고, 토크나이저가 볼 꺾쇠는 하나도 남지 않는다.
     static func escapeForScriptTag(_ json: String) -> String {
-        json.replacingOccurrences(of: "</", with: "<\\/")
+        json.replacingOccurrences(of: "<", with: "\\u003c")
     }
 
     private static func document(payload: String, level: String, truncatedFrom: Int?) -> String {

@@ -17,8 +17,13 @@ struct CartographCommandPlugin: CommandPlugin {
 
         // 패키지 디렉터리를 기본 분석 대상으로 넣는다. 플러그인은 임의의 작업
         // 디렉터리에서 실행되므로, 이것이 없으면 현재 디렉터리 기본값이 엉뚱한 곳을 가리킨다.
+        // `--project=/path` 처럼 한 토큰으로 준 경우도 알아봐야 한다. 놓치면 뒤에
+        // 붙인 값이 이기므로, 사용자가 지정한 경로가 조용히 무시된다.
+        let specifiesProject = arguments.contains {
+            $0 == "--project" || $0 == "-p" || $0.hasPrefix("--project=") || $0.hasPrefix("-p=")
+        }
         var forwarded = arguments
-        if !arguments.contains("--project"), !arguments.contains("-p") {
+        if !specifiesProject {
             forwarded.append(contentsOf: ["--project", context.package.directoryURL.path])
         }
 

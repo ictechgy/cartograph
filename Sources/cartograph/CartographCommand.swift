@@ -56,8 +56,12 @@ struct CartographCommand: ParsableCommand {
             try command.run()
         } catch let error as CartographError {
             // 우리가 아는 실패만 가로챈다. 나머지는 ArgumentParser 가 처리하게 둔다.
-            // 목록으로 열거하려 들면 --help 처럼 내부적으로 오류를 던져 정상 종료하는
-            // 경로를 놓치고, 도움말이 종료 코드 2 로 실패한다. 실제로 그렇게 깨졌다.
+            //
+            // 처리할 오류를 타입으로 열거하려는 시도를 두 번 했고 두 번 다 깨졌다.
+            // --help 는 파싱이 아니라 run() 단계에서 ArgumentParser 내부 오류로
+            // 정상 종료하는데, 그 타입은 공개되어 있지 않아 catch 로 집을 수 없다.
+            // 그래서 분류는 최상위가 아니라 오류가 나는 자리에서 한다. 도구 실패로
+            // 다뤄야 할 것은 그곳에서 CartographError 로 감싼다.
             FileHandle.standardError.write(Data(("error: " + CommandSupport.describe(error) + "\n").utf8))
             Foundation.exit(CommandSupport.failureExitCode)
         } catch {
@@ -217,7 +221,11 @@ struct InitCommand: ParsableCommand {
         guard force || !fileSystem.fileExists(at: path) else {
             throw ValidationError("\(path) already exists. Pass --force to overwrite it.")
         }
-        try fileSystem.write(text: ConfigurationTemplate.yaml + "\n", to: path)
+        do {
+            try fileSystem.write(text: ConfigurationTemplate.yaml + "\n", to: path)
+        } catch {
+            throw CartographError.outputUnwritable(path: path, underlying: "\(error)")
+        }
         print("Wrote \(path)")
     }
 }

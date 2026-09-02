@@ -95,11 +95,11 @@ public struct CartographService: Sendable {
     public func retentionExplanation(
         of subject: String,
         in context: AnalysisContext
-    ) -> (lookup: NodeLookup, explanation: ReachabilityExplanation?) {
+    ) -> (graph: CodeGraph, lookup: NodeLookup, explanation: ReachabilityExplanation?) {
         let (graph, report) = unusedCode(in: context)
         let lookup = NodeLookup.resolve(subject, in: graph)
-        guard case let .found(node) = lookup else { return (lookup, nil) }
-        return (lookup, report.explain(node.id, in: graph))
+        guard case let .found(node) = lookup else { return (graph, lookup, nil) }
+        return (graph, lookup, report.explain(node.id, in: graph))
     }
 
     // MARK: - 명령 API
@@ -135,9 +135,8 @@ public struct CartographService: Sendable {
 
     /// 특정 선언이 왜 살아 있는지 사람이 읽는 문장으로 설명한다.
     public func explainRetention(of subject: String) throws -> CommandOutcome {
-        let context = try loadContext()
-        let graph = context.buildGraph(level: .symbol).graph
-        let (lookup, explanation) = retentionExplanation(of: subject, in: context)
+        // 그래프를 두 번 만들지 않는다. 질의가 이미 만든 것을 그대로 받는다.
+        let (graph, lookup, explanation) = retentionExplanation(of: subject, in: try loadContext())
 
         switch lookup {
         case .notFound:
@@ -164,7 +163,7 @@ public struct CartographService: Sendable {
 
         let output: String = switch configuration.reportFormat {
         case .json, .sarif, .checkstyle:
-            try renderer.renderJSON(metrics, diagnostics: reported)
+            try renderer.renderJSON(metrics, diagnostics: reported, suppressedCount: suppressed)
         default:
             renderer.renderTable(metrics)
                 + (reported.isEmpty
@@ -288,7 +287,12 @@ public struct CartographService: Sendable {
         case .unreachable:
             return CommandOutcome(output: "\(name) is not reachable from any retained root.\n", findingCount: 1)
         case .unknown, nil:
-            return CommandOutcome(output: "No declaration matches '\(name)'.\n")
+            // 이 분기는 정점을 찾은 뒤에만 도달한다. "찾지 못했다"고 말하면
+            // 사용자는 자기가 친 이름이 틀렸다고 오해한다.
+            return CommandOutcome(
+                output: "Could not determine reachability for \(name).\n",
+                findingCount: 1
+            )
         }
     }
 

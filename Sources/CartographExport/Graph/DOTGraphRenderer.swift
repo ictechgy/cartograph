@@ -44,7 +44,8 @@ public struct DOTGraphRenderer: GraphRendering {
         return grouped.keys.sorted().flatMap { module -> [String] in
             let nodes = (grouped[module] ?? []).map { "    \(nodeLine($0))" }
             guard !module.isEmpty else { return nodes }
-            return ["  subgraph \"cluster_\(module)\" {", "    label=\(quote(module));"] + nodes + ["  }"]
+            return ["  subgraph \(quote("cluster_\(module)")) {", "    label=\(quote(module));"]
+                + nodes + ["  }"]
         }
     }
 

@@ -22,6 +22,15 @@ enum CommandSupport {
     static func makeContext(_ options: GlobalOptions) throws -> CommandContext {
         let fileSystem = LocalFileSystem()
         let resolved = try options.resolveConfiguration(fileSystem: fileSystem)
+
+        // 경고를 출력 단계까지 들고 가면, 명령이 실패했을 때 통째로 사라진다.
+        // 설정 오타 때문에 실패한 사용자가 정작 그 오타를 못 보게 된다.
+        if !options.quiet {
+            for warning in resolved.warnings {
+                FileHandle.standardError.write(Data(("warning: " + warning + "\n").utf8))
+            }
+        }
+
         return CommandContext(
             service: CartographService(
                 configuration: resolved.configuration,
@@ -39,14 +48,15 @@ enum CommandSupport {
         options: GlobalOptions,
         context: CommandContext
     ) throws {
-        if !options.quiet {
-            for warning in context.warnings {
-                FileHandle.standardError.write(Data(("warning: " + warning + "\n").utf8))
-            }
-        }
-
         if let path = options.outputPath {
-            try context.fileSystem.write(text: outcome.output, to: path)
+            // 여기서 나는 파일 시스템 오류를 그대로 던지면 ArgumentParser 가 1 로
+            // 끝낸다. 그것은 "코드에 문제가 있음"에 예약된 코드다. 파일을 못 쓴 것과
+            // 순환을 찾은 것이 CI 에서 같은 신호가 되어서는 안 된다.
+            do {
+                try context.fileSystem.write(text: outcome.output, to: path)
+            } catch {
+                throw CartographError.outputUnwritable(path: path, underlying: "\(error)")
+            }
             if !options.quiet {
                 print("Wrote \(path)")
             }

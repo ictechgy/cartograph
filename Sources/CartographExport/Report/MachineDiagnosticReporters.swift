@@ -25,9 +25,9 @@ public struct GitHubActionsDiagnosticReporter: DiagnosticReporting {
 
     public func report(_ diagnostics: [Diagnostic], summary: ReportSummary) -> String {
         let lines = diagnostics.sorted().map { diagnostic -> String in
-            var properties = ["title=cartograph \(diagnostic.ruleIdentifier)"]
+            var properties = ["title=\(escapeProperty("cartograph \(diagnostic.ruleIdentifier)"))"]
             if let location = diagnostic.location {
-                properties.insert("file=\(location.path)", at: 0)
+                properties.insert("file=\(escapeProperty(location.path))", at: 0)
                 properties.insert("line=\(location.line)", at: 1)
                 properties.insert("col=\(location.column)", at: 2)
             }
@@ -45,12 +45,22 @@ public struct GitHubActionsDiagnosticReporter: DiagnosticReporting {
         }
     }
 
-    /// 워크플로 명령은 개행과 콜론을 퍼센트 인코딩으로 받는다.
+    /// 메시지 본문에 필요한 이스케이프. 퍼센트를 먼저 바꿔야 이중 인코딩을 피한다.
     private func escape(_ message: String) -> String {
         message
             .replacingOccurrences(of: "%", with: "%25")
             .replacingOccurrences(of: "\r", with: "%0D")
             .replacingOccurrences(of: "\n", with: "%0A")
+    }
+
+    /// 속성 값에 필요한 이스케이프.
+    ///
+    /// 속성은 쉼표로 나뉘고 이름과 값은 등호로 갈리므로, 값 안의 쉼표와 콜론까지
+    /// 인코딩해야 한다. 경로에 쉼표가 있으면 GitHub 이 주석을 잘못 잘라 버린다.
+    private func escapeProperty(_ value: String) -> String {
+        escape(value)
+            .replacingOccurrences(of: ",", with: "%2C")
+            .replacingOccurrences(of: ":", with: "%3A")
     }
 }
 
@@ -155,13 +165,23 @@ public struct SARIFDiagnosticReporter: DiagnosticReporting {
                 [
                     SARIFDocument.Location(
                         physicalLocation: .init(
-                            artifactLocation: .init(uri: location.path),
+                            artifactLocation: .init(uri: uriReference(for: location.path)),
                             region: .init(startLine: max(1, location.line), startColumn: max(1, location.column))
                         )
                     )
                 ]
             } ?? []
         )
+    }
+
+    /// SARIF 의 artifactLocation.uri 는 RFC 3986 URI 참조여야 한다.
+    ///
+    /// 경로를 그대로 넣으면 공백이나 `#` 이 든 경로에서 문서가 규격을 벗어나고,
+    /// GitHub code scanning 업로드가 거부될 수 있다.
+    private static func uriReference(for path: String) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove("#")
+        return path.addingPercentEncoding(withAllowedCharacters: allowed) ?? path
     }
 
     /// SARIF 는 warning/error/note 만 인정한다.

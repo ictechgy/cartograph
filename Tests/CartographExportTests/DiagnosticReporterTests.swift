@@ -207,3 +207,45 @@ struct MetricsRendererTests {
         #expect(!lenient.contains("zone-of-"))
     }
 }
+
+@Suite("기계 형식 이스케이프 강화")
+struct MachineReporterEscapingTests {
+    private let summary = ReportSummary(command: "dead", subject: "symbol graph")
+
+    @Test("GitHub Actions 는 속성 값의 쉼표와 콜론도 인코딩한다")
+    func githubActionsEscapesPropertyValues() throws {
+        // 경로에 쉼표가 있으면 GitHub 이 속성을 잘못 잘라 주석을 잃는다.
+        let diagnostic = Diagnostic(
+            ruleIdentifier: "unused-symbol",
+            severity: .warning,
+            message: "unused",
+            location: SourceLocation(path: "/repo/a,b:c.swift", line: 3, column: 1)
+        )
+        let output = try GitHubActionsDiagnosticReporter().report([diagnostic], summary: summary)
+        #expect(output.contains("file=/repo/a%2Cb%3Ac.swift"))
+        #expect(!output.contains("a,b"))
+    }
+
+    @Test("SARIF 는 경로를 URI 참조로 인코딩한다")
+    func sarifEncodesPathAsURIReference() throws {
+        let diagnostic = Diagnostic(
+            ruleIdentifier: "unused-symbol",
+            severity: .warning,
+            message: "unused",
+            location: SourceLocation(path: "/Users/x/My Project/A#1.swift", line: 1, column: 1)
+        )
+        let output = try SARIFDiagnosticReporter().report([diagnostic], summary: summary)
+        #expect(output.contains("My%20Project"))
+        #expect(output.contains("A%231.swift"))
+    }
+}
+
+@Suite("지표 JSON 의 억제 건수")
+struct MetricsSuppressionTests {
+    @Test("억제 건수를 JSON 에도 담는다")
+    func jsonCarriesSuppressedCount() throws {
+        // 텍스트에만 있으면 기계 소비자가 억제 사실을 알 수 없다.
+        let output = try MetricsRenderer().renderJSON([], diagnostics: [], suppressedCount: 7)
+        #expect(output.contains("\"suppressedCount\" : 7"))
+    }
+}
