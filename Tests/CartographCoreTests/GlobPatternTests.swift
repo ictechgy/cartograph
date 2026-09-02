@@ -102,3 +102,43 @@ struct PathFilterTests {
         #expect(PathFilter.passthrough.allows("any/path.swift"))
     }
 }
+
+@Suite("PathFilter 상대 경로 매칭")
+struct PathFilterRelativeMatchingTests {
+    @Test("프로젝트 기준 상대 글롭이 절대 경로에도 적용된다")
+    func relativeGlobMatchesAbsolutePath() {
+        // 인덱스는 절대 경로를 주지만 사용자는 Sources/** 처럼 쓴다.
+        // 이 매칭이 없으면 설정이 조용히 아무것도 고르지 않아 정점이 0개가 된다.
+        let filter = PathFilter(include: ["Sources/**"], basePath: "/Users/me/project")
+        #expect(filter.allows("/Users/me/project/Sources/App/Main.swift"))
+        #expect(!filter.allows("/Users/me/project/Tests/AppTests/MainTests.swift"))
+    }
+
+    @Test("기준 밖의 경로는 절대 경로로만 판단한다")
+    func pathsOutsideBaseUseAbsoluteFormOnly() {
+        let filter = PathFilter(include: ["Sources/**"], basePath: "/Users/me/project")
+        #expect(!filter.allows("/elsewhere/Sources/App/Main.swift"))
+        #expect(PathFilter(include: ["**/Sources/**"], basePath: "/Users/me/project")
+            .allows("/elsewhere/Sources/App/Main.swift"))
+    }
+
+    @Test("상대 글롭으로도 제외할 수 있다")
+    func relativeExclude() {
+        let filter = PathFilter(exclude: ["Generated/**"], basePath: "/p")
+        #expect(!filter.allows("/p/Generated/API.swift"))
+        #expect(filter.allows("/p/Sources/API.swift"))
+    }
+
+    @Test("기준이 없으면 절대 경로만 본다")
+    func withoutBasePath() {
+        let filter = PathFilter(include: ["Sources/**"])
+        #expect(!filter.allows("/p/Sources/A.swift"))
+        #expect(filter.allows("Sources/A.swift"))
+    }
+
+    @Test("기준 경로의 마지막 슬래시 유무는 결과를 바꾸지 않는다")
+    func trailingSlashIsIrrelevant() {
+        #expect(PathFilter(include: ["Sources/**"], basePath: "/p/").allows("/p/Sources/A.swift"))
+        #expect(PathFilter(include: ["Sources/**"], basePath: "/p").allows("/p/Sources/A.swift"))
+    }
+}

@@ -73,8 +73,10 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
     public static let `default` = CartographConfiguration()
 
     /// 설정에서 유도한 경로 필터.
+    ///
+    /// 프로젝트 경로를 기준으로 넘겨 사용자가 상대 글롭을 쓸 수 있게 한다.
     public var pathFilter: PathFilter {
-        PathFilter(include: include, exclude: exclude)
+        PathFilter(include: include, exclude: exclude, basePath: projectPath)
     }
 
     /// 이름으로 레이어를 찾는다.
