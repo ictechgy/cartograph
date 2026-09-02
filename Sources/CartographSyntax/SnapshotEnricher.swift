@@ -80,11 +80,13 @@ public struct SnapshotEnricher: Sendable {
             if fileFacts.ignoresEntireFile {
                 updated.attributes.insert(.ignoreComment)
             }
-            // 줄 번호가 가장 신뢰할 수 있는 키다. 매크로 확장 등으로 어긋나면
-            // 이름으로 한 번 더 시도한다.
-            guard let declaration = fileFacts.declaration(atLine: symbol.location.line)
-                ?? fileFacts.declaration(named: symbol.name)
-            else { return updated }
+            // 이름이 맞는 선언만 신뢰한다. 줄 번호만 보면 한 줄에 선언이 여럿일 때
+            // 엉뚱한 선언의 접근 수준과 속성이 붙어 실제로 쓰이는 심볼이
+            // 미사용으로 보고된다.
+            guard let declaration = fileFacts.declaration(
+                matchingIndexName: symbol.name,
+                nearLine: symbol.location.line
+            ) else { return updated }
 
             updated.accessibility = declaration.accessibility
             updated.attributes.formUnion(declaration.attributes)
