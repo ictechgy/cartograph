@@ -21,7 +21,7 @@ cycles: 1 error — module graph · 9 nodes · 36 edges
 ## 왜 새로 만들었나
 
 [Periphery](https://github.com/peripheryapp/periphery)는 Swift 진영 최고의 미사용 코드 탐지기였고,
-보관된 소스는 지금도 이 문제에 대한 가장 좋은 문서입니다. 2026년에 상업 제품으로 바뀌었습니다.
+보관된 소스는 지금도 이 문제를 가장 잘 설명한 자료입니다. 2026년에 상업 제품으로 바뀌었습니다.
 Cartograph는 Periphery의 포크가 아닙니다. 같은 재료를 쓰되 목적을 다르게 잡았습니다.
 
 Periphery를 한 문장으로 줄이면 *"미사용 선언을 찾는다"*였고, 그래프는 그 목적을 이루기 위한 내부 수단이었습니다.
@@ -29,8 +29,8 @@ Cartograph를 한 문장으로 줄이면 *"의존성 그래프를 내놓는다"*
 
 | | Periphery (OSS, 보관됨) | Cartograph |
 |---|---|---|
-| 미사용 코드 | ✅ 제품 그 자체 | ✅ 보존 루트에서 도달 가능한지로 판정 |
-| 왜 살아남았나? | 답할 수 없음 | `dead --explain`이 근거나 경로를 알려 줌 |
+| 미사용 코드 | ✅ 이것이 곧 제품 | ✅ 보존 루트에서 도달 가능 여부로 판정 |
+| 왜 살아남았나? | 답할 수 없음 | `dead --explain`이 근거와 경로를 알려 줌 |
 | 순환 의존성 | — | ✅ 끊을 후보 간선까지 |
 | 아키텍처 지표 | — | ✅ Ca, Ce, 불안정도, 추상도, 주계열 거리 |
 | CI에서 레이어 규칙 강제 | — | ✅ YAML로 쓰는 ArchUnit 방식 규칙 |
@@ -43,10 +43,10 @@ Cartograph를 한 문장으로 줄이면 *"의존성 그래프를 내놓는다"*
 
 ## 설치
 
-macOS 14 이상과, 실행 시점에 Swift 툴체인(Xcode 또는 Command Line Tools)이 필요합니다.
+macOS 14 이상이 필요합니다. 실행할 때는 Swift 툴체인(Xcode 또는 Command Line Tools)이 있어야 합니다.
 `libIndexStore`를 거기서 불러오기 때문입니다. CI는 Swift 6.3.3, 개발은 6.4에서 돌아갑니다.
 
-**Homebrew** — 미리 빌드된 유니버설 바이너리, 수 초면 끝납니다.
+**Homebrew** — 미리 빌드된 유니버설 바이너리이며, 수 초면 끝납니다.
 
 ```bash
 brew install ictechgy/tap/cartograph
@@ -96,7 +96,7 @@ cartograph graph     # 자동으로 찾습니다
 ```
 
 > `-Xswiftc -index-store-path`는 SwiftPM의 native 빌드 시스템에서만 동작합니다. Swift 6.4부터
-> 기본이 된 Xcode 기반 빌드 시스템은 이 플래그를 **무시**하고 `<스크래치 경로>/out`에 남깁니다.
+> 기본이 된 Xcode 기반 빌드 시스템은 이 플래그를 **무시**하고 `<스크래치 경로>/out`에 인덱스를 남깁니다.
 > 자동 탐색에 맡기거나 `--index-store .build/out`을 쓰세요.
 
 **Xcode 프로젝트/워크스페이스**
@@ -112,10 +112,10 @@ cartograph graph --index-store DerivedData/Index.noindex/DataStore
 `.build/debug/index/store`, `.build/out`, `~/Library/Developer/Xcode/DerivedData/<project>-*`.
 여러 개가 있으면 가장 최근에 갱신된 것을 씁니다. 오래된 인덱스로 분석하면 결과가 조용히
 틀리기 때문입니다. 최근 SwiftPM은 인덱스를 자동으로 남기므로, Swift 패키지라면
-`cartograph graph` 만으로도 대개 동작합니다.
+`cartograph graph`만으로도 대개 동작합니다.
 
 > **인덱스는 무언가 컴파일될 때만 만들어집니다.** 이미 최신인 패키지를 빌드하면 새 인덱스
-> 데이터가 생기지 않습니다. CI 에서는 새 체크아웃이라 항상 컴파일되므로 문제가 없습니다.
+> 데이터가 생기지 않습니다. CI에서는 새 체크아웃이라 항상 컴파일되므로 문제가 없습니다.
 >
 > **인덱스 스토어에는 낡은 유닛이 남습니다.** 파일을 옮기거나 지워도 예전 기록이 남아, 지운
 > 타입이 유령 정점으로 보일 수 있습니다. 결과가 말이 안 될 때는 새 스크래치 경로로
@@ -136,7 +136,7 @@ cartograph graph --level symbol --format json  -o graph.json
 cartograph graph --level module --format html  -o graph.html
 ```
 
-해상도는 `module`, `file`, `type`, `symbol` 네 가지입니다. HTML은 외부 CDN을 전혀 쓰지 않는
+레벨은 `module`, `file`, `type`, `symbol` 네 가지입니다. HTML은 외부 CDN을 전혀 쓰지 않는
 단일 파일이라 폐쇄망에서도 열리고 보안 검토를 통과합니다.
 
 ### `cycles` — 순환 의존성 찾기
@@ -145,7 +145,7 @@ cartograph graph --level module --format html  -o graph.html
 cartograph cycles --level module --strict
 ```
 
-강한 연결 요소마다 대표가 되는 최단 순환을 보여 주고, 참조 횟수가 가장 적은 간선을 끊을 후보로
+강한 연결 요소마다 그중 가장 짧은 순환을 대표로 보여 주고, 참조 횟수가 가장 적은 간선을 끊을 후보로
 제시합니다. "이 스무 개가 서로 얽혀 있다"는 말은 정확하지만 어디부터 손대야 할지는 알려 주지
 않습니다. 구체적인 순환 하나는 알려 줍니다.
 
@@ -176,7 +176,7 @@ Data.UserRepository is reachable:
 cartograph metrics --level module
 ```
 
-Robert C. Martin의 패키지 지표를 이 그래프 위에서 계산합니다. 이 저장소에 돌린 결과:
+Robert C. Martin의 패키지 지표를 이 그래프 위에서 계산합니다. 이 저장소에서 돌린 결과:
 
 ```
 NODE                   Ca  Ce     I     A     D           ZONE
@@ -210,7 +210,7 @@ rules:
     allow: []          # 도메인 계층은 아무것에도 의존하지 않는다
 ```
 
-레이어는 정점 이름·모듈명·파일 경로를 모두 후보로 판정합니다. 팀마다 레이어를 디렉터리로
+레이어 판정은 정점 이름·모듈 이름·파일 경로를 모두 대상으로 삼습니다. 팀마다 레이어를 디렉터리로
 정의하기도 하고 이름 규칙으로 정의하기도 하기 때문입니다. 어느 레이어에도 속하지 않는 정점은
 `info`로 보고합니다. 규칙이 무엇을 덮지 못하는지 모르면 "통과"라는 결과를 믿을 수 없습니다.
 
@@ -220,8 +220,8 @@ rules:
 cartograph baseline --write .cartograph-baseline.json
 ```
 
-지금 있는 문제를 기록해 두고 *새로 생긴* 것만 빌드를 실패시킵니다. 지문은 USR 기반이라 코드를 파일 안에서
-위아래로 옮겨도 억제된 문제가 되살아나지 않습니다.
+지금 있는 문제를 기록해 두고 *새로 생긴* 것만 빌드를 실패시킵니다. 기록해 둔 문제의 지문(fingerprint)은 USR 기반이라, 코드를 파일 안에서 위아래로 옮겨도
+억제한 문제가 되살아나지 않습니다.
 
 ## 설정
 
@@ -234,8 +234,8 @@ cartograph baseline --write .cartograph-baseline.json
 ## 보존 규칙
 
 인덱스 스토어에는 컴파일러가 본 것만 기록됩니다. 런타임 셀렉터, 합성된 `Codable`,
-Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이지 않습니다. 아래 규칙이 그 공백을
-메우고, 각 규칙은 *왜* 살렸는지를 함께 남겨 `--explain`이 답할 수 있게 합니다.
+Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이지 않습니다. 아래 규칙이 그 공백을 메웁니다.
+각 규칙은 *왜* 살렸는지를 함께 남기므로 `--explain`이 답할 수 있습니다.
 
 | 보존 대상 | 근거 |
 |---|---|
@@ -257,24 +257,25 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 | `// cartograph:ignore`, `// cartograph:ignore:all` | 사용자가 지정 |
 | `retained_names`, `retained_files` 글롭 | 사용자가 지정 |
 
-**`retain_objc_accessible`은 기본 켜짐입니다.** Periphery는 기본 꺼짐이었고, 그것이 혼합 언어
-UIKit 프로젝트에서 거짓 양성의 가장 큰 원인이었습니다. 아무도 믿지 않는 미사용 코드 탐지기는
+**`retain_objc_accessible`은 기본값으로 켜져 있습니다.** Periphery는 기본값이 꺼져 있었고, 그것이 혼합 언어
+UIKit 프로젝트에서 오탐(거짓 양성)의 가장 큰 원인이었습니다. 아무도 믿지 않는 미사용 코드 탐지기는
 아예 없는 것보다 나쁩니다.
 
-프로토콜 요구사항은 오버라이드 관계를 역방향으로 따라가 처리합니다. 요구사항이 호출되면 그
-구현체가 도달 가능해지되, 구현체를 소유한 타입이 살아 있을 때만 그렇습니다. 한 번도 만들어지지
-않는 타입의 구현이 호출하는 것까지 되살리면 미사용 코드가 조용히 숨습니다. 앞의 조건이 없으면
-프로토콜 뒤의 타입이 전부 죽은 것처럼 보이고, 뒤의 조건이 없으면 죽은 코드가 쓰이지 않는 준수
-뒤에 숨습니다. 둘 다 자기 분석과 외부 리뷰에서 드러났습니다.
+프로토콜 요구사항은 오버라이드 관계를 역방향으로 따라가며 처리합니다. 요구사항이 호출되면 그
+구현체가 도달 가능해지는데, 구현체를 소유한 타입이 살아 있을 때만 그렇습니다. 한 번도
+만들어지지 않는 타입의 구현이 호출하는 것까지 되살리면 미사용 코드가 경고 없이 숨어 버립니다.
+앞의 "요구사항이 호출되면" 조건이 없으면 프로토콜 뒤의 타입이 전부 죽은 것처럼 보입니다.
+뒤의 "타입이 살아 있을 때만" 조건이 없으면 죽은 코드가 실제로 쓰이지 않는 프로토콜 준수 뒤에
+숨어 버립니다. 둘 다 이 도구로 이 저장소를 분석하는 과정(도그푸딩)과 외부 리뷰에서 드러났습니다.
 
 ### 알려진 한계
 
 - **`#Preview` 매크로 본문.** `#Preview` 안에서만 쓰이는 타입은 매크로 확장 시 컴파일러가
-  참조를 남긴 경우에만 보존됩니다. `PreviewProvider` 준수는 직접 인식하지만 `#Preview`는 아닙니다.
+  참조를 남긴 경우에만 보존됩니다. `PreviewProvider` 준수는 직접 인식하지만 `#Preview` 매크로는 그렇지 않습니다.
 - **Interface Builder 연결을 개별로 대조하지 않습니다.** `retain_interface_builder`가 켜져 있으면
   실제 연결 여부와 무관하게 모든 `@IBOutlet`·`@IBAction`을 보존하므로, 연결이 끊긴 아웃렛은
   보고되지 않습니다. 커스텀 클래스는 이름으로 대조합니다.
-- **Objective-C 소스는 분석하지 않습니다.** `.m`/`.h`는 보이지 않으며, 그쪽에서 닿는 Swift
+- **Objective-C 소스는 분석하지 않습니다.** `.m`/`.h`는 보이지 않으며, 그쪽에서 참조되는 Swift
   선언은 기본값이 켜진 `retain_objc_accessible`이 덮습니다.
 - **컴파일되지 않은 `#if` 분기는 존재하지 않습니다.** 인덱스 스토어는 실제로 빌드한 구성만 압니다.
 
