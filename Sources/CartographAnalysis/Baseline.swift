@@ -59,13 +59,26 @@ public struct BaselineStore: Sendable {
         guard fileSystem.fileExists(at: path) else {
             throw CartographError.invalidBaseline(path: path, reason: "file not found")
         }
+        let baseline: Baseline
         do {
-            return try JSONDecoder().decode(Baseline.self, from: fileSystem.readData(at: path))
+            baseline = try JSONDecoder().decode(Baseline.self, from: fileSystem.readData(at: path))
         } catch let error as CartographError {
             throw error
         } catch {
             throw CartographError.invalidBaseline(path: path, reason: "\(error)")
         }
+
+        // 버전을 기록만 하고 검사하지 않으면, 지문 규칙이 바뀐 뒤 옛 파일이
+        // 조용히 엉뚱한 진단을 억제한다. 억제는 침묵이라 아무도 알아채지 못한다.
+        guard baseline.version == Baseline.currentVersion else {
+            throw CartographError.invalidBaseline(
+                path: path,
+                reason: "format version \(baseline.version) is not supported "
+                    + "(this build writes version \(Baseline.currentVersion)). "
+                    + "Regenerate it with `cartograph baseline`."
+            )
+        }
+        return baseline
     }
 
     /// 베이스라인 파일이 있으면 읽고, 없으면 nil 을 돌려준다.

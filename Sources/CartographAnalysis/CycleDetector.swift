@@ -204,6 +204,9 @@ public struct CycleDetector: Sendable {
 
         for start in component.prefix(max(1, options.maximumSearchStarts)) {
             guard let path = breadthFirstCycle(from: start, within: members, graph: graph) else { continue }
+            // 경로를 간선으로 되돌리지 못하면 이 후보는 버리고 다음 시작점을 본다.
+            // 여기서 요소 전체를 포기하면 실재하는 순환이 조용히 사라진다.
+            guard edges(along: path, in: graph) != nil else { continue }
             // 정점이 둘 이상인 요소에서 길이 1 은 자기 순환이며, 요소가 설명하는
             // 진짜 순환이 아니다. 이것을 최단으로 채택하면 요소 전체가 최소 길이
             // 필터에 걸려 사라진다.
@@ -215,17 +218,7 @@ public struct CycleDetector: Sendable {
             if best?.count == 2 { break }
         }
 
-        guard let path = best else { return nil }
-        var cycleEdges: [GraphEdge] = []
-        for offset in path.indices {
-            let source = path[offset]
-            let target = path[(offset + 1) % path.count]
-            guard let edge = edges(from: source, in: graph)
-                .filter({ $0.target == target })
-                .max(by: { $0.weight < $1.weight })
-            else { return nil }
-            cycleEdges.append(edge)
-        }
+        guard let path = best, let cycleEdges = self.edges(along: path, in: graph) else { return nil }
         return DependencyCycle(path: path, edges: cycleEdges, component: component)
     }
 
@@ -260,6 +253,23 @@ public struct CycleDetector: Sendable {
             }
         }
         return nil
+    }
+
+    /// 경로의 이웃한 정점 쌍을 잇는 간선들. 하나라도 없으면 nil.
+    ///
+    /// 같은 방향에 여러 간선이 있으면 가중치가 큰 것을 대표로 쓴다.
+    private func edges(along path: [NodeID], in graph: CodeGraph) -> [GraphEdge]? {
+        var result: [GraphEdge] = []
+        for offset in path.indices {
+            let source = path[offset]
+            let target = path[(offset + 1) % path.count]
+            guard let edge = edges(from: source, in: graph)
+                .filter({ $0.target == target })
+                .max(by: { $0.weight < $1.weight })
+            else { return nil }
+            result.append(edge)
+        }
+        return result
     }
 
     /// 선행 정점 사전을 거슬러 올라가 start → ... → end 경로를 복원한다.

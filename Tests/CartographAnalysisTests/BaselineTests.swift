@@ -183,3 +183,35 @@ struct AnalysisDiagnosticsTests {
         }
     }
 }
+
+@Suite("베이스라인 포맷 버전")
+struct BaselineVersionTests {
+    @Test("지원하지 않는 포맷 버전은 거부하고 재생성을 안내한다")
+    func rejectsUnsupportedVersion() throws {
+        // 버전을 기록만 하고 검사하지 않으면, 지문 규칙이 바뀐 뒤 옛 파일이
+        // 조용히 엉뚱한 진단을 억제한다. 억제는 침묵이라 아무도 알아채지 못한다.
+        let future = """
+            {"version": 99, "generatedBy": "cartograph", "fingerprints": ["unused-symbol|s:x"]}
+            """
+        let fileSystem = InMemoryFileSystem(files: ["/p/baseline.json": future])
+        let store = BaselineStore(fileSystem: fileSystem)
+
+        do {
+            _ = try store.load(from: "/p/baseline.json")
+            Issue.record("오류가 발생해야 한다")
+        } catch let error as CartographError {
+            let description = try #require(error.errorDescription)
+            #expect(description.contains("format version 99"))
+            #expect(description.contains("cartograph baseline"))
+        }
+    }
+
+    @Test("현재 버전으로 쓴 파일은 그대로 읽힌다")
+    func acceptsCurrentVersion() throws {
+        let fileSystem = InMemoryFileSystem()
+        let store = BaselineStore(fileSystem: fileSystem)
+        let baseline = Baseline(fingerprints: ["unused-symbol|s:x"])
+        try store.write(baseline, to: "/p/baseline.json")
+        #expect(try store.load(from: "/p/baseline.json") == baseline)
+    }
+}
