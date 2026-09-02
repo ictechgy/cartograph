@@ -7,6 +7,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Declarations referenced only from inside a computed property's getter or setter, or from a
+  `willSet`/`didSet` observer, are no longer reported as unused. The index records such calls
+  against the accessor, which is not a graph node, so those edges were dropped entirely. Accessor
+  references now resolve to their property. This mattered most for code built around computed
+  properties, such as RxSwift's `Reactive<Base>` extensions.
+- Executables whose entry point is `main.swift` are no longer reported as entirely unused.
+  Top-level statements have no enclosing declaration, so they produced no edges at all, and
+  top-level declarations carry no `@main` marker. Each `main.swift` now gets a synthetic
+  `top-level code` node that owns its statements, and its top-level declarations count as entry
+  points.
+- Generic type parameters are no longer graph nodes. The index records them as type aliases, so
+  `Base` in `struct Reactive<Base>` was reported as unused.
+- Syntax facts now match index symbols by name rather than by line alone. Two declarations on one
+  line no longer swap accessibility and attributes, and a declaration whose attribute sits on the
+  preceding line (`@discardableResult`, `@objc`) no longer loses its facts entirely — previously
+  the name fallback never matched a function, because index names carry argument labels
+  (`emit(_:options:)`) and syntax names do not.
+- Conformances declared in an extension (`extension Money: Codable {}`) now reach the extended
+  type, so its stored properties and enum cases are retained.
+- `test`-prefixed methods in production code are no longer treated as XCTest cases. The full
+  XCTest contract is checked: an instance method of a class or extension, taking no arguments and
+  returning nothing.
+- A trailing `// cartograph:ignore` on the same line as a declaration now applies to it. Trailing
+  comments live in the declaration's trailing trivia, which was never read.
+- Interface Builder documents are parsed by XML rules rather than an exact `customClass="` match,
+  so `customClass = 'ThemedButton'` is found, values inside XML comments are skipped, attribute
+  names no longer match as suffixes of longer names, and `.XIB` matches case-insensitively.
+- A DerivedData directory belonging to a different checkout of a same-named project is no longer
+  selected. Ownership is resolved from `info.plist`'s `WorkspacePath`.
+- `.build/<triple>/debug/index/store` layouts are searched.
+- `deinit` declarations now carry syntax facts.
+- The index cache path now requires the toolchain identity from its caller, and the definition
+  occurrence's location wins over a declaration-only one.
+
 ## [0.1.0] - 2026-09-02
 
 First release.
