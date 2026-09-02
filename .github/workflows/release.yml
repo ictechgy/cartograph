@@ -59,12 +59,13 @@ jobs:
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
           echo "SHA256=$(shasum -a 256 "$archive" | cut -d' ' -f1)" >> "$GITHUB_ENV"
 
-      # 배포하기 전에 그 바이너리가 실제로 도는지 확인한다.
-      - name: Smoke test the packaged binary
+      # 배포하기 전에 압축을 푼 그 바이너리로 CLI 계약 전체를 검증한다.
+      # 첫 릴리스 시도가 여기서 막혔다. --help 가 종료 코드 2 로 실패하고 있었다.
+      - name: Verify the packaged binary
         run: |
           tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP"
           "$RUNNER_TEMP/cartograph/cartograph" --version
-          "$RUNNER_TEMP/cartograph/cartograph" --help > /dev/null
+          Scripts/verify-cli-contract.sh "$RUNNER_TEMP/cartograph/cartograph"
 
       - name: Create the GitHub release
         env:

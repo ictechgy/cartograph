@@ -76,6 +76,12 @@ jobs:
 
       # CLI 껍데기와 인덱스 스토어 입출력은 단위 테스트로 덮기 어렵다.
       # 실제 빌드된 도구로 이 저장소를 분석해 그 경로를 끝까지 태운다.
+      # 문서화한 종료 코드가 실제로 지켜지는지 확인한다. 상수를 단언하는 단위
+      # 테스트는 상수가 동작과 맞는지는 말해 주지 않는다. 실제로 --help 가 2 로
+      # 실패한 적이 있고 단위 테스트는 전부 통과했다.
+      - name: CLI contract
+        run: Scripts/verify-cli-contract.sh "$CARTOGRAPH"
+
       - name: Circular dependencies
         run: |
           "$CARTOGRAPH" cycles --strict

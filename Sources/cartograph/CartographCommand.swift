@@ -51,24 +51,17 @@ struct CartographCommand: ParsableCommand {
     /// ArgumentParser 기본 처리는 실행 중 실패를 전부 1 로 내보낸다. 그러면 CI
     /// 스크립트가 "코드에 문제가 있음"과 "도구가 아예 못 돌았음"을 구분할 수 없다.
     static func main() {
-        var command: any ParsableCommand
         do {
-            command = try parseAsRoot()
-        } catch {
-            exit(withError: error)
-        }
-
-        do {
+            var command = try parseAsRoot()
             try command.run()
-        } catch let error as ExitCode {
-            exit(withError: error)
-        } catch let error as CleanExit {
-            exit(withError: error)
-        } catch let error as ValidationError {
-            exit(withError: error)
-        } catch {
+        } catch let error as CartographError {
+            // 우리가 아는 실패만 가로챈다. 나머지는 ArgumentParser 가 처리하게 둔다.
+            // 목록으로 열거하려 들면 --help 처럼 내부적으로 오류를 던져 정상 종료하는
+            // 경로를 놓치고, 도움말이 종료 코드 2 로 실패한다. 실제로 그렇게 깨졌다.
             FileHandle.standardError.write(Data(("error: " + CommandSupport.describe(error) + "\n").utf8))
             Foundation.exit(CommandSupport.failureExitCode)
+        } catch {
+            exit(withError: error)
         }
     }
 }
