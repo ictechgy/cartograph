@@ -37,6 +37,7 @@ Cartograph를 한 문장으로 줄이면 *"의존성 그래프를 내놓는다"*
 | 아키텍처 지표 | — | ✅ Ca, Ce, 불안정도, 추상도, 주계열 거리 |
 | CI에서 레이어 규칙 강제 | — | ✅ YAML로 쓰는 ArchUnit 방식 규칙 |
 | 이 심볼을 누가 쓰나? | 답할 수 없음 | `query`가 양방향을 JSON으로 답함 |
+| Dart·JavaScript 쪽 호출자 | 보이지 않음 | `bridges`가 플랫폼 채널의 Swift 쪽을 내보내고 `--external-retentions`가 조인 결과를 읽어 옴 |
 | 그래프 내보내기 | — | ✅ DOT, Mermaid, JSON, 단일 HTML |
 | SARIF (code scanning) | — | ✅ |
 | `@objc` 기본 보존 | ❌ 옵트인 | ✅ 기본 켜짐 |
@@ -286,6 +287,67 @@ $ cartograph query Client
 없는 이름을 물으면 종료 코드 64로 끝난다. 스크립트의 오타가 "아무도 안 씀"으로 조용히
 넘어가지 않게 하기 위해서다.
 
+### `bridges` — 언어 경계의 Swift 쪽 내보내기
+
+```bash
+cartograph bridges                       # bridge-facts JSON 을 표준 출력으로
+cartograph bridges --format text         # 사실마다 한 줄, 훑어보기용
+cartograph dead --external-retentions .isthmus/retentions.cartograph.json
+```
+
+Flutter 메서드 채널 핸들러나 React Native 모듈은 Dart 나 JavaScript 가 부릅니다. 컴파일러 인덱스는
+그것을 보지 못하므로 도달 불가로 보고합니다. 두 쪽을 잇는 유일한 끈은 문자열입니다.
+`FlutterMethodChannel(name:)` 의 채널 이름, 핸들러 안의 `case "takePhoto":`, 클래스의
+`@objc(CalendarManager)`, `.m` 파일의 `RCT_EXPORT_METHOD(addEvent:)`. `bridges` 는 그 리터럴을
+SwiftSyntax 로(Objective-C 는 텍스트로) 소스에서 읽고, 감싸는 선언의 USR 을 인덱스에서 붙여,
+[isthmus](../isthmus) 가 다른 플랫폼의 사실과 조인하는 `bridge-facts` 교환 형식으로 씁니다.
+
+```console
+$ cartograph bridges
+{
+  "facts" : [
+    {
+      "channel" : "com.example/camera",
+      "dynamic" : false,
+      "kind" : "method-handle",
+      "location" : { "column" : 18, "line" : 26, "path" : "/app/ios/CameraPlugin.swift" },
+      "method" : "takePhoto",
+      "symbol" : { "qualifiedName" : "App.handle(_:result:)", "usr" : "s:3App12CameraPlugin…" }
+    }
+  ],
+  "format" : "bridge-facts",
+  "generatedAt" : "2026-09-04T00:00:00Z",
+  "limitations" : [ ],
+  "platform" : "swift",
+  "project" : "/app/ios",
+  "target" : "flutter",
+  "tool" : { "name" : "cartograph", "version" : "0.5.0" },
+  "version" : 0
+}
+```
+
+판정이 아니라 사실을 냅니다. 반대쪽에서 실제로 핸들러를 부르는지는 모릅니다. 리터럴이 아닌
+이름은 버리지 않고 원문 표현식과 `dynamic: true` 로 남겨, 소비자가 조인하지 못한 수를 셀 수 있게
+합니다. 상수는 한 단계만 따라갑니다(`static let name = "…"` 을 `FlutterMethodChannel(name: Self.name)`
+에 쓰는 경우). 그보다 깊으면 `dynamic` 입니다. 핸들러 클로저 밖의 `case "…"` 는 파일에 채널이
+정확히 하나일 때 그 채널에 붙고, 아니면 `null` 입니다. `limitations` 에는 동적 이름의 수,
+채널을 못 정한 핸들의 수, USR 이 없는 사실의 수(Objective-C 소스, 또는 빌드 뒤 편집된 Swift),
+Flutter 와 React Native 가 섞인 프로젝트를 셉니다.
+
+isthmus 는 `external-retentions` 를 돌려줍니다. 호출자를 찾은 Swift 선언마다 USR 과 근거입니다.
+`--external-retentions <경로>`(또는 설정의 `external_retentions_path`)는 각각을 이유가
+`externalBridge` 인 보존 루트로 만들고, `--explain` 은 파일을 가리키는 대신 근거를 문장으로 인용합니다.
+
+```console
+$ cartograph dead --external-retentions .isthmus/retentions.cartograph.json --explain CameraPlugin
+App.CameraPlugin is retained because its member App.init(messenger:) is called from another platform across a bridge, per the external retentions file.
+  evidence: dart lib/camera.dart:42 invokes 'takePhoto' on channel 'com.example/camera'
+```
+
+지정했는데 없는 파일은 조용히 넘어가지 않고 도구 실패(종료 코드 2)입니다. 파일을 준 사람은 그것이
+반영되기를 기대합니다. `query` 는 `limitations` 에 파일의 출처와, 인덱스의 어느 선언과도 맞지 않는
+근거의 수를 싣습니다. 이름을 바꾼 핸들러는 버그가 되기 전에 거기서 먼저 드러납니다.
+
 ### `skill` — 코딩 에이전트에게 이 도구 쓰는 법 설치하기
 
 ```bash
@@ -422,6 +484,7 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 | 컴파일러 합성 선언 | 지울 수 없음 |
 | `// cartograph:ignore`, `// cartograph:ignore:all` | 사용자가 지정 |
 | `retained_names`, `retained_files` 글롭 | 사용자가 지정 |
+| `--external-retentions` 가 지목한 선언 | 다른 플랫폼이 브리지를 넘어 호출. `--explain` 이 근거를 인용 |
 
 **`retain_objc_accessible`은 기본값으로 켜져 있습니다.** Periphery는 기본값이 꺼져 있었고, 그것이 혼합 언어
 UIKit 프로젝트에서 오탐(거짓 양성)의 가장 큰 원인이었습니다. 아무도 믿지 않는 미사용 코드 탐지기는
@@ -441,8 +504,11 @@ UIKit 프로젝트에서 오탐(거짓 양성)의 가장 큰 원인이었습니�
 - **Interface Builder 연결을 개별로 대조하지 않습니다.** `retain_interface_builder`가 켜져 있으면
   실제 연결 여부와 무관하게 모든 `@IBOutlet`·`@IBAction`을 보존하므로, 연결이 끊긴 아웃렛은
   보고되지 않습니다. 커스텀 클래스는 이름으로 대조합니다.
-- **Objective-C 소스는 분석하지 않습니다.** `.m`/`.h`는 보이지 않으며, 그쪽에서 참조되는 Swift
-  선언은 기본값이 켜진 `retain_objc_accessible`이 덮습니다.
+- **Objective-C 소스는 분석하지 않습니다.** `.m`/`.h`는 그래프에 보이지 않으며, 그쪽에서 참조되는 Swift
+  선언은 기본값이 켜진 `retain_objc_accessible`이 덮습니다. `bridges` 는 `.m` 을 읽지만 React Native
+  내보내기 매크로만 텍스트로 봅니다.
+- **다른 언어의 호출자는 isthmus 를 통해서만 압니다.** `bridges` 는 Swift 가 선언한 것을 내보낼 뿐이고,
+  Dart 나 JavaScript 가 실제로 부르는지는 이 도구가 하지 않는 조인입니다.
 - **컴파일되지 않은 `#if` 분기는 존재하지 않습니다.** 인덱스 스토어는 실제로 빌드한 구성만 압니다.
 
 ## CI

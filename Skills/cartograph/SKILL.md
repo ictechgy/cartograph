@@ -45,8 +45,10 @@ produced by `cartograph dead`.
    graph a type's dependencies are held by its members. Follow `members`.
 
 6. **`reason` tells you why something survived.** A value like `interfaceBuilder`,
-   `objcExposed`, `codingKeys` or `caseIterable` means the compiler index alone would have
-   called it dead. Deleting it breaks something the index cannot see.
+   `objectiveCAccessible`, `codingKey` or `caseIterableEnumCase` means the compiler index alone
+   would have called it dead. Deleting it breaks something the index cannot see.
+   `externalBridge` means Dart, JavaScript or Kotlin calls it across a platform channel;
+   `cartograph dead --explain <name>` quotes which file and line does so.
 
 ## When the rules pass
 
@@ -66,6 +68,11 @@ you the code is unused. So:
 
 - **Objective-C declarations.** Only `.swift` files are analysed. Nothing here tells you
   whether a `.m` declaration is used.
+- **Callers in another language.** A Flutter or React Native handler is called from Dart or
+  JavaScript, which the index never sees, so it looks `unreachable`. If the project has an
+  `ios/` folder inside a Flutter or React Native app, or a `.m` file with `RCT_EXPORT_*`,
+  treat `unreachable` on a handler as unknown unless `limitations` lists
+  `external-retentions`, which means the join with the other side was supplied.
 - **Anything you changed in this session.** The index is written by the compiler at build
   time. If you edited Swift and did not rebuild, the answer describes the code as it was
   before your edit.

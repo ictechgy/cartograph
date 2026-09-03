@@ -130,6 +130,17 @@ swift build \
 `PathFilter.matchCandidates(for:relativeTo:)`를 거치세요. 한쪽만 지원하면 같은 패턴이
 설정 위치에 따라 다르게 동작합니다.
 
+**`Scripts/verify-fixtures.sh`는 릴리스 바이너리를 빌드하지 않고 경로만 찾습니다.** 낡은 릴리스
+바이너리가 있으면 그것으로 검증해 방금 고친 것이 반영되지 않은 결과가 나옵니다. 실제로 그렇게
+"수정이 안 먹는다"고 오해한 적이 있습니다. 먼저 `swift build -c release`를 돌리거나, 디버그
+바이너리 경로를 첫 인자로 넘기세요.
+
+**`bridges`는 문자열을 읽습니다.** 인덱스는 `FlutterMethodChannel(name: "…")`의 문자열을 모릅니다.
+스캐너(`CartographSyntax/BridgeFactScanner`)가 구문에서 리터럴을 뽑고, `CartographKit`의
+`BridgeSymbolResolver`가 감싸는 선언의 USR을 인덱스에서 붙입니다. 교환 형식은
+`../isthmus/docs/GRAPH-EXCHANGE.md`가 정본이며, 바뀌면 `BridgeFactsDocument`와 자매 저장소가 같이 바뀝니다.
+이항 연산자는 `SwiftOperators`로 접어야 `a = b`와 `x == "y"`가 보입니다. 접지 않으면 `SequenceExpr`로 남습니다.
+
 **`CodeGraph`는 양 끝 정점이 모두 있는 간선만 남깁니다.** 분석 범위 밖(SDK 등)으로 향하는
 관계는 그래프에 없습니다. 외부 관계를 봐야 하는 규칙은 원본 `IndexSnapshot`을 읽으세요.
 
