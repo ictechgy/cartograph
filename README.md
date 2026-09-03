@@ -235,6 +235,20 @@ cartograph baseline --write .cartograph-baseline.json
 Records today's findings so only *new* ones fail the build. Fingerprints are USR-based, so moving
 code up and down a file does not resurrect a suppressed finding.
 
+### `--since` — review only what a pull request touched
+
+```bash
+cartograph dead --since origin/main --strict
+```
+
+Reports only findings in files changed since a git revision, including files you have not committed
+yet. The graph is still built from the whole project — reachability computed on a partial graph is
+simply wrong — so only the report narrows.
+
+`baseline` and `--since` answer different questions and compose: the baseline is the CI ratchet
+that keeps today's debt from growing, `--since` is the pull-request lens. In CI, check out with full
+history (`fetch-depth: 0`), or the revision will not resolve.
+
 ## Configuration
 
 `.cartograph.yml` in the project root. Run `cartograph init` for a commented template.

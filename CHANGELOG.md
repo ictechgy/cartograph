@@ -9,6 +9,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--since <git-revision>` reports only findings in files changed since that revision, including
+  uncommitted ones. The graph is still built from the whole project — reachability on a partial
+  graph is simply wrong — so only the report narrows. It composes with `baseline`: the baseline is
+  the CI ratchet, `--since` is the pull-request lens.
 - Syntax analysis results are cached per file, keyed by file content. A run that changes no source
   skips SwiftSyntax parsing entirely. The cache lives in the temporary directory, never in the
   repository, and is keyed by content rather than modification time so a checkout or a copy cannot

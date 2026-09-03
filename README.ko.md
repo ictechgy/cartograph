@@ -223,6 +223,20 @@ cartograph baseline --write .cartograph-baseline.json
 지금 있는 문제를 기록해 두고 *새로 생긴* 것만 빌드를 실패시킵니다. 기록해 둔 문제의 지문(fingerprint)은 USR 기반이라, 코드를 파일 안에서 위아래로 옮겨도
 억제한 문제가 되살아나지 않습니다.
 
+### `--since` — 이번 PR 이 건드린 자리만 보기
+
+```bash
+cartograph dead --since origin/main --strict
+```
+
+주어진 git 기준점 이후 바뀐 파일의 발견만 보고합니다. 아직 커밋하지 않은 파일도 포함합니다.
+그래프는 여전히 프로젝트 전체로 만듭니다. 좁힌 그래프에서 나온 도달성 판정은 그냥 틀린
+값이기 때문입니다. 좁히는 것은 보고뿐입니다.
+
+`baseline` 과 `--since` 는 다른 질문에 답하며 함께 쓸 수 있습니다. 베이스라인은 오늘의 빚이
+늘지 않게 하는 CI 래칫이고, `--since` 는 PR 을 보는 렌즈입니다. CI 에서는 전체 이력을
+받아야 합니다(`fetch-depth: 0`). 그러지 않으면 기준점을 찾지 못합니다.
+
 ## 설정
 
 프로젝트 루트의 `.cartograph.yml`입니다. `cartograph init`으로 주석 달린 템플릿을 만드세요.

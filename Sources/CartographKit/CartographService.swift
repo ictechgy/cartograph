@@ -17,9 +17,20 @@ public struct CartographService: Sendable {
     private let configuration: CartographConfiguration
     private let environment: CartographEnvironment
 
-    public init(configuration: CartographConfiguration, environment: CartographEnvironment = .live()) {
+    /// 보고 범위. nil 이면 발견을 전부 보고한다.
+    ///
+    /// 설정 파일이 아니라 생성 인자로 받는다. 변경된 파일 목록은 실행할 때마다
+    /// 달라지는 값이라 파일에 적을 수 있는 성질이 아니다.
+    private let reportScope: ReportScope?
+
+    public init(
+        configuration: CartographConfiguration,
+        environment: CartographEnvironment = .live(),
+        reportScope: ReportScope? = nil
+    ) {
         self.configuration = configuration
         self.environment = environment
+        self.reportScope = reportScope
     }
 
     /// 분석 대상 프로젝트 루트.
@@ -183,9 +194,10 @@ public struct CartographService: Sendable {
         let diagnostics = AnalysisDiagnostics.diagnostics(for: metrics, thresholds: configuration.thresholds)
         let renderer = MetricsRenderer(tolerance: tolerance)
 
+        let scoped = reportScope?.filtering(diagnostics) ?? diagnostics
         let baseline = try loadBaseline()
-        let reported = baseline?.filtering(diagnostics) ?? diagnostics
-        let suppressed = diagnostics.count - reported.count
+        let reported = baseline?.filtering(scoped) ?? scoped
+        let suppressed = scoped.count - reported.count
 
         let summary = ReportSummary(
             command: "metrics",
@@ -275,9 +287,12 @@ public struct CartographService: Sendable {
         thresholdRule: String,
         countedRules: Set<String>? = nil
     ) throws -> CommandOutcome {
+        // 범위를 먼저 좁힌 뒤 베이스라인을 적용한다. 순서를 바꾸면 억제 건수가
+        // 범위 밖의 것까지 세어, 사용자가 보는 숫자와 맞지 않는다.
+        let scoped = reportScope?.filtering(diagnostics) ?? diagnostics
         let baseline = try loadBaseline()
-        let reported = baseline?.filtering(diagnostics) ?? diagnostics
-        let suppressed = diagnostics.count - reported.count
+        let reported = baseline?.filtering(scoped) ?? scoped
+        let suppressed = scoped.count - reported.count
 
         let counted = countedRules.map { rules in
             reported.filter { rules.contains($0.ruleIdentifier) }
