@@ -189,6 +189,87 @@ public struct CartographService: Sendable {
         )
     }
 
+    /// 특정 정점이 어느 순환에 속하는지 사람이 읽는 문장으로 설명한다.
+    ///
+    /// "스무 개가 서로 얽혀 있다"는 보고는 정확하지만 손댈 곳을 알려 주지 않는다.
+    /// 하나의 정점을 물었을 때 그것이 낀 구체적인 순환과 끊을 후보를 보여 주어야
+    /// 실제로 행동할 수 있다.
+    public func explainCycles(of subject: String, level: GraphLevel? = nil) throws -> CommandOutcome {
+        let (graph, found) = cycles(in: try loadContext(), level: level)
+        let lookup = NodeLookup.resolve(subject, in: graph)
+        switch lookup {
+        case .notFound:
+            return CommandOutcome(output: "No node matches '\(subject)'.\n", subjectNotFound: true)
+        case let .ambiguous(candidates):
+            return CommandOutcome(output: Self.describeAmbiguity(subject, candidates: candidates))
+        case let .found(node):
+            let involved = found.filter { $0.path.contains(node.id) }
+            guard !involved.isEmpty else {
+                return CommandOutcome(output: "\(node.qualifiedName) is not part of any cycle.\n")
+            }
+            let lines = involved.map { Self.describeCycle($0, in: graph) }
+            return CommandOutcome(
+                output: "\(node.qualifiedName) is part of \(involved.count) cycle(s):\n"
+                    + lines.joined(separator: "\n") + "\n",
+                findingCount: involved.count
+            )
+        }
+    }
+
+    /// 특정 정점이 왜 그 레이어에 속하는지, 어떤 규칙이 걸리는지 설명한다.
+    public func explainRules(of subject: String, level: GraphLevel? = nil) throws -> CommandOutcome {
+        let context = try loadContext()
+        let graph = context.buildGraph(level: level ?? configuration.level).graph
+        let lookup = NodeLookup.resolve(subject, in: graph)
+        switch lookup {
+        case .notFound:
+            return CommandOutcome(output: "No node matches '\(subject)'.\n", subjectNotFound: true)
+        case let .ambiguous(candidates):
+            return CommandOutcome(output: Self.describeAmbiguity(subject, candidates: candidates))
+        case let .found(node):
+            let evaluator = LayerRuleEvaluator(layers: configuration.layers, rules: configuration.rules)
+            return CommandOutcome(output: Self.describeLayer(of: node, using: evaluator))
+        }
+    }
+
+    private static func describeAmbiguity(_ subject: String, candidates: [GraphNode]) -> String {
+        let list = candidates.map { "  \($0.qualifiedName)  \($0.usr ?? $0.id.rawValue)" }
+        return "'\(subject)' matches \(candidates.count) declarations. "
+            + "Pass one of these USRs instead:\n" + list.joined(separator: "\n") + "\n"
+    }
+
+    private static func describeCycle(_ cycle: DependencyCycle, in graph: CodeGraph) -> String {
+        let trail = cycle.path.map { graph.node($0)?.qualifiedName ?? $0.rawValue }
+        var line = "  " + (trail + [trail[0]]).joined(separator: " → ")
+        if let edge = cycle.suggestedEdgeToBreak {
+            let source = graph.node(edge.source)?.qualifiedName ?? edge.source.rawValue
+            let target = graph.node(edge.target)?.qualifiedName ?? edge.target.rawValue
+            line += "\n      weakest link: \(source) → \(target)"
+                + " (\(edge.kind.rawValue), \(edge.weight) references)"
+        }
+        return line
+    }
+
+    private static func describeLayer(of node: GraphNode, using evaluator: LayerRuleEvaluator) -> String {
+        let assignment = evaluator.assignment(of: node)
+        guard let match = assignment.match else {
+            return "\(node.qualifiedName) belongs to no layer.\n"
+                + "  checked: " + assignment.candidates.joined(separator: ", ") + "\n"
+        }
+        var output = "\(node.qualifiedName) is in layer '\(match.layer)'.\n"
+            + "  matched: \(match.candidate) against '\(match.pattern)'\n"
+        let rules = evaluator.rules(from: match.layer)
+        guard !rules.isEmpty else {
+            output += "  no rule starts from '\(match.layer)', so nothing is enforced here.\n"
+            return output
+        }
+        output += "  rules from '\(match.layer)':\n"
+        for rule in rules {
+            output += "    \(rule.displayName)\n"
+        }
+        return output
+    }
+
     public func measureMetrics(level: GraphLevel? = nil) throws -> CommandOutcome {
         let (graph, metrics, tolerance) = metrics(in: try loadContext(), level: level)
         let diagnostics = AnalysisDiagnostics.diagnostics(for: metrics, thresholds: configuration.thresholds)

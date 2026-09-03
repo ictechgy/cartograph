@@ -290,6 +290,42 @@ struct CartographServiceTests {
         #expect(identifiers.contains("instability"))
     }
 
+    @Test("순환에 낀 정점을 설명한다")
+    func explainsCycles() throws {
+        // "스무 개가 얽혀 있다"는 보고는 정확하지만 손댈 곳을 알려 주지 않는다.
+        // 모듈 레벨 그래프의 정점은 모듈이다. 픽스처는 Presentation → Domain → Data →
+        // Presentation 으로 한 바퀴 돈다.
+        let service = makeService()
+        let explained = try service.explainCycles(of: "Presentation", level: .module)
+        #expect(explained.output.contains("Presentation → "))
+        #expect(explained.findingCount > 0)
+
+        // 심볼 레벨에서 DeadHelper 는 아무와도 이어져 있지 않다.
+        let outside = try service.explainCycles(of: "DeadHelper", level: .symbol)
+        #expect(outside.output.contains("not part of any cycle"))
+        #expect(outside.findingCount == 0)
+
+        let missing = try service.explainCycles(of: "NoSuchNode", level: .module)
+        #expect(missing.subjectNotFound)
+    }
+
+    @Test("정점이 왜 그 레이어인지 설명한다")
+    func explainsLayerMembership() throws {
+        let service = makeService {
+            $0.layers = [LayerDefinition(name: "Presentation", patterns: ["Presentation"])]
+            $0.rules = [LayerRule(name: "no data", from: "Presentation", deny: ["Data"])]
+        }
+        let explained = try service.explainRules(of: "Presentation", level: .module)
+        #expect(explained.output.contains("layer 'Presentation'"))
+        #expect(explained.output.contains("no data"))
+
+        let orphan = try service.explainRules(of: "Domain", level: .module)
+        #expect(orphan.output.contains("belongs to no layer"))
+
+        let missing = try service.explainRules(of: "NoSuchNode", level: .module)
+        #expect(missing.subjectNotFound)
+    }
+
     @Test("지표 임계값을 넘기면 --strict 없이도 실패로 표시한다")
     func metricThresholdsFailTheBuild() throws {
         // 같은 설정 파일 안에서 어떤 임계값은 빌드를 세우고 어떤 임계값은 세우지 않으면

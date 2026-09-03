@@ -9,6 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cycles --explain <node>` lists the cycles one node takes part in, each with the edge to cut.
+  `rules --explain <node>` shows which layer a node landed in, which pattern put it there, and
+  which rules start from that layer. Reporting a tangle is accurate; naming the cut is actionable.
 - `--since <git-revision>` reports only findings located in files changed since that revision —
   committed changes, uncommitted changes to tracked files, and new files. The graph is still built
   from the whole project, because reachability on a partial graph is simply wrong; only the report

@@ -132,4 +132,33 @@ struct LayerRuleEvaluatorTests {
         let violation = evaluator.evaluate(graph: makeGraph()).first
         #expect(violation?.location?.path == "Features/Home.swift")
     }
+    @Test("레이어 판정의 근거를 남긴다")
+    func explainsLayerAssignment() {
+        // 설정을 디버깅할 때 아픈 지점은 "이 정점이 왜 저 레이어인가"다.
+        // 무엇이 어느 패턴에 맞았는지 보여 주지 않으면 패턴을 바꿔 가며 추측하게 된다.
+        let evaluator = LayerRuleEvaluator(
+            layers: [
+                LayerDefinition(name: "Presentation", patterns: ["**/Features/**"]),
+                LayerDefinition(name: "Data", patterns: ["*Repository"]),
+            ],
+            rules: [LayerRule(name: "no data", from: "Presentation", deny: ["Data"])]
+        )
+        let view = GraphNode(
+            id: NodeID("V"), name: "HomeView", kind: .structType, module: "App",
+            location: SourceLocation(path: "/p/Features/HomeView.swift", line: 1, column: 1)
+        )
+        let assignment = evaluator.assignment(of: view)
+        #expect(assignment.layer == "Presentation")
+        #expect(assignment.match?.pattern == "**/Features/**")
+        #expect(assignment.match?.candidate == "/p/Features/HomeView.swift")
+        #expect(evaluator.rules(from: "Presentation").count == 1)
+        #expect(evaluator.rules(from: "Data").isEmpty)
+
+        let orphan = GraphNode(id: NodeID("O"), name: "Loose", kind: .structType, module: "App")
+        let unmatched = evaluator.assignment(of: orphan)
+        #expect(unmatched.layer == nil)
+        // 같은 문자열이 여러 후보로 겹치면 한 번만 보여 준다.
+        #expect(unmatched.candidates == ["Loose", "App.Loose", "App"])
+    }
+
 }
