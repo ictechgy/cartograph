@@ -84,6 +84,72 @@ struct SourceFactsCacheTests {
         #expect(enricher.enrich(snapshot).symbols.first?.accessibility == .privateLevel)
     }
 
+    @Test("도구 버전이나 분석기 개정이 바뀌면 지문도 바뀐다")
+    func fingerprintFollowsToolAndAnalyzerVersion() {
+        // 이것이 없으면 업그레이드해도 손대지 않은 파일에는 수정이 적용되지 않아,
+        // 고친 오탐이 그대로 되살아난다.
+        let base = SourceFactsCache.analyzerIdentity(
+            toolVersion: "0.2.0", analysisRevision: 1, externalTestCaseClasses: []
+        )
+        #expect(base != SourceFactsCache.analyzerIdentity(
+            toolVersion: "0.3.0", analysisRevision: 1, externalTestCaseClasses: []
+        ))
+        #expect(base != SourceFactsCache.analyzerIdentity(
+            toolVersion: "0.2.0", analysisRevision: 2, externalTestCaseClasses: []
+        ))
+        // 구분자가 이름 안에 나올 수 없어야 두 목록이 섞이지 않는다.
+        #expect(SourceFactsCache.analyzerIdentity(
+            toolVersion: "v", analysisRevision: 1, externalTestCaseClasses: ["A,B"]
+        ) != SourceFactsCache.analyzerIdentity(
+            toolVersion: "v", analysisRevision: 1, externalTestCaseClasses: ["A", "B"]
+        ))
+    }
+
+    @Test("길이가 다르면 해시가 같아도 적중하지 않는다")
+    func fingerprintIncludesLength() {
+        // 잘못 적중하면 바뀐 파일에 예전 결과를 조용히 내놓게 되고 검출할 수 없다.
+        let cache = makeCache(InMemoryFileSystem())
+        #expect(cache.fingerprint(of: "ab").hasPrefix("2:"))
+        #expect(cache.fingerprint(of: "abc").hasPrefix("3:"))
+    }
+
+    @Test("바뀐 것이 없으면 캐시를 다시 쓰지 않는다")
+    func doesNotRewriteAnUnchangedCache() {
+        // 직렬화 비용이 캐시 이득을 깎는다. 이 불변식은 눈에 잘 띄지 않으므로
+        // 테스트로 고정해 둔다.
+        let fileSystem = InMemoryFileSystem(files: ["/p/A.swift": "public struct A {}"])
+        var builder = SnapshotBuilder()
+        builder.symbol("A", kind: .structType, path: "/p/A.swift", line: 1)
+        let snapshot = builder.build()
+        let enricher = SnapshotEnricher(fileSystem: fileSystem, analyzer: .init(), cache: makeCache(fileSystem))
+
+        _ = enricher.enrich(snapshot)
+        let afterFirst = fileSystem.text(at: "/cache/facts.json")
+        try? fileSystem.write(text: "sentinel", to: "/cache/facts.json")
+        _ = enricher.enrich(snapshot)
+        // 두 번째 실행은 아무것도 파싱하지 않았으므로 쓰지도 않는다.
+        #expect(fileSystem.text(at: "/cache/facts.json") == "sentinel")
+        #expect(afterFirst != nil)
+    }
+
+    @Test("파일이 사라지면 캐시에서도 빠진다")
+    func prunesEntriesForRemovedFiles() {
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/A.swift": "public struct A {}", "/p/B.swift": "public struct B {}",
+        ])
+        var builder = SnapshotBuilder()
+        builder.symbol("A", kind: .structType, path: "/p/A.swift", line: 1)
+        builder.symbol("B", kind: .structType, path: "/p/B.swift", line: 1)
+        let cache = makeCache(fileSystem)
+        _ = SnapshotEnricher(fileSystem: fileSystem, analyzer: .init(), cache: cache).enrich(builder.build())
+        #expect(cache.load().count == 2)
+
+        var smaller = SnapshotBuilder()
+        smaller.symbol("A", kind: .structType, path: "/p/A.swift", line: 1)
+        _ = SnapshotEnricher(fileSystem: fileSystem, analyzer: .init(), cache: cache).enrich(smaller.build())
+        #expect(cache.load().keys.sorted() == ["/p/A.swift"])
+    }
+
     @Test("캐시를 주지 않으면 예전처럼 매번 분석한다")
     func worksWithoutACache() {
         let fileSystem = InMemoryFileSystem(files: ["/p/A.swift": "public struct A {}"])

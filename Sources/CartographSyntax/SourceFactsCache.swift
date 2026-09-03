@@ -65,8 +65,27 @@ public struct SourceFactsCache: Sendable {
     }
 
     /// 소스 내용과 분석기 설정을 함께 담은 지문.
+    ///
+    /// 길이를 함께 넣는다. 해시가 우연히 부딪혀도 길이가 다르면 걸러지므로 값싼
+    /// 한 줄로 우연 충돌이 사실상 사라진다. 잘못 적중하면 바뀐 파일에 대해 예전
+    /// 결과를 조용히 내놓게 되고, 그것은 검출할 방법이 없다.
     public func fingerprint(of source: String) -> String {
-        Self.stableHash(source) + ":" + Self.stableHash(analyzerIdentity)
+        "\(source.utf8.count):\(Self.stableHash(source)):\(Self.stableHash(analyzerIdentity))"
+    }
+
+    /// 분석 결과를 바꾸는 입력들을 하나의 문자열로 모은다.
+    ///
+    /// 도구 버전과 분석기 개정 번호가 특히 중요하다. 이것이 없으면 업그레이드해도
+    /// 손대지 않은 파일에는 수정이 적용되지 않아, 고친 오탐이 그대로 되살아난다.
+    public static func analyzerIdentity(
+        toolVersion: String,
+        analysisRevision: Int,
+        externalTestCaseClasses: [String]
+    ) -> String {
+        // 구분자는 이름 안에 나올 수 없는 것으로 둔다. 쉼표로 이으면
+        // `["A,B"]` 와 `["A", "B"]` 가 같은 지문이 된다.
+        ([toolVersion, String(analysisRevision)] + externalTestCaseClasses.sorted())
+            .joined(separator: "\u{0}")
     }
 
     /// 프로젝트마다 하나씩 두는 기본 캐시 경로.

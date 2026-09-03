@@ -26,9 +26,13 @@ public struct SnapshotEnricher: Sendable {
         retention: RetentionOptions,
         cachePath: String? = nil
     ) {
-        // 분석기 설정이 결과를 바꾸므로 캐시 지문에 함께 넣는다. 이것이 없으면
-        // `external_test_case_classes` 를 바꾼 뒤에도 예전 결과가 되살아난다.
-        let identity = retention.externalTestCaseClasses.sorted().joined(separator: ",")
+        // 분석 결과를 바꾸는 것은 전부 지문에 넣는다. 하나라도 빠지면 그 축이 바뀐
+        // 뒤에도 예전 결과가 되살아나고, 사용자는 고쳐진 줄 알았던 오탐을 계속 본다.
+        let identity = SourceFactsCache.analyzerIdentity(
+            toolVersion: Cartograph.version,
+            analysisRevision: SwiftSyntaxAnalyzer.analysisRevision,
+            externalTestCaseClasses: retention.externalTestCaseClasses
+        )
         self.init(
             fileSystem: fileSystem,
             analyzer: SwiftSyntaxAnalyzer(externalTestCaseClasses: retention.externalTestCaseClasses),
@@ -53,7 +57,6 @@ public struct SnapshotEnricher: Sendable {
         let stored = cache?.load() ?? [:]
         var facts: [String: SourceFileFacts] = [:]
         var fresh: [String: SourceFactsCache.Entry] = [:]
-        var reparsedAnyFile = false
 
         for path in snapshot.filePaths where path.hasSuffix(".swift") {
             guard let source = try? fileSystem.readText(at: path) else { continue }
@@ -63,22 +66,16 @@ public struct SnapshotEnricher: Sendable {
             }
             // 내용이 그대로면 파싱을 건너뛴다. 파싱이 이 단계 비용의 대부분이다.
             let fingerprint = cache.fingerprint(of: source)
-            let analyzed: SourceFileFacts
-            if let hit = stored[path], hit.fingerprint == fingerprint {
-                analyzed = hit.facts
-            } else {
-                analyzed = analyzer.analyze(source: source, path: path)
-                reparsedAnyFile = true
-            }
+            let analyzed = stored[path].flatMap { $0.fingerprint == fingerprint ? $0.facts : nil }
+                ?? analyzer.analyze(source: source, path: path)
             facts[path] = analyzed
             fresh[path] = SourceFactsCache.Entry(fingerprint: fingerprint, facts: analyzed)
         }
 
-        // 바뀐 것이 없으면 쓰지 않는다. 직렬화 비용이 캐시 이득을 깎기 때문이다.
-        // 파일이 지워졌을 때도 항목 수가 달라지므로 그때는 다시 쓴다.
-        if let cache, reparsedAnyFile || fresh.count != stored.count {
-            cache.save(fresh)
-        }
+        // 바뀐 것이 없으면 쓰지 않는다. 직렬화 비용이 캐시 이득을 깎는다.
+        // 값을 그대로 비교한다. "미스가 있었는가"로 판단해도 결과는 같지만,
+        // 왜 같은지가 한눈에 보이지 않아 나중 편집에서 깨지기 쉽다.
+        if let cache, fresh != stored { cache.save(fresh) }
 
         let enriched = Self.enrich(snapshot, with: facts)
         guard !interfaceBuilderRoots.isEmpty else { return enriched }
