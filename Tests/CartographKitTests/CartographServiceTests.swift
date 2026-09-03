@@ -309,6 +309,40 @@ struct CartographServiceTests {
         #expect(missing.subjectNotFound)
     }
 
+    @Test("대표 경로에 없어도 같은 묶음이면 순환에 있다고 말한다")
+    func explainsCyclesBeyondTheRepresentativePath() throws {
+        // 대표 경로만 보면 같은 강한 연결 요소에 있는 정점에 "순환에 없다"고
+        // 거짓말하게 된다. 설명이 틀리는 것은 보고가 틀리는 것보다 나쁘다.
+        var builder = SnapshotBuilder()
+        for name in ["Alpha", "Beta", "Delta", "Gamma"] {
+            builder.symbol(name, kind: .structType, module: name, path: "/p/\(name).swift")
+        }
+        builder.reference(from: "Alpha", to: "Beta", kind: .call)
+        builder.reference(from: "Alpha", to: "Delta", kind: .call)
+        builder.reference(from: "Beta", to: "Gamma", kind: .call)
+        builder.reference(from: "Delta", to: "Gamma", kind: .call)
+        builder.reference(from: "Gamma", to: "Alpha", kind: .call)
+
+        let service = CartographService(
+            configuration: {
+                var configuration = CartographConfiguration.default
+                configuration.projectPath = "/p"
+                return configuration
+            }(),
+            environment: CartographEnvironment(
+                fileSystem: InMemoryFileSystem(),
+                indexProviderOverride: StaticIndexProvider(builder.build()),
+                usesSyntaxCache: false
+            )
+        )
+        // 어느 정점을 물어도 순환에 있다고 답해야 한다.
+        for name in ["Alpha", "Beta", "Delta", "Gamma"] {
+            let explained = try service.explainCycles(of: name, level: .module)
+            #expect(explained.findingCount == 1, "\(name) 이 순환 밖으로 판정됐다")
+            #expect(!explained.output.contains("not part of any cycle"))
+        }
+    }
+
     @Test("정점이 왜 그 레이어인지 설명한다")
     func explainsLayerMembership() throws {
         let service = makeService {

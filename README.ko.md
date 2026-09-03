@@ -145,16 +145,6 @@ cartograph graph --level module --format html  -o graph.html
 cartograph cycles --level module --strict
 ```
 
-`--explain <노드>` 는 그다음 질문에 답합니다. 이 정점이 어떤 순환에 끼어 있고 각각을
-어디서 끊어야 하는지입니다.
-
-```console
-$ cartograph cycles --level type --explain Alpha
-App.Alpha is part of 1 cycle(s):
-  App.Beta → App.Gamma → App.Alpha → App.Beta
-      weakest link: App.Gamma → App.Alpha (call, 1 references)
-```
-
 강한 연결 요소마다 그중 가장 짧은 순환을 대표로 보여 주고, 참조 횟수가 가장 적은 간선을 끊을 후보로
 제시합니다. "이 스무 개가 서로 얽혀 있다"는 말은 정확하지만 어디부터 손대야 할지는 알려 주지
 않습니다. 구체적인 순환 하나는 알려 줍니다.

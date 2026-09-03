@@ -12,6 +12,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `cycles --explain <node>` lists the cycles one node takes part in, each with the edge to cut.
   `rules --explain <node>` shows which layer a node landed in, which pattern put it there, and
   which rules start from that layer. Reporting a tangle is accurate; naming the cut is actionable.
+  Participation is judged by strongly connected component, not by the representative path, so a node
+  in the same tangle is never told it is outside the cycle. `cycles --explain` counts its answer as
+  a finding (being in a cycle is a bad state that `--strict` should catch); `rules --explain` does
+  not, because a layer assignment is not a bad state. Neither is narrowed by `--since`: you asked
+  about one node, so the answer is computed against the whole graph.
 - `--since <git-revision>` reports only findings located in files changed since that revision —
   committed changes, uncommitted changes to tracked files, and new files. The graph is still built
   from the whole project, because reachability on a partial graph is simply wrong; only the report

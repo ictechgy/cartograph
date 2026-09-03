@@ -203,11 +203,15 @@ public struct CartographService: Sendable {
         case let .ambiguous(candidates):
             return CommandOutcome(output: Self.describeAmbiguity(subject, candidates: candidates))
         case let .found(node):
-            let involved = found.filter { $0.path.contains(node.id) }
+            // 참여 판정은 강한 연결 요소로 한다. 대표 경로에만 있는지를 보면,
+            // 같은 묶음에 있으면서 대표 경로에 뽑히지 않은 정점에 "순환에 없다"고
+            // 거짓말을 하게 된다. 설명이 틀리는 것은 보고가 틀리는 것보다 나쁘다.
+            // 사용자가 그 설명을 믿고 코드를 건드리기 때문이다.
+            let involved = found.filter { $0.component.contains(node.id) }
             guard !involved.isEmpty else {
                 return CommandOutcome(output: "\(node.qualifiedName) is not part of any cycle.\n")
             }
-            let lines = involved.map { Self.describeCycle($0, in: graph) }
+            let lines = involved.map { Self.describeCycle($0, for: node.id, in: graph) }
             return CommandOutcome(
                 output: "\(node.qualifiedName) is part of \(involved.count) cycle(s):\n"
                     + lines.joined(separator: "\n") + "\n",
@@ -238,9 +242,18 @@ public struct CartographService: Sendable {
             + "Pass one of these USRs instead:\n" + list.joined(separator: "\n") + "\n"
     }
 
-    private static func describeCycle(_ cycle: DependencyCycle, in graph: CodeGraph) -> String {
+    private static func describeCycle(
+        _ cycle: DependencyCycle,
+        for node: NodeID,
+        in graph: CodeGraph
+    ) -> String {
         let trail = cycle.path.map { graph.node($0)?.qualifiedName ?? $0.rawValue }
         var line = "  " + (trail + [trail[0]]).joined(separator: " → ")
+        // 대표 경로에 없는 정점에게 이 경로를 그대로 보여 주면 자기 이름을 못 찾는다.
+        // 같은 묶음에 있다는 사실과 대표 경로를 구분해서 말한다.
+        if !cycle.path.contains(node) {
+            line = "  in the same tangle, whose representative cycle is:\n  " + line.dropFirst(2)
+        }
         if let edge = cycle.suggestedEdgeToBreak {
             let source = graph.node(edge.source)?.qualifiedName ?? edge.source.rawValue
             let target = graph.node(edge.target)?.qualifiedName ?? edge.target.rawValue
