@@ -20,13 +20,13 @@ cartograph
 
 | 모듈 | 담는 것 | 담으면 안 되는 것 |
 |---|---|---|
-| `CartographCore` | 그래프 모델, 인덱스 추상화, 설정 값 타입, 글롭, 진단, 파일 시스템 프로토콜 | **모든 외부 의존성.** 파일·프로세스·네트워크 접근 |
-| `CartographConfig` | `.cartograph.yml` 로딩과 CLI 덮어쓰기 | 분석 로직 |
+| `CartographCore` | 그래프 모델, 인덱스 추상화, 설정 값 타입, 글롭, 진단, 파일 시스템 프로토콜, 빌드 산출물 가지치기 목록(`BuildArtifactDirectories`) | **모든 외부 의존성.** 파일·프로세스·네트워크 접근 |
+| `CartographConfig` | `.cartograph.yml` 로딩과 CLI 덮어쓰기, 설정 템플릿, 에이전트 스킬 템플릿(`AgentSkillTemplate`) | 분석 로직 |
 | `CartographSyntax` | SwiftSyntax로 접근 수준·속성·주석 지시어 읽기 | 인덱스 스토어 접근 |
 | `CartographAnalysis` | 순환, 도달 가능성, 보존, 지표, 레이어 규칙, 베이스라인 | 파일 읽기(베이스라인은 주입된 FileSystem 사용), 출력 형식 |
 | `CartographExport` | 그래프 렌더러와 진단 리포터 | 분석 로직 |
 | `CartographIndexStore` | IndexStoreDB 어댑터, 스토어·라이브러리 경로 탐색 | 도메인 판단 |
-| `CartographKit` | 파이프라인 조립, 환경 주입 | 알고리즘 |
+| `CartographKit` | 파이프라인 조립, 환경 주입, 에이전트용 응답 타입(`SymbolQuery`·`SymbolQueryDocument`) | 알고리즘 |
 | `cartograph` | 인자 파싱, 종료 코드, 표준 출력 | 그 외 모든 것 |
 | `CartographTestSupport` | 테스트용 빌더와 메모리 파일 시스템 | 프로덕션 코드가 이것을 참조하는 일 |
 
@@ -63,6 +63,20 @@ cartograph
    이미 담당하므로 중복 구현하지 마세요.
 4. `cartograph` 실행 타깃에 하위 명령을 추가합니다.
 5. 임계값이 필요하면 `Thresholds`와 `ConfigurationTemplate` 양쪽에 넣고 두 README에 적습니다.
+
+## 새 하위 명령을 추가할 때
+
+`query`와 `skill`을 넣으면서 매번 같은 곳을 빠뜨렸습니다. 한 PR에서 전부 고치세요.
+
+1. `CartographCommand.configuration.subcommands` 배열에 등록합니다.
+2. `Tests/CartographCLITests`의 `CommandConfigurationTests`가 등록된 이름 목록을 통째로 단언합니다.
+   빠뜨리면 여기서 실패합니다 — 그 용도입니다.
+3. `Scripts/verify-cli-contract.sh`의 `--help` 루프에 이름을 넣고, 사용 오류(64)가 나야 하는
+   인자 조합(대상 누락, 범위 밖 값)을 추가합니다.
+4. `README.md`와 `README.ko.md`에 절을 쓰고 비교표에 행을 넣습니다. 둘의 내용이 같아야 합니다.
+5. `CHANGELOG.md`의 `[Unreleased]`에 **왜** 이 명령이 있는지를 적습니다.
+6. 없는 대상을 물으면 `CommandOutcome.subjectNotFound`를 세워 `emit`이 64로 끝내게 합니다.
+   조용히 0으로 끝나면 스크립트의 오타가 "아무도 안 씀"으로 읽힙니다.
 
 ## 새 출력 형식을 추가할 때
 
