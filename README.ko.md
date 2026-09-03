@@ -58,7 +58,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — tap 추가 없이 소스에서 빌드합니다.
 
 ```bash
-mint install ictechgy/cartograph@0.3.0
+mint install ictechgy/cartograph@0.4.0
 ```
 
 **설치 없이 쓰기** — Swift 패키지라면 의존성으로 넣고 커맨드 플러그인을 쓰면 됩니다.
@@ -66,7 +66,7 @@ mint install ictechgy/cartograph@0.3.0
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", from: "0.3.0"),
+.package(url: "https://github.com/ictechgy/cartograph", from: "0.4.0"),
 ```
 
 ```bash
