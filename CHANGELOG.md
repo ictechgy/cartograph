@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Syntax analysis results are cached per file, keyed by file content. A run that changes no source
+  skips SwiftSyntax parsing entirely. The cache lives in the temporary directory, never in the
+  repository, and is keyed by content rather than modification time so a checkout or a copy cannot
+  serve a stale result. `CartographEnvironment.usesSyntaxCache` turns it off.
+
 ### Fixed
 
 - A property used only through its projected value (`Child(text: $name)`) is no longer reported as
