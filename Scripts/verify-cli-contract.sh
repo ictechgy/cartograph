@@ -65,7 +65,7 @@ echo "종료 코드 0 — 정상"
 expect_status 0 "--help"              --help
 expect_status 0 "--version"           --version
 expect_status 0 "인자 없음(도움말)"    
-for subcommand in graph cycles dead query metrics rules baseline init; do
+for subcommand in graph cycles dead query metrics rules baseline init skill; do
     expect_status 0 "$subcommand --help" "$subcommand" --help
 done
 

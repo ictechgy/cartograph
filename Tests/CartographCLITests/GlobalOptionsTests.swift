@@ -97,7 +97,7 @@ struct CommandConfigurationTests {
     @Test("모든 하위 명령이 등록되어 있다")
     func subcommandsAreRegistered() {
         let names = CartographCommand.configuration.subcommands.map { $0.configuration.commandName }
-        #expect(names == ["graph", "cycles", "dead", "query", "metrics", "rules", "baseline", "init"])
+        #expect(names == ["graph", "cycles", "dead", "query", "metrics", "rules", "baseline", "init", "skill"])
         // 인자 없이 실행하면 도움말이 나와야 한다. 기본 하위 명령이 있으면
         // 처음 써 보는 사용자가 DOT 덤프를 마주하게 된다.
         #expect(CartographCommand.configuration.defaultSubcommand == nil)

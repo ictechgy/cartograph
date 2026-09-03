@@ -294,6 +294,23 @@ or `candidates` depending on `status`.
 
 An unknown name exits 64, so a typo in a script does not pass silently as "nothing uses it".
 
+### `skill` — teach a coding agent to use this
+
+```bash
+cartograph skill
+```
+
+Writes `.claude/skills/cartograph/SKILL.md` into the project. The same file is in
+[`Skills/cartograph/SKILL.md`](Skills/cartograph/SKILL.md) if you would rather read it first; a test
+fails if the two ever drift, so what you review is what gets installed. `--project ~` installs it
+for every project instead of one.
+
+Most of the skill is not about which command to run. An agent turns a verdict into an edit without
+pausing, so the file spends its length on what an answer does *not* prove: that `unreachable` is a
+fact about the graph rather than permission to delete, that `limitations` must be read in the same
+breath, that `suppressedByBaseline` means the team already decided, and that dumping
+`graph --format json` into a context window answers nothing `query` could not.
+
 ### `metrics` — architecture metrics
 
 ```bash
