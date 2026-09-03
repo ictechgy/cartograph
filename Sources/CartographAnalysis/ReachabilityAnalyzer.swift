@@ -210,6 +210,11 @@ public struct ReachabilityAnalyzer: Sendable {
                 // 합성 선언은 사용자가 손댈 수 있는 것이 아니다. 생산 씨앗에서
                 // 뺐기 때문에 후보로 새어 들어올 수 있어 여기서도 막는다.
                 && retentions[$0.id] != .compilerSynthesized
+                // 합성된 멤버 때문에 살아난 타입도 마찬가지다. 아무도 쓰지 않는 public
+                // 구조체는 memberwise init 이 뿌리가 되어 전체 탐색에서는 살고 생산
+                // 탐색에서는 죽는다. 그 차이를 "테스트만 붙잡고 있다"로 읽으면 테스트가
+                // 닿은 적 없는 선언이 테스트 전용으로 보고된다. 코퍼스가 잡았다.
+                && inherited[$0.id]?.reason != .compilerSynthesized
                 && !$0.attributes.contains(.implicit)
                 && !isTestInfrastructure($0.id, retentions: retentions, graph: graph)
         }
