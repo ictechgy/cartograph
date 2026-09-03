@@ -33,6 +33,7 @@ struct CartographCommand: ParsableCommand {
             CyclesCommand.self,
             DeadCommand.self,
             QueryCommand.self,
+            BridgesCommand.self,
             MetricsCommand.self,
             RulesCommand.self,
             BaselineCommand.self,
@@ -120,7 +121,8 @@ struct DeadCommand: ParsableCommand {
             Retention rules keep declarations that are used in ways the compiler index cannot see: \
             entry points, tests, Objective-C exposure, Interface Builder connections, raw-value enum \
             cases, CodingKeys, property-wrapper and result-builder requirements, external overrides \
-            and conformances.
+            and conformances. Callers in Dart or JavaScript are supplied by isthmus through \
+            --external-retentions; see `cartograph bridges --help`.
 
             Use --explain to find out why a specific declaration survived.
             """
@@ -188,6 +190,45 @@ struct QueryCommand: ParsableCommand {
             context: context
         )
     }
+}
+
+/// 언어 경계의 사실을 내보낸다.
+struct BridgesCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "bridges",
+        abstract: "Export what Swift declares at a language boundary, for isthmus to join.",
+        discussion: """
+            Reads Flutter channel names, method-call handlers and their `case "…"` branches, and \
+            React Native module exports (`@objc(Name)`, `RCT_EXPORT_MODULE`, `RCT_EXPORT_METHOD`) \
+            out of the sources, and attaches the index's USR to each. The output is the \
+            bridge-facts exchange format that isthmus reads to join with the Dart or JavaScript side.
+
+            This command states facts, not verdicts. It does not know whether anything calls a \
+            handler; a name that is not a literal is kept and marked `dynamic` rather than dropped.
+
+            Feed the retentions isthmus produces back with `dead --external-retentions <path>`.
+            """
+    )
+
+    @OptionGroup var options: GlobalOptions
+
+    @Option(name: .customLong("format"), help: "json (the exchange format) or text (one line per fact).")
+    var format: BridgesFormat = .json
+
+    func run() throws {
+        let context = try CommandSupport.makeContext(options)
+        try CommandSupport.emit(
+            try context.service.exportBridgeFacts(asText: format == .text),
+            options: options,
+            context: context
+        )
+    }
+}
+
+/// `bridges --format` 의 값.
+enum BridgesFormat: String, ExpressibleByArgument, CaseIterable {
+    case json
+    case text
 }
 
 /// 아키텍처 지표를 계산한다.

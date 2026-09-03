@@ -1,0 +1,171 @@
+import CartographCore
+@testable import CartographKit
+import CartographTestSupport
+import Foundation
+import Testing
+
+@Suite("브리지 사실 문서")
+struct BridgeFactsTests {
+    private static let pluginSource = """
+        import Flutter
+        public final class CameraPlugin: NSObject, FlutterPlugin {
+            public static func register(with registrar: FlutterPluginRegistrar) {
+                let channel = FlutterMethodChannel(name: "com.example/camera", binaryMessenger: registrar.messenger())
+                registrar.addMethodCallDelegate(CameraPlugin(), channel: channel)
+            }
+            public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                switch call.method {
+                case "takePhoto": result(nil)
+                default: result(FlutterMethodNotImplemented)
+                }
+            }
+        }
+        """
+
+    private static let moduleSource = """
+        @implementation RNCalendar
+        RCT_EXPORT_MODULE(Calendar)
+        RCT_EXPORT_METHOD(addEvent:(NSString *)name) {}
+        @end
+        """
+
+    private func makeService(files: [String: String], snapshot: IndexSnapshot) -> CartographService {
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        return CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(
+                fileSystem: InMemoryFileSystem(files: files),
+                indexProviderOverride: StaticIndexProvider(snapshot)
+            )
+        )
+    }
+
+    private func makeSnapshot() -> IndexSnapshot {
+        var builder = SnapshotBuilder(module: "App", path: "/p/Sources/CameraPlugin.swift")
+        builder.symbol("s:CameraPlugin", name: "CameraPlugin", kind: .classType, line: 2)
+        builder.symbol("s:register", name: "register(with:)", kind: .method, line: 3, parent: "s:CameraPlugin")
+        builder.symbol("s:handle", name: "handle(_:result:)", kind: .method, line: 7, parent: "s:CameraPlugin")
+        return builder.build()
+    }
+
+    private let fixedDate = Date(timeIntervalSince1970: 1_788_480_000)
+
+    @Test("구문에서 찾은 사실에 인덱스의 USR 이 붙는다")
+    func attachesIndexUSRs() throws {
+        let service = makeService(
+            files: ["/p/Sources/CameraPlugin.swift": Self.pluginSource],
+            snapshot: makeSnapshot()
+        )
+        let document = try service.bridgeFacts(generatedAt: fixedDate)
+        let handled = try #require(document.facts.first { $0.kind == "method-handle" })
+        #expect(handled.symbol?.usr == "s:handle")
+        #expect(handled.symbol?.qualifiedName == "App.handle(_:result:)")
+        #expect(handled.channel == "com.example/camera")
+        #expect(handled.method == "takePhoto")
+
+        let created = try #require(document.facts.first { $0.kind == "channel-create" })
+        #expect(created.symbol?.usr == "s:register")
+    }
+
+    @Test("인덱스에 없는 선언은 구문의 이름만 남고 한계로 센다")
+    func reportsUnresolvedSymbols() throws {
+        let service = makeService(
+            files: ["/p/Sources/CameraPlugin.swift": Self.pluginSource],
+            snapshot: IndexSnapshot()
+        )
+        let document = try service.bridgeFacts(generatedAt: fixedDate)
+        #expect(document.facts.allSatisfy { $0.symbol?.usr == nil })
+        #expect(document.facts.first?.symbol?.qualifiedName == "CameraPlugin.register")
+        #expect(document.limitations.contains { $0.hasPrefix("unresolved-symbols: 3 fact(s)") })
+    }
+
+    @Test("Objective-C 의 RN 매크로도 함께 담기고 대상은 다수결이다")
+    func mergesObjectiveCFactsAndPicksMajorityTarget() throws {
+        let service = makeService(
+            files: [
+                "/p/Sources/CameraPlugin.swift": Self.pluginSource,
+                "/p/ios/RNCalendar.m": Self.moduleSource,
+            ],
+            snapshot: makeSnapshot()
+        )
+        let document = try service.bridgeFacts(generatedAt: fixedDate)
+        #expect(document.facts.map(\.kind) == [
+            "channel-create", "channel-register", "method-handle", "module-export", "method-handle",
+        ])
+        #expect(document.target == "flutter")
+        #expect(document.limitations.contains { $0.hasPrefix("mixed-targets: ") && $0.contains("flutter 3, react-native 2") })
+    }
+
+    @Test("사실이 없으면 대상도 한계도 없다")
+    func emptyProjectIsQuiet() throws {
+        let service = makeService(files: ["/p/Sources/A.swift": "struct A {}"], snapshot: IndexSnapshot())
+        let document = try service.bridgeFacts(generatedAt: fixedDate)
+        #expect(document.facts.isEmpty)
+        #expect(document.target == nil)
+        #expect(document.limitations.isEmpty)
+    }
+
+    @Test("JSON 은 계약의 머리말을 담고 키가 정렬되어 두 번 인코딩해도 같다")
+    func jsonFollowsExchangeFormat() throws {
+        let service = makeService(
+            files: ["/p/Sources/CameraPlugin.swift": Self.pluginSource],
+            snapshot: makeSnapshot()
+        )
+        let first = try service.exportBridgeFacts(generatedAt: fixedDate).output
+        let second = try service.exportBridgeFacts(generatedAt: fixedDate).output
+        #expect(first == second)
+        #expect(first.contains("\"format\" : \"bridge-facts\""))
+        #expect(first.contains("\"version\" : 0"))
+        #expect(first.contains("\"platform\" : \"swift\""))
+        #expect(first.contains("\"generatedAt\" : \"2026-09-04T00:00:00Z\""))
+        #expect(first.contains("\"dynamic\" : false"))
+
+        let decoded = try JSONDecoder().decode(BridgeFactsDocument.self, from: Data(first.utf8))
+        #expect(decoded.facts.count == 3)
+    }
+
+    @Test("채널을 모르면 키를 빼지 않고 null 로 적는다")
+    func encodesUnknownChannelAsNull() throws {
+        let fact = BridgeFact(
+            kind: .methodHandle,
+            target: .flutter,
+            channel: nil,
+            method: "ping",
+            location: SourceLocation(path: "/p/A.swift", line: 1, column: 1)
+        )
+        let document = BridgeFactsDocument(
+            tool: .init(name: "cartograph", version: "0"), generatedAt: "t", project: "/p", facts: [fact]
+        )
+        let json = try CartographService.encodeSortedJSON(document)
+        #expect(json.contains("\"channel\" : null"))
+        #expect(!json.contains("\"symbol\""))
+        #expect(document.limitations.contains { $0.hasPrefix("unattributed-method-handles: 1") })
+    }
+
+    @Test("경로 필터 밖의 소스는 훑지 않는다")
+    func respectsPathFilter() throws {
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        configuration.exclude = ["**/Vendor/**"]
+        let service = CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(
+                fileSystem: InMemoryFileSystem(files: ["/p/Vendor/Plugin.swift": Self.pluginSource]),
+                indexProviderOverride: StaticIndexProvider(IndexSnapshot())
+            )
+        )
+        #expect(try service.bridgeFacts(generatedAt: fixedDate).facts.isEmpty)
+    }
+
+    @Test("텍스트 형식은 사실마다 한 줄이고 요약으로 끝난다")
+    func rendersText() throws {
+        let service = makeService(
+            files: ["/p/Sources/CameraPlugin.swift": Self.pluginSource],
+            snapshot: makeSnapshot()
+        )
+        let text = try service.exportBridgeFacts(generatedAt: fixedDate, asText: true).output
+        #expect(text.contains("/p/Sources/CameraPlugin.swift:9:14  method-handle  channel=com.example/camera  method=takePhoto  s:handle"))
+        #expect(text.hasSuffix("3 bridge fact(s) · target flutter\n"))
+    }
+}

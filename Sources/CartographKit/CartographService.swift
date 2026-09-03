@@ -62,7 +62,9 @@ public struct CartographService: Sendable {
         AnalysisContext(
             snapshot: try loadSnapshot(),
             pathFilter: configuration.pathFilter,
-            edgeKinds: configuration.edgeKinds
+            edgeKinds: configuration.edgeKinds,
+            externalRetentions: try ExternalRetentionStore(fileSystem: environment.fileSystem)
+                .loadIfConfigured(at: configuration.externalRetentionsPath)
         )
     }
 
@@ -87,7 +89,7 @@ public struct CartographService: Sendable {
     ) -> (graph: CodeGraph, report: UnusedCodeReport) {
         let graph = context.buildGraph(level: .symbol).graph
         let analyzer = ReachabilityAnalyzer(
-            policy: makeRetentionPolicy(),
+            policy: makeRetentionPolicy(externalRetentions: context.externalRetentionIndex),
             options: .init(findsTestOnlyCode: findingTestOnlyCode)
         )
         return (graph, analyzer.analyze(graph: graph, snapshot: context.snapshot))
@@ -168,7 +170,8 @@ public struct CartographService: Sendable {
     /// 특정 선언이 왜 살아 있는지 사람이 읽는 문장으로 설명한다.
     public func explainRetention(of subject: String) throws -> CommandOutcome {
         // 그래프를 두 번 만들지 않는다. 질의가 이미 만든 것을 그대로 받는다.
-        let (graph, lookup, explanation) = retentionExplanation(of: subject, in: try loadContext())
+        let context = try loadContext()
+        let (graph, lookup, explanation) = retentionExplanation(of: subject, in: context)
 
         switch lookup {
         case .notFound:
@@ -180,7 +183,9 @@ public struct CartographService: Sendable {
                     + "Pass one of these USRs instead:\n" + list.joined(separator: "\n") + "\n"
             )
         case let .found(node):
-            let outcome = Self.describeExplanation(explanation, for: node, in: graph)
+            let outcome = Self.describeExplanation(
+                explanation, for: node, in: graph, externalRetentions: context.externalRetentionIndex
+            )
             guard outcome.hasFindings, let baseline = try loadBaseline() else { return outcome }
             // 베이스라인이 억제한 문제를 --explain 만 다시 살려 내면, 같은 저장소·같은
             // 베이스라인인데 보고 방식에 따라 반대 판정이 나온다. 설명은 그대로 두고
@@ -320,7 +325,7 @@ public struct CartographService: Sendable {
         // 실어 보내면 심볼 레벨 답을 모듈 레벨 답이라고 말하게 된다.
         let level = GraphLevel.symbol.rawValue
 
-        let limitations = analysisLimitations()
+        let limitations = analysisLimitations(context: context)
 
         switch NodeLookup.resolve(subject, in: graph) {
         case .notFound:
@@ -389,20 +394,14 @@ public struct CartographService: Sendable {
     }
 
     private static func encodeQuery(_ document: SymbolQueryDocument) throws -> String {
-        let encoder = JSONEncoder()
-        // 키 순서를 고정해야 두 실행의 출력을 diff 할 수 있다.
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let text = String(data: try encoder.encode(document), encoding: .utf8) else {
-            throw CartographError.outputUnwritable(path: "<stdout>", underlying: "query JSON is not UTF-8")
-        }
-        return text + "\n"
+        try encodeSortedJSON(document)
     }
 
     /// 이 분석이 보지 못하는 채널을 프로젝트에서 실제로 찾아 알린다.
     ///
     /// README 의 한계 목록을 문서에만 두면 소비자는 읽지 않는다. 특히 에이전트는
     /// 읽지 않는다. 눈앞의 답에 실어야 그 답을 어디까지 믿을지 스스로 정할 수 있다.
-    func analysisLimitations(storeDate: Date? = nil) -> [String] {
+    func analysisLimitations(storeDate: Date? = nil, context: AnalysisContext? = nil) -> [String] {
         // 한 번만 걷는다. 분석 범위와 같은 경로 필터를 걸어야 그래프가 보지 않는
         // 파일까지 세지 않는다. 범위 밖의 파일을 한계로 알리면 매번 붙는 경보가
         // 되고, 매번 붙는 경보는 읽히지 않는다.
@@ -462,6 +461,29 @@ public struct CartographService: Sendable {
             "single-configuration: the index store knows only the configuration that was built, "
                 + "so declarations behind an uncompiled #if branch do not exist here"
         )
+        result += externalRetentionLimitations(in: context)
+        return result
+    }
+
+    /// 외부 보존 근거가 걸려 있으면 그 사실과 신선도를 알린다.
+    ///
+    /// `retained` 에 `externalBridge` 가 붙은 답은 인덱스가 아니라 그 파일을 믿은 것이다.
+    /// 파일이 낡았으면 이름을 바꾼 핸들러의 근거가 아무것도 가리키지 않게 되고,
+    /// 그 수를 세어 주지 않으면 소비자는 파일이 최신이라고 믿는다.
+    private func externalRetentionLimitations(in context: AnalysisContext?) -> [String] {
+        guard let context, let document = context.externalRetentions else { return [] }
+        let index = context.externalRetentionIndex
+        var result = [
+            "external-retentions: \(index.count) retention(s) from \(document.provenanceDescription) are in "
+                + "effect, so a 'retained' answer with reason 'externalBridge' rests on that file, not on the index"
+        ]
+        let unmatched = index.unmatchedCount(in: context.buildGraph(level: .symbol).graph)
+        if unmatched > 0 {
+            result.append(
+                "external-retentions-unmatched: \(unmatched) of \(index.count) retention(s) name no declaration "
+                    + "in this index, so the file may predate a rename or a rebuild"
+            )
+        }
         return result
     }
 
@@ -621,6 +643,68 @@ public struct CartographService: Sendable {
         return (collected, truncated)
     }
 
+    // MARK: - 브리지 사실
+
+    /// Swift 소스에서 언어 경계의 사실을 모아 isthmus 가 읽는 문서로 만든다.
+    ///
+    /// 인덱스는 문자열을 모른다. 그런데 Dart 와 Swift 를 잇는 유일한 끈이
+    /// `FlutterMethodChannel(name:)` 의 그 문자열이다. 구문에서 리터럴을 뽑고 인덱스에서
+    /// USR 을 붙여야, isthmus 가 조인한 결과가 `--external-retentions` 로 돌아올 수 있다.
+    ///
+    /// - Parameter generatedAt: 문서에 적을 생성 시각. 테스트가 고정하려고 받는다.
+    public func bridgeFacts(generatedAt: Date = Date()) throws -> BridgeFactsDocument {
+        let snapshot = try makeIndexProvider().loadSnapshot()
+        let sources = bridgeSourceFiles()
+        var facts: [BridgeFact] = []
+        var unreadable = 0
+        for path in sources {
+            guard let source = try? environment.fileSystem.readText(at: path) else { unreadable += 1; continue }
+            if path.hasSuffix(".swift") {
+                facts += BridgeSymbolResolver.resolve(BridgeFactScanner().scan(source: source, path: path), in: snapshot)
+            } else {
+                facts += ReactNativeMacroScanner().scan(source: source, path: path)
+            }
+        }
+        return BridgeFactsDocument(
+            tool: .init(name: Cartograph.toolName, version: Cartograph.version),
+            generatedAt: generatedAt.ISO8601Format(),
+            project: projectPath,
+            facts: facts,
+            extraLimitations: unreadable > 0
+                ? ["unreadable-sources: \(unreadable) file(s) could not be read and were skipped"] : []
+        )
+    }
+
+    /// `bridges` 명령. 항상 JSON 이다. 소비자는 사람이 아니라 isthmus 다.
+    public func exportBridgeFacts(generatedAt: Date = Date(), asText: Bool = false) throws -> CommandOutcome {
+        let document = try bridgeFacts(generatedAt: generatedAt)
+        return CommandOutcome(output: asText ? document.renderText() : try Self.encodeSortedJSON(document))
+    }
+
+    /// 브리지 사실을 찾을 소스 파일. 분석 범위와 같은 경로 필터를 건다.
+    ///
+    /// 인덱스의 파일 목록이 아니라 디스크를 걷는다. 아직 빌드하지 않은 파일과
+    /// Objective-C 파일은 인덱스에 없지만 사실은 거기에도 있다.
+    private func bridgeSourceFiles() -> [String] {
+        let filter = configuration.pathFilter
+        let suffixes = [".swift"] + ReactNativeMacroScanner.sourceExtensions.map { "." + $0 }
+        return environment.fileSystem.recursiveFiles(
+            under: projectPath,
+            isIncluded: { path in filter.allows(path) && suffixes.contains { path.hasSuffix($0) } },
+            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
+        )
+    }
+
+    /// 키 순서를 고정한 JSON. 두 실행의 출력을 diff 할 수 있어야 한다.
+    static func encodeSortedJSON(_ value: some Encodable) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let text = String(data: try encoder.encode(value), encoding: .utf8) else {
+            throw CartographError.outputUnwritable(path: "<stdout>", underlying: "JSON is not UTF-8")
+        }
+        return text + "\n"
+    }
+
     public func measureMetrics(level: GraphLevel? = nil) throws -> CommandOutcome {
         let (graph, metrics, tolerance) = metrics(in: try loadContext(), level: level)
         let diagnostics = AnalysisDiagnostics.diagnostics(for: metrics, thresholds: configuration.thresholds)
@@ -759,16 +843,25 @@ public struct CartographService: Sendable {
     private static func describeExplanation(
         _ explanation: ReachabilityExplanation?,
         for node: GraphNode,
-        in graph: CodeGraph
+        in graph: CodeGraph,
+        externalRetentions: ExternalRetentionIndex
     ) -> CommandOutcome {
         let name = node.qualifiedName
         switch explanation {
         case let .retained(reason):
-            return CommandOutcome(output: "\(name) is retained because it is \(reason.explanation).\n")
-        case let .retainedByMember(inherited):
-            let member = graph.node(inherited.member)?.qualifiedName ?? inherited.member.rawValue
             return CommandOutcome(
-                output: "\(name) is retained because its member \(member) is \(inherited.reason.explanation).\n"
+                output: "\(name) is retained because it is \(reason.explanation)."
+                    + evidenceSentence(for: node, reason: reason, externalRetentions: externalRetentions) + "\n"
+            )
+        case let .retainedByMember(inherited):
+            let memberNode = graph.node(inherited.member)
+            let member = memberNode?.qualifiedName ?? inherited.member.rawValue
+            let evidence = memberNode.map {
+                evidenceSentence(for: $0, reason: inherited.reason, externalRetentions: externalRetentions)
+            } ?? ""
+            return CommandOutcome(
+                output: "\(name) is retained because its member \(member) is \(inherited.reason.explanation)."
+                    + evidence + "\n"
             )
         case let .reachable(path):
             let trail = path.map { graph.node($0)?.qualifiedName ?? $0.rawValue }.joined(separator: " → ")
@@ -785,9 +878,26 @@ public struct CartographService: Sendable {
         }
     }
 
+    /// 외부 보존 근거가 살린 선언이면 누가 어디서 불렀는지를 문장으로 덧붙인다.
+    ///
+    /// "외부 파일이 그렇다고 했다"로 끝나면 사용자는 그 파일을 열어 USR 을 찾아야 한다.
+    /// 근거는 답의 일부다.
+    private static func evidenceSentence(
+        for node: GraphNode,
+        reason: RetentionReason,
+        externalRetentions: ExternalRetentionIndex
+    ) -> String {
+        guard reason == .externalBridge, let retention = externalRetentions.retention(for: node) else { return "" }
+        return "\n  evidence: \(retention.evidenceDescription)"
+    }
+
     /// 설정과 프로젝트 경로를 반영한 보존 규칙.
-    private func makeRetentionPolicy() -> RetentionPolicy {
-        RetentionPolicy(options: configuration.retention, basePath: projectPath)
+    private func makeRetentionPolicy(externalRetentions: ExternalRetentionIndex) -> RetentionPolicy {
+        RetentionPolicy(
+            options: configuration.retention,
+            basePath: projectPath,
+            externalRetentions: externalRetentions
+        )
     }
 
     private func loadBaseline() throws -> Baseline? {
