@@ -10,6 +10,8 @@ include:
 exclude:
   - "**/.build/**"
   - "**/Tests/**"
+  # 픽스처는 일부러 미사용 선언을 담고 있다. 자기 분석 대상이 아니다.
+  - "Fixtures/**"
 
 retention:
   retain_public: true

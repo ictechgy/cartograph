@@ -9,6 +9,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `Fixtures/FalsePositiveCorpus` collects the patterns that produced false positives in real code,
+  as a package that actually compiles, and `Scripts/verify-fixtures.sh` compares the whole finding
+  list in both directions — a new false positive and a lost detection fail equally. Unit tests run
+  on hand-built snapshots, so they cannot check what the compiler writes into the index store, and
+  every false positive found in this repository lived exactly there. CI runs it.
+
 - `dead --report-test-only` reports production declarations reached only from tests or previews.
   They are not dead, so they are reported as `info` and never fail a build, but a team wants to know
   that tests are the sole caller. Declarations inside test targets are excluded — a module that
