@@ -21,6 +21,8 @@ public enum CartographError: Error, Equatable, LocalizedError {
     case thresholdExceeded(rule: String, message: String)
     /// 결과를 파일로 쓰지 못함.
     case outputUnwritable(path: String, underlying: String)
+    /// `--since` 가 가리킨 기준점의 변경 목록을 구하지 못했다.
+    case changedFilesUnavailable(reference: String, reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -58,6 +60,8 @@ public enum CartographError: Error, Equatable, LocalizedError {
                 """
         case let .thresholdExceeded(rule, message):
             return "Threshold exceeded for '\(rule)': \(message)"
+        case let .changedFilesUnavailable(reference, reason):
+            return "Could not list files changed since '\(reference)': \(reason)."
         case let .outputUnwritable(path, underlying):
             return "Could not write to \(path): \(underlying)"
         }

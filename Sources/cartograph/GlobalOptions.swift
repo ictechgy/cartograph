@@ -43,6 +43,12 @@ struct GlobalOptions: ParsableArguments {
     @Flag(name: .customLong("retain-public"), help: "Treat public and open declarations as used.")
     var retainPublic: Bool = false
 
+    @Option(
+        name: .customLong("since"),
+        help: "Report only findings in files changed since this git revision."
+    )
+    var since: String?
+
     @Flag(help: "Exit with a non-zero status when findings remain.")
     var strict: Bool = false
 

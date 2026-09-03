@@ -31,10 +31,22 @@ enum CommandSupport {
             }
         }
 
+        // 변경 목록은 실행마다 달라지는 값이라 설정 파일이 아니라 여기서 구한다.
+        let scope = try options.since.map {
+            ReportScope(
+                files: try ChangedFiles.since(
+                    $0,
+                    workingDirectory: resolved.configuration.projectPath
+                        ?? fileSystem.currentDirectoryPath
+                )
+            )
+        }
+
         return CommandContext(
             service: CartographService(
                 configuration: resolved.configuration,
-                environment: .live()
+                environment: .live(),
+                reportScope: scope
             ),
             configuration: resolved.configuration,
             fileSystem: fileSystem,
