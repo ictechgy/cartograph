@@ -34,7 +34,7 @@ body:
     id: version
     attributes:
       label: Cartograph and Xcode versions
-      placeholder: "cartograph 0.2.0, Xcode 27.0"
+      placeholder: "cartograph 0.3.0, Xcode 27.0"
     validations:
       required: true
   - type: textarea
