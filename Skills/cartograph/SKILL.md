@@ -1,6 +1,6 @@
 ---
 name: cartograph
-description: Use when deciding whether Swift code is unused, when asked who calls or depends on a declaration, or before deleting any Swift declaration in an iOS/macOS project. Answers come from the compiler's index, not from text search.
+description: Use before deleting any Swift declaration, when cleaning up dead or unused code, and when asked who calls or depends on a declaration in a Swift project. Answers come from the compiler's index, not from text search.
 ---
 
 # cartograph
@@ -17,28 +17,61 @@ Run this first and read the whole answer:
 cartograph query <name-or-USR>
 ```
 
-Then apply these rules. They are the point of this skill.
+Then apply these rules. They are the point of this skill, and they apply to every
+declaration you are about to remove, whether you got it from `query` or from a list
+produced by `cartograph dead`.
 
 1. **`state` is not a verdict.** `unreachable` means "not reachable from any retained root",
    which is a fact about the graph. It is not "safe to delete". Nothing in this tool's
    output ever says a declaration is safe to delete, and you must not infer it.
 
-2. **Read `limitations` in the same response.** It lists the channels this analysis cannot
+2. **A retained root is an entry point, a test, or a declaration a retention rule kept.**
+   Public API is *not* a root unless the project turned it on — `retain_public` defaults to
+   off. In a library or framework whose callers live outside this repository, that means the
+   entire public surface is reported `unreachable` and deleting on that basis breaks every
+   consumer. Check for `retain_public: true` in `.cartograph.yml`, or re-run with
+   `--retain-public`, before you believe an `unreachable` verdict about public API.
+
+3. **Read `limitations` in the same response.** It lists the channels this analysis cannot
    see, counted from the project you are in. If it names Objective-C sources, an
    `unreachable` Swift declaration may be called from a `.m` file the analysis never read.
    If it names Interface Builder documents, connections are matched by class name only. If
-   it reports `index-staleness`, the index predates recent edits — rebuild before trusting
-   the answer.
+   it reports `index-staleness`, the index predates recent edits — rebuild first.
 
-3. **`suppressedByBaseline: true` means the team already decided.** Leave it alone. Do not
+4. **`suppressedByBaseline: true` means the team already decided.** Leave it alone. Do not
    re-litigate a decision that is recorded in the baseline file.
 
-4. **`dependsOn: []` on a type does not mean it depends on nothing.** On a symbol-level
+5. **`dependsOn: []` on a type does not mean it depends on nothing.** On a symbol-level
    graph a type's dependencies are held by its members. Follow `members`.
 
-5. **`reason` tells you why something survived.** A value like `interfaceBuilder`,
+6. **`reason` tells you why something survived.** A value like `interfaceBuilder`,
    `objcExposed`, `codingKeys` or `caseIterable` means the compiler index alone would have
    called it dead. Deleting it breaks something the index cannot see.
+
+## When the rules pass
+
+Passing the rules is not permission. The tool has told you what it can see; it has not told
+you the code is unused. So:
+
+- Delete only what the user asked you to delete. A clean `query` result is a reason to stop
+  worrying about *that* declaration, never a reason to widen the change to declarations
+  nobody asked about.
+- When the user asked for a sweep, propose the list and say what you checked — the state,
+  the reason, and which limitations were in effect — and let them decide.
+- If a limitation applies to the declaration in front of you, say so instead of deleting and
+  hoping. "This is unreachable, but the project has 12 Objective-C sources this analysis
+  does not read" is the useful answer.
+
+## Answers this tool cannot give
+
+- **Objective-C declarations.** Only `.swift` files are analysed. Nothing here tells you
+  whether a `.m` declaration is used.
+- **Anything you changed in this session.** The index is written by the compiler at build
+  time. If you edited Swift and did not rebuild, the answer describes the code as it was
+  before your edit.
+- **Whether a rename is safe.** Interface Builder outlets and actions are matched by class
+  name, and `@objc` names are strings. Renaming can break the same connections that deleting
+  would.
 
 ## Answering "who uses X?"
 
@@ -59,17 +92,15 @@ report a truncated list as complete.
 
 ## Sweeping a whole project
 
+Every entry in these lists is a declaration, so every rule above applies to every entry.
+A long list is not a mandate.
+
 ```bash
 cartograph dead --report-format json    # every unreachable declaration
 cartograph dead --explain MyType        # why one declaration survived, in prose
+cartograph dead --since origin/main     # only what this branch touched
 cartograph cycles                       # circular dependencies, with the link to cut
 cartograph rules                        # layering violations
-```
-
-Scope a review to what a branch touched:
-
-```bash
-cartograph dead --since origin/main
 ```
 
 ## Do not read the whole graph
@@ -88,11 +119,12 @@ code is unused — check your spelling, and check whether the target was built.
 
 ## If there is no index store
 
-The tool reads what the compiler wrote. Build first:
+The tool reads what the compiler wrote, so the project has to be built first:
 
 ```bash
 swift build
 xcodebuild build COMPILER_INDEX_STORE_ENABLE=YES -derivedDataPath <path>
 ```
 
-Then pass `--index-store <path>` if it is not found automatically.
+Then pass `--index-store <path>` if it is not found automatically. A full `xcodebuild` can
+take minutes and needs a working signing setup, so ask before starting one.
