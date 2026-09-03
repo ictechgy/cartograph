@@ -1,0 +1,2 @@
+function 'Corpus.neverCalledAtAll()' is never used
+property 'Corpus.genuinelyUnusedState' is never used

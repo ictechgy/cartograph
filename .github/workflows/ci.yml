@@ -90,6 +90,10 @@ jobs:
         run: |
           "$CARTOGRAPH" dead --strict
 
+      - name: False-positive corpus
+        run: |
+          Scripts/verify-fixtures.sh "$CARTOGRAPH"
+
       - name: Architecture rules
         run: |
           "$CARTOGRAPH" rules --strict
