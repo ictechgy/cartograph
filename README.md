@@ -216,40 +216,53 @@ findings; this one answers a question you already have.
 $ cartograph query UserService
 {
   "level" : "symbol",
+  "limitations" : [
+    "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
+    "index-staleness: 3 of 214 source file(s) changed after the index store was written, so a call added since the last build is not here yet",
+    "single-configuration: the index store knows only the configuration that was built, ..."
+  ],
   "requested" : "UserService",
   "result" : {
     "dependsOn" : [
-      { "edge" : "call", "kind" : "class", "qualifiedName" : "Data.UserRepository", ... }
+      { "qualifiedName" : "Data.UserRepository", "module" : "Data", "kind" : "class",
+        "edges" : [ "call", "reference" ], "depth" : 1, ... }
     ],
-    "limitations" : [
-      "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
-      "single-configuration: the index store knows only the configuration that was built, ..."
+    "members" : [
+      { "qualifiedName" : "Domain.fetch(id:)", "edges" : [ "member" ], "depth" : 1, ... }
     ],
     "reachability" : {
       "path" : [ "Presentation.HomeView", "Domain.UserService" ],
       "state" : "reachable",
       "suppressedByBaseline" : false
     },
-    "truncated" : { "dependsOn" : false, "usedBy" : false },
+    "truncated" : { "dependsOn" : false, "members" : false, "usedBy" : false },
     "usedBy" : [
-      { "edge" : "call", "kind" : "struct", "qualifiedName" : "Presentation.HomeView", ... }
+      { "qualifiedName" : "Presentation.HomeView", "module" : "Presentation", "kind" : "struct",
+        "edges" : [ "call" ], "depth" : 1, ... }
     ]
   },
   "status" : "found"
 }
 ```
 
-Four things this output does deliberately:
+Five things this output does deliberately:
 
 - **It never says a declaration is safe to delete.** `state` is a fact about the graph —
   `retained`, `retainedByMember`, `reachable`, `unreachable`. Whether that means deletable is a
   judgement, and the retention reason is given as a value (`"reason": "interfaceBuilder"`) so the
   caller can make it.
-- **Every answer carries what the analysis cannot see.** `limitations` counts the Objective-C
-  sources and Interface Builder documents actually present in *your* project, so a consumer that
-  never reads the README still learns why an `unreachable` verdict might be wrong.
+- **Every answer carries what the analysis cannot see**, including `notFound` — asking about a name
+  that is declared in Objective-C and being told only "no such thing" would hide the difference
+  between absent and invisible. `limitations` is counted from *your* project, within the same
+  include/exclude scope the graph uses, so it stays quiet when there is nothing to warn about. It
+  reports Objective-C sources, Interface Builder documents, sources edited since the index store was
+  written, and a configured path or edge-kind filter that could be the reason `usedBy` is empty.
 - **A baseline the team already accepted is marked as such** (`suppressedByBaseline`), so nobody
-  re-litigates a decision that was already made.
+  re-litigates a decision that was already made. It is only set when the declaration would actually
+  have been reported.
+- **A neighbour carries every relation that reaches it**, not one of them. A subclass that both
+  calls and overrides comes back as `"edges": ["call", "overrides"]`; reporting one would let you
+  delete on half the picture.
 - **A name matching several declarations returns the candidates, not a guess.** Ask again with one
   of the USRs.
 
@@ -261,14 +274,23 @@ $ cartograph query Client
     { "qualifiedName" : "Storage.Client", "usr" : "s:7Storage6ClientC" }
   ],
   "level" : "symbol",
+  "limitations" : [ ... ],
   "requested" : "Client",
   "status" : "ambiguous"
 }
 ```
 
+`members` and `declaredIn` carry containment, which is not use. A type's own dependencies live in
+its members on a symbol-level graph, so `dependsOn: []` on a class is normal and does not mean the
+class depends on nothing — follow `members`.
+
 `--depth` follows more than one edge in each direction and `--limit` caps how many neighbours come
-back; `truncated` tells you when the cap bit. Reachability is always computed on the symbol-level
-graph regardless of `--level`, which is why `level` is in the response.
+back; `depth` on each neighbour says how far it was, and `truncated` tells you when the cap bit.
+Reachability is always computed on the symbol-level graph regardless of `--level`, which is why
+`level` is in the response. A neighbour's `location` is where it is *declared*, not where it uses
+the subject. Fields with no value are omitted rather than set to null: `declaredIn` on a top-level
+declaration, `reason` on one that is not retained, `path` on one that is not reached, and `result`
+or `candidates` depending on `status`.
 
 An unknown name exits 64, so a typo in a script does not pass silently as "nothing uses it".
 

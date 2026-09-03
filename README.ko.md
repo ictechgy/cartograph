@@ -212,39 +212,50 @@ cartograph query 's:3App11UserServiceC' --depth 2 --limit 20
 $ cartograph query UserService
 {
   "level" : "symbol",
+  "limitations" : [
+    "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
+    "index-staleness: 3 of 214 source file(s) changed after the index store was written, so a call added since the last build is not here yet",
+    "single-configuration: the index store knows only the configuration that was built, ..."
+  ],
   "requested" : "UserService",
   "result" : {
     "dependsOn" : [
-      { "edge" : "call", "kind" : "class", "qualifiedName" : "Data.UserRepository", ... }
+      { "qualifiedName" : "Data.UserRepository", "module" : "Data", "kind" : "class",
+        "edges" : [ "call", "reference" ], "depth" : 1, ... }
     ],
-    "limitations" : [
-      "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
-      "single-configuration: the index store knows only the configuration that was built, ..."
+    "members" : [
+      { "qualifiedName" : "Domain.fetch(id:)", "edges" : [ "member" ], "depth" : 1, ... }
     ],
     "reachability" : {
       "path" : [ "Presentation.HomeView", "Domain.UserService" ],
       "state" : "reachable",
       "suppressedByBaseline" : false
     },
-    "truncated" : { "dependsOn" : false, "usedBy" : false },
+    "truncated" : { "dependsOn" : false, "members" : false, "usedBy" : false },
     "usedBy" : [
-      { "edge" : "call", "kind" : "struct", "qualifiedName" : "Presentation.HomeView", ... }
+      { "qualifiedName" : "Presentation.HomeView", "module" : "Presentation", "kind" : "struct",
+        "edges" : [ "call" ], "depth" : 1, ... }
     ]
   },
   "status" : "found"
 }
 ```
 
-이 출력이 일부러 지키는 네 가지가 있다.
+이 출력이 일부러 지키는 다섯 가지가 있다.
 
 - **지워도 된다고 말하지 않는다.** `state`는 그래프에 대한 사실이다 — `retained`,
   `retainedByMember`, `reachable`, `unreachable`. 그것이 삭제해도 된다는 뜻인지는 판단이고,
   보존 근거는 값으로 준다(`"reason": "interfaceBuilder"`). 판단은 받는 쪽의 몫이다.
-- **모든 답에 이 분석이 보지 못한 채널을 싣는다.** `limitations`는 문서에 적힌 일반론이 아니라
-  당신의 프로젝트에 실제로 있는 Objective-C 소스와 Interface Builder 문서를 세어 알린다.
-  README를 읽지 않는 소비자도 `unreachable` 판정을 어디까지 믿을지 스스로 정할 수 있다.
+- **모든 답에 이 분석이 보지 못한 채널을 싣는다.** `notFound`에도 싣는다. Objective-C로
+  선언된 이름을 물었는데 "그런 것 없다"는 답만 받으면, 없는 것과 이 도구가 못 보는 것을
+  구분할 수 없다. `limitations`는 문서의 일반론이 아니라 **당신의 프로젝트를** 그래프와
+  같은 include/exclude 범위 안에서 세어 만든다. 알릴 것이 없으면 조용하다. Objective-C 소스,
+  Interface Builder 문서, 마지막 빌드 뒤에 바뀐 소스, 그리고 `usedBy`가 빈 이유일 수도 있는
+  경로·간선 필터 설정을 알린다.
 - **팀이 이미 받아들인 베이스라인은 그렇다고 표시한다**(`suppressedByBaseline`). 팀이 알고
-  남겨 둔 것을 다시 심사하지 않게 한다.
+  남겨 둔 것을 다시 심사하지 않게 한다. 실제로 보고되었을 선언에만 표시가 붙는다.
+- **이웃에 닿는 관계를 하나만 고르지 않고 전부 준다.** 호출하면서 동시에 오버라이드하는
+  서브클래스는 `"edges": ["call", "overrides"]`로 온다. 하나만 보고하면 절반만 보고 지우게 된다.
 - **이름이 여럿에 걸리면 하나를 고르지 않고 후보를 돌려준다.** USR로 다시 물으면 된다.
 
 ```console
@@ -255,14 +266,22 @@ $ cartograph query Client
     { "qualifiedName" : "Storage.Client", "usr" : "s:7Storage6ClientC" }
   ],
   "level" : "symbol",
+  "limitations" : [ ... ],
   "requested" : "Client",
   "status" : "ambiguous"
 }
 ```
 
+`members`와 `declaredIn`은 담는 관계다. 쓰는 관계가 아니다. 심볼 레벨 그래프에서 타입의
+의존은 전부 멤버가 들고 있으므로, 클래스의 `dependsOn`이 비어 있는 것은 정상이고 "아무것도
+의존하지 않는다"는 뜻이 아니다. `members`를 따라가면 된다.
+
 `--depth`는 각 방향으로 간선을 몇 개까지 따라갈지, `--limit`은 이웃을 몇 개까지 담을지 정한다.
-제한에 걸리면 `truncated`가 알려 준다. 도달성은 `--level` 설정과 무관하게 항상 심볼 레벨
-그래프에서 계산하며, 그래서 응답에 `level`이 들어 있다.
+이웃마다 붙은 `depth`가 몇 걸음 떨어져 있는지 알려 주고, 제한에 걸리면 `truncated`가 알려 준다.
+도달성은 `--level` 설정과 무관하게 항상 심볼 레벨 그래프에서 계산하며, 그래서 응답에 `level`이
+들어 있다. 이웃의 `location`은 그 이웃이 **선언된** 자리이지 대상을 쓰는 자리가 아니다. 값이 없는 필드는 `null`이 아니라 키 자체가 빠진다. 최상위
+선언의 `declaredIn`, 보존되지 않은 선언의 `reason`, 도달하지 않은 선언의 `path`, 그리고
+`status`에 따라 `result` 또는 `candidates`가 그렇다.
 
 없는 이름을 물으면 종료 코드 64로 끝난다. 스크립트의 오타가 "아무도 안 씀"으로 조용히
 넘어가지 않게 하기 위해서다.

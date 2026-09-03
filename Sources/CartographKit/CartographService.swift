@@ -320,14 +320,19 @@ public struct CartographService: Sendable {
         // 실어 보내면 심볼 레벨 답을 모듈 레벨 답이라고 말하게 된다.
         let level = GraphLevel.symbol.rawValue
 
+        let limitations = analysisLimitations()
+
         switch NodeLookup.resolve(subject, in: graph) {
         case .notFound:
-            return SymbolQueryDocument(status: "notFound", requested: subject, level: level)
+            return SymbolQueryDocument(
+                status: "notFound", requested: subject, level: level, limitations: limitations
+            )
         case let .ambiguous(candidates):
             return SymbolQueryDocument(
                 status: "ambiguous",
                 requested: subject,
                 level: level,
+                limitations: limitations,
                 candidates: candidates.map {
                     .init(qualifiedName: $0.qualifiedName, usr: $0.usr ?? $0.id.rawValue)
                 }
@@ -337,6 +342,7 @@ public struct CartographService: Sendable {
                 status: "found",
                 requested: subject,
                 level: level,
+                limitations: limitations,
                 result: try describeQuery(of: node, report: report, in: graph, depth: depth, limit: limit)
             )
         }
@@ -349,26 +355,37 @@ public struct CartographService: Sendable {
         depth: Int,
         limit: Int
     ) throws -> SymbolQuery {
-        let baseline = try loadBaseline()
-        let suppressed = baseline.map { $0.filtering([Self.unusedDiagnostic(for: node)]).isEmpty } ?? false
+        let explanation = report.explain(node.id, in: graph)
+        // 도달 가능한 정점에는 `dead` 가 애초에 진단을 내지 않는다. 그런데도 옛
+        // 베이스라인 항목이 지문만 맞으면 억제되었다고 표시되어, "도달 가능한데
+        // 팀이 억제했다"는 모순된 답이 나간다.
+        let suppressed = try explanation == .unreachable && isSuppressedByBaseline(node)
         let (usedBy, usedByTruncated) = Self.neighbors(
             of: node.id, in: graph, depth: depth, limit: limit, incoming: true
         )
         let (dependsOn, dependsOnTruncated) = Self.neighbors(
             of: node.id, in: graph, depth: depth, limit: limit, incoming: false
         )
+        let (members, membersTruncated) = Self.containment(of: node.id, in: graph, limit: limit, incoming: false)
+        let declaredIn = Self.containment(of: node.id, in: graph, limit: 1, incoming: true).neighbors.first
         return SymbolQuery(
             subject: Self.describe(node),
-            reachability: Self.describe(
-                report.explain(node.id, in: graph),
-                suppressedByBaseline: suppressed,
-                in: graph
-            ),
+            reachability: Self.describe(explanation, suppressedByBaseline: suppressed, in: graph),
             usedBy: usedBy,
             dependsOn: dependsOn,
-            truncated: .init(usedBy: usedByTruncated, dependsOn: dependsOnTruncated),
-            limitations: analysisLimitations()
+            members: members,
+            declaredIn: declaredIn,
+            truncated: .init(
+                usedBy: usedByTruncated,
+                dependsOn: dependsOnTruncated,
+                members: membersTruncated
+            )
         )
+    }
+
+    private func isSuppressedByBaseline(_ node: GraphNode) throws -> Bool {
+        guard let baseline = try loadBaseline() else { return false }
+        return baseline.filtering([Self.unusedDiagnostic(for: node)]).isEmpty
     }
 
     private static func encodeQuery(_ document: SymbolQueryDocument) throws -> String {
@@ -385,28 +402,60 @@ public struct CartographService: Sendable {
     ///
     /// README 의 한계 목록을 문서에만 두면 소비자는 읽지 않는다. 특히 에이전트는
     /// 읽지 않는다. 눈앞의 답에 실어야 그 답을 어디까지 믿을지 스스로 정할 수 있다.
-    func analysisLimitations() -> [String] {
-        var result: [String] = []
-        let objectiveC = environment.fileSystem.recursiveFiles(
+    func analysisLimitations(storeDate: Date? = nil) -> [String] {
+        // 한 번만 걷는다. 분석 범위와 같은 경로 필터를 걸어야 그래프가 보지 않는
+        // 파일까지 세지 않는다. 범위 밖의 파일을 한계로 알리면 매번 붙는 경보가
+        // 되고, 매번 붙는 경보는 읽히지 않는다.
+        let filter = configuration.pathFilter
+        let storeDate = storeDate ?? indexStoreDate()
+        let files = environment.fileSystem.recursiveFiles(
             under: projectPath,
-            isIncluded: { $0.hasSuffix(".m") || $0.hasSuffix(".mm") },
+            isIncluded: { path in
+                filter.allows(path) && Self.limitationSuffixes.contains { path.hasSuffix($0) }
+            },
             shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
         )
-        if !objectiveC.isEmpty {
+
+        func count(_ suffixes: String...) -> Int {
+            files.count { path in suffixes.contains { path.hasSuffix($0) } }
+        }
+        let objectiveCCount = count(".m", ".mm")
+        let interfaceBuilderCount = count(".xib", ".storyboard")
+        let swiftFiles = files.filter { $0.hasSuffix(".swift") }
+        let newerThanStore = storeDate.map { built in
+            swiftFiles.count { (environment.fileSystem.modificationDate(at: $0) ?? .distantPast) > built }
+        } ?? 0
+
+        var result: [String] = []
+        if objectiveCCount > 0 {
             result.append(
-                "objective-c-sources: \(objectiveC.count) file(s) are not analysed, "
+                "objective-c-sources: \(objectiveCCount) file(s) are not analysed, "
                     + "so a Swift declaration used only from Objective-C looks unreached"
             )
         }
-        let interfaceBuilder = environment.fileSystem.recursiveFiles(
-            under: projectPath,
-            isIncluded: { $0.hasSuffix(".xib") || $0.hasSuffix(".storyboard") },
-            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
-        )
-        if !interfaceBuilder.isEmpty {
+        if interfaceBuilderCount > 0 {
             result.append(
-                "interface-builder-documents: \(interfaceBuilder.count) document(s) are matched by "
+                "interface-builder-documents: \(interfaceBuilderCount) document(s) are matched by "
                     + "custom class name only, never connection by connection"
+            )
+        }
+        if newerThanStore > 0 {
+            result.append(
+                "index-staleness: \(newerThanStore) of \(swiftFiles.count) source file(s) changed after the "
+                    + "index store was written, so a call added since the last build is not here yet"
+            )
+        }
+        if !configuration.include.isEmpty || !configuration.exclude.isEmpty {
+            result.append(
+                "configured-path-filter: include/exclude patterns are in effect, so an empty "
+                    + "'usedBy' can mean the caller was filtered out rather than absent"
+            )
+        }
+        if !configuration.edgeKinds.isEmpty {
+            result.append(
+                "configured-edge-kinds: only "
+                    + configuration.edgeKinds.map(\.rawValue).sorted().joined(separator: ", ")
+                    + " edges are in the graph, so other relations are invisible here"
             )
         }
         result.append(
@@ -414,6 +463,48 @@ public struct CartographService: Sendable {
                 + "so declarations behind an uncompiled #if branch do not exist here"
         )
         return result
+    }
+
+    /// 한계 목록을 세는 데 필요한 확장자. 다른 파일은 걷지도 담지도 않는다.
+    private static let limitationSuffixes = [".m", ".mm", ".xib", ".storyboard", ".swift"]
+
+    /// 인덱스 스토어가 마지막으로 쓰인 시각. 찾지 못하면 신선도를 말하지 않는다.
+    ///
+    /// 모르는 것을 "최신"이라고 말하지 않는다. 항목이 없는 것과 신선하다는 것은
+    /// 다르고, 후자를 사실이 아닌데 주장하면 그 위에서 삭제 결정이 내려진다.
+    private func indexStoreDate() -> Date? {
+        guard environment.indexProviderOverride == nil else { return nil }
+        let locator = IndexStoreLocator(fileSystem: environment.fileSystem)
+        guard let storePath = try? locator.locate(
+            explicitPath: configuration.indexStorePath,
+            projectPath: projectPath
+        ) else { return nil }
+        // 스토어 루트의 수정 시각은 믿을 수 없다. SwiftPM 의 `.build/out` 처럼
+        // 스토어를 품고 있는 상위 디렉터리를 가리키는 경우, 루트는 처음 만들어진
+        // 날짜 그대로이고 실제 레코드는 `v5/units` 아래에 쌓인다. 실제로 이 저장소에서
+        // 루트는 이틀 전, `v5/units` 는 방금이었다. 루트만 보면 매번 "인덱스가
+        // 낡았다"고 알리게 되고, 매번 붙는 경보는 읽히지 않는다.
+        let markers = [storePath, storePath + "/v5/units", storePath + "/units"]
+        return markers.compactMap { environment.fileSystem.modificationDate(at: $0) }.max()
+    }
+
+    private static func describe(
+        _ node: GraphNode,
+        reachedBy edges: [String],
+        depth: Int
+    ) -> SymbolQuery.Neighbor {
+        SymbolQuery.Neighbor(
+            name: node.name,
+            qualifiedName: node.qualifiedName,
+            kind: node.kind.rawValue,
+            usr: node.usr,
+            module: node.module,
+            edges: edges,
+            depth: depth,
+            // 선언 위치다. 사용 지점이 아니다. 이웃이 subject 를 어느 줄에서 쓰는지는
+            // 이 그래프가 들고 있지 않다.
+            location: node.location
+        )
     }
 
     private static func describe(_ node: GraphNode) -> SymbolQuery.Subject {
@@ -459,11 +550,37 @@ public struct CartographService: Sendable {
     ///
     /// 깊이와 개수를 모두 제한한다. 전이 의존자 수천 개는 결국 또 하나의 덤프이고,
     /// 이 명령이 존재하는 이유가 덤프를 만들지 않는 것이다.
-    private static func isOrderedBefore(_ lhs: GraphEdge, _ rhs: GraphEdge) -> Bool {
-        (lhs.source.rawValue, lhs.target.rawValue, lhs.kind.rawValue)
-            < (rhs.source.rawValue, rhs.target.rawValue, rhs.kind.rawValue)
+    /// 담는 관계(`member` 간선)만 한 단계 따라간다.
+    ///
+    /// 쓰는 관계와 섞지 않는다. 타입이 멤버를 "쓴다"고 말하는 것은 사실이 아니고,
+    /// 그렇다고 빼 버리면 타입에 물었을 때 답이 비어 나온다.
+    private static func containment(
+        of start: NodeID,
+        in graph: CodeGraph,
+        limit: Int,
+        incoming: Bool
+    ) -> (neighbors: [SymbolQuery.Neighbor], truncated: Bool) {
+        let edges = incoming ? graph.incomingEdges(to: start) : graph.outgoingEdges(from: start)
+        let others = edges.filter { $0.kind == .member }
+            .map { incoming ? $0.source : $0.target }
+        var collected: [SymbolQuery.Neighbor] = []
+        var truncated = false
+        for other in Set(others).sorted(by: { $0.rawValue < $1.rawValue }) {
+            guard let node = graph.node(other) else { continue }
+            guard collected.count < max(1, limit) else { truncated = true; break }
+            collected.append(describe(node, reachedBy: [EdgeKind.member.rawValue], depth: 1))
+        }
+        return (collected, truncated)
     }
 
+    /// 사용 의미가 있는 간선만 따라 이웃을 모은다.
+    ///
+    /// 깊이와 개수를 모두 제한한다. 전이 의존자 수천 개는 결국 또 하나의 덤프이고,
+    /// 이 명령이 존재하는 이유가 덤프를 만들지 않는 것이다.
+    ///
+    /// 따라가는 간선의 조건(`impliesUsage`)은 도달 가능성 분석이 쓰는 것과 같다.
+    /// 두 집합이 어긋나면 "아무도 안 쓰는데 도달은 가능"처럼 서로 모순된 두 사실이
+    /// 한 응답에 실린다.
     private static func neighbors(
         of start: NodeID,
         in graph: CodeGraph,
@@ -476,27 +593,27 @@ public struct CartographService: Sendable {
         var frontier: [NodeID] = [start]
         var truncated = false
 
-        for _ in 0..<max(1, depth) {
-            var next: [NodeID] = []
+        for level in 1...max(1, depth) {
+            // 같은 이웃으로 가는 간선이 여럿일 수 있다(호출이면서 오버라이드처럼).
+            // 하나만 골라 담으면 나머지 관계가 응답에서 사라지고, 무엇을 고를지도
+            // 정렬 타이에 따라 실행마다 달라진다. 종류를 모아 함께 보고한다.
+            var kindsByNeighbor: [NodeID: Set<String>] = [:]
             for current in frontier {
                 let edges = incoming ? graph.incomingEdges(to: current) : graph.outgoingEdges(from: current)
-                // 같은 두 정점 사이에 종류가 다른 간선이 여럿 있을 수 있다. 정렬 키에
-                // 종류가 없으면 둘의 순서가 갈리고, 먼저 만난 쪽만 담기므로 실행마다
-                // 다른 `edge` 값이 나온다. 출력을 diff 할 수 있어야 한다.
-                for edge in edges.sorted(by: Self.isOrderedBefore) where edge.kind.impliesUsage {
+                for edge in edges where edge.kind.impliesUsage {
                     let other = incoming ? edge.source : edge.target
-                    guard visited.insert(other).inserted, let node = graph.node(other) else { continue }
-                    guard collected.count < limit else { truncated = true; continue }
-                    collected.append(SymbolQuery.Neighbor(
-                        name: node.name,
-                        qualifiedName: node.qualifiedName,
-                        kind: node.kind.rawValue,
-                        usr: node.usr,
-                        edge: edge.kind.rawValue,
-                        location: node.location
-                    ))
-                    next.append(other)
+                    guard !visited.contains(other) else { continue }
+                    kindsByNeighbor[other, default: []].insert(edge.kind.rawValue)
                 }
+            }
+
+            var next: [NodeID] = []
+            for other in kindsByNeighbor.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+                visited.insert(other)
+                guard let node = graph.node(other), let kinds = kindsByNeighbor[other] else { continue }
+                guard collected.count < max(1, limit) else { truncated = true; continue }
+                collected.append(describe(node, reachedBy: kinds.sorted(), depth: level))
+                next.append(other)
             }
             frontier = next
             if frontier.isEmpty { break }

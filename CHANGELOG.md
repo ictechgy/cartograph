@@ -26,6 +26,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   answer is never mistaken for a complete one. Reachability is always computed on the symbol-level
   graph regardless of `--level`, which is why the response states its own level.
 
+  Each neighbour carries every relation that reaches it rather than one of them — a subclass that
+  both calls and overrides comes back as `["call", "overrides"]`, and reporting one of the two would
+  let a consumer delete on half the picture. Containment is reported separately as `members` and
+  `declaredIn`, because a type does not *use* its own methods, but omitting them entirely made
+  `dependsOn` come back empty for every class on a symbol-level graph, which reads as "depends on
+  nothing".
+
+  `limitations` is counted from the project within the same include/exclude scope the graph uses,
+  and ships on `notFound` too: asking about a name declared in Objective-C and being told only "no
+  such thing" hides the difference between absent and invisible. Besides Objective-C sources and
+  Interface Builder documents it reports sources edited since the index store was written — the most
+  dangerous silence for a consumer deciding to delete — and a configured path or edge-kind filter
+  that could be the reason `usedBy` is empty.
+
 ## [0.3.0] - 2026-09-03
 
 ### Added

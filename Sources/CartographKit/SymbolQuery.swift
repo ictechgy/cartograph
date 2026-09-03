@@ -29,7 +29,15 @@ public struct SymbolQuery: Sendable, Equatable, Codable {
         public let qualifiedName: String
         public let kind: String
         public let usr: String?
-        public let edge: String
+        public let module: String?
+        /// 이 이웃에 닿는 간선의 종류 전부.
+        ///
+        /// 하나만 골라 보고하면 나머지 관계가 응답에서 사라진다. 어떤 서브클래스가
+        /// 부모를 호출하면서 동시에 오버라이드하고 있다면, 둘 중 하나만 보이는 답을
+        /// 근거로 삭제를 결정하게 된다.
+        public let edges: [String]
+        /// `subject` 에서 몇 걸음 떨어져 있는지. 1 이면 직접 이웃이다.
+        public let depth: Int
         public let location: SourceLocation?
     }
 
@@ -53,17 +61,23 @@ public struct SymbolQuery: Sendable, Equatable, Codable {
     public let usedBy: [Neighbor]
     /// 이 정점이 쓰는 쪽.
     public let dependsOn: [Neighbor]
+    /// 이 선언이 담고 있는 것들. 타입이면 그 멤버다.
+    ///
+    /// 담는 관계는 쓰는 관계가 아니므로 `dependsOn` 에 넣지 않는다. 그렇게 하면
+    /// 도구가 "FooManager 가 fetchUser() 를 쓴다"고 말하게 되는데 사실이 아니다.
+    /// 그렇다고 빼 버리면 클래스에 물었을 때 `dependsOn` 이 비어 나오고, 그것은
+    /// "이 클래스는 아무것도 의존하지 않는다"로 읽힌다. 심볼 레벨 그래프에서
+    /// 타입의 의존은 전부 멤버가 들고 있다. 이름을 따로 주는 것만이 비어 있지도
+    /// 않고 거짓말도 아닌 유일한 방법이다.
+    public let members: [Neighbor]
+    /// 이 선언을 담고 있는 것. 메서드나 프로퍼티면 그것을 선언한 타입이다.
+    public let declaredIn: Neighbor?
     /// 한도에 걸려 잘렸는지 여부. 잘린 사실을 숨기면 답이 거짓말이 된다.
     public let truncated: Truncation
-    /// 이 분석이 보지 못하는 채널. 응답마다 함께 보낸다.
-    ///
-    /// 문서에만 적어 두면 에이전트는 읽지 않는다. 한계를 답 안에 넣어야
-    /// 소비자가 그 답을 어디까지 믿을지 스스로 정할 수 있다.
-    public let limitations: [String]
-
     public struct Truncation: Sendable, Equatable, Codable {
         public let usedBy: Bool
         public let dependsOn: Bool
+        public let members: Bool
     }
 
     public init(
@@ -71,15 +85,17 @@ public struct SymbolQuery: Sendable, Equatable, Codable {
         reachability: Reachability,
         usedBy: [Neighbor],
         dependsOn: [Neighbor],
-        truncated: Truncation,
-        limitations: [String]
+        members: [Neighbor],
+        declaredIn: Neighbor?,
+        truncated: Truncation
     ) {
         self.subject = subject
         self.reachability = reachability
         self.usedBy = usedBy
         self.dependsOn = dependsOn
+        self.members = members
+        self.declaredIn = declaredIn
         self.truncated = truncated
-        self.limitations = limitations
     }
 }
 
@@ -106,6 +122,12 @@ public struct SymbolQueryDocument: Sendable, Equatable, Codable {
     public let requested: String
     /// 어느 레벨의 그래프에서 답했는지. 심볼 레벨 답을 모듈 레벨로 읽으면 안 된다.
     public let level: String
+    /// 이 분석이 보지 못하는 채널. 상태와 무관하게 모든 응답에 함께 보낸다.
+    ///
+    /// 문서에만 적어 두면 에이전트는 읽지 않는다. `notFound` 에도 필요하다.
+    /// Objective-C 로 선언된 이름을 물었을 때 "그런 것 없다"는 답만 받으면,
+    /// 없는 것과 이 도구가 못 보는 것을 구분할 수 없다.
+    public let limitations: [String]
     public let result: SymbolQuery?
     public let candidates: [Candidate]?
 
@@ -113,12 +135,14 @@ public struct SymbolQueryDocument: Sendable, Equatable, Codable {
         status: String,
         requested: String,
         level: String,
+        limitations: [String],
         result: SymbolQuery? = nil,
         candidates: [Candidate]? = nil
     ) {
         self.status = status
         self.requested = requested
         self.level = level
+        self.limitations = limitations
         self.result = result
         self.candidates = candidates
     }
