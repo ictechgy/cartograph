@@ -1,4 +1,5 @@
 import CartographCore
+import Foundation
 import CartographSyntax
 import CartographTestSupport
 import Testing
@@ -6,7 +7,7 @@ import Testing
 @Suite("구문 분석 캐시")
 struct SourceFactsCacheTests {
     private func makeCache(
-        _ fileSystem: InMemoryFileSystem,
+        _ fileSystem: any FileSystem,
         identity: String = ""
     ) -> SourceFactsCache {
         SourceFactsCache(fileSystem: fileSystem, path: "/cache/facts.json", analyzerIdentity: identity)
@@ -116,20 +117,25 @@ struct SourceFactsCacheTests {
     @Test("바뀐 것이 없으면 캐시를 다시 쓰지 않는다")
     func doesNotRewriteAnUnchangedCache() {
         // 직렬화 비용이 캐시 이득을 깎는다. 이 불변식은 눈에 잘 띄지 않으므로
-        // 테스트로 고정해 둔다.
-        let fileSystem = InMemoryFileSystem(files: ["/p/A.swift": "public struct A {}"])
+        // 쓰기 횟수를 세어 고정해 둔다.
+        let fileSystem = CountingFileSystem(
+            InMemoryFileSystem(files: ["/p/A.swift": "public struct A {}"])
+        )
         var builder = SnapshotBuilder()
         builder.symbol("A", kind: .structType, path: "/p/A.swift", line: 1)
         let snapshot = builder.build()
         let enricher = SnapshotEnricher(fileSystem: fileSystem, analyzer: .init(), cache: makeCache(fileSystem))
 
         _ = enricher.enrich(snapshot)
-        let afterFirst = fileSystem.text(at: "/cache/facts.json")
-        try? fileSystem.write(text: "sentinel", to: "/cache/facts.json")
+        #expect(fileSystem.writeCount(for: "/cache/facts.json") == 1)
         _ = enricher.enrich(snapshot)
-        // 두 번째 실행은 아무것도 파싱하지 않았으므로 쓰지도 않는다.
-        #expect(fileSystem.text(at: "/cache/facts.json") == "sentinel")
-        #expect(afterFirst != nil)
+        // 두 번째 실행은 전부 캐시 적중이라 쓸 것이 없다.
+        #expect(fileSystem.writeCount(for: "/cache/facts.json") == 1)
+
+        // 파일이 바뀌면 다시 쓴다.
+        try? fileSystem.write(text: "private struct A {}", to: "/p/A.swift")
+        _ = enricher.enrich(snapshot)
+        #expect(fileSystem.writeCount(for: "/cache/facts.json") == 2)
     }
 
     @Test("파일이 사라지면 캐시에서도 빠진다")
@@ -158,5 +164,27 @@ struct SourceFactsCacheTests {
         let enriched = SnapshotEnricher(fileSystem: fileSystem).enrich(builder.build())
         #expect(enriched.symbols.first?.accessibility == .publicLevel)
         #expect(fileSystem.writtenPaths == ["/p/A.swift"])
+    }
+}
+
+/// 경로별 쓰기 횟수를 세는 파일 시스템. 캐시가 언제 쓰이는지 고정하는 데 쓴다.
+private final class CountingFileSystem: FileSystem, @unchecked Sendable {
+    private let base: InMemoryFileSystem
+    private let lock = NSLock()
+    private var counts: [String: Int] = [:]
+
+    init(_ base: InMemoryFileSystem) { self.base = base }
+
+    func writeCount(for path: String) -> Int { lock.withLock { counts[path] ?? 0 } }
+
+    func fileExists(at path: String) -> Bool { base.fileExists(at: path) }
+    func directoryExists(at path: String) -> Bool { base.directoryExists(at: path) }
+    func readData(at path: String) throws -> Data { try base.readData(at: path) }
+    func contentsOfDirectory(at path: String) throws -> [String] { try base.contentsOfDirectory(at: path) }
+    var currentDirectoryPath: String { base.currentDirectoryPath }
+
+    func write(_ data: Data, to path: String) throws {
+        lock.withLock { counts[path, default: 0] += 1 }
+        try base.write(data, to: path)
     }
 }
