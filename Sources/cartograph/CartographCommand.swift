@@ -32,6 +32,7 @@ struct CartographCommand: ParsableCommand {
             GraphCommand.self,
             CyclesCommand.self,
             DeadCommand.self,
+            QueryCommand.self,
             MetricsCommand.self,
             RulesCommand.self,
             BaselineCommand.self,
@@ -140,6 +141,51 @@ struct DeadCommand: ParsableCommand {
         let outcome = try explain.map { try context.service.explainRetention(of: $0) }
             ?? context.service.detectUnusedCode(reportingTestOnlyCode: reportTestOnly)
         try CommandSupport.emit(outcome, options: options, context: context)
+    }
+}
+
+/// 심볼 하나에 대해 되묻는다.
+struct QueryCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "query",
+        abstract: "Answer three questions about one declaration, as JSON.",
+        discussion: """
+            Who uses it, what does it use, and is it reachable from a retained root. The answer is \
+            always JSON on stdout, with the reachability reason as a value rather than as prose.
+
+            This command never says a declaration is safe to delete. It reports what the index can \
+            see and, in the same response, the channels this analysis cannot see — Objective-C \
+            sources, Interface Builder documents, uncompiled #if branches — so the caller can \
+            decide how far to trust the answer.
+
+            Names that match more than one declaration return the candidates and their USRs \
+            instead of a guess. Ask again with a USR.
+            """
+    )
+
+    @OptionGroup var options: GlobalOptions
+
+    @Argument(help: "The declaration to ask about, by name, qualified name or USR.")
+    var symbol: String
+
+    @Option(name: .customLong("depth"), help: "How many edges to follow in each direction.")
+    var depth: Int = 1
+
+    @Option(name: .customLong("limit"), help: "Maximum neighbours to report in each direction.")
+    var limit: Int = 50
+
+    func validate() throws {
+        guard depth >= 1 else { throw ValidationError("--depth must be at least 1") }
+        guard limit >= 1 else { throw ValidationError("--limit must be at least 1") }
+    }
+
+    func run() throws {
+        let context = try CommandSupport.makeContext(options)
+        try CommandSupport.emit(
+            try context.service.query(symbol: symbol, depth: depth, limit: limit),
+            options: options,
+            context: context
+        )
     }
 }
 

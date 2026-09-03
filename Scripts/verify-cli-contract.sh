@@ -65,7 +65,7 @@ echo "종료 코드 0 — 정상"
 expect_status 0 "--help"              --help
 expect_status 0 "--version"           --version
 expect_status 0 "인자 없음(도움말)"    
-for subcommand in graph cycles dead metrics rules baseline init; do
+for subcommand in graph cycles dead query metrics rules baseline init; do
     expect_status 0 "$subcommand --help" "$subcommand" --help
 done
 
@@ -74,6 +74,8 @@ expect_status 64 "알 수 없는 옵션"     --no-such-option
 expect_status 64 "알 수 없는 하위 명령" no-such-command
 expect_status 64 "잘못된 열거형 값"    graph --level galaxy
 expect_status 64 "잘못된 형식 값"      dead --report-format yaml
+expect_status 64 "질의 대상 누락"      query
+expect_status 64 "0 이하의 깊이"       query Foo --depth 0
 
 echo "종료 코드 2 — 도구 실패"
 MISSING="$(mktemp -d)"

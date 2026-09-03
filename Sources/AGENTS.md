@@ -42,9 +42,11 @@ cartograph
 
 `CartographKit`은 임베드용 공개 제품입니다. 다음 두 층을 섞지 마세요.
 
-- **질의 API** (`cycles(in:)`, `unusedCode(in:)`, `metrics(in:)`, `layerViolations(in:)`):
-  값을 그대로 돌려줍니다. 렌더링·베이스라인·임계값을 여기 넣지 마세요.
-- **명령 API** (`detectCycles()` 등): 질의 결과에 CI 정책과 출력 형식을 얹습니다.
+- **질의 API** (`cycles(in:)`, `unusedCode(in:)`, `metrics(in:)`, `layerViolations(in:)`,
+  `queryDocument(symbol:)`): 값을 그대로 돌려줍니다. 렌더링·베이스라인·임계값을 여기 넣지 마세요.
+  단 `queryDocument`는 예외로 베이스라인을 읽습니다 — 억제 여부가 답의 일부라서,
+  이것을 위층에 두면 같은 사실을 두 번 계산하게 됩니다.
+- **명령 API** (`detectCycles()`, `query(symbol:)` 등): 질의 결과에 CI 정책과 출력 형식을 얹습니다.
 
 인덱스 읽기는 파이프라인에서 가장 느립니다. 여러 분석을 묶어 돌리는 코드는
 `loadContext()`로 스냅샷을 한 번만 읽고 문맥을 넘겨 쓰세요.

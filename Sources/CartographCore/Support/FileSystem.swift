@@ -182,3 +182,19 @@ public struct LocalFileSystem: FileSystem {
         FileManager.default.currentDirectoryPath
     }
 }
+
+/// 소스를 찾을 때 들어가 봐야 소용없는 디렉터리 이름.
+///
+/// 빌드 산출물과 체크아웃된 의존성이다. 큰 저장소에서는 이 가지치기만으로 탐색
+/// 시간이 몇 배 차이가 난다. 목록이 두 벌로 갈라지면 한쪽만 고쳐지고 같은
+/// 프로젝트에서 명령마다 다른 숫자가 나온다. 여기 하나만 둔다.
+public enum BuildArtifactDirectories {
+    public static let prunedNames: Set<String> = [
+        ".build", ".git", "DerivedData", "Pods", "Carthage", "checkouts", ".swiftpm", "node_modules",
+    ]
+
+    /// `recursiveFiles(under:isIncluded:shouldDescend:)` 에 그대로 넘길 수 있는 판정.
+    public static func shouldDescend(into path: String) -> Bool {
+        !prunedNames.contains((path as NSString).lastPathComponent)
+    }
+}
