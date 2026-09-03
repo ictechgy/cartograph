@@ -21,15 +21,18 @@ cycles: 1 error — module graph · 9 nodes · 36 edges
 ## Why another tool
 
 [Periphery](https://github.com/peripheryapp/periphery) was the best unused-code detector Swift had,
-and its archived source is still the best documentation of the problem. It went commercial in 2026.
-Cartograph is not a fork — it is a different framing of the same machinery.
+and its archived source is still the best documentation of the problem. Its open-source repository is
+now archived under MIT, and development continues as a [commercial product](https://periphery.pro)
+that is free for indie and hobby projects and for open source of any size — so if unused code is all
+you need, use it. Cartograph is not a fork, and not a free replacement; it is a different framing of
+the same machinery.
 
 Periphery's product sentence was *"find unused declarations."* The graph was a private means to that
 end. Cartograph's is *"here is your dependency graph"* — and dead code is the first query on it.
 
 What that buys you:
 
-| | Periphery (OSS, archived) | Cartograph |
+| | Periphery (archived OSS) | Cartograph |
 |---|---|---|
 | Dead code | ✅ the product | ✅ reachability from tagged roots |
 | Why is this retained? | not answerable | `dead --explain` prints the reason or the path |
