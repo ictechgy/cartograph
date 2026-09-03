@@ -24,6 +24,8 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
     public var thresholds: Thresholds
     /// 베이스라인 파일 경로.
     public var baselinePath: String?
+    /// isthmus 가 돌려준 외부 보존 근거 파일 경로. 비우면 읽지 않는다.
+    public var externalRetentionsPath: String?
     public var reportFormat: ReportFormat
     public var graphFormat: GraphFormat
     /// 참이면 진단이 하나라도 있을 때 0이 아닌 코드로 종료한다.
@@ -42,6 +44,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
         rules: [LayerRule] = [],
         thresholds: Thresholds = .disabled,
         baselinePath: String? = nil,
+        externalRetentionsPath: String? = nil,
         reportFormat: ReportFormat = .text,
         graphFormat: GraphFormat = .dot,
         strict: Bool = false
@@ -58,6 +61,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
         self.rules = rules
         self.thresholds = thresholds
         self.baselinePath = baselinePath
+        self.externalRetentionsPath = externalRetentionsPath
         self.reportFormat = reportFormat
         self.graphFormat = graphFormat
         self.strict = strict
@@ -113,6 +117,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
         case rules
         case thresholds
         case baselinePath = "baseline_path"
+        case externalRetentionsPath = "external_retentions_path"
         case reportFormat = "report_format"
         case graphFormat = "graph_format"
         case strict
@@ -134,6 +139,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
             rules: try container.decodeIfPresent([LayerRule].self, forKey: .rules) ?? [],
             thresholds: try container.decodeIfPresent(Thresholds.self, forKey: .thresholds) ?? .disabled,
             baselinePath: try container.decodeIfPresent(String.self, forKey: .baselinePath),
+            externalRetentionsPath: try container.decodeIfPresent(String.self, forKey: .externalRetentionsPath),
             reportFormat: try container.decodeIfPresent(ReportFormat.self, forKey: .reportFormat)
                 ?? fallback.reportFormat,
             graphFormat: try container.decodeIfPresent(GraphFormat.self, forKey: .graphFormat)
@@ -156,6 +162,7 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
         try container.encode(rules, forKey: .rules)
         try container.encode(thresholds, forKey: .thresholds)
         try container.encodeIfPresent(baselinePath, forKey: .baselinePath)
+        try container.encodeIfPresent(externalRetentionsPath, forKey: .externalRetentionsPath)
         try container.encode(reportFormat, forKey: .reportFormat)
         try container.encode(graphFormat, forKey: .graphFormat)
         try container.encode(strict, forKey: .strict)

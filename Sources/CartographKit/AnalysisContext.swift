@@ -1,3 +1,4 @@
+import CartographAnalysis
 import CartographCore
 
 /// 한 번 읽은 인덱스 스냅샷과, 그 위에서 만든 그래프들.
@@ -9,11 +10,27 @@ public struct AnalysisContext: Sendable {
     public let snapshot: IndexSnapshot
     private let pathFilter: PathFilter
     private let edgeKinds: Set<EdgeKind>
+    /// `--external-retentions` 로 읽은 문서. 스냅샷과 함께 한 번만 읽는다.
+    ///
+    /// 파일 읽기는 실패할 수 있어 던지는 자리(`loadContext`)에서 해야 한다. 질의 API 는
+    /// 던지지 않으므로 여기 실어 두면 질의가 그대로 순수하게 남는다.
+    public let externalRetentions: ExternalRetentionsDocument?
 
-    public init(snapshot: IndexSnapshot, pathFilter: PathFilter = .passthrough, edgeKinds: Set<EdgeKind> = []) {
+    public init(
+        snapshot: IndexSnapshot,
+        pathFilter: PathFilter = .passthrough,
+        edgeKinds: Set<EdgeKind> = [],
+        externalRetentions: ExternalRetentionsDocument? = nil
+    ) {
         self.snapshot = snapshot
         self.pathFilter = pathFilter
         self.edgeKinds = edgeKinds
+        self.externalRetentions = externalRetentions
+    }
+
+    /// 보존 규칙이 쓰는 색인. 문서가 없으면 비어 있다.
+    public var externalRetentionIndex: ExternalRetentionIndex {
+        externalRetentions.map { ExternalRetentionIndex($0.retentions) } ?? .empty
     }
 
     /// 지정한 해상도의 그래프를 만든다.
