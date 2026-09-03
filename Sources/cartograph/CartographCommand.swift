@@ -187,6 +187,13 @@ struct BaselineCommand: ParsableCommand {
     var writePath: String?
 
     func run() throws {
+        // 범위를 좁혀 기록하면 그 파일은 "오늘의 전체 부채"라는 뜻이 아니게 된다.
+        // 나중 전체 실행에서 범위 밖에 있던 기존 부채가 전부 신규로 터진다.
+        guard options.since == nil else {
+            throw ValidationError(
+                "--since cannot be combined with baseline; a baseline must record the whole project"
+            )
+        }
         let context = try CommandSupport.makeContext(options)
         let path = writePath ?? context.configuration.baselinePath
             ?? (context.service.projectPath as NSString)

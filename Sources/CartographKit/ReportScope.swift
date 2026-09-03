@@ -1,4 +1,5 @@
 import CartographCore
+import Foundation
 
 /// 보고할 발견의 범위를 좁힌다.
 ///
@@ -9,11 +10,20 @@ import CartographCore
 /// 분석 자체는 좁히지 않는다. 그래프는 프로젝트 전체를 봐야 도달성이 맞고,
 /// 좁힌 그래프에서 나온 미사용 판정은 그냥 틀린 값이다. 좁히는 것은 보고뿐이다.
 public struct ReportScope: Sendable, Equatable {
-    /// 보고 대상 파일의 절대 경로.
+    /// 보고 대상 파일의 정규화된 절대 경로.
     public let files: Set<String>
 
     public init(files: Set<String>) {
-        self.files = files
+        self.files = Set(files.map(Self.normalized))
+    }
+
+    /// 양쪽을 같은 방식으로 정규화한다.
+    ///
+    /// macOS 에서 `/tmp` 와 `/private/tmp` 는 같은 곳을 가리키고, git 이 주는 루트는
+    /// 심볼릭 링크를 푼 경로다. 한쪽만 정규화하면 단 하나도 일치하지 않아 발견이
+    /// 전부 사라지고, 사용자는 `--strict` 에서 "문제 없음"을 보게 된다.
+    static func normalized(_ path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
     }
 
     /// 이 발견을 보고할지 판단한다.
@@ -22,7 +32,7 @@ public struct ReportScope: Sendable, Equatable {
     /// 사용자는 무엇이 걸러졌는지도 모른 채 "문제 없음"을 보게 된다.
     public func includes(_ diagnostic: Diagnostic) -> Bool {
         guard let path = diagnostic.location?.path else { return true }
-        return files.contains(path)
+        return files.contains(path) || files.contains(Self.normalized(path))
     }
 
     /// 범위 안의 발견만 남긴다.

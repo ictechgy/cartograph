@@ -241,9 +241,16 @@ code up and down a file does not resurrect a suppressed finding.
 cartograph dead --since origin/main --strict
 ```
 
-Reports only findings in files changed since a git revision, including files you have not committed
-yet. The graph is still built from the whole project — reachability computed on a partial graph is
-simply wrong — so only the report narrows.
+Reports only findings **located in** files changed since a git revision — committed changes,
+uncommitted changes to tracked files, and new files you have not added yet. The graph is still built
+from the whole project, because reachability computed on a partial graph is simply wrong; only the
+report narrows.
+
+It answers "what did this change touch", not "what did this change cause". If your commit deletes
+the last call to a symbol declared in a file you did not touch, that symbol becomes dead but its
+finding sits in the untouched file and is not reported. The baseline catches that case on the next
+full run; `--since` is a lens, not a proof. `baseline` therefore refuses `--since`: a partial record
+would later make every out-of-scope finding look new.
 
 `baseline` and `--since` answer different questions and compose: the baseline is the CI ratchet
 that keeps today's debt from growing, `--since` is the pull-request lens. In CI, check out with full
