@@ -17,10 +17,29 @@ public struct ReactNativeMacroScanner: Sendable {
     /// 파일 내용에서 사실을 뽑아낸다. 위치는 매크로가 시작하는 자리다.
     public func scan(source: String, path: String) -> [BridgeFact] {
         var facts: [BridgeFact] = []
-        for block in Self.implementationBlocks(in: source) {
+        for block in Self.implementationBlocks(in: Self.blankingBlockComments(source)) {
             facts += Self.facts(in: block, path: path)
         }
         return facts.sorted()
+    }
+
+    /// `/* … */` 블록 주석의 내용을 공백으로 지운다. 줄 수는 그대로다.
+    ///
+    /// 줄 접두어만 보면 `/* removed:\nRCT_EXPORT_MODULE(Legacy)\n*/` 의 가운데 줄이 그대로
+    /// 매치된다. 지운 모듈을 주석으로 남겨 둔 파일이 실제로 있고, 그것이 살아 있는 모듈로
+    /// 나가면 isthmus 는 없는 핸들러와 조인한다. 줄 번호를 지켜야 위치가 맞으므로
+    /// 개행은 남기고 나머지만 지운다.
+    static func blankingBlockComments(_ source: String) -> String {
+        var result = ""
+        var cursor = source.startIndex
+        while let start = source.range(of: "/*", range: cursor..<source.endIndex) {
+            result += source[cursor..<start.lowerBound]
+            let end = source.range(of: "*/", range: start.upperBound..<source.endIndex)?.upperBound ?? source.endIndex
+            result += source[start.lowerBound..<end].map { $0 == "\n" ? "\n" : " " }
+            cursor = end
+        }
+        result += source[cursor...]
+        return result
     }
 
     /// `@implementation … @end` 한 덩어리. 매크로는 이 안에서만 의미가 있다.
@@ -62,9 +81,16 @@ public struct ReactNativeMacroScanner: Sendable {
     static func facts(in block: ImplementationBlock, path: String) -> [BridgeFact] {
         let moduleName = exportedModuleName(in: block)
         var facts: [BridgeFact] = []
+        var hasComponentExport = false
         for (number, line) in block.lines where !isComment(line) {
             for (pattern, kind) in macroPatterns {
                 guard let match = line.firstMatch(of: pattern) else { continue }
+                // 뷰 매니저는 프로퍼티마다 매크로가 있지만 내보내는 컴포넌트는 하나다.
+                // 프로퍼티 열 개를 같은 사실 열 건으로 내면 소비자가 열 개의 컴포넌트로 센다.
+                if kind == .viewProperty {
+                    guard !hasComponentExport else { continue }
+                    hasComponentExport = true
+                }
                 let column = line.distance(from: line.startIndex, to: match.range.lowerBound) + 1
                 let location = SourceLocation(path: path, line: number, column: column)
                 facts.append(fact(kind, argument: match.output.1.map(String.init), module: moduleName, at: location))
@@ -78,7 +104,12 @@ public struct ReactNativeMacroScanner: Sendable {
         case .module:
             return BridgeFact(kind: .moduleExport, target: .reactNative, channel: module, location: location)
         case .method:
-            return BridgeFact(kind: .methodHandle, target: .reactNative, channel: module, method: argument, location: location)
+            // 이름이 다음 줄로 넘어가 못 읽었으면 메서드 없는 핸들이 아니라 동적 이름이다.
+            // 조인은 안 되지만 한계로 세어진다.
+            return BridgeFact(
+                kind: .methodHandle, target: .reactNative, channel: module, method: argument,
+                isDynamic: argument == nil, location: location
+            )
         case .viewProperty:
             return BridgeFact(kind: .componentExport, target: .reactNative, channel: module, location: location)
         }

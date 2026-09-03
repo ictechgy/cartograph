@@ -3,20 +3,6 @@
     {
       "channel": "com.example/camera",
       "dynamic": false,
-      "kind": "channel-create",
-      "location": {
-        "column": 19,
-        "line": 23,
-        "path": "<project>/Sources/Corpus/Bridges.swift"
-      },
-      "symbol": {
-        "qualifiedName": "Corpus.init(messenger:)",
-        "usr": "s:6Corpus12CameraBridgeC9messengerACyp_tcfc"
-      }
-    },
-    {
-      "channel": "com.example/camera",
-      "dynamic": false,
       "kind": "channel-register",
       "location": {
         "column": 9,
@@ -24,7 +10,7 @@
         "path": "<project>/Sources/Corpus/Bridges.swift"
       },
       "symbol": {
-        "qualifiedName": "Corpus.init(messenger:)",
+        "qualifiedName": "CameraBridge.init",
         "usr": "s:6Corpus12CameraBridgeC9messengerACyp_tcfc"
       }
     },
@@ -39,7 +25,7 @@
       },
       "method": "takePhoto",
       "symbol": {
-        "qualifiedName": "Corpus.init(messenger:)",
+        "qualifiedName": "CameraBridge.init",
         "usr": "s:6Corpus12CameraBridgeC9messengerACyp_tcfc"
       }
     },
@@ -68,8 +54,7 @@
   "format": "bridge-facts",
   "generatedAt": "<generatedAt>",
   "limitations": [
-    "unresolved-symbols: 2 fact(s) have no USR because the index has no declaration at that location (Objective-C sources, or Swift not built since the edit)",
-    "mixed-targets: facts come from more than one bridge (flutter 3, react-native 2); 'target' is the majority"
+    "mixed-targets: facts come from more than one bridge (flutter 2, react-native 2); 'target' is the majority"
   ],
   "platform": "swift",
   "project": "<project>",
@@ -78,5 +63,5 @@
     "name": "cartograph",
     "version": "<version>"
   },
-  "version": 0
+  "version": 1
 }

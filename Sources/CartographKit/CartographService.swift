@@ -325,7 +325,7 @@ public struct CartographService: Sendable {
         // 실어 보내면 심볼 레벨 답을 모듈 레벨 답이라고 말하게 된다.
         let level = GraphLevel.symbol.rawValue
 
-        let limitations = analysisLimitations(context: context)
+        let limitations = analysisLimitations(context: context, symbolGraph: graph)
 
         switch NodeLookup.resolve(subject, in: graph) {
         case .notFound:
@@ -401,7 +401,11 @@ public struct CartographService: Sendable {
     ///
     /// README 의 한계 목록을 문서에만 두면 소비자는 읽지 않는다. 특히 에이전트는
     /// 읽지 않는다. 눈앞의 답에 실어야 그 답을 어디까지 믿을지 스스로 정할 수 있다.
-    func analysisLimitations(storeDate: Date? = nil, context: AnalysisContext? = nil) -> [String] {
+    func analysisLimitations(
+        storeDate: Date? = nil,
+        context: AnalysisContext? = nil,
+        symbolGraph: CodeGraph? = nil
+    ) -> [String] {
         // 한 번만 걷는다. 분석 범위와 같은 경로 필터를 걸어야 그래프가 보지 않는
         // 파일까지 세지 않는다. 범위 밖의 파일을 한계로 알리면 매번 붙는 경보가
         // 되고, 매번 붙는 경보는 읽히지 않는다.
@@ -461,7 +465,7 @@ public struct CartographService: Sendable {
             "single-configuration: the index store knows only the configuration that was built, "
                 + "so declarations behind an uncompiled #if branch do not exist here"
         )
-        result += externalRetentionLimitations(in: context)
+        result += externalRetentionLimitations(in: context, symbolGraph: symbolGraph, storeDate: storeDate)
         return result
     }
 
@@ -470,18 +474,34 @@ public struct CartographService: Sendable {
     /// `retained` 에 `externalBridge` 가 붙은 답은 인덱스가 아니라 그 파일을 믿은 것이다.
     /// 파일이 낡았으면 이름을 바꾼 핸들러의 근거가 아무것도 가리키지 않게 되고,
     /// 그 수를 세어 주지 않으면 소비자는 파일이 최신이라고 믿는다.
-    private func externalRetentionLimitations(in context: AnalysisContext?) -> [String] {
+    private func externalRetentionLimitations(
+        in context: AnalysisContext?,
+        symbolGraph: CodeGraph?,
+        storeDate: Date?
+    ) -> [String] {
         guard let context, let document = context.externalRetentions else { return [] }
         let index = context.externalRetentionIndex
         var result = [
             "external-retentions: \(index.count) retention(s) from \(document.provenanceDescription) are in "
                 + "effect, so a 'retained' answer with reason 'externalBridge' rests on that file, not on the index"
         ]
-        let unmatched = index.unmatchedCount(in: context.buildGraph(level: .symbol).graph)
+        // 부르는 쪽이 이미 만든 심볼 그래프를 받는다. 여기서 다시 만들면 `query` 한 번에
+        // 그래프를 두 번 짓는다. 인덱스 읽기 다음으로 비싼 단계다.
+        let graph = symbolGraph ?? context.buildGraph(level: .symbol).graph
+        let unmatched = index.unmatchedCount(in: graph)
         if unmatched > 0 {
             result.append(
                 "external-retentions-unmatched: \(unmatched) of \(index.count) retention(s) name no declaration "
                     + "in this index, so the file may predate a rename or a rebuild"
+            )
+        }
+        // 파일이 인덱스보다 오래됐으면 그 사이의 이름 변경을 모른다. 날짜를 보여 주기만
+        // 하면 판단은 사용자 몫인데, 비교는 이쪽이 할 수 있다.
+        if let generated = document.generatedAt.flatMap({ try? Date($0, strategy: .iso8601) }),
+           let built = storeDate, generated < built {
+            result.append(
+                "external-retentions-stale: the retentions file (\(document.generatedAt ?? "")) predates the index "
+                    + "store, so it does not know about declarations renamed or added since"
             )
         }
         return result
@@ -657,10 +677,13 @@ public struct CartographService: Sendable {
         let sources = bridgeSourceFiles()
         var facts: [BridgeFact] = []
         var unreadable = 0
+        var unscannedEventChannels = 0
         for path in sources {
             guard let source = try? environment.fileSystem.readText(at: path) else { unreadable += 1; continue }
             if path.hasSuffix(".swift") {
-                facts += BridgeSymbolResolver.resolve(BridgeFactScanner().scan(source: source, path: path), in: snapshot)
+                let scanned = BridgeFactScanner().scan(source: source, path: path)
+                facts += BridgeSymbolResolver.resolve(scanned.facts, in: snapshot)
+                unscannedEventChannels += scanned.unscannedEventChannels
             } else {
                 facts += ReactNativeMacroScanner().scan(source: source, path: path)
             }
@@ -670,6 +693,7 @@ public struct CartographService: Sendable {
             generatedAt: generatedAt.ISO8601Format(),
             project: projectPath,
             facts: facts,
+            unscannedEventChannels: unscannedEventChannels,
             extraLimitations: unreadable > 0
                 ? ["unreadable-sources: \(unreadable) file(s) could not be read and were skipped"] : []
         )
@@ -851,13 +875,14 @@ public struct CartographService: Sendable {
         case let .retained(reason):
             return CommandOutcome(
                 output: "\(name) is retained because it is \(reason.explanation)."
-                    + evidenceSentence(for: node, reason: reason, externalRetentions: externalRetentions) + "\n"
+                    + evidenceSentence(for: node, reason: reason, in: graph, externalRetentions: externalRetentions)
+                    + "\n"
             )
         case let .retainedByMember(inherited):
             let memberNode = graph.node(inherited.member)
             let member = memberNode?.qualifiedName ?? inherited.member.rawValue
             let evidence = memberNode.map {
-                evidenceSentence(for: $0, reason: inherited.reason, externalRetentions: externalRetentions)
+                evidenceSentence(for: $0, reason: inherited.reason, in: graph, externalRetentions: externalRetentions)
             } ?? ""
             return CommandOutcome(
                 output: "\(name) is retained because its member \(member) is \(inherited.reason.explanation)."
@@ -885,9 +910,14 @@ public struct CartographService: Sendable {
     private static func evidenceSentence(
         for node: GraphNode,
         reason: RetentionReason,
+        in graph: CodeGraph,
         externalRetentions: ExternalRetentionIndex
     ) -> String {
-        guard reason == .externalBridge, let retention = externalRetentions.retention(for: node) else { return "" }
+        guard reason == .externalBridge,
+              let retention = externalRetentions.retention(
+                  for: node, names: [ExternalRetentionIndex.syntaxQualifiedName(of: node, in: graph)]
+              )
+        else { return "" }
         return "\n  evidence: \(retention.evidenceDescription)"
     }
 

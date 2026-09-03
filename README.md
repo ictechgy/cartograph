@@ -321,7 +321,7 @@ $ cartograph bridges
       "kind" : "method-handle",
       "location" : { "column" : 18, "line" : 26, "path" : "/app/ios/CameraPlugin.swift" },
       "method" : "takePhoto",
-      "symbol" : { "qualifiedName" : "App.handle(_:result:)", "usr" : "s:3App12CameraPlugin…" }
+      "symbol" : { "qualifiedName" : "CameraPlugin.handle", "usr" : "s:3App12CameraPlugin…" }
     }
   ],
   "format" : "bridge-facts",
@@ -331,7 +331,7 @@ $ cartograph bridges
   "project" : "/app/ios",
   "target" : "flutter",
   "tool" : { "name" : "cartograph", "version" : "0.5.0" },
-  "version" : 0
+  "version" : 1
 }
 ```
 
@@ -339,10 +339,13 @@ It states facts, not verdicts: it does not know whether anything on the other si
 handler. A name that is not a literal is kept with its source expression and `dynamic: true`
 rather than dropped, so the consumer can count what it could not join. One level of constant is
 followed (`static let name = "…"` used as `FlutterMethodChannel(name: Self.name)`); anything deeper
-is `dynamic`. A `case "…"` outside a handler closure is attributed to the file's single channel when
-there is exactly one, and to `null` otherwise. `limitations` counts the dynamic names, the
-unattributed handles, the facts with no USR (Objective-C sources, or Swift not rebuilt), and a
-project that mixes Flutter and React Native.
+is `dynamic`. A `case "…"` outside a handler closure counts only inside a function that takes a
+`FlutterMethodCall`; it is attributed to the file's single channel when there is exactly one, and
+to `null` otherwise. Creating a channel without attaching a handler is not a fact. `limitations`
+counts the dynamic names, the unattributed and inferred channels, the handlers with no USR (Swift
+not rebuilt since the edit), the `@objc(Name)` classes assumed to be React Native modules, the
+`FlutterEventChannel`s this format does not cover, and a project that mixes Flutter and React
+Native.
 
 isthmus hands back `external-retentions`: for each Swift declaration it found a caller for, the USR
 and the evidence. `--external-retentions <path>` (or `external_retentions_path` in the

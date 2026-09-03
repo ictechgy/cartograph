@@ -60,12 +60,27 @@ struct BridgeFactsTests {
         let document = try service.bridgeFacts(generatedAt: fixedDate)
         let handled = try #require(document.facts.first { $0.kind == "method-handle" })
         #expect(handled.symbol?.usr == "s:handle")
-        #expect(handled.symbol?.qualifiedName == "App.handle(_:result:)")
+        // 표기는 계약의 것(`CameraPlugin.register`)이다. 인덱스의 표기는 USR 이 대신한다.
+        #expect(handled.symbol?.qualifiedName == "CameraPlugin.handle")
         #expect(handled.channel == "com.example/camera")
         #expect(handled.method == "takePhoto")
 
-        let created = try #require(document.facts.first { $0.kind == "channel-create" })
-        #expect(created.symbol?.usr == "s:register")
+        let registered = try #require(document.facts.first { $0.kind == "channel-register" })
+        #expect(registered.symbol?.usr == "s:register")
+        #expect(document.limitations.contains { $0.hasPrefix("inferred-channels: 1") })
+        #expect(!document.limitations.contains { $0.hasPrefix("missing-handler-usrs") })
+    }
+
+    @Test("오버로드가 있으면 인자 라벨까지 같은 선언에 USR 을 붙인다")
+    func prefersFullSelectorOverNearestLine() throws {
+        // `handle(_:)` 이 줄로는 더 가깝다. 기본 이름만 보면 그쪽에 붙는다.
+        var builder = SnapshotBuilder(module: "App", path: "/p/Sources/CameraPlugin.swift")
+        builder.symbol("s:CameraPlugin", name: "CameraPlugin", kind: .classType, line: 2)
+        builder.symbol("s:handleOne", name: "handle(_:)", kind: .method, line: 6, parent: "s:CameraPlugin")
+        builder.symbol("s:handle", name: "handle(_:result:)", kind: .method, line: 20, parent: "s:CameraPlugin")
+        let service = makeService(files: ["/p/Sources/CameraPlugin.swift": Self.pluginSource], snapshot: builder.build())
+        let handled = try #require(try service.bridgeFacts(generatedAt: fixedDate).facts.first { $0.kind == "method-handle" })
+        #expect(handled.symbol?.usr == "s:handle")
     }
 
     @Test("인덱스에 없는 선언은 구문의 이름만 남고 한계로 센다")
@@ -77,7 +92,7 @@ struct BridgeFactsTests {
         let document = try service.bridgeFacts(generatedAt: fixedDate)
         #expect(document.facts.allSatisfy { $0.symbol?.usr == nil })
         #expect(document.facts.first?.symbol?.qualifiedName == "CameraPlugin.register")
-        #expect(document.limitations.contains { $0.hasPrefix("unresolved-symbols: 3 fact(s)") })
+        #expect(document.limitations.contains { $0 == "missing-handler-usrs: 1 method handlers have only a qualified name" })
     }
 
     @Test("Objective-C 의 RN 매크로도 함께 담기고 대상은 다수결이다")
@@ -90,11 +105,11 @@ struct BridgeFactsTests {
             snapshot: makeSnapshot()
         )
         let document = try service.bridgeFacts(generatedAt: fixedDate)
-        #expect(document.facts.map(\.kind) == [
-            "channel-create", "channel-register", "method-handle", "module-export", "method-handle",
-        ])
+        #expect(document.facts.map(\.kind) == ["channel-register", "method-handle", "module-export", "method-handle"])
         #expect(document.target == "flutter")
-        #expect(document.limitations.contains { $0.hasPrefix("mixed-targets: ") && $0.contains("flutter 3, react-native 2") })
+        #expect(document.limitations.contains { $0.hasPrefix("mixed-targets: ") && $0.contains("flutter 2, react-native 2") })
+        // Objective-C 쪽 사실은 선언 정보 자체가 없다. "USR 없는 핸들러" 로 세지 않는다.
+        #expect(!document.limitations.contains { $0.hasPrefix("missing-handler-usrs") })
     }
 
     @Test("사실이 없으면 대상도 한계도 없다")
@@ -116,13 +131,26 @@ struct BridgeFactsTests {
         let second = try service.exportBridgeFacts(generatedAt: fixedDate).output
         #expect(first == second)
         #expect(first.contains("\"format\" : \"bridge-facts\""))
-        #expect(first.contains("\"version\" : 0"))
+        #expect(first.contains("\"version\" : 1"))
         #expect(first.contains("\"platform\" : \"swift\""))
         #expect(first.contains("\"generatedAt\" : \"2026-09-04T00:00:00Z\""))
         #expect(first.contains("\"dynamic\" : false"))
 
         let decoded = try JSONDecoder().decode(BridgeFactsDocument.self, from: Data(first.utf8))
-        #expect(decoded.facts.count == 3)
+        #expect(decoded.facts.count == 2)
+    }
+
+    @Test("@objc(Name) 클래스와 이벤트 채널은 한계로 센다")
+    func countsAssumedModulesAndEventChannels() throws {
+        let source = """
+            @objc(Coordinator) class Coordinator: NSObject {}
+            let events = FlutterEventChannel(name: "e", binaryMessenger: m)
+            """
+        let service = makeService(files: ["/p/Sources/A.swift": source], snapshot: IndexSnapshot())
+        let document = try service.bridgeFacts(generatedAt: fixedDate)
+        #expect(document.facts.map(\.kind) == ["module-export"])
+        #expect(document.limitations.contains { $0.hasPrefix("objc-named-classes: 1") })
+        #expect(document.limitations.contains { $0.hasPrefix("unscanned-event-channels: 1") })
     }
 
     @Test("채널을 모르면 키를 빼지 않고 null 로 적는다")
@@ -166,6 +194,6 @@ struct BridgeFactsTests {
         )
         let text = try service.exportBridgeFacts(generatedAt: fixedDate, asText: true).output
         #expect(text.contains("/p/Sources/CameraPlugin.swift:9:14  method-handle  channel=com.example/camera  method=takePhoto  s:handle"))
-        #expect(text.hasSuffix("3 bridge fact(s) · target flutter\n"))
+        #expect(text.contains("2 bridge fact(s) · target flutter\n"))
     }
 }

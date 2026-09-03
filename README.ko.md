@@ -312,7 +312,7 @@ $ cartograph bridges
       "kind" : "method-handle",
       "location" : { "column" : 18, "line" : 26, "path" : "/app/ios/CameraPlugin.swift" },
       "method" : "takePhoto",
-      "symbol" : { "qualifiedName" : "App.handle(_:result:)", "usr" : "s:3App12CameraPlugin…" }
+      "symbol" : { "qualifiedName" : "CameraPlugin.handle", "usr" : "s:3App12CameraPlugin…" }
     }
   ],
   "format" : "bridge-facts",
@@ -322,16 +322,18 @@ $ cartograph bridges
   "project" : "/app/ios",
   "target" : "flutter",
   "tool" : { "name" : "cartograph", "version" : "0.5.0" },
-  "version" : 0
+  "version" : 1
 }
 ```
 
 판정이 아니라 사실을 냅니다. 반대쪽에서 실제로 핸들러를 부르는지는 모릅니다. 리터럴이 아닌
 이름은 버리지 않고 원문 표현식과 `dynamic: true` 로 남겨, 소비자가 조인하지 못한 수를 셀 수 있게
 합니다. 상수는 한 단계만 따라갑니다(`static let name = "…"` 을 `FlutterMethodChannel(name: Self.name)`
-에 쓰는 경우). 그보다 깊으면 `dynamic` 입니다. 핸들러 클로저 밖의 `case "…"` 는 파일에 채널이
-정확히 하나일 때 그 채널에 붙고, 아니면 `null` 입니다. `limitations` 에는 동적 이름의 수,
-채널을 못 정한 핸들의 수, USR 이 없는 사실의 수(Objective-C 소스, 또는 빌드 뒤 편집된 Swift),
+에 쓰는 경우). 그보다 깊으면 `dynamic` 입니다. 핸들러 클로저 밖의 `case "…"` 는 `FlutterMethodCall` 을
+받는 함수 안에서만 세고, 파일에 채널이 정확히 하나일 때 그 채널에 붙고, 아니면 `null` 입니다.
+핸들러를 달지 않고 채널을 만들기만 한 것은 사실이 아닙니다. `limitations` 에는 동적 이름의 수,
+채널을 못 정했거나 추측한 핸들의 수, USR 이 없는 핸들러의 수(빌드 뒤 편집된 Swift), React Native
+모듈로 가정한 `@objc(Name)` 클래스의 수, 이 형식이 다루지 않는 `FlutterEventChannel` 의 수,
 Flutter 와 React Native 가 섞인 프로젝트를 셉니다.
 
 isthmus 는 `external-retentions` 를 돌려줍니다. 호출자를 찾은 Swift 선언마다 USR 과 근거입니다.

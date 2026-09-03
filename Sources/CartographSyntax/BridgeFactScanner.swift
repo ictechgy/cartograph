@@ -21,19 +21,40 @@ public struct ScannedBridgeFact: Hashable, Sendable {
 
 /// 사실을 감싸는 선언의 구문 정보.
 ///
-/// 클로저 안의 `case "…"` 는 자기 USR 이 없다. 교환 형식 초안이 미결로 남긴 그 문제를
-/// "감싸는 함수/타입의 USR + 줄" 로 푼다. 그러려면 감싸는 선언이 무엇인지 알아야 한다.
+/// 클로저 안의 `case "…"` 는 자기 USR 이 없다. 교환 형식이 정한 대로 "감싸는 함수/타입의
+/// USR + 줄" 로 귀속한다. 그러려면 감싸는 선언이 무엇인지 알아야 한다.
 public struct EnclosingDeclaration: Hashable, Sendable {
     /// 인덱스 이름과 맞출 기본 이름. `handle(_:result:)` 가 아니라 `handle`.
     public let name: String
-    /// 바깥 타입부터 이어 붙인 이름. 인덱스에서 못 찾았을 때의 대비책이다.
+    /// 인덱스가 붙이는 인자 라벨까지 포함한 이름. `handle(_:result:)`. 타입은 이름 그대로.
+    ///
+    /// 기본 이름만으로 맞추면 `handle(_:)` 과 `handle(_:result:)` 가 있을 때 줄이 더 가까운
+    /// 쪽에 USR 이 붙는다. 그쪽이 진짜 핸들러가 아니면 isthmus 는 엉뚱한 선언을 살리고
+    /// 진짜 핸들러는 죽은 코드로 보고된다.
+    public let indexName: String
+    /// 바깥 타입부터 이어 붙인 이름. 교환 형식의 `symbol.qualifiedName` 이다(`CameraPlugin.register`).
     public let qualifiedName: String
     public let line: Int
 
-    public init(name: String, qualifiedName: String, line: Int) {
+    public init(name: String, indexName: String, qualifiedName: String, line: Int) {
         self.name = name
+        self.indexName = indexName
         self.qualifiedName = qualifiedName
         self.line = line
+    }
+}
+
+/// 파일 하나를 훑은 결과. 사실과, 사실로 만들지 못해 세기만 한 것.
+public struct BridgeScanResult: Sendable, Equatable {
+    public let facts: [ScannedBridgeFact]
+    /// `FlutterEventChannel(name:)` 생성 수. 스트림 브리지는 이 형식의 대상이 아니라 세기만 한다.
+    ///
+    /// 세지 않으면 이벤트 채널만 쓰는 플러그인이 "브리지 없음" 으로 읽힌다.
+    public let unscannedEventChannels: Int
+
+    public init(facts: [ScannedBridgeFact], unscannedEventChannels: Int = 0) {
+        self.facts = facts
+        self.unscannedEventChannels = unscannedEventChannels
     }
 }
 
@@ -47,7 +68,7 @@ public struct EnclosingDeclaration: Hashable, Sendable {
 public struct BridgeFactScanner: Sendable {
     public init() {}
 
-    public func scan(source: String, path: String) -> [ScannedBridgeFact] {
+    public func scan(source: String, path: String) -> BridgeScanResult {
         // 파서는 `channel = FlutterMethodChannel(…)` 과 `call.method == "x"` 를 접지 않은
         // SequenceExpr 로 남긴다. 연산자 우선순위로 접어야 대입과 비교가 보인다.
         // 접기 오류(알 수 없는 연산자)는 무시한다. 그 표현식만 못 읽을 뿐이다.
@@ -63,7 +84,10 @@ public struct BridgeFactScanner: Sendable {
 
         let collector = BridgeFactCollector(converter: converter, bindings: bindings, path: path)
         collector.walk(tree)
-        return collector.facts.sorted { $0.fact < $1.fact }
+        return BridgeScanResult(
+            facts: collector.facts.sorted { $0.fact < $1.fact },
+            unscannedEventChannels: bindings.eventChannelCount
+        )
     }
 }
 
@@ -88,9 +112,26 @@ final class BindingCollector: SyntaxVisitor {
     private(set) var stringConstants: [String: String?] = [:]
     /// 식별자 → 채널 이름. `let channel = FlutterMethodChannel(name: …)`.
     private(set) var channelBindings: [String: ResolvedName?] = [:]
+    /// 이 파일이 선언한 타입 이름. `Config.name` 의 `Config` 가 여기 있어야 상수를 따라간다.
+    private(set) var declaredTypeNames: Set<String> = []
+    /// `FlutterEventChannel(name:)` 생성 수.
+    private(set) var eventChannelCount = 0
 
     init() {
         super.init(viewMode: .sourceAccurate)
+    }
+
+    override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
+        declaredTypeNames.insert(node.name.text); return .visitChildren
+    }
+    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
+        declaredTypeNames.insert(node.name.text); return .visitChildren
+    }
+    override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
+        declaredTypeNames.insert(node.name.text); return .visitChildren
+    }
+    override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
+        declaredTypeNames.insert(node.name.text); return .visitChildren
     }
 
     override func visit(_ node: PatternBindingSyntax) -> SyntaxVisitorContinueKind {
@@ -106,6 +147,13 @@ final class BindingCollector: SyntaxVisitor {
         guard node.operator.is(AssignmentExprSyntax.self) else { return .visitChildren }
         if let name = Self.identifierName(of: node.leftOperand) {
             bind(name: name, to: node.rightOperand)
+        }
+        return .visitChildren
+    }
+
+    override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+        if Self.calleeName(of: node) == BridgeFactCollector.flutterEventChannelTypeName {
+            eventChannelCount += 1
         }
         return .visitChildren
     }
@@ -137,12 +185,31 @@ final class BindingCollector: SyntaxVisitor {
     }
 
     /// 문자열 표현식을 리터럴로 푼다. 못 풀면 원문 표현식을 `dynamic` 으로 돌려준다.
+    ///
+    /// 멤버 접근은 수신자를 본다. `external.channelName` 의 `external` 이 다른 파일의 타입이면
+    /// 이 파일의 `channelName` 상수와 무관한데, 이름만 보고 풀면 조인 가능한 리터럴로
+    /// 위장한 틀린 사실이 나간다. `dynamic` 은 안전하지만 틀린 리터럴은 위험하다.
     func resolveString(_ expression: ExprSyntax) -> ResolvedName {
         if let literal = Self.stringLiteral(expression) { return .literal(literal) }
-        if let name = Self.identifierName(of: expression), let constant = stringConstants[name] ?? nil {
+        if let name = constantName(of: expression), let constant = stringConstants[name] ?? nil {
             return .literal(constant)
         }
         return .dynamic(expression.trimmedDescription)
+    }
+
+    /// 이 파일의 상수를 가리킬 수 있는 표현식이면 그 이름.
+    ///
+    /// `name`, `.name`, `Self.name`, `self.name`, 그리고 이 파일이 선언한 타입의 `Type.name`.
+    private func constantName(of expression: ExprSyntax) -> String? {
+        if let reference = expression.as(DeclReferenceExprSyntax.self) {
+            return DeclarationCollector.unescaped(reference.baseName.text)
+        }
+        guard let member = expression.as(MemberAccessExprSyntax.self) else { return nil }
+        guard let base = member.base else { return DeclarationCollector.unescaped(member.declName.baseName.text) }
+        guard let baseName = base.as(DeclReferenceExprSyntax.self)?.baseName.text,
+              baseName == "Self" || baseName == "self" || declaredTypeNames.contains(baseName)
+        else { return nil }
+        return DeclarationCollector.unescaped(member.declName.baseName.text)
     }
 
     /// 보간이 없는 문자열 리터럴의 내용.
@@ -156,10 +223,9 @@ final class BindingCollector: SyntaxVisitor {
         return result
     }
 
-    /// `x`, `self.x`, `Self.x`, `Type.x`, `.x` 에서 `x`.
+    /// `x`, `self.x`, `Self.x`, `Type.x`, `.x`, `x?`, `x!` 에서 `x`.
     ///
-    /// 앞부분은 보지 않는다. 다른 타입의 같은 이름 상수와 섞일 수 있지만, 한 파일
-    /// 안에서 그런 충돌은 드물고 충돌하면 `record` 가 모른다고 처리한다.
+    /// 채널 변수를 찾는 용도다. 문자열 상수 해석은 수신자를 보는 `constantName` 을 쓴다.
     static func identifierName(of expression: ExprSyntax) -> String? {
         // `channel?.setMethodCallHandler` 와 `channel!.…` 의 수신자는 한 겹 감싸여 있다.
         if let chained = expression.as(OptionalChainingExprSyntax.self) {
@@ -189,6 +255,10 @@ final class BindingCollector: SyntaxVisitor {
 final class BridgeFactCollector: SyntaxVisitor {
     /// Flutter 가 Swift 쪽에 제공하는 채널 타입 이름.
     static let flutterChannelTypeName = "FlutterMethodChannel"
+    /// 스트림 브리지의 채널 타입. 읽지 않고 세기만 한다.
+    static let flutterEventChannelTypeName = "FlutterEventChannel"
+    /// 핸들러가 받는 호출 타입. 이 타입의 인자를 가진 함수 안에서만 `call.method` 분기를 믿는다.
+    static let flutterMethodCallTypeName = "FlutterMethodCall"
     /// 핸들러를 채널에 다는 메서드 이름들.
     static let handlerRegistrationMethods: Set<String> = ["setMethodCallHandler", "addMethodCallDelegate"]
 
@@ -199,12 +269,14 @@ final class BridgeFactCollector: SyntaxVisitor {
 
     /// 감싸는 선언의 스택. 사실을 어느 USR 에 귀속시킬지 정한다.
     private var declarations: [EnclosingDeclaration] = []
-    /// 감싸는 타입 이름의 스택. 대비용 qualifiedName 을 만든다.
+    /// 감싸는 타입 이름의 스택. `symbol.qualifiedName` 을 만든다.
     private var typeNames: [String] = []
     /// 지금 어느 `setMethodCallHandler` 클로저 안에 있는지. 바깥부터 쌓인다.
     private var handlerChannels: [ResolvedName?] = []
-    /// `@objc(Name)` 클래스 안에 있으면 그 이름.
-    private var reactModuleNames: [String?] = []
+    /// `FlutterMethodCall` 인자를 받는 함수 안에 있는 깊이.
+    private var methodCallFunctionDepth = 0
+    /// `@objc(Name)` 클래스 안에 있으면 그 이름과, `@objcMembers` 인지.
+    private var reactModules: [(name: String, exportsAllMembers: Bool)?] = []
 
     init(converter: SourceLocationConverter, bindings: BindingCollector, path: String) {
         self.converter = converter
@@ -217,13 +289,16 @@ final class BridgeFactCollector: SyntaxVisitor {
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(node.name.text, node: node)
-        reactModuleNames.append(Self.objectiveCName(in: node.attributes))
-        if let moduleName = reactModuleNames.last ?? nil {
-            emit(.moduleExport, target: .reactNative, channel: .literal(moduleName), at: node.name)
+        let module = Self.objectiveCName(in: node.attributes).map {
+            (name: $0, exportsAllMembers: Self.hasAttribute("objcMembers", in: node.attributes))
+        }
+        reactModules.append(module)
+        if let module {
+            emit(.moduleExport, target: .reactNative, channel: .literal(module.name), at: node.name)
         }
         return .visitChildren
     }
-    override func visitPost(_ node: ClassDeclSyntax) { popType(); reactModuleNames.removeLast() }
+    override func visitPost(_ node: ClassDeclSyntax) { popType(); reactModules.removeLast() }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(node.name.text, node: node); return .visitChildren
@@ -246,39 +321,63 @@ final class BridgeFactCollector: SyntaxVisitor {
     override func visitPost(_ node: ExtensionDeclSyntax) { popType() }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushDeclaration(name: node.name.text, node: node)
+        pushDeclaration(
+            name: node.name.text,
+            indexName: Self.indexName(node.name.text, parameters: node.signature.parameterClause.parameters),
+            node: node
+        )
+        if Self.takesMethodCall(node) { methodCallFunctionDepth += 1 }
         emitReactMethodIfExported(node)
         return .visitChildren
     }
-    override func visitPost(_ node: FunctionDeclSyntax) { declarations.removeLast() }
+    override func visitPost(_ node: FunctionDeclSyntax) {
+        declarations.removeLast()
+        if Self.takesMethodCall(node) { methodCallFunctionDepth -= 1 }
+    }
 
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushDeclaration(name: "init", node: node); return .visitChildren
+        pushDeclaration(
+            name: "init",
+            indexName: Self.indexName("init", parameters: node.signature.parameterClause.parameters),
+            node: node
+        )
+        return .visitChildren
     }
     override func visitPost(_ node: InitializerDeclSyntax) { declarations.removeLast() }
 
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         // 계산 프로퍼티나 `lazy var channel: … = { … }()` 안의 사실은 그 프로퍼티에 귀속시킨다.
         // 함수 본문 안의 지역 변수는 인덱스에 정점이 없으므로 감싸는 함수가 그대로 남는다.
-        guard Self.isMemberVariable(node) else { return .visitChildren }
-        pushDeclaration(name: node.bindings.first!.pattern.as(IdentifierPatternSyntax.self)!.identifier.text, node: node)
+        guard let name = Self.memberVariableName(node) else { return .visitChildren }
+        pushDeclaration(name: name, indexName: name, node: node)
         return .visitChildren
     }
     override func visitPost(_ node: VariableDeclSyntax) {
-        if Self.isMemberVariable(node) { declarations.removeLast() }
+        if Self.memberVariableName(node) != nil { declarations.removeLast() }
     }
 
-    private static func isMemberVariable(_ node: VariableDeclSyntax) -> Bool {
-        node.bindings.first?.pattern.is(IdentifierPatternSyntax.self) == true
-            && !DeclarationCollector.isInsideBody(node)
+    private static func memberVariableName(_ node: VariableDeclSyntax) -> String? {
+        guard let name = node.bindings.first?.pattern.as(IdentifierPatternSyntax.self)?.identifier.text,
+              !DeclarationCollector.isInsideBody(node)
+        else { return nil }
+        return name
+    }
+
+    /// 인덱스가 붙이는 이름. `handle(_:result:)`, `init(messenger:)`.
+    static func indexName(_ base: String, parameters: FunctionParameterListSyntax) -> String {
+        base + "(" + parameters.map { $0.firstName.text + ":" }.joined() + ")"
+    }
+
+    /// `FlutterMethodCall` 인자를 받는 함수인지. `FlutterPlugin.handle(_:result:)` 가 그렇다.
+    private static func takesMethodCall(_ node: FunctionDeclSyntax) -> Bool {
+        node.signature.parameterClause.parameters.contains {
+            $0.type.trimmedDescription == flutterMethodCallTypeName
+        }
     }
 
     // MARK: Flutter
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
-        if let channel = bindings.channelConstruction(ExprSyntax(node)) {
-            emit(.channelCreate, target: .flutter, channel: channel, at: node)
-        }
         guard let member = node.calledExpression.as(MemberAccessExprSyntax.self),
               Self.handlerRegistrationMethods.contains(member.declName.baseName.text)
         else { return .visitChildren }
@@ -293,7 +392,6 @@ final class BridgeFactCollector: SyntaxVisitor {
         walk(closure)
         handlerChannels.removeLast()
         // 클로저는 이미 걸었다. 수신자와 나머지 인자를 다시 걷되 클로저는 건너뛴다.
-        // 수신자를 빼먹으면 인라인으로 만든 채널의 `channel-create` 가 사라진다.
         if let base = member.base { walk(base) }
         for argument in node.arguments where !argument.expression.is(ClosureExprSyntax.self) {
             walk(argument.expression)
@@ -312,10 +410,8 @@ final class BridgeFactCollector: SyntaxVisitor {
     /// 채널 표현식을 이름으로 푼다. 인라인 생성, 변수, 그 밖의 표현식 순으로 본다.
     private func resolveChannel(_ expression: ExprSyntax) -> ResolvedName {
         if let inline = bindings.channelConstruction(expression) { return inline }
-        if let name = BindingCollector.identifierName(of: expression) {
-            if let bound = bindings.channelBindings[name] {
-                return bound ?? .dynamic(expression.trimmedDescription)
-            }
+        if let name = BindingCollector.identifierName(of: expression), let bound = bindings.channelBindings[name] {
+            return bound ?? .dynamic(expression.trimmedDescription)
         }
         return .dynamic(expression.trimmedDescription)
     }
@@ -329,23 +425,30 @@ final class BridgeFactCollector: SyntaxVisitor {
     override func visit(_ node: SwitchCaseSyntax) -> SyntaxVisitorContinueKind {
         guard let switchExpression = node.parent?.parent?.as(SwitchExprSyntax.self),
               Self.isMethodNameExpression(switchExpression.subject),
-              case let .case(label) = node.label
+              case let .case(label) = node.label,
+              let (channel, inferred) = currentHandlerChannel
         else { return .visitChildren }
         for item in label.caseItems {
             guard let expression = item.pattern.as(ExpressionPatternSyntax.self)?.expression else { continue }
-            emit(.methodHandle, target: .flutter, channel: currentHandlerChannel, method: bindings.resolveString(expression), at: item)
+            emit(
+                .methodHandle, target: .flutter, channel: channel,
+                method: bindings.resolveString(expression), inferred: inferred, at: item
+            )
         }
         return .visitChildren
     }
 
     /// `if call.method == "takePhoto"` 형태의 분기.
     override func visit(_ node: InfixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
-        guard let op = node.operator.as(BinaryOperatorExprSyntax.self), op.operator.text == "==" else {
-            return .visitChildren
-        }
+        guard let op = node.operator.as(BinaryOperatorExprSyntax.self), op.operator.text == "==",
+              let (channel, inferred) = currentHandlerChannel
+        else { return .visitChildren }
         let sides = [(node.leftOperand, node.rightOperand), (node.rightOperand, node.leftOperand)]
         for (subject, value) in sides where Self.isMethodNameExpression(subject) {
-            emit(.methodHandle, target: .flutter, channel: currentHandlerChannel, method: bindings.resolveString(value), at: value)
+            emit(
+                .methodHandle, target: .flutter, channel: channel,
+                method: bindings.resolveString(value), inferred: inferred, at: value
+            )
             break
         }
         return .visitChildren
@@ -353,20 +456,24 @@ final class BridgeFactCollector: SyntaxVisitor {
 
     /// `call.method` 처럼 메서드 이름을 읽는 표현식인지 확인한다.
     ///
-    /// 수신자 이름은 보지 않는다. `call`, `methodCall`, `$0` 모두 쓰인다.
+    /// 수신자 이름은 보지 않는다. `call`, `methodCall`, `$0` 모두 쓰인다. 대신 문맥으로
+    /// 거른다. 핸들러 클로저나 `FlutterMethodCall` 을 받는 함수 밖의 `.method` 는
+    /// StoreKit 의 `transaction.method` 처럼 전혀 다른 것일 수 있다.
     private static func isMethodNameExpression(_ expression: ExprSyntax) -> Bool {
         expression.as(MemberAccessExprSyntax.self)?.declName.baseName.text == "method"
     }
 
-    /// 지금 안에 있는 핸들러의 채널. 핸들러 밖이면 파일에 채널이 하나뿐일 때 그것.
+    /// 지금 안에 있는 핸들러의 채널과, 그것이 추측인지.
     ///
-    /// `FlutterPlugin` 스타일은 `handle(_:result:)` 메서드에서 분기하고, 채널은
-    /// `register(with:)` 에서 따로 만든다. 클로저 안이 아니라고 채널을 모른다고 하면
-    /// 플러그인 대부분의 메서드가 조인되지 않는다. 파일에 채널이 하나면 그것이다.
-    private var currentHandlerChannel: ResolvedName? {
-        if let inside = handlerChannels.last { return inside }
+    /// 클로저 안이면 그 채널이다. `FlutterPlugin` 스타일은 `handle(_:result:)` 메서드에서
+    /// 분기하고 채널은 `register(with:)` 에서 따로 만든다. 그 함수 안이면 파일에 채널이
+    /// 하나일 때 그것을 추측으로 붙이고, 아니면 채널 없이 낸다. 둘 다 아니면 이 분기는
+    /// 브리지와 무관하므로 사실이 아니다.
+    private var currentHandlerChannel: (ResolvedName?, Bool)? {
+        if let inside = handlerChannels.last { return (inside, false) }
+        guard methodCallFunctionDepth > 0 else { return nil }
         let known = Set(bindings.channelBindings.values.compactMap { $0 })
-        return known.count == 1 ? known.first : nil
+        return known.count == 1 ? (known.first, true) : (nil, false)
     }
 
     // MARK: React Native
@@ -386,19 +493,20 @@ final class BridgeFactCollector: SyntaxVisitor {
     }
 
     /// `@objc(Name)` 클래스 안의 `@objc` 메서드는 JS 가 `NativeModules.Name.method()` 로 부른다.
+    /// 클래스가 `@objcMembers` 면 표식 없는 메서드도 전부 노출된다.
     private func emitReactMethodIfExported(_ node: FunctionDeclSyntax) {
-        guard let moduleName = reactModuleNames.last ?? nil,
-              Self.hasObjectiveCAttribute(node.attributes)
+        guard let module = reactModules.last ?? nil,
+              module.exportsAllMembers || Self.hasAttribute("objc", in: node.attributes)
         else { return }
         let selector = Self.objectiveCName(in: node.attributes)
         let method = selector.map { String($0.prefix { $0 != ":" }) } ?? node.name.text
-        emit(.methodHandle, target: .reactNative, channel: .literal(moduleName), method: .literal(method), at: node.name)
+        emit(.methodHandle, target: .reactNative, channel: .literal(module.name), method: .literal(method), at: node.name)
     }
 
-    private static func hasObjectiveCAttribute(_ attributes: AttributeListSyntax) -> Bool {
+    private static func hasAttribute(_ name: String, in attributes: AttributeListSyntax) -> Bool {
         attributes.contains { element in
             guard case let .attribute(attribute) = element else { return false }
-            return attribute.attributeName.trimmedDescription == "objc"
+            return attribute.attributeName.trimmedDescription == name
         }
     }
 
@@ -406,7 +514,7 @@ final class BridgeFactCollector: SyntaxVisitor {
 
     private func pushType(_ name: String, node: some SyntaxProtocol) {
         typeNames.append(name)
-        pushDeclaration(name: name, node: node, qualified: typeNames.joined(separator: "."))
+        pushDeclaration(name: name, indexName: name, node: node, qualified: typeNames.joined(separator: "."))
     }
 
     private func popType() {
@@ -414,11 +522,12 @@ final class BridgeFactCollector: SyntaxVisitor {
         declarations.removeLast()
     }
 
-    private func pushDeclaration(name: String, node: some SyntaxProtocol, qualified: String? = nil) {
+    private func pushDeclaration(name: String, indexName: String, node: some SyntaxProtocol, qualified: String? = nil) {
         let base = DeclarationCollector.unescaped(name)
         declarations.append(
             EnclosingDeclaration(
                 name: base,
+                indexName: DeclarationCollector.unescaped(indexName),
                 qualifiedName: qualified ?? (typeNames + [base]).joined(separator: "."),
                 line: node.startLocation(converter: converter).line
             )
@@ -430,6 +539,7 @@ final class BridgeFactCollector: SyntaxVisitor {
         target: BridgeFact.Target,
         channel: ResolvedName?,
         method: ResolvedName? = nil,
+        inferred: Bool = false,
         at node: some SyntaxProtocol
     ) {
         let location = node.startLocation(converter: converter)
@@ -439,6 +549,7 @@ final class BridgeFactCollector: SyntaxVisitor {
             channel: channel?.text,
             method: method?.text,
             isDynamic: (channel?.isDynamic ?? false) || (method?.isDynamic ?? false),
+            isChannelInferred: inferred,
             location: SourceLocation(path: path, line: location.line, column: location.column)
         )
         facts.append(ScannedBridgeFact(fact: fact, declaration: declarations.last))

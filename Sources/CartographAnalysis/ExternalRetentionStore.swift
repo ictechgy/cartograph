@@ -71,13 +71,20 @@ public struct ExternalRetentionIndex: Sendable, Equatable {
     public var count: Int { retentions.count }
     public var isEmpty: Bool { retentions.isEmpty }
 
-    /// 정점에 해당하는 근거. USR 을 먼저 보고, 없으면 정규화된 이름으로 본다.
+    /// 정점에 해당하는 근거. USR 로 맞추고, 근거에 USR 이 없을 때만 이름으로 본다.
     ///
-    /// USR 이 정확하다. 이름은 모듈이 같은 두 선언을 구분하지 못하지만, isthmus 가
-    /// USR 없는 사실(Objective-C 등)로 만든 근거는 이름밖에 없다.
-    public func retention(for node: GraphNode) -> ExternalRetention? {
+    /// USR 이 정확하다. 근거에 USR 이 있는데 이 정점의 USR 과 다르면 이름이 같아도 다른
+    /// 선언이다. 그때 이름으로 살리면 벤더가 올린 동명 모듈의 동명 선언이 살아난다.
+    /// 이름 매칭은 isthmus 가 USR 없는 사실(Objective-C 등)로 만든 근거를 위한 것이다.
+    ///
+    /// - Parameter names: 이 정점을 부를 수 있는 이름들. 인덱스 표기(`Module.name(labels)`)와
+    ///   구문 표기(`Type.name`) 둘 다 넘긴다. 계약의 `qualifiedName` 은 후자다.
+    public func retention(for node: GraphNode, names: [String] = []) -> ExternalRetention? {
         if let usr = node.usr, let match = byUSR[usr] { return match }
-        return byQualifiedName[node.qualifiedName]
+        for name in [node.qualifiedName] + names {
+            if let match = byQualifiedName[name], match.symbol.usr == nil { return match }
+        }
+        return nil
     }
 
     /// 그래프의 어느 정점과도 맞지 않는 근거의 수.
@@ -86,10 +93,27 @@ public struct ExternalRetentionIndex: Sendable, Equatable {
     /// 그 수를 알리지 않으면 사용자는 파일이 최신이라고 믿는다.
     public func unmatchedCount(in graph: CodeGraph) -> Int {
         let usrs = Set(graph.sortedNodes.compactMap(\.usr))
-        let names = Set(graph.sortedNodes.map(\.qualifiedName))
+        var names = Set(graph.sortedNodes.map(\.qualifiedName))
+        for node in graph.sortedNodes { names.insert(Self.syntaxQualifiedName(of: node, in: graph)) }
         return retentions.count { retention in
-            !(retention.symbol.usr.map(usrs.contains) ?? false)
-                && !(retention.symbol.qualifiedName.map(names.contains) ?? false)
+            if let usr = retention.symbol.usr { return !usrs.contains(usr) }
+            return !(retention.symbol.qualifiedName.map(names.contains) ?? false)
         }
+    }
+
+    /// 교환 형식의 `qualifiedName` 표기. 감싸는 타입부터 기본 이름을 점으로 잇는다(`CameraPlugin.register`).
+    ///
+    /// `GraphNode.qualifiedName` 은 `Module.name(labels)` 라 계약의 표기와 절대 맞지 않는다.
+    /// 이 변환이 없으면 USR 없는 근거는 구조적으로 아무것도 살리지 못한다.
+    public static func syntaxQualifiedName(of node: GraphNode, in graph: CodeGraph) -> String {
+        var parts = [node.baseName]
+        var current = node.id
+        var visited: Set<NodeID> = [current]
+        while let parent = graph.semanticParent(of: current), visited.insert(parent).inserted,
+              let parentNode = graph.node(parent), parentNode.kind != .module, parentNode.kind != .file {
+            parts.append(parentNode.baseName)
+            current = parent
+        }
+        return parts.reversed().joined(separator: ".")
     }
 }

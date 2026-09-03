@@ -9,9 +9,10 @@
 public struct BridgeFact: Hashable, Sendable {
     /// 사실의 종류. 교환 형식의 `kind` 값 그대로다.
     public enum Kind: String, Sendable, CaseIterable {
-        /// 채널 객체를 만들었다(`FlutterMethodChannel(name:)`).
-        case channelCreate = "channel-create"
         /// 채널에 핸들러를 달았다(`setMethodCallHandler`, `addMethodCallDelegate`).
+        ///
+        /// 채널 객체를 만들기만 한 것은 사실이 아니다. 계약이 그렇게 정했고, 채널 이름은
+        /// 생성자에서 등록 호출로 변수 참조를 따라 옮긴다.
         case channelRegister = "channel-register"
         /// 핸들러 안에서 메서드 이름으로 분기했다(`case "…"`) 또는 네이티브 메서드를 내보냈다.
         case methodHandle = "method-handle"
@@ -49,6 +50,11 @@ public struct BridgeFact: Hashable, Sendable {
     public let method: String?
     /// 채널이나 메서드가 리터럴이 아니라 표현식이었는지 여부.
     public let isDynamic: Bool
+    /// 채널을 핸들러 문맥이 아니라 "파일에 채널이 하나뿐" 이라는 추측으로 붙였는지 여부.
+    ///
+    /// 교환 형식에는 이 구분이 없다. 소비자가 추측과 사실을 가를 수 없으므로 문서 단위로
+    /// 수를 세어 `limitations` 에 싣는다.
+    public let isChannelInferred: Bool
     public let location: SourceLocation
     public let symbol: Symbol?
 
@@ -58,6 +64,7 @@ public struct BridgeFact: Hashable, Sendable {
         channel: String?,
         method: String? = nil,
         isDynamic: Bool = false,
+        isChannelInferred: Bool = false,
         location: SourceLocation,
         symbol: Symbol? = nil
     ) {
@@ -66,6 +73,7 @@ public struct BridgeFact: Hashable, Sendable {
         self.channel = channel
         self.method = method
         self.isDynamic = isDynamic
+        self.isChannelInferred = isChannelInferred
         self.location = location
         self.symbol = symbol
     }
@@ -78,6 +86,7 @@ public struct BridgeFact: Hashable, Sendable {
             channel: channel,
             method: method,
             isDynamic: isDynamic,
+            isChannelInferred: isChannelInferred,
             location: location,
             symbol: symbol
         )

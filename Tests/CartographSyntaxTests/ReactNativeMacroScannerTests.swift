@@ -52,29 +52,54 @@ struct ReactNativeMacroScannerTests {
         #expect(facts.map(\.method) == [nil, "addEvent", "listEvents"])
     }
 
-    @Test("RCT_EXPORT_VIEW_PROPERTY 는 component-export 다")
-    func recordsViewManagers() {
+    @Test("RCT_EXPORT_VIEW_PROPERTY 가 여럿이어도 component-export 는 컴포넌트당 하나다")
+    func recordsViewManagersOnce() {
         let source = """
             @implementation MapViewManager
             RCT_EXPORT_MODULE(MapView)
             RCT_EXPORT_VIEW_PROPERTY(zoomEnabled, BOOL)
+            RCT_EXPORT_VIEW_PROPERTY(region, MKCoordinateRegion)
             @end
             """
         let facts = scan(source)
         #expect(facts.map(\.kind) == [.moduleExport, .componentExport])
         #expect(facts.last?.channel == "MapView")
+        #expect(facts.last?.location.line == 3)
     }
 
-    @Test("주석 처리된 매크로는 읽지 않는다")
+    @Test("주석 처리된 매크로는 줄 주석이든 블록 주석이든 읽지 않는다")
     func ignoresCommentedMacros() {
         let source = """
             @implementation Legacy
             // RCT_EXPORT_MODULE(OldName)
+            /* removed:
+            RCT_EXPORT_MODULE(Older)
+            RCT_EXPORT_METHOD(gone) {}
+            */
             RCT_EXPORT_MODULE()
+            RCT_EXPORT_METHOD(kept) {}
             @end
             """
         let facts = scan(source)
-        #expect(facts.map(\.channel) == ["Legacy"])
+        #expect(facts.map(\.channel) == ["Legacy", "Legacy"])
+        #expect(facts.map(\.method) == [nil, "kept"])
+        // 블록 주석을 지워도 줄 번호는 그대로여야 위치가 맞는다.
+        #expect(facts.map(\.location.line) == [7, 8])
+    }
+
+    @Test("메서드 이름이 다음 줄로 넘어가면 동적 이름으로 센다")
+    func treatsUnreadableMethodNameAsDynamic() {
+        let source = """
+            @implementation A
+            RCT_EXPORT_MODULE()
+            RCT_EXPORT_METHOD(
+                addEvent:(NSString *)name) {}
+            @end
+            """
+        let handled = scan(source).filter { $0.kind == .methodHandle }
+        #expect(handled.count == 1)
+        #expect(handled.first?.method == nil)
+        #expect(handled.first?.isDynamic == true)
     }
 
     @Test("@implementation 이 여럿이면 각각의 모듈 이름을 쓴다")

@@ -106,6 +106,38 @@ struct ExternalRetentionTests {
         #expect(policy.retainedNodes(in: graph, snapshot: snapshot)[NodeID("s:handle")] == .externalBridge)
     }
 
+    @Test("근거에 USR 이 있으면 이름이 같아도 다른 USR 의 선언은 살리지 않는다")
+    func usrVetoesNameMatch() {
+        var builder = SnapshotBuilder(module: "App")
+        builder.symbol("s:vendorCopy", name: "handle(_:result:)", kind: .method)
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        let retention = ExternalRetention(
+            symbol: .init(usr: "s:handle", qualifiedName: "App.handle(_:result:)"), reason: "bridge", evidence: nil
+        )
+        let policy = RetentionPolicy(externalRetentions: ExternalRetentionIndex([retention]))
+        #expect(policy.retainedNodes(in: graph, snapshot: snapshot).isEmpty)
+    }
+
+    @Test("계약 표기의 이름(Type.member)으로도 맞는다")
+    func matchesSyntaxQualifiedName() {
+        var builder = SnapshotBuilder(module: "App")
+        builder.symbol("s:CameraPlugin", name: "CameraPlugin", kind: .classType)
+        builder.symbol("s:handle", name: "handle(_:result:)", kind: .method, parent: "s:CameraPlugin")
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        #expect(ExternalRetentionIndex.syntaxQualifiedName(of: graph.node(NodeID("s:handle"))!, in: graph) == "CameraPlugin.handle")
+
+        let retention = ExternalRetention(
+            symbol: .init(usr: nil, qualifiedName: "CameraPlugin.handle"), reason: "bridge", evidence: nil
+        )
+        let index = ExternalRetentionIndex([retention])
+        let policy = RetentionPolicy(externalRetentions: index)
+        #expect(policy.retainedNodes(in: graph, snapshot: snapshot)[NodeID("s:handle")] == .externalBridge)
+        #expect(index.unmatchedCount(in: graph) == 0)
+    }
+
     @Test("외부 근거가 없으면 보존 결과가 그대로다")
     func emptyIndexChangesNothing() {
         var builder = SnapshotBuilder()

@@ -2,7 +2,7 @@ import CartographCore
 import CartographSyntax
 import Foundation
 
-/// `bridges` 명령이 내보내는 문서. isthmus 가 읽는 교환 형식(초안 0)이다.
+/// `bridges` 명령이 내보내는 문서. isthmus 가 읽는 교환 형식(버전 1)이다.
 ///
 /// 이 문서는 Swift 에서 본 사실만 담는다. "이 핸들러를 Dart 가 실제로 부른다"는 판정은
 /// 다른 언어의 사실과 조인해야 나오고, 그것은 isthmus 의 몫이다. 리터럴이 아닌 이름도
@@ -13,7 +13,9 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
     /// 교환 형식 이름. isthmus 가 파일을 열었을 때 첫 줄에서 무엇인지 알아야 한다.
     public static let format = "bridge-facts"
     /// 교환 형식 버전. `GRAPH-EXCHANGE.md` 가 바뀌면 함께 올린다.
-    public static let version = 0
+    ///
+    /// 1 은 isthmus Phase 0 에서 Dart ↔ Swift 코퍼스를 양방향 조인해 확정한 판이다.
+    public static let version = 1
 
     public struct Tool: Sendable, Equatable, Codable {
         public let name: String
@@ -92,6 +94,7 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         generatedAt: String,
         project: String,
         facts: [BridgeFact],
+        unscannedEventChannels: Int = 0,
         extraLimitations: [String] = []
     ) {
         format = Self.format
@@ -104,7 +107,8 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
 
         let targets = Self.countByTarget(facts)
         target = Self.dominantTarget(targets)
-        limitations = Self.limitations(for: facts, targets: targets) + extraLimitations
+        limitations = Self.limitations(for: facts, targets: targets, unscannedEventChannels: unscannedEventChannels)
+            + extraLimitations
     }
 
     private static func countByTarget(_ facts: [BridgeFact]) -> [BridgeFact.Target: Int] {
@@ -119,27 +123,56 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
     }
 
     /// 사실 목록에서 실제로 센 한계.
-    static func limitations(for facts: [BridgeFact], targets: [BridgeFact.Target: Int]) -> [String] {
+    static func limitations(
+        for facts: [BridgeFact],
+        targets: [BridgeFact.Target: Int],
+        unscannedEventChannels: Int = 0
+    ) -> [String] {
         var result: [String] = []
-        let dynamicCount = facts.count(where: \.isDynamic)
-        if dynamicCount > 0 {
+        // 키 이름은 계약의 예시(`dynamic-channel-names`, `missing-handler-usrs`)를 따른다.
+        // isthmus 가 파싱한다면 같은 이름이어야 한다.
+        let dynamicChannels = facts.count { $0.kind == .channelRegister && $0.isDynamic }
+        if dynamicChannels > 0 {
+            result.append("dynamic-channel-names: \(dynamicChannels) channel constructors use a non-literal name")
+        }
+        let dynamicMethods = facts.count { $0.kind == .methodHandle && $0.isDynamic }
+        if dynamicMethods > 0 {
             result.append(
-                "dynamic-names: \(dynamicCount) fact(s) use a non-literal channel or method name, "
+                "dynamic-method-names: \(dynamicMethods) method handlers branch on a non-literal name, "
                     + "so they cannot be joined and are listed with their source expression"
             )
         }
         let unattributed = facts.count { $0.kind == .methodHandle && $0.channel == nil }
         if unattributed > 0 {
             result.append(
-                "unattributed-method-handles: \(unattributed) method-handle fact(s) sit outside a handler "
+                "unattributed-method-handles: \(unattributed) method handlers sit outside a handler "
                     + "closure in a file with several channels, so their channel is null"
             )
         }
-        let unresolved = facts.count { $0.symbol?.usr == nil }
-        if unresolved > 0 {
+        let inferred = facts.count(where: \.isChannelInferred)
+        if inferred > 0 {
             result.append(
-                "unresolved-symbols: \(unresolved) fact(s) have no USR because the index has no declaration "
-                    + "at that location (Objective-C sources, or Swift not built since the edit)"
+                "inferred-channels: \(inferred) method handlers were attributed to the only channel in "
+                    + "their file rather than to an enclosing handler, so the channel is a guess"
+            )
+        }
+        let missingUSRs = facts.count { $0.kind == .methodHandle && $0.symbol != nil && $0.symbol?.usr == nil }
+        if missingUSRs > 0 {
+            result.append("missing-handler-usrs: \(missingUSRs) method handlers have only a qualified name")
+        }
+        let objectiveCNamed = facts.count {
+            $0.kind == .moduleExport && $0.target == .reactNative && $0.location.path.hasSuffix(".swift")
+        }
+        if objectiveCNamed > 0 {
+            result.append(
+                "objc-named-classes: \(objectiveCNamed) module-export fact(s) come from @objc(Name) classes, "
+                    + "which may name an Objective-C class rather than a React Native module"
+            )
+        }
+        if unscannedEventChannels > 0 {
+            result.append(
+                "unscanned-event-channels: \(unscannedEventChannels) FlutterEventChannel constructor(s) are not "
+                    + "read; stream handlers are outside this format"
             )
         }
         if targets.count > 1 {
@@ -174,30 +207,41 @@ extension BridgeFactsDocument {
 /// 스캐너는 선언의 이름과 줄만 안다. 인덱스 스냅샷에서 같은 파일·같은 이름·가장 가까운
 /// 줄의 심볼을 찾으면 그것이 USR 이다. isthmus 가 돌려주는 보존 근거는 이 USR 로
 /// 돌아오므로, 여기서 못 찾으면 그 사실은 `dead` 에 영향을 주지 못한다.
+///
+/// `qualifiedName` 은 인덱스에서 찾았든 아니든 구문의 표기(`CameraPlugin.register`)다.
+/// 계약이 그 표기를 쓰고, 자매 도구도 같은 모양을 낸다. 인덱스의 표기(`Module.name(labels)`)는
+/// USR 이 있으면 필요 없고, 없을 때 섞이면 소비자가 두 표기를 맞출 수 없다.
 enum BridgeSymbolResolver {
     static func resolve(_ scanned: [ScannedBridgeFact], in snapshot: IndexSnapshot) -> [BridgeFact] {
         let byPath = Dictionary(grouping: snapshot.symbols, by: \.location.path)
         return scanned.map { entry in
             guard let declaration = entry.declaration else { return entry.fact }
             let candidates = byPath[entry.fact.location.path] ?? []
-            let symbol = nearest(declaration, among: candidates)
-            return entry.fact.attaching(
-                BridgeFact.Symbol(
-                    qualifiedName: symbol.map { "\($0.module).\($0.name)" } ?? declaration.qualifiedName,
-                    usr: symbol?.usr
-                )
-            )
+            let symbol = match(declaration, among: candidates)
+            return entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: symbol?.usr))
         }
     }
 
-    /// 이름이 같은 심볼 중 줄이 가장 가까운 것. `SourceFileFacts` 의 대조와 같은 규칙이다.
+    /// 인자 라벨까지 같은 심볼을 먼저, 없으면 기본 이름이 같은 심볼을 찾는다. 여럿이면 줄이 가장 가까운 것.
+    ///
+    /// 기본 이름만 보면 `handle(_:)` 과 `handle(_:result:)` 중 줄이 가까운 쪽이 이긴다.
+    /// 그쪽이 진짜 핸들러가 아니면 isthmus 는 엉뚱한 선언을 살리고 진짜 핸들러는 죽은
+    /// 코드로 보고된다. 라벨 일치가 실패 방향이 덜 위험하다.
+    private static func match(_ declaration: EnclosingDeclaration, among symbols: [IndexedSymbol]) -> IndexedSymbol? {
+        nearest(declaration, among: symbols.filter { Self.baseName($0.name) == declaration.indexName || $0.name == declaration.indexName })
+            ?? nearest(declaration, among: symbols.filter { SourceFileFacts.baseName(ofIndexName: $0.name) == declaration.name })
+    }
+
+    /// 실패 가능 이니셜라이저의 `init?(…)` 를 `init(…)` 으로 맞춘다.
+    private static func baseName(_ indexName: String) -> String {
+        indexName.replacingOccurrences(of: "?(", with: "(").replacingOccurrences(of: "!(", with: "(")
+    }
+
     private static func nearest(_ declaration: EnclosingDeclaration, among symbols: [IndexedSymbol]) -> IndexedSymbol? {
-        symbols
-            .filter { SourceFileFacts.baseName(ofIndexName: $0.name) == declaration.name }
-            .min { lhs, rhs in
-                let lhsDistance = abs(lhs.location.line - declaration.line)
-                let rhsDistance = abs(rhs.location.line - declaration.line)
-                return lhsDistance == rhsDistance ? lhs.usr < rhs.usr : lhsDistance < rhsDistance
-            }
+        symbols.min { lhs, rhs in
+            let lhsDistance = abs(lhs.location.line - declaration.line)
+            let rhsDistance = abs(rhs.location.line - declaration.line)
+            return lhsDistance == rhsDistance ? lhs.usr < rhs.usr : lhsDistance < rhsDistance
+        }
     }
 }

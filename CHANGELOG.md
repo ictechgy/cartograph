@@ -19,18 +19,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   holds for the enclosing declaration so the answer can come back as a retention.
 
   It states facts, not verdicts. A non-literal name is kept with its source expression and marked
-  `dynamic` rather than dropped, one level of constant is followed, and a `case "…"` outside a
-  handler closure is attributed to the file's single channel or left `null`. `limitations` counts
-  what could not be resolved. The Objective-C test macro files are the first `.m` sources this tool
-  reads at all.
+  `dynamic` rather than dropped; one level of constant is followed, but only through `Self`, `self`
+  or a type declared in the same file, so a same-named member on some other receiver never turns
+  into a literal it is not. A `case "…"` outside a handler closure counts only inside a function
+  that takes a `FlutterMethodCall`, and is attributed to the file's single channel (counted as
+  inferred) or left `null`. `limitations` counts what could not be resolved. The Objective-C
+  macro files are the first `.m` sources this tool reads at all; block comments are blanked first
+  so a module someone commented out does not come back as a handler.
 
 - `--external-retentions <path>` (or `external_retentions_path`) reads the retentions isthmus hands
   back and keeps each named declaration as a retained root with reason `externalBridge`. `dead
   --explain` quotes the evidence — which platform, file and line invoked which method on which
   channel — instead of pointing at the file. `query` lists the file's provenance and how many of its
   retentions name nothing in the index, so a stale file shows up as a limitation before it shows up
-  as a wrong deletion. A configured path that does not exist is a tool failure, not a silent no-op:
-  someone who supplied the file expects it to be applied.
+  as a wrong deletion, and a file generated before the index store was written is flagged as
+  stale. A retention that carries a USR matches only that USR; the name is used only when isthmus
+  had no USR to give, so a same-named declaration in another module cannot be kept by mistake. A
+  configured path that does not exist is a tool failure, not a silent no-op: someone who supplied
+  the file expects it to be applied.
 
 ### Fixed
 

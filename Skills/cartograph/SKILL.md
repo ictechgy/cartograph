@@ -47,8 +47,11 @@ produced by `cartograph dead`.
 6. **`reason` tells you why something survived.** A value like `interfaceBuilder`,
    `objectiveCAccessible`, `codingKey` or `caseIterableEnumCase` means the compiler index alone
    would have called it dead. Deleting it breaks something the index cannot see.
-   `externalBridge` means Dart, JavaScript or Kotlin calls it across a platform channel;
-   `cartograph dead --explain <name>` quotes which file and line does so.
+   `externalBridge` means Dart, JavaScript or Kotlin calls it across a platform channel,
+   according to a retentions file the project supplied (`external_retentions_path` or
+   `--external-retentions`); run `cartograph dead --explain <name>` with that file in effect
+   and it quotes which file and line does so. Without the file the same declaration comes
+   back `unreachable`, which is the index's view, not the whole truth.
 
 ## When the rules pass
 

@@ -92,6 +92,19 @@ struct ExternalRetentionServiceTests {
         #expect(document.limitations.contains { $0.hasPrefix("external-retentions-unmatched: 1 of 2") })
     }
 
+    @Test("근거 파일이 인덱스보다 오래됐으면 그렇다고 알린다")
+    func reportsStaleFile() throws {
+        let service = makeService()
+        let context = try service.loadContext()
+        let stale = service.analysisLimitations(
+            storeDate: Date(timeIntervalSince1970: 1_800_000_000), context: context
+        )
+        #expect(stale.contains { $0.hasPrefix("external-retentions-stale: the retentions file (2026-09-04T12:00:00Z) predates") })
+
+        let fresh = service.analysisLimitations(storeDate: Date(timeIntervalSince1970: 1_700_000_000), context: context)
+        #expect(!fresh.contains { $0.hasPrefix("external-retentions-stale") })
+    }
+
     @Test("외부 근거를 걸지 않으면 한계에도 등장하지 않는다")
     func noRetentionsNoLimitation() throws {
         let document = try makeService(retentionsPath: nil).queryDocument(symbol: "s:handle")

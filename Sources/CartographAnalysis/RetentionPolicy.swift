@@ -72,7 +72,12 @@ public struct RetentionPolicy: Sendable {
         if isUserRetained(node) { return .userConfigured }
         // 사용자 설정 다음이다. 외부 도구의 주장은 설정보다 약하고, 인덱스에서 유도한
         // 나머지 규칙보다는 구체적이다(어느 줄이 불렀는지까지 안다).
-        if externalRetentions.retention(for: node) != nil { return .externalBridge }
+        if !externalRetentions.isEmpty,
+           externalRetentions.retention(
+               for: node, names: [ExternalRetentionIndex.syntaxQualifiedName(of: node, in: graph)]
+           ) != nil {
+            return .externalBridge
+        }
         if node.attributes.contains(.implicit) { return .compilerSynthesized }
         if node.attributes.contains(.entryPoint) { return .entryPoint }
         if isTopLevelCode(node, in: graph) { return .entryPoint }
