@@ -38,6 +38,11 @@ public struct UnusedCodeReport: Sendable, Equatable {
     public let totalCount: Int
     /// 멤버가 보존되어 함께 살아남은 조상들.
     public let inheritedRetentions: [NodeID: InheritedRetention]
+    /// 생산 코드에서는 도달할 수 없고 테스트·프리뷰만 붙잡고 있는 선언.
+    ///
+    /// 죽은 코드가 아니므로 미사용으로 보고하지 않는다. 다만 테스트가 유일한
+    /// 사용자라는 사실은 팀이 알아야 할 정보다. 계산하지 않았으면 비어 있다.
+    public let testOnly: [GraphNode]
     /// 도달 경로 복원을 위한 선행 정점 사전.
     private let predecessors: [NodeID: NodeID]
 
@@ -47,8 +52,10 @@ public struct UnusedCodeReport: Sendable, Equatable {
         reachableCount: Int,
         totalCount: Int,
         inheritedRetentions: [NodeID: InheritedRetention] = [:],
-        predecessors: [NodeID: NodeID] = [:]
+        predecessors: [NodeID: NodeID] = [:],
+        testOnly: [GraphNode] = []
     ) {
+        self.testOnly = testOnly
         self.unused = unused
         self.retentions = retentions
         self.reachableCount = reachableCount
@@ -103,15 +110,21 @@ public struct ReachabilityAnalyzer: Sendable {
         /// 프로토콜을 통해 호출되는 모든 구현이 미사용으로 보고된다.
         /// Periphery 가 프로토콜 준수 참조를 뒤집어 해결한 것과 같은 문제다.
         public var followOverridesInReverse: Bool
+        /// 테스트·프리뷰만 붙잡고 있는 선언을 따로 계산할지 여부.
+        ///
+        /// 탐색을 한 번 더 돌아야 하므로 요청받았을 때만 한다.
+        public var findsTestOnlyCode: Bool
 
         public init(
             reportMembersOfUnusedTypes: Bool = false,
             excludedKinds: Set<SymbolKind> = [.parameter, .file, .module, .extensionDeclaration],
-            followOverridesInReverse: Bool = true
+            followOverridesInReverse: Bool = true,
+            findsTestOnlyCode: Bool = false
         ) {
             self.reportMembersOfUnusedTypes = reportMembersOfUnusedTypes
             self.excludedKinds = excludedKinds
             self.followOverridesInReverse = followOverridesInReverse
+            self.findsTestOnlyCode = findsTestOnlyCode
         }
     }
 
@@ -137,11 +150,90 @@ public struct ReachabilityAnalyzer: Sendable {
             reachableCount: traversal.reachable.count,
             totalCount: graph.nodeCount,
             inheritedRetentions: inherited,
-            predecessors: traversal.predecessors
+            predecessors: traversal.predecessors,
+            testOnly: testOnlyCode(
+                reachable: traversal.reachable,
+                retentions: retentions,
+                inherited: inherited,
+                graph: graph
+            )
         )
     }
 
     // MARK: - 내부 구현
+
+    /// 테스트·프리뷰만 붙잡고 있는 선언.
+    ///
+    /// 생산 코드 뿌리에서만 한 번 더 탐색해, 전체 도달 집합과의 차이를 본다.
+    /// 그 차이가 곧 "지워도 앱은 그대로지만 테스트가 깨지는" 선언들이다.
+    /// 죽은 코드가 아니므로 미사용으로 보고하지 않는다.
+    private func testOnlyCode(
+        reachable: Set<NodeID>,
+        retentions: [NodeID: RetentionReason],
+        inherited: [NodeID: InheritedRetention],
+        graph: CodeGraph
+    ) -> [GraphNode] {
+        guard options.findsTestOnlyCode else { return [] }
+
+        // 합성 선언은 생산 코드의 시작점이 될 수 없다. 그것은 무언가 *때문에*
+        // 생긴 것이지 스스로 살아 있는 이유가 아니다. 특히 swift-testing 은
+        // 테스트를 등록하려고 합성 심볼 사슬을 만드는데, 그것을 생산 뿌리로 세면
+        // 테스트가 닿는 모든 것이 생산에서도 닿는 것으로 보여 이 질의가 무의미해진다.
+        func seedsProduction(_ reason: RetentionReason) -> Bool {
+            !reason.isTestOrPreviewRoot && reason != .compilerSynthesized
+        }
+
+        var productionRoots: Set<NodeID> = []
+        for (node, reason) in retentions where seedsProduction(reason) {
+            productionRoots.insert(node)
+        }
+        // 물려받은 보존도 근거를 따라간다. 테스트 메서드 때문에 살아남은 타입은
+        // 생산 코드의 뿌리가 아니다.
+        for (node, retention) in inherited where seedsProduction(retention.reason) {
+            productionRoots.insert(node)
+        }
+
+        // 테스트 선언이 들어 있는 모듈은 테스트 타깃이다. 이름 규칙에 기대지 않고
+        // 그래프가 말해 주는 사실로 판단한다. 이것이 없으면 목록의 대부분이 테스트
+        // 타깃 내부의 도우미로 채워져, 정작 알고 싶은 것 — 테스트만 붙잡고 있는
+        // *생산* 코드 — 이 묻힌다. 실측에서 408건 중 318건이 그런 잡음이었다.
+        var testModules: Set<String> = []
+        for (node, reason) in retentions where reason.isTestOrPreviewRoot {
+            if let module = graph.node(node)?.module { testModules.insert(module) }
+        }
+
+        let production = traverse(from: productionRoots, in: graph).reachable
+        let candidates = graph.sortedNodes.filter {
+            reachable.contains($0.id)
+                && !production.contains($0.id)
+                && !($0.module.map(testModules.contains) ?? false)
+                && !isTestInfrastructure($0.id, retentions: retentions, graph: graph)
+        }
+        return filterReportable(candidates, unreachableIDs: Set(candidates.map(\.id)), graph: graph)
+    }
+
+    /// 테스트 코드 자신인지 판단한다.
+    ///
+    /// 테스트 메서드와 그것을 감싸는 스위트는 당연히 테스트에서만 도달한다.
+    /// 그것까지 보고하면 목록이 자명한 사실로 가득 차, 정작 알고 싶은 것
+    /// — 테스트만 붙잡고 있는 *생산* 코드 — 이 묻힌다.
+    ///
+    /// 테스트 파일 최상위에 둔 도우미처럼 테스트 뿌리를 조상으로 갖지 않는 선언은
+    /// 여전히 보고된다. 그것까지 걸러 내려면 타깃 구분이 필요한데, 인덱스만으로는
+    /// 모듈 이름 규칙에 기대는 수밖에 없어 더 부정확해진다.
+    private func isTestInfrastructure(
+        _ node: NodeID,
+        retentions: [NodeID: RetentionReason],
+        graph: CodeGraph
+    ) -> Bool {
+        var current: NodeID? = node
+        var visited: Set<NodeID> = []
+        while let id = current, visited.insert(id).inserted {
+            if retentions[id]?.isTestOrPreviewRoot == true { return true }
+            current = graph.semanticParent(of: id)
+        }
+        return false
+    }
 
     /// 보존된 멤버 때문에 함께 살아남는 조상들과 그 근거.
     ///

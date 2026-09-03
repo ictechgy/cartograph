@@ -81,9 +81,15 @@ public struct CartographService: Sendable {
     /// 미사용 선언. 언제나 심볼 레벨에서 본다.
     ///
     /// 모듈이나 파일 단위로는 "이 파일이 통째로 안 쓰인다" 이상을 말할 수 없다.
-    public func unusedCode(in context: AnalysisContext) -> (graph: CodeGraph, report: UnusedCodeReport) {
+    public func unusedCode(
+        in context: AnalysisContext,
+        findingTestOnlyCode: Bool = false
+    ) -> (graph: CodeGraph, report: UnusedCodeReport) {
         let graph = context.buildGraph(level: .symbol).graph
-        let analyzer = ReachabilityAnalyzer(policy: makeRetentionPolicy())
+        let analyzer = ReachabilityAnalyzer(
+            policy: makeRetentionPolicy(),
+            options: .init(findsTestOnlyCode: findingTestOnlyCode)
+        )
         return (graph, analyzer.analyze(graph: graph, snapshot: context.snapshot))
     }
 
@@ -139,14 +145,23 @@ public struct CartographService: Sendable {
         )
     }
 
-    public func detectUnusedCode() throws -> CommandOutcome {
-        let (graph, report) = unusedCode(in: try loadContext())
+    /// - Parameter reportingTestOnlyCode: 테스트·프리뷰만 붙잡고 있는 선언도 함께
+    ///   알린다. 죽은 코드가 아니므로 정보로만 보고하고 종료 코드에는 영향을 주지
+    ///   않는다.
+    public func detectUnusedCode(reportingTestOnlyCode: Bool = false) throws -> CommandOutcome {
+        let (graph, report) = unusedCode(
+            in: try loadContext(),
+            findingTestOnlyCode: reportingTestOnlyCode
+        )
         return try finish(
-            AnalysisDiagnostics.diagnostics(for: report),
+            AnalysisDiagnostics.diagnostics(for: report)
+                + AnalysisDiagnostics.testOnlyDiagnostics(for: report),
             command: "dead",
             subject: "\(describe(graph)) · \(report.reachableCount)/\(report.totalCount) reachable",
             thresholdLimit: configuration.thresholds.maxUnusedSymbols,
-            thresholdRule: AnalysisDiagnostics.Rule.unusedSymbol
+            thresholdRule: AnalysisDiagnostics.Rule.unusedSymbol,
+            // 테스트 전용은 정보성이라 임계값과 --strict 계산에 넣지 않는다.
+            countedRules: [AnalysisDiagnostics.Rule.unusedSymbol]
         )
     }
 

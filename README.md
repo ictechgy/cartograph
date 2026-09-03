@@ -172,6 +172,18 @@ cartograph dead --explain UserRepository
 Dead code is defined as *unreachable from a retained root*, not *zero references*. A cluster of
 declarations that only reference each other has plenty of references and is still dead.
 
+`--report-test-only` answers a different question: which production declarations are reached
+**only** from tests or previews. They are not dead — deleting one breaks a test — but a team wants
+to know that tests are the sole caller. Reported as `info`, so they never fail a build.
+
+```console
+$ cartograph dead --report-test-only
+Sources/Models/Policy.swift:31:9: info: property 'App.isDenied' is reached only from tests or previews
+```
+
+Declarations inside test targets are excluded: a module that contains test declarations is a test
+target, so its own helpers are not the answer to this question.
+
 `--explain` answers the question Periphery could not:
 
 ```console

@@ -9,6 +9,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `dead --report-test-only` reports production declarations reached only from tests or previews.
+  They are not dead, so they are reported as `info` and never fail a build, but a team wants to know
+  that tests are the sole caller. Declarations inside test targets are excluded — a module that
+  contains test declarations is a test target. On a real project this cut the list from 408 to 90.
 - `cycles --explain <node>` lists the cycles one node takes part in, each with the edge to cut.
   `rules --explain <node>` shows which layer a node landed in, which pattern put it there, and
   which rules start from that layer. Reporting a tangle is accurate; naming the cut is actionable.

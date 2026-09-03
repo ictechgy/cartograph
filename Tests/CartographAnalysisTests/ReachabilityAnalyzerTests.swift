@@ -351,4 +351,67 @@ struct ExtensionOwnershipTests {
         let retained = RetentionPolicy().retainedNodes(in: graph, snapshot: snapshot)
         #expect(retained["ext.active"] == .rawRepresentableEnumCase)
     }
+    @Test("테스트만 붙잡고 있는 생산 코드를 따로 알린다")
+    func separatesTestOnlyReachability() {
+        // 죽은 코드는 아니지만 테스트가 유일한 사용자라는 사실은 팀이 알아야 한다.
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, module: "App", attributes: [.entryPoint])
+        builder.symbol("Calc", kind: .structType, module: "App")
+        builder.symbol("Calc.prod", name: "prod", kind: .method, module: "App", parent: "Calc")
+        builder.symbol("Calc.testish", name: "testish", kind: .method, module: "App", parent: "Calc")
+        builder.symbol("Spec", kind: .structType, module: "AppTests", attributes: [.testSuite])
+        builder.symbol(
+            "Spec.check", name: "check", kind: .method, module: "AppTests",
+            parent: "Spec", attributes: [.testFunction]
+        )
+        builder.reference(from: "App", to: "Calc.prod", kind: .call)
+        builder.reference(from: "Spec.check", to: "Calc.testish", kind: .call)
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        let report = ReachabilityAnalyzer(options: .init(findsTestOnlyCode: true))
+            .analyze(graph: graph, snapshot: snapshot)
+        let names = report.testOnly.map(\.name)
+        #expect(names.contains("testish"))
+        // 생산 코드에서 닿는 것은 테스트 전용이 아니다.
+        #expect(!names.contains("prod"))
+        // 테스트 선언 자신은 당연히 테스트에서만 닿는다. 그것까지 보고하면
+        // 목록이 자명한 사실로 가득 찬다.
+        #expect(!names.contains("check"))
+        #expect(!names.contains("Spec"))
+        // 미사용 판정은 그대로다. 테스트가 쓰는 것은 죽은 코드가 아니다.
+        #expect(!report.unused.map(\.name).contains("testish"))
+    }
+
+    @Test("요청하지 않으면 테스트 전용을 계산하지 않는다")
+    func skipsTestOnlyAnalysisByDefault() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Spec", kind: .structType, module: "AppTests", attributes: [.testSuite])
+        builder.symbol("Helper", kind: .structType, module: "App")
+        builder.reference(from: "Spec", to: "Helper", kind: .call)
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        #expect(ReachabilityAnalyzer().analyze(graph: graph, snapshot: snapshot).testOnly.isEmpty)
+    }
+
+    @Test("테스트 타깃 안의 선언은 보고하지 않는다")
+    func ignoresDeclarationsInsideTestModules() {
+        // 실측에서 408건 중 318건이 테스트 타깃 내부의 도우미였다. 그것까지 보고하면
+        // 정작 알고 싶은 생산 코드가 묻힌다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Spec", kind: .structType, module: "AppTests", attributes: [.testSuite])
+        builder.symbol("Fixture", kind: .structType, module: "AppTests")
+        builder.symbol("Prod", kind: .structType, module: "App")
+        builder.reference(from: "Spec", to: "Fixture", kind: .call)
+        builder.reference(from: "Spec", to: "Prod", kind: .call)
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        let names = ReachabilityAnalyzer(options: .init(findsTestOnlyCode: true))
+            .analyze(graph: graph, snapshot: snapshot).testOnly.map(\.name)
+        #expect(names.contains("Prod"))
+        #expect(!names.contains("Fixture"))
+    }
+
 }

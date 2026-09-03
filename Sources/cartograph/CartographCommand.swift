@@ -129,10 +129,16 @@ struct DeadCommand: ParsableCommand {
     @Option(name: .customLong("explain"), help: "Explain why a declaration is retained, by name or USR.")
     var explain: String?
 
+    @Flag(
+        name: .customLong("report-test-only"),
+        help: "Also report declarations reached only from tests or previews."
+    )
+    var reportTestOnly: Bool = false
+
     func run() throws {
         let context = try CommandSupport.makeContext(options)
         let outcome = try explain.map { try context.service.explainRetention(of: $0) }
-            ?? context.service.detectUnusedCode()
+            ?? context.service.detectUnusedCode(reportingTestOnlyCode: reportTestOnly)
         try CommandSupport.emit(outcome, options: options, context: context)
     }
 }

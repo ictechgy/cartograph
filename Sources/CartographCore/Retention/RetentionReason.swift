@@ -44,6 +44,18 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     /// `// cartograph:ignore` 주석.
     case ignoreComment
 
+    /// 생산 코드가 아니라 테스트나 프리뷰가 살려 둔 뿌리인지 여부.
+    ///
+    /// 이 구분이 있어야 "생산 코드에서는 죽었고 테스트만 붙잡고 있는" 선언을
+    /// 따로 볼 수 있다. 그것은 죽은 코드가 아니지만, 테스트가 유일한 사용자라는
+    /// 사실 자체가 팀이 알아야 할 정보다.
+    public var isTestOrPreviewRoot: Bool {
+        switch self {
+        case .xcTest, .swiftTesting, .preview: true
+        default: false
+        }
+    }
+
     /// 리포트에 그대로 실을 수 있는 영문 설명.
     public var explanation: String {
         switch self {
