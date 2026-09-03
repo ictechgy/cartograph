@@ -39,6 +39,7 @@ What that buys you:
 | Circular dependencies | — | ✅ with the weakest link to cut |
 | Architecture metrics | — | ✅ Ca, Ce, instability, abstractness, distance |
 | Layering rules in CI | — | ✅ ArchUnit-style rules in YAML |
+| Who uses this symbol? | not answerable | `query` answers both directions as JSON |
 | Graph export | — | ✅ DOT, Mermaid, JSON, self-contained HTML |
 | SARIF for code scanning | — | ✅ |
 | `@objc` retained by default | ❌ opt-in | ✅ on by default |
@@ -199,6 +200,77 @@ $ cartograph dead --explain UserRepository
 Data.UserRepository is reachable:
   Presentation.HomeView → Domain.UserService → Data.UserRepository
 ```
+
+### `query` — ask about one declaration
+
+```bash
+cartograph query UserService
+cartograph query 's:3App11UserServiceC' --depth 2 --limit 20
+```
+
+Three questions about one symbol — who uses it, what it uses, and whether it is reachable from a
+retained root — answered as JSON on stdout. The other commands sweep the whole project and report
+findings; this one answers a question you already have.
+
+```console
+$ cartograph query UserService
+{
+  "level" : "symbol",
+  "requested" : "UserService",
+  "result" : {
+    "dependsOn" : [
+      { "edge" : "call", "kind" : "class", "qualifiedName" : "Data.UserRepository", ... }
+    ],
+    "limitations" : [
+      "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
+      "single-configuration: the index store knows only the configuration that was built, ..."
+    ],
+    "reachability" : {
+      "path" : [ "Presentation.HomeView", "Domain.UserService" ],
+      "state" : "reachable",
+      "suppressedByBaseline" : false
+    },
+    "truncated" : { "dependsOn" : false, "usedBy" : false },
+    "usedBy" : [
+      { "edge" : "call", "kind" : "struct", "qualifiedName" : "Presentation.HomeView", ... }
+    ]
+  },
+  "status" : "found"
+}
+```
+
+Four things this output does deliberately:
+
+- **It never says a declaration is safe to delete.** `state` is a fact about the graph —
+  `retained`, `retainedByMember`, `reachable`, `unreachable`. Whether that means deletable is a
+  judgement, and the retention reason is given as a value (`"reason": "interfaceBuilder"`) so the
+  caller can make it.
+- **Every answer carries what the analysis cannot see.** `limitations` counts the Objective-C
+  sources and Interface Builder documents actually present in *your* project, so a consumer that
+  never reads the README still learns why an `unreachable` verdict might be wrong.
+- **A baseline the team already accepted is marked as such** (`suppressedByBaseline`), so nobody
+  re-litigates a decision that was already made.
+- **A name matching several declarations returns the candidates, not a guess.** Ask again with one
+  of the USRs.
+
+```console
+$ cartograph query Client
+{
+  "candidates" : [
+    { "qualifiedName" : "Network.Client", "usr" : "s:7Network6ClientC" },
+    { "qualifiedName" : "Storage.Client", "usr" : "s:7Storage6ClientC" }
+  ],
+  "level" : "symbol",
+  "requested" : "Client",
+  "status" : "ambiguous"
+}
+```
+
+`--depth` follows more than one edge in each direction and `--limit` caps how many neighbours come
+back; `truncated` tells you when the cap bit. Reachability is always computed on the symbol-level
+graph regardless of `--level`, which is why `level` is in the response.
+
+An unknown name exits 64, so a typo in a script does not pass silently as "nothing uses it".
 
 ### `metrics` — architecture metrics
 

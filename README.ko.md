@@ -36,6 +36,7 @@ Cartograph를 한 문장으로 줄이면 *"의존성 그래프를 내놓는다"*
 | 순환 의존성 | — | ✅ 끊을 후보 간선까지 |
 | 아키텍처 지표 | — | ✅ Ca, Ce, 불안정도, 추상도, 주계열 거리 |
 | CI에서 레이어 규칙 강제 | — | ✅ YAML로 쓰는 ArchUnit 방식 규칙 |
+| 이 심볼을 누가 쓰나? | 답할 수 없음 | `query`가 양방향을 JSON으로 답함 |
 | 그래프 내보내기 | — | ✅ DOT, Mermaid, JSON, 단일 HTML |
 | SARIF (code scanning) | — | ✅ |
 | `@objc` 기본 보존 | ❌ 옵트인 | ✅ 기본 켜짐 |
@@ -195,6 +196,76 @@ $ cartograph dead --explain UserRepository
 Data.UserRepository is reachable:
   Presentation.HomeView → Domain.UserService → Data.UserRepository
 ```
+
+### `query` — 선언 하나에 대해 되묻기
+
+```bash
+cartograph query UserService
+cartograph query 's:3App11UserServiceC' --depth 2 --limit 20
+```
+
+심볼 하나에 대한 세 가지 질문 — 누가 쓰는가, 무엇을 쓰는가, 보존 루트에서 도달 가능한가 —
+을 표준 출력에 JSON으로 답한다. 다른 명령이 프로젝트 전체를 훑어 문제를 보고하는 것과 달리,
+이 명령은 이미 갖고 있는 질문에 답한다.
+
+```console
+$ cartograph query UserService
+{
+  "level" : "symbol",
+  "requested" : "UserService",
+  "result" : {
+    "dependsOn" : [
+      { "edge" : "call", "kind" : "class", "qualifiedName" : "Data.UserRepository", ... }
+    ],
+    "limitations" : [
+      "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
+      "single-configuration: the index store knows only the configuration that was built, ..."
+    ],
+    "reachability" : {
+      "path" : [ "Presentation.HomeView", "Domain.UserService" ],
+      "state" : "reachable",
+      "suppressedByBaseline" : false
+    },
+    "truncated" : { "dependsOn" : false, "usedBy" : false },
+    "usedBy" : [
+      { "edge" : "call", "kind" : "struct", "qualifiedName" : "Presentation.HomeView", ... }
+    ]
+  },
+  "status" : "found"
+}
+```
+
+이 출력이 일부러 지키는 네 가지가 있다.
+
+- **지워도 된다고 말하지 않는다.** `state`는 그래프에 대한 사실이다 — `retained`,
+  `retainedByMember`, `reachable`, `unreachable`. 그것이 삭제해도 된다는 뜻인지는 판단이고,
+  보존 근거는 값으로 준다(`"reason": "interfaceBuilder"`). 판단은 받는 쪽의 몫이다.
+- **모든 답에 이 분석이 보지 못한 채널을 싣는다.** `limitations`는 문서에 적힌 일반론이 아니라
+  당신의 프로젝트에 실제로 있는 Objective-C 소스와 Interface Builder 문서를 세어 알린다.
+  README를 읽지 않는 소비자도 `unreachable` 판정을 어디까지 믿을지 스스로 정할 수 있다.
+- **팀이 이미 받아들인 베이스라인은 그렇다고 표시한다**(`suppressedByBaseline`). 팀이 알고
+  남겨 둔 것을 다시 심사하지 않게 한다.
+- **이름이 여럿에 걸리면 하나를 고르지 않고 후보를 돌려준다.** USR로 다시 물으면 된다.
+
+```console
+$ cartograph query Client
+{
+  "candidates" : [
+    { "qualifiedName" : "Network.Client", "usr" : "s:7Network6ClientC" },
+    { "qualifiedName" : "Storage.Client", "usr" : "s:7Storage6ClientC" }
+  ],
+  "level" : "symbol",
+  "requested" : "Client",
+  "status" : "ambiguous"
+}
+```
+
+`--depth`는 각 방향으로 간선을 몇 개까지 따라갈지, `--limit`은 이웃을 몇 개까지 담을지 정한다.
+제한에 걸리면 `truncated`가 알려 준다. 도달성은 `--level` 설정과 무관하게 항상 심볼 레벨
+그래프에서 계산하며, 그래서 응답에 `level`이 들어 있다.
+
+없는 이름을 물으면 종료 코드 64로 끝난다. 스크립트의 오타가 "아무도 안 씀"으로 조용히
+넘어가지 않게 하기 위해서다.
 
 ### `metrics` — 아키텍처 지표
 

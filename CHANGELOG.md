@@ -7,6 +7,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `cartograph query <symbol>` answers three questions about one declaration as JSON: who uses it,
+  what it uses, and whether it is reachable from a retained root. Every other command sweeps the
+  project and reports findings; this one answers a question the caller already has, and reverse
+  reachability ("who uses this?") was not answerable at all before.
+
+  The output is deliberately not a verdict. `state` is a fact about the graph and the retention
+  reason ships as a value rather than as prose, so the caller decides what it means. Every response
+  carries `limitations` — counted from the Objective-C sources and Interface Builder documents
+  actually present in the project, not copied from the README — so a consumer that never reads the
+  documentation still learns why an `unreachable` answer might be wrong. A baseline the team already
+  accepted is marked `suppressedByBaseline` instead of being re-litigated, and a name matching
+  several declarations returns the candidates with their USRs instead of a guess.
+
+  `--depth` and `--limit` bound the answer in each direction, with `truncated` flags so a capped
+  answer is never mistaken for a complete one. Reachability is always computed on the symbol-level
+  graph regardless of `--level`, which is why the response states its own level.
+
 ## [0.3.0] - 2026-09-03
 
 ### Added
