@@ -51,6 +51,9 @@ let package = Package(
                 "CartographCore",
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftParser", package: "swift-syntax"),
+                // 이항 연산자를 접어야 `a = b` 와 `x == "y"` 가 InfixOperatorExpr 로 보인다.
+                // 접지 않으면 SequenceExpr 로 남아 대입과 비교를 구문으로 읽을 수 없다.
+                .product(name: "SwiftOperators", package: "swift-syntax"),
             ]
         ),
         .target(name: "CartographAnalysis", dependencies: ["CartographCore"]),
