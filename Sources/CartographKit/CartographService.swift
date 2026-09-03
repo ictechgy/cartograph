@@ -298,6 +298,209 @@ public struct CartographService: Sendable {
         return output
     }
 
+    /// 정점 하나에 대한 사실을 작게 답한다.
+    ///
+    /// 그래프 전체를 덤프하면 간선이 수만 개다. 사람도 에이전트도 그것을 읽지 못하고,
+    /// 읽는다 해도 "이 심볼을 누가 쓰는가"라는 질문에는 여전히 답이 없다. 역방향
+    /// 질의는 지금까지 이 도구 어디에도 없던 기능이다.
+    ///
+    /// 삭제해도 되는지는 답하지 않는다. 도달 불가라는 사실과, 그 판정이 보지 못한
+    /// 채널을 같이 준다. 판단은 부르는 쪽의 몫이다.
+    public func query(symbol subject: String, depth: Int = 1, limit: Int = 50) throws -> CommandOutcome {
+        let document = try queryDocument(symbol: subject, depth: depth, limit: limit)
+        let text = try Self.encodeQuery(document)
+        return CommandOutcome(output: text, subjectNotFound: document.status == "notFound")
+    }
+
+    /// `query` 가 내보낼 문서를 만든다. 인코딩과 종료 코드는 부르는 쪽이 정한다.
+    public func queryDocument(symbol subject: String, depth: Int = 1, limit: Int = 50) throws -> SymbolQueryDocument {
+        let context = try loadContext()
+        let (graph, report) = unusedCode(in: context)
+        // `unusedCode` 는 설정과 무관하게 항상 심볼 레벨로 만든다. 여기서 설정값을
+        // 실어 보내면 심볼 레벨 답을 모듈 레벨 답이라고 말하게 된다.
+        let level = GraphLevel.symbol.rawValue
+
+        switch NodeLookup.resolve(subject, in: graph) {
+        case .notFound:
+            return SymbolQueryDocument(status: "notFound", requested: subject, level: level)
+        case let .ambiguous(candidates):
+            return SymbolQueryDocument(
+                status: "ambiguous",
+                requested: subject,
+                level: level,
+                candidates: candidates.map {
+                    .init(qualifiedName: $0.qualifiedName, usr: $0.usr ?? $0.id.rawValue)
+                }
+            )
+        case let .found(node):
+            return SymbolQueryDocument(
+                status: "found",
+                requested: subject,
+                level: level,
+                result: try describeQuery(of: node, report: report, in: graph, depth: depth, limit: limit)
+            )
+        }
+    }
+
+    private func describeQuery(
+        of node: GraphNode,
+        report: UnusedCodeReport,
+        in graph: CodeGraph,
+        depth: Int,
+        limit: Int
+    ) throws -> SymbolQuery {
+        let baseline = try loadBaseline()
+        let suppressed = baseline.map { $0.filtering([Self.unusedDiagnostic(for: node)]).isEmpty } ?? false
+        let (usedBy, usedByTruncated) = Self.neighbors(
+            of: node.id, in: graph, depth: depth, limit: limit, incoming: true
+        )
+        let (dependsOn, dependsOnTruncated) = Self.neighbors(
+            of: node.id, in: graph, depth: depth, limit: limit, incoming: false
+        )
+        return SymbolQuery(
+            subject: Self.describe(node),
+            reachability: Self.describe(
+                report.explain(node.id, in: graph),
+                suppressedByBaseline: suppressed,
+                in: graph
+            ),
+            usedBy: usedBy,
+            dependsOn: dependsOn,
+            truncated: .init(usedBy: usedByTruncated, dependsOn: dependsOnTruncated),
+            limitations: analysisLimitations()
+        )
+    }
+
+    private static func encodeQuery(_ document: SymbolQueryDocument) throws -> String {
+        let encoder = JSONEncoder()
+        // 키 순서를 고정해야 두 실행의 출력을 diff 할 수 있다.
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let text = String(data: try encoder.encode(document), encoding: .utf8) else {
+            throw CartographError.outputUnwritable(path: "<stdout>", underlying: "query JSON is not UTF-8")
+        }
+        return text + "\n"
+    }
+
+    /// 이 분석이 보지 못하는 채널을 프로젝트에서 실제로 찾아 알린다.
+    ///
+    /// README 의 한계 목록을 문서에만 두면 소비자는 읽지 않는다. 특히 에이전트는
+    /// 읽지 않는다. 눈앞의 답에 실어야 그 답을 어디까지 믿을지 스스로 정할 수 있다.
+    func analysisLimitations() -> [String] {
+        var result: [String] = []
+        let objectiveC = environment.fileSystem.recursiveFiles(
+            under: projectPath,
+            isIncluded: { $0.hasSuffix(".m") || $0.hasSuffix(".mm") },
+            shouldDescend: { !Self.prunedDirectoryNames.contains(($0 as NSString).lastPathComponent) }
+        )
+        if !objectiveC.isEmpty {
+            result.append(
+                "objective-c-sources: \(objectiveC.count) file(s) are not analysed, "
+                    + "so a Swift declaration used only from Objective-C looks unreached"
+            )
+        }
+        let interfaceBuilder = environment.fileSystem.recursiveFiles(
+            under: projectPath,
+            isIncluded: { $0.hasSuffix(".xib") || $0.hasSuffix(".storyboard") },
+            shouldDescend: { !Self.prunedDirectoryNames.contains(($0 as NSString).lastPathComponent) }
+        )
+        if !interfaceBuilder.isEmpty {
+            result.append(
+                "interface-builder-documents: \(interfaceBuilder.count) document(s) are matched by "
+                    + "custom class name only, never connection by connection"
+            )
+        }
+        result.append(
+            "single-configuration: the index store knows only the configuration that was built, "
+                + "so declarations behind an uncompiled #if branch do not exist here"
+        )
+        return result
+    }
+
+    static let prunedDirectoryNames: Set<String> = [
+        ".build", ".git", "DerivedData", "Pods", "Carthage", "checkouts", ".swiftpm", "node_modules",
+    ]
+
+    private static func describe(_ node: GraphNode) -> SymbolQuery.Subject {
+        SymbolQuery.Subject(
+            name: node.name,
+            qualifiedName: node.qualifiedName,
+            kind: node.kind.rawValue,
+            module: node.module,
+            usr: node.usr,
+            accessibility: node.accessibility.rawValue,
+            location: node.location
+        )
+    }
+
+    private static func describe(
+        _ explanation: ReachabilityExplanation,
+        suppressedByBaseline: Bool,
+        in graph: CodeGraph
+    ) -> SymbolQuery.Reachability {
+        func names(_ path: [NodeID]) -> [String] {
+            path.map { graph.node($0)?.qualifiedName ?? $0.rawValue }
+        }
+        switch explanation {
+        case let .retained(reason):
+            return .init(state: "retained", reason: reason, path: nil, suppressedByBaseline: suppressedByBaseline)
+        case let .retainedByMember(inherited):
+            return .init(
+                state: "retainedByMember",
+                reason: inherited.reason,
+                path: names([inherited.member]),
+                suppressedByBaseline: suppressedByBaseline
+            )
+        case let .reachable(path):
+            return .init(state: "reachable", reason: nil, path: names(path), suppressedByBaseline: suppressedByBaseline)
+        case .unreachable:
+            return .init(state: "unreachable", reason: nil, path: nil, suppressedByBaseline: suppressedByBaseline)
+        case .unknown:
+            return .init(state: "unknown", reason: nil, path: nil, suppressedByBaseline: suppressedByBaseline)
+        }
+    }
+
+    /// 사용 의미가 있는 간선만 따라 이웃을 모은다.
+    ///
+    /// 깊이와 개수를 모두 제한한다. 전이 의존자 수천 개는 결국 또 하나의 덤프이고,
+    /// 이 명령이 존재하는 이유가 덤프를 만들지 않는 것이다.
+    private static func neighbors(
+        of start: NodeID,
+        in graph: CodeGraph,
+        depth: Int,
+        limit: Int,
+        incoming: Bool
+    ) -> ([SymbolQuery.Neighbor], Bool) {
+        var collected: [SymbolQuery.Neighbor] = []
+        var visited: Set<NodeID> = [start]
+        var frontier: [NodeID] = [start]
+        var truncated = false
+
+        for _ in 0..<max(1, depth) {
+            var next: [NodeID] = []
+            for current in frontier {
+                let edges = incoming ? graph.incomingEdges(to: current) : graph.outgoingEdges(from: current)
+                for edge in edges.sorted(by: { $0.source < $1.source || ($0.source == $1.source && $0.target < $1.target) })
+                where edge.kind.impliesUsage {
+                    let other = incoming ? edge.source : edge.target
+                    guard visited.insert(other).inserted, let node = graph.node(other) else { continue }
+                    guard collected.count < limit else { truncated = true; continue }
+                    collected.append(SymbolQuery.Neighbor(
+                        name: node.name,
+                        qualifiedName: node.qualifiedName,
+                        kind: node.kind.rawValue,
+                        usr: node.usr,
+                        edge: edge.kind.rawValue,
+                        location: node.location
+                    ))
+                    next.append(other)
+                }
+            }
+            frontier = next
+            if frontier.isEmpty { break }
+        }
+        return (collected, truncated)
+    }
+
     public func measureMetrics(level: GraphLevel? = nil) throws -> CommandOutcome {
         let (graph, metrics, tolerance) = metrics(in: try loadContext(), level: level)
         let diagnostics = AnalysisDiagnostics.diagnostics(for: metrics, thresholds: configuration.thresholds)
