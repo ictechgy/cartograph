@@ -390,7 +390,7 @@ public struct CartographService: Sendable {
         let objectiveC = environment.fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { $0.hasSuffix(".m") || $0.hasSuffix(".mm") },
-            shouldDescend: { !Self.prunedDirectoryNames.contains(($0 as NSString).lastPathComponent) }
+            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
         )
         if !objectiveC.isEmpty {
             result.append(
@@ -401,7 +401,7 @@ public struct CartographService: Sendable {
         let interfaceBuilder = environment.fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { $0.hasSuffix(".xib") || $0.hasSuffix(".storyboard") },
-            shouldDescend: { !Self.prunedDirectoryNames.contains(($0 as NSString).lastPathComponent) }
+            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
         )
         if !interfaceBuilder.isEmpty {
             result.append(
@@ -415,10 +415,6 @@ public struct CartographService: Sendable {
         )
         return result
     }
-
-    static let prunedDirectoryNames: Set<String> = [
-        ".build", ".git", "DerivedData", "Pods", "Carthage", "checkouts", ".swiftpm", "node_modules",
-    ]
 
     private static func describe(_ node: GraphNode) -> SymbolQuery.Subject {
         SymbolQuery.Subject(
@@ -463,6 +459,11 @@ public struct CartographService: Sendable {
     ///
     /// 깊이와 개수를 모두 제한한다. 전이 의존자 수천 개는 결국 또 하나의 덤프이고,
     /// 이 명령이 존재하는 이유가 덤프를 만들지 않는 것이다.
+    private static func isOrderedBefore(_ lhs: GraphEdge, _ rhs: GraphEdge) -> Bool {
+        (lhs.source.rawValue, lhs.target.rawValue, lhs.kind.rawValue)
+            < (rhs.source.rawValue, rhs.target.rawValue, rhs.kind.rawValue)
+    }
+
     private static func neighbors(
         of start: NodeID,
         in graph: CodeGraph,
@@ -479,8 +480,10 @@ public struct CartographService: Sendable {
             var next: [NodeID] = []
             for current in frontier {
                 let edges = incoming ? graph.incomingEdges(to: current) : graph.outgoingEdges(from: current)
-                for edge in edges.sorted(by: { $0.source < $1.source || ($0.source == $1.source && $0.target < $1.target) })
-                where edge.kind.impliesUsage {
+                // 같은 두 정점 사이에 종류가 다른 간선이 여럿 있을 수 있다. 정렬 키에
+                // 종류가 없으면 둘의 순서가 갈리고, 먼저 만난 쪽만 담기므로 실행마다
+                // 다른 `edge` 값이 나온다. 출력을 diff 할 수 있어야 한다.
+                for edge in edges.sorted(by: Self.isOrderedBefore) where edge.kind.impliesUsage {
                     let other = incoming ? edge.source : edge.target
                     guard visited.insert(other).inserted, let node = graph.node(other) else { continue }
                     guard collected.count < limit else { truncated = true; continue }

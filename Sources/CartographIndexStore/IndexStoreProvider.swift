@@ -67,7 +67,7 @@ public struct IndexStoreProvider: IndexProviding {
             let files = fileSystem.recursiveFiles(
                 under: root,
                 isIncluded: { $0.hasSuffix(".swift") && configuration.pathFilter.allows($0) },
-                shouldDescend: { !Self.prunedDirectoryNames.contains(($0 as NSString).lastPathComponent) }
+                shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
             )
             for file in files where seen.insert(file).inserted {
                 result.append(file)
@@ -75,11 +75,6 @@ public struct IndexStoreProvider: IndexProviding {
         }
         return result.sorted()
     }
-
-    /// 들어가 봐야 소용없는 디렉터리 이름.
-    static let prunedDirectoryNames: Set<String> = [
-        ".build", ".git", "DerivedData", "Pods", "Carthage", "checkouts", ".swiftpm",
-    ]
 
     /// 발생 목록을 스냅샷으로 접는다.
     ///

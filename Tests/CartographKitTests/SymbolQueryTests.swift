@@ -170,6 +170,29 @@ struct SymbolQueryTests {
         #expect(!result.limitations.contains { $0.hasPrefix("objective-c-sources:") })
     }
 
+    @Test("같은 두 정점 사이에 간선이 여럿이면 종류까지 정렬해 하나를 고른다")
+    func picksTheSameEdgeEveryRun() throws {
+        // 정렬 키에 종류가 없으면 두 간선의 순서가 갈리고, 먼저 만난 쪽만 담기므로
+        // 실행마다 다른 edge 값이 나온다. 출력을 diff 할 수 있어야 한다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Caller", kind: .structType, module: "App", path: "/p/Caller.swift", attributes: [.entryPoint])
+        builder.symbol("Callee", kind: .classType, module: "App", path: "/p/Callee.swift")
+        builder.reference(from: "Caller", to: "Callee", kind: .reference)
+        builder.reference(from: "Caller", to: "Callee", kind: .call)
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        let service = CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(
+                fileSystem: InMemoryFileSystem(),
+                indexProviderOverride: StaticIndexProvider(builder.build())
+            )
+        )
+
+        let result = try #require(try service.queryDocument(symbol: "Caller").result)
+        #expect(result.dependsOn.map(\.edge) == ["call"])
+    }
+
     @Test("출력 JSON 은 키 순서가 고정되어 diff 할 수 있다")
     func encodesDeterministically() throws {
         let service = makeService()
