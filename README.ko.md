@@ -169,6 +169,20 @@ cartograph dead --explain UserRepository
 미사용 코드를 *참조 0건*이 아니라 *보존 루트에서 도달할 수 없음*으로 정의합니다. 서로만 참조하는
 선언 덩어리는 참조가 많지만 여전히 죽은 코드입니다.
 
+`--report-test-only`는 다른 질문에 답합니다. 테스트나 프리뷰**에서만** 도달하는 생산 선언이
+무엇인가입니다. 죽은 코드가 아닙니다. 지우면 테스트가 깨집니다. 다만 테스트가 유일한
+호출자라는 사실은 팀이 알아야 합니다. `info`로 보고하므로 빌드를 실패시키지 않습니다.
+
+```console
+$ cartograph dead --report-test-only
+Sources/Models/Policy.swift:31:9: info: property 'App.isDenied' is reached only from tests or previews
+```
+
+테스트 타깃 안의 선언은 제외합니다. *테스트* 선언이 들어 있는 모듈은 테스트 타깃이고, 그
+안의 도우미는 이 질문의 답이 아니기 때문입니다. 프리뷰는 이 판정에 넣지 않습니다. `#Preview`
+는 미리 보는 뷰와 같은 생산 모듈에 살기 때문에, 그것을 표식으로 삼으면 앱 모듈 전체가
+분석에서 빠집니다.
+
 `--explain`은 Periphery가 답하지 못하던 질문에 답합니다.
 
 ```console

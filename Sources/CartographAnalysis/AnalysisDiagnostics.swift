@@ -13,6 +13,7 @@ public enum AnalysisDiagnostics {
         public static let instability = "instability"
         public static let mainSequenceDistance = "main-sequence-distance"
         public static let metricThreshold = "metric-threshold"
+        public static let testOnlySymbol = "test-only-symbol"
     }
 
     /// 순환 의존성 → 진단.
@@ -54,6 +55,22 @@ public enum AnalysisDiagnostics {
                 ruleIdentifier: Rule.unusedSymbol,
                 severity: severity,
                 message: "\(node.kind.rawValue) '\(node.qualifiedName)' is never used",
+                location: node.location,
+                subject: node.usr ?? node.id.rawValue
+            )
+        }
+    }
+
+    /// 테스트·프리뷰만 붙잡고 있는 선언 → 진단.
+    ///
+    /// 죽은 코드가 아니므로 경고가 아니라 정보다. 지워도 앱은 그대로지만 테스트가
+    /// 깨진다는 사실을 알려 주는 것이 목적이다.
+    public static func testOnlyDiagnostics(for report: UnusedCodeReport) -> [Diagnostic] {
+        report.testOnly.map { node in
+            Diagnostic(
+                ruleIdentifier: Rule.testOnlySymbol,
+                severity: .info,
+                message: "\(node.kind.rawValue) '\(node.qualifiedName)' is reached only from tests or previews",
                 location: node.location,
                 subject: node.usr ?? node.id.rawValue
             )

@@ -351,4 +351,111 @@ struct ExtensionOwnershipTests {
         let retained = RetentionPolicy().retainedNodes(in: graph, snapshot: snapshot)
         #expect(retained["ext.active"] == .rawRepresentableEnumCase)
     }
+    @Test("테스트만 붙잡고 있는 생산 코드를 따로 알린다")
+    func separatesTestOnlyReachability() {
+        // 죽은 코드는 아니지만 테스트가 유일한 사용자라는 사실은 팀이 알아야 한다.
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, module: "App", attributes: [.entryPoint])
+        builder.symbol("Calc", kind: .structType, module: "App")
+        builder.symbol("Calc.prod", name: "prod", kind: .method, module: "App", parent: "Calc")
+        builder.symbol("Calc.testish", name: "testish", kind: .method, module: "App", parent: "Calc")
+        builder.symbol("Spec", kind: .structType, module: "AppTests", attributes: [.testSuite])
+        builder.symbol(
+            "Spec.check", name: "check", kind: .method, module: "AppTests",
+            parent: "Spec", attributes: [.testFunction]
+        )
+        builder.reference(from: "App", to: "Calc.prod", kind: .call)
+        builder.reference(from: "Spec.check", to: "Calc.testish", kind: .call)
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        let report = ReachabilityAnalyzer(options: .init(findsTestOnlyCode: true))
+            .analyze(graph: graph, snapshot: snapshot)
+        let names = report.testOnly.map(\.name)
+        #expect(names.contains("testish"))
+        // 생산 코드에서 닿는 것은 테스트 전용이 아니다.
+        #expect(!names.contains("prod"))
+        // 테스트 선언 자신은 당연히 테스트에서만 닿는다. 그것까지 보고하면
+        // 목록이 자명한 사실로 가득 찬다.
+        #expect(!names.contains("check"))
+        #expect(!names.contains("Spec"))
+        // 미사용 판정은 그대로다. 테스트가 쓰는 것은 죽은 코드가 아니다.
+        #expect(!report.unused.map(\.name).contains("testish"))
+    }
+
+    @Test("요청하지 않으면 테스트 전용을 계산하지 않는다")
+    func skipsTestOnlyAnalysisByDefault() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Spec", kind: .structType, module: "AppTests", attributes: [.testSuite])
+        builder.symbol("Helper", kind: .structType, module: "App")
+        builder.reference(from: "Spec", to: "Helper", kind: .call)
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        #expect(ReachabilityAnalyzer().analyze(graph: graph, snapshot: snapshot).testOnly.isEmpty)
+    }
+
+    @Test("생산 모듈의 프리뷰가 그 모듈을 통째로 떨어뜨리지 않는다")
+    func previewsDoNotMarkTheirModuleAsATestTarget() {
+        // `#Preview` 와 `PreviewProvider` 는 정의상 생산 모듈 안에, 미리 보는 뷰와
+        // 같은 파일에 산다. 프리뷰를 근거로 모듈을 테스트 타깃으로 보면 프리뷰
+        // 하나가 앱 모듈 전체를 분석에서 떨어뜨려, 이 기능이 겨냥하는 바로 그
+        // 프로젝트가 조용히 빈 결과를 받는다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Preview", kind: .structType, module: "App", attributes: [.preview])
+        builder.symbol("View", kind: .structType, module: "App")
+        builder.symbol("TestedOnly", kind: .structType, module: "App")
+        builder.symbol("Spec", kind: .structType, module: "AppTests", attributes: [.testSuite])
+        builder.reference(from: "Preview", to: "View", kind: .call)
+        builder.reference(from: "Spec", to: "TestedOnly", kind: .call)
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        let names = ReachabilityAnalyzer(options: .init(findsTestOnlyCode: true))
+            .analyze(graph: graph, snapshot: snapshot).testOnly.map(\.name)
+        #expect(names.contains("TestedOnly"))
+        // 프리뷰만 붙잡고 있는 뷰도 같은 범주다.
+        #expect(names.contains("View"))
+        // 프리뷰 선언 자신은 보고하지 않는다.
+        #expect(!names.contains("Preview"))
+    }
+
+    @Test("합성 선언은 후보로 새어 들어오지 않는다")
+    func doesNotReportCompilerSynthesizedDeclarations() {
+        // 합성 선언을 생산 씨앗에서 뺐기 때문에 후보로 들어올 수 있다.
+        // 사용자가 손댈 수 있는 것이 아니므로 알려 줄 이유가 없다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Spec", kind: .structType, module: "AppTests", attributes: [.testSuite])
+        builder.symbol("Synthesized", kind: .structType, module: "App", attributes: [.implicit])
+        builder.symbol("Real", kind: .structType, module: "App")
+        builder.reference(from: "Spec", to: "Synthesized", kind: .call)
+        builder.reference(from: "Spec", to: "Real", kind: .call)
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        let names = ReachabilityAnalyzer(options: .init(findsTestOnlyCode: true))
+            .analyze(graph: graph, snapshot: snapshot).testOnly.map(\.name)
+        #expect(names.contains("Real"))
+        #expect(!names.contains("Synthesized"))
+    }
+
+    @Test("테스트 타깃 안의 선언은 보고하지 않는다")
+    func ignoresDeclarationsInsideTestModules() {
+        // 실측에서 408건 중 318건이 테스트 타깃 내부의 도우미였다. 그것까지 보고하면
+        // 정작 알고 싶은 생산 코드가 묻힌다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Spec", kind: .structType, module: "AppTests", attributes: [.testSuite])
+        builder.symbol("Fixture", kind: .structType, module: "AppTests")
+        builder.symbol("Prod", kind: .structType, module: "App")
+        builder.reference(from: "Spec", to: "Fixture", kind: .call)
+        builder.reference(from: "Spec", to: "Prod", kind: .call)
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        let names = ReachabilityAnalyzer(options: .init(findsTestOnlyCode: true))
+            .analyze(graph: graph, snapshot: snapshot).testOnly.map(\.name)
+        #expect(names.contains("Prod"))
+        #expect(!names.contains("Fixture"))
+    }
+
 }
