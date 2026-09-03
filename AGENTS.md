@@ -11,6 +11,14 @@
 디렉터리별 세부 규칙은 각 디렉터리의 AGENTS.md를 따릅니다.
 - [Sources/AGENTS.md](Sources/AGENTS.md) — 모듈 경계와 계층 규칙
 - [Tests/AGENTS.md](Tests/AGENTS.md) — 테스트 작성 규칙
+- [Fixtures/AGENTS.md](Fixtures/AGENTS.md) — 오탐 코퍼스 규칙
+- [Skills/AGENTS.md](Skills/AGENTS.md) — 에이전트 스킬 문서 규칙
+
+**지금 어디까지 왔고 다음이 무엇인지는 [HANDOFF.md](HANDOFF.md)에 있습니다.** 세션을 이어받을 때 먼저 읽으세요.
+
+자매 프로젝트가 바탕화면에 있습니다: [kartograph](../kartograph)(Kotlin/Android) ·
+[dartograph](../dartograph)(Dart/Flutter) · [isthmus](../isthmus)(언어 경계 조인).
+이들의 `query` 출력 스키마와 스킬 문장은 이 저장소와 같아야 합니다. 여기서 바꾸면 그쪽에도 알리세요.
 
 ---
 
@@ -30,12 +38,19 @@ swift test                      # 전체 테스트
 swift test --filter <타깃명>     # 특정 타깃만
 Scripts/coverage.sh             # 테스트 + 커버리지 게이트(기준 90%)
 Scripts/coverage.sh --report    # 파일별 커버리지
+Scripts/verify-cli-contract.sh  # 빌드된 바이너리로 종료 코드 계약 검증
+Scripts/verify-fixtures.sh      # 오탐 코퍼스를 진짜 인덱스로 양방향 검증
+
+swift run cartograph query <이름>   # 심볼 하나: 누가 쓰나·무엇을 쓰나·도달 가능한가 (JSON)
+swift run cartograph skill         # 에이전트 스킬을 프로젝트에 설치
 ```
 
-작업을 끝냈다고 말하기 전에 반드시 두 가지를 통과시키세요.
+작업을 끝냈다고 말하기 전에 반드시 네 가지를 통과시키세요.
 
 ```bash
 Scripts/coverage.sh
+Scripts/verify-cli-contract.sh
+Scripts/verify-fixtures.sh
 swift build \
   && swift run cartograph dead   --strict \
   && swift run cartograph cycles --strict \
@@ -67,8 +82,46 @@ swift build \
   확신이 없으면 살리는 쪽을 고르고, 왜 살렸는지 `RetentionReason`으로 남기세요.
 - **커버리지 숫자를 올리려고 아무것도 검증하지 않는 테스트를 쓰지 마세요.** CLI 껍데기와
   인덱스 스토어 입출력은 의도적으로 자기 분석 단계에 맡겨 두었습니다.
+- **가지치기 목록을 두 벌 만들지 마세요.** 빌드 산출물 디렉터리 이름은 `BuildArtifactDirectories`
+  하나뿐입니다. 실제로 두 벌이 있었고 한쪽에만 `node_modules`가 있었습니다.
+
+## 에이전트가 소비하는 출력
+
+`query`·`skill`과 JSON 리포트는 사람이 아니라 코딩 에이전트가 읽는다고 전제합니다.
+에이전트는 판정을 곧바로 편집으로 옮기고, 산문보다 데이터를 믿습니다. 그래서 규칙이 다릅니다.
+
+- **삭제 판정을 내지 마세요.** `deletable: true` 같은 필드는 영원히 없습니다. `state`는 그래프
+  사실(`retained`·`retainedByMember`·`reachable`·`unreachable`)이고 `reason`은 값입니다.
+  CLI 산문이 "지워도 된다"가 아니라 "보존 루트에서 도달할 수 없다"고 말하듯, JSON도 그보다
+  확신하면 안 됩니다.
+- **분석 한계를 모든 응답에 싣습니다.** `limitations`는 README를 복사하는 것이 아니라 **그 프로젝트에서
+  실제로 세어서** 만듭니다(Objective-C 소스 수, IB 문서 수, 인덱스보다 새 소스 수, 설정 필터).
+  알릴 것이 없으면 조용해야 합니다. 매번 붙는 경보는 읽히지 않습니다. `notFound`에도 싣습니다 —
+  없는 것과 이 도구가 못 보는 것을 소비자가 구분해야 합니다.
+- **베이스라인이 억제한 판정은 그렇다고 표시합니다.** 단, 실제로 보고되었을 정점에만.
+  도달 가능한 정점에 억제 표시가 붙으면 "도달 가능한데 팀이 억제했다"는 모순이 나갑니다.
+- **이웃에 닿는 간선은 전부 줍니다**(`edges: ["call", "overrides"]`). 하나만 고르면 나머지 관계가
+  사라지고, 무엇을 고를지가 정렬 타이에 따라 실행마다 달라집니다.
+- **담는 관계는 쓰는 관계가 아닙니다.** `members`·`declaredIn`은 `dependsOn`에 섞지 않습니다.
+  그렇다고 빼면 클래스의 `dependsOn`이 비어 나오고 그것은 "아무것도 의존하지 않는다"로 읽힙니다.
+- **잘렸으면 잘렸다고**(`truncated`), **몇 걸음인지**(`depth`), **어느 레벨인지**(`level`) 씁니다.
+  도달성 분석은 설정과 무관하게 항상 심볼 레벨입니다.
+- **값이 없는 선택 필드는 키가 빠집니다.** 이것은 문서화된 계약입니다(README `query` 절).
+- **스킬 문서는 규칙을 통과한 뒤 무엇을 할지까지 말합니다.** 금지만 적으면 체크리스트가
+  "통과하면 진행"으로 무너져, 확인 절차가 면책 증명서가 됩니다. 자세한 것은 [Skills/AGENTS.md](Skills/AGENTS.md).
 
 ## 자주 틀리는 지점
+
+**`unusedCode(in:)`는 설정과 무관하게 항상 심볼 레벨 그래프를 만듭니다.** 응답에 `configuration.level`을
+실어 보내면 심볼 레벨 답에 `module`이라고 적힙니다. 실제로 그랬고 회귀 테스트가 있습니다.
+
+**인덱스 스토어 루트의 수정 시각은 믿을 수 없습니다.** `.build/out`처럼 스토어를 품은 상위 디렉터리는
+처음 만들어진 날짜 그대로이고 레코드는 `v5/units`에 쌓입니다. 루트만 보면 모든 소스가 낡았다고
+나옵니다(실제로 71/71). 신선도는 `indexStoreDate()`처럼 `v5/units`까지 봅니다.
+
+**`retain_public`의 기본값은 꺼짐입니다.** 라이브러리에서는 저장소 안에 호출자가 없는 공개 API 전체가
+`unreachable`로 나옵니다. 이것을 모르는 소비자(특히 에이전트)에게는 가장 위험한 사실이라 스킬이
+규칙 2로 말합니다. 기본값을 바꾸지 말고, 바꾼다면 스킬과 README를 같이 고치세요.
 
 **인덱스 심볼 이름에는 인자 목록이 붙습니다.** `main()`, `describe(_:)`, `buildBlock(_:)`처럼요.
 이름으로 규칙을 걸 때는 `GraphNode.baseName`을 쓰세요.
