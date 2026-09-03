@@ -181,8 +181,10 @@ $ cartograph dead --report-test-only
 Sources/Models/Policy.swift:31:9: info: property 'App.isDenied' is reached only from tests or previews
 ```
 
-Declarations inside test targets are excluded: a module that contains test declarations is a test
-target, so its own helpers are not the answer to this question.
+Declarations inside test targets are excluded: a module that contains *test* declarations is a test
+target, so its own helpers are not the answer to this question. Previews do not count for that
+judgement — a `#Preview` lives in the production module beside the view it previews, so treating it
+as a marker would drop the whole app module from the analysis.
 
 `--explain` answers the question Periphery could not:
 

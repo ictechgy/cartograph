@@ -56,6 +56,19 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    /// 테스트 타깃에만 존재할 수 있는 뿌리인지 여부.
+    ///
+    /// 프리뷰는 여기 들어가지 않는다. `#Preview` 와 `PreviewProvider` 는 정의상
+    /// 생산 모듈 안에, 그것이 미리 보는 뷰와 같은 파일에 산다. 프리뷰를 근거로
+    /// 모듈을 테스트 타깃으로 판정하면 프리뷰 하나가 앱 모듈 전체를 분석에서
+    /// 떨어뜨린다. 이 기능이 겨냥하는 바로 그 프로젝트가 조용히 빈 결과를 받는다.
+    public var isTestTargetRoot: Bool {
+        switch self {
+        case .xcTest, .swiftTesting: true
+        default: false
+        }
+    }
+
     /// 리포트에 그대로 실을 수 있는 영문 설명.
     public var explanation: String {
         switch self {

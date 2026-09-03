@@ -198,7 +198,7 @@ public struct ReachabilityAnalyzer: Sendable {
         // 타깃 내부의 도우미로 채워져, 정작 알고 싶은 것 — 테스트만 붙잡고 있는
         // *생산* 코드 — 이 묻힌다. 실측에서 408건 중 318건이 그런 잡음이었다.
         var testModules: Set<String> = []
-        for (node, reason) in retentions where reason.isTestOrPreviewRoot {
+        for (node, reason) in retentions where reason.isTestTargetRoot {
             if let module = graph.node(node)?.module { testModules.insert(module) }
         }
 
@@ -207,6 +207,10 @@ public struct ReachabilityAnalyzer: Sendable {
             reachable.contains($0.id)
                 && !production.contains($0.id)
                 && !($0.module.map(testModules.contains) ?? false)
+                // 합성 선언은 사용자가 손댈 수 있는 것이 아니다. 생산 씨앗에서
+                // 뺐기 때문에 후보로 새어 들어올 수 있어 여기서도 막는다.
+                && retentions[$0.id] != .compilerSynthesized
+                && !$0.attributes.contains(.implicit)
                 && !isTestInfrastructure($0.id, retentions: retentions, graph: graph)
         }
         return filterReportable(candidates, unreachableIDs: Set(candidates.map(\.id)), graph: graph)

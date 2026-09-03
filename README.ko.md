@@ -178,8 +178,10 @@ $ cartograph dead --report-test-only
 Sources/Models/Policy.swift:31:9: info: property 'App.isDenied' is reached only from tests or previews
 ```
 
-테스트 타깃 안의 선언은 제외합니다. 테스트 선언이 들어 있는 모듈은 테스트 타깃이고, 그
-안의 도우미는 이 질문의 답이 아니기 때문입니다.
+테스트 타깃 안의 선언은 제외합니다. *테스트* 선언이 들어 있는 모듈은 테스트 타깃이고, 그
+안의 도우미는 이 질문의 답이 아니기 때문입니다. 프리뷰는 이 판정에 넣지 않습니다. `#Preview`
+는 미리 보는 뷰와 같은 생산 모듈에 살기 때문에, 그것을 표식으로 삼으면 앱 모듈 전체가
+분석에서 빠집니다.
 
 `--explain`은 Periphery가 답하지 못하던 질문에 답합니다.
 
