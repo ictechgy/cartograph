@@ -286,6 +286,23 @@ $ cartograph query Client
 없는 이름을 물으면 종료 코드 64로 끝난다. 스크립트의 오타가 "아무도 안 씀"으로 조용히
 넘어가지 않게 하기 위해서다.
 
+### `skill` — 코딩 에이전트에게 이 도구 쓰는 법 설치하기
+
+```bash
+cartograph skill
+```
+
+프로젝트에 `.claude/skills/cartograph/SKILL.md`를 쓴다. 먼저 읽어 보고 싶으면 저장소의
+[`Skills/cartograph/SKILL.md`](Skills/cartograph/SKILL.md)에 같은 파일이 있다. 둘이 갈라지면
+테스트가 실패하므로, 사람이 검토한 것과 에이전트가 실제로 받는 것이 다를 수 없다.
+`--project ~`로 설치하면 한 프로젝트가 아니라 전체에 적용된다.
+
+이 문서의 대부분은 어떤 명령을 실행하라는 내용이 아니다. 에이전트는 판정을 망설임 없이
+편집으로 옮기기 때문에, 답이 **증명하지 않는 것**에 분량을 쓴다. `unreachable`은 그래프에 대한
+사실이지 삭제 허가가 아니라는 것, `limitations`를 같은 호흡에 읽어야 한다는 것,
+`suppressedByBaseline`은 팀이 이미 내린 결정이라는 것, 그리고 `graph --format json`을 통째로
+컨텍스트에 밀어 넣어 봐야 `query`로 답할 수 없는 질문에 답하지 못한다는 것.
+
 ### `metrics` — 아키텍처 지표
 
 ```bash

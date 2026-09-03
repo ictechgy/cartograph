@@ -9,6 +9,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cartograph skill` installs `.claude/skills/cartograph/SKILL.md`, teaching a coding agent to ask
+  this tool about a symbol instead of grepping for it. The same file is committed under `Skills/`
+  and a test fails if the two drift, so the version a human reviews is the version an agent
+  receives.
+
+  Most of the skill is about what an answer does not prove. An agent turns a verdict into an edit
+  without pausing, so a file that only taught the commands would make wrong deletions faster: it
+  says that `unreachable` is a fact about the graph rather than permission to delete, that
+  `limitations` must be read in the same breath, that `suppressedByBaseline` means the team already
+  decided, and that loading the whole graph answers nothing `query` could not.
+
 - `cartograph query <symbol>` answers three questions about one declaration as JSON: who uses it,
   what it uses, and whether it is reachable from a retained root. Every other command sweeps the
   project and reports findings; this one answers a question the caller already has, and reverse

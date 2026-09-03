@@ -37,6 +37,7 @@ struct CartographCommand: ParsableCommand {
             RulesCommand.self,
             BaselineCommand.self,
             InitCommand.self,
+            SkillCommand.self,
         ]
         // 기본 하위 명령을 두지 않는다. 인자 없이 실행한 사용자가 원하는 것은
         // DOT 덤프가 아니라 "이 도구로 무엇을 할 수 있는지"이다.
@@ -262,6 +263,45 @@ struct BaselineCommand: ParsableCommand {
 }
 
 /// 설정 파일 템플릿을 만든다.
+/// 코딩 에이전트에게 이 도구 쓰는 법을 설치한다.
+struct SkillCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "skill",
+        abstract: "Install the agent skill that teaches a coding agent to use this tool.",
+        discussion: """
+            Writes \(AgentSkillTemplate.directory)/\(AgentSkillTemplate.fileName) into the \
+            project. A coding agent that reads it will run `cartograph query` before deleting a \
+            declaration, and — more importantly — will know what the answer does not prove.
+
+            An agent turns a verdict into an edit without pausing, so the skill spends most of its \
+            length on what must not be inferred from an `unreachable` result.
+            """
+    )
+
+    @Option(name: [.customShort("p"), .customLong("project")], help: "Project root.")
+    var projectPath: String?
+
+    @Flag(help: "Overwrite an existing skill file.")
+    var force: Bool = false
+
+    func run() throws {
+        let fileSystem = LocalFileSystem()
+        let root = projectPath ?? fileSystem.currentDirectoryPath
+        let directory = (root as NSString).appendingPathComponent(AgentSkillTemplate.directory)
+        let path = (directory as NSString).appendingPathComponent(AgentSkillTemplate.fileName)
+
+        guard force || !fileSystem.fileExists(at: path) else {
+            throw ValidationError("\(path) already exists. Pass --force to overwrite it.")
+        }
+        do {
+            try fileSystem.write(text: AgentSkillTemplate.markdown + "\n", to: path)
+        } catch {
+            throw CartographError.outputUnwritable(path: path, underlying: "\(error)")
+        }
+        print("Wrote \(path)")
+    }
+}
+
 struct InitCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "init",
