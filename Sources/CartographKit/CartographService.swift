@@ -189,6 +189,100 @@ public struct CartographService: Sendable {
         )
     }
 
+    /// 특정 정점이 어느 순환에 속하는지 사람이 읽는 문장으로 설명한다.
+    ///
+    /// "스무 개가 서로 얽혀 있다"는 보고는 정확하지만 손댈 곳을 알려 주지 않는다.
+    /// 하나의 정점을 물었을 때 그것이 낀 구체적인 순환과 끊을 후보를 보여 주어야
+    /// 실제로 행동할 수 있다.
+    public func explainCycles(of subject: String, level: GraphLevel? = nil) throws -> CommandOutcome {
+        let (graph, found) = cycles(in: try loadContext(), level: level)
+        let lookup = NodeLookup.resolve(subject, in: graph)
+        switch lookup {
+        case .notFound:
+            return CommandOutcome(output: "No node matches '\(subject)'.\n", subjectNotFound: true)
+        case let .ambiguous(candidates):
+            return CommandOutcome(output: Self.describeAmbiguity(subject, candidates: candidates))
+        case let .found(node):
+            // 참여 판정은 강한 연결 요소로 한다. 대표 경로에만 있는지를 보면,
+            // 같은 묶음에 있으면서 대표 경로에 뽑히지 않은 정점에 "순환에 없다"고
+            // 거짓말을 하게 된다. 설명이 틀리는 것은 보고가 틀리는 것보다 나쁘다.
+            // 사용자가 그 설명을 믿고 코드를 건드리기 때문이다.
+            let involved = found.filter { $0.component.contains(node.id) }
+            guard !involved.isEmpty else {
+                return CommandOutcome(output: "\(node.qualifiedName) is not part of any cycle.\n")
+            }
+            let lines = involved.map { Self.describeCycle($0, for: node.id, in: graph) }
+            return CommandOutcome(
+                output: "\(node.qualifiedName) is part of \(involved.count) cycle(s):\n"
+                    + lines.joined(separator: "\n") + "\n",
+                findingCount: involved.count
+            )
+        }
+    }
+
+    /// 특정 정점이 왜 그 레이어에 속하는지, 어떤 규칙이 걸리는지 설명한다.
+    public func explainRules(of subject: String, level: GraphLevel? = nil) throws -> CommandOutcome {
+        let context = try loadContext()
+        let graph = context.buildGraph(level: level ?? configuration.level).graph
+        let lookup = NodeLookup.resolve(subject, in: graph)
+        switch lookup {
+        case .notFound:
+            return CommandOutcome(output: "No node matches '\(subject)'.\n", subjectNotFound: true)
+        case let .ambiguous(candidates):
+            return CommandOutcome(output: Self.describeAmbiguity(subject, candidates: candidates))
+        case let .found(node):
+            let evaluator = LayerRuleEvaluator(layers: configuration.layers, rules: configuration.rules)
+            return CommandOutcome(output: Self.describeLayer(of: node, using: evaluator))
+        }
+    }
+
+    private static func describeAmbiguity(_ subject: String, candidates: [GraphNode]) -> String {
+        let list = candidates.map { "  \($0.qualifiedName)  \($0.usr ?? $0.id.rawValue)" }
+        return "'\(subject)' matches \(candidates.count) declarations. "
+            + "Pass one of these USRs instead:\n" + list.joined(separator: "\n") + "\n"
+    }
+
+    private static func describeCycle(
+        _ cycle: DependencyCycle,
+        for node: NodeID,
+        in graph: CodeGraph
+    ) -> String {
+        let trail = cycle.path.map { graph.node($0)?.qualifiedName ?? $0.rawValue }
+        var line = "  " + (trail + [trail[0]]).joined(separator: " → ")
+        // 대표 경로에 없는 정점에게 이 경로를 그대로 보여 주면 자기 이름을 못 찾는다.
+        // 같은 묶음에 있다는 사실과 대표 경로를 구분해서 말한다.
+        if !cycle.path.contains(node) {
+            line = "  in the same tangle, whose representative cycle is:\n  " + line.dropFirst(2)
+        }
+        if let edge = cycle.suggestedEdgeToBreak {
+            let source = graph.node(edge.source)?.qualifiedName ?? edge.source.rawValue
+            let target = graph.node(edge.target)?.qualifiedName ?? edge.target.rawValue
+            line += "\n      weakest link: \(source) → \(target)"
+                + " (\(edge.kind.rawValue), \(edge.weight) references)"
+        }
+        return line
+    }
+
+    private static func describeLayer(of node: GraphNode, using evaluator: LayerRuleEvaluator) -> String {
+        let assignment = evaluator.assignment(of: node)
+        guard let match = assignment.match else {
+            return "\(node.qualifiedName) belongs to no layer.\n"
+                + "  checked: " + assignment.candidates.joined(separator: ", ") + "\n"
+        }
+        var output = "\(node.qualifiedName) is in layer '\(match.layer)'.\n"
+            + "  matched: \(match.candidate) against '\(match.pattern)'\n"
+        let rules = evaluator.rules(from: match.layer)
+        guard !rules.isEmpty else {
+            output += "  no rule starts from '\(match.layer)', so nothing is enforced here.\n"
+            return output
+        }
+        output += "  rules from '\(match.layer)':\n"
+        for rule in rules {
+            output += "    \(rule.displayName)\n"
+        }
+        return output
+    }
+
     public func measureMetrics(level: GraphLevel? = nil) throws -> CommandOutcome {
         let (graph, metrics, tolerance) = metrics(in: try loadContext(), level: level)
         let diagnostics = AnalysisDiagnostics.diagnostics(for: metrics, thresholds: configuration.thresholds)

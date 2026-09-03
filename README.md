@@ -152,6 +152,16 @@ Reports a representative shortest cycle for each strongly connected component, p
 the fewest references as the cheapest one to cut. A component of twenty mutually tangled types is
 technically accurate and practically useless; one concrete cycle you can act on is not.
 
+`--explain <node>` answers the follow-up: which cycles this one node takes part in, and where to
+cut each of them.
+
+```console
+$ cartograph cycles --level type --explain Alpha
+App.Alpha is part of 1 cycle(s):
+  App.Beta → App.Gamma → App.Alpha → App.Beta
+      weakest link: App.Gamma → App.Alpha (call, 1 references)
+```
+
 ### `dead` — find unused declarations
 
 ```bash
@@ -225,6 +235,17 @@ cartograph rules --strict
 Layers are matched against node name, module name **and** file path, because teams define layers
 sometimes by directory and sometimes by naming convention. Nodes that match no layer are reported
 as `info` — if you do not know what your rules fail to cover, a passing run means very little.
+
+`--explain <node>` shows which layer a node landed in, which pattern put it there, and which rules
+start from that layer — the questions you actually ask while debugging a configuration.
+
+```console
+$ cartograph rules --explain CartographKit
+CartographKit is in layer 'Assembly'.
+  matched: CartographKit against 'CartographKit'
+  rules from 'Assembly':
+    the assembly layer does not know about the interface
+```
 
 ### `baseline` — adopt on an existing codebase
 

@@ -149,6 +149,16 @@ cartograph cycles --level module --strict
 제시합니다. "이 스무 개가 서로 얽혀 있다"는 말은 정확하지만 어디부터 손대야 할지는 알려 주지
 않습니다. 구체적인 순환 하나는 알려 줍니다.
 
+`--explain <노드>` 는 그다음 질문에 답합니다. 이 정점이 어떤 순환에 끼어 있고 각각을 어디서
+끊어야 하는지입니다.
+
+```console
+$ cartograph cycles --level type --explain Alpha
+App.Alpha is part of 1 cycle(s):
+  App.Beta → App.Gamma → App.Alpha → App.Beta
+      weakest link: App.Gamma → App.Alpha (call, 1 references)
+```
+
 ### `dead` — 미사용 선언 찾기
 
 ```bash
@@ -213,6 +223,18 @@ rules:
 레이어 판정은 정점 이름·모듈 이름·파일 경로를 모두 대상으로 삼습니다. 팀마다 레이어를 디렉터리로
 정의하기도 하고 이름 규칙으로 정의하기도 하기 때문입니다. 어느 레이어에도 속하지 않는 정점은
 `info`로 보고합니다. 규칙이 무엇을 덮지 못하는지 모르면 "통과"라는 결과를 믿을 수 없습니다.
+
+`--explain <노드>` 는 그 정점이 어느 레이어에 들어갔는지, 어느 패턴이 그렇게 만들었는지,
+그 레이어에서 출발하는 규칙이 무엇인지 보여 줍니다. 설정을 디버깅할 때 실제로 던지는
+질문들입니다.
+
+```console
+$ cartograph rules --explain CartographKit
+CartographKit is in layer 'Assembly'.
+  matched: CartographKit against 'CartographKit'
+  rules from 'Assembly':
+    조립 계층은 인터페이스를 알지 못한다
+```
 
 ### `baseline` — 기존 코드베이스에 도입하기
 

@@ -290,6 +290,76 @@ struct CartographServiceTests {
         #expect(identifiers.contains("instability"))
     }
 
+    @Test("순환에 낀 정점을 설명한다")
+    func explainsCycles() throws {
+        // "스무 개가 얽혀 있다"는 보고는 정확하지만 손댈 곳을 알려 주지 않는다.
+        // 모듈 레벨 그래프의 정점은 모듈이다. 픽스처는 Presentation → Domain → Data →
+        // Presentation 으로 한 바퀴 돈다.
+        let service = makeService()
+        let explained = try service.explainCycles(of: "Presentation", level: .module)
+        #expect(explained.output.contains("Presentation → "))
+        #expect(explained.findingCount > 0)
+
+        // 심볼 레벨에서 DeadHelper 는 아무와도 이어져 있지 않다.
+        let outside = try service.explainCycles(of: "DeadHelper", level: .symbol)
+        #expect(outside.output.contains("not part of any cycle"))
+        #expect(outside.findingCount == 0)
+
+        let missing = try service.explainCycles(of: "NoSuchNode", level: .module)
+        #expect(missing.subjectNotFound)
+    }
+
+    @Test("대표 경로에 없어도 같은 묶음이면 순환에 있다고 말한다")
+    func explainsCyclesBeyondTheRepresentativePath() throws {
+        // 대표 경로만 보면 같은 강한 연결 요소에 있는 정점에 "순환에 없다"고
+        // 거짓말하게 된다. 설명이 틀리는 것은 보고가 틀리는 것보다 나쁘다.
+        var builder = SnapshotBuilder()
+        for name in ["Alpha", "Beta", "Delta", "Gamma"] {
+            builder.symbol(name, kind: .structType, module: name, path: "/p/\(name).swift")
+        }
+        builder.reference(from: "Alpha", to: "Beta", kind: .call)
+        builder.reference(from: "Alpha", to: "Delta", kind: .call)
+        builder.reference(from: "Beta", to: "Gamma", kind: .call)
+        builder.reference(from: "Delta", to: "Gamma", kind: .call)
+        builder.reference(from: "Gamma", to: "Alpha", kind: .call)
+
+        let service = CartographService(
+            configuration: {
+                var configuration = CartographConfiguration.default
+                configuration.projectPath = "/p"
+                return configuration
+            }(),
+            environment: CartographEnvironment(
+                fileSystem: InMemoryFileSystem(),
+                indexProviderOverride: StaticIndexProvider(builder.build()),
+                usesSyntaxCache: false
+            )
+        )
+        // 어느 정점을 물어도 순환에 있다고 답해야 한다.
+        for name in ["Alpha", "Beta", "Delta", "Gamma"] {
+            let explained = try service.explainCycles(of: name, level: .module)
+            #expect(explained.findingCount == 1, "\(name) 이 순환 밖으로 판정됐다")
+            #expect(!explained.output.contains("not part of any cycle"))
+        }
+    }
+
+    @Test("정점이 왜 그 레이어인지 설명한다")
+    func explainsLayerMembership() throws {
+        let service = makeService {
+            $0.layers = [LayerDefinition(name: "Presentation", patterns: ["Presentation"])]
+            $0.rules = [LayerRule(name: "no data", from: "Presentation", deny: ["Data"])]
+        }
+        let explained = try service.explainRules(of: "Presentation", level: .module)
+        #expect(explained.output.contains("layer 'Presentation'"))
+        #expect(explained.output.contains("no data"))
+
+        let orphan = try service.explainRules(of: "Domain", level: .module)
+        #expect(orphan.output.contains("belongs to no layer"))
+
+        let missing = try service.explainRules(of: "NoSuchNode", level: .module)
+        #expect(missing.subjectNotFound)
+    }
+
     @Test("지표 임계값을 넘기면 --strict 없이도 실패로 표시한다")
     func metricThresholdsFailTheBuild() throws {
         // 같은 설정 파일 안에서 어떤 임계값은 빌드를 세우고 어떤 임계값은 세우지 않으면

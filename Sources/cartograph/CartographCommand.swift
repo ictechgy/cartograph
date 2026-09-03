@@ -98,13 +98,14 @@ struct CyclesCommand: ParsableCommand {
 
     @OptionGroup var options: GlobalOptions
 
+    @Option(name: .customLong("explain"), help: "Explain which cycles a node takes part in.")
+    var explain: String?
+
     func run() throws {
         let context = try CommandSupport.makeContext(options)
-        try CommandSupport.emit(
-            try context.service.detectCycles(level: options.level),
-            options: options,
-            context: context
-        )
+        let outcome = try explain.map { try context.service.explainCycles(of: $0, level: options.level) }
+            ?? context.service.detectCycles(level: options.level)
+        try CommandSupport.emit(outcome, options: options, context: context)
     }
 }
 
@@ -164,13 +165,14 @@ struct RulesCommand: ParsableCommand {
 
     @OptionGroup var options: GlobalOptions
 
+    @Option(name: .customLong("explain"), help: "Explain which layer a node is in and why.")
+    var explain: String?
+
     func run() throws {
         let context = try CommandSupport.makeContext(options)
-        try CommandSupport.emit(
-            try context.service.checkRules(level: options.level),
-            options: options,
-            context: context
-        )
+        let outcome = try explain.map { try context.service.explainRules(of: $0, level: options.level) }
+            ?? context.service.checkRules(level: options.level)
+        try CommandSupport.emit(outcome, options: options, context: context)
     }
 }
 
