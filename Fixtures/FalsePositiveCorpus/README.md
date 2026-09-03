@@ -22,6 +22,19 @@ nothing. Building against SwiftUI measured at 7 seconds, so fidelity won.
 | `Names.swift` | a local shadowing a member name | the member lost its facts |
 | `Names.swift` | a generic parameter | reported as a dead type alias |
 | `CorpusApp/main.swift` | top-level statements | the whole executable |
+| `Bridges.swift` | a Flutter method-call handler that only Dart invokes | the handler's type, until `--external-retentions` supplies the caller |
+| `CorpusObjC/RNCalendar.m` | an Objective-C source with React Native export macros | not analysed; counted in `limitations` as `objective-c-sources` and read textually by `bridges` |
+
+`expected-bridges.json` is the `bridges` output with the generation time, tool version and project
+path replaced by placeholders; it pins that the literal found by syntax gets the USR the compiler
+actually wrote. `external-retentions.json` is the file isthmus would hand back for that handler, and
+`expected-unused-with-retentions.txt` is the report once it is applied. The script also checks that
+the two reports differ — a retentions file that changes nothing has silently failed.
+
+Objective-C is not compiled into the graph. The `CorpusObjC` target exists so that the
+`objective-c-sources` limitation is verified against a real `.m` file rather than a hand-built
+snapshot. Every iOS project on the maintainer's desk was pure Swift, so this was the only place to
+check it.
 
 `expected-unused.txt` lists what *should* be reported. `verify-fixtures.sh` also runs with
 `--retain-public`, where the list must be empty: every declaration here is `public`, so any
