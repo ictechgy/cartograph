@@ -3,7 +3,7 @@ import CartographCore
 /// 구문 분석으로 알아낸 선언 하나의 정보.
 ///
 /// 인덱스 스토어에는 접근 수준과 속성이 기록되지 않는다. 그 공백을 메우는 값이다.
-public struct DeclarationFacts: Sendable, Equatable {
+public struct DeclarationFacts: Codable, Sendable, Equatable {
     public let name: String
     public let line: Int
     public let accessibility: Accessibility
@@ -18,7 +18,7 @@ public struct DeclarationFacts: Sendable, Equatable {
 }
 
 /// 소스 파일 하나에서 얻은 구문 정보.
-public struct SourceFileFacts: Sendable, Equatable {
+public struct SourceFileFacts: Codable, Sendable, Equatable {
     public let path: String
     public let declarations: [DeclarationFacts]
     /// 파일 첫머리에 `// cartograph:ignore:all` 이 있는지 여부.

@@ -7,17 +7,38 @@ import CartographCore
 public struct SnapshotEnricher: Sendable {
     private let fileSystem: any FileSystem
     private let analyzer: SwiftSyntaxAnalyzer
+    /// 파일이 그대로면 다시 파싱하지 않게 해 주는 캐시. nil 이면 매번 파싱한다.
+    private let cache: SourceFactsCache?
 
-    public init(fileSystem: any FileSystem = LocalFileSystem(), analyzer: SwiftSyntaxAnalyzer = .init()) {
+    public init(
+        fileSystem: any FileSystem = LocalFileSystem(),
+        analyzer: SwiftSyntaxAnalyzer = .init(),
+        cache: SourceFactsCache? = nil
+    ) {
         self.fileSystem = fileSystem
         self.analyzer = analyzer
+        self.cache = cache
     }
 
     /// 보존 설정에서 필요한 정보만 받아 분석기를 구성한다.
-    public init(fileSystem: any FileSystem = LocalFileSystem(), retention: RetentionOptions) {
+    public init(
+        fileSystem: any FileSystem = LocalFileSystem(),
+        retention: RetentionOptions,
+        cachePath: String? = nil
+    ) {
+        // 분석 결과를 바꾸는 것은 전부 지문에 넣는다. 하나라도 빠지면 그 축이 바뀐
+        // 뒤에도 예전 결과가 되살아나고, 사용자는 고쳐진 줄 알았던 오탐을 계속 본다.
+        let identity = SourceFactsCache.analyzerIdentity(
+            toolVersion: Cartograph.version,
+            analysisRevision: SwiftSyntaxAnalyzer.analysisRevision,
+            externalTestCaseClasses: retention.externalTestCaseClasses
+        )
         self.init(
             fileSystem: fileSystem,
-            analyzer: SwiftSyntaxAnalyzer(externalTestCaseClasses: retention.externalTestCaseClasses)
+            analyzer: SwiftSyntaxAnalyzer(externalTestCaseClasses: retention.externalTestCaseClasses),
+            cache: cachePath.map {
+                SourceFactsCache(fileSystem: fileSystem, path: $0, analyzerIdentity: identity)
+            }
         )
     }
 
@@ -33,11 +54,28 @@ public struct SnapshotEnricher: Sendable {
         interfaceBuilderRoots: [String] = [],
         pathFilter: PathFilter = .passthrough
     ) -> IndexSnapshot {
+        let stored = cache?.load() ?? [:]
         var facts: [String: SourceFileFacts] = [:]
+        var fresh: [String: SourceFactsCache.Entry] = [:]
+
         for path in snapshot.filePaths where path.hasSuffix(".swift") {
             guard let source = try? fileSystem.readText(at: path) else { continue }
-            facts[path] = analyzer.analyze(source: source, path: path)
+            guard let cache else {
+                facts[path] = analyzer.analyze(source: source, path: path)
+                continue
+            }
+            // 내용이 그대로면 파싱을 건너뛴다. 파싱이 이 단계 비용의 대부분이다.
+            let fingerprint = cache.fingerprint(of: source)
+            let analyzed = stored[path].flatMap { $0.fingerprint == fingerprint ? $0.facts : nil }
+                ?? analyzer.analyze(source: source, path: path)
+            facts[path] = analyzed
+            fresh[path] = SourceFactsCache.Entry(fingerprint: fingerprint, facts: analyzed)
         }
+
+        // 바뀐 것이 없으면 쓰지 않는다. 직렬화 비용이 캐시 이득을 깎는다.
+        // 값을 그대로 비교한다. "미스가 있었는가"로 판단해도 결과는 같지만,
+        // 왜 같은지가 한눈에 보이지 않아 나중 편집에서 깨지기 쉽다.
+        if let cache, fresh != stored { cache.save(fresh) }
 
         let enriched = Self.enrich(snapshot, with: facts)
         guard !interfaceBuilderRoots.isEmpty else { return enriched }

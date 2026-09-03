@@ -32,7 +32,13 @@ public struct CartographService: Sendable {
     /// 인덱스를 읽고 구문 정보로 보강한 스냅샷.
     public func loadSnapshot() throws -> IndexSnapshot {
         let raw = try makeIndexProvider().loadSnapshot()
-        return SnapshotEnricher(fileSystem: environment.fileSystem, retention: configuration.retention)
+        return SnapshotEnricher(
+            fileSystem: environment.fileSystem,
+            retention: configuration.retention,
+            cachePath: environment.usesSyntaxCache
+                ? SourceFactsCache.defaultPath(forProject: projectPath)
+                : nil
+        )
             .enrich(
                 raw,
                 interfaceBuilderRoots: configuration.retention.retainInterfaceBuilder ? [projectPath] : [],

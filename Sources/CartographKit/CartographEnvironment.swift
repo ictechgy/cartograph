@@ -14,17 +14,24 @@ public struct CartographEnvironment: Sendable {
     public var derivedDataPath: String?
     /// 인덱스 공급자를 직접 지정한다. 테스트에서 실제 인덱스 스토어를 대체한다.
     public var indexProviderOverride: (any IndexProviding)?
+    /// 구문 분석 캐시를 쓸지 여부. 끄면 매 실행마다 다시 파싱한다.
+    ///
+    /// 캐시 키가 파일 내용이라 켜 두어도 결과가 달라지지 않지만, 결과를 의심할
+    /// 때 변수를 하나 줄일 수 있어야 한다.
+    public var usesSyntaxCache: Bool
 
     public init(
         fileSystem: any FileSystem = LocalFileSystem(),
         developerDirectory: String? = nil,
         derivedDataPath: String? = nil,
-        indexProviderOverride: (any IndexProviding)? = nil
+        indexProviderOverride: (any IndexProviding)? = nil,
+        usesSyntaxCache: Bool = true
     ) {
         self.fileSystem = fileSystem
         self.developerDirectory = developerDirectory
         self.derivedDataPath = derivedDataPath
         self.indexProviderOverride = indexProviderOverride
+        self.usesSyntaxCache = usesSyntaxCache
     }
 
     /// 실제 환경에서 사용할 기본값.
