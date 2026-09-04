@@ -90,13 +90,18 @@ public enum AgentSkillTemplate {
 
         ## Answers this tool cannot give
 
-        - **Objective-C declarations.** Only `.swift` files are analysed. Nothing here tells you
+        - **Objective-C declarations.** Only `.swift` files enter the graph; `bridges` reads `.m`
+          files as text for React Native export macros and nothing more. Nothing here tells you
           whether a `.m` declaration is used.
         - **Callers in another language.** A Flutter or React Native handler is called from Dart or
           JavaScript, which the index never sees, so it looks `unreachable`. If the project has an
           `ios/` folder inside a Flutter or React Native app, or a `.m` file with `RCT_EXPORT_*`,
-          treat `unreachable` on a handler as unknown unless `limitations` lists
-          `external-retentions`, which means the join with the other side was supplied.
+          treat `unreachable` on a handler as unknown. A retentions file being in effect
+          (`limitations` lists `external-retentions`) does not change that for a declaration whose
+          `state` is still `unreachable`: the join may have missed it, and `limitations` will say
+          why (`external-retentions-unmatched`, `-ambiguous`, `-stale`). Only a `retained` or
+          `retainedByMember` state with `reason: externalBridge` means the other side was found
+          calling it (or one of its members).
         - **Anything you changed in this session.** The index is written by the compiler at build
           time. If you edited Swift and did not rebuild, the answer describes the code as it was
           before your edit.

@@ -54,7 +54,8 @@
   "format": "bridge-facts",
   "generatedAt": "<generatedAt>",
   "limitations": [
-    "mixed-targets: facts come from more than one bridge (flutter 2, react-native 2); 'target' is the majority"
+    "objective-c-handlers: 1 method handlers come from Objective-C sources and carry no USR, so a retention for them cannot be applied by --external-retentions",
+    "mixed-targets: facts come from more than one bridge (flutter 2, react-native 2); 'target' is the first alphabetically because the counts tie"
   ],
   "platform": "swift",
   "project": "<project>",

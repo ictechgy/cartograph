@@ -107,18 +107,60 @@ struct BridgeFactsTests {
         let document = try service.bridgeFacts(generatedAt: fixedDate)
         #expect(document.facts.map(\.kind) == ["channel-register", "method-handle", "module-export", "method-handle"])
         #expect(document.target == "flutter")
-        #expect(document.limitations.contains { $0.hasPrefix("mixed-targets: ") && $0.contains("flutter 2, react-native 2") })
-        // Objective-C 쪽 사실은 선언 정보 자체가 없다. "USR 없는 핸들러" 로 세지 않는다.
+        #expect(document.limitations.contains {
+            $0.hasPrefix("mixed-targets: ") && $0.contains("flutter 2, react-native 2") && $0.contains("counts tie")
+        })
+        // Objective-C 쪽 사실은 선언 정보 자체가 없다. "USR 없는 핸들러" 가 아니라 따로 센다.
         #expect(!document.limitations.contains { $0.hasPrefix("missing-handler-usrs") })
+        #expect(document.limitations.contains { $0.hasPrefix("objective-c-handlers: 1") })
     }
 
-    @Test("사실이 없으면 대상도 한계도 없다")
+    @Test("사실이 없으면 대상은 null 로 적히고 한계는 없다")
     func emptyProjectIsQuiet() throws {
         let service = makeService(files: ["/p/Sources/A.swift": "struct A {}"], snapshot: IndexSnapshot())
         let document = try service.bridgeFacts(generatedAt: fixedDate)
         #expect(document.facts.isEmpty)
         #expect(document.target == nil)
         #expect(document.limitations.isEmpty)
+        // 계약은 키 생략이 아니라 null 이다.
+        let json = try service.exportBridgeFacts(generatedAt: fixedDate).output
+        #expect(json.contains("\"target\" : null"))
+    }
+
+    @Test("라벨이 안 맞고 기본 이름이 같은 후보가 여럿이면 USR 을 붙이지 않는다")
+    func refusesAmbiguousBaseNameFallback() throws {
+        var builder = SnapshotBuilder(module: "App", path: "/p/Sources/CameraPlugin.swift")
+        builder.symbol("s:CameraPlugin", name: "CameraPlugin", kind: .classType, line: 2)
+        builder.symbol("s:handleOne", name: "handle(_:)", kind: .method, line: 6, parent: "s:CameraPlugin")
+        builder.symbol("s:handleTwo", name: "handle(_:reply:)", kind: .method, line: 20, parent: "s:CameraPlugin")
+        let service = makeService(files: ["/p/Sources/CameraPlugin.swift": Self.pluginSource], snapshot: builder.build())
+        let handled = try #require(try service.bridgeFacts(generatedAt: fixedDate).facts.first { $0.kind == "method-handle" })
+        #expect(handled.symbol?.usr == nil)
+        #expect(handled.symbol?.qualifiedName == "CameraPlugin.handle")
+    }
+
+    @Test("인덱스 경로와 디스크 경로의 표기가 달라도 USR 이 붙는다")
+    func attachesUSRsAcrossPathSpellings() throws {
+        // 인덱스는 `/private/tmp` 로, 디스크 걷기는 `/tmp` 로 같은 곳을 가리킨다. macOS 의 실제 상황이다.
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("cartograph-bridge-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("CameraPlugin.swift")
+        try Self.pluginSource.write(to: file, atomically: true, encoding: .utf8)
+        let resolved = file.resolvingSymlinksInPath().path
+        guard resolved != file.path else { return }
+
+        var builder = SnapshotBuilder(module: "App", path: resolved)
+        builder.symbol("s:CameraPlugin", name: "CameraPlugin", kind: .classType, line: 2)
+        builder.symbol("s:handle", name: "handle(_:result:)", kind: .method, line: 7, parent: "s:CameraPlugin")
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = directory.path
+        let service = CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(indexProviderOverride: StaticIndexProvider(builder.build()))
+        )
+        let handled = try #require(try service.bridgeFacts(generatedAt: fixedDate).facts.first { $0.kind == "method-handle" })
+        #expect(handled.symbol?.usr == "s:handle")
     }
 
     @Test("JSON 은 계약의 머리말을 담고 키가 정렬되어 두 번 인코딩해도 같다")
@@ -143,14 +185,16 @@ struct BridgeFactsTests {
     @Test("@objc(Name) 클래스와 이벤트 채널은 한계로 센다")
     func countsAssumedModulesAndEventChannels() throws {
         let source = """
-            @objc(Coordinator) class Coordinator: NSObject {}
+            @objc(Coordinator) class Coordinator: NSObject { @objc func start() {} }
             let events = FlutterEventChannel(name: "e", binaryMessenger: m)
+            let pigeon = BasicMessageChannel<Any?>(name: "p", binaryMessenger: m)
             """
         let service = makeService(files: ["/p/Sources/A.swift": source], snapshot: IndexSnapshot())
         let document = try service.bridgeFacts(generatedAt: fixedDate)
-        #expect(document.facts.map(\.kind) == ["module-export"])
-        #expect(document.limitations.contains { $0.hasPrefix("objc-named-classes: 1") })
+        #expect(document.facts.map(\.kind) == ["module-export", "method-handle"])
+        #expect(document.limitations.contains { $0.hasPrefix("objc-named-classes: 1 module-export and 1 method-handle") })
         #expect(document.limitations.contains { $0.hasPrefix("unscanned-event-channels: 1") })
+        #expect(document.limitations.contains { $0.hasPrefix("unscanned-message-channels: 1") })
     }
 
     @Test("채널을 모르면 키를 빼지 않고 null 로 적는다")

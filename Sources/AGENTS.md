@@ -23,7 +23,7 @@ cartograph
 | `CartographCore` | 그래프 모델, 인덱스 추상화, 설정 값 타입, 글롭, 진단, 파일 시스템 프로토콜, 빌드 산출물 가지치기 목록(`BuildArtifactDirectories`) | **모든 외부 의존성.** 파일·프로세스·네트워크 접근 |
 | `CartographConfig` | `.cartograph.yml` 로딩과 CLI 덮어쓰기, 설정 템플릿, 에이전트 스킬 템플릿(`AgentSkillTemplate`) | 분석 로직 |
 | `CartographSyntax` | SwiftSyntax로 접근 수준·속성·주석 지시어 읽기 | 인덱스 스토어 접근 |
-| `CartographAnalysis` | 순환, 도달 가능성, 보존, 지표, 레이어 규칙, 베이스라인 | 파일 읽기(베이스라인은 주입된 FileSystem 사용), 출력 형식 |
+| `CartographAnalysis` | 순환, 도달 가능성, 보존, 지표, 레이어 규칙, 베이스라인, 외부 보존 근거 | 파일 읽기(베이스라인과 외부 근거 파일은 주입된 FileSystem 사용), 출력 형식 |
 | `CartographExport` | 그래프 렌더러와 진단 리포터 | 분석 로직 |
 | `CartographIndexStore` | IndexStoreDB 어댑터, 스토어·라이브러리 경로 탐색 | 도메인 판단 |
 | `CartographKit` | 파이프라인 조립, 환경 주입, 에이전트용 응답 타입(`SymbolQuery`·`SymbolQueryDocument`) | 알고리즘 |

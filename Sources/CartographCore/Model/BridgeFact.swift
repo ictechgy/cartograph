@@ -99,6 +99,8 @@ extension BridgeFact: Comparable {
         if lhs.location != rhs.location { return lhs.location < rhs.location }
         if lhs.kind != rhs.kind { return lhs.kind.rawValue < rhs.kind.rawValue }
         if lhs.channel != rhs.channel { return (lhs.channel ?? "") < (rhs.channel ?? "") }
-        return (lhs.method ?? "") < (rhs.method ?? "")
+        if lhs.method != rhs.method { return (lhs.method ?? "") < (rhs.method ?? "") }
+        if lhs.target != rhs.target { return lhs.target.rawValue < rhs.target.rawValue }
+        return (lhs.symbol?.usr ?? "") < (rhs.symbol?.usr ?? "")
     }
 }

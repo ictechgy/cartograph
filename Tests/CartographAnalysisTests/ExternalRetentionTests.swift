@@ -13,7 +13,7 @@ struct ExternalRetentionTests {
           "generatedAt": "2026-09-04T12:00:00Z",
           "retentions": [
             {
-              "symbol": { "usr": "s:handle", "qualifiedName": "App.CameraPlugin.handle" },
+              "symbol": { "usr": "s:handle", "qualifiedName": "CameraPlugin.handle" },
               "reason": "bridge",
               "evidence": {
                 "channel": "com.example/camera",
@@ -104,6 +104,52 @@ struct ExternalRetentionTests {
         )
         let policy = RetentionPolicy(externalRetentions: ExternalRetentionIndex([retention]))
         #expect(policy.retainedNodes(in: graph, snapshot: snapshot)[NodeID("s:handle")] == .externalBridge)
+    }
+
+    @Test("같은 이름의 USR 근거가 이름만 있는 근거를 가리지 않는다")
+    func usrEntryDoesNotShadowNameOnlyEntry() {
+        var builder = SnapshotBuilder(module: "App")
+        builder.symbol("s:CameraPlugin", name: "CameraPlugin", kind: .classType)
+        builder.symbol("s:handle", name: "handle(_:result:)", kind: .method, parent: "s:CameraPlugin")
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        let index = ExternalRetentionIndex([
+            ExternalRetention(symbol: .init(usr: "s:stale", qualifiedName: "CameraPlugin.handle"), reason: "bridge", evidence: nil),
+            ExternalRetention(symbol: .init(usr: nil, qualifiedName: "CameraPlugin.handle"), reason: "bridge", evidence: nil),
+        ])
+        #expect(RetentionPolicy(externalRetentions: index).retainedNodes(in: graph, snapshot: snapshot)[NodeID("s:handle")] == .externalBridge)
+    }
+
+    @Test("이름만 있는 근거가 여러 선언에 맞으면 전부 살리되 그 수를 센다")
+    func countsAmbiguousNameMatches() {
+        var builder = SnapshotBuilder(module: "App")
+        builder.symbol("s:CameraPlugin", name: "CameraPlugin", kind: .classType)
+        builder.symbol("s:handle", name: "handle(_:result:)", kind: .method, parent: "s:CameraPlugin")
+        builder.symbol("v:CameraPlugin", name: "CameraPlugin", kind: .classType, module: "VendorKit")
+        builder.symbol("v:handle", name: "handle(_:result:)", kind: .method, module: "VendorKit", parent: "v:CameraPlugin")
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        let index = ExternalRetentionIndex([
+            ExternalRetention(symbol: .init(usr: nil, qualifiedName: "CameraPlugin.handle"), reason: "bridge", evidence: nil),
+        ])
+        let retained = RetentionPolicy(externalRetentions: index).retainedNodes(in: graph, snapshot: snapshot)
+        #expect(retained[NodeID("s:handle")] == .externalBridge)
+        #expect(retained[NodeID("v:handle")] == .externalBridge)
+        #expect(index.ambiguousNameMatchCount(in: graph) == 1)
+        #expect(index.unmatchedCount(in: graph) == 0)
+    }
+
+    @Test("근거 문장의 제어 문자는 지운다")
+    func stripsControlCharactersFromEvidence() {
+        let retention = ExternalRetention(
+            symbol: .init(usr: "s:x", qualifiedName: nil), reason: "bridge",
+            evidence: .init(channel: "c\u{1B}[31m", method: "m\nfake: line", caller: nil)
+        )
+        #expect(retention.evidenceDescription == "invokes 'mfake: line' on channel 'c[31m'")
+        // 양방향 재정의(U+202E) 같은 형식 문자도 터미널을 속인다.
+        #expect(ExternalRetention.printable("a\u{202E}b") == "ab")
     }
 
     @Test("근거에 USR 이 있으면 이름이 같아도 다른 USR 의 선언은 살리지 않는다")

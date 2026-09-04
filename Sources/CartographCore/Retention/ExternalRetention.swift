@@ -66,12 +66,25 @@ public struct ExternalRetention: Sendable, Equatable, Codable {
         }
         if let method = evidence?.method { parts.append("invokes '\(method)'") }
         if let channel = evidence?.channel { parts.append("on channel '\(channel)'") }
-        return parts.isEmpty ? "reason '\(reason)' with no evidence attached" : parts.joined(separator: " ")
+        let text = parts.isEmpty ? "reason '\(reason)' with no evidence attached" : parts.joined(separator: " ")
+        return Self.printable(text)
+    }
+
+    /// 외부 파일에서 온 문자열은 터미널과 CI 로그에 그대로 찍힌다. 제어 문자는 뺀다.
+    ///
+    /// 개행이나 이스케이프 시퀀스가 들어 있으면 한 줄짜리 설명이 여러 줄로 위장하거나
+    /// 터미널 상태를 바꿀 수 있다. 근거 파일은 신뢰할 수 없는 입력이다.
+    public static func printable(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.filter {
+            // Cc(제어)와 Cf(형식) 둘 다. `U+202E` 같은 양방향 재정의는 형식 문자인데 터미널을 똑같이 속인다.
+            $0.properties.generalCategory != .control && $0.properties.generalCategory != .format
+        }))
     }
 }
 
 /// `--external-retentions` 가 읽는 파일 전체.
 public struct ExternalRetentionsDocument: Sendable, Equatable, Codable {
+
     /// 이 도구가 읽을 수 있는 형식 이름과 버전.
     public static let expectedFormat = "external-retentions"
     public static let supportedVersion = 0
@@ -112,6 +125,6 @@ public struct ExternalRetentionsDocument: Sendable, Equatable, Codable {
             producer.version.map { "\(producer.name) \($0)" } ?? producer.name
         } ?? "an unknown producer"
         if let generatedAt { text += ", generated \(generatedAt)" }
-        return text
+        return ExternalRetention.printable(text)
     }
 }

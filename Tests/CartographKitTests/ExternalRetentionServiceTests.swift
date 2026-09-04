@@ -11,10 +11,10 @@ struct ExternalRetentionServiceTests {
           "format": "external-retentions",
           "version": 0,
           "producedBy": { "name": "isthmus", "version": "0.1.0" },
-          "generatedAt": "2026-09-04T12:00:00Z",
+          "generatedAt": "2026-09-04T12:00:00.000Z",
           "retentions": [
             {
-              "symbol": { "usr": "s:handle", "qualifiedName": "App.handle(_:result:)" },
+              "symbol": { "usr": "s:handle", "qualifiedName": "CameraPlugin.handle" },
               "reason": "bridge",
               "evidence": {
                 "channel": "com.example/camera",
@@ -23,7 +23,7 @@ struct ExternalRetentionServiceTests {
               }
             },
             {
-              "symbol": { "usr": "s:renamed", "qualifiedName": "App.renamed()" },
+              "symbol": { "usr": "s:renamed", "qualifiedName": "CameraPlugin.renamed" },
               "reason": "bridge",
               "evidence": null
             }
@@ -87,7 +87,7 @@ struct ExternalRetentionServiceTests {
         #expect(document.result?.reachability.state == "retained")
         #expect(document.result?.reachability.reason == .externalBridge)
         #expect(document.limitations.contains {
-            $0.hasPrefix("external-retentions: 2 retention(s) from isthmus 0.1.0, generated 2026-09-04T12:00:00Z")
+            $0.hasPrefix("external-retentions: 2 retention(s) from isthmus 0.1.0, generated 2026-09-04T12:00:00.000Z")
         })
         #expect(document.limitations.contains { $0.hasPrefix("external-retentions-unmatched: 1 of 2") })
     }
@@ -99,7 +99,8 @@ struct ExternalRetentionServiceTests {
         let stale = service.analysisLimitations(
             storeDate: Date(timeIntervalSince1970: 1_800_000_000), context: context
         )
-        #expect(stale.contains { $0.hasPrefix("external-retentions-stale: the retentions file (2026-09-04T12:00:00Z) predates") })
+        // isthmus 는 소수점 초를 붙인다. 기본 ISO 8601 파서가 그것을 거부하면 이 경보가 조용히 빠진다.
+        #expect(stale.contains { $0.hasPrefix("external-retentions-stale: the retentions file (2026-09-04T12:00:00.000Z) predates") })
 
         let fresh = service.analysisLimitations(storeDate: Date(timeIntervalSince1970: 1_700_000_000), context: context)
         #expect(!fresh.contains { $0.hasPrefix("external-retentions-stale") })

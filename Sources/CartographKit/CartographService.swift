@@ -59,12 +59,15 @@ public struct CartographService: Sendable {
 
     /// 인덱스를 한 번만 읽어 만든 분석 문맥.
     public func loadContext() throws -> AnalysisContext {
-        AnalysisContext(
+        // 근거 파일을 인덱스보다 먼저 읽는다. 파일이 깨졌을 때 인덱스 없는 프로젝트에서도
+        // 그 오류가 보여야 CLI 계약 검증이 이 경로를 실제로 증명한다.
+        let externalRetentions = try ExternalRetentionStore(fileSystem: environment.fileSystem)
+            .loadIfConfigured(at: configuration.externalRetentionsPath)
+        return AnalysisContext(
             snapshot: try loadSnapshot(),
             pathFilter: configuration.pathFilter,
             edgeKinds: configuration.edgeKinds,
-            externalRetentions: try ExternalRetentionStore(fileSystem: environment.fileSystem)
-                .loadIfConfigured(at: configuration.externalRetentionsPath)
+            externalRetentions: externalRetentions
         )
     }
 
@@ -495,9 +498,18 @@ public struct CartographService: Sendable {
                     + "in this index, so the file may predate a rename or a rebuild"
             )
         }
+        // 이름만 있는 근거가 여러 선언에 맞으면 전부 살린다. 확신이 없으면 살리는 쪽이
+        // 이 도구의 규칙이지만, 그렇게 살아난 것이 있다는 사실은 알려야 한다.
+        let ambiguous = index.ambiguousNameMatchCount(in: graph)
+        if ambiguous > 0 {
+            result.append(
+                "external-retentions-ambiguous: \(ambiguous) name(s) from retentions without a USR match more than "
+                    + "one declaration, and every one of those declarations is kept"
+            )
+        }
         // 파일이 인덱스보다 오래됐으면 그 사이의 이름 변경을 모른다. 날짜를 보여 주기만
         // 하면 판단은 사용자 몫인데, 비교는 이쪽이 할 수 있다.
-        if let generated = document.generatedAt.flatMap({ try? Date($0, strategy: .iso8601) }),
+        if let generated = document.generatedAt.flatMap(Self.parseISO8601),
            let built = storeDate, generated < built {
             result.append(
                 "external-retentions-stale: the retentions file (\(document.generatedAt ?? "")) predates the index "
@@ -673,17 +685,19 @@ public struct CartographService: Sendable {
     ///
     /// - Parameter generatedAt: 문서에 적을 생성 시각. 테스트가 고정하려고 받는다.
     public func bridgeFacts(generatedAt: Date = Date()) throws -> BridgeFactsDocument {
-        let snapshot = try makeIndexProvider().loadSnapshot()
+        let resolver = BridgeSymbolResolver(snapshot: try makeIndexProvider().loadSnapshot())
         let sources = bridgeSourceFiles()
         var facts: [BridgeFact] = []
         var unreadable = 0
         var unscannedEventChannels = 0
+        var unscannedMessageChannels = 0
         for path in sources {
             guard let source = try? environment.fileSystem.readText(at: path) else { unreadable += 1; continue }
             if path.hasSuffix(".swift") {
                 let scanned = BridgeFactScanner().scan(source: source, path: path)
-                facts += BridgeSymbolResolver.resolve(scanned.facts, in: snapshot)
+                facts += resolver.resolve(scanned.facts)
                 unscannedEventChannels += scanned.unscannedEventChannels
+                unscannedMessageChannels += scanned.unscannedMessageChannels
             } else {
                 facts += ReactNativeMacroScanner().scan(source: source, path: path)
             }
@@ -694,6 +708,7 @@ public struct CartographService: Sendable {
             project: projectPath,
             facts: facts,
             unscannedEventChannels: unscannedEventChannels,
+            unscannedMessageChannels: unscannedMessageChannels,
             extraLimitations: unreadable > 0
                 ? ["unreadable-sources: \(unreadable) file(s) could not be read and were skipped"] : []
         )
@@ -922,6 +937,15 @@ public struct CartographService: Sendable {
               )
         else { return "" }
         return "\n  evidence: \(retention.evidenceDescription)"
+    }
+
+    /// isthmus 가 쓰는 시각을 읽는다. `2026-09-04T12:00:00.000Z` 처럼 소수점 초가 붙는다.
+    ///
+    /// `.iso8601` 기본 전략은 소수점 초를 거부한다. 그러면 신선도 비교가 조용히 빠져
+    /// 낡은 파일이 새것처럼 보인다.
+    private static func parseISO8601(_ text: String) -> Date? {
+        (try? Date(text, strategy: .iso8601))
+            ?? (try? Date(text, strategy: .iso8601.year().month().day().time(includingFractionalSeconds: true)))
     }
 
     /// 설정과 프로젝트 경로를 반영한 보존 규칙.
