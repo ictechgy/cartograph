@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md)에 있다. 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-마지막 갱신: 2026-09-04 (`bridges` · `--external-retentions` · Objective-C 코퍼스 PR 직후)
+마지막 갱신: 2026-09-04 (0.5.0 릴리스 직후)
 
 ## 목표
 
@@ -10,7 +10,7 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 
 ## 현재 상태
 
-- **0.4.0 릴리스 완료** (2026-09-04). GitHub Release + Homebrew tap(`ictechgy/tap`) 갱신 + `brew upgrade` 로 설치 확인. 이력: 0.1.0 → 0.2.0 → 0.3.0(2026-09-03) → 0.4.0
+- **0.5.0 릴리스 완료** (2026-09-04, PR #11 · #12 · #13). GitHub Release + Homebrew tap 을 손으로 갱신(`HOMEBREW_TAP_TOKEN` 없음) + `brew upgrade` 로 0.5.0 설치 확인. 이력: 0.1.0 → 0.2.0 → 0.3.0 → 0.4.0 → 0.5.0(모두 2026-09-03~04)
 - `main` 은 깨끗하다. 자기 분석 findings 0 (1,296 노드), 커버리지 92.86%, 테스트 8 스위트 전부 통과
 - 최근 머지: PR #7 `query` 명령 · PR #8 `skill` 명령 · PR #9 버전 범프. 각 PR 의 코멘트에 GLM 리뷰 대응(반박 · 반영 · 거절)이 형식의 예로 남아 있다
 - 자매 프로젝트 셋이 바탕화면에 계획 문서만 있는 상태로 생겼다: [kartograph](../kartograph)(Kotlin) · [dartograph](../dartograph)(Dart) · [isthmus](../isthmus)(언어 경계 조인)
