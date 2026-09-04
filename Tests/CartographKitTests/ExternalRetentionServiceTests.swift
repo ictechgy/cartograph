@@ -118,9 +118,12 @@ struct ExternalRetentionServiceTests {
                 indexProviderOverride: StaticIndexProvider(makeSnapshot())
             )
         )
+        struct Document: Decodable { let limitations: [String]? }
         let output = try service.detectUnusedCode().output
-        #expect(output.contains("\"limitations\" : ["))
-        #expect(output.contains("external-retentions: 2 retention(s) from isthmus 0.1.0"))
+        let limitations = try JSONDecoder().decode(Document.self, from: Data(output.utf8)).limitations ?? []
+        #expect(limitations.contains { $0.hasPrefix("external-retentions: 2 retention(s) from isthmus 0.1.0") })
+        // 단일 구성 한계는 언제나 실리므로 `dead` 에서 이 키는 비지 않는다.
+        #expect(limitations.contains { $0.hasPrefix("single-configuration") })
 
         // 다른 명령의 리포트에는 붙지 않는다. 순환에는 보존 규칙이 없다.
         #expect(!(try service.detectCycles().output.contains("\"limitations\"")))

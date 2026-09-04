@@ -119,7 +119,9 @@ struct DiagnosticReporterTests {
             diagnostics,
             summary: ReportSummary(command: "dead", subject: "s", limitations: ["objective-c-sources: 2 file(s)"])
         )
-        #expect(withLimits.contains("\"limitations\" : [\n    \"objective-c-sources: 2 file(s)\"\n  ]"))
+        struct Document: Decodable { let limitations: [String]? }
+        let decoded = try JSONDecoder().decode(Document.self, from: Data(withLimits.utf8))
+        #expect(decoded.limitations == ["objective-c-sources: 2 file(s)"])
     }
 
     @Test("SARIF 형식은 스키마와 규칙 목록을 담는다")
