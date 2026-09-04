@@ -4,7 +4,7 @@
 /// 만든다. 그래서 여기서는 **판정하지 않는다.** 리터럴이 아닌 이름도 버리지 않고
 /// `isDynamic` 으로 표시한다. isthmus 가 조인하지 못한 사실을 한계로 세는 데 필요하다.
 ///
-/// 교환 형식(`../isthmus/docs/GRAPH-EXCHANGE.md` 초안 0)의 직렬화 모양은 이 타입이
+/// 교환 형식(`../isthmus/docs/GRAPH-EXCHANGE.md` 버전 1)의 직렬화 모양은 이 타입이
 /// 아니라 `CartographKit` 의 문서 타입이 정한다. 여기서는 스캐너가 알아낸 것을 그대로 담는다.
 public struct BridgeFact: Hashable, Sendable {
     /// 사실의 종류. 교환 형식의 `kind` 값 그대로다.

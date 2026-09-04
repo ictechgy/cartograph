@@ -59,7 +59,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — tap 추가 없이 소스에서 빌드합니다.
 
 ```bash
-mint install ictechgy/cartograph@0.5.2
+mint install ictechgy/cartograph@0.5.3
 ```
 
 **설치 없이 쓰기** — Swift 패키지라면 의존성으로 넣고 커맨드 플러그인을 쓰면 됩니다.
@@ -67,7 +67,7 @@ mint install ictechgy/cartograph@0.5.2
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", from: "0.5.2"),
+.package(url: "https://github.com/ictechgy/cartograph", from: "0.5.3"),
 ```
 
 ```bash
@@ -295,6 +295,7 @@ $ cartograph query Client
 ```bash
 cartograph bridges                       # bridge-facts JSON 을 표준 출력으로
 cartograph bridges --format text         # 사실마다 한 줄, 훑어보기용
+cartograph bridges --target flutter      # 혼합 프로젝트에서 한 메커니즘만 분리
 cartograph dead --external-retentions .isthmus/retentions.cartograph.json
 ```
 
@@ -313,18 +314,18 @@ $ cartograph bridges
       "channel" : "com.example/camera",
       "dynamic" : false,
       "kind" : "method-handle",
-      "location" : { "column" : 18, "line" : 26, "path" : "/app/ios/CameraPlugin.swift" },
+      "location" : { "column" : 18, "line" : 26, "path" : "CameraPlugin.swift" },
       "method" : "takePhoto",
       "symbol" : { "qualifiedName" : "CameraPlugin.handle", "usr" : "s:3App12CameraPlugin…" }
     }
   ],
   "format" : "bridge-facts",
-  "generatedAt" : "2026-09-04T00:00:00Z",
+  "generatedAt" : "2026-09-04T00:00:00.000Z",
   "limitations" : [ ],
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.5.2" },
+  "tool" : { "name" : "cartograph", "version" : "0.5.3" },
   "version" : 1
 }
 ```
@@ -339,6 +340,11 @@ $ cartograph bridges
 모듈로 가정한 `@objc(Name)` 클래스의 수, 이 형식이 다루지 않는 `FlutterEventChannel` 과 Pigeon
 `BasicMessageChannel` 의 수, 근거 파일로 살릴 수 없는 Objective-C 핸들러의 수, Flutter 와 React
 Native 가 섞인 프로젝트를 셉니다.
+
+사실 위치는 프로젝트 상대 경로이고 `generatedAt`은 UTC 밀리초 형식입니다. 한 프로젝트에
+여러 브리지 메커니즘이 있으면 isthmus v0.1에 넘기기 전에 `--target flutter` 또는
+`--target react-native`로 문서를 분리합니다. target 문서는 제외한 사실 수를
+`target-filter` limitation으로 알립니다.
 
 isthmus 는 `external-retentions` 를 돌려줍니다. 호출자를 찾은 Swift 선언마다 USR 과 근거입니다.
 `--external-retentions <경로>`(또는 설정의 `external_retentions_path`)는 각각을 이유가

@@ -62,7 +62,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.5.2
+mint install ictechgy/cartograph@0.5.3
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -70,7 +70,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", from: "0.5.2"),
+.package(url: "https://github.com/ictechgy/cartograph", from: "0.5.3"),
 ```
 
 ```bash
@@ -303,6 +303,7 @@ unused list sees what the graph could not, without a `query` per entry.
 ```bash
 cartograph bridges                       # bridge-facts JSON on stdout
 cartograph bridges --format text         # one line per fact, for a quick look
+cartograph bridges --target flutter      # split one mechanism from a mixed project
 cartograph dead --external-retentions .isthmus/retentions.cartograph.json
 ```
 
@@ -322,18 +323,18 @@ $ cartograph bridges
       "channel" : "com.example/camera",
       "dynamic" : false,
       "kind" : "method-handle",
-      "location" : { "column" : 18, "line" : 26, "path" : "/app/ios/CameraPlugin.swift" },
+      "location" : { "column" : 18, "line" : 26, "path" : "CameraPlugin.swift" },
       "method" : "takePhoto",
       "symbol" : { "qualifiedName" : "CameraPlugin.handle", "usr" : "s:3App12CameraPlugin…" }
     }
   ],
   "format" : "bridge-facts",
-  "generatedAt" : "2026-09-04T00:00:00Z",
+  "generatedAt" : "2026-09-04T00:00:00.000Z",
   "limitations" : [ ],
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.5.2" },
+  "tool" : { "name" : "cartograph", "version" : "0.5.3" },
   "version" : 1
 }
 ```
@@ -350,6 +351,11 @@ not rebuilt since the edit), the `@objc(Name)` classes assumed to be React Nativ
 `FlutterEventChannel`s and Pigeon `BasicMessageChannel`s this format does not cover, the
 Objective-C handlers that cannot be retained through a retentions file, and a project that mixes
 Flutter and React Native.
+
+Fact locations are project-relative and `generatedAt` is normalized to UTC milliseconds. When a
+project contains more than one bridge mechanism, pass `--target flutter` or
+`--target react-native` before feeding the document to isthmus v0.1. The targeted document reports
+the number of omitted facts under the `target-filter` limitation.
 
 isthmus hands back `external-retentions`: for each Swift declaration it found a caller for, the USR
 and the evidence. `--external-retentions <path>` (or `external_retentions_path` in the

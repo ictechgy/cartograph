@@ -111,6 +111,29 @@ if [ "$actual_bridges" != "$expected_bridges" ]; then
 fi
 echo "  ok  브리지 사실이 기대와 일치(구문의 리터럴에 인덱스의 USR 이 붙음)"
 
+# 혼합 프로젝트에서도 isthmus 0.1에 넘길 Flutter 문서를 분리할 수 있어야 한다.
+flutter_bridges="$("$CARTOGRAPH" bridges --project "$FIXTURE" --target flutter 2>/dev/null)"
+python3 -c "
+import json, sys
+document = json.loads(sys.argv[1])
+assert document['target'] == 'flutter'
+assert document['facts']
+assert {fact['kind'] for fact in document['facts']} <= {'channel-register', 'method-handle'}
+assert not any(item.lower().lstrip().startswith('mixed-targets') for item in document['limitations'])
+" "$flutter_bridges"
+echo "  ok  --target flutter 가 혼합 프로젝트에서 Flutter 사실만 분리"
+
+react_native_bridges="$("$CARTOGRAPH" bridges --project "$FIXTURE" --target react-native 2>/dev/null)"
+python3 -c "
+import json, sys
+document = json.loads(sys.argv[1])
+assert document['target'] == 'react-native'
+assert document['facts']
+assert {fact['kind'] for fact in document['facts']} <= {'module-export', 'method-handle', 'component-export'}
+assert not any(item.lower().lstrip().startswith('mixed-targets') for item in document['limitations'])
+" "$react_native_bridges"
+echo "  ok  --target react-native 가 혼합 프로젝트에서 RN 사실만 분리"
+
 # isthmus 가 돌려준 보존 근거를 걸면 Dart 가 부르는 핸들러가 보고에서 빠져야 한다.
 # 이 목록은 위의 미사용 목록과 달라야 한다. 같다면 파일이 아무 일도 하지 않은 것이다.
 actual_with_retentions="$(

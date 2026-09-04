@@ -31,6 +31,10 @@ actually wrote. `external-retentions.json` is the file isthmus would hand back f
 `expected-unused-with-retentions.txt` is the report once it is applied. The script also checks that
 the two reports differ — a retentions file that changes nothing has silently failed.
 
+`lib/camera.dart` is not part of the SwiftPM build. It gives dartograph a real caller under the same
+project root, so isthmus can run both producers and return retention evidence without rewriting
+either document's `project` field.
+
 Objective-C is not compiled into the graph. The `CorpusObjC` target exists so that the
 `objective-c-sources` limitation is verified against a real `.m` file rather than a hand-built
 snapshot. Every iOS project on the maintainer's desk was pure Swift, so this was the only place to

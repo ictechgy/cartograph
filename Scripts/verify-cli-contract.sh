@@ -77,6 +77,7 @@ expect_status 64 "잘못된 형식 값"      dead --report-format yaml
 expect_status 64 "질의 대상 누락"      query
 expect_status 64 "0 이하의 깊이"       query Foo --depth 0
 expect_status 64 "잘못된 브리지 형식"  bridges --format yaml
+expect_status 64 "잘못된 브리지 대상"  bridges --target capacitor
 
 echo "종료 코드 2 — 도구 실패"
 MISSING="$(mktemp -d)"

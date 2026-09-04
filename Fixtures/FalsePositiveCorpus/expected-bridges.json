@@ -7,7 +7,7 @@
       "location": {
         "column": 9,
         "line": 24,
-        "path": "<project>/Sources/Corpus/Bridges.swift"
+        "path": "Sources/Corpus/Bridges.swift"
       },
       "symbol": {
         "qualifiedName": "CameraBridge.init",
@@ -21,7 +21,7 @@
       "location": {
         "column": 18,
         "line": 26,
-        "path": "<project>/Sources/Corpus/Bridges.swift"
+        "path": "Sources/Corpus/Bridges.swift"
       },
       "method": "takePhoto",
       "symbol": {
@@ -36,7 +36,7 @@
       "location": {
         "column": 1,
         "line": 9,
-        "path": "<project>/Sources/CorpusObjC/RNCalendar.m"
+        "path": "Sources/CorpusObjC/RNCalendar.m"
       }
     },
     {
@@ -46,7 +46,7 @@
       "location": {
         "column": 1,
         "line": 11,
-        "path": "<project>/Sources/CorpusObjC/RNCalendar.m"
+        "path": "Sources/CorpusObjC/RNCalendar.m"
       },
       "method": "addEvent"
     }
