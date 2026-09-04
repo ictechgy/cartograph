@@ -1,0 +1,67 @@
+{
+  "facts": [
+    {
+      "channel": "com.example/camera",
+      "dynamic": false,
+      "kind": "channel-register",
+      "location": {
+        "column": 9,
+        "line": 24,
+        "path": "<project>/Sources/Corpus/Bridges.swift"
+      },
+      "symbol": {
+        "qualifiedName": "CameraBridge.init",
+        "usr": "s:6Corpus12CameraBridgeC9messengerACyp_tcfc"
+      }
+    },
+    {
+      "channel": "com.example/camera",
+      "dynamic": false,
+      "kind": "method-handle",
+      "location": {
+        "column": 18,
+        "line": 26,
+        "path": "<project>/Sources/Corpus/Bridges.swift"
+      },
+      "method": "takePhoto",
+      "symbol": {
+        "qualifiedName": "CameraBridge.init",
+        "usr": "s:6Corpus12CameraBridgeC9messengerACyp_tcfc"
+      }
+    },
+    {
+      "channel": "Calendar",
+      "dynamic": false,
+      "kind": "module-export",
+      "location": {
+        "column": 1,
+        "line": 9,
+        "path": "<project>/Sources/CorpusObjC/RNCalendar.m"
+      }
+    },
+    {
+      "channel": "Calendar",
+      "dynamic": false,
+      "kind": "method-handle",
+      "location": {
+        "column": 1,
+        "line": 11,
+        "path": "<project>/Sources/CorpusObjC/RNCalendar.m"
+      },
+      "method": "addEvent"
+    }
+  ],
+  "format": "bridge-facts",
+  "generatedAt": "<generatedAt>",
+  "limitations": [
+    "mixed-targets: facts come from more than one bridge (flutter 2, react-native 2); 'target' is the majority"
+  ],
+  "platform": "swift",
+  "project": "<project>",
+  "target": "flutter",
+  "tool": {
+    "name": "cartograph",
+    "version": "<version>"
+  },
+  "version": 1
+}

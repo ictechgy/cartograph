@@ -12,10 +12,17 @@ public struct RetentionPolicy: Sendable {
     private let options: RetentionOptions
     /// 파일 글롭을 상대 경로로도 맞춰 보기 위한 기준 디렉터리.
     private let basePath: String?
+    /// 다른 도구가 알려 온 언어 경계 너머의 사용.
+    private let externalRetentions: ExternalRetentionIndex
 
-    public init(options: RetentionOptions = .default, basePath: String? = nil) {
+    public init(
+        options: RetentionOptions = .default,
+        basePath: String? = nil,
+        externalRetentions: ExternalRetentionIndex = .empty
+    ) {
         self.options = options
         self.basePath = basePath
+        self.externalRetentions = externalRetentions
     }
 
     /// 보존해야 할 정점과 그 근거.
@@ -63,6 +70,14 @@ public struct RetentionPolicy: Sendable {
     ) -> RetentionReason? {
         if node.attributes.contains(.ignoreComment) { return .ignoreComment }
         if isUserRetained(node) { return .userConfigured }
+        // 사용자 설정 다음이다. 외부 도구의 주장은 설정보다 약하고, 인덱스에서 유도한
+        // 나머지 규칙보다는 구체적이다(어느 줄이 불렀는지까지 안다).
+        if !externalRetentions.isEmpty,
+           externalRetentions.retention(
+               for: node, names: [ExternalRetentionIndex.syntaxQualifiedName(of: node, in: graph)]
+           ) != nil {
+            return .externalBridge
+        }
         if node.attributes.contains(.implicit) { return .compilerSynthesized }
         if node.attributes.contains(.entryPoint) { return .entryPoint }
         if isTopLevelCode(node, in: graph) { return .entryPoint }

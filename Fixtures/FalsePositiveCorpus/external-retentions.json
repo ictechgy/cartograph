@@ -1,0 +1,20 @@
+{
+  "format": "external-retentions",
+  "version": 0,
+  "producedBy": { "name": "isthmus", "version": "0.1.0" },
+  "generatedAt": "2026-09-04T00:00:00Z",
+  "retentions": [
+    {
+      "symbol": {
+        "usr": "s:6Corpus12CameraBridgeC9messengerACyp_tcfc",
+        "qualifiedName": "Corpus.init(messenger:)"
+      },
+      "reason": "bridge",
+      "evidence": {
+        "channel": "com.example/camera",
+        "method": "takePhoto",
+        "caller": { "platform": "dart", "path": "lib/camera.dart", "line": 42 }
+      }
+    }
+  ]
+}

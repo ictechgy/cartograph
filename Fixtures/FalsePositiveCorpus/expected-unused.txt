@@ -1,2 +1,5 @@
+class 'Corpus.CameraBridge' is never used
+class 'Corpus.FlutterMethodChannel' is never used
 function 'Corpus.neverCalledAtAll()' is never used
 property 'Corpus.genuinelyUnusedState' is never used
+property 'Corpus.method' is never used

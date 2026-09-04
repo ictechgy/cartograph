@@ -13,6 +13,7 @@ public struct ConfigurationOverrides: Sendable, Equatable {
     public var exclude: [GlobPattern]?
     public var edgeKinds: Set<EdgeKind>?
     public var baselinePath: String?
+    public var externalRetentionsPath: String?
     public var reportFormat: ReportFormat?
     public var graphFormat: GraphFormat?
     public var strict: Bool?
@@ -27,6 +28,7 @@ public struct ConfigurationOverrides: Sendable, Equatable {
         exclude: [GlobPattern]? = nil,
         edgeKinds: Set<EdgeKind>? = nil,
         baselinePath: String? = nil,
+        externalRetentionsPath: String? = nil,
         reportFormat: ReportFormat? = nil,
         graphFormat: GraphFormat? = nil,
         strict: Bool? = nil,
@@ -40,6 +42,7 @@ public struct ConfigurationOverrides: Sendable, Equatable {
         self.exclude = exclude
         self.edgeKinds = edgeKinds
         self.baselinePath = baselinePath
+        self.externalRetentionsPath = externalRetentionsPath
         self.reportFormat = reportFormat
         self.graphFormat = graphFormat
         self.strict = strict
@@ -59,6 +62,7 @@ extension CartographConfiguration {
         if let value = overrides.exclude { result.exclude = value }
         if let value = overrides.edgeKinds { result.edgeKinds = value }
         if let value = overrides.baselinePath { result.baselinePath = value }
+        if let value = overrides.externalRetentionsPath { result.externalRetentionsPath = value }
         if let value = overrides.reportFormat { result.reportFormat = value }
         if let value = overrides.graphFormat { result.graphFormat = value }
         if let value = overrides.strict { result.strict = value }

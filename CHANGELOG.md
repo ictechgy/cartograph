@@ -7,6 +7,56 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `cartograph bridges` exports what Swift declares at a language boundary, in the `bridge-facts`
+  exchange format that isthmus joins with the Dart or JavaScript side. A Flutter method-call
+  handler or a React Native module is called from another language, which the compiler index never
+  sees, so until now it was reported unreachable with no way to say otherwise. The only link
+  between the two sides is a string — `FlutterMethodChannel(name:)`, `case "takePhoto":`,
+  `@objc(CalendarManager)`, `RCT_EXPORT_METHOD(addEvent:)` — and this command reads those literals
+  with SwiftSyntax (and a text scan for the Objective-C macros), then attaches the USR the index
+  holds for the enclosing declaration so the answer can come back as a retention.
+
+  It states facts, not verdicts. A non-literal name is kept with its source expression and marked
+  `dynamic` rather than dropped; one level of constant is followed, but only through `Self`, `self`
+  or a type declared in the same file, so a same-named member on some other receiver never turns
+  into a literal it is not. A `case "…"` outside a handler closure counts only inside a function
+  that takes a `FlutterMethodCall`, and is attributed to the file's single channel (counted as
+  inferred) or left `null`. `limitations` counts what could not be resolved. The Objective-C
+  macro files are the first `.m` sources this tool reads at all; block comments are blanked first
+  so a module someone commented out does not come back as a handler.
+
+- `--external-retentions <path>` (or `external_retentions_path`) reads the retentions isthmus hands
+  back and keeps each named declaration as a retained root with reason `externalBridge`. `dead
+  --explain` quotes the evidence — which platform, file and line invoked which method on which
+  channel — instead of pointing at the file. `query` lists the file's provenance and how many of its
+  retentions name nothing in the index, so a stale file shows up as a limitation before it shows up
+  as a wrong deletion, and a file generated before the index store was written is flagged as
+  stale. A retention that carries a USR matches only that USR; the name is used only when isthmus
+  had no USR to give, so a same-named declaration in another module cannot be kept by mistake. A
+  configured path that does not exist is a tool failure, not a silent no-op: someone who supplied
+  the file expects it to be applied.
+
+### Fixed
+
+- `dead --report-test-only` no longer reports a type as "reached only from tests" when the only
+  thing keeping it alive is its compiler-synthesized memberwise initializer. No test had touched
+  it; the synthesized root was excluded from the production traversal but the type it belonged to
+  was not excluded from the candidates. The false-positive corpus caught this while a public struct
+  stub was being added for the bridge fixture.
+
+- The agent skill named retention reasons that do not exist (`objcExposed`, `codingKeys`,
+  `caseIterable`). It now lists the values the tool actually emits.
+
+### Changed
+
+- The false-positive corpus gains an Objective-C target. Every iOS project available for
+  dogfooding was pure Swift, so the `objective-c-sources` limitation had never been observed on a
+  real `.m` file; `verify-fixtures.sh` now checks it is counted, and pins the `bridges` output
+  against a real index so the syntax-to-USR attachment is verified by the compiler rather than by a
+  hand-built snapshot.
+
 ## [0.4.0] - 2026-09-04
 
 ### Added

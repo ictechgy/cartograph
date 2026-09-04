@@ -30,6 +30,7 @@ struct ConfigurationLoaderTests {
           max_cycles: 0
           max_instability: 0.75
         baseline_path: .cartograph-baseline.json
+        external_retentions_path: .isthmus/retentions.cartograph.json
         derived_data_path: DerivedData
         report_format: github-actions
         graph_format: mermaid
@@ -53,6 +54,7 @@ struct ConfigurationLoaderTests {
         #expect(configuration.thresholds.maxCycles == 0)
         #expect(configuration.thresholds.maxInstability == 0.75)
         #expect(configuration.baselinePath == ".cartograph-baseline.json")
+        #expect(configuration.externalRetentionsPath == ".isthmus/retentions.cartograph.json")
         #expect(configuration.derivedDataPath == "DerivedData")
         #expect(configuration.reportFormat == .githubActions)
         #expect(configuration.graphFormat == .mermaid)

@@ -15,6 +15,8 @@ public enum CartographError: Error, Equatable, LocalizedError {
     case invalidConfiguration(path: String, reason: String)
     /// 베이스라인 파일 해석 실패.
     case invalidBaseline(path: String, reason: String)
+    /// `--external-retentions` 파일 해석 실패.
+    case invalidExternalRetentions(path: String, reason: String)
     /// 설정에서 참조한 레이어 이름이 정의되지 않음.
     case unknownLayer(name: String, definedLayers: [String])
     /// 분석 결과 문제가 발견되어 실패로 종료(`--strict`).
@@ -53,6 +55,11 @@ public enum CartographError: Error, Equatable, LocalizedError {
             return "Invalid configuration at \(path): \(reason)"
         case let .invalidBaseline(path, reason):
             return "Invalid baseline at \(path): \(reason)"
+        case let .invalidExternalRetentions(path, reason):
+            return """
+                Invalid external retentions at \(path): \(reason)
+                Expected the 'external-retentions' format that `isthmus retentions --for cartograph` writes.
+                """
         case let .unknownLayer(name, definedLayers):
             return """
                 Rule refers to undefined layer '\(name)'. Defined layers: \

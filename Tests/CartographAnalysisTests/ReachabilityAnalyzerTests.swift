@@ -439,6 +439,22 @@ struct ExtensionOwnershipTests {
         #expect(!names.contains("Synthesized"))
     }
 
+    @Test("합성된 멤버가 살려 둔 타입은 테스트 전용으로 보고하지 않는다")
+    func synthesizedMemberDoesNotMakeTypeTestOnly() {
+        // 아무도 쓰지 않는 public 구조체. memberwise init 은 합성 선언이라 뿌리가 되고,
+        // 그 때문에 구조체가 전체 탐색에서는 살아남는다. 테스트는 닿은 적이 없다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Spec", kind: .structType, module: "AppTests", attributes: [.testSuite])
+        builder.symbol("Payload", kind: .structType, module: "App")
+        builder.symbol("Payload.init", kind: .initializer, module: "App", parent: "Payload", attributes: [.implicit])
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        let report = ReachabilityAnalyzer(options: .init(findsTestOnlyCode: true)).analyze(graph: graph, snapshot: snapshot)
+        #expect(report.testOnly.isEmpty)
+        #expect(report.unused.isEmpty)
+    }
+
     @Test("테스트 타깃 안의 선언은 보고하지 않는다")
     func ignoresDeclarationsInsideTestModules() {
         // 실측에서 408건 중 318건이 테스트 타깃 내부의 도우미였다. 그것까지 보고하면

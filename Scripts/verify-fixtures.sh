@@ -86,5 +86,81 @@ if [ "$actual_retained" != "$expected_retained" ]; then
 fi
 echo "  ok  --retain-public 보고가 기대와 일치(public 선언의 접근 수준이 제대로 읽힘)"
 
+# 언어 경계. 스캐너가 구문에서 뽑은 사실에 진짜 인덱스의 USR 이 붙는지는 여기서만 확인된다.
+# 생성 시각·도구 버전·절대 경로는 실행마다 다르므로 자리 표시자로 바꿔 통째로 비교한다.
+actual_bridges="$(
+    "$CARTOGRAPH" bridges --project "$FIXTURE" 2>/dev/null |
+        python3 -c "
+import json, sys
+document = json.load(sys.stdin)
+document['generatedAt'] = '<generatedAt>'
+document['tool']['version'] = '<version>'
+project = document['project']
+document['project'] = '<project>'
+for fact in document['facts']:
+    fact['location']['path'] = fact['location']['path'].replace(project, '<project>')
+print(json.dumps(document, indent=2, sort_keys=True, ensure_ascii=False))
+"
+)"
+expected_bridges="$(cat "$FIXTURE/expected-bridges.json")"
+
+if [ "$actual_bridges" != "$expected_bridges" ]; then
+    echo "브리지 사실이 기대와 다릅니다." >&2
+    diff <(echo "$expected_bridges") <(echo "$actual_bridges") || true
+    exit 1
+fi
+echo "  ok  브리지 사실이 기대와 일치(구문의 리터럴에 인덱스의 USR 이 붙음)"
+
+# isthmus 가 돌려준 보존 근거를 걸면 Dart 가 부르는 핸들러가 보고에서 빠져야 한다.
+# 이 목록은 위의 미사용 목록과 달라야 한다. 같다면 파일이 아무 일도 하지 않은 것이다.
+actual_with_retentions="$(
+    "$CARTOGRAPH" dead --project "$FIXTURE" --report-format json \
+        --external-retentions "$FIXTURE/external-retentions.json" 2>/dev/null |
+        python3 -c "
+import json, sys
+document = json.load(sys.stdin)
+names = sorted(d['message'] for d in document['diagnostics'] if d['ruleIdentifier'] == 'unused-symbol')
+print('\n'.join(names))
+"
+)"
+expected_with_retentions="$(cat "$FIXTURE/expected-unused-with-retentions.txt")"
+
+if [ "$actual_with_retentions" != "$expected_with_retentions" ]; then
+    echo "--external-retentions 보고가 기대와 다릅니다." >&2
+    diff <(echo "$expected_with_retentions") <(echo "$actual_with_retentions") || true
+    exit 1
+fi
+if [ "$actual_with_retentions" = "$actual_unused" ]; then
+    echo "--external-retentions 가 보고를 바꾸지 않았습니다. 근거 파일이 반영되지 않았습니다." >&2
+    exit 1
+fi
+echo "  ok  --external-retentions 보고가 기대와 일치(경계 너머의 호출자가 핸들러를 살림)"
+
+# 근거는 답의 일부다. 살아남았다는 말만 하고 누가 불렀는지 빠지면 사용자는 파일을 열어야 한다.
+explanation="$(
+    "$CARTOGRAPH" dead --project "$FIXTURE" --external-retentions "$FIXTURE/external-retentions.json" \
+        --explain CameraBridge 2>/dev/null
+)"
+if ! grep -q "evidence: dart lib/camera.dart:42 invokes 'takePhoto' on channel 'com.example/camera'" <<< "$explanation"; then
+    echo "--explain 이 외부 근거를 문장으로 만들지 못했습니다:" >&2
+    echo "$explanation" >&2
+    exit 1
+fi
+echo "  ok  --explain 이 외부 근거를 문장으로 만듦"
+
+# Objective-C 소스는 인덱스로 분석되지 않는다. 그 사실이 실제 프로젝트에서 세어져 나와야 한다.
+# 이 저장소 밖의 iOS 프로젝트는 전부 순수 Swift 라 .m 이 없었고, 이 한계가 실제로 뜨는지는
+# 여기서만 확인된다.
+limitations="$(
+    "$CARTOGRAPH" query CameraBridge --project "$FIXTURE" 2>/dev/null |
+        python3 -c "import json, sys; print('\n'.join(json.load(sys.stdin)['limitations']))"
+)"
+if ! grep -q "^objective-c-sources: 1 file(s) are not analysed" <<< "$limitations"; then
+    echo "query 의 limitations 에 objective-c-sources 가 없습니다:" >&2
+    echo "$limitations" >&2
+    exit 1
+fi
+echo "  ok  Objective-C 소스 1개가 limitations 에 세어짐"
+
 echo
 echo "통과"

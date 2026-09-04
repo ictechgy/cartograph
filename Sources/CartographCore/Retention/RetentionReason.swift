@@ -43,6 +43,11 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     case userConfigured
     /// `// cartograph:ignore` 주석.
     case ignoreComment
+    /// 다른 플랫폼이 언어 경계를 넘어 부른다고 외부 도구(isthmus)가 알려 왔다.
+    ///
+    /// 인덱스는 Dart 나 JavaScript 를 보지 못한다. 근거는 `--external-retentions` 파일에
+    /// 있고 `dead --explain` 이 그것을 문장으로 만든다.
+    case externalBridge
 
     /// 생산 코드가 아니라 테스트나 프리뷰가 살려 둔 뿌리인지 여부.
     ///
@@ -92,6 +97,7 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         case .preview: "a SwiftUI preview"
         case .userConfigured: "matched a retain rule in the configuration"
         case .ignoreComment: "marked with a // cartograph:ignore comment"
+        case .externalBridge: "called from another platform across a bridge, per the external retentions file"
         }
     }
 }

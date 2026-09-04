@@ -44,6 +44,19 @@ struct GlobalOptionsTests {
         #expect(resolved.configuration.strict)
     }
 
+    @Test("--external-retentions 는 설정 파일 값을 덮어쓴다")
+    func externalRetentionsOverridesFile() throws {
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/.cartograph.yml": "external_retentions_path: from-file.json\n"
+        ])
+        let fromFile = try GlobalOptions.parse(["--project", "/p"]).resolveConfiguration(fileSystem: fileSystem)
+        #expect(fromFile.configuration.externalRetentionsPath == "from-file.json")
+
+        let fromFlag = try GlobalOptions.parse(["--project", "/p", "--external-retentions", "cli.json"])
+            .resolveConfiguration(fileSystem: fileSystem)
+        #expect(fromFlag.configuration.externalRetentionsPath == "cli.json")
+    }
+
     @Test("여러 값을 받는 옵션을 파싱한다")
     func parsesRepeatedOptions() throws {
         let options = try GlobalOptions.parse([
@@ -97,7 +110,7 @@ struct CommandConfigurationTests {
     @Test("모든 하위 명령이 등록되어 있다")
     func subcommandsAreRegistered() {
         let names = CartographCommand.configuration.subcommands.map { $0.configuration.commandName }
-        #expect(names == ["graph", "cycles", "dead", "query", "metrics", "rules", "baseline", "init", "skill"])
+        #expect(names == ["graph", "cycles", "dead", "query", "bridges", "metrics", "rules", "baseline", "init", "skill"])
         // 인자 없이 실행하면 도움말이 나와야 한다. 기본 하위 명령이 있으면
         // 처음 써 보는 사용자가 DOT 덤프를 마주하게 된다.
         #expect(CartographCommand.configuration.defaultSubcommand == nil)

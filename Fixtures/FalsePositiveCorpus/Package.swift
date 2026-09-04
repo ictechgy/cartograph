@@ -15,6 +15,10 @@ let package = Package(
     platforms: [.macOS(.v14)],
     targets: [
         .target(name: "Corpus"),
+        // Objective-C 소스는 이 도구가 인덱스로 분석하지 않는다. 바탕화면의 iOS 프로젝트가
+        // 전부 순수 Swift 라 `.m` 이 하나도 없었고, `limitations` 의 `objective-c-sources` 가
+        // 실제 프로젝트에서 뜨는지 확인할 곳이 없었다. 여기가 그 자리다.
+        .target(name: "CorpusObjC"),
         .executableTarget(name: "CorpusApp", dependencies: ["Corpus"]),
         .testTarget(name: "CorpusTests", dependencies: ["Corpus"]),
     ]

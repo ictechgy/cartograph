@@ -28,6 +28,12 @@ struct GlobalOptions: ParsableArguments {
     @Option(name: .customLong("baseline"), help: "Baseline file used to suppress known findings.")
     var baselinePath: String?
 
+    @Option(
+        name: .customLong("external-retentions"),
+        help: "Retentions file from `isthmus retentions --for cartograph`; keeps declarations called across a bridge."
+    )
+    var externalRetentionsPath: String?
+
     @Option(name: .customLong("include"), parsing: .upToNextOption, help: "Glob patterns to include.")
     var include: [String] = []
 
@@ -81,6 +87,7 @@ struct GlobalOptions: ParsableArguments {
             exclude: exclude.isEmpty ? nil : exclude.map { GlobPattern($0) },
             edgeKinds: edgeKinds.isEmpty ? nil : Set(edgeKinds),
             baselinePath: baselinePath,
+            externalRetentionsPath: externalRetentionsPath,
             reportFormat: reportFormat,
             strict: strict ? true : nil,
             retainPublic: retainPublic ? true : nil

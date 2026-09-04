@@ -69,6 +69,9 @@ public enum ConfigurationTemplate {
         #  max_distance: 0.7
 
         # baseline_path: \(Cartograph.defaultBaselineFileName)
+        # Retentions produced by `isthmus retentions --for cartograph`, for handlers that
+        # only Dart or JavaScript calls across a platform channel.
+        # external_retentions_path: .isthmus/retentions.cartograph.json
         report_format: text
         graph_format: dot
         strict: false

@@ -40,6 +40,7 @@ What that buys you:
 | Architecture metrics | — | ✅ Ca, Ce, instability, abstractness, distance |
 | Layering rules in CI | — | ✅ ArchUnit-style rules in YAML |
 | Who uses this symbol? | not answerable | `query` answers both directions as JSON |
+| Callers in Dart or JavaScript | invisible | `bridges` exports the Swift side of a platform channel; `--external-retentions` reads the join back |
 | Graph export | — | ✅ DOT, Mermaid, JSON, self-contained HTML |
 | SARIF for code scanning | — | ✅ |
 | `@objc` retained by default | ❌ opt-in | ✅ on by default |
@@ -294,6 +295,74 @@ or `candidates` depending on `status`.
 
 An unknown name exits 64, so a typo in a script does not pass silently as "nothing uses it".
 
+### `bridges` — export the Swift side of a language boundary
+
+```bash
+cartograph bridges                       # bridge-facts JSON on stdout
+cartograph bridges --format text         # one line per fact, for a quick look
+cartograph dead --external-retentions .isthmus/retentions.cartograph.json
+```
+
+A Flutter method-call handler or a React Native module is called from Dart or JavaScript, which
+the compiler index cannot see, so it is reported unreachable. The only thing that links the two
+sides is a string: the channel name in `FlutterMethodChannel(name:)`, the `case "takePhoto":` in
+the handler, the `@objc(CalendarManager)` on a class, the `RCT_EXPORT_METHOD(addEvent:)` in a
+`.m` file. `bridges` reads those literals out of the sources with SwiftSyntax (and a text scan for
+Objective-C), attaches the USR the index has for the enclosing declaration, and writes the
+`bridge-facts` exchange format that [isthmus](../isthmus) joins with the other platform's facts.
+
+```console
+$ cartograph bridges
+{
+  "facts" : [
+    {
+      "channel" : "com.example/camera",
+      "dynamic" : false,
+      "kind" : "method-handle",
+      "location" : { "column" : 18, "line" : 26, "path" : "/app/ios/CameraPlugin.swift" },
+      "method" : "takePhoto",
+      "symbol" : { "qualifiedName" : "CameraPlugin.handle", "usr" : "s:3App12CameraPlugin…" }
+    }
+  ],
+  "format" : "bridge-facts",
+  "generatedAt" : "2026-09-04T00:00:00Z",
+  "limitations" : [ ],
+  "platform" : "swift",
+  "project" : "/app/ios",
+  "target" : "flutter",
+  "tool" : { "name" : "cartograph", "version" : "0.5.0" },
+  "version" : 1
+}
+```
+
+It states facts, not verdicts: it does not know whether anything on the other side calls the
+handler. A name that is not a literal is kept with its source expression and `dynamic: true`
+rather than dropped, so the consumer can count what it could not join. One level of constant is
+followed (`static let name = "…"` used as `FlutterMethodChannel(name: Self.name)`); anything deeper
+is `dynamic`. A `case "…"` outside a handler closure counts only inside a function that takes a
+`FlutterMethodCall`; it is attributed to the file's single channel when there is exactly one, and
+to `null` otherwise. Creating a channel without attaching a handler is not a fact. `limitations`
+counts the dynamic names, the unattributed and inferred channels, the handlers with no USR (Swift
+not rebuilt since the edit), the `@objc(Name)` classes assumed to be React Native modules, the
+`FlutterEventChannel`s this format does not cover, and a project that mixes Flutter and React
+Native.
+
+isthmus hands back `external-retentions`: for each Swift declaration it found a caller for, the USR
+and the evidence. `--external-retentions <path>` (or `external_retentions_path` in the
+configuration) turns each into a retained root with reason `externalBridge`, and `--explain` quotes
+the evidence rather than pointing at the file:
+
+```console
+$ cartograph dead --external-retentions .isthmus/retentions.cartograph.json --explain CameraPlugin
+App.CameraPlugin is retained because its member App.init(messenger:) is called from another platform across a bridge, per the external retentions file.
+  evidence: dart lib/camera.dart:42 invokes 'takePhoto' on channel 'com.example/camera'
+```
+
+A path that is configured but missing is a tool failure (exit 2), not a silent no-op: someone who
+supplied the file expects it to be applied. `query` lists the file's provenance under
+`limitations`, along with how many of its retentions name no declaration in the index — a renamed
+handler shows up there before it shows up as a bug.
+
 ### `skill` — teach a coding agent to use this
 
 ```bash
@@ -434,6 +503,7 @@ thresholds:
   max_distance: 0.8
 
 baseline_path: .cartograph-baseline.json
+external_retentions_path: .isthmus/retentions.cartograph.json   # from isthmus, see `bridges`
 derived_data_path: DerivedData    # where CI put -derivedDataPath
 report_format: text               # text json xcode checkstyle github-actions sarif
 graph_format: dot                 # dot mermaid json html
@@ -468,6 +538,7 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | Compiler-synthesized declarations | you cannot delete them |
 | `// cartograph:ignore`, `// cartograph:ignore:all` | you said so |
 | `retained_names`, `retained_files` globs | you said so |
+| Declarations named in `--external-retentions` | another platform calls them across a bridge; `--explain` quotes the evidence |
 
 **`retain_objc_accessible` defaults to on.** Periphery defaulted it off, which made mixed-language
 UIKit projects its largest source of false positives. A dead-code tool nobody trusts is worse than
@@ -488,8 +559,11 @@ adversarial review.
 - **Interface Builder connections are not matched individually.** Every `@IBOutlet` and `@IBAction`
   is kept when `retain_interface_builder` is on, whether or not a xib actually connects it, so
   disconnected outlets are not reported. Custom classes *are* matched by name.
-- **Objective-C sources are not analyzed.** `.m` and `.h` files are invisible; Swift declarations
-  they reach are covered by `retain_objc_accessible`, which is on by default.
+- **Objective-C sources are not analyzed.** `.m` and `.h` files are invisible to the graph; Swift
+  declarations they reach are covered by `retain_objc_accessible`, which is on by default. `bridges`
+  does read `.m` files, but only for React Native export macros, as text.
+- **Callers in another language are known only through isthmus.** `bridges` exports what Swift
+  declares; whether Dart or JavaScript actually calls it is a join this tool does not perform.
 - **`#if` branches that did not compile do not exist.** The index store only knows the
   configuration you built.
 
