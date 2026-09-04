@@ -9,7 +9,7 @@ _Last updated: 2026-09-05 01:41 KST by Codex_
 
 ## Current Status
 
-- `main`의 기준 커밋은 `a6e773d`(PR #21 squash merge)다.
+- 0.5.3 제품 변경 기준은 `a6e773d`(PR #21)이며, 이 문서는 PR #22로 그 위에 merge됐다.
 - cartograph `0.5.3` 릴리스와 macOS universal 자산이 공개됐다.
 - Homebrew tap은 `ictechgy/homebrew-tap@70f0c7f`로 갱신됐고 로컬 설치도 0.5.3이다.
 - 필수 후속 구현이나 배포 blocker는 없다.
