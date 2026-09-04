@@ -684,7 +684,10 @@ public struct CartographService: Sendable {
     /// USR 을 붙여야, isthmus 가 조인한 결과가 `--external-retentions` 로 돌아올 수 있다.
     ///
     /// - Parameter generatedAt: 문서에 적을 생성 시각. 테스트가 고정하려고 받는다.
-    public func bridgeFacts(generatedAt: Date = Date()) throws -> BridgeFactsDocument {
+    public func bridgeFacts(
+        generatedAt: Date = Date(),
+        target: BridgeFact.Target? = nil
+    ) throws -> BridgeFactsDocument {
         let resolver = BridgeSymbolResolver(snapshot: try makeIndexProvider().loadSnapshot())
         let sources = bridgeSourceFiles()
         var facts: [BridgeFact] = []
@@ -702,22 +705,38 @@ public struct CartographService: Sendable {
                 facts += ReactNativeMacroScanner().scan(source: source, path: path)
             }
         }
+        let selectedFacts = target.map { selected in
+            facts.filter { $0.target == selected }
+        } ?? facts
+        let includesFlutter = target != .reactNative
         return BridgeFactsDocument(
             tool: .init(name: Cartograph.toolName, version: Cartograph.version),
-            generatedAt: generatedAt.ISO8601Format(),
+            generatedAt: Self.bridgeTimestamp(generatedAt),
             project: projectPath,
-            facts: facts,
-            unscannedEventChannels: unscannedEventChannels,
-            unscannedMessageChannels: unscannedMessageChannels,
+            facts: selectedFacts,
+            unscannedEventChannels: includesFlutter ? unscannedEventChannels : 0,
+            unscannedMessageChannels: includesFlutter ? unscannedMessageChannels : 0,
             extraLimitations: unreadable > 0
                 ? ["unreadable-sources: \(unreadable) file(s) could not be read and were skipped"] : []
         )
     }
 
     /// `bridges` 명령. 항상 JSON 이다. 소비자는 사람이 아니라 isthmus 다.
-    public func exportBridgeFacts(generatedAt: Date = Date(), asText: Bool = false) throws -> CommandOutcome {
-        let document = try bridgeFacts(generatedAt: generatedAt)
+    public func exportBridgeFacts(
+        generatedAt: Date = Date(),
+        asText: Bool = false,
+        target: BridgeFact.Target? = nil
+    ) throws -> CommandOutcome {
+        let document = try bridgeFacts(generatedAt: generatedAt, target: target)
         return CommandOutcome(output: asText ? document.renderText() : try Self.encodeSortedJSON(document))
+    }
+
+    /// 교환 생산자가 요구하는 UTC 밀리초 세 자리 시각을 만든다.
+    private static func bridgeTimestamp(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter.string(from: date)
     }
 
     /// 브리지 사실을 찾을 소스 파일. 분석 범위와 같은 경로 필터를 건다.

@@ -63,12 +63,12 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
             try container.encodeIfPresent(symbol, forKey: .symbol)
         }
 
-        init(_ fact: BridgeFact) {
+        init(_ fact: BridgeFact, relativeTo projectPath: String) {
             kind = fact.kind.rawValue
             channel = fact.channel
             method = fact.method
             dynamic = fact.isDynamic
-            location = fact.location
+            location = fact.location.relative(to: projectPath)
             symbol = fact.symbol.map { Symbol(qualifiedName: $0.qualifiedName, usr: $0.usr) }
         }
     }
@@ -108,7 +108,7 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         self.generatedAt = generatedAt
         platform = "swift"
         self.project = project
-        self.facts = facts.sorted().map(Fact.init)
+        self.facts = facts.sorted().map { Fact($0, relativeTo: project) }
 
         let targets = Self.countByTarget(facts)
         target = Self.dominantTarget(targets)

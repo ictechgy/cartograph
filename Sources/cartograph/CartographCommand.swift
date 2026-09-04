@@ -217,10 +217,16 @@ struct BridgesCommand: ParsableCommand {
     @Option(name: .customLong("format"), help: "json (the exchange format) or text (one line per fact).")
     var format: BridgesFormat = .json
 
+    @Option(name: .customLong("target"), help: "Limit facts to flutter or react-native.")
+    var target: BridgesTarget?
+
     func run() throws {
         let context = try CommandSupport.makeContext(options)
         try CommandSupport.emit(
-            try context.service.exportBridgeFacts(asText: format == .text),
+            try context.service.exportBridgeFacts(
+                asText: format == .text,
+                target: target?.bridgeTarget
+            ),
             options: options,
             context: context
         )
@@ -231,6 +237,19 @@ struct BridgesCommand: ParsableCommand {
 enum BridgesFormat: String, ExpressibleByArgument, CaseIterable {
     case json
     case text
+}
+
+/// `bridges --target`에서 선택할 언어 경계다.
+enum BridgesTarget: String, ExpressibleByArgument, CaseIterable {
+    case flutter
+    case reactNative = "react-native"
+
+    var bridgeTarget: BridgeFact.Target {
+        switch self {
+        case .flutter: .flutter
+        case .reactNative: .reactNative
+        }
+    }
 }
 
 /// 아키텍처 지표를 계산한다.

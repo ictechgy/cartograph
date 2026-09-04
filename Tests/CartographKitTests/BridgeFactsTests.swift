@@ -51,6 +51,30 @@ struct BridgeFactsTests {
 
     private let fixedDate = Date(timeIntervalSince1970: 1_788_480_000)
 
+    @Test("교환 문서의 사실 위치는 프로젝트 상대 경로다")
+    func bridgeFactLocationsAreProjectRelative() throws {
+        let service = makeService(
+            files: ["/p/Sources/CameraPlugin.swift": Self.pluginSource],
+            snapshot: makeSnapshot()
+        )
+
+        let document = try service.bridgeFacts(generatedAt: fixedDate)
+
+        #expect(document.facts.map(\.location.path) == [
+            "Sources/CameraPlugin.swift",
+            "Sources/CameraPlugin.swift",
+        ])
+    }
+
+    @Test("교환 문서의 생성 시각은 UTC 밀리초 형식이다")
+    func bridgeFactsUseUTCMillisecondTimestamp() throws {
+        let service = makeService(files: ["/p/Sources/A.swift": "struct A {}"], snapshot: IndexSnapshot())
+
+        let document = try service.bridgeFacts(generatedAt: fixedDate)
+
+        #expect(document.generatedAt == "2026-09-04T00:00:00.000Z")
+    }
+
     @Test("구문에서 찾은 사실에 인덱스의 USR 이 붙는다")
     func attachesIndexUSRs() throws {
         let service = makeService(
@@ -175,7 +199,7 @@ struct BridgeFactsTests {
         #expect(first.contains("\"format\" : \"bridge-facts\""))
         #expect(first.contains("\"version\" : 1"))
         #expect(first.contains("\"platform\" : \"swift\""))
-        #expect(first.contains("\"generatedAt\" : \"2026-09-04T00:00:00Z\""))
+        #expect(first.contains("\"generatedAt\" : \"2026-09-04T00:00:00.000Z\""))
         #expect(first.contains("\"dynamic\" : false"))
 
         let decoded = try JSONDecoder().decode(BridgeFactsDocument.self, from: Data(first.utf8))
@@ -237,7 +261,7 @@ struct BridgeFactsTests {
             snapshot: makeSnapshot()
         )
         let text = try service.exportBridgeFacts(generatedAt: fixedDate, asText: true).output
-        #expect(text.contains("/p/Sources/CameraPlugin.swift:9:14  method-handle  channel=com.example/camera  method=takePhoto  s:handle"))
+        #expect(text.contains("Sources/CameraPlugin.swift:9:14  method-handle  channel=com.example/camera  method=takePhoto  s:handle"))
         #expect(text.contains("2 bridge fact(s) · target flutter\n"))
     }
 }

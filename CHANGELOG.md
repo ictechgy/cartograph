@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `bridges` now emits project-relative locations and UTC millisecond timestamps, and
+  `--target flutter|react-native` can split a mixed project into a v1 document that isthmus can
+  consume without guessing.
+
 ## [0.5.2] - 2026-09-04
 
 A follow-up review of 0.5.1 at maximum effort found that the scoping introduced there stopped at

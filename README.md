@@ -303,6 +303,7 @@ unused list sees what the graph could not, without a `query` per entry.
 ```bash
 cartograph bridges                       # bridge-facts JSON on stdout
 cartograph bridges --format text         # one line per fact, for a quick look
+cartograph bridges --target flutter      # split one mechanism from a mixed project
 cartograph dead --external-retentions .isthmus/retentions.cartograph.json
 ```
 
@@ -322,13 +323,13 @@ $ cartograph bridges
       "channel" : "com.example/camera",
       "dynamic" : false,
       "kind" : "method-handle",
-      "location" : { "column" : 18, "line" : 26, "path" : "/app/ios/CameraPlugin.swift" },
+      "location" : { "column" : 18, "line" : 26, "path" : "CameraPlugin.swift" },
       "method" : "takePhoto",
       "symbol" : { "qualifiedName" : "CameraPlugin.handle", "usr" : "s:3App12CameraPlugin…" }
     }
   ],
   "format" : "bridge-facts",
-  "generatedAt" : "2026-09-04T00:00:00Z",
+  "generatedAt" : "2026-09-04T00:00:00.000Z",
   "limitations" : [ ],
   "platform" : "swift",
   "project" : "/app/ios",
@@ -350,6 +351,10 @@ not rebuilt since the edit), the `@objc(Name)` classes assumed to be React Nativ
 `FlutterEventChannel`s and Pigeon `BasicMessageChannel`s this format does not cover, the
 Objective-C handlers that cannot be retained through a retentions file, and a project that mixes
 Flutter and React Native.
+
+Fact locations are project-relative and `generatedAt` is normalized to UTC milliseconds. When a
+project contains more than one bridge mechanism, pass `--target flutter` or
+`--target react-native` before feeding the document to isthmus v0.1.
 
 isthmus hands back `external-retentions`: for each Swift declaration it found a caller for, the USR
 and the evidence. `--external-retentions <path>` (or `external_retentions_path` in the
