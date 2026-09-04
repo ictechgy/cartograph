@@ -102,6 +102,27 @@ struct ReactNativeMacroScannerTests {
         #expect(scan(source).filter { $0.kind == .methodHandle }.map(\.method) == ["real"])
     }
 
+    @Test("줄 주석 안의 /* 와 이스케이프된 따옴표, #else 가지를 바르게 다룬다")
+    func handlesCommentAndStringEdgeCases() {
+        let source = """
+            @implementation RNCalendar
+            // TODO: merge with /* the UIKit version
+            RCT_EXPORT_MODULE(Calendar)
+            NSLog(@"path\\\\"); // RCT_EXPORT_METHOD(fake)
+            RCT_EXPORT_METHOD(addEvent:(NSString *)name) {}
+            #if 0
+            RCT_EXPORT_METHOD(old) {}
+            #else
+            RCT_EXPORT_METHOD(current) {}
+            #endif
+            @end
+            """
+        let facts = scan(source)
+        #expect(facts.map(\.channel) == ["Calendar", "Calendar", "Calendar"])
+        #expect(facts.map(\.method) == [nil, "addEvent", "current"])
+        #expect(facts.map(\.location.line) == [3, 5, 9])
+    }
+
     @Test("@end 가 빠져도 앞 블록을 버리지 않는다")
     func keepsBlockWithoutEnd() {
         let source = """

@@ -48,9 +48,18 @@ change here closes a path where `bridges` could emit a literal it had not actual
   `objective-c-handlers` (RN handlers in `.m` files, which carry no USR and so cannot be retained
   through a retentions file), and `objc-named-classes` now includes the method handles it implies.
   `mixed-targets` says when `target` was chosen on a tie.
+- A local `let name = "…"` is visible only inside the function that declares it. Hoisting it to
+  the file would have turned every bare `name` in the file into that literal, including references
+  to a global declared elsewhere. `let m = call.method` aliases are likewise scoped to their
+  function or handler closure, and a function nested inside a method body is neither an enclosing
+  declaration nor an exported React Native method. Members of a `private extension` are not
+  exported; an explicit `@objc private func` is; `static` and `class` methods are not.
 - The agent skill no longer implies that a retentions file being present settles an `unreachable`
-  handler. Reinstall it with `cartograph skill --force`; the copy written by 0.4.0 or 0.5.0 keeps
-  the old wording until then.
+  handler, and names `retainedByMember` alongside `retained` as the states that carry
+  `reason: externalBridge`. Reinstall it with `cartograph skill --force`; the copy written by 0.4.0
+  or 0.5.0 keeps the old wording until then.
+- Because the retentions file is now read before the index store, a broken file fails every
+  analysis command, not only `dead`, which is the same treatment a broken baseline gets.
 
 ## [0.5.0] - 2026-09-04
 

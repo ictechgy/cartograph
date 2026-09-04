@@ -124,10 +124,10 @@ private typealias ConstantTable = [String: String?]
 final class BindingCollector: SyntaxVisitor {
     /// `Type.name` → 리터럴. 파일 최상위 상수는 `name` 그대로.
     private var constants: ConstantTable = [:]
-    /// 채널 변수 이름 → 생성자의 `name:` 인자와, 그것이 쓰인 타입 문맥.
+    /// 채널 변수 이름 → 생성자의 `name:` 인자와, 그것이 쓰인 타입·함수 문맥.
     ///
     /// 해석은 2차 패스에서 한다. 여기서 해석하면 아래에 선언된 상수를 못 본다.
-    private(set) var channelBindings: [String: (argument: ExprSyntax, enclosingTypes: [String])?] = [:]
+    private(set) var channelBindings: [String: (argument: ExprSyntax, enclosingTypes: [String], scope: Int?)?] = [:]
     /// 이 파일이 선언하거나 확장한 타입 이름.
     private(set) var declaredTypeNames: Set<String> = []
     /// `@objc(Name)` 클래스 이름 → 모듈 이름과 `@objcMembers` 여부. 익스텐션이 이것을 이어받는다.
@@ -139,10 +139,30 @@ final class BindingCollector: SyntaxVisitor {
 
     /// 지금 어느 타입 안에 있는지. 상수와 채널 변수의 키를 만든다.
     private var typeNames: [String] = []
+    /// 지금 어느 함수 본문 안에 있는지. 지역 상수는 그 함수 안에서만 보인다.
+    ///
+    /// 함수를 구분하지 않고 지역 상수를 파일 최상위로 올리면, 어느 함수의 `let name = "…"`
+    /// 이든 파일 전체의 `name` 참조를 확신에 찬 리터럴로 만든다. 다른 파일의 전역 상수를
+    /// 가리키는 참조가 이 파일의 무관한 지역 값으로 나간다.
+    private var scopes: [Int] = []
 
     init() {
         super.init(viewMode: .sourceAccurate)
     }
+
+    // MARK: 함수 문맥
+
+    override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
+    override func visitPost(_ node: FunctionDeclSyntax) { scopes.removeLast() }
+    override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
+    override func visitPost(_ node: InitializerDeclSyntax) { scopes.removeLast() }
+
+    private func pushScope(_ node: some SyntaxProtocol) -> SyntaxVisitorContinueKind {
+        scopes.append(Self.scopeKey(node)); return .visitChildren
+    }
+
+    /// 함수를 구분하는 키. 두 패스가 같은 노드에서 같은 값을 얻는다.
+    static func scopeKey(_ node: some SyntaxProtocol) -> Int { node.position.utf8Offset }
 
     // MARK: 타입 문맥
 
@@ -182,10 +202,13 @@ final class BindingCollector: SyntaxVisitor {
     }
 
     /// `channel = FlutterMethodChannel(...)` 처럼 대입으로 채널을 만드는 경우. `init` 안이 흔하다.
+    ///
+    /// `self.name = "…"` 은 프로퍼티라 타입 키로, 본문 안의 `name = "…"` 은 지역 키로 간다.
     override func visit(_ node: InfixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
         guard node.operator.is(AssignmentExprSyntax.self) else { return .visitChildren }
         if let name = Self.identifierName(of: node.leftOperand) {
-            bind(name: name, to: node.rightOperand, isLocal: false)
+            let isMember = node.leftOperand.is(MemberAccessExprSyntax.self)
+            bind(name: name, to: node.rightOperand, isLocal: !isMember && DeclarationCollector.isInsideBody(node))
         }
         return .visitChildren
     }
@@ -201,20 +224,23 @@ final class BindingCollector: SyntaxVisitor {
 
     private func bind(name: String, to value: ExprSyntax, isLocal: Bool) {
         if let literal = Self.stringLiteral(value) {
-            // 함수 안의 지역 상수는 그 함수 밖에서 보이지 않는다. 타입 키로 올리면
-            // 다른 메서드의 `name` 이 이 지역 값으로 풀린다. 최상위 키로만 둔다.
-            record(&constants, key: isLocal ? name : qualified(name), value: literal)
+            // 함수 안의 지역 상수는 그 함수 키로만 둔다. 밖에서는 보이지 않는다.
+            record(&constants, key: isLocal ? Self.localKey(name, scope: scopes.last) : qualified(name), value: literal)
         } else if let argument = Self.channelNameArgument(value) {
             if let existing = channelBindings[name] {
                 if existing != nil { channelBindings[name] = .some(nil) }
             } else {
-                channelBindings[name] = (argument, typeNames)
+                channelBindings[name] = (argument, typeNames, scopes.last)
             }
         }
     }
 
     private func qualified(_ name: String) -> String {
         (typeNames + [name]).joined(separator: ".")
+    }
+
+    private static func localKey(_ name: String, scope: Int?) -> String {
+        "\(scope ?? -1)#\(name)"
     }
 
     /// 같은 키가 다른 값으로 두 번 나오면 어느 쪽인지 알 수 없다. 그때는 모른다고 한다.
@@ -232,12 +258,12 @@ final class BindingCollector: SyntaxVisitor {
     func channel(named name: String) -> ResolvedName?? {
         guard let entry = channelBindings[name] else { return nil }
         guard let entry else { return .some(nil) }
-        return .some(resolveString(entry.argument, enclosingTypes: entry.enclosingTypes))
+        return .some(resolveString(entry.argument, enclosingTypes: entry.enclosingTypes, scope: entry.scope))
     }
 
     /// `FlutterMethodChannel(name: …, …)` 호출이면 그 채널 이름.
-    func channelConstruction(_ expression: ExprSyntax, enclosingTypes: [String]) -> ResolvedName? {
-        Self.channelNameArgument(expression).map { resolveString($0, enclosingTypes: enclosingTypes) }
+    func channelConstruction(_ expression: ExprSyntax, enclosingTypes: [String], scope: Int?) -> ResolvedName? {
+        Self.channelNameArgument(expression).map { resolveString($0, enclosingTypes: enclosingTypes, scope: scope) }
     }
 
     /// `FlutterMethodChannel(name: …)` 또는 `FlutterMethodChannel.init(name: …)` 의 `name:` 인자.
@@ -257,19 +283,22 @@ final class BindingCollector: SyntaxVisitor {
 
     /// 문자열 표현식을 리터럴로 푼다. 못 풀면 원문 표현식을 `dynamic` 으로 돌려준다.
     ///
-    /// - `name`, `Self.name`, `self.name`: 감싸는 타입에서 바깥으로, 마지막으로 파일 최상위.
+    /// - `name`: 같은 함수의 지역 상수, 그다음 감싸는 타입에서 바깥으로, 마지막으로 파일 최상위.
+    /// - `Self.name`, `self.name`: 감싸는 타입에서 바깥으로, 마지막으로 파일 최상위.
     /// - `Type.name`: 이 파일이 선언하거나 확장한 `Type` 의 상수만.
     /// - `.name`(암시적 멤버): 수신자 타입은 `String` 이지 이 파일의 어떤 타입도 아니다.
     ///   구문만으로는 어느 확장의 상수인지 알 수 없으므로 `dynamic`.
-    func resolveString(_ expression: ExprSyntax, enclosingTypes: [String]) -> ResolvedName {
+    func resolveString(_ expression: ExprSyntax, enclosingTypes: [String], scope: Int?) -> ResolvedName {
         if let literal = Self.stringLiteral(expression) { return .literal(literal) }
-        if let value = constant(for: expression, enclosingTypes: enclosingTypes) { return .literal(value) }
+        if let value = constant(for: expression, enclosingTypes: enclosingTypes, scope: scope) { return .literal(value) }
         return .dynamic(expression.trimmedDescription)
     }
 
-    private func constant(for expression: ExprSyntax, enclosingTypes: [String]) -> String? {
+    private func constant(for expression: ExprSyntax, enclosingTypes: [String], scope: Int?) -> String? {
         if let reference = expression.as(DeclReferenceExprSyntax.self) {
-            return lookup(DeclarationCollector.unescaped(reference.baseName.text), from: enclosingTypes)
+            let name = DeclarationCollector.unescaped(reference.baseName.text)
+            if let scope, let local = constants[Self.localKey(name, scope: scope)] { return local }
+            return lookup(name, from: enclosingTypes)
         }
         guard let member = expression.as(MemberAccessExprSyntax.self),
               let base = member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text
@@ -361,11 +390,14 @@ final class BridgeFactCollector: SyntaxVisitor {
     private var methodCallFunctionDepth = 0
     /// `@objc(Name)` 클래스(또는 그 익스텐션) 안에 있으면 그 이름과, 멤버 전부를 내보내는지.
     private var reactModules: [(name: String, exportsAllMembers: Bool)?] = []
-    /// `let m = call.method` 로 메서드 이름을 담아 둔 지역 변수들.
+    /// `let m = call.method` 로 메서드 이름을 담아 둔 지역 변수들. 함수·클로저마다 한 층.
     ///
     /// `switch m` 을 못 알아보면 그 핸들러의 메서드가 전부 사라진다. 실제 플러그인에서
-    /// 드물지 않은 형태다.
-    private var methodAliases: Set<String> = []
+    /// 드물지 않은 형태다. 파일 전역으로 두면 한 함수의 별칭이 다른 함수의 무관한 `m` 을
+    /// 메서드 이름으로 위장시킨다.
+    private var aliasScopes: [Set<String>] = [[]]
+    /// 지금 어느 함수 본문 안에 있는지. `BindingCollector` 와 같은 키다.
+    private var scopes: [Int] = []
 
     init(converter: SourceLocationConverter, bindings: BindingCollector, path: String) {
         self.converter = converter
@@ -407,7 +439,8 @@ final class BridgeFactCollector: SyntaxVisitor {
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
         let typeName = DeclarationCollector.unescaped(node.extendedType.trimmedDescription)
         pushType(typeName, node: node)
-        let module = bindings.reactModules[typeName].map {
+        // `private extension` 의 멤버는 전부 private 이라 Objective-C 에 보이지 않는다.
+        let module = Self.isFilePrivate(node.modifiers) ? nil : bindings.reactModules[typeName].map {
             (name: $0.name, exportsAllMembers: $0.exportsAllMembers || Self.hasAttribute("objcMembers", in: node.attributes))
         }
         reactModules.append(module)
@@ -416,17 +449,22 @@ final class BridgeFactCollector: SyntaxVisitor {
     override func visitPost(_ node: ExtensionDeclSyntax) { popType(); reactModules.removeLast() }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+        // 함수 본문 안의 지역 함수는 인덱스에 정점이 없고 Objective-C 에도 보이지 않는다.
+        // 감싸는 메서드가 그대로 남는다.
+        guard !DeclarationCollector.isInsideBody(node) else { return .visitChildren }
         pushDeclaration(
             name: node.name.text,
             indexName: Self.indexName(node.name.text, parameters: node.signature.parameterClause.parameters),
             node: node
         )
+        scopes.append(BindingCollector.scopeKey(node)); aliasScopes.append([])
         if Self.takesMethodCall(node) { methodCallFunctionDepth += 1 }
         emitReactMethodIfExported(node)
         return .visitChildren
     }
     override func visitPost(_ node: FunctionDeclSyntax) {
-        declarations.removeLast()
+        guard !DeclarationCollector.isInsideBody(node) else { return }
+        declarations.removeLast(); scopes.removeLast(); aliasScopes.removeLast()
         if Self.takesMethodCall(node) { methodCallFunctionDepth -= 1 }
     }
 
@@ -436,9 +474,12 @@ final class BridgeFactCollector: SyntaxVisitor {
             indexName: Self.indexName("init", parameters: node.signature.parameterClause.parameters),
             node: node
         )
+        scopes.append(BindingCollector.scopeKey(node)); aliasScopes.append([])
         return .visitChildren
     }
-    override func visitPost(_ node: InitializerDeclSyntax) { declarations.removeLast() }
+    override func visitPost(_ node: InitializerDeclSyntax) {
+        declarations.removeLast(); scopes.removeLast(); aliasScopes.removeLast()
+    }
 
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         // 계산 프로퍼티나 `lazy var channel: … = { … }()` 안의 사실은 그 프로퍼티에 귀속시킨다.
@@ -455,7 +496,7 @@ final class BridgeFactCollector: SyntaxVisitor {
     override func visit(_ node: PatternBindingSyntax) -> SyntaxVisitorContinueKind {
         if let name = node.pattern.as(IdentifierPatternSyntax.self)?.identifier.text,
            let value = node.initializer?.value, Self.isMethodMemberAccess(value), currentHandlerChannel != nil {
-            methodAliases.insert(DeclarationCollector.unescaped(name))
+            aliasScopes[aliasScopes.count - 1].insert(DeclarationCollector.unescaped(name))
         }
         return .visitChildren
     }
@@ -496,9 +537,9 @@ final class BridgeFactCollector: SyntaxVisitor {
         // 핸들러 클로저 안의 `case "…"` 는 이 채널의 메서드다. 클로저를 방문하는 동안만
         // 채널을 스택에 올린다. 클로저가 없으면(델리게이트 등록) 올릴 것이 없다.
         guard let closure = Self.handlerClosure(of: node) else { return .visitChildren }
-        handlerChannels.append(channel)
+        handlerChannels.append(channel); aliasScopes.append([])
         walk(closure)
-        handlerChannels.removeLast()
+        handlerChannels.removeLast(); aliasScopes.removeLast()
         // 클로저는 이미 걸었다. 수신자와 나머지 인자를 다시 걷되 그 클로저만 건너뛴다.
         if let base = member.base { walk(base) }
         for argument in node.arguments where argument.expression.id != closure.id {
@@ -517,7 +558,9 @@ final class BridgeFactCollector: SyntaxVisitor {
 
     /// 채널 표현식을 이름으로 푼다. 인라인 생성, 변수, 그 밖의 표현식 순으로 본다.
     private func resolveChannel(_ expression: ExprSyntax) -> ResolvedName {
-        if let inline = bindings.channelConstruction(expression, enclosingTypes: typeNames) { return inline }
+        if let inline = bindings.channelConstruction(expression, enclosingTypes: typeNames, scope: scopes.last) {
+            return inline
+        }
         if let name = BindingCollector.identifierName(of: expression), let bound = bindings.channel(named: name) {
             return bound ?? .dynamic(expression.trimmedDescription)
         }
@@ -540,7 +583,8 @@ final class BridgeFactCollector: SyntaxVisitor {
             guard let expression = item.pattern.as(ExpressionPatternSyntax.self)?.expression else { continue }
             emit(
                 .methodHandle, target: .flutter, channel: channel,
-                method: bindings.resolveString(expression, enclosingTypes: typeNames), inferred: inferred, at: item
+                method: bindings.resolveString(expression, enclosingTypes: typeNames, scope: scopes.last),
+                inferred: inferred, at: item
             )
         }
         return .visitChildren
@@ -566,7 +610,8 @@ final class BridgeFactCollector: SyntaxVisitor {
         for (subject, value) in sides where isMethodNameExpression(subject) {
             emit(
                 .methodHandle, target: .flutter, channel: channel,
-                method: bindings.resolveString(value, enclosingTypes: typeNames), inferred: inferred, at: value
+                method: bindings.resolveString(value, enclosingTypes: typeNames, scope: scopes.last),
+                inferred: inferred, at: value
             )
             break
         }
@@ -582,7 +627,8 @@ final class BridgeFactCollector: SyntaxVisitor {
     private func isMethodNameExpression(_ expression: ExprSyntax) -> Bool {
         if Self.isMethodMemberAccess(expression) { return true }
         guard let reference = expression.as(DeclReferenceExprSyntax.self) else { return false }
-        return methodAliases.contains(DeclarationCollector.unescaped(reference.baseName.text))
+        let name = DeclarationCollector.unescaped(reference.baseName.text)
+        return aliasScopes.contains { $0.contains(name) }
     }
 
     private static func isMethodMemberAccess(_ expression: ExprSyntax) -> Bool {
@@ -620,13 +666,16 @@ final class BridgeFactCollector: SyntaxVisitor {
     }
 
     /// `@objc(Name)` 클래스 안의 `@objc` 메서드는 JS 가 `NativeModules.Name.method()` 로 부른다.
-    /// 클래스가 `@objcMembers` 면 표식 없는 메서드도 노출되지만, `@nonobjc` 와
-    /// `private`/`fileprivate` 은 Objective-C 에 보이지 않으므로 뺀다.
+    /// 클래스가 `@objcMembers` 면 표식 없는 메서드도 노출되지만, `@nonobjc` 는 아니고,
+    /// `private`/`fileprivate` 은 명시적 `@objc` 가 있을 때만(SE-0186) Objective-C 에 보인다.
+    /// `static`/`class` 메서드는 클래스 메서드라 RN 이 인스턴스에서 찾는 목록에 없다.
     private func emitReactMethodIfExported(_ node: FunctionDeclSyntax) {
+        let explicit = Self.hasAttribute("objc", in: node.attributes)
         guard let module = reactModules.last ?? nil,
               !Self.hasAttribute("nonobjc", in: node.attributes),
-              !Self.isFilePrivate(node.modifiers),
-              module.exportsAllMembers || Self.hasAttribute("objc", in: node.attributes)
+              explicit || !Self.isFilePrivate(node.modifiers),
+              !node.modifiers.contains(where: { $0.name.text == "static" || $0.name.text == "class" }),
+              module.exportsAllMembers || explicit
         else { return }
         let selector = Self.objectiveCName(in: node.attributes)
         let method = selector.map { String($0.prefix { $0 != ":" }) } ?? DeclarationCollector.unescaped(node.name.text)

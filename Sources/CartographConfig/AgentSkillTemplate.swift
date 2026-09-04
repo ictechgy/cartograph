@@ -99,8 +99,9 @@ public enum AgentSkillTemplate {
           treat `unreachable` on a handler as unknown. A retentions file being in effect
           (`limitations` lists `external-retentions`) does not change that for a declaration whose
           `state` is still `unreachable`: the join may have missed it, and `limitations` will say
-          why (`external-retentions-unmatched`, `-ambiguous`, `-stale`). Only a `retained` state
-          with `reason: externalBridge` means the other side was found calling it.
+          why (`external-retentions-unmatched`, `-ambiguous`, `-stale`). Only a `retained` or
+          `retainedByMember` state with `reason: externalBridge` means the other side was found
+          calling it (or one of its members).
         - **Anything you changed in this session.** The index is written by the compiler at build
           time. If you edited Swift and did not rebuild, the answer describes the code as it was
           before your edit.

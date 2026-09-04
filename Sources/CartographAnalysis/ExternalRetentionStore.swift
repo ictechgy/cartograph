@@ -93,7 +93,7 @@ public struct ExternalRetentionIndex: Sendable, Equatable {
         return nil
     }
 
-    /// 이름만 있는 근거 중 그래프의 두 정점 이상에 맞는 것의 수.
+    /// 이름만 있는 근거의 이름 중 그래프의 두 정점 이상에 맞는 것의 수. 근거가 아니라 이름을 센다.
     ///
     /// 벤더 사본과 진짜 핸들러가 같은 `CameraPlugin.handle` 이면 둘 다 산다. 확신이 없으면
     /// 살리는 것이 규칙이지만, 그 사실을 세어 주지 않으면 사용자는 근거가 정확했다고 믿는다.

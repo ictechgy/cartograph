@@ -153,6 +153,27 @@ struct BridgeFactScannerTests {
         #expect(facts(source, of: .methodHandle).map(\.method) == ["takePhoto"])
     }
 
+    @Test("메서드 별칭은 그것을 선언한 함수 밖으로 새지 않는다")
+    func methodAliasesAreScoped() {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: msg)
+            func first(_ call: FlutterMethodCall, result: FlutterResult) {
+                let m = call.method
+                _ = m
+            }
+            final class Second {
+                func handle(_ call: FlutterMethodCall, result: FlutterResult) {
+                    let m = String(describing: call.arguments)
+                    switch m {
+                    case "photo": break
+                    default: break
+                    }
+                }
+            }
+            """
+        #expect(facts(source, of: .methodHandle).isEmpty)
+    }
+
     @Test("수신자 없는 .method 는 열거형 케이스라 메서드 이름이 아니다")
     func ignoresImplicitMemberNamedMethod() {
         let source = """
@@ -290,19 +311,22 @@ struct BridgeFactScannerTests {
         #expect(facts(source, of: .channelRegister).map(\.channel) == ["com.example/camera"])
     }
 
-    @Test("함수 안의 지역 상수는 그 함수 밖의 채널을 풀지 않는다")
-    func localConstantsDoNotLeakAcrossFunctions() {
+    @Test("함수 안의 지역 상수는 그 함수 안에서만 보인다")
+    func localConstantsAreScopedToTheirFunction() {
+        // b 의 `name` 은 다른 파일의 전역 상수일 수 있다. a 의 지역 값으로 풀면 확신에 찬 틀린 리터럴이다.
         let source = """
             final class P {
                 func a() { let name = "local" }
                 func b() { FlutterMethodChannel(name: name, binaryMessenger: m).setMethodCallHandler { _, _ in } }
+                func c() {
+                    let name = "com.example/c"
+                    FlutterMethodChannel(name: name, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                }
             }
             """
-        // `name` 은 최상위 키로만 들어가고 `P.name` 은 없다. b 의 `name` 은 P.name → 최상위 name 순으로 찾으므로
-        // 최상위의 지역 값이 잡힌다. 이것은 알려진 근사다: 지역 이름 충돌은 dynamic 이 아니라 그 값이다.
-        // 대신 같은 이름이 다른 지역 값으로 두 번 나오면 모른다고 한다.
-        let twice = source + "\nfunc c() { let name = \"other\" }\n"
-        #expect(facts(twice, of: .channelRegister).first?.isDynamic == true)
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.map(\.channel) == ["name", "com.example/c"])
+        #expect(registered.map(\.isDynamic) == [true, false])
     }
 
     @Test("보간이 있는 리터럴은 원문 그대로 dynamic 이다")
@@ -400,9 +424,13 @@ struct BridgeFactScannerTests {
         let source = """
             @objc(CalendarManager) @objcMembers
             class CalendarManager: NSObject {
-                func addEvent(_ name: String) {}
+                func addEvent(_ name: String) {
+                    func format() -> String { "" }
+                }
                 private func helper() {}
+                @objc private func explicitlyExposed() {}
                 @nonobjc func swiftOnly() {}
+                static func shared() {}
                 func `default`() {}
                 struct Nested { func notExported() {} }
             }
@@ -410,9 +438,13 @@ struct BridgeFactScannerTests {
                 @objc func removeEvent(_ name: String) {}
                 func plain() {}
             }
+            private extension CalendarManager {
+                func hidden() {}
+            }
             """
-        // 익스텐션은 클래스의 @objcMembers 를 물려받으므로 plain 도 나간다. 중첩 타입은 아니다.
-        #expect(facts(source, of: .methodHandle).map(\.method) == ["addEvent", "default", "removeEvent", "plain"])
+        // 익스텐션은 클래스의 @objcMembers 를 물려받으므로 plain 도 나간다. 지역 함수·중첩 타입·
+        // private 익스텐션·static 은 아니고, 명시적 @objc 가 붙은 private 은 나간다(SE-0186).
+        #expect(facts(source, of: .methodHandle).map(\.method) == ["addEvent", "explicitlyExposed", "default", "removeEvent", "plain"])
     }
 
     @Test("이름 없는 @objc 클래스는 모듈로 보지 않는다")

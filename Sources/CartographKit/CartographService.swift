@@ -503,8 +503,8 @@ public struct CartographService: Sendable {
         let ambiguous = index.ambiguousNameMatchCount(in: graph)
         if ambiguous > 0 {
             result.append(
-                "external-retentions-ambiguous: \(ambiguous) retention(s) without a USR match more than one "
-                    + "declaration by name, and every one of those declarations is kept"
+                "external-retentions-ambiguous: \(ambiguous) name(s) from retentions without a USR match more than "
+                    + "one declaration, and every one of those declarations is kept"
             )
         }
         // 파일이 인덱스보다 오래됐으면 그 사이의 이름 변경을 모른다. 날짜를 보여 주기만

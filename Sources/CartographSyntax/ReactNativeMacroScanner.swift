@@ -17,28 +17,49 @@ public struct ReactNativeMacroScanner: Sendable {
     /// 파일 내용에서 사실을 뽑아낸다. 위치는 매크로가 시작하는 자리다.
     public func scan(source: String, path: String) -> [BridgeFact] {
         var facts: [BridgeFact] = []
-        for block in Self.implementationBlocks(in: Self.blankingDisabledRegions(Self.blankingBlockComments(source))) {
+        for block in Self.implementationBlocks(in: Self.blankingDisabledRegions(Self.blankingNoise(source))) {
             facts += Self.facts(in: block, path: path)
         }
         return facts.sorted()
     }
 
-    /// `/* … */` 블록 주석의 내용을 공백으로 지운다. 줄 수는 그대로다.
+    /// 주석과 문자열 리터럴의 내용을 공백으로 지운다. 줄 수는 그대로다.
     ///
-    /// 줄 접두어만 보면 `/* removed:\nRCT_EXPORT_MODULE(Legacy)\n*/` 의 가운데 줄이 그대로
-    /// 매치된다. 지운 모듈을 주석으로 남겨 둔 파일이 실제로 있고, 그것이 살아 있는 모듈로
-    /// 나가면 isthmus 는 없는 핸들러와 조인한다. 줄 번호를 지켜야 위치가 맞으므로
-    /// 개행은 남기고 나머지만 지운다.
-    static func blankingBlockComments(_ source: String) -> String {
+    /// `/* … */`, `//` 줄 끝 주석, `"…"` 문자열을 한 번에 상태 기계로 훑는다. 따로 처리하면
+    /// `// TODO /* note` 의 `/*` 가 블록 주석을 여는 것으로 읽혀 뒤의 살아 있는 매크로가 통째로
+    /// 사라지고, 모듈 이름이 클래스 이름으로 바뀌어 isthmus 조인이 어긋난다. 문자열 안의
+    /// `//` 와 `\"` 이스케이프도 같은 자리에서 다룬다. 지운 모듈을 주석으로 남겨 둔 파일과
+    /// `NSLog(@"RCT_EXPORT_METHOD(fake)")` 는 실제로 있다.
+    static func blankingNoise(_ source: String) -> String {
+        enum State { case code, lineComment, blockComment, string }
+        var state = State.code
         var result = ""
-        var cursor = source.startIndex
-        while let start = source.range(of: "/*", range: cursor..<source.endIndex) {
-            result += source[cursor..<start.lowerBound]
-            let end = source.range(of: "*/", range: start.upperBound..<source.endIndex)?.upperBound ?? source.endIndex
-            result += source[start.lowerBound..<end].map { $0 == "\n" ? "\n" : " " }
-            cursor = end
+        var iterator = Array(source).makeIterator()
+        var pending: Character? = nil
+        func next() -> Character? { if let c = pending { pending = nil; return c }; return iterator.next() }
+        while let character = next() {
+            if character == "\n" { if state == .lineComment { state = .code }; result.append("\n"); continue }
+            switch state {
+            case .code:
+                let following = next()
+                if character == "/" && following == "/" { state = .lineComment; result.append("  ") }
+                else if character == "/" && following == "*" { state = .blockComment; result.append("  ") }
+                else if character == "\"" { state = .string; result.append(character); pending = following }
+                else { result.append(character); pending = following }
+            case .lineComment:
+                result.append(" ")
+            case .blockComment:
+                if character == "*", let following = next() {
+                    if following == "/" { state = .code; result.append("  ") } else { result.append(" "); pending = following }
+                } else { result.append(" ") }
+            case .string:
+                if character == "\\" {
+                    // 이스케이프된 문자는 통째로 건너뛴다. `\\"` 의 따옴표는 닫는 따옴표다.
+                    result.append(" "); if let escaped = next() { result.append(escaped == "\n" ? "\n" : " ") }
+                } else if character == "\"" { state = .code; result.append(character) }
+                else { result.append(" ") }
+            }
         }
-        result += source[cursor...]
         return result
     }
 
@@ -52,11 +73,14 @@ public struct ReactNativeMacroScanner: Sendable {
         var lines: [String] = []
         for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if depth == 0, trimmed.hasPrefix("#if 0") || trimmed.hasPrefix("#if 0 ") {
+            if depth == 0, trimmed == "#if 0" || trimmed.hasPrefix("#if 0 ") || trimmed.hasPrefix("#if 0\t") {
                 depth = 1; lines.append(""); continue
             }
             if depth > 0 {
-                if trimmed.hasPrefix("#if") { depth += 1 } else if trimmed.hasPrefix("#endif") { depth -= 1 }
+                if trimmed.hasPrefix("#if") { depth += 1 }
+                else if trimmed.hasPrefix("#endif") { depth -= 1 }
+                // `#if 0 … #else 살아 있는 코드 #endif`. else 가지는 컴파일된다.
+                else if depth == 1, trimmed.hasPrefix("#else") { depth = 0 }
                 lines.append(""); continue
             }
             lines.append(String(line))
@@ -64,30 +88,6 @@ public struct ReactNativeMacroScanner: Sendable {
         return lines.joined(separator: "\n")
     }
 
-    /// 줄 끝 `//` 주석과 문자열 리터럴의 내용을 지운다.
-    ///
-    /// `NSLog(@"RCT_EXPORT_METHOD(fake)")` 와 `foo(); // RCT_EXPORT_MODULE(Old)` 는 사실이 아니다.
-    /// 문자열을 먼저 지워야 `"http://…"` 의 `//` 가 주석으로 잘리지 않는다.
-    static func strippingInlineNoise(_ line: String) -> String {
-        var result = ""
-        var inString = false
-        var previous: Character = " "
-        var iterator = line.makeIterator()
-        while let character = iterator.next() {
-            if inString {
-                if character == "\"" && previous != "\\" { inString = false }
-                previous = character
-                continue
-            }
-            if character == "\"" { inString = true; previous = character; continue }
-            if character == "/" && previous == "/" { result.removeLast(); break }
-            result.append(character)
-            previous = character
-        }
-        return result
-    }
-
-    /// `@implementation … @end` 한 덩어리. 매크로는 이 안에서만 의미가 있다.
     struct ImplementationBlock {
         /// 클래스 이름. RN 은 `RCT_EXPORT_MODULE()` 에 인자가 없으면 이것을 모듈 이름으로 쓴다.
         let className: String
@@ -106,7 +106,7 @@ public struct ReactNativeMacroScanner: Sendable {
             className = nil; lines = []
         }
         for (offset, rawLine) in source.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
-            let line = strippingInlineNoise(String(rawLine))
+            let line = String(rawLine)
             let number = offset + 1
             if let match = line.firstMatch(of: implementationPattern) {
                 flush(); className = String(match.output.1)

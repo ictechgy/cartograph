@@ -75,7 +75,10 @@ public struct ExternalRetention: Sendable, Equatable, Codable {
     /// 개행이나 이스케이프 시퀀스가 들어 있으면 한 줄짜리 설명이 여러 줄로 위장하거나
     /// 터미널 상태를 바꿀 수 있다. 근거 파일은 신뢰할 수 없는 입력이다.
     public static func printable(_ text: String) -> String {
-        String(String.UnicodeScalarView(text.unicodeScalars.filter { $0.properties.generalCategory != .control }))
+        String(String.UnicodeScalarView(text.unicodeScalars.filter {
+            // Cc(제어)와 Cf(형식) 둘 다. `U+202E` 같은 양방향 재정의는 형식 문자인데 터미널을 똑같이 속인다.
+            $0.properties.generalCategory != .control && $0.properties.generalCategory != .format
+        }))
     }
 }
 

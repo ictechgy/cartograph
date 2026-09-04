@@ -148,6 +148,8 @@ struct ExternalRetentionTests {
             evidence: .init(channel: "c\u{1B}[31m", method: "m\nfake: line", caller: nil)
         )
         #expect(retention.evidenceDescription == "invokes 'mfake: line' on channel 'c[31m'")
+        // 양방향 재정의(U+202E) 같은 형식 문자도 터미널을 속인다.
+        #expect(ExternalRetention.printable("a\u{202E}b") == "ab")
     }
 
     @Test("근거에 USR 이 있으면 이름이 같아도 다른 USR 의 선언은 살리지 않는다")
