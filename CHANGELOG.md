@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-09-05
+
 ### Changed
 
 - `bridges` now emits project-relative locations and UTC millisecond timestamps, and
@@ -384,7 +386,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.5.2...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.5.3...HEAD
+[0.5.3]: https://github.com/ictechgy/cartograph/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/ictechgy/cartograph/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/ictechgy/cartograph/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/ictechgy/cartograph/compare/0.4.0...0.5.0
