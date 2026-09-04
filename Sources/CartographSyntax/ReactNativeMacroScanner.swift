@@ -17,7 +17,7 @@ public struct ReactNativeMacroScanner: Sendable {
     /// 파일 내용에서 사실을 뽑아낸다. 위치는 매크로가 시작하는 자리다.
     public func scan(source: String, path: String) -> [BridgeFact] {
         var facts: [BridgeFact] = []
-        for block in Self.implementationBlocks(in: Self.blankingBlockComments(source)) {
+        for block in Self.implementationBlocks(in: Self.blankingDisabledRegions(Self.blankingBlockComments(source))) {
             facts += Self.facts(in: block, path: path)
         }
         return facts.sorted()
@@ -42,6 +42,51 @@ public struct ReactNativeMacroScanner: Sendable {
         return result
     }
 
+    /// `#if 0 … #endif` 안을 공백으로 지운다. 줄 수는 그대로다.
+    ///
+    /// 컴파일되지 않는 코드의 매크로는 사실이 아니다. 지운 모듈을 `#if 0` 으로 남겨 두는
+    /// 것은 블록 주석만큼 흔하다. `#if 0` 만 본다. 다른 조건은 어느 구성인지 알 수 없어
+    /// 살아 있는 쪽으로 둔다.
+    static func blankingDisabledRegions(_ source: String) -> String {
+        var depth = 0
+        var lines: [String] = []
+        for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if depth == 0, trimmed.hasPrefix("#if 0") || trimmed.hasPrefix("#if 0 ") {
+                depth = 1; lines.append(""); continue
+            }
+            if depth > 0 {
+                if trimmed.hasPrefix("#if") { depth += 1 } else if trimmed.hasPrefix("#endif") { depth -= 1 }
+                lines.append(""); continue
+            }
+            lines.append(String(line))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// 줄 끝 `//` 주석과 문자열 리터럴의 내용을 지운다.
+    ///
+    /// `NSLog(@"RCT_EXPORT_METHOD(fake)")` 와 `foo(); // RCT_EXPORT_MODULE(Old)` 는 사실이 아니다.
+    /// 문자열을 먼저 지워야 `"http://…"` 의 `//` 가 주석으로 잘리지 않는다.
+    static func strippingInlineNoise(_ line: String) -> String {
+        var result = ""
+        var inString = false
+        var previous: Character = " "
+        var iterator = line.makeIterator()
+        while let character = iterator.next() {
+            if inString {
+                if character == "\"" && previous != "\\" { inString = false }
+                previous = character
+                continue
+            }
+            if character == "\"" { inString = true; previous = character; continue }
+            if character == "/" && previous == "/" { result.removeLast(); break }
+            result.append(character)
+            previous = character
+        }
+        return result
+    }
+
     /// `@implementation … @end` 한 덩어리. 매크로는 이 안에서만 의미가 있다.
     struct ImplementationBlock {
         /// 클래스 이름. RN 은 `RCT_EXPORT_MODULE()` 에 인자가 없으면 이것을 모듈 이름으로 쓴다.
@@ -52,25 +97,30 @@ public struct ReactNativeMacroScanner: Sendable {
 
     static func implementationBlocks(in source: String) -> [ImplementationBlock] {
         var blocks: [ImplementationBlock] = []
-        var current: ImplementationBlock?
+        var className: String?
+        var lines: [(number: Int, text: String)] = []
+        // `@end` 가 빠진 블록도 버리지 않는다. 컴파일은 안 되겠지만 사실은 사실이다.
+        // 파일 끝에서도, 다음 `@implementation` 을 만났을 때도 같은 규칙이다.
+        func flush() {
+            if let name = className { blocks.append(ImplementationBlock(className: name, lines: lines)) }
+            className = nil; lines = []
+        }
         for (offset, rawLine) in source.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
-            let line = String(rawLine)
+            let line = strippingInlineNoise(String(rawLine))
             let number = offset + 1
             if let match = line.firstMatch(of: implementationPattern) {
-                current = ImplementationBlock(className: String(match.output.1), lines: [])
-            } else if current == nil, let match = line.firstMatch(of: externModulePattern) {
+                flush(); className = String(match.output.1)
+            } else if className == nil, let match = line.firstMatch(of: externModulePattern) {
                 // Swift 모듈은 `@interface RCT_EXTERN_MODULE(Name, NSObject) … @end` 로 잇는다.
                 // `@implementation` 이 없으므로 이 줄 자체가 블록의 시작이자 첫 사실이다.
-                current = ImplementationBlock(className: String(match.output.1), lines: [(number, line)])
+                className = String(match.output.1); lines.append((number, line))
             } else if line.trimmingCharacters(in: .whitespaces).hasPrefix("@end") {
-                if let block = current { blocks.append(block) }
-                current = nil
-            } else if let block = current {
-                current = ImplementationBlock(className: block.className, lines: block.lines + [(number, line)])
+                flush()
+            } else if className != nil {
+                lines.append((number, line))
             }
         }
-        // `@end` 가 빠진 파일도 버리지 않는다. 컴파일은 안 되겠지만 사실은 사실이다.
-        if let block = current { blocks.append(block) }
+        flush()
         return blocks
     }
 
@@ -93,7 +143,9 @@ public struct ReactNativeMacroScanner: Sendable {
                 }
                 let column = line.distance(from: line.startIndex, to: match.range.lowerBound) + 1
                 let location = SourceLocation(path: path, line: number, column: column)
-                facts.append(fact(kind, argument: match.output.1.map(String.init), module: moduleName, at: location))
+                // 빈 캡처(`RCT_EXPORT_METHOD()`)는 이름이 없는 것이지 빈 이름이 아니다.
+                let argument = match.output.1.map(String.init).flatMap { $0.isEmpty ? nil : $0 }
+                facts.append(fact(kind, argument: argument, module: moduleName, at: location))
             }
         }
         return facts

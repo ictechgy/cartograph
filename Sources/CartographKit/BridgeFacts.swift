@@ -89,12 +89,17 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
     /// 이 문서가 보지 못한 것. 매번 붙는 경보가 아니라 실제로 센 값이다.
     public let limitations: [String]
 
+    private enum CodingKeys: String, CodingKey {
+        case format, version, tool, generatedAt, platform, target, project, facts, limitations
+    }
+
     public init(
         tool: Tool,
         generatedAt: String,
         project: String,
         facts: [BridgeFact],
         unscannedEventChannels: Int = 0,
+        unscannedMessageChannels: Int = 0,
         extraLimitations: [String] = []
     ) {
         format = Self.format
@@ -107,8 +112,27 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
 
         let targets = Self.countByTarget(facts)
         target = Self.dominantTarget(targets)
-        limitations = Self.limitations(for: facts, targets: targets, unscannedEventChannels: unscannedEventChannels)
-            + extraLimitations
+        limitations = Self.limitations(
+            for: facts, targets: targets,
+            unscannedEventChannels: unscannedEventChannels, unscannedMessageChannels: unscannedMessageChannels
+        ) + extraLimitations
+    }
+
+    /// `target` 이 없으면 키를 빼지 않고 `null` 로 적는다. 계약이 그렇게 정했다.
+    ///
+    /// 합성 Encodable 은 옵셔널을 `encodeIfPresent` 로 내 키를 지운다. `Fact.channel` 에는
+    /// 같은 이유로 손으로 쓴 인코더가 있는데 문서 레벨을 놓쳤었다.
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(format, forKey: .format)
+        try container.encode(version, forKey: .version)
+        try container.encode(tool, forKey: .tool)
+        try container.encode(generatedAt, forKey: .generatedAt)
+        try container.encode(platform, forKey: .platform)
+        try container.encode(target, forKey: .target)
+        try container.encode(project, forKey: .project)
+        try container.encode(facts, forKey: .facts)
+        try container.encode(limitations, forKey: .limitations)
     }
 
     private static func countByTarget(_ facts: [BridgeFact]) -> [BridgeFact.Target: Int] {
@@ -117,6 +141,8 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
 
     private static func dominantTarget(_ counts: [BridgeFact.Target: Int]) -> String? {
         // 동수면 이름 순으로 고정한다. 실행마다 답이 달라지면 안 된다.
+        // `max` 는 비교자가 참인 쪽을 "작다"고 보므로, 이름이 앞서는 쪽을 "크다"고 답해야
+        // 동수에서 `flutter` 가 이긴다.
         counts.max { lhs, rhs in
             lhs.value == rhs.value ? lhs.key.rawValue > rhs.key.rawValue : lhs.value < rhs.value
         }?.key.rawValue
@@ -126,7 +152,8 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
     static func limitations(
         for facts: [BridgeFact],
         targets: [BridgeFact.Target: Int],
-        unscannedEventChannels: Int = 0
+        unscannedEventChannels: Int = 0,
+        unscannedMessageChannels: Int = 0
     ) -> [String] {
         var result: [String] = []
         // 키 이름은 계약의 예시(`dynamic-channel-names`, `missing-handler-usrs`)를 따른다.
@@ -145,8 +172,8 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         let unattributed = facts.count { $0.kind == .methodHandle && $0.channel == nil }
         if unattributed > 0 {
             result.append(
-                "unattributed-method-handles: \(unattributed) method handlers sit outside a handler "
-                    + "closure in a file with several channels, so their channel is null"
+                "unattributed-method-handles: \(unattributed) method handlers have no channel because they "
+                    + "sit outside a handler closure and their file does not construct exactly one channel"
             )
         }
         let inferred = facts.count(where: \.isChannelInferred)
@@ -160,13 +187,24 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         if missingUSRs > 0 {
             result.append("missing-handler-usrs: \(missingUSRs) method handlers have only a qualified name")
         }
-        let objectiveCNamed = facts.count {
+        let swiftReactModules = facts.count {
             $0.kind == .moduleExport && $0.target == .reactNative && $0.location.path.hasSuffix(".swift")
         }
-        if objectiveCNamed > 0 {
+        let swiftReactMethods = facts.count {
+            $0.kind == .methodHandle && $0.target == .reactNative && $0.location.path.hasSuffix(".swift")
+        }
+        if swiftReactModules > 0 {
             result.append(
-                "objc-named-classes: \(objectiveCNamed) module-export fact(s) come from @objc(Name) classes, "
-                    + "which may name an Objective-C class rather than a React Native module"
+                "objc-named-classes: \(swiftReactModules) module-export and \(swiftReactMethods) method-handle "
+                    + "fact(s) come from @objc(Name) classes, which may name an Objective-C class rather than "
+                    + "a React Native module"
+            )
+        }
+        let objectiveCHandlers = facts.count { $0.kind == .methodHandle && !$0.location.path.hasSuffix(".swift") }
+        if objectiveCHandlers > 0 {
+            result.append(
+                "objective-c-handlers: \(objectiveCHandlers) method handlers come from Objective-C sources and "
+                    + "carry no USR, so a retention for them cannot be applied by --external-retentions"
             )
         }
         if unscannedEventChannels > 0 {
@@ -175,10 +213,20 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
                     + "read; stream handlers are outside this format"
             )
         }
+        if unscannedMessageChannels > 0 {
+            result.append(
+                "unscanned-message-channels: \(unscannedMessageChannels) BasicMessageChannel constructor(s) are not "
+                    + "read; Pigeon-generated bridges are outside this format"
+            )
+        }
         if targets.count > 1 {
             let breakdown = targets.keys.sorted { $0.rawValue < $1.rawValue }
                 .map { "\($0.rawValue) \(targets[$0] ?? 0)" }.joined(separator: ", ")
-            result.append("mixed-targets: facts come from more than one bridge (\(breakdown)); 'target' is the majority")
+            let isTie = Set(targets.values).count == 1
+            result.append(
+                "mixed-targets: facts come from more than one bridge (\(breakdown)); 'target' is "
+                    + (isTie ? "the first alphabetically because the counts tie" : "the majority")
+            )
         }
         return result
     }
@@ -211,29 +259,46 @@ extension BridgeFactsDocument {
 /// `qualifiedName` 은 인덱스에서 찾았든 아니든 구문의 표기(`CameraPlugin.register`)다.
 /// 계약이 그 표기를 쓰고, 자매 도구도 같은 모양을 낸다. 인덱스의 표기(`Module.name(labels)`)는
 /// USR 이 있으면 필요 없고, 없을 때 섞이면 소비자가 두 표기를 맞출 수 없다.
-enum BridgeSymbolResolver {
-    static func resolve(_ scanned: [ScannedBridgeFact], in snapshot: IndexSnapshot) -> [BridgeFact] {
-        let byPath = Dictionary(grouping: snapshot.symbols, by: \.location.path)
-        return scanned.map { entry in
+struct BridgeSymbolResolver {
+    /// 정규화한 경로 → 그 파일의 인덱스 심볼. 스냅샷 하나에 한 번만 만든다.
+    ///
+    /// 파일마다 다시 묶으면 파일 수 × 심볼 수다. 디스크 걷기 경로와 인덱스 경로는
+    /// `/private/tmp` 와 `/tmp` 처럼 표기가 다를 수 있어 실제 경로로 맞춘다. 표기가 다르면
+    /// 파일 하나의 USR 이 통째로 빠진다.
+    private let symbolsByPath: [String: [IndexedSymbol]]
+
+    init(snapshot: IndexSnapshot) {
+        symbolsByPath = Dictionary(grouping: snapshot.symbols) { Self.canonical($0.location.path) }
+    }
+
+    func resolve(_ scanned: [ScannedBridgeFact]) -> [BridgeFact] {
+        scanned.map { entry in
             guard let declaration = entry.declaration else { return entry.fact }
-            let candidates = byPath[entry.fact.location.path] ?? []
-            let symbol = match(declaration, among: candidates)
+            let candidates = symbolsByPath[Self.canonical(entry.fact.location.path)] ?? []
+            let symbol = Self.match(declaration, among: candidates)
             return entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: symbol?.usr))
         }
     }
 
-    /// 인자 라벨까지 같은 심볼을 먼저, 없으면 기본 이름이 같은 심볼을 찾는다. 여럿이면 줄이 가장 가까운 것.
-    ///
-    /// 기본 이름만 보면 `handle(_:)` 과 `handle(_:result:)` 중 줄이 가까운 쪽이 이긴다.
-    /// 그쪽이 진짜 핸들러가 아니면 isthmus 는 엉뚱한 선언을 살리고 진짜 핸들러는 죽은
-    /// 코드로 보고된다. 라벨 일치가 실패 방향이 덜 위험하다.
-    private static func match(_ declaration: EnclosingDeclaration, among symbols: [IndexedSymbol]) -> IndexedSymbol? {
-        nearest(declaration, among: symbols.filter { Self.baseName($0.name) == declaration.indexName || $0.name == declaration.indexName })
-            ?? nearest(declaration, among: symbols.filter { SourceFileFacts.baseName(ofIndexName: $0.name) == declaration.name })
+    private static func canonical(_ path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
     }
 
-    /// 실패 가능 이니셜라이저의 `init?(…)` 를 `init(…)` 으로 맞춘다.
-    private static func baseName(_ indexName: String) -> String {
+    /// 인자 라벨까지 같은 심볼을 찾는다. 여럿이면 줄이 가장 가까운 것.
+    ///
+    /// 라벨 일치가 실패하면 기본 이름이 같은 심볼이 **하나뿐일 때만** 그것을 쓴다. 후보가
+    /// 여럿인데 줄 거리로 고르면 `handle(_:)` 과 `handle(_:result:)` 중 엉뚱한 쪽에 USR 이
+    /// 붙고, isthmus 는 그 선언을 살리고 진짜 핸들러는 죽은 코드로 보고된다.
+    /// USR 이 없는 쪽이 틀린 USR 보다 안전하다. 없으면 `missing-handler-usrs` 로 세어진다.
+    private static func match(_ declaration: EnclosingDeclaration, among symbols: [IndexedSymbol]) -> IndexedSymbol? {
+        let labelled = symbols.filter { normalizingInitializer($0.name) == declaration.indexName }
+        if let exact = nearest(declaration, among: labelled) { return exact }
+        let sameBase = symbols.filter { SourceFileFacts.baseName(ofIndexName: $0.name) == declaration.name }
+        return sameBase.count == 1 ? sameBase.first : nil
+    }
+
+    /// 실패 가능 이니셜라이저의 `init?(…)` 와 `init!(…)` 를 `init(…)` 으로 맞춘다. 구문 쪽 이름에는 물음표가 없다.
+    private static func normalizingInitializer(_ indexName: String) -> String {
         indexName.replacingOccurrences(of: "?(", with: "(").replacingOccurrences(of: "!(", with: "(")
     }
 

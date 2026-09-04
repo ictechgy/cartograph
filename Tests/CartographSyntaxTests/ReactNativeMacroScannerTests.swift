@@ -87,6 +87,33 @@ struct ReactNativeMacroScannerTests {
         #expect(facts.map(\.location.line) == [7, 8])
     }
 
+    @Test("줄 끝 주석·문자열·#if 0 안의 매크로는 읽지 않는다")
+    func ignoresInlineNoise() {
+        let source = """
+            @implementation A
+            RCT_EXPORT_MODULE()
+            NSLog(@"RCT_EXPORT_METHOD(fake)"); // RCT_EXPORT_METHOD(alsoFake)
+            #if 0
+            RCT_EXPORT_METHOD(disabled) {}
+            #endif
+            RCT_EXPORT_METHOD(real) {}
+            @end
+            """
+        #expect(scan(source).filter { $0.kind == .methodHandle }.map(\.method) == ["real"])
+    }
+
+    @Test("@end 가 빠져도 앞 블록을 버리지 않는다")
+    func keepsBlockWithoutEnd() {
+        let source = """
+            @implementation A
+            RCT_EXPORT_MODULE()
+            @implementation B
+            RCT_EXPORT_MODULE()
+            @end
+            """
+        #expect(scan(source).map(\.channel) == ["A", "B"])
+    }
+
     @Test("메서드 이름이 다음 줄로 넘어가면 동적 이름으로 센다")
     func treatsUnreadableMethodNameAsDynamic() {
         let source = """
@@ -94,10 +121,12 @@ struct ReactNativeMacroScannerTests {
             RCT_EXPORT_MODULE()
             RCT_EXPORT_METHOD(
                 addEvent:(NSString *)name) {}
+            RCT_EXPORT_METHOD()
             @end
             """
         let handled = scan(source).filter { $0.kind == .methodHandle }
-        #expect(handled.count == 1)
+        #expect(handled.count == 2)
+        #expect(handled.allSatisfy { $0.isDynamic && $0.method == nil })
         #expect(handled.first?.method == nil)
         #expect(handled.first?.isDynamic == true)
     }

@@ -60,8 +60,12 @@ public struct ExternalRetentionIndex: Sendable, Equatable {
             retentions.compactMap { retention in retention.symbol.usr.map { ($0, retention) } },
             uniquingKeysWith: { first, _ in first }
         )
+        // 이름 색인에는 USR 없는 근거만 넣는다. USR 있는 근거까지 넣으면 같은 이름의
+        // USR 근거가 먼저 와서 이름만 있는 근거를 가리고, 그 근거는 영영 맞지 않는다.
         byQualifiedName = Dictionary(
-            retentions.compactMap { retention in retention.symbol.qualifiedName.map { ($0, retention) } },
+            retentions.compactMap { retention in
+                retention.symbol.usr == nil ? retention.symbol.qualifiedName.map { ($0, retention) } : nil
+            },
             uniquingKeysWith: { first, _ in first }
         )
     }
@@ -81,10 +85,28 @@ public struct ExternalRetentionIndex: Sendable, Equatable {
     ///   구문 표기(`Type.name`) 둘 다 넘긴다. 계약의 `qualifiedName` 은 후자다.
     public func retention(for node: GraphNode, names: [String] = []) -> ExternalRetention? {
         if let usr = node.usr, let match = byUSR[usr] { return match }
-        for name in [node.qualifiedName] + names {
-            if let match = byQualifiedName[name], match.symbol.usr == nil { return match }
+        if byQualifiedName.isEmpty { return nil }
+        if let match = byQualifiedName[node.qualifiedName] { return match }
+        for name in names {
+            if let match = byQualifiedName[name] { return match }
         }
         return nil
+    }
+
+    /// 이름만 있는 근거 중 그래프의 두 정점 이상에 맞는 것의 수.
+    ///
+    /// 벤더 사본과 진짜 핸들러가 같은 `CameraPlugin.handle` 이면 둘 다 산다. 확신이 없으면
+    /// 살리는 것이 규칙이지만, 그 사실을 세어 주지 않으면 사용자는 근거가 정확했다고 믿는다.
+    public func ambiguousNameMatchCount(in graph: CodeGraph) -> Int {
+        guard !byQualifiedName.isEmpty else { return 0 }
+        var matches: [String: Int] = [:]
+        for node in graph.sortedNodes {
+            for name in Set([node.qualifiedName, Self.syntaxQualifiedName(of: node, in: graph)])
+            where byQualifiedName[name] != nil {
+                matches[name, default: 0] += 1
+            }
+        }
+        return matches.values.count { $0 > 1 }
     }
 
     /// 그래프의 어느 정점과도 맞지 않는 근거의 수.

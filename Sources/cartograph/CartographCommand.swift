@@ -200,8 +200,10 @@ struct BridgesCommand: ParsableCommand {
         discussion: """
             Reads Flutter channel names, method-call handlers and their `case "…"` branches, and \
             React Native module exports (`@objc(Name)`, `RCT_EXPORT_MODULE`, `RCT_EXPORT_METHOD`) \
-            out of the sources, and attaches the index's USR to each. The output is the \
-            bridge-facts exchange format that isthmus reads to join with the Dart or JavaScript side.
+            out of the sources, and attaches the index's USR to each Swift declaration it can \
+            match; facts from `.m` files carry no USR. Event and message channels are counted \
+            under `limitations` rather than read. The output is the bridge-facts exchange format \
+            that isthmus reads to join with the Dart or JavaScript side.
 
             This command states facts, not verdicts. It does not know whether anything calls a \
             handler; a name that is not a literal is kept and marked `dynamic` rather than dropped.

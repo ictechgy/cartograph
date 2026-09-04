@@ -7,6 +7,51 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-04
+
+A review round over 0.5.0 with four independent reviewers (GLM, Codex, Antigravity, Grok). Every
+change here closes a path where `bridges` could emit a literal it had not actually seen, or where
+`--external-retentions` could keep or drop a declaration without saying so.
+
+### Fixed
+
+- `bridges` no longer resolves an implicit member (`FlutterMethodChannel(name: .channelName)`) to a
+  same-named constant in the file. The receiver of that expression is `String`, not any type the
+  file declares, so the literal it produced could be wrong and would have joined in isthmus as if
+  certain. It is now `dynamic`. Constants are looked up by their declaring type — `A.name` and
+  `B.name` no longer share one slot — and are resolved after the whole file has been read, so a
+  `static let` declared below the `init` that uses it is followed as documented.
+- A `case "…"` is attributed to a handler only when the switch subject really is a method name:
+  `call.method`, or a local that was assigned from it (`let m = call.method`). A bare `.method`
+  enum case no longer counts. Cases wrapped in `#if` are found. `FlutterMethodCall?` and
+  `Flutter.FlutterMethodCall` parameters put a function in handler context like the plain type.
+- `@objc(Name) @objcMembers` classes export only what Objective-C can see: `private`, `fileprivate`
+  and `@nonobjc` members are skipped, nested types do not inherit the exposure, and extensions of
+  the class do.
+- The Objective-C macro scanner ignores macros in trailing `//` comments, string literals and
+  `#if 0` regions, keeps a block whose `@end` is missing when the next `@implementation` starts,
+  and treats an empty `RCT_EXPORT_METHOD()` as a dynamic name rather than an empty one.
+- `bridges` attaches a USR by the exact selector only; when that fails it falls back to the base
+  name only if exactly one declaration carries it. Index paths and walked paths are compared after
+  resolving symlinks, so `/private/tmp` and `/tmp` no longer split a file's symbols from its facts.
+  The symbol table is built once per run instead of once per file.
+- `target` is written as `null` when there are no facts, as the exchange format requires, instead
+  of being omitted.
+- `--external-retentions`: a retention that carries a USR no longer shadows a name-only retention
+  for the same qualified name. When a name-only retention matches several declarations they are
+  all kept, as the retention rules require, and the count is reported as
+  `external-retentions-ambiguous`. The file is read before the index store, so a broken file fails
+  even where there is no index. `generatedAt` with fractional seconds (which is what isthmus
+  writes) is parsed, so the staleness check fires. Evidence strings are stripped of control
+  characters before they reach the terminal.
+- New limitation counters: `unscanned-message-channels` (Pigeon's `BasicMessageChannel`),
+  `objective-c-handlers` (RN handlers in `.m` files, which carry no USR and so cannot be retained
+  through a retentions file), and `objc-named-classes` now includes the method handles it implies.
+  `mixed-targets` says when `target` was chosen on a tie.
+- The agent skill no longer implies that a retentions file being present settles an `unreachable`
+  handler. Reinstall it with `cartograph skill --force`; the copy written by 0.4.0 or 0.5.0 keeps
+  the old wording until then.
+
 ## [0.5.0] - 2026-09-04
 
 ### Added
@@ -311,7 +356,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.5.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.5.1...HEAD
+[0.5.1]: https://github.com/ictechgy/cartograph/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/ictechgy/cartograph/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/ictechgy/cartograph/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/ictechgy/cartograph/compare/0.2.0...0.3.0

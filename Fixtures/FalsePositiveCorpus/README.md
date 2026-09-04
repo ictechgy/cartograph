@@ -37,5 +37,7 @@ snapshot. Every iOS project on the maintainer's desk was pure Swift, so this was
 check it.
 
 `expected-unused.txt` lists what *should* be reported. `verify-fixtures.sh` also runs with
-`--retain-public`, where the list must be empty: every declaration here is `public`, so any
-declaration whose syntax facts failed to attach would lose that `public` and surface.
+`--retain-public` and compares against `expected-retain-public.txt`: every declaration a consumer
+could reach is `public`, so any declaration whose syntax facts failed to attach would lose that
+`public` and surface as a new line. What remains in that file is declared `private` on purpose, or
+is internal and reached from a public entry point (`Bridges.swift`).

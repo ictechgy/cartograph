@@ -336,8 +336,9 @@ $ cartograph bridges
 받는 함수 안에서만 세고, 파일에 채널이 정확히 하나일 때 그 채널에 붙고, 아니면 `null` 입니다.
 핸들러를 달지 않고 채널을 만들기만 한 것은 사실이 아닙니다. `limitations` 에는 동적 이름의 수,
 채널을 못 정했거나 추측한 핸들의 수, USR 이 없는 핸들러의 수(빌드 뒤 편집된 Swift), React Native
-모듈로 가정한 `@objc(Name)` 클래스의 수, 이 형식이 다루지 않는 `FlutterEventChannel` 의 수,
-Flutter 와 React Native 가 섞인 프로젝트를 셉니다.
+모듈로 가정한 `@objc(Name)` 클래스의 수, 이 형식이 다루지 않는 `FlutterEventChannel` 과 Pigeon
+`BasicMessageChannel` 의 수, 근거 파일로 살릴 수 없는 Objective-C 핸들러의 수, Flutter 와 React
+Native 가 섞인 프로젝트를 셉니다.
 
 isthmus 는 `external-retentions` 를 돌려줍니다. 호출자를 찾은 Swift 선언마다 USR 과 근거입니다.
 `--external-retentions <경로>`(또는 설정의 `external_retentions_path`)는 각각을 이유가

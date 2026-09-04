@@ -16,8 +16,8 @@
 
 ## 케이스를 추가할 때
 
-1. `Sources/Corpus`(라이브러리) 또는 `Sources/CorpusApp`(엔트리포인트가 필요한 것)에 재현 코드를 넣습니다. 테스트 전용 케이스는 `Tests/CorpusTests`.
-2. 기대 파일 세 개를 갱신합니다. 정렬된 전체 목록이어야 합니다.
+1. `Sources/Corpus`(라이브러리) 또는 `Sources/CorpusApp`(엔트리포인트가 필요한 것)에 재현 코드를 넣습니다. 테스트 전용 케이스는 `Tests/CorpusTests`, Objective-C 는 `Sources/CorpusObjC`(인덱스에는 들어오지 않고 `limitations` 와 `bridges` 의 텍스트 스캔만 봅니다).
+2. 기대 파일을 갱신합니다. 미사용 목록 셋(`expected-unused.txt` · `expected-test-only.txt` · `expected-retain-public.txt`)은 정렬된 전체 목록, `expected-bridges.json` 은 생성 시각·버전·프로젝트 경로를 자리 표시자로 바꾼 `bridges` 출력 전체, `expected-unused-with-retentions.txt` 는 `external-retentions.json` 을 걸었을 때의 목록입니다.
 3. `Scripts/verify-fixtures.sh`를 돌려 통과를 확인한 뒤, **해당 수정을 잠시 되돌리고 실패하는 것까지 확인**합니다.
 4. `Fixtures/FalsePositiveCorpus/README.md`에 케이스의 출처를 적습니다.
 

@@ -347,8 +347,9 @@ is `dynamic`. A `case "…"` outside a handler closure counts only inside a func
 to `null` otherwise. Creating a channel without attaching a handler is not a fact. `limitations`
 counts the dynamic names, the unattributed and inferred channels, the handlers with no USR (Swift
 not rebuilt since the edit), the `@objc(Name)` classes assumed to be React Native modules, the
-`FlutterEventChannel`s this format does not cover, and a project that mixes Flutter and React
-Native.
+`FlutterEventChannel`s and Pigeon `BasicMessageChannel`s this format does not cover, the
+Objective-C handlers that cannot be retained through a retentions file, and a project that mixes
+Flutter and React Native.
 
 isthmus hands back `external-retentions`: for each Swift declaration it found a caller for, the USR
 and the evidence. `--external-retentions <path>` (or `external_retentions_path` in the

@@ -138,6 +138,49 @@ struct BridgeFactScannerTests {
         #expect(handled.first?.isChannelInferred == false)
     }
 
+    @Test("메서드 이름을 지역 변수에 담아 분기해도 인식한다")
+    func followsMethodAlias() {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                let method = call.method
+                switch method {
+                case "takePhoto": result(nil)
+                default: break
+                }
+            }
+            """
+        #expect(facts(source, of: .methodHandle).map(\.method) == ["takePhoto"])
+    }
+
+    @Test("수신자 없는 .method 는 열거형 케이스라 메서드 이름이 아니다")
+    func ignoresImplicitMemberNamedMethod() {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                if kind == .method { result(nil) }
+            }
+            """
+        #expect(facts(source, of: .methodHandle).isEmpty)
+    }
+
+    @Test("옵셔널·모듈 한정 FlutterMethodCall 파라미터와 #if 로 감싼 case 도 인식한다")
+    func recognizesQualifiedParameterTypesAndConditionalCases() {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            func handle(_ call: Flutter.FlutterMethodCall?, result: FlutterResult) {
+                switch call!.method {
+                #if DEBUG
+                case "debugDump": result(nil)
+                #endif
+                case "takePhoto": result(nil)
+                default: break
+                }
+            }
+            """
+        #expect(facts(source, of: .methodHandle).map(\.method) == ["debugDump", "takePhoto"])
+    }
+
     @Test("FlutterMethodCall 을 받지 않는 함수의 .method 비교는 브리지 사실이 아니다")
     func ignoresUnrelatedMethodPropertyOutsideHandlers() {
         // StoreKit 의 `transaction.method` 처럼 이름만 같은 프로퍼티. 파일에 채널이 하나라도
@@ -171,10 +214,11 @@ struct BridgeFactScannerTests {
         #expect(registered.map(\.isDynamic) == [false, true, true])
     }
 
-    @Test("다른 수신자의 같은 이름 멤버는 이 파일의 상수로 풀지 않는다")
+    @Test("다른 수신자의 같은 이름 멤버와 암시적 멤버는 이 파일의 상수로 풀지 않는다")
     func doesNotStealConstantsAcrossReceivers() {
-        // `external.channelName` 의 `external` 은 다른 파일의 타입이다. 이름만 보고 풀면
-        // 조인 가능한 리터럴로 위장한 틀린 사실이 나간다.
+        // `external.channelName` 의 `external` 은 다른 파일의 타입이다. `.channelName` 의
+        // 수신자는 `String` 이지 이 파일의 `Config` 가 아니다. 이름만 보고 풀면 조인 가능한
+        // 리터럴로 위장한 틀린 사실이 나간다.
         let source = """
             enum Config { static let channelName = "com.example/camera" }
             final class Other {
@@ -186,20 +230,79 @@ struct BridgeFactScannerTests {
             }
             """
         let registered = facts(source, of: .channelRegister)
-        #expect(registered.map(\.channel) == ["external.channelName", "com.example/camera", "com.example/camera"])
-        #expect(registered.map(\.isDynamic) == [true, false, false])
+        #expect(registered.map(\.channel) == ["external.channelName", "com.example/camera", ".channelName"])
+        #expect(registered.map(\.isDynamic) == [true, false, true])
     }
 
-    @Test("같은 이름의 상수가 다른 값으로 두 번 있으면 모른다고 한다")
-    func refusesToGuessBetweenConflictingConstants() {
+    @Test("같은 이름의 상수가 다른 타입에 있으면 수신자 타입의 것을 쓴다")
+    func distinguishesConstantsByDeclaringType() {
         let source = """
             struct A { static let name = "a" }
+            struct B {
+                static let name = "b"
+                func attach() {
+                    FlutterMethodChannel(name: Self.name, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                    FlutterMethodChannel(name: A.name, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                    FlutterMethodChannel(name: name, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.map(\.channel) == ["b", "a", "b"])
+        #expect(registered.allSatisfy { !$0.isDynamic })
+    }
+
+    @Test("같은 타입에 같은 이름이 다른 값으로 두 번 있으면 모른다고 한다")
+    func refusesToGuessBetweenConflictingConstants() {
+        let source = """
             struct B { static let name = "b" }
+            extension B { static let name = "c" }
             FlutterMethodChannel(name: B.name, binaryMessenger: m).setMethodCallHandler { _, _ in }
             """
         let registered = facts(source, of: .channelRegister)
         #expect(registered.first?.isDynamic == true)
         #expect(registered.first?.channel == "B.name")
+    }
+
+    @Test("아래에 선언된 상수도 따라간다")
+    func resolvesConstantsDeclaredLater() {
+        // 프로퍼티는 아래, 사용은 위의 init 안. 1차 패스에서 해석하면 이것을 놓친다.
+        let source = """
+            final class CameraPlugin {
+                init(messenger: Any) {
+                    let channel = FlutterMethodChannel(name: Self.channelName, binaryMessenger: messenger)
+                    channel.setMethodCallHandler { _, _ in }
+                }
+                private static let channelName = "com.example/camera"
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.map(\.channel) == ["com.example/camera"])
+        #expect(registered.first?.isDynamic == false)
+    }
+
+    @Test("익스텐션에 둔 상수와 명시적 init 호출도 인식한다")
+    func resolvesExtensionConstantsAndExplicitInit() {
+        let source = """
+            extension Config { static let channelName = "com.example/camera" }
+            FlutterMethodChannel.init(name: Config.channelName, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            """
+        #expect(facts(source, of: .channelRegister).map(\.channel) == ["com.example/camera"])
+    }
+
+    @Test("함수 안의 지역 상수는 그 함수 밖의 채널을 풀지 않는다")
+    func localConstantsDoNotLeakAcrossFunctions() {
+        let source = """
+            final class P {
+                func a() { let name = "local" }
+                func b() { FlutterMethodChannel(name: name, binaryMessenger: m).setMethodCallHandler { _, _ in } }
+            }
+            """
+        // `name` 은 최상위 키로만 들어가고 `P.name` 은 없다. b 의 `name` 은 P.name → 최상위 name 순으로 찾으므로
+        // 최상위의 지역 값이 잡힌다. 이것은 알려진 근사다: 지역 이름 충돌은 dynamic 이 아니라 그 값이다.
+        // 대신 같은 이름이 다른 지역 값으로 두 번 나오면 모른다고 한다.
+        let twice = source + "\nfunc c() { let name = \"other\" }\n"
+        #expect(facts(twice, of: .channelRegister).first?.isDynamic == true)
     }
 
     @Test("보간이 있는 리터럴은 원문 그대로 dynamic 이다")
@@ -245,15 +348,18 @@ struct BridgeFactScannerTests {
         #expect(facts(source, of: .methodHandle).first?.channel == "c")
     }
 
-    @Test("FlutterEventChannel 은 읽지 않고 세기만 한다")
-    func countsEventChannels() {
+    @Test("FlutterEventChannel 과 BasicMessageChannel 은 읽지 않고 세기만 한다")
+    func countsEventAndMessageChannels() {
         let source = """
             let events = FlutterEventChannel(name: "com.example/events", binaryMessenger: m)
             events.setStreamHandler(self)
+            let pigeon = BasicMessageChannel<Any?>(name: "dev.flutter.pigeon.CameraApi.takePhoto", binaryMessenger: m)
+            pigeon.setMessageHandler { _, _ in }
             """
         let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift")
         #expect(result.facts.isEmpty)
         #expect(result.unscannedEventChannels == 1)
+        #expect(result.unscannedMessageChannels == 1)
     }
 
     @Test("call.method 가 아닌 switch 는 건드리지 않는다")
@@ -289,16 +395,24 @@ struct BridgeFactScannerTests {
         #expect(handled.map(\.declaration?.indexName) == ["addEvent(_:location:)", "remove(_:)"])
     }
 
-    @Test("@objcMembers 클래스는 표식 없는 메서드도 내보낸다")
-    func objcMembersExportsEveryMethod() {
+    @Test("@objcMembers 클래스는 Objective-C 에 보이는 메서드만 내보낸다")
+    func objcMembersExportsVisibleMethods() {
         let source = """
             @objc(CalendarManager) @objcMembers
             class CalendarManager: NSObject {
                 func addEvent(_ name: String) {}
-                func helper() {}
+                private func helper() {}
+                @nonobjc func swiftOnly() {}
+                func `default`() {}
+                struct Nested { func notExported() {} }
+            }
+            extension CalendarManager {
+                @objc func removeEvent(_ name: String) {}
+                func plain() {}
             }
             """
-        #expect(facts(source, of: .methodHandle).map(\.method) == ["addEvent", "helper"])
+        // 익스텐션은 클래스의 @objcMembers 를 물려받으므로 plain 도 나간다. 중첩 타입은 아니다.
+        #expect(facts(source, of: .methodHandle).map(\.method) == ["addEvent", "default", "removeEvent", "plain"])
     }
 
     @Test("이름 없는 @objc 클래스는 모듈로 보지 않는다")

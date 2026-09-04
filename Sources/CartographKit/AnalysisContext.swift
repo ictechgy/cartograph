@@ -15,6 +15,8 @@ public struct AnalysisContext: Sendable {
     /// 파일 읽기는 실패할 수 있어 던지는 자리(`loadContext`)에서 해야 한다. 질의 API 는
     /// 던지지 않으므로 여기 실어 두면 질의가 그대로 순수하게 남는다.
     public let externalRetentions: ExternalRetentionsDocument?
+    /// 보존 규칙이 쓰는 색인. 문서가 없으면 비어 있다. 접근할 때마다 다시 만들지 않는다.
+    public let externalRetentionIndex: ExternalRetentionIndex
 
     public init(
         snapshot: IndexSnapshot,
@@ -26,11 +28,7 @@ public struct AnalysisContext: Sendable {
         self.pathFilter = pathFilter
         self.edgeKinds = edgeKinds
         self.externalRetentions = externalRetentions
-    }
-
-    /// 보존 규칙이 쓰는 색인. 문서가 없으면 비어 있다.
-    public var externalRetentionIndex: ExternalRetentionIndex {
-        externalRetentions.map { ExternalRetentionIndex($0.retentions) } ?? .empty
+        externalRetentionIndex = externalRetentions.map { ExternalRetentionIndex($0.retentions) } ?? .empty
     }
 
     /// 지정한 해상도의 그래프를 만든다.
