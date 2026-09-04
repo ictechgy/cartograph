@@ -138,6 +138,89 @@ struct BridgeFactScannerTests {
         #expect(handled.first?.isChannelInferred == false)
     }
 
+    @Test("다른 타입의 같은 이름 채널 변수를 훔치지 않는다")
+    func channelVariablesAreScopedToTheirDeclaration() {
+        // Camera 의 `channel` 은 팩토리가 만든 값이라 스캐너가 모른다. Audio 의 `channel` 로
+        // 풀면 카메라 핸들러가 오디오 채널의 사실로 나가 Dart 조인이 어긋난다.
+        let source = """
+            final class CameraPlugin {
+                func setup(messenger: Any) {
+                    let channel = CameraSupport.make(messenger)
+                    channel.setMethodCallHandler { call, result in
+                        switch call.method { case "takePhoto": result(nil); default: result(nil) }
+                    }
+                }
+            }
+            final class AudioPlugin {
+                func setup(messenger: Any) {
+                    let channel = FlutterMethodChannel(name: "com.example/audio", binaryMessenger: messenger)
+                    channel.setMethodCallHandler { call, result in
+                        switch call.method { case "record": result(nil); default: result(nil) }
+                    }
+                }
+            }
+            final class VideoPlugin {
+                func setup(messenger: Any) {
+                    let channel = FlutterMethodChannel(name: "com.example/video", binaryMessenger: messenger)
+                    channel.setMethodCallHandler { _, _ in }
+                }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.map(\.channel) == ["channel", "com.example/audio", "com.example/video"])
+        #expect(registered.map(\.isDynamic) == [true, false, false])
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.channel) == ["channel", "com.example/audio"])
+        #expect(handled.map(\.isDynamic) == [true, false])
+    }
+
+    @Test("클로저 안의 그림자 지역 변수는 바깥 함수의 상수를 덮지 않는다")
+    func closureLocalsDoNotShadowOuterConstants() {
+        let source = """
+            final class PrinterPlugin: NSObject, FlutterPlugin {
+                private static let name = "com.example/print"
+                static func register(with registrar: FlutterPluginRegistrar) {
+                    let channel = FlutterMethodChannel(name: name, binaryMessenger: registrar.messenger())
+                    channel.setMethodCallHandler { call, result in
+                        let name = "diagnostic"
+                        result(name)
+                    }
+                }
+            }
+            """
+        #expect(facts(source, of: .channelRegister).map(\.channel) == ["com.example/print"])
+    }
+
+    @Test("클로저는 바깥 함수의 지역 상수를 본다")
+    func closuresSeeEnclosingLocals() {
+        let source = """
+            func attach(messenger: Any) {
+                let name = "com.example/camera"
+                run { FlutterMethodChannel(name: name, binaryMessenger: messenger).setMethodCallHandler { _, _ in } }
+            }
+            """
+        #expect(facts(source, of: .channelRegister).map(\.channel) == ["com.example/camera"])
+    }
+
+    @Test("중첩 함수의 지역 상수는 두 패스가 같은 스코프로 본다")
+    func nestedFunctionLocalsResolveInTheirOwnScope() {
+        // 1차 패스가 중첩 함수 키로 기록한 것을 2차 패스가 바깥 메서드 키로 찾으면
+        // 지역이 빗나가고 타입 상수가 대신 맞아 틀린 리터럴이 나간다.
+        let source = """
+            final class ScanPlugin: NSObject, FlutterPlugin {
+                static let channelName = "com.example/scan"
+                static func register(with registrar: FlutterPluginRegistrar) {
+                    func attach(_ messenger: FlutterBinaryMessenger) {
+                        let channelName = "com.example/internal"
+                        FlutterMethodChannel(name: channelName, binaryMessenger: messenger).setMethodCallHandler { _, _ in }
+                    }
+                    attach(registrar.messenger())
+                }
+            }
+            """
+        #expect(facts(source, of: .channelRegister).map(\.channel) == ["com.example/internal"])
+    }
+
     @Test("메서드 이름을 지역 변수에 담아 분기해도 인식한다")
     func followsMethodAlias() {
         let source = """

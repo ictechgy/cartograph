@@ -58,6 +58,11 @@ change here closes a path where `bridges` could emit a literal it had not actual
   handler, and names `retainedByMember` alongside `retained` as the states that carry
   `reason: externalBridge`. Reinstall it with `cartograph skill --force`; the copy written by 0.4.0
   or 0.5.0 keeps the old wording until then.
+- Channel variables are looked up the same way constants are: a `let channel = …` in one type
+  never stands in for a same-named variable in another, a closure sees the locals of the function
+  that encloses it but its own locals do not leak outward, and a nested function's locals are keyed
+  the same way in both passes. Each of these was a path to a literal the scanner had not actually
+  seen. `dead --explain` says when a retention matched by qualified name rather than by USR.
 - Because the retentions file is now read before the index store, a broken file fails every
   analysis command, not only `dead`, which is the same treatment a broken baseline gets.
 
