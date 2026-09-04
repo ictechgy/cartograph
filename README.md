@@ -354,7 +354,8 @@ Flutter and React Native.
 
 Fact locations are project-relative and `generatedAt` is normalized to UTC milliseconds. When a
 project contains more than one bridge mechanism, pass `--target flutter` or
-`--target react-native` before feeding the document to isthmus v0.1.
+`--target react-native` before feeding the document to isthmus v0.1. The targeted document reports
+the number of omitted facts under the `target-filter` limitation.
 
 isthmus hands back `external-retentions`: for each Swift declaration it found a caller for, the USR
 and the evidence. `--external-retentions <path>` (or `external_retentions_path` in the

@@ -709,6 +709,15 @@ public struct CartographService: Sendable {
             facts.filter { $0.target == selected }
         } ?? facts
         let includesFlutter = target != .reactNative
+        var extraLimitations: [String] = []
+        if unreadable > 0 {
+            extraLimitations.append("unreadable-sources: \(unreadable) file(s) could not be read and were skipped")
+        }
+        if let target, selectedFacts.count != facts.count {
+            extraLimitations.append(
+                "target-filter: \(facts.count - selectedFacts.count) fact(s) did not match \(target.rawValue)"
+            )
+        }
         return BridgeFactsDocument(
             tool: .init(name: Cartograph.toolName, version: Cartograph.version),
             generatedAt: Self.bridgeTimestamp(generatedAt),
@@ -716,8 +725,7 @@ public struct CartographService: Sendable {
             facts: selectedFacts,
             unscannedEventChannels: includesFlutter ? unscannedEventChannels : 0,
             unscannedMessageChannels: includesFlutter ? unscannedMessageChannels : 0,
-            extraLimitations: unreadable > 0
-                ? ["unreadable-sources: \(unreadable) file(s) could not be read and were skipped"] : []
+            extraLimitations: extraLimitations
         )
     }
 

@@ -139,6 +139,25 @@ struct BridgeFactsTests {
         #expect(document.limitations.contains { $0.hasPrefix("objective-c-handlers: 1") })
     }
 
+    @Test("target 필터가 제외한 사실 수를 빈 선택에도 알린다")
+    func targetFilterReportsDroppedFacts() throws {
+        let service = makeService(
+            files: ["/p/Sources/CameraPlugin.swift": Self.pluginSource],
+            snapshot: makeSnapshot()
+        )
+
+        let document = try service.bridgeFacts(
+            generatedAt: fixedDate,
+            target: .reactNative
+        )
+
+        #expect(document.facts.isEmpty)
+        #expect(document.target == nil)
+        #expect(document.limitations == [
+            "target-filter: 2 fact(s) did not match react-native",
+        ])
+    }
+
     @Test("사실이 없으면 대상은 null 로 적히고 한계는 없다")
     func emptyProjectIsQuiet() throws {
         let service = makeService(files: ["/p/Sources/A.swift": "struct A {}"], snapshot: IndexSnapshot())

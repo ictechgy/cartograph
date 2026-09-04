@@ -343,7 +343,8 @@ Native 가 섞인 프로젝트를 셉니다.
 
 사실 위치는 프로젝트 상대 경로이고 `generatedAt`은 UTC 밀리초 형식입니다. 한 프로젝트에
 여러 브리지 메커니즘이 있으면 isthmus v0.1에 넘기기 전에 `--target flutter` 또는
-`--target react-native`로 문서를 분리합니다.
+`--target react-native`로 문서를 분리합니다. target 문서는 제외한 사실 수를
+`target-filter` limitation으로 알립니다.
 
 isthmus 는 `external-retentions` 를 돌려줍니다. 호출자를 찾은 Swift 선언마다 USR 과 근거입니다.
 `--external-retentions <경로>`(또는 설정의 `external_retentions_path`)는 각각을 이유가
