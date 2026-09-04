@@ -7,6 +7,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-09-04
+
+A follow-up review of 0.5.1 at maximum effort found that the scoping introduced there stopped at
+function declarations. This release finishes it.
+
+### Fixed
+
+- Channel variables are looked up the same way constants are: a `let channel = …` in one type
+  never stands in for a same-named variable in another, a closure sees the locals of the function
+  that encloses it but its own locals do not leak outward, and a nested function's locals are keyed
+  the same way in both passes. Each of these was a path to a literal the scanner had not actually
+  seen. `dead --explain` says when a retention matched by qualified name rather than by USR.
+
 ## [0.5.1] - 2026-09-04
 
 A review round over 0.5.0 with four independent reviewers (GLM, Codex, Antigravity, Grok). Every
@@ -58,11 +71,6 @@ change here closes a path where `bridges` could emit a literal it had not actual
   handler, and names `retainedByMember` alongside `retained` as the states that carry
   `reason: externalBridge`. Reinstall it with `cartograph skill --force`; the copy written by 0.4.0
   or 0.5.0 keeps the old wording until then.
-- Channel variables are looked up the same way constants are: a `let channel = …` in one type
-  never stands in for a same-named variable in another, a closure sees the locals of the function
-  that encloses it but its own locals do not leak outward, and a nested function's locals are keyed
-  the same way in both passes. Each of these was a path to a literal the scanner had not actually
-  seen. `dead --explain` says when a retention matched by qualified name rather than by USR.
 - Because the retentions file is now read before the index store, a broken file fails every
   analysis command, not only `dead`, which is the same treatment a broken baseline gets.
 
@@ -370,7 +378,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.5.1...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.5.2...HEAD
+[0.5.2]: https://github.com/ictechgy/cartograph/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/ictechgy/cartograph/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/ictechgy/cartograph/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/ictechgy/cartograph/compare/0.3.0...0.4.0
