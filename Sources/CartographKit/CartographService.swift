@@ -151,10 +151,8 @@ public struct CartographService: Sendable {
     ///   알린다. 죽은 코드가 아니므로 정보로만 보고하고 종료 코드에는 영향을 주지
     ///   않는다.
     public func detectUnusedCode(reportingTestOnlyCode: Bool = false) throws -> CommandOutcome {
-        let (graph, report) = unusedCode(
-            in: try loadContext(),
-            findingTestOnlyCode: reportingTestOnlyCode
-        )
+        let context = try loadContext()
+        let (graph, report) = unusedCode(in: context, findingTestOnlyCode: reportingTestOnlyCode)
         return try finish(
             AnalysisDiagnostics.diagnostics(for: report)
                 + AnalysisDiagnostics.testOnlyDiagnostics(for: report),
@@ -163,7 +161,9 @@ public struct CartographService: Sendable {
             thresholdLimit: configuration.thresholds.maxUnusedSymbols,
             thresholdRule: AnalysisDiagnostics.Rule.unusedSymbol,
             // 테스트 전용은 정보성이라 임계값과 --strict 계산에 넣지 않는다.
-            countedRules: [AnalysisDiagnostics.Rule.unusedSymbol]
+            countedRules: [AnalysisDiagnostics.Rule.unusedSymbol],
+            // 미사용 목록은 에이전트가 삭제의 출발점으로 삼는 답이다. `query` 처럼 한계를 싣는다.
+            limitations: analysisLimitations(context: context, symbolGraph: graph)
         )
     }
 
@@ -825,7 +825,8 @@ public struct CartographService: Sendable {
         subject: String,
         thresholdLimit: Int?,
         thresholdRule: String,
-        countedRules: Set<String>? = nil
+        countedRules: Set<String>? = nil,
+        limitations: [String]? = nil
     ) throws -> CommandOutcome {
         // 범위를 먼저 좁힌 뒤 베이스라인을 적용한다. 순서를 바꾸면 억제 건수가
         // 범위 밖의 것까지 세어, 사용자가 보는 숫자와 맞지 않는다.
@@ -854,7 +855,9 @@ public struct CartographService: Sendable {
         let reporter = DiagnosticReporterFactory.make(configuration.reportFormat)
         let output = try reporter.report(
             reported.map { $0.relative(to: projectPath) },
-            summary: ReportSummary(command: command, subject: subject, suppressedCount: suppressed)
+            summary: ReportSummary(
+                command: command, subject: subject, suppressedCount: suppressed, limitations: limitations
+            )
         )
         return CommandOutcome(
             output: output,

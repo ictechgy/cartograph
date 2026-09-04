@@ -105,6 +105,27 @@ struct ExternalRetentionServiceTests {
         #expect(!fresh.contains { $0.hasPrefix("external-retentions-stale") })
     }
 
+    @Test("dead 의 JSON 리포트에도 한계가 실린다")
+    func deadJSONCarriesLimitations() throws {
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        configuration.externalRetentionsPath = "/p/retentions.json"
+        configuration.reportFormat = .json
+        let service = CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(
+                fileSystem: InMemoryFileSystem(files: ["/p/retentions.json": Self.retentions]),
+                indexProviderOverride: StaticIndexProvider(makeSnapshot())
+            )
+        )
+        let output = try service.detectUnusedCode().output
+        #expect(output.contains("\"limitations\" : ["))
+        #expect(output.contains("external-retentions: 2 retention(s) from isthmus 0.1.0"))
+
+        // 다른 명령의 리포트에는 붙지 않는다. 순환에는 보존 규칙이 없다.
+        #expect(!(try service.detectCycles().output.contains("\"limitations\"")))
+    }
+
     @Test("외부 근거를 걸지 않으면 한계에도 등장하지 않는다")
     func noRetentionsNoLimitation() throws {
         let document = try makeService(retentionsPath: nil).queryDocument(symbol: "s:handle")

@@ -8,11 +8,18 @@ public struct ReportSummary: Sendable, Equatable {
     public let subject: String
     /// 베이스라인으로 걸러 낸 진단 수.
     public let suppressedCount: Int
+    /// 이 분석이 보지 못한 채널. `dead` 처럼 판정이 한계에 걸리는 명령만 싣는다.
+    ///
+    /// `query` 와 같은 이유다. 에이전트는 `dead --report-format json` 목록에서 출발해 삭제로
+    /// 가는데, 그 목록에 한계가 없으면 Objective-C 소스나 외부 보존 근거 파일의 존재를
+    /// 알 길이 없다. nil 이면 리포터가 키를 만들지 않는다.
+    public let limitations: [String]?
 
-    public init(command: String, subject: String, suppressedCount: Int = 0) {
+    public init(command: String, subject: String, suppressedCount: Int = 0, limitations: [String]? = nil) {
         self.command = command
         self.subject = subject
         self.suppressedCount = suppressedCount
+        self.limitations = limitations
     }
 }
 

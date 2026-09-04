@@ -38,6 +38,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   configured path that does not exist is a tool failure, not a silent no-op: someone who supplied
   the file expects it to be applied.
 
+- `dead --report-format json` now carries the same `limitations` list as `query`. An agent that
+  starts from the unused list and walks it towards deletions had no way to learn that the project
+  has Objective-C sources, that the index predates its edits, or that an external retentions file
+  was (or was not) in effect. The key is omitted when there is nothing to say, as in `query`.
+
 ### Fixed
 
 - `dead --report-test-only` no longer reports a type as "reached only from tests" when the only

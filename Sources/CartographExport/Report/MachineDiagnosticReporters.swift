@@ -102,6 +102,8 @@ public struct JSONDiagnosticReporter: DiagnosticReporting {
             let command: String
             let subject: String
             let suppressedCount: Int
+            /// 값이 없으면 키가 빠진다. `query` 와 같은 계약이다.
+            let limitations: [String]?
             let diagnostics: [Diagnostic]
         }
         let document = Document(
@@ -110,6 +112,7 @@ public struct JSONDiagnosticReporter: DiagnosticReporting {
             command: summary.command,
             subject: summary.subject,
             suppressedCount: summary.suppressedCount,
+            limitations: summary.limitations,
             diagnostics: diagnostics.sorted()
         )
         let encoder = JSONEncoder()
