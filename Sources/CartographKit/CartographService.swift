@@ -936,7 +936,12 @@ public struct CartographService: Sendable {
                   for: node, names: [ExternalRetentionIndex.syntaxQualifiedName(of: node, in: graph)]
               )
         else { return "" }
-        return "\n  evidence: \(retention.evidenceDescription)"
+        // 이름으로 맞은 근거는 그렇다고 말한다. 동명 선언이 여럿이면 이 선언이 그 호출의
+        // 진짜 대상이 아닐 수 있다. USR 로 맞은 것처럼 인용하면 지문 수준의 거짓말이다.
+        let basis = retention.symbol.usr == nil
+            ? "\n  matched by qualified name, not by USR; every declaration with this name is kept"
+            : ""
+        return "\n  evidence: \(retention.evidenceDescription)" + basis
     }
 
     /// isthmus 가 쓰는 시각을 읽는다. `2026-09-04T12:00:00.000Z` 처럼 소수점 초가 붙는다.

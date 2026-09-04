@@ -81,6 +81,25 @@ struct ExternalRetentionServiceTests {
         #expect(parent.contains("evidence: dart lib/camera.dart:42"))
     }
 
+    @Test("--explain 은 이름으로 맞은 근거를 USR 로 맞은 것처럼 인용하지 않는다")
+    func explainMarksNameOnlyMatches() throws {
+        let nameOnly = Self.retentions.replacingOccurrences(of: "\"usr\": \"s:handle\", ", with: "")
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        configuration.externalRetentionsPath = "/p/retentions.json"
+        let service = CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(
+                fileSystem: InMemoryFileSystem(files: ["/p/retentions.json": nameOnly]),
+                indexProviderOverride: StaticIndexProvider(makeSnapshot())
+            )
+        )
+        let output = try service.explainRetention(of: "s:handle").output
+        #expect(output.contains("evidence: dart lib/camera.dart:42"))
+        #expect(output.contains("matched by qualified name, not by USR"))
+        #expect(!(try makeService().explainRetention(of: "s:handle").output.contains("matched by qualified name")))
+    }
+
     @Test("query 는 이유를 값으로 주고 한계에 파일의 출처와 맞지 않는 수를 싣는다")
     func queryReportsReasonAndLimitations() throws {
         let document = try makeService().queryDocument(symbol: "s:handle")

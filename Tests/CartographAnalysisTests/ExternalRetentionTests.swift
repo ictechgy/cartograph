@@ -141,6 +141,12 @@ struct ExternalRetentionTests {
         #expect(index.unmatchedCount(in: graph) == 0)
     }
 
+    @Test("이름으로 맞은 근거는 USR 이 없다는 사실을 남긴다")
+    func nameOnlyRetentionHasNoUSR() {
+        let retention = ExternalRetention(symbol: .init(usr: nil, qualifiedName: "CameraPlugin.handle"), reason: "bridge", evidence: nil)
+        #expect(retention.symbol.usr == nil)
+    }
+
     @Test("근거 문장의 제어 문자는 지운다")
     func stripsControlCharactersFromEvidence() {
         let retention = ExternalRetention(
