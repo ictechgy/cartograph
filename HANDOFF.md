@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md)에 있다. 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-마지막 갱신: 2026-09-04 (0.5.0 릴리스 직후)
+마지막 갱신: 2026-09-04 (0.5.1 릴리스 직후)
 
 ## 목표
 
@@ -10,7 +10,8 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 
 ## 현재 상태
 
-- **0.5.0 릴리스 완료** (2026-09-04, PR #11 · #12 · #13). GitHub Release + Homebrew tap 을 손으로 갱신(`HOMEBREW_TAP_TOKEN` 없음) + `brew upgrade` 로 0.5.0 설치 확인. 이력: 0.1.0 → 0.2.0 → 0.3.0 → 0.4.0 → 0.5.0(모두 2026-09-03~04)
+- **0.5.1 릴리스 완료** (2026-09-04, PR #15 · #16). 0.5.0 을 GLM(packet-ask) · Codex · Antigravity · Grok 네 트랙으로 리뷰(`ultra-review --diff 0.4.0`)하고 합의 지적을 반영한 판. GitHub Release + tap 손 갱신 + `brew upgrade` 확인. 이력: 0.1.0 → … → 0.5.0 → 0.5.1(모두 2026-09-03~04)
+- 4 트랙 리뷰에서 반영한 것의 목록은 CHANGELOG `[0.5.1]` 과 PR #15 코멘트 두 개에 있다. 받아들이지 않은 지적과 이유도 그 코멘트에 있다
 - `main` 은 깨끗하다. 자기 분석 findings 0 (1,296 노드), 커버리지 92.86%, 테스트 8 스위트 전부 통과
 - 최근 머지: PR #7 `query` 명령 · PR #8 `skill` 명령 · PR #9 버전 범프. 각 PR 의 코멘트에 GLM 리뷰 대응(반박 · 반영 · 거절)이 형식의 예로 남아 있다
 - 자매 프로젝트 셋이 바탕화면에 계획 문서만 있는 상태로 생겼다: [kartograph](../kartograph)(Kotlin) · [dartograph](../dartograph)(Dart) · [isthmus](../isthmus)(언어 경계 조인)
@@ -25,11 +26,16 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
    - Swift RN 모듈은 `@objc(Name)` 클래스와 `.m` 의 `RCT_EXTERN_METHOD` 양쪽에서 같은 `(channel, method)` 가 위치만 다르게 두 번 나온다. 둘 다 사실이라 합치지 않았다. isthmus 는 위치가 아니라 `(channel, method)` 집합으로 조인해야 한다
    - `bridges` 는 인덱스 스토어가 있어야 돈다(USR 을 붙이려고). 없으면 종료 코드 2. Dart 쪽처럼 인덱스 없이도 돌게 할지는 수요를 보고 정한다
    - (완료) `dead --report-format json` 에 `query` 와 같은 `limitations` 를 실었다. isthmus 피드백은 `../isthmus/HANDOFF.md` 의 "cartograph 에서 온 계약 피드백" 절에 적어 두었다(그 저장소는 리모트가 없고 다른 세션이 브랜치에서 작업 중이라 커밋하지 않았다)
-2. **`query` 응답에 evidence 를 실을지** — 지금은 `reason: "externalBridge"` 값만 간다(스키마를 자매 저장소와 맞춰야 해서 보류). 에이전트가 `--explain` 을 한 번 더 부르면 된다. 넣는다면 `reachability.evidence` 선택 필드로, 자매 저장소에 알리고 스킬 문장을 같이 고칠 것
-3. **`HOMEBREW_TAP_TOKEN` 시크릿** — 없어서 릴리스마다 tap 을 손으로 갱신한다. 계정 설정이라 사용자가 만들어야 한다. 만들면 `release.yml` 이 자동으로 formula 를 고친다
-4. 선택: `FlutterEventChannel(name:)` / `setStreamHandler` 를 `bridges` 에 추가. 계약에 없어 뺐다. `metrics --explain`(어느 간선이 I·A·D 를 만들었는지), 최신 Xcode 베타 스모크 테스트 — GLM 개선 목록에서 나온 것. 수요 근거는 없다
+2. **리뷰가 남긴 알려진 한계(누락 방향, 오탐 아님)** — 수요가 생기면: `@objc(Name)` 클래스와 **다른 파일**의 익스텐션(스캐너가 파일 단위), 저장 클로저 프로퍼티 핸들러(`var handler: (FlutterMethodCall, FlutterResult) -> Void`), `Optional<FlutterMethodCall>`·`inout` 파라미터 표기, `bridges` 의 구문 캐시 부재(대형 저장소에서 두 번째로 무거운 명령), `indexStoreDate` 가 디렉터리 mtime 만 봐서 덮어쓴 재빌드를 놓칠 가능성(실측 필요)
+3. **`query` 응답에 evidence 를 실을지** — 지금은 `reason: "externalBridge"` 값만 간다(스키마를 자매 저장소와 맞춰야 해서 보류). 에이전트가 `--explain` 을 한 번 더 부르면 된다. 넣는다면 `reachability.evidence` 선택 필드로, 자매 저장소에 알리고 스킬 문장을 같이 고칠 것
+4. **`HOMEBREW_TAP_TOKEN` 시크릿** — 없어서 릴리스마다 tap 을 손으로 갱신한다. 계정 설정이라 사용자가 만들어야 한다. 만들면 `release.yml` 이 자동으로 formula 를 고친다
+5. 선택: `FlutterEventChannel(name:)` / `setStreamHandler` 를 `bridges` 에 추가. 계약에 없어 뺐다. `metrics --explain`(어느 간선이 I·A·D 를 만들었는지), 최신 Xcode 베타 스모크 테스트 — GLM 개선 목록에서 나온 것. 수요 근거는 없다
 
 ## 효과가 있었던 방식
+
+- **네 트랙 리뷰는 서로 다른 것을 잡는다.** GLM 은 설계 원칙 위반(계약의 `target: null`, 이름 근거의 모호성), Codex 는 정적 사실(전방 참조 미해석, 파일마다 사전 재구축, 계약 스크립트가 증명하지 않는 것), Grok 은 통합 지점(소수점 초 파싱, `/private/tmp` 경로 표기, Objective-C 핸들러 카운트), Antigravity 는 가독성·문서 불일치. 합의 점수가 높은 것부터 반영하면 됐고, 세 트랙이 같은 것을 다른 말로 짚은 것이 가장 확실한 결함이었다
+- **ultra-review 러너의 상태 분류기를 믿지 말고 출력을 본다.** Codex 는 stderr 에 "quota" 단어가 있어 `quota-exhausted` 로 오분류됐지만 6 샤드 전부 완전한 출력이었다. `SESSION_ID` 에 `$$` 를 쓰면 source 할 때마다 토큰이 바뀌어 검증이 전부 실패한다. 고정 문자열로 둘 것
+- **Grok 은 `--no-memory` 가 없어 스킬 규칙상 `skipped-unsafe`.** 사용자 허가로 나머지 격리 플래그만 걸고 돌렸다. 도구 없이 파일을 열려다 멈추므로 "도구 없음, 본문에서 답하라" 머리말이 필요하다. agy 도 같다(`--disable-slash-commands` 는 `--mode plan` 을 무효화하니 쓰지 말 것)
 
 - **리뷰 주장을 코드로 확인한 뒤 반영.** GLM 이 "가장 중요한 체크" 라고 한 것(`impliesUsage` 집합 일치)은 `ReachabilityAnalyzer.swift:290` 한 줄로 반박됐고, "정의 없이 쓰인 retained root" 지적은 `retainPublic` 기본값 `false` 를 드러내 스킬의 가장 중요한 문장이 됐다. 둘 다 확인 없이는 못 가른다
 - **테스트가 실제로 무는지 일부러 부순다.** 코퍼스는 수정을 끄고 돌려 실패를 봤고(첫 코퍼스는 통과해서 아무것도 증명 못 했다), 스킬 드리프트 테스트는 사본에 한 줄 덧붙여 실패를 봤다
@@ -38,6 +44,10 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 - 인덱스 스토어 기반이 옳았다는 외부 근거: MobileNativeFoundation 논의(#156)에서 Lyft 의 인덱스 스토어 도구가 130만 줄을 30초, SourceKit 기반 SwiftLint 가 3시간
 
 ## 효과가 없었거나 틀렸던 것 (반복 금지)
+
+- **"dynamic 은 안전하지만 틀린 리터럴은 위험하다" 를 한 곳에만 적용했다.** 수신자 없는 `.name`, 타입을 무시한 상수 표, 파일 전역 지역 상수, 파일 전역 별칭 집합 — 네 곳이 같은 형태로 조인 가능한 틀린 리터럴을 냈다. 구문만으로 확신할 수 없는 이름은 전부 `dynamic` 이다. 새 해석 경로를 넣을 때 "이 이름이 다른 모듈의 것일 수 있는가" 를 먼저 물을 것
+- **주석·문자열 제거를 두 패스로 나누면 서로를 깨뜨린다.** 블록 주석 blanking 이 `// TODO /* note` 의 `/*` 를 열어 뒤의 모듈이 사라졸다. 상태 기계 하나(`blankingNoise`)로 합쳤다
+- **테스트가 옛 동작을 고정하고 있었다.** `.channelName` 이 이 파일의 상수로 풀리는 것을 테스트가 옳다고 못 박아 두었다. 리뷰가 그 테스트 자체를 지적했다. 테스트가 통과한다는 것과 동작이 맞다는 것은 다르다
 
 - **`verify-fixtures.sh` 는 릴리스 바이너리를 빌드하지 않는다.** 경로만 찾아 실행한다. 낡은 릴리스 바이너리로 검증해 "고쳤는데 안 먹는다"고 20분을 헤맸다. `swift build -c release` 먼저, 또는 디버그 바이너리 경로를 첫 인자로
 - **SwiftParser 는 이항 연산자를 접지 않는다.** `channel = FlutterMethodChannel(…)` 과 `call.method == "x"` 가 `SequenceExpr` 로 남아 `InfixOperatorExpr` 방문자가 아무것도 못 봤다. `SwiftOperators` 의 `foldAll` 을 거쳐야 한다. `BridgeFactScanner` 에 있다
