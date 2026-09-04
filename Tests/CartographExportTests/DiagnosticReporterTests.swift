@@ -109,6 +109,21 @@ struct DiagnosticReporterTests {
         #expect(decoded.diagnostics.count == 3)
     }
 
+    @Test("JSON 은 한계가 있을 때만 limitations 키를 만든다")
+    func jsonCarriesLimitationsOnlyWhenPresent() throws {
+        let reporter = JSONDiagnosticReporter()
+        let without = try reporter.report(diagnostics, summary: summary)
+        #expect(!without.contains("\"limitations\""))
+
+        let withLimits = try reporter.report(
+            diagnostics,
+            summary: ReportSummary(command: "dead", subject: "s", limitations: ["objective-c-sources: 2 file(s)"])
+        )
+        struct Document: Decodable { let limitations: [String]? }
+        let decoded = try JSONDecoder().decode(Document.self, from: Data(withLimits.utf8))
+        #expect(decoded.limitations == ["objective-c-sources: 2 file(s)"])
+    }
+
     @Test("SARIF 형식은 스키마와 규칙 목록을 담는다")
     func sarifFormat() throws {
         let output = try SARIFDiagnosticReporter().report(diagnostics, summary: summary)

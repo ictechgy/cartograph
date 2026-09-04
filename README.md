@@ -295,6 +295,9 @@ or `candidates` depending on `status`.
 
 An unknown name exits 64, so a typo in a script does not pass silently as "nothing uses it".
 
+`dead --report-format json` carries the same `limitations` list, so a sweep that starts from the
+unused list sees what the graph could not, without a `query` per entry.
+
 ### `bridges` — export the Swift side of a language boundary
 
 ```bash

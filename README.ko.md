@@ -287,6 +287,9 @@ $ cartograph query Client
 없는 이름을 물으면 종료 코드 64로 끝난다. 스크립트의 오타가 "아무도 안 씀"으로 조용히
 넘어가지 않게 하기 위해서다.
 
+`dead --report-format json` 에도 같은 `limitations` 목록이 실린다. 미사용 목록에서 출발하는
+일괄 정리가 항목마다 `query` 를 부르지 않고도 그래프가 보지 못한 것을 본다.
+
 ### `bridges` — 언어 경계의 Swift 쪽 내보내기
 
 ```bash

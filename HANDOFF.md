@@ -24,7 +24,7 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
    - `FlutterPlugin` 스타일(`handle(_:result:)` 메서드)에서는 파일에 채널이 하나일 때만 채널을 붙이고(`inferred-channels` 로 셈) 아니면 `null` 이다. isthmus 가 `null` 채널을 어떻게 셀지 정해야 한다
    - Swift RN 모듈은 `@objc(Name)` 클래스와 `.m` 의 `RCT_EXTERN_METHOD` 양쪽에서 같은 `(channel, method)` 가 위치만 다르게 두 번 나온다. 둘 다 사실이라 합치지 않았다. isthmus 는 위치가 아니라 `(channel, method)` 집합으로 조인해야 한다
    - `bridges` 는 인덱스 스토어가 있어야 돈다(USR 을 붙이려고). 없으면 종료 코드 2. Dart 쪽처럼 인덱스 없이도 돌게 할지는 수요를 보고 정한다
-   - `dead` 의 출력(JSON 포함)에는 `limitations` 가 없다. `dead` 목록에서 출발한 에이전트는 근거 파일이 걸려 있는지 알 수 없다. `dead --report-format json` 에 `limitations` 를 싣는 것을 검토할 것(GLM 지적)
+   - (완료) `dead --report-format json` 에 `query` 와 같은 `limitations` 를 실었다. isthmus 피드백은 `../isthmus/HANDOFF.md` 의 "cartograph 에서 온 계약 피드백" 절에 적어 두었다(그 저장소는 리모트가 없고 다른 세션이 브랜치에서 작업 중이라 커밋하지 않았다)
 2. **`query` 응답에 evidence 를 실을지** — 지금은 `reason: "externalBridge"` 값만 간다(스키마를 자매 저장소와 맞춰야 해서 보류). 에이전트가 `--explain` 을 한 번 더 부르면 된다. 넣는다면 `reachability.evidence` 선택 필드로, 자매 저장소에 알리고 스킬 문장을 같이 고칠 것
 3. **`HOMEBREW_TAP_TOKEN` 시크릿** — 없어서 릴리스마다 tap 을 손으로 갱신한다. 계정 설정이라 사용자가 만들어야 한다. 만들면 `release.yml` 이 자동으로 formula 를 고친다
 4. 선택: `FlutterEventChannel(name:)` / `setStreamHandler` 를 `bridges` 에 추가. 계약에 없어 뺐다. `metrics --explain`(어느 간선이 I·A·D 를 만들었는지), 최신 Xcode 베타 스모크 테스트 — GLM 개선 목록에서 나온 것. 수요 근거는 없다

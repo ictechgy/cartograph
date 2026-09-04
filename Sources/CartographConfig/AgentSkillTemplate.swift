@@ -127,7 +127,7 @@ public enum AgentSkillTemplate {
         A long list is not a mandate.
 
         ```bash
-        cartograph dead --report-format json    # every unreachable declaration
+        cartograph dead --report-format json    # every unreachable declaration, with `limitations`
         cartograph dead --explain MyType        # why one declaration survived, in prose
         cartograph dead --since origin/main     # only what this branch touched
         cartograph cycles                       # circular dependencies, with the link to cut
