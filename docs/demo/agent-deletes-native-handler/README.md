@@ -21,9 +21,12 @@ and `takePhoto(_:)` is reachable from it. `cartograph dead` reports **nothing**,
 the agent's deletion. That is the point: no single-language tool can see that Dart is the caller of
 `"takePhoto"`. The string is the only link, and only the cross-language join sees it.
 
-(`cartograph dead` does report the whole class when a plugin is analysed as its own package with
-no app entry point — the plus_plugins repositories are that case — and `--external-retentions`
-exists for that. This demo is the app-side case.)
+(The plugin-package case differs for two reasons. A plugin analysed on its own has no app entry
+point, so nothing reaches `register(with:)`; and when its index is built against a stub of the
+Flutter framework, as the isthmus harness does, the `FlutterPlugin` protocol is local rather than
+external and the conformance keeps nothing. Both together are why `cartograph dead` reports the
+plugin class in that setting and why `--external-retentions` exists. This demo is the app-side
+case, built against the real framework.)
 
 ## Reproduce
 

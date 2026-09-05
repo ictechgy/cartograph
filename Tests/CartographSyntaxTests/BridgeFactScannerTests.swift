@@ -231,6 +231,69 @@ struct BridgeFactScannerTests {
         #expect(handled.map(\.channel) == ["a/channel", nil, nil])
     }
 
+    @Test("중첩 타입 안의 무자격 Plugin() 은 그 중첩 타입이지 최상위 동명 타입이 아니다")
+    func unqualifiedDelegateResolvesLikeSwiftLookup() {
+        let source = """
+            enum A {
+                final class Plugin: NSObject, FlutterPlugin {
+                    static func register(with r: FlutterPluginRegistrar) {
+                        let c = FlutterMethodChannel(name: "a/channel", binaryMessenger: r.messenger())
+                        r.addMethodCallDelegate(Plugin(), channel: c)
+                    }
+                    func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                        switch call.method { case "inner": result(nil); default: break }
+                    }
+                }
+            }
+            final class Plugin {
+                func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    switch call.method { case "unrelated": result(nil); default: break }
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["inner", "unrelated"])
+        #expect(handled.map(\.channel) == ["a/channel", "a/channel"])
+        // inner 는 등록 사실, unrelated 는 파일에 채널이 하나라 추측일 뿐이다.
+        #expect(handled.map(\.isChannelInferred) == [false, true])
+    }
+
+    @Test("같은 텍스트의 다른 채널 변수로 두 번 등록하면 채널 없음이고, 메서드 참조도 같은 규칙이다")
+    func duplicateRegistrationsCompareResolvedChannels() {
+        let source = """
+            final class P: NSObject, FlutterPlugin {
+                static func register(with r: FlutterPluginRegistrar) {
+                    let channel = FlutterMethodChannel(name: "ch/one", binaryMessenger: r.messenger())
+                    r.addMethodCallDelegate(P(), channel: channel)
+                }
+                static func registerMore(with r: FlutterPluginRegistrar) {
+                    let channel = FlutterMethodChannel(name: "ch/two", binaryMessenger: r.messenger())
+                    r.addMethodCallDelegate(P(), channel: channel)
+                }
+                func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    switch call.method { case "ping": result(nil); default: break }
+                }
+            }
+            final class Q: NSObject {
+                let a: FlutterMethodChannel
+                let b: FlutterMethodChannel
+                init(m: Any) {
+                    a = FlutterMethodChannel(name: "q/a", binaryMessenger: m)
+                    b = FlutterMethodChannel(name: "q/b", binaryMessenger: m)
+                    super.init()
+                    a.setMethodCallHandler(handleCall)
+                    b.setMethodCallHandler(handleCall)
+                }
+                func handleCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    switch call.method { case "pong": result(nil); default: break }
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["ping", "pong"])
+        #expect(handled.allSatisfy { $0.channel == nil })
+    }
+
     @Test("setMethodCallHandler(nil) 은 등록이 아니다")
     func unregistrationIsNotAFact() {
         let source = """

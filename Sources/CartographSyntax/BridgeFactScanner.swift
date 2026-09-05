@@ -162,16 +162,20 @@ final class BindingCollector: SyntaxVisitor {
     /// 것인데, 클로저 문맥이 없어 채널을 못 받았다.
     ///
     /// 키는 등록 지점의 타입 사슬과 메서드 이름이다. 이름만으로 맞추면 다른 타입의 동명
-    /// 메서드가 이 채널을 받는다.
-    private(set) var handlerFunctions: [String: (receiver: ExprSyntax, scopes: [Int], enclosingTypes: [String])] = [:]
+    /// 메서드가 이 채널을 받는다. 같은 메서드가 여러 채널에 등록되면 항목이 여럿 쌓이고,
+    /// 2차 패스가 채널 이름을 푼 뒤 서로 다르면 "모른다" 고 한다.
+    private(set) var handlerFunctions: [String: [(receiver: ExprSyntax, scopes: [Int], enclosingTypes: [String])]] = [:]
     /// `registrar.addMethodCallDelegate(instance, channel:)` 로 델리게이트가 된 타입 → 채널 인자와 문맥.
     ///
     /// FlutterPlugin 표준 형태다. 그 타입의 `handle(_:result:)` 가 이 채널의 핸들러라는 것은
     /// 추측이 아니라 등록 호출이 말해 주는 사실이다. "파일에 채널이 하나" 추측보다 먼저다.
     ///
-    /// 키는 점으로 이은 타입 이름(`A.Plugin`)이다. 같은 타입이 두 채널에 등록되면 어느 쪽인지
-    /// 알 수 없으므로 `nil` 로 지운다. 추측 대신 채널 없음으로 나간다.
-    private(set) var delegateChannels: [String: (channel: ExprSyntax, scopes: [Int], enclosingTypes: [String])?] = [:]
+    /// 기록은 쓰인 그대로다(`Plugin()` 이면 `Plugin`). 어느 선언을 가리키는지는 파일을 다 읽은
+    /// 2차 패스에서 등록 지점의 타입 사슬과 선언된 타입 사슬로 푼다. 기록 시점에 풀면 아래에
+    /// 선언된 타입을 모르고, 짧은 이름을 그대로 키로 쓰면 최상위 동명 타입에 붙는다.
+    private(set) var delegateRegistrations: [(typeName: String, channel: ExprSyntax, scopes: [Int], enclosingTypes: [String])] = []
+    /// 이 파일이 선언한 타입의 점으로 이은 전체 이름(`A.Plugin`).
+    private(set) var declaredTypeChains: Set<String> = []
 
     /// 지금 어느 타입 안에 있는지.
     private var typeNames: [String] = []
@@ -222,6 +226,7 @@ final class BindingCollector: SyntaxVisitor {
         let unescaped = DeclarationCollector.unescaped(name)
         declaredTypeNames.insert(unescaped)
         typeNames.append(unescaped)
+        declaredTypeChains.insert(typeNames.joined(separator: "."))
         return .visitChildren
     }
 
@@ -268,12 +273,19 @@ final class BindingCollector: SyntaxVisitor {
               let channel = call.arguments.first(where: { $0.label?.text == "channel" })?.expression,
               let typeName = delegateTypeName(of: instance)
         else { return }
-        if let existing = delegateChannels[typeName] {
-            // 두 번째 등록. 인자가 같은 표현식이 아니면 어느 채널인지 모른다.
-            if existing?.channel.trimmedDescription != channel.trimmedDescription { delegateChannels[typeName] = .some(nil) }
-        } else {
-            delegateChannels[typeName] = (channel, scopes, typeNames)
+        delegateRegistrations.append((typeName, channel, scopes, typeNames))
+    }
+
+    /// 쓰인 타입 이름이 어느 선언을 가리키는지. Swift 의 이름 조회처럼 감싸는 타입에서 바깥으로.
+    ///
+    /// `enum A { class Plugin { … Plugin() … } }` 의 `Plugin` 은 `A.Plugin` 이다. 파일 최상위에
+    /// 다른 `Plugin` 이 있어도 그렇다. 어디에도 없으면 다른 모듈의 타입이라 쓰인 그대로 둔다.
+    func resolveTypeChain(_ dotted: String, from enclosingTypes: [String]) -> String {
+        for depth in stride(from: enclosingTypes.count, through: 0, by: -1) {
+            let candidate = (enclosingTypes.prefix(depth) + [dotted]).joined(separator: ".")
+            if declaredTypeChains.contains(candidate) { return candidate }
         }
+        return dotted
     }
 
     /// 델리게이트 인스턴스의 타입. `A.Plugin()` 은 `A.Plugin`.
@@ -319,7 +331,7 @@ final class BindingCollector: SyntaxVisitor {
         // `self.handle` 이나 `handle` — 등록 지점을 감싸는 타입의 메서드다. 다른 수신자는 모른다.
         if let member = argument.as(MemberAccessExprSyntax.self),
            let base = member.base, base.as(DeclReferenceExprSyntax.self)?.baseName.text != "self" { return }
-        handlerFunctions[Self.handlerKey(name, enclosingTypes: typeNames)] = (receiver, scopes, typeNames)
+        handlerFunctions[Self.handlerKey(name, enclosingTypes: typeNames), default: []].append((receiver, scopes, typeNames))
     }
 
     private func bind(name: String, to value: ExprSyntax, isLocal: Bool) {
@@ -597,18 +609,25 @@ final class BridgeFactCollector: SyntaxVisitor {
         // 무관한 함수라 `request.method == "DELETE"` 가 이 채널의 사실로 나간다.
         guard Self.takesMethodCall(node) else { return nil }
         let name = DeclarationCollector.unescaped(node.name.text)
-        if let entry = bindings.handlerFunctions[BindingCollector.handlerKey(name, enclosingTypes: typeNames)] {
-            let context = BindingCollector.Context(scopes: entry.scopes, enclosingTypes: entry.enclosingTypes)
-            return .some(resolveChannel(entry.receiver, in: context))
+        if let entries = bindings.handlerFunctions[BindingCollector.handlerKey(name, enclosingTypes: typeNames)] {
+            return .some(Self.single(entries.map { resolveChannel($0.receiver, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes)) }))
         }
         // FlutterPlugin 이 요구하는 것은 정확히 `handle(_:result:)` 다. 다른 오버로드는 아니다.
         let indexName = Self.indexName(name, parameters: node.signature.parameterClause.parameters)
-        if indexName == "handle(_:result:)", let entry = bindings.delegateChannels[typeNames.joined(separator: ".")] {
-            guard let entry else { return .some(nil) }
-            let context = BindingCollector.Context(scopes: entry.scopes, enclosingTypes: entry.enclosingTypes)
-            return .some(resolveChannel(entry.channel, in: context))
+        guard indexName == "handle(_:result:)" else { return nil }
+        let chain = typeNames.joined(separator: ".")
+        let registrations = bindings.delegateRegistrations.filter {
+            bindings.resolveTypeChain($0.typeName, from: $0.enclosingTypes) == chain
         }
-        return nil
+        guard !registrations.isEmpty else { return nil }
+        return .some(Self.single(registrations.map { resolveChannel($0.channel, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes)) }))
+    }
+
+    /// 등록이 여럿이면 푼 채널 이름이 전부 같을 때만 그 채널이다. 다르면 모른다.
+    ///
+    /// 텍스트로 비교하면 스코프가 다른 동명 변수(`let channel` 둘)가 같은 채널로 읽힌다.
+    private static func single(_ names: [ResolvedName]) -> ResolvedName? {
+        Set(names).count == 1 ? names.first : nil
     }
 
     /// 클로저마다 한 층. 지역 상수와 별칭은 그것을 선언한 클로저 안에서만 보인다.
