@@ -59,7 +59,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — tap 추가 없이 소스에서 빌드합니다.
 
 ```bash
-mint install ictechgy/cartograph@0.5.4
+mint install ictechgy/cartograph@0.5.5
 ```
 
 **설치 없이 쓰기** — Swift 패키지라면 의존성으로 넣고 커맨드 플러그인을 쓰면 됩니다.
@@ -67,7 +67,7 @@ mint install ictechgy/cartograph@0.5.4
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", from: "0.5.4"),
+.package(url: "https://github.com/ictechgy/cartograph", from: "0.5.5"),
 ```
 
 ```bash
@@ -325,7 +325,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.5.4" },
+  "tool" : { "name" : "cartograph", "version" : "0.5.5" },
   "version" : 1
 }
 ```
