@@ -1,7 +1,7 @@
 {
   "name": "cartograph",
   "displayName": "cartograph",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Ask the compiler index before deleting a Swift declaration: who uses it, what it uses, whether it is reachable, and what the analysis cannot see.",
   "author": { "name": "ictechgy", "url": "https://github.com/ictechgy" },
   "homepage": "https://github.com/ictechgy/cartograph",
