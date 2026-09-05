@@ -800,6 +800,7 @@ final class BridgeFactCollector: SyntaxVisitor {
     /// StoreKit 의 `transaction.method` 처럼 전혀 다른 것일 수 있다. 수신자 없는 `.method`
     /// 는 열거형 케이스라 제외한다.
     private func isMethodNameExpression(_ expression: ExprSyntax) -> Bool {
+        let expression = Self.unparenthesized(expression)
         if Self.isMethodMemberAccess(expression) { return true }
         guard let reference = expression.as(DeclReferenceExprSyntax.self) else { return false }
         let name = DeclarationCollector.unescaped(reference.baseName.text)
@@ -807,8 +808,16 @@ final class BridgeFactCollector: SyntaxVisitor {
     }
 
     private static func isMethodMemberAccess(_ expression: ExprSyntax) -> Bool {
-        guard let member = expression.as(MemberAccessExprSyntax.self) else { return false }
+        guard let member = unparenthesized(expression).as(MemberAccessExprSyntax.self) else { return false }
         return member.base != nil && member.declName.baseName.text == "method"
+    }
+
+    /// `switch (call.method)` 의 괄호를 벗긴다. 공개 플러그인(sensors_plus)이 실제로 이렇게 쓴다.
+    private static func unparenthesized(_ expression: ExprSyntax) -> ExprSyntax {
+        guard let tuple = expression.as(TupleExprSyntax.self), tuple.elements.count == 1,
+              let only = tuple.elements.first, only.label == nil
+        else { return expression }
+        return unparenthesized(only.expression)
     }
 
     /// 지금 안에 있는 핸들러의 채널과, 그것이 추측인지.

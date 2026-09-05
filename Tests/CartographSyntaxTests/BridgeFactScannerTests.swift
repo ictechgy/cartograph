@@ -76,6 +76,22 @@ struct BridgeFactScannerTests {
         #expect(handled.allSatisfy { !$0.isDynamic && !$0.isChannelInferred })
     }
 
+    @Test("괄호로 감싼 switch (call.method) 도 인식한다")
+    func recognizesParenthesizedSubject() {
+        // sensors_plus 가 실제로 이렇게 쓴다. 괄호 하나에 핸들러 다섯 개가 사라졌다.
+        let source = """
+            let channel = FlutterMethodChannel(name: "dev.fluttercommunity.plus/sensors/method", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                switch (call.method) {
+                case "setAccelerationSamplingPeriod": result(nil)
+                default: result(FlutterMethodNotImplemented)
+                }
+                if ((call.method) == "ping") { result(nil) }
+            }
+            """
+        #expect(facts(source, of: .methodHandle).map(\.method) == ["setAccelerationSamplingPeriod", "ping"])
+    }
+
     @Test("if call.method == 리터럴 분기도 method-handle 이다")
     func recordsEqualityBranches() {
         let source = """

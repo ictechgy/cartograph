@@ -100,6 +100,7 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         facts: [BridgeFact],
         unscannedEventChannels: Int = 0,
         unscannedMessageChannels: Int = 0,
+        objectiveCSourceCount: Int = 0,
         extraLimitations: [String] = []
     ) {
         format = Self.format
@@ -114,7 +115,8 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         target = Self.dominantTarget(targets)
         limitations = Self.limitations(
             for: facts, targets: targets,
-            unscannedEventChannels: unscannedEventChannels, unscannedMessageChannels: unscannedMessageChannels
+            unscannedEventChannels: unscannedEventChannels, unscannedMessageChannels: unscannedMessageChannels,
+            objectiveCSourceCount: objectiveCSourceCount
         ) + extraLimitations
     }
 
@@ -153,7 +155,8 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         for facts: [BridgeFact],
         targets: [BridgeFact.Target: Int],
         unscannedEventChannels: Int = 0,
-        unscannedMessageChannels: Int = 0
+        unscannedMessageChannels: Int = 0,
+        objectiveCSourceCount: Int = 0
     ) -> [String] {
         var result: [String] = []
         // 키 이름은 계약의 예시(`dynamic-channel-names`, `missing-handler-usrs`)를 따른다.
@@ -217,6 +220,14 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
             result.append(
                 "unscanned-message-channels: \(unscannedMessageChannels) BasicMessageChannel constructor(s) are not "
                     + "read; Pigeon-generated bridges are outside this format"
+            )
+        }
+        // Flutter 핸들러가 Objective-C 로 쓰인 플러그인(package_info_plus, share_plus)은 여기 아무
+        // 사실도 없다. 이것을 세지 않으면 isthmus 는 "핸들러 없는 호출" 을 오류로 낸다.
+        if objectiveCSourceCount > 0 {
+            result.append(
+                "objective-c-sources: \(objectiveCSourceCount) Objective-C file(s) were read only for React Native "
+                    + "export macros, so a Flutter handler written in Objective-C is not here"
             )
         }
         if targets.count > 1 {
