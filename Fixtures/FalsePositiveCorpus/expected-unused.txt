@@ -1,5 +1,9 @@
+class 'Corpus.AudioBridge' is never used
 class 'Corpus.CameraBridge' is never used
-class 'Corpus.FlutterMethodChannel' is never used
 function 'Corpus.neverCalledAtAll()' is never used
+init 'Corpus.init(name:binaryMessenger:)' is never used
+method 'Corpus.handle(_:result:)' is never used
+method 'Corpus.register(with:)' is never used
+method 'Corpus.setMethodCallHandler(_:)' is never used
 property 'Corpus.genuinelyUnusedState' is never used
 property 'Corpus.method' is never used

@@ -89,8 +89,27 @@ struct BridgeFactScannerTests {
         #expect(handled.map(\.method) == ["takePhoto", "dispose"])
     }
 
-    @Test("FlutterPlugin 스타일에서는 파일에 채널이 하나면 handle 메서드의 case 가 추측으로 그 채널에 붙는다")
+    @Test("등록 호출이 없어도 파일에 채널이 하나면 handle 메서드의 case 가 추측으로 그 채널에 붙는다")
     func fallsBackToSingleChannelInFile() {
+        // 등록은 다른 파일에서 한다. 채널 생성만 이 파일에 있다.
+        let source = """
+            public final class CameraPlugin: NSObject, FlutterPlugin {
+                static let channel = FlutterMethodChannel(name: "com.example/camera", binaryMessenger: Registry.messenger)
+                public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    switch call.method {
+                    case "takePhoto": result(nil)
+                    default: result(FlutterMethodNotImplemented)
+                    }
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.channel) == ["com.example/camera"])
+        #expect(handled.first?.isChannelInferred == true)
+    }
+
+    @Test("FlutterPlugin 표준 형태는 등록 호출이 타입을 말해 주므로 추측이 아니다")
+    func delegateRegistrationIsAFact() {
         let source = """
             public final class CameraPlugin: NSObject, FlutterPlugin {
                 public static func register(with registrar: FlutterPluginRegistrar) {
@@ -111,12 +130,49 @@ struct BridgeFactScannerTests {
 
         let handled = scanned.filter { $0.fact.kind == .methodHandle }
         #expect(handled.map(\.fact.channel) == ["com.example/camera"])
-        #expect(handled.first?.fact.isChannelInferred == true)
+        #expect(handled.first?.fact.isChannelInferred == false)
         // 클로저가 아니라 메서드 안이므로 감싸는 선언은 `handle` 이다.
         #expect(handled.first?.declaration?.name == "handle")
         #expect(handled.first?.declaration?.indexName == "handle(_:result:)")
         #expect(handled.first?.declaration?.qualifiedName == "CameraPlugin.handle")
         #expect(handled.first?.declaration?.line == 6)
+    }
+
+    @Test("addMethodCallDelegate 로 등록된 타입의 handle 은 추측 없이 그 채널이다")
+    func attributesDelegateHandleToRegisteredChannel() {
+        // 파일에 채널이 둘이라 추측은 못 쓴다. 등록 호출이 어느 타입인지 말해 준다.
+        let source = """
+            public final class CameraPlugin: NSObject, FlutterPlugin {
+                public static func register(with registrar: FlutterPluginRegistrar) {
+                    let camera = FlutterMethodChannel(name: "com.example/camera", binaryMessenger: registrar.messenger())
+                    let events = FlutterMethodChannel(name: "com.example/events", binaryMessenger: registrar.messenger())
+                    let instance = CameraPlugin()
+                    registrar.addMethodCallDelegate(instance, channel: camera)
+                    registrar.addMethodCallDelegate(EventsPlugin(), channel: events)
+                }
+                public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    switch call.method { case "takePhoto": result(nil); default: break }
+                }
+            }
+            final class EventsPlugin: NSObject, FlutterPlugin {
+                func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    if call.method == "listen" { result(nil) }
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["takePhoto", "listen"])
+        #expect(handled.map(\.channel) == ["com.example/camera", "com.example/events"])
+        #expect(handled.allSatisfy { !$0.isChannelInferred && !$0.isDynamic })
+    }
+
+    @Test("setMethodCallHandler(nil) 은 등록이 아니다")
+    func unregistrationIsNotAFact() {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            channel.setMethodCallHandler(nil)
+            """
+        #expect(scan(source).isEmpty)
     }
 
     @Test("채널이 여럿이고 핸들러 밖이면 채널을 지어내지 않는다")
@@ -219,6 +275,38 @@ struct BridgeFactScannerTests {
             }
             """
         #expect(facts(source, of: .channelRegister).map(\.channel) == ["com.example/internal"])
+    }
+
+    @Test("메서드 참조로 넘긴 핸들러의 분기도 그 채널의 것이다")
+    func attributesCasesInReferencedHandlerMethod() {
+        // audioplayers 의 형태. 파일에 채널이 둘이라 단일 채널 추측도 못 쓴다.
+        let source = """
+            final class AudioPlugin: NSObject {
+                var methods: FlutterMethodChannel
+                var globalMethods: FlutterMethodChannel
+                init(messenger: Any) {
+                    methods = FlutterMethodChannel(name: "xyz.luan/audioplayers", binaryMessenger: messenger)
+                    globalMethods = FlutterMethodChannel(name: "xyz.luan/audioplayers.global", binaryMessenger: messenger)
+                    super.init()
+                    self.globalMethods.setMethodCallHandler(handleGlobalMethodCall)
+                    methods.setMethodCallHandler(handleMethodCall)
+                }
+                func handleGlobalMethodCall(call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    let method = call.method
+                    if method == "init" { result(nil) }
+                }
+                func handleMethodCall(call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    switch call.method {
+                    case "pause": result(nil)
+                    default: result(nil)
+                    }
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["init", "pause"])
+        #expect(handled.map(\.channel) == ["xyz.luan/audioplayers.global", "xyz.luan/audioplayers"])
+        #expect(handled.allSatisfy { !$0.isDynamic && !$0.isChannelInferred })
     }
 
     @Test("메서드 이름을 지역 변수에 담아 분기해도 인식한다")

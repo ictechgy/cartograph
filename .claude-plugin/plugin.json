@@ -1,0 +1,12 @@
+{
+  "name": "cartograph",
+  "displayName": "cartograph",
+  "version": "0.5.3",
+  "description": "Ask the compiler index before deleting a Swift declaration: who uses it, what it uses, whether it is reachable, and what the analysis cannot see.",
+  "author": { "name": "ictechgy", "url": "https://github.com/ictechgy" },
+  "homepage": "https://github.com/ictechgy/cartograph",
+  "repository": "https://github.com/ictechgy/cartograph",
+  "license": "MIT",
+  "keywords": ["swift", "ios", "dead-code", "dependency-graph", "flutter", "react-native"],
+  "skills": "./Skills"
+}
