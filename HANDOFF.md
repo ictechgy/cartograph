@@ -14,8 +14,9 @@ _Last updated: 2026-09-05 by Claude (PR #24) — 이전 판은 Codex, 2026-09-05
 - Homebrew tap은 `ictechgy/homebrew-tap@70f0c7f`로 갱신됐고 로컬 설치도 0.5.3이다.
 - 필수 후속 구현이나 배포 blocker는 없다.
 - `.claude-plugin/plugin.json` 의 `version` 은 릴리스 태그와 같이 올린다(릴리스 체크리스트 항목).
-- PR #24(머지 대기): 공개 플러그인 14개 스캔 리포트, 스캔이 찾은 스캐너 형태 셋 반영, 저장소를
-  Claude Code 플러그인으로(`.claude-plugin/`), 재현 패키지 초안. 릴리스는 아직 안 했다(0.5.4 후보).
+- **0.5.4 릴리스 완료** (2026-09-05, PR #24 · #25). 공개 플러그인 14개 스캔 리포트, 스캔이 찾은 스캐너
+  형태 셋(위임 등록·메서드 참조 핸들러·등록 해제) 반영, 저장소를 Claude Code 플러그인으로
+  (`.claude-plugin/`), 재현 패키지 초안. GLM 리뷰 두 라운드 반영. tap 손 갱신 + `brew upgrade` 확인.
 - 이 저장소에 세션이 둘 있었다(Claude 가 0.5.1·0.5.2, Codex 가 0.5.3). 큰 작업 전 `git status` 와
   `gh pr list` 로 확인할 것.
 
@@ -113,7 +114,8 @@ _Last updated: 2026-09-05 by Claude (PR #24) — 이전 판은 Codex, 2026-09-05
 
 ## Next Steps
 
-0. PR #24 머지 후 0.5.4 릴리스 여부는 사용자 결정. 그 뒤 위 30일 계획의 (1)·(2)·(3 Dart 쪽) 순서.
+0. 0.5.4 가 나갔으므로 위 30일 계획의 (1) 데모를 Flutter 머신에서 끝까지, (2) plus_plugins 이슈(사용자 허락),
+   (3) Dart 쪽 스캔 순서. 스캔 리포트의 숫자는 0.5.4 와 같은 스캐너이므로 재실행 각주만 달면 된다.
 1. No required work remains for the 0.5.3/isthmus bridge milestone.
 2. For a new bridge kind, update isthmus `docs/GRAPH-EXCHANGE.md` first, then producer tests.
 3. Add `HOMEBREW_TAP_TOKEN` only if automatic tap updates are worth the broader credential setup.

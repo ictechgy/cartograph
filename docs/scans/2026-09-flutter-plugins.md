@@ -10,8 +10,8 @@ and which real code shapes the scanner had never seen.
 Each repository was fetched at the pinned commit in `Scripts/scan-public-plugins.sh` (full SHAs in
 the script; short ones in the table) and scanned with the exact command in that script,
 `cartograph bridges --project <repo> --format json --exclude '**/example/**' '**/.cartograph-scan/**'`,
-built from cartograph commit `37411f8` (the scanner changes described below, unreleased as of
-0.5.3). All 14 scans exited 0. No Flutter SDK was involved: `bridges` walks the
+built from cartograph commit `37411f8`. The scanner changes described below shipped unchanged in
+0.5.4 on the same day. All 14 scans exited 0. No Flutter SDK was involved: `bridges` walks the
 sources with SwiftSyntax and reads `.m` files as text, and only needs an index store to attach USRs.
 A dummy SwiftPM target at each repository root provided an index store, so every fact here has
 `missing-handler-usrs` and no USR; that column is omitted. `example/` directories were excluded from
@@ -104,5 +104,6 @@ to `handleAsync(_:result:)` inside a `Task`, and its 23 arms live there. Followi
 Fourteen repositories chosen by the author, not sampled. Swift side only. No USRs, so nothing here
 tests the retention round-trip; the corpus and the isthmus `plus_plugins` gate do that. Dart-side
 call counts, which would say how many of these handlers anything actually invokes, need dartograph
-and were out of reach in the authoring environment. The scanner used is a development build; the
-numbers should be re-run and this file amended once that build ships as a release.
+and were out of reach in the authoring environment. The scanner used is the build released as 0.5.4;
+a rerun with `Scripts/scan-public-plugins.sh` against `brew install ictechgy/tap/cartograph` should
+reproduce the table.
