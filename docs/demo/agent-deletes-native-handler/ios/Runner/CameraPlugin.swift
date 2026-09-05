@@ -10,9 +10,14 @@ public final class CameraPlugin: NSObject, FlutterPlugin {
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "takePhoto":
-            result("/tmp/photo.jpg")
+            takePhoto(result)
         default:
             result(FlutterMethodNotImplemented)
         }
+    }
+
+    /// The only caller is the `case` above, and the only caller of that is Dart.
+    private func takePhoto(_ result: FlutterResult) {
+        result("/tmp/photo.jpg")
     }
 }

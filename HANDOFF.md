@@ -13,6 +13,7 @@ _Last updated: 2026-09-05 by Claude (PR #24) — 이전 판은 Codex, 2026-09-05
 - cartograph `0.5.3` 릴리스와 macOS universal 자산이 공개됐다.
 - Homebrew tap은 `ictechgy/homebrew-tap@70f0c7f`로 갱신됐고 로컬 설치도 0.5.3이다.
 - 필수 후속 구현이나 배포 blocker는 없다.
+- `.claude-plugin/plugin.json` 의 `version` 은 릴리스 태그와 같이 올린다(릴리스 체크리스트 항목).
 - PR #24(머지 대기): 공개 플러그인 14개 스캔 리포트, 스캔이 찾은 스캐너 형태 셋 반영, 저장소를
   Claude Code 플러그인으로(`.claude-plugin/`), 재현 패키지 초안. 릴리스는 아직 안 했다(0.5.4 후보).
 - 이 저장소에 세션이 둘 있었다(Claude 가 0.5.1·0.5.2, Codex 가 0.5.3). 큰 작업 전 `git status` 와
@@ -82,8 +83,8 @@ _Last updated: 2026-09-05 by Claude (PR #24) — 이전 판은 Codex, 2026-09-05
   `inferred` 필드 부재, module-export 조인 시 메서드마다 근거를 낼 것.
 - `query` 응답에 evidence 를 실을지는 자매 저장소와 스키마를 맞춰야 해서 보류.
 - 알려진 누락(오탐 아님): 다른 파일의 `@objc(Name)` 익스텐션, 저장 클로저 프로퍼티 핸들러,
-  `if let m = call.method`, 튜플 패턴, `@IBAction`, `#elif`, 파일 자체 symlink, `handle` → `handleAsync(call)`
-  두 단계 위임(audioplayers 23건).
+  `if let m = call.method`, 튜플 패턴, `@IBAction`, `#elif`, 파일 자체 symlink, `handle` 이 `handleAsync(call)` 로 한 홉 더
+  넘기는 위임(audioplayers 23건).
 - Optional follow-up: decide whether one symbol should retain and explain multiple bridge evidence records.
 - Optional follow-up: add EventChannel/BasicMessageChannel only after GRAPH-EXCHANGE adds explicit semantics.
 

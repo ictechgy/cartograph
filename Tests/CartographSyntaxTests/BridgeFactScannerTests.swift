@@ -166,6 +166,71 @@ struct BridgeFactScannerTests {
         #expect(handled.allSatisfy { !$0.isChannelInferred && !$0.isDynamic })
     }
 
+    @Test("메서드 참조 핸들러는 등록한 타입의 FlutterMethodCall 메서드에만 붙는다")
+    func referencedHandlerDoesNotLeakToSameNamedFunctions() {
+        let source = """
+            final class AudioPlugin {
+                init(messenger: Any) {
+                    let ch = FlutterMethodChannel(name: "com.example/audio", binaryMessenger: messenger)
+                    ch.setMethodCallHandler(handleCall)
+                }
+                func handleCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    if call.method == "play" { result(nil) }
+                }
+            }
+            final class Router {
+                func handleCall(_ request: Request) {
+                    if request.method == "DELETE" { purge() }
+                }
+                func handleCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    if call.method == "stop" { result(nil) }
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        // "DELETE" 는 없다. Router 의 FlutterMethodCall 오버로드는 파일에 채널이 하나라 추측으로만 붙는다.
+        #expect(handled.map(\.method) == ["play", "stop"])
+        #expect(handled.map(\.isChannelInferred) == [false, true])
+    }
+
+    @Test("델리게이트 채널은 점으로 이은 타입 이름으로 구분하고 이중 등록은 채널 없음이다")
+    func delegateChannelsAreKeyedByFullTypeNameAndAmbiguityIsHonest() {
+        let source = """
+            enum A {
+                final class Plugin: NSObject, FlutterPlugin {
+                    static func register(with r: FlutterPluginRegistrar) {
+                        let c = FlutterMethodChannel(name: "a/channel", binaryMessenger: r.messenger())
+                        r.addMethodCallDelegate(A.Plugin(), channel: c)
+                    }
+                    func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                        switch call.method { case "x": result(nil); default: break }
+                    }
+                    func handle(_ call: FlutterMethodCall, retries: Int) {
+                        switch call.method { case "overload": break; default: break }
+                    }
+                }
+            }
+            enum B {
+                final class Plugin: NSObject, FlutterPlugin {
+                    static func register(with r: FlutterPluginRegistrar) {
+                        let one = FlutterMethodChannel(name: "b/one", binaryMessenger: r.messenger())
+                        let two = FlutterMethodChannel(name: "b/two", binaryMessenger: r.messenger())
+                        r.addMethodCallDelegate(B.Plugin(), channel: one)
+                        r.addMethodCallDelegate(B.Plugin(), channel: two)
+                    }
+                    func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                        switch call.method { case "y": result(nil); default: break }
+                    }
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["x", "overload", "y"])
+        // A.Plugin.handle(_:result:) 는 a/channel. 오버로드는 파일에 채널이 셋이라 추측도 못 해 null.
+        // B.Plugin 은 두 채널에 등록돼 어느 쪽인지 모르므로 null.
+        #expect(handled.map(\.channel) == ["a/channel", nil, nil])
+    }
+
     @Test("setMethodCallHandler(nil) 은 등록이 아니다")
     func unregistrationIsNotAFact() {
         let source = """

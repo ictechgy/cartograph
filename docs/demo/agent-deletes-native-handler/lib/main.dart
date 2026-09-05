@@ -25,14 +25,10 @@ class _CameraPageState extends State<CameraPage> {
   String _status = 'idle';
 
   Future<void> _takePhoto() async {
-    try {
-      final path = await _channel.invokeMethod<String>('takePhoto');
-      setState(() => _status = 'saved $path');
-    } on PlatformException catch (error) {
-      setState(() => _status = 'error ${error.message}');
-    } on MissingPluginException {
-      setState(() => _status = 'no native handler for takePhoto');
-    }
+    // Deliberately no catch: a missing native handler must surface as an unhandled
+    // MissingPluginException in the console, not disappear into a status label.
+    final path = await _channel.invokeMethod<String>('takePhoto');
+    setState(() => _status = 'saved $path');
   }
 
   @override

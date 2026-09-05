@@ -160,12 +160,18 @@ final class BindingCollector: SyntaxVisitor {
     /// `channel.setMethodCallHandler(handleCall)` 처럼 클로저 대신 메서드 참조를 넘기는
     /// 플러그인이 많다(audioplayers 가 그렇다). 그 메서드 안의 `case "…"` 는 이 채널의
     /// 것인데, 클로저 문맥이 없어 채널을 못 받았다.
+    ///
+    /// 키는 등록 지점의 타입 사슬과 메서드 이름이다. 이름만으로 맞추면 다른 타입의 동명
+    /// 메서드가 이 채널을 받는다.
     private(set) var handlerFunctions: [String: (receiver: ExprSyntax, scopes: [Int], enclosingTypes: [String])] = [:]
     /// `registrar.addMethodCallDelegate(instance, channel:)` 로 델리게이트가 된 타입 → 채널 인자와 문맥.
     ///
     /// FlutterPlugin 표준 형태다. 그 타입의 `handle(_:result:)` 가 이 채널의 핸들러라는 것은
     /// 추측이 아니라 등록 호출이 말해 주는 사실이다. "파일에 채널이 하나" 추측보다 먼저다.
-    private(set) var delegateChannels: [String: (channel: ExprSyntax, scopes: [Int], enclosingTypes: [String])] = [:]
+    ///
+    /// 키는 점으로 이은 타입 이름(`A.Plugin`)이다. 같은 타입이 두 채널에 등록되면 어느 쪽인지
+    /// 알 수 없으므로 `nil` 로 지운다. 추측 대신 채널 없음으로 나간다.
+    private(set) var delegateChannels: [String: (channel: ExprSyntax, scopes: [Int], enclosingTypes: [String])?] = [:]
 
     /// 지금 어느 타입 안에 있는지.
     private var typeNames: [String] = []
@@ -262,20 +268,43 @@ final class BindingCollector: SyntaxVisitor {
               let channel = call.arguments.first(where: { $0.label?.text == "channel" })?.expression,
               let typeName = delegateTypeName(of: instance)
         else { return }
-        delegateChannels[typeName] = (channel, scopes, typeNames)
+        if let existing = delegateChannels[typeName] {
+            // 두 번째 등록. 인자가 같은 표현식이 아니면 어느 채널인지 모른다.
+            if existing?.channel.trimmedDescription != channel.trimmedDescription { delegateChannels[typeName] = .some(nil) }
+        } else {
+            delegateChannels[typeName] = (channel, scopes, typeNames)
+        }
     }
 
+    /// 델리게이트 인스턴스의 타입. `A.Plugin()` 은 `A.Plugin`.
+    ///
+    /// 이 파일이 선언한 타입인지는 여기서 거르지 않는다. 타입 선언이 등록 호출보다 아래에
+    /// 있을 수 있고, 2차 패스는 선언된 타입의 사슬로만 조회하므로 다른 모듈의 타입 이름은
+    /// 어디에도 맞지 않는다.
     private func delegateTypeName(of expression: ExprSyntax) -> String? {
-        if let call = expression.as(FunctionCallExprSyntax.self), let name = Self.calleeName(of: call),
-           declaredTypeNames.contains(name) || name.first?.isUppercase == true {
-            return name
+        if let call = expression.as(FunctionCallExprSyntax.self), let last = Self.calleeName(of: call),
+           last.first?.isUppercase == true {
+            return Self.dottedTypeName(of: call.calledExpression)
         }
-        if expression.as(DeclReferenceExprSyntax.self)?.baseName.text == "self" { return typeNames.last }
+        if expression.as(DeclReferenceExprSyntax.self)?.baseName.text == "self" { return typeNames.joined(separator: ".") }
         if let name = Self.identifierName(of: expression),
            case let .instance(typeName)?? = binding(named: name, in: Context(scopes: scopes, enclosingTypes: typeNames), membersOnly: false) {
             return typeName
         }
         return nil
+    }
+
+    /// `A.Plugin` 처럼 점으로 이은 타입 표현식의 이름. 제네릭 인자는 뗀다.
+    static func dottedTypeName(of expression: ExprSyntax) -> String {
+        if let specialized = expression.as(GenericSpecializationExprSyntax.self) { return dottedTypeName(of: specialized.expression) }
+        if let member = expression.as(MemberAccessExprSyntax.self), let base = member.base {
+            return dottedTypeName(of: base) + "." + DeclarationCollector.unescaped(member.declName.baseName.text)
+        }
+        return identifierName(of: expression) ?? expression.trimmedDescription
+    }
+
+    static func handlerKey(_ name: String, enclosingTypes: [String]) -> String {
+        (enclosingTypes + [name]).joined(separator: ".")
     }
 
     /// `receiver.setMethodCallHandler(method)` 의 `method` 가 메서드 참조면 기억한다.
@@ -287,7 +316,10 @@ final class BindingCollector: SyntaxVisitor {
               !argument.is(ClosureExprSyntax.self), !argument.is(NilLiteralExprSyntax.self),
               let name = Self.identifierName(of: argument)
         else { return }
-        handlerFunctions[name] = (receiver, scopes, typeNames)
+        // `self.handle` 이나 `handle` — 등록 지점을 감싸는 타입의 메서드다. 다른 수신자는 모른다.
+        if let member = argument.as(MemberAccessExprSyntax.self),
+           let base = member.base, base.as(DeclReferenceExprSyntax.self)?.baseName.text != "self" { return }
+        handlerFunctions[Self.handlerKey(name, enclosingTypes: typeNames)] = (receiver, scopes, typeNames)
     }
 
     private func bind(name: String, to value: ExprSyntax, isLocal: Bool) {
@@ -296,9 +328,10 @@ final class BindingCollector: SyntaxVisitor {
             bound = .literal(literal)
         } else if let argument = Self.channelNameArgument(value) {
             bound = .channel(argument: argument, scopes: scopes, enclosingTypes: typeNames)
-        } else if let call = value.as(FunctionCallExprSyntax.self), let typeName = Self.calleeName(of: call),
-                  typeName.first?.isUppercase == true, !BridgeFactCollector.channelTypeNames.contains(typeName) {
-            bound = .instance(typeName: typeName)
+        } else if let call = value.as(FunctionCallExprSyntax.self), let last = Self.calleeName(of: call),
+                  last.first?.isUppercase == true, !BridgeFactCollector.channelTypeNames.contains(last) {
+            // 대문자 호출은 생성자로 본다. 다른 모듈의 타입이면 어느 지역 타입 사슬에도 맞지 않는다.
+            bound = .instance(typeName: Self.dottedTypeName(of: call.calledExpression))
         } else {
             bound = .opaque
         }
@@ -560,13 +593,18 @@ final class BridgeFactCollector: SyntaxVisitor {
     /// 이 함수가 `addMethodCallDelegate(instance, channel:)` 로 등록된 타입의
     /// `handle(_:result:)` 이거나. 둘 다 추측이 아니다.
     private func referencedHandlerChannel(of node: FunctionDeclSyntax) -> ResolvedName?? {
+        // 메서드 참조든 델리게이트든, 핸들러는 FlutterMethodCall 을 받는 함수다. 아니면 동명의
+        // 무관한 함수라 `request.method == "DELETE"` 가 이 채널의 사실로 나간다.
+        guard Self.takesMethodCall(node) else { return nil }
         let name = DeclarationCollector.unescaped(node.name.text)
-        if let entry = bindings.handlerFunctions[name] {
+        if let entry = bindings.handlerFunctions[BindingCollector.handlerKey(name, enclosingTypes: typeNames)] {
             let context = BindingCollector.Context(scopes: entry.scopes, enclosingTypes: entry.enclosingTypes)
             return .some(resolveChannel(entry.receiver, in: context))
         }
-        if name == "handle", Self.takesMethodCall(node), let type = typeNames.last,
-           let entry = bindings.delegateChannels[type] {
+        // FlutterPlugin 이 요구하는 것은 정확히 `handle(_:result:)` 다. 다른 오버로드는 아니다.
+        let indexName = Self.indexName(name, parameters: node.signature.parameterClause.parameters)
+        if indexName == "handle(_:result:)", let entry = bindings.delegateChannels[typeNames.joined(separator: ".")] {
+            guard let entry else { return .some(nil) }
             let context = BindingCollector.Context(scopes: entry.scopes, enclosingTypes: entry.enclosingTypes)
             return .some(resolveChannel(entry.channel, in: context))
         }
