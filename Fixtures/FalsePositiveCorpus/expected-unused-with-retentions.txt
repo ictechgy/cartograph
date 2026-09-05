@@ -1,2 +1,4 @@
+class 'Corpus.AudioBridge' is never used
 function 'Corpus.neverCalledAtAll()' is never used
+method 'Corpus.register(with:)' is never used
 property 'Corpus.genuinelyUnusedState' is never used

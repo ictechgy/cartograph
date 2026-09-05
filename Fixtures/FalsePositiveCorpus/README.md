@@ -23,6 +23,8 @@ nothing. Building against SwiftUI measured at 7 seconds, so fidelity won.
 | `Names.swift` | a generic parameter | reported as a dead type alias |
 | `CorpusApp/main.swift` | top-level statements | the whole executable |
 | `Bridges.swift` | a Flutter method-call handler that only Dart invokes | the handler's type, until `--external-retentions` supplies the caller |
+| `Bridges.swift` | the standard `FlutterPlugin` shape: `addMethodCallDelegate(instance, channel:)` plus `handle(_:result:)` | the handler method; the registration call names the channel without guessing, and the retention round-trips by the method's real USR |
+| `Bridges.swift` | a handler passed as a method reference, `setMethodCallHandler(handleCall)` (audioplayers) | the arms of that method had no channel |
 | `CorpusObjC/RNCalendar.m` | an Objective-C source with React Native export macros | not analysed; counted in `limitations` as `objective-c-sources` and read textually by `bridges` |
 
 `expected-bridges.json` is the `bridges` output with the generation time, tool version and project

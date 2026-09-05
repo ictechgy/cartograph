@@ -1,7 +1,10 @@
 {
   "format": "external-retentions",
   "version": 0,
-  "producedBy": { "name": "isthmus", "version": "0.1.0" },
+  "producedBy": {
+    "name": "isthmus",
+    "version": "0.1.0"
+  },
   "generatedAt": "2026-09-04T00:00:00Z",
   "retentions": [
     {
@@ -13,7 +16,27 @@
       "evidence": {
         "channel": "com.example/camera",
         "method": "takePhoto",
-        "caller": { "platform": "dart", "path": "lib/camera.dart", "line": 42 }
+        "caller": {
+          "platform": "dart",
+          "path": "lib/camera.dart",
+          "line": 42
+        }
+      }
+    },
+    {
+      "symbol": {
+        "usr": "s:6Corpus11PhotoPluginC6handle_6resultyAA17FlutterMethodCallV_yypSgXEtF",
+        "qualifiedName": "PhotoPlugin.handle"
+      },
+      "reason": "bridge",
+      "evidence": {
+        "channel": "com.example/photo",
+        "method": "pick",
+        "caller": {
+          "platform": "dart",
+          "path": "lib/photo.dart",
+          "line": 17
+        }
       }
     }
   ]

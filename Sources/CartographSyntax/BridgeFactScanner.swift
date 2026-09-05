@@ -116,6 +116,8 @@ struct ResolvedName: Hashable {
 enum BoundValue: Equatable {
     case literal(String)
     case channel(argument: ExprSyntax, scopes: [Int], enclosingTypes: [String])
+    /// 이 파일이 선언한 타입의 인스턴스(`let instance = CameraPlugin()`).
+    case instance(typeName: String)
     /// 리터럴도 채널도 아닌 값. 이 이름이 이 스코프에서 그 값을 가리키므로 바깥의 동명 상수를
     /// 대신 쓰면 안 된다. 그림자다.
     case opaque
@@ -124,6 +126,7 @@ enum BoundValue: Equatable {
         switch (lhs, rhs) {
         case let (.literal(a), .literal(b)): a == b
         case let (.channel(a, sa, ta), .channel(b, sb, tb)): a.id == b.id && sa == sb && ta == tb
+        case let (.instance(a), .instance(b)): a == b
         case (.opaque, .opaque): true
         default: false
         }
@@ -152,6 +155,27 @@ final class BindingCollector: SyntaxVisitor {
     private(set) var eventChannelCount = 0
     /// `FlutterBasicMessageChannel(name:)` / `BasicMessageChannel(name:)` 생성 수.
     private(set) var messageChannelCount = 0
+    /// 핸들러로 넘겨진 메서드 이름 → 그 등록 호출의 수신자와 문맥.
+    ///
+    /// `channel.setMethodCallHandler(handleCall)` 처럼 클로저 대신 메서드 참조를 넘기는
+    /// 플러그인이 많다(audioplayers 가 그렇다). 그 메서드 안의 `case "…"` 는 이 채널의
+    /// 것인데, 클로저 문맥이 없어 채널을 못 받았다.
+    ///
+    /// 키는 등록 지점의 타입 사슬과 메서드 이름이다. 이름만으로 맞추면 다른 타입의 동명
+    /// 메서드가 이 채널을 받는다. 같은 메서드가 여러 채널에 등록되면 항목이 여럿 쌓이고,
+    /// 2차 패스가 채널 이름을 푼 뒤 서로 다르면 "모른다" 고 한다.
+    private(set) var handlerFunctions: [String: [(receiver: ExprSyntax, scopes: [Int], enclosingTypes: [String])]] = [:]
+    /// `registrar.addMethodCallDelegate(instance, channel:)` 로 델리게이트가 된 타입 → 채널 인자와 문맥.
+    ///
+    /// FlutterPlugin 표준 형태다. 그 타입의 `handle(_:result:)` 가 이 채널의 핸들러라는 것은
+    /// 추측이 아니라 등록 호출이 말해 주는 사실이다. "파일에 채널이 하나" 추측보다 먼저다.
+    ///
+    /// 기록은 쓰인 그대로다(`Plugin()` 이면 `Plugin`). 어느 선언을 가리키는지는 파일을 다 읽은
+    /// 2차 패스에서 등록 지점의 타입 사슬과 선언된 타입 사슬로 푼다. 기록 시점에 풀면 아래에
+    /// 선언된 타입을 모르고, 짧은 이름을 그대로 키로 쓰면 최상위 동명 타입에 붙는다.
+    private(set) var delegateRegistrations: [(typeName: String, channel: ExprSyntax, scopes: [Int], enclosingTypes: [String])] = []
+    /// 이 파일이 선언한 타입의 점으로 이은 전체 이름(`A.Plugin`).
+    private(set) var declaredTypeChains: Set<String> = []
 
     /// 지금 어느 타입 안에 있는지.
     private var typeNames: [String] = []
@@ -202,6 +226,7 @@ final class BindingCollector: SyntaxVisitor {
         let unescaped = DeclarationCollector.unescaped(name)
         declaredTypeNames.insert(unescaped)
         typeNames.append(unescaped)
+        declaredTypeChains.insert(typeNames.joined(separator: "."))
         return .visitChildren
     }
 
@@ -233,7 +258,80 @@ final class BindingCollector: SyntaxVisitor {
         case let name? where BridgeFactCollector.messageChannelTypeNames.contains(name): messageChannelCount += 1
         default: break
         }
+        recordHandlerReference(node)
+        recordDelegate(node)
         return .visitChildren
+    }
+
+    /// `registrar.addMethodCallDelegate(instance, channel: c)` 의 `instance` 가 어느 타입인지 기억한다.
+    ///
+    /// `T(...)`, `self`, 그리고 이 파일에서 `let x = T(...)` 로 만든 변수를 안다. 그 밖은 모른다.
+    private func recordDelegate(_ call: FunctionCallExprSyntax) {
+        guard let member = call.calledExpression.as(MemberAccessExprSyntax.self),
+              member.declName.baseName.text == "addMethodCallDelegate",
+              let instance = call.arguments.first?.expression,
+              let channel = call.arguments.first(where: { $0.label?.text == "channel" })?.expression,
+              let typeName = delegateTypeName(of: instance)
+        else { return }
+        delegateRegistrations.append((typeName, channel, scopes, typeNames))
+    }
+
+    /// 쓰인 타입 이름이 어느 선언을 가리키는지. Swift 의 이름 조회처럼 감싸는 타입에서 바깥으로.
+    ///
+    /// `enum A { class Plugin { … Plugin() … } }` 의 `Plugin` 은 `A.Plugin` 이다. 파일 최상위에
+    /// 다른 `Plugin` 이 있어도 그렇다. 어디에도 없으면 다른 모듈의 타입이라 쓰인 그대로 둔다.
+    func resolveTypeChain(_ dotted: String, from enclosingTypes: [String]) -> String {
+        for depth in stride(from: enclosingTypes.count, through: 0, by: -1) {
+            let candidate = (enclosingTypes.prefix(depth) + [dotted]).joined(separator: ".")
+            if declaredTypeChains.contains(candidate) { return candidate }
+        }
+        return dotted
+    }
+
+    /// 델리게이트 인스턴스의 타입. `A.Plugin()` 은 `A.Plugin`.
+    ///
+    /// 이 파일이 선언한 타입인지는 여기서 거르지 않는다. 타입 선언이 등록 호출보다 아래에
+    /// 있을 수 있고, 2차 패스는 선언된 타입의 사슬로만 조회하므로 다른 모듈의 타입 이름은
+    /// 어디에도 맞지 않는다.
+    private func delegateTypeName(of expression: ExprSyntax) -> String? {
+        if let call = expression.as(FunctionCallExprSyntax.self), let last = Self.calleeName(of: call),
+           last.first?.isUppercase == true {
+            return Self.dottedTypeName(of: call.calledExpression)
+        }
+        if expression.as(DeclReferenceExprSyntax.self)?.baseName.text == "self" { return typeNames.joined(separator: ".") }
+        if let name = Self.identifierName(of: expression),
+           case let .instance(typeName)?? = binding(named: name, in: Context(scopes: scopes, enclosingTypes: typeNames), membersOnly: false) {
+            return typeName
+        }
+        return nil
+    }
+
+    /// `A.Plugin` 처럼 점으로 이은 타입 표현식의 이름. 제네릭 인자는 뗀다.
+    static func dottedTypeName(of expression: ExprSyntax) -> String {
+        if let specialized = expression.as(GenericSpecializationExprSyntax.self) { return dottedTypeName(of: specialized.expression) }
+        if let member = expression.as(MemberAccessExprSyntax.self), let base = member.base {
+            return dottedTypeName(of: base) + "." + DeclarationCollector.unescaped(member.declName.baseName.text)
+        }
+        return identifierName(of: expression) ?? expression.trimmedDescription
+    }
+
+    static func handlerKey(_ name: String, enclosingTypes: [String]) -> String {
+        (enclosingTypes + [name]).joined(separator: ".")
+    }
+
+    /// `receiver.setMethodCallHandler(method)` 의 `method` 가 메서드 참조면 기억한다.
+    private func recordHandlerReference(_ call: FunctionCallExprSyntax) {
+        guard let member = call.calledExpression.as(MemberAccessExprSyntax.self),
+              member.declName.baseName.text == "setMethodCallHandler",
+              let receiver = member.base, call.trailingClosure == nil,
+              let argument = call.arguments.first?.expression,
+              !argument.is(ClosureExprSyntax.self), !argument.is(NilLiteralExprSyntax.self),
+              let name = Self.identifierName(of: argument)
+        else { return }
+        // `self.handle` 이나 `handle` — 등록 지점을 감싸는 타입의 메서드다. 다른 수신자는 모른다.
+        if let member = argument.as(MemberAccessExprSyntax.self),
+           let base = member.base, base.as(DeclReferenceExprSyntax.self)?.baseName.text != "self" { return }
+        handlerFunctions[Self.handlerKey(name, enclosingTypes: typeNames), default: []].append((receiver, scopes, typeNames))
     }
 
     private func bind(name: String, to value: ExprSyntax, isLocal: Bool) {
@@ -242,6 +340,10 @@ final class BindingCollector: SyntaxVisitor {
             bound = .literal(literal)
         } else if let argument = Self.channelNameArgument(value) {
             bound = .channel(argument: argument, scopes: scopes, enclosingTypes: typeNames)
+        } else if let call = value.as(FunctionCallExprSyntax.self), let last = Self.calleeName(of: call),
+                  last.first?.isUppercase == true, !BridgeFactCollector.channelTypeNames.contains(last) {
+            // 대문자 호출은 생성자로 본다. 다른 모듈의 타입이면 어느 지역 타입 사슬에도 맞지 않는다.
+            bound = .instance(typeName: Self.dottedTypeName(of: call.calledExpression))
         } else {
             bound = .opaque
         }
@@ -397,6 +499,8 @@ final class BridgeFactCollector: SyntaxVisitor {
     static let flutterMethodCallTypeName = "FlutterMethodCall"
     /// 핸들러를 채널에 다는 메서드 이름들.
     static let handlerRegistrationMethods: Set<String> = ["setMethodCallHandler", "addMethodCallDelegate"]
+    /// 채널 타입 이름 전부. 인스턴스 바인딩에서 채널 생성을 뺄 때 쓴다.
+    static let channelTypeNames: Set<String> = messageChannelTypeNames.union([flutterChannelTypeName, flutterEventChannelTypeName])
 
     private(set) var facts: [ScannedBridgeFact] = []
     private let converter: SourceLocationConverter
@@ -483,6 +587,7 @@ final class BridgeFactCollector: SyntaxVisitor {
             node: node
         )
         if Self.takesMethodCall(node) { methodCallFunctionDepth += 1 }
+        if let channel = referencedHandlerChannel(of: node) { handlerChannels.append(channel) }
         emitReactMethodIfExported(node)
         return .visitChildren
     }
@@ -491,6 +596,38 @@ final class BridgeFactCollector: SyntaxVisitor {
         guard !DeclarationCollector.isInsideBody(node) else { return }
         declarations.removeLast()
         if Self.takesMethodCall(node) { methodCallFunctionDepth -= 1 }
+        if referencedHandlerChannel(of: node) != nil { handlerChannels.removeLast() }
+    }
+
+    /// 이 함수가 어느 채널의 핸들러인지, 등록 호출이 말해 준 것.
+    ///
+    /// 둘 중 하나다. `setMethodCallHandler(handleCall)` 로 메서드 참조가 넘겨졌거나,
+    /// 이 함수가 `addMethodCallDelegate(instance, channel:)` 로 등록된 타입의
+    /// `handle(_:result:)` 이거나. 둘 다 추측이 아니다.
+    private func referencedHandlerChannel(of node: FunctionDeclSyntax) -> ResolvedName?? {
+        // 메서드 참조든 델리게이트든, 핸들러는 FlutterMethodCall 을 받는 함수다. 아니면 동명의
+        // 무관한 함수라 `request.method == "DELETE"` 가 이 채널의 사실로 나간다.
+        guard Self.takesMethodCall(node) else { return nil }
+        let name = DeclarationCollector.unescaped(node.name.text)
+        if let entries = bindings.handlerFunctions[BindingCollector.handlerKey(name, enclosingTypes: typeNames)] {
+            return .some(Self.single(entries.map { resolveChannel($0.receiver, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes)) }))
+        }
+        // FlutterPlugin 이 요구하는 것은 정확히 `handle(_:result:)` 다. 다른 오버로드는 아니다.
+        let indexName = Self.indexName(name, parameters: node.signature.parameterClause.parameters)
+        guard indexName == "handle(_:result:)" else { return nil }
+        let chain = typeNames.joined(separator: ".")
+        let registrations = bindings.delegateRegistrations.filter {
+            bindings.resolveTypeChain($0.typeName, from: $0.enclosingTypes) == chain
+        }
+        guard !registrations.isEmpty else { return nil }
+        return .some(Self.single(registrations.map { resolveChannel($0.channel, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes)) }))
+    }
+
+    /// 등록이 여럿이면 푼 채널 이름이 전부 같을 때만 그 채널이다. 다르면 모른다.
+    ///
+    /// 텍스트로 비교하면 스코프가 다른 동명 변수(`let channel` 둘)가 같은 채널로 읽힌다.
+    private static func single(_ names: [ResolvedName]) -> ResolvedName? {
+        Set(names).count == 1 ? names.first : nil
     }
 
     /// 클로저마다 한 층. 지역 상수와 별칭은 그것을 선언한 클로저 안에서만 보인다.
@@ -559,7 +696,9 @@ final class BridgeFactCollector: SyntaxVisitor {
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
         guard let member = node.calledExpression.as(MemberAccessExprSyntax.self),
-              Self.handlerRegistrationMethods.contains(member.declName.baseName.text)
+              Self.handlerRegistrationMethods.contains(member.declName.baseName.text),
+              // `setMethodCallHandler(nil)` 은 등록 해제다. 등록 사실이 아니다.
+              !(node.arguments.first?.expression.is(NilLiteralExprSyntax.self) ?? false)
         else { return .visitChildren }
 
         let channel = registeredChannel(of: node, receiver: member.base)
@@ -589,6 +728,10 @@ final class BridgeFactCollector: SyntaxVisitor {
 
     /// 채널 표현식을 이름으로 푼다. 인라인 생성, 변수, 그 밖의 표현식 순으로 본다.
     private func resolveChannel(_ expression: ExprSyntax) -> ResolvedName {
+        resolveChannel(expression, in: context)
+    }
+
+    private func resolveChannel(_ expression: ExprSyntax, in context: BindingCollector.Context) -> ResolvedName {
         if let inline = bindings.channelConstruction(expression, in: context) { return inline }
         if let name = BindingCollector.identifierName(of: expression), let bound = bindings.channel(named: name, in: context) {
             return bound ?? .dynamic(expression.trimmedDescription)

@@ -91,7 +91,8 @@ struct BridgeFactsTests {
 
         let registered = try #require(document.facts.first { $0.kind == "channel-register" })
         #expect(registered.symbol?.usr == "s:register")
-        #expect(document.limitations.contains { $0.hasPrefix("inferred-channels: 1") })
+        // `addMethodCallDelegate(CameraPlugin(), channel:)` 이 타입을 말해 주므로 추측이 아니다.
+        #expect(!document.limitations.contains { $0.hasPrefix("inferred-channels") })
         #expect(!document.limitations.contains { $0.hasPrefix("missing-handler-usrs") })
     }
 

@@ -7,6 +7,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `docs/scans/2026-09-flutter-plugins.md` measures what `bridges` sees on fourteen public Flutter
+  and React Native repositories, with `Scripts/scan-public-plugins.sh` to reproduce it. The
+  headline: first-party Flutter plugins have moved to Pigeon (703 `BasicMessageChannel`
+  constructors in `flutter/packages`, one `FlutterMethodChannel`), community plugins still use string
+  channels in the `FlutterPlugin.handle(_:result:)` shape, and about half of the popular plugins
+  implement iOS in Objective-C where this tool sees nothing.
+- The repository is a Claude Code plugin: `/plugin marketplace add ictechgy/cartograph` then
+  `/plugin install cartograph@cartograph` installs the same skill `cartograph skill` writes. The
+  plugin points at `Skills/`, so there is no third copy of the file beyond the two the drift test
+  already compares.
+- `docs/demo/agent-deletes-native-handler/` is a draft reproduction of the failure this tool
+  exists to prevent, awaiting a Flutter toolchain to be run end to end.
+
+### Fixed
+
+- `bridges` attributes a `FlutterPlugin.handle(_:result:)` to the channel named by
+  `registrar.addMethodCallDelegate(instance, channel:)` instead of guessing from "the only channel in
+  the file". On the scanned repositories this turned 52 of 110 handlers from inferred into
+  attributed. Handlers passed as method references (`setMethodCallHandler(handleCall)`) are
+  attributed to their channel, and `setMethodCallHandler(nil)` is no longer reported as a
+  registration. All three shapes came from audioplayers and plus_plugins, not from the corpus.
+
 ## [0.5.3] - 2026-09-05
 
 ### Changed
