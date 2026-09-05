@@ -14,6 +14,10 @@ _Last updated: 2026-09-05 by Claude (PR #24) — 이전 판은 Codex, 2026-09-05
 - Homebrew tap은 `ictechgy/homebrew-tap@70f0c7f`로 갱신됐고 로컬 설치도 0.5.3이다.
 - 필수 후속 구현이나 배포 blocker는 없다.
 - `.claude-plugin/plugin.json` 의 `version` 은 릴리스 태그와 같이 올린다(릴리스 체크리스트 항목).
+- **0.5.5 릴리스 완료** (2026-09-05, PR #27 · #28). Dart SDK 를 이 머신에 설치해 plus_plugins 7개를
+  dartograph → cartograph → isthmus check 로 실제 조인했다. sensors_plus 의 `switch (call.method)` 괄호를
+  못 읽던 결함을 고쳤고, `bridges` 문서에 `objective-c-sources` 한계를 실었다. plus_plugins 자체의
+  불일치는 없었다 → 그쪽에 이슈를 열 근거 없음. 자세한 것은 스캔 리포트의 "The join" 절.
 - **0.5.4 릴리스 완료** (2026-09-05, PR #24 · #25). 공개 플러그인 14개 스캔 리포트, 스캔이 찾은 스캐너
   형태 셋(위임 등록·메서드 참조 핸들러·등록 해제) 반영, 저장소를 Claude Code 플러그인으로
   (`.claude-plugin/`), 재현 패키지 초안. GLM 리뷰 두 라운드 반영. tap 손 갱신 + `brew upgrade` 확인.
@@ -114,8 +118,10 @@ _Last updated: 2026-09-05 by Claude (PR #24) — 이전 판은 Codex, 2026-09-05
 
 ## Next Steps
 
-0. 0.5.4 가 나갔으므로 위 30일 계획의 (1) 데모를 Flutter 머신에서 끝까지, (2) plus_plugins 이슈(사용자 허락),
-   (3) Dart 쪽 스캔 순서. 스캔 리포트의 숫자는 0.5.4 와 같은 스캐너이므로 재실행 각주만 달면 된다.
+0. 이 머신에 Dart SDK(brew `dart-sdk`)와 dartograph 0.2.0(`~/.pub-cache/bin`)이 있다. Flutter SDK 는 없다.
+   30일 계획: (1) 데모는 Flutter 머신에서, (2) plus_plugins 이슈는 열지 않는다(불일치 없음), (3) Dart 쪽
+   스캔은 이제 여기서 가능 — 스캔 리포트의 나머지 저장소에 대해 조인을 넓힐 것. isthmus 가 `project`
+   동일성 요구를 풀기 전까지는 두 문서를 공통 루트로 정규화해야 한다(`../isthmus/HANDOFF.md` 피드백).
 1. No required work remains for the 0.5.3/isthmus bridge milestone.
 2. For a new bridge kind, update isthmus `docs/GRAPH-EXCHANGE.md` first, then producer tests.
 3. Add `HOMEBREW_TAP_TOKEN` only if automatic tap updates are worth the broader credential setup.
