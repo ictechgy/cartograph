@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- `bridges` reads through a parenthesized switch subject, `switch (call.method)`. sensors_plus writes
+  it that way and five of its handlers were invisible; the first real Dart-to-Swift join on
+  plus_plugins is what showed it.
+- The `bridges` document now carries `objective-c-sources: N` when the project has `.m` or `.mm`
+  files. A Flutter handler written in Objective-C is not in the Swift facts, and without the
+  limitation isthmus reports the Dart invocation as unhandled, which it is not — package_info_plus
+  and share_plus are that case.
+
 ## [0.5.4] - 2026-09-05
 
 ### Added

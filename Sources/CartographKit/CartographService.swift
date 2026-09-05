@@ -694,8 +694,10 @@ public struct CartographService: Sendable {
         var unreadable = 0
         var unscannedEventChannels = 0
         var unscannedMessageChannels = 0
+        var objectiveCSources = 0
         for path in sources {
             guard let source = try? environment.fileSystem.readText(at: path) else { unreadable += 1; continue }
+            if !path.hasSuffix(".swift") { objectiveCSources += 1 }
             if path.hasSuffix(".swift") {
                 let scanned = BridgeFactScanner().scan(source: source, path: path)
                 facts += resolver.resolve(scanned.facts)
@@ -725,6 +727,7 @@ public struct CartographService: Sendable {
             facts: selectedFacts,
             unscannedEventChannels: includesFlutter ? unscannedEventChannels : 0,
             unscannedMessageChannels: includesFlutter ? unscannedMessageChannels : 0,
+            objectiveCSourceCount: includesFlutter ? objectiveCSources : 0,
             extraLimitations: extraLimitations
         )
     }

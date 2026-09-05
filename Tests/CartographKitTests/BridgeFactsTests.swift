@@ -138,6 +138,8 @@ struct BridgeFactsTests {
         // Objective-C 쪽 사실은 선언 정보 자체가 없다. "USR 없는 핸들러" 가 아니라 따로 센다.
         #expect(!document.limitations.contains { $0.hasPrefix("missing-handler-usrs") })
         #expect(document.limitations.contains { $0.hasPrefix("objective-c-handlers: 1") })
+        // Objective-C 로 쓴 Flutter 핸들러는 여기 없다는 것도 문서가 말해야 isthmus 가 오류로 읽지 않는다.
+        #expect(document.limitations.contains { $0.hasPrefix("objective-c-sources: 1 Objective-C file(s)") })
     }
 
     @Test("target 필터가 제외한 사실 수를 빈 선택에도 알린다")

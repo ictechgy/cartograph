@@ -11,7 +11,9 @@ Each repository was fetched at the pinned commit in `Scripts/scan-public-plugins
 the script; short ones in the table) and scanned with the exact command in that script,
 `cartograph bridges --project <repo> --format json --exclude '**/example/**' '**/.cartograph-scan/**'`,
 built from cartograph commit `37411f8`. The scanner changes described below shipped unchanged in
-0.5.4 on the same day. All 14 scans exited 0. No Flutter SDK was involved: `bridges` walks the
+0.5.4 on the same day. The plus_plugins row was re-scanned after the parenthesized-subject fix
+described under "The join" (it adds sensors_plus's five handlers, 14 to 19); the other rows are
+unaffected by that fix, as none of them parenthesizes a switch subject. All 14 scans exited 0. No Flutter SDK was involved: `bridges` walks the
 sources with SwiftSyntax and reads `.m` files as text, and only needs an index store to attach USRs.
 A dummy SwiftPM target at each repository root provided an index store, so every fact here has
 `missing-handler-usrs` and no USR; that column is omitted. `example/` directories were excluded from
@@ -29,7 +31,7 @@ The Dart side was not scanned (dartograph does that; see isthmus).
 | mrousavy/react-native-vision-camera | 91bae1f | 429 | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | flutter/packages | a929c2f | 280 | 56 | 15 | 1 | 0 | 0 | 0 | 0 | 0 | 703 | 4 | 1 |
 | firebase/flutterfire | 7a5c295 | 137 | 37 | 12 | 4 | 8 | 8 | 0 | 0 | 1 | 150 | 10 | 3 |
-| fluttercommunity/plus_plugins | 13e1704 | 30 | 11 | 0 | 7 | 14 | 14 | 0 | 0 | 0 | 0 | 8 | 0 |
+| fluttercommunity/plus_plugins | 13e1704 | 30 | 11 | 0 | 7 | 19 | 19 | 0 | 0 | 0 | 0 | 8 | 0 |
 | juliansteenbakker/mobile_scanner | 997502a | 10 | 0 | 0 | 1 | 13 | 13 | 0 | 0 | 0 | 0 | 2 | 0 |
 | juliansteenbakker/flutter_secure_storage | e144260 | 8 | 1 | 0 | 3 | 7 | 7 | 0 | 0 | 0 | 0 | 2 | 0 |
 | bluefireteam/audioplayers | cd475c7 | 7 | 0 | 0 | 2 | 23 | 0 | 0 | 23 | 1 | 0 | 2 | 0 |
@@ -98,6 +100,42 @@ change as this report:
 One shape remains open and is counted honestly: audioplayers' `handle(_:result:)` forwards the call
 to `handleAsync(_:result:)` inside a `Task`, and its 23 arms live there. Following one hop of
 `call` through a local function call is the next scanner change if a second plugin shows the shape.
+
+## The join, on plus_plugins (added 2026-09-05, evening)
+
+With a Dart SDK installed, the seven plus_plugins packages that have Swift or Objective-C sources
+were joined end to end: `dartograph bridges` on each `*_platform_interface` package (where the
+`MethodChannel` lives), `cartograph bridges` on the plugin package, `isthmus check` on the pair.
+
+| plugin | native | matched methods | check |
+|---|---|---|---|
+| battery_plus | Swift | 3 of 3 | clean |
+| connectivity_plus | Swift | 1 of 1 | clean |
+| device_info_plus | Swift | 1 of 1 | clean |
+| network_info_plus | Swift | 7 of 7 | clean |
+| sensors_plus | Swift | 5 of 5, after a scanner fix | clean |
+| package_info_plus | Objective-C | 0 of 1 | `unhandled-invocation` — a blind spot, not a defect |
+| share_plus | Objective-C | 0 of 1 | same |
+
+Three things came out of it, none of them a mismatch in plus_plugins itself:
+
+1. **A scanner miss.** sensors_plus writes `switch (call.method)` with parentheses. The subject is a
+   tuple expression wrapping the member access, and the scanner did not look through it, so five
+   handlers were invisible and `isthmus check` reported five Dart invocations with no handler.
+   Fixed and pinned by a test; the first run of this join is what found it.
+2. **An honest error that is not one.** package_info_plus and share_plus implement iOS and macOS in
+   Objective-C. cartograph reads `.m` files only for React Native macros, so their Flutter handlers
+   are not in the Swift facts and isthmus reports the Dart side as unhandled. The `bridges` document
+   now carries `objective-c-sources: N` so the consumer can tell a blind spot from a missing handler;
+   isthmus should downgrade `unhandled-invocation` when that limitation is present.
+3. **Two frictions for isthmus.** It requires every document to name the same `project`, but a
+   monorepo plugin keeps its Dart channel in one package and its Swift in another, and the two
+   producers spell the same temp directory as `/tmp` and `/private/tmp`. Both documents had to be
+   rewritten to a shared root before the join would run.
+
+The conclusion for the proposal: the check still prints the two Objective-C rows as
+`unhandled-invocation` today, but there is no genuine Dart-to-Swift mismatch in plus_plugins, which
+is the honest reason not to open an issue claiming otherwise.
 
 ## Limits of this scan
 
