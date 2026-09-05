@@ -227,7 +227,7 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         if objectiveCSourceCount > 0 {
             result.append(
                 "objective-c-sources: \(objectiveCSourceCount) Objective-C file(s) were read only for React Native "
-                    + "export macros, so a Flutter handler written in Objective-C is not here"
+                    + "export macros, so a Flutter handler written in Objective-C cannot appear here"
             )
         }
         if targets.count > 1 {

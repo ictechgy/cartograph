@@ -87,9 +87,10 @@ struct BridgeFactScannerTests {
                 default: result(FlutterMethodNotImplemented)
                 }
                 if ((call.method) == "ping") { result(nil) }
+                if ((call.method)) == "pong" { result(nil) }
             }
             """
-        #expect(facts(source, of: .methodHandle).map(\.method) == ["setAccelerationSamplingPeriod", "ping"])
+        #expect(facts(source, of: .methodHandle).map(\.method) == ["setAccelerationSamplingPeriod", "ping", "pong"])
     }
 
     @Test("if call.method == 리터럴 분기도 method-handle 이다")

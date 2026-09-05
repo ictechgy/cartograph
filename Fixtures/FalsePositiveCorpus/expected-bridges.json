@@ -113,7 +113,7 @@
   "generatedAt": "<generatedAt>",
   "limitations": [
     "objective-c-handlers: 1 method handlers come from Objective-C sources and carry no USR, so a retention for them cannot be applied by --external-retentions",
-    "objective-c-sources: 1 Objective-C file(s) were read only for React Native export macros, so a Flutter handler written in Objective-C is not here",
+    "objective-c-sources: 1 Objective-C file(s) were read only for React Native export macros, so a Flutter handler written in Objective-C cannot appear here",
     "mixed-targets: facts come from more than one bridge (flutter 6, react-native 2); 'target' is the majority"
   ],
   "platform": "swift",
