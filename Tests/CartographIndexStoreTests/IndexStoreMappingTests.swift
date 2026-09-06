@@ -513,3 +513,92 @@ struct IndexDatabasePathTests {
         )
     }
 }
+
+@Suite("관계 없는 참조의 귀속")
+struct UnattributedReferenceTests {
+    private func symbol(_ usr: String, kind: SymbolKind, line: Int) -> IndexedSymbol {
+        IndexedSymbol(
+            usr: usr,
+            name: usr,
+            kind: kind,
+            module: "App",
+            location: CartographCore.SourceLocation(path: "/p/A.swift", line: line, column: 1)
+        )
+    }
+
+    private func at(_ line: Int, _ column: Int) -> CartographCore.SourceLocation {
+        CartographCore.SourceLocation(path: "/p/A.swift", line: line, column: column)
+    }
+
+    @Test("열거형 케이스의 연관 값 타입이 그 케이스의 의존성이 된다")
+    func enumCasePayloadGetsAnEdge() {
+        // 인덱서는 이 자리의 참조를 ref 로 남기면서 어떤 관계도 달지 않는다. 관계가
+        // 있을 때만 간선을 만들면 페이로드 타입은 아무도 쓰지 않는 것처럼 보이고,
+        // 실제로는 지우면 컴파일이 깨진다. 오늘은 합성 init 이 우연히 살리고 있다.
+        let references = IndexStoreProvider.enclosingReferences(
+            for: [(usr: "s:Payload", location: at(6, 16))],
+            definitionSites: ["/p/A.swift": [
+                (usr: "s:Failure", location: at(5, 6)),
+                (usr: "s:broke", location: at(6, 10)),
+            ]],
+            symbols: [
+                "s:Failure": symbol("s:Failure", kind: .enumType, line: 5),
+                "s:broke": symbol("s:broke", kind: .enumCase, line: 6),
+            ]
+        )
+        #expect(references.map(\.sourceUSR) == ["s:broke"])
+        #expect(references.map(\.targetUSR) == ["s:Payload"])
+    }
+
+    @Test("타입 별칭의 우변도 같은 방식으로 붙는다")
+    func typeAliasRightHandSideGetsAnEdge() {
+        let references = IndexStoreProvider.enclosingReferences(
+            for: [(usr: "s:Aliased", location: at(9, 22))],
+            definitionSites: ["/p/A.swift": [(usr: "s:Shortcut", location: at(9, 11))]],
+            symbols: ["s:Shortcut": symbol("s:Shortcut", kind: .typeAlias, line: 9)]
+        )
+        #expect(references.map(\.sourceUSR) == ["s:Shortcut"])
+    }
+
+    @Test("인덱서가 관계를 붙여 주는 자리에서는 위치로 추측하지 않는다")
+    func otherDeclarationKindsAreLeftAlone() {
+        // 프로퍼티나 메서드 안의 참조에는 인덱서가 containedBy 를 단다. 거기서 관계 없는
+        // 참조가 나타났다면 매크로가 펼친 코드일 가능성이 높고, 그 위치는 사용자가 쓴
+        // 자리가 아니라 속성 줄이다. 넓게 잡으면 앞 선언에 붙어 없는 의존성을 만든다.
+        // 실제로 `@Observable` 이 그 모양으로 거짓 순환 두 건을 만들었다.
+        let references = IndexStoreProvider.enclosingReferences(
+            for: [(usr: "s:Other", location: at(50, 2))],
+            definitionSites: ["/p/A.swift": [(usr: "s:id", location: at(42, 9))]],
+            symbols: ["s:id": symbol("s:id", kind: .property, line: 42)]
+        )
+        #expect(references.isEmpty)
+    }
+
+    @Test("같은 위치의 정의는 소유자로 뽑지 않는다")
+    func definitionsAtTheSamePositionAreSkipped() {
+        // 이름 없는 파라미터는 자기 타입과 같은 자리에 기록된다. 그것을 소유자로 뽑으면
+        // 파라미터는 그래프의 정점이 아니라 간선이 통째로 사라진다.
+        let references = IndexStoreProvider.enclosingReferences(
+            for: [(usr: "s:Payload", location: at(6, 16))],
+            definitionSites: ["/p/A.swift": [
+                (usr: "s:broke", location: at(6, 10)),
+                (usr: "s:param", location: at(6, 16)),
+            ]],
+            symbols: [
+                "s:broke": symbol("s:broke", kind: .enumCase, line: 6),
+                "s:param": symbol("s:param", kind: .parameter, line: 6),
+            ]
+        )
+        #expect(references.map(\.sourceUSR) == ["s:broke"])
+    }
+
+    @Test("앞에 정의가 없으면 아무 데도 붙이지 않는다")
+    func referencesBeforeAnyDefinitionAreDropped() {
+        let references = IndexStoreProvider.enclosingReferences(
+            for: [(usr: "s:Imported", location: at(1, 8))],
+            definitionSites: ["/p/A.swift": [(usr: "s:Later", location: at(5, 1))]],
+            symbols: ["s:Later": symbol("s:Later", kind: .enumCase, line: 5)]
+        )
+        #expect(references.isEmpty)
+    }
+}
