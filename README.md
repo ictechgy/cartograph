@@ -318,7 +318,14 @@ or `candidates` depending on `status`.
 An unknown name exits 64, so a typo in a script does not pass silently as "nothing uses it".
 
 `dead --report-format json` carries the same `limitations` list, so a sweep that starts from the
-unused list sees what the graph could not, without a `query` per entry.
+unused list sees what the graph could not, without a `query` per entry. Every format a CI job reads
+carries it too, because a gate that passes while the analysis was blind is the one thing a gate must
+never do: `text` counts them in the summary line and prints a `limitations:` block after it, `xcode`
+emits a location-less `note:`, `github-actions` emits a `::notice` with no file so it lands on the
+run summary, and `sarif` puts them in `runs[].invocations[].toolExecutionNotifications`. None of
+that changes the exit code or the finding count. `checkstyle` is the exception: its schema has no
+slot that is not a file's error, and adding one would raise the finding count its consumers show,
+so pair it with one of the others when you need the limitations.
 
 ### `bridges` — export the Swift side of a language boundary
 

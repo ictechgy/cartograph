@@ -7,6 +7,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- The limitations list reaches every report format a CI job reads, not only JSON. A gate that passes
+  while the analysis was blind to twelve Objective-C files is the one thing a gate must never do,
+  and until now the only way to see that was to ask for JSON. `text` counts them in the summary line
+  and prints a `limitations:` block after it, `xcode` emits a location-less `note:`,
+  `github-actions` emits a `::notice` with no file so it lands on the run summary, and `sarif` puts
+  them in `runs[].invocations[].toolExecutionNotifications` rather than in `results`, so code
+  scanning does not count them as alerts. Exit codes and finding counts are unchanged. `checkstyle`
+  is left alone on purpose: its schema has no slot that is not a file's `<error>`, and adding one
+  would raise the finding count its consumers display.
+
 ### Changed
 
 - Two limitations that fired on every run are gone from the list. `single-configuration` counted

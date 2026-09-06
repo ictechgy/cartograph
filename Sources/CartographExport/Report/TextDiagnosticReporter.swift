@@ -17,7 +17,17 @@ public struct TextDiagnosticReporter: DiagnosticReporting {
 
         lines.append("")
         lines.append(summaryLine(diagnostics, summary: summary))
+        lines += limitationLines(summary.limitations ?? [])
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// 요약 줄 뒤에 붙이는 한계 블록.
+    ///
+    /// 텍스트가 CI 로그가 실제로 보여 주는 형식이다. 여기 없으면 이 도구가 무엇을 보지
+    /// 못했는지는 아무 데도 없는 것과 같고, 게이트는 눈이 먼 채로 통과한다.
+    private func limitationLines(_ limitations: [String]) -> [String] {
+        guard !limitations.isEmpty else { return [] }
+        return ["limitations:"] + limitations.map { "  \($0)" }
     }
 
     private func summaryLine(_ diagnostics: [Diagnostic], summary: ReportSummary) -> String {
@@ -30,6 +40,9 @@ public struct TextDiagnosticReporter: DiagnosticReporting {
             ? " (\(summary.suppressedCount) suppressed by baseline)"
             : ""
         let caveat = summary.caveat.map { " (\($0))" } ?? ""
-        return "\(summary.command): \(findings)\(caveat)\(suppressed) — \(summary.subject)"
+        // 요약 줄만 읽는 사람에게도 뒤에 블록이 있다는 것을 알린다.
+        let count = summary.limitations?.count ?? 0
+        let limitations = count > 0 ? " (\(count) limitation\(count == 1 ? "" : "s"))" : ""
+        return "\(summary.command): \(findings)\(caveat)\(suppressed)\(limitations) — \(summary.subject)"
     }
 }

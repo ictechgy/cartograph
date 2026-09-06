@@ -264,3 +264,74 @@ struct MetricsSuppressionTests {
         #expect(output.contains("\"suppressedCount\" : 7"))
     }
 }
+
+@Suite("한계를 나르는 형식")
+struct LimitationReportingTests {
+    private let limited = ReportSummary(
+        command: "dead",
+        subject: "symbol graph · 3 nodes",
+        limitations: ["objective-c-sources: 2 file(s) are not analysed"]
+    )
+    private let quiet = ReportSummary(command: "dead", subject: "symbol graph · 3 nodes")
+
+    @Test("텍스트는 요약 줄에 개수를 적고 뒤에 블록을 붙인다")
+    func textCarriesLimitations() {
+        // CI 로그가 실제로 보여 주는 형식이다. 여기 없으면 이 도구가 무엇을 보지 못했는지는
+        // 아무 데도 없는 것과 같고, 게이트는 눈이 먼 채로 통과한다.
+        let output = TextDiagnosticReporter().report([], summary: limited)
+        #expect(output.contains("(1 limitation)"))
+        #expect(output.contains("limitations:"))
+        #expect(output.contains("  objective-c-sources: 2 file(s) are not analysed"))
+    }
+
+    @Test("알릴 것이 없으면 텍스트에 블록도 개수도 없다")
+    func textStaysQuietWithoutLimitations() {
+        let output = TextDiagnosticReporter().report([], summary: quiet)
+        #expect(!output.contains("limitation"))
+    }
+
+    @Test("Xcode 형식은 위치 없는 note 로 싣는다")
+    func xcodeCarriesLimitations() {
+        // 발견이 아니므로 위치도 규칙 식별자도 붙이지 않는다. `note:` 는 이슈로 세지 않는다.
+        let output = XcodeDiagnosticReporter().report([], summary: limited)
+        #expect(output == "note: objective-c-sources: 2 file(s) are not analysed\n")
+    }
+
+    @Test("GitHub Actions 형식은 파일 없는 notice 로 싣는다")
+    func githubActionsCarriesLimitations() {
+        // 파일을 붙이지 않은 notice 는 특정 줄이 아니라 실행 요약에 달린다.
+        let output = GitHubActionsDiagnosticReporter().report([], summary: limited)
+        #expect(output.hasPrefix("::notice title=cartograph limitation::"))
+        #expect(!output.contains("file="))
+    }
+
+    @Test("SARIF 는 발견이 아니라 실행 알림으로 싣는다")
+    func sarifCarriesLimitationsAsNotifications() throws {
+        // results 에 넣으면 코드 스캐닝이 발견으로 세어, 게이트를 통과했는데도 보안 탭에
+        // 항목이 쌓인다.
+        let output = try SARIFDiagnosticReporter().report([], summary: limited)
+        let document = try JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any]
+        let run = ((document?["runs"] as? [[String: Any]]) ?? []).first
+        #expect((run?["results"] as? [Any])?.isEmpty == true)
+        let invocations = run?["invocations"] as? [[String: Any]]
+        let notifications = invocations?.first?["toolExecutionNotifications"] as? [[String: Any]]
+        #expect(notifications?.count == 1)
+        #expect((notifications?.first?["message"] as? [String: Any])?["text"] as? String
+            == "objective-c-sources: 2 file(s) are not analysed")
+    }
+
+    @Test("알릴 것이 없으면 SARIF 에 invocations 키가 없다")
+    func sarifStaysQuietWithoutLimitations() throws {
+        let output = try SARIFDiagnosticReporter().report([], summary: quiet)
+        #expect(!output.contains("invocations"))
+    }
+
+    @Test("checkstyle 은 한계를 나르지 않는다")
+    func checkstyleIsLeftAlone() {
+        // 파일 없는 자리가 없고, `<error>` 로 넣으면 소비자 쪽에서 발견 수가 늘어
+        // 게이트의 뜻이 바뀐다. 담을 자리가 없으면 만들지 않는다.
+        let output = CheckstyleDiagnosticReporter().report([], summary: limited)
+        #expect(!output.contains("objective-c-sources"))
+        #expect(!output.contains("<error"))
+    }
+}

@@ -9,10 +9,14 @@ public struct XcodeDiagnosticReporter: DiagnosticReporting {
     public init() {}
 
     public func report(_ diagnostics: [Diagnostic], summary: ReportSummary) -> String {
-        let lines = diagnostics.sorted().map { diagnostic -> String in
+        var lines = diagnostics.sorted().map { diagnostic -> String in
             let prefix = diagnostic.location.map { "\($0.path):\($0.line):\($0.column): " } ?? ""
             return "\(prefix)\(diagnostic.severity.rawValue): \(diagnostic.message) (\(diagnostic.ruleIdentifier))"
         }
+        // 한계는 발견이 아니므로 위치도 규칙 식별자도 붙이지 않는다. `note:` 는 Xcode 가
+        // 이슈로 세지 않는 단계라, 게이트의 종료 코드나 발견 수를 건드리지 않는다.
+        // 식별자는 이미 문장의 접두사로 들어 있다.
+        lines += (summary.limitations ?? []).map { "note: \($0)" }
         return lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")
     }
 }
@@ -24,7 +28,7 @@ public struct GitHubActionsDiagnosticReporter: DiagnosticReporting {
     public init() {}
 
     public func report(_ diagnostics: [Diagnostic], summary: ReportSummary) -> String {
-        let lines = diagnostics.sorted().map { diagnostic -> String in
+        var lines = diagnostics.sorted().map { diagnostic -> String in
             var properties = ["title=\(escapeProperty("cartograph \(diagnostic.ruleIdentifier)"))"]
             if let location = diagnostic.location {
                 properties.insert("file=\(escapeProperty(location.path))", at: 0)
@@ -33,6 +37,11 @@ public struct GitHubActionsDiagnosticReporter: DiagnosticReporting {
             }
             return "::\(level(for: diagnostic.severity)) \(properties.joined(separator: ","))"
                 + "::\(escape(diagnostic.message))"
+        }
+        // 파일을 붙이지 않은 `::notice` 는 특정 줄이 아니라 실행 요약에 달린다.
+        // 한계는 어느 한 줄에 대한 말이 아니므로 그 자리가 맞다.
+        lines += (summary.limitations ?? []).map { limitation in
+            "::notice title=\(escapeProperty("cartograph limitation"))::\(escape(limitation))"
         }
         return lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")
     }
@@ -146,13 +155,31 @@ public struct SARIFDiagnosticReporter: DiagnosticReporting {
                             rules: Self.rules(in: sorted)
                         )
                     ),
-                    results: sorted.map(Self.result(for:))
+                    results: sorted.map(Self.result(for:)),
+                    invocations: Self.invocations(for: summary.limitations)
                 )
             ]
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         return String(decoding: try encoder.encode(document), as: UTF8.self) + "\n"
+    }
+
+    /// 한계를 담는 자리.
+    ///
+    /// `results` 에 넣으면 코드 스캐닝이 발견으로 세어 경보 수가 늘고, 게이트를 통과했는데도
+    /// 보안 탭에 항목이 쌓인다. 한계는 "이 실행이 무엇을 보지 못했는가" 라 실행에 대한
+    /// 알림이고, SARIF 에는 그 자리가 따로 있다.
+    private static func invocations(for limitations: [String]?) -> [SARIFDocument.Invocation]? {
+        guard let limitations, !limitations.isEmpty else { return nil }
+        return [
+            SARIFDocument.Invocation(
+                executionSuccessful: true,
+                toolExecutionNotifications: limitations.map {
+                    SARIFDocument.Notification(level: "note", message: .init(text: $0))
+                }
+            )
+        ]
     }
 
     private static func rules(in diagnostics: [Diagnostic]) -> [SARIFDocument.Rule] {
@@ -212,6 +239,19 @@ struct SARIFDocument: Encodable {
     struct Run: Encodable {
         let tool: Tool
         let results: [Result]
+        /// 값이 없으면 키가 빠진다. 알릴 것이 없으면 조용해야 한다.
+        let invocations: [Invocation]?
+    }
+
+    /// 이 실행 자체에 대한 알림. 발견이 아니다.
+    struct Invocation: Encodable {
+        let executionSuccessful: Bool
+        let toolExecutionNotifications: [Notification]
+    }
+
+    struct Notification: Encodable {
+        let level: String
+        let message: Message
     }
 
     struct Tool: Encodable {

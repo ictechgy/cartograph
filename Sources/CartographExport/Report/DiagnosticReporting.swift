@@ -16,9 +16,11 @@ public struct ReportSummary: Sendable, Equatable {
     public let limitations: [String]?
     /// 이 실행의 결과를 그대로 믿으면 안 되는 이유. 요약 줄에 함께 찍는다.
     ///
-    /// `limitations` 는 JSON 리포터만 렌더링한다. CI 로그가 보여 주는 것은 텍스트 요약
-    /// 한 줄이라, 거기 나타나지 않는 사실은 없는 것과 같다. 아무것도 분석하지 않은 실행이
-    /// 평범한 초록으로 보이면 이 도구가 막으려는 바로 그 상태가 된다.
+    /// CI 로그가 보여 주는 것은 텍스트 요약 한 줄이라, 거기 나타나지 않는 사실은 없는 것과
+    /// 같다. 아무것도 분석하지 않은 실행이 평범한 초록으로 보이면 이 도구가 막으려는 바로
+    /// 그 상태가 된다. `limitations` 도 같은 이유로 text·xcode·github-actions·SARIF 가
+    /// 함께 렌더링한다. checkstyle 만 예외다 — 파일 없는 자리가 없고, `<error>` 로 넣으면
+    /// 소비자 쪽에서 발견 수가 늘어 게이트의 뜻이 바뀐다.
     public let caveat: String?
 
     public init(
