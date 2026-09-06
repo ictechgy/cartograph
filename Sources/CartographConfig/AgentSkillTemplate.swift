@@ -65,13 +65,7 @@ public enum AgentSkillTemplate {
         5. **`dependsOn: []` on a type does not mean it depends on nothing.** On a symbol-level
            graph a type's dependencies are held by its members. Follow `members`.
 
-        6. **A member can be `retained` inside a type that is `unreachable`.** A `body` that satisfies
-           `View`, or an `encode(to:)` that satisfies `Codable`, is kept because the framework calls it —
-           but only if something ever constructs the type. Ask about the **type** before you decide about
-           its members. `cartograph dead` reports the type in that case, not the member, so a sweep is
-           safe; a single `query` on the member alone is not.
-
-        7. **`reason` tells you why something survived.** A value like `interfaceBuilder`,
+        6. **`reason` tells you why something survived.** A value like `interfaceBuilder`,
            `objectiveCAccessible`, `codingKey` or `caseIterableEnumCase` means the compiler index alone
            would have called it dead. Deleting it breaks something the index cannot see.
            `externalBridge` means Dart, JavaScript or Kotlin calls it across a platform channel,

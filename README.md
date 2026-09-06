@@ -604,11 +604,6 @@ adversarial review.
   does read `.m` files, but only for React Native export macros, as text.
 - **Callers in another language are known only through isthmus.** `bridges` exports what Swift
   declares; whether Dart or JavaScript actually calls it is a join this tool does not perform.
-- **A retained member inside an unreachable type still answers "retained".** A `body` that
-  satisfies `View`, or an `encode(to:)` that satisfies `Codable`, is kept by the rule above even
-  when nothing ever constructs the type that holds it. `dead` reports the type, not the member, so
-  the sweep is right; but asking `query` about the member alone is told the framework calls it,
-  which is true only if the type is alive. Ask about the type before deciding.
 - **`#if` branches that did not compile do not exist.** The index store only knows the
   configuration you built.
 
