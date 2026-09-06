@@ -107,13 +107,49 @@ public struct SymbolQuery: Sendable, Equatable, Codable {
 /// 후보 목록보다 훨씬 위험하다.
 public struct SymbolQueryDocument: Sendable, Equatable, Codable {
     /// 이름 하나에 걸린 후보. 다시 물을 때 쓸 USR 을 같이 준다.
+    ///
+    /// **후보 목록은 고를 수 있어야 한다.** `qualifiedName` 은 `Module.name` 이라 소유
+    /// 타입이 빠진다. 실제 앱에서 `body` 를 물으면 후보 127개 중 122개가 글자까지 같은
+    /// `HealthMap.body` 로 나왔다. USR 은 서로 다르지만 사람도 에이전트도 그 문자열에서
+    /// 어느 화면의 것인지 읽어 내지 못한다. 종류와 선언 위치를 같이 실어 고를 수 있게 한다.
     public struct Candidate: Sendable, Equatable, Codable {
         public let qualifiedName: String
         public let usr: String?
+        /// 선언의 종류. 같은 이름의 `struct` 와 `extension` 을 구분한다.
+        public let kind: String?
+        public let module: String?
+        /// 선언 위치. 후보를 가르는 값 중 사람이 실제로 읽는 것은 이것이다.
+        public let location: SourceLocation?
+        /// 이 후보를 감싸는 타입의 이름.
+        ///
+        /// **되물을 수 있는 문자열이 답 안에 있어야 한다.** `qualifiedName` 을 그대로 다시
+        /// 물으면 같은 122개가 또 나온다. `타입.멤버` 표기를 받게 만들어 놓고 그 타입 이름을
+        /// 답에 싣지 않으면, 부르는 쪽은 파일 경로를 보고 타입 이름을 짐작해야 한다.
+        public let container: String?
 
-        public init(qualifiedName: String, usr: String?) {
+        public init(
+            qualifiedName: String,
+            usr: String?,
+            kind: String? = nil,
+            module: String? = nil,
+            location: SourceLocation? = nil,
+            container: String? = nil
+        ) {
             self.qualifiedName = qualifiedName
             self.usr = usr
+            self.kind = kind
+            self.module = module
+            self.location = location
+            self.container = container
+        }
+
+        /// 이 후보 하나만 가리키기 위해 다시 물을 이름.
+        ///
+        /// 소유 타입이 있으면 `타입.멤버`, 없으면 `qualifiedName`. 그래도 여럿에 걸릴 수는
+        /// 있고 그때는 다시 후보가 온다. USR 이 최후의 수단이라는 사실은 변하지 않는다.
+        public var askAgainAs: String {
+            guard let container else { return qualifiedName }
+            return "\(container).\(qualifiedName.components(separatedBy: ".").last ?? qualifiedName)"
         }
     }
 

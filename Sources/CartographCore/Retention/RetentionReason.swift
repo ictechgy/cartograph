@@ -104,6 +104,11 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    /// 사람이 읽는 근거 문장.
+    ///
+    /// **"… is " 뒤에 붙는다.** `--explain` 이 "X is retained because it is \(explanation)." 로
+    /// 쓰기 때문이다. 동사로 시작하는 문구를 넣으면 "it is satisfies a protocol" 이 되어
+    /// 나갔고 실제로 세 개가 그랬다. 새 근거를 더할 때는 명사구나 과거분사로 쓸 것.
     public var explanation: String {
         switch self {
         case .entryPoint: "declared as an application entry point (@main)"
@@ -120,11 +125,11 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         case .runtimeManaged: "stored and read by a runtime (Core Data, SwiftData or Observation)"
         case .propertyWrapperRequirement: "required by the @propertyWrapper contract"
         case .resultBuilderRequirement: "required by the @resultBuilder contract"
-        case .externalOverride: "overrides a declaration outside the analyzed code"
-        case .externalConformance: "satisfies a protocol declared outside the analyzed code"
+        case .externalOverride: "an override of a declaration outside the analyzed code"
+        case .externalConformance: "required by a protocol declared outside the analyzed code"
         case .dynamicDispatch: "reachable through dynamic dispatch"
         case .preview: "a SwiftUI preview"
-        case .userConfigured: "matched a retain rule in the configuration"
+        case .userConfigured: "matched by a retain rule in the configuration"
         case .ignoreComment: "marked with a // cartograph:ignore comment"
         case .externalBridge: "called from another platform across a bridge, per the external retentions file"
         }

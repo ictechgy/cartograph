@@ -288,15 +288,23 @@ Five things this output does deliberately:
 - **A neighbour carries every relation that reaches it**, not one of them. A subclass that both
   calls and overrides comes back as `"edges": ["call", "overrides"]`; reporting one would let you
   delete on half the picture.
-- **A name matching several declarations returns the candidates, not a guess.** Ask again with one
-  of the USRs.
+- **A name matching several declarations returns the candidates, not a guess.** Ask again with a
+  USR, or with `Container.member`.
 
 ```console
 $ cartograph query Client
 {
   "candidates" : [
-    { "qualifiedName" : "Network.Client", "usr" : "s:7Network6ClientC" },
-    { "qualifiedName" : "Storage.Client", "usr" : "s:7Storage6ClientC" }
+    {
+      "container" : "Network", "kind" : "class", "module" : "Network",
+      "location" : { "column" : 7, "line" : 12, "path" : "/p/Network/Client.swift" },
+      "qualifiedName" : "Network.Client", "usr" : "s:7Network6ClientC"
+    },
+    {
+      "kind" : "class", "module" : "Storage", "qualifiedName" : "Storage.Client",
+      "location" : { "column" : 7, "line" : 4, "path" : "/p/Storage/Client.swift" },
+      "usr" : "s:7Storage6ClientC"
+    }
   ],
   "level" : "symbol",
   "limitations" : [ ... ],
@@ -304,6 +312,19 @@ $ cartograph query Client
   "status" : "ambiguous"
 }
 ```
+
+A candidate carries its `kind`, `module` and declaration site because `qualifiedName` is
+`Module.name` and leaves out the owning type. Asking a real app about `body` returns 127
+candidates of which 122 print as the same string, `HealthMap.body`; the location is what tells
+them apart. You can then ask again with `Container.member` — `cartograph query
+PersistentMapTabHost.body` — instead of copying a USR. Nesting works to any depth
+(`Outer.Inner.leaf`), the outermost part may be the module, and an intermediate container may be
+left out; if that still matches several declarations you get `ambiguous` again rather than a
+guess. The container may be the type that an extension extends, so a member declared in an
+extension answers to its type's name. `container` is there so the answer is self-sufficient:
+typing `qualifiedName` back re-ambiguates at 122, while `container` plus the member name resolves
+to exactly one. Candidates come in file and line order, because the location is the column a
+reader scans. `dead --explain` prints the first 20 and says how many it left out.
 
 `members` and `declaredIn` carry containment, which is not use. A type's own dependencies live in
 its members on a symbol-level graph, so `dependsOn: []` on a class is normal and does not mean the
@@ -640,6 +661,12 @@ adversarial review.
   does read `.m` files, but only for React Native export macros, as text.
 - **Callers in another language are known only through isthmus.** `bridges` exports what Swift
   declares; whether Dart or JavaScript actually calls it is a join this tool does not perform.
+- **A property that is only ever assigned counts as used.** The graph has one `reference` edge
+  kind and does not carry the index's read/write distinction, so `counter.neverRead = 1` looks
+  exactly like reading it. In a four-line package where `bump()` assigns `neverRead` and nothing
+  ever reads it, `dead` reports nothing and `query` answers `reachable`, used by `bump()`. Deleting
+  such a property is safe and this tool will not suggest it. Telling the two apart needs read and
+  write edge kinds, which the graph does not have yet.
 - **`#if` branches that did not compile do not exist.** The index store only knows the
   configuration you built.
 

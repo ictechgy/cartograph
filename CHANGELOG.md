@@ -22,6 +22,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   snapshot, so a sweep cannot straddle a rebuild the way one process per name can. The output is
   the `symbol-query-batch` v1 format that dartograph already writes, so an agent learns one
   response shape rather than one per language.
+- An ambiguous name now returns candidates you can choose between. Each candidate carries its
+  `kind`, `module`, declaration site and `container` alongside the USR, and `dead --explain` prints
+  the same. `qualifiedName` is `Module.name` and leaves out the owning type, so asking a real app
+  about `body` returned 127 candidates of which 122 printed as the identical string
+  `HealthMap.body`; the same query now yields 127 distinct rows. The `container` is what makes the
+  answer self-sufficient: typing `qualifiedName` back re-ambiguates at 122, so every candidate now
+  also carries the `Container.member` spelling that resolves to exactly it. Candidates come in file
+  and line order rather than USR order, because the column a reader scans is the location.
+  `dead --explain` shows the first 20 and says how many it left out and where the full list is;
+  printing all 127 filled 255 lines of terminal, which is not a list you can choose from either.
+- `query` and `dead --explain` accept `Container.member`, so you can narrow an ambiguous name with
+  a name you just read in the answer instead of copying a USR. Nesting works to any depth
+  (`Outer.Inner.leaf`), the outermost part may be the module (`App.Outer.leaf`), and an
+  intermediate container may be left out (`Outer.leaf`) because knowing only the outer type is the
+  normal case; over-matching comes back as `ambiguous` rather than a guess. The container may be
+  the type an extension extends, so a member declared in an extension answers to its type's name.
+  This runs only when the plain lookup found nothing, so a declaration literally named
+  `Detail.body` still wins.
+
+### Fixed
+
+- Three retention reasons made `dead --explain` ungrammatical. The sentence is "X is retained
+  because it is <reason>", and three reasons began with a verb, producing "it is satisfies a
+  protocol declared outside the analyzed code". They are now "required by a protocol declared
+  outside the analyzed code", "an override of a declaration outside the analyzed code" and
+  "matched by a retain rule in the configuration". A test now reads every reason through the
+  sentence it will appear in.
 
 ### Changed
 
@@ -47,6 +74,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   7,466-symbol app `graph --level symbol` drops from 0.71-0.75 s to 0.64-0.65 s and `dead` from
   0.64-0.68 s to 0.58-0.63 s, with byte-identical output. The wall-clock share is smaller than the
   profile share because reading the index store dominates.
+
+### Documented
+
+- Both READMEs now say that a property which is only ever assigned counts as used. The graph has
+  one `reference` edge kind and does not carry the index's read/write distinction, so an assignment
+  looks exactly like a read. Reproduced in a four-line package: `dead` reports nothing and `query`
+  answers `reachable`. Telling the two apart needs read and write edge kinds, which is tracked, not
+  started.
 
 ### Removed
 
