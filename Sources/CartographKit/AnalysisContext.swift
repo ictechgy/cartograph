@@ -60,6 +60,38 @@ public enum NodeLookup: Sendable, Equatable {
             $0.name == subject || $0.baseName == subject || $0.qualifiedName == subject
         }
         switch matches.count {
+        case 0: return resolveQualifiedMember(subject, in: graph)
+        case 1: return .found(matches[0])
+        default: return .ambiguous(matches)
+        }
+    }
+
+    /// `Type.member` 표기를 받는다.
+    ///
+    /// 모호한 이름의 후보 목록은 소유 타입을 보여 주는데, 정작 그 표기로 되물으면
+    /// `notFound` 가 나왔다. 사용자가 답에서 읽은 이름으로 다시 물을 수 없다는 뜻이고,
+    /// 남는 길은 USR 을 통째로 복사하는 것뿐이었다.
+    ///
+    /// 마지막 점에서만 자른다. 이름 자체에 점이 있는 표기(`Module.Type`)는 위에서 이미
+    /// `qualifiedName` 으로 걸러졌으므로 여기 오지 않는다. 익스텐션에 달린 멤버는
+    /// `semanticParent` 가 확장 대상 타입으로 접어 주므로 선언을 어디에 썼든 같은 이름으로 찾는다.
+    private static func resolveQualifiedMember(_ subject: String, in graph: CodeGraph) -> NodeLookup {
+        guard let separator = subject.lastIndex(of: "."), separator != subject.startIndex else {
+            return .notFound
+        }
+        let container = String(subject[subject.startIndex..<separator])
+        let member = String(subject[subject.index(after: separator)...])
+        guard !container.isEmpty, !member.isEmpty else { return .notFound }
+
+        let matches = graph.sortedNodes.filter { node in
+            guard node.name == member || node.baseName == member else { return false }
+            guard let parent = graph.semanticParent(of: node.id).flatMap({ graph.node($0) }) else {
+                return false
+            }
+            return parent.name == container || parent.baseName == container
+                || parent.qualifiedName == container
+        }
+        switch matches.count {
         case 0: return .notFound
         case 1: return .found(matches[0])
         default: return .ambiguous(matches)

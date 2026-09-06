@@ -288,15 +288,23 @@ Five things this output does deliberately:
 - **A neighbour carries every relation that reaches it**, not one of them. A subclass that both
   calls and overrides comes back as `"edges": ["call", "overrides"]`; reporting one would let you
   delete on half the picture.
-- **A name matching several declarations returns the candidates, not a guess.** Ask again with one
-  of the USRs.
+- **A name matching several declarations returns the candidates, not a guess.** Ask again with a
+  USR, or with `Container.member`.
 
 ```console
 $ cartograph query Client
 {
   "candidates" : [
-    { "qualifiedName" : "Network.Client", "usr" : "s:7Network6ClientC" },
-    { "qualifiedName" : "Storage.Client", "usr" : "s:7Storage6ClientC" }
+    {
+      "kind" : "class", "module" : "Network", "qualifiedName" : "Network.Client",
+      "location" : { "column" : 7, "line" : 12, "path" : "/p/Network/Client.swift" },
+      "usr" : "s:7Network6ClientC"
+    },
+    {
+      "kind" : "class", "module" : "Storage", "qualifiedName" : "Storage.Client",
+      "location" : { "column" : 7, "line" : 4, "path" : "/p/Storage/Client.swift" },
+      "usr" : "s:7Storage6ClientC"
+    }
   ],
   "level" : "symbol",
   "limitations" : [ ... ],
@@ -304,6 +312,13 @@ $ cartograph query Client
   "status" : "ambiguous"
 }
 ```
+
+A candidate carries its `kind`, `module` and declaration site because `qualifiedName` is
+`Module.name` and leaves out the owning type. Asking a real app about `body` returns 127
+candidates of which 122 print as the same string, `HealthMap.body`; the location is what tells
+them apart. You can then ask again with `Container.member` — `cartograph query
+PersistentMapTabHost.body` — instead of copying a USR. The container may be the type that an
+extension extends, so a member declared in an extension answers to its type's name.
 
 `members` and `declaredIn` carry containment, which is not use. A type's own dependencies live in
 its members on a symbol-level graph, so `dependsOn: []` on a class is normal and does not mean the

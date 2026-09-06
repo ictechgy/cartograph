@@ -679,4 +679,78 @@ struct SymbolQueryTests {
         // 불리언만으로는 1000건 중 어느 것이 없었는지 말할 수 없다.
         #expect(outcome.missingSubjects == ["MissingOne", "MissingTwo"])
     }
+
+    // MARK: - 고를 수 있는 후보
+
+    /// 같은 이름의 멤버를 가진 타입 셋. 실제 앱에서 `body` 127개 중 122개가
+    /// 글자까지 같은 이름으로 나온 형태를 작게 재현한다.
+    private func makeSameNameSnapshot() -> IndexSnapshot {
+        var builder = SnapshotBuilder()
+        builder.symbol("Root", kind: .structType, module: "App", path: "/p/Root.swift", attributes: [.entryPoint])
+        for (index, owner) in ["Home", "Detail", "Settings"].enumerated() {
+            builder.symbol(owner, kind: .structType, module: "App", path: "/p/\(owner).swift")
+            // USR 을 `Owner.body` 로 지으면 정확 일치가 먼저 걸려 `Type.member` 해석을
+            // 지나치지 않는다. 실제 인덱스의 USR 은 그런 모양이 아니다.
+            builder.symbol(
+                "s:3App\(owner)V4bodyQrvp", name: "body", kind: .property, module: "App",
+                path: "/p/\(owner).swift", line: 10 + index, parent: owner
+            )
+        }
+        builder.reference(from: "Root", to: "Home", kind: .call)
+        return builder.build()
+    }
+
+    @Test("후보는 이름이 같아도 종류와 위치로 구분된다")
+    func candidatesCarryEnoughToChooseBetween() throws {
+        let service = makeService(snapshot: makeSameNameSnapshot())
+        let document = try service.queryDocument(symbol: "body")
+
+        #expect(document.status == "ambiguous")
+        let candidates = try #require(document.candidates)
+        #expect(candidates.count == 3)
+        // 이 단언이 이 변경의 전부다. 이름만으로는 셋이 같은 줄이었다.
+        #expect(Set(candidates.map(\.qualifiedName)).count == 1)
+        #expect(Set(candidates.compactMap { $0.location.map { "\($0.path):\($0.line)" } }).count == 3)
+        #expect(candidates.allSatisfy { $0.kind == "property" })
+        #expect(candidates.allSatisfy { $0.module == "App" })
+    }
+
+    @Test("Type.member 표기로 후보 하나를 집어낼 수 있다")
+    func aQualifiedMemberNamePicksOneCandidate() throws {
+        let service = makeService(snapshot: makeSameNameSnapshot())
+        // 이름만 물으면 셋이 걸린다.
+        #expect(try service.queryDocument(symbol: "body").status == "ambiguous")
+        // 답에서 읽은 소유 타입으로 되물으면 하나로 좁혀진다.
+        let document = try service.queryDocument(symbol: "Detail.body")
+        #expect(document.status == "found")
+        #expect(document.result?.subject.location?.path == "/p/Detail.swift")
+    }
+
+    @Test("없는 소유 타입으로 물으면 없다고 답한다")
+    func anUnknownContainerIsNotFound() throws {
+        let service = makeService(snapshot: makeSameNameSnapshot())
+        #expect(try service.queryDocument(symbol: "NoSuchType.body").status == "notFound")
+        #expect(try service.queryDocument(symbol: "Detail.noSuchMember").status == "notFound")
+        #expect(try service.queryDocument(symbol: ".body").status == "notFound")
+        #expect(try service.queryDocument(symbol: "Detail.").status == "notFound")
+    }
+
+    @Test("익스텐션에 단 멤버도 확장 대상 타입 이름으로 찾는다")
+    func aMemberDeclaredInAnExtensionAnswersToItsType() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("Root", kind: .structType, module: "App", path: "/p/Root.swift", attributes: [.entryPoint])
+        builder.symbol("Widget", kind: .structType, module: "App", path: "/p/Widget.swift")
+        builder.symbol("ext", name: "Widget", kind: .extensionDeclaration, module: "App", path: "/p/WidgetExt.swift")
+        builder.symbol(
+            "ext.render", name: "render()", kind: .method, module: "App",
+            path: "/p/WidgetExt.swift", line: 3, parent: "ext"
+        )
+        builder.reference(from: "ext", to: "Widget", kind: .extends)
+        builder.reference(from: "Root", to: "Widget", kind: .call)
+
+        let document = try makeService(snapshot: builder.build())
+            .queryDocument(symbol: "Widget.render")
+        #expect(document.status == "found")
+        #expect(document.result?.subject.location?.path == "/p/WidgetExt.swift")
+    }
 }

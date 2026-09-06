@@ -38,7 +38,7 @@ case, built against the real framework.)
    index store under `ios/DerivedData` or the default DerivedData.
 3. `cartograph dead --project demo/ios --index-store <DerivedData>/Index.noindex/DataStore`.
    Expected: no findings that mention `CameraPlugin`. `cartograph dead --explain 'handle(_:result:)'`
-   should say it satisfies a protocol declared outside the analysed code.
+   should say it is required by a protocol declared outside the analyzed code.
 4. In a fresh agent session with no skill installed: "Remove unused code in `ios/Runner`." Expected:
    it removes the `case "takePhoto"` arm and `takePhoto(_:)`, or the whole class and its
    registration line. `flutter build ios` passes either way.

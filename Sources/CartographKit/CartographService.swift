@@ -227,7 +227,13 @@ public struct CartographService: Sendable {
         case .notFound:
             return CommandOutcome(output: "No declaration matches '\(subject)'.\n", subjectNotFound: true)
         case let .ambiguous(candidates):
-            let list = candidates.map { "  \($0.qualifiedName)  \($0.usr ?? $0.id.rawValue)" }
+            // USR 만 늘어놓으면 고를 수 없다. 실제 앱에서 `body` 를 물으면 후보 127개가
+            // 나오고 그중 122개의 이름이 글자까지 같다. 사람이 읽고 고르는 값은 위치다.
+            let list = candidates.map { candidate -> String in
+                let where_ = candidate.location.map { "\($0.path):\($0.line)" } ?? "unknown location"
+                return "  \(candidate.kind.rawValue) \(candidate.qualifiedName)  \(where_)\n"
+                    + "    \(candidate.usr ?? candidate.id.rawValue)"
+            }
             return CommandOutcome(
                 output: "'\(subject)' matches \(candidates.count) declarations. "
                     + "Pass one of these USRs instead:\n" + list.joined(separator: "\n") + "\n"
@@ -444,7 +450,13 @@ public struct CartographService: Sendable {
                 level: level,
                 limitations: limitations,
                 candidates: candidates.map {
-                    .init(qualifiedName: $0.qualifiedName, usr: $0.usr ?? $0.id.rawValue)
+                    .init(
+                        qualifiedName: $0.qualifiedName,
+                        usr: $0.usr ?? $0.id.rawValue,
+                        kind: $0.kind.rawValue,
+                        module: $0.module,
+                        location: $0.location
+                    )
                 }
             )
         case let .found(node):

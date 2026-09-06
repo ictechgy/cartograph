@@ -131,3 +131,42 @@ struct RetentionReasonPropagationTests {
         #expect(doNotPropagate == [.compilerSynthesized, .externalConformance, .externalOverride])
     }
 }
+
+@Suite("보존 근거 문장")
+struct RetentionReasonSentenceTests {
+    /// `--explain` 이 쓰는 문장 틀. 근거 문구는 이 뒤에 그대로 이어 붙는다.
+    private func sentence(for reason: RetentionReason) -> String {
+        "X is retained because it is \(reason.explanation)."
+    }
+
+    @Test("모든 근거가 'it is' 뒤에 붙는 형태다")
+    func everyExplanationReadsAsAComplement() {
+        // 동사로 시작하는 문구를 넣으면 "it is satisfies a protocol" 이 되어 나간다.
+        // 실제로 세 근거가 그 상태로 출하됐고 사용자에게 보였다. 3인칭 단수 현재형은
+        // 대부분 s 로 끝나므로, 첫 낱말이 그 꼴이면 명사인지 사람이 확인하게 만든다.
+        let nounsEndingInS: Set<String> = ["public"]
+        for reason in RetentionReason.allCases {
+            let first = reason.explanation.split(separator: " ").first.map(String.init) ?? ""
+            let looksLikeAVerb = first.hasSuffix("s") && !first.hasSuffix("ss")
+                && !nounsEndingInS.contains(first)
+            #expect(
+                !looksLikeAVerb,
+                "\(reason.rawValue) 의 문구가 동사로 시작한다: \(sentence(for: reason))"
+            )
+        }
+    }
+
+    @Test("모든 근거에 문구가 있고 문장부호로 끝나지 않는다")
+    func everyExplanationIsPresentAndUnpunctuated() {
+        for reason in RetentionReason.allCases {
+            let explanation = reason.explanation
+            #expect(!explanation.isEmpty, "\(reason.rawValue) 에 문구가 없다")
+            // 틀이 마침표를 붙인다. 문구가 또 붙이면 두 개가 된다.
+            #expect(!explanation.hasSuffix("."), "\(reason.rawValue) 의 문구가 마침표로 끝난다")
+            #expect(
+                explanation.first?.isUppercase != true,
+                "\(reason.rawValue) 의 문구가 대문자로 시작한다: \(sentence(for: reason))"
+            )
+        }
+    }
+}

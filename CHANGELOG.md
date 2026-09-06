@@ -22,6 +22,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   snapshot, so a sweep cannot straddle a rebuild the way one process per name can. The output is
   the `symbol-query-batch` v1 format that dartograph already writes, so an agent learns one
   response shape rather than one per language.
+- An ambiguous name now returns candidates you can choose between. Each candidate carries its
+  `kind`, `module` and declaration site alongside the USR, and `dead --explain` prints the same.
+  `qualifiedName` is `Module.name` and leaves out the owning type, so asking a real app about
+  `body` returned 127 candidates of which 122 printed as the identical string `HealthMap.body`;
+  the same query now yields 127 distinct rows.
+- `query` and `dead --explain` accept `Container.member`, so you can narrow an ambiguous name with
+  a name you just read in the answer instead of copying a USR. The container may be the type an
+  extension extends, so a member declared in an extension answers to its type's name.
+
+### Fixed
+
+- Three retention reasons made `dead --explain` ungrammatical. The sentence is "X is retained
+  because it is <reason>", and three reasons began with a verb, producing "it is satisfies a
+  protocol declared outside the analyzed code". They are now "required by a protocol declared
+  outside the analyzed code", "an override of a declaration outside the analyzed code" and
+  "matched by a retain rule in the configuration". A test now reads every reason through the
+  sentence it will appear in.
 
 ### Changed
 

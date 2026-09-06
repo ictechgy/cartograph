@@ -124,8 +124,11 @@ public enum AgentSkillTemplate {
         `["call", "overrides"]` — plus `module`, `depth` and its declaration site. Note that
         `location` is where the neighbour is *declared*, not where it uses your symbol.
 
-        A name matching several declarations comes back as `status: "ambiguous"` with candidate
-        USRs. Ask again with one of the USRs rather than guessing.
+        A name matching several declarations comes back as `status: "ambiguous"` with candidates.
+        Each candidate carries its `kind`, `module` and declaration site, because `qualifiedName` is
+        `Module.name` and leaves out the owning type — asking a real app about `body` returns 127
+        candidates of which 122 print as the same string. Read the locations, then ask again with
+        `Container.member` or with a USR. Never guess.
 
         `truncated` says the answer hit `--limit`. Raise the limit or narrow the question; do not
         report a truncated list as complete.

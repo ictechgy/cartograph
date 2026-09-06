@@ -279,14 +279,22 @@ $ cartograph query UserService
   남겨 둔 것을 다시 심사하지 않게 한다. 실제로 보고되었을 선언에만 표시가 붙는다.
 - **이웃에 닿는 관계를 하나만 고르지 않고 전부 준다.** 호출하면서 동시에 오버라이드하는
   서브클래스는 `"edges": ["call", "overrides"]`로 온다. 하나만 보고하면 절반만 보고 지우게 된다.
-- **이름이 여럿에 걸리면 하나를 고르지 않고 후보를 돌려준다.** USR로 다시 물으면 된다.
+- **이름이 여럿에 걸리면 하나를 고르지 않고 후보를 돌려준다.** USR 이나 `타입.멤버` 로 다시 묻는다.
 
 ```console
 $ cartograph query Client
 {
   "candidates" : [
-    { "qualifiedName" : "Network.Client", "usr" : "s:7Network6ClientC" },
-    { "qualifiedName" : "Storage.Client", "usr" : "s:7Storage6ClientC" }
+    {
+      "kind" : "class", "module" : "Network", "qualifiedName" : "Network.Client",
+      "location" : { "column" : 7, "line" : 12, "path" : "/p/Network/Client.swift" },
+      "usr" : "s:7Network6ClientC"
+    },
+    {
+      "kind" : "class", "module" : "Storage", "qualifiedName" : "Storage.Client",
+      "location" : { "column" : 7, "line" : 4, "path" : "/p/Storage/Client.swift" },
+      "usr" : "s:7Storage6ClientC"
+    }
   ],
   "level" : "symbol",
   "limitations" : [ ... ],
@@ -294,6 +302,12 @@ $ cartograph query Client
   "status" : "ambiguous"
 }
 ```
+
+후보에는 종류와 모듈과 선언 위치가 같이 실린다. `qualifiedName` 이 `모듈.이름` 이라 소유
+타입이 빠지기 때문이다. 실제 앱에 `body` 를 물으면 후보 127개가 나오고 그중 122개가 글자까지
+같은 `HealthMap.body` 다. 그것들을 가르는 값은 위치다. 그다음 USR 을 통째로 복사하는 대신
+`타입.멤버` 로 되물을 수 있다 — `cartograph query PersistentMapTabHost.body`. 익스텐션에 단
+멤버는 확장 대상 타입의 이름으로 답한다.
 
 `members`와 `declaredIn`은 담는 관계다. 쓰는 관계가 아니다. 심볼 레벨 그래프에서 타입의
 의존은 전부 멤버가 들고 있으므로, 클래스의 `dependsOn`이 비어 있는 것은 정상이고 "아무것도
