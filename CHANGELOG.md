@@ -9,6 +9,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Two limitations that fired on every run are gone from the list. `single-configuration` counted
+  nothing: it was a statement about index stores in general rather than about this project, which
+  is the definition of copying the README into the answer. `configured-path-filter` fired even on a
+  project with no `.cartograph.yml`, because `exclude` defaults to `defaultExcludes`; it now fires
+  only when include is set or exclude narrows the analysis past those defaults. Measured on four
+  real projects, both fired on all four. A warning that fires every time is not read, and this list
+  is where the tool says what it cannot see. The `#if` sentence now lives in the Known limitations
+  of both READMEs and in the agent skill, where it belongs. `dead --report-format json` omits the
+  `limitations` key entirely when there is nothing to report, rather than emitting an empty array.
+
 - `IndexStoreLocator.derivedDataCandidates` takes `projectNames: [String]` instead of a single
   `projectName`. Ownership has to be decided over the union of every name at once: with one call per
   name, a name whose owner is proven does not stop another name's group from falling back to

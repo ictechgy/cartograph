@@ -239,8 +239,7 @@ $ cartograph query UserService
   "level" : "symbol",
   "limitations" : [
     "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
-    "index-staleness: 3 of 214 source file(s) changed after the index store was written, so a call added since the last build is not here yet",
-    "single-configuration: the index store knows only the configuration that was built, ..."
+    "index-staleness: 3 of 214 source file(s) changed after the index store was written, so a call added since the last build is not here yet"
   ],
   "requested" : "UserService",
   "result" : {
@@ -277,7 +276,10 @@ Five things this output does deliberately:
   between absent and invisible. `limitations` is counted from *your* project, within the same
   include/exclude scope the graph uses, so it stays quiet when there is nothing to warn about. It
   reports Objective-C sources, Interface Builder documents, sources edited since the index store was
-  written, and a configured path or edge-kind filter that could be the reason `usedBy` is empty.
+  written, and a path filter that narrows the analysis *beyond the defaults*, or an edge-kind
+  filter, that could be the reason `usedBy` is empty. The default excludes alone do not count —
+  they are a noise guard, not a narrowing you chose, and a warning that fires on every project is
+  not read.
 - **A baseline the team already accepted is marked as such** (`suppressedByBaseline`), so nobody
   re-litigates a decision that was already made. It is only set when the declaration would actually
   have been reported.

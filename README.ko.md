@@ -234,8 +234,7 @@ $ cartograph query UserService
   "level" : "symbol",
   "limitations" : [
     "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
-    "index-staleness: 3 of 214 source file(s) changed after the index store was written, so a call added since the last build is not here yet",
-    "single-configuration: the index store knows only the configuration that was built, ..."
+    "index-staleness: 3 of 214 source file(s) changed after the index store was written, so a call added since the last build is not here yet"
   ],
   "requested" : "UserService",
   "result" : {
@@ -271,7 +270,9 @@ $ cartograph query UserService
   구분할 수 없다. `limitations`는 문서의 일반론이 아니라 **당신의 프로젝트를** 그래프와
   같은 include/exclude 범위 안에서 세어 만든다. 알릴 것이 없으면 조용하다. Objective-C 소스,
   Interface Builder 문서, 마지막 빌드 뒤에 바뀐 소스, 그리고 `usedBy`가 빈 이유일 수도 있는
-  경로·간선 필터 설정을 알린다.
+  간선 필터와 **기본보다 좁힌** 경로 필터를 알린다. 기본 제외만으로는 세지 않는다. 그것은
+  당신이 좁힌 범위가 아니라 잡음 제거용 안전장치이고, 모든 프로젝트에서 붙는 경보는 읽히지
+  않는다.
 - **팀이 이미 받아들인 베이스라인은 그렇다고 표시한다**(`suppressedByBaseline`). 팀이 알고
   남겨 둔 것을 다시 심사하지 않게 한다. 실제로 보고되었을 선언에만 표시가 붙는다.
 - **이웃에 닿는 관계를 하나만 고르지 않고 전부 준다.** 호출하면서 동시에 오버라이드하는
