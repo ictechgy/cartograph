@@ -106,6 +106,29 @@ struct SymlinkTraversalTests {
         )
         #expect(files.count == 1)
     }
+    @Test("심볼릭 링크로 지정한 루트도 끝까지 훑는다")
+    func symlinkedRootIsTraversed() throws {
+        // URL 을 받는 디렉터리 열거는 대상이 디렉터리 링크면 ENOTDIR 로 실패하는데,
+        // directoryExists 는 경로 문자열 API 라 링크를 따라가 참을 돌려준다.
+        // 그 틈으로 트리 전체가 조용히 비고, 프로젝트 루트를 링크로 지정한 사용자는
+        // 정점 0개를 받는다. 실제로 저장소를 링크로 가리켜 1644 → 0 을 재현했다.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cartograph-symlink-root-\(UUID().uuidString)")
+        let real = root.appendingPathComponent("real/Sources")
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try "struct A {}".write(to: real.appendingPathComponent("A.swift"), atomically: true, encoding: .utf8)
+        let link = root.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(
+            at: link,
+            withDestinationURL: root.appendingPathComponent("real")
+        )
+
+        let files = LocalFileSystem().recursiveFiles(under: link.path, isIncluded: { $0.hasSuffix(".swift") })
+        #expect(files.count == 1)
+    }
+
     @Test("끊어진 심볼릭 링크는 파일로 세지 않는다")
     func skipsDanglingSymlinks() throws {
         // "디렉터리가 아니다"만으로 파일이라고 보면 끊어진 링크가 소스 목록에 들어와

@@ -157,12 +157,25 @@ public struct LocalFileSystem: FileSystem {
     /// 미리 요청해 두면 캐시된 값을 읽으므로 항목마다 stat 을 부르지 않는다.
     public func directoryEntries(at path: String) throws -> [DirectoryEntry] {
         let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey]
-        return try FileManager.default
-            .contentsOfDirectory(
-                at: URL(fileURLWithPath: path, isDirectory: true),
+        let url = URL(fileURLWithPath: path, isDirectory: true)
+        let contents: [URL]
+        do {
+            contents = try FileManager.default
+                .contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: [])
+        } catch {
+            // URL 을 받는 열거는 대상이 디렉터리를 가리키는 심볼릭 링크일 때
+            // ENOTDIR 로 실패한다. 반면 `directoryExists` 는 경로 문자열 API 라
+            // 링크를 따라가 참을 돌려준다. 그대로 두면 `recursiveFiles` 가
+            // "디렉터리는 있는데 항목은 못 읽는" 상태로 조용히 빈 목록을 만들고,
+            // 프로젝트 루트를 링크로 지정한 사용자는 정점 0개를 받는다.
+            // 링크를 풀어 한 번 더 시도한다. 성공 경로의 동작은 바뀌지 않는다.
+            contents = try FileManager.default.contentsOfDirectory(
+                at: url.resolvingSymlinksInPath(),
                 includingPropertiesForKeys: keys,
                 options: []
             )
+        }
+        return contents
             .map { url in
                 let values = try? url.resourceValues(forKeys: Set(keys))
                 return DirectoryEntry(
