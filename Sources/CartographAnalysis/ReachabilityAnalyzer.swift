@@ -137,9 +137,20 @@ public struct ReachabilityAnalyzer: Sendable {
     }
 
     public func analyze(graph: CodeGraph, snapshot: IndexSnapshot) -> UnusedCodeReport {
-        let retentions = policy.retainedNodes(in: graph, snapshot: snapshot)
-        let inherited = inheritedRetentions(retentions: retentions, graph: graph)
-        let traversal = traverse(from: Set(retentions.keys).union(inherited.keys), in: graph)
+        let declared = policy.retainedNodes(in: graph, snapshot: snapshot)
+        // 증인 보존은 소유 타입이 살아 있을 때만 성립한다. 프레임워크가 `body` 를 부르는 것은
+        // 그 타입을 누군가 만들 때뿐이라, 아무도 만들지 않는 타입의 `body` 를 무조건 뿌리로
+        // 두면 답이 스스로 모순된다 — 타입은 "미사용", 그 멤버는 "보존됨".
+        let (unconditional, conditional) = partitionWitnesses(declared, graph: graph)
+        let inherited = inheritedRetentions(retentions: unconditional, graph: graph)
+        let traversal = traverse(
+            from: Set(unconditional.keys).union(inherited.keys),
+            conditionalWitnesses: conditional,
+            in: graph
+        )
+        // 살아나지 못한 증인의 근거는 남기지 않는다. 근거 목록은 언제나 도달 가능한 정점의
+        // 부분집합이어야 하고, 그렇지 않으면 `explain` 이 보고서와 다른 답을 한다.
+        let retentions = declared.filter { traversal.reachable.contains($0.key) }
 
         let unreachable = graph.sortedNodes.filter { !traversal.reachable.contains($0.id) }
         let reported = filterReportable(unreachable, unreachableIDs: Set(unreachable.map(\.id)), graph: graph)
@@ -155,6 +166,7 @@ public struct ReachabilityAnalyzer: Sendable {
                 reachable: traversal.reachable,
                 retentions: retentions,
                 inherited: inherited,
+                conditionalWitnesses: conditional,
                 graph: graph
             )
         )
@@ -171,6 +183,7 @@ public struct ReachabilityAnalyzer: Sendable {
         reachable: Set<NodeID>,
         retentions: [NodeID: RetentionReason],
         inherited: [NodeID: InheritedRetention],
+        conditionalWitnesses: [NodeID: NodeID],
         graph: CodeGraph
     ) -> [GraphNode] {
         guard options.findsTestOnlyCode else { return [] }
@@ -202,7 +215,15 @@ public struct ReachabilityAnalyzer: Sendable {
             if let module = graph.node(node)?.module { testModules.insert(module) }
         }
 
-        let production = traverse(from: productionRoots, in: graph).reachable
+        // 같은 조건을 여기에도 건다. 걸러진 목록만 넘기면 "이미 살아난 증인이라 무조건
+        // 뿌리여도 된다" 는 우연에 기대게 되고, 다음 사람이 목록을 바꾸는 순간 증인과 그
+        // 호출자들이 테스트 전용 목록으로 쏟아진다. 소유 타입이 생산에서 도달 가능할 때만
+        // 증인이 생산 뿌리가 된다는 규칙을 그대로 쓴다.
+        let production = traverse(
+            from: productionRoots,
+            conditionalWitnesses: conditionalWitnesses,
+            in: graph
+        ).reachable
         let candidates = graph.sortedNodes.filter {
             reachable.contains($0.id)
                 && !production.contains($0.id)
@@ -277,13 +298,51 @@ public struct ReachabilityAnalyzer: Sendable {
     }
 
     /// 사용 의미가 있는 간선만 따라가는 너비 우선 탐색.
-    private func traverse(from roots: Set<NodeID>, in graph: CodeGraph) -> Traversal {
+    /// 보존 근거를 무조건 뿌리가 되는 것과, 소유 타입이 살아야 성립하는 증인으로 가른다.
+    ///
+    /// 외부 선언을 오버라이드·준수하는 멤버는 "프레임워크가 부른다" 를 근거로 살아남는데,
+    /// 그것은 그 타입을 누군가 만들 때만 참이다. 소유 타입이 없는 최상위 선언은 조건이
+    /// 붙을 자리가 없으므로 그대로 무조건이다.
+    private func partitionWitnesses(
+        _ retentions: [NodeID: RetentionReason],
+        graph: CodeGraph
+    ) -> (unconditional: [NodeID: RetentionReason], conditional: [NodeID: NodeID]) {
+        var unconditional: [NodeID: RetentionReason] = [:]
+        var conditional: [NodeID: NodeID] = [:]
+        for (node, reason) in retentions {
+            if reason.needsReachableOwner, let owner = owningType(of: node, in: graph) {
+                conditional[node] = owner
+            } else {
+                unconditional[node] = reason
+            }
+        }
+        return (unconditional, conditional)
+    }
+
+    private func traverse(
+        from roots: Set<NodeID>,
+        conditionalWitnesses: [NodeID: NodeID] = [:],
+        in graph: CodeGraph
+    ) -> Traversal {
         var reachable = roots
         var predecessors: [NodeID: NodeID] = [:]
         var queue = roots.sorted()
         var head = 0
         /// 소유 타입이 아직 살아나지 않은 구현체들. 타입이 살아나면 그때 함께 살린다.
-        var pendingWitnesses: [NodeID: [(witness: NodeID, requirement: NodeID)]] = [:]
+        ///
+        /// `reachedFrom` 은 설명 경로에 기록할 앞 정점이다. 역방향 오버라이드에서 온
+        /// 항목은 요구사항이고, 조건부 증인으로 씨앗을 뿌린 항목은 소유 타입이다.
+        /// 둘 다 그래프에 실재하는 간선이라 경로에 없는 홉이 생기지 않는다.
+        var pendingWitnesses: [NodeID: [(witness: NodeID, reachedFrom: NodeID)]] = [:]
+        for (witness, owner) in conditionalWitnesses.sorted(by: { $0.key < $1.key })
+        where !reachable.contains(witness) {
+            // 소유 타입이 이미 뿌리면 바로 살리고, 아니면 그 타입이 살아날 때를 기다린다.
+            if reachable.contains(owner) {
+                visit(witness, from: owner)
+            } else {
+                pendingWitnesses[owner, default: []].append((witness, owner))
+            }
+        }
 
         func visit(_ node: NodeID, from previous: NodeID) {
             guard reachable.insert(node).inserted else { return }
@@ -320,7 +379,7 @@ public struct ReachabilityAnalyzer: Sendable {
             }
 
             for entry in pendingWitnesses.removeValue(forKey: current) ?? [] {
-                visit(entry.witness, from: entry.requirement)
+                visit(entry.witness, from: entry.reachedFrom)
             }
         }
         return Traversal(reachable: reachable, predecessors: predecessors)

@@ -7,6 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A member is no longer reported as `retained` inside a type the same run calls `unreachable`.
+  A `body` that satisfies `View`, or an `encode(to:)` that satisfies `Codable`, is kept because the
+  framework calls it — and the framework calls it only if something constructs the type. Asking
+  about the type said "never used" while asking about its member said "the framework calls this, do
+  not delete it", in one answer. Witness retentions now wait for their owning type to become
+  reachable, reusing the mechanism the reverse-override traversal already had, and a retention that
+  never activates is dropped so the reason set stays a subset of what is reachable. A witness with
+  no owning type — an extension of a type outside the analyzed code — stays unconditional, because
+  there is nothing for it to wait for.
+
+  On four real projects the reported findings and the test-only list are unchanged; only the
+  reachable count falls, which is the point.
+
 ## [0.7.0] - 2026-09-06
 
 ### Changed
