@@ -75,6 +75,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   0.64-0.68 s to 0.58-0.63 s, with byte-identical output. The wall-clock share is smaller than the
   profile share because reading the index store dominates.
 
+### Documented
+
+- Both READMEs now say that a property which is only ever assigned counts as used. The graph has
+  one `reference` edge kind and does not carry the index's read/write distinction, so an assignment
+  looks exactly like a read. Reproduced in a four-line package: `dead` reports nothing and `query`
+  answers `reachable`. Telling the two apart needs read and write edge kinds, which is tracked, not
+  started.
+
 ### Removed
 
 - The known limitation "a retained member inside an unreachable type still answers retained" is
