@@ -492,6 +492,16 @@ public struct CartographService: Sendable {
                     + "statement about nothing"
             )
         }
+        // 라이브러리 패키지는 호출자가 저장소 밖에 있다. `retain_public` 이 꺼진 채로 돌리면
+        // 공개 API 전체가 미사용으로 나오고, 그 목록을 그대로 삭제로 옮기면 소비자가 전부
+        // 깨진다. 스크래치 패키지에서 공개 타입 둘이 통째로 보고되는 것을 확인했다.
+        if !configuration.retention.retainPublic, let products = libraryProductCount(), products > 0 {
+            result.append(
+                "public-api-not-retained: this package exports \(products) library product(s) and "
+                    + "retain_public is off, so a public declaration whose only callers live "
+                    + "outside this repository is reported unreachable"
+            )
+        }
         if objectiveCCount > 0 {
             result.append(
                 "objective-c-sources: \(objectiveCCount) file(s) are not analysed, "
@@ -577,6 +587,21 @@ public struct CartographService: Sendable {
             )
         }
         return result
+    }
+
+    /// 프로젝트 루트의 `Package.swift` 가 선언한 라이브러리 제품 수.
+    ///
+    /// 실행 파일 제품이 하나라도 있으면 nil 을 돌려 아무 말도 하지 않는다. 그런 패키지는
+    /// 진입점이 저장소 안에 있어 도달성 분석이 성립하고, 공개 API 가 미사용으로 나오는
+    /// 것이 정상적인 답일 수 있다. 호출자가 전부 밖에 있는 순수 라이브러리만 가른다.
+    ///
+    /// 매니페스트는 Swift 코드라 실행하지 않고는 정확히 알 수 없다. 여기서는 글자를 세고,
+    /// 틀릴 수 있는 쪽을 "말하지 않음" 으로 둔다. 없는 경보를 만드는 것보다 낫다.
+    private func libraryProductCount() -> Int? {
+        let manifest = (projectPath as NSString).appendingPathComponent("Package.swift")
+        guard let source = try? environment.fileSystem.readText(at: manifest) else { return nil }
+        guard !source.contains(".executable(") , !source.contains(".executableTarget(") else { return nil }
+        return source.components(separatedBy: ".library(").count - 1
     }
 
     /// 한계 목록을 세는 데 필요한 확장자. 다른 파일은 걷지도 담지도 않는다.
