@@ -586,9 +586,12 @@ public struct CartographService: Sendable {
     private func indexStoreDate() -> Date? {
         guard environment.indexProviderOverride == nil else { return nil }
         let locator = IndexStoreLocator(fileSystem: environment.fileSystem)
+        // DerivedData 도 함께 본다. 넘기지 않으면 Xcode 로 빌드한 프로젝트에서만
+        // 신선도를 말하지 못한다 — 하필 그쪽이 인덱스가 가장 자주 낡는 환경이다.
         guard let storePath = try? locator.locate(
             explicitPath: configuration.indexStorePath,
-            projectPath: projectPath
+            projectPath: projectPath,
+            derivedDataPath: configuration.derivedDataPath ?? environment.derivedDataPath
         ) else { return nil }
         // 스토어 루트의 수정 시각은 믿을 수 없다. SwiftPM 의 `.build/out` 처럼
         // 스토어를 품고 있는 상위 디렉터리를 가리키는 경우, 루트는 처음 만들어진
