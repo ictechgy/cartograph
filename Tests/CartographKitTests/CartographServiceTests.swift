@@ -236,8 +236,8 @@ struct CartographServiceTests {
     func ambiguousNameIsReported() throws {
         // 임의로 하나를 고르면 사용자는 자기가 물어본 것과 다른 답을 받고도 알아채지 못한다.
         var builder = SnapshotBuilder()
-        builder.symbol("s:A", name: "Repository", kind: .classType, module: "Data")
-        builder.symbol("s:B", name: "Repository", kind: .classType, module: "Domain")
+        builder.symbol("s:A", name: "Repository", kind: .classType, module: "Data", path: "/p/A.swift")
+        builder.symbol("s:B", name: "Repository", kind: .classType, module: "Domain", path: "/p/B.swift")
         let service = CartographService(
             configuration: {
                 var configuration = CartographConfiguration.default
@@ -253,6 +253,45 @@ struct CartographServiceTests {
         #expect(outcome.output.contains("matches 2 declarations"))
         #expect(outcome.output.contains("s:A"))
         #expect(outcome.output.contains("s:B"))
+        // USR 만으로는 고를 수 없다. 사람이 읽고 가르는 값은 위치다.
+        #expect(outcome.output.contains("/p/A.swift"))
+        #expect(outcome.output.contains("/p/B.swift"))
+        #expect(!outcome.output.contains("and 0 more"))
+    }
+
+    @Test("후보가 아주 많으면 앞만 보여 주고 몇 개를 접었는지 말한다")
+    func aLongCandidateListIsCappedAndSaysHowMany() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("Root", kind: .structType, module: "App", path: "/p/Root.swift", attributes: [.entryPoint])
+        let count = CartographService.shownCandidateLimit + 7
+        for index in 0..<count {
+            builder.symbol("Owner\(index)", kind: .structType, module: "App", path: "/p/O\(index).swift")
+            builder.symbol(
+                "s:3AppO\(index)4bodySivp", name: "body", kind: .property, module: "App",
+                path: "/p/O\(index).swift", line: index + 1, parent: "Owner\(index)"
+            )
+        }
+        let service = CartographService(
+            configuration: {
+                var configuration = CartographConfiguration.default
+                configuration.projectPath = "/p"
+                return configuration
+            }(),
+            environment: CartographEnvironment(
+                fileSystem: InMemoryFileSystem(),
+                indexProviderOverride: StaticIndexProvider(builder.build())
+            )
+        )
+
+        let output = try service.explainRetention(of: "body").output
+        #expect(output.contains("matches \(count) declarations"))
+        // 전부 찍으면 터미널이 덮인다. 실제 앱에서 이 경로가 255 줄을 냈다.
+        #expect(output.contains("and 7 more"))
+        // 접었다는 사실만 말하고 끝내면 나머지를 볼 방법이 없다.
+        #expect(output.contains("cartograph query body"))
+        #expect(output.components(separatedBy: "s:3AppO").count - 1 == CartographService.shownCandidateLimit)
+        // 각 줄에 그대로 다시 물을 수 있는 이름이 있어야 한다.
+        #expect(output.contains("Owner0.body"))
     }
 
     @Test("이름으로 찾은 정점이 하나면 그대로 설명한다")

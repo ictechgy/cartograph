@@ -23,10 +23,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the `symbol-query-batch` v1 format that dartograph already writes, so an agent learns one
   response shape rather than one per language.
 - An ambiguous name now returns candidates you can choose between. Each candidate carries its
-  `kind`, `module` and declaration site alongside the USR, and `dead --explain` prints the same.
-  `qualifiedName` is `Module.name` and leaves out the owning type, so asking a real app about
-  `body` returned 127 candidates of which 122 printed as the identical string `HealthMap.body`;
-  the same query now yields 127 distinct rows.
+  `kind`, `module`, declaration site and `container` alongside the USR, and `dead --explain` prints
+  the same. `qualifiedName` is `Module.name` and leaves out the owning type, so asking a real app
+  about `body` returned 127 candidates of which 122 printed as the identical string
+  `HealthMap.body`; the same query now yields 127 distinct rows. The `container` is what makes the
+  answer self-sufficient: typing `qualifiedName` back re-ambiguates at 122, so every candidate now
+  also carries the `Container.member` spelling that resolves to exactly it. Candidates come in file
+  and line order rather than USR order, because the column a reader scans is the location.
+  `dead --explain` shows the first 20 and says how many it left out and where the full list is;
+  printing all 127 filled 255 lines of terminal, which is not a list you can choose from either.
 - `query` and `dead --explain` accept `Container.member`, so you can narrow an ambiguous name with
   a name you just read in the answer instead of copying a USR. Nesting works to any depth
   (`Outer.Inner.leaf`), the outermost part may be the module (`App.Outer.leaf`), and an

@@ -227,17 +227,7 @@ public struct CartographService: Sendable {
         case .notFound:
             return CommandOutcome(output: "No declaration matches '\(subject)'.\n", subjectNotFound: true)
         case let .ambiguous(candidates):
-            // USR 만 늘어놓으면 고를 수 없다. 실제 앱에서 `body` 를 물으면 후보 127개가
-            // 나오고 그중 122개의 이름이 글자까지 같다. 사람이 읽고 고르는 값은 위치다.
-            let list = candidates.map { candidate -> String in
-                let where_ = candidate.location.map { "\($0.path):\($0.line)" } ?? "unknown location"
-                return "  \(candidate.kind.rawValue) \(candidate.qualifiedName)  \(where_)\n"
-                    + "    \(candidate.usr ?? candidate.id.rawValue)"
-            }
-            return CommandOutcome(
-                output: "'\(subject)' matches \(candidates.count) declarations. "
-                    + "Pass one of these USRs instead:\n" + list.joined(separator: "\n") + "\n"
-            )
+            return CommandOutcome(output: Self.describeCandidates(candidates, for: subject, in: graph))
         case let .found(node):
             let outcome = Self.describeExplanation(
                 explanation, for: node, in: graph, externalRetentions: context.externalRetentionIndex
@@ -449,13 +439,14 @@ public struct CartographService: Sendable {
                 requested: subject,
                 level: level,
                 limitations: limitations,
-                candidates: candidates.map {
+                candidates: Self.orderedCandidates(candidates, in: graph).map {
                     .init(
-                        qualifiedName: $0.qualifiedName,
-                        usr: $0.usr ?? $0.id.rawValue,
-                        kind: $0.kind.rawValue,
-                        module: $0.module,
-                        location: $0.location
+                        qualifiedName: $0.node.qualifiedName,
+                        usr: $0.node.usr ?? $0.node.id.rawValue,
+                        kind: $0.node.kind.rawValue,
+                        module: $0.node.module,
+                        location: $0.node.location,
+                        container: $0.container
                     )
                 }
             )
@@ -471,6 +462,61 @@ public struct CartographService: Sendable {
                 )
             )
         }
+    }
+
+    /// 후보 하나와 그것을 감싸는 타입 이름.
+    struct OrderedCandidate {
+        let node: GraphNode
+        let container: String?
+    }
+
+    /// 후보를 사람이 훑는 순서로 세운다.
+    ///
+    /// `sortedNodes` 는 USR 사전순이라, 이름이 전부 같은 122개에서 사람이 실제로 읽는
+    /// 열(위치)이 무작위로 흩어진다. 파일과 줄로 세우면 같은 파일의 것이 붙어 나온다.
+    static func orderedCandidates(_ nodes: [GraphNode], in graph: CodeGraph) -> [OrderedCandidate] {
+        nodes
+            .map { node in
+                OrderedCandidate(
+                    node: node,
+                    container: graph.semanticParent(of: node.id).flatMap { graph.node($0)?.name }
+                )
+            }
+            .sorted { lhs, rhs in
+                let left = (lhs.node.location?.path ?? "", lhs.node.location?.line ?? 0, lhs.node.id.rawValue)
+                let right = (rhs.node.location?.path ?? "", rhs.node.location?.line ?? 0, rhs.node.id.rawValue)
+                return left < right
+            }
+    }
+
+    /// 사람이 읽는 후보 목록.
+    ///
+    /// USR 만 늘어놓으면 고를 수 없다. 실제 앱에서 `body` 를 물으면 후보 127개가 나오고
+    /// 그중 122개의 이름이 글자까지 같다. 사람이 읽고 고르는 값은 위치다.
+    ///
+    /// 그렇다고 전부 찍으면 127 × 2 줄이 터미널을 덮고, 그 안에서 고르는 일은 처음보다
+    /// 어렵다. 앞의 것만 보여 주고 몇 개를 접었는지 말한 뒤, 전부 보는 방법을 알려 준다.
+    static let shownCandidateLimit = 20
+
+    static func describeCandidates(
+        _ candidates: [GraphNode], for subject: String, in graph: CodeGraph
+    ) -> String {
+        let ordered = orderedCandidates(candidates, in: graph)
+        let shown = ordered.prefix(shownCandidateLimit).map { candidate -> String in
+            let site = candidate.node.location.map { "\($0.path):\($0.line)" } ?? "unknown location"
+            let name = candidate.container.map { "\($0).\(candidate.node.name)" }
+                ?? candidate.node.qualifiedName
+            return "  \(site)  \(candidate.node.kind.rawValue) \(name)\n"
+                + "    \(candidate.node.usr ?? candidate.node.id.rawValue)"
+        }
+        let omitted = ordered.count - shown.count
+        let tail = omitted > 0
+            ? "\n  … and \(omitted) more. Run `cartograph query \(subject)` "
+                + "for the full list as JSON.\n"
+            : "\n"
+        return "'\(subject)' matches \(candidates.count) declarations. "
+            + "Ask again with one of the names or USRs below:\n"
+            + shown.joined(separator: "\n") + tail
     }
 
     private func describeQuery(

@@ -758,6 +758,62 @@ struct SymbolQueryTests {
         return builder.build()
     }
 
+    @Test("후보에는 그대로 다시 물을 수 있는 이름이 실린다")
+    func aCandidateCarriesAStringYouCanTypeBack() throws {
+        let service = makeService(snapshot: makeSameNameSnapshot())
+        let candidates = try #require(try service.queryDocument(symbol: "body").candidates)
+        // qualifiedName 을 그대로 다시 물으면 같은 셋이 또 나온다. 답이 스스로 좁히는
+        // 방법을 담고 있어야 한다.
+        for candidate in candidates {
+            #expect(candidate.container != nil)
+            let again = try service.queryDocument(symbol: candidate.askAgainAs)
+            #expect(again.status == "found", "\(candidate.askAgainAs) 로 되물었더니 \(again.status)")
+            #expect(again.result?.subject.usr == candidate.usr)
+        }
+    }
+
+    @Test("후보는 파일과 줄 순서로 온다")
+    func candidatesComeInReadingOrder() throws {
+        let service = makeService(snapshot: makeSameNameSnapshot())
+        let candidates = try #require(try service.queryDocument(symbol: "body").candidates)
+        let sites = candidates.compactMap { $0.location.map { "\($0.path):\($0.line)" } }
+        // USR 사전순으로 두면 사람이 읽는 열이 무작위로 흩어진다.
+        #expect(sites == sites.sorted())
+        #expect(sites.count == 3)
+    }
+
+    @Test("옛 후보 문서도 그대로 읽힌다")
+    func aVersionOneCandidateStillDecodes() throws {
+        // 자매 저장소가 내는 것은 아직 이 두 필드뿐이다. 필드를 더하면서 그쪽 출력을
+        // 못 읽게 되면 교환 형식이 아니라 두 개의 형식이 된다.
+        let legacy = Data(#"{"qualifiedName":"Network.Client","usr":"s:7Network6ClientC"}"#.utf8)
+        let candidate = try JSONDecoder().decode(SymbolQueryDocument.Candidate.self, from: legacy)
+        #expect(candidate.qualifiedName == "Network.Client")
+        #expect(candidate.usr == "s:7Network6ClientC")
+        #expect(candidate.kind == nil)
+        #expect(candidate.location == nil)
+        #expect(candidate.container == nil)
+        // 소유 타입을 모르면 되물을 이름은 qualifiedName 그대로다.
+        #expect(candidate.askAgainAs == "Network.Client")
+    }
+
+    @Test("이름이 점을 품은 선언이 있으면 그쪽이 이긴다")
+    func aLiteralDottedNameBeatsTheQualifiedReading() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("Root", kind: .structType, module: "App", path: "/p/Root.swift", attributes: [.entryPoint])
+        builder.symbol("Detail", kind: .structType, module: "App", path: "/p/Detail.swift")
+        builder.symbol(
+            "s:3App6DetailV4bodySivp", name: "body", kind: .property, module: "App",
+            path: "/p/Detail.swift", line: 9, parent: "Detail"
+        )
+        // 점을 품은 이름의 최상위 선언. 있는 것을 못 찾게 만들면 안 된다.
+        builder.symbol("Detail.body", name: "Detail.body", kind: .structType, module: "App", path: "/p/Odd.swift")
+
+        let document = try makeService(snapshot: builder.build()).queryDocument(symbol: "Detail.body")
+        #expect(document.status == "found")
+        #expect(document.result?.subject.location?.path == "/p/Odd.swift")
+    }
+
     @Test("두 단계 중첩도 이름으로 찾는다")
     func aTwiceNestedMemberResolves() throws {
         let service = makeService(snapshot: makeNestedSnapshot())

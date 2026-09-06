@@ -144,7 +144,10 @@ struct RetentionReasonSentenceTests {
         // 동사로 시작하는 문구를 넣으면 "it is satisfies a protocol" 이 되어 나간다.
         // 실제로 세 근거가 그 상태로 출하됐고 사용자에게 보였다. 3인칭 단수 현재형은
         // 대부분 s 로 끝나므로, 첫 낱말이 그 꼴이면 명사인지 사람이 확인하게 만든다.
-        let nounsEndingInS: Set<String> = ["public"]
+        //
+        // 허용 목록은 **실제로 걸린 낱말이 생겼을 때만** 늘린다. 미리 채워 두면 걸리지도
+        // 않는 낱말이 목록에 남아 "이 휴리스틱이 실제 사례로 다듬어졌다" 는 인상을 준다.
+        let nounsEndingInS: Set<String> = []
         for reason in RetentionReason.allCases {
             let first = reason.explanation.split(separator: " ").first.map(String.init) ?? ""
             let looksLikeAVerb = first.hasSuffix("s") && !first.hasSuffix("ss")
@@ -153,6 +156,41 @@ struct RetentionReasonSentenceTests {
                 !looksLikeAVerb,
                 "\(reason.rawValue) 의 문구가 동사로 시작한다: \(sentence(for: reason))"
             )
+        }
+    }
+
+    /// 스물한 문장을 통째로 고정한다.
+    ///
+    /// 접미사 휴리스틱은 새 근거를 위한 감지선이고, 이 표는 이미 있는 문구가 조용히
+    /// 바뀌지 않게 하는 장치다. 문구를 고치려면 여기도 고쳐야 하므로 한 번은 읽게 된다.
+    @Test("근거 문장 스물한 개가 그대로다")
+    func everySentenceIsPinned() {
+        let expected: [RetentionReason: String] = [
+            .entryPoint: "declared as an application entry point (@main)",
+            .xcTest: "an XCTest case or test method",
+            .swiftTesting: "a swift-testing @Test or @Suite declaration",
+            .publicAPI: "public API and retain_public is enabled",
+            .objectiveCAccessible: "reachable from the Objective-C runtime",
+            .interfaceBuilder: "connectable from Interface Builder",
+            .compilerSynthesized: "synthesized by the compiler",
+            .rawRepresentableEnumCase: "a case of a raw-representable enum, constructible via init(rawValue:)",
+            .caseIterableEnumCase: "a case of a CaseIterable enum, enumerated by allCases",
+            .codingKey: "a CodingKey case used by synthesized Codable conformance",
+            .codableProperty: "a stored property of a Codable type, read by synthesized coding",
+            .runtimeManaged: "stored and read by a runtime (Core Data, SwiftData or Observation)",
+            .propertyWrapperRequirement: "required by the @propertyWrapper contract",
+            .resultBuilderRequirement: "required by the @resultBuilder contract",
+            .externalOverride: "an override of a declaration outside the analyzed code",
+            .externalConformance: "required by a protocol declared outside the analyzed code",
+            .dynamicDispatch: "reachable through dynamic dispatch",
+            .preview: "a SwiftUI preview",
+            .userConfigured: "matched by a retain rule in the configuration",
+            .ignoreComment: "marked with a // cartograph:ignore comment",
+            .externalBridge: "called from another platform across a bridge, per the external retentions file",
+        ]
+        #expect(expected.count == RetentionReason.allCases.count, "새 근거가 표에 없다")
+        for reason in RetentionReason.allCases {
+            #expect(reason.explanation == expected[reason], "\(reason.rawValue) 의 문구가 바뀌었다")
         }
     }
 

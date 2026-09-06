@@ -296,9 +296,9 @@ $ cartograph query Client
 {
   "candidates" : [
     {
-      "kind" : "class", "module" : "Network", "qualifiedName" : "Network.Client",
+      "container" : "Network", "kind" : "class", "module" : "Network",
       "location" : { "column" : 7, "line" : 12, "path" : "/p/Network/Client.swift" },
-      "usr" : "s:7Network6ClientC"
+      "qualifiedName" : "Network.Client", "usr" : "s:7Network6ClientC"
     },
     {
       "kind" : "class", "module" : "Storage", "qualifiedName" : "Storage.Client",
@@ -321,7 +321,10 @@ PersistentMapTabHost.body` — instead of copying a USR. Nesting works to any de
 (`Outer.Inner.leaf`), the outermost part may be the module, and an intermediate container may be
 left out; if that still matches several declarations you get `ambiguous` again rather than a
 guess. The container may be the type that an extension extends, so a member declared in an
-extension answers to its type's name.
+extension answers to its type's name. `container` is there so the answer is self-sufficient:
+typing `qualifiedName` back re-ambiguates at 122, while `container` plus the member name resolves
+to exactly one. Candidates come in file and line order, because the location is the column a
+reader scans. `dead --explain` prints the first 20 and says how many it left out.
 
 `members` and `declaredIn` carry containment, which is not use. A type's own dependencies live in
 its members on a symbol-level graph, so `dependsOn: []` on a class is normal and does not mean the
