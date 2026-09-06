@@ -205,8 +205,8 @@ final class BindingCollector: SyntaxVisitor {
     // MARK: 타입 문맥
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
-        if let name = BridgeFactCollector.objectiveCName(in: node.attributes) {
-            reactModules[node.name.text] = (name, BridgeFactCollector.hasAttribute("objcMembers", in: node.attributes))
+        if let name = SyntaxAttributes.objectiveCName(in: node.attributes) {
+            reactModules[node.name.text] = (name, SyntaxAttributes.has("objcMembers", in: node.attributes))
         }
         return pushType(node.name.text)
     }
@@ -254,8 +254,8 @@ final class BindingCollector: SyntaxVisitor {
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
         switch Self.calleeName(of: node) {
-        case BridgeFactCollector.flutterEventChannelTypeName: eventChannelCount += 1
-        case let name? where BridgeFactCollector.messageChannelTypeNames.contains(name): messageChannelCount += 1
+        case BridgeChannels.eventChannel: eventChannelCount += 1
+        case let name? where BridgeChannels.messageChannels.contains(name): messageChannelCount += 1
         default: break
         }
         recordHandlerReference(node)
@@ -341,7 +341,7 @@ final class BindingCollector: SyntaxVisitor {
         } else if let argument = Self.channelNameArgument(value) {
             bound = .channel(argument: argument, scopes: scopes, enclosingTypes: typeNames)
         } else if let call = value.as(FunctionCallExprSyntax.self), let last = Self.calleeName(of: call),
-                  last.first?.isUppercase == true, !BridgeFactCollector.channelTypeNames.contains(last) {
+                  last.first?.isUppercase == true, !BridgeChannels.all.contains(last) {
             // 대문자 호출은 생성자로 본다. 다른 모듈의 타입이면 어느 지역 타입 사슬에도 맞지 않는다.
             bound = .instance(typeName: Self.dottedTypeName(of: call.calledExpression))
         } else {
@@ -411,9 +411,9 @@ final class BindingCollector: SyntaxVisitor {
 
     private static func isChannelConstructor(_ callee: ExprSyntax) -> Bool {
         if let member = callee.as(MemberAccessExprSyntax.self), member.declName.baseName.text == "init" {
-            return member.base.flatMap(identifierName(of:)) == BridgeFactCollector.flutterChannelTypeName
+            return member.base.flatMap(identifierName(of:)) == BridgeChannels.methodChannel
         }
-        return identifierName(of: callee) == BridgeFactCollector.flutterChannelTypeName
+        return identifierName(of: callee) == BridgeChannels.methodChannel
     }
 
     /// 문자열 표현식을 리터럴로 푼다. 못 풀면 원문 표현식을 `dynamic` 으로 돌려준다.
@@ -490,18 +490,6 @@ final class BindingCollector: SyntaxVisitor {
 /// 브리지 사실을 실제로 뽑아내는 방문자.
 final class BridgeFactCollector: SyntaxVisitor {
     /// Flutter 가 Swift 쪽에 제공하는 채널 타입 이름.
-    static let flutterChannelTypeName = "FlutterMethodChannel"
-    /// 스트림 브리지의 채널 타입. 읽지 않고 세기만 한다.
-    static let flutterEventChannelTypeName = "FlutterEventChannel"
-    /// 메시지 브리지(Pigeon 산출물)의 채널 타입. 읽지 않고 세기만 한다.
-    static let messageChannelTypeNames: Set<String> = ["FlutterBasicMessageChannel", "BasicMessageChannel"]
-    /// 핸들러가 받는 호출 타입. 이 타입의 인자를 가진 함수 안에서만 `call.method` 분기를 믿는다.
-    static let flutterMethodCallTypeName = "FlutterMethodCall"
-    /// 핸들러를 채널에 다는 메서드 이름들.
-    static let handlerRegistrationMethods: Set<String> = ["setMethodCallHandler", "addMethodCallDelegate"]
-    /// 채널 타입 이름 전부. 인스턴스 바인딩에서 채널 생성을 뺄 때 쓴다.
-    static let channelTypeNames: Set<String> = messageChannelTypeNames.union([flutterChannelTypeName, flutterEventChannelTypeName])
-
     private(set) var facts: [ScannedBridgeFact] = []
     private let converter: SourceLocationConverter
     private let bindings: BindingCollector
@@ -568,7 +556,7 @@ final class BridgeFactCollector: SyntaxVisitor {
         pushType(typeName, node: node)
         // `private extension` 의 멤버는 전부 private 이라 Objective-C 에 보이지 않는다.
         let module = Self.isFilePrivate(node.modifiers) ? nil : bindings.reactModules[typeName].map {
-            (name: $0.name, exportsAllMembers: $0.exportsAllMembers || Self.hasAttribute("objcMembers", in: node.attributes))
+            (name: $0.name, exportsAllMembers: $0.exportsAllMembers || SyntaxAttributes.has("objcMembers", in: node.attributes))
         }
         reactModules.append(module)
         return .visitChildren
@@ -688,7 +676,7 @@ final class BridgeFactCollector: SyntaxVisitor {
     private static func takesMethodCall(_ node: FunctionDeclSyntax) -> Bool {
         node.signature.parameterClause.parameters.contains {
             let type = $0.type.trimmedDescription.trimmingCharacters(in: CharacterSet(charactersIn: "?!"))
-            return type == flutterMethodCallTypeName || type.hasSuffix("." + flutterMethodCallTypeName)
+            return type == BridgeChannels.methodCall || type.hasSuffix("." + BridgeChannels.methodCall)
         }
     }
 
@@ -696,7 +684,7 @@ final class BridgeFactCollector: SyntaxVisitor {
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
         guard let member = node.calledExpression.as(MemberAccessExprSyntax.self),
-              Self.handlerRegistrationMethods.contains(member.declName.baseName.text),
+              BridgeChannels.handlerRegistrationMethods.contains(member.declName.baseName.text),
               // `setMethodCallHandler(nil)` 은 등록 해제다. 등록 사실이 아니다.
               !(node.arguments.first?.expression.is(NilLiteralExprSyntax.self) ?? false)
         else { return .visitChildren }
@@ -836,32 +824,20 @@ final class BridgeFactCollector: SyntaxVisitor {
     // MARK: React Native
 
     /// `@objc(Name)` 의 `Name`. 이름 없는 `@objc` 는 nil.
-    static func objectiveCName(in attributes: AttributeListSyntax) -> String? {
-        for element in attributes {
-            guard case let .attribute(attribute) = element,
-                  attribute.attributeName.trimmedDescription == "objc",
-                  case let .objCName(pieces) = attribute.arguments
-            else { continue }
-            // 셀렉터는 콜론까지 이어 붙인다. 부르는 쪽에서 첫 조각만 잘라 쓴다.
-            let name = pieces.map { ($0.name?.text ?? "") + ($0.colon?.text ?? "") }.joined()
-            return name.isEmpty ? nil : name
-        }
-        return nil
-    }
 
     /// `@objc(Name)` 클래스 안의 `@objc` 메서드는 JS 가 `NativeModules.Name.method()` 로 부른다.
     /// 클래스가 `@objcMembers` 면 표식 없는 메서드도 노출되지만, `@nonobjc` 는 아니고,
     /// `private`/`fileprivate` 은 명시적 `@objc` 가 있을 때만(SE-0186) Objective-C 에 보인다.
     /// `static`/`class` 메서드는 클래스 메서드라 RN 이 인스턴스에서 찾는 목록에 없다.
     private func emitReactMethodIfExported(_ node: FunctionDeclSyntax) {
-        let explicit = Self.hasAttribute("objc", in: node.attributes)
+        let explicit = SyntaxAttributes.has("objc", in: node.attributes)
         guard let module = reactModules.last ?? nil,
-              !Self.hasAttribute("nonobjc", in: node.attributes),
+              !SyntaxAttributes.has("nonobjc", in: node.attributes),
               explicit || !Self.isFilePrivate(node.modifiers),
               !node.modifiers.contains(where: { $0.name.text == "static" || $0.name.text == "class" }),
               module.exportsAllMembers || explicit
         else { return }
-        let selector = Self.objectiveCName(in: node.attributes)
+        let selector = SyntaxAttributes.objectiveCName(in: node.attributes)
         let method = selector.map { String($0.prefix { $0 != ":" }) } ?? DeclarationCollector.unescaped(node.name.text)
         emit(.methodHandle, target: .reactNative, channel: .literal(module.name), method: .literal(method), at: node.name)
     }
@@ -870,12 +846,6 @@ final class BridgeFactCollector: SyntaxVisitor {
         modifiers.contains { $0.name.text == "private" || $0.name.text == "fileprivate" }
     }
 
-    static func hasAttribute(_ name: String, in attributes: AttributeListSyntax) -> Bool {
-        attributes.contains { element in
-            guard case let .attribute(attribute) = element else { return false }
-            return attribute.attributeName.trimmedDescription == name
-        }
-    }
 
     // MARK: 공통
 

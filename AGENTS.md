@@ -54,8 +54,15 @@ Scripts/verify-fixtures.sh
 swift build \
   && swift run cartograph dead   --strict \
   && swift run cartograph cycles --strict \
+  && swift run cartograph cycles --level type --strict \
   && swift run cartograph rules  --strict
 ```
+
+**순환 검사는 타입 레벨까지 돌립니다.** Swift 는 모듈 사이의 순환 import 를 컴파일러가 막으므로,
+`.cartograph.yml` 의 기본값인 모듈 레벨에서 `cycles --strict` 는 **구조적으로 발화할 수 없습니다.**
+그것만 돌리고 "순환 없음" 이라고 적으면, 아무것도 검사하지 않은 초록불을 증거로 인용하는 셈입니다.
+실제로 이 저장소에도 타입 레벨 순환이 두 건 있었고 모듈 레벨 게이트는 그것을 통과시켰습니다.
+모듈 레벨 검사는 남겨 둡니다 — 빌드 시스템이 무너져 모듈 그래프가 이상해지는 경우를 잡습니다.
 
 두 번째가 자기 분석(dogfooding)입니다. 이 도구가 실제로 찾아낸 결함 세 가지(프로토콜 구현 오탐,
 `@main` 오탐, 절대/상대 경로 글롭 불일치)는 전부 이 단계에서 드러났습니다. 단위 테스트는 하나도 잡지 못했습니다.
