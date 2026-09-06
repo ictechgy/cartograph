@@ -23,14 +23,24 @@ public struct CartographService: Sendable {
     /// 달라지는 값이라 파일에 적을 수 있는 성질이 아니다.
     private let reportScope: ReportScope?
 
+    /// 인덱스가 이 프로젝트를 하나도 모를 때도 분석을 진행할지.
+    ///
+    /// 설정 파일이 아니라 생성 인자로 받는다. `reportScope` 와 같은 이유다 —
+    /// 이것은 프로젝트의 성질이 아니라 한 번의 실행에 대한 진술이다. 더구나 이
+    /// 가드는 CI 게이트를 지키려고 있는 것이라, 설정 파일에 한 줄 적어 영구히
+    /// 끌 수 있게 하면 그 이후 실행에서는 게이트가 풀린 사실이 호출부에 남지 않는다.
+    private let allowsEmptyIndex: Bool
+
     public init(
         configuration: CartographConfiguration,
         environment: CartographEnvironment = .live(),
-        reportScope: ReportScope? = nil
+        reportScope: ReportScope? = nil,
+        allowsEmptyIndex: Bool = false
     ) {
         self.configuration = configuration
         self.environment = environment
         self.reportScope = reportScope
+        self.allowsEmptyIndex = allowsEmptyIndex
     }
 
     /// 분석 대상 프로젝트 루트.
@@ -41,34 +51,57 @@ public struct CartographService: Sendable {
     // MARK: - 인덱스
 
     /// 인덱스를 읽고 구문 정보로 보강한 스냅샷.
+    ///
+    /// 원시 스냅샷은 비어 있어도 정당한 답이다. "이 인덱스가 아는 것을 값으로 달라"에
+    /// 대해 공집합은 거짓말이 아니다. 비었을 때 실패해야 하는 것은 분석 문맥 쪽이라
+    /// 가드는 `loadContext()` 에만 둔다. `bridges` 가 이 경로로 내려오는 것도 이유다.
     public func loadSnapshot() throws -> IndexSnapshot {
-        let raw = try makeIndexProvider().loadSnapshot()
-        return SnapshotEnricher(
+        try enrich(makeIndexSource().provider.loadSnapshot())
+    }
+
+    /// 원시 스냅샷에 구문 정보를 얹는다.
+    private func enrich(_ raw: IndexSnapshot) -> IndexSnapshot {
+        SnapshotEnricher(
             fileSystem: environment.fileSystem,
             retention: configuration.retention,
             cachePath: environment.usesSyntaxCache
                 ? SourceFactsCache.defaultPath(forProject: projectPath)
                 : nil
         )
-            .enrich(
-                raw,
-                interfaceBuilderRoots: configuration.retention.retainInterfaceBuilder ? [projectPath] : [],
-                pathFilter: configuration.pathFilter
-            )
+        .enrich(
+            raw,
+            interfaceBuilderRoots: configuration.retention.retainInterfaceBuilder ? [projectPath] : [],
+            pathFilter: configuration.pathFilter
+        )
     }
 
     /// 인덱스를 한 번만 읽어 만든 분석 문맥.
+    ///
+    /// 여기를 지난 스냅샷은 비어 있지 않다. 그 불변식이 이 타입의 계약이다.
     public func loadContext() throws -> AnalysisContext {
         // 근거 파일을 인덱스보다 먼저 읽는다. 파일이 깨졌을 때 인덱스 없는 프로젝트에서도
         // 그 오류가 보여야 CLI 계약 검증이 이 경로를 실제로 증명한다.
         let externalRetentions = try ExternalRetentionStore(fileSystem: environment.fileSystem)
             .loadIfConfigured(at: configuration.externalRetentionsPath)
+        let source = try makeIndexSource()
+        let snapshot = try enrich(source.provider.loadSnapshot())
+        try requireNonEmptyIndex(snapshot, from: source)
         return AnalysisContext(
-            snapshot: try loadSnapshot(),
+            snapshot: snapshot,
             pathFilter: configuration.pathFilter,
             edgeKinds: configuration.edgeKinds,
             externalRetentions: externalRetentions
         )
+    }
+
+    /// 인덱스가 이 프로젝트의 선언을 하나도 모르면 분석을 시작하지 않는다.
+    ///
+    /// 조용히 "발견 없음"으로 끝내면 `--strict` 가 0줄을 분석하고 통과한다. 그 초록불은
+    /// 코드가 깨끗하다는 뜻으로 읽히므로, 발견이 아니라 도구 실패로 다룬다.
+    /// 참조가 아니라 심볼만 본다. 선언만 있고 참조가 없는 한 파일짜리 패키지는 정당하다.
+    private func requireNonEmptyIndex(_ snapshot: IndexSnapshot, from source: IndexSource) throws {
+        guard snapshot.symbols.isEmpty, !allowsEmptyIndex else { return }
+        throw CartographError.indexStoreEmpty(emptyIndexFacts(from: source))
     }
 
     // MARK: - 질의 API
@@ -433,6 +466,14 @@ public struct CartographService: Sendable {
         } ?? 0
 
         var result: [String] = []
+        // 탈출구를 켠 채로 도는 실행은 아무것도 분석하지 않는다. 그 답을 받은 쪽이
+        // "발견 없음"을 깨끗함으로 읽지 않도록, 답 자체에 그 사실을 싣는다.
+        if allowsEmptyIndex, let context, context.snapshot.symbols.isEmpty {
+            result.append(
+                "empty-index: the index store knows none of this project's \(swiftFiles.count) "
+                    + "source file(s), so every answer here is a statement about nothing"
+            )
+        }
         if objectiveCCount > 0 {
             result.append(
                 "objective-c-sources: \(objectiveCCount) file(s) are not analysed, "
@@ -688,7 +729,10 @@ public struct CartographService: Sendable {
         generatedAt: Date = Date(),
         target: BridgeFact.Target? = nil
     ) throws -> BridgeFactsDocument {
-        let resolver = BridgeSymbolResolver(snapshot: try makeIndexProvider().loadSnapshot())
+        // 빈 인덱스 가드를 지나지 않는다. `bridges` 는 구문 스캔이 본체이고 인덱스는
+        // USR 을 붙이는 데만 쓴다. 공개 플러그인 스캔은 인덱스 기여가 0인 상태로 도는
+        // 것이 정상이라, 여기서 실패하면 그 용법이 통째로 막힌다.
+        let resolver = BridgeSymbolResolver(snapshot: try makeIndexSource().provider.loadSnapshot())
         let sources = bridgeSourceFiles()
         var facts: [BridgeFact] = []
         var unreadable = 0
@@ -1000,8 +1044,28 @@ public struct CartographService: Sendable {
         "\(graph.level.rawValue) graph · \(graph.nodeCount) nodes · \(graph.edgeCount) edges"
     }
 
-    private func makeIndexProvider() throws -> any IndexProviding {
-        if let override = environment.indexProviderOverride { return override }
+    /// 인덱스 공급자와, 그것을 어떻게 골랐는지.
+    ///
+    /// 스토어 경로와 라이브러리 경로는 지금까지 공급자를 만들면서 계산했다가 버려졌다.
+    /// 빈 인덱스를 설명하려면 둘 다 필요하고, `indexStoreDate()` 도 같은 값을 얻으려고
+    /// 로케이터를 한 번 더 돌리고 있었다. 해석을 한 벌로 합친다.
+    private struct IndexSource {
+        let provider: any IndexProviding
+        let storePath: String
+        let libraryPath: String
+        let origin: EmptyIndexFacts.StoreOrigin
+    }
+
+    private func makeIndexSource() throws -> IndexSource {
+        if let override = environment.indexProviderOverride {
+            // 주입된 공급자에는 스토어가 없다. 모르는 것을 아는 척하지 않는다.
+            return IndexSource(
+                provider: override,
+                storePath: "(injected provider)",
+                libraryPath: "(injected provider)",
+                origin: .injected
+            )
+        }
 
         let locator = IndexStoreLocator(fileSystem: environment.fileSystem)
         let storePath = try locator.locate(
@@ -1013,7 +1077,7 @@ public struct CartographService: Sendable {
             explicitPath: nil,
             developerDirectory: environment.developerDirectory
         )
-        return IndexStoreProvider(
+        let provider = IndexStoreProvider(
             configuration: .init(
                 storePath: storePath,
                 databasePath: IndexStoreProvider.defaultDatabasePath(
@@ -1027,5 +1091,62 @@ public struct CartographService: Sendable {
             ),
             fileSystem: environment.fileSystem
         )
+        return IndexSource(
+            provider: provider,
+            storePath: storePath,
+            libraryPath: libraryPath,
+            origin: storeOrigin(of: storePath)
+        )
+    }
+
+    /// 스토어를 무엇을 보고 골랐는지. 자동 탐색이 남의 스토어를 집는 경우가 가장 흔하다.
+    private func storeOrigin(of storePath: String) -> EmptyIndexFacts.StoreOrigin {
+        if configuration.indexStorePath != nil { return .explicit }
+        let derivedDataPath = configuration.derivedDataPath ?? environment.derivedDataPath
+        if let derivedDataPath, storePath.hasPrefix(derivedDataPath) { return .derivedData }
+        return .autoDetected
+    }
+
+    /// 빈 인덱스의 원인을 좁히는 사실들. 오류 경로에서만 계산한다.
+    private func emptyIndexFacts(from source: IndexSource) -> EmptyIndexFacts {
+        let counts = projectSourceCounts()
+        return EmptyIndexFacts(
+            projectPath: projectPath,
+            resolvedProjectPath: URL(fileURLWithPath: projectPath)
+                .resolvingSymlinksInPath()
+                .standardizedFileURL
+                .path,
+            storePath: source.storePath,
+            storeOrigin: source.origin,
+            libraryPath: source.libraryPath,
+            sourceFileCount: counts.total,
+            filteredSourceFileCount: counts.inScope,
+            unitCount: indexUnitCount(at: source)
+        )
+    }
+
+    /// 프로젝트 아래의 Swift 파일 수와, 그중 경로 필터를 통과한 수.
+    ///
+    /// 두 숫자가 원인을 가른다. 전체가 0이면 `--project` 가 틀린 것이고,
+    /// 전체는 있는데 통과가 0이면 include/exclude 가 다 걸러 낸 것이다.
+    private func projectSourceCounts() -> (total: Int, inScope: Int) {
+        let filter = configuration.pathFilter
+        let files = environment.fileSystem.recursiveFiles(
+            under: projectPath,
+            isIncluded: { $0.hasSuffix(".swift") },
+            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
+        )
+        return (files.count, files.count { filter.allows($0) })
+    }
+
+    /// 스토어가 담고 있는 유닛 수. 셀 수 없으면 nil 을 돌려 아무 말도 하지 않는다.
+    private func indexUnitCount(at source: IndexSource) -> Int? {
+        guard source.origin != .injected else { return nil }
+        for directory in [source.storePath + "/v5/units", source.storePath + "/units"] {
+            if let entries = try? environment.fileSystem.contentsOfDirectory(at: directory) {
+                return entries.count
+            }
+        }
+        return nil
     }
 }

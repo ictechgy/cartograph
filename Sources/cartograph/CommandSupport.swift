@@ -46,7 +46,8 @@ enum CommandSupport {
             service: CartographService(
                 configuration: resolved.configuration,
                 environment: .live(),
-                reportScope: scope
+                reportScope: scope,
+                allowsEmptyIndex: options.allowEmptyIndex
             ),
             configuration: resolved.configuration,
             fileSystem: fileSystem,
