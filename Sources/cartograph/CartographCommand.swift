@@ -152,7 +152,7 @@ struct DeadCommand: ParsableCommand {
 struct QueryCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "query",
-        abstract: "Answer three questions about one declaration, as JSON.",
+        abstract: "Answer three questions about one or many declarations, as JSON.",
         discussion: """
             Who uses it, what does it use, and is it reachable from a retained root. The answer is \
             always JSON on stdout, with the reachability reason as a value rather than as prose.
@@ -171,6 +171,9 @@ struct QueryCommand: ParsableCommand {
             the preparation is not. The file is a JSON array of names, and the results come back in \
             request order, duplicates kept, in the `symbol-query-batch` format that dartograph \
             already writes.
+
+            A batch answers every request from one snapshot of the index. A sweep run one name at \
+            a time can straddle a rebuild and answer half its questions from a different index.
             """
     )
 
@@ -181,7 +184,11 @@ struct QueryCommand: ParsableCommand {
 
     @Option(
         name: .customLong("batch"),
-        help: "A JSON array of names to ask about, from one index read."
+        help: """
+            A JSON array of 1-1000 non-empty names to ask about, at most 1 MiB, answered from one \
+            index read. Every answer is printed even when a name is not found; read stdout before \
+            reacting to the exit code.
+            """
     )
     var batch: String?
 
@@ -199,6 +206,10 @@ struct QueryCommand: ParsableCommand {
         switch (symbol, batch) {
         case (nil, nil):
             throw ValidationError("give a declaration to ask about, or --batch <requests.json>")
+        case let (.some(name), nil) where name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+            // 배치는 빈 이름을 앞에서 거부한다. 단건만 통과시키면 인덱스를 다 읽고
+            // notFound 를 답하게 되고, 그 답은 오타를 오타라고 말하지 않는다.
+            throw ValidationError("the declaration to ask about is empty")
         case (.some, .some):
             throw ValidationError("give either a declaration or --batch, not both")
         default:

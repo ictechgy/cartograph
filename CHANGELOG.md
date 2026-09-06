@@ -17,8 +17,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   were identical to the one-at-a-time answers. An `ambiguous` name is a normal result. If any name
   is not found the exit code is 64, but every other result is still returned. A malformed requests
   file is rejected before the index is opened and exits 64 rather than 2, because it is an argument
-  problem and not a failure to analyze. The output is the `symbol-query-batch` v1 format that
-  dartograph already writes, so an agent learns one response shape rather than one per language.
+  problem and not a failure to analyze; the names that were not found are listed on stderr so a
+  failed sweep does not send you back to diff the JSON. A batch answers every request from one
+  snapshot, so a sweep cannot straddle a rebuild the way one process per name can. The output is
+  the `symbol-query-batch` v1 format that dartograph already writes, so an agent learns one
+  response shape rather than one per language.
 
 ### Changed
 

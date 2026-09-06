@@ -158,7 +158,9 @@ public enum AgentSkillTemplate {
         with duplicates kept, so you can pair the two arrays by index, and each element is exactly
         what a single `query` returns — the rules above apply to every element. `ambiguous` is a
         normal result. If one name is missing the exit code is 64 but every other answer is still
-        in the output, so read the output before reacting to the exit code.
+        in the output, and the missing names are listed on stderr — read the output before reacting to
+        the exit code. A batch also answers every request from one snapshot, so a sweep cannot straddle
+        a rebuild.
 
         ## Do not read the whole graph
 

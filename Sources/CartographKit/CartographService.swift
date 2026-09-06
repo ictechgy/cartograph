@@ -380,9 +380,11 @@ public struct CartographService: Sendable {
             try queryDocument(symbol: $0, depth: depth, limit: limit, in: session)
         }
         let text = try Self.encodeSortedJSON(SymbolQueryBatchDocument(results: results))
+        let missing = results.filter { $0.status == "notFound" }.map(\.requested)
         return CommandOutcome(
             output: text,
-            subjectNotFound: results.contains { $0.status == "notFound" }
+            subjectNotFound: !missing.isEmpty,
+            missingSubjects: missing
         )
     }
 
@@ -398,6 +400,11 @@ public struct CartographService: Sendable {
         let graph: CodeGraph
         let report: UnusedCodeReport
         let limitations: [String]
+        /// 베이스라인도 한 번만 읽는다.
+        ///
+        /// 없으면 요청마다 파일을 다시 읽는다. 답은 같지만, 1000건 배치에서 33 밀리초를
+        /// 파일 시스템에 쓰고 그 값은 베이스라인이 커질수록 커진다.
+        let baseline: Baseline?
     }
 
     func makeQuerySession() throws -> QuerySession {
@@ -406,7 +413,8 @@ public struct CartographService: Sendable {
         return QuerySession(
             graph: graph,
             report: report,
-            limitations: analysisLimitations(context: context, symbolGraph: graph)
+            limitations: analysisLimitations(context: context, symbolGraph: graph),
+            baseline: try loadBaseline()
         )
     }
 
@@ -445,7 +453,10 @@ public struct CartographService: Sendable {
                 requested: subject,
                 level: level,
                 limitations: limitations,
-                result: try describeQuery(of: node, report: report, in: graph, depth: depth, limit: limit)
+                result: try describeQuery(
+                    of: node, report: report, in: graph,
+                    depth: depth, limit: limit, baseline: session.baseline
+                )
             )
         }
     }
@@ -455,13 +466,14 @@ public struct CartographService: Sendable {
         report: UnusedCodeReport,
         in graph: CodeGraph,
         depth: Int,
-        limit: Int
+        limit: Int,
+        baseline: Baseline?
     ) throws -> SymbolQuery {
         let explanation = report.explain(node.id, in: graph)
         // 도달 가능한 정점에는 `dead` 가 애초에 진단을 내지 않는다. 그런데도 옛
         // 베이스라인 항목이 지문만 맞으면 억제되었다고 표시되어, "도달 가능한데
         // 팀이 억제했다"는 모순된 답이 나간다.
-        let suppressed = try explanation == .unreachable && isSuppressedByBaseline(node)
+        let suppressed = explanation == .unreachable && isSuppressed(node, by: baseline)
         let (usedBy, usedByTruncated) = Self.neighbors(
             of: node.id, in: graph, depth: depth, limit: limit, incoming: true
         )
@@ -485,8 +497,8 @@ public struct CartographService: Sendable {
         )
     }
 
-    private func isSuppressedByBaseline(_ node: GraphNode) throws -> Bool {
-        guard let baseline = try loadBaseline() else { return false }
+    private func isSuppressed(_ node: GraphNode, by baseline: Baseline?) -> Bool {
+        guard let baseline else { return false }
         return baseline.filtering([Self.unusedDiagnostic(for: node)]).isEmpty
     }
 

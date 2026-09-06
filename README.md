@@ -345,7 +345,11 @@ index. Each element is exactly what a single `query` returns. An `ambiguous` nam
 result, not a failure. If any name is not found the exit code is 64, but **every** result is still
 returned — one typo does not cost you the other forty-two answers. A malformed requests file is
 rejected before the index is opened and exits 64, not 2, because it is an argument problem rather
-than a failure to analyze.
+than a failure to analyze. The names that were not found are listed on stderr, so a failed sweep
+does not send you back to diff the JSON.
+
+A batch answers every request from one snapshot. A sweep run one name at a time can straddle a
+rebuild and answer half its questions from a different index.
 
 This is the `symbol-query-batch` v1 format that dartograph writes, so an agent learns one response
 shape rather than one per language.
