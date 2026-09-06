@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-_마지막 갱신: 2026-09-06 (0.7.0 릴리스, Claude). 이 저장소에는 세션이 둘 있었다(Claude 가 0.5.1·0.5.2·0.5.4·0.5.5, Codex 가 0.5.3). 큰 작업 전 `git status --short --branch` 와 `gh pr list` 로 확인할 것._
+_마지막 갱신: 2026-09-07 (0.8.0 릴리스, Claude). 이 저장소에는 세션이 둘 있었다(Claude 가 0.5.1·0.5.2·0.5.4·0.5.5, Codex 가 0.5.3). 큰 작업 전 `git status --short --branch` 와 `gh pr list` 로 확인할 것._
 
 ## Goal
 
@@ -10,7 +10,7 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 
 ## Current Progress
 
-**릴리스**: 0.1.0 → … → 0.5.5 (2026-09-03~05) → 0.6.0 → 0.7.0 (2026-09-06). 전부 GitHub Release + Homebrew tap(`ictechgy/tap`, `HOMEBREW_TAP_TOKEN` 이 없어 손 갱신) + `brew upgrade` 확인. 로컬 설치는 0.5.5. `main` 은 깨끗하다.
+**릴리스**: 0.1.0 → … → 0.5.5 (2026-09-03~05) → 0.6.0 → 0.7.0 (2026-09-06) → 0.8.0 (2026-09-07). 전부 GitHub Release + Homebrew tap(`ictechgy/tap`, `HOMEBREW_TAP_TOKEN` 이 없어 손 갱신) + `brew upgrade` 확인. `main` 은 깨끗하다.
 
 **0.5.x 에서 들어간 것** (자세한 것은 CHANGELOG)
 - `bridges --format json|text --target flutter|react-native`: Swift 소스와 `.m` 파일에서 언어 경계 사실(`channel-register`, `method-handle`, `module-export`, `component-export`)을 뽑아 인덱스의 USR 을 붙여 `bridge-facts` v1 로 낸다. 한계를 실제로 세어 싣는다(`dynamic-*`, `inferred-channels`, `unattributed-method-handles`, `missing-handler-usrs`, `objc-named-classes`, `objective-c-handlers`, `objective-c-sources`, `unscanned-event/message-channels`, `mixed-targets`, `target-filter`).
@@ -45,7 +45,7 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 
 각 PR 본문에 재현 명령과 실측 수치가 있다. 반박 리뷰에서 기각한 지적과 그 이유도 코멘트에 남겼다.
 
-## 0.7.0 이후 — 감사의 남은 항목을 전부 (2026-09-06~07)
+## 0.8.0 — 감사의 남은 항목을 전부 (2026-09-06~07)
 
 | PR | 무엇 | 실측 |
 |---|---|---|
