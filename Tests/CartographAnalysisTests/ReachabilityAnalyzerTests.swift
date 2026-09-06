@@ -476,3 +476,109 @@ struct ExtensionOwnershipTests {
     }
 
 }
+
+@Suite("증인 보존은 소유 타입이 살아 있을 때만")
+struct ConditionalWitnessRetentionTests {
+    /// 외부 프로토콜을 만족시키는 멤버 하나를 가진 타입.
+    private func snapshot(typeIsUsed: Bool) -> IndexSnapshot {
+        var builder = SnapshotBuilder()
+        builder.symbol("Entry", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Card", kind: .structType)
+        builder.symbol("Card.body", kind: .property, parent: "Card", attributes: [.overrideDeclaration])
+        builder.reference(from: "Card.body", to: "s:SwiftUI4ViewP4bodyQrvp", kind: .overrides)
+        if typeIsUsed { builder.reference(from: "Entry", to: "Card", kind: .reference) }
+        return builder.build()
+    }
+
+    private func report(_ snapshot: IndexSnapshot) -> UnusedCodeReport {
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        return ReachabilityAnalyzer().analyze(graph: graph, snapshot: snapshot)
+    }
+
+    @Test("아무도 만들지 않는 타입의 증인은 보존 근거를 갖지 않는다")
+    func witnessOfAnUnusedTypeIsNotRetained() {
+        // "프레임워크가 부른다" 는 그 타입을 누군가 만들 때만 참이다. 무조건 뿌리로 두면
+        // 타입은 "미사용" 인데 그 멤버는 "보존됨" 이라고 답해, 한 답 안에서 모순이 된다.
+        let result = report(snapshot(typeIsUsed: false))
+        #expect(result.retentions["Card.body"] == nil)
+        #expect(result.unused.map(\.name).contains("Card"))
+        // 멤버는 따로 보고하지 않는다. 조상이 도달 불가라 껍데기만 남기는 삭제를 부른다.
+        #expect(!result.unused.map(\.name).contains("body"))
+    }
+
+    @Test("살아 있는 타입의 증인은 그대로 보존된다")
+    func witnessOfAUsedTypeStaysRetained() {
+        // 프레임워크가 부르는 것을 지우면 앱이 깨진다. 이 방향은 바뀌면 안 된다.
+        let result = report(snapshot(typeIsUsed: true))
+        #expect(result.retentions["Card.body"] == .externalOverride)
+        #expect(result.unused.isEmpty)
+    }
+
+    @Test("소유 타입이 없는 최상위 선언은 조건 없이 보존된다")
+    func topLevelWitnessesHaveNoOwnerToWaitFor() {
+        // 조건이 붙을 자리가 없다. 여기서 기다리게 하면 영영 살아나지 못한다.
+        var builder = SnapshotBuilder()
+        builder.symbol("handler", kind: .function, attributes: [.overrideDeclaration])
+        builder.reference(from: "handler", to: "c:objc(cs)NSObject(im)handle", kind: .overrides)
+        let result = report(builder.build())
+        #expect(result.retentions["handler"] == .externalOverride)
+    }
+
+    @Test("살아나지 못한 증인은 도달 수에도 들어가지 않는다")
+    func anUnactivatedWitnessIsNotCounted() {
+        // 근거만 지우고 도달 표시를 남기면 `explain` 이 보고서와 다른 답을 한다.
+        // 진입점 하나만 도달 가능해야 한다 — 타입도 그 증인도 아니다.
+        #expect(report(snapshot(typeIsUsed: false)).reachableCount == 1)
+        // 타입이 쓰이면 셋 다 살아난다.
+        #expect(report(snapshot(typeIsUsed: true)).reachableCount == 3)
+    }
+
+    @Test("외부 타입의 익스텐션에 있는 증인은 기다릴 소유자가 없어 그대로 보존된다")
+    func witnessesInExtensionsOfExternalTypesStayUnconditional() {
+        // `extension UIImage: LocalProtocol` 의 증인은 소유 타입이 그래프에 없다.
+        // 여기서 기다리게 하면 영영 살아나지 못하고, 프레임워크가 부르는 것을 지우게 된다.
+        var builder = SnapshotBuilder()
+        builder.symbol("draw", kind: .method, attributes: [.overrideDeclaration])
+        builder.reference(from: "draw", to: "c:objc(cs)UIImage(im)draw", kind: .overrides)
+        let result = report(builder.build())
+        #expect(result.retentions["draw"] == .externalOverride)
+        #expect(result.unused.isEmpty)
+    }
+
+    @Test("소유 타입이 나중에 살아나도 증인이 함께 살아난다")
+    func aWitnessActivatesWhenItsOwnerBecomesReachableLater() {
+        // 소유 타입이 진입점에서 여러 홉 뒤에 살아나는 경우다. 씨앗을 뿌릴 때 이미
+        // 도달 가능한 경우만 처리하면 이 경로가 빠진다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Entry", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Factory", kind: .structType)
+        builder.symbol("Card", kind: .structType)
+        builder.symbol("Card.body", kind: .property, parent: "Card", attributes: [.overrideDeclaration])
+        builder.symbol("Card.helper", kind: .method, parent: "Card")
+        builder.reference(from: "Entry", to: "Factory", kind: .call)
+        builder.reference(from: "Factory", to: "Card", kind: .reference)
+        builder.reference(from: "Card.body", to: "s:SwiftUI4ViewP4bodyQrvp", kind: .overrides)
+        builder.reference(from: "Card.body", to: "Card.helper", kind: .call)
+
+        let result = report(builder.build())
+        #expect(result.retentions["Card.body"] == .externalOverride)
+        // 증인이 살아나면 그것이 부르는 것도 함께 살아난다.
+        #expect(!result.unused.map(\.name).contains("helper"))
+    }
+
+    @Test("소유 타입이 자기 증인으로만 도달 가능하면 둘 다 죽는다")
+    func aTypeReachableOnlyThroughItsOwnWitnessStaysDead() {
+        // 프로토콜 증인 디스패치는 인스턴스가 있어야 일어난다. 자기 증인만이 자신을
+        // 가리키는 무리는 아무도 만들지 않는 무리이고, 통째로 죽은 것이 맞다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Entry", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Card", kind: .structType)
+        builder.symbol("Card.body", kind: .property, parent: "Card", attributes: [.overrideDeclaration])
+        builder.reference(from: "Card.body", to: "s:SwiftUI4ViewP4bodyQrvp", kind: .overrides)
+        builder.reference(from: "Card.body", to: "Card", kind: .reference)
+
+        let result = report(builder.build())
+        #expect(result.retentions["Card.body"] == nil)
+        #expect(result.unused.map(\.name).contains("Card"))
+    }
+}

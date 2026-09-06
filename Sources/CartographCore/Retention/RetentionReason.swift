@@ -75,6 +75,19 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     }
 
     /// 리포트에 그대로 실을 수 있는 영문 설명.
+    /// 이 근거가 소유 타입이 살아 있을 때만 성립하는지.
+    ///
+    /// "프레임워크가 부른다" 는 주장은 그 타입을 누군가 만들 때만 참이다. 아무도 만들지
+    /// 않는 뷰의 `body` 를 무조건 살리면 답이 스스로 모순된다 — 타입은 "미사용" 인데
+    /// 그 멤버는 "보존됨" 이라고 답한다. 소유 타입이 없는 최상위 선언에는 조건이 붙을
+    /// 자리가 없으므로 그대로 무조건이다.
+    public var needsReachableOwner: Bool {
+        switch self {
+        case .externalConformance, .externalOverride: true
+        default: false
+        }
+    }
+
     /// 이 근거로 살아남은 멤버가 자신을 감싸는 타입까지 함께 살리는지.
     ///
     /// 대부분의 근거는 "이 선언을 지우면 무언가 깨진다" 는 주장이고, 그 선언을 담은 타입도
