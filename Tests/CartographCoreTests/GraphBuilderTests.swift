@@ -238,9 +238,17 @@ struct RollupFilterTests {
             for name in ["A", "B", "C", "D"] {
                 builder.symbol(name, kind: .structType, path: "/p/Sources/\(name).swift")
             }
+            builder.symbol("ext", name: "D", kind: .extensionDeclaration, path: "/p/Sources/DExt.swift")
+            builder.symbol("ext.run", name: "run()", kind: .method, path: "/p/Sources/DExt.swift", parent: "ext")
             var edges: [(String, String, EdgeKind)] = [
                 ("A", "B", .reference), ("B", "C", .call), ("C", "D", .conformance),
                 ("A", "C", .call), ("D", "A", .reference), ("A", "B", .call),
+                // 서명이 같은 쌍. 가중치를 더해 접는 경로를 실제로 밟게 한다.
+                // 이것이 없으면 "먼저 온 것이 이긴다" 로 바꿔도 테스트가 통과한다.
+                ("B", "C", .call),
+                // 익스텐션 간선. 순서 계약이 실제로 필요한 유일한 소비자가
+                // `extensionTargets` 이므로 그 경로도 함께 지난다.
+                ("ext", "D", .extends), ("ext.run", "A", .call),
             ]
             if reversed { edges.reverse() }
             for edge in edges { builder.reference(from: edge.0, to: edge.1, kind: edge.2) }
