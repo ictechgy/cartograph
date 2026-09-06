@@ -80,9 +80,19 @@ public struct PathFilter: Sendable, Equatable {
     /// include 는 바꾸지 않는다. 포함 후보를 좁히는 것은 설정이 조용히 아무것도
     /// 고르지 않는 방향이고, 이 타입이 막겠다고 존재하는 실패가 바로 그것이다.
     private func excludes(_ path: String) -> Bool {
-        // 절대 경로로 쓴 패턴은 의도가 분명하므로 절대 경로에 그대로 적용한다.
-        if exclude.contains(where: { $0.isAbsolute && $0.matches(path) }) { return true }
-        return relativeCandidates(for: path).contains { exclude.matchesAny($0) }
+        removes(exclude, path)
+    }
+
+    /// 주어진 패턴 목록이 이 경로에 걸리는지, 제외와 같은 규칙으로 판단한다.
+    ///
+    /// 제외와 `retained_files` 는 둘 다 "걸리면 그 파일의 발견이 결과에서 사라지는" 판정이다.
+    /// 그래서 조상 디렉터리 이름 하나에 걸리는 순간 프로젝트 전체가 조용히 사라진다는
+    /// 실패 모양도 같다. 규칙을 두 벌로 두면 한쪽만 고쳐지므로 여기 하나만 둔다.
+    ///
+    /// 절대 경로로 쓴 패턴은 의도가 분명하므로 절대 경로에 그대로 적용한다.
+    public func removes(_ patterns: [GlobPattern], _ path: String) -> Bool {
+        if patterns.contains(where: { $0.isAbsolute && $0.matches(path) }) { return true }
+        return relativeCandidates(for: path).contains { patterns.matchesAny($0) }
     }
 
     /// 기준 디렉터리에 대한 상대 경로들. 기준이 없거나 기준 밖의 경로면 절대 경로 하나뿐이다.
