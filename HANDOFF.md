@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-_마지막 갱신: 2026-09-06 (0.5.5 이후 결함 수정 6건 머지, Claude). 이 저장소에는 세션이 둘 있었다(Claude 가 0.5.1·0.5.2·0.5.4·0.5.5, Codex 가 0.5.3). 큰 작업 전 `git status --short --branch` 와 `gh pr list` 로 확인할 것._
+_마지막 갱신: 2026-09-06 (0.6.0 릴리스, Claude). 이 저장소에는 세션이 둘 있었다(Claude 가 0.5.1·0.5.2·0.5.4·0.5.5, Codex 가 0.5.3). 큰 작업 전 `git status --short --branch` 와 `gh pr list` 로 확인할 것._
 
 ## Goal
 
@@ -10,7 +10,7 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 
 ## Current Progress
 
-**릴리스**: 0.1.0 → … → 0.5.5 (2026-09-03~05). 전부 GitHub Release + Homebrew tap(`ictechgy/tap`, `HOMEBREW_TAP_TOKEN` 이 없어 손 갱신) + `brew upgrade` 확인. 로컬 설치는 0.5.5. `main` 은 깨끗하다.
+**릴리스**: 0.1.0 → … → 0.5.5 (2026-09-03~05) → 0.6.0 (2026-09-06). 전부 GitHub Release + Homebrew tap(`ictechgy/tap`, `HOMEBREW_TAP_TOKEN` 이 없어 손 갱신) + `brew upgrade` 확인. 로컬 설치는 0.5.5. `main` 은 깨끗하다.
 
 **0.5.x 에서 들어간 것** (자세한 것은 CHANGELOG)
 - `bridges --format json|text --target flutter|react-native`: Swift 소스와 `.m` 파일에서 언어 경계 사실(`channel-register`, `method-handle`, `module-export`, `component-export`)을 뽑아 인덱스의 USR 을 붙여 `bridge-facts` v1 로 낸다. 한계를 실제로 세어 싣는다(`dynamic-*`, `inferred-channels`, `unattributed-method-handles`, `missing-handler-usrs`, `objc-named-classes`, `objective-c-handlers`, `objective-c-sources`, `unscanned-event/message-channels`, `mixed-targets`, `target-filter`).
@@ -28,8 +28,7 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 ## 2026-09-06 세션 — 감사와 결함 수정 6건
 
 다중 렌즈 감사(전략 3안 + 성능·CLI 사용성·에이전트 UX·코드 건전성·배포 5렌즈, 지적마다 반박 검증)를
-돌리고 그 결과를 순서대로 고쳤다. 전부 머지됨. **`main` 은 0.5.5 태그보다 앞서 있고 아직 릴리스하지
-않았다.**
+돌리고 그 결과를 순서대로 고쳤다. 전부 머지되어 **0.6.0 으로 나갔다.**
 
 | PR | 무엇 |
 |---|---|
@@ -119,9 +118,9 @@ struct Concrete: Holder { typealias Item = WhereOnly }   // WhereOnly 로 향하
 
 ## Next Steps (2026-09-06 갱신)
 
-1. **릴리스.** `main` 에 결함 수정 6건이 쌓여 있고 태그가 없다. 0.6.0 이 맞다 —
-   `CartographError.indexStoreNotFound` 에 연관값이 붙었고 `derivedDataCandidates` 시그니처가 바뀌었다.
-   `Sources/CartographCore/Cartograph.swift` 의 버전 상수와 `.claude-plugin/plugin.json` 을 함께 올린다.
+1. **Homebrew tap 을 손으로 올린다.** `HOMEBREW_TAP_TOKEN` 이 없어 릴리스 워크플로가 건너뛴다.
+   워크플로의 마지막 단계가 url·sha256·version 을 찍어 주므로 그 값으로 `ictechgy/homebrew-tap` 의
+   `Formula/cartograph.rb` 를 고치고 `brew upgrade` 로 확인한다.
 2. **타입 recall 의 선행 PR.** 위 절의 재현부터. 인덱스가 간선을 남기지 않는 타입 위치에 간선을 넣는다.
    간선을 더하는 것은 단조롭게 안전하므로 먼저 들어가도 된다.
 3. **그다음 recall 수정.** 설계는 끝났고 blocker 만 남았다. 반박 리뷰가 함께 지적한 셋을 같이 본다.
