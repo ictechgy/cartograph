@@ -162,7 +162,14 @@ public enum AgentSkillTemplate {
 
         ## If there is no index store
 
-        The tool reads what the compiler wrote, so the project has to be built first:
+        Look for one before starting a build. An app already built in Xcode has a store under
+        `~/Library/Developer/Xcode/DerivedData/<name>-<hash>/Index.noindex/DataStore`, and Cartograph
+        finds it when `--project` points at the directory that holds the `.xcodeproj` or `.xcworkspace`.
+        In a Flutter or React Native app that is `ios/`, not the repository root, so try
+        `cartograph query <name> --project ios` before anything else. If the build used
+        `-derivedDataPath`, pass that directory with `--derived-data <path>`.
+
+        Only if none of that finds a store does the project have to be built:
 
         ```bash
         swift build

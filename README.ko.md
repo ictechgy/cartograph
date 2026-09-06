@@ -113,7 +113,16 @@ cartograph graph --index-store DerivedData/Index.noindex/DataStore
 ```
 
 `--index-store`를 생략하면 흔한 위치를 모두 찾습니다. `.build/index/store`,
-`.build/debug/index/store`, `.build/out`, `~/Library/Developer/Xcode/DerivedData/<project>-*`.
+`.build/debug/index/store`, `.build/out`, `~/Library/Developer/Xcode/DerivedData`.
+
+DerivedData 아래에서 Xcode는 그 디렉터리를 **연 문서의 이름**으로 `<이름>-<해시>`처럼 짓습니다.
+담고 있는 폴더의 이름이 아닙니다. 그래서 프로젝트 루트가 주는 이름을 모두 시도합니다. 루트 바로
+아래의 각 `.xcodeproj`와 `.xcworkspace`, 그리고 폴더 자신의 이름입니다. Flutter나 React Native의
+`ios/` 디렉터리에서 `cartograph dead`가 도는 것이 이 때문입니다. 폴더는 `ios`이고 프로젝트는
+`Runner.xcodeproj`니까요. 루트 한 단계만 훑으므로 `Pods/Pods.xcodeproj`는 이름이 되지 않습니다.
+이름이 맞는 디렉터리가 여럿이면 각각의 `info.plist`에 있는 `WorkspacePath`가 어느 것이 이
+프로젝트의 것인지 가릅니다. 어느 것도 이 프로젝트를 가리키지 않으면, 최근 것을 고르는 대신
+그렇다고 알립니다.
 여러 개가 있으면 가장 최근에 갱신된 것을 씁니다. 오래된 인덱스로 분석하면 결과가 조용히
 틀리기 때문입니다. 최근 SwiftPM은 인덱스를 자동으로 남기므로, Swift 패키지라면
 `cartograph graph`만으로도 대개 동작합니다.
