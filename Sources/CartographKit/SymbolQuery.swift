@@ -1,5 +1,6 @@
 import CartographAnalysis
 import CartographCore
+import Foundation
 
 /// 정점 하나에 대한 질의 결과.
 ///
@@ -145,5 +146,73 @@ public struct SymbolQueryDocument: Sendable, Equatable, Codable {
         self.limitations = limitations
         self.result = result
         self.candidates = candidates
+    }
+}
+
+/// 여러 선언을 한 번에 물은 결과.
+///
+/// 43건을 쓸어보려면 프로세스를 43번 띄워야 했고 매번 인덱스를 다시 읽어 약 43초가 들었다.
+/// 답 하나하나는 싸고 그 앞의 준비가 비싸다. 그래서 그래프와 도달성은 한 번만 만들고
+/// 질문만 반복한다.
+///
+/// `results` 는 **요청 순서와 중복을 그대로 지킨다.** 중복을 접으면 부르는 쪽이 요청 배열과
+/// 결과 배열을 인덱스로 짝지을 수 없다.
+///
+/// 형식은 자매 저장소 dartograph 가 먼저 출하한 `symbol-query-batch` v1 과 같다.
+/// 에이전트가 언어마다 다른 응답을 배우게 하지 않기 위해서다.
+public struct SymbolQueryBatchDocument: Sendable, Equatable, Codable {
+    /// 교환 형식 이름. 소비자가 단일 `query` 응답과 구분할 수 있어야 한다.
+    public let format: String
+    /// 형식 버전.
+    public let version: Int
+    /// 요청 하나에 대한 답 하나. 각 원소는 단일 `query` 가 내는 문서와 같다.
+    public let results: [SymbolQueryDocument]
+
+    public init(results: [SymbolQueryDocument]) {
+        self.format = "symbol-query-batch"
+        self.version = 1
+        self.results = results
+    }
+}
+
+/// 배치 요청 파일을 읽는다.
+///
+/// **인덱스를 열기 전에** 검사한다. 색인을 다 만든 뒤에 "요청 배열이 비었다" 를 말하면,
+/// 사용자는 몇 초를 기다린 대가로 오타 하나를 받는다.
+public enum SymbolQueryBatchRequests {
+    /// 한 번에 물을 수 있는 요청 수의 위와 아래.
+    ///
+    /// 위 한계가 없으면 요청 하나가 백만 개짜리 배열이어도 받아들이게 되고, 그때
+    /// 실패하는 자리는 이 명령이 아니라 메모리다.
+    public static let countRange = 1...1000
+    /// 요청 파일의 최대 크기. 이름 목록이 1 MiB 를 넘으면 그것은 다른 문제다.
+    public static let maximumByteCount = 1024 * 1024
+
+    /// 요청 목록을 얻는다. 형식이 어긋나면 그 자리를 말하며 던진다.
+    public static func parse(_ data: Data, path: String) throws -> [String] {
+        guard data.count <= maximumByteCount else {
+            throw CartographError.invalidBatchRequests(
+                path: path, reason: "the file is \(data.count) bytes"
+            )
+        }
+        let decoded: [String]
+        do {
+            decoded = try JSONDecoder().decode([String].self, from: data)
+        } catch {
+            throw CartographError.invalidBatchRequests(
+                path: path, reason: "it is not a JSON array of strings"
+            )
+        }
+        guard countRange.contains(decoded.count) else {
+            throw CartographError.invalidBatchRequests(
+                path: path, reason: "it holds \(decoded.count) request(s)"
+            )
+        }
+        if let index = decoded.firstIndex(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            throw CartographError.invalidBatchRequests(
+                path: path, reason: "request \(index) is empty"
+            )
+        }
+        return decoded
     }
 }

@@ -227,6 +227,7 @@ Data.UserRepository is reachable:
 ```bash
 cartograph query UserService
 cartograph query 's:3App11UserServiceC' --depth 2 --limit 20
+cartograph query --batch requests.json
 ```
 
 Three questions about one symbol — who uses it, what it uses, and whether it is reachable from a
@@ -317,6 +318,41 @@ declaration, `reason` on one that is not retained, `path` on one that is not rea
 or `candidates` depending on `status`.
 
 An unknown name exits 64, so a typo in a script does not pass silently as "nothing uses it".
+
+#### `--batch` — ask about many declarations from one index read
+
+```bash
+cartograph query --batch requests.json
+```
+
+`requests.json` is a JSON array of 1 to 1000 names or USRs, at most 1 MiB. Sweeping a `dead` report
+one name at a time costs a process and an index read per name; the answers are cheap and the
+preparation is not. On a 7,466-symbol app, asking about all 43 findings took 19.6 s one at a time
+and 0.47 s in one batch, with identical answers.
+
+```console
+$ cartograph dead --report-format json | jq '[.diagnostics[].subject]' > requests.json
+$ cartograph query --batch requests.json
+{
+  "format" : "symbol-query-batch",
+  "results" : [ { "level" : "symbol", "requested" : "s:3App4FooV", "status" : "found", ... } ],
+  "version" : 1
+}
+```
+
+Results come back in request order with duplicates kept, so the caller can pair the two arrays by
+index. Each element is exactly what a single `query` returns. An `ambiguous` name is a normal
+result, not a failure. If any name is not found the exit code is 64, but **every** result is still
+returned — one typo does not cost you the other forty-two answers. A malformed requests file is
+rejected before the index is opened and exits 64, not 2, because it is an argument problem rather
+than a failure to analyze. The names that were not found are listed on stderr, so a failed sweep
+does not send you back to diff the JSON.
+
+A batch answers every request from one snapshot. A sweep run one name at a time can straddle a
+rebuild and answer half its questions from a different index.
+
+This is the `symbol-query-batch` v1 format that dartograph writes, so an agent learns one response
+shape rather than one per language.
 
 `dead --report-format json` carries the same `limitations` list, so a sweep that starts from the
 unused list sees what the graph could not, without a `query` per entry. Every format a CI job reads

@@ -367,15 +367,70 @@ public struct CartographService: Sendable {
         return CommandOutcome(output: text, subjectNotFound: document.status == "notFound")
     }
 
+    /// 여러 선언을 한 번에 묻는다.
+    ///
+    /// 그래프와 도달성과 한계 목록을 한 번만 만들고 질문만 반복한다. 답 하나하나는 싸고
+    /// 그 앞의 준비가 비싸다. 프로세스를 요청 수만큼 띄우면 그 준비를 요청 수만큼 되풀이한다.
+    ///
+    /// 하나라도 찾지 못하면 종료 코드는 사용 오류가 되지만 **나머지 답은 전부 돌려준다.**
+    /// 이름 하나가 틀렸다고 마흔둘의 답을 버리게 하지 않는다.
+    public func queryBatch(symbols: [String], depth: Int = 1, limit: Int = 50) throws -> CommandOutcome {
+        let session = try makeQuerySession()
+        let results = try symbols.map {
+            try queryDocument(symbol: $0, depth: depth, limit: limit, in: session)
+        }
+        let text = try Self.encodeSortedJSON(SymbolQueryBatchDocument(results: results))
+        let missing = results.filter { $0.status == "notFound" }.map(\.requested)
+        return CommandOutcome(
+            output: text,
+            subjectNotFound: !missing.isEmpty,
+            missingSubjects: missing
+        )
+    }
+
     /// `query` 가 내보낼 문서를 만든다. 인코딩과 종료 코드는 부르는 쪽이 정한다.
     public func queryDocument(symbol subject: String, depth: Int = 1, limit: Int = 50) throws -> SymbolQueryDocument {
+        try queryDocument(symbol: subject, depth: depth, limit: limit, in: try makeQuerySession())
+    }
+
+    /// 질의 여러 건이 나눠 쓰는 준비물.
+    ///
+    /// 값으로 묶어 두지 않으면 배치 경로가 요청마다 인덱스를 다시 읽는다.
+    struct QuerySession {
+        let graph: CodeGraph
+        let report: UnusedCodeReport
+        let limitations: [String]
+        /// 베이스라인도 한 번만 읽는다.
+        ///
+        /// 없으면 요청마다 파일을 다시 읽는다. 답은 같지만, 1000건 배치에서 33 밀리초를
+        /// 파일 시스템에 쓰고 그 값은 베이스라인이 커질수록 커진다.
+        let baseline: Baseline?
+    }
+
+    func makeQuerySession() throws -> QuerySession {
         let context = try loadContext()
         let (graph, report) = unusedCode(in: context)
+        return QuerySession(
+            graph: graph,
+            report: report,
+            limitations: analysisLimitations(context: context, symbolGraph: graph),
+            baseline: try loadBaseline()
+        )
+    }
+
+    func queryDocument(
+        symbol subject: String,
+        depth: Int,
+        limit: Int,
+        in session: QuerySession
+    ) throws -> SymbolQueryDocument {
+        let graph = session.graph
+        let report = session.report
         // `unusedCode` 는 설정과 무관하게 항상 심볼 레벨로 만든다. 여기서 설정값을
         // 실어 보내면 심볼 레벨 답을 모듈 레벨 답이라고 말하게 된다.
         let level = GraphLevel.symbol.rawValue
 
-        let limitations = analysisLimitations(context: context, symbolGraph: graph)
+        let limitations = session.limitations
 
         switch NodeLookup.resolve(subject, in: graph) {
         case .notFound:
@@ -398,7 +453,10 @@ public struct CartographService: Sendable {
                 requested: subject,
                 level: level,
                 limitations: limitations,
-                result: try describeQuery(of: node, report: report, in: graph, depth: depth, limit: limit)
+                result: try describeQuery(
+                    of: node, report: report, in: graph,
+                    depth: depth, limit: limit, baseline: session.baseline
+                )
             )
         }
     }
@@ -408,13 +466,14 @@ public struct CartographService: Sendable {
         report: UnusedCodeReport,
         in graph: CodeGraph,
         depth: Int,
-        limit: Int
+        limit: Int,
+        baseline: Baseline?
     ) throws -> SymbolQuery {
         let explanation = report.explain(node.id, in: graph)
         // 도달 가능한 정점에는 `dead` 가 애초에 진단을 내지 않는다. 그런데도 옛
         // 베이스라인 항목이 지문만 맞으면 억제되었다고 표시되어, "도달 가능한데
         // 팀이 억제했다"는 모순된 답이 나간다.
-        let suppressed = try explanation == .unreachable && isSuppressedByBaseline(node)
+        let suppressed = explanation == .unreachable && isSuppressed(node, by: baseline)
         let (usedBy, usedByTruncated) = Self.neighbors(
             of: node.id, in: graph, depth: depth, limit: limit, incoming: true
         )
@@ -438,8 +497,8 @@ public struct CartographService: Sendable {
         )
     }
 
-    private func isSuppressedByBaseline(_ node: GraphNode) throws -> Bool {
-        guard let baseline = try loadBaseline() else { return false }
+    private func isSuppressed(_ node: GraphNode, by baseline: Baseline?) -> Bool {
+        guard let baseline else { return false }
         return baseline.filtering([Self.unusedDiagnostic(for: node)]).isEmpty
     }
 

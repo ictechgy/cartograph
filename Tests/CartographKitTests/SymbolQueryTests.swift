@@ -473,4 +473,210 @@ struct SymbolQueryTests {
         let decoded = try JSONDecoder().decode(SymbolQueryDocument.self, from: Data(first.utf8))
         #expect(decoded.result?.subject.name == "UserService")
     }
+
+    // MARK: - 배치
+
+    @Test("배치는 요청 순서와 중복을 그대로 지킨다")
+    func batchKeepsOrderAndDuplicates() throws {
+        let outcome = try makeService().queryBatch(
+            symbols: ["UserService", "DeadHelper", "UserService"]
+        )
+        let document = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self, from: Data(outcome.output.utf8)
+        )
+        #expect(document.format == "symbol-query-batch")
+        #expect(document.version == 1)
+        #expect(document.results.map(\.requested) == ["UserService", "DeadHelper", "UserService"])
+        #expect(document.results[0] == document.results[2])
+    }
+
+    @Test("배치의 답은 하나씩 물었을 때와 같다")
+    func batchAgreesWithSingleQueries() throws {
+        let service = makeService()
+        let names = ["HomeView", "UserService", "UserRepository", "DeadHelper", "NoSuchThing"]
+        let batch = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self,
+            from: Data(try service.queryBatch(symbols: names).output.utf8)
+        )
+        for (name, result) in zip(names, batch.results) {
+            #expect(result == (try service.queryDocument(symbol: name)))
+        }
+    }
+
+    @Test("배치에 하나라도 없는 이름이 있으면 사용 오류로 표시하되 나머지 답은 낸다")
+    func batchReportsMissingNamesWithoutDroppingTheRest() throws {
+        let outcome = try makeService().queryBatch(symbols: ["UserService", "NoSuchThing", "DeadHelper"])
+        #expect(outcome.subjectNotFound)
+        let document = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self, from: Data(outcome.output.utf8)
+        )
+        #expect(document.results.map(\.status) == ["found", "notFound", "found"])
+    }
+
+    @Test("배치는 모호한 이름을 고르지 않고 후보로 답한다")
+    func batchReturnsCandidatesForAnAmbiguousName() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("Root", kind: .structType, module: "App", path: "/p/Root.swift", attributes: [.entryPoint])
+        builder.symbol("A.Config", name: "Config", kind: .structType, module: "App", path: "/p/A.swift")
+        builder.symbol("B.Config", name: "Config", kind: .structType, module: "App", path: "/p/B.swift")
+        let service = makeService(snapshot: builder.build())
+
+        let document = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self,
+            from: Data(try service.queryBatch(symbols: ["Config"]).output.utf8)
+        )
+        #expect(document.results.first?.status == "ambiguous")
+        #expect(document.results.first?.candidates?.count == 2)
+        // 모호함은 답이지 실패가 아니다. 종료 코드를 세우면 스윕이 거기서 멈춘다.
+        #expect(try !service.queryBatch(symbols: ["Config"]).subjectNotFound)
+    }
+
+    @Test("배치도 한계 목록을 모든 결과에 함께 싣는다")
+    func batchCarriesLimitationsOnEveryResult() throws {
+        let fileSystem = InMemoryFileSystem()
+        try fileSystem.write(text: "@interface Legacy @end", to: "/p/Legacy.m")
+        let service = makeService(fileSystem: fileSystem)
+
+        let document = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self,
+            from: Data(try service.queryBatch(symbols: ["UserService", "NoSuchThing"]).output.utf8)
+        )
+        #expect(document.results.allSatisfy { !$0.limitations.isEmpty })
+    }
+
+    @Test("잘못된 요청 파일은 형태를 말하며 거부된다")
+    func malformedRequestsAreRejectedWithTheirShape() throws {
+        let cases: [(String, String)] = [
+            ("{}", "not a JSON array"),
+            ("[1]", "not a JSON array"),
+            ("[]", "0 request"),
+            ("[\"\"]", "request 0 is empty"),
+            ("[\"  \"]", "request 0 is empty"),
+        ]
+        for (source, expected) in cases {
+            #expect(throws: CartographError.self) {
+                try SymbolQueryBatchRequests.parse(Data(source.utf8), path: "/p/r.json")
+            }
+            do {
+                _ = try SymbolQueryBatchRequests.parse(Data(source.utf8), path: "/p/r.json")
+            } catch let error as CartographError {
+                #expect(
+                    error.errorDescription?.contains(expected) == true,
+                    "\(source) 의 이유가 '\(expected)' 를 말하지 않는다"
+                )
+            }
+        }
+    }
+
+    @Test("요청 수와 파일 크기의 한계를 지킨다")
+    func rejectsTooManyRequestsAndOversizedFiles() throws {
+        let many = try JSONEncoder().encode((0...1000).map { "N\($0)" })
+        #expect(throws: CartographError.self) {
+            try SymbolQueryBatchRequests.parse(many, path: "/p/r.json")
+        }
+        let justEnough = try JSONEncoder().encode((0..<1000).map { "N\($0)" })
+        #expect(try SymbolQueryBatchRequests.parse(justEnough, path: "/p/r.json").count == 1000)
+
+        // 크기 한계는 파싱보다 먼저 본다. 그것을 고정하려면 **JSON 으로 유효하지 않은**
+        // 1 MiB 초과 바이트를 넣어야 한다. 유효한 JSON 을 쓰면 파싱을 먼저 해도 같은
+        // 오류가 나서 순서가 고정되지 않는다.
+        let hugeAndMalformed = Data(String(repeating: "x", count: 1024 * 1024 + 1).utf8)
+        do {
+            _ = try SymbolQueryBatchRequests.parse(hugeAndMalformed, path: "/p/r.json")
+            Issue.record("1 MiB 를 넘는 입력이 통과했다")
+        } catch let error as CartographError {
+            #expect(
+                error.errorDescription?.contains("1048577 bytes") == true,
+                "파싱이 먼저 돌면 이유가 크기가 아니라 형식이 된다: \(error.errorDescription ?? "")"
+            )
+        }
+    }
+
+    @Test("베이스라인이 있어도 배치의 답이 하나씩 물었을 때와 같다")
+    func batchAgreesWithSingleQueriesUnderABaseline() throws {
+        let fileSystem = InMemoryFileSystem()
+        let service = makeService(configure: { $0.baselinePath = "/p/baseline.json" }, fileSystem: fileSystem)
+        _ = try service.writeBaseline(diagnostics: try service.collectAllDiagnostics(), to: "/p/baseline.json")
+
+        let names = ["DeadHelper", "UserRepository", "NoSuchThing"]
+        let batch = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self,
+            from: Data(try service.queryBatch(symbols: names).output.utf8)
+        )
+        for (name, result) in zip(names, batch.results) {
+            #expect(result == (try service.queryDocument(symbol: name)))
+        }
+        // 세션이 베이스라인을 한 번만 읽게 바꿨다. 그 값이 실제로 반영되는지 본다.
+        #expect(batch.results[0].result?.reachability.suppressedByBaseline == true)
+        #expect(batch.results[1].result?.reachability.suppressedByBaseline == false)
+        #expect(batch.results[2].status == "notFound")
+    }
+
+    @Test("모호한 이름도 배치와 단건의 답이 같다")
+    func batchAgreesWithSingleQueriesForAnAmbiguousName() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("Root", kind: .structType, module: "App", path: "/p/Root.swift", attributes: [.entryPoint])
+        builder.symbol("s:7Network6ClientC", name: "Client", kind: .classType, module: "Network", path: "/p/N.swift")
+        builder.symbol("s:7Storage6ClientC", name: "Client", kind: .classType, module: "Storage", path: "/p/S.swift")
+        let service = makeService(snapshot: builder.build())
+
+        let batch = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self,
+            from: Data(try service.queryBatch(symbols: ["Client"]).output.utf8)
+        )
+        #expect(batch.results[0] == (try service.queryDocument(symbol: "Client")))
+    }
+
+    @Test("배치에도 깊이와 개수 제한이 전해진다")
+    func batchPassesDepthAndLimitThrough() throws {
+        let service = makeService()
+        let deep = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self,
+            from: Data(try service.queryBatch(symbols: ["HomeView"], depth: 2).output.utf8)
+        )
+        #expect(
+            deep.results[0].result?.dependsOn.contains { $0.name == "UserRepository" } == true,
+            "깊이 2 가 전해지지 않으면 전이 이웃이 없다"
+        )
+        let capped = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self,
+            from: Data(try service.queryBatch(symbols: ["HomeView"], depth: 2, limit: 1).output.utf8)
+        )
+        #expect(capped.results[0].result?.truncated.dependsOn == true)
+    }
+
+    @Test("USR 로도 물을 수 있다")
+    func batchResolvesAUSR() throws {
+        let service = makeService()
+        let batch = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self,
+            from: Data(try service.queryBatch(symbols: ["UserService"]).output.utf8)
+        )
+        let usr = try #require(batch.results[0].result?.subject.usr)
+        let byUSR = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self,
+            from: Data(try service.queryBatch(symbols: [usr]).output.utf8)
+        )
+        #expect(byUSR.results[0].result?.subject.name == "UserService")
+    }
+
+    @Test("배치 출력도 두 번 돌리면 글자까지 같다")
+    func batchEncodesDeterministically() throws {
+        let service = makeService()
+        let names = ["UserService", "DeadHelper", "NoSuchThing"]
+        #expect(
+            try service.queryBatch(symbols: names).output
+                == (try service.queryBatch(symbols: names).output)
+        )
+    }
+
+    @Test("찾지 못한 이름을 결과에 실어 알린다")
+    func batchNamesTheMissingSubjects() throws {
+        let outcome = try makeService().queryBatch(
+            symbols: ["UserService", "MissingOne", "DeadHelper", "MissingTwo"]
+        )
+        #expect(outcome.subjectNotFound)
+        // 불리언만으로는 1000건 중 어느 것이 없었는지 말할 수 없다.
+        #expect(outcome.missingSubjects == ["MissingOne", "MissingTwo"])
+    }
 }

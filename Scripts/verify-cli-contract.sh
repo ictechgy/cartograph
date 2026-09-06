@@ -76,13 +76,18 @@ expect_status 64 "잘못된 열거형 값"    graph --level galaxy
 expect_status 64 "잘못된 형식 값"      dead --report-format yaml
 expect_status 64 "질의 대상 누락"      query
 expect_status 64 "0 이하의 깊이"       query Foo --depth 0
+expect_status 64 "질의 대상과 배치 동시" query Foo --batch /dev/null
+expect_status 64 "빈 질의 대상"        query ""
+# 요청 파일이 잘못된 것은 인자의 문제다. 종료 코드 2 로 내면 CI 가 인덱스를 의심한다.
+expect_status 64 "없는 배치 요청 파일"  query --batch "/tmp/cartograph-no-such-batch.json"
 expect_status 64 "잘못된 브리지 형식"  bridges --format yaml
 expect_status 64 "잘못된 브리지 대상"  bridges --target capacitor
 
 echo "종료 코드 2 — 도구 실패"
 MISSING="$(mktemp -d)"
-trap 'rm -rf "$MISSING"' EXIT
 printf '{ not json' > "$MISSING/broken.json"
+printf '{}' > "$MISSING/badbatch.json"
+printf '["Foo"]' > "$MISSING/batch.json"
 expect_status 2 "인덱스 스토어 없음"   cycles --project "$MISSING"
 expect_status 2 "없는 인덱스 경로"     cycles --index-store "$MISSING/nope"
 expect_status 2 "브리지: 인덱스 없음"  bridges --project "$MISSING"
@@ -92,6 +97,9 @@ expect_status 2 "깨진 베이스라인"      cycles --project "$MISSING" --base
 # 외부 근거 파일은 지정했는데 없으면 조용히 넘어가지 않는다. 반영됐다고 믿고 지우면 앱이 깨진다.
 expect_status 2 "없는 외부 근거 파일"  dead --project "$MISSING" --external-retentions "$MISSING/none.json"
 expect_status 2 "깨진 외부 근거 파일"  dead --project "$MISSING" --external-retentions "$MISSING/broken.json"
+# 요청 파일은 인덱스를 열기 전에 읽는다. 인덱스가 없는 프로젝트에서도 배치 오류가 먼저 난다.
+expect_status 64 "배치 검사가 색인보다 먼저" query --batch "$MISSING/badbatch.json" --project "$MISSING"
+expect_status 2 "배치도 인덱스는 필요"  query --batch "$MISSING/batch.json" --project "$MISSING"
 
 # 인덱스가 열리기는 하는데 이 프로젝트를 하나도 모르는 상태. 스토어가 없는 것과 다르다.
 # 이 경우가 조용히 0 으로 끝나면 --strict 가 0 줄을 분석하고 통과한다.
@@ -106,6 +114,35 @@ expect_status 2 "빈 인덱스: rules"     rules  --strict --project "$EMPTY"
 
 echo "종료 코드 0 — 빈 인덱스 탈출구"
 expect_status 0 "빈 인덱스 허용"       dead --strict --project "$EMPTY" --allow-empty-index
+
+echo "종료 코드 64 — 배치는 답을 다 내고 나서 실패한다"
+BATCH="$(mktemp -d)"
+trap 'rm -rf "$MISSING" "$BATCH"' EXIT
+printf '["CartographError", "NoSuchDeclaration", "CodeGraph"]' > "$BATCH/mixed.json"
+BATCH_OUT="$("$BINARY" query --batch "$BATCH/mixed.json" 2>/dev/null)"
+BATCH_STATUS=$?
+BATCH_ERR="$("$BINARY" query --batch "$BATCH/mixed.json" 2>&1 >/dev/null)"
+if [[ "$BATCH_STATUS" -eq 64 ]]; then
+    printf '  ok    64  배치에 없는 이름이 있으면 사용 오류\n'
+else
+    printf '  FAIL  %-3s 배치에 없는 이름이 있으면 사용 오류 (기대 64)\n' "$BATCH_STATUS"
+    FAILURES=$((FAILURES + 1))
+fi
+# 실패해도 표준 출력은 완전해야 한다. 이것이 깨지면 스윕 한 건의 오타가 나머지 답을 버린다.
+for needle in '"format" : "symbol-query-batch"' '"status" : "found"' '"status" : "notFound"'; do
+    if grep -q -- "$needle" <<< "$BATCH_OUT"; then
+        printf '  ok        종료 64 에도 결과가 나온다: %s\n' "$needle"
+    else
+        printf '  FAIL      종료 64 에도 결과가 나온다: %s 없음\n' "$needle"
+        FAILURES=$((FAILURES + 1))
+    fi
+done
+if grep -q -- "NoSuchDeclaration" <<< "$BATCH_ERR"; then
+    printf '  ok        오류 메시지가 없는 이름을 지목한다\n'
+else
+    printf '  FAIL      오류 메시지가 없는 이름을 지목한다\n'
+    FAILURES=$((FAILURES + 1))
+fi
 
 echo "출력 내용"
 expect_output "cartograph"      "도움말에 도구 이름"           --help

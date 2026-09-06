@@ -7,6 +7,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `query --batch <requests.json>` answers many declarations from one index read. The requests file
+  is a JSON array of 1 to 1000 names or USRs, at most 1 MiB, and the results come back in request
+  order with duplicates kept so the caller can pair the two arrays by index. Sweeping a `dead`
+  report one name at a time cost a process and an index read per name; on a 7,466-symbol app,
+  asking about all 43 findings took 19.6 s that way and 0.47 s in one batch, and all 43 answers
+  were identical to the one-at-a-time answers. An `ambiguous` name is a normal result. If any name
+  is not found the exit code is 64, but every other result is still returned. A malformed requests
+  file is rejected before the index is opened and exits 64 rather than 2, because it is an argument
+  problem and not a failure to analyze; the names that were not found are listed on stderr so a
+  failed sweep does not send you back to diff the JSON. A batch answers every request from one
+  snapshot, so a sweep cannot straddle a rebuild the way one process per name can. The output is
+  the `symbol-query-batch` v1 format that dartograph already writes, so an agent learns one
+  response shape rather than one per language.
+
 ### Changed
 
 - References are no longer sorted on the way out of the index store. Every reference in the project

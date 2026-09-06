@@ -222,6 +222,7 @@ Data.UserRepository is reachable:
 ```bash
 cartograph query UserService
 cartograph query 's:3App11UserServiceC' --depth 2 --limit 20
+cartograph query --batch requests.json
 ```
 
 심볼 하나에 대한 세 가지 질문 — 누가 쓰는가, 무엇을 쓰는가, 보존 루트에서 도달 가능한가 —
@@ -307,6 +308,40 @@ $ cartograph query Client
 
 없는 이름을 물으면 종료 코드 64로 끝난다. 스크립트의 오타가 "아무도 안 씀"으로 조용히
 넘어가지 않게 하기 위해서다.
+
+#### `--batch` — 인덱스를 한 번만 읽고 여러 선언을 묻는다
+
+```bash
+cartograph query --batch requests.json
+```
+
+`requests.json` 은 이름이나 USR 을 담은 JSON 배열이다. 1~1000개, 최대 1 MiB.
+미사용 목록을 하나씩 훑으면 이름마다 프로세스 하나와 인덱스 읽기 한 번이 든다.
+답 하나하나는 싸고 그 앞의 준비가 비싸다. 7,466 심볼 앱에서 발견 43건을 전부 물었을 때
+하나씩은 19.6초, 배치는 0.47초였고 **답은 43건 전부 같았다.**
+
+```console
+$ cartograph dead --report-format json | jq '[.diagnostics[].subject]' > requests.json
+$ cartograph query --batch requests.json
+{
+  "format" : "symbol-query-batch",
+  "results" : [ { "level" : "symbol", "requested" : "s:3App4FooV", "status" : "found", ... } ],
+  "version" : 1
+}
+```
+
+결과는 **요청 순서와 중복을 그대로** 지킨다. 부르는 쪽이 두 배열을 인덱스로 짝지을 수 있어야
+하기 때문이다. 각 원소는 단일 `query` 가 내는 것과 똑같다. 모호한 이름은 실패가 아니라 정상
+결과다. 하나라도 찾지 못하면 종료 코드는 64지만 **나머지 답은 전부 돌려준다.** 오타 하나가
+마흔둘의 답을 버리게 하지 않는다. 잘못된 요청 파일은 인덱스를 열기 전에 거부되고 2가 아니라
+64로 끝난다. 그것은 분석의 실패가 아니라 인자의 문제이기 때문이다. 찾지 못한 이름은 표준
+오류에 적힌다. 스윕이 실패했을 때 JSON 을 다시 훑지 않아도 된다.
+
+배치는 **인덱스의 한 스냅샷으로** 모든 요청에 답한다. 하나씩 도는 스윕은 재빌드를 가로질러
+절반을 다른 인덱스로 답할 수 있다.
+
+자매 저장소 dartograph 가 먼저 출하한 `symbol-query-batch` v1 과 같은 형식이다. 에이전트가
+언어마다 다른 응답을 배우게 하지 않는다.
 
 `dead --report-format json` 에도 같은 `limitations` 목록이 실린다. 미사용 목록에서 출발하는
 일괄 정리가 항목마다 `query` 를 부르지 않고도 그래프가 보지 못한 것을 본다. CI 가 읽는 형식에도

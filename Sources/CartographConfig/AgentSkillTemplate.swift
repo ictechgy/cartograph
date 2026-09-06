@@ -143,6 +143,25 @@ public enum AgentSkillTemplate {
         cartograph rules                        # layering violations
         ```
 
+        ## Asking about many declarations at once
+
+        Do not loop `cartograph query` over a `dead` report. Each run reads the whole index again;
+        the answers are cheap and the preparation is not. On a 7,466-symbol app, asking about all
+        43 findings one at a time took 19.6 s and one batch took 0.47 s, with identical answers.
+
+        ```bash
+        cartograph dead --report-format json | jq '[.diagnostics[].subject]' > /tmp/requests.json
+        cartograph query --batch /tmp/requests.json
+        ```
+
+        The file is a JSON array of 1 to 1000 names or USRs. Results come back in request order
+        with duplicates kept, so you can pair the two arrays by index, and each element is exactly
+        what a single `query` returns — the rules above apply to every element. `ambiguous` is a
+        normal result. If one name is missing the exit code is 64 but every other answer is still
+        in the output, and the missing names are listed on stderr — read the output before reacting to
+        the exit code. A batch also answers every request from one snapshot, so a sweep cannot straddle
+        a rebuild.
+
         ## Do not read the whole graph
 
         `cartograph graph --format json` emits every node and edge — tens of thousands of edges on
