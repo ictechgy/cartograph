@@ -93,10 +93,26 @@ expect_status 2 "깨진 베이스라인"      cycles --project "$MISSING" --base
 expect_status 2 "없는 외부 근거 파일"  dead --project "$MISSING" --external-retentions "$MISSING/none.json"
 expect_status 2 "깨진 외부 근거 파일"  dead --project "$MISSING" --external-retentions "$MISSING/broken.json"
 
+# 인덱스가 열리기는 하는데 이 프로젝트를 하나도 모르는 상태. 스토어가 없는 것과 다르다.
+# 이 경우가 조용히 0 으로 끝나면 --strict 가 0 줄을 분석하고 통과한다.
+# 빌드 없이 만든다. 빈 스토어 디렉터리만 있으면 탐색은 성공하고 심볼은 0 개다.
+EMPTY="$(mktemp -d)"
+trap 'rm -rf "$MISSING" "$EMPTY"' EXIT
+mkdir -p "$EMPTY/.build/index/store" "$EMPTY/Sources"
+printf 'struct A {\n    func b() {}\n}\n' > "$EMPTY/Sources/A.swift"
+expect_status 2 "빈 인덱스"            dead   --strict --project "$EMPTY"
+expect_status 2 "빈 인덱스: cycles"    cycles --strict --project "$EMPTY"
+expect_status 2 "빈 인덱스: rules"     rules  --strict --project "$EMPTY"
+
+echo "종료 코드 0 — 빈 인덱스 탈출구"
+expect_status 0 "빈 인덱스 허용"       dead --strict --project "$EMPTY" --allow-empty-index
+
 echo "출력 내용"
 expect_output "cartograph"      "도움말에 도구 이름"           --help
 expect_output "Exit codes"      "도움말에 종료 코드 표"        --help
 expect_output "swift build"     "인덱스 없음 안내에 빌드 명령" cycles --project "$MISSING"
+expect_output "--allow-empty-index" "빈 인덱스 안내에 탈출구"  dead --project "$EMPTY"
+expect_output "in scope after"  "빈 인덱스 안내에 파일 수"     dead --project "$EMPTY"
 
 echo
 if [[ "$FAILURES" -eq 0 ]]; then

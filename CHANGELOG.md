@@ -7,6 +7,49 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- An analysis whose index store knows none of the project's declarations now fails with exit code 2
+  instead of reporting "no findings" and exiting 0. A green `--strict` gate over zero analysed
+  declarations reads as "this code is clean", which is the one thing a gate must never say by
+  accident. The error names the project, the store and how it was chosen, the `libIndexStore` it
+  used, how many Swift files are under the project and how many survived include/exclude, and the
+  unit count — the three counts are what separate a wrong `--project` from a filter that removed
+  everything from a store built for another checkout. `--allow-empty-index` opts out for a run that
+  is meant to analyse nothing, and then `limitations` carries `empty-index` so the answer still says
+  it is a statement about nothing. `bridges` does not go through this guard: its scan is syntactic
+  and `Scripts/scan-public-plugins.sh` runs it against an index that contributes nothing by design.
+- Exclude globs no longer match the project root's *ancestor* directories. Matching them against the
+  absolute path meant that a project living under a directory named `DerivedData`, `Pods`,
+  `Generated`, `.build` or `Carthage` had every one of its files removed by the default excludes, so
+  the graph was empty and `--strict` passed. The same happened to any user pattern whose name
+  appeared above the project root. Excludes are now matched against the project-relative path;
+  patterns written as absolute paths still apply to absolute paths, and includes are unchanged
+  because narrowing those is the failure this filter exists to prevent. Reproduced with one package
+  built in two directories that differed only in their parent's name: 7 nodes and 3 findings under
+  one, 0 nodes and a clean exit under the other.
+- `retained_files` globs no longer match the project root's ancestor directories either. The rule
+  lived in a second place and only the exclude side had been fixed, which left the same false green
+  by the opposite route: one pattern whose name appears above the project root retained every
+  declaration, so `dead` reported nothing. Reproduced with `retained_files: ["**/repro/**"]` on a
+  project under a directory of that name, turning 3 findings into 0 with exit 0. Both directions now
+  go through one method on `PathFilter`, because a rule kept in two places gets fixed in one.
+- A run that used `--allow-empty-index` says so in the text summary, not only in the JSON
+  `limitations`: `dead: no findings (analysed nothing — --allow-empty-index) — …`. A CI log shows
+  the summary line and nothing else, so an escape hatch that is invisible there disarms the guard
+  completely.
+- The error no longer advertises `--allow-empty-index` when it has already named the cause. On the
+  wrong-path and everything-filtered branches the last and most prominent line used to be the flag
+  that silences the check, which is the opposite of the next action. It now appears only when the
+  tool genuinely cannot tell a misconfiguration from a deliberately empty run.
+- A project with Objective-C sources and no Swift is told that, instead of being told its
+  `--project` is wrong. A Flutter or React Native `ios/` directory is usually that shape, and the
+  path is right.
+- A project root given as a symbolic link is walked to the end. The URL-based directory enumeration
+  fails with `ENOTDIR` on a link to a directory while `directoryExists` follows it, so the traversal
+  found a directory it could not read and silently produced an empty tree. Pointing at this
+  repository through a link reported 0 nodes where the real path reported 1,644.
+
 ## [0.5.5] - 2026-09-05
 
 ### Fixed

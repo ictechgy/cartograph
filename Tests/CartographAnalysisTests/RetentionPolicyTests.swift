@@ -313,6 +313,29 @@ struct RetentionPathMatchingTests {
             .retainedNodes(in: graph, snapshot: snapshot)
         #expect(withBase["Helper"] == .userConfigured)
     }
+
+    @Test("파일 보존 글롭이 프로젝트 루트의 조상 디렉터리에 걸리지 않는다")
+    func retainedFilesDoNotMatchAncestorDirectories() {
+        // 제외 글롭과 같은 실패다. 조상 디렉터리 이름 하나에 걸리면 프로젝트 전체가
+        // 보존되어 `dead` 가 아무것도 보고하지 않고, 그 침묵이 초록불로 읽힌다.
+        // 실제로 `retained_files: ["**/repro/**"]` 한 줄로 3건이 0건이 되는 것을 확인했다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Helper", kind: .structType, path: "/work/repro/proj/Sources/Helper.swift")
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+
+        var options = RetentionOptions.default
+        options.retainedFiles = ["**/repro/**"]
+        let retained = RetentionPolicy(options: options, basePath: "/work/repro/proj")
+            .retainedNodes(in: graph, snapshot: snapshot)
+        #expect(retained["Helper"] == nil)
+
+        // 프로젝트 *안*의 경로는 그대로 보존된다.
+        options.retainedFiles = ["Sources/**"]
+        let inside = RetentionPolicy(options: options, basePath: "/work/repro/proj")
+            .retainedNodes(in: graph, snapshot: snapshot)
+        #expect(inside["Helper"] == .userConfigured)
+    }
 }
 
 @Suite("런타임이 관리하는 저장소")

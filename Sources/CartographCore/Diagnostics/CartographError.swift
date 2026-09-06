@@ -9,6 +9,11 @@ public enum CartographError: Error, Equatable, LocalizedError {
     case indexStoreNotFound(searchedPaths: [String])
     /// 인덱스 스토어를 열지 못함.
     case indexStoreUnreadable(path: String, underlying: String)
+    /// 인덱스는 열렸지만 이 프로젝트의 선언을 하나도 담고 있지 않음.
+    ///
+    /// 조용히 "발견 없음"으로 끝내면 `--strict` 가 0줄을 분석하고 통과한다.
+    /// 그 초록불은 코드가 깨끗하다는 뜻으로 읽히므로, 도구 실패로 다룬다.
+    case indexStoreEmpty(EmptyIndexFacts)
     /// libIndexStore 동적 라이브러리를 찾지 못함.
     case indexStoreLibraryNotFound(searchedPaths: [String])
     /// 설정 파일 해석 실패.
@@ -44,6 +49,18 @@ public enum CartographError: Error, Equatable, LocalizedError {
                 Failed to open the index store at \(path): \(underlying)
                 The store may have been written by a different toolchain, or a build may be \
                 writing to it right now. Rebuild the index and try again.
+                """
+        case let .indexStoreEmpty(facts):
+            // 탈출구는 원인을 모를 때만 안내한다. 오류의 마지막 줄은 가장 눈에 띄고,
+            // 원인을 아는 상태에서 그것을 권하면 조사 대신 은폐를 시키는 셈이다.
+            let hatch = facts.suggestsEscapeHatch
+                ? "\nPass --allow-empty-index if this run is meant to analyse nothing."
+                : ""
+            return """
+                The index store knows none of this project's declarations. Every analysis here \
+                would report "no findings" over zero declarations, and --strict would pass.
+                \(facts.summary)
+                \(facts.remedy)\(hatch)
                 """
         case let .indexStoreLibraryNotFound(searchedPaths):
             return """

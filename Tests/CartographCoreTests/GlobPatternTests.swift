@@ -141,6 +141,49 @@ struct PathFilterRelativeMatchingTests {
         #expect(PathFilter(include: ["Sources/**"], basePath: "/p/").allows("/p/Sources/A.swift"))
         #expect(PathFilter(include: ["Sources/**"], basePath: "/p").allows("/p/Sources/A.swift"))
     }
+
+    @Test("프로젝트 루트가 DerivedData 아래여도 소스가 제외되지 않는다")
+    func defaultExcludesDoNotMatchAncestorDirectories() {
+        // 제외를 절대 경로에도 물리면 프로젝트 루트의 *조상* 이름이 패턴에 걸린다.
+        // 그러면 모든 파일이 제외되어 정점 0개가 되고, --strict 가 아무것도 분석하지
+        // 않은 채 통과한다. 같은 패키지를 이름만 다른 디렉터리 아래에 두고 재현했다.
+        let filter = PathFilter(
+            exclude: CartographConfiguration.defaultExcludes,
+            basePath: "/Users/me/DerivedData/App"
+        )
+        #expect(filter.allows("/Users/me/DerivedData/App/Sources/A.swift"))
+        // 프로젝트 *안*의 빌드 산출물은 여전히 제외된다.
+        #expect(!filter.allows("/Users/me/DerivedData/App/.build/checkouts/Y/Node.swift"))
+    }
+
+    @Test("프로젝트 밖의 체크아웃은 절대 경로로 계속 제외된다")
+    func excludesStillApplyOutsideTheProject() {
+        // 기준 밖의 경로에는 상대 후보가 없다. 절대 경로로 판단하지 않으면
+        // 프로젝트 밖에 체크아웃된 의존성을 걸러 내지 못한다.
+        let filter = PathFilter(exclude: CartographConfiguration.defaultExcludes, basePath: "/Users/me/App")
+        #expect(
+            !filter.allows(
+                "/Users/me/Library/Developer/Xcode/DerivedData/App-abc/SourcePackages/checkouts/Y/N.swift"
+            )
+        )
+    }
+
+    @Test("사용자가 쓴 제외 글롭도 조상 디렉터리에 걸리지 않는다")
+    func userExcludesDoNotMatchAncestorDirectories() {
+        // 기본 목록만의 문제가 아니다. cartograph init 이 써 주는 템플릿도 같은 모양이라,
+        // 한쪽만 고치면 설정을 한 번 만든 순간 결함이 되살아난다.
+        let filter = PathFilter(exclude: ["**/Normal/**"], basePath: "/x/Normal/proj")
+        #expect(filter.allows("/x/Normal/proj/Sources/A.swift"))
+        #expect(!filter.allows("/x/Normal/proj/Normal/B.swift"))
+    }
+
+    @Test("절대 경로로 쓴 제외 글롭은 그대로 적용된다")
+    func absoluteExcludePatternsStillMatchAbsolutePaths() {
+        // 절대 경로를 일부러 적은 사람의 의도는 분명하다. 상대 후보로만 보면 그 의도가 사라진다.
+        let filter = PathFilter(exclude: ["/x/App/Vendor/**"], basePath: "/x/App")
+        #expect(!filter.allows("/x/App/Vendor/Lib.swift"))
+        #expect(filter.allows("/x/App/Sources/A.swift"))
+    }
 }
 
 @Suite("경로 정규화")

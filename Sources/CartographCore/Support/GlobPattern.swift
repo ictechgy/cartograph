@@ -21,6 +21,12 @@ public struct GlobPattern: Hashable, Sendable, CustomStringConvertible {
 
     public var description: String { pattern }
 
+    /// 사용자가 절대 경로로 쓴 패턴인지.
+    ///
+    /// 제외 판정은 프로젝트 기준 상대 경로로만 하는 것이 기본이다(`PathFilter`).
+    /// 절대 경로를 의도적으로 적은 패턴만 절대 경로에 그대로 적용해, 그 의도를 살린다.
+    public var isAbsolute: Bool { pattern.hasPrefix("/") }
+
     /// 주어진 문자열이 패턴과 일치하는지 판단한다.
     public func matches(_ value: String) -> Bool {
         if matchesLastComponentOnly {

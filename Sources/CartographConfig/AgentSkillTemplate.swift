@@ -153,6 +153,13 @@ public enum AgentSkillTemplate {
         A `64` from `query` means the name does not exist in the index. That is not evidence the
         code is unused — check your spelling, and check whether the target was built.
 
+        A `2` that says the index store knows none of this project's declarations means the tool
+        saw nothing at all. Do not treat it as "nothing is wrong". The message names what it read
+        and how many source files were in scope; the usual causes are a `--project` pointing at the
+        wrong directory, an index built for another checkout, and include/exclude patterns that
+        removed every file. Fix the cause rather than passing `--allow-empty-index`, which silences
+        the check and makes every later answer a statement about nothing.
+
         ## If there is no index store
 
         The tool reads what the compiler wrote, so the project has to be built first:

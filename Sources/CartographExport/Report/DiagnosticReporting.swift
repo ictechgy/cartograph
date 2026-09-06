@@ -14,12 +14,25 @@ public struct ReportSummary: Sendable, Equatable {
     /// 가는데, 그 목록에 한계가 없으면 Objective-C 소스나 외부 보존 근거 파일의 존재를
     /// 알 길이 없다. nil 이면 리포터가 키를 만들지 않는다.
     public let limitations: [String]?
+    /// 이 실행의 결과를 그대로 믿으면 안 되는 이유. 요약 줄에 함께 찍는다.
+    ///
+    /// `limitations` 는 JSON 리포터만 렌더링한다. CI 로그가 보여 주는 것은 텍스트 요약
+    /// 한 줄이라, 거기 나타나지 않는 사실은 없는 것과 같다. 아무것도 분석하지 않은 실행이
+    /// 평범한 초록으로 보이면 이 도구가 막으려는 바로 그 상태가 된다.
+    public let caveat: String?
 
-    public init(command: String, subject: String, suppressedCount: Int = 0, limitations: [String]? = nil) {
+    public init(
+        command: String,
+        subject: String,
+        suppressedCount: Int = 0,
+        limitations: [String]? = nil,
+        caveat: String? = nil
+    ) {
         self.command = command
         self.subject = subject
         self.suppressedCount = suppressedCount
         self.limitations = limitations
+        self.caveat = caveat
     }
 }
 

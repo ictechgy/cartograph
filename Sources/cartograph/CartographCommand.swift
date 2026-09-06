@@ -24,7 +24,8 @@ struct CartographCommand: ParsableCommand {
             Exit codes:
               0   success
               1   findings with --strict, or a configured threshold exceeded
-              2   tool failure — no index store, unreadable index, invalid configuration
+              2   tool failure — no index store, an index that knows nothing about this \
+            project, unreadable index, invalid configuration
               64  usage error — unknown option, unknown subcommand, invalid value
             """,
         version: Cartograph.version,

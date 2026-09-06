@@ -49,6 +49,12 @@ struct GlobalOptions: ParsableArguments {
     @Flag(name: .customLong("retain-public"), help: "Treat public and open declarations as used.")
     var retainPublic: Bool = false
 
+    @Flag(
+        name: .customLong("allow-empty-index"),
+        help: "Analyze even when the index store knows none of this project's declarations."
+    )
+    var allowEmptyIndex: Bool = false
+
     @Option(
         name: .customLong("since"),
         help: "Report only findings in files changed since this git revision."

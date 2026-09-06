@@ -10,8 +10,11 @@ import CartographCore
 /// 왜 살아남았는지 되짚을 수 있어야 하기 때문이다.
 public struct RetentionPolicy: Sendable {
     private let options: RetentionOptions
-    /// 파일 글롭을 상대 경로로도 맞춰 보기 위한 기준 디렉터리.
-    private let basePath: String?
+    /// `retained_files` 판정에 쓰는 경로 필터. 기준 디렉터리를 품는다.
+    ///
+    /// 기준 경로의 여러 표기를 한 번만 펼쳐 두려고 미리 만든다. 정점마다 다시 만들면
+    /// 심볼 수만큼 URL 연산이 생긴다.
+    private let pathFilter: PathFilter
     /// 다른 도구가 알려 온 언어 경계 너머의 사용.
     private let externalRetentions: ExternalRetentionIndex
 
@@ -21,8 +24,8 @@ public struct RetentionPolicy: Sendable {
         externalRetentions: ExternalRetentionIndex = .empty
     ) {
         self.options = options
-        self.basePath = basePath
         self.externalRetentions = externalRetentions
+        pathFilter = PathFilter(basePath: basePath)
     }
 
     /// 보존해야 할 정점과 그 근거.
@@ -107,9 +110,10 @@ public struct RetentionPolicy: Sendable {
     // MARK: - 개별 규칙
 
     private func isUserRetained(_ node: GraphNode) -> Bool {
-        if let path = node.location?.path,
-           PathFilter.matchCandidates(for: path, relativeTo: basePath)
-               .contains(where: { options.retainedFiles.matchesAny($0) }) {
+        // 제외와 같은 규칙으로 본다. 절대 경로까지 후보로 두면 프로젝트 루트의 조상
+        // 디렉터리 이름이 패턴에 걸려, `retained_files` 한 줄이 프로젝트 전체를 보존하고
+        // `dead` 가 아무것도 보고하지 않는다. 제외 쪽과 정확히 같은 모양의 거짓 초록이다.
+        if let path = node.location?.path, pathFilter.removes(options.retainedFiles, path) {
             return true
         }
         return options.retainedNames.matchesAny(node.name)

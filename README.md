@@ -585,7 +585,7 @@ Exit codes let a script tell "your code has problems" from "the tool did not run
 |---|---|
 | `0` | Success |
 | `1` | Findings with `--strict`, or a configured threshold exceeded |
-| `2` | Tool failure — no index store, unreadable index, invalid configuration |
+| `2` | Tool failure — no index store, an index that knows nothing about this project, unreadable index, invalid configuration |
 | `64` | Usage error — unknown option, unknown subcommand, invalid value |
 
 ```yaml
