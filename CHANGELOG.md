@@ -32,6 +32,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   0.64-0.68 s to 0.58-0.63 s, with byte-identical output. The wall-clock share is smaller than the
   profile share because reading the index store dominates.
 
+### Removed
+
+- The known limitation "a retained member inside an unreachable type still answers retained" is
+  gone from both READMEs and from the agent skill, where it was rule 6. The change below fixed it;
+  the documents still described the old behaviour. Verified on a real app: `query` on the `body` of
+  an unreachable `View` now reports `state: unreachable`, and `dead --explain` says "not reachable
+  from any retained root" instead of naming the framework.
+
 ### Fixed
 
 - A member is no longer reported as `retained` inside a type the same run calls `unreachable`.
