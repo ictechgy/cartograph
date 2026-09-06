@@ -9,6 +9,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A package that exports library products while `retain_public` is off now says so in
+  `limitations`. Its callers live outside the repository, so the entire public surface comes back
+  unreachable, and a consumer that turns that list into deletions breaks every dependent. Reproduced
+  on a package with one library product: two public types reported with the default, none with
+  `--retain-public`. The check reads the manifest and stays silent when any executable product is
+  declared, because then the entry point is inside the repository and reachability means what it
+  says.
+
 - The limitations list reaches every report format a CI job reads, not only JSON. A gate that passes
   while the analysis was blind to twelve Objective-C files is the one thing a gate must never do,
   and until now the only way to see that was to ask for JSON. `text` counts them in the summary line

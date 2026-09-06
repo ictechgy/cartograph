@@ -276,7 +276,8 @@ Five things this output does deliberately:
   between absent and invisible. `limitations` is counted from *your* project, within the same
   include/exclude scope the graph uses, so it stays quiet when there is nothing to warn about. It
   reports Objective-C sources, Interface Builder documents, sources edited since the index store was
-  written, and a path filter that narrows the analysis *beyond the defaults*, or an edge-kind
+  written, a package that exports library products while `retain_public` is off, and a path filter
+  that narrows the analysis *beyond the defaults*, or an edge-kind
   filter, that could be the reason `usedBy` is empty. The default excludes alone do not count —
   they are a noise guard, not a narrowing you chose, and a warning that fires on every project is
   not read.

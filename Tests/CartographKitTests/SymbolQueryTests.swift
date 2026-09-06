@@ -338,6 +338,45 @@ struct SymbolQueryTests {
         #expect(byExclude.limitations.contains { $0.hasPrefix("configured-path-filter:") })
     }
 
+    @Test("라이브러리 패키지에서 공개 API 가 보존되지 않으면 그 사실을 알린다")
+    func reportsUnretainedPublicApiForLibraryPackages() throws {
+        // 호출자가 저장소 밖에 있으므로 공개 API 전체가 미사용으로 나온다. 그 목록을 그대로
+        // 삭제로 옮기면 소비자가 전부 깨진다. 스크래치 패키지에서 공개 타입 둘이 통째로
+        // 보고되는 것을 확인했다.
+        let library = InMemoryFileSystem(files: [
+            "/p/Package.swift": "let package = Package(\n"
+                + "    products: [.library(name: \"Core\", targets: [\"Core\"])],\n"
+                + "    targets: [.target(name: \"Core\")]\n)"
+        ])
+        let document = try makeService(fileSystem: library).queryDocument(symbol: "UserService")
+        #expect(document.limitations.contains { $0.hasPrefix("public-api-not-retained: this package exports 1") })
+
+        // 보존을 켜면 알릴 것이 없다.
+        let retained = try makeService(
+            configure: { $0.retention.retainPublic = true },
+            fileSystem: library
+        ).queryDocument(symbol: "UserService")
+        #expect(!retained.limitations.contains { $0.hasPrefix("public-api-not-retained:") })
+    }
+
+    @Test("실행 파일이 있는 패키지에는 공개 API 한계를 붙이지 않는다")
+    func executablePackagesAreNotWarnedAboutPublicApi() throws {
+        // 진입점이 저장소 안에 있으면 도달성 분석이 성립한다. 공개 API 가 미사용으로 나오는
+        // 것이 정상적인 답일 수 있어, 여기서 경보를 붙이면 매번 붙는 경보가 된다.
+        let mixed = InMemoryFileSystem(files: [
+            "/p/Package.swift": "let package = Package(\n"
+                + "    products: [.library(name: \"Kit\", targets: [\"Kit\"]), "
+                + ".executable(name: \"tool\", targets: [\"tool\"])],\n"
+                + "    targets: [.target(name: \"Kit\"), .executableTarget(name: \"tool\")]\n)"
+        ])
+        let document = try makeService(fileSystem: mixed).queryDocument(symbol: "UserService")
+        #expect(!document.limitations.contains { $0.hasPrefix("public-api-not-retained:") })
+
+        // 매니페스트가 아예 없는 프로젝트(Xcode 앱)에서도 조용하다.
+        let app = try makeService().queryDocument(symbol: "UserService")
+        #expect(!app.limitations.contains { $0.hasPrefix("public-api-not-retained:") })
+    }
+
     @Test("설정이 간선 종류를 좁히면 그 사실을 알린다")
     func reportsConfiguredEdgeKinds() throws {
         let document = try makeService { $0.edgeKinds = [.call] }.queryDocument(symbol: "UserService")
