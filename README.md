@@ -239,8 +239,7 @@ $ cartograph query UserService
   "level" : "symbol",
   "limitations" : [
     "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
-    "index-staleness: 3 of 214 source file(s) changed after the index store was written, so a call added since the last build is not here yet",
-    "single-configuration: the index store knows only the configuration that was built, ..."
+    "index-staleness: 3 of 214 source file(s) changed after the index store was written, so a call added since the last build is not here yet"
   ],
   "requested" : "UserService",
   "result" : {
@@ -277,7 +276,10 @@ Five things this output does deliberately:
   between absent and invisible. `limitations` is counted from *your* project, within the same
   include/exclude scope the graph uses, so it stays quiet when there is nothing to warn about. It
   reports Objective-C sources, Interface Builder documents, sources edited since the index store was
-  written, and a configured path or edge-kind filter that could be the reason `usedBy` is empty.
+  written, and a path filter that narrows the analysis *beyond the defaults*, or an edge-kind
+  filter, that could be the reason `usedBy` is empty. The default excludes alone do not count —
+  they are a noise guard, not a narrowing you chose, and a warning that fires on every project is
+  not read.
 - **A baseline the team already accepted is marked as such** (`suppressedByBaseline`), so nobody
   re-litigates a decision that was already made. It is only set when the declaration would actually
   have been reported.
@@ -316,7 +318,14 @@ or `candidates` depending on `status`.
 An unknown name exits 64, so a typo in a script does not pass silently as "nothing uses it".
 
 `dead --report-format json` carries the same `limitations` list, so a sweep that starts from the
-unused list sees what the graph could not, without a `query` per entry.
+unused list sees what the graph could not, without a `query` per entry. Every format a CI job reads
+carries it too, because a gate that passes while the analysis was blind is the one thing a gate must
+never do: `text` counts them in the summary line and prints a `limitations:` block after it, `xcode`
+emits a location-less `note:`, `github-actions` emits a `::notice` with no file so it lands on the
+run summary, and `sarif` puts them in `runs[].invocations[].toolExecutionNotifications`. None of
+that changes the exit code or the finding count. `checkstyle` is the exception: its schema has no
+slot that is not a file's error, and adding one would raise the finding count its consumers show,
+so pair it with one of the others when you need the limitations.
 
 ### `bridges` — export the Swift side of a language boundary
 

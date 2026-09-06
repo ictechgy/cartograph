@@ -159,8 +159,9 @@ struct QueryCommand: ParsableCommand {
 
             This command never says a declaration is safe to delete. It reports what the index can \
             see and, in the same response, the channels this analysis cannot see — Objective-C \
-            sources, Interface Builder documents, uncompiled #if branches — so the caller can \
-            decide how far to trust the answer.
+            sources, Interface Builder documents, an index older than the sources — so the caller \
+            can decide how far to trust the answer. The list is counted from your project and stays \
+            empty when there is nothing to report.
 
             Names that match more than one declaration return the candidates and their USRs \
             instead of a guess. Ask again with a USR.

@@ -7,7 +7,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- The limitations list reaches every report format a CI job reads, not only JSON. A gate that passes
+  while the analysis was blind to twelve Objective-C files is the one thing a gate must never do,
+  and until now the only way to see that was to ask for JSON. `text` counts them in the summary line
+  and prints a `limitations:` block after it, `xcode` emits a location-less `note:`,
+  `github-actions` emits a `::notice` with no file so it lands on the run summary, and `sarif` puts
+  them in `runs[].invocations[].toolExecutionNotifications` rather than in `results`, so code
+  scanning does not count them as alerts. Exit codes and finding counts are unchanged. `checkstyle`
+  is left alone on purpose: its schema has no slot that is not a file's `<error>`, and adding one
+  would raise the finding count its consumers display.
+
 ### Changed
+
+- Two limitations that fired on every run are gone from the list. `single-configuration` counted
+  nothing: it was a statement about index stores in general rather than about this project, which
+  is the definition of copying the README into the answer. `configured-path-filter` fired even on a
+  project with no `.cartograph.yml`, because `exclude` defaults to `defaultExcludes`; it now fires
+  only when include is set or exclude narrows the analysis past those defaults. Measured on four
+  real projects, both fired on all four. A warning that fires every time is not read, and this list
+  is where the tool says what it cannot see. The `#if` sentence now lives in the Known limitations
+  of both READMEs and in the agent skill, where it belongs. `dead --report-format json` omits the
+  `limitations` key entirely when there is nothing to report, rather than emitting an empty array.
 
 - `IndexStoreLocator.derivedDataCandidates` takes `projectNames: [String]` instead of a single
   `projectName`. Ownership has to be decided over the union of every name at once: with one call per

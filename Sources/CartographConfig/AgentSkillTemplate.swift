@@ -102,6 +102,10 @@ public enum AgentSkillTemplate {
           why (`external-retentions-unmatched`, `-ambiguous`, `-stale`). Only a `retained` or
           `retainedByMember` state with `reason: externalBridge` means the other side was found
           calling it (or one of its members).
+        - **Declarations behind an uncompiled `#if` branch.** The index store knows only the configuration
+          that was actually built, so a declaration used only from a branch that did not compile looks
+          unreached. Do not treat `unreachable` as settled for code inside `#if` until it has been built
+          in that configuration.
         - **Anything you changed in this session.** The index is written by the compiler at build
           time. If you edited Swift and did not rebuild, the answer describes the code as it was
           before your edit.

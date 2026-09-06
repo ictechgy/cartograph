@@ -200,6 +200,7 @@ public struct CartographService: Sendable {
     public func detectUnusedCode(reportingTestOnlyCode: Bool = false) throws -> CommandOutcome {
         let context = try loadContext()
         let (graph, report) = unusedCode(in: context, findingTestOnlyCode: reportingTestOnlyCode)
+        let limitations = analysisLimitations(context: context, symbolGraph: graph)
         return try finish(
             AnalysisDiagnostics.diagnostics(for: report)
                 + AnalysisDiagnostics.testOnlyDiagnostics(for: report),
@@ -210,7 +211,8 @@ public struct CartographService: Sendable {
             // 테스트 전용은 정보성이라 임계값과 --strict 계산에 넣지 않는다.
             countedRules: [AnalysisDiagnostics.Rule.unusedSymbol],
             // 미사용 목록은 에이전트가 삭제의 출발점으로 삼는 답이다. `query` 처럼 한계를 싣는다.
-            limitations: analysisLimitations(context: context, symbolGraph: graph),
+            // 알릴 것이 없으면 키 자체를 만들지 않는다. 빈 배열이 매번 붙으면 그것도 경보다.
+            limitations: limitations.isEmpty ? nil : limitations,
             caveat: emptyIndexCaveat(context)
         )
     }
@@ -508,10 +510,11 @@ public struct CartographService: Sendable {
                     + "index store was written, so a call added since the last build is not here yet"
             )
         }
-        if !configuration.include.isEmpty || !configuration.exclude.isEmpty {
+        if configuration.narrowsPathsBeyondDefaults {
             result.append(
-                "configured-path-filter: include/exclude patterns are in effect, so an empty "
-                    + "'usedBy' can mean the caller was filtered out rather than absent"
+                "configured-path-filter: include/exclude patterns narrow the analysis beyond the "
+                    + "defaults, so an empty 'usedBy' can mean the caller was filtered out rather "
+                    + "than absent"
             )
         }
         if !configuration.edgeKinds.isEmpty {
@@ -521,10 +524,10 @@ public struct CartographService: Sendable {
                     + " edges are in the graph, so other relations are invisible here"
             )
         }
-        result.append(
-            "single-configuration: the index store knows only the configuration that was built, "
-                + "so declarations behind an uncompiled #if branch do not exist here"
-        )
+        // `single-configuration` 은 여기 있었다. 세는 것이 없어 모든 실행에 붙었고,
+        // 프로젝트에 대한 진술이 아니라 인덱스 스토어 일반에 대한 진술이라 정의상
+        // README 를 복사한 것이었다. 그 문장은 두 README 의 알려진 한계와 에이전트
+        // 스킬에 있고, 여기서는 알릴 것이 있을 때만 말한다.
         result += externalRetentionLimitations(in: context, symbolGraph: symbolGraph, storeDate: storeDate)
         return result
     }

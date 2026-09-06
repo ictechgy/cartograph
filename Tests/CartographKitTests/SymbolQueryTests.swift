@@ -215,9 +215,9 @@ struct SymbolQueryTests {
 
     @Test("이 분석이 보지 못하는 채널을 상태와 무관하게 모든 답에 실어 보낸다")
     func shipsLimitationsWithEveryAnswer() throws {
+        // 알릴 것이 없으면 조용해야 한다. 매번 붙는 경보는 읽히지 않는다.
         let plain = try makeService().queryDocument(symbol: "UserService")
-        #expect(plain.limitations.contains { $0.hasPrefix("single-configuration:") })
-        #expect(!plain.limitations.contains { $0.hasPrefix("objective-c-sources:") })
+        #expect(plain.limitations.isEmpty)
 
         let mixed = InMemoryFileSystem(files: [
             "/p/Legacy/LegacyBridge.m": "@implementation LegacyBridge @end",
@@ -312,6 +312,30 @@ struct SymbolQueryTests {
             environment: CartographEnvironment(fileSystem: fileSystem)
         )
         #expect(service.analysisLimitations().contains { $0.hasPrefix("index-staleness: 1 of 1") })
+    }
+
+    @Test("기본 제외만으로는 경로 필터 한계가 붙지 않는다")
+    func defaultExcludesDoNotCountAsANarrowedFilter() throws {
+        // `exclude` 의 기본값이 `defaultExcludes` 라 "비어 있지 않다" 로 판단하면 설정
+        // 파일이 없는 프로젝트에서도 늘 참이 된다. 실측한 네 프로젝트 전부가 그랬다.
+        let document = try makeService().queryDocument(symbol: "UserService")
+        #expect(!document.limitations.contains { $0.hasPrefix("configured-path-filter:") })
+
+        // 기본보다 느슨해도 알릴 것이 없다. 기본이 보여 줬을 호출자를 더 숨기지 못한다.
+        let looser = try makeService { $0.exclude = ["**/.build/**"] }
+            .queryDocument(symbol: "UserService")
+        #expect(!looser.limitations.contains { $0.hasPrefix("configured-path-filter:") })
+    }
+
+    @Test("기본보다 좁히면 경로 필터 한계가 붙는다")
+    func narrowingBeyondTheDefaultsIsReported() throws {
+        let byInclude = try makeService { $0.include = ["Domain/**"] }
+            .queryDocument(symbol: "UserService")
+        #expect(byInclude.limitations.contains { $0.hasPrefix("configured-path-filter:") })
+
+        let byExclude = try makeService { $0.exclude = ["**/Legacy/**"] }
+            .queryDocument(symbol: "UserService")
+        #expect(byExclude.limitations.contains { $0.hasPrefix("configured-path-filter:") })
     }
 
     @Test("설정이 간선 종류를 좁히면 그 사실을 알린다")

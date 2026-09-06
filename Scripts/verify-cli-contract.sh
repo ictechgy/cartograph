@@ -113,6 +113,10 @@ expect_output "Exit codes"      "도움말에 종료 코드 표"        --help
 expect_output "swift build"     "인덱스 없음 안내에 빌드 명령" cycles --project "$MISSING"
 expect_output "--allow-empty-index" "빈 인덱스 안내에 탈출구"  dead --project "$EMPTY"
 expect_output "in scope after"  "빈 인덱스 안내에 파일 수"     dead --project "$EMPTY"
+# 아무것도 분석하지 않은 실행은 기계 형식에서도 조용하지 않아야 한다. 조용하면 CI 로그에서
+# 깨끗한 실행과 바이트까지 같아진다.
+expect_output "::notice"        "탈출구 실행이 GitHub Actions 형식에도 남는다" \
+    dead --project "$EMPTY" --allow-empty-index --report-format github-actions
 
 echo
 if [[ "$FAILURES" -eq 0 ]]; then

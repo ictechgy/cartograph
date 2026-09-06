@@ -89,6 +89,19 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
         PathFilter(include: include, exclude: exclude, basePath: projectPath)
     }
 
+    /// 경로 필터가 기본값보다 분석 범위를 좁히는지.
+    ///
+    /// 기본 제외는 사용자가 좁힌 범위가 아니라 잡음 제거용 안전장치다. `exclude` 의 기본값이
+    /// `defaultExcludes` 이므로 "비어 있지 않다" 로 판단하면 설정 파일이 없는 프로젝트에서도
+    /// 늘 참이 되고, 그러면 모든 답에 같은 경보가 붙는다. 매번 붙는 경보는 읽히지 않는다.
+    ///
+    /// 기본보다 느슨한 필터는 기본이 보여 줬을 호출자를 더 숨길 수 없으므로 알릴 것이 없다.
+    /// 비교는 패턴 문자열 동등성이라, 뜻은 같고 글자가 다른 패턴은 발화하는 쪽으로 기운다.
+    /// 알리는 쪽이 안전한 방향이라 그대로 둔다.
+    public var narrowsPathsBeyondDefaults: Bool {
+        !include.isEmpty || !Set(exclude).isSubset(of: Set(Self.defaultExcludes))
+    }
+
     /// 이름으로 레이어를 찾는다.
     public func layer(named name: String) -> LayerDefinition? {
         layers.first { $0.name == name }
