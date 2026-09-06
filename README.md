@@ -70,7 +70,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", from: "0.5.5"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.5.5"),
 ```
 
 ```bash
@@ -78,7 +78,18 @@ swift package cartograph dead --strict
 swift package cartograph graph --format mermaid > graph.mmd
 ```
 
-The plugin declares no write permission, so it never prompts; redirect stdout to save output.
+It has to be `revision:`, not `from:`. Cartograph depends on `indexstore-db`, which publishes no
+semantic-version tags and is pinned to a release branch, and SwiftPM refuses to resolve a
+stable-version dependency whose own dependency is unstable:
+
+```
+error: … package 'cartograph' is required using a stable-version but 'cartograph'
+depends on an unstable-version package 'indexstore-db'.
+```
+
+`revision:` takes the tag name, so the pin still reads as a version and still has to be raised by
+hand at each release. The plugin declares no write permission, so it never prompts; redirect stdout
+to save output.
 
 **From source:**
 
