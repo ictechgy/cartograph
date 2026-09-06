@@ -223,4 +223,66 @@ struct RollupFilterTests {
         let graph = GraphBuilder(options: .init(level: .type)).build(from: builder.build())
         #expect(graph.nodeIDs == [NodeID("Foo")])
     }
+
+    /// 참조 배열의 순서가 결과 그래프에 남지 않는지.
+    ///
+    /// `IndexStoreProvider` 는 참조를 정렬하지 않고 넘긴다. 인덱스에서 읽은 순서 그대로다.
+    /// 그래도 되는 이유는 `CodeGraph.init` 이 간선을 서명으로 접은 뒤 다시 정렬하기
+    /// 때문인데, 그것은 코드가 지금 그렇다는 사실일 뿐 계약이 아니었다. 여기서 계약으로
+    /// 만든다. 이 테스트가 깨지면 참조 순서가 출력에 새는 경로가 생긴 것이므로,
+    /// 정렬을 되살리든 새 경로를 고치든 둘 중 하나를 해야 한다.
+    @Test("참조를 어떤 순서로 넣어도 그래프가 같다")
+    func referenceOrderDoesNotReachTheGraph() {
+        func snapshot(reversed: Bool) -> IndexSnapshot {
+            var builder = SnapshotBuilder()
+            for name in ["A", "B", "C", "D"] {
+                builder.symbol(name, kind: .structType, path: "/p/Sources/\(name).swift")
+            }
+            builder.symbol("ext", name: "D", kind: .extensionDeclaration, path: "/p/Sources/DExt.swift")
+            builder.symbol("ext.run", name: "run()", kind: .method, path: "/p/Sources/DExt.swift", parent: "ext")
+            var edges: [(String, String, EdgeKind)] = [
+                ("A", "B", .reference), ("B", "C", .call), ("C", "D", .conformance),
+                ("A", "C", .call), ("D", "A", .reference), ("A", "B", .call),
+                // 서명이 같은 쌍. 가중치를 더해 접는 경로를 실제로 밟게 한다.
+                // 이것이 없으면 "먼저 온 것이 이긴다" 로 바꿔도 테스트가 통과한다.
+                ("B", "C", .call),
+                // 익스텐션 간선. 순서 계약이 실제로 필요한 유일한 소비자가
+                // `extensionTargets` 이므로 그 경로도 함께 지난다.
+                ("ext", "D", .extends), ("ext.run", "A", .call),
+            ]
+            if reversed { edges.reverse() }
+            for edge in edges { builder.reference(from: edge.0, to: edge.1, kind: edge.2) }
+            return builder.build()
+        }
+
+        for level in [GraphLevel.symbol, .type, .file, .module] {
+            let options = GraphBuilder.Options(level: level)
+            let forward = GraphBuilder(options: options).build(from: snapshot(reversed: false))
+            let backward = GraphBuilder(options: options).build(from: snapshot(reversed: true))
+            #expect(forward.edges == backward.edges, "\(level) 에서 간선 순서가 갈렸다")
+            #expect(forward.nodeIDs == backward.nodeIDs, "\(level) 에서 정점 순서가 갈렸다")
+        }
+    }
+
+    /// 같은 익스텐션 USR 에 확장 대상이 둘 오면 순서와 무관하게 같은 것을 고르는지.
+    ///
+    /// 실제 인덱스에서는 관측되지 않은 형태다. 그래도 참조를 정렬하지 않게 된 뒤로는
+    /// "마지막이 이긴다" 가 곧 "인덱스가 준 순서가 이긴다" 라서, 언젠가 이 형태가
+    /// 나타나면 같은 프로젝트에 두 답이 나온다. 그 문을 닫아 둔다.
+    @Test("익스텐션 대상이 둘이어도 순서에 따라 갈리지 않는다")
+    func extensionTargetIsOrderIndependent() {
+        func graph(reversed: Bool) -> CodeGraph {
+            var builder = SnapshotBuilder()
+            builder.symbol("Alpha", kind: .structType, path: "/p/Sources/Alpha.swift")
+            builder.symbol("Beta", kind: .structType, path: "/p/Sources/Beta.swift")
+            builder.symbol("ext", name: "Alpha", kind: .extensionDeclaration, path: "/p/Sources/Ext.swift")
+            builder.symbol("ext.run", name: "run()", kind: .method, path: "/p/Sources/Ext.swift", parent: "ext")
+            var targets = ["Alpha", "Beta"]
+            if reversed { targets.reverse() }
+            for target in targets { builder.reference(from: "ext", to: target, kind: .extends) }
+            return GraphBuilder(options: .init(level: .type)).build(from: builder.build())
+        }
+        #expect(graph(reversed: false).nodeIDs == graph(reversed: true).nodeIDs)
+        #expect(graph(reversed: false).edges == graph(reversed: true).edges)
+    }
 }
