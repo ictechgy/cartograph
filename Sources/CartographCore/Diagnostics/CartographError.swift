@@ -6,7 +6,10 @@ import Foundation
 /// "인덱스 스토어를 못 찾았다"보다 "어떻게 만들면 되는지"를 알고 싶어 한다.
 public enum CartographError: Error, Equatable, LocalizedError {
     /// 인덱스 스토어 경로를 찾지 못함.
-    case indexStoreNotFound(searchedPaths: [String])
+    ///
+    /// `derivedData` 는 DerivedData 를 훑어본 결과다. 이름이 하나도 맞지 않으면 후보
+    /// 경로가 한 줄도 생기지 않아, 목록만으로는 그곳을 보기라도 했는지 알 수 없었다.
+    case indexStoreNotFound(searchedPaths: [String], derivedData: DerivedDataSearch? = nil)
     /// 인덱스 스토어를 열지 못함.
     case indexStoreUnreadable(path: String, underlying: String)
     /// 인덱스는 열렸지만 이 프로젝트의 선언을 하나도 담고 있지 않음.
@@ -14,6 +17,10 @@ public enum CartographError: Error, Equatable, LocalizedError {
     /// 조용히 "발견 없음"으로 끝내면 `--strict` 가 0줄을 분석하고 통과한다.
     /// 그 초록불은 코드가 깨끗하다는 뜻으로 읽히므로, 도구 실패로 다룬다.
     case indexStoreEmpty(EmptyIndexFacts)
+    /// 이름은 맞지만 어느 것이 이 프로젝트의 것인지 가릴 수 없는 DerivedData 가 여럿.
+    ///
+    /// 최근성으로 하나를 고르면 남의 인덱스로 분석하고도 아무 표시가 나지 않는다.
+    case indexStoreAmbiguous(directories: [String], names: [String])
     /// libIndexStore 동적 라이브러리를 찾지 못함.
     case indexStoreLibraryNotFound(searchedPaths: [String])
     /// 설정 파일 해석 실패.
@@ -33,10 +40,11 @@ public enum CartographError: Error, Equatable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case let .indexStoreNotFound(searchedPaths):
+        case let .indexStoreNotFound(searchedPaths, derivedData):
             return """
                 Could not find an index store. Searched:
-                \(searchedPaths.map { "  - \($0)" }.joined(separator: "\n"))
+                \(searchedPaths.map { "  - \($0)" }.joined(separator: "\n"))\
+                \(derivedData.map { "\n\($0.explanation)" } ?? "")
                 Build first so the compiler writes an index store:
                   swift build
                   xcodebuild build COMPILER_INDEX_STORE_ENABLE=YES -derivedDataPath <path>
@@ -61,6 +69,15 @@ public enum CartographError: Error, Equatable, LocalizedError {
                 would report "no findings" over zero declarations, and --strict would pass.
                 \(facts.summary)
                 \(facts.remedy)\(hatch)
+                """
+        case let .indexStoreAmbiguous(directories, names):
+            return """
+                More than one DerivedData directory matches this project by name, and none of them \
+                names it in its info.plist:
+                \(directories.map { "  - \($0)" }.joined(separator: "\n"))
+                Names tried: \(names.map { "'\($0)'" }.joined(separator: ", ")).
+                Picking the most recent one would analyse another project's index without saying so. \
+                Pass --index-store <path> to name the store you mean.
                 """
         case let .indexStoreLibraryNotFound(searchedPaths):
             return """

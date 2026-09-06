@@ -77,3 +77,51 @@ struct DiagnosticTests {
         #expect(relative.message == "m")
     }
 }
+
+@Suite("DerivedData 탐색 결과 문장")
+struct DerivedDataSearchTests {
+    private func search(
+        rootExists: Bool = true,
+        matched: Int,
+        withStore: Int
+    ) -> DerivedDataSearch {
+        DerivedDataSearch(
+            root: "/dd",
+            rootExists: rootExists,
+            names: ["HealthMap", "ios"],
+            matchedDirectoryCount: matched,
+            storeDirectoryCount: withStore
+        )
+    }
+
+    @Test("루트가 없으면 그것만 말한다")
+    func missingRoot() {
+        let explanation = search(rootExists: false, matched: 0, withStore: 0).explanation
+        #expect(explanation.contains("no DerivedData directory at /dd"))
+    }
+
+    @Test("이름이 하나도 안 맞으면 시도한 이름을 전부 알린다")
+    func nothingMatched() {
+        // 이름이 안 맞으면 후보 경로가 한 줄도 생기지 않아, 검색 목록만으로는
+        // 도구가 그곳을 보기라도 했는지 알 수 없었다.
+        let explanation = search(matched: 0, withStore: 0).explanation
+        #expect(explanation.contains("'HealthMap', 'ios'"))
+        #expect(explanation.contains("after the document it opened"))
+    }
+
+    @Test("이름은 맞았는데 스토어가 없으면 빌드를 먼저 가리킨다")
+    func matchedButNeverBuilt() {
+        // 여기서 빌드 설정부터 시키면 안 된다. Xcode 의 보통 빌드는 그 설정 없이도
+        // 인덱스를 남기므로, 흔한 원인은 아직 빌드하지 않았거나 DerivedData 를 지운 것이다.
+        let explanation = search(matched: 2, withStore: 0).explanation
+        #expect(explanation.contains("has not been built there yet"))
+        #expect(explanation.contains("DerivedData was cleaned"))
+    }
+
+    @Test("스토어는 있는데 남의 것이면 그렇게 말한다")
+    func matchedButNotOwned() {
+        let explanation = search(matched: 2, withStore: 2).explanation
+        #expect(explanation.contains("names a different project"))
+        #expect(explanation.contains("--index-store"))
+    }
+}

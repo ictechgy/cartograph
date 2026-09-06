@@ -115,7 +115,16 @@ cartograph graph --index-store DerivedData/Index.noindex/DataStore
 ```
 
 Omit `--index-store` and Cartograph looks in the usual places — `.build/index/store`,
-`.build/debug/index/store`, `.build/out`, and `~/Library/Developer/Xcode/DerivedData/<project>-*`.
+`.build/debug/index/store`, `.build/out`, and `~/Library/Developer/Xcode/DerivedData`.
+
+Under DerivedData, Xcode names the directory `<name>-<hash>` after **the document it opened**, not
+after the folder that holds it. So Cartograph tries every name the project root offers: each
+`.xcodeproj` and `.xcworkspace` directly inside it, plus the folder's own name. That is what makes
+`cartograph dead` work from a Flutter or React Native `ios/` directory, where the folder is `ios`
+and the project is `Runner.xcodeproj`. Only the root is scanned, so a `Pods/Pods.xcodeproj` never
+becomes a name. When several directories match by name, the `WorkspacePath` in each one's
+`info.plist` decides which belongs to this project; if none of them names it, Cartograph says so
+rather than picking the most recent.
 When several exist it takes the most recently written one, because analyzing a stale index fails
 quietly rather than loudly. Recent SwiftPM writes an index automatically, so for a Swift package
 `cartograph graph` alone usually works.

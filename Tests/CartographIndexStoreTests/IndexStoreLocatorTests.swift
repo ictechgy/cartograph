@@ -69,7 +69,7 @@ struct IndexStoreLocatorTests {
             "/dd/Other-123/Index.noindex/DataStore/units/a": "",
         ])
         let candidates = IndexStoreLocator(fileSystem: fileSystem)
-            .derivedDataCandidates(projectName: "MyApp", derivedDataPath: "/dd")
+            .derivedDataCandidates(projectNames: ["MyApp"], derivedDataPath: "/dd")
         #expect(candidates.contains("/dd/MyApp-abcdef/Index.noindex/DataStore"))
         #expect(candidates.contains("/dd/MyApp-abcdef/Index/DataStore"))
         #expect(!candidates.contains { $0.contains("Other-123") })
@@ -79,7 +79,7 @@ struct IndexStoreLocatorTests {
     func missingDerivedDataYieldsNoCandidates() {
         #expect(
             IndexStoreLocator(fileSystem: InMemoryFileSystem())
-                .derivedDataCandidates(projectName: "MyApp", derivedDataPath: "/nope")
+                .derivedDataCandidates(projectNames: ["MyApp"], derivedDataPath: "/nope")
                 .isEmpty
         )
     }
@@ -157,7 +157,7 @@ struct DerivedDataMatchingTests {
             "/dd/App-bbbbbb/Index.noindex/DataStore/units/a": "",
         ])
         let candidates = IndexStoreLocator(fileSystem: fileSystem)
-            .derivedDataCandidates(projectName: "App", derivedDataPath: "/dd", projectPath: "/src/main/App")
+            .derivedDataCandidates(projectNames: ["App"], derivedDataPath: "/dd", projectPath: "/src/main/App")
         #expect(candidates.contains("/dd/App-aaaaaa/Index.noindex/DataStore"))
         #expect(candidates.allSatisfy { !$0.contains("App-bbbbbb") })
     }
@@ -192,7 +192,7 @@ struct DerivedDataMatchingTests {
             "/dd/App-bbbbbb/Index.noindex/DataStore/units/a": "",
         ])
         let candidates = IndexStoreLocator(fileSystem: fileSystem)
-            .derivedDataCandidates(projectName: "App", derivedDataPath: "/dd", projectPath: "/src/main/App")
+            .derivedDataCandidates(projectNames: ["App"], derivedDataPath: "/dd", projectPath: "/src/main/App")
         #expect(candidates.contains("/dd/App-aaaaaa/Index.noindex/DataStore"))
         #expect(candidates.contains("/dd/App-bbbbbb/Index.noindex/DataStore"))
     }
@@ -229,6 +229,165 @@ struct DerivedDataMatchingTests {
         """
     }
 
+    @Test("폴더 이름이 달라도 루트의 .xcodeproj 이름으로 DerivedData 를 찾는다")
+    func namesComeFromTheProjectDocument() throws {
+        // Xcode 는 그 디렉터리를 연 문서의 이름으로 짓는다. Flutter·React Native 앱은
+        // 전부 `ios/<이름>.xcodeproj` 라 폴더 이름은 `ios` 이고, 그것만 보면 못 찾는다.
+        // 이 머신의 실제 앱 프로젝트 셋이 전부 그 모양이었다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/ios/HealthMap.xcodeproj/project.pbxproj": "",
+            "/dd/HealthMap-abcdef/Index.noindex/DataStore/units/a": "",
+        ])
+        let located = try IndexStoreLocator(fileSystem: fileSystem)
+            .locate(explicitPath: nil, projectPath: "/p/ios", derivedDataPath: "/dd")
+        #expect(located == "/dd/HealthMap-abcdef/Index.noindex/DataStore")
+    }
+
+    @Test(".xcworkspace 이름도 DerivedData 이름 후보가 된다")
+    func namesComeFromTheWorkspaceDocumentToo() throws {
+        // CocoaPods 프로젝트는 워크스페이스로 연다. `.xcodeproj` 가 없을 수도 있다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/ios/Runner.xcworkspace/contents.xcworkspacedata": "",
+            "/dd/Runner-abcdef/Index.noindex/DataStore/units/a": "",
+        ])
+        let located = try IndexStoreLocator(fileSystem: fileSystem)
+            .locate(explicitPath: nil, projectPath: "/p/ios", derivedDataPath: "/dd")
+        #expect(located == "/dd/Runner-abcdef/Index.noindex/DataStore")
+    }
+
+    @Test("프로젝트 파일이 있어도 디렉터리 이름 후보를 버리지 않는다")
+    func theFolderNameStaysACandidate() {
+        // Xcode 로 직접 연 Swift 패키지는 WorkspacePath 가 확장자 없는 디렉터리 자체이고,
+        // 디렉터리 이름이 곧 DerivedData 이름이다. 이름을 교체해 버리면 그쪽이 깨진다.
+        let fileSystem = InMemoryFileSystem(files: ["/p/App/Other.xcodeproj/project.pbxproj": ""])
+        let names = IndexStoreLocator(fileSystem: fileSystem).projectNames(inProjectRoot: "/p/App")
+        #expect(names.contains("Other"))
+        #expect(names.contains("App"))
+    }
+
+    @Test("이름은 프로젝트 루트 한 단계에서만 모은다")
+    func namesAreNotCollectedRecursively() {
+        // 재귀하면 Pods/Pods.xcodeproj 나 번들 안의 중첩 프로젝트가 이름 후보가 되어
+        // 남의 DerivedData 를 자기 것이라고 연다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/ios/Runner.xcodeproj/project.pbxproj": "",
+            "/p/ios/Runner.xcodeproj/Nested.xcodeproj/project.pbxproj": "",
+            "/p/ios/Pods/Pods.xcodeproj/project.pbxproj": "",
+        ])
+        let names = IndexStoreLocator(fileSystem: fileSystem).projectNames(inProjectRoot: "/p/ios")
+        #expect(names == ["Runner", "ios"])
+    }
+
+    @Test("같은 이름의 프로젝트와 워크스페이스는 이름 후보를 한 번만 만든다")
+    func duplicateNamesAreCollapsed() {
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/App/App.xcodeproj/project.pbxproj": "",
+            "/p/App/App.xcworkspace/contents.xcworkspacedata": "",
+        ])
+        let names = IndexStoreLocator(fileSystem: fileSystem).projectNames(inProjectRoot: "/p/App")
+        #expect(names == ["App"])
+    }
+
+    @Test("프로젝트 경로를 워크스페이스의 하위 디렉터리로 좁혀도 소유가 인정된다")
+    func ownershipHoldsWhenTheProjectPathIsNarrower() {
+        // 표준 Xcode 배치는 `App/App.xcodeproj` 와 `App/App/` 이다. 소스 디렉터리만
+        // 분석하는 것은 흔한 사용법이고, 그때 WorkspacePath 는 프로젝트 경로의 *부모* 를
+        // 가리킨다. 한 방향만 보면 오늘 잘 돌던 분석이 통째로 실패한다.
+        #expect(IndexStoreLocator.workspacePath("/src/App/App.xcodeproj", belongsTo: "/src/App/App"))
+        #expect(IndexStoreLocator.workspacePath("/src/App/App.xcodeproj", belongsTo: "/src"))
+        #expect(!IndexStoreLocator.workspacePath("/src/main/App/App.xcodeproj", belongsTo: "/src/feature/App"))
+    }
+
+    @Test("남의 체크아웃이라고 스스로 밝힌 DerivedData 는 후보가 되지 않는다")
+    func selfDeclaredForeignDirectoriesAreNeverUsed() {
+        // 소유가 증명된 것이 없다고 남의 것을 되살리면, 이름 후보가 넓어진 만큼
+        // 남의 인덱스로 분석할 확률이 그대로 올라간다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/dd/App-aaaaaa/info.plist": Self.infoPlist(workspacePath: "/other/ios/App.xcodeproj"),
+            "/dd/App-aaaaaa/Index.noindex/DataStore/units/a": "",
+        ])
+        let candidates = IndexStoreLocator(fileSystem: fileSystem)
+            .derivedDataCandidates(projectNames: ["App"], derivedDataPath: "/dd", projectPath: "/p/ios")
+        #expect(candidates.allSatisfy { !$0.contains("App-aaaaaa") })
+    }
+
+    @Test("이름만 맞은 후보가 둘 이상이면 고르지 않고 알린다")
+    func ambiguousUnprovenCandidatesAreReported() {
+        // 최근성으로 하나를 고르면 남의 인덱스로 분석하고도 아무 표시가 나지 않는다.
+        // 같은 이름의 심볼이 여럿일 때 query 가 후보를 돌려주는 것과 같은 규칙이다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/ios/Runner.xcodeproj/project.pbxproj": "",
+            "/dd/Runner-aaaaaa/Index.noindex/DataStore/units/a": "",
+            "/dd/Runner-bbbbbb/Index.noindex/DataStore/units/a": "",
+        ])
+        let locator = IndexStoreLocator(fileSystem: fileSystem)
+        #expect(throws: CartographError.self) {
+            try locator.locate(explicitPath: nil, projectPath: "/p/ios", derivedDataPath: "/dd")
+        }
+    }
+
+    @Test("소유가 증명된 후보가 있으면 이름만 맞은 것과 다투지 않는다")
+    func provenOwnershipSettlesTheAmbiguity() throws {
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/ios/Runner.xcodeproj/project.pbxproj": "",
+            "/dd/Runner-aaaaaa/info.plist": Self.infoPlist(workspacePath: "/p/ios/Runner.xcodeproj"),
+            "/dd/Runner-aaaaaa/Index.noindex/DataStore/units/a": "",
+            "/dd/Runner-bbbbbb/Index.noindex/DataStore/units/a": "",
+        ])
+        let located = try IndexStoreLocator(fileSystem: fileSystem)
+            .locate(explicitPath: nil, projectPath: "/p/ios", derivedDataPath: "/dd")
+        #expect(located == "/dd/Runner-aaaaaa/Index.noindex/DataStore")
+    }
+
+    @Test("평평한 -derivedDataPath 배치도 후보로 본다")
+    func flatDerivedDataLayoutIsFound() throws {
+        // `xcodebuild -derivedDataPath DerivedData` 는 이름 붙은 디렉터리 없이 루트
+        // 바로 아래에 스토어를 둔다. README 가 권하는 CI 배치가 그 모양이다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/App/App.xcodeproj/project.pbxproj": "",
+            "/dd/Index.noindex/DataStore/units/a": "",
+        ])
+        let located = try IndexStoreLocator(fileSystem: fileSystem)
+            .locate(explicitPath: nil, projectPath: "/p/App", derivedDataPath: "/dd")
+        #expect(located == "/dd/Index.noindex/DataStore")
+    }
+
+    @Test("DerivedData 를 어디서 어떤 이름으로 찾았는지 오류에 남는다")
+    func theErrorSaysWhatItLookedForInDerivedData() {
+        // 이름이 하나도 맞지 않으면 후보 경로가 한 줄도 생기지 않아, 목록만으로는
+        // 도구가 그곳을 보기라도 했는지 알 수 없었다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/ios/HealthMap.xcodeproj/project.pbxproj": "",
+            "/dd/SomethingElse-abcdef/Index.noindex/DataStore/units/a": "",
+        ])
+        var message = ""
+        do {
+            _ = try IndexStoreLocator(fileSystem: fileSystem)
+                .locate(explicitPath: nil, projectPath: "/p/ios", derivedDataPath: "/dd")
+        } catch {
+            message = (error as? CartographError)?.errorDescription ?? ""
+        }
+        #expect(message.contains("/dd"))
+        #expect(message.contains("'HealthMap'"))
+        #expect(message.contains("'ios'"))
+    }
+
+    @Test("이름은 맞았지만 빌드된 적이 없으면 그렇게 말한다")
+    func theErrorDistinguishesANeverBuiltProject() {
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/ios/App.xcodeproj/project.pbxproj": "",
+            "/dd/App-abcdef/info.plist": Self.infoPlist(workspacePath: "/p/ios/App.xcodeproj"),
+        ])
+        var message = ""
+        do {
+            _ = try IndexStoreLocator(fileSystem: fileSystem)
+                .locate(explicitPath: nil, projectPath: "/p/ios", derivedDataPath: "/dd")
+        } catch {
+            message = (error as? CartographError)?.errorDescription ?? ""
+        }
+        #expect(message.contains("hold no index store"))
+    }
+
     @Test("후보 목록이 겹치는 프로젝트를 걸러 낸다")
     func candidateListExcludesOtherProjects() {
         let fileSystem = InMemoryFileSystem(files: [
@@ -236,7 +395,7 @@ struct DerivedDataMatchingTests {
             "/dd/App-Extension-bbbbbb/Index.noindex/DataStore/units/a": "",
         ])
         let candidates = IndexStoreLocator(fileSystem: fileSystem)
-            .derivedDataCandidates(projectName: "App", derivedDataPath: "/dd")
+            .derivedDataCandidates(projectNames: ["App"], derivedDataPath: "/dd")
         #expect(candidates.allSatisfy { !$0.contains("App-Extension") })
         #expect(candidates.contains("/dd/App-aaaaaa/Index.noindex/DataStore"))
     }

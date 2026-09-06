@@ -7,8 +7,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `IndexStoreLocator.derivedDataCandidates` takes `projectNames: [String]` instead of a single
+  `projectName`. Ownership has to be decided over the union of every name at once: with one call per
+  name, a name whose owner is proven does not stop another name's group from falling back to
+  unverified directories. `CartographError.indexStoreNotFound` also carries a `derivedData:`
+  associated value, defaulted to nil so existing construction still compiles; code that pattern-matches
+  that case has to be updated.
+
 ### Fixed
 
+- Auto-detection finds the index store of an Xcode project that does not live in a directory of its
+  own name. The candidate names came only from the last component of `--project`, so
+  `ios/HealthMap.xcodeproj` was looked up as `ios-<hash>` and never found, and the "Searched:" list
+  held no DerivedData path at all, so there was no way to tell it had even been considered. Every
+  Flutter and React Native app has that shape. Names now come from each `.xcodeproj` and
+  `.xcworkspace` directly inside the project root, plus the folder's own name, which a Swift package
+  opened in Xcode still needs. Only the root is scanned: recursing would make `Pods/Pods.xcodeproj`
+  a name and open another project's store. Verified on three real apps on the author's machine, all
+  of the `ios/<Name>.xcodeproj` shape, which now analyse with no flags at all.
+- A DerivedData directory whose `info.plist` names a different project is never used, and when two
+  or more match by name while none of them names this project, the run fails and lists them instead
+  of silently taking the most recent. Picking one there analyses another project's index with
+  nothing in the output to say so.
+- Ownership is decided by containment in either direction. A `WorkspacePath` pointing at the parent
+  of `--project` means the analysis was scoped to a source directory inside the workspace, which is
+  a common way to run it, and the previous one-directional test called that a foreign checkout.
+- The flat layout that `xcodebuild -derivedDataPath <dir>` writes is a candidate too, so the
+  `--derived-data` flag works for the CI recipe the README documents.
+- The failure message says what it looked for in DerivedData: the root, the names tried, and which
+  of the four situations it hit — no such root, no name matched, names matched but nothing was built
+  there, or directories matched but none of them names this project.
+- `index-staleness` is reported for a store found under DerivedData. The freshness check resolved the
+  store a second time without the DerivedData path, so it silently found nothing there and said
+  nothing. That silence covered exactly the projects this change now opens, and Xcode-built projects
+  are where an index goes stale most often.
 - An analysis whose index store knows none of the project's declarations now fails with exit code 2
   instead of reporting "no findings" and exiting 0. A green `--strict` gate over zero analysed
   declarations reads as "this code is clean", which is the one thing a gate must never say by

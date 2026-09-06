@@ -289,6 +289,31 @@ struct SymbolQueryTests {
         #expect(!limitations.contains { $0.hasPrefix("index-staleness:") })
     }
 
+    @Test("DerivedData 에서 찾은 인덱스도 신선도를 말한다")
+    func reportsStalenessForDerivedDataStores() {
+        // 신선도 판정이 로케이터를 derivedDataPath 없이 다시 부르고 있었다. Xcode 로
+        // 빌드한 프로젝트에서만 이 경고가 영영 나오지 않았고, 하필 그쪽이 인덱스가
+        // 가장 자주 낡는 환경이다. 자동 탐색이 열리면 그 침묵이 그대로 퍼진다.
+        let built = Date(timeIntervalSince1970: 1_000)
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/App/App.xcodeproj/project.pbxproj": "",
+            "/p/App/Domain/Edited.swift": "",
+            "/dd/App-abcdef/Index.noindex/DataStore/v5/units/a": "",
+        ])
+        fileSystem.setModificationDate(built, for: "/dd/App-abcdef/Index.noindex/DataStore/v5/units")
+        fileSystem.setModificationDate(built.addingTimeInterval(60), for: "/p/App/Domain/Edited.swift")
+
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p/App"
+        configuration.derivedDataPath = "/dd"
+        // 인덱스 공급자를 주입하지 않는다. 주입하면 신선도 판정이 그 자리에서 침묵한다.
+        let service = CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(fileSystem: fileSystem)
+        )
+        #expect(service.analysisLimitations().contains { $0.hasPrefix("index-staleness: 1 of 1") })
+    }
+
     @Test("설정이 간선 종류를 좁히면 그 사실을 알린다")
     func reportsConfiguredEdgeKinds() throws {
         let document = try makeService { $0.edgeKinds = [.call] }.queryDocument(symbol: "UserService")
