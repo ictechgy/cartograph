@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-_마지막 갱신: 2026-09-06 (0.6.0 릴리스, Claude). 이 저장소에는 세션이 둘 있었다(Claude 가 0.5.1·0.5.2·0.5.4·0.5.5, Codex 가 0.5.3). 큰 작업 전 `git status --short --branch` 와 `gh pr list` 로 확인할 것._
+_마지막 갱신: 2026-09-06 (0.7.0 릴리스, Claude). 이 저장소에는 세션이 둘 있었다(Claude 가 0.5.1·0.5.2·0.5.4·0.5.5, Codex 가 0.5.3). 큰 작업 전 `git status --short --branch` 와 `gh pr list` 로 확인할 것._
 
 ## Goal
 
@@ -10,7 +10,7 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 
 ## Current Progress
 
-**릴리스**: 0.1.0 → … → 0.5.5 (2026-09-03~05) → 0.6.0 (2026-09-06). 전부 GitHub Release + Homebrew tap(`ictechgy/tap`, `HOMEBREW_TAP_TOKEN` 이 없어 손 갱신) + `brew upgrade` 확인. 로컬 설치는 0.5.5. `main` 은 깨끗하다.
+**릴리스**: 0.1.0 → … → 0.5.5 (2026-09-03~05) → 0.6.0 → 0.7.0 (2026-09-06). 전부 GitHub Release + Homebrew tap(`ictechgy/tap`, `HOMEBREW_TAP_TOKEN` 이 없어 손 갱신) + `brew upgrade` 확인. 로컬 설치는 0.5.5. `main` 은 깨끗하다.
 
 **0.5.x 에서 들어간 것** (자세한 것은 CHANGELOG)
 - `bridges --format json|text --target flutter|react-native`: Swift 소스와 `.m` 파일에서 언어 경계 사실(`channel-register`, `method-handle`, `module-export`, `component-export`)을 뽑아 인덱스의 USR 을 붙여 `bridge-facts` v1 로 낸다. 한계를 실제로 세어 싣는다(`dynamic-*`, `inferred-channels`, `unattributed-method-handles`, `missing-handler-usrs`, `objc-named-classes`, `objective-c-handlers`, `objective-c-sources`, `unscanned-event/message-channels`, `mixed-targets`, `target-filter`).
@@ -45,42 +45,27 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 
 각 PR 본문에 재현 명령과 실측 수치가 있다. 반박 리뷰에서 기각한 지적과 그 이유도 코멘트에 남겼다.
 
-## 타입 recall — 설계까지 갔다가 멈춘 것 (다음 세션의 가장 큰 항목)
+## 타입 recall — 끝났다 (0.7.0)
 
-같은 인덱스·같은 범위에서 Periphery 는 진짜 안 쓰이는 **타입 7개**를 잡고 이 도구는 0개를 잡는다.
-원인 둘 다 문서화된 의도적 트레이드오프다.
+같은 인덱스에서 Periphery 가 잡던 미사용 타입 7개를 이 도구는 0개 잡고 있었다. 원인은 버그가
+아니라 문서화된 트레이드오프 둘이 겹친 것이었다 — 외부 준수·오버라이드 멤버와 합성 선언이
+각각 소유 타입까지 살렸다.
 
-1. 합성 선언(`.compilerSynthesized`)이 뿌리가 되고, 그 보존이 감싸는 타입까지 전파된다.
-2. `.externalConformance`·`.externalOverride` 가 증인 멤버가 아니라 **타입 자신**을 보존한다.
+선행 PR(#39)이 먼저 들어갔다. 인덱서가 열거형 케이스의 연관 값 타입, 타입 별칭의 우변,
+`associatedtype` 증인에 관계를 달지 않아 그 타입들에 들어오는 간선이 하나도 없었다. 그 상태로
+보존을 좁혔으면 지우면 컴파일이 깨지는 오탐이 나갔다. 원시 인덱스를 열어 확인했고, 위치로
+소유자를 찾아 붙이되 **좁게** 잡았다 — 넓게 잡았더니 `@Observable` 확장이 앞 타입에 붙어
+거짓 순환 두 건이 생겼다.
 
-설계와 반박 리뷰를 끝냈다(시뮬레이터로 6개 데이터셋에서 오늘 동작과 집합 일치 검증, 조각별 ablation).
-HealthMap 기준 기대 델타는 총 43→43, 타입 7건이 들어오고 껍데기 멤버 7건이 나간다.
+그다음 #40 이 보존을 멤버까지로 좁혔다. `extension X: View` 표기도 같은 가드를 받는다.
+네 프로젝트에서 재고 새 발견 8건을 전부 grep 으로 확인했다(모두 선언 한 줄 외 참조 0).
 
-**그런데 반박 리뷰가 blocker 를 찾았고 직접 재현했다.** 인덱스가 간선을 남기지 않는 타입 위치가 있다.
-좁히면 그 타입들이 오탐이 되고, **지우면 컴파일이 깨진다.** 이 저장소가 가장 비싸다고 정한 실패다.
-
-```
-enum Failure { case broke(PayloadOnly) }     // PayloadOnly 로 향하는 간선 없음
-typealias Shortcut = AliasOnly               // AliasOnly 로 향하는 간선 없음
-struct Concrete: Holder { typealias Item = WhereOnly }   // WhereOnly 로 향하는 간선 없음
-```
-
-셋 다 `query` 가 `usedBy: []` 를 돌려주고, 오늘은 합성 init 덕분에만 살아 있다.
-원인은 `IndexStoreMapping.references(from:)`(:142)가 참조를 `containedBy` 관계가 있을 때만 담는
-것으로 보인다. 이 위치들의 참조에는 그 관계가 없다.
-
-**그래서 순서가 이렇다.** 좁히기 전에 이 위치들의 참조를 그래프에 넣어야 한다. 간선을 더하는 것은
-단조롭게 안전하다(보존이 늘 뿐 오탐이 늘지 않는다). 그것이 선행 PR 이고, 그 뒤에야 recall 수정이
-안전해진다. 반박 리뷰가 함께 지적한 것 셋도 그때 같이 본다.
-
-- `expected-retain-public.txt` 는 1줄로 유지되지 않는다. 열거형 케이스는 열거형의 접근 수준과 무관하게
-  `internal` 로 기록되어 `--retain-public` 에서 보고된다.
-- 익스텐션으로 쓴 준수(`extension X: View`)는 가드를 우회한다. `isTypeDeclaration` 에 익스텐션이 없고
-  `extends` 간선이 타입을 되살린다. 같은 코드의 두 표기가 반대 답을 낸다.
-- 좁힌 뒤에는 타입이 `is never used` 인데 그 타입의 `body` 는 `retained, externalConformance` 라고
-  답한다. 에이전트가 받는 답 안에서 모순이다. 어느 쪽을 고칠지 정해야 한다.
-
-전체 설계와 리뷰는 세션 스크래치에만 있다. 다시 필요하면 위 재현 코드부터 시작하면 된다.
+**남은 비대칭 하나가 후속 작업이다.** 도달 불가한 타입 안의 멤버가 여전히 `retained` 라고
+답한다. `body` 는 "프레임워크가 부른다" 는 이유로 보존되는데 그것은 타입이 살아 있을 때만
+참이다. `dead` 는 타입을 보고하므로 일괄 정리는 옳지만, 멤버만 `query` 로 물은 소비자는 틀린
+답을 받는다. 원칙적 수정은 증인 보존을 소유 타입의 도달성에 조건부로 만드는 것이고,
+`ReachabilityAnalyzer` 의 `pendingWitnesses` 가 이미 그 모양이다. 지금은 두 README 의 알려진
+한계와 스킬 규칙 6 으로 밝혀 두었다.
 
 ## 해자 토론 결론 (2026-09-05, GLM max effort 와 함께)
 
@@ -121,10 +106,9 @@ struct Concrete: Holder { typealias Item = WhereOnly }   // WhereOnly 로 향하
 1. **Homebrew tap 을 손으로 올린다.** `HOMEBREW_TAP_TOKEN` 이 없어 릴리스 워크플로가 건너뛴다.
    워크플로의 마지막 단계가 url·sha256·version 을 찍어 주므로 그 값으로 `ictechgy/homebrew-tap` 의
    `Formula/cartograph.rb` 를 고치고 `brew upgrade` 로 확인한다.
-2. **타입 recall 의 선행 PR.** 위 절의 재현부터. 인덱스가 간선을 남기지 않는 타입 위치에 간선을 넣는다.
-   간선을 더하는 것은 단조롭게 안전하므로 먼저 들어가도 된다.
-3. **그다음 recall 수정.** 설계는 끝났고 blocker 만 남았다. 반박 리뷰가 함께 지적한 셋을 같이 본다.
-4. 아래는 이전 세션의 항목들이다. 감사 결론으로는 1~3 보다 뒤다.
+2. **증인 보존을 소유 타입의 도달성에 조건부로 만든다.** 위 절의 남은 비대칭. 같은 파일의
+   `pendingWitnesses` 가 이미 그 모양이라 참고할 선례가 있다.
+3. 아래는 이전 세션의 항목들이다. 감사 결론으로는 1~2 보다 뒤다.
 
 ### 이전 세션의 Next Steps
 
@@ -135,9 +119,9 @@ struct Concrete: Holder { typealias Item = WhereOnly }   // WhereOnly 로 향하
 5. **`HOMEBREW_TAP_TOKEN`** 은 사용자 계정 행동. 있으면 `release.yml` 이 tap 을 자동 갱신한다.
 6. 새 브리지 kind(EventChannel, BasicMessageChannel)는 isthmus `GRAPH-EXCHANGE.md` 를 먼저, 그다음 생산자 테스트.
 
-## Verification (마지막으로 통과한 것, #36 머지 시점)
+## Verification (마지막으로 통과한 것, 0.7.0)
 
-`Scripts/coverage.sh` 93.05% · `Scripts/verify-cli-contract.sh` · `Scripts/verify-fixtures.sh` ·
+`Scripts/coverage.sh` 93.46% · `Scripts/verify-cli-contract.sh` · `Scripts/verify-fixtures.sh` ·
 자기 분석 `dead`/`cycles`/`cycles --level type`/`rules --strict` 전부 0 · CI 두 잡.
 실제 프로젝트 셋(HealthMap · ruokay · Gakjaba)이 플래그 없이 분석된다.
 
