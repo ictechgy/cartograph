@@ -196,6 +196,22 @@ struct RollupFilterTests {
         #expect(graph.node("ext.bar") != nil)
     }
 
+    @Test("분석 범위 밖 타입으로도 접지 않는다")
+    func externalOwnerIsNotPulledIn() {
+        // `extension UIView` 처럼 소유자가 SDK 타입이면 그것으로 접을 수 없다. 접으면
+        // 우리 코드의 멤버가 SDK 타입 정점으로 사라진다. 경로 필터가 아니라 `isExternal`
+        // 이 막는 자리이고, 경로별 판정으로 바꾸면서 이 조합에 테스트가 없다는 것이 드러났다.
+        var builder = SnapshotBuilder()
+        builder.symbol("UIView", kind: .classType, path: "/sdk/UIKit.swift", isExternal: true)
+        builder.symbol("ext", name: "UIView", kind: .extensionDeclaration, path: "/p/Sources/ViewExt.swift")
+        builder.symbol("ext.bar", name: "bar()", kind: .method, path: "/p/Sources/ViewExt.swift", parent: "ext")
+        builder.reference(from: "ext", to: "UIView", kind: .extends)
+
+        let graph = GraphBuilder(options: .init(level: .type)).build(from: builder.build())
+        #expect(graph.node("UIView") == nil)
+        #expect(graph.node("ext.bar") != nil)
+    }
+
     @Test("포함된 소유 타입으로는 정상적으로 접는다")
     func includedOwnerStillRollsUp() {
         var builder = SnapshotBuilder()
