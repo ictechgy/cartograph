@@ -66,8 +66,8 @@ echo "  ok  테스트 전용 보고 $(echo "$expected_test_only" | grep -c .)건
 
 # public 선언은 전부 보존되어야 한다. 구문 정보가 붙지 않은 선언만 여기서 드러난다.
 # 백틱 이름·실패 가능 이니셜라이저·속성이 윗줄인 선언·지역 선언에 가려진 멤버가
-# 전부 이 한 줄에 걸린다. 그것이 이 저장소가 실제로 겪은 오탐의 형태다.
-# 남는 것은 `private` 로 선언한 것뿐이고, 그 목록도 함께 고정한다.
+# 전부 여기 걸린다. 그것이 이 저장소가 실제로 겪은 오탐의 형태다.
+# 남는 것은 `private` 이거나, 진짜로 죽은 internal 선언뿐이다. 그 목록도 함께 고정한다.
 actual_retained="$(
     "$CARTOGRAPH" dead --project "$FIXTURE" --retain-public --report-format json 2>/dev/null |
         python3 -c "

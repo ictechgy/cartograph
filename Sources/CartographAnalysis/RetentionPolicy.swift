@@ -203,6 +203,15 @@ public struct RetentionPolicy: Sendable {
         symbolsWithExternalBase: Set<String>
     ) -> RetentionReason? {
         guard let usr = node.usr, symbolsWithExternalBase.contains(usr) else { return nil }
+        // 증인 멤버만 보존한다. 타입 자신에게 이 규칙을 적용하면 "이 타입이 한 번이라도
+        // 만들어지는가" 를 묻지 않고 살리게 된다. `struct NeverUsed: Equatable {}` 나 아무도
+        // 그리지 않는 `View` 가 그래서 한 번도 보고되지 않았다. 준수를 만족시키는 멤버
+        // (`body`·`encode(to:)`·`==`)는 그대로 보존되므로 프레임워크가 부르는 것은 안전하다.
+        //
+        // 익스텐션도 같이 막는다. `extension X: View` 로 쓰면 준수가 익스텐션 노드에 붙고,
+        // 그 노드의 `extends` 간선이 방금 보존을 뗀 타입을 되살린다. 같은 코드의 두 표기가
+        // 반대 답을 내면 판정이 코드가 아니라 작성 취향의 함수가 된다.
+        guard !node.kind.isTypeDeclaration, node.kind != .extensionDeclaration else { return nil }
         return node.attributes.contains(.overrideDeclaration) ? .externalOverride : .externalConformance
     }
 

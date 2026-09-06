@@ -7,6 +7,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Types are reported again. Two retention rules were keeping every type alive: a member that
+  overrides or satisfies a declaration outside the analyzed code kept its owning type, and so did a
+  compiler-synthesized member such as a memberwise initializer. Between them, a `View` nobody draws
+  and a `struct NeverUsed: Equatable {}` were immortal, and the tool had never reported a single
+  unused type on a real app. Both rules now keep the member and stop there. The same guard covers a
+  conformance written as `extension X: View`, so the two spellings of one piece of code cannot give
+  opposite answers.
+
+  Measured on four projects, with every new finding checked by hand — each has exactly one
+  occurrence, its own declaration:
+
+  | project | findings | new | no longer reported |
+  |---|---|---|---|
+  | cartograph | 0 → 0 | 0 | 0 |
+  | HealthMap (7,466 nodes) | 43 → 43 | 7 types | 7 members of those types |
+  | AnbuRadar | 6 → 6 | 0 | 0 |
+  | Gakjaba | 1 → 2 | 1 type | 0 |
+
+  The HealthMap row is the point: the count did not move, but seven shell members left and the seven
+  types that hold them arrived. Deleting the members, as the old output invited, left an empty type
+  that could never be reported again.
+
+  A member can still answer `retained` while the type that holds it is `unreachable` — a `body` is
+  kept because the framework calls it, which is true only if something constructs the type. `dead`
+  reports the type in that case, so a sweep is right; a single `query` on the member is not. Both
+  READMEs and the agent skill now say so.
+
 ### Fixed
 
 - A type used only as an enum case's associated value, as the right-hand side of a `typealias`, or

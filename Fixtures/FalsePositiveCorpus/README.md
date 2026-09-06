@@ -47,3 +47,21 @@ check it.
 could reach is `public`, so any declaration whose syntax facts failed to attach would lose that
 `public` and surface as a new line. What remains in that file is declared `private` on purpose, or
 is internal and reached from a public entry point (`Bridges.swift`).
+
+## Retention.swift — both directions in one file
+
+The other files here are false positives: shapes that must **not** be reported. `Retention.swift`
+holds both directions, because the rules it exercises were narrowed rather than widened and a
+narrower rule fails silently — the corpus keeps passing while the tool stops reporting something.
+
+Reported on purpose: a `View` nobody draws (HealthMap had five, including `CourseTag` and
+`CourseThumbnail`), the same shape written as `extension X: View` so the two spellings cannot drift
+apart, an `Equatable` enum nobody constructs (HealthMap's `HealthMapListSectionState`, whose four
+cases used to be reported one by one while the enum itself was not), and a struct kept alive only by
+its synthesized memberwise initializer (`NotificationPreferencesController`).
+
+Retained on purpose, in the same file: a view used only inside another view's body, a struct built
+only through its memberwise initializer, and a type used only as an enum case's associated value.
+The users live in `exerciseRetentionShapes()` inside the module rather than in `main.swift`, because
+a synthesized initializer is internal and giving these types an explicit `public init` would delete
+the very shape the case exists to test.

@@ -1,1 +1,5 @@
+enum 'Corpus.DeadSectionState' is never used
 property 'Corpus.genuinelyUnusedState' is never used
+struct 'Corpus.DeadCourseCard' is never used
+struct 'Corpus.DeadPreferencesController' is never used
+struct 'Corpus.DeadSplitCard' is never used

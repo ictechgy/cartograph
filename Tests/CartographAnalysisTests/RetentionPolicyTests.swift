@@ -212,20 +212,42 @@ struct RetentionPolicyTests {
         #expect(reasons(snapshot, options: disabled)["User.name"] == nil)
     }
 
-    @Test("외부 선언 오버라이드와 외부 프로토콜 구현을 보존한다")
-    func externalRelationsAreRetained() {
+    @Test("외부 선언을 오버라이드·준수하는 멤버는 보존하되 타입 자신은 보존하지 않는다")
+    func externalRelationsRetainWitnessesButNotTypes() {
         // 그래프는 양쪽 끝이 모두 있는 간선만 남기므로, 외부로 향하는 관계는
         // 원본 스냅샷에서 읽어야 한다. 이 규칙이 없으면 viewDidLoad 가
         // 전부 미사용으로 보고된다.
+        //
+        // 다만 타입 자신에게 적용하면 "이 타입이 한 번이라도 만들어지는가" 를 묻지 않고
+        // 살리게 된다. 아무도 그리지 않는 View 와 아무도 만들지 않는 Equatable 구조체가
+        // 그래서 한 번도 보고되지 않았다. 실제 앱에서 그런 타입이 일곱 개 있었다.
         var builder = SnapshotBuilder()
         builder.symbol("viewDidLoad", kind: .method, attributes: [.overrideDeclaration])
         builder.symbol("Model", kind: .structType)
+        builder.symbol("Model.encode", kind: .method, parent: "Model", attributes: [.overrideDeclaration])
         builder.reference(from: "viewDidLoad", to: "c:objc(cs)UIViewController(im)viewDidLoad", kind: .overrides)
+        builder.reference(from: "Model.encode", to: "s:SE6encodeyyF", kind: .overrides)
         builder.reference(from: "Model", to: "s:SE", kind: .conformance)
 
         let retained = reasons(builder.build())
         #expect(retained["viewDidLoad"] == .externalOverride)
-        #expect(retained["Model"] == .externalConformance)
+        #expect(retained["Model.encode"] == .externalOverride)
+        #expect(retained["Model"] == nil)
+    }
+
+    @Test("익스텐션에 쓴 준수도 그 타입을 보존하지 않는다")
+    func externalConformanceOnAnExtensionDoesNotRetainTheType() {
+        // `extension X: View` 로 쓰면 준수가 익스텐션 노드에 붙는다. 그 노드를 보존하면
+        // `extends` 간선이 타입을 되살려, 같은 코드의 두 표기가 반대 답을 낸다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Card", kind: .structType)
+        builder.symbol("Card.ext", kind: .extensionDeclaration)
+        builder.reference(from: "Card.ext", to: "Card", kind: .extends)
+        builder.reference(from: "Card.ext", to: "s:SwiftUI4ViewP", kind: .conformance)
+
+        let retained = reasons(builder.build())
+        #expect(retained["Card.ext"] == nil)
+        #expect(retained["Card"] == nil)
     }
 
     @Test("내부 선언을 오버라이드하는 것만으로는 보존되지 않는다")
