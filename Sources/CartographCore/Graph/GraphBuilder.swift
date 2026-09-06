@@ -205,7 +205,12 @@ public struct GraphBuilder: Sendable {
     static func extensionTargets(in snapshot: IndexSnapshot) -> [String: String] {
         var result: [String: String] = [:]
         for reference in snapshot.references where reference.kind == .extends {
-            result[reference.sourceUSR] = reference.targetUSR
+            // 하나의 익스텐션 USR 에 대상이 둘 이상 오는 일은 관측되지 않았다(실제 앱 넷 ·
+            // 코퍼스 · 네 레벨 전부에서 0건). 그래도 마지막 것이 이기게 두면 결과가 참조
+            // 배열의 순서에 달리고, 그 순서는 이제 인덱스가 준 그대로다. 작은 쪽을 택해
+            // 순서와 무관하게 만든다. 값 하나를 골라야 한다는 것 자체는 변하지 않는다.
+            result[reference.sourceUSR] = result[reference.sourceUSR]
+                .map { Swift.min($0, reference.targetUSR) } ?? reference.targetUSR
         }
         return result
     }

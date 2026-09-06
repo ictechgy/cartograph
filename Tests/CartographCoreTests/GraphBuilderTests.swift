@@ -255,4 +255,26 @@ struct RollupFilterTests {
             #expect(forward.nodeIDs == backward.nodeIDs, "\(level) 에서 정점 순서가 갈렸다")
         }
     }
+
+    /// 같은 익스텐션 USR 에 확장 대상이 둘 오면 순서와 무관하게 같은 것을 고르는지.
+    ///
+    /// 실제 인덱스에서는 관측되지 않은 형태다. 그래도 참조를 정렬하지 않게 된 뒤로는
+    /// "마지막이 이긴다" 가 곧 "인덱스가 준 순서가 이긴다" 라서, 언젠가 이 형태가
+    /// 나타나면 같은 프로젝트에 두 답이 나온다. 그 문을 닫아 둔다.
+    @Test("익스텐션 대상이 둘이어도 순서에 따라 갈리지 않는다")
+    func extensionTargetIsOrderIndependent() {
+        func graph(reversed: Bool) -> CodeGraph {
+            var builder = SnapshotBuilder()
+            builder.symbol("Alpha", kind: .structType, path: "/p/Sources/Alpha.swift")
+            builder.symbol("Beta", kind: .structType, path: "/p/Sources/Beta.swift")
+            builder.symbol("ext", name: "Alpha", kind: .extensionDeclaration, path: "/p/Sources/Ext.swift")
+            builder.symbol("ext.run", name: "run()", kind: .method, path: "/p/Sources/Ext.swift", parent: "ext")
+            var targets = ["Alpha", "Beta"]
+            if reversed { targets.reverse() }
+            for target in targets { builder.reference(from: "ext", to: target, kind: .extends) }
+            return GraphBuilder(options: .init(level: .type)).build(from: builder.build())
+        }
+        #expect(graph(reversed: false).nodeIDs == graph(reversed: true).nodeIDs)
+        #expect(graph(reversed: false).edges == graph(reversed: true).edges)
+    }
 }

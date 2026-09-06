@@ -19,6 +19,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   difference found anywhere was the `generatedAt` field of `bridges`, which differs between two runs of
   the same binary. That the order does not reach the output was true by accident and is now a test.
 
+  One place did depend on the order and is now closed. The extension-target map let the last
+  `.extends` reference for a USR win, which was harmless while the input was sorted. A Swift
+  extension USR can only name one extended type, and instrumenting the map found no duplicate on
+  four apps, the corpus, and all four graph levels; but "last wins" with an unsorted input means
+  the index decides, so the map now takes the smaller USR and cannot vary with order.
+
 - The path filter is evaluated once per file rather than once per symbol. It is a property of the
   file, and a file carries dozens of symbols, so the same path was matched against every glob
   thousands of times; a sampled profile put that one call at about a third of every command. On a
