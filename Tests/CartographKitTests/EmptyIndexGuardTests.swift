@@ -65,6 +65,27 @@ struct EmptyIndexGuardTests {
         #expect(limitations.contains { $0.hasPrefix("empty-index:") })
     }
 
+    @Test("탈출구를 켠 실행은 텍스트 요약 한 줄에서도 구분된다")
+    func escapeHatchIsVisibleInTheTextSummary() throws {
+        // CI 로그가 보여 주는 것은 이 한 줄뿐이다. 여기 나타나지 않으면 아무것도 분석하지
+        // 않은 실행이 평범한 초록과 구분되지 않고, 탈출구가 가드를 완전히 무력화한다.
+        let service = makeService(snapshot: IndexSnapshot(), allowsEmptyIndex: true)
+        for outcome in [try service.detectUnusedCode(), try service.detectCycles(), try service.checkRules()] {
+            #expect(outcome.output.contains("analysed nothing — --allow-empty-index"))
+        }
+    }
+
+    @Test("한계 문장은 필터 통과 수가 아니라 전체 파일 수를 말한다")
+    func limitationCountsFilesBeforeTheFilter() throws {
+        // 필터가 전부 걸러 낸 경우에 통과 수를 쓰면 "0개 파일 중 아무것도 모른다" 는
+        // 말이 안 되는 문장이 나온다. 바로 그 경우가 가장 설명이 필요한 상황이다.
+        let service = makeService(snapshot: IndexSnapshot(), allowsEmptyIndex: true) { configuration in
+            configuration.include = ["NoSuchDirectory/**"]
+        }
+        let limitations = service.analysisLimitations(context: try service.loadContext())
+        #expect(limitations.contains { $0.contains("1 source file(s) (0 in scope)") })
+    }
+
     @Test("인덱스가 비어 있지 않으면 가드가 걸리지 않는다")
     func nonEmptyIndexPasses() throws {
         let context = try makeService(snapshot: makeSnapshot()).loadContext()
@@ -101,7 +122,8 @@ struct EmptyIndexFactsTests {
     private func facts(
         sourceFileCount: Int,
         filteredSourceFileCount: Int,
-        unitCount: Int?
+        unitCount: Int?,
+        objectiveCSourceCount: Int = 0
     ) -> EmptyIndexFacts {
         EmptyIndexFacts(
             projectPath: "/p",
@@ -111,6 +133,7 @@ struct EmptyIndexFactsTests {
             libraryPath: "/xcode/libIndexStore.dylib",
             sourceFileCount: sourceFileCount,
             filteredSourceFileCount: filteredSourceFileCount,
+            objectiveCSourceCount: objectiveCSourceCount,
             unitCount: unitCount
         )
     }
@@ -150,6 +173,32 @@ struct EmptyIndexFactsTests {
         #expect(!unknown.remedy.contains("The store holds units"))
         #expect(unknown.remedy.contains("--index-store"))
         #expect(unknown.remedy.contains("swift build"))
+    }
+
+    @Test("Objective-C 만 있는 프로젝트에는 경로가 틀렸다고 하지 않는다")
+    func objectiveCOnlyProjectIsNotAPathError() {
+        // Flutter·React Native 의 `ios/` 가 흔히 이 모양이다. 경로는 맞는데 이 도구가
+        // 읽을 Swift 가 없을 뿐이다. "경로를 고치라" 고 하면 없는 오류를 찾게 만든다.
+        let objectiveC = facts(
+            sourceFileCount: 0, filteredSourceFileCount: 0, unitCount: nil, objectiveCSourceCount: 12
+        )
+        #expect(objectiveC.remedy.contains("Objective-C"))
+        #expect(!objectiveC.remedy.contains("Point --project at the directory"))
+        #expect(objectiveC.summary.contains("ObjC files:    12"))
+
+        // Swift 도 Objective-C 도 없으면 경로가 틀린 것이 맞다.
+        let neither = facts(sourceFileCount: 0, filteredSourceFileCount: 0, unitCount: nil)
+        #expect(neither.remedy.contains("--project"))
+        #expect(!neither.summary.contains("ObjC files"))
+    }
+
+    @Test("원인을 아는 상황에서는 탈출구를 권하지 않는다")
+    func escapeHatchIsNotAdvertisedWhenTheCauseIsKnown() {
+        // 오류의 마지막 줄은 가장 눈에 띈다. 원인을 아는 상태에서 그것을 권하면
+        // 에이전트에게 원인 조사 대신 은폐를 시키는 셈이다.
+        #expect(!facts(sourceFileCount: 0, filteredSourceFileCount: 0, unitCount: 9).suggestsEscapeHatch)
+        #expect(!facts(sourceFileCount: 9, filteredSourceFileCount: 0, unitCount: 9).suggestsEscapeHatch)
+        #expect(facts(sourceFileCount: 9, filteredSourceFileCount: 9, unitCount: 9).suggestsEscapeHatch)
     }
 
     @Test("심볼릭 링크로 지정했을 때만 실제 경로를 함께 보여 준다")

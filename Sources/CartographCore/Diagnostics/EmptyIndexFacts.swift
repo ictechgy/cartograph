@@ -36,6 +36,11 @@ public struct EmptyIndexFacts: Sendable, Equatable {
     public let sourceFileCount: Int
     /// 그중 include/exclude 를 통과한 수.
     public let filteredSourceFileCount: Int
+    /// 프로젝트 아래의 Objective-C 소스 수.
+    ///
+    /// Swift 가 하나도 없을 때 경로가 틀린 것인지, 이 도구가 못 읽는 언어로 쓰인
+    /// 프로젝트인지를 가른다. 후자에게 "경로를 고치라" 고 하면 없는 오류를 찾게 만든다.
+    public let objectiveCSourceCount: Int
     /// 스토어가 담고 있는 유닛 수. 셀 수 없으면 nil.
     public let unitCount: Int?
 
@@ -47,6 +52,7 @@ public struct EmptyIndexFacts: Sendable, Equatable {
         libraryPath: String,
         sourceFileCount: Int,
         filteredSourceFileCount: Int,
+        objectiveCSourceCount: Int = 0,
         unitCount: Int? = nil
     ) {
         self.projectPath = projectPath
@@ -56,6 +62,7 @@ public struct EmptyIndexFacts: Sendable, Equatable {
         self.libraryPath = libraryPath
         self.sourceFileCount = sourceFileCount
         self.filteredSourceFileCount = filteredSourceFileCount
+        self.objectiveCSourceCount = objectiveCSourceCount
         self.unitCount = unitCount
     }
 
@@ -68,7 +75,7 @@ public struct EmptyIndexFacts: Sendable, Equatable {
             "  Swift files:   \(sourceFileCount) under the project, "
                 + "\(filteredSourceFileCount) of them in scope after include/exclude",
             "  index units:   \(unitCount.map(String.init) ?? "unknown")",
-        ].joined(separator: "\n")
+        ].joined(separator: "\n") + objectiveCLine
     }
 
     /// 원인별 다음 행동. 숫자 세 개가 원인을 가른다.
@@ -76,13 +83,41 @@ public struct EmptyIndexFacts: Sendable, Equatable {
     /// 유닛 수를 모르면 둘 중 어느 쪽이라고도 말하지 않는다. "유닛이 있다"고 단정한
     /// 문장 뒤에 "index units: unknown" 이 붙으면 그 답 전체를 믿을 수 없게 된다.
     public var remedy: String {
-        if sourceFileCount == 0 { return Self.noSourcesRemedy }
+        if sourceFileCount == 0 {
+            return objectiveCSourceCount > 0
+                ? objectiveCOnlyRemedy
+                : Self.noSourcesRemedy
+        }
         if filteredSourceFileCount == 0 { return Self.filteredOutRemedy }
         switch unitCount {
         case 0: return Self.nothingCompiledRemedy
         case nil: return Self.unknownStoreRemedy
         default: return Self.foreignStoreRemedy
         }
+    }
+
+    /// 탈출구를 안내해도 되는 상황인지.
+    ///
+    /// 원인이 이미 특정된 경우에는 안내하지 않는다. 오류의 마지막 줄은 가장 눈에 띄고,
+    /// 에이전트는 그것을 해결책으로 읽는다. 경로가 틀렸거나 필터가 다 걸러 낸 것을
+    /// 아는 상태에서 "이 플래그로 넘기라" 고 하면 원인 조사 대신 은폐를 권하는 셈이다.
+    public var suggestsEscapeHatch: Bool {
+        sourceFileCount > 0 && filteredSourceFileCount > 0
+    }
+
+    /// Objective-C 만 있는 프로젝트. Flutter·React Native 의 `ios/` 가 흔히 이 모양이다.
+    private var objectiveCOnlyRemedy: String {
+        """
+        This project has \(objectiveCSourceCount) Objective-C source file(s) and no Swift file that \
+        this tool can read, so the path is probably right and there is simply nothing here to \
+        analyse. Point --project at the Swift sources if they live elsewhere.
+        """
+    }
+
+    /// Objective-C 소스가 있을 때만 한 줄 더 적는다. 0 은 알릴 것이 없다.
+    private var objectiveCLine: String {
+        guard objectiveCSourceCount > 0 else { return "" }
+        return "\n  ObjC files:    \(objectiveCSourceCount) under the project, not analysed"
     }
 
     /// 링크를 지정했을 때만 실제 경로를 덧붙인다. 같은 경로를 두 번 보여 주지 않는다.

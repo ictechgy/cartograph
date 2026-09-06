@@ -51,12 +51,16 @@ public enum CartographError: Error, Equatable, LocalizedError {
                 writing to it right now. Rebuild the index and try again.
                 """
         case let .indexStoreEmpty(facts):
+            // 탈출구는 원인을 모를 때만 안내한다. 오류의 마지막 줄은 가장 눈에 띄고,
+            // 원인을 아는 상태에서 그것을 권하면 조사 대신 은폐를 시키는 셈이다.
+            let hatch = facts.suggestsEscapeHatch
+                ? "\nPass --allow-empty-index if this run is meant to analyse nothing."
+                : ""
             return """
                 The index store knows none of this project's declarations. Every analysis here \
                 would report "no findings" over zero declarations, and --strict would pass.
                 \(facts.summary)
-                \(facts.remedy)
-                Pass --allow-empty-index if this run is meant to analyse nothing.
+                \(facts.remedy)\(hatch)
                 """
         case let .indexStoreLibraryNotFound(searchedPaths):
             return """

@@ -29,6 +29,7 @@ public struct TextDiagnosticReporter: DiagnosticReporting {
         let suppressed = summary.suppressedCount > 0
             ? " (\(summary.suppressedCount) suppressed by baseline)"
             : ""
-        return "\(summary.command): \(findings)\(suppressed) — \(summary.subject)"
+        let caveat = summary.caveat.map { " (\($0))" } ?? ""
+        return "\(summary.command): \(findings)\(caveat)\(suppressed) — \(summary.subject)"
     }
 }
