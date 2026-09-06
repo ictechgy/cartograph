@@ -317,8 +317,11 @@ A candidate carries its `kind`, `module` and declaration site because `qualified
 `Module.name` and leaves out the owning type. Asking a real app about `body` returns 127
 candidates of which 122 print as the same string, `HealthMap.body`; the location is what tells
 them apart. You can then ask again with `Container.member` — `cartograph query
-PersistentMapTabHost.body` — instead of copying a USR. The container may be the type that an
-extension extends, so a member declared in an extension answers to its type's name.
+PersistentMapTabHost.body` — instead of copying a USR. Nesting works to any depth
+(`Outer.Inner.leaf`), the outermost part may be the module, and an intermediate container may be
+left out; if that still matches several declarations you get `ambiguous` again rather than a
+guess. The container may be the type that an extension extends, so a member declared in an
+extension answers to its type's name.
 
 `members` and `declaredIn` carry containment, which is not use. A type's own dependencies live in
 its members on a symbol-level graph, so `dependsOn: []` on a class is normal and does not mean the

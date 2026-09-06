@@ -733,6 +733,62 @@ struct SymbolQueryTests {
         #expect(try service.queryDocument(symbol: "Detail.noSuchMember").status == "notFound")
         #expect(try service.queryDocument(symbol: ".body").status == "notFound")
         #expect(try service.queryDocument(symbol: "Detail.").status == "notFound")
+        #expect(try service.queryDocument(symbol: "..").status == "notFound")
+    }
+
+    /// `Outer.Inner.leaf` 한 사슬과, 이름만 같고 사슬이 다른 `Other.leaf`.
+    private func makeNestedSnapshot() -> IndexSnapshot {
+        var builder = SnapshotBuilder()
+        builder.symbol("Root", kind: .structType, module: "App", path: "/p/Root.swift", attributes: [.entryPoint])
+        builder.symbol("s:3App5OuterV", name: "Outer", kind: .structType, module: "App", path: "/p/Outer.swift")
+        builder.symbol(
+            "s:3App5OuterV5InnerV", name: "Inner", kind: .structType, module: "App",
+            path: "/p/Outer.swift", line: 5, parent: "s:3App5OuterV"
+        )
+        builder.symbol(
+            "s:3App5OuterV5InnerV4leafSivp", name: "leaf", kind: .property, module: "App",
+            path: "/p/Outer.swift", line: 7, parent: "s:3App5OuterV5InnerV"
+        )
+        builder.symbol("s:3App5OtherV", name: "Other", kind: .structType, module: "App", path: "/p/Other.swift")
+        builder.symbol(
+            "s:3App5OtherV4leafSivp", name: "leaf", kind: .property, module: "App",
+            path: "/p/Other.swift", line: 3, parent: "s:3App5OtherV"
+        )
+        builder.reference(from: "Root", to: "s:3App5OuterV", kind: .call)
+        return builder.build()
+    }
+
+    @Test("두 단계 중첩도 이름으로 찾는다")
+    func aTwiceNestedMemberResolves() throws {
+        let service = makeService(snapshot: makeNestedSnapshot())
+        // 이름만 물으면 둘이 걸린다.
+        #expect(try service.queryDocument(symbol: "leaf").status == "ambiguous")
+        for name in ["Inner.leaf", "Outer.Inner.leaf", "App.Outer.Inner.leaf"] {
+            let document = try service.queryDocument(symbol: name)
+            #expect(document.status == "found", "\(name) 이 하나로 좁혀지지 않았다")
+            #expect(document.result?.subject.location?.line == 7)
+        }
+        // 중간을 건너뛴 표기도 받는다. 바깥 타입만 아는 채로 묻는 것이 자연스럽다.
+        #expect(try service.queryDocument(symbol: "Outer.leaf").status == "found")
+        // 다른 사슬의 동명 멤버는 자기 소유자로만 찾힌다.
+        let other = try service.queryDocument(symbol: "Other.leaf")
+        #expect(other.status == "found")
+        #expect(other.result?.subject.location?.path == "/p/Other.swift")
+    }
+
+    @Test("소유 사슬이 순환해도 멈춘다")
+    func aCyclicOwnershipChainTerminates() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("Root", kind: .structType, module: "App", path: "/p/Root.swift", attributes: [.entryPoint])
+        builder.symbol("A", kind: .structType, module: "App", path: "/p/A.swift", parent: "B")
+        builder.symbol("B", kind: .structType, module: "App", path: "/p/B.swift", parent: "A")
+        builder.symbol(
+            "s:3AppA4leafSivp", name: "leaf", kind: .property, module: "App",
+            path: "/p/A.swift", line: 3, parent: "A"
+        )
+        // 그래프가 만들어 준 부모 관계를 믿지 않는다. 답이 무엇이든 끝나기만 하면 된다.
+        #expect(try makeService(snapshot: builder.build())
+            .queryDocument(symbol: "NoSuchOwner.leaf").status == "notFound")
     }
 
     @Test("익스텐션에 단 멤버도 확장 대상 타입 이름으로 찾는다")

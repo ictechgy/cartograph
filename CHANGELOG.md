@@ -28,8 +28,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `body` returned 127 candidates of which 122 printed as the identical string `HealthMap.body`;
   the same query now yields 127 distinct rows.
 - `query` and `dead --explain` accept `Container.member`, so you can narrow an ambiguous name with
-  a name you just read in the answer instead of copying a USR. The container may be the type an
-  extension extends, so a member declared in an extension answers to its type's name.
+  a name you just read in the answer instead of copying a USR. Nesting works to any depth
+  (`Outer.Inner.leaf`), the outermost part may be the module (`App.Outer.leaf`), and an
+  intermediate container may be left out (`Outer.leaf`) because knowing only the outer type is the
+  normal case; over-matching comes back as `ambiguous` rather than a guess. The container may be
+  the type an extension extends, so a member declared in an extension answers to its type's name.
+  This runs only when the plain lookup found nothing, so a declaration literally named
+  `Detail.body` still wins.
 
 ### Fixed
 
