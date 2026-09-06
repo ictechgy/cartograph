@@ -5,6 +5,11 @@ import Foundation
 /// 규칙은 단순하다.
 /// 1. include 가 비어 있지 않으면, 하나라도 일치해야 통과한다.
 /// 2. exclude 에 하나라도 일치하면 무조건 탈락한다(exclude 우선).
+/// 3. 대조하는 경로 형태가 방향마다 다르다. include 는 절대 경로와 상대 경로를
+///    모두 보고, exclude 는 프로젝트 안의 경로면 상대 경로만 본다. 두 방향의
+///    실패 비용이 다르기 때문이다 — include 를 좁히면 아무것도 안 골라 "정점 0개"가
+///    되고, exclude 를 넓히면 조상 디렉터리 이름 하나로 프로젝트 전체가 사라진다.
+///    절대 경로로 쓴 exclude 패턴은 의도가 분명하므로 절대 경로에 그대로 적용한다.
 ///
 /// 인덱스가 주는 경로는 절대 경로지만 사용자는 `Sources/**` 처럼 프로젝트
 /// 기준으로 쓴다. 두 형태를 모두 후보로 보지 않으면 설정이 조용히 아무것도
@@ -58,10 +63,41 @@ public struct PathFilter: Sendable, Equatable {
     public static let passthrough = PathFilter()
 
     public func allows(_ path: String) -> Bool {
-        let candidates = matchCandidates(for: path)
-        if candidates.contains(where: { exclude.matchesAny($0) }) { return false }
+        if excludes(path) { return false }
         if include.isEmpty { return true }
-        return candidates.contains { include.matchesAny($0) }
+        return matchCandidates(for: path).contains { include.matchesAny($0) }
+    }
+
+    /// 제외 판정. 프로젝트 안의 경로는 프로젝트 기준 상대 경로로만 본다.
+    ///
+    /// 절대 경로까지 후보로 두면 프로젝트 루트의 *조상* 디렉터리 이름이 패턴에 걸린다.
+    /// 기본 제외 목록에는 `**/DerivedData/**` 처럼 흔한 이름이 있어, 프로젝트가
+    /// `~/DerivedData/App` 아래 있기만 하면 모든 파일이 제외되고 결과는 "정점 0개"가
+    /// 된다. 그 상태에서 `--strict` 는 아무것도 분석하지 않은 채 통과한다.
+    /// 같은 일이 사용자가 쓴 글롭에도 일어난다 — `exclude: ["**/Normal/**"]` 은
+    /// 조상 디렉터리 이름이 `Normal` 이기만 해도 프로젝트 전체를 삼킨다.
+    ///
+    /// include 는 바꾸지 않는다. 포함 후보를 좁히는 것은 설정이 조용히 아무것도
+    /// 고르지 않는 방향이고, 이 타입이 막겠다고 존재하는 실패가 바로 그것이다.
+    private func excludes(_ path: String) -> Bool {
+        // 절대 경로로 쓴 패턴은 의도가 분명하므로 절대 경로에 그대로 적용한다.
+        if exclude.contains(where: { $0.isAbsolute && $0.matches(path) }) { return true }
+        return relativeCandidates(for: path).contains { exclude.matchesAny($0) }
+    }
+
+    /// 기준 디렉터리에 대한 상대 경로들. 기준이 없거나 기준 밖의 경로면 절대 경로 하나뿐이다.
+    ///
+    /// 기준 밖의 경로에까지 상대 후보가 없다고 제외를 포기하면, 프로젝트 밖에
+    /// 체크아웃된 의존성(`~/Library/.../SourcePackages/checkouts/**`)을 걸러 내지
+    /// 못한다. 그쪽은 절대 경로로 판단하는 것이 맞다.
+    func relativeCandidates(for path: String) -> [String] {
+        var result: [String] = []
+        for base in basePathVariants {
+            let candidates = Self.matchCandidates(for: path, relativeTo: base)
+            guard candidates.count > 1, !result.contains(candidates[1]) else { continue }
+            result.append(candidates[1])
+        }
+        return result.isEmpty ? [path] : result
     }
 
     /// 절대 경로와, 기준 디렉터리에 대한 상대 경로들.
