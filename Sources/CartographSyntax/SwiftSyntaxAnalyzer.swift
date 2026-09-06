@@ -49,21 +49,10 @@ public struct SwiftSyntaxAnalyzer: Sendable {
 
     /// 파일 첫머리 주석에 `cartograph:ignore:all` 이 있는지 확인한다.
     private static func fileIsIgnored(_ tree: SourceFileSyntax) -> Bool {
-        commentLines(in: tree.leadingTrivia).contains { CommentCommand.parse(comment: $0) == .ignoreAll }
+        SyntaxComments.lines(in: tree.leadingTrivia).contains { CommentCommand.parse(comment: $0) == .ignoreAll }
     }
 
     /// 트리비아에서 주석 텍스트만 뽑아 낸다.
-    static func commentLines(in trivia: Trivia) -> [String] {
-        trivia.compactMap { piece in
-            switch piece {
-            case let .lineComment(text), let .blockComment(text),
-                 let .docLineComment(text), let .docBlockComment(text):
-                text
-            default:
-                nil
-            }
-        }
-    }
 }
 
 /// 선언을 훑으면서 접근 수준과 속성을 모은다.
@@ -332,8 +321,8 @@ final class DeclarationCollector: SyntaxVisitor {
     /// 사용자는 무시했다고 믿는데 그대로 미사용으로 보고되는 상황이 된다.
     private func commonAttributes(_ node: some WithAttributesSyntax & SyntaxProtocol) -> Set<SymbolAttribute> {
         var result = Self.attributes(from: node.attributes)
-        let comments = SwiftSyntaxAnalyzer.commentLines(in: node.leadingTrivia)
-            + SwiftSyntaxAnalyzer.commentLines(in: node.trailingTrivia)
+        let comments = SyntaxComments.lines(in: node.leadingTrivia)
+            + SyntaxComments.lines(in: node.trailingTrivia)
         if comments.contains(where: { CommentCommand.parse(comment: $0) != nil }) {
             result.insert(.ignoreComment)
         }

@@ -36,6 +36,7 @@ Scripts/coverage.sh
 swift build \
   && swift run cartograph dead   --strict \
   && swift run cartograph cycles --strict \
+  && swift run cartograph cycles --level type --strict \
   && swift run cartograph rules  --strict
 ```
 

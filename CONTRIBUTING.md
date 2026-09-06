@@ -34,6 +34,7 @@ boundary are deliberately left to the end-to-end job that analyzes this reposito
 swift build
 swift run cartograph dead   --strict
 swift run cartograph cycles --strict
+swift run cartograph cycles --level type --strict
 swift run cartograph rules  --strict
 ```
 

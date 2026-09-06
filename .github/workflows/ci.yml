@@ -85,6 +85,9 @@ jobs:
       - name: Circular dependencies
         run: |
           "$CARTOGRAPH" cycles --strict
+          # 모듈 레벨은 Swift 가 구조적으로 막고 있어 절대 발화하지 않는다.
+          # 이 게이트가 무언가를 실제로 검사하는 것은 타입 레벨부터다.
+          "$CARTOGRAPH" cycles --level type --strict
 
       - name: Unused declarations
         run: |
