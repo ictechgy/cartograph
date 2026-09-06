@@ -165,13 +165,25 @@ struct QueryCommand: ParsableCommand {
 
             Names that match more than one declaration return the candidates and their USRs \
             instead of a guess. Ask again with a USR.
+
+            --batch answers many declarations from one index read. Sweeping a `dead` report one \
+            name at a time costs one process and one index read per name; the answers are cheap and \
+            the preparation is not. The file is a JSON array of names, and the results come back in \
+            request order, duplicates kept, in the `symbol-query-batch` format that dartograph \
+            already writes.
             """
     )
 
     @OptionGroup var options: GlobalOptions
 
     @Argument(help: "The declaration to ask about, by name, qualified name or USR.")
-    var symbol: String
+    var symbol: String?
+
+    @Option(
+        name: .customLong("batch"),
+        help: "A JSON array of names to ask about, from one index read."
+    )
+    var batch: String?
 
     @Option(name: .customLong("depth"), help: "How many edges to follow in each direction.")
     var depth: Int = 1
@@ -182,15 +194,55 @@ struct QueryCommand: ParsableCommand {
     func validate() throws {
         guard depth >= 1 else { throw ValidationError("--depth must be at least 1") }
         guard limit >= 1 else { throw ValidationError("--limit must be at least 1") }
+        // 둘 다 받으면 어느 쪽을 답했는지 출력 형식으로만 알 수 있다. 스크립트가
+        // 인자를 잘못 조립해도 조용히 한쪽이 무시되는 것이 가장 나쁘다.
+        switch (symbol, batch) {
+        case (nil, nil):
+            throw ValidationError("give a declaration to ask about, or --batch <requests.json>")
+        case (.some, .some):
+            throw ValidationError("give either a declaration or --batch, not both")
+        default:
+            break
+        }
     }
 
     func run() throws {
+        // 요청 파일은 인덱스를 열기 전에 읽는다. 색인을 다 만든 뒤에 "배열이 비었다" 를
+        // 말하면 사용자는 몇 초를 기다린 대가로 오타 하나를 받는다.
+        let requests = try batch.map { try Self.readRequests(at: $0) }
         let context = try CommandSupport.makeContext(options)
-        try CommandSupport.emit(
-            try context.service.query(symbol: symbol, depth: depth, limit: limit),
-            options: options,
-            context: context
-        )
+        let outcome = try requests.map {
+            try context.service.queryBatch(symbols: $0, depth: depth, limit: limit)
+        } ?? context.service.query(symbol: symbol ?? "", depth: depth, limit: limit)
+        try CommandSupport.emit(outcome, options: options, context: context)
+    }
+
+    /// 요청 파일을 읽어 이름 목록으로 만든다.
+    ///
+    /// 실패를 `ValidationError` 로 바꾼다. 요청 파일이 잘못된 것은 **인자의 문제**이지
+    /// 도구가 죽은 것이 아니다. `CartographError` 를 그대로 던지면 최상위가 종료 코드 2
+    /// 를 내고, CI 스크립트는 그것을 "분석을 신뢰할 수 없음" 으로 읽는다. 오타 하나에
+    /// 파이프라인이 인덱스를 의심하게 만들지 않는다.
+    private static func readRequests(at path: String) throws -> [String] {
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            return try SymbolQueryBatchRequests.parse(data, path: path)
+        } catch let error as CartographError {
+            throw ValidationError(error.errorDescription ?? "\(error)")
+        } catch {
+            throw ValidationError(
+                CartographError.invalidBatchRequests(
+                    path: path, reason: Self.trimmed(error.localizedDescription)
+                ).errorDescription ?? "\(error)"
+            )
+        }
+    }
+
+    /// 끝의 마침표를 뗀다. 이 자리의 이유 문구는 문장 가운데에 끼워 넣는다.
+    private static func trimmed(_ reason: String) -> String {
+        var reason = reason
+        while reason.hasSuffix(".") { reason.removeLast() }
+        return reason
     }
 }
 

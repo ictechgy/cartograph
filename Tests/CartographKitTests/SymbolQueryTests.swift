@@ -473,4 +473,114 @@ struct SymbolQueryTests {
         let decoded = try JSONDecoder().decode(SymbolQueryDocument.self, from: Data(first.utf8))
         #expect(decoded.result?.subject.name == "UserService")
     }
+
+    // MARK: - 배치
+
+    @Test("배치는 요청 순서와 중복을 그대로 지킨다")
+    func batchKeepsOrderAndDuplicates() throws {
+        let outcome = try makeService().queryBatch(
+            symbols: ["UserService", "DeadHelper", "UserService"]
+        )
+        let document = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self, from: Data(outcome.output.utf8)
+        )
+        #expect(document.format == "symbol-query-batch")
+        #expect(document.version == 1)
+        #expect(document.results.map(\.requested) == ["UserService", "DeadHelper", "UserService"])
+        #expect(document.results[0] == document.results[2])
+    }
+
+    @Test("배치의 답은 하나씩 물었을 때와 같다")
+    func batchAgreesWithSingleQueries() throws {
+        let service = makeService()
+        let names = ["HomeView", "UserService", "UserRepository", "DeadHelper", "NoSuchThing"]
+        let batch = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self,
+            from: Data(try service.queryBatch(symbols: names).output.utf8)
+        )
+        for (name, result) in zip(names, batch.results) {
+            #expect(result == (try service.queryDocument(symbol: name)))
+        }
+    }
+
+    @Test("배치에 하나라도 없는 이름이 있으면 사용 오류로 표시하되 나머지 답은 낸다")
+    func batchReportsMissingNamesWithoutDroppingTheRest() throws {
+        let outcome = try makeService().queryBatch(symbols: ["UserService", "NoSuchThing", "DeadHelper"])
+        #expect(outcome.subjectNotFound)
+        let document = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self, from: Data(outcome.output.utf8)
+        )
+        #expect(document.results.map(\.status) == ["found", "notFound", "found"])
+    }
+
+    @Test("배치는 모호한 이름을 고르지 않고 후보로 답한다")
+    func batchReturnsCandidatesForAnAmbiguousName() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("Root", kind: .structType, module: "App", path: "/p/Root.swift", attributes: [.entryPoint])
+        builder.symbol("A.Config", name: "Config", kind: .structType, module: "App", path: "/p/A.swift")
+        builder.symbol("B.Config", name: "Config", kind: .structType, module: "App", path: "/p/B.swift")
+        let service = makeService(snapshot: builder.build())
+
+        let document = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self,
+            from: Data(try service.queryBatch(symbols: ["Config"]).output.utf8)
+        )
+        #expect(document.results.first?.status == "ambiguous")
+        #expect(document.results.first?.candidates?.count == 2)
+        // 모호함은 답이지 실패가 아니다. 종료 코드를 세우면 스윕이 거기서 멈춘다.
+        #expect(try !service.queryBatch(symbols: ["Config"]).subjectNotFound)
+    }
+
+    @Test("배치도 한계 목록을 모든 결과에 함께 싣는다")
+    func batchCarriesLimitationsOnEveryResult() throws {
+        let fileSystem = InMemoryFileSystem()
+        try fileSystem.write(text: "@interface Legacy @end", to: "/p/Legacy.m")
+        let service = makeService(fileSystem: fileSystem)
+
+        let document = try JSONDecoder().decode(
+            SymbolQueryBatchDocument.self,
+            from: Data(try service.queryBatch(symbols: ["UserService", "NoSuchThing"]).output.utf8)
+        )
+        #expect(document.results.allSatisfy { !$0.limitations.isEmpty })
+    }
+
+    @Test("잘못된 요청 파일은 형태를 말하며 거부된다")
+    func malformedRequestsAreRejectedWithTheirShape() throws {
+        let cases: [(String, String)] = [
+            ("{}", "not a JSON array"),
+            ("[1]", "not a JSON array"),
+            ("[]", "0 request"),
+            ("[\"\"]", "request 0 is empty"),
+            ("[\"  \"]", "request 0 is empty"),
+        ]
+        for (source, expected) in cases {
+            #expect(throws: CartographError.self) {
+                try SymbolQueryBatchRequests.parse(Data(source.utf8), path: "/p/r.json")
+            }
+            do {
+                _ = try SymbolQueryBatchRequests.parse(Data(source.utf8), path: "/p/r.json")
+            } catch let error as CartographError {
+                #expect(
+                    error.errorDescription?.contains(expected) == true,
+                    "\(source) 의 이유가 '\(expected)' 를 말하지 않는다"
+                )
+            }
+        }
+    }
+
+    @Test("요청 수와 파일 크기의 한계를 지킨다")
+    func rejectsTooManyRequestsAndOversizedFiles() throws {
+        let many = try JSONEncoder().encode((0...1000).map { "N\($0)" })
+        #expect(throws: CartographError.self) {
+            try SymbolQueryBatchRequests.parse(many, path: "/p/r.json")
+        }
+        let justEnough = try JSONEncoder().encode((0..<1000).map { "N\($0)" })
+        #expect(try SymbolQueryBatchRequests.parse(justEnough, path: "/p/r.json").count == 1000)
+
+        // 크기 한계는 개수보다 먼저 본다. 1 MiB 를 넘는 배열을 파싱하는 것 자체가 비용이다.
+        let huge = Data("[\"\(String(repeating: "x", count: 1024 * 1024))\"]".utf8)
+        #expect(throws: CartographError.self) {
+            try SymbolQueryBatchRequests.parse(huge, path: "/p/r.json")
+        }
+    }
 }

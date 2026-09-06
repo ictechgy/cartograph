@@ -367,15 +367,62 @@ public struct CartographService: Sendable {
         return CommandOutcome(output: text, subjectNotFound: document.status == "notFound")
     }
 
+    /// 여러 선언을 한 번에 묻는다.
+    ///
+    /// 그래프와 도달성과 한계 목록을 한 번만 만들고 질문만 반복한다. 답 하나하나는 싸고
+    /// 그 앞의 준비가 비싸다. 프로세스를 요청 수만큼 띄우면 그 준비를 요청 수만큼 되풀이한다.
+    ///
+    /// 하나라도 찾지 못하면 종료 코드는 사용 오류가 되지만 **나머지 답은 전부 돌려준다.**
+    /// 이름 하나가 틀렸다고 마흔둘의 답을 버리게 하지 않는다.
+    public func queryBatch(symbols: [String], depth: Int = 1, limit: Int = 50) throws -> CommandOutcome {
+        let session = try makeQuerySession()
+        let results = try symbols.map {
+            try queryDocument(symbol: $0, depth: depth, limit: limit, in: session)
+        }
+        let text = try Self.encodeSortedJSON(SymbolQueryBatchDocument(results: results))
+        return CommandOutcome(
+            output: text,
+            subjectNotFound: results.contains { $0.status == "notFound" }
+        )
+    }
+
     /// `query` 가 내보낼 문서를 만든다. 인코딩과 종료 코드는 부르는 쪽이 정한다.
     public func queryDocument(symbol subject: String, depth: Int = 1, limit: Int = 50) throws -> SymbolQueryDocument {
+        try queryDocument(symbol: subject, depth: depth, limit: limit, in: try makeQuerySession())
+    }
+
+    /// 질의 여러 건이 나눠 쓰는 준비물.
+    ///
+    /// 값으로 묶어 두지 않으면 배치 경로가 요청마다 인덱스를 다시 읽는다.
+    struct QuerySession {
+        let graph: CodeGraph
+        let report: UnusedCodeReport
+        let limitations: [String]
+    }
+
+    func makeQuerySession() throws -> QuerySession {
         let context = try loadContext()
         let (graph, report) = unusedCode(in: context)
+        return QuerySession(
+            graph: graph,
+            report: report,
+            limitations: analysisLimitations(context: context, symbolGraph: graph)
+        )
+    }
+
+    func queryDocument(
+        symbol subject: String,
+        depth: Int,
+        limit: Int,
+        in session: QuerySession
+    ) throws -> SymbolQueryDocument {
+        let graph = session.graph
+        let report = session.report
         // `unusedCode` 는 설정과 무관하게 항상 심볼 레벨로 만든다. 여기서 설정값을
         // 실어 보내면 심볼 레벨 답을 모듈 레벨 답이라고 말하게 된다.
         let level = GraphLevel.symbol.rawValue
 
-        let limitations = analysisLimitations(context: context, symbolGraph: graph)
+        let limitations = session.limitations
 
         switch NodeLookup.resolve(subject, in: graph) {
         case .notFound:

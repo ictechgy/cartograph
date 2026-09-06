@@ -76,6 +76,9 @@ expect_status 64 "잘못된 열거형 값"    graph --level galaxy
 expect_status 64 "잘못된 형식 값"      dead --report-format yaml
 expect_status 64 "질의 대상 누락"      query
 expect_status 64 "0 이하의 깊이"       query Foo --depth 0
+expect_status 64 "질의 대상과 배치 동시" query Foo --batch /dev/null
+# 요청 파일이 잘못된 것은 인자의 문제다. 종료 코드 2 로 내면 CI 가 인덱스를 의심한다.
+expect_status 64 "없는 배치 요청 파일"  query --batch "/tmp/cartograph-no-such-batch.json"
 expect_status 64 "잘못된 브리지 형식"  bridges --format yaml
 expect_status 64 "잘못된 브리지 대상"  bridges --target capacitor
 
@@ -83,6 +86,8 @@ echo "종료 코드 2 — 도구 실패"
 MISSING="$(mktemp -d)"
 trap 'rm -rf "$MISSING"' EXIT
 printf '{ not json' > "$MISSING/broken.json"
+printf '{}' > "$MISSING/badbatch.json"
+printf '["Foo"]' > "$MISSING/batch.json"
 expect_status 2 "인덱스 스토어 없음"   cycles --project "$MISSING"
 expect_status 2 "없는 인덱스 경로"     cycles --index-store "$MISSING/nope"
 expect_status 2 "브리지: 인덱스 없음"  bridges --project "$MISSING"
@@ -92,6 +97,9 @@ expect_status 2 "깨진 베이스라인"      cycles --project "$MISSING" --base
 # 외부 근거 파일은 지정했는데 없으면 조용히 넘어가지 않는다. 반영됐다고 믿고 지우면 앱이 깨진다.
 expect_status 2 "없는 외부 근거 파일"  dead --project "$MISSING" --external-retentions "$MISSING/none.json"
 expect_status 2 "깨진 외부 근거 파일"  dead --project "$MISSING" --external-retentions "$MISSING/broken.json"
+# 요청 파일은 인덱스를 열기 전에 읽는다. 인덱스가 없는 프로젝트에서도 배치 오류가 먼저 난다.
+expect_status 64 "배치 검사가 색인보다 먼저" query --batch "$MISSING/badbatch.json" --project "$MISSING"
+expect_status 2 "배치도 인덱스는 필요"  query --batch "$MISSING/batch.json" --project "$MISSING"
 
 # 인덱스가 열리기는 하는데 이 프로젝트를 하나도 모르는 상태. 스토어가 없는 것과 다르다.
 # 이 경우가 조용히 0 으로 끝나면 --strict 가 0 줄을 분석하고 통과한다.

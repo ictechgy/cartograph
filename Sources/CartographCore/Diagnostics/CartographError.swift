@@ -38,6 +38,12 @@ public enum CartographError: Error, Equatable, LocalizedError {
     /// `--since` 가 가리킨 기준점의 변경 목록을 구하지 못했다.
     case changedFilesUnavailable(reference: String, reason: String)
 
+    /// `query --batch` 의 요청 파일을 읽을 수 없다.
+    ///
+    /// 인덱스를 열기 **전에** 던진다. 요청 하나가 잘못되었을 뿐인데 색인을 한 번 다 만든
+    /// 뒤에 실패하면, 사용자는 몇 초를 기다린 대가로 오타 하나를 받는다.
+    case invalidBatchRequests(path: String, reason: String)
+
     public var errorDescription: String? {
         switch self {
         case let .indexStoreNotFound(searchedPaths, derivedData):
@@ -101,6 +107,11 @@ public enum CartographError: Error, Equatable, LocalizedError {
                 """
         case let .thresholdExceeded(rule, message):
             return "Threshold exceeded for '\(rule)': \(message)"
+        case let .invalidBatchRequests(path, reason):
+            return """
+                Cannot read the batch requests at \(path): \(reason). The file must be a JSON array \
+                of 1-1000 non-empty strings, at most 1 MiB, for example ["ApiClient", "ApiClient.fetch"].
+                """
         case let .changedFilesUnavailable(reference, reason):
             return "Could not list files changed since '\(reference)': \(reason)."
         case let .outputUnwritable(path, underlying):
