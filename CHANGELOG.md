@@ -7,6 +7,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A type used only as an enum case's associated value, as the right-hand side of a `typealias`, or
+  as the witness of an `associatedtype` now has an edge to it in the graph. The index records those
+  references, but with no relation to the declaration that holds them, and the adapter only built an
+  edge when a relation was present — so those types had no incoming edge at all and were kept alive
+  only by the retention rule for compiler-synthesized members. That is an accident, not an answer,
+  and it is the reason narrowing the retention rules would have reported types whose deletion does
+  not compile. The reference is attributed to the closest preceding declaration in the same file,
+  which is all the index gives: it has locations, not ranges.
+
+  The attribution is deliberately narrow. It applies only where the indexer is known to omit the
+  relation — an enum case, a `typealias`, an `associatedtype` — and never to an implicit occurrence.
+  A wider rule attaches macro-expanded code to whatever declaration precedes the attribute line,
+  because `@Observable` records its expansion at the attribute rather than at the type: on one real
+  project that invented two circular dependencies between types that do not reference each other.
+  Measured on four projects, this version adds only the intended edges (`+4`, `+18`, `+6`, `0`) and
+  changes no finding and no cycle.
+
 ## [0.6.0] - 2026-09-06
 
 ### Added

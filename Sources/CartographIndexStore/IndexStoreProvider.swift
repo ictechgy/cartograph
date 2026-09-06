@@ -87,6 +87,9 @@ public struct IndexStoreProvider: IndexProviding {
         var symbolsByUSR: [String: IndexedSymbol] = [:]
         var definedUSRs: Set<String> = []
         var references: [IndexedReference] = []
+        // 관계 없이 기록된 참조와, 그것을 붙일 후보가 되는 정의 위치들.
+        var unattributed: [(usr: String, location: SourceLocation)] = []
+        var definitionSites: [String: [(usr: String, location: SourceLocation)]] = [:]
 
         for occurrence in occurrences {
             if let symbol = IndexStoreMapping.indexedSymbol(from: occurrence) {
@@ -115,6 +118,16 @@ public struct IndexStoreProvider: IndexProviding {
             let occurrenceReferences = IndexStoreMapping.references(from: occurrence)
             references.append(contentsOf: occurrenceReferences)
 
+            let location = IndexStoreMapping.sourceLocation(occurrence.location)
+            if occurrence.roles.contains(.definition) {
+                definitionSites[location.path, default: []].append((occurrence.symbol.usr, location))
+            } else if occurrenceReferences.isEmpty, occurrence.roles.contains(.reference),
+                      !occurrence.roles.contains(.implicit) {
+                // 암시적 발생은 매크로가 펼친 코드다. 위치가 사용자가 쓴 자리가 아니라
+                // 속성 줄이라, 위치로 소유자를 찾으면 앞 선언에 붙는다.
+                unattributed.append((occurrence.symbol.usr, location))
+            }
+
             // 최상위 문장이 실제로 참조를 만들었을 때만 가상 심볼을 세운다.
             let topLevelUSR = IndexStoreMapping.topLevelCodeUSR(forFile: occurrence.location.path)
             if symbolsByUSR[topLevelUSR] == nil,
@@ -134,6 +147,10 @@ public struct IndexStoreProvider: IndexProviding {
                 symbolsByUSR[external.usr] = external
             }
         }
+
+        references += enclosingReferences(
+            for: unattributed, definitionSites: definitionSites, symbols: symbolsByUSR
+        )
 
         // 접근자와 프로퍼티 래퍼 곁가지를 모두 원래 선언으로 되돌린다.
         let owners = IndexStoreMapping.accessorOwners(in: occurrences)
@@ -180,6 +197,62 @@ public struct IndexStoreProvider: IndexProviding {
                 underlying: "\(error)"
             )
         }
+    }
+
+    /// 인덱서가 담고 있는 관계를 남기지 않는 선언 자리들.
+    ///
+    /// 열거형 케이스의 연관 값 타입, 타입 별칭의 우변, `associatedtype` 증인이 그렇다.
+    /// 다른 자리에서는 인덱서가 `containedBy` 를 붙여 주므로, 관계 없는 참조가 나타났다면
+    /// 그것은 매크로가 펼친 코드일 가능성이 높다. 넓게 잡으면 그 코드가 앞 선언에 붙어
+    /// 없는 의존성을 만들고, 순환 검사에서 거짓 발견이 된다. 실제로 `@Observable` 이
+    /// 그 모양으로 두 건을 만들었다.
+    static let omitsContainment: Set<SymbolKind> = [.enumCase, .typeAlias, .associatedType]
+
+    /// 관계 없이 기록된 참조를 감싸는 선언에 붙인다.
+    ///
+    /// 인덱서는 열거형 케이스의 연관 값 타입, 타입 별칭의 우변, `associatedtype` 증인이
+    /// 가리키는 타입을 `ref` 로 남기면서 **어떤 관계도 달지 않는다.** 관계가 있을 때만
+    /// 간선을 만들면 이런 타입은 아무도 쓰지 않는 것처럼 보이고, 실제로는 지우면 컴파일이
+    /// 깨진다. 오늘은 합성 이니셜라이저 보존이 우연히 그것들을 살리고 있다.
+    ///
+    /// 같은 파일에서 그 참조보다 앞에 있는 가장 가까운 정의에 붙인다. 인덱스는 선언의
+    /// 범위를 주지 않으므로 시작 위치만으로 판단한다. 틀려도 간선이 하나 더 생길 뿐이라
+    /// 보존이 늘고 없는 발견을 만들지 않는다. 이 저장소가 택하는 방향이다.
+    static func enclosingReferences(
+        for unattributed: [(usr: String, location: SourceLocation)],
+        definitionSites: [String: [(usr: String, location: SourceLocation)]],
+        symbols: [String: IndexedSymbol]
+    ) -> [IndexedReference] {
+        let sorted = definitionSites.mapValues { $0.sorted { $0.location < $1.location } }
+        return unattributed.compactMap { entry in
+            guard let owner = enclosingDefinition(of: entry.location, in: sorted[entry.location.path] ?? []),
+                  owner != entry.usr,
+                  let kind = symbols[owner]?.kind, Self.omitsContainment.contains(kind)
+            else { return nil }
+            return IndexedReference(
+                sourceUSR: owner, targetUSR: entry.usr, kind: .reference, location: entry.location
+            )
+        }
+    }
+
+    /// 위치보다 **엄격히** 앞에 있는 가장 가까운 정의. 위치로 정렬된 목록을 이분 탐색한다.
+    ///
+    /// 같은 위치의 정의는 건너뛴다. 이름 없는 파라미터는 자기 타입과 같은 자리에 기록되어,
+    /// `case broke(PayloadOnly)` 에서 그 파라미터가 소유자로 뽑힌다. 파라미터는 그래프의
+    /// 정점이 아니라 간선이 통째로 사라진다.
+    ///
+    /// 파일 하나에 정의가 수천 개인 프로젝트가 있어 선형 탐색을 쓰지 않는다.
+    private static func enclosingDefinition(
+        of location: SourceLocation,
+        in sites: [(usr: String, location: SourceLocation)]
+    ) -> String? {
+        var low = 0
+        var high = sites.count
+        while low < high {
+            let middle = (low + high) / 2
+            if sites[middle].location < location { low = middle + 1 } else { high = middle }
+        }
+        return low > 0 ? sites[low - 1].usr : nil
     }
 
     /// 인덱스 스토어마다 안정적으로 대응되는 캐시 디렉터리 경로.
