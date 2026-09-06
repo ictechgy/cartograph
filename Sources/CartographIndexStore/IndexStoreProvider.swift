@@ -157,12 +157,13 @@ public struct IndexStoreProvider: IndexProviding {
             .merging(IndexStoreMapping.propertyWrapperFacets(in: Array(symbolsByUSR.values))) { first, _ in first }
         let resolved = IndexStoreMapping.resolvingSynthesizedSymbols(references, owners: owners)
 
+        // 심볼은 정렬한다. 사전으로 접을 때 같은 USR 이 겹치면 앞의 것이 이기므로
+        // 순서가 결과에 남는다. 참조는 정렬하지 않는다 — `CodeGraph.init` 이 간선을
+        // 서명으로 접고 다시 정렬하기 때문에 여기서의 순서는 출력에 닿지 않는다.
+        // 참조 수는 심볼 수의 열 배 규모라 이 정렬만 없애도 명령마다 눈에 띄게 준다.
         return IndexSnapshot(
             symbols: symbolsByUSR.values.sorted { $0.usr < $1.usr },
-            references: resolved.sorted {
-                ($0.sourceUSR, $0.targetUSR, $0.kind.rawValue)
-                    < ($1.sourceUSR, $1.targetUSR, $1.kind.rawValue)
-            }
+            references: resolved
         )
     }
 

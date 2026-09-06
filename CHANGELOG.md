@@ -9,6 +9,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- References are no longer sorted on the way out of the index store. Every reference in the project
+  was put through an `O(n log n)` sort whose comparator built a three-`String` tuple per comparison,
+  and there are roughly ten references per symbol. The order was never read: `CodeGraph.init` folds
+  edges by signature and sorts them again, the retention scan builds a `Set`, and the extension-target
+  map is keyed by a USR that a Swift extension can only have once. On a 7,466-symbol app each command
+  loses about 0.13 s of wall clock — `dead` 0.64 s to 0.48 s, `graph --level symbol` 0.66 s to 0.53 s,
+  `cycles` 0.49 s to 0.36 s. Output is byte-identical across seven commands on four projects; the only
+  difference found anywhere was the `generatedAt` field of `bridges`, which differs between two runs of
+  the same binary. That the order does not reach the output was true by accident and is now a test.
+
 - The path filter is evaluated once per file rather than once per symbol. It is a property of the
   file, and a file carries dozens of symbols, so the same path was matched against every glob
   thousands of times; a sampled profile put that one call at about a third of every command. On a
