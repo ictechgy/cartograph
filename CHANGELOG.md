@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- The CLI contract script no longer needs an index store to check `query --batch`. It ran the batch
+  without `--project`, so it analyzed the working directory; in the release workflow, which re-runs
+  the script against the unpacked binary in a checkout that was never built, that exits 2 and the
+  check measured the presence of an index rather than the behaviour of the batch. It now uses the
+  empty-index fixture with the escape hatch. This broke the 0.8.0 release build, which is where a
+  contract script is supposed to catch things.
+
 ## [0.8.0] - 2026-09-07
 
 ### Added

@@ -116,12 +116,16 @@ echo "종료 코드 0 — 빈 인덱스 탈출구"
 expect_status 0 "빈 인덱스 허용"       dead --strict --project "$EMPTY" --allow-empty-index
 
 echo "종료 코드 64 — 배치는 답을 다 내고 나서 실패한다"
-BATCH="$(mktemp -d)"
-trap 'rm -rf "$MISSING" "$BATCH"' EXIT
-printf '["CartographError", "NoSuchDeclaration", "CodeGraph"]' > "$BATCH/mixed.json"
-BATCH_OUT="$("$BINARY" query --batch "$BATCH/mixed.json" 2>/dev/null)"
+# 이 스크립트는 인덱스가 없는 체크아웃에서도 돈다. 릴리스 워크플로가 압축을 푼 바이너리로
+# 다시 돌리는 자리가 그렇다. `--project` 없이 배치를 부르면 현재 디렉터리를 분석하려다
+# 종료 코드 2 로 끝나고, 그러면 이 검사가 재는 것은 배치가 아니라 인덱스의 존재다.
+# 위에서 만든 빈 인덱스 픽스처를 탈출구와 함께 쓴다. 세 이름 전부 notFound 가 되고,
+# 그것이 확인하려던 것 — 답을 다 내고 나서 실패한다 — 을 그대로 보여 준다.
+printf '["CartographError", "NoSuchDeclaration", "CodeGraph"]' > "$EMPTY/mixed.json"
+BATCH_ARGS=(query --batch "$EMPTY/mixed.json" --project "$EMPTY" --allow-empty-index)
+BATCH_OUT="$("$BINARY" "${BATCH_ARGS[@]}" 2>/dev/null)"
 BATCH_STATUS=$?
-BATCH_ERR="$("$BINARY" query --batch "$BATCH/mixed.json" 2>&1 >/dev/null)"
+BATCH_ERR="$("$BINARY" "${BATCH_ARGS[@]}" 2>&1 >/dev/null)"
 if [[ "$BATCH_STATUS" -eq 64 ]]; then
     printf '  ok    64  배치에 없는 이름이 있으면 사용 오류\n'
 else
@@ -129,7 +133,8 @@ else
     FAILURES=$((FAILURES + 1))
 fi
 # 실패해도 표준 출력은 완전해야 한다. 이것이 깨지면 스윕 한 건의 오타가 나머지 답을 버린다.
-for needle in '"format" : "symbol-query-batch"' '"status" : "found"' '"status" : "notFound"'; do
+# `found` 결과는 인덱스가 있어야 나오므로 여기서 재지 않는다. 단위 테스트가 덮는다.
+for needle in '"format" : "symbol-query-batch"' '"status" : "notFound"' '"version" : 1'; do
     if grep -q -- "$needle" <<< "$BATCH_OUT"; then
         printf '  ok        종료 64 에도 결과가 나온다: %s\n' "$needle"
     else
@@ -137,6 +142,14 @@ for needle in '"format" : "symbol-query-batch"' '"status" : "found"' '"status" :
         FAILURES=$((FAILURES + 1))
     fi
 done
+# 요청 셋이 전부 결과로 돌아왔는지. 하나가 없어서 나머지를 버리면 이 수가 준다.
+BATCH_RESULTS="$(grep -c '"requested"' <<< "$BATCH_OUT")"
+if [[ "$BATCH_RESULTS" -eq 3 ]]; then
+    printf '  ok        요청 셋이 모두 결과로 돌아온다\n'
+else
+    printf '  FAIL      요청 셋이 모두 결과로 돌아온다 (%s 개)\n' "$BATCH_RESULTS"
+    FAILURES=$((FAILURES + 1))
+fi
 if grep -q -- "NoSuchDeclaration" <<< "$BATCH_ERR"; then
     printf '  ok        오류 메시지가 없는 이름을 지목한다\n'
 else
