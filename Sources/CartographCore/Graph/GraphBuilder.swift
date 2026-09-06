@@ -66,7 +66,8 @@ public struct GraphBuilder: Sendable {
     public func buildResult(from snapshot: IndexSnapshot) -> BuildResult {
         let symbolsByUSR = snapshot.symbolsByUSR()
         let extensionTargets = Self.extensionTargets(in: snapshot)
-        let includedSymbols = snapshot.symbols.filter { isIncluded($0) }
+        let allowedPaths = allowedPaths(in: snapshot)
+        let includedSymbols = snapshot.symbols.filter { isIncluded($0, allowedPaths: allowedPaths) }
 
         var nodesByID: [NodeID: GraphNode] = [:]
         var nodeIDByUSR: [String: NodeID] = [:]
@@ -75,7 +76,8 @@ public struct GraphBuilder: Sendable {
             let resolved = resolve(
                 symbol: symbol,
                 symbolsByUSR: symbolsByUSR,
-                extensionTargets: extensionTargets
+                extensionTargets: extensionTargets,
+                allowedPaths: allowedPaths
             )
             nodeIDByUSR[symbol.usr] = resolved.id
             // 같은 정점에 여러 심볼이 모이면(롤업) 대표 심볼 하나만 남긴다.
@@ -114,9 +116,19 @@ public struct GraphBuilder: Sendable {
 
     // MARK: - 내부 구현
 
-    private func isIncluded(_ symbol: IndexedSymbol) -> Bool {
+    /// 경로 필터를 통과하는 경로들. 심볼이 아니라 **파일**마다 한 번만 판정한다.
+    ///
+    /// 필터는 파일의 성질인데 심볼마다 부르면 같은 경로를 수천 번 다시 본다. 글롭 매칭은
+    /// 경로를 세그먼트로 쪼개고 기준 경로의 여러 표기와 대조하는 일이라 싸지 않다.
+    /// 프로파일에서 이 판정 하나가 모든 명령의 3분의 1 이상이었다. 파일 하나에 심볼이
+    /// 수십 개씩 붙으므로 줄어드는 배수가 그대로 파일당 심볼 수다.
+    private func allowedPaths(in snapshot: IndexSnapshot) -> Set<String> {
+        Set(snapshot.symbols.map(\.location.path)).filter { options.pathFilter.allows($0) }
+    }
+
+    private func isIncluded(_ symbol: IndexedSymbol, allowedPaths: Set<String>) -> Bool {
         if symbol.isExternal, !options.includeExternal { return false }
-        return options.pathFilter.allows(symbol.location.path)
+        return allowedPaths.contains(symbol.location.path)
     }
 
     private func isIncluded(kind: EdgeKind) -> Bool {
@@ -127,7 +139,8 @@ public struct GraphBuilder: Sendable {
     private func resolve(
         symbol: IndexedSymbol,
         symbolsByUSR: [String: IndexedSymbol],
-        extensionTargets: [String: String]
+        extensionTargets: [String: String],
+        allowedPaths: Set<String>
     ) -> GraphNode {
         switch options.level {
         case .module:
@@ -155,7 +168,9 @@ public struct GraphBuilder: Sendable {
             // 소유 타입이 분석 범위 밖이면 그것으로 접지 않는다. 그러지 않으면
             // 명시적으로 제외한 파일의 선언이 익스텐션 멤버를 통해 그래프로 끌려 들어와
             // exclude 가 조용히 무력화된다.
-            guard let owner = symbolsByUSR[ownerUSR], isIncluded(owner) else {
+            guard let owner = symbolsByUSR[ownerUSR],
+                  isIncluded(owner, allowedPaths: allowedPaths)
+            else {
                 return Self.node(for: symbol)
             }
             return Self.node(for: owner)

@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The path filter is evaluated once per file rather than once per symbol. It is a property of the
+  file, and a file carries dozens of symbols, so the same path was matched against every glob
+  thousands of times; a sampled profile put that one call at about a third of every command. On a
+  7,466-symbol app `graph --level symbol` drops from 0.71-0.75 s to 0.64-0.65 s and `dead` from
+  0.64-0.68 s to 0.58-0.63 s, with byte-identical output. The wall-clock share is smaller than the
+  profile share because reading the index store dominates.
+
 ### Fixed
 
 - A member is no longer reported as `retained` inside a type the same run calls `unreachable`.
