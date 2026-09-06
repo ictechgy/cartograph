@@ -55,6 +55,9 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 | #45 | #42 가 고친 한계를 두 README 와 스킬 규칙 6 에서 내림 | 실제 앱으로 동작 변화 확인 |
 | #46 | `query --batch` (F37). 인덱스를 한 번만 읽고 최대 1000건에 답한다 | 43건 스윕 **19.6 → 0.47 초.** 답 43/43 동일 |
 | #47 | 모호한 이름의 후보를 고를 수 있게 (F12) + `타입.멤버` 조회 | `body` 후보 127개 중 122개가 같은 글자 → 127개가 서로 다름 |
+| #48 | 0.8.0 버전 올림 | — |
+| #49 | **릴리스 빌드를 깨뜨린 계약 검사 수정** | 아래 "What Didn't Work" 참조 |
+| #50 | #49 의 CHANGELOG 항목을 Unreleased 에서 0.8.0 으로 | — |
 
 #43 의 벽시계 이득이 프로파일 비중(3분의 1)보다 작다. 인덱스 읽기가 지배적이기 때문이고,
 그 사실을 CHANGELOG 에 적었다. "3분의 1" 만 인용하면 다음 사람이 잘못된 기대를 갖는다.
@@ -94,7 +97,8 @@ GLM 리뷰가 #42 에서 **테스트 전용 목록을 만드는 두 번째 순�
 **남은 비대칭 하나는 #42 에서 닫혔다.** 도달 불가한 타입 안의 멤버가 `retained` 라고
 답하던 것이다. `body` 는 "프레임워크가 부른다" 는 이유로 보존되는데 그것은 타입이 살아 있을
 때만 참이다. 증인 보존이 이제 소유 타입의 도달성을 기다린다(`pendingWitnesses` 재사용).
-두 README 의 알려진 한계와 스킬 규칙 6 도 그에 맞춰 지웠는지 다음 세션이 확인할 것.
+두 README 의 알려진 한계와 스킬 규칙 6 은 #45 에서 지웠다. 실제 앱의 도달 불가한 `View` 로
+확인했다 — `query` 가 `state: unreachable`, `--explain` 이 프레임워크를 들먹이지 않는다.
 
 ## 에이전트 실험 두 판 — 둘 다 차이를 못 냈다 (2026-09-06)
 
@@ -183,6 +187,20 @@ GLM 리뷰가 #42 에서 **테스트 전용 목록을 만드는 두 번째 순�
 
 ## What Worked
 
+- **변형으로 테스트가 무는지 확인.** 새 테스트를 넣은 뒤 구현을 옛 동작으로 되돌려 실제로
+  실패하는 것을 본다. 0.8.0 에서 그렇게 확인한 것이 스물 넘고, **두 번은 물지 않아서 테스트를
+  고쳐야 했다.** 순환 가드 테스트는 `visited` 를 빼면 60초 안에 끝나지 않는다 — 실패가
+  단언이 아니라 정지로 나타나는 경우도 있으니 시간 상한을 걸고 볼 것.
+- **릴리스 환경을 흉내 내어 재현.** `git archive HEAD | tar -x` 로 인덱스 없는 트리를 만들고
+  압축 푼 바이너리로 `verify-cli-contract.sh` 를 돌리면 릴리스 워크플로의 검증 단계와 같다.
+  0.8.0 실패를 이걸로 재현하고 수정도 이걸로 확인했다.
+- **배포된 것을 직접 검증.** 워크플로가 찍은 sha256 을 믿지 않고 tarball 을 내려받아 다시
+  계산하고, 풀어서 아키텍처와 `--version` 을 보고, `brew upgrade` 뒤 **설치된 바이너리로**
+  실제 앱을 분석한다.
+- **GLM 리뷰는 값이 있다. 단 코드로 확인한 뒤에만.** 0.8.0 의 네 PR 에서 각각 무언가를 잡았고,
+  가장 값진 것은 "`타입.멤버` 를 받게 만들어 놓고 그 타입 이름을 답에 싣지 않아 되물을 수가
+  없다" 였다. 기각한 것도 매번 있었고 이유를 PR 코멘트에 남겼다.
+
 - **남이 쓴 코드가 오탐의 유일한 원천이었다.** 공개 플러그인 스캔이 스캐너 결함 넷을 찾았다: 위임 등록을 사실이 아니라 추측으로 셈(110 중 52), 메서드 참조 핸들러, `setMethodCallHandler(nil)`, `switch (call.method)` 괄호. 코퍼스는 하나도 못 잡았다.
 - **실제 조인이 계약의 마찰을 드러냈다.** plus_plugins 는 Dart 채널이 `*_platform_interface` 패키지에 따로 있어 isthmus 의 "모든 문서가 같은 `project`" 요구에 걸렸고, cartograph 는 `/tmp`, dartograph 는 `/private/tmp` 로 쓴다. 두 문서를 공통 루트로 손으로 고쳐야 조인이 돌았다.
 - **리뷰 주장을 코드로 확인한 뒤 반영.** 네 트랙은 서로 다른 것을 잡는다(GLM 설계 원칙, Codex 정적 사실, Grok 통합 지점, agy 가독성). 합의 점수가 높은 것부터. 틀린 지적도 매번 있었다(swift-syntax 600 호환, 계약 버전, `init?` 정규화 방향).
@@ -215,12 +233,14 @@ GLM 리뷰가 #42 에서 **테스트 전용 목록을 만드는 두 번째 순�
 
 `../isthmus/HANDOFF.md` 의 "cartograph 에서 온 계약 피드백" 절에 쌓여 있다. 문서당 하나인 `target`, `null`·추측 채널, Swift `@objc` 와 `.m` 양쪽의 같은 `(channel, method)`, `inferred` 필드 부재, module-export 조인 시 메서드마다 근거, **`project` 동일 요구가 모노레포 플러그인을 막음**, `/tmp` 정규화, `objective-c-sources` 가 있으면 `unhandled-invocation` 을 경고로, 원인을 숨기는 오류 메시지. 그쪽 세션의 차례다.
 
-## Next Steps (2026-09-06 저녁 갱신)
+## Next Steps (2026-09-07 갱신)
 
-**감사의 Top 10 은 전부 닫혔다.** 7번(형제 멤버 억제, G203)은 별도로 고친 것이 아니라
-#40·#42 가 보존을 좁히면서 사라졌다 — HealthMap 에서 `NotificationPreferencesController` 가
-이제 타입 자체로 보고되고 멤버 셋은 따로 나오지 않는다. 다음 순위 넷 중 둘도 닫혔다
-(#43 경로 필터, #44 참조 정렬).
+**감사의 Top 10 과 "다음 순위" 넷이 전부 닫혔고 0.8.0 으로 나갔다.** Top 10 의 7번
+(형제 멤버 억제, G203)은 별도로 고친 것이 아니라 #40·#42 가 보존을 좁히면서 사라졌다 —
+HealthMap 에서 `NotificationPreferencesController` 가 이제 타입 자체로 보고되고 멤버 셋은
+따로 나오지 않는다. 다음 순위 넷은 #43(경로 필터) · #44(참조 정렬) · #46(배치) · #47(후보)이다.
+
+**아래 1~2 는 이 저장소 혼자 할 수 없다.** 자매 저장소와 같이 정해야 한다.
 
 1. **자매 저장소와 스키마를 맞춘다.** 이 세션이 `Candidate` 에 `kind`·`module`·`location`·
    `container` 를 더했고 `symbol-query-batch` v1 을 그대로 따랐다. 더한 필드는 전부 선택적이고
@@ -253,12 +273,18 @@ GLM 리뷰가 #42 에서 **테스트 전용 목록을 만드는 두 번째 순�
 5. **`HOMEBREW_TAP_TOKEN`** 은 사용자 계정 행동. 있으면 `release.yml` 이 tap 을 자동 갱신한다.
 6. 새 브리지 kind(EventChannel, BasicMessageChannel)는 isthmus `GRAPH-EXCHANGE.md` 를 먼저, 그다음 생산자 테스트.
 
-## Verification (마지막으로 통과한 것, PR #47 시점)
+## Verification (마지막으로 통과한 것, 0.8.0)
 
-`Scripts/coverage.sh` 92.98%(테스트 655개) · `Scripts/verify-cli-contract.sh` ·
+`Scripts/coverage.sh` 92.68%(테스트 655개) · `Scripts/verify-cli-contract.sh` ·
 `Scripts/verify-fixtures.sh`(진짜 인덱스) ·
-자기 분석 `dead`/`cycles`/`cycles --level type`/`rules --strict` 전부 0.
-실제 프로젝트 셋(HealthMap · ruokay · Gakjaba)이 플래그 없이 분석된다.
+자기 분석 `dead`/`cycles`/`cycles --level type`/`rules --strict` 전부 0 · CI 두 잡 ·
+릴리스 워크플로(유니버설 빌드, 압축 푼 바이너리로 CLI 계약 재검증).
+
+**배포된 것을 실제로 확인했다.** tarball 을 직접 내려받아 sha256 을 계산해 워크플로가 찍은
+값과 대조했고(`984ebd9a…f0dde`), 풀어서 `x86_64 + arm64` 유니버설인지와 `--version` 이
+`0.8.0` 인지 봤다. tap 을 손으로 갱신한 뒤 `brew upgrade` 로 0.7.0 → 0.8.0 을 확인하고,
+그 **설치된 바이너리로** HealthMap 을 분석해 발견 43건과 후보 127개(전부 `container` 있음)와
+`symbol-query-batch` v1 응답을 봤다. 워크플로가 찍은 값을 그대로 믿지 않는다.
 
 **`query` 는 `--since` 를 쓰지 않는다.** `finish()` 도 `measureMetrics()` 도 부르지 않는다.
 플래그는 광고되지만 조용히 무시된다 — 감사의 [F30] 에 해당하는 자리다. 이것을 모르고
@@ -275,4 +301,11 @@ GLM 리뷰가 #42 에서 **테스트 전용 목록을 만드는 두 번째 순�
 
 ## Resume Prompt
 
-`/Users/jinhongan/Desktop/cartograph` 를 열고 `HANDOFF.md` 와 해당 `AGENTS.md` 를 읽은 뒤, `git status --short --branch` 와 `gh pr list` 로 다른 세션이 남긴 것이 없는지 확인하고, Next Steps 의 1 또는 2 에서 이어간다. 코드를 바꾸기 전에 어느 항목인지 명시한다.
+`/Users/jinhongan/Desktop/cartograph` 를 열고 `HANDOFF.md` 와 해당 `AGENTS.md` 를 읽은 뒤,
+`git status --short --branch` 와 `gh pr list` 로 다른 세션이 남긴 것이 없는지 확인하고,
+Next Steps 에서 이어간다. **코드를 바꾸기 전에 어느 항목인지 명시한다.**
+
+지금 상태는 이렇다. 감사가 낸 항목은 우선순위가 높은 것부터 전부 닫혔고 0.8.0 이 나갔다.
+남은 것 중 1~2 는 자매 저장소와 같이 정해야 하고, 3~4 는 이 머신에 없는 것(Flutter SDK)이나
+설계를 다시 세워야 하는 것(에이전트 실험)이며, 6 은 감사가 우선순위를 낮게 매긴 것들이다.
+**혼자 바로 시작할 수 있는 것은 6번뿐이다.** 그러니 무엇을 할지부터 사용자와 정할 것.
