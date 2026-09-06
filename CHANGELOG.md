@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-06
+
 ### Changed
 
 - Types are reported again. Two retention rules were keeping every type alive: a member that
@@ -588,6 +590,7 @@ First release.
   specific.
 
 [Unreleased]: https://github.com/ictechgy/cartograph/compare/0.5.5...HEAD
+[0.7.0]: https://github.com/ictechgy/cartograph/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/ictechgy/cartograph/compare/0.5.5...0.6.0
 [0.5.5]: https://github.com/ictechgy/cartograph/compare/0.5.4...0.5.5
 [0.5.4]: https://github.com/ictechgy/cartograph/compare/0.5.3...0.5.4
