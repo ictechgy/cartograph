@@ -28,6 +28,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   because narrowing those is the failure this filter exists to prevent. Reproduced with one package
   built in two directories that differed only in their parent's name: 7 nodes and 3 findings under
   one, 0 nodes and a clean exit under the other.
+- `retained_files` globs no longer match the project root's ancestor directories either. The rule
+  lived in a second place and only the exclude side had been fixed, which left the same false green
+  by the opposite route: one pattern whose name appears above the project root retained every
+  declaration, so `dead` reported nothing. Reproduced with `retained_files: ["**/repro/**"]` on a
+  project under a directory of that name, turning 3 findings into 0 with exit 0. Both directions now
+  go through one method on `PathFilter`, because a rule kept in two places gets fixed in one.
+- A run that used `--allow-empty-index` says so in the text summary, not only in the JSON
+  `limitations`: `dead: no findings (analysed nothing — --allow-empty-index) — …`. A CI log shows
+  the summary line and nothing else, so an escape hatch that is invisible there disarms the guard
+  completely.
+- The error no longer advertises `--allow-empty-index` when it has already named the cause. On the
+  wrong-path and everything-filtered branches the last and most prominent line used to be the flag
+  that silences the check, which is the opposite of the next action. It now appears only when the
+  tool genuinely cannot tell a misconfiguration from a deliberately empty run.
+- A project with Objective-C sources and no Swift is told that, instead of being told its
+  `--project` is wrong. A Flutter or React Native `ios/` directory is usually that shape, and the
+  path is right.
 - A project root given as a symbolic link is walked to the end. The URL-based directory enumeration
   fails with `ENOTDIR` on a link to a directory while `directoryExists` follows it, so the traversal
   found a directory it could not read and silently produced an empty tree. Pointing at this
