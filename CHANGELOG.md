@@ -18,6 +18,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The SwiftPM dependency line both READMEs advertise does not resolve. `from: "0.5.5"` fails with
+  `package 'cartograph' is required using a stable-version but 'cartograph' depends on an
+  unstable-version package 'indexstore-db'`, because indexstore-db publishes no semantic-version
+  tags and is pinned to a release branch. `revision: "0.5.5"` resolves and builds, so that is what
+  the instructions say now, with the reason next to it. Reproduced both forms in a throwaway package.
+
 - Auto-detection finds the index store of an Xcode project that does not live in a directory of its
   own name. The candidate names came only from the last component of `--project`, so
   `ios/HealthMap.xcodeproj` was looked up as `ios-<hash>` and never found, and the "Searched:" list

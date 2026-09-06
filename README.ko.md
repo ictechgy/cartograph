@@ -67,7 +67,7 @@ mint install ictechgy/cartograph@0.5.5
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", from: "0.5.5"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.5.5"),
 ```
 
 ```bash
@@ -75,8 +75,18 @@ swift package cartograph dead --strict
 swift package cartograph graph --format mermaid > graph.mmd
 ```
 
-플러그인은 쓰기 권한을 선언하지 않아 승인 절차가 없습니다. 결과를 파일로 남기려면
-리다이렉션을 쓰세요.
+`from:`이 아니라 `revision:`이어야 합니다. Cartograph는 `indexstore-db`에 의존하는데 그쪽은
+semver 태그를 내지 않고 릴리스 브랜치로 고정되어 있고, SwiftPM은 안정 버전으로 요구된 패키지가
+불안정 버전 패키지에 의존하면 해석을 거부합니다.
+
+```
+error: … package 'cartograph' is required using a stable-version but 'cartograph'
+depends on an unstable-version package 'indexstore-db'.
+```
+
+`revision:`은 태그 이름을 그대로 받으므로 고정 값은 여전히 버전처럼 읽히고, 릴리스마다 손으로
+올려야 하는 것도 그대로입니다. 플러그인은 쓰기 권한을 선언하지 않아 승인 절차가 없습니다.
+결과를 파일로 남기려면 리다이렉션을 쓰세요.
 
 **소스에서 빌드:**
 
