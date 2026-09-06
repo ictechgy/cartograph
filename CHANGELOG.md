@@ -7,6 +7,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- An analysis whose index store knows none of the project's declarations now fails with exit code 2
+  instead of reporting "no findings" and exiting 0. A green `--strict` gate over zero analysed
+  declarations reads as "this code is clean", which is the one thing a gate must never say by
+  accident. The error names the project, the store and how it was chosen, the `libIndexStore` it
+  used, how many Swift files are under the project and how many survived include/exclude, and the
+  unit count — the three counts are what separate a wrong `--project` from a filter that removed
+  everything from a store built for another checkout. `--allow-empty-index` opts out for a run that
+  is meant to analyse nothing, and then `limitations` carries `empty-index` so the answer still says
+  it is a statement about nothing. `bridges` does not go through this guard: its scan is syntactic
+  and `Scripts/scan-public-plugins.sh` runs it against an index that contributes nothing by design.
+- Exclude globs no longer match the project root's *ancestor* directories. Matching them against the
+  absolute path meant that a project living under a directory named `DerivedData`, `Pods`,
+  `Generated`, `.build` or `Carthage` had every one of its files removed by the default excludes, so
+  the graph was empty and `--strict` passed. The same happened to any user pattern whose name
+  appeared above the project root. Excludes are now matched against the project-relative path;
+  patterns written as absolute paths still apply to absolute paths, and includes are unchanged
+  because narrowing those is the failure this filter exists to prevent. Reproduced with one package
+  built in two directories that differed only in their parent's name: 7 nodes and 3 findings under
+  one, 0 nodes and a clean exit under the other.
+- A project root given as a symbolic link is walked to the end. The URL-based directory enumeration
+  fails with `ENOTDIR` on a link to a directory while `directoryExists` follows it, so the traversal
+  found a directory it could not read and silently produced an empty tree. Pointing at this
+  repository through a link reported 0 nodes where the real path reported 1,644.
+
 ## [0.5.5] - 2026-09-05
 
 ### Fixed
