@@ -119,3 +119,15 @@ struct SymbolNameTests {
     }
 
 }
+
+@Suite("보존 근거의 전파 여부")
+struct RetentionReasonPropagationTests {
+    @Test("컨테이너까지 살리지 않는 보존 근거는 셋뿐이다")
+    func reasonsThatDoNotKeepTheirContainer() {
+        // 새 근거를 더하는 사람이 반드시 이 판단을 내리게 하려고 목록을 통째로 고정한다.
+        // 기본값(전파함)으로 조용히 떨어지면, 아무도 쓰지 않는 타입이 자기 합성 멤버
+        // 때문에 다시 영원히 살아남는다.
+        let doNotPropagate = Set(RetentionReason.allCases.filter { !$0.retainsContainingType })
+        #expect(doNotPropagate == [.compilerSynthesized, .externalConformance, .externalOverride])
+    }
+}

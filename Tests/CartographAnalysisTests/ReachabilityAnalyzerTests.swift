@@ -441,8 +441,9 @@ struct ExtensionOwnershipTests {
 
     @Test("합성된 멤버가 살려 둔 타입은 테스트 전용으로 보고하지 않는다")
     func synthesizedMemberDoesNotMakeTypeTestOnly() {
-        // 아무도 쓰지 않는 public 구조체. memberwise init 은 합성 선언이라 뿌리가 되고,
-        // 그 때문에 구조체가 전체 탐색에서는 살아남는다. 테스트는 닿은 적이 없다.
+        // 아무도 쓰지 않는 구조체. memberwise init 은 합성 선언이라 뿌리가 되지만,
+        // 그 보존은 감싸는 타입까지 올라가지 않는다. 그래서 구조체는 미사용으로 보고되고,
+        // 테스트가 닿은 적은 없으므로 테스트 전용도 아니다.
         var builder = SnapshotBuilder()
         builder.symbol("Spec", kind: .structType, module: "AppTests", attributes: [.testSuite])
         builder.symbol("Payload", kind: .structType, module: "App")
@@ -452,7 +453,7 @@ struct ExtensionOwnershipTests {
 
         let report = ReachabilityAnalyzer(options: .init(findsTestOnlyCode: true)).analyze(graph: graph, snapshot: snapshot)
         #expect(report.testOnly.isEmpty)
-        #expect(report.unused.isEmpty)
+        #expect(report.unused.map(\.name) == ["Payload"])
     }
 
     @Test("테스트 타깃 안의 선언은 보고하지 않는다")

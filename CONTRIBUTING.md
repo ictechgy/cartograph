@@ -72,6 +72,21 @@ Retention rules are the reason this tool is trustworthy or not, so they carry an
 Prefer retaining too much over too little. A false positive costs a reviewer's trust; a false
 negative costs one uncollected deletion.
 
+### Narrowing one
+
+That bar is for widening. Narrowing a retention rule is the opposite trade and needs the opposite
+evidence, because a narrower rule fails **silently**: the corpus keeps passing while the tool quietly
+stops reporting something, or starts reporting something it must not.
+
+1. Put the shapes that must **stay** retained into `Fixtures/FalsePositiveCorpus` first, next to the
+   ones that must now be reported, and say in the corpus README which real project each came from.
+2. Measure the delta on at least three real projects and put the table in the pull request: findings
+   before, findings after, what is newly reported, what is no longer reported.
+3. Check every newly reported declaration by hand. `grep` for the name; a genuine finding has one
+   occurrence, its declaration.
+4. Say what the rule still covers. Narrowing usually means the rule now applies to members but not
+   to the type that holds them, or the other way round — write that sentence into both READMEs.
+
 ## Commits
 
 Conventional Commits, with the body in Korean or English:

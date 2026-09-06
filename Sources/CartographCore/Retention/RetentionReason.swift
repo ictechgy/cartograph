@@ -75,6 +75,22 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     }
 
     /// 리포트에 그대로 실을 수 있는 영문 설명.
+    /// 이 근거로 살아남은 멤버가 자신을 감싸는 타입까지 함께 살리는지.
+    ///
+    /// 대부분의 근거는 "이 선언을 지우면 무언가 깨진다" 는 주장이고, 그 선언을 담은 타입도
+    /// 함께 필요하다는 뜻이다. 셋만 다르다. 합성 선언과 외부 준수·오버라이드는 *타입이
+    /// 존재하면 반드시 따라 생기는* 것이라, 그 타입을 누가 쓰는지와 무관하게 존재한다.
+    /// 그것을 조상까지 전파하면 아무도 만들지 않는 구조체가 자기 memberwise init 때문에,
+    /// 아무도 그리지 않는 뷰가 자기 `body` 때문에 영원히 살아남는다.
+    ///
+    /// 새 근거를 더하는 사람이 반드시 이 판단을 내리도록 값 옆에 둔다.
+    public var retainsContainingType: Bool {
+        switch self {
+        case .compilerSynthesized, .externalConformance, .externalOverride: false
+        default: true
+        }
+    }
+
     public var explanation: String {
         switch self {
         case .entryPoint: "declared as an application entry point (@main)"

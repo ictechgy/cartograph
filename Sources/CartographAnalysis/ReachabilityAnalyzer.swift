@@ -257,6 +257,10 @@ public struct ReachabilityAnalyzer: Sendable {
         for (node, reason) in retentions.sorted(by: { $0.key < $1.key }) {
             var current = node
             var visited: Set<NodeID> = [node]
+            // 모든 근거가 컨테이너를 살리지는 않는다. 합성 선언과 외부 준수·오버라이드는
+            // 타입이 있으면 따라 생기는 것이라, 전파하면 아무도 쓰지 않는 타입이 자기
+            // memberwise init 이나 자기 `body` 때문에 영원히 살아남는다.
+            guard reason.retainsContainingType else { continue }
             while let parent = graph.semanticParent(of: current), visited.insert(parent).inserted {
                 if retentions[parent] == nil, result[parent] == nil {
                     result[parent] = InheritedRetention(member: node, reason: reason)

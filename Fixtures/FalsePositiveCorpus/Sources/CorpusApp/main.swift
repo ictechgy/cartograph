@@ -10,3 +10,4 @@ _ = Money(rawValue: "1")?.default()
 _ = Box(1).value
 _ = Screen().render()
 _ = BindingHost()
+exerciseRetentionShapes()
