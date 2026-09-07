@@ -1,5 +1,6 @@
 import CartographCore
 import CartographTestSupport
+import Foundation
 import Testing
 
 @Suite("IndexSnapshot")
@@ -49,6 +50,29 @@ struct IndexSnapshotTests {
         #expect(empty.moduleNames.isEmpty)
         #expect(empty.filePaths.isEmpty)
         #expect(empty.symbolsByUSR().isEmpty)
+    }
+
+    @Test("파일별 시각이 없는 옛 스냅샷도 읽고 새 시각은 왕복한다")
+    func indexDatesAreBackwardCompatible() throws {
+        let old = Data(#"{"symbols":[],"references":[]}"#.utf8)
+        #expect(try JSONDecoder().decode(IndexSnapshot.self, from: old).indexedFileDates == nil)
+        let dates = ["/p/A.swift": Date(timeIntervalSince1970: 1_000)]
+        let snapshot = IndexSnapshot(indexedFileDates: dates)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        #expect(try JSONDecoder().decode(IndexSnapshot.self, from: encoder.encode(snapshot)) == snapshot)
+    }
+
+    @Test("스냅샷을 합쳐도 소스별 신선도 근거가 사라지거나 새 시각에 가려지지 않는다")
+    func mergingPreservesIndexDates() {
+        let old = Date(timeIntervalSince1970: 1_000)
+        let fresh = old.addingTimeInterval(100)
+        let first = IndexSnapshot(indexedFileDates: ["/p/A.swift": old])
+        let second = IndexSnapshot(indexedFileDates: ["/p/A.swift": fresh, "/p/B.swift": fresh])
+        #expect(first.merging(second).indexedFileDates == ["/p/A.swift": old, "/p/B.swift": fresh])
+        #expect(first.merging(IndexSnapshot()).indexedFileDates == first.indexedFileDates)
+        #expect(IndexSnapshot().merging(first).indexedFileDates == first.indexedFileDates)
+        #expect(IndexSnapshot().merging(IndexSnapshot()).indexedFileDates == nil)
     }
 }
 

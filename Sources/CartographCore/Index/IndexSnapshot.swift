@@ -1,3 +1,5 @@
+import Foundation
+
 /// 한 번의 분석에 사용할 인덱스 전체 스냅샷.
 ///
 /// 인덱스 스토어를 열어 두고 질의하는 대신 한 번에 읽어 값 타입으로 고정한다.
@@ -22,9 +24,18 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
     /// 이 배열을 그대로 직렬화하거나 `==` 로 비교하는 임베더는 먼저 정규화해야 한다.
     public var references: [IndexedReference]
 
-    public init(symbols: [IndexedSymbol] = [], references: [IndexedReference] = []) {
+    /// 파일을 포함하는 최신 인덱스 유닛 시각. 다른 타깃의 빌드가 낡은 파일을 가리지 않게 한다.
+    /// nil 은 공급자가 이 정보를 주지 않았다는 뜻이고, 빈 사전은 조회했지만 유닛이 없었다는 뜻이다.
+    public var indexedFileDates: [String: Date]?
+
+    public init(
+        symbols: [IndexedSymbol] = [],
+        references: [IndexedReference] = [],
+        indexedFileDates: [String: Date]? = nil
+    ) {
         self.symbols = symbols
         self.references = references
+        self.indexedFileDates = indexedFileDates
     }
 
     /// USR 로 심볼을 찾기 위한 사전. 반복 조회가 많아 미리 만들어 쓴다.
@@ -44,6 +55,13 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
 
     /// 두 스냅샷을 합친다. 인덱스 스토어와 구문 분석 결과를 합칠 때 쓴다.
     public func merging(_ other: IndexSnapshot) -> IndexSnapshot {
-        IndexSnapshot(symbols: symbols + other.symbols, references: references + other.references)
+        let dates: [String: Date]? = indexedFileDates == nil && other.indexedFileDates == nil
+            ? nil
+            : (indexedFileDates ?? [:]).merging(other.indexedFileDates ?? [:], uniquingKeysWith: min)
+        return IndexSnapshot(
+            symbols: symbols + other.symbols,
+            references: references + other.references,
+            indexedFileDates: dates
+        )
     }
 }
