@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-_마지막 갱신: 2026-09-07 (0.8.0 릴리스, Claude). 이 저장소에는 세션이 둘 있었다(Claude 가 0.5.1·0.5.2·0.5.4·0.5.5, Codex 가 0.5.3). 큰 작업 전 `git status --short --branch` 와 `gh pr list` 로 확인할 것._
+_마지막 갱신: 2026-09-07 (#52 머지 + 4종 Dart 조인, docs 브랜치 작업 중, Muse). 이 저장소에는 세션이 둘 있었다(Claude 가 0.5.1·0.5.2·0.5.4·0.5.5, Codex 가 0.5.3). 큰 작업 전 `git status --short --branch` 와 `gh pr list` 로 확인할 것._
 
 ## Goal
 
@@ -267,7 +267,17 @@ HealthMap 에서 `NotificationPreferencesController` 가 이제 타입 자체로
 ### 이전 세션의 Next Steps
 
 1. **Flutter SDK 가 있는 머신에서** `docs/demo/agent-deletes-native-handler/README.md` 의 절차를 끝까지 돌리고 틀린 곳을 고친다. 수요 증거의 첫 건이 될 재현 패키지다.
-2. **Dart 쪽 스캔을 넓힌다.** 이 머신에서 가능하다. 스캔 리포트의 나머지 Swift 플러그인(mobile_scanner, flutter_secure_storage, flutter_local_notifications, audioplayers)을 plus_plugins 처럼 조인해 "Dart 가 부르지 않는 핸들러" 수를 낸다. isthmus 가 `project` 요구를 풀기 전까지는 두 문서를 공통 루트로 정규화해야 한다(방법은 스캔 리포트 "The join" 절).
+2. **Dart 쪽 스캔을 넓힌다.** 2026-09-07에 4종 조인 완료. 결과는
+   `docs/scans/2026-09-flutter-plugins.md` "The join, on four more plugins" 절.
+   mobile_scanner 0건(13/13 clean), flutter_local_notifications 0건(Swift 14/14),
+   flutter_secure_storage·audioplayers는 **불명**(각각 Dart `part of` 불가시·양쪽 dynamic).
+   자매 저장소에 넘길 피드백 셋(isthmus HANDOFF에 피드백 절이 없어져 이쪽에 적는다):
+   (a) dartograph가 `part of` 파일을 조용히 안 읽음(fss, limitations 없음 —
+   `handler-without-invocation` 7건이 빈 Dart 측 위에 서 있음).
+   (b) dartograph bridges에 `--exclude` 없음(example 비대칭).
+   (c) isthmus `handler-without-invocation`이 Dart 호출 0건 관측 때도 발화 — unverified가
+   맞는지 그쪽 판단 필요. (d) cartograph `let globalChannelName` 상수 채널 미해석(audioplayers) —
+   반대 방향 코퍼스 먼저라 구현 말고 기록만.
 3. **plus_plugins 이슈는 열지 않는다.** 불일치가 없었다. 제안서는 세션 스크래치에만 있고 저장소에 없다. 다시 필요하면 스캔 리포트의 조인 절과 CHANGELOG 0.5.4·0.5.5 항목에서 재구성한다.
 4. **`query` 응답에 evidence 를 실을지**는 자매 저장소와 스키마를 맞춰야 해서 보류.
 5. **`HOMEBREW_TAP_TOKEN`** 은 사용자 계정 행동. 있으면 `release.yml` 이 tap 을 자동 갱신한다.

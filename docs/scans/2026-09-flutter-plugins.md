@@ -12,8 +12,7 @@ the script; short ones in the table) and scanned with the exact command in that 
 `cartograph bridges --project <repo> --format json --exclude '**/example/**' '**/.cartograph-scan/**'`,
 built from cartograph commit `37411f8`. The scanner changes described below shipped unchanged in
 0.5.4 on the same day. The plus_plugins row was re-scanned after the parenthesized-subject fix
-described under "The join" (it adds sensors_plus's five handlers, 14 to 19); the other rows are
-unaffected by that fix, as none of them parenthesizes a switch subject. All 14 scans exited 0. No Flutter SDK was involved: `bridges` walks the
+described under "The join" (it adds sensors_plus's five handlers, 14 to 19). All 14 scans exited 0. No Flutter SDK was involved: `bridges` walks the
 sources with SwiftSyntax and reads `.m` files as text, and only needs an index store to attach USRs.
 A dummy SwiftPM target at each repository root provided an index store, so every fact here has
 `missing-handler-usrs` and no USR; that column is omitted. `example/` directories were excluded from
@@ -136,6 +135,63 @@ Three things came out of it, none of them a mismatch in plus_plugins itself:
 The conclusion for the proposal: the check still prints the two Objective-C rows as
 `unhandled-invocation` today, but there is no genuine Dart-to-Swift mismatch in plus_plugins, which
 is the honest reason not to open an issue claiming otherwise.
+
+## The join, on four more plugins (added 2026-09-07)
+
+The remaining string-channel plugins from the table — mobile_scanner, flutter_secure_storage,
+audioplayers, flutter_local_notifications — were joined the same way: `dartograph bridges` on the
+package that owns the `MethodChannel` (the `*_platform_interface` package, except
+flutter_local_notifications where the channel lives in the main package), `cartograph bridges` on
+the repository root with the scan command above, `isthmus check` on the pair. Same pinned commits
+as the table. Checkouts lived outside `/tmp` so both producers spell the shared directory the same
+way; the monorepo plugins still needed their two documents' `project` rewritten to the common root
+by hand, the same friction as plus_plugins. cartograph 0.8.0, dartograph 0.2.0, isthmus 0.1.4. The
+question was "how many handlers does Dart not call".
+
+| plugin | Swift handlers | Dart side | check | handlers Dart does not call |
+|---|---|---|---|---|
+| mobile_scanner | 13, one channel | 14 facts | clean, 13 of 13 methods | **0** |
+| flutter_secure_storage | 21 (see correction) | 1 fact, from `test/` | 7 `handler-without-invocation` warnings | **unknown — the Dart side is blind** |
+| audioplayers | 23, none attributed | dynamic both sides | 1 channel, 0 methods, 1 unverified warning | **unknown — neither side resolves** |
+| flutter_local_notifications | 14 macOS Swift (+ ObjC iOS) | 54 facts | 14 of 14 methods, 20 issues | **0 among the Swift handlers** |
+
+mobile_scanner is the clean case: single repo, regular imports, one channel, every handler matched.
+flutter_secure_storage's seven warnings rest on zero Dart evidence — dartograph's only fact comes
+from a test file because the `lib/` implementation lives in `part of` files, which it does not read,
+and it reports no limitation saying so. Deleting on the strength of those warnings would be acting on
+an empty Dart side, not on a measured one. audioplayers is dynamic on both sides: Swift builds the
+second channel from a file-scope `let globalChannelName` (emitted as the dynamic
+`self.globalMethods`) and dispatches through a method reference into a `handleAsync` hop, while Dart
+dispatches through a `method` variable (`unresolved-receiver-invocations: 2`). isthmus matched the
+one literal channel both sides spell and declined the rest as unverified — one warning, zero false
+alarms. flutter_local_notifications' 20 issues split three ways, checked by hand: 15 are Android-only
+methods (in `FlutterLocalNotificationsPlugin.java`, absent from the iOS `.m`), 1
+(`getCallbackHandle`) is handled in the iOS `.m` that cartograph reports as `objective-c-sources`
+but cannot read, and 3 come from `example/` channels — dartograph has no `--exclude`, while the
+Swift side excluded `example/`, so the two documents observe different trees.
+
+### Correction to the 0.5.4 table
+
+Re-scanning flutter_secure_storage with 0.8.0 finds 21 method-handles, not 7: the current
+`flutter_secure_storage_darwin` plugin plus the two `archived_packages` implementations (macOS and
+iOS), 7 handlers each on the same channel and method names. Both archived files write
+`switch (call.method)` with parentheses, so the 0.5.4 scanner never saw their 14 handlers — the
+"no other row parenthesizes a switch subject" sentence this section replaces was wrong. Seven of the
+21 are counted as `inferred-channels`. The join above ran on all 21; the archived duplicates share
+their (channel, method) pairs with the live plugin, so they change handler counts but no join
+verdict. They are also a reminder that `archived_packages/` is scanned as live code.
+
+### What the join cannot do yet
+
+- `part of` Dart files are invisible to dartograph, silently (flutter_secure_storage). Its
+  limitations say nothing, so the consumer cannot distinguish "Dart calls nothing" from "Dart was
+  not read".
+- A file-scope string constant used as a channel name is not resolved (audioplayers'
+  `globalChannelName`). Narrowing this needs the opposite-direction corpus first — a constant table
+  keyed by name alone is one of the shapes that produced false joinable literals before — so it is
+  recorded here, not implemented.
+- `example/` is observed asymmetrically until dartograph learns `--exclude` or documents the filter
+  contract.
 
 ## Limits of this scan
 
