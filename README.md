@@ -52,6 +52,8 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 
 Requires macOS 14+ and a Swift toolchain (Xcode or the Command Line Tools) at run time —
 Cartograph loads `libIndexStore` from it. CI runs on Swift 6.3.3; development happens on 6.4.
+Swift 5 language-mode projects are supported: build them with your Swift 6 toolchain (Swift 5 mode
+is a compiler option, and the index it writes reads the same) and analyze as usual.
 
 **Homebrew** — a prebuilt universal binary, installs in seconds:
 
