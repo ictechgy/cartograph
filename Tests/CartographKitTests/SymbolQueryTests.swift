@@ -216,7 +216,10 @@ struct SymbolQueryTests {
     @Test("이 분석이 보지 못하는 채널을 상태와 무관하게 모든 답에 실어 보낸다")
     func shipsLimitationsWithEveryAnswer() throws {
         // 알릴 것이 없으면 조용해야 한다. 매번 붙는 경보는 읽히지 않는다.
-        let plain = try makeService().queryDocument(symbol: "UserService")
+        let readable = InMemoryFileSystem(files: Dictionary(
+            uniqueKeysWithValues: makeSnapshot().filePaths.map { ($0, "") }
+        ))
+        let plain = try makeService(fileSystem: readable).queryDocument(symbol: "UserService")
         #expect(plain.limitations.isEmpty)
 
         let mixed = InMemoryFileSystem(files: [
@@ -462,6 +465,20 @@ struct SymbolQueryTests {
         let result = try #require(try service.queryDocument(symbol: "Caller").result)
         #expect(result.dependsOn.map(\.qualifiedName) == ["App.Callee"])
         #expect(result.dependsOn.map(\.edges) == [["call", "reference"]])
+    }
+
+    @Test("간선의 내부 선언 순서와 무관하게 JSON 관계는 문자열 순서로 나온다")
+    func edgeNamesKeepTheirSerializedOrder() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("Derived", kind: .classType)
+        builder.symbol("Base", kind: .classType)
+        builder.reference(from: "Derived", to: "Base", kind: .reference)
+        builder.reference(from: "Derived", to: "Base", kind: .inheritance)
+        let service = makeService(snapshot: builder.build())
+        let derived = try #require(try service.queryDocument(symbol: "Derived").result)
+        let base = try #require(try service.queryDocument(symbol: "Base").result)
+        #expect(derived.dependsOn.map(\.edges) == [["inheritance", "reference"]])
+        #expect(base.usedBy.map(\.edges) == [["inheritance", "reference"]])
     }
 
     @Test("출력 JSON 은 키 순서가 고정되어 diff 할 수 있다")

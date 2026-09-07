@@ -159,11 +159,11 @@ struct RetentionReasonSentenceTests {
         }
     }
 
-    /// 스물한 문장을 통째로 고정한다.
+    /// 모든 근거 문장을 통째로 고정한다.
     ///
     /// 접미사 휴리스틱은 새 근거를 위한 감지선이고, 이 표는 이미 있는 문구가 조용히
     /// 바뀌지 않게 하는 장치다. 문구를 고치려면 여기도 고쳐야 하므로 한 번은 읽게 된다.
-    @Test("근거 문장 스물한 개가 그대로다")
+    @Test("모든 근거 문장이 그대로다")
     func everySentenceIsPinned() {
         let expected: [RetentionReason: String] = [
             .entryPoint: "declared as an application entry point (@main)",
@@ -186,6 +186,8 @@ struct RetentionReasonSentenceTests {
             .preview: "a SwiftUI preview",
             .userConfigured: "matched by a retain rule in the configuration",
             .ignoreComment: "marked with a // cartograph:ignore comment",
+            .sourceUnavailable:
+                "kept conservatively because its source could not be read; restore access and rebuild",
             .externalBridge: "called from another platform across a bridge, per the external retentions file",
         ]
         #expect(expected.count == RetentionReason.allCases.count, "새 근거가 표에 없다")

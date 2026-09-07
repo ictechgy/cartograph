@@ -56,11 +56,11 @@ public struct CartographService: Sendable {
     /// 대해 공집합은 거짓말이 아니다. 비었을 때 실패해야 하는 것은 분석 문맥 쪽이라
     /// 가드는 `loadContext()` 에만 둔다. `bridges` 가 이 경로로 내려오는 것도 이유다.
     public func loadSnapshot() throws -> IndexSnapshot {
-        try enrich(makeIndexSource().provider.loadSnapshot())
+        try enrich(makeIndexSource().provider.loadSnapshot()).snapshot
     }
 
     /// 원시 스냅샷에 구문 정보를 얹는다.
-    private func enrich(_ raw: IndexSnapshot) -> IndexSnapshot {
+    private func enrich(_ raw: IndexSnapshot) -> SnapshotEnricher.Result {
         SnapshotEnricher(
             fileSystem: environment.fileSystem,
             retention: configuration.retention,
@@ -68,7 +68,7 @@ public struct CartographService: Sendable {
                 ? SourceFactsCache.defaultPath(forProject: projectPath)
                 : nil
         )
-        .enrich(
+        .enrichWithDiagnostics(
             raw,
             interfaceBuilderRoots: configuration.retention.retainInterfaceBuilder ? [projectPath] : [],
             pathFilter: configuration.pathFilter
@@ -84,13 +84,16 @@ public struct CartographService: Sendable {
         let externalRetentions = try ExternalRetentionStore(fileSystem: environment.fileSystem)
             .loadIfConfigured(at: configuration.externalRetentionsPath)
         let source = try makeIndexSource()
-        let snapshot = try enrich(source.provider.loadSnapshot())
+        let enriched = try enrich(source.provider.loadSnapshot())
+        let snapshot = enriched.snapshot
         try requireNonEmptyIndex(snapshot, from: source)
         return AnalysisContext(
             snapshot: snapshot,
             pathFilter: configuration.pathFilter,
             edgeKinds: configuration.edgeKinds,
-            externalRetentions: externalRetentions
+            externalRetentions: externalRetentions,
+            missingSourcePaths: enriched.missingSourcePaths,
+            unreadableSourcePaths: enriched.unreadableSourcePaths
         )
     }
 
@@ -167,7 +170,7 @@ public struct CartographService: Sendable {
         in context: AnalysisContext
     ) -> (graph: CodeGraph, lookup: NodeLookup, explanation: ReachabilityExplanation?) {
         let (graph, report) = unusedCode(in: context)
-        let lookup = NodeLookup.resolve(subject, in: graph)
+        let lookup = GraphQueryIndex(graph: graph).resolve(subject)
         guard case let .found(node) = lookup else { return (graph, lookup, nil) }
         return (graph, lookup, report.explain(node.id, in: graph))
     }
@@ -262,7 +265,7 @@ public struct CartographService: Sendable {
     /// 실제로 행동할 수 있다.
     public func explainCycles(of subject: String, level: GraphLevel? = nil) throws -> CommandOutcome {
         let (graph, found) = cycles(in: try loadContext(), level: level)
-        let lookup = NodeLookup.resolve(subject, in: graph)
+        let lookup = GraphQueryIndex(graph: graph).resolve(subject)
         switch lookup {
         case .notFound:
             return CommandOutcome(output: "No node matches '\(subject)'.\n", subjectNotFound: true)
@@ -290,7 +293,7 @@ public struct CartographService: Sendable {
     public func explainRules(of subject: String, level: GraphLevel? = nil) throws -> CommandOutcome {
         let context = try loadContext()
         let graph = context.buildGraph(level: level ?? configuration.level).graph
-        let lookup = NodeLookup.resolve(subject, in: graph)
+        let lookup = GraphQueryIndex(graph: graph).resolve(subject)
         switch lookup {
         case .notFound:
             return CommandOutcome(output: "No node matches '\(subject)'.\n", subjectNotFound: true)
@@ -394,6 +397,7 @@ public struct CartographService: Sendable {
     /// 값으로 묶어 두지 않으면 배치 경로가 요청마다 인덱스를 다시 읽는다.
     struct QuerySession {
         let graph: CodeGraph
+        let lookup: GraphQueryIndex
         let report: UnusedCodeReport
         let limitations: [String]
         /// 베이스라인도 한 번만 읽는다.
@@ -408,6 +412,7 @@ public struct CartographService: Sendable {
         let (graph, report) = unusedCode(in: context)
         return QuerySession(
             graph: graph,
+            lookup: GraphQueryIndex(graph: graph),
             report: report,
             limitations: analysisLimitations(context: context, symbolGraph: graph),
             baseline: try loadBaseline()
@@ -428,7 +433,7 @@ public struct CartographService: Sendable {
 
         let limitations = session.limitations
 
-        switch NodeLookup.resolve(subject, in: graph) {
+        switch session.lookup.resolve(subject) {
         case .notFound:
             return SymbolQueryDocument(
                 status: "notFound", requested: subject, level: level, limitations: limitations
@@ -532,21 +537,22 @@ public struct CartographService: Sendable {
         // 베이스라인 항목이 지문만 맞으면 억제되었다고 표시되어, "도달 가능한데
         // 팀이 억제했다"는 모순된 답이 나간다.
         let suppressed = explanation == .unreachable && isSuppressed(node, by: baseline)
-        let (usedBy, usedByTruncated) = Self.neighbors(
-            of: node.id, in: graph, depth: depth, limit: limit, incoming: true
+        let neighborhood = GraphNeighborhood(graph: graph)
+        let (usedBy, usedByTruncated) = neighborhood.usage(
+            of: node.id, depth: depth, limit: limit, incoming: true
         )
-        let (dependsOn, dependsOnTruncated) = Self.neighbors(
-            of: node.id, in: graph, depth: depth, limit: limit, incoming: false
+        let (dependsOn, dependsOnTruncated) = neighborhood.usage(
+            of: node.id, depth: depth, limit: limit, incoming: false
         )
-        let (members, membersTruncated) = Self.containment(of: node.id, in: graph, limit: limit, incoming: false)
-        let declaredIn = Self.containment(of: node.id, in: graph, limit: 1, incoming: true).neighbors.first
+        let (members, membersTruncated) = neighborhood.containment(of: node.id, limit: limit, incoming: false)
+        let declaredIn = neighborhood.containment(of: node.id, limit: 1, incoming: true).neighbors.first
         return SymbolQuery(
             subject: Self.describe(node),
             reachability: Self.describe(explanation, suppressedByBaseline: suppressed, in: graph),
-            usedBy: usedBy,
-            dependsOn: dependsOn,
-            members: members,
-            declaredIn: declaredIn,
+            usedBy: usedBy.map(Self.describe),
+            dependsOn: dependsOn.map(Self.describe),
+            members: members.map(Self.describe),
+            declaredIn: declaredIn.map(Self.describe),
             truncated: .init(
                 usedBy: usedByTruncated,
                 dependsOn: dependsOnTruncated,
@@ -564,165 +570,25 @@ public struct CartographService: Sendable {
         try encodeSortedJSON(document)
     }
 
-    /// 이 분석이 보지 못하는 채널을 프로젝트에서 실제로 찾아 알린다.
-    ///
-    /// README 의 한계 목록을 문서에만 두면 소비자는 읽지 않는다. 특히 에이전트는
-    /// 읽지 않는다. 눈앞의 답에 실어야 그 답을 어디까지 믿을지 스스로 정할 수 있다.
+    /// 파일별 시각과 구문 읽기 실패를 같은 문맥에서 수집한다.
     func analysisLimitations(
         storeDate: Date? = nil,
         context: AnalysisContext? = nil,
         symbolGraph: CodeGraph? = nil
     ) -> [String] {
-        // 한 번만 걷는다. 분석 범위와 같은 경로 필터를 걸어야 그래프가 보지 않는
-        // 파일까지 세지 않는다. 범위 밖의 파일을 한계로 알리면 매번 붙는 경보가
-        // 되고, 매번 붙는 경보는 읽히지 않는다.
-        let filter = configuration.pathFilter
-        let storeDate = storeDate ?? indexStoreDate()
-        let files = environment.fileSystem.recursiveFiles(
-            under: projectPath,
-            isIncluded: { path in
-                filter.allows(path) && Self.limitationSuffixes.contains { path.hasSuffix($0) }
-            },
-            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
-        )
-
-        func count(_ suffixes: String...) -> Int {
-            files.count { path in suffixes.contains { path.hasSuffix($0) } }
-        }
-        let objectiveCCount = count(".m", ".mm")
-        let interfaceBuilderCount = count(".xib", ".storyboard")
-        let swiftFiles = files.filter { $0.hasSuffix(".swift") }
-        let newerThanStore = storeDate.map { built in
-            swiftFiles.count { (environment.fileSystem.modificationDate(at: $0) ?? .distantPast) > built }
-        } ?? 0
-
-        var result: [String] = []
-        // 탈출구를 켠 채로 도는 실행은 아무것도 분석하지 않는다. 그 답을 받은 쪽이
-        // "발견 없음"을 깨끗함으로 읽지 않도록, 답 자체에 그 사실을 싣는다.
+        var emptyIndexCounts: (total: Int, inScope: Int)?
         if allowsEmptyIndex, let context, context.snapshot.symbols.isEmpty {
-            // 여기 `swiftFiles` 는 이미 필터를 통과한 목록이다. 필터가 전부 걸러 낸 경우에
-            // 그 수를 쓰면 "0개 파일 중 아무것도 모른다" 는 말이 안 되는 문장이 나온다.
             let counts = projectSourceCounts()
-            result.append(
-                "empty-index: the index store knows none of this project's \(counts.total) "
-                    + "source file(s) (\(counts.inScope) in scope), so every answer here is a "
-                    + "statement about nothing"
-            )
+            emptyIndexCounts = (counts.total, counts.inScope)
         }
-        // 라이브러리 패키지는 호출자가 저장소 밖에 있다. `retain_public` 이 꺼진 채로 돌리면
-        // 공개 API 전체가 미사용으로 나오고, 그 목록을 그대로 삭제로 옮기면 소비자가 전부
-        // 깨진다. 스크래치 패키지에서 공개 타입 둘이 통째로 보고되는 것을 확인했다.
-        if !configuration.retention.retainPublic, let products = libraryProductCount(), products > 0 {
-            result.append(
-                "public-api-not-retained: this package exports \(products) library product(s) and "
-                    + "retain_public is off, so a public declaration whose only callers live "
-                    + "outside this repository is reported unreachable"
-            )
-        }
-        if objectiveCCount > 0 {
-            result.append(
-                "objective-c-sources: \(objectiveCCount) file(s) are not analysed, "
-                    + "so a Swift declaration used only from Objective-C looks unreached"
-            )
-        }
-        if interfaceBuilderCount > 0 {
-            result.append(
-                "interface-builder-documents: \(interfaceBuilderCount) document(s) are matched by "
-                    + "custom class name only, never connection by connection"
-            )
-        }
-        if newerThanStore > 0 {
-            result.append(
-                "index-staleness: \(newerThanStore) of \(swiftFiles.count) source file(s) changed after the "
-                    + "index store was written, so a call added since the last build is not here yet"
-            )
-        }
-        if configuration.narrowsPathsBeyondDefaults {
-            result.append(
-                "configured-path-filter: include/exclude patterns narrow the analysis beyond the "
-                    + "defaults, so an empty 'usedBy' can mean the caller was filtered out rather "
-                    + "than absent"
-            )
-        }
-        if !configuration.edgeKinds.isEmpty {
-            result.append(
-                "configured-edge-kinds: only "
-                    + configuration.edgeKinds.map(\.rawValue).sorted().joined(separator: ", ")
-                    + " edges are in the graph, so other relations are invisible here"
-            )
-        }
-        // `single-configuration` 은 여기 있었다. 세는 것이 없어 모든 실행에 붙었고,
-        // 프로젝트에 대한 진술이 아니라 인덱스 스토어 일반에 대한 진술이라 정의상
-        // README 를 복사한 것이었다. 그 문장은 두 README 의 알려진 한계와 에이전트
-        // 스킬에 있고, 여기서는 알릴 것이 있을 때만 말한다.
-        result += externalRetentionLimitations(in: context, symbolGraph: symbolGraph, storeDate: storeDate)
-        return result
+        return AnalysisLimitationCollector(
+            configuration: configuration,
+            fileSystem: environment.fileSystem,
+            projectPath: projectPath,
+            // 외부 보존 파일의 기존 비교 기준은 유지한다. 소스 신선도는 수집기에서 파일별로 본다.
+            storeDate: storeDate ?? indexStoreDate()
+        ).collect(context: context, symbolGraph: symbolGraph, emptyIndexCounts: emptyIndexCounts)
     }
-
-    /// 외부 보존 근거가 걸려 있으면 그 사실과 신선도를 알린다.
-    ///
-    /// `retained` 에 `externalBridge` 가 붙은 답은 인덱스가 아니라 그 파일을 믿은 것이다.
-    /// 파일이 낡았으면 이름을 바꾼 핸들러의 근거가 아무것도 가리키지 않게 되고,
-    /// 그 수를 세어 주지 않으면 소비자는 파일이 최신이라고 믿는다.
-    private func externalRetentionLimitations(
-        in context: AnalysisContext?,
-        symbolGraph: CodeGraph?,
-        storeDate: Date?
-    ) -> [String] {
-        guard let context, let document = context.externalRetentions else { return [] }
-        let index = context.externalRetentionIndex
-        var result = [
-            "external-retentions: \(index.count) retention(s) from \(document.provenanceDescription) are in "
-                + "effect, so a 'retained' answer with reason 'externalBridge' rests on that file, not on the index"
-        ]
-        // 부르는 쪽이 이미 만든 심볼 그래프를 받는다. 여기서 다시 만들면 `query` 한 번에
-        // 그래프를 두 번 짓는다. 인덱스 읽기 다음으로 비싼 단계다.
-        let graph = symbolGraph ?? context.buildGraph(level: .symbol).graph
-        let unmatched = index.unmatchedCount(in: graph)
-        if unmatched > 0 {
-            result.append(
-                "external-retentions-unmatched: \(unmatched) of \(index.count) retention(s) name no declaration "
-                    + "in this index, so the file may predate a rename or a rebuild"
-            )
-        }
-        // 이름만 있는 근거가 여러 선언에 맞으면 전부 살린다. 확신이 없으면 살리는 쪽이
-        // 이 도구의 규칙이지만, 그렇게 살아난 것이 있다는 사실은 알려야 한다.
-        let ambiguous = index.ambiguousNameMatchCount(in: graph)
-        if ambiguous > 0 {
-            result.append(
-                "external-retentions-ambiguous: \(ambiguous) name(s) from retentions without a USR match more than "
-                    + "one declaration, and every one of those declarations is kept"
-            )
-        }
-        // 파일이 인덱스보다 오래됐으면 그 사이의 이름 변경을 모른다. 날짜를 보여 주기만
-        // 하면 판단은 사용자 몫인데, 비교는 이쪽이 할 수 있다.
-        if let generated = document.generatedAt.flatMap(Self.parseISO8601),
-           let built = storeDate, generated < built {
-            result.append(
-                "external-retentions-stale: the retentions file (\(document.generatedAt ?? "")) predates the index "
-                    + "store, so it does not know about declarations renamed or added since"
-            )
-        }
-        return result
-    }
-
-    /// 프로젝트 루트의 `Package.swift` 가 선언한 라이브러리 제품 수.
-    ///
-    /// 실행 파일 제품이 하나라도 있으면 nil 을 돌려 아무 말도 하지 않는다. 그런 패키지는
-    /// 진입점이 저장소 안에 있어 도달성 분석이 성립하고, 공개 API 가 미사용으로 나오는
-    /// 것이 정상적인 답일 수 있다. 호출자가 전부 밖에 있는 순수 라이브러리만 가른다.
-    ///
-    /// 매니페스트는 Swift 코드라 실행하지 않고는 정확히 알 수 없다. 여기서는 글자를 세고,
-    /// 틀릴 수 있는 쪽을 "말하지 않음" 으로 둔다. 없는 경보를 만드는 것보다 낫다.
-    private func libraryProductCount() -> Int? {
-        let manifest = (projectPath as NSString).appendingPathComponent("Package.swift")
-        guard let source = try? environment.fileSystem.readText(at: manifest) else { return nil }
-        guard !source.contains(".executable(") , !source.contains(".executableTarget(") else { return nil }
-        return source.components(separatedBy: ".library(").count - 1
-    }
-
-    /// 한계 목록을 세는 데 필요한 확장자. 다른 파일은 걷지도 담지도 않는다.
-    private static let limitationSuffixes = [".m", ".mm", ".xib", ".storyboard", ".swift"]
 
     /// 인덱스 스토어가 마지막으로 쓰인 시각. 찾지 못하면 신선도를 말하지 않는다.
     ///
@@ -747,21 +613,16 @@ public struct CartographService: Sendable {
         return markers.compactMap { environment.fileSystem.modificationDate(at: $0) }.max()
     }
 
-    private static func describe(
-        _ node: GraphNode,
-        reachedBy edges: [String],
-        depth: Int
-    ) -> SymbolQuery.Neighbor {
-        SymbolQuery.Neighbor(
+    private static func describe(_ neighbor: GraphNeighborhood.Neighbor) -> SymbolQuery.Neighbor {
+        let node = neighbor.node
+        return SymbolQuery.Neighbor(
             name: node.name,
             qualifiedName: node.qualifiedName,
             kind: node.kind.rawValue,
             usr: node.usr,
             module: node.module,
-            edges: edges,
-            depth: depth,
-            // 선언 위치다. 사용 지점이 아니다. 이웃이 subject 를 어느 줄에서 쓰는지는
-            // 이 그래프가 들고 있지 않다.
+            edges: neighbor.edges.map(\.rawValue).sorted(),
+            depth: neighbor.depth,
             location: node.location
         )
     }
@@ -803,81 +664,6 @@ public struct CartographService: Sendable {
         case .unknown:
             return .init(state: "unknown", reason: nil, path: nil, suppressedByBaseline: suppressedByBaseline)
         }
-    }
-
-    /// 사용 의미가 있는 간선만 따라 이웃을 모은다.
-    ///
-    /// 깊이와 개수를 모두 제한한다. 전이 의존자 수천 개는 결국 또 하나의 덤프이고,
-    /// 이 명령이 존재하는 이유가 덤프를 만들지 않는 것이다.
-    /// 담는 관계(`member` 간선)만 한 단계 따라간다.
-    ///
-    /// 쓰는 관계와 섞지 않는다. 타입이 멤버를 "쓴다"고 말하는 것은 사실이 아니고,
-    /// 그렇다고 빼 버리면 타입에 물었을 때 답이 비어 나온다.
-    private static func containment(
-        of start: NodeID,
-        in graph: CodeGraph,
-        limit: Int,
-        incoming: Bool
-    ) -> (neighbors: [SymbolQuery.Neighbor], truncated: Bool) {
-        let edges = incoming ? graph.incomingEdges(to: start) : graph.outgoingEdges(from: start)
-        let others = edges.filter { $0.kind == .member }
-            .map { incoming ? $0.source : $0.target }
-        var collected: [SymbolQuery.Neighbor] = []
-        var truncated = false
-        for other in Set(others).sorted(by: { $0.rawValue < $1.rawValue }) {
-            guard let node = graph.node(other) else { continue }
-            guard collected.count < max(1, limit) else { truncated = true; break }
-            collected.append(describe(node, reachedBy: [EdgeKind.member.rawValue], depth: 1))
-        }
-        return (collected, truncated)
-    }
-
-    /// 사용 의미가 있는 간선만 따라 이웃을 모은다.
-    ///
-    /// 깊이와 개수를 모두 제한한다. 전이 의존자 수천 개는 결국 또 하나의 덤프이고,
-    /// 이 명령이 존재하는 이유가 덤프를 만들지 않는 것이다.
-    ///
-    /// 따라가는 간선의 조건(`impliesUsage`)은 도달 가능성 분석이 쓰는 것과 같다.
-    /// 두 집합이 어긋나면 "아무도 안 쓰는데 도달은 가능"처럼 서로 모순된 두 사실이
-    /// 한 응답에 실린다.
-    private static func neighbors(
-        of start: NodeID,
-        in graph: CodeGraph,
-        depth: Int,
-        limit: Int,
-        incoming: Bool
-    ) -> ([SymbolQuery.Neighbor], Bool) {
-        var collected: [SymbolQuery.Neighbor] = []
-        var visited: Set<NodeID> = [start]
-        var frontier: [NodeID] = [start]
-        var truncated = false
-
-        for level in 1...max(1, depth) {
-            // 같은 이웃으로 가는 간선이 여럿일 수 있다(호출이면서 오버라이드처럼).
-            // 하나만 골라 담으면 나머지 관계가 응답에서 사라지고, 무엇을 고를지도
-            // 정렬 타이에 따라 실행마다 달라진다. 종류를 모아 함께 보고한다.
-            var kindsByNeighbor: [NodeID: Set<String>] = [:]
-            for current in frontier {
-                let edges = incoming ? graph.incomingEdges(to: current) : graph.outgoingEdges(from: current)
-                for edge in edges where edge.kind.impliesUsage {
-                    let other = incoming ? edge.source : edge.target
-                    guard !visited.contains(other) else { continue }
-                    kindsByNeighbor[other, default: []].insert(edge.kind.rawValue)
-                }
-            }
-
-            var next: [NodeID] = []
-            for other in kindsByNeighbor.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
-                visited.insert(other)
-                guard let node = graph.node(other), let kinds = kindsByNeighbor[other] else { continue }
-                guard collected.count < max(1, limit) else { truncated = true; continue }
-                collected.append(describe(node, reachedBy: kinds.sorted(), depth: level))
-                next.append(other)
-            }
-            frontier = next
-            if frontier.isEmpty { break }
-        }
-        return (collected, truncated)
     }
 
     // MARK: - 브리지 사실
@@ -1189,15 +975,6 @@ public struct CartographService: Sendable {
         return "\n  evidence: \(retention.evidenceDescription)" + basis
     }
 
-    /// isthmus 가 쓰는 시각을 읽는다. `2026-09-04T12:00:00.000Z` 처럼 소수점 초가 붙는다.
-    ///
-    /// `.iso8601` 기본 전략은 소수점 초를 거부한다. 그러면 신선도 비교가 조용히 빠져
-    /// 낡은 파일이 새것처럼 보인다.
-    private static func parseISO8601(_ text: String) -> Date? {
-        (try? Date(text, strategy: .iso8601))
-            ?? (try? Date(text, strategy: .iso8601.year().month().day().time(includingFractionalSeconds: true)))
-    }
-
     /// 설정과 프로젝트 경로를 반영한 보존 규칙.
     private func makeRetentionPolicy(externalRetentions: ExternalRetentionIndex) -> RetentionPolicy {
         RetentionPolicy(
@@ -1307,7 +1084,7 @@ public struct CartographService: Sendable {
         let files = environment.fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { path in
-                Self.limitationSuffixes.contains { path.hasSuffix($0) }
+                AnalysisLimitationCollector.sourceSuffixes.contains { path.hasSuffix($0) }
             },
             shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
         )

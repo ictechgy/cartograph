@@ -245,7 +245,7 @@ $ cartograph query UserService
   "level" : "symbol",
   "limitations" : [
     "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
-    "index-staleness: 3 of 214 source file(s) changed after the index store was written, so a call added since the last build is not here yet"
+    "index-staleness: 3 of 214 source file(s) changed after the file's index unit was written, so a call added since the last build is not here yet"
   ],
   "requested" : "UserService",
   "result" : {
@@ -281,12 +281,16 @@ Five things this output does deliberately:
   that is declared in Objective-C and being told only "no such thing" would hide the difference
   between absent and invisible. `limitations` is counted from *your* project, within the same
   include/exclude scope the graph uses, so it stays quiet when there is nothing to warn about. It
-  reports Objective-C sources, Interface Builder documents, sources edited since the index store was
+  reports Objective-C sources, Interface Builder documents, sources edited since their own index unit was
    written, a package that exports library products while `retain_public` is off, and a path filter
    that narrows the analysis *beyond the defaults*, or an edge-kind filter — any of which could be
    the reason `usedBy` is empty. The default excludes alone do not count —
   they are a noise guard, not a narrowing you chose, and a warning that fires on every project is
-  not read.
+  not read. File-level timestamps prevent a build of another target from hiding an edited file.
+  `unindexed-sources` counts files without a known index unit; `missing-sources` counts indexed
+  files that disappeared. `unreadable-sources` reports other read failures: declarations in those
+  files are kept with reason `sourceUnavailable` until source access is restored and the analysis
+  is rerun. These limits also appear in `dead` reports.
 - **A baseline the team already accepted is marked as such** (`suppressedByBaseline`), so nobody
   re-litigates a decision that was already made. It is only set when the declaration would actually
   have been reported.
@@ -647,6 +651,7 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | Compiler-synthesized declarations | you cannot delete them — they do not keep their type alive either |
 | `// cartograph:ignore`, `// cartograph:ignore:all` | you said so |
 | `retained_names`, `retained_files` globs | you said so |
+| Declarations whose source cannot be read (permissions or I/O failure) | retention annotations are unknown (`sourceUnavailable`); restore access and rerun |
 | Declarations named in `--external-retentions` | another platform calls them across a bridge; `--explain` quotes the evidence |
 
 **`retain_objc_accessible` defaults to on.** Periphery defaulted it off, which made mixed-language
@@ -661,6 +666,10 @@ hides behind unused conformances. Both halves were found by running the tool on 
 adversarial review.
 
 ### Known limitations
+
+- **File-level freshness is not build-configuration completeness.** A file's latest index unit
+  prevents unrelated targets from hiding its edits, but does not prove that every configuration
+  containing that same file has been rebuilt. Files without a known unit are reported separately.
 
 - **`#Preview` macro bodies.** Types used only inside a `#Preview` block are kept only when the
   compiler recorded the reference during macro expansion. `PreviewProvider` conformances are

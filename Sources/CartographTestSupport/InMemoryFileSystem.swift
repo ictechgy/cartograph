@@ -8,6 +8,7 @@ import Foundation
 public final class InMemoryFileSystem: FileSystem, @unchecked Sendable {
     private let lock = NSLock()
     private var files: [String: Data] = [:]
+    private var readErrors: [String: CocoaError.Code] = [:]
     public let currentDirectoryPath: String
 
     public init(currentDirectoryPath: String = "/project", files: [String: String] = [:]) {
@@ -37,10 +38,16 @@ public final class InMemoryFileSystem: FileSystem, @unchecked Sendable {
     }
 
     public func readData(at path: String) throws -> Data {
-        guard let data = lock.withLock({ files[path] }) else {
-            throw CocoaError(.fileNoSuchFile)
+        try lock.withLock {
+            if let code = readErrors[path] { throw CocoaError(code) }
+            guard let data = files[path] else { throw CocoaError(.fileNoSuchFile) }
+            return data
         }
-        return data
+    }
+
+    /// 파일의 존재와 독립적으로 읽기 실패를 주입해 권한 오류를 삭제로 오인하는 경로를 검증한다.
+    public func setReadError(_ code: CocoaError.Code?, for path: String) {
+        lock.withLock { readErrors[path] = code }
     }
 
     public func write(_ data: Data, to path: String) throws {

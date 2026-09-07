@@ -97,6 +97,30 @@ struct GlobPatternTests {
         #expect(!pattern.matches(deep))
         #expect(Date().timeIntervalSince(start) < 5)
     }
+
+    @Test("떨어진 이중 별표도 실패 경로에서 조합 폭발하지 않는다")
+    func manySeparatedDoubleStarsTerminate() {
+        let prefix = Array(repeating: "**/a", count: 10).joined(separator: "/")
+        let path = Array(repeating: "a", count: 25).joined(separator: "/")
+        let clock = ContinuousClock()
+        let start = clock.now
+        #expect(!GlobPattern(prefix + "/missing").matches(path))
+        #expect(clock.now - start < .seconds(1))
+        // 실패를 빨리 돌려주는 것만으로는 부족하다. 같은 탐색의 성공도 남긴다.
+        #expect(GlobPattern(prefix + "/missing").matches(path + "/missing"))
+    }
+
+    @Test("이중 별표는 빈 세그먼트와 절대 경로의 경계를 보존한다")
+    func emptyAndAbsoluteSegments() {
+        #expect(GlobPattern("/**/a/**/b").matches("/a/b"))
+        #expect(GlobPattern("/**/a/**/b").matches("/x/a//y/b"))
+        #expect(!GlobPattern("/**/a/**/b").matches("x/a/b"))
+        #expect(GlobPattern("a/**/").matches("a/"))
+        #expect(!GlobPattern("a/**/").matches("a"))
+        #expect(GlobPattern("a/**/b?/*").matches("a/x/b1/"))
+    }
+
+    @Test("원문 글롭은 직렬화 왕복에도 보존된다")
     func literalAndCodable() throws {
         let pattern: GlobPattern = "Sources/**"
         let data = try JSONEncoder().encode(pattern)

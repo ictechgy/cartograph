@@ -53,7 +53,11 @@ public struct IndexStoreProvider: IndexProviding {
         for path in paths {
             occurrences.append(contentsOf: database.symbolOccurrences(inFilePath: path))
         }
-        return Self.snapshot(from: occurrences, includeExternalSymbols: configuration.includeExternalSymbols)
+        var snapshot = Self.snapshot(from: occurrences, includeExternalSymbols: configuration.includeExternalSymbols)
+        snapshot.indexedFileDates = Dictionary(uniqueKeysWithValues: paths.compactMap { path in
+            database.dateOfLatestUnitFor(filePath: path).map { (path, $0) }
+        })
+        return snapshot
     }
 
     /// 분석 대상 Swift 소스 파일 목록.

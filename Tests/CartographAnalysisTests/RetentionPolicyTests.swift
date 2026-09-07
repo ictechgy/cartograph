@@ -20,6 +20,16 @@ struct RetentionPolicyTests {
         #expect(reasons(builder.build())["App"] == .entryPoint)
     }
 
+    @Test("소스를 못 읽은 선언은 불완전한 보존 정보로 미사용 판정을 내리지 않는다")
+    func unreadableSourceIsConservativelyRetained() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Unreadable", kind: .structType, attributes: [.sourceUnavailable, .unitTest])
+        builder.symbol("Ordinary", kind: .structType)
+        let retained = reasons(builder.build())
+        #expect(retained["Unreadable"] == .sourceUnavailable)
+        #expect(retained["Ordinary"] == nil)
+    }
+
     @Test("@main 타입의 static main() 도 함께 보존된다")
     func entryPointMethodIsRetained() {
         // 런타임이 부르는 메서드라 코드 어디에도 참조가 없다.

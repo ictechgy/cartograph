@@ -9,11 +9,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Separated `**` segments (`**/a/**/a/.../missing`) no longer revisit the same matching states.
+  A two-row dynamic program also removes recursive array copying. A 25-segment failing match
+  with ten `**/a` groups measured 2.09 s before and 0.000041 s after in an optimized local harness.
+- Batch name lookup now builds a name index once instead of sorting every graph node for each
+  request. On a 20,000-node synthetic graph, 1,000 name lookups measured 8.48 s before;
+  the new index builds in 14 ms and answers the batch in 0.42 ms (optimized local harness,
+  excluding index-store I/O and JSON rendering). Name/USR precedence, ambiguity, and
+  qualified-member matching are unchanged. Query edge names retain their prior lexical order,
+  independently of the graph model's edge-kind ordering.
+- Source permission and I/O failures keep affected declarations with an explicit `sourceUnavailable`
+  reason and appear in `query`/`dead` limitations. Missing files are reported separately instead of
+  being confused with unreadable files.
+- Index freshness uses each source file's latest index unit, so building a different target cannot
+  hide an edited file. Files without a known unit are counted separately. Older snapshot documents
+  without per-file timestamps remain readable.
+- Release tag input is passed through an environment variable and validated before writing workflow
+  state. The Homebrew token is available only in the tap update step.
+
 - Consecutive `**` segments in a glob pattern no longer multiply matching time. Each `**`
   branched the search, so `**/**/**` on a deep tree grew ~30x per pair of stars (8 stars on a
   25-segment path measured 17 s); they collapse to one `**`, which matches identically, and the
   same case now takes under a millisecond. The written pattern is untouched, only the segments
   used for matching.
+
+### Changed
+
+- Graph name lookup and neighborhood traversal live in `CartographAnalysis`; project limitation
+  collection is separate from `CartographService`. The existing Kit `NodeLookup` name remains an alias.
 
 ## [0.8.1] - 2026-09-07
 
