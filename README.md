@@ -64,7 +64,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.8.1
+mint install ictechgy/cartograph@0.8.2
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -72,7 +72,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.8.1"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.8.2"),
 ```
 
 ```bash
@@ -430,7 +430,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.8.1" },
+  "tool" : { "name" : "cartograph", "version" : "0.8.2" },
   "version" : 1
 }
 ```
