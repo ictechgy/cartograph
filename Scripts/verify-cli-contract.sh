@@ -77,6 +77,7 @@ expect_status 64 "잘못된 형식 값"      dead --report-format yaml
 expect_status 64 "질의 대상 누락"      query
 expect_status 64 "0 이하의 깊이"       query Foo --depth 0
 expect_status 64 "질의 대상과 배치 동시" query Foo --batch /dev/null
+expect_status 64 "질의와 since 동시"     query Foo --since HEAD
 expect_status 64 "빈 질의 대상"        query ""
 # 요청 파일이 잘못된 것은 인자의 문제다. 종료 코드 2 로 내면 CI 가 인덱스를 의심한다.
 expect_status 64 "없는 배치 요청 파일"  query --batch "/tmp/cartograph-no-such-batch.json"
@@ -99,6 +100,7 @@ expect_status 2 "없는 외부 근거 파일"  dead --project "$MISSING" --exter
 expect_status 2 "깨진 외부 근거 파일"  dead --project "$MISSING" --external-retentions "$MISSING/broken.json"
 # 요청 파일은 인덱스를 열기 전에 읽는다. 인덱스가 없는 프로젝트에서도 배치 오류가 먼저 난다.
 expect_status 64 "배치 검사가 색인보다 먼저" query --batch "$MISSING/badbatch.json" --project "$MISSING"
+expect_status 64 "배치 질의와 since 동시" query --batch "$MISSING/batch.json" --since HEAD
 expect_status 2 "배치도 인덱스는 필요"  query --batch "$MISSING/batch.json" --project "$MISSING"
 
 # 인덱스가 열리기는 하는데 이 프로젝트를 하나도 모르는 상태. 스토어가 없는 것과 다르다.
@@ -159,6 +161,7 @@ fi
 
 echo "출력 내용"
 expect_output "cartograph"      "도움말에 도구 이름"           --help
+expect_output "--since cannot be combined with query" "since 거부에 이유" query Foo --since HEAD
 expect_output "Exit codes"      "도움말에 종료 코드 표"        --help
 expect_output "swift build"     "인덱스 없음 안내에 빌드 명령" cycles --project "$MISSING"
 expect_output "--allow-empty-index" "빈 인덱스 안내에 탈출구"  dead --project "$EMPTY"
