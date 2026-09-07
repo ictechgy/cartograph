@@ -71,6 +71,8 @@ public struct RetentionPolicy: Sendable {
         in graph: CodeGraph,
         symbolsWithExternalBase: Set<String>
     ) -> RetentionReason? {
+        // 구문 누락을 설명해야 하므로 이미 있던 근거보다 우선한다.
+        // 테스트 전용 판정도 소스 접근을 복구하기 전에는 보수적으로 억제한다.
         if node.attributes.contains(.sourceUnavailable) { return .sourceUnavailable }
         if node.attributes.contains(.ignoreComment) { return .ignoreComment }
         if isUserRetained(node) { return .userConfigured }

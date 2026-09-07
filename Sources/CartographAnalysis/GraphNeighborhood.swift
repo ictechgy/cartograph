@@ -18,6 +18,7 @@ public struct GraphNeighborhood: Sendable {
     }
 
     /// 포함 관계만 한 단계 따라가므로 타입의 멤버가 의존자로 오인되지 않는다.
+    /// limit 은 최소 1이며, 개수 제한으로 생략한 이웃이 있으면 truncated 를 세운다.
     public func containment(
         of start: NodeID,
         limit: Int,
@@ -44,6 +45,8 @@ public struct GraphNeighborhood: Sendable {
     /// 따라가는 간선의 조건(`impliesUsage`)은 도달 가능성 분석이 쓰는 것과 같다.
     /// 두 집합이 어긋나면 "아무도 안 쓰는데 도달은 가능"처럼 서로 모순된 두 사실이
     /// 한 응답에 실린다.
+    /// depth 와 limit 은 최소 1이다. 개수 제한으로 생략된 정점에서는 더 확장하지 않으며,
+    /// truncated 는 개수 제한에 의한 생략만 알린다. 요청 깊이 밖은 원래 조회 범위가 아니다.
     public func usage(
         of start: NodeID,
         depth: Int,

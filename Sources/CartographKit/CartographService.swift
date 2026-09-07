@@ -585,7 +585,8 @@ public struct CartographService: Sendable {
             configuration: configuration,
             fileSystem: environment.fileSystem,
             projectPath: projectPath,
-            storeDate: storeDate ?? context?.snapshot.indexedFileDates?.values.max() ?? indexStoreDate()
+            // 외부 보존 파일의 기존 비교 기준은 유지한다. 소스 신선도는 수집기에서 파일별로 본다.
+            storeDate: storeDate ?? indexStoreDate()
         ).collect(context: context, symbolGraph: symbolGraph, emptyIndexCounts: emptyIndexCounts)
     }
 
@@ -620,7 +621,7 @@ public struct CartographService: Sendable {
             kind: node.kind.rawValue,
             usr: node.usr,
             module: node.module,
-            edges: neighbor.edges.map(\.rawValue),
+            edges: neighbor.edges.map(\.rawValue).sorted(),
             depth: neighbor.depth,
             location: node.location
         )

@@ -22,6 +22,25 @@ struct AnalysisLimitationCollectorTests {
         #expect(!result.contains { $0.hasPrefix("unindexed-sources:") })
     }
 
+    @Test("소스별 신선도 변경이 외부 보존 파일의 비교 기준까지 바꾸지 않는다")
+    func externalRetentionsKeepTheirStoreDateComparison() {
+        let store = "/p/.build/index/store"
+        let fileSystem = InMemoryFileSystem(files: ["/p/A.swift": "", store + "/v5/units/unit": ""])
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 2_000), for: store + "/v5/units")
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 1_100), for: "/p/A.swift")
+        let context = AnalysisContext(
+            snapshot: IndexSnapshot(indexedFileDates: ["/p/A.swift": Date(timeIntervalSince1970: 1_000)]),
+            externalRetentions: ExternalRetentionsDocument(generatedAt: "1970-01-01T00:25:00Z", retentions: [])
+        )
+        var config = CartographConfiguration.default
+        config.projectPath = "/p"
+        config.indexStorePath = store
+        let service = CartographService(configuration: config, environment: CartographEnvironment(fileSystem: fileSystem))
+        let result = service.analysisLimitations(context: context)
+        #expect(result.contains { $0.hasPrefix("index-staleness: 1 of 1") })
+        #expect(result.contains { $0.hasPrefix("external-retentions-stale:") })
+    }
+
     @Test("파일별 유닛이 없는 소스는 전체 스토어 시각으로 최신인 척하지 않는다")
     func missingUnitIsReportedSeparately() {
         let fileSystem = InMemoryFileSystem(files: ["/p/New.swift": ""])

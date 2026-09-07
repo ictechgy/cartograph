@@ -23,7 +23,7 @@ struct RetentionPolicyTests {
     @Test("소스를 못 읽은 선언은 불완전한 보존 정보로 미사용 판정을 내리지 않는다")
     func unreadableSourceIsConservativelyRetained() {
         var builder = SnapshotBuilder()
-        builder.symbol("Unreadable", kind: .structType, attributes: [.sourceUnavailable])
+        builder.symbol("Unreadable", kind: .structType, attributes: [.sourceUnavailable, .unitTest])
         builder.symbol("Ordinary", kind: .structType)
         let retained = reasons(builder.build())
         #expect(retained["Unreadable"] == .sourceUnavailable)

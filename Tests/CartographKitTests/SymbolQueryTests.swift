@@ -467,6 +467,20 @@ struct SymbolQueryTests {
         #expect(result.dependsOn.map(\.edges) == [["call", "reference"]])
     }
 
+    @Test("간선의 내부 선언 순서와 무관하게 JSON 관계는 문자열 순서로 나온다")
+    func edgeNamesKeepTheirSerializedOrder() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("Derived", kind: .classType)
+        builder.symbol("Base", kind: .classType)
+        builder.reference(from: "Derived", to: "Base", kind: .reference)
+        builder.reference(from: "Derived", to: "Base", kind: .inheritance)
+        let service = makeService(snapshot: builder.build())
+        let derived = try #require(try service.queryDocument(symbol: "Derived").result)
+        let base = try #require(try service.queryDocument(symbol: "Base").result)
+        #expect(derived.dependsOn.map(\.edges) == [["inheritance", "reference"]])
+        #expect(base.usedBy.map(\.edges) == [["inheritance", "reference"]])
+    }
+
     @Test("출력 JSON 은 키 순서가 고정되어 diff 할 수 있다")
     func encodesDeterministically() throws {
         let service = makeService()

@@ -89,7 +89,8 @@ struct AnalysisLimitationCollector {
             if unindexed > 0 {
                 result.append(
                     "unindexed-sources: \(unindexed) of \(swiftFiles.count) source file(s) have no known index unit; "
-                        + "build the targets containing them before relying on absent callers"
+                        + "build their targets, or exclude files that are not target sources, "
+                        + "before relying on absent callers"
                 )
             }
         }
