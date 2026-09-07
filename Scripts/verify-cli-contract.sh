@@ -78,6 +78,11 @@ expect_status 64 "질의 대상 누락"      query
 expect_status 64 "0 이하의 깊이"       query Foo --depth 0
 expect_status 64 "질의 대상과 배치 동시" query Foo --batch /dev/null
 expect_status 64 "질의와 since 동시"     query Foo --since HEAD
+expect_status 64 "그래프와 since 동시"   graph --since HEAD
+expect_status 64 "브리지와 since 동시"   bridges --since HEAD
+expect_status 64 "설명과 since 동시"     dead --explain Foo --since HEAD
+expect_status 64 "순환 설명과 since 동시" cycles --explain Foo --since HEAD
+expect_status 64 "규칙 설명과 since 동시" rules --explain Foo --since HEAD
 expect_status 64 "빈 질의 대상"        query ""
 # 요청 파일이 잘못된 것은 인자의 문제다. 종료 코드 2 로 내면 CI 가 인덱스를 의심한다.
 expect_status 64 "없는 배치 요청 파일"  query --batch "/tmp/cartograph-no-such-batch.json"

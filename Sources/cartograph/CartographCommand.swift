@@ -86,6 +86,18 @@ struct GraphCommand: ParsableCommand {
     @Option(name: .customLong("format"), help: "dot, mermaid, json or html.")
     var graphFormat: GraphFormat?
 
+    func validate() throws {
+        // 그래프는 전체를 덤프한다. 바뀐 파일만 잘라내면 도달성부터 틀린
+        // 그림이 되고, 그렇다고 조용히 전체를 그리면 `--since` 를 걸고 비교한
+        // 결과가 "같음" 으로 나온다. 앞에서 거부한다.
+        guard options.since == nil else {
+            throw ValidationError(
+                "--since cannot be combined with graph; graph renders the whole project, "
+                    + "not the findings in changed files"
+            )
+        }
+    }
+
     func run() throws {
         let context = try CommandSupport.makeContext(options)
         let outcome = try context.service.renderGraph(level: options.level, format: graphFormat)
@@ -104,6 +116,17 @@ struct CyclesCommand: ParsableCommand {
 
     @Option(name: .customLong("explain"), help: "Explain which cycles a node takes part in.")
     var explain: String?
+
+    func validate() throws {
+        // 설명은 `--explain` 이 있을 때만 단일 정점에 답하고, 그때는 범위
+        // 렌즈가 닿을 자리가 없다. `cycles --since` (목록)는 그대로 둔다.
+        guard explain == nil || options.since == nil else {
+            throw ValidationError(
+                "--since cannot be combined with cycles --explain; the explanation answers "
+                    + "one node, not the findings in changed files"
+            )
+        }
+    }
 
     func run() throws {
         let context = try CommandSupport.makeContext(options)
@@ -139,6 +162,17 @@ struct DeadCommand: ParsableCommand {
         help: "Also report declarations reached only from tests or previews."
     )
     var reportTestOnly: Bool = false
+
+    func validate() throws {
+        // `dead --since` (목록)는 유효하고 `dead --explain` (단일 선언)만
+        // 범위 렌즈와 겹친다. 겹치는 조합만 앞에서 거부한다.
+        guard explain == nil || options.since == nil else {
+            throw ValidationError(
+                "--since cannot be combined with dead --explain; the explanation answers "
+                    + "one declaration, not the findings in changed files"
+            )
+        }
+    }
 
     func run() throws {
         let context = try CommandSupport.makeContext(options)
@@ -295,6 +329,18 @@ struct BridgesCommand: ParsableCommand {
     @Option(name: .customLong("target"), help: "Limit facts to flutter or react-native.")
     var target: BridgesTarget?
 
+    func validate() throws {
+        // 사실 문서는 조인용 전체 내보내기다. 바뀐 파일만 담으면 하류 조인이
+        // 빠진 핸들러로 읽는다. 조용히 전체를 내보내는 쪽도 `--since` 비교를
+        // 증거로 만들기 때문에 앞에서 거부한다.
+        guard options.since == nil else {
+            throw ValidationError(
+                "--since cannot be combined with bridges; the document must carry the whole "
+                    + "boundary or the join reads a missing handler"
+            )
+        }
+    }
+
     func run() throws {
         let context = try CommandSupport.makeContext(options)
         try CommandSupport.emit(
@@ -357,6 +403,17 @@ struct RulesCommand: ParsableCommand {
 
     @Option(name: .customLong("explain"), help: "Explain which layer a node is in and why.")
     var explain: String?
+
+    func validate() throws {
+        // 설명은 `--explain` 이 있을 때만 단일 정점에 답한다. `rules --since`
+        // (목록)는 그대로 둔다.
+        guard explain == nil || options.since == nil else {
+            throw ValidationError(
+                "--since cannot be combined with rules --explain; the explanation answers "
+                    + "one node, not the findings in changed files"
+            )
+        }
+    }
 
     func run() throws {
         let context = try CommandSupport.makeContext(options)

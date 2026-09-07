@@ -14,6 +14,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   nothing to attach to; accepting it turned a comparison that cannot differ into evidence. The
   rejection happens during argument validation, before the index is opened, like the existing
   `baseline` + `--since` guard.
+- The same silent `--since` is now rejected everywhere else it had nowhere to attach:
+  `graph` (which renders the whole project — a scoped cut would mislead before it could narrow),
+  `bridges` (a partial export would read as missing handlers in the downstream join), and
+  `dead`/`cycles`/`rules --explain` (one-subject answers like `query`). Bare `dead`/`cycles`/`rules
+  --since` over the finding list still works; only the `--explain` combination is refused.
 
 ## [0.8.0] - 2026-09-07
 
