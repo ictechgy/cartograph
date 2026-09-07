@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-08
+
 ### Fixed
 
 - Separated `**` segments (`**/a/**/a/.../missing`) no longer revisit the same matching states.
@@ -747,7 +749,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.8.1...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.8.2...HEAD
+[0.8.2]: https://github.com/ictechgy/cartograph/compare/0.8.1...0.8.2
 [0.8.1]: https://github.com/ictechgy/cartograph/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/ictechgy/cartograph/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/ictechgy/cartograph/compare/0.6.0...0.7.0
