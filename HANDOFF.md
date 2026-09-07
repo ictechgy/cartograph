@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-_마지막 갱신: 2026-09-07 심야 (#52·#53·#54 머지, `main` 깨끗, Muse). 이 저장소에는 세션이 둘 있었다(Claude 가 0.5.1·0.5.2·0.5.4·0.5.5, Codex 가 0.5.3). 큰 작업 전 `git status --short --branch` 와 `gh pr list` 로 확인할 것._
+_마지막 갱신: 2026-09-07 심야 (#60 머지, Unreleased에 1건, `main` 깨끗, Muse). 이 저장소에는 세션이 둘 있었다(Claude 가 0.5.1·0.5.2·0.5.4·0.5.5, Codex 가 0.5.3). 큰 작업 전 `git status --short --branch` 와 `gh pr list` 로 확인할 것._
 
 ## Goal
 
@@ -10,7 +10,9 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 
 ## Current Progress
 
-**릴리스**: 0.1.0 → … → 0.5.5 (2026-09-03~05) → 0.6.0 → 0.7.0 (2026-09-06) → 0.8.0 (2026-09-07) → **0.8.1** (2026-09-07 심야, #52·#54·#57 조용한-플래그 거부 세 묶음). 전부 GitHub Release + Homebrew tap(`ictechgy/tap`, `HOMEBREW_TAP_TOKEN` 이 없어 손 갱신) + `brew upgrade` 확인. `main` 은 깨끗하다.
+**릴리스**: 0.1.0 → … → 0.5.5 (2026-09-03~05) → 0.6.0 → 0.7.0 (2026-09-06) → 0.8.0 (2026-09-07) → **0.8.1** (2026-09-07 심야, #52·#54·#57 조용한-플래그 거부 세 묶음). 전부 GitHub Release + Homebrew tap(`ictechgy/tap`, `HOMEBREW_TAP_TOKEN` 이 없어 손 갱신) + `brew upgrade` 확인. Unreleased에 #60(연속 `**` 폭발 수정) 1건. `main` 은 깨끗하다.
+
+**성능·구조·보안 점검**(2026-09-07 심야, 사용자 요청): 급한 것 없음. `try!`·강제 언랩 0건, 셸 호출 없음(git·xcode-select 절대 경로+인자 배열), 네트워크 없음, `Package.resolved` 커밋됨, 자기 분석 `dead` 0.225초. 고친 것은 연속 `**` 글롭 폭발뿐(별 2개당 ~30배, 8개에 17초 실측 → 세그먼트만 접어 0.0001초, #60). `-o` 덮어쓰기는 현행 유지로 결론 — `-o` 대상은 매번 다시 만드는 CI 산출물이라 `--force` 요구가 주류를 깨고 매번 경고는 상시 경보가 된다(`init`·`skill`이 지키는 오래 손보는 파일과 다름). 타입 그래프 간선 1100→1102는 인덱스 재빌드 편차(정점·판정 동일, 같은 인덱스에선 바이트 동일 확인).
 
 **0.5.x 에서 들어간 것** (자세한 것은 CHANGELOG)
 - `bridges --format json|text --target flutter|react-native`: Swift 소스와 `.m` 파일에서 언어 경계 사실(`channel-register`, `method-handle`, `module-export`, `component-export`)을 뽑아 인덱스의 USR 을 붙여 `bridge-facts` v1 로 낸다. 한계를 실제로 세어 싣는다(`dynamic-*`, `inferred-channels`, `unattributed-method-handles`, `missing-handler-usrs`, `objc-named-classes`, `objective-c-handlers`, `objective-c-sources`, `unscanned-event/message-channels`, `mixed-targets`, `target-filter`).
@@ -292,12 +294,13 @@ HealthMap 에서 `NotificationPreferencesController` 가 이제 타입 자체로
 5. **`HOMEBREW_TAP_TOKEN`** 은 사용자 계정 행동. 있으면 `release.yml` 이 tap 을 자동 갱신한다.
 6. 새 브리지 kind(EventChannel, BasicMessageChannel)는 isthmus `GRAPH-EXCHANGE.md` 를 먼저, 그다음 생산자 테스트.
 
-## Verification (마지막으로 통과한 것, #54 직후)
+## Verification (마지막으로 통과한 것, #60 직후)
 
-`Scripts/coverage.sh` 93.03% · `Scripts/verify-cli-contract.sh`(since 거부 8줄 포함) ·
+`Scripts/coverage.sh` 93.06% · `Scripts/verify-cli-contract.sh`(since 거부 8줄·level 거부 4줄 포함) ·
 `Scripts/verify-fixtures.sh`(릴리스 빌드) ·
 자기 분석 `dead`/`cycles`/`cycles --level type`/`rules --strict` 전부 0 · CI 두 잡.
 타입 그래프 간선이 1100 → 1102로 2개 늘었는데 정점·판정 동일, 인덱스 재빌드 편차로 본다(#54 본문).
+같은 인덱스에서 두 번 돌리면 바이트까지 같음을 확인했다(#60 본문).
 
 ### 0.8.0 시점의 기록
 
