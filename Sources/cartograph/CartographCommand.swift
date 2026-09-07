@@ -201,6 +201,16 @@ struct QueryCommand: ParsableCommand {
     func validate() throws {
         guard depth >= 1 else { throw ValidationError("--depth must be at least 1") }
         guard limit >= 1 else { throw ValidationError("--limit must be at least 1") }
+        // `query` 는 진단 목록이 아니라 선언 하나에 답하므로 범위 렌즈가 닿을
+        // 자리가 없다. 조용히 무시하면 `--since` 를 걸고 비교한 결과가 "같음" 으로
+        // 나와 통과할 수밖에 없는 비교가 증거가 된다. 베이스라인과 같은 방식으로
+        // 앞에서 거부한다.
+        guard options.since == nil else {
+            throw ValidationError(
+                "--since cannot be combined with query; query answers one declaration, "
+                    + "not the findings in changed files"
+            )
+        }
         // 둘 다 받으면 어느 쪽을 답했는지 출력 형식으로만 알 수 있다. 스크립트가
         // 인자를 잘못 조립해도 조용히 한쪽이 무시되는 것이 가장 나쁘다.
         switch (symbol, batch) {

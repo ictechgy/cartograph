@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- `query --since <revision>` is now rejected as a usage error (exit 64) instead of being quietly
+  ignored. `query` answers one declaration rather than a list of findings, so the revision lens has
+  nothing to attach to; accepting it turned a comparison that cannot differ into evidence. The
+  rejection happens during argument validation, before the index is opened, like the existing
+  `baseline` + `--since` guard.
+
 ## [0.8.0] - 2026-09-07
 
 ### Added
