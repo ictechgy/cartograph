@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Consecutive `**` segments in a glob pattern no longer multiply matching time. Each `**`
+  branched the search, so `**/**/**` on a deep tree grew ~30x per pair of stars (8 stars on a
+  25-segment path measured 17 s); they collapse to one `**`, which matches identically, and the
+  same case now takes under a millisecond. The written pattern is untouched, only the segments
+  used for matching.
+
 ## [0.8.1] - 2026-09-07
 
 ### Fixed

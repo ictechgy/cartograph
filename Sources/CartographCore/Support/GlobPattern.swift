@@ -15,7 +15,16 @@ public struct GlobPattern: Hashable, Sendable, CustomStringConvertible {
 
     public init(_ pattern: String) {
         self.pattern = pattern
-        self.segments = pattern.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        let raw = pattern.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        // 연속된 `**` 는 하나와 같다. 그대로 두면 `**` 마다 분기가 곱해져
+        // 별 2개당 약 30배로 번진다(깊이 25 경로에 8개면 17초 실측). 원문은
+        // 그대로 두고 매칭용 세그먼트만 접는다.
+        var collapsed: [String] = []
+        collapsed.reserveCapacity(raw.count)
+        for segment in raw where segment != "**" || collapsed.last != "**" {
+            collapsed.append(segment)
+        }
+        self.segments = collapsed
         self.matchesLastComponentOnly = !pattern.contains("/")
     }
 
