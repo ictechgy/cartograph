@@ -43,6 +43,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     case userConfigured
     /// `// cartograph:ignore` 주석.
     case ignoreComment
+    /// 소스 읽기에 실패해 보존 정보를 확인할 수 없는 선언.
+    case sourceUnavailable
     /// 다른 플랫폼이 언어 경계를 넘어 부른다고 외부 도구(isthmus)가 알려 왔다.
     ///
     /// 인덱스는 Dart 나 JavaScript 를 보지 못한다. 근거는 `--external-retentions` 파일에
@@ -131,6 +133,7 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         case .preview: "a SwiftUI preview"
         case .userConfigured: "matched by a retain rule in the configuration"
         case .ignoreComment: "marked with a // cartograph:ignore comment"
+        case .sourceUnavailable: "kept conservatively because its source could not be read; restore access and rebuild"
         case .externalBridge: "called from another platform across a bridge, per the external retentions file"
         }
     }

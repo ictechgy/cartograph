@@ -1,10 +1,18 @@
 import CartographCore
+import Foundation
 
 /// 인덱스 스냅샷에 구문 분석 결과를 덧붙인다.
 ///
 /// 인덱스는 "무엇이 무엇을 참조하는가"를 정확히 알지만 "그 선언이 public 인지",
 /// "@objc 가 붙었는지"는 모른다. 두 출처를 합쳐야 보존 규칙을 제대로 적용할 수 있다.
 public struct SnapshotEnricher: Sendable {
+    /// 부분 실패를 호출자에게 전달해, 누락된 구문 정보를 완전한 분석으로 오인하지 않게 한다.
+    public struct Result: Sendable {
+        public let snapshot: IndexSnapshot
+        public let missingSourcePaths: [String]
+        public let unreadableSourcePaths: [String]
+    }
+
     private let fileSystem: any FileSystem
     private let analyzer: SwiftSyntaxAnalyzer
     /// 파일이 그대로면 다시 파싱하지 않게 해 주는 캐시. nil 이면 매번 파싱한다.
@@ -44,8 +52,9 @@ public struct SnapshotEnricher: Sendable {
 
     /// 스냅샷에 등장하는 소스 파일을 읽어 구문 정보를 붙인다.
     ///
-    /// 읽지 못한 파일은 조용히 건너뛴다. 인덱스에는 남아 있지만 이미 삭제된
-    /// 파일이 있을 수 있고, 그것 때문에 전체 분석이 실패해서는 안 된다.
+    /// 삭제된 소스는 인덱스에 남을 수 있다. 나머지 읽기 실패는 보존 표식으로 남겨
+    /// 주석·접근 수준을 모르는 선언을 미사용으로 보고하지 않는다.
+    /// 실패 경로 목록도 필요한 호출자는 `enrichWithDiagnostics` 를 쓴다.
     ///
     /// - Parameter interfaceBuilderRoots: xib/storyboard 를 찾을 디렉터리들.
     ///   비우면 Interface Builder 참조를 수집하지 않는다.
@@ -54,12 +63,30 @@ public struct SnapshotEnricher: Sendable {
         interfaceBuilderRoots: [String] = [],
         pathFilter: PathFilter = .passthrough
     ) -> IndexSnapshot {
+        enrichWithDiagnostics(snapshot, interfaceBuilderRoots: interfaceBuilderRoots, pathFilter: pathFilter).snapshot
+    }
+
+    /// 실패 경로를 한 번의 읽기에서 수집한다. 파일을 다시 읽어 추측하면 실행 사이에 상태가 달라진다.
+    public func enrichWithDiagnostics(
+        _ snapshot: IndexSnapshot,
+        interfaceBuilderRoots: [String] = [],
+        pathFilter: PathFilter = .passthrough
+    ) -> Result {
         let stored = cache?.load() ?? [:]
         var facts: [String: SourceFileFacts] = [:]
         var fresh: [String: SourceFactsCache.Entry] = [:]
+        var missing: [String] = []
+        var unreadable: [String] = []
 
         for path in snapshot.filePaths where path.hasSuffix(".swift") {
-            guard let source = try? fileSystem.readText(at: path) else { continue }
+            let source: String
+            do {
+                source = try fileSystem.readText(at: path)
+            } catch {
+                // 존재 여부 재조회는 권한 오류도 '없음'으로 오인한다. 읽기가 돌려준 원인만 쓴다.
+                if Self.isMissingFile(error) { missing.append(path) } else { unreadable.append(path) }
+                continue
+            }
             guard let cache else {
                 facts[path] = analyzer.analyze(source: source, path: path)
                 continue
@@ -77,12 +104,24 @@ public struct SnapshotEnricher: Sendable {
         // 왜 같은지가 한눈에 보이지 않아 나중 편집에서 깨지기 쉽다.
         if let cache, fresh != stored { cache.save(fresh) }
 
-        let enriched = Self.enrich(snapshot, with: facts)
-        guard !interfaceBuilderRoots.isEmpty else { return enriched }
+        var enriched = Self.enrich(snapshot, with: facts)
+        let unreadablePaths = Set(unreadable)
+        for index in enriched.symbols.indices where unreadablePaths.contains(enriched.symbols[index].location.path) {
+            enriched.symbols[index].attributes.insert(.sourceUnavailable)
+        }
+        if !interfaceBuilderRoots.isEmpty {
+            let references = InterfaceBuilderScanner(fileSystem: fileSystem)
+                .scan(roots: interfaceBuilderRoots, pathFilter: pathFilter)
+            enriched = Self.marking(enriched, interfaceBuilderReferences: references)
+        }
+        return Result(snapshot: enriched, missingSourcePaths: missing, unreadableSourcePaths: unreadable)
+    }
 
-        let references = InterfaceBuilderScanner(fileSystem: fileSystem)
-            .scan(roots: interfaceBuilderRoots, pathFilter: pathFilter)
-        return Self.marking(enriched, interfaceBuilderReferences: references)
+    private static func isMissingFile(_ error: any Error) -> Bool {
+        let error = error as NSError
+        return (error.domain == NSCocoaErrorDomain
+            && [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(error.code))
+            || (error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT))
     }
 
     /// Interface Builder 문서가 이름으로 지목한 타입에 표식을 붙인다.
@@ -114,6 +153,7 @@ public struct SnapshotEnricher: Sendable {
         enriched.symbols = snapshot.symbols.map { symbol in
             guard let fileFacts = facts[symbol.location.path] else { return symbol }
             var updated = symbol
+            updated.attributes.remove(.sourceUnavailable)
 
             if fileFacts.ignoresEntireFile {
                 updated.attributes.insert(.ignoreComment)

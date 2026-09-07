@@ -71,6 +71,7 @@ public struct RetentionPolicy: Sendable {
         in graph: CodeGraph,
         symbolsWithExternalBase: Set<String>
     ) -> RetentionReason? {
+        if node.attributes.contains(.sourceUnavailable) { return .sourceUnavailable }
         if node.attributes.contains(.ignoreComment) { return .ignoreComment }
         if isUserRetained(node) { return .userConfigured }
         // 사용자 설정 다음이다. 외부 도구의 주장은 설정보다 약하고, 인덱스에서 유도한

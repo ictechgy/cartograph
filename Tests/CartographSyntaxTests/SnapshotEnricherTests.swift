@@ -185,13 +185,47 @@ struct SnapshotEnricherTests {
         #expect(enriched.symbols[0].attributes.contains(.entryPoint))
     }
 
-    @Test("읽을 수 없는 파일은 조용히 건너뛴다")
-    func unreadableFilesAreSkipped() {
+    @Test("삭제된 파일은 보강하지 않고 누락된 경로를 함께 돌려준다")
+    func missingFilesAreReported() {
         // 인덱스에는 남아 있지만 이미 삭제된 파일 때문에 분석 전체가 실패해서는 안 된다.
         var builder = SnapshotBuilder()
         builder.symbol("Ghost", kind: .structType, path: "/p/Deleted.swift")
         let snapshot = builder.build()
-        #expect(SnapshotEnricher(fileSystem: InMemoryFileSystem()).enrich(snapshot) == snapshot)
+        let result = SnapshotEnricher(fileSystem: InMemoryFileSystem()).enrichWithDiagnostics(snapshot)
+        #expect(result.snapshot == snapshot)
+        #expect(result.missingSourcePaths == ["/p/Deleted.swift"])
+        #expect(result.unreadableSourcePaths.isEmpty)
+    }
+
+    @Test("권한 오류는 삭제로 오인하지 않고 선언에 불완전한 소스 표식을 남긴다")
+    func unreadableSourcesAreMarked() {
+        let path = "/p/Service.swift"
+        let fileSystem = InMemoryFileSystem(files: [path: "// cartograph:ignore\npublic struct Service {}"])
+        fileSystem.setReadError(.fileReadNoPermission, for: path)
+        var builder = SnapshotBuilder()
+        builder.symbol("Service", kind: .structType, path: path, line: 2)
+        let enricher = SnapshotEnricher(fileSystem: fileSystem)
+        let result = enricher.enrichWithDiagnostics(builder.build())
+        #expect(result.missingSourcePaths.isEmpty)
+        #expect(result.unreadableSourcePaths == [path])
+        #expect(result.snapshot.symbols[0].attributes.contains(.sourceUnavailable))
+
+        fileSystem.setReadError(nil, for: path)
+        let recovered = enricher.enrichWithDiagnostics(result.snapshot)
+        #expect(recovered.unreadableSourcePaths.isEmpty)
+        #expect(!recovered.snapshot.symbols[0].attributes.contains(.sourceUnavailable))
+        #expect(recovered.snapshot.symbols[0].accessibility == .publicLevel)
+    }
+
+    @Test("존재 여부도 확인할 수 없는 권한 오류를 삭제로 숨기지 않는다")
+    func inaccessibleParentIsNotTreatedAsMissing() {
+        let fileSystem = InMemoryFileSystem()
+        fileSystem.setReadError(.fileReadNoPermission, for: "/p/Hidden.swift")
+        var builder = SnapshotBuilder()
+        builder.symbol("Hidden", kind: .structType, path: "/p/Hidden.swift")
+        let result = SnapshotEnricher(fileSystem: fileSystem).enrichWithDiagnostics(builder.build())
+        #expect(result.unreadableSourcePaths == ["/p/Hidden.swift"])
+        #expect(result.missingSourcePaths.isEmpty)
     }
 
     @Test("Swift 가 아닌 파일은 분석하지 않는다")
