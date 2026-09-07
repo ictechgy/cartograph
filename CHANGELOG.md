@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-07
+
 ### Fixed
 
 - `query --since <revision>` is now rejected as a usage error (exit 64) instead of being quietly
@@ -714,7 +716,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.5.5...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.8.1...HEAD
+[0.8.1]: https://github.com/ictechgy/cartograph/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/ictechgy/cartograph/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/ictechgy/cartograph/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/ictechgy/cartograph/compare/0.5.5...0.6.0
