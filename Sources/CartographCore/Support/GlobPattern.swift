@@ -51,25 +51,37 @@ public struct GlobPattern: Hashable, Sendable, CustomStringConvertible {
         return Self.matchSegments(segments, valueSegments)
     }
 
-    /// 세그먼트 단위 매칭. `**` 는 임의 개수의 세그먼트를 소비한다.
+    /// 같은 패턴·경로 위치를 한 번만 계산한다.
+    ///
+    /// 연속 `**` 를 접어도 `**/a/**/a/.../missing` 은 실패할 때 조합 수만큼
+    /// 되돌아간다. 두 행만 유지하는 동적 계획법으로 세그먼트 수 P·V 에 대해
+    /// 상태 수를 O(PV), 추가 메모리를 O(V) 로 제한하고 재귀와 배열 조각 복사를 없앤다.
     private static func matchSegments(_ pattern: [String], _ value: [String]) -> Bool {
-        guard let head = pattern.first else { return value.isEmpty }
-        if head == "**" {
-            let rest = Array(pattern.dropFirst())
-            if rest.isEmpty { return true }
-            for consumed in 0...value.count where matchSegments(rest, Array(value.dropFirst(consumed))) {
-                return true
+        let components = value.map(Array.init)
+        var previous = [Bool](repeating: false, count: value.count + 1)
+        previous[0] = true
+        for segment in pattern {
+            var current = [Bool](repeating: false, count: previous.count)
+            if segment == "**" {
+                current[0] = previous[0]
+                for index in components.indices {
+                    current[index + 1] = previous[index + 1] || current[index]
+                }
+            } else {
+                let characters = Array(segment)
+                for index in components.indices where previous[index] {
+                    current[index + 1] = matchSegment(characters, components[index])
+                }
             }
-            return false
+            if !current.contains(true) { return false }
+            previous = current
         }
-        guard let valueHead = value.first, matchSegment(Array(head), Array(valueHead)) else { return false }
-        return matchSegments(Array(pattern.dropFirst()), Array(value.dropFirst()))
+        return previous[value.count]
     }
 
     /// 세그먼트 하나 안에서의 `*` / `?` 매칭.
     ///
-    /// `*` 뒤를 백트래킹해야 하므로 재귀로 구현한다. 세그먼트 길이가 짧아
-    /// 실무에서 지수적으로 번지지 않는다.
+    /// 마지막 `*` 의 위치만 기억해 반복한다. 재귀나 배열 복사 없이 되돌아간다.
     private static func matchSegment(_ pattern: [Character], _ value: [Character]) -> Bool {
         var patternIndex = 0
         var valueIndex = 0
