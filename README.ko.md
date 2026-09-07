@@ -239,7 +239,7 @@ $ cartograph query UserService
   "level" : "symbol",
   "limitations" : [
     "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
-    "index-staleness: 3 of 214 source file(s) changed after the index store was written, so a call added since the last build is not here yet"
+    "index-staleness: 3 of 214 source file(s) changed after the file's index unit was written, so a call added since the last build is not here yet"
   ],
   "requested" : "UserService",
   "result" : {
@@ -278,7 +278,11 @@ $ cartograph query UserService
   간선 필터와 **기본보다 좁힌** 경로 필터, 그리고 `retain_public` 이 꺼진 채로 라이브러리
   제품을 내보내는 패키지를 알린다. 기본 제외만으로는 세지 않는다. 그것은
   당신이 좁힌 범위가 아니라 잡음 제거용 안전장치이고, 모든 프로젝트에서 붙는 경보는 읽히지
-  않는다.
+  않는다. 신선도는 파일별 인덱스 유닛 시각으로 비교하므로 다른 타깃의 빌드가 편집된
+  파일을 가리지 않는다. `unindexed-sources`는 유닛을 찾지 못한 파일, `missing-sources`는
+  인덱스에는 있지만 사라진 파일을 센다. `unreadable-sources`는 나머지 읽기 실패를 알린다.
+  그 파일의 선언은 접근 권한 등을 복구하고 다시 분석할 때까지 `sourceUnavailable` 근거로
+  보존한다. 이 한계들은 `dead` 리포트에도 실린다.
 - **팀이 이미 받아들인 베이스라인은 그렇다고 표시한다**(`suppressedByBaseline`). 팀이 알고
   남겨 둔 것을 다시 심사하지 않게 한다. 실제로 보고되었을 선언에만 표시가 붙는다.
 - **이웃에 닿는 관계를 하나만 고르지 않고 전부 준다.** 호출하면서 동시에 오버라이드하는
@@ -591,6 +595,7 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 | 컴파일러 합성 선언 | 지울 수 없음. 그것을 담은 타입까지 살리지도 않음 |
 | `// cartograph:ignore`, `// cartograph:ignore:all` | 사용자가 지정 |
 | `retained_names`, `retained_files` 글롭 | 사용자가 지정 |
+| 권한·I/O 오류로 소스를 읽지 못한 선언 | 보존 정보가 불완전함(`sourceUnavailable`). 접근을 복구하고 다시 분석 |
 | `--external-retentions` 가 지목한 선언 | 다른 플랫폼이 브리지를 넘어 호출. `--explain` 이 근거를 인용 |
 
 **`retain_objc_accessible`은 기본값으로 켜져 있습니다.** Periphery는 기본값이 꺼져 있었고, 그것이 혼합 언어
@@ -605,6 +610,10 @@ UIKit 프로젝트에서 오탐(거짓 양성)의 가장 큰 원인이었습니�
 숨어 버립니다. 둘 다 이 도구로 이 저장소를 분석하는 과정(도그푸딩)과 외부 리뷰에서 드러났습니다.
 
 ### 알려진 한계
+
+- **파일별 신선도가 모든 빌드 구성의 완전성을 뜻하지는 않습니다.** 파일의 최신 유닛 시각으로
+  다른 타깃의 빌드가 편집을 가리는 것은 막지만, 같은 파일을 포함하는 모든 구성이 재빌드됐음을
+  증명하지는 않습니다. 유닛을 찾지 못한 파일은 별도로 알립니다.
 
 - **`#Preview` 매크로 본문.** `#Preview` 안에서만 쓰이는 타입은 매크로 확장 시 컴파일러가
   참조를 남긴 경우에만 보존됩니다. `PreviewProvider` 준수는 직접 인식하지만 `#Preview` 매크로는 그렇지 않습니다.
