@@ -16,7 +16,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   request. On a 20,000-node synthetic graph, 1,000 name lookups measured 8.48 s before;
   the new index builds in 14 ms and answers the batch in 0.42 ms (optimized local harness,
   excluding index-store I/O and JSON rendering). Name/USR precedence, ambiguity, and
-  qualified-member matching are unchanged.
+  qualified-member matching are unchanged. Query edge names retain their prior lexical order,
+  independently of the graph model's edge-kind ordering.
 - Source permission and I/O failures keep affected declarations with an explicit `sourceUnavailable`
   reason and appear in `query`/`dead` limitations. Missing files are reported separately instead of
   being confused with unreadable files.
