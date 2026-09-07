@@ -216,7 +216,10 @@ struct SymbolQueryTests {
     @Test("이 분석이 보지 못하는 채널을 상태와 무관하게 모든 답에 실어 보낸다")
     func shipsLimitationsWithEveryAnswer() throws {
         // 알릴 것이 없으면 조용해야 한다. 매번 붙는 경보는 읽히지 않는다.
-        let plain = try makeService().queryDocument(symbol: "UserService")
+        let readable = InMemoryFileSystem(files: Dictionary(
+            uniqueKeysWithValues: makeSnapshot().filePaths.map { ($0, "") }
+        ))
+        let plain = try makeService(fileSystem: readable).queryDocument(symbol: "UserService")
         #expect(plain.limitations.isEmpty)
 
         let mixed = InMemoryFileSystem(files: [
