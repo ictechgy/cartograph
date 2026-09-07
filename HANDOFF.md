@@ -2,7 +2,7 @@
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-_마지막 갱신: 2026-09-07 (#52 머지 + 4종 Dart 조인, docs 브랜치 작업 중, Muse). 이 저장소에는 세션이 둘 있었다(Claude 가 0.5.1·0.5.2·0.5.4·0.5.5, Codex 가 0.5.3). 큰 작업 전 `git status --short --branch` 와 `gh pr list` 로 확인할 것._
+_마지막 갱신: 2026-09-07 심야 (#52·#53·#54 머지, `main` 깨끗, Muse). 이 저장소에는 세션이 둘 있었다(Claude 가 0.5.1·0.5.2·0.5.4·0.5.5, Codex 가 0.5.3). 큰 작업 전 `git status --short --branch` 와 `gh pr list` 로 확인할 것._
 
 ## Goal
 
@@ -233,7 +233,14 @@ GLM 리뷰가 #42 에서 **테스트 전용 목록을 만드는 두 번째 순�
 
 `../isthmus/HANDOFF.md` 의 "cartograph 에서 온 계약 피드백" 절에 쌓여 있다. 문서당 하나인 `target`, `null`·추측 채널, Swift `@objc` 와 `.m` 양쪽의 같은 `(channel, method)`, `inferred` 필드 부재, module-export 조인 시 메서드마다 근거, **`project` 동일 요구가 모노레포 플러그인을 막음**, `/tmp` 정규화, `objective-c-sources` 가 있으면 `unhandled-invocation` 을 경고로, 원인을 숨기는 오류 메시지. 그쪽 세션의 차례다.
 
-## Next Steps (2026-09-07 갱신)
+## Next Steps (2026-09-07 심야 갱신)
+
+**2026-09-07 심야 세션에서 혼자 할 수 있는 것을 털었다.** 감사 원문(F번호 정의)은 저장소에
+없어(세션 스크래치에만 있었음) 단서가 확실한 것만 건드렸다. `#52`가 `query --since` 의 조용한
+무시[F30]를 사용 오류(64)로 거부했고, `#54`가 형제(`graph`·`bridges`·`dead`/`cycles`/`rules`
+`--explain`)를 같은 방식으로 닫았다. 이제 `--since` 를 듣는 것은 발견 목록을 내는
+`dead`·`cycles`·`metrics`·`rules` 뿐이다. `#53`은 4종 Dart 조인 결과의 문서화다. 셋 다 CI 통과 후
+squash 머지. Codex 리뷰는 쿼터 소진으로 못 돌리고 자체 리뷰 패스로 대체했다(코멘트에 기록).
 
 **감사의 Top 10 과 "다음 순위" 넷이 전부 닫혔고 0.8.0 으로 나갔다.** Top 10 의 7번
 (형제 멤버 억제, G203)은 별도로 고친 것이 아니라 #40·#42 가 보존을 좁히면서 사라졌다 —
@@ -256,8 +263,10 @@ HealthMap 에서 `NotificationPreferencesController` 가 이제 타입 자체로
 4. **Flutter SDK 가 있는 머신에서** `docs/demo/agent-deletes-native-handler/` 를 끝까지 돌린다.
    위 실험 결과가 이것의 우선순위를 올렸다 — 텍스트가 원리적으로 닿지 못하는 유일한 자리다.
 5. **`HOMEBREW_TAP_TOKEN`** 을 넣어 tap 손 갱신을 그만둔다 [F49]. 사용자 계정 행동이다.
-6. 감사에서 아직 손대지 않은 것: CLI 오류 메시지 뭉치 [F28~F33], 에이전트 답의 공백
-   [F34/F35/F38/F39], GitHub Action [F19], 공증 [F48]. **읽기/쓰기 엣지 신설 [G202] 은
+6. 감사에서 아직 손대지 않은 것: CLI 오류 메시지 뭉치 [F28~F33] 중 원문이 없어 단서 있는
+   `--since` 조용한 무시만 #52(`query`)·#54(`graph`·`bridges`·세 `--explain`)로 닫았다.
+   에이전트 답의 공백 [F34/F35/F38/F39], GitHub Action [F19], 공증 [F48]은 원문 자체가
+   저장소에 없어 손대지 않았다. **읽기/쓰기 엣지 신설 [G202] 은
    감사가 "추적만 하고 시작하지 말라" 고 했다** — Periphery 가 잡는 assign-only 40건을 이 도구는
    원리상 0건 잡는다. **두 README 의 알려진 한계에 적었다**(네 줄짜리 패키지로 재현해서
    `dead` 가 아무것도 안 내고 `query` 가 `reachable` 이라고 답하는 것을 확인했다).
@@ -283,7 +292,14 @@ HealthMap 에서 `NotificationPreferencesController` 가 이제 타입 자체로
 5. **`HOMEBREW_TAP_TOKEN`** 은 사용자 계정 행동. 있으면 `release.yml` 이 tap 을 자동 갱신한다.
 6. 새 브리지 kind(EventChannel, BasicMessageChannel)는 isthmus `GRAPH-EXCHANGE.md` 를 먼저, 그다음 생산자 테스트.
 
-## Verification (마지막으로 통과한 것, 0.8.0)
+## Verification (마지막으로 통과한 것, #54 직후)
+
+`Scripts/coverage.sh` 93.03% · `Scripts/verify-cli-contract.sh`(since 거부 8줄 포함) ·
+`Scripts/verify-fixtures.sh`(릴리스 빌드) ·
+자기 분석 `dead`/`cycles`/`cycles --level type`/`rules --strict` 전부 0 · CI 두 잡.
+타입 그래프 간선이 1100 → 1102로 2개 늘었는데 정점·판정 동일, 인덱스 재빌드 편차로 본다(#54 본문).
+
+### 0.8.0 시점의 기록
 
 `Scripts/coverage.sh` 92.68%(테스트 655개) · `Scripts/verify-cli-contract.sh` ·
 `Scripts/verify-fixtures.sh`(진짜 인덱스) ·
@@ -296,9 +312,11 @@ HealthMap 에서 `NotificationPreferencesController` 가 이제 타입 자체로
 그 **설치된 바이너리로** HealthMap 을 분석해 발견 43건과 후보 127개(전부 `container` 있음)와
 `symbol-query-batch` v1 응답을 봤다. 워크플로가 찍은 값을 그대로 믿지 않는다.
 
-**`query` 는 `--since` 를 쓰지 않는다.** `finish()` 도 `measureMetrics()` 도 부르지 않는다.
-플래그는 광고되지만 조용히 무시된다 — 감사의 [F30] 에 해당하는 자리다. 이것을 모르고
+**`query --since` 는 #52 이전의 이야기다.** 그때는 `finish()` 도 `measureMetrics()` 도 부르지
+않아 플래그가 광고되지만 조용히 무시됐다 — 감사의 [F30] 에 해당하는 자리다. 이것을 모르고
 "`--since` 를 걸고 비교했더니 같더라" 를 증거로 쓴 적이 있다. 통과할 수밖에 없는 비교였다.
+#52·#54 이후 `--since` 는 파싱 단계에서 거부된다(종료 코드 64). 인덱스를 열기 전에 막으므로
+무인 체크아웃에서도 64다.
 
 ### 0.7.0 시점의 기록
 
@@ -317,5 +335,6 @@ Next Steps 에서 이어간다. **코드를 바꾸기 전에 어느 항목인지
 
 지금 상태는 이렇다. 감사가 낸 항목은 우선순위가 높은 것부터 전부 닫혔고 0.8.0 이 나갔다.
 남은 것 중 1~2 는 자매 저장소와 같이 정해야 하고, 3~4 는 이 머신에 없는 것(Flutter SDK)이나
-설계를 다시 세워야 하는 것(에이전트 실험)이며, 6 은 감사가 우선순위를 낮게 매긴 것들이다.
-**혼자 바로 시작할 수 있는 것은 6번뿐이다.** 그러니 무엇을 할지부터 사용자와 정할 것.
+설계를 다시 세워야 하는 것(에이전트 실험)이며, 6 은 원문이 없어 단서 있는 것만 닫았다.
+**혼자 바로 시작할 수 있는 것은 없다.** 다음은 자매 저장소 합의·Flutter 머신·사용자 계정 행동 중
+무엇을 할지 사용자와 정할 것.
