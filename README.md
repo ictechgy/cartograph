@@ -53,7 +53,7 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 Requires macOS 14+ and a Swift toolchain (Xcode or the Command Line Tools) at run time —
 Cartograph loads `libIndexStore` from it. CI runs on Swift 6.3.3; development happens on 6.4.
 Swift 5 language-mode projects are supported: build them with your Swift 6 toolchain (Swift 5 mode
-is a compiler option, and the index it writes reads the same) and analyze as usual.
+is a compiler option, and the index it writes is read the same way) and analyze as usual.
 
 **Homebrew** — a prebuilt universal binary, installs in seconds:
 
@@ -138,8 +138,11 @@ and the project is `Runner.xcodeproj`. Only the root is scanned, so a `Pods/Pods
 becomes a name. When several directories match by name, the `WorkspacePath` in each one's
 `info.plist` decides which belongs to this project; if none of them names it, Cartograph says so
 rather than picking the most recent.
-When several exist it takes the most recently written one, because analyzing a stale index fails
-quietly rather than loudly. Recent SwiftPM writes an index automatically, so for a Swift package
+When several candidates exist it takes the most recently written one, because a stale index fails
+quietly rather than loudly. The exception is ambiguity: if two or more name-matched directories
+remain and none proves ownership through `WorkspacePath`, Cartograph lists them instead of
+guessing — the same rule that makes `query` return candidates instead of a guess.
+Recent SwiftPM writes an index automatically, so for a Swift package
 `cartograph graph` alone usually works.
 
 > **An index is only written when something compiles.** Building an already up-to-date package
@@ -279,9 +282,9 @@ Five things this output does deliberately:
   between absent and invisible. `limitations` is counted from *your* project, within the same
   include/exclude scope the graph uses, so it stays quiet when there is nothing to warn about. It
   reports Objective-C sources, Interface Builder documents, sources edited since the index store was
-  written, a package that exports library products while `retain_public` is off, and a path filter
-  that narrows the analysis *beyond the defaults*, or an edge-kind
-  filter, that could be the reason `usedBy` is empty. The default excludes alone do not count —
+   written, a package that exports library products while `retain_public` is off, and a path filter
+   that narrows the analysis *beyond the defaults*, or an edge-kind filter — any of which could be
+   the reason `usedBy` is empty. The default excludes alone do not count —
   they are a noise guard, not a narrowing you chose, and a warning that fires on every project is
   not read.
 - **A baseline the team already accepted is marked as such** (`suppressedByBaseline`), so nobody
@@ -325,7 +328,7 @@ left out; if that still matches several declarations you get `ambiguous` again r
 guess. The container may be the type that an extension extends, so a member declared in an
 extension answers to its type's name. `container` is there so the answer is self-sufficient:
 typing `qualifiedName` back re-ambiguates at 122, while `container` plus the member name resolves
-to exactly one. Candidates come in file and line order, because the location is the column a
+to exactly one. Candidates come in file and line order, because the location column is what a
 reader scans. `dead --explain` prints the first 20 and says how many it left out.
 
 `members` and `declaredIn` carry containment, which is not use. A type's own dependencies live in
@@ -334,8 +337,8 @@ class depends on nothing — follow `members`.
 
 `--depth` follows more than one edge in each direction and `--limit` caps how many neighbours come
 back; `depth` on each neighbour says how far it was, and `truncated` tells you when the cap bit.
-Reachability is always computed on the symbol-level graph regardless of `--level`, which is why
-`level` is in the response. A neighbour's `location` is where it is *declared*, not where it uses
+Reachability is always computed on the symbol-level graph — `query` takes no `--level` — so `level`
+in the response always reads `"symbol"`. A neighbour's `location` is where it is *declared*, not where it uses
 the subject. Fields with no value are omitted rather than set to null: `declaredIn` on a top-level
 declaration, `reason` on one that is not retained, `path` on one that is not reached, and `result`
 or `candidates` depending on `status`.
@@ -490,7 +493,7 @@ Robert C. Martin's package metrics, computed on your graph. Run against this rep
 ```
 NODE                   Ca  Ce     I     A     D           ZONE
 ---------------------  --  --  ----  ----  ----  -------------
-CartographCore          8   0  0.00  0.05  0.95   zone-of-pain
+CartographCore          8   0  0.00  0.04  0.96   zone-of-pain
 CartographAnalysis      2   1  0.33  0.00  0.67   zone-of-pain
 CartographConfig        1   1  0.50  0.00  0.50   zone-of-pain
 CartographIndexStore    1   1  0.50  0.00  0.50   zone-of-pain
@@ -580,7 +583,10 @@ history (`fetch-depth: 0`), or the revision will not resolve.
 ## Configuration
 
 `.cartograph.yml` in the project root. Run `cartograph init` for a commented template.
-Command-line options always win over the file.
+Command-line options always win over the file. The `level` key is read only by the commands that
+render at a resolution (`graph`, `cycles`, `metrics`, `rules`); for the rest it is inert — `dead`
+and `query` always work at symbol level — just like the `--level` flag, which those commands refuse
+outright.
 
 ```yaml
 level: module
@@ -685,7 +691,7 @@ Exit codes let a script tell "your code has problems" from "the tool did not run
 | `0` | Success |
 | `1` | Findings with `--strict`, or a configured threshold exceeded |
 | `2` | Tool failure — no index store, an index that knows nothing about this project, unreadable index, invalid configuration |
-| `64` | Usage error — unknown option, unknown subcommand, invalid value |
+| `64` | Usage error — unknown option, unknown subcommand, invalid value, or a flag combination the command cannot honor |
 
 ```yaml
 - run: swift build
