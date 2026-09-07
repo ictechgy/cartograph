@@ -19,6 +19,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `bridges` (a partial export would read as missing handlers in the downstream join), and
   `dead`/`cycles`/`rules --explain` (one-subject answers like `query`). Bare `dead`/`cycles`/`rules
   --since` over the finding list still works; only the `--explain` combination is refused.
+- `--level` combinations that change nothing are rejected the same way. `dead --level module`
+  printed byte-identical output to bare `dead` (both always run at symbol level), and `query`,
+  `bridges` and `baseline` likewise never read the flag. Only `graph`, `cycles`, `metrics` and
+  `rules` honor it. A `level:` key in the configuration file is untouched — this refuses only the
+  explicit command-line flag, so existing configurations keep working.
 
 ## [0.8.0] - 2026-09-07
 

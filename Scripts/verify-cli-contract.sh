@@ -77,6 +77,10 @@ expect_status 64 "잘못된 형식 값"      dead --report-format yaml
 expect_status 64 "질의 대상 누락"      query
 expect_status 64 "0 이하의 깊이"       query Foo --depth 0
 expect_status 64 "질의 대상과 배치 동시" query Foo --batch /dev/null
+expect_status 64 "미사용과 level 동시"   dead --level module
+expect_status 64 "질의와 level 동시"     query Foo --level module
+expect_status 64 "브리지와 level 동시"   bridges --level module
+expect_status 64 "베이스라인과 level 동시" baseline --level module
 expect_status 64 "질의와 since 동시"     query Foo --since HEAD
 expect_status 64 "그래프와 since 동시"   graph --since HEAD
 expect_status 64 "브리지와 since 동시"   bridges --since HEAD

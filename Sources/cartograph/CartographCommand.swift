@@ -172,6 +172,13 @@ struct DeadCommand: ParsableCommand {
                     + "one declaration, not the findings in changed files"
             )
         }
+        // 미사용 분석은 항상 심볼 레벨이다. `--level` 을 받으면 출력이
+        // 바이트까지 같아 통과할 수밖에 없는 비교가 증거가 된다.
+        guard options.level == nil else {
+            throw ValidationError(
+                "--level cannot be combined with dead; unused-code analysis is always at symbol level"
+            )
+        }
     }
 
     func run() throws {
@@ -243,6 +250,13 @@ struct QueryCommand: ParsableCommand {
             throw ValidationError(
                 "--since cannot be combined with query; query answers one declaration, "
                     + "not the findings in changed files"
+            )
+        }
+        // `query` 는 설정과 무관하게 항상 심볼 레벨로 답한다. 레벨을 받으면
+        // 같은 답이 다른 레벨 답으로 둔갑할 자리가 생긴다.
+        guard options.level == nil else {
+            throw ValidationError(
+                "--level cannot be combined with query; query always answers at symbol level"
             )
         }
         // 둘 다 받으면 어느 쪽을 답했는지 출력 형식으로만 알 수 있다. 스크립트가
@@ -337,6 +351,12 @@ struct BridgesCommand: ParsableCommand {
             throw ValidationError(
                 "--since cannot be combined with bridges; the document must carry the whole "
                     + "boundary or the join reads a missing handler"
+            )
+        }
+        // 사실 문서는 그래프가 아니라 경계 목록이라 해상도가 없다.
+        guard options.level == nil else {
+            throw ValidationError(
+                "--level cannot be combined with bridges; bridge facts have no graph level"
             )
         }
     }
@@ -434,6 +454,16 @@ struct BaselineCommand: ParsableCommand {
 
     @Option(name: .customLong("write"), help: "Where to write the baseline file.")
     var writePath: String?
+
+    func validate() throws {
+        // 베이스라인은 명령마다 정해진 해상도로 거둔다. `--level` 을 받으면
+        // 같은 기록이 다른 해상도 기록으로 둔갑할 자리가 생긴다.
+        guard options.level == nil else {
+            throw ValidationError(
+                "--level cannot be combined with baseline; it records every command at its own level"
+            )
+        }
+    }
 
     func run() throws {
         // 범위를 좁혀 기록하면 그 파일은 "오늘의 전체 부채"라는 뜻이 아니게 된다.
