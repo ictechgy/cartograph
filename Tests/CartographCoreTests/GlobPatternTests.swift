@@ -65,7 +65,38 @@ struct GlobPatternTests {
         #expect(!patterns.matchesAny("anything"))
     }
 
-    @Test("문자열 리터럴과 코딩을 지원한다")
+    @Test("연속된 이중 별표는 하나와 같다")
+    func consecutiveDoubleStarsCollapse() {
+        let collapsed = GlobPattern("**/Main.swift")
+        let spread = GlobPattern("**/**/**/Main.swift")
+        let values = [
+            "Main.swift", "Sources/Main.swift", "Sources/App/Feature/Main.swift",
+            "Sources/App/Main.m", "Tests/App/Main.swift",
+        ]
+        for value in values {
+            #expect(spread.matches(value) == collapsed.matches(value))
+        }
+        #expect(spread.matches("Sources/App/Feature/Main.swift"))
+        #expect(!spread.matches("Sources/App/Feature/Main.m"))
+    }
+
+    @Test("떨어진 이중 별표는 각각 살아 있다")
+    func separatedDoubleStarsSurvive() {
+        let pattern = GlobPattern("**/a/**/b")
+        #expect(pattern.matches("x/a/b"))
+        #expect(pattern.matches("x/a/y/b"))
+        #expect(!pattern.matches("x/c/b"))
+        #expect(!pattern.matches("x/a/y/c"))
+    }
+
+    @Test("연속된 이중 별표가 많아도 매칭이 끝나야 한다")
+    func manyConsecutiveDoubleStarsTerminate() {
+        let deep = (0..<25).map { "dir\($0)" }.joined(separator: "/") + "/file.swift"
+        let pattern = GlobPattern(Array(repeating: "**", count: 8).joined(separator: "/") + "/nomatch==")
+        let start = Date()
+        #expect(!pattern.matches(deep))
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
     func literalAndCodable() throws {
         let pattern: GlobPattern = "Sources/**"
         let data = try JSONEncoder().encode(pattern)
