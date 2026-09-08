@@ -113,12 +113,11 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
     private(set) var topLevelStatements: [CodeBlockItemSyntax]?
 
     private var typeStack: [String] = []
-    private var referenceTypeStack: [Bool] = []
+    private var typeIDStack: [String] = []
     private var mainTypeStack: [Bool] = []
     private var objectiveCMemberStack: [Bool] = []
     private var sourceTypeIDs: [String: String] = [:]
     private var inheritedTypesByID: [String: [String]] = [:]
-    private var extensionTypeIDs: Set<String> = []
     private var synthesizableValueTypeIDs: Set<String> = []
     private var unknownTypeNames: Set<String> = []
     private var functionDepth = 0
@@ -246,12 +245,12 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
     ) -> SyntaxVisitorContinueKind {
         let cleanName = ValueFlowSyntax.unescaped(name)
         typeStack.append(cleanName)
-        referenceTypeStack.append(reference)
         let declaresMain = hasMainAttribute(of: node)
         mainTypeStack.append(declaresMain)
         objectiveCMemberStack.append(hasObjectiveCMembersAttribute(of: node))
         let qualified = typeStack.joined(separator: ".")
         let typeID = ValueFlowID.make(path: path, node: node, kind: "type")
+        typeIDStack.append(typeID)
         let inherited = inheritedTypeNames(of: node)
         let hasExternalBase = inherited.contains { $0.contains(".") || $0.hasPrefix("NSObject") }
         let isFinal = node.modifierTexts.contains("final")
@@ -261,41 +260,18 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
             unknownTypeNames.insert(qualified)
         }
         if extensionDecl {
-            if sourceTypeIDs[qualified] == nil {
-                sourceTypeIDs[qualified] = typeID
-                extensionTypeIDs.insert(typeID)
-                types.append(TypeInfo(type: ValueFlowType(
-                    id: typeID,
-                    name: qualified,
-                    location: typeLocation,
-                    isReferenceType: true,
-                    isFinal: false,
-                    hasExternalBase: false,
-                    isExtension: true,
-                    unavailableReason: unavailableReason
-                )))
-                inheritedTypesByID[typeID] = inherited
-            }
-        } else if let existing = types.first(where: { $0.type.name == qualified }),
-                  extensionTypeIDs.contains(existing.type.id) {
-            types.removeAll { $0.type.id == existing.type.id }
-            extensionTypeIDs.remove(existing.type.id)
-            inheritedTypesByID.removeValue(forKey: existing.type.id)
-            sourceTypeIDs[qualified] = typeID
             types.append(TypeInfo(type: ValueFlowType(
                 id: typeID,
                 name: qualified,
                 location: typeLocation,
-                isReferenceType: reference,
-                isFinal: isFinal,
-                hasExternalBase: hasExternalBase,
+                isReferenceType: true,
+                isFinal: false,
+                hasExternalBase: false,
+                isExtension: true,
                 unavailableReason: unavailableReason
             )))
             inheritedTypesByID[typeID] = inherited
-            if node.as(StructDeclSyntax.self) != nil {
-                synthesizableValueTypeIDs.insert(typeID)
-            }
-        } else if types.contains(where: { $0.type.name == qualified }) == false {
+        } else if sourceTypeIDs[qualified] == nil {
             sourceTypeIDs[qualified] = typeID
             let type = ValueFlowType(
                 id: typeID,
@@ -317,36 +293,18 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
 
     private func leaveType() {
         if !typeStack.isEmpty { typeStack.removeLast() }
-        if !referenceTypeStack.isEmpty { referenceTypeStack.removeLast() }
+        if !typeIDStack.isEmpty { typeIDStack.removeLast() }
         if !mainTypeStack.isEmpty { mainTypeStack.removeLast() }
         if !objectiveCMemberStack.isEmpty { objectiveCMemberStack.removeLast() }
     }
+
+    private var currentOwnerType: String? { typeIDStack.last }
 
     /// 소스에 명시된 생성자가 없는 참조형 타입도 기본 생성자 호출을 잃지 않게 한다.
     ///
     /// 본문이 없는 합성 선언은 인덱스 USR을 추정하지 않는다. 필드 초기화 함수는 각
     /// 필드에 별도로 연결되어 있으므로 합성 생성자는 객체 identity만 보존한다.
     func finalize() {
-        fields = fields.map { fieldInfo in
-            let field = fieldInfo.field
-            return FieldInfo(field: ValueFlowField(
-                id: field.id,
-                symbolUSR: field.symbolUSR,
-                name: field.name,
-                location: field.location,
-                declaredType: field.declaredType,
-                ownerType: field.ownerType.flatMap { sourceTypeIDs[$0] },
-                isStatic: field.isStatic,
-                isMutable: field.isMutable,
-                initializer: field.initializer,
-                getter: field.getter,
-                setter: field.setter,
-                hasUnknownObservers: field.hasUnknownObservers
-            ), binding: fieldInfo.binding)
-        }
-        functions = functions.map { function in
-            function.replacingOwnerType(function.ownerType.flatMap { sourceTypeIDs[$0] })
-        }
         let localTypeNames = Set(types.map { $0.type.name })
         types = types.map { typeInfo in
             let type = typeInfo.type
@@ -480,7 +438,7 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
                 continue
             }
             let name = ValueFlowSyntax.unescaped(pattern.identifier.text)
-            let owner = typeStack.isEmpty ? nil : typeStack.joined(separator: ".")
+            let owner = currentOwnerType
             let fieldID = ValueFlowID.make(path: path, node: pattern.identifier, kind: "field")
             let initializerID: String?
             if let initializer = binding.initializer {
@@ -640,7 +598,7 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
 
     private func functionInfo(_ node: FunctionDeclSyntax) -> FunctionInfo {
         let name = ValueFlowSyntax.unescaped(node.name.text)
-        let owner = typeStack.isEmpty ? nil : typeStack.joined(separator: ".")
+        let owner = currentOwnerType
         let params = ValueFlowSyntax.parameters(node.signature.parameterClause.parameters)
         let indexName = ValueFlowSyntax.indexName(name: name, parameters: params)
         return FunctionInfo(
@@ -663,17 +621,18 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
                 ? "dynamic class or runtime dispatch is unavailable"
                 : node.hasError
                 ? "function contains parse errors"
-                : (node.body == nil
-                ? "function has no body"
-                : (node.modifierTexts.contains("mutating") && referenceTypeStack.last == false
-                   ? "mutating value-type method is unavailable"
-                   : nil))
+                : (ValueFlowSyntax.unsupportedParameterReason(node.signature.parameterClause.parameters)
+                    ?? (node.body == nil
+                        ? "function has no body"
+                        : (node.modifierTexts.contains("mutating")
+                            ? "mutating value-type method is unavailable"
+                            : nil)))
         )
     }
 
     private func initializerInfo(_ node: InitializerDeclSyntax) -> FunctionInfo {
         let params = ValueFlowSyntax.parameters(node.signature.parameterClause.parameters)
-        let owner = typeStack.isEmpty ? nil : typeStack.joined(separator: ".")
+        let owner = currentOwnerType
         return FunctionInfo(
             id: ValueFlowID.make(path: path, node: node.initKeyword, kind: "initializer"),
             name: "init",
@@ -691,35 +650,17 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
                 || objectiveCMemberStack.last == true,
             unavailableReason: node.hasError
                 ? "initializer contains parse errors"
-                : (node.optionalMark != nil
-                    ? "failable initializer is unavailable"
-                    : (node.modifierTexts.contains("convenience")
-                        ? "convenience initializer is unavailable"
-                        : (node.body == nil ? "initializer has no body" : nil)))
+                : (ValueFlowSyntax.unsupportedParameterReason(node.signature.parameterClause.parameters)
+                    ?? (node.optionalMark != nil
+                        ? "failable initializer is unavailable"
+                        : (node.modifierTexts.contains("convenience")
+                            ? "convenience initializer is unavailable"
+                            : (node.body == nil ? "initializer has no body" : nil))))
         )
     }
 }
 
 private extension ValueFlowDeclarationCollector.FunctionInfo {
-    func replacingOwnerType(_ ownerType: String?) -> Self {
-        Self(
-            id: id,
-            name: name,
-            indexName: indexName,
-            location: location,
-            kind: kind,
-            parameters: parameters,
-            allowsImplicitReturn: allowsImplicitReturn,
-            returnType: returnType,
-            body: body,
-            ownerType: ownerType,
-            isStatic: isStatic,
-            isEntryPoint: isEntryPoint,
-            mayBeCalledExternally: mayBeCalledExternally,
-            unavailableReason: unavailableReason
-        )
-    }
-
     func replacingUnavailableReason(_ unavailableReason: String?) -> Self {
         Self(
             id: id,
@@ -810,6 +751,19 @@ enum ValueFlowSyntax {
                 declaredType: type
             )
         }
+    }
+
+    static func unsupportedParameterReason(_ parameters: FunctionParameterListSyntax) -> String? {
+        if parameters.contains(where: { $0.ellipsis != nil }) {
+            return "variadic parameter is unavailable"
+        }
+        if parameters.contains(where: { parameter in
+            parameter.attributes.contains { $0.trimmedDescription.contains("autoclosure") }
+                || parameter.type.trimmedDescription.contains("autoclosure")
+        }) {
+            return "autoclosure parameter is unavailable"
+        }
+        return nil
     }
 
     static func closureParameters(_ signature: ClosureSignatureSyntax?) -> [ValueFlowParameter] {

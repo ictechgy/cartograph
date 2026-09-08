@@ -22,10 +22,19 @@ public struct ValueFlowIndexBinder: Sendable {
 private enum ValueFlowIndexBinding {
     private static let unavailable = "value-flow binding unavailable: stale, missing, or ambiguous index evidence"
 
+    private struct ReferenceSite: Hashable {
+        let source: String
+        let location: SourceLocation
+    }
+
     private struct Evidence {
-        let symbols: [IndexedSymbol]
         let symbolsByUSR: [String: [IndexedSymbol]]
+        let symbolsByLocation: [SourceLocation: [IndexedSymbol]]
+        let symbolsByParent: [String: [IndexedSymbol]]
+        let symbolsByPath: [String: [IndexedSymbol]]
+        let extendsByLocation: [SourceLocation: [IndexedReference]]
         let referencesBySource: [String: [IndexedReference]]
+        let referencesBySite: [ReferenceSite: [IndexedReference]]
         let freshPaths: Set<String>
 
         func isFresh(_ location: SourceLocation) -> Bool {
@@ -49,10 +58,23 @@ private enum ValueFlowIndexBinding {
         snapshot: IndexSnapshot,
         freshPaths: Set<String>
     ) -> ValueFlowProgram {
+        let extends: [(SourceLocation, IndexedReference)] = snapshot.references.compactMap { reference in
+            guard reference.kind == .extends, let location = reference.location else { return nil }
+            return (location, reference)
+        }
+        let locatedReferences = snapshot.references.compactMap { reference in
+            reference.location.map { (ReferenceSite(source: reference.sourceUSR, location: $0), reference) }
+        }
         let evidence = Evidence(
-            symbols: snapshot.symbols,
             symbolsByUSR: Dictionary(grouping: snapshot.symbols, by: \.usr),
+            symbolsByLocation: Dictionary(grouping: snapshot.symbols, by: \.location),
+            symbolsByParent: Dictionary(grouping: snapshot.symbols.compactMap { symbol in
+                symbol.parentUSR.map { ($0, symbol) }
+            }, by: \.0).mapValues { $0.map(\.1) },
+            symbolsByPath: Dictionary(grouping: snapshot.symbols, by: { $0.location.path }),
+            extendsByLocation: Dictionary(grouping: extends, by: { $0.0 }).mapValues { $0.map(\.1) },
             referencesBySource: Dictionary(grouping: snapshot.references, by: \.sourceUSR),
+            referencesBySite: Dictionary(grouping: locatedReferences, by: \.0).mapValues { $0.map(\.1) },
             freshPaths: freshPaths
         )
         let typeBindings = bindTypes(program.types, evidence: evidence)
@@ -238,9 +260,7 @@ private enum ValueFlowIndexBinding {
         bindings: [String: TypeBinding],
         evidence: Evidence
     ) -> TypeBinding {
-        let extends = evidence.referencesBySource.values.flatMap { $0 }.filter {
-            $0.kind == .extends && $0.location == type.location
-        }
+        let extends = evidence.extendsByLocation[type.location, default: []]
         let candidates = extends.filter { reference in
             guard let source = evidence.symbol(reference.sourceUSR),
                   source.kind == .extensionDeclaration,
@@ -307,7 +327,7 @@ private enum ValueFlowIndexBinding {
                 continue
             }
             if function.kind == .global {
-                let candidates = evidence.symbols.filter {
+                let candidates = evidence.symbolsByPath[function.location.path, default: []].filter {
                     $0.usr.hasPrefix("cartograph:top-level-code:") && $0.kind == .function
                         && $0.location.path == function.location.path && evidence.isFresh($0.location)
                 }
@@ -369,7 +389,7 @@ private enum ValueFlowIndexBinding {
         guard let ownerUSR else {
             return FunctionBinding(symbolUSR: nil, ownerUSR: nil, invalid: true)
         }
-        let candidates = evidence.symbols.filter {
+        let candidates = evidence.symbolsByParent[ownerUSR, default: []].filter {
             $0.kind == .initializer
                 && $0.parentUSR == ownerUSR
                 && evidence.isFresh($0.location)
@@ -457,7 +477,8 @@ private enum ValueFlowIndexBinding {
         expected: EdgeKind,
         evidence: Evidence
     ) -> BoundReference {
-        let candidates = (evidence.referencesBySource[sourceUSR] ?? []).filter {
+        let site = ReferenceSite(source: sourceUSR, location: reference.location)
+        let candidates = evidence.referencesBySite[site, default: []].filter {
             $0.kind == expected && $0.location == reference.location
         }
         let targetUSRs = unique(candidates.map(\.targetUSR))
@@ -539,7 +560,7 @@ private enum ValueFlowIndexBinding {
         evidence: Evidence
     ) -> [IndexedSymbol] {
         guard evidence.freshPaths.contains(location.path) else { return [] }
-        return evidence.symbols.filter {
+        return evidence.symbolsByLocation[location, default: []].filter {
             !$0.isExternal && $0.location == location && kinds.contains($0.kind) && nameMatches($0.name, names: names)
         }
     }

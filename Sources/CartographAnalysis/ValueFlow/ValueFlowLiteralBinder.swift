@@ -35,10 +35,10 @@ struct ValueFlowLiteralBinder {
             var uses: [Int: [String]] = [:]
             for instruction in instructions.values {
                 switch instruction.operation {
-                case let .call(callee, arguments, _, _):
+                case let .call(callee, arguments, labels, _):
                     let target = targetFunction(callee, instructions: instructions, functions: functions, byUSR: byUSR)
                     for (index, argument) in arguments.enumerated() {
-                        let type = target.flatMap { $0.parameters.indices.contains(index) ? $0.parameters[index].declaredType : nil }
+                        let type = target.flatMap { parameterType($0, index: index, arguments: arguments, labels: labels) }
                         uses[argument, default: []].append(type ?? "<unknown>")
                     }
                 case let .write(address, value):
@@ -80,6 +80,15 @@ struct ValueFlowLiteralBinder {
         }
         result.limitations = Array(Set(result.limitations).union(literalLimitations)).sorted()
         return result
+    }
+
+    /// 기본 인자가 생략된 호출은 위치만으로 매개변수 타입을 차용하지 않는다.
+    private func parameterType(_ function: ValueFlowFunction, index: Int, arguments: [Int], labels: [String]) -> String? {
+        guard function.parameters.count == arguments.count, labels.count == arguments.count,
+              function.parameters.indices.contains(index) else { return nil }
+        let parameter = function.parameters[index]
+        guard labels[index].isEmpty || labels[index] == parameter.label else { return nil }
+        return parameter.declaredType
     }
 
     private func isString(_ type: String, shadowed: Bool) -> Bool {
@@ -133,12 +142,12 @@ struct ValueFlowLiteralBinder {
             let instructions = Dictionary(function.blocks.flatMap(\.instructions).map { ($0.id, $0) },
                                           uniquingKeysWith: { first, _ in first })
             for instruction in instructions.values {
-                guard case let .call(callee, arguments, _, _) = instruction.operation else { continue }
+                guard case let .call(callee, arguments, labels, _) = instruction.operation else { continue }
                 let target = targetFunction(callee, instructions: instructions, functions: functions, byUSR: byUSR)
                 for (index, argument) in arguments.enumerated() {
                     guard let operation = source(argument, instructions: instructions)?.operation,
                           case let .closure(id, _) = operation else { continue }
-                    let type = target.flatMap { $0.parameters.indices.contains(index) ? $0.parameters[index].declaredType : nil }
+                    let type = target.flatMap { parameterType($0, index: index, arguments: arguments, labels: labels) }
                     let returned = type?.components(separatedBy: "->").last?.trimmingCharacters(in: .whitespaces)
                     result[id, default: []].append(returned ?? "<unknown>")
                 }

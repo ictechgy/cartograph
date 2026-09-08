@@ -9,7 +9,8 @@ import Testing
 struct ValueFlowCaptureTests {
     @Test("캡처 목록은 생성 당시 값을 복사하고 이후 바깥 변수 쓰기를 따라가지 않는다")
     func explicitCaptureSnapshot() throws {
-        for (capture, returned) in [("value", "value"), ("snapshot = value", "snapshot")] {
+        for (capture, returned, expected) in [("value", "value", "before"), ("snapshot = value", "snapshot", "before"),
+            ("snapshot = \"literal\"", "snapshot", "literal")] {
             let source = """
                 func invoke(_ body: () -> String) -> String { body() }
                 public func make() -> String {
@@ -36,7 +37,7 @@ struct ValueFlowCaptureTests {
                 fileSystem: files, indexProviderOverride: StaticIndexProvider(snapshot), usesSyntaxCache: false))
             let document = try service.valueFlowDocument(symbol: "make")
             let context = try #require(document.graph.contexts.first { document.selectedContexts.contains($0.id) })
-            #expect(context.result.singleString == "before")
+            #expect(context.result.singleString == expected)
         }
     }
 }

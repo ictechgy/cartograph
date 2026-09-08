@@ -9,7 +9,7 @@ struct ValueFlowServiceTests {
     private let path = "/p/Names.swift"
     private let source = "public func name() -> String { \"channel\" }"
 
-    private func service(fresh: Bool = true, unreadable: Bool = false, duplicate: Bool = false)
+    private func service(fresh: Bool = true, unreadable: Bool = false, duplicate: Bool = false, foreignCollision: Bool = false)
         -> CartographService {
         let fileSystem = InMemoryFileSystem(currentDirectoryPath: "/p", files: [path: source])
         fileSystem.setModificationDate(Date(timeIntervalSince1970: fresh ? 1 : 3), for: path)
@@ -19,6 +19,10 @@ struct ValueFlowServiceTests {
         if duplicate {
             symbols.append(IndexedSymbol(usr: "s:other", name: "name()", kind: .function, module: "P",
                 location: .init(path: path, line: 2, column: 13)))
+        }
+        if foreignCollision {
+            symbols.append(IndexedSymbol(usr: "sdk:name", name: "name()", kind: .function, module: "SDK",
+                location: .init(path: path, line: 9, column: 13), isExternal: true))
         }
         let snapshot = IndexSnapshot(symbols: symbols, indexedFileDates: [path: Date(timeIntervalSince1970: 2)])
         return CartographService(configuration: .init(projectPath: "/p"), environment: .init(
@@ -79,6 +83,29 @@ struct ValueFlowServiceTests {
         #expect(loaded.program.limitations.contains("unindexed-value-flow-sources: 1 file(s)"))
         #expect(loaded.program.limitations.contains("undated-value-flow-sources: 1 file(s)"))
         #expect(loaded.program.limitations.contains("objective-c-value-flow-unavailable: 1 file(s)"))
+    }
+
+    @Test("SDK의 같은 이름은 기존 조회처럼 로컬 대상의 모호성을 만들지 않는다")
+    func ignoresExternalLookupCandidates() throws {
+        let result = try service(foreignCollision: true).valueFlowDocument(symbol: "name")
+        #expect(result.status == "found")
+        #expect(result.symbolUSR == "s:name")
+        #expect(result.candidates == nil)
+    }
+
+    @Test("값 흐름은 이미 읽은 소스를 사용해 후속 읽기 오류로 입력이 바뀌지 않는다")
+    func cachedSourceSurvivesLaterReadFailure() {
+        let files = InMemoryFileSystem(currentDirectoryPath: "/p", files: [path: source])
+        files.setReadError(.fileReadNoPermission, for: path)
+        files.setModificationDate(Date(timeIntervalSince1970: 1), for: path)
+        let symbol = IndexedSymbol(usr: "s:name", name: "name()", kind: .function, module: "P",
+            location: .init(path: path, line: 1, column: 13))
+        let loaded = ValueFlowSourceLoader(fileSystem: files, projectPath: "/p", pathFilter: .passthrough)
+            .load(snapshot: .init(symbols: [symbol], indexedFileDates: [path: Date(timeIntervalSince1970: 2)]),
+                  cachedSources: [path: source])
+        #expect(loaded.program.functions.first?.symbolUSR == "s:name")
+        #expect(loaded.program.functions.first?.unavailableReason == nil)
+        #expect(!loaded.program.limitations.contains { $0.contains("unreadable") })
     }
 
 }

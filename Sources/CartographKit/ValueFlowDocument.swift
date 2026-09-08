@@ -38,7 +38,7 @@ struct ValueFlowSourceLoader {
     let projectPath: String
     let pathFilter: PathFilter
 
-    func load(snapshot raw: IndexSnapshot) -> (program: ValueFlowProgram, snapshot: IndexSnapshot) {
+    func load(snapshot raw: IndexSnapshot, cachedSources: [String: String]? = nil) -> (program: ValueFlowProgram, snapshot: IndexSnapshot) {
         let snapshot = normalized(raw)
         let inventory = fileSystem.recursiveFiles(under: projectPath,
             isIncluded: { $0.hasSuffix(".swift") || $0.hasSuffix(".m") || $0.hasSuffix(".mm") },
@@ -55,9 +55,12 @@ struct ValueFlowSourceLoader {
         var unindexed = 0
         var undated = 0
         for path in paths {
-            let canonical = canonicalPath(path)
+            let canonical = Self.canonicalPath(path)
             guard seen.insert(canonical).inserted else { continue }
-            guard let source = try? fileSystem.readText(at: path) else {
+            let source: String?
+            if let cachedSources { source = cachedSources[canonical] }
+            else { source = try? fileSystem.readText(at: path) }
+            guard let source else {
                 unreadable += 1
                 continue
             }
@@ -80,13 +83,13 @@ struct ValueFlowSourceLoader {
         return (ValueFlowIndexBinder().bind(program: program, snapshot: snapshot, freshPaths: fresh), snapshot)
     }
 
-    private func canonicalPath(_ path: String) -> String {
+    static func canonicalPath(_ path: String) -> String {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
     }
 
     private func normalized(_ raw: IndexSnapshot) -> IndexSnapshot {
         func location(_ value: SourceLocation) -> SourceLocation {
-            SourceLocation(path: canonicalPath(value.path), line: value.line, column: value.column)
+            SourceLocation(path: Self.canonicalPath(value.path), line: value.line, column: value.column)
         }
         let symbols = raw.symbols.map {
             IndexedSymbol(usr: $0.usr, name: $0.name, kind: $0.kind, module: $0.module,
@@ -98,7 +101,7 @@ struct ValueFlowSourceLoader {
                 location: $0.location.map(location))
         }
         let dates = raw.indexedFileDates.map {
-            Dictionary($0.map { (canonicalPath($0.key), $0.value) }, uniquingKeysWith: min)
+            Dictionary($0.map { (Self.canonicalPath($0.key), $0.value) }, uniquingKeysWith: min)
         }
         return IndexSnapshot(symbols: symbols, references: references, indexedFileDates: dates)
     }

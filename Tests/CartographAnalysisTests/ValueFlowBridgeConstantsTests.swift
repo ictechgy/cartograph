@@ -48,7 +48,8 @@ struct ValueFlowBridgeConstantsTests {
         let second = ValueFlowValue(atoms: [.literal(.string("e\u{301}"))], origins: [
             .init(id: "second", location: location, literal: .string("e\u{301}"))])
         let joined = first.joining(second, limit: 32)
-        #expect(joined.singleString != nil)
+        #expect(joined.singleString == nil)
+        #expect(joined.unknownReasons.contains("unicode-normalization"))
         #expect(ValueFlowBridgeConstants().resolve(in: graph([node(1, value: joined)])).isEmpty)
     }
 

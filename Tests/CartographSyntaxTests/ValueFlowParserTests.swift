@@ -78,6 +78,22 @@ struct ValueFlowParserTests {
         #expect(direct.parameters[0].declaredType == "String")
     }
 
+    @Test("variadic과 autoclosure 매개변수는 지원하지 않음을 표시한다")
+    func unsupportedParameterForms() throws {
+        let source = """
+            func variadic(_ values: String...) {}
+            func delayed(_ value: @autoclosure () -> String) {}
+            extension Value { mutating func replace() {} }
+            """
+        let program = SwiftValueFlowParser().scan(source: source, path: "/p.swift")
+        let variadic = try #require(program.functions.first(where: { $0.name == "variadic" }))
+        let delayed = try #require(program.functions.first(where: { $0.name == "delayed" }))
+        #expect(variadic.unavailableReason == "variadic parameter is unavailable")
+        #expect(delayed.unavailableReason == "autoclosure parameter is unavailable")
+        #expect(program.functions.first { $0.name == "replace" }?.unavailableReason
+            == "mutating value-type method is unavailable")
+    }
+
     @Test("inout 대입은 읽기 없이 주소와 쓰기를 만든다")
     func inoutWrite() throws {
         let source = "func overwrite(_ value: inout String) { value = \"origin-A\" }"
@@ -191,6 +207,22 @@ struct ValueFlowParserTests {
             if case .receiver = $0.operation { return true }
             return false
         })
+    }
+
+    @Test("같은 nominal 타입의 여러 extension은 각각 고유한 owner ID를 보존한다")
+    func repeatedExtensionOwners() throws {
+        let source = """
+            class Box {}
+            extension Box { func first() {} }
+            extension Box { func second() {} }
+            """
+        let program = SwiftValueFlowParser().scan(source: source, path: "/p.swift")
+        let first = try #require(program.functions.first(where: { $0.name == "first" }))
+        let second = try #require(program.functions.first(where: { $0.name == "second" }))
+        #expect(first.ownerType != nil)
+        #expect(second.ownerType != nil)
+        #expect(first.ownerType != second.ownerType)
+        #expect(program.types.filter(\.isExtension).count == 2)
     }
 
     @Test("failable과 convenience initializer는 성공 객체를 확정하지 않는다")

@@ -73,6 +73,15 @@ public struct ValueFlowValue: Hashable, Sendable, Codable {
     public func joining(_ other: ValueFlowValue, limit: Int) -> ValueFlowValue {
         var result = ValueFlowValue(atoms: atoms.union(other.atoms), origins: origins.union(other.origins),
                                     unknownReasons: unknownReasons.union(other.unknownReasons))
+        let spellings = (Array(atoms) + Array(other.atoms)).compactMap { atom -> String? in
+            if case let .literal(.string(value)) = atom { return value }
+            return nil
+        }
+        let normalized = Dictionary(grouping: spellings, by: { $0 })
+        if normalized.values.contains(where: { group in
+            guard let first = group.first else { return false }
+            return group.dropFirst().contains { !first.utf8.elementsEqual($0.utf8) }
+        }) { result.unknownReasons.insert("unicode-normalization") }
         let (originLimit, overflow) = limit.multipliedReportingOverflow(by: 4)
         if !overflow && result.origins.count > originLimit {
             result.origins = []

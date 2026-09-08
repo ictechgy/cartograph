@@ -692,8 +692,10 @@ public struct CartographService: Sendable {
         var unscannedMessageChannels = 0
         var opaqueHandlerChannels: [String?] = []
         var objectiveCSources = 0
+        var sourceCache: [String: String] = [:]
         for path in sources {
             guard let source = try? environment.fileSystem.readText(at: path) else { unreadable += 1; continue }
+            sourceCache[ValueFlowSourceLoader.canonicalPath(path)] = source
             if !path.hasSuffix(".swift") { objectiveCSources += 1 }
             if path.hasSuffix(".swift") {
                 let scanned = BridgeFactScanner().scan(source: source, path: path)
@@ -708,9 +710,18 @@ public struct CartographService: Sendable {
                 opaqueHandlerChannels += scanned.opaqueHandlerChannels
             }
         }
-        if facts.contains(where: \.isDynamic) {
+        let indexedDates = Dictionary((snapshot.indexedFileDates ?? [:]).map {
+            (ValueFlowSourceLoader.canonicalPath($0.key), $0.value)
+        }, uniquingKeysWith: min)
+        let hasFreshDynamicFact = facts.contains { fact in
+            guard fact.isDynamic, fact.location.path.hasSuffix(".swift"),
+                  let indexed = indexedDates[ValueFlowSourceLoader.canonicalPath(fact.location.path)],
+                  let modified = environment.fileSystem.modificationDate(at: fact.location.path) else { return false }
+            return modified <= indexed
+        }
+        if hasFreshDynamicFact {
             let loaded = ValueFlowSourceLoader(fileSystem: environment.fileSystem, projectPath: projectPath,
-                pathFilter: configuration.pathFilter).load(snapshot: snapshot)
+                pathFilter: configuration.pathFilter).load(snapshot: snapshot, cachedSources: sourceCache)
             let graph = ValueFlowAnalyzer().analyze(loaded.program)
             let resolved = ValueFlowBridgeConstants().resolve(in: graph)
             if !resolved.isEmpty {
@@ -718,7 +729,7 @@ public struct CartographService: Sendable {
                 facts.removeAll()
                 opaqueHandlerChannels.removeAll()
                 for path in sources {
-                    guard let source = try? environment.fileSystem.readText(at: path) else { continue }
+                    guard let source = sourceCache[ValueFlowSourceLoader.canonicalPath(path)] else { continue }
                     if path.hasSuffix(".swift") {
                         let canonical = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
                         let scanned = BridgeFactScanner().scan(source: source, path: canonical, resolvedValues: resolved)

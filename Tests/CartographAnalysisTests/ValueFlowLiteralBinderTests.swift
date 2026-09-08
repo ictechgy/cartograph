@@ -112,4 +112,18 @@ struct ValueFlowLiteralBinderTests {
         }
     }
 
+    @Test("기본 인자 생략이나 라벨 불일치에서 다른 매개변수의 String 타입을 빌리지 않는다")
+    func omittedArgumentType() {
+        let target = function("target", operations: [], parameters: [
+            .init(name: "first", label: "first", declaredType: "String"),
+            .init(name: "token", label: "token", declaredType: "StaticString")
+        ])
+        for (arguments, labels) in [([0], ["token"]), ([0, 0], ["token", "first"])] {
+            let main = function("f", operations: [.stringLiteral("A", expectedType: nil, inferred: false),
+                .symbol(.init(location: site, spelling: "target", usr: "target")),
+                .call(callee: 1, arguments: arguments, argumentLabels: labels, isAwait: false)], result: 2)
+            #expect(!isKnown(bind(.init(functions: [target, main]))))
+        }
+    }
+
 }

@@ -1,5 +1,6 @@
 import CartographAnalysis
 import CartographCore
+import Foundation
 import Testing
 
 @Suite("값 흐름 인덱스 결합")
@@ -160,6 +161,38 @@ struct ValueFlowIndexBinderTests {
         ])
     }
 
+    @Test("두 번째 extension의 extends 증거가 없으면 그 owner와 멤버를 unavailable로 남긴다")
+    func missingRepeatedExtensionEvidence() throws {
+        let nominal = ValueFlowType(id: "type", name: "Box", location: location(1, 15), isReferenceType: true)
+        let firstExtension = ValueFlowType(
+            id: "ext1", name: "Box", location: location(2, 18), isReferenceType: true, isExtension: true
+        )
+        let secondExtension = ValueFlowType(
+            id: "ext2", name: "Box", location: location(3, 18), isReferenceType: true, isExtension: true
+        )
+        let first = function(id: "first", name: "first", indexName: "first()", ownerType: "ext1", location: location(2, 32))
+        let second = function(id: "second", name: "second", indexName: "second()", ownerType: "ext2", location: location(3, 32))
+        let program = ValueFlowProgram(functions: [first, second], types: [nominal, firstExtension, secondExtension])
+        let snapshot = IndexSnapshot(
+            symbols: [
+                IndexedSymbol(usr: "s:Box", name: "Box", kind: .classType, module: "App", location: nominal.location),
+                IndexedSymbol(usr: "s:ext1", name: "Box", kind: .extensionDeclaration, module: "App", location: location(2, 10)),
+                IndexedSymbol(usr: "s:ext2", name: "Box", kind: .extensionDeclaration, module: "App", location: location(3, 10)),
+                IndexedSymbol(usr: "s:first", name: "first()", kind: .method, module: "App",
+                              location: first.location, parentUSR: "s:ext1"),
+                IndexedSymbol(usr: "s:second", name: "second()", kind: .method, module: "App",
+                              location: second.location, parentUSR: "s:ext2")
+            ],
+            references: [
+                IndexedReference(sourceUSR: "s:ext1", targetUSR: "s:Box", kind: .extends, location: firstExtension.location)
+            ]
+        )
+        let bound = ValueFlowIndexBinder().bind(program: program, snapshot: snapshot, freshPaths: [path])
+        #expect(bound.functions.first(where: { $0.id == "first" })?.unavailableReason == nil)
+        #expect(bound.functions.first(where: { $0.id == "second" })?.unavailableReason != nil)
+        #expect(bound.types.first(where: { $0.id == "ext2" })?.symbolUSR == nil)
+    }
+
     @Test("합성 initializer는 parentUSR를 가진 유일한 실제 init으로만 결합된다")
     func bindsSyntheticInitializerOnlyWithParentEvidence() throws {
         let type = ValueFlowType(id: "type", name: "Box", location: location(1, 15), isReferenceType: true)
@@ -181,5 +214,34 @@ struct ValueFlowIndexBinderTests {
         let bound = ValueFlowIndexBinder().bind(program: program, snapshot: snapshot, freshPaths: [path])
         #expect(bound.functions.first?.symbolUSR == "s:init")
         #expect(bound.functions.first?.unavailableReason == nil)
+    }
+
+    @Test("큰 심볼 스냅샷에서도 위치 색인을 재사용해 결합한다")
+    func indexedLookupScales() throws {
+        let noise = (0..<20_000).map { index in
+            IndexedSymbol(
+                usr: "noise:\(index)",
+                name: "noise\(index)()",
+                kind: .function,
+                module: "Noise",
+                location: SourceLocation(path: "/p/Noise\(index).swift", line: 1, column: 1)
+            )
+        }
+        let functions = (0..<8_000).map { index in
+            function(id: "f:\(index)", name: "f\(index)", indexName: "f\(index)()",
+                location: location(index + 1, 5))
+        }
+        let symbols = functions.map { function in
+            IndexedSymbol(usr: "usr:" + function.id, name: function.indexName, kind: .function,
+                module: "App", location: function.location)
+        }
+        let started = Date()
+        let bound = ValueFlowIndexBinder().bind(
+            program: ValueFlowProgram(functions: functions),
+            snapshot: IndexSnapshot(symbols: noise + symbols), freshPaths: [path])
+        #expect(bound.functions.count == functions.count)
+        #expect(bound.functions.allSatisfy { $0.symbolUSR == "usr:" + $0.id && $0.unavailableReason == nil })
+        #expect(Date().timeIntervalSince(started) < 10)
+
     }
 }

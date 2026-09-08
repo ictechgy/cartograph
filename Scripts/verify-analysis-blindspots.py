@@ -96,7 +96,10 @@ def write(root, relative, content):
 
 
 def run(command, root):
-    return subprocess.run(command, cwd=root, check=True, capture_output=True, text=True, timeout=300).stdout
+    try:
+        return subprocess.run(command, cwd=root, check=True, capture_output=True, text=True, timeout=300).stdout
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(error.stderr.strip() or str(error)) from error
 
 
 def build(root, scratch=".build", dynamic=False):
@@ -104,8 +107,18 @@ def build(root, scratch=".build", dynamic=False):
     if dynamic:
         command += ["-Xswiftc", "-DNEEDLE_DYNAMIC"]
     write(root, scratch.removeprefix(".") + ".log", run(command, root))
-    # Xcode SwiftPM은 요청 플래그 대신 실제 out 스토어를 사용한다.
-    return root / scratch / "out"
+    scratch_root = root / scratch
+    candidates = [scratch_root / "out", scratch_root / "debug/index/store"]
+    candidates += sorted(scratch_root.glob("*/debug/index/store"))
+    for candidate in candidates:
+        if (candidate / "v5/units").is_dir() or (candidate / "units").is_dir():
+            return candidate
+    raise RuntimeError("No compiled index units were found; check the Swift build/index-store configuration.")
+
+
+def executable(root, name, scratch=".build"):
+    products = run(["swift", "build", "--scratch-path", scratch, "--show-bin-path"], root).strip().splitlines()[-1]
+    return Path(products) / name
 
 
 def query(binary, root, subject, store):
@@ -166,7 +179,7 @@ def needle(binary, root, source_root):
     results = {}
     for mode in ["static", "dynamic"]:
         store = build(root, ".build-" + mode, dynamic=mode == "dynamic")
-        assert run([str(store / "Products/Debug/App")], root).strip() == "needle-ok"
+        assert run([str(executable(root, "App", ".build-" + mode))], root).strip() == "needle-ok"
         component = query(binary, root, "RootComponent", store)
         member = next(item for item in component["result"]["members"] if item["name"] == "service")
         service = query(binary, root, member["usr"], store)
@@ -284,7 +297,7 @@ def interprocedural(binary, root):
     write(root, "Sources/Probe/Scenarios.swift", INTERPROCEDURAL_SCENARIOS)
     write(root, "Sources/Probe/App.swift", '@main struct App { static func main() async { await runScenarios() } }\n')
     store = build(root)
-    runtime = run([str(store / "Products/Debug/Probe")], root).splitlines()
+    runtime = run([str(executable(root, "Probe"))], root).splitlines()
     assert runtime == ["leaf", "control", "literal-return", "A", "B", "literal-return", "callback",
                        "recursive", "provider-A", "async", "fixed", "overwritten", "wrapped-A", "wrapped-B"], runtime
     facts = json.loads(run([str(binary), "bridges", "--target", "flutter", "--project", str(root)], root))
@@ -356,7 +369,7 @@ func capturedString() -> String {
 }
 ''')
     store = build(root)
-    runtime = run([str(store / "Products/Debug/LiteralProbe")], root).splitlines()
+    runtime = run([str(executable(root, "LiteralProbe"))], root).splitlines()
     assert runtime == ["source", "converted", "source", "source", "before"], runtime
     results = {}
     for name in ["nativeString", "convertedString", "staticString", "acceptsStatic", "capturedString"]:
