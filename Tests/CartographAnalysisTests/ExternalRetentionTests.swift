@@ -38,6 +38,16 @@ struct ExternalRetentionTests {
         #expect(document.provenanceDescription == "isthmus 0.1.0, generated 2026-09-04T12:00:00Z")
     }
 
+    @Test("그래프 밖 ObjC 핸들러 수는 선택적이며 음수는 거부한다")
+    func validatesOmittedObjectiveCCount() throws {
+        let old = try makeStore(Self.validDocument).load(from: "/p/retentions.json")
+        #expect(old.omittedObjectiveCHandlers == nil)
+        let counted = #"{"format":"external-retentions","version":0,"retentions":[],"omittedObjectiveCHandlers":3}"#
+        #expect(try makeStore(counted).load(from: "/p/retentions.json").omittedObjectiveCHandlers == 3)
+        let invalid = counted.replacingOccurrences(of: ":3", with: ":-1")
+        #expect(throws: CartographError.self) { try makeStore(invalid).load(from: "/p/retentions.json") }
+    }
+
     @Test("근거 문장은 플랫폼·위치·메서드·채널을 담는다")
     func describesEvidence() throws {
         let document = try makeStore(Self.validDocument).load(from: "/p/retentions.json")

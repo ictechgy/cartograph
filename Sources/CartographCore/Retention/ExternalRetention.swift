@@ -104,19 +104,23 @@ public struct ExternalRetentionsDocument: Sendable, Equatable, Codable {
     public let producedBy: Producer?
     public let generatedAt: String?
     public let retentions: [ExternalRetention]
+    /// 조인됐지만 Swift 그래프 밖이라 보존 목록에 담지 않은 Objective-C 핸들러 수.
+    public let omittedObjectiveCHandlers: Int?
 
     public init(
         format: String = ExternalRetentionsDocument.expectedFormat,
         version: Int = ExternalRetentionsDocument.supportedVersion,
         producedBy: Producer? = nil,
         generatedAt: String? = nil,
-        retentions: [ExternalRetention]
+        retentions: [ExternalRetention],
+        omittedObjectiveCHandlers: Int? = nil
     ) {
         self.format = format
         self.version = version
         self.producedBy = producedBy
         self.generatedAt = generatedAt
         self.retentions = retentions
+        self.omittedObjectiveCHandlers = omittedObjectiveCHandlers
     }
 
     /// 한계 목록에 적을 출처. "isthmus 0.1.0, generated 2026-…" 처럼.

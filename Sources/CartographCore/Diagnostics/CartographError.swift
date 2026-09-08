@@ -29,6 +29,8 @@ public enum CartographError: Error, Equatable, LocalizedError {
     case invalidBaseline(path: String, reason: String)
     /// `--external-retentions` 파일 해석 실패.
     case invalidExternalRetentions(path: String, reason: String)
+    /// 비어 있거나 제어 문자가 있는 이름은 bridge-facts v1로 내보낼 수 없다.
+    case unsupportedBridgeName
     /// 설정에서 참조한 레이어 이름이 정의되지 않음.
     case unknownLayer(name: String, definedLayers: [String])
     /// 분석 결과 문제가 발견되어 실패로 종료(`--strict`).
@@ -100,6 +102,9 @@ public enum CartographError: Error, Equatable, LocalizedError {
                 Invalid external retentions at \(path): \(reason)
                 Expected the 'external-retentions' format that `isthmus retentions --for cartograph` writes.
                 """
+        case .unsupportedBridgeName:
+            return "Cannot export bridge-facts v1 with an empty or control-character-containing name. "
+                + "Review channel/method expressions and the bridge-facts v1 name restrictions."
         case let .unknownLayer(name, definedLayers):
             return """
                 Rule refers to undefined layer '\(name)'. Defined layers: \

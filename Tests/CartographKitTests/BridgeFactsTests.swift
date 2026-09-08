@@ -1,3 +1,4 @@
+import CartographSyntax
 import CartographCore
 @testable import CartographKit
 import CartographTestSupport
@@ -6,6 +7,171 @@ import Testing
 
 @Suite("브리지 사실 문서")
 struct BridgeFactsTests {
+    @Test("Objective-C 식별자는 정확하고 유일한 Clang 선언에서만 붙인다")
+    func objectiveCIndexIdentity() {
+        let fact = BridgeFact(kind: .methodHandle, target: .flutter, channel: "A", method: "run",
+            location: .init(path: "/p/Plugin.m", line: 8, column: 1), sourceLanguage: .objectiveC)
+        let declaration = EnclosingDeclaration(name: "handle:", indexName: "handle:", qualifiedName: "P.handle:", line: 5)
+        let scanned = [ScannedBridgeFact(fact: fact, declaration: declaration)]
+        func symbol(_ usr: String, line: Int = 5) -> IndexedSymbol {
+            IndexedSymbol(usr: usr, name: "handle:", kind: .method, module: "P",
+                location: .init(path: "/p/Plugin.m", line: line, column: 1))
+        }
+        func resolve(_ symbols: [IndexedSymbol]) -> BridgeFact {
+            BridgeSymbolResolver(snapshot: IndexSnapshot(symbols: symbols)).resolve(scanned)[0]
+        }
+        #expect(resolve([symbol("c:objc(cs)P(im)handle:")]).symbol?.usr == "c:objc(cs)P(im)handle:")
+        #expect(resolve([]).symbol == nil)
+        #expect(resolve([symbol("c:other", line: 4)]).symbol == nil)
+        #expect(resolve([symbol("s:fake")]).symbol == nil)
+        #expect(resolve([symbol("c:a"), symbol("c:b")]).symbol == nil)
+    }
+
+    @Test("외부 핸들러 본문의 공백은 등록 채널을 확실히 알 때만 좁힌다")
+    func scopesKnownOpaqueHandlers() throws {
+        let source = """
+            import Flutter
+            func install() {
+                let a = FlutterMethodChannel(name: "A", binaryMessenger: messenger)
+                let b = FlutterMethodChannel(name: "B", binaryMessenger: messenger)
+                a.setMethodCallHandler(other.handle)
+                b.setMethodCallHandler { call, result in result(nil) }
+            }
+            """
+        let document = try makeService(files: ["/p/Plugin.swift": source], snapshot: IndexSnapshot()).bridgeFacts()
+        let scope = try #require(document.limitationScopes?.first)
+        #expect(scope.channels == ["A"])
+        #expect(document.limitations[scope.limitationIndex].hasPrefix("opaque-handler-bodies: 1"))
+        let unknown = source.replacingOccurrences(of: "name: \"A\"", with: "name: channelName")
+        let unscoped = try makeService(files: ["/p/Plugin.swift": unknown], snapshot: IndexSnapshot()).bridgeFacts()
+        #expect(unscoped.limitationScopes == nil)
+        #expect(unscoped.limitations.contains { $0.hasPrefix("opaque-handler-bodies: 1") })
+    }
+
+    @Test("범위를 모르는 본문 하나가 있으면 알려진 채널 목록을 완전한 범위로 내지 않는다")
+    func unknownOpaqueHandlerPreventsNarrowing() {
+        let document = BridgeFactsDocument(
+            tool: .init(name: "cartograph", version: "test"), generatedAt: "2026-09-08T00:00:00Z", project: "/p",
+            facts: [], opaqueHandlerChannels: ["A", nil]
+        )
+        #expect(document.limitationScopes == nil)
+        #expect(document.limitations.contains { $0.hasPrefix("opaque-handler-bodies: 2") })
+    }
+
+    @Test("RN만 선택하면 Flutter 본문 공백도 함께 제외한다")
+    func targetFilterDropsOpaqueFlutterGaps() throws {
+        let source = """
+            func install() {
+                let a = FlutterMethodChannel(name: "A", binaryMessenger: messenger)
+                a.setMethodCallHandler(factory.makeHandler())
+            }
+            """
+        let document = try makeService(files: ["/p/Plugin.swift": source, "/p/RN.m": Self.moduleSource], snapshot: IndexSnapshot())
+            .bridgeFacts(target: .reactNative)
+        #expect(document.limitationScopes == nil)
+        #expect(!document.limitations.contains { $0.hasPrefix("opaque-handler-bodies:") })
+    }
+
+    @Test("ObjC 사실에 출처 언어를 싣고 일반 ObjC 공백은 채널 리터럴로 좁히지 않는다")
+    func objectiveCEvidenceAndConservativeGap() throws {
+        let source = """
+            @implementation Plugin
+            + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar> *)registrar {
+                FlutterMethodChannel *channel = [FlutterMethodChannel methodChannelWithName:@"A" binaryMessenger:registrar.messenger];
+                [channel setMethodCallHandler:^(FlutterMethodCall *call, FlutterResult result) {
+                    if ([call.method isEqualToString:@"run"]) { result(nil); }
+                }];
+            }
+            @end
+            """
+        var symbols = SnapshotBuilder()
+        symbols.symbol("s:FakePlugin", name: "Plugin", kind: .classType, path: "/p/Plugin.swift")
+        symbols.symbol("s:FakeHandler", name: "handle(_:result:)", kind: .method, path: "/p/Plugin.swift", parent: "s:FakePlugin")
+        let document = try makeService(files: ["/p/Plugin.m": source], snapshot: symbols.build()).bridgeFacts()
+        #expect(document.facts.map(\.kind) == ["channel-register", "method-handle"])
+        #expect(document.facts.allSatisfy { $0.sourceLanguage == .objectiveC && $0.symbol == nil })
+        #expect(document.limitations.contains { $0.hasPrefix("objective-c-sources:") })
+        #expect(document.limitationScopes == nil)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(document)
+        #expect(try JSONDecoder().decode(BridgeFactsDocument.self, from: data) == document)
+        #expect(String(decoding: data, as: UTF8.self).contains("\"sourceLanguage\":\"objective-c\""))
+    }
+
+    @Test("저장된 클로저와 파일 밖 함수도 본문을 못 읽으면 채널 공백을 낸다")
+    func scopesStoredClosureAndUnknownFunction() throws {
+        for argument in ["handler", "fromSDK"] {
+            let source = """
+                func install() {
+                    let channel = FlutterMethodChannel(name: "A", binaryMessenger: messenger)
+                    let handler = { (call: FlutterMethodCall, result: FlutterResult) in result(nil) }
+                    channel.setMethodCallHandler(\(argument))
+                }
+                """
+            let document = try makeService(files: ["/p/Plugin.swift": source], snapshot: IndexSnapshot()).bridgeFacts()
+            #expect(document.limitationScopes?.first?.channels == ["A"])
+            #expect(document.limitations.contains { $0.hasPrefix("opaque-handler-bodies: 1") })
+        }
+    }
+
+    @Test("교환 형식에 담을 수 없는 이름을 가진 문서를 내보내지 않는다")
+    func rejectsUnrepresentableBridgeNames() {
+        let multiline = "\"\"\"\nA\nB\n\"\"\""
+        for name in ["\"\"", "\"   \"", multiline] {
+            let source = """
+                func install() {
+                    let channel = FlutterMethodChannel(name: \(name), binaryMessenger: messenger)
+                    channel.setMethodCallHandler(other.handle)
+                }
+                """
+            #expect(throws: (any Error).self) {
+                try makeService(files: ["/p/Plugin.swift": source], snapshot: IndexSnapshot()).bridgeFacts()
+            }
+        }
+    }
+
+    @Test("로컬 함수 본문을 읽었으면 이름 참조만으로 opaque 경고를 만들지 않는다")
+    func readableLocalHandlerIsNotOpaque() throws {
+        let source = """
+            func install() {
+                let channel = FlutterMethodChannel(name: "A", binaryMessenger: messenger)
+                channel.setMethodCallHandler(handle)
+            }
+            func handle(_ call: FlutterMethodCall, result: FlutterResult) {
+                switch call.method { case "run": result(nil); default: break }
+            }
+            """
+        let document = try makeService(files: ["/p/Plugin.swift": source], snapshot: IndexSnapshot()).bridgeFacts()
+        #expect(document.facts.contains { $0.method == "run" && $0.channel == "A" })
+        #expect(!document.limitations.contains { $0.hasPrefix("opaque-handler-bodies:") })
+    }
+
+    @Test("Swift 이스케이프를 실제 채널 값으로 풀어 스코프가 잘못된 이름을 가리키지 않는다")
+    func decodedLiteralScope() throws {
+        let source = #"""
+            func install() {
+                let channel = FlutterMethodChannel(name: "c\u{61}mera", binaryMessenger: messenger)
+                channel.setMethodCallHandler(other.handle)
+            }
+            """#
+        let document = try makeService(files: ["/p/Plugin.swift": source], snapshot: IndexSnapshot()).bridgeFacts()
+        #expect(document.facts.first?.channel == "camera")
+        #expect(document.limitationScopes?.first?.channels == ["camera"])
+    }
+
+    @Test("선행 한계 뒤의 스코프 인덱스와 다채널 합집합을 유지한다")
+    func scopeIndexAndUnion() {
+        let document = BridgeFactsDocument(
+            tool: .init(name: "cartograph", version: "test"), generatedAt: "2026-09-08T00:00:00Z", project: "/p",
+            facts: [.init(kind: .channelRegister, target: .flutter, channel: "runtimeName", isDynamic: true,
+                          location: .init(path: "/p/A.swift", line: 1, column: 1))],
+            opaqueHandlerChannels: ["B", "A", "A"]
+        )
+        #expect(document.limitationScopes?.first?.limitationIndex == 1)
+        #expect(document.limitationScopes?.first?.channels == ["A", "B"])
+    }
+
     private static let pluginSource = """
         import Flutter
         public final class CameraPlugin: NSObject, FlutterPlugin {

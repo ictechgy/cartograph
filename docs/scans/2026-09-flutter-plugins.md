@@ -164,11 +164,13 @@ second channel from a file-scope `let globalChannelName` (emitted as the dynamic
 `self.globalMethods`) and dispatches through a method reference into a `handleAsync` hop, while Dart
 dispatches through a `method` variable (`unresolved-receiver-invocations: 2`). isthmus matched the
 one literal channel both sides spell and declined the rest as unverified — one warning, zero false
-alarms. flutter_local_notifications' 20 issues split three ways, checked by hand: 15 are Android-only
+alarms. The preserved notes classify 19 of flutter_local_notifications' reported 20 issues: 15 are Android-only
 methods (in `FlutterLocalNotificationsPlugin.java`, absent from the iOS `.m`), 1
 (`getCallbackHandle`) is handled in the iOS `.m` that cartograph reports as `objective-c-sources`
 but cannot read, and 3 come from `example/` channels — dartograph has no `--exclude`, while the
-Swift side excluded `example/`, so the two documents observe different trees.
+Swift side excluded `example/`, so the two documents observe different trees. The remaining one
+issue is not classified in the preserved record. These aggregate counts do not establish how many
+diagnostics channel scoping would change; that requires the original per-diagnostic results.
 
 ### Correction to the 0.5.4 table
 

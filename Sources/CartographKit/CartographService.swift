@@ -682,12 +682,13 @@ public struct CartographService: Sendable {
         // 빈 인덱스 가드를 지나지 않는다. `bridges` 는 구문 스캔이 본체이고 인덱스는
         // USR 을 붙이는 데만 쓴다. 공개 플러그인 스캔은 인덱스 기여가 0인 상태로 도는
         // 것이 정상이라, 여기서 실패하면 그 용법이 통째로 막힌다.
-        let resolver = BridgeSymbolResolver(snapshot: try makeIndexSource().provider.loadSnapshot())
+        let resolver = BridgeSymbolResolver(snapshot: try makeIndexSource(includeObjectiveCSources: true).provider.loadSnapshot())
         let sources = bridgeSourceFiles()
         var facts: [BridgeFact] = []
         var unreadable = 0
         var unscannedEventChannels = 0
         var unscannedMessageChannels = 0
+        var opaqueHandlerChannels: [String?] = []
         var objectiveCSources = 0
         for path in sources {
             guard let source = try? environment.fileSystem.readText(at: path) else { unreadable += 1; continue }
@@ -697,8 +698,12 @@ public struct CartographService: Sendable {
                 facts += resolver.resolve(scanned.facts)
                 unscannedEventChannels += scanned.unscannedEventChannels
                 unscannedMessageChannels += scanned.unscannedMessageChannels
+                opaqueHandlerChannels += scanned.opaqueHandlerChannels
             } else {
                 facts += ReactNativeMacroScanner().scan(source: source, path: path)
+                let scanned = ObjectiveCFlutterScanner().scan(source: source, path: path)
+                facts += resolver.resolve(scanned.scannedFacts)
+                opaqueHandlerChannels += scanned.opaqueHandlerChannels
             }
         }
         let selectedFacts = target.map { selected in
@@ -714,6 +719,7 @@ public struct CartographService: Sendable {
                 "target-filter: \(facts.count - selectedFacts.count) fact(s) did not match \(target.rawValue)"
             )
         }
+        try BridgeFactsDocument.validateNames(selectedFacts, opaqueHandlerChannels: includesFlutter ? opaqueHandlerChannels : [])
         return BridgeFactsDocument(
             tool: .init(name: Cartograph.toolName, version: Cartograph.version),
             generatedAt: Self.bridgeTimestamp(generatedAt),
@@ -722,7 +728,8 @@ public struct CartographService: Sendable {
             unscannedEventChannels: includesFlutter ? unscannedEventChannels : 0,
             unscannedMessageChannels: includesFlutter ? unscannedMessageChannels : 0,
             objectiveCSourceCount: includesFlutter ? objectiveCSources : 0,
-            extraLimitations: extraLimitations
+            extraLimitations: extraLimitations,
+            opaqueHandlerChannels: includesFlutter ? opaqueHandlerChannels : []
         )
     }
 
@@ -1004,7 +1011,7 @@ public struct CartographService: Sendable {
         let origin: EmptyIndexFacts.StoreOrigin
     }
 
-    private func makeIndexSource() throws -> IndexSource {
+    private func makeIndexSource(includeObjectiveCSources: Bool = false) throws -> IndexSource {
         if let override = environment.indexProviderOverride {
             // 주입된 공급자에는 스토어가 없다. 모르는 것을 아는 척하지 않는다.
             return IndexSource(
@@ -1035,7 +1042,8 @@ public struct CartographService: Sendable {
                 ),
                 libraryPath: libraryPath,
                 sourceRoots: [projectPath],
-                pathFilter: configuration.pathFilter
+                pathFilter: configuration.pathFilter,
+                includeObjectiveCSources: includeObjectiveCSources
             ),
             fileSystem: environment.fileSystem
         )

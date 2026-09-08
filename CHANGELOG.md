@@ -7,6 +7,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Optional structured `limitationScopes` in bridge-facts v1. Opaque Swift handlers supplied by
+  external objects or factories are channel-scoped only when all affected channels are known.
+- Bounded Objective-C Flutter bridge extraction: direct channel factories/initializers, inline
+  blocks, same-file registrar delegates, immutable NSString constants and positive method-name
+  comparisons. Facts carry `sourceLanguage: objective-c` without fabricated Swift identifiers.
+  Actual Clang USRs are attached on unique declaration matches when available; ordinary analysis
+  remains Swift-only. General Objective-C gaps remain unscoped; conditional/macro-dependent files stay deferred.
+- External retention files can report `omittedObjectiveCHandlers` so graph-external matches remain
+  visible in cartograph limitations. The consumer must support these extensions before the new
+  producer is deployed; missing symbols on unmarked Swift handlers still fail closed.
+
+### Fixed
+
+- The preserved flutter_local_notifications notes classify 19 of the reported 20 issues. The
+  remaining one is now explicitly unclassified instead of presenting an inconsistent complete split.
+
 ## [0.8.2] - 2026-09-08
 
 ### Fixed

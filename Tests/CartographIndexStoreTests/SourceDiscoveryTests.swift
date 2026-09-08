@@ -22,6 +22,15 @@ struct SourceDiscoveryTests {
         )
     }
 
+    @Test("브리지 전용 탐색은 Objective-C 구현을 포함하고 헤더는 제외한다")
+    func objectiveCOptIn() {
+        let fs = InMemoryFileSystem(files: ["/p/A.swift": "", "/p/B.m": "", "/p/C.mm": "", "/p/D.h": ""])
+        let provider = IndexStoreProvider(configuration: .init(storePath: "/s", databasePath: "/d",
+            libraryPath: "/l", sourceRoots: ["/p"], includeObjectiveCSources: true), fileSystem: fs)
+        #expect(provider.sourceFilePaths() == ["/p/A.swift", "/p/B.m", "/p/C.mm"])
+        #expect(makeProvider(fileSystem: fs, roots: ["/p"]).sourceFilePaths() == ["/p/A.swift"])
+    }
+
     @Test("빌드 산출물 디렉터리에는 들어가지 않는다")
     func prunesBuildDirectories() {
         // 큰 저장소에서는 이 가지치기만으로 탐색 시간이 몇 배 차이 난다.
