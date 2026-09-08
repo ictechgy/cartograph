@@ -11,7 +11,7 @@
 `Scripts/verify-analysis-blindspots.py`에 재현을 남겼다. 실제 NeedleFoundation의 기본·동적 모드는
 둘 다 실행과 도달성을 확인했다. 생성 파일 제외 시 살아 있는 제공 프로퍼티가 미도달로 나오는
 입력 공백도 확인했다. IB는 customClass를 포괄 보존하며 identifier별 usedBy 경로를 만들지 않는다.
-724 tests, coverage 93.83%, CLI·코퍼스·자기 분석 필수 게이트와 실제 재현 하네스를 통과했다.
+727 tests, coverage 93.61%, CLI·코퍼스·자기 분석 필수 게이트와 실제 재현 하네스를 통과했다.
 
 
 ## 2026-09-08 — issue #64 브리지 범위 확장 (리뷰 준비)

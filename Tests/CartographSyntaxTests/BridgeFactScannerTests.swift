@@ -12,6 +12,70 @@ struct BridgeFactScannerTests {
         scan(source).map(\.fact).filter { $0.kind == kind }
     }
 
+    @Test("접근자 지역 상수와 setter 매개변수는 자기 스코프에서 해석한다")
+    func accessorScopes() {
+        let source = """
+            let name = "wrong"
+            let newValue = "wrong"
+            class Plugin {
+                var registration: Void {
+                    let name = "right"
+                    let alias = name
+                    FlutterMethodChannel(name: alias, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                }
+                var value: String {
+                    get { "" }
+                    set {
+                        FlutterMethodChannel(name: newValue, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                    }
+                }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.count == 2)
+        #expect(registered.first?.channel == "right")
+        #expect(registered.first?.isDynamic == false)
+        #expect(registered.last?.isDynamic == true)
+    }
+
+    @Test("혼합 표기의 초기화와 바깥 스코프 채널 변경은 한 바인딩에서 충돌한다")
+    func mergesAssignmentTargets() {
+        let source = """
+            class Plugin {
+                let channel: FlutterMethodChannel
+                init(flag: Bool) {
+                    if flag { self.channel = FlutterMethodChannel(name: "a", binaryMessenger: m) }
+                    else { channel = FlutterMethodChannel(name: "b", binaryMessenger: m) }
+                }
+                func attach() { channel.setMethodCallHandler { _, _ in } }
+            }
+            func local() {
+                var channel = FlutterMethodChannel(name: "a", binaryMessenger: m)
+                consume { channel = FlutterMethodChannel(name: "b", binaryMessenger: m) }
+                channel.setMethodCallHandler { _, _ in }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.count == 2)
+        #expect(registered.allSatisfy { $0.channel == nil || $0.isDynamic })
+    }
+
+    @Test("혼합 표기의 문자열 초기화도 상수라고 확정하지 않는다")
+    func mixedStringAssignmentIsUnknown() {
+        let source = """
+            class Plugin {
+                let name: String
+                init(flag: Bool) { if flag { self.name = "a" } else { name = "b" } }
+                func attach() {
+                    FlutterMethodChannel(name: name, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.count == 1)
+        #expect(registered.allSatisfy { $0.isDynamic })
+    }
+
     @Test("타입 이름을 가린 수신자와 상속한 Self 멤버를 전역 상수로 바꾸지 않는다")
     func qualifiedReceiverShadows() {
         let source = """

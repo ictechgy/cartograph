@@ -209,6 +209,18 @@ final class BindingCollector: SyntaxVisitor {
     override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
     override func visitPost(_ node: ClosureExprSyntax) { scopes.removeLast() }
 
+    override func visit(_ node: AccessorBlockSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
+    override func visitPost(_ node: AccessorBlockSyntax) { scopes.removeLast() }
+    override func visit(_ node: AccessorDeclSyntax) -> SyntaxVisitorContinueKind {
+        _ = pushScope(node)
+        let kind = node.accessorSpecifier.text
+        if let name = node.parameters?.name.text { shadow(name, isLocal: true) }
+        else if ["set", "willSet"].contains(kind) { shadow("newValue", isLocal: true) }
+        else if kind == "didSet" { shadow("oldValue", isLocal: true) }
+        return .visitChildren
+    }
+    override func visitPost(_ node: AccessorDeclSyntax) { scopes.removeLast() }
+
     private func pushScope(_ node: some SyntaxProtocol) -> SyntaxVisitorContinueKind {
         scopes.append(Self.scopeKey(node)); return .visitChildren
     }
@@ -297,11 +309,29 @@ final class BindingCollector: SyntaxVisitor {
     /// `self.name = "…"` 은 프로퍼티라 타입 키로, 본문 안의 `name = "…"` 은 지역 키로 간다.
     override func visit(_ node: InfixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
         guard node.operator.is(AssignmentExprSyntax.self) else { return .visitChildren }
-        if let name = Self.identifierName(of: node.leftOperand) {
-            let isMember = node.leftOperand.is(MemberAccessExprSyntax.self)
-            bind(name: name, to: node.rightOperand, isLocal: !isMember && DeclarationCollector.isInsideBody(node))
+        guard let name = Self.identifierName(of: node.leftOperand) else { return .visitChildren }
+        let member = node.leftOperand.as(MemberAccessExprSyntax.self)
+        if let member, !["self", "Self"].contains(member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text ?? "") {
+            shadow(name, isLocal: false)
+            return .visitChildren
         }
+        let key = assignmentKey(name, explicitMember: member != nil)
+        bind(name: name, to: node.rightOperand, isLocal: false, bindingKey: key)
         return .visitChildren
+    }
+
+    /// 대입은 새 지역 선언이 아니다. 기존 지역·프로퍼티에 합쳐 표기 차이와 클로저 변경을 놓치지 않는다.
+    private func assignmentKey(_ name: String, explicitMember: Bool) -> String {
+        if explicitMember { return (typeNames + [name]).joined(separator: ".") }
+        for scope in scopes.reversed() {
+            let key = Self.localKey(name, scope: scope)
+            if bindings[key] != nil { return key }
+        }
+        for depth in stride(from: typeNames.count, through: 0, by: -1) {
+            let key = (typeNames.prefix(depth) + [name]).joined(separator: ".")
+            if bindings[key] != nil { return key }
+        }
+        return scopes.isEmpty ? (typeNames + [name]).joined(separator: ".") : Self.localKey(name, scope: scopes.last)
     }
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
@@ -428,7 +458,8 @@ final class BindingCollector: SyntaxVisitor {
         handlerFunctions[Self.handlerKey(name, enclosingTypes: typeNames), default: []].append((receiver, scopes, typeNames))
     }
 
-    private func bind(name: String, to value: ExprSyntax, isLocal: Bool, immutable: Bool = false) {
+    private func bind(name: String, to value: ExprSyntax, isLocal: Bool,
+                      immutable: Bool = false, bindingKey: String? = nil) {
         let bound: BoundValue
         if let argument = Self.channelNameArgument(value) {
             bound = .channel(argument: argument, scopes: scopes, enclosingTypes: typeNames)
@@ -441,7 +472,8 @@ final class BindingCollector: SyntaxVisitor {
         } else {
             bound = .opaque
         }
-        let key = isLocal ? Self.localKey(name, scope: scopes.last) : (typeNames + [name]).joined(separator: ".")
+        let key = bindingKey ?? (isLocal
+            ? Self.localKey(name, scope: scopes.last) : (typeNames + [name]).joined(separator: "."))
         if let existing = bindings[key] {
             if existing == .uninitialized { bindings[key] = bound }
             else if existing != bound { bindings[key] = .some(nil) }
@@ -721,6 +753,15 @@ final class BridgeFactCollector: SyntaxVisitor {
     }
 
     /// 클로저마다 한 층. 지역 상수와 별칭은 그것을 선언한 클로저 안에서만 보인다.
+    override func visit(_ node: AccessorBlockSyntax) -> SyntaxVisitorContinueKind {
+        scopes.append(BindingCollector.scopeKey(node)); aliasScopes.append([]); return .visitChildren
+    }
+    override func visitPost(_ node: AccessorBlockSyntax) { scopes.removeLast(); aliasScopes.removeLast() }
+    override func visit(_ node: AccessorDeclSyntax) -> SyntaxVisitorContinueKind {
+        scopes.append(BindingCollector.scopeKey(node)); aliasScopes.append([]); return .visitChildren
+    }
+    override func visitPost(_ node: AccessorDeclSyntax) { scopes.removeLast(); aliasScopes.removeLast() }
+
     override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(BindingCollector.scopeKey(node)); aliasScopes.append([]); return .visitChildren
     }
