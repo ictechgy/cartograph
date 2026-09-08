@@ -61,7 +61,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — tap 추가 없이 소스에서 빌드합니다.
 
 ```bash
-mint install ictechgy/cartograph@0.8.2
+mint install ictechgy/cartograph@0.9.0
 ```
 
 **설치 없이 쓰기** — Swift 패키지라면 의존성으로 넣고 커맨드 플러그인을 쓰면 됩니다.
@@ -69,7 +69,7 @@ mint install ictechgy/cartograph@0.8.2
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.8.2"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.9.0"),
 ```
 
 ```bash
@@ -395,7 +395,7 @@ SwiftSyntax 로(Objective-C 는 텍스트로) 소스에서 읽고, 감싸는 선
 [isthmus](../isthmus) 가 다른 플랫폼의 사실과 조인하는 `bridge-facts` 교환 형식으로 씁니다.
 
 
-다음 릴리스의 v1 확장은 선택적 `limitationScopes`를 추가합니다. 각 항목은 `limitationIndex`와
+0.9.0의 v1 확장은 선택적 `limitationScopes`를 추가합니다. 각 항목은 `limitationIndex`와
 정확한 `channels` 배열로 구성됩니다. 읽지 못한 코드에서 발견한 이름 목록이 아니라, 해당
 공백 전체를 포함하는 상한입니다. 외부 객체·팩토리가 제공한 Swift 핸들러는 영향을 받는
 등록 채널을 모두 알 때만 `opaque-handler-bodies` 범위를 좁힙니다. 하나라도 모르면 기존
@@ -404,6 +404,10 @@ SwiftSyntax 로(Objective-C 는 텍스트로) 소스에서 읽고, 감싸는 선
 Swift 브리지 이름은 같은 파일의 불변 `let` 별칭과 괄호를 최대 64단계 따라갑니다. 가변 값,
 값을 모르는 가림 선언, 연산자·보간·다른 파일의 값은 dynamic으로 남깁니다.
 [상수·Needle·스토리보드 실측](docs/scans/2026-09-analysis-blindspots.md)에 지원 범위와 입력 공백을 정리했습니다.
+
+함수 간 값 전파는 아직 구현하지 않았습니다. 매개변수·반환·콜백·async를 거친 브리지 이름은
+미상으로 남으며 query 경로는 심볼 의존 관계입니다.
+[함수 간 분석 실측](docs/scans/2026-09-interprocedural-flow.md)에 실행 값과 지원 범위를 비교했습니다.
 
 ObjC Flutter 스캔은 직접 채널 생성, 인라인 블록, 같은 파일의 registrar 위임과
 `handleMethodCall:result:`를 지원합니다. 파일 범위의 불변 `NSString *const` 이름도 한 단계
@@ -439,7 +443,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.8.2" },
+  "tool" : { "name" : "cartograph", "version" : "0.9.0" },
   "version" : 1
 }
 ```

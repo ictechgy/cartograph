@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-08
+
 ### Added
 
 - Optional structured `limitationScopes` in bridge-facts v1. Opaque Swift handlers supplied by
@@ -21,6 +23,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   producer is deployed; missing symbols on unmarked Swift handlers still fail closed.
 
 ### Fixed
+
+- Bridge limitations count unresolved registration/handler facts without claiming that a literal
+  method name is dynamic when only its channel is unresolved. Cross-function runtime probes now
+  distinguish symbol reachability from unsupported argument/return value propagation.
 
 - Resolve immutable Swift bridge-name aliases and parentheses in their declaration scope, with a
   bounded depth. Parameters, captures, patterns, computed properties and mutable strings no longer
@@ -772,7 +778,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.8.2...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.9.0...HEAD
+[0.9.0]: https://github.com/ictechgy/cartograph/compare/0.8.2...0.9.0
 [0.8.2]: https://github.com/ictechgy/cartograph/compare/0.8.1...0.8.2
 [0.8.1]: https://github.com/ictechgy/cartograph/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/ictechgy/cartograph/compare/0.7.0...0.8.0
