@@ -418,6 +418,10 @@ merely found in unread code. External-object or factory-supplied Swift handlers 
 `opaque-handler-bodies` gap only when every affected registration channel is known. Any unknown
 channel leaves that gap unscoped; unscoped gaps continue to apply to the whole target.
 
+Swift bridge-name resolution follows immutable `let` aliases and parentheses within one file
+(up to 64 steps). Mutable strings, unknown shadowing bindings, operators, interpolation and cross-file values
+remain dynamic. See the [constant/Needle/storyboard checks](docs/scans/2026-09-analysis-blindspots.md).
+
 Objective-C Flutter scanning supports direct channel construction, inline handler blocks and
 same-file registrar/delegate `handleMethodCall:result:` implementations, including file-local
 immutable `NSString *const` names. Positive `isEqualToString:` branches become facts with

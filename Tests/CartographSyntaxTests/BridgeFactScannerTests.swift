@@ -12,6 +12,181 @@ struct BridgeFactScannerTests {
         scan(source).map(\.fact).filter { $0.kind == kind }
     }
 
+    @Test("접근자 지역 상수와 setter 매개변수는 자기 스코프에서 해석한다")
+    func accessorScopes() {
+        let source = """
+            let name = "wrong"
+            let newValue = "wrong"
+            class Plugin {
+                var registration: Void {
+                    let name = "right"
+                    let alias = name
+                    FlutterMethodChannel(name: alias, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                }
+                var value: String {
+                    get { "" }
+                    set {
+                        FlutterMethodChannel(name: newValue, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                    }
+                }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.count == 2)
+        #expect(registered.first?.channel == "right")
+        #expect(registered.first?.isDynamic == false)
+        #expect(registered.last?.isDynamic == true)
+    }
+
+    @Test("혼합 표기의 초기화와 바깥 스코프 채널 변경은 한 바인딩에서 충돌한다")
+    func mergesAssignmentTargets() {
+        let source = """
+            class Plugin {
+                let channel: FlutterMethodChannel
+                init(flag: Bool) {
+                    if flag { self.channel = FlutterMethodChannel(name: "a", binaryMessenger: m) }
+                    else { channel = FlutterMethodChannel(name: "b", binaryMessenger: m) }
+                }
+                func attach() { channel.setMethodCallHandler { _, _ in } }
+            }
+            func local() {
+                var channel = FlutterMethodChannel(name: "a", binaryMessenger: m)
+                consume { channel = FlutterMethodChannel(name: "b", binaryMessenger: m) }
+                channel.setMethodCallHandler { _, _ in }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.count == 2)
+        #expect(registered.allSatisfy { $0.channel == nil || $0.isDynamic })
+    }
+
+    @Test("혼합 표기의 문자열 초기화도 상수라고 확정하지 않는다")
+    func mixedStringAssignmentIsUnknown() {
+        let source = """
+            class Plugin {
+                let name: String
+                init(flag: Bool) { if flag { self.name = "a" } else { name = "b" } }
+                func attach() {
+                    FlutterMethodChannel(name: name, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.count == 1)
+        #expect(registered.allSatisfy { $0.isDynamic })
+    }
+
+    @Test("타입 이름을 가린 수신자와 상속한 Self 멤버를 전역 상수로 바꾸지 않는다")
+    func qualifiedReceiverShadows() {
+        let source = """
+            enum Names { static let value = "wrong-type" }
+            let value = "wrong-global"
+            func register(Names: Other) {
+                let alias = Names.value
+                FlutterMethodChannel(name: alias, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            }
+            class Base { static let value = "base" }
+            class Child: Base {
+                static func register() {
+                    FlutterMethodChannel(name: Self.value, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.count == 2)
+        #expect(registered.allSatisfy { $0.isDynamic })
+    }
+
+    @Test("초기화 전 선언은 self 채널의 첫 초기화 대입을 막지 않는다")
+    func initializesDeclaredChannel() {
+        let source = """
+            class Plugin {
+                let channel: FlutterMethodChannel
+                init() {
+                    self.channel = FlutterMethodChannel(name: "camera", binaryMessenger: m)
+                    self.channel.setMethodCallHandler { call, result in
+                        if call.method == "run" { result(nil) }
+                    }
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.count == 1)
+        #expect(handled.first?.channel == "camera")
+        #expect(handled.first?.isDynamic == false)
+    }
+
+    @Test("클로저 캡처와 조건 패턴은 전역 상수의 값을 빌리지 않는다")
+    func captureAndPatternShadows() {
+        let source = """
+            let name = "wrong"
+            func install() {
+                consume { [name = runtimeName()] in
+                    let alias = name
+                    FlutterMethodChannel(name: alias, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                }
+                if let name = runtimeOptionalName() {
+                    FlutterMethodChannel(name: name, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.count == 2)
+        #expect(registered.allSatisfy { $0.isDynamic })
+    }
+
+    @Test("불변 상수 별칭은 선언 문맥에서 여러 단계 풀고 괄호를 벗긴다")
+    func followsImmutableAliases() {
+        let source = """
+            enum Names { static let base = "camera"; static let alias = (base) }
+            let channelName = Names.alias
+            func register() {
+                let base = "wrong"
+                let local = channelName
+                FlutterMethodChannel(name: (local), binaryMessenger: m).setMethodCallHandler { _, _ in }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.map(\.channel) == ["camera"])
+        #expect(registered.allSatisfy { !$0.isDynamic })
+    }
+
+    @Test("매개변수와 계산 프로퍼티는 바깥 동명 상수로 풀지 않는다")
+    func unknownBindingsShadowConstants() {
+        let source = """
+            let name = "wrong"
+            func register(name: String) {
+                let alias = name
+                FlutterMethodChannel(name: name, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                FlutterMethodChannel(name: alias, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            }
+            class Plugin {
+                var name: String { runtimeName() }
+                func register() {
+                    FlutterMethodChannel(name: name, binaryMessenger: m).setMethodCallHandler { _, _ in }
+                }
+            }
+            """
+        #expect(facts(source, of: .channelRegister).allSatisfy { $0.isDynamic })
+    }
+
+    @Test("가변 이름과 순환 별칭과 연산자 식은 상수로 추측하지 않는다")
+    func refusesUnprovenConstants() {
+        let source = """
+            var mutable = "before"
+            mutate(&mutable)
+            let alias = mutable
+            let a = b
+            let b = a
+            FlutterMethodChannel(name: mutable, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            FlutterMethodChannel(name: alias, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            FlutterMethodChannel(name: a, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            FlutterMethodChannel(name: "a" + "b", binaryMessenger: m).setMethodCallHandler { _, _ in }
+            """
+        #expect(facts(source, of: .channelRegister).count == 4)
+        #expect(facts(source, of: .channelRegister).allSatisfy { $0.isDynamic })
+    }
+
     @Test("채널을 만들기만 한 것은 사실이 아니다")
     func creationAloneIsNotAFact() {
         let source = """
@@ -535,8 +710,8 @@ struct BridgeFactScannerTests {
         #expect(facts(source, of: .methodHandle).isEmpty)
     }
 
-    @Test("한 단계 상수는 따라가고 그 이상은 dynamic 으로 남긴다")
-    func followsOneLevelOfConstants() {
+    @Test("불변 별칭은 따라가되 연산자 식은 dynamic 으로 남긴다")
+    func followsConstantsButNotOperators() {
         let source = """
             enum Channels {
                 static let camera = "com.example/camera"
@@ -547,8 +722,8 @@ struct BridgeFactScannerTests {
             FlutterMethodChannel(name: prefix + "/camera", binaryMessenger: m).setMethodCallHandler { _, _ in }
             """
         let registered = facts(source, of: .channelRegister)
-        #expect(registered.map(\.channel) == ["com.example/camera", "name", "prefix + \"/camera\""])
-        #expect(registered.map(\.isDynamic) == [false, true, true])
+        #expect(registered.map(\.channel) == ["com.example/camera", "com.example/camera", "prefix + \"/camera\""])
+        #expect(registered.map(\.isDynamic) == [false, false, true])
     }
 
     @Test("다른 수신자의 같은 이름 멤버와 암시적 멤버는 이 파일의 상수로 풀지 않는다")
