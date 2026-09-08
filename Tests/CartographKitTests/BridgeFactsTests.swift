@@ -7,6 +7,18 @@ import Testing
 
 @Suite("브리지 사실 문서")
 struct BridgeFactsTests {
+    @Test("채널만 미해석인 핸들러를 동적 메서드 분기라고 단정하지 않는다")
+    func dynamicChannelDoesNotImplyDynamicMethod() {
+        let fact = BridgeFact(kind: .methodHandle, target: .flutter, channel: "factoryName()", method: "run",
+            isDynamic: true, location: .init(path: "/p/Plugin.swift", line: 3, column: 1))
+        let document = BridgeFactsDocument(tool: .init(name: "cartograph", version: "test"),
+            generatedAt: "t", project: "/p", facts: [fact])
+        #expect(document.limitations.contains {
+            $0.hasPrefix("dynamic-method-names: 1") && $0.contains("channel or method name")
+        })
+        #expect(!document.limitations.contains { $0.contains("branch on a non-literal name") })
+    }
+
     @Test("Objective-C 식별자는 정확하고 유일한 Clang 선언에서만 붙인다")
     func objectiveCIndexIdentity() {
         let fact = BridgeFact(kind: .methodHandle, target: .flutter, channel: "A", method: "run",

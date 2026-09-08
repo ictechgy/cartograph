@@ -64,7 +64,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.8.2
+mint install ictechgy/cartograph@0.9.0
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -72,7 +72,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.8.2"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.9.0"),
 ```
 
 ```bash
@@ -412,7 +412,7 @@ Objective-C), attaches the USR the index has for the enclosing declaration, and 
 `bridge-facts` exchange format that [isthmus](../isthmus) joins with the other platform's facts.
 
 
-The unreleased v1 extension adds optional `limitationScopes`, each binding a `limitationIndex`
+The v1 extension in 0.9.0 adds optional `limitationScopes`, each binding a `limitationIndex`
 to an exact `channels` array. This is an upper bound on the entire gap, never a list of names
 merely found in unread code. External-object or factory-supplied Swift handlers produce a scoped
 `opaque-handler-bodies` gap only when every affected registration channel is known. Any unknown
@@ -421,6 +421,10 @@ channel leaves that gap unscoped; unscoped gaps continue to apply to the whole t
 Swift bridge-name resolution follows immutable `let` aliases and parentheses within one file
 (up to 64 steps). Mutable strings, unknown shadowing bindings, operators, interpolation and cross-file values
 remain dynamic. See the [constant/Needle/storyboard checks](docs/scans/2026-09-analysis-blindspots.md).
+
+Cross-function value propagation is not implemented: parameters, returns, callbacks and async
+results remain unresolved bridge names. Query paths describe symbol dependencies. See the
+[interprocedural analysis check](docs/scans/2026-09-interprocedural-flow.md) for runtime comparisons and scope.
 
 Objective-C Flutter scanning supports direct channel construction, inline handler blocks and
 same-file registrar/delegate `handleMethodCall:result:` implementations, including file-local
@@ -455,7 +459,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.8.2" },
+  "tool" : { "name" : "cartograph", "version" : "0.9.0" },
   "version" : 1
 }
 ```

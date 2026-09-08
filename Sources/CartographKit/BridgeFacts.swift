@@ -199,13 +199,17 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         // isthmus 가 파싱한다면 같은 이름이어야 한다.
         let dynamicChannels = facts.count { $0.kind == .channelRegister && $0.isDynamic }
         if dynamicChannels > 0 {
-            result.append("dynamic-channel-names: \(dynamicChannels) channel constructors use a non-literal name")
+            result.append(
+                "dynamic-channel-names: \(dynamicChannels) channel-registration facts have a channel name "
+                    + "that could not be resolved statically"
+            )
         }
         let dynamicMethods = facts.count { $0.kind == .methodHandle && $0.isDynamic }
         if dynamicMethods > 0 {
             result.append(
-                "dynamic-method-names: \(dynamicMethods) method handlers branch on a non-literal name, "
-                    + "so they cannot be joined and are listed with their source expression"
+                "dynamic-method-names: \(dynamicMethods) method-handler facts have a channel or method name "
+                    + "that could not be resolved statically, so they cannot be joined "
+                    + "and are listed with their source expression"
             )
         }
         let unattributed = facts.count { $0.kind == .methodHandle && $0.channel == nil }
