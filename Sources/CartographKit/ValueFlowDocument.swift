@@ -38,7 +38,8 @@ struct ValueFlowSourceLoader {
     let projectPath: String
     let pathFilter: PathFilter
 
-    func load(snapshot raw: IndexSnapshot, cachedSources: [String: String]? = nil) -> (program: ValueFlowProgram, snapshot: IndexSnapshot) {
+    /// sourceSnapshot은 첫 읽기 전체의 고정된 입력이다. 누락 파일을 뒤늦게 읽어 버전을 섞지 않는다.
+    func load(snapshot raw: IndexSnapshot, sourceSnapshot: [String: String]? = nil) -> (program: ValueFlowProgram, snapshot: IndexSnapshot) {
         let snapshot = normalized(raw)
         let inventory = fileSystem.recursiveFiles(under: projectPath,
             isIncluded: { $0.hasSuffix(".swift") || $0.hasSuffix(".m") || $0.hasSuffix(".mm") },
@@ -51,6 +52,7 @@ struct ValueFlowSourceLoader {
         var fresh: Set<String> = []
         var seen: Set<String> = []
         var unreadable = 0
+        var uncaptured = 0
         var stale = 0
         var unindexed = 0
         var undated = 0
@@ -58,7 +60,10 @@ struct ValueFlowSourceLoader {
             let canonical = Self.canonicalPath(path)
             guard seen.insert(canonical).inserted else { continue }
             let source: String?
-            if let cachedSources { source = cachedSources[canonical] }
+            if let sourceSnapshot {
+                guard let captured = sourceSnapshot[canonical] else { uncaptured += 1; continue }
+                source = captured
+            }
             else { source = try? fileSystem.readText(at: path) }
             guard let source else {
                 unreadable += 1
@@ -75,7 +80,7 @@ struct ValueFlowSourceLoader {
                 } else { undated += 1 }
             } else { unindexed += 1 }
         }
-        let counts = [("unreadable-value-flow-sources", unreadable), ("stale-value-flow-sources", stale),
+        let counts = [("unreadable-value-flow-sources", unreadable), ("uncaptured-value-flow-sources", uncaptured), ("stale-value-flow-sources", stale),
             ("unindexed-value-flow-sources", unindexed), ("undated-value-flow-sources", undated),
             ("filtered-value-flow-sources", swiftFiles.count - paths.count),
             ("objective-c-value-flow-unavailable", inventory.count { !$0.hasSuffix(".swift") })]

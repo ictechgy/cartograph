@@ -26,4 +26,13 @@ struct ValueFlowValueTests {
         #expect(try encoder.encode(decoded) == data)
         #expect(decoded.singleString == nil)
     }
+    @Test("다른 문자열의 합류는 정규화 충돌이 아니라 두 가능한 값이다")
+    func distinctSpellings() {
+        let joined = ValueFlowValue(atoms: [.literal(.string("A"))]).joining(
+            ValueFlowValue(atoms: [.literal(.string("B"))]), limit: 32)
+        #expect(joined.atoms.count == 2)
+        #expect(joined.unknownReasons.isEmpty)
+        #expect(joined.singleString == nil)
+    }
+
 }

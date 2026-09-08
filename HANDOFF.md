@@ -2,7 +2,7 @@
 
 ## 2026-09-09 — 함수 간 값 흐름과 동일 코퍼스 실측
 
-`feat/interprocedural-value-flow`에 구현·검증을 마쳤다. GLM 리뷰와 PR의 CI 확인 후 병합을 진행한다.
+`feat/interprocedural-value-flow`에 구현·검증을 마쳤다. [PR #69](https://github.com/ictechgy/cartograph/pull/69)에서 GLM 전체·캡처·수정분 리뷰를 거쳤다.
 정식 0.9.0에 포함된 기능은 아니다. 새 `dataflow <함수>`는 심볼 그래프와 별도로 실제 callee USR,
 호출별 인자/반환, 캡처·inout·필드·공유 상태 효과와 고정점/예산을 내보낸다. 브리지 이름은 신선한
 인덱스와 타입 문맥이 확인되고 모든 호출 문맥이 일치할 때만 보강한다. 서로 다른 wrapper 이름은
@@ -14,12 +14,13 @@ runtime 문자열·값 보존·taint·직접 리터럴·빌드/추출/질의 시
 생성·질의와 독립 재실행을 통과했으며 미지원으로 처리하지 않았다. Swift 전체 지원률이나 엔진
 순위를 주장하지 않는다. 재현은 `Scripts/benchmark-{cartograph,semgrep,codeql}.py`에 있다.
 
-802 tests, coverage 90.38%, CLI 계약, 실제 인덱스 코퍼스, build와 자기 분석 4종(타입 순환 포함)이
+812 tests, coverage 90.30%, CLI 계약, 실제 인덱스 코퍼스, build와 자기 분석 4종(타입 순환 포함)이
 통과했다. `Scripts/verify-analysis-blindspots.py`는 실행 채널 13개/소스 핸들러 12개에서 11개 정적
 이름과 1개 동적 wrapper를 확인하며, 커스텀 문자열 변환과 StaticString의 미상 처리도 실제로 검증한다.
 재귀 주소 누적·부수 효과 반례의 실패를 먼저 확인한 뒤 회귀 테스트로 고정했다.
 
-현재 단계는 GLM 리뷰, 지적 사항 검증·수정, PR의 CI 확인 및 main 병합이다. 새 분석은 유한한 String 중심 모델이며,
+GLM 지적별 재현·수정·오탐 근거는 [리뷰 기록](docs/scans/2026-09-value-flow-glm-review.md)에 있다.
+CI에는 실제 값 흐름·브리지 실행 하네스도 포함했다. 다음 단계는 정식 릴리스 범위 결정이다. 새 분석은 유한한 String 중심 모델이며,
 지원 경계와 보수적인 미상 처리는 실측 보고서 및 README의 dataflow 절을 참고한다.
 
 ## 2026-09-08 — 0.9.0 배포 완료

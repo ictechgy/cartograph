@@ -721,7 +721,7 @@ public struct CartographService: Sendable {
         }
         if hasFreshDynamicFact {
             let loaded = ValueFlowSourceLoader(fileSystem: environment.fileSystem, projectPath: projectPath,
-                pathFilter: configuration.pathFilter).load(snapshot: snapshot, cachedSources: sourceCache)
+                pathFilter: configuration.pathFilter).load(snapshot: snapshot, sourceSnapshot: sourceCache)
             let graph = ValueFlowAnalyzer().analyze(loaded.program)
             let resolved = ValueFlowBridgeConstants().resolve(in: graph)
             if !resolved.isEmpty {

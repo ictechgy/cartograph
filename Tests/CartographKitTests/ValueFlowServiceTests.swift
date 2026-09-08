@@ -102,9 +102,19 @@ struct ValueFlowServiceTests {
             location: .init(path: path, line: 1, column: 13))
         let loaded = ValueFlowSourceLoader(fileSystem: files, projectPath: "/p", pathFilter: .passthrough)
             .load(snapshot: .init(symbols: [symbol], indexedFileDates: [path: Date(timeIntervalSince1970: 2)]),
-                  cachedSources: [path: source])
+                  sourceSnapshot: [path: source])
         #expect(loaded.program.functions.first?.symbolUSR == "s:name")
         #expect(loaded.program.functions.first?.unavailableReason == nil)
+        #expect(!loaded.program.limitations.contains { $0.contains("unreadable") })
+    }
+
+    @Test("고정한 소스 스냅샷에 없는 파일은 읽기 실패와 구별해 보고한다")
+    func sourceSnapshotMiss() {
+        let files = InMemoryFileSystem(currentDirectoryPath: "/p", files: [path: source])
+        let loaded = ValueFlowSourceLoader(fileSystem: files, projectPath: "/p", pathFilter: .passthrough)
+            .load(snapshot: .init(), sourceSnapshot: [:])
+        #expect(loaded.program.functions.isEmpty)
+        #expect(loaded.program.limitations.contains("uncaptured-value-flow-sources: 1 file(s)"))
         #expect(!loaded.program.limitations.contains { $0.contains("unreadable") })
     }
 

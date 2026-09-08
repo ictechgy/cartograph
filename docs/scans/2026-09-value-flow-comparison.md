@@ -145,7 +145,7 @@ python3 Scripts/verify-analysis-blindspots.py .build/out/Products/Debug/cartogra
 
 ## 저장소 검증
 
-802 tests와 coverage 90.38%를 통과했다. CLI 종료 코드 계약, 실제 인덱스 픽스처, 빌드 및
+812 tests와 coverage 90.30%를 통과했다. CLI 종료 코드 계약, 실제 인덱스 픽스처, 빌드 및
 `dead`·모듈/타입 `cycles`·`rules --strict`도 모두 통과했다. 변경은 개발 브랜치의 작업트리에
 있으며 아직 정식 릴리스에 포함되지 않았다.
 
