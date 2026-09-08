@@ -1,5 +1,11 @@
 # Handoff
 
+## 2026-09-09 — 0.10.0 릴리스
+
+PR #69의 함수 간 값 흐름과 GLM 리뷰 보완을 0.10.0으로 묶는다. 기존 query 및 bridge-facts v1
+교환 스키마는 유지한다. 설치 예제·버전 상수·CHANGELOG를 함께 갱신하며, 유니버설 바이너리와
+Homebrew 배포 검증은 릴리스 PR에 기록한다. 정량 비교와 지원 경계는 아래 실측 보고서에 있다.
+
 ## 2026-09-09 — 함수 간 값 흐름과 동일 코퍼스 실측
 
 `feat/interprocedural-value-flow`에 구현·검증을 마쳤다. [PR #69](https://github.com/ictechgy/cartograph/pull/69)에서 GLM 전체·캡처·수정분 리뷰를 거쳤다.
