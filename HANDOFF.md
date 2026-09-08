@@ -1,6 +1,19 @@
 # Handoff
 
 
+## 2026-09-08 — 후속 상수·Needle·스토리보드 점검
+
+브리지 PR [#65](https://github.com/ictechgy/cartograph/pull/65)와 소비자
+[isthmus #25](https://github.com/ictechgy/isthmus/pull/25)는 CI 전체 통과 상태다.
+그 위의 `fix/bridge-constant-resolution`은 불변 별칭·괄호 해석과 잘못된 전역 상수 차용을 고친다.
+매개변수·캡처·계산 프로퍼티·가변 이름은 모르는 값으로 남긴다. 연산자·보간·다른 파일은 미지원이다.
+[실측 문서](docs/scans/2026-09-analysis-blindspots.md)와 네트워크 없는
+`Scripts/verify-analysis-blindspots.py`에 재현을 남겼다. 실제 NeedleFoundation의 기본·동적 모드는
+둘 다 실행과 도달성을 확인했다. 생성 파일 제외 시 살아 있는 제공 프로퍼티가 미도달로 나오는
+입력 공백도 확인했다. IB는 customClass를 포괄 보존하며 identifier별 usedBy 경로를 만들지 않는다.
+724 tests, coverage 93.83%, CLI·코퍼스·자기 분석 필수 게이트와 실제 재현 하네스를 통과했다.
+
+
 ## 2026-09-08 — issue #64 브리지 범위 확장 (리뷰 준비)
 
 `feat/bridge-coverage-scopes`에서 선택적 v1 `limitationScopes`와 Objective-C 구현 표식,

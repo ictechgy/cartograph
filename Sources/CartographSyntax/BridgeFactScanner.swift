@@ -118,20 +118,22 @@ struct ResolvedName: Hashable {
 /// 채널 인자는 바인딩 시점의 문맥과 함께 저장하고 2차 패스에서 그 문맥으로 해석한다.
 /// 1차 패스에서 해석하면 아래에 선언된 상수를 못 본다.
 enum BoundValue: Equatable {
-    case literal(String)
+    case constant(expression: ExprSyntax, scopes: [Int], enclosingTypes: [String])
     case channel(argument: ExprSyntax, scopes: [Int], enclosingTypes: [String])
     /// 이 파일이 선언한 타입의 인스턴스(`let instance = CameraPlugin()`).
     case instance(typeName: String)
     /// 리터럴도 채널도 아닌 값. 이 이름이 이 스코프에서 그 값을 가리키므로 바깥의 동명 상수를
     /// 대신 쓰면 안 된다. 그림자다.
     case opaque
+    /// 선언은 알지만 아직 초기화 대입을 만나지 않았다. 계산 프로퍼티와 구분한다.
+    case uninitialized
 
     static func == (lhs: BoundValue, rhs: BoundValue) -> Bool {
         switch (lhs, rhs) {
-        case let (.literal(a), .literal(b)): a == b
+        case let (.constant(a, sa, ta), .constant(b, sb, tb)): a.id == b.id && sa == sb && ta == tb
         case let (.channel(a, sa, ta), .channel(b, sb, tb)): a.id == b.id && sa == sb && ta == tb
         case let (.instance(a), .instance(b)): a == b
-        case (.opaque, .opaque): true
+        case (.opaque, .opaque), (.uninitialized, .uninitialized): true
         default: false
         }
     }
@@ -139,9 +141,8 @@ enum BoundValue: Equatable {
 
 /// 파일 안의 문자열 상수와 채널 변수를 모은다.
 ///
-/// 한 단계만 따라간다. `static let name = "…"` 을 `FlutterMethodChannel(name: Self.name)` 에
-/// 넣는 것은 흔하고, 그것을 놓치면 채널 대부분이 `dynamic` 으로 나온다. 두 단계
-/// 이상(상수가 다른 상수를 참조)은 드물고, 그 경우는 정직하게 `dynamic` 으로 남긴다.
+/// 불변 별칭은 선언 문맥에서 제한된 깊이까지 따라간다. 가변 값·계산 프로퍼티·연산자는
+/// 실행이나 타입 해석 없이 값을 확정할 수 없으므로 `dynamic` 으로 남긴다.
 ///
 /// 이름은 선언된 자리로 구분한다. 지역 이름은 그것을 선언한 함수·클로저의 키로,
 /// 멤버는 타입의 키로, 나머지는 파일 최상위로. 같은 키에 다른 값이 두 번 오면 `nil`
@@ -246,11 +247,49 @@ final class BindingCollector: SyntaxVisitor {
     // MARK: 바인딩 수집
 
     override func visit(_ node: PatternBindingSyntax) -> SyntaxVisitorContinueKind {
-        guard let name = node.pattern.as(IdentifierPatternSyntax.self)?.identifier.text,
-              let value = node.initializer?.value
-        else { return .visitChildren }
-        bind(name: DeclarationCollector.unescaped(name), to: value, isLocal: DeclarationCollector.isInsideBody(node))
+        guard let name = node.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else { return .visitChildren }
+        let local = DeclarationCollector.isInsideBody(node)
+        guard let value = node.initializer?.value else {
+            shadow(name, isLocal: local, uninitialized: node.accessorBlock == nil)
+            return .visitChildren
+        }
+        let declaration = node.parent?.parent?.as(VariableDeclSyntax.self)
+        bind(name: DeclarationCollector.unescaped(name), to: value, isLocal: local,
+             immutable: declaration?.bindingSpecifier.tokenKind == .keyword(.let) && node.accessorBlock == nil)
         return .visitChildren
+    }
+
+    override func visit(_ node: FunctionParameterSyntax) -> SyntaxVisitorContinueKind {
+        shadow((node.secondName ?? node.firstName).text, isLocal: true)
+        return .visitChildren
+    }
+
+    override func visit(_ node: ClosureParameterSyntax) -> SyntaxVisitorContinueKind {
+        shadow((node.secondName ?? node.firstName).text, isLocal: true)
+        return .visitChildren
+    }
+
+    override func visit(_ node: ClosureShorthandParameterSyntax) -> SyntaxVisitorContinueKind {
+        shadow(node.name.text, isLocal: true)
+        return .visitChildren
+    }
+
+    override func visit(_ node: ClosureCaptureSyntax) -> SyntaxVisitorContinueKind {
+        shadow(node.name.text, isLocal: true)
+        return .visitChildren
+    }
+
+    override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
+        // if/guard let, for, switch와 튜플 패턴은 값을 모르지만 동명 바깥 상수를 가린다.
+        if node.parent?.is(PatternBindingSyntax.self) != true { shadow(node.identifier.text, isLocal: true) }
+        return .visitChildren
+    }
+
+    private func shadow(_ name: String, isLocal: Bool, uninitialized: Bool = false) {
+        let name = DeclarationCollector.unescaped(name)
+        guard name != "_" else { return }
+        let key = isLocal ? Self.localKey(name, scope: scopes.last) : (typeNames + [name]).joined(separator: ".")
+        bindings[key] = uninitialized && bindings[key] == nil ? .some(.uninitialized) : .some(nil)
     }
 
     /// `channel = FlutterMethodChannel(...)` 처럼 대입으로 채널을 만드는 경우. `init` 안이 흔하다.
@@ -389,22 +428,23 @@ final class BindingCollector: SyntaxVisitor {
         handlerFunctions[Self.handlerKey(name, enclosingTypes: typeNames), default: []].append((receiver, scopes, typeNames))
     }
 
-    private func bind(name: String, to value: ExprSyntax, isLocal: Bool) {
+    private func bind(name: String, to value: ExprSyntax, isLocal: Bool, immutable: Bool = false) {
         let bound: BoundValue
-        if let literal = Self.stringLiteral(value) {
-            bound = .literal(literal)
-        } else if let argument = Self.channelNameArgument(value) {
+        if let argument = Self.channelNameArgument(value) {
             bound = .channel(argument: argument, scopes: scopes, enclosingTypes: typeNames)
         } else if let call = value.as(FunctionCallExprSyntax.self), let last = Self.calleeName(of: call),
                   last.first?.isUppercase == true, !BridgeChannels.all.contains(last) {
             // 대문자 호출은 생성자로 본다. 다른 모듈의 타입이면 어느 지역 타입 사슬에도 맞지 않는다.
             bound = .instance(typeName: Self.dottedTypeName(of: call.calledExpression))
+        } else if immutable {
+            bound = .constant(expression: value, scopes: scopes, enclosingTypes: typeNames)
         } else {
             bound = .opaque
         }
         let key = isLocal ? Self.localKey(name, scope: scopes.last) : (typeNames + [name]).joined(separator: ".")
         if let existing = bindings[key] {
-            if existing != bound { bindings[key] = .some(nil) }
+            if existing == .uninitialized { bindings[key] = bound }
+            else if existing != bound { bindings[key] = .some(nil) }
         } else {
             bindings[key] = bound
         }
@@ -475,14 +515,22 @@ final class BindingCollector: SyntaxVisitor {
     ///
     /// - `name`: 감싸는 클로저·함수에서 바깥으로, 그다음 감싸는 타입에서 바깥으로, 마지막으로
     ///   파일 최상위. 리터럴이 아닌 값에 걸리면 거기서 멈춘다. 그 이름은 그 값이다.
-    /// - `Self.name`, `self.name`: 감싸는 타입에서 바깥으로, 마지막으로 파일 최상위.
+    /// - `Self.name`, `self.name`: 현재 타입의 선언만. 상속이나 바깥 타입의 값을 추측하지 않는다.
     /// - `Type.name`: 이 파일이 선언하거나 확장한 `Type` 의 상수만.
     /// - `.name`(암시적 멤버): 수신자 타입은 `String` 이지 이 파일의 어떤 타입도 아니다.
     ///   구문만으로는 어느 확장의 상수인지 알 수 없으므로 `dynamic`.
     func resolveString(_ expression: ExprSyntax, in context: Context) -> ResolvedName {
-        if let literal = Self.stringLiteral(expression) { return .literal(literal) }
-        if case let .literal(value)?? = constantBinding(for: expression, in: context) { return .literal(value) }
+        if let value = constantString(expression, in: context, remaining: 64) { return .literal(value) }
         return .dynamic(expression.trimmedDescription)
+    }
+
+    /// 순환·지나치게 긴 별칭은 중단한다. 연산자 오버로드와 함수 호출 결과는 평가하지 않는다.
+    private func constantString(_ expression: ExprSyntax, in context: Context, remaining: Int) -> String? {
+        guard remaining > 0 else { return nil }
+        let expression = Self.unparenthesized(expression)
+        if let literal = Self.stringLiteral(expression) { return literal }
+        guard case let .constant(value, scopes, types)?? = constantBinding(for: expression, in: context) else { return nil }
+        return constantString(value, in: Context(scopes: scopes, enclosingTypes: types), remaining: remaining - 1)
     }
 
     private func constantBinding(for expression: ExprSyntax, in context: Context) -> BoundValue?? {
@@ -493,9 +541,13 @@ final class BindingCollector: SyntaxVisitor {
               let base = member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text
         else { return nil }
         let name = DeclarationCollector.unescaped(member.declName.baseName.text)
-        if base == "Self" || base == "self" { return binding(named: name, in: context, membersOnly: true) }
+        if base == "Self" || base == "self" {
+            guard !context.enclosingTypes.isEmpty else { return nil }
+            return bindings[(context.enclosingTypes + [name]).joined(separator: ".")]
+        }
         let type = DeclarationCollector.unescaped(base)
-        guard declaredTypeNames.contains(type) else { return nil }
+        guard declaredTypeNames.contains(type),
+              binding(named: type, in: context, membersOnly: false) == nil else { return nil }
         return bindings[type + "." + name]
     }
 

@@ -401,6 +401,10 @@ SwiftSyntax 로(Objective-C 는 텍스트로) 소스에서 읽고, 감싸는 선
 등록 채널을 모두 알 때만 `opaque-handler-bodies` 범위를 좁힙니다. 하나라도 모르면 기존
 전체 target 범위를 유지하며, 다른 범위 불명 공백을 덮어쓰지 않습니다.
 
+Swift 브리지 이름은 같은 파일의 불변 `let` 별칭과 괄호를 최대 64단계 따라갑니다. 가변 값,
+값을 모르는 가림 선언, 연산자·보간·다른 파일의 값은 dynamic으로 남깁니다.
+[상수·Needle·스토리보드 실측](docs/scans/2026-09-analysis-blindspots.md)에 지원 범위와 입력 공백을 정리했습니다.
+
 ObjC Flutter 스캔은 직접 채널 생성, 인라인 블록, 같은 파일의 registrar 위임과
 `handleMethodCall:result:`를 지원합니다. 파일 범위의 불변 `NSString *const` 이름도 한 단계
 풉니다. 긍정 `isEqualToString:` 분기는 `sourceLanguage: "objective-c"` 사실이 되며 Swift

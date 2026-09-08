@@ -22,6 +22,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Resolve immutable Swift bridge-name aliases and parentheses in their declaration scope, with a
+  bounded depth. Parameters, captures, patterns, computed properties and mutable strings no longer
+  borrow a misleading outer constant. Operators and cross-file values remain dynamic.
+
 - The preserved flutter_local_notifications notes classify 19 of the reported 20 issues. The
   remaining one is now explicitly unclassified instead of presenting an inconsistent complete split.
 
