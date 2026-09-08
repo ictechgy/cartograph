@@ -37,6 +37,7 @@ Cartograph를 한 문장으로 줄이면 *"의존성 그래프를 내놓는다"*
 | 아키텍처 지표 | — | ✅ Ca, Ce, 불안정도, 추상도, 주계열 거리 |
 | CI에서 레이어 규칙 강제 | — | ✅ YAML로 쓰는 ArchUnit 방식 규칙 |
 | 이 심볼을 누가 쓰나? | 답할 수 없음 | `query`가 양방향을 JSON으로 답함 |
+| 값이 이 함수까지 어떻게 오나? | 답할 수 없음 | `dataflow`가 제한된 함수 간 문맥을 JSON으로 답함 |
 | Dart·JavaScript 쪽 호출자 | 보이지 않음 | `bridges`가 플랫폼 채널의 Swift 쪽을 내보내고 `--external-retentions`가 조인 결과를 읽어 옴 |
 | 그래프 내보내기 | — | ✅ DOT, Mermaid, JSON, 단일 HTML |
 | SARIF (code scanning) | — | ✅ |
@@ -378,6 +379,32 @@ $ cartograph query --batch requests.json
 `checkstyle` 만 예외다. 스키마에 파일의 오류가 아닌 자리가 없고 억지로 넣으면 소비자가 보는
 발견 수가 늘어난다. 한계가 필요하면 다른 형식과 함께 쓰라.
 
+### `dataflow` — 함수 경계를 넘는 값 흐름 추적
+
+```bash
+cartograph dataflow UserService.fetch
+cartograph dataflow Worker.run --max-contexts 1024 --max-iterations 20000
+cartograph dataflow 'Worker.run()' --call-depth 4
+```
+
+`dataflow`는 `query`와 다른 질문에 답한다. 심볼 그래프와 `dependsOn` 간선의 의미는 그대로
+두고, 요청한 함수 하나에 대해 제한된 별도 값 그래프를 만들어 항상 JSON으로 내보낸다. 응답에는
+호출 문맥 요약, 인자와 매개변수·반환과 호출 지점의 연결, 콜백, `inout` 쓰기, 필드 별칭이
+담긴다. 지원하지 않는 외부 호출이나 모호한 외부 선언을 건넌 값은 미상으로 남고, 오래된
+선언과 문맥·반복·값·힙 예산으로 잘린 결과도 그렇게 표시된다. 함수를 찾지 못하면 명시적인
+`notFound` 결과와 종료 코드 64를 내며, 알려진 진입 문맥이 없으면 입력과 외부 상태를 미상으로
+둔 명시적인 요청 문맥을 만든다.
+
+`selectedContexts`가 근거 그래프 안에서 요청한 함수의 문맥을 가리킨다. 각 문맥에는 호출 전후의
+메모리 효과가 담긴다. 동적 class 디스패치, 가변 값 타입, 상속 초기화, 관찰자·매크로, 미해결
+리터럴 타입은 미상으로 남긴다. `bridges`는 소스 표현식의 모든 분석 문맥이 같은 문자열일 때만
+계산된 이름을 사용한다. 서로 다른 이름으로 호출한 wrapper는 bridge-facts v1에서 동적으로
+남는다. [실측 범위와 비교](docs/scans/2026-09-value-flow-comparison.md)를 참고한다.
+
+기본값은 문맥 512개, 반복 10,000회, 노드당 값 32개, 힙 셀 10,000개, 추적할 호출 경로 깊이 2다.
+`--call-depth`는 1부터 8까지 받는다. `--level`, `--since`, `--report-format`은 거부한다.
+값 분석에는 별도 문맥 그래프가 있고 한 대상에 답하며 출력 형식은 JSON으로 고정되어 있기 때문이다.
+
 ### `bridges` — 언어 경계의 Swift 쪽 내보내기
 
 ```bash
@@ -595,7 +622,8 @@ cartograph dead --since origin/main --strict
 프로젝트 루트의 `.cartograph.yml`입니다. `cartograph init`으로 주석 달린 템플릿을 만드세요.
 커맨드라인 옵션이 언제나 파일보다 우선합니다. `level` 키를 읽는 것은 해상도로 그리는 명령
 (`graph`, `cycles`, `metrics`, `rules`)뿐입니다. 나머지에겐 아무 일도 안 합니다(`dead`·`query`는
-항상 심볼 레벨) — `--level` 플래그와 같고, 그쪽은 명령이 앞에서 거부합니다.
+항상 심볼 레벨이고 `dataflow`는 자체 값 문맥 그래프를 씁니다) — `--level` 플래그와 같고,
+그쪽은 명령이 앞에서 거부합니다.
 
 모르는 키는 오류 대신 경고로 알립니다. 오타 하나 때문에 빌드가 멈춰서는 안 되지만, 무엇이
 무시됐는지는 알려 줘야 하기 때문입니다.

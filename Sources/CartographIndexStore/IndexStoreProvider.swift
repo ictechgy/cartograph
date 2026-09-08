@@ -22,6 +22,8 @@ public struct IndexStoreProvider: IndexProviding {
         public var includeExternalSymbols: Bool
         /// 브리지 식별자를 읽을 때만 Clang 구현 파일도 포함한다.
         public var includeObjectiveCSources: Bool
+        /// 값 흐름에서 재귀 호출의 실제 USR을 잃지 않도록 자기 참조도 보존한다.
+        public var includeSelfReferences: Bool
 
         public init(
             storePath: String,
@@ -30,7 +32,8 @@ public struct IndexStoreProvider: IndexProviding {
             sourceRoots: [String],
             pathFilter: PathFilter = .passthrough,
             includeExternalSymbols: Bool = false,
-            includeObjectiveCSources: Bool = false
+            includeObjectiveCSources: Bool = false,
+            includeSelfReferences: Bool = false
         ) {
             self.storePath = storePath
             self.databasePath = databasePath
@@ -39,6 +42,7 @@ public struct IndexStoreProvider: IndexProviding {
             self.pathFilter = pathFilter
             self.includeExternalSymbols = includeExternalSymbols
             self.includeObjectiveCSources = includeObjectiveCSources
+            self.includeSelfReferences = includeSelfReferences
         }
     }
 
@@ -57,7 +61,8 @@ public struct IndexStoreProvider: IndexProviding {
         for path in paths {
             occurrences.append(contentsOf: database.symbolOccurrences(inFilePath: path))
         }
-        var snapshot = Self.snapshot(from: occurrences, includeExternalSymbols: configuration.includeExternalSymbols)
+        var snapshot = Self.snapshot(from: occurrences, includeExternalSymbols: configuration.includeExternalSymbols,
+                                     includeSelfReferences: configuration.includeSelfReferences)
         snapshot.indexedFileDates = Dictionary(uniqueKeysWithValues: paths.compactMap { path in
             database.dateOfLatestUnitFor(filePath: path).map { (path, $0) }
         })
@@ -93,7 +98,8 @@ public struct IndexStoreProvider: IndexProviding {
     /// 먼저 만난 것을 대표로 삼고 정렬로 결정성을 지킨다.
     static func snapshot(
         from occurrences: [SymbolOccurrence],
-        includeExternalSymbols: Bool
+        includeExternalSymbols: Bool,
+        includeSelfReferences: Bool = false
     ) -> IndexSnapshot {
         var symbolsByUSR: [String: IndexedSymbol] = [:]
         var definedUSRs: Set<String> = []
@@ -126,7 +132,7 @@ public struct IndexStoreProvider: IndexProviding {
                 }
                 if isDefinition { definedUSRs.insert(symbol.usr) }
             }
-            let occurrenceReferences = IndexStoreMapping.references(from: occurrence)
+            let occurrenceReferences = IndexStoreMapping.references(from: occurrence, includeSelfReferences: includeSelfReferences)
             references.append(contentsOf: occurrenceReferences)
 
             let location = IndexStoreMapping.sourceLocation(occurrence.location)
@@ -166,7 +172,8 @@ public struct IndexStoreProvider: IndexProviding {
         // 접근자와 프로퍼티 래퍼 곁가지를 모두 원래 선언으로 되돌린다.
         let owners = IndexStoreMapping.accessorOwners(in: occurrences)
             .merging(IndexStoreMapping.propertyWrapperFacets(in: Array(symbolsByUSR.values))) { first, _ in first }
-        let resolved = IndexStoreMapping.resolvingSynthesizedSymbols(references, owners: owners)
+        let resolved = IndexStoreMapping.resolvingSynthesizedSymbols(references, owners: owners,
+                                                                    includeSelfReferences: includeSelfReferences)
 
         // 심볼은 정렬한다. 사전으로 접을 때 같은 USR 이 겹치면 앞의 것이 이기므로
         // 순서가 결과에 남는다. 참조는 정렬하지 않는다 — `CodeGraph.init` 이 간선을

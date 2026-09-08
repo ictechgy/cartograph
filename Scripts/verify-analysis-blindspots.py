@@ -291,10 +291,24 @@ def interprocedural(binary, root):
     methods = [fact for fact in facts["facts"] if fact["kind"] == "method-handle"]
     assert len(methods) == 12, methods
     assert len([fact for fact in methods if fact["method"] == "wrapped"]) == 1
+    expected_channels = {"control": "control", "literalReturn": "literal-return",
+        "identityA": "A", "identityB": "B", "nestedReturn": "literal-return", "callbackReturn": "callback",
+        "recursiveReturn": "recursive", "protocolReturn": "provider-A", "asyncReturn": "async",
+        "discardedInput": "fixed", "mutated": "overwritten"}
     for fact in methods:
-        assert fact["dynamic"] == (fact["method"] != "control"), fact
-    assert any(item.startswith("dynamic-method-names: 11") and "channel or method name" in item
+        assert fact["dynamic"] == (fact["method"] == "wrapped"), fact
+        if fact["method"] in expected_channels:
+            assert fact["channel"] == expected_channels[fact["method"]], fact
+    assert any(item.startswith("dynamic-method-names: 1 ") and "channel or method name" in item
                for item in facts["limitations"]), facts["limitations"]
+    wrapped = json.loads(run([str(binary), "dataflow", "registerName", "--project", str(root)], root))
+    selected = set(wrapped["selectedContexts"])
+    names = {atom["literal"]["_0"]["string"]["_0"]
+             for context in wrapped["graph"]["contexts"] if context["id"] in selected
+             for atom in context["arguments"][0]["atoms"]}
+    assert names == {"wrapped-A", "wrapped-B"}, wrapped
+    assert not wrapped["graph"]["truncated"], wrapped
+    write(root, "wrapped-contexts.json", json.dumps(wrapped, indent=2))
     observations = {}
     for subject in ["leaf", "middle", "callbackLeaf", "recursiveName", "unusedLeaf", "ProviderA", "ProviderB"]:
         document = query(binary, root, subject, store)
@@ -311,7 +325,48 @@ def interprocedural(binary, root):
     write(root, "runtime.json", json.dumps(runtime, indent=2))
     write(root, "reachability.json", json.dumps(observations, indent=2))
     return {"runtimeValues": runtime[1:], "sourceMethodFacts": len(methods),
-            "unresolvedValueFacts": 11, "symbolReachability": observations}
+            "unresolvedValueFacts": 1, "symbolReachability": observations}
+
+def contextual_literals(binary, root):
+    write(root, "Package.swift", '// swift-tools-version: 5.10\nimport PackageDescription\n'
+          'let package = Package(name: "LiteralProbe", targets: [.executableTarget(name: "LiteralProbe")])\n')
+    write(root, "Sources/LiteralProbe/App.swift", '''
+struct Token: ExpressibleByStringLiteral {
+    let value: String
+    init(stringLiteral value: String) { self.value = "converted" }
+}
+func nativeString() -> String { "source" }
+func convertedString() -> Token { "source" }
+func staticString() -> StaticString { "source" }
+func acceptsStatic(_ value: StaticString) -> StaticString { value }
+@main struct App {
+    static func main() {
+        print(nativeString())
+        print(convertedString().value)
+        print(staticString())
+        print(acceptsStatic("source"))
+    }
+}
+''')
+    store = build(root)
+    runtime = run([str(store / "Products/Debug/LiteralProbe")], root).splitlines()
+    assert runtime == ["source", "converted", "source", "source"], runtime
+    results = {}
+    for name in ["nativeString", "convertedString", "staticString", "acceptsStatic"]:
+        document = json.loads(run([str(binary), "dataflow", name, "--project", str(root)], root))
+        contexts = [context for context in document["graph"]["contexts"]
+                    if context["id"] in document["selectedContexts"]]
+        assert contexts and not document["graph"]["truncated"], document
+        if name == "nativeString":
+            assert all(context["result"]["atoms"] == [{"literal": {"_0": {"string": {"_0": "source"}}}}]
+                       and not context["result"]["unknownReasons"] for context in contexts), contexts
+        else:
+            assert all(context["result"]["unknownReasons"] for context in contexts), contexts
+        results[name] = [context["result"] for context in contexts]
+    write(root, "runtime.json", json.dumps(runtime, indent=2))
+    write(root, "value-results.json", json.dumps(results, indent=2))
+    return {"nativeString": "source", "customLiteral": "unknown", "staticString": "unknown"}
+
 
 def main():
     parser = argparse.ArgumentParser(description="Verify bounded analysis cases with real Swift indices; no downloads.")
@@ -321,7 +376,8 @@ def main():
     root = Path(tempfile.mkdtemp(prefix="cartograph-analysis-probe-"))
     binary = args.binary.resolve()
     results = {"local": constants_and_ib(binary, root / "local"),
-               "interprocedural": interprocedural(binary, root / "interprocedural")}
+               "interprocedural": interprocedural(binary, root / "interprocedural"),
+               "contextualLiterals": contextual_literals(binary, root / "contextual-literals")}
     if args.needle_source:
         results["needle"] = needle(binary, root / "needle", args.needle_source.resolve())
     else:

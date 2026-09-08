@@ -682,7 +682,9 @@ public struct CartographService: Sendable {
         // 빈 인덱스 가드를 지나지 않는다. `bridges` 는 구문 스캔이 본체이고 인덱스는
         // USR 을 붙이는 데만 쓴다. 공개 플러그인 스캔은 인덱스 기여가 0인 상태로 도는
         // 것이 정상이라, 여기서 실패하면 그 용법이 통째로 막힌다.
-        let resolver = BridgeSymbolResolver(snapshot: try makeIndexSource(includeObjectiveCSources: true).provider.loadSnapshot())
+        let snapshot = try makeIndexSource(includeObjectiveCSources: true, includeExternalSymbols: true)
+            .provider.loadSnapshot()
+        let resolver = BridgeSymbolResolver(snapshot: snapshot)
         let sources = bridgeSourceFiles()
         var facts: [BridgeFact] = []
         var unreadable = 0
@@ -704,6 +706,31 @@ public struct CartographService: Sendable {
                 let scanned = ObjectiveCFlutterScanner().scan(source: source, path: path)
                 facts += resolver.resolve(scanned.scannedFacts)
                 opaqueHandlerChannels += scanned.opaqueHandlerChannels
+            }
+        }
+        if facts.contains(where: \.isDynamic) {
+            let loaded = ValueFlowSourceLoader(fileSystem: environment.fileSystem, projectPath: projectPath,
+                pathFilter: configuration.pathFilter).load(snapshot: snapshot)
+            let graph = ValueFlowAnalyzer().analyze(loaded.program)
+            let resolved = ValueFlowBridgeConstants().resolve(in: graph)
+            if !resolved.isEmpty {
+                // 원래 사실을 위치별로 덧대지 않고 다시 스캔해 채널 바인딩과 핸들러가 같은 이름을 쓴다.
+                facts.removeAll()
+                opaqueHandlerChannels.removeAll()
+                for path in sources {
+                    guard let source = try? environment.fileSystem.readText(at: path) else { continue }
+                    if path.hasSuffix(".swift") {
+                        let canonical = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+                        let scanned = BridgeFactScanner().scan(source: source, path: canonical, resolvedValues: resolved)
+                        facts += resolver.resolve(scanned.facts)
+                        opaqueHandlerChannels += scanned.opaqueHandlerChannels
+                    } else {
+                        facts += ReactNativeMacroScanner().scan(source: source, path: path)
+                        let scanned = ObjectiveCFlutterScanner().scan(source: source, path: path)
+                        facts += resolver.resolve(scanned.scannedFacts)
+                        opaqueHandlerChannels += scanned.opaqueHandlerChannels
+                    }
+                }
             }
         }
         let selectedFacts = target.map { selected in
@@ -731,6 +758,49 @@ public struct CartographService: Sendable {
             extraLimitations: extraLimitations,
             opaqueHandlerChannels: includesFlutter ? opaqueHandlerChannels : []
         )
+    }
+
+    /// 구문 값 그래프를 실제 컴파일러 대상과 연결해 호출별 요약을 질의한다.
+    public func valueFlowDocument(symbol subject: String, limits: ValueFlowLimits = ValueFlowLimits()) throws
+        -> ValueFlowDocument {
+        let source = try makeIndexSource(includeExternalSymbols: true)
+        let raw = try source.provider.loadSnapshot()
+        let loaded = ValueFlowSourceLoader(fileSystem: environment.fileSystem, projectPath: projectPath,
+            pathFilter: configuration.pathFilter).load(snapshot: raw)
+        let symbols = AnalysisContext(snapshot: loaded.snapshot, pathFilter: configuration.pathFilter)
+            .buildGraph(level: .symbol).graph
+        let lookup = GraphQueryIndex(graph: symbols).resolve(subject)
+        let empty = ValueFlowGraph(contexts: [], nodes: [], edges: [],
+            limitations: loaded.program.limitations, iterations: 0, truncated: false)
+        switch lookup {
+        case .notFound:
+            return ValueFlowDocument(subject: subject, status: "notFound", limits: limits, graph: empty)
+        case let .ambiguous(candidates):
+            return ValueFlowDocument(subject: subject, status: "ambiguous",
+                candidates: candidates.map { $0.usr ?? $0.id.rawValue }.sorted(), limits: limits, graph: empty)
+        case let .found(node):
+            let targets = loaded.program.functions.filter { $0.symbolUSR == node.usr && node.usr != nil }
+            guard !targets.isEmpty else {
+                return ValueFlowDocument(subject: subject, status: "unavailable", symbolUSR: node.usr,
+                    limits: limits, graph: empty)
+            }
+            let ids = Set(targets.map(\.id))
+            let analyzer = ValueFlowAnalyzer(limits: limits)
+            var graph = analyzer.analyze(loaded.program)
+            if !graph.contexts.contains(where: { ids.contains($0.function) }) {
+                graph = analyzer.analyze(loaded.program, roots: ids.sorted())
+            }
+            return ValueFlowDocument(subject: subject,
+                status: targets.allSatisfy { $0.unavailableReason != nil } ? "unavailable" : "found",
+                symbolUSR: node.usr, selectedContexts: graph.contexts.filter { ids.contains($0.function) }.map(\.id),
+                limits: limits, graph: graph)
+        }
+    }
+
+    /// JSON 결과를 출력하되 없는 심볼은 기존 조회와 같은 사용 오류로 표시한다.
+    public func dataflow(symbol: String, limits: ValueFlowLimits = ValueFlowLimits()) throws -> CommandOutcome {
+        let document = try valueFlowDocument(symbol: symbol, limits: limits)
+        return CommandOutcome(output: try Self.encodeSortedJSON(document), subjectNotFound: document.status == "notFound")
     }
 
     /// `bridges` 명령. 항상 JSON 이다. 소비자는 사람이 아니라 isthmus 다.
@@ -1011,7 +1081,7 @@ public struct CartographService: Sendable {
         let origin: EmptyIndexFacts.StoreOrigin
     }
 
-    private func makeIndexSource(includeObjectiveCSources: Bool = false) throws -> IndexSource {
+    private func makeIndexSource(includeObjectiveCSources: Bool = false, includeExternalSymbols: Bool = false) throws -> IndexSource {
         if let override = environment.indexProviderOverride {
             // 주입된 공급자에는 스토어가 없다. 모르는 것을 아는 척하지 않는다.
             return IndexSource(
@@ -1043,7 +1113,9 @@ public struct CartographService: Sendable {
                 libraryPath: libraryPath,
                 sourceRoots: [projectPath],
                 pathFilter: configuration.pathFilter,
-                includeObjectiveCSources: includeObjectiveCSources
+                includeExternalSymbols: includeExternalSymbols,
+                includeObjectiveCSources: includeObjectiveCSources,
+                includeSelfReferences: includeExternalSymbols
             ),
             fileSystem: environment.fileSystem
         )

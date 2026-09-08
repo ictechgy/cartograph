@@ -108,14 +108,15 @@ public enum IndexStoreMapping {
     /// libIndexStore 의 관계 역할은 언제나 "발생 심볼이 관련 심볼에 대해 갖는 관계"로
     /// 읽는다. 예컨대 `baseOf` 는 "발생 심볼이 관련 심볼의 기반"이라는 뜻이므로
     /// 간선은 관련 심볼(파생) → 발생 심볼(기반) 방향이 된다.
-    public static func references(from occurrence: SymbolOccurrence) -> [IndexedReference] {
+    public static func references(from occurrence: SymbolOccurrence, includeSelfReferences: Bool = false)
+        -> [IndexedReference] {
         let location = sourceLocation(occurrence.location)
         let subject = occurrence.symbol
         var result: [IndexedReference] = []
 
         for relation in occurrence.relations {
             let other = relation.symbol.usr
-            guard other != subject.usr else { continue }
+            guard other != subject.usr || includeSelfReferences else { continue }
 
             if relation.roles.contains(.baseOf) {
                 let kind: EdgeKind = subject.kind == .protocol ? .conformance : .inheritance
@@ -278,13 +279,14 @@ public enum IndexStoreMapping {
     /// 투영값이 자기 저장소를 읽는 것은 의존 관계가 아니다.
     public static func resolvingSynthesizedSymbols(
         _ references: [IndexedReference],
-        owners: [String: String]
+        owners: [String: String],
+        includeSelfReferences: Bool = false
     ) -> [IndexedReference] {
         guard !owners.isEmpty else { return references }
         return references.compactMap { reference in
             let source = owners[reference.sourceUSR] ?? reference.sourceUSR
             let target = owners[reference.targetUSR] ?? reference.targetUSR
-            guard source != target else { return nil }
+            guard source != target || includeSelfReferences else { return nil }
             return IndexedReference(
                 sourceUSR: source, targetUSR: target, kind: reference.kind, location: reference.location
             )

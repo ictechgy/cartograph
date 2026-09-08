@@ -223,6 +223,21 @@ struct IndexStoreMappingTests {
         #expect(references[0].kind == .extends)
     }
 
+    @Test("값 흐름 스냅샷에서는 실제 재귀 호출 관계를 보존한다")
+    func selfReferencesForValueFlow() {
+        let recursive = occurrence(symbol("A"), roles: [.reference, .call],
+            relations: [SymbolRelation(symbol: symbol("A"), roles: .calledBy)])
+        let references = IndexStoreMapping.references(from: recursive, includeSelfReferences: true)
+        #expect(references.count == 1)
+        #expect(references.first?.sourceUSR == "A")
+        #expect(references.first?.targetUSR == "A")
+        #expect(references.first?.kind == .call)
+        let resolved = IndexStoreMapping.resolvingSynthesizedSymbols(references, owners: ["unused": "unused"],
+            includeSelfReferences: true)
+        #expect(resolved == references)
+        #expect(IndexStoreMapping.references(from: recursive).isEmpty)
+    }
+
     @Test("자기 자신을 향한 관계는 버린다")
     func selfRelationsAreDropped() {
         let references = IndexStoreMapping.references(
