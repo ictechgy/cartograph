@@ -40,6 +40,7 @@ What that buys you:
 | Architecture metrics | — | ✅ Ca, Ce, instability, abstractness, distance |
 | Layering rules in CI | — | ✅ ArchUnit-style rules in YAML |
 | Who uses this symbol? | not answerable | `query` answers both directions as JSON |
+| How does a value reach this function? | not answerable | `dataflow` returns bounded interprocedural contexts as JSON |
 | Callers in Dart or JavaScript | invisible | `bridges` exports the Swift side of a platform channel; `--external-retentions` reads the join back |
 | Graph export | — | ✅ DOT, Mermaid, JSON, self-contained HTML |
 | SARIF for code scanning | — | ✅ |
@@ -394,6 +395,33 @@ that changes the exit code or the finding count. `checkstyle` is the exception: 
 slot that is not a file's error, and adding one would raise the finding count its consumers show,
 so pair it with one of the others when you need the limitations.
 
+### `dataflow` — trace values across function boundaries
+
+```bash
+cartograph dataflow UserService.fetch
+cartograph dataflow Worker.run --max-contexts 1024 --max-iterations 20000
+cartograph dataflow 'Worker.run()' --call-depth 4
+```
+
+`dataflow` answers a different question from `query`. The symbol graph and its `dependsOn` edges keep
+their meaning; this command builds a separate, bounded value graph for one function and always emits
+JSON. The response includes context summaries, argument-to-parameter and return-to-call links,
+callbacks, `inout` writes, and field aliases. A value that crosses an unsupported or ambiguous external
+call remains unknown, as does a stale declaration or a result cut off by a context, iteration, value,
+or heap budget. A missing function is an explicit `notFound` result with exit code 64; a function with
+no known entry context gets an explicit requested context with unknown inputs and external state.
+
+`selectedContexts` identifies the requested function's contexts inside the evidence graph. Each context
+includes memory effects before and after the call. Unsupported dynamic class dispatch, mutable value
+types, inherited initialization, observers/macros, and unresolved literal types stay unknown. The
+`bridges` command uses a computed string only when all analyzed contexts at that source expression
+agree; a wrapper called with different names remains dynamic in bridge-facts v1. See the
+[measured scope and comparison](docs/scans/2026-09-value-flow-comparison.md).
+
+The defaults are 512 contexts, 10,000 iterations, 32 values per node, 10,000 heap cells, and call-string
+depth 2. `--call-depth` accepts 1 through 8. The command rejects `--level`, `--since`, and
+`--report-format`: value analysis has its own context graph, answers one subject, and is JSON-only.
+
 ### `bridges` — export native bridge evidence
 
 ```bash
@@ -618,8 +646,8 @@ history (`fetch-depth: 0`), or the revision will not resolve.
 `.cartograph.yml` in the project root. Run `cartograph init` for a commented template.
 Command-line options always win over the file. The `level` key is read only by the commands that
 render at a resolution (`graph`, `cycles`, `metrics`, `rules`); for the rest it is inert — `dead`
-and `query` always work at symbol level — just like the `--level` flag, which those commands refuse
-outright.
+and `query` always work at symbol level, while `dataflow` uses its own value context graph — just
+like the `--level` flag, which those commands refuse outright.
 
 ```yaml
 level: module

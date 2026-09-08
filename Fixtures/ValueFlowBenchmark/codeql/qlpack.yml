@@ -1,0 +1,6 @@
+name: cartograph/value-flow-benchmark
+version: 0.1.0
+library: false
+extractor: swift
+dependencies:
+  codeql/swift-all: 6.8.2

@@ -35,7 +35,7 @@ struct AnalysisLimitationCollector {
         }
         let objectiveCCount = count(".m", ".mm")
         let interfaceBuilderCount = count(".xib", ".storyboard")
-        let swiftFiles = files.filter { $0.hasSuffix(".swift") && !isPackageManifest($0) }
+        let swiftFiles = files.filter { $0.hasSuffix(".swift") && !Self.isPackageManifest($0, projectPath: projectPath) }
         let indexedDates = context?.snapshot.indexedFileDates
         let newerThanStore = swiftFiles.count { path in
             // 공급자가 파일별 시각을 줬다면 전체 스토어 시각으로 대체하지 않는다.
@@ -203,7 +203,7 @@ struct AnalysisLimitationCollector {
 
     /// 매니페스트는 타깃 소스가 아니라 SwiftPM 입력이다. 인덱스 유닛이 없는 것이 정상이다.
     /// Sources/Package.swift 같은 실제 타깃 파일까지 제외하지 않도록 프로젝트 루트만 가른다.
-    private func isPackageManifest(_ path: String) -> Bool {
+    static func isPackageManifest(_ path: String, projectPath: String) -> Bool {
         let name = (path as NSString).lastPathComponent
         guard name == "Package.swift" || (name.hasPrefix("Package@swift-") && name.hasSuffix(".swift"))
         else { return false }

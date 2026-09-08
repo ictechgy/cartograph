@@ -7,6 +7,18 @@ import Testing
 
 @Suite("브리지 사실 문서")
 struct BridgeFactsTests {
+    @Test("SDK 참조 위치를 브리지의 감싸는 선언으로 사용하지 않는다")
+    func externalOccurrenceIsNotADeclaration() {
+        let site = SourceLocation(path: "/p/Plugin.swift", line: 3, column: 6)
+        let fact = BridgeFact(kind: .methodHandle, target: .flutter, channel: "A", method: "run", location: site)
+        let declaration = EnclosingDeclaration(name: "install", indexName: "install()", qualifiedName: "install()", line: 3)
+        let external = IndexedSymbol(usr: "sdk:install", name: "install()", kind: .function,
+            module: "SDK", location: site, isExternal: true)
+        let resolved = BridgeSymbolResolver(snapshot: .init(symbols: [external]))
+            .resolve([ScannedBridgeFact(fact: fact, declaration: declaration)])
+        #expect(resolved.first?.symbol?.usr == nil)
+    }
+
     @Test("채널만 미해석인 핸들러를 동적 메서드 분기라고 단정하지 않는다")
     func dynamicChannelDoesNotImplyDynamicMethod() {
         let fact = BridgeFact(kind: .methodHandle, target: .flutter, channel: "factoryName()", method: "run",

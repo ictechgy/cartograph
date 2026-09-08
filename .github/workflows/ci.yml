@@ -97,6 +97,9 @@ jobs:
         run: |
           Scripts/verify-fixtures.sh "$CARTOGRAPH"
 
+      - name: Value-flow and bridge runtime regressions
+        run: python3 Scripts/verify-analysis-blindspots.py "$CARTOGRAPH"
+
       - name: Architecture rules
         run: |
           "$CARTOGRAPH" rules --strict

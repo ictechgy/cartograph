@@ -319,7 +319,7 @@ struct BridgeSymbolResolver {
     private let symbolsByPath: [String: [IndexedSymbol]]
 
     init(snapshot: IndexSnapshot) {
-        symbolsByPath = Dictionary(grouping: snapshot.symbols) { Self.canonical($0.location.path) }
+        symbolsByPath = Dictionary(grouping: snapshot.symbols.filter { !$0.isExternal }) { Self.canonical($0.location.path) }
     }
 
     func resolve(_ scanned: [ScannedBridgeFact]) -> [BridgeFact] {

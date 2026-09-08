@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Added `dataflow <symbol>`, a JSON-only, budgeted interprocedural value analysis. It preserves the
+  existing symbol graph semantics while exposing context summaries, argument/return, callback,
+  `inout`, and field-alias effects; unsupported, stale, ambiguous, and truncated paths remain explicit.
+
+- Bridge names can use compiler-bound interprocedural string results when every analyzed call context
+  agrees. Different wrapper arguments remain dynamic in bridge-facts v1, and unverified literal
+  conversions or source freshness never become confirmed names.
+
 ## [0.9.0] - 2026-09-08
 
 ### Added

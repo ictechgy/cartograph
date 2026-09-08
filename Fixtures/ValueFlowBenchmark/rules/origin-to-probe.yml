@@ -1,0 +1,53 @@
+rules:
+  - id: swift-origin-a-to-probe
+    languages: [swift]
+    mode: taint
+    message: origin-A reaches a probe value argument
+    severity: WARNING
+    metadata:
+      flow_kind: taint
+    pattern-sources:
+      - pattern: '"origin-A"'
+    pattern-sinks:
+      - patterns:
+          - pattern: 'probe(label: $LABEL, value: $VALUE)'
+          - focus-metavariable: $VALUE
+
+  - id: swift-origin-b-to-probe
+    languages: [swift]
+    mode: taint
+    message: origin-B reaches a probe value argument
+    severity: WARNING
+    metadata:
+      flow_kind: taint
+    pattern-sources:
+      - pattern: '"origin-B"'
+    pattern-sinks:
+      - patterns:
+          - pattern: 'probe(label: $LABEL, value: $VALUE)'
+          - focus-metavariable: $VALUE
+
+  # CE가 Swift 식을 전파하지 못해도 직접 literal sink를 보도록 분리한다.
+  - id: swift-origin-a-literal-probe
+    languages: [swift]
+    message: direct origin-A literal passed to probe
+    severity: WARNING
+    metadata:
+      flow_kind: literal
+    patterns:
+      - pattern: 'probe(label: $LABEL, value: $VALUE)'
+      - metavariable-regex:
+          metavariable: $VALUE
+          regex: '^"origin-A"$'
+
+  - id: swift-origin-b-literal-probe
+    languages: [swift]
+    message: direct origin-B literal passed to probe
+    severity: WARNING
+    metadata:
+      flow_kind: literal
+    patterns:
+      - pattern: 'probe(label: $LABEL, value: $VALUE)'
+      - metavariable-regex:
+          metavariable: $VALUE
+          regex: '^"origin-B"$'

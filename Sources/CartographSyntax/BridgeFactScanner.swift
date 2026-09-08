@@ -77,7 +77,8 @@ public struct BridgeScanResult: Sendable, Equatable {
 public struct BridgeFactScanner: Sendable {
     public init() {}
 
-    public func scan(source: String, path: String) -> BridgeScanResult {
+    public func scan(source: String, path: String,
+                     resolvedValues: [CartographCore.SourceLocation: String] = [:]) -> BridgeScanResult {
         // 파서는 `channel = FlutterMethodChannel(…)` 과 `call.method == "x"` 를 접지 않은
         // SequenceExpr 로 남긴다. 연산자 우선순위로 접어야 대입과 비교가 보인다.
         // 접기 오류(알 수 없는 연산자)는 무시한다. 그 표현식만 못 읽을 뿐이다.
@@ -88,7 +89,7 @@ public struct BridgeFactScanner: Sendable {
         // 두 번 걷는다. 상수와 채널 변수는 사용 지점보다 뒤에 선언될 수 있다
         // (프로퍼티는 아래, 사용은 위의 `init` 안). 1차 패스는 모으기만 하고 해석은
         // 전부 2차 패스에서 한다. 1차 패스에서 해석하면 아래에 있는 상수를 못 본다.
-        let bindings = BindingCollector()
+        let bindings = BindingCollector(converter: converter, resolvedValues: resolvedValues)
         bindings.walk(tree)
 
         let collector = BridgeFactCollector(converter: converter, bindings: bindings, path: path)
@@ -189,7 +190,12 @@ final class BindingCollector: SyntaxVisitor {
     /// 지금 어느 함수·클로저 안에 있는지. 바깥부터 쌓인다.
     private var scopes: [Int] = []
 
-    init() {
+    private let converter: SourceLocationConverter
+    private let resolvedValues: [CartographCore.SourceLocation: String]
+
+    init(converter: SourceLocationConverter, resolvedValues: [CartographCore.SourceLocation: String]) {
+        self.converter = converter
+        self.resolvedValues = resolvedValues
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -553,6 +559,9 @@ final class BindingCollector: SyntaxVisitor {
     ///   구문만으로는 어느 확장의 상수인지 알 수 없으므로 `dynamic`.
     func resolveString(_ expression: ExprSyntax, in context: Context) -> ResolvedName {
         if let value = constantString(expression, in: context, remaining: 64) { return .literal(value) }
+        let position = converter.location(for: expression.positionAfterSkippingLeadingTrivia)
+        let location = CartographCore.SourceLocation(path: position.file, line: position.line, column: position.column)
+        if let value = resolvedValues[location] { return .literal(value) }
         return .dynamic(expression.trimmedDescription)
     }
 
