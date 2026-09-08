@@ -339,26 +339,34 @@ func nativeString() -> String { "source" }
 func convertedString() -> Token { "source" }
 func staticString() -> StaticString { "source" }
 func acceptsStatic(_ value: StaticString) -> StaticString { value }
+func capturedString() -> String {
+    var value = "before"
+    let body = { [value] in value }
+    value = "after"
+    return body()
+}
 @main struct App {
     static func main() {
         print(nativeString())
         print(convertedString().value)
         print(staticString())
         print(acceptsStatic("source"))
+        print(capturedString())
     }
 }
 ''')
     store = build(root)
     runtime = run([str(store / "Products/Debug/LiteralProbe")], root).splitlines()
-    assert runtime == ["source", "converted", "source", "source"], runtime
+    assert runtime == ["source", "converted", "source", "source", "before"], runtime
     results = {}
-    for name in ["nativeString", "convertedString", "staticString", "acceptsStatic"]:
+    for name in ["nativeString", "convertedString", "staticString", "acceptsStatic", "capturedString"]:
         document = json.loads(run([str(binary), "dataflow", name, "--project", str(root)], root))
         contexts = [context for context in document["graph"]["contexts"]
                     if context["id"] in document["selectedContexts"]]
         assert contexts and not document["graph"]["truncated"], document
-        if name == "nativeString":
-            assert all(context["result"]["atoms"] == [{"literal": {"_0": {"string": {"_0": "source"}}}}]
+        if name in ["nativeString", "capturedString"]:
+            expected_string = "before" if name == "capturedString" else "source"
+            assert all(context["result"]["atoms"] == [{"literal": {"_0": {"string": {"_0": expected_string}}}}]
                        and not context["result"]["unknownReasons"] for context in contexts), contexts
         else:
             assert all(context["result"]["unknownReasons"] for context in contexts), contexts

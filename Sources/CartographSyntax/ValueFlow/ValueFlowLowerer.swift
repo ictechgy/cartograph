@@ -129,6 +129,7 @@ final class ValueFlowFunctionBuilder {
     private var nextInstruction = 0
     private var nextBlock = 1
     private var scopes: [ValueFlowScope] = []
+    private var explicitCaptures: [(name: String, operand: Int)] = []
     private var captureNames: [String: Int] = [:]
     private var captureBindings: [String: ValueFlowBinding] = [:]
     private var captureParentOperands: [Int: Int] = [:]
@@ -152,6 +153,12 @@ final class ValueFlowFunctionBuilder {
 
     func lower() -> ValueFlowFunction {
         scopes = [ValueFlowScope()]
+        for capture in explicitCaptures {
+            let index = captureNames.count
+            captureNames[capture.name] = index
+            captureParentOperands[index] = capture.operand
+            bind(capture.name, .value(emit(.capture(index))))
+        }
         createParameters()
         if info.kind != .function && info.kind != .initializer && info.kind != .getter && info.kind != .setter && info.kind != .closure {
             // 전역·필드 초기화 함수에는 암시적 수신자가 없다.
@@ -920,10 +927,27 @@ final class ValueFlowFunctionBuilder {
             return emit(.unknown(reason: "duplicate closure", inputs: [], mayWrite: false), syntax: closure)
         }
         let nested = ValueFlowFunctionBuilder(state: state, info: nestedInfo, parent: self)
+        for capture in closure.signature?.capture?.items ?? [] {
+            let name = ValueFlowSyntax.unescaped(capture.name.text)
+            let operand = capture.initializer.map { lowerExpression($0.value, context: .inferred) }
+                ?? capturedValue(named: name, token: capture.name)
+            let copied = emit(.read(address: operand), syntax: capture)
+            nested.explicitCaptures.append((name, copied))
+            if capture.specifier != nil { nested.unavailableReason = "capture ownership is unavailable" }
+        }
         let function = nested.lower()
         state.append(function: function)
         let captures = nested.captureParentOperands.sorted { $0.key < $1.key }.map(\.value)
         return emit(.closure(function: id, captures: captures), syntax: closure)
+    }
+
+    /// 캡처 목록은 클로저 생성 시점에 읽고, 본문에서는 외부 지역 주소를 다시 읽지 않는다.
+    private func capturedValue(named name: String, token: TokenSyntax) -> Int {
+        if let binding = lookup(name) { return binding.operandID }
+        if let member = implicitMember(name: name, syntax: token, asAddress: false) { return member }
+        return emit(.symbol(ValueFlowSymbolReference(
+            location: ValueFlowSyntax.location(of: token, converter: state.converter, path: state.path),
+            spelling: name)), syntax: token)
     }
 
     private func lowerDirectExpressionChildren(_ expression: some SyntaxProtocol) -> [Int] {
