@@ -4,7 +4,7 @@ import Foundation
 
 /// `bridges` 명령이 내보내는 문서. isthmus 가 읽는 교환 형식(버전 1)이다.
 ///
-/// 이 문서는 Swift 에서 본 사실만 담는다. "이 핸들러를 Dart 가 실제로 부른다"는 판정은
+/// 이 문서는 Swift 플랫폼 쪽에서 본 Swift·Objective-C 사실을 담는다. "이 핸들러를 Dart 가 실제로 부른다"는 판정은
 /// 다른 언어의 사실과 조인해야 나오고, 그것은 isthmus 의 몫이다. 리터럴이 아닌 이름도
 /// `dynamic: true` 로 남긴다. 버리면 isthmus 가 조인하지 못한 수를 셀 수 없다.
 ///
@@ -36,9 +36,10 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         public let dynamic: Bool
         public let location: SourceLocation
         public let symbol: Symbol?
+        public let sourceLanguage: BridgeFact.SourceLanguage?
 
         private enum CodingKeys: String, CodingKey {
-            case kind, channel, method, dynamic, location, symbol
+            case kind, channel, method, dynamic, location, symbol, sourceLanguage
         }
 
         public init(from decoder: any Decoder) throws {
@@ -49,6 +50,7 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
             dynamic = try container.decode(Bool.self, forKey: .dynamic)
             location = try container.decode(SourceLocation.self, forKey: .location)
             symbol = try container.decodeIfPresent(Symbol.self, forKey: .symbol)
+            sourceLanguage = try container.decodeIfPresent(BridgeFact.SourceLanguage.self, forKey: .sourceLanguage)
         }
 
         public func encode(to encoder: any Encoder) throws {
@@ -61,9 +63,11 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
             try container.encode(dynamic, forKey: .dynamic)
             try container.encode(location, forKey: .location)
             try container.encodeIfPresent(symbol, forKey: .symbol)
+            try container.encodeIfPresent(sourceLanguage, forKey: .sourceLanguage)
         }
 
         init(_ fact: BridgeFact, relativeTo projectPath: String) {
+            sourceLanguage = fact.sourceLanguage
             kind = fact.kind.rawValue
             channel = fact.channel
             method = fact.method
@@ -71,6 +75,12 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
             location = fact.location.relative(to: projectPath)
             symbol = fact.symbol.map { Symbol(qualifiedName: $0.qualifiedName, usr: $0.usr) }
         }
+    }
+
+    /// 문자열의 특정 한계 항목 전체를 포함하는 채널 집합. 범위를 모르면 항목 자체를 만들지 않는다.
+    public struct LimitationScope: Sendable, Equatable, Codable {
+        public let limitationIndex: Int
+        public let channels: [String]
     }
 
     public let format: String
@@ -88,9 +98,10 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
     public let facts: [Fact]
     /// 이 문서가 보지 못한 것. 매번 붙는 경보가 아니라 실제로 센 값이다.
     public let limitations: [String]
+    public let limitationScopes: [LimitationScope]?
 
     private enum CodingKeys: String, CodingKey {
-        case format, version, tool, generatedAt, platform, target, project, facts, limitations
+        case format, version, tool, generatedAt, platform, target, project, facts, limitations, limitationScopes
     }
 
     public init(
@@ -101,7 +112,8 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         unscannedEventChannels: Int = 0,
         unscannedMessageChannels: Int = 0,
         objectiveCSourceCount: Int = 0,
-        extraLimitations: [String] = []
+        extraLimitations: [String] = [],
+        opaqueHandlerChannels: [String?] = []
     ) {
         format = Self.format
         version = Self.version
@@ -113,11 +125,24 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
 
         let targets = Self.countByTarget(facts)
         target = Self.dominantTarget(targets)
-        limitations = Self.limitations(
+        var messages = Self.limitations(
             for: facts, targets: targets,
             unscannedEventChannels: unscannedEventChannels, unscannedMessageChannels: unscannedMessageChannels,
             objectiveCSourceCount: objectiveCSourceCount
-        ) + extraLimitations
+        )
+        if !opaqueHandlerChannels.isEmpty {
+            let known = opaqueHandlerChannels.compactMap { $0 }
+            limitationScopes = known.count == opaqueHandlerChannels.count
+                ? [LimitationScope(limitationIndex: messages.count, channels: Set(known).sorted())]
+                : nil
+            messages.append(
+                "opaque-handler-bodies: \(opaqueHandlerChannels.count) handler registration(s) use bodies "
+                    + "outside the supported local scan"
+            )
+        } else {
+            limitationScopes = nil
+        }
+        limitations = messages + extraLimitations
     }
 
     /// `target` 이 없으면 키를 빼지 않고 `null` 로 적는다. 계약이 그렇게 정했다.
@@ -135,6 +160,17 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         try container.encode(project, forKey: .project)
         try container.encode(facts, forKey: .facts)
         try container.encode(limitations, forKey: .limitations)
+        try container.encodeIfPresent(limitationScopes, forKey: .limitationScopes)
+    }
+
+    /// 다른 도구가 문서 전체를 거부하게 되는 이름을 출력 전에 가른다. 값을 오류 문장에 싣지 않는다.
+    static func validateNames(_ facts: [BridgeFact], opaqueHandlerChannels: [String?]) throws {
+        let factNames = facts.flatMap { [$0.channel, $0.method].compactMap { $0 } }
+        guard (factNames + opaqueHandlerChannels.compactMap { $0 }).allSatisfy({ name in
+            !name.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\u{feff}"))).isEmpty && !name.unicodeScalars.contains {
+                $0.value < 32 || (127...159).contains($0.value) || $0.value == 0x2028 || $0.value == 0x2029
+            }
+        }) else { throw CartographError.unsupportedBridgeName }
     }
 
     private static func countByTarget(_ facts: [BridgeFact]) -> [BridgeFact.Target: Int] {
@@ -207,7 +243,7 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         if objectiveCHandlers > 0 {
             result.append(
                 "objective-c-handlers: \(objectiveCHandlers) method handlers come from Objective-C sources and "
-                    + "carry no USR, so a retention for them cannot be applied by --external-retentions"
+                    + "are outside the Swift analysis graph, so their retentions cannot be applied by --external-retentions"
             )
         }
         if unscannedEventChannels > 0 {
@@ -222,12 +258,12 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
                     + "read; Pigeon-generated bridges are outside this format"
             )
         }
-        // Flutter 핸들러가 Objective-C 로 쓰인 플러그인(package_info_plus, share_plus)은 여기 아무
-        // 사실도 없다. 이것을 세지 않으면 isthmus 는 "핸들러 없는 호출" 을 오류로 낸다.
+        // 직접 패턴을 읽었어도 ObjC 전체의 완전성을 증명하지 못한다. 일부 채널을 찾았다는
+        // 이유로 범위를 좁히면 미지원 코드가 다른 채널의 핸들러를 가리는 경우 거짓 error가 된다.
         if objectiveCSourceCount > 0 {
             result.append(
-                "objective-c-sources: \(objectiveCSourceCount) Objective-C file(s) were read only for React Native "
-                    + "export macros, so a Flutter handler written in Objective-C cannot appear here"
+                "objective-c-sources: \(objectiveCSourceCount) Objective-C file(s) were read for React Native "
+                    + "export macros and supported direct Flutter patterns; other Objective-C handlers may be absent"
             )
         }
         if targets.count > 1 {
@@ -286,6 +322,14 @@ struct BridgeSymbolResolver {
         scanned.map { entry in
             guard let declaration = entry.declaration else { return entry.fact }
             let candidates = symbolsByPath[Self.canonical(entry.fact.location.path)] ?? []
+            if entry.fact.sourceLanguage == .objectiveC {
+                // 이름이나 가장 가까운 줄로 추측하지 않는다. Clang 정의 위치가 유일할 때만 붙인다.
+                let exact = candidates.filter {
+                    $0.usr.hasPrefix("c:") && $0.name == declaration.indexName && $0.location.line == declaration.line
+                }
+                guard exact.count == 1, let symbol = exact.first else { return entry.fact }
+                return entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: symbol.usr))
+            }
             let symbol = Self.match(declaration, among: candidates)
             return entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: symbol?.usr))
         }

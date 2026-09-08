@@ -35,6 +35,9 @@ public struct ExternalRetentionStore: Sendable {
                     + "(this build reads version \(ExternalRetentionsDocument.supportedVersion))"
             )
         }
+        if let omitted = document.omittedObjectiveCHandlers, omitted < 0 {
+            throw CartographError.invalidExternalRetentions(path: path, reason: "omittedObjectiveCHandlers must not be negative")
+        }
         return document
     }
 

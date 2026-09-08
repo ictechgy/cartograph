@@ -20,6 +20,8 @@ public struct IndexStoreProvider: IndexProviding {
         public var pathFilter: PathFilter
         /// SDK 등 외부 심볼도 정점 후보로 수집할지 여부.
         public var includeExternalSymbols: Bool
+        /// 브리지 식별자를 읽을 때만 Clang 구현 파일도 포함한다.
+        public var includeObjectiveCSources: Bool
 
         public init(
             storePath: String,
@@ -27,7 +29,8 @@ public struct IndexStoreProvider: IndexProviding {
             libraryPath: String,
             sourceRoots: [String],
             pathFilter: PathFilter = .passthrough,
-            includeExternalSymbols: Bool = false
+            includeExternalSymbols: Bool = false,
+            includeObjectiveCSources: Bool = false
         ) {
             self.storePath = storePath
             self.databasePath = databasePath
@@ -35,6 +38,7 @@ public struct IndexStoreProvider: IndexProviding {
             self.sourceRoots = sourceRoots
             self.pathFilter = pathFilter
             self.includeExternalSymbols = includeExternalSymbols
+            self.includeObjectiveCSources = includeObjectiveCSources
         }
     }
 
@@ -70,7 +74,10 @@ public struct IndexStoreProvider: IndexProviding {
         for root in configuration.sourceRoots {
             let files = fileSystem.recursiveFiles(
                 under: root,
-                isIncluded: { $0.hasSuffix(".swift") && configuration.pathFilter.allows($0) },
+                isIncluded: { path in
+                    let extensions = configuration.includeObjectiveCSources ? [".swift", ".m", ".mm"] : [".swift"]
+                    return extensions.contains(where: path.hasSuffix) && configuration.pathFilter.allows(path)
+                },
                 shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
             )
             for file in files where seen.insert(file).inserted {

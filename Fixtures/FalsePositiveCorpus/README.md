@@ -65,3 +65,11 @@ only through its memberwise initializer, and a type used only as an enum case's 
 The users live in `exerciseRetentionShapes()` inside the module rather than in `main.swift`, because
 a synthesized initializer is internal and giving these types an explicit `public init` would delete
 the very shape the case exists to test.
+
+The Objective-C `ObjCCameraPlugin` in `RNCalendar.m` combines the file-local immutable channel
+constant from [share_plus at 13e1704](https://github.com/fluttercommunity/plus_plugins/blob/13e1704/packages/share_plus/share_plus/ios/share_plus/Sources/share_plus/FPPSharePlusPlugin.m)
+and the direct registrar/delegate shape from package_info_plus at the same revision. It is a
+small handwritten fixture, not copied plugin implementation. Its registration and `nativePhoto`
+branch must be exported with `sourceLanguage: objective-c` and no fabricated Swift symbol. The
+header only supplies types so the Objective-C compiler can index the shape without Flutter SDK.
+The Swift dead-code lists must remain identical because this declaration is outside that graph.

@@ -56,11 +56,14 @@ public struct BridgeScanResult: Sendable, Equatable {
     /// Pigeon 이 만든 코드는 메서드 채널을 아예 쓰지 않는다. 세지 않으면 Pigeon 플러그인은
     /// 파이프라인을 다 돌고도 핸들러가 계속 죽은 코드로 보고된다.
     public let unscannedMessageChannels: Int
+    /// 등록 채널은 알지만 본문을 읽지 못한 핸들러. nil 이 하나라도 있으면 채널 상한을 모른다.
+    public let opaqueHandlerChannels: [String?]
 
-    public init(facts: [ScannedBridgeFact], unscannedEventChannels: Int = 0, unscannedMessageChannels: Int = 0) {
+    public init(facts: [ScannedBridgeFact], unscannedEventChannels: Int = 0, unscannedMessageChannels: Int = 0, opaqueHandlerChannels: [String?] = []) {
         self.facts = facts
         self.unscannedEventChannels = unscannedEventChannels
         self.unscannedMessageChannels = unscannedMessageChannels
+        self.opaqueHandlerChannels = opaqueHandlerChannels
     }
 }
 
@@ -93,7 +96,8 @@ public struct BridgeFactScanner: Sendable {
         return BridgeScanResult(
             facts: collector.facts.sorted { $0.fact < $1.fact },
             unscannedEventChannels: bindings.eventChannelCount,
-            unscannedMessageChannels: bindings.messageChannelCount
+            unscannedMessageChannels: bindings.messageChannelCount,
+            opaqueHandlerChannels: collector.opaqueHandlerChannels
         )
     }
 }
@@ -176,6 +180,8 @@ final class BindingCollector: SyntaxVisitor {
     private(set) var delegateRegistrations: [(typeName: String, channel: ExprSyntax, scopes: [Int], enclosingTypes: [String])] = []
     /// 이 파일이 선언한 타입의 점으로 이은 전체 이름(`A.Plugin`).
     private(set) var declaredTypeChains: Set<String> = []
+    private var functionCounts: [String: Int] = [:]
+    private var readableHandlers: Set<String> = []
 
     /// 지금 어느 타입 안에 있는지.
     private var typeNames: [String] = []
@@ -188,7 +194,14 @@ final class BindingCollector: SyntaxVisitor {
 
     // MARK: 스코프 문맥
 
-    override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
+    override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+        if !DeclarationCollector.isInsideBody(node) {
+            let key = Self.handlerKey(DeclarationCollector.unescaped(node.name.text), enclosingTypes: typeNames)
+            functionCounts[key, default: 0] += 1
+            if node.body != nil && BindingCollector.takesMethodCall(node) { readableHandlers.insert(key) }
+        }
+        return pushScope(node)
+    }
     override func visitPost(_ node: FunctionDeclSyntax) { scopes.removeLast() }
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
     override func visitPost(_ node: InitializerDeclSyntax) { scopes.removeLast() }
@@ -319,15 +332,57 @@ final class BindingCollector: SyntaxVisitor {
         (enclosingTypes + [name]).joined(separator: ".")
     }
 
+    /// `FlutterMethodCall` 인자를 받는 함수인지. `FlutterPlugin.handle(_:result:)` 가 그렇다.
+    ///
+    /// `FlutterMethodCall?` 과 `Flutter.FlutterMethodCall` 도 같은 타입이다.
+    static func takesMethodCall(_ node: FunctionDeclSyntax) -> Bool {
+        node.signature.parameterClause.parameters.contains {
+            let type = $0.type.trimmedDescription.trimmingCharacters(in: CharacterSet(charactersIn: "?!"))
+            return type == BridgeChannels.methodCall || type.hasSuffix("." + BridgeChannels.methodCall)
+        }
+    }
+
+    /// 저장된 클로저·외부 함수·오버로드를 파일 안의 확정된 함수 본문으로 오인하지 않는다.
+    func isReadableHandlerReference(_ expression: ExprSyntax, in context: Context) -> Bool {
+        let expression = Self.unparenthesized(expression)
+        let membersOnly: Bool
+        if let member = expression.as(MemberAccessExprSyntax.self) {
+            guard member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self" else { return false }
+            membersOnly = true
+        } else {
+            guard expression.is(DeclReferenceExprSyntax.self) else { return false }
+            membersOnly = false
+        }
+        guard let name = Self.identifierName(of: expression),
+              binding(named: name, in: context, membersOnly: membersOnly) == nil else { return false }
+        let key = Self.handlerKey(name, enclosingTypes: context.enclosingTypes)
+        return functionCounts[key] == 1 && readableHandlers.contains(key)
+    }
+
+    static func unparenthesized(_ expression: ExprSyntax) -> ExprSyntax {
+        var value = expression
+        while let tuple = value.as(TupleExprSyntax.self), tuple.elements.count == 1,
+              let element = tuple.elements.first, element.label == nil, element.trailingComma == nil {
+            value = element.expression
+        }
+        return value
+    }
+
+    static func isNilHandler(_ expression: ExprSyntax) -> Bool {
+        var expression = Self.unparenthesized(expression)
+        while let cast = expression.as(AsExprSyntax.self) { expression = Self.unparenthesized(cast.expression) }
+        return expression.is(NilLiteralExprSyntax.self)
+    }
+
     /// `receiver.setMethodCallHandler(method)` 의 `method` 가 메서드 참조면 기억한다.
     private func recordHandlerReference(_ call: FunctionCallExprSyntax) {
         guard let member = call.calledExpression.as(MemberAccessExprSyntax.self),
               member.declName.baseName.text == "setMethodCallHandler",
               let receiver = member.base, call.trailingClosure == nil,
-              let argument = call.arguments.first?.expression,
-              !argument.is(ClosureExprSyntax.self), !argument.is(NilLiteralExprSyntax.self),
-              let name = Self.identifierName(of: argument)
-        else { return }
+              let rawArgument = call.arguments.first?.expression else { return }
+        let argument = Self.unparenthesized(rawArgument)
+        guard !argument.is(ClosureExprSyntax.self), !Self.isNilHandler(argument),
+              let name = Self.identifierName(of: argument) else { return }
         // `self.handle` 이나 `handle` — 등록 지점을 감싸는 타입의 메서드다. 다른 수신자는 모른다.
         if let member = argument.as(MemberAccessExprSyntax.self),
            let base = member.base, base.as(DeclReferenceExprSyntax.self)?.baseName.text != "self" { return }
@@ -446,13 +501,7 @@ final class BindingCollector: SyntaxVisitor {
 
     /// 보간이 없는 문자열 리터럴의 내용.
     static func stringLiteral(_ expression: ExprSyntax) -> String? {
-        guard let literal = expression.as(StringLiteralExprSyntax.self) else { return nil }
-        var result = ""
-        for segment in literal.segments {
-            guard case let .stringSegment(text) = segment else { return nil }
-            result += text.content.text
-        }
-        return result
+        expression.as(StringLiteralExprSyntax.self)?.representedLiteralValue
     }
 
     /// `x`, `self.x`, `Self.x`, `Type.x`, `.x`, `x?`, `x!` 에서 `x`.
@@ -489,6 +538,7 @@ final class BindingCollector: SyntaxVisitor {
 
 /// 브리지 사실을 실제로 뽑아내는 방문자.
 final class BridgeFactCollector: SyntaxVisitor {
+    private(set) var opaqueHandlerChannels: [String?] = []
     /// Flutter 가 Swift 쪽에 제공하는 채널 타입 이름.
     private(set) var facts: [ScannedBridgeFact] = []
     private let converter: SourceLocationConverter
@@ -574,7 +624,7 @@ final class BridgeFactCollector: SyntaxVisitor {
             indexName: Self.indexName(node.name.text, parameters: node.signature.parameterClause.parameters),
             node: node
         )
-        if Self.takesMethodCall(node) { methodCallFunctionDepth += 1 }
+        if BindingCollector.takesMethodCall(node) { methodCallFunctionDepth += 1 }
         if let channel = referencedHandlerChannel(of: node) { handlerChannels.append(channel) }
         emitReactMethodIfExported(node)
         return .visitChildren
@@ -583,7 +633,7 @@ final class BridgeFactCollector: SyntaxVisitor {
         scopes.removeLast(); aliasScopes.removeLast()
         guard !DeclarationCollector.isInsideBody(node) else { return }
         declarations.removeLast()
-        if Self.takesMethodCall(node) { methodCallFunctionDepth -= 1 }
+        if BindingCollector.takesMethodCall(node) { methodCallFunctionDepth -= 1 }
         if referencedHandlerChannel(of: node) != nil { handlerChannels.removeLast() }
     }
 
@@ -595,7 +645,7 @@ final class BridgeFactCollector: SyntaxVisitor {
     private func referencedHandlerChannel(of node: FunctionDeclSyntax) -> ResolvedName?? {
         // 메서드 참조든 델리게이트든, 핸들러는 FlutterMethodCall 을 받는 함수다. 아니면 동명의
         // 무관한 함수라 `request.method == "DELETE"` 가 이 채널의 사실로 나간다.
-        guard Self.takesMethodCall(node) else { return nil }
+        guard BindingCollector.takesMethodCall(node) else { return nil }
         let name = DeclarationCollector.unescaped(node.name.text)
         if let entries = bindings.handlerFunctions[BindingCollector.handlerKey(name, enclosingTypes: typeNames)] {
             return .some(Self.single(entries.map { resolveChannel($0.receiver, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes)) }))
@@ -670,23 +720,13 @@ final class BridgeFactCollector: SyntaxVisitor {
             + parameters.map { DeclarationCollector.unescaped($0.firstName.text) + ":" }.joined() + ")"
     }
 
-    /// `FlutterMethodCall` 인자를 받는 함수인지. `FlutterPlugin.handle(_:result:)` 가 그렇다.
-    ///
-    /// `FlutterMethodCall?` 과 `Flutter.FlutterMethodCall` 도 같은 타입이다.
-    private static func takesMethodCall(_ node: FunctionDeclSyntax) -> Bool {
-        node.signature.parameterClause.parameters.contains {
-            let type = $0.type.trimmedDescription.trimmingCharacters(in: CharacterSet(charactersIn: "?!"))
-            return type == BridgeChannels.methodCall || type.hasSuffix("." + BridgeChannels.methodCall)
-        }
-    }
-
     // MARK: Flutter
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
         guard let member = node.calledExpression.as(MemberAccessExprSyntax.self),
               BridgeChannels.handlerRegistrationMethods.contains(member.declName.baseName.text),
               // `setMethodCallHandler(nil)` 은 등록 해제다. 등록 사실이 아니다.
-              !(node.arguments.first?.expression.is(NilLiteralExprSyntax.self) ?? false)
+              !(node.arguments.first.map { BindingCollector.isNilHandler($0.expression) } ?? false)
         else { return .visitChildren }
 
         let channel = registeredChannel(of: node, receiver: member.base)
@@ -694,7 +734,13 @@ final class BridgeFactCollector: SyntaxVisitor {
 
         // 핸들러 클로저 안의 `case "…"` 는 이 채널의 메서드다. 클로저를 방문하는 동안만
         // 채널을 스택에 올린다. 클로저가 없으면(델리게이트 등록) 올릴 것이 없다.
-        guard let closure = Self.handlerClosure(of: node) else { return .visitChildren }
+        guard let closure = Self.handlerClosure(of: node) else {
+            if member.declName.baseName.text == "setMethodCallHandler",
+               let argument = node.arguments.first?.expression, !bindings.isReadableHandlerReference(argument, in: context) {
+                opaqueHandlerChannels.append(channel?.isDynamic == false ? channel?.text : nil)
+            }
+            return .visitChildren
+        }
         handlerChannels.append(channel)
         walk(closure)
         handlerChannels.removeLast()

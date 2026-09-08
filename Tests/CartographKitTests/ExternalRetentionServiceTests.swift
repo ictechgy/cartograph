@@ -6,6 +6,20 @@ import Testing
 
 @Suite("외부 보존 근거를 반영한 파이프라인")
 struct ExternalRetentionServiceTests {
+    @Test("Swift 그래프 밖 ObjC 매치를 제외한 수를 외부 보존 한계로 알린다")
+    func reportsObjectiveCMatchesOutsideGraph() throws {
+        let files = InMemoryFileSystem(files: ["/p/retentions.json":
+            #"{"format":"external-retentions","version":0,"retentions":[],"omittedObjectiveCHandlers":2}"#])
+        var config = CartographConfiguration.default
+        config.projectPath = "/p"
+        config.externalRetentionsPath = "/p/retentions.json"
+        let service = CartographService(configuration: config, environment: CartographEnvironment(
+            fileSystem: files, indexProviderOverride: StaticIndexProvider(makeSnapshot())
+        ))
+        let document = try service.queryDocument(symbol: "absent")
+        #expect(document.limitations.contains { $0.hasPrefix("external-retentions-objective-c: 2") })
+    }
+
     private static let retentions = """
         {
           "format": "external-retentions",

@@ -42,6 +42,12 @@ public struct BridgeFact: Hashable, Sendable {
         }
     }
 
+    /// Swift 플랫폼 문서 안의 Objective-C 구현은 Swift 그래프의 보존 대상이 아니다.
+    public enum SourceLanguage: String, Sendable, Codable {
+        case objectiveC = "objective-c"
+    }
+
+    public let sourceLanguage: SourceLanguage?
     public let kind: Kind
     public let target: Target
     /// 채널 이름 또는 모듈 이름. 알 수 없으면 nil, 리터럴이 아니면 원문 표현식.
@@ -66,8 +72,10 @@ public struct BridgeFact: Hashable, Sendable {
         isDynamic: Bool = false,
         isChannelInferred: Bool = false,
         location: SourceLocation,
-        symbol: Symbol? = nil
+        symbol: Symbol? = nil,
+        sourceLanguage: SourceLanguage? = nil
     ) {
+        self.sourceLanguage = sourceLanguage
         self.kind = kind
         self.target = target
         self.channel = channel
@@ -88,7 +96,8 @@ public struct BridgeFact: Hashable, Sendable {
             isDynamic: isDynamic,
             isChannelInferred: isChannelInferred,
             location: location,
-            symbol: symbol
+            symbol: symbol,
+            sourceLanguage: sourceLanguage
         )
     }
 }
@@ -101,6 +110,7 @@ extension BridgeFact: Comparable {
         if lhs.channel != rhs.channel { return (lhs.channel ?? "") < (rhs.channel ?? "") }
         if lhs.method != rhs.method { return (lhs.method ?? "") < (rhs.method ?? "") }
         if lhs.target != rhs.target { return lhs.target.rawValue < rhs.target.rawValue }
-        return (lhs.symbol?.usr ?? "") < (rhs.symbol?.usr ?? "")
+        if lhs.symbol?.usr != rhs.symbol?.usr { return (lhs.symbol?.usr ?? "") < (rhs.symbol?.usr ?? "") }
+        return (lhs.sourceLanguage?.rawValue ?? "") < (rhs.sourceLanguage?.rawValue ?? "")
     }
 }

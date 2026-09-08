@@ -146,6 +146,12 @@ struct AnalysisLimitationCollector {
             "external-retentions: \(index.count) retention(s) from \(document.provenanceDescription) are in "
                 + "effect, so a 'retained' answer with reason 'externalBridge' rests on that file, not on the index"
         ]
+        if let omitted = document.omittedObjectiveCHandlers, omitted > 0 {
+            result.append(
+                "external-retentions-objective-c: \(omitted) matched Objective-C handler(s) are outside the Swift graph; "
+                    + "their bridge evidence is available in isthmus check/query/graph"
+            )
+        }
         // 부르는 쪽이 이미 만든 심볼 그래프를 받는다. 여기서 다시 만들면 `query` 한 번에
         // 그래프를 두 번 짓는다. 인덱스 읽기 다음으로 비싼 단계다.
         let graph = symbolGraph ?? context.buildGraph(level: .symbol).graph

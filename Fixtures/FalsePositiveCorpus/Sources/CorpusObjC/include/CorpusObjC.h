@@ -7,3 +7,19 @@
 
 @interface RNCalendar : NSObject
 @end
+
+// Flutter SDK 없이 실제 Objective-C 등록 구문을 컴파일한다. 구현은 런타임에 실행하지 않는다.
+typedef void (^FlutterResult)(id value);
+@interface FlutterMethodCall : NSObject
+@property(nonatomic, readonly) NSString *method;
+@end
+@interface FlutterMethodChannel : NSObject
++ (instancetype)methodChannelWithName:(NSString *)name binaryMessenger:(id)messenger;
+- (void)setMethodCallHandler:(void (^)(FlutterMethodCall *, FlutterResult))handler;
+@end
+@protocol FlutterPluginRegistrar <NSObject>
+- (id)messenger;
+- (void)addMethodCallDelegate:(id)delegate channel:(FlutterMethodChannel *)channel;
+@end
+@interface ObjCCameraPlugin : NSObject
+@end

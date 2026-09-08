@@ -394,7 +394,7 @@ that changes the exit code or the finding count. `checkstyle` is the exception: 
 slot that is not a file's error, and adding one would raise the finding count its consumers show,
 so pair it with one of the others when you need the limitations.
 
-### `bridges` — export the Swift side of a language boundary
+### `bridges` — export native bridge evidence
 
 ```bash
 cartograph bridges                       # bridge-facts JSON on stdout
@@ -410,6 +410,27 @@ the handler, the `@objc(CalendarManager)` on a class, the `RCT_EXPORT_METHOD(add
 `.m` file. `bridges` reads those literals out of the sources with SwiftSyntax (and a text scan for
 Objective-C), attaches the USR the index has for the enclosing declaration, and writes the
 `bridge-facts` exchange format that [isthmus](../isthmus) joins with the other platform's facts.
+
+
+The unreleased v1 extension adds optional `limitationScopes`, each binding a `limitationIndex`
+to an exact `channels` array. This is an upper bound on the entire gap, never a list of names
+merely found in unread code. External-object or factory-supplied Swift handlers produce a scoped
+`opaque-handler-bodies` gap only when every affected registration channel is known. Any unknown
+channel leaves that gap unscoped; unscoped gaps continue to apply to the whole target.
+
+Objective-C Flutter scanning supports direct channel construction, inline handler blocks and
+same-file registrar/delegate `handleMethodCall:result:` implementations, including file-local
+immutable `NSString *const` names. Positive `isEqualToString:` branches become facts with
+`sourceLanguage: "objective-c"` and an actual Clang `c:` USR when the index uniquely identifies the enclosing declaration.
+Without that evidence, `symbol` is omitted; identifiers are never fabricated. Conditional or macro-dependent
+files, rebinding and unsupported delegation remain uncertain. The general `objective-c-sources`
+gap stays unscoped even when some literals were extracted. See the [bounded scan results](docs/scans/2026-09-objc-flutter.md).
+
+Deploy an isthmus version supporting this extension before deploying the new producer. Old v1
+consumers keep the broad limitation behavior; old isthmus cannot distinguish ObjC graph scope and may fail
+on missing symbols or emit Clang retentions that the Swift graph cannot apply. New isthmus keeps their join evidence, omits them from Swift-only
+retentions, and reports `omittedObjectiveCHandlers`; cartograph exposes that count as a limitation.
+Unmarked Swift handlers without a symbol still fail retention generation.
 
 ```console
 $ cartograph bridges

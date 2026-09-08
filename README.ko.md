@@ -394,6 +394,28 @@ Flutter 메서드 채널 핸들러나 React Native 모듈은 Dart 나 JavaScript
 SwiftSyntax 로(Objective-C 는 텍스트로) 소스에서 읽고, 감싸는 선언의 USR 을 인덱스에서 붙여,
 [isthmus](../isthmus) 가 다른 플랫폼의 사실과 조인하는 `bridge-facts` 교환 형식으로 씁니다.
 
+
+다음 릴리스의 v1 확장은 선택적 `limitationScopes`를 추가합니다. 각 항목은 `limitationIndex`와
+정확한 `channels` 배열로 구성됩니다. 읽지 못한 코드에서 발견한 이름 목록이 아니라, 해당
+공백 전체를 포함하는 상한입니다. 외부 객체·팩토리가 제공한 Swift 핸들러는 영향을 받는
+등록 채널을 모두 알 때만 `opaque-handler-bodies` 범위를 좁힙니다. 하나라도 모르면 기존
+전체 target 범위를 유지하며, 다른 범위 불명 공백을 덮어쓰지 않습니다.
+
+ObjC Flutter 스캔은 직접 채널 생성, 인라인 블록, 같은 파일의 registrar 위임과
+`handleMethodCall:result:`를 지원합니다. 파일 범위의 불변 `NSString *const` 이름도 한 단계
+풉니다. 긍정 `isEqualToString:` 분기는 `sourceLanguage: "objective-c"` 사실이 되며 Swift
+심볼을 지어내지 않습니다. Clang 인덱스에 선언이 유일하게 있으면 실제 `c:` USR을 싣고,
+없거나 위치가 모호하면 `symbol`을 생략합니다. USR이 있어도 현재 Swift 분석 그래프의
+정점은 아닙니다. 조건부 컴파일·매크로·재대입·미지원 위임은 불확실하게 남기고,
+리터럴 일부를 읽었어도 일반 `objective-c-sources` 공백은 좁히지 않습니다.
+[제한된 스캔 실측](docs/scans/2026-09-objc-flutter.md)에 관측 범위를 기록했습니다.
+
+새 생산자보다 이 확장을 지원하는 isthmus를 먼저 배포해야 합니다. 옛 v1 소비자는 기존의
+넓은 한계를 유지하지만, 옛 isthmus는 ObjC의 그래프 범위를 구분하지 못해 symbol 누락으로
+실패하거나 Swift 그래프에 적용할 수 없는 Clang 보존 근거를 내보낼 수 있습니다. 새 isthmus는 조인 증거를 남기고 Swift 전용 보존 목록에서 제외한 수를
+`omittedObjectiveCHandlers`로 알립니다. cartograph도 이 수를 한계에 싣습니다.
+표식 없는 Swift 핸들러의 symbol 누락은 여전히 보존 생성 실패입니다.
+
 ```console
 $ cartograph bridges
 {
@@ -622,7 +644,7 @@ UIKit 프로젝트에서 오탐(거짓 양성)의 가장 큰 원인이었습니�
   보고되지 않습니다. 커스텀 클래스는 이름으로 대조합니다.
 - **Objective-C 소스는 분석하지 않습니다.** `.m`/`.h`는 그래프에 보이지 않으며, 그쪽에서 참조되는 Swift
   선언은 기본값이 켜진 `retain_objc_accessible`이 덮습니다. `bridges` 는 `.m` 을 읽지만 React Native
-  내보내기 매크로만 텍스트로 봅니다.
+  내보내기 매크로와 지원하는 직접 Flutter 패턴을 텍스트로 봅니다.
 - **다른 언어의 호출자는 isthmus 를 통해서만 압니다.** `bridges` 는 Swift 가 선언한 것을 내보낼 뿐이고,
   Dart 나 JavaScript 가 실제로 부르는지는 이 도구가 하지 않는 조인입니다.
 - **대입만 되는 프로퍼티는 쓰이는 것으로 셉니다.** 그래프의 참조 간선은 한 종류뿐이라 인덱스의

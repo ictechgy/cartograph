@@ -107,14 +107,45 @@
         "path": "Sources/CorpusObjC/RNCalendar.m"
       },
       "method": "addEvent"
+    },
+    {
+      "channel": "com.example/objc-camera",
+      "dynamic": false,
+      "kind": "channel-register",
+      "location": {
+        "column": 5,
+        "line": 23,
+        "path": "Sources/CorpusObjC/RNCalendar.m"
+      },
+      "sourceLanguage": "objective-c",
+      "symbol": {
+        "qualifiedName": "ObjCCameraPlugin.registerWithRegistrar:",
+        "usr": "c:objc(cs)ObjCCameraPlugin(cm)registerWithRegistrar:"
+      }
+    },
+    {
+      "channel": "com.example/objc-camera",
+      "dynamic": false,
+      "kind": "method-handle",
+      "location": {
+        "column": 38,
+        "line": 26,
+        "path": "Sources/CorpusObjC/RNCalendar.m"
+      },
+      "method": "nativePhoto",
+      "sourceLanguage": "objective-c",
+      "symbol": {
+        "qualifiedName": "ObjCCameraPlugin.handleMethodCall:result:",
+        "usr": "c:objc(cs)ObjCCameraPlugin(im)handleMethodCall:result:"
+      }
     }
   ],
   "format": "bridge-facts",
   "generatedAt": "<generatedAt>",
   "limitations": [
-    "objective-c-handlers: 1 method handlers come from Objective-C sources and carry no USR, so a retention for them cannot be applied by --external-retentions",
-    "objective-c-sources: 1 Objective-C file(s) were read only for React Native export macros, so a Flutter handler written in Objective-C cannot appear here",
-    "mixed-targets: facts come from more than one bridge (flutter 6, react-native 2); 'target' is the majority"
+    "objective-c-handlers: 2 method handlers come from Objective-C sources and are outside the Swift analysis graph, so their retentions cannot be applied by --external-retentions",
+    "objective-c-sources: 1 Objective-C file(s) were read for React Native export macros and supported direct Flutter patterns; other Objective-C handlers may be absent",
+    "mixed-targets: facts come from more than one bridge (flutter 8, react-native 2); 'target' is the majority"
   ],
   "platform": "swift",
   "project": "<project>",
