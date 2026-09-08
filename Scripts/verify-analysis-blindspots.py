@@ -18,10 +18,18 @@ CONSTANT_SOURCE = r'''func install() {
     let channel2 = FlutterMethodChannel(name: alias, binaryMessenger: 0)
     let channel3 = FlutterMethodChannel(name: concat, binaryMessenger: 0)
     let channel4 = FlutterMethodChannel(name: parens, binaryMessenger: 0)
-    channel1.setMethodCallHandler { call, result in if call.method == "run" { result(1) } }
-    channel2.setMethodCallHandler { call, result in if call.method == "run" { result(1) } }
-    channel3.setMethodCallHandler { call, result in if call.method == "run" { result(1) } }
-    channel4.setMethodCallHandler { call, result in if call.method == "run" { result(1) } }
+    channel1.setMethodCallHandler { call, result in
+        if call.method == "run" { result(1) }
+    }
+    channel2.setMethodCallHandler { call, result in
+        if call.method == "run" { result(1) }
+    }
+    channel3.setMethodCallHandler { call, result in
+        if call.method == "run" { result(1) }
+    }
+    channel4.setMethodCallHandler { call, result in
+        if call.method == "run" { result(1) }
+    }
 }
 install()
 print(CompileTimeNames.used)
@@ -177,6 +185,134 @@ def needle(binary, root, source_root):
     return results
 
 
+
+INTERPROCEDURAL_SUPPORT = '''struct FlutterMethodCall { let method: String }
+struct FlutterMethodChannel {
+    let name: String
+    init(name: String, binaryMessenger: Int) { self.name = name }
+    func setMethodCallHandler(_ body: (FlutterMethodCall, (Int) -> Void) -> Void) { print(name) }
+}
+func identity(_ value: String) -> String { value }
+func literalName() -> String { "literal-return" }
+func nestedName() -> String { literalName() }
+func callbackName(_ callback: () -> String) -> String { callback() }
+func recursiveName(_ depth: Int) -> String { depth == 0 ? "recursive" : recursiveName(depth - 1) }
+func asyncName() async -> String { "async" }
+func overwrite(_ value: inout String) { value = "overwritten" }
+protocol NameProvider { func name() -> String }
+struct ProviderA: NameProvider { func name() -> String { "provider-A" } }
+struct ProviderB: NameProvider { func name() -> String { "provider-B" } }
+func dispatchName(_ provider: any NameProvider) -> String { provider.name() }
+func callbackLeaf() -> String { "callback" }
+func leaf() { print("leaf") }
+func middle() { leaf() }
+func unusedLeaf() {}
+func dropInput(_ input: String) -> String { "fixed" }
+'''
+INTERPROCEDURAL_SCENARIOS = '''func runScenarios() async {
+    middle()
+    let control = "control"
+    let controlChannel = FlutterMethodChannel(name: control, binaryMessenger: 0)
+    controlChannel.setMethodCallHandler { call, result in
+        if call.method == "control" { result(1) }
+    }
+    let literalReturn = literalName()
+    let literalReturnChannel = FlutterMethodChannel(name: literalReturn, binaryMessenger: 0)
+    literalReturnChannel.setMethodCallHandler { call, result in
+        if call.method == "literalReturn" { result(1) }
+    }
+    let identityA = identity("A")
+    let identityAChannel = FlutterMethodChannel(name: identityA, binaryMessenger: 0)
+    identityAChannel.setMethodCallHandler { call, result in
+        if call.method == "identityA" { result(1) }
+    }
+    let identityB = identity("B")
+    let identityBChannel = FlutterMethodChannel(name: identityB, binaryMessenger: 0)
+    identityBChannel.setMethodCallHandler { call, result in
+        if call.method == "identityB" { result(1) }
+    }
+    let nestedReturn = nestedName()
+    let nestedReturnChannel = FlutterMethodChannel(name: nestedReturn, binaryMessenger: 0)
+    nestedReturnChannel.setMethodCallHandler { call, result in
+        if call.method == "nestedReturn" { result(1) }
+    }
+    let callbackReturn = callbackName(callbackLeaf)
+    let callbackReturnChannel = FlutterMethodChannel(name: callbackReturn, binaryMessenger: 0)
+    callbackReturnChannel.setMethodCallHandler { call, result in
+        if call.method == "callbackReturn" { result(1) }
+    }
+    let recursiveReturn = recursiveName(2)
+    let recursiveReturnChannel = FlutterMethodChannel(name: recursiveReturn, binaryMessenger: 0)
+    recursiveReturnChannel.setMethodCallHandler { call, result in
+        if call.method == "recursiveReturn" { result(1) }
+    }
+    let protocolReturn = dispatchName(ProviderA())
+    let protocolReturnChannel = FlutterMethodChannel(name: protocolReturn, binaryMessenger: 0)
+    protocolReturnChannel.setMethodCallHandler { call, result in
+        if call.method == "protocolReturn" { result(1) }
+    }
+    let asyncReturn = await asyncName()
+    let asyncReturnChannel = FlutterMethodChannel(name: asyncReturn, binaryMessenger: 0)
+    asyncReturnChannel.setMethodCallHandler { call, result in
+        if call.method == "asyncReturn" { result(1) }
+    }
+    let discardedInput = dropInput(identity("unused-input"))
+    FlutterMethodChannel(name: discardedInput, binaryMessenger: 0).setMethodCallHandler { call, result in
+        if call.method == "discardedInput" { result(1) }
+    }
+    var mutable = "before"
+    overwrite(&mutable)
+    FlutterMethodChannel(name: mutable, binaryMessenger: 0).setMethodCallHandler { call, result in
+        if call.method == "mutated" { result(1) }
+    }
+    registerName("wrapped-A")
+    registerName("wrapped-B")
+}
+func registerName(_ name: String) {
+    FlutterMethodChannel(name: name, binaryMessenger: 0).setMethodCallHandler { call, result in
+        if call.method == "wrapped" { result(1) }
+    }
+}
+'''
+
+
+def interprocedural(binary, root):
+    write(root, "Package.swift", '// swift-tools-version: 5.10\nimport PackageDescription\n'
+          'let package = Package(name: "Probe", targets: [.executableTarget(name: "Probe")], '
+          'swiftLanguageVersions: [.v5])\n')
+    write(root, "Sources/Probe/Support.swift", INTERPROCEDURAL_SUPPORT)
+    write(root, "Sources/Probe/Scenarios.swift", INTERPROCEDURAL_SCENARIOS)
+    write(root, "Sources/Probe/App.swift", '@main struct App { static func main() async { await runScenarios() } }\n')
+    store = build(root)
+    runtime = run([str(store / "Products/Debug/Probe")], root).splitlines()
+    assert runtime == ["leaf", "control", "literal-return", "A", "B", "literal-return", "callback",
+                       "recursive", "provider-A", "async", "fixed", "overwritten", "wrapped-A", "wrapped-B"], runtime
+    facts = json.loads(run([str(binary), "bridges", "--target", "flutter", "--project", str(root)], root))
+    methods = [fact for fact in facts["facts"] if fact["kind"] == "method-handle"]
+    assert len(methods) == 12, methods
+    assert len([fact for fact in methods if fact["method"] == "wrapped"]) == 1
+    for fact in methods:
+        assert fact["dynamic"] == (fact["method"] != "control"), fact
+    assert any(item.startswith("dynamic-method-names: 11") and "channel or method name" in item
+               for item in facts["limitations"]), facts["limitations"]
+    observations = {}
+    for subject in ["leaf", "middle", "callbackLeaf", "recursiveName", "unusedLeaf", "ProviderA", "ProviderB"]:
+        document = query(binary, root, subject, store)
+        expected = "unreachable" if subject in ["unusedLeaf", "ProviderB"] else "reachable"
+        assert state(document) == expected, (subject, document)
+        observations[subject] = document["result"]["reachability"]
+        if subject in ["ProviderA", "ProviderB"]:
+            method = next(item for item in document["result"]["members"] if item["name"] == "name()")
+            method_document = query(binary, root, method["usr"], store)
+            assert state(method_document) == expected, method_document
+            observations[subject + ".name"] = method_document["result"]["reachability"]
+    assert observations["leaf"]["path"] == ["Probe.main()", "Probe.runScenarios()", "Probe.middle()", "Probe.leaf()"]
+    write(root, "bridges.json", json.dumps(facts, indent=2))
+    write(root, "runtime.json", json.dumps(runtime, indent=2))
+    write(root, "reachability.json", json.dumps(observations, indent=2))
+    return {"runtimeValues": runtime[1:], "sourceMethodFacts": len(methods),
+            "unresolvedValueFacts": 11, "symbolReachability": observations}
+
 def main():
     parser = argparse.ArgumentParser(description="Verify bounded analysis cases with real Swift indices; no downloads.")
     parser.add_argument("binary", type=Path)
@@ -184,7 +320,8 @@ def main():
     args = parser.parse_args()
     root = Path(tempfile.mkdtemp(prefix="cartograph-analysis-probe-"))
     binary = args.binary.resolve()
-    results = {"local": constants_and_ib(binary, root / "local")}
+    results = {"local": constants_and_ib(binary, root / "local"),
+               "interprocedural": interprocedural(binary, root / "interprocedural")}
     if args.needle_source:
         results["needle"] = needle(binary, root / "needle", args.needle_source.resolve())
     else:
