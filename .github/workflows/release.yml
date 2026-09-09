@@ -67,7 +67,8 @@ jobs:
         run: |
           tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP"
           "$RUNNER_TEMP/cartograph/cartograph" --version
-          lipo -verify_arch arm64 x86_64 "$RUNNER_TEMP/cartograph/cartograph"
+          lipo "$RUNNER_TEMP/cartograph/cartograph" -verify_arch arm64
+          lipo "$RUNNER_TEMP/cartograph/cartograph" -verify_arch x86_64
           Scripts/verify-cli-contract.sh "$RUNNER_TEMP/cartograph/cartograph"
           Scripts/verify-fixtures.sh "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-analysis-blindspots.py "$RUNNER_TEMP/cartograph/cartograph"
