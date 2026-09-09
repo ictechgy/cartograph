@@ -8,10 +8,13 @@ Foundation의 `resolvingSymlinksInPath()`도 `/private/tmp`를 `/tmp`로 되돌�
 지원해야 bridges를 내보낼 수 있다(기본 구현은 미지원 오류). 해결 실패와 NUL 경로는 거부한다.
 사실의 상대 위치·분석 루트·v1 스키마·소비자의 정확한 문자열 일치 규칙은 유지한다.
 
-수정 전 회귀 테스트 실패를 확인했다. 815 tests, coverage 90.49%, CLI 계약·실제 인덱스 코퍼스·
+수정 전 회귀 테스트 실패를 확인했다. 816 tests, coverage 90.51%, CLI 계약·실제 인덱스 코퍼스·
 자기 분석 4종(타입 순환 포함)이 통과했다. 실제 Swift 패키지를 빌드하고 Dartograph와 양쪽
 출력을 수정 없이 isthmus `check --strict`에 넣어 `/tmp`·`/private/tmp`·사용자 링크 3종을
 통과했다. 같은 입력의 설치본 0.10.0은 project 불일치로 코드 2였다. 수정은 아직 미배포다.
+
+GLM medium 리뷰에서 사용자 FileSystem 미지원 오류의 안내를 보완했다. 수정 전 실패 테스트를
+확인하고 명시적 구현 안내와 호환성 문구를 추가했으며, low 재검토에 남은 수정 사항은 없었다.
 
 자매 저장소 합의 사항: isthmus가 제안한 #72의 정본 문구는 "생산자는 project를 POSIX realpath에
 해당하는 심볼릭 링크가 해결된 절대 경로로 정규화한다"다. Dartograph 구현과 일치한다.

@@ -12,6 +12,7 @@ public final class InMemoryFileSystem: FileSystem, @unchecked Sendable {
     public let currentDirectoryPath: String
 
     /// 메모리 파일 시스템은 링크를 모델링하지 않으며 절대 경로를 키로 사용한다.
+    /// 존재 여부·점 경로 정규화도 모델링하지 않는다. 실제 경로 실패 검증에는 LocalFileSystem을 쓴다.
     public func realPath(at path: String) throws -> String {
         path.hasPrefix("/") ? path : currentDirectoryPath + "/" + path
     }

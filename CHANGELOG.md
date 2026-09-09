@@ -12,6 +12,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Export bridge-facts `project` as POSIX `realpath` so `/tmp`, `/private/tmp`, and symlink aliases
   join with other producers without rewriting evidence. Unresolvable roots fail instead of emitting
   an ambiguous project identity; fact locations remain relative. Fixes #72.
+- Embedded consumers providing a custom `FileSystem` must implement `realPath(at:)` to export
+  bridge facts. Unsupported implementations receive an explicit implementation hint.
+- Regenerate bridge-facts documents carrying old path spellings before joining them with newly
+  exported documents; consumers continue to require exact `project` equality.
 
 ## [0.10.0] - 2026-09-09
 

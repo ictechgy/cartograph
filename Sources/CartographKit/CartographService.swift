@@ -682,6 +682,9 @@ public struct CartographService: Sendable {
         let canonicalProject: String
         do {
             canonicalProject = try environment.fileSystem.realPath(at: projectPath)
+        } catch let error as CocoaError where error.code == .featureUnsupported {
+            throw CartographError.invalidConfiguration(path: projectPath, reason:
+                "The provided FileSystem does not support realPath(at:). Implement it before exporting bridge facts.")
         } catch {
             let reason = "Could not resolve the project root: \(error.localizedDescription). "
                 + "Check that it exists and is accessible."
