@@ -11,6 +11,11 @@ public final class InMemoryFileSystem: FileSystem, @unchecked Sendable {
     private var readErrors: [String: CocoaError.Code] = [:]
     public let currentDirectoryPath: String
 
+    /// 메모리 파일 시스템은 링크를 모델링하지 않으며 절대 경로를 키로 사용한다.
+    public func realPath(at path: String) throws -> String {
+        path.hasPrefix("/") ? path : currentDirectoryPath + "/" + path
+    }
+
     public init(currentDirectoryPath: String = "/project", files: [String: String] = [:]) {
         self.currentDirectoryPath = currentDirectoryPath
         for (path, contents) in files {

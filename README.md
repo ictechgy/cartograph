@@ -439,6 +439,11 @@ the handler, the `@objc(CalendarManager)` on a class, the `RCT_EXPORT_METHOD(add
 Objective-C), attaches the USR the index has for the enclosing declaration, and writes the
 `bridge-facts` exchange format that [isthmus](../isthmus) joins with the other platform's facts.
 
+The exported `project` is the root's POSIX `realpath`, resolving symlinks so `/tmp` and
+`/private/tmp` identify the same project across producers. An unresolvable root is an error.
+Fact locations remain relative to the project. Consumers still require exact `project` equality;
+normalization does not combine different plugin or monorepo roots.
+
 
 The v1 extension in 0.9.0 adds optional `limitationScopes`, each binding a `limitationIndex`
 to an exact `channels` array. This is an upper bound on the entire gap, never a list of names

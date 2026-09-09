@@ -6,6 +6,8 @@ import Foundation
 /// FileManager 를 직접 쓰면 테스트가 임시 디렉터리에 의존하게 되고,
 /// 병렬 실행에서 서로 간섭하기 쉽다.
 public protocol FileSystem: Sendable {
+    /// 다른 생산자와 같은 프로젝트를 식별하도록 실제 절대 경로를 돌려준다. 해결할 수 없으면 실패한다.
+    func realPath(at path: String) throws -> String
     func fileExists(at path: String) -> Bool
     func directoryExists(at path: String) -> Bool
     func readData(at path: String) throws -> Data
@@ -27,6 +29,11 @@ public protocol FileSystem: Sendable {
 }
 
 extension FileSystem {
+    /// 정규화를 지원하지 않는 구현은 경로를 추측해 교환 문서를 만들지 않는다.
+    public func realPath(at path: String) throws -> String {
+        throw CocoaError(.featureUnsupported)
+    }
+
     /// 수정 시각을 알 수 없는 구현을 위한 기본값.
     public func modificationDate(at path: String) -> Date? { nil }
 
@@ -119,6 +126,16 @@ extension FileSystem {
 /// 여기서 쓰는 연산에 한해 스레드 안전하다.
 public struct LocalFileSystem: FileSystem {
     public init() {}
+
+    /// Foundation은 `/private/tmp`를 `/tmp`로 되돌리므로 언어 간 식별에는 POSIX 경로를 쓴다.
+    public func realPath(at path: String) throws -> String {
+        guard !path.utf8.contains(0) else { throw CocoaError(.fileReadInvalidFileName) }
+        guard let resolved = realpath(path, nil) else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+        defer { free(resolved) }
+        return String(cString: resolved)
+    }
 
     public func fileExists(at path: String) -> Bool {
         var isDirectory: ObjCBool = false

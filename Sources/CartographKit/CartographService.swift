@@ -679,6 +679,14 @@ public struct CartographService: Sendable {
         generatedAt: Date = Date(),
         target: BridgeFact.Target? = nil
     ) throws -> BridgeFactsDocument {
+        let canonicalProject: String
+        do {
+            canonicalProject = try environment.fileSystem.realPath(at: projectPath)
+        } catch {
+            let reason = "Could not resolve the project root: \(error.localizedDescription). "
+                + "Check that it exists and is accessible."
+            throw CartographError.invalidConfiguration(path: projectPath, reason: reason)
+        }
         // 빈 인덱스 가드를 지나지 않는다. `bridges` 는 구문 스캔이 본체이고 인덱스는
         // USR 을 붙이는 데만 쓴다. 공개 플러그인 스캔은 인덱스 기여가 0인 상태로 도는
         // 것이 정상이라, 여기서 실패하면 그 용법이 통째로 막힌다.
@@ -761,7 +769,7 @@ public struct CartographService: Sendable {
         return BridgeFactsDocument(
             tool: .init(name: Cartograph.toolName, version: Cartograph.version),
             generatedAt: Self.bridgeTimestamp(generatedAt),
-            project: projectPath,
+            project: canonicalProject,
             facts: selectedFacts,
             unscannedEventChannels: includesFlutter ? unscannedEventChannels : 0,
             unscannedMessageChannels: includesFlutter ? unscannedMessageChannels : 0,

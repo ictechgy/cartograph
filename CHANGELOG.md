@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Export bridge-facts `project` as POSIX `realpath` so `/tmp`, `/private/tmp`, and symlink aliases
+  join with other producers without rewriting evidence. Unresolvable roots fail instead of emitting
+  an ambiguous project identity; fact locations remain relative. Fixes #72.
+
 ## [0.10.0] - 2026-09-09
 
 ### Added
