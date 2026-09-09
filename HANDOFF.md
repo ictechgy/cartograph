@@ -1,5 +1,11 @@
 # Handoff
 
+## 2026-09-09 — 0.10.1 릴리스
+
+[PR #73](https://github.com/ictechgy/cartograph/pull/73)의 #72 수정과 GLM 검토 보완을 0.10.1로 묶는다.
+유니버설 공개 바이너리·Homebrew 설치본·실제 Dart/Swift 조인 검증은 PR #73에 기록한다.
+기존 경로 표기의 bridge-facts는 재생성해야 하며 v1 구조와 소비자의 정확한 문자열 비교는 유지한다.
+
 ## 2026-09-09 — #72 브리지 프로젝트 realpath
 
 `fix/bridge-project-realpath`에서 bridge-facts의 `project`만 POSIX `realpath`로 정규화한다.

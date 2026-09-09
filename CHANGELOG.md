@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-09
+
 ### Fixed
 
 - Export bridge-facts `project` as POSIX `realpath` so `/tmp`, `/private/tmp`, and symlink aliases
@@ -800,7 +802,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.10.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.10.1...HEAD
+[0.10.1]: https://github.com/ictechgy/cartograph/compare/0.10.0...0.10.1
 [0.10.0]: https://github.com/ictechgy/cartograph/compare/0.9.0...0.10.0
 [0.9.0]: https://github.com/ictechgy/cartograph/compare/0.8.2...0.9.0
 [0.8.2]: https://github.com/ictechgy/cartograph/compare/0.8.1...0.8.2
