@@ -94,6 +94,7 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
     /// 계약은 문서당 하나를 요구한다. Swift 프로젝트가 Flutter 와 RN 을 함께 품는 일은
     /// 드물지만 불가능하지 않아, 그때는 다수를 적고 `limitations` 에 알린다.
     public let target: String?
+    /// 생산자가 해결한 실제 절대 루트. 소비자는 이 문자열을 바꾸지 않고 정확히 비교한다.
     public let project: String
     public let facts: [Fact]
     /// 이 문서가 보지 못한 것. 매번 붙는 경보가 아니라 실제로 센 값이다.

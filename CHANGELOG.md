@@ -7,6 +7,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-09
+
+### Fixed
+
+- Export bridge-facts `project` as POSIX `realpath` so `/tmp`, `/private/tmp`, and symlink aliases
+  join with other producers without rewriting evidence. Unresolvable roots fail instead of emitting
+  an ambiguous project identity; fact locations remain relative. Fixes #72.
+- Embedded consumers providing a custom `FileSystem` must implement `realPath(at:)` to export
+  bridge facts. Unsupported implementations receive an explicit implementation hint.
+- Regenerate bridge-facts documents carrying old path spellings before joining them with newly
+  exported documents; consumers continue to require exact `project` equality.
+
 ## [0.10.0] - 2026-09-09
 
 ### Added
@@ -790,7 +802,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.10.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.10.1...HEAD
+[0.10.1]: https://github.com/ictechgy/cartograph/compare/0.10.0...0.10.1
 [0.10.0]: https://github.com/ictechgy/cartograph/compare/0.9.0...0.10.0
 [0.9.0]: https://github.com/ictechgy/cartograph/compare/0.8.2...0.9.0
 [0.8.2]: https://github.com/ictechgy/cartograph/compare/0.8.1...0.8.2

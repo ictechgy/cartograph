@@ -65,7 +65,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.10.0
+mint install ictechgy/cartograph@0.10.1
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -73,7 +73,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.10.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.10.1"),
 ```
 
 ```bash
@@ -439,6 +439,11 @@ the handler, the `@objc(CalendarManager)` on a class, the `RCT_EXPORT_METHOD(add
 Objective-C), attaches the USR the index has for the enclosing declaration, and writes the
 `bridge-facts` exchange format that [isthmus](../isthmus) joins with the other platform's facts.
 
+The exported `project` is the root's POSIX `realpath`, resolving symlinks so `/tmp` and
+`/private/tmp` identify the same project across producers. An unresolvable root is an error.
+Fact locations remain relative to the project. Consumers still require exact `project` equality;
+normalization does not combine different plugin or monorepo roots.
+
 
 The v1 extension in 0.9.0 adds optional `limitationScopes`, each binding a `limitationIndex`
 to an exact `channels` array. This is an upper bound on the entire gap, never a list of names
@@ -487,7 +492,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.10.0" },
+  "tool" : { "name" : "cartograph", "version" : "0.10.1" },
   "version" : 1
 }
 ```

@@ -62,7 +62,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — tap 추가 없이 소스에서 빌드합니다.
 
 ```bash
-mint install ictechgy/cartograph@0.10.0
+mint install ictechgy/cartograph@0.10.1
 ```
 
 **설치 없이 쓰기** — Swift 패키지라면 의존성으로 넣고 커맨드 플러그인을 쓰면 됩니다.
@@ -70,7 +70,7 @@ mint install ictechgy/cartograph@0.10.0
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.10.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.10.1"),
 ```
 
 ```bash
@@ -421,6 +421,11 @@ Flutter 메서드 채널 핸들러나 React Native 모듈은 Dart 나 JavaScript
 SwiftSyntax 로(Objective-C 는 텍스트로) 소스에서 읽고, 감싸는 선언의 USR 을 인덱스에서 붙여,
 [isthmus](../isthmus) 가 다른 플랫폼의 사실과 조인하는 `bridge-facts` 교환 형식으로 씁니다.
 
+출력의 `project`는 루트의 POSIX `realpath`입니다. 심볼릭 링크를 해결해 `/tmp`와
+`/private/tmp`가 생산자 사이에서 같은 프로젝트를 가리키게 합니다. 해결할 수 없는 루트는 오류입니다.
+사실의 위치는 프로젝트 상대 경로를 유지합니다. 소비자는 여전히 `project` 문자열의 정확한 일치를
+요구하며, 정규화가 서로 다른 플러그인이나 모노레포 루트를 합치지는 않습니다.
+
 
 0.9.0의 v1 확장은 선택적 `limitationScopes`를 추가합니다. 각 항목은 `limitationIndex`와
 정확한 `channels` 배열로 구성됩니다. 읽지 못한 코드에서 발견한 이름 목록이 아니라, 해당
@@ -470,7 +475,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.10.0" },
+  "tool" : { "name" : "cartograph", "version" : "0.10.1" },
   "version" : 1
 }
 ```

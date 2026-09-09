@@ -5,6 +5,15 @@ import Testing
 
 @Suite("FileSystem 추상화")
 struct FileSystemTests {
+    @Test("realpath는 없는 경로와 NUL 접미사를 다른 프로젝트로 정규화하지 않는다")
+    func realPathRejectsInvalidPaths() {
+        let fileSystem = LocalFileSystem()
+        #expect(throws: (any Error).self) {
+            try fileSystem.realPath(at: "/tmp/cartograph-missing-\(UUID().uuidString)")
+        }
+        #expect(throws: (any Error).self) { try fileSystem.realPath(at: "/tmp\0ignored") }
+    }
+
     @Test("메모리 파일 시스템은 파일과 디렉터리를 구분한다")
     func inMemoryDistinguishesFilesAndDirectories() {
         let fileSystem = InMemoryFileSystem(files: ["/p/Sources/A.swift": "// a"])

@@ -399,6 +399,49 @@ struct BridgeFactsTests {
         #expect(handled.symbol?.usr == "s:handle")
     }
 
+    @Test("브리지 프로젝트는 tmp 표기와 사용자 링크에 무관한 realpath이며 사실은 상대 경로다")
+    func bridgeProjectUsesRealPath() throws {
+        let root = "/private/tmp/cartograph-project-\(UUID().uuidString)"
+        let manager = FileManager.default
+        try manager.createDirectory(atPath: root + "/project", withIntermediateDirectories: true)
+        defer { try? manager.removeItem(atPath: root) }
+        try manager.createSymbolicLink(atPath: root + "/alias", withDestinationPath: root + "/project")
+        try Self.pluginSource.write(toFile: root + "/project/CameraPlugin.swift", atomically: true, encoding: .utf8)
+        let paths = [root + "/project", String(root.dropFirst("/private".count)) + "/project", root + "/alias"]
+        for path in paths {
+            var configuration = CartographConfiguration.default
+            configuration.projectPath = path
+            let service = CartographService(configuration: configuration, environment: CartographEnvironment(
+                indexProviderOverride: StaticIndexProvider(IndexSnapshot()), usesSyntaxCache: false
+            ))
+            let json = try service.exportBridgeFacts(generatedAt: fixedDate).output
+            let document = try JSONDecoder().decode(BridgeFactsDocument.self, from: Data(json.utf8))
+            #expect(document.project == root + "/project")
+            #expect(!document.facts.isEmpty)
+            #expect(document.facts.allSatisfy { $0.location.path == "CameraPlugin.swift" })
+        }
+    }
+
+    @Test("사용자 파일 시스템이 realpath를 지원하지 않으면 구현할 메서드를 안내한다")
+    func explainsUnsupportedRealPath() {
+        let service = CartographService(configuration: .default, environment: CartographEnvironment(
+            fileSystem: UnsupportedRealPathFileSystem(), indexProviderOverride: StaticIndexProvider(IndexSnapshot())
+        ))
+        #expect(throws: CartographError.invalidConfiguration(path: "/p", reason:
+            "The provided FileSystem does not support realPath(at:). Implement it before exporting bridge facts."
+        )) { try service.exportBridgeFacts() }
+    }
+
+    @Test("프로젝트 경로를 해결할 수 없으면 브리지 문서를 내보내지 않는다")
+    func refusesUnresolvableProject() {
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/tmp/cartograph-missing-\(UUID().uuidString)"
+        let service = CartographService(configuration: configuration, environment: CartographEnvironment(
+            indexProviderOverride: StaticIndexProvider(IndexSnapshot())
+        ))
+        #expect(throws: CartographError.self) { try service.exportBridgeFacts() }
+    }
+
     @Test("JSON 은 계약의 머리말을 담고 키가 정렬되어 두 번 인코딩해도 같다")
     func jsonFollowsExchangeFormat() throws {
         let service = makeService(
@@ -476,4 +519,15 @@ struct BridgeFactsTests {
         #expect(text.contains("Sources/CameraPlugin.swift:9:14  method-handle  channel=com.example/camera  method=takePhoto  s:handle"))
         #expect(text.contains("2 bridge fact(s) · target flutter\n"))
     }
+}
+
+// realPath의 기본 미지원 구현을 쓰는 기존 임베드 소비자를 재현한다.
+private struct UnsupportedRealPathFileSystem: FileSystem {
+    private let backing = InMemoryFileSystem(currentDirectoryPath: "/p", files: ["/p/A.swift": "struct A {}"])
+    var currentDirectoryPath: String { backing.currentDirectoryPath }
+    func fileExists(at path: String) -> Bool { backing.fileExists(at: path) }
+    func directoryExists(at path: String) -> Bool { backing.directoryExists(at: path) }
+    func readData(at path: String) throws -> Data { try backing.readData(at: path) }
+    func write(_ data: Data, to path: String) throws { try backing.write(data, to: path) }
+    func contentsOfDirectory(at path: String) throws -> [String] { try backing.contentsOfDirectory(at: path) }
 }
