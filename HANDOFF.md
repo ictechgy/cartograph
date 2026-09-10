@@ -60,22 +60,22 @@
   825 테스트 분포 합리적(Analysis 189/Syntax 170/Kit 159/Core 120), CI 4게이트 완전 커버,
   0.11.0 변경(#76~#79)은 배치·주석·테스트 규약 준수.
 
-### 1순위 수정 완료 (refactor/audit-structural-cleanups)
+### 1순위 및 2순위 수정 완료 (refactor/audit-structural-cleanups)
 
 - `unescaped` 중복 제거: `SyntaxVocabulary.swift`에 `SyntaxIdentifiers.unescaped`로 일원화하고 두 파서·스캐너 위임 연결 및 테스트 추가.
 - 경로 정규화 일원화: `FileSystem.canonicalPath`를 public으로 공개(문서 주석 포함)하고, `CartographIndexStore`와 `CartographKit`의 7곳 중복을 `LocalFileSystem.canonicalPath`로 교체 및 테스트 추가.
 - 영문 테스트명 한국어화: `ValueFlowReviewCounterexampleTests.swift:164`의 유일한 영문명을 한국어(`반복 상한 초과로 자를 때 허상 간선을 남기지 않는다`)로 수정.
 - 아키텍처 문서화: `Sources/AGENTS.md`에 `CartographExport` → `CartographAnalysis` 수평 의존 예외(지표 모델 `NodeMetrics` 렌더링 목적)와 `LayerRule`의 동일 계층 허용 사각지대 명시.
-- 4게이트 완전 검증 통과: `coverage.sh`(90.39%), `verify-cli-contract.sh`, `verify-fixtures.sh`, 자기 분석 4종(`dead`, `cycles`, `cycles --level type`, `rules --strict`) 모두 통과(결함 0).
+- 보안 경화 (2순위):
+  - `ci.yml`: 최상위 `permissions: contents: read` 최소권한 명시.
+  - `release.yml`: tap 클론 시 토큰 인라인 대신 `http.extraheader` 푸시 인증으로 변경.
+  - `GitHubActionsDiagnosticReporter`: 메시지 및 속성 값에서 ANSI ESC(`\u{001B}`) 및 양방향 재정의(`\u{202E}`) 등 터미널 제어(Cc)·형식(Cf) 문자 필터링(`sanitize`) 적용 및 단위 테스트 추가.
+- 4게이트 완전 검증 통과: `coverage.sh`(90.41%), `verify-cli-contract.sh`, `verify-fixtures.sh`, 자기 분석 4종(`dead`, `cycles`, `cycles --level type`, `rules --strict`) 모두 통과(결함 0).
 
 ### 다음 단계
 
-1. 보안 낮음 4건 정비(2순위) 진행 여부 결정:
-   - `ci.yml`에 최상위 `permissions: contents: read` 추가.
-   - `release.yml`의 tap clone 시 토큰 인라인 대신 `http.extraheader` 방식 적용.
-   - `GitHubActionsDiagnosticReporter` 및 진단 출력 제어문자/ESC 필터링.
-   - `baseline` 경로의 프로젝트 루트 기준 정규화 검토.
-2. 현재 브랜치(`refactor/audit-structural-cleanups`)를 PR로 먼저 올릴지, 아니면 2순위 보안 정비까지 포함하여 PR을 올릴지 선택.
+1. 현재 브랜치(`refactor/audit-structural-cleanups`) 푸시 및 GitHub PR 생성.
+2. 감사 결론 최종 기록 및 main 병합.
 
 ## 2026-09-10 — 0.11.0 릴리스 (#75·#74)
 
