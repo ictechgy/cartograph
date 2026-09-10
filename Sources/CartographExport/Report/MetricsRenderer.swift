@@ -104,8 +104,7 @@ public struct MetricsRenderer: Sendable {
             diagnostics: diagnostics.sorted(),
             suppressedCount: suppressedCount
         )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let encoder = JSONEncoder.cartographDefault()
         return String(decoding: try encoder.encode(document), as: UTF8.self) + "\n"
     }
 

@@ -452,6 +452,56 @@ struct CartographServiceTests {
         #expect(explained.findingCount == 0)
         #expect(explained.output.contains("DeadHelper"))
     }
+
+    @Test("상대 경로 베이스라인과 기본 베이스라인은 projectPath 기준으로 해결된다")
+    func baselineResolvesRelativeToProjectPath() throws {
+        let fileSystem = InMemoryFileSystem()
+        let service = makeService(
+            configure: { $0.baselinePath = nil },
+            fileSystem: fileSystem
+        )
+        _ = try service.writeBaseline(
+            diagnostics: try service.collectAllDiagnostics(),
+            to: ".cartograph-baseline.json"
+        )
+        #expect(fileSystem.fileExists(at: "/p/.cartograph-baseline.json"))
+        #expect(try service.detectUnusedCode().findingCount == 0)
+
+        let customService = makeService(
+            configure: { $0.baselinePath = "configs/custom-baseline.json" },
+            fileSystem: fileSystem
+        )
+        _ = try customService.writeBaseline(
+            diagnostics: try customService.collectAllDiagnostics(),
+            to: "configs/custom-baseline.json"
+        )
+        #expect(fileSystem.fileExists(at: "/p/configs/custom-baseline.json"))
+        #expect(try customService.detectUnusedCode().findingCount == 0)
+    }
+
+    @Test("measureMetrics는 베이스라인을 적용하고 상대 경로로 보고한다")
+    func measureMetricsAppliesBaselineAndRelativePaths() throws {
+        let fileSystem = InMemoryFileSystem()
+        let service = makeService(
+            configure: {
+                $0.thresholds = Thresholds(maxDistanceFromMainSequence: 0.0)
+                $0.reportFormat = .sarif
+            },
+            fileSystem: fileSystem
+        )
+        let unbaselined = try service.measureMetrics()
+        #expect(unbaselined.findingCount > 0)
+        #expect(unbaselined.thresholdFailure != nil)
+
+        _ = try service.writeBaseline(
+            diagnostics: try service.collectAllDiagnostics(),
+            to: ".cartograph-baseline.json"
+        )
+        let baselined = try service.measureMetrics()
+        #expect(baselined.findingCount == 0)
+        #expect(baselined.suppressedCount > 0)
+        #expect(baselined.thresholdFailure == nil)
+    }
 }
 
 /// 인덱스를 몇 번 읽었는지 세는 공급자.

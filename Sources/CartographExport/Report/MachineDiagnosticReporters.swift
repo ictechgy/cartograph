@@ -136,8 +136,7 @@ public struct JSONDiagnosticReporter: DiagnosticReporting {
             limitations: summary.limitations,
             diagnostics: diagnostics.sorted()
         )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let encoder = JSONEncoder.cartographDefault()
         return String(decoding: try encoder.encode(document), as: UTF8.self) + "\n"
     }
 }
@@ -172,8 +171,7 @@ public struct SARIFDiagnosticReporter: DiagnosticReporting {
                 )
             ]
         )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let encoder = JSONEncoder.cartographDefault()
         return String(decoding: try encoder.encode(document), as: UTF8.self) + "\n"
     }
 

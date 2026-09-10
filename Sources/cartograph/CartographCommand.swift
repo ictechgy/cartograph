@@ -476,7 +476,8 @@ struct BaselineCommand: ParsableCommand {
             )
         }
         let context = try CommandSupport.makeContext(options)
-        let path = writePath ?? context.configuration.baselinePath
+        let path = writePath.map { GlobalOptions.absolutePath($0, relativeTo: context.fileSystem.currentDirectoryPath) }
+            ?? context.configuration.baselinePath
             ?? (context.service.projectPath as NSString)
                 .appendingPathComponent(Cartograph.defaultBaselineFileName)
         let diagnostics = try context.service.collectAllDiagnostics()

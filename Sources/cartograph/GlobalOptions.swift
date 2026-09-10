@@ -81,12 +81,13 @@ struct GlobalOptions: ParsableArguments {
         let loaded = try ConfigurationLoader(fileSystem: fileSystem)
             .load(explicitPath: configPath, searchDirectory: searchDirectory)
 
+        let resolvedProjectPath = Self.absolutePath(
+            projectPath ?? loaded.configuration.projectPath ?? searchDirectory,
+            relativeTo: fileSystem.currentDirectoryPath
+        )
         let overrides = ConfigurationOverrides(
             indexStorePath: indexStorePath,
-            projectPath: Self.absolutePath(
-                projectPath ?? loaded.configuration.projectPath ?? searchDirectory,
-                relativeTo: fileSystem.currentDirectoryPath
-            ),
+            projectPath: resolvedProjectPath,
             derivedDataPath: derivedDataPath,
             level: level,
             include: include.isEmpty ? nil : include.map { GlobPattern($0) },

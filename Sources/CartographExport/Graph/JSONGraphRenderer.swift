@@ -14,10 +14,7 @@ public struct JSONGraphRenderer: GraphRendering {
     }
 
     public func render(_ graph: CodeGraph) throws -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = prettyPrinted
-            ? [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-            : [.sortedKeys, .withoutEscapingSlashes]
+        let encoder = JSONEncoder.cartographDefault(prettyPrinted: prettyPrinted)
         return String(decoding: try encoder.encode(GraphDocument(graph: graph)), as: UTF8.self) + "\n"
     }
 }
