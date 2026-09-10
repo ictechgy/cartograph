@@ -34,12 +34,25 @@ public struct ExternalRetention: Sendable, Equatable, Codable {
     public struct Evidence: Sendable, Equatable, Codable {
         public let channel: String?
         public let method: String?
+        /// 대표 호출 하나. 여러 위치에서 부르는 경우에도 첫 호출이다.
         public let caller: Caller?
+        /// 전체 호출 위치(대표 포함). 생산자가 정한 상한까지만 실는다(#74).
+        public let callers: [Caller]?
+        /// 상한을 넘어 `callers` 에 못 실은 호출 수. 0이면 생산자가 키를 뺀다.
+        public let callersOmitted: Int?
 
-        public init(channel: String?, method: String?, caller: Caller?) {
+        public init(
+            channel: String?,
+            method: String?,
+            caller: Caller?,
+            callers: [Caller]? = nil,
+            callersOmitted: Int? = nil
+        ) {
             self.channel = channel
             self.method = method
             self.caller = caller
+            self.callers = callers
+            self.callersOmitted = callersOmitted
         }
     }
 
@@ -57,17 +70,35 @@ public struct ExternalRetention: Sendable, Equatable, Codable {
     /// `--explain` 에 실을 근거 문장. 있는 정보만 이어 붙인다.
     ///
     /// 근거를 "외부 파일이 그렇다고 했다"로 뭉개면 사용자는 그 파일을 열어야 한다.
-    /// 어느 플랫폼의 어느 줄이 어느 채널로 무엇을 불렀는지가 답이다.
+    /// 어느 플랫폼의 어느 줄이 어느 채널로 무엇을 불렀는지가 답이다. 호출 위치가 여럿이면
+    /// 전부가 답의 일부이므로 나열하고, 문장은 한 줄이어야 하므로 처음 몇 개만 적고
+    /// 나머지는 수로만 알린다.
     public var evidenceDescription: String {
         var parts: [String] = []
-        if let caller = evidence?.caller {
-            let site = caller.line.map { "\(caller.path):\($0)" } ?? caller.path
-            parts.append("\(caller.platform) \(site)")
-        }
+        let sites = Self.callSites(of: evidence)
+        if !sites.isEmpty { parts.append(sites.joined(separator: ", ")) }
         if let method = evidence?.method { parts.append("invokes '\(method)'") }
         if let channel = evidence?.channel { parts.append("on channel '\(channel)'") }
         let text = parts.isEmpty ? "reason '\(reason)' with no evidence attached" : parts.joined(separator: " ")
         return Self.printable(text)
+    }
+
+    /// 문장에 나열하는 호출 위치의 수. 호출당 한 줄을 넘기지 않기 위한 표시 상한이다.
+    private static let listedCallersLimit = 3
+
+    /// `callers` 가 있으면 그 목록을, 없거나 비었으면 대표 `caller` 를 문장용 토큰으로 바꾼다.
+    private static func callSites(of evidence: Evidence?) -> [String] {
+        guard let evidence else { return [] }
+        var callers = evidence.callers ?? []
+        if callers.isEmpty { callers = [evidence.caller].compactMap { $0 } }
+        let listed = callers.prefix(listedCallersLimit).map { caller in
+            let site = caller.line.map { "\(caller.path):\($0)" } ?? caller.path
+            return "\(caller.platform) \(site)"
+        }
+        let unlisted = callers.count - listed.count + max(evidence.callersOmitted ?? 0, 0)
+        // 위치를 하나도 몰라도 세지 못한 호출 수는 지우지 않는다. 근거 문장은 있는 정보만 쓴다.
+        guard unlisted > 0 else { return listed }
+        return listed + ["+\(unlisted) more"]
     }
 
     /// 외부 파일에서 온 문자열은 터미널과 CI 로그에 그대로 찍힌다. 제어 문자는 뺀다.

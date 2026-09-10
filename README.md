@@ -529,6 +529,10 @@ App.CameraPlugin is retained because its member App.init(messenger:) is called f
   evidence: dart lib/camera.dart:42 invokes 'takePhoto' on channel 'com.example/camera'
 ```
 
+When the other side calls from several locations, `evidence` carries every call site in `callers` (plus
+`callersOmitted` for what the producer's cap left out) and `--explain` lists them, keeping the line short
+with a `+N more` marker; a single-caller document renders exactly as before.
+
 A path that is configured but missing is a tool failure (exit 2), not a silent no-op: someone who
 supplied the file expects it to be applied. `query` lists the file's provenance under
 `limitations`, along with how many of its retentions name no declaration in the index — a renamed

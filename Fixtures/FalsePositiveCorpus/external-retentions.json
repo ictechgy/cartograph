@@ -20,7 +20,14 @@
           "platform": "dart",
           "path": "lib/camera.dart",
           "line": 42
-        }
+        },
+        "callers": [
+          {
+            "platform": "dart",
+            "path": "lib/camera.dart",
+            "line": 42
+          }
+        ]
       }
     },
     {
@@ -36,7 +43,14 @@
           "platform": "dart",
           "path": "lib/photo.dart",
           "line": 17
-        }
+        },
+        "callers": [
+          {
+            "platform": "dart",
+            "path": "lib/photo.dart",
+            "line": 17
+          }
+        ]
       }
     }
   ]

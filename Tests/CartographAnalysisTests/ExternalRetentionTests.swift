@@ -1,6 +1,7 @@
 @testable import CartographAnalysis
 import CartographCore
 import CartographTestSupport
+import Foundation
 import Testing
 
 @Suite("외부 보존 근거")
@@ -19,6 +20,31 @@ struct ExternalRetentionTests {
                 "channel": "com.example/camera",
                 "method": "takePhoto",
                 "caller": { "platform": "dart", "path": "lib/camera.dart", "line": 42 }
+              }
+            }
+          ]
+        }
+        """
+
+    /// isthmus v0 additive 확장: 전체 호출 목록과 상한 초과 계수. 대표 caller 는 그대로다.
+    static let multiCallerDocument = """
+        {
+          "format": "external-retentions",
+          "version": 0,
+          "retentions": [
+            {
+              "symbol": { "usr": "s:handle", "qualifiedName": "CameraPlugin.handle" },
+              "reason": "bridge",
+              "evidence": {
+                "channel": "com.example/camera",
+                "method": "takePhoto",
+                "caller": { "platform": "dart", "path": "lib/camera.dart", "line": 42 },
+                "callers": [
+                  { "platform": "dart", "path": "lib/camera.dart", "line": 42 },
+                  { "platform": "dart", "path": "lib/photo.dart", "line": 17 },
+                  { "platform": "kotlin", "path": "Camera.kt", "line": 9 }
+                ],
+                "callersOmitted": 3
               }
             }
           ]
@@ -55,6 +81,91 @@ struct ExternalRetentionTests {
             document.retentions.first?.evidenceDescription
                 == "dart lib/camera.dart:42 invokes 'takePhoto' on channel 'com.example/camera'"
         )
+    }
+
+    @Test("여러 호출자를 나열하고 상한을 넘은 수는 +N more 로만 알린다")
+    func describesMultipleCallers() throws {
+        let document = try makeStore(Self.multiCallerDocument).load(from: "/p/retentions.json")
+        #expect(document.retentions.first?.evidence?.callers?.count == 3)
+        #expect(document.retentions.first?.evidence?.callersOmitted == 3)
+        #expect(
+            document.retentions.first?.evidenceDescription
+                == "dart lib/camera.dart:42, dart lib/photo.dart:17, kotlin Camera.kt:9, +3 more "
+                    + "invokes 'takePhoto' on channel 'com.example/camera'"
+        )
+    }
+
+    @Test("표시 상한을 넘는 호출자도 나머지 수에 합쳐 세고 문장은 짧게 유지한다")
+    func truncatesLongCallerLists() {
+        func caller(_ line: Int) -> ExternalRetention.Caller {
+            .init(platform: "dart", path: "lib/c\(line).dart", line: line)
+        }
+        let retention = ExternalRetention(
+            symbol: .init(usr: "s:x", qualifiedName: nil),
+            reason: "bridge",
+            evidence: .init(channel: "c", method: "m", caller: caller(1),
+                            callers: (1...5).map { caller($0) }, callersOmitted: 2)
+        )
+        #expect(
+            retention.evidenceDescription
+                == "dart lib/c1.dart:1, dart lib/c2.dart:2, dart lib/c3.dart:3, +4 more invokes 'm' on channel 'c'"
+        )
+    }
+
+    @Test("호출자가 하나뿐인 callers 문서는 기존 문장과 바이트가 같다")
+    func singleCallerListRendersAsBefore() throws {
+        let evidence = ExternalRetention.Evidence(
+            channel: "com.example/camera",
+            method: "takePhoto",
+            caller: .init(platform: "dart", path: "lib/camera.dart", line: 42),
+            callers: [.init(platform: "dart", path: "lib/camera.dart", line: 42)]
+        )
+        let retention = ExternalRetention(symbol: .init(usr: "s:handle", qualifiedName: nil), reason: "bridge", evidence: evidence)
+        #expect(retention.evidenceDescription == "dart lib/camera.dart:42 invokes 'takePhoto' on channel 'com.example/camera'")
+    }
+
+    @Test("callers 가 비어 있으면 대표 호출로 돌아가고 옛 문서의 필드는 nil 이다")
+    func emptyCallersFallBackToRepresentative() throws {
+        let evidence = ExternalRetention.Evidence(
+            channel: "c", method: "m",
+            caller: .init(platform: "dart", path: "lib/a.dart", line: 1),
+            callers: []
+        )
+        #expect(
+            ExternalRetention(symbol: .init(usr: "s:x", qualifiedName: nil), reason: "bridge", evidence: evidence)
+                .evidenceDescription == "dart lib/a.dart:1 invokes 'm' on channel 'c'"
+        )
+        let old = try makeStore(Self.validDocument).load(from: "/p/retentions.json")
+        #expect(old.retentions.first?.evidence?.callers == nil)
+        #expect(old.retentions.first?.evidence?.callersOmitted == nil)
+    }
+
+    @Test("호출 위치를 못 실었으면 남은 수라도 문장에서 지우지 않는다")
+    func orphanOmittedCountStaysVisible() {
+        let evidence = ExternalRetention.Evidence(channel: "c", method: "m", caller: nil, callers: [], callersOmitted: 5)
+        #expect(
+            ExternalRetention(symbol: .init(usr: "s:x", qualifiedName: nil), reason: "bridge", evidence: evidence)
+                .evidenceDescription == "+5 more invokes 'm' on channel 'c'"
+        )
+    }
+
+    @Test("음수 callersOmitted 는 거부한다")
+    func rejectsNegativeCallersOmitted() {
+        let invalid = Self.multiCallerDocument.replacingOccurrences(of: "\"callersOmitted\": 3", with: "\"callersOmitted\": -1")
+        #expect(throws: CartographError.self) { try makeStore(invalid).load(from: "/p/retentions.json") }
+    }
+
+    @Test("callers 를 넣은 근거는 인코딩과 디코딩을 왕복한다")
+    func roundTripsCallers() throws {
+        let evidence = ExternalRetention.Evidence(
+            channel: "c", method: "m",
+            caller: .init(platform: "dart", path: "lib/a.dart", line: 1),
+            callers: [.init(platform: "dart", path: "lib/a.dart", line: 1), .init(platform: "kotlin", path: "A.kt", line: nil)],
+            callersOmitted: 0
+        )
+        let retention = ExternalRetention(symbol: .init(usr: "s:x", qualifiedName: nil), reason: "bridge", evidence: evidence)
+        let data = try JSONEncoder().encode([retention])
+        #expect(try JSONDecoder().decode([ExternalRetention].self, from: data) == [retention])
     }
 
     @Test("근거가 없으면 이유만 적고 지어내지 않는다")

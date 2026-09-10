@@ -509,6 +509,10 @@ App.CameraPlugin is retained because its member App.init(messenger:) is called f
   evidence: dart lib/camera.dart:42 invokes 'takePhoto' on channel 'com.example/camera'
 ```
 
+반대쪽에서 여러 위치로 부르면 근거의 `callers` 에 전체 호출 위치를(생산자 상한을 넘은 만큼은
+`callersOmitted` 으로) 실고 `--explain` 은 이를 나열하되, 문장을 짧게 유지하려고 남은 수를
+`+N more` 로만 적습니다. 호출이 하나뿐인 문서는 기존과 같은 문장을 냅니다.
+
 지정했는데 없는 파일은 조용히 넘어가지 않고 도구 실패(종료 코드 2)입니다. 파일을 준 사람은 그것이
 반영되기를 기대합니다. `query` 는 `limitations` 에 파일의 출처와, 인덱스의 어느 선언과도 맞지 않는
 근거의 수를 싣습니다. 이름을 바꾼 핸들러는 버그가 되기 전에 거기서 먼저 드러납니다.
