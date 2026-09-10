@@ -15,12 +15,12 @@
   대조해 일치함을 확인(독립 채널). 이 세션의 샌드박스는 `release-assets.githubusercontent.com`
   도메인이 막혀 바이트 단위 재계산과 로컬 `brew upgrade` 검증은 못 했다 — 노트의 값은 워크플로
   러너가 계산한 것으로 러너의 재검증 단계를 통과한 바이너리다.
-- **Homebrew tap 갱신 불가 — 사용자 행동 필요**: 주입된 토큰의 쓰기 권한이
-  `ictechgy/cartograph` 에만 있다(tap 저장소 콘텐츠 API가 403 "Resource not accessible by
-  personal access token"). 수동 갱신값은 url
-  `https://github.com/ictechgy/cartograph/releases/download/0.11.0/cartograph-0.11.0-macos-universal.tar.gz`,
-  sha256 `a07aaaeaf960a9e2e9896a8b0475d910053b45e06c5ea7bfd6e6844432c9ca7e`, version `0.11.0`.
-  `HOMEBREW_TAP_TOKEN` 시크릿을 넣으면 이후 릴리스는 워크플로가 자동 갱신한다[F49].
+- **Homebrew tap 갱신 완료**: 권한 추가 후 세션 토큰으로 `Formula/cartograph.rb`를
+  `87facb5`("cartograph 0.11.0")로 커밋·푸시했다. 원격 수식의 url·sha256·version이 릴리스와
+  일치함을 API로 확인. 이 세션 샌드박스에선 로컬 `brew upgrade` 검증이 불가하다(`/opt/homebrew`
+  쓰기·Homebrew API 도메인 차단) — 수식의 test 블록은 공개 바이너리의 `--version`(워크플로가
+  이미 검증)을 단언하므로 정상 머신에서 통과한다. `HOMEBREW_TAP_TOKEN`을 넣으면 이후 릴리스는
+  워크플로가 자동 갱신한다[F49].
 
 ## 2026-09-10 — 이슈 #75·#74 구현 (PR #76으로 병합됨)
 
@@ -266,8 +266,8 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 
 ## Current Progress
 
-**현재 릴리스**: **0.11.0**. GitHub Release 공개·자산 검증 완료. Homebrew tap 갱신은 사용자
-행동이 필요하다(위 0.11.0 절). 현재 홍보 후속은 맨 위 2026-09-10 절에 있다.
+**현재 릴리스**: **0.11.0**. GitHub Release 공개·자산 검증·Homebrew tap 갱신 완료. 현재 홍보
+후속은 맨 위 2026-09-10 절에 있다.
 
 **성능·구조·보안 점검**(2026-09-07 심야, 사용자 요청): 급한 것 없음. `try!`·강제 언랩 0건, 셸 호출 없음(git·xcode-select 절대 경로+인자 배열), 네트워크 없음, `Package.resolved` 커밋됨, 자기 분석 `dead` 0.225초. 고친 것은 연속 `**` 글롭 폭발뿐(별 2개당 ~30배, 8개에 17초 실측 → 세그먼트만 접어 0.0001초, #60). `-o` 덮어쓰기는 현행 유지로 결론 — `-o` 대상은 매번 다시 만드는 CI 산출물이라 `--force` 요구가 주류를 깨고 매번 경고는 상시 경보가 된다(`init`·`skill`이 지키는 오래 손보는 파일과 다름). 타입 그래프 간선 1100→1102는 인덱스 재빌드 편차(정점·판정 동일, 같은 인덱스에선 바이트 동일 확인).
 
