@@ -1,9 +1,113 @@
 # Handoff
 
+## 2026-09-10 — 0.11.0 릴리스 (#75·#74)
+
+[PR #76](https://github.com/ictechgy/cartograph/pull/76)을 `b5be1ad`로 스쿼시 머지하고 **0.11.0**으로
+배포했다. #75·#74는 종료됐다. 구현 내용과 검증 상세는 아래 절에 있다.
+
+- **리뷰**: qwen 요청 3회 모두 감독자 샌드박스 초기화 실패로 리뷰 불가(`TimeoutExpired` ×2,
+  `exited 125`). 사용자 승인으로 GLM high로 대체했고 판정은 병합 가능, 비차단 관찰 5건의 처리는
+  PR 코멘트에 있다. CI 두 잡(커버리지 게이트 포함) 통과 후 머지.
+- **배포 순서**: 릴리스 PR 머지 → 태그 `0.11.0` → 릴리스 워크플로(유니버설 빌드·압축 푼 바이너리로
+  CLI 계약·코퍼스·블라인드스팟) → 공개 자산 체크섬·아키텍처 확인 → Homebrew tap 갱신.
+  `HOMEBREW_TAP_TOKEN`은 여전히 없어 tap 커밋은 별도로 수행한다. 검증 기록은 배포 후
+  docs PR로 남긴다(0.9.0의 #68 관례).
+
+## 2026-09-10 — 이슈 #75·#74 구현 (PR #76으로 병합됨)
+
+두 제안을 검토 후 구현해 PR #76으로 머지했다.
+
+- **#75 (ObjC 구문 이름 신원)**: `BridgeSymbolResolver`가 ObjC 사실에서 Clang 정의 위치가
+  유일하지 않으면(무인덱스·줄 불일치·모호) `usr` 없는 `Symbol(qualifiedName)`을 부착한다.
+  기존엔 symbol 통째로 생략. USR 추측은 여전히 하지 않고, 보존 의미 불변(ObjC 핸들러는
+  `objective-c-handlers` 계수, `--external-retentions` 대상 외). **계약 조정 한 곳**:
+  `missing-handler-usrs` 계수를 경로 술어(`.swift` 접미)로 통일해 ObjC 이름뿐 심볼이 Swift
+  신선도 신호에 섞이지 않게 했다. isthmus 소비측(PR #53)은 배포 완료.
+- **#74 (다중 호출자 근거)**: `ExternalRetention.Evidence`에 선택 `callers`·`callersOmitted`
+  디코딩 추가(합성 Codable — 옛 문서·옛 빌드 양방향 호환). `evidenceDescription`은 처음 3개
+  호출 위치를 나열하고 남은 수(표시 상한 초과 + 생산자 상한 초과 합산)를 `+N more`로 싣는다.
+  단일 호출 문장은 기존과 바이트 동일. 음수 `callersOmitted`는 로드에서 거부.
+- **GLM high 리뷰 반영**: (1) 여러 빌드 구성이 같은 USR 로 중복 기록돼도 `Set(usr)` 유일성으로
+  판정해 USR 부착이 불발되지 않게 함. (2) `missing-handler-usrs` 술어를 `objective-c-handlers`
+  와 같은 경로 기준으로 일원화. (3) 호출 위치 없이 `callersOmitted`만 와도 `+N more`를 지우지
+  않고 렌더. **기각**: `usr`을 `null` 키로 명시하라는 지적 — Swift name-only 사실이 0.5.x부터
+  정확히 `usr` 키 없는 모양으로 나갔고 isthmus 파서도 그 모양을 수용하도록 배포됐다. 키를
+  명시하는 쪽이 새 모양이다.
+
+**검증** (이 샌드박스에서는 `swift test` 직접 실행이 불가해 — swiftbuild 계획 DB가 `*.db` 규칙에
+막히고 네이티브 빌드는 CLT Testing 프레임워크를 못 찾음 — TMPDIR scratch 네이티브 빌드 +
+`-F <CLT 프레임워크>` + 디버그 디렉터리에 Testing 프레임워크/`lib_TestingInterop.dylib` 심볼릭
+링크로 `swiftpm-testing-helper`를 돌렸다):
+
+- 823 tests(신규 7), 실패 13건은 기준 코드와 동일한 환경 실패(`/var/folders/T`·`/private/tmp`
+  쓰기 차단, git 하위프로세스). 신규 테스트는 구현 되돌려 실패 확인(#75 4단언, #74 2단언, 리뷰
+  반영 2건 포함).
+- 실인덱스 코퍼스 8종 전부 통과 — `expected-bridges.json` 바이트 불변(ObjC 사실은 실제 Clang
+  유일 매치라 `c:` USR 유지), 근거 fixture에 `callers` 추가 후에도 `expected-unused-with-retentions`·
+  `--explain` 문장 불변.
+- 릴리스 바이너리 재현: 타깃 밖 `.m`(인덱스에 유닛 없음)에서 `bridges`가
+  `ObjCPlugin.registerWithRegistrar:` 이름 신원을 내고 `missing-handler-usrs`는 발화하지 않음.
+  호출자 5개+초과 3의 근거가 `+5 more`로 렌더됨.
+- CLI 계약 스크립트의 `mktemp` 실패분(16건)은 유효 임시 디렉터리로 수동 반복해 전부 통과.
+- 커버리지는 환경 실패 13건 탓에 89.21%(같은 방식 기준 측정 89.30% 대비 신규 43줄 전부 커버,
+  줄 단위 차이 없음). CI의 90% 게이트가 정본이다.
+- 자기 분석 `dead`·`cycles`·`cycles --level type`·`rules --strict` 전부 0.
+
+문서: 두 README 대칭 갱신(ObjC 이름 신원·다중 호출자 문장), `bridges --help` discussion,
+CHANGELOG. 다음은 위 0.11.0 절의 배포다. 코퍼스 `external-retentions.json`의 callers 추가는
+isthmus 실제 출력 모양과 맞춘 것으로 기대 출력은 그대로다.
+
+## 2026-09-10 — 홍보 게시와 Reddit 검토 요청
+
+현재 후속 작업은 **r/androiddev 모더레이터의 답변 확인**이다. 자동 확인 작업은 등록하지 않았다.
+아래 과거 기록의 배포 대기·다음 단계보다 이 절을 우선한다.
+
+- **Cartograph / Swift Forums:** [Community Showcase 게시글](https://forums.swift.org/t/cartograph-inspect-swift-dependencies-and-explain-reachability/89449)
+  등록 완료. 이후 사용자 요청으로 Claude와 다시 퇴고해 **인사·소개 → 만들려는 이유 → 실제 발견과
+  개선 → 사용법·한계** 순서로 게시된 본문까지 수정했다. 타입 순환 두 건을 발견해 공유 정의를
+  분리하고 CI에 타입 검사를 추가한 [PR #34](https://github.com/ictechgy/cartograph/pull/34)를 근거로 연결했다.
+  수정 후 본문·링크·코드 블록을 확인했다.
+- **Kartograph / r/androiddev:** [게시글](https://www.reddit.com/r/androiddev/comments/1wby2r9/kartograph_inspect_android_class_dependencies_and/)
+  한 건을 Open Source 플레어로 등록했지만 **Reddit 필터로 제거된 상태**다. 게시 성공과 공개 노출을
+  혼동하지 않는다. 구체적인 제거 사유는 표시되지 않았으며, 신규 계정이나 AI 문체가 원인이라고
+  단정하지 않는다. 재게시하지 않았다.
+- **모더레이터 검토 요청:** 사용자의 명시적 요청으로 문구를 퇴고하고 `r/androiddev`에 전송했다.
+  제목은 `Review request for filtered kartograph post`. 작성자임을 밝히고 원문 링크·기술적 내용과
+  Open Source 분류를 설명한 뒤, 커뮤니티 적합성과 필요한 수정 사항을 물었다. 화면의
+  **“메시지 전송됨”**과 입력란 초기화를 확인했다. 아직 답변이나 복구 승인을 확인한 상태는 아니다.
+- **뉴스레터:** Android Weekly·Kotlin Weekly용 짧은 제보문은 준비했지만 제출하지 않았다.
+  GeekNews·HN 등 다른 채널에도 게시하지 않았다.
+
+소개 글은 Claude와 여러 차례 퇴고했다. 가상의 개발 경험·성능 수치·경쟁 도구 비하를 넣지 않는다.
+Kartograph의 ServiceLoader 사례는 실제 앱에서 발견한 장애가 아니라 **컴파일·실행 검증 코퍼스**다.
+Provider의 기대 상태는 `retained`, 미사용 대조군은 `unreachable`이며 두 상태를 바꾸어 쓰지 않는다.
+Kartograph 0.7.0의 Plugin Portal 페이지는 HTTP 200과 버전·플러그인 ID를 확인했다.
+자매 저장소 README에 남은 Portal 승인 대기 문구를 현재 상태로 오해하지 않는다.
+
+### 재개할 때
+
+1. 사용자가 후속 확인을 요청하면 Reddit의 모더레이터 답변과 기존 게시글 상태를 먼저 확인한다.
+   이미 검토 요청을 보냈으므로 중복 전송·재게시하지 않는다. 답변에 따라 필요한 수정을 정리한다.
+2. 본문 수정이나 새 채널 게시에는 해당 요청 범위를 따른다. 홍보 준비를 다른 사이트의 자동 게시로
+   확대하지 않는다. Reddit은 본인 목소리와 기술적 맥락을 요구하므로 규칙도 다시 확인한다.
+3. Orca 브라우저는 `orca-cli` 스킬과 현재 CLI 안내를 사용한다. 탭 ID는 수시로 바뀌므로
+   `orca tab list --json`으로 재확인하고 작업 탭을 활성화한다. 클릭 성공 응답만으로 전송을
+   선언하지 말고, 실제 게시글 또는 전송 완료 화면을 확인한다. 쿠키·인증 파일은 읽지 않는다.
+
+작업용 원고는 저장소 밖 바탕화면에 있다(다른 머신에서는 없을 수 있음):
+
+- `../cartograph-swift-forums.md` — 수정해 게시한 Swift 본문
+- `../kartograph-androiddev.md` — 등록 후 필터링된 Kartograph 본문
+- `../kartograph-newsletter.md` — 미제출 뉴스레터 제보문
+- `../kartograph-reddit-review-request.md` — 실제 전송한 검토 요청
+
 ## 2026-09-09 — 0.10.1 릴리스
 
-[PR #73](https://github.com/ictechgy/cartograph/pull/73)의 #72 수정과 GLM 검토 보완을 0.10.1로 묶는다.
-유니버설 공개 바이너리·Homebrew 설치본·실제 Dart/Swift 조인 검증은 PR #73에 기록한다.
+[PR #73](https://github.com/ictechgy/cartograph/pull/73)을 `a40f2dc`로 병합하고
+[0.10.1](https://github.com/ictechgy/cartograph/releases/tag/0.10.1)을 배포했다. #72는 종료됐다.
+공개 유니버설 바이너리의 체크섬·두 아키텍처를 검증하고 Homebrew tap과 로컬 설치본을 갱신했다.
+`brew test`, 설치본과 공개 바이너리의 바이트 일치, 경로 표기 3종의 Dart/Swift strict 조인,
+타입 순환을 포함한 설치본 자기 분석을 통과했다. 자세한 검증 기록은 PR #73에 있다.
 기존 경로 표기의 bridge-facts는 재생성해야 하며 v1 구조와 소비자의 정확한 문자열 비교는 유지한다.
 
 ## 2026-09-09 — #72 브리지 프로젝트 realpath
@@ -17,7 +121,7 @@ Foundation의 `resolvingSymlinksInPath()`도 `/private/tmp`를 `/tmp`로 되돌�
 수정 전 회귀 테스트 실패를 확인했다. 816 tests, coverage 90.51%, CLI 계약·실제 인덱스 코퍼스·
 자기 분석 4종(타입 순환 포함)이 통과했다. 실제 Swift 패키지를 빌드하고 Dartograph와 양쪽
 출력을 수정 없이 isthmus `check --strict`에 넣어 `/tmp`·`/private/tmp`·사용자 링크 3종을
-통과했다. 같은 입력의 설치본 0.10.0은 project 불일치로 코드 2였다. 수정은 아직 미배포다.
+통과했다. 같은 입력의 설치본 0.10.0은 project 불일치로 코드 2였다. 수정은 위 0.10.1에 포함돼 배포됐다.
 
 GLM medium 리뷰에서 사용자 FileSystem 미지원 오류의 안내를 보완했다. 수정 전 실패 테스트를
 확인하고 명시적 구현 안내와 호환성 문구를 추가했으며, low 재검토에 남은 수정 사항은 없었다.
@@ -99,7 +203,7 @@ Isthmus `npm run verify` 통과. GLM packet-ask 검토 지적은 실패 재현 �
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-_마지막 갱신: 2026-09-08 (0.9.0 배포·Homebrew 설치 검증 완료)._
+_마지막 갱신: 2026-09-10 (0.11.0 릴리스 — #75·#74 병합·배포. Swift Forums 본문 수정·Kartograph Reddit 필터링·모더레이터 검토 요청 전송)._
 
 
 ## 2026-09-08 — 0.8.2 신뢰성·성능 정비 (PR #62 머지)
@@ -153,7 +257,8 @@ Swift/iOS 코드베이스의 의존성 그래프를 컴파일러 인덱스에서
 
 ## Current Progress
 
-**현재 릴리스**: **0.9.0**. isthmus-cli **0.2.0** 소비자를 먼저 배포했고, GitHub Release·Homebrew tap·로컬 설치본 검증을 마쳤다. 자세한 근거는 위 0.9.0 기록과 PR #67을 본다.
+**현재 릴리스**: **0.11.0**. 릴리스 PR에서 버전·문서를 맞췄다. 배포 검증 기록은 위 0.11.0 절과
+배포 후 docs PR을 본다. 현재 홍보 후속은 맨 위 2026-09-10 절에 있다.
 
 **성능·구조·보안 점검**(2026-09-07 심야, 사용자 요청): 급한 것 없음. `try!`·강제 언랩 0건, 셸 호출 없음(git·xcode-select 절대 경로+인자 배열), 네트워크 없음, `Package.resolved` 커밋됨, 자기 분석 `dead` 0.225초. 고친 것은 연속 `**` 글롭 폭발뿐(별 2개당 ~30배, 8개에 17초 실측 → 세그먼트만 접어 0.0001초, #60). `-o` 덮어쓰기는 현행 유지로 결론 — `-o` 대상은 매번 다시 만드는 CI 산출물이라 `--force` 요구가 주류를 깨고 매번 경고는 상시 경보가 된다(`init`·`skill`이 지키는 오래 손보는 파일과 다름). 타입 그래프 간선 1100→1102는 인덱스 재빌드 편차(정점·판정 동일, 같은 인덱스에선 바이트 동일 확인).
 
@@ -378,7 +483,7 @@ GLM 리뷰가 #42 에서 **테스트 전용 목록을 만드는 두 번째 순�
 
 `../isthmus/HANDOFF.md` 의 "cartograph 에서 온 계약 피드백" 절에 쌓여 있다. 문서당 하나인 `target`, `null`·추측 채널, Swift `@objc` 와 `.m` 양쪽의 같은 `(channel, method)`, `inferred` 필드 부재, module-export 조인 시 메서드마다 근거, **`project` 동일 요구가 모노레포 플러그인을 막음**, `/tmp` 정규화, `objective-c-sources` 가 있으면 `unhandled-invocation` 을 경고로, 원인을 숨기는 오류 메시지. 그쪽 세션의 차례다.
 
-## Next Steps (2026-09-07 심야 갱신)
+## 과거 Next Steps (2026-09-07 심야 갱신)
 
 **2026-09-07 심야 세션에서 혼자 할 수 있는 것을 털었다.** 감사 원문(F번호 정의)은 저장소에
 없어(세션 스크래치에만 있었음) 단서가 확실한 것만 건드렸다. `#52`가 `query --since` 의 조용한
@@ -479,7 +584,8 @@ HealthMap 에서 `NotificationPreferencesController` 가 이제 타입 자체로
 `git status --short --branch` 와 `gh pr list` 로 다른 세션이 남긴 것이 없는지 확인하고,
 Next Steps 에서 이어간다. **코드를 바꾸기 전에 어느 항목인지 명시한다.**
 
-지금 상태는 이렇다. 감사가 낸 항목은 우선순위가 높은 것부터 전부 닫혔고 0.8.0 이 나갔다.
+다음은 0.8.0 당시 기록이다. 현재 배포·홍보 상태와 후속 작업은 문서 맨 위의 최신 날짜 절을 본다.
+당시에는 감사 항목을 우선순위 순으로 닫고 0.8.0을 배포했다.
 남은 것 중 1~2 는 자매 저장소와 같이 정해야 하고, 3~4 는 이 머신에 없는 것(Flutter SDK)이나
 설계를 다시 세워야 하는 것(에이전트 실험)이며, 6 은 원문이 없어 단서 있는 것만 닫았다.
 **혼자 바로 시작할 수 있는 것은 없다.** 다음은 자매 저장소 합의·Flutter 머신·사용자 계정 행동 중
