@@ -76,6 +76,21 @@ struct DiagnosticReporterTests {
         #expect(output.split(separator: "\n").count == 1)
     }
 
+    @Test("GitHub Actions 형식은 터미널 제어 문자와 형식 문자를 거른다")
+    func githubActionsFiltersTerminalEscapeAndFormatCharacters() throws {
+        let diagnostic = Diagnostic(
+            ruleIdentifier: "r",
+            severity: .warning,
+            message: "safe\u{001B}[31m colored \u{202E}reversed",
+            location: SourceLocation(path: "/p/test\u{001B}[0m.swift", line: 1, column: 1)
+        )
+        let output = try GitHubActionsDiagnosticReporter().report([diagnostic], summary: summary)
+        #expect(!output.contains("\u{001B}"))
+        #expect(!output.contains("\u{202E}"))
+        #expect(output.contains("file=/p/test%5B0m.swift") || output.contains("file=/p/test[0m.swift"))
+        #expect(output.contains("safe[31m colored reversed"))
+    }
+
     @Test("Checkstyle 형식은 파일별로 묶고 XML 을 이스케이프한다")
     func checkstyleFormat() throws {
         let diagnostic = Diagnostic(

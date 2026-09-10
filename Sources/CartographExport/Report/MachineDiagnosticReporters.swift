@@ -54,9 +54,21 @@ public struct GitHubActionsDiagnosticReporter: DiagnosticReporting {
         }
     }
 
+    /// 제어 문자(Cc)와 형식 문자(Cf)를 걸러 터미널과 로그 스푸핑을 방지한다.
+    ///
+    /// 개행과 복귀 문자는 워크플로 명령 이스케이프(%0A, %0D)로 변환할 대상이므로 유지하고,
+    /// ANSI ESC 시퀀스(\u{001B})나 양방향 재정의(U+202E) 등 악성 입력이 유발할 수 있는
+    /// 화면 조작 문자는 제거한다.
+    private func sanitize(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.filter { scalar in
+            if scalar == "\r" || scalar == "\n" || scalar == "\t" { return true }
+            return scalar.properties.generalCategory != .control && scalar.properties.generalCategory != .format
+        }))
+    }
+
     /// 메시지 본문에 필요한 이스케이프. 퍼센트를 먼저 바꿔야 이중 인코딩을 피한다.
     private func escape(_ message: String) -> String {
-        message
+        sanitize(message)
             .replacingOccurrences(of: "%", with: "%25")
             .replacingOccurrences(of: "\r", with: "%0D")
             .replacingOccurrences(of: "\n", with: "%0A")
