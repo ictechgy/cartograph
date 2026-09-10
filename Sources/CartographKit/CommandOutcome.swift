@@ -25,6 +25,12 @@ public struct CommandOutcome: Sendable, Equatable {
     /// 불리언 하나만으로는 1000건 배치에서 어느 셋이 없었는지 알 수 없다. 표준 출력의
     /// 상태로 되짚을 수는 있지만, 그러려면 실패를 본 사람이 JSON 을 다시 훑어야 한다.
     public let missingSubjects: [String]
+    /// 단일 대상을 찾지 못했을 때 쓸 문구. 배치는 자체 문구가 있으므로 채우지 않는다.
+    ///
+    /// nil 이면 호출부의 기본 문구("no declaration matches the requested name")로
+    /// 끝난다. 기본 문구는 요청한 이름조차 다시 보여 주지 않으므로, 단일 경로는
+    /// 이름과 비슷한 이름 추천을 담은 문구를 채워 준다.
+    public let notFoundMessage: String?
 
     public init(
         output: String,
@@ -32,7 +38,8 @@ public struct CommandOutcome: Sendable, Equatable {
         suppressedCount: Int = 0,
         thresholdFailure: CartographError? = nil,
         subjectNotFound: Bool = false,
-        missingSubjects: [String] = []
+        missingSubjects: [String] = [],
+        notFoundMessage: String? = nil
     ) {
         self.output = output
         self.findingCount = findingCount
@@ -40,6 +47,7 @@ public struct CommandOutcome: Sendable, Equatable {
         self.thresholdFailure = thresholdFailure
         self.subjectNotFound = subjectNotFound
         self.missingSubjects = missingSubjects
+        self.notFoundMessage = notFoundMessage
     }
 
     public var hasFindings: Bool { findingCount > 0 }

@@ -108,6 +108,10 @@ public struct SymbolQuery: Sendable, Equatable, Codable {
 public struct SymbolQueryDocument: Sendable, Equatable, Codable {
     /// 이름 하나에 걸린 후보. 다시 물을 때 쓸 USR 을 같이 준다.
     ///
+    /// `status: "ambiguous"` 에서는 요청 이름과 같은 이름의 정점들이고,
+    /// `status: "notFound"` 에서는 철자가 비슷한 이름의 추천이다. 두 경우 다
+    /// 부르는 쪽이 바로 되물을 수 있는 모양(qualifiedName·USR·위치)을 같이 준다.
+    ///
     /// **후보 목록은 고를 수 있어야 한다.** `qualifiedName` 은 `Module.name` 이라 소유
     /// 타입이 빠진다. 실제 앱에서 `body` 를 물으면 후보 127개 중 122개가 글자까지 같은
     /// `HealthMap.body` 로 나왔다. USR 은 서로 다르지만 사람도 에이전트도 그 문자열에서

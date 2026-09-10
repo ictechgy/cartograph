@@ -80,13 +80,16 @@ enum CommandSupport {
         // 없는 이름을 물어본 것은 코드의 문제가 아니라 인자의 문제다. 사용 오류로
         // 끝내야 CI 스크립트의 오타가 드러난다. 설명은 이미 출력한 뒤다.
         if outcome.subjectNotFound {
-            // 배치에서는 어느 이름이 없었는지 말한다. 불리언 하나만 던지면 1000건 중
-            // 셋이 없었을 때 사용자가 JSON 을 다시 훑어야 한다. 답은 이미 다 나갔다.
+            // 단일 경로는 이름과 비슷한 이름 추천을 담은 문구를 준비해 온다.
             guard !outcome.missingSubjects.isEmpty else {
-                throw ValidationError("no declaration matches the requested name")
+                throw ValidationError(
+                    outcome.notFoundMessage ?? "no declaration matches the requested name"
+                )
             }
             let shown = outcome.missingSubjects.prefix(10).joined(separator: ", ")
             let rest = outcome.missingSubjects.count - min(10, outcome.missingSubjects.count)
+            // 배치에서는 어느 이름이 없었는지 말한다. 불리언 하나만 던지면 1000건 중
+            // 셋이 없었을 때 사용자가 JSON 을 다시 훑어야 한다. 답은 이미 다 나갔다.
             throw ValidationError(
                 "no declaration matches \(outcome.missingSubjects.count) of the requested names: "
                     + shown + (rest > 0 ? " and \(rest) more" : "")

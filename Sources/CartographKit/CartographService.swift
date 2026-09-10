@@ -229,7 +229,14 @@ public struct CartographService: Sendable {
 
         switch lookup {
         case .notFound:
-            return CommandOutcome(output: "No declaration matches '\(subject)'.\n", subjectNotFound: true)
+            return CommandOutcome(
+                output: Self.describeNotFound(
+                    subject,
+                    similar: GraphQueryIndex(graph: graph).similarCandidates(to: subject),
+                    noun: "declaration"
+                ),
+                subjectNotFound: true
+            )
         case let .ambiguous(candidates):
             return CommandOutcome(output: Self.describeCandidates(candidates, for: subject, in: graph))
         case let .found(node):
@@ -269,7 +276,14 @@ public struct CartographService: Sendable {
         let lookup = GraphQueryIndex(graph: graph).resolve(subject)
         switch lookup {
         case .notFound:
-            return CommandOutcome(output: "No node matches '\(subject)'.\n", subjectNotFound: true)
+            return CommandOutcome(
+                output: Self.describeNotFound(
+                    subject,
+                    similar: GraphQueryIndex(graph: graph).similarCandidates(to: subject),
+                    noun: "node"
+                ),
+                subjectNotFound: true
+            )
         case let .ambiguous(candidates):
             return CommandOutcome(output: Self.describeAmbiguity(subject, candidates: candidates))
         case let .found(node):
@@ -297,7 +311,14 @@ public struct CartographService: Sendable {
         let lookup = GraphQueryIndex(graph: graph).resolve(subject)
         switch lookup {
         case .notFound:
-            return CommandOutcome(output: "No node matches '\(subject)'.\n", subjectNotFound: true)
+            return CommandOutcome(
+                output: Self.describeNotFound(
+                    subject,
+                    similar: GraphQueryIndex(graph: graph).similarCandidates(to: subject),
+                    noun: "node"
+                ),
+                subjectNotFound: true
+            )
         case let .ambiguous(candidates):
             return CommandOutcome(output: Self.describeAmbiguity(subject, candidates: candidates))
         case let .found(node):
@@ -364,7 +385,42 @@ public struct CartographService: Sendable {
     public func query(symbol subject: String, depth: Int = 1, limit: Int = 50) throws -> CommandOutcome {
         let document = try queryDocument(symbol: subject, depth: depth, limit: limit)
         let text = try Self.encodeQuery(document)
-        return CommandOutcome(output: text, subjectNotFound: document.status == "notFound")
+        guard document.status == "notFound" else {
+            return CommandOutcome(output: text)
+        }
+        return CommandOutcome(
+            output: text,
+            subjectNotFound: true,
+            notFoundMessage: Self.singleQueryNotFoundMessage(document)
+        )
+    }
+
+    /// 단건 `query` 가 notFound 로 끝날 때 stderr 에 나갈 문구.
+    ///
+    /// JSON 은 이미 표준 출력으로 나간 뒤다. 요청한 이름을 그대로 반향하고,
+    /// 비슷한 이름이 있으면 같이 알려 준다. 이름 없이 "없다"만 말하면 부른 쪽은
+    /// 무엇을 되물어야 할지 모른다 — 오타가 오타라고 말하지 않는 답이 된다.
+    static func singleQueryNotFoundMessage(_ document: SymbolQueryDocument) -> String {
+        var message = "no declaration matches '\(document.requested)'"
+        let names = (document.candidates ?? []).map(\.qualifiedName)
+        if !names.isEmpty {
+            message += ". Similar names: " + names.joined(separator: ", ")
+                + " — the JSON above lists each with its location and USR"
+        }
+        return message
+    }
+
+    /// `--explain` 계열이 notFound 로 답할 때 쓰는 문장.
+    ///
+    /// 그래프는 이미 메모리에 있으므로 비슷한 이름 추천은 공짜다. 이름을 반향하지
+    /// 않으면 부른 쪽은 무엇이 틀렸는지 다시 추측해야 한다.
+    static func describeNotFound(
+        _ subject: String, similar: [GraphNode], noun: String
+    ) -> String {
+        let names = similar.map(\.qualifiedName)
+        guard !names.isEmpty else { return "No \(noun) matches '\(subject)'.\n" }
+        return "No \(noun) matches '\(subject)'. Similar names: "
+            + names.joined(separator: ", ") + ".\n"
     }
 
     /// 여러 선언을 한 번에 묻는다.
@@ -436,8 +492,17 @@ public struct CartographService: Sendable {
 
         switch session.lookup.resolve(subject) {
         case .notFound:
+            // 오타가 오타라고 말만 하지 않는다. 그래프에 비슷한 이름이 있으면
+            // 다시 물을 수 있는 모양(위치·USR 포함)으로 같이 보낸다.
             return SymbolQueryDocument(
-                status: "notFound", requested: subject, level: level, limitations: limitations
+                status: "notFound",
+                requested: subject,
+                level: level,
+                limitations: limitations,
+                candidates: Self.candidates(
+                    session.lookup.similarCandidates(to: subject),
+                    in: graph
+                )
             )
         case let .ambiguous(candidates):
             return SymbolQueryDocument(
@@ -445,16 +510,7 @@ public struct CartographService: Sendable {
                 requested: subject,
                 level: level,
                 limitations: limitations,
-                candidates: Self.orderedCandidates(candidates, in: graph).map {
-                    .init(
-                        qualifiedName: $0.node.qualifiedName,
-                        usr: $0.node.usr ?? $0.node.id.rawValue,
-                        kind: $0.node.kind.rawValue,
-                        module: $0.node.module,
-                        location: $0.node.location,
-                        container: $0.container
-                    )
-                }
+                candidates: Self.candidates(candidates, in: graph)
             )
         case let .found(node):
             return SymbolQueryDocument(
@@ -474,6 +530,22 @@ public struct CartographService: Sendable {
     struct OrderedCandidate {
         let node: GraphNode
         let container: String?
+    }
+
+    /// 정점 목록을 후보 문서로 바꾼다. 모호 판정과 notFound 추천이 같은 모양을 쓴다.
+    static func candidates(
+        _ nodes: [GraphNode], in graph: CodeGraph
+    ) -> [SymbolQueryDocument.Candidate] {
+        orderedCandidates(nodes, in: graph).map {
+            .init(
+                qualifiedName: $0.node.qualifiedName,
+                usr: $0.node.usr ?? $0.node.id.rawValue,
+                kind: $0.node.kind.rawValue,
+                module: $0.node.module,
+                location: $0.node.location,
+                container: $0.container
+            )
+        }
     }
 
     /// 후보를 사람이 훑는 순서로 세운다.

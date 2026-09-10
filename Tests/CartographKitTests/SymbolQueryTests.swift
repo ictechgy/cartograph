@@ -1,3 +1,4 @@
+import CartographAnalysis
 import CartographCore
 @testable import CartographKit
 import CartographTestSupport
@@ -149,6 +150,42 @@ struct SymbolQueryTests {
         let outcome = try makeService().query(symbol: "NoSuchThing")
         #expect(outcome.subjectNotFound)
         #expect(outcome.output.contains("\"notFound\""))
+    }
+
+    @Test("notFound 는 오타와 비슷한 이름의 추천을 함께 돌려준다")
+    func notFoundCarriesSuggestions() throws {
+        let document = try makeService().queryDocument(symbol: "UserRepsitory")
+        #expect(document.status == "notFound")
+        let candidates = try #require(document.candidates)
+        #expect(candidates.map(\.qualifiedName) == ["Data.UserRepository"])
+        // 추천된 이름으로 되물면 찾아져야 한다. 못 찾으면 추천이 추천이 아니다.
+        for candidate in candidates {
+            let retry = try makeService().queryDocument(symbol: candidate.qualifiedName)
+            #expect(retry.status == "found")
+        }
+    }
+
+    @Test("단건 notFound 의 오류 문구는 이름을 반향하고 추천을 알린다")
+    func singleQueryMessageEchoesName() throws {
+        let outcome = try makeService().query(symbol: "UserRepsitory")
+        let message = try #require(outcome.notFoundMessage)
+        #expect(message.contains("no declaration matches 'UserRepsitory'"))
+        #expect(message.contains("UserRepository"))
+
+        // 비슷한 이름이 하나도 없으면 이름이라도 반향한다. "요청한 이름" 같은
+        // 뭉뚱그린 문구는 어떤 질문이 틀렸는지 로그에서 찾게 만든다.
+        let bare = try makeService().query(symbol: "NoSuchThing")
+        #expect(try #require(bare.notFoundMessage).contains("no declaration matches 'NoSuchThing'"))
+    }
+
+    @Test("explain notFound 문구는 이름을 반향하고 비슷한 이름을 알린다")
+    func explainMessageEchoesName() {
+        let node = GraphNode(id: "usr:a", name: "UserService", kind: .classType, module: "Domain")
+        let graph = CodeGraph(level: .symbol, nodes: [node], edges: [])
+        let similar = GraphQueryIndex(graph: graph).similarCandidates(to: "UserService2")
+        let message = CartographService.describeNotFound("UserService2", similar: similar, noun: "node")
+        #expect(message.contains("No node matches 'UserService2'"))
+        #expect(message.contains("Domain.UserService"))
     }
 
     @Test("이웃 수가 한도와 정확히 같으면 잘렸다고 하지 않는다")

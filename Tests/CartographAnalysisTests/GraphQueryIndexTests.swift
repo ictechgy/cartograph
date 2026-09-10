@@ -42,4 +42,37 @@ struct GraphQueryIndexTests {
         // 이전 코드는 최적화 빌드에서도 8초 이상이었다. 색인 후 조회는 수 밀리초다.
         #expect(clock.now - start < .seconds(3))
     }
+
+    @Test("notFound 추천은 오타와 비슷한 이름을 거리 순으로 돌려준다")
+    func similarCandidatesRankByDistance() {
+        let error = GraphNode(id: "usr:e", name: "CartographError()", kind: .structType, module: "Core")
+        let home = GraphNode(id: "usr:h", name: "HomeView", kind: .structType, module: "App")
+        let lookup = GraphQueryIndex(
+            graph: CodeGraph(level: .symbol, nodes: [home, error], edges: [])
+        )
+        let suggestions = lookup.similarCandidates(to: "CartographErros")
+        #expect(suggestions.first == error)
+        #expect(!suggestions.contains(home))
+    }
+
+    @Test("추천 거리가 같으면 이름 순으로 세워 실행마다 같은 순서를 보장한다")
+    func similarCandidatesAreDeterministic() {
+        let second = GraphNode(id: "usr:b", name: "Abcf", kind: .structType)
+        let first = GraphNode(id: "usr:a", name: "Abce", kind: .structType)
+        let lookup = GraphQueryIndex(
+            graph: CodeGraph(level: .symbol, nodes: [second, first], edges: [])
+        )
+        #expect(lookup.similarCandidates(to: "Abcd").map(\.name) == ["Abce", "Abcf"])
+    }
+
+    @Test("추천은 전혀 다른 이름과 빈 이름 앞에서 조용해진다")
+    func similarCandidatesStayQuiet() {
+        let node = GraphNode(id: "usr:a", name: "UserService", kind: .classType, module: "Domain")
+        let lookup = GraphQueryIndex(
+            graph: CodeGraph(level: .symbol, nodes: [node], edges: [])
+        )
+        // USR 로 직접 물었을 때는 "혹시 이것?"이 아니라 "그런 USR 은 없다"가 맞는 답이다.
+        #expect(lookup.similarCandidates(to: "c:objc(cs)NSObject(im)someSelector").isEmpty)
+        #expect(lookup.similarCandidates(to: "").isEmpty)
+    }
 }
