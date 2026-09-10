@@ -1,5 +1,29 @@
 # Handoff
 
+## 2026-09-11 — baseline·근거 경로 해결 일원화 및 JSON 이스케이프 정비 완료 (PR #83)
+
+감사 결과 후속 정비 항목 중 경로 해석 일원화 및 JSON 직렬화 안정성 작업을 [PR #83](https://github.com/ictechgy/cartograph/pull/83)으로 머지했다 (`f8af7d6`).
+Codex 1차 리뷰에서 지적된 "작업 디렉터리(CWD)와 `--project`가 다를 때 CLI 인자(`--baseline`, `--external-retentions`)가 CWD가 아닌 `projectPath` 기준으로 잘못 풀리는 문제"를 수용하여 해결했다.
+
+### 주요 구현 내역
+1. **JSONEncoder 단일 팩토리 (`JSONEncoder.cartographDefault(prettyPrinted:)`)**:
+   - `CartographCore/Support/JSONEncoding.swift` 신설.
+   - 모든 JSON 인코딩에서 `[.sortedKeys, .withoutEscapingSlashes]`를 기본 적용하도록 6개 모듈의 인코더 생성을 일원화.
+   - 키 정렬로 인한 diff 안정성 및 슬래시(`/`) 이스케이프 제거로 URL/파일 경로 가독성 확보.
+2. **BaselineStore 및 경로 해결 일원화**:
+   - `BaselineStore.loadIfPresent(at:basePath:)`: 상대 경로일 때 `basePath` 기준으로 해결하고, `path == nil`일 때 `basePath` 아래 기본 베이스라인(`.cartograph-baseline.json`) 자동 탐색 지원.
+   - `GlobalOptions.resolveConfiguration`: CLI 인자로 명시된 `--baseline` 및 `--external-retentions`는 작업 디렉터리(`fileSystem.currentDirectoryPath`) 기준 절대 경로로 정규화하고, 설정 파일(`.cartograph.yml`)에 명시된 상대 경로는 보존.
+   - `CartographService`: `loadContext`의 `externalRetentionsPath`, `writeBaseline`의 출력 경로를 `projectPath` 기준으로 일관되게 해결.
+3. **`measureMetrics` 베이스라인 및 경로 정규화 일원화**:
+   - 독자적인 베이스라인 필터링 로직을 `filterAndApplyBaseline` 공통 헬퍼로 통합.
+   - 진단 리포트 출력 시 파일 경로를 `projectPath` 상대 경로로 정규화(`reported.map { $0.relative(to: projectPath) }`).
+4. **검증**:
+   - 단위 테스트: `CartographCoreTests` (JSONEncodingTests 신설), `BaselineTests`, `CartographServiceTests`, `GlobalOptionsTests` 보강 및 831개 전원 통과.
+   - 커버리지: `Scripts/coverage.sh` 90.50% (기준 90% 이상 유지).
+   - CLI 계약 및 픽스처: `verify-cli-contract.sh`, `verify-fixtures.sh` 모두 통과.
+   - 자기 분석 4종: `dead --strict`, `cycles --strict`, `cycles --level type --strict`, `rules --strict` 모두 0 findings.
+   - Codex 리뷰: 1차 지적(CLI 옵션 CWD 정규화) 반영 후 2차 재검토 무결함 승인.
+
 ## 2026-09-10 — 성능·보안·구조 감사 완료 (PR #80)
 
 0.11.0 배포 직후 사용자가 요청한 "성능 보안 구조관점 전체 리뷰"를 완료하고,
