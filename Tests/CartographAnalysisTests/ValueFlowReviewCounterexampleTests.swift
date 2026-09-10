@@ -161,7 +161,7 @@ struct ValueFlowReviewCounterexampleTests {
         #expect(sources == ["c0:n-3", "\(calleeContext.id):n-5"])
     }
 
-    @Test("iteration truncation does not emit dangling graph edges")
+    @Test("반복 상한 초과로 자를 때 허상 간선을 남기지 않는다")
     func danglingBudgetEdges() {
         let identity = fn("identity", parameters: [.init(name: "value")], operations: [.parameter(0)], result: 0)
         let main = fn("main", operations: [.literal(.string("A")), symbol("identity"),

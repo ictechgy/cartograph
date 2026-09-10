@@ -9,12 +9,14 @@
 ```
 CartographCore
   ↑
-CartographConfig · CartographSyntax · CartographAnalysis · CartographExport · CartographIndexStore
+CartographConfig · CartographSyntax · CartographAnalysis ← CartographExport · CartographIndexStore
   ↑
 CartographKit
   ↑
 cartograph
 ```
+
+> **수평 의존 예외**: `CartographExport`는 `MetricsRenderer`가 지표 모델(`NodeMetrics`)을 렌더링하기 위해 `CartographAnalysis`를 import합니다. `.cartograph.yml`의 `Feature` 레이어 규칙은 동일 레이어 내 의존(`source == target`)을 허용하므로 `rules` 검사를 통과하지만, 기능 계층 내부의 유일한 수평 의존입니다.
 
 ## 모듈별 책임과 금지 사항
 

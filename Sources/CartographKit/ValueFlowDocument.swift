@@ -89,7 +89,7 @@ struct ValueFlowSourceLoader {
     }
 
     static func canonicalPath(_ path: String) -> String {
-        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+        LocalFileSystem.canonicalPath(path)
     }
 
     private func normalized(_ raw: IndexSnapshot) -> IndexSnapshot {

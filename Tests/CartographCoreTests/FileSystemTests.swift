@@ -164,4 +164,12 @@ struct SymlinkTraversalTests {
         #expect(found.count == 1)
     }
 
+    @Test("canonicalPath는 상대 경로와 심볼릭 링크를 풀고 표준화한다")
+    func canonicalPathStandardizesAndResolves() {
+        let fileSystem = LocalFileSystem()
+        let canonical = fileSystem.canonicalPath("/tmp/../tmp")
+        #expect(!canonical.isEmpty)
+        #expect(!canonical.contains("/../"))
+        #expect(LocalFileSystem.canonicalPath("/tmp/../tmp") == canonical)
+    }
 }

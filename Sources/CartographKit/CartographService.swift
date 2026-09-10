@@ -742,7 +742,7 @@ public struct CartographService: Sendable {
                 for path in sources {
                     guard let source = sourceCache[ValueFlowSourceLoader.canonicalPath(path)] else { continue }
                     if path.hasSuffix(".swift") {
-                        let canonical = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+                        let canonical = LocalFileSystem.canonicalPath(path)
                         let scanned = BridgeFactScanner().scan(source: source, path: canonical, resolvedValues: resolved)
                         facts += resolver.resolve(scanned.facts)
                         opaqueHandlerChannels += scanned.opaqueHandlerChannels
@@ -1162,10 +1162,7 @@ public struct CartographService: Sendable {
         let counts = projectSourceCounts()
         return EmptyIndexFacts(
             projectPath: projectPath,
-            resolvedProjectPath: URL(fileURLWithPath: projectPath)
-                .resolvingSymlinksInPath()
-                .standardizedFileURL
-                .path,
+            resolvedProjectPath: LocalFileSystem.canonicalPath(projectPath),
             storePath: source.storePath,
             storeOrigin: source.origin,
             libraryPath: source.libraryPath,

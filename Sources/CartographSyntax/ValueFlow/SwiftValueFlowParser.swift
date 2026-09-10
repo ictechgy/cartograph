@@ -728,8 +728,7 @@ enum ValueFlowSyntax {
     }
 
     static func unescaped(_ name: String) -> String {
-        guard name.hasPrefix("`"), name.hasSuffix("`"), name.count > 1 else { return name }
-        return String(name.dropFirst().dropLast())
+        SyntaxIdentifiers.unescaped(name)
     }
 
     static func location(of node: some SyntaxProtocol, converter: SourceLocationConverter, path: String) -> CartographCore.SourceLocation {

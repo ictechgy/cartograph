@@ -61,3 +61,13 @@ enum SyntaxComments {
         }
     }
 }
+
+/// 식별자 문자열을 다듬는다.
+enum SyntaxIdentifiers {
+    /// 백틱으로 감싼 식별자에서 백틱을 뗀다.
+    static func unescaped(_ name: String) -> String {
+        guard name.hasPrefix("`"), name.hasSuffix("`"), name.count > 1 else { return name }
+        return String(name.dropFirst().dropLast())
+    }
+}
+

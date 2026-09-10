@@ -23,7 +23,7 @@ public struct ReportScope: Sendable, Equatable {
     /// 심볼릭 링크를 푼 경로다. 한쪽만 정규화하면 단 하나도 일치하지 않아 발견이
     /// 전부 사라지고, 사용자는 `--strict` 에서 "문제 없음"을 보게 된다.
     static func normalized(_ path: String) -> String {
-        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+        LocalFileSystem.canonicalPath(path)
     }
 
     /// 이 발견을 보고할지 판단한다.
