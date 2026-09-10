@@ -463,7 +463,9 @@ Objective-C Flutter scanning supports direct channel construction, inline handle
 same-file registrar/delegate `handleMethodCall:result:` implementations, including file-local
 immutable `NSString *const` names. Positive `isEqualToString:` branches become facts with
 `sourceLanguage: "objective-c"` and an actual Clang `c:` USR when the index uniquely identifies the enclosing declaration.
-Without that evidence, `symbol` is omitted; identifiers are never fabricated. Conditional or macro-dependent
+When it cannot — no index for that file, a stale line, or an ambiguous match — the fact still carries the syntactic
+qualified name (`Plugin.handleMethodCall:result:`) as a name-only symbol, mirroring Swift facts. The name is deterministic
+from the source; a wrong USR is worse than none, and USRs are never guessed. Conditional or macro-dependent
 files, rebinding and unsupported delegation remain uncertain. The general `objective-c-sources`
 gap stays unscoped even when some literals were extracted. See the [bounded scan results](docs/scans/2026-09-objc-flutter.md).
 
@@ -504,8 +506,9 @@ followed (`static let name = "…"` used as `FlutterMethodChannel(name: Self.nam
 is `dynamic`. A `case "…"` outside a handler closure counts only inside a function that takes a
 `FlutterMethodCall`; it is attributed to the file's single channel when there is exactly one, and
 to `null` otherwise. Creating a channel without attaching a handler is not a fact. `limitations`
-counts the dynamic names, the unattributed and inferred channels, the handlers with no USR (Swift
-not rebuilt since the edit), the `@objc(Name)` classes assumed to be React Native modules, the
+counts the dynamic names, the unattributed and inferred channels, the Swift handlers with no USR (Swift
+not rebuilt since the edit; Objective-C handlers with a name-only symbol are counted under
+`objective-c-handlers` instead), the `@objc(Name)` classes assumed to be React Native modules, the
 `FlutterEventChannel`s and Pigeon `BasicMessageChannel`s this format does not cover, the
 Objective-C handlers that cannot be retained through a retentions file, and a project that mixes
 Flutter and React Native.
@@ -525,6 +528,10 @@ $ cartograph dead --external-retentions .isthmus/retentions.cartograph.json --ex
 App.CameraPlugin is retained because its member App.init(messenger:) is called from another platform across a bridge, per the external retentions file.
   evidence: dart lib/camera.dart:42 invokes 'takePhoto' on channel 'com.example/camera'
 ```
+
+When the other side calls from several locations, `evidence` carries every call site in `callers` (plus
+`callersOmitted` for what the producer's cap left out) and `--explain` lists them, keeping the line short
+with a `+N more` marker; a single-caller document renders exactly as before.
 
 A path that is configured but missing is a tool failure (exit 2), not a silent no-op: someone who
 supplied the file expects it to be applied. `query` lists the file's provenance under

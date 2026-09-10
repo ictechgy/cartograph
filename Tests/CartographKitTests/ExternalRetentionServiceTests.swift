@@ -33,7 +33,11 @@ struct ExternalRetentionServiceTests {
               "evidence": {
                 "channel": "com.example/camera",
                 "method": "takePhoto",
-                "caller": { "platform": "dart", "path": "lib/camera.dart", "line": 42 }
+                "caller": { "platform": "dart", "path": "lib/camera.dart", "line": 42 },
+                "callers": [
+                  { "platform": "dart", "path": "lib/camera.dart", "line": 42 },
+                  { "platform": "dart", "path": "lib/photo.dart", "line": 7 }
+                ]
               }
             },
             {
@@ -87,7 +91,10 @@ struct ExternalRetentionServiceTests {
     func explainQuotesEvidence() throws {
         let output = try makeService().explainRetention(of: "s:handle").output
         #expect(output.contains("is retained because it is called from another platform across a bridge"))
-        #expect(output.contains("evidence: dart lib/camera.dart:42 invokes 'takePhoto' on channel 'com.example/camera'"))
+        // 여러 호출 위치가 있으면 문장에 모두 나열한다(#74).
+        #expect(output.contains(
+            "evidence: dart lib/camera.dart:42, dart lib/photo.dart:7 invokes 'takePhoto' on channel 'com.example/camera'"
+        ))
 
         // 멤버 때문에 살아난 타입에도 그 멤버의 근거가 붙는다.
         let parent = try makeService().explainRetention(of: "CameraPlugin").output

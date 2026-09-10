@@ -445,7 +445,9 @@ ObjC Flutter 스캔은 직접 채널 생성, 인라인 블록, 같은 파일의 
 `handleMethodCall:result:`를 지원합니다. 파일 범위의 불변 `NSString *const` 이름도 한 단계
 풉니다. 긍정 `isEqualToString:` 분기는 `sourceLanguage: "objective-c"` 사실이 되며 Swift
 심볼을 지어내지 않습니다. Clang 인덱스에 선언이 유일하게 있으면 실제 `c:` USR을 싣고,
-없거나 위치가 모호하면 `symbol`을 생략합니다. USR이 있어도 현재 Swift 분석 그래프의
+없거나 위치가 모호하면 구문의 정규화된 이름(`Plugin.handleMethodCall:result:`)만
+이름뿐인 심볼로 싣습니다(Swift 사실과 같은 대칭). 이름은 소스에서 결정적이지만 USR은
+추측하지 않습니다. USR이 있어도 현재 Swift 분석 그래프의
 정점은 아닙니다. 조건부 컴파일·매크로·재대입·미지원 위임은 불확실하게 남기고,
 리터럴 일부를 읽었어도 일반 `objective-c-sources` 공백은 좁히지 않습니다.
 [제한된 스캔 실측](docs/scans/2026-09-objc-flutter.md)에 관측 범위를 기록했습니다.
@@ -486,7 +488,8 @@ $ cartograph bridges
 에 쓰는 경우). 그보다 깊으면 `dynamic` 입니다. 핸들러 클로저 밖의 `case "…"` 는 `FlutterMethodCall` 을
 받는 함수 안에서만 세고, 파일에 채널이 정확히 하나일 때 그 채널에 붙고, 아니면 `null` 입니다.
 핸들러를 달지 않고 채널을 만들기만 한 것은 사실이 아닙니다. `limitations` 에는 동적 이름의 수,
-채널을 못 정했거나 추측한 핸들의 수, USR 이 없는 핸들러의 수(빌드 뒤 편집된 Swift), React Native
+채널을 못 정했거나 추측한 핸들의 수, USR 이 없는 Swift 핸들러의 수(빌드 뒤 편집된 Swift.
+이름뿐 심볼이 된 ObjC 핸들은 `objective-c-handlers` 쪽에서 셉니다), React Native
 모듈로 가정한 `@objc(Name)` 클래스의 수, 이 형식이 다루지 않는 `FlutterEventChannel` 과 Pigeon
 `BasicMessageChannel` 의 수, 근거 파일로 살릴 수 없는 Objective-C 핸들러의 수, Flutter 와 React
 Native 가 섞인 프로젝트를 셉니다.
@@ -505,6 +508,10 @@ $ cartograph dead --external-retentions .isthmus/retentions.cartograph.json --ex
 App.CameraPlugin is retained because its member App.init(messenger:) is called from another platform across a bridge, per the external retentions file.
   evidence: dart lib/camera.dart:42 invokes 'takePhoto' on channel 'com.example/camera'
 ```
+
+반대쪽에서 여러 위치로 부르면 근거의 `callers` 에 전체 호출 위치를(생산자 상한을 넘은 만큼은
+`callersOmitted` 으로) 실고 `--explain` 은 이를 나열하되, 문장을 짧게 유지하려고 남은 수를
+`+N more` 로만 적습니다. 호출이 하나뿐인 문서는 기존과 같은 문장을 냅니다.
 
 지정했는데 없는 파일은 조용히 넘어가지 않고 도구 실패(종료 코드 2)입니다. 파일을 준 사람은 그것이
 반영되기를 기대합니다. `query` 는 `limitations` 에 파일의 출처와, 인덱스의 어느 선언과도 맞지 않는

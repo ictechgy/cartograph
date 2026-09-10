@@ -7,6 +7,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Objective-C bridge facts now keep their syntactic qualified name (e.g. `Plugin.handleMethodCall:result:`)
+  as a name-only symbol when the index cannot uniquely identify the Clang declaration, mirroring how Swift facts
+  carry one. `missing-handler-usrs` still counts Swift handlers only — Objective-C handlers
+  with a name-only symbol remain under `objective-c-handlers` and outside `--external-retentions`, so
+  preservation semantics are unchanged. Implements #75. Requires an isthmus build that accepts
+  `sourceLanguage: "objective-c"` symbols without a USR (isthmus PR #53).
+
+### Added
+
+- `external-retentions` evidence can carry the full caller list (`callers`) plus `callersOmitted` for what
+  the producer's cap left out. `dead --explain` lists every call site, truncating long lists with `+N more`;
+  single-caller evidence renders exactly as before and older files decode unchanged. Negative
+  `callersOmitted` is rejected like `omittedObjectiveCHandlers`. Implements #74.
+
 ## [0.10.1] - 2026-09-09
 
 ### Fixed

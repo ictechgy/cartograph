@@ -38,6 +38,11 @@ public struct ExternalRetentionStore: Sendable {
         if let omitted = document.omittedObjectiveCHandlers, omitted < 0 {
             throw CartographError.invalidExternalRetentions(path: path, reason: "omittedObjectiveCHandlers must not be negative")
         }
+        for retention in document.retentions {
+            if let omitted = retention.evidence?.callersOmitted, omitted < 0 {
+                throw CartographError.invalidExternalRetentions(path: path, reason: "callersOmitted must not be negative")
+            }
+        }
         return document
     }
 

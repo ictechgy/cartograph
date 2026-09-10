@@ -227,7 +227,13 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
                     + "their file rather than to an enclosing handler, so the channel is a guess"
             )
         }
-        let missingUSRs = facts.count { $0.kind == .methodHandle && $0.symbol != nil && $0.symbol?.usr == nil }
+        // Swift 신선도 신호다("빌드 뒤 편집된 Swift"). ObjC 핸들러는 이름뿐 심볼이 돼도 여기에
+        // 섞지 않는다. `objective-c-handlers` 과 같은 경로 술어로 가른다 — 한쪽에 세면 다른 쪽에
+        // 안 센다. sourceLanguage 표식을 빠뜨린 스캔 경로가 생겨도 신호가 오염되지 않는다.
+        let missingUSRs = facts.count {
+            $0.kind == .methodHandle && $0.location.path.hasSuffix(".swift")
+                && $0.symbol != nil && $0.symbol?.usr == nil
+        }
         if missingUSRs > 0 {
             result.append("missing-handler-usrs: \(missingUSRs) method handlers have only a qualified name")
         }
@@ -328,11 +334,18 @@ struct BridgeSymbolResolver {
             guard let declaration = entry.declaration else { return entry.fact }
             let candidates = symbolsByPath[Self.canonical(entry.fact.location.path)] ?? []
             if entry.fact.sourceLanguage == .objectiveC {
-                // 이름이나 가장 가까운 줄로 추측하지 않는다. Clang 정의 위치가 유일할 때만 붙인다.
+                // 이름이나 가장 가까운 줄로 추측하지 않는다. Clang 정의 위치가 유일할 때만 USR 을 붙인다.
                 let exact = candidates.filter {
                     $0.usr.hasPrefix("c:") && $0.name == declaration.indexName && $0.location.line == declaration.line
                 }
-                guard exact.count == 1, let symbol = exact.first else { return entry.fact }
+                // 여러 빌드 구성을 묶은 스토어에서는 같은 선언이 같은 USR 로 두 번 기록되기도 한다.
+                // USR 이 하나로 유일하면 그것이 이 선언의 신원이다.
+                guard Set(exact.map(\.usr)).count == 1, let symbol = exact.first else {
+                    // 유일한 매치가 없으면 Swift 사실과 같은 대칭으로 구문의 이름만 싣는다. 이름은
+                    // 소스에서 결정적이지만 USR 은 그렇지 않고, 틀린 USR 은 없는 것보다 나쁘다.
+                    // 인덱스 없이 빌드된 환경의 ObjC 핸들러가 신원 없는 증거로만 남는 것을 막는다(#75).
+                    return entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: nil))
+                }
                 return entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: symbol.usr))
             }
             let symbol = Self.match(declaration, among: candidates)
