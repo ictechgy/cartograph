@@ -14,7 +14,9 @@ public struct MetricsRenderer: Sendable {
     }
 
     /// 고정폭 표. 열 너비를 내용에 맞춰 계산해 정렬이 흐트러지지 않게 한다.
-    public func renderTable(_ metrics: [NodeMetrics]) -> String {
+    ///
+    /// 한계 목록은 알릴 것이 있을 때만 표 아래에 붙는다. 매번 붙는 경보는 읽히지 않는다.
+    public func renderTable(_ metrics: [NodeMetrics], limitations: [String] = []) -> String {
         guard !metrics.isEmpty else { return "No nodes to measure.\n" }
 
         let headers = ["NODE", "Ca", "Ce", "I", "A", "D", "ZONE"]
@@ -49,16 +51,24 @@ public struct MetricsRenderer: Sendable {
         output.append(contentsOf: rows.map(line))
         output.append("")
         output.append(legend)
+        if !limitations.isEmpty {
+            output.append("")
+            output.append(contentsOf: limitations.map { "Limitation: \($0)" })
+        }
         return output.joined(separator: "\n") + "\n"
     }
 
     /// 지표와 임계값 위반을 한 문서에 담는다.
     ///
     /// 두 개의 JSON 문서를 이어 붙이면 어떤 파서도 읽지 못한다.
+    ///
+    /// 한계는 이 분석이 보지 못하는 채널이다. 임계값 아래의 깨끗한 지표가 낡은
+    /// 인덱스 위에서 나왔을 수도 있으므로, 진단이 비어도 한계는 답과 함께 간다.
     public func renderJSON(
         _ metrics: [NodeMetrics],
         diagnostics: [Diagnostic] = [],
-        suppressedCount: Int = 0
+        suppressedCount: Int = 0,
+        limitations: [String]? = nil
     ) throws -> String {
         struct Entry: Encodable {
             let node: String
@@ -81,6 +91,8 @@ public struct MetricsRenderer: Sendable {
             /// 베이스라인이 걸러 낸 진단 수. 텍스트 출력에만 있으면 기계 소비자가
             /// 억제 사실을 알 수 없다.
             let suppressedCount: Int
+            /// 이 분석이 보지 못하는 채널. 알릴 것이 없으면 키 자체가 빠진다.
+            let limitations: [String]?
         }
 
         let document = Document(
@@ -102,7 +114,8 @@ public struct MetricsRenderer: Sendable {
                 )
             },
             diagnostics: diagnostics.sorted(),
-            suppressedCount: suppressedCount
+            suppressedCount: suppressedCount,
+            limitations: limitations
         )
         let encoder = JSONEncoder.cartographDefault()
         return String(decoding: try encoder.encode(document), as: UTF8.self) + "\n"

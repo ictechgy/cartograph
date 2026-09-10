@@ -111,6 +111,49 @@ struct AnalysisLimitationCollectorTests {
         #expect(dead.output.contains("unreadable-sources: 1 "))
     }
 
+    @Test("cycles·rules·metrics 도 한계를 응답에 싣는다")
+    func discoveryCommandsCarryLimitations() throws {
+        // 세 명령은 모두 CI 게이트다. Objective-C 소스가 있는데 한계가 없으면,
+        // "순환 없음·규칙 위반 없음"이 보지 못하는 채널까지 검사한 답처럼 읽힌다.
+        let fileSystem = InMemoryFileSystem(files: ["/p/Handler.m": "", "/p/App.swift": ""])
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, path: "/p/App.swift", attributes: [.entryPoint])
+        var config = CartographConfiguration.default
+        config.projectPath = "/p"
+        config.reportFormat = .json
+        let service = CartographService(
+            configuration: config,
+            environment: CartographEnvironment(
+                fileSystem: fileSystem,
+                indexProviderOverride: StaticIndexProvider(builder.build()),
+                usesSyntaxCache: false
+            )
+        )
+        for outcome in [try service.detectCycles(), try service.checkRules(), try service.measureMetrics()] {
+            #expect(outcome.output.contains("objective-c-sources"))
+        }
+    }
+
+    @Test("알릴 한계가 없는 실행은 지표 JSON 에 limitations 키를 만들지 않는다")
+    func metricsJSONOmitsAbsentLimitations() throws {
+        let fileSystem = InMemoryFileSystem(files: ["/p/App.swift": ""])
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, path: "/p/App.swift", attributes: [.entryPoint])
+        var config = CartographConfiguration.default
+        config.projectPath = "/p"
+        config.reportFormat = .json
+        let service = CartographService(
+            configuration: config,
+            environment: CartographEnvironment(
+                fileSystem: fileSystem,
+                indexProviderOverride: StaticIndexProvider(builder.build()),
+                usesSyntaxCache: false
+            )
+        )
+        let metricsOutput = try service.measureMetrics().output
+        #expect(!metricsOutput.contains("\"limitations\""))
+    }
+
     private func collector(_ fileSystem: any FileSystem, storeDate: Date? = nil) -> AnalysisLimitationCollector {
         var config = CartographConfiguration.default
         config.projectPath = "/p"

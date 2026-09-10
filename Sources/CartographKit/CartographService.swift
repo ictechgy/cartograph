@@ -188,12 +188,15 @@ public struct CartographService: Sendable {
     public func detectCycles(level: GraphLevel? = nil) throws -> CommandOutcome {
         let context = try loadContext()
         let (graph, cycles) = cycles(in: context, level: level)
+        // 순환 검사도 CI 게이트다. 인덱스가 낡은 채로 "순환 없음"이 나가면 그
+        // 초록불은 아무것도 검사하지 않은 초록불이다. dead 와 같은 한계를 싣는다.
         return try finish(
             AnalysisDiagnostics.diagnostics(for: cycles, in: graph),
             command: "cycles",
             subject: describe(graph),
             thresholdLimit: configuration.thresholds.maxCycles,
             thresholdRule: AnalysisDiagnostics.Rule.cycle,
+            limitations: limitations(context: context, graph: graph, requestedLevel: level),
             caveat: emptyIndexCaveat(context)
         )
     }
@@ -940,16 +943,21 @@ public struct CartographService: Sendable {
     }
 
     public func measureMetrics(level: GraphLevel? = nil) throws -> CommandOutcome {
-        let (graph, metrics, tolerance) = metrics(in: try loadContext(), level: level)
+        let context = try loadContext()
+        let (graph, metrics, tolerance) = metrics(in: context, level: level)
         let diagnostics = AnalysisDiagnostics.diagnostics(for: metrics, thresholds: configuration.thresholds)
         let renderer = MetricsRenderer(tolerance: tolerance)
 
         let (reported, suppressed) = try filterAndApplyBaseline(diagnostics)
+        // 지표도 CI 게이트다. 임계값 아래로 깨끗한 답이 낡은 인덱스 위에서
+        // 나왔다면 그 사실이 답에 없어야 할 이유가 없다.
+        let limitations = self.limitations(context: context, graph: graph, requestedLevel: level)
 
         let summary = ReportSummary(
             command: "metrics",
             subject: describe(graph),
-            suppressedCount: suppressed
+            suppressedCount: suppressed,
+            limitations: limitations
         )
         // sarif/checkstyle/xcode/github-actions 는 진단을 담는 형식이지 지표표를 담는 형식이
         // 아니다. 예전에는 이 형식들이 지표 JSON 을 그대로 받아, 확장자만 `.sarif` 인
@@ -957,11 +965,16 @@ public struct CartographService: Sendable {
         let relativeReported = reported.map { $0.relative(to: projectPath) }
         let output: String = switch configuration.reportFormat {
         case .json:
-            try renderer.renderJSON(metrics, diagnostics: relativeReported, suppressedCount: suppressed)
+            try renderer.renderJSON(
+                metrics,
+                diagnostics: relativeReported,
+                suppressedCount: suppressed,
+                limitations: limitations
+            )
         case .sarif, .checkstyle, .xcode, .githubActions:
             try DiagnosticReporterFactory.make(configuration.reportFormat).report(relativeReported, summary: summary)
         case .text:
-            renderer.renderTable(metrics)
+            renderer.renderTable(metrics, limitations: limitations ?? [])
                 + (reported.isEmpty
                     ? ""
                     : "\n" + (try DiagnosticReporterFactory.make(.text).report(relativeReported, summary: summary)))
@@ -996,8 +1009,25 @@ public struct CartographService: Sendable {
             thresholdRule: AnalysisDiagnostics.Rule.layerViolation,
             // 레이어 미지정은 정보성이라 임계값 계산에 넣지 않는다.
             countedRules: [AnalysisDiagnostics.Rule.layerViolation],
+            limitations: limitations(context: context, graph: graph, requestedLevel: level),
             caveat: emptyIndexCaveat(context)
         )
+    }
+
+    /// 명령 응답에 실릴 한계 목록. 알릴 것이 없으면 nil — 빈 배열은 매번 붙는 경보다.
+    ///
+    /// 그래프를 심볼 레벨로 만든 실행은 그 그래프를 재활용한다. 그 외 레벨은
+    /// nil 을 넘기는데, 이 경우 심볼 그래프가 다시 만들어지는 것은 외부 보존
+    /// 근거를 걸어 둔 프로젝트뿐이다 — 흔한 실행에 숨은 비용을 붙이지 않는다.
+    private func limitations(
+        context: AnalysisContext, graph: CodeGraph, requestedLevel: GraphLevel?
+    ) -> [String]? {
+        let effectiveLevel = requestedLevel ?? configuration.level
+        let limitations = analysisLimitations(
+            context: context,
+            symbolGraph: effectiveLevel == .symbol ? graph : nil
+        )
+        return limitations.isEmpty ? nil : limitations
     }
 
     // MARK: - 베이스라인

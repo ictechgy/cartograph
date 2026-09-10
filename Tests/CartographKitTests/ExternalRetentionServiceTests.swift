@@ -164,8 +164,12 @@ struct ExternalRetentionServiceTests {
         let limitations = try JSONDecoder().decode(Document.self, from: Data(output.utf8)).limitations ?? []
         #expect(limitations.contains { $0.hasPrefix("external-retentions: 2 retention(s) from isthmus 0.1.0") })
 
-        // 다른 명령의 리포트에는 붙지 않는다. 순환에는 보존 규칙이 없다.
-        #expect(!(try service.detectCycles().output.contains("\"limitations\"")))
+        // 순환 검사도 게이트다. 이제 같은 한계를 함께 싣는다 — 외부 근거가 걸린
+        // 프로젝트에서 "순환 없음"이 그 근거 파일을 믿었다는 사실을 숨기지 않는다.
+        let cycles = try JSONDecoder().decode(
+            Document.self, from: Data(try service.detectCycles().output.utf8)
+        ).limitations ?? []
+        #expect(cycles.contains { $0.hasPrefix("external-retentions: 2 retention(s) from isthmus 0.1.0") })
     }
 
     @Test("외부 근거를 걸지 않으면 한계에도 등장하지 않는다")
