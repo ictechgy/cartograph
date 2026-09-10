@@ -23,7 +23,8 @@ CI 두 잡과 4대 필수 게이트를 통과하여 `4517fd3`로 스쿼시 머�
 
 ### 재개할 때
 
-현재 후속 작업은 **r/androiddev 모더레이터의 답변 확인**이다 (아래 홍보 절 참조).
+`r/androiddev` 게시글 필터 해제 및 정상 공개(조회수 1,000+ 달성)가 확인되었다 (아래 홍보 절 참조).
+후속 작업은 댓글 피드백 모니터링 및 필요 시 준비된 뉴스레터(Android Weekly·Kotlin Weekly) 제보다.
 
 ## 2026-09-10 — 0.11.0 릴리스 (#75·#74)
 
@@ -102,13 +103,11 @@ isthmus 실제 출력 모양과 맞춘 것으로 기대 출력은 그대로다.
   분리하고 CI에 타입 검사를 추가한 [PR #34](https://github.com/ictechgy/cartograph/pull/34)를 근거로 연결했다.
   수정 후 본문·링크·코드 블록을 확인했다.
 - **Kartograph / r/androiddev:** [게시글](https://www.reddit.com/r/androiddev/comments/1wby2r9/kartograph_inspect_android_class_dependencies_and/)
-  한 건을 Open Source 플레어로 등록했지만 **Reddit 필터로 제거된 상태**다. 게시 성공과 공개 노출을
-  혼동하지 않는다. 구체적인 제거 사유는 표시되지 않았으며, 신규 계정이나 AI 문체가 원인이라고
-  단정하지 않는다. 재게시하지 않았다.
-- **모더레이터 검토 요청:** 사용자의 명시적 요청으로 문구를 퇴고하고 `r/androiddev`에 전송했다.
-  제목은 `Review request for filtered kartograph post`. 작성자임을 밝히고 원문 링크·기술적 내용과
-  Open Source 분류를 설명한 뒤, 커뮤니티 적합성과 필요한 수정 사항을 물었다. 화면의
-  **“메시지 전송됨”**과 입력란 초기화를 확인했다. 아직 답변이나 복구 승인을 확인한 상태는 아니다.
+  한 건을 Open Source 플레어로 등록한 뒤 Reddit 필터로 제거되었으나, 모더레이터 검토 요청 이후
+  **필터가 해제되어 정상 공개 중**임을 확인했다. 비로그인/외부 크롤러 시점에서도 본문 전체 및 링크가
+  정상 노출되고 있으며, 조회수 1,022회(추천 2표, 100%)를 기록했다(`moderation-verdict=""`).
+- **모더레이터 검토 요청:** 사용자의 명시적 요청으로 문구를 퇴고하고 `r/androiddev`에 전송했던
+  검토 요청(`Review request for filtered kartograph post`)이 정상 처리되어 게시글이 복구/승인되었다.
 - **뉴스레터:** Android Weekly·Kotlin Weekly용 짧은 제보문은 준비했지만 제출하지 않았다.
   GeekNews·HN 등 다른 채널에도 게시하지 않았다.
 
@@ -120,10 +119,8 @@ Kartograph 0.7.0의 Plugin Portal 페이지는 HTTP 200과 버전·플러그인 
 
 ### 재개할 때
 
-1. 사용자가 후속 확인을 요청하면 Reddit의 모더레이터 답변과 기존 게시글 상태를 먼저 확인한다.
-   이미 검토 요청을 보냈으므로 중복 전송·재게시하지 않는다. 답변에 따라 필요한 수정을 정리한다.
-2. 본문 수정이나 새 채널 게시에는 해당 요청 범위를 따른다. 홍보 준비를 다른 사이트의 자동 게시로
-   확대하지 않는다. Reddit은 본인 목소리와 기술적 맥락을 요구하므로 규칙도 다시 확인한다.
+1. r/androiddev 게시글이 정상 공개되어 1,000회 이상 조회되었으므로 댓글 및 기술 피드백을 모니터링한다.
+2. 추가 채널 홍보 필요 시 바탕화면의 `../kartograph-newsletter.md` 초안을 사용하여 Android Weekly·Kotlin Weekly 제보를 검토한다.
 3. Orca 브라우저는 `orca-cli` 스킬과 현재 CLI 안내를 사용한다. 탭 ID는 수시로 바뀌므로
    `orca tab list --json`으로 재확인하고 작업 탭을 활성화한다. 클릭 성공 응답만으로 전송을
    선언하지 말고, 실제 게시글 또는 전송 완료 화면을 확인한다. 쿠키·인증 파일은 읽지 않는다.
