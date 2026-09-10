@@ -518,10 +518,25 @@ struct BaselineCommand: ParsableCommand {
             )
         }
         let context = try CommandSupport.makeContext(options)
-        let path = writePath.map { GlobalOptions.absolutePath($0, relativeTo: context.fileSystem.currentDirectoryPath) }
-            ?? context.configuration.baselinePath
-            ?? (context.service.projectPath as NSString)
+        // 쓰기 목적지는 설정 파일이 정하지 못한다. 분석 대상 저장소의
+        // .cartograph.yml 에 절대 경로를 심어 두고 baseline 을 돌리면 그 경로의
+        // 파일이 JSON 으로 덮어써진다 — 중간 디렉터리까지 만들어 주니 더욱 그렇다.
+        // baseline_path 는 읽기 위치를 나타내는 키로 남기고, 쓰는 곳은 항상
+        // 명시적으로 고르게 한다.
+        let path: String
+        if let writePath {
+            path = GlobalOptions.absolutePath(writePath, relativeTo: context.fileSystem.currentDirectoryPath)
+        } else {
+            if context.configuration.baselinePath != nil {
+                throw ValidationError(
+                    "baseline_path is set in the configuration, so the write destination must be explicit; "
+                        + "pass --write <path> (baseline_path names where suppression findings are read from, "
+                        + "never where a baseline is written)"
+                )
+            }
+            path = (context.service.projectPath as NSString)
                 .appendingPathComponent(Cartograph.defaultBaselineFileName)
+        }
         let diagnostics = try context.service.collectAllDiagnostics()
         try CommandSupport.emit(
             try context.service.writeBaseline(diagnostics: diagnostics, to: path),
