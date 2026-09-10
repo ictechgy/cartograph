@@ -44,17 +44,30 @@ struct GlobalOptionsTests {
         #expect(resolved.configuration.strict)
     }
 
-    @Test("--external-retentions 는 설정 파일 값을 덮어쓴다")
-    func externalRetentionsOverridesFile() throws {
-        let fileSystem = InMemoryFileSystem(files: [
-            "/p/.cartograph.yml": "external_retentions_path: from-file.json\n"
-        ])
+    @Test("--external-retentions 와 --baseline 은 작업 디렉터리 기준으로 해결되며 설정 파일 값을 덮어쓴다")
+    func cliFileOptionsOverrideAndNormalizeAgainstCurrentDirectory() throws {
+        let fileSystem = InMemoryFileSystem(
+            currentDirectoryPath: "/work",
+            files: [
+                "/p/.cartograph.yml": """
+                    external_retentions_path: from-file.json
+                    baseline_path: baseline-from-file.json
+                    """
+            ]
+        )
         let fromFile = try GlobalOptions.parse(["--project", "/p"]).resolveConfiguration(fileSystem: fileSystem)
+        // 설정 파일의 상대 경로는 프로젝트 루트 기준 처리를 위해 그대로 유지된다.
         #expect(fromFile.configuration.externalRetentionsPath == "from-file.json")
+        #expect(fromFile.configuration.baselinePath == "baseline-from-file.json")
 
-        let fromFlag = try GlobalOptions.parse(["--project", "/p", "--external-retentions", "cli.json"])
-            .resolveConfiguration(fileSystem: fileSystem)
-        #expect(fromFlag.configuration.externalRetentionsPath == "cli.json")
+        let fromFlag = try GlobalOptions.parse([
+            "--project", "/p",
+            "--external-retentions", "cli.json",
+            "--baseline", "cli-baseline.json"
+        ]).resolveConfiguration(fileSystem: fileSystem)
+        // CLI 인자로 준 상대 경로는 현재 작업 디렉터리(/work) 기준으로 절대 경로화된다.
+        #expect(fromFlag.configuration.externalRetentionsPath == "/work/cli.json")
+        #expect(fromFlag.configuration.baselinePath == "/work/cli-baseline.json")
     }
 
     @Test("여러 값을 받는 옵션을 파싱한다")
