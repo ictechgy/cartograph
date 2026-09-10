@@ -354,7 +354,7 @@ struct BridgeSymbolResolver {
     }
 
     private static func canonical(_ path: String) -> String {
-        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+        LocalFileSystem.canonicalPath(path)
     }
 
     /// 인자 라벨까지 같은 심볼을 찾는다. 여럿이면 줄이 가장 가까운 것.

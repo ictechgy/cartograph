@@ -114,8 +114,19 @@ extension FileSystem {
 }
 
 extension FileSystem {
-    /// 심볼릭 링크를 푼 경로. 방문 여부 판정에만 쓴다.
-    static func canonicalPath(_ path: String) -> String {
+    /// 심볼릭 링크를 풀고 표준화한 절대 경로.
+    ///
+    /// macOS에서 `/tmp`와 `/private/tmp`처럼 동일한 물리적 위치를 가리키는 서로 다른 표기나
+    /// 상대 경로 표현을 일관되게 비교하고 방문 집합을 관리하기 위해 쓴다.
+    public func canonicalPath(_ path: String) -> String {
+        Self.canonicalPath(path)
+    }
+
+    /// 심볼릭 링크를 풀고 표준화한 절대 경로.
+    ///
+    /// macOS에서 `/tmp`와 `/private/tmp`처럼 동일한 물리적 위치를 가리키는 서로 다른 표기나
+    /// 상대 경로 표현을 일관되게 비교하고 방문 집합을 관리하기 위해 쓴다.
+    public static func canonicalPath(_ path: String) -> String {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
     }
 }

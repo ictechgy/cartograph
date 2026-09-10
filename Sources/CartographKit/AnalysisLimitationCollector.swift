@@ -207,9 +207,8 @@ struct AnalysisLimitationCollector {
         let name = (path as NSString).lastPathComponent
         guard name == "Package.swift" || (name.hasPrefix("Package@swift-") && name.hasSuffix(".swift"))
         else { return false }
-        let parent = URL(fileURLWithPath: path).resolvingSymlinksInPath().deletingLastPathComponent()
-        return parent.standardizedFileURL.path
-            == URL(fileURLWithPath: projectPath).resolvingSymlinksInPath().standardizedFileURL.path
+        let parent = (LocalFileSystem.canonicalPath(path) as NSString).deletingLastPathComponent
+        return parent == LocalFileSystem.canonicalPath(projectPath)
     }
 
     /// isthmus 가 쓰는 시각을 읽는다. `2026-09-04T12:00:00.000Z` 처럼 소수점 초가 붙는다.

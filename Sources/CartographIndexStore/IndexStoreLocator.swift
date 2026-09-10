@@ -281,7 +281,7 @@ public struct IndexStoreLocator: Sendable {
     }
 
     private static func canonical(_ path: String) -> String {
-        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+        LocalFileSystem.canonicalPath(path)
     }
 
     /// DerivedData 디렉터리 이름이 이 프로젝트의 것인지 판단한다.
@@ -323,7 +323,7 @@ public struct IndexStoreLocator: Sendable {
         if let derivedDataPath {
             // 프로젝트 경로가 심볼릭 링크면 링크 이름이 아니라 실제 디렉터리 이름이
             // DerivedData 이름과 맞는다.
-            let canonicalPath = URL(fileURLWithPath: projectPath).resolvingSymlinksInPath().path
+            let canonicalPath = LocalFileSystem.canonicalPath(projectPath)
             let found = scanDerivedData(
                 projectNames: projectNames(inProjectRoot: canonicalPath),
                 derivedDataPath: derivedDataPath,
