@@ -1,5 +1,5 @@
 import CartographCore
-import CartographSyntax
+@testable import CartographSyntax
 import Testing
 
 @Suite("구문 분석")
@@ -383,5 +383,16 @@ struct RuntimeAttributeSyntaxTests {
         let configured = SwiftSyntaxAnalyzer(externalTestCaseClasses: ["BaseTestCase"])
             .analyze(source: source, path: "/p/A.swift")
         #expect(configured.declaration(named: "MySpec")?.attributes.contains(.unitTest) == true)
+    }
+
+    @Test("식별자의 백틱을 제거하고 양끝 백틱이 아니거나 단일 백틱이면 그대로 유지한다")
+    func unescapesBacktickedIdentifiers() {
+        #expect(SyntaxIdentifiers.unescaped("`foo`") == "foo")
+        #expect(SyntaxIdentifiers.unescaped("`default`") == "default")
+        #expect(SyntaxIdentifiers.unescaped("foo") == "foo")
+        #expect(SyntaxIdentifiers.unescaped("`") == "`")
+        #expect(SyntaxIdentifiers.unescaped("``") == "")
+        #expect(SyntaxIdentifiers.unescaped("`a") == "`a")
+        #expect(SyntaxIdentifiers.unescaped("a`") == "a`")
     }
 }
