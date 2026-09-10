@@ -61,6 +61,20 @@ struct BaselineTests {
         #expect(try store.loadIfPresent(at: "/p/none.json") == nil)
     }
 
+    @Test("basePath가 주어지면 상대 경로와 기본 베이스라인을 basePath 기준으로 해결한다")
+    func resolvesRelativeToBasePath() throws {
+        let fileSystem = InMemoryFileSystem()
+        let store = BaselineStore(fileSystem: fileSystem)
+        let baseline = Baseline.capturing([diagnostic("A")])
+
+        try store.write(baseline, to: "/project/.cartograph-baseline.json")
+        try store.write(baseline, to: "/project/custom.json")
+
+        #expect(try store.loadIfPresent(at: nil, basePath: "/project") == baseline)
+        #expect(try store.loadIfPresent(at: "custom.json", basePath: "/project") == baseline)
+        #expect(try store.loadIfPresent(at: "/project/custom.json", basePath: "/other") == baseline)
+    }
+
     @Test("없는 파일이나 깨진 파일은 명확한 오류가 된다")
     func missingOrCorruptBaselineThrows() throws {
         let fileSystem = InMemoryFileSystem(files: ["/p/broken.json": "{ not json"])

@@ -81,8 +81,9 @@ public struct CartographService: Sendable {
     public func loadContext() throws -> AnalysisContext {
         // 근거 파일을 인덱스보다 먼저 읽는다. 파일이 깨졌을 때 인덱스 없는 프로젝트에서도
         // 그 오류가 보여야 CLI 계약 검증이 이 경로를 실제로 증명한다.
+        let externalPath = configuration.externalRetentionsPath.map(resolveProjectRelativePath)
         let externalRetentions = try ExternalRetentionStore(fileSystem: environment.fileSystem)
-            .loadIfConfigured(at: configuration.externalRetentionsPath)
+            .loadIfConfigured(at: externalPath)
         let source = try makeIndexSource()
         let enriched = try enrich(source.provider.loadSnapshot())
         let snapshot = enriched.snapshot
@@ -859,8 +860,7 @@ public struct CartographService: Sendable {
 
     /// 키 순서를 고정한 JSON. 두 실행의 출력을 diff 할 수 있어야 한다.
     static func encodeSortedJSON(_ value: some Encodable) throws -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let encoder = JSONEncoder.cartographDefault()
         guard let text = String(data: try encoder.encode(value), encoding: .utf8) else {
             throw CartographError.outputUnwritable(path: "<stdout>", underlying: "JSON is not UTF-8")
         }
@@ -872,10 +872,7 @@ public struct CartographService: Sendable {
         let diagnostics = AnalysisDiagnostics.diagnostics(for: metrics, thresholds: configuration.thresholds)
         let renderer = MetricsRenderer(tolerance: tolerance)
 
-        let scoped = reportScope?.filtering(diagnostics) ?? diagnostics
-        let baseline = try loadBaseline()
-        let reported = baseline?.filtering(scoped) ?? scoped
-        let suppressed = scoped.count - reported.count
+        let (reported, suppressed) = try filterAndApplyBaseline(diagnostics)
 
         let summary = ReportSummary(
             command: "metrics",
@@ -885,16 +882,17 @@ public struct CartographService: Sendable {
         // sarif/checkstyle/xcode/github-actions 는 진단을 담는 형식이지 지표표를 담는 형식이
         // 아니다. 예전에는 이 형식들이 지표 JSON 을 그대로 받아, 확장자만 `.sarif` 인
         // 코드 스캐닝이 거부하는 문서가 나왔다.
+        let relativeReported = reported.map { $0.relative(to: projectPath) }
         let output: String = switch configuration.reportFormat {
         case .json:
-            try renderer.renderJSON(metrics, diagnostics: reported, suppressedCount: suppressed)
+            try renderer.renderJSON(metrics, diagnostics: relativeReported, suppressedCount: suppressed)
         case .sarif, .checkstyle, .xcode, .githubActions:
-            try DiagnosticReporterFactory.make(configuration.reportFormat).report(reported, summary: summary)
+            try DiagnosticReporterFactory.make(configuration.reportFormat).report(relativeReported, summary: summary)
         case .text:
             renderer.renderTable(metrics)
                 + (reported.isEmpty
                     ? ""
-                    : "\n" + (try DiagnosticReporterFactory.make(.text).report(reported, summary: summary)))
+                    : "\n" + (try DiagnosticReporterFactory.make(.text).report(relativeReported, summary: summary)))
         }
         // 다른 명령과 달리 지표 임계값만 CI 를 막지 못했다. 같은 설정 파일 안에서
         // 어떤 임계값은 빌드를 세우고 어떤 임계값은 세우지 않는 상태였다.
@@ -951,12 +949,24 @@ public struct CartographService: Sendable {
 
     /// 현재 진단 상태를 베이스라인 파일로 기록한다.
     public func writeBaseline(diagnostics: [Diagnostic], to path: String) throws -> CommandOutcome {
+        let resolvedPath = resolveProjectRelativePath(path)
         let baseline = Baseline.capturing(diagnostics)
-        try BaselineStore(fileSystem: environment.fileSystem).write(baseline, to: path)
-        return CommandOutcome(output: "Wrote \(baseline.fingerprints.count) findings to \(path)\n")
+        try BaselineStore(fileSystem: environment.fileSystem).write(baseline, to: resolvedPath)
+        return CommandOutcome(output: "Wrote \(baseline.fingerprints.count) findings to \(resolvedPath)\n")
     }
 
     // MARK: - 내부 구현
+
+    /// 진단에 리포트 스코프를 적용하고, 베이스라인을 읽어 보고 대상 진단과 억제 건수를 계산한다.
+    private func filterAndApplyBaseline(
+        _ diagnostics: [Diagnostic]
+    ) throws -> (reported: [Diagnostic], suppressedCount: Int) {
+        let scoped = reportScope?.filtering(diagnostics) ?? diagnostics
+        let baseline = try loadBaseline()
+        let reported = baseline?.filtering(scoped) ?? scoped
+        let suppressed = scoped.count - reported.count
+        return (reported, suppressed)
+    }
 
     /// 베이스라인 적용 → 임계값 검사 → 형식 적용.
     private func finish(
@@ -971,10 +981,7 @@ public struct CartographService: Sendable {
     ) throws -> CommandOutcome {
         // 범위를 먼저 좁힌 뒤 베이스라인을 적용한다. 순서를 바꾸면 억제 건수가
         // 범위 밖의 것까지 세어, 사용자가 보는 숫자와 맞지 않는다.
-        let scoped = reportScope?.filtering(diagnostics) ?? diagnostics
-        let baseline = try loadBaseline()
-        let reported = baseline?.filtering(scoped) ?? scoped
-        let suppressed = scoped.count - reported.count
+        let (reported, suppressed) = try filterAndApplyBaseline(diagnostics)
 
         let counted = countedRules.map { rules in
             reported.filter { rules.contains($0.ruleIdentifier) }
@@ -1084,7 +1091,14 @@ public struct CartographService: Sendable {
     }
 
     private func loadBaseline() throws -> Baseline? {
-        try BaselineStore(fileSystem: environment.fileSystem).loadIfPresent(at: configuration.baselinePath)
+        try BaselineStore(fileSystem: environment.fileSystem)
+            .loadIfPresent(at: configuration.baselinePath, basePath: projectPath)
+    }
+
+    /// 상대 경로를 projectPath 기준으로 해결한다. 이미 절대 경로면 그대로 둔다.
+    private func resolveProjectRelativePath(_ path: String) -> String {
+        guard !path.hasPrefix("/") else { return path }
+        return (projectPath as NSString).appendingPathComponent(path)
     }
 
     private func describe(_ graph: CodeGraph) -> String {

@@ -22,8 +22,7 @@ public struct HTMLGraphRenderer: GraphRendering {
 
     public func render(_ graph: CodeGraph) throws -> String {
         let (limited, truncated) = Self.limiting(graph, to: nodeLimit)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let encoder = JSONEncoder.cartographDefault(prettyPrinted: false)
         let payload = String(decoding: try encoder.encode(GraphDocument(graph: limited)), as: UTF8.self)
         return Self.document(
             payload: payload,

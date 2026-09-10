@@ -81,19 +81,29 @@ struct GlobalOptions: ParsableArguments {
         let loaded = try ConfigurationLoader(fileSystem: fileSystem)
             .load(explicitPath: configPath, searchDirectory: searchDirectory)
 
+        let resolvedProjectPath = Self.absolutePath(
+            projectPath ?? loaded.configuration.projectPath ?? searchDirectory,
+            relativeTo: fileSystem.currentDirectoryPath
+        )
+        // CLI 인자로 준 파일 경로는 터미널 작업 디렉터리 기준이고,
+        // 설정 파일에 적힌 상대 경로는 프로젝트 루트 기준이다.
+        // 명시적 CLI 옵션만 여기서 작업 디렉터리 기준 절대 경로로 고정한다.
+        let resolvedBaselinePath = baselinePath.map {
+            Self.absolutePath($0, relativeTo: fileSystem.currentDirectoryPath)
+        }
+        let resolvedExternalRetentionsPath = externalRetentionsPath.map {
+            Self.absolutePath($0, relativeTo: fileSystem.currentDirectoryPath)
+        }
         let overrides = ConfigurationOverrides(
             indexStorePath: indexStorePath,
-            projectPath: Self.absolutePath(
-                projectPath ?? loaded.configuration.projectPath ?? searchDirectory,
-                relativeTo: fileSystem.currentDirectoryPath
-            ),
+            projectPath: resolvedProjectPath,
             derivedDataPath: derivedDataPath,
             level: level,
             include: include.isEmpty ? nil : include.map { GlobPattern($0) },
             exclude: exclude.isEmpty ? nil : exclude.map { GlobPattern($0) },
             edgeKinds: edgeKinds.isEmpty ? nil : Set(edgeKinds),
-            baselinePath: baselinePath,
-            externalRetentionsPath: externalRetentionsPath,
+            baselinePath: resolvedBaselinePath,
+            externalRetentionsPath: resolvedExternalRetentionsPath,
             reportFormat: reportFormat,
             strict: strict ? true : nil,
             retainPublic: retainPublic ? true : nil

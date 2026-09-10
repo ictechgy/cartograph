@@ -82,14 +82,26 @@ public struct BaselineStore: Sendable {
     }
 
     /// 베이스라인 파일이 있으면 읽고, 없으면 nil 을 돌려준다.
-    public func loadIfPresent(at path: String?) throws -> Baseline? {
-        guard let path, fileSystem.fileExists(at: path) else { return nil }
-        return try load(from: path)
+    ///
+    /// 상대 경로가 주어지고 `basePath` 가 있으면 `basePath` 를 기준으로 해결한다.
+    /// `path` 가 없고 `basePath` 가 주어지면 기본 베이스라인 파일(`.cartograph-baseline.json`)이
+    /// 존재하는지 확인하여 읽는다.
+    public func loadIfPresent(at path: String?, basePath: String? = nil) throws -> Baseline? {
+        let candidate: String? = if let path {
+            (basePath != nil && !path.hasPrefix("/"))
+                ? (basePath! as NSString).appendingPathComponent(path)
+                : path
+        } else if let basePath {
+            (basePath as NSString).appendingPathComponent(Cartograph.defaultBaselineFileName)
+        } else {
+            nil
+        }
+        guard let resolved = candidate, fileSystem.fileExists(at: resolved) else { return nil }
+        return try load(from: resolved)
     }
 
     public func write(_ baseline: Baseline, to path: String) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let encoder = JSONEncoder.cartographDefault()
         do {
             try fileSystem.write(try encoder.encode(baseline), to: path)
         } catch {

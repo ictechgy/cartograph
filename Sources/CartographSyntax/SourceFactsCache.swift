@@ -57,8 +57,7 @@ public struct SourceFactsCache: Sendable {
     /// 통째로 덮어쓰므로 지워진 파일의 항목이 남아 무한히 자라지 않는다.
     /// 저장에 실패해도 분석 결과에는 영향이 없으므로 조용히 넘어간다.
     public func save(_ entries: [String: Entry]) {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
+        let encoder = JSONEncoder.cartographDefault(prettyPrinted: false)
         guard let data = try? encoder.encode(Document(version: Self.schemaVersion, entries: entries))
         else { return }
         try? fileSystem.write(data, to: path)
