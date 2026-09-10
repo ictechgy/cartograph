@@ -85,6 +85,13 @@ expect_status 64 "질의와 level 동시"     query Foo --level module
 expect_status 64 "값 흐름과 level 동시"  dataflow Foo --level module
 expect_status 64 "값 흐름과 since 동시"  dataflow Foo --since HEAD
 expect_status 64 "값 흐름은 JSON 전용"    dataflow Foo --report-format text
+expect_status 64 "값 흐름과 strict 동시"  dataflow Foo --strict
+expect_status 64 "질의와 형식 동시"      query Foo --report-format text
+expect_status 64 "질의와 strict 동시"    query Foo --strict
+expect_status 64 "그래프와 형식 동시"    graph --report-format json
+expect_status 64 "그래프와 strict 동시"  graph --strict
+expect_status 64 "브리지와 형식 동시"    bridges --report-format json
+expect_status 64 "브리지와 strict 동시"  bridges --strict
 expect_status 64 "브리지와 level 동시"   bridges --level module
 expect_status 64 "베이스라인과 level 동시" baseline --level module
 expect_status 64 "질의와 since 동시"     query Foo --since HEAD
@@ -109,7 +116,8 @@ expect_status 2 "값 흐름: 인덱스 없음" dataflow Foo --project "$MISSING"
 expect_status 2 "없는 인덱스 경로"     cycles --index-store "$MISSING/nope"
 expect_status 2 "브리지: 인덱스 없음"  bridges --project "$MISSING"
 # 파일을 못 쓴 것과 순환을 찾은 것이 CI 에서 같은 신호가 되어서는 안 된다.
-expect_status 2 "출력 파일 쓰기 실패"  graph --index-store "$MISSING/nope" -o "$MISSING/no/dir/out.dot"
+# 실제 쓰기 실패는 아래 "빈 인덱스" 픽스처 다음에서 검증한다 — 없는 부모
+# 디렉터리는 -o 가 만들어 주므로 경로만으로는 실패하지 않는다.
 expect_status 2 "깨진 베이스라인"      cycles --project "$MISSING" --baseline "$MISSING/broken.json"
 # 외부 근거 파일은 지정했는데 없으면 조용히 넘어가지 않는다. 반영됐다고 믿고 지우면 앱이 깨진다.
 expect_status 2 "없는 외부 근거 파일"  dead --project "$MISSING" --external-retentions "$MISSING/none.json"
@@ -129,6 +137,8 @@ printf 'struct A {\n    func b() {}\n}\n' > "$EMPTY/Sources/A.swift"
 expect_status 2 "빈 인덱스"            dead   --strict --project "$EMPTY"
 expect_status 2 "빈 인덱스: cycles"    cycles --strict --project "$EMPTY"
 expect_status 2 "빈 인덱스: rules"     rules  --strict --project "$EMPTY"
+# 목적지를 디렉터리로 준다. 파일로 못 쓰는 자리이므로 이 실패는 진짜 쓰기 실패다.
+expect_status 2 "출력 파일 쓰기 실패"  graph --project "$EMPTY" --allow-empty-index -o "$EMPTY"
 
 echo "종료 코드 0 — 빈 인덱스 탈출구"
 expect_status 0 "빈 인덱스 허용"       dead --strict --project "$EMPTY" --allow-empty-index

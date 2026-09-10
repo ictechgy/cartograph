@@ -59,6 +59,12 @@ struct DataflowCommand: ParsableCommand {
         guard options.reportFormat == nil else {
             throw ValidationError("--report-format cannot be combined with dataflow; output is always JSON")
         }
+        // 값 흐름은 발견 목록이 아니라 함수 하나의 사실이다. --strict 가 잴 발견이 없다.
+        guard !options.strict else {
+            throw ValidationError(
+                "--strict cannot be combined with dataflow; value analysis answers facts, not findings"
+            )
+        }
     }
 
     func run() throws {

@@ -97,6 +97,20 @@ struct GraphCommand: ParsableCommand {
                     + "not the findings in changed files"
             )
         }
+        // 문서 형식은 --format 이 정한다. --report-format 은 진단 목록 명령의
+        // 형식이라 여기서 받으면 DOT 을 내놓고 JSON 을 기대하게 된다.
+        guard options.reportFormat == nil else {
+            throw ValidationError(
+                "--report-format cannot be combined with graph; use --format for the document format"
+            )
+        }
+        // 그래프 덤프는 발견을 내지 않는다. --strict 는 발견을 세는 명령의 규약이다.
+        guard !options.strict else {
+            throw ValidationError(
+                "--strict cannot be combined with graph; graph renders the whole graph, "
+                    + "it has no findings to enforce"
+            )
+        }
     }
 
     func run() throws {
@@ -260,6 +274,20 @@ struct QueryCommand: ParsableCommand {
                 "--level cannot be combined with query; query always answers at symbol level"
             )
         }
+        // 답은 언제나 JSON 이다. --report-format 을 받아 두면 조용히 무시된 채
+        // JSON 이 나가고, 텍스트를 기대한 스크립트가 잘못된 출력을 파싱한다.
+        guard options.reportFormat == nil else {
+            throw ValidationError(
+                "--report-format cannot be combined with query; query always answers as JSON on stdout"
+            )
+        }
+        // 질의는 발견 목록이 아니라 사실 한 건이다. --strict 는 발견을 세는
+        // 명령의 종료 코드 규약이라 여기서는 아무것도 잴 수 없다.
+        guard !options.strict else {
+            throw ValidationError(
+                "--strict cannot be combined with query; query answers facts, not findings"
+            )
+        }
         // 둘 다 받으면 어느 쪽을 답했는지 출력 형식으로만 알 수 있다. 스크립트가
         // 인자를 잘못 조립해도 조용히 한쪽이 무시되는 것이 가장 나쁘다.
         switch (symbol, batch) {
@@ -359,6 +387,20 @@ struct BridgesCommand: ParsableCommand {
         guard options.level == nil else {
             throw ValidationError(
                 "--level cannot be combined with bridges; bridge facts have no graph level"
+            )
+        }
+        // 문서 형식은 --format 이 정한다. --report-format 은 진단 목록 명령의
+        // 형식이라 여기서 받으면 조용히 무시된 채 JSON 이 나간다.
+        guard options.reportFormat == nil else {
+            throw ValidationError(
+                "--report-format cannot be combined with bridges; use --format for the document format"
+            )
+        }
+        // 사실 문서는 판정이 아니라 내보내기다. 발견이 없으니 --strict 가 잴 것도 없다.
+        guard !options.strict else {
+            throw ValidationError(
+                "--strict cannot be combined with bridges; bridge facts state the boundary, "
+                    + "they are not findings"
             )
         }
     }
