@@ -9,6 +9,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 # Package.swift 는 툴체인(Swift 6.4)에 대응하는 indexstore-db 릴리스 브랜치를 고정한다.
 # 러너 기본 Xcode 가 그보다 낮으면 빌드가 실패하므로, 이미지에 있는 가장 새로운
 # Xcode 를 명시적으로 고른다. Swift 릴리스마다 고정을 옮길 때 이 잡이 먼저 알려 준다.

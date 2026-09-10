@@ -111,7 +111,7 @@ jobs:
             echo "  version ${VERSION}"
             exit 0
           fi
-          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/ictechgy/homebrew-tap.git" tap
+          git clone "https://github.com/ictechgy/homebrew-tap.git" tap
           cd tap
           sed -i '' \
             -e "s|url \".*\"|url \"https://github.com/ictechgy/cartograph/releases/download/${VERSION}/${ARCHIVE}\"|" \
@@ -121,4 +121,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "cartograph ${VERSION}"
-          git push
+          git -c "http.extraheader=Authorization: Bearer ${HOMEBREW_TAP_TOKEN}" push origin main
