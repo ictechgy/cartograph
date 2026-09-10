@@ -31,7 +31,7 @@ struct BridgeFactsTests {
         #expect(!document.limitations.contains { $0.contains("branch on a non-literal name") })
     }
 
-    @Test("Objective-C 식별자는 정확하고 유일한 Clang 선언에서만 붙인다")
+    @Test("Objective-C USR 은 유일한 Clang 선언에서만 붙이고 이름은 인덱스가 없어도 싣는다")
     func objectiveCIndexIdentity() {
         let fact = BridgeFact(kind: .methodHandle, target: .flutter, channel: "A", method: "run",
             location: .init(path: "/p/Plugin.m", line: 8, column: 1), sourceLanguage: .objectiveC)
@@ -45,10 +45,20 @@ struct BridgeFactsTests {
             BridgeSymbolResolver(snapshot: IndexSnapshot(symbols: symbols)).resolve(scanned)[0]
         }
         #expect(resolve([symbol("c:objc(cs)P(im)handle:")]).symbol?.usr == "c:objc(cs)P(im)handle:")
-        #expect(resolve([]).symbol == nil)
-        #expect(resolve([symbol("c:other", line: 4)]).symbol == nil)
-        #expect(resolve([symbol("s:fake")]).symbol == nil)
-        #expect(resolve([symbol("c:a"), symbol("c:b")]).symbol == nil)
+        // 인덱스가 없거나(후보 0), 줄이 어긋나거나, Swift USR 이거나, 후보가 모호하면 USR 없이
+        // 구문의 이름만 싣는다. Swift 사실과 같은 대칭이고 틀린 USR 은 없는 것보다 나쁘다.
+        func isNameOnly(_ symbols: [IndexedSymbol]) -> Bool {
+            let symbol = resolve(symbols).symbol
+            return symbol?.usr == nil && symbol?.qualifiedName == "P.handle:"
+        }
+        #expect(isNameOnly([]))
+        #expect(isNameOnly([symbol("c:other", line: 4)]))
+        #expect(isNameOnly([symbol("s:fake")]))
+        #expect(isNameOnly([symbol("c:a"), symbol("c:b")]))
+        // 여러 빌드 구성을 묶은 스토어에서 같은 선언이 같은 USR 로 두 번 기록될 수 있다.
+        // USR 이 하나로 유일하면 중복 레코드 때문에 이름뿐 신원으로 떨어지지 않는다.
+        #expect(resolve([symbol("c:objc(cs)P(im)handle:"), symbol("c:objc(cs)P(im)handle:")])
+            .symbol?.usr == "c:objc(cs)P(im)handle:")
     }
 
     @Test("외부 핸들러 본문의 공백은 등록 채널을 확실히 알 때만 좁힌다")
@@ -113,8 +123,13 @@ struct BridgeFactsTests {
         symbols.symbol("s:FakeHandler", name: "handle(_:result:)", kind: .method, path: "/p/Plugin.swift", parent: "s:FakePlugin")
         let document = try makeService(files: ["/p/Plugin.m": source], snapshot: symbols.build()).bridgeFacts()
         #expect(document.facts.map(\.kind) == ["channel-register", "method-handle"])
-        #expect(document.facts.allSatisfy { $0.sourceLanguage == .objectiveC && $0.symbol == nil })
+        // 인덱스에 .m 유닛이 없어도 구문 이름 신원은 남는다. USR 만 null 이다.
+        #expect(document.facts.allSatisfy { $0.sourceLanguage == .objectiveC && $0.symbol?.usr == nil })
+        #expect(document.facts.allSatisfy { $0.symbol?.qualifiedName == "Plugin.registerWithRegistrar:" })
         #expect(document.limitations.contains { $0.hasPrefix("objective-c-sources:") })
+        #expect(document.limitations.contains { $0.hasPrefix("objective-c-handlers: 1") })
+        // 이름뿐 심볼이 된 ObjC 핸들은 Swift 신선도 신호(missing-handler-usrs)에 섞이지 않는다.
+        #expect(!document.limitations.contains { $0.hasPrefix("missing-handler-usrs") })
         #expect(document.limitationScopes == nil)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
