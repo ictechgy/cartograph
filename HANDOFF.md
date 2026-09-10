@@ -1,81 +1,29 @@
 # Handoff
 
-## 2026-09-10 — 성능·보안·구조 감사 진행 중 (사용자 요청, 미완)
+## 2026-09-10 — 성능·보안·구조 감사 완료 (PR #80)
 
-0.11.0 배포 직후 사용자가 "성능 보안 구조관점 전체 리뷰"를 요청했다(2026-09-07 심야 감사의 재판).
-탐색 에이전트 2개(보안·구조)의 정적 감사와 성능 측정은 끝났고, **지적 반박 검증 마무리·최종
-보고·수정 우선순위 합의가 남았다.** 아래 지적은 검증 상태를 표시한 원문이다. 이 절의 갱신은
-아직 커밋 전이다(감사 후속 PR에 함께 갈 수 있게).
+0.11.0 배포 직후 사용자가 요청한 "성능 보안 구조관점 전체 리뷰"를 완료하고,
+도출된 구조 정비(1순위) 및 보안 경화(2순위) 작업을 [PR #80](https://github.com/ictechgy/cartograph/pull/80)으로
+머지했다. Codex 리뷰 지적 1건(release tap push 시 Git Basic auth 필요)을 반영 후 통과했으며,
+CI 두 잡과 4대 필수 게이트를 통과하여 `4517fd3`로 스쿼시 머지되었다.
 
-### 성능 측정 (0.11.0 릴리스 바이너리, 이 샌드박스)
+### 감사 결과 및 수정 내역 (PR #80)
 
-- 자기 분석(2,611 정점): `dead` 2.74~3.07초(user ~1.0 / sys ~1.8 — sys는 시트벨트 I/O 세금),
-  `cycles --level type` 1.67, `rules --strict` 1.66, `query` 2.76, `dataflow` 3.21.
-  코퍼스 `dead`/`bridges` 0.05~0.06초, 3회 반복 편차 없음.
-- 2026-09-07 기록의 "자기 분석 dead 0.225초"와 직접 비교는 샌드박스 I/O 때문에 불가능.
-  0.11.0은 `dead`/`query` 경로를 건드리지 않았다(변경은 `bridges`·external-retentions
-  파싱뿐)므로 이들 명령의 회귀 가능성은 구조적으로 없다.
-- RSS 측정 불가(`/usr/bin/time -l`이 sysctl 차단) — 호스트에서 재측정할 것.
-
-### 보안 — 긴급 0건
-
-- `try!`/`as!`/`fatalError` 0. 강제 언랩 3건은 전부 직전 filter/대입이 보증하는 불변식 하 정당
-  (SwiftValueFlowParser:500, ValueFlowLiteralBinder:12·14). 셸 문자열 조립 없음(git·
-  xcode-select 절대경로+argv 배열). 네트워크 접속 0. 커밋된 비밀 0(Package.resolved 커밋은
-  공급망 고정). JSON bomb는 실증 테스트(배열 20만~100만·객체 50만 깊이)로 `JSONDecoder`가
-  `DecodingError`로 처리함을 확인 — 크래시 없음. 프로덕션 코드 완전 동기식, `@unchecked
-  Sendable`은 TestSupport 1곳(올바른 lock 규율).
-- **낮음 4건**: ① 진단의 파일 경로/심볼명은 무필터 출력 — `printable()`(Cc/Cf 필터)은 근거
-  문장에만 적용, github-actions 리포터는 `%`/`\r`/`\n`만 인코딩해 ESC 통과. 악성 저장소 +
-  PR 검증 배치 조합에서만 로그 스푸핑 의미. ② ci.yml에 `permissions:` 블록 없음(참조 시크릿
-  없어 실노출면 0). ③ release.yml이 tap 토큰을 clone URL에 인라인(환경변수 방식 권고).
-  ④ `baseline`/설정 경로가 프로젝트 루트가 아니라 **CWD 기준**으로 풀림 — 신뢰 불가 저장소를
-  CI에서 `baseline`으로 돌리는 조합에만 의미(자기 저장소 분석엔 무해).
-- 양호 항목: external-retentions·baseline 파싱 검증(포맷·버전·음수 거부), 심볼릭 링크
-  방문집합·NUL 거부, ci.yml이 `pull_request`(target 아님)·서드파티 액션 0, release.yml이
-  `contents: write` 최소권한·태그↔버전 상수 교차검증.
-
-### 구조
-
-- **중간·핵심(반박 검증 완료)**: `CartographExport`가 `CartographAnalysis`를 import
-  (Package.swift:60, MetricsRenderer.swift:1) — AGENTS 다이어그램에 없는 수평 간선.
-  `LayerRule.isViolated`가 같은-레이어 의존을 전제로 허용(LayerRule.swift:66-67)해 기능 계층
-  내부 수평 의존은 `rules` 게이트가 구조적으로 못 잡는다. 모듈 순환 게이트의 사각
-  (AGENTS.md 61-65)과 같은 종류인데 아직 문서화돼 있지 않다. 수정 방향: 다이어그램에 예외
-  명시 or 레이어 세분화.
-- **중간**: 백틱 제거 `unescaped` 동일 구현 2벌(SwiftSyntaxAnalyzer:255 ↔
-  SwiftValueFlowParser:730 — SyntaxVocabulary로 통합 권고). 경로 정규화 표현식
-  `URL(...).resolvingSymlinksInPath().standardizedFileURL.path` 7곳 중복(정본
-  FileSystem.canonicalPath가 internal이라 퍼짐 — 한 곳만 바뀌면 ReportScope가 발견을
-  놓치는 종류의 버그로 이어짐).
-- **낮음**: `measureMetrics`가 `finish(...)`를 우회해 정책 로직 재구현(CartographService
-  870-913, AGENTS 규칙과 상충 — 885-900 주석 근거는 있음). `bridgeFacts` 이중 스캔 루프
-  복제(707-723 vs 742-755, 차이는 resolvedValues 인자 하나). JSONEncoder 구성 9곳 +
-  슬래시 이스케이프 정책 비일관(query 계열은 `\/` 이스케이프, graph/SARIF는 아님).
-  `retentionExplanation` public인데 내부 호출만(검증 완료 — CartographService:227 유일).
-  `StaticIndexProvider` 테스트 전용 public(Core 배치). 테스트 이름 규칙 위반 1건
-  (ValueFlowReviewCounterexampleTests.swift:164 영어 — 나머지 824건 한국어). 커맨드
-  플러그인 테스트 없음. 벤치마크 스크립트 3종 하네스 복제(증거 도구 특성상 보류 가능).
-- 양호: 역방향 import 위반 0(리플렉션 우회도 없음), TODO/FIXME/주석처리 코드/미사용 파일 0,
-  825 테스트 분포 합리적(Analysis 189/Syntax 170/Kit 159/Core 120), CI 4게이트 완전 커버,
-  0.11.0 변경(#76~#79)은 배치·주석·테스트 규약 준수.
-
-### 1순위 및 2순위 수정 완료 (refactor/audit-structural-cleanups)
-
-- `unescaped` 중복 제거: `SyntaxVocabulary.swift`에 `SyntaxIdentifiers.unescaped`로 일원화하고 두 파서·스캐너 위임 연결 및 테스트 추가.
-- 경로 정규화 일원화: `FileSystem.canonicalPath`를 public으로 공개(문서 주석 포함)하고, `CartographIndexStore`와 `CartographKit`의 7곳 중복을 `LocalFileSystem.canonicalPath`로 교체 및 테스트 추가.
-- 영문 테스트명 한국어화: `ValueFlowReviewCounterexampleTests.swift:164`의 유일한 영문명을 한국어(`반복 상한 초과로 자를 때 허상 간선을 남기지 않는다`)로 수정.
-- 아키텍처 문서화: `Sources/AGENTS.md`에 `CartographExport` → `CartographAnalysis` 수평 의존 예외(지표 모델 `NodeMetrics` 렌더링 목적)와 `LayerRule`의 동일 계층 허용 사각지대 명시.
-- 보안 경화 (2순위):
+- **성능 (양호 / 회귀 없음)**: 자기 분석(2,611 정점) `dead` 2.74~3.07초, 코퍼스 0.05~0.06초. 0.11.0은 분석 엔진 경로 변경이 없어 구조적 성능 회귀 없음.
+- **구조 정비 (1순위)**:
+  - `unescaped` 중복 제거: `SyntaxVocabulary.swift`에 `SyntaxIdentifiers.unescaped`로 일원화하고 두 파서·스캐너 위임 연결 및 테스트 추가.
+  - 경로 정규화 일원화: `FileSystem.canonicalPath`를 public으로 공개하고, `CartographIndexStore`와 `CartographKit`의 7곳 중복을 `LocalFileSystem.canonicalPath`로 교체 및 테스트 추가.
+  - 영문 테스트명 한국어화: `ValueFlowReviewCounterexampleTests.swift:164`의 유일한 영문명을 한국어(`반복 상한 초과로 자를 때 허상 간선을 남기지 않는다`)로 수정.
+  - 아키텍처 문서화: `Sources/AGENTS.md`에 `CartographExport` → `CartographAnalysis` 수평 의존 예외(지표 모델 `NodeMetrics` 렌더링 목적)와 `LayerRule`의 동일 계층 허용 사각지대 명시.
+- **보안 경화 (2순위)**:
   - `ci.yml`: 최상위 `permissions: contents: read` 최소권한 명시.
-  - `release.yml`: tap 클론 시 토큰 인라인 대신 `http.extraheader` 푸시 인증으로 변경.
+  - `release.yml`: tap 클론 시 토큰 인라인 대신 공개 클론 후 Basic base64 헤더(`git -c http.extraheader=Authorization: Basic ...`) 푸시 인증으로 변경하여 토큰 노출 방지.
   - `GitHubActionsDiagnosticReporter`: 메시지 및 속성 값에서 ANSI ESC(`\u{001B}`) 및 양방향 재정의(`\u{202E}`) 등 터미널 제어(Cc)·형식(Cf) 문자 필터링(`sanitize`) 적용 및 단위 테스트 추가.
-- 4게이트 완전 검증 통과: `coverage.sh`(90.41%), `verify-cli-contract.sh`, `verify-fixtures.sh`, 자기 분석 4종(`dead`, `cycles`, `cycles --level type`, `rules --strict`) 모두 통과(결함 0).
+- **검증**: `coverage.sh`(90.41%), `verify-cli-contract.sh`, `verify-fixtures.sh`, 자기 분석 4종(`dead`, `cycles`, `cycles --level type`, `rules --strict`) 모두 0 findings로 통과. Codex 리뷰 통과.
 
-### 다음 단계
+### 재개할 때
 
-1. 현재 브랜치(`refactor/audit-structural-cleanups`) 푸시 및 GitHub PR 생성.
-2. 감사 결론 최종 기록 및 main 병합.
+현재 후속 작업은 **r/androiddev 모더레이터의 답변 확인**이다 (아래 홍보 절 참조).
 
 ## 2026-09-10 — 0.11.0 릴리스 (#75·#74)
 
@@ -289,7 +237,7 @@ Isthmus `npm run verify` 통과. GLM packet-ask 검토 지적은 실패 재현 �
 
 새 세션이 이어받기 위한 문서다. 작업 규칙은 [AGENTS.md](AGENTS.md), Claude Code 전용 사항은 [CLAUDE.md](CLAUDE.md). 이 파일은 **지금 어디까지 왔고 다음이 무엇인지**만 담는다.
 
-_마지막 갱신: 2026-09-10 (성능·보안·구조 감사 진행 중 — 재개 지점은 맨 위 절. 0.11.0 릴리스·tap 갱신 완료)._
+_마지막 갱신: 2026-09-10 (성능·보안·구조 감사 완료 — PR #80 스쿼시 머지 완료)._
 
 
 ## 2026-09-08 — 0.8.2 신뢰성·성능 정비 (PR #62 머지)
