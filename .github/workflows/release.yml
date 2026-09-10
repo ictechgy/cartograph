@@ -121,4 +121,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "cartograph ${VERSION}"
-          git -c "http.extraheader=Authorization: Bearer ${HOMEBREW_TAP_TOKEN}" push origin main
+          auth="$(printf 'x-access-token:%s' "$HOMEBREW_TAP_TOKEN" | base64 | tr -d '\n')"
+          git -c "http.extraheader=Authorization: Basic ${auth}" push origin main
