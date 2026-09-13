@@ -22,8 +22,12 @@ if [ ! -x "$CARTOGRAPH" ]; then
     exit 2
 fi
 
+# 기본 빌드가 불가한 환경(가려진 임시 디렉터리를 둔 실행기)을 위한 통로다.
+# 비워 두면 지금까지와 같다. 의도적인 낱말 분리이므로 따옴표로 묶지 않는다.
+SWIFTPM_FLAGS="${SWIFTPM_FLAGS:-}"
+
 echo "픽스처를 빌드합니다(인덱스 스토어가 필요합니다)."
-swift build --package-path "$FIXTURE" --build-tests >/dev/null
+swift build --package-path "$FIXTURE" --build-tests $SWIFTPM_FLAGS >/dev/null
 
 # 캐시가 결과를 가리지 않도록 매번 새로 분석한다. 캐시 자체는 별도 테스트가 있다.
 rm -rf "${TMPDIR:-/tmp}/cartograph-syntax-cache"
