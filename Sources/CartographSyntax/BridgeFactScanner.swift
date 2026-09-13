@@ -12,10 +12,19 @@ public struct ScannedBridgeFact: Hashable, Sendable {
     public let fact: BridgeFact
     /// 사실을 담고 있는 가장 안쪽 선언. 파일 최상위면 nil.
     public let declaration: EnclosingDeclaration?
+    /// 같은 선언 안의 모든 handler closure 범위. message 이외의 Flutter handler도 제외 근거다.
+    public let handlerScopes: [BridgeFact.HandlerScope]
 
-    public init(fact: BridgeFact, declaration: EnclosingDeclaration?) {
+    public init(
+        fact: BridgeFact, declaration: EnclosingDeclaration?, handlerScopes: [BridgeFact.HandlerScope] = []
+    ) {
         self.fact = fact
         self.declaration = declaration
+        self.handlerScopes = handlerScopes
+    }
+
+    func attaching(handlerScopes: [BridgeFact.HandlerScope]) -> ScannedBridgeFact {
+        ScannedBridgeFact(fact: fact, declaration: declaration, handlerScopes: handlerScopes)
     }
 }
 
@@ -103,8 +112,12 @@ public struct BridgeFactScanner: Sendable {
 
         let collector = BridgeFactCollector(converter: converter, bindings: bindings, path: path, messages: messages)
         collector.walk(tree)
+        let facts = collector.facts.map { entry in
+            guard let declaration = entry.declaration else { return entry }
+            return entry.attaching(handlerScopes: collector.handlerScopes(for: declaration))
+        }
         return BridgeScanResult(
-            facts: collector.facts.sorted { $0.fact < $1.fact },
+            facts: facts.sorted { $0.fact < $1.fact },
             unscannedEventChannels: bindings.eventChannelCount,
             unscannedMessageChannels: bindings.messageChannelCount,
             opaqueHandlerChannels: collector.opaqueHandlerChannels
@@ -676,6 +689,7 @@ final class BridgeFactCollector: SyntaxVisitor {
     private(set) var opaqueHandlerChannels: [String?] = []
     /// Flutter 가 Swift 쪽에 제공하는 채널 타입 이름.
     private(set) var facts: [ScannedBridgeFact] = []
+    private var handlerScopesByDeclaration: [String: [BridgeFact.HandlerScope]] = [:]
     private let converter: SourceLocationConverter
     private let bindings: BindingCollector
     private let path: String
@@ -877,6 +891,7 @@ final class BridgeFactCollector: SyntaxVisitor {
         let isNil = node.arguments.first.map { BindingCollector.isNilHandler($0.expression) } ?? false
         if messages, member.declName.baseName.text == "setMessageHandler", !isNil,
            let registration = registeredChannel(of: node, receiver: member.base), registration.kind == .message {
+            recordHandlerScope(Self.handlerClosure(of: node))
             emit(
                 .messageHandle, target: .flutter, channel: registration.name,
                 handlerScope: handlerScope(of: Self.handlerClosure(of: node)), at: node
@@ -887,6 +902,7 @@ final class BridgeFactCollector: SyntaxVisitor {
             return .visitChildren
         }
 
+        recordHandlerScope(Self.handlerClosure(of: node))
         let registration = registeredChannel(of: node, receiver: member.base)
         emit(.channelRegister, target: .flutter, channel: registration?.name, at: node)
 
@@ -956,6 +972,19 @@ final class BridgeFactCollector: SyntaxVisitor {
             end: SourceLocation(path: path, line: end.line, column: end.column),
             complete: false
         )
+    }
+
+    func handlerScopes(for declaration: EnclosingDeclaration) -> [BridgeFact.HandlerScope] {
+        handlerScopesByDeclaration[Self.declarationKey(declaration), default: []]
+    }
+
+    private static func declarationKey(_ declaration: EnclosingDeclaration) -> String {
+        "\(declaration.qualifiedName)#\(declaration.line)"
+    }
+
+    private func recordHandlerScope(_ closure: ClosureExprSyntax?) {
+        guard let scope = handlerScope(of: closure), let declaration = declarations.last else { return }
+        handlerScopesByDeclaration[Self.declarationKey(declaration), default: []].append(scope)
     }
 
     override func visit(_ node: SwitchCaseSyntax) -> SyntaxVisitorContinueKind {

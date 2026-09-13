@@ -431,14 +431,19 @@ struct BridgeSymbolResolver {
     }
 
     func resolve(_ scanned: [ScannedBridgeFact]) -> [BridgeFact] {
-        let messageScopes = Dictionary(grouping: scanned.compactMap { item -> (String, BridgeFact.HandlerScope?)? in
+        let messageEntries = Dictionary(grouping: scanned.compactMap { item -> (String, BridgeFact.HandlerScope?)? in
             guard item.fact.kind == .messageHandle, let declaration = item.declaration else { return nil }
             return (Self.declarationKey(declaration), item.fact.handlerScope)
         }, by: \.0).mapValues { $0.map(\.1) }
-        let scopesByDeclaration = messageScopes.mapValues { values in values.compactMap { $0 } }
-        let scopeValidity = messageScopes.mapValues { values in
-            !values.contains(where: { $0 == nil }) && !Self.hasOverlappingScopes(values.compactMap { $0 })
+        let scopedEntries = scanned.flatMap { item -> [(String, BridgeFact.HandlerScope)] in
+            guard let declaration = item.declaration else { return [] }
+            return item.handlerScopes.map { (Self.declarationKey(declaration), $0) }
         }
+        let scopesByDeclaration = Dictionary(grouping: scopedEntries, by: \.0).mapValues { $0.map(\.1) }
+        let scopeValidity = Dictionary(uniqueKeysWithValues: messageEntries.map { key, values in
+            let scopes = scopesByDeclaration[key] ?? []
+            return (key, !values.contains(where: { $0 == nil }) && !Self.hasOverlappingScopes(scopes))
+        })
         return scanned.map { entry in
             guard let declaration = entry.declaration else { return entry.fact }
             let candidates = symbolsByPath[Self.canonical(entry.fact.location.path)] ?? []

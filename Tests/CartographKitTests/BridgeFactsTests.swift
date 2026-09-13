@@ -680,6 +680,39 @@ struct BridgeFactsTests {
         #expect(dispatchTargets.first?["qualifiedName"] as? String == "App.first()")
     }
 
+    @Test("같은 setup의 MethodChannel closure는 Basic registration dependency로 섞이지 않는다")
+    func excludesMethodHandlerClosureFromMessageRegistrationScope() throws {
+        let source = """
+            class P {
+                static func install() {
+                    FlutterMethodChannel(name: "method", binaryMessenger: m).setMethodCallHandler { _, _ in runtimeNativeValue() }
+                    let basic = BasicMessageChannel<Any?>(name: "basic", binaryMessenger: m)
+                    basic.setMessageHandler { _, _ in basicHelper() }
+                }
+            }
+            """
+        let setup = IndexedSymbol(usr: "s:setup", name: "install()", kind: .method, module: "App",
+            location: .init(path: "/p/A.swift", line: 2, column: 5))
+        let runtime = IndexedSymbol(usr: "s:runtime", name: "runtimeNativeValue()", kind: .function, module: "App",
+            location: .init(path: "/p/A.swift", line: 8, column: 1))
+        let helper = IndexedSymbol(usr: "s:helper", name: "basicHelper()", kind: .function, module: "App",
+            location: .init(path: "/p/A.swift", line: 9, column: 1))
+        let snapshot = IndexSnapshot(symbols: [setup, runtime, helper], references: [
+            IndexedReference(sourceUSR: "s:setup", targetUSR: "s:runtime", kind: .call,
+                location: .init(path: "/p/A.swift", line: 3, column: 110)),
+            IndexedReference(sourceUSR: "s:setup", targetUSR: "s:helper", kind: .call,
+                location: .init(path: "/p/A.swift", line: 5, column: 38)),
+        ])
+        let service = makeService(files: ["/p/A.swift": source], snapshot: snapshot)
+        let data = Data(try service.exportBridgeFacts(target: .flutter, messages: true).output.utf8)
+        let document = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let facts = try #require(document["facts"] as? [[String: Any]])
+        let basic = try #require(facts.first { $0["channel"] as? String == "basic" })
+        let dependencies = try #require(basic["dependencies"] as? [[String: Any]])
+        #expect(dependencies.contains { ($0["symbol"] as? [String: Any])?["usr"] as? String == "s:helper" })
+        #expect(!dependencies.contains { ($0["symbol"] as? [String: Any])?["usr"] as? String == "s:runtime" })
+    }
+
     @Test("채널을 모르면 키를 빼지 않고 null 로 적는다")
     func encodesUnknownChannelAsNull() throws {
         let fact = BridgeFact(
