@@ -504,15 +504,18 @@ public struct CartographService: Sendable {
         case .notFound:
             // 오타가 오타라고 말만 하지 않는다. 그래프에 비슷한 이름이 있으면
             // 다시 물을 수 있는 모양(위치·USR 포함)으로 같이 보낸다.
+            // 비슷한 이름이 없으면 키 자체를 만들지 않는다 — 빈 배열은
+            // "추천이 비었다"는 매번 붙는 말이 된다.
+            let similar = Self.candidates(
+                session.lookup.similarCandidates(to: subject),
+                in: graph
+            )
             return SymbolQueryDocument(
                 status: "notFound",
                 requested: subject,
                 level: level,
                 limitations: limitations,
-                candidates: Self.candidates(
-                    session.lookup.similarCandidates(to: subject),
-                    in: graph
-                )
+                candidates: similar.isEmpty ? nil : similar
             )
         case let .ambiguous(candidates):
             return SymbolQueryDocument(

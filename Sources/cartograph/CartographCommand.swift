@@ -187,6 +187,14 @@ struct DeadCommand: ParsableCommand {
                     + "one declaration, not the findings in changed files"
             )
         }
+        // 설명은 한 선언이 왜 살아 있는지의 근거다. 테스트 전용 목록은 발견
+        // 목록의 렌즈라 설명에 닿을 자리가 없다. 받아 두면 조용히 무시된다.
+        guard explain == nil || !reportTestOnly else {
+            throw ValidationError(
+                "--report-test-only cannot be combined with dead --explain; the explanation "
+                    + "answers one declaration, not the findings list the flag widens"
+            )
+        }
         // 미사용 분석은 항상 심볼 레벨이다. `--level` 을 받으면 출력이
         // 바이트까지 같아 통과할 수밖에 없는 비교가 증거가 된다.
         guard options.level == nil else {
@@ -505,6 +513,18 @@ struct BaselineCommand: ParsableCommand {
         guard options.level == nil else {
             throw ValidationError(
                 "--level cannot be combined with baseline; it records every command at its own level"
+            )
+        }
+        // 결과는 고정된 한 줄이다. 진단 리포트가 아니므로 --report-format 이
+        // 바꿀 출력도, --strict 가 잴 발견도 없다.
+        guard options.reportFormat == nil else {
+            throw ValidationError(
+                "--report-format cannot be combined with baseline; it writes a baseline file, not a report"
+            )
+        }
+        guard !options.strict else {
+            throw ValidationError(
+                "--strict cannot be combined with baseline; it records findings, it does not enforce them"
             )
         }
     }

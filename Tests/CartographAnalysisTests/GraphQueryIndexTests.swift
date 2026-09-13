@@ -65,6 +65,15 @@ struct GraphQueryIndexTests {
         #expect(lookup.similarCandidates(to: "Abcd").map(\.name) == ["Abce", "Abcf"])
     }
 
+    @Test("한 정점이 이름과 한정 이름으로 같이 걸려도 한 번만 추천된다")
+    func similarCandidatesDoNotDuplicateANode() {
+        // 같은 정점의 별칭 키(name·qualifiedName)가 모두 한도 안에 들면 같은
+        // 정점이 목록을 두 배로 채운다. 추천은 정점을 주는 것이지 키를 주는 것이 아니다.
+        let node = GraphNode(id: "usr:r", name: "UserRepX()", kind: .classType, module: "A")
+        let lookup = GraphQueryIndex(graph: CodeGraph(level: .symbol, nodes: [node], edges: []))
+        #expect(lookup.similarCandidates(to: "UserRepX") == [node])
+    }
+
     @Test("추천은 전혀 다른 이름과 빈 이름 앞에서 조용해진다")
     func similarCandidatesStayQuiet() {
         let node = GraphNode(id: "usr:a", name: "UserService", kind: .classType, module: "Domain")

@@ -46,6 +46,10 @@ public struct AnalysisContext: Sendable {
     /// `baseline` 은 순환·미사용·지표·레이어 네 분석을 한 문맥에서 돌린다. 문맥이
     /// 기억하지 않으면 같은 레벨의 그래프를 그 배수만큼 다시 만든다 — 정점과
     /// 간선을 전부 다시 스캔하고 정렬하는 비용이다.
+    ///
+    /// 경합 시 같은 키를 두 스레드가 각자 계산할 수 있다(값만 자물쇠 안에 넣는다).
+    /// 그래도 안전한 이유는 `GraphBuilder.BuildResult` 가 순수한 값이라 어느 쪽을
+    /// 받아도 관찰 결과가 같기 때문이다. 가변 상태를 품게 되면 이 가정이 깨진다.
     private final class GraphBuildCache: @unchecked Sendable {
         private let lock = NSLock()
         private var results: [Key: GraphBuilder.BuildResult] = [:]

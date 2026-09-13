@@ -92,6 +92,9 @@ expect_status 64 "그래프와 형식 동시"    graph --report-format json
 expect_status 64 "그래프와 strict 동시"  graph --strict
 expect_status 64 "브리지와 형식 동시"    bridges --report-format json
 expect_status 64 "브리지와 strict 동시"  bridges --strict
+expect_status 64 "베이스라인과 형식 동시" baseline --report-format json
+expect_status 64 "베이스라인과 strict 동시" baseline --strict
+expect_status 64 "설명과 테스트 전용 동시" dead --explain Foo --report-test-only
 expect_status 64 "브리지와 level 동시"   bridges --level module
 expect_status 64 "베이스라인과 level 동시" baseline --level module
 expect_status 64 "질의와 since 동시"     query Foo --since HEAD

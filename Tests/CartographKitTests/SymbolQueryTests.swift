@@ -165,6 +165,17 @@ struct SymbolQueryTests {
         }
     }
 
+    @Test("비슷한 이름이 없는 notFound 는 candidates 키를 만들지 않는다")
+    func notFoundWithoutSuggestionsOmitsCandidates() throws {
+        // "추천이 비었다"는 매번 붙는 말이다. 값이 없는 선택 필드는 키가 빠진다.
+        let service = makeService()
+        let document = try service.queryDocument(symbol: "NoSuchThing")
+        #expect(document.status == "notFound")
+        #expect(document.candidates == nil)
+        let output = try service.query(symbol: "NoSuchThing").output
+        #expect(!output.contains("\"candidates\""))
+    }
+
     @Test("단건 notFound 의 오류 문구는 이름을 반향하고 추천을 알린다")
     func singleQueryMessageEchoesName() throws {
         let outcome = try makeService().query(symbol: "UserRepsitory")

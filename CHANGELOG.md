@@ -22,8 +22,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the metrics table prints `Limitation:` lines.
 - Commands now reject flags they cannot honor with exit code 64 instead of silently ignoring them:
   `query` refuses `--report-format` and `--strict`, `graph` and `bridges` refuse `--report-format`
-  and `--strict`, `dataflow` refuses `--strict`. (A previous release already made `dataflow` refuse
-  `--report-format`.)
+  and `--strict`, `dataflow` refuses `--strict`, `baseline` refuses `--report-format` and `--strict`
+  (it writes a baseline file, it does not emit a report), and `dead --explain` refuses
+  `--report-test-only`. (A previous release already made `dataflow` refuse `--report-format`.)
 - `cartograph baseline` no longer writes to the path given by the `baseline_path` configuration key.
   The write destination is now `--write` or the project-root default; `baseline_path` names where
   suppression findings are read from. If `baseline_path` is set while `--write` is missing, the
