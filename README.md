@@ -291,7 +291,10 @@ Five things this output does deliberately:
   `unindexed-sources` counts files without a known index unit; `missing-sources` counts indexed
   files that disappeared. `unreadable-sources` reports other read failures: declarations in those
   files are kept with reason `sourceUnavailable` until source access is restored and the analysis
-  is rerun. These limits also appear in `dead` reports.
+  is rerun. These limits also appear in `dead` reports — and on the other discovery gates: `cycles`
+and `rules` carry them in every format they emit, and `metrics` carries the same `limitations` key
+in its JSON and prints `Limitation:` lines under the table. A gate that passes while the analysis
+was blind is the one thing a gate must never do.
 - **A baseline the team already accepted is marked as such** (`suppressedByBaseline`), so nobody
   re-litigates a decision that was already made. It is only set when the declaration would actually
   have been reported.
@@ -373,7 +376,10 @@ $ cartograph query --batch requests.json
 
 Results come back in request order with duplicates kept, so the caller can pair the two arrays by
 index. Each element is exactly what a single `query` returns. An `ambiguous` name is a normal
-result, not a failure. If any name is not found the exit code is 64, but **every** result is still
+result, not a failure. A `notFound` result carries `candidates` too — the closest names in the
+graph, each with its `qualifiedName`, USR and location — so a typo can be retried without another
+grep, and the single-query form echoes the requested name (and those suggestions) on stderr. If any
+name is not found the exit code is 64, but **every** result is still
 returned — one typo does not cost you the other forty-two answers. A malformed requests file is
 rejected before the index is opened and exits 64, not 2, because it is an argument problem rather
 than a failure to analyze. The names that were not found are listed on stderr, so a failed sweep
@@ -386,9 +392,8 @@ This is the `symbol-query-batch` v1 format that dartograph writes, so an agent l
 shape rather than one per language.
 
 `dead --report-format json` carries the same `limitations` list, so a sweep that starts from the
-unused list sees what the graph could not, without a `query` per entry. Every format a CI job reads
-carries it too, because a gate that passes while the analysis was blind is the one thing a gate must
-never do: `text` counts them in the summary line and prints a `limitations:` block after it, `xcode`
+unused list sees what the graph could not, without a `query` per entry. So do `cycles`, `rules` and
+`metrics` — they are CI gates too. Formats a CI job reads carry the list the same way: `text` counts them in the summary line and prints a `limitations:` block after it, `xcode`
 emits a location-less `note:`, `github-actions` emits a `::notice` with no file so it lands on the
 run summary, and `sarif` puts them in `runs[].invocations[].toolExecutionNotifications`. None of
 that changes the exit code or the finding count. `checkstyle` is the exception: its schema has no
@@ -419,8 +424,12 @@ agree; a wrapper called with different names remains dynamic in bridge-facts v1.
 [measured scope and comparison](docs/scans/2026-09-value-flow-comparison.md).
 
 The defaults are 512 contexts, 10,000 iterations, 32 values per node, 10,000 heap cells, and call-string
-depth 2. `--call-depth` accepts 1 through 8. The command rejects `--level`, `--since`, and
-`--report-format`: value analysis has its own context graph, answers one subject, and is JSON-only.
+depth 2. `--call-depth` accepts 1 through 8. The command rejects `--level`, `--since`, `--report-format`
+and `--strict`: value analysis has its own context graph, answers one subject, and is JSON-only. The
+same policy holds across the CLI — a command that cannot honor a flag rejects it with exit code 64
+rather than silently ignoring it: `query` refuses `--report-format` and `--strict` (the answer is
+always JSON, and it answers facts, not findings), and `graph` and `bridges` refuse `--report-format`
+(the document format is `--format` there) and `--strict`.
 
 ### `bridges` — export native bridge evidence
 
@@ -628,6 +637,13 @@ cartograph baseline --write .cartograph-baseline.json
 Records today's findings so only *new* ones fail the build. Fingerprints are USR-based, so moving
 code up and down a file does not resurrect a suppressed finding.
 
+Where the file is written is always an explicit decision: `--write`, or the project root default
+(`.cartograph-baseline.json`) when the configuration sets no `baseline_path`. The `baseline_path`
+configuration key names where suppression findings are *read* from, never where a baseline is
+written — a key in the analyzed repository's config must not be able to point a write at an
+arbitrary path, and if `baseline_path` is set while `--write` is missing, `baseline` exits 64 and
+says so rather than guessing.
+
 ### `--since` — review only what a pull request touched
 
 ```bash
@@ -684,7 +700,9 @@ thresholds:
   max_instability: 0.9
   max_distance: 0.8
 
-baseline_path: .cartograph-baseline.json
+baseline_path: .cartograph-baseline.json    # where --baseline READS suppression findings;
+                                            # `cartograph baseline` writes only via --write or the
+                                            # project-root default, never to this key
 external_retentions_path: .isthmus/retentions.cartograph.json   # from isthmus, see `bridges`
 derived_data_path: DerivedData    # where CI put -derivedDataPath
 report_format: text               # text json xcode checkstyle github-actions sarif

@@ -283,7 +283,10 @@ $ cartograph query UserService
   파일을 가리지 않는다. `unindexed-sources`는 유닛을 찾지 못한 파일, `missing-sources`는
   인덱스에는 있지만 사라진 파일을 센다. `unreadable-sources`는 나머지 읽기 실패를 알린다.
   그 파일의 선언은 접근 권한 등을 복구하고 다시 분석할 때까지 `sourceUnavailable` 근거로
-  보존한다. 이 한계들은 `dead` 리포트에도 실린다.
+  보존한다. 이 한계들은 `dead` 리포트에도 실린다 — 나머지 발견 목록 게이트에도 실린다.
+  `cycles` 와 `rules` 는 내보내는 모든 형식에 함께 실고, `metrics` 는 JSON 의 같은
+  `limitations` 키와 표 아래 `Limitation:` 줄로 실린다. 눈이 먼 채 통과하는 게이트는
+  게이트가 해서는 안 되는 단 하나이기 때문이다.
 - **팀이 이미 받아들인 베이스라인은 그렇다고 표시한다**(`suppressedByBaseline`). 팀이 알고
   남겨 둔 것을 다시 심사하지 않게 한다. 실제로 보고되었을 선언에만 표시가 붙는다.
 - **이웃에 닿는 관계를 하나만 고르지 않고 전부 준다.** 호출하면서 동시에 오버라이드하는
@@ -359,7 +362,10 @@ $ cartograph query --batch requests.json
 
 결과는 **요청 순서와 중복을 그대로** 지킨다. 부르는 쪽이 두 배열을 인덱스로 짝지을 수 있어야
 하기 때문이다. 각 원소는 단일 `query` 가 내는 것과 똑같다. 모호한 이름은 실패가 아니라 정상
-결과다. 하나라도 찾지 못하면 종료 코드는 64지만 **나머지 답은 전부 돌려준다.** 오타 하나가
+결과다. `notFound` 답에도 `candidates` 가 함께 온다 — 그래프 안의 비슷한 이름들에
+`qualifiedName`·USR·위치를 얹어 돌려주므로 오타는 다른 검색 없이 되물을 수 있다. 단건 질의는
+표준 오류에 요청한 이름과 그 추천을 그대로 반향한다. 하나라도 찾지 못하면 종료 코드는 64지만
+**나머지 답은 전부 돌려준다.** 오타 하나가
 마흔둘의 답을 버리게 하지 않는다. 잘못된 요청 파일은 인덱스를 열기 전에 거부되고 2가 아니라
 64로 끝난다. 그것은 분석의 실패가 아니라 인자의 문제이기 때문이다. 찾지 못한 이름은 표준
 오류에 적힌다. 스윕이 실패했을 때 JSON 을 다시 훑지 않아도 된다.
@@ -371,8 +377,8 @@ $ cartograph query --batch requests.json
 언어마다 다른 응답을 배우게 하지 않는다.
 
 `dead --report-format json` 에도 같은 `limitations` 목록이 실린다. 미사용 목록에서 출발하는
-일괄 정리가 항목마다 `query` 를 부르지 않고도 그래프가 보지 못한 것을 본다. CI 가 읽는 형식에도
-전부 실린다. 눈이 먼 채 통과하는 게이트는 게이트가 해서는 안 되는 단 하나이기 때문이다.
+일괄 정리가 항목마다 `query` 를 부르지 않고도 그래프가 보지 못한 것을 본다. `cycles`·`rules`·
+`metrics` 도 그렇다 — 이들 역시 CI 게이트다. CI 가 읽는 형식들은 같은 방법으로 목록을 나른다.
 `text` 는 요약 줄에 개수를 적고 그 뒤에 `limitations:` 블록을 붙이고, `xcode` 는 위치 없는
 `note:`, `github-actions` 는 파일 없는 `::notice`(실행 요약에 달린다), `sarif` 는
 `runs[].invocations[].toolExecutionNotifications` 에 담는다. 종료 코드도 발견 수도 바뀌지 않는다.
@@ -402,8 +408,12 @@ cartograph dataflow 'Worker.run()' --call-depth 4
 남는다. [실측 범위와 비교](docs/scans/2026-09-value-flow-comparison.md)를 참고한다.
 
 기본값은 문맥 512개, 반복 10,000회, 노드당 값 32개, 힙 셀 10,000개, 추적할 호출 경로 깊이 2다.
-`--call-depth`는 1부터 8까지 받는다. `--level`, `--since`, `--report-format`은 거부한다.
+`--call-depth`는 1부터 8까지 받는다. `--level`, `--since`, `--report-format`, `--strict`은 거부한다.
 값 분석에는 별도 문맥 그래프가 있고 한 대상에 답하며 출력 형식은 JSON으로 고정되어 있기 때문이다.
+이 정책은 CLI 전체의 것이다 — 자기가 못 받는 플래그는 조용히 무시하지 않고 종료 코드 64 로
+거부한다. `query` 는 `--report-format` 과 `--strict` 을(답은 언제나 JSON 이고 발견 목록이 아니라
+사실이다), `graph` 와 `bridges` 는 `--report-format`(문서 형식은 거기서 `--format`이다)과
+`--strict` 를 거부한다.
 
 ### `bridges` — 언어 경계의 Swift 쪽 내보내기
 
@@ -603,6 +613,13 @@ cartograph baseline --write .cartograph-baseline.json
 
 지금 있는 문제를 기록해 두고 *새로 생긴* 것만 빌드를 실패시킵니다. 기록해 둔 문제의 지문(fingerprint)은 USR 기반이라, 코드를 파일 안에서 위아래로 옮겨도
 억제한 문제가 되살아나지 않습니다.
+
+파일을 쓰는 자리는 언제나 명시적입니다. `--write` 로 주거나, 설정이 `baseline_path` 를
+정하지 않았다면 프로젝트 루트의 기본 이름(`.cartograph-baseline.json`)입니다. 설정의
+`baseline_path` 키는 억제 근거를 **읽는** 위치를 나타낼 뿐, 베이스라인이 쓰이는 곳을
+정하지 못합니다 — 분석 대상 저장소의 설정이 임의의 경로에 쓰기를 지시할 수 있어서는
+안 되기 때문입니다. `baseline_path` 가 설정된 채 `--write` 없이 `baseline` 을 돌리면
+64 로 끝나고 그 이유를 말합니다.
 
 ### `--since` — 이번 PR 이 건드린 자리만 보기
 

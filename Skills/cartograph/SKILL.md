@@ -156,7 +156,8 @@ crowds out the context you need to do the actual work. Ask about the symbol you 
 as a missing index store · `64` usage error, including a name that matches nothing.
 
 A `64` from `query` means the name does not exist in the index. That is not evidence the
-code is unused — check your spelling, and check whether the target was built.
+code is unused — the response lists the closest names as `candidates` and stderr repeats them,
+so retry with one of those or with a USR, and check whether the target was built.
 
 A `2` that says the index store knows none of this project's declarations means the tool
 saw nothing at all. Do not treat it as "nothing is wrong". The message names what it read

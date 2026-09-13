@@ -5,6 +5,52 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `query` `notFound` answers now carry `candidates` — the closest names in the graph with their
+  `qualifiedName`, USR and location — so a typo can be retried without another search. The single-query
+  stderr message echoes the requested name and those suggestions; `dead`/`cycles`/`rules --explain`
+  name the subject and offer the same suggestions instead of a bare "no match".
+
+### Changed
+
+- `cycles`, `rules` and `metrics` now carry the `limitations` list like `dead` does. They are CI
+  gates; a gate that passes while the analysis was blind is the one thing a gate must never do. The
+  metrics JSON document gained an optional `limitations` key (absent when there is nothing to report)
+  and the metrics table prints `Limitation:` lines.
+- Commands now reject flags they cannot honor with exit code 64 instead of silently ignoring them:
+  `query` refuses `--report-format` and `--strict`, `graph` and `bridges` refuse `--report-format`
+  and `--strict`, `dataflow` refuses `--strict`. (A previous release already made `dataflow` refuse
+  `--report-format`.)
+- `cartograph baseline` no longer writes to the path given by the `baseline_path` configuration key.
+  The write destination is now `--write` or the project-root default; `baseline_path` names where
+  suppression findings are read from. If `baseline_path` is set while `--write` is missing, the
+  command exits 64 with guidance. A configuration key from the analyzed repository must not be able
+  to point a write at an arbitrary path.
+
+### Fixed
+
+- The Xcode and Checkstyle reporters did not filter terminal control and format characters (the
+  GitHub Actions reporter has since 0.11). A file name containing a newline could forge diagnostic
+  lines in build logs, and a vertical tab in a path could invalidate the whole Checkstyle XML.
+  The filter now lives in one place (`PrintableText` in `CartographCore`) and all machine reporters
+  share it; the GitHub Actions reporter keeps encoding newlines as `%0A` exactly as before.
+- `--since` git invocations now run with `-c core.fsmonitor=false` and `--no-optional-locks`, so a
+  repository distributed with a crafted `.git` directory cannot execute a command of its choosing
+  during an otherwise read-only lookup.
+
+### Performance
+
+- Relative-path rendering computes the base-path spelling variants once per run instead of per
+  diagnostic; `retained_files` decisions are memoized per path and skipped entirely when no patterns
+  are configured; layer-rule evaluation builds its assignment map once instead of twice;
+  `baseline` reuses graphs of the same level instead of rebuilding them; batch queries hash the
+  baseline fingerprints once instead of per answer; graph truncation for HTML/Mermaid precomputes
+  node degrees instead of re-scanning edges inside the sort comparator; `dataflow` resolves
+  field/closure relationships through indexes instead of linear scans.
+
 ## [0.11.0] - 2026-09-10
 
 ### Changed
