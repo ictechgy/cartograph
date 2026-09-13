@@ -156,14 +156,6 @@ public struct CodeGraph: Sendable {
         let keptEdges = edges.filter { keptIDs.contains($0.source) && keptIDs.contains($0.target) }
         return CodeGraph(level: level, nodes: keptNodes, edges: keptEdges)
     }
-
-    /// 조건에 맞는 간선만 남긴 그래프. 정점은 그대로 유지된다.
-    ///
-    /// 프로덕션 경로는 `filteringNodes` 만 쓴다. 규칙을 고정하는 테스트만
-    /// 부르므로 임베더에게 공개하지 않는다.
-    func filteringEdges(_ isIncluded: (GraphEdge) -> Bool) -> CodeGraph {
-        CodeGraph(level: level, nodes: sortedNodes, edges: edges.filter(isIncluded))
-    }
 }
 
 extension CodeGraph: Codable {

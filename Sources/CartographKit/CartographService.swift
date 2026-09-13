@@ -644,11 +644,6 @@ public struct CartographService: Sendable {
         )
     }
 
-    private func isSuppressed(_ node: GraphNode, by baseline: Baseline?) -> Bool {
-        guard let baseline else { return false }
-        return baseline.filtering([Self.unusedDiagnostic(for: node)]).isEmpty
-    }
-
     /// 지문 집합 하나로 억제 여부를 답한다. 답마다 Set 을 다시 만들지 않는다.
     private static func isSuppressed(_ node: GraphNode, by fingerprints: Set<String>) -> Bool {
         fingerprints.contains(Self.unusedDiagnostic(for: node).fingerprint)

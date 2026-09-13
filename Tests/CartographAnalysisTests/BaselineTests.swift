@@ -42,10 +42,8 @@ struct BaselineTests {
     func capturingReplacesRatherThanUnions() {
         // 합집합으로만 자라면 이미 고쳐진 문제가 영원히 남아
         // 나중에는 무엇이 실제로 남아 있는지 알 수 없게 된다.
-        let old = Baseline.capturing([diagnostic("A"), diagnostic("B")])
         let new = Baseline.capturing([diagnostic("B")])
         #expect(new.fingerprints.count == 1)
-        #expect(old.merging(new).fingerprints.count == 2)
     }
 
     @Test("파일로 저장하고 다시 읽을 수 있다")

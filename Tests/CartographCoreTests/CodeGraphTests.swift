@@ -88,14 +88,6 @@ struct CodeGraphTests {
         #expect(filtered.edgeCount == 0)
     }
 
-    @Test("간선 필터는 정점을 유지한다")
-    func filteringEdgesKeepsNodes() {
-        let graph = TestGraph.make(kind: .call, ["A": ["B"]])
-        let filtered = graph.filteringEdges { $0.kind != .call }
-        #expect(filtered.nodeCount == 2)
-        #expect(filtered.edgeCount == 0)
-    }
-
     @Test("직렬화는 왕복해도 동일하며 순서가 고정된다")
     func codableRoundTripIsDeterministic() throws {
         let graph = TestGraph.make(["B": ["A"], "A": ["C"], "C": []])
