@@ -292,7 +292,9 @@ public struct IndexStoreProvider: IndexProviding {
         libraryPath: String,
         libraryModificationDate: Date?
     ) -> String {
-        let directory = (NSTemporaryDirectory() as NSString)
+        // TMPDIR 를 먼저 본다. NSTemporaryDirectory() 는 환경 변수를 무시하므로,
+        // 사용자 임시 디렉터리가 가려진 환경에서는 판독기 DB 가 열리지 않는다.
+        let directory = (TemporaryBase.directory() as NSString)
             .appendingPathComponent("cartograph-index-db")
         let identity = [
             storePath,

@@ -93,7 +93,7 @@ public struct SourceFactsCache: Sendable {
     /// `.gitignore` 관리가 사용자 부담이 되고, 지워도 결과가 달라지지 않는 캐시를
     /// 커밋할 위험도 생긴다.
     public static func defaultPath(forProject projectPath: String) -> String {
-        let directory = (NSTemporaryDirectory() as NSString)
+        let directory = (TemporaryBase.directory() as NSString)
             .appendingPathComponent("cartograph-syntax-cache")
         return (directory as NSString).appendingPathComponent(stableHash(projectPath) + ".json")
     }
