@@ -7,6 +7,12 @@ import SwiftSyntax
 /// 그 형태가 두 건 나왔다. 공유하는 값은 어느 한쪽의 것이 아니므로 여기 둔다.
 
 /// Flutter 브리지에서 이름으로 알아보는 타입들.
+enum BridgeChannelKind: Hashable, Sendable {
+    case method
+    case event
+    case message
+}
+
 enum BridgeChannels {
     /// 메서드 브리지의 채널 타입.
     static let methodChannel = "FlutterMethodChannel"
@@ -20,6 +26,13 @@ enum BridgeChannels {
     static let handlerRegistrationMethods: Set<String> = ["setMethodCallHandler", "addMethodCallDelegate"]
     /// 채널 타입 이름 전부. 인스턴스 바인딩에서 채널 생성을 뺄 때 쓴다.
     static let all: Set<String> = messageChannels.union([methodChannel, eventChannel])
+
+    static func kind(of name: String) -> BridgeChannelKind? {
+        if name == methodChannel { return .method }
+        if name == eventChannel { return .event }
+        if messageChannels.contains(name) { return .message }
+        return nil
+    }
 }
 
 /// 속성 목록에서 값을 읽는다.
@@ -70,4 +83,3 @@ enum SyntaxIdentifiers {
         return String(name.dropFirst().dropLast())
     }
 }
-

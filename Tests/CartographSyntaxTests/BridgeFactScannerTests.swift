@@ -877,6 +877,62 @@ struct BridgeFactScannerTests {
         #expect(result.unscannedMessageChannels == 1)
     }
 
+    @Test("messages 선택은 BasicMessageChannel의 non-nil 핸들러만 message-handle로 낸다")
+    func recordsBasicMessageHandlersOnlyWhenOptedIn() {
+        let source = """
+            let name = "wrong"
+            let basic = FlutterBasicMessageChannel<Any?>(name: "literal", binaryMessenger: m)
+            let alias = basic
+            alias.setMessageHandler { _, _ in }
+            basic.setMessageHandler(nil)
+            other.setMessageHandler { _, _ in }
+            FlutterMethodChannel(name: name, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", messages: true)
+        #expect(result.facts.map(\.fact.kind) == [.messageHandle])
+        #expect(result.facts.first?.fact.channel == "literal")
+        #expect(result.facts.first?.fact.method == nil)
+        #expect(result.unscannedMessageChannels == 1)
+    }
+
+    @Test("qualified generic BasicMessageChannel과 읽기 전용 문자열 별칭을 해석한다")
+    func resolvesQualifiedGenericMessageChannels() {
+        let source = """
+            let prefix = "dev.flutter.pigeon.CameraApi.method"
+            let name = prefix
+            let channel = Flutter.FlutterBasicMessageChannel<Any?, Any?>(name: name, binaryMessenger: m)
+            channel.setMessageHandler { _, _ in }
+            """
+        let fact = BridgeFactScanner().scan(source: source, path: "/p/A.swift", messages: true).facts.first?.fact
+        #expect(fact?.kind == .messageHandle)
+        #expect(fact?.isDynamic == false)
+        #expect(fact?.channel == "dev.flutter.pigeon.CameraApi.method")
+    }
+
+    @Test("보간 채널은 원문과 디코드한 선행 리터럴을 함께 보존한다")
+    func preservesInterpolatedMessagePrefix() {
+        let source = #"""
+            let c = BasicMessageChannel<Any?>(name: "dev.flutter.pigeon.\u{1F4F7}\(suffix)", binaryMessenger: m)
+            c.setMessageHandler { _, _ in }
+            """#
+        let fact = BridgeFactScanner().scan(source: source, path: "/p/A.swift", messages: true).facts.first?.fact
+        #expect(fact?.isDynamic == true)
+        #expect(fact?.channel == #""dev.flutter.pigeon.\u{1F4F7}\(suffix)""#)
+        #expect(fact?.channelPrefix == "dev.flutter.pigeon.📷")
+    }
+
+    @Test("BasicMessageChannel 메서드 참조는 closure 범위 근거 없이 fallback한다")
+    func messageMethodReferenceHasNoClosureScope() {
+        let source = """
+            let c = BasicMessageChannel<Any?>(name: "c", binaryMessenger: m)
+            c.setMessageHandler(handler)
+            """
+        let fact = BridgeFactScanner().scan(source: source, path: "/p/A.swift", messages: true).facts.first?.fact
+        #expect(fact?.kind == .messageHandle)
+        #expect(fact?.handlerScope == nil)
+        #expect(fact?.dependencies == nil)
+    }
+
     @Test("call.method 가 아닌 switch 는 건드리지 않는다")
     func ignoresUnrelatedSwitches() {
         let source = """

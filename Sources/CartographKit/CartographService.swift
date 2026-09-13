@@ -784,7 +784,8 @@ public struct CartographService: Sendable {
     /// - Parameter generatedAt: 문서에 적을 생성 시각. 테스트가 고정하려고 받는다.
     public func bridgeFacts(
         generatedAt: Date = Date(),
-        target: BridgeFact.Target? = nil
+        target: BridgeFact.Target? = nil,
+        messages: Bool = false
     ) throws -> BridgeFactsDocument {
         let canonicalProject: String
         do {
@@ -802,12 +803,23 @@ public struct CartographService: Sendable {
         // 것이 정상이라, 여기서 실패하면 그 용법이 통째로 막힌다.
         let snapshot = try makeIndexSource(includeObjectiveCSources: true, includeExternalSymbols: true)
             .provider.loadSnapshot()
-        let resolver = BridgeSymbolResolver(snapshot: snapshot)
         let sources = bridgeSourceFiles()
+        let indexedDates = Dictionary((snapshot.indexedFileDates ?? [:]).map {
+            (ValueFlowSourceLoader.canonicalPath($0.key), $0.value)
+        }, uniquingKeysWith: min)
+        let freshPaths = Set(sources.compactMap { path -> String? in
+            guard let indexed = indexedDates[ValueFlowSourceLoader.canonicalPath(path)],
+                  let modified = environment.fileSystem.modificationDate(at: path), modified <= indexed
+            else { return nil }
+            return ValueFlowSourceLoader.canonicalPath(path)
+        })
+        let resolver = BridgeSymbolResolver(snapshot: snapshot, freshPaths: freshPaths)
         var unreadable = 0
         var objectiveCSources = 0
         var sourceCache: [String: String] = [:]
-        let firstPass = scanBridgeFiles(at: sources, resolver: resolver, resolvedValues: [:], canonicalizesPaths: false) {
+        let firstPass = scanBridgeFiles(
+            at: sources, resolver: resolver, resolvedValues: [:], canonicalizesPaths: false, messages: messages
+        ) {
             path in
             guard let source = try? environment.fileSystem.readText(at: path) else { unreadable += 1; return nil }
             sourceCache[ValueFlowSourceLoader.canonicalPath(path)] = source
@@ -818,9 +830,6 @@ public struct CartographService: Sendable {
         var opaqueHandlerChannels = firstPass.opaqueHandlerChannels
         let unscannedEventChannels = firstPass.unscannedEventChannels
         let unscannedMessageChannels = firstPass.unscannedMessageChannels
-        let indexedDates = Dictionary((snapshot.indexedFileDates ?? [:]).map {
-            (ValueFlowSourceLoader.canonicalPath($0.key), $0.value)
-        }, uniquingKeysWith: min)
         let hasFreshDynamicFact = facts.contains { fact in
             guard fact.isDynamic, fact.location.path.hasSuffix(".swift"),
                   let indexed = indexedDates[ValueFlowSourceLoader.canonicalPath(fact.location.path)],
@@ -835,7 +844,7 @@ public struct CartographService: Sendable {
             if !resolved.isEmpty {
                 // 원래 사실을 위치별로 덧대지 않고 다시 스캔해 채널 바인딩과 핸들러가 같은 이름을 쓴다.
                 let secondPass = scanBridgeFiles(
-                    at: sources, resolver: resolver, resolvedValues: resolved, canonicalizesPaths: true
+                    at: sources, resolver: resolver, resolvedValues: resolved, canonicalizesPaths: true, messages: messages
                 ) { sourceCache[ValueFlowSourceLoader.canonicalPath($0)] }
                 facts = secondPass.facts
                 opaqueHandlerChannels = secondPass.opaqueHandlerChannels
@@ -854,17 +863,20 @@ public struct CartographService: Sendable {
                 "target-filter: \(facts.count - selectedFacts.count) fact(s) did not match \(target.rawValue)"
             )
         }
-        try BridgeFactsDocument.validateNames(selectedFacts, opaqueHandlerChannels: includesFlutter ? opaqueHandlerChannels : [])
+        let outputFacts = messages ? selectedFacts.filter { $0.kind == .messageHandle } : selectedFacts
+        try BridgeFactsDocument.validateNames(outputFacts, opaqueHandlerChannels: includesFlutter && !messages ? opaqueHandlerChannels : [])
         return BridgeFactsDocument(
             tool: .init(name: Cartograph.toolName, version: Cartograph.version),
             generatedAt: Self.bridgeTimestamp(generatedAt),
             project: canonicalProject,
-            facts: selectedFacts,
-            unscannedEventChannels: includesFlutter ? unscannedEventChannels : 0,
-            unscannedMessageChannels: includesFlutter ? unscannedMessageChannels : 0,
-            objectiveCSourceCount: includesFlutter ? objectiveCSources : 0,
+            facts: outputFacts,
+            unscannedEventChannels: includesFlutter && !messages ? unscannedEventChannels : 0,
+            unscannedMessageChannels: includesFlutter && !messages ? unscannedMessageChannels : 0,
+            objectiveCSourceCount: includesFlutter && !messages ? objectiveCSources : 0,
             extraLimitations: extraLimitations,
-            opaqueHandlerChannels: includesFlutter ? opaqueHandlerChannels : []
+            opaqueHandlerChannels: includesFlutter && !messages ? opaqueHandlerChannels : [],
+            version: messages ? BridgeFactsDocument.messageVersion : BridgeFactsDocument.version,
+            transport: messages ? "basic-message-channel" : nil
         )
     }
 
@@ -882,6 +894,7 @@ public struct CartographService: Sendable {
         resolver: BridgeSymbolResolver,
         resolvedValues: [SourceLocation: String],
         canonicalizesPaths: Bool,
+        messages: Bool = false,
         sourceAt: (String) -> String?
     ) -> (facts: [BridgeFact], opaqueHandlerChannels: [String?], unscannedEventChannels: Int, unscannedMessageChannels: Int) {
         var facts: [BridgeFact] = []
@@ -893,8 +906,8 @@ public struct CartographService: Sendable {
             if path.hasSuffix(".swift") {
                 let scanPath = canonicalizesPaths ? LocalFileSystem.canonicalPath(path) : path
                 let scanned = resolvedValues.isEmpty
-                    ? BridgeFactScanner().scan(source: source, path: scanPath)
-                    : BridgeFactScanner().scan(source: source, path: scanPath, resolvedValues: resolvedValues)
+                    ? BridgeFactScanner().scan(source: source, path: scanPath, messages: messages)
+                    : BridgeFactScanner().scan(source: source, path: scanPath, resolvedValues: resolvedValues, messages: messages)
                 facts += resolver.resolve(scanned.facts)
                 opaqueHandlerChannels += scanned.opaqueHandlerChannels
                 unscannedEventChannels += scanned.unscannedEventChannels
@@ -956,9 +969,10 @@ public struct CartographService: Sendable {
     public func exportBridgeFacts(
         generatedAt: Date = Date(),
         asText: Bool = false,
-        target: BridgeFact.Target? = nil
+        target: BridgeFact.Target? = nil,
+        messages: Bool = false
     ) throws -> CommandOutcome {
-        let document = try bridgeFacts(generatedAt: generatedAt, target: target)
+        let document = try bridgeFacts(generatedAt: generatedAt, target: target, messages: messages)
         return CommandOutcome(output: asText ? document.renderText() : try Self.encodeSortedJSON(document))
     }
 

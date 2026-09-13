@@ -35,12 +35,20 @@ public struct EnclosingDeclaration: Hashable, Sendable {
     /// 바깥 타입부터 이어 붙인 이름. 교환 형식의 `symbol.qualifiedName` 이다(`CameraPlugin.register`).
     public let qualifiedName: String
     public let line: Int
+    /// 선언 전체 범위. 등록부 바깥 reference를 구분할 때만 사용한다.
+    public let start: CartographCore.SourceLocation?
+    public let end: CartographCore.SourceLocation?
 
-    public init(name: String, indexName: String, qualifiedName: String, line: Int) {
+    public init(
+        name: String, indexName: String, qualifiedName: String, line: Int,
+        start: CartographCore.SourceLocation? = nil, end: CartographCore.SourceLocation? = nil
+    ) {
         self.name = name
         self.indexName = indexName
         self.qualifiedName = qualifiedName
         self.line = line
+        self.start = start
+        self.end = end
     }
 }
 
@@ -78,7 +86,8 @@ public struct BridgeFactScanner: Sendable {
     public init() {}
 
     public func scan(source: String, path: String,
-                     resolvedValues: [CartographCore.SourceLocation: String] = [:]) -> BridgeScanResult {
+                     resolvedValues: [CartographCore.SourceLocation: String] = [:],
+                     messages: Bool = false) -> BridgeScanResult {
         // 파서는 `channel = FlutterMethodChannel(…)` 과 `call.method == "x"` 를 접지 않은
         // SequenceExpr 로 남긴다. 연산자 우선순위로 접어야 대입과 비교가 보인다.
         // 접기 오류(알 수 없는 연산자)는 무시한다. 그 표현식만 못 읽을 뿐이다.
@@ -92,7 +101,7 @@ public struct BridgeFactScanner: Sendable {
         let bindings = BindingCollector(converter: converter, resolvedValues: resolvedValues)
         bindings.walk(tree)
 
-        let collector = BridgeFactCollector(converter: converter, bindings: bindings, path: path)
+        let collector = BridgeFactCollector(converter: converter, bindings: bindings, path: path, messages: messages)
         collector.walk(tree)
         return BridgeScanResult(
             facts: collector.facts.sorted { $0.fact < $1.fact },
@@ -109,9 +118,14 @@ public struct BridgeFactScanner: Sendable {
 struct ResolvedName: Hashable {
     let text: String
     let isDynamic: Bool
+    let channelPrefix: String?
 
-    static func literal(_ text: String) -> ResolvedName { ResolvedName(text: text, isDynamic: false) }
-    static func dynamic(_ text: String) -> ResolvedName { ResolvedName(text: text, isDynamic: true) }
+    static func literal(_ text: String) -> ResolvedName {
+        ResolvedName(text: text, isDynamic: false, channelPrefix: nil)
+    }
+    static func dynamic(_ text: String, channelPrefix: String? = nil) -> ResolvedName {
+        ResolvedName(text: text, isDynamic: true, channelPrefix: channelPrefix)
+    }
 }
 
 /// 이름 하나에 묶인 값. 문자열 리터럴이거나, 채널 생성자의 `name:` 인자다.
@@ -120,7 +134,7 @@ struct ResolvedName: Hashable {
 /// 1차 패스에서 해석하면 아래에 선언된 상수를 못 본다.
 enum BoundValue: Equatable {
     case constant(expression: ExprSyntax, scopes: [Int], enclosingTypes: [String])
-    case channel(argument: ExprSyntax, scopes: [Int], enclosingTypes: [String])
+    case channel(argument: ExprSyntax, scopes: [Int], enclosingTypes: [String], kind: BridgeChannelKind)
     /// 이 파일이 선언한 타입의 인스턴스(`let instance = CameraPlugin()`).
     case instance(typeName: String)
     /// 리터럴도 채널도 아닌 값. 이 이름이 이 스코프에서 그 값을 가리키므로 바깥의 동명 상수를
@@ -132,7 +146,8 @@ enum BoundValue: Equatable {
     static func == (lhs: BoundValue, rhs: BoundValue) -> Bool {
         switch (lhs, rhs) {
         case let (.constant(a, sa, ta), .constant(b, sb, tb)): a.id == b.id && sa == sb && ta == tb
-        case let (.channel(a, sa, ta), .channel(b, sb, tb)): a.id == b.id && sa == sb && ta == tb
+        case let (.channel(a, sa, ta, ka), .channel(b, sb, tb, kb)):
+            a.id == b.id && sa == sb && ta == tb && ka == kb
         case let (.instance(a), .instance(b)): a == b
         case (.opaque, .opaque), (.uninitialized, .uninitialized): true
         default: false
@@ -467,8 +482,14 @@ final class BindingCollector: SyntaxVisitor {
     private func bind(name: String, to value: ExprSyntax, isLocal: Bool,
                       immutable: Bool = false, bindingKey: String? = nil) {
         let bound: BoundValue
-        if let argument = Self.channelNameArgument(value) {
-            bound = .channel(argument: argument, scopes: scopes, enclosingTypes: typeNames)
+        if let construction = Self.channelConstruction(value) {
+            bound = .channel(
+                argument: construction.argument, scopes: scopes, enclosingTypes: typeNames, kind: construction.kind
+            )
+        } else if immutable, let reference = Self.identifierName(of: value),
+                  let existing = binding(named: reference, in: Context(scopes: scopes, enclosingTypes: typeNames), membersOnly: false),
+                  case let .channel(argument, boundScopes, boundTypes, kind)? = existing {
+            bound = .channel(argument: argument, scopes: boundScopes, enclosingTypes: boundTypes, kind: kind)
         } else if let call = value.as(FunctionCallExprSyntax.self), let last = Self.calleeName(of: call),
                   last.first?.isUppercase == true, !BridgeChannels.all.contains(last) {
             // 대문자 호출은 생성자로 본다. 다른 모듈의 타입이면 어느 지역 타입 사슬에도 맞지 않는다.
@@ -514,39 +535,44 @@ final class BindingCollector: SyntaxVisitor {
         return nil
     }
 
-    /// 채널 변수 이름을 채널 이름으로 푼다. 변수를 모르면 nil, 알지만 못 풀면 `.some(nil)`.
-    func channel(named name: String, in context: Context) -> ResolvedName?? {
+    /// 채널 변수의 이름과 생성자 종류를 함께 푼다.
+    func channelDetails(named name: String, in context: Context) -> (name: ResolvedName, kind: BridgeChannelKind)?? {
         guard let found = binding(named: name, in: context, membersOnly: false) else { return nil }
-        guard case let .channel(argument, scopes, types)? = found else { return .some(nil) }
-        return .some(resolveString(argument, in: Context(scopes: scopes, enclosingTypes: types)))
+        guard case let .channel(argument, scopes, types, kind)? = found else { return .some(nil) }
+        return .some((resolveString(argument, in: Context(scopes: scopes, enclosingTypes: types)), kind))
     }
 
     /// 파일 안의 채널 생성 전부를 이름으로 푼 것. 핸들러 문맥 밖의 추측에 쓴다.
     func allChannelNames() -> [ResolvedName] {
         bindings.values.compactMap { value in
-            guard case let .channel(argument, scopes, types)? = value else { return nil }
+            guard case let .channel(argument, scopes, types, _)? = value else { return nil }
             return resolveString(argument, in: Context(scopes: scopes, enclosingTypes: types))
         }
     }
 
-    /// `FlutterMethodChannel(name: …, …)` 호출이면 그 채널 이름.
-    func channelConstruction(_ expression: ExprSyntax, in context: Context) -> ResolvedName? {
-        Self.channelNameArgument(expression).map { resolveString($0, in: context) }
+    /// 지원하는 Flutter 채널 생성자 호출이면 그 채널 이름과 종류.
+    func channelConstruction(_ expression: ExprSyntax, in context: Context) -> (name: ResolvedName, kind: BridgeChannelKind)? {
+        Self.channelConstruction(expression).map {
+            (resolveString($0.argument, in: context), $0.kind)
+        }
     }
 
-    /// `FlutterMethodChannel(name: …)` 또는 `FlutterMethodChannel.init(name: …)` 의 `name:` 인자.
-    static func channelNameArgument(_ expression: ExprSyntax) -> ExprSyntax? {
-        guard let call = expression.as(FunctionCallExprSyntax.self), isChannelConstructor(call.calledExpression),
+    static func channelConstruction(_ expression: ExprSyntax) -> (argument: ExprSyntax, kind: BridgeChannelKind)? {
+        guard let call = expression.as(FunctionCallExprSyntax.self),
+              let kind = channelKind(of: call.calledExpression),
               let argument = call.arguments.first(where: { $0.label?.text == "name" })
         else { return nil }
-        return argument.expression
+        return (argument.expression, kind)
     }
 
-    private static func isChannelConstructor(_ callee: ExprSyntax) -> Bool {
+    static func channelKind(of callee: ExprSyntax) -> BridgeChannelKind? {
+        let name: String?
         if let member = callee.as(MemberAccessExprSyntax.self), member.declName.baseName.text == "init" {
-            return member.base.flatMap(identifierName(of:)) == BridgeChannels.methodChannel
+            name = member.base.flatMap(identifierName(of:))
+        } else {
+            name = identifierName(of: callee)
         }
-        return identifierName(of: callee) == BridgeChannels.methodChannel
+        return name.flatMap(BridgeChannels.kind(of:))
     }
 
     /// 문자열 표현식을 리터럴로 푼다. 못 풀면 원문 표현식을 `dynamic` 으로 돌려준다.
@@ -558,7 +584,7 @@ final class BindingCollector: SyntaxVisitor {
     /// - `.name`(암시적 멤버): 수신자 타입은 `String` 이지 이 파일의 어떤 타입도 아니다.
     ///   구문만으로는 어느 확장의 상수인지 알 수 없으므로 `dynamic`.
     func resolveString(_ expression: ExprSyntax, in context: Context) -> ResolvedName {
-        if let value = constantString(expression, in: context, remaining: 64) { return .literal(value) }
+        if let value = constantString(expression, in: context, remaining: 64) { return value }
         let position = converter.location(for: expression.positionAfterSkippingLeadingTrivia)
         let location = CartographCore.SourceLocation(path: position.file, line: position.line, column: position.column)
         if let value = resolvedValues[location] { return .literal(value) }
@@ -566,12 +592,33 @@ final class BindingCollector: SyntaxVisitor {
     }
 
     /// 순환·지나치게 긴 별칭은 중단한다. 연산자 오버로드와 함수 호출 결과는 평가하지 않는다.
-    private func constantString(_ expression: ExprSyntax, in context: Context, remaining: Int) -> String? {
+    private func constantString(_ expression: ExprSyntax, in context: Context, remaining: Int) -> ResolvedName? {
         guard remaining > 0 else { return nil }
         let expression = Self.unparenthesized(expression)
-        if let literal = Self.stringLiteral(expression) { return literal }
+        if let literal = expression.as(StringLiteralExprSyntax.self) {
+            if let value = literal.representedLiteralValue { return .literal(value) }
+            return Self.interpolatedPrefix(of: literal).map {
+                .dynamic(literal.trimmedDescription, channelPrefix: $0)
+            }
+        }
         guard case let .constant(value, scopes, types)?? = constantBinding(for: expression, in: context) else { return nil }
         return constantString(value, in: Context(scopes: scopes, enclosingTypes: types), remaining: remaining - 1)
+    }
+
+    /// 보간 문자열의 첫 리터럴 세그먼트를 실행 시 문자열 값으로 디코드한다.
+    private static func interpolatedPrefix(of literal: StringLiteralExprSyntax) -> String? {
+        guard literal.segments.contains(where: { $0.as(ExpressionSegmentSyntax.self) != nil }) else { return nil }
+        let leading = literal.segments.prefix { $0.as(StringSegmentSyntax.self) != nil }
+        guard !leading.isEmpty else { return nil }
+        let segments = StringLiteralSegmentListSyntax(Array(leading))
+        let prefix = StringLiteralExprSyntax(
+            openingPounds: literal.openingPounds,
+            openingQuote: literal.openingQuote,
+            segments: segments,
+            closingQuote: literal.closingQuote,
+            closingPounds: literal.closingPounds
+        )
+        return prefix.representedLiteralValue
     }
 
     private func constantBinding(for expression: ExprSyntax, in context: Context) -> BoundValue?? {
@@ -590,11 +637,6 @@ final class BindingCollector: SyntaxVisitor {
         guard declaredTypeNames.contains(type),
               binding(named: type, in: context, membersOnly: false) == nil else { return nil }
         return bindings[type + "." + name]
-    }
-
-    /// 보간이 없는 문자열 리터럴의 내용.
-    static func stringLiteral(_ expression: ExprSyntax) -> String? {
-        expression.as(StringLiteralExprSyntax.self)?.representedLiteralValue
     }
 
     /// `x`, `self.x`, `Self.x`, `Type.x`, `.x`, `x?`, `x!` 에서 `x`.
@@ -637,6 +679,7 @@ final class BridgeFactCollector: SyntaxVisitor {
     private let converter: SourceLocationConverter
     private let bindings: BindingCollector
     private let path: String
+    private let messages: Bool
 
     /// 감싸는 선언의 스택. 사실을 어느 USR 에 귀속시킬지 정한다.
     private var declarations: [EnclosingDeclaration] = []
@@ -657,10 +700,11 @@ final class BridgeFactCollector: SyntaxVisitor {
     /// 지금 어느 함수 본문 안에 있는지. `BindingCollector` 와 같은 키다.
     private var scopes: [Int] = []
 
-    init(converter: SourceLocationConverter, bindings: BindingCollector, path: String) {
+    init(converter: SourceLocationConverter, bindings: BindingCollector, path: String, messages: Bool) {
         self.converter = converter
         self.bindings = bindings
         self.path = path
+        self.messages = messages
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -741,7 +785,9 @@ final class BridgeFactCollector: SyntaxVisitor {
         guard BindingCollector.takesMethodCall(node) else { return nil }
         let name = DeclarationCollector.unescaped(node.name.text)
         if let entries = bindings.handlerFunctions[BindingCollector.handlerKey(name, enclosingTypes: typeNames)] {
-            return .some(Self.single(entries.map { resolveChannel($0.receiver, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes)) }))
+            return .some(Self.single(entries.compactMap {
+                resolveChannel($0.receiver, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes))?.name
+            }))
         }
         // FlutterPlugin 이 요구하는 것은 정확히 `handle(_:result:)` 다. 다른 오버로드는 아니다.
         let indexName = Self.indexName(name, parameters: node.signature.parameterClause.parameters)
@@ -751,7 +797,9 @@ final class BridgeFactCollector: SyntaxVisitor {
             bindings.resolveTypeChain($0.typeName, from: $0.enclosingTypes) == chain
         }
         guard !registrations.isEmpty else { return nil }
-        return .some(Self.single(registrations.map { resolveChannel($0.channel, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes)) }))
+        return .some(Self.single(registrations.compactMap {
+            resolveChannel($0.channel, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes))?.name
+        }))
     }
 
     /// 등록이 여럿이면 푼 채널 이름이 전부 같을 때만 그 채널이다. 다르면 모른다.
@@ -825,25 +873,33 @@ final class BridgeFactCollector: SyntaxVisitor {
     // MARK: Flutter
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
-        guard let member = node.calledExpression.as(MemberAccessExprSyntax.self),
-              BridgeChannels.handlerRegistrationMethods.contains(member.declName.baseName.text),
-              // `setMethodCallHandler(nil)` 은 등록 해제다. 등록 사실이 아니다.
-              !(node.arguments.first.map { BindingCollector.isNilHandler($0.expression) } ?? false)
-        else { return .visitChildren }
+        guard let member = node.calledExpression.as(MemberAccessExprSyntax.self) else { return .visitChildren }
+        let isNil = node.arguments.first.map { BindingCollector.isNilHandler($0.expression) } ?? false
+        if messages, member.declName.baseName.text == "setMessageHandler", !isNil,
+           let registration = registeredChannel(of: node, receiver: member.base), registration.kind == .message {
+            emit(
+                .messageHandle, target: .flutter, channel: registration.name,
+                handlerScope: handlerScope(of: Self.handlerClosure(of: node)), at: node
+            )
+            return .visitChildren
+        }
+        guard BridgeChannels.handlerRegistrationMethods.contains(member.declName.baseName.text), !isNil else {
+            return .visitChildren
+        }
 
-        let channel = registeredChannel(of: node, receiver: member.base)
-        emit(.channelRegister, target: .flutter, channel: channel, at: node)
+        let registration = registeredChannel(of: node, receiver: member.base)
+        emit(.channelRegister, target: .flutter, channel: registration?.name, at: node)
 
         // 핸들러 클로저 안의 `case "…"` 는 이 채널의 메서드다. 클로저를 방문하는 동안만
         // 채널을 스택에 올린다. 클로저가 없으면(델리게이트 등록) 올릴 것이 없다.
         guard let closure = Self.handlerClosure(of: node) else {
             if member.declName.baseName.text == "setMethodCallHandler",
                let argument = node.arguments.first?.expression, !bindings.isReadableHandlerReference(argument, in: context) {
-                opaqueHandlerChannels.append(channel?.isDynamic == false ? channel?.text : nil)
+                opaqueHandlerChannels.append(registration?.name.isDynamic == false ? registration?.name.text : nil)
             }
             return .visitChildren
         }
-        handlerChannels.append(channel)
+        handlerChannels.append(registration?.name)
         walk(closure)
         handlerChannels.removeLast()
         // 클로저는 이미 걸었다. 수신자와 나머지 인자를 다시 걷되 그 클로저만 건너뛴다.
@@ -855,24 +911,29 @@ final class BridgeFactCollector: SyntaxVisitor {
     }
 
     /// `setMethodCallHandler` 의 수신자 또는 `addMethodCallDelegate(_, channel:)` 의 인자에서 채널.
-    private func registeredChannel(of call: FunctionCallExprSyntax, receiver: ExprSyntax?) -> ResolvedName? {
+    private func registeredChannel(
+        of call: FunctionCallExprSyntax, receiver: ExprSyntax?
+    ) -> (name: ResolvedName, kind: BridgeChannelKind)? {
         if let argument = call.arguments.first(where: { $0.label?.text == "channel" }) {
             return resolveChannel(argument.expression)
         }
-        return receiver.map(resolveChannel)
+        guard let receiver else { return nil }
+        return resolveChannel(receiver)
     }
 
     /// 채널 표현식을 이름으로 푼다. 인라인 생성, 변수, 그 밖의 표현식 순으로 본다.
-    private func resolveChannel(_ expression: ExprSyntax) -> ResolvedName {
+    private func resolveChannel(_ expression: ExprSyntax) -> (name: ResolvedName, kind: BridgeChannelKind)? {
         resolveChannel(expression, in: context)
     }
 
-    private func resolveChannel(_ expression: ExprSyntax, in context: BindingCollector.Context) -> ResolvedName {
+    private func resolveChannel(
+        _ expression: ExprSyntax, in context: BindingCollector.Context
+    ) -> (name: ResolvedName, kind: BridgeChannelKind)? {
         if let inline = bindings.channelConstruction(expression, in: context) { return inline }
-        if let name = BindingCollector.identifierName(of: expression), let bound = bindings.channel(named: name, in: context) {
-            return bound ?? .dynamic(expression.trimmedDescription)
+        if let name = BindingCollector.identifierName(of: expression), let bound = bindings.channelDetails(named: name, in: context) {
+            return bound ?? (name: .dynamic(expression.trimmedDescription), kind: .method)
         }
-        return .dynamic(expression.trimmedDescription)
+        return (name: .dynamic(expression.trimmedDescription), kind: .method)
     }
 
     /// 지금 사용 지점의 문맥. 바인딩 조회에 넘긴다.
@@ -884,6 +945,17 @@ final class BridgeFactCollector: SyntaxVisitor {
     private static func handlerClosure(of call: FunctionCallExprSyntax) -> ClosureExprSyntax? {
         if let trailing = call.trailingClosure { return trailing }
         return call.arguments.last?.expression.as(ClosureExprSyntax.self)
+    }
+
+    private func handlerScope(of closure: ClosureExprSyntax?) -> BridgeFact.HandlerScope? {
+        guard let closure else { return nil }
+        let start = closure.leftBrace.startLocation(converter: converter)
+        let end = closure.rightBrace.startLocation(converter: converter)
+        return BridgeFact.HandlerScope(
+            start: SourceLocation(path: path, line: start.line, column: start.column),
+            end: SourceLocation(path: path, line: end.line, column: end.column),
+            complete: false
+        )
     }
 
     override func visit(_ node: SwitchCaseSyntax) -> SyntaxVisitorContinueKind {
@@ -1010,12 +1082,16 @@ final class BridgeFactCollector: SyntaxVisitor {
 
     private func pushDeclaration(name: String, indexName: String, node: some SyntaxProtocol, qualified: String? = nil) {
         let base = DeclarationCollector.unescaped(name)
+        let start = node.startLocation(converter: converter)
+        let end = node.endLocation(converter: converter)
         declarations.append(
             EnclosingDeclaration(
                 name: base,
                 indexName: indexName,
                 qualifiedName: qualified ?? (typeNames + [base]).joined(separator: "."),
-                line: node.startLocation(converter: converter).line
+                line: start.line,
+                start: SourceLocation(path: path, line: start.line, column: start.column),
+                end: SourceLocation(path: path, line: end.line, column: end.column)
             )
         )
     }
@@ -1025,9 +1101,11 @@ final class BridgeFactCollector: SyntaxVisitor {
         target: BridgeFact.Target,
         channel: ResolvedName?,
         method: ResolvedName? = nil,
+        handlerScope: BridgeFact.HandlerScope? = nil,
         inferred: Bool = false,
         at node: some SyntaxProtocol
     ) {
+        guard !messages || kind == .messageHandle else { return }
         let location = node.startLocation(converter: converter)
         let fact = BridgeFact(
             kind: kind,
@@ -1035,6 +1113,8 @@ final class BridgeFactCollector: SyntaxVisitor {
             channel: channel?.text,
             method: method?.text,
             isDynamic: (channel?.isDynamic ?? false) || (method?.isDynamic ?? false),
+            channelPrefix: messages ? channel?.channelPrefix : nil,
+            handlerScope: messages ? handlerScope : nil,
             isChannelInferred: inferred,
             location: SourceLocation(path: path, line: location.line, column: location.column)
         )

@@ -7,6 +7,87 @@ import Testing
 
 @Suite("브리지 사실 문서")
 struct BridgeFactsTests {
+    @Test("브리지 의존성 범위는 같은 파일의 tmp 표기 차이에도 line/column으로 맞춘다")
+    func executionDependencyRangeIgnoresPathSpelling() throws {
+        let scope = BridgeFact.HandlerScope(
+            start: .init(path: "/private/tmp", line: 4, column: 20),
+            end: .init(path: "/private/tmp", line: 6, column: 5), complete: false
+        )
+        let fact = BridgeFact(
+            kind: .messageHandle, target: .flutter, channel: "c", handlerScope: scope,
+            location: .init(path: "/private/tmp", line: 4, column: 1)
+        )
+        let declaration = EnclosingDeclaration(
+            name: "install", indexName: "install()", qualifiedName: "P.install", line: 2,
+            start: .init(path: "/private/tmp", line: 2, column: 1),
+            end: .init(path: "/private/tmp", line: 8, column: 1)
+        )
+        let target = IndexedSymbol(
+            usr: "s:target", name: "helper()", kind: .function, module: "App",
+            location: .init(path: "/tmp", line: 20, column: 1)
+        )
+        let duplicateTarget = IndexedSymbol(
+            usr: "s:target", name: "helper()", kind: .function, module: "App",
+            location: .init(path: "/tmp", line: 20, column: 1)
+        )
+        let snapshot = IndexSnapshot(
+            symbols: [IndexedSymbol(
+                usr: "s:setup", name: "install()", kind: .function, module: "App",
+                location: .init(path: "/tmp", line: 2, column: 1)
+            ), target, duplicateTarget],
+            references: [IndexedReference(
+                sourceUSR: "s:setup", targetUSR: "s:target", kind: .call,
+                location: .init(path: "/tmp", line: 5, column: 30)
+            )]
+        )
+        let resolved = BridgeSymbolResolver(
+            snapshot: snapshot, freshPaths: ["/private/tmp"]
+        ).resolve([ScannedBridgeFact(fact: fact, declaration: declaration)]).first
+        #expect(resolved?.handlerScope?.complete == true)
+        #expect(resolved?.dependencies?.count == 1)
+        #expect(resolved?.dependencies?.first?.location.path == "/tmp")
+    }
+
+    @Test("같은 setup의 method reference는 다른 inline closure를 complete로 만들지 않는다")
+    func unscopedHandlerMakesExecutionEvidenceIncomplete() {
+        let scope = BridgeFact.HandlerScope(
+            start: .init(path: "/tmp", line: 4, column: 20),
+            end: .init(path: "/tmp", line: 5, column: 5), complete: false
+        )
+        let declaration = EnclosingDeclaration(
+            name: "install", indexName: "install()", qualifiedName: "P.install", line: 2,
+            start: .init(path: "/tmp", line: 2, column: 1),
+            end: .init(path: "/tmp", line: 8, column: 1)
+        )
+        let inline = BridgeFact(
+            kind: .messageHandle, target: .flutter, channel: "one", handlerScope: scope,
+            location: .init(path: "/tmp", line: 4, column: 1)
+        )
+        let methodReference = BridgeFact(
+            kind: .messageHandle, target: .flutter, channel: "two",
+            location: .init(path: "/tmp", line: 6, column: 1)
+        )
+        let setup = IndexedSymbol(
+            usr: "s:setup", name: "install()", kind: .function, module: "App",
+            location: .init(path: "/tmp", line: 2, column: 1)
+        )
+        let target = IndexedSymbol(
+            usr: "s:target", name: "helper()", kind: .function, module: "App",
+            location: .init(path: "/tmp", line: 20, column: 1)
+        )
+        let snapshot = IndexSnapshot(
+            symbols: [setup, target],
+            references: [IndexedReference(sourceUSR: "s:setup", targetUSR: "s:target", kind: .call,
+                location: .init(path: "/tmp", line: 4, column: 30))]
+        )
+        let result = BridgeSymbolResolver(snapshot: snapshot, freshPaths: ["/tmp"]).resolve([
+            ScannedBridgeFact(fact: inline, declaration: declaration),
+            ScannedBridgeFact(fact: methodReference, declaration: declaration)
+        ])
+        #expect(result.first?.handlerScope?.complete == false)
+        #expect(result.first?.dependencies?.count == 1)
+    }
+
     @Test("SDK 참조 위치를 브리지의 감싸는 선언으로 사용하지 않는다")
     func externalOccurrenceIsNotADeclaration() {
         let site = SourceLocation(path: "/p/Plugin.swift", line: 3, column: 6)
@@ -471,6 +552,7 @@ struct BridgeFactsTests {
         #expect(first.contains("\"platform\" : \"swift\""))
         #expect(first.contains("\"generatedAt\" : \"2026-09-04T00:00:00.000Z\""))
         #expect(first.contains("\"dynamic\" : false"))
+        #expect(!first.contains("channelPrefix"))
 
         let decoded = try JSONDecoder().decode(BridgeFactsDocument.self, from: Data(first.utf8))
         #expect(decoded.facts.count == 2)
@@ -489,6 +571,113 @@ struct BridgeFactsTests {
         #expect(document.limitations.contains { $0.hasPrefix("objc-named-classes: 1 module-export and 1 method-handle") })
         #expect(document.limitations.contains { $0.hasPrefix("unscanned-event-channels: 1") })
         #expect(document.limitations.contains { $0.hasPrefix("unscanned-message-channels: 1") })
+    }
+
+    @Test("messages 문서는 BasicMessageChannel 핸들러만 v2로 내보내고 기본 v1은 유지한다")
+    func exportsBasicMessageDocument() throws {
+        let source = """
+            let basic = BasicMessageChannel<Any?>(name: "dev.flutter.pigeon.CameraApi.takePhoto", binaryMessenger: m)
+            basic.setMessageHandler { _, _ in }
+            basic.setMessageHandler(nil)
+            FlutterMethodChannel(name: "camera", binaryMessenger: m).setMethodCallHandler { _, _ in }
+            """
+        let service = makeService(files: ["/p/A.swift": source], snapshot: IndexSnapshot())
+        let messageDocument = try service.bridgeFacts(
+            generatedAt: fixedDate, target: .flutter, messages: true
+        )
+        #expect(messageDocument.version == 2)
+        #expect(messageDocument.transport == "basic-message-channel")
+        #expect(messageDocument.platform == "swift")
+        #expect(messageDocument.facts.map(\.kind) == ["message-handle"])
+        #expect(messageDocument.facts.first?.method == nil)
+        #expect(!messageDocument.limitations.contains { $0.hasPrefix("unscanned-message-channels:") })
+        let json = try service.exportBridgeFacts(
+            generatedAt: fixedDate, target: .flutter, messages: true
+        ).output
+        #expect(json.contains("\"transport\" : \"basic-message-channel\""))
+        #expect(json.contains("\"version\" : 2"))
+        #expect(json.contains("\"kind\" : \"message-handle\""))
+        #expect(!json.contains("\"method\""))
+
+        let defaultDocument = try service.bridgeFacts(generatedAt: fixedDate, target: .flutter)
+        #expect(defaultDocument.version == 1)
+        #expect(defaultDocument.transport == nil)
+        #expect(defaultDocument.facts.map(\.kind) == ["channel-register"])
+        #expect(defaultDocument.limitations.contains { $0.hasPrefix("unscanned-message-channels: 1") })
+    }
+
+    @Test("messages 는 두 closure를 구분하고 setup 밖 공유 reference와 dispatch 후보를 보존한다")
+    func exportsMessageExecutionDependencies() throws {
+        let source = """
+            class P {
+                static func install() {
+                    let one = BasicMessageChannel<Any?>(name: "one", binaryMessenger: m)
+                    one.setMessageHandler { _, _ in first() }
+                    let two = BasicMessageChannel<Any?>(name: "two", binaryMessenger: m)
+                    two.setMessageHandler { _, _ in second() }
+                    shared()
+                }
+            }
+            """
+        let setup = IndexedSymbol(
+            usr: "s:setup", name: "install()", kind: .method, module: "App",
+            location: .init(path: "/p/A.swift", line: 2, column: 5)
+        )
+        let first = IndexedSymbol(
+            usr: "s:first", name: "first()", kind: .function, module: "App",
+            location: .init(path: "/p/A.swift", line: 3, column: 1)
+        )
+        let second = IndexedSymbol(
+            usr: "s:second", name: "second()", kind: .function, module: "App",
+            location: .init(path: "/p/A.swift", line: 5, column: 1)
+        )
+        let shared = IndexedSymbol(
+            usr: "s:shared", name: "shared()", kind: .function, module: "App",
+            location: .init(path: "/p/A.swift", line: 6, column: 1)
+        )
+        let requirement = IndexedSymbol(
+            usr: "s:req", name: "first()", kind: .method, module: "App",
+            location: .init(path: "/p/A.swift", line: 8, column: 1)
+        )
+        let implementation = IndexedSymbol(
+            usr: "s:impl", name: "first()", kind: .method, module: "App",
+            location: .init(path: "/p/A.swift", line: 9, column: 1)
+        )
+        let references = [
+            IndexedReference(sourceUSR: "s:setup", targetUSR: "s:req", kind: .call,
+                location: .init(path: "/p/A.swift", line: 4, column: 34)),
+            IndexedReference(sourceUSR: "s:setup", targetUSR: "s:second", kind: .call,
+                location: .init(path: "/p/A.swift", line: 6, column: 34)),
+            IndexedReference(sourceUSR: "s:setup", targetUSR: "s:shared", kind: .call,
+                location: .init(path: "/p/A.swift", line: 7, column: 5)),
+            IndexedReference(sourceUSR: "s:impl", targetUSR: "s:req", kind: .overrides,
+                location: .init(path: "/p/A.swift", line: 9, column: 1)),
+        ]
+        let snapshot = IndexSnapshot(symbols: [setup, first, second, shared, requirement, implementation], references: references)
+        let service = makeService(files: ["/p/A.swift": source], snapshot: snapshot)
+        let data = Data(try service.exportBridgeFacts(target: .flutter, messages: true).output.utf8)
+        let document = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let facts = try #require(document["facts"] as? [[String: Any]])
+        #expect(facts.count == 2)
+        #expect(facts.allSatisfy { $0["symbol"] != nil })
+        #expect(facts.allSatisfy { $0["handlerScope"] != nil })
+        #expect(facts.allSatisfy { $0["dependencies"] != nil })
+        #expect(facts.allSatisfy { $0["method"] == nil })
+        let firstFact = try #require(facts.first { $0["channel"] as? String == "one" })
+        let firstScope = try #require(firstFact["handlerScope"] as? [String: Any])
+        #expect(firstScope["complete"] as? Bool == false)
+        let firstDependencies = try #require(firstFact["dependencies"] as? [[String: Any]])
+        #expect(firstDependencies.contains { $0["scope"] as? String == "handler" })
+        #expect(firstDependencies.contains { $0["scope"] as? String == "registration" })
+        let dispatch = firstDependencies.first { dependency in
+            guard let symbol = dependency["symbol"] as? [String: Any] else { return false }
+            return symbol["usr"] as? String == "s:req"
+        }
+        let dependencySymbol = try #require(dispatch?["symbol"] as? [String: Any])
+        #expect(dependencySymbol["qualifiedName"] as? String == "App.first()")
+        let dispatchTargets = try #require(dispatch?["dispatchTargets"] as? [[String: Any]])
+        #expect(dispatchTargets.contains { $0["usr"] as? String == "s:impl" })
+        #expect(dispatchTargets.first?["qualifiedName"] as? String == "App.first()")
     }
 
     @Test("채널을 모르면 키를 빼지 않고 null 로 적는다")

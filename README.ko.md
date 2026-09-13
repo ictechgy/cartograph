@@ -736,6 +736,14 @@ Swift 브리지 이름은 같은 파일의 불변 `let` 별칭과 괄호를 최�
 미지원 구문, 오래된 소스와 예산 초과는 `dynamic`으로 남습니다. [함수 간 분석 실측](docs/scans/2026-09-interprocedural-flow.md)에
 실행 값과 지원 범위를 비교했습니다.
 
+`cartograph bridges --messages --target flutter`는 Flutter `BasicMessageChannel`과 Pigeon 핸들러를
+위한 미발행 bridge-facts v2 개발 확장입니다. 가상의 method를 만들지 않고 `message-handle` 사실과
+closure 범위, 그 위치에서 실제 컴파일러 인덱스가 관찰한 호출·참조 심볼을 냅니다. 기존 감싸는
+setup 심볼은 모든 사실에 그대로 남기며, 범위나 인덱스 근거가 불완전하면 소비자가 setup의 넓은
+영향과 공백을 유지해야 합니다. dispatch 후보는 인덱스의 실제 `overrides` 관계가 있을 때만
+포함합니다. 현재 범위는 공개 `url_launcher_macos@3.2.2` 생성 Swift 소스로 검증했으며, 모든
+Pigeon 형태를 지원한다는 발행 호환성 약속은 아닙니다.
+
 ObjC Flutter 스캔은 직접 채널 생성, 인라인 블록, 같은 파일의 registrar 위임과
 `handleMethodCall:result:`를 지원합니다. 파일 범위의 불변 `NSString *const` 이름도 한 단계
 풉니다. 긍정 `isEqualToString:` 분기는 `sourceLanguage: "objective-c"` 사실이 되며 Swift

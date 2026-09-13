@@ -371,7 +371,8 @@ struct BridgesCommand: ParsableCommand {
             out of the sources, and attaches the index's USR to each Swift declaration it can \
             match; facts from `.m` files carry their syntactic qualified name, plus a Clang USR \
             only where the index uniquely identifies the declaration. Event and message channels \
-            are counted under `limitations` rather than read. The output is the bridge-facts \
+            are counted under `limitations` rather than read by default; `--messages` opts into \
+            BasicMessageChannel handler facts as bridge-facts v2. The output is the bridge-facts \
             exchange format that isthmus reads to join with the Dart or JavaScript side.
 
             This command states facts, not verdicts. It does not know whether anything calls a \
@@ -388,6 +389,9 @@ struct BridgesCommand: ParsableCommand {
 
     @Option(name: .customLong("target"), help: "Limit facts to flutter or react-native.")
     var target: BridgesTarget?
+
+    @Flag(name: .customLong("messages"), help: "Export Flutter BasicMessageChannel handler facts as bridge-facts v2.")
+    var messages: Bool = false
 
     func validate() throws {
         // 사실 문서는 조인용 전체 내보내기다. 바뀐 파일만 담으면 하류 조인이
@@ -419,6 +423,9 @@ struct BridgesCommand: ParsableCommand {
                     + "they are not findings"
             )
         }
+        guard !messages || target != .reactNative else {
+            throw ValidationError("--messages can only be combined with --target flutter")
+        }
     }
 
     func run() throws {
@@ -426,7 +433,8 @@ struct BridgesCommand: ParsableCommand {
         try CommandSupport.emit(
             try context.service.exportBridgeFacts(
                 asText: format == .text,
-                target: target?.bridgeTarget
+                target: target?.bridgeTarget,
+                messages: messages
             ),
             options: options,
             context: context

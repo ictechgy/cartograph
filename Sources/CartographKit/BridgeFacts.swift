@@ -2,7 +2,7 @@ import CartographCore
 import CartographSyntax
 import Foundation
 
-/// `bridges` 명령이 내보내는 문서. isthmus 가 읽는 교환 형식(버전 1)이다.
+/// `bridges` 명령이 내보내는 문서. 기본 출력은 버전 1이고 BasicMessageChannel 선택 출력은 버전 2다.
 ///
 /// 이 문서는 Swift 플랫폼 쪽에서 본 Swift·Objective-C 사실을 담는다. "이 핸들러를 Dart 가 실제로 부른다"는 판정은
 /// 다른 언어의 사실과 조인해야 나오고, 그것은 isthmus 의 몫이다. 리터럴이 아닌 이름도
@@ -16,6 +16,8 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
     ///
     /// 1 은 isthmus Phase 0 에서 Dart ↔ Swift 코퍼스를 양방향 조인해 확정한 판이다.
     public static let version = 1
+    /// BasicMessageChannel 전용 opt-in 문서 버전.
+    public static let messageVersion = 2
 
     public struct Tool: Sendable, Equatable, Codable {
         public let name: String
@@ -33,13 +35,16 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         /// 채널 또는 모듈 이름. 없으면 null. 리터럴이 아니면 원문 표현식.
         public let channel: String?
         public let method: String?
+        public let channelPrefix: String?
+        public let handlerScope: BridgeFact.HandlerScope?
+        public let dependencies: [BridgeFact.Dependency]?
         public let dynamic: Bool
         public let location: SourceLocation
         public let symbol: Symbol?
         public let sourceLanguage: BridgeFact.SourceLanguage?
 
         private enum CodingKeys: String, CodingKey {
-            case kind, channel, method, dynamic, location, symbol, sourceLanguage
+            case kind, channel, method, channelPrefix, handlerScope, dependencies, dynamic, location, symbol, sourceLanguage
         }
 
         public init(from decoder: any Decoder) throws {
@@ -47,6 +52,9 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
             kind = try container.decode(String.self, forKey: .kind)
             channel = try container.decodeIfPresent(String.self, forKey: .channel)
             method = try container.decodeIfPresent(String.self, forKey: .method)
+            channelPrefix = try container.decodeIfPresent(String.self, forKey: .channelPrefix)
+            handlerScope = try container.decodeIfPresent(BridgeFact.HandlerScope.self, forKey: .handlerScope)
+            dependencies = try container.decodeIfPresent([BridgeFact.Dependency].self, forKey: .dependencies)
             dynamic = try container.decode(Bool.self, forKey: .dynamic)
             location = try container.decode(SourceLocation.self, forKey: .location)
             symbol = try container.decodeIfPresent(Symbol.self, forKey: .symbol)
@@ -60,17 +68,35 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
             // 계약이 `null` 을 명시하므로 그대로 쓴다. 나머지 선택 필드는 계약대로 뺀다.
             try container.encode(channel, forKey: .channel)
             try container.encodeIfPresent(method, forKey: .method)
+            try container.encodeIfPresent(channelPrefix, forKey: .channelPrefix)
+            try container.encodeIfPresent(handlerScope, forKey: .handlerScope)
+            try container.encodeIfPresent(dependencies, forKey: .dependencies)
             try container.encode(dynamic, forKey: .dynamic)
             try container.encode(location, forKey: .location)
             try container.encodeIfPresent(symbol, forKey: .symbol)
             try container.encodeIfPresent(sourceLanguage, forKey: .sourceLanguage)
         }
 
-        init(_ fact: BridgeFact, relativeToBaseVariants baseVariants: [String]) {
+        init(_ fact: BridgeFact, relativeToBaseVariants baseVariants: [String], includeExecution: Bool = true) {
             sourceLanguage = fact.sourceLanguage
             kind = fact.kind.rawValue
             channel = fact.channel
             method = fact.method
+            channelPrefix = includeExecution ? fact.channelPrefix : nil
+            handlerScope = includeExecution ? fact.handlerScope.map {
+                BridgeFact.HandlerScope(
+                    start: $0.start.relative(toBaseVariants: baseVariants),
+                    end: $0.end.relative(toBaseVariants: baseVariants),
+                    complete: $0.complete
+                )
+            } : nil
+            dependencies = includeExecution ? fact.dependencies?.map {
+                BridgeFact.Dependency(
+                    kind: $0.kind, scope: $0.scope,
+                    location: $0.location.relative(toBaseVariants: baseVariants),
+                    symbol: $0.symbol, dispatchTargets: $0.dispatchTargets
+                )
+            } : nil
             dynamic = fact.isDynamic
             location = fact.location.relative(toBaseVariants: baseVariants)
             symbol = fact.symbol.map { Symbol(qualifiedName: $0.qualifiedName, usr: $0.usr) }
@@ -89,6 +115,8 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
     /// 신선도 판단용. 인덱스 시각이 아니라 이 문서를 만든 시각이다.
     public let generatedAt: String
     public let platform: String
+    /// 선택한 브리지 전송 방식. v1 MethodChannel 문서에는 쓰지 않는다.
+    public let transport: String?
     /// 브리지 메커니즘. 사실이 하나도 없으면 null.
     ///
     /// 계약은 문서당 하나를 요구한다. Swift 프로젝트가 Flutter 와 RN 을 함께 품는 일은
@@ -102,7 +130,7 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
     public let limitationScopes: [LimitationScope]?
 
     private enum CodingKeys: String, CodingKey {
-        case format, version, tool, generatedAt, platform, target, project, facts, limitations, limitationScopes
+        case format, version, tool, generatedAt, platform, transport, target, project, facts, limitations, limitationScopes
     }
 
     public init(
@@ -114,17 +142,57 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         unscannedMessageChannels: Int = 0,
         objectiveCSourceCount: Int = 0,
         extraLimitations: [String] = [],
-        opaqueHandlerChannels: [String?] = []
+        opaqueHandlerChannels: [String?] = [],
+        version: Int = Self.version,
+        transport: String? = nil
     ) {
         format = Self.format
-        version = Self.version
+        self.version = version
         self.tool = tool
         self.generatedAt = generatedAt
         platform = "swift"
+        self.transport = transport
         self.project = project
         // 사실 수천 건이 각각 기준 경로 표기를 펼치지 않게 한 번만 계산한다.
         let baseVariants = PathFilter.variants(of: project)
-        self.facts = facts.sorted().map { Fact($0, relativeToBaseVariants: baseVariants) }
+        let includeExecution = version == Self.messageVersion && transport == "basic-message-channel"
+        var executionBudget = 1_000_000
+        var executionTruncated = false
+        self.facts = facts.sorted().map { fact in
+            guard includeExecution, let scope = fact.handlerScope, let dependencies = fact.dependencies else {
+                return Fact(fact, relativeToBaseVariants: baseVariants, includeExecution: includeExecution)
+            }
+            var dependencyValues: [BridgeFact.Dependency] = []
+            var complete = scope.complete
+            for dependency in dependencies.sorted(by: { $0.location < $1.location }).prefix(10_000) {
+                var dispatchTargets = dependency.dispatchTargets
+                if dispatchTargets.count > 10_000 {
+                    dispatchTargets = Array(dispatchTargets.prefix(10_000))
+                    complete = false
+                    executionTruncated = true
+                }
+                let cost = 1 + dispatchTargets.count
+                guard executionBudget >= cost else {
+                    complete = false
+                    executionTruncated = true
+                    break
+                }
+                executionBudget -= cost
+                dependencyValues.append(BridgeFact.Dependency(
+                    kind: dependency.kind, scope: dependency.scope, location: dependency.location,
+                    symbol: dependency.symbol, dispatchTargets: dispatchTargets
+                ))
+            }
+            if dependencies.count > 10_000 {
+                complete = false
+                executionTruncated = true
+            }
+            let bounded = fact.attachingExecution(
+                handlerScope: .init(start: scope.start, end: scope.end, complete: complete),
+                dependencies: dependencyValues
+            )
+            return Fact(bounded, relativeToBaseVariants: baseVariants, includeExecution: true)
+        }
 
         let targets = Self.countByTarget(facts)
         target = Self.dominantTarget(targets)
@@ -145,7 +213,14 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         } else {
             limitationScopes = nil
         }
-        limitations = messages + extraLimitations
+        var allLimitations = messages + extraLimitations
+        if executionTruncated {
+            allLimitations.append(
+                "message-handler-dependencies-truncated: dependency evidence exceeded the documented budget; "
+                    + "affected handler scopes are incomplete"
+            )
+        }
+        limitations = allLimitations
     }
 
     /// `target` 이 없으면 키를 빼지 않고 `null` 로 적는다. 계약이 그렇게 정했다.
@@ -159,6 +234,7 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         try container.encode(tool, forKey: .tool)
         try container.encode(generatedAt, forKey: .generatedAt)
         try container.encode(platform, forKey: .platform)
+        try container.encodeIfPresent(transport, forKey: .transport)
         try container.encode(target, forKey: .target)
         try container.encode(project, forKey: .project)
         try container.encode(facts, forKey: .facts)
@@ -207,6 +283,13 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
                     + "that could not be resolved statically"
             )
         }
+        let dynamicMessages = facts.count { $0.kind == .messageHandle && $0.isDynamic }
+        if dynamicMessages > 0 {
+            result.append(
+                "dynamic-message-channel-names: \(dynamicMessages) message handlers have a channel name "
+                    + "that could not be resolved statically"
+            )
+        }
         let dynamicMethods = facts.count { $0.kind == .methodHandle && $0.isDynamic }
         if dynamicMethods > 0 {
             result.append(
@@ -220,6 +303,12 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
             result.append(
                 "unattributed-method-handles: \(unattributed) method handlers have no channel because they "
                     + "sit outside a handler closure and their file does not construct exactly one channel"
+            )
+        }
+        let unattributedMessages = facts.count { $0.kind == .messageHandle && $0.channel == nil }
+        if unattributedMessages > 0 {
+            result.append(
+                "unattributed-message-handles: \(unattributedMessages) message handlers have no channel"
             )
         }
         let inferred = facts.count(where: \.isChannelInferred)
@@ -326,13 +415,31 @@ struct BridgeSymbolResolver {
     /// `/private/tmp` 와 `/tmp` 처럼 표기가 다를 수 있어 실제 경로로 맞춘다. 표기가 다르면
     /// 파일 하나의 USR 이 통째로 빠진다.
     private let symbolsByPath: [String: [IndexedSymbol]]
+    private let symbolsByUSR: [String: [IndexedSymbol]]
+    private let referencesBySource: [String: [IndexedReference]]
+    private let overridesByTarget: [String: [IndexedReference]]
+    private let freshPaths: Set<String>
 
-    init(snapshot: IndexSnapshot) {
+    init(snapshot: IndexSnapshot, freshPaths: Set<String> = []) {
         symbolsByPath = Dictionary(grouping: snapshot.symbols.filter { !$0.isExternal }) { Self.canonical($0.location.path) }
+        symbolsByUSR = Dictionary(grouping: snapshot.symbols, by: \.usr)
+        referencesBySource = Dictionary(grouping: snapshot.references, by: \.sourceUSR)
+        overridesByTarget = Dictionary(
+            grouping: snapshot.references.filter { $0.kind == .overrides }, by: \.targetUSR
+        )
+        self.freshPaths = Set(freshPaths.map(Self.canonical))
     }
 
     func resolve(_ scanned: [ScannedBridgeFact]) -> [BridgeFact] {
-        scanned.map { entry in
+        let messageScopes = Dictionary(grouping: scanned.compactMap { item -> (String, BridgeFact.HandlerScope?)? in
+            guard item.fact.kind == .messageHandle, let declaration = item.declaration else { return nil }
+            return (Self.declarationKey(declaration), item.fact.handlerScope)
+        }, by: \.0).mapValues { $0.map(\.1) }
+        let scopesByDeclaration = messageScopes.mapValues { values in values.compactMap { $0 } }
+        let scopeValidity = messageScopes.mapValues { values in
+            !values.contains(where: { $0 == nil }) && !Self.hasOverlappingScopes(values.compactMap { $0 })
+        }
+        return scanned.map { entry in
             guard let declaration = entry.declaration else { return entry.fact }
             let candidates = symbolsByPath[Self.canonical(entry.fact.location.path)] ?? []
             if entry.fact.sourceLanguage == .objectiveC {
@@ -351,8 +458,127 @@ struct BridgeSymbolResolver {
                 return entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: symbol.usr))
             }
             let symbol = Self.match(declaration, among: candidates)
-            return entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: symbol?.usr))
+            let resolved = entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: symbol?.usr))
+            guard entry.fact.kind == .messageHandle, let scope = entry.fact.handlerScope else {
+                return resolved
+            }
+            guard let usr = symbol?.usr else {
+                return resolved.attachingExecution(
+                    handlerScope: .init(start: scope.start, end: scope.end, complete: false), dependencies: []
+                )
+            }
+            let dependencies = executionDependencies(
+                declaration: declaration, setupUSR: usr, scope: scope,
+                allScopes: scopesByDeclaration[Self.declarationKey(declaration)] ?? [],
+                allScopesComplete: scopeValidity[Self.declarationKey(declaration)] ?? false
+            )
+            return resolved.attachingExecution(
+                handlerScope: .init(start: scope.start, end: scope.end, complete: dependencies.complete),
+                dependencies: dependencies.values
+            )
         }
+    }
+
+    private struct DependencyResult {
+        let values: [BridgeFact.Dependency]
+        let complete: Bool
+    }
+
+    private func executionDependencies(
+        declaration: EnclosingDeclaration,
+        setupUSR: String,
+        scope: BridgeFact.HandlerScope,
+        allScopes: [BridgeFact.HandlerScope],
+        allScopesComplete: Bool
+    ) -> DependencyResult {
+        let declarationStart = declaration.start
+        let declarationEnd = declaration.end
+        var complete = allScopesComplete && declarationStart != nil && declarationEnd != nil
+            && freshPaths.contains(Self.canonical(scope.start.path))
+        var values: Set<BridgeFact.Dependency> = []
+        for reference in referencesBySource[setupUSR, default: []] {
+            guard reference.kind == .call || reference.kind == .reference else { continue }
+            guard reference.targetKind != .parameter else { continue }
+            guard let location = reference.location else {
+                if uniqueSymbol(for: reference.targetUSR).map({ !$0.isExternal && $0.kind != .parameter }) == true {
+                    complete = false
+                }
+                continue
+            }
+            if let declarationStart, let declarationEnd,
+               !Self.contains(location, start: declarationStart, end: declarationEnd) { continue }
+            let dependencyScope: BridgeFact.Dependency.Scope?
+            if Self.contains(location, start: scope.start, end: scope.end) {
+                dependencyScope = .handler
+            } else if !allScopes.contains(where: { Self.contains(location, start: $0.start, end: $0.end) }) {
+                dependencyScope = .registration
+            } else {
+                continue
+            }
+            guard let dependencyScope,
+                  let target = uniqueSymbol(for: reference.targetUSR)
+            else {
+                complete = false
+                continue
+            }
+            guard !target.isExternal, target.kind != .parameter else { continue }
+            let dispatchTargets = Set(overridesByTarget[target.usr, default: []].compactMap { dispatch -> BridgeFact.Symbol? in
+                guard let implementation = uniqueSymbol(for: dispatch.sourceUSR), !implementation.isExternal
+                else { return nil }
+                return BridgeFact.Symbol(qualifiedName: Self.contractName(of: implementation), usr: implementation.usr)
+            }).sorted { ($0.usr ?? "", $0.qualifiedName) < ($1.usr ?? "", $1.qualifiedName) }
+            values.insert(BridgeFact.Dependency(
+                kind: reference.kind,
+                scope: dependencyScope,
+                location: location,
+                symbol: BridgeFact.Symbol(qualifiedName: Self.contractName(of: target), usr: target.usr),
+                dispatchTargets: dispatchTargets
+            ))
+        }
+        return DependencyResult(values: values.sorted(by: Self.dependencyOrder), complete: complete)
+    }
+
+    private static func declarationKey(_ declaration: EnclosingDeclaration) -> String {
+        "\(declaration.qualifiedName)#\(declaration.line)"
+    }
+
+    private static func hasOverlappingScopes(_ scopes: [BridgeFact.HandlerScope]) -> Bool {
+        let sorted = scopes.sorted { $0.start < $1.start }
+        for (left, right) in zip(sorted, sorted.dropFirst()) where contains(right.start, start: left.start, end: left.end) {
+            return true
+        }
+        return false
+    }
+
+    private static func dependencyOrder(
+        _ lhs: BridgeFact.Dependency, _ rhs: BridgeFact.Dependency
+    ) -> Bool {
+        if lhs.location != rhs.location { return lhs.location < rhs.location }
+        if lhs.scope != rhs.scope { return lhs.scope.rawValue < rhs.scope.rawValue }
+        if lhs.kind != rhs.kind { return lhs.kind.rawValue < rhs.kind.rawValue }
+        if lhs.symbol.usr != rhs.symbol.usr { return (lhs.symbol.usr ?? "") < (rhs.symbol.usr ?? "") }
+        let leftDispatch = lhs.dispatchTargets.map { "\($0.usr ?? ""):\($0.qualifiedName)" }.joined(separator: "\u{0}")
+        let rightDispatch = rhs.dispatchTargets.map { "\($0.usr ?? ""):\($0.qualifiedName)" }.joined(separator: "\u{0}")
+        return leftDispatch < rightDispatch
+    }
+
+    private static func contractName(of symbol: IndexedSymbol) -> String {
+        symbol.module.isEmpty ? symbol.name : "\(symbol.module).\(symbol.name)"
+    }
+
+    private func uniqueSymbol(for usr: String) -> IndexedSymbol? {
+        let candidates = symbolsByUSR[usr, default: []]
+        guard let first = candidates.first else { return nil }
+        let identities = Set(candidates.map {
+            "\(Self.canonical($0.location.path))\u{0}\($0.name)\u{0}\($0.kind.rawValue)\u{0}\($0.module)"
+        })
+        return identities.count == 1 ? first : nil
+    }
+
+    private static func contains(_ location: SourceLocation, start: SourceLocation, end: SourceLocation) -> Bool {
+        canonical(location.path) == canonical(start.path)
+            && (location.line, location.column) >= (start.line, start.column)
+            && (location.line, location.column) <= (end.line, end.column)
     }
 
     private static func canonical(_ path: String) -> String {

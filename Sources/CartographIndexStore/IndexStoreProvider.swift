@@ -294,7 +294,8 @@ public struct IndexStoreProvider: IndexProviding {
             else { return nil }
             return IndexedReference(
                 sourceUSR: owner, targetUSR: entry.usr, kind: .reference,
-                location: entry.location, origin: .inferred
+                location: entry.location, targetKind: symbols[entry.usr]?.kind,
+                origin: .inferred
             )
         }
     }

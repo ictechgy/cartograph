@@ -117,42 +117,48 @@ public enum IndexStoreMapping {
         for relation in occurrence.relations {
             let other = relation.symbol.usr
             guard other != subject.usr || includeSelfReferences else { continue }
+            let subjectKind = symbolKind(subject.kind, subKind: subject.subKind)
+            let otherKind = symbolKind(relation.symbol.kind, subKind: relation.symbol.subKind)
 
             if relation.roles.contains(.baseOf) {
                 let kind: EdgeKind = subject.kind == .protocol ? .conformance : .inheritance
                 result.append(
-                    IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: kind, location: location)
+                    IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: kind, location: location,
+                        targetKind: subjectKind)
                 )
             }
             if relation.roles.contains(.overrideOf) {
                 result.append(
                     IndexedReference(
-                        sourceUSR: subject.usr, targetUSR: other, kind: .overrides, location: location
+                        sourceUSR: subject.usr, targetUSR: other, kind: .overrides, location: location,
+                        targetKind: otherKind
                     )
                 )
             }
             if relation.roles.contains(.extendedBy) {
-                result.append(
-                    IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: .extends, location: location)
-                )
+                result.append(IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: .extends,
+                    location: location, targetKind: subjectKind))
             }
             // receivedBy는 수신 타입이다. 그것을 호출자로 읽으면 모든 인스턴스 호출에
             // 타입 → 메서드 간선이 붙어 사용·영향 범위가 부풀고 미사용 멤버도 살아난다.
             if relation.roles.contains(.calledBy) {
                 result.append(
-                    IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: .call, location: location)
+                    IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: .call, location: location,
+                        targetKind: subjectKind)
                 )
             } else if relation.roles.contains(.containedBy), occurrence.roles.contains(.reference) {
                 result.append(
                     IndexedReference(
-                        sourceUSR: other, targetUSR: subject.usr, kind: .reference, location: location
+                        sourceUSR: other, targetUSR: subject.usr, kind: .reference, location: location,
+                        targetKind: subjectKind
                     )
                 )
             }
             if relation.roles.contains(.specializationOf) {
                 result.append(
                     IndexedReference(
-                        sourceUSR: subject.usr, targetUSR: other, kind: .reference, location: location
+                        sourceUSR: subject.usr, targetUSR: other, kind: .reference, location: location,
+                        targetKind: otherKind
                     )
                 )
             }
@@ -187,6 +193,7 @@ public enum IndexStoreMapping {
             targetUSR: occurrence.symbol.usr,
             kind: occurrence.roles.contains(.call) ? .call : .reference,
             location: location,
+            targetKind: symbolKind(occurrence.symbol.kind, subKind: occurrence.symbol.subKind),
             origin: .inferred
         )
     }
@@ -295,7 +302,8 @@ public enum IndexStoreMapping {
             guard source != target || includeSelfReferences else { return nil }
             return IndexedReference(
                 sourceUSR: source, targetUSR: target, kind: reference.kind,
-                location: reference.location, origin: reference.origin
+                location: reference.location, targetKind: reference.targetKind,
+                origin: reference.origin
             )
         }
     }

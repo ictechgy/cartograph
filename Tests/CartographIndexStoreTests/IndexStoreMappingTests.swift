@@ -87,6 +87,17 @@ struct IndexStoreMappingTests {
         #expect(IndexStoreMapping.indexedSymbol(from: occurrence(symbol("A"), roles: .reference)) == nil)
     }
 
+    @Test("reference 대상의 parameter 종류를 보존해 graph 밖 대상을 구분한다")
+    func preservesReferenceTargetKind() {
+        let references = IndexStoreMapping.references(
+            from: occurrence(
+                symbol("arg", kind: .parameter), roles: .reference,
+                relations: [SymbolRelation(symbol: symbol("setup", kind: .function), roles: .containedBy)]
+            )
+        )
+        #expect(references.first?.targetKind == .parameter)
+    }
+
     @Test("접근자와 지역 선언, 파라미터는 제외한다")
     func skipsNoiseDeclarations() {
         let getter = symbol("g", kind: .instanceMethod, subKind: .accessorGetter)

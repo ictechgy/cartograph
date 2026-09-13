@@ -7,6 +7,67 @@
 /// 교환 형식(`../isthmus/docs/GRAPH-EXCHANGE.md` 버전 1)의 직렬화 모양은 이 타입이
 /// 아니라 `CartographKit` 의 문서 타입이 정한다. 여기서는 스캐너가 알아낸 것을 그대로 담는다.
 public struct BridgeFact: Hashable, Sendable {
+    /// 핸들러 closure의 소스 범위와 그 범위에서 확인한 의존성의 완전성.
+    public struct HandlerScope: Hashable, Sendable, Codable {
+        public let start: SourceLocation
+        public let end: SourceLocation
+        public let complete: Bool
+
+        public init(start: SourceLocation, end: SourceLocation, complete: Bool) {
+            self.start = start
+            self.end = end
+            self.complete = complete
+        }
+    }
+
+    /// 인덱스 발생 위치로 귀속한 closure 또는 등록부의 심볼 의존성.
+    public struct Dependency: Hashable, Sendable, Codable {
+        public enum Scope: String, Hashable, Sendable, Codable {
+            case handler
+            case registration
+        }
+
+        public let kind: EdgeKind
+        public let scope: Scope
+        public let location: SourceLocation
+        public let symbol: Symbol
+        public let dispatchTargets: [Symbol]
+
+        private enum CodingKeys: String, CodingKey { case kind, scope, location, symbol, dispatchTargets }
+
+        public init(
+            kind: EdgeKind,
+            scope: Scope,
+            location: SourceLocation,
+            symbol: Symbol,
+            dispatchTargets: [Symbol] = []
+        ) {
+            self.kind = kind
+            self.scope = scope
+            self.location = location
+            self.symbol = symbol
+            self.dispatchTargets = dispatchTargets.sorted { ($0.usr ?? "", $0.qualifiedName) < ($1.usr ?? "", $1.qualifiedName) }
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            kind = try container.decode(EdgeKind.self, forKey: .kind)
+            scope = try container.decode(Scope.self, forKey: .scope)
+            location = try container.decode(SourceLocation.self, forKey: .location)
+            symbol = try container.decode(Symbol.self, forKey: .symbol)
+            dispatchTargets = try container.decodeIfPresent([Symbol].self, forKey: .dispatchTargets) ?? []
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(kind, forKey: .kind)
+            try container.encode(scope, forKey: .scope)
+            try container.encode(location, forKey: .location)
+            try container.encode(symbol, forKey: .symbol)
+            try container.encodeIfPresent(dispatchTargets.isEmpty ? nil : dispatchTargets, forKey: .dispatchTargets)
+        }
+    }
+
     /// 사실의 종류. 교환 형식의 `kind` 값 그대로다.
     public enum Kind: String, Sendable, CaseIterable {
         /// 채널에 핸들러를 달았다(`setMethodCallHandler`, `addMethodCallDelegate`).
@@ -16,6 +77,8 @@ public struct BridgeFact: Hashable, Sendable {
         case channelRegister = "channel-register"
         /// 핸들러 안에서 메서드 이름으로 분기했다(`case "…"`) 또는 네이티브 메서드를 내보냈다.
         case methodHandle = "method-handle"
+        /// BasicMessageChannel 에 메시지 핸들러를 달았다(`setMessageHandler`의 non-nil 등록).
+        case messageHandle = "message-handle"
         /// React Native 모듈을 내보냈다(`@objc(Name)`, `RCT_EXPORT_MODULE`).
         case moduleExport = "module-export"
         /// React Native 뷰 매니저를 내보냈다(`RCT_EXPORT_VIEW_PROPERTY`).
@@ -32,7 +95,7 @@ public struct BridgeFact: Hashable, Sendable {
     ///
     /// 클로저 안의 `case "…"` 는 자기 USR 이 없다. 그때는 감싸는 함수나 타입을 적는다.
     /// isthmus 가 돌려주는 보존 근거가 이 USR 을 가리킨다.
-    public struct Symbol: Hashable, Sendable {
+    public struct Symbol: Hashable, Sendable, Codable {
         public let qualifiedName: String
         public let usr: String?
 
@@ -56,6 +119,10 @@ public struct BridgeFact: Hashable, Sendable {
     public let method: String?
     /// 채널이나 메서드가 리터럴이 아니라 표현식이었는지 여부.
     public let isDynamic: Bool
+    /// 동적 채널 표현식에서 AST가 확인한 선행 리터럴. BasicMessageChannel 문서에서만 쓴다.
+    public let channelPrefix: String?
+    public let handlerScope: HandlerScope?
+    public let dependencies: [Dependency]?
     /// 채널을 핸들러 문맥이 아니라 "파일에 채널이 하나뿐" 이라는 추측으로 붙였는지 여부.
     ///
     /// 교환 형식에는 이 구분이 없다. 소비자가 추측과 사실을 가를 수 없으므로 문서 단위로
@@ -70,6 +137,9 @@ public struct BridgeFact: Hashable, Sendable {
         channel: String?,
         method: String? = nil,
         isDynamic: Bool = false,
+        channelPrefix: String? = nil,
+        handlerScope: HandlerScope? = nil,
+        dependencies: [Dependency]? = nil,
         isChannelInferred: Bool = false,
         location: SourceLocation,
         symbol: Symbol? = nil,
@@ -81,6 +151,13 @@ public struct BridgeFact: Hashable, Sendable {
         self.channel = channel
         self.method = method
         self.isDynamic = isDynamic
+        self.channelPrefix = channelPrefix
+        self.handlerScope = handlerScope
+        self.dependencies = dependencies?.sorted { lhs, rhs in
+            if lhs.location != rhs.location { return lhs.location < rhs.location }
+            if lhs.scope != rhs.scope { return lhs.scope.rawValue < rhs.scope.rawValue }
+            return (lhs.symbol.usr ?? "") < (rhs.symbol.usr ?? "")
+        }
         self.isChannelInferred = isChannelInferred
         self.location = location
         self.symbol = symbol
@@ -94,6 +171,29 @@ public struct BridgeFact: Hashable, Sendable {
             channel: channel,
             method: method,
             isDynamic: isDynamic,
+            channelPrefix: channelPrefix,
+            handlerScope: handlerScope,
+            dependencies: dependencies,
+            isChannelInferred: isChannelInferred,
+            location: location,
+            symbol: symbol,
+            sourceLanguage: sourceLanguage
+        )
+    }
+
+    /// 인덱스 결합 뒤 closure 의존성 근거를 덧붙인 사본.
+    public func attachingExecution(
+        handlerScope: HandlerScope?, dependencies: [Dependency]?
+    ) -> BridgeFact {
+        BridgeFact(
+            kind: kind,
+            target: target,
+            channel: channel,
+            method: method,
+            isDynamic: isDynamic,
+            channelPrefix: channelPrefix,
+            handlerScope: handlerScope,
+            dependencies: dependencies,
             isChannelInferred: isChannelInferred,
             location: location,
             symbol: symbol,
@@ -109,6 +209,8 @@ extension BridgeFact: Comparable {
         if lhs.kind != rhs.kind { return lhs.kind.rawValue < rhs.kind.rawValue }
         if lhs.channel != rhs.channel { return (lhs.channel ?? "") < (rhs.channel ?? "") }
         if lhs.method != rhs.method { return (lhs.method ?? "") < (rhs.method ?? "") }
+        if lhs.channelPrefix != rhs.channelPrefix { return (lhs.channelPrefix ?? "") < (rhs.channelPrefix ?? "") }
+        if lhs.handlerScope != rhs.handlerScope { return (lhs.handlerScope?.start ?? .init(path: "", line: 0, column: 0)) < (rhs.handlerScope?.start ?? .init(path: "", line: 0, column: 0)) }
         if lhs.target != rhs.target { return lhs.target.rawValue < rhs.target.rawValue }
         if lhs.symbol?.usr != rhs.symbol?.usr { return (lhs.symbol?.usr ?? "") < (rhs.symbol?.usr ?? "") }
         return (lhs.sourceLanguage?.rawValue ?? "") < (rhs.sourceLanguage?.rawValue ?? "")
