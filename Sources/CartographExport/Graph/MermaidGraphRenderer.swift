@@ -55,9 +55,11 @@ public struct MermaidGraphRenderer: GraphRendering {
     private func limitedNodes(of graph: CodeGraph) -> (nodes: [GraphNode], truncated: Bool) {
         let all = graph.sortedNodes
         guard all.count > nodeLimit else { return (all, false) }
+        // 차수는 비교자 안에서가 아니라 한 번의 순회로 미리 센다.
+        let degrees = graph.totalDegrees()
+        func degree(of id: NodeID) -> Int { degrees[id] ?? 0 }
         let ranked = all.sorted { lhs, rhs in
-            let lhsDegree = graph.inDegree(of: lhs.id) + graph.outDegree(of: lhs.id)
-            let rhsDegree = graph.inDegree(of: rhs.id) + graph.outDegree(of: rhs.id)
+            let (lhsDegree, rhsDegree) = (degree(of: lhs.id), degree(of: rhs.id))
             return lhsDegree != rhsDegree ? lhsDegree > rhsDegree : lhs.id < rhs.id
         }
         return (Array(ranked.prefix(nodeLimit)).sorted { $0.id < $1.id }, true)

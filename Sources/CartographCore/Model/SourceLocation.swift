@@ -23,11 +23,21 @@ public struct SourceLocation: Hashable, Sendable, Codable, Comparable, CustomStr
     ///
     /// CI 로그에서 절대 경로는 잡음이므로 리포터가 상대 경로를 선호한다.
     /// 기준 경로 아래가 아니면 원본을 그대로 돌려준다.
+    ///
+    /// 기준 경로의 표기들을 펼치는 일(URL 정규화·심볼릭 링크 해석)은 파일
+    /// 시스템을 물어보는 연산이다. 리포트는 진단 수천 건마다 상대화를 부르므로,
+    /// 부르는 쪽이 표기들을 한 번만 계산해 넘기는 `relative(toBaseVariants:)`
+    /// 쪽이 바른 자리다.
     public func relative(to base: String) -> SourceLocation {
+        relative(toBaseVariants: PathFilter.variants(of: base))
+    }
+
+    /// 미리 펼쳐 둔 기준 경로 표기들로 상대 경로 위치로 변환한다.
+    public func relative(toBaseVariants baseVariants: [String]) -> SourceLocation {
         // macOS 에서 인덱스 스토어는 `/private/tmp` 로, 설정은 `/tmp` 로 같은 곳을
         // 가리킨다. 접두사를 그대로 비교하면 한쪽 표기에서만 상대화되어, 필터는
         // 통과한 파일이 리포트에는 절대 경로로 찍힌다.
-        for candidate in PathFilter.variants(of: base) {
+        for candidate in baseVariants {
             let normalized = candidate.hasSuffix("/") ? candidate : candidate + "/"
             guard path.hasPrefix(normalized) else { continue }
             return SourceLocation(path: String(path.dropFirst(normalized.count)), line: line, column: column)

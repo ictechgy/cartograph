@@ -1,5 +1,6 @@
 import CartographAnalysis
 import CartographCore
+import Foundation
 
 /// 한 번 읽은 인덱스 스냅샷과, 그 위에서 만든 그래프들.
 ///
@@ -37,19 +38,52 @@ public struct AnalysisContext: Sendable {
         self.edgeKinds = edgeKinds
         self.externalRetentions = externalRetentions
         externalRetentionIndex = externalRetentions.map { ExternalRetentionIndex($0.retentions) } ?? .empty
+        graphCache = GraphBuildCache()
     }
 
-    /// 지정한 해상도의 그래프를 만든다.
+    /// 같은 문맥이 만든 그래프를 레벨별로 한 번씩만 간직한다.
+    ///
+    /// `baseline` 은 순환·미사용·지표·레이어 네 분석을 한 문맥에서 돌린다. 문맥이
+    /// 기억하지 않으면 같은 레벨의 그래프를 그 배수만큼 다시 만든다 — 정점과
+    /// 간선을 전부 다시 스캔하고 정렬하는 비용이다.
+    private final class GraphBuildCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var results: [Key: GraphBuilder.BuildResult] = [:]
+
+        struct Key: Hashable {
+            let level: GraphLevel
+            let includeExternal: Bool
+        }
+
+        func result(for key: Key, make: () -> GraphBuilder.BuildResult) -> GraphBuilder.BuildResult {
+            lock.lock()
+            defer { lock.unlock() }
+            if let known = results[key] { return known }
+            // 만드는 동안 자물쇠를 쥐고 있으면 병렬 질의가 줄 서서 기다린다.
+            // 그래프 만들기는 던지지 않는 순수 계산이므로 결과만 자물쇠 안에 넣는다.
+            lock.unlock()
+            let built = make()
+            lock.lock()
+            results[key] = built
+            return built
+        }
+    }
+
+    private let graphCache: GraphBuildCache
+
+    /// 지정한 해상도의 그래프를 만든다. 같은 문맥·같은 해상도면 처음 만든 것을 돌려준다.
     public func buildGraph(level: GraphLevel, includeExternal: Bool = false) -> GraphBuilder.BuildResult {
-        GraphBuilder(
-            options: .init(
-                level: level,
-                pathFilter: pathFilter,
-                edgeKinds: edgeKinds,
-                includeExternal: includeExternal
+        graphCache.result(for: .init(level: level, includeExternal: includeExternal)) {
+            GraphBuilder(
+                options: .init(
+                    level: level,
+                    pathFilter: pathFilter,
+                    edgeKinds: edgeKinds,
+                    includeExternal: includeExternal
+                )
             )
-        )
-        .buildResult(from: snapshot)
+            .buildResult(from: snapshot)
+        }
     }
 }
 

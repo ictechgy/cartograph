@@ -57,11 +57,18 @@ public struct Diagnostic: Hashable, Sendable, Codable {
 
     /// 기준 경로 기준 상대 경로로 위치를 바꾼 복사본.
     public func relative(to base: String) -> Diagnostic {
+        relative(toBaseVariants: PathFilter.variants(of: base))
+    }
+
+    /// 미리 펼쳐 둔 기준 경로 표기들로 상대 경로 위치를 바꾼 복사본.
+    ///
+    /// 리포트 하나가 진단 수천 건을 상대화하므로 표기 펼치기는 호출당 한 번이어야 한다.
+    public func relative(toBaseVariants baseVariants: [String]) -> Diagnostic {
         Diagnostic(
             ruleIdentifier: ruleIdentifier,
             severity: severity,
             message: message,
-            location: location?.relative(to: base),
+            location: location?.relative(toBaseVariants: baseVariants),
             subject: subject,
             details: details
         )

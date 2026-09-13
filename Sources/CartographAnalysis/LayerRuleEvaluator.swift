@@ -122,8 +122,24 @@ public struct LayerRuleEvaluator: Sendable {
 
     /// 규칙 위반 목록. 출력 순서가 고정되도록 간선 순으로 정렬된다.
     public func evaluate(graph: CodeGraph) -> [LayerViolation] {
-        guard !layers.isEmpty, !rules.isEmpty else { return [] }
+        violations(in: graph, assignments: layerAssignments(in: graph))
+    }
+
+    /// 위반과 규칙이 덮지 않는 정점을 배정 맵 한 번으로 같이 낸다.
+    ///
+    /// `evaluate` 와 `unassignedNodes` 를 나눠 부르면, 정점마다 글롭 대조를 품는
+    /// 배정 맵이 두 번 만들어진다. 두 답은 명령 경로에서 항상 함께 쓰인다.
+    public func assess(graph: CodeGraph) -> (violations: [LayerViolation], unassigned: [NodeID]) {
+        guard !layers.isEmpty, !rules.isEmpty else { return ([], []) }
         let assignments = layerAssignments(in: graph)
+        return (
+            violations(in: graph, assignments: assignments),
+            graph.nodeIDs.filter { assignments[$0] == nil }
+        )
+    }
+
+    private func violations(in graph: CodeGraph, assignments: [NodeID: String]) -> [LayerViolation] {
+        guard !rules.isEmpty else { return [] }
         var violations: [LayerViolation] = []
 
         for edge in graph.edges {

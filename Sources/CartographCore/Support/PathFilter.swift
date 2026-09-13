@@ -39,7 +39,12 @@ public struct PathFilter: Sendable, Equatable {
     }
 
     /// 기준 경로가 가질 수 있는 표기들. 순서는 고정한다.
-    static func variants(of basePath: String) -> [String] {
+    ///
+    /// 상대화 판정(`relative(to:)`)마다 이 함수를 부르면 표기 펼치기가 진단
+    /// 수만큼 되풀이된다 — URL 정규화와 심볼릭 링크 해석은 파일 시스템을
+    /// 물어보는 연산이다. 한 실행의 기준 경로는 하나뿐이므로 부르는 쪽이 한 번
+    /// 계산해 두고 되풀이해서 쓴다.
+    public static func variants(of basePath: String) -> [String] {
         let expanded = URL(fileURLWithPath: (basePath as NSString).expandingTildeInPath)
             .standardizedFileURL
             .path
@@ -90,7 +95,11 @@ public struct PathFilter: Sendable, Equatable {
     /// 실패 모양도 같다. 규칙을 두 벌로 두면 한쪽만 고쳐지므로 여기 하나만 둔다.
     ///
     /// 절대 경로로 쓴 패턴은 의도가 분명하므로 절대 경로에 그대로 적용한다.
+    ///
+    /// 패턴이 비었으면 후보를 만들지도 않고 답한다. 기본 설정은 `retained_files` 가
+    /// 비어 있는데, 이 조기 종료가 없으면 정점마다 상대 경로 후보 배열이 만들어진다.
     public func removes(_ patterns: [GlobPattern], _ path: String) -> Bool {
+        guard !patterns.isEmpty else { return false }
         if patterns.contains(where: { $0.isAbsolute && $0.matches(path) }) { return true }
         return relativeCandidates(for: path).contains { patterns.matchesAny($0) }
     }

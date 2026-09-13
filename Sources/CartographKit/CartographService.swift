@@ -162,7 +162,9 @@ public struct CartographService: Sendable {
         try configuration.validate()
         let graph = context.buildGraph(level: level ?? configuration.level).graph
         let evaluator = LayerRuleEvaluator(layers: configuration.layers, rules: configuration.rules)
-        return (graph, evaluator.evaluate(graph: graph), evaluator.unassignedNodes(in: graph))
+        // 배정 맵(정점마다 글롭 대조)은 위반 판정과 미지정 수집이 함께 쓴다.
+        let (violations, unassigned) = evaluator.assess(graph: graph)
+        return (graph, violations, unassigned)
     }
 
     /// 특정 선언이 살아 있는 이유.
@@ -465,17 +467,22 @@ public struct CartographService: Sendable {
         /// 없으면 요청마다 파일을 다시 읽는다. 답은 같지만, 1000건 배치에서 33 밀리초를
         /// 파일 시스템에 쓰고 그 값은 베이스라인이 커질수록 커진다.
         let baseline: Baseline?
+        /// 억제 판정에 쓸 지문 집합. 답마다 `filtering` 을 부르면 답 수 × 지문 수의
+        /// 해싱이 매번 다시 일어난다.
+        let baselineFingerprints: Set<String>
     }
 
     func makeQuerySession() throws -> QuerySession {
         let context = try loadContext()
         let (graph, report) = unusedCode(in: context)
+        let baseline = try loadBaseline()
         return QuerySession(
             graph: graph,
             lookup: GraphQueryIndex(graph: graph),
             report: report,
             limitations: analysisLimitations(context: context, symbolGraph: graph),
-            baseline: try loadBaseline()
+            baseline: baseline,
+            baselineFingerprints: baseline.map { Set($0.fingerprints) } ?? []
         )
     }
 
@@ -523,7 +530,7 @@ public struct CartographService: Sendable {
                 limitations: limitations,
                 result: try describeQuery(
                     of: node, report: report, in: graph,
-                    depth: depth, limit: limit, baseline: session.baseline
+                    depth: depth, limit: limit, baselineFingerprints: session.baselineFingerprints
                 )
             )
         }
@@ -606,13 +613,13 @@ public struct CartographService: Sendable {
         in graph: CodeGraph,
         depth: Int,
         limit: Int,
-        baseline: Baseline?
+        baselineFingerprints: Set<String>
     ) throws -> SymbolQuery {
         let explanation = report.explain(node.id, in: graph)
         // 도달 가능한 정점에는 `dead` 가 애초에 진단을 내지 않는다. 그런데도 옛
         // 베이스라인 항목이 지문만 맞으면 억제되었다고 표시되어, "도달 가능한데
         // 팀이 억제했다"는 모순된 답이 나간다.
-        let suppressed = explanation == .unreachable && isSuppressed(node, by: baseline)
+        let suppressed = explanation == .unreachable && Self.isSuppressed(node, by: baselineFingerprints)
         let neighborhood = GraphNeighborhood(graph: graph)
         let (usedBy, usedByTruncated) = neighborhood.usage(
             of: node.id, depth: depth, limit: limit, incoming: true
@@ -640,6 +647,11 @@ public struct CartographService: Sendable {
     private func isSuppressed(_ node: GraphNode, by baseline: Baseline?) -> Bool {
         guard let baseline else { return false }
         return baseline.filtering([Self.unusedDiagnostic(for: node)]).isEmpty
+    }
+
+    /// 지문 집합 하나로 억제 여부를 답한다. 답마다 Set 을 다시 만들지 않는다.
+    private static func isSuppressed(_ node: GraphNode, by fingerprints: Set<String>) -> Bool {
+        fingerprints.contains(Self.unusedDiagnostic(for: node).fingerprint)
     }
 
     private static func encodeQuery(_ document: SymbolQueryDocument) throws -> String {
@@ -962,7 +974,7 @@ public struct CartographService: Sendable {
         // sarif/checkstyle/xcode/github-actions 는 진단을 담는 형식이지 지표표를 담는 형식이
         // 아니다. 예전에는 이 형식들이 지표 JSON 을 그대로 받아, 확장자만 `.sarif` 인
         // 코드 스캐닝이 거부하는 문서가 나왔다.
-        let relativeReported = reported.map { $0.relative(to: projectPath) }
+        let relativeReported = reported.map { $0.relative(toBaseVariants: PathFilter.variants(of: projectPath)) }
         let output: String = switch configuration.reportFormat {
         case .json:
             try renderer.renderJSON(
@@ -1103,8 +1115,11 @@ public struct CartographService: Sendable {
         }
 
         let reporter = DiagnosticReporterFactory.make(configuration.reportFormat)
+        // 표기 펼치기는 기준 경로가 정해져 있으므로 실행당 한 번이면 충분하다.
+        // 진단마다 하면 리포트마다 수천 번의 URL 연산이 붙는다.
+        let baseVariants = PathFilter.variants(of: projectPath)
         let output = try reporter.report(
-            reported.map { $0.relative(to: projectPath) },
+            reported.map { $0.relative(toBaseVariants: baseVariants) },
             summary: ReportSummary(
                 command: command,
                 subject: subject,

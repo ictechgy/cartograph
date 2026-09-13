@@ -36,9 +36,15 @@ public struct RetentionPolicy: Sendable {
     public func retainedNodes(in graph: CodeGraph, snapshot: IndexSnapshot) -> [NodeID: RetentionReason] {
         let externalBases = Self.symbolsWithExternalBase(in: snapshot)
         var decisions: [NodeID: RetentionReason] = [:]
+        // 같은 파일의 정점은 수백 개다. retained_files 판정은 파일의 성질이지
+        // 정점의 성질이 아니므로 경로별로 한 번만 답한다.
+        var pathDecisions: [String: Bool] = [:]
 
         for node in graph.sortedNodes {
-            if let reason = reason(for: node, in: graph, symbolsWithExternalBase: externalBases) {
+            if let reason = reason(
+                for: node, in: graph, symbolsWithExternalBase: externalBases,
+                pathDecisions: &pathDecisions
+            ) {
                 decisions[node.id] = reason
             }
         }
@@ -69,13 +75,14 @@ public struct RetentionPolicy: Sendable {
     func reason(
         for node: GraphNode,
         in graph: CodeGraph,
-        symbolsWithExternalBase: Set<String>
+        symbolsWithExternalBase: Set<String>,
+        pathDecisions: inout [String: Bool]
     ) -> RetentionReason? {
         // 구문 누락을 설명해야 하므로 이미 있던 근거보다 우선한다.
         // 테스트 전용 판정도 소스 접근을 복구하기 전에는 보수적으로 억제한다.
         if node.attributes.contains(.sourceUnavailable) { return .sourceUnavailable }
         if node.attributes.contains(.ignoreComment) { return .ignoreComment }
-        if isUserRetained(node) { return .userConfigured }
+        if isUserRetained(node, memo: &pathDecisions) { return .userConfigured }
         // 사용자 설정 다음이다. 외부 도구의 주장은 설정보다 약하고, 인덱스에서 유도한
         // 나머지 규칙보다는 구체적이다(어느 줄이 불렀는지까지 안다).
         if !externalRetentions.isEmpty,
@@ -112,12 +119,19 @@ public struct RetentionPolicy: Sendable {
 
     // MARK: - 개별 규칙
 
-    private func isUserRetained(_ node: GraphNode) -> Bool {
+    private func isUserRetained(_ node: GraphNode, memo: inout [String: Bool]) -> Bool {
         // 제외와 같은 규칙으로 본다. 절대 경로까지 후보로 두면 프로젝트 루트의 조상
         // 디렉터리 이름이 패턴에 걸려, `retained_files` 한 줄이 프로젝트 전체를 보존하고
         // `dead` 가 아무것도 보고하지 않는다. 제외 쪽과 정확히 같은 모양의 거짓 초록이다.
-        if let path = node.location?.path, pathFilter.removes(options.retainedFiles, path) {
-            return true
+        if let path = node.location?.path {
+            let removed: Bool
+            if let known = memo[path] {
+                removed = known
+            } else {
+                removed = pathFilter.removes(options.retainedFiles, path)
+                memo[path] = removed
+            }
+            if removed { return true }
         }
         return options.retainedNames.matchesAny(node.name)
             || options.retainedNames.matchesAny(node.baseName)

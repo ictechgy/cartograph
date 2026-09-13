@@ -312,14 +312,14 @@ private enum ValueFlowIndexBinding {
         evidence: Evidence
     ) -> [String: FunctionBinding] {
         var result: [String: FunctionBinding] = [:]
+        let fieldIndex = FieldIndex(fields: fields)
         for function in functions {
             let ownerUSR = function.ownerType.flatMap { typeBindings[$0]?.symbolUSR }
             if function.kind == .closure {
                 continue
             }
-            if function.kind == .getter || function.kind == .setter || isFieldInitializer(function, fields: fields) {
-                let field = fields.first { $0.getter == function.id || $0.setter == function.id || $0.initializer == function.id }
-                guard let field, let binding = fieldBindings[field.id], binding.isBound else {
+            if let field = fieldIndex.field(for: function) {
+                guard let binding = fieldBindings[field.id], binding.isBound else {
                     result[function.id] = FunctionBinding(symbolUSR: nil, ownerUSR: ownerUSR, invalid: true)
                     continue
                 }
@@ -413,14 +413,16 @@ private enum ValueFlowIndexBinding {
         evidence: Evidence
     ) -> ReferenceResult {
         var result = ReferenceResult()
+        let fieldIndex = FieldIndex(fields: fields)
+        let closureOwnerMap = closureOwners(of: functions)
         for function in functions {
             let sourceUSR = functionBindings[function.id]?.symbolUSR
                 ?? syntheticSourceUSR(
                     function,
-                    functions: functions,
                     bindings: functionBindings,
-                    fields: fields,
-                    fieldBindings: fieldBindings
+                    fieldIndex: fieldIndex,
+                    fieldBindings: fieldBindings,
+                    closureOwners: closureOwnerMap
                 )
             guard let sourceUSR else {
                 if !function.blocks.flatMap(\.instructions).isEmpty { result.invalidFunctions.insert(function.id) }
@@ -597,39 +599,75 @@ private enum ValueFlowIndexBinding {
         function.kind == .initializer && function.id.contains("#synthetic-initializer:")
     }
 
-    private static func isFieldInitializer(_ function: ValueFlowFunction, fields: [ValueFlowField]) -> Bool {
-        fields.contains { $0.initializer == function.id }
+    /// 필드와 함수의 대응을 함수 번호로 바로 찾는 색인.
+    ///
+    /// 함수마다 프로젝트 전체 필드 목록을 처음부터 뒤지면 함수 수 × 필드 수의
+    /// 비교가 된다. 함수·필드는 파일을 합쳐 수만 개가 되므로 그 곱은 쉽게
+    /// 수억이다. 대응은 목록에서 한 번만 읽어 사전으로 세워 둔다.
+    private struct FieldIndex {
+        private let byGetter: [String: ValueFlowField]
+        private let bySetter: [String: ValueFlowField]
+        private let byInitializer: [String: ValueFlowField]
+
+        init(fields: [ValueFlowField]) {
+            var byGetter: [String: ValueFlowField] = [:]
+            var bySetter: [String: ValueFlowField] = [:]
+            var byInitializer: [String: ValueFlowField] = [:]
+            for field in fields {
+                if let id = field.getter { byGetter[id] = field }
+                if let id = field.setter { bySetter[id] = field }
+                if let id = field.initializer { byInitializer[id] = field }
+            }
+            self.byGetter = byGetter
+            self.bySetter = bySetter
+            self.byInitializer = byInitializer
+        }
+
+        /// 이 함수가 접근자·초기화 식인 필드. 접근자는 자기 종류의 사전만 본다.
+        func field(for function: ValueFlowFunction) -> ValueFlowField? {
+            switch function.kind {
+            case .getter: byGetter[function.id]
+            case .setter: bySetter[function.id]
+            default: byInitializer[function.id]
+            }
+        }
     }
 
-    private static func syntheticSourceUSR(
-        _ function: ValueFlowFunction,
-        functions: [ValueFlowFunction],
-        bindings: [String: FunctionBinding],
-        fields: [ValueFlowField],
-        fieldBindings: [String: FieldBinding]
-    ) -> String? {
-        if function.kind == .getter || function.kind == .setter {
-            return fields.first(where: {
-                ($0.getter == function.id || $0.setter == function.id)
-                    && fieldBindings[$0.id]?.isBound == true
-            }).flatMap { fieldBindings[$0.id]?.symbolUSR }
-        }
-        if let field = fields.first(where: {
-            $0.initializer == function.id && fieldBindings[$0.id]?.isBound == true
-        }) {
-            return fieldBindings[field.id]?.symbolUSR
-        }
+    /// 클로저 번호 → 그것을 담고 있는 함수 번호.
+    ///
+    /// 묶이지 않은 함수 하나마다 모든 함수의 모든 명령을 뒤지면 함수 수 × 전체
+    /// 명령 수가 된다. 클로저는 하나의 함수 안에만 살아 있으므로 한 번의 순회로
+    /// 사전이 나온다.
+    private static func closureOwners(of functions: [ValueFlowFunction]) -> [String: String] {
+        var owners: [String: String] = [:]
         for parent in functions {
-            guard let parentUSR = bindings[parent.id]?.symbolUSR else { continue }
             for block in parent.blocks {
                 for instruction in block.instructions {
-                    if case .closure(let closureID, _) = instruction.operation, closureID == function.id {
-                        return parentUSR
+                    if case .closure(let closureID, _) = instruction.operation {
+                        owners[closureID] = parent.id
                     }
                 }
             }
         }
-        return nil
+        return owners
+    }
+
+    private static func syntheticSourceUSR(
+        _ function: ValueFlowFunction,
+        bindings: [String: FunctionBinding],
+        fieldIndex: FieldIndex,
+        fieldBindings: [String: FieldBinding],
+        closureOwners: [String: String]
+    ) -> String? {
+        if function.kind == .getter || function.kind == .setter {
+            return fieldIndex.field(for: function).flatMap {
+                fieldBindings[$0.id]?.isBound == true ? fieldBindings[$0.id]?.symbolUSR : nil
+            }
+        }
+        if let field = fieldIndex.field(for: function), fieldBindings[field.id]?.isBound == true {
+            return fieldBindings[field.id]?.symbolUSR
+        }
+        return closureOwners[function.id].flatMap { bindings[$0]?.symbolUSR }
     }
 
     private static func hasLocalSuperclass(ownerUSR: String, evidence: Evidence) -> Bool {

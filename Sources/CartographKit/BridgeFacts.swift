@@ -66,13 +66,13 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
             try container.encodeIfPresent(sourceLanguage, forKey: .sourceLanguage)
         }
 
-        init(_ fact: BridgeFact, relativeTo projectPath: String) {
+        init(_ fact: BridgeFact, relativeToBaseVariants baseVariants: [String]) {
             sourceLanguage = fact.sourceLanguage
             kind = fact.kind.rawValue
             channel = fact.channel
             method = fact.method
             dynamic = fact.isDynamic
-            location = fact.location.relative(to: projectPath)
+            location = fact.location.relative(toBaseVariants: baseVariants)
             symbol = fact.symbol.map { Symbol(qualifiedName: $0.qualifiedName, usr: $0.usr) }
         }
     }
@@ -122,7 +122,9 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         self.generatedAt = generatedAt
         platform = "swift"
         self.project = project
-        self.facts = facts.sorted().map { Fact($0, relativeTo: project) }
+        // 사실 수천 건이 각각 기준 경로 표기를 펼치지 않게 한 번만 계산한다.
+        let baseVariants = PathFilter.variants(of: project)
+        self.facts = facts.sorted().map { Fact($0, relativeToBaseVariants: baseVariants) }
 
         let targets = Self.countByTarget(facts)
         target = Self.dominantTarget(targets)

@@ -96,6 +96,27 @@ public struct CodeGraph: Sendable {
         Set(incomingEdges(to: id).filter { !$0.isSelfLoop }.map(\.source)).count
     }
 
+    /// 모든 정점의 차수(들어오는 이웃 수 + 나가는 이웃 수)를 한 번의 순회로 센다.
+    ///
+    /// 비교자 안에서 `inDegree(of:) + outDegree(of:)` 를 묻는 정렬은 비교마다
+    /// 간선을 다시 훑어 집합을 만든다 — 정점 수만큼 반복된다. "연결 많은 순으로
+    /// 상한을 자르는" 자리는 같은 차수를 정점마다 한 번씩만 필요로 하므로,
+    /// 이 사전을 한 번 만들어 쓰는 쪽이 같은 답을 훨씬 싸게 낸다.
+    public func totalDegrees() -> [NodeID: Int] {
+        var incoming: [NodeID: Set<NodeID>] = [:]
+        var outgoing: [NodeID: Set<NodeID>] = [:]
+        for edge in edges where !edge.isSelfLoop {
+            outgoing[edge.source, default: []].insert(edge.target)
+            incoming[edge.target, default: []].insert(edge.source)
+        }
+        var result: [NodeID: Int] = [:]
+        result.reserveCapacity(sortedNodes.count)
+        for node in sortedNodes {
+            result[node.id] = (outgoing[node.id]?.count ?? 0) + (incoming[node.id]?.count ?? 0)
+        }
+        return result
+    }
+
     /// 포함 관계를 거슬러 올라간 의미상의 부모.
     ///
     /// 익스텐션은 그 자체가 소유자가 아니다. `extension T { func f() }` 에서 f 의

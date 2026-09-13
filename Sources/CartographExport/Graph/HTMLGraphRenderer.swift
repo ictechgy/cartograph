@@ -36,9 +36,11 @@ public struct HTMLGraphRenderer: GraphRendering {
     /// 임의로 자르면 그림이 의미를 잃는다. 연결이 많은 정점이 구조를 가장 잘 설명한다.
     static func limiting(_ graph: CodeGraph, to limit: Int) -> (graph: CodeGraph, truncated: Bool) {
         guard graph.nodeCount > limit else { return (graph, false) }
+        // 차수는 비교자 안에서가 아니라 한 번의 순회로 미리 센다.
+        let degrees = graph.totalDegrees()
+        func degree(of id: NodeID) -> Int { degrees[id] ?? 0 }
         let ranked = graph.sortedNodes.sorted { lhs, rhs in
-            let lhsDegree = graph.inDegree(of: lhs.id) + graph.outDegree(of: lhs.id)
-            let rhsDegree = graph.inDegree(of: rhs.id) + graph.outDegree(of: rhs.id)
+            let (lhsDegree, rhsDegree) = (degree(of: lhs.id), degree(of: rhs.id))
             return lhsDegree != rhsDegree ? lhsDegree > rhsDegree : lhs.id < rhs.id
         }
         let kept = Set(ranked.prefix(limit).map(\.id))
