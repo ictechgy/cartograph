@@ -39,13 +39,24 @@ public struct GraphNode: Hashable, Sendable, Codable, Identifiable {
         self.isExternal = isExternal
     }
 
-    /// 인자 목록을 뗀 이름.
+    /// 인자 목록과 실패 가능 표식을 뗀 이름.
     ///
-    /// 인덱스는 함수 이름을 `main()`, `describe(_:)` 처럼 인자 라벨까지 붙여 준다.
-    /// 이름으로 규칙을 거는 쪽에서는 그 꼬리가 늘 걸림돌이 된다.
+    /// 인덱스는 함수 이름을 `main()`, `describe(_:)` 처럼 인자 라벨까지, 실패
+    /// 가능 이니셜라이저를 `init?(rawValue:)` 처럼 물음표까지 붙여 준다. 이름으로
+    /// 규칙을 거는 쪽에서는 그 꼬리가 늘 걸림돌이다. 특히 `retained_names` 가
+    /// `init` 만으로 실패 가능 이니셜라이저를 놓치면, 사용자가 살리려 쓴 규칙이
+    /// "지워도 된다"는 답을 만든다.
+    ///
+    /// 이 정규화는 여기 한 곳에만 둔다. 구문 쪽 이름 대조가 같은 규칙을 다시
+    /// 구현해 두면 한쪽만 고쳐질 때 이름 규칙이 갈라진다.
     public var baseName: String {
-        guard let parenthesis = name.firstIndex(of: "(") else { return name }
-        return String(name[name.startIndex..<parenthesis])
+        Self.baseName(ofIndexName: name)
+    }
+
+    /// 인덱스가 붙이는 인자 라벨과 실패 가능 표식을 뗀 이름.
+    public static func baseName(ofIndexName indexName: String) -> String {
+        let base = String(indexName.prefix { $0 != "(" })
+        return base.hasSuffix("?") || base.hasSuffix("!") ? String(base.dropLast()) : base
     }
 
     /// 리포트에 표시할 한 줄 이름. 모듈이 있으면 `Module.Name` 형태가 된다.

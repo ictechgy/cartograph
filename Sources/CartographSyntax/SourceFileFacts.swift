@@ -50,8 +50,13 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
     ///
     /// 그래서 이름 일치를 먼저 요구하고, 같은 이름이 여럿이면(오버로드, 여러 타입의
     /// 동명 메서드) 줄 번호가 가장 가까운 것을 고른다.
+    ///
+    /// 이름 정규화는 `GraphNode.baseName(ofIndexName:)` 의 규칙 하나를 쓴다.
+    /// 실패 가능 이니셜라이저는 인덱스에서 `init?(rawValue:)` 로 온다. 물음표를
+    /// 떼지 않으면 구문 쪽 `init` 과 영영 만나지 못해, public 이니셜라이저가
+    /// internal 로 분석되어 미사용으로 보고된다.
     public func declaration(matchingIndexName indexName: String, nearLine line: Int) -> DeclarationFacts? {
-        let base = Self.baseName(ofIndexName: indexName)
+        let base = GraphNode.baseName(ofIndexName: indexName)
         guard !base.isEmpty else { return nil }
         return declarations
             .filter { $0.name == base }
@@ -60,18 +65,5 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
                 let rhsDistance = abs(rhs.line - line)
                 return lhsDistance == rhsDistance ? lhs.line < rhs.line : lhsDistance < rhsDistance
             }
-    }
-
-    /// 인덱스가 붙이는 인자 라벨을 떼어 낸 이름.
-    ///
-    /// 인덱스는 `emit(_:options:)`, `init(from:)`, `found(_:)` 처럼 인자 라벨까지
-    /// 이름에 넣는다. 구문 분석은 `emit`, `init`, `found` 만 안다. 괄호 앞만 보면
-    /// 두 이름을 맞출 수 있다.
-    public static func baseName(ofIndexName indexName: String) -> String {
-        // 실패 가능 이니셜라이저는 인덱스에서 `init?(rawValue:)` 로 온다. 물음표를
-        // 떼지 않으면 구문 쪽 `init` 과 영영 만나지 못해, public 이니셜라이저가
-        // internal 로 분석되어 미사용으로 보고된다.
-        let base = String(indexName.prefix { $0 != "(" })
-        return base.hasSuffix("?") || base.hasSuffix("!") ? String(base.dropLast()) : base
     }
 }

@@ -304,6 +304,22 @@ struct RetentionPolicyTests {
         #expect(retained["Other"] == nil)
     }
 
+    @Test("이름 보존은 실패 가능 이니셜라이저의 물음표 너머까지 맞는다")
+    func retainedNamesMatchFailableInitializers() {
+        // 인덱스는 `init?(rawValue:)` 로 온다. baseName 이 물음표를 남기면
+        // `retained_names: ["init"]` 이 실패 가능 이니셜라이저를 놓치고,
+        // 사용자가 살리려 쓴 규칙이 미사용 보고를 만든다.
+        var builder = SnapshotBuilder()
+        builder.symbol("init?(rawValue:)", name: "init?(rawValue:)", kind: .initializer)
+        builder.symbol("init(from:)", name: "init(from:)", kind: .initializer)
+
+        var options = RetentionOptions.default
+        options.retainedNames = ["init"]
+        let retained = reasons(builder.build(), options: options)
+        #expect(retained["init?(rawValue:)"] == .userConfigured)
+        #expect(retained["init(from:)"] == .userConfigured)
+    }
+
     @Test("SwiftUI 프리뷰는 기본으로 보존되고 끌 수 있다")
     func previewRetention() {
         var builder = SnapshotBuilder()

@@ -269,8 +269,8 @@ struct SwiftSyntaxAnalyzerTests {
             """)
         #expect(facts.declaration(matchingIndexName: "init?(rawValue:)", nearLine: 2)?.name == "init")
         #expect(facts.declaration(matchingIndexName: "default()", nearLine: 3)?.accessibility == .publicLevel)
-        #expect(SourceFileFacts.baseName(ofIndexName: "init?(rawValue:)") == "init")
-        #expect(SourceFileFacts.baseName(ofIndexName: "init(from:)") == "init")
+        #expect(GraphNode.baseName(ofIndexName: "init?(rawValue:)") == "init")
+        #expect(GraphNode.baseName(ofIndexName: "init(from:)") == "init")
     }
 
     @Test("본문 안의 지역 선언은 기록하지 않는다")

@@ -366,7 +366,7 @@ struct BridgeSymbolResolver {
     private static func match(_ declaration: EnclosingDeclaration, among symbols: [IndexedSymbol]) -> IndexedSymbol? {
         let labelled = symbols.filter { normalizingInitializer($0.name) == declaration.indexName }
         if let exact = nearest(declaration, among: labelled) { return exact }
-        let sameBase = symbols.filter { SourceFileFacts.baseName(ofIndexName: $0.name) == declaration.name }
+        let sameBase = symbols.filter { GraphNode.baseName(ofIndexName: $0.name) == declaration.name }
         return sameBase.count == 1 ? sameBase.first : nil
     }
 
