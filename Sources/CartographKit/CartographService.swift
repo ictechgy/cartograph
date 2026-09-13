@@ -785,30 +785,20 @@ public struct CartographService: Sendable {
             .provider.loadSnapshot()
         let resolver = BridgeSymbolResolver(snapshot: snapshot)
         let sources = bridgeSourceFiles()
-        var facts: [BridgeFact] = []
         var unreadable = 0
-        var unscannedEventChannels = 0
-        var unscannedMessageChannels = 0
-        var opaqueHandlerChannels: [String?] = []
         var objectiveCSources = 0
         var sourceCache: [String: String] = [:]
-        for path in sources {
-            guard let source = try? environment.fileSystem.readText(at: path) else { unreadable += 1; continue }
+        let firstPass = scanBridgeFiles(at: sources, resolver: resolver, resolvedValues: [:], canonicalizesPaths: false) {
+            path in
+            guard let source = try? environment.fileSystem.readText(at: path) else { unreadable += 1; return nil }
             sourceCache[ValueFlowSourceLoader.canonicalPath(path)] = source
             if !path.hasSuffix(".swift") { objectiveCSources += 1 }
-            if path.hasSuffix(".swift") {
-                let scanned = BridgeFactScanner().scan(source: source, path: path)
-                facts += resolver.resolve(scanned.facts)
-                unscannedEventChannels += scanned.unscannedEventChannels
-                unscannedMessageChannels += scanned.unscannedMessageChannels
-                opaqueHandlerChannels += scanned.opaqueHandlerChannels
-            } else {
-                facts += ReactNativeMacroScanner().scan(source: source, path: path)
-                let scanned = ObjectiveCFlutterScanner().scan(source: source, path: path)
-                facts += resolver.resolve(scanned.scannedFacts)
-                opaqueHandlerChannels += scanned.opaqueHandlerChannels
-            }
+            return source
         }
+        var facts = firstPass.facts
+        var opaqueHandlerChannels = firstPass.opaqueHandlerChannels
+        let unscannedEventChannels = firstPass.unscannedEventChannels
+        let unscannedMessageChannels = firstPass.unscannedMessageChannels
         let indexedDates = Dictionary((snapshot.indexedFileDates ?? [:]).map {
             (ValueFlowSourceLoader.canonicalPath($0.key), $0.value)
         }, uniquingKeysWith: min)
@@ -825,22 +815,11 @@ public struct CartographService: Sendable {
             let resolved = ValueFlowBridgeConstants().resolve(in: graph)
             if !resolved.isEmpty {
                 // 원래 사실을 위치별로 덧대지 않고 다시 스캔해 채널 바인딩과 핸들러가 같은 이름을 쓴다.
-                facts.removeAll()
-                opaqueHandlerChannels.removeAll()
-                for path in sources {
-                    guard let source = sourceCache[ValueFlowSourceLoader.canonicalPath(path)] else { continue }
-                    if path.hasSuffix(".swift") {
-                        let canonical = LocalFileSystem.canonicalPath(path)
-                        let scanned = BridgeFactScanner().scan(source: source, path: canonical, resolvedValues: resolved)
-                        facts += resolver.resolve(scanned.facts)
-                        opaqueHandlerChannels += scanned.opaqueHandlerChannels
-                    } else {
-                        facts += ReactNativeMacroScanner().scan(source: source, path: path)
-                        let scanned = ObjectiveCFlutterScanner().scan(source: source, path: path)
-                        facts += resolver.resolve(scanned.scannedFacts)
-                        opaqueHandlerChannels += scanned.opaqueHandlerChannels
-                    }
-                }
+                let secondPass = scanBridgeFiles(
+                    at: sources, resolver: resolver, resolvedValues: resolved, canonicalizesPaths: true
+                ) { sourceCache[ValueFlowSourceLoader.canonicalPath($0)] }
+                facts = secondPass.facts
+                opaqueHandlerChannels = secondPass.opaqueHandlerChannels
             }
         }
         let selectedFacts = target.map { selected in
@@ -868,6 +847,47 @@ public struct CartographService: Sendable {
             extraLimitations: extraLimitations,
             opaqueHandlerChannels: includesFlutter ? opaqueHandlerChannels : []
         )
+    }
+
+    /// 소스 파일들을 스캐너 한 벌에 흘려 보낸다.
+    ///
+    /// Swift 파일은 BridgeFactScanner, 그 밖은 React Native 매크로 스캐너와
+    /// Objective-C Flutter 스캐너가 맡는다. 초회 스캔과 해석 상수를 얻은 뒤의
+    /// 재스캔이 이 배치를 따로 두면, 네 번째 브리지 메커니즘이나 새 계수가
+    /// 늘 때 한쪽만 고쳐지는 자리가 된다.
+    ///
+    /// 재스캔은 경로를 정규화해 기록하고(realpath 프로젝트와의 표기 일치),
+    /// 채널 계수는 초회 패스만 센다 — 재스캔은 사실과 핸들러 표식만 갈아낀다.
+    private func scanBridgeFiles(
+        at paths: [String],
+        resolver: BridgeSymbolResolver,
+        resolvedValues: [SourceLocation: String],
+        canonicalizesPaths: Bool,
+        sourceAt: (String) -> String?
+    ) -> (facts: [BridgeFact], opaqueHandlerChannels: [String?], unscannedEventChannels: Int, unscannedMessageChannels: Int) {
+        var facts: [BridgeFact] = []
+        var opaqueHandlerChannels: [String?] = []
+        var unscannedEventChannels = 0
+        var unscannedMessageChannels = 0
+        for path in paths {
+            guard let source = sourceAt(path) else { continue }
+            if path.hasSuffix(".swift") {
+                let scanPath = canonicalizesPaths ? LocalFileSystem.canonicalPath(path) : path
+                let scanned = resolvedValues.isEmpty
+                    ? BridgeFactScanner().scan(source: source, path: scanPath)
+                    : BridgeFactScanner().scan(source: source, path: scanPath, resolvedValues: resolvedValues)
+                facts += resolver.resolve(scanned.facts)
+                opaqueHandlerChannels += scanned.opaqueHandlerChannels
+                unscannedEventChannels += scanned.unscannedEventChannels
+                unscannedMessageChannels += scanned.unscannedMessageChannels
+            } else {
+                facts += ReactNativeMacroScanner().scan(source: source, path: path)
+                let scanned = ObjectiveCFlutterScanner().scan(source: source, path: path)
+                facts += resolver.resolve(scanned.scannedFacts)
+                opaqueHandlerChannels += scanned.opaqueHandlerChannels
+            }
+        }
+        return (facts, opaqueHandlerChannels, unscannedEventChannels, unscannedMessageChannels)
     }
 
     /// 구문 값 그래프를 실제 컴파일러 대상과 연결해 호출별 요약을 질의한다.

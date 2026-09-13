@@ -42,7 +42,10 @@ public struct Baseline: Sendable, Codable, Equatable {
     }
 
     /// 두 베이스라인을 합친다. 점진적으로 범위를 넓힐 때 쓴다.
-    public func merging(_ other: Baseline) -> Baseline {
+    ///
+    /// 프로덕션 경로는 아직 쓰지 않는다(베이스라인은 대체가 원칙이다). 라이브러리
+    /// 소비자에게 공개된 이름은 아니므로 내부로 두고 테스트가 규칙을 고정한다.
+    func merging(_ other: Baseline) -> Baseline {
         Baseline(fingerprints: fingerprints + other.fingerprints)
     }
 }

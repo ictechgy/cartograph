@@ -1,4 +1,5 @@
 import ArgumentParser
+import CartographCore
 @testable import cartograph
 import Testing
 
@@ -9,11 +10,19 @@ struct DataflowCommandTests {
         let command = try DataflowCommand.parse(["HomeView.body"])
         try command.validate()
         #expect(command.subject == "HomeView.body")
-        #expect(command.maxContexts == 512)
-        #expect(command.maxIterations == 10_000)
-        #expect(command.maxValues == 32)
-        #expect(command.maxHeapCells == 10_000)
-        #expect(command.callDepth == 2)
+        // 미지정 예산은 nil 로 남는다. 기본값은 ValueFlowLimits.standard 한 곳이
+        // 근원이라 CLI 옵션이 따로 숫자를 기억하지 않는다.
+        #expect(command.maxContexts == nil)
+        #expect(command.maxIterations == nil)
+        #expect(command.maxValues == nil)
+        #expect(command.maxHeapCells == nil)
+        #expect(command.callDepth == nil)
+        let limits = ValueFlowLimits.resolved(
+            contexts: command.maxContexts, iterations: command.maxIterations,
+            valuesPerNode: command.maxValues, heapCells: command.maxHeapCells,
+            callStringDepth: command.callDepth
+        )
+        #expect(limits == ValueFlowLimits.standard)
     }
 
     @Test("양수 예산과 제한된 호출 깊이를 허용한다")

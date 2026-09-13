@@ -23,27 +23,29 @@ struct DataflowCommand: ParsableCommand {
     @Argument(help: "The function or method to analyze, by name, qualified name or USR.")
     var subject: String
 
-    @Option(name: .customLong("max-contexts"), help: "Maximum call contexts to retain (default: 512).")
-    var maxContexts: Int = 512
+    // 기본값은 ValueFlowLimits.standard 하나가 근원이다. 여기에 숫자를 또 적으면
+    // 구현이 바뀔 때 도움말과 한도가 갈라진다.
+    @Option(name: .customLong("max-contexts"), help: "Maximum call contexts to retain (default: \(ValueFlowLimits.standard.contexts)).")
+    var maxContexts: Int?
 
-    @Option(name: .customLong("max-iterations"), help: "Maximum fixed-point iterations (default: 10000).")
-    var maxIterations: Int = 10_000
+    @Option(name: .customLong("max-iterations"), help: "Maximum fixed-point iterations (default: \(ValueFlowLimits.standard.iterations)).")
+    var maxIterations: Int?
 
-    @Option(name: .customLong("max-values"), help: "Maximum values retained per node (default: 32).")
-    var maxValues: Int = 32
+    @Option(name: .customLong("max-values"), help: "Maximum values retained per node (default: \(ValueFlowLimits.standard.valuesPerNode)).")
+    var maxValues: Int?
 
-    @Option(name: .customLong("max-heap-cells"), help: "Maximum heap cells retained (default: 10000).")
-    var maxHeapCells: Int = 10_000
+    @Option(name: .customLong("max-heap-cells"), help: "Maximum heap cells retained (default: \(ValueFlowLimits.standard.heapCells)).")
+    var maxHeapCells: Int?
 
-    @Option(name: .customLong("call-depth"), help: "Call-string depth from 1 through 8 (default: 2).")
-    var callDepth: Int = 2
+    @Option(name: .customLong("call-depth"), help: "Call-string depth from 1 through 8 (default: \(ValueFlowLimits.standard.callStringDepth)).")
+    var callDepth: Int?
 
     func validate() throws {
-        guard maxContexts > 0 else { throw ValidationError("--max-contexts must be positive") }
-        guard maxIterations > 0 else { throw ValidationError("--max-iterations must be positive") }
-        guard maxValues > 0 else { throw ValidationError("--max-values must be positive") }
-        guard maxHeapCells > 0 else { throw ValidationError("--max-heap-cells must be positive") }
-        guard (1...8).contains(callDepth) else {
+        guard maxContexts.map({ $0 > 0 }) ?? true else { throw ValidationError("--max-contexts must be positive") }
+        guard maxIterations.map({ $0 > 0 }) ?? true else { throw ValidationError("--max-iterations must be positive") }
+        guard maxValues.map({ $0 > 0 }) ?? true else { throw ValidationError("--max-values must be positive") }
+        guard maxHeapCells.map({ $0 > 0 }) ?? true else { throw ValidationError("--max-heap-cells must be positive") }
+        guard callDepth.map({ (1...8).contains($0) }) ?? true else {
             throw ValidationError("--call-depth must be between 1 and 8")
         }
         guard options.level == nil else {
@@ -72,7 +74,7 @@ struct DataflowCommand: ParsableCommand {
         try CommandSupport.emit(
             try context.service.dataflow(
                 symbol: subject,
-                limits: ValueFlowLimits(
+                limits: ValueFlowLimits.resolved(
                     contexts: maxContexts,
                     iterations: maxIterations,
                     valuesPerNode: maxValues,

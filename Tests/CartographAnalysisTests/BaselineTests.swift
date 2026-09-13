@@ -1,4 +1,4 @@
-import CartographAnalysis
+@testable import CartographAnalysis
 import CartographCore
 import CartographTestSupport
 import Testing

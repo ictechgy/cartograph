@@ -571,18 +571,9 @@ struct SkillCommand: ParsableCommand {
     func run() throws {
         let fileSystem = LocalFileSystem()
         let root = projectPath ?? fileSystem.currentDirectoryPath
-        let directory = (root as NSString).appendingPathComponent(AgentSkillTemplate.directory)
-        let path = (directory as NSString).appendingPathComponent(AgentSkillTemplate.fileName)
-
-        guard force || !fileSystem.fileExists(at: path) else {
-            throw ValidationError("\(path) already exists. Pass --force to overwrite it.")
-        }
-        do {
-            try fileSystem.write(text: AgentSkillTemplate.markdown + "\n", to: path)
-        } catch {
-            throw CartographError.outputUnwritable(path: path, underlying: "\(error)")
-        }
-        print("Wrote \(path)")
+        let path = ((root as NSString).appendingPathComponent(AgentSkillTemplate.directory)
+            as NSString).appendingPathComponent(AgentSkillTemplate.fileName)
+        try TemplateInstaller.install(AgentSkillTemplate.markdown + "\n", to: path, force: force, fileSystem: fileSystem)
     }
 }
 
@@ -602,15 +593,6 @@ struct InitCommand: ParsableCommand {
         let fileSystem = LocalFileSystem()
         let root = projectPath ?? fileSystem.currentDirectoryPath
         let path = (root as NSString).appendingPathComponent(Cartograph.defaultConfigurationFileName)
-
-        guard force || !fileSystem.fileExists(at: path) else {
-            throw ValidationError("\(path) already exists. Pass --force to overwrite it.")
-        }
-        do {
-            try fileSystem.write(text: ConfigurationTemplate.yaml + "\n", to: path)
-        } catch {
-            throw CartographError.outputUnwritable(path: path, underlying: "\(error)")
-        }
-        print("Wrote \(path)")
+        try TemplateInstaller.install(ConfigurationTemplate.yaml + "\n", to: path, force: force, fileSystem: fileSystem)
     }
 }

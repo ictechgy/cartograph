@@ -113,3 +113,28 @@ enum CommandSupport {
         (error as? CartographError)?.errorDescription ?? "\(error)"
     }
 }
+
+/// 정해진 자리에 템플릿 파일을 깐다.
+///
+/// `skill` 과 `init` 이 절차를 따로 두면 존재 확인 문구와 오류 감싸기가 두
+/// 벌로 갈라진다 — 실제로 그랬다. 새 하위 명령이 템플릿을 깔 일이 생기면
+/// 여기 하나만 고쳐진다.
+enum TemplateInstaller {
+    /// 내용을 쓰고 안내 줄을 출력한다. 덮어쓰기는 `--force` 를 요구한다.
+    static func install(
+        _ content: String,
+        to path: String,
+        force: Bool,
+        fileSystem: any FileSystem
+    ) throws {
+        guard force || !fileSystem.fileExists(at: path) else {
+            throw ValidationError("\(path) already exists. Pass --force to overwrite it.")
+        }
+        do {
+            try fileSystem.write(text: content, to: path)
+        } catch {
+            throw CartographError.outputUnwritable(path: path, underlying: "\(error)")
+        }
+        print("Wrote \(path)")
+    }
+}

@@ -17,6 +17,27 @@ public struct ValueFlowLimits: Equatable, Sendable, Codable {
         self.heapCells = max(1, heapCells)
         self.callStringDepth = max(1, callStringDepth)
     }
+
+    /// 기본 한도. CLI 도움말이 기본값을 여기서 인용한다 — 도움말 문장에 숫자를
+    /// 따로 적어 두면 구현이 바뀔 때 거짓말이 된다.
+    public static let standard = ValueFlowLimits()
+
+    /// 지정한 것만 기본값 위에 덮어쓴 한도.
+    ///
+    /// CLI 옵션이 자기 기본값을 따로 기억하면 한도의 근원이 두 곳이 된다 —
+    /// 구현의 기본값을 바꿔도 CLI 가 옛값을 계속 넘겨 서로 갈라진다.
+    public static func resolved(
+        contexts: Int? = nil, iterations: Int? = nil, valuesPerNode: Int? = nil,
+        heapCells: Int? = nil, callStringDepth: Int? = nil
+    ) -> ValueFlowLimits {
+        ValueFlowLimits(
+            contexts: contexts ?? standard.contexts,
+            iterations: iterations ?? standard.iterations,
+            valuesPerNode: valuesPerNode ?? standard.valuesPerNode,
+            heapCells: heapCells ?? standard.heapCells,
+            callStringDepth: callStringDepth ?? standard.callStringDepth
+        )
+    }
 }
 
 /// 문자열뿐 아니라 값 종류를 보존한다. 함수/객체 ID는 USR과 구별되는 분석 내부 식별자다.

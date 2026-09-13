@@ -1,4 +1,4 @@
-import CartographCore
+@testable import CartographCore
 import CartographTestSupport
 import Foundation
 import Testing
