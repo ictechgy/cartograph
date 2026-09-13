@@ -268,6 +268,52 @@ struct MachineReporterEscapingTests {
         #expect(output.contains("My%20Project"))
         #expect(output.contains("A%231.swift"))
     }
+
+    @Test("Xcode 형식은 제어 문자로 위조된 줄을 만들지 않는다")
+    func xcodeStripsControlCharacters() {
+        // 파일 이름에 개행이 들어오면 "warning:" 접두사가 없는 줄이 붙고,
+        // xcodebuild 로그를 파싱하는 소비자는 그것을 진단으로 믿는다.
+        let diagnostic = Diagnostic(
+            ruleIdentifier: "unused-symbol",
+            severity: .warning,
+            message: "unused \u{001B}[31mred\u{001B}[0m",
+            location: SourceLocation(path: "/repo/a\nerror: forged.c:1:1: fatal error.swift", line: 3, column: 1)
+        )
+        let output = XcodeDiagnosticReporter().report([diagnostic], summary: summary)
+        // 위조 줄이 생기지 않는다 — 진단 하나는 접두사가 붙은 한 줄로만 나간다.
+        #expect(output.split(separator: "\n").count == 1)
+        #expect(!output.unicodeScalars.contains("\u{001B}"))
+        #expect(output.hasPrefix("/repo/a"))
+    }
+
+    @Test("Checkstyle XML 은 무효한 제어 문자를 뺀다")
+    func checkstyleStripsInvalidControlCharacters() throws {
+        // XML 1.0 은 수직 탭 같은 제어 문자를 허용하지 않는다. 파일 이름 한 개가
+        // 리포트 전체를 무효로 하면 CI 게이트가 읽지 못한다.
+        let diagnostic = Diagnostic(
+            ruleIdentifier: "unused-symbol",
+            severity: .warning,
+            message: "unused \u{000B}line",
+            location: SourceLocation(path: "/repo/\u{000C}page.swift", line: 3, column: 1)
+        )
+        let output = try CheckstyleDiagnosticReporter().report([diagnostic], summary: summary)
+        #expect(!output.unicodeScalars.contains { $0.value < 0x20 && $0 != "\t" && $0 != "\n" && $0 != "\r" })
+        #expect(output.contains("page.swift"))
+    }
+
+    @Test("GitHub Actions 는 개행을 인코딩해 살리고 ESC 는 뺀다")
+    func githubActionsKeepsEncodedNewlineOnly() {
+        // 개행은 %0A 로 인코딩되는 형식의 일부다. 로그 스트림에 진짜 줄바꿈은 생기지 않는다.
+        let diagnostic = Diagnostic(
+            ruleIdentifier: "unused-symbol",
+            severity: .warning,
+            message: "unused\n::error::forged \u{001B}[31mred",
+            location: SourceLocation(path: "/repo/a.swift", line: 3, column: 1)
+        )
+        let output = GitHubActionsDiagnosticReporter().report([diagnostic], summary: summary)
+        #expect(output.split(separator: "\n").count == 1)
+        #expect(!output.unicodeScalars.contains("\u{001B}"))
+    }
 }
 
 @Suite("지표 JSON 의 억제 건수")

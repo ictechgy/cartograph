@@ -9,14 +9,19 @@ public struct XcodeDiagnosticReporter: DiagnosticReporting {
     public init() {}
 
     public func report(_ diagnostics: [Diagnostic], summary: ReportSummary) -> String {
+        // 경로와 메시지는 저장소 소유자가 통제하는 값이다. 줄바꿈 한 개면
+        // "warning:" 접두사가 없는 위조 로그 줄이 붙고, xcodebuild 로그를
+        // 파싱하는 소비자는 그것을 진단으로 믿는다.
         var lines = diagnostics.sorted().map { diagnostic -> String in
-            let prefix = diagnostic.location.map { "\($0.path):\($0.line):\($0.column): " } ?? ""
-            return "\(prefix)\(diagnostic.severity.rawValue): \(diagnostic.message) (\(diagnostic.ruleIdentifier))"
+            let prefix = diagnostic.location.map {
+                "\(PrintableText.printable($0.path)):\($0.line):\($0.column): "
+            } ?? ""
+            return "\(prefix)\(diagnostic.severity.rawValue): \(PrintableText.printable(diagnostic.message)) (\(PrintableText.printable(diagnostic.ruleIdentifier)))"
         }
         // 한계는 발견이 아니므로 위치도 규칙 식별자도 붙이지 않는다. `note:` 는 Xcode 가
         // 이슈로 세지 않는 단계라, 게이트의 종료 코드나 발견 수를 건드리지 않는다.
         // 식별자는 이미 문장의 접두사로 들어 있다.
-        lines += (summary.limitations ?? []).map { "note: \($0)" }
+        lines += (summary.limitations ?? []).map { "note: \(PrintableText.printable($0))" }
         return lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")
     }
 }
@@ -54,16 +59,12 @@ public struct GitHubActionsDiagnosticReporter: DiagnosticReporting {
         }
     }
 
-    /// 제어 문자(Cc)와 형식 문자(Cf)를 걸러 터미널과 로그 스푸핑을 방지한다.
+    /// 제어 문자(Cc)와 형식 문자(Cf)의 필터는 Core 의 규칙 하나를 쓴다.
     ///
-    /// 개행과 복귀 문자는 워크플로 명령 이스케이프(%0A, %0D)로 변환할 대상이므로 유지하고,
-    /// ANSI ESC 시퀀스(\u{001B})나 양방향 재정의(U+202E) 등 악성 입력이 유발할 수 있는
-    /// 화면 조작 문자는 제거한다.
+    /// 워크플로 명령은 개행을 `%0A` 로 인코딩할 수 있는 형식이라 개행만은 살려
+    /// 둔다. 인코딩 뒤에는 로그 스트림에 진짜 줄바꿈이 생기지 않는다.
     private func sanitize(_ text: String) -> String {
-        String(String.UnicodeScalarView(text.unicodeScalars.filter { scalar in
-            if scalar == "\r" || scalar == "\n" || scalar == "\t" { return true }
-            return scalar.properties.generalCategory != .control && scalar.properties.generalCategory != .format
-        }))
+        PrintableText.printable(text, keepingLineBreaks: true)
     }
 
     /// 메시지 본문에 필요한 이스케이프. 퍼센트를 먼저 바꿔야 이중 인코딩을 피한다.

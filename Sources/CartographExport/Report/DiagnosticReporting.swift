@@ -57,11 +57,16 @@ public enum DiagnosticReporterFactory {
 }
 
 /// XML 특수문자 이스케이프. Checkstyle 리포터가 쓴다.
+///
+/// 개행과 탭은 XML 1.0 이 허용하는 제어 문자라 엔티티로 살릴 수 없고, 그 밖의
+/// 제어·형식 문자는 문서를 무효로 만든다. 숫자 문자 참조로도 되살릴 수 없는
+/// 것들은 아예 뺀다 — 파일 이름 한 개가 CI 게이트가 읽는 리포트 전체를 깨는
+/// 일이 없어야 한다.
 enum XMLEscaping {
     static func escape(_ value: String) -> String {
         var result = ""
         result.reserveCapacity(value.count)
-        for character in value {
+        for character in PrintableText.printable(value) {
             switch character {
             case "&": result += "&amp;"
             case "<": result += "&lt;"
