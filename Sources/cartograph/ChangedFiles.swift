@@ -68,7 +68,15 @@ enum ChangedFiles {
     ) throws -> [String] {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["-C", workingDirectory] + arguments
+        // 분석 대상 저장소의 .git 이 공격자가 고른 것일 수 있다(템플릿 배포처럼
+        // .git 이 통째로 오는 저장소). fsmonitor 는 인덱스 갱신 시 저장소가
+        // 정의한 명령을 실행하므로 꺼서 읽기만 한다. --no-optional-locks 는
+        // 부수적 인덱스 갱신이 분석 대상 저장소에 자물쇠를 채우지 않게 한다.
+        process.arguments = [
+            "--no-optional-locks",
+            "-c", "core.fsmonitor=false",
+            "-C", workingDirectory,
+        ] + arguments
         let output = Pipe()
         let errors = Pipe()
         process.standardOutput = output
