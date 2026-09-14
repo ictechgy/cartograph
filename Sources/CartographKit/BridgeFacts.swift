@@ -214,6 +214,14 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
             limitationScopes = nil
         }
         var allLimitations = messages + extraLimitations
+        if includeExecution {
+            let incomplete = self.facts.filter { $0.handlerScope?.complete == false }.count
+            if incomplete > 0 {
+                allLimitations.append(
+                    "incomplete-message-handler-scopes: \(incomplete) handler scopes have missing, stale, ambiguous, or bounded dependency evidence"
+                )
+            }
+        }
         if executionTruncated {
             allLimitations.append(
                 "message-handler-dependencies-truncated: dependency evidence exceeded the documented budget; "
@@ -437,24 +445,52 @@ struct BridgeSymbolResolver {
         self.freshPaths = Set(freshPaths.map(Self.canonical))
     }
 
-    func resolve(_ scanned: [ScannedBridgeFact]) -> [BridgeFact] {
+    func resolve(
+        _ scanned: [ScannedBridgeFact],
+        handlerScopes: [ScannedBridgeHandlerScopes] = []
+    ) -> [BridgeFact] {
+        var dependencyBudget = 1_000_000
+        return resolve(scanned, handlerScopes: handlerScopes, dependencyBudget: &dependencyBudget)
+    }
+
+    /// 파일을 나누어 스캔해도 문서 전체의 생성 예산을 공유한다.
+    func resolve(
+        _ scanned: [ScannedBridgeFact],
+        handlerScopes: [ScannedBridgeHandlerScopes],
+        dependencyBudget: inout Int
+    ) -> [BridgeFact] {
         let messageEntries = Dictionary(grouping: scanned.compactMap { item -> (String, BridgeFact.HandlerScope?)? in
             guard item.fact.kind == .messageHandle, let declaration = item.declaration else { return nil }
             return (Self.declarationKey(declaration), item.fact.handlerScope)
         }, by: \.0).mapValues { $0.map(\.1) }
-        let scopedEntries = scanned.flatMap { item -> [(String, BridgeFact.HandlerScope)] in
-            guard let declaration = item.declaration else { return [] }
-            return item.handlerScopes.map { (Self.declarationKey(declaration), $0) }
+        var scopedEntriesByDeclaration: [String: [BridgeFact.HandlerScope]] = Dictionary(
+            uniqueKeysWithValues: handlerScopes.map {
+                (Self.declarationKey($0.declaration), $0.scopes)
+            }
+        )
+        if handlerScopes.isEmpty {
+            for item in scanned {
+                guard let declaration = item.declaration else { continue }
+                let key = Self.declarationKey(declaration)
+                if scopedEntriesByDeclaration[key] == nil { scopedEntriesByDeclaration[key] = item.handlerScopes }
+            }
         }
-        let scopesByDeclaration = Dictionary(grouping: scopedEntries, by: \.0).mapValues { entries in
-            Set(entries.map(\.1)).sorted { $0.start != $1.start ? $0.start < $1.start : $0.end < $1.end }
+        let scopesByDeclaration = scopedEntriesByDeclaration.mapValues { scopes in
+            Set(scopes).sorted { $0.start != $1.start ? $0.start < $1.start : $0.end < $1.end }
         }
         let scopeValidity = Dictionary(uniqueKeysWithValues: messageEntries.map { key, values in
             let scopes = scopesByDeclaration[key] ?? []
             return (key, !values.contains(where: { $0 == nil }) && !Self.hasOverlappingScopes(scopes))
         })
+        var evidenceByDeclaration: [String: ClassifiedReferences] = [:]
+        var dispatchCache: [String: DispatchResult] = [:]
         return scanned.map { entry in
-            guard let declaration = entry.declaration else { return entry.fact }
+            guard let declaration = entry.declaration else {
+                guard entry.fact.kind == .messageHandle, let scope = entry.fact.handlerScope else { return entry.fact }
+                return entry.fact.attachingExecution(
+                    handlerScope: .init(start: scope.start, end: scope.end, complete: false), dependencies: []
+                )
+            }
             let candidates = symbolsByPath[Self.canonical(entry.fact.location.path)] ?? []
             if entry.fact.sourceLanguage == .objectiveC {
                 // 이름이나 가장 가까운 줄로 추측하지 않는다. Clang 정의 위치가 유일할 때만 USR 을 붙인다.
@@ -481,10 +517,17 @@ struct BridgeSymbolResolver {
                     handlerScope: .init(start: scope.start, end: scope.end, complete: false), dependencies: []
                 )
             }
+            let declarationKey = Self.declarationKey(declaration)
+            let ownerKey = usr + "\u{0}" + declarationKey
+            let evidence = evidenceByDeclaration[ownerKey] ?? classifyReferences(
+                setupUSR: usr, declaration: declaration, allScopes: scopesByDeclaration[declarationKey] ?? []
+            )
+            evidenceByDeclaration[ownerKey] = evidence
             let dependencies = executionDependencies(
-                declaration: declaration, setupUSR: usr, scope: scope,
-                allScopes: scopesByDeclaration[Self.declarationKey(declaration)] ?? [],
-                allScopesComplete: scopeValidity[Self.declarationKey(declaration)] ?? false
+                declaration: declaration, scope: scope,
+                evidence: evidence,
+                allScopesComplete: scopeValidity[declarationKey] ?? false,
+                dispatchCache: &dispatchCache, dependencyBudget: &dependencyBudget
             )
             return resolved.attachingExecution(
                 handlerScope: .init(start: scope.start, end: scope.end, complete: dependencies.complete),
@@ -498,52 +541,116 @@ struct BridgeSymbolResolver {
         let complete: Bool
     }
 
+    private struct ClassifiedReferences {
+        let registration: [IndexedReference]
+        let handler: [BridgeFact.HandlerScope: [IndexedReference]]
+        let complete: Bool
+        let registrationComplete: Bool
+        let incompleteHandlers: Set<BridgeFact.HandlerScope>
+    }
+
+    private struct DispatchResult {
+        let targets: [BridgeFact.Symbol]
+        let complete: Bool
+    }
+
+    private func classifyReferences(
+        setupUSR: String,
+        declaration: EnclosingDeclaration,
+        allScopes: [BridgeFact.HandlerScope]
+    ) -> ClassifiedReferences {
+        var complete = true
+        var registration: [IndexedReference] = []
+        var handler: [BridgeFact.HandlerScope: [IndexedReference]] = [:]
+        var registrationComplete = true
+        var incompleteHandlers: Set<BridgeFact.HandlerScope> = []
+        for reference in referencesBySource[setupUSR, default: []]
+        where reference.kind == .call || reference.kind == .reference {
+            guard reference.targetKind != .parameter else { continue }
+            guard let location = reference.location else {
+                let isKnownNonExecutableTarget = uniqueSymbol(for: reference.targetUSR).map {
+                    $0.isExternal || $0.kind == .parameter
+                } == true
+                if !isKnownNonExecutableTarget { complete = false }
+                continue
+            }
+            if let start = declaration.start, let end = declaration.end,
+               !Self.contains(location, start: start, end: end) { continue }
+            let scope = Self.containingScope(location, in: allScopes)
+            guard let target = uniqueSymbol(for: reference.targetUSR) else {
+                if let scope { incompleteHandlers.insert(scope) } else { registrationComplete = false }
+                continue
+            }
+            guard !target.isExternal, target.kind != .parameter else { continue }
+            if let scope {
+                handler[scope, default: []].append(reference)
+            } else {
+                registration.append(reference)
+            }
+        }
+        return ClassifiedReferences(registration: registration, handler: handler, complete: complete,
+            registrationComplete: registrationComplete, incompleteHandlers: incompleteHandlers)
+    }
+
     private func executionDependencies(
         declaration: EnclosingDeclaration,
-        setupUSR: String,
         scope: BridgeFact.HandlerScope,
-        allScopes: [BridgeFact.HandlerScope],
-        allScopesComplete: Bool
+        evidence: ClassifiedReferences,
+        allScopesComplete: Bool,
+        dispatchCache: inout [String: DispatchResult],
+        dependencyBudget: inout Int
     ) -> DependencyResult {
         let declarationStart = declaration.start
         let declarationEnd = declaration.end
-        var complete = allScopesComplete && declarationStart != nil && declarationEnd != nil
+        var complete = evidence.complete && evidence.registrationComplete && !evidence.incompleteHandlers.contains(scope)
+            && allScopesComplete && declarationStart != nil && declarationEnd != nil
             && freshPaths.contains(Self.canonical(scope.start.path))
         var values: Set<BridgeFact.Dependency> = []
-        for reference in referencesBySource[setupUSR, default: []] {
-            guard reference.kind == .call || reference.kind == .reference else { continue }
-            guard reference.targetKind != .parameter else { continue }
-            guard let location = reference.location else {
-                if uniqueSymbol(for: reference.targetUSR).map({ !$0.isExternal && $0.kind != .parameter }) == true {
-                    complete = false
-                }
-                continue
+        dependencies: for (references, dependencyScope) in [
+            (evidence.handler[scope, default: []], BridgeFact.Dependency.Scope.handler),
+            (evidence.registration, BridgeFact.Dependency.Scope.registration),
+        ] {
+          for reference in references {
+            if values.count >= 10_000 || dependencyBudget == 0 {
+                complete = false
+                break dependencies
             }
-            if let declarationStart, let declarationEnd,
-               !Self.contains(location, start: declarationStart, end: declarationEnd) { continue }
-            let dependencyScope: BridgeFact.Dependency.Scope?
-            if Self.contains(location, start: scope.start, end: scope.end) {
-                dependencyScope = .handler
-            } else if !allScopes.contains(where: { Self.contains(location, start: $0.start, end: $0.end) }) {
-                dependencyScope = .registration
-            } else {
-                continue
-            }
-            guard let dependencyScope,
-                  let target = uniqueSymbol(for: reference.targetUSR)
-            else {
+            guard let target = uniqueSymbol(for: reference.targetUSR) else {
                 complete = false
                 continue
             }
             guard !target.isExternal, target.kind != .parameter else { continue }
-            let dispatchTargets = dispatchTargets(for: target.usr, complete: &complete)
-            values.insert(BridgeFact.Dependency(
+            guard let location = reference.location else {
+                complete = false
+                continue
+            }
+            let dispatch: DispatchResult
+            if let cached = dispatchCache[target.usr] {
+                dispatch = cached
+            } else {
+                var dispatchComplete = true
+                let targets = dispatchTargets(for: target.usr, complete: &dispatchComplete)
+                dispatch = DispatchResult(targets: targets, complete: dispatchComplete)
+                dispatchCache[target.usr] = dispatch
+            }
+            complete = complete && dispatch.complete
+            let dependency = BridgeFact.Dependency(
                 kind: reference.kind,
                 scope: dependencyScope,
                 location: location,
                 symbol: BridgeFact.Symbol(qualifiedName: Self.contractName(of: target), usr: target.usr),
-                dispatchTargets: dispatchTargets
-            ))
+                dispatchTargets: dispatch.targets
+            )
+            if !values.contains(dependency) {
+                let cost = 1 + dependency.dispatchTargets.count
+                guard dependencyBudget >= cost else {
+                    complete = false
+                    break dependencies
+                }
+                dependencyBudget -= cost
+                values.insert(dependency)
+            }
+          }
         }
         return DependencyResult(values: values.sorted(by: Self.dependencyOrder), complete: complete)
     }
@@ -583,7 +690,12 @@ struct BridgeSymbolResolver {
     }
 
     private static func declarationKey(_ declaration: EnclosingDeclaration) -> String {
-        "\(declaration.qualifiedName)#\(declaration.line)"
+        guard let start = declaration.start, let end = declaration.end else {
+            return "\(declaration.qualifiedName)#\(declaration.line)"
+        }
+        // 같은 이름과 줄을 공유하는 overload/파일의 선언을 하나로 합치지 않는다.
+        // 범위는 스캐너가 실제 구문에서 얻은 식별자이며, 이름 추측이 아니다.
+        return "\(Self.canonical(start.path))#\(start.line):\(start.column)-\(end.line):\(end.column)"
     }
 
     private static func hasOverlappingScopes(_ scopes: [BridgeFact.HandlerScope]) -> Bool {
@@ -592,6 +704,22 @@ struct BridgeSymbolResolver {
             return true
         }
         return false
+    }
+
+    private static func containingScope(
+        _ location: SourceLocation, in scopes: [BridgeFact.HandlerScope]
+    ) -> BridgeFact.HandlerScope? {
+        var low = 0
+        var high = scopes.count
+        while low < high {
+            let middle = (low + high) / 2
+            let start = scopes[middle].start
+            if (start.line, start.column) <= (location.line, location.column) { low = middle + 1 } else { high = middle }
+        }
+        let candidate = max(0, low - 1)
+        guard candidate < scopes.count else { return nil }
+        let scope = scopes[candidate]
+        return contains(location, start: scope.start, end: scope.end) ? scope : nil
     }
 
     private static func dependencyOrder(

@@ -187,6 +187,27 @@ struct BridgeFactScannerTests {
         #expect(facts(source, of: .channelRegister).allSatisfy { $0.isDynamic })
     }
 
+    @Test("많은 핸들러의 범위는 사실마다 복사하지 않고 선언별로 보존한다")
+    func storesHandlerScopesOncePerDeclaration() {
+        let registrations = (0..<100).map { index in
+            "let channel\(index) = BasicMessageChannel<Any?>(name: \"channel\(index)\", binaryMessenger: messenger)\n"
+                + "channel\(index).setMessageHandler { _, _ in reply(\(index)) }"
+        }.joined(separator: "\n")
+        let split = registrations.split(separator: "\n", omittingEmptySubsequences: true)
+        let first = split.prefix(100)
+        let second = split.dropFirst(100)
+        let result = BridgeFactScanner().scan(
+            source: "func install() {\n\(first.joined(separator: "\n"))\n}\n"
+                + "func installSecond() {\n\(second.joined(separator: "\n"))\n}",
+            path: "/p/Plugin.swift", messages: true
+        )
+
+        #expect(result.facts.count == 100)
+        #expect(result.handlerScopes.count == 2)
+        #expect(result.handlerScopes.map(\.scopes.count) == [50, 50])
+        #expect(result.facts.allSatisfy { $0.handlerScopes.isEmpty })
+    }
+
     @Test("채널을 만들기만 한 것은 사실이 아니다")
     func creationAloneIsNotAFact() {
         let source = """

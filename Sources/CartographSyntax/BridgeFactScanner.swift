@@ -23,8 +23,16 @@ public struct ScannedBridgeFact: Hashable, Sendable {
         self.handlerScopes = handlerScopes
     }
 
-    func attaching(handlerScopes: [BridgeFact.HandlerScope]) -> ScannedBridgeFact {
-        ScannedBridgeFact(fact: fact, declaration: declaration, handlerScopes: handlerScopes)
+}
+
+/// 한 선언에 속한 모든 Flutter handler closure 범위.
+public struct ScannedBridgeHandlerScopes: Hashable, Sendable {
+    public let declaration: EnclosingDeclaration
+    public let scopes: [BridgeFact.HandlerScope]
+
+    public init(declaration: EnclosingDeclaration, scopes: [BridgeFact.HandlerScope]) {
+        self.declaration = declaration
+        self.scopes = scopes
     }
 }
 
@@ -64,6 +72,8 @@ public struct EnclosingDeclaration: Hashable, Sendable {
 /// 파일 하나를 훑은 결과. 사실과, 사실로 만들지 못해 세기만 한 것.
 public struct BridgeScanResult: Sendable, Equatable {
     public let facts: [ScannedBridgeFact]
+    /// fact마다 복사하지 않고 declaration별로 한 번만 보존한 handler 범위.
+    public let handlerScopes: [ScannedBridgeHandlerScopes]
     /// `FlutterEventChannel(name:)` 생성 수. 스트림 브리지는 이 형식의 대상이 아니라 세기만 한다.
     ///
     /// 세지 않으면 이벤트 채널만 쓰는 플러그인이 "브리지 없음" 으로 읽힌다.
@@ -76,8 +86,12 @@ public struct BridgeScanResult: Sendable, Equatable {
     /// 등록 채널은 알지만 본문을 읽지 못한 핸들러. nil 이 하나라도 있으면 채널 상한을 모른다.
     public let opaqueHandlerChannels: [String?]
 
-    public init(facts: [ScannedBridgeFact], unscannedEventChannels: Int = 0, unscannedMessageChannels: Int = 0, opaqueHandlerChannels: [String?] = []) {
+    public init(
+        facts: [ScannedBridgeFact], handlerScopes: [ScannedBridgeHandlerScopes] = [],
+        unscannedEventChannels: Int = 0, unscannedMessageChannels: Int = 0, opaqueHandlerChannels: [String?] = []
+    ) {
         self.facts = facts
+        self.handlerScopes = handlerScopes
         self.unscannedEventChannels = unscannedEventChannels
         self.unscannedMessageChannels = unscannedMessageChannels
         self.opaqueHandlerChannels = opaqueHandlerChannels
@@ -112,12 +126,19 @@ public struct BridgeFactScanner: Sendable {
 
         let collector = BridgeFactCollector(converter: converter, bindings: bindings, path: path, messages: messages)
         collector.walk(tree)
-        let facts = collector.facts.map { entry in
-            guard let declaration = entry.declaration else { return entry }
-            return entry.attaching(handlerScopes: collector.handlerScopes(for: declaration))
+        let handlerScopes = collector.handlerScopesByDeclaration.map { key, scopes in
+            ScannedBridgeHandlerScopes(declaration: collector.declaration(for: key), scopes: scopes)
+        }.sorted {
+            let left = $0.declaration
+            let right = $1.declaration
+            let leftKey = [left.qualifiedName, String(left.line), left.start?.description ?? "", left.end?.description ?? ""]
+                + $0.scopes.map { "\($0.start):\($0.end)" }
+            let rightKey = [right.qualifiedName, String(right.line), right.start?.description ?? "", right.end?.description ?? ""]
+                + $1.scopes.map { "\($0.start):\($0.end)" }
+            return leftKey.joined(separator: "\u{0}") < rightKey.joined(separator: "\u{0}")
         }
         return BridgeScanResult(
-            facts: facts.sorted { $0.fact < $1.fact },
+            facts: collector.facts.sorted { $0.fact < $1.fact }, handlerScopes: handlerScopes,
             unscannedEventChannels: bindings.eventChannelCount,
             unscannedMessageChannels: bindings.messageChannelCount,
             opaqueHandlerChannels: collector.opaqueHandlerChannels
@@ -689,7 +710,8 @@ final class BridgeFactCollector: SyntaxVisitor {
     private(set) var opaqueHandlerChannels: [String?] = []
     /// Flutter 가 Swift 쪽에 제공하는 채널 타입 이름.
     private(set) var facts: [ScannedBridgeFact] = []
-    private var handlerScopesByDeclaration: [String: [BridgeFact.HandlerScope]] = [:]
+    private(set) var handlerScopesByDeclaration: [String: [BridgeFact.HandlerScope]] = [:]
+    private var declarationsByKey: [String: EnclosingDeclaration] = [:]
     private let converter: SourceLocationConverter
     private let bindings: BindingCollector
     private let path: String
@@ -974,17 +996,22 @@ final class BridgeFactCollector: SyntaxVisitor {
         )
     }
 
-    func handlerScopes(for declaration: EnclosingDeclaration) -> [BridgeFact.HandlerScope] {
-        handlerScopesByDeclaration[Self.declarationKey(declaration), default: []]
+    func declaration(for key: String) -> EnclosingDeclaration {
+        declarationsByKey[key]!
     }
 
     private static func declarationKey(_ declaration: EnclosingDeclaration) -> String {
-        "\(declaration.qualifiedName)#\(declaration.line)"
+        guard let start = declaration.start, let end = declaration.end else {
+            return "\(declaration.qualifiedName)#\(declaration.line)"
+        }
+        return "\(start.path)#\(start.line):\(start.column)-\(end.line):\(end.column)"
     }
 
     private func recordHandlerScope(_ closure: ClosureExprSyntax?) {
         guard let scope = handlerScope(of: closure), let declaration = declarations.last else { return }
-        handlerScopesByDeclaration[Self.declarationKey(declaration), default: []].append(scope)
+        let key = Self.declarationKey(declaration)
+        declarationsByKey[key] = declaration
+        handlerScopesByDeclaration[key, default: []].append(scope)
     }
 
     override func visit(_ node: SwitchCaseSyntax) -> SyntaxVisitorContinueKind {

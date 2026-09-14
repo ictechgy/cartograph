@@ -898,6 +898,7 @@ public struct CartographService: Sendable {
         sourceAt: (String) -> String?
     ) -> (facts: [BridgeFact], opaqueHandlerChannels: [String?], unscannedEventChannels: Int, unscannedMessageChannels: Int) {
         var facts: [BridgeFact] = []
+        var dependencyBudget = 1_000_000
         var opaqueHandlerChannels: [String?] = []
         var unscannedEventChannels = 0
         var unscannedMessageChannels = 0
@@ -908,7 +909,7 @@ public struct CartographService: Sendable {
                 let scanned = resolvedValues.isEmpty
                     ? BridgeFactScanner().scan(source: source, path: scanPath, messages: messages)
                     : BridgeFactScanner().scan(source: source, path: scanPath, resolvedValues: resolvedValues, messages: messages)
-                facts += resolver.resolve(scanned.facts)
+                facts += resolver.resolve(scanned.facts, handlerScopes: scanned.handlerScopes, dependencyBudget: &dependencyBudget)
                 opaqueHandlerChannels += scanned.opaqueHandlerChannels
                 unscannedEventChannels += scanned.unscannedEventChannels
                 unscannedMessageChannels += scanned.unscannedMessageChannels

@@ -7,6 +7,108 @@ import Testing
 
 @Suite("브리지 사실 문서")
 struct BridgeFactsTests {
+    @Test("실제 구문으로 얻은 1000 handler가 자기 참조만 보존한다")
+    func classifiesLargeSharedSetupWithoutCrossContamination() {
+        let registrations = (0..<1000).map { index in
+            "let c\(index) = FlutterBasicMessageChannel(name: \"c\(index)\", binaryMessenger: messenger)\n"
+                + "c\(index).setMessageHandler { _, _ in helper() }"
+        }.joined(separator: "\n")
+        let scanned = BridgeFactScanner().scan(
+            source: "func install() {\n\(registrations)\n}\nfunc helper() {}\n",
+            path: "/tmp/large.swift", messages: true
+        )
+        let declaration = scanned.handlerScopes[0].declaration
+        let scopes = scanned.handlerScopes[0].scopes
+        let snapshot = IndexSnapshot(symbols: [
+            IndexedSymbol(usr: "s:setup", name: "install()", kind: .function, module: "P",
+                location: .init(path: "/tmp/large.swift", line: 1, column: 6)),
+            IndexedSymbol(usr: "s:helper", name: "helper()", kind: .function, module: "P",
+                location: .init(path: "/tmp/large.swift", line: declaration.end!.line + 1, column: 6)),
+        ], references: scopes.map { scope in
+            IndexedReference(sourceUSR: "s:setup", targetUSR: "s:helper", kind: .call,
+                location: .init(path: scope.end.path, line: scope.end.line, column: scope.end.column - 9))
+        })
+        let result = BridgeSymbolResolver(snapshot: snapshot, freshPaths: ["/tmp/large.swift"])
+            .resolve(scanned.facts, handlerScopes: scanned.handlerScopes)
+        #expect(result.count == 1000)
+        #expect(result.allSatisfy { $0.handlerScope?.complete == true && $0.dependencies?.count == 1 })
+        #expect(result.allSatisfy { $0.dependencies?.first?.scope == .handler })
+        #expect(Set(result.compactMap { $0.dependencies?.first?.location }).count == 1000)
+    }
+
+    @Test("감싸는 선언이 없는 Basic callback도 소비 가능한 불완전 근거를 낸다")
+    func topLevelMessageKeepsPairedExecutionEvidence() {
+        let scanned = BridgeFactScanner().scan(source: """
+            let channel = FlutterBasicMessageChannel(name: "top", binaryMessenger: messenger)
+            channel.setMessageHandler { _, reply in reply(nil) }
+            """, path: "/tmp/main.swift", messages: true)
+        let facts = BridgeSymbolResolver(snapshot: IndexSnapshot()).resolve(
+            scanned.facts, handlerScopes: scanned.handlerScopes
+        )
+        #expect(facts.count == 1)
+        #expect(facts.first?.handlerScope?.complete == false)
+        #expect(facts.first?.dependencies?.isEmpty == true)
+    }
+
+    @Test("두 번째 handler 시작 위치의 참조가 다른 handler의 등록 의존으로 새지 않는다")
+    func referenceAtHandlerStartStaysInThatHandler() {
+        let fixture = scopedFixture(referenceLines: [10], referenceColumn: 10)
+        let result = fixture.resolver.resolve(fixture.facts, handlerScopes: fixture.scopes)
+        #expect(result[0].dependencies?.isEmpty == true)
+        #expect(result[1].dependencies?.map(\.scope) == [.handler])
+        #expect(result.allSatisfy { $0.handlerScope?.complete == true })
+    }
+
+    @Test("생성 예산은 dispatch 비용과 다음 파일에 걸쳐 유지되고 부분 근거를 알린다")
+    func generationBudgetIncludesDispatchAndSubsequentFiles() {
+        let fixture = scopedFixture(referenceLines: [4, 10], referenceColumn: 11)
+        var budget = 3
+        let result = fixture.resolver.resolve(fixture.facts, handlerScopes: fixture.scopes, dependencyBudget: &budget)
+        #expect(result[0].dependencies?.count == 1)
+        #expect(result[0].dependencies?.first?.dispatchTargets.count == 1)
+        #expect(result[0].handlerScope?.complete == true)
+        #expect(result[1].dependencies?.isEmpty == true)
+        #expect(result[1].handlerScope?.complete == false)
+        #expect(budget == 1)
+        let next = fixture.resolver.resolve(fixture.facts, handlerScopes: fixture.scopes, dependencyBudget: &budget)
+        #expect(next.allSatisfy { $0.dependencies?.isEmpty == true && $0.handlerScope?.complete == false })
+        let document = BridgeFactsDocument(
+            tool: .init(name: "cartograph", version: "test"), generatedAt: "2026-09-14T00:00:00Z",
+            project: "/", facts: result, version: 2, transport: "basic-message-channel"
+        )
+        #expect(document.limitations.contains { $0.hasPrefix("incomplete-message-handler-scopes:") })
+    }
+
+    private func scopedFixture(referenceLines: [Int], referenceColumn: Int) -> (
+        resolver: BridgeSymbolResolver, facts: [ScannedBridgeFact], scopes: [ScannedBridgeHandlerScopes]
+    ) {
+        let declaration = EnclosingDeclaration(
+            name: "install", indexName: "install()", qualifiedName: "P.install", line: 1,
+            start: .init(path: "/tmp", line: 1, column: 1), end: .init(path: "/tmp", line: 20, column: 1)
+        )
+        let scopes = [4, 10].map { line in BridgeFact.HandlerScope(
+            start: .init(path: "/tmp", line: line, column: 10),
+            end: .init(path: "/tmp", line: line + 2, column: 1), complete: false
+        ) }
+        let facts = scopes.enumerated().map { index, scope in ScannedBridgeFact(
+            fact: BridgeFact(kind: .messageHandle, target: .flutter, channel: "channel\(index)",
+                handlerScope: scope, location: scope.start), declaration: declaration
+        ) }
+        let snapshot = IndexSnapshot(symbols: [
+            IndexedSymbol(usr: "s:setup", name: "install()", kind: .function, module: "P",
+                location: .init(path: "/tmp", line: 1, column: 1)),
+            IndexedSymbol(usr: "s:helper", name: "helper()", kind: .function, module: "P",
+                location: .init(path: "/tmp", line: 22, column: 1)),
+            IndexedSymbol(usr: "s:implementation", name: "helper()", kind: .function, module: "Q",
+                location: .init(path: "/tmp", line: 24, column: 1)),
+        ], references: referenceLines.map { line in
+            IndexedReference(sourceUSR: "s:setup", targetUSR: "s:helper", kind: .call,
+                location: .init(path: "/tmp", line: line, column: referenceColumn))
+        } + [IndexedReference(sourceUSR: "s:implementation", targetUSR: "s:helper", kind: .overrides)])
+        return (BridgeSymbolResolver(snapshot: snapshot, freshPaths: ["/tmp"]), facts,
+            [ScannedBridgeHandlerScopes(declaration: declaration, scopes: scopes)])
+    }
+
     @Test("브리지 의존성 범위는 같은 파일의 tmp 표기 차이에도 line/column으로 맞춘다")
     func executionDependencyRangeIgnoresPathSpelling() throws {
         let scope = BridgeFact.HandlerScope(
@@ -46,6 +148,36 @@ struct BridgeFactsTests {
         #expect(resolved?.handlerScope?.complete == true)
         #expect(resolved?.dependencies?.count == 1)
         #expect(resolved?.dependencies?.first?.location.path == "/tmp")
+    }
+
+    @Test("위치 없는 내부 미해석 참조는 실행 근거를 불완전하게 만든다")
+    func unknownUnlocatedReferenceMakesExecutionEvidenceIncomplete() {
+        let scope = BridgeFact.HandlerScope(
+            start: .init(path: "/tmp", line: 4, column: 20),
+            end: .init(path: "/tmp", line: 5, column: 5), complete: false
+        )
+        let declaration = EnclosingDeclaration(
+            name: "install", indexName: "install()", qualifiedName: "P.install", line: 2,
+            start: .init(path: "/tmp", line: 2, column: 1), end: .init(path: "/tmp", line: 8, column: 1)
+        )
+        let fact = BridgeFact(
+            kind: .messageHandle, target: .flutter, channel: "c", handlerScope: scope,
+            location: .init(path: "/tmp", line: 4, column: 1)
+        )
+        let snapshot = IndexSnapshot(
+            symbols: [IndexedSymbol(
+                usr: "s:setup", name: "install()", kind: .function, module: "App",
+                location: .init(path: "/tmp", line: 2, column: 1)
+            )],
+            references: [IndexedReference(
+                sourceUSR: "s:setup", targetUSR: "s:missing", kind: .call, location: nil
+            )]
+        )
+
+        let resolved = BridgeSymbolResolver(snapshot: snapshot, freshPaths: ["/tmp"])
+            .resolve([ScannedBridgeFact(fact: fact, declaration: declaration)]).first
+        #expect(resolved?.handlerScope?.complete == false)
+        #expect(resolved?.dependencies?.isEmpty == true)
     }
 
     @Test("같은 setup의 method reference는 다른 inline closure를 complete로 만들지 않는다")
