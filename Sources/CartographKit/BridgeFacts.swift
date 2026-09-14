@@ -459,29 +459,47 @@ struct BridgeSymbolResolver {
         handlerScopes: [ScannedBridgeHandlerScopes],
         dependencyBudget: inout Int
     ) -> [BridgeFact] {
+        var canonicalPaths: [String: String] = [:]
+        func normalizedLocation(_ location: SourceLocation) -> SourceLocation {
+            let path = canonicalPaths[location.path] ?? Self.canonical(location.path)
+            canonicalPaths[location.path] = path
+            return SourceLocation(path: path, line: location.line, column: location.column)
+        }
+        func normalizedScope(_ scope: BridgeFact.HandlerScope) -> BridgeFact.HandlerScope {
+            .init(start: normalizedLocation(scope.start), end: normalizedLocation(scope.end), complete: false)
+        }
         let messageEntries = Dictionary(grouping: scanned.compactMap { item -> (String, BridgeFact.HandlerScope?)? in
             guard item.fact.kind == .messageHandle, let declaration = item.declaration else { return nil }
-            return (Self.declarationKey(declaration), item.fact.handlerScope)
+            return (Self.declarationKey(declaration), item.fact.handlerScope.map(normalizedScope))
         }, by: \.0).mapValues { $0.map(\.1) }
-        var scopedEntriesByDeclaration: [String: [BridgeFact.HandlerScope]] = Dictionary(
-            uniqueKeysWithValues: handlerScopes.map {
-                (Self.declarationKey($0.declaration), $0.scopes)
-            }
-        )
+        var scopedEntriesByDeclaration: [String: [BridgeFact.HandlerScope]] = [:]
+        for entry in handlerScopes {
+            scopedEntriesByDeclaration[Self.declarationKey(entry.declaration), default: []]
+                .append(contentsOf: entry.scopes.map(normalizedScope))
+        }
         if handlerScopes.isEmpty {
             for item in scanned {
                 guard let declaration = item.declaration else { continue }
                 let key = Self.declarationKey(declaration)
-                if scopedEntriesByDeclaration[key] == nil { scopedEntriesByDeclaration[key] = item.handlerScopes }
+                scopedEntriesByDeclaration[key, default: []].append(contentsOf: item.handlerScopes.map(normalizedScope))
             }
         }
-        let scopesByDeclaration = scopedEntriesByDeclaration.mapValues { scopes in
+        var scopesByDeclaration = scopedEntriesByDeclaration.mapValues { scopes in
             Set(scopes).sorted { $0.start != $1.start ? $0.start < $1.start : $0.end < $1.end }
         }
         let scopeValidity = Dictionary(uniqueKeysWithValues: messageEntries.map { key, values in
             let scopes = scopesByDeclaration[key] ?? []
-            return (key, !values.contains(where: { $0 == nil }) && !Self.hasOverlappingScopes(scopes))
+            let declared = Set(scopes)
+            return (key, !declared.isEmpty && values.allSatisfy { scope in
+                scope.map { declared.contains($0) } == true
+            } && !Self.hasOverlappingScopes(scopes))
         })
+        // 전체 목록이 없어도 관찰한 closure 내부 참조를 공통 등록 의존으로 바꾸지 않는다.
+        // 이 보충은 귀속만 보존하며 위에서 확인하지 못한 완전성을 올리지 않는다.
+        for (key, values) in messageEntries {
+            scopesByDeclaration[key] = Set((scopesByDeclaration[key] ?? []) + values.compactMap { $0 })
+                .sorted { $0.start != $1.start ? $0.start < $1.start : $0.end < $1.end }
+        }
         var evidenceByDeclaration: [String: ClassifiedReferences] = [:]
         var dispatchCache: [String: DispatchResult] = [:]
         return scanned.map { entry in
@@ -524,7 +542,7 @@ struct BridgeSymbolResolver {
             )
             evidenceByDeclaration[ownerKey] = evidence
             let dependencies = executionDependencies(
-                declaration: declaration, scope: scope,
+                declaration: declaration, scope: normalizedScope(scope),
                 evidence: evidence,
                 allScopesComplete: scopeValidity[declarationKey] ?? false,
                 dispatchCache: &dispatchCache, dependencyBudget: &dependencyBudget

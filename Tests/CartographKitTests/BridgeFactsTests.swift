@@ -79,6 +79,42 @@ struct BridgeFactsTests {
         #expect(document.limitations.contains { $0.hasPrefix("incomplete-message-handler-scopes:") })
     }
 
+    @Test("handler 목록이 없거나 일부만 전달되면 완전하다고 보고하지 않는다", arguments: [false, true])
+    func missingScopeInventoryPreservesUncertainty(partial: Bool) {
+        let fixture = scopedFixture(referenceLines: [4, 10], referenceColumn: 11)
+        let inventory = partial ? [ScannedBridgeHandlerScopes(
+            declaration: fixture.scopes[0].declaration, scopes: [fixture.scopes[0].scopes[0]]
+        )] : []
+        let result = fixture.resolver.resolve(fixture.facts, handlerScopes: inventory)
+        #expect(result.allSatisfy { $0.handlerScope?.complete == false })
+        #expect(result.allSatisfy { $0.dependencies?.count == 1 })
+        #expect(result.allSatisfy { $0.dependencies?.first?.scope == .handler })
+        let document = BridgeFactsDocument(
+            tool: .init(name: "cartograph", version: "test"), generatedAt: "2026-09-14T00:00:00Z",
+            project: "/", facts: result, version: 2, transport: "basic-message-channel"
+        )
+        #expect(document.limitations.contains { $0.hasPrefix("incomplete-message-handler-scopes: 2 ") })
+    }
+
+    @Test("같은 선언과 handler의 경로 별칭 목록은 중복 없이 같은 의존성을 낸다")
+    func duplicateCanonicalScopeInventoryIsMerged() {
+        let fixture = scopedFixture(referenceLines: [4, 10], referenceColumn: 11)
+        let declaration = EnclosingDeclaration(
+            name: "install", indexName: "install()", qualifiedName: "P.install", line: 1,
+            start: .init(path: "/private/tmp", line: 1, column: 1),
+            end: .init(path: "/private/tmp", line: 20, column: 1)
+        )
+        let aliases = fixture.scopes[0].scopes.map { scope in BridgeFact.HandlerScope(
+            start: .init(path: "/private/tmp", line: scope.start.line, column: scope.start.column),
+            end: .init(path: "/private/tmp", line: scope.end.line, column: scope.end.column), complete: false
+        ) }
+        let inventory = fixture.scopes + [ScannedBridgeHandlerScopes(declaration: declaration, scopes: aliases)]
+        let result = fixture.resolver.resolve(fixture.facts, handlerScopes: inventory)
+        #expect(result == fixture.resolver.resolve(fixture.facts, handlerScopes: fixture.scopes))
+        #expect(result.allSatisfy { $0.handlerScope?.complete == true })
+        #expect(result.allSatisfy { $0.dependencies?.count == 1 && $0.dependencies?.first?.scope == .handler })
+    }
+
     private func scopedFixture(referenceLines: [Int], referenceColumn: Int) -> (
         resolver: BridgeSymbolResolver, facts: [ScannedBridgeFact], scopes: [ScannedBridgeHandlerScopes]
     ) {
@@ -144,9 +180,10 @@ struct BridgeFactsTests {
         )
         let resolved = BridgeSymbolResolver(
             snapshot: snapshot, freshPaths: ["/private/tmp"]
-        ).resolve([ScannedBridgeFact(fact: fact, declaration: declaration)]).first
+        ).resolve([ScannedBridgeFact(fact: fact, declaration: declaration, handlerScopes: [scope])]).first
         #expect(resolved?.handlerScope?.complete == true)
         #expect(resolved?.dependencies?.count == 1)
+        #expect(resolved?.dependencies?.first?.scope == .handler)
         #expect(resolved?.dependencies?.first?.location.path == "/tmp")
     }
 
