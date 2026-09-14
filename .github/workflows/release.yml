@@ -72,6 +72,16 @@ jobs:
           Scripts/verify-cli-contract.sh "$RUNNER_TEMP/cartograph/cartograph"
           Scripts/verify-fixtures.sh "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-analysis-blindspots.py "$RUNNER_TEMP/cartograph/cartograph"
+          python3 Scripts/verify-change-impact.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
+          python3 Scripts/verify-runtime-contracts.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
+          python3 Scripts/verify-runtime-discovery.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
+          python3 Scripts/verify-runtime-keypaths.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
+          python3 Scripts/verify-runtime-registry.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
+          python3 Scripts/verify-coredata-versions.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
+          python3 Scripts/verify-coredata-build-evidence.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
+          python3 Scripts/verify-runtime-collection.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
+          python3 Scripts/verify-runtime-window.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
+          python3 Scripts/verify-mcp.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
 
       - name: Create the GitHub release
         env:
