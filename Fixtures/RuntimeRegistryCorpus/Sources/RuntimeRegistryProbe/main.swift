@@ -46,7 +46,7 @@ func lookupMutableFactory() -> (any Service)? {
 }
 
 @MainActor
-func lookupDynamicFactory(_ key: String) -> any Service? {
+func lookupDynamicFactory(_ key: String) -> (any Service)? {
     factories[key]?()
 }
 
@@ -85,7 +85,7 @@ struct CustomRegistry: ExpressibleByDictionaryLiteral {
 
 let customFactories: CustomRegistry = ["alpha": makeAlpha]
 
-func lookupCustomFactory() -> any Service? {
+func lookupCustomFactory() -> (any Service)? {
     customFactories["alpha"]?()
 }
 
@@ -99,7 +99,7 @@ func lookupConditionalFactory() -> (any Service)? {
     conditionalFactories["conditional"]?()
 }
 
-func label(_ service: any Service?) -> String {
+func label(_ service: (any Service)?) -> String {
     guard let service else { return "nil" }
     return String(describing: type(of: service))
 }

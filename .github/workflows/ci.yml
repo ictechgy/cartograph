@@ -49,6 +49,17 @@ jobs:
           python3 Scripts/verify-coverage-inputs.py
           Scripts/coverage.sh
 
+      - name: Preserve integration diagnostics
+        if: always() && env.CARTOGRAPH_COVERAGE_DIR != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-integration-diagnostics
+          path: |
+            ${{ env.CARTOGRAPH_COVERAGE_DIR }}/*.log
+            ${{ env.CARTOGRAPH_COVERAGE_DIR }}/*/result.json
+            ${{ env.CARTOGRAPH_COVERAGE_DIR }}/*/*.log
+          retention-days: 7
+
   self-analysis:
     name: Analyze this repository with itself
     runs-on: macos-latest

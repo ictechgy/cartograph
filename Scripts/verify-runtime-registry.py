@@ -35,7 +35,7 @@ def main():
         (output / f"{label}.stdout.log").write_text(process.stdout)
         (output / f"{label}.stderr.log").write_text(process.stderr)
         if process.returncode != expected:
-            raise RuntimeError(f"{label}: expected exit {expected}, got {process.returncode}")
+            raise RuntimeError(f"{label}: expected exit {expected}, got {process.returncode}\n{process.stderr[-6000:]}")
         return process.stdout
 
     def build():

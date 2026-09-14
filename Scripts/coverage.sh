@@ -84,24 +84,40 @@ if [[ "$UNIT_ONLY" -eq 0 ]]; then
     if [[ "$SKIP_TEST" -eq 0 ]]; then
         INTEGRATION_DIR="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-coverage-integration.XXXXXX")"
         echo "==> instrumented CLI integration checks ($INTEGRATION_DIR)"
+        if [[ -n "${GITHUB_ENV:-}" ]]; then
+            printf 'CARTOGRAPH_COVERAGE_DIR=%s\n' "$INTEGRATION_DIR" >> "$GITHUB_ENV"
+        fi
+        # 실패한 하네스의 출력을 CI에도 남겨 임시 디렉터리 소실 후에도 원인을 볼 수 있게 한다.
+        run_integration() {
+            local name="$1"
+            shift
+            if "$@" > "$INTEGRATION_DIR/$name.log" 2>&1; then
+                return 0
+            else
+                local status=$?
+                echo "Integration check failed: $name (exit $status)" >&2
+                tail -n 100 "$INTEGRATION_DIR/$name.log" >&2
+                return "$status"
+            fi
+        }
         export LLVM_PROFILE_FILE="$INTEGRATION_DIR/cli-%p.profraw"
-        Scripts/verify-cli-contract.sh "$CARTOGRAPH_BINARY" > "$INTEGRATION_DIR/cli.log" 2>&1
-        python3 Scripts/verify-runtime-discovery.py --cartograph "$CARTOGRAPH_BINARY" \
-            --output-dir "$INTEGRATION_DIR/discovery" > "$INTEGRATION_DIR/discovery.log" 2>&1
-        python3 Scripts/verify-runtime-keypaths.py --cartograph "$CARTOGRAPH_BINARY" \
-            --output-dir "$INTEGRATION_DIR/keypaths" > "$INTEGRATION_DIR/keypaths.log" 2>&1
-        python3 Scripts/verify-runtime-registry.py --cartograph "$CARTOGRAPH_BINARY" \
-            --output-dir "$INTEGRATION_DIR/registry" > "$INTEGRATION_DIR/registry.log" 2>&1
-        python3 Scripts/verify-coredata-versions.py --cartograph "$CARTOGRAPH_BINARY" \
-            --output-dir "$INTEGRATION_DIR/coredata-versions" > "$INTEGRATION_DIR/coredata-versions.log" 2>&1
-        python3 Scripts/verify-coredata-build-evidence.py --cartograph "$CARTOGRAPH_BINARY" \
-            --output-dir "$INTEGRATION_DIR/coredata-build" > "$INTEGRATION_DIR/coredata-build.log" 2>&1
-        python3 Scripts/verify-runtime-collection.py --cartograph "$CARTOGRAPH_BINARY" \
-            --output-dir "$INTEGRATION_DIR/collection" > "$INTEGRATION_DIR/collection.log" 2>&1
-        python3 Scripts/verify-runtime-window.py --cartograph "$CARTOGRAPH_BINARY" \
-            --output-dir "$INTEGRATION_DIR/window" > "$INTEGRATION_DIR/window.log" 2>&1
-        python3 Scripts/verify-mcp.py --cartograph "$CARTOGRAPH_BINARY" \
-            --output-dir "$INTEGRATION_DIR/mcp" > "$INTEGRATION_DIR/mcp.log" 2>&1
+        run_integration cli Scripts/verify-cli-contract.sh "$CARTOGRAPH_BINARY"
+        run_integration discovery python3 Scripts/verify-runtime-discovery.py --cartograph "$CARTOGRAPH_BINARY" \
+            --output-dir "$INTEGRATION_DIR/discovery"
+        run_integration keypaths python3 Scripts/verify-runtime-keypaths.py --cartograph "$CARTOGRAPH_BINARY" \
+            --output-dir "$INTEGRATION_DIR/keypaths"
+        run_integration registry python3 Scripts/verify-runtime-registry.py --cartograph "$CARTOGRAPH_BINARY" \
+            --output-dir "$INTEGRATION_DIR/registry"
+        run_integration coredata-versions python3 Scripts/verify-coredata-versions.py --cartograph "$CARTOGRAPH_BINARY" \
+            --output-dir "$INTEGRATION_DIR/coredata-versions"
+        run_integration coredata-build python3 Scripts/verify-coredata-build-evidence.py --cartograph "$CARTOGRAPH_BINARY" \
+            --output-dir "$INTEGRATION_DIR/coredata-build"
+        run_integration collection python3 Scripts/verify-runtime-collection.py --cartograph "$CARTOGRAPH_BINARY" \
+            --output-dir "$INTEGRATION_DIR/collection"
+        run_integration window python3 Scripts/verify-runtime-window.py --cartograph "$CARTOGRAPH_BINARY" \
+            --output-dir "$INTEGRATION_DIR/window"
+        run_integration mcp python3 Scripts/verify-mcp.py --cartograph "$CARTOGRAPH_BINARY" \
+            --output-dir "$INTEGRATION_DIR/mcp"
         unset LLVM_PROFILE_FILE
         PROFILES=("$INTEGRATION_DIR"/*.profraw)
         if [[ ! -f "${PROFILES[0]}" ]]; then
