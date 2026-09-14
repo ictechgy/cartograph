@@ -23,7 +23,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   subscriptions or registration as callback execution.
 - Manual Core Data model-to-class relationships with `.xccurrentversion` selection, migration review,
   exact `category` class-name checks, snapshot/history/`--since` impact and model-driven session/trace
-  invalidation. Generated classes, `customClass` fallback and invalid `manual` values stay unresolved;
+  invalidation. Generated classes, `customClass` fallback and unsupported `manual` values stay unresolved;
   CI checks these rules against `momc`, generated Swift and a loaded model instance.
 - Opt-in `runtime prepare-coredata` build evidence binds exact generated source/module/USRs to a verified
   source model, main-bundle compiled model, container, main executable symbols and immutable local fetch

@@ -136,7 +136,8 @@ def main():
         invalid_manual = write_model("InvalidManual", 'representedClassName="CurrentRecord" codeGenerationType="manual"')
         rejected = run(["xcrun", "momc", str(invalid_manual), str(output / "manual.mom")],
                        "manual-attribute", expected=None)
-        assert rejected.returncode != 0 and "unexpected code generation type" in rejected.stderr
+        manual_rejected = rejected.returncode != 0
+        assert not manual_rejected or "unexpected code generation type" in rejected.stderr, rejected.stderr
         custom_only = write_model("CustomOnly", 'customClass="CurrentRecord"')
         custom_mom = output / "custom-only.mom"
         run(["xcrun", "momc", str(custom_only), str(custom_mom)], "custom-only-momc")
@@ -166,11 +167,20 @@ def main():
         assert len(negative_findings) == 4, negative_findings
         for finding in negative_findings:
             assert finding["status"] in ["unresolved", "unindexed"] and not finding["targets"], finding
+        invalid_manual_findings = [
+            finding for finding in negative_findings
+            if Path(finding["location"]["path"]).parent.stem == "InvalidManual"
+        ]
+        assert len(invalid_manual_findings) == 1, invalid_manual_findings
+        invalid_manual_finding = invalid_manual_findings[0]
+        assert invalid_manual_finding["status"] == "unresolved"
+        assert "unsupported code generation" in (invalid_manual_finding.get("reason") or "")
         result.update(status="passed", selectedClasses=["CurrentRecord", "LegacyRecord"],
                       generatedCategoryCompiled=True, snapshotAndSincePassed=True,
                       excludedSelectionsRejected=True, symlinkMarkerRejected=True,
                       inactiveMigrationReviewPreserved=True, invalidSelectionsRejected=True,
-                      invalidManualAttributeRejected=True, customClassIgnoredByRuntime=True,
+                      manualAttributeRejectedByMomc=manual_rejected,
+                      unsupportedManualKeptUnresolved=True, customClassIgnoredByRuntime=True,
                       generatedAliasMismatchRejected=True, generatedClassCollisionRejected=True)
     finally:
         (output / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
