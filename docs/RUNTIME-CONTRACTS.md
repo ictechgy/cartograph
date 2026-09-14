@@ -137,8 +137,8 @@ bounded regression sets and cannot be combined into one universal completeness p
 `Scripts/verify-coredata-versions.py` compares `.xccurrentversion` selection with `momc`, loads the compiled
 model in a real executable, checks category generation and snapshot/history/`--since` behavior, and
 verifies that Cartograph leaves invalid selections, unsupported `manual` values, `customClass` fallback
-and generated-name collisions unresolved. Whether `momc` itself accepts `manual` varies by toolchain
-and is recorded separately from Cartograph's conservative result.
+and generated-name collisions unresolved. The negative `momc` invocation's exit code and output artifact
+are recorded separately from Cartograph's conservative result; its diagnostic text is not a product contract.
 `Scripts/verify-coredata-build-evidence.py` generates and compiles a class model, loads/fetches it through
 Core Data, checks main-executable symbols, the CLI/MCP fixed-path flow, snapshots and current-build impact,
 and rejects changed artifacts, foreign symlinks, ambiguous models and missing generated definitions.

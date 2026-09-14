@@ -114,9 +114,10 @@ captured snapshot comparison and `impact --since`. Inactive models retain migrat
 Invalid/missing/excluded selections and symlink markers produce no class connections; filtering to one
 version cannot establish it as current. The scanner follows observed Core Data behavior: `customClass`
 is ignored, and generated class mode cannot be inferred from a same-named indexed manual class.
-The local Xcode 27 `momc` rejects `codeGenerationType="manual"`, while the CI toolchain with Swift 6.3.3
-accepts it. The harness records that toolchain difference; Cartograph keeps this unsupported value
-unresolved in both cases. Bare Swift names and actual Objective-C runtime identities are
+The local Xcode 27 `momc` rejects `codeGenerationType="manual"` with a diagnostic; the CI toolchain with
+Swift 6.3.3 returned a nonzero exit without one. The harness records the exit code and output artifact
+separately from the product check: Cartograph keeps this unsupported value unresolved.
+Bare Swift names and actual Objective-C runtime identities are
 distinguished. Category alias mismatch and generated class collisions are compiled negative cases.
 The three local app scopes have no Core Data models or direct KVC calls; these are synthetic SDK/runtime
 cases, not defects claimed in those applications.

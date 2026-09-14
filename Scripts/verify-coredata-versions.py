@@ -137,7 +137,8 @@ def main():
         rejected = run(["xcrun", "momc", str(invalid_manual), str(output / "manual.mom")],
                        "manual-attribute", expected=None)
         manual_rejected = rejected.returncode != 0
-        assert not manual_rejected or "unexpected code generation type" in rejected.stderr, rejected.stderr
+        result.update(manualAttributeMomcExitCode=rejected.returncode,
+                      manualAttributeMomcProducedModel=(output / "manual.mom").is_file())
         custom_only = write_model("CustomOnly", 'customClass="CurrentRecord"')
         custom_mom = output / "custom-only.mom"
         run(["xcrun", "momc", str(custom_only), str(custom_mom)], "custom-only-momc")
