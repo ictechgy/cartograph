@@ -58,6 +58,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   freshness, loaded graph/input fingerprints and the raw SHA-256 of the executable; stale or failed
   observations remain distinguishable from unobserved coverage.
 
+### Fixed
+
+- macOS runtime collection now builds a universal arm64/x86_64 collector with a macOS 14 minimum.
+  Cross-architecture debug applications no longer fail injection because the host compiler selected
+  only its native architecture. An actual x86_64 execution probe verifies preserved results and events.
+
 ### Changed
 
 - Split automatic source bindings, runtime syntax-name recognition and notification lifecycle tracking

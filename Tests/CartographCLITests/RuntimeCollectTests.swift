@@ -6,6 +6,29 @@ import Testing
 
 @Suite("자동 런타임 수집")
 struct RuntimeCollectTests {
+    @Test("macOS collector는 arm64와 x86_64에서 로드할 수 있어야 한다")
+    func compilesUniversalMacOSCollector() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cartograph-runtime-collector-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let collector = try RuntimeTraceProcess().compileCollector(in: directory)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/lipo")
+        process.arguments = ["-info", collector.path]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        process.waitUntilExit()
+
+        let description = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        #expect(process.terminationStatus == 0)
+        #expect(description.contains("arm64"))
+        #expect(description.contains("x86_64"))
+    }
+
     @Test("관측 구간은 양수 밀리초 이상이며 전체 제한 시간보다 짧아야 한다")
     func validatesObservationDuration() throws {
         let base = ["--executable", "/tmp/Probe", "--output", "/tmp/trace.json", "--timeout", "5"]

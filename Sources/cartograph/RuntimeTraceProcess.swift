@@ -463,6 +463,8 @@ struct RuntimeTraceProcess {
             let architecture = "x86_64"
             #endif
             arguments += ["-target", "\(architecture)-apple-ios15.0-simulator", "-isysroot", simulatorSDK]
+        } else {
+            arguments += ["-arch", "arm64", "-arch", "x86_64", "-mmacosx-version-min=14.0"]
         }
         process.arguments = arguments
         process.standardOutput = FileHandle.nullDevice

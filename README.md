@@ -56,6 +56,8 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 Requires macOS 14+ and a Swift toolchain (Xcode or the Command Line Tools) at run time —
 Cartograph loads `libIndexStore` from it. Development uses Swift 6.4; CI selects the newest Xcode
 installed on its runner and verifies the compiler-backed fixtures for that toolchain.
+The tool process and `libIndexStore` must share an architecture. With an arm64-only toolchain on
+Apple Silicon, run Cartograph natively; forcing its Intel slice through Rosetta cannot load that library.
 Swift 5 language-mode projects are supported: build them with your Swift 6 toolchain (Swift 5 mode
 is a compiler option, and the index it writes is read the same way) and analyze as usual.
 

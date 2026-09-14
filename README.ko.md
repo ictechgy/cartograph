@@ -54,6 +54,8 @@ Cartograph를 한 문장으로 줄이면 *"의존성 그래프를 내놓는다"*
 macOS 14 이상이 필요합니다. 실행할 때는 Swift 툴체인(Xcode 또는 Command Line Tools)이 있어야 합니다.
 `libIndexStore`를 거기서 불러오기 때문입니다. 개발은 Swift 6.4를 사용하며, CI는 러너에 설치된
 최신 Xcode를 선택해 해당 툴체인의 실제 컴파일러 코퍼스를 검증합니다.
+도구 프로세스와 `libIndexStore`의 아키텍처는 같아야 합니다. Apple Silicon의 arm64 전용 툴체인에서는
+Cartograph도 네이티브로 실행하세요. Rosetta로 Intel 슬라이스를 강제하면 해당 라이브러리를 불러올 수 없습니다.
 Swift 5 언어 모드 프로젝트도 됩니다. Swift 6 툴체인으로 빌드하세요(언어 모드는 컴파일러 옵션이라
 그렇게 만든 인덱스도 그대로 읽힙니다). 분석은 평소대로 하면 됩니다.
 
