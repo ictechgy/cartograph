@@ -142,19 +142,22 @@ def main():
     shell = output / "not-a-mach-o.sh"
     shell.write_text("#!/bin/sh\nprintf 'shell-ran\\n'\n")
     shell.chmod(0o700)
-    inactive, _ = collect("collector-inactive", [], expected=2, executable_path=shell)
-    assert not inactive["collectorActive"] and not inactive["collectionComplete"], inactive
-    assert inactive["processExitCode"] == 0 and inactive["events"] == [], inactive
-    assert any("did not become active" in item for item in inactive["limitations"]), inactive
-    inactive_discovery = run([
+    partial, _ = collect("collector-partial", [], expected=2, executable_path=shell)
+    assert not partial["collectionComplete"], partial
+    assert partial["processExitCode"] == 0 and partial["events"] == [], partial
+    # 실행 환경에 따라 셸 인터프리터에도 수집기가 로드될 수 있다.
+    expected_limitation = ("did not record a normal process shutdown" if partial["collectorActive"]
+                           else "did not become active")
+    assert any(expected_limitation in item for item in partial["limitations"]), partial
+    partial_discovery = run([
         str(binary), "runtime", "discover",
         "--project", str(project), "--index-store", str(index_store),
-        "--trace", str(output / "collector-inactive.json"), "--executable", str(shell),
+        "--trace", str(output / "collector-partial.json"), "--executable", str(shell),
         "--limit", "100",
-    ], "discover-inactive-trace", expected=2)
-    inactive_comparison = json.loads(inactive_discovery.stdout)
-    assert inactive_comparison["observed"]["status"] == "partial", inactive_comparison
-    assert inactive_comparison["observed"]["connectionCount"] == 0, inactive_comparison
+    ], "discover-partial-trace", expected=2)
+    partial_comparison = json.loads(partial_discovery.stdout)
+    assert partial_comparison["observed"]["status"] == "partial", partial_comparison
+    assert partial_comparison["observed"]["connectionCount"] == 0, partial_comparison
 
     failed, _ = collect("application-failed", ["fail"], expected=2)
     assert failed["collectorActive"] and not failed["collectionComplete"], failed
@@ -225,8 +228,9 @@ def main():
         "failedClassLookups": len(missing_class),
         "failedProtocolLookups": len(missing_protocol),
         "observedConnections": comparison["observed"]["connectionCount"],
-        "collectorInactiveExit": 2,
-        "inactiveDiscoveryExit": 2,
+        "partialCollectorActive": partial["collectorActive"],
+        "partialCollectionExit": 2,
+        "partialDiscoveryExit": 2,
         "applicationFailureExit": 2,
         "timeoutExit": 2,
         "executableChangeExit": 2,
