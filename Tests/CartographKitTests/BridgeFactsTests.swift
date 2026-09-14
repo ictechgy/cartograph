@@ -680,6 +680,89 @@ struct BridgeFactsTests {
         #expect(dispatchTargets.first?["qualifiedName"] as? String == "App.first()")
     }
 
+    @Test("requirement부터 두 단계인 override 구현 후보를 모두 보존한다")
+    func exportsTransitiveDispatchTargets() {
+        let scope = BridgeFact.HandlerScope(
+            start: .init(path: "/tmp", line: 4, column: 20),
+            end: .init(path: "/tmp", line: 5, column: 5), complete: false
+        )
+        let declaration = EnclosingDeclaration(
+            name: "install", indexName: "install()", qualifiedName: "P.install", line: 2,
+            start: .init(path: "/tmp", line: 2, column: 1),
+            end: .init(path: "/tmp", line: 8, column: 1)
+        )
+        let symbols = [
+            IndexedSymbol(usr: "s:setup", name: "install()", kind: .function, module: "App",
+                location: .init(path: "/tmp", line: 2, column: 1)),
+            IndexedSymbol(usr: "s:req", name: "run()", kind: .method, module: "App",
+                location: .init(path: "/tmp", line: 10, column: 1)),
+            IndexedSymbol(usr: "s:base", name: "run()", kind: .method, module: "App",
+                location: .init(path: "/tmp", line: 11, column: 1)),
+            IndexedSymbol(usr: "s:sub", name: "run()", kind: .method, module: "App",
+                location: .init(path: "/tmp", line: 12, column: 1)),
+        ]
+        let snapshot = IndexSnapshot(symbols: symbols, references: [
+            IndexedReference(sourceUSR: "s:setup", targetUSR: "s:req", kind: .call,
+                location: .init(path: "/tmp", line: 4, column: 30)),
+            IndexedReference(sourceUSR: "s:base", targetUSR: "s:req", kind: .overrides,
+                location: .init(path: "/tmp", line: 11, column: 1)),
+            IndexedReference(sourceUSR: "s:base", targetUSR: "s:req", kind: .overrides,
+                location: .init(path: "/tmp", line: 11, column: 1)),
+            IndexedReference(sourceUSR: "s:sub", targetUSR: "s:base", kind: .overrides,
+                location: .init(path: "/tmp", line: 12, column: 1)),
+        ])
+        let fact = BridgeFact(
+            kind: .messageHandle, target: .flutter, channel: "run", handlerScope: scope,
+            location: .init(path: "/tmp", line: 4, column: 1)
+        )
+        let resolved = BridgeSymbolResolver(snapshot: snapshot, freshPaths: ["/tmp"]).resolve([
+            ScannedBridgeFact(fact: fact, declaration: declaration)
+        ]).first
+        let targets = resolved?.dependencies?.first?.dispatchTargets.map(\.usr) ?? []
+        #expect(targets == ["s:base", "s:sub"])
+    }
+
+    @Test("override 순환은 중단하고 참조 대상 방향의 후보만 반환한다")
+    func dispatchTargetsRespectDirectionAndCycles() {
+        let scope = BridgeFact.HandlerScope(
+            start: .init(path: "/tmp", line: 4, column: 20),
+            end: .init(path: "/tmp", line: 5, column: 5), complete: false
+        )
+        let declaration = EnclosingDeclaration(
+            name: "install", indexName: "install()", qualifiedName: "P.install", line: 2,
+            start: .init(path: "/tmp", line: 2, column: 1), end: .init(path: "/tmp", line: 8, column: 1)
+        )
+        let symbols = ["setup", "requirement", "base", "sub"].enumerated().map { index, name in
+            IndexedSymbol(usr: "s:\(name)", name: index == 0 ? "install()" : "run()", kind: .method, module: "App",
+                location: .init(path: "/tmp", line: index + 2, column: 1))
+        }
+        let refs = [
+            IndexedReference(sourceUSR: "s:setup", targetUSR: "s:requirement", kind: .call,
+                location: .init(path: "/tmp", line: 4, column: 30)),
+            IndexedReference(sourceUSR: "s:base", targetUSR: "s:requirement", kind: .overrides),
+            IndexedReference(sourceUSR: "s:sub", targetUSR: "s:base", kind: .overrides),
+            IndexedReference(sourceUSR: "s:requirement", targetUSR: "s:sub", kind: .overrides),
+        ]
+        let fact = BridgeFact(kind: .messageHandle, target: .flutter, channel: "run", handlerScope: scope,
+            location: .init(path: "/tmp", line: 4, column: 1))
+        let resolved = BridgeSymbolResolver(snapshot: IndexSnapshot(symbols: symbols, references: refs), freshPaths: ["/tmp"])
+            .resolve([ScannedBridgeFact(fact: fact, declaration: declaration)]).first
+        #expect(resolved?.dependencies?.first?.dispatchTargets.map(\.usr) == ["s:base", "s:sub"])
+
+        let reverse = BridgeFact(kind: .messageHandle, target: .flutter, channel: "base", handlerScope: scope,
+            location: .init(path: "/tmp", line: 4, column: 1))
+        let reverseReferences = [
+            IndexedReference(sourceUSR: "s:setup", targetUSR: "s:base", kind: .call,
+                location: .init(path: "/tmp", line: 4, column: 30)),
+            refs[2],
+        ]
+        let reverseResolved = BridgeSymbolResolver(
+            snapshot: IndexSnapshot(symbols: symbols, references: reverseReferences), freshPaths: ["/tmp"]
+        )
+            .resolve([ScannedBridgeFact(fact: reverse, declaration: declaration)]).first
+        #expect(reverseResolved?.dependencies?.first?.dispatchTargets.map(\.usr) == ["s:sub"])
+    }
+
     @Test("같은 setup의 MethodChannel closure는 Basic registration dependency로 섞이지 않는다")
     func excludesMethodHandlerClosureFromMessageRegistrationScope() throws {
         let source = """
@@ -711,6 +794,18 @@ struct BridgeFactsTests {
         let dependencies = try #require(basic["dependencies"] as? [[String: Any]])
         #expect(dependencies.contains { ($0["symbol"] as? [String: Any])?["usr"] as? String == "s:helper" })
         #expect(!dependencies.contains { ($0["symbol"] as? [String: Any])?["usr"] as? String == "s:runtime" })
+    }
+
+    @Test("closure 없는 Basic method reference는 명시적인 limitation을 남긴다")
+    func reportsUnscopedMessageHandler() {
+        let document = BridgeFactsDocument(
+            tool: .init(name: "cartograph", version: "test"), generatedAt: "t", project: "/p",
+            facts: [BridgeFact(kind: .messageHandle, target: .flutter, channel: "c",
+                handlerScope: nil, dependencies: nil,
+                location: .init(path: "/p/A.swift", line: 1, column: 1), symbol: .init(qualifiedName: "P.install", usr: "s:p"))],
+            version: BridgeFactsDocument.messageVersion, transport: "basic-message-channel"
+        )
+        #expect(document.limitations.contains { $0.hasPrefix("unscoped-message-handlers: 1") })
     }
 
     @Test("채널을 모르면 키를 빼지 않고 null 로 적는다")

@@ -311,6 +311,13 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
                 "unattributed-message-handles: \(unattributedMessages) message handlers have no channel"
             )
         }
+        let unscopedMessages = facts.count { $0.kind == .messageHandle && $0.handlerScope == nil }
+        if unscopedMessages > 0 {
+            result.append(
+                "unscoped-message-handlers: \(unscopedMessages) message handler(s) use a method reference "
+                    + "without a closure scope"
+            )
+        }
         let inferred = facts.count(where: \.isChannelInferred)
         if inferred > 0 {
             result.append(
@@ -439,7 +446,9 @@ struct BridgeSymbolResolver {
             guard let declaration = item.declaration else { return [] }
             return item.handlerScopes.map { (Self.declarationKey(declaration), $0) }
         }
-        let scopesByDeclaration = Dictionary(grouping: scopedEntries, by: \.0).mapValues { $0.map(\.1) }
+        let scopesByDeclaration = Dictionary(grouping: scopedEntries, by: \.0).mapValues { entries in
+            Set(entries.map(\.1)).sorted { $0.start != $1.start ? $0.start < $1.start : $0.end < $1.end }
+        }
         let scopeValidity = Dictionary(uniqueKeysWithValues: messageEntries.map { key, values in
             let scopes = scopesByDeclaration[key] ?? []
             return (key, !values.contains(where: { $0 == nil }) && !Self.hasOverlappingScopes(scopes))
@@ -527,11 +536,7 @@ struct BridgeSymbolResolver {
                 continue
             }
             guard !target.isExternal, target.kind != .parameter else { continue }
-            let dispatchTargets = Set(overridesByTarget[target.usr, default: []].compactMap { dispatch -> BridgeFact.Symbol? in
-                guard let implementation = uniqueSymbol(for: dispatch.sourceUSR), !implementation.isExternal
-                else { return nil }
-                return BridgeFact.Symbol(qualifiedName: Self.contractName(of: implementation), usr: implementation.usr)
-            }).sorted { ($0.usr ?? "", $0.qualifiedName) < ($1.usr ?? "", $1.qualifiedName) }
+            let dispatchTargets = dispatchTargets(for: target.usr, complete: &complete)
             values.insert(BridgeFact.Dependency(
                 kind: reference.kind,
                 scope: dependencyScope,
@@ -541,6 +546,40 @@ struct BridgeSymbolResolver {
             ))
         }
         return DependencyResult(values: values.sorted(by: Self.dependencyOrder), complete: complete)
+    }
+
+    private func dispatchTargets(for rootUSR: String, complete: inout Bool) -> [BridgeFact.Symbol] {
+        var pending = [rootUSR]
+        var next = 0
+        var visited: Set<String> = []
+        var targets: [BridgeFact.Symbol] = []
+        var seenTargets: Set<String> = []
+        while next < pending.count {
+            let current = pending[next]
+            next += 1
+            guard visited.insert(current).inserted else { continue }
+            let overrides = overridesByTarget[current, default: []].sorted {
+                ($0.sourceUSR, $0.location?.description ?? "") < ($1.sourceUSR, $1.location?.description ?? "")
+            }
+            for override in overrides {
+                guard let implementation = uniqueSymbol(for: override.sourceUSR) else {
+                    complete = false
+                    continue
+                }
+                guard !implementation.isExternal else { continue }
+                if implementation.usr != rootUSR, seenTargets.insert(implementation.usr).inserted {
+                    targets.append(BridgeFact.Symbol(
+                        qualifiedName: Self.contractName(of: implementation), usr: implementation.usr
+                    ))
+                    if targets.count >= 10_000 {
+                        complete = false
+                        return targets.sorted { ($0.usr ?? "", $0.qualifiedName) < ($1.usr ?? "", $1.qualifiedName) }
+                    }
+                }
+                pending.append(implementation.usr)
+            }
+        }
+        return targets.sorted { ($0.usr ?? "", $0.qualifiedName) < ($1.usr ?? "", $1.qualifiedName) }
     }
 
     private static func declarationKey(_ declaration: EnclosingDeclaration) -> String {
