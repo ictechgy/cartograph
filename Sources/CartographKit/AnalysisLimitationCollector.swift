@@ -25,7 +25,8 @@ struct AnalysisLimitationCollector {
         let files = fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { path in
-                filter.allows(path) && Self.sourceSuffixes.contains { path.hasSuffix($0) }
+                filter.allows(path) && (Self.sourceSuffixes.contains { path.hasSuffix($0) }
+                    || RuntimeResourcePath.kind(of: path) == .interfaceBuilder)
             },
             shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
         )
@@ -199,7 +200,7 @@ struct AnalysisLimitationCollector {
     }
 
     /// 한계 목록을 세는 데 필요한 확장자. 다른 파일은 걷지도 담지도 않는다.
-    static let sourceSuffixes = [".m", ".mm", ".xib", ".storyboard", ".swift"]
+    static let sourceSuffixes = [".m", ".mm", ".swift"]
 
     /// 매니페스트는 타깃 소스가 아니라 SwiftPM 입력이다. 인덱스 유닛이 없는 것이 정상이다.
     /// Sources/Package.swift 같은 실제 타깃 파일까지 제외하지 않도록 프로젝트 루트만 가른다.

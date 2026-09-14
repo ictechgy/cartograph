@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// 파일 접근을 한 겹 감싼 추상화.
 ///
@@ -25,6 +26,11 @@ public protocol FileSystem: Sendable {
     ///
     /// 후보가 여러 개인 인덱스 스토어 중 가장 최근 것을 고르는 데 쓴다.
     func modificationDate(at path: String) -> Date?
+    /// 파일 내용 캐시를 안전하게 재사용할 수 있는 운영체제 지문. 알 수 없으면 nil 이다.
+    ///
+    /// 수정 시각 하나만으로는 같은 시각으로 되돌린 편집이나 권한·심볼릭 링크 교체를
+    /// 구별할 수 없으므로, 구현체는 모든 필드를 실제 파일 상태에서 채워야 한다.
+    func fingerprintStamp(at path: String) -> FileFingerprintStamp?
     var currentDirectoryPath: String { get }
 }
 
@@ -37,11 +43,63 @@ extension FileSystem {
     /// 수정 시각을 알 수 없는 구현을 위한 기본값.
     public func modificationDate(at path: String) -> Date? { nil }
 
+    /// 운영체제 파일 지문을 제공하지 않는 구현은 매번 내용을 읽도록 한다.
+    public func fingerprintStamp(at path: String) -> FileFingerprintStamp? { nil }
+
     /// 종류를 함께 주지 못하는 구현을 위한 기본값. 예전처럼 항목마다 물어본다.
     public func directoryEntries(at path: String) throws -> [DirectoryEntry] {
         try contentsOfDirectory(at: path).map {
             DirectoryEntry(path: $0, isDirectory: directoryExists(at: $0), isRegularFile: fileExists(at: $0))
         }
+    }
+}
+
+/// 파일 내용 digest를 재사용할 때 확인하는 운영체제 파일 상태.
+///
+/// mtime만 저장하면 편집 뒤 시각을 복원한 파일이나 권한만 바뀐 파일을 놓칠 수 있다.
+/// 장치·inode·크기·mtime·ctime·권한과 실제 심볼릭 링크 대상 경로를 함께 비교해 그런
+/// 상태에서는 캐시가 내용을 다시 읽도록 만든다.
+public struct FileFingerprintStamp: Sendable, Equatable, Hashable {
+    /// 심볼릭 링크를 따라간 실제 파일 경로.
+    public let resolvedPath: String
+    /// 파일이 속한 장치 식별자.
+    public let device: UInt64
+    /// 파일 inode 식별자.
+    public let inode: UInt64
+    /// 파일 크기(바이트).
+    public let size: UInt64
+    /// mtime의 초 단위 부분.
+    public let modificationSeconds: Int64
+    /// mtime의 나노초 부분.
+    public let modificationNanoseconds: Int64
+    /// ctime의 초 단위 부분.
+    public let changeSeconds: Int64
+    /// ctime의 나노초 부분.
+    public let changeNanoseconds: Int64
+    /// POSIX 파일 모드와 종류 비트.
+    public let mode: UInt32
+
+    /// 운영체제 파일 상태를 만든다.
+    public init(
+        resolvedPath: String,
+        device: UInt64,
+        inode: UInt64,
+        size: UInt64,
+        modificationSeconds: Int64,
+        modificationNanoseconds: Int64,
+        changeSeconds: Int64,
+        changeNanoseconds: Int64,
+        mode: UInt32
+    ) {
+        self.resolvedPath = resolvedPath
+        self.device = device
+        self.inode = inode
+        self.size = size
+        self.modificationSeconds = modificationSeconds
+        self.modificationNanoseconds = modificationNanoseconds
+        self.changeSeconds = changeSeconds
+        self.changeNanoseconds = changeNanoseconds
+        self.mode = mode
     }
 }
 
@@ -219,6 +277,30 @@ public struct LocalFileSystem: FileSystem {
         try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date
     }
 
+    /// 내용 재사용 여부를 판단할 수 있도록 stat의 전체 파일 상태를 읽는다.
+    public func fingerprintStamp(at path: String) -> FileFingerprintStamp? {
+        guard !path.utf8.contains(0) else { return nil }
+        var info = Darwin.stat()
+        let result = path.withCString { pointer in
+            withUnsafeMutablePointer(to: &info) { output in
+                stat(pointer, output)
+            }
+        }
+        guard result == 0, info.st_size >= 0,
+              let resolvedPath = try? realPath(at: path) else { return nil }
+        return FileFingerprintStamp(
+            resolvedPath: resolvedPath,
+            device: UInt64(info.st_dev),
+            inode: UInt64(info.st_ino),
+            size: UInt64(info.st_size),
+            modificationSeconds: Int64(info.st_mtimespec.tv_sec),
+            modificationNanoseconds: Int64(info.st_mtimespec.tv_nsec),
+            changeSeconds: Int64(info.st_ctimespec.tv_sec),
+            changeNanoseconds: Int64(info.st_ctimespec.tv_nsec),
+            mode: UInt32(info.st_mode)
+        )
+    }
+
     public var currentDirectoryPath: String {
         FileManager.default.currentDirectoryPath
     }
@@ -232,10 +314,12 @@ public struct LocalFileSystem: FileSystem {
 public enum BuildArtifactDirectories {
     public static let prunedNames: Set<String> = [
         ".build", ".git", "DerivedData", "Pods", "Carthage", "checkouts", ".swiftpm", "node_modules",
+        ".swift-build", ".benchmark-results", ".omc",
     ]
 
     /// `recursiveFiles(under:isIncluded:shouldDescend:)` 에 그대로 넘길 수 있는 판정.
     public static func shouldDescend(into path: String) -> Bool {
-        !prunedNames.contains((path as NSString).lastPathComponent)
+        let name = (path as NSString).lastPathComponent
+        return !prunedNames.contains(name) && !name.hasPrefix(".build-")
     }
 }

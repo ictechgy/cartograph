@@ -57,13 +57,16 @@ public struct GraphQueryIndex: Sendable {
     ) -> [GraphNode] {
         guard !subject.isEmpty else { return [] }
         let needle = subject.lowercased()
-        let threshold = max(2, needle.count / 3)
+        let needleLength = needle.count
+        // 매우 긴 USR은 정확 조회로만 찾는다. 추천용 편집 거리로 이차 비용을 만들지 않는다.
+        guard needleLength <= 256 else { return [] }
+        let threshold = max(2, needleLength / 3)
         var scored: [(distance: Int, name: String, node: GraphNode)] = []
         var seen: Set<NodeID> = []
         for (name, ids) in nodesByName {
             // 거리는 편집 횟수 이상일 수 없다. 길이 차가 한도를 넘으면 DP 를
             // 돌릴 필요도 없고, 그런 이름은 추천으로도 가치가 없다.
-            guard abs(name.count - needle.count) <= threshold else { continue }
+            guard abs(name.count - needleLength) <= threshold else { continue }
             let distance = Self.editDistance(needle, name.lowercased())
             guard distance <= threshold, let node = ids.compactMap({ graph.node($0) }).first,
                   seen.insert(node.id).inserted

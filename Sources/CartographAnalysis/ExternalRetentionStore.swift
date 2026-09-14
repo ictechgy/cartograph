@@ -60,6 +60,8 @@ public struct ExternalRetentionIndex: Sendable, Equatable {
     private let byUSR: [String: ExternalRetention]
     private let byQualifiedName: [String: ExternalRetention]
     private let retentions: [ExternalRetention]
+    private let matchingUSRIndices: [String: [Int]]
+    private let matchingNameIndices: [String: [Int]]
 
     public init(_ retentions: [ExternalRetention]) {
         self.retentions = retentions
@@ -76,6 +78,17 @@ public struct ExternalRetentionIndex: Sendable, Equatable {
             },
             uniquingKeysWith: { first, _ in first }
         )
+        var usrIndices: [String: [Int]] = [:]
+        var nameIndices: [String: [Int]] = [:]
+        for (index, retention) in retentions.enumerated() {
+            if let usr = retention.symbol.usr {
+                usrIndices[usr, default: []].append(index)
+            } else if let name = retention.symbol.qualifiedName {
+                nameIndices[name, default: []].append(index)
+            }
+        }
+        matchingUSRIndices = usrIndices
+        matchingNameIndices = nameIndices
     }
 
     public static let empty = ExternalRetentionIndex([])
@@ -99,6 +112,23 @@ public struct ExternalRetentionIndex: Sendable, Equatable {
             if let match = byQualifiedName[name] { return match }
         }
         return nil
+    }
+
+    /// 정점과 일치하는 모든 외부 보존 근거를 입력 순서대로 돌려준다.
+    ///
+    /// 대표 근거 하나만 필요한 `retention(for:)`와 달리 영향 검토는 여러 브리지 채널과
+    /// 호출 위치를 모두 보여 줘야 한다. USR이 있는 근거는 같은 USR일 때만 맞고, USR이
+    /// 없는 근거만 정규화된 이름으로 맞춘다. 같은 이름을 두 표기로 넘겨도 한 번만 반환한다.
+    public func matchingRetentions(for node: GraphNode, names: [String] = []) -> [ExternalRetention] {
+        var indices: Set<Int> = []
+        if let usr = node.usr {
+            indices.formUnion(matchingUSRIndices[usr] ?? [])
+        }
+        let candidateNames = [node.qualifiedName] + names
+        for name in candidateNames {
+            indices.formUnion(matchingNameIndices[name] ?? [])
+        }
+        return indices.sorted().map { retentions[$0] }
     }
 
     /// 이름만 있는 근거의 이름 중 그래프의 두 정점 이상에 맞는 것의 수. 근거가 아니라 이름을 센다.

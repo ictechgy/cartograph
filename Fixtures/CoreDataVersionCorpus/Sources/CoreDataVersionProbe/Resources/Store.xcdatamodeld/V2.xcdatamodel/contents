@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" sourceLanguage="Swift">
+    <entity name="Record" representedClassName="CurrentRecord" codeGenerationType="category" syncable="YES">
+        <attribute name="title" optional="YES" attributeType="String"/>
+    </entity>
+</model>

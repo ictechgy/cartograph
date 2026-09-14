@@ -97,6 +97,11 @@ enum CommandSupport {
             )
         }
 
+        if let reason = outcome.incompleteAnalysis {
+            FileHandle.standardError.write(Data(("error: " + reason + "\n").utf8))
+            throw ExitCode(failureExitCode)
+        }
+
         // 임계값 초과는 코드에 대한 판정이지 도구의 실패가 아니다.
         // 리포트를 다 보여 준 뒤에 사유를 알리고 "문제 발견" 코드로 끝낸다.
         if let failure = outcome.thresholdFailure {

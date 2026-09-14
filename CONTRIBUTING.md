@@ -5,11 +5,12 @@ Thanks for taking the time. This document covers what you need to build, test an
 ## Prerequisites
 
 - macOS 14 or later
-- Swift 6.3 or later (CI runs 6.3.3; development happens on 6.4)
+- A Swift toolchain compatible with the pinned dependencies (development uses Swift 6.4)
 
 `indexstore-db` has no semantic version tags — it tracks Swift releases on branches. `Package.swift`
-pins `release/6.4.1`, which compiles and runs correctly on 6.3.3 as well; CI proves that on every
-push. When you move the pin, delete any cached index database (`$TMPDIR/cartograph-index-db`): the
+pins `release/6.4.1`. CI selects the newest Xcode installed on its runner and verifies the compiler
+fixtures on that toolchain; it is not a fixed multi-version compatibility matrix. When you move the
+pin, delete any cached index database (`$TMPDIR/cartograph-index-db`): the
 index format is backward-compatible but never forward-compatible, so a newer store read with an
 older `libIndexStore` fails or, worse, reads nothing.
 
@@ -25,8 +26,14 @@ Scripts/coverage.sh --report # per-file breakdown
 Line coverage must stay at or above 90% for `Sources/`. Tests, dependencies and
 `CartographTestSupport` are excluded from the denominator.
 
-Do not chase the number with tests that assert nothing. The CLI shell and the index-store I/O
-boundary are deliberately left to the end-to-end job that analyzes this repository with itself.
+Do not chase the number with tests that assert nothing. `coverage.sh` prints the unit-test-only
+percentage, then merges profiles from the instrumented CLI contract, automatic discovery, Core Data version, native
+collection and MCP harnesses. `--unit-only` retains the original unit measurement. Integration
+profiles count actual execution of the same production code; no production files are removed to
+reach the threshold. Dependency discovery recall and false positives remain separate metrics.
+`--skip-test` rejects newer source, test, fixture, skill, harness, binary or unit-profile timestamps; rerun the full
+command after changes. `python3 Scripts/verify-coverage-inputs.py` verifies this reuse contract with
+isolated stub tools. Those stub values are never included in the product's coverage measurement.
 
 ## Analyze the repository with itself
 
@@ -38,7 +45,7 @@ swift run cartograph cycles --level type --strict
 swift run cartograph rules  --strict
 ```
 
-All three must pass. `.cartograph.yml` in the repository root configures this.
+All four analysis commands must pass. `.cartograph.yml` in the repository root configures this.
 
 This is not ceremony: the protocol-witness false positive, the `@main` false positive and the
 absolute-vs-relative glob bug were all found this way and by nothing else.

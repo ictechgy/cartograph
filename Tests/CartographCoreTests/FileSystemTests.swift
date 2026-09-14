@@ -41,11 +41,14 @@ struct FileSystemTests {
             "/p/Sources/Nested/B.swift": "",
             "/p/Sources/Nested/C.md": "",
             "/p/.build/D.swift": "",
+            "/p/.build-fresh/E.swift": "",
+            "/p/.swift-build/F.swift": "",
+            "/p/.benchmark-results/G.swift": "",
         ])
         let files = fileSystem.recursiveFiles(
             under: "/p",
             isIncluded: { $0.hasSuffix(".swift") },
-            shouldDescend: { !$0.hasSuffix("/.build") }
+            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
         )
         #expect(files == ["/p/Sources/A.swift", "/p/Sources/Nested/B.swift"])
     }
@@ -89,6 +92,35 @@ struct FileSystemTests {
         #expect(try fileSystem.readText(at: target) == "hello")
         #expect(try fileSystem.contentsOfDirectory(at: root.path).count == 1)
         #expect(!fileSystem.currentDirectoryPath.isEmpty)
+    }
+
+    @Test("로컬 파일 지문은 나노초 시각과 실제 링크 대상을 보존한다")
+    func localFingerprintStampTracksFileIdentity() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cartograph-stamp-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let first = root.appendingPathComponent("first.txt")
+        let second = root.appendingPathComponent("second.txt")
+        let link = root.appendingPathComponent("current.txt")
+        try Data("first".utf8).write(to: first)
+        try Data("second".utf8).write(to: second)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: first)
+
+        let fileSystem = LocalFileSystem()
+        let firstStamp = try #require(fileSystem.fingerprintStamp(at: link.path))
+        #expect(firstStamp.resolvedPath == (try fileSystem.realPath(at: first.path)))
+        #expect(firstStamp.size == 5)
+        #expect(firstStamp.modificationNanoseconds >= 0)
+        #expect(firstStamp.changeNanoseconds >= 0)
+
+        try FileManager.default.removeItem(at: link)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: second)
+        let secondStamp = try #require(fileSystem.fingerprintStamp(at: link.path))
+        #expect(secondStamp.resolvedPath == (try fileSystem.realPath(at: second.path)))
+        #expect(secondStamp != firstStamp)
+        #expect(InMemoryFileSystem().fingerprintStamp(at: "/p/missing") == nil)
     }
 }
 

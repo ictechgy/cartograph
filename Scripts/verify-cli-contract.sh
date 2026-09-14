@@ -28,7 +28,7 @@ expect_status() {
     local description="$2"
     shift 2
 
-    "$BINARY" "$@" > /dev/null 2>&1
+    "$BINARY" "$@" < /dev/null > /dev/null 2>&1
     local actual=$?
 
     if [[ "$actual" -eq "$expected" ]]; then
@@ -65,9 +65,15 @@ echo "종료 코드 0 — 정상"
 expect_status 0 "--help"              --help
 expect_status 0 "--version"           --version
 expect_status 0 "인자 없음(도움말)"    
-for subcommand in graph cycles dead query dataflow bridges metrics rules baseline init skill; do
+for subcommand in graph cycles dead query impact snapshot runtime check serve dataflow bridges metrics rules baseline init skill; do
     expect_status 0 "$subcommand --help" "$subcommand" --help
 done
+expect_status 0 "runtime plan --help" runtime plan --help
+expect_status 0 "runtime check --help" runtime check --help
+expect_status 0 "runtime discover --help" runtime discover --help
+expect_status 0 "runtime collect --help" runtime collect --help
+expect_status 0 "runtime prepare-coredata --help" runtime prepare-coredata --help
+expect_status 0 "serve EOF 종료(빌드 불필요)" serve
 
 echo "종료 코드 64 — 사용 오류"
 expect_status 64 "알 수 없는 옵션"     --no-such-option
@@ -75,6 +81,7 @@ expect_status 64 "알 수 없는 하위 명령" no-such-command
 expect_status 64 "잘못된 열거형 값"    graph --level galaxy
 expect_status 64 "잘못된 형식 값"      dead --report-format yaml
 expect_status 64 "질의 대상 누락"      query
+expect_status 64 "영향 선택자 누락"    impact
 expect_status 64 "값 흐름 대상 누락"    dataflow
 expect_status 64 "0 이하의 깊이"       query Foo --depth 0
 expect_status 64 "0 이하의 값 흐름 예산" dataflow Foo --max-contexts 0
@@ -88,6 +95,66 @@ expect_status 64 "값 흐름은 JSON 전용"    dataflow Foo --report-format tex
 expect_status 64 "값 흐름과 strict 동시"  dataflow Foo --strict
 expect_status 64 "질의와 형식 동시"      query Foo --report-format text
 expect_status 64 "질의와 strict 동시"    query Foo --strict
+expect_status 64 "영향 선택자 혼용"      impact Foo --file Sources/App.swift
+expect_status 64 "영향과 since 동시"     impact Foo --since HEAD
+expect_status 64 "영향과 level 동시"     impact Foo --level module
+expect_status 64 "영향과 형식 동시"     impact Foo --report-format json
+expect_status 64 "영향과 strict 동시"   impact Foo --strict
+expect_status 64 "영향 깊이 범위"       impact Foo --depth 0
+expect_status 64 "영향 결과 수 범위"    impact Foo --limit 10001
+expect_status 64 "영향 잘못된 형식"     impact Foo --format yaml
+expect_status 64 "영향 trace 실행 파일 누락" impact Foo --trace /dev/null
+expect_status 64 "영향 trace 없는 실행 파일" impact Foo --executable /dev/null
+expect_status 64 "영향 과거와 trace 혼용" impact Foo --before /dev/null --trace /dev/null --executable /dev/null
+expect_status 64 "런타임 발견 한도 범위" runtime discover --limit 0
+expect_status 64 "런타임 발견 since 거부" runtime discover --since HEAD
+expect_status 64 "런타임 발견 trace 실행 파일 누락" runtime discover --trace /dev/null
+expect_status 64 "런타임 발견 trace와 모델 빌드 근거 혼용" runtime discover \
+    --trace /dev/null --executable /dev/null --coredata-build-evidence /dev/null
+expect_status 64 "영향 trace와 모델 빌드 근거 혼용" impact Foo \
+    --trace /dev/null --executable /dev/null --coredata-build-evidence /dev/null
+expect_status 64 "Core Data 준비 출력 누락" runtime prepare-coredata \
+    --model /tmp/Store.xcdatamodel --container Store --executable /dev/null
+expect_status 64 "Core Data 준비 빈 모델 경로" runtime prepare-coredata \
+    --model "" --container Store --executable /dev/null --output /dev/null
+expect_status 64 "Core Data 준비 빈 모델 이름" runtime prepare-coredata \
+    --model /tmp/Store.xcdatamodel --container "" --executable /dev/null --output /dev/null
+expect_status 64 "Core Data 준비 빈 모듈" runtime prepare-coredata \
+    --model /tmp/Store.xcdatamodel --container Store --module "" --executable /dev/null --output /dev/null
+expect_status 64 "Core Data 준비 빈 생성 소스" runtime prepare-coredata \
+    --model /tmp/Store.xcdatamodel --container Store --generated-source "" --executable /dev/null --output /dev/null
+expect_status 64 "런타임 수집 실행 파일 누락" runtime collect --output /dev/null
+expect_status 64 "런타임 수집 출력 누락" runtime collect --executable /dev/null
+expect_status 64 "런타임 수집 시간 범위" runtime collect --executable /dev/null --output /dev/null --timeout 0
+expect_status 64 "런타임 수집 strict 거부" runtime collect --executable /dev/null --output /dev/null --strict
+expect_status 64 "관측 구간 0 거부" runtime collect --executable /dev/null --output /dev/null --duration 0
+expect_status 64 "관측 구간 timeout 초과" runtime collect --executable /dev/null --output /dev/null --timeout 1 --duration 1
+expect_status 64 "관측 구간 비유한값 거부" runtime collect --executable /dev/null --output /dev/null --duration nan
+expect_status 64 "시뮬레이터 bundle 누락" runtime collect --executable /dev/null --output /dev/null --simulator 00000000-0000-0000-0000-000000000000
+expect_status 64 "시뮬레이터 기기 누락" runtime collect --executable /dev/null --output /dev/null --bundle-id dev.cartograph.Probe
+expect_status 64 "시뮬레이터 별칭 거부" runtime collect --executable /dev/null --output /dev/null --simulator booted --bundle-id dev.cartograph.Probe
+expect_status 64 "통합 검사와 level 동시" check --level module
+expect_status 64 "서버와 since 동시" serve --since HEAD
+expect_status 64 "서버와 level 동시" serve --level type
+expect_status 64 "서버와 strict 동시" serve --strict
+expect_status 64 "서버와 출력 파일 동시" serve --output /dev/null
+expect_status 64 "서버와 리포트 형식 동시" serve --report-format json
+expect_status 64 "서버 빈 모델 근거 경로" serve --coredata-build-evidence ""
+expect_status 64 "스냅샷과 since 동시" snapshot --since HEAD
+expect_status 64 "스냅샷과 level 동시" snapshot --level type
+expect_status 64 "스냅샷과 strict 동시" snapshot --strict
+expect_status 64 "스냅샷과 베이스라인 동시" snapshot --baseline /dev/null
+expect_status 64 "스냅샷과 리포트 형식 동시" snapshot --report-format json
+expect_status 64 "빈 스냅샷 리비전" snapshot --revision ""
+expect_status 64 "스냅샷 빈 모델 근거 경로" snapshot --coredata-build-evidence ""
+expect_status 64 "런타임 계획 계약 누락" runtime plan --executable /dev/null
+expect_status 64 "런타임 계획 실행 파일 누락" runtime plan --contracts /dev/null
+expect_status 64 "런타임 검사 관측 누락" runtime check --contracts /dev/null --executable /dev/null
+expect_status 64 "런타임 검사 실행 파일 누락" runtime check --contracts /dev/null --observations /dev/null
+expect_status 64 "런타임과 since 동시" runtime plan --contracts /dev/null --executable /dev/null --since HEAD
+expect_status 64 "런타임과 level 동시" runtime plan --contracts /dev/null --executable /dev/null --level type
+expect_status 64 "런타임과 형식 동시" runtime plan --contracts /dev/null --executable /dev/null --report-format text
+expect_status 64 "런타임과 베이스라인 동시" runtime plan --contracts /dev/null --executable /dev/null --baseline /dev/null
 expect_status 64 "그래프와 형식 동시"    graph --report-format json
 expect_status 64 "그래프와 strict 동시"  graph --strict
 expect_status 64 "브리지와 형식 동시"    bridges --report-format json
@@ -118,6 +185,8 @@ expect_status 2 "인덱스 스토어 없음"   cycles --project "$MISSING"
 expect_status 2 "값 흐름: 인덱스 없음" dataflow Foo --project "$MISSING"
 expect_status 2 "없는 인덱스 경로"     cycles --index-store "$MISSING/nope"
 expect_status 2 "브리지: 인덱스 없음"  bridges --project "$MISSING"
+expect_status 2 "통합 검사: 인덱스 없음" check --project "$MISSING" --strict
+expect_status 2 "스냅샷: 인덱스 없음" snapshot --project "$MISSING"
 # 파일을 못 쓴 것과 순환을 찾은 것이 CI 에서 같은 신호가 되어서는 안 된다.
 # 실제 쓰기 실패는 아래 "빈 인덱스" 픽스처 다음에서 검증한다 — 없는 부모
 # 디렉터리는 -o 가 만들어 주므로 경로만으로는 실패하지 않는다.
@@ -139,6 +208,9 @@ printf 'struct A {\n    func b() {}\n}\n' > "$EMPTY/Sources/A.swift"
 expect_status 2 "빈 인덱스"            dead   --strict --project "$EMPTY"
 expect_status 2 "빈 인덱스: cycles"    cycles --strict --project "$EMPTY"
 expect_status 2 "빈 인덱스: rules"     rules  --strict --project "$EMPTY"
+expect_status 2 "빈 인덱스: check"     check --strict --project "$EMPTY"
+expect_status 2 "빈 인덱스: snapshot"  snapshot --project "$EMPTY"
+expect_status 64 "빈 인덱스 영향 대상 없음" impact Missing --project "$EMPTY" --allow-empty-index
 # 목적지를 디렉터리로 준다. 파일로 못 쓰는 자리이므로 이 실패는 진짜 쓰기 실패다.
 expect_status 2 "출력 파일 쓰기 실패"  graph --project "$EMPTY" --allow-empty-index -o "$EMPTY"
 

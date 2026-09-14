@@ -9,6 +9,20 @@ import Testing
 /// 실패한다. 문자열 조작만으로는 재현되지 않으므로 진짜 저장소가 필요하다.
 @Suite("변경 파일 목록")
 struct ChangedFilesTests {
+    @Test("리비전처럼 전달한 git 옵션은 실행하지 않는다")
+    func doesNotInterpretReferenceAsAnOption() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write("let value = 1", to: "Sources/Base.swift", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        let destination = root.appendingPathComponent("unexpected")
+        #expect(throws: CartographError.self) {
+            try ChangedFiles.since("--output=\(destination.path)", workingDirectory: root.path)
+        }
+        #expect(!FileManager.default.fileExists(atPath: destination.path + "...HEAD"))
+    }
+
     /// 임시 디렉터리는 심볼릭 링크 뒤에 있다. git 은 `/private/var/...` 를
     /// 돌려주는데 Foundation 의 정규화는 오히려 `/private` 을 떼어 `/var/...` 로
     /// 만든다. 두 표기를 직접 비교하면 안 되고, 실제 비교는 `ReportScope` 가
@@ -123,6 +137,35 @@ struct ChangedFilesTests {
 
         let changed = try ChangedFiles.since(base, workingDirectory: root.path)
         #expect(changed.allSatisfy { !$0.hasSuffix("Gone.swift") })
+    }
+
+    @Test("영향 분석 범위는 삭제와 이름 변경의 양쪽 경로를 보존한다")
+    func includesDeletedAndBothRenamePathsWhenRequested() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write("let gone = 1", to: "Sources/Gone.swift", in: root)
+        try write("let original = 1", to: "Sources/Original.swift", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        let base = try run(["rev-parse", "HEAD"], in: root).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        try FileManager.default.removeItem(at: root.appendingPathComponent("Sources/Gone.swift"))
+        try run(["mv", "Sources/Original.swift", "Sources/Renamed.swift"], in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "delete-and-rename"], in: root)
+
+        let defaultChanged = try ChangedFiles.since(base, workingDirectory: root.path)
+        #expect(defaultChanged.allSatisfy { !$0.hasSuffix("Gone.swift") })
+
+        let impactSeeds = try ChangedFiles.since(
+            base,
+            workingDirectory: root.path,
+            includingDeleted: true
+        )
+        let names = Set(impactSeeds.map { ($0 as NSString).lastPathComponent })
+        #expect(names.contains("Gone.swift"))
+        #expect(names.contains("Original.swift"))
+        #expect(names.contains("Renamed.swift"))
     }
 
     @Test("없는 기준점은 git 이 말한 이유를 그대로 전한다")

@@ -34,6 +34,11 @@ struct CartographCommand: ParsableCommand {
             CyclesCommand.self,
             DeadCommand.self,
             QueryCommand.self,
+            RuntimeCommand.self,
+            ImpactCommand.self,
+            CheckCommand.self,
+            ServeCommand.self,
+            SnapshotCommand.self,
             DataflowCommand.self,
             BridgesCommand.self,
             MetricsCommand.self,
@@ -68,6 +73,9 @@ struct CartographCommand: ParsableCommand {
             // 그래서 분류는 최상위가 아니라 오류가 나는 자리에서 한다. 도구 실패로
             // 다뤄야 할 것은 그곳에서 CartographError 로 감싼다.
             FileHandle.standardError.write(Data(("error: " + CommandSupport.describe(error) + "\n").utf8))
+            Foundation.exit(CommandSupport.failureExitCode)
+        } catch let error as AnalysisSessionError {
+            FileHandle.standardError.write(Data(("error: " + (error.errorDescription ?? "Analysis inputs changed.") + "\n").utf8))
             Foundation.exit(CommandSupport.failureExitCode)
         } catch {
             exit(withError: error)

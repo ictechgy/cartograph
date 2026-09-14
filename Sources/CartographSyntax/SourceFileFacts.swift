@@ -23,11 +23,19 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
     public let declarations: [DeclarationFacts]
     /// 파일 첫머리에 `// cartograph:ignore:all` 이 있는지 여부.
     public let ignoresEntireFile: Bool
+    /// 같은 구문 트리에서 찾은 런타임 경계. nil은 예전 캐시처럼 아직 스캔하지 않은 결과다.
+    public let runtimeFacts: RuntimeFileFacts?
 
-    public init(path: String, declarations: [DeclarationFacts], ignoresEntireFile: Bool = false) {
+    public init(
+        path: String,
+        declarations: [DeclarationFacts],
+        ignoresEntireFile: Bool = false,
+        runtimeFacts: RuntimeFileFacts? = nil
+    ) {
         self.path = path
         self.declarations = declarations
         self.ignoresEntireFile = ignoresEntireFile
+        self.runtimeFacts = runtimeFacts
     }
 
     /// 줄 번호로 선언을 찾는다.

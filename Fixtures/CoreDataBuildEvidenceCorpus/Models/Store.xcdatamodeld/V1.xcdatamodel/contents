@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" sourceLanguage="Swift">
+    <entity name="Record" representedClassName="LegacyRecord" syncable="YES"/>
+</model>

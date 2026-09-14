@@ -11,6 +11,7 @@ public struct SnapshotEnricher: Sendable {
         public let snapshot: IndexSnapshot
         public let missingSourcePaths: [String]
         public let unreadableSourcePaths: [String]
+        public let runtimeFiles: [RuntimeFileFacts]
     }
 
     private let fileSystem: any FileSystem
@@ -114,7 +115,8 @@ public struct SnapshotEnricher: Sendable {
                 .scan(roots: interfaceBuilderRoots, pathFilter: pathFilter)
             enriched = Self.marking(enriched, interfaceBuilderReferences: references)
         }
-        return Result(snapshot: enriched, missingSourcePaths: missing, unreadableSourcePaths: unreadable)
+        return Result(snapshot: enriched, missingSourcePaths: missing, unreadableSourcePaths: unreadable,
+            runtimeFiles: facts.values.compactMap(\.runtimeFacts).sorted { $0.path < $1.path })
     }
 
     private static func isMissingFile(_ error: any Error) -> Bool {

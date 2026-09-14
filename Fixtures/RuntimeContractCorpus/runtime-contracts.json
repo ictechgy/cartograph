@@ -1,0 +1,22 @@
+{
+  "format": "runtime-contracts",
+  "version": 1,
+  "contracts": [
+    {
+      "id": "selector-route",
+      "source": "dispatchScreen",
+      "target": "ProbeScreen.open",
+      "mechanism": "selector",
+      "requiredScenarios": ["launch"],
+      "expectedValue": "opened"
+    },
+    {
+      "id": "screen-registration",
+      "source": "lookupScreen",
+      "target": "ProbeScreen",
+      "mechanism": "classLookup",
+      "requiredScenarios": ["launch"],
+      "expectedValue": "registered"
+    }
+  ]
+}

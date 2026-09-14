@@ -51,6 +51,23 @@ public struct RetentionPolicy: Sendable {
         return decisions
     }
 
+    /// 영향 검토에 필요한 모든 런타임·보존 근거를 정점별로 돌려준다.
+    ///
+    /// `retainedNodes`는 사용자에게 보여 줄 대표 사유 하나를 고르는 API다. 영향 분석은
+    /// 그 선택으로 `@Test`와 `ignore`, Codable과 외부 브리지처럼 함께 존재하는 근거를
+    /// 잃으면 안 된다. 따라서 설정 토글이나 대표 사유를 가리는 표식과 무관하게 실제
+    /// 런타임 경로를 모두 수집한다. 사용자 설정·무시 주석·소스 접근 실패는 이 사실 목록에
+    /// 포함하지 않는다.
+    public func reviewReasons(in graph: CodeGraph, snapshot: IndexSnapshot) -> [NodeID: Set<RetentionReason>] {
+        let externalRelationFacts = Self.externalRelationFacts(in: snapshot)
+        var results: [NodeID: Set<RetentionReason>] = [:]
+        for node in graph.sortedNodes {
+            let reasons = reviewReasons(for: node, in: graph, externalRelationFacts: externalRelationFacts)
+            if !reasons.isEmpty { results[node.id] = reasons }
+        }
+        return results
+    }
+
     /// 분석 범위 밖 선언을 오버라이드하거나 준수하는 심볼의 USR 집합.
     ///
     /// 그래프는 양쪽 끝이 모두 있는 간선만 남기므로, 외부로 향하는 관계는
@@ -117,6 +134,40 @@ public struct RetentionPolicy: Sendable {
         return nil
     }
 
+    private func reviewReasons(
+        for node: GraphNode,
+        in graph: CodeGraph,
+        externalRelationFacts: [String: Set<RetentionReason>]
+    ) -> Set<RetentionReason> {
+        var reasons: Set<RetentionReason> = []
+        if node.attributes.contains(.entryPoint) || isTopLevelCode(node, in: graph) {
+            reasons.insert(.entryPoint)
+        }
+        if node.attributes.contains(.unitTest) { reasons.insert(.xcTest) }
+        if node.attributes.contains(where: { $0 == .testFunction || $0 == .testSuite }) {
+            reasons.insert(.swiftTesting)
+        }
+        if node.attributes.contains(.preview) { reasons.insert(.preview) }
+        if isObjectiveCAccessible(node) { reasons.insert(.objectiveCAccessible) }
+        if node.attributes.contains(where: \.isInterfaceBuilderRelated) {
+            reasons.insert(.interfaceBuilder)
+        }
+        if isDynamicallyDispatched(node) { reasons.insert(.dynamicDispatch) }
+        if node.attributes.contains(.runtimeManaged) { reasons.insert(.runtimeManaged) }
+        reasons.formUnion(parentDrivenReasons(for: node, in: graph))
+        if !node.kind.isTypeDeclaration, node.kind != .extensionDeclaration {
+            reasons.formUnion(externalRelationFacts[node.usr ?? ""] ?? [])
+        }
+        if !externalRetentions.isEmpty,
+           !externalRetentions.matchingRetentions(
+               for: node,
+               names: [ExternalRetentionIndex.syntaxQualifiedName(of: node, in: graph)]
+           ).isEmpty {
+            reasons.insert(.externalBridge)
+        }
+        return reasons
+    }
+
     // MARK: - 개별 규칙
 
     private func isUserRetained(_ node: GraphNode, memo: inout [String: Bool]) -> Bool {
@@ -178,37 +229,47 @@ public struct RetentionPolicy: Sendable {
     /// 원시값 열거형의 케이스, CodingKey, 프로퍼티 래퍼/결과 빌더의 규약 멤버,
     /// Codable 타입의 저장 프로퍼티가 여기에 해당한다.
     private func parentDrivenReason(for node: GraphNode, in graph: CodeGraph) -> RetentionReason? {
-        guard let parent = parent(of: node, in: graph) else { return nil }
+        parentDrivenReasons(for: node, in: graph).first { reason in
+            switch reason {
+            case .rawRepresentableEnumCase: options.retainRawRepresentableEnumCases
+            case .codableProperty: options.retainCodableProperties
+            default: true
+            }
+        }
+    }
+
+    /// 부모 선언이 만들어 내는 모든 런타임 근거를 대표 사유 순서로 수집한다.
+    private func parentDrivenReasons(for node: GraphNode, in graph: CodeGraph) -> [RetentionReason] {
+        guard let parent = parent(of: node, in: graph) else { return [] }
         let conformances = conformanceAttributes(of: parent, in: graph)
+        var reasons: [RetentionReason] = []
 
         // @main 타입의 static main() 은 런타임이 부르므로 코드 어디에도 참조가 없다.
         if parent.attributes.contains(.entryPoint), node.baseName == Self.entryPointMethodName {
-            return .entryPoint
+            reasons.append(.entryPoint)
         }
         if node.kind == .enumCase {
-            if conformances.contains(.codingKey) { return .codingKey }
-            if conformances.contains(.caseIterable) { return .caseIterableEnumCase }
-            if options.retainRawRepresentableEnumCases, conformances.contains(.rawRepresentable) {
-                return .rawRepresentableEnumCase
-            }
+            if conformances.contains(.codingKey) { reasons.append(.codingKey) }
+            if conformances.contains(.caseIterable) { reasons.append(.caseIterableEnumCase) }
+            if conformances.contains(.rawRepresentable) { reasons.append(.rawRepresentableEnumCase) }
         }
         if parent.attributes.contains(.propertyWrapper) {
             // 래퍼를 붙이는 자리에서 컴파일러가 부르는 init(wrappedValue:)는
             // 인덱스에 호출로 남지 않는다.
             if Self.propertyWrapperMembers.contains(node.baseName) || node.kind == .initializer {
-                return .propertyWrapperRequirement
+                reasons.append(.propertyWrapperRequirement)
             }
         }
         if parent.attributes.contains(.resultBuilder), node.baseName.hasPrefix("build") {
-            return .resultBuilderRequirement
+            reasons.append(.resultBuilderRequirement)
         }
-        if options.retainCodableProperties, conformances.contains(.codable), node.kind == .property {
-            return .codableProperty
+        if conformances.contains(.codable), node.kind == .property {
+            reasons.append(.codableProperty)
         }
         if parent.attributes.contains(.runtimeManaged), node.kind == .property {
-            return .runtimeManaged
+            reasons.append(.runtimeManaged)
         }
-        return nil
+        return reasons
     }
 
     /// 분석 범위 밖 선언과 연결되어 살아남는 경우.
@@ -230,6 +291,20 @@ public struct RetentionPolicy: Sendable {
         // 반대 답을 내면 판정이 코드가 아니라 작성 취향의 함수가 된다.
         guard !node.kind.isTypeDeclaration, node.kind != .extensionDeclaration else { return nil }
         return node.attributes.contains(.overrideDeclaration) ? .externalOverride : .externalConformance
+    }
+
+    /// 그래프 밖 기반 선언과 맺은 모든 관계를 수집한다.
+    private static func externalRelationFacts(in snapshot: IndexSnapshot) -> [String: Set<RetentionReason>] {
+        let knownUSRs = Set(snapshot.symbols.map(\.usr))
+        var facts: [String: Set<RetentionReason>] = [:]
+        for reference in snapshot.references where !knownUSRs.contains(reference.targetUSR) {
+            switch reference.kind {
+            case .overrides: facts[reference.sourceUSR, default: []].insert(.externalOverride)
+            case .conformance: facts[reference.sourceUSR, default: []].insert(.externalConformance)
+            default: break
+            }
+        }
+        return facts
     }
 
     /// 부모 타입 본체와 그 익스텐션들이 함께 선언한 준수 표식.

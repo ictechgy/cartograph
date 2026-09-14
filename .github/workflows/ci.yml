@@ -45,7 +45,9 @@ jobs:
         run: swift build --build-tests --enable-code-coverage
 
       - name: Test with coverage gate
-        run: Scripts/coverage.sh
+        run: |
+          python3 Scripts/verify-coverage-inputs.py
+          Scripts/coverage.sh
 
   self-analysis:
     name: Analyze this repository with itself
@@ -102,6 +104,40 @@ jobs:
 
       - name: Value-flow and bridge runtime regressions
         run: python3 Scripts/verify-analysis-blindspots.py "$CARTOGRAPH"
+
+      - name: Change impact and historical snapshots
+        run: python3 Scripts/verify-change-impact.py --cartograph "$CARTOGRAPH"
+
+      - name: Runtime contract execution and stale evidence
+        run: python3 Scripts/verify-runtime-contracts.py --cartograph "$CARTOGRAPH"
+
+      - name: Automatic runtime discovery corpus
+        run: python3 Scripts/verify-runtime-discovery.py --cartograph "$CARTOGRAPH"
+
+      - name: KVC, predicates and immutable factory registries
+        run: |
+          python3 Scripts/verify-runtime-keypaths.py --cartograph "$CARTOGRAPH"
+          python3 Scripts/verify-runtime-registry.py --cartograph "$CARTOGRAPH"
+
+      - name: Core Data model version and runtime behavior
+        run: >-
+          python3 Scripts/verify-coredata-versions.py --cartograph "$CARTOGRAPH"
+          --output-dir "$RUNNER_TEMP/cartograph-coredata-versions"
+
+      - name: Core Data executable, generated classes and MCP evidence
+        run: >-
+          python3 Scripts/verify-coredata-build-evidence.py --cartograph "$CARTOGRAPH"
+          --output-dir "$RUNNER_TEMP/cartograph-coredata-build"
+
+      - name: Native runtime collection
+        run: python3 Scripts/verify-runtime-collection.py --cartograph "$CARTOGRAPH"
+
+      - name: MCP sessions and invalidation
+        run: python3 Scripts/verify-mcp.py --cartograph "$CARTOGRAPH"
+
+      # 개별 명령과 같은 검사를 한 번의 인덱스 로딩으로 조립하는 경로도 검증한다.
+      - name: Combined CI checks
+        run: '"$CARTOGRAPH" check --strict --report-format github-actions'
 
       - name: Architecture rules
         run: |

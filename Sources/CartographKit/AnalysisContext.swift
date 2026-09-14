@@ -22,6 +22,13 @@ public struct AnalysisContext: Sendable {
     public let externalRetentions: ExternalRetentionsDocument?
     /// 보존 규칙이 쓰는 색인. 문서가 없으면 비어 있다. 접근할 때마다 다시 만들지 않는다.
     public let externalRetentionIndex: ExternalRetentionIndex
+    /// nil은 아직 자동 발견 입력을 수집하지 않은 문맥이며 빈 배열과 다르다.
+    public let runtimeFiles: [RuntimeFileFacts]?
+    public let runtimeFreshness: [String: RuntimeFreshness]
+    /// 명시적 빌드 근거로 검증되어 기본 경로 필터 밖에서 추가한 소스 파일.
+    let supplementalRuntimeSourcePaths: Set<String>
+    /// 실행 근거용 입력 해시를 읽기 전후로 확인한 문맥에만 설정한다.
+    public private(set) var runtimeInputFingerprint: String?
 
     public init(
         snapshot: IndexSnapshot,
@@ -29,11 +36,17 @@ public struct AnalysisContext: Sendable {
         edgeKinds: Set<EdgeKind> = [],
         externalRetentions: ExternalRetentionsDocument? = nil,
         missingSourcePaths: [String] = [],
-        unreadableSourcePaths: [String] = []
+        unreadableSourcePaths: [String] = [],
+        runtimeFiles: [RuntimeFileFacts]? = nil,
+        runtimeFreshness: [String: RuntimeFreshness] = [:],
+        supplementalRuntimeSourcePaths: Set<String> = []
     ) {
         self.snapshot = snapshot
         self.missingSourcePaths = missingSourcePaths
         self.unreadableSourcePaths = unreadableSourcePaths
+        self.runtimeFiles = runtimeFiles
+        self.runtimeFreshness = runtimeFreshness
+        self.supplementalRuntimeSourcePaths = supplementalRuntimeSourcePaths
         self.pathFilter = pathFilter
         self.edgeKinds = edgeKinds
         self.externalRetentions = externalRetentions
@@ -74,6 +87,59 @@ public struct AnalysisContext: Sendable {
     }
 
     private let graphCache: GraphBuildCache
+    private let reviewCache = ReviewCache()
+    private let runtimeCache = RuntimeCache()
+
+    func bindingRuntimeInputFingerprint(_ fingerprint: String) -> AnalysisContext {
+        var copy = self
+        copy.runtimeInputFingerprint = fingerprint
+        return copy
+    }
+
+    /// 자동 발견 결과도 같은 세대의 스냅샷에서 한 번만 계산한다.
+    public func runtimeDiscovery() -> RuntimeDiscoveryReport? {
+        guard let runtimeFiles else { return nil }
+        return runtimeCache.result {
+            RuntimeDiscoveryResolver().resolve(files: runtimeFiles, snapshot: snapshot,
+                graph: buildGraph(level: .symbol).graph, freshness: runtimeFreshness)
+        }
+    }
+
+    private final class RuntimeCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: RuntimeDiscoveryReport?
+
+        func result(make: () -> RuntimeDiscoveryReport) -> RuntimeDiscoveryReport {
+            lock.lock()
+            defer { lock.unlock() }
+            if let value { return value }
+            let made = make()
+            value = made
+            return made
+        }
+    }
+
+    /// 반복 영향 질의가 같은 스냅샷의 프레임워크·테스트 근거를 매번 다시 분류하지 않게 한다.
+    func impactReviewReasons() -> [NodeID: Set<RetentionReason>] {
+        reviewCache.result {
+            RetentionPolicy(externalRetentions: externalRetentionIndex)
+                .reviewReasons(in: buildGraph(level: .symbol).graph, snapshot: snapshot)
+        }
+    }
+
+    private final class ReviewCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: [NodeID: Set<RetentionReason>]?
+
+        func result(make: () -> [NodeID: Set<RetentionReason>]) -> [NodeID: Set<RetentionReason>] {
+            lock.lock()
+            defer { lock.unlock() }
+            if let value { return value }
+            let made = make()
+            value = made
+            return made
+        }
+    }
 
     /// 지정한 해상도의 그래프를 만든다. 같은 문맥·같은 해상도면 처음 만든 것을 돌려준다.
     public func buildGraph(level: GraphLevel, includeExternal: Bool = false) -> GraphBuilder.BuildResult {

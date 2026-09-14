@@ -5,6 +5,15 @@ import Testing
 
 @Suite("그래프 질의 색인")
 struct GraphQueryIndexTests {
+    @Test("긴 심볼은 정확하게 찾되 오타 추천으로 이차 비용을 만들지 않는다")
+    func longIdentifiersUseExactLookupWithoutSuggestions() {
+        let name = String(repeating: "A", count: 4096)
+        let node = GraphNode(id: "long", name: name, kind: .function)
+        let index = GraphQueryIndex(graph: CodeGraph(level: .symbol, nodes: [node], edges: []))
+        #expect(index.resolve(name) == .found(node))
+        #expect(index.similarCandidates(to: name + "B").isEmpty)
+    }
+
     @Test("같은 정점의 별칭은 중복하지 않고 동명 정점은 정렬된 후보로 남긴다")
     func aliasesAndAmbiguity() {
         let first = GraphNode(id: "a", name: "run()", kind: .function, module: "App")

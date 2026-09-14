@@ -1,0 +1,40 @@
+{
+  "format": "runtime-keypath-ground-truth",
+  "version": 1,
+  "supportedConnections": [
+    {"source":"readKeyPath(_:)","target":"leaf","owner":"KeyPathRoot","kind":"keyPathRead"},
+    {"source":"readKeyPath(_:)","target":"text","owner":"KeyPathLeaf","kind":"keyPathRead"},
+    {"source":"writeKeyPath(_:)","target":"leaf","owner":"KeyPathRoot","kind":"keyPathWrite"},
+    {"source":"writeKeyPath(_:)","target":"text","owner":"KeyPathLeaf","kind":"keyPathWrite"},
+    {"source":"readNilOptionalKeyPath(_:)","target":"optionalLeaf","owner":"KeyPathRoot","kind":"keyPathRead"},
+    {"source":"readNilOptionalKeyPath(_:)","target":"text","owner":"KeyPathLeaf","kind":"keyPathRead"},
+    {"source":"evaluateInlinePredicate(_:)","target":"leaf","owner":"KeyPathRoot","kind":"keyPathRead"},
+    {"source":"evaluateInlinePredicate(_:)","target":"text","owner":"KeyPathLeaf","kind":"keyPathRead"},
+    {"source":"evaluateArgumentArrayPredicate(_:)","target":"leaf","owner":"KeyPathRoot","kind":"keyPathRead"},
+    {"source":"evaluateArgumentArrayPredicate(_:)","target":"text","owner":"KeyPathLeaf","kind":"keyPathRead"},
+    {"source":"evaluateLocalPredicate(_:)","target":"leaf","owner":"KeyPathRoot","kind":"keyPathRead"},
+    {"source":"evaluateLocalPredicate(_:)","target":"text","owner":"KeyPathLeaf","kind":"keyPathRead"}
+  ],
+  "classifications": [
+    {"source":"overriddenKeyPath(_:)","kind":"keyPathRead","api":"value","status":"shadowed","candidateCount":0},
+    {"source":"nonfinalKeyPath(_:)","kind":"keyPathRead","api":"value","status":"unresolved","candidateCount":0},
+    {"source":"anyIntermediateKeyPath(_:)","kind":"keyPathRead","api":"value","status":"unresolved","candidateCount":1},
+    {"source":"arrayIntermediateKeyPath(_:)","kind":"keyPathRead","api":"value","status":"unresolved","candidateCount":1},
+    {"source":"inferredIntermediateKeyPath(_:)","kind":"keyPathRead","api":"value","status":"unresolved","candidateCount":1},
+    {"source":"readOnlyKeyPathWrite(_:)","kind":"keyPathWrite","api":"setValue","status":"unresolved","candidateCount":1},
+    {"source":"alternateAccessorKeyPath(_:)","kind":"keyPathRead","api":"value","status":"unresolved","candidateCount":0},
+    {"source":"customKeyPathAPI()","kind":"keyPathRead","api":"value","status":"shadowed","candidateCount":0}
+  ],
+  "silentCases": [
+    "dynamicKeyPath(_:path:)",
+    "oversizedKeyPath(_:)",
+    "unsupportedPredicateKeyArgument(_:key:)",
+    "mutablePredicate(_:)"
+  ],
+  "unsupported": [
+    {
+      "label": "unsupported-keypath-inputs",
+      "limitationContains": "Key-value or predicate reflection calls not yet modeled:"
+    }
+  ]
+}

@@ -31,6 +31,8 @@ public struct CommandOutcome: Sendable, Equatable {
     /// 끝난다. 기본 문구는 요청한 이름조차 다시 보여 주지 않으므로, 단일 경로는
     /// 이름과 비슷한 이름 추천을 담은 문구를 채워 준다.
     public let notFoundMessage: String?
+    /// 인자가 맞더라도 분석에 필요한 과거 선언이나 근거가 없으면 완전한 점검처럼 끝내지 않는다.
+    public let incompleteAnalysis: String?
 
     public init(
         output: String,
@@ -39,7 +41,8 @@ public struct CommandOutcome: Sendable, Equatable {
         thresholdFailure: CartographError? = nil,
         subjectNotFound: Bool = false,
         missingSubjects: [String] = [],
-        notFoundMessage: String? = nil
+        notFoundMessage: String? = nil,
+        incompleteAnalysis: String? = nil
     ) {
         self.output = output
         self.findingCount = findingCount
@@ -48,6 +51,7 @@ public struct CommandOutcome: Sendable, Equatable {
         self.subjectNotFound = subjectNotFound
         self.missingSubjects = missingSubjects
         self.notFoundMessage = notFoundMessage
+        self.incompleteAnalysis = incompleteAnalysis
     }
 
     public var hasFindings: Bool { findingCount > 0 }

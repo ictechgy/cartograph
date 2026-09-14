@@ -5,6 +5,68 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.13.0] - 2026-09-14
+
+### Added
+
+- Timed observation windows for macOS and iOS Simulator debug apps. `--duration` seals v2 evidence
+  without requiring an application exit call, keeps scenario success unverified, and rejects missing
+  acknowledgements, inconsistent counts/identity, lost events and changed inputs.
+- Compiler-confirmed notification `sink`/`onReceive` dependencies, exact SDK notification identities,
+  `NSWorkspace`'s shared center, and same-scope immutable local center/object matching. Fresh local
+  registrations must precede posting. Immutable token aliases, same-branch removal, exited plain-`do`
+  defers and direct `AnyCancellable.cancel()` suppress later compatible posts; mutable/reassigned tokens
+  and uncertain branch merges remain potential relationships. Direct compiler-confirmed
+  `NotificationCenter.notifications` `for await` loops are supported without treating bare sequences as
+  subscriptions or registration as callback execution.
+- Manual Core Data model-to-class relationships with `.xccurrentversion` selection, migration review,
+  exact `category` class-name checks, snapshot/history/`--since` impact and model-driven session/trace
+  invalidation. Generated classes, `customClass` fallback and invalid `manual` values stay unresolved;
+  CI checks these rules against `momc`, generated Swift and a loaded model instance.
+- Opt-in `runtime prepare-coredata` build evidence binds exact generated source/module/USRs to a verified
+  source model, main-bundle compiled model, container, main executable symbols and immutable local fetch
+  chain. Current-build runtime/impact/snapshot and fixed-path MCP can use it; default query/dead stays
+  unchanged, dynamic-framework-only classes and mutated request/entity/context state remain unresolved.
+- Conservative direct-key KVC property dependencies and all-or-nothing 16-segment key paths, with final
+  receivers, explicit Objective-C exposure, exact annotated intermediate types and accessor/override
+  checks. Bounded inline or immutable-local `NSPredicate(format:)` paths require literal `%K`, typed-root,
+  constructor and evaluation proof. Intermediate write targets are dependencies, not setter executions.
+- Compiler-confirmed immutable `Swift.Dictionary` factory/router registries with literal string keys,
+  named top-level functions and immutable aliases. This does not infer closure, mutable-map, custom-map or
+  external dependency-injection registries.
+- Automatic runtime discovery from compiler-anchored Swift calls and object-specific Interface
+  Builder connections, including name construction, selector dispatch and notification joins.
+  `impact` follows validated runtime links without a contract file; unresolved boundaries remain visible.
+- Compiler-confirmed NotificationCenter publisher construction boundaries, while preserving existing
+  closure-observer relationships and distinguishing publisher creation from subscription execution.
+- Opt-in macOS debug runtime collection with source/index and executable identity checks. Lookup,
+  invocation and registration evidence are distinct; injection, timeout and dropped-event failures
+  remain partial results. Collected evidence can be inspected and used in change impact.
+- iOS Simulator collection for installed debug scenario apps, with explicit device/bundle selection,
+  installed-binary verification and independent application exit evidence. A successful simctl command
+  does not conceal crashes, missing shutdown evidence or timeouts. UIKit nil-name lookup failures are
+  preserved as valid failed lookup events.
+- `cartograph_runtime_discover` MCP tool and snapshot v2 runtime evidence preservation, with explicit
+  limitations when loading v1 snapshots.
+- Added `impact`, historical `snapshot`/`--before` comparison, combined `check`, and an MCP stdio
+  server so people and coding agents can inspect change effects before editing and reuse one analysis
+  session. Runtime-only declarations remain explicit review inputs rather than silently becoming
+  compiler graph edges or deletion decisions.
+- Added runtime dependency contracts and executable-bound observations. Plans record source/index
+  freshness, loaded graph/input fingerprints and the raw SHA-256 of the executable; stale or failed
+  observations remain distinguishable from unobserved coverage.
+
+### Changed
+
+- Split automatic source bindings, runtime syntax-name recognition and notification lifecycle tracking
+  into focused scanners without changing query/retention semantics.
+- `Scripts/coverage.sh --skip-test` now rejects profiles older than source, tests, fixtures, skills, scripts,
+  binaries or a refreshed unit profile instead of silently reusing stale integration coverage.
+- `--since` remains a finding-location lens for diagnostic commands. `impact --since` uses modeled
+  source changes as seeds; it is not described as incremental analysis.
+
 ## [0.12.0] - 2026-09-13
 
 ### Added
@@ -865,7 +927,10 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.10.1...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.13.0...HEAD
+[0.13.0]: https://github.com/ictechgy/cartograph/compare/0.12.0...0.13.0
+[0.12.0]: https://github.com/ictechgy/cartograph/compare/0.11.0...0.12.0
+[0.11.0]: https://github.com/ictechgy/cartograph/compare/0.10.1...0.11.0
 [0.10.1]: https://github.com/ictechgy/cartograph/compare/0.10.0...0.10.1
 [0.10.0]: https://github.com/ictechgy/cartograph/compare/0.9.0...0.10.0
 [0.9.0]: https://github.com/ictechgy/cartograph/compare/0.8.2...0.9.0

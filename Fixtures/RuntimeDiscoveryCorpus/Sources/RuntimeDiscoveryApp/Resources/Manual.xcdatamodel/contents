@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" sourceLanguage="Swift">
+    <entity name="Managed" representedClassName="RuntimeDiscoveryApp.CorpusManagedEntity" syncable="YES"/>
+    <entity name="Plain" representedClassName="RuntimeDiscoveryApp.PlainEntity" syncable="YES"/>
+    <entity name="Missing" representedClassName="RuntimeDiscoveryApp.MissingEntity" syncable="YES"/>
+    <entity name="Generated" representedClassName="GeneratedEntity" codeGenerationType="class" syncable="YES"/>
+    <entity name="Placeholder" representedClassName=".PlaceholderEntity" syncable="YES"/>
+    <entity name="Conflict" representedClassName="FirstEntity" customClass="SecondEntity" syncable="YES"/>
+    <entity name="CustomOnly" customClass="RuntimeDiscoveryApp.CorpusManagedEntity" syncable="YES"/>
+    <entity name="ManualString" representedClassName="RuntimeDiscoveryApp.CorpusManagedEntity" codeGenerationType="manual" syncable="YES"/>
+</model>

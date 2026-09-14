@@ -14,14 +14,14 @@ import Foundation
 /// - 명령 API(`detectCycles()` …)는 그 위에 베이스라인·임계값·출력 형식을 얹는다.
 ///   CI 정책이므로 질의 경로에 섞지 않는다.
 public struct CartographService: Sendable {
-    private let configuration: CartographConfiguration
-    private let environment: CartographEnvironment
+    let configuration: CartographConfiguration
+    let environment: CartographEnvironment
 
     /// 보고 범위. nil 이면 발견을 전부 보고한다.
     ///
     /// 설정 파일이 아니라 생성 인자로 받는다. 변경된 파일 목록은 실행할 때마다
     /// 달라지는 값이라 파일에 적을 수 있는 성질이 아니다.
-    private let reportScope: ReportScope?
+    let reportScope: ReportScope?
 
     /// 인덱스가 이 프로젝트를 하나도 모를 때도 분석을 진행할지.
     ///
@@ -94,7 +94,10 @@ public struct CartographService: Sendable {
             edgeKinds: configuration.edgeKinds,
             externalRetentions: externalRetentions,
             missingSourcePaths: enriched.missingSourcePaths,
-            unreadableSourcePaths: enriched.unreadableSourcePaths
+            unreadableSourcePaths: enriched.unreadableSourcePaths,
+            runtimeFiles: enriched.runtimeFiles + runtimeResourceFacts(),
+            runtimeFreshness: runtimeSourceFreshness(snapshot: snapshot,
+                missing: enriched.missingSourcePaths, unreadable: enriched.unreadableSourcePaths)
         )
     }
 
@@ -474,6 +477,11 @@ public struct CartographService: Sendable {
 
     func makeQuerySession() throws -> QuerySession {
         let context = try loadContext()
+        return try makeQuerySession(in: context)
+    }
+
+    /// 이미 읽은 문맥에서 질의 준비물을 만든다. 세션이 인덱스와 구문 보강을 다시 읽지 않게 한다.
+    func makeQuerySession(in context: AnalysisContext) throws -> QuerySession {
         let (graph, report) = unusedCode(in: context)
         let baseline = try loadBaseline()
         return QuerySession(
@@ -549,16 +557,7 @@ public struct CartographService: Sendable {
     static func candidates(
         _ nodes: [GraphNode], in graph: CodeGraph
     ) -> [SymbolQueryDocument.Candidate] {
-        orderedCandidates(nodes, in: graph).map {
-            .init(
-                qualifiedName: $0.node.qualifiedName,
-                usr: $0.node.usr ?? $0.node.id.rawValue,
-                kind: $0.node.kind.rawValue,
-                module: $0.node.module,
-                location: $0.node.location,
-                container: $0.container
-            )
-        }
+        SymbolQueryDocument.presenting(nodes, in: graph)
     }
 
     /// 후보를 사람이 훑는 순서로 세운다.
@@ -713,16 +712,8 @@ public struct CartographService: Sendable {
         )
     }
 
-    private static func describe(_ node: GraphNode) -> SymbolQuery.Subject {
-        SymbolQuery.Subject(
-            name: node.name,
-            qualifiedName: node.qualifiedName,
-            kind: node.kind.rawValue,
-            module: node.module,
-            usr: node.usr,
-            accessibility: node.accessibility.rawValue,
-            location: node.location
-        )
+    static func describe(_ node: GraphNode) -> SymbolQuery.Subject {
+        SymbolQuery.Subject(node: node)
     }
 
     private static func describe(
@@ -1090,7 +1081,7 @@ public struct CartographService: Sendable {
     // MARK: - 내부 구현
 
     /// 진단에 리포트 스코프를 적용하고, 베이스라인을 읽어 보고 대상 진단과 억제 건수를 계산한다.
-    private func filterAndApplyBaseline(
+    func filterAndApplyBaseline(
         _ diagnostics: [Diagnostic]
     ) throws -> (reported: [Diagnostic], suppressedCount: Int) {
         let scoped = reportScope?.filtering(diagnostics) ?? diagnostics
@@ -1217,7 +1208,7 @@ public struct CartographService: Sendable {
     }
 
     /// 설정과 프로젝트 경로를 반영한 보존 규칙.
-    private func makeRetentionPolicy(externalRetentions: ExternalRetentionIndex) -> RetentionPolicy {
+    func makeRetentionPolicy(externalRetentions: ExternalRetentionIndex) -> RetentionPolicy {
         RetentionPolicy(
             options: configuration.retention,
             basePath: projectPath,
@@ -1225,7 +1216,7 @@ public struct CartographService: Sendable {
         )
     }
 
-    private func loadBaseline() throws -> Baseline? {
+    func loadBaseline() throws -> Baseline? {
         try BaselineStore(fileSystem: environment.fileSystem)
             .loadIfPresent(at: configuration.baselinePath, basePath: projectPath)
     }
@@ -1252,7 +1243,35 @@ public struct CartographService: Sendable {
         let origin: EmptyIndexFacts.StoreOrigin
     }
 
-    private func makeIndexSource(includeObjectiveCSources: Bool = false, includeExternalSymbols: Bool = false) throws -> IndexSource {
+    /// 명시한 생성 소스만 기존 인덱스 스토어에서 읽어 기본 분석 범위와 분리한다.
+    func supplementalSnapshot(sourcePaths: [String]) throws -> IndexSnapshot {
+        let allowed = Set(sourcePaths.map(LocalFileSystem.canonicalPath))
+        guard !allowed.isEmpty else { return IndexSnapshot() }
+        let source = try makeIndexSource(
+            includeExternalSymbols: true,
+            sourceRoots: allowed.sorted(),
+            pathFilter: .passthrough
+        )
+        let loaded = try source.provider.loadSnapshot()
+        let local = loaded.symbols.filter {
+            !$0.isExternal && allowed.contains(LocalFileSystem.canonicalPath($0.location.path))
+        }
+        let localUSRs = Set(local.map(\.usr))
+        let references = loaded.references.filter { localUSRs.contains($0.sourceUSR) }
+        let externalUSRs = Set(references.map(\.targetUSR)).subtracting(localUSRs)
+        let external = loaded.symbols.filter { $0.isExternal && externalUSRs.contains($0.usr) }
+        let dates = loaded.indexedFileDates.map { values in
+            values.filter { allowed.contains(LocalFileSystem.canonicalPath($0.key)) }
+        }
+        return IndexSnapshot(symbols: local + external, references: references, indexedFileDates: dates)
+    }
+
+    private func makeIndexSource(
+        includeObjectiveCSources: Bool = false,
+        includeExternalSymbols: Bool = false,
+        sourceRoots: [String]? = nil,
+        pathFilter: PathFilter? = nil
+    ) throws -> IndexSource {
         if let override = environment.indexProviderOverride {
             // 주입된 공급자에는 스토어가 없다. 모르는 것을 아는 척하지 않는다.
             return IndexSource(
@@ -1282,8 +1301,8 @@ public struct CartographService: Sendable {
                     libraryModificationDate: environment.fileSystem.modificationDate(at: libraryPath)
                 ),
                 libraryPath: libraryPath,
-                sourceRoots: [projectPath],
-                pathFilter: configuration.pathFilter,
+                sourceRoots: sourceRoots ?? [projectPath],
+                pathFilter: pathFilter ?? configuration.pathFilter,
                 includeExternalSymbols: includeExternalSymbols,
                 includeObjectiveCSources: includeObjectiveCSources,
                 includeSelfReferences: includeExternalSymbols

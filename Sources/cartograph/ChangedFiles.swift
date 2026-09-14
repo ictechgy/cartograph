@@ -18,7 +18,12 @@ enum ChangedFiles {
     /// - 기준점과 HEAD 사이의 커밋된 변경
     /// - 아직 커밋하지 않은 추적 파일의 변경(스테이지 여부 무관)
     /// - 추적되지 않는 새 파일
-    static func since(_ reference: String, workingDirectory: String) throws -> Set<String> {
+    /// - `includingDeleted` 가 true 면 삭제된 경로와 이름 변경의 양쪽 경로도 포함한다.
+    static func since(
+        _ reference: String,
+        workingDirectory: String,
+        includingDeleted: Bool = false
+    ) throws -> Set<String> {
         let root = try lines(
             of: ["rev-parse", "--show-toplevel"],
             in: workingDirectory,
@@ -31,17 +36,29 @@ enum ChangedFiles {
             )
         }
 
+        // 리비전처럼 받은 문자열이 diff 옵션이 되지 않도록 먼저 커밋 ID로 해결한다.
+        // --output=...도 여기서는 파일을 쓰는 지시가 아니라 찾을 리비전일 뿐이다.
+        guard let commit = try lines(
+            of: ["rev-parse", "--verify", "--end-of-options", "\(reference)^{commit}"],
+            in: workingDirectory, reference: reference
+        ).first else {
+            throw CartographError.changedFilesUnavailable(reference: reference, reason: "revision has no commit")
+        }
+
         // `<ref>...HEAD` 는 공통 조상 이후만 본다. `<ref>..HEAD` 를 쓰면 기준
         // 브랜치가 앞서 나갔을 때 남의 변경까지 이번 것으로 보고한다.
         let committed = try lines(
-            of: ["diff", "--name-only", "--diff-filter=d", "-z", "\(reference)...HEAD"],
+            of: diffArguments(
+                comparedTo: "\(commit)...HEAD",
+                includingDeleted: includingDeleted
+            ),
             in: workingDirectory,
             reference: reference
         )
         // 작업 트리와 HEAD 의 차이. 추적 파일을 고치고 커밋하지 않은 경우가
         // 미커밋 변경의 가장 흔한 형태인데 위 비교로는 잡히지 않는다.
         let uncommitted = try lines(
-            of: ["diff", "--name-only", "--diff-filter=d", "-z", "HEAD"],
+            of: diffArguments(comparedTo: "HEAD", includingDeleted: includingDeleted),
             in: workingDirectory,
             reference: reference
         )
@@ -54,6 +71,16 @@ enum ChangedFiles {
         )
 
         return Set((committed + uncommitted + untracked).map { (root as NSString).appendingPathComponent($0) })
+    }
+
+    /// 변경 파일을 조회할 때 삭제와 이름 변경을 보존할지에 따라 git 옵션을 고른다.
+    private static func diffArguments(comparedTo revision: String, includingDeleted: Bool) -> [String] {
+        if includingDeleted {
+            // 이름 변경을 감지하면 옛 경로가 새 경로로 접혀 사라진다. 영향 분석은
+            // 현재 인덱스에 없는 옛 선언도 시드로 삼아야 하므로 양쪽 경로를 받는다.
+            return ["diff", "--name-only", "--no-renames", "-z", revision]
+        }
+        return ["diff", "--name-only", "--diff-filter=d", "-z", revision]
     }
 
     /// git 을 한 번 실행하고 출력을 경로 목록으로 나눈다.

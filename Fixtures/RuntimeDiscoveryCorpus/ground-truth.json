@@ -1,0 +1,921 @@
+{
+  "format": "runtime-discovery-ground-truth",
+  "version": 1,
+  "supportedConnections": [
+    {
+      "label": "class-alias",
+      "source": "classAliasLookup()",
+      "target": "AliasedController",
+      "kind": "classLookup",
+      "status": "resolved"
+    },
+    {
+      "label": "module-plain-class",
+      "source": "modulePlainLookup()",
+      "target": "PlainController",
+      "kind": "classLookup",
+      "status": "resolved"
+    },
+    {
+      "label": "immutable-class-alias",
+      "source": "immutableAliasLookup()",
+      "target": "ImmutableAliasTarget",
+      "kind": "classLookup",
+      "status": "resolved"
+    },
+    {
+      "label": "concatenated-class-name",
+      "source": "concatenatedLookup()",
+      "target": "ConcatTarget",
+      "kind": "classLookup",
+      "status": "resolved"
+    },
+    {
+      "label": "objc-protocol",
+      "source": "runtimeProtocolLookup()",
+      "target": "RuntimeProtocol",
+      "kind": "protocolLookup",
+      "status": "resolved"
+    },
+    {
+      "label": "selector-reference",
+      "source": "selectorReferenceOnly()",
+      "target": "referenced(_:)",
+      "kind": "selectorReference",
+      "status": "alreadyIndexed"
+    },
+    {
+      "label": "perform-explicit-reference",
+      "source": "explicitPerform(_:)",
+      "target": "explicitAction()",
+      "kind": "selectorReference",
+      "status": "alreadyIndexed"
+    },
+    {
+      "label": "perform-explicit-invocation",
+      "source": "explicitPerform(_:)",
+      "target": "explicitAction()",
+      "kind": "selectorInvocation",
+      "status": "resolved"
+    },
+    {
+      "label": "perform-literal",
+      "source": "literalPerform(_:)",
+      "target": "literalAction()",
+      "kind": "selectorInvocation",
+      "status": "resolved"
+    },
+    {
+      "label": "perform-alias",
+      "source": "aliasPerform(_:)",
+      "target": "aliasAction()",
+      "kind": "selectorInvocation",
+      "status": "resolved"
+    },
+    {
+      "label": "perform-typed-parameter",
+      "source": "typedParameterPerform(_:)",
+      "target": "typedAction()",
+      "kind": "selectorInvocation",
+      "status": "resolved"
+    },
+    {
+      "label": "perform-constructed-receiver",
+      "source": "constructedReceiverPerform()",
+      "target": "constructedAction()",
+      "kind": "selectorInvocation",
+      "status": "resolved"
+    },
+    {
+      "label": "inheritance-base",
+      "source": "inheritedDispatch(_:)",
+      "target": "inheritedAction()",
+      "kind": "selectorInvocation",
+      "status": "resolved",
+      "owner": "BasePerformTarget"
+    },
+    {
+      "label": "inheritance-override",
+      "source": "inheritedDispatch(_:)",
+      "target": "inheritedAction()",
+      "kind": "selectorInvocation",
+      "status": "resolved",
+      "owner": "ChildPerformTarget"
+    },
+    {
+      "label": "timer-reference",
+      "source": "timerRegistration(_:)",
+      "target": "timerFired(_:)",
+      "kind": "selectorReference",
+      "status": "alreadyIndexed"
+    },
+    {
+      "label": "timer-registration",
+      "source": "timerRegistration(_:)",
+      "target": "timerFired(_:)",
+      "kind": "selectorRegistration",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-selector-reference",
+      "source": "installSelectorObserver(_:)",
+      "target": "selectorNotice(_:)",
+      "kind": "selectorReference",
+      "status": "alreadyIndexed"
+    },
+    {
+      "label": "notification-selector-observer",
+      "source": "installSelectorObserver(_:)",
+      "target": "selectorNotice(_:)",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-selector-post",
+      "source": "postSelectorNotification()",
+      "target": "selectorNotice(_:)",
+      "kind": "notificationPost",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-closure-observer",
+      "source": "installClosureObserver()",
+      "target": "installClosureObserver()",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-closure-post",
+      "source": "postClosureNotification()",
+      "target": "installClosureObserver()",
+      "kind": "notificationPost",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-filtered-reference",
+      "source": "installFilteredObserver(_:filter:)",
+      "target": "filteredNotice(_:)",
+      "kind": "selectorReference",
+      "status": "alreadyIndexed"
+    },
+    {
+      "label": "notification-filtered-observer",
+      "source": "installFilteredObserver(_:filter:)",
+      "target": "filteredNotice(_:)",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-custom-observer",
+      "source": "installCustomCenterObserver()",
+      "target": "installCustomCenterObserver()",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-static-observer",
+      "source": "installStaticReadyObserver()",
+      "target": "installStaticReadyObserver()",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-static-post",
+      "source": "postStaticReadyNotification()",
+      "target": "installStaticReadyObserver()",
+      "kind": "notificationPost",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-publisher-post",
+      "source": "postStaticReadyNotification()",
+      "target": "installPublisherSubscription()",
+      "kind": "notificationPost",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-sdk-application-observer",
+      "source": "installApplicationSDKObserver(_:)",
+      "target": "installApplicationSDKObserver(_:)",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-sdk-application-post",
+      "source": "postApplicationSDKNotification()",
+      "target": "installApplicationSDKObserver(_:)",
+      "kind": "notificationPost",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-sdk-workspace-observer",
+      "source": "installWorkspaceSDKObserver(_:)",
+      "target": "installWorkspaceSDKObserver(_:)",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-sdk-workspace-post",
+      "source": "postWorkspaceSDKNotification()",
+      "target": "installWorkspaceSDKObserver(_:)",
+      "kind": "notificationPost",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-sdk-capture-observer",
+      "source": "installCaptureSDKObserver(_:session:)",
+      "target": "installCaptureSDKObserver(_:session:)",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-local-identity-observer",
+      "source": "exerciseLocalCenterAndObjectNotification()",
+      "target": "exerciseLocalCenterAndObjectNotification()",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-local-identity-post",
+      "source": "exerciseLocalCenterAndObjectNotification()",
+      "target": "exerciseLocalCenterAndObjectNotification()",
+      "kind": "notificationPost",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-branch-observer",
+      "source": "branchSeparatedLocalNotification(_:)",
+      "target": "branchSeparatedLocalNotification(_:)",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-post-first-observer-site",
+      "source": "exercisePostBeforeLocalObserver()",
+      "target": "exercisePostBeforeLocalObserver()",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-removed-observer-site",
+      "source": "exerciseRemovedLocalObserver()",
+      "target": "exerciseRemovedLocalObserver()",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-branch-lifecycle-observer",
+      "source": "exerciseBranchNotificationRemoval(_:)",
+      "target": "exerciseBranchNotificationRemoval(_:)",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-branch-lifecycle-active-post",
+      "source": "exerciseBranchNotificationRemoval(_:)",
+      "target": "exerciseBranchNotificationRemoval(_:)",
+      "kind": "notificationPost",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-do-defer-observer",
+      "source": "exerciseDoDeferredRemoval()",
+      "target": "exerciseDoDeferredRemoval()",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-function-defer-observer",
+      "source": "exerciseFunctionDeferredRemoval()",
+      "target": "exerciseFunctionDeferredRemoval()",
+      "kind": "notificationObserver",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-function-defer-post",
+      "source": "exerciseFunctionDeferredRemoval()",
+      "target": "exerciseFunctionDeferredRemoval()",
+      "kind": "notificationPost",
+      "status": "resolved"
+    },
+    {
+      "label": "notification-async-sequence-post",
+      "source": "postAsyncNotification()",
+      "target": "consumeAsyncNotifications()",
+      "kind": "notificationPost",
+      "status": "resolved"
+    },
+    {
+      "label": "core-data-managed-entity",
+      "source": null,
+      "target": "CorpusManagedEntity",
+      "kind": "coreDataEntityClass",
+      "status": "resolved"
+    },
+    {
+      "label": "kvc-read-property",
+      "source": "supportedKVCRead(_:)",
+      "target": "title",
+      "kind": "keyValueRead",
+      "status": "resolved",
+      "owner": "KVCSupportedTarget"
+    },
+    {
+      "label": "kvc-write-property",
+      "source": "supportedKVCWrite(_:)",
+      "target": "title",
+      "kind": "keyValueWrite",
+      "status": "resolved",
+      "owner": "KVCSupportedTarget"
+    },
+    {
+      "label": "ib-first-class",
+      "source": null,
+      "target": "FirstViewController",
+      "kind": "interfaceBuilderClass",
+      "status": "resolved"
+    },
+    {
+      "label": "ib-second-class",
+      "source": null,
+      "target": "SecondViewController",
+      "kind": "interfaceBuilderClass",
+      "status": "resolved"
+    },
+    {
+      "label": "ib-first-action",
+      "source": null,
+      "target": "didTap(_:)",
+      "kind": "interfaceBuilderAction",
+      "status": "resolved",
+      "owner": "FirstViewController"
+    },
+    {
+      "label": "ib-second-action",
+      "source": null,
+      "target": "didTap(_:)",
+      "kind": "interfaceBuilderAction",
+      "status": "resolved",
+      "owner": "SecondViewController"
+    },
+    {
+      "label": "ib-first-outlet",
+      "source": null,
+      "target": "titleLabel",
+      "kind": "interfaceBuilderOutlet",
+      "status": "resolved",
+      "owner": "FirstViewController"
+    },
+    {
+      "label": "ib-second-outlet",
+      "source": null,
+      "target": "titleLabel",
+      "kind": "interfaceBuilderOutlet",
+      "status": "resolved",
+      "owner": "SecondViewController"
+    },
+    {
+      "label": "implicit-objc-members",
+      "source": "implicitObjcMembers(_:)",
+      "target": "implicitAction()",
+      "kind": "selectorInvocation",
+      "status": "resolved"
+    },
+    {
+      "label": "unsupported-registration-reference",
+      "source": "unsupportedSelectorRegistration(_:)",
+      "target": "explicitAction()",
+      "kind": "selectorReference",
+      "status": "alreadyIndexed"
+    },
+    {
+      "label": "legacy-reference",
+      "source": "invokeLegacy(_:)",
+      "target": "legacyAction()",
+      "kind": "selectorReference",
+      "status": "alreadyIndexed"
+    },
+    {
+      "label": "legacy-invocation",
+      "source": "invokeLegacy(_:)",
+      "target": "legacyAction()",
+      "kind": "selectorInvocation",
+      "status": "resolved"
+    },
+    {
+      "label": "renamed-reference",
+      "source": "invokeLegacy(_:)",
+      "target": "renamedAction()",
+      "kind": "selectorReference",
+      "status": "alreadyIndexed"
+    },
+    {
+      "label": "renamed-invocation",
+      "source": "invokeLegacy(_:)",
+      "target": "renamedAction()",
+      "kind": "selectorInvocation",
+      "status": "resolved"
+    },
+    {
+      "label": "stale-class-before-edit",
+      "source": "staleLookup()",
+      "target": "StaleRuntimeTarget",
+      "kind": "classLookup",
+      "status": "resolved"
+    }
+  ],
+  "classifications": [
+    {
+      "label": "literal-selector-token",
+      "source": "literalSelectorToken()",
+      "kind": "selectorLookup",
+      "api": "NSSelectorFromString",
+      "name": "tokenOnly:",
+      "status": "lookupOnly"
+    },
+    {
+      "label": "alias-selector-token",
+      "source": "aliasSelectorToken()",
+      "kind": "selectorLookup",
+      "api": "NSSelectorFromString",
+      "name": "tokenAlias:",
+      "status": "lookupOnly"
+    },
+    {
+      "label": "dynamic-class-name",
+      "source": "dynamicClassLookup(_:)",
+      "kind": "classLookup",
+      "api": "NSClassFromString",
+      "name": null,
+      "status": "dynamic"
+    },
+    {
+      "label": "conditional-name",
+      "source": "conditionalCompilationLookup()",
+      "kind": "classLookup",
+      "api": "NSClassFromString",
+      "name": null,
+      "status": "dynamic"
+    },
+    {
+      "label": "nested-shadow",
+      "source": "nestedShadowLookup()",
+      "kind": "classLookup",
+      "api": "NSClassFromString",
+      "status": "shadowed",
+      "acceptedStatuses": [
+        "shadowed",
+        "unindexed"
+      ],
+      "rationale": "Swift index omits local-function call references; explicit unindexed is valid when API identity is absent. It must never produce a runtime connection."
+    },
+    {
+      "label": "qualified-shadow",
+      "source": "qualifiedShadowLookup()",
+      "kind": "classLookup",
+      "api": "NSClassFromString",
+      "status": "shadowed"
+    },
+    {
+      "label": "wrapper-implementation-dynamic",
+      "source": "runtimeClassWrapper(_:)",
+      "kind": "classLookup",
+      "api": "NSClassFromString",
+      "name": null,
+      "status": "dynamic"
+    },
+    {
+      "label": "selector-wrapper-implementation",
+      "source": "selectorWrapper(_:)",
+      "kind": "selectorLookup",
+      "api": "NSSelectorFromString",
+      "name": null,
+      "status": "dynamic"
+    },
+    {
+      "label": "unknown-receiver",
+      "source": "unknownReceiver(_:)",
+      "kind": "selectorInvocation",
+      "api": "perform",
+      "status": "unresolved",
+      "candidateCount": 2
+    },
+    {
+      "label": "nonobjc-negative",
+      "source": "nonObjectiveCNegative(_:)",
+      "kind": "selectorInvocation",
+      "api": "perform",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "generic-negative",
+      "source": "genericNegative(_:)",
+      "kind": "selectorInvocation",
+      "api": "perform",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "tuple-negative",
+      "source": "tupleNegative(_:)",
+      "kind": "selectorInvocation",
+      "api": "perform",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "notification-publisher-construction",
+      "source": "installPublisherSubscription()",
+      "kind": "notificationSubscription",
+      "api": "publisher",
+      "status": "resolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "notification-publisher-without-consumer",
+      "source": "makeNotificationPublisher()",
+      "kind": "notificationSubscription",
+      "api": "publisher",
+      "status": "lookupOnly",
+      "candidateCount": 0
+    },
+    {
+      "label": "notification-publisher-custom-consumer",
+      "source": "useCustomPublisherConsumer()",
+      "kind": "notificationSubscription",
+      "api": "publisher",
+      "status": "lookupOnly",
+      "candidateCount": 0
+    },
+    {
+      "label": "notification-custom-publisher",
+      "source": "customPublisherIsNotSystem()",
+      "kind": "notificationSubscription",
+      "api": "publisher",
+      "status": "shadowed",
+      "candidateCount": 0
+    },
+    {
+      "label": "notification-filtered-publisher",
+      "source": "installFilteredPublisherSubscription(_:)",
+      "kind": "notificationSubscription",
+      "api": "publisher",
+      "status": "resolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "core-data-plain-class",
+      "source": null,
+      "kind": "coreDataEntityClass",
+      "api": "representedClassName",
+      "name": "RuntimeDiscoveryApp.PlainEntity",
+      "status": "unresolved",
+      "candidateCount": 1
+    },
+    {
+      "label": "core-data-missing-class",
+      "source": null,
+      "kind": "coreDataEntityClass",
+      "api": "representedClassName",
+      "name": "RuntimeDiscoveryApp.MissingEntity",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "core-data-generated-class",
+      "source": null,
+      "kind": "coreDataEntityClass",
+      "api": "representedClassName",
+      "name": "GeneratedEntity",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "core-data-module-placeholder",
+      "source": null,
+      "kind": "coreDataEntityClass",
+      "api": "representedClassName",
+      "name": ".PlaceholderEntity",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "core-data-custom-class-is-not-represented-class",
+      "source": null,
+      "kind": "coreDataEntityClass",
+      "api": "representedClassName",
+      "name": "FirstEntity",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "core-data-custom-class-only",
+      "source": null,
+      "kind": "coreDataEntityClass",
+      "api": "representedClassName",
+      "name": null,
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "core-data-manual-string",
+      "source": null,
+      "kind": "coreDataEntityClass",
+      "api": "representedClassName",
+      "name": "RuntimeDiscoveryApp.CorpusManagedEntity",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "core-data-first-model-version",
+      "source": null,
+      "kind": "coreDataEntityClass",
+      "api": "representedClassName",
+      "name": "RuntimeDiscoveryApp.FirstVersionEntity",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "core-data-second-model-version",
+      "source": null,
+      "kind": "coreDataEntityClass",
+      "api": "representedClassName",
+      "name": "RuntimeDiscoveryApp.SecondVersionEntity",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "kvc-let-write",
+      "source": "immutableKVCWrite(_:)",
+      "kind": "keyValueWrite",
+      "api": "setValue",
+      "name": "identifier",
+      "status": "unresolved",
+      "candidateCount": 1
+    },
+    {
+      "label": "kvc-alternate-getter",
+      "source": "alternateAccessorKVCRead(_:)",
+      "kind": "keyValueRead",
+      "api": "value",
+      "name": "title",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "kvc-objc-alias-getter",
+      "source": "objectiveCAliasAccessorKVCRead(_:)",
+      "kind": "keyValueRead",
+      "api": "value",
+      "name": "title",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "kvc-property-getter",
+      "source": "propertyAccessorKVCRead(_:)",
+      "kind": "keyValueRead",
+      "api": "value",
+      "name": "title",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "kvc-objc-alias-property-getter",
+      "source": "objectiveCAliasPropertyKVCRead(_:)",
+      "kind": "keyValueRead",
+      "api": "value",
+      "name": "title",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "kvc-readonly-computed-write",
+      "source": "readOnlyComputedKVCWrite(_:)",
+      "kind": "keyValueWrite",
+      "api": "setValue",
+      "name": "title",
+      "status": "unresolved",
+      "candidateCount": 1
+    },
+    {
+      "label": "kvc-override",
+      "source": "overriddenKVCRead(_:)",
+      "kind": "keyValueRead",
+      "api": "value",
+      "name": "title",
+      "status": "shadowed",
+      "candidateCount": 0
+    },
+    {
+      "label": "kvc-nonfinal",
+      "source": "nonfinalKVCRead(_:)",
+      "kind": "keyValueRead",
+      "api": "value",
+      "name": "title",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "kvc-shadowed-api",
+      "source": "shadowedKVCRead(_:)",
+      "kind": "keyValueRead",
+      "api": "value",
+      "name": "title",
+      "status": "shadowed",
+      "candidateCount": 0
+    },
+    {
+      "label": "kvc-generic-nsobject",
+      "source": "unsupportedKeyValueReflection(_:)",
+      "kind": "keyValueRead",
+      "api": "value",
+      "name": "title",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "different-notification",
+      "source": "postDifferentNotification()",
+      "kind": "notificationPost",
+      "api": "post",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "filtered-notification-post",
+      "source": "postFilteredNotification()",
+      "kind": "notificationPost",
+      "api": "post",
+      "status": "unresolved",
+      "candidateCount": 1
+    },
+    {
+      "label": "custom-center-post",
+      "source": "postCustomCenterNotification()",
+      "kind": "notificationPost",
+      "api": "post",
+      "status": "unresolved",
+      "candidateCount": 1
+    },
+    {
+      "label": "notification-sdk-capture-parameter-object",
+      "source": "postCaptureSDKNotification(_:)",
+      "kind": "notificationPost",
+      "api": "post",
+      "status": "unresolved",
+      "candidateCount": 1
+    },
+    {
+      "label": "notification-local-different-object",
+      "source": "exerciseLocalCenterAndObjectNotification()",
+      "kind": "notificationPost",
+      "api": "post",
+      "status": "unresolved",
+      "candidateCount": 1
+    },
+    {
+      "label": "notification-branch-separated-post",
+      "source": "branchSeparatedLocalNotification(_:)",
+      "kind": "notificationPost",
+      "api": "post",
+      "status": "unresolved",
+      "candidateCount": 1
+    },
+    {
+      "label": "notification-post-before-local-observer",
+      "source": "exercisePostBeforeLocalObserver()",
+      "kind": "notificationPost",
+      "api": "post",
+      "status": "unresolved",
+      "candidateCount": 1
+    },
+    {
+      "label": "notification-post-after-local-observer-removal",
+      "source": "exerciseRemovedLocalObserver()",
+      "kind": "notificationPost",
+      "api": "post",
+      "status": "unresolved",
+      "candidateCount": 1
+    },
+    {
+      "label": "notification-branch-lifecycle-removed-post",
+      "source": "exerciseBranchNotificationRemoval(_:)",
+      "kind": "notificationPost",
+      "api": "post",
+      "status": "unresolved",
+      "candidateCount": 1
+    },
+    {
+      "label": "notification-do-defer-post",
+      "source": "exerciseDoDeferredRemoval()",
+      "kind": "notificationPost",
+      "api": "post",
+      "status": "unresolved",
+      "candidateCount": 1
+    },
+    {
+      "label": "notification-cancelled-publisher",
+      "source": "exerciseCancelledNotificationPublisher()",
+      "kind": "notificationSubscription",
+      "api": "publisher",
+      "status": "resolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "notification-post-after-publisher-cancel",
+      "source": "exerciseCancelledNotificationPublisher()",
+      "kind": "notificationPost",
+      "api": "post",
+      "status": "unresolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "notification-async-sequence-consumer",
+      "source": "consumeAsyncNotifications()",
+      "kind": "notificationSubscription",
+      "api": "notifications",
+      "status": "resolved",
+      "candidateCount": 0
+    },
+    {
+      "label": "notification-custom-async-sequence",
+      "source": "consumeCustomAsyncNotifications()",
+      "kind": "notificationSubscription",
+      "api": "notifications",
+      "status": "shadowed",
+      "candidateCount": 0
+    }
+  ],
+  "forbiddenConnections": [
+    {
+      "label": "notification-filtered-publisher-does-not-receive-unfiltered-post",
+      "source": "postStaticReadyNotification()",
+      "target": "installFilteredPublisherSubscription(_:)",
+      "kind": "notificationPost"
+    }
+  ],
+  "silentCases": [
+    {
+      "label": "class-wrapper-caller",
+      "source": "wrapperOnlyLookup()"
+    },
+    {
+      "label": "selector-wrapper-caller",
+      "source": "wrapperOnlySelector()"
+    },
+    {
+      "label": "core-data-fetch-name-is-not-a-class-edge",
+      "source": "fetchByEntityNameOnly()"
+    }
+  ],
+  "unsupported": [
+    {
+      "label": "custom-selector-registry",
+      "limitation": "Selector registration calls using APIs outside the supported runtime registry: 1."
+    },
+    {
+      "label": "key-value-reflection",
+      "limitation": "Key-value or predicate reflection calls not yet modeled: 2."
+    },
+    {
+      "label": "bare-notification-async-sequence",
+      "limitation": "Notification stream registration calls not yet modeled: 1."
+    },
+    {
+      "label": "malformed-core-data-model",
+      "limitationContains": "malformed Core Data model XML:"
+    }
+  ],
+  "staleClassification": {
+    "source": "staleLookup()",
+    "kind": "classLookup",
+    "status": "stale"
+  },
+  "historicalComparisons": [
+    {
+      "label": "deleted-selector",
+      "query": "LegacyTarget.legacyAction",
+      "target": "legacyAction()",
+      "source": "invokeLegacy(_:)",
+      "kind": "selectorInvocation"
+    },
+    {
+      "label": "renamed-selector",
+      "query": "LegacyTarget.renamedAction",
+      "target": "renamedAction()",
+      "source": "invokeLegacy(_:)",
+      "kind": "selectorInvocation"
+    }
+  ],
+  "unscoredCommonPatterns": [
+    "predicate format strings",
+    "Combine operators after publisher construction",
+    "dependency injection containers",
+    "Core Data fetch(entityName:) without model evidence",
+    "state restoration identifiers",
+    "URL routers",
+    "framework-specific plugin registries"
+  ]
+}

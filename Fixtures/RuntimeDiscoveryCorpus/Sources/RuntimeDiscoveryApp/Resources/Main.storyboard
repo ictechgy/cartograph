@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB">
+  <objects>
+    <viewController id="first" customClass="FirstViewController" customModule="RuntimeDiscoveryApp">
+      <connections>
+        <outlet property="titleLabel" destination="first-label"/>
+      </connections>
+      <view>
+        <subviews>
+          <textField id="first-label"/>
+          <button id="first-button">
+            <connections>
+              <action selector="didTap:" destination="first"/>
+            </connections>
+          </button>
+        </subviews>
+      </view>
+    </viewController>
+    <viewController id="second" customClass="SecondViewController" customModule="RuntimeDiscoveryApp">
+      <connections>
+        <outlet property="titleLabel" destination="second-label"/>
+      </connections>
+      <view>
+        <subviews>
+          <textField id="second-label"/>
+          <button id="second-button">
+            <connections>
+              <action selector="didTap:" destination="second"/>
+            </connections>
+          </button>
+        </subviews>
+      </view>
+    </viewController>
+  </objects>
+</document>

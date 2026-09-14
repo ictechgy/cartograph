@@ -21,11 +21,11 @@ cycles: 1 error — module graph · 9 nodes · 36 edges
 ## Why another tool
 
 [Periphery](https://github.com/peripheryapp/periphery) was the best unused-code detector Swift had,
-and its archived source is still the best documentation of the problem. Its open-source repository is
-now archived under MIT, and development continues as a [commercial product](https://periphery.pro)
-that is free for indie and hobby projects and for open source of any size — so if unused code is all
-you need, use it. Cartograph is not a fork, and not a free replacement; it is a different framing of
-the same machinery.
+and its archived source is still the best documentation of the problem. That repository is archived
+under MIT; current development is a separate [commercial product](https://periphery.pro) with its own
+terms. Cartograph is MIT-licensed and has no paid license or account requirement, including for
+commercial projects. Cartograph is not a fork or a feature-for-feature claim about Periphery; it uses
+the compiler graph for a broader set of questions.
 
 Periphery's product sentence was *"find unused declarations."* The graph was a private means to that
 end. Cartograph's is *"here is your dependency graph"* — and dead code is the first query on it.
@@ -40,8 +40,10 @@ What that buys you:
 | Architecture metrics | — | ✅ Ca, Ce, instability, abstractness, distance |
 | Layering rules in CI | — | ✅ ArchUnit-style rules in YAML |
 | Who uses this symbol? | not answerable | `query` answers both directions as JSON |
+| What will this change affect? | — | `impact` finds direct and transitive consumers before editing |
 | How does a value reach this function? | not answerable | `dataflow` returns bounded interprocedural contexts as JSON |
 | Callers in Dart or JavaScript | invisible | `bridges` exports the Swift side of a platform channel; `--external-retentions` reads the join back |
+| Runtime or dispatch-only risk | — | `impact` marks runtime review targets and dispatch contracts |
 | Graph export | — | ✅ DOT, Mermaid, JSON, self-contained HTML |
 | SARIF for code scanning | — | ✅ |
 | `@objc` retained by default | ❌ opt-in | ✅ on by default |
@@ -52,7 +54,8 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 ## Install
 
 Requires macOS 14+ and a Swift toolchain (Xcode or the Command Line Tools) at run time —
-Cartograph loads `libIndexStore` from it. CI runs on Swift 6.3.3; development happens on 6.4.
+Cartograph loads `libIndexStore` from it. Development uses Swift 6.4; CI selects the newest Xcode
+installed on its runner and verifies the compiler-backed fixtures for that toolchain.
 Swift 5 language-mode projects are supported: build them with your Swift 6 toolchain (Swift 5 mode
 is a compiler option, and the index it writes is read the same way) and analyze as usual.
 
@@ -65,7 +68,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.12.0
+mint install ictechgy/cartograph@0.13.0
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -73,7 +76,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.12.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.13.0"),
 ```
 
 ```bash
@@ -400,6 +403,275 @@ that changes the exit code or the finding count. `checkstyle` is the exception: 
 slot that is not a file's error, and adding one would raise the finding count its consumers show,
 so pair it with one of the others when you need the limitations.
 
+### `impact` — review change impact before editing
+
+```bash
+cartograph impact UserService
+cartograph impact UserService --depth 3 --limit 500 --format json
+cartograph impact --file Sources/Features/Home.swift --file Sources/Router.swift
+cartograph impact --since origin/main --format json
+cartograph impact UserService --before .cartograph/before.json --format json
+```
+
+Choose exactly one selector: one or more declarations, one or more `--file` paths, or
+`--since <revision>`. File paths are resolved from the current working directory. The Git form
+includes committed and uncommitted tracked changes and untracked files; deleted paths and both
+sides of a rename are retained as seeds so an index that only contains the post-change tree cannot
+turn a deletion into `noChanges`.
+Modeled paths include Swift/Objective-C sources, Interface Builder documents, Core Data model
+contents and `.xccurrentversion`; other changed files remain listed in `limitations`.
+
+The graph still follows consumers in the whole project. `selected` contains the declarations matched
+by the direct selector; `changeScope` expands a selected type to its semantic members and extension
+members. Neither field means that those declarations were actually edited. `affected` reports
+direct and transitive consumers outside that scope. Its `via` field names the predecessor toward the
+selected scope, not necessarily the original seed. `depth` is the semantic impact step and can
+collapse an override or protocol dispatch chain. Each entry carries every relevant edge. An optional
+`dispatchContract` identifies the contract used for a dispatch projection; it is not an ordinary
+call and does not prove that the runtime call occurred.
+
+JSON output is a `change-impact` v1 document. Read `status`, `selected`, `changeScope`, `affected`,
+`tests`, `entryPoints`, `runtimeReview`, `summary`, `selectionIssues`, `limitations`, and `truncated`
+together. `selected` is the direct selector match; `changeScope` expands selected types to their
+semantic members and extension members. Neither means that those declarations were actually edited.
+`runtimeReview` keeps Objective-C, Interface Builder, dynamic dispatch, external bridge,
+property-wrapper, Codable, preview, and other runtime-managed paths visible for manual or runtime
+verification. It is evidence about possible impact, never a deletion approval or proof that runtime
+coverage is complete. `--limit` bounds each output section, including selected/change-scope symbols,
+files, modules and selection issues; summary totals remain available for the omitted entries.
+`truncated.sections` identifies exactly which sections were capped, while depth truncation remains
+separate.
+
+An unresolved symbol or selected source file makes the document `status: "incomplete"` and exits 64
+after printing the partial result. Rebuild the relevant target or inspect the pre-change index for
+deleted and renamed declarations. A revision with no changed paths returns `status: "noChanges"`
+with empty selection arrays. `impact` is a fact report, so it rejects `--strict`, `--report-format`, and
+`--level`; `--format` accepts `text` (the default) or `json`, `--depth` accepts 1 through 128,
+and `--limit` accepts 1 through 10000. `--runtime-contracts <path>` adds declared runtime
+dependencies after validating the contract document; these declarations are evidence for this
+impact run only and do not mutate the dead-code/query graph or retention policy.
+
+With `--before <analysis-snapshot>`, current and historical graphs are analyzed separately and
+reported under `current` and `before`. Deleted declarations can resolve from the old snapshot and
+new declarations from the current snapshot. If an explicit input is missing in both snapshots, or
+ambiguous in either, the comparison stays unresolved. An unresolved explicit input exits 64;
+Git-derived selections and unresolved runtime evidence are incomplete analysis (exit 2). No path
+or consumer is synthesized by unioning the two graphs.
+
+Nested runtime review evidence and contract ID lists also obey the output limit. Omitted entries
+carry `externalEvidenceCount`/`externalEvidenceOmitted` or
+`runtimeContractsCount`/`runtimeContractsOmitted`; caller omissions add to the producer's existing
+`callersOmitted`. `truncated.sections` names `runtimeEvidence` or `runtimeContracts` when applicable.
+
+### `snapshot` — capture an analysis input
+
+```bash
+cartograph snapshot --revision before-change -o .cartograph/before.json
+cartograph snapshot --runtime-contracts runtime-contracts.json -o .cartograph/before.json
+```
+
+The v2 snapshot stores automatic runtime facts and their captured freshness, plus the enriched compiler index, edge selection, measured limitations, external
+retentions and optional runtime contract declarations. `--revision` is a label supplied by you; it
+does not query Git or a network. Historical source files are never read again. A snapshot always
+uses the symbol graph and JSON output, so `--level`, `--report-format`, `--strict`, `--since` and
+`--baseline` are rejected.
+
+Older v1 snapshots remain readable and explicitly report missing automatic runtime evidence.
+Snapshots are limited to 128 MiB and omit runtime `expectedValue` fields. If a current runtime
+contract still requires a deleted target, historical callers do not cancel that broken contract.
+
+### `check` — run the CI checks in one context
+
+```bash
+cartograph check --strict
+cartograph check --since origin/main --strict
+cartograph check --report-format json
+```
+
+`check` loads one analysis context and runs dead code, module cycles, type cycles and rules at the
+configured rules level. Type cycles are always checked even when the module graph is clean.
+`--since` remains a finding-location lens for this command; it is not incremental analysis. The
+JSON document contains each check summary, one sorted diagnostic list, shared limitations and all
+threshold failures.
+Use `check --strict` without `--since` for the complete CI gate. Scoped cycle diagnostics include
+a component when any participant's file changed, but scoped diagnostics do not prove every effect
+of a PR was checked.
+
+### `serve` — provide the agent tools over MCP
+
+```json
+{
+  "mcpServers": {
+    "cartograph": {
+      "command": "cartograph",
+      "args": ["serve", "--project", "."]
+    }
+  }
+}
+```
+
+`serve` uses stdio and has no network or server-initiated requests. It supports modern
+`2026-07-28` requests with per-request `_meta` protocol and client-capabilities fields, plus the
+legacy initialization versions supported by the protocol. The session is created lazily, so
+discover and tool listing work before a project is built. `cartograph_status`, `cartograph_query`,
+`cartograph_impact`, `cartograph_check` and `cartograph_runtime_discover` return `{ "session": ..., "result": ... }` envelopes
+(status returns metadata directly), and refresh automatically when indexed inputs change. The
+server never starts a build. Query responses cap the shared `symbols × limit` budget at 1000;
+check accepts a limit and reports full finding counts even when diagnostics are clipped.
+Requests are limited to 1 MiB and encoded responses to 4 MiB. An oversized response returns an
+explicit error asking for a smaller scope or limit; it is never silently cut. Runtime contract
+labels allow 256 UTF-8 bytes and symbol/value strings 4096 bytes; byte limits also apply to
+non-ASCII strings. Empty expected values are allowed.
+
+Warm sessions cache file digests after checking device/inode, size, nanosecond modification and
+change times, permissions and resolved path. Filesystems without these stamps are rehashed.
+Sources and index-unit timestamps also participate in the input fingerprint so freshness reports
+are refreshed. File enumeration still occurs; this is cached preparation, not incremental graph
+analysis or an automatic compiler build.
+
+### `runtime` — discover connections and collect execution evidence
+
+```bash
+cartograph runtime discover
+cartograph impact ScreenController --format json
+```
+
+Discovery needs no contract file. It combines exact compiler references with Swift syntax and
+Interface Builder object connections: class/protocol names, selectors, `perform`, target/action,
+timers, notification observers/posts, and storyboard/XIB classes, actions and outlets. Immutable
+names and simple string construction are followed; dynamic or ambiguous boundaries remain visible.
+The report distinguishes resolved relationships, existing compiler references, selector tokens,
+shadowed APIs, stale inputs and unresolved boundaries. The word `analyzed` does not mean every
+runtime path is known. `--strict` fails when reported boundaries need review.
+Notification names can match literals, proven local constants and a bounded set of SDK constants whose
+exact compiler USRs are backed by installed SDK declarations. Arbitrary SDK-looking members and names
+passed through collections remain unresolved. The default center and
+`NSWorkspace.shared.notificationCenter` have stable identities. A locally constructed center or nonnil
+object filter is joined only when the same immutable class construction is used in one straight-line
+lexical scope and registration precedes posting; a property or parameter USR is not object identity.
+Immutable observer-token aliases, removal and posting in the same branch, and a plain `do` whose `defer`
+has exited are modeled. Direct `AnyCancellable.cancel()` ends a proven publisher subscription. Mutable or
+reassigned tokens, uncertain branch merges, function-scope `defer`, other centers and custom cancellation
+remain potential relationships. Registration and subscription are still not callback execution.
+
+A notification publisher needs compiler-confirmed `sink`/`onReceive` consumption. A direct
+`NotificationCenter.notifications` sequence needs compiler-confirmed `for await`; bare sequences remain
+review inputs. Both require compatible name, center and object evidence.
+
+Literal KVC keys can reference explicit `@objc` properties on final `NSObject` subclasses when accessor
+dispatch is unambiguous. Dotted paths use distinct `keyPathRead`/`keyPathWrite` operations and resolve all
+segments or none, up to 16. Every intermediate property needs an exact annotated final `NSObject` type;
+only the final write segment needs a setter. All returned targets are dependencies of one path, so an
+intermediate target in a write result is not a claim that its setter ran. Inline or immutable-local
+`NSPredicate(format:)` contributes paths only when the bounded grammar consumes the whole format, `%K`
+uses a literal string at the same argument position, the evaluated root is typed, and compiler references
+confirm both predicate construction and `evaluate(with:)`. Collection operators, `SUBQUERY`, dynamic
+formats and custom lookalikes remain unresolved.
+
+Immutable standard `Swift.Dictionary` factory/router registries are supported for literal string keys
+whose values are named top-level functions. Immutable aliases may preserve the same registry identity;
+the compiler must confirm the declaration, value reference and standard `Dictionary` subscript. This is
+not a general dependency-injection rule: closures, instance methods, mutable/dynamic maps, duplicate keys,
+custom dictionary types and external registry frameworks remain unresolved.
+
+Manual Core Data model entities can reference uniquely indexed Swift `NSManagedObject` subclasses.
+For `.xcdatamodeld`, `.xccurrentversion` always selects the active model, even when only one model contents
+file is in scope. The marker must be a regular, non-symlink binary or UTF-8 XML plist of at most 64 KiB;
+missing, invalid, excluded or nonexistent selection never falls back. Standalone `.xcdatamodel` needs no
+marker, while inactive versions stay visible for migration review. `category` generation can
+join an existing Swift class only when its Swift and Objective-C runtime names agree. Generated classes,
+`customClass` fallback, unsupported `manual` strings, ambiguous modules and entity-name fetch strings are
+not guessed. Model contents and `.xccurrentversion` participate in session fingerprints, snapshots,
+`impact --file`, `impact --since` and historical rebasing.
+
+Class-generated entities require explicit current-build evidence. Prepare it from the selected source
+model, literal container name, main app executable, exact generated class files and module:
+
+```bash
+cartograph runtime prepare-coredata --model Model.xcdatamodeld --container Store \
+  --executable Build/MyApp.app/Contents/MacOS/MyApp \
+  --generated-source Generated/Record+CoreDataClass.swift --module MyApp \
+  -o .cartograph/coredata-build-evidence.json
+cartograph runtime discover --coredata-build-evidence .cartograph/coredata-build-evidence.json
+```
+
+The `coredata-build-evidence` v1 document fingerprints the source model, selected version, current-version
+marker, main-bundle compiled model, bundle, executable and generated sources. Generated USRs must belong to
+the exact file/module and `/usr/bin/nm` must find their Swift metadata symbols defined by the main
+executable; a class only in a dynamically loaded framework is unsupported without link-chain evidence.
+With this opt-in evidence,
+an immutable local `NSPersistentContainer(name:)` → `viewContext` → literal
+`NSFetchRequest<NSManagedObject>` chain can connect a fetch to the verified entity and its default
+subentities. Mutated request/entity/context state remains unresolved.
+
+The same evidence option is accepted by current-build `impact` and `snapshot`; snapshots preserve verified
+generated sources for historical comparison. It cannot be combined with `--trace`, and it does not change
+the default `query` or `dead` graph. An MCP server may fix one project-contained JSON path with
+`cartograph serve --coredata-build-evidence <path>`. Clients cannot replace that path, and
+`coreDataBuildEvidence` metadata is reported separately from the base session.
+
+`impact` automatically follows validated static runtime connections and reports their provenance
+under `automaticRuntime`. Resource file selections include the Swift declarations their connections
+reference. Unknown names and receivers remain limitations rather than invented edges.
+
+For a **macOS debug executable**, collect actual events without manually authoring contracts:
+
+```bash
+cartograph runtime collect --executable .build/debug/MyApp --output /tmp/runtime-trace.json -- app-arguments
+cartograph runtime discover --trace /tmp/runtime-trace.json --executable .build/debug/MyApp
+cartograph impact ScreenController --trace /tmp/runtime-trace.json --executable .build/debug/MyApp --format json
+```
+
+`collect` builds a local native collector with the installed Clang toolchain and launches the supplied
+executable. It records Foundation class/protocol/selector lookup, three `performSelector` variants,
+and selector-based notification registration; application arguments and return payloads are not
+recorded. App stdout/stderr go to stderr. Events from inherited child processes are excluded.
+Lookup, registration and normally returned invocation are different evidence. A selector token does
+not prove a method ran, and registration does not prove delivery.
+
+The trace is tied to current source/index inputs and executable bytes. Missing injection, timeout,
+app failure, dropped/corrupt events or changed inputs produce an explicit partial result (exit 2).
+The collector does not re-sign an app or change entitlements. Hardened apps may reject injection.
+An installed **iOS 15+ Simulator debug test app** can also be collected:
+
+```bash
+cartograph runtime collect --simulator <booted-device-UUID> --bundle-id <app-bundle-id> \
+  --executable <matching-build/MyApp.app/MyApp> --output /tmp/simulator-trace.json -- test-arguments
+```
+
+The device UUID is explicit; the command does not boot devices or install apps. It refuses an already
+running app and verifies that the installed executable matches `--executable` before and after the run.
+In the default exit mode, use a test app that calls `exit(0)` after its scenario. Its exit code and completed
+collector log must both be present: `simctl` can report success after an app crash. Force-closing an
+interactive app, `_exit`, a crash or timeout produces a partial trace. Physical iOS devices and arbitrary
+API instrumentation remain outside this collector's scope.
+
+For an interactive debug app, add `--duration 30` to observe an interval after collector activation,
+seal the trace, and stop the launched app. This works for macOS and Simulator apps without adding
+an exit call. The v2 trace keeps `collectionComplete: false` and reports `evidenceComplete` plus an
+`observationWindow`: a sealed interval is usable evidence, but does not verify application or scenario
+success. Early exit, a missing seal, lost events, or changed inputs remain incomplete. Calls returning
+after the seal are outside the interval. `--timeout` still bounds capture and must exceed the duration.
+Existing DYLD injection libraries are rejected because competing hooks can hide events. Traces retain
+the launch platform, process ID and, for Simulator runs, the device UUID and bundle ID.
+Only executed paths and instrumented APIs are observed. Trace evidence is kept separate under
+`observedRuntime`, and it cannot be mixed with `impact --before` from a different build.
+
+Teams can still define explicit requirements and expected results when they need scenario assertions:
+
+```bash
+cartograph runtime plan --contracts runtime-contracts.json --executable .build/debug/MyApp --strict
+cartograph runtime check --contracts runtime-contracts.json --observations runtime-observations.json \
+  --executable .build/debug/MyApp --strict
+```
+
+See [runtime discovery, collection and contracts](docs/RUNTIME-CONTRACTS.md), the
+[notification/runtime corpus](Fixtures/RuntimeDiscoveryCorpus/README.md), the
+[key-path corpus](Fixtures/RuntimeKeyPathCorpus/README.md), and the
+[immutable-registry corpus](Fixtures/RuntimeRegistryCorpus/README.md). They currently contain 59, 12 and
+7 supported positive relationships respectively. These are separate bounded regression sets, not a
+combined runtime-completeness percentage or a claim that every runtime mechanism is known.
+
 ### `dataflow` — trace values across function boundaries
 
 ```bash
@@ -444,8 +716,9 @@ A Flutter method-call handler or a React Native module is called from Dart or Ja
 the compiler index cannot see, so it is reported unreachable. The only thing that links the two
 sides is a string: the channel name in `FlutterMethodChannel(name:)`, the `case "takePhoto":` in
 the handler, the `@objc(CalendarManager)` on a class, the `RCT_EXPORT_METHOD(addEvent:)` in a
-`.m` file. `bridges` reads those literals out of the sources with SwiftSyntax (and a text scan for
-Objective-C), attaches the USR the index has for the enclosing declaration, and writes the
+`.m` file. `bridges` reads those literals out of the sources with SwiftSyntax (and scanners for
+Objective-C Flutter handlers and React Native export macros), attaches the USR the index has for
+the enclosing declaration, and writes the
 `bridge-facts` exchange format that [isthmus](../isthmus) joins with the other platform's facts.
 
 The exported `project` is the root's POSIX `realpath`, resolving symlinks so `/tmp` and
@@ -464,9 +737,12 @@ Swift bridge-name resolution follows immutable `let` aliases and parentheses wit
 (up to 64 steps). Mutable strings, unknown shadowing bindings, operators, interpolation and cross-file values
 remain dynamic. See the [constant/Needle/storyboard checks](docs/scans/2026-09-analysis-blindspots.md).
 
-Cross-function value propagation is not implemented: parameters, returns, callbacks and async
-results remain unresolved bridge names. Query paths describe symbol dependencies. See the
-[interprocedural analysis check](docs/scans/2026-09-interprocedural-flow.md) for runtime comparisons and scope.
+When a dynamic Swift name comes from a fresh indexed source, `bridges` also runs the bounded
+interprocedural value-flow analysis and applies a name only when every analyzed context agrees on
+the same exact string. Supported argument, return, callback and memory paths can therefore resolve
+names across functions; disagreement, unknown values, unsupported syntax, stale sources and an
+exhausted analysis budget remain `dynamic`. See the [interprocedural analysis check](docs/scans/2026-09-interprocedural-flow.md)
+for runtime comparisons and scope.
 
 Objective-C Flutter scanning supports direct channel construction, inline handler blocks and
 same-file registrar/delegate `handleMethodCall:result:` implementations, including file-local
@@ -503,7 +779,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.12.0" },
+  "tool" : { "name" : "cartograph", "version" : "0.13.0" },
   "version" : 1
 }
 ```
@@ -650,10 +926,11 @@ says so rather than guessing.
 cartograph dead --since origin/main --strict
 ```
 
-Reports only findings **located in** files changed since a git revision — committed changes,
-uncommitted changes to tracked files, and new files you have not added yet. The graph is still built
-from the whole project, because reachability computed on a partial graph is simply wrong; only the
-report narrows.
+Reports only findings **located in** modeled source files changed since a git revision — Swift,
+Objective-C and Interface Builder suffixes — including committed changes, uncommitted changes to
+tracked files, and new files you have not added yet. Other changed paths are listed as limitations
+when they cannot be modeled. The graph is still built from the whole project, because reachability
+computed on a partial graph is simply wrong; only the report narrows.
 
 It answers "what did this change touch", not "what did this change cause". If your commit deletes
 the last call to a symbol declared in a file you did not touch, that symbol becomes dead but its
@@ -663,11 +940,14 @@ would later make every out-of-scope finding look new. `query` refuses it too: on
 a finding list, so the lens has nothing to attach to. The same goes for `graph` (the whole project,
 not a report), `bridges` (a partial export would read as missing handlers downstream) and the
 `--explain` answers (one subject, like `query`). Only `dead`, `cycles`, `metrics` and `rules` over
-the finding list honor `--since`.
+the finding list honor `--since` as a report filter. `impact --since` uses changed paths as analysis
+seeds and follows consumers in the whole graph, including deleted and renamed paths; it is a
+different operation from filtering diagnostic locations.
 
 `baseline` and `--since` answer different questions and compose: the baseline is the CI ratchet
 that keeps today's debt from growing, `--since` is the pull-request lens. In CI, check out with full
-history (`fetch-depth: 0`), or the revision will not resolve.
+history (`fetch-depth: 0`), or the revision will not resolve. A `noChanges` impact result means no
+modeled source path was selected; it is not evidence that all changed files are safe.
 
 ## Configuration
 
@@ -764,9 +1044,10 @@ adversarial review.
 - **Interface Builder connections are not matched individually.** Every `@IBOutlet` and `@IBAction`
   is kept when `retain_interface_builder` is on, whether or not a xib actually connects it, so
   disconnected outlets are not reported. Custom classes *are* matched by name.
-- **Objective-C sources are not analyzed.** `.m` and `.h` files are invisible to the graph; Swift
-  declarations they reach are covered by `retain_objc_accessible`, which is on by default. `bridges`
-  does read `.m` files, but only for React Native export macros, as text.
+- **Objective-C sources are not analyzed by the symbol graph.** `.m` and `.h` files are invisible to
+  the graph; Swift declarations they reach are covered by `retain_objc_accessible`, which is on by
+  default. `bridges` separately scans `.m` files for Flutter channel/handler patterns and React Native
+  export macros, but that fact scan does not make Objective-C declarations graph nodes.
 - **Callers in another language are known only through isthmus.** `bridges` exports what Swift
   declares; whether Dart or JavaScript actually calls it is a join this tool does not perform.
 - **A property that is only ever assigned counts as used.** The graph has one `reference` edge
@@ -791,9 +1072,7 @@ Exit codes let a script tell "your code has problems" from "the tool did not run
 
 ```yaml
 - run: swift build
-- run: cartograph dead   --strict --report-format github-actions
-- run: cartograph cycles --strict
-- run: cartograph rules  --strict
+- run: cartograph check --strict --report-format github-actions
 ```
 
 For GitHub code scanning, emit SARIF:
@@ -804,6 +1083,18 @@ For GitHub code scanning, emit SARIF:
   with:
     sarif_file: cartograph.sarif
 ```
+
+The stdio and workflow harnesses keep their raw evidence outside the analyzed source tree:
+
+```bash
+Scripts/verify-mcp.py --cartograph .build/debug/cartograph
+Scripts/benchmark-workflows.py --cartograph .build/debug/cartograph --project .
+```
+
+They fail on a timeout, malformed protocol output or a correctness mismatch; a reported speed
+measurement is not treated as a pass unless its comparison is also valid.
+See [workflow validation](docs/WORKFLOW-VALIDATION.md) for the acceptance workloads, measurements
+and their limits.
 
 ## Architecture
 
@@ -827,6 +1118,9 @@ CartographCore  ←  Config · Syntax · Analysis · Export · IndexStore  ←  
 The domain and the algorithms do not know IndexStoreDB exists. That is what makes the enforced 90%
 line coverage gate reachable without a single fixture Xcode project: analysis runs on hand-written
 snapshots.
+The coverage gate combines unit tests with instrumented CLI integration harnesses and reports the
+unit-only percentage separately. Discovery recall is measured against labelled dependency cases,
+not inferred from line coverage.
 
 `CartographKit` is a public library product — you can embed the pipeline instead of shelling out.
 Its query API returns values, not rendered text:

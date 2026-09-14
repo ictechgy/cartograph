@@ -21,10 +21,11 @@ cycles: 1 error — module graph · 9 nodes · 36 edges
 ## 왜 새로 만들었나
 
 [Periphery](https://github.com/peripheryapp/periphery)는 Swift 진영 최고의 미사용 코드 탐지기였고,
-보관된 소스는 지금도 이 문제를 가장 잘 설명한 자료입니다. 오픈소스 저장소는 MIT 상태로 보관되었고,
-개발은 [상용 제품](https://periphery.pro)으로 이어지고 있습니다. 개인·취미 프로젝트와 규모를 가리지
-않는 오픈소스에는 무료이므로, 필요한 것이 미사용 코드뿐이라면 그쪽을 쓰세요. Cartograph는 포크도,
-무료 대체품도 아닙니다. 같은 재료를 쓰되 목적을 다르게 잡았습니다.
+보관된 소스는 지금도 이 문제를 가장 잘 설명한 자료입니다. 그 저장소는 MIT로 보관되어 있으며,
+현재 개발은 별도 [상용 제품](https://periphery.pro)에서 자체 약관으로 이어지고 있습니다. Cartograph는
+MIT 라이선스이고 상용 프로젝트도 유료 라이선스나 계정 없이 사용할 수 있습니다. Cartograph는 포크나
+Periphery와 기능이 하나씩 같은 무료판이라는 주장이 아니라, 컴파일러 그래프로 더 넓은 질문에 답하는
+도구입니다.
 
 Periphery를 한 문장으로 줄이면 *"미사용 선언을 찾는다"*였고, 그래프는 그 목적을 이루기 위한 내부 수단이었습니다.
 Cartograph를 한 문장으로 줄이면 *"의존성 그래프를 내놓는다"*이고, 미사용 코드는 그 위에 던지는 첫 번째 질문입니다.
@@ -37,8 +38,10 @@ Cartograph를 한 문장으로 줄이면 *"의존성 그래프를 내놓는다"*
 | 아키텍처 지표 | — | ✅ Ca, Ce, 불안정도, 추상도, 주계열 거리 |
 | CI에서 레이어 규칙 강제 | — | ✅ YAML로 쓰는 ArchUnit 방식 규칙 |
 | 이 심볼을 누가 쓰나? | 답할 수 없음 | `query`가 양방향을 JSON으로 답함 |
+| 이 수정을 하면 무엇이 영향받나? | — | `impact`가 편집 전에 직접·전이 소비자를 찾음 |
 | 값이 이 함수까지 어떻게 오나? | 답할 수 없음 | `dataflow`가 제한된 함수 간 문맥을 JSON으로 답함 |
 | Dart·JavaScript 쪽 호출자 | 보이지 않음 | `bridges`가 플랫폼 채널의 Swift 쪽을 내보내고 `--external-retentions`가 조인 결과를 읽어 옴 |
+| 런타임·디스패치만의 위험 | — | `impact`가 런타임 검토 대상과 디스패치 계약을 표시함 |
 | 그래프 내보내기 | — | ✅ DOT, Mermaid, JSON, 단일 HTML |
 | SARIF (code scanning) | — | ✅ |
 | `@objc` 기본 보존 | ❌ 옵트인 | ✅ 기본 켜짐 |
@@ -49,7 +52,8 @@ Cartograph를 한 문장으로 줄이면 *"의존성 그래프를 내놓는다"*
 ## 설치
 
 macOS 14 이상이 필요합니다. 실행할 때는 Swift 툴체인(Xcode 또는 Command Line Tools)이 있어야 합니다.
-`libIndexStore`를 거기서 불러오기 때문입니다. CI는 Swift 6.3.3, 개발은 6.4에서 돌아갑니다.
+`libIndexStore`를 거기서 불러오기 때문입니다. 개발은 Swift 6.4를 사용하며, CI는 러너에 설치된
+최신 Xcode를 선택해 해당 툴체인의 실제 컴파일러 코퍼스를 검증합니다.
 Swift 5 언어 모드 프로젝트도 됩니다. Swift 6 툴체인으로 빌드하세요(언어 모드는 컴파일러 옵션이라
 그렇게 만든 인덱스도 그대로 읽힙니다). 분석은 평소대로 하면 됩니다.
 
@@ -62,7 +66,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — tap 추가 없이 소스에서 빌드합니다.
 
 ```bash
-mint install ictechgy/cartograph@0.12.0
+mint install ictechgy/cartograph@0.13.0
 ```
 
 **설치 없이 쓰기** — Swift 패키지라면 의존성으로 넣고 커맨드 플러그인을 쓰면 됩니다.
@@ -70,7 +74,7 @@ mint install ictechgy/cartograph@0.12.0
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.12.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.13.0"),
 ```
 
 ```bash
@@ -385,6 +389,270 @@ $ cartograph query --batch requests.json
 `checkstyle` 만 예외다. 스키마에 파일의 오류가 아닌 자리가 없고 억지로 넣으면 소비자가 보는
 발견 수가 늘어난다. 한계가 필요하면 다른 형식과 함께 쓰라.
 
+### `impact` — 수정 전에 영향 범위 검토
+
+```bash
+cartograph impact UserService
+cartograph impact UserService --depth 3 --limit 500 --format json
+cartograph impact --file Sources/Features/Home.swift --file Sources/Router.swift
+cartograph impact --since origin/main --format json
+cartograph impact UserService --before .cartograph/before.json --format json
+```
+
+선택 모드는 정확히 하나만 고릅니다. 선언 하나 이상, `--file` 경로 하나 이상, 또는
+`--since <revision>` 중 하나입니다. 파일 경로는 현재 작업 디렉터리를 기준으로 풉니다. Git
+모드는 커밋·미커밋 추적 변경과 새 파일을 모두 포함하며, 삭제된 경로와 이름 변경의 양쪽 경로도
+시드로 남깁니다. 사후 트리만 남은 인덱스가 삭제를 `noChanges`로 바꾸지 않게 하기 위해서입니다.
+모델링된 경로에는 Swift/Objective-C 소스, Interface Builder 문서, Core Data 모델 contents와
+`.xccurrentversion`이 포함됩니다. 다른 변경 파일은 `limitations`에 남깁니다.
+
+그래프는 프로젝트 전체에서 소비자를 계속 따라갑니다. `selected`는 직접 선택자와 맞은
+선언이고, `changeScope`는 선택한 타입을 의미 있는 멤버와 익스텐션 멤버까지 확장한 범위입니다.
+둘 다 실제로 편집했다는 뜻은 아닙니다. `affected`는 그 범위 밖의 직접·전이 소비자입니다.
+항목의 `via`는 선택 범위로 향하는 바로 앞 정점이지 원래 시드와 항상 같지는 않습니다.
+`depth`는 의미상 영향 단계이며 프로토콜·오버라이드 디스패치 사슬을 접을 수 있습니다.
+`dispatchContract`는 투영에 사용한 계약을 표시할 뿐 직접 호출이나 실행 관측을 뜻하지 않습니다.
+
+JSON은 `change-impact` v1 문서입니다. `status`, `selected`, `changeScope`, `affected`, `tests`,
+`entryPoints`, `runtimeReview`, `summary`, `selectionIssues`, `limitations`, `truncated`를 함께
+읽으세요. `selected`는 직접 선택자와 맞은 선언이고, `changeScope`는 선택한 타입을 의미 있는
+멤버와 익스텐션 멤버까지 확장한 범위입니다. 둘 다 실제 편집을 뜻하지 않습니다.
+`runtimeReview`는 Objective-C, Interface Builder, 동적 디스패치, 외부 브리지, 프로퍼티 래퍼,
+Codable, preview와 기타 런타임 관리 경로를 수동 또는 런타임 검증 대상으로 남깁니다. 이것은
+영향 가능성에 대한 근거이지 삭제 승인이나 런타임 커버리지 완전성의 증명이 아닙니다. `--limit`은
+selected/changeScope 심볼, 파일, 모듈, 선택 이슈를 포함한 각 출력 섹션에 적용되며 summary에
+생략된 항목의 전체 집계를 남깁니다. `truncated.sections`가 어떤 섹션이 잘렸는지 가리키고,
+깊이 제한은 별도로 표시합니다.
+
+해결하지 못한 심볼이나 선택한 소스 파일이 있으면 문서는 `status: "incomplete"`가 되고 부분
+결과를 출력한 뒤 종료 코드 64를 냅니다. 관련 타깃을 다시 빌드하거나 삭제·이름 변경 선언에
+대해 변경 전 인덱스를 확인하세요. 변경 경로가 하나도 없는 기준점은 선택 배열이 비어 있는
+`status: "noChanges"`를 냅니다. `impact`는 사실 보고서이므로 `--strict`, `--report-format`,
+`--level`을 거부합니다. `--format`은 기본 `text` 또는 `json`, `--depth`는 1부터 128,
+`--limit`은 1부터 10000입니다. `--runtime-contracts <path>`는 계약 문서를 검증한 뒤 이 영향
+실행의 선언된 런타임 의존성으로만 사용합니다. dead/query 그래프나 보존 정책을 바꾸지 않습니다.
+
+`--before <analysis-snapshot>`를 주면 현재와 과거 그래프를 합치지 않고 각각 분석해
+`current`와 `before` 아래에 담습니다. 삭제된 선언은 과거 스냅샷에서, 새 선언은 현재 스냅샷에서
+해소할 수 있습니다. 명시한 입력이 양쪽에 없거나 어느 한쪽에서 모호하면 비교는 미해결로
+남습니다. 명시적 미해결은 종료 코드 64, Git에서 유도한 선택과 런타임 근거 미해결은 불완전한
+분석으로 종료 코드 2입니다. 두 그래프의 간선을 합쳐 경로를 만들지 않습니다.
+
+중첩된 런타임 검토 근거와 계약 ID 목록도 출력 한도를 지킵니다. 생략하면
+`externalEvidenceCount`/`externalEvidenceOmitted` 또는
+`runtimeContractsCount`/`runtimeContractsOmitted`로 전체/생략 개수를 표시합니다. 호출자 생략은
+생산자의 기존 `callersOmitted`에 더하며, `truncated.sections`에 `runtimeEvidence`나
+`runtimeContracts`를 표시합니다.
+
+### `snapshot` — 분석 입력 캡처
+
+```bash
+cartograph snapshot --revision before-change -o .cartograph/before.json
+cartograph snapshot --runtime-contracts runtime-contracts.json -o .cartograph/before.json
+```
+
+v2는 자동 런타임 사실과 수집 당시 신선도, 보강된 컴파일러 인덱스, 간선 선택, 측정한 한계, 외부 보존 근거와 선택적 런타임 계약 선언을
+저장합니다. `--revision`은 사용자가 준 라벨이며 Git이나 네트워크를 조회하지 않습니다. 과거
+소스 파일을 다시 읽지 않습니다. 스냅샷은 심볼 그래프와 JSON으로 고정되므로 `--level`,
+`--report-format`, `--strict`, `--since`, `--baseline`을 거부합니다.
+
+이전 v1도 읽으며 자동 런타임 근거가 없다는 한계를 명시합니다.
+스냅샷은 128 MiB로 제한하고 런타임 `expectedValue`는 저장하지 않습니다. 현재 런타임 계약이
+삭제한 대상을 계속 요구한다면 과거 호출자가 확인되어도 그 계약 오류는 남습니다.
+
+### `check` — 한 문맥에서 CI 점검
+
+```bash
+cartograph check --strict
+cartograph check --since origin/main --strict
+cartograph check --report-format json
+```
+
+`check`는 인덱스 문맥 하나를 읽고 미사용 코드, 모듈 순환, 타입 순환, 설정된 레벨의 규칙을
+실행합니다. 모듈 그래프가 깨끗해도 타입 순환은 항상 검사합니다. `--since`는 이 명령에서도
+발견 위치를 거르는 렌즈이며 증분 분석이 아닙니다. JSON에는 점검별 요약, 정렬된 진단 목록,
+공통 한계와 모든 임계값 초과가 담깁니다.
+전체 CI 게이트에서는 `--since` 없이 `check --strict`를 사용하세요. 범위를 지정한 순환 검사는
+구성원 파일 중 하나가 변경되면 그 순환을 포함하지만, PR의 모든 영향을 검사했다는 뜻은 아닙니다.
+
+### `serve` — MCP로 에이전트 도구 제공
+
+```json
+{
+  "mcpServers": {
+    "cartograph": {
+      "command": "cartograph",
+      "args": ["serve", "--project", "."]
+    }
+  }
+}
+```
+
+`serve`는 stdio만 사용하며 네트워크나 서버 주도 요청을 만들지 않습니다. 최신
+`2026-07-28` 요청의 요청별 `_meta` 프로토콜·클라이언트 능력 필드와 지원되는 레거시 초기화를
+함께 받습니다. 세션은 늦게 만들어 빌드 전에도 discover와 도구 목록을 제공합니다.
+`cartograph_status`, `cartograph_query`, `cartograph_impact`, `cartograph_check`, `cartograph_runtime_discover`는
+`{ "session": ..., "result": ... }` 봉투를 쓰고(status는 메타데이터를 직접 반환), 인덱스 입력이
+바뀌면 다시 준비합니다. 서버가 빌드를 시작하지는 않습니다. query는 `symbols × limit` 공통
+예산을 1000으로 제한하고, check는 진단을 잘라도 전체 발견 수를 함께 보고합니다.
+요청은 1 MiB, 인코딩한 응답은 4 MiB로 제한합니다. 너무 큰 응답은 범위나 limit을 줄이라는
+명시적 오류를 내며 조용히 자르지 않습니다. 런타임 계약 라벨은 UTF-8 256바이트, 심볼·값은
+4096바이트가 상한이므로 비ASCII 문자에도 바이트 제한이 적용됩니다. 빈 기대 값은 허용합니다.
+
+준비된 세션은 장치·inode·크기·나노초 수정/변경 시각·권한·실제 경로를 확인하고 파일 digest를
+재사용합니다. 이 정보를 주지 못하는 파일 시스템은 내용을 다시 해시합니다. 소스와 인덱스 unit
+수정 시각도 입력 지문에 포함해 신선도 보고를 갱신합니다. 파일 목록 조회는 매번 수행하며,
+이는 준비 과정의 캐시이지 증분 그래프 분석이나 자동 빌드가 아닙니다.
+
+### `runtime` — 연결 자동 발견과 실행 근거 수집
+
+```bash
+cartograph runtime discover
+cartograph impact ScreenController --format json
+```
+
+계약 파일 없이 컴파일러 참조, Swift 구문, Interface Builder 객체 연결을 함께 분석합니다.
+클래스·프로토콜 이름 조회, selector, `perform`, target/action, 타이머, 알림 등록/게시,
+storyboard/XIB 클래스·action·outlet을 다룹니다. 불변 이름과 단순 문자열 조합을 따라가며,
+동적이거나 모호한 경계는 미해결로 남깁니다. 기존 컴파일러 참조, selector 토큰 생성,
+사용자 동명 API와 낡은 입력도 구분합니다. `analyzed`는 모든 런타임 경로를 안다는 뜻이
+아닙니다.
+`--strict`는 검토가 필요한 경계가 남으면 실패합니다.
+알림 이름은 리터럴, 증명된 로컬 상수, 설치된 SDK 선언과 exact compiler USR이 일치하는
+제한된 SDK 상수만 연결합니다. SDK처럼 보이는 임의 멤버와 컬렉션을 거친 이름은 미해결로
+남깁니다.
+기본 center와 `NSWorkspace.shared.notificationCenter`는 안정된 신원으로 다룹니다. 지역에서 만든
+center나 nil이 아닌 object 필터는 한 직선 lexical scope에서 같은 불변 class 생성값을
+사용하고 등록이 게시보다 앞선 경우만 연결합니다. 프로퍼티·매개변수 USR만 같다는 것은
+객체 신원이 아닙니다.
+불변 observer token alias, 같은 branch 안의 제거와 게시, 이미 빠져나온 일반 `do`의
+`defer`는 lifecycle 근거로 씁니다. 직접 `AnyCancellable.cancel()`한 검증된 publisher 구독도
+종료된 것으로 봅니다. mutable·재할당 token, 합류 결과가 불명확한 branch, 함수 scope `defer`,
+다른 center, 사용자 정의 cancel은 잠재 관계를 유지합니다. 등록·구독은 여전히 콜백 실행
+기록이 아닙니다.
+
+알림 publisher는 컴파일러가 확인한 `sink`/`onReceive` 소비가 필요합니다. 직접
+`NotificationCenter.notifications` sequence를 쓰는 경우에는 compiler-confirmed `for await`가
+필요하며, 소비되지 않은 sequence는 검토 대상으로 남습니다. 두 형태 모두 호환되는
+이름·center·object 근거를 요구합니다.
+
+KVC의 리터럴 단일 키는 접근자 선택이 명확한 final `NSObject` 하위 클래스의 명시적 `@objc`
+프로퍼티와 연결합니다. 점 경로는 별도 `keyPathRead`/`keyPathWrite` 연산으로 최대 16세그먼트를
+전부 해소하거나 모두 미결로 둡니다. 각 중간 프로퍼티는 명시한 타입 annotation의 exact
+compiler reference가 가리키는 final `NSObject`여야 합니다. 쓰기 가능성은 마지막 세그먼트에서만
+요구합니다.
+write 결과의 중간 target은 한 경로가 읽는 의존성이지 그 setter가 실행됐다는 뜻이 아닙니다.
+inline 또는 불변 local `NSPredicate(format:)`은 제한 문법이 전체 format을 소비하고, `%K`의 같은
+인자 위치에 리터럴 문자열이 있고, 평가 root 타입과 predicate 생성·`evaluate(with:)` API를
+컴파일러가 확인한 경우만 경로를 냅니다. collection operator, `SUBQUERY`, 동적 format과 사용자
+동명 API는 미결로 남깁니다.
+
+표준 `Swift.Dictionary`의 불변 factory/router registry는 리터럴 문자열 key와 이름 있는 top-level
+함수 값만 지원합니다. 불변 alias는 같은 registry 신원을 전달할 수 있지만 선언·함수
+reference와 표준 `Dictionary` subscript를 컴파일러가 모두 확인해야 합니다. 범용 DI 규칙은
+아닙니다. closure, instance method, mutable/dynamic map, 중복 key, 사용자 dictionary 타입,
+외부 registry framework는
+미결로 남깁니다.
+
+수동 Core Data 모델의 entity는 유일하게 인덱싱된 Swift `NSManagedObject` 하위 클래스와
+연결합니다.
+`.xcdatamodeld`는 범위 안의 contents가 하나뿐이어도 반드시 `.xccurrentversion`으로 활성 모델을
+고릅니다. marker는 64 KiB 이하의 일반 비심볼릭링크 파일인 binary plist 또는 UTF-8 XML plist만
+받으며, 선택이 없거나 잘못됐거나 제외됐거나 파일이 없으면 fallback하지 않습니다. 독립
+`.xcdatamodel`에는 marker가 필요 없고, 비활성 버전은 migration 검토 대상으로 유지합니다.
+`category` 생성은 기존 Swift 클래스의 Swift 이름과 Objective-C 런타임 이름이 모두 맞을 때만
+연결합니다. 자동 생성 클래스,
+`customClass` fallback, 지원하지 않는 `manual` 문자열, 모호한 모듈, entity 이름만 있는 fetch
+문자열은 추측하지 않습니다. 모델 내용과 `.xccurrentversion`은 세션 지문, 스냅샷,
+`impact --file`, `impact --since`, 과거 경로 재배치에 포함됩니다.
+
+class 자동 생성 entity는 현재 빌드에 대한 명시적 근거가 필요합니다. 선택한 소스 모델과
+리터럴 container 이름, main app 실행 파일, 정확한 생성 class 파일과 module로 근거를 만듭니다.
+
+```bash
+cartograph runtime prepare-coredata --model Model.xcdatamodeld --container Store \
+  --executable Build/MyApp.app/Contents/MacOS/MyApp \
+  --generated-source Generated/Record+CoreDataClass.swift --module MyApp \
+  -o .cartograph/coredata-build-evidence.json
+cartograph runtime discover --coredata-build-evidence .cartograph/coredata-build-evidence.json
+```
+
+`coredata-build-evidence` v1은 소스 모델, 선택 버전, current-version marker, main bundle의 컴파일
+모델, bundle, 실행 파일, 생성 소스의 내용을 지문화합니다. 생성 USR는 exact 파일·module에
+속해야 하고 `/usr/bin/nm`이 Swift metadata symbol 정의를 main 실행 파일에서 찾아야 합니다.
+동적 로드
+framework에만 있는 class는 link-chain 근거가 없어 지원하지 않습니다. 이 opt-in 근거가
+있으면 불변 local
+`NSPersistentContainer(name:)` → `viewContext` → 리터럴 `NSFetchRequest<NSManagedObject>` 경로의
+fetch를 검증된 entity와 기본 포함 subentity에 연결합니다. request/entity/context를 바꾸거나
+흘려보내면 미결로 남깁니다.
+
+현재 빌드의 `impact`와 `snapshot`도 같은 근거 옵션을 받으며, snapshot은 검증된 생성 소스를
+과거 비교용으로 보존합니다. `--trace`와 함께 쓸 수 없고 기본 `query`·`dead` 그래프는 바꾸지
+않습니다. MCP server는 `cartograph serve --coredata-build-evidence <path>`로 프로젝트 안 JSON
+하나를 고정할 수 있습니다. client는 그 경로를 바꿀 수 없고 `coreDataBuildEvidence` metadata는
+기본 session과 별도로 나갑니다.
+
+`impact`는 검증한 정적 런타임 연결을 자동으로 따라가고 `automaticRuntime`에 근거를 표시합니다.
+리소스 파일을 선택하면 그 연결이 참조하는 Swift 선언도 선택합니다. 이름·수신자를 모르면
+간선을 추측하지 않고 한계로 알립니다.
+
+**macOS 디버그 실행 파일**에서는 수동 계약 없이 실제 사건을 수집할 수 있습니다.
+
+```bash
+cartograph runtime collect --executable .build/debug/MyApp --output /tmp/runtime-trace.json -- app-arguments
+cartograph runtime discover --trace /tmp/runtime-trace.json --executable .build/debug/MyApp
+cartograph impact ScreenController --trace /tmp/runtime-trace.json --executable .build/debug/MyApp --format json
+```
+
+`collect`는 설치된 Clang으로 로컬 수집기를 빌드한 뒤 지정한 실행 파일을 실행합니다.
+Foundation 클래스·프로토콜·selector 조회, `performSelector` 세 형태, selector 기반 알림 등록을
+수집합니다. 앱의 인자나 반환 payload는 기록하지 않으며 앱 stdout/stderr는 stderr로 전달합니다.
+하위 프로세스에 상속된 계측 사건은 제외합니다. 조회·등록·정상 반환한 호출은 서로 다른 근거이며,
+selector 생성이 메서드 실행을, 등록이 실제 알림 전달을 증명하지 않습니다.
+
+소스·인덱스와 실행 파일 내용이 수집 당시와 맞아야 합니다. 주입 실패, 시간 초과, 앱 오류,
+사건 유실/손상, 입력 변경은 부분 결과와 종료 코드 2로 알립니다. 서명이나 entitlement를
+바꾸지 않으며 hardened 앱은 주입을 거부할 수 있습니다.
+설치된 **iOS 15 이상 시뮬레이터 디버그 테스트 앱**에서도 수집할 수 있습니다.
+
+```bash
+cartograph runtime collect --simulator <booted-device-UUID> --bundle-id <app-bundle-id> \
+  --executable <matching-build/MyApp.app/MyApp> --output /tmp/simulator-trace.json -- test-arguments
+```
+
+기기 UUID를 명시하며 기기 부팅이나 앱 설치는 하지 않습니다. 이미 실행 중인 앱은 거부하고,
+설치된 실행 파일과 `--executable`이 수집 전후 같은지 검사합니다. 기본 종료 모드에서는 시나리오 뒤 `exit(0)`을
+호출하는 전용 테스트 앱을 사용하세요. 앱이 충돌해도 `simctl`은 성공을 반환할 수 있으므로
+앱 종료 코드와 수집 로그의 정상 완료 근거를 모두 요구합니다. 대화형 앱 강제 종료, `_exit`,
+충돌, 시간 초과는 부분 결과입니다. iOS 실기기와 임의 API 전체 계측은 아직 지원하지 않습니다.
+
+대화형 디버그 앱에서는 `--duration 30`을 추가하면 수집기 활성화 뒤 지정한 구간을 관측하고,
+기록을 봉인한 다음 시작한 앱을 종료합니다. macOS와 시뮬레이터 모두 앱에 exit 호출을 추가할
+필요가 없습니다. v2 trace는 `collectionComplete: false`를 유지하고 `evidenceComplete`와
+`observationWindow`를 별도로 표시합니다. 봉인된 구간을 근거로 쓸 수 있다는 뜻이며 앱이나
+시나리오의 성공 판정은 아닙니다. 조기 종료·봉인 실패·사건 유실·입력 변경은 미완료입니다.
+봉인 뒤 반환한 호출은 구간 밖입니다. `--timeout`은 수집 상한이며 duration보다 길어야 합니다.
+다른 DYLD 주입 라이브러리가 있으면 훅 충돌로 사건을 놓칠 수 있어 거부합니다. 실행 플랫폼·PID와
+시뮬레이터 기기 UUID·bundle ID도 trace에 기록합니다.
+실행한 경로와 계측한 API만 관측합니다.
+`observedRuntime`에 근거를 분리하고 다른 빌드의 `impact --before`와 섞지 않습니다.
+
+시나리오와 기대 결과를 명시적으로 검사하는 기존 계약 검증도 유지합니다.
+
+```bash
+cartograph runtime plan --contracts runtime-contracts.json --executable .build/debug/MyApp --strict
+cartograph runtime check --contracts runtime-contracts.json --observations runtime-observations.json \
+  --executable .build/debug/MyApp --strict
+```
+
+[발견·수집·계약 형식](docs/RUNTIME-CONTRACTS.md),
+[알림·런타임 코퍼스](Fixtures/RuntimeDiscoveryCorpus/README.md),
+[key-path 코퍼스](Fixtures/RuntimeKeyPathCorpus/README.md),
+[불변 registry 코퍼스](Fixtures/RuntimeRegistryCorpus/README.md)를 참고하세요. 각 한정 집합의 지원
+양성 관계는 현재 59건, 12건, 7건입니다. 서로 더해 범용 런타임 완성률로 표현할 수
+없으며, 각 반례 집합의 회귀 결과일 뿐입니다.
+
 ### `dataflow` — 함수 경계를 넘는 값 흐름 추적
 
 ```bash
@@ -428,7 +696,8 @@ Flutter 메서드 채널 핸들러나 React Native 모듈은 Dart 나 JavaScript
 그것을 보지 못하므로 도달 불가로 보고합니다. 두 쪽을 잇는 유일한 끈은 문자열입니다.
 `FlutterMethodChannel(name:)` 의 채널 이름, 핸들러 안의 `case "takePhoto":`, 클래스의
 `@objc(CalendarManager)`, `.m` 파일의 `RCT_EXPORT_METHOD(addEvent:)`. `bridges` 는 그 리터럴을
-SwiftSyntax 로(Objective-C 는 텍스트로) 소스에서 읽고, 감싸는 선언의 USR 을 인덱스에서 붙여,
+SwiftSyntax와 Objective-C Flutter 핸들러·React Native export 매크로 스캐너로 소스에서 읽고,
+감싸는 선언의 USR 을 인덱스에서 붙여,
 [isthmus](../isthmus) 가 다른 플랫폼의 사실과 조인하는 `bridge-facts` 교환 형식으로 씁니다.
 
 출력의 `project`는 루트의 POSIX `realpath`입니다. 심볼릭 링크를 해결해 `/tmp`와
@@ -447,9 +716,11 @@ Swift 브리지 이름은 같은 파일의 불변 `let` 별칭과 괄호를 최�
 값을 모르는 가림 선언, 연산자·보간·다른 파일의 값은 dynamic으로 남깁니다.
 [상수·Needle·스토리보드 실측](docs/scans/2026-09-analysis-blindspots.md)에 지원 범위와 입력 공백을 정리했습니다.
 
-함수 간 값 전파는 아직 구현하지 않았습니다. 매개변수·반환·콜백·async를 거친 브리지 이름은
-미상으로 남으며 query 경로는 심볼 의존 관계입니다.
-[함수 간 분석 실측](docs/scans/2026-09-interprocedural-flow.md)에 실행 값과 지원 범위를 비교했습니다.
+동적인 Swift 브리지 이름이 최신 인덱스 소스에서 나오면 `bridges`는 제한된 함수 간 값 흐름
+분석도 실행합니다. 모든 분석 문맥이 같은 정확한 문자열에 동의할 때만 이름을 적용하므로,
+지원되는 인자·반환·콜백·메모리 경로는 함수 사이에서도 해석됩니다. 문맥 간 불일치, 미상 값,
+미지원 구문, 오래된 소스와 예산 초과는 `dynamic`으로 남습니다. [함수 간 분석 실측](docs/scans/2026-09-interprocedural-flow.md)에
+실행 값과 지원 범위를 비교했습니다.
 
 ObjC Flutter 스캔은 직접 채널 생성, 인라인 블록, 같은 파일의 registrar 위임과
 `handleMethodCall:result:`를 지원합니다. 파일 범위의 불변 `NSString *const` 이름도 한 단계
@@ -487,7 +758,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.12.0" },
+  "tool" : { "name" : "cartograph", "version" : "0.13.0" },
   "version" : 1
 }
 ```
@@ -627,10 +898,11 @@ cartograph baseline --write .cartograph-baseline.json
 cartograph dead --since origin/main --strict
 ```
 
-주어진 git 기준점 이후 바뀐 파일**에 위치한** 발견만 보고합니다. 커밋된 변경, 추적 파일의
-미커밋 변경, 아직 추가하지 않은 새 파일을 모두 포함합니다. 그래프는 여전히 프로젝트 전체로
-만듭니다. 좁힌 그래프에서 나온 도달성 판정은 그냥 틀린 값이기 때문입니다. 좁히는 것은
-보고뿐입니다.
+주어진 git 기준점 이후 바뀐 모델링 대상 파일**에 위치한** 발견만 보고합니다. Swift,
+Objective-C, Interface Builder 확장자를 대상으로 커밋된 변경, 추적 파일의 미커밋 변경,
+아직 추가하지 않은 새 파일을 모두 포함합니다. 모델링하지 않는 변경은 한계로 알립니다.
+그래프는 여전히 프로젝트 전체로 만듭니다. 좁힌 그래프에서 나온 도달성 판정은 그냥 틀린
+값이기 때문입니다. 좁히는 것은 보고뿐입니다.
 
 이것은 "이번 변경이 무엇을 건드렸나"에 답하지, "이번 변경이 무엇을 만들었나"에 답하지
 않습니다. 건드리지 않은 파일에 선언된 심볼의 마지막 호출을 이번 커밋이 지웠다면 그 심볼은
@@ -640,7 +912,10 @@ cartograph dead --since origin/main --strict
 `query` 도 거부합니다. 선언 하나는 발견 목록이 아니라 렌즈를 걸 자리가 없습니다. `graph`(보고가
 아닌 프로젝트 전체), `bridges`(일부만 내보내면 하류 조인이 빠진 핸들러로 읽음), `--explain`
 답변(질의처럼 단일 대상)도 같습니다. `--since` 가 듣는 것은 발견 목록을 내는 `dead`·`cycles`·
-`metrics`·`rules` 뿐입니다.
+`metrics`·`rules` 뿐입니다. 단, `impact --since`는 진단 위치를 거르는 렌즈가 아니라 바뀐 경로를
+시드로 삼아 프로젝트 전체 그래프의 소비자를 따라가는 영향 분석입니다. 삭제와 이름 변경 경로도
+포함합니다. `impact`의 `noChanges`는 모델링된 소스 경로가 선택되지 않았다는 뜻이며, 모든
+변경 파일이 안전하다는 증거가 아닙니다.
 
 `baseline` 과 `--since` 는 다른 질문에 답하며 함께 쓸 수 있습니다. 베이스라인은 오늘의 빚이
 늘지 않게 하는 CI 래칫이고, `--since` 는 PR 을 보는 렌즈입니다. CI 에서는 전체 이력을
@@ -707,9 +982,10 @@ UIKit 프로젝트에서 오탐(거짓 양성)의 가장 큰 원인이었습니�
 - **Interface Builder 연결을 개별로 대조하지 않습니다.** `retain_interface_builder`가 켜져 있으면
   실제 연결 여부와 무관하게 모든 `@IBOutlet`·`@IBAction`을 보존하므로, 연결이 끊긴 아웃렛은
   보고되지 않습니다. 커스텀 클래스는 이름으로 대조합니다.
-- **Objective-C 소스는 분석하지 않습니다.** `.m`/`.h`는 그래프에 보이지 않으며, 그쪽에서 참조되는 Swift
-  선언은 기본값이 켜진 `retain_objc_accessible`이 덮습니다. `bridges` 는 `.m` 을 읽지만 React Native
-  내보내기 매크로와 지원하는 직접 Flutter 패턴을 텍스트로 봅니다.
+- **Objective-C 소스는 심볼 그래프로 분석하지 않습니다.** `.m`/`.h`는 그래프에 보이지 않으며,
+  그쪽에서 참조되는 Swift 선언은 기본값이 켜진 `retain_objc_accessible`이 덮습니다. `bridges`는
+  별도로 `.m`의 Flutter 채널·핸들러 패턴과 React Native 내보내기 매크로를 스캔하지만, 이 사실
+  스캔이 Objective-C 선언을 그래프 정점으로 만들지는 않습니다.
 - **다른 언어의 호출자는 isthmus 를 통해서만 압니다.** `bridges` 는 Swift 가 선언한 것을 내보낼 뿐이고,
   Dart 나 JavaScript 가 실제로 부르는지는 이 도구가 하지 않는 조인입니다.
 - **대입만 되는 프로퍼티는 쓰이는 것으로 셉니다.** 그래프의 참조 간선은 한 종류뿐이라 인덱스의
@@ -732,10 +1008,19 @@ UIKit 프로젝트에서 오탐(거짓 양성)의 가장 큰 원인이었습니�
 
 ```yaml
 - run: swift build
-- run: cartograph dead   --strict --report-format github-actions
-- run: cartograph cycles --strict
-- run: cartograph rules  --strict
+- run: cartograph check --strict --report-format github-actions
 ```
+
+stdio와 워크플로 검증 하네스는 원시 증거를 분석 대상 소스 트리 밖에 남깁니다.
+
+```bash
+Scripts/verify-mcp.py --cartograph .build/debug/cartograph
+Scripts/benchmark-workflows.py --cartograph .build/debug/cartograph --project .
+```
+
+시간 초과, 잘못된 프로토콜 출력, 정합성 불일치가 있으면 실패하며, 비교가 유효하지 않은
+속도 측정은 통과로 기록하지 않습니다.
+검증 워크로드·측정값·적용 범위는 [워크플로 검증 기록](docs/WORKFLOW-VALIDATION.md)에 있습니다.
 
 ## 구조
 
@@ -748,6 +1033,9 @@ CartographCore  ←  Config · Syntax · Analysis · Export · IndexStore  ←  
 도메인과 알고리즘 계층은 IndexStoreDB가 존재한다는 사실조차 모릅니다. 그래서 픽스처 Xcode
 프로젝트 하나 없이도 90% 커버리지 게이트를 지킬 수 있습니다. 분석은 손으로 만든 스냅샷 위에서
 돌아갑니다.
+
+커버리지 게이트는 단위 테스트와 계측된 CLI 통합 하네스를 합산하며 단위 테스트만의 비율도
+따로 표시합니다. 의존성 발견 재현율은 정답 코퍼스로 별도 측정하며 라인 커버리지에서 추론하지 않습니다.
 
 `CartographKit`은 공개 라이브러리 제품이라, CLI를 호출하는 대신 파이프라인을 그대로 가져다
 쓸 수 있습니다. 질의 API는 렌더링된 텍스트가 아니라 값을 돌려줍니다.
