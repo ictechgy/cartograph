@@ -64,6 +64,13 @@ Budget exhaustion may produce `items: []` with a positive omitted count. Existin
 indicated source or the captured snapshot's complete references when records are
 omitted. The evidence index is prepared once per query session.
 
+MCP query batches also share a budget of 200 reference records and 50 local-function
+diagnostic records across the complete response, in request order. Each result keeps
+its original totals and reports additional omissions when that shared budget runs
+out. Subjects, neighbors, statuses, request order, and duplicates are preserved.
+Standalone CLI batches retain the per-result limits described above. Re-query a
+specific symbol when shared-budget omissions hide evidence you need to inspect.
+
 ## Unrefined local functions
 
 The top-level optional `localFunctionDiagnostics` object has the same bounded-list

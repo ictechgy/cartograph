@@ -6,6 +6,12 @@ public struct LocalFunctionDiagnostics: Codable, Sendable, Equatable {
     public let totalCount: Int
     public let omittedCount: Int
 
+    /// 여러 결과가 같은 진단을 반복해 응답 한도를 넘지 않도록 배치 예산을 적용한다.
+    func limited(to count: Int) -> Self {
+        let shown = Array(items.prefix(max(0, count)))
+        return Self(items: shown, totalCount: totalCount, omittedCount: totalCount - shown.count)
+    }
+
     /// 세션 안의 모든 질의가 같은 한계 목록을 재사용한다. 알릴 항목이 없으면 키를 생략한다.
     static func presenting(_ diagnostics: [LocalFunctionDiagnostic]) -> Self? {
         guard !diagnostics.isEmpty else { return nil }

@@ -151,7 +151,9 @@ public final class AnalysisSession {
     /// 여러 심볼을 하나의 준비된 문맥에서 질의한다.
     ///
     /// 요청 순서와 중복은 `SymbolQueryBatchDocument` 계약을 따라 보존한다.
-    public func query(symbols: [String], depth: Int = 1, limit: Int = 50) throws
+    public func query(
+        symbols: [String], depth: Int = 1, limit: Int = 50, evidenceBudget: QueryEvidenceBudget? = nil
+    ) throws
         -> SymbolQueryBatchDocument {
         runtimeBuildEvidenceMetadata = nil
         try ensurePrepared()
@@ -160,8 +162,13 @@ public final class AnalysisSession {
             querySession = try service.makeQuerySession(in: context)
         }
         guard let querySession else { throw AnalysisSessionError.unavailable }
-        let results = try symbols.map {
-            try service.queryDocument(symbol: $0, depth: depth, limit: limit, in: querySession)
+        var remaining = evidenceBudget
+        let results = try symbols.map { symbol in
+            let document = try service.queryDocument(symbol: symbol, depth: depth, limit: limit, in: querySession)
+            guard var budget = remaining else { return document }
+            let limited = budget.apply(to: document)
+            remaining = budget
+            return limited
         }
         return SymbolQueryBatchDocument(results: results)
     }

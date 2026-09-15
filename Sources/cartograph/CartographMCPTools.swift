@@ -14,7 +14,8 @@ final class CartographMCPTools {
         ),
         MCPToolDefinition(
             name: "cartograph_query",
-            description: "Query Swift declarations from one prepared index; the shared result budget is symbols × limit ≤ 1000.",
+            description: "Query Swift declarations; symbols × limit ≤ 1000. Optional evidence shares "
+                + "200 reference records and 50 local diagnostics across the response; omitted counts remain explicit.",
             inputSchema: objectSchema(properties: [
                 "symbols": arraySchema(minimum: 1, maximum: 1000),
                 "depth": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(128)]),
@@ -105,7 +106,8 @@ final class CartographMCPTools {
             throw MCPToolFailure(message: "symbols × limit exceeds the shared query budget of 1000; split the batch or reduce limit")
         }
         let session = try requireSession()
-        let document = try session.query(symbols: symbols, depth: depth, limit: limit)
+        let document = try session.query(symbols: symbols, depth: depth, limit: limit,
+            evidenceBudget: QueryEvidenceBudget())
         return try structured(
             SessionResult(session: try preparedMetadata(session), result: document),
             isError: document.results.contains { $0.status == "notFound" }

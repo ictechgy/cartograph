@@ -15,6 +15,12 @@ public struct ReferenceEvidence: Codable, Sendable, Equatable {
     public let items: [ReferenceEvidenceItem]
     public let totalCount: Int
     public let omittedCount: Int
+
+    /// 배치의 남은 예산에 맞춰 줄여도 이미 생략된 근거를 전체 개수에서 잃지 않는다.
+    public func limited(to count: Int) -> Self {
+        let shown = Array(items.prefix(max(0, count)))
+        return Self(items: shown, totalCount: totalCount, omittedCount: totalCount - shown.count)
+    }
 }
 
 /// 배치 질의가 매번 전체 인덱스 참조를 훑지 않도록 한 번만 만든 위치 색인.

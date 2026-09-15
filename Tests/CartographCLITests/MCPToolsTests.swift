@@ -188,6 +188,68 @@ struct MCPToolsTests {
         #expect(missing.isError)
     }
 
+    @Test("큰 query 배치는 선택 근거 예산을 공유하고 결과 순서와 전체 개수를 유지한다")
+    func sharesOptionalEvidenceBudgetAcrossQueryBatch() throws {
+        let ownerPath = "/p/Owner.swift"
+        let targetPath = "/p/Target.swift"
+        let hidden = (0..<60).map { "    func hidden\($0)() {}" }
+        let calls = (0..<40).map { _ in "    target()" }
+        let source = (["func owner() {"] + hidden + calls + ["}"]).joined(separator: "\n")
+        let fileSystem = InMemoryFileSystem(files: [ownerPath: source, targetPath: "func target() {}"])
+        for path in [ownerPath, targetPath] {
+            fileSystem.setModificationDate(Date(timeIntervalSince1970: 10), for: path)
+        }
+        let snapshot = IndexSnapshot(symbols: [
+            IndexedSymbol(usr: "owner", name: "owner()", kind: .function, module: "App",
+                location: SourceLocation(path: ownerPath, line: 1, column: 6)),
+            IndexedSymbol(usr: "target", name: "target()", kind: .function, module: "App",
+                location: SourceLocation(path: targetPath, line: 1, column: 6)),
+        ], references: (0..<40).map { index in
+            IndexedReference(sourceUSR: "owner", targetUSR: "target", kind: .call,
+                location: SourceLocation(path: ownerPath, line: 62 + index, column: 5), origin: .compiler)
+        }, indexedFileDates: [ownerPath: Date(timeIntervalSince1970: 20), targetPath: Date(timeIntervalSince1970: 20)])
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        let service = CartographService(configuration: configuration, environment: .init(fileSystem: fileSystem,
+            indexProviderOverride: StaticIndexProvider(snapshot)))
+        let tools = CartographMCPTools(makeSession: { try AnalysisSession(service: service) })
+        let result = try tools.call(name: "cartograph_query", arguments: .object([
+            "symbols": .array(Array(repeating: .string("target"), count: 1000)), "limit": .integer(1),
+        ]))
+        let data = try JSONEncoder.cartographDefault().encode(object(result)["result"]!)
+        let batch = try JSONDecoder().decode(SymbolQueryBatchDocument.self, from: data)
+        #expect(batch.results.count == 1000)
+        #expect(batch.results.allSatisfy { $0.requested == "target" && $0.status == "found" })
+        let references = batch.results.flatMap { $0.result?.usedBy ?? [] }.compactMap(\.referenceEvidence)
+        #expect(references.reduce(0) { $0 + $1.items.count } == 200)
+        #expect(references.allSatisfy { $0.totalCount == 40 && $0.omittedCount == 40 - $0.items.count })
+        let diagnostics = batch.results.compactMap(\.localFunctionDiagnostics)
+        #expect(diagnostics.reduce(0) { $0 + $1.items.count } == 50)
+        #expect(diagnostics.allSatisfy { $0.totalCount == 60 && $0.omittedCount == 60 - $0.items.count })
+        #expect(data.count < 2 * 1024 * 1024)
+        let handler = MCPMessageHandler(tools: CartographMCPTools.definitions,
+            serverName: "cartograph", serverVersion: Cartograph.version, instructions: "",
+            callTool: { name, arguments in try tools.call(name: name, arguments: arguments) })
+        let request = MCPJSONValue.object([
+            "jsonrpc": .string("2.0"), "id": .integer(1), "method": .string("tools/call"),
+            "params": .object([
+                "_meta": .object([
+                    "io.modelcontextprotocol/protocolVersion": .string(MCPMessageHandler.currentVersion),
+                    "io.modelcontextprotocol/clientCapabilities": .object([:]),
+                ]),
+                "name": .string("cartograph_query"),
+                "arguments": .object([
+                    "symbols": .array(Array(repeating: .string("target"), count: 1000)), "limit": .integer(1),
+                ]),
+            ]),
+        ])
+        let encoded = try #require(handler.handle(JSONEncoder.cartographDefault().encode(request)))
+        let response = try JSONDecoder().decode(MCPJSONValue.self, from: encoded)
+        #expect(response.objectValue?["error"] == nil)
+        #expect(response.objectValue?["result"] != nil)
+        #expect(encoded.count <= 4 * 1024 * 1024)
+    }
+
     @Test("impact는 정확히 하나의 선택 모드와 범위를 요구한다")
     func validatesImpactSelectors() throws {
         let tools = CartographMCPTools(makeSession: makeSession)
