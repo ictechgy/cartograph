@@ -112,6 +112,7 @@ enum LocalFunctionBinder {
                 targetUSR: reference.targetUSR,
                 kind: reference.kind,
                 location: reference.location,
+                targetKind: reference.targetKind,
                 origin: movedOrigin(reference.origin)
             )
         } + localUses
@@ -320,6 +321,7 @@ enum LocalFunctionBinder {
                 targetUSR: reference.targetUSR,
                 kind: reference.kind,
                 location: reference.location,
+                targetKind: reference.targetKind,
                 origin: restoredOrigin(reference.origin)
             )
         }

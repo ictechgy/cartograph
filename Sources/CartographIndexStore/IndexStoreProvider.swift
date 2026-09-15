@@ -267,7 +267,8 @@ public struct IndexStoreProvider: IndexProviding {
                   let declaration = symbols[owner], ownerKinds.contains(declaration.kind)
             else { return nil }
             return IndexedReference(sourceUSR: owner, targetUSR: occurrence.symbol.usr, kind: .reference,
-                location: IndexStoreMapping.sourceLocation(occurrence.location), origin: .inferred)
+                location: IndexStoreMapping.sourceLocation(occurrence.location),
+                targetKind: symbols[occurrence.symbol.usr]?.kind, origin: .inferred)
         }
     }
 

@@ -176,6 +176,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                         ? $0.path : Self.rebase($0.path, from: projectRoot, to: currentProjectRoot),
                           line: $0.line, column: $0.column)
                 },
+                targetKind: reference.targetKind,
                 origin: reference.origin
             )
         }

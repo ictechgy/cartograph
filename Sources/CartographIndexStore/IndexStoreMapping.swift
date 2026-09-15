@@ -169,7 +169,8 @@ public enum IndexStoreMapping {
         }
         return result.map {
             IndexedReference(sourceUSR: $0.sourceUSR, targetUSR: $0.targetUSR,
-                kind: $0.kind, location: $0.location, origin: $0.origin == .unknown ? .compiler : $0.origin)
+                kind: $0.kind, location: $0.location, targetKind: $0.targetKind,
+                origin: $0.origin == .unknown ? .compiler : $0.origin)
         }
     }
 
