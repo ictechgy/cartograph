@@ -1,4 +1,5 @@
 import CartographCore
+import CartographIndexStore
 import CartographSyntax
 import Foundation
 
@@ -159,11 +160,14 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         var executionBudget = 1_000_000
         var executionTruncated = false
         self.facts = facts.sorted().map { fact in
-            guard includeExecution, let scope = fact.handlerScope, let dependencies = fact.dependencies else {
+            guard includeExecution, let scope = fact.handlerScope else {
                 return Fact(fact, relativeToBaseVariants: baseVariants, includeExecution: includeExecution)
             }
+            // 스코프는 있는데 근거 배열이 없으면 완전하다고 할 수 없다.
+            // 명세된 스코프의 절반이 비는 것을 조용히 통과시키지 않는다.
+            let dependencies = fact.dependencies ?? []
             var dependencyValues: [BridgeFact.Dependency] = []
-            var complete = scope.complete
+            var complete = scope.complete && fact.dependencies != nil
             for dependency in dependencies.sorted(by: { $0.location < $1.location }).prefix(10_000) {
                 var dispatchTargets = dependency.dispatchTargets
                 if dispatchTargets.count > 10_000 {
@@ -430,19 +434,53 @@ struct BridgeSymbolResolver {
     /// `/private/tmp` 와 `/tmp` 처럼 표기가 다를 수 있어 실제 경로로 맞춘다. 표기가 다르면
     /// 파일 하나의 USR 이 통째로 빠진다.
     private let symbolsByPath: [String: [IndexedSymbol]]
-    private let symbolsByUSR: [String: [IndexedSymbol]]
+    /// USR → 유일하게 결정되는 심볼. 같은 USR 이 다른 신원으로 기록된 스토어에서는 뺀다.
+    private let uniqueSymbols: [String: IndexedSymbol]
+    /// 최상위 코드 가상 심볼의 정규화 경로 → USR. main.swift 등록의 소유자다.
+    private let topLevelUSRByPath: [String: String]
     private let referencesBySource: [String: [IndexedReference]]
     private let overridesByTarget: [String: [IndexedReference]]
     private let freshPaths: Set<String>
+    /// 알려진 경로 → 실제 경로. `canonicalPath` 는 파일시스템을 두드리므로 참조마다 하지 않는다.
+    private let canonicalPaths: [String: String]
 
     init(snapshot: IndexSnapshot, freshPaths: Set<String> = []) {
-        symbolsByPath = Dictionary(grouping: snapshot.symbols.filter { !$0.isExternal }) { Self.canonical($0.location.path) }
-        symbolsByUSR = Dictionary(grouping: snapshot.symbols, by: \.usr)
+        let knownPaths = Set(snapshot.symbols.map(\.location.path))
+            .union(snapshot.references.compactMap(\.location?.path))
+            .union(freshPaths)
+        var canonicalPaths: [String: String] = [:]
+        for path in knownPaths {
+            canonicalPaths[path] = Self.canonical(path)
+        }
+        self.canonicalPaths = canonicalPaths
+        let symbolsByUSR = Dictionary(grouping: snapshot.symbols, by: \.usr)
+        symbolsByPath = Dictionary(grouping: snapshot.symbols.filter { !$0.isExternal }) {
+            canonicalPaths[$0.location.path] ?? Self.canonical($0.location.path)
+        }
+        uniqueSymbols = symbolsByUSR.reduce(into: [:]) { result, pair in
+            let identities = Set(pair.value.map {
+                "\(canonicalPaths[$0.location.path] ?? Self.canonical($0.location.path))\u{0}\($0.name)\u{0}\($0.kind.rawValue)\u{0}\($0.module)"
+            })
+            result[pair.key] = identities.count == 1 ? pair.value.first : nil
+        }
+        let prefix = IndexStoreMapping.topLevelCodeUSRPrefix
+        topLevelUSRByPath = Dictionary(
+            snapshot.symbols.compactMap { symbol -> (String, String)? in
+                guard symbol.usr.hasPrefix(prefix) else { return nil }
+                return (String(symbol.usr.dropFirst(prefix.count)), symbol.usr)
+            }.map { (canonicalPaths[$0.0] ?? Self.canonical($0.0), $0.1) },
+            uniquingKeysWith: { first, _ in first }
+        )
         referencesBySource = Dictionary(grouping: snapshot.references, by: \.sourceUSR)
         overridesByTarget = Dictionary(
             grouping: snapshot.references.filter { $0.kind == .overrides }, by: \.targetUSR
         )
         self.freshPaths = Set(freshPaths.map(Self.canonical))
+    }
+
+    /// 인덱스 표기와 디스크 표기가 갈릴 수 있는 경로의 실제 경로.
+    private func canonicalPath(_ path: String) -> String {
+        canonicalPaths[path] ?? Self.canonical(path)
     }
 
     func resolve(
@@ -459,28 +497,26 @@ struct BridgeSymbolResolver {
         handlerScopes: [ScannedBridgeHandlerScopes],
         dependencyBudget: inout Int
     ) -> [BridgeFact] {
-        var canonicalPaths: [String: String] = [:]
         func normalizedLocation(_ location: SourceLocation) -> SourceLocation {
-            let path = canonicalPaths[location.path] ?? Self.canonical(location.path)
-            canonicalPaths[location.path] = path
-            return SourceLocation(path: path, line: location.line, column: location.column)
+            SourceLocation(
+                path: canonicalPath(location.path), line: location.line, column: location.column)
         }
         func normalizedScope(_ scope: BridgeFact.HandlerScope) -> BridgeFact.HandlerScope {
             .init(start: normalizedLocation(scope.start), end: normalizedLocation(scope.end), complete: false)
         }
         let messageEntries = Dictionary(grouping: scanned.compactMap { item -> (String, BridgeFact.HandlerScope?)? in
             guard item.fact.kind == .messageHandle, let declaration = item.declaration else { return nil }
-            return (Self.declarationKey(declaration), item.fact.handlerScope.map(normalizedScope))
+            return (declarationKey(declaration), item.fact.handlerScope.map(normalizedScope))
         }, by: \.0).mapValues { $0.map(\.1) }
         var scopedEntriesByDeclaration: [String: [BridgeFact.HandlerScope]] = [:]
         for entry in handlerScopes {
-            scopedEntriesByDeclaration[Self.declarationKey(entry.declaration), default: []]
+            scopedEntriesByDeclaration[declarationKey(entry.declaration), default: []]
                 .append(contentsOf: entry.scopes.map(normalizedScope))
         }
         if handlerScopes.isEmpty {
             for item in scanned {
                 guard let declaration = item.declaration else { continue }
-                let key = Self.declarationKey(declaration)
+                let key = declarationKey(declaration)
                 scopedEntriesByDeclaration[key, default: []].append(contentsOf: item.handlerScopes.map(normalizedScope))
             }
         }
@@ -505,11 +541,19 @@ struct BridgeSymbolResolver {
         return scanned.map { entry in
             guard let declaration = entry.declaration else {
                 guard entry.fact.kind == .messageHandle, let scope = entry.fact.handlerScope else { return entry.fact }
-                return entry.fact.attachingExecution(
+                var fact = entry.fact.attachingExecution(
                     handlerScope: .init(start: scope.start, end: scope.end, complete: false), dependencies: []
                 )
+                // 최상위 등록에는 감싸는 선언이 없다. 파일의 가상 최상위 심볼이 있으면
+                // 그것이 소유자다 — 계약은 사실마다 감싸는 심볼을 요구한다.
+                if let usr = topLevelUSRByPath[canonicalPath(entry.fact.location.path)],
+                   let topLevel = uniqueSymbols[usr] {
+                    fact = fact.attaching(BridgeFact.Symbol(
+                        qualifiedName: Self.contractName(of: topLevel), usr: topLevel.usr))
+                }
+                return fact
             }
-            let candidates = symbolsByPath[Self.canonical(entry.fact.location.path)] ?? []
+            let candidates = symbolsByPath[canonicalPath(entry.fact.location.path)] ?? []
             if entry.fact.sourceLanguage == .objectiveC {
                 // 이름이나 가장 가까운 줄로 추측하지 않는다. Clang 정의 위치가 유일할 때만 USR 을 붙인다.
                 let exact = candidates.filter {
@@ -535,7 +579,7 @@ struct BridgeSymbolResolver {
                     handlerScope: .init(start: scope.start, end: scope.end, complete: false), dependencies: []
                 )
             }
-            let declarationKey = Self.declarationKey(declaration)
+            let declarationKey = self.declarationKey(declaration)
             let ownerKey = usr + "\u{0}" + declarationKey
             let evidence = evidenceByDeclaration[ownerKey] ?? classifyReferences(
                 setupUSR: usr, declaration: declaration, allScopes: scopesByDeclaration[declarationKey] ?? []
@@ -582,6 +626,13 @@ struct BridgeSymbolResolver {
         var handler: [BridgeFact.HandlerScope: [IndexedReference]] = [:]
         var registrationComplete = true
         var incompleteHandlers: Set<BridgeFact.HandlerScope> = []
+        // 선언 범위의 경로는 참조마다가 아니라 여기서 한 번만 실제 경로로 맞춘다.
+        let normalizedStart = declaration.start.map {
+            SourceLocation(path: canonicalPath($0.path), line: $0.line, column: $0.column)
+        }
+        let normalizedEnd = declaration.end.map {
+            SourceLocation(path: canonicalPath($0.path), line: $0.line, column: $0.column)
+        }
         for reference in referencesBySource[setupUSR, default: []]
         where reference.kind == .call || reference.kind == .reference {
             guard reference.targetKind != .parameter else { continue }
@@ -592,14 +643,21 @@ struct BridgeSymbolResolver {
                 if !isKnownNonExecutableTarget { complete = false }
                 continue
             }
-            if let start = declaration.start, let end = declaration.end,
-               !Self.contains(location, start: start, end: end) { continue }
-            let scope = Self.containingScope(location, in: allScopes)
+            if let normalizedStart, let normalizedEnd,
+               !containsNormalized(location, start: normalizedStart, end: normalizedEnd) { continue }
+            let scope = containingScope(location, in: allScopes)
             guard let target = uniqueSymbol(for: reference.targetUSR) else {
                 if let scope { incompleteHandlers.insert(scope) } else { registrationComplete = false }
                 continue
             }
-            guard !target.isExternal, target.kind != .parameter else { continue }
+            guard !target.isExternal, target.kind != .parameter else {
+                // 외부 요구사항을 부르는 호출은 간선으로 담을 대상이 없다. 그 요구사항의
+                // 프로젝트 내 구현이 있으면 근거를 빠뜨린 채 완전하다고 해선 안 된다.
+                if target.isExternal, !overridesByTarget[reference.targetUSR, default: []].isEmpty {
+                    if let scope { incompleteHandlers.insert(scope) } else { registrationComplete = false }
+                }
+                continue
+            }
             if let scope {
                 handler[scope, default: []].append(reference)
             } else {
@@ -622,11 +680,13 @@ struct BridgeSymbolResolver {
         let declarationEnd = declaration.end
         var complete = evidence.complete && evidence.registrationComplete && !evidence.incompleteHandlers.contains(scope)
             && allScopesComplete && declarationStart != nil && declarationEnd != nil
-            && freshPaths.contains(Self.canonical(scope.start.path))
+            && freshPaths.contains(scope.start.path)
         var values: Set<BridgeFact.Dependency> = []
+        // 예산이 증거를 잘라도 입력 순서가 출력에 남지 않도록 정규 순서로 소비한다.
         dependencies: for (references, dependencyScope) in [
-            (evidence.handler[scope, default: []], BridgeFact.Dependency.Scope.handler),
-            (evidence.registration, BridgeFact.Dependency.Scope.registration),
+            (evidence.handler[scope, default: []].sorted(by: Self.referenceOrder),
+             BridgeFact.Dependency.Scope.handler),
+            (evidence.registration.sorted(by: Self.referenceOrder), BridgeFact.Dependency.Scope.registration),
         ] {
           for reference in references {
             if values.count >= 10_000 || dependencyBudget == 0 {
@@ -676,13 +736,13 @@ struct BridgeSymbolResolver {
     private func dispatchTargets(for rootUSR: String, complete: inout Bool) -> [BridgeFact.Symbol] {
         var pending = [rootUSR]
         var next = 0
-        var visited: Set<String> = []
         var targets: [BridgeFact.Symbol] = []
-        var seenTargets: Set<String> = []
+        // seenTargets 가 큐의 중복 진입까지 막는다. 같은 구현을 가리키는 간선이
+        // 여럿이어도 각 USR 은 한 번만 펼친다.
+        var seenTargets: Set<String> = [rootUSR]
         while next < pending.count {
             let current = pending[next]
             next += 1
-            guard visited.insert(current).inserted else { continue }
             let overrides = overridesByTarget[current, default: []].sorted {
                 ($0.sourceUSR, $0.location?.description ?? "") < ($1.sourceUSR, $1.location?.description ?? "")
             }
@@ -692,14 +752,13 @@ struct BridgeSymbolResolver {
                     continue
                 }
                 guard !implementation.isExternal else { continue }
-                if implementation.usr != rootUSR, seenTargets.insert(implementation.usr).inserted {
-                    targets.append(BridgeFact.Symbol(
-                        qualifiedName: Self.contractName(of: implementation), usr: implementation.usr
-                    ))
-                    if targets.count >= 10_000 {
-                        complete = false
-                        return targets.sorted { ($0.usr ?? "", $0.qualifiedName) < ($1.usr ?? "", $1.qualifiedName) }
-                    }
+                guard seenTargets.insert(implementation.usr).inserted else { continue }
+                targets.append(BridgeFact.Symbol(
+                    qualifiedName: Self.contractName(of: implementation), usr: implementation.usr
+                ))
+                if targets.count >= 10_000 {
+                    complete = false
+                    return targets.sorted { ($0.usr ?? "", $0.qualifiedName) < ($1.usr ?? "", $1.qualifiedName) }
                 }
                 pending.append(implementation.usr)
             }
@@ -707,24 +766,27 @@ struct BridgeSymbolResolver {
         return targets.sorted { ($0.usr ?? "", $0.qualifiedName) < ($1.usr ?? "", $1.qualifiedName) }
     }
 
-    private static func declarationKey(_ declaration: EnclosingDeclaration) -> String {
+    private func declarationKey(_ declaration: EnclosingDeclaration) -> String {
         guard let start = declaration.start, let end = declaration.end else {
             return "\(declaration.qualifiedName)#\(declaration.line)"
         }
         // 같은 이름과 줄을 공유하는 overload/파일의 선언을 하나로 합치지 않는다.
         // 범위는 스캐너가 실제 구문에서 얻은 식별자이며, 이름 추측이 아니다.
-        return "\(Self.canonical(start.path))#\(start.line):\(start.column)-\(end.line):\(end.column)"
+        return "\(canonicalPath(start.path))#\(start.line):\(start.column)-\(end.line):\(end.column)"
     }
 
     private static func hasOverlappingScopes(_ scopes: [BridgeFact.HandlerScope]) -> Bool {
+        // 스코프 경로는 진입 시점에 이미 실제 경로로 맞춰져 있다.
         let sorted = scopes.sorted { $0.start < $1.start }
-        for (left, right) in zip(sorted, sorted.dropFirst()) where contains(right.start, start: left.start, end: left.end) {
+        for (left, right) in zip(sorted, sorted.dropFirst())
+        where right.start.path == left.start.path
+            && (right.start.line, right.start.column) <= (left.end.line, left.end.column) {
             return true
         }
         return false
     }
 
-    private static func containingScope(
+    private func containingScope(
         _ location: SourceLocation, in scopes: [BridgeFact.HandlerScope]
     ) -> BridgeFact.HandlerScope? {
         var low = 0
@@ -737,7 +799,23 @@ struct BridgeSymbolResolver {
         let candidate = max(0, low - 1)
         guard candidate < scopes.count else { return nil }
         let scope = scopes[candidate]
-        return contains(location, start: scope.start, end: scope.end) ? scope : nil
+        return containsNormalized(location, start: scope.start, end: scope.end) ? scope : nil
+    }
+
+    /// start/end 의 경로는 호출부가 이미 실제 경로로 맞춘 값이다.
+    private func containsNormalized(_ location: SourceLocation, start: SourceLocation, end: SourceLocation) -> Bool {
+        canonicalPath(location.path) == start.path
+            && (location.line, location.column) >= (start.line, start.column)
+            && (location.line, location.column) <= (end.line, end.column)
+    }
+
+    /// 예산이 증거를 잘라도 입력 순서가 출력에 남지 않도록 하는 정규 순서.
+    private static func referenceOrder(_ lhs: IndexedReference, _ rhs: IndexedReference) -> Bool {
+        let leftPosition = (lhs.location?.path ?? "", lhs.location?.line ?? 0, lhs.location?.column ?? 0)
+        let rightPosition = (rhs.location?.path ?? "", rhs.location?.line ?? 0, rhs.location?.column ?? 0)
+        guard leftPosition == rightPosition else { return leftPosition < rightPosition }
+        return (lhs.targetUSR, lhs.kind.rawValue, lhs.origin.rawValue, lhs.targetKind?.rawValue ?? "")
+            < (rhs.targetUSR, rhs.kind.rawValue, rhs.origin.rawValue, rhs.targetKind?.rawValue ?? "")
     }
 
     private static func dependencyOrder(
@@ -757,18 +835,7 @@ struct BridgeSymbolResolver {
     }
 
     private func uniqueSymbol(for usr: String) -> IndexedSymbol? {
-        let candidates = symbolsByUSR[usr, default: []]
-        guard let first = candidates.first else { return nil }
-        let identities = Set(candidates.map {
-            "\(Self.canonical($0.location.path))\u{0}\($0.name)\u{0}\($0.kind.rawValue)\u{0}\($0.module)"
-        })
-        return identities.count == 1 ? first : nil
-    }
-
-    private static func contains(_ location: SourceLocation, start: SourceLocation, end: SourceLocation) -> Bool {
-        canonical(location.path) == canonical(start.path)
-            && (location.line, location.column) >= (start.line, start.column)
-            && (location.line, location.column) <= (end.line, end.column)
+        uniqueSymbols[usr]
     }
 
     private static func canonical(_ path: String) -> String {
@@ -783,7 +850,8 @@ struct BridgeSymbolResolver {
     /// USR 이 없는 쪽이 틀린 USR 보다 안전하다. 없으면 `missing-handler-usrs` 로 세어진다.
     private static func match(_ declaration: EnclosingDeclaration, among symbols: [IndexedSymbol]) -> IndexedSymbol? {
         let labelled = symbols.filter { normalizingInitializer($0.name) == declaration.indexName }
-        if let exact = nearest(declaration, among: labelled) { return exact }
+        // 라벨 후보가 있는데 가까운 줄이 동률이면 다른 라벨의 심볼로 물러나지 않는다.
+        if !labelled.isEmpty { return nearest(declaration, among: labelled) }
         let sameBase = symbols.filter { GraphNode.baseName(ofIndexName: $0.name) == declaration.name }
         return sameBase.count == 1 ? sameBase.first : nil
     }
@@ -793,11 +861,11 @@ struct BridgeSymbolResolver {
         indexName.replacingOccurrences(of: "?(", with: "(").replacingOccurrences(of: "!(", with: "(")
     }
 
+    /// 가장 가까운 줄의 후보를 고른다. 거리가 같은 후보가 다른 USR 로 여럿이면 어느 쪽도
+    /// 증거가 아니므로 둘 다 버린다 — USR 사전순 선택은 결정적이지만 틀릴 수 있다.
     private static func nearest(_ declaration: EnclosingDeclaration, among symbols: [IndexedSymbol]) -> IndexedSymbol? {
-        symbols.min { lhs, rhs in
-            let lhsDistance = abs(lhs.location.line - declaration.line)
-            let rhsDistance = abs(rhs.location.line - declaration.line)
-            return lhsDistance == rhsDistance ? lhs.usr < rhs.usr : lhsDistance < rhsDistance
-        }
+        let best = symbols.map { abs($0.location.line - declaration.line) }.min()
+        let winners = symbols.filter { abs($0.location.line - declaration.line) == best }
+        return Set(winners.map(\.usr)).count == 1 ? winners.first : nil
     }
 }

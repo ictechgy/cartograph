@@ -53,14 +53,18 @@ public struct SnapshotBuilder {
         to target: String,
         kind: EdgeKind = .reference,
         path: String? = nil,
-        line: Int = 1
+        line: Int = 1,
+        targetKind: SymbolKind? = nil,
+        origin: ReferenceOrigin = .unknown
     ) -> Self {
         references.append(
             IndexedReference(
                 sourceUSR: source,
                 targetUSR: target,
                 kind: kind,
-                location: SourceLocation(path: path ?? defaultPath, line: line, column: 1)
+                location: SourceLocation(path: path ?? defaultPath, line: line, column: 1),
+                targetKind: targetKind,
+                origin: origin
             )
         )
         return self

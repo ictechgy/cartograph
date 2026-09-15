@@ -535,4 +535,25 @@ struct ImpactComparisonTests {
         let invalid = AnalysisSnapshotDocument(projectRoot: "relative", snapshot: builder.build())
         #expect(throws: CartographError.self) { try invalid.validate() }
     }
+
+    @Test("스냅샷 캡처는 대상 종류만 다른 참조도 입력 순서와 무관하게 정렬한다")
+    func captureOrdersSameKeyReferencesDeterministically() throws {
+        // 옛 캡처와 새 인덱스가 섞이면 소스·대상·위치·출처는 같고 대상 종류만 다른
+        // 참조가 생길 수 있다. 종류를 정렬 키에 넣지 않으면 입력 순서가 출력에 남아
+        // 스냅샷 diff 가 실행마다 흔들린다.
+        func capture(_ targetKinds: [SymbolKind]) throws -> [IndexedReference] {
+            var builder = SnapshotBuilder(path: "/current/Sources/App.swift")
+            builder.symbol("Source", name: "Source")
+            for kind in targetKinds {
+                builder.reference(from: "Source", to: "Target", kind: .reference,
+                    targetKind: kind, origin: .compiler)
+            }
+            let context = AnalysisContext(snapshot: builder.build(), pathFilter: .passthrough)
+            return try service(snapshot: .init()).captureSnapshot(in: context).snapshot.references
+        }
+        let forward = try capture([.structType, .function])
+        let reversed = try capture([.function, .structType])
+        #expect(forward == reversed)
+        #expect(forward.map(\.targetKind) == [.function, .structType])
+    }
 }
