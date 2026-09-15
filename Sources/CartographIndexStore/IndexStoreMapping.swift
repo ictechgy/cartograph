@@ -216,7 +216,7 @@ public enum IndexStoreMapping {
         topLevelCodeUSRPrefix + path
     }
 
-    static let topLevelCodeUSRPrefix = "cartograph:top-level-code:"
+    public static let topLevelCodeUSRPrefix = "cartograph:top-level-code:"
 
     /// Swift 가 최상위 코드를 허용하는 유일한 파일 이름.
     static func isTopLevelCodeFile(_ path: String) -> Bool {

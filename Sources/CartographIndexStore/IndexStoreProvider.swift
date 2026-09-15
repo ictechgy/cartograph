@@ -105,7 +105,8 @@ public struct IndexStoreProvider: IndexProviding {
         var definedUSRs: Set<String> = []
         var references: [IndexedReference] = []
         // 관계 없이 기록된 참조와, 그것을 붙일 후보가 되는 정의 위치들.
-        var unattributed: [(usr: String, location: SourceLocation)] = []
+        // 대상 종류는 발생이 직접 답게 싣는다 — 사전에 없는 그래프 밖 대상도 구분해야 한다.
+        var unattributed: [(usr: String, location: SourceLocation, targetKind: SymbolKind)] = []
         var definitionSites: [String: [(usr: String, location: SourceLocation)]] = [:]
         var conformanceAliases: [SymbolOccurrence] = []
         var implicitBaseOwners: [OccurrenceSite: Set<String>] = [:]
@@ -149,7 +150,10 @@ public struct IndexStoreProvider: IndexProviding {
                       !occurrence.roles.contains(.implicit) {
                 // 암시적 발생은 매크로가 펼친 코드다. 위치가 사용자가 쓴 자리가 아니라
                 // 속성 줄이라, 위치로 소유자를 찾으면 앞 선언에 붙는다.
-                unattributed.append((occurrence.symbol.usr, location))
+                unattributed.append((
+                    occurrence.symbol.usr, location,
+                    IndexStoreMapping.symbolKind(occurrence.symbol.kind, subKind: occurrence.symbol.subKind)
+                ))
                 if occurrence.symbol.kind == .typealias, occurrence.symbol.subKind == .none {
                     conformanceAliases.append(occurrence)
                 }
@@ -268,7 +272,9 @@ public struct IndexStoreProvider: IndexProviding {
             else { return nil }
             return IndexedReference(sourceUSR: owner, targetUSR: occurrence.symbol.usr, kind: .reference,
                 location: IndexStoreMapping.sourceLocation(occurrence.location),
-                targetKind: symbols[occurrence.symbol.usr]?.kind, origin: .inferred)
+                targetKind: IndexStoreMapping.symbolKind(
+                    occurrence.symbol.kind, subKind: occurrence.symbol.subKind),
+                origin: .inferred)
         }
     }
 
@@ -283,7 +289,7 @@ public struct IndexStoreProvider: IndexProviding {
     /// 범위를 주지 않으므로 시작 위치만으로 판단한다. 틀려도 간선이 하나 더 생길 뿐이라
     /// 보존이 늘고 없는 발견을 만들지 않는다. 이 저장소가 택하는 방향이다.
     static func enclosingReferences(
-        for unattributed: [(usr: String, location: SourceLocation)],
+        for unattributed: [(usr: String, location: SourceLocation, targetKind: SymbolKind)],
         definitionSites: [String: [(usr: String, location: SourceLocation)]],
         symbols: [String: IndexedSymbol]
     ) -> [IndexedReference] {
@@ -295,7 +301,7 @@ public struct IndexStoreProvider: IndexProviding {
             else { return nil }
             return IndexedReference(
                 sourceUSR: owner, targetUSR: entry.usr, kind: .reference,
-                location: entry.location, targetKind: symbols[entry.usr]?.kind,
+                location: entry.location, targetKind: entry.targetKind,
                 origin: .inferred
             )
         }
