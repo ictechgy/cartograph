@@ -68,7 +68,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — tap 추가 없이 소스에서 빌드합니다.
 
 ```bash
-mint install ictechgy/cartograph@0.13.0
+mint install ictechgy/cartograph@0.14.0
 ```
 
 **설치 없이 쓰기** — Swift 패키지라면 의존성으로 넣고 커맨드 플러그인을 쓰면 됩니다.
@@ -76,7 +76,7 @@ mint install ictechgy/cartograph@0.13.0
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.13.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.14.0"),
 ```
 
 ```bash
@@ -507,6 +507,8 @@ cartograph check --report-format json
 `{ "session": ..., "result": ... }` 봉투를 쓰고(status는 메타데이터를 직접 반환), 인덱스 입력이
 바뀌면 다시 준비합니다. 서버가 빌드를 시작하지는 않습니다. query는 `symbols × limit` 공통
 예산을 1000으로 제한하고, check는 진단을 잘라도 전체 발견 수를 함께 보고합니다.
+MCP 배치 전체는 참조 근거 200개와 지역 함수 상세 50개의 예산도 공유합니다. 결과별 전체·생략
+개수는 유지되며, 더 필요한 근거는 해당 심볼을 다시 질의해 확인할 수 있습니다.
 요청은 1 MiB, 인코딩한 응답은 4 MiB로 제한합니다. 너무 큰 응답은 범위나 limit을 줄이라는
 명시적 오류를 내며 조용히 자르지 않습니다. 런타임 계약 라벨은 UTF-8 256바이트, 심볼·값은
 4096바이트가 상한이므로 비ASCII 문자에도 바이트 제한이 적용됩니다. 빈 기대 값은 허용합니다.
@@ -770,7 +772,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.13.0" },
+  "tool" : { "name" : "cartograph", "version" : "0.14.0" },
   "version" : 1
 }
 ```

@@ -70,7 +70,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.13.0
+mint install ictechgy/cartograph@0.14.0
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -78,7 +78,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.13.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.14.0"),
 ```
 
 ```bash
@@ -530,7 +530,9 @@ discover and tool listing work before a project is built. `cartograph_status`, `
 `cartograph_impact`, `cartograph_check` and `cartograph_runtime_discover` return `{ "session": ..., "result": ... }` envelopes
 (status returns metadata directly), and refresh automatically when indexed inputs change. The
 server never starts a build. Query responses cap the shared `symbols × limit` budget at 1000;
-check accepts a limit and reports full finding counts even when diagnostics are clipped.
+MCP batches additionally share 200 reference-evidence and 50 local-diagnostic records across
+all results, retaining each result's total and omitted counts. Re-query a symbol for more detail.
+Check accepts a limit and reports full finding counts even when diagnostics are clipped.
 Requests are limited to 1 MiB and encoded responses to 4 MiB. An oversized response returns an
 explicit error asking for a smaller scope or limit; it is never silently cut. Runtime contract
 labels allow 256 UTF-8 bytes and symbol/value strings 4096 bytes; byte limits also apply to
@@ -792,7 +794,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.13.0" },
+  "tool" : { "name" : "cartograph", "version" : "0.14.0" },
   "version" : 1
 }
 ```

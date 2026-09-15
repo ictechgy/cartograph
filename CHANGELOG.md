@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-15
+
 ### Added
 
 - Query neighbors now include bounded reference-site evidence with actual edge endpoints, minimum-depth
@@ -15,6 +17,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   action, including ambiguous and not-found results. Evidence and diagnostics expose omitted counts.
 - Analysis snapshots preserve reference provenance and detailed local-function diagnostics across rebasing;
   older snapshots retain unknown provenance instead of being upgraded to compiler evidence.
+- MCP query batches share optional-evidence budgets across the response, preserving all requested results
+  and accurate omission counts without repeating large evidence lists for every symbol.
+- The macOS release archive includes the query evidence contract linked from its README.
 
 ### Fixed
 
@@ -961,7 +966,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.13.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.14.0...HEAD
+[0.14.0]: https://github.com/ictechgy/cartograph/compare/0.13.0...0.14.0
 [0.13.0]: https://github.com/ictechgy/cartograph/compare/0.12.0...0.13.0
 [0.12.0]: https://github.com/ictechgy/cartograph/compare/0.11.0...0.12.0
 [0.11.0]: https://github.com/ictechgy/cartograph/compare/0.10.1...0.11.0
