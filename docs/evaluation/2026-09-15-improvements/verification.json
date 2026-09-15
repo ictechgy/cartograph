@@ -1,0 +1,201 @@
+{
+  "compilerCorpus": {
+    "bridgeDocumentAndBothTargetFilters": "passed",
+    "externalRetentionsAndExplain": "passed",
+    "objectiveCSourceLimitations": "passed",
+    "retainPublic": "passed",
+    "testOnly": 1,
+    "unused": 22
+  },
+  "coverage": {
+    "command": "Scripts/coverage.sh",
+    "exitCode": 0,
+    "harnesses": [
+      "cli",
+      "discovery",
+      "keypaths",
+      "registry",
+      "coredata-versions",
+      "coredata-build",
+      "collection",
+      "window",
+      "mcp"
+    ],
+    "integratedCoveredLines": 26498,
+    "integratedPercent": 92.99,
+    "logSHA256": "70e67a4f92533ccd7c058c95b16669c8cba7483c6eb52a57d40e9b5a6b156e29",
+    "productionFiles": 151,
+    "suites": 143,
+    "tests": 1248,
+    "thresholdPercent": 90,
+    "totalLines": 28497,
+    "unitCoveredLines": 24752,
+    "unitPercent": 86.86
+  },
+  "date": "2026-09-15",
+  "dogfood": {
+    "deadFindings": 0,
+    "edges": 27147,
+    "limitations": [
+      "configured-path-filter"
+    ],
+    "moduleCycleFindings": 0,
+    "reachable": 5055,
+    "ruleViolations": 0,
+    "symbols": 5099,
+    "typeCycleFindings": 0
+  },
+  "gates": [
+    {
+      "command": [
+        "swift",
+        "build"
+      ],
+      "exitCode": 0,
+      "logSHA256": "9c600b73d43bb6023a009d6037bc4a9ac0079c025d75d1cd916fb825467e5173",
+      "name": "build",
+      "seconds": 22.1640847499948,
+      "tail": [
+        "[436 / 444] SwiftSyntax",
+        "[441 / 444] CartographKit",
+        "[444 / 446] CartographKit-product",
+        "[444 / 446] cartograph-product",
+        "[445 / 446] cartograph-product",
+        "Build complete! (18.82초)"
+      ]
+    },
+    {
+      "command": [
+        "Scripts/verify-cli-contract.sh",
+        "<CARTOGRAPH_SOURCE>/.build/out/Products/Debug/cartograph"
+      ],
+      "exitCode": 0,
+      "logSHA256": "1b2e6787c0f3d317d15b039711c0ac8c56603ae6f6dab62f33c80d3dee88a3c3",
+      "name": "cli",
+      "seconds": 5.602497166997637,
+      "tail": [
+        "  ok        인덱스 없음 안내에 빌드 명령",
+        "  ok        빈 인덱스 안내에 탈출구",
+        "  ok        빈 인덱스 안내에 파일 수",
+        "  ok        탈출구 실행이 GitHub Actions 형식에도 남는다",
+        "",
+        "통과"
+      ]
+    },
+    {
+      "command": [
+        "Scripts/verify-fixtures.sh",
+        "<CARTOGRAPH_SOURCE>/.build/out/Products/Debug/cartograph"
+      ],
+      "exitCode": 0,
+      "logSHA256": "2d42bd768502006c3277b7a4798d2ee282cfd87a894b6ca286b3d2201cfb1902",
+      "name": "fixtures",
+      "seconds": 5.003782207997574,
+      "tail": [
+        "  ok  --target react-native 가 혼합 프로젝트에서 RN 사실만 분리",
+        "  ok  --external-retentions 보고가 기대와 일치(경계 너머의 호출자가 핸들러를 살림)",
+        "  ok  --explain 이 외부 근거를 문장으로 만듦",
+        "  ok  Objective-C 소스 1개가 limitations 에 세어짐",
+        "",
+        "통과"
+      ]
+    },
+    {
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "dead",
+        "--strict"
+      ],
+      "exitCode": 0,
+      "logSHA256": "36b066022622b9d1f6001317f59b075f926189a77411b136ac6cf821cfef1145",
+      "name": "dead",
+      "seconds": 17.183615499998268,
+      "tail": [
+        "[1 / 9] SwiftSyntax",
+        "Build complete! (1.19초)",
+        "",
+        "dead: no findings (1 limitation) — symbol graph · 5099 nodes · 27147 edges · 5055/5099 reachable",
+        "limitations:",
+        "  configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+      ]
+    },
+    {
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "cycles",
+        "--strict"
+      ],
+      "exitCode": 0,
+      "logSHA256": "0a137b1a73dd54979a48cf7c16ad993b61ca75a2550d8a2505922f3d4c224c18",
+      "name": "cycles-module",
+      "seconds": 6.008083166998404,
+      "tail": [
+        "[1 / 5] CartographKit",
+        "Build complete! (1.27초)",
+        "",
+        "cycles: no findings (1 limitation) — module graph · 9 nodes · 36 edges",
+        "limitations:",
+        "  configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+      ]
+    },
+    {
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "cycles",
+        "--level",
+        "type",
+        "--strict"
+      ],
+      "exitCode": 0,
+      "logSHA256": "e3bd5ab8120fdb9eb321f2c7bd98185506a15866bfda4441de0ea6bf05b50486",
+      "name": "cycles-type",
+      "seconds": 5.428152167005464,
+      "tail": [
+        "[1 / 57] SwiftParser",
+        "Build complete! (0.83초)",
+        "",
+        "cycles: no findings (1 limitation) — type graph · 538 nodes · 3216 edges",
+        "limitations:",
+        "  configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+      ]
+    },
+    {
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "rules",
+        "--strict"
+      ],
+      "exitCode": 0,
+      "logSHA256": "962248b0c6172299bc7cbb400a0121d16ac831673edc4428d5b7969d2939de5d",
+      "name": "rules",
+      "seconds": 4.008852416001901,
+      "tail": [
+        "[1 / 41] IndexStoreDB",
+        "Build complete! (0.80초)",
+        "",
+        "rules: no findings (1 limitation) — module graph · 9 nodes · 36 edges",
+        "limitations:",
+        "  configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+      ]
+    }
+  ],
+  "manualDeltaReview": {
+    "matchesOriginalAdjudications": true,
+    "newlyReportedReviewed": 9,
+    "removalBehaviorTested": false,
+    "removedReviewed": 1
+  },
+  "productionPatchSHA256": "48adfbf87b9923434a066fc7f3ed781db200ae7d471dca51644b8a4558783bf6",
+  "published": false,
+  "releaseBinarySHA256": "3937e202b8cd6a0dfcb2be85906a675370dcd46e732242e0ac28ecf0c40dc1dd",
+  "remoteCIExecuted": false,
+  "schemaVersion": 1
+}

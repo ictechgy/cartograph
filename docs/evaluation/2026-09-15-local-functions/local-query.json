@@ -1,0 +1,273 @@
+{
+  "level": "symbol",
+  "limitations": [
+    "unindexed-sources: 28 of 98 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers",
+    "local-function-projection: 5 source local function(s) could not be bound through a fresh, unambiguous call/reference chain; their indexed references remain attributed to enclosing declarations. Inspect source for exact local ownership.",
+    "configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+  ],
+  "requested": "failCurrentSource",
+  "result": {
+    "declaredIn": {
+      "depth": 1,
+      "edges": [
+        "member"
+      ],
+      "kind": "method",
+      "location": {
+        "column": 10,
+        "line": 303,
+        "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift"
+      },
+      "module": "Kingfisher",
+      "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+      "qualifiedName": "Kingfisher.retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+      "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+    },
+    "dependsOn": [
+      {
+        "depth": 1,
+        "edges": [
+          "call"
+        ],
+        "kind": "function",
+        "location": {
+          "column": 24,
+          "line": 340,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift"
+        },
+        "module": "Kingfisher",
+        "name": "startNewRetrieveTask(with:retryContext:downloadTaskUpdated:)",
+        "qualifiedName": "Kingfisher.startNewRetrieveTask(with:retryContext:downloadTaskUpdated:)",
+        "usr": "cartograph:local-function:s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF:340:24:startNewRetrieveTask(with:retryContext:downloadTaskUpdated:)"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "reference"
+        ],
+        "kind": "enum",
+        "location": {
+          "column": 13,
+          "line": 42,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+        },
+        "module": "Kingfisher",
+        "name": "KingfisherError",
+        "qualifiedName": "Kingfisher.KingfisherError",
+        "usr": "s:10Kingfisher0A5ErrorO"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "call"
+        ],
+        "kind": "case",
+        "location": {
+          "column": 14,
+          "line": 354,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+        },
+        "module": "Kingfisher",
+        "name": "alternativeSourcesExhausted(_:)",
+        "qualifiedName": "Kingfisher.alternativeSourcesExhausted(_:)",
+        "usr": "s:10Kingfisher0A5ErrorO012ImageSettingB6ReasonO27alternativeSourcesExhaustedyAESayAA011PropagationB0VGcAEmF"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "call"
+        ],
+        "kind": "case",
+        "location": {
+          "column": 10,
+          "line": 406,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+        },
+        "module": "Kingfisher",
+        "name": "imageSettingError(reason:)",
+        "qualifiedName": "Kingfisher.imageSettingError(reason:)",
+        "usr": "s:10Kingfisher0A5ErrorO012imageSettingB0yA2C05ImagedB6ReasonO_tcACmF"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "call",
+          "reference"
+        ],
+        "kind": "property",
+        "location": {
+          "column": 16,
+          "line": 412,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+        },
+        "module": "Kingfisher",
+        "name": "isTaskCancelled",
+        "qualifiedName": "Kingfisher.isTaskCancelled",
+        "usr": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "call",
+          "reference"
+        ],
+        "kind": "property",
+        "location": {
+          "column": 9,
+          "line": 473,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+        },
+        "module": "Kingfisher",
+        "name": "isLowDataModeConstrained",
+        "qualifiedName": "Kingfisher.isLowDataModeConstrained",
+        "usr": "s:10Kingfisher0A5ErrorO24isLowDataModeConstrainedSbvp"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "reference"
+        ],
+        "kind": "class",
+        "location": {
+          "column": 14,
+          "line": 32,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/Networking/RetryStrategy.swift"
+        },
+        "module": "Kingfisher",
+        "name": "RetryContext",
+        "qualifiedName": "Kingfisher.RetryContext",
+        "usr": "s:10Kingfisher12RetryContextC"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "call"
+        ],
+        "kind": "method",
+        "location": {
+          "column": 10,
+          "line": 1445,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift"
+        },
+        "module": "Kingfisher",
+        "name": "appendError(_:to:)",
+        "qualifiedName": "Kingfisher.appendError(_:to:)",
+        "usr": "s:10Kingfisher17RetrievingContextC11appendError_2toSayAA011PropagationE0VGAA0aE0O_AA6SourceOtF"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "call",
+          "reference"
+        ],
+        "kind": "property",
+        "location": {
+          "column": 9,
+          "line": 1409,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift"
+        },
+        "module": "Kingfisher",
+        "name": "propagationErrors",
+        "qualifiedName": "Kingfisher.propagationErrors",
+        "usr": "s:10Kingfisher17RetrievingContextC17propagationErrorsSayAA16PropagationErrorVGvp"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "call"
+        ],
+        "kind": "method",
+        "location": {
+          "column": 10,
+          "line": 1418,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift"
+        },
+        "module": "Kingfisher",
+        "name": "popAlternativeSource()",
+        "qualifiedName": "Kingfisher.popAlternativeSource()",
+        "usr": "s:10Kingfisher17RetrievingContextC20popAlternativeSourceAA0F0OSgyF"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "call"
+        ],
+        "kind": "method",
+        "location": {
+          "column": 10,
+          "line": 1432,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift"
+        },
+        "module": "Kingfisher",
+        "name": "takeLowDataModeSource()",
+        "qualifiedName": "Kingfisher.takeLowDataModeSource()",
+        "usr": "s:10Kingfisher17RetrievingContextC21takeLowDataModeSourceAA0H0OSgyF"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "reference"
+        ],
+        "kind": "enum",
+        "location": {
+          "column": 13,
+          "line": 39,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/ImageSource/Source.swift"
+        },
+        "module": "Kingfisher",
+        "name": "Source",
+        "qualifiedName": "Kingfisher.Source",
+        "usr": "s:10Kingfisher6SourceO"
+      }
+    ],
+    "members": [],
+    "reachability": {
+      "path": [
+        "Kingfisher.retrieveImage(with:options:progressBlock:downloadTaskUpdated:completionHandler:)",
+        "Kingfisher.retrieveImage(with:options:progressBlock:downloadTaskUpdated:progressiveImageSetter:completionHandler:)",
+        "Kingfisher.retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+        "Kingfisher.handler(currentSource:retryContext:result:)",
+        "Kingfisher.failCurrentSource(_:retryContext:with:)"
+      ],
+      "state": "reachable",
+      "suppressedByBaseline": false
+    },
+    "subject": {
+      "accessibility": "private",
+      "kind": "function",
+      "location": {
+        "column": 24,
+        "line": 363,
+        "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift"
+      },
+      "module": "Kingfisher",
+      "name": "failCurrentSource(_:retryContext:with:)",
+      "qualifiedName": "Kingfisher.failCurrentSource(_:retryContext:with:)",
+      "usr": "cartograph:local-function:s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF:363:24:failCurrentSource(_:retryContext:with:)"
+    },
+    "truncated": {
+      "dependsOn": false,
+      "members": false,
+      "usedBy": false
+    },
+    "usedBy": [
+      {
+        "depth": 1,
+        "edges": [
+          "call"
+        ],
+        "kind": "function",
+        "location": {
+          "column": 24,
+          "line": 396,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift"
+        },
+        "module": "Kingfisher",
+        "name": "handler(currentSource:retryContext:result:)",
+        "qualifiedName": "Kingfisher.handler(currentSource:retryContext:result:)",
+        "usr": "cartograph:local-function:s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF:396:24:handler(currentSource:retryContext:result:)"
+      }
+    ]
+  },
+  "status": "found"
+}

@@ -1,0 +1,210 @@
+{
+  "benchmarkScorerNonlocalProjectionSmoke": "passed: both arms normalize the actual local consumer to the frozen nonlocal oracle (14/14)",
+  "compilerCorpus": {
+    "bridgesAndTargetFilters": "passed",
+    "externalRetentionAndExplain": "passed",
+    "localConstructor": "passed",
+    "localDepthChain": "passed",
+    "objectiveCLimitations": "passed",
+    "publicRetention": "passed",
+    "testOnly": 1,
+    "unused": 22
+  },
+  "coverage": {
+    "integratedCoveredLines": 26946,
+    "integratedPercent": 92.98,
+    "productionFiles": 155,
+    "thresholdPercent": 90,
+    "totalLines": 28979,
+    "unitCoveredLines": 25143,
+    "unitPercent": 86.76
+  },
+  "date": "2026-09-15",
+  "dogfood": {
+    "dead": 0,
+    "limitationsRetained": [
+      "local-function-projection",
+      "configured-path-filter"
+    ],
+    "moduleCycles": 0,
+    "ruleViolations": 0,
+    "typeCycles": 0
+  },
+  "exactConsumers": {
+    "after": 14,
+    "afterExtras": 0,
+    "before": 13,
+    "expected": 14
+  },
+  "finalSourceAndMeasuredBinaryUnchanged": true,
+  "measuredReleaseSHA256": "404fc089057b89b505dba1a9d4aebf1756debf8a30bac89be3fdf1dbf6c37e58",
+  "newLocalFunctions": 15,
+  "published": false,
+  "regressionRedEvidence": {
+    "behavior-red-retry.log": "d858b3e0adf23ab90c521670ccf0bfc4026bb2189421d3940c8a8dff14ef3779",
+    "compiler-corpus-red.log": "ad4469fbd4b7b71e34453fccbfdec1477acb5af4d258232c1eab30cf026be41d",
+    "first-red.log": "9d4f09c098cb2740f246f29c15ae58bb706727c635e3c4bd44a52efe30285cb0",
+    "missing-member-red.json": "d6ad0130150e161a0f26d74eb9eef1d6753bfb4d9ff6040a1a5f8d973d775091"
+  },
+  "remoteCIExecuted": false,
+  "schemaVersion": 1,
+  "sourceManifestSHA256": "048a2034497bd43bc11bd25ad61f3c6e7ba712c41a9c2f5c9ddb0a833a4d8fb0",
+  "steps": [
+    {
+      "command": [
+        "python3",
+        "Scripts/benchmark-analysis-improvements.py",
+        "--before",
+        "<LOCAL_FUNCTION_WORKSPACE>/before-cartograph",
+        "--after",
+        "<CARTOGRAPH_SOURCE>/.build/out/Products/Release/cartograph",
+        "--evaluation-root",
+        "<EVALUATION_WORKSPACE>",
+        "--consumer-granularity",
+        "exact",
+        "--output",
+        "<LOCAL_FUNCTION_WORKSPACE>/delivery-ab",
+        "--order",
+        "before-after"
+      ],
+      "exitCode": 0,
+      "logSHA256": "bb66691223eb0ab3fcfc650c03645c25769636d6b6066b6fcae1dcbd858732cf",
+      "name": "benchmark-ab",
+      "seconds": 28.81346108300204
+    },
+    {
+      "command": [
+        "python3",
+        "Scripts/benchmark-analysis-improvements.py",
+        "--before",
+        "<LOCAL_FUNCTION_WORKSPACE>/before-cartograph",
+        "--after",
+        "<CARTOGRAPH_SOURCE>/.build/out/Products/Release/cartograph",
+        "--evaluation-root",
+        "<EVALUATION_WORKSPACE>",
+        "--consumer-granularity",
+        "exact",
+        "--output",
+        "<LOCAL_FUNCTION_WORKSPACE>/delivery-ba",
+        "--order",
+        "after-before"
+      ],
+      "exitCode": 0,
+      "logSHA256": "bb66691223eb0ab3fcfc650c03645c25769636d6b6066b6fcae1dcbd858732cf",
+      "name": "benchmark-ba",
+      "seconds": 27.244006166998588
+    },
+    {
+      "command": [
+        "python3",
+        "Scripts/verify-local-function-projection.py",
+        "--comparison",
+        "<LOCAL_FUNCTION_WORKSPACE>/delivery-ab",
+        "--evaluation-root",
+        "<EVALUATION_WORKSPACE>",
+        "--output",
+        "<LOCAL_FUNCTION_WORKSPACE>/delivery-projection"
+      ],
+      "exitCode": 0,
+      "logSHA256": "fa1c90253c7ee5ede5f29548097ba95a6c1c76047457c30c58f7b8eb6446d66e",
+      "name": "projection",
+      "seconds": 6.022106749995146
+    },
+    {
+      "command": [
+        "Scripts/coverage.sh"
+      ],
+      "exitCode": 0,
+      "logSHA256": "5c3299db163ca2083daf926a324185651c2699949ccd01edd9992e42a614db6e",
+      "name": "coverage",
+      "seconds": 137.30914287499763
+    },
+    {
+      "command": [
+        "swift",
+        "build"
+      ],
+      "exitCode": 0,
+      "logSHA256": "92fb45d9445ab6a860a91d1dee807daee56a907c9fe611b3473e9723b8dfb448",
+      "name": "build",
+      "seconds": 19.11533524999686
+    },
+    {
+      "command": [
+        "Scripts/verify-cli-contract.sh",
+        "<CARTOGRAPH_SOURCE>/.build/out/Products/Debug/cartograph"
+      ],
+      "exitCode": 0,
+      "logSHA256": "1b2e6787c0f3d317d15b039711c0ac8c56603ae6f6dab62f33c80d3dee88a3c3",
+      "name": "cli",
+      "seconds": 4.776625417005562
+    },
+    {
+      "command": [
+        "Scripts/verify-fixtures.sh",
+        "<CARTOGRAPH_SOURCE>/.build/out/Products/Debug/cartograph"
+      ],
+      "exitCode": 0,
+      "logSHA256": "8361df90503ec87216ef61e819ba0d03f060f31927727e244dfb930644e89485",
+      "name": "fixtures",
+      "seconds": 3.437300291006977
+    },
+    {
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "dead",
+        "--strict"
+      ],
+      "exitCode": 0,
+      "logSHA256": "890997d5d16d71caca47ba2868bef1fe9acdabdd8914bad13f5d99733898da76",
+      "name": "dead",
+      "seconds": 5.496308167006646
+    },
+    {
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "cycles",
+        "--strict"
+      ],
+      "exitCode": 0,
+      "logSHA256": "16e96c5a7bf1e3c1bf91bb868799d6ae663ee623ecae6743a132cdc8695aa4ea",
+      "name": "cycles-module",
+      "seconds": 5.838380957997288
+    },
+    {
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "cycles",
+        "--level",
+        "type",
+        "--strict"
+      ],
+      "exitCode": 0,
+      "logSHA256": "8efd920963abb0b1cf0655491a6f6c5e301df92c4a134c4793264845b9990569",
+      "name": "cycles-type",
+      "seconds": 4.370716042001732
+    },
+    {
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "rules",
+        "--strict"
+      ],
+      "exitCode": 0,
+      "logSHA256": "57d6f24548364fe35eb2c13a10f1b50c3ae07e1ca351f4c210cec74fdbf901ea",
+      "name": "rules",
+      "seconds": 3.992409416998271
+    }
+  ],
+  "suites": 145,
+  "tests": 1269,
+  "unchangedUnusedFindings": 69
+}

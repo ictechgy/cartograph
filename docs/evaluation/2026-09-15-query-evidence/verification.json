@@ -1,0 +1,173 @@
+{
+  "allThreeSymbolGraphsEqual": true,
+  "coverage": {
+    "integratedCoveredLines": 27555,
+    "integratedPercent": 92.94,
+    "productionFiles": 158,
+    "totalLines": 29648,
+    "unitCoveredLines": 25804,
+    "unitPercent": 87.03
+  },
+  "date": "2026-09-15",
+  "exactConsumers": 14,
+  "matchedWitnessLines": 16,
+  "published": false,
+  "releaseBinarySHA256": "13ed193096050212a88d2b167236e43ec7efd9b80d08e7ce404dc219491ba77d",
+  "remoteCIExecuted": false,
+  "sourceManifestSHA256": "48c91f2454ad7f7eb5ef058258ca81c85855f31ee9ca8bfc8c59d47355115f74",
+  "steps": [
+    {
+      "command": [
+        "swift",
+        "build",
+        "-c",
+        "release"
+      ],
+      "exitCode": 0,
+      "logSHA256": "6deb548228f92e7b149fe2fd8aa05ad499e250de48cf5e061aa7046b0c9db4b0",
+      "name": "release",
+      "seconds": 143.39357279099931
+    },
+    {
+      "command": [
+        "python3",
+        "Scripts/benchmark-analysis-improvements.py",
+        "--before",
+        "<EVIDENCE_WORKSPACE>/before-cartograph",
+        "--after",
+        "<CARTOGRAPH_SOURCE>/.build/out/Products/Release/cartograph",
+        "--evaluation-root",
+        "<EVALUATION_WORKSPACE>",
+        "--consumer-granularity",
+        "exact",
+        "--output",
+        "<EVIDENCE_WORKSPACE>/delivery-ab",
+        "--order",
+        "before-after"
+      ],
+      "exitCode": 0,
+      "logSHA256": "bb66691223eb0ab3fcfc650c03645c25769636d6b6066b6fcae1dcbd858732cf",
+      "name": "benchmark-ab",
+      "seconds": 28.1750897919992
+    },
+    {
+      "command": [
+        "python3",
+        "Scripts/benchmark-analysis-improvements.py",
+        "--before",
+        "<EVIDENCE_WORKSPACE>/before-cartograph",
+        "--after",
+        "<CARTOGRAPH_SOURCE>/.build/out/Products/Release/cartograph",
+        "--evaluation-root",
+        "<EVALUATION_WORKSPACE>",
+        "--consumer-granularity",
+        "exact",
+        "--output",
+        "<EVIDENCE_WORKSPACE>/delivery-ba",
+        "--order",
+        "after-before"
+      ],
+      "exitCode": 0,
+      "logSHA256": "bb66691223eb0ab3fcfc650c03645c25769636d6b6066b6fcae1dcbd858732cf",
+      "name": "benchmark-ba",
+      "seconds": 27.279711209004745
+    },
+    {
+      "command": [
+        "Scripts/coverage.sh"
+      ],
+      "exitCode": 0,
+      "logSHA256": "c8bb0d3ee28f17f0f593267e1480c807e2c368a2488a8fbcbdd9613ece042a7a",
+      "name": "coverage",
+      "seconds": 130.5314513340054
+    },
+    {
+      "command": [
+        "swift",
+        "build"
+      ],
+      "exitCode": 0,
+      "logSHA256": "882a7afc86d015272c8dcf0c892baf71959663062b9325859d18186fe9c34f80",
+      "name": "build",
+      "seconds": 18.230219417004264
+    },
+    {
+      "command": [
+        "Scripts/verify-cli-contract.sh",
+        "<CARTOGRAPH_SOURCE>/.build/out/Products/Debug/cartograph"
+      ],
+      "exitCode": 0,
+      "logSHA256": "1b2e6787c0f3d317d15b039711c0ac8c56603ae6f6dab62f33c80d3dee88a3c3",
+      "name": "cli",
+      "seconds": 4.711243458004901
+    },
+    {
+      "command": [
+        "Scripts/verify-fixtures.sh",
+        "<CARTOGRAPH_SOURCE>/.build/out/Products/Debug/cartograph"
+      ],
+      "exitCode": 0,
+      "logSHA256": "90b248962668319d0111a8dbd797376ef8b0060724b484657ce7489d2e44403b",
+      "name": "fixtures",
+      "seconds": 3.3376687499985565
+    },
+    {
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "dead",
+        "--strict"
+      ],
+      "exitCode": 0,
+      "logSHA256": "5655e4c871c00b4c3ba78b65a3ac20f2006153c9ef9b58598235a9f89cab66ae",
+      "name": "dead",
+      "seconds": 5.162840874996618
+    },
+    {
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "cycles",
+        "--strict"
+      ],
+      "exitCode": 0,
+      "logSHA256": "d759e0a8ead1e3e6561bd8dc411134e31d7eceaf56f6dd3992d0c0253c3e3e29",
+      "name": "cycles-module",
+      "seconds": 4.313652125005319
+    },
+    {
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "cycles",
+        "--level",
+        "type",
+        "--strict"
+      ],
+      "exitCode": 0,
+      "logSHA256": "52fd64568351719f9baeeb2092728ff0b7c382fd45577553ef897867f030f490",
+      "name": "cycles-type",
+      "seconds": 4.085977167000237
+    },
+    {
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "rules",
+        "--strict"
+      ],
+      "exitCode": 0,
+      "logSHA256": "316dff27f6f4659c9172057e221d2ff56c7b1546deb6e2bf271a6018a4239a59",
+      "name": "rules",
+      "seconds": 5.011451124999439
+    }
+  ],
+  "suites": 149,
+  "tests": 1291,
+  "typeCycleRegressionFixed": true,
+  "unchangedUnusedFindings": 69
+}

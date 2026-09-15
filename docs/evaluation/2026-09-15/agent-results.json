@@ -1,0 +1,391 @@
+{
+  "model": "gpt-5.6-luna",
+  "provenance": "Structured extraction of the six native agents final JSON answers; no answer synthesized from the oracle. Native per-tool transcripts and token/cost accounting are not exported. Timestamps are agent-reported UTC clock readings, second resolution. Command arrays are preserved exactly as self-reported, including abbreviations; assignment adherence is not independently verified from full execution traces.",
+  "reasoningEffort": "low",
+  "repetitionsPerArmPerProject": 1,
+  "role": "explore",
+  "scope": "Read-only immediate-consumer review, not code-edit completion.",
+  "trials": [
+    {
+      "agent": "trial_af_search",
+      "arm": "search",
+      "commands": [
+        "date -u +%Y-%m-%dT%H:%M:%SZ",
+        "rg -n --glob 'Source/**/*.swift' 'Instant\\.init\\(|Instant\\s*\\(|processNextResponseSerializer\\s*\\(' Source",
+        "sed -n ...",
+        "nl -ba ...",
+        "git status --short",
+        "date -u +%Y-%m-%dT%H:%M:%SZ"
+      ],
+      "finishedAt": "2026-09-14T21:10:24Z",
+      "project": "alamofire",
+      "promptSHA256": "4c38e72326a3ab33c2b086c2f7f4efe4b40461a2c5caef62c117cc6110ec26d4",
+      "results": [
+        {
+          "consumers": [
+            {
+              "line": 372,
+              "path": "Source/Core/DownloadRequest.swift",
+              "referenceLines": [
+                378,
+                387
+              ]
+            },
+            {
+              "line": 243,
+              "path": "Source/Core/DataRequest.swift",
+              "referenceLines": [
+                249,
+                259
+              ]
+            },
+            {
+              "line": 384,
+              "path": "Source/Features/AuthenticationInterceptor.swift",
+              "referenceLines": [
+                391
+              ]
+            },
+            {
+              "line": 409,
+              "path": "Source/Features/AuthenticationInterceptor.swift",
+              "referenceLines": [
+                412
+              ]
+            }
+          ],
+          "id": "af-clock"
+        },
+        {
+          "consumers": [
+            {
+              "line": 563,
+              "path": "Source/Core/Request.swift",
+              "referenceLines": [
+                579
+              ]
+            },
+            {
+              "line": 589,
+              "path": "Source/Core/Request.swift",
+              "referenceLines": [
+                599
+              ]
+            },
+            {
+              "line": 656,
+              "path": "Source/Core/Request.swift",
+              "referenceLines": [
+                661
+              ]
+            }
+          ],
+          "id": "af-serializer"
+        }
+      ],
+      "startedAt": "2026-09-14T21:09:56Z",
+      "tasksSHA256": "a85b78f8c3134e69722d96121340bb5d7412914eb2dc56caa66b23ec866f16a3"
+    },
+    {
+      "agent": "trial_kf_cartograph",
+      "arm": "cartograph",
+      "commands": [
+        "date -u +%Y-%m-%dT%H:%M:%SZ",
+        "rg --files -g 'AGENTS.md' -g '!Tests/**' -g '!Examples/**'",
+        "rg -n --glob 'Sources/**/*.swift' 'isTaskCancelled|deliverOriginalCacheHit'",
+        "cartograph impact isTaskCancelled --index-store .build/out --include 'Sources/**' --depth 1 --limit 1000 --format json",
+        "cartograph impact deliverOriginalCacheHit --index-store .build/out --include 'Sources/**' --depth 1 --limit 1000 --format json",
+        "nl -ba Sources/General/KingfisherManager.swift",
+        "nl -ba Sources/Networking/RetryStrategy.swift",
+        "date -u +%Y-%m-%dT%H:%M:%SZ"
+      ],
+      "finishedAt": "2026-09-14T21:10:36Z",
+      "project": "kingfisher",
+      "promptSHA256": "2f96e4eec02cbd28716770ed856c94b61684364ad50e121c020ab181c3e647e5",
+      "results": [
+        {
+          "consumers": [
+            {
+              "line": 303,
+              "path": "Sources/General/KingfisherManager.swift",
+              "referenceLines": [
+                365
+              ]
+            },
+            {
+              "line": 158,
+              "path": "Sources/Networking/RetryStrategy.swift",
+              "referenceLines": [
+                166
+              ]
+            },
+            {
+              "line": 222,
+              "path": "Sources/Networking/RetryStrategy.swift",
+              "referenceLines": [
+                229
+              ]
+            }
+          ],
+          "id": "kf-cancel"
+        },
+        {
+          "consumers": [
+            {
+              "line": 755,
+              "path": "Sources/General/KingfisherManager.swift",
+              "referenceLines": [
+                804
+              ]
+            },
+            {
+              "line": 834,
+              "path": "Sources/General/KingfisherManager.swift",
+              "referenceLines": [
+                884
+              ]
+            }
+          ],
+          "id": "kf-cache"
+        }
+      ],
+      "startedAt": "2026-09-14T21:10:09Z",
+      "tasksSHA256": "a85b78f8c3134e69722d96121340bb5d7412914eb2dc56caa66b23ec866f16a3"
+    },
+    {
+      "agent": "trial_ap_search",
+      "arm": "search",
+      "commands": [
+        "rg -n --glob '*.swift' 'getHelpBanner\\s*\\(' Sources/ArgumentParser Sources/ArgumentParserToolInfo",
+        "rg -n --glob '*.swift' 'bashCompletionScript' Sources/ArgumentParser Sources/ArgumentParserToolInfo",
+        "sed -n '160,200p;470,500p' Sources/ArgumentParser/Usage/HelpGenerator.swift",
+        "sed -n '1,45p' Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift",
+        "sed -n '112,135p' Sources/ArgumentParser/Completions/CompletionsGenerator.swift"
+      ],
+      "finishedAt": "2026-09-14T21:11:41Z",
+      "project": "argument-parser",
+      "promptSHA256": "6fc7c5890cab8238fe3da8049ade659ea352b7a1291d39df42cec8dd8cb6b151",
+      "results": [
+        {
+          "consumers": [
+            {
+              "line": 157,
+              "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift",
+              "referenceLines": [
+                185
+              ]
+            }
+          ],
+          "id": "ap-banner"
+        },
+        {
+          "consumers": [
+            {
+              "line": 15,
+              "path": "Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift",
+              "referenceLines": [
+                16
+              ]
+            }
+          ],
+          "id": "ap-bash"
+        }
+      ],
+      "startedAt": "2026-09-14T21:11:12Z",
+      "tasksSHA256": "a85b78f8c3134e69722d96121340bb5d7412914eb2dc56caa66b23ec866f16a3"
+    },
+    {
+      "agent": "trial_af_cartograph",
+      "arm": "cartograph",
+      "commands": [
+        "date -u +%Y-%m-%dT%H:%M:%SZ",
+        "rg -n \"Instant\\s*\\(|Instant\\b|processNextResponseSerializer\" Source --glob '*.swift'",
+        "cartograph impact 's:9Alamofire7InstantVACycfc' --index-store .build/out --include 'Source/**' --depth 1 --limit 1000 --format json",
+        "cartograph query processNextResponseSerializer --index-store .build/out --include 'Source/**' --depth 1",
+        "cartograph impact 's:9Alamofire7RequestC29processNextResponseSerializeryyF' --index-store .build/out --include 'Source/**' --depth 1 --limit 1000 --format json",
+        "nl -ba Source/Core/Request.swift | sed -n '540,670p'",
+        "sed -n '30,75p' Source/Core/Instant.swift",
+        "sed -n '230,270p' Source/Core/DataRequest.swift",
+        "sed -n '360,400p' Source/Core/DownloadRequest.swift",
+        "sed -n '375,420p' Source/Features/AuthenticationInterceptor.swift",
+        "date -u +%Y-%m-%dT%H:%M:%SZ"
+      ],
+      "finishedAt": "2026-09-14T21:12:05Z",
+      "project": "alamofire",
+      "promptSHA256": "0d83a194fc50c90d95fedaa129d590cfbec3eb156453053572a54719fd2e89ea",
+      "results": [
+        {
+          "consumers": [
+            {
+              "line": 243,
+              "path": "Source/Core/DataRequest.swift",
+              "referenceLines": [
+                249,
+                259
+              ]
+            },
+            {
+              "line": 372,
+              "path": "Source/Core/DownloadRequest.swift",
+              "referenceLines": [
+                378,
+                387
+              ]
+            },
+            {
+              "line": 384,
+              "path": "Source/Features/AuthenticationInterceptor.swift",
+              "referenceLines": [
+                391
+              ]
+            },
+            {
+              "line": 409,
+              "path": "Source/Features/AuthenticationInterceptor.swift",
+              "referenceLines": [
+                412
+              ]
+            }
+          ],
+          "id": "af-clock"
+        },
+        {
+          "consumers": [
+            {
+              "line": 563,
+              "path": "Source/Core/Request.swift",
+              "referenceLines": [
+                579
+              ]
+            },
+            {
+              "line": 589,
+              "path": "Source/Core/Request.swift",
+              "referenceLines": [
+                599
+              ]
+            },
+            {
+              "line": 656,
+              "path": "Source/Core/Request.swift",
+              "referenceLines": [
+                661
+              ]
+            }
+          ],
+          "id": "af-serializer"
+        }
+      ],
+      "startedAt": "2026-09-14T21:11:25Z",
+      "tasksSHA256": "a85b78f8c3134e69722d96121340bb5d7412914eb2dc56caa66b23ec866f16a3"
+    },
+    {
+      "agent": "trial_kf_search",
+      "arm": "search",
+      "commands": [
+        "date -u +%Y-%m-%dT%H:%M:%SZ",
+        "pwd; rg --files -g 'AGENTS.md' -g 'Sources/**/*.swift'",
+        "sed -n '1,240p' AGENTS.md",
+        "rg -n -g '*.swift' '\\bisTaskCancelled\\b|\\bdeliverOriginalCacheHit\\b' Sources",
+        "nl -ba Sources/Networking/RetryStrategy.swift",
+        "nl -ba Sources/General/KingfisherManager.swift",
+        "rg -n '^\\s*(private |internal |public |open )?(nonisolated )?(func|var|let|init)\\b' Sources/Networking/RetryStrategy.swift Sources/General/KingfisherManager.swift",
+        "date -u +%Y-%m-%dT%H:%M:%SZ"
+      ],
+      "finishedAt": "2026-09-14T21:13:12Z",
+      "project": "kingfisher",
+      "promptSHA256": "57870a2f2bf19c42a96e9ce4d5a471c0d6b019395134a28915f5ddac33ef199b",
+      "results": [
+        {
+          "consumers": [
+            {
+              "line": 363,
+              "path": "Sources/General/KingfisherManager.swift",
+              "referenceLines": [
+                365
+              ]
+            },
+            {
+              "line": 158,
+              "path": "Sources/Networking/RetryStrategy.swift",
+              "referenceLines": [
+                166
+              ]
+            },
+            {
+              "line": 222,
+              "path": "Sources/Networking/RetryStrategy.swift",
+              "referenceLines": [
+                229
+              ]
+            }
+          ],
+          "id": "kf-cancel"
+        },
+        {
+          "consumers": [
+            {
+              "line": 755,
+              "path": "Sources/General/KingfisherManager.swift",
+              "referenceLines": [
+                804
+              ]
+            },
+            {
+              "line": 834,
+              "path": "Sources/General/KingfisherManager.swift",
+              "referenceLines": [
+                884
+              ]
+            }
+          ],
+          "id": "kf-cache"
+        }
+      ],
+      "startedAt": "2026-09-14T21:12:45Z",
+      "tasksSHA256": "a85b78f8c3134e69722d96121340bb5d7412914eb2dc56caa66b23ec866f16a3"
+    },
+    {
+      "agent": "trial_ap_cartograph",
+      "arm": "cartograph",
+      "commands": [
+        "rg -n \"getHelpBanner|bashCompletionScript|CommandInfoV0\" Sources/ArgumentParser Sources/ArgumentParserToolInfo",
+        "cartograph impact getHelpBanner --index-store .build/out --include 'Sources/ArgumentParser/**' 'Sources/ArgumentParserToolInfo/**' --depth 1 --limit 1000 --format json",
+        "cartograph query bashCompletionScript --index-store .build/out --include 'Sources/ArgumentParser/**' 'Sources/ArgumentParserToolInfo/**'",
+        "cartograph impact <CommandInfoV0.bashCompletionScript USR> --index-store .build/out --include 'Sources/ArgumentParser/**' 'Sources/ArgumentParserToolInfo/**' --depth 1 --limit 1000 --format json",
+        "sed/nl source verification"
+      ],
+      "finishedAt": "2026-09-14T21:13:39Z",
+      "project": "argument-parser",
+      "promptSHA256": "73182818a742f363faad8be6bc4d6b6d59f01221dde91b4311fe9f4a62ee3b60",
+      "results": [
+        {
+          "consumers": [
+            {
+              "line": 157,
+              "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift",
+              "referenceLines": [
+                185
+              ]
+            }
+          ],
+          "id": "ap-banner"
+        },
+        {
+          "consumers": [
+            {
+              "line": 15,
+              "path": "Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift",
+              "referenceLines": [
+                16
+              ]
+            }
+          ],
+          "id": "ap-bash"
+        }
+      ],
+      "startedAt": "2026-09-14T21:13:00Z",
+      "tasksSHA256": "a85b78f8c3134e69722d96121340bb5d7412914eb2dc56caa66b23ec866f16a3"
+    }
+  ]
+}

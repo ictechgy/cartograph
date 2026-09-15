@@ -1,0 +1,398 @@
+{
+  "indexStore": "<EVALUATION_WORKSPACE>/repos/alamofire/.build/out",
+  "matchingUnits": 1,
+  "records": [
+    {
+      "matchingRecordSymbols": [
+        {
+          "aggregateRelatedRoles": "calledBy, containedBy",
+          "aggregateRelatedRolesRaw": 73728,
+          "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+          "aggregateRolesRaw": 78438,
+          "kind": "instanceMethod",
+          "kindRaw": 16,
+          "name": "processNextResponseSerializer()",
+          "properties": "",
+          "propertiesRaw": 0,
+          "subkind": "none",
+          "subkindRaw": 0,
+          "usr": "s:9Alamofire7RequestC29processNextResponseSerializeryyF"
+        }
+      ],
+      "occurrences": [
+        {
+          "column": 9,
+          "line": 579,
+          "relations": [
+            {
+              "roles": "calledBy, containedBy",
+              "rolesRaw": 73728,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "finish(error:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:9Alamofire7RequestC6finish5erroryAA7AFErrorOSg_tF"
+              }
+            },
+            {
+              "roles": "receivedBy",
+              "rolesRaw": 4096,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, receivedBy",
+                "aggregateRelatedRolesRaw": 5632,
+                "aggregateRoles": "definition, reference, extendedBy, containedBy",
+                "aggregateRolesRaw": 81926,
+                "kind": "class",
+                "kindRaw": 7,
+                "name": "Request",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:9Alamofire7RequestC"
+              }
+            }
+          ],
+          "roles": "reference, call, dynamic, receivedBy, calledBy, containedBy",
+          "rolesRaw": 77924,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/alamofire/Source/Core/Request.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "calledBy, containedBy",
+            "aggregateRelatedRolesRaw": 73728,
+            "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+            "aggregateRolesRaw": 78438,
+            "kind": "instanceMethod",
+            "kindRaw": 16,
+            "name": "processNextResponseSerializer()",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:9Alamofire7RequestC29processNextResponseSerializeryyF"
+          }
+        },
+        {
+          "column": 17,
+          "line": 599,
+          "relations": [
+            {
+              "roles": "calledBy, containedBy",
+              "rolesRaw": 73728,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, dynamic, childOf",
+                "aggregateRolesRaw": 578,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "appendResponseSerializer(_:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:9Alamofire7RequestC24appendResponseSerializeryyyyYbcF"
+              }
+            }
+          ],
+          "roles": "reference, call, implicit, calledBy, containedBy",
+          "rolesRaw": 74020,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/alamofire/Source/Core/Request.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "definition, reference, call, implicit, childOf, calledBy, accessorOf, containedBy",
+            "aggregateRolesRaw": 107302,
+            "kind": "instanceMethod",
+            "kindRaw": 16,
+            "name": "getter:underlyingQueue",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "accessorGetter",
+            "subkindRaw": 3,
+            "usr": "s:9Alamofire7RequestC15underlyingQueueSo17OS_dispatch_queueCvg"
+          }
+        },
+        {
+          "column": 17,
+          "line": 599,
+          "relations": [
+            {
+              "roles": "containedBy",
+              "rolesRaw": 65536,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, dynamic, childOf",
+                "aggregateRolesRaw": 578,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "appendResponseSerializer(_:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:9Alamofire7RequestC24appendResponseSerializeryyyyYbcF"
+              }
+            }
+          ],
+          "roles": "reference, read, containedBy",
+          "rolesRaw": 65548,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/alamofire/Source/Core/Request.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "childOf, accessorOf, containedBy",
+            "aggregateRelatedRolesRaw": 98816,
+            "aggregateRoles": "definition, reference, read, write, childOf, containedBy",
+            "aggregateRolesRaw": 66078,
+            "kind": "instanceProperty",
+            "kindRaw": 19,
+            "name": "underlyingQueue",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:9Alamofire7RequestC15underlyingQueueSo17OS_dispatch_queueCvp"
+          }
+        },
+        {
+          "column": 33,
+          "line": 599,
+          "relations": [
+            {
+              "roles": "calledBy, containedBy",
+              "rolesRaw": 73728,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, dynamic, childOf",
+                "aggregateRolesRaw": 578,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "appendResponseSerializer(_:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:9Alamofire7RequestC24appendResponseSerializeryyyyYbcF"
+              }
+            },
+            {
+              "roles": "receivedBy",
+              "rolesRaw": 4096,
+              "target": {
+                "aggregateRelatedRoles": "receivedBy",
+                "aggregateRelatedRolesRaw": 4096,
+                "aggregateRoles": "reference, containedBy",
+                "aggregateRolesRaw": 65540,
+                "kind": "class",
+                "kindRaw": 7,
+                "name": "DispatchQueue",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "c:objc(cs)OS_dispatch_queue"
+              }
+            }
+          ],
+          "roles": "reference, call, dynamic, receivedBy, calledBy, containedBy",
+          "rolesRaw": 77924,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/alamofire/Source/Core/Request.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "reference, call, dynamic, receivedBy, calledBy, containedBy",
+            "aggregateRolesRaw": 77924,
+            "kind": "instanceMethod",
+            "kindRaw": 16,
+            "name": "async(group:qos:flags:execute:)",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:So17OS_dispatch_queueC8DispatchE5async5group3qos5flags7executeySo0a1_b1_F0CSg_AC0D3QoSVAC0D13WorkItemFlagsVyyXLtF"
+          }
+        },
+        {
+          "column": 46,
+          "line": 599,
+          "relations": [
+            {
+              "roles": "calledBy, containedBy",
+              "rolesRaw": 73728,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, dynamic, childOf",
+                "aggregateRolesRaw": 578,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "appendResponseSerializer(_:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:9Alamofire7RequestC24appendResponseSerializeryyyyYbcF"
+              }
+            },
+            {
+              "roles": "receivedBy",
+              "rolesRaw": 4096,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, receivedBy",
+                "aggregateRelatedRolesRaw": 5632,
+                "aggregateRoles": "definition, reference, extendedBy, containedBy",
+                "aggregateRolesRaw": 81926,
+                "kind": "class",
+                "kindRaw": 7,
+                "name": "Request",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:9Alamofire7RequestC"
+              }
+            }
+          ],
+          "roles": "reference, call, dynamic, receivedBy, calledBy, containedBy",
+          "rolesRaw": 77924,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/alamofire/Source/Core/Request.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "calledBy, containedBy",
+            "aggregateRelatedRolesRaw": 73728,
+            "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+            "aggregateRolesRaw": 78438,
+            "kind": "instanceMethod",
+            "kindRaw": 16,
+            "name": "processNextResponseSerializer()",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:9Alamofire7RequestC29processNextResponseSerializeryyF"
+          }
+        },
+        {
+          "column": 10,
+          "line": 613,
+          "relations": [
+            {
+              "roles": "childOf",
+              "rolesRaw": 512,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, receivedBy",
+                "aggregateRelatedRolesRaw": 5632,
+                "aggregateRoles": "definition, reference, extendedBy, containedBy",
+                "aggregateRolesRaw": 81926,
+                "kind": "class",
+                "kindRaw": 7,
+                "name": "Request",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:9Alamofire7RequestC"
+              }
+            }
+          ],
+          "roles": "definition, dynamic, childOf",
+          "rolesRaw": 578,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/alamofire/Source/Core/Request.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "calledBy, containedBy",
+            "aggregateRelatedRolesRaw": 73728,
+            "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+            "aggregateRolesRaw": 78438,
+            "kind": "instanceMethod",
+            "kindRaw": 16,
+            "name": "processNextResponseSerializer()",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:9Alamofire7RequestC29processNextResponseSerializeryyF"
+          }
+        },
+        {
+          "column": 9,
+          "line": 661,
+          "relations": [
+            {
+              "roles": "calledBy, containedBy",
+              "rolesRaw": 73728,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, dynamic, childOf",
+                "aggregateRolesRaw": 578,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "responseSerializerDidComplete(completion:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:9Alamofire7RequestC29responseSerializerDidComplete10completionyyyYbc_tF"
+              }
+            },
+            {
+              "roles": "receivedBy",
+              "rolesRaw": 4096,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, receivedBy",
+                "aggregateRelatedRolesRaw": 5632,
+                "aggregateRoles": "definition, reference, extendedBy, containedBy",
+                "aggregateRolesRaw": 81926,
+                "kind": "class",
+                "kindRaw": 7,
+                "name": "Request",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:9Alamofire7RequestC"
+              }
+            }
+          ],
+          "roles": "reference, call, dynamic, receivedBy, calledBy, containedBy",
+          "rolesRaw": 77924,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/alamofire/Source/Core/Request.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "calledBy, containedBy",
+            "aggregateRelatedRolesRaw": 73728,
+            "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+            "aggregateRolesRaw": 78438,
+            "kind": "instanceMethod",
+            "kindRaw": 16,
+            "name": "processNextResponseSerializer()",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:9Alamofire7RequestC29processNextResponseSerializeryyF"
+          }
+        }
+      ],
+      "recordName": "Request.swift-3Q94ONLNH6Y8H",
+      "recordSourcePath": "<EVALUATION_WORKSPACE>/repos/alamofire/Source/Core/Request.swift",
+      "unitMainFile": "<EVALUATION_WORKSPACE>/repos/alamofire/Source/Core/Request.swift",
+      "unitModule": "Alamofire",
+      "unitName": "Request.o-2M5QG3Z0DOEVS",
+      "unitTarget": "arm64-apple-macos12.0"
+    }
+  ],
+  "requestedLines": [
+    579,
+    599,
+    613,
+    661
+  ],
+  "requestedSourceSuffix": "Source/Core/Request.swift"
+}

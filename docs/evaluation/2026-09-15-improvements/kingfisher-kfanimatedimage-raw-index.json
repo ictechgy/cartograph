@@ -1,0 +1,526 @@
+{
+  "indexStore": "<EVALUATION_WORKSPACE>/repos/kingfisher/.build/out",
+  "matchingUnits": 1,
+  "records": [
+    {
+      "matchingRecordSymbols": [
+        {
+          "aggregateRelatedRoles": "",
+          "aggregateRelatedRolesRaw": 0,
+          "aggregateRoles": "definition, reference",
+          "aggregateRolesRaw": 6,
+          "kind": "typealias",
+          "kindRaw": 11,
+          "name": "KFCrossPlatformViewRepresentable",
+          "properties": "",
+          "propertiesRaw": 0,
+          "subkind": "none",
+          "subkindRaw": 0,
+          "usr": "s:10Kingfisher32KFCrossPlatformViewRepresentablea"
+        }
+      ],
+      "occurrences": [
+        {
+          "column": 11,
+          "line": 77,
+          "relations": [],
+          "roles": "definition",
+          "rolesRaw": 2,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "definition, reference",
+            "aggregateRolesRaw": 6,
+            "kind": "typealias",
+            "kindRaw": 11,
+            "name": "KFCrossPlatformViewRepresentable",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher32KFCrossPlatformViewRepresentablea"
+          }
+        },
+        {
+          "column": 46,
+          "line": 77,
+          "relations": [],
+          "roles": "reference",
+          "rolesRaw": 4,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "reference, implicit, baseOf",
+            "aggregateRolesRaw": 1284,
+            "kind": "protocol",
+            "kindRaw": 8,
+            "name": "NSViewRepresentable",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:7SwiftUI19NSViewRepresentableP"
+          }
+        },
+        {
+          "column": 15,
+          "line": 85,
+          "relations": [],
+          "roles": "definition",
+          "rolesRaw": 2,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "childOf, baseOf, containedBy",
+            "aggregateRelatedRolesRaw": 67072,
+            "aggregateRoles": "definition, reference, containedBy",
+            "aggregateRolesRaw": 65542,
+            "kind": "struct",
+            "kindRaw": 6,
+            "name": "KFAnimatedImageViewRepresenter",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher30KFAnimatedImageViewRepresenterV"
+          }
+        },
+        {
+          "column": 15,
+          "line": 85,
+          "relations": [
+            {
+              "roles": "overrideOf",
+              "rolesRaw": 2048,
+              "target": {
+                "aggregateRelatedRoles": "overrideOf",
+                "aggregateRelatedRolesRaw": 2048,
+                "aggregateRoles": "",
+                "aggregateRolesRaw": 0,
+                "kind": "instanceProperty",
+                "kindRaw": 19,
+                "name": "body",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:7SwiftUI4ViewP4body4BodyQzvp"
+              }
+            },
+            {
+              "roles": "containedBy",
+              "rolesRaw": 65536,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, containedBy",
+                "aggregateRelatedRolesRaw": 67072,
+                "aggregateRoles": "definition, reference, containedBy",
+                "aggregateRolesRaw": 65542,
+                "kind": "struct",
+                "kindRaw": 6,
+                "name": "KFAnimatedImageViewRepresenter",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher30KFAnimatedImageViewRepresenterV"
+              }
+            }
+          ],
+          "roles": "implicit, overrideOf, containedBy",
+          "rolesRaw": 67840,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "implicit, overrideOf, containedBy",
+            "aggregateRolesRaw": 67840,
+            "kind": "instanceProperty",
+            "kindRaw": 19,
+            "name": "body",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:7SwiftUI19NSViewRepresentablePAAE4bodys5NeverOvp"
+          }
+        },
+        {
+          "column": 15,
+          "line": 85,
+          "relations": [
+            {
+              "roles": "overrideOf",
+              "rolesRaw": 2048,
+              "target": {
+                "aggregateRelatedRoles": "overrideOf",
+                "aggregateRelatedRolesRaw": 2048,
+                "aggregateRoles": "",
+                "aggregateRolesRaw": 0,
+                "kind": "staticMethod",
+                "kindRaw": 18,
+                "name": "dismantleNSView(_:coordinator:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:7SwiftUI19NSViewRepresentableP09dismantleC0_11coordinatory0C4TypeQz_11CoordinatorQztFZ"
+              }
+            },
+            {
+              "roles": "containedBy",
+              "rolesRaw": 65536,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, containedBy",
+                "aggregateRelatedRolesRaw": 67072,
+                "aggregateRoles": "definition, reference, containedBy",
+                "aggregateRolesRaw": 65542,
+                "kind": "struct",
+                "kindRaw": 6,
+                "name": "KFAnimatedImageViewRepresenter",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher30KFAnimatedImageViewRepresenterV"
+              }
+            }
+          ],
+          "roles": "implicit, overrideOf, containedBy",
+          "rolesRaw": 67840,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "implicit, overrideOf, containedBy",
+            "aggregateRolesRaw": 67840,
+            "kind": "staticMethod",
+            "kindRaw": 18,
+            "name": "dismantleNSView(_:coordinator:)",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:7SwiftUI19NSViewRepresentablePAAE09dismantleC0_11coordinatory0C4TypeQz_11CoordinatorQztFZ"
+          }
+        },
+        {
+          "column": 15,
+          "line": 85,
+          "relations": [
+            {
+              "roles": "childOf",
+              "rolesRaw": 512,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, containedBy",
+                "aggregateRelatedRolesRaw": 67072,
+                "aggregateRoles": "definition, reference, containedBy",
+                "aggregateRolesRaw": 65542,
+                "kind": "struct",
+                "kindRaw": 6,
+                "name": "KFAnimatedImageViewRepresenter",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher30KFAnimatedImageViewRepresenterV"
+              }
+            }
+          ],
+          "roles": "definition, implicit, childOf",
+          "rolesRaw": 770,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "definition, reference, call, implicit, childOf, calledBy, containedBy",
+            "aggregateRolesRaw": 74534,
+            "kind": "constructor",
+            "kindRaw": 22,
+            "name": "init(image:context:)",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher30KFAnimatedImageViewRepresenterV5image7contextACSo7NSImageCSg_AA7KFImageV7ContextCy_ACGtcfc"
+          }
+        },
+        {
+          "column": 15,
+          "line": 85,
+          "relations": [
+            {
+              "roles": "overrideOf",
+              "rolesRaw": 2048,
+              "target": {
+                "aggregateRelatedRoles": "overrideOf",
+                "aggregateRelatedRolesRaw": 2048,
+                "aggregateRoles": "",
+                "aggregateRolesRaw": 0,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "makeCoordinator()",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:7SwiftUI19NSViewRepresentableP15makeCoordinator0F0QzyF"
+              }
+            },
+            {
+              "roles": "containedBy",
+              "rolesRaw": 65536,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, containedBy",
+                "aggregateRelatedRolesRaw": 67072,
+                "aggregateRoles": "definition, reference, containedBy",
+                "aggregateRolesRaw": 65542,
+                "kind": "struct",
+                "kindRaw": 6,
+                "name": "KFAnimatedImageViewRepresenter",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher30KFAnimatedImageViewRepresenterV"
+              }
+            }
+          ],
+          "roles": "implicit, overrideOf, containedBy",
+          "rolesRaw": 67840,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "implicit, overrideOf, containedBy",
+            "aggregateRolesRaw": 67840,
+            "kind": "instanceMethod",
+            "kindRaw": 16,
+            "name": "makeCoordinator()",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:7SwiftUI19NSViewRepresentablePAAyt11CoordinatorRtzrlE04makeE0yyF"
+          }
+        },
+        {
+          "column": 15,
+          "line": 85,
+          "relations": [
+            {
+              "roles": "overrideOf",
+              "rolesRaw": 2048,
+              "target": {
+                "aggregateRelatedRoles": "overrideOf",
+                "aggregateRelatedRolesRaw": 2048,
+                "aggregateRoles": "",
+                "aggregateRolesRaw": 0,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "sizeThatFits(_:nsView:context:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:7SwiftUI19NSViewRepresentableP12sizeThatFits_6nsView7contextSo6CGSizeVSgAA08ProposedI4SizeV_0C4TypeQzAA0cD7ContextVyxGtF"
+              }
+            },
+            {
+              "roles": "containedBy",
+              "rolesRaw": 65536,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, containedBy",
+                "aggregateRelatedRolesRaw": 67072,
+                "aggregateRoles": "definition, reference, containedBy",
+                "aggregateRolesRaw": 65542,
+                "kind": "struct",
+                "kindRaw": 6,
+                "name": "KFAnimatedImageViewRepresenter",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher30KFAnimatedImageViewRepresenterV"
+              }
+            }
+          ],
+          "roles": "implicit, overrideOf, containedBy",
+          "rolesRaw": 67840,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "implicit, overrideOf, containedBy",
+            "aggregateRolesRaw": 67840,
+            "kind": "instanceMethod",
+            "kindRaw": 16,
+            "name": "sizeThatFits(_:nsView:context:)",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:7SwiftUI19NSViewRepresentablePAAE12sizeThatFits_6nsView7contextSo6CGSizeVSgAA08ProposedI4SizeV_0C4TypeQzAA0cD7ContextVyxGtF"
+          }
+        },
+        {
+          "column": 47,
+          "line": 85,
+          "relations": [],
+          "roles": "reference",
+          "rolesRaw": 4,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "definition, reference",
+            "aggregateRolesRaw": 6,
+            "kind": "typealias",
+            "kindRaw": 11,
+            "name": "KFCrossPlatformViewRepresentable",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher32KFCrossPlatformViewRepresentablea"
+          }
+        },
+        {
+          "column": 47,
+          "line": 85,
+          "relations": [
+            {
+              "roles": "baseOf",
+              "rolesRaw": 1024,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, containedBy",
+                "aggregateRelatedRolesRaw": 67072,
+                "aggregateRoles": "definition, reference, containedBy",
+                "aggregateRolesRaw": 65542,
+                "kind": "struct",
+                "kindRaw": 6,
+                "name": "KFAnimatedImageViewRepresenter",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher30KFAnimatedImageViewRepresenterV"
+              }
+            }
+          ],
+          "roles": "reference, implicit, baseOf",
+          "rolesRaw": 1284,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "reference, implicit, baseOf",
+            "aggregateRolesRaw": 1284,
+            "kind": "protocol",
+            "kindRaw": 8,
+            "name": "NSViewRepresentable",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:7SwiftUI19NSViewRepresentableP"
+          }
+        },
+        {
+          "column": 81,
+          "line": 85,
+          "relations": [
+            {
+              "roles": "baseOf",
+              "rolesRaw": 1024,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, containedBy",
+                "aggregateRelatedRolesRaw": 67072,
+                "aggregateRoles": "definition, reference, containedBy",
+                "aggregateRolesRaw": 65542,
+                "kind": "struct",
+                "kindRaw": 6,
+                "name": "KFAnimatedImageViewRepresenter",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher30KFAnimatedImageViewRepresenterV"
+              }
+            }
+          ],
+          "roles": "reference, baseOf",
+          "rolesRaw": 1028,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "reference, baseOf",
+            "aggregateRolesRaw": 1028,
+            "kind": "protocol",
+            "kindRaw": 8,
+            "name": "KFImageHoldingView",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher18KFImageHoldingViewP"
+          }
+        },
+        {
+          "column": 101,
+          "line": 85,
+          "relations": [
+            {
+              "roles": "baseOf",
+              "rolesRaw": 1024,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, containedBy",
+                "aggregateRelatedRolesRaw": 67072,
+                "aggregateRoles": "definition, reference, containedBy",
+                "aggregateRolesRaw": 65542,
+                "kind": "struct",
+                "kindRaw": 6,
+                "name": "KFAnimatedImageViewRepresenter",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher30KFAnimatedImageViewRepresenterV"
+              }
+            }
+          ],
+          "roles": "reference, baseOf",
+          "rolesRaw": 1028,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "reference, baseOf",
+            "aggregateRolesRaw": 1028,
+            "kind": "protocol",
+            "kindRaw": 8,
+            "name": "Sendable",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:s8SendableP"
+          }
+        }
+      ],
+      "recordName": "KFAnimatedImage.swift-BX3427JFFI37",
+      "recordSourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+      "unitMainFile": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/SwiftUI/KFAnimatedImage.swift",
+      "unitModule": "Kingfisher",
+      "unitName": "KFAnimatedImage.o-2CWC4AKEQ163R",
+      "unitTarget": "arm64-apple-macos12.0"
+    }
+  ],
+  "requestedLines": [
+    77,
+    80,
+    85
+  ],
+  "requestedSourceSuffix": "Sources/SwiftUI/KFAnimatedImage.swift"
+}

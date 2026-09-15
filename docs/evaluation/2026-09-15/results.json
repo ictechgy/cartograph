@@ -1,0 +1,1334 @@
+{
+  "agentScores": {
+    "model": "gpt-5.6-luna",
+    "repetitions": 1,
+    "role": "explore",
+    "timingCaveat": "Agent-reported second-resolution clock readings; no token/cost accounting.",
+    "trials": [
+      {
+        "agent": "trial_af_search",
+        "arm": "search",
+        "clockSeconds": 28.0,
+        "project": "alamofire",
+        "results": [
+          {
+            "exactLocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 4,
+              "missed": []
+            },
+            "id": "af-clock",
+            "nonlocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 4,
+              "missed": []
+            }
+          },
+          {
+            "exactLocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 3,
+              "missed": []
+            },
+            "id": "af-serializer",
+            "nonlocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 3,
+              "missed": []
+            }
+          }
+        ]
+      },
+      {
+        "agent": "trial_kf_cartograph",
+        "arm": "cartograph",
+        "clockSeconds": 27.0,
+        "project": "kingfisher",
+        "results": [
+          {
+            "exactLocal": {
+              "exact": false,
+              "extra": [
+                [
+                  "Sources/General/KingfisherManager.swift",
+                  303
+                ]
+              ],
+              "matched": 2,
+              "missed": [
+                [
+                  "Sources/General/KingfisherManager.swift",
+                  363
+                ]
+              ]
+            },
+            "id": "kf-cancel",
+            "nonlocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 3,
+              "missed": []
+            }
+          },
+          {
+            "exactLocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 2,
+              "missed": []
+            },
+            "id": "kf-cache",
+            "nonlocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 2,
+              "missed": []
+            }
+          }
+        ]
+      },
+      {
+        "agent": "trial_ap_search",
+        "arm": "search",
+        "clockSeconds": 29.0,
+        "project": "argument-parser",
+        "results": [
+          {
+            "exactLocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 1,
+              "missed": []
+            },
+            "id": "ap-banner",
+            "nonlocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 1,
+              "missed": []
+            }
+          },
+          {
+            "exactLocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 1,
+              "missed": []
+            },
+            "id": "ap-bash",
+            "nonlocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 1,
+              "missed": []
+            }
+          }
+        ]
+      },
+      {
+        "agent": "trial_af_cartograph",
+        "arm": "cartograph",
+        "clockSeconds": 40.0,
+        "project": "alamofire",
+        "results": [
+          {
+            "exactLocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 4,
+              "missed": []
+            },
+            "id": "af-clock",
+            "nonlocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 4,
+              "missed": []
+            }
+          },
+          {
+            "exactLocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 3,
+              "missed": []
+            },
+            "id": "af-serializer",
+            "nonlocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 3,
+              "missed": []
+            }
+          }
+        ]
+      },
+      {
+        "agent": "trial_kf_search",
+        "arm": "search",
+        "clockSeconds": 27.0,
+        "project": "kingfisher",
+        "results": [
+          {
+            "exactLocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 3,
+              "missed": []
+            },
+            "id": "kf-cancel",
+            "nonlocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 3,
+              "missed": []
+            }
+          },
+          {
+            "exactLocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 2,
+              "missed": []
+            },
+            "id": "kf-cache",
+            "nonlocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 2,
+              "missed": []
+            }
+          }
+        ]
+      },
+      {
+        "agent": "trial_ap_cartograph",
+        "arm": "cartograph",
+        "clockSeconds": 39.0,
+        "project": "argument-parser",
+        "results": [
+          {
+            "exactLocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 1,
+              "missed": []
+            },
+            "id": "ap-banner",
+            "nonlocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 1,
+              "missed": []
+            }
+          },
+          {
+            "exactLocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 1,
+              "missed": []
+            },
+            "id": "ap-bash",
+            "nonlocal": {
+              "exact": true,
+              "extra": [],
+              "matched": 1,
+              "missed": []
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "queryScores": [
+    {
+      "cartographCandidates": 4,
+      "cartographExactLocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 4,
+        "missed": []
+      },
+      "cartographNonlocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 4,
+        "missed": []
+      },
+      "cartographOutputBytes": 7404,
+      "cliMcpEqual": true,
+      "goldConsumers": 4,
+      "goldReferenceLines": 6,
+      "id": "af-clock",
+      "lspCandidatesInScope": 4,
+      "lspExactLocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 4,
+        "missed": []
+      },
+      "lspNonlocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 4,
+        "missed": []
+      },
+      "lspReferenceLines": {
+        "exact": true,
+        "extra": [],
+        "matched": 6,
+        "missed": []
+      },
+      "lspResultBytes": 5271,
+      "medianMs": {
+        "cliMs": 233.40454200297245,
+        "lspCallHierarchyMs": 3.281333003542386,
+        "lspReferencesMs": 2.6472080025996547,
+        "mcpMs": 140.68137499998556,
+        "rgMs": 6.513416999951005
+      },
+      "rgRawMatchingLines": 11,
+      "rgWitnessRetrieval": {
+        "exact": false,
+        "extra": [
+          [
+            "Source/Core/Instant.swift",
+            2
+          ],
+          [
+            "Source/Core/Instant.swift",
+            34
+          ],
+          [
+            "Source/Core/Instant.swift",
+            53
+          ],
+          [
+            "Source/Core/Instant.swift",
+            58
+          ],
+          [
+            "Source/Core/Instant.swift",
+            59
+          ]
+        ],
+        "matched": 6,
+        "missed": []
+      },
+      "samples": [
+        {
+          "cliMs": 245.3679159989406,
+          "lspCallHierarchyMs": 5.267625998385483,
+          "lspReferencesMs": 213.87712499927147,
+          "mcpMs": 134.32100000136415,
+          "rgMs": 6.524915999762015
+        },
+        {
+          "cliMs": 226.29275000144844,
+          "lspCallHierarchyMs": 3.281333003542386,
+          "lspReferencesMs": 2.6472080025996547,
+          "mcpMs": 142.46279199869605,
+          "rgMs": 6.513416999951005
+        },
+        {
+          "cliMs": 233.40454200297245,
+          "lspCallHierarchyMs": 2.9663339992112014,
+          "lspReferencesMs": 2.38470800104551,
+          "mcpMs": 140.68137499998556,
+          "rgMs": 5.232375002378831
+        }
+      ],
+      "stable": true
+    },
+    {
+      "cartographCandidates": 4,
+      "cartographExactLocal": {
+        "exact": false,
+        "extra": [
+          [
+            "Source/Core/Request.swift",
+            29
+          ]
+        ],
+        "matched": 3,
+        "missed": []
+      },
+      "cartographNonlocal": {
+        "exact": false,
+        "extra": [
+          [
+            "Source/Core/Request.swift",
+            29
+          ]
+        ],
+        "matched": 3,
+        "missed": []
+      },
+      "cartographOutputBytes": 8537,
+      "cliMcpEqual": true,
+      "goldConsumers": 3,
+      "goldReferenceLines": 3,
+      "id": "af-serializer",
+      "lspCandidatesInScope": 3,
+      "lspExactLocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 3,
+        "missed": []
+      },
+      "lspNonlocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 3,
+        "missed": []
+      },
+      "lspReferenceLines": {
+        "exact": true,
+        "extra": [],
+        "matched": 3,
+        "missed": []
+      },
+      "lspResultBytes": 1996,
+      "medianMs": {
+        "cliMs": 227.51604199947906,
+        "lspCallHierarchyMs": 4.195874997094506,
+        "lspReferencesMs": 3.008750001754379,
+        "mcpMs": 144.7556249986519,
+        "rgMs": 6.502417003503069
+      },
+      "rgRawMatchingLines": 4,
+      "rgWitnessRetrieval": {
+        "exact": false,
+        "extra": [
+          [
+            "Source/Core/Request.swift",
+            613
+          ]
+        ],
+        "matched": 3,
+        "missed": []
+      },
+      "samples": [
+        {
+          "cliMs": 227.41662499902304,
+          "lspCallHierarchyMs": 4.981083999155089,
+          "lspReferencesMs": 201.3956250011688,
+          "mcpMs": 144.7556249986519,
+          "rgMs": 6.502417003503069
+        },
+        {
+          "cliMs": 227.51604199947906,
+          "lspCallHierarchyMs": 3.3265839992964175,
+          "lspReferencesMs": 2.64450000031502,
+          "mcpMs": 141.24508300301386,
+          "rgMs": 6.488917002570815
+        },
+        {
+          "cliMs": 230.66312499940977,
+          "lspCallHierarchyMs": 4.195874997094506,
+          "lspReferencesMs": 3.008750001754379,
+          "mcpMs": 147.28641700276057,
+          "rgMs": 7.758874999126419
+        }
+      ],
+      "stable": true
+    },
+    {
+      "cartographCandidates": 3,
+      "cartographExactLocal": {
+        "exact": false,
+        "extra": [
+          [
+            "Sources/General/KingfisherManager.swift",
+            303
+          ]
+        ],
+        "matched": 2,
+        "missed": [
+          [
+            "Sources/General/KingfisherManager.swift",
+            363
+          ]
+        ]
+      },
+      "cartographNonlocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 3,
+        "missed": []
+      },
+      "cartographOutputBytes": 8381,
+      "cliMcpEqual": true,
+      "goldConsumers": 3,
+      "goldReferenceLines": 3,
+      "id": "kf-cancel",
+      "lspCandidatesInScope": 3,
+      "lspExactLocal": {
+        "exact": false,
+        "extra": [
+          [
+            "Sources/General/KingfisherManager.swift",
+            303
+          ]
+        ],
+        "matched": 2,
+        "missed": [
+          [
+            "Sources/General/KingfisherManager.swift",
+            363
+          ]
+        ]
+      },
+      "lspNonlocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 3,
+        "missed": []
+      },
+      "lspReferenceLines": {
+        "exact": true,
+        "extra": [],
+        "matched": 3,
+        "missed": []
+      },
+      "lspResultBytes": 2508,
+      "medianMs": {
+        "cliMs": 224.8468750003667,
+        "lspCallHierarchyMs": 3.272540998295881,
+        "lspReferencesMs": 2.5844590018095914,
+        "mcpMs": 138.42166600079508,
+        "rgMs": 7.749125001282664
+      },
+      "rgRawMatchingLines": 4,
+      "rgWitnessRetrieval": {
+        "exact": false,
+        "extra": [
+          [
+            "Sources/General/KingfisherError.swift",
+            412
+          ]
+        ],
+        "matched": 3,
+        "missed": []
+      },
+      "samples": [
+        {
+          "cliMs": 222.83949999837205,
+          "lspCallHierarchyMs": 4.187250000541098,
+          "lspReferencesMs": 254.75395800094702,
+          "mcpMs": 138.42166600079508,
+          "rgMs": 7.627792001585476
+        },
+        {
+          "cliMs": 224.92195799713954,
+          "lspCallHierarchyMs": 3.1654169979447033,
+          "lspReferencesMs": 2.5844590018095914,
+          "mcpMs": 134.61662500048988,
+          "rgMs": 7.749125001282664
+        },
+        {
+          "cliMs": 224.8468750003667,
+          "lspCallHierarchyMs": 3.272540998295881,
+          "lspReferencesMs": 2.5340829997730907,
+          "mcpMs": 138.56408300125622,
+          "rgMs": 8.33295800111955
+        }
+      ],
+      "stable": true
+    },
+    {
+      "cartographCandidates": 3,
+      "cartographExactLocal": {
+        "exact": false,
+        "extra": [
+          [
+            "Sources/General/KingfisherManager.swift",
+            138
+          ]
+        ],
+        "matched": 2,
+        "missed": []
+      },
+      "cartographNonlocal": {
+        "exact": false,
+        "extra": [
+          [
+            "Sources/General/KingfisherManager.swift",
+            138
+          ]
+        ],
+        "matched": 2,
+        "missed": []
+      },
+      "cartographOutputBytes": 12267,
+      "cliMcpEqual": true,
+      "goldConsumers": 2,
+      "goldReferenceLines": 2,
+      "id": "kf-cache",
+      "lspCandidatesInScope": 2,
+      "lspExactLocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 2,
+        "missed": []
+      },
+      "lspNonlocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 2,
+        "missed": []
+      },
+      "lspReferenceLines": {
+        "exact": true,
+        "extra": [],
+        "matched": 2,
+        "missed": []
+      },
+      "lspResultBytes": 1902,
+      "medianMs": {
+        "cliMs": 225.89499999958207,
+        "lspCallHierarchyMs": 3.7712500015913974,
+        "lspReferencesMs": 2.9277499997988343,
+        "mcpMs": 132.88433400157373,
+        "rgMs": 7.881166002334794
+      },
+      "rgRawMatchingLines": 3,
+      "rgWitnessRetrieval": {
+        "exact": false,
+        "extra": [
+          [
+            "Sources/General/KingfisherManager.swift",
+            974
+          ]
+        ],
+        "matched": 2,
+        "missed": []
+      },
+      "samples": [
+        {
+          "cliMs": 233.39904100066633,
+          "lspCallHierarchyMs": 4.00462500329013,
+          "lspReferencesMs": 237.4119169980986,
+          "mcpMs": 131.67520800197963,
+          "rgMs": 7.702458002313506
+        },
+        {
+          "cliMs": 225.89499999958207,
+          "lspCallHierarchyMs": 3.7712500015913974,
+          "lspReferencesMs": 2.9277499997988343,
+          "mcpMs": 134.46170799943502,
+          "rgMs": 7.881166002334794
+        },
+        {
+          "cliMs": 224.60724999837112,
+          "lspCallHierarchyMs": 3.5722510001505725,
+          "lspReferencesMs": 2.732083001319552,
+          "mcpMs": 132.88433400157373,
+          "rgMs": 8.335708000231534
+        }
+      ],
+      "stable": true
+    },
+    {
+      "cartographCandidates": 1,
+      "cartographExactLocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 1,
+        "missed": []
+      },
+      "cartographNonlocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 1,
+        "missed": []
+      },
+      "cartographOutputBytes": 4626,
+      "cliMcpEqual": true,
+      "goldConsumers": 1,
+      "goldReferenceLines": 1,
+      "id": "ap-banner",
+      "lspCandidatesInScope": 1,
+      "lspExactLocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 1,
+        "missed": []
+      },
+      "lspNonlocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 1,
+        "missed": []
+      },
+      "lspReferenceLines": {
+        "exact": true,
+        "extra": [],
+        "matched": 1,
+        "missed": []
+      },
+      "lspResultBytes": 784,
+      "medianMs": {
+        "cliMs": 182.64970800009905,
+        "lspCallHierarchyMs": 2.7144589948875364,
+        "lspReferencesMs": 2.215874999819789,
+        "mcpMs": 129.0865839982871,
+        "rgMs": 6.044833000487415
+      },
+      "rgRawMatchingLines": 2,
+      "rgWitnessRetrieval": {
+        "exact": false,
+        "extra": [
+          [
+            "Sources/ArgumentParser/Usage/HelpGenerator.swift",
+            486
+          ]
+        ],
+        "matched": 1,
+        "missed": []
+      },
+      "samples": [
+        {
+          "cliMs": 182.64970800009905,
+          "lspCallHierarchyMs": 3.86087500010035,
+          "lspReferencesMs": 192.9245829996944,
+          "mcpMs": 129.0865839982871,
+          "rgMs": 6.044833000487415
+        },
+        {
+          "cliMs": 190.37912500061793,
+          "lspCallHierarchyMs": 2.680915997189004,
+          "lspReferencesMs": 2.215874999819789,
+          "mcpMs": 127.51899999784655,
+          "rgMs": 6.047083999874303
+        },
+        {
+          "cliMs": 182.36037499809754,
+          "lspCallHierarchyMs": 2.7144589948875364,
+          "lspReferencesMs": 2.0942500013916288,
+          "mcpMs": 130.58537499819067,
+          "rgMs": 6.042916000296827
+        }
+      ],
+      "stable": true
+    },
+    {
+      "cartographCandidates": 1,
+      "cartographExactLocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 1,
+        "missed": []
+      },
+      "cartographNonlocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 1,
+        "missed": []
+      },
+      "cartographOutputBytes": 5575,
+      "cliMcpEqual": true,
+      "goldConsumers": 1,
+      "goldReferenceLines": 1,
+      "id": "ap-bash",
+      "lspCandidatesInScope": 1,
+      "lspExactLocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 1,
+        "missed": []
+      },
+      "lspNonlocal": {
+        "exact": true,
+        "extra": [],
+        "matched": 1,
+        "missed": []
+      },
+      "lspReferenceLines": {
+        "exact": true,
+        "extra": [],
+        "matched": 1,
+        "missed": []
+      },
+      "lspResultBytes": 763,
+      "medianMs": {
+        "cliMs": 186.80479199974798,
+        "lspCallHierarchyMs": 2.7489169988257345,
+        "lspReferencesMs": 2.2480000006908085,
+        "mcpMs": 131.1002920010651,
+        "rgMs": 6.5639160020509735
+      },
+      "rgRawMatchingLines": 4,
+      "rgWitnessRetrieval": {
+        "exact": false,
+        "extra": [
+          [
+            "Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift",
+            15
+          ],
+          [
+            "Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift",
+            21
+          ],
+          [
+            "Sources/ArgumentParser/Completions/CompletionsGenerator.swift",
+            129
+          ]
+        ],
+        "matched": 1,
+        "missed": []
+      },
+      "samples": [
+        {
+          "cliMs": 181.50825000338955,
+          "lspCallHierarchyMs": 3.282167002907954,
+          "lspReferencesMs": 94.2075829989335,
+          "mcpMs": 132.1922919996723,
+          "rgMs": 6.766916998458328
+        },
+        {
+          "cliMs": 186.80479199974798,
+          "lspCallHierarchyMs": 2.6532089977990836,
+          "lspReferencesMs": 2.2480000006908085,
+          "mcpMs": 131.1002920010651,
+          "rgMs": 6.0937079979339615
+        },
+        {
+          "cliMs": 186.85687499964843,
+          "lspCallHierarchyMs": 2.7489169988257345,
+          "lspReferencesMs": 2.013916997384513,
+          "mcpMs": 130.4589589999523,
+          "rgMs": 6.5639160020509735
+        }
+      ],
+      "stable": true
+    }
+  ],
+  "scanScores": [
+    {
+      "cartographCount": 18,
+      "cartographOnlyUSRs": [],
+      "limitations": [
+        "configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+      ],
+      "medianSeconds": {
+        "cartograph": 0.24673141700259293,
+        "periphery": 1.208357250001427
+      },
+      "overlapUSRs": 18,
+      "peripheryAssignOnlyCount": 5,
+      "peripheryAssignOnlyDiagnostics": [
+        {
+          "accessibility": "internal",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:9Alamofire16WebSocketRequestC12PingResponseO4PongV5start10Foundation4DateVvp"
+          ],
+          "kind": "var.instance",
+          "location": "alamofire/Source/Core/WebSocketRequest.swift:120:17",
+          "modifiers": [],
+          "modules": [
+            "Alamofire"
+          ],
+          "name": "start"
+        },
+        {
+          "accessibility": "internal",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:9Alamofire16WebSocketRequestC12PingResponseO4PongV3end10Foundation4DateVvp"
+          ],
+          "kind": "var.instance",
+          "location": "alamofire/Source/Core/WebSocketRequest.swift:121:17",
+          "modifiers": [],
+          "modules": [
+            "Alamofire"
+          ],
+          "name": "end"
+        },
+        {
+          "accessibility": "internal",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:9Alamofire16WebSocketRequestC12PingResponseO4PongV7latencySdvp"
+          ],
+          "kind": "var.instance",
+          "location": "alamofire/Source/Core/WebSocketRequest.swift:122:17",
+          "modifiers": [],
+          "modules": [
+            "Alamofire"
+          ],
+          "name": "latency"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:9Alamofire8StreamOfV15bufferingPolicy33_618B59EEFE1537AACBEE8C5D5DF06E3CLLScS12ContinuationV09BufferingE0Oyx__Gvp"
+          ],
+          "kind": "var.instance",
+          "location": "alamofire/Source/Features/Concurrency.swift:918:17",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Alamofire"
+          ],
+          "name": "bufferingPolicy"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:9Alamofire8StreamOfV8IteratorV5token33_618B59EEFE1537AACBEE8C5D5DF06E3CLLAE5TokenAGLLCyx__Gvp"
+          ],
+          "kind": "var.instance",
+          "location": "alamofire/Source/Features/Concurrency.swift:955:21",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Alamofire"
+          ],
+          "name": "token"
+        }
+      ],
+      "peripheryCount": 38,
+      "peripheryNonparameterCount": 21,
+      "peripheryOnlyUSRs": [
+        "s:9Alamofire14OfflineRetrierC7monitor11maximumWait02isB5ErrorAcA11PathMonitorVyXA_8Dispatch0K12TimeIntervalOSbs0H0_pYbctcfc",
+        "s:9Alamofire18RequestInterceptorPA2A14OfflineRetrierCRszrlE07offlineE07monitor11maximumWaitAeA11PathMonitorVyXA_8Dispatch0L12TimeIntervalOtFZ",
+        "s:9Alamofire4Lock33_C547C1FE58CF2231D168878284A0CD2BLLPAAE6aroundyyyyKXEKF"
+      ],
+      "peripheryParameters": 17,
+      "project": "alamofire",
+      "samplesSeconds": {
+        "cartograph": [
+          1.1027172920003068,
+          0.24673141700259293,
+          0.2243762500002049
+        ],
+        "periphery": [
+          2.286630624999816,
+          1.208357250001427,
+          1.096032749999722
+        ]
+      },
+      "stable": true
+    },
+    {
+      "cartographCount": 8,
+      "cartographOnlyUSRs": [
+        "s:10Kingfisher32KFCrossPlatformViewRepresentablea"
+      ],
+      "limitations": [
+        "unindexed-sources: 28 of 98 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers",
+        "configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+      ],
+      "medianSeconds": {
+        "cartograph": 0.22325858299882384,
+        "periphery": 1.1516975419981463
+      },
+      "overlapUSRs": 7,
+      "peripheryAssignOnlyCount": 14,
+      "peripheryAssignOnlyDiagnostics": [
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher26OriginalProcessingIdentityV5cache33_34361C00AC0F1B424C7ED272C635AF94LLSOvp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/General/KingfisherManager.swift:1475:17",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "cache"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher26OriginalProcessingIdentityV3key33_34361C00AC0F1B424C7ED272C635AF94LLSSvp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/General/KingfisherManager.swift:1476:17",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "key"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher26OriginalProcessingIdentityV19processorIdentifier33_34361C00AC0F1B424C7ED272C635AF94LLSSvp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/General/KingfisherManager.swift:1477:17",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "processorIdentifier"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher26OriginalProcessingIdentityV5scale33_34361C00AC0F1B424C7ED272C635AF94LLs6UInt64Vvp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/General/KingfisherManager.swift:1479:17",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "scale"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher26OriginalProcessingIdentityV15forcedExtension33_34361C00AC0F1B424C7ED272C635AF94LLSSSgvp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/General/KingfisherManager.swift:1480:17",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "forcedExtension"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher26OriginalProcessingIdentityV23preloadAllAnimationData33_34361C00AC0F1B424C7ED272C635AF94LLSbvp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/General/KingfisherManager.swift:1481:17",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "preloadAllAnimationData"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher26OriginalProcessingIdentityV18onlyLoadFirstFrame33_34361C00AC0F1B424C7ED272C635AF94LLSbvp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/General/KingfisherManager.swift:1482:17",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "onlyLoadFirstFrame"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher26OriginalProcessingIdentityV34diskCacheAccessExtendingExpiration33_34361C00AC0F1B424C7ED272C635AF94LLAA0iH0Ovp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/General/KingfisherManager.swift:1483:17",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "diskCacheAccessExtendingExpiration"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher26OriginalProcessingIdentityV36memoryCacheAccessExtendingExpiration33_34361C00AC0F1B424C7ED272C635AF94LLAA0iH0Ovp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/General/KingfisherManager.swift:1484:17",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "memoryCacheAccessExtendingExpiration"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher15ImageDownloaderC4name33_1CBBE1CEF600480D48F123F40F117AB5LLSSvp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/Networking/ImageDownloader.swift:316:17",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "name"
+        },
+        {
+          "accessibility": "internal",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher19NetworkObserverImplC15timeoutIntervalSdSgvp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/Networking/NetworkMonitor.swift:143:9",
+          "modifiers": [],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "timeoutInterval"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher17AnimatedImageViewC8AnimatorC9imageSize33_F66BEC896F1F38CAC29BEFA58C261558LLSo6CGSizeVvp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/Views/AnimatedImageView.swift:613:21",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "imageSize"
+        },
+        {
+          "accessibility": "private",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher17AnimatedImageViewC8AnimatorC10imageScale33_F66BEC896F1F38CAC29BEFA58C261558LL14CoreFoundation7CGFloatVvp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/Views/AnimatedImageView.swift:614:21",
+          "modifiers": [
+            "private"
+          ],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "imageScale"
+        },
+        {
+          "accessibility": "internal",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:10Kingfisher17AnimatedImageViewC8AnimatorC12loopDurationSdvp"
+          ],
+          "kind": "var.instance",
+          "location": "kingfisher/Sources/Views/AnimatedImageView.swift:635:13",
+          "modifiers": [],
+          "modules": [
+            "Kingfisher"
+          ],
+          "name": "loopDuration"
+        }
+      ],
+      "peripheryCount": 30,
+      "peripheryNonparameterCount": 8,
+      "peripheryOnlyUSRs": [
+        "s:10Kingfisher21DisplayLinkCompatibleP9timestampSdvp"
+      ],
+      "peripheryParameters": 22,
+      "project": "kingfisher",
+      "samplesSeconds": {
+        "cartograph": [
+          1.2065734999996494,
+          0.2228376670027501,
+          0.22325858299882384
+        ],
+        "periphery": [
+          1.587538334002602,
+          1.1516975419981463,
+          1.103063916998508
+        ]
+      },
+      "stable": true
+    },
+    {
+      "cartographCount": 35,
+      "cartographOnlyUSRs": [
+        "s:14ArgumentParser13HelpGeneratorV7SectionV13isSubcommandsSbvp",
+        "s:14ArgumentParser22DecodableParsedWrapperP",
+        "s:14ArgumentParser5MutexV5_Lock33_5B24D75E79AA95455EA05279C945A2B2LLV09_platformD0SpySo16os_unfair_lock_sVGvp"
+      ],
+      "limitations": [
+        "configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+      ],
+      "medianSeconds": {
+        "cartograph": 0.21409420800046064,
+        "periphery": 1.175985292000405
+      },
+      "overlapUSRs": 32,
+      "peripheryAssignOnlyCount": 3,
+      "peripheryAssignOnlyDiagnostics": [
+        {
+          "accessibility": "internal",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:14ArgumentParser18SingleValueDecoderV0cD9ContainerV10underlyingACvp"
+          ],
+          "kind": "var.instance",
+          "location": "argument-parser/Sources/ArgumentParser/Parsing/ArgumentDecoder.swift:225:9",
+          "modifiers": [],
+          "modules": [
+            "ArgumentParser"
+          ],
+          "name": "underlying"
+        },
+        {
+          "accessibility": "internal",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:14ArgumentParser13HelpGeneratorV7SectionV13isSubcommandsSbvp"
+          ],
+          "kind": "var.instance",
+          "location": "argument-parser/Sources/ArgumentParser/Usage/HelpGenerator.swift:133:9",
+          "modifiers": [],
+          "modules": [
+            "ArgumentParser"
+          ],
+          "name": "isSubcommands"
+        },
+        {
+          "accessibility": "internal",
+          "attributes": [],
+          "hints": [
+            "assignOnlyProperty"
+          ],
+          "ids": [
+            "s:14ArgumentParser5MutexV5_Lock33_5B24D75E79AA95455EA05279C945A2B2LLV09_platformD0SpySo16os_unfair_lock_sVGvp"
+          ],
+          "kind": "var.instance",
+          "location": "argument-parser/Sources/ArgumentParser/Utilities/Mutex.swift:44:9",
+          "modifiers": [],
+          "modules": [
+            "ArgumentParser"
+          ],
+          "name": "_platformLock"
+        }
+      ],
+      "peripheryCount": 53,
+      "peripheryNonparameterCount": 37,
+      "peripheryOnlyUSRs": [
+        "s:14ArgumentParser0A11SetProviderP11_visibilityAA0A10VisibilityVvp",
+        "s:14ArgumentParser0A11SetProviderPAAE11_visibilityAA0A10VisibilityVvp",
+        "s:14ArgumentParser15ParsableCommandPAAE19checkAsyncHierarchy_4rootyAaB_pXp_SStFZ",
+        "s:SK14ArgumentParserAA15ParsableCommand_pXp7ElementRtzrlE08dumpHelpA10DefinitionAA0aH0VyF",
+        "s:ST14ArgumentParserSH7ElementRpzrlE24uniquingAdjacentElementsSayACGyF"
+      ],
+      "peripheryParameters": 16,
+      "project": "argument-parser",
+      "samplesSeconds": {
+        "cartograph": [
+          0.2227711250016,
+          0.21409420800046064,
+          0.17994070799977635
+        ],
+        "periphery": [
+          1.2392036670025846,
+          1.175985292000405,
+          1.1671159580000676
+        ]
+      },
+      "stable": true
+    }
+  ]
+}

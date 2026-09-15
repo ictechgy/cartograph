@@ -1,0 +1,10 @@
+{
+  "utc": "2026-09-14T21:04:17.366189+00:00",
+  "sha256": "a85b78f8c3134e69722d96121340bb5d7412914eb2dc56caa66b23ec866f16a3",
+  "notes": [
+    "Alamofire init source line corrected 40 to 42 before queries",
+    "HelpGenerator initializer source line corrected 158 to 157 before queries",
+    "Argument Parser transitive candidates removed before queries",
+    "Exact local and nonlocal projection recorded before queries"
+  ]
+}

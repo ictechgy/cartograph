@@ -1,0 +1,33 @@
+{
+  "binarySHA256": {
+    "cartograph": "f88bbb0aaf53de0eddc16d11134d095f5e33a8cc42863d20449ac53b2da108fb",
+    "periphery": "b01f9c115619e11ac26f333ee103eb6729699fbda121ef1c7e7bb50d4943d3ff",
+    "rg": "6bbb665c5a40785e74c7ccf1c2e606efa7e70b09540c1e00787c3f88827e668d",
+    "sourcekit-lsp": "133edc0add929f4ed3a76be853de9819343480baca4fa6f335c7864d6f1906d5"
+  },
+  "cartographSourceCommit": "f80936bc34cd9c62dd61959e65acb7ed65422092",
+  "cartographVersion": "0.13.0",
+  "environment": {
+    "machine": "arm64",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "peripheryVersion": "3.8.0",
+  "repos": {
+    "alamofire": {
+      "revision": "bda9ed57d72988a3a2ada33d824583541f86eac6",
+      "url": "https://github.com/Alamofire/Alamofire.git"
+    },
+    "argument-parser": {
+      "revision": "93c68882a28d9c82cd87be0acb7d76e35494b9b5",
+      "url": "https://github.com/apple/swift-argument-parser.git"
+    },
+    "kingfisher": {
+      "revision": "ab1c1de54a1ce1adfe1733c7195056a153029d3a",
+      "url": "https://github.com/onevcat/Kingfisher.git"
+    }
+  },
+  "rgVersion": "ripgrep 15.2.0 (rev e89fff89ac)\n\nfeatures:+pcre2\nsimd(compile):+NEON\nsimd(runtime):+NEON\n\nPCRE2 10.45 is available (JIT is available)",
+  "startedAt": "2026-09-14T20:59:17.562584+00:00",
+  "swiftVersion": "Apple Swift version 6.4 (swiftlang-6.4.0.27.1 clang-2100.3.27.1)\nTarget: arm64-apple-macosx26.0"
+}

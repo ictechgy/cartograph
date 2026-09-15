@@ -1,0 +1,203 @@
+[
+  {
+    "gold": [
+      {
+        "line": 243,
+        "path": "Source/Core/DataRequest.swift",
+        "referenceLines": [
+          249,
+          259
+        ]
+      },
+      {
+        "line": 372,
+        "path": "Source/Core/DownloadRequest.swift",
+        "referenceLines": [
+          378,
+          387
+        ]
+      },
+      {
+        "line": 384,
+        "path": "Source/Features/AuthenticationInterceptor.swift",
+        "referenceLines": [
+          391
+        ]
+      },
+      {
+        "line": 409,
+        "path": "Source/Features/AuthenticationInterceptor.swift",
+        "referenceLines": [
+          412
+        ]
+      }
+    ],
+    "id": "af-clock",
+    "project": "alamofire",
+    "provenance": "a3756f2",
+    "target": {
+      "column": 5,
+      "identifier": "init",
+      "line": 42,
+      "name": "init()",
+      "path": "Source/Core/Instant.swift",
+      "token": "Instant",
+      "usr": "s:9Alamofire7InstantVACycfc"
+    }
+  },
+  {
+    "gold": [
+      {
+        "line": 563,
+        "path": "Source/Core/Request.swift",
+        "referenceLines": [
+          579
+        ]
+      },
+      {
+        "line": 589,
+        "path": "Source/Core/Request.swift",
+        "referenceLines": [
+          599
+        ]
+      },
+      {
+        "line": 656,
+        "path": "Source/Core/Request.swift",
+        "referenceLines": [
+          661
+        ]
+      }
+    ],
+    "id": "af-serializer",
+    "project": "alamofire",
+    "provenance": "b2d6f41",
+    "target": {
+      "column": 10,
+      "identifier": "processNextResponseSerializer",
+      "line": 613,
+      "name": "processNextResponseSerializer()",
+      "path": "Source/Core/Request.swift",
+      "token": "processNextResponseSerializer",
+      "usr": "s:9Alamofire7RequestC29processNextResponseSerializeryyF"
+    }
+  },
+  {
+    "gold": [
+      {
+        "line": 363,
+        "path": "Sources/General/KingfisherManager.swift",
+        "referenceLines": [
+          365
+        ]
+      },
+      {
+        "line": 158,
+        "path": "Sources/Networking/RetryStrategy.swift",
+        "referenceLines": [
+          166
+        ]
+      },
+      {
+        "line": 222,
+        "path": "Sources/Networking/RetryStrategy.swift",
+        "referenceLines": [
+          229
+        ]
+      }
+    ],
+    "id": "kf-cancel",
+    "nonlocalProjection": {
+      "localLine": 363,
+      "nonlocalLine": 303,
+      "path": "Sources/General/KingfisherManager.swift"
+    },
+    "project": "kingfisher",
+    "provenance": "c317e85",
+    "target": {
+      "column": 16,
+      "identifier": "isTaskCancelled",
+      "line": 412,
+      "name": "isTaskCancelled",
+      "path": "Sources/General/KingfisherError.swift",
+      "token": "isTaskCancelled",
+      "usr": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+    }
+  },
+  {
+    "gold": [
+      {
+        "line": 755,
+        "path": "Sources/General/KingfisherManager.swift",
+        "referenceLines": [
+          804
+        ]
+      },
+      {
+        "line": 834,
+        "path": "Sources/General/KingfisherManager.swift",
+        "referenceLines": [
+          884
+        ]
+      }
+    ],
+    "id": "kf-cache",
+    "project": "kingfisher",
+    "provenance": "9bbcd8a",
+    "target": {
+      "column": 18,
+      "identifier": "deliverOriginalCacheHit",
+      "line": 974,
+      "name": "deliverOriginalCacheHit(originalCache:targetCache:key:source:context:options:fallbackToDownload:completionHandler:)",
+      "path": "Sources/General/KingfisherManager.swift",
+      "token": "deliverOriginalCacheHit",
+      "usr": "s:10Kingfisher0A7ManagerC23deliverOriginalCacheHit33_34361C00AC0F1B424C7ED272C635AF94LL08originalE006targetE03key6source7context7options18fallbackToDownload17completionHandleryAA05ImageE0C_AOSSAA6SourceOAA17RetrievingContextCyAQGAA0A17ParsedOptionsInfoVyyYbcys6ResultOyAA08RetrieveZ6ResultVAA0A5ErrorOGYbcSgtF"
+    }
+  },
+  {
+    "gold": [
+      {
+        "line": 157,
+        "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift",
+        "referenceLines": [
+          185
+        ]
+      }
+    ],
+    "id": "ap-banner",
+    "project": "argument-parser",
+    "provenance": "4ee16f2",
+    "target": {
+      "column": 8,
+      "identifier": "getHelpBanner",
+      "line": 486,
+      "name": "getHelpBanner()",
+      "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift",
+      "token": "getHelpBanner",
+      "usr": "s:SK14ArgumentParserAA15ParsableCommand_pXp7ElementRtzrlE13getHelpBannerSSSgyF"
+    }
+  },
+  {
+    "gold": [
+      {
+        "line": 15,
+        "path": "Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift",
+        "referenceLines": [
+          16
+        ]
+      }
+    ],
+    "id": "ap-bash",
+    "project": "argument-parser",
+    "provenance": "94ef71b",
+    "target": {
+      "column": 19,
+      "identifier": "bashCompletionScript",
+      "line": 21,
+      "name": "bashCompletionScript",
+      "path": "Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift",
+      "token": "bashCompletionScript",
+      "usr": "s:22ArgumentParserToolInfo07CommandD2V0V0aB0E20bashCompletionScript33_2E4AF468845F34F913738BAEDA3877C1LLSSvp"
+    }
+  }
+]

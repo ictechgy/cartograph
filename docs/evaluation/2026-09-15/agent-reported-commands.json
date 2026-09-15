@@ -1,0 +1,60 @@
+{
+  "provenance": "Exact command arrays from agents' final JSON replies. Some entries were abbreviated by the agents. These are self-reported, not independently captured execution traces, and are not directly executable replay scripts.",
+  "commands": {
+    "trial_af_search": [
+      "date -u +%Y-%m-%dT%H:%M:%SZ",
+      "rg -n --glob 'Source/**/*.swift' 'Instant\\.init\\(|Instant\\s*\\(|processNextResponseSerializer\\s*\\(' Source",
+      "sed -n ...",
+      "nl -ba ...",
+      "git status --short",
+      "date -u +%Y-%m-%dT%H:%M:%SZ"
+    ],
+    "trial_kf_cartograph": [
+      "date -u +%Y-%m-%dT%H:%M:%SZ",
+      "rg --files -g 'AGENTS.md' -g '!Tests/**' -g '!Examples/**'",
+      "rg -n --glob 'Sources/**/*.swift' 'isTaskCancelled|deliverOriginalCacheHit'",
+      "cartograph impact isTaskCancelled --index-store .build/out --include 'Sources/**' --depth 1 --limit 1000 --format json",
+      "cartograph impact deliverOriginalCacheHit --index-store .build/out --include 'Sources/**' --depth 1 --limit 1000 --format json",
+      "nl -ba Sources/General/KingfisherManager.swift",
+      "nl -ba Sources/Networking/RetryStrategy.swift",
+      "date -u +%Y-%m-%dT%H:%M:%SZ"
+    ],
+    "trial_ap_search": [
+      "rg -n --glob '*.swift' 'getHelpBanner\\s*\\(' Sources/ArgumentParser Sources/ArgumentParserToolInfo",
+      "rg -n --glob '*.swift' 'bashCompletionScript' Sources/ArgumentParser Sources/ArgumentParserToolInfo",
+      "sed -n '160,200p;470,500p' Sources/ArgumentParser/Usage/HelpGenerator.swift",
+      "sed -n '1,45p' Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift",
+      "sed -n '112,135p' Sources/ArgumentParser/Completions/CompletionsGenerator.swift"
+    ],
+    "trial_af_cartograph": [
+      "date -u +%Y-%m-%dT%H:%M:%SZ",
+      "rg -n \"Instant\\s*\\(|Instant\\b|processNextResponseSerializer\" Source --glob '*.swift'",
+      "cartograph impact 's:9Alamofire7InstantVACycfc' --index-store .build/out --include 'Source/**' --depth 1 --limit 1000 --format json",
+      "cartograph query processNextResponseSerializer --index-store .build/out --include 'Source/**' --depth 1",
+      "cartograph impact 's:9Alamofire7RequestC29processNextResponseSerializeryyF' --index-store .build/out --include 'Source/**' --depth 1 --limit 1000 --format json",
+      "nl -ba Source/Core/Request.swift | sed -n '540,670p'",
+      "sed -n '30,75p' Source/Core/Instant.swift",
+      "sed -n '230,270p' Source/Core/DataRequest.swift",
+      "sed -n '360,400p' Source/Core/DownloadRequest.swift",
+      "sed -n '375,420p' Source/Features/AuthenticationInterceptor.swift",
+      "date -u +%Y-%m-%dT%H:%M:%SZ"
+    ],
+    "trial_kf_search": [
+      "date -u +%Y-%m-%dT%H:%M:%SZ",
+      "pwd; rg --files -g 'AGENTS.md' -g 'Sources/**/*.swift'",
+      "sed -n '1,240p' AGENTS.md",
+      "rg -n -g '*.swift' '\\bisTaskCancelled\\b|\\bdeliverOriginalCacheHit\\b' Sources",
+      "nl -ba Sources/Networking/RetryStrategy.swift",
+      "nl -ba Sources/General/KingfisherManager.swift",
+      "rg -n '^\\s*(private |internal |public |open )?(nonisolated )?(func|var|let|init)\\b' Sources/Networking/RetryStrategy.swift Sources/General/KingfisherManager.swift",
+      "date -u +%Y-%m-%dT%H:%M:%SZ"
+    ],
+    "trial_ap_cartograph": [
+      "rg -n \"getHelpBanner|bashCompletionScript|CommandInfoV0\" Sources/ArgumentParser Sources/ArgumentParserToolInfo",
+      "cartograph impact getHelpBanner --index-store .build/out --include 'Sources/ArgumentParser/**' 'Sources/ArgumentParserToolInfo/**' --depth 1 --limit 1000 --format json",
+      "cartograph query bashCompletionScript --index-store .build/out --include 'Sources/ArgumentParser/**' 'Sources/ArgumentParserToolInfo/**'",
+      "cartograph impact <CommandInfoV0.bashCompletionScript USR> --index-store .build/out --include 'Sources/ArgumentParser/**' 'Sources/ArgumentParserToolInfo/**' --depth 1 --limit 1000 --format json",
+      "sed/nl source verification"
+    ]
+  }
+}

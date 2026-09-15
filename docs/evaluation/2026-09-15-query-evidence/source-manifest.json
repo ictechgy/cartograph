@@ -1,0 +1,681 @@
+{
+  "files": [
+    {
+      "path": "Sources/CartographAnalysis/AnalysisDiagnostics.swift",
+      "sha256": "152824b00661da4bbf3cbc17be95c214393937c624c832ae4e03bd7f04b932ad"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ArchitectureMetrics.swift",
+      "sha256": "010e456e734f76d5d6393fb6cba529cd3a84dbcb39eaaff307f1490471099612"
+    },
+    {
+      "path": "Sources/CartographAnalysis/Baseline.swift",
+      "sha256": "5d7ab7d576fb27b4e587a887b7395ad9c3b9b2476035c113cfe50bcb0cdab0e4"
+    },
+    {
+      "path": "Sources/CartographAnalysis/CoreDataRuntimeBinder.swift",
+      "sha256": "83ce169d41f329ef931fc717dc0d5d91805da3b9837cbdb7823fcb4fbd3a24da"
+    },
+    {
+      "path": "Sources/CartographAnalysis/CycleDetector.swift",
+      "sha256": "91533f8ae8f2c26ab27b72ce3093d4b261e59cb06f10305e7331a662e856f5d0"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ExternalRetentionStore.swift",
+      "sha256": "b332deda01f1fec0d503c8967692ec5a89c7a0fb352c27704e142e5161de0e52"
+    },
+    {
+      "path": "Sources/CartographAnalysis/GraphNeighborhood.swift",
+      "sha256": "7b5dcc6624263f805a9e59bd6bf79de8d998afeab2e74584a1004f132aeb82be"
+    },
+    {
+      "path": "Sources/CartographAnalysis/GraphQueryIndex.swift",
+      "sha256": "ea6c5165aad5449a24e1d2f34e0b75a394305137b6494da7d963a28c69c2c03b"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ImpactAnalyzer.swift",
+      "sha256": "7a8ec3a2b6705b346f5d4e17a2717f3554a1692ae041c007dd73fe4d54f5a0a8"
+    },
+    {
+      "path": "Sources/CartographAnalysis/LayerRuleEvaluator.swift",
+      "sha256": "ee37fd9f5126499018865a65b1ff8ec0b7b43ad5c452249fce74956ae16f5be8"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ReachabilityAnalyzer.swift",
+      "sha256": "80c3ce806fdb47085e601f53907a01acc3c742e1cdea668372fdfc454e2945ed"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ReferenceEvidenceIndex.swift",
+      "sha256": "92f20c7e679840fa576544dcd86b1f8d59a9a836bb56ab567d7ec07c1579eeeb"
+    },
+    {
+      "path": "Sources/CartographAnalysis/RetentionPolicy.swift",
+      "sha256": "e060fb8395c4d447e1c5aa89873a37d6b87c7f2159328a2eced6ba30dce7e956"
+    },
+    {
+      "path": "Sources/CartographAnalysis/RuntimeContractValidator.swift",
+      "sha256": "220e0e088df2aa79fb2edaf2850b29850316a6c0f75c854ff3bc0d1049fcde35"
+    },
+    {
+      "path": "Sources/CartographAnalysis/RuntimeDiscoveryReport.swift",
+      "sha256": "8903cc5db04c41e0899fe5072d80963f2fe03fa38c6c9502c884fabb1e41841f"
+    },
+    {
+      "path": "Sources/CartographAnalysis/RuntimeDiscoveryResolver.swift",
+      "sha256": "2ed328401dcb3b0cefa74da8cf9cbb2666c55ce77d732a943b472be54aa5a85c"
+    },
+    {
+      "path": "Sources/CartographAnalysis/RuntimeRegistryResolver.swift",
+      "sha256": "5ca07648082adbd88719143d32ab2cc0fd61f73c3e5c86880014660052bd6473"
+    },
+    {
+      "path": "Sources/CartographAnalysis/RuntimeTraceResolver.swift",
+      "sha256": "0b5c39ca7035b675b0703bc7817d0be4804338531f5eddf88e85c473eeca282d"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ValueFlow/ValueFlowAnalyzer.swift",
+      "sha256": "bca266829c162a064f8a7f38c56987e28a9777f540c5551b9da98a75c6b6cc00"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ValueFlow/ValueFlowBridgeConstants.swift",
+      "sha256": "2c92a3234379f1cf526390b81315bc5856ac1e3a1cc4f3b90d7a15a1552c04a1"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ValueFlow/ValueFlowCalls.swift",
+      "sha256": "f16b5a9a4a82af0fa7d98148cda026e633923bc9da84422db249c0fdbddb0b2a"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ValueFlow/ValueFlowEvaluation.swift",
+      "sha256": "9e38c3ef92079cbfa12acbf0233d52cabaaa6bf4f61922f37bce667210b8e8fa"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ValueFlow/ValueFlowIndexBinder.swift",
+      "sha256": "3427d92e1ae41088d4cf470818626a82cb8b6d3bf21f1d8c3c6546b59b973863"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ValueFlow/ValueFlowLiteralBinder.swift",
+      "sha256": "6a945be22a943c14a122180599b23cce5e10ecda2e616a798b70bfd45bb2d90b"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ValueFlow/ValueFlowMemory.swift",
+      "sha256": "0f2f0a16410320b46f7c5b2733d4d55d6c34cf3998d165aeefb3e19315b2f57e"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ValueFlow/ValueFlowOperations.swift",
+      "sha256": "9eac49a88eda16326f5bf9fecfebde3bec934c966f697c455d5abc683093cec7"
+    },
+    {
+      "path": "Sources/CartographAnalysis/ValueFlow/ValueFlowState.swift",
+      "sha256": "f6b8c39bc71eefd7d73551ff40f5c02e2910557af2e23f3f13b19f53abec45f3"
+    },
+    {
+      "path": "Sources/CartographConfig/AgentSkillTemplate.swift",
+      "sha256": "487e4c457f8b2476839472a66ad99603d1a55cf8577cc729e933b547e8a117bb"
+    },
+    {
+      "path": "Sources/CartographConfig/ConfigurationLoader.swift",
+      "sha256": "865f8064ee79b2f7936d1e4336b8542a32eb2d09fe72b93a061f7f1c5aaddefb"
+    },
+    {
+      "path": "Sources/CartographConfig/ConfigurationOverrides.swift",
+      "sha256": "c79125e0881af538cf4dcaae319ed4704511da82e72d5df297098c3477563f6e"
+    },
+    {
+      "path": "Sources/CartographConfig/ConfigurationTemplate.swift",
+      "sha256": "29a70beecdf0554d71c192635054464f22bd03df0249edaa8298da1ed2fac3b6"
+    },
+    {
+      "path": "Sources/CartographCore/Cartograph.swift",
+      "sha256": "43eda4fcffc9ba7364f17bddef9fa55b7c3284357ab86e7e7e4d55b8b2f885ac"
+    },
+    {
+      "path": "Sources/CartographCore/Config/CartographConfiguration.swift",
+      "sha256": "115b3ff97f155c66844fd00185f4d29852fbf317e9eba4202cc95aa9eed57348"
+    },
+    {
+      "path": "Sources/CartographCore/Config/LayerRule.swift",
+      "sha256": "1305bd83876e01ca762a57fa65516d7c3fac3e3631f4079ed1323b61cc6e7bf8"
+    },
+    {
+      "path": "Sources/CartographCore/Config/ReportFormat.swift",
+      "sha256": "dc66b60e5c15f29fedb38e6a84099a4daf2c0f02b123feabe43831edf3e90535"
+    },
+    {
+      "path": "Sources/CartographCore/Config/RetentionOptions.swift",
+      "sha256": "36be30d5d5309e6323f859fd6ead43c7341791b5b1facf4559b4e4f9a6b30ebc"
+    },
+    {
+      "path": "Sources/CartographCore/Config/Thresholds.swift",
+      "sha256": "1abfa72e3257b98837afc21d373d6b4967af9b33f635186ad3391314b5957480"
+    },
+    {
+      "path": "Sources/CartographCore/Diagnostics/CartographError.swift",
+      "sha256": "e9abef70019c080aa58282fa9d6f942ab4b47438736a54775f449b80d6c1278d"
+    },
+    {
+      "path": "Sources/CartographCore/Diagnostics/DerivedDataSearch.swift",
+      "sha256": "94b9609ea161e5758ff7fe5ea32c9d1f96ba738f50b9fc14ae8c8b4d0d90eb35"
+    },
+    {
+      "path": "Sources/CartographCore/Diagnostics/Diagnostic.swift",
+      "sha256": "19cdfe1ef453ecd6c78b269236bc7e58b7795c0275784cdbdaf26242dccdd773"
+    },
+    {
+      "path": "Sources/CartographCore/Diagnostics/EmptyIndexFacts.swift",
+      "sha256": "a80b027f33b2992893c35658becceddf284a489a0ecd7c80669445ed5b44a915"
+    },
+    {
+      "path": "Sources/CartographCore/Diagnostics/LocalFunctionDiagnostic.swift",
+      "sha256": "01dbe7bb87e708f5f924aeb44be08e62f0cf9077e0e07fd4e77ffa95d2995875"
+    },
+    {
+      "path": "Sources/CartographCore/Graph/GraphBuilder.swift",
+      "sha256": "8b1034db1eb9d1dcb12f696844608e289aef08898305f54412dfb664f95f6b4c"
+    },
+    {
+      "path": "Sources/CartographCore/Index/IndexProviding.swift",
+      "sha256": "6e82ec203204c0777e02975959db1817508bad8a1ce8d3fe30681e30b274aa24"
+    },
+    {
+      "path": "Sources/CartographCore/Index/IndexSnapshot.swift",
+      "sha256": "c768830f503fa024bf56e914da2ef13b79c7636caced704910b5aa23e43df387"
+    },
+    {
+      "path": "Sources/CartographCore/Index/IndexedReference.swift",
+      "sha256": "17fff3c67af9d37dd631a124e8aba79e676ed9a440104eecf0a4c86a6c827a4a"
+    },
+    {
+      "path": "Sources/CartographCore/Index/IndexedSymbol.swift",
+      "sha256": "ec67da607f771f1d8ccb9db45fe7d90e56878e238bcff6a534f3b6c3477476f8"
+    },
+    {
+      "path": "Sources/CartographCore/Index/ReferenceOrigin.swift",
+      "sha256": "5edb76afff317eb14d8807f50445a6796fca84ab7bf5f3ec258cbe3e3e4f1ad1"
+    },
+    {
+      "path": "Sources/CartographCore/Index/SourceLocalSymbol.swift",
+      "sha256": "a5ed043642288b3290f73938feb7728e75f11ae8ef62504f1e6c59b7f3ed3d34"
+    },
+    {
+      "path": "Sources/CartographCore/Model/Accessibility.swift",
+      "sha256": "c3811158f886281ef78339c8c421b36650ba827c55ff71109e0290440e0f02d3"
+    },
+    {
+      "path": "Sources/CartographCore/Model/BridgeFact.swift",
+      "sha256": "800ebbc1662cd01d655c75d78757f8ce16992c9cc70ead473cade670beeb8b78"
+    },
+    {
+      "path": "Sources/CartographCore/Model/CodeGraph.swift",
+      "sha256": "06f30e98f8c8f52aa5c3165b98ae76fc0989e1fd183c0bc98359657c1c1779f2"
+    },
+    {
+      "path": "Sources/CartographCore/Model/CoreDataBuildEvidence.swift",
+      "sha256": "cb2ab90e6dbdb863166e28d7ab7b4b54196514e2a1859da978fe319c9048f3d9"
+    },
+    {
+      "path": "Sources/CartographCore/Model/EdgeKind.swift",
+      "sha256": "fa757ed918e564dc9671c7eb7be64b3cca17bcfe8cac9b10de070a8154e8eb9b"
+    },
+    {
+      "path": "Sources/CartographCore/Model/GraphEdge.swift",
+      "sha256": "f990d7f4bf1c94b25098eb24ba06ccdd9b5097623984696564cc17d44f3367ee"
+    },
+    {
+      "path": "Sources/CartographCore/Model/GraphLevel.swift",
+      "sha256": "edc637a5f3d6b291429dd4eb61409479dde7eb7951f56785a367620707352f15"
+    },
+    {
+      "path": "Sources/CartographCore/Model/GraphNode.swift",
+      "sha256": "371d9741b5f952fc8a1538ac5c01fdb3ef7cb3d3f36c06a91f33d56d1ce97374"
+    },
+    {
+      "path": "Sources/CartographCore/Model/NodeID.swift",
+      "sha256": "780113413373d8cb97b1570c8a226dc0648149e96611dfa0f988e4938ae23fff"
+    },
+    {
+      "path": "Sources/CartographCore/Model/RuntimeContract.swift",
+      "sha256": "b1af889c31f0d1ba515376aec4b889eebcf20ec032cde10fee7039f492b191e9"
+    },
+    {
+      "path": "Sources/CartographCore/Model/RuntimeDiscovery.swift",
+      "sha256": "0ea6b0498ca5b76cdd152dc96e797808b57fb473dd402f17e3e1074048b8a50f"
+    },
+    {
+      "path": "Sources/CartographCore/Model/RuntimeTrace.swift",
+      "sha256": "95578d258a131ee7000ba0e81911916f47b347189ed03136224c4b4f5e6a936a"
+    },
+    {
+      "path": "Sources/CartographCore/Model/SourceLocation.swift",
+      "sha256": "91b3b9641a1b6968a4bb4fd4f102dd1ece48de0d4c3e825d06683071523e44fa"
+    },
+    {
+      "path": "Sources/CartographCore/Model/SymbolAttribute.swift",
+      "sha256": "4873c5dfb946e19f155e2d68390e284b4874a877d0ca024105ea452907123180"
+    },
+    {
+      "path": "Sources/CartographCore/Model/SymbolKind.swift",
+      "sha256": "006c5912a758faee67cc4a1a29ca21d7e475262ec0e0bde349ecd919ded3a74a"
+    },
+    {
+      "path": "Sources/CartographCore/Retention/ExternalRetention.swift",
+      "sha256": "3b265b497cffaba3093c1cd35fd449c3b4b72447c958b408b4d5fb719645aee2"
+    },
+    {
+      "path": "Sources/CartographCore/Retention/RetentionReason.swift",
+      "sha256": "aa34375fa9a0a91d683e53df7052c63c21aecc62099117ffaa23fcd8c3ff2207"
+    },
+    {
+      "path": "Sources/CartographCore/Support/FileSystem.swift",
+      "sha256": "3c58eefed90c28a3def505608ece2fdb0e4178fd1a18af2d6ded608f3c06919c"
+    },
+    {
+      "path": "Sources/CartographCore/Support/GlobPattern.swift",
+      "sha256": "f0caab149d856ea2baa3c83fde1a52c8e34808ae53edc5b6285864f12ce0fd45"
+    },
+    {
+      "path": "Sources/CartographCore/Support/JSONEncoding.swift",
+      "sha256": "b17c2a7dedd0ceb5c0147838ca09ae845f8259d497079f81669e0ff482761310"
+    },
+    {
+      "path": "Sources/CartographCore/Support/PathFilter.swift",
+      "sha256": "366940533d0799c9e58c89ba8d1947fa73a0e7a69bd88bade724aba919e52264"
+    },
+    {
+      "path": "Sources/CartographCore/Support/PrintableText.swift",
+      "sha256": "57429ceb3b3188376821e2a37383101f880e70165b4a4554f6f5c9bca0aba161"
+    },
+    {
+      "path": "Sources/CartographCore/Support/RuntimeResourcePath.swift",
+      "sha256": "b55b176b5f12b96d4d82b10e4157d6bb3410a8bc1407acb616e21d1463e7c2fd"
+    },
+    {
+      "path": "Sources/CartographCore/Support/TemporaryBase.swift",
+      "sha256": "493bbe9270e52294a18d412958de2167acdb1595f78f1f15bfe028c32ee8bcd4"
+    },
+    {
+      "path": "Sources/CartographCore/ValueFlow/ValueFlowGraph.swift",
+      "sha256": "d93c1b6cb5e2b8a84f3672374c9915c9d0a9482179e6c6d30dc40e1e33dea3ce"
+    },
+    {
+      "path": "Sources/CartographCore/ValueFlow/ValueFlowProgram.swift",
+      "sha256": "d210d3751a233e8471fb538c3e4ccc813e760f942806dacdda99e381b773abc7"
+    },
+    {
+      "path": "Sources/CartographExport/Graph/DOTGraphRenderer.swift",
+      "sha256": "83820af4a946c306c48dd443c214aca013e7cdc3c4c2bd4ad8f899e1240d6d39"
+    },
+    {
+      "path": "Sources/CartographExport/Graph/GraphRendering.swift",
+      "sha256": "fdd0d1d7c1ce499ab4879d82d5f33fe5a2812144dc04b0f7a48262985748cb00"
+    },
+    {
+      "path": "Sources/CartographExport/Graph/HTMLGraphRenderer.swift",
+      "sha256": "ffd062ae74bc8a389cd6e7c9019ccc1385e8b18430d4cc0ada7d4eed59ff7a8f"
+    },
+    {
+      "path": "Sources/CartographExport/Graph/JSONGraphRenderer.swift",
+      "sha256": "468829507f761f7fea87e1ede90888a31f5e27505cb0403003e353e8721e7707"
+    },
+    {
+      "path": "Sources/CartographExport/Graph/MermaidGraphRenderer.swift",
+      "sha256": "da5f3bcfebd7b23eaeaba1247ad01c3730a14fd9bb63c9b74d1ff115bcca09c4"
+    },
+    {
+      "path": "Sources/CartographExport/Report/DiagnosticReporting.swift",
+      "sha256": "b28606e0970aeee110403006837135a35de4a8eba8292ede866ebc0739eafcd3"
+    },
+    {
+      "path": "Sources/CartographExport/Report/MachineDiagnosticReporters.swift",
+      "sha256": "a8b79190fd937a42fd5531fdc4d1b1c1c97cebb76aa303bae20f977bbecad3e4"
+    },
+    {
+      "path": "Sources/CartographExport/Report/MetricsRenderer.swift",
+      "sha256": "f448112a6ea38864f037a68bcbb3490c00f9a76058fb6f961e4e64431ddc56ab"
+    },
+    {
+      "path": "Sources/CartographExport/Report/TextDiagnosticReporter.swift",
+      "sha256": "65aa3f05ef6960ade4d48d1c10cf3ab24597e81b018312fe1ee0aead4387e290"
+    },
+    {
+      "path": "Sources/CartographIndexStore/IndexStoreLocator.swift",
+      "sha256": "5cdd99a1992e7596ea0dbbd685bb79f9af9ec5a6d11a02101d4ff3fb8a9bc238"
+    },
+    {
+      "path": "Sources/CartographIndexStore/IndexStoreMapping.swift",
+      "sha256": "7ef4d9c19708a54c036e352b04d8c3e4b83bb7bd08070e9ee4284b908117703e"
+    },
+    {
+      "path": "Sources/CartographIndexStore/IndexStoreProvider.swift",
+      "sha256": "273e67f57bc3e731e3f930ab26f25e4316dcfa878079250c48534c3070131e6a"
+    },
+    {
+      "path": "Sources/CartographIndexStore/XcodeEnvironment.swift",
+      "sha256": "ea61213b9da6c8eb034db12e8dffa4056b1ef8800a0826d0c0c7dca4e67f4ac4"
+    },
+    {
+      "path": "Sources/CartographKit/AnalysisContext.swift",
+      "sha256": "8566f7c2a39957b7e2e8f54d595d9e5f24a696bc7a7d04a91e570355e65713dc"
+    },
+    {
+      "path": "Sources/CartographKit/AnalysisLimitationCollector.swift",
+      "sha256": "9cffc1e62052ffc6a4fcbad2a9d433e91b6f528b3a1c512c55d18aadd0ca7434"
+    },
+    {
+      "path": "Sources/CartographKit/AnalysisSession.swift",
+      "sha256": "8649f4171040191baacb0226095643e7b76f4b3197613206d523af034fd0d170"
+    },
+    {
+      "path": "Sources/CartographKit/AnalysisSnapshotDocument.swift",
+      "sha256": "bb6f5eac6d4d72a62d67afda23832dafc701a73ad286405f420dfd78a36f7624"
+    },
+    {
+      "path": "Sources/CartographKit/BridgeFacts.swift",
+      "sha256": "1bada101b031cd192b38cf33c10873650b7ae3d388a71ee4bb5ae50d155a0488"
+    },
+    {
+      "path": "Sources/CartographKit/CartographEnvironment.swift",
+      "sha256": "e600f1e5a71e4166b85cac8d0a25a7341937af466a5008f209b50d9ee9903f18"
+    },
+    {
+      "path": "Sources/CartographKit/CartographService.swift",
+      "sha256": "35f18ae1b77b83b95de86d3fe5d8d8db34ea54a6fc4ba8db9c5231e6fdd4e5c4"
+    },
+    {
+      "path": "Sources/CartographKit/CheckDocument.swift",
+      "sha256": "8e3a8716eb4d423d3e77d38109f2d3c5db053419dab0e57398bcb8e66b0eb93f"
+    },
+    {
+      "path": "Sources/CartographKit/CheckService.swift",
+      "sha256": "546b307ec0209f4536727ca9012c907b8a2120ef80426c98fb46ee15e06648f1"
+    },
+    {
+      "path": "Sources/CartographKit/CommandOutcome.swift",
+      "sha256": "2f3c10bf100c1d96610f9baa42d118368db2b295aa476f24c67d653cb020ceea"
+    },
+    {
+      "path": "Sources/CartographKit/CoreDataBuildEvidenceStore.swift",
+      "sha256": "6ca9922bc3b8377b38c5ed4b0746dade7153d4167112b8130d8e672ce772eeb5"
+    },
+    {
+      "path": "Sources/CartographKit/CoreDataLinkedClassInspector.swift",
+      "sha256": "4b0b1805f40f9f714da8ce131bce9e3e3941f937b21971c2cd2c513a8aebe6aa"
+    },
+    {
+      "path": "Sources/CartographKit/CoreDataRuntimeContext.swift",
+      "sha256": "8f06c7135d999671316526ec9ad054bf9a8a6e3b3c4d9af59b52be3e343359c8"
+    },
+    {
+      "path": "Sources/CartographKit/CoreDataVersionSelection.swift",
+      "sha256": "609cefa26c00125c2d75397e397898f3ccfebec467ce859f97cb3e3a01076ad9"
+    },
+    {
+      "path": "Sources/CartographKit/ImpactComparison.swift",
+      "sha256": "c76cbe9c7a337b1d0b7d59def275c312f71775197d5061d1feb37cd5cd67c40d"
+    },
+    {
+      "path": "Sources/CartographKit/ImpactDocument.swift",
+      "sha256": "6affd0d6f11c91dc3fd3fc1f545bd36aaf8e316fe8df261c106cb8a62679211f"
+    },
+    {
+      "path": "Sources/CartographKit/ImpactService.swift",
+      "sha256": "df5ab5bb0aff4425c1b81bc7ad8810a03d9ea7fc34cf74508a9d9a9542e080ef"
+    },
+    {
+      "path": "Sources/CartographKit/ImpactTextRenderer.swift",
+      "sha256": "d26af54003c0c748aa8d576dae3af8592cc4092d8a552e52d8d90486c0c22338"
+    },
+    {
+      "path": "Sources/CartographKit/LocalFunctionDiagnostics.swift",
+      "sha256": "4dec169ef072901ba7f811a302ec34e9b9f3a5ea1dad9ee685d2966c42d275c1"
+    },
+    {
+      "path": "Sources/CartographKit/ReportScope.swift",
+      "sha256": "09e6d6d8e7555d9627b937ffec2b43d31b5dbd6423f1870e8b1956ae394d3bd4"
+    },
+    {
+      "path": "Sources/CartographKit/RuntimeDiscoveryDocument.swift",
+      "sha256": "b516b2a05e6ce29b32c116249fde713228cd0a677518c1d05d693dda4453372e"
+    },
+    {
+      "path": "Sources/CartographKit/RuntimeDiscoveryService.swift",
+      "sha256": "dba9bf217b60142764ebcc0bf98afe423126d37190870fefc5b26e8651288b98"
+    },
+    {
+      "path": "Sources/CartographKit/RuntimeDocument.swift",
+      "sha256": "bf164ea987f087cd49112f68c94879cb947c1a238ffb05e88b71233f496cba82"
+    },
+    {
+      "path": "Sources/CartographKit/RuntimeEvidenceStore.swift",
+      "sha256": "888a403d565ffc7d97533c7d77fcfe24d2faf43ecdfb535ac0c17de2efdceb74"
+    },
+    {
+      "path": "Sources/CartographKit/RuntimeService.swift",
+      "sha256": "bc76bf08d7a56ee521785778b8345b2876e37cc3ad8dc81556259e97c2688998"
+    },
+    {
+      "path": "Sources/CartographKit/RuntimeTraceDiscovery.swift",
+      "sha256": "fc9291e493b5f2c89dca38751b3fbbd406aaebfaca6087a670f7e7f605967fb7"
+    },
+    {
+      "path": "Sources/CartographKit/SymbolPresentation.swift",
+      "sha256": "95b3d134ee3726e2e38e2c0c8d94f8c7fdfdc43ee58c019acdc3f7396c230d43"
+    },
+    {
+      "path": "Sources/CartographKit/SymbolQuery.swift",
+      "sha256": "074cfdb59fab34db767b7e7b6df3a2f39c7a43e4a10bbcc262bdff67be94cc5f"
+    },
+    {
+      "path": "Sources/CartographKit/ValueFlowDocument.swift",
+      "sha256": "de55888526e363e53c14837c528e24a82b138e5809d0144466da552367880301"
+    },
+    {
+      "path": "Sources/CartographSyntax/BridgeFactScanner.swift",
+      "sha256": "0293fda8eb11bc3814ec0d42042559fc2fd4aeb20feb27bb1459fb88fb9101f2"
+    },
+    {
+      "path": "Sources/CartographSyntax/CommentCommand.swift",
+      "sha256": "d52c4ebfd7b98b8469efe443a946934ce049116101049866d490c6a308c3b858"
+    },
+    {
+      "path": "Sources/CartographSyntax/CoreDataGeneratedClassScanner.swift",
+      "sha256": "271ac68bec4181a450fd5b05a0168d4f1db4d5c5e1ca7414ce014cf2a5d6e9c3"
+    },
+    {
+      "path": "Sources/CartographSyntax/CoreDataModelScanner.swift",
+      "sha256": "5cbe34b1051448e1a12798fe7fc728753ec349b909534be110d0c568dcc801f7"
+    },
+    {
+      "path": "Sources/CartographSyntax/CoreDataSourceScanner.swift",
+      "sha256": "caf0d2c8d8765891f002986311c349abba9fa79d5e1f278332a00f29085401ac"
+    },
+    {
+      "path": "Sources/CartographSyntax/InterfaceBuilderScanner.swift",
+      "sha256": "ee16a51913184c3688e297fed77acefab928360c8f0684fc98905cd01169c6be"
+    },
+    {
+      "path": "Sources/CartographSyntax/LocalFunctionBinder.swift",
+      "sha256": "aff763df9062c618f4a22e322d604c91c4a886c3826732dd1c9e79cceb5ba1e6"
+    },
+    {
+      "path": "Sources/CartographSyntax/LocalFunctionFacts.swift",
+      "sha256": "94a15808b4af65fa31e4963101ace71806cac0b35f79ce4c1c3a8feb75bbee23"
+    },
+    {
+      "path": "Sources/CartographSyntax/LocalFunctionScanner.swift",
+      "sha256": "ebcbd6886764254a4a50db06f2df628d11a35b8b3a625db747eaa02f6168d8f3"
+    },
+    {
+      "path": "Sources/CartographSyntax/ObjectiveCFlutterScanner.swift",
+      "sha256": "a4798fb0d10ffee35543f5c94e3b743d843f51252b2a2baf34ac3150418cd18f"
+    },
+    {
+      "path": "Sources/CartographSyntax/ObjectiveCLexer.swift",
+      "sha256": "b96e2df40a275eb982c527e23f46c600e42d2c278e6af3329f94e3cb35d03911"
+    },
+    {
+      "path": "Sources/CartographSyntax/ReactNativeMacroScanner.swift",
+      "sha256": "be067405b132ee5fa3a43482288744e90fb38f974a6e1418a5784f7095dd527f"
+    },
+    {
+      "path": "Sources/CartographSyntax/RuntimeFactScanner.swift",
+      "sha256": "ca302bea985c815cd1f6b28e626b6666f3d64c6b42e7fc659f46b49242da71f6"
+    },
+    {
+      "path": "Sources/CartographSyntax/RuntimeNotificationLifecycle.swift",
+      "sha256": "9f954ef6a31c835e62490a551ff57fb3a85f2238519f1a4fe387c81935c1bd31"
+    },
+    {
+      "path": "Sources/CartographSyntax/RuntimePredicateFormatParser.swift",
+      "sha256": "73dc4d307b3cb38360104c325f9945108f28b72c07b18801587e490a5da79031"
+    },
+    {
+      "path": "Sources/CartographSyntax/RuntimeRegistryScanner.swift",
+      "sha256": "44609dc39fec4d74b89a3b2b1f33cba2abf825659f4d339b4c16796caf01ef74"
+    },
+    {
+      "path": "Sources/CartographSyntax/RuntimeResourceScanner.swift",
+      "sha256": "de5910c6f190f37415d255b022f823560b3179e37f3dc4aedd79a2c2f136cac2"
+    },
+    {
+      "path": "Sources/CartographSyntax/RuntimeSourceBindings.swift",
+      "sha256": "4e4e79ca1c951df8aee17c84ee856940a42deeadd8887035c112401662b71c21"
+    },
+    {
+      "path": "Sources/CartographSyntax/RuntimeSyntaxNames.swift",
+      "sha256": "21c9897612f822bf8e175a4d867aff3f3a2a44770e4ebb56c8eb0a31227f3de9"
+    },
+    {
+      "path": "Sources/CartographSyntax/SnapshotEnricher.swift",
+      "sha256": "94756f83846a59d0e3c4570890b91f62f2841b9e7f6225d09f1220dd236146c2"
+    },
+    {
+      "path": "Sources/CartographSyntax/SourceFactsCache.swift",
+      "sha256": "5010a1d5aefd577da50a4ce4fc7029d8919b39adafd696b6bef1823774fa4a4f"
+    },
+    {
+      "path": "Sources/CartographSyntax/SourceFileFacts.swift",
+      "sha256": "47f6f0da13608f95fefb99246a73606bbc4c35b8ca2edae8d8bb6fc832fe1afd"
+    },
+    {
+      "path": "Sources/CartographSyntax/SwiftSyntaxAnalyzer.swift",
+      "sha256": "ff463ce17503fc95697d38076ce53e553250b3d739f515fcf1a0ad476bfc5734"
+    },
+    {
+      "path": "Sources/CartographSyntax/SyntaxVocabulary.swift",
+      "sha256": "10a08fc23aac42a9fe139e6ccbc631bc6eee3e8e78df30548ed9eddd58eedccb"
+    },
+    {
+      "path": "Sources/CartographSyntax/ValueFlow/SwiftValueFlowParser.swift",
+      "sha256": "6d52e85149c60595744b75f5357322a9a37f94d3773cb6cf2f778db30ebc9ea6"
+    },
+    {
+      "path": "Sources/CartographSyntax/ValueFlow/ValueFlowLowerer.swift",
+      "sha256": "645fe3ffe68b09b4c07d09d57d848eaebd5bb1a12d706deaaa0246f500d5d2bd"
+    },
+    {
+      "path": "Sources/CartographTestSupport/GraphBuilderHelpers.swift",
+      "sha256": "c255acb82314d05c9d4258cc351fbcd5ffc187f19af429ccd4f6ef4222c3f964"
+    },
+    {
+      "path": "Sources/CartographTestSupport/InMemoryFileSystem.swift",
+      "sha256": "f0acd3c81c9890e536b026ec82fa9582bd88702f7c4baed9a87387a31985e1c3"
+    },
+    {
+      "path": "Sources/CartographTestSupport/SeededRandomNumberGenerator.swift",
+      "sha256": "adea724643f8063aaabfff10836356b67e33f18f2b3b38501e164d90d43ff89a"
+    },
+    {
+      "path": "Sources/CartographTestSupport/SnapshotBuilder.swift",
+      "sha256": "6134179e51739890d93ccc1a42165cc3c98702cd59b8728d2bc000ea457d78b7"
+    },
+    {
+      "path": "Sources/cartograph/ArgumentConformances.swift",
+      "sha256": "3381faa9b4bb96f6857ce574b24579f6d5963512a24bbeeca924df95341e4909"
+    },
+    {
+      "path": "Sources/cartograph/CartographCommand.swift",
+      "sha256": "0f921ecb22fb937a8beae6c866e04876141d3238eb1a5101fb85d2e2640ae6ee"
+    },
+    {
+      "path": "Sources/cartograph/CartographMCPTools.swift",
+      "sha256": "ad34b54cf018d794f3d00119e1ced4692cf3870ff547c78b259c3cdbe5120983"
+    },
+    {
+      "path": "Sources/cartograph/ChangedFiles.swift",
+      "sha256": "ffcbe3d0fb51b0f8e99c62d2f7fc8f017a53aa8543f3037c3c15e71b145b4ae9"
+    },
+    {
+      "path": "Sources/cartograph/Check.swift",
+      "sha256": "2b377f137a7e0b0161efba3154925a763cf537a313323f8cda176809872be70f"
+    },
+    {
+      "path": "Sources/cartograph/CommandSupport.swift",
+      "sha256": "19a54a33d1ee4341f59daa7c86cc0d27e0f00764a277a91238ef6f5618a41d2e"
+    },
+    {
+      "path": "Sources/cartograph/Dataflow.swift",
+      "sha256": "c933681c735b2769052ff0bca4c6ad2c253d5007442e1bebad90958f1af87eeb"
+    },
+    {
+      "path": "Sources/cartograph/GlobalOptions.swift",
+      "sha256": "7ef547dc2fd6bb7d6da95ddda0844dd2b4888cd5e01ff0714b9b9e922d8913e8"
+    },
+    {
+      "path": "Sources/cartograph/Impact.swift",
+      "sha256": "a0e2147a96a938c71d2a342a01fcbc513bf9b087d0af8636ebe3f6b01c76a274"
+    },
+    {
+      "path": "Sources/cartograph/MCPProtocol.swift",
+      "sha256": "cd3eee965b3ce5220f1de95b8ffcbcf69e31c3afbf8d6d0e408f6c371454c428"
+    },
+    {
+      "path": "Sources/cartograph/MCPStdio.swift",
+      "sha256": "673a2c36cc466d0beab6e72596a3313bde44f83e31b4b7298d7f552cb0a92ec5"
+    },
+    {
+      "path": "Sources/cartograph/Runtime.swift",
+      "sha256": "686983b09f489db76aa511c7c1b92f52f5114d4e6f3fc89a288fc8a1d1bfb187"
+    },
+    {
+      "path": "Sources/cartograph/RuntimeCheckpoint.swift",
+      "sha256": "02fe8ed63f9d30670ed8722b477f67d1b2cd97cd67357fc728092cfd2b8fc390"
+    },
+    {
+      "path": "Sources/cartograph/RuntimeCollect.swift",
+      "sha256": "fe112a236a652a1db5edb91baa8143478b3e5302e578ef8b68a70631a8422261"
+    },
+    {
+      "path": "Sources/cartograph/RuntimeCollectorSource.swift",
+      "sha256": "18a9549f3f4a17425c8ea4c070753b6e86221c6d71b5bea505ddb4704bd05e98"
+    },
+    {
+      "path": "Sources/cartograph/RuntimeDiscover.swift",
+      "sha256": "501865ffc070104706442d7a81fd3f1419b6d335b8335bc19fd491ab16629b38"
+    },
+    {
+      "path": "Sources/cartograph/RuntimePrepareCoreData.swift",
+      "sha256": "85a724daaf2a26a260dcc05ad06ec8ff2cae3ee74e8387929ae038fd70dc49fe"
+    },
+    {
+      "path": "Sources/cartograph/RuntimeSimulatorProcess.swift",
+      "sha256": "af8dfbba485efafaff7f77fcc7477f26366ed7d34562281d3e7f29d443ef3fb2"
+    },
+    {
+      "path": "Sources/cartograph/RuntimeSimulatorSupport.swift",
+      "sha256": "7e68654f1168eb74dcd2e223d8fddb7094a21b940dbaaff42117e216cb468dbe"
+    },
+    {
+      "path": "Sources/cartograph/RuntimeTraceProcess.swift",
+      "sha256": "0aa4470b96938950f20921fa703b2edf44c65a1acbde0440a86d8665b670baad"
+    },
+    {
+      "path": "Sources/cartograph/Serve.swift",
+      "sha256": "1a560db6a1ab70a4389bc98a31baf738df136c5cdb8363baa426d870516c5b7a"
+    },
+    {
+      "path": "Sources/cartograph/Snapshot.swift",
+      "sha256": "a4cb187ff4ef58483933d4a08670913bf573bd5ab3087eec61812e9dd4f2e347"
+    }
+  ],
+  "sha256": "48c91f2454ad7f7eb5ef058258ca81c85855f31ee9ca8bfc8c59d47355115f74"
+}

@@ -1,0 +1,210 @@
+[
+  {
+    "id": "af-clock",
+    "sameConsumerSetAsImpact": true,
+    "samples": [
+      {
+        "bytes": 5075,
+        "cliMs": 365.26908399901004,
+        "mcpMs": 122.57866700019804
+      },
+      {
+        "bytes": 5075,
+        "cliMs": 350.9414170002856,
+        "mcpMs": 114.54458300067927
+      },
+      {
+        "bytes": 5075,
+        "cliMs": 364.59658300009323,
+        "mcpMs": 116.12887499723001
+      }
+    ],
+    "stableAndEqual": true,
+    "usedBy": [
+      {
+        "line": 243,
+        "path": "Source/Core/DataRequest.swift"
+      },
+      {
+        "line": 372,
+        "path": "Source/Core/DownloadRequest.swift"
+      },
+      {
+        "line": 409,
+        "path": "Source/Features/AuthenticationInterceptor.swift"
+      },
+      {
+        "line": 384,
+        "path": "Source/Features/AuthenticationInterceptor.swift"
+      }
+    ]
+  },
+  {
+    "id": "af-serializer",
+    "sameConsumerSetAsImpact": true,
+    "samples": [
+      {
+        "bytes": 10306,
+        "cliMs": 354.0445830003591,
+        "mcpMs": 120.22354199871188
+      },
+      {
+        "bytes": 10306,
+        "cliMs": 362.00875000213273,
+        "mcpMs": 112.32437500075321
+      },
+      {
+        "bytes": 10306,
+        "cliMs": 350.81216700200457,
+        "mcpMs": 117.29362500045681
+      }
+    ],
+    "stableAndEqual": true,
+    "usedBy": [
+      {
+        "line": 29,
+        "path": "Source/Core/Request.swift"
+      },
+      {
+        "line": 589,
+        "path": "Source/Core/Request.swift"
+      },
+      {
+        "line": 656,
+        "path": "Source/Core/Request.swift"
+      },
+      {
+        "line": 563,
+        "path": "Source/Core/Request.swift"
+      }
+    ]
+  },
+  {
+    "id": "kf-cancel",
+    "sameConsumerSetAsImpact": true,
+    "samples": [
+      {
+        "bytes": 6046,
+        "cliMs": 430.29666699658264,
+        "mcpMs": 112.8269580003689
+      },
+      {
+        "bytes": 6046,
+        "cliMs": 409.7388749978563,
+        "mcpMs": 116.91466699994635
+      },
+      {
+        "bytes": 6046,
+        "cliMs": 425.7127919991035,
+        "mcpMs": 114.61258299823385
+      }
+    ],
+    "stableAndEqual": true,
+    "usedBy": [
+      {
+        "line": 303,
+        "path": "Sources/General/KingfisherManager.swift"
+      },
+      {
+        "line": 158,
+        "path": "Sources/Networking/RetryStrategy.swift"
+      },
+      {
+        "line": 222,
+        "path": "Sources/Networking/RetryStrategy.swift"
+      }
+    ]
+  },
+  {
+    "id": "kf-cache",
+    "sameConsumerSetAsImpact": true,
+    "samples": [
+      {
+        "bytes": 36116,
+        "cliMs": 409.0753329983272,
+        "mcpMs": 115.03649999940535
+      },
+      {
+        "bytes": 36116,
+        "cliMs": 433.9455410008668,
+        "mcpMs": 115.4865830030758
+      },
+      {
+        "bytes": 36116,
+        "cliMs": 409.0081249996729,
+        "mcpMs": 121.93816700164462
+      }
+    ],
+    "stableAndEqual": true,
+    "usedBy": [
+      {
+        "line": 138,
+        "path": "Sources/General/KingfisherManager.swift"
+      },
+      {
+        "line": 755,
+        "path": "Sources/General/KingfisherManager.swift"
+      },
+      {
+        "line": 834,
+        "path": "Sources/General/KingfisherManager.swift"
+      }
+    ]
+  },
+  {
+    "id": "ap-banner",
+    "sameConsumerSetAsImpact": true,
+    "samples": [
+      {
+        "bytes": 3637,
+        "cliMs": 229.56749999866588,
+        "mcpMs": 112.29820800144807
+      },
+      {
+        "bytes": 3637,
+        "cliMs": 229.12849999920581,
+        "mcpMs": 115.19504199895891
+      },
+      {
+        "bytes": 3637,
+        "cliMs": 231.29766599959112,
+        "mcpMs": 118.66045799979474
+      }
+    ],
+    "stableAndEqual": true,
+    "usedBy": [
+      {
+        "line": 157,
+        "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift"
+      }
+    ]
+  },
+  {
+    "id": "ap-bash",
+    "sameConsumerSetAsImpact": true,
+    "samples": [
+      {
+        "bytes": 7098,
+        "cliMs": 229.4583330003661,
+        "mcpMs": 118.43470800158684
+      },
+      {
+        "bytes": 7098,
+        "cliMs": 229.28279099869542,
+        "mcpMs": 112.53970799953095
+      },
+      {
+        "bytes": 7098,
+        "cliMs": 231.74808300245786,
+        "mcpMs": 110.95420900164754
+      }
+    ],
+    "stableAndEqual": true,
+    "usedBy": [
+      {
+        "line": 15,
+        "path": "Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift"
+      }
+    ]
+  }
+]

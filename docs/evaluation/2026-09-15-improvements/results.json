@@ -1,0 +1,2888 @@
+{
+  "baselineCommit": "f80936bc34cd9c62dd61959e65acb7ed65422092",
+  "binaries": {
+    "after": {
+      "binary": "<CARTOGRAPH_SOURCE>/.build/out/Products/Release/cartograph",
+      "sha256": "3937e202b8cd6a0dfcb2be85906a675370dcd46e732242e0ac28ecf0c40dc1dd",
+      "version": "0.13.0"
+    },
+    "before": {
+      "binary": "<BASELINE_SOURCE>/.build/out/Products/Release/cartograph",
+      "sha256": "011137783db80c051752c2a6bf7c336b610f0cd366852b65c93511901e8d6096",
+      "version": "0.13.0"
+    }
+  },
+  "date": "2026-09-15",
+  "indexLibrary": {
+    "path": "/Applications/Xcode-27.0.0-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libIndexStore.dylib",
+    "sha256": "22e088f7c53ac21aa38258cb5b53dd6ea319f68831210847673867a52c000fc0"
+  },
+  "method": {
+    "buildConfiguration": "release",
+    "cachePolicy": "filesystem and syntax caches warmed; no cache flush",
+    "cliMcpEqualWithinEachArm": true,
+    "crossOrderGraphsFindingsAndQueryFingerprintsEqual": true,
+    "orders": [
+      "before-after",
+      "after-before"
+    ],
+    "requestsPerSample": 10,
+    "sameCompilerAndProjectIndex": true,
+    "samplesPerTaskPerOrderPerArm": 3,
+    "scope": "macOS production sources with retain-public; frozen six direct-consumer tasks; no new agent trial",
+    "unchangedSessionWithinEachArm": true
+  },
+  "productionPatchSHA256": "48adfbf87b9923434a066fc7f3ed781db200ae7d471dca51644b8a4558783bf6",
+  "projects": [
+    {
+      "after": {
+        "edges": 9039,
+        "limitations": [
+          "configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+        ],
+        "nodes": 2167,
+        "unused": [
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 619,
+              "path": "Source/Core/AFError.swift"
+            },
+            "message": "property 'Alamofire.output' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire7AFErrorO24ServerTrustFailureReasonO6outputAE6OutputVSgvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 5,
+              "line": 37,
+              "path": "Source/Core/Instant.swift"
+            },
+            "message": "init 'Alamofire.init(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire7InstantVyACSdcfc"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 46,
+              "path": "Source/Core/Protected.swift"
+            },
+            "message": "method 'Alamofire.around(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire4Lock33_C547C1FE58CF2231D168878284A0CD2BLLPAAE6aroundyyyyKXEKF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 136,
+              "path": "Source/Core/Protected.swift"
+            },
+            "message": "method 'Alamofire.attemptToTransitionTo(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire9ProtectedCA2A7RequestC12MutableStateVRszlE019attemptToTransitionG0ySbAE0E0OF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 149,
+              "path": "Source/Core/Protected.swift"
+            },
+            "message": "method 'Alamofire.withState(perform:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire9ProtectedCA2A7RequestC12MutableStateVRszlE04withE07performyyAE0E0OXE_tF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 35,
+              "path": "Source/Core/RequestTaskMap.swift"
+            },
+            "message": "property 'Alamofire.requests' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire14RequestTaskMapV8requestsSayAA0B0CGvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 89,
+              "path": "Source/Core/RequestTaskMap.swift"
+            },
+            "message": "property 'Alamofire.count' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire14RequestTaskMapV5countSivp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 96,
+              "path": "Source/Core/RequestTaskMap.swift"
+            },
+            "message": "property 'Alamofire.eventCount' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire14RequestTaskMapV10eventCountSivp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 102,
+              "path": "Source/Core/RequestTaskMap.swift"
+            },
+            "message": "property 'Alamofire.isEmpty' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire14RequestTaskMapV7isEmptySbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 109,
+              "path": "Source/Core/RequestTaskMap.swift"
+            },
+            "message": "property 'Alamofire.isEventsEmpty' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire14RequestTaskMapV13isEventsEmptySbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 330,
+              "path": "Source/Core/WebSocketRequest.swift"
+            },
+            "message": "method 'Alamofire.startAutomaticPing(every:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire16WebSocketRequestC18startAutomaticPing5everyys8DurationV_tF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 16,
+              "line": 524,
+              "path": "Source/Core/WebSocketRequest.swift"
+            },
+            "message": "property 'Alamofire.passthrough' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire26WebSocketMessageSerializerPAAE11passthroughAA011PassthroughbcD7DecoderVvpZ"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 530,
+              "path": "Source/Core/WebSocketRequest.swift"
+            },
+            "message": "struct 'Alamofire.PassthroughWebSocketMessageDecoder' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire34PassthroughWebSocketMessageDecoderV"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 19,
+              "line": 92,
+              "path": "Source/Features/Combine.swift"
+            },
+            "message": "typealias 'Alamofire.Failure' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire21DataResponsePublisherV5Inner33_27FEA05C1F64EDCD7EF5C79DDDE9257ALLC7Failurea"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 19,
+              "line": 312,
+              "path": "Source/Features/Combine.swift"
+            },
+            "message": "typealias 'Alamofire.Failure' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire19DataStreamPublisherV5Inner33_27FEA05C1F64EDCD7EF5C79DDDE9257ALLC7Failurea"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 19,
+              "line": 461,
+              "path": "Source/Features/Combine.swift"
+            },
+            "message": "typealias 'Alamofire.Failure' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire25DownloadResponsePublisherV5Inner33_27FEA05C1F64EDCD7EF5C79DDDE9257ALLC7Failurea"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 5,
+              "line": 109,
+              "path": "Source/Features/OfflineRetrier.swift"
+            },
+            "message": "init 'Alamofire.init(monitor:maximumWait:isOfflineError:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire14OfflineRetrierC7monitor11maximumWait02isB5ErrorAcA11PathMonitorVyXA_8Dispatch0K12TimeIntervalOSbs0H0_pYbctcfc"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 17,
+              "line": 237,
+              "path": "Source/Features/OfflineRetrier.swift"
+            },
+            "message": "method 'Alamofire.offlineRetrier(monitor:maximumWait:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire18RequestInterceptorPA2A14OfflineRetrierCRszrlE07offlineE07monitor11maximumWaitAeA11PathMonitorVyXA_8Dispatch0L12TimeIntervalOtFZ"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 79,
+              "path": "Source/Features/RequestInterceptor.swift"
+            },
+            "message": "property 'Alamofire.retryRequired' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire11RetryResultO13retryRequiredSbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 13,
+              "line": 364,
+              "path": "Source/Features/URLEncodedFormEncoder.swift"
+            },
+            "message": "property 'Alamofire.localizedDescription' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire21URLEncodedFormEncoderC5ErrorO20localizedDescriptionSSvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 5,
+              "line": 648,
+              "path": "Source/Features/URLEncodedFormEncoder.swift"
+            },
+            "message": "init 'Alamofire.init(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire12AnyCodingKeyVyACxcs0cD0Rzlufc"
+          }
+        ]
+      },
+      "before": {
+        "edges": 9378,
+        "limitations": [
+          "configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+        ],
+        "nodes": 2167,
+        "unused": [
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 619,
+              "path": "Source/Core/AFError.swift"
+            },
+            "message": "property 'Alamofire.output' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire7AFErrorO24ServerTrustFailureReasonO6outputAE6OutputVSgvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 5,
+              "line": 37,
+              "path": "Source/Core/Instant.swift"
+            },
+            "message": "init 'Alamofire.init(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire7InstantVyACSdcfc"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 136,
+              "path": "Source/Core/Protected.swift"
+            },
+            "message": "method 'Alamofire.attemptToTransitionTo(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire9ProtectedCA2A7RequestC12MutableStateVRszlE019attemptToTransitionG0ySbAE0E0OF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 149,
+              "path": "Source/Core/Protected.swift"
+            },
+            "message": "method 'Alamofire.withState(perform:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire9ProtectedCA2A7RequestC12MutableStateVRszlE04withE07performyyAE0E0OXE_tF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 35,
+              "path": "Source/Core/RequestTaskMap.swift"
+            },
+            "message": "property 'Alamofire.requests' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire14RequestTaskMapV8requestsSayAA0B0CGvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 89,
+              "path": "Source/Core/RequestTaskMap.swift"
+            },
+            "message": "property 'Alamofire.count' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire14RequestTaskMapV5countSivp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 96,
+              "path": "Source/Core/RequestTaskMap.swift"
+            },
+            "message": "property 'Alamofire.eventCount' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire14RequestTaskMapV10eventCountSivp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 102,
+              "path": "Source/Core/RequestTaskMap.swift"
+            },
+            "message": "property 'Alamofire.isEmpty' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire14RequestTaskMapV7isEmptySbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 109,
+              "path": "Source/Core/RequestTaskMap.swift"
+            },
+            "message": "property 'Alamofire.isEventsEmpty' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire14RequestTaskMapV13isEventsEmptySbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 330,
+              "path": "Source/Core/WebSocketRequest.swift"
+            },
+            "message": "method 'Alamofire.startAutomaticPing(every:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire16WebSocketRequestC18startAutomaticPing5everyys8DurationV_tF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 16,
+              "line": 524,
+              "path": "Source/Core/WebSocketRequest.swift"
+            },
+            "message": "property 'Alamofire.passthrough' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire26WebSocketMessageSerializerPAAE11passthroughAA011PassthroughbcD7DecoderVvpZ"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 530,
+              "path": "Source/Core/WebSocketRequest.swift"
+            },
+            "message": "struct 'Alamofire.PassthroughWebSocketMessageDecoder' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire34PassthroughWebSocketMessageDecoderV"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 19,
+              "line": 92,
+              "path": "Source/Features/Combine.swift"
+            },
+            "message": "typealias 'Alamofire.Failure' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire21DataResponsePublisherV5Inner33_27FEA05C1F64EDCD7EF5C79DDDE9257ALLC7Failurea"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 19,
+              "line": 312,
+              "path": "Source/Features/Combine.swift"
+            },
+            "message": "typealias 'Alamofire.Failure' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire19DataStreamPublisherV5Inner33_27FEA05C1F64EDCD7EF5C79DDDE9257ALLC7Failurea"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 19,
+              "line": 461,
+              "path": "Source/Features/Combine.swift"
+            },
+            "message": "typealias 'Alamofire.Failure' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire25DownloadResponsePublisherV5Inner33_27FEA05C1F64EDCD7EF5C79DDDE9257ALLC7Failurea"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 79,
+              "path": "Source/Features/RequestInterceptor.swift"
+            },
+            "message": "property 'Alamofire.retryRequired' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire11RetryResultO13retryRequiredSbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 13,
+              "line": 364,
+              "path": "Source/Features/URLEncodedFormEncoder.swift"
+            },
+            "message": "property 'Alamofire.localizedDescription' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire21URLEncodedFormEncoderC5ErrorO20localizedDescriptionSSvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 5,
+              "line": 648,
+              "path": "Source/Features/URLEncodedFormEncoder.swift"
+            },
+            "message": "init 'Alamofire.init(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:9Alamofire12AnyCodingKeyVyACxcs0cD0Rzlufc"
+          }
+        ]
+      },
+      "beforeAfterQueryEquality": [
+        {
+          "afterSHA256": "aedc7fb5abe9f7f047a38218d504c2b77ab57f8458cd6af665608b4eabfc03b2",
+          "beforeSHA256": "e2c5d9116b9c3b788295099c48db2d26dca2a1836ea58635d3f6344edf8e9e96",
+          "equal": false,
+          "id": "af-clock"
+        },
+        {
+          "afterSHA256": "73b314cb3ee7315743893ee3823bf74174f4a9840c5dd494a1d1944714492070",
+          "beforeSHA256": "78c534b6c0b0821bfa861820ddb0da1ca728cc4c38c1775711c5d0523b0de7f8",
+          "equal": false,
+          "id": "af-serializer"
+        }
+      ],
+      "newlyReported": [
+        {
+          "details": [],
+          "location": {
+            "column": 5,
+            "line": 109,
+            "path": "Source/Features/OfflineRetrier.swift"
+          },
+          "message": "init 'Alamofire.init(monitor:maximumWait:isOfflineError:)' is never used",
+          "ruleIdentifier": "unused-symbol",
+          "severity": "warning",
+          "subject": "s:9Alamofire14OfflineRetrierC7monitor11maximumWait02isB5ErrorAcA11PathMonitorVyXA_8Dispatch0K12TimeIntervalOSbs0H0_pYbctcfc"
+        },
+        {
+          "details": [],
+          "location": {
+            "column": 17,
+            "line": 237,
+            "path": "Source/Features/OfflineRetrier.swift"
+          },
+          "message": "method 'Alamofire.offlineRetrier(monitor:maximumWait:)' is never used",
+          "ruleIdentifier": "unused-symbol",
+          "severity": "warning",
+          "subject": "s:9Alamofire18RequestInterceptorPA2A14OfflineRetrierCRszrlE07offlineE07monitor11maximumWaitAeA11PathMonitorVyXA_8Dispatch0L12TimeIntervalOtFZ"
+        },
+        {
+          "details": [],
+          "location": {
+            "column": 10,
+            "line": 46,
+            "path": "Source/Core/Protected.swift"
+          },
+          "message": "method 'Alamofire.around(_:)' is never used",
+          "ruleIdentifier": "unused-symbol",
+          "severity": "warning",
+          "subject": "s:9Alamofire4Lock33_C547C1FE58CF2231D168878284A0CD2BLLPAAE6aroundyyyyKXEKF"
+        }
+      ],
+      "noLongerReported": [],
+      "project": "alamofire",
+      "queries": [
+        {
+          "after": {
+            "extra": [],
+            "matchedNonlocalConsumers": 4,
+            "medianMs": 48.986396002874244,
+            "missed": [],
+            "orderMediansMs": {
+              "after-before": 52.28604150033789,
+              "before-after": 44.05927100015106
+            },
+            "samplesMs": [
+              [
+                44.28058300254634,
+                42.99016699951608,
+                43.6162920013885,
+                44.68645899760304,
+                43.86904200509889,
+                44.58029200031888,
+                44.24362499412382,
+                44.28495799947996,
+                45.72929099958856,
+                47.488000003795605
+              ],
+              [
+                46.471375004330184,
+                44.38145799940685,
+                46.482917001412716,
+                44.846167002106085,
+                43.442207999760285,
+                43.0958329961868,
+                43.01520799344871,
+                44.09812499943655,
+                43.89795799943386,
+                43.87904199393233
+              ],
+              [
+                43.510999996215105,
+                43.337916999007575,
+                44.96679199655773,
+                45.220874999358784,
+                43.89508299937006,
+                43.61258400604129,
+                43.50074999820208,
+                44.020417000865564,
+                44.382166997820605,
+                43.93741699459497
+              ],
+              [
+                51.17591599992011,
+                53.27899999974761,
+                53.027458998258226,
+                52.315834000182804,
+                54.50558399752481,
+                53.945375002513174,
+                52.030416001798585,
+                51.70070799795212,
+                50.48479200195288,
+                51.69091699644923
+              ],
+              [
+                51.727625002968125,
+                53.88141699950211,
+                52.08733299514279,
+                52.081290996284224,
+                51.485625001078006,
+                52.26108300121268,
+                52.37266699987231,
+                52.06650000036461,
+                51.34179200103972,
+                52.072416998271365
+              ],
+              [
+                53.10533400188433,
+                52.49208299937891,
+                51.04341699916404,
+                52.31099999946309,
+                53.972583002178,
+                56.16379200364463,
+                58.883333003905136,
+                58.95804199826671,
+                53.832958998100366,
+                51.8900829993072
+              ]
+            ]
+          },
+          "before": {
+            "extra": [],
+            "matchedNonlocalConsumers": 4,
+            "medianMs": 117.02272900220123,
+            "missed": [],
+            "orderMediansMs": {
+              "after-before": 118.39887450332753,
+              "before-after": 115.29825000252458
+            },
+            "samplesMs": [
+              [
+                114.65445800422458,
+                113.63933399843518,
+                115.3584999992745,
+                111.33870799676515,
+                112.04158400505548,
+                111.74816700076917,
+                116.9410419970518,
+                113.67229199822759,
+                115.86320800415706,
+                112.57162500260165
+              ],
+              [
+                126.19933400128502,
+                117.18212499545189,
+                117.0605000006617,
+                118.64274999970803,
+                110.57520900067175,
+                115.23800000577467,
+                112.55995799729135,
+                112.3936669973773,
+                115.08774999674642,
+                122.93666600453435
+              ],
+              [
+                111.05979100102559,
+                117.28641700028675,
+                120.25083300250117,
+                114.51708400272764,
+                115.72099999466445,
+                116.010166995693,
+                116.53254200064112,
+                115.67350000404986,
+                120.22045799676562,
+                112.34595799760427
+              ],
+              [
+                117.42679099552333,
+                116.11891700158594,
+                126.90870799997356,
+                116.54533300315961,
+                114.62491700513056,
+                121.52945799607551,
+                116.99383300583577,
+                117.82937499810942,
+                116.99175000103423,
+                119.56600000121398
+              ],
+              [
+                119.42945799819427,
+                114.457499999844,
+                117.70324999815784,
+                119.98483299976215,
+                117.35333300021011,
+                117.64908299664967,
+                117.0516249985667,
+                122.44466599804582,
+                120.93862499750685,
+                112.27104200224858
+              ],
+              [
+                118.31104100565426,
+                116.45587500242982,
+                119.26283300272189,
+                120.65508299565408,
+                121.82966700493125,
+                120.37558299925877,
+                118.74191600509221,
+                118.78545799845597,
+                118.4867080010008,
+                118.63808400084963
+              ]
+            ]
+          },
+          "id": "af-clock",
+          "medianReductionPercent": 58.139417512684396
+        },
+        {
+          "after": {
+            "extra": [],
+            "matchedNonlocalConsumers": 3,
+            "medianMs": 50.533000001451,
+            "missed": [],
+            "orderMediansMs": {
+              "after-before": 53.132375000132015,
+              "before-after": 44.39527100112173
+            },
+            "samplesMs": [
+              [
+                47.04725000192411,
+                45.09041600249475,
+                44.82891700172331,
+                44.83308300405042,
+                43.916208000155166,
+                43.524875000002794,
+                43.626042002870236,
+                44.20195800048532,
+                49.52212500211317,
+                49.47316700418014
+              ],
+              [
+                49.4159160007257,
+                48.28408300090814,
+                46.967542002676055,
+                46.95625000022119,
+                45.041874996968545,
+                43.98945799766807,
+                44.25533299945528,
+                44.4037080014823,
+                45.08570799953304,
+                44.386834000761155
+              ],
+              [
+                43.75541699846508,
+                43.97612500179093,
+                44.32629200164229,
+                44.412291994376574,
+                44.29945800075075,
+                44.211250002263114,
+                44.495832997199614,
+                44.17174999980489,
+                44.01066699938383,
+                43.698833003873006
+              ],
+              [
+                57.05183400277747,
+                55.2536670002155,
+                55.21912499534665,
+                58.20929200126557,
+                55.46416700235568,
+                53.140666997933295,
+                52.34833400027128,
+                55.8684589996119,
+                53.64129199733725,
+                57.70829099492403
+              ],
+              [
+                54.50533299881499,
+                52.73216599744046,
+                53.6763330019312,
+                51.8081659974996,
+                53.124083002330735,
+                53.55133400007617,
+                53.4714579989668,
+                53.43670799629763,
+                53.00979199819267,
+                52.05800000112504
+              ],
+              [
+                52.2489580034744,
+                51.54387500078883,
+                52.395166996575426,
+                52.36954199790489,
+                52.23058300180128,
+                52.55095799657283,
+                51.97549999866169,
+                52.611582999816164,
+                54.57058400497772,
+                52.050416998099536
+              ]
+            ]
+          },
+          "before": {
+            "extra": [
+              [
+                "Source/Core/Request.swift",
+                29
+              ]
+            ],
+            "matchedNonlocalConsumers": 3,
+            "medianMs": 115.69012550171465,
+            "missed": [],
+            "orderMediansMs": {
+              "after-before": 115.81335400114767,
+              "before-after": 115.66087550090742
+            },
+            "samplesMs": [
+              [
+                111.44724999758182,
+                115.8333749990561,
+                119.71474999882048,
+                114.53308400086826,
+                117.78554200282088,
+                116.6810409995378,
+                121.04229200485861,
+                115.86174999683863,
+                114.92483299662126,
+                119.00287499884143
+              ],
+              [
+                113.94866600312525,
+                121.55954199988628,
+                115.5311670008814,
+                113.95837499730987,
+                115.32712500047637,
+                115.46720800106414,
+                115.79058400093345,
+                113.95995799830416,
+                113.36362499423558,
+                118.14541700005066
+              ],
+              [
+                113.50495900114765,
+                111.4627919960185,
+                114.85987500054762,
+                120.63662499713246,
+                111.80733299988788,
+                117.5885409975308,
+                124.57341700064717,
+                120.11991700273938,
+                119.06687499867985,
+                111.63008300354704
+              ],
+              [
+                116.13795899756951,
+                119.18195799808018,
+                118.04512499656994,
+                115.21220800204901,
+                120.06641599873547,
+                119.01850000140257,
+                121.08558299951255,
+                112.48374999559019,
+                117.21241699706297,
+                118.17770899506286
+              ],
+              [
+                114.23616699903505,
+                110.52358300366905,
+                113.15004200150725,
+                113.58991599990986,
+                113.58574999758275,
+                113.60362500272458,
+                116.42399999982445,
+                120.45370799751254,
+                115.36300000443589,
+                112.4118330044439
+              ],
+              [
+                115.51320800208487,
+                118.24741699820152,
+                111.98575000162236,
+                116.68558300152654,
+                118.29016599949682,
+                119.90129100013291,
+                112.36183399887523,
+                113.40200000267942,
+                116.0370409997995,
+                115.58966700249584
+              ]
+            ]
+          },
+          "id": "af-serializer",
+          "medianReductionPercent": 56.32038621939082
+        }
+      ],
+      "revision": "bda9ed57d72988a3a2ada33d824583541f86eac6"
+    },
+    {
+      "after": {
+        "edges": 8956,
+        "limitations": [
+          "unindexed-sources: 28 of 98 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers",
+          "configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+        ],
+        "nodes": 2016,
+        "unused": [
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 106,
+              "path": "Sources/General/ImageSource/LivePhotoSource.swift"
+            },
+            "message": "property 'Kingfisher.downloadURL' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher17LivePhotoResourceV11downloadURL10Foundation0F0VSgvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 17,
+              "line": 101,
+              "path": "Sources/Image/GIFAnimatedImage.swift"
+            },
+            "message": "init 'Kingfisher.init(from:for:options:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher16GIFAnimatedImageC4from3for7optionsACSgSo16CGImageSourceRefa_SDySSypGAA0C15CreatingOptionsVtcfc"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 17,
+              "line": 615,
+              "path": "Sources/Image/ImageDrawing.swift"
+            },
+            "message": "method 'Kingfisher.create(ref:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:So10CGImageRefa10KingfisherE6create3refABSgAB_tFZ"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 470,
+              "path": "Sources/Image/ImageProcessor.swift"
+            },
+            "message": "property 'Kingfisher.identifier' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher6BorderV10identifierSSvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 15,
+              "line": 195,
+              "path": "Sources/SwiftUI/ImageContext.swift"
+            },
+            "message": "typealias 'Kingfisher.ImageBinder' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher15KFAnimatedImageV0C6Bindera"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 73,
+              "path": "Sources/Utility/CallbackQueue.swift"
+            },
+            "message": "property 'Kingfisher.queue' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher13CallbackQueueO5queueSo012OS_dispatch_D0Cvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 39,
+              "path": "Sources/Utility/DisplayLink.swift"
+            },
+            "message": "property 'Kingfisher.timestamp' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher21DisplayLinkCompatibleP9timestampSdvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 21,
+              "line": 703,
+              "path": "Sources/Views/AnimatedImageView.swift"
+            },
+            "message": "init 'Kingfisher.init(imageSource:contentMode:size:imageSize:imageScale:framePreloadCount:repeatCount:preloadQueue:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher17AnimatedImageViewC8AnimatorC11imageSource11contentMode4size0F4Size0F5Scale17framePreloadCount06repeatO012preloadQueueAESo07CGImageG3Refa_So14NSImageScalingVSo6CGSizeVAS14CoreFoundation7CGFloatVSiAC06RepeatO0OSo17OS_dispatch_queueCtcfc"
+          }
+        ]
+      },
+      "before": {
+        "edges": 9303,
+        "limitations": [
+          "unindexed-sources: 28 of 98 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers",
+          "configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+        ],
+        "nodes": 2016,
+        "unused": [
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 106,
+              "path": "Sources/General/ImageSource/LivePhotoSource.swift"
+            },
+            "message": "property 'Kingfisher.downloadURL' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher17LivePhotoResourceV11downloadURL10Foundation0F0VSgvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 17,
+              "line": 101,
+              "path": "Sources/Image/GIFAnimatedImage.swift"
+            },
+            "message": "init 'Kingfisher.init(from:for:options:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher16GIFAnimatedImageC4from3for7optionsACSgSo16CGImageSourceRefa_SDySSypGAA0C15CreatingOptionsVtcfc"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 17,
+              "line": 615,
+              "path": "Sources/Image/ImageDrawing.swift"
+            },
+            "message": "method 'Kingfisher.create(ref:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:So10CGImageRefa10KingfisherE6create3refABSgAB_tFZ"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 470,
+              "path": "Sources/Image/ImageProcessor.swift"
+            },
+            "message": "property 'Kingfisher.identifier' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher6BorderV10identifierSSvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 15,
+              "line": 195,
+              "path": "Sources/SwiftUI/ImageContext.swift"
+            },
+            "message": "typealias 'Kingfisher.ImageBinder' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher15KFAnimatedImageV0C6Bindera"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 11,
+              "line": 77,
+              "path": "Sources/SwiftUI/KFAnimatedImage.swift"
+            },
+            "message": "typealias 'Kingfisher.KFCrossPlatformViewRepresentable' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher32KFCrossPlatformViewRepresentablea"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 73,
+              "path": "Sources/Utility/CallbackQueue.swift"
+            },
+            "message": "property 'Kingfisher.queue' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher13CallbackQueueO5queueSo012OS_dispatch_D0Cvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 21,
+              "line": 703,
+              "path": "Sources/Views/AnimatedImageView.swift"
+            },
+            "message": "init 'Kingfisher.init(imageSource:contentMode:size:imageSize:imageScale:framePreloadCount:repeatCount:preloadQueue:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:10Kingfisher17AnimatedImageViewC8AnimatorC11imageSource11contentMode4size0F4Size0F5Scale17framePreloadCount06repeatO012preloadQueueAESo07CGImageG3Refa_So14NSImageScalingVSo6CGSizeVAS14CoreFoundation7CGFloatVSiAC06RepeatO0OSo17OS_dispatch_queueCtcfc"
+          }
+        ]
+      },
+      "beforeAfterQueryEquality": [
+        {
+          "afterSHA256": "586ad989ec16d4737253da493fe1260e1ae15cccd2ac0efc1cf7930bc756cf06",
+          "beforeSHA256": "586ad989ec16d4737253da493fe1260e1ae15cccd2ac0efc1cf7930bc756cf06",
+          "equal": true,
+          "id": "kf-cancel"
+        },
+        {
+          "afterSHA256": "73cc04de738a01e2491c7a8d09ddf92719227828d437e1d4f4cc0dd88eaa8399",
+          "beforeSHA256": "d4ea8c7d0a7bc7366277b64a4f59cc3a2bd2788b6187498d3566bba83e48664c",
+          "equal": false,
+          "id": "kf-cache"
+        }
+      ],
+      "newlyReported": [
+        {
+          "details": [],
+          "location": {
+            "column": 9,
+            "line": 39,
+            "path": "Sources/Utility/DisplayLink.swift"
+          },
+          "message": "property 'Kingfisher.timestamp' is never used",
+          "ruleIdentifier": "unused-symbol",
+          "severity": "warning",
+          "subject": "s:10Kingfisher21DisplayLinkCompatibleP9timestampSdvp"
+        }
+      ],
+      "noLongerReported": [
+        {
+          "details": [],
+          "location": {
+            "column": 11,
+            "line": 77,
+            "path": "Sources/SwiftUI/KFAnimatedImage.swift"
+          },
+          "message": "typealias 'Kingfisher.KFCrossPlatformViewRepresentable' is never used",
+          "ruleIdentifier": "unused-symbol",
+          "severity": "warning",
+          "subject": "s:10Kingfisher32KFCrossPlatformViewRepresentablea"
+        }
+      ],
+      "project": "kingfisher",
+      "queries": [
+        {
+          "after": {
+            "extra": [],
+            "matchedNonlocalConsumers": 3,
+            "medianMs": 43.0266665025556,
+            "missed": [],
+            "orderMediansMs": {
+              "after-before": 42.81139549857471,
+              "before-after": 43.08293750000303
+            },
+            "samplesMs": [
+              [
+                44.628791001741774,
+                45.44691699993564,
+                45.972415995493066,
+                43.354875000659376,
+                42.976458003977314,
+                43.38045799522661,
+                43.29170799610438,
+                43.076875001133885,
+                42.15887499594828,
+                42.28329100442352
+              ],
+              [
+                41.93866599962348,
+                42.4576250006794,
+                42.85574999812525,
+                43.76762499305187,
+                42.227666002872866,
+                42.7352089973283,
+                42.496207999647595,
+                44.67395800020313,
+                46.679250001034234,
+                45.79620799631812
+              ],
+              [
+                43.28387499845121,
+                43.08899999887217,
+                42.62054200080456,
+                42.0735420048004,
+                43.30933399614878,
+                43.26149999542395,
+                42.73099999409169,
+                42.72875000606291,
+                42.3996250028722,
+                43.3517089986708
+              ],
+              [
+                47.22849999961909,
+                45.05804200016428,
+                43.39283300214447,
+                44.663250002486166,
+                43.467458002851345,
+                42.626875001587905,
+                42.37487499631243,
+                42.765332997078076,
+                42.735584000183735,
+                42.70316700421972
+              ],
+              [
+                42.3827499980689,
+                42.050875003042165,
+                42.22416700213216,
+                42.00445800233865,
+                42.19370799546596,
+                42.10070800036192,
+                42.604083006153814,
+                45.57375000149477,
+                44.60450000624405,
+                43.08829100045841
+              ],
+              [
+                43.93629200058058,
+                43.76875000161817,
+                43.78279200318502,
+                44.6115840022685,
+                43.367416998080444,
+                42.09591599646956,
+                42.257499997504056,
+                41.87445800198475,
+                42.85745800007135,
+                43.15816700545838
+              ]
+            ]
+          },
+          "before": {
+            "extra": [],
+            "matchedNonlocalConsumers": 3,
+            "medianMs": 114.16516650206177,
+            "missed": [],
+            "orderMediansMs": {
+              "after-before": 113.81868749958812,
+              "before-after": 114.32993749986053
+            },
+            "samplesMs": [
+              [
+                111.93558300146833,
+                108.88887500186684,
+                114.01179100357695,
+                114.39941699791234,
+                120.98970799706876,
+                117.72700000437908,
+                114.0698750023148,
+                116.67662500258302,
+                107.50012500648154,
+                110.82041699410183
+              ],
+              [
+                118.9497500017751,
+                117.21158300497336,
+                115.23704200226348,
+                113.65904199919896,
+                116.15762500150595,
+                112.80379100207938,
+                117.78066700208001,
+                113.29908300103853,
+                114.57283300114796,
+                114.45304200606188
+              ],
+              [
+                110.35720800282434,
+                114.26045800180873,
+                110.65866700664628,
+                110.93750000145519,
+                118.78591700224206,
+                113.8472910024575,
+                113.9878750036587,
+                118.04279100033455,
+                118.28545800381107,
+                117.53758399572689
+              ],
+              [
+                113.63912499655271,
+                117.6465829994413,
+                111.1588749990915,
+                119.4521249999525,
+                110.38750000443542,
+                109.54499999934342,
+                109.7473749978235,
+                115.68512499798089,
+                115.25995800184319,
+                114.7917919952306
+              ],
+              [
+                112.5645420033834,
+                114.40133299765876,
+                113.99825000262354,
+                111.69733299902873,
+                113.09574999904726,
+                117.43945899797836,
+                116.48808300378732,
+                115.4913749996922,
+                120.46299999929033,
+                110.6811249992461
+              ],
+              [
+                111.27670799760381,
+                109.08283299795585,
+                108.49029200471705,
+                110.42683300183853,
+                108.96958300145343,
+                117.22000000008848,
+                114.84887499682372,
+                118.19174999982351,
+                112.06083399883937,
+                116.48579099710332
+              ]
+            ]
+          },
+          "id": "kf-cancel",
+          "medianReductionPercent": 62.31191367659543
+        },
+        {
+          "after": {
+            "extra": [],
+            "matchedNonlocalConsumers": 2,
+            "medianMs": 46.77329149853904,
+            "missed": [],
+            "orderMediansMs": {
+              "after-before": 46.54174999814131,
+              "before-after": 47.39100000006147
+            },
+            "samplesMs": [
+              [
+                46.26237499905983,
+                45.945624995511025,
+                46.12154200003715,
+                45.472666002751794,
+                45.84216699731769,
+                45.727041993814055,
+                45.97712500253692,
+                47.75929099560017,
+                47.37883299821988,
+                47.140624999883585
+              ],
+              [
+                45.8234999969136,
+                45.41566700208932,
+                46.95550000178628,
+                47.81533300410956,
+                47.40316700190306,
+                48.6419999942882,
+                48.21220799931325,
+                47.24170800182037,
+                45.983959003933705,
+                45.943916993564926
+              ],
+              [
+                48.72608300502179,
+                49.69554100534879,
+                49.12645799777238,
+                48.09199999726843,
+                49.08679200161714,
+                49.446791999798734,
+                49.37579199759057,
+                49.77695800334914,
+                50.61125000065658,
+                50.40970900154207
+              ],
+              [
+                49.33283400168875,
+                48.76216599950567,
+                47.62858399772085,
+                46.75024999596644,
+                46.99274999438785,
+                47.32712500117486,
+                47.01945800479734,
+                47.108625003602356,
+                45.76420899684308,
+                46.20791599882068
+              ],
+              [
+                45.66391700063832,
+                46.077541999693494,
+                45.96825000044191,
+                45.12666699883994,
+                45.755999999528285,
+                45.708791993092746,
+                44.98612500174204,
+                46.38629200053401,
+                46.796333001111634,
+                46.544583994545974
+              ],
+              [
+                45.91745899961097,
+                46.554374996048864,
+                49.164208001457155,
+                47.05991700029699,
+                46.554667002055794,
+                45.59624999819789,
+                47.34420799650252,
+                46.53891600173665,
+                46.44125000049826,
+                46.48550000274554
+              ]
+            ]
+          },
+          "before": {
+            "extra": [
+              [
+                "Sources/General/KingfisherManager.swift",
+                138
+              ]
+            ],
+            "matchedNonlocalConsumers": 2,
+            "medianMs": 118.76029149425449,
+            "missed": [],
+            "orderMediansMs": {
+              "after-before": 118.47577099615592,
+              "before-after": 118.88552049640566
+            },
+            "samplesMs": [
+              [
+                122.70408400218002,
+                119.81354100134922,
+                114.02383400127292,
+                122.86649999441579,
+                118.43454200425185,
+                119.58366700127954,
+                116.0663749978994,
+                117.6277080012369,
+                122.65641699923435,
+                121.88245900324546
+              ],
+              [
+                118.14345899620093,
+                109.76408300484763,
+                116.09450000105426,
+                118.05112500587711,
+                111.15987499943003,
+                117.68937499437016,
+                122.01500000082888,
+                118.30258300324203,
+                125.09966699872166,
+                123.86758399952669
+              ],
+              [
+                119.82695800543297,
+                115.33712499658577,
+                118.75874999532243,
+                124.55900000350084,
+                119.01229099748889,
+                116.49104199750582,
+                119.54679199698148,
+                123.9139579993207,
+                119.33195900201099,
+                114.84816699521616
+              ],
+              [
+                116.31487499835202,
+                116.79683299735188,
+                118.18970899912529,
+                119.96854199969675,
+                118.76183299318654,
+                123.47870899975533,
+                113.93599999428261,
+                116.13466599374078,
+                120.14504099352052,
+                116.85812499490567
+              ],
+              [
+                119.43037499440834,
+                122.08504199952586,
+                117.11241699958919,
+                120.5504999961704,
+                120.99599999783095,
+                118.01333299808903,
+                121.79974999889964,
+                117.45179099671077,
+                121.5106659947196,
+                120.80016599793453
+              ],
+              [
+                121.447999998054,
+                120.39250000088941,
+                115.86629199882736,
+                114.45520800043596,
+                123.3641250000801,
+                114.5622080002795,
+                115.30099999799859,
+                110.88912499690196,
+                111.80654100462561,
+                118.83937499806052
+              ]
+            ]
+          },
+          "id": "kf-cache",
+          "medianReductionPercent": 60.615378330557654
+        }
+      ],
+      "revision": "ab1c1de54a1ce1adfe1733c7195056a153029d3a"
+    },
+    {
+      "after": {
+        "edges": 6478,
+        "limitations": [
+          "configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+        ],
+        "nodes": 1374,
+        "unused": [
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 299,
+              "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift"
+            },
+            "message": "property 'ArgumentParser._visibility' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser0A11SetProviderP11_visibilityAA0A10VisibilityVvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 303,
+              "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift"
+            },
+            "message": "property 'ArgumentParser._visibility' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser0A11SetProviderPAAE11_visibilityAA0A10VisibilityVvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 24,
+              "line": 209,
+              "path": "Sources/ArgumentParser/Parsable Types/ParsableCommand.swift"
+            },
+            "message": "method 'ArgumentParser.checkAsyncHierarchy(_:root:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser15ParsableCommandPAAE19checkAsyncHierarchy_4rootyAaB_pXp_SStFZ"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 40,
+              "path": "Sources/ArgumentParser/Parsing/ArgumentDecoder.swift"
+            },
+            "message": "property 'ArgumentParser.nextCommandIndex' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser0A7DecoderC16nextCommandIndexSivp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 75,
+              "path": "Sources/ArgumentParser/Parsing/ArgumentDecoder.swift"
+            },
+            "message": "case 'ArgumentParser.singleValueDecoderHasNoContainer' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser0A7DecoderC5ErrorO011singleValueC14HasNoContaineryA2EmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 76,
+              "path": "Sources/ArgumentParser/Parsing/ArgumentDecoder.swift"
+            },
+            "message": "case 'ArgumentParser.wrongKeyType(_:_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser0A7DecoderC5ErrorO12wrongKeyTypeyAEs06CodingF0_pXp_sAG_pXptcAEmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 182,
+              "path": "Sources/ArgumentParser/Parsing/ArgumentDefinition.swift"
+            },
+            "message": "property 'ArgumentParser.optional' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser0A10DefinitionV8optionalACvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 207,
+              "path": "Sources/ArgumentParser/Parsing/ArgumentDefinition.swift"
+            },
+            "message": "property 'ArgumentParser.isNullary' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser0A10DefinitionV9isNullarySbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 39,
+              "path": "Sources/ArgumentParser/Parsing/InputOrigin.swift"
+            },
+            "message": "property 'ArgumentParser.baseIndex' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser11InputOriginV7ElementO9baseIndexSiSgvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 48,
+              "path": "Sources/ArgumentParser/Parsing/InputOrigin.swift"
+            },
+            "message": "property 'ArgumentParser.subIndex' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser11InputOriginV7ElementO8subIndexSiSgvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 19,
+              "line": 48,
+              "path": "Sources/ArgumentParser/Parsing/Parsed.swift"
+            },
+            "message": "protocol 'ArgumentParser.DecodableParsedWrapper' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser22DecodableParsedWrapperP"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 47,
+              "path": "Sources/ArgumentParser/Parsing/ParserError.swift"
+            },
+            "message": "case 'ArgumentParser.subcommandNameMismatch' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18InternalParseErrorO22subcommandNameMismatchyA2CmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 48,
+              "path": "Sources/ArgumentParser/Parsing/ParserError.swift"
+            },
+            "message": "case 'ArgumentParser.subcommandLevelMismatch(_:_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18InternalParseErrorO23subcommandLevelMismatchyACSi_SitcACmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 49,
+              "path": "Sources/ArgumentParser/Parsing/ParserError.swift"
+            },
+            "message": "case 'ArgumentParser.subcommandLevelMissing(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18InternalParseErrorO22subcommandLevelMissingyACSicACmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 50,
+              "path": "Sources/ArgumentParser/Parsing/ParserError.swift"
+            },
+            "message": "case 'ArgumentParser.subcommandLevelDuplicated(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18InternalParseErrorO25subcommandLevelDuplicatedyACSicACmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 51,
+              "path": "Sources/ArgumentParser/Parsing/ParserError.swift"
+            },
+            "message": "case 'ArgumentParser.expectedCommandButNoneFound' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18InternalParseErrorO27expectedCommandButNoneFoundyA2CmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 287,
+              "path": "Sources/ArgumentParser/Parsing/SplitArguments.swift"
+            },
+            "message": "method 'ArgumentParser.position(of:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser14SplitArgumentsV8position2ofSiSgAA11InputOriginV7ElementO_tF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 478,
+              "path": "Sources/ArgumentParser/Parsing/SplitArguments.swift"
+            },
+            "message": "method 'ArgumentParser.peekNextValue()' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser14SplitArgumentsV13peekNextValueAC5IndexV_SStSgyF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 15,
+              "line": 716,
+              "path": "Sources/ArgumentParser/Parsing/SplitArguments.swift"
+            },
+            "message": "init 'ArgumentParser.init(longArgRemainder:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser06ParsedA0O16longArgRemainderACSs_tKc33_7C6431681CDF95621876FDAC0153B1F1Llfc"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 27,
+              "line": 756,
+              "path": "Sources/ArgumentParser/Parsing/SplitArguments.swift"
+            },
+            "message": "method 'ArgumentParser.shortOptions(shortArgRemainder:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser06ParsedA0O12shortOptions33_7C6431681CDF95621876FDAC0153B1F1LL0D12ArgRemainderSayACGSs_tKFZ"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 43,
+              "path": "Sources/ArgumentParser/Usage/HelpCommand.swift"
+            },
+            "message": "method 'ArgumentParser.generateHelp(screenWidth:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser11HelpCommandV08generateC011screenWidthSSSi_tF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 133,
+              "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift"
+            },
+            "message": "property 'ArgumentParser.isSubcommands' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser13HelpGeneratorV7SectionV13isSubcommandsSbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 146,
+              "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift"
+            },
+            "message": "struct 'ArgumentParser.DiscussionSection' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser13HelpGeneratorV17DiscussionSectionV"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 524,
+              "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift"
+            },
+            "message": "method 'ArgumentParser.dumpHelpArgumentDefinition()' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:SK14ArgumentParserAA15ParsableCommand_pXp7ElementRtzrlE08dumpHelpA10DefinitionAA0aH0VyF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 3,
+              "line": 18,
+              "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift"
+            },
+            "message": "init 'ArgumentParser.init(definition:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser14UsageGeneratorV10definitionAcA0A3SetV_tcfc"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 3,
+              "line": 25,
+              "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift"
+            },
+            "message": "init 'ArgumentParser.init(toolName:parsable:visibility:parent:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser14UsageGeneratorV8toolName8parsable10visibility6parentACSS_AA17ParsableArguments_pAA0A10VisibilityVAA8InputKeyVSgtcfc"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 44,
+              "path": "Sources/ArgumentParser/Utilities/Mutex.swift"
+            },
+            "message": "property 'ArgumentParser._platformLock' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser5MutexV5_Lock33_5B24D75E79AA95455EA05279C945A2B2LLV09_platformD0SpySo16os_unfair_lock_sVGvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 130,
+              "path": "Sources/ArgumentParser/Utilities/Mutex.swift"
+            },
+            "message": "method 'ArgumentParser.withLockExtendingLifetimeOfState(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser5MutexV32withLockExtendingLifetimeOfStateyqd__qd__xzYbKXEKlF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 12,
+              "line": 98,
+              "path": "Sources/ArgumentParser/Utilities/Platform.swift"
+            },
+            "message": "subscript 'ArgumentParser.subscript(_:as:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser8PlatformO11EnvironmentO_2asxSgAE3KeyV_xmtcSYRzSS8RawValueRtzluipZ"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 25,
+              "path": "Sources/ArgumentParser/Utilities/SequenceExtensions.swift"
+            },
+            "message": "method 'ArgumentParser.uniquingAdjacentElements()' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:ST14ArgumentParserSH7ElementRpzrlE24uniquingAdjacentElementsSayACGyF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 17,
+              "path": "Sources/ArgumentParser/Utilities/Tree.swift"
+            },
+            "message": "property 'ArgumentParser.isRoot' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser4TreeC6isRootSbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 19,
+              "path": "Sources/ArgumentParser/Utilities/Tree.swift"
+            },
+            "message": "property 'ArgumentParser.hasChildren' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser4TreeC11hasChildrenSbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 33,
+              "path": "Sources/ArgumentParser/Validators/AsyncCompletionsValidator.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser25AsyncCompletionsValidatorV5ErrorV4kindAA0eF4KindOvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 75,
+              "path": "Sources/ArgumentParser/Validators/CodingKeyValidator.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18CodingKeyValidatorV16MissingKeysErrorV4kindAA0eH4KindOvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 94,
+              "path": "Sources/ArgumentParser/Validators/CodingKeyValidator.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18CodingKeyValidatorV19InvalidDecoderErrorV4kindAA0eH4KindOvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 32,
+              "path": "Sources/ArgumentParser/Validators/NonsenseFlagsValidator.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser22NonsenseFlagsValidatorV5ErrorV4kindAA0eF4KindOvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 6,
+              "line": 44,
+              "path": "Sources/ArgumentParser/Validators/ParsableArgumentsValidation.swift"
+            },
+            "message": "enum 'ArgumentParser.ValidatorErrorKind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18ValidatorErrorKindO"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 50,
+              "path": "Sources/ArgumentParser/Validators/ParsableArgumentsValidation.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser31ParsableArgumentsValidatorErrorP4kindAA0eF4KindOvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 32,
+              "path": "Sources/ArgumentParser/Validators/PositionalArgumentsValidator.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser28PositionalArgumentsValidatorV5ErrorV4kindAA0eF4KindOvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 27,
+              "path": "Sources/ArgumentParser/Validators/UniqueNamesValidator.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser20UniqueNamesValidatorV5ErrorV4kindAA0eF4KindOvp"
+          }
+        ]
+      },
+      "before": {
+        "edges": 6505,
+        "limitations": [
+          "configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+        ],
+        "nodes": 1374,
+        "unused": [
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 40,
+              "path": "Sources/ArgumentParser/Parsing/ArgumentDecoder.swift"
+            },
+            "message": "property 'ArgumentParser.nextCommandIndex' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser0A7DecoderC16nextCommandIndexSivp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 75,
+              "path": "Sources/ArgumentParser/Parsing/ArgumentDecoder.swift"
+            },
+            "message": "case 'ArgumentParser.singleValueDecoderHasNoContainer' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser0A7DecoderC5ErrorO011singleValueC14HasNoContaineryA2EmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 76,
+              "path": "Sources/ArgumentParser/Parsing/ArgumentDecoder.swift"
+            },
+            "message": "case 'ArgumentParser.wrongKeyType(_:_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser0A7DecoderC5ErrorO12wrongKeyTypeyAEs06CodingF0_pXp_sAG_pXptcAEmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 182,
+              "path": "Sources/ArgumentParser/Parsing/ArgumentDefinition.swift"
+            },
+            "message": "property 'ArgumentParser.optional' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser0A10DefinitionV8optionalACvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 207,
+              "path": "Sources/ArgumentParser/Parsing/ArgumentDefinition.swift"
+            },
+            "message": "property 'ArgumentParser.isNullary' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser0A10DefinitionV9isNullarySbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 39,
+              "path": "Sources/ArgumentParser/Parsing/InputOrigin.swift"
+            },
+            "message": "property 'ArgumentParser.baseIndex' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser11InputOriginV7ElementO9baseIndexSiSgvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 48,
+              "path": "Sources/ArgumentParser/Parsing/InputOrigin.swift"
+            },
+            "message": "property 'ArgumentParser.subIndex' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser11InputOriginV7ElementO8subIndexSiSgvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 19,
+              "line": 48,
+              "path": "Sources/ArgumentParser/Parsing/Parsed.swift"
+            },
+            "message": "protocol 'ArgumentParser.DecodableParsedWrapper' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser22DecodableParsedWrapperP"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 47,
+              "path": "Sources/ArgumentParser/Parsing/ParserError.swift"
+            },
+            "message": "case 'ArgumentParser.subcommandNameMismatch' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18InternalParseErrorO22subcommandNameMismatchyA2CmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 48,
+              "path": "Sources/ArgumentParser/Parsing/ParserError.swift"
+            },
+            "message": "case 'ArgumentParser.subcommandLevelMismatch(_:_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18InternalParseErrorO23subcommandLevelMismatchyACSi_SitcACmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 49,
+              "path": "Sources/ArgumentParser/Parsing/ParserError.swift"
+            },
+            "message": "case 'ArgumentParser.subcommandLevelMissing(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18InternalParseErrorO22subcommandLevelMissingyACSicACmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 50,
+              "path": "Sources/ArgumentParser/Parsing/ParserError.swift"
+            },
+            "message": "case 'ArgumentParser.subcommandLevelDuplicated(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18InternalParseErrorO25subcommandLevelDuplicatedyACSicACmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 51,
+              "path": "Sources/ArgumentParser/Parsing/ParserError.swift"
+            },
+            "message": "case 'ArgumentParser.expectedCommandButNoneFound' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18InternalParseErrorO27expectedCommandButNoneFoundyA2CmF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 287,
+              "path": "Sources/ArgumentParser/Parsing/SplitArguments.swift"
+            },
+            "message": "method 'ArgumentParser.position(of:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser14SplitArgumentsV8position2ofSiSgAA11InputOriginV7ElementO_tF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 478,
+              "path": "Sources/ArgumentParser/Parsing/SplitArguments.swift"
+            },
+            "message": "method 'ArgumentParser.peekNextValue()' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser14SplitArgumentsV13peekNextValueAC5IndexV_SStSgyF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 15,
+              "line": 716,
+              "path": "Sources/ArgumentParser/Parsing/SplitArguments.swift"
+            },
+            "message": "init 'ArgumentParser.init(longArgRemainder:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser06ParsedA0O16longArgRemainderACSs_tKc33_7C6431681CDF95621876FDAC0153B1F1Llfc"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 27,
+              "line": 756,
+              "path": "Sources/ArgumentParser/Parsing/SplitArguments.swift"
+            },
+            "message": "method 'ArgumentParser.shortOptions(shortArgRemainder:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser06ParsedA0O12shortOptions33_7C6431681CDF95621876FDAC0153B1F1LL0D12ArgRemainderSayACGSs_tKFZ"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 43,
+              "path": "Sources/ArgumentParser/Usage/HelpCommand.swift"
+            },
+            "message": "method 'ArgumentParser.generateHelp(screenWidth:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser11HelpCommandV08generateC011screenWidthSSSi_tF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 133,
+              "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift"
+            },
+            "message": "property 'ArgumentParser.isSubcommands' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser13HelpGeneratorV7SectionV13isSubcommandsSbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 10,
+              "line": 146,
+              "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift"
+            },
+            "message": "struct 'ArgumentParser.DiscussionSection' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser13HelpGeneratorV17DiscussionSectionV"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 3,
+              "line": 18,
+              "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift"
+            },
+            "message": "init 'ArgumentParser.init(definition:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser14UsageGeneratorV10definitionAcA0A3SetV_tcfc"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 3,
+              "line": 25,
+              "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift"
+            },
+            "message": "init 'ArgumentParser.init(toolName:parsable:visibility:parent:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser14UsageGeneratorV8toolName8parsable10visibility6parentACSS_AA17ParsableArguments_pAA0A10VisibilityVAA8InputKeyVSgtcfc"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 44,
+              "path": "Sources/ArgumentParser/Utilities/Mutex.swift"
+            },
+            "message": "property 'ArgumentParser._platformLock' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser5MutexV5_Lock33_5B24D75E79AA95455EA05279C945A2B2LLV09_platformD0SpySo16os_unfair_lock_sVGvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 8,
+              "line": 130,
+              "path": "Sources/ArgumentParser/Utilities/Mutex.swift"
+            },
+            "message": "method 'ArgumentParser.withLockExtendingLifetimeOfState(_:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser5MutexV32withLockExtendingLifetimeOfStateyqd__qd__xzYbKXEKlF"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 12,
+              "line": 98,
+              "path": "Sources/ArgumentParser/Utilities/Platform.swift"
+            },
+            "message": "subscript 'ArgumentParser.subscript(_:as:)' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser8PlatformO11EnvironmentO_2asxSgAE3KeyV_xmtcSYRzSS8RawValueRtzluipZ"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 17,
+              "path": "Sources/ArgumentParser/Utilities/Tree.swift"
+            },
+            "message": "property 'ArgumentParser.isRoot' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser4TreeC6isRootSbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 19,
+              "path": "Sources/ArgumentParser/Utilities/Tree.swift"
+            },
+            "message": "property 'ArgumentParser.hasChildren' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser4TreeC11hasChildrenSbvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 33,
+              "path": "Sources/ArgumentParser/Validators/AsyncCompletionsValidator.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser25AsyncCompletionsValidatorV5ErrorV4kindAA0eF4KindOvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 75,
+              "path": "Sources/ArgumentParser/Validators/CodingKeyValidator.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18CodingKeyValidatorV16MissingKeysErrorV4kindAA0eH4KindOvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 94,
+              "path": "Sources/ArgumentParser/Validators/CodingKeyValidator.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18CodingKeyValidatorV19InvalidDecoderErrorV4kindAA0eH4KindOvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 32,
+              "path": "Sources/ArgumentParser/Validators/NonsenseFlagsValidator.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser22NonsenseFlagsValidatorV5ErrorV4kindAA0eF4KindOvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 6,
+              "line": 44,
+              "path": "Sources/ArgumentParser/Validators/ParsableArgumentsValidation.swift"
+            },
+            "message": "enum 'ArgumentParser.ValidatorErrorKind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser18ValidatorErrorKindO"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 7,
+              "line": 50,
+              "path": "Sources/ArgumentParser/Validators/ParsableArgumentsValidation.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser31ParsableArgumentsValidatorErrorP4kindAA0eF4KindOvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 32,
+              "path": "Sources/ArgumentParser/Validators/PositionalArgumentsValidator.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser28PositionalArgumentsValidatorV5ErrorV4kindAA0eF4KindOvp"
+          },
+          {
+            "details": [],
+            "location": {
+              "column": 9,
+              "line": 27,
+              "path": "Sources/ArgumentParser/Validators/UniqueNamesValidator.swift"
+            },
+            "message": "property 'ArgumentParser.kind' is never used",
+            "ruleIdentifier": "unused-symbol",
+            "severity": "warning",
+            "subject": "s:14ArgumentParser20UniqueNamesValidatorV5ErrorV4kindAA0eF4KindOvp"
+          }
+        ]
+      },
+      "beforeAfterQueryEquality": [
+        {
+          "afterSHA256": "4d6f09b8d7367166095b7a74dbe1cdd0bd6e06554a7aed5b637ec82cb44226f6",
+          "beforeSHA256": "d52e95272f18e7e8675be128c9d9822731f223569b10d9ef022c9943c16cce9f",
+          "equal": false,
+          "id": "ap-banner"
+        },
+        {
+          "afterSHA256": "8fd099103f0dc7ed04c73d4a9a2580f582244c16c5e38bb09791fefdec5a6597",
+          "beforeSHA256": "8fd099103f0dc7ed04c73d4a9a2580f582244c16c5e38bb09791fefdec5a6597",
+          "equal": true,
+          "id": "ap-bash"
+        }
+      ],
+      "newlyReported": [
+        {
+          "details": [],
+          "location": {
+            "column": 7,
+            "line": 299,
+            "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift"
+          },
+          "message": "property 'ArgumentParser._visibility' is never used",
+          "ruleIdentifier": "unused-symbol",
+          "severity": "warning",
+          "subject": "s:14ArgumentParser0A11SetProviderP11_visibilityAA0A10VisibilityVvp"
+        },
+        {
+          "details": [],
+          "location": {
+            "column": 7,
+            "line": 303,
+            "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift"
+          },
+          "message": "property 'ArgumentParser._visibility' is never used",
+          "ruleIdentifier": "unused-symbol",
+          "severity": "warning",
+          "subject": "s:14ArgumentParser0A11SetProviderPAAE11_visibilityAA0A10VisibilityVvp"
+        },
+        {
+          "details": [],
+          "location": {
+            "column": 24,
+            "line": 209,
+            "path": "Sources/ArgumentParser/Parsable Types/ParsableCommand.swift"
+          },
+          "message": "method 'ArgumentParser.checkAsyncHierarchy(_:root:)' is never used",
+          "ruleIdentifier": "unused-symbol",
+          "severity": "warning",
+          "subject": "s:14ArgumentParser15ParsableCommandPAAE19checkAsyncHierarchy_4rootyAaB_pXp_SStFZ"
+        },
+        {
+          "details": [],
+          "location": {
+            "column": 8,
+            "line": 524,
+            "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift"
+          },
+          "message": "method 'ArgumentParser.dumpHelpArgumentDefinition()' is never used",
+          "ruleIdentifier": "unused-symbol",
+          "severity": "warning",
+          "subject": "s:SK14ArgumentParserAA15ParsableCommand_pXp7ElementRtzrlE08dumpHelpA10DefinitionAA0aH0VyF"
+        },
+        {
+          "details": [],
+          "location": {
+            "column": 8,
+            "line": 25,
+            "path": "Sources/ArgumentParser/Utilities/SequenceExtensions.swift"
+          },
+          "message": "method 'ArgumentParser.uniquingAdjacentElements()' is never used",
+          "ruleIdentifier": "unused-symbol",
+          "severity": "warning",
+          "subject": "s:ST14ArgumentParserSH7ElementRpzrlE24uniquingAdjacentElementsSayACGyF"
+        }
+      ],
+      "noLongerReported": [],
+      "project": "argument-parser",
+      "queries": [
+        {
+          "after": {
+            "extra": [],
+            "matchedNonlocalConsumers": 1,
+            "medianMs": 42.02629149949644,
+            "missed": [],
+            "orderMediansMs": {
+              "after-before": 42.21710400452139,
+              "before-after": 41.834666502836626
+            },
+            "samplesMs": [
+              [
+                43.11295800289372,
+                41.73591699509416,
+                41.84433300542878,
+                41.48200000054203,
+                42.08841599756852,
+                41.34858399629593,
+                40.6666659982875,
+                40.58316700684372,
+                41.07029100123327,
+                45.036083000013605
+              ],
+              [
+                44.04774999420624,
+                41.21504100476159,
+                40.638333004608285,
+                40.81370800122386,
+                41.11262499645818,
+                42.72270799992839,
+                44.34150000452064,
+                42.3270000028424,
+                41.04170799837448,
+                41.22037500201259
+              ],
+              [
+                42.11891600425588,
+                41.948457997932564,
+                42.28116699960083,
+                41.929708000679966,
+                41.75299999769777,
+                41.753583995159715,
+                41.91979100141907,
+                42.15250000561355,
+                41.82500000024447,
+                42.14637500263052
+              ],
+              [
+                42.218500006129034,
+                42.16633400210412,
+                42.84475000167731,
+                41.67654100456275,
+                42.755832997499965,
+                45.22295900096651,
+                42.67454100045143,
+                42.420749996381346,
+                41.82458400464384,
+                41.54408400063403
+              ],
+              [
+                42.18441699777031,
+                42.62266699515749,
+                42.36200000013923,
+                42.54383299848996,
+                41.91012500086799,
+                42.66820899647428,
+                44.080583000322804,
+                42.21570800291374,
+                41.96416700142436,
+                41.34591699403245
+              ],
+              [
+                42.262957998900674,
+                41.77887499827193,
+                41.41962499852525,
+                41.51100000308361,
+                41.81908399914391,
+                41.956458997447044,
+                42.13079100009054,
+                42.55495799588971,
+                44.18087500380352,
+                44.18858300050488
+              ]
+            ]
+          },
+          "before": {
+            "extra": [],
+            "matchedNonlocalConsumers": 1,
+            "medianMs": 114.29974999919068,
+            "missed": [],
+            "orderMediansMs": {
+              "after-before": 114.6564375012531,
+              "before-after": 114.04731249785982
+            },
+            "samplesMs": [
+              [
+                114.04324999602977,
+                119.15591700380901,
+                117.55395799991675,
+                119.22704199969303,
+                111.33450000488665,
+                111.78516699874308,
+                114.28258399973856,
+                122.48633299896028,
+                115.56600000039907,
+                110.74941699916963
+              ],
+              [
+                114.43362499994691,
+                118.77162499877159,
+                112.11720800201874,
+                112.58129199995892,
+                116.6389159989194,
+                120.94729200180154,
+                115.34595800185343,
+                112.49887499434408,
+                112.12979200354312,
+                111.79970800003503
+              ],
+              [
+                111.3199999963399,
+                114.48433400073554,
+                110.36812500242377,
+                112.63354200491449,
+                110.27779100550106,
+                112.74758299987298,
+                114.05137499968987,
+                109.84758400445571,
+                116.5931659998023,
+                115.09241699968698
+              ],
+              [
+                111.13358299917309,
+                111.96349999954691,
+                111.97487500612624,
+                118.52254199766321,
+                116.30312500346918,
+                118.0241659967578,
+                115.63804199977312,
+                113.1483749995823,
+                110.85750000347616,
+                116.6242909966968
+              ],
+              [
+                116.84216700086836,
+                112.16474999673665,
+                114.0553329969407,
+                115.5143340001814,
+                113.53383299865527,
+                116.02508400392253,
+                115.97691700444557,
+                117.64599999878556,
+                115.25600000459235,
+                114.52720800298266
+              ],
+              [
+                113.73304099834058,
+                107.59158300061245,
+                107.73279199929675,
+                111.54916600207798,
+                114.3169159986428,
+                117.14879200008,
+                110.88041699986206,
+                118.6582090012962,
+                116.33787499886239,
+                114.78566699952353
+              ]
+            ]
+          },
+          "id": "ap-banner",
+          "medianReductionPercent": 63.23151056778864
+        },
+        {
+          "after": {
+            "extra": [],
+            "matchedNonlocalConsumers": 1,
+            "medianMs": 42.65822900197236,
+            "missed": [],
+            "orderMediansMs": {
+              "after-before": 42.831895501876716,
+              "before-after": 42.440896497282665
+            },
+            "samplesMs": [
+              [
+                43.42941699724179,
+                43.761875000200234,
+                43.55774999567075,
+                42.30733399890596,
+                41.627708000305574,
+                41.65337500307942,
+                41.24687500006985,
+                42.11820799537236,
+                41.503125001327135,
+                41.44375000032596
+              ],
+              [
+                41.88087499642279,
+                41.59395799797494,
+                42.38795899436809,
+                42.49383400019724,
+                41.88137500023004,
+                41.56199999852106,
+                41.29524999734713,
+                41.082458999881055,
+                43.00520900142146,
+                43.40529100591084
+              ],
+              [
+                43.62191700056428,
+                43.570542002271395,
+                44.50083299889229,
+                47.01583299902268,
+                45.512917000451125,
+                44.94616599549772,
+                42.63608399924124,
+                45.264665997819975,
+                43.437708998681046,
+                42.14070899615763
+              ],
+              [
+                43.693749998055864,
+                44.96087499865098,
+                46.14587499963818,
+                45.20800000318559,
+                42.982250000932254,
+                43.66712499904679,
+                43.47241700452287,
+                43.39304200402694,
+                43.03145800076891,
+                42.64870800398057
+              ],
+              [
+                42.30325000389712,
+                41.9828329977463,
+                41.866916995786596,
+                41.89475000021048,
+                42.171291999693494,
+                43.06712499965215,
+                44.55029100063257,
+                43.413082996266894,
+                42.24116700061131,
+                41.54070899676299
+              ],
+              [
+                42.31745799916098,
+                44.940708998183254,
+                43.33279099955689,
+                42.223541997373104,
+                41.790000002947636,
+                42.52587500377558,
+                42.621708002116065,
+                43.260250000457745,
+                42.667749999964144,
+                42.68154100282118
+              ]
+            ]
+          },
+          "before": {
+            "extra": [],
+            "matchedNonlocalConsumers": 1,
+            "medianMs": 114.27954149985453,
+            "missed": [],
+            "orderMediansMs": {
+              "after-before": 113.28064600456855,
+              "before-after": 114.78204200102482
+            },
+            "samplesMs": [
+              [
+                120.5580839960021,
+                118.25845800194656,
+                112.64266700163716,
+                116.88216699985787,
+                112.0840000003227,
+                114.41329200170003,
+                113.60212500585476,
+                114.70725000253879,
+                117.09237499599112,
+                114.29812500136904
+              ],
+              [
+                116.30458400031785,
+                115.4350830038311,
+                115.74895800004015,
+                120.02583300636616,
+                108.46654199849581,
+                110.83491599856643,
+                112.37225000513718,
+                114.85683399951085,
+                117.50854199635796,
+                119.3877080004313
+              ],
+              [
+                119.56595799711067,
+                115.58820800564718,
+                117.25375000241911,
+                111.73183399660047,
+                111.19500000495464,
+                113.36283299897332,
+                113.3215840018238,
+                116.39620899950387,
+                112.76966600416927,
+                111.43866700149374
+              ],
+              [
+                109.33500000101048,
+                112.02083399984986,
+                113.97187499824213,
+                114.26095799834002,
+                112.4632909995853,
+                114.31720800464973,
+                115.91950000001816,
+                110.70029200345743,
+                112.59995900036301,
+                118.74762499792268
+              ],
+              [
+                110.32750000595115,
+                109.96262499975273,
+                135.78820799739333,
+                178.50487499526935,
+                170.067792001646,
+                119.90387499827193,
+                113.61595900234533,
+                121.99691599380458,
+                156.49320800002897,
+                118.3144579990767
+              ],
+              [
+                121.16879200038966,
+                109.14374999993015,
+                109.24691700347466,
+                110.26237499754643,
+                118.06983400310855,
+                112.94533300679177,
+                110.35824999999022,
+                110.91458299779333,
+                109.23237499810057,
+                112.1348750020843
+              ]
+            ]
+          },
+          "id": "ap-bash",
+          "medianReductionPercent": 62.67203346976444
+        }
+      ],
+      "revision": "93c68882a28d9c82cd87be0acb7d76e35494b9b5"
+    }
+  ],
+  "schemaVersion": 1,
+  "swift": "Apple Swift version 6.4 (swiftlang-6.4.0.27.1 clang-2100.3.27.1)\nTarget: arm64-apple-macosx26.0"
+}

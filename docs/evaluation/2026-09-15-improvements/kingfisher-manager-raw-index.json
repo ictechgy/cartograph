@@ -1,0 +1,721 @@
+{
+  "indexStore": "<EVALUATION_WORKSPACE>/repos/kingfisher/.build/out",
+  "matchingUnits": 1,
+  "records": [
+    {
+      "matchingRecordSymbols": [
+        {
+          "aggregateRelatedRoles": "",
+          "aggregateRelatedRolesRaw": 0,
+          "aggregateRoles": "reference, call, implicit, calledBy, containedBy",
+          "aggregateRolesRaw": 74020,
+          "kind": "instanceMethod",
+          "kindRaw": 16,
+          "name": "getter:isTaskCancelled",
+          "properties": "",
+          "propertiesRaw": 0,
+          "subkind": "accessorGetter",
+          "subkindRaw": 3,
+          "usr": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvg"
+        },
+        {
+          "aggregateRelatedRoles": "",
+          "aggregateRelatedRolesRaw": 0,
+          "aggregateRoles": "reference, read, containedBy",
+          "aggregateRolesRaw": 65548,
+          "kind": "instanceProperty",
+          "kindRaw": 19,
+          "name": "isTaskCancelled",
+          "properties": "",
+          "propertiesRaw": 0,
+          "subkind": "none",
+          "subkindRaw": 0,
+          "usr": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+        },
+        {
+          "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+          "aggregateRelatedRolesRaw": 74240,
+          "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+          "aggregateRolesRaw": 78438,
+          "kind": "instanceMethod",
+          "kindRaw": 16,
+          "name": "deliverOriginalCacheHit(originalCache:targetCache:key:source:context:options:fallbackToDownload:completionHandler:)",
+          "properties": "",
+          "propertiesRaw": 0,
+          "subkind": "none",
+          "subkindRaw": 0,
+          "usr": "s:10Kingfisher0A7ManagerC23deliverOriginalCacheHit33_34361C00AC0F1B424C7ED272C635AF94LL08originalE006targetE03key6source7context7options18fallbackToDownload17completionHandleryAA05ImageE0C_AOSSAA6SourceOAA17RetrievingContextCyAQGAA0A17ParsedOptionsInfoVyyYbcys6ResultOyAA08RetrieveZ6ResultVAA0A5ErrorOGYbcSgtF"
+        }
+      ],
+      "occurrences": [
+        {
+          "column": 44,
+          "line": 363,
+          "relations": [
+            {
+              "roles": "childOf",
+              "rolesRaw": 512,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+              }
+            }
+          ],
+          "roles": "definition, childOf",
+          "rolesRaw": 514,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "definition, childOf",
+            "aggregateRolesRaw": 514,
+            "kind": "parameter",
+            "kindRaw": 25,
+            "name": "source",
+            "properties": "local",
+            "propertiesRaw": 128,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF011failCurrentR0L__12retryContextAEyAO_AA12RetryContextCSgA1_tYbF6sourceL_AOvp"
+          }
+        },
+        {
+          "column": 52,
+          "line": 363,
+          "relations": [
+            {
+              "roles": "containedBy",
+              "rolesRaw": 65536,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+              }
+            }
+          ],
+          "roles": "reference, containedBy",
+          "rolesRaw": 65540,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "reference, containedBy",
+            "aggregateRolesRaw": 65540,
+            "kind": "enum",
+            "kindRaw": 5,
+            "name": "Source",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher6SourceO"
+          }
+        },
+        {
+          "column": 60,
+          "line": 363,
+          "relations": [
+            {
+              "roles": "childOf",
+              "rolesRaw": 512,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+              }
+            }
+          ],
+          "roles": "definition, childOf",
+          "rolesRaw": 514,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "definition, reference, read, childOf, containedBy",
+            "aggregateRolesRaw": 66062,
+            "kind": "parameter",
+            "kindRaw": 25,
+            "name": "retryContext",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF011failCurrentR0L__12retryContextAEyAO_AA12RetryContextCSgA1_tYbFA5_L_A8_vp"
+          }
+        },
+        {
+          "column": 74,
+          "line": 363,
+          "relations": [
+            {
+              "roles": "containedBy",
+              "rolesRaw": 65536,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+              }
+            }
+          ],
+          "roles": "reference, containedBy",
+          "rolesRaw": 65540,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "receivedBy",
+            "aggregateRelatedRolesRaw": 4096,
+            "aggregateRoles": "reference, containedBy",
+            "aggregateRolesRaw": 65540,
+            "kind": "class",
+            "kindRaw": 7,
+            "name": "RetryContext",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher12RetryContextC"
+          }
+        },
+        {
+          "column": 94,
+          "line": 363,
+          "relations": [
+            {
+              "roles": "childOf",
+              "rolesRaw": 512,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+              }
+            }
+          ],
+          "roles": "definition, childOf",
+          "rolesRaw": 514,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "definition, childOf",
+            "aggregateRolesRaw": 514,
+            "kind": "parameter",
+            "kindRaw": 25,
+            "name": "error",
+            "properties": "local",
+            "propertiesRaw": 128,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF011failCurrentR0L__12retryContextAEyAO_AA12RetryContextCSgA1_tYbF5errorL_A1_vp"
+          }
+        },
+        {
+          "column": 101,
+          "line": 363,
+          "relations": [
+            {
+              "roles": "containedBy",
+              "rolesRaw": 65536,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+              }
+            }
+          ],
+          "roles": "reference, containedBy",
+          "rolesRaw": 65540,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "reference, containedBy",
+            "aggregateRolesRaw": 65540,
+            "kind": "enum",
+            "kindRaw": 5,
+            "name": "KingfisherError",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher0A5ErrorO"
+          }
+        },
+        {
+          "column": 19,
+          "line": 365,
+          "relations": [
+            {
+              "roles": "calledBy, containedBy",
+              "rolesRaw": 73728,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+              }
+            }
+          ],
+          "roles": "reference, call, calledBy, containedBy",
+          "rolesRaw": 73764,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "reference, call, calledBy, containedBy",
+            "aggregateRolesRaw": 73764,
+            "kind": "staticMethod",
+            "kindRaw": 18,
+            "name": "!(_:)",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "swiftPrefixOperator",
+            "subkindRaw": 1008,
+            "usr": "s:Sb1nopyS2bFZ"
+          }
+        },
+        {
+          "column": 26,
+          "line": 365,
+          "relations": [
+            {
+              "roles": "calledBy, containedBy",
+              "rolesRaw": 73728,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+              }
+            }
+          ],
+          "roles": "reference, call, implicit, calledBy, containedBy",
+          "rolesRaw": 74020,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "reference, call, implicit, calledBy, containedBy",
+            "aggregateRolesRaw": 74020,
+            "kind": "instanceMethod",
+            "kindRaw": 16,
+            "name": "getter:isTaskCancelled",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "accessorGetter",
+            "subkindRaw": 3,
+            "usr": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvg"
+          }
+        },
+        {
+          "column": 26,
+          "line": 365,
+          "relations": [
+            {
+              "roles": "containedBy",
+              "rolesRaw": 65536,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+              }
+            }
+          ],
+          "roles": "reference, read, containedBy",
+          "rolesRaw": 65548,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "reference, read, containedBy",
+            "aggregateRolesRaw": 65548,
+            "kind": "instanceProperty",
+            "kindRaw": 19,
+            "name": "isTaskCancelled",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+          }
+        },
+        {
+          "column": 47,
+          "line": 421,
+          "relations": [
+            {
+              "roles": "containedBy",
+              "rolesRaw": 65536,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+              }
+            }
+          ],
+          "roles": "reference, read, containedBy",
+          "rolesRaw": 65548,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "definition, reference, read, childOf, containedBy",
+            "aggregateRolesRaw": 66062,
+            "kind": "parameter",
+            "kindRaw": 25,
+            "name": "currentSource",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF7handlerL_07currentR012retryContext6resultyAO_AA12RetryContextCSgA2_tYbFA5_L_AOvp"
+          }
+        },
+        {
+          "column": 39,
+          "line": 425,
+          "relations": [
+            {
+              "roles": "containedBy",
+              "rolesRaw": 65536,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+              }
+            }
+          ],
+          "roles": "reference, read, containedBy",
+          "rolesRaw": 65548,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "definition, reference, read, childOf, containedBy",
+            "aggregateRolesRaw": 66062,
+            "kind": "parameter",
+            "kindRaw": 25,
+            "name": "currentSource",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF7handlerL_07currentR012retryContext6resultyAO_AA12RetryContextCSgA2_tYbFA5_L_AOvp"
+          }
+        },
+        {
+          "column": 68,
+          "line": 425,
+          "relations": [
+            {
+              "roles": "containedBy",
+              "rolesRaw": 65536,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImage(with:options:downloadTaskUpdated:progressiveImageSetter:referenceTaskIdentifierChecker:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF"
+              }
+            }
+          ],
+          "roles": "reference, read, containedBy",
+          "rolesRaw": 65548,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "",
+            "aggregateRelatedRolesRaw": 0,
+            "aggregateRoles": "definition, reference, read, childOf, containedBy",
+            "aggregateRolesRaw": 66062,
+            "kind": "parameter",
+            "kindRaw": 25,
+            "name": "retryContext",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF7handlerL_07currentR012retryContext6resultyAO_AA12RetryContextCSgA2_tYbFA6_L_A10_vp"
+          }
+        },
+        {
+          "column": 13,
+          "line": 804,
+          "relations": [
+            {
+              "roles": "calledBy, containedBy",
+              "rolesRaw": 73728,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImageFromCache(source:context:downloadTaskUpdated:completionHandler:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC22retrieveImageFromCache6source7context19downloadTaskUpdated17completionHandlerSbAA6SourceO_AA17RetrievingContextCyAJGyAA08DownloadJ0CSgYbcSgys6ResultOyAA08RetrievedR0VAA0A5ErrorOGYbcSgtF"
+              }
+            },
+            {
+              "roles": "receivedBy",
+              "rolesRaw": 4096,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, receivedBy",
+                "aggregateRelatedRolesRaw": 5632,
+                "aggregateRoles": "definition, reference, extendedBy, containedBy",
+                "aggregateRolesRaw": 81926,
+                "kind": "class",
+                "kindRaw": 7,
+                "name": "KingfisherManager",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC"
+              }
+            }
+          ],
+          "roles": "reference, call, dynamic, receivedBy, calledBy, containedBy",
+          "rolesRaw": 77924,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+            "aggregateRelatedRolesRaw": 74240,
+            "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+            "aggregateRolesRaw": 78438,
+            "kind": "instanceMethod",
+            "kindRaw": 16,
+            "name": "deliverOriginalCacheHit(originalCache:targetCache:key:source:context:options:fallbackToDownload:completionHandler:)",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher0A7ManagerC23deliverOriginalCacheHit33_34361C00AC0F1B424C7ED272C635AF94LL08originalE006targetE03key6source7context7options18fallbackToDownload17completionHandleryAA05ImageE0C_AOSSAA6SourceOAA17RetrievingContextCyAQGAA0A17ParsedOptionsInfoVyyYbcys6ResultOyAA08RetrieveZ6ResultVAA0A5ErrorOGYbcSgtF"
+          }
+        },
+        {
+          "column": 26,
+          "line": 884,
+          "relations": [
+            {
+              "roles": "calledBy, containedBy",
+              "rolesRaw": 73728,
+              "target": {
+                "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+                "aggregateRelatedRolesRaw": 74240,
+                "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+                "aggregateRolesRaw": 78438,
+                "kind": "instanceMethod",
+                "kindRaw": 16,
+                "name": "retrieveImageFromCacheAsync(source:context:fallbackDownloadTaskCreated:completionHandler:onCacheMiss:)",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC27retrieveImageFromCacheAsync33_34361C00AC0F1B424C7ED272C635AF94LL6source7context27fallbackDownloadTaskCreated17completionHandler02onF4MissyAA6SourceO_AA17RetrievingContextCyALGyAA0sT0CYbcys6ResultOyAA08RetrieveD6ResultVAA0A5ErrorOGYbcSgyyYbctF"
+              }
+            },
+            {
+              "roles": "receivedBy",
+              "rolesRaw": 4096,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, receivedBy",
+                "aggregateRelatedRolesRaw": 5632,
+                "aggregateRoles": "definition, reference, extendedBy, containedBy",
+                "aggregateRolesRaw": 81926,
+                "kind": "class",
+                "kindRaw": 7,
+                "name": "KingfisherManager",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC"
+              }
+            }
+          ],
+          "roles": "reference, call, dynamic, receivedBy, calledBy, containedBy",
+          "rolesRaw": 77924,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+            "aggregateRelatedRolesRaw": 74240,
+            "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+            "aggregateRolesRaw": 78438,
+            "kind": "instanceMethod",
+            "kindRaw": 16,
+            "name": "deliverOriginalCacheHit(originalCache:targetCache:key:source:context:options:fallbackToDownload:completionHandler:)",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher0A7ManagerC23deliverOriginalCacheHit33_34361C00AC0F1B424C7ED272C635AF94LL08originalE006targetE03key6source7context7options18fallbackToDownload17completionHandleryAA05ImageE0C_AOSSAA6SourceOAA17RetrievingContextCyAQGAA0A17ParsedOptionsInfoVyyYbcys6ResultOyAA08RetrieveZ6ResultVAA0A5ErrorOGYbcSgtF"
+          }
+        },
+        {
+          "column": 18,
+          "line": 974,
+          "relations": [
+            {
+              "roles": "childOf",
+              "rolesRaw": 512,
+              "target": {
+                "aggregateRelatedRoles": "childOf, baseOf, receivedBy",
+                "aggregateRelatedRolesRaw": 5632,
+                "aggregateRoles": "definition, reference, extendedBy, containedBy",
+                "aggregateRolesRaw": 81926,
+                "kind": "class",
+                "kindRaw": 7,
+                "name": "KingfisherManager",
+                "properties": "",
+                "propertiesRaw": 0,
+                "subkind": "none",
+                "subkindRaw": 0,
+                "usr": "s:10Kingfisher0A7ManagerC"
+              }
+            }
+          ],
+          "roles": "definition, dynamic, childOf",
+          "rolesRaw": 578,
+          "sourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+          "symbol": {
+            "aggregateRelatedRoles": "childOf, calledBy, containedBy",
+            "aggregateRelatedRolesRaw": 74240,
+            "aggregateRoles": "definition, reference, call, dynamic, childOf, receivedBy, calledBy, containedBy",
+            "aggregateRolesRaw": 78438,
+            "kind": "instanceMethod",
+            "kindRaw": 16,
+            "name": "deliverOriginalCacheHit(originalCache:targetCache:key:source:context:options:fallbackToDownload:completionHandler:)",
+            "properties": "",
+            "propertiesRaw": 0,
+            "subkind": "none",
+            "subkindRaw": 0,
+            "usr": "s:10Kingfisher0A7ManagerC23deliverOriginalCacheHit33_34361C00AC0F1B424C7ED272C635AF94LL08originalE006targetE03key6source7context7options18fallbackToDownload17completionHandleryAA05ImageE0C_AOSSAA6SourceOAA17RetrievingContextCyAQGAA0A17ParsedOptionsInfoVyyYbcys6ResultOyAA08RetrieveZ6ResultVAA0A5ErrorOGYbcSgtF"
+          }
+        }
+      ],
+      "recordName": "KingfisherManager.swift-269WEB7IETTFT",
+      "recordSourcePath": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+      "unitMainFile": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift",
+      "unitModule": "Kingfisher",
+      "unitName": "KingfisherManager.o-1E9IH9WSD71K",
+      "unitTarget": "arm64-apple-macos12.0"
+    }
+  ],
+  "requestedLines": [
+    363,
+    365,
+    421,
+    425,
+    804,
+    884,
+    974
+  ],
+  "requestedSourceSuffix": "Sources/General/KingfisherManager.swift"
+}

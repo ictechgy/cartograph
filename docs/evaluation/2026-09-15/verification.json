@@ -1,0 +1,212 @@
+{
+  "benchmarkScoring": {
+    "cliMcpEqual": true,
+    "exit": 0,
+    "projects": 3,
+    "samplesPerTool": 3,
+    "stableResults": true,
+    "tasks": 6
+  },
+  "coverage": {
+    "exit": 0,
+    "gatePercent": 90,
+    "integratedCovered": 26190,
+    "integratedPercent": 92.91,
+    "lines": 28188,
+    "productionFiles": 151,
+    "testRunCounts": [
+      247,
+      277,
+      74,
+      51,
+      126,
+      26,
+      125,
+      281
+    ],
+    "totalTests": 1207,
+    "unitCovered": 24439,
+    "unitPercent": 86.7
+  },
+  "harnessFailureControls": [
+    {
+      "case": "nonzero-exit",
+      "metadata": {
+        "command": [
+          "/opt/homebrew/opt/python@3.14/bin/python3.14",
+          "-c",
+          "raise SystemExit(37)"
+        ],
+        "exit": 37,
+        "seconds": 0.01552066599833779,
+        "stdoutBytes": 0,
+        "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "rejected": true
+    },
+    {
+      "case": "timeout",
+      "metadata": {
+        "command": [
+          "/opt/homebrew/opt/python@3.14/bin/python3.14",
+          "-c",
+          "import time; time.sleep(1)"
+        ],
+        "exit": null,
+        "seconds": 0.053503332997934194,
+        "stdoutBytes": 0,
+        "stdoutSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "timeout": 0.05
+      },
+      "rejected": true
+    },
+    {
+      "case": "version-mismatch",
+      "reason": "Tool version differs from the frozen manifest: cartographVersion",
+      "rejected": true
+    },
+    {
+      "case": "binary-mismatch",
+      "reason": "Executable differs from the frozen manifest: cartograph",
+      "rejected": true
+    },
+    {
+      "case": "mcp-rpc-error",
+      "reason": "__evaluation_invalid_method__ returned JSON-RPC error -32601",
+      "rejected": true
+    },
+    {
+      "case": "lsp-rpc-error",
+      "reason": "__evaluation_invalid_method__ returned JSON-RPC error -32601",
+      "rejected": true
+    },
+    {
+      "case": "oracle-hash-mismatch",
+      "reason": "Task file differs from the frozen oracle",
+      "rejected": true
+    }
+  ],
+  "harnessSHA256": {
+    "Scripts/benchmark-external-projects.py": "c1e4c7856c3c9fa70acef05308938f2afb79a733d57879fd99f799156c344228",
+    "Scripts/score-external-comparison.py": "7eb1d345b98a9a9e9129da8e8ba04a58c79a8fd7a9af79b73db3d0e5bc4fef5e",
+    "Scripts/verify-external-oracles.py": "9b0012e04fd933b15573e25e738f569174f4012bc4a0b42c1daf6fba6b16de84"
+  },
+  "independentReview": {
+    "arithmeticReproduced": true,
+    "materialBlockersRemaining": 0,
+    "scope": "Read-only report, evidence, scorer and collector review; no claim of agent execution-trace auditing."
+  },
+  "prepareReproduction": {
+    "exit": 0,
+    "freshPinnedCheckoutsBuilt": true,
+    "projects": 3
+  },
+  "pythonCompilation": {
+    "exit": 0,
+    "files": [
+      "Scripts/benchmark-external-projects.py",
+      "Scripts/score-external-comparison.py",
+      "Scripts/verify-external-oracles.py"
+    ]
+  },
+  "requiredChecks": [
+    {
+      "check": "build",
+      "command": [
+        "swift",
+        "build"
+      ],
+      "exit": 0,
+      "seconds": 23.971455541999603
+    },
+    {
+      "check": "cli-contract",
+      "command": [
+        "Scripts/verify-cli-contract.sh",
+        "CARTOGRAPH_ROOT/.build/out/Products/Debug/cartograph"
+      ],
+      "exit": 0,
+      "seconds": 6.6865292499969655
+    },
+    {
+      "check": "fixtures",
+      "command": [
+        "Scripts/verify-fixtures.sh",
+        "CARTOGRAPH_ROOT/.build/out/Products/Debug/cartograph"
+      ],
+      "exit": 0,
+      "seconds": 9.784033707997878
+    },
+    {
+      "check": "dead",
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "dead",
+        "--strict"
+      ],
+      "exit": 0,
+      "seconds": 11.404549874998338
+    },
+    {
+      "check": "cycles-module",
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "cycles",
+        "--strict"
+      ],
+      "exit": 0,
+      "seconds": 4.174487625001348
+    },
+    {
+      "check": "cycles-type",
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "cycles",
+        "--level",
+        "type",
+        "--strict"
+      ],
+      "exit": 0,
+      "seconds": 3.837543999998161
+    },
+    {
+      "check": "rules",
+      "command": [
+        "swift",
+        "run",
+        "cartograph",
+        "rules",
+        "--strict"
+      ],
+      "exit": 0,
+      "seconds": 3.6277875840023626
+    }
+  ],
+  "scorerNegativeControls": [
+    {
+      "case": "unready-lsp",
+      "exit": 1,
+      "reason": "AssertionError: ('af-clock', 'LSP target was not resolved')",
+      "scoreFileCreated": false
+    },
+    {
+      "case": "changed-oracle",
+      "exit": 1,
+      "reason": "AssertionError",
+      "scoreFileCreated": false
+    }
+  ],
+  "symbolQuerySupplement": {
+    "exit": 0,
+    "sameConsumersAsImpact": true,
+    "samplesPerTask": 3,
+    "stableAndCliMcpEqual": true,
+    "tasks": 6
+  }
+}

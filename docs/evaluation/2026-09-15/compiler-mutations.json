@@ -1,0 +1,360 @@
+[
+  {
+    "command": [
+      "swift",
+      "build",
+      "--scratch-path",
+      "alamofire/.build-oracle-af-clock",
+      "--target",
+      "Alamofire",
+      "-j",
+      "4"
+    ],
+    "compilerErrorLines": [
+      [
+        "Source/Core/DataRequest.swift",
+        249
+      ]
+    ],
+    "exit": 1,
+    "expectedReferenceLines": [
+      [
+        "Source/Core/DataRequest.swift",
+        249
+      ],
+      [
+        "Source/Core/DataRequest.swift",
+        259
+      ],
+      [
+        "Source/Core/DownloadRequest.swift",
+        378
+      ],
+      [
+        "Source/Core/DownloadRequest.swift",
+        387
+      ],
+      [
+        "Source/Features/AuthenticationInterceptor.swift",
+        391
+      ],
+      [
+        "Source/Features/AuthenticationInterceptor.swift",
+        412
+      ]
+    ],
+    "id": "af-clock",
+    "seconds": 5.47896241700073,
+    "sourceRestored": true,
+    "sourceSHA256": "b67630ff1a247b8419df16104910950543a4fadb6570f74441c66d7cbc86dc6e",
+    "witnessesNotDiagnosed": [
+      [
+        "Source/Core/DataRequest.swift",
+        259
+      ],
+      [
+        "Source/Core/DownloadRequest.swift",
+        378
+      ],
+      [
+        "Source/Core/DownloadRequest.swift",
+        387
+      ],
+      [
+        "Source/Features/AuthenticationInterceptor.swift",
+        391
+      ],
+      [
+        "Source/Features/AuthenticationInterceptor.swift",
+        412
+      ]
+    ],
+    "witnessesObserved": [
+      [
+        "Source/Core/DataRequest.swift",
+        249
+      ]
+    ]
+  },
+  {
+    "command": [
+      "swift",
+      "build",
+      "--scratch-path",
+      "alamofire/.build-oracle-af-serializer",
+      "--target",
+      "Alamofire",
+      "-j",
+      "4"
+    ],
+    "compilerErrorLines": [
+      [
+        "Source/Core/Request.swift",
+        579
+      ],
+      [
+        "Source/Core/Request.swift",
+        599
+      ],
+      [
+        "Source/Core/Request.swift",
+        661
+      ]
+    ],
+    "exit": 1,
+    "expectedReferenceLines": [
+      [
+        "Source/Core/Request.swift",
+        579
+      ],
+      [
+        "Source/Core/Request.swift",
+        599
+      ],
+      [
+        "Source/Core/Request.swift",
+        661
+      ]
+    ],
+    "id": "af-serializer",
+    "seconds": 4.508294709001348,
+    "sourceRestored": true,
+    "sourceSHA256": "e1ae0964b20a01cf0df7a75eb6ac5215deb1de62080f785ad757b3fd6ec9e1f2",
+    "witnessesNotDiagnosed": [],
+    "witnessesObserved": [
+      [
+        "Source/Core/Request.swift",
+        579
+      ],
+      [
+        "Source/Core/Request.swift",
+        599
+      ],
+      [
+        "Source/Core/Request.swift",
+        661
+      ]
+    ]
+  },
+  {
+    "command": [
+      "swift",
+      "build",
+      "--scratch-path",
+      "kingfisher/.build-oracle-kf-cancel",
+      "--target",
+      "Kingfisher",
+      "-j",
+      "4"
+    ],
+    "compilerErrorLines": [
+      [
+        "Sources/Networking/RetryStrategy.swift",
+        166
+      ],
+      [
+        "Sources/Networking/RetryStrategy.swift",
+        229
+      ]
+    ],
+    "exit": 1,
+    "expectedReferenceLines": [
+      [
+        "Sources/General/KingfisherManager.swift",
+        365
+      ],
+      [
+        "Sources/Networking/RetryStrategy.swift",
+        166
+      ],
+      [
+        "Sources/Networking/RetryStrategy.swift",
+        229
+      ]
+    ],
+    "id": "kf-cancel",
+    "seconds": 7.536767665998923,
+    "sourceRestored": true,
+    "sourceSHA256": "2802262a008c2aa23d74042797f6b66e3a7130961fc185d6435033a37620c624",
+    "witnessesNotDiagnosed": [
+      [
+        "Sources/General/KingfisherManager.swift",
+        365
+      ]
+    ],
+    "witnessesObserved": [
+      [
+        "Sources/Networking/RetryStrategy.swift",
+        166
+      ],
+      [
+        "Sources/Networking/RetryStrategy.swift",
+        229
+      ]
+    ]
+  },
+  {
+    "command": [
+      "swift",
+      "build",
+      "--scratch-path",
+      "kingfisher/.build-oracle-kf-cache",
+      "--target",
+      "Kingfisher",
+      "-j",
+      "4"
+    ],
+    "compilerErrorLines": [
+      [
+        "Sources/General/KingfisherManager.swift",
+        804
+      ],
+      [
+        "Sources/General/KingfisherManager.swift",
+        884
+      ]
+    ],
+    "exit": 1,
+    "expectedReferenceLines": [
+      [
+        "Sources/General/KingfisherManager.swift",
+        804
+      ],
+      [
+        "Sources/General/KingfisherManager.swift",
+        884
+      ]
+    ],
+    "id": "kf-cache",
+    "seconds": 8.834873749998224,
+    "sourceRestored": true,
+    "sourceSHA256": "306c75375ee458efa2c9a55c17ceed4995fe0e4c895dfc43ca35092d7b9d9349",
+    "witnessesNotDiagnosed": [],
+    "witnessesObserved": [
+      [
+        "Sources/General/KingfisherManager.swift",
+        804
+      ],
+      [
+        "Sources/General/KingfisherManager.swift",
+        884
+      ]
+    ]
+  },
+  {
+    "command": [
+      "swift",
+      "build",
+      "--scratch-path",
+      "kingfisher/.build-oracle-kf-alias-diagnostic",
+      "--target",
+      "Kingfisher",
+      "-j",
+      "4"
+    ],
+    "compilerErrorLines": [
+      [
+        "Sources/SwiftUI/KFAnimatedImage.swift",
+        85
+      ],
+      [
+        "Sources/SwiftUI/KFAnimatedImage.swift",
+        95
+      ],
+      [
+        "Sources/SwiftUI/KFAnimatedImage.swift",
+        99
+      ]
+    ],
+    "exit": 1,
+    "expectedReferenceLines": [
+      [
+        "Sources/SwiftUI/KFAnimatedImage.swift",
+        85
+      ]
+    ],
+    "id": "kf-alias-diagnostic",
+    "seconds": 5.363599583997711,
+    "sourceRestored": true,
+    "sourceSHA256": "49625cea052426a2f5d61dba92489413caf711dfb10e51fca8e81c36afdd4e71",
+    "witnessesNotDiagnosed": [],
+    "witnessesObserved": [
+      [
+        "Sources/SwiftUI/KFAnimatedImage.swift",
+        85
+      ]
+    ]
+  },
+  {
+    "command": [
+      "swift",
+      "build",
+      "--scratch-path",
+      "argument-parser/.build-oracle-ap-banner",
+      "--target",
+      "ArgumentParser",
+      "-j",
+      "4"
+    ],
+    "compilerErrorLines": [
+      [
+        "Sources/ArgumentParser/Usage/HelpGenerator.swift",
+        185
+      ]
+    ],
+    "exit": 1,
+    "expectedReferenceLines": [
+      [
+        "Sources/ArgumentParser/Usage/HelpGenerator.swift",
+        185
+      ]
+    ],
+    "id": "ap-banner",
+    "seconds": 4.5499705000001995,
+    "sourceRestored": true,
+    "sourceSHA256": "aa3dfd8dd5b6fb4d50ab87be72da21546fd305e337202fe8ce41a71f0d87b44c",
+    "witnessesNotDiagnosed": [],
+    "witnessesObserved": [
+      [
+        "Sources/ArgumentParser/Usage/HelpGenerator.swift",
+        185
+      ]
+    ]
+  },
+  {
+    "command": [
+      "swift",
+      "build",
+      "--scratch-path",
+      "argument-parser/.build-oracle-ap-bash",
+      "--target",
+      "ArgumentParser",
+      "-j",
+      "4"
+    ],
+    "compilerErrorLines": [
+      [
+        "Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift",
+        16
+      ]
+    ],
+    "exit": 1,
+    "expectedReferenceLines": [
+      [
+        "Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift",
+        16
+      ]
+    ],
+    "id": "ap-bash",
+    "seconds": 4.432630999999674,
+    "sourceRestored": true,
+    "sourceSHA256": "4d73ef0cdc8878df4f87263ad09a5252995a266940ffa06ebd38abba4be05a3d",
+    "witnessesNotDiagnosed": [],
+    "witnessesObserved": [
+      [
+        "Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift",
+        16
+      ]
+    ]
+  }
+]

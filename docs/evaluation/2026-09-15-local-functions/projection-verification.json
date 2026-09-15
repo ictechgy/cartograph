@@ -1,0 +1,80 @@
+[
+  {
+    "allLocalsHaveActualEntryChain": true,
+    "contractedEdgesEqual": true,
+    "indexedNodesUnchanged": 2167,
+    "project": "alamofire",
+    "promotedLocalFunctions": 0,
+    "revision": "bda9ed57d72988a3a2ada33d824583541f86eac6",
+    "rollups": {
+      "file": {
+        "edges": 363,
+        "equal": true,
+        "nodes": 44
+      },
+      "module": {
+        "edges": 0,
+        "equal": true,
+        "nodes": 1
+      },
+      "type": {
+        "edges": 1376,
+        "equal": true,
+        "nodes": 313
+      }
+    },
+    "unchangedUnusedFindings": 21
+  },
+  {
+    "allLocalsHaveActualEntryChain": true,
+    "contractedEdgesEqual": true,
+    "indexedNodesUnchanged": 2016,
+    "project": "kingfisher",
+    "promotedLocalFunctions": 11,
+    "revision": "ab1c1de54a1ce1adfe1733c7195056a153029d3a",
+    "rollups": {
+      "file": {
+        "edges": 619,
+        "equal": true,
+        "nodes": 68
+      },
+      "module": {
+        "edges": 0,
+        "equal": true,
+        "nodes": 1
+      },
+      "type": {
+        "edges": 1411,
+        "equal": true,
+        "nodes": 350
+      }
+    },
+    "unchangedUnusedFindings": 8
+  },
+  {
+    "allLocalsHaveActualEntryChain": true,
+    "contractedEdgesEqual": true,
+    "indexedNodesUnchanged": 1374,
+    "project": "argument-parser",
+    "promotedLocalFunctions": 4,
+    "revision": "93c68882a28d9c82cd87be0acb7d76e35494b9b5",
+    "rollups": {
+      "file": {
+        "edges": 555,
+        "equal": true,
+        "nodes": 53
+      },
+      "module": {
+        "edges": 3,
+        "equal": true,
+        "nodes": 2
+      },
+      "type": {
+        "edges": 1207,
+        "equal": true,
+        "nodes": 233
+      }
+    },
+    "unchangedUnusedFindings": 40
+  }
+]

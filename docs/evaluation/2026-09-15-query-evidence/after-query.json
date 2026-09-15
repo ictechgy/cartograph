@@ -1,0 +1,377 @@
+{
+  "level": "symbol",
+  "limitations": [
+    "unindexed-sources: 28 of 98 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers",
+    "local-function-projection: 5 source local function(s) could not be bound through a fresh, unambiguous call/reference chain; their indexed references remain attributed to enclosing declarations. Inspect source for exact local ownership.",
+    "configured-path-filter: include/exclude patterns narrow the analysis beyond the defaults, so an empty 'usedBy' can mean the caller was filtered out rather than absent"
+  ],
+  "localFunctionDiagnostics": {
+    "items": [
+      {
+        "action": "Inspect the local type and its generated behavior manually.",
+        "location": {
+          "column": 32,
+          "line": 1354,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift"
+        },
+        "name": "safeResume(with:)",
+        "ownerName": "retrieveImage",
+        "ownerUSR": "s:10Kingfisher0A7ManagerC13retrieveImage4with7options011progressiveD6Setter30referenceTaskIdentifierCheckerAA08RetrieveD6ResultVAA6SourceO_AA0A17ParsedOptionsInfoVySo7NSImageCSgcSgSbyYbcSgtYaKF",
+        "reason": "localType"
+      },
+      {
+        "action": "Inspect the conditional branches and the configuration used to build the index.",
+        "location": {
+          "column": 14,
+          "line": 335,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/Image/ImageDrawing.swift"
+        },
+        "name": "createEffectBuffer(_:)",
+        "ownerName": "blurred",
+        "ownerUSR": "s:10Kingfisher0A7WrapperVAASo7NSImageCRbzlE7blurred10withRadiusAE14CoreFoundation7CGFloatV_tF",
+        "reason": "conditionalCompilation"
+      },
+      {
+        "action": "Inspect the attributed declaration and its generated behavior manually.",
+        "location": {
+          "column": 28,
+          "line": 156,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/Image/ImageProgressive.swift"
+        },
+        "name": "decode(_:)",
+        "ownerName": "update",
+        "ownerUSR": "s:10Kingfisher24ImageProgressiveProviderC6update4data4withy10Foundation4DataV_SayAA07SessionI4TaskC0K8CallbackVGtF",
+        "reason": "unknownAttributes"
+      },
+      {
+        "action": "Inspect the attributed declaration and its generated behavior manually.",
+        "location": {
+          "column": 24,
+          "line": 277,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/Image/ImageProgressive.swift"
+        },
+        "name": "processing(_:)",
+        "ownerName": "decode",
+        "ownerUSR": "s:10Kingfisher23ImageProgressiveDecoder33_72482AE8B575BA147A8975AD699D4BEFLLC6decode_4with10completiony10Foundation4DataV_SayAA07SessionP4TaskC0R8CallbackVGySo7NSImageCSgYbctF",
+        "reason": "unknownAttributes"
+      },
+      {
+        "action": "Inspect the attributed declaration and its generated behavior manually.",
+        "location": {
+          "column": 24,
+          "line": 394,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/Networking/ImageDownloader.swift"
+        },
+        "name": "checkRequestAndDone(r:)",
+        "ownerName": "createDownloadContext",
+        "ownerUSR": "s:10Kingfisher15ImageDownloaderC21createDownloadContext33_1CBBE1CEF600480D48F123F40F117AB5LL4with7options4doney10Foundation3URLV_AA0A17ParsedOptionsInfoVys6ResultOyAC011DownloadingF0VAA0A5ErrorOGYbctF",
+        "reason": "unknownAttributes"
+      }
+    ],
+    "omittedCount": 0,
+    "totalCount": 5
+  },
+  "requested": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp",
+  "result": {
+    "declaredIn": {
+      "depth": 1,
+      "edges": [
+        "member"
+      ],
+      "kind": "enum",
+      "location": {
+        "column": 13,
+        "line": 42,
+        "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+      },
+      "module": "Kingfisher",
+      "name": "KingfisherError",
+      "qualifiedName": "Kingfisher.KingfisherError",
+      "usr": "s:10Kingfisher0A5ErrorO"
+    },
+    "dependsOn": [
+      {
+        "depth": 1,
+        "edges": [
+          "reference"
+        ],
+        "kind": "case",
+        "location": {
+          "column": 14,
+          "line": 68,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+        },
+        "module": "Kingfisher",
+        "name": "taskCancelled(task:token:)",
+        "qualifiedName": "Kingfisher.taskCancelled(task:token:)",
+        "referenceEvidence": {
+          "items": [
+            {
+              "kind": "reference",
+              "location": {
+                "column": 37,
+                "line": 414,
+                "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+              },
+              "origin": "compiler",
+              "sourceUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp",
+              "targetUSR": "s:10Kingfisher0A5ErrorO07RequestB6ReasonO13taskCancelledyAeA15SessionDataTaskC_SitcAEmF",
+              "viaUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+            }
+          ],
+          "omittedCount": 0,
+          "totalCount": 1
+        },
+        "usr": "s:10Kingfisher0A5ErrorO07RequestB6ReasonO13taskCancelledyAeA15SessionDataTaskC_SitcAEmF"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "reference"
+        ],
+        "kind": "case",
+        "location": {
+          "column": 14,
+          "line": 96,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+        },
+        "module": "Kingfisher",
+        "name": "asyncTaskContextCancelled",
+        "qualifiedName": "Kingfisher.asyncTaskContextCancelled",
+        "referenceEvidence": {
+          "items": [
+            {
+              "kind": "reference",
+              "location": {
+                "column": 76,
+                "line": 414,
+                "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+              },
+              "origin": "compiler",
+              "sourceUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp",
+              "targetUSR": "s:10Kingfisher0A5ErrorO07RequestB6ReasonO25asyncTaskContextCancelledyA2EmF",
+              "viaUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+            }
+          ],
+          "omittedCount": 0,
+          "totalCount": 1
+        },
+        "usr": "s:10Kingfisher0A5ErrorO07RequestB6ReasonO25asyncTaskContextCancelledyA2EmF"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "reference"
+        ],
+        "kind": "case",
+        "location": {
+          "column": 10,
+          "line": 398,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+        },
+        "module": "Kingfisher",
+        "name": "requestError(reason:)",
+        "qualifiedName": "Kingfisher.requestError(reason:)",
+        "referenceEvidence": {
+          "items": [
+            {
+              "kind": "reference",
+              "location": {
+                "column": 15,
+                "line": 414,
+                "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+              },
+              "origin": "compiler",
+              "sourceUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp",
+              "targetUSR": "s:10Kingfisher0A5ErrorO07requestB0yA2C07RequestB6ReasonO_tcACmF",
+              "viaUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+            },
+            {
+              "kind": "reference",
+              "location": {
+                "column": 54,
+                "line": 414,
+                "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+              },
+              "origin": "compiler",
+              "sourceUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp",
+              "targetUSR": "s:10Kingfisher0A5ErrorO07requestB0yA2C07RequestB6ReasonO_tcACmF",
+              "viaUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+            }
+          ],
+          "omittedCount": 0,
+          "totalCount": 2
+        },
+        "usr": "s:10Kingfisher0A5ErrorO07requestB0yA2C07RequestB6ReasonO_tcACmF"
+      }
+    ],
+    "members": [],
+    "reachability": {
+      "reason": "publicAPI",
+      "state": "retained",
+      "suppressedByBaseline": false
+    },
+    "subject": {
+      "accessibility": "public",
+      "kind": "property",
+      "location": {
+        "column": 16,
+        "line": 412,
+        "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherError.swift"
+      },
+      "module": "Kingfisher",
+      "name": "isTaskCancelled",
+      "qualifiedName": "Kingfisher.isTaskCancelled",
+      "usr": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+    },
+    "truncated": {
+      "dependsOn": false,
+      "members": false,
+      "usedBy": false
+    },
+    "usedBy": [
+      {
+        "depth": 1,
+        "edges": [
+          "call",
+          "reference"
+        ],
+        "kind": "function",
+        "location": {
+          "column": 24,
+          "line": 363,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift"
+        },
+        "module": "Kingfisher",
+        "name": "failCurrentSource(_:retryContext:with:)",
+        "qualifiedName": "Kingfisher.failCurrentSource(_:retryContext:with:)",
+        "referenceEvidence": {
+          "items": [
+            {
+              "kind": "call",
+              "location": {
+                "column": 26,
+                "line": 365,
+                "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift"
+              },
+              "origin": "compilerAndSyntax",
+              "sourceUSR": "cartograph:local-function:s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF:363:24:failCurrentSource(_:retryContext:with:)",
+              "targetUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp",
+              "viaUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+            },
+            {
+              "kind": "reference",
+              "location": {
+                "column": 26,
+                "line": 365,
+                "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/General/KingfisherManager.swift"
+              },
+              "origin": "compilerAndSyntax",
+              "sourceUSR": "cartograph:local-function:s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF:363:24:failCurrentSource(_:retryContext:with:)",
+              "targetUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp",
+              "viaUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+            }
+          ],
+          "omittedCount": 0,
+          "totalCount": 2
+        },
+        "usr": "cartograph:local-function:s:10Kingfisher0A7ManagerC13retrieveImage4with7options19downloadTaskUpdated011progressiveD6Setter09referenceH17IdentifierChecker17completionHandlerAA08DownloadH0CSgAA6SourceO_AA0A17ParsedOptionsInfoVyAMYbcSgySo7NSImageCSgcSgSbyYbcSgys6ResultOyAA08RetrievedW0VAA0A5ErrorOGYbcSgtF:363:24:failCurrentSource(_:retryContext:with:)"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "call",
+          "reference"
+        ],
+        "kind": "method",
+        "location": {
+          "column": 17,
+          "line": 158,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/Networking/RetryStrategy.swift"
+        },
+        "module": "Kingfisher",
+        "name": "retry(context:retryHandler:)",
+        "qualifiedName": "Kingfisher.retry(context:retryHandler:)",
+        "referenceEvidence": {
+          "items": [
+            {
+              "kind": "call",
+              "location": {
+                "column": 30,
+                "line": 166,
+                "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/Networking/RetryStrategy.swift"
+              },
+              "origin": "compiler",
+              "sourceUSR": "s:10Kingfisher18DelayRetryStrategyV5retry7context0E7HandleryAA0C7ContextC_yAA0C8DecisionOYbctF",
+              "targetUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp",
+              "viaUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+            },
+            {
+              "kind": "reference",
+              "location": {
+                "column": 30,
+                "line": 166,
+                "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/Networking/RetryStrategy.swift"
+              },
+              "origin": "compiler",
+              "sourceUSR": "s:10Kingfisher18DelayRetryStrategyV5retry7context0E7HandleryAA0C7ContextC_yAA0C8DecisionOYbctF",
+              "targetUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp",
+              "viaUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+            }
+          ],
+          "omittedCount": 0,
+          "totalCount": 2
+        },
+        "usr": "s:10Kingfisher18DelayRetryStrategyV5retry7context0E7HandleryAA0C7ContextC_yAA0C8DecisionOYbctF"
+      },
+      {
+        "depth": 1,
+        "edges": [
+          "call",
+          "reference"
+        ],
+        "kind": "method",
+        "location": {
+          "column": 17,
+          "line": 222,
+          "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/Networking/RetryStrategy.swift"
+        },
+        "module": "Kingfisher",
+        "name": "retry(context:retryHandler:)",
+        "qualifiedName": "Kingfisher.retry(context:retryHandler:)",
+        "referenceEvidence": {
+          "items": [
+            {
+              "kind": "call",
+              "location": {
+                "column": 30,
+                "line": 229,
+                "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/Networking/RetryStrategy.swift"
+              },
+              "origin": "compiler",
+              "sourceUSR": "s:10Kingfisher20NetworkRetryStrategyV5retry7context0E7HandleryAA0C7ContextC_yAA0C8DecisionOYbctF",
+              "targetUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp",
+              "viaUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+            },
+            {
+              "kind": "reference",
+              "location": {
+                "column": 30,
+                "line": 229,
+                "path": "<EVALUATION_WORKSPACE>/repos/kingfisher/Sources/Networking/RetryStrategy.swift"
+              },
+              "origin": "compiler",
+              "sourceUSR": "s:10Kingfisher20NetworkRetryStrategyV5retry7context0E7HandleryAA0C7ContextC_yAA0C8DecisionOYbctF",
+              "targetUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp",
+              "viaUSR": "s:10Kingfisher0A5ErrorO15isTaskCancelledSbvp"
+            }
+          ],
+          "omittedCount": 0,
+          "totalCount": 2
+        },
+        "usr": "s:10Kingfisher20NetworkRetryStrategyV5retry7context0E7HandleryAA0C7ContextC_yAA0C8DecisionOYbctF"
+      }
+    ]
+  },
+  "status": "found"
+}

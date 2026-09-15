@@ -1,0 +1,123 @@
+{
+  "findings": [
+    {
+      "classification": "plausible_conservative_miss",
+      "evidence": "Its only void-overload caller, withState at line149/150, is itself reported unused. Generic live calls select another overload. Cartograph roots this protocol-extension helper as dynamicDispatch.",
+      "line": 46,
+      "name": "around(_:)",
+      "path": "Source/Core/Protected.swift",
+      "project": "alamofire",
+      "reportedOnlyBy": "periphery"
+    },
+    {
+      "classification": "plausible_conservative_miss",
+      "evidence": "Internal PathMonitor initializer is consumed by the internal factory at237/241, which has no production-reachable caller. Test-only usage is outside the scoped production graph.",
+      "line": 109,
+      "name": "init(monitor:maximumWait:isOfflineError:)",
+      "path": "Source/Features/OfflineRetrier.swift",
+      "project": "alamofire",
+      "reportedOnlyBy": "periphery"
+    },
+    {
+      "classification": "plausible_conservative_miss",
+      "evidence": "Internal constrained protocol-extension static factory has no production caller; dynamicDispatch retention keeps it and its initializer.",
+      "line": 237,
+      "name": "offlineRetrier(monitor:maximumWait:)",
+      "path": "Source/Features/OfflineRetrier.swift",
+      "project": "alamofire",
+      "reportedOnlyBy": "periphery"
+    },
+    {
+      "classification": "confirmed_misleading_unused_diagnostic",
+      "evidence": "Alias is used in the conformance clause at85 under the same macOS branch. The existing graph lacks incoming edges. Baseline compiles; renaming only the alias causes a compiler error at85.",
+      "line": 77,
+      "name": "KFCrossPlatformViewRepresentable",
+      "path": "Sources/SwiftUI/KFAnimatedImage.swift",
+      "project": "kingfisher",
+      "reportedOnlyBy": "cartograph"
+    },
+    {
+      "classification": "plausible_requirement_reachability_miss",
+      "evidence": "Concrete DisplayLink.timestamp is read/written at92,124,129. Existential consumers use other requirements. Concrete witness use does not establish requirement use; forward overrides traversal keeps the requirement.",
+      "line": 39,
+      "name": "DisplayLinkCompatible.timestamp",
+      "path": "Sources/Utility/DisplayLink.swift",
+      "project": "kingfisher",
+      "reportedOnlyBy": "periphery"
+    },
+    {
+      "classification": "plausible_redundant_marker_protocol",
+      "evidence": "Only empty conditional conformances reference it. Behavior is implemented against ParsedWrapper or ParsedWrapper where Value:Decodable. No existential/generic/runtime check of this marker was found; coordinated removal is not tested.",
+      "line": 48,
+      "name": "DecodableParsedWrapper",
+      "path": "Sources/ArgumentParser/Parsing/Parsed.swift",
+      "project": "argument-parser",
+      "reportedOnlyBy": "cartograph"
+    },
+    {
+      "classification": "valid_candidate_with_comparison_policy_difference",
+      "evidence": "No field reads beyond its defaulted declaration. Periphery also reports it when assign-only analysis is enabled; aligned scan suppresses that category.",
+      "line": 133,
+      "name": "isSubcommands",
+      "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift",
+      "project": "argument-parser",
+      "reportedOnlyBy": "cartograph"
+    },
+    {
+      "classification": "valid_candidate_with_comparison_policy_difference",
+      "evidence": "Actual lock storage is a ManagedBuffer element; _Lock is a namespace for Primitive/static operations. Periphery also reports this field with assign-only analysis enabled.",
+      "line": 44,
+      "name": "_platformLock",
+      "path": "Sources/ArgumentParser/Utilities/Mutex.swift",
+      "project": "argument-parser",
+      "reportedOnlyBy": "cartograph"
+    },
+    {
+      "classification": "plausible_requirement_reachability_miss",
+      "evidence": "No requirement reads were found. OptionGroup concrete storage is only assigned. Forward overrides traversal preserves the requirement from concrete-property reachability.",
+      "line": 299,
+      "name": "ArgumentSetProvider._visibility",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift",
+      "project": "argument-parser",
+      "reportedOnlyBy": "periphery"
+    },
+    {
+      "classification": "plausible_requirement_reachability_miss",
+      "evidence": "The unused requirement revives this default implementation; coordinated removal of the feature cluster is not tested.",
+      "line": 303,
+      "name": "ArgumentSetProvider._visibility default",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift",
+      "project": "argument-parser",
+      "reportedOnlyBy": "periphery"
+    },
+    {
+      "classification": "plausible_conservative_miss",
+      "evidence": "DEBUG-only helper has only a recursive self-call at213 and no production entry caller; dynamicDispatch rooting preserves it.",
+      "line": 209,
+      "name": "checkAsyncHierarchy(_:root:)",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableCommand.swift",
+      "project": "argument-parser",
+      "reportedOnlyBy": "periphery"
+    },
+    {
+      "classification": "plausible_conservative_miss",
+      "evidence": "Its only would-be caller is commented out at550-551. Generic collection-extension method is retained as dynamicDispatch.",
+      "line": 524,
+      "name": "dumpHelpArgumentDefinition()",
+      "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift",
+      "project": "argument-parser",
+      "reportedOnlyBy": "periphery"
+    },
+    {
+      "classification": "plausible_conservative_miss",
+      "evidence": "Only another occurrence is a documentation example at23. Generic Sequence-extension method is retained as dynamicDispatch.",
+      "line": 25,
+      "name": "uniquingAdjacentElements()",
+      "path": "Sources/ArgumentParser/Utilities/SequenceExtensions.swift",
+      "project": "argument-parser",
+      "reportedOnlyBy": "periphery"
+    }
+  ],
+  "method": "Independent high-reasoning read-only review of all 13 in-scope disagreements, followed by main-agent source/compiler evidence checks. Common findings and all assign-only extras were not exhaustively adjudicated.",
+  "scope": "macOS production sources only; public APIs retained; findings are not deletion approvals"
+}
