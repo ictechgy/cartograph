@@ -737,7 +737,7 @@ Swift 브리지 이름은 같은 파일의 불변 `let` 별칭과 괄호를 최�
 실행 값과 지원 범위를 비교했습니다.
 
 `cartograph bridges --messages --target flutter`는 Flutter `BasicMessageChannel`과 Pigeon 핸들러를
-위한 미발행 bridge-facts v2 개발 확장입니다. 가상의 method를 만들지 않고 `message-handle` 사실과
+위한 bridge-facts v2 확장입니다. 가상의 method를 만들지 않고 `message-handle` 사실과
 closure 범위, 그 위치에서 실제 컴파일러 인덱스가 관찰한 호출·참조 심볼을 냅니다. 기존 감싸는
 setup 심볼은 모든 사실에 그대로 남기며, 범위나 인덱스 근거가 불완전하면 소비자가 setup의 넓은
 영향과 공백을 유지해야 합니다. dispatch 후보는 인덱스의 실제 `overrides` 관계가 있을 때만

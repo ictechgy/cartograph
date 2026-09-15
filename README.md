@@ -759,8 +759,8 @@ names across functions; disagreement, unknown values, unsupported syntax, stale 
 exhausted analysis budget remain `dynamic`. See the [interprocedural analysis check](docs/scans/2026-09-interprocedural-flow.md)
 for runtime comparisons and scope.
 
-`cartograph bridges --messages --target flutter` is an unpublished bridge-facts v2 development
-extension for Flutter `BasicMessageChannel` and Pigeon handlers. It emits `message-handle` facts
+`cartograph bridges --messages --target flutter` is a bridge-facts v2 extension for Flutter
+`BasicMessageChannel` and Pigeon handlers. It emits `message-handle` facts
 without a synthetic method, plus a closure range and the call/reference symbols observed at those
 source locations in the compiler index. The existing enclosing setup symbol remains in every fact;
 when the range and index evidence are incomplete, consumers must keep the broad setup impact and
