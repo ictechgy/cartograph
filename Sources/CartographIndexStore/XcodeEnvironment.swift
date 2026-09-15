@@ -1,4 +1,5 @@
 import Foundation
+import Dispatch
 
 /// Xcode 개발자 디렉터리를 알아낸다.
 ///
@@ -18,9 +19,16 @@ public enum XcodeEnvironment {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
         process.arguments = ["-p"]
+        return output(from: process)
+    }
+
+    /// 표준 출력이 먼저 닫혀도 실제 성공 종료를 확인한 경로만 사용한다.
+    static func output(from process: Process) -> String? {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
+        let terminated = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in terminated.signal() }
 
         do {
             try process.run()
@@ -28,7 +36,9 @@ public enum XcodeEnvironment {
             return nil
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        // waitUntilExit의 런루프 폴링 지연이 짧은 명령보다 길 수 있다. EOF를
+        // 성공으로 간주하지 않고 실제 종료 통지를 기다려 같은 계약을 유지한다.
+        terminated.wait()
         guard process.terminationStatus == 0 else { return nil }
 
         let output = String(decoding: data, as: UTF8.self)

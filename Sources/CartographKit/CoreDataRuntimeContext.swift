@@ -325,6 +325,8 @@ extension CartographService {
             externalRetentions: base.externalRetentions,
             missingSourcePaths: base.missingSourcePaths,
             unreadableSourcePaths: base.unreadableSourcePaths,
+            unresolvedLocalFunctionsByPath: base.unresolvedLocalFunctionsByPath.filter { basePaths.contains($0.key) },
+            localFunctionDiagnostics: base.localFunctionDiagnostics.filter { basePaths.contains($0.location.path) },
             runtimeFiles: runtimeFiles,
             runtimeFreshness: freshness,
             supplementalRuntimeSourcePaths: supplementalPaths

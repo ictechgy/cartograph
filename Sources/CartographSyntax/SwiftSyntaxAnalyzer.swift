@@ -20,7 +20,7 @@ public struct SwiftSyntaxAnalyzer: Sendable {
     ///
     /// 툴체인(SwiftSyntax) 교체는 이 값으로 잡히지 않는다. 그때는 캐시 디렉터리를
     /// 지우면 된다. 릴리스 간 이동은 도구 버전이 함께 키에 들어가 자동으로 갈린다.
-    public static let analysisRevision = 13
+    public static let analysisRevision = 18
 
     /// XCTestCase 외에 테스트 기반 클래스로 볼 이름들.
     ///
@@ -44,7 +44,8 @@ public struct SwiftSyntaxAnalyzer: Sendable {
             path: path,
             declarations: collector.declarations,
             ignoresEntireFile: Self.fileIsIgnored(tree),
-            runtimeFacts: RuntimeFactScanner().scan(tree: tree, path: path)
+            runtimeFacts: RuntimeFactScanner().scan(tree: tree, path: path),
+            localFunctionScopes: LocalFunctionScanner().scan(tree: tree, path: path)
         )
     }
 
@@ -63,8 +64,12 @@ public struct SwiftSyntaxAnalyzer: Sendable {
 final class DeclarationCollector: SyntaxVisitor {
     /// 바깥 선언에서 상속되는 문맥.
     private struct Context {
-        /// 명시적 제어자가 없을 때 적용할 접근 수준.
-        var accessibility: Accessibility
+        /// 현재 선언을 감싸는 선언의 유효 접근 수준. 최상위에는 없다.
+        var enclosingAccessibility: Accessibility?
+        /// 현재 선언의 멤버에 접근 제어자가 없을 때 적용할 수준.
+        var defaultMemberAccessibility: Accessibility
+        /// enum case에 접근 제어자가 없을 때 적용할 수준.
+        var enumCaseAccessibility: Accessibility?
         /// `@objcMembers` 타입 내부인지 여부.
         var inheritsObjectiveCExposure: Bool
         /// `cartograph:ignore` 가 걸린 선언 내부인지 여부.
@@ -75,15 +80,20 @@ final class DeclarationCollector: SyntaxVisitor {
         /// 구문만으로는 알 수 없으니 포함한다. 테스트를 미사용으로 보고하는 쪽이
         /// 제품 코드를 남겨 두는 쪽보다 훨씬 비싸다.
         var allowsTestMethods: Bool
+        /// 이 선언이나 조상에 해석하지 못한 속성이 있는지 여부.
+        var hasUnresolvedAttributes: Bool
     }
 
     private(set) var declarations: [DeclarationFacts] = []
     private var contexts: [Context] = [
         Context(
-            accessibility: .internalLevel,
+            enclosingAccessibility: nil,
+            defaultMemberAccessibility: .internalLevel,
+            enumCaseAccessibility: nil,
             inheritsObjectiveCExposure: false,
             isIgnored: false,
-            allowsTestMethods: false
+            allowsTestMethods: false,
+            hasUnresolvedAttributes: false
         )
     ]
     private let converter: SourceLocationConverter
@@ -118,26 +128,34 @@ final class DeclarationCollector: SyntaxVisitor {
         var attributes = commonAttributes(node)
         attributes.formUnion(Self.inheritanceAttributes(node.inheritanceClause, isEnum: false))
         if node.genericParameterClause != nil { attributes.insert(.generic) }
-        return push(name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers)
+        return push(
+            name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers
+        )
     }
     override func visitPost(_ node: StructDeclSyntax) { pop() }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         var attributes = commonAttributes(node)
         attributes.formUnion(Self.inheritanceAttributes(node.inheritanceClause, isEnum: true))
-        return push(name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers)
+        return push(
+            name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers
+        )
     }
     override func visitPost(_ node: EnumDeclSyntax) { pop() }
 
     override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
-        push(name: node.name.text, node: node, attributes: commonAttributes(node), modifiers: node.modifiers)
+        push(
+            name: node.name.text, node: node, attributes: commonAttributes(node), modifiers: node.modifiers
+        )
     }
     override func visitPost(_ node: ProtocolDeclSyntax) { pop() }
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
         var attributes = commonAttributes(node)
         attributes.formUnion(Self.inheritanceAttributes(node.inheritanceClause, isEnum: false))
-        return push(name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers)
+        return push(
+            name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers
+        )
     }
     override func visitPost(_ node: ActorDeclSyntax) { pop() }
 
@@ -162,12 +180,16 @@ final class DeclarationCollector: SyntaxVisitor {
         if context.allowsTestMethods, Self.isXCTestMethod(node, modifiers: node.modifiers) {
             attributes.insert(.unitTest)
         }
-        return push(name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers)
+        return push(
+            name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers
+        )
     }
     override func visitPost(_ node: FunctionDeclSyntax) { pop() }
 
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
-        push(name: "init", node: node, attributes: commonAttributes(node), modifiers: node.modifiers)
+        push(
+            name: "init", node: node, attributes: commonAttributes(node), modifiers: node.modifiers
+        )
     }
     override func visitPost(_ node: InitializerDeclSyntax) { pop() }
 
@@ -180,7 +202,9 @@ final class DeclarationCollector: SyntaxVisitor {
     }
 
     override func visit(_ node: DeinitializerDeclSyntax) -> SyntaxVisitorContinueKind {
-        push(name: "deinit", node: node, attributes: commonAttributes(node), modifiers: node.modifiers)
+        push(
+            name: "deinit", node: node, attributes: commonAttributes(node), modifiers: node.modifiers
+        )
     }
     override func visitPost(_ node: DeinitializerDeclSyntax) { pop() }
 
@@ -189,7 +213,9 @@ final class DeclarationCollector: SyntaxVisitor {
         if node.parameterClause.parameters.first?.firstName.text == "dynamicMember" {
             attributes.insert(.dynamicMemberLookup)
         }
-        return push(name: "subscript", node: node, attributes: attributes, modifiers: node.modifiers)
+        return push(
+            name: "subscript", node: node, attributes: attributes, modifiers: node.modifiers
+        )
     }
     override func visitPost(_ node: SubscriptDeclSyntax) { pop() }
 
@@ -197,7 +223,8 @@ final class DeclarationCollector: SyntaxVisitor {
         let attributes = commonAttributes(node)
         for binding in node.bindings {
             guard let pattern = binding.pattern.as(IdentifierPatternSyntax.self) else { continue }
-            record(name: pattern.identifier.text, node: node, attributes: attributes, modifiers: node.modifiers)
+            record(name: pattern.identifier.text, node: node, attributes: attributes,
+                modifiers: node.modifiers, nameToken: pattern.identifier)
         }
         return .visitChildren
     }
@@ -205,23 +232,30 @@ final class DeclarationCollector: SyntaxVisitor {
     override func visit(_ node: EnumCaseDeclSyntax) -> SyntaxVisitorContinueKind {
         let attributes = commonAttributes(node)
         for element in node.elements {
-            record(name: element.name.text, node: node, attributes: attributes, modifiers: node.modifiers)
+            record(name: element.name.text, node: node, attributes: attributes,
+                modifiers: node.modifiers, nameToken: element.name)
         }
         return .visitChildren
     }
 
     override func visit(_ node: TypeAliasDeclSyntax) -> SyntaxVisitorContinueKind {
-        record(name: node.name.text, node: node, attributes: commonAttributes(node), modifiers: node.modifiers)
+        record(
+            name: node.name.text, node: node, attributes: commonAttributes(node), modifiers: node.modifiers
+        )
         return .visitChildren
     }
 
     override func visit(_ node: AssociatedTypeDeclSyntax) -> SyntaxVisitorContinueKind {
-        record(name: node.name.text, node: node, attributes: commonAttributes(node), modifiers: node.modifiers)
+        record(
+            name: node.name.text, node: node, attributes: commonAttributes(node), modifiers: node.modifiers
+        )
         return .visitChildren
     }
 
     override func visit(_ node: MacroDeclSyntax) -> SyntaxVisitorContinueKind {
-        record(name: node.name.text, node: node, attributes: commonAttributes(node), modifiers: node.modifiers)
+        record(
+            name: node.name.text, node: node, attributes: commonAttributes(node), modifiers: node.modifiers
+        )
         return .visitChildren
     }
 
@@ -235,14 +269,27 @@ final class DeclarationCollector: SyntaxVisitor {
         modifiers: DeclModifierListSyntax,
         allowsTestMethods: Bool = false
     ) -> SyntaxVisitorContinueKind {
-        let resolved = record(name: name, node: node, attributes: attributes, modifiers: modifiers)
+        let resolved = record(
+            name: name,
+            node: node,
+            attributes: attributes,
+            modifiers: modifiers
+        )
         contexts.append(
             Context(
-                accessibility: resolved.accessibility,
+                // 익스텐션의 접근 수준은 기본값이지 상한이 아니다. private extension
+                // 안에서도 명시적 public 멤버를 선언할 수 있으므로 타입 상한과 분리한다.
+                enclosingAccessibility: node.is(ExtensionDeclSyntax.self)
+                    ? context.enclosingAccessibility : resolved.accessibility,
+                defaultMemberAccessibility: defaultMemberAccessibility(
+                    for: node, resolvedAccessibility: resolved.accessibility, modifiers: modifiers
+                ),
+                enumCaseAccessibility: node.is(EnumDeclSyntax.self) ? resolved.accessibility : nil,
                 inheritsObjectiveCExposure: context.inheritsObjectiveCExposure
                     || resolved.attributes.contains(.objcMembers),
                 isIgnored: resolved.attributes.contains(.ignoreComment),
-                allowsTestMethods: allowsTestMethods
+                allowsTestMethods: allowsTestMethods,
+                hasUnresolvedAttributes: resolved.hasUnresolvedAttributes ?? true
             )
         )
         return .visitChildren
@@ -283,7 +330,8 @@ final class DeclarationCollector: SyntaxVisitor {
         name: String,
         node: some SyntaxProtocol,
         attributes: Set<SymbolAttribute>,
-        modifiers: DeclModifierListSyntax
+        modifiers: DeclModifierListSyntax,
+        nameToken: TokenSyntax? = nil
     ) -> DeclarationFacts {
         var resolved = attributes
         if context.inheritsObjectiveCExposure { resolved.insert(.objcAccessible) }
@@ -291,12 +339,16 @@ final class DeclarationCollector: SyntaxVisitor {
         if modifiers.contains(where: { $0.name.text == "override" }) { resolved.insert(.overrideDeclaration) }
         if modifiers.contains(where: { $0.name.text == "dynamic" }) { resolved.insert(.dynamicDispatch) }
 
+        let hasUnresolvedAttributes = node.asProtocol(WithAttributesSyntax.self)
+            .map { Self.hasUnresolvedAttributes(in: $0.attributes) } ?? false
         let facts = DeclarationFacts(
             // SwiftSyntax 는 `` `default` `` 의 백틱까지 이름에 담지만 인덱스는 담지 않는다.
             name: Self.unescaped(name),
             line: node.startLocation(converter: converter).line,
-            accessibility: accessibility(from: modifiers),
-            attributes: resolved
+            accessibility: accessibility(from: modifiers, node: node),
+            attributes: resolved,
+            nameLocation: identifierLocation(in: node, explicitToken: nameToken),
+            hasUnresolvedAttributes: context.hasUnresolvedAttributes || hasUnresolvedAttributes
         )
         // 지역 선언은 정점이 되지 않으므로 기록하지 않는다. 남겨 두면 이름이 같은
         // 멤버를 찾을 때 이쪽이 더 가깝다는 이유로 선택될 수 있다.
@@ -304,14 +356,64 @@ final class DeclarationCollector: SyntaxVisitor {
         return facts
     }
 
+    /// 속성·접근 제어자 대신 컴파일러가 가리키는 식별자 토큰의 물리적 위치를 쓴다.
+    private func identifierLocation(
+        in node: some SyntaxProtocol, explicitToken: TokenSyntax?
+    ) -> CartographCore.SourceLocation? {
+        guard !node.hasError else { return nil }
+        let token = explicitToken
+            ?? node.asProtocol(NamedDeclSyntax.self)?.name
+            ?? node.as(InitializerDeclSyntax.self)?.initKeyword
+            ?? node.as(DeinitializerDeclSyntax.self)?.deinitKeyword
+            ?? node.as(SubscriptDeclSyntax.self)?.subscriptKeyword
+        guard let token, token.presence == .present else { return nil }
+        let location = converter.location(for: token.positionAfterSkippingLeadingTrivia)
+        return CartographCore.SourceLocation(path: location.file, line: location.line, column: location.column)
+    }
+
     /// 명시적 제어자가 없으면 바깥 문맥의 접근 수준을 물려받는다.
-    private func accessibility(from modifiers: DeclModifierListSyntax) -> Accessibility {
-        for modifier in modifiers {
-            if let level = Accessibility(modifierName: modifier.name.text) { return level }
+    private func accessibility(from modifiers: DeclModifierListSyntax, node: some SyntaxProtocol) -> Accessibility {
+        guard let explicit = explicitAccessibility(from: modifiers) else {
+            if node.is(EnumCaseDeclSyntax.self), let enumAccess = context.enumCaseAccessibility {
+                return enumAccess
+            }
+            return context.defaultMemberAccessibility
         }
-        // 바깥이 public 이라고 해서 안쪽이 자동으로 public 이 되지는 않지만,
-        // private/fileprivate 로 감싸면 안쪽은 그보다 넓어질 수 없다.
-        return context.accessibility > .internalLevel ? context.accessibility : .internalLevel
+        guard let enclosing = context.enclosingAccessibility, enclosing > .internalLevel else {
+            return explicit
+        }
+        // private/fileprivate 안쪽 선언은 바깥 선언보다 넓게 노출될 수 없다.
+        // internal/package 바깥의 명시적 public은 구문에 적힌 사실을 보존한다.
+        // `Accessibility` 의 순서에서 더 큰 값이 더 좁은 접근 수준이므로 max가
+        // private/fileprivate clamp를 표현한다.
+        return Swift.max(explicit, enclosing)
+    }
+
+    /// 접근 제어자 목록에서 명시된 첫 접근 수준을 읽는다.
+    private func explicitAccessibility(from modifiers: DeclModifierListSyntax) -> Accessibility? {
+        modifiers.compactMap { Accessibility(modifierName: $0.name.text) }.first
+    }
+
+    /// 선언 종류에 따른 멤버의 기본 접근 수준을 계산한다.
+    ///
+    /// 프로토콜 요구사항과 명시적 접근 수준의 익스텐션만 기본 접근을 바깥으로
+    /// 물려받는다. public nominal 타입은 멤버가 internal이고, 무표시 익스텐션도
+    /// internal이므로 public 타입의 접근을 잘못 확장하지 않는다.
+    private func defaultMemberAccessibility(
+        for node: some SyntaxProtocol,
+        resolvedAccessibility: Accessibility,
+        modifiers: DeclModifierListSyntax
+    ) -> Accessibility {
+        if node.is(ProtocolDeclSyntax.self) { return resolvedAccessibility }
+        if node.is(ExtensionDeclSyntax.self), explicitAccessibility(from: modifiers) != nil {
+            return resolvedAccessibility
+        }
+        let nominal = node.is(ClassDeclSyntax.self)
+            || node.is(StructDeclSyntax.self)
+            || node.is(EnumDeclSyntax.self)
+            || node.is(ActorDeclSyntax.self)
+        if nominal { return Swift.max(.internalLevel, resolvedAccessibility) }
+        return .internalLevel
     }
 
     /// 속성 목록과 주석에서 공통 표식을 읽는다.
@@ -343,6 +445,40 @@ final class DeclarationCollector: SyntaxVisitor {
         guard let returnClause = node.signature.returnClause else { return true }
         return ["Void", "()"].contains(returnClause.type.trimmedDescription)
     }
+
+    /// 동적 디스패치에 영향을 줄 수 있는 미해결 속성이 있는지 확인한다.
+    ///
+    /// 알 수 없는 속성은 값 표식으로 옮기지 못해도 컴파일러가 멤버나 저장소를
+    /// 합성했을 수 있다. 동적 디스패치 정규화가 그런 선언의 인덱스 근거를
+    /// 지우지 않도록, 좁은 컴파일러 예약 목록 밖의 속성은 모두 미해결로 남긴다.
+    static func hasUnresolvedAttributes(in list: AttributeListSyntax) -> Bool {
+        list.contains { element in
+            switch element {
+            case let .attribute(attribute):
+                let name = attribute.attributeName.trimmedDescription
+                return name.isEmpty
+                    || name.contains(".")
+                    || !compilerKnownAttributes.contains(name)
+            case .ifConfigDecl:
+                return true
+            @unknown default:
+                return true
+            }
+        }
+    }
+
+    /// 합성 효과 또는 별도 보존 표식을 알고 있는 컴파일러 예약 속성.
+    ///
+    /// 이 목록은 일부러 좁다. `MainActor`, `Observable`, `Test`처럼 이름만으로
+    /// 컴파일러 내장 속성임을 확인할 수 없는 이름은 사용자 정의일 수 있으므로
+    /// 목록에 넣지 않고 미해결로 취급한다.
+    private static let compilerKnownAttributes: Set<String> = [
+        "available", "discardableResult", "inlinable", "inline", "usableFromInline",
+        "_transparent", "_alwaysEmitIntoClient", "_disfavoredOverload", "_spi",
+        "objc", "objcMembers", "_dynamicReplacement",
+        "main", "UIApplicationMain", "NSApplicationMain",
+        "IBOutlet", "IBAction", "IBInspectable", "IBSegueAction", "dynamicMemberLookup",
+    ]
 
     /// 선언 속성(`@objc`, `@main` 등)을 표식으로 옮긴다.
     static func attributes(from list: AttributeListSyntax) -> Set<SymbolAttribute> {

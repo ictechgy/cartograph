@@ -136,7 +136,9 @@ public enum IndexStoreMapping {
                     IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: .extends, location: location)
                 )
             }
-            if relation.roles.contains(.calledBy) || relation.roles.contains(.receivedBy) {
+            // receivedBy는 수신 타입이다. 그것을 호출자로 읽으면 모든 인스턴스 호출에
+            // 타입 → 메서드 간선이 붙어 사용·영향 범위가 부풀고 미사용 멤버도 살아난다.
+            if relation.roles.contains(.calledBy) {
                 result.append(
                     IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: .call, location: location)
                 )
@@ -159,7 +161,10 @@ public enum IndexStoreMapping {
         if result.isEmpty, let topLevel = topLevelCodeReference(from: occurrence, location: location) {
             result.append(topLevel)
         }
-        return result
+        return result.map {
+            IndexedReference(sourceUSR: $0.sourceUSR, targetUSR: $0.targetUSR,
+                kind: $0.kind, location: $0.location, origin: $0.origin == .unknown ? .compiler : $0.origin)
+        }
     }
 
     /// `main.swift` 의 최상위 문장에서 나온 참조.
@@ -181,7 +186,8 @@ public enum IndexStoreMapping {
             sourceUSR: topLevelCodeUSR(forFile: occurrence.location.path),
             targetUSR: occurrence.symbol.usr,
             kind: occurrence.roles.contains(.call) ? .call : .reference,
-            location: location
+            location: location,
+            origin: .inferred
         )
     }
 
@@ -288,7 +294,8 @@ public enum IndexStoreMapping {
             let target = owners[reference.targetUSR] ?? reference.targetUSR
             guard source != target || includeSelfReferences else { return nil }
             return IndexedReference(
-                sourceUSR: source, targetUSR: target, kind: reference.kind, location: reference.location
+                sourceUSR: source, targetUSR: target, kind: reference.kind,
+                location: reference.location, origin: reference.origin
             )
         }
     }

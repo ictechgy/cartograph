@@ -169,6 +169,18 @@ struct ProtocolWitnessReachabilityTests {
             .analyze(graph: graph, snapshot: snapshot)
     }
 
+    private func analyze(
+        _ snapshot: IndexSnapshot,
+        options: ReachabilityAnalyzer.Options = .init()
+    ) -> UnusedCodeReport {
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        return ReachabilityAnalyzer(options: options).analyze(graph: graph, snapshot: snapshot)
+    }
+
+    private func unusedIDs(_ report: UnusedCodeReport) -> Set<NodeID> {
+        Set(report.unused.map(\.id))
+    }
+
     @Test("프로토콜 요구사항이 쓰이면 구현도 쓰인 것으로 본다")
     func requirementUsageReachesImplementation() {
         let report = analyze(followOverridesInReverse: true)
@@ -184,6 +196,102 @@ struct ProtocolWitnessReachabilityTests {
 
         let without = analyze(followOverridesInReverse: false)
         #expect(without.unused.map(\.name).sorted() == ["helper", "load"])
+    }
+
+    @Test("직접 호출한 구체 구현은 미호출 요구사항과 기본 구현을 살리지 않는다")
+    func directConcreteWitnessDoesNotActivateUncalledRequirementOrDefault() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("P", kind: .protocolType)
+        builder.symbol("P.run", name: "run()", kind: .method, parent: "P")
+        builder.symbol("PDefaults", name: "P", kind: .extensionDeclaration)
+        builder.symbol("PDefaults.run", name: "run()", kind: .method, parent: "PDefaults")
+        builder.symbol("PDefaults.helper", name: "defaultHelper()", kind: .method, parent: "PDefaults")
+        builder.symbol("Impl", kind: .structType)
+        builder.symbol("Impl.run", name: "run()", kind: .method, parent: "Impl")
+
+        builder.reference(from: "App", to: "Impl", kind: .reference)
+        builder.reference(from: "App", to: "Impl.run", kind: .call)
+        builder.reference(from: "Impl", to: "P", kind: .conformance)
+        builder.reference(from: "PDefaults", to: "P", kind: .extends)
+        builder.reference(from: "PDefaults.run", to: "P.run", kind: .overrides)
+        builder.reference(from: "PDefaults.run", to: "PDefaults.helper", kind: .call)
+        builder.reference(from: "Impl.run", to: "P.run", kind: .overrides)
+
+        let report = analyze(builder.build(), options: .init(reportMembersOfUnusedTypes: true))
+        let unused = unusedIDs(report)
+        #expect(unused.contains("P.run"))
+        #expect(unused.contains("PDefaults.run"))
+        #expect(unused.contains("PDefaults.helper"))
+        // 직접 호출된 증인은 살아 있어야 한다. 프로토콜 요구사항만 건너뛴다.
+        #expect(!unused.contains("Impl.run"))
+    }
+
+    @Test("프로토콜 자체가 도달하지 않아도 요구사항 호출은 구현과 기본 구현을 활성화한다")
+    func requirementCallDispatchesWithoutProtocolRoot() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("P", kind: .protocolType)
+        builder.symbol("P.run", name: "run()", kind: .method, parent: "P")
+        builder.symbol("PDefaults", name: "P", kind: .extensionDeclaration)
+        builder.symbol("PDefaults.run", name: "run()", kind: .method, parent: "PDefaults")
+        builder.symbol("PDefaults.helper", name: "defaultHelper()", kind: .method, parent: "PDefaults")
+        builder.symbol("Impl", kind: .structType)
+        builder.symbol("Impl.run", name: "run()", kind: .method, parent: "Impl")
+        builder.symbol("Impl.helper", name: "implHelper()", kind: .method, parent: "Impl")
+
+        // P 자체는 루트로 참조하지 않는다. 요구사항 호출과 살아 있는 구체 타입만 있다.
+        builder.reference(from: "App", to: "P.run", kind: .call)
+        builder.reference(from: "App", to: "Impl", kind: .reference)
+        builder.reference(from: "PDefaults", to: "P", kind: .extends)
+        builder.reference(from: "PDefaults.run", to: "P.run", kind: .overrides)
+        builder.reference(from: "PDefaults.run", to: "PDefaults.helper", kind: .call)
+        builder.reference(from: "Impl.run", to: "P.run", kind: .overrides)
+        builder.reference(from: "Impl.run", to: "Impl.helper", kind: .call)
+
+        let report = analyze(builder.build(), options: .init(reportMembersOfUnusedTypes: true))
+        let unused = unusedIDs(report)
+        #expect(!unused.contains("Impl.run"))
+        #expect(!unused.contains("Impl.helper"))
+        #expect(!unused.contains("PDefaults.run"))
+        #expect(!unused.contains("PDefaults.helper"))
+    }
+
+    @Test("프로토콜 요구사항만 건너뛰고 클래스 오버라이드는 정방향으로 따른다")
+    func classOverrideRemainsForwardReachable() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Base", kind: .classType)
+        builder.symbol("Base.run", name: "run()", kind: .method, parent: "Base")
+        builder.symbol("Derived", kind: .classType)
+        builder.symbol("Derived.run", name: "run()", kind: .method, parent: "Derived")
+        builder.reference(from: "App", to: "Derived.run", kind: .call)
+        builder.reference(from: "Derived", to: "Base", kind: .inheritance)
+        builder.reference(from: "Derived.run", to: "Base.run", kind: .overrides)
+
+        let report = analyze(builder.build())
+        #expect(!unusedIDs(report).contains("Base.run"))
+    }
+
+    @Test("클래스 기본 메서드 호출은 살아 있는 파생 오버라이드까지 역방향으로 따른다")
+    func classOverrideRemainsReverseReachable() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Base", kind: .classType)
+        builder.symbol("Base.run", name: "run()", kind: .method, parent: "Base")
+        builder.symbol("Derived", kind: .classType)
+        builder.symbol("Derived.run", name: "run()", kind: .method, parent: "Derived")
+        builder.symbol("Derived.helper", name: "helper()", kind: .method, parent: "Derived")
+        builder.reference(from: "App", to: "Base.run", kind: .call)
+        builder.reference(from: "App", to: "Derived", kind: .reference)
+        builder.reference(from: "Derived", to: "Base", kind: .inheritance)
+        builder.reference(from: "Derived.run", to: "Base.run", kind: .overrides)
+        builder.reference(from: "Derived.run", to: "Derived.helper", kind: .call)
+
+        let report = analyze(builder.build())
+        let unused = unusedIDs(report)
+        #expect(!unused.contains("Derived.run"))
+        #expect(!unused.contains("Derived.helper"))
     }
 }
 
@@ -543,6 +651,52 @@ struct ConditionalWitnessRetentionTests {
         let result = report(builder.build())
         #expect(result.retentions["draw"] == .externalOverride)
         #expect(result.unused.isEmpty)
+    }
+
+    @Test("익스텐션 대상이 인덱스 밖이면 외부 준수 증인을 보수적으로 보존한다")
+    func unresolvedExtensionOwnerDoesNotGateExternalWitness() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Entry", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("ExternalExtension", kind: .extensionDeclaration)
+        builder.symbol(
+            "ExternalExtension.required", name: "required()", kind: .method,
+            parent: "ExternalExtension", attributes: [.overrideDeclaration]
+        )
+        // 외부 프로토콜과 요구사항은 그래프에 없으므로 `extends`/`overrides` 대상이 빠진다.
+        builder.reference(from: "ExternalExtension", to: "s:externalProtocol", kind: .extends)
+        builder.reference(
+            from: "ExternalExtension.required", to: "s:externalProtocol.required", kind: .overrides
+        )
+
+        let result = report(builder.build())
+        #expect(result.retentions["ExternalExtension.required"] == .externalOverride)
+        #expect(result.unused.isEmpty)
+    }
+
+    @Test("필터로 빠진 익스텐션 대상이면 외부 준수 증인을 보수적으로 보존한다")
+    func filteredExtensionOwnerDoesNotGateExternalWitness() {
+        var builder = SnapshotBuilder(path: "/project/Sources/App/App.swift")
+        builder.symbol("Entry", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("FilteredType", kind: .structType, path: "/project/Hidden.swift")
+        builder.symbol("FilteredExtension", kind: .extensionDeclaration)
+        builder.symbol(
+            "FilteredExtension.required", name: "required()", kind: .method,
+            parent: "FilteredExtension", attributes: [.overrideDeclaration]
+        )
+        builder.reference(from: "FilteredExtension", to: "FilteredType", kind: .extends)
+        builder.reference(
+            from: "FilteredExtension.required", to: "s:externalProtocol.required", kind: .overrides
+        )
+        let snapshot = builder.build()
+        let graph = GraphBuilder(
+            options: .init(
+                level: .symbol,
+                pathFilter: PathFilter(exclude: ["Hidden.swift"], basePath: "/project")
+            )
+        ).build(from: snapshot)
+
+        let result = ReachabilityAnalyzer().analyze(graph: graph, snapshot: snapshot)
+        #expect(result.retentions["FilteredExtension.required"] == .externalOverride)
     }
 
     @Test("소유 타입이 나중에 살아나도 증인이 함께 살아난다")

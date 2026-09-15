@@ -8,12 +8,24 @@ public struct DeclarationFacts: Codable, Sendable, Equatable {
     public let line: Int
     public let accessibility: Accessibility
     public let attributes: Set<SymbolAttribute>
+    /// 보존 근거를 좁힐 때 이름만 비슷한 선언을 신뢰하지 않도록 실제 식별자 위치를 남긴다.
+    /// nil인 예전 캐시·수동 사실은 정확한 컴파일러 바인딩의 근거로 쓰지 않는다.
+    public let nameLocation: SourceLocation?
+    /// 이 선언이나 조상에 분석기가 해석하지 못한 속성이 있었는지 여부.
+    /// nil인 예전 캐시·수동 사실은 속성 효과를 알 수 없으므로 보수적으로 취급한다.
+    public let hasUnresolvedAttributes: Bool?
 
-    public init(name: String, line: Int, accessibility: Accessibility, attributes: Set<SymbolAttribute>) {
+    /// 정확한 위치를 주지 않는 기존 생산자는 보수적인 바인딩을 계속 사용한다.
+    public init(
+        name: String, line: Int, accessibility: Accessibility, attributes: Set<SymbolAttribute>,
+        nameLocation: SourceLocation? = nil, hasUnresolvedAttributes: Bool? = nil
+    ) {
         self.name = name
         self.line = line
         self.accessibility = accessibility
         self.attributes = attributes
+        self.nameLocation = nameLocation
+        self.hasUnresolvedAttributes = hasUnresolvedAttributes
     }
 }
 
@@ -25,17 +37,21 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
     public let ignoresEntireFile: Bool
     /// 같은 구문 트리에서 찾은 런타임 경계. nil은 예전 캐시처럼 아직 스캔하지 않은 결과다.
     public let runtimeFacts: RuntimeFileFacts?
+    /// 컴파일러가 생략한 지역 함수의 구문 근거. nil은 아직 수집하지 않은 캐시다.
+    public let localFunctionScopes: [LocalFunctionScopeFacts]?
 
     public init(
         path: String,
         declarations: [DeclarationFacts],
         ignoresEntireFile: Bool = false,
-        runtimeFacts: RuntimeFileFacts? = nil
+        runtimeFacts: RuntimeFileFacts? = nil,
+        localFunctionScopes: [LocalFunctionScopeFacts]? = nil
     ) {
         self.path = path
         self.declarations = declarations
         self.ignoresEntireFile = ignoresEntireFile
         self.runtimeFacts = runtimeFacts
+        self.localFunctionScopes = localFunctionScopes
     }
 
     /// 줄 번호로 선언을 찾는다.

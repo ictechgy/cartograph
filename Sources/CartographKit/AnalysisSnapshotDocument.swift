@@ -24,6 +24,8 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
     public let runtimeFiles: [RuntimeFileFacts]?
     /// 런타임 사실과 같은 시점의 파일별 인덱스 신선도.
     public let runtimeFreshness: [String: RuntimeFreshness]
+    /// 캡처 당시 구문 보강에서 제외한 함수. 오래된 문서에는 없을 수 있다.
+    public let localFunctionDiagnostics: [LocalFunctionDiagnostic]?
 
     public init(
         projectRoot: String,
@@ -35,7 +37,8 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         externalRetentions: ExternalRetentionsDocument? = nil,
         runtimeContracts: RuntimeContractsDocument? = nil,
         runtimeFiles: [RuntimeFileFacts]? = nil,
-        runtimeFreshness: [String: RuntimeFreshness] = [:]
+        runtimeFreshness: [String: RuntimeFreshness] = [:],
+        localFunctionDiagnostics: [LocalFunctionDiagnostic]? = nil
     ) {
         self.format = Self.format
         self.version = Self.version
@@ -46,6 +49,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         self.edgeKinds = edgeKinds.sorted()
         self.runtimeFiles = runtimeFiles.map(Self.normalizedRuntimeFiles)
         self.runtimeFreshness = runtimeFiles == nil ? [:] : runtimeFreshness
+        self.localFunctionDiagnostics = localFunctionDiagnostics.flatMap { $0.isEmpty ? nil : $0 }
         self.limitations = Self.normalizedLimitations(limitations, runtimeFiles: runtimeFiles)
         self.externalRetentions = externalRetentions
         self.runtimeContracts = runtimeContracts.map(Self.withoutExpectedValues)
@@ -54,6 +58,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
     private enum CodingKeys: String, CodingKey {
         case format, version, projectRoot, toolVersion, revision, snapshot, edgeKinds, limitations
         case externalRetentions, runtimeContracts, runtimeFiles, runtimeFreshness
+        case localFunctionDiagnostics
     }
 
     public init(from decoder: any Decoder) throws {
@@ -82,6 +87,9 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
             : try container.decodeIfPresent([String: RuntimeFreshness].self, forKey: .runtimeFreshness) ?? [:]
         let decodedLimitations = try container.decodeIfPresent([String].self, forKey: .limitations) ?? []
         limitations = Self.normalizedLimitations(decodedLimitations, runtimeFiles: decodedFiles)
+        localFunctionDiagnostics = try container.decodeIfPresent(
+            [LocalFunctionDiagnostic].self, forKey: .localFunctionDiagnostics
+        )
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -98,6 +106,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         try container.encodeIfPresent(runtimeContracts, forKey: .runtimeContracts)
         try container.encodeIfPresent(runtimeFiles, forKey: .runtimeFiles)
         if runtimeFiles != nil { try container.encode(runtimeFreshness, forKey: .runtimeFreshness) }
+        try container.encodeIfPresent(localFunctionDiagnostics, forKey: .localFunctionDiagnostics)
     }
 
     /// 문서의 형식과 입력 크기 제한을 검사한다.
@@ -166,7 +175,8 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                     .init(path: externalUSRs.contains(reference.sourceUSR)
                         ? $0.path : Self.rebase($0.path, from: projectRoot, to: currentProjectRoot),
                           line: $0.line, column: $0.column)
-                }
+                },
+                origin: reference.origin
             )
         }
         let dates = snapshot.indexedFileDates.map { values in
@@ -188,7 +198,13 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
             },
             runtimeFreshness: Dictionary(runtimeFreshness.sorted { $0.key < $1.key }.map { path, freshness in
                 (Self.rebase(path, from: projectRoot, to: currentProjectRoot), freshness)
-            }, uniquingKeysWith: { first, _ in first })
+            }, uniquingKeysWith: { first, _ in first }),
+            localFunctionDiagnostics: localFunctionDiagnostics?.map {
+                LocalFunctionDiagnostic(name: $0.name,
+                    location: .init(path: Self.rebase($0.location.path, from: projectRoot, to: currentProjectRoot),
+                        line: $0.location.line, column: $0.location.column),
+                    ownerName: $0.ownerName, ownerUSR: $0.ownerUSR, reason: $0.reason)
+            }
         )
     }
 
@@ -403,7 +419,7 @@ extension CartographService {
         }.sorted { left, right in
             let leftKey = Self.referenceOrderKey(left)
             let rightKey = Self.referenceOrderKey(right)
-            return leftKey < rightKey
+            return leftKey == rightKey ? left.origin.rawValue < right.origin.rawValue : leftKey < rightKey
         }
         let capturedDates = context.snapshot.indexedFileDates.map { dates in
             dates.filter { includedSourcePaths.contains($0.key) }
@@ -434,7 +450,10 @@ extension CartographService {
             externalRetentions: context.externalRetentions,
             runtimeContracts: runtimeContracts,
             runtimeFiles: capturedRuntimeFiles,
-            runtimeFreshness: capturedFreshness
+            runtimeFreshness: capturedFreshness,
+            localFunctionDiagnostics: context.localFunctionDiagnostics.filter {
+                configuration.pathFilter.allows($0.location.path) || supplementalPaths.contains($0.location.path)
+            }
         )
     }
 

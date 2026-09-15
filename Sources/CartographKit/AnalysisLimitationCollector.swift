@@ -97,6 +97,16 @@ struct AnalysisLimitationCollector {
         }
         let missing = context?.missingSourcePaths.count { filter.allows($0) } ?? 0
         let unreadable = context?.unreadableSourcePaths.count { filter.allows($0) } ?? 0
+        let localFunctions = context?.unresolvedLocalFunctionsByPath.reduce(0) { count, entry in
+            count + (filter.allows(entry.key) ? entry.value : 0)
+        } ?? 0
+        if localFunctions > 0 {
+            result.append(
+                "local-function-projection: \(localFunctions) source local function(s) could not be "
+                    + "bound through a fresh, unambiguous call/reference chain; their indexed references "
+                    + "remain attributed to enclosing declarations. Inspect source for exact local ownership."
+            )
+        }
         if missing > 0 {
             result.append(
                 "missing-sources: \(missing) indexed source file(s) no longer exist; rebuild with a fresh index "

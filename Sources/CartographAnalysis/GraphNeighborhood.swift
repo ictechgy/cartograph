@@ -3,11 +3,18 @@ import CartographCore
 /// 사용 관계와 포함 관계를 분리해 제한된 범위의 이웃을 계산한다.
 /// 응답 직렬화는 Kit 에 두고, 순회 규칙은 다른 분석과 같은 계층에서 검증한다.
 public struct GraphNeighborhood: Sendable {
+    /// 최단 깊이에서 이 이웃에 닿은 실제 간선과 질의 대상에 더 가까운 정점.
+    public struct Hop: Sendable, Equatable, Hashable {
+        public let via: NodeID
+        public let edge: GraphEdge
+    }
+
     /// 도달한 정점과 그 단계의 관계를 모두 남겨 출력에서 간선 종류를 잃지 않는다.
     public struct Neighbor: Sendable, Equatable {
         public let node: GraphNode
         public let edges: [EdgeKind]
         public let depth: Int
+        public let hops: [Hop]
     }
 
     private let graph: CodeGraph
@@ -32,7 +39,7 @@ public struct GraphNeighborhood: Sendable {
         for other in Set(others).sorted(by: { $0.rawValue < $1.rawValue }) {
             guard let node = graph.node(other) else { continue }
             guard collected.count < max(1, limit) else { truncated = true; break }
-            collected.append(Neighbor(node: node, edges: [.member], depth: 1))
+            collected.append(Neighbor(node: node, edges: [.member], depth: 1, hops: []))
         }
         return (collected, truncated)
     }
@@ -63,12 +70,14 @@ public struct GraphNeighborhood: Sendable {
             // 하나만 골라 담으면 나머지 관계가 응답에서 사라지고, 무엇을 고를지도
             // 정렬 타이에 따라 실행마다 달라진다. 종류를 모아 함께 보고한다.
             var kindsByNeighbor: [NodeID: Set<EdgeKind>] = [:]
+            var hopsByNeighbor: [NodeID: Set<Hop>] = [:]
             for current in frontier {
                 let edges = incoming ? graph.incomingEdges(to: current) : graph.outgoingEdges(from: current)
                 for edge in edges where edge.kind.impliesUsage {
                     let other = incoming ? edge.source : edge.target
                     guard !visited.contains(other) else { continue }
                     kindsByNeighbor[other, default: []].insert(edge.kind)
+                    hopsByNeighbor[other, default: []].insert(Hop(via: current, edge: edge))
                 }
             }
 
@@ -77,7 +86,10 @@ public struct GraphNeighborhood: Sendable {
                 visited.insert(other)
                 guard let node = graph.node(other), let kinds = kindsByNeighbor[other] else { continue }
                 guard collected.count < max(1, limit) else { truncated = true; continue }
-                collected.append(Neighbor(node: node, edges: kinds.sorted(), depth: level))
+                let hops = hopsByNeighbor[other, default: []].sorted {
+                    $0.via == $1.via ? $0.edge < $1.edge : $0.via < $1.via
+                }
+                collected.append(Neighbor(node: node, edges: kinds.sorted(), depth: level, hops: hops))
                 next.append(other)
             }
             frontier = next

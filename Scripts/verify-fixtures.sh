@@ -189,5 +189,50 @@ if ! grep -q "^objective-c-sources: 1 file(s) are not analysed" <<< "$limitation
 fi
 echo "  ok  Objective-C 소스 1개가 limitations 에 세어짐"
 
+# Kingfisher에서 관측한 지역 함수 소유자 누락을 실제 컴파일러 인덱스로 검증한다.
+# 바깥 함수가 depth 1에 남거나 지역 호출 사슬이 끊기면 실패해야 한다.
+"$CARTOGRAPH" query corpusLocalTarget --project "$FIXTURE" --depth 3 |
+    python3 -c '
+import json, sys
+document = json.load(sys.stdin)
+assert document["status"] == "found", document
+consumers = document["result"]["usedBy"]
+expected = [("corpusLocalConsumer()", 1), ("corpusLocalHandler()", 2), ("exerciseLocalFunctions()", 3)]
+assert [(item["name"], item["depth"]) for item in consumers] == expected, consumers
+assert all(item["usr"].startswith("cartograph:local-function:") for item in consumers[:2]), consumers
+direct = consumers[0]["referenceEvidence"]
+assert direct["omittedCount"] == 0 and direct["totalCount"] > 0, direct
+assert any(item["origin"] == "compilerAndSyntax" and item["sourceUSR"] == consumers[0]["usr"]
+           and item["targetUSR"] == document["result"]["subject"]["usr"]
+           and item["location"]["path"].endswith("LocalFunctions.swift") for item in direct["items"]), direct
+assert any(item["origin"] == "syntax" and item["viaUSR"] == consumers[0]["usr"]
+           for item in consumers[1]["referenceEvidence"]["items"]), consumers[1]
+'
+echo "  ok  지역 함수의 직접 소비자와 바깥 호출 사슬이 실제 깊이로 구분됨"
+
+"$CARTOGRAPH" query CorpusLocalConstructed.init --project "$FIXTURE" |
+    python3 -c '
+import json, sys
+document = json.load(sys.stdin)
+assert document["status"] == "found", document
+assert [item["name"] for item in document["result"]["usedBy"]] == ["corpusLocalConsumer()"], document
+'
+echo "  ok  생성자 이름이 달라도 지역 호출 위치의 컴파일러 참조가 유지됨"
+
+python3 - "$CARTOGRAPH" "$FIXTURE" <<'PYTHON'
+import json, subprocess, sys
+result = subprocess.run([sys.argv[1], "query", "MissingLocalDiagnosticTarget", "--project", sys.argv[2]],
+                        capture_output=True, text=True)
+assert result.returncode == 64, (result.returncode, result.stderr)
+document = json.loads(result.stdout)
+assert document["status"] == "notFound", document
+diagnostics = document["localFunctionDiagnostics"]
+assert diagnostics["omittedCount"] == 0, diagnostics
+items = [item for item in diagnostics["items"] if item["name"] == "corpusUnenteredLocal()"]
+assert len(items) == 1 and items[0]["reason"] == "noEntryChain", diagnostics
+assert items[0]["location"]["path"].endswith("LocalFunctions.swift") and items[0]["action"], items
+PYTHON
+echo "  ok  notFound도 미분석 지역 함수의 이름·위치·원인·조치를 제공함"
+
 echo
 echo "통과"

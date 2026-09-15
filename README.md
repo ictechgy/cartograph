@@ -356,6 +356,17 @@ the subject. Fields with no value are omitted rather than set to null: `declared
 declaration, `reason` on one that is not retained, `path` on one that is not reached, and `result`
 or `candidates` depending on `status`.
 
+Optional `referenceEvidence` on `usedBy`/`dependsOn` neighbors supplies actual reference locations,
+edge endpoints, the intermediate `viaUSR`, and provenance. It preserves all shortest-hop evidence;
+an indirect neighbor is not presented as directly referencing the subject. Missing locations remain
+absent. Evidence is limited to 20 records per neighbor and 200 per result, with `totalCount` and
+`omittedCount` separate from neighbor truncation.
+
+Optional `localFunctionDiagnostics` identifies unrefined local functions by name, declaration
+location, owner, reason, and suggested action. All query statuses include it when details exist,
+with at most 50 items and explicit total/omitted counts. Absent optional evidence means the producer
+did not supply it; it does not prove completeness. See the [full contract](docs/QUERY-EVIDENCE.md).
+
 An unknown name exits 64, so a typo in a script does not pass silently as "nothing uses it".
 
 #### `--batch` — ask about many declarations from one index read
@@ -1034,7 +1045,37 @@ first half of that rule, every type behind a protocol looks dead; without the se
 hides behind unused conformances. Both halves were found by running the tool on itself and by
 adversarial review.
 
+A direct call to a concrete implementation does not establish use of its protocol requirement.
+Actual requirement calls still activate eligible implementations and protocol-extension defaults;
+requirement refinement and class override chains remain traversable. Framework contracts outside
+the selected graph remain conservative.
+
+The compiler's broad `dynamic` occurrence role is distinct from Swift's explicit `dynamic` modifier.
+Cartograph refines that role only with a unique exact source identifier match and understood
+attributes. Explicit `dynamic`, dynamic replacement, Objective-C exposure, and unknown macro/source
+contexts remain protected. Uncalled ordinary extension helpers can therefore be reported without
+turning off those safeguards.
+
+With `--retain-public`, protocol requirements and enum cases inherit their enclosing declaration's
+access, and explicitly access-qualified extensions supply their members' default access. Ordinary
+members of a public class or struct still default to internal. Individual extension members can
+override the extension's default access.
+
 ### Known limitations
+
+- **Local-function refinement requires source and index evidence.** For fresh source, Cartograph
+  can recover named locals inside functions, methods, initializers, and deinitializers when an
+  unambiguous lexical call or function-value reference chain starts at the exact indexed owner.
+  `query`/`impact` then show the local as the direct consumer and the outer function at its actual
+  transitive depth. Closures keep their nearest named owner. Synthetic local keys use
+  `cartograph:local-function:` in the existing `usr` field; these are Cartograph keys, not compiler
+  USRs, and change when the local declaration's line/column changes. They can be queried again.
+  Uncalled or recursive-only locals, shadowed/overloaded names, unsupported macros/conditional
+  compilation, and stale or undated files retain the compiler's outer projection. Their observed
+  count is reported as `local-function-projection`; inspect source for exact ownership in those
+  cases. Property/subscript accessors are not refined. Custom edge filters excluding calls,
+  references, or containment disable refinement. Default type/file/module rollups stay unchanged; symbol graphs can now
+  show actual recursion between promoted locals.
 
 - **File-level freshness is not build-configuration completeness.** A file's latest index unit
   prevents unrelated targets from hiding its edits, but does not prove that every configuration

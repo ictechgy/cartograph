@@ -12,6 +12,10 @@ public struct SnapshotEnricher: Sendable {
         public let missingSourcePaths: [String]
         public let unreadableSourcePaths: [String]
         public let runtimeFiles: [RuntimeFileFacts]
+        /// 소스에 있지만 확실하게 세분하지 못해 바깥 인덱스 소유자로 남긴 지역 함수 수.
+        public let unresolvedLocalFunctionsByPath: [String: Int]
+        /// 개수만으로 알 수 없는 함수별 제외 원인을 보존한다.
+        public let localFunctionDiagnostics: [LocalFunctionDiagnostic]
     }
 
     private let fileSystem: any FileSystem
@@ -62,24 +66,30 @@ public struct SnapshotEnricher: Sendable {
     public func enrich(
         _ snapshot: IndexSnapshot,
         interfaceBuilderRoots: [String] = [],
-        pathFilter: PathFilter = .passthrough
+        pathFilter: PathFilter = .passthrough,
+        edgeKinds: Set<EdgeKind> = []
     ) -> IndexSnapshot {
-        enrichWithDiagnostics(snapshot, interfaceBuilderRoots: interfaceBuilderRoots, pathFilter: pathFilter).snapshot
+        enrichWithDiagnostics(snapshot, interfaceBuilderRoots: interfaceBuilderRoots,
+            pathFilter: pathFilter, edgeKinds: edgeKinds).snapshot
     }
 
     /// 실패 경로를 한 번의 읽기에서 수집한다. 파일을 다시 읽어 추측하면 실행 사이에 상태가 달라진다.
     public func enrichWithDiagnostics(
         _ snapshot: IndexSnapshot,
         interfaceBuilderRoots: [String] = [],
-        pathFilter: PathFilter = .passthrough
+        pathFilter: PathFilter = .passthrough,
+        edgeKinds: Set<EdgeKind> = []
     ) -> Result {
         let stored = cache?.load() ?? [:]
         var facts: [String: SourceFileFacts] = [:]
         var fresh: [String: SourceFactsCache.Entry] = [:]
         var missing: [String] = []
         var unreadable: [String] = []
+        var freshPaths: Set<String> = []
+        var freshnessFailures: [String: LocalFunctionSkipReason] = [:]
 
         for path in snapshot.filePaths where path.hasSuffix(".swift") {
+            let sourceDate = fileSystem.modificationDate(at: path)
             let source: String
             do {
                 source = try fileSystem.readText(at: path)
@@ -87,6 +97,17 @@ public struct SnapshotEnricher: Sendable {
                 // 존재 여부 재조회는 권한 오류도 '없음'으로 오인한다. 읽기가 돌려준 원인만 쓴다.
                 if Self.isMissingFile(error) { missing.append(path) } else { unreadable.append(path) }
                 continue
+            }
+            let afterRead = fileSystem.modificationDate(at: path)
+            if snapshot.indexedFileDates?[path] == nil {
+                freshnessFailures[path] = .indexDateUnavailable
+            } else if sourceDate == nil || afterRead == nil {
+                freshnessFailures[path] = .sourceDateUnavailable
+            } else if let sourceDate, let indexed = snapshot.indexedFileDates?[path], sourceDate <= indexed,
+                      afterRead == sourceDate {
+                freshPaths.insert(path)
+            } else {
+                freshnessFailures[path] = .sourceNotFresh
             }
             guard let cache else {
                 facts[path] = analyzer.analyze(source: source, path: path)
@@ -105,7 +126,9 @@ public struct SnapshotEnricher: Sendable {
         // 왜 같은지가 한눈에 보이지 않아 나중 편집에서 깨지기 쉽다.
         if let cache, fresh != stored { cache.save(fresh) }
 
-        var enriched = Self.enrich(snapshot, with: facts)
+        let refinement = Self.enrichResult(snapshot, with: facts, freshSourcePaths: freshPaths,
+            edgeKinds: edgeKinds, freshnessFailures: freshnessFailures)
+        var enriched = refinement.snapshot
         let unreadablePaths = Set(unreadable)
         for index in enriched.symbols.indices where unreadablePaths.contains(enriched.symbols[index].location.path) {
             enriched.symbols[index].attributes.insert(.sourceUnavailable)
@@ -115,8 +138,10 @@ public struct SnapshotEnricher: Sendable {
                 .scan(roots: interfaceBuilderRoots, pathFilter: pathFilter)
             enriched = Self.marking(enriched, interfaceBuilderReferences: references)
         }
+        let unresolved = Dictionary(grouping: refinement.diagnostics, by: { $0.location.path }).mapValues(\.count)
         return Result(snapshot: enriched, missingSourcePaths: missing, unreadableSourcePaths: unreadable,
-            runtimeFiles: facts.values.compactMap(\.runtimeFacts).sorted { $0.path < $1.path })
+            runtimeFiles: facts.values.compactMap(\.runtimeFacts).sorted { $0.path < $1.path },
+            unresolvedLocalFunctionsByPath: unresolved, localFunctionDiagnostics: refinement.diagnostics)
     }
 
     private static func isMissingFile(_ error: any Error) -> Bool {
@@ -150,9 +175,37 @@ public struct SnapshotEnricher: Sendable {
     /// 이미 분석된 구문 정보로 스냅샷을 보강한다.
     ///
     /// 파일 접근이 없는 순수 함수라 매칭 규칙만 따로 테스트할 수 있다.
-    public static func enrich(_ snapshot: IndexSnapshot, with facts: [String: SourceFileFacts]) -> IndexSnapshot {
+    public static func enrich(
+        _ snapshot: IndexSnapshot,
+        with facts: [String: SourceFileFacts],
+        freshSourcePaths: Set<String> = [],
+        edgeKinds: Set<EdgeKind> = []
+    ) -> IndexSnapshot {
+        enrichResult(snapshot, with: facts, freshSourcePaths: freshSourcePaths,
+            edgeKinds: edgeKinds, freshnessFailures: [:]).snapshot
+    }
+
+    private static func enrichResult(
+        _ snapshot: IndexSnapshot,
+        with facts: [String: SourceFileFacts],
+        freshSourcePaths: Set<String>,
+        edgeKinds: Set<EdgeKind>,
+        freshnessFailures: [String: LocalFunctionSkipReason]
+    ) -> LocalFunctionBinder.Result {
         var enriched = snapshot
+        let exactDeclarations = facts.mapValues { file in
+            Dictionary(grouping: file.declarations.compactMap { declaration -> BoundDeclaration? in
+                guard let location = declaration.nameLocation, location.path == file.path else { return nil }
+                return BoundDeclaration(
+                    key: DeclarationKey(name: declaration.name, location: location), facts: declaration
+                )
+            }, by: \.key)
+        }
+        let indexBindings = Dictionary(grouping: snapshot.symbols) {
+            DeclarationKey(name: GraphNode.baseName(ofIndexName: $0.name), location: $0.location)
+        }.mapValues { Set($0.map(\.usr)).count }
         enriched.symbols = snapshot.symbols.map { symbol in
+            guard !SourceLocalSymbol.contains(symbol.usr) else { return symbol }
             guard let fileFacts = facts[symbol.location.path] else { return symbol }
             var updated = symbol
             updated.attributes.remove(.sourceUnavailable)
@@ -163,15 +216,40 @@ public struct SnapshotEnricher: Sendable {
             // 이름이 맞는 선언만 신뢰한다. 줄 번호만 보면 한 줄에 선언이 여럿일 때
             // 엉뚱한 선언의 접근 수준과 속성이 붙어 실제로 쓰이는 심볼이
             // 미사용으로 보고된다.
-            guard let declaration = fileFacts.declaration(
+            let key = DeclarationKey(name: GraphNode.baseName(ofIndexName: symbol.name), location: symbol.location)
+            let exact = exactDeclarations[symbol.location.path]?[key]
+            let bound = exact?.count == 1 && indexBindings[key] == 1 ? exact?.first?.facts : nil
+            guard let declaration = bound ?? fileFacts.declaration(
                 matchingIndexName: symbol.name,
                 nearLine: symbol.location.line
             ) else { return updated }
 
             updated.accessibility = declaration.accessibility
             updated.attributes.formUnion(declaration.attributes)
+            // 인덱스의 dynamic 역할은 프로토콜·가상 호출에도 붙는다. 그것이 Swift의
+            // 명시적 dynamic 제어자는 아니다. 정확히 한 선언에 바인딩되고 속성 효과가
+            // 명시적으로 해석된 소스만 이 근거를 정정하며, 합성·오래된 캐시·모호한
+            // 위치는 계속 보수적으로 둔다.
+            if let bound, bound.hasUnresolvedAttributes == false, !symbol.attributes.contains(.implicit) {
+                updated.attributes.remove(.dynamicDispatch)
+                if bound.attributes.contains(.dynamicDispatch) {
+                    updated.attributes.insert(.dynamicDispatch)
+                }
+            }
             return updated
         }
-        return enriched
+        return LocalFunctionBinder.enrichWithDiagnostics(enriched,
+            scopes: facts.keys.sorted().flatMap { facts[$0]?.localFunctionScopes ?? [] },
+            freshPaths: freshSourcePaths, edgeKinds: edgeKinds, freshnessFailures: freshnessFailures)
+    }
+
+    private struct DeclarationKey: Hashable {
+        let name: String
+        let location: SourceLocation
+    }
+
+    private struct BoundDeclaration {
+        let key: DeclarationKey
+        let facts: DeclarationFacts
     }
 }

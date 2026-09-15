@@ -138,6 +138,7 @@ public struct ReachabilityAnalyzer: Sendable {
 
     public func analyze(graph: CodeGraph, snapshot: IndexSnapshot) -> UnusedCodeReport {
         let declared = policy.retainedNodes(in: graph, snapshot: snapshot)
+        let protocolRequirementOwners = protocolRequirementOwners(in: graph)
         // 증인 보존은 소유 타입이 살아 있을 때만 성립한다. 프레임워크가 `body` 를 부르는 것은
         // 그 타입을 누군가 만들 때뿐이라, 아무도 만들지 않는 타입의 `body` 를 무조건 뿌리로
         // 두면 답이 스스로 모순된다 — 타입은 "미사용", 그 멤버는 "보존됨".
@@ -146,6 +147,7 @@ public struct ReachabilityAnalyzer: Sendable {
         let traversal = traverse(
             from: Set(unconditional.keys).union(inherited.keys),
             conditionalWitnesses: conditional,
+            protocolRequirementOwners: protocolRequirementOwners,
             in: graph
         )
         // 살아나지 못한 증인의 근거는 남기지 않는다. 근거 목록은 언제나 도달 가능한 정점의
@@ -167,6 +169,7 @@ public struct ReachabilityAnalyzer: Sendable {
                 retentions: retentions,
                 inherited: inherited,
                 conditionalWitnesses: conditional,
+                protocolRequirementOwners: protocolRequirementOwners,
                 graph: graph
             )
         )
@@ -184,6 +187,7 @@ public struct ReachabilityAnalyzer: Sendable {
         retentions: [NodeID: RetentionReason],
         inherited: [NodeID: InheritedRetention],
         conditionalWitnesses: [NodeID: NodeID],
+        protocolRequirementOwners: [NodeID: NodeID],
         graph: CodeGraph
     ) -> [GraphNode] {
         guard options.findsTestOnlyCode else { return [] }
@@ -222,6 +226,7 @@ public struct ReachabilityAnalyzer: Sendable {
         let production = traverse(
             from: productionRoots,
             conditionalWitnesses: conditionalWitnesses,
+            protocolRequirementOwners: protocolRequirementOwners,
             in: graph
         ).reachable
         let candidates = graph.sortedNodes.filter {
@@ -297,6 +302,21 @@ public struct ReachabilityAnalyzer: Sendable {
         let predecessors: [NodeID: NodeID]
     }
 
+    /// 프로토콜이 어휘적으로 직접 포함하는 요구사항과 그 소유자.
+    ///
+    /// `semanticParent` 는 프로토콜 익스텐션의 구현을 프로토콜 아래로 접기 때문에,
+    /// 요구사항 판정에 쓰면 기본 구현까지 요구사항으로 오인한다. 실제 요구사항은
+    /// 프로토콜 정점에서 나가는 직접 `member` 간선으로만 식별해야 한다.
+    private func protocolRequirementOwners(in graph: CodeGraph) -> [NodeID: NodeID] {
+        var owners: [NodeID: NodeID] = [:]
+        for node in graph.sortedNodes where node.kind == .protocolType {
+            for edge in graph.outgoingEdges(from: node.id) where edge.kind == .member {
+                owners[edge.target] = node.id
+            }
+        }
+        return owners
+    }
+
     /// 사용 의미가 있는 간선만 따라가는 너비 우선 탐색.
     /// 보존 근거를 무조건 뿌리가 되는 것과, 소유 타입이 살아야 성립하는 증인으로 가른다.
     ///
@@ -322,6 +342,7 @@ public struct ReachabilityAnalyzer: Sendable {
     private func traverse(
         from roots: Set<NodeID>,
         conditionalWitnesses: [NodeID: NodeID] = [:],
+        protocolRequirementOwners: [NodeID: NodeID],
         in graph: CodeGraph
     ) -> Traversal {
         var reachable = roots
@@ -355,6 +376,10 @@ public struct ReachabilityAnalyzer: Sendable {
             head += 1
 
             for edge in graph.outgoingEdges(from: current) {
+                if edge.kind == .overrides, protocolRequirementOwners[edge.target] != nil,
+                   protocolRequirementOwners[edge.source] == nil {
+                    continue
+                }
                 if edge.kind.impliesUsage {
                     visit(edge.target, from: current)
                 } else if edge.kind == .member, graph.node(edge.target)?.kind == .deinitializer {
@@ -370,7 +395,13 @@ public struct ReachabilityAnalyzer: Sendable {
                     // 요구사항이 쓰였다고 해서 "한 번도 만들어지지 않는 타입"의 구현까지
                     // 살리면, 그 구현이 호출하는 바깥 심볼들이 줄줄이 되살아난다.
                     // 소유 타입이 살아 있을 때만 구현을 살린다.
-                    if let owner = owningType(of: witness, in: graph), !reachable.contains(owner) {
+                    if isDefaultProtocolWitness(
+                        witness,
+                        protocolID: protocolRequirementOwners[current],
+                        in: graph
+                    ) {
+                        visit(witness, from: current)
+                    } else if let owner = owningType(of: witness, in: graph), !reachable.contains(owner) {
                         pendingWitnesses[owner, default: []].append((witness, current))
                     } else {
                         visit(witness, from: current)
@@ -388,9 +419,43 @@ public struct ReachabilityAnalyzer: Sendable {
     /// 포함 관계를 거슬러 올라간 의미상의 소유 타입.
     ///
     /// 익스텐션을 건너뛴다. 익스텐션 정점을 소유자로 쓰면, 아무도 익스텐션을
-    /// 사용하지 않으므로 증인이 영원히 되살아나지 못한다.
+    /// 사용하지 않으므로 증인이 영원히 되살아나지 못한다. 확장 대상이 외부이거나
+    /// 필터 밖이라 확인할 수 없으면 소유자를 추측하지 않고 nil 을 돌려 보존을 넓힌다.
     private func owningType(of node: NodeID, in graph: CodeGraph) -> NodeID? {
-        graph.semanticParent(of: node)
+        guard let lexicalParent = graph.incomingEdges(to: node).first(where: { $0.kind == .member })?.source,
+              let parent = graph.node(lexicalParent)
+        else { return nil }
+        if parent.kind == .extensionDeclaration {
+            guard let extended = graph.outgoingEdges(from: parent.id)
+                .first(where: { $0.kind == .extends })?.target,
+                  let owner = graph.node(extended),
+                  !owner.isExternal
+            else { return nil }
+            return owner.id
+        }
+        return parent.id
+    }
+
+    /// 해당 구현이 요구사항의 기본 구현을 담은 프로토콜 익스텐션인지 확인한다.
+    ///
+    /// 기본 구현의 의미상 소유자는 프로토콜이지만, 요구사항 호출만으로도 그 구현이
+    /// 선택될 수 있다. 따라서 프로토콜 정점 자체가 별도로 도달하지 않아도 요구사항의
+    /// 역방향 디스패치에서 활성화한다. 어휘적 `.member` 부모와 `.extends` 대상을 함께
+    /// 확인해 클래스 오버라이드나 임의 익스텐션 구현을 섞지 않는다.
+    private func isDefaultProtocolWitness(
+        _ witness: NodeID,
+        protocolID: NodeID?,
+        in graph: CodeGraph
+    ) -> Bool {
+        guard let lexicalParent = graph.incomingEdges(to: witness).first(where: { $0.kind == .member })?.source,
+              let parent = graph.node(lexicalParent),
+              parent.kind == .extensionDeclaration,
+              let extendedProtocol = graph.outgoingEdges(from: parent.id)
+                  .first(where: { $0.kind == .extends })?.target,
+              extendedProtocol == protocolID,
+              graph.node(extendedProtocol)?.kind == .protocolType
+        else { return false }
+        return true
     }
 
     /// 사람이 실제로 행동할 수 있는 항목만 남긴다.
@@ -402,8 +467,8 @@ public struct ReachabilityAnalyzer: Sendable {
         nodes.filter { node in
             guard !options.excludedKinds.contains(node.kind) else { return false }
             guard !node.attributes.contains(.implicit) else { return false }
-            if options.reportMembersOfUnusedTypes { return true }
-            return !hasUnreachableAncestor(node, unreachableIDs: unreachableIDs, graph: graph)
+            if options.reportMembersOfUnusedTypes, !SourceLocalSymbol.contains(node.usr ?? "") { return true }
+            return !hasReportableUnreachableTypeAncestor(node, unreachableIDs: unreachableIDs, graph: graph)
         }
         .sorted { lhs, rhs in
             switch (lhs.location, rhs.location) {
@@ -415,7 +480,7 @@ public struct ReachabilityAnalyzer: Sendable {
         }
     }
 
-    private func hasUnreachableAncestor(
+    private func hasReportableUnreachableTypeAncestor(
         _ node: GraphNode,
         unreachableIDs: Set<NodeID>,
         graph: CodeGraph
@@ -424,7 +489,17 @@ public struct ReachabilityAnalyzer: Sendable {
         var visited: Set<NodeID> = [current]
         while let parent = graph.semanticParent(of: current) {
             guard visited.insert(parent).inserted else { return false }
-            if unreachableIDs.contains(parent) { return true }
+            // SDK 익스텐션은 자체가 보고 대상 타입이 아니다. 그 정점이 도달하지
+            // 않는다는 이유로 내부 도우미까지 숨기면 query는 unreachable인데
+            // dead에서는 영원히 사라지는 판정이 된다.
+            let isLocal = SourceLocalSymbol.contains(node.usr ?? "")
+            if unreachableIDs.contains(parent), let ancestor = graph.node(parent),
+               (ancestor.kind.isTypeDeclaration || (isLocal
+                   && [.function, .method, .initializer, .deinitializer].contains(ancestor.kind))),
+               !options.excludedKinds.contains(ancestor.kind),
+               !ancestor.attributes.contains(.implicit) {
+                return true
+            }
             current = parent
         }
         return false

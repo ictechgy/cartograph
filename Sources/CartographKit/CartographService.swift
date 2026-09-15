@@ -71,7 +71,8 @@ public struct CartographService: Sendable {
         .enrichWithDiagnostics(
             raw,
             interfaceBuilderRoots: configuration.retention.retainInterfaceBuilder ? [projectPath] : [],
-            pathFilter: configuration.pathFilter
+            pathFilter: configuration.pathFilter,
+            edgeKinds: configuration.edgeKinds
         )
     }
 
@@ -95,6 +96,8 @@ public struct CartographService: Sendable {
             externalRetentions: externalRetentions,
             missingSourcePaths: enriched.missingSourcePaths,
             unreadableSourcePaths: enriched.unreadableSourcePaths,
+            unresolvedLocalFunctionsByPath: enriched.unresolvedLocalFunctionsByPath,
+            localFunctionDiagnostics: enriched.localFunctionDiagnostics,
             runtimeFiles: enriched.runtimeFiles + runtimeResourceFacts(),
             runtimeFreshness: runtimeSourceFreshness(snapshot: snapshot,
                 missing: enriched.missingSourcePaths, unreadable: enriched.unreadableSourcePaths)
@@ -465,6 +468,8 @@ public struct CartographService: Sendable {
         let lookup: GraphQueryIndex
         let report: UnusedCodeReport
         let limitations: [String]
+        let referenceEvidence: ReferenceEvidenceIndex
+        let localFunctionDiagnostics: LocalFunctionDiagnostics?
         /// 베이스라인도 한 번만 읽는다.
         ///
         /// 없으면 요청마다 파일을 다시 읽는다. 답은 같지만, 1000건 배치에서 33 밀리초를
@@ -489,6 +494,10 @@ public struct CartographService: Sendable {
             lookup: GraphQueryIndex(graph: graph),
             report: report,
             limitations: analysisLimitations(context: context, symbolGraph: graph),
+            referenceEvidence: ReferenceEvidenceIndex(snapshot: context.snapshot, graph: graph),
+            localFunctionDiagnostics: LocalFunctionDiagnostics.presenting(
+                context.localFunctionDiagnostics.filter { configuration.pathFilter.allows($0.location.path) }
+            ),
             baseline: baseline,
             baselineFingerprints: baseline.map { Set($0.fingerprints) } ?? []
         )
@@ -523,7 +532,8 @@ public struct CartographService: Sendable {
                 requested: subject,
                 level: level,
                 limitations: limitations,
-                candidates: similar.isEmpty ? nil : similar
+                candidates: similar.isEmpty ? nil : similar,
+                localFunctionDiagnostics: session.localFunctionDiagnostics
             )
         case let .ambiguous(candidates):
             return SymbolQueryDocument(
@@ -531,7 +541,8 @@ public struct CartographService: Sendable {
                 requested: subject,
                 level: level,
                 limitations: limitations,
-                candidates: Self.candidates(candidates, in: graph)
+                candidates: Self.candidates(candidates, in: graph),
+                localFunctionDiagnostics: session.localFunctionDiagnostics
             )
         case let .found(node):
             return SymbolQueryDocument(
@@ -541,8 +552,10 @@ public struct CartographService: Sendable {
                 limitations: limitations,
                 result: try describeQuery(
                     of: node, report: report, in: graph,
-                    depth: depth, limit: limit, baselineFingerprints: session.baselineFingerprints
-                )
+                    depth: depth, limit: limit, baselineFingerprints: session.baselineFingerprints,
+                    referenceEvidence: session.referenceEvidence
+                ),
+                localFunctionDiagnostics: session.localFunctionDiagnostics
             )
         }
     }
@@ -615,7 +628,8 @@ public struct CartographService: Sendable {
         in graph: CodeGraph,
         depth: Int,
         limit: Int,
-        baselineFingerprints: Set<String>
+        baselineFingerprints: Set<String>,
+        referenceEvidence: ReferenceEvidenceIndex
     ) throws -> SymbolQuery {
         let explanation = report.explain(node.id, in: graph)
         // 도달 가능한 정점에는 `dead` 가 애초에 진단을 내지 않는다. 그런데도 옛
@@ -631,13 +645,16 @@ public struct CartographService: Sendable {
         )
         let (members, membersTruncated) = neighborhood.containment(of: node.id, limit: limit, incoming: false)
         let declaredIn = neighborhood.containment(of: node.id, limit: 1, incoming: true).neighbors.first
+        var evidenceBudget = 200
+        let describedUsers = Self.describe(usedBy, evidence: referenceEvidence, budget: &evidenceBudget)
+        let describedDependencies = Self.describe(dependsOn, evidence: referenceEvidence, budget: &evidenceBudget)
         return SymbolQuery(
             subject: Self.describe(node),
             reachability: Self.describe(explanation, suppressedByBaseline: suppressed, in: graph),
-            usedBy: usedBy.map(Self.describe),
-            dependsOn: dependsOn.map(Self.describe),
-            members: members.map(Self.describe),
-            declaredIn: declaredIn.map(Self.describe),
+            usedBy: describedUsers,
+            dependsOn: describedDependencies,
+            members: members.map { Self.describe($0) },
+            declaredIn: declaredIn.map { Self.describe($0) },
             truncated: .init(
                 usedBy: usedByTruncated,
                 dependsOn: dependsOnTruncated,
@@ -698,7 +715,19 @@ public struct CartographService: Sendable {
         return markers.compactMap { environment.fileSystem.modificationDate(at: $0) }.max()
     }
 
-    private static func describe(_ neighbor: GraphNeighborhood.Neighbor) -> SymbolQuery.Neighbor {
+    private static func describe(
+        _ neighbors: [GraphNeighborhood.Neighbor], evidence: ReferenceEvidenceIndex, budget: inout Int
+    ) -> [SymbolQuery.Neighbor] {
+        neighbors.map { neighbor in
+            let detail = evidence.evidence(for: neighbor.hops, limit: min(20, budget))
+            budget -= detail.items.count
+            return describe(neighbor, referenceEvidence: detail)
+        }
+    }
+
+    private static func describe(
+        _ neighbor: GraphNeighborhood.Neighbor, referenceEvidence: ReferenceEvidence? = nil
+    ) -> SymbolQuery.Neighbor {
         let node = neighbor.node
         return SymbolQuery.Neighbor(
             name: node.name,
@@ -708,7 +737,8 @@ public struct CartographService: Sendable {
             module: node.module,
             edges: neighbor.edges.map(\.rawValue).sorted(),
             depth: neighbor.depth,
-            location: node.location
+            location: node.location,
+            referenceEvidence: referenceEvidence
         )
     }
 

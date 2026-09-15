@@ -107,6 +107,8 @@ public struct IndexStoreProvider: IndexProviding {
         // 관계 없이 기록된 참조와, 그것을 붙일 후보가 되는 정의 위치들.
         var unattributed: [(usr: String, location: SourceLocation)] = []
         var definitionSites: [String: [(usr: String, location: SourceLocation)]] = [:]
+        var conformanceAliases: [SymbolOccurrence] = []
+        var implicitBaseOwners: [OccurrenceSite: Set<String>] = [:]
 
         for occurrence in occurrences {
             if let symbol = IndexStoreMapping.indexedSymbol(from: occurrence) {
@@ -136,6 +138,11 @@ public struct IndexStoreProvider: IndexProviding {
             references.append(contentsOf: occurrenceReferences)
 
             let location = IndexStoreMapping.sourceLocation(occurrence.location)
+            if occurrence.roles.contains(.reference), occurrence.roles.contains(.implicit) {
+                for relation in occurrence.relations where relation.roles.contains(.baseOf) {
+                    implicitBaseOwners[OccurrenceSite(occurrence), default: []].insert(relation.symbol.usr)
+                }
+            }
             if occurrence.roles.contains(.definition) {
                 definitionSites[location.path, default: []].append((occurrence.symbol.usr, location))
             } else if occurrenceReferences.isEmpty, occurrence.roles.contains(.reference),
@@ -143,6 +150,9 @@ public struct IndexStoreProvider: IndexProviding {
                 // 암시적 발생은 매크로가 펼친 코드다. 위치가 사용자가 쓴 자리가 아니라
                 // 속성 줄이라, 위치로 소유자를 찾으면 앞 선언에 붙는다.
                 unattributed.append((occurrence.symbol.usr, location))
+                if occurrence.symbol.kind == .typealias, occurrence.symbol.subKind == .none {
+                    conformanceAliases.append(occurrence)
+                }
             }
 
             // 최상위 문장이 실제로 참조를 만들었을 때만 가상 심볼을 세운다.
@@ -167,6 +177,9 @@ public struct IndexStoreProvider: IndexProviding {
 
         references += enclosingReferences(
             for: unattributed, definitionSites: definitionSites, symbols: symbolsByUSR
+        )
+        references += conformanceAliasReferences(
+            conformanceAliases, implicitBaseOwners: implicitBaseOwners, symbols: symbolsByUSR
         )
 
         // 접근자와 프로퍼티 래퍼 곁가지를 모두 원래 선언으로 되돌린다.
@@ -227,6 +240,37 @@ public struct IndexStoreProvider: IndexProviding {
     /// 그 모양으로 두 건을 만들었다.
     static let omitsContainment: Set<SymbolKind> = [.enumCase, .typeAlias, .associatedType]
 
+    /// 같은 물리적 위치라도 공유 소스를 서로 다른 모듈로 빌드한 발생은 섞지 않는다.
+    private struct OccurrenceSite: Hashable {
+        let location: SourceLocation
+        let module: String
+
+        init(_ occurrence: SymbolOccurrence) {
+            location = IndexStoreMapping.sourceLocation(occurrence.location)
+            module = occurrence.location.moduleName
+        }
+    }
+
+    /// 명시적 별칭 ref와 같은 자리의 암시적 baseOf가 준수 선언의 소유자를 증명한다.
+    ///
+    /// Kingfisher의 NSViewRepresentable 별칭에서 관찰했다. 가까운 타입을 고르지 않고
+    /// 컴파일러가 같은 파일·모듈·줄·열에 준 소유자가 하나일 때만 간선을 보충한다.
+    private static func conformanceAliasReferences(
+        _ aliases: [SymbolOccurrence],
+        implicitBaseOwners: [OccurrenceSite: Set<String>],
+        symbols: [String: IndexedSymbol]
+    ) -> [IndexedReference] {
+        let ownerKinds: Set<SymbolKind> = [.classType, .structType, .enumType, .protocolType, .extensionDeclaration]
+        return aliases.compactMap { occurrence in
+            guard let owners = implicitBaseOwners[OccurrenceSite(occurrence)], owners.count == 1,
+                  let owner = owners.first, owner != occurrence.symbol.usr,
+                  let declaration = symbols[owner], ownerKinds.contains(declaration.kind)
+            else { return nil }
+            return IndexedReference(sourceUSR: owner, targetUSR: occurrence.symbol.usr, kind: .reference,
+                location: IndexStoreMapping.sourceLocation(occurrence.location), origin: .inferred)
+        }
+    }
+
     /// 관계 없이 기록된 참조를 감싸는 선언에 붙인다.
     ///
     /// 인덱서는 열거형 케이스의 연관 값 타입, 타입 별칭의 우변, `associatedtype` 증인이
@@ -249,7 +293,8 @@ public struct IndexStoreProvider: IndexProviding {
                   let kind = symbols[owner]?.kind, Self.omitsContainment.contains(kind)
             else { return nil }
             return IndexedReference(
-                sourceUSR: owner, targetUSR: entry.usr, kind: .reference, location: entry.location
+                sourceUSR: owner, targetUSR: entry.usr, kind: .reference,
+                location: entry.location, origin: .inferred
             )
         }
     }

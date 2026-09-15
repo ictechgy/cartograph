@@ -659,8 +659,8 @@ struct RuntimeDiscoveryIndex {
                 return exact
             }
         }
-        // receivedBy도 call로 정규화되어 같은 자리에 수신자 타입이 생긴다. 그 타입을 실제
-        // 호출 주체로 고르면 모든 메서드가 영향을 받는 허상 경로가 생긴다.
+        // 예전 스냅샷이나 직접 만든 입력에는 수신 타입이 호출자처럼 남아 있을 수 있다.
+        // 그 타입을 실행 주체로 고르면 모든 메서드가 영향을 받는 허상 경로가 생긴다.
         return sources.filter { graph.node($0).map { !$0.kind.isTypeDeclaration && $0.kind != .module } == true }
     }
 

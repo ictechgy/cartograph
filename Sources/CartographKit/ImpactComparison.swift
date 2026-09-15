@@ -68,6 +68,7 @@ extension CartographService {
             snapshot: historical.snapshot,
             edgeKinds: Set(historical.edgeKinds),
             externalRetentions: historical.externalRetentions,
+            localFunctionDiagnostics: historical.localFunctionDiagnostics ?? [],
             runtimeFiles: historical.runtimeFiles,
             runtimeFreshness: historical.runtimeFreshness
         )

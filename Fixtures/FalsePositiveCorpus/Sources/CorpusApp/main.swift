@@ -1,6 +1,9 @@
 // main.swift 의 최상위 문장이 실행 파일의 진입점이다.
 import Corpus
 
+exerciseLocalFunctions()
+exerciseLocalDiagnostics()
+
 let host = AccessorHost()
 _ = host.fromGetter
 var observedHost = AccessorHost()
@@ -11,3 +14,7 @@ _ = Box(1).value
 _ = Screen().render()
 _ = BindingHost()
 exerciseRetentionShapes()
+exerciseAliasedConformance()
+exerciseStaticExtensionDispatchShapes()
+exerciseProtocolDispatchShapes()
+exerciseInheritedAccessShapes()

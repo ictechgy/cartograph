@@ -3,7 +3,7 @@
 /// 인덱스 스토어와 구문 분석 결과가 합쳐진 형태다.
 /// `accessibility` 와 속성 일부는 인덱스에 없으므로 구문 분석이 나중에 채운다.
 public struct IndexedSymbol: Hashable, Sendable, Codable {
-    /// 컴파일러가 부여한 고유 식별자. 그래프의 1차 키다.
+    /// 컴파일러 USR 또는 `cartograph:` 이름 공간의 소스 보완 키. 그래프의 1차 키다.
     public let usr: String
     public let name: String
     public let kind: SymbolKind

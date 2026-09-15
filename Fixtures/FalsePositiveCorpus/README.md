@@ -2,6 +2,11 @@
 
 Patterns that produced false positives in real code, kept as a fixture that actually compiles.
 
+`LocalFunctions.swift` reproduces Kingfisher's omitted named-local consumer: an outer function
+uses a handler, which uses a local consumer, which calls the target. The CLI harness requires
+that exact depth-1/2/3 chain. The previous binary fails by returning only the outer function
+at depth 1. Whole dead-code lists must remain unchanged, so attribution cannot break liveness.
+
 Unit tests run on hand-built snapshots, so they cannot check what the compiler really writes into
 the index store. Every false positive found in this repository lived exactly there. `Scripts/verify-fixtures.sh`
 builds this package and compares the whole finding list, in both directions: a new false positive
@@ -73,3 +78,37 @@ small handwritten fixture, not copied plugin implementation. Its registration an
 branch must be exported with `sourceLanguage: objective-c` and no fabricated Swift symbol. The
 header only supplies types so the Objective-C compiler can index the shape without Flutter SDK.
 The Swift dead-code lists must remain identical because this declaration is outside that graph.
+## Conformance typealiases
+
+`AliasConformance.swift` reproduces Kingfisher's macOS
+`KFCrossPlatformViewRepresentable` conformance alias (revision
+`ab1c1de54a1ce1adfe1733c7195056a153029d3a`, `KFAnimatedImage.swift:77,85`).
+The compiler emits a relationless explicit alias reference and a co-located
+implicit protocol/baseOf occurrence. `LivePlatformViewAlias` must stay reachable;
+`UnusedPlatformViewAlias` must remain reportable. A nearest-type fallback is not
+valid evidence for this connection.
+
+## Dispatch and public contracts
+
+`StaticExtensionDispatch.swift` covers the over-retained protocol/generic extension helpers found
+in Alamofire (`Protected.swift`, `OfflineRetrier.swift`) and Swift Argument Parser
+(`HelpGenerator.swift`, `SequenceExtensions.swift`). Called helpers, explicit Swift `dynamic`,
+and dynamic replacements must survive; uncalled ordinary helpers must be reported.
+
+`ProtocolDispatch.swift` pairs the unused-requirement shapes from Kingfisher's
+`DisplayLinkCompatible.timestamp` and Argument Parser's `ArgumentSetProvider._visibility` with
+live existential/generic calls, inherited protocol defaults, class overrides, and an external
+`Array: Identifiable` witness. Its two unused `run()` declarations are distinct USRs, so the
+expected message lists intentionally contain that line twice.
+
+`InheritedAccess.swift` preserves public protocol requirements and public extension APIs under
+`--retain-public`, matching the public `AlamofireExtended`, `DataResponseSerializerProtocol`, and
+Kingfisher `CallbackOperationQueue` contracts. The host is instantiated, but its extension APIs
+are deliberately uncalled: default analysis reports them, while public retention keeps them.
+The explicit public member inside a private extension intentionally produces a compiler warning;
+its access remains public and was also checked from a separately compiled client.
+
+Removing receiver-as-caller edges makes the uninstantiated Flutter channel stub reportable as a
+type instead of separate initializer/method findings. The registrar protocol is used only by an
+unreached registration method unless public APIs are retained. External bridge roots still keep
+the actual channel/handler paths they identify.

@@ -34,7 +34,7 @@ public struct RetentionPolicy: Sendable {
     ///   - graph: 심볼 레벨 그래프.
     ///   - snapshot: 외부 심볼 판정에 필요한 원본 스냅샷.
     public func retainedNodes(in graph: CodeGraph, snapshot: IndexSnapshot) -> [NodeID: RetentionReason] {
-        let externalBases = Self.symbolsWithExternalBase(in: snapshot)
+        let externalBases = Set(outsideGraphRelations(in: snapshot, graph: graph).map(\.sourceUSR))
         var decisions: [NodeID: RetentionReason] = [:]
         // 같은 파일의 정점은 수백 개다. retained_files 판정은 파일의 성질이지
         // 정점의 성질이 아니므로 경로별로 한 번만 답한다.
@@ -59,7 +59,7 @@ public struct RetentionPolicy: Sendable {
     /// 런타임 경로를 모두 수집한다. 사용자 설정·무시 주석·소스 접근 실패는 이 사실 목록에
     /// 포함하지 않는다.
     public func reviewReasons(in graph: CodeGraph, snapshot: IndexSnapshot) -> [NodeID: Set<RetentionReason>] {
-        let externalRelationFacts = Self.externalRelationFacts(in: snapshot)
+        let externalRelationFacts = Self.externalRelationFacts(outsideGraphRelations(in: snapshot, graph: graph))
         var results: [NodeID: Set<RetentionReason>] = [:]
         for node in graph.sortedNodes {
             let reasons = reviewReasons(for: node, in: graph, externalRelationFacts: externalRelationFacts)
@@ -73,16 +73,19 @@ public struct RetentionPolicy: Sendable {
     /// 그래프는 양쪽 끝이 모두 있는 간선만 남기므로, 외부로 향하는 관계는
     /// 그래프가 아니라 원본 스냅샷에서 읽어야 한다. 이 차이를 놓치면
     /// "UIKit 메서드 오버라이드가 전부 미사용으로 보고되는" 결과가 된다.
-    static func symbolsWithExternalBase(in snapshot: IndexSnapshot) -> Set<String> {
-        let knownUSRs = Set(snapshot.symbols.map(\.usr))
-        var result: Set<String> = []
-        for reference in snapshot.references
-        where reference.kind == .overrides || reference.kind == .conformance {
-            if !knownUSRs.contains(reference.targetUSR) {
-                result.insert(reference.sourceUSR)
-            }
+    private func outsideGraphRelations(in snapshot: IndexSnapshot, graph: CodeGraph) -> [IndexedReference] {
+        let knownUSRs = Set(graph.sortedNodes.filter { !$0.isExternal }.compactMap(\.usr))
+        let visible = Set(graph.edges.filter {
+            $0.kind == .overrides || $0.kind == .conformance
+        }.map { $0.withWeight(1) })
+        return snapshot.references.filter { reference in
+            guard reference.sourceUSR != reference.targetUSR,
+                  reference.kind == .overrides || reference.kind == .conformance else { return false }
+            let edge = GraphEdge(source: NodeID(reference.sourceUSR), target: NodeID(reference.targetUSR),
+                kind: reference.kind)
+            // 양 끝 정점이 있어도 사용자가 관계 종류를 제외하면 디스패치를 추적할 수 없다.
+            return !knownUSRs.contains(reference.targetUSR) || !visible.contains(edge)
         }
-        return result
     }
 
     /// 정점 하나에 대한 보존 근거. 없으면 nil.
@@ -294,10 +297,9 @@ public struct RetentionPolicy: Sendable {
     }
 
     /// 그래프 밖 기반 선언과 맺은 모든 관계를 수집한다.
-    private static func externalRelationFacts(in snapshot: IndexSnapshot) -> [String: Set<RetentionReason>] {
-        let knownUSRs = Set(snapshot.symbols.map(\.usr))
+    private static func externalRelationFacts(_ references: [IndexedReference]) -> [String: Set<RetentionReason>] {
         var facts: [String: Set<RetentionReason>] = [:]
-        for reference in snapshot.references where !knownUSRs.contains(reference.targetUSR) {
+        for reference in references {
             switch reference.kind {
             case .overrides: facts[reference.sourceUSR, default: []].insert(.externalOverride)
             case .conformance: facts[reference.sourceUSR, default: []].insert(.externalConformance)

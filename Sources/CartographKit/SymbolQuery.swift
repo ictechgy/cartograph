@@ -40,6 +40,24 @@ public struct SymbolQuery: Sendable, Equatable, Codable {
         /// `subject` 에서 몇 걸음 떨어져 있는지. 1 이면 직접 이웃이다.
         public let depth: Int
         public let location: SourceLocation?
+        /// 실제 참조 위치와 출처. 선언 위치와 이웃 개수 제한과는 별개다.
+        public let referenceEvidence: ReferenceEvidence?
+
+        /// 포함 관계와 기존 공급자는 참조 근거를 생략할 수 있다.
+        public init(
+            name: String, qualifiedName: String, kind: String, usr: String?, module: String?,
+            edges: [String], depth: Int, location: SourceLocation?, referenceEvidence: ReferenceEvidence? = nil
+        ) {
+            self.name = name
+            self.qualifiedName = qualifiedName
+            self.kind = kind
+            self.usr = usr
+            self.module = module
+            self.edges = edges
+            self.depth = depth
+            self.location = location
+            self.referenceEvidence = referenceEvidence
+        }
     }
 
     /// 살아 있는지에 대한 사실. 판정이 아니라 관측이다.
@@ -171,6 +189,8 @@ public struct SymbolQueryDocument: Sendable, Equatable, Codable {
     public let limitations: [String]
     public let result: SymbolQuery?
     public let candidates: [Candidate]?
+    /// 프로젝트에서 구분하지 못한 지역 함수를 최대 50개까지 설명한다.
+    public let localFunctionDiagnostics: LocalFunctionDiagnostics?
 
     public init(
         status: String,
@@ -178,7 +198,8 @@ public struct SymbolQueryDocument: Sendable, Equatable, Codable {
         level: String,
         limitations: [String],
         result: SymbolQuery? = nil,
-        candidates: [Candidate]? = nil
+        candidates: [Candidate]? = nil,
+        localFunctionDiagnostics: LocalFunctionDiagnostics? = nil
     ) {
         self.status = status
         self.requested = requested
@@ -186,6 +207,7 @@ public struct SymbolQueryDocument: Sendable, Equatable, Codable {
         self.limitations = limitations
         self.result = result
         self.candidates = candidates
+        self.localFunctionDiagnostics = localFunctionDiagnostics
     }
 }
 

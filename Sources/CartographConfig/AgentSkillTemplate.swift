@@ -203,6 +203,17 @@ public enum AgentSkillTemplate {
            If it names Interface Builder documents, connections are matched by class name only. If
            it reports `index-staleness`, the index predates recent edits — rebuild first.
 
+           Optional `localFunctionDiagnostics` identifies unrefined local functions by name,
+           location, owner, reason, and suggested action. Read `totalCount` and `omittedCount`;
+           absence means no detailed evidence was supplied, not proof that analysis is complete.
+           Inspect the indicated source or rebuild as needed before relying on missing callers.
+
+           Optional neighbor `referenceEvidence` lists actual relationship sites. The neighbor's
+           own `location` is its declaration. Follow each item's `sourceUSR`, `targetUSR`, and
+           `viaUSR`: a depth-2 consumer references the intermediate symbol, not the query target
+           directly. Read `origin` and `omittedCount`; `unknown`/`graph` or a missing location
+           is not a compiler-confirmed call site. Evidence identifies references, not safe edits.
+
         4. **`suppressedByBaseline: true` means the team already decided.** Leave it alone. Do not
            re-litigate a decision that is recorded in the baseline file.
 

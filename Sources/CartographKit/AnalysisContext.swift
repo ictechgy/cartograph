@@ -13,6 +13,10 @@ public struct AnalysisContext: Sendable {
     public let missingSourcePaths: [String]
     /// 읽기 실패로 보존 정보가 불완전한 파일. 선언에는 sourceUnavailable 근거가 붙는다.
     public let unreadableSourcePaths: [String]
+    /// 지역 함수 구분이 불확실한 소스만 분석 한계에 알리기 위한 실제 개수.
+    public let unresolvedLocalFunctionsByPath: [String: Int]
+    /// 구문 보강에서 실제로 제외한 지역 함수와 그 원인.
+    public let localFunctionDiagnostics: [LocalFunctionDiagnostic]
     private let pathFilter: PathFilter
     private let edgeKinds: Set<EdgeKind>
     /// `--external-retentions` 로 읽은 문서. 스냅샷과 함께 한 번만 읽는다.
@@ -37,6 +41,8 @@ public struct AnalysisContext: Sendable {
         externalRetentions: ExternalRetentionsDocument? = nil,
         missingSourcePaths: [String] = [],
         unreadableSourcePaths: [String] = [],
+        unresolvedLocalFunctionsByPath: [String: Int] = [:],
+        localFunctionDiagnostics: [LocalFunctionDiagnostic] = [],
         runtimeFiles: [RuntimeFileFacts]? = nil,
         runtimeFreshness: [String: RuntimeFreshness] = [:],
         supplementalRuntimeSourcePaths: Set<String> = []
@@ -44,6 +50,8 @@ public struct AnalysisContext: Sendable {
         self.snapshot = snapshot
         self.missingSourcePaths = missingSourcePaths
         self.unreadableSourcePaths = unreadableSourcePaths
+        self.unresolvedLocalFunctionsByPath = unresolvedLocalFunctionsByPath
+        self.localFunctionDiagnostics = localFunctionDiagnostics
         self.runtimeFiles = runtimeFiles
         self.runtimeFreshness = runtimeFreshness
         self.supplementalRuntimeSourcePaths = supplementalRuntimeSourcePaths
