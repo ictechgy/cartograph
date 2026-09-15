@@ -910,10 +910,47 @@ struct BridgeFactScannerTests {
             FlutterMethodChannel(name: name, binaryMessenger: m).setMethodCallHandler { _, _ in }
             """
         let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", messages: true)
-        #expect(result.facts.map(\.fact.kind) == [.messageHandle])
-        #expect(result.facts.first?.fact.channel == "literal")
+        // 수신자를 못 푸는 `other` 도 사실로 남긴다. 버리면 클로저 범위가 목록에서
+        // 빠져 그 안의 참조가 다른 핸들러의 공통 등록 근거로 오염된다.
+        #expect(result.facts.map(\.fact.kind) == [.messageHandle, .messageHandle])
+        #expect(result.facts.map(\.fact.channel) == ["literal", "other"])
+        #expect(result.facts.last?.fact.isDynamic == true)
         #expect(result.facts.first?.fact.method == nil)
         #expect(result.unscannedMessageChannels == 1)
+    }
+
+    @Test("수신자가 파라미터·필드라도 setMessageHandler 는 동적 이름의 사실과 범위를 남긴다")
+    func unresolvedMessageReceiverKeepsFactAndScope() {
+        let source = """
+            func install(channel: BasicMessageChannel<Any?>) {
+                channel.setMessageHandler { _, _ in }
+            }
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", messages: true)
+        #expect(result.facts.map(\.fact.kind) == [.messageHandle])
+        #expect(result.facts.first?.fact.channel == "channel")
+        #expect(result.facts.first?.fact.isDynamic == true)
+        #expect(result.facts.first?.fact.handlerScope != nil)
+        #expect(result.handlerScopes.first?.scopes.count == 1)
+    }
+
+    @Test("메시지·이벤트 채널은 메서드 핸들러의 단일 채널 추측을 오염시키지 않는다")
+    func otherChannelKindsDoNotContaminateMethodInference() {
+        let source = """
+            let basic = BasicMessageChannel<Any?>(name: "pigeon", binaryMessenger: m)
+            let events = FlutterEventChannel(name: "stream", binaryMessenger: m)
+            let channel = FlutterMethodChannel(name: "method", binaryMessenger: m)
+            func handle(_ call: FlutterMethodCall, result: FlutterResult) {
+                switch call.method {
+                case "ping": result("pong")
+                default: break
+                }
+            }
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift")
+        let handled = result.facts.first { $0.fact.kind == .methodHandle }?.fact
+        #expect(handled?.channel == "method")
+        #expect(handled?.isChannelInferred == true)
     }
 
     @Test("qualified generic BasicMessageChannel과 읽기 전용 문자열 별칭을 해석한다")

@@ -576,10 +576,13 @@ final class BindingCollector: SyntaxVisitor {
         return .some((resolveString(argument, in: Context(scopes: scopes, enclosingTypes: types)), kind))
     }
 
-    /// 파일 안의 채널 생성 전부를 이름으로 푼 것. 핸들러 문맥 밖의 추측에 쓴다.
+    /// 파일 안의 메서드 채널 생성 전부를 이름으로 푼 것. 핸들러 문맥 밖의 추측에 쓴다.
+    ///
+    /// 이벤트·메시지 채널을 섞으면 `FlutterMethodCall` 을 받는 함수에 다른 종류의
+    /// 채널 이름이 붙거나, 메서드 채널이 있는 파일의 추측이 무산된다.
     func allChannelNames() -> [ResolvedName] {
         bindings.values.compactMap { value in
-            guard case let .channel(argument, scopes, types, _)? = value else { return nil }
+            guard case let .channel(argument, scopes, types, kind)? = value, kind == .method else { return nil }
             return resolveString(argument, in: Context(scopes: scopes, enclosingTypes: types))
         }
     }
@@ -911,12 +914,19 @@ final class BridgeFactCollector: SyntaxVisitor {
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
         guard let member = node.calledExpression.as(MemberAccessExprSyntax.self) else { return .visitChildren }
         let isNil = node.arguments.first.map { BindingCollector.isNilHandler($0.expression) } ?? false
-        if messages, member.declName.baseName.text == "setMessageHandler", !isNil,
-           let registration = registeredChannel(of: node, receiver: member.base), registration.kind == .message {
-            recordHandlerScope(Self.handlerClosure(of: node))
+        if messages, member.declName.baseName.text == "setMessageHandler", !isNil {
+            let closure = Self.handlerClosure(of: node)
+            // 수신자를 못 풀어도 범위는 기록한다. 빠뜨리면 그 클로저 안의 참조가
+            // 다른 핸들러의 공통 등록 근거로 오염되고 목록은 몰래 불완전해진다.
+            recordHandlerScope(closure)
+            let registration = registeredChannel(of: node, receiver: member.base)
+            // MethodChannel 에는 이 메서드가 없다. 풀지 못한 수신자도 메시지 채널로 본다.
+            // 이름이 없다고 사실을 버리면 isthmus 가 핸들러 존재 자체를 모른다.
+            let channelName = registration.flatMap { $0.kind == .message ? $0.name : nil }
+                ?? .dynamic(member.base?.trimmedDescription ?? "setMessageHandler")
             emit(
-                .messageHandle, target: .flutter, channel: registration.name,
-                handlerScope: handlerScope(of: Self.handlerClosure(of: node)), at: node
+                .messageHandle, target: .flutter, channel: channelName,
+                handlerScope: handlerScope(of: closure), at: node
             )
             return .visitChildren
         }
@@ -987,7 +997,10 @@ final class BridgeFactCollector: SyntaxVisitor {
 
     private func handlerScope(of closure: ClosureExprSyntax?) -> BridgeFact.HandlerScope? {
         guard let closure else { return nil }
-        let start = closure.leftBrace.startLocation(converter: converter)
+        // 범위는 `in` 뒤의 본문이다. `{ [s = f()] … in }` 의 캡처 초기화식은
+        // 클로저 생성 시 한 번 실행되므로 메시지마다 도는 핸들러 근거가 아니다.
+        let anchor = closure.signature?.inKeyword ?? closure.leftBrace
+        let start = anchor.startLocation(converter: converter)
         let end = closure.rightBrace.startLocation(converter: converter)
         return BridgeFact.HandlerScope(
             start: SourceLocation(path: path, line: start.line, column: start.column),
