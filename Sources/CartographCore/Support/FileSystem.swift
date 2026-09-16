@@ -230,11 +230,15 @@ extension FileSystem {
     ///   - onDirectory: 방문한 디렉터리마다 한 번씩 부른다. 열거가 실패한
     ///     디렉터리에도 부른다 — 그 지문이 바뀌면 읽을 수 있게 된 것이므로
     ///     캐시하는 호출자는 실패한 디렉터리도 검증 대상에 넣어야 한다.
+    ///   - onDiscardedLink: 같은 파일을 가리켜 버려진 심볼릭 링크 경로마다
+    ///     부른다. 결과 목록에는 안 들어가지만, 링크가 재지정되면 목록이
+    ///     달라지므로 캐시하는 호출자는 이 경로들도 검증 대상에 넣어야 한다.
     public func recursiveFiles(
         under root: String,
         isIncluded: (String) -> Bool,
         shouldDescend: (String) -> Bool = { _ in true },
-        onDirectory: (String) -> Void = { _ in }
+        onDirectory: (String) -> Void = { _ in },
+        onDiscardedLink: (String) -> Void = { _ in }
     ) -> [String] {
         guard directoryExists(at: root) else {
             return fileExists(at: root) && isIncluded(root) ? [root] : []
@@ -280,7 +284,12 @@ extension FileSystem {
                     // 끊어진 심볼릭 링크는 일반 파일이 아니다. 그것을 소스 파일로 세면
                     // 읽는 쪽에서 실패하거나 유령 정점이 된다.
                     // 같은 파일을 가리키는 두 이름은 한 번만 센다.
-                    guard visitedFiles.insert(visitKey()).inserted else { continue }
+                    guard visitedFiles.insert(visitKey()).inserted else {
+                        // 버려진 이름도 나중에 다른 파일을 가리킬 수 있다 — 재지정은
+                        // 부모 디렉터리 지문에는 드러나지 않으니 따로 감시한다.
+                        if entry.isSymbolicLink { onDiscardedLink(entry.path) }
+                        continue
+                    }
                     result.append(entry.path)
                 }
             }

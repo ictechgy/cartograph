@@ -436,6 +436,9 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
     fileprivate func storeInclusion(_ included: Bool, for path: String) {
         lock.lock()
         defer { lock.unlock() }
+        // 오래 사는 세션에서 삭제된 경로의 판정이 무한히 쌓이지 않게 상한을 둔다.
+        // 메모는 비용 절약일 뿐이므로 넘치면 통째로 비워도 정답은 같다.
+        if inclusions.count >= 65_536 { inclusions.removeAll() }
         inclusions[path] = included
     }
 
@@ -471,8 +474,8 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         observedDirectories.insert(path)
     }
 
-    /// 이전 탐색의 결과 목록. 기억된 디렉터리 전부의 지문이 그대로이고 같은
-    /// 필터로 만든 결과일 때만 돌려준다.
+    /// 이전 탐색의 결과 목록. 기억된 디렉터리 전부의 지문이 그대로이고, 버려진
+    /// 링크 파일의 지문도 그대로이며, 같은 필터로 만든 결과일 때만 돌려준다.
     fileprivate func walkedResult(root: String, filter: PathFilter?, fileSystem: any FileSystem) -> [String]? {
         lock.lock()
         let record = walks[root]
@@ -481,6 +484,11 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         // 지문 확인은 락 밖에서 한다 — 파일 시스템 호출이 락을 다시 타지 않게.
         for (directory, stamp) in record.dirStamps {
             guard fileSystem.directoryListingStamp(at: directory) == stamp else { return nil }
+        }
+        // 같은 파일을 가리켜 버려진 링크는 부모 디렉터리 지문에 드러나지 않는다 —
+        // 다른 파일을 가리키게 재지정되면 결과 목록이 달라지므로 따로 검증한다.
+        for (link, stamp) in record.linkStamps {
+            guard fileSystem.fingerprintStamp(at: link) == stamp else { return nil }
         }
         // 재사용한 디렉터리도 이번 지문에서 관측된 것으로 표시해 목록 레코드가
         // 가지치기되지 않게 한다.
@@ -492,26 +500,41 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         return record.result
     }
 
-    /// 탐색 결과를 루트와 필터에 묶어 둔다. 열거한 디렉터리 중 지문이 없는 것이
-    /// 있으면 검증할 수 없으므로 저장하지 않는다.
+    /// 탐색 결과를 루트와 필터에 묶어 둔다. 열거한 디렉터리 중 지문이 없거나
+    /// 열거에 실패한 것이 있으면 검증할 수 없으므로 — 실패는 다음 지문에서 다시
+    /// 시도돼야 하므로 — 저장하지 않는다. 버려진 링크 파일의 지문도 함께 남긴다.
     fileprivate func storeWalk(
-        root: String, filter: PathFilter?, directories walked: [String], result: [String]
+        root: String, filter: PathFilter?, directories walked: [String],
+        discardedLinks: [String], result: [String], fileSystem: any FileSystem
     ) {
-        lock.lock()
-        defer { lock.unlock() }
         guard let resolvedRoot = walked.first else { return }
-        var dirStamps: [(String, DirectoryListingStamp)] = []
-        dirStamps.reserveCapacity(walked.count + 1)
+        lock.lock()
+        var records: [(String, DirectoryRecord)] = []
         for directory in walked {
-            guard let stamp = directories[directory]?.stamp else { return }
-            dirStamps.append((directory, stamp))
+            guard let record = directories[directory] else { lock.unlock(); return }
+            records.append((directory, record))
+        }
+        lock.unlock()
+        // 파일 시스템 호출은 락 밖에서 한다 — walkedResult 와 같은 이유다.
+        var dirStamps: [(String, DirectoryListingStamp)] = []
+        dirStamps.reserveCapacity(records.count + 1)
+        for (directory, record) in records {
+            guard record.entries != nil else { return }
+            dirStamps.append((directory, record.stamp))
+        }
+        var linkStamps: [(String, FileFingerprintStamp)] = []
+        for link in discardedLinks {
+            guard let stamp = fileSystem.fingerprintStamp(at: link) else { return }
+            linkStamps.append((link, stamp))
         }
         // 루트가 링크면 열거는 풀린 철자로 남고 재지정은 그 철자들의 지문에 드러나지
         // 않는다. stat 은 링크를 따라가므로 부른 철자의 지문도 함께 기록한다.
         if resolvedRoot != root, let rootStamp = dirStamps.first?.1 {
             dirStamps.append((root, rootStamp))
         }
-        walks[root] = WalkRecord(filter: filter, dirStamps: dirStamps, result: result)
+        lock.lock()
+        walks[root] = WalkRecord(filter: filter, dirStamps: dirStamps, linkStamps: linkStamps, result: result)
+        lock.unlock()
     }
 
     fileprivate func resetObservations() {
@@ -541,6 +564,9 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         /// 달라지므로 탐색 결과를 재사용할 수 없다.
         let filter: PathFilter?
         let dirStamps: [(String, DirectoryListingStamp)]
+        /// 같은 파일을 가리켜 버려진 심볼릭 링크의 지문. 부모 디렉터리 지문에는
+        /// 재지정이 드러나지 않으므로 따로 검증한다.
+        let linkStamps: [(String, FileFingerprintStamp)]
         let result: [String]
     }
 }
@@ -649,6 +675,7 @@ private struct AnalysisInputFingerprinter {
             paths = cached
         } else {
             var walked: [String] = []
+            var discardedLinks: [String] = []
             paths = fileSystem.recursiveFiles(
                 under: projectPath,
                 isIncluded: { path in
@@ -658,11 +685,13 @@ private struct AnalysisInputFingerprinter {
                     return included
                 },
                 shouldDescend: BuildArtifactDirectories.shouldDescend(into:),
-                onDirectory: { walked.append($0) }
+                onDirectory: { walked.append($0) },
+                onDiscardedLink: { discardedLinks.append($0) }
             )
             cache?.storeWalk(
                 root: projectPath, filter: configuration.pathFilter,
-                directories: walked, result: paths
+                directories: walked, discardedLinks: discardedLinks, result: paths,
+                fileSystem: fileSystem
             )
         }
         accumulator.addText("source-count:\(paths.count)")
@@ -739,13 +768,18 @@ private struct AnalysisInputFingerprinter {
                     paths = cached
                 } else {
                     var walked: [String] = []
+                    var discardedLinks: [String] = []
                     paths = fileSystem.recursiveFiles(
                         under: root,
                         isIncluded: { _ in true },
                         shouldDescend: { _ in true },
-                        onDirectory: { walked.append($0) }
+                        onDirectory: { walked.append($0) },
+                        onDiscardedLink: { discardedLinks.append($0) }
                     )
-                    cache?.storeWalk(root: root, filter: nil, directories: walked, result: paths)
+                    cache?.storeWalk(
+                        root: root, filter: nil, directories: walked,
+                        discardedLinks: discardedLinks, result: paths, fileSystem: fileSystem
+                    )
                 }
                 accumulator.addText("index-unit-count:\(paths.count)")
                 for path in paths {

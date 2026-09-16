@@ -545,6 +545,59 @@ struct AnalysisSessionTests {
         #expect(second.generation == first.generation + 1)
     }
 
+    @Test("같은 파일을 가리켜 버려진 심볼릭 링크도 지문으로 감시해 재지정을 잡는다")
+    func discardedLinkRetargetInvalidatesWalk() throws {
+        let parent = try makeTemporaryProject()
+        defer { try? FileManager.default.removeItem(atPath: parent) }
+        let root = parent + "/root"
+        let other = parent + "/other"
+        let mid = parent + "/mid"
+        let fileSystem = CountingLocalFileSystem()
+        try fileSystem.write(text: "struct App {}", to: root + "/F.m")
+        try fileSystem.write(text: "unit", to: root + "/index-store/v5/units/App-unit")
+        try fileSystem.write(text: "struct Other {}", to: other + "/F.m")
+        // mid 는 root 를 가리키는 링크다 — l.m 은 mid 를 경유해 F.m 과 같은 파일을
+        // 가리키므로 탐색 결과에는 들어가지 않고 버려진다.
+        try FileManager.default.createSymbolicLink(atPath: mid, withDestinationPath: root)
+        try FileManager.default.createSymbolicLink(atPath: root + "/l.m", withDestinationPath: mid + "/F.m")
+        let session = try AnalysisSession(
+            service: makeLocalService(fileSystem: fileSystem, project: root, source: root + "/F.m")
+        )
+        let first = try session.status()
+
+        // mid 를 other 로 옮기면 l.m 은 다른 파일을 가리킨다. l.m 의 항목 자체와
+        // root 의 구성은 그대로이므로, 버려진 링크의 지문이 없으면 이 변화가
+        // 어떤 디렉터리 지문에도 드러나지 않는다.
+        try FileManager.default.removeItem(atPath: mid)
+        try FileManager.default.createSymbolicLink(atPath: mid, withDestinationPath: other)
+        let second = try session.status()
+        #expect(second.generation == first.generation + 1)
+    }
+
+    @Test("일시적으로 열거에 실패한 디렉터리가 낀 탐색 결과는 캐시하지 않는다")
+    func transientEnumerationFailureIsNotCached() throws {
+        let root = try makeTemporaryProject()
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        // 지문은 정상으로 두고 열거만 실패한다 — 스탬프가 안 바뀌는 일시 오류를
+        // 캐시하면 다음 지문이 다시 시도할 기회를 잃는다. 탐색이 realpath 철자로
+        // 열거하므로 실패 대상은 마지막 경로 성분으로 맞춘다.
+        let locked = root + "/Locked"
+        let fileSystem = BlockedEnumerationFileSystem(blockedComponents: ["Locked"])
+        try fileSystem.write(text: "struct App {}", to: root + "/App.m")
+        try fileSystem.write(text: "struct Hidden {}", to: locked + "/Hidden.m")
+        try fileSystem.write(text: "unit", to: root + "/index-store/v5/units/App-unit")
+        let session = try AnalysisSession(
+            service: makeLocalService(fileSystem: fileSystem, project: root, source: root + "/App.m")
+        )
+        let first = try session.status()
+
+        // 스탬프는 그대로인 채 열거만 회복된다 — 실패한 탐색이 캐시돼 있으면
+        // Hidden.m 이 영구히 빠진 지문이 재생된다.
+        fileSystem.unblock()
+        let second = try session.status()
+        #expect(second.generation == first.generation + 1)
+    }
+
     @Test("경로 필터가 바뀌면 이전 탐색 결과를 재사용하지 않는다")
     func pathFilterChangeInvalidatesWalkedSourceList() throws {
         let root = try makeTemporaryProject()
@@ -839,6 +892,38 @@ private final class CountingLocalFileSystem: FileSystem, @unchecked Sendable {
     var currentDirectoryPath: String { base.currentDirectoryPath }
 
     func resetContentReads() { lock.withLock { contentReadBytes = 0 } }
+}
+
+/// 지정한 마지막 경로 성분의 디렉터리 열거를 `unblock` 전까지 실패시키는 래퍼.
+/// 지문은 실제 파일 상태를 그대로 돌려주므로, 실패한 탐색 결과가 스탬프 변화
+/// 없이 고정되는지를 검증한다. `status()` 가 지문을 여러 번 읽어 한 번의 실패는
+/// 같은 호출 안에서 회복되므로, 명시적으로 풀 때까지 실패해야 한다. 탐색은
+/// realpath 철자로 열거하므로 성분으로 맞춘다.
+private final class BlockedEnumerationFileSystem: FileSystem, @unchecked Sendable {
+    private let base = LocalFileSystem()
+    private let lock = NSLock()
+    private var blockedComponents: Set<String>
+
+    init(blockedComponents: Set<String>) { self.blockedComponents = blockedComponents }
+
+    func unblock() { lock.withLock { blockedComponents.removeAll() } }
+
+    func realPath(at path: String) throws -> String { try base.realPath(at: path) }
+    func fileExists(at path: String) -> Bool { base.fileExists(at: path) }
+    func directoryExists(at path: String) -> Bool { base.directoryExists(at: path) }
+    func readData(at path: String) throws -> Data { try base.readData(at: path) }
+    func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
+    func contentsOfDirectory(at path: String) throws -> [String] { try base.contentsOfDirectory(at: path) }
+    func directoryEntries(at path: String) throws -> [DirectoryEntry] {
+        let component = (path as NSString).lastPathComponent
+        if lock.withLock({ blockedComponents.contains(component) }) {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(EACCES))
+        }
+        return try base.directoryEntries(at: path)
+    }
+    func modificationDate(at path: String) -> Date? { base.modificationDate(at: path) }
+    func fingerprintStamp(at path: String) -> FileFingerprintStamp? { base.fingerprintStamp(at: path) }
+    var currentDirectoryPath: String { base.currentDirectoryPath }
 }
 
 private final class CountingUnstampedFileSystem: FileSystem, @unchecked Sendable {
