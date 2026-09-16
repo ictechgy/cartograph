@@ -3,7 +3,7 @@
 ## 2026-09-16 — 미사용 import 분석 (feat/competitive-hardening)
 
 `우선순위대로 개선` 3번째(분석 커버리지)의 셋째 항목. `dead`가 파일의 참조 근거가
-증명하지 못하는 `import`를 `unused-import` 경고로 보고한다. 커밋 `69fb853`.
+증명하지 못하는 `import`를 `unused-import` 경고로 보고한다. 커밋 `7fb815f`.
 
 ### 설계
 
