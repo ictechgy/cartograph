@@ -820,6 +820,7 @@ public struct CartographService: Sendable {
         let resolver = BridgeSymbolResolver(snapshot: snapshot, freshPaths: freshPaths)
         var unreadable = 0
         var objectiveCSources = 0
+        var ffiInteropSources = 0
         var sourceCache: [String: String] = [:]
         let firstPass = scanBridgeFiles(
             at: sources, resolver: resolver, resolvedValues: [:], canonicalizesPaths: false,
@@ -829,6 +830,7 @@ public struct CartographService: Sendable {
             guard let source = try? environment.fileSystem.readText(at: path) else { unreadable += 1; return nil }
             sourceCache[ValueFlowSourceLoader.canonicalPath(path)] = source
             if !path.hasSuffix(".swift") { objectiveCSources += 1 }
+            if Self.containsFfiInteropEvidence(source) { ffiInteropSources += 1 }
             return source
         }
         var facts = firstPass.facts
@@ -863,6 +865,11 @@ public struct CartographService: Sendable {
         var extraLimitations: [String] = []
         if unreadable > 0 {
             extraLimitations.append("unreadable-sources: \(unreadable) file(s) could not be read and were skipped")
+        }
+        if ffiInteropSources > 0 {
+            extraLimitations.append(
+                "unscanned-ffi-interop: \(ffiInteropSources) native source file(s) contain FFI/Dart C API evidence outside channel join coverage"
+            )
         }
         if let target, selectedFacts.count != facts.count {
             extraLimitations.append(
@@ -933,6 +940,18 @@ public struct CartographService: Sendable {
             }
         }
         return (facts, opaqueHandlerChannels, unscannedEventChannels, unscannedMessageChannels)
+    }
+
+    /// 채널 계약이 덮지 못하는 네이티브 interop 표면 — C export, Dart C API, 동적 심볼 조회.
+    /// 어휘 표식이라 주석 안에서도 양성이 나올 수 있다. 그래서 fact가 아니라 파일 수준
+    /// 한계 근거로만 쓴다.
+    private static let ffiInteropMarkers = [
+        "@_cdecl", "@_silgen_name", "dlsym(",
+        "Dart_PostCObject", "dart_native_api.h", "dart_api_dl.h",
+    ]
+
+    private static func containsFfiInteropEvidence(_ source: String) -> Bool {
+        ffiInteropMarkers.contains { source.contains($0) }
     }
 
     /// 구문 값 그래프를 실제 컴파일러 대상과 연결해 호출별 요약을 질의한다.

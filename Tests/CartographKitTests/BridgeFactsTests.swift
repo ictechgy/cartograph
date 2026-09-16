@@ -522,6 +522,25 @@ struct BridgeFactsTests {
         #expect(String(decoding: data, as: UTF8.self).contains("\"sourceLanguage\":\"objective-c\""))
     }
 
+    @Test("FFI·Dart C API 표식은 채널 사실이 아니라 파일 수준 한계로 센다")
+    func ffiInteropEvidenceBecomesFileLevelLimitation() throws {
+        let swift = """
+            @_cdecl("dart_native_add")
+            func dartNativeAdd(_ a: Int32, _ b: Int32) -> Int32 { a + b }
+            """
+        let objc = "#import <dart_native_api.h>\nvoid forward(Dart_Port port) { Dart_PostCObject(port, nullptr); }\n"
+        let plain = "struct Plain { let value = 1 }\n"
+        let document = try makeService(
+            files: ["/p/Native.swift": swift, "/p/Forward.m": objc, "/p/Plain.swift": plain],
+            snapshot: IndexSnapshot()
+        ).bridgeFacts()
+        #expect(document.limitations.contains { $0.hasPrefix("unscanned-ffi-interop: 2") })
+        // 표식 없는 파일은 세지 않고, 채널 사실과 섞이지 않는다.
+        #expect(!document.limitations.contains { $0.hasPrefix("unscanned-ffi-interop: 3") })
+        let clean = try makeService(files: ["/p/Plain.swift": plain], snapshot: IndexSnapshot()).bridgeFacts()
+        #expect(!clean.limitations.contains { $0.hasPrefix("unscanned-ffi-interop:") })
+    }
+
     @Test("저장된 클로저와 파일 밖 함수도 본문을 못 읽으면 채널 공백을 낸다")
     func scopesStoredClosureAndUnknownFunction() throws {
         for argument in ["handler", "fromSDK"] {
