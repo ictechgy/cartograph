@@ -40,9 +40,22 @@ P2 `impact --before`의 `scopeDiff`(`1f98451`), P3 자기 경고 181→0(`d6ce84
 - strict 4종(dead·cycles·cycles --level type·rules) 전부 no findings, 한계 2건 유지.
 - `verify-cli-contract.sh`·`verify-fixtures.sh` 통과, coverage 92.97%.
 
-### 다음
+### 머지 (2026-09-17)
 
-P4 커밋 대기(diff 검토 완료). 브랜치 정리·PR 여부는 지시 대기.
+`리뷰 후 머지까지` 지시로 [PR #93](https://github.com/ictechgy/cartograph/pull/93)을
+스쿼시 머지했다. Codex 독립 리뷰의 지적을 코드로 검증해 확정 결함을 고치고
+CI 두 잡 통과 후 머지 — 리뷰 처리 내역은 PR 코멘트에 있다.
+
+리뷰 후속 커밋: `b3bc6e9`(탐색 캐시 — 버려진 링크 지문 감시·실패 열거 미캐시·
+포함 메모 상한), `e8de107`(scopeDiff 인접 목록 수집 + 주석 정정),
+`ad6be44`(스캐너 보수성 — 상수 메모·크기 상한·지역 차폐·`Type.init`/무 레이블
+호출·비-self 대입 무효화·위임 인자 위치 대조), `556c5b3`(CI 전용
+`verify-analysis-blindspots.py`의 concat 기대치 갱신 — 로컬 필수 게이트에
+없는 스크립트라 첫 CI에서 잡혔다).
+
+기각한 지적: scopeDiff의 심볼 추가·제거는 범위 소속 차이라는 정해진 의미
+(주석 정정), 비교 문서 버전 1 디코딩 호환(출력 전용이라 소비자 없음).
+
 남은 알려진 공백: 파일 스코프 `let`을 `var` 프로퍼티 외 경로(비-init 대입)로
 채우는 형태, Objective-C 전용 플러그인 핸들러.
 
