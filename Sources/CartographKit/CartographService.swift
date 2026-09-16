@@ -788,7 +788,8 @@ public struct CartographService: Sendable {
     public func bridgeFacts(
         generatedAt: Date = Date(),
         target: BridgeFact.Target? = nil,
-        messages: Bool = false
+        messages: Bool = false,
+        events: Bool = false
     ) throws -> BridgeFactsDocument {
         let canonicalProject: String
         do {
@@ -821,7 +822,8 @@ public struct CartographService: Sendable {
         var objectiveCSources = 0
         var sourceCache: [String: String] = [:]
         let firstPass = scanBridgeFiles(
-            at: sources, resolver: resolver, resolvedValues: [:], canonicalizesPaths: false, messages: messages
+            at: sources, resolver: resolver, resolvedValues: [:], canonicalizesPaths: false,
+            messages: messages, events: events
         ) {
             path in
             guard let source = try? environment.fileSystem.readText(at: path) else { unreadable += 1; return nil }
@@ -847,7 +849,8 @@ public struct CartographService: Sendable {
             if !resolved.isEmpty {
                 // 원래 사실을 위치별로 덧대지 않고 다시 스캔해 채널 바인딩과 핸들러가 같은 이름을 쓴다.
                 let secondPass = scanBridgeFiles(
-                    at: sources, resolver: resolver, resolvedValues: resolved, canonicalizesPaths: true, messages: messages
+                    at: sources, resolver: resolver, resolvedValues: resolved, canonicalizesPaths: true,
+                    messages: messages, events: events
                 ) { sourceCache[ValueFlowSourceLoader.canonicalPath($0)] }
                 facts = secondPass.facts
                 opaqueHandlerChannels = secondPass.opaqueHandlerChannels
@@ -866,20 +869,24 @@ public struct CartographService: Sendable {
                 "target-filter: \(facts.count - selectedFacts.count) fact(s) did not match \(target.rawValue)"
             )
         }
-        let outputFacts = messages ? selectedFacts.filter { $0.kind == .messageHandle } : selectedFacts
-        try BridgeFactsDocument.validateNames(outputFacts, opaqueHandlerChannels: includesFlutter && !messages ? opaqueHandlerChannels : [])
+        // 전송별 문서는 그 전송의 사실만 담는다. 섞으면 소비자가 transport 없는
+        // 이웃 채널을 같은 메커니즘으로 오인해 조인한다.
+        let outputFacts = messages ? selectedFacts.filter { $0.kind == .messageHandle }
+            : events ? selectedFacts.filter { $0.kind == .streamHandle } : selectedFacts
+        let isScopedDocument = includesFlutter && !messages && !events
+        try BridgeFactsDocument.validateNames(outputFacts, opaqueHandlerChannels: isScopedDocument ? opaqueHandlerChannels : [])
         return BridgeFactsDocument(
             tool: .init(name: Cartograph.toolName, version: Cartograph.version),
             generatedAt: Self.bridgeTimestamp(generatedAt),
             project: canonicalProject,
             facts: outputFacts,
-            unscannedEventChannels: includesFlutter && !messages ? unscannedEventChannels : 0,
-            unscannedMessageChannels: includesFlutter && !messages ? unscannedMessageChannels : 0,
-            objectiveCSourceCount: includesFlutter && !messages ? objectiveCSources : 0,
+            unscannedEventChannels: isScopedDocument ? unscannedEventChannels : 0,
+            unscannedMessageChannels: isScopedDocument ? unscannedMessageChannels : 0,
+            objectiveCSourceCount: isScopedDocument ? objectiveCSources : 0,
             extraLimitations: extraLimitations,
-            opaqueHandlerChannels: includesFlutter && !messages ? opaqueHandlerChannels : [],
-            version: messages ? BridgeFactsDocument.messageVersion : BridgeFactsDocument.version,
-            transport: messages ? "basic-message-channel" : nil
+            opaqueHandlerChannels: isScopedDocument ? opaqueHandlerChannels : [],
+            version: (messages || events) ? BridgeFactsDocument.messageVersion : BridgeFactsDocument.version,
+            transport: messages ? "basic-message-channel" : events ? "event-channel" : nil
         )
     }
 
@@ -898,6 +905,7 @@ public struct CartographService: Sendable {
         resolvedValues: [SourceLocation: String],
         canonicalizesPaths: Bool,
         messages: Bool = false,
+        events: Bool = false,
         sourceAt: (String) -> String?
     ) -> (facts: [BridgeFact], opaqueHandlerChannels: [String?], unscannedEventChannels: Int, unscannedMessageChannels: Int) {
         var facts: [BridgeFact] = []
@@ -910,8 +918,9 @@ public struct CartographService: Sendable {
             if path.hasSuffix(".swift") {
                 let scanPath = canonicalizesPaths ? LocalFileSystem.canonicalPath(path) : path
                 let scanned = resolvedValues.isEmpty
-                    ? BridgeFactScanner().scan(source: source, path: scanPath, messages: messages)
-                    : BridgeFactScanner().scan(source: source, path: scanPath, resolvedValues: resolvedValues, messages: messages)
+                    ? BridgeFactScanner().scan(source: source, path: scanPath, messages: messages, events: events)
+                    : BridgeFactScanner().scan(source: source, path: scanPath, resolvedValues: resolvedValues,
+                                               messages: messages, events: events)
                 facts += resolver.resolve(scanned.facts, handlerScopes: scanned.handlerScopes, dependencyBudget: &dependencyBudget)
                 opaqueHandlerChannels += scanned.opaqueHandlerChannels
                 unscannedEventChannels += scanned.unscannedEventChannels
@@ -974,9 +983,10 @@ public struct CartographService: Sendable {
         generatedAt: Date = Date(),
         asText: Bool = false,
         target: BridgeFact.Target? = nil,
-        messages: Bool = false
+        messages: Bool = false,
+        events: Bool = false
     ) throws -> CommandOutcome {
-        let document = try bridgeFacts(generatedAt: generatedAt, target: target, messages: messages)
+        let document = try bridgeFacts(generatedAt: generatedAt, target: target, messages: messages, events: events)
         return CommandOutcome(output: asText ? document.renderText() : try Self.encodeSortedJSON(document))
     }
 

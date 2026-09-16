@@ -1100,6 +1100,77 @@ struct BridgeFactsTests {
         #expect(!dependencies.contains { ($0["symbol"] as? [String: Any])?["usr"] as? String == "s:runtime" })
     }
 
+    @Test("case 본문의 참조는 그 메서드의 핸들러 의존으로만 귀속된다")
+    func methodBranchScopesIsolateCaseDependencies() throws {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            class P {
+                func handle(_ call: FlutterMethodCall, result: FlutterResult) {
+                    switch call.method {
+                    case "a":
+                        result(helperA())
+                    case "b":
+                        result(helperB())
+                    default: break
+                    }
+                }
+            }
+            """
+        let scanned = BridgeFactScanner().scan(source: source, path: "/tmp/m.swift")
+        let a = try #require(scanned.facts.first { $0.fact.method == "a" }?.fact.handlerScope)
+        let b = try #require(scanned.facts.first { $0.fact.method == "b" }?.fact.handlerScope)
+        let snapshot = IndexSnapshot(symbols: [
+            IndexedSymbol(usr: "s:handle", name: "handle(_:result:)", kind: .method, module: "P",
+                location: .init(path: "/tmp/m.swift", line: 3, column: 10)),
+            IndexedSymbol(usr: "s:a", name: "helperA()", kind: .function, module: "P",
+                location: .init(path: "/tmp/m.swift", line: 20, column: 1)),
+            IndexedSymbol(usr: "s:b", name: "helperB()", kind: .function, module: "P",
+                location: .init(path: "/tmp/m.swift", line: 21, column: 1)),
+            IndexedSymbol(usr: "s:shared", name: "shared()", kind: .function, module: "P",
+                location: .init(path: "/tmp/m.swift", line: 22, column: 1)),
+        ], references: [
+            // 절 본문 안의 호출은 그 메서드의 근거, switch 머리의 호출은 공통 등록 근거다.
+            IndexedReference(sourceUSR: "s:handle", targetUSR: "s:a", kind: .call,
+                location: .init(path: a.start.path, line: a.start.line + 1, column: 9)),
+            IndexedReference(sourceUSR: "s:handle", targetUSR: "s:b", kind: .call,
+                location: .init(path: b.start.path, line: b.start.line + 1, column: 9)),
+            IndexedReference(sourceUSR: "s:handle", targetUSR: "s:shared", kind: .call,
+                location: .init(path: "/tmp/m.swift", line: 4, column: 9)),
+        ])
+        let resolved = BridgeSymbolResolver(snapshot: snapshot, freshPaths: ["/tmp/m.swift"])
+            .resolve(scanned.facts, handlerScopes: scanned.handlerScopes)
+        let factA = try #require(resolved.first { $0.method == "a" })
+        let factB = try #require(resolved.first { $0.method == "b" })
+        #expect(factA.handlerScope?.complete == true)
+        #expect(factB.handlerScope?.complete == true)
+        #expect(factA.dependencies?.filter { $0.scope == .handler }.map(\.symbol.usr) == ["s:a"])
+        #expect(factB.dependencies?.filter { $0.scope == .handler }.map(\.symbol.usr) == ["s:b"])
+        #expect(factA.dependencies?.filter { $0.scope == .registration }.map(\.symbol.usr) == ["s:shared"])
+        #expect(factB.dependencies?.filter { $0.scope == .registration }.map(\.symbol.usr) == ["s:shared"])
+    }
+
+    @Test("--events 문서는 stream-handle 사실만 v2 event-channel로 낸다")
+    func eventsDocumentCarriesOnlyStreamHandles() throws {
+        let service = makeService(files: ["/p/A.swift": """
+            class P {
+                static func register(messenger: FlutterBinaryMessenger) {
+                    let events = FlutterEventChannel(name: "com.example/charging", binaryMessenger: messenger)
+                    events.setStreamHandler(BatteryPlusChargingHandler())
+                    let channel = FlutterMethodChannel(name: "com.example/battery", binaryMessenger: messenger)
+                    channel.setMethodCallHandler { call, result in
+                        switch call.method { case "getBatteryLevel": result(1) default: break }
+                    }
+                }
+            }
+            """], snapshot: IndexSnapshot())
+        let document = try service.bridgeFacts(events: true)
+        #expect(document.version == BridgeFactsDocument.messageVersion)
+        #expect(document.transport == "event-channel")
+        #expect(document.facts.map(\.kind) == ["stream-handle"])
+        #expect(document.facts.first?.channel == "com.example/charging")
+        #expect(document.facts.first?.method == nil)
+    }
+
     @Test("closure 없는 Basic method reference는 명시적인 limitation을 남긴다")
     func reportsUnscopedMessageHandler() {
         let document = BridgeFactsDocument(

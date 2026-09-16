@@ -156,13 +156,18 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         self.project = project
         // 사실 수천 건이 각각 기준 경로 표기를 펼치지 않게 한 번만 계산한다.
         let baseVariants = PathFilter.variants(of: project)
-        let includeExecution = version == Self.messageVersion && transport == "basic-message-channel"
+        // 실행 근거는 v2 문서 전체와, v1 에서 분기 범위를 단 method-handle 에 실린다.
+        // 범위가 없는 사실은 스캐너가 근거를 시도하지 않은 것이므로 그대로 둔다.
+        let includeExecution = version == Self.messageVersion
         var executionBudget = 1_000_000
         var executionTruncated = false
+        var scopedKinds: Set<String> = []
         self.facts = facts.sorted().map { fact in
-            guard includeExecution, let scope = fact.handlerScope else {
-                return Fact(fact, relativeToBaseVariants: baseVariants, includeExecution: includeExecution)
+            let factExecutes = includeExecution || fact.handlerScope != nil
+            guard factExecutes, let scope = fact.handlerScope else {
+                return Fact(fact, relativeToBaseVariants: baseVariants, includeExecution: factExecutes)
             }
+            scopedKinds.insert(fact.kind.rawValue)
             // 스코프는 있는데 근거 배열이 없으면 완전하다고 할 수 없다.
             // 명세된 스코프의 절반이 비는 것을 조용히 통과시키지 않는다.
             let dependencies = fact.dependencies ?? []
@@ -218,17 +223,19 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
             limitationScopes = nil
         }
         var allLimitations = messages + extraLimitations
-        if includeExecution {
-            let incomplete = self.facts.filter { $0.handlerScope?.complete == false }.count
+        // 이름은 계약 문자열이다. 새 종류마다 같은 모양의 한계를 붙인다.
+        for (kind, label) in [("message-handle", "message"), ("method-handle", "method"), ("stream-handle", "stream")] {
+            guard includeExecution || scopedKinds.contains(kind) else { continue }
+            let incomplete = self.facts.filter { $0.kind == kind && $0.handlerScope?.complete == false }.count
             if incomplete > 0 {
                 allLimitations.append(
-                    "incomplete-message-handler-scopes: \(incomplete) handler scopes have missing, stale, ambiguous, or bounded dependency evidence"
+                    "incomplete-\(label)-handler-scopes: \(incomplete) handler scopes have missing, stale, ambiguous, or bounded dependency evidence"
                 )
             }
         }
         if executionTruncated {
             allLimitations.append(
-                "message-handler-dependencies-truncated: dependency evidence exceeded the documented budget; "
+                "handler-dependencies-truncated: dependency evidence exceeded the documented budget; "
                     + "affected handler scopes are incomplete"
             )
         }
@@ -508,6 +515,17 @@ struct BridgeSymbolResolver {
             guard item.fact.kind == .messageHandle, let declaration = item.declaration else { return nil }
             return (declarationKey(declaration), item.fact.handlerScope.map(normalizedScope))
         }, by: \.0).mapValues { $0.map(\.1) }
+        // method-handle 의 분기 범위는 사실이 직접 싣고 온다. 클로저 범위와 한 목록에
+        // 섞이면 둘이 겹쳐 양쪽 근거가 모두 불완전해지므로 선언별로 따로 모은다.
+        var branchScopesByDeclaration: [String: [BridgeFact.HandlerScope]] = [:]
+        for item in scanned where item.fact.kind == .methodHandle {
+            guard let declaration = item.declaration, let scope = item.fact.handlerScope else { continue }
+            branchScopesByDeclaration[declarationKey(declaration), default: []].append(normalizedScope(scope))
+        }
+        let branchScopeSets = branchScopesByDeclaration.mapValues { scopes in
+            Set(scopes).sorted { $0.start != $1.start ? $0.start < $1.start : $0.end < $1.end }
+        }
+        let branchScopeValidity = branchScopeSets.mapValues { !Self.hasOverlappingScopes($0) }
         var scopedEntriesByDeclaration: [String: [BridgeFact.HandlerScope]] = [:]
         for entry in handlerScopes {
             scopedEntriesByDeclaration[declarationKey(entry.declaration), default: []]
@@ -540,7 +558,8 @@ struct BridgeSymbolResolver {
         var dispatchCache: [String: DispatchResult] = [:]
         return scanned.map { entry in
             guard let declaration = entry.declaration else {
-                guard entry.fact.kind == .messageHandle, let scope = entry.fact.handlerScope else { return entry.fact }
+                guard entry.fact.kind == .messageHandle || entry.fact.kind == .methodHandle,
+                      let scope = entry.fact.handlerScope else { return entry.fact }
                 var fact = entry.fact.attachingExecution(
                     handlerScope: .init(start: scope.start, end: scope.end, complete: false), dependencies: []
                 )
@@ -571,7 +590,9 @@ struct BridgeSymbolResolver {
             }
             let symbol = Self.match(declaration, among: candidates)
             let resolved = entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: symbol?.usr))
-            guard entry.fact.kind == .messageHandle, let scope = entry.fact.handlerScope else {
+            let isMethodBranch = entry.fact.kind == .methodHandle
+            guard entry.fact.kind == .messageHandle || isMethodBranch,
+                  let scope = entry.fact.handlerScope else {
                 return resolved
             }
             guard let usr = symbol?.usr else {
@@ -580,15 +601,20 @@ struct BridgeSymbolResolver {
                 )
             }
             let declarationKey = self.declarationKey(declaration)
-            let ownerKey = usr + "\u{0}" + declarationKey
+            // 분기 우주는 종류마다 다르다. 메시지는 클로저 범위, 메서드는 case/if 본문이다.
+            let allScopes = isMethodBranch
+                ? (branchScopeSets[declarationKey] ?? []) : (scopesByDeclaration[declarationKey] ?? [])
+            let allScopesComplete = isMethodBranch
+                ? (branchScopeValidity[declarationKey] ?? false) : (scopeValidity[declarationKey] ?? false)
+            let ownerKey = usr + "\u{0}" + declarationKey + (isMethodBranch ? "|method" : "|message")
             let evidence = evidenceByDeclaration[ownerKey] ?? classifyReferences(
-                setupUSR: usr, declaration: declaration, allScopes: scopesByDeclaration[declarationKey] ?? []
+                setupUSR: usr, declaration: declaration, allScopes: allScopes
             )
             evidenceByDeclaration[ownerKey] = evidence
             let dependencies = executionDependencies(
                 declaration: declaration, scope: normalizedScope(scope),
                 evidence: evidence,
-                allScopesComplete: scopeValidity[declarationKey] ?? false,
+                allScopesComplete: allScopesComplete,
                 dispatchCache: &dispatchCache, dependencyBudget: &dependencyBudget
             )
             return resolved.attachingExecution(

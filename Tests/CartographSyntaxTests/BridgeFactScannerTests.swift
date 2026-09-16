@@ -991,6 +991,102 @@ struct BridgeFactScannerTests {
         #expect(fact?.dependencies == nil)
     }
 
+    @Test("events 선택은 setStreamHandler만 stream-handle로 내고 MethodChannel 사실은 버린다")
+    func recordsStreamHandlersOnlyWhenOptedIn() {
+        let source = """
+            let events = FlutterEventChannel(name: "com.example/charging", binaryMessenger: m)
+            events.setStreamHandler(self)
+            let channel = FlutterMethodChannel(name: "com.example/battery", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                switch call.method { case "getBatteryLevel": result(1) default: break }
+            }
+            let basic = BasicMessageChannel<Any?>(name: "pigeon", binaryMessenger: m)
+            basic.setMessageHandler { _, _ in }
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", events: true)
+        #expect(result.facts.map(\.fact.kind) == [.streamHandle])
+        #expect(result.facts.first?.fact.channel == "com.example/charging")
+        #expect(result.facts.first?.fact.isDynamic == false)
+        #expect(result.facts.first?.fact.method == nil)
+    }
+
+    @Test("풀지 못한 수신자의 setStreamHandler도 동적 이름의 사실로 남긴다")
+    func unresolvedStreamReceiverKeepsFact() {
+        let source = """
+            func install(stream: FlutterStreamHandler, channel: FlutterEventChannel) {
+                channel.setStreamHandler(stream)
+            }
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", events: true)
+        #expect(result.facts.map(\.fact.kind) == [.streamHandle])
+        #expect(result.facts.first?.fact.channel == "channel")
+        #expect(result.facts.first?.fact.isDynamic == true)
+    }
+
+    @Test("nil 스트림 핸들러는 해제라 사실로 남기지 않는다")
+    func nilStreamHandlerIsNotAFact() {
+        let source = """
+            let events = FlutterEventChannel(name: "com.example/charging", binaryMessenger: m)
+            events.setStreamHandler(nil)
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", events: true)
+        #expect(result.facts.isEmpty)
+    }
+
+    @Test("같은 절의 case 항목들은 같은 분기 범위를 나눈다")
+    func siblingCaseItemsShareBranchScope() {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                switch call.method {
+                case "a":
+                    result(helperA())
+                case "b", "c":
+                    result(helperB())
+                default: break
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["a", "b", "c"])
+        #expect(handled.allSatisfy { $0.handlerScope != nil })
+        let scopes = handled.map { ($0.handlerScope!.start.line, $0.handlerScope!.end.line) }
+        #expect(scopes[0] != scopes[1])
+        #expect(scopes[1] == scopes[2])
+    }
+
+    @Test("if 조건의 메서드 비교는 then 본문을 분기 범위로 단다")
+    func methodComparisonAttachesThenBodyScope() {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                if call.method == "a" {
+                    result(helperA())
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["a"])
+        #expect(handled.first?.handlerScope != nil)
+        // then 본문은 `if` 머리가 아니라 `{`(3행)에서 `}`(5행)까지다.
+        #expect(handled.first?.handlerScope?.start.line == 3)
+        #expect(handled.first?.handlerScope?.end.line == 5)
+    }
+
+    @Test("조건 위치가 아닌 메서드 비교는 범위 없이 사실만 남긴다")
+    func nonConditionComparisonKeepsFactWithoutScope() {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                let matches = call.method == "a"
+                result(matches)
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["a"])
+        #expect(handled.first?.handlerScope == nil)
+    }
+
     @Test("call.method 가 아닌 switch 는 건드리지 않는다")
     func ignoresUnrelatedSwitches() {
         let source = """

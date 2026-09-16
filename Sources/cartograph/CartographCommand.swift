@@ -372,8 +372,9 @@ struct BridgesCommand: ParsableCommand {
             match; facts from `.m` files carry their syntactic qualified name, plus a Clang USR \
             only where the index uniquely identifies the declaration. Event and message channels \
             are counted under `limitations` rather than read by default; `--messages` opts into \
-            BasicMessageChannel handler facts as bridge-facts v2. The output is the bridge-facts \
-            exchange format that isthmus reads to join with the Dart or JavaScript side.
+            BasicMessageChannel handler facts and `--events` into EventChannel stream-handler \
+            facts, each as a transport-specific bridge-facts v2 document. The output is the \
+            bridge-facts exchange format that isthmus reads to join with the Dart or JavaScript side.
 
             This command states facts, not verdicts. It does not know whether anything calls a \
             handler; a name that is not a literal is kept and marked `dynamic` rather than dropped.
@@ -392,6 +393,9 @@ struct BridgesCommand: ParsableCommand {
 
     @Flag(name: .customLong("messages"), help: "Export Flutter BasicMessageChannel handler facts as bridge-facts v2.")
     var messages: Bool = false
+
+    @Flag(name: .customLong("events"), help: "Export Flutter EventChannel stream-handler facts as bridge-facts v2.")
+    var events: Bool = false
 
     func validate() throws {
         // 사실 문서는 조인용 전체 내보내기다. 바뀐 파일만 담으면 하류 조인이
@@ -426,6 +430,14 @@ struct BridgesCommand: ParsableCommand {
         guard !messages || target != .reactNative else {
             throw ValidationError("--messages can only be combined with --target flutter")
         }
+        guard !events || target != .reactNative else {
+            throw ValidationError("--events can only be combined with --target flutter")
+        }
+        // 문서 하나는 전송 하나다. 두 플래그를 같이 받으면 한 문서에 두 transport 가
+        // 섞이므로, isthmus 가 요청할 때처럼 각각 실행하게 앞에서 거부한다.
+        guard !(messages && events) else {
+            throw ValidationError("--messages and --events are separate documents; run one flag at a time")
+        }
     }
 
     func run() throws {
@@ -434,7 +446,8 @@ struct BridgesCommand: ParsableCommand {
             try context.service.exportBridgeFacts(
                 asText: format == .text,
                 target: target?.bridgeTarget,
-                messages: messages
+                messages: messages,
+                events: events
             ),
             options: options,
             context: context

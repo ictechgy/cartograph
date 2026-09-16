@@ -53,6 +53,26 @@ struct LevelValidationTests {
         #expect(command.messages)
     }
 
+    @Test("bridges events는 Flutter target만 허용한다")
+    func bridgesEventsRejectsReactNative() {
+        #expect(throws: (any Error).self) {
+            _ = try BridgesCommand.parse(["--events", "--target", "react-native"])
+        }
+    }
+
+    @Test("bridges events 플래그를 파싱한다")
+    func bridgesEventsParses() throws {
+        let command = try BridgesCommand.parse(["--events", "--target", "flutter"])
+        #expect(command.events)
+    }
+
+    @Test("bridges는 --messages와 --events를 함께 받지 않는다")
+    func bridgesRejectsMixedTransports() {
+        #expect(throws: (any Error).self) {
+            _ = try BridgesCommand.parse(["--messages", "--events"])
+        }
+    }
+
     @Test("baseline은 --level을 받으면 사용 오류를 낸다")
     func baselineRejectsLevel() {
         do {

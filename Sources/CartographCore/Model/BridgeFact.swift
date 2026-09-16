@@ -79,6 +79,11 @@ public struct BridgeFact: Hashable, Sendable {
         case methodHandle = "method-handle"
         /// BasicMessageChannel 에 메시지 핸들러를 달았다(`setMessageHandler`의 non-nil 등록).
         case messageHandle = "message-handle"
+        /// EventChannel 에 스트림 핸들러를 달았다(`setStreamHandler`의 non-nil 등록).
+        ///
+        /// 스트림 핸들러는 클로저가 아니라 객체이므로 호출 지점에만 귀속한다. 핸들러 객체의
+        /// `onListen`/`onCancel` 구현은 등록 선언의 인덱스 참조로 이어진다.
+        case streamHandle = "stream-handle"
         /// React Native 모듈을 내보냈다(`@objc(Name)`, `RCT_EXPORT_MODULE`).
         case moduleExport = "module-export"
         /// React Native 뷰 매니저를 내보냈다(`RCT_EXPORT_VIEW_PROPERTY`).
