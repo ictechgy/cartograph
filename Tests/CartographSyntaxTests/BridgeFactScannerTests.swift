@@ -1058,7 +1058,7 @@ struct BridgeFactScannerTests {
     }
 
     @Test("비교가 참임을 보장하지 않는 조건 형태의 if는 분기 근거를 붙이지 않는다")
-    func negatedIfConditionCarriesNoBranchScope() {
+    func negatedIfConditionCarriesNoBranchScope() throws {
         let source = """
             let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
             channel.setMethodCallHandler { call, result in
@@ -1069,7 +1069,8 @@ struct BridgeFactScannerTests {
             }
             """
         let handled = facts(source, of: .methodHandle)
-        #expect(handled.map(\.method) == ["a", "b", "c", "d"])
+        // #require — 목록이 짧으면 아래 인덱싱이 트랩해 테스트 런 전체를 멈춘다.
+        try #require(handled.map(\.method) == ["a", "b", "c", "d"])
         // 양성 대조군 — 그 `==` 인 조건과 괄호로 감싼 형태는 여전히 범위를 단다.
         // 없으면 "모든 if 에 범위가 안 붙는" 회귀도 이 테스트를 통과한다.
         #expect(handled[2].handlerScope != nil && handled[3].handlerScope != nil)
