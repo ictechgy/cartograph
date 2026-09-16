@@ -912,7 +912,8 @@ struct BridgeFactsTests {
         #expect(messageDocument.platform == "swift")
         #expect(messageDocument.facts.map(\.kind) == ["message-handle"])
         #expect(messageDocument.facts.first?.method == nil)
-        #expect(!messageDocument.limitations.contains { $0.hasPrefix("unscanned-message-channels:") })
+        // 전송별 문서도 자신의 관측 공백을 싣는다 — 없다와 못 봤다를 소비자가 구분한다.
+        #expect(messageDocument.limitations.contains { $0.hasPrefix("unscanned-message-channels: 1") })
         let json = try service.exportBridgeFacts(
             generatedAt: fixedDate, target: .flutter, messages: true
         ).output

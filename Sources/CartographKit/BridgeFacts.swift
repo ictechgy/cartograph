@@ -224,7 +224,9 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         }
         var allLimitations = messages + extraLimitations
         // 이름은 계약 문자열이다. 새 종류마다 같은 모양의 한계를 붙인다.
-        for (kind, label) in [("message-handle", "message"), ("method-handle", "method"), ("stream-handle", "stream")] {
+        // stream-handle 은 스코프를 싣지 않는다 — 스트림 핸들러는 클로저가 아니라
+        // FlutterStreamHandler 구현 객체로 넘어가 계약도 근거 부재를 예정한다.
+        for (kind, label) in [("message-handle", "message"), ("method-handle", "method")] {
             guard includeExecution || scopedKinds.contains(kind) else { continue }
             let incomplete = self.facts.filter { $0.kind == kind && $0.handlerScope?.complete == false }.count
             if incomplete > 0 {

@@ -894,9 +894,12 @@ public struct CartographService: Sendable {
             generatedAt: Self.bridgeTimestamp(generatedAt),
             project: canonicalProject,
             facts: outputFacts,
-            unscannedEventChannels: isScopedDocument ? unscannedEventChannels : 0,
-            unscannedMessageChannels: isScopedDocument ? unscannedMessageChannels : 0,
-            objectiveCSourceCount: isScopedDocument ? objectiveCSources : 0,
+            // 전송별 문서에는 그 전송의 관측 공백을 실어야 "없다"와 "못 봤다"를
+            // 소비자가 구분한다. ObjC 파일 수는 어떤 전송의 핸들러든 가릴 수 있어
+            // 문서 구분 없이 실린다.
+            unscannedEventChannels: isScopedDocument || events ? unscannedEventChannels : 0,
+            unscannedMessageChannels: isScopedDocument || messages ? unscannedMessageChannels : 0,
+            objectiveCSourceCount: objectiveCSources,
             extraLimitations: extraLimitations,
             opaqueHandlerChannels: isScopedDocument ? opaqueHandlerChannels : [],
             version: (messages || events) ? BridgeFactsDocument.messageVersion : BridgeFactsDocument.version,
