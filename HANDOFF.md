@@ -1,5 +1,53 @@
 # Handoff
 
+## 2026-09-17 — 브리지 스캐너 상수 해석 + 한 홉 위임 (feat/bounded-direct-query)
+
+`우선순위대로 쭉 진행` 네 항목의 마지막(P4). 앞 셋은 같은 브랜치에 커밋됨:
+P1 웜 질의 68.8→11.9ms(`adfaa0a`·`3f5ea96`, changelog `5837d36`),
+P2 `impact --before`의 `scopeDiff`(`1f98451`), P3 자기 경고 181→0(`d6ce840`).
+
+### 설계 (모두 `BridgeFactScanner.swift`의 2패스 구조 안에서)
+
+- **`+` 문자열 연결** — `constantString`이 `a + b`의 양쪽을 재귀로 풀어 둘 다 리터럴이면
+  합친 리터럴, 앞쪽만 풀리면 그 값을 `channelPrefix`로 남긴다. `.literal`은 문자열
+  리터럴에서만 나오므로 다른 타입의 `+` 오버로드는 도달하지 않는다.
+- **init 주입 프로퍼티** — `init` 안에서 `self.x = 인자`로만 채워지는 프로퍼티를
+  `initParamLabels`(`Type.x` → 외부 레이블)로 기록하고, `Type(label:)` 호출 지점
+  인자를 `constructorCalls`에 모은다. `channelDetails`가 비-채널 바인딩에서
+  `injectedChannel`로 폴백해 모든 호출 지점이 같은 채널을 가리킬 때만 리터럴을 낸다.
+  인자 아닌 대입이나 `init` 밖 대입이 한 번이라도 오면 `nonInjectedProperties`로
+  묘비를 세워 재기록을 막는다.
+- **한 홉 위임** — `handle(_:result:)` 같은 메서드-콜 함수 안에서 `call` 파라미터를
+  그대로 인자로 넘기는 `f(…)`/`self.f(…)` 호출을 `forwardedHandlers`(피호출 키 →
+  호출자 키)로 기록한다. 2차 패스 `referencedHandlerChannel`이 직접 등록이 없는
+  함수에 대해 기록된 한 단계만 본다 — 호출자의 채널은 `recordedChannel`로
+  메서드 참조·델리게이트 등록 근거에서 푼다. 양쪽 다 `functionCounts == 1`을 요구해
+  오버로드 모호성을 막고, 호출자 중 하나라도 증명이 없거나 채널이 다르면 `.some(nil)`.
+- **타입 순환 주의** — `BindingCollector`에서 `BridgeFactCollector.indexName`을
+  부르면 두 콜렉터 간 타입 순환이 생겨 `cycles --level type`이 잡았다.
+  `RuntimeSyntaxNames.indexName`(동일 구현)을 쓰고 `BridgeFactCollector.indexName`은
+  그쪽으로 위임하게 바꿔 해소.
+
+### 검증 근거
+
+- 실제 audioplayers 파일(/tmp/ap.swift) 재현: 23개 arm 전부가 리터럴 채널에 귀속
+  (global 4 + 일반 19, dynamic·inferred 없음). 이전엔 전부 채널 nil이었다.
+- `swift test` 1469개 통과(신규 6: 종합 audioplayers 형태, `+` 리터럴, `+` 한쪽 미해석,
+  주입 충돌, 호출자 채널 충돌, 변형 인자 비위임).
+- 부정 검증: `recordForwarding` 호출 제거 → 위임 테스트 실패, `injectedChannel` 폴백
+  제거 → 주입 테스트 실패. `refusesUnprovenConstants`의 `"a" + "b"`는 이제 리터럴로
+  풀리므로 `"a" + mutable`(가변)로 갱신 — 테스트 본래 목적(증명 불가 연산자)은 유지.
+- strict 4종(dead·cycles·cycles --level type·rules) 전부 no findings, 한계 2건 유지.
+- `verify-cli-contract.sh`·`verify-fixtures.sh` 통과, coverage 92.97%.
+
+### 다음
+
+P4 커밋 대기(diff 검토 완료). 브랜치 정리·PR 여부는 지시 대기.
+남은 알려진 공백: 파일 스코프 `let`을 `var` 프로퍼티 외 경로(비-init 대입)로
+채우는 형태, Objective-C 전용 플러그인 핸들러.
+
+---
+
 ## 2026-09-16 — 인덱스 없음 안내의 프로젝트 형태 맞춤 (feat/competitive-hardening)
 
 `우선순위대로 개선` 4번째(빌드/인덱스 온보딩 마찰). 커밋 `0551343`.

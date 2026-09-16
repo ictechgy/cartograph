@@ -181,7 +181,7 @@ struct BridgeFactScannerTests {
             FlutterMethodChannel(name: mutable, binaryMessenger: m).setMethodCallHandler { _, _ in }
             FlutterMethodChannel(name: alias, binaryMessenger: m).setMethodCallHandler { _, _ in }
             FlutterMethodChannel(name: a, binaryMessenger: m).setMethodCallHandler { _, _ in }
-            FlutterMethodChannel(name: "a" + "b", binaryMessenger: m).setMethodCallHandler { _, _ in }
+            FlutterMethodChannel(name: "a" + mutable, binaryMessenger: m).setMethodCallHandler { _, _ in }
             """
         #expect(facts(source, of: .channelRegister).count == 4)
         #expect(facts(source, of: .channelRegister).allSatisfy { $0.isDynamic })
@@ -1215,5 +1215,158 @@ struct BridgeFactScannerTests {
         let second = scan(source)
         #expect(first == second)
         #expect(first.map(\.fact.location.line) == [1, 2])
+    }
+
+    // audioplayers 플러그인의 형태다. 파일 최상위 상수가 채널 이름이고, 프로퍼티는
+    // init 인자로 채워지며, `handle` 은 `call` 을 그대로 넘겨 비동기 메서드가 분기한다.
+    @Test("init 인자로 채워진 채널과 call 을 그대로 넘기는 한 홉 위임은 등록 채널에 붙는다")
+    func injectedChannelAndForwardedHandler() {
+        let source = """
+            let channelName = "xyz.luan/audioplayers"
+            let globalChannelName = "xyz.luan/audioplayers.global"
+            class Plugin {
+                var methods: FlutterMethodChannel
+                var globalMethods: FlutterMethodChannel
+                init(methodChannel: FlutterMethodChannel, globalMethodChannel: FlutterMethodChannel) {
+                    self.methods = methodChannel
+                    self.globalMethods = globalMethodChannel
+                    self.globalMethods.setMethodCallHandler(handleGlobalMethodCall)
+                }
+                static func register(with registrar: FlutterPluginRegistrar) {
+                    let methods = FlutterMethodChannel(name: channelName, binaryMessenger: m)
+                    let globalMethods = FlutterMethodChannel(name: globalChannelName, binaryMessenger: m)
+                    let instance = Plugin(methodChannel: methods, globalMethodChannel: globalMethods)
+                    registrar.addMethodCallDelegate(instance, channel: methods)
+                }
+                func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    Task { await handleAsync(call, result: result) }
+                }
+                private func handleAsync(_ call: FlutterMethodCall, result: @escaping FlutterResult) async {
+                    switch call.method {
+                    case "pause": result(nil)
+                    default: result(nil)
+                    }
+                }
+                private func handleGlobalMethodCall(call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    Task { await handleGlobalAsync(call: call, result: result) }
+                }
+                private func handleGlobalAsync(call: FlutterMethodCall, result: @escaping FlutterResult) async {
+                    switch call.method {
+                    case "init": result(nil)
+                    default: result(nil)
+                    }
+                }
+            }
+            """
+        let handles = facts(source, of: .methodHandle)
+        #expect(Set(handles.map(\.method)) == ["pause", "init"])
+        #expect(handles.first { $0.method == "pause" }?.channel == "xyz.luan/audioplayers")
+        #expect(handles.first { $0.method == "init" }?.channel == "xyz.luan/audioplayers.global")
+        #expect(handles.allSatisfy { !$0.isDynamic && !$0.isChannelInferred })
+        let registered = facts(source, of: .channelRegister)
+        #expect(Set(registered.map(\.channel)) == ["xyz.luan/audioplayers", "xyz.luan/audioplayers.global"])
+        #expect(registered.allSatisfy { !$0.isDynamic })
+    }
+
+    @Test("채널 이름의 문자열 연결은 양쪽이 리터럴이면 리터럴로 푼다")
+    func concatenatedChannelName() {
+        let source = """
+            let base = "com.example/plugin"
+            func attach(m: FlutterBinaryMessenger) {
+                FlutterMethodChannel(name: base + "/methods", binaryMessenger: m).setMethodCallHandler { _, _ in }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.first?.channel == "com.example/plugin/methods")
+        #expect(registered.first?.isDynamic == false)
+    }
+
+    @Test("연결의 한쪽을 모르면 리터럴이 아닌 dynamic 으로 남긴다")
+    func halfResolvedConcatenationStaysDynamic() {
+        let source = """
+            let base = "com.example/plugin"
+            func attach(m: FlutterBinaryMessenger, suffix: String) {
+                FlutterMethodChannel(name: base + suffix, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.first?.isDynamic == true)
+        #expect(registered.first?.channel != "com.example/plugin")
+    }
+
+    @Test("주입 프로퍼티에 다른 값의 호출 지점이나 다른 대입이 있으면 추측하지 않는다")
+    func conflictingInjectionStaysUnknown() {
+        let source = """
+            class Plugin {
+                var channel: FlutterMethodChannel
+                init(c: FlutterMethodChannel) { self.channel = c }
+                func attach() { channel.setMethodCallHandler { _, _ in } }
+            }
+            func one(m: FlutterBinaryMessenger) { Plugin(c: FlutterMethodChannel(name: "a", binaryMessenger: m)) }
+            func two(m: FlutterBinaryMessenger) { Plugin(c: FlutterMethodChannel(name: "b", binaryMessenger: m)) }
+            """
+        #expect(facts(source, of: .channelRegister).first?.isDynamic == true)
+
+        let reassigned = """
+            class Plugin {
+                var channel: FlutterMethodChannel
+                init(c: FlutterMethodChannel) { self.channel = c }
+                func swap(other: FlutterMethodChannel) { self.channel = other }
+                func attach() { channel.setMethodCallHandler { _, _ in } }
+            }
+            func one(m: FlutterBinaryMessenger) { Plugin(c: FlutterMethodChannel(name: "a", binaryMessenger: m)) }
+            """
+        #expect(facts(reassigned, of: .channelRegister).first?.isDynamic == true)
+    }
+
+    @Test("위임받은 메서드를 서로 다른 채널의 핸들러가 부르면 채널을 고르지 않는다")
+    func conflictingForwardersKeepChannelUnknown() {
+        let source = """
+            class Plugin {
+                func attach(c1: FlutterMethodChannel, c2: FlutterMethodChannel) {
+                    c1.setMethodCallHandler(handle1)
+                    c2.setMethodCallHandler(handle2)
+                }
+                func handle1(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    Task { await shared(call, result: result) }
+                }
+                func handle2(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    Task { await shared(call, result: result) }
+                }
+                private func shared(_ call: FlutterMethodCall, result: @escaping FlutterResult) async {
+                    switch call.method {
+                    case "x": result(nil)
+                    default: result(nil)
+                    }
+                }
+            }
+            """
+        let handles = facts(source, of: .methodHandle)
+        #expect(handles.map(\.method) == ["x"])
+        #expect(handles.first?.channel == nil)
+        #expect(handles.first?.isChannelInferred == false)
+    }
+
+    @Test("call 이 아닌 값을 넘기는 호출은 위임으로 보지 않는다")
+    func alteredArgumentIsNotForwarding() {
+        let source = """
+            class Plugin {
+                func attach(c1: FlutterMethodChannel, c2: FlutterMethodChannel) {
+                    c1.setMethodCallHandler(handle)
+                }
+                func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    Task { await shared(other, result: result) }
+                }
+                private func shared(_ call: FlutterMethodCall, result: @escaping FlutterResult) async {
+                    switch call.method {
+                    case "x": result(nil)
+                    default: result(nil)
+                    }
+                }
+            }
+            """
+        let handles = facts(source, of: .methodHandle)
+        #expect(handles.map(\.method) == ["x"])
+        #expect(handles.first?.channel == nil)
     }
 }

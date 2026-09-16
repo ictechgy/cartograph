@@ -232,8 +232,31 @@ final class BindingCollector: SyntaxVisitor {
     private(set) var delegateRegistrations: [(typeName: String, channel: ExprSyntax, scopes: [Int], enclosingTypes: [String])] = []
     /// 이 파일이 선언한 타입의 점으로 이은 전체 이름(`A.Plugin`).
     private(set) var declaredTypeChains: Set<String> = []
-    private var functionCounts: [String: Int] = [:]
+    /// 함수 키별 선언 수. 오버로드가 있으면 어느 선언인지 구분할 수 없어 위임 귀속을 멈춘다.
+    private(set) var functionCounts: [String: Int] = [:]
     private var readableHandlers: Set<String> = []
+    /// `FlutterMethodCall` 을 받는 함수의 키 → 인덱스 이름과 선언 타입 사슬.
+    ///
+    /// `call` 을 그대로 넘기는 한 홉 위임에서 호출자의 등록 채널을 풀 때 쓴다. 같은 이름에
+    /// 오버로드가 있으면 마지막 것이 남으므로 쓰는 쪽에서 `functionCounts == 1` 을 확인한다.
+    private(set) var methodCallFunctions: [String: (indexName: String, typeChain: String)] = [:]
+    /// `FlutterMethodCall` 함수 키 → 그 인자의 본문 이름(`handle(_ call:)` 이면 `call`).
+    private(set) var methodCallParams: [String: String] = [:]
+    /// `call` 을 그대로 넘기는 호출로 기록된 한 홉 위임. 피호출 키 → 호출자 키들.
+    ///
+    /// `handle` 이 `Task { await handleAsync(call, result: r) }` 만 하는 모양이다.
+    /// 호출자가 아직 등록 채널로 확인되지 않아도 기록하고, 채널 판정은 2차 패스가 한다.
+    private(set) var forwardedHandlers: [String: Set<String>] = [:]
+    /// `init` 안의 `self.x = 인자` 로만 채워지는 프로퍼티. `Type.x` → 호출 지점의 외부 레이블들.
+    private(set) var initParamLabels: [String: Set<String>] = [:]
+    /// 인자 아닌 값이나 `init` 밖 대입이 한 번이라도 온 프로퍼티는 주입이 아니다.
+    private var nonInjectedProperties: Set<String> = []
+    /// `Type(label: …)` 생성자 호출의 인자들. 주입 프로퍼티의 값을 호출 지점에서 푼다.
+    private(set) var constructorCalls: [(typeName: String, label: String, expression: ExprSyntax, scopes: [Int], enclosingTypes: [String])] = []
+    /// 지금 안에 있는 함수의 키. 지역 함수는 nil — 인덱스 정점이 없어 핸들러가 아니다.
+    private var functionKeys: [String?] = []
+    /// 안쪽 이니셜라이저의 `본문 이름 → 외부 레이블`. `init` 안의 `self.x = 인자` 판별에 쓴다.
+    private var initParamStack: [[String: String]] = []
 
     /// 지금 어느 타입 안에 있는지.
     private var typeNames: [String] = []
@@ -252,16 +275,32 @@ final class BindingCollector: SyntaxVisitor {
     // MARK: 스코프 문맥
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+        var key: String? = nil
         if !DeclarationCollector.isInsideBody(node) {
-            let key = Self.handlerKey(DeclarationCollector.unescaped(node.name.text), enclosingTypes: typeNames)
-            functionCounts[key, default: 0] += 1
-            if node.body != nil && BindingCollector.takesMethodCall(node) { readableHandlers.insert(key) }
+            let handlerKey = Self.handlerKey(DeclarationCollector.unescaped(node.name.text), enclosingTypes: typeNames)
+            functionCounts[handlerKey, default: 0] += 1
+            if node.body != nil && Self.takesMethodCall(node) {
+                readableHandlers.insert(handlerKey)
+                methodCallFunctions[handlerKey] = (
+                    indexName: RuntimeSyntaxNames.indexName(node.name.text, parameters: node.signature.parameterClause.parameters),
+                    typeChain: typeNames.joined(separator: ".")
+                )
+                if let parameter = Self.methodCallParameter(of: node) {
+                    let internalName = DeclarationCollector.unescaped((parameter.secondName ?? parameter.firstName).text)
+                    if internalName != "_" { methodCallParams[handlerKey] = internalName }
+                }
+            }
+            key = handlerKey
         }
+        functionKeys.append(key)
         return pushScope(node)
     }
-    override func visitPost(_: FunctionDeclSyntax) { scopes.removeLast() }
-    override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_: InitializerDeclSyntax) { scopes.removeLast() }
+    override func visitPost(_: FunctionDeclSyntax) { scopes.removeLast(); functionKeys.removeLast() }
+    override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
+        initParamStack.append(Self.initParamLabels(of: node))
+        return pushScope(node)
+    }
+    override func visitPost(_: InitializerDeclSyntax) { scopes.removeLast(); initParamStack.removeLast() }
     override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
     override func visitPost(_: ClosureExprSyntax) { scopes.removeLast() }
 
@@ -283,6 +322,17 @@ final class BindingCollector: SyntaxVisitor {
 
     /// 함수·클로저를 구분하는 키. 두 패스가 같은 트리를 걸으므로 같은 노드에서 같은 값이다.
     static func scopeKey(_ node: some SyntaxProtocol) -> Int { node.position.utf8Offset }
+
+    /// `init(global: g)` 의 본문 이름 `g` → 호출 지점 레이블 `global`.
+    /// `init(_ x:)` 처럼 레이블이 없는 인자는 호출 지점에서 이름이 없어 못 따라간다.
+    private static func initParamLabels(of node: InitializerDeclSyntax) -> [String: String] {
+        var labels: [String: String] = [:]
+        for parameter in node.signature.parameterClause.parameters where parameter.firstName.text != "_" {
+            labels[DeclarationCollector.unescaped((parameter.secondName ?? parameter.firstName).text)] =
+                DeclarationCollector.unescaped(parameter.firstName.text)
+        }
+        return labels
+    }
 
     // MARK: 타입 문맥
 
@@ -372,8 +422,27 @@ final class BindingCollector: SyntaxVisitor {
             return .visitChildren
         }
         let key = assignmentKey(name, explicitMember: member != nil)
+        noteInjection(key: key, value: node.rightOperand)
         bind(name: name, to: node.rightOperand, isLocal: false, bindingKey: key)
         return .visitChildren
+    }
+
+    /// `init` 안의 `self.x = 인자` 로만 채워지는 프로퍼티를 생성자 주입으로 기록한다.
+    ///
+    /// 지역 키(`#`)는 프로퍼티가 아니다. 인자 아닌 값이나 `init` 밖 대입이 한 번이라도
+    /// 오면 그 프로퍼티는 호출 지점의 값이라고 할 수 없으므로 주입 기록을 지운다.
+    private func noteInjection(key: String, value: ExprSyntax) {
+        guard !key.contains("#") else { return }
+        guard let labels = initParamStack.last,
+              let reference = value.as(DeclReferenceExprSyntax.self),
+              let label = labels[DeclarationCollector.unescaped(reference.baseName.text)]
+        else {
+            initParamLabels.removeValue(forKey: key)
+            nonInjectedProperties.insert(key)
+            return
+        }
+        guard !nonInjectedProperties.contains(key) else { return }
+        initParamLabels[key, default: []].insert(label)
     }
 
     /// 대입은 새 지역 선언이 아니다. 기존 지역·프로퍼티에 합쳐 표기 차이와 클로저 변경을 놓치지 않는다.
@@ -398,7 +467,44 @@ final class BindingCollector: SyntaxVisitor {
         }
         recordHandlerReference(node)
         recordDelegate(node)
+        recordForwarding(node)
+        recordConstructorCall(node)
         return .visitChildren
+    }
+
+    /// 핸들러가 `call` 을 그대로 넘기는 한 홉 위임을 기록한다.
+    ///
+    /// `self.f(…)`·`f(…)` 만 본다 — 다른 수신자의 메서드는 이 파일의 함수가 아니다.
+    /// 호출자의 `FlutterMethodCall` 파라미터가 인자로 그대로 참조돼야 같은 호출의 분기다.
+    private func recordForwarding(_ call: FunctionCallExprSyntax) {
+        guard let caller = functionKeys.last ?? nil,
+              let callParam = methodCallParams[caller],
+              let callee = Self.identifierName(of: call.calledExpression) else { return }
+        if let member = call.calledExpression.as(MemberAccessExprSyntax.self),
+           member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text != "self" { return }
+        guard call.arguments.contains(where: {
+            Self.unparenthesized($0.expression).as(DeclReferenceExprSyntax.self)?.baseName.text == callParam
+        }) else { return }
+        forwardedHandlers[Self.handlerKey(callee, enclosingTypes: typeNames), default: []].insert(caller)
+    }
+
+    /// `Plugin(label: x)` 형태의 생성자 호출 인자를 기록한다.
+    /// `init` 안의 `self.x = label` 주입 프로퍼티를 이 호출 지점의 값으로 푼다.
+    private func recordConstructorCall(_ call: FunctionCallExprSyntax) {
+        let dotted: String
+        if let member = call.calledExpression.as(MemberAccessExprSyntax.self),
+           member.declName.baseName.text == "init",
+           member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self" {
+            // `self.init(…)` 위임 생성자도 같은 타입의 호출 지점이다.
+            dotted = typeNames.joined(separator: ".")
+        } else {
+            dotted = Self.dottedTypeName(of: call.calledExpression)
+        }
+        guard dotted.split(separator: ".").last?.first?.isUppercase == true else { return }
+        for argument in call.arguments {
+            guard let label = argument.label?.text else { continue }
+            constructorCalls.append((dotted, label, argument.expression, scopes, typeNames))
+        }
     }
 
     /// `registrar.addMethodCallDelegate(instance, channel: c)` 의 `instance` 가 어느 타입인지 기억한다.
@@ -457,14 +563,17 @@ final class BindingCollector: SyntaxVisitor {
         (enclosingTypes + [name]).joined(separator: ".")
     }
 
-    /// `FlutterMethodCall` 인자를 받는 함수인지. `FlutterPlugin.handle(_:result:)` 가 그렇다.
-    ///
-    /// `FlutterMethodCall?` 과 `Flutter.FlutterMethodCall` 도 같은 타입이다.
-    static func takesMethodCall(_ node: FunctionDeclSyntax) -> Bool {
-        node.signature.parameterClause.parameters.contains {
+    /// `FlutterMethodCall` 파라미터. `FlutterMethodCall?` 과 `Flutter.FlutterMethodCall` 도 같은 타입이다.
+    static func methodCallParameter(of node: FunctionDeclSyntax) -> FunctionParameterSyntax? {
+        node.signature.parameterClause.parameters.first {
             let type = $0.type.trimmedDescription.trimmingCharacters(in: CharacterSet(charactersIn: "?!"))
             return type == BridgeChannels.methodCall || type.hasSuffix("." + BridgeChannels.methodCall)
         }
+    }
+
+    /// `FlutterMethodCall` 인자를 받는 함수인지. `FlutterPlugin.handle(_:result:)` 가 그렇다.
+    static func takesMethodCall(_ node: FunctionDeclSyntax) -> Bool {
+        methodCallParameter(of: node) != nil
     }
 
     /// 저장된 클로저·외부 함수·오버로드를 파일 안의 확정된 함수 본문으로 오인하지 않는다.
@@ -572,9 +681,46 @@ final class BindingCollector: SyntaxVisitor {
 
     /// 채널 변수의 이름과 생성자 종류를 함께 푼다.
     func channelDetails(named name: String, in context: Context) -> (name: ResolvedName, kind: BridgeChannelKind)?? {
+        channelDetails(named: name, in: context, depth: 0)
+    }
+
+    private func channelDetails(named name: String, in context: Context, depth: Int) -> (name: ResolvedName, kind: BridgeChannelKind)?? {
         guard let found = binding(named: name, in: context, membersOnly: false) else { return nil }
-        guard case let .channel(argument, scopes, types, kind)? = found else { return .some(nil) }
-        return .some((resolveString(argument, in: Context(scopes: scopes, enclosingTypes: types)), kind))
+        if case let .channel(argument, scopes, types, kind)? = found {
+            return .some((resolveString(argument, in: Context(scopes: scopes, enclosingTypes: types)), kind))
+        }
+        if let injected = injectedChannel(named: name, in: context, depth: depth) { return .some(injected) }
+        return .some(nil)
+    }
+
+    /// `init` 안에서 `self.name = 인자` 로만 채워지는 프로퍼티의 채널을 생성자 호출 지점에서 푼다.
+    ///
+    /// 조회는 `binding(named:)` 와 같은 순서로 — 가장 안쪽 타입부터. 호출 지점이 하나도
+    /// 없거나(외부에서만 만든다) 지점마다 값이 다르면 모른다.
+    private func injectedChannel(named name: String, in context: Context, depth: Int) -> (name: ResolvedName, kind: BridgeChannelKind)? {
+        guard depth < 4 else { return nil }
+        for end in stride(from: context.enclosingTypes.count, through: 0, by: -1) {
+            let chain = context.enclosingTypes.prefix(end)
+            guard let labels = initParamLabels[(chain + [name]).joined(separator: ".")] else { continue }
+            var resolved: [(name: ResolvedName, kind: BridgeChannelKind)] = []
+            for call in constructorCalls
+            where labels.contains(call.label)
+                  && resolveTypeChain(call.typeName, from: call.enclosingTypes) == chain.joined(separator: ".") {
+                let callContext = Context(scopes: call.scopes, enclosingTypes: call.enclosingTypes)
+                if let inline = channelConstruction(call.expression, in: callContext) {
+                    resolved.append(inline)
+                } else if let reference = Self.identifierName(of: call.expression),
+                          let details = channelDetails(named: reference, in: callContext, depth: depth + 1), let details {
+                    resolved.append(details)
+                } else {
+                    return nil
+                }
+            }
+            guard let first = resolved.first,
+                  resolved.allSatisfy({ $0.name == first.name && $0.kind == first.kind }) else { return nil }
+            return first
+        }
+        return nil
     }
 
     /// 파일 안의 메서드 채널 생성 전부를 이름으로 푼 것. 핸들러 문맥 밖의 추측에 쓴다.
@@ -629,7 +775,8 @@ final class BindingCollector: SyntaxVisitor {
         return .dynamic(expression.trimmedDescription)
     }
 
-    /// 순환·지나치게 긴 별칭은 중단한다. 연산자 오버로드와 함수 호출 결과는 평가하지 않는다.
+    /// 순환·지나치게 긴 별칭은 중단한다. 문자열 `+` 연결 외의 연산자와 함수 호출 결과는
+    /// 평가하지 않는다.
     private func constantString(_ expression: ExprSyntax, in context: Context, remaining: Int) -> ResolvedName? {
         guard remaining > 0 else { return nil }
         let expression = Self.unparenthesized(expression)
@@ -637,6 +784,20 @@ final class BindingCollector: SyntaxVisitor {
             if let value = literal.representedLiteralValue { return .literal(value) }
             return Self.interpolatedPrefix(of: literal).map {
                 .dynamic(literal.trimmedDescription, channelPrefix: $0)
+            }
+        }
+        // `base + "/events"` — 앞쪽이 풀렸으면 그 값이 실행 시 접두사이고, 뒤쪽까지
+        // 리터럴이면 합친 값이 리터럴이다. `.literal` 은 문자열 리터럴에서만 나오므로
+        // 오버로드된 다른 타입의 `+` 는 여기 오지 않는다.
+        if let infix = expression.as(InfixOperatorExprSyntax.self),
+           let operation = infix.operator.as(BinaryOperatorExprSyntax.self), operation.operator.text == "+",
+           let left = constantString(infix.leftOperand, in: context, remaining: remaining - 1) {
+            if !left.isDynamic,
+               let right = constantString(infix.rightOperand, in: context, remaining: remaining - 1), !right.isDynamic {
+                return .literal(left.text + right.text)
+            }
+            if let prefix = left.isDynamic ? left.channelPrefix : left.text {
+                return .dynamic(expression.trimmedDescription, channelPrefix: prefix)
             }
         }
         guard case let .constant(value, scopes, types)?? = constantBinding(for: expression, in: context) else { return nil }
@@ -820,30 +981,61 @@ final class BridgeFactCollector: SyntaxVisitor {
 
     /// 이 함수가 어느 채널의 핸들러인지, 등록 호출이 말해 준 것.
     ///
-    /// 둘 중 하나다. `setMethodCallHandler(handleCall)` 로 메서드 참조가 넘겨졌거나,
+    /// 셋 중 하나다. `setMethodCallHandler(handleCall)` 로 메서드 참조가 넘겨졌거나,
     /// 이 함수가 `addMethodCallDelegate(instance, channel:)` 로 등록된 타입의
-    /// `handle(_:result:)` 이거나. 둘 다 추측이 아니다.
+    /// `handle(_:result:)` 이거나, 그런 핸들러가 `call` 을 그대로 넘기는 한 홉
+    /// 위임의 대상이거나. 모두 추측이 아니다.
     private func referencedHandlerChannel(of node: FunctionDeclSyntax) -> ResolvedName?? {
         // 메서드 참조든 델리게이트든, 핸들러는 FlutterMethodCall 을 받는 함수다. 아니면 동명의
         // 무관한 함수라 `request.method == "DELETE"` 가 이 채널의 사실로 나간다.
         guard BindingCollector.takesMethodCall(node) else { return nil }
         let name = DeclarationCollector.unescaped(node.name.text)
-        if let entries = bindings.handlerFunctions[BindingCollector.handlerKey(name, enclosingTypes: typeNames)] {
+        let key = BindingCollector.handlerKey(name, enclosingTypes: typeNames)
+        if let entries = bindings.handlerFunctions[key] {
             return .some(Self.single(entries.compactMap {
                 resolveChannel($0.receiver, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes))?.name
             }))
         }
         // FlutterPlugin 이 요구하는 것은 정확히 `handle(_:result:)` 다. 다른 오버로드는 아니다.
-        let indexName = Self.indexName(name, parameters: node.signature.parameterClause.parameters)
-        guard indexName == "handle(_:result:)" else { return nil }
-        let chain = typeNames.joined(separator: ".")
-        let registrations = bindings.delegateRegistrations.filter {
-            bindings.resolveTypeChain($0.typeName, from: $0.enclosingTypes) == chain
+        if Self.indexName(name, parameters: node.signature.parameterClause.parameters) == "handle(_:result:)" {
+            let chain = typeNames.joined(separator: ".")
+            let registrations = bindings.delegateRegistrations.filter {
+                bindings.resolveTypeChain($0.typeName, from: $0.enclosingTypes) == chain
+            }
+            if !registrations.isEmpty {
+                return .some(Self.single(registrations.compactMap {
+                    resolveChannel($0.channel, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes))?.name
+                }))
+            }
         }
-        guard !registrations.isEmpty else { return nil }
-        return .some(Self.single(registrations.compactMap {
-            resolveChannel($0.channel, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes))?.name
-        }))
+        // `handle` → `handleAsync` 처럼 `call` 을 그대로 넘기는 한 홉 위임. 기록된 한 단계만
+        // 보며 호출 그래프를 재귀로 쫓지 않는다. 같은 이름에 선언이 여럿이면 어느 것이
+        // 호출자인지 몰라 귀속하지 않는다.
+        guard bindings.functionCounts[key] == 1,
+              let callers = bindings.forwardedHandlers[key], !callers.isEmpty else { return nil }
+        let proven = callers.sorted().compactMap {
+            bindings.functionCounts[$0] == 1 ? recordedChannel(of: $0) : nil
+        }
+        guard !proven.isEmpty else { return nil }
+        // 호출자마다 증명된 채널이 있고 전부 같을 때만 계승한다.
+        return .some(proven.count == callers.count ? Self.single(proven) : nil)
+    }
+
+    /// 등록 호출이 `key` 함수에 물어 준 채널. 메서드 참조와 델리게이트 등록 둘 다 본다.
+    ///
+    /// 근거가 없으면 nil, 있으면 푼 채널이 전부 같을 때만 그 채널이다.
+    private func recordedChannel(of key: String) -> ResolvedName? {
+        var channels = (bindings.handlerFunctions[key] ?? []).compactMap {
+            resolveChannel($0.receiver, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes))?.name
+        }
+        if let function = bindings.methodCallFunctions[key], function.indexName == "handle(_:result:)" {
+            channels += bindings.delegateRegistrations.filter {
+                bindings.resolveTypeChain($0.typeName, from: $0.enclosingTypes) == function.typeChain
+            }.compactMap {
+                resolveChannel($0.channel, in: .init(scopes: $0.scopes, enclosingTypes: $0.enclosingTypes))?.name
+            }
+        }
+        return channels.isEmpty ? nil : Self.single(channels)
     }
 
     /// 등록이 여럿이면 푼 채널 이름이 전부 같을 때만 그 채널이다. 다르면 모른다.
@@ -910,8 +1102,7 @@ final class BridgeFactCollector: SyntaxVisitor {
 
     /// 인덱스가 붙이는 이름. `handle(_:result:)`, `init(messenger:)`.
     static func indexName(_ base: String, parameters: FunctionParameterListSyntax) -> String {
-        DeclarationCollector.unescaped(base) + "("
-            + parameters.map { DeclarationCollector.unescaped($0.firstName.text) + ":" }.joined() + ")"
+        RuntimeSyntaxNames.indexName(base, parameters: parameters)
     }
 
     // MARK: Flutter

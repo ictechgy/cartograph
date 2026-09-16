@@ -780,8 +780,12 @@ SwiftSyntax와 Objective-C Flutter 핸들러·React Native export 매크로 스�
 등록 채널을 모두 알 때만 `opaque-handler-bodies` 범위를 좁힙니다. 하나라도 모르면 기존
 전체 target 범위를 유지하며, 다른 범위 불명 공백을 덮어쓰지 않습니다.
 
-Swift 브리지 이름은 같은 파일의 불변 `let` 별칭과 괄호를 최대 64단계 따라갑니다. 가변 값,
-값을 모르는 가림 선언, 연산자·보간·다른 파일의 값은 dynamic으로 남깁니다.
+Swift 브리지 이름은 같은 파일의 불변 `let` 별칭과 괄호를 최대 64단계 따라가고, 양쪽이
+풀리는 `+` 연결은 합쳐진 리터럴로(한쪽만 풀리면 풀린 쪽이 접두사로) 풉니다. `self.x = 인자`
+처럼 이니셜라이저 인자로만 채워지는 프로퍼티는 `Type(label:)` 호출 지점의 값으로 풀고,
+`call` 을 그대로 넘기는 한 홉 위임(`Task { await handleAsync(call, …) }`)은 등록 채널을
+그대로 계승합니다. 가변 값, 값을 모르는 가림 선언, 다른 연산자·보간, 호출 지점 간 불일치,
+다른 파일의 값은 dynamic으로 남깁니다.
 [상수·Needle·스토리보드 실측](docs/scans/2026-09-analysis-blindspots.md)에 지원 범위와 입력 공백을 정리했습니다.
 
 동적인 Swift 브리지 이름이 최신 인덱스 소스에서 나오면 `bridges`는 제한된 함수 간 값 흐름
