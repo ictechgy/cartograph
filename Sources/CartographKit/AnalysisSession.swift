@@ -362,7 +362,11 @@ extension CartographService {
     }
 }
 
-/// 세션이 순서대로 재사용하는 변경 감지 상태. 한 세션 안에서만 쓰이므로 직렬 접근을 전제한다.
+/// 세션이 순서대로 재사용하는 변경 감지 상태.
+///
+/// 오늘의 호출 경로는 전부 직렬이지만(CLI·MCP 루프) `Sendable` 경계를 넘는
+/// 타입이 암묵 계약에 기대면 나중에 들어온 병렬 호출이 조용한 데이터 레이스가
+/// 된다. 상태는 전부 락 아래에 둔다.
 fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
     fileprivate struct Key: Hashable {
         let label: String
@@ -380,29 +384,54 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         let state: State
     }
 
+    private let lock = NSLock()
     private var entries: [Key: Entry] = [:]
 
     /// 지문 한 번에 관측한 디렉터리. 가지치기 기준이며 다음 지문 시작 때 비운다.
-    fileprivate var observedDirectories: Set<String> = []
+    private var observedDirectories: Set<String> = []
     private var directories: [String: DirectoryRecord] = [:]
 
-    fileprivate func entry(for key: Key) -> Entry? { entries[key] }
+    fileprivate func entry(for key: Key) -> Entry? {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries[key]
+    }
 
     fileprivate func store(_ state: State, stamp: FileFingerprintStamp?, for key: Key) {
+        lock.lock()
+        defer { lock.unlock() }
         entries[key] = Entry(stamp: stamp, state: state)
     }
 
     /// 운영체제 지문이 그대로인 디렉터리의 이전 목록. 지문이 다르거나 없으면 nil.
     fileprivate func cachedEntries(at path: String, stamp: DirectoryListingStamp) -> [DirectoryEntry]? {
+        lock.lock()
+        defer { lock.unlock() }
         guard let record = directories[path], record.stamp == stamp else { return nil }
         return record.entries
     }
 
     fileprivate func storeEntries(_ entries: [DirectoryEntry], stamp: DirectoryListingStamp, at path: String) {
+        lock.lock()
+        defer { lock.unlock() }
         directories[path] = DirectoryRecord(stamp: stamp, entries: entries)
     }
 
+    fileprivate func observeDirectory(_ path: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        observedDirectories.insert(path)
+    }
+
+    fileprivate func resetObservedDirectories() {
+        lock.lock()
+        defer { lock.unlock() }
+        observedDirectories.removeAll()
+    }
+
     fileprivate func prune(keeping keys: Set<Key>) {
+        lock.lock()
+        defer { lock.unlock() }
         entries = entries.filter { keys.contains($0.key) }
         directories = directories.filter { observedDirectories.contains($0.key) }
     }
@@ -423,7 +452,7 @@ fileprivate struct CachedListingFileSystem: FileSystem {
     let cache: AnalysisInputFingerprintCache
 
     func directoryEntries(at path: String) throws -> [DirectoryEntry] {
-        cache.observedDirectories.insert(path)
+        cache.observeDirectory(path)
         guard let stamp = base.directoryListingStamp(at: path) else {
             return try base.directoryEntries(at: path)
         }
@@ -463,7 +492,7 @@ private struct AnalysisInputFingerprinter {
         var accumulator = FingerprintAccumulator()
         accumulator.addText(cache == nil ? "cartograph-analysis-input-v2" : "cartograph-analysis-input-v3")
         var observedKeys: Set<AnalysisInputFingerprintCache.Key> = []
-        cache?.observedDirectories.removeAll()
+        cache?.resetObservedDirectories()
         let encodedConfiguration = try JSONEncoder.cartographDefault(prettyPrinted: false)
             .encode(configuration)
         accumulator.addData(label: "configuration", data: encodedConfiguration)
