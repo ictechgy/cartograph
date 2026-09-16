@@ -75,10 +75,14 @@ extension FileSystem {
 /// 파일 내용 digest를 재사용할 때 확인하는 운영체제 파일 상태.
 ///
 /// mtime만 저장하면 편집 뒤 시각을 복원한 파일이나 권한만 바뀐 파일을 놓칠 수 있다.
-/// 장치·inode·크기·mtime·ctime·권한과 실제 심볼릭 링크 대상 경로를 함께 비교해 그런
+/// 장치·inode·크기·mtime·ctime·권한과 심볼릭 링크 대상 경로를 함께 비교해 그런
 /// 상태에서는 캐시가 내용을 다시 읽도록 만든다.
 public struct FileFingerprintStamp: Sendable, Equatable, Hashable {
-    /// 심볼릭 링크를 따라간 실제 파일 경로.
+    /// 마지막 경로 요소가 심볼릭 링크이면 따라간 대상의 실제 경로, 아니면 입력 철자.
+    ///
+    /// 링크가 아닌 파일에까지 realpath 를 적용하지 않는다 — 조상 디렉터리 링크의
+    /// 재지정은 이미 inode·장치 변화로 드러나고, realpath 는 구성 요소마다 lstat 을
+    /// 거치므로 수백 개 입력을 매번 확인하는 세션 지문에서 지배적인 비용이었다.
     public let resolvedPath: String
     /// 파일이 속한 장치 식별자.
     public let device: UInt64
@@ -223,10 +227,14 @@ extension FileSystem {
     ///   - isIncluded: 파일 경로 필터.
     ///   - shouldDescend: 하위 디렉터리로 내려갈지 결정한다. 빌드 산출물처럼
     ///     들어가 봐야 소용없는 디렉터리를 통째로 건너뛰기 위해 쓴다.
+    ///   - onDirectory: 방문한 디렉터리마다 한 번씩 부른다. 열거가 실패한
+    ///     디렉터리에도 부른다 — 그 지문이 바뀌면 읽을 수 있게 된 것이므로
+    ///     캐시하는 호출자는 실패한 디렉터리도 검증 대상에 넣어야 한다.
     public func recursiveFiles(
         under root: String,
         isIncluded: (String) -> Bool,
-        shouldDescend: (String) -> Bool = { _ in true }
+        shouldDescend: (String) -> Bool = { _ in true },
+        onDirectory: (String) -> Void = { _ in }
     ) -> [String] {
         guard directoryExists(at: root) else {
             return fileExists(at: root) && isIncluded(root) ? [root] : []
@@ -252,23 +260,27 @@ extension FileSystem {
         var pending: [(path: String, key: String)] = [(resolvedRoot, resolvedRoot)]
 
         while let directory = pending.popLast() {
-            guard visited.insert(directory.key).inserted,
-                  let entries = try? directoryEntries(at: directory.path)
+            guard visited.insert(directory.key).inserted else { continue }
+            onDirectory(directory.path)
+            guard let entries = try? directoryEntries(at: directory.path)
             else { continue }
             for entry in entries {
                 // 링크 항목의 키도 루트와 같은 realpath 수준으로 풀어야 한다.
                 // canonicalPath 는 마지막 구성 요소만 풀어, 링크 대상이 링크 조상
                 // 아래에 있으면 루트 키와 다른 철자가 되어 같은 파일을 두 번 센다.
-                let key = entry.isSymbolicLink
-                    ? (try? realPath(at: entry.path)) ?? Self.canonicalPath(entry.path)
-                    : directory.key + "/" + (entry.path as NSString).lastPathComponent
+                // 방문 집합에만 쓰이므로 걸러지는 파일에는 환산 비용을 치르지 않는다.
+                func visitKey() -> String {
+                    entry.isSymbolicLink
+                        ? (try? realPath(at: entry.path)) ?? Self.canonicalPath(entry.path)
+                        : directory.key + "/" + (entry.path as NSString).lastPathComponent
+                }
                 if entry.isDirectory {
-                    if shouldDescend(entry.path) { pending.append((entry.path, key)) }
+                    if shouldDescend(entry.path) { pending.append((entry.path, visitKey())) }
                 } else if entry.isRegularFile, isIncluded(entry.path) {
                     // 끊어진 심볼릭 링크는 일반 파일이 아니다. 그것을 소스 파일로 세면
                     // 읽는 쪽에서 실패하거나 유령 정점이 된다.
                     // 같은 파일을 가리키는 두 이름은 한 번만 센다.
-                    guard visitedFiles.insert(key).inserted else { continue }
+                    guard visitedFiles.insert(visitKey()).inserted else { continue }
                     result.append(entry.path)
                 }
             }
@@ -363,6 +375,10 @@ public struct LocalFileSystem: FileSystem {
         let childBase = path.withCString({ lstat($0, &info) }) == 0
             && info.st_mode & 0o170000 == 0o120000
             ? (try? realPath(at: path)) ?? Self.canonicalPath(path) : path
+        // NSString 경로 조립을 피한다 — appendingPathComponent 가 돌려주는 문자열은
+        // 해시할 때 NSString 을 거쳐 네이티브 String 연결보다 한 자릿수 이상 느리다.
+        // 이 목록의 경로는 세션 지문에서 항목마다 집합·맵 키로 해시된다.
+        let separator = childBase.hasSuffix("/") ? "" : "/"
         var entries: [DirectoryEntry] = []
         while let item = readdir(stream) {
             // d_name 은 고정 크기 튜플이라 전체를 복사하지 않고 길이만큼만 디코딩한다.
@@ -370,7 +386,7 @@ public struct LocalFileSystem: FileSystem {
                 String(decoding: bytes.prefix(Int(item.pointee.d_namlen)), as: UTF8.self)
             }
             guard name != ".", name != ".." else { continue }
-            entries.append(classify(at: (childBase as NSString).appendingPathComponent(name),
+            entries.append(classify(at: childBase + separator + name,
                                     type: Int32(item.pointee.d_type)))
         }
         return entries.sorted { $0.path < $1.path }
@@ -425,14 +441,29 @@ public struct LocalFileSystem: FileSystem {
     /// 내용 재사용 여부를 판단할 수 있도록 stat의 전체 파일 상태를 읽는다.
     public func fingerprintStamp(at path: String) -> FileFingerprintStamp? {
         guard !path.utf8.contains(0) else { return nil }
+        var leaf = Darwin.stat()
+        let leafStatus = path.withCString { pointer in
+            withUnsafeMutablePointer(to: &leaf) { output in
+                lstat(pointer, output)
+            }
+        }
+        guard leafStatus == 0 else { return nil }
         var info = Darwin.stat()
         let result = path.withCString { pointer in
             withUnsafeMutablePointer(to: &info) { output in
                 stat(pointer, output)
             }
         }
-        guard result == 0, info.st_size >= 0,
-              let resolvedPath = try? realPath(at: path) else { return nil }
+        guard result == 0, info.st_size >= 0 else { return nil }
+        // 링크가 아닌 파일의 해결 경로는 입력 철자와 같다. realpath 는 경로의 각
+        // 구성 요소에 lstat 을 거치므로 끝 요소가 실제로 링크일 때만 부른다.
+        let resolvedPath: String
+        if leaf.st_mode & 0o170000 == 0o120000 {
+            guard let resolved = try? realPath(at: path) else { return nil }
+            resolvedPath = resolved
+        } else {
+            resolvedPath = path
+        }
         return FileFingerprintStamp(
             resolvedPath: resolvedPath,
             device: UInt64(info.st_dev),

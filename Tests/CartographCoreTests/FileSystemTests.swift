@@ -122,6 +122,36 @@ struct FileSystemTests {
         #expect(secondStamp != firstStamp)
         #expect(InMemoryFileSystem().fingerprintStamp(at: "/p/missing") == nil)
     }
+
+    @Test("끝 요소가 링크가 아니면 지문은 조상 링크를 풀지 않고 입력 철자를 보존한다")
+    func nonLinkLeafKeepsInputSpellingInStamp() throws {
+        // realpath 는 경로 구성 요소마다 lstat 을 거치므로 수백 입력을 매번 확인하는
+        // 세션 지문에서는 끝 요소가 실제 링크일 때만 부른다. 조상 링크의 재지정은
+        // 따라간 대상의 inode·장치 변화로 드러나므로 해결 철자 없이도 감지된다.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cartograph-stamp-\(UUID().uuidString)")
+        let real = root.appendingPathComponent("real")
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("x".utf8).write(to: real.appendingPathComponent("a.txt"))
+        let link = root.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+
+        let fileSystem = LocalFileSystem()
+        let viaLink = link.appendingPathComponent("a.txt").path
+        let stamp = try #require(fileSystem.fingerprintStamp(at: viaLink))
+        #expect(stamp.resolvedPath == viaLink)
+
+        // 조상 링크가 다른 디렉터리를 가리키면 따라간 대상의 inode 가 달라진다.
+        let other = root.appendingPathComponent("other")
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: other.appendingPathComponent("a.txt"))
+        try FileManager.default.removeItem(at: link)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: other)
+        let moved = try #require(fileSystem.fingerprintStamp(at: viaLink))
+        #expect(moved != stamp)
+        #expect(moved.resolvedPath == viaLink)
+    }
 }
 
 @Suite("심볼릭 링크 순환")
