@@ -1,5 +1,51 @@
 # Handoff
 
+## 2026-09-16 — 경쟁 도구 비교 후속: 난이도 과제 측정 + warm 질의 2× (feat/competitive-hardening)
+
+`우선순위대로 개선` 지시에 따른 진행 중. 브랜치 `feat/competitive-hardening`(cartograph-competitive
+워크트리, origin/main `b5c9b84` 기반)에 커밋 2개.
+
+### 완료
+
+1. **난이도 과제 재측정** (`6a6921b`): `Scripts/benchmark-harder-tasks.py`가 H1~H6을 기계 채점.
+   구조적 격차 확인 — LSP `implementation`이 전이적 구현(Alamofire `UploadRequest`)을 놓치고,
+   지역 함수는 USR이 없어 참조 질의 자체 불가(hover는 됨). Cartograph는 그래프 diff로 고립
+   소비자를 결정적으로 잡는다. 비교 문서: `docs/evaluation/2026-09-16-harder-comparison.md`,
+   재현 fixture: `docs/evaluation/2026-09-16-harder/pigeon-host/`(외부 워크스페이스 불필요).
+   원시 출력·스크래치 코퍼스: `~/Desktop/cartograph-evaluation-20260916/`.
+2. **warm 질의 2×** (`9f0b449`): warm 요청 ~42ms의 전부가 입력 지문 재계산(디렉터리 재열거 +
+   항목별 경로 해석)이었다. `AnalysisInputFingerprintCache`가 디렉터리 목록을
+   `DirectoryListingStamp`(stat 전용, realpath 없음)로 세션 캐시하고,
+   `LocalFileSystem.directoryEntries`는 `readdir`/`d_type` 기반. 릴리스 warm ~22ms.
+
+### 함정 (다시 건드릴 때 주의)
+
+- **경로 철자 계약**: `FileManager.contentsOfDirectory`는 realpath 수준으로 풀린 자식 경로를
+  돌려줬다. `canonicalPath`/`resolvingSymlinksInPath`는 마지막 구성요소만 푼다 — `/var`·`/tmp`
+  같은 링크 조상 아래에서 리터럴 철자가 새면 인덱스 unit 매칭·freshness 조회가 전부 빗나간다
+  (coverage.sh의 "stale source retained a proven connection"이 `actual: []`로 전멸). 루트와
+  링크 항목 키는 모두 `realPath`로 통일. 회귀 테스트:
+  `FileSystemTests.linkedAncestorRootYieldsResolvedPaths`.
+- dedup 방문 키도 같은 해석 수준이어야 한다 — 루트만 realpath고 링크 항목이 canonicalPath면
+  같은 파일을 두 번 센다.
+- `swift build`/`swift test` 동시 실행 금지(`.build` 잠금). 디버그 단계별 타이밍은 착시를 준다 —
+  비율 비교는 릴리스 계측으로만.
+
+### 검증 근거
+
+- `swift test` 1324개 통과, `Scripts/coverage.sh` 92.79% 통과(instrumented CLI 포함),
+  `verify-cli-contract.sh`·`verify-fixtures.sh` 통과, `dead`/`cycles`(모듈·타입)/`rules --strict`
+  전부 no findings.
+- 런타임 발견 동등성: `/tmp/baseline-discovery` 코퍼스에서 findings·상태 분포·ID 집합이
+  베이스라인(`/tmp/base-discover.json`)과 완전 일치.
+
+### 다음 (우선순위 순서)
+
+3. 분석 커버리지: 미사용 파라미터 → assign-only 프로퍼티 → 미사용 import.
+4. 빌드/인덱스 온보딩 마찰: 인덱스 없음 안내 강화 또는 선택적 빌드 프리스텝.
+
+---
+
 ## 2026-09-13 — 5렌즈 감사(성능·보안·구조·기능·사용성) 후속 수정 완료 (PR #85)
 
 사용자 요청으로 전체 재검토를 돌리고 도출된 지적을 [PR #85](https://github.com/ictechgy/cartograph/pull/85)로
