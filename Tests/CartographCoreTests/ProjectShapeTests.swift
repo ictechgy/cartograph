@@ -24,7 +24,7 @@ struct ProjectShapeTests {
     func xcodeRootGetsSchemeFlag() {
         // -scheme 없는 xcodebuild 는 그대로 실행하면 실패한다.
         let shape = ProjectShape(hasPackageManifest: false, xcodeDocuments: ["App.xcodeproj"])
-        #expect(shape.remedy.contains("-project \"App.xcodeproj\""))
+        #expect(shape.remedy.contains("-project 'App.xcodeproj'"))
         #expect(shape.remedy.contains("-scheme"))
         #expect(shape.remedy.contains("COMPILER_INDEX_STORE_ENABLE"))
         #expect(shape.remedy.contains("xcodebuild -list"))
@@ -38,8 +38,8 @@ struct ProjectShapeTests {
             hasPackageManifest: false,
             xcodeDocuments: ["App.xcworkspace", "App.xcodeproj"]
         )
-        #expect(shape.remedy.contains("-workspace \"App.xcworkspace\""))
-        #expect(!shape.remedy.contains("-project \"App.xcodeproj\""))
+        #expect(shape.remedy.contains("-workspace 'App.xcworkspace'"))
+        #expect(!shape.remedy.contains("-project 'App.xcodeproj'"))
     }
 
     @Test("워크스페이스가 여럿이면 정렬 첫 개가 아니라 자리표시자를 둔다")
@@ -60,7 +60,18 @@ struct ProjectShapeTests {
             hasPackageManifest: false,
             xcodeDocuments: ["My App.xcworkspace"]
         )
-        #expect(shape.remedy.contains("-workspace \"My App.xcworkspace\""))
+        #expect(shape.remedy.contains("-workspace 'My App.xcworkspace'"))
+    }
+
+    @Test("셸 특수문자가 든 이름도 확장·탈출 없이 인용된다")
+    func shellMetacharactersStayQuoted() {
+        // 큰따옴표 인용은 `$`·역따옴표를 여전히 확장하고 `"` 로 닫힌다.
+        // 작은따옴표 + `'\''` 닫기는 어떤 이름이든 한 인자로 유지한다.
+        let shape = ProjectShape(
+            hasPackageManifest: false,
+            xcodeDocuments: ["it's$HOME.xcodeproj"]
+        )
+        #expect(shape.remedy.contains("-project 'it'\\''s$HOME.xcodeproj'"))
     }
 
     @Test("문서가 여럿이면 어느 것인지 고르라는 자리표시자를 둔다")

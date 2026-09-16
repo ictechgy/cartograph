@@ -59,12 +59,18 @@ public struct ProjectShape: Sendable, Equatable {
     }
 
     /// `-workspace`·`-project` 플래그와 인자. 문서가 하나면 그것을, 여럿이면 자리표시자를 쓴다.
-    /// 이름은 항상 따옴표로 감싼다 — 공백이 든 이름을 그대로 끼우면 안내 명령이 깨진다.
+    /// 이름은 셸 작은따옴표로 감싼다 — 큰따옴표는 `$`·역따옴표·`\` 를 여전히 확장하고
+    /// 이름에 든 `"` 로 닫혀 명령이 깨진다.
     private var xcodeDocumentFlag: String {
         let workspaces = xcodeDocuments.filter { $0.hasSuffix(".xcworkspace") }
-        if workspaces.count == 1 { return "-workspace \"\(workspaces[0])\"" }
+        if workspaces.count == 1 { return "-workspace \(shellQuoted(workspaces[0]))" }
         if workspaces.count > 1 { return "-workspace <workspace>" }
-        return xcodeDocuments.count == 1 ? "-project \"\(xcodeDocuments[0])\"" : "-project <project>"
+        return xcodeDocuments.count == 1 ? "-project \(shellQuoted(xcodeDocuments[0]))" : "-project <project>"
+    }
+
+    /// 셸 인용 — 작은따옴표 안에서는 아무것도 확장되지 않고, 이름 속 `'` 는 `'\''` 로 닫는다.
+    private func shellQuoted(_ name: String) -> String {
+        "'" + name.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     private var swiftPackageRemedy: String {
