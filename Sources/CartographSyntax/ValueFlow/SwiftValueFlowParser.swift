@@ -37,7 +37,7 @@ public struct SwiftValueFlowParser: Sendable {
             knownFunctionNames: Set(collector.functions.compactMap { function in
                 function.ownerType.map { "\($0)#\(function.name)" }
             }),
-            fields: collector.fields.map { $0.field },
+            fields: collector.fields,
             types: collector.types.map { $0.type },
             limitations: limitations
         )
@@ -94,11 +94,6 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
         let unavailableReason: String?
     }
 
-    struct FieldInfo {
-        let field: ValueFlowField
-        let binding: PatternBindingSyntax
-    }
-
     struct TypeInfo {
         let type: ValueFlowType
     }
@@ -106,7 +101,7 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
     let path: String
     let converter: SourceLocationConverter
     private(set) var functions: [FunctionInfo] = []
-    private(set) var fields: [FieldInfo] = []
+    private(set) var fields: [ValueFlowField] = []
     private(set) var types: [TypeInfo] = []
     private(set) var limitations: [String] = []
     private(set) var topLevelStatements: [CodeBlockItemSyntax]?
@@ -132,37 +127,37 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
         enterType(name: node.name.text, node: node, reference: true)
     }
 
-    override func visitPost(_ node: ClassDeclSyntax) { leaveType() }
+    override func visitPost(_: ClassDeclSyntax) { leaveType() }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         enterType(name: node.name.text, node: node, reference: false)
     }
 
-    override func visitPost(_ node: StructDeclSyntax) { leaveType() }
+    override func visitPost(_: StructDeclSyntax) { leaveType() }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         enterType(name: node.name.text, node: node, reference: false)
     }
 
-    override func visitPost(_ node: EnumDeclSyntax) { leaveType() }
+    override func visitPost(_: EnumDeclSyntax) { leaveType() }
 
     override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
         enterType(name: node.name.text, node: node, reference: false)
     }
 
-    override func visitPost(_ node: ProtocolDeclSyntax) { leaveType() }
+    override func visitPost(_: ProtocolDeclSyntax) { leaveType() }
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
         enterType(name: node.name.text, node: node, reference: true)
     }
 
-    override func visitPost(_ node: ActorDeclSyntax) { leaveType() }
+    override func visitPost(_: ActorDeclSyntax) { leaveType() }
 
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
         enterType(name: node.extendedType.trimmedDescription, node: node, reference: false, extensionDecl: true)
     }
 
-    override func visitPost(_ node: ExtensionDeclSyntax) { leaveType() }
+    override func visitPost(_: ExtensionDeclSyntax) { leaveType() }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         let info = functionInfo(node)
@@ -172,7 +167,7 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
         return .visitChildren
     }
 
-    override func visitPost(_ node: FunctionDeclSyntax) {
+    override func visitPost(_: FunctionDeclSyntax) {
         functionDepth = max(0, functionDepth - 1)
         bodyDepth = max(0, bodyDepth - 1)
     }
@@ -185,26 +180,26 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
         return .visitChildren
     }
 
-    override func visitPost(_ node: InitializerDeclSyntax) {
+    override func visitPost(_: InitializerDeclSyntax) {
         functionDepth = max(0, functionDepth - 1)
         bodyDepth = max(0, bodyDepth - 1)
     }
 
-    override func visit(_ node: AccessorDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: AccessorDeclSyntax) -> SyntaxVisitorContinueKind {
         bodyDepth += 1
         return .visitChildren
     }
 
-    override func visitPost(_ node: AccessorDeclSyntax) {
+    override func visitPost(_: AccessorDeclSyntax) {
         bodyDepth = max(0, bodyDepth - 1)
     }
 
-    override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: ClosureExprSyntax) -> SyntaxVisitorContinueKind {
         bodyDepth += 1
         return .visitChildren
     }
 
-    override func visitPost(_ node: ClosureExprSyntax) {
+    override func visitPost(_: ClosureExprSyntax) {
         bodyDepth = max(0, bodyDepth - 1)
     }
 
@@ -214,17 +209,17 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
         return .visitChildren
     }
 
-    override func visit(_ node: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
         limitations.append("conditional compilation is not lowered")
         return .skipChildren
     }
 
-    override func visit(_ node: MacroDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: MacroDeclSyntax) -> SyntaxVisitorContinueKind {
         limitations.append("macro declaration is not lowered")
         return .skipChildren
     }
 
-    override func visit(_ node: SubscriptDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: SubscriptDeclSyntax) -> SyntaxVisitorContinueKind {
         limitations.append("subscript declaration is not lowered")
         return .skipChildren
     }
@@ -332,9 +327,9 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
         for type in types where !type.type.isExtension
             && !explicitInitializers.contains(type.type.id)
             && (type.type.isReferenceType || synthesizableValueTypeIDs.contains(type.type.id))
-            && fields.filter({ $0.field.ownerType == type.type.id }).allSatisfy({ field in
-                (type.type.isReferenceType || !field.field.isMutable)
-                    && (field.field.initializer != nil || field.field.getter != nil || field.field.setter != nil)
+            && fields.filter({ $0.ownerType == type.type.id }).allSatisfy({ field in
+                (type.type.isReferenceType || !field.isMutable)
+                    && (field.initializer != nil || field.getter != nil || field.setter != nil)
             }) {
             let id = "\(path)#synthetic-initializer:\(type.type.id)"
             guard !functions.contains(where: { $0.id == id }) else { continue }
@@ -536,7 +531,7 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
                 }
             }
             let fieldLocation = ValueFlowSyntax.location(of: pattern.identifier, converter: converter, path: path)
-            fields.append(FieldInfo(field: ValueFlowField(
+            fields.append(ValueFlowField(
                 id: fieldID,
                 name: name,
                 location: fieldLocation,
@@ -548,7 +543,7 @@ final class ValueFlowDeclarationCollector: SyntaxVisitor {
                 getter: getterID,
                 setter: setterID,
                 hasUnknownObservers: unknownObservers
-            ), binding: binding))
+            ))
         }
     }
 

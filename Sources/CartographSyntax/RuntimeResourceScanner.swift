@@ -96,8 +96,8 @@ private final class RuntimeResourceCollector: NSObject, XMLParserDelegate {
     func parser(
         _ parser: XMLParser,
         didStartElement elementName: String,
-        namespaceURI: String?,
-        qualifiedName qName: String?,
+        namespaceURI _: String?,
+        qualifiedName _: String?,
         attributes attributeDict: [String: String]
     ) {
         let location = SourceLocation(
@@ -137,32 +137,32 @@ private final class RuntimeResourceCollector: NSObject, XMLParserDelegate {
     }
 
     func parser(
-        _ parser: XMLParser,
-        didEndElement elementName: String,
-        namespaceURI: String?,
-        qualifiedName qName: String?
+        _: XMLParser,
+        didEndElement _: String,
+        namespaceURI _: String?,
+        qualifiedName _: String?
     ) {
         if !frames.isEmpty { frames.removeLast() }
     }
 
-    func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) {
+    func parser(_: XMLParser, parseErrorOccurred parseError: Error) {
         self.parseError = parseError
     }
 
-    func parser(_ parser: XMLParser, validationErrorOccurred validationError: Error) {
+    func parser(_: XMLParser, validationErrorOccurred validationError: Error) {
         parseError = validationError
     }
 
     func parser(
-        _ parser: XMLParser,
-        foundExternalEntityDeclarationWithName name: String,
-        publicID: String?,
-        systemID: String?
+        _: XMLParser,
+        foundExternalEntityDeclarationWithName _: String,
+        publicID _: String?,
+        systemID _: String?
     ) {
         foundExternalEntity = true
     }
 
-    func parser(_ parser: XMLParser, resolveExternalEntityName name: String, systemID: String?) -> Data? {
+    func parser(_: XMLParser, resolveExternalEntityName _: String, systemID _: String?) -> Data? {
         foundExternalEntity = true
         return nil
     }

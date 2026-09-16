@@ -49,7 +49,6 @@ private enum ValueFlowIndexBinding {
 
     private struct FunctionBinding {
         var symbolUSR: String?
-        var ownerUSR: String?
         var invalid = false
     }
 
@@ -81,7 +80,6 @@ private enum ValueFlowIndexBinding {
         let fieldBindings = bindFields(program.fields, typeBindings: typeBindings, evidence: evidence)
         let functionBindings = bindFunctions(
             program.functions,
-            types: program.types,
             typeBindings: typeBindings,
             fields: program.fields,
             fieldBindings: fieldBindings,
@@ -305,7 +303,6 @@ private enum ValueFlowIndexBinding {
 
     private static func bindFunctions(
         _ functions: [ValueFlowFunction],
-        types: [ValueFlowType],
         typeBindings: [String: TypeBinding],
         fields: [ValueFlowField],
         fieldBindings: [String: FieldBinding],
@@ -320,10 +317,10 @@ private enum ValueFlowIndexBinding {
             }
             if let field = fieldIndex.field(for: function) {
                 guard let binding = fieldBindings[field.id], binding.isBound else {
-                    result[function.id] = FunctionBinding(symbolUSR: nil, ownerUSR: ownerUSR, invalid: true)
+                    result[function.id] = FunctionBinding(symbolUSR: nil, invalid: true)
                     continue
                 }
-                result[function.id] = FunctionBinding(symbolUSR: nil, ownerUSR: ownerUSR, invalid: false)
+                result[function.id] = FunctionBinding(symbolUSR: nil, invalid: false)
                 continue
             }
             if function.kind == .global {
@@ -334,24 +331,21 @@ private enum ValueFlowIndexBinding {
                 if candidates.count == 1, let topLevel = candidates.first {
                     result[function.id] = FunctionBinding(
                         symbolUSR: topLevel.usr,
-                        ownerUSR: nil,
                         invalid: false
                     )
                 } else {
-                    result[function.id] = FunctionBinding(symbolUSR: nil, ownerUSR: nil, invalid: true)
+                    result[function.id] = FunctionBinding(symbolUSR: nil, invalid: true)
                 }
                 continue
             }
             if function.ownerType != nil && ownerUSR == nil {
-                result[function.id] = FunctionBinding(symbolUSR: nil, ownerUSR: nil, invalid: true)
+                result[function.id] = FunctionBinding(symbolUSR: nil, invalid: true)
                 continue
             }
             if isSyntheticInitializer(function) {
                 result[function.id] = bindSyntheticInitializer(
                     function,
                     ownerUSR: ownerUSR,
-                    types: types,
-                    typeBindings: typeBindings,
                     evidence: evidence
                 )
                 continue
@@ -366,15 +360,15 @@ private enum ValueFlowIndexBinding {
                 return symbol.parentUSR == ownerUSR
             }
             guard candidates.count == 1, let symbol = candidates.first else {
-                result[function.id] = FunctionBinding(symbolUSR: nil, ownerUSR: ownerUSR, invalid: true)
+                result[function.id] = FunctionBinding(symbolUSR: nil, invalid: true)
                 continue
             }
             if function.kind == .initializer, let ownerUSR,
                hasLocalSuperclass(ownerUSR: ownerUSR, evidence: evidence) {
-                result[function.id] = FunctionBinding(symbolUSR: symbol.usr, ownerUSR: ownerUSR, invalid: true)
+                result[function.id] = FunctionBinding(symbolUSR: symbol.usr, invalid: true)
                 continue
             }
-            result[function.id] = FunctionBinding(symbolUSR: symbol.usr, ownerUSR: ownerUSR, invalid: false)
+            result[function.id] = FunctionBinding(symbolUSR: symbol.usr, invalid: false)
         }
         return result
     }
@@ -382,12 +376,10 @@ private enum ValueFlowIndexBinding {
     private static func bindSyntheticInitializer(
         _ function: ValueFlowFunction,
         ownerUSR: String?,
-        types: [ValueFlowType],
-        typeBindings: [String: TypeBinding],
         evidence: Evidence
     ) -> FunctionBinding {
         guard let ownerUSR else {
-            return FunctionBinding(symbolUSR: nil, ownerUSR: nil, invalid: true)
+            return FunctionBinding(symbolUSR: nil, invalid: true)
         }
         let candidates = evidence.symbolsByParent[ownerUSR, default: []].filter {
             $0.kind == .initializer
@@ -396,12 +388,10 @@ private enum ValueFlowIndexBinding {
                 && nameMatches($0.name, names: [function.indexName, function.name])
         }
         guard candidates.count == 1, let candidate = candidates.first else {
-            return FunctionBinding(symbolUSR: nil, ownerUSR: ownerUSR, invalid: true)
+            return FunctionBinding(symbolUSR: nil, invalid: true)
         }
         let invalid = hasLocalSuperclass(ownerUSR: ownerUSR, evidence: evidence)
-        _ = types
-        _ = typeBindings
-        return FunctionBinding(symbolUSR: candidate.usr, ownerUSR: ownerUSR, invalid: invalid)
+        return FunctionBinding(symbolUSR: candidate.usr, invalid: invalid)
     }
 
     private static func bindReferences(

@@ -147,25 +147,25 @@ private final class RuntimeRegistryCollector: SyntaxVisitor {
         pushType(node.name, at: node)
     }
 
-    override func visitPost(_ node: ClassDeclSyntax) { popType() }
+    override func visitPost(_: ClassDeclSyntax) { popType() }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(node.name, at: node)
     }
 
-    override func visitPost(_ node: StructDeclSyntax) { popType() }
+    override func visitPost(_: StructDeclSyntax) { popType() }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(node.name, at: node)
     }
 
-    override func visitPost(_ node: EnumDeclSyntax) { popType() }
+    override func visitPost(_: EnumDeclSyntax) { popType() }
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(node.name, at: node)
     }
 
-    override func visitPost(_ node: ActorDeclSyntax) { popType() }
+    override func visitPost(_: ActorDeclSyntax) { popType() }
 
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
         let name = node.extendedType.trimmedDescription
@@ -175,7 +175,7 @@ private final class RuntimeRegistryCollector: SyntaxVisitor {
         return .visitChildren
     }
 
-    override func visitPost(_ node: ExtensionDeclSyntax) {
+    override func visitPost(_: ExtensionDeclSyntax) {
         if !typeNames.isEmpty { typeNames.removeLast() }
         if !scopes.isEmpty { scopes.removeLast() }
         if !enclosingLocations.isEmpty { enclosingLocations.removeLast() }
@@ -187,7 +187,7 @@ private final class RuntimeRegistryCollector: SyntaxVisitor {
         return .visitChildren
     }
 
-    override func visitPost(_ node: FunctionDeclSyntax) {
+    override func visitPost(_: FunctionDeclSyntax) {
         scopes.removeLast()
         enclosingLocations.removeLast()
     }
@@ -198,7 +198,7 @@ private final class RuntimeRegistryCollector: SyntaxVisitor {
         return .visitChildren
     }
 
-    override func visitPost(_ node: InitializerDeclSyntax) {
+    override func visitPost(_: InitializerDeclSyntax) {
         scopes.removeLast()
         enclosingLocations.removeLast()
     }
@@ -208,21 +208,21 @@ private final class RuntimeRegistryCollector: SyntaxVisitor {
         return .visitChildren
     }
 
-    override func visitPost(_ node: CodeBlockSyntax) { scopes.removeLast() }
+    override func visitPost(_: CodeBlockSyntax) { scopes.removeLast() }
 
     override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(node.position.utf8Offset)
         return .visitChildren
     }
 
-    override func visitPost(_ node: ClosureExprSyntax) { scopes.removeLast() }
+    override func visitPost(_: ClosureExprSyntax) { scopes.removeLast() }
 
-    override func visit(_ node: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
         conditionalDepth += 1
         return .visitChildren
     }
 
-    override func visitPost(_ node: IfConfigDeclSyntax) { conditionalDepth -= 1 }
+    override func visitPost(_: IfConfigDeclSyntax) { conditionalDepth -= 1 }
 
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         for binding in node.bindings {

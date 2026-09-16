@@ -179,7 +179,7 @@ struct RuntimeCollectorStatus: Equatable {
     }
 
     private static func integer<T: FixedWidthInteger>(
-        _ type: T.Type,
+        _: T.Type,
         in data: Data,
         at offset: Int
     ) -> T? {

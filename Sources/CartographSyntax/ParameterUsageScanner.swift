@@ -112,7 +112,7 @@ private final class Collector: SyntaxVisitor {
 
     /// 캡처 항목은 `visit(ClosureExprSyntax)` 에서 이미 바깥 스코프로 처리했다.
     /// 자식으로 다시 내려가면 초기화 식이 잘못된 스코프에서 평가된다.
-    override func visit(_ node: ClosureCaptureSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: ClosureCaptureSyntax) -> SyntaxVisitorContinueKind {
         .skipChildren
     }
 

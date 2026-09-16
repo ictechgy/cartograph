@@ -473,11 +473,6 @@ public struct CartographService: Sendable {
         let limitations: [String]
         let referenceEvidence: ReferenceEvidenceIndex
         let localFunctionDiagnostics: LocalFunctionDiagnostics?
-        /// 베이스라인도 한 번만 읽는다.
-        ///
-        /// 없으면 요청마다 파일을 다시 읽는다. 답은 같지만, 1000건 배치에서 33 밀리초를
-        /// 파일 시스템에 쓰고 그 값은 베이스라인이 커질수록 커진다.
-        let baseline: Baseline?
         /// 억제 판정에 쓸 지문 집합. 답마다 `filtering` 을 부르면 답 수 × 지문 수의
         /// 해싱이 매번 다시 일어난다.
         let baselineFingerprints: Set<String>
@@ -489,6 +484,9 @@ public struct CartographService: Sendable {
     }
 
     /// 이미 읽은 문맥에서 질의 준비물을 만든다. 세션이 인덱스와 구문 보강을 다시 읽지 않게 한다.
+    ///
+    /// 베이스라인도 한 번만 읽는다. 없으면 요청마다 파일을 다시 읽는다. 답은 같지만,
+    /// 1000건 배치에서 33 밀리초를 파일 시스템에 쓰고 그 값은 베이스라인이 커질수록 커진다.
     func makeQuerySession(in context: AnalysisContext) throws -> QuerySession {
         let (graph, report) = unusedCode(in: context)
         let baseline = try loadBaseline()
@@ -501,7 +499,6 @@ public struct CartographService: Sendable {
             localFunctionDiagnostics: LocalFunctionDiagnostics.presenting(
                 context.localFunctionDiagnostics.filter { configuration.pathFilter.allows($0.location.path) }
             ),
-            baseline: baseline,
             baselineFingerprints: baseline.map { Set($0.fingerprints) } ?? []
         )
     }

@@ -123,7 +123,7 @@ final class DeclarationCollector: SyntaxVisitor {
             allowsTestMethods: true
         )
     }
-    override func visitPost(_ node: ClassDeclSyntax) { pop() }
+    override func visitPost(_: ClassDeclSyntax) { pop() }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         var attributes = commonAttributes(node)
@@ -133,7 +133,7 @@ final class DeclarationCollector: SyntaxVisitor {
             name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers
         )
     }
-    override func visitPost(_ node: StructDeclSyntax) { pop() }
+    override func visitPost(_: StructDeclSyntax) { pop() }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         var attributes = commonAttributes(node)
@@ -142,14 +142,14 @@ final class DeclarationCollector: SyntaxVisitor {
             name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers
         )
     }
-    override func visitPost(_ node: EnumDeclSyntax) { pop() }
+    override func visitPost(_: EnumDeclSyntax) { pop() }
 
     override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
         push(
             name: node.name.text, node: node, attributes: commonAttributes(node), modifiers: node.modifiers
         )
     }
-    override func visitPost(_ node: ProtocolDeclSyntax) { pop() }
+    override func visitPost(_: ProtocolDeclSyntax) { pop() }
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
         var attributes = commonAttributes(node)
@@ -158,7 +158,7 @@ final class DeclarationCollector: SyntaxVisitor {
             name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers
         )
     }
-    override func visitPost(_ node: ActorDeclSyntax) { pop() }
+    override func visitPost(_: ActorDeclSyntax) { pop() }
 
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
         var attributes = commonAttributes(node)
@@ -171,7 +171,7 @@ final class DeclarationCollector: SyntaxVisitor {
             allowsTestMethods: true
         )
     }
-    override func visitPost(_ node: ExtensionDeclSyntax) { pop() }
+    override func visitPost(_: ExtensionDeclSyntax) { pop() }
 
     // MARK: - 멤버 선언
 
@@ -185,14 +185,14 @@ final class DeclarationCollector: SyntaxVisitor {
             name: node.name.text, node: node, attributes: attributes, modifiers: node.modifiers
         )
     }
-    override func visitPost(_ node: FunctionDeclSyntax) { pop() }
+    override func visitPost(_: FunctionDeclSyntax) { pop() }
 
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
         push(
             name: "init", node: node, attributes: commonAttributes(node), modifiers: node.modifiers
         )
     }
-    override func visitPost(_ node: InitializerDeclSyntax) { pop() }
+    override func visitPost(_: InitializerDeclSyntax) { pop() }
 
     override func visit(_ node: OperatorDeclSyntax) -> SyntaxVisitorContinueKind {
         // 연산자는 인덱스에 심볼로 남지만 구문 쪽에 대응이 없어, public 연산자가
@@ -207,7 +207,7 @@ final class DeclarationCollector: SyntaxVisitor {
             name: "deinit", node: node, attributes: commonAttributes(node), modifiers: node.modifiers
         )
     }
-    override func visitPost(_ node: DeinitializerDeclSyntax) { pop() }
+    override func visitPost(_: DeinitializerDeclSyntax) { pop() }
 
     override func visit(_ node: SubscriptDeclSyntax) -> SyntaxVisitorContinueKind {
         var attributes = commonAttributes(node)
@@ -218,7 +218,7 @@ final class DeclarationCollector: SyntaxVisitor {
             name: "subscript", node: node, attributes: attributes, modifiers: node.modifiers
         )
     }
-    override func visitPost(_ node: SubscriptDeclSyntax) { pop() }
+    override func visitPost(_: SubscriptDeclSyntax) { pop() }
 
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         let attributes = commonAttributes(node)

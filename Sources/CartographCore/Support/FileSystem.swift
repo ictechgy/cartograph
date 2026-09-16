@@ -42,15 +42,15 @@ public protocol FileSystem: Sendable {
 
 extension FileSystem {
     /// 정규화를 지원하지 않는 구현은 경로를 추측해 교환 문서를 만들지 않는다.
-    public func realPath(at path: String) throws -> String {
+    public func realPath(at _: String) throws -> String {
         throw CocoaError(.featureUnsupported)
     }
 
     /// 수정 시각을 알 수 없는 구현을 위한 기본값.
-    public func modificationDate(at path: String) -> Date? { nil }
+    public func modificationDate(at _: String) -> Date? { nil }
 
     /// 운영체제 파일 지문을 제공하지 않는 구현은 매번 내용을 읽도록 한다.
-    public func fingerprintStamp(at path: String) -> FileFingerprintStamp? { nil }
+    public func fingerprintStamp(at _: String) -> FileFingerprintStamp? { nil }
 
     /// 파일 지문에서 구조 필드만 취하는 기본 구현. stat 을 따로 제공할 수 없는
     /// 구현도 안전하게 목록 캐시를 쓸 수 있다.

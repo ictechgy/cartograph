@@ -8,7 +8,6 @@ struct CommandContext {
     let service: CartographService
     let configuration: CartographConfiguration
     let fileSystem: any FileSystem
-    let warnings: [String]
 }
 
 enum CommandSupport {
@@ -50,8 +49,7 @@ enum CommandSupport {
                 allowsEmptyIndex: options.allowEmptyIndex
             ),
             configuration: resolved.configuration,
-            fileSystem: fileSystem,
-            warnings: resolved.warnings
+            fileSystem: fileSystem
         )
     }
 

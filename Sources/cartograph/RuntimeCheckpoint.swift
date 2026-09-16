@@ -32,7 +32,7 @@ struct RuntimeCheckpointSeal: Equatable {
         )
     }
 
-    private static func integer<T: FixedWidthInteger>(_ type: T.Type, _ data: Data, _ offset: Int) -> T {
+    private static func integer<T: FixedWidthInteger>(_: T.Type, _ data: Data, _ offset: Int) -> T {
         data.withUnsafeBytes { T(littleEndian: $0.loadUnaligned(fromByteOffset: offset, as: T.self)) }
     }
 }

@@ -142,17 +142,17 @@ private final class RuntimeFactCollector: SyntaxVisitor {
             isFinal: node.modifiers.contains { $0.name.text == "final" }
         )
     }
-    override func visitPost(_ node: ClassDeclSyntax) { popType() }
+    override func visitPost(_: ClassDeclSyntax) { popType() }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(name: node.name, kind: .structType, node: node, attributes: node.attributes)
     }
-    override func visitPost(_ node: StructDeclSyntax) { popType() }
+    override func visitPost(_: StructDeclSyntax) { popType() }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(name: node.name, kind: .enumType, node: node, attributes: node.attributes)
     }
-    override func visitPost(_ node: EnumDeclSyntax) { popType() }
+    override func visitPost(_: EnumDeclSyntax) { popType() }
 
     override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(
@@ -160,12 +160,12 @@ private final class RuntimeFactCollector: SyntaxVisitor {
             inheritsObjectiveC: SyntaxAttributes.has("objc", in: node.attributes)
         )
     }
-    override func visitPost(_ node: ProtocolDeclSyntax) { popType() }
+    override func visitPost(_: ProtocolDeclSyntax) { popType() }
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(name: node.name, kind: .classType, node: node, attributes: node.attributes)
     }
-    override func visitPost(_ node: ActorDeclSyntax) { popType() }
+    override func visitPost(_: ActorDeclSyntax) { popType() }
 
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
         let type = node.extendedType
@@ -186,7 +186,7 @@ private final class RuntimeFactCollector: SyntaxVisitor {
         enclosingDeclarations.append(location)
         return .visitChildren
     }
-    override func visitPost(_ node: ExtensionDeclSyntax) { popType() }
+    override func visitPost(_: ExtensionDeclSyntax) { popType() }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(node.position.utf8Offset)
@@ -223,7 +223,7 @@ private final class RuntimeFactCollector: SyntaxVisitor {
         enclosingDeclarations.append(location)
         return .visitChildren
     }
-    override func visitPost(_ node: InitializerDeclSyntax) {
+    override func visitPost(_: InitializerDeclSyntax) {
         scopes.removeLast()
         enclosingDeclarations.removeLast()
     }
@@ -232,72 +232,72 @@ private final class RuntimeFactCollector: SyntaxVisitor {
         scopes.append(node.position.utf8Offset)
         return .visitChildren
     }
-    override func visitPost(_ node: ClosureExprSyntax) { scopes.removeLast() }
+    override func visitPost(_: ClosureExprSyntax) { scopes.removeLast() }
     override func visit(_ node: AccessorBlockSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(node.position.utf8Offset)
         return .visitChildren
     }
-    override func visitPost(_ node: AccessorBlockSyntax) { scopes.removeLast() }
+    override func visitPost(_: AccessorBlockSyntax) { scopes.removeLast() }
     override func visit(_ node: AccessorDeclSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(node.position.utf8Offset)
         return .visitChildren
     }
-    override func visitPost(_ node: AccessorDeclSyntax) { scopes.removeLast() }
+    override func visitPost(_: AccessorDeclSyntax) { scopes.removeLast() }
     override func visit(_ node: CodeBlockSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(node.position.utf8Offset)
         return .visitChildren
     }
-    override func visitPost(_ node: CodeBlockSyntax) { scopes.removeLast() }
+    override func visitPost(_: CodeBlockSyntax) { scopes.removeLast() }
     override func visit(_ node: IfExprSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(node.position.utf8Offset)
         return .visitChildren
     }
-    override func visitPost(_ node: IfExprSyntax) { scopes.removeLast() }
+    override func visitPost(_: IfExprSyntax) { scopes.removeLast() }
     override func visit(_ node: WhileStmtSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(node.position.utf8Offset)
         return .visitChildren
     }
-    override func visitPost(_ node: WhileStmtSyntax) { scopes.removeLast() }
+    override func visitPost(_: WhileStmtSyntax) { scopes.removeLast() }
     override func visit(_ node: ForStmtSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(node.position.utf8Offset)
         return .visitChildren
     }
-    override func visitPost(_ node: ForStmtSyntax) { scopes.removeLast() }
+    override func visitPost(_: ForStmtSyntax) { scopes.removeLast() }
     override func visit(_ node: SwitchExprSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(node.position.utf8Offset)
         return .visitChildren
     }
-    override func visitPost(_ node: SwitchExprSyntax) { scopes.removeLast() }
+    override func visitPost(_: SwitchExprSyntax) { scopes.removeLast() }
     override func visit(_ node: SwitchCaseSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(node.position.utf8Offset)
         return .visitChildren
     }
-    override func visitPost(_ node: SwitchCaseSyntax) { scopes.removeLast() }
+    override func visitPost(_: SwitchCaseSyntax) { scopes.removeLast() }
     override func visit(_ node: CatchClauseSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(node.position.utf8Offset)
         return .visitChildren
     }
-    override func visitPost(_ node: CatchClauseSyntax) { scopes.removeLast() }
-    override func visit(_ node: DeferStmtSyntax) -> SyntaxVisitorContinueKind {
+    override func visitPost(_: CatchClauseSyntax) { scopes.removeLast() }
+    override func visit(_: DeferStmtSyntax) -> SyntaxVisitorContinueKind {
         deferredExecutionScopes.append(scopes)
         return .visitChildren
     }
-    override func visitPost(_ node: DeferStmtSyntax) { deferredExecutionScopes.removeLast() }
+    override func visitPost(_: DeferStmtSyntax) { deferredExecutionScopes.removeLast() }
     override func visit(_ node: DoStmtSyntax) -> SyntaxVisitorContinueKind {
         plainDoBodyScopes.append(scopes + [node.body.position.utf8Offset])
         return .visitChildren
     }
-    override func visitPost(_ node: DoStmtSyntax) {
+    override func visitPost(_: DoStmtSyntax) {
         notificationLifecycle.activateDeferredTerminations(
             from: plainDoBodyScopes.removeLast(),
             in: scopes
         )
     }
-    override func visit(_ node: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
         conditionalCompilationDepth += 1
         return .visitChildren
     }
-    override func visitPost(_ node: IfConfigDeclSyntax) { conditionalCompilationDepth -= 1 }
+    override func visitPost(_: IfConfigDeclSyntax) { conditionalCompilationDepth -= 1 }
 
     override func visit(_ node: PatternBindingSyntax) -> SyntaxVisitorContinueKind {
         guard DeclarationCollector.isInsideBody(node),
@@ -1047,7 +1047,7 @@ private final class RuntimeFactCollector: SyntaxVisitor {
         appendDeclaration(
             name: name, indexName: name, qualifiedName: (typeNames + [name]).joined(separator: "."),
             kind: kind, location: location, endLocation: endLocation(node), attributes: attributes,
-            objectiveCName: declaredObjectiveCName(name: name, attributes: attributes),
+            objectiveCName: declaredObjectiveCName(attributes: attributes),
             isTypeMember: !typeNames.isEmpty,
             isFinal: isFinal
         )
@@ -1097,7 +1097,7 @@ private final class RuntimeFactCollector: SyntaxVisitor {
         ))
     }
 
-    private func declaredObjectiveCName(name: String, attributes: AttributeListSyntax) -> String? {
+    private func declaredObjectiveCName(attributes: AttributeListSyntax) -> String? {
         // @objc만 붙인 클래스도 기본 런타임 이름은 Module.Type이다. 별칭은 괄호가 있을 때만 안다.
         SyntaxAttributes.objectiveCName(in: attributes)
     }

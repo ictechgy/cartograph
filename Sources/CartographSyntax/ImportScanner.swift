@@ -30,11 +30,11 @@ private final class Collector: SyntaxVisitor {
         super.init(viewMode: .sourceAccurate)
     }
 
-    override func visit(_ node: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
         conditionalDepth += 1
         return .visitChildren
     }
-    override func visitPost(_ node: IfConfigDeclSyntax) { conditionalDepth -= 1 }
+    override func visitPost(_: IfConfigDeclSyntax) { conditionalDepth -= 1 }
 
     override func visit(_ node: ImportDeclSyntax) -> SyntaxVisitorContinueKind {
         let position = converter.location(for: node.importKeyword.positionAfterSkippingLeadingTrivia)

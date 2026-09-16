@@ -259,14 +259,14 @@ final class BindingCollector: SyntaxVisitor {
         }
         return pushScope(node)
     }
-    override func visitPost(_ node: FunctionDeclSyntax) { scopes.removeLast() }
+    override func visitPost(_: FunctionDeclSyntax) { scopes.removeLast() }
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: InitializerDeclSyntax) { scopes.removeLast() }
+    override func visitPost(_: InitializerDeclSyntax) { scopes.removeLast() }
     override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: ClosureExprSyntax) { scopes.removeLast() }
+    override func visitPost(_: ClosureExprSyntax) { scopes.removeLast() }
 
     override func visit(_ node: AccessorBlockSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: AccessorBlockSyntax) { scopes.removeLast() }
+    override func visitPost(_: AccessorBlockSyntax) { scopes.removeLast() }
     override func visit(_ node: AccessorDeclSyntax) -> SyntaxVisitorContinueKind {
         _ = pushScope(node)
         let kind = node.accessorSpecifier.text
@@ -275,7 +275,7 @@ final class BindingCollector: SyntaxVisitor {
         else if kind == "didSet" { shadow("oldValue", isLocal: true) }
         return .visitChildren
     }
-    override func visitPost(_ node: AccessorDeclSyntax) { scopes.removeLast() }
+    override func visitPost(_: AccessorDeclSyntax) { scopes.removeLast() }
 
     private func pushScope(_ node: some SyntaxProtocol) -> SyntaxVisitorContinueKind {
         scopes.append(Self.scopeKey(node)); return .visitChildren
@@ -292,17 +292,17 @@ final class BindingCollector: SyntaxVisitor {
         }
         return pushType(node.name.text)
     }
-    override func visitPost(_ node: ClassDeclSyntax) { typeNames.removeLast() }
+    override func visitPost(_: ClassDeclSyntax) { typeNames.removeLast() }
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind { pushType(node.name.text) }
-    override func visitPost(_ node: StructDeclSyntax) { typeNames.removeLast() }
+    override func visitPost(_: StructDeclSyntax) { typeNames.removeLast() }
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind { pushType(node.name.text) }
-    override func visitPost(_ node: EnumDeclSyntax) { typeNames.removeLast() }
+    override func visitPost(_: EnumDeclSyntax) { typeNames.removeLast() }
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind { pushType(node.name.text) }
-    override func visitPost(_ node: ActorDeclSyntax) { typeNames.removeLast() }
+    override func visitPost(_: ActorDeclSyntax) { typeNames.removeLast() }
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(node.extendedType.trimmedDescription)
     }
-    override func visitPost(_ node: ExtensionDeclSyntax) { typeNames.removeLast() }
+    override func visitPost(_: ExtensionDeclSyntax) { typeNames.removeLast() }
 
     private func pushType(_ name: String) -> SyntaxVisitorContinueKind {
         let unescaped = DeclarationCollector.unescaped(name)
@@ -763,23 +763,23 @@ final class BridgeFactCollector: SyntaxVisitor {
         }
         return .visitChildren
     }
-    override func visitPost(_ node: ClassDeclSyntax) { popType(); reactModules.removeLast() }
+    override func visitPost(_: ClassDeclSyntax) { popType(); reactModules.removeLast() }
 
     // 중첩 타입은 바깥 클래스의 Objective-C 노출을 물려받지 않는다.
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(node.name.text, node: node); reactModules.append(nil); return .visitChildren
     }
-    override func visitPost(_ node: StructDeclSyntax) { popType(); reactModules.removeLast() }
+    override func visitPost(_: StructDeclSyntax) { popType(); reactModules.removeLast() }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(node.name.text, node: node); reactModules.append(nil); return .visitChildren
     }
-    override func visitPost(_ node: EnumDeclSyntax) { popType(); reactModules.removeLast() }
+    override func visitPost(_: EnumDeclSyntax) { popType(); reactModules.removeLast() }
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(node.name.text, node: node); reactModules.append(nil); return .visitChildren
     }
-    override func visitPost(_ node: ActorDeclSyntax) { popType(); reactModules.removeLast() }
+    override func visitPost(_: ActorDeclSyntax) { popType(); reactModules.removeLast() }
 
     /// `@objc(Name)` 클래스의 익스텐션에 둔 `@objc` 메서드도 JS 에 보인다.
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
@@ -792,7 +792,7 @@ final class BridgeFactCollector: SyntaxVisitor {
         reactModules.append(module)
         return .visitChildren
     }
-    override func visitPost(_ node: ExtensionDeclSyntax) { popType(); reactModules.removeLast() }
+    override func visitPost(_: ExtensionDeclSyntax) { popType(); reactModules.removeLast() }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         // 스코프는 지역 함수에도 쌓는다. 1차 패스와 같은 키여야 지역 상수가 맞는다.
@@ -857,16 +857,16 @@ final class BridgeFactCollector: SyntaxVisitor {
     override func visit(_ node: AccessorBlockSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(BindingCollector.scopeKey(node)); aliasScopes.append([]); return .visitChildren
     }
-    override func visitPost(_ node: AccessorBlockSyntax) { scopes.removeLast(); aliasScopes.removeLast() }
+    override func visitPost(_: AccessorBlockSyntax) { scopes.removeLast(); aliasScopes.removeLast() }
     override func visit(_ node: AccessorDeclSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(BindingCollector.scopeKey(node)); aliasScopes.append([]); return .visitChildren
     }
-    override func visitPost(_ node: AccessorDeclSyntax) { scopes.removeLast(); aliasScopes.removeLast() }
+    override func visitPost(_: AccessorDeclSyntax) { scopes.removeLast(); aliasScopes.removeLast() }
 
     override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(BindingCollector.scopeKey(node)); aliasScopes.append([]); return .visitChildren
     }
-    override func visitPost(_ node: ClosureExprSyntax) { scopes.removeLast(); aliasScopes.removeLast() }
+    override func visitPost(_: ClosureExprSyntax) { scopes.removeLast(); aliasScopes.removeLast() }
 
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
         pushDeclaration(
@@ -877,7 +877,7 @@ final class BridgeFactCollector: SyntaxVisitor {
         scopes.append(BindingCollector.scopeKey(node)); aliasScopes.append([])
         return .visitChildren
     }
-    override func visitPost(_ node: InitializerDeclSyntax) {
+    override func visitPost(_: InitializerDeclSyntax) {
         declarations.removeLast(); scopes.removeLast(); aliasScopes.removeLast()
     }
 
