@@ -1046,6 +1046,17 @@ struct BridgeFactScannerTests {
         #expect(result.facts.isEmpty)
     }
 
+    @Test("channel: 인자보다 수신자의 증명된 종류가 우선이다")
+    func provenReceiverBeatsChannelArgument() {
+        let source = """
+            let methods = FlutterMethodChannel(name: "com.example/methods", binaryMessenger: m)
+            let events = FlutterEventChannel(name: "com.example/events", binaryMessenger: m)
+            methods.setStreamHandler(self, channel: events)
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", events: true)
+        #expect(result.facts.isEmpty)
+    }
+
     @Test("비교가 참임을 보장하지 않는 조건 형태의 if는 분기 근거를 붙이지 않는다")
     func negatedIfConditionCarriesNoBranchScope() {
         let source = """
@@ -1053,11 +1064,16 @@ struct BridgeFactScannerTests {
             channel.setMethodCallHandler { call, result in
                 if !(call.method == "a") { result(helperA()) }
                 if call.method == "b" || flag { result(helperB()) }
+                if call.method == "c" { result(helperC()) }
+                if (call.method == "d") { result(helperD()) }
             }
             """
         let handled = facts(source, of: .methodHandle)
-        #expect(handled.map(\.method) == ["a", "b"])
-        #expect(handled.allSatisfy { $0.handlerScope == nil })
+        #expect(handled.map(\.method) == ["a", "b", "c", "d"])
+        // 양성 대조군 — 그 `==` 인 조건과 괄호로 감싼 형태는 여전히 범위를 단다.
+        // 없으면 "모든 if 에 범위가 안 붙는" 회귀도 이 테스트를 통과한다.
+        #expect(handled[2].handlerScope != nil && handled[3].handlerScope != nil)
+        #expect(handled[0].handlerScope == nil && handled[1].handlerScope == nil)
     }
 
     @Test("같은 절의 case 항목들은 같은 분기 범위를 나눈다")
