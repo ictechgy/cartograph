@@ -170,6 +170,32 @@ struct SymlinkTraversalTests {
         #expect(files.count == 1)
     }
 
+    @Test("링크가 끼어든 조상 아래 루트도 실제 경로 철자로 돌려준다")
+    func linkedAncestorRootYieldsResolvedPaths() throws {
+        // Foundation 열거는 realpath 수준으로 풀린 자식 경로를 돌려줬다.
+        // 소스 목록 철자가 인덱스 스토어가 기록한 철자와 어긋나면 파일별 unit
+        // 조회가 전부 빗나가 실행 근거가 unindexed 로 기울었다 — `/var`·`/tmp`
+        // 처럼 조상이 링크인 루트에서 실제로 발생했다.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cartograph-symlink-ancestor-\(UUID().uuidString)")
+        let project = root.appendingPathComponent("real/proj")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let file = project.appendingPathComponent("A.swift")
+        try "struct A {}".write(to: file, atomically: true, encoding: .utf8)
+        let link = root.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(
+            at: link, withDestinationURL: root.appendingPathComponent("real")
+        )
+
+        let viaLink = link.appendingPathComponent("proj").path
+        let files = LocalFileSystem().recursiveFiles(
+            under: viaLink, isIncluded: { $0.hasSuffix(".swift") })
+        let expected = try LocalFileSystem().realPath(at: file.path)
+        #expect(files == [expected])
+    }
+
     @Test("끊어진 심볼릭 링크는 파일로 세지 않는다")
     func skipsDanglingSymlinks() throws {
         // "디렉터리가 아니다"만으로 파일이라고 보면 끊어진 링크가 소스 목록에 들어와

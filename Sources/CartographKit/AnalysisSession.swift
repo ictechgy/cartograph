@@ -351,7 +351,9 @@ extension CartographService {
     }
 
     fileprivate func sessionInputFingerprint(using cache: AnalysisInputFingerprintCache) throws -> String {
-        try AnalysisInputFingerprinter(
+        var environment = environment
+        environment.fileSystem = CachedListingFileSystem(base: environment.fileSystem, cache: cache)
+        return try AnalysisInputFingerprinter(
             configuration: configuration,
             environment: environment,
             reportScope: reportScope,
@@ -360,7 +362,8 @@ extension CartographService {
     }
 }
 
-fileprivate final class AnalysisInputFingerprintCache {
+/// 세션이 순서대로 재사용하는 변경 감지 상태. 한 세션 안에서만 쓰이므로 직렬 접근을 전제한다.
+fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
     fileprivate struct Key: Hashable {
         let label: String
         let path: String
@@ -379,15 +382,75 @@ fileprivate final class AnalysisInputFingerprintCache {
 
     private var entries: [Key: Entry] = [:]
 
+    /// 지문 한 번에 관측한 디렉터리. 가지치기 기준이며 다음 지문 시작 때 비운다.
+    fileprivate var observedDirectories: Set<String> = []
+    private var directories: [String: DirectoryRecord] = [:]
+
     fileprivate func entry(for key: Key) -> Entry? { entries[key] }
 
     fileprivate func store(_ state: State, stamp: FileFingerprintStamp?, for key: Key) {
         entries[key] = Entry(stamp: stamp, state: state)
     }
 
+    /// 운영체제 지문이 그대로인 디렉터리의 이전 목록. 지문이 다르거나 없으면 nil.
+    fileprivate func cachedEntries(at path: String, stamp: DirectoryListingStamp) -> [DirectoryEntry]? {
+        guard let record = directories[path], record.stamp == stamp else { return nil }
+        return record.entries
+    }
+
+    fileprivate func storeEntries(_ entries: [DirectoryEntry], stamp: DirectoryListingStamp, at path: String) {
+        directories[path] = DirectoryRecord(stamp: stamp, entries: entries)
+    }
+
     fileprivate func prune(keeping keys: Set<Key>) {
         entries = entries.filter { keys.contains($0.key) }
+        directories = directories.filter { observedDirectories.contains($0.key) }
     }
+
+    private struct DirectoryRecord {
+        let stamp: DirectoryListingStamp
+        let entries: [DirectoryEntry]
+    }
+}
+
+/// 디렉터리 목록을 운영체제 지문으로 검증해 재열거를 건너뛰는 파일 시스템 래퍼.
+///
+/// 디렉터리의 지문(mtime·ctime·inode·mode)이 그대로이면 항목 구성이 바뀌지
+/// 않은 것으로 본다. 파일 내용 변경은 파일별 지문이 따로 잡으므로 이 목록은 구조
+/// 변화만 감시하면 된다. 지문을 제공하지 않는 구현은 매번 열거한다.
+fileprivate struct CachedListingFileSystem: FileSystem {
+    let base: any FileSystem
+    let cache: AnalysisInputFingerprintCache
+
+    func directoryEntries(at path: String) throws -> [DirectoryEntry] {
+        cache.observedDirectories.insert(path)
+        guard let stamp = base.directoryListingStamp(at: path) else {
+            return try base.directoryEntries(at: path)
+        }
+        if let cached = cache.cachedEntries(at: path, stamp: stamp) {
+            return cached
+        }
+        let entries = try base.directoryEntries(at: path)
+        cache.storeEntries(entries, stamp: stamp, at: path)
+        return entries
+    }
+
+    func realPath(at path: String) throws -> String { try base.realPath(at: path) }
+    func fileExists(at path: String) -> Bool { base.fileExists(at: path) }
+    func directoryExists(at path: String) -> Bool { base.directoryExists(at: path) }
+    func readData(at path: String) throws -> Data { try base.readData(at: path) }
+    func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
+    func contentsOfDirectory(at path: String) throws -> [String] {
+        try base.contentsOfDirectory(at: path)
+    }
+    func modificationDate(at path: String) -> Date? { base.modificationDate(at: path) }
+    func fingerprintStamp(at path: String) -> FileFingerprintStamp? {
+        base.fingerprintStamp(at: path)
+    }
+    func directoryListingStamp(at path: String) -> DirectoryListingStamp? {
+        base.directoryListingStamp(at: path)
+    }
+    var currentDirectoryPath: String { base.currentDirectoryPath }
 }
 
 private struct AnalysisInputFingerprinter {
@@ -400,6 +463,7 @@ private struct AnalysisInputFingerprinter {
         var accumulator = FingerprintAccumulator()
         accumulator.addText(cache == nil ? "cartograph-analysis-input-v2" : "cartograph-analysis-input-v3")
         var observedKeys: Set<AnalysisInputFingerprintCache.Key> = []
+        cache?.observedDirectories.removeAll()
         let encodedConfiguration = try JSONEncoder.cartographDefault(prettyPrinted: false)
             .encode(configuration)
         accumulator.addData(label: "configuration", data: encodedConfiguration)
@@ -443,9 +507,24 @@ private struct AnalysisInputFingerprinter {
         let paths = fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { path in
-                configuration.pathFilter.allows(path)
-                    && (AnalysisLimitationCollector.sourceSuffixes.contains { path.hasSuffix($0) }
-                        || RuntimeResourcePath.isSupported(path))
+                // 글롭 대조와 리소스 판정(URL 생성)은 항목당 비싸므로 이름으로 먼저
+                // 좁힌다. 소스 접미사는 대소문자 구분 그대로, 리소스는 이름 게이트
+                // 뒤에 원래의 정밀 판정을 부른다 — `xcdatamodel` 밖의 일반
+                // `contents` 는 계속 빠져야 한다.
+                let name = (path as NSString).lastPathComponent
+                let ext = (path as NSString).pathExtension
+                if ext == "swift" || ext == "m" || ext == "mm"
+                    || name == ".swift" || name == ".m" || name == ".mm" {
+                    return configuration.pathFilter.allows(path)
+                }
+                let lowerName = name.lowercased()
+                let resourceCandidate = ext.lowercased() == "xib"
+                    || ext.lowercased() == "storyboard"
+                    || lowerName == ".xib" || lowerName == ".storyboard"
+                    || lowerName == "contents" || name == ".xccurrentversion"
+                return resourceCandidate
+                    && RuntimeResourcePath.isSupported(path)
+                    && configuration.pathFilter.allows(path)
             },
             shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
         )
@@ -561,23 +640,40 @@ private struct AnalysisInputFingerprinter {
         let cacheKey = AnalysisInputFingerprintCache.Key(label: label, path: path)
         observedKeys.insert(cacheKey)
         let fileSystem = environment.fileSystem
-        let resolvedPath = (try? fileSystem.realPath(at: path)) ?? path
+        // 파일마다 한 번의 stat 으로 실제 경로·수정 시각·캐시 비교 상태를 모두 얻는다.
+        // 요청마다 수백 입력을 다시 검증하는 세션 지문에서 항목당 syscall 수가 지배적이다.
+        let stamp = fileSystem.fingerprintStamp(at: path)
+        let resolvedPath = stamp?.resolvedPath ?? (try? fileSystem.realPath(at: path)) ?? path
         guard !Self.isSensitive(path), !Self.isSensitive(resolvedPath) else {
             throw AnalysisSessionError.sensitiveInput
         }
-        guard fileSystem.fileExists(at: path) else {
-            accumulator.addText("missing")
-            cache?.store(.missing, stamp: nil, for: cacheKey)
-            return
+        if let stamp {
+            // 디렉터리·끊어진 링크·FIFO 같은 비정규 입력은 읽지 않는다.
+            guard stamp.isRegularFile else {
+                accumulator.addText("missing")
+                cache?.store(.missing, stamp: nil, for: cacheKey)
+                return
+            }
+        } else {
+            // stamp를 주지 않는 구현은 예전처럼 존재 여부로만 판정한다.
+            guard fileSystem.fileExists(at: path) else {
+                accumulator.addText("missing")
+                cache?.store(.missing, stamp: nil, for: cacheKey)
+                return
+            }
         }
         if includeModificationDate {
-            if let modified = fileSystem.modificationDate(at: path) {
+            // 내용이 같아도 소스 시각은 인덱스 신선도 결과에 영향을 주므로 별도로 싣는다.
+            let modified = stamp.map {
+                Date(timeIntervalSince1970:
+                    Double($0.modificationSeconds) + Double($0.modificationNanoseconds) / 1e9)
+            } ?? fileSystem.modificationDate(at: path)
+            if let modified {
                 accumulator.addText("modified:\(modified.timeIntervalSinceReferenceDate)")
             } else {
                 accumulator.addText("modified:unknown")
             }
         }
-        let stamp = fileSystem.fingerprintStamp(at: path)
         if let cache, let stamp, let entry = cache.entry(for: cacheKey), entry.stamp == stamp {
             append(entry.state, to: &accumulator)
             return
