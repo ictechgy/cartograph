@@ -69,8 +69,9 @@ public struct ProjectShape: Sendable, Equatable {
     }
 
     /// 셸 인용 — 작은따옴표 안에서는 아무것도 확장되지 않고, 이름 속 `'` 는 `'\''` 로 닫는다.
+    /// stdlib `replacing` 을 쓴다 — 이 파일은 Foundation 없이 컴파일되어야 한다.
     private func shellQuoted(_ name: String) -> String {
-        "'" + name.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        "'" + name.replacing("'", with: "'\\''") + "'"
     }
 
     private var swiftPackageRemedy: String {

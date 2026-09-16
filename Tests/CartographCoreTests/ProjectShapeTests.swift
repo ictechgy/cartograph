@@ -69,9 +69,9 @@ struct ProjectShapeTests {
         // 작은따옴표 + `'\''` 닫기는 어떤 이름이든 한 인자로 유지한다.
         let shape = ProjectShape(
             hasPackageManifest: false,
-            xcodeDocuments: ["it's$HOME.xcodeproj"]
+            xcodeDocuments: ["it's$HOME`x\"y\\z.xcodeproj"]
         )
-        #expect(shape.remedy.contains("-project 'it'\\''s$HOME.xcodeproj'"))
+        #expect(shape.remedy.contains("-project 'it'\\''s$HOME`x\"y\\z.xcodeproj'"))
     }
 
     @Test("문서가 여럿이면 어느 것인지 고르라는 자리표시자를 둔다")
