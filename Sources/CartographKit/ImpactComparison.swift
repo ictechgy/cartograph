@@ -24,10 +24,12 @@ public struct ImpactComparisonDocument: Sendable, Equatable, Codable {
     /// 나타나지 않는다 — 파일 시드 비교가 같은 범위를 두 그래프에서 직접
     /// 대조해야 하는 이유다.
     public struct ScopeDiff: Sendable, Equatable, Codable {
-        /// 범위 안 정점 중 현재 그래프에만 있는 것. 이름 변경은 USR 이 달라지므로
-        /// 제거·추가 한 쌍으로 나타난다.
+        /// 범위 안 정점 중 현재 범위에만 있는 것. 이름 변경은 USR 이 달라지므로
+        /// 제거·추가 한 쌍으로 나타나고, 다른 파일로 옮겨져 범위를 들어온 선언도
+        /// 여기 나온다 — "새로 생긴 것"만이 아니라 범위 소속의 차이다.
         public let addedSymbols: [SymbolQuery.Subject]
-        /// 범위 안 정점 중 과거 그래프에만 있는 것.
+        /// 범위 안 정점 중 과거 범위에만 있는 것. 삭제뿐 아니라 다른 파일로 옮겨져
+        /// 범위를 벗어난 선언도 나온다 — 현재 그래프에는 남아 있을 수 있다.
         public let removedSymbols: [SymbolQuery.Subject]
         /// 양 끝이 모두 범위 안인 간선 중 현재 그래프에만 있는 것.
         public let addedEdges: [EdgeChange]
@@ -295,16 +297,18 @@ extension CartographService {
             }
         }
         let scope = currentScope.union(historicalScope)
-        let currentSignatures = Set(currentGraph.edges.map(Signature.init))
-        let historicalSignatures = Set(historicalGraph.edges.map(Signature.init))
-        let removedEdges = historicalGraph.edges.filter {
-            scope.contains($0.source) && scope.contains($0.target)
-                && !currentSignatures.contains(Signature($0))
+        // 범위 안 간선은 인접 목록에서만 모은다 — 그래프 전체를 훑어 서명 집합을
+        // 만들지 않는다. 빈 범위면 간선도 비어 스캔할 것이 없다.
+        let currentScoped = scopedEdges(of: currentGraph, within: scope)
+        let historicalScoped = scopedEdges(of: historicalGraph, within: scope)
+        let currentSignatures = Set(currentScoped.map(Signature.init))
+        let historicalSignatures = Set(historicalScoped.map(Signature.init))
+        let removedEdges = historicalScoped.filter {
+            !currentSignatures.contains(Signature($0))
                 && edgeKindAllowed(currentEdgeKinds, $0.kind)
         }.sorted()
-        let addedEdges = currentGraph.edges.filter {
-            scope.contains($0.source) && scope.contains($0.target)
-                && !historicalSignatures.contains(Signature($0))
+        let addedEdges = currentScoped.filter {
+            !historicalSignatures.contains(Signature($0))
                 && edgeKindAllowed(historicalEdgeKinds, $0.kind)
         }.sorted()
         let removedSymbols = historicalScope.subtracting(currentScope).sorted()
@@ -328,6 +332,11 @@ extension CartographService {
     /// 빈 종류 집합은 "필터 없음"이므로 모든 종류를 담을 수 있던 것으로 본다.
     private static func edgeKindAllowed(_ kinds: Set<EdgeKind>, _ kind: EdgeKind) -> Bool {
         kinds.isEmpty || kinds.contains(kind)
+    }
+
+    /// 양 끝이 모두 `scope` 안인 간선. 정점 인접 목록에서 모아 전체 간선 스캔을 피한다.
+    private static func scopedEdges(of graph: CodeGraph, within scope: Set<NodeID>) -> [GraphEdge] {
+        scope.flatMap { graph.outgoingEdges(from: $0) }.filter { scope.contains($0.target) }
     }
 
     /// 간선의 두 끝이 서로 다른 그래프의 정점으로 풀려야 하므로 그래프를 함께 받는다.
