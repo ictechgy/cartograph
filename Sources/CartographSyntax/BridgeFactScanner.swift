@@ -996,12 +996,15 @@ final class BridgeFactCollector: SyntaxVisitor {
     /// `resolveChannel` 은 못 푼 표현식에 `.method` 기본값을 붙이므로 "다른 종류로
     /// 증명됨"과 "못 풂"을 그 반환값으로는 구분할 수 없다.
     private func provenChannelKind(of call: FunctionCallExprSyntax, receiver: ExprSyntax?) -> BridgeChannelKind? {
-        let expression = call.arguments.first(where: { $0.label?.text == "channel" })?.expression ?? receiver
-        guard let expression else { return nil }
-        if let inline = bindings.channelConstruction(expression, in: context) { return inline.kind }
-        if let name = BindingCollector.identifierName(of: expression),
-           let bound = bindings.channelDetails(named: name, in: context), let bound {
-            return bound.kind
+        // 수신자를 먼저 본다. `channel:` 인자가 수신자보다 앞서면, 수신자가 다른 종류로
+        // 증명된 호출에서도 인자 쪽 종류가 이겨 스트림 사실이 남을 수 있다.
+        for expression in [receiver, call.arguments.first(where: { $0.label?.text == "channel" })?.expression] {
+            guard let expression else { continue }
+            if let inline = bindings.channelConstruction(expression, in: context) { return inline.kind }
+            if let name = BindingCollector.identifierName(of: expression),
+               let bound = bindings.channelDetails(named: name, in: context), let bound {
+                return bound.kind
+            }
         }
         return nil
     }
