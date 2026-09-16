@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-16
+
 ### Changed
 
 - The no-index-store error now reads the project root and tailors its build guidance to what
@@ -1049,7 +1051,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.15.1...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.16.0...HEAD
+[0.16.0]: https://github.com/ictechgy/cartograph/compare/0.15.1...0.16.0
 [0.15.1]: https://github.com/ictechgy/cartograph/compare/0.15.0...0.15.1
 [0.15.0]: https://github.com/ictechgy/cartograph/compare/0.14.0...0.15.0
 [0.14.0]: https://github.com/ictechgy/cartograph/compare/0.13.0...0.14.0
