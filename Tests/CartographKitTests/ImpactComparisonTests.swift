@@ -593,4 +593,130 @@ struct ImpactComparisonTests {
         #expect(captured.snapshot.imports.map(\.module) == ["Foundation"])
         #expect(captured.snapshot.fileModuleUsages.keys.sorted() == ["/current/Sources/App.swift"])
     }
+
+    // MARK: - 범위 서브그래프 비교
+
+    /// 두 파일에 걸친 시나리오의 골격. `call` 이 있으면 caller → callee 호출이 있다.
+    private func changedFiles(call: Bool, extra: (inout SnapshotBuilder) -> Void = { _ in }) -> IndexSnapshot {
+        var builder = SnapshotBuilder(path: "/current/Sources/A.swift")
+        builder.symbol("caller", name: "caller()", kind: .function, path: "/current/Sources/A.swift")
+        builder.symbol("callee", name: "callee()", kind: .function, path: "/current/Sources/B.swift")
+        if call {
+            builder.reference(from: "caller", to: "callee", kind: .call, path: "/current/Sources/A.swift")
+        }
+        extra(&builder)
+        return builder.build()
+    }
+
+    @Test("변경된 두 파일 사이에서 사라진 간선은 영향 목록에 없어도 범위 비교에 나타난다")
+    func removedEdgeBetweenChangedFilesSurfacesInScopeDiff() throws {
+        // 파일 시드 영향은 변경 정점의 소비자만 걷는다. 호출이 사라지면 양 끝이
+        // 전부 변경 범위에 들어가므로 affected 집합만 비교하면 이 간선은 영원히
+        // 보이지 않는다 — 범위 안의 서브그래프를 직접 대조해야 한다.
+        let (document, _) = try comparison(
+            current: changedFiles(call: false),
+            before: .init(projectRoot: "/current", snapshot: changedFiles(call: true)),
+            symbols: [], files: ["Sources/A.swift", "Sources/B.swift"])
+        #expect(document.current.affected.isEmpty)
+        #expect(document.before.affected.isEmpty)
+        #expect(document.scopeDiff.removedEdgeCount == 1)
+        let edge = try #require(document.scopeDiff.removedEdges.first)
+        #expect(edge.source.usr == "caller")
+        #expect(edge.target.usr == "callee")
+        #expect(edge.kind == "call")
+        #expect(document.scopeDiff.addedEdgeCount == 0)
+        #expect(document.scopeDiff.addedSymbolCount == 0)
+        #expect(document.scopeDiff.removedSymbolCount == 0)
+    }
+
+    @Test("범위 안에 생긴 간선과 범위 안에서만 존재하는 선언을 함께 보고한다")
+    func scopeDiffReportsAddedEdgesAndSymbolMembership() throws {
+        let before = changedFiles(call: false) { builder in
+            builder.symbol("old", name: "old()", kind: .function, path: "/current/Sources/A.swift")
+        }
+        let current = changedFiles(call: true) { builder in
+            builder.symbol("fresh", name: "fresh()", kind: .function, path: "/current/Sources/B.swift")
+        }
+        let (document, _) = try comparison(
+            current: current,
+            before: .init(projectRoot: "/current", snapshot: before),
+            symbols: [], files: ["Sources/A.swift", "Sources/B.swift"])
+        #expect(document.scopeDiff.addedEdges.map {
+            "\($0.source.usr ?? "?")->\($0.target.usr ?? "?"):\($0.kind)"
+        } == ["caller->callee:call"])
+        #expect(document.scopeDiff.removedSymbols.map(\.usr) == ["old"])
+        #expect(document.scopeDiff.addedSymbols.map(\.usr) == ["fresh"])
+    }
+
+    @Test("범위 밖 정점에 닿는 간선의 변화는 범위 비교에 섞이지 않는다")
+    func scopeDiffIgnoresEdgesLeavingTheScope() throws {
+        // 범위 밖 정점으로 향하는 간선의 소멸은 이 비교가 답하는 영역이 아니다.
+        // "선택한 코드 사이에서 무엇이 바뀌었는가"에 다른 파일로의 의존 제거를
+        // 섞으면 목록이 선택 범위를 넘어 흘러간다. 그 답은 더 넓은 선택이 준다.
+        let before = changedFiles(call: false) { builder in
+            builder.symbol("x", name: "x()", kind: .function, path: "/current/Sources/C.swift")
+            builder.symbol("y", name: "y()", kind: .function, path: "/current/Sources/C.swift")
+            builder.reference(from: "caller", to: "x", kind: .call, path: "/current/Sources/A.swift")
+            builder.reference(from: "x", to: "y", kind: .call, path: "/current/Sources/C.swift")
+        }
+        let current = changedFiles(call: false) { builder in
+            builder.symbol("x", name: "x()", kind: .function, path: "/current/Sources/C.swift")
+            builder.symbol("y", name: "y()", kind: .function, path: "/current/Sources/C.swift")
+        }
+        let (document, _) = try comparison(
+            current: current,
+            before: .init(projectRoot: "/current", snapshot: before),
+            symbols: [], files: ["Sources/A.swift", "Sources/B.swift"])
+        #expect(document.scopeDiff.removedEdgeCount == 0)
+        #expect(document.scopeDiff.removedSymbolCount == 0)
+        #expect(document.scopeDiff.addedEdgeCount == 0)
+        #expect(document.scopeDiff.addedSymbolCount == 0)
+    }
+
+    @Test("양쪽 그래프가 다른 간선 종류를 담면 상대가 담을 수 있던 종류만 대조하고 한계로 알린다")
+    func edgeKindMismatchRestrictsDiffAndWarns() throws {
+        // 과거 스냅샷이 call 간선만 기록했다면 그 그래프에는 reference 간선이
+        // 원래 없다. 현재에만 보이는 reference 간선을 "생겼다"고 하면 필터가
+        // 만든 허상이므로, 비교는 상대가 담을 수 있던 종류로만 제한한다.
+        let before = changedFiles(call: true) { builder in
+            builder.symbol("dep", name: "dep()", kind: .function, path: "/current/Sources/B.swift")
+            builder.symbol("peer", name: "peer()", kind: .function, path: "/current/Sources/A.swift")
+            builder.reference(from: "caller", to: "dep", kind: .call, path: "/current/Sources/A.swift")
+            builder.reference(from: "caller", to: "peer", kind: .reference, path: "/current/Sources/A.swift")
+        }
+        let current = changedFiles(call: true) { builder in
+            builder.symbol("dep", name: "dep()", kind: .function, path: "/current/Sources/B.swift")
+            builder.symbol("peer", name: "peer()", kind: .function, path: "/current/Sources/A.swift")
+            builder.reference(from: "caller", to: "peer", kind: .reference, path: "/current/Sources/A.swift")
+        }
+        let (document, _) = try comparison(
+            current: current,
+            before: .init(projectRoot: "/current", snapshot: before, edgeKinds: [.call]),
+            symbols: [], files: ["Sources/A.swift", "Sources/B.swift"])
+        #expect(document.scopeDiff.removedEdges.map {
+            "\($0.source.usr ?? "?")->\($0.target.usr ?? "?"):\($0.kind)"
+        } == ["caller->dep:call"])
+        #expect(document.scopeDiff.addedEdgeCount == 0)
+        #expect(document.limitations.contains { $0.hasPrefix("edge-kind-filter-mismatch:") })
+    }
+
+    @Test("범위 비교 목록이 한도를 넘기면 전체 개수를 남기고 잘림을 표시한다")
+    func scopeDiffTruncationKeepsCounts() throws {
+        let before = changedFiles(call: false) { builder in
+            builder.symbol("other", name: "other()", kind: .function, path: "/current/Sources/B.swift")
+            builder.reference(from: "caller", to: "callee", kind: .call, path: "/current/Sources/A.swift")
+            builder.reference(from: "caller", to: "other", kind: .call, path: "/current/Sources/A.swift")
+        }
+        let current = changedFiles(call: false) { builder in
+            builder.symbol("other", name: "other()", kind: .function, path: "/current/Sources/B.swift")
+        }
+        let (document, _) = try comparison(
+            current: current,
+            before: .init(projectRoot: "/current", snapshot: before),
+            symbols: [], files: ["Sources/A.swift", "Sources/B.swift"], limit: 1)
+        #expect(document.scopeDiff.removedEdgeCount == 2)
+        #expect(document.scopeDiff.removedEdges.count == 1)
+        #expect(document.scopeDiff.truncated)
+        #expect(document.truncated)
+    }
 }

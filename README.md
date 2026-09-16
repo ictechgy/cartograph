@@ -520,6 +520,15 @@ ambiguous in either, the comparison stays unresolved. An unresolved explicit inp
 Git-derived selections and unresolved runtime evidence are incomplete analysis (exit 2). No path
 or consumer is synthesized by unioning the two graphs.
 
+Because impact only walks consumers of the changed set, an edge that disappeared between two
+changed files never shows up in `affected` — both endpoints sit inside the change scope. The
+`scopeDiff` section closes that gap by diffing the subgraph induced on the union of both change
+scopes: `addedSymbols`/`removedSymbols` list declarations that exist in only one snapshot's scope,
+and `addedEdges`/`removedEdges` list edge triples (source, target, kind) that exist in only one
+graph. Edge kinds the other graph's filter could not have contained are not reported, and a filter
+mismatch is called out in `limitations`. Each list is capped by `--limit`; the `*Count` fields and
+`scopeDiff.truncated` keep the uncapped truth.
+
 Nested runtime review evidence and contract ID lists also obey the output limit. Omitted entries
 carry `externalEvidenceCount`/`externalEvidenceOmitted` or
 `runtimeContractsCount`/`runtimeContractsOmitted`; caller omissions add to the producer's existing

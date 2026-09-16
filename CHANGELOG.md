@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `impact --before` comparisons now carry a `scopeDiff` section that diffs the subgraph induced
+  on the union of both change scopes. Impact traversal only walks consumers of the changed set,
+  so an edge removed between two changed files was invisible — both endpoints sat in `changeScope`
+  and neither appeared in `affected`. `scopeDiff.removedEdges`/`addedEdges` list edge triples that
+  exist in only one graph, and `removedSymbols`/`addedSymbols` list declarations that exist in only
+  one snapshot's scope. Edges whose kind the other graph's `edge_kinds` filter could not have
+  contained are not reported, and a filter mismatch is noted in `limitations`.
+
 ### Changed
 
 - Warm session queries re-check the input fingerprint without re-reading the filesystem.

@@ -495,6 +495,15 @@ selected/changeScope 심볼, 파일, 모듈, 선택 이슈를 포함한 각 출�
 남습니다. 명시적 미해결은 종료 코드 64, Git에서 유도한 선택과 런타임 근거 미해결은 불완전한
 분석으로 종료 코드 2입니다. 두 그래프의 간선을 합쳐 경로를 만들지 않습니다.
 
+영향 탐색은 변경 집합의 소비자만 걷기 때문에, 변경된 두 파일 사이에서 사라진 간선은
+`affected`에 나타나지 않습니다 — 양 끝점이 전부 변경 범위 안에 들어가기 때문입니다.
+`scopeDiff` 절이 양쪽 변경 범위의 합집합 위에 유도된 서브그래프를 대조해 이 공백을 메웁니다.
+`addedSymbols`/`removedSymbols`는 한쪽 스냅샷의 범위에만 있는 선언이고,
+`addedEdges`/`removedEdges`는 한쪽 그래프에만 있는 간선 삼중(출발, 도착, 종류)입니다.
+상대 그래프의 필터가 담을 수 없던 간선 종류는 보고하지 않으며, 필터가 다르면 `limitations`에
+그 사실을 적습니다. 각 목록은 `--limit`으로 잘리고 `*Count` 필드와 `scopeDiff.truncated`가
+잘리지 않은 실제 개수를 보존합니다.
+
 중첩된 런타임 검토 근거와 계약 ID 목록도 출력 한도를 지킵니다. 생략하면
 `externalEvidenceCount`/`externalEvidenceOmitted` 또는
 `runtimeContractsCount`/`runtimeContractsOmitted`로 전체/생략 개수를 표시합니다. 호출자 생략은
