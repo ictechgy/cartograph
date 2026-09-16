@@ -956,7 +956,7 @@ public struct CartographService: Sendable {
     /// 어휘 표식이라 주석 안에서도 양성이 나올 수 있다. 그래서 fact가 아니라 파일 수준
     /// 한계 근거로만 쓴다.
     private static let ffiInteropMarkers = [
-        "@_cdecl", "@_silgen_name", "dlsym(",
+        "@_cdecl", "@_silgen_name", "dlsym",
         "Dart_PostCObject", "dart_native_api.h", "dart_api_dl.h",
     ]
 
