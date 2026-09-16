@@ -736,3 +736,108 @@ struct ConditionalWitnessRetentionTests {
         #expect(result.unused.map(\.name).contains("Card"))
     }
 }
+
+@Suite("미사용 파라미터")
+struct UnusedParameterAnalysisTests {
+    private func analyze(_ snapshot: IndexSnapshot) -> UnusedCodeReport {
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        return ReachabilityAnalyzer().analyze(graph: graph, snapshot: snapshot)
+    }
+
+    @Test("살아 있는 함수의 읽히지 않는 파라미터를 보고한다")
+    func reportsUnusedParameterOfLiveFunction() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("App.run", kind: .method, parent: "App")
+        builder.reference(from: "App", to: "App.run", kind: .call)
+        builder.parameter("p:unused", name: "unused", functionUSR: "App.run",
+            line: 10, column: 20, isReferenced: false)
+
+        let report = analyze(builder.build())
+        #expect(report.unusedParameters.map(\.name) == ["unused"])
+    }
+
+    @Test("읽힌 파라미터는 보고하지 않는다")
+    func usedParameterIsNotReported() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("App.run", kind: .method, parent: "App")
+        builder.reference(from: "App", to: "App.run", kind: .call)
+        builder.parameter("p:used", name: "used", functionUSR: "App.run",
+            line: 10, column: 20, isReferenced: true)
+
+        let report = analyze(builder.build())
+        #expect(report.unusedParameters.isEmpty)
+    }
+
+    @Test("구문 근거가 없는 파라미터는 모르는 것이므로 보고하지 않는다")
+    func unknownParameterIsNotReported() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("App.run", kind: .method, parent: "App")
+        builder.reference(from: "App", to: "App.run", kind: .call)
+        builder.parameter("p:unknown", name: "unknown", functionUSR: "App.run",
+            line: 10, column: 20, isReferenced: nil)
+
+        let report = analyze(builder.build())
+        #expect(report.unusedParameters.isEmpty)
+    }
+
+    @Test("죽은 함수의 파라미터는 따로 보고하지 않는다")
+    func deadFunctionParametersAreNotDuplicated() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Dead", kind: .structType)
+        builder.symbol("Dead.run", kind: .method, parent: "Dead")
+        builder.parameter("p:deadParam", name: "x", functionUSR: "Dead.run",
+            line: 10, column: 20, isReferenced: false)
+
+        let report = analyze(builder.build())
+        #expect(report.unusedParameters.isEmpty)
+        #expect(report.unused.map(\.name).contains("Dead"))
+    }
+
+    @Test("프로토콜 요구사항의 파라미터는 본문이 없으므로 보고하지 않는다")
+    func protocolRequirementParametersAreNotReported() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("P", kind: .protocolType)
+        builder.symbol("P.req", kind: .method, parent: "P")
+        builder.reference(from: "P", to: "P.req", kind: .member)
+        builder.reference(from: "App", to: "P", kind: .reference)
+        builder.parameter("p:req", name: "x", functionUSR: "P.req",
+            line: 10, column: 20, isReferenced: false)
+
+        let report = analyze(builder.build())
+        #expect(report.unusedParameters.isEmpty)
+    }
+
+    @Test("미사용 파라미터는 미사용 심볼 목록과 섞이지 않는다")
+    func parametersAreSeparateFromSymbols() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("App.run", kind: .method, parent: "App")
+        builder.reference(from: "App", to: "App.run", kind: .call)
+        builder.parameter("p:x", name: "x", functionUSR: "App.run",
+            line: 10, column: 20, isReferenced: false)
+
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(report.unusedParameters.map(\.name) == ["x"])
+    }
+
+    @Test("여러 파라미터는 소스 순서로 정렬된다")
+    func unusedParametersAreSortedByLocation() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("App.run", kind: .method, parent: "App")
+        builder.reference(from: "App", to: "App.run", kind: .call)
+        builder.parameter("p:b", name: "b", functionUSR: "App.run",
+            line: 10, column: 30, isReferenced: false)
+        builder.parameter("p:a", name: "a", functionUSR: "App.run",
+            line: 10, column: 20, isReferenced: false)
+
+        let report = analyze(builder.build())
+        #expect(report.unusedParameters.map(\.name) == ["a", "b"])
+    }
+}

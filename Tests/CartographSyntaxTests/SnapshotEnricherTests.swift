@@ -237,3 +237,67 @@ struct SnapshotEnricherTests {
         #expect(SnapshotEnricher(fileSystem: fileSystem).enrich(snapshot) == snapshot)
     }
 }
+
+@Suite("파라미터 사용 근거 보강")
+struct ParameterEnrichmentTests {
+    private func snapshotWithParameter() -> IndexSnapshot {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, path: "/p/App.swift")
+        builder.parameter("p:x", name: "x", functionUSR: "App.run",
+            path: "/p/App.swift", line: 10, column: 20)
+        return builder.build()
+    }
+
+    @Test("본문 스캔 결과가 파라미터의 사용 여부를 채운다")
+    func joinsUsageByLocation() {
+        let facts = [
+            "/p/App.swift": SourceFileFacts(
+                path: "/p/App.swift",
+                declarations: [],
+                parameterUsages: [
+                    ParameterUsageFacts(
+                        name: "x",
+                        location: SourceLocation(path: "/p/App.swift", line: 10, column: 20),
+                        isUsedInBody: true
+                    )
+                ]
+            )
+        ]
+        let enriched = SnapshotEnricher.enrich(snapshotWithParameter(), with: facts)
+        #expect(enriched.parameters[0].isReferenced == true)
+    }
+
+    @Test("스캔 결과에 없는 위치의 파라미터는 모름으로 남는다")
+    func unmatchedParameterStaysUnknown() {
+        let facts = [
+            "/p/App.swift": SourceFileFacts(
+                path: "/p/App.swift",
+                declarations: [],
+                parameterUsages: [
+                    ParameterUsageFacts(
+                        name: "other",
+                        location: SourceLocation(path: "/p/App.swift", line: 99, column: 5),
+                        isUsedInBody: false
+                    )
+                ]
+            )
+        ]
+        let enriched = SnapshotEnricher.enrich(snapshotWithParameter(), with: facts)
+        #expect(enriched.parameters[0].isReferenced == nil)
+    }
+
+    @Test("사실이 없는 파일의 파라미터는 모름으로 남는다")
+    func unscannedFileStaysUnknown() {
+        let enriched = SnapshotEnricher.enrich(snapshotWithParameter(), with: [:])
+        #expect(enriched.parameters[0].isReferenced == nil)
+    }
+
+    @Test("파라미터 스캔을 안 한 옛 캐시 사실은 모름으로 남는다")
+    func cachedFactsWithoutUsagesStayUnknown() {
+        let facts = [
+            "/p/App.swift": SourceFileFacts(path: "/p/App.swift", declarations: [])
+        ]
+        let enriched = SnapshotEnricher.enrich(snapshotWithParameter(), with: facts)
+        #expect(enriched.parameters[0].isReferenced == nil)
+    }
+}

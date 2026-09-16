@@ -1,5 +1,61 @@
 # Handoff
 
+## 2026-09-16 — 미사용 파라미터 분석 (feat/competitive-hardening)
+
+`우선순위대로 개선` 3번째(분석 커버리지)의 첫 항목. `dead`가 살아 있는 함수의 본문에서
+한 번도 읽히지 않는 파라미터를 `unused-parameter` 경고로 보고한다.
+
+### 설계
+
+- 인덱스는 **지역 심볼의 참조 발생을 기록하지 않는다** — 파라미터 사용 여부는 인덱스
+  occurrence로 알 수 없다(실측: `decode(_ data:)`의 본문 사용에 대응하는 occurrence 없음).
+  그래서 이 기능은 "그래프 질의"가 아니라 인덱스 선언 + 구문 스캔의 조인이다.
+- 흐름: `IndexStoreMapping.indexedParameter`가 `.parameter` 선언 발생을 수집(정점 아님,
+  `_`·암시적·시스템 제외) → `IndexSnapshot.parameters` → `ParameterUsageScanner`가 본문
+  있는 함수의 파라미터별 `isUsedInBody`를 수집 → `SnapshotEnricher`가 내부 이름 토큰의
+  (줄, 열)로 조인해 `IndexedParameter.isReferenced`를 채움 → `ReachabilityAnalyzer`는
+  `isReferenced == false`이고 부모 함수가 도달 가능하며 프로토콜 요구사항이 아닌 것만 보고.
+- `isReferenced`는 삼값: `nil`=근거 없음(스캔 못 한 파일·본문 없는 선언·조인 실패) →
+  절대 보고하지 않는다. 보수 방향이 미사용 보고로 새지 않게 하는 장치.
+- 스캐너는 스코프 스택으로 동작한다 — 안쪽 바인딩이 먼저 이기므로 섀도는 "미사용" 쪽이고
+  캡처는 "사용" 쪽이다. 클로저 캡처 `[x]`는 바깥 x의 사용이고 `[x = 식]`의 식도 바깥
+  스코프다. `foo.x`의 멤버 이름은 파라미터 사용이 아니다.
+- `unused-parameter`는 `countedRules: [unusedSymbol]` 밖이라 `--strict`와 임계값에 안 잡힌다.
+  고치는 법이 삭제가 아니라 `_` 표기이므로.
+- `analysisRevision` 18→19 (캐시 무효화). 옛 스냅샷 문서·옛 사실 캐시는 `parameters`/
+  `parameterUsages` 부재로 자연히 `nil`(모름)이 된다.
+
+### 한계 (알려진 것)
+
+- **본문 안 `let x`·`for x` 같은 지역 바인딩 섀도는 추적하지 않는다** — 파라미터와 같은
+  이름의 지역 변수가 생기면 그 참조가 파라미터 사용으로 세어져 미탐이 된다(보수 방향).
+  거짓 보고 방향은 아니다.
+- 접근자 파라미터(`set(v)`의 `v`, `newValue`)는 스코프를 열지 않는다 — 인덱스의 부모도
+  정점이 아니라 어차피 보고되지 않는다.
+- 소스가 인덱스보다 새로우면 위치 조인이 빗나가 `nil`(보고 안 함)로 기운다 — 위치 충돌로
+  엉뚱한 판정이 붙는 아주 드문 경우를 제외하고는 보수 방향.
+- 자기 분석에서 173건의 정탐 경고가 나온다(visitPost no-op, 델리게이트 스텁,
+  `type: T.Type` 추론용 파라미터 등). 경고라 strict는 통과한다.
+
+### 검증 근거
+
+- `swift test` 1356개 통과(신규 32: 스캐너 18·분석 7·보강 조인 4·스냅샷 호환 3).
+- `Scripts/coverage.sh` 92.86% 통과(instrumented CLI 포함), `verify-cli-contract.sh`·
+  `verify-fixtures.sh` 통과.
+- `dead --strict` exit 0(173 경고, 카운트 제외), `cycles`/`cycles --level type`/`rules
+  --strict` 전부 no findings — 도그푸딩이 `ExpressionMarker↔Collector` 타입 순환을 잡아
+  클로저 주입(`ReferenceMarker`)으로 고쳤다.
+- 섀도 단축(`break`)을 빼면 섀도 테스트가 실패함을 확인(테스트가 문다).
+- Alamofire에서 정탐 표본 확인: `task(for:using:)`의 fatalError 스텁, 델리게이트에서
+  주석에만 있는 `session`, `of type:` 메타타입 파라미터.
+
+### 다음 (우선순위 순서)
+
+3-2. assign-only 프로퍼티 → 미사용 import.
+4. 빌드/인덱스 온보딩 마찰: 인덱스 없음 안내 강화 또는 선택적 빌드 프리스텝.
+
+---
+
 ## 2026-09-16 — 경쟁 도구 비교 후속: 난이도 과제 측정 + warm 질의 2× (feat/competitive-hardening)
 
 `우선순위대로 개선` 지시에 따른 진행 중. 브랜치 `feat/competitive-hardening`(cartograph-competitive

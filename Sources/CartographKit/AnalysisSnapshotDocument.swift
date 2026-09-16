@@ -185,11 +185,22 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 (Self.rebase(path, from: projectRoot, to: currentProjectRoot), date)
             }, uniquingKeysWith: { first, _ in first })
         }
+        let parameters = snapshot.parameters.map { parameter in
+            IndexedParameter(
+                usr: parameter.usr, name: parameter.name, module: parameter.module,
+                location: .init(
+                    path: Self.rebase(parameter.location.path, from: projectRoot, to: currentProjectRoot),
+                    line: parameter.location.line, column: parameter.location.column),
+                functionUSR: parameter.functionUSR, isReferenced: parameter.isReferenced
+            )
+        }
         return AnalysisSnapshotDocument(
             projectRoot: currentProjectRoot,
             toolVersion: toolVersion,
             revision: revision,
-            snapshot: .init(symbols: symbols, references: references, indexedFileDates: dates),
+            snapshot: .init(
+                symbols: symbols, references: references, indexedFileDates: dates,
+                parameters: parameters),
             edgeKinds: Set(edgeKinds),
             limitations: limitations,
             externalRetentions: externalRetentions,
@@ -427,10 +438,16 @@ extension CartographService {
         let capturedDates = context.snapshot.indexedFileDates.map { dates in
             dates.filter { includedSourcePaths.contains($0.key) }
         }
+        // 파라미터는 그래프에 남은 함수의 것만 담는다 — 부모가 빠진 선언은
+        // 미사용 판정의 재료가 못 된다.
+        let capturedParameters = context.snapshot.parameters.filter {
+            includedUSRs.contains($0.functionUSR) && includedSourcePaths.contains($0.location.path)
+        }
         let capturedSnapshot = IndexSnapshot(
             symbols: capturedSymbols,
             references: capturedReferences,
-            indexedFileDates: capturedDates
+            indexedFileDates: capturedDates,
+            parameters: capturedParameters
         )
         let supplementalPaths = context.supplementalRuntimeSourcePaths
         let capturedRuntimeFiles = context.runtimeFiles?.filter { facts in

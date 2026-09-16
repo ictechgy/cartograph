@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `dead` now reports parameters that a reachable function's body never reads, under the
+  `unused-parameter` rule at warning severity. The index does not record references to local
+  symbols, so usage is proven by a SwiftSyntax body scan (scope-aware for nested functions,
+  closures, and capture lists) joined to indexed parameter declarations by source position.
+  Parameters of protocol requirements, dead functions, and unscanned files are never reported,
+  and the warnings do not count toward `--strict` — the fix is a `_` name, not a deletion.
+
 ## [0.15.1] - 2026-09-16
 
 ### Fixed

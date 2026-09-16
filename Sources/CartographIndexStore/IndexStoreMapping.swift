@@ -84,6 +84,35 @@ public enum IndexStoreMapping {
         )
     }
 
+    /// 파라미터 선언 발생을 옮긴다. 선언이 아니거나 보고 가치가 없으면 nil.
+    ///
+    /// 파라미터는 `indexedSymbol` 이 걸러 내는 종류다 — 그래프 정점이 아니라
+    /// 미사용 파라미터 질의 전용 입력이므로 별도의 통로를 둔다. 이름이 `_` 이면
+    /// 쓰지 않겠다고 선언한 것이고, 접근자(`newValue` 같은)의 파라미터는 사용자가
+    /// 이름을 바꿀 수 없는 컴파일러 계약이라 보고하지 않는다 — 부모가 접근자인
+    /// 선언은 그래프 정점으로 이어지지 않으므로 어차피 분석 단계에서 걸러진다.
+    public static func indexedParameter(from occurrence: SymbolOccurrence) -> IndexedParameter? {
+        guard occurrence.roles.contains(.definition) || occurrence.roles.contains(.declaration) else {
+            return nil
+        }
+        guard symbolKind(occurrence.symbol.kind, subKind: occurrence.symbol.subKind) == .parameter,
+              !occurrence.roles.contains(.implicit),
+              !occurrence.location.isSystem,
+              occurrence.symbol.name != "_",
+              let functionUSR = parentUSR(of: occurrence)
+        else { return nil }
+
+        // 사용 여부는 인덱스에 없다. 지역 심볼의 참조 발생이 기록되지 않기 때문에
+        // 구문 보강(`SnapshotEnricher`)이 본문 스캔 결과로 `isReferenced` 를 채운다.
+        return IndexedParameter(
+            usr: occurrence.symbol.usr,
+            name: occurrence.symbol.name,
+            module: occurrence.location.moduleName,
+            location: sourceLocation(occurrence.location),
+            functionUSR: functionUSR
+        )
+    }
+
     /// 참조된 외부 심볼을 외부 정점으로 만든다.
     ///
     /// 위치는 참조가 나타난 자리다. 정의 위치는 인덱스에 없기 때문이며,

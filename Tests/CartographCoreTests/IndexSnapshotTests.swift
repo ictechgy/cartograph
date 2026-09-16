@@ -104,3 +104,32 @@ struct IndexedSymbolTests {
         #expect(!symbol(usr: "s:x", attributes: [.generic]).isObjectiveCAccessible)
     }
 }
+
+@Suite("IndexSnapshot 파라미터 호환")
+struct IndexSnapshotParameterTests {
+    @Test("parameters 키가 없는 옛 스냅샷 문서는 빈 목록으로 읽는다")
+    func missingParametersDecodeAsEmpty() throws {
+        let old = Data(#"{"symbols":[],"references":[]}"#.utf8)
+        #expect(try JSONDecoder().decode(IndexSnapshot.self, from: old).parameters.isEmpty)
+    }
+
+    @Test("파라미터 목록은 인코딩 왕복을 보존한다")
+    func parametersRoundTrip() throws {
+        var builder = SnapshotBuilder()
+        builder.parameter("p:x", name: "x", functionUSR: "f", isReferenced: false)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let decoded = try JSONDecoder().decode(IndexSnapshot.self, from: encoder.encode(builder.build()))
+        #expect(decoded.parameters.map(\.usr) == ["p:x"])
+        #expect(decoded.parameters[0].isReferenced == false)
+    }
+
+    @Test("스냅샷 병합이 파라미터를 잃지 않는다")
+    func mergingPreservesParameters() {
+        var first = SnapshotBuilder()
+        first.parameter("p:a", name: "a", functionUSR: "f")
+        var second = SnapshotBuilder()
+        second.parameter("p:b", name: "b", functionUSR: "g")
+        #expect(first.build().merging(second.build()).parameters.map(\.usr) == ["p:a", "p:b"])
+    }
+}

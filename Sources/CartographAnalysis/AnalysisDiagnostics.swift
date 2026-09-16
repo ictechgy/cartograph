@@ -14,6 +14,7 @@ public enum AnalysisDiagnostics {
         public static let mainSequenceDistance = "main-sequence-distance"
         public static let metricThreshold = "metric-threshold"
         public static let testOnlySymbol = "test-only-symbol"
+        public static let unusedParameter = "unused-parameter"
     }
 
     /// 순환 의존성 → 진단.
@@ -73,6 +74,28 @@ public enum AnalysisDiagnostics {
                 message: "\(node.kind.rawValue) '\(node.qualifiedName)' is reached only from tests or previews",
                 location: node.location,
                 subject: node.usr ?? node.id.rawValue
+            )
+        }
+    }
+
+    /// 본문에서 읽히지 않는 파라미터 → 진단.
+    ///
+    /// 도달 불가능한 선언이 아니라 살아 있는 함수의 사용되지 않은 입력이다.
+    /// 고치는 방법이 삭제가 아니라 `_` 표기일 수 있으므로 `unused-symbol` 과
+    /// 다른 규칙으로 분리하고, strict 카운트에는 넣지 않는다.
+    public static func unusedParameterDiagnostics(
+        for report: UnusedCodeReport,
+        in graph: CodeGraph
+    ) -> [Diagnostic] {
+        report.unusedParameters.map { parameter in
+            let owner = graph.node(NodeID(parameter.functionUSR))
+            let ownerName = owner?.qualifiedName ?? "function"
+            return Diagnostic(
+                ruleIdentifier: Rule.unusedParameter,
+                severity: .warning,
+                message: "parameter '\(parameter.name)' of '\(ownerName)' is never used",
+                location: parameter.location,
+                subject: parameter.usr
             )
         }
     }

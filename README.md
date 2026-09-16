@@ -208,6 +208,19 @@ cartograph dead --explain UserRepository
 Dead code is defined as *unreachable from a retained root*, not *zero references*. A cluster of
 declarations that only reference each other has plenty of references and is still dead.
 
+`dead` also reports parameters a live function's body never reads, as warnings under the
+`unused-parameter` rule:
+
+```console
+Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.Client.fetch(_:retry:)' is never used
+```
+
+The index does not record references to local symbols, so usage is proven by scanning the
+function body itself. A parameter is reported only when its function is reachable; parameters of
+protocol requirements (which have no body) and parameters in files that could not be scanned are
+never reported. `unused-parameter` warnings are not counted toward `--strict` — the fix is a `_`
+name, not a deletion.
+
 `--report-test-only` answers a different question: which production declarations are reached
 **only** from tests or previews. They are not dead — deleting one breaks a test — but a team wants
 to know that tests are the sole caller. Reported as `info`, so they never fail a build.

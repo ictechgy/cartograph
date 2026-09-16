@@ -103,6 +103,7 @@ public struct IndexStoreProvider: IndexProviding {
     ) -> IndexSnapshot {
         var symbolsByUSR: [String: IndexedSymbol] = [:]
         var definedUSRs: Set<String> = []
+        var parametersByUSR: [String: IndexedParameter] = [:]
         var references: [IndexedReference] = []
         // 관계 없이 기록된 참조와, 그것을 붙일 후보가 되는 정의 위치들.
         // 대상 종류는 발생이 직접 답게 싣는다 — 사전에 없는 그래프 밖 대상도 구분해야 한다.
@@ -134,6 +135,10 @@ public struct IndexStoreProvider: IndexProviding {
                     symbolsByUSR[symbol.usr] = symbol
                 }
                 if isDefinition { definedUSRs.insert(symbol.usr) }
+            }
+            if let parameter = IndexStoreMapping.indexedParameter(from: occurrence),
+               parametersByUSR[parameter.usr] == nil {
+                parametersByUSR[parameter.usr] = parameter
             }
             let occurrenceReferences = IndexStoreMapping.references(from: occurrence, includeSelfReferences: includeSelfReferences)
             references.append(contentsOf: occurrenceReferences)
@@ -196,9 +201,16 @@ public struct IndexStoreProvider: IndexProviding {
         // 순서가 결과에 남는다. 참조는 정렬하지 않는다 — `CodeGraph.init` 이 간선을
         // 서명으로 접고 다시 정렬하기 때문에 여기서의 순서는 출력에 닿지 않는다.
         // 참조 수는 심볼 수의 열 배 규모라 이 정렬만 없애도 명령마다 눈에 띄게 준다.
+        // 파라미터의 사용 여부(isReferenced)는 여기서 정하지 않는다. 인덱스가 지역
+        // 심볼의 참조 발생을 기록하지 않아 발생 단위로 세면 쓰이는 파라미터가 전부
+        // 미사용으로 보고된다 — `SnapshotEnricher` 가 본문 구문 근거로 채운다.
+        let parameters = parametersByUSR.values
+            .sorted { ($0.location.path, $0.location.line, $0.location.column) < ($1.location.path, $1.location.line, $1.location.column) }
+
         return IndexSnapshot(
             symbols: symbolsByUSR.values.sorted { $0.usr < $1.usr },
-            references: resolved
+            references: resolved,
+            parameters: parameters
         )
     }
 

@@ -43,6 +43,12 @@ public struct UnusedCodeReport: Sendable, Equatable {
     /// 죽은 코드가 아니므로 미사용으로 보고하지 않는다. 다만 테스트가 유일한
     /// 사용자라는 사실은 팀이 알아야 할 정보다. 계산하지 않았으면 비어 있다.
     public let testOnly: [GraphNode]
+    /// 본문에서 한 번도 읽히지 않은 함수 파라미터. 위치 순으로 정렬되어 있다.
+    ///
+    /// 미사용 선언과는 다른 종류의 발견이다 — 선언이 도달 불가능한 것이 아니라
+    /// 살아 있는 함수의 입력이 본문에서 쓰이지 않는다는 뜻이다. 고치는 방법이
+    /// 삭제가 아니라 `_` 표기나 시그니처 검토일 수 있으므로 별도 목록으로 분리한다.
+    public let unusedParameters: [IndexedParameter]
     /// 도달 경로 복원을 위한 선행 정점 사전.
     private let predecessors: [NodeID: NodeID]
 
@@ -53,7 +59,8 @@ public struct UnusedCodeReport: Sendable, Equatable {
         totalCount: Int,
         inheritedRetentions: [NodeID: InheritedRetention] = [:],
         predecessors: [NodeID: NodeID] = [:],
-        testOnly: [GraphNode] = []
+        testOnly: [GraphNode] = [],
+        unusedParameters: [IndexedParameter] = []
     ) {
         self.testOnly = testOnly
         self.unused = unused
@@ -62,6 +69,7 @@ public struct UnusedCodeReport: Sendable, Equatable {
         self.totalCount = totalCount
         self.inheritedRetentions = inheritedRetentions
         self.predecessors = predecessors
+        self.unusedParameters = unusedParameters
     }
 
     /// 도달 가능한 정점의 비율(0...1).
@@ -156,6 +164,11 @@ public struct ReachabilityAnalyzer: Sendable {
 
         let unreachable = graph.sortedNodes.filter { !traversal.reachable.contains($0.id) }
         let reported = filterReportable(unreachable, unreachableIDs: Set(unreachable.map(\.id)), graph: graph)
+        let unusedParameters = unusedParameters(
+            in: snapshot,
+            reachable: traversal.reachable,
+            protocolRequirementOwners: protocolRequirementOwners
+        )
 
         return UnusedCodeReport(
             unused: reported,
@@ -171,11 +184,36 @@ public struct ReachabilityAnalyzer: Sendable {
                 conditionalWitnesses: conditional,
                 protocolRequirementOwners: protocolRequirementOwners,
                 graph: graph
-            )
+            ),
+            unusedParameters: unusedParameters
         )
     }
 
     // MARK: - 내부 구현
+
+    /// 본문에서 한 번도 읽히지 않은 파라미터.
+    ///
+    /// 파라미터는 정점이 아니므로 도달성 탐색이 아니라 별도 질의로 계산한다.
+    /// 보고 조건은 둘 다 보존 방향이다: 선언한 함수가 살아 있을 때만 보고하고
+    /// (죽은 함수의 파라미터는 함수의 발견에 덮인다), 프로토콜 요구사항의
+    /// 파라미터는 본문이 없어 미사용이 규칙이므로 제외한다. `newValue` 같은
+    /// 접근자 파라미터는 접근자가 정점이 아니라 부모 해석이 안 되어 자연히 빠진다.
+    private func unusedParameters(
+        in snapshot: IndexSnapshot,
+        reachable: Set<NodeID>,
+        protocolRequirementOwners: [NodeID: NodeID]
+    ) -> [IndexedParameter] {
+        snapshot.parameters.filter { parameter in
+            // 근거가 없는(nil) 파라미터는 모르는 것이므로 보고하지 않는다.
+            guard parameter.isReferenced == false else { return false }
+            let owner = NodeID(parameter.functionUSR)
+            guard reachable.contains(owner),
+                  protocolRequirementOwners[owner] == nil
+            else { return false }
+            return true
+        }
+        .sorted { $0.location < $1.location }
+    }
 
     /// 테스트·프리뷰만 붙잡고 있는 선언.
     ///

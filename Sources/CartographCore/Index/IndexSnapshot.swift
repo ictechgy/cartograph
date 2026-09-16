@@ -28,14 +28,32 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
     /// nil 은 공급자가 이 정보를 주지 않았다는 뜻이고, 빈 사전은 조회했지만 유닛이 없었다는 뜻이다.
     public var indexedFileDates: [String: Date]?
 
+    /// 함수 파라미터 선언 목록. 그래프 정점이 아니라 미사용 파라미터 질의 전용 입력이다.
+    public var parameters: [IndexedParameter]
+
     public init(
         symbols: [IndexedSymbol] = [],
         references: [IndexedReference] = [],
-        indexedFileDates: [String: Date]? = nil
+        indexedFileDates: [String: Date]? = nil,
+        parameters: [IndexedParameter] = []
     ) {
         self.symbols = symbols
         self.references = references
         self.indexedFileDates = indexedFileDates
+        self.parameters = parameters
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case symbols, references, indexedFileDates, parameters
+    }
+
+    /// 파라미터 목록은 뒤늦게 추가된 필드라, 그것이 없는 예전 스냅샷 문서도 읽는다.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        symbols = try container.decode([IndexedSymbol].self, forKey: .symbols)
+        references = try container.decode([IndexedReference].self, forKey: .references)
+        indexedFileDates = try container.decodeIfPresent([String: Date].self, forKey: .indexedFileDates)
+        parameters = try container.decodeIfPresent([IndexedParameter].self, forKey: .parameters) ?? []
     }
 
     /// USR 로 심볼을 찾기 위한 사전. 반복 조회가 많아 미리 만들어 쓴다.
@@ -61,7 +79,8 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         return IndexSnapshot(
             symbols: symbols + other.symbols,
             references: references + other.references,
-            indexedFileDates: dates
+            indexedFileDates: dates,
+            parameters: parameters + other.parameters
         )
     }
 }
