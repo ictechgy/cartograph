@@ -15,6 +15,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   closures, and capture lists) joined to indexed parameter declarations by source position.
   Parameters of protocol requirements, dead functions, and unscanned files are never reported,
   and the warnings do not count toward `--strict` — the fix is a `_` name, not a deletion.
+- `dead` now reports properties that are assigned but never read, under the `assign-only` rule
+  at warning severity. The index records a read/write role on every property reference, so the
+  facts come straight from `SymbolOccurrence.roles`: undirected memberwise-initializer argument
+  labels count as writes, while implicit, dynamic, `addressOf`, or direction-less call accesses
+  mark the property's evidence ambiguous and suppress the finding entirely. Protocol
+  requirements and witnesses (whose reads record on the requirement symbol), overrides,
+  runtime-managed and Objective-C/Interface Builder-exposed declarations, and stored properties
+  of types with synthesized `Equatable`/`Hashable`/`Codable` conformances are excluded. The
+  warnings do not count toward `--strict`.
 
 ## [0.15.1] - 2026-09-16
 

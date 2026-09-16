@@ -133,3 +133,37 @@ struct IndexSnapshotParameterTests {
         #expect(first.build().merging(second.build()).parameters.map(\.usr) == ["p:a", "p:b"])
     }
 }
+
+@Suite("IndexSnapshot 접근 근거 호환")
+struct IndexSnapshotAccessTests {
+    @Test("propertyAccesses 키가 없는 옛 스냅샷 문서는 빈 표로 읽는다")
+    func missingAccessesDecodeAsEmpty() throws {
+        let old = Data(#"{"symbols":[],"references":[]}"#.utf8)
+        #expect(try JSONDecoder().decode(IndexSnapshot.self, from: old).propertyAccesses.isEmpty)
+    }
+
+    @Test("접근 근거는 인코딩 왕복을 보존한다")
+    func accessesRoundTrip() throws {
+        var builder = SnapshotBuilder()
+        builder.propertyAccess("s:x", read: false, write: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let decoded = try JSONDecoder().decode(IndexSnapshot.self, from: encoder.encode(builder.build()))
+        #expect(decoded.propertyAccesses["s:x"] == PropertyAccessFacts(hasWrite: true))
+    }
+
+    @Test("스냅샷 병합이 접근 근거를 OR 로 합친다")
+    func mergingCombinesAccesses() {
+        var first = SnapshotBuilder()
+        first.propertyAccess("s:x", write: true)
+        var second = SnapshotBuilder()
+        second.propertyAccess("s:x", read: true)
+
+        let merged = first.build().merging(second.build())
+        #expect(merged.propertyAccesses["s:x"]
+            == PropertyAccessFacts(hasRead: true, hasWrite: true))
+        // 어느 쪽에서든 관측된 읽기는 읽힌 것이다 — 쓰기만 합쳐져
+        // assign-only 로 오인되면 안 된다.
+        #expect(merged.propertyAccesses["s:x"]?.isAssignOnly == false)
+    }
+}

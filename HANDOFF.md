@@ -1,5 +1,67 @@
 # Handoff
 
+## 2026-09-16 — assign-only 프로퍼티 분석 (feat/competitive-hardening)
+
+`우선순위대로 개선` 3번째(분석 커버리지)의 둘째 항목. `dead`가 대입만 되고 한 번도
+읽히지 않는 프로퍼티·변수를 `assign-only` 경고로 보고한다.
+
+### 설계
+
+- 파라미터와 달리 **사용 근거가 인덱스에 있다** — 프로퍼티 참조 발생에 read/write
+  역할이 붙는다(실측: read 12,187·write 1,320·양쪽 568). 구문 스캔 불필요.
+- 흐름: `IndexStoreMapping.propertyAccess(of:)`가 발생의 역할을
+  `PropertyAccessFacts`(hasRead/hasWrite/hasAmbiguous)로 분류 → 프로바이더가 USR별로
+  접어 `IndexSnapshot.propertyAccesses` → `ReachabilityAnalyzer.assignOnlyProperties`가
+  `isAssignOnly`(쓰기만 있고 읽기·불명 없음)이고 도달 가능한 정점만 보고.
+- 역할 해석(실측 근거):
+  - `ref|read`/`ref|write`/`ref|read|write`(`+=`)는 그대로 센다.
+  - 방향 없는 `ref|contBy` 1,186건은 전부 멤버와이즈 init 인자 라벨 — 값이 그 자리로
+    들어가는 자리이므로 **쓰기**로 센다.
+  - `.implicit`/`.dynamic`/`.addressOf`가 붙으면 방향 비트와 무관하게 **불명** —
+    `&x`는 write만 달고도 피호출자가 읽을 수 있다. 방향 없는 `.call`도 불명.
+  - **접근자 USR에 기록되는 발생은 버린다** — 모든 접근이 프로퍼티 자체 외에
+    `getter:x`/`setter:x`에도 `ref|call|implicit`으로 남는다(15,771건). 그것까지
+    합치면 전부 불명이 되어 질의가 죽는다. kind 가드가 접근자를 자연히 걸러낸다.
+- `$x` 투영값의 접근은 원래 `x`로 합친다(`propertyWrapperFacets` 재사용). `_x`
+  저장소는 합치지 않는다 — 합성 이니셜라이저 잡음 때문(간선 접기와 같은 선택).
+- 보고 제외(전부 보존 방향): 도달 불가, excludedKinds, `.implicit`/`.ignoreComment`/
+  `.runtimeManaged`/`.dynamicDispatch`/`.dynamicReplacement`/ObjC·IB 속성, 프로토콜
+  요구사항 멤버, `.overrides` 간선 보유자(오버라이드·준수 증인 — 읽기가 요구사항
+  심볼에 기록됨), **합성 준수 소유자** — `Equatable`/`Hashable`/`Encodable`/`Decodable`
+  (USR `s:SQ`/`s:SH`/`s:SE`/`s:Se`) 합성 본문은 소스 위치가 없어 읽기가 인덱스에
+  안 남는다. 외부 프로토콜은 그래프 정점이 아니므로 `snapshot.references`의
+  `.conformance` 참조를 직접 본다. 익스텐션에 선언된 준수는 `.extends` 간선으로
+  확장 대상 타입에 전파한다(어휘적 부모·의미상 부모 둘 다 검사).
+- `assign-only`도 `countedRules: [unusedSymbol]` 밖 — strict·임계값에 안 잡힌다.
+- `IndexSnapshot`에 `propertyAccesses` 필드 — 없는 옛 문서는 빈 표로 읽는다.
+  캡처는 포함된 USR만, 리베이스는 USR 키라 그대로 전달.
+
+### 한계 (알려진 것)
+
+- `_x.wrappedValue`/`_x.publisher`처럼 저장소 곁가지로만 읽는 래퍼 프로퍼티는
+  접기지 않아 읽기를 놓칠 수 있다 — 드문 패턴이며 미탐이 아니라 오탐 방향이라
+  추가 근거가 생기면 `_x` 접기를 검토.
+- Mirror 같은 순수 런타임 반사는 인덱스에 흔적이 없다.
+- 자기 분석에서 정탐 6건: `FunctionBinding.ownerUSR`, `QuerySession.baseline`,
+  `Container.scope`, `Request.scope`, `FieldInfo.binding`, `CommandContext.warnings`
+  — 전부 쓰기만 되는 진짜 데드 필드.
+
+### 검증 근거
+
+- `swift test` 전체 통과(신규 29: 분석 17·역할 변환 9·스냅샷 호환 3).
+- 각 제외를 하나씩 꺼서 대응 테스트가 실패함을 확인(overrides·합성 준수·
+  isAssignOnly·runtimeManaged — 전부 문다).
+- `dead --strict` exit 0(179 경고 = 파라미터 173 + assign-only 6, 카운트 제외),
+  `cycles`/`cycles --level type`/`rules --strict` 전부 no findings.
+- `Scripts/coverage.sh`·`verify-cli-contract.sh`·`verify-fixtures.sh` 통과.
+
+### 다음 (우선순위 순서)
+
+3-3. 미사용 import — 래퍼 속성·매크로·합성 코드가 만드는 간접 사용을 보수적으로.
+4. 빌드/인덱스 온보딩 마찰: 인덱스 없음 안내 강화 또는 선택적 빌드 프리스텝.
+
+---
+
 ## 2026-09-16 — 미사용 파라미터 분석 (feat/competitive-hardening)
 
 `우선순위대로 개선` 3번째(분석 커버리지)의 첫 항목. `dead`가 살아 있는 함수의 본문에서

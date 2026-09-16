@@ -15,6 +15,7 @@ public enum AnalysisDiagnostics {
         public static let metricThreshold = "metric-threshold"
         public static let testOnlySymbol = "test-only-symbol"
         public static let unusedParameter = "unused-parameter"
+        public static let assignOnly = "assign-only"
     }
 
     /// 순환 의존성 → 진단.
@@ -96,6 +97,31 @@ public enum AnalysisDiagnostics {
                 message: "parameter '\(parameter.name)' of '\(ownerName)' is never used",
                 location: parameter.location,
                 subject: parameter.usr
+            )
+        }
+    }
+
+    /// 대입만 되고 읽히지 않는 프로퍼티 → 진단.
+    ///
+    /// `unused-parameter` 와 같은 이유로 별도 규칙이다 — 살아 있는 코드가
+    /// 값을 넣기만 하고 꺼내 보지 않는 저장소이지 죽은 선언이 아니므로
+    /// `unused-symbol` 과 섞으면 "지워라" 로 읽힌다. 경고이며 strict
+    /// 카운트에는 넣지 않는다.
+    public static func assignOnlyDiagnostics(
+        for report: UnusedCodeReport,
+        in graph: CodeGraph
+    ) -> [Diagnostic] {
+        report.assignOnly.map { node in
+            let owner = graph.incomingEdges(to: node.id)
+                .first(where: { $0.kind == .member })
+                .flatMap { graph.node($0.source)?.name }
+            let context = owner.map { " of '\($0)'" } ?? ""
+            return Diagnostic(
+                ruleIdentifier: Rule.assignOnly,
+                severity: .warning,
+                message: "\(node.kind.rawValue) '\(node.name)'\(context) is assigned but never read",
+                location: node.location,
+                subject: node.usr ?? node.id.rawValue
             )
         }
     }

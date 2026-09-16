@@ -31,29 +31,39 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
     /// 함수 파라미터 선언 목록. 그래프 정점이 아니라 미사용 파라미터 질의 전용 입력이다.
     public var parameters: [IndexedParameter]
 
+    /// 프로퍼티·변수 USR 별 접근 방향 합산. assign-only 질의 전용 입력이다.
+    ///
+    /// 참조 발생이 하나도 없는 심볼은 키가 없다 — 근거가 없는 것과
+    /// "읽힌 적 없다" 는 다르므로 키 부재를 미사용으로 읽으면 안 된다.
+    public var propertyAccesses: [String: PropertyAccessFacts]
+
     public init(
         symbols: [IndexedSymbol] = [],
         references: [IndexedReference] = [],
         indexedFileDates: [String: Date]? = nil,
-        parameters: [IndexedParameter] = []
+        parameters: [IndexedParameter] = [],
+        propertyAccesses: [String: PropertyAccessFacts] = [:]
     ) {
         self.symbols = symbols
         self.references = references
         self.indexedFileDates = indexedFileDates
         self.parameters = parameters
+        self.propertyAccesses = propertyAccesses
     }
 
     private enum CodingKeys: String, CodingKey {
-        case symbols, references, indexedFileDates, parameters
+        case symbols, references, indexedFileDates, parameters, propertyAccesses
     }
 
-    /// 파라미터 목록은 뒤늦게 추가된 필드라, 그것이 없는 예전 스냅샷 문서도 읽는다.
+    /// 파라미터 목록과 접근 합산은 뒤늦게 추가된 필드라, 그것이 없는 예전 스냅샷 문서도 읽는다.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         symbols = try container.decode([IndexedSymbol].self, forKey: .symbols)
         references = try container.decode([IndexedReference].self, forKey: .references)
         indexedFileDates = try container.decodeIfPresent([String: Date].self, forKey: .indexedFileDates)
         parameters = try container.decodeIfPresent([IndexedParameter].self, forKey: .parameters) ?? []
+        propertyAccesses = try container.decodeIfPresent(
+            [String: PropertyAccessFacts].self, forKey: .propertyAccesses) ?? [:]
     }
 
     /// USR 로 심볼을 찾기 위한 사전. 반복 조회가 많아 미리 만들어 쓴다.
@@ -80,7 +90,12 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
             symbols: symbols + other.symbols,
             references: references + other.references,
             indexedFileDates: dates,
-            parameters: parameters + other.parameters
+            parameters: parameters + other.parameters,
+            propertyAccesses: propertyAccesses.merging(other.propertyAccesses) {
+                var merged = $0
+                merged.merge($1)
+                return merged
+            }
         )
     }
 }

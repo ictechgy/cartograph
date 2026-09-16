@@ -132,6 +132,35 @@ public enum IndexStoreMapping {
         )
     }
 
+    /// 프로퍼티·변수를 대상으로 한 참조 발생의 접근 방향.
+    ///
+    /// 인덱스는 `self.x = v` 에 write, `_ = x` 에 read 역할을 단다. 방향 비트가
+    /// 전혀 없는 참조도 있다 — 전수 조사에서 그 모양은 전부 멤버와이즈
+    /// 이니셜라이저의 인자 라벨이었다(`S(x: v)` 의 `x:` 자리). 값이 그 자리로
+    /// 들어가는 것은 쓰기이므로 쓰기로 센다. 반대로 동적 디스패치·주소 접근·
+    /// 암시적 발생은 방향을 알 수 없어 불명으로 센다 — 하나라도 있으면
+    /// "읽힌 적 없다" 는 말을 못 한다.
+    ///
+    /// 대상이 프로퍼티·변수가 아니거나 참조가 아니면 nil.
+    public static func propertyAccess(of occurrence: SymbolOccurrence) -> PropertyAccessFacts? {
+        guard occurrence.roles.contains(.reference) else { return nil }
+        let kind = symbolKind(occurrence.symbol.kind, subKind: occurrence.symbol.subKind)
+        guard kind == .property || kind == .variable else { return nil }
+        // 암시적·동적·주소 접근은 방향 비트가 있어도 신뢰하지 않는다 — `&x` 처럼
+        // 포인터를 넘기는 접근은 write 만 달고도 읽을 수 있다.
+        if occurrence.roles.contains(.implicit) || occurrence.roles.contains(.dynamic)
+            || occurrence.roles.contains(.addressOf) {
+            return PropertyAccessFacts(hasAmbiguous: true)
+        }
+        let read = occurrence.roles.contains(.read)
+        let write = occurrence.roles.contains(.write)
+        if read || write { return PropertyAccessFacts(hasRead: read, hasWrite: write) }
+        // `handler()` 처럼 호출되는 프로퍼티는 읽어야 호출할 수 있지만, 호출 역할만
+        // 있고 방향이 없으면 추측하지 않는다.
+        if occurrence.roles.contains(.call) { return PropertyAccessFacts(hasAmbiguous: true) }
+        return PropertyAccessFacts(hasWrite: true)
+    }
+
     /// 발생에 붙은 관계를 "의존하는 쪽 → 의존되는 쪽" 방향의 참조로 정규화한다.
     ///
     /// libIndexStore 의 관계 역할은 언제나 "발생 심볼이 관련 심볼에 대해 갖는 관계"로

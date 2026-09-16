@@ -630,3 +630,104 @@ struct UnattributedReferenceTests {
         #expect(references.isEmpty)
     }
 }
+
+@Suite("프로퍼티 접근 방향 변환")
+struct PropertyAccessMappingTests {
+    private func occurrence(
+        kind: IndexSymbolKind = .instanceProperty,
+        roles: SymbolRole
+    ) -> SymbolOccurrence {
+        SymbolOccurrence(
+            symbol: Symbol(usr: "s:x", name: "x", kind: kind, subKind: .none,
+                           properties: SymbolProperty(), language: .swift),
+            location: SymbolLocation(
+                path: "/p/A.swift", timestamp: Date(timeIntervalSince1970: 0),
+                moduleName: "App", isSystem: false, line: 3, utf8Column: 5),
+            roles: roles,
+            symbolProvider: .swift,
+            relations: []
+        )
+    }
+
+    @Test("읽기 역할이 붙은 참조는 읽기로 센다")
+    func readReferenceCountsAsRead() {
+        let access = IndexStoreMapping.propertyAccess(
+            of: occurrence(roles: [.reference, .read, .containedBy]))
+        #expect(access == PropertyAccessFacts(hasRead: true))
+    }
+
+    @Test("쓰기 역할이 붙은 참조는 쓰기로 센다")
+    func writeReferenceCountsAsWrite() {
+        let access = IndexStoreMapping.propertyAccess(
+            of: occurrence(roles: [.reference, .write, .containedBy]))
+        #expect(access == PropertyAccessFacts(hasWrite: true))
+    }
+
+    @Test("읽기와 쓰기가 함께 붙은 복합 접근은 둘 다로 센다")
+    func compoundAccessCountsBoth() {
+        // `x += 1` 은 읽고 쓰는 자리다.
+        let access = IndexStoreMapping.propertyAccess(
+            of: occurrence(roles: [.reference, .read, .write, .containedBy]))
+        #expect(access == PropertyAccessFacts(hasRead: true, hasWrite: true))
+    }
+
+    @Test("방향이 없는 멤버와이즈 인자 라벨은 쓰기 자리로 센다")
+    func undirectedLabelCountsAsWrite() {
+        // `S(x: v)` 의 `x:` 는 인덱스에 ref|containedBy 만 남는다. 값이 그
+        // 자리로 들어가는 것은 쓰기다.
+        let access = IndexStoreMapping.propertyAccess(
+            of: occurrence(roles: [.reference, .containedBy]))
+        #expect(access == PropertyAccessFacts(hasWrite: true))
+    }
+
+    @Test("방향 비트가 있어도 주소 접근이면 불명으로 센다")
+    func addressOfCountsAsAmbiguous() {
+        // `foo(&x)` 는 write 만 달고도 피호출자가 읽을 수 있다.
+        let access = IndexStoreMapping.propertyAccess(
+            of: occurrence(roles: [.reference, .write, .addressOf]))
+        #expect(access == PropertyAccessFacts(hasAmbiguous: true))
+    }
+
+    @Test("암시적·동적 발생은 불명으로 센다")
+    func implicitAndDynamicCountAsAmbiguous() {
+        #expect(IndexStoreMapping.propertyAccess(
+            of: occurrence(roles: [.reference, .read, .implicit]))
+            == PropertyAccessFacts(hasAmbiguous: true))
+        #expect(IndexStoreMapping.propertyAccess(
+            of: occurrence(roles: [.reference, .dynamic]))
+            == PropertyAccessFacts(hasAmbiguous: true))
+    }
+
+    @Test("방향 없는 호출 참조는 불명으로 센다")
+    func directionlessCallCountsAsAmbiguous() {
+        #expect(IndexStoreMapping.propertyAccess(
+            of: occurrence(roles: [.reference, .call]))
+            == PropertyAccessFacts(hasAmbiguous: true))
+    }
+
+    @Test("프로퍼티·변수가 아닌 대상과 참조가 아닌 발생은 세지 않는다")
+    func nonPropertyOccurrencesAreSkipped() {
+        #expect(IndexStoreMapping.propertyAccess(
+            of: occurrence(kind: .instanceMethod, roles: [.reference, .read])) == nil)
+        #expect(IndexStoreMapping.propertyAccess(
+            of: occurrence(roles: [.definition])) == nil)
+    }
+
+    @Test("접근자에 기록된 발생은 프로퍼티로 세지 않는다")
+    func accessorOccurrencesAreSkipped() {
+        // 모든 접근은 프로퍼티 자체와 별도로 getter/setter USR 에도
+        // ref|call|implicit 으로 남는다. 그것까지 합치면 방향 판별이 불가능해져
+        // 질의가 전부 죽으므로, 접근 방향은 프로퍼티 자신의 발생만 본다.
+        let accessor = SymbolOccurrence(
+            symbol: Symbol(usr: "s:x.getter", name: "getter:x", kind: .instanceMethod,
+                           subKind: .accessorGetter, properties: SymbolProperty(), language: .swift),
+            location: SymbolLocation(
+                path: "/p/A.swift", timestamp: Date(timeIntervalSince1970: 0),
+                moduleName: "App", isSystem: false, line: 3, utf8Column: 5),
+            roles: [.reference, .call, .implicit],
+            symbolProvider: .swift,
+            relations: []
+        )
+        #expect(IndexStoreMapping.propertyAccess(of: accessor) == nil)
+    }
+}

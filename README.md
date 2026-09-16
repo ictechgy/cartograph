@@ -221,6 +221,24 @@ protocol requirements (which have no body) and parameters in files that could no
 never reported. `unused-parameter` warnings are not counted toward `--strict` — the fix is a `_`
 name, not a deletion.
 
+`dead` also reports properties that are assigned but never read, as warnings under the
+`assign-only` rule:
+
+```console
+Sources/Net/Client.swift:17:9: warning: property 'cacheKey' of 'Net.Client' is assigned but never read
+```
+
+The index records a read/write role on every property reference, so this check needs no source
+scan. A property is reported only when it is reachable and every observed access is a write —
+memberwise-initializer argument labels count as writes. Protocol requirements and witnesses are
+excluded (reads through the protocol record on the requirement symbol), as are overrides,
+runtime-managed declarations (`@NSManaged`, `@Observable`), Objective-C- and Interface
+Builder-exposed members, implicit declarations, and stored properties of types whose synthesized
+`Equatable`/`Hashable`/`Codable` conformances read them without leaving index evidence. Accesses
+with ambiguous direction — `&x`, dynamic dispatch, macro-expanded or implicit references —
+suppress the finding rather than guess. Like `unused-parameter`, these warnings are not counted
+toward `--strict`: the fix may be an observation point, not a deletion.
+
 `--report-test-only` answers a different question: which production declarations are reached
 **only** from tests or previews. They are not dead — deleting one breaks a test — but a team wants
 to know that tests are the sole caller. Reported as `info`, so they never fail a build.

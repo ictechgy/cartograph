@@ -192,10 +192,22 @@ public struct IndexStoreProvider: IndexProviding {
         )
 
         // 접근자와 프로퍼티 래퍼 곁가지를 모두 원래 선언으로 되돌린다.
+        // 곁가지 표는 접근 방향 합산에도 쓴다 — `$x` 의 읽기는 래핑된 `x` 의 읽기다.
+        let facets = IndexStoreMapping.propertyWrapperFacets(in: Array(symbolsByUSR.values))
         let owners = IndexStoreMapping.accessorOwners(in: occurrences)
-            .merging(IndexStoreMapping.propertyWrapperFacets(in: Array(symbolsByUSR.values))) { first, _ in first }
+            .merging(facets) { first, _ in first }
         let resolved = IndexStoreMapping.resolvingSynthesizedSymbols(references, owners: owners,
                                                                     includeSelfReferences: includeSelfReferences)
+
+        // 프로퍼티별 읽기·쓰기 근거. 저장소 곁가지(`_x`)는 합치지 않는다 — 합성
+        // 이니셜라이저와 접근자가 그것을 늘 건드리므로 접으면 신호가 아니라
+        // 소음이 된다. 이것은 곁가지를 간선으로 접을 때의 선택과 같다.
+        var propertyAccesses: [String: PropertyAccessFacts] = [:]
+        for occurrence in occurrences {
+            guard let access = IndexStoreMapping.propertyAccess(of: occurrence) else { continue }
+            let usr = facets[occurrence.symbol.usr] ?? occurrence.symbol.usr
+            propertyAccesses[usr, default: PropertyAccessFacts()].merge(access)
+        }
 
         // 심볼은 정렬한다. 사전으로 접을 때 같은 USR 이 겹치면 앞의 것이 이기므로
         // 순서가 결과에 남는다. 참조는 정렬하지 않는다 — `CodeGraph.init` 이 간선을
@@ -210,7 +222,8 @@ public struct IndexStoreProvider: IndexProviding {
         return IndexSnapshot(
             symbols: symbolsByUSR.values.sorted { $0.usr < $1.usr },
             references: resolved,
-            parameters: parameters
+            parameters: parameters,
+            propertyAccesses: propertyAccesses
         )
     }
 

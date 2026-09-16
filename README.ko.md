@@ -215,6 +215,22 @@ Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.Client.fetch(
 파일의 파라미터는 보고하지 않습니다. `unused-parameter` 경고는 `--strict` 계산에 넣지 않습니다 —
 고치는 방법은 삭제가 아니라 `_` 표기입니다.
 
+`dead`는 대입은 되지만 한 번도 읽히지 않는 프로퍼티도 `assign-only` 규칙의 경고로 보고합니다:
+
+```console
+Sources/Net/Client.swift:17:9: warning: property 'cacheKey' of 'Net.Client' is assigned but never read
+```
+
+인덱스가 프로퍼티 참조마다 read/write 역할을 남기므로 이 검사는 소스 스캔이 필요 없습니다.
+프로퍼티는 도달 가능할 때만, 그리고 관측된 접근이 전부 쓰기일 때만 보고합니다 — 멤버와이즈
+이니셜라이저의 인자 라벨도 쓰기로 셉니다. 프로토콜 요구사항과 증인(프로토콜 경유의 읽기는
+요구사항 심볼에 기록됨), 오버라이드, 런타임이 관리하는 선언(`@NSManaged`, `@Observable` 등),
+Objective-C·Interface Builder 노출 멤버, 암시적 선언은 제외합니다. 합성 `Equatable`/`Hashable`/
+`Codable` 준수가 저장 프로퍼티를 인덱스에 흔적 없이 읽는 타입의 프로퍼티도 제외합니다.
+`&x`·동적 디스패치·매크로가 펼친 참조처럼 방향을 알 수 없는 접근이 하나라도 있으면 추측하지
+않고 보고를 억제합니다. `unused-parameter`와 마찬가지로 이 경고는 `--strict` 계산에 넣지
+않습니다 — 고치는 방법이 삭제가 아니라 관측 지점일 수 있기 때문입니다.
+
 `--report-test-only`는 다른 질문에 답합니다. **테스트나 프리뷰에서만** 도달하는 생산 선언이
 무엇인가입니다. 죽은 코드가 아닙니다. 지우면 테스트가 깨집니다. 다만 테스트가 유일한
 호출자라는 사실은 팀이 알아야 합니다. `info`로 보고하므로 빌드를 실패시키지 않습니다.

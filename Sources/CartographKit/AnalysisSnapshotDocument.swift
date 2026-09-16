@@ -200,7 +200,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
             revision: revision,
             snapshot: .init(
                 symbols: symbols, references: references, indexedFileDates: dates,
-                parameters: parameters),
+                parameters: parameters, propertyAccesses: snapshot.propertyAccesses),
             edgeKinds: Set(edgeKinds),
             limitations: limitations,
             externalRetentions: externalRetentions,
@@ -443,11 +443,16 @@ extension CartographService {
         let capturedParameters = context.snapshot.parameters.filter {
             includedUSRs.contains($0.functionUSR) && includedSourcePaths.contains($0.location.path)
         }
+        // 접근 근거도 남은 정점의 것만 담는다 — 잘린 심볼의 근거는 질의할 수 없다.
+        let capturedAccesses = context.snapshot.propertyAccesses.filter {
+            includedUSRs.contains($0.key)
+        }
         let capturedSnapshot = IndexSnapshot(
             symbols: capturedSymbols,
             references: capturedReferences,
             indexedFileDates: capturedDates,
-            parameters: capturedParameters
+            parameters: capturedParameters,
+            propertyAccesses: capturedAccesses
         )
         let supplementalPaths = context.supplementalRuntimeSourcePaths
         let capturedRuntimeFiles = context.runtimeFiles?.filter { facts in

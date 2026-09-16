@@ -8,6 +8,7 @@ public struct SnapshotBuilder {
     private var symbols: [IndexedSymbol] = []
     private var references: [IndexedReference] = []
     private var parameters: [IndexedParameter] = []
+    private var propertyAccesses: [String: PropertyAccessFacts] = [:]
     private let defaultModule: String
     private let defaultPath: String
 
@@ -99,7 +100,24 @@ public struct SnapshotBuilder {
         return self
     }
 
+    /// 프로퍼티 하나에 대한 접근 방향 근거를 추가한다.
+    ///
+    /// 파라미터와 달리 접근 근거는 그래프 정점의 USR 을 키로 하는 표다.
+    /// 키가 없는 심볼은 "근거 없음" 이므로 미사용으로 읽히지 않는다.
+    @discardableResult
+    public mutating func propertyAccess(
+        _ usr: String,
+        read: Bool = false,
+        write: Bool = false,
+        ambiguous: Bool = false
+    ) -> Self {
+        propertyAccesses[usr] = PropertyAccessFacts(
+            hasRead: read, hasWrite: write, hasAmbiguous: ambiguous)
+        return self
+    }
+
     public func build() -> IndexSnapshot {
-        IndexSnapshot(symbols: symbols, references: references, parameters: parameters)
+        IndexSnapshot(symbols: symbols, references: references, parameters: parameters,
+                      propertyAccesses: propertyAccesses)
     }
 }
