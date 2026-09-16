@@ -111,6 +111,35 @@ struct UnusedImportAnalyzerTests {
         #expect(analyze(builder.build()).isEmpty)
     }
 
+    @Test("재수출 사슬이 순환해도 사슬 끝 모듈의 통로 import를 억제한다")
+    func cyclicReexportSuppressesConduit() {
+        // Alpha → N, N → {M, D}, M → N 순환에서 M의 폐포는 {M, N, D}다.
+        // 재귀가 Alpha→N→M 순서로 M을 먼저 메모하면 절단된 {N}만 남아
+        // D가 빠지고, 그 결과 App의 `import M`이 통로가 아니라는 오판이
+        // 나온다. 고정점 폐포는 경로와 무관하게 전체 도달 집합을 구한다.
+        var builder = SnapshotBuilder(module: "App")
+        builder.symbol("s:3App1SV", module: "App")
+        builder.symbol("s:5Alpha1AV", module: "Alpha", path: "/p/Alpha/A.swift")
+        builder.symbol("s:1N1NV", module: "N", path: "/p/N/N.swift")
+        builder.symbol("s:1M1MV", module: "M", path: "/p/M/M.swift")
+        builder.symbol("s:1D1DV", module: "D", path: "/p/D/D.swift")
+        builder.importDecl("N", path: "/p/Alpha/A.swift", line: 1, isReexported: true)
+        builder.fileModuleUsage(path: "/p/Alpha/A.swift",
+            owningModule: "Alpha", referencedModules: ["Alpha"])
+        builder.importDecl("M", path: "/p/N/N.swift", line: 1, isReexported: true)
+        builder.importDecl("D", path: "/p/N/N.swift", line: 2, isReexported: true)
+        builder.fileModuleUsage(path: "/p/N/N.swift",
+            owningModule: "N", referencedModules: ["N"])
+        builder.importDecl("N", path: "/p/M/M.swift", line: 1, isReexported: true)
+        builder.fileModuleUsage(path: "/p/M/M.swift",
+            owningModule: "M", referencedModules: ["M"])
+        // App 파일은 M만 import하고 D 심볼을 쓴다 — M → N → D 통로다.
+        builder.importDecl("M", line: 1)
+        builder.fileModuleUsage(owningModule: "App",
+            referencedModules: ["App", "D"])
+        #expect(analyze(builder.build()).isEmpty)
+    }
+
     @Test("외부 모듈을 재수출하는 프로젝트 모듈은 어떤 미설명 모듈이든 전달할 수 있다")
     func externalReexportIsWildcard() {
         var builder = SnapshotBuilder(module: "App")

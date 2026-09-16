@@ -98,25 +98,39 @@ public enum UnusedImportAnalyzer {
                   !fact.module.isEmpty else { continue }
             direct[owner, default: []].insert(fact.module)
         }
+        // 전이 폐포는 고정점 반복으로 구한다. 재귀 DFS에서 순환을 만나면
+        // "조상 경로에서 절단된" 부분 폐포가 그대로 메모되어 도달 가능한
+        // 모듈이 빠진다 — 폐포가 작아지면 maySupply 가 거짓을 돌려
+        // 재수출 통로인 import를 미사용으로 오보한다.
         var closures: [String: ReexportClosure] = [:]
-        func closure(of module: String, visiting: Set<String>) -> ReexportClosure {
-            if let done = closures[module] { return done }
-            guard !visiting.contains(module) else { return ReexportClosure(modules: [], hasExternalEdge: false) }
-            var result = ReexportClosure(modules: [], hasExternalEdge: false)
-            for next in direct[module] ?? [] {
-                guard projectModules.contains(next) else {
-                    result.hasExternalEdge = true
-                    continue
+        for (module, targets) in direct {
+            var closure = ReexportClosure(modules: [], hasExternalEdge: false)
+            for next in targets {
+                if projectModules.contains(next) {
+                    closure.modules.insert(next)
+                } else {
+                    closure.hasExternalEdge = true
                 }
-                result.modules.insert(next)
-                let inner = closure(of: next, visiting: visiting.union([module]))
-                result.modules.formUnion(inner.modules)
-                result.hasExternalEdge = result.hasExternalEdge || inner.hasExternalEdge
             }
-            closures[module] = result
-            return result
+            closures[module] = closure
         }
-        for module in direct.keys.sorted() { _ = closure(of: module, visiting: []) }
+        var changed = true
+        while changed {
+            changed = false
+            for module in direct.keys.sorted() {
+                var grown = closures[module]!
+                for next in grown.modules {
+                    guard let inner = closures[next] else { continue }
+                    if !grown.modules.isSuperset(of: inner.modules)
+                        || (inner.hasExternalEdge && !grown.hasExternalEdge) {
+                        grown.modules.formUnion(inner.modules)
+                        grown.hasExternalEdge = grown.hasExternalEdge || inner.hasExternalEdge
+                        changed = true
+                    }
+                }
+                closures[module] = grown
+            }
+        }
         return closures
     }
 }
