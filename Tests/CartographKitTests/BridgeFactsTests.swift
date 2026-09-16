@@ -1190,6 +1190,26 @@ struct BridgeFactsTests {
         #expect(document.facts.first?.method == nil)
     }
 
+    @Test("events 문서도 자신의 관측 공백을 싣는다")
+    func eventsDocumentCarriesCoverageCounts() throws {
+        let service = makeService(files: [
+            "/p/A.swift": "let events = FlutterEventChannel(name: \"e\", binaryMessenger: m)\n",
+            "/p/Native.m": "void forward(void) {}\n",
+        ], snapshot: IndexSnapshot())
+        let document = try service.bridgeFacts(generatedAt: fixedDate, events: true)
+        #expect(document.transport == "event-channel")
+        #expect(document.limitations.contains { $0.hasPrefix("unscanned-event-channels: 1") })
+        #expect(document.limitations.contains { $0.hasPrefix("objective-c-sources: 1") })
+    }
+
+    @Test("messages와 events를 함께 켜면 문서를 만들지 않고 설정 오류로 거절한다")
+    func rejectsMessagesAndEventsTogether() throws {
+        let service = makeService(files: ["/p/A.swift": "struct A {}"], snapshot: IndexSnapshot())
+        #expect(throws: CartographError.self) {
+            try service.bridgeFacts(messages: true, events: true)
+        }
+    }
+
     @Test("closure 없는 Basic method reference는 명시적인 limitation을 남긴다")
     func reportsUnscopedMessageHandler() {
         let document = BridgeFactsDocument(

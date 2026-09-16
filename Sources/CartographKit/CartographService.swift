@@ -791,6 +791,13 @@ public struct CartographService: Sendable {
         messages: Bool = false,
         events: Bool = false
     ) throws -> BridgeFactsDocument {
+        // 두 플래그를 함께 켜면 종류별 emit 가드가 서로를 상쇄해 어떤 사실도 나오지
+        // 않는다. 조용히 빈 문서를 돌려주는 대신 설정 오류로 거절한다 — CLI 도 같은
+        // 검사를 하지만 이 API 는 그 아래 공개 경계다.
+        guard !(messages && events) else {
+            throw CartographError.invalidConfiguration(path: projectPath, reason:
+                "--messages and --events produce separate documents; pass one flag at a time.")
+        }
         let canonicalProject: String
         do {
             canonicalProject = try environment.fileSystem.realPath(at: projectPath)
