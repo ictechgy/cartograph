@@ -1033,6 +1033,33 @@ struct BridgeFactScannerTests {
         #expect(result.facts.isEmpty)
     }
 
+    @Test("다른 채널 종류로 증명된 수신자의 setStreamHandler는 사실로 남기지 않는다")
+    func provenNonEventReceiverProducesNoStreamFact() {
+        let source = """
+            let methods = FlutterMethodChannel(name: "com.example/methods", binaryMessenger: m)
+            methods.setStreamHandler(self)
+            let basics = BasicMessageChannel<Any?>(name: "com.example/basic", binaryMessenger: m)
+            basics.setStreamHandler(self)
+            FlutterMethodChannel(name: "com.example/inline", binaryMessenger: m).setStreamHandler(self)
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", events: true)
+        #expect(result.facts.isEmpty)
+    }
+
+    @Test("비교가 참임을 보장하지 않는 조건 형태의 if는 분기 근거를 붙이지 않는다")
+    func negatedIfConditionCarriesNoBranchScope() {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                if !(call.method == "a") { result(helperA()) }
+                if call.method == "b" || flag { result(helperB()) }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["a", "b"])
+        #expect(handled.allSatisfy { $0.handlerScope == nil })
+    }
+
     @Test("같은 절의 case 항목들은 같은 분기 범위를 나눈다")
     func siblingCaseItemsShareBranchScope() {
         let source = """

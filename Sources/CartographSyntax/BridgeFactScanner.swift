@@ -921,8 +921,12 @@ final class BridgeFactCollector: SyntaxVisitor {
         let isNil = node.arguments.first.map { BindingCollector.isNilHandler($0.expression) } ?? false
         if events, member.declName.baseName.text == "setStreamHandler", !isNil {
             let registration = registeredChannel(of: node, receiver: member.base)
-            // 수신자를 못 풀어도 `setStreamHandler` 는 EventChannel 에만 있다. 이름이
-            // 없다고 사실을 버리면 isthmus 가 스트림 핸들러 존재 자체를 모른다.
+            // 다른 채널 종류로 증명된 수신자는 스트림 등록이 아니다. 미증명 수신자는
+            // 메시지 경로와 같이 동적 이름의 사실로 남긴다 — `resolveChannel` 의 `.method`
+            // 기본값은 "method 채널로 증명됨"이 아니라 "못 풂"이라 섞으면 안 된다.
+            if let proven = provenChannelKind(of: node, receiver: member.base), proven != .event {
+                return .visitChildren
+            }
             let channelName = registration.flatMap { $0.kind == .event ? $0.name : nil }
                 ?? .dynamic(member.base?.trimmedDescription ?? "setStreamHandler")
             emit(.streamHandle, target: .flutter, channel: channelName, at: node)
@@ -986,6 +990,20 @@ final class BridgeFactCollector: SyntaxVisitor {
     /// 채널 표현식을 이름으로 푼다. 인라인 생성, 변수, 그 밖의 표현식 순으로 본다.
     private func resolveChannel(_ expression: ExprSyntax) -> (name: ResolvedName, kind: BridgeChannelKind)? {
         resolveChannel(expression, in: context)
+    }
+
+    /// 채널 생성자나 그에 묶인 변수로 종류가 증명될 때만 그 종류. 증명이 없으면 nil —
+    /// `resolveChannel` 은 못 푼 표현식에 `.method` 기본값을 붙이므로 "다른 종류로
+    /// 증명됨"과 "못 풂"을 그 반환값으로는 구분할 수 없다.
+    private func provenChannelKind(of call: FunctionCallExprSyntax, receiver: ExprSyntax?) -> BridgeChannelKind? {
+        let expression = call.arguments.first(where: { $0.label?.text == "channel" })?.expression ?? receiver
+        guard let expression else { return nil }
+        if let inline = bindings.channelConstruction(expression, in: context) { return inline.kind }
+        if let name = BindingCollector.identifierName(of: expression),
+           let bound = bindings.channelDetails(named: name, in: context), let bound {
+            return bound.kind
+        }
+        return nil
     }
 
     private func resolveChannel(
@@ -1107,11 +1125,14 @@ final class BridgeFactCollector: SyntaxVisitor {
         var current = node.parent
         while let syntax = current {
             if let ifExpression = syntax.as(IfExprSyntax.self) {
-                let inCondition = ifExpression.conditions.contains { element in
-                    node.position.utf8Offset >= element.position.utf8Offset
-                        && node.endPosition.utf8Offset <= element.endPosition.utf8Offset
+                // then 본문이 이 비교의 참을 요구할 때만 분기 근거다. `!(x == "a")`나
+                // `x == "a" || y` 처럼 조건 요소가 이 `==` 자체가 아니면 본문 실행이
+                // 그 메서드를 보장하지 않으므로 근거를 붙이지 않는다.
+                let isPositiveCondition = ifExpression.conditions.contains { element in
+                    guard case let .expression(condition) = element.condition else { return false }
+                    return Self.unparenthesized(condition).id == node.id
                 }
-                guard inCondition else { return nil }
+                guard isPositiveCondition else { return nil }
                 return sourceScope(
                     from: ifExpression.body.positionAfterSkippingLeadingTrivia,
                     to: ifExpression.body.endPosition
