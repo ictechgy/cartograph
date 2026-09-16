@@ -167,3 +167,48 @@ struct IndexSnapshotAccessTests {
         #expect(merged.propertyAccesses["s:x"]?.isAssignOnly == false)
     }
 }
+
+@Suite("IndexSnapshot import 근거 호환")
+struct IndexSnapshotImportTests {
+    @Test("imports·fileModuleUsages 키가 없는 옛 스냅샷 문서는 빈 값으로 읽는다")
+    func missingImportFactsDecodeAsEmpty() throws {
+        let old = Data(#"{"symbols":[],"references":[]}"#.utf8)
+        let decoded = try JSONDecoder().decode(IndexSnapshot.self, from: old)
+        #expect(decoded.imports.isEmpty)
+        #expect(decoded.fileModuleUsages.isEmpty)
+    }
+
+    @Test("import와 모듈 사용 근거는 인코딩 왕복을 보존한다")
+    func importFactsRoundTrip() throws {
+        var builder = SnapshotBuilder()
+        builder.importDecl("Foundation.Networking", line: 2, isConditional: true)
+        builder.fileModuleUsage(owningModule: "App",
+            referencedModules: ["App", "Foundation"], hasUnattributedReferences: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let decoded = try JSONDecoder().decode(IndexSnapshot.self, from: encoder.encode(builder.build()))
+        #expect(decoded.imports.map(\.module) == ["Foundation"])
+        #expect(decoded.imports[0].isConditional)
+        #expect(decoded.fileModuleUsages["/project/Sources/App/App.swift"]
+            == FileModuleUsage(owningModule: "App",
+                referencedModules: ["App", "Foundation"], hasUnattributedReferences: true))
+    }
+
+    @Test("스냅샷 병합이 import와 모듈 사용 근거를 보존하고 합친다")
+    func mergingPreservesImportFacts() {
+        var first = SnapshotBuilder()
+        first.importDecl("Foundation", line: 1)
+        first.fileModuleUsage(path: "/p/A.swift", owningModule: "App",
+            referencedModules: ["App"], hasUnattributedReferences: true)
+        var second = SnapshotBuilder()
+        second.importDecl("Combine", path: "/p/B.swift", line: 1)
+        second.fileModuleUsage(path: "/p/A.swift", referencedModules: ["Combine"])
+
+        let merged = first.build().merging(second.build())
+        #expect(merged.imports.map(\.module) == ["Foundation", "Combine"])
+        // 같은 파일의 근거는 합쳐진다 — 미귀속 표식은 어느 쪽에서 세워도 살아남아야 한다.
+        #expect(merged.fileModuleUsages["/p/A.swift"]
+            == FileModuleUsage(owningModule: "App",
+                referencedModules: ["App", "Combine"], hasUnattributedReferences: true))
+    }
+}

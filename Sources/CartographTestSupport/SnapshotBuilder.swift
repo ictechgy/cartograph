@@ -9,6 +9,8 @@ public struct SnapshotBuilder {
     private var references: [IndexedReference] = []
     private var parameters: [IndexedParameter] = []
     private var propertyAccesses: [String: PropertyAccessFacts] = [:]
+    private var imports: [IndexedImport] = []
+    private var fileModuleUsages: [String: FileModuleUsage] = [:]
     private let defaultModule: String
     private let defaultPath: String
 
@@ -116,8 +118,52 @@ public struct SnapshotBuilder {
         return self
     }
 
+    /// `import` 선언 하나를 추가한다.
+    ///
+    /// 실제 파이프라인에서는 구문 분석이 이 목록을 채운다 — 인덱스는 import를
+    /// 모듈 심볼 표식으로만 남겨 속성과 `#if` 여부를 알 수 없기 때문이다.
+    @discardableResult
+    public mutating func importDecl(
+        _ modulePath: String,
+        path: String? = nil,
+        line: Int = 1,
+        scopedKind: String? = nil,
+        isConditional: Bool = false,
+        isReexported: Bool = false,
+        isIgnored: Bool = false
+    ) -> Self {
+        imports.append(
+            IndexedImport(
+                modulePath: modulePath.components(separatedBy: "."),
+                scopedKind: scopedKind,
+                isConditional: isConditional,
+                isReexported: isReexported,
+                isIgnored: isIgnored,
+                location: SourceLocation(path: path ?? defaultPath, line: line, column: 1)
+            )
+        )
+        return self
+    }
+
+    /// 파일 하나의 모듈 사용 근거를 추가한다.
+    @discardableResult
+    public mutating func fileModuleUsage(
+        path: String? = nil,
+        owningModule: String? = nil,
+        referencedModules: Set<String> = [],
+        hasUnattributedReferences: Bool = false
+    ) -> Self {
+        fileModuleUsages[path ?? defaultPath] = FileModuleUsage(
+            owningModule: owningModule,
+            referencedModules: referencedModules,
+            hasUnattributedReferences: hasUnattributedReferences
+        )
+        return self
+    }
+
     public func build() -> IndexSnapshot {
         IndexSnapshot(symbols: symbols, references: references, parameters: parameters,
-                      propertyAccesses: propertyAccesses)
+                      propertyAccesses: propertyAccesses, imports: imports,
+                      fileModuleUsages: fileModuleUsages)
     }
 }

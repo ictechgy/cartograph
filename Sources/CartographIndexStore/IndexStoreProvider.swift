@@ -105,6 +105,10 @@ public struct IndexStoreProvider: IndexProviding {
         var definedUSRs: Set<String> = []
         var parametersByUSR: [String: IndexedParameter] = [:]
         var references: [IndexedReference] = []
+        // 미사용 import 질의의 재료 — 파일이 참조한 선언의 모듈 귀속.
+        // `c:`/`e:` USR처럼 모듈을 담지 않는 대상은 선언 사전이 완성된 뒤에 푼다.
+        var fileModuleUsages: [String: FileModuleUsage] = [:]
+        var deferredUSRsByFile: [String: Set<String>] = [:]
         // 관계 없이 기록된 참조와, 그것을 붙일 후보가 되는 정의 위치들.
         // 대상 종류는 발생이 직접 답게 싣는다 — 사전에 없는 그래프 밖 대상도 구분해야 한다.
         var unattributed: [(usr: String, location: SourceLocation, targetKind: SymbolKind)] = []
@@ -173,6 +177,25 @@ public struct IndexStoreProvider: IndexProviding {
                     module: occurrence.location.moduleName
                 )
             }
+
+            // 파일의 모듈 사용 근거. 참조 발생의 대상과 선언의 관계 대상(상속·
+            // 준수·오버라이드 등)이 모두 "파일이 그 모듈을 썼다"는 증거다.
+            // 선언 발생 자체는 사용이 아니므로 심볼 USR은 참조 역할일 때만 센다.
+            let usagePath = occurrence.location.path
+            if !occurrence.location.moduleName.isEmpty {
+                fileModuleUsages[usagePath, default: FileModuleUsage()]
+                    .owningModule = occurrence.location.moduleName
+            }
+            if occurrence.roles.contains(.reference) {
+                accumulateModuleEvidence(
+                    usr: occurrence.symbol.usr, path: usagePath,
+                    usages: &fileModuleUsages, deferred: &deferredUSRsByFile)
+            }
+            for relation in occurrence.relations {
+                accumulateModuleEvidence(
+                    usr: relation.symbol.usr, path: usagePath,
+                    usages: &fileModuleUsages, deferred: &deferredUSRsByFile)
+            }
         }
 
         if includeExternalSymbols {
@@ -181,6 +204,20 @@ public struct IndexStoreProvider: IndexProviding {
                       let external = IndexStoreMapping.externalSymbol(from: occurrence)
                 else { continue }
                 symbolsByUSR[external.usr] = external
+            }
+        }
+
+        // 선언 사전이 완성된 뒤에 미뤄 둔 USR을 푼다. 프로젝트가 인덱스한
+        // clang 선언은 여기서 모듈이 드러나고, 끝내 못 찾은 것은 "어느
+        // 모듈인지 모르는 참조가 있다"는 표식으로 남긴다 — 그 파일에서는
+        // 어떤 import도 미사용으로 보고할 수 없다.
+        for (path, usrs) in deferredUSRsByFile {
+            for usr in usrs {
+                if let module = symbolsByUSR[usr]?.module, !module.isEmpty {
+                    fileModuleUsages[path]?.referencedModules.insert(module)
+                } else {
+                    fileModuleUsages[path]?.hasUnattributedReferences = true
+                }
             }
         }
 
@@ -223,8 +260,26 @@ public struct IndexStoreProvider: IndexProviding {
             symbols: symbolsByUSR.values.sorted { $0.usr < $1.usr },
             references: resolved,
             parameters: parameters,
-            propertyAccesses: propertyAccesses
+            propertyAccesses: propertyAccesses,
+            fileModuleUsages: fileModuleUsages
         )
+    }
+
+    /// USR 하나의 모듈 귀속 단서를 파일의 사용 근거에 누적한다.
+    private static func accumulateModuleEvidence(
+        usr: String,
+        path: String,
+        usages: inout [String: FileModuleUsage],
+        deferred: inout [String: Set<String>]
+    ) {
+        switch IndexStoreMapping.moduleEvidence(ofUSR: usr) {
+        case .module(let module):
+            usages[path, default: FileModuleUsage()].referencedModules.insert(module)
+        case .implicit:
+            break
+        case .deferred:
+            deferred[path, default: []].insert(usr)
+        }
     }
 
     private func openDatabase() throws -> IndexStoreDB {

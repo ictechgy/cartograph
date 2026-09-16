@@ -55,6 +55,12 @@ public struct UnusedCodeReport: Sendable, Equatable {
     /// 않는 저장소다. 고치는 방법이 삭제가 아닐 수 있으므로(로그·관측 지점으로
     /// 쓰려던 것일 수 있다) 별도 목록으로 분리한다.
     public let assignOnly: [GraphNode]
+    /// 파일의 참조 근거가 증명하지 못하는 `import` 선언. 위치 순으로 정렬되어 있다.
+    ///
+    /// 도달성과 무관한 별도 질이다 — 죽은 파일의 import도 import로서는
+    /// 미사용이다. 재수출·조건부·무시 표식이 있거나 근거를 확신할 수 없는
+    /// 파일의 import는 목록에 나타나지 않는다.
+    public let unusedImports: [IndexedImport]
     /// 도달 경로 복원을 위한 선행 정점 사전.
     private let predecessors: [NodeID: NodeID]
 
@@ -67,7 +73,8 @@ public struct UnusedCodeReport: Sendable, Equatable {
         predecessors: [NodeID: NodeID] = [:],
         testOnly: [GraphNode] = [],
         unusedParameters: [IndexedParameter] = [],
-        assignOnly: [GraphNode] = []
+        assignOnly: [GraphNode] = [],
+        unusedImports: [IndexedImport] = []
     ) {
         self.testOnly = testOnly
         self.unused = unused
@@ -78,6 +85,7 @@ public struct UnusedCodeReport: Sendable, Equatable {
         self.predecessors = predecessors
         self.unusedParameters = unusedParameters
         self.assignOnly = assignOnly
+        self.unusedImports = unusedImports
     }
 
     /// 도달 가능한 정점의 비율(0...1).
@@ -200,7 +208,8 @@ public struct ReachabilityAnalyzer: Sendable {
                 graph: graph
             ),
             unusedParameters: unusedParameters,
-            assignOnly: assignOnly
+            assignOnly: assignOnly,
+            unusedImports: UnusedImportAnalyzer.analyze(snapshot)
         )
     }
 

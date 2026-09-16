@@ -1,5 +1,4 @@
 import CartographCore
-import Foundation
 
 /// 이름이나 USR 로 정점을 찾은 결과.
 public enum GraphNodeLookup: Sendable, Equatable {

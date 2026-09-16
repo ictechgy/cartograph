@@ -1,4 +1,3 @@
-import Foundation
 
 /// 값 관계는 심볼 의존 간선과 분리해 보관한다. 숫자 ID는 함수 안에서만 유일하다.
 public struct ValueFlowInstruction: Hashable, Sendable, Codable {

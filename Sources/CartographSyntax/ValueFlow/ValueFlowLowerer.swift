@@ -1,5 +1,4 @@
 import CartographCore
-import Foundation
 import SwiftSyntax
 
 /// 수집된 선언을 함수별 명령과 CFG 블록으로 낮추는 내부 상태.

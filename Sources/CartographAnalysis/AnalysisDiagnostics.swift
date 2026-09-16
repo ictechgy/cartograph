@@ -16,6 +16,7 @@ public enum AnalysisDiagnostics {
         public static let testOnlySymbol = "test-only-symbol"
         public static let unusedParameter = "unused-parameter"
         public static let assignOnly = "assign-only"
+        public static let unusedImport = "unused-import"
     }
 
     /// 순환 의존성 → 진단.
@@ -122,6 +123,23 @@ public enum AnalysisDiagnostics {
                 message: "\(node.kind.rawValue) '\(node.name)'\(context) is assigned but never read",
                 location: node.location,
                 subject: node.usr ?? node.id.rawValue
+            )
+        }
+    }
+
+    /// 참조 근거가 증명하지 못하는 import → 진단.
+    ///
+    /// 선언의 생사가 아니라 파일의 모듈 의존 표시에 대한 발견이므로 별도
+    /// 규칙이다 — 지워도 되는가는 삭제 판정이 아니라 "이 파일에서 그 모듈의
+    /// 선언을 참조한 적이 없다"는 뜻이다. 경고이며 strict 카운트에는 넣지 않는다.
+    public static func unusedImportDiagnostics(for report: UnusedCodeReport) -> [Diagnostic] {
+        report.unusedImports.map { fact in
+            Diagnostic(
+                ruleIdentifier: Rule.unusedImport,
+                severity: .warning,
+                message: "import '\(fact.spelling)' is never used",
+                location: fact.location,
+                subject: "import:\(fact.location.path):\(fact.spelling)"
             )
         }
     }

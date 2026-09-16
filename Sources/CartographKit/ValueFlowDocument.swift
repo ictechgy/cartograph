@@ -1,7 +1,6 @@
 import CartographAnalysis
 import CartographCore
 import CartographSyntax
-import Foundation
 
 /// 선택한 함수의 호출 문맥과 그 근거 그래프를 함께 내보낸다.
 public struct ValueFlowDocument: Sendable, Codable {

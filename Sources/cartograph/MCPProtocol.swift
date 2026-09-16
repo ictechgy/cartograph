@@ -1,5 +1,4 @@
 import Foundation
-import CartographCore
 
 /// JSON-RPC에서 사용하는 작은 JSON 값 표현.
 enum MCPJSONValue: Codable, Equatable, Sendable {

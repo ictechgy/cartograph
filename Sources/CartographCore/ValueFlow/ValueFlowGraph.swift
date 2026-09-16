@@ -1,4 +1,3 @@
-import Foundation
 
 /// 분석 예산은 넘친 값을 미상으로 바꾸며, 부분 결과가 완전한 사실처럼 나가지 않게 한다.
 public struct ValueFlowLimits: Equatable, Sendable, Codable {

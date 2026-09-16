@@ -239,6 +239,24 @@ with ambiguous direction — `&x`, dynamic dispatch, macro-expanded or implicit 
 suppress the finding rather than guess. Like `unused-parameter`, these warnings are not counted
 toward `--strict`: the fix may be an observation point, not a deletion.
 
+`dead` also reports `import` declarations the file's references never use, as warnings under the
+`unused-import` rule:
+
+```console
+Sources/Net/Client.swift:3:1: warning: import 'Combine' is never used
+```
+
+A Swift USR encodes its owning module, so the set of modules a file actually references is
+recovered from the index; the `c:@M@M` marker an `import` itself leaves behind never counts as
+usage. Because usage can also arrive through a re-export, reporting is deliberately
+conservative: an import is reported only when the file's usage evidence is complete — no
+unattributable references (clang/Objective-C USRs carry no module) and no referenced module the
+file never imported. Conditional (`#if`) imports, re-exporting imports (`@_exported`,
+`public import`), and imports marked `// cartograph:ignore` are never reported. Scoped imports
+like `import struct Foundation.Bundle` are judged by their head module — a use of anything in
+`Foundation` counts as use of the import — and the diagnostic spells the full form. Like the
+other warning rules, `unused-import` does not count toward `--strict`.
+
 `--report-test-only` answers a different question: which production declarations are reached
 **only** from tests or previews. They are not dead — deleting one breaks a test — but a team wants
 to know that tests are the sole caller. Reported as `info`, so they never fail a build.

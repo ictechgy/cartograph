@@ -239,6 +239,10 @@ public struct SnapshotEnricher: Sendable {
             return updated
         }
         enriched.parameters = joinedParameters(snapshot.parameters, with: facts)
+        // import는 인덱스가 모듈 심볼 표식(`c:@M@…`)만 남기고 속성·`#if` 여부를
+        // 모르므로 구문 사실이 유일한 출처다. 사실을 못 얻은 파일은 목록에
+        // 나타나지 않고, 그 파일의 import는 미사용으로 보고되지 않는다.
+        enriched.imports = facts.keys.sorted().flatMap { facts[$0]?.imports ?? [] }
         return LocalFunctionBinder.enrichWithDiagnostics(enriched,
             scopes: facts.keys.sorted().flatMap { facts[$0]?.localFunctionScopes ?? [] },
             freshPaths: freshSourcePaths, edgeKinds: edgeKinds, freshnessFailures: freshnessFailures)

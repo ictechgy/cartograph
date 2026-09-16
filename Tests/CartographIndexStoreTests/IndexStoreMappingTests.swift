@@ -731,3 +731,166 @@ struct PropertyAccessMappingTests {
         #expect(IndexStoreMapping.propertyAccess(of: accessor) == nil)
     }
 }
+
+@Suite("참조 대상의 모듈 귀속")
+struct ModuleUsageMappingTests {
+    private func symbol(
+        _ usr: String,
+        name: String? = nil,
+        kind: IndexSymbolKind = .struct,
+        subKind: IndexSymbolSubKind = .none
+    ) -> Symbol {
+        Symbol(usr: usr, name: name ?? usr, kind: kind, subKind: subKind,
+               properties: SymbolProperty(), language: .swift)
+    }
+
+    private func location(
+        _ path: String = "/p/A.swift",
+        module: String = "App",
+        isSystem: Bool = false,
+        line: Int = 3
+    ) -> SymbolLocation {
+        SymbolLocation(
+            path: path, timestamp: Date(timeIntervalSince1970: 0), moduleName: module,
+            isSystem: isSystem, line: line, utf8Column: 5
+        )
+    }
+
+    private func occurrence(
+        _ symbol: Symbol,
+        roles: SymbolRole,
+        location: SymbolLocation? = nil,
+        relations: [SymbolRelation] = []
+    ) -> SymbolOccurrence {
+        SymbolOccurrence(
+            symbol: symbol, location: location ?? self.location(), roles: roles,
+            symbolProvider: .swift, relations: relations
+        )
+    }
+
+    @Test("Swift USR의 길이 접두에서 모듈 이름을 읽는다")
+    func parsesModuleBearingSwiftUSR() {
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:10Foundation4DateV") == .module("Foundation"))
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:14CartographCore9EdgeKindO")
+            == .module("CartographCore"))
+        // 모듈 이름이 숫자로 시작·끝나는 경우도 길이로만 자른다.
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:3A2B1TV") == .module("A2B"))
+    }
+
+    @Test("모듈 문맥 없는 Swift USR은 묵시로 본다")
+    func treatsShorthandSwiftUSRAsImplicit() {
+        // stdlib 축약형(`s:Si`, `s:SQ`)과 컴파일러 생성 심볼(`s:s8SendableP`)은
+        // import 없이 참조할 수 있으므로 사용 근거로도 미귀속으로도 세지 않는다.
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:Si") == .implicit)
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:s8SendableP") == .implicit)
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:SH") == .implicit)
+    }
+
+    @Test("import 문이 남기는 모듈 심볼 표식은 사용으로 세지 않는다")
+    func moduleMarkerIsImplicit() {
+        // `import Foundation` 은 `c:@M@Foundation` 참조를 남긴다. 그것을 사용
+        // 근거로 세면 모든 import가 자기 자신 때문에 "사용됨"이 된다.
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "c:@M@Foundation") == .implicit)
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "c:@M@CartographCore") == .implicit)
+    }
+
+    @Test("모듈을 담지 않는 외국어 USR은 지연 귀속한다")
+    func foreignLanguageUSRsAreDeferred() {
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "c:objc(cs)UIView") == .deferred)
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "c:@F@printf") == .deferred)
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "e:@E@SomeEnum") == .deferred)
+    }
+
+    @Test("길이 접두가 실제 길이보다 크면 귀속하지 못한 것으로 둔다")
+    func truncatedLengthPrefixIsDeferred() {
+        // `s:99A` 는 모듈명 99자를 약속하지만 한 글자뿐이다 — 파싱이 어긋난
+        // USR을 임의 모듈로 읽으면 엉뚱한 import가 살아난다.
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:99A") == .deferred)
+    }
+
+    @Test("참조 발생의 모듈을 파일별로 모으고 발생 위치의 타깃을 소유 모듈로 둔다")
+    func collectsReferencedModulesPerFile() {
+        let occurrences = [
+            occurrence(
+                symbol("s:3App1SV", name: "S"),
+                roles: .definition, location: location("/p/A.swift")),
+            occurrence(
+                symbol("s:10Foundation4DateV", name: "Date"),
+                roles: .reference, location: location("/p/A.swift"),
+                relations: [SymbolRelation(symbol: symbol("s:3App1fV", kind: .function),
+                                           roles: .containedBy)]),
+            occurrence(
+                symbol("s:10Foundation6LocaleV", name: "Locale"),
+                roles: .reference, location: location("/p/B.swift")),
+        ]
+        let snapshot = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+        let a = snapshot.fileModuleUsages["/p/A.swift"]
+        #expect(a?.owningModule == "App")
+        #expect(a?.referencedModules == ["App", "Foundation"])
+        #expect(a?.hasUnattributedReferences == false)
+        // 파일별로 갈라 모은다 — B의 참조가 A에 섞이면 안 된다.
+        // B에는 관계 대상이 없으므로 참조한 Foundation만 올라간다.
+        #expect(snapshot.fileModuleUsages["/p/B.swift"]?.referencedModules == ["Foundation"])
+    }
+
+    @Test("선언 발생 자체는 사용으로 세지 않는다")
+    func declarationsAreNotUsage() {
+        // `struct S` 를 선언하는 것은 Foundation을 쓴 게 아니다. 선언 발생의
+        // 심볼 USR은 세지 않고, 관계 대상(상속·준수)만 사용 증거가 된다.
+        let occurrences = [
+            occurrence(
+                symbol("s:10Foundation4DateV", name: "Date"),
+                roles: .definition, location: location("/p/A.swift")),
+        ]
+        let usage = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+            .fileModuleUsages["/p/A.swift"]
+        #expect(usage?.owningModule == "App")
+        #expect(usage?.referencedModules.isEmpty == true)
+    }
+
+    @Test("import 표식 발생은 파일의 참조 모듈에 올리지 않는다")
+    func importMarkersAreNotUsage() {
+        let occurrences = [
+            occurrence(
+                symbol("c:@M@Foundation", name: "Foundation", kind: .module),
+                roles: .reference, location: location("/p/A.swift"),
+                relations: [SymbolRelation(symbol: symbol("s:3App1fV", kind: .function),
+                                           roles: .containedBy)]),
+        ]
+        let usage = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+            .fileModuleUsages["/p/A.swift"]
+        #expect(usage?.referencedModules == ["App"])
+        #expect(usage?.hasUnattributedReferences == false)
+    }
+
+    @Test("clang 심볼은 인덱스 안 선언으로 모듈을 귀속한다")
+    func resolvesDeferredUSRThroughProjectDeclarations() {
+        // 프로젝트가 직접 인덱스한 clang 선언(소유 모듈에서 나온 헤더 등)은
+        // 선언 발생의 moduleName 으로 귀속할 수 있다.
+        let clang = symbol("c:@CM@MyLib@cs@T@Thing", name: "Thing")
+        let occurrences = [
+            occurrence(clang, roles: .definition,
+                       location: location("/sdk/Thing.h", module: "MyLib", isSystem: true)),
+            occurrence(clang, roles: .reference, location: location("/p/A.swift")),
+        ]
+        let usage = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+            .fileModuleUsages["/p/A.swift"]
+        #expect(usage?.referencedModules.contains("MyLib") == true)
+        #expect(usage?.hasUnattributedReferences == false)
+    }
+
+    @Test("귀속할 선언이 없는 외국어 참조는 미귀속 표식을 세운다")
+    func unresolvableUSRMarksFileUnattributed() {
+        // SDK 헤더의 Objective-C 심볼은 프로젝트 인덱스에 선언이 없다.
+        // 그 참조가 어느 import를 쓰게 하는지 알 수 없으므로 그 파일의
+        // import는 전부 판정 보류다.
+        let occurrences = [
+            occurrence(
+                symbol("c:objc(cs)UIView", name: "UIView", kind: .class),
+                roles: .reference, location: location("/p/A.swift")),
+        ]
+        let usage = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+            .fileModuleUsages["/p/A.swift"]
+        #expect(usage?.hasUnattributedReferences == true)
+    }
+}

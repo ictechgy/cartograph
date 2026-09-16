@@ -1,9 +1,46 @@
 # Handoff
 
+## 2026-09-16 — 미사용 import 분석 (feat/competitive-hardening)
+
+`우선순위대로 개선` 3번째(분석 커버리지)의 셋째 항목. `dead`가 파일의 참조 근거가
+증명하지 못하는 `import`를 `unused-import` 경고로 보고한다. 커밋 `69fb853`.
+
+### 설계
+
+- 재료가 두 출처에서 온다. 인덱스는 "파일이 어느 모듈의 선언을 참조했는가"를
+  모으고(`IndexSnapshot.fileModuleUsages`), 구문 분석은 import 선언의 속성·`#if`·
+  무시 주석을 모은다(`IndexSnapshot.imports`, `ImportScanner` → `SnapshotEnricher`).
+  판정은 `UnusedImportAnalyzer.analyze(_:)` 순수 함수 — 그래프 정점을 쓰지 않는다.
+- 모듈 귀속(`IndexStoreMapping.moduleEvidence(ofUSR:)`): `s:<길이><모듈>`은 USR에서
+  직접 읽는다. `s:` 다음이 숫자가 아닌 형태(`s:Si` 등 stdlib·컴파일러 생성)와
+  `c:@M@…`(import 문이 남기는 모듈 심볼 표식)은 묵시로 둔다 — 후자를 사용으로
+  세면 모든 import가 자기 자신 때문에 "사용됨"이 된다. `c:`/`e:` 같이 모듈을
+  담지 않는 USR은 지연시켜, 선언 사전이 완성된 뒤 프로젝트 인덱스 안 선언으로 푼다.
+  끝내 못 푼 것은 `hasUnattributedReferences` — 그 파일의 import는 전부 보류.
+- 보고 조건(전부 보존 방향): 참조 모듈 집합에 없는 모듈 + 조건부/재수출/무시
+  아님 + 미귀속 참조 없음 + 미설명 모듈 없음 또는 통로 아님 증명.
+- **재수출이 핵심 난제다.** `import ArgumentParser`만 한 파일이 Foundation 심볼을
+  쓰는 게 실측으로 확인됐다(외부 모듈의 재수출). 미설명 모듈이 있으면 외부 import는
+  전부 억제하고, 프로젝트 모듈은 `@_exported`/`public import`의 전이 폐포로 통로
+  여부를 판정한다. 폐포가 외부 모듈에 닿으면 그 안의 재수출은 볼 수 없어 어떤
+  미설명 모듈이든 전달할 수 있다고 본다.
+- 묵시 가용 모듈(`Swift`·`_Concurrency`·`_StringProcessing`·`ObjectiveC`)과 자기
+  모듈(`location.moduleName`)은 미설명에서 뺀다. Darwin·Dispatch는 확실하지 않아
+  목록에 넣지 않았다 — 미설명으로 남으면 억제되므로 그쪽이 안전하다.
+- `SnapshotBuilder`에 `importDecl`/`fileModuleUsage` 추가. 옛 스냅샷 문서는
+  `decodeIfPresent` 기본값으로 읽는다. `rebased(to:)`는 경로를 재기준화하고
+  `captureSnapshot`은 남은 파일의 것만 담는다.
+
+### 도그푸딩 결과
+
+자기 저장소에서 12건 발견, 전부 실제로 제거해 빌드 통과를 확인했다. 발견 후
+`dead`는 0건을 보고한다. 43/173 파일이 보수 억제 대상이었다(37 clang 미귀속,
+6 미설명 모듈) — 억제 없이는 오탐이 됐을 경로다.
+
 ## 2026-09-16 — assign-only 프로퍼티 분석 (feat/competitive-hardening)
 
 `우선순위대로 개선` 3번째(분석 커버리지)의 둘째 항목. `dead`가 대입만 되고 한 번도
-읽히지 않는 프로퍼티·변수를 `assign-only` 경고로 보고한다.
+읽히지 않는 프로퍼티·변수를 `assign-only` 경고로 보고한다. 커밋 `f72af38`.
 
 ### 설계
 

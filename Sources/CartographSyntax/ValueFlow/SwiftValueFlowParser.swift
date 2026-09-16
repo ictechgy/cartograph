@@ -1,5 +1,4 @@
 import CartographCore
-import Foundation
 import SwiftOperators
 import SwiftParser
 import SwiftSyntax

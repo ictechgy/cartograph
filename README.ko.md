@@ -231,6 +231,23 @@ Objective-C·Interface Builder 노출 멤버, 암시적 선언은 제외합니�
 않고 보고를 억제합니다. `unused-parameter`와 마찬가지로 이 경고는 `--strict` 계산에 넣지
 않습니다 — 고치는 방법이 삭제가 아니라 관측 지점일 수 있기 때문입니다.
 
+`dead`는 파일의 참조가 한 번도 쓰지 않는 `import` 선언도 `unused-import` 규칙의 경고로
+보고합니다:
+
+```console
+Sources/Net/Client.swift:3:1: warning: import 'Combine' is never used
+```
+
+Swift USR은 소유 모듈을 담고 있으므로, 파일이 실제로 참조한 모듈 집합을 인덱스에서 복원합니다.
+`import` 자체가 남기는 `c:@M@M` 표식은 사용으로 세지 않습니다. 사용이 재수출을 타고 올 수도
+있기 때문에 보고는 보수적입니다 — 귀속하지 못한 참조(clang/Objective-C USR은 모듈을 담지
+않음)가 있거나, import 없이 참조된 모듈이 있는 파일처럼 사용 근거가 불완전하면 억제합니다.
+조건부(`#if`) import, 재수출하는 import(`@_exported`, `public import`), `// cartograph:ignore`
+표시가 붙은 import는 보고하지 않습니다. `import struct Foundation.Bundle`처럼 종류를 좁힌
+import는 탑레벨 모듈 기준으로 판정합니다 — `Foundation`의 무엇이든 쓰면 사용으로 셉니다 —
+그리고 진단에는 좁힌 형태 그대로를 적습니다. 다른 경고 규칙과 마찬가지로 `unused-import`는
+`--strict` 계산에 넣지 않습니다.
+
 `--report-test-only`는 다른 질문에 답합니다. **테스트나 프리뷰에서만** 도달하는 생산 선언이
 무엇인가입니다. 죽은 코드가 아닙니다. 지우면 테스트가 깨집니다. 다만 테스트가 유일한
 호출자라는 사실은 팀이 알아야 합니다. `info`로 보고하므로 빌드를 실패시키지 않습니다.

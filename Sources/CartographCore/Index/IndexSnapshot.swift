@@ -37,25 +37,40 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
     /// "읽힌 적 없다" 는 다르므로 키 부재를 미사용으로 읽으면 안 된다.
     public var propertyAccesses: [String: PropertyAccessFacts]
 
+    /// 파일별 `import` 선언 목록. 구문 분석이 채우는 미사용 import 질의 전용 입력이다.
+    ///
+    /// 구문 정보를 얻지 못한 파일의 import는 목록에 없다 — 근거가 없는 것과
+    /// "쓰인 적 없다" 는 다르므로 목록 부재를 미사용으로 읽으면 안 된다.
+    public var imports: [IndexedImport]
+
+    /// 파일별로 참조한 선언의 모듈 귀속 합산. 미사용 import 질의 전용 입력이다.
+    ///
+    /// 인덱스에 발생이 없는 파일은 키가 없다 — 그 파일의 import는 판정할 수 없다.
+    public var fileModuleUsages: [String: FileModuleUsage]
+
     public init(
         symbols: [IndexedSymbol] = [],
         references: [IndexedReference] = [],
         indexedFileDates: [String: Date]? = nil,
         parameters: [IndexedParameter] = [],
-        propertyAccesses: [String: PropertyAccessFacts] = [:]
+        propertyAccesses: [String: PropertyAccessFacts] = [:],
+        imports: [IndexedImport] = [],
+        fileModuleUsages: [String: FileModuleUsage] = [:]
     ) {
         self.symbols = symbols
         self.references = references
         self.indexedFileDates = indexedFileDates
         self.parameters = parameters
         self.propertyAccesses = propertyAccesses
+        self.imports = imports
+        self.fileModuleUsages = fileModuleUsages
     }
 
     private enum CodingKeys: String, CodingKey {
-        case symbols, references, indexedFileDates, parameters, propertyAccesses
+        case symbols, references, indexedFileDates, parameters, propertyAccesses, imports, fileModuleUsages
     }
 
-    /// 파라미터 목록과 접근 합산은 뒤늦게 추가된 필드라, 그것이 없는 예전 스냅샷 문서도 읽는다.
+    /// 파라미터 목록과 접근 합산·import 근거는 뒤늦게 추가된 필드라, 그것이 없는 예전 스냅샷 문서도 읽는다.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         symbols = try container.decode([IndexedSymbol].self, forKey: .symbols)
@@ -64,6 +79,9 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         parameters = try container.decodeIfPresent([IndexedParameter].self, forKey: .parameters) ?? []
         propertyAccesses = try container.decodeIfPresent(
             [String: PropertyAccessFacts].self, forKey: .propertyAccesses) ?? [:]
+        imports = try container.decodeIfPresent([IndexedImport].self, forKey: .imports) ?? []
+        fileModuleUsages = try container.decodeIfPresent(
+            [String: FileModuleUsage].self, forKey: .fileModuleUsages) ?? [:]
     }
 
     /// USR 로 심볼을 찾기 위한 사전. 반복 조회가 많아 미리 만들어 쓴다.
@@ -95,6 +113,15 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
                 var merged = $0
                 merged.merge($1)
                 return merged
+            },
+            imports: imports + other.imports,
+            fileModuleUsages: fileModuleUsages.merging(other.fileModuleUsages) { base, extra in
+                FileModuleUsage(
+                    owningModule: base.owningModule ?? extra.owningModule,
+                    referencedModules: base.referencedModules.union(extra.referencedModules),
+                    hasUnattributedReferences: base.hasUnattributedReferences
+                        || extra.hasUnattributedReferences
+                )
             }
         )
     }

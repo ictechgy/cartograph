@@ -1,4 +1,3 @@
-import Foundation
 
 /// 문자열 내용을 보존하면서 주석과 토큰 경계를 구분한다. RN의 blanking 결과로는 채널 이름을 복원할 수 없다.
 struct ObjectiveCToken: Sendable {

@@ -161,6 +161,43 @@ public enum IndexStoreMapping {
         return PropertyAccessFacts(hasWrite: true)
     }
 
+    /// 참조 USR 하나가 어느 모듈의 선언을 가리키는지에 대한 단서.
+    public enum ModuleEvidence: Equatable {
+        /// USR에 모듈 이름이 박혀 있어 바로 읽었다.
+        case module(String)
+        /// import 없이 참조할 수 있는 대상 — stdlib·컴파일러 생성 심볼이거나
+        /// `import` 문 자체가 남기는 모듈 심볼 표식(`c:@M@…`)이다. 후자를
+        /// 사용 근거로 세면 모든 import가 자기 자신 때문에 "사용됨"이 된다.
+        case implicit
+        /// USR에 모듈이 없어(`c:objc…` 같은 clang 심볼) 선언 조회가 필요하다.
+        case deferred
+    }
+
+    /// 참조 대상 USR의 모듈 귀속 단서를 읽는다.
+    ///
+    /// Swift USR은 `s:<길이><모듈>` 로 모듈 이름을 담는다. `s:` 다음이 숫자가
+    /// 아니면(`s:Si`, `s:s8SendableP` 등) 모듈 문맥이 없는 stdlib·컴파일러
+    /// 생성 심볼이다. `c:@M@` 는 `import M` 문과 `M.name` 한정자가 남기는
+    /// 모듈 심볼 참조로, 사용 증거로 세면 자기 자신의 표식을 사용으로 읽게 되어
+    /// 무시한다 — `M.name` 의 실제 사용은 멤버의 참조 발생이 따로 귀속한다.
+    public static func moduleEvidence(ofUSR usr: String) -> ModuleEvidence {
+        guard usr.hasPrefix("s:") else {
+            return usr.hasPrefix("c:@M@") ? .implicit : .deferred
+        }
+        let rest = usr.dropFirst(2)
+        guard let first = rest.first, first.isNumber else { return .implicit }
+        var length = 0
+        var index = rest.startIndex
+        while index < rest.endIndex, rest[index].isNumber {
+            length = length * 10 + Int(String(rest[index]))!
+            index = rest.index(after: index)
+        }
+        guard let end = rest.index(index, offsetBy: length, limitedBy: rest.endIndex) else {
+            return .deferred
+        }
+        return .module(String(rest[index..<end]))
+    }
+
     /// 발생에 붙은 관계를 "의존하는 쪽 → 의존되는 쪽" 방향의 참조로 정규화한다.
     ///
     /// libIndexStore 의 관계 역할은 언제나 "발생 심볼이 관련 심볼에 대해 갖는 관계"로

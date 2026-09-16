@@ -556,4 +556,41 @@ struct ImpactComparisonTests {
         #expect(forward == reversed)
         #expect(forward.map(\.targetKind) == [.function, .structType])
     }
+
+    @Test("스냅샷 재기준화가 import 위치와 모듈 사용 근거의 경로도 옮긴다")
+    func rebaseMovesImportFacts() {
+        var builder = SnapshotBuilder(path: "/old/Sources/App.swift")
+        builder.symbol("Local", name: "Local", path: "/old/Sources/App.swift")
+        builder.importDecl("Foundation", path: "/old/Sources/App.swift", line: 1)
+        builder.fileModuleUsage(path: "/old/Sources/App.swift", owningModule: "App",
+            referencedModules: ["App", "Foundation"])
+        // 프로젝트 밖 경로(브리징 헤더 등)의 근거는 그대로 둔다.
+        builder.fileModuleUsage(path: "/sdk/Bridging.h", owningModule: "MyLib",
+            referencedModules: ["MyLib"], hasUnattributedReferences: true)
+        let document = AnalysisSnapshotDocument(projectRoot: "/old", snapshot: builder.build())
+        let moved = document.rebased(to: "/new")
+        #expect(moved.snapshot.imports.first?.location.path == "/new/Sources/App.swift")
+        #expect(moved.snapshot.fileModuleUsages["/new/Sources/App.swift"]?.referencedModules
+            == ["App", "Foundation"])
+        #expect(moved.snapshot.fileModuleUsages["/old/Sources/App.swift"] == nil)
+        #expect(moved.snapshot.fileModuleUsages["/sdk/Bridging.h"]?.hasUnattributedReferences == true)
+    }
+
+    @Test("스냅샷 캡처는 잘린 파일의 import와 모듈 사용 근거를 담지 않는다")
+    func captureDropsImportFactsOfExcludedFiles() throws {
+        // 남은 정점이 없는 파일의 import는 판정 재료가 못 된다 — 그대로 담으면
+        // --before 비교가 어느 import가 잘렸는지 모른 채 보고한다.
+        var builder = SnapshotBuilder(path: "/current/Sources/App.swift")
+        builder.symbol("Included", name: "Included", path: "/current/Sources/App.swift")
+        builder.importDecl("Foundation", path: "/current/Sources/App.swift", line: 1)
+        builder.fileModuleUsage(path: "/current/Sources/App.swift", owningModule: "App",
+            referencedModules: ["App"])
+        builder.importDecl("Combine", path: "/current/Generated/Record.swift", line: 1)
+        builder.fileModuleUsage(path: "/current/Generated/Record.swift", owningModule: "App",
+            referencedModules: ["Combine"])
+        let context = AnalysisContext(snapshot: builder.build(), pathFilter: .passthrough)
+        let captured = try service(snapshot: .init()).captureSnapshot(in: context)
+        #expect(captured.snapshot.imports.map(\.module) == ["Foundation"])
+        #expect(captured.snapshot.fileModuleUsages.keys.sorted() == ["/current/Sources/App.swift"])
+    }
 }

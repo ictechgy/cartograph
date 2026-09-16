@@ -62,6 +62,9 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
     /// 본문 있는 함수의 파라미터 사용 근거. nil은 아직 수집하지 않은 캐시다.
     /// nil일 때는 파라미터의 사용 여부를 모르는 것이므로 미사용으로 보고하지 않는다.
     public let parameterUsages: [ParameterUsageFacts]?
+    /// 파일의 `import` 선언 목록. nil은 아직 수집하지 않은 캐시다.
+    /// nil일 때는 그 파일의 import를 판정할 수 없으므로 보고하지 않는다.
+    public let imports: [IndexedImport]?
 
     public init(
         path: String,
@@ -69,7 +72,8 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
         ignoresEntireFile: Bool = false,
         runtimeFacts: RuntimeFileFacts? = nil,
         localFunctionScopes: [LocalFunctionScopeFacts]? = nil,
-        parameterUsages: [ParameterUsageFacts]? = nil
+        parameterUsages: [ParameterUsageFacts]? = nil,
+        imports: [IndexedImport]? = nil
     ) {
         self.path = path
         self.declarations = declarations
@@ -77,6 +81,7 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
         self.runtimeFacts = runtimeFacts
         self.localFunctionScopes = localFunctionScopes
         self.parameterUsages = parameterUsages
+        self.imports = imports
     }
 
     /// 줄 번호로 선언을 찾는다.

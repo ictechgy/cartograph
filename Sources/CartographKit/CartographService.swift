@@ -220,7 +220,8 @@ public struct CartographService: Sendable {
             AnalysisDiagnostics.diagnostics(for: report)
                 + AnalysisDiagnostics.testOnlyDiagnostics(for: report)
                 + AnalysisDiagnostics.unusedParameterDiagnostics(for: report, in: graph)
-                + AnalysisDiagnostics.assignOnlyDiagnostics(for: report, in: graph),
+                + AnalysisDiagnostics.assignOnlyDiagnostics(for: report, in: graph)
+                + AnalysisDiagnostics.unusedImportDiagnostics(for: report),
             command: "dead",
             subject: "\(describe(graph)) · \(report.reachableCount)/\(report.totalCount) reachable",
             thresholdLimit: configuration.thresholds.maxUnusedSymbols,

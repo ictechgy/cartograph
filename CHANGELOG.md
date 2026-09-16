@@ -24,6 +24,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   runtime-managed and Objective-C/Interface Builder-exposed declarations, and stored properties
   of types with synthesized `Equatable`/`Hashable`/`Codable` conformances are excluded. The
   warnings do not count toward `--strict`.
+- `dead` now reports `import` declarations a file's references never use, under the
+  `unused-import` rule at warning severity. A Swift USR encodes its owning module
+  (`s:<length><module>`), so each file's referenced-module set is recovered from the index;
+  `import M` marker occurrences (`c:@M@M`) never count as usage. Reporting is suppressed
+  whenever evidence is incomplete: files with unattributable references (clang/Objective-C
+  USRs carry no module), files that reference modules they never imported (a re-export may
+  supply them), conditional (`#if`) imports, re-exporting imports (`@_exported`, `public
+  import`), and `cartograph:ignore`-marked imports are all excluded. The warnings do not
+  count toward `--strict`.
 
 ## [0.15.1] - 2026-09-16
 
