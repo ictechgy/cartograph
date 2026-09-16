@@ -1323,9 +1323,9 @@ struct BridgeFactScannerTests {
     func conflictingForwardersKeepChannelUnknown() {
         let source = """
             class Plugin {
-                func attach(c1: FlutterMethodChannel, c2: FlutterMethodChannel) {
-                    c1.setMethodCallHandler(handle1)
-                    c2.setMethodCallHandler(handle2)
+                func attach(m: FlutterBinaryMessenger) {
+                    FlutterMethodChannel(name: "a", binaryMessenger: m).setMethodCallHandler(handle1)
+                    FlutterMethodChannel(name: "b", binaryMessenger: m).setMethodCallHandler(handle2)
                 }
                 func handle1(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
                     Task { await shared(call, result: result) }
@@ -1368,5 +1368,147 @@ struct BridgeFactScannerTests {
         let handles = facts(source, of: .methodHandle)
         #expect(handles.map(\.method) == ["x"])
         #expect(handles.first?.channel == nil)
+    }
+
+    @Test("주입 프로퍼티와 같은 이름의 지역 파라미터는 주입 채널을 물려받지 않는다")
+    func localParameterShadowsInjectedChannel() {
+        let source = """
+            class Plugin {
+                var channel: FlutterMethodChannel
+                init(c: FlutterMethodChannel) { self.channel = c }
+                func attach(channel: FlutterMethodChannel) { channel.setMethodCallHandler { _, _ in } }
+            }
+            func make(m: FlutterBinaryMessenger) {
+                Plugin(c: FlutterMethodChannel(name: "injected", binaryMessenger: m))
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.first?.isDynamic == true)
+        #expect(registered.first?.channel != "injected")
+    }
+
+    @Test("주입 레이블을 쓰지 않는 생성자 호출이 있으면 채널을 단정하지 않는다")
+    func unlabelledConstructorCallStaysUnknown() {
+        let source = """
+            class Plugin {
+                var channel = FlutterMethodChannel(name: "fallback", binaryMessenger: m)
+                init(c: FlutterMethodChannel) { self.channel = c }
+                init(other: Int) {}
+                func attach() { channel.setMethodCallHandler { _, _ in } }
+            }
+            func a(m: FlutterBinaryMessenger) { Plugin(c: FlutterMethodChannel(name: "a", binaryMessenger: m)) }
+            func b() { Plugin(other: 1) }
+            """
+        // `Plugin(other:)` 은 `c` 를 거치지 않으므로 그 인스턴스의 채널은 "a" 가 아니다.
+        #expect(facts(source, of: .channelRegister).first?.isDynamic == true)
+    }
+
+    @Test("Type.init 으로 쓴 생성자 호출도 주입 호출 지점이다")
+    func explicitInitConstructorCallResolvesInjection() {
+        let source = """
+            class Plugin {
+                var channel: FlutterMethodChannel
+                init(c: FlutterMethodChannel) { self.channel = c }
+                func attach() { channel.setMethodCallHandler { _, _ in } }
+            }
+            func make(m: FlutterBinaryMessenger) {
+                Plugin.init(c: FlutterMethodChannel(name: "via-init", binaryMessenger: m))
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.first?.channel == "via-init")
+        #expect(registered.first?.isDynamic == false)
+    }
+
+    @Test("self 아닌 수신자에 같은 이름 프로퍼티가 대입되면 주입 채널을 단정하지 않는다")
+    func otherReceiverAssignmentInvalidatesInjection() {
+        let source = """
+            class Plugin {
+                var channel: FlutterMethodChannel
+                init(c: FlutterMethodChannel) { self.channel = c }
+                func attach() { channel.setMethodCallHandler { _, _ in } }
+            }
+            func make(m: FlutterBinaryMessenger) {
+                Plugin(c: FlutterMethodChannel(name: "a", binaryMessenger: m))
+            }
+            func rewrite(_ peer: Plugin, with other: FlutterMethodChannel) { peer.channel = other }
+            """
+        #expect(facts(source, of: .channelRegister).first?.isDynamic == true)
+    }
+
+    @Test("본문 안 클로저가 call 이름을 다시 선언하면 위임으로 세지 않는다")
+    func closureShadowedCallIsNotForwarding() {
+        let source = """
+            class Plugin {
+                func setup(m: FlutterBinaryMessenger) {
+                    let c = FlutterMethodChannel(name: "fixed", binaryMessenger: m)
+                    let other = FlutterMethodChannel(name: "other", binaryMessenger: m)
+                    c.setMethodCallHandler(handle)
+                }
+                func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    [call].forEach { call in Task { await handleAsync(call, result: result) } }
+                }
+                private func handleAsync(_ call: FlutterMethodCall, result: @escaping FlutterResult) async {
+                    switch call.method {
+                    case "ping": result(nil)
+                    default: result(nil)
+                    }
+                }
+            }
+            """
+        let handles = facts(source, of: .methodHandle)
+        #expect(handles.map(\.method) == ["ping"])
+        #expect(handles.first?.channel == nil)
+    }
+
+    @Test("call 을 FlutterMethodCall 자리가 아닌 다른 인자로 넘기면 위임으로 세지 않는다")
+    func callPassedToOtherPositionIsNotForwarding() {
+        let source = """
+            class Plugin {
+                func setup(m: FlutterBinaryMessenger) {
+                    let c = FlutterMethodChannel(name: "fixed", binaryMessenger: m)
+                    let other = FlutterMethodChannel(name: "other", binaryMessenger: m)
+                    c.setMethodCallHandler(handle)
+                }
+                func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    Task { await shared(result, context: call) }
+                }
+                private func shared(_ call: FlutterMethodCall, context: FlutterMethodCall,
+                                    result: @escaping FlutterResult) async {
+                    switch call.method {
+                    case "ping": result(nil)
+                    default: result(nil)
+                    }
+                }
+            }
+            """
+        let handles = facts(source, of: .methodHandle)
+        #expect(handles.map(\.method) == ["ping"])
+        #expect(handles.first?.channel == nil)
+    }
+
+    @Test("합친 이름이 채널이 될 수 없는 크기면 리터럴로 단정하지 않는다")
+    func oversizedConcatenationStaysDynamic() {
+        let chunk = String(repeating: "x", count: 3000)
+        let source = """
+            let a = "\(chunk)"
+            func attach(m: FlutterBinaryMessenger) {
+                FlutterMethodChannel(name: a + a, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            }
+            """
+        #expect(facts(source, of: .channelRegister).first?.isDynamic == true)
+    }
+
+    @Test("갈라지는 별칭 연결 사슬도 결과 크기 제한 안에서 끝난다")
+    func branchingAliasChainTerminates() {
+        var lines = ["let a0 = \"x\""]
+        for index in 1...40 { lines.append("let a\(index) = a\(index - 1) + a\(index - 1)") }
+        lines.append("""
+            func attach(m: FlutterBinaryMessenger) {
+                FlutterMethodChannel(name: a40, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            }
+            """)
+        // 메모가 없으면 2⁴⁰ 번 풀고, 크기 제한이 없으면 2⁴⁰ 바이트를 만든다.
+        #expect(facts(lines.joined(separator: "\n"), of: .channelRegister).first?.isDynamic == true)
     }
 }

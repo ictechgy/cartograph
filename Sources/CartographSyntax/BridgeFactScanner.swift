@@ -242,19 +242,49 @@ final class BindingCollector: SyntaxVisitor {
     private(set) var methodCallFunctions: [String: (indexName: String, typeChain: String)] = [:]
     /// `FlutterMethodCall` 함수 키 → 그 인자의 본문 이름(`handle(_ call:)` 이면 `call`).
     private(set) var methodCallParams: [String: String] = [:]
-    /// `call` 을 그대로 넘기는 호출로 기록된 한 홉 위임. 피호출 키 → 호출자 키들.
+    /// `FlutterMethodCall` 함수 키 → 그 인자의 위치와 외부 레이블. 위임 호출이
+    /// `call` 을 정확히 그 자리에 넘기는지 2차 패스에서 대조한다.
+    private(set) var methodCallSeats: [String: (index: Int, label: String)] = [:]
+    /// `call` 을 넘기는 호출로 기록된 한 홉 위임 후보. 피호출 키 → 호출 지점들.
     ///
     /// `handle` 이 `Task { await handleAsync(call, result: r) }` 만 하는 모양이다.
+    /// `call` 이 어느 인자 자리로 갔는지 함께 남겨, 피호출 함수의 `FlutterMethodCall`
+    /// 인자 위치와 다른 자리로 간 호출은 2차 패스에서 걸러 낸다.
     /// 호출자가 아직 등록 채널로 확인되지 않아도 기록하고, 채널 판정은 2차 패스가 한다.
-    private(set) var forwardedHandlers: [String: Set<String>] = [:]
+    private(set) var forwardedCalls: [String: [ForwardingCall]] = [:]
     /// `init` 안의 `self.x = 인자` 로만 채워지는 프로퍼티. `Type.x` → 호출 지점의 외부 레이블들.
     private(set) var initParamLabels: [String: Set<String>] = [:]
     /// 인자 아닌 값이나 `init` 밖 대입이 한 번이라도 온 프로퍼티는 주입이 아니다.
     private var nonInjectedProperties: Set<String> = []
-    /// `Type(label: …)` 생성자 호출의 인자들. 주입 프로퍼티의 값을 호출 지점에서 푼다.
-    private(set) var constructorCalls: [(typeName: String, label: String, expression: ExprSyntax, scopes: [Int], enclosingTypes: [String])] = []
+    /// `peer.x = v` 처럼 `self` 아닌 수신자에 대입된 프로퍼티 이름. 수신자 타입을
+    /// 모르니 같은 이름의 주입 추론은 전부 무효로 둔다 — 놓치는 쪽이 안전하다.
+    private var nonInjectedNames: Set<String> = []
+    /// `Type(…)`·`Type.init(…)`·`self.init(…)` 생성자 호출과 그 인자들.
+    /// 주입 프로퍼티의 값을 호출 지점에서 푼다. 레이블 없는 호출도 남겨, 주입
+    /// 레이블을 쓰지 않는 호출 지점이 있으면 증명이 무산되게 한다.
+    private(set) var constructorCalls: [ConstructorCall] = []
+    /// 위임 호출 지점 하나. `call` 이 넘어간 인자의 위치와 레이블을 남긴다.
+    struct ForwardingCall {
+        let caller: String
+        let position: Int
+        let label: String?
+    }
+    /// 생성자 호출 지점 하나. 레이블이 없는 인자는 `nil` 레이블로 남는다.
+    struct ConstructorCall {
+        let typeName: String
+        let arguments: [(label: String?, expression: ExprSyntax)]
+        let scopes: [Int]
+        let enclosingTypes: [String]
+    }
+    /// `aᵢ = aᵢ₋₁ + aᵢ₋₁` 처럼 갈라지는 별칭 사슬에서 같은 바인딩 표현식을 다시
+    /// 풀지 않기 위한 메모. 바인딩이 표현식을 선언 문맥과 함께 저장하므로 같은
+    /// 노드면 같은 문맥이다.
+    private var constantMemo: [SyntaxIdentifier: ResolvedName?] = [:]
     /// 지금 안에 있는 함수의 키. 지역 함수는 nil — 인덱스 정점이 없어 핸들러가 아니다.
     private var functionKeys: [String?] = []
+    /// `functionKeys` 와 나란한, 그 함수가 여는 스코프의 `scopes` 안 위치.
+    /// 본문 안 클로저가 `call` 같은 이름을 다시 선언했는지 잡는 데 쓴다.
+    private var functionScopeIndices: [Int] = []
     /// 안쪽 이니셜라이저의 `본문 이름 → 외부 레이블`. `init` 안의 `self.x = 인자` 판별에 쓴다.
     private var initParamStack: [[String: String]] = []
 
@@ -285,17 +315,24 @@ final class BindingCollector: SyntaxVisitor {
                     indexName: RuntimeSyntaxNames.indexName(node.name.text, parameters: node.signature.parameterClause.parameters),
                     typeChain: typeNames.joined(separator: ".")
                 )
-                if let parameter = Self.methodCallParameter(of: node) {
+                let parameters = node.signature.parameterClause.parameters
+                if let found = parameters.firstIndex(where: Self.isMethodCallParameter) {
+                    let parameter = parameters[found]
                     let internalName = DeclarationCollector.unescaped((parameter.secondName ?? parameter.firstName).text)
                     if internalName != "_" { methodCallParams[handlerKey] = internalName }
+                    let index = parameters.distance(from: parameters.startIndex, to: found)
+                    methodCallSeats[handlerKey] = (index, DeclarationCollector.unescaped(parameter.firstName.text))
                 }
             }
             key = handlerKey
         }
         functionKeys.append(key)
+        functionScopeIndices.append(scopes.count)
         return pushScope(node)
     }
-    override func visitPost(_: FunctionDeclSyntax) { scopes.removeLast(); functionKeys.removeLast() }
+    override func visitPost(_: FunctionDeclSyntax) {
+        scopes.removeLast(); functionKeys.removeLast(); functionScopeIndices.removeLast()
+    }
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
         initParamStack.append(Self.initParamLabels(of: node))
         return pushScope(node)
@@ -418,7 +455,10 @@ final class BindingCollector: SyntaxVisitor {
         guard let name = Self.identifierName(of: node.leftOperand) else { return .visitChildren }
         let member = node.leftOperand.as(MemberAccessExprSyntax.self)
         if let member, !["self", "Self"].contains(member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text ?? "") {
+            // `peer.x = v` — 수신자 타입은 모르지만 init 주입으로 본 같은 이름의
+            // 프로퍼티가 초기화 밖에서 대입될 수 있다는 증거이므로 이름째로 무효화한다.
             shadow(name, isLocal: false)
+            nonInjectedNames.insert(name)
             return .visitChildren
         }
         let key = assignmentKey(name, explicitMember: member != nil)
@@ -482,10 +522,22 @@ final class BindingCollector: SyntaxVisitor {
               let callee = Self.identifierName(of: call.calledExpression) else { return }
         if let member = call.calledExpression.as(MemberAccessExprSyntax.self),
            member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text != "self" { return }
-        guard call.arguments.contains(where: {
-            Self.unparenthesized($0.expression).as(DeclReferenceExprSyntax.self)?.baseName.text == callParam
-        }) else { return }
-        forwardedHandlers[Self.handlerKey(callee, enclosingTypes: typeNames), default: []].insert(caller)
+        // 본문 안 클로저가 `call` 이름을 다시 선언했으면 이 참조는 핸들러의
+        // 인자가 아니라 클로저의 것이다 — 철자만 보고 위임으로 세지 않는다.
+        if let own = functionScopeIndices.last {
+            for scope in scopes.dropFirst(own + 1) where bindings[Self.localKey(callParam, scope: scope)] != nil {
+                return
+            }
+        }
+        // `call` 이 넘어간 자리를 전부 남긴다 — 피호출 함수의 `FlutterMethodCall`
+        // 인자가 어느 자리인지는 선언을 봐야 알고, 대조는 2차 패스가 한다.
+        let seats = call.arguments.enumerated().compactMap { offset, argument -> (Int, String?)? in
+            Self.unparenthesized(argument.expression).as(DeclReferenceExprSyntax.self)?.baseName.text == callParam
+                ? (offset, argument.label?.text) : nil
+        }
+        guard !seats.isEmpty else { return }
+        forwardedCalls[Self.handlerKey(callee, enclosingTypes: typeNames), default: []]
+            .append(contentsOf: seats.map { ForwardingCall(caller: caller, position: $0.0, label: $0.1) })
     }
 
     /// `Plugin(label: x)` 형태의 생성자 호출 인자를 기록한다.
@@ -493,18 +545,25 @@ final class BindingCollector: SyntaxVisitor {
     private func recordConstructorCall(_ call: FunctionCallExprSyntax) {
         let dotted: String
         if let member = call.calledExpression.as(MemberAccessExprSyntax.self),
-           member.declName.baseName.text == "init",
-           member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self" {
-            // `self.init(…)` 위임 생성자도 같은 타입의 호출 지점이다.
-            dotted = typeNames.joined(separator: ".")
+           member.declName.baseName.text == "init", let base = member.base {
+            if base.as(DeclReferenceExprSyntax.self)?.baseName.text == "self" {
+                // `self.init(…)` 위임 생성자도 같은 타입의 호출 지점이다.
+                dotted = typeNames.joined(separator: ".")
+            } else {
+                // `Plugin.init(c: x)` 처럼 `.init` 을 명시한 호출도 그 타입의 지점이다.
+                // `super.init`·인스턴스의 `.init` 은 마지막 대문자 검사에서 걸러진다.
+                dotted = Self.dottedTypeName(of: base)
+            }
         } else {
             dotted = Self.dottedTypeName(of: call.calledExpression)
         }
         guard dotted.split(separator: ".").last?.first?.isUppercase == true else { return }
-        for argument in call.arguments {
-            guard let label = argument.label?.text else { continue }
-            constructorCalls.append((dotted, label, argument.expression, scopes, typeNames))
-        }
+        constructorCalls.append(ConstructorCall(
+            typeName: dotted,
+            arguments: call.arguments.map { ($0.label?.text, $0.expression) },
+            scopes: scopes,
+            enclosingTypes: typeNames
+        ))
     }
 
     /// `registrar.addMethodCallDelegate(instance, channel: c)` 의 `instance` 가 어느 타입인지 기억한다.
@@ -565,10 +624,13 @@ final class BindingCollector: SyntaxVisitor {
 
     /// `FlutterMethodCall` 파라미터. `FlutterMethodCall?` 과 `Flutter.FlutterMethodCall` 도 같은 타입이다.
     static func methodCallParameter(of node: FunctionDeclSyntax) -> FunctionParameterSyntax? {
-        node.signature.parameterClause.parameters.first {
-            let type = $0.type.trimmedDescription.trimmingCharacters(in: CharacterSet(charactersIn: "?!"))
-            return type == BridgeChannels.methodCall || type.hasSuffix("." + BridgeChannels.methodCall)
-        }
+        node.signature.parameterClause.parameters.first(where: isMethodCallParameter)
+    }
+
+    /// 파라미터 타입이 `FlutterMethodCall`(`?`·`!`·모듈 수식 포함)인지.
+    private static func isMethodCallParameter(_ parameter: FunctionParameterSyntax) -> Bool {
+        let type = parameter.type.trimmedDescription.trimmingCharacters(in: CharacterSet(charactersIn: "?!"))
+        return type == BridgeChannels.methodCall || type.hasSuffix("." + BridgeChannels.methodCall)
     }
 
     /// `FlutterMethodCall` 인자를 받는 함수인지. `FlutterPlugin.handle(_:result:)` 가 그렇다.
@@ -685,42 +747,59 @@ final class BindingCollector: SyntaxVisitor {
     }
 
     private func channelDetails(named name: String, in context: Context, depth: Int) -> (name: ResolvedName, kind: BridgeChannelKind)?? {
-        guard let found = binding(named: name, in: context, membersOnly: false) else { return nil }
-        if case let .channel(argument, scopes, types, kind)? = found {
-            return .some((resolveString(argument, in: Context(scopes: scopes, enclosingTypes: types)), kind))
+        // 지역 스코프에서 먼저 잡히면 그 이름은 지역 값이다 — 같은 이름의 주입
+        // 프로퍼티 채널이 지역 파라미터로 새어 나오지 않게 멤버 단계를 타지 않는다.
+        for scope in context.scopes.reversed() {
+            guard let found = bindings[Self.localKey(name, scope: scope)] else { continue }
+            return .some(channelValue(found))
         }
-        if let injected = injectedChannel(named: name, in: context, depth: depth) { return .some(injected) }
-        return .some(nil)
-    }
-
-    /// `init` 안에서 `self.name = 인자` 로만 채워지는 프로퍼티의 채널을 생성자 호출 지점에서 푼다.
-    ///
-    /// 조회는 `binding(named:)` 와 같은 순서로 — 가장 안쪽 타입부터. 호출 지점이 하나도
-    /// 없거나(외부에서만 만든다) 지점마다 값이 다르면 모른다.
-    private func injectedChannel(named name: String, in context: Context, depth: Int) -> (name: ResolvedName, kind: BridgeChannelKind)? {
-        guard depth < 4 else { return nil }
         for end in stride(from: context.enclosingTypes.count, through: 0, by: -1) {
-            let chain = context.enclosingTypes.prefix(end)
-            guard let labels = initParamLabels[(chain + [name]).joined(separator: ".")] else { continue }
-            var resolved: [(name: ResolvedName, kind: BridgeChannelKind)] = []
-            for call in constructorCalls
-            where labels.contains(call.label)
-                  && resolveTypeChain(call.typeName, from: call.enclosingTypes) == chain.joined(separator: ".") {
-                let callContext = Context(scopes: call.scopes, enclosingTypes: call.enclosingTypes)
-                if let inline = channelConstruction(call.expression, in: callContext) {
-                    resolved.append(inline)
-                } else if let reference = Self.identifierName(of: call.expression),
-                          let details = channelDetails(named: reference, in: callContext, depth: depth + 1), let details {
-                    resolved.append(details)
-                } else {
-                    return nil
-                }
-            }
-            guard let first = resolved.first,
-                  resolved.allSatisfy({ $0.name == first.name && $0.kind == first.kind }) else { return nil }
-            return first
+            let key = (context.enclosingTypes.prefix(end) + [name]).joined(separator: ".")
+            guard let found = bindings[key] else { continue }
+            if let details = channelValue(found) { return .some(details) }
+            if let injected = injectedChannel(key: key, depth: depth) { return .some(injected) }
+            return .some(nil)
         }
         return nil
+    }
+
+    /// 바인딩이 채널 생성자면 푼 이름과 종류. 다른 값이거나 모르면 nil.
+    private func channelValue(_ found: BoundValue?) -> (name: ResolvedName, kind: BridgeChannelKind)? {
+        guard case let .channel(argument, scopes, types, kind)? = found else { return nil }
+        return (resolveString(argument, in: Context(scopes: scopes, enclosingTypes: types)), kind)
+    }
+
+    /// `init` 안에서 `self.name = 인자` 로만 채워지는 프로퍼티 `key`(`A.B.name`)의
+    /// 채널을 생성자 호출 지점에서 푼다.
+    ///
+    /// 그 타입의 호출 지점이 하나라도 주입 레이블을 쓰지 않거나(`Plugin()`,
+    /// `Plugin(other:)` — 다른 이니셜라이저가 다른 값을 넣는 경로), 지점마다
+    /// 값이 다르면 모른다.
+    private func injectedChannel(key: String, depth: Int) -> (name: ResolvedName, kind: BridgeChannelKind)? {
+        guard depth < 4,
+              let dot = key.lastIndex(of: "."),
+              let labels = initParamLabels[key] else { return nil }
+        let chain = String(key[..<dot])
+        let name = String(key[key.index(after: dot)...])
+        guard !nonInjectedNames.contains(name) else { return nil }
+        var resolved: [(name: ResolvedName, kind: BridgeChannelKind)] = []
+        for call in constructorCalls
+        where resolveTypeChain(call.typeName, from: call.enclosingTypes) == chain {
+            guard let argument = call.arguments.first(where: { $0.label != nil && labels.contains($0.label!) })
+            else { return nil }
+            let callContext = Context(scopes: call.scopes, enclosingTypes: call.enclosingTypes)
+            if let inline = channelConstruction(argument.expression, in: callContext) {
+                resolved.append(inline)
+            } else if let reference = Self.identifierName(of: argument.expression),
+                      let details = channelDetails(named: reference, in: callContext, depth: depth + 1), let details {
+                resolved.append(details)
+            } else {
+                return nil
+            }
+        }
+        guard let first = resolved.first,
+              resolved.allSatisfy({ $0.name == first.name && $0.kind == first.kind }) else { return nil }
+        return first
     }
 
     /// 파일 안의 메서드 채널 생성 전부를 이름으로 푼 것. 핸들러 문맥 밖의 추측에 쓴다.
@@ -794,6 +873,9 @@ final class BindingCollector: SyntaxVisitor {
            let left = constantString(infix.leftOperand, in: context, remaining: remaining - 1) {
             if !left.isDynamic,
                let right = constantString(infix.rightOperand, in: context, remaining: remaining - 1), !right.isDynamic {
+                // 증명 가능해도 채널 이름이 될 수 없는 크기는 만들지 않는다 —
+                // `aᵢ = aᵢ₋₁ + aᵢ₋₁` 사슬은 결과가 2ⁿ 배로 커진다.
+                guard left.text.count + right.text.count <= 4096 else { return nil }
                 return .literal(left.text + right.text)
             }
             if let prefix = left.isDynamic ? left.channelPrefix : left.text {
@@ -801,7 +883,12 @@ final class BindingCollector: SyntaxVisitor {
             }
         }
         guard case let .constant(value, scopes, types)?? = constantBinding(for: expression, in: context) else { return nil }
-        return constantString(value, in: Context(scopes: scopes, enclosingTypes: types), remaining: remaining - 1)
+        // 같은 바인딩 표현식을 두 번째 풀 때는 저장된 답을 쓴다 — 별칭이 갈라지는
+        // 사슬에서 메모가 없으면 재귀가 지수로 불어난다.
+        if let memoized = constantMemo[value.id] { return memoized }
+        let resolved = constantString(value, in: Context(scopes: scopes, enclosingTypes: types), remaining: remaining - 1)
+        constantMemo[value.id] = resolved
+        return resolved
     }
 
     /// 보간 문자열의 첫 리터럴 세그먼트를 실행 시 문자열 값으로 디코드한다.
@@ -1012,7 +1099,15 @@ final class BridgeFactCollector: SyntaxVisitor {
         // 보며 호출 그래프를 재귀로 쫓지 않는다. 같은 이름에 선언이 여럿이면 어느 것이
         // 호출자인지 몰라 귀속하지 않는다.
         guard bindings.functionCounts[key] == 1,
-              let callers = bindings.forwardedHandlers[key], !callers.isEmpty else { return nil }
+              let seat = bindings.methodCallSeats[key],
+              let calls = bindings.forwardedCalls[key], !calls.isEmpty else { return nil }
+        // `call` 이 이 함수의 `FlutterMethodCall` 자리와 다른 위치·레이블로 넘어간
+        // 호출은 위임이 아니다 — 그 자리의 인자가 분기 대상이어야 같은 호출이다.
+        let callers = Set(calls.compactMap { entry -> String? in
+            let labelMatches = entry.label == nil ? seat.label == "_" : entry.label == seat.label
+            return labelMatches && entry.position == seat.index ? entry.caller : nil
+        })
+        guard !callers.isEmpty else { return nil }
         let proven = callers.sorted().compactMap {
             bindings.functionCounts[$0] == 1 ? recordedChannel(of: $0) : nil
         }
