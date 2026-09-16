@@ -147,7 +147,8 @@ def constants_and_ib(binary, root):
     facts = json.loads(run([str(binary), "bridges", "--target", "flutter", "--project", str(root)], root))
     registrations = [(fact["channel"], fact["dynamic"]) for fact in facts["facts"]
                      if fact["kind"] == "channel-register"]
-    expected = [("direct", False), ("direct", False), ("concat", True), ("parenthesized", False)]
+    # 리터럴 `+` 연결은 이제 증명 가능한 상수다 — concat 은 합친 리터럴로 나온다.
+    expected = [("direct", False), ("direct", False), ("com.example/camera", False), ("parenthesized", False)]
     assert registrations == expected, registrations
     screen = query(binary, root, "RuntimeScreen", store)
     assert screen["result"]["reachability"].get("reason") == "interfaceBuilder", screen
