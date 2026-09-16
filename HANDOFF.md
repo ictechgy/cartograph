@@ -2,8 +2,9 @@
 
 ## 2026-09-16 — 인덱스 없음 안내의 프로젝트 형태 맞춤 (feat/competitive-hardening)
 
-`우선순위대로 개선` 4번째(빌드/인덱스 온보딩 마찰). "인덱스 없음 안내 강화 또는
-선택적 빌드 프리스텝" 중 안내 강화를 택했다 — "Cartograph never drives your build"가
+`우선순위대로 개선` 4번째(빌드/인덱스 온보딩 마찰). 커밋 `0551343`.
+"인덱스 없음 안내 강화 또는 선택적 빌드 프리스텝" 중 안내 강화를 택했다 —
+"Cartograph never drives your build"가
 README의 설계 원칙이고 스킬 문서가 "never runs a build"를 가르치며, 프리스텝은
 scheme을 모르는 Xcode 프로젝트엔 어차피 못 돌아가기 때문이다.
 
