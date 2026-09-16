@@ -198,12 +198,14 @@ public struct IndexStoreProvider: IndexProviding {
             }
         }
 
+        var externalOnlyUSRs: Set<String> = []
         if includeExternalSymbols {
             for occurrence in occurrences {
                 guard symbolsByUSR[occurrence.symbol.usr] == nil,
                       let external = IndexStoreMapping.externalSymbol(from: occurrence)
                 else { continue }
                 symbolsByUSR[external.usr] = external
+                externalOnlyUSRs.insert(external.usr)
             }
         }
 
@@ -213,8 +215,14 @@ public struct IndexStoreProvider: IndexProviding {
         // 어떤 import도 미사용으로 보고할 수 없다.
         for (path, usrs) in deferredUSRsByFile {
             for usr in usrs {
-                if let module = symbolsByUSR[usr]?.module, !module.isEmpty {
-                    fileModuleUsages[path]?.referencedModules.insert(module)
+                // 참조 발생만으로 심은 외부 심볼의 module 은 참조한 파일의
+                // 모듈이다 — 정의 모듈이 아니므로 귀속 근거로 쓰면 미귀속
+                // 표식이 사라지고 그 파일에서 import 억제가 풀린다. 시스템
+                // 헤더의 선언 발생이 만든 심볼의 module 은 정의 모듈이라
+                // 그대로 귀속 근거가 된다.
+                if let symbol = symbolsByUSR[usr], !externalOnlyUSRs.contains(usr),
+                   !symbol.module.isEmpty {
+                    fileModuleUsages[path]?.referencedModules.insert(symbol.module)
                 } else {
                     fileModuleUsages[path]?.hasUnattributedReferences = true
                 }

@@ -893,4 +893,20 @@ struct ModuleUsageMappingTests {
             .fileModuleUsages["/p/A.swift"]
         #expect(usage?.hasUnattributedReferences == true)
     }
+
+    @Test("외부 심볼을 심어도 외국어 참조의 미귀속 표식은 사라지지 않는다")
+    func externalSymbolDoesNotAbsorbUnattributed() {
+        // includeExternalSymbols 가 선언 없는 clang 참조를 심볼로 올릴 때
+        // 그 module 은 정의 모듈이 아니라 참조한 파일의 모듈이다. 지연 귀속이
+        // 그것을 귀속 근거로 쓰면 미귀속 표식이 사라져 그 파일의 import
+        // 판정이 풀린다 — 외부 심볼은 귀속 후보에서 빠진다.
+        let occurrences = [
+            occurrence(
+                symbol("c:objc(cs)UIView", name: "UIView", kind: .class),
+                roles: .reference, location: location("/p/A.swift")),
+        ]
+        let usage = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: true)
+            .fileModuleUsages["/p/A.swift"]
+        #expect(usage?.hasUnattributedReferences == true)
+    }
 }
