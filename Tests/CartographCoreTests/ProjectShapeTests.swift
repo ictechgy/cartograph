@@ -24,7 +24,7 @@ struct ProjectShapeTests {
     func xcodeRootGetsSchemeFlag() {
         // -scheme 없는 xcodebuild 는 그대로 실행하면 실패한다.
         let shape = ProjectShape(hasPackageManifest: false, xcodeDocuments: ["App.xcodeproj"])
-        #expect(shape.remedy.contains("-project App.xcodeproj"))
+        #expect(shape.remedy.contains("-project \"App.xcodeproj\""))
         #expect(shape.remedy.contains("-scheme"))
         #expect(shape.remedy.contains("COMPILER_INDEX_STORE_ENABLE"))
         #expect(shape.remedy.contains("xcodebuild -list"))
@@ -38,8 +38,29 @@ struct ProjectShapeTests {
             hasPackageManifest: false,
             xcodeDocuments: ["App.xcworkspace", "App.xcodeproj"]
         )
-        #expect(shape.remedy.contains("-workspace App.xcworkspace"))
-        #expect(!shape.remedy.contains("-project App.xcodeproj"))
+        #expect(shape.remedy.contains("-workspace \"App.xcworkspace\""))
+        #expect(!shape.remedy.contains("-project \"App.xcodeproj\""))
+    }
+
+    @Test("워크스페이스가 여럿이면 정렬 첫 개가 아니라 자리표시자를 둔다")
+    func multipleWorkspacesGetAPlaceholder() {
+        // 이름순 첫 워크스페이스를 고르면 사용자가 의도한 것이 아닐 수 있다 —
+        // 문서가 여럿이면 어느 것을 빌드할지 사용자가 골라야 한다.
+        let shape = ProjectShape(
+            hasPackageManifest: false,
+            xcodeDocuments: ["A.xcworkspace", "B.xcworkspace"]
+        )
+        #expect(shape.remedy.contains("-workspace <workspace>"))
+        #expect(!shape.remedy.contains("A.xcworkspace"))
+    }
+
+    @Test("공백이 든 문서 이름은 따옴표로 감싸 명령이 깨지지 않게 한다")
+    func spacedDocumentNameIsQuoted() {
+        let shape = ProjectShape(
+            hasPackageManifest: false,
+            xcodeDocuments: ["My App.xcworkspace"]
+        )
+        #expect(shape.remedy.contains("-workspace \"My App.xcworkspace\""))
     }
 
     @Test("문서가 여럿이면 어느 것인지 고르라는 자리표시자를 둔다")

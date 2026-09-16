@@ -59,11 +59,12 @@ public struct ProjectShape: Sendable, Equatable {
     }
 
     /// `-workspace`·`-project` 플래그와 인자. 문서가 하나면 그것을, 여럿이면 자리표시자를 쓴다.
+    /// 이름은 항상 따옴표로 감싼다 — 공백이 든 이름을 그대로 끼우면 안내 명령이 깨진다.
     private var xcodeDocumentFlag: String {
-        if let workspace = xcodeDocuments.first(where: { $0.hasSuffix(".xcworkspace") }) {
-            return "-workspace \(workspace)"
-        }
-        return xcodeDocuments.count == 1 ? "-project \(xcodeDocuments[0])" : "-project <project>"
+        let workspaces = xcodeDocuments.filter { $0.hasSuffix(".xcworkspace") }
+        if workspaces.count == 1 { return "-workspace \"\(workspaces[0])\"" }
+        if workspaces.count > 1 { return "-workspace <workspace>" }
+        return xcodeDocuments.count == 1 ? "-project \"\(xcodeDocuments[0])\"" : "-project <project>"
     }
 
     private var swiftPackageRemedy: String {

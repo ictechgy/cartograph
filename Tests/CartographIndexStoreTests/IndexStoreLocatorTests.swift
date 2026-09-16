@@ -213,7 +213,7 @@ struct DerivedDataMatchingTests {
         let fileSystem = InMemoryFileSystem(files: ["/p/App.xcodeproj/project.pbxproj": "x"])
         let error = locateError(fileSystem: fileSystem, projectPath: "/p")
         #expect(error.contains("xcodebuild"))
-        #expect(error.contains("-project App.xcodeproj"))
+        #expect(error.contains("-project \"App.xcodeproj\""))
         #expect(error.contains("-scheme"))
     }
 
