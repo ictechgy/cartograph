@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The no-index-store error now reads the project root and tailors its build guidance to what
+  it finds: a `Package.swift` gets the `swift build` line (plus a note when `.build` exists but
+  holds no store), an `.xcodeproj`/`.xcworkspace` gets an `xcodebuild` command with the document
+  and `-scheme` flags filled in, both get both, and a root with neither is told to check
+  `--project` instead of being shown commands that cannot run there. The `indexStoreEmpty`
+  remedies that end in build commands follow the same shape.
+
 ### Added
 
 - `dead` now reports parameters that a reachable function's body never reads, under the

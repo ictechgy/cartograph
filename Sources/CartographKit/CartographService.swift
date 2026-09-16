@@ -1385,7 +1385,9 @@ public struct CartographService: Sendable {
             sourceFileCount: counts.total,
             filteredSourceFileCount: counts.inScope,
             objectiveCSourceCount: counts.objectiveC,
-            unitCount: indexUnitCount(at: source)
+            unitCount: indexUnitCount(at: source),
+            projectShape: IndexStoreLocator(fileSystem: environment.fileSystem)
+                .projectShape(at: projectPath)
         )
     }
 

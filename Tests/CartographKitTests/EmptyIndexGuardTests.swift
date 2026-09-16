@@ -123,7 +123,8 @@ struct EmptyIndexFactsTests {
         sourceFileCount: Int,
         filteredSourceFileCount: Int,
         unitCount: Int?,
-        objectiveCSourceCount: Int = 0
+        objectiveCSourceCount: Int = 0,
+        projectShape: ProjectShape? = nil
     ) -> EmptyIndexFacts {
         EmptyIndexFacts(
             projectPath: "/p",
@@ -134,7 +135,8 @@ struct EmptyIndexFactsTests {
             sourceFileCount: sourceFileCount,
             filteredSourceFileCount: filteredSourceFileCount,
             objectiveCSourceCount: objectiveCSourceCount,
-            unitCount: unitCount
+            unitCount: unitCount,
+            projectShape: projectShape
         )
     }
 
@@ -156,6 +158,25 @@ struct EmptyIndexFactsTests {
     func nothingCompiledRemedy() {
         let remedy = facts(sourceFileCount: 214, filteredSourceFileCount: 214, unitCount: 0).remedy
         #expect(remedy.contains("swift build"))
+    }
+
+    @Test("유닛이 없을 때 빌드 명령은 프로젝트 형태를 따른다")
+    func nothingCompiledRemedyFollowsProjectShape() {
+        // Xcode 프로젝트에 swift build 를 권하면 그대로 실행해도 실패한다.
+        let xcode = facts(
+            sourceFileCount: 214, filteredSourceFileCount: 214, unitCount: 0,
+            projectShape: ProjectShape(hasPackageManifest: false, xcodeDocuments: ["App.xcodeproj"])
+        ).remedy
+        #expect(xcode.contains("xcodebuild"))
+        #expect(xcode.contains("-scheme"))
+        #expect(!xcode.contains("swift build"))
+
+        let package = facts(
+            sourceFileCount: 214, filteredSourceFileCount: 214, unitCount: 0,
+            projectShape: ProjectShape(hasPackageManifest: true)
+        ).remedy
+        #expect(package.contains("swift build"))
+        #expect(!package.contains("xcodebuild"))
     }
 
     @Test("유닛은 있는데 겹치지 않으면 남의 스토어라고 말한다")

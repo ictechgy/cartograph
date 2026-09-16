@@ -43,6 +43,8 @@ public struct EmptyIndexFacts: Sendable, Equatable {
     public let objectiveCSourceCount: Int
     /// 스토어가 담고 있는 유닛 수. 셀 수 없으면 nil.
     public let unitCount: Int?
+    /// 프로젝트 루트의 빌드 진입점. "빌드하라"는 치유책을 형태에 맞게 고른다.
+    public let projectShape: ProjectShape?
 
     public init(
         projectPath: String,
@@ -53,7 +55,8 @@ public struct EmptyIndexFacts: Sendable, Equatable {
         sourceFileCount: Int,
         filteredSourceFileCount: Int,
         objectiveCSourceCount: Int = 0,
-        unitCount: Int? = nil
+        unitCount: Int? = nil,
+        projectShape: ProjectShape? = nil
     ) {
         self.projectPath = projectPath
         self.resolvedProjectPath = resolvedProjectPath
@@ -64,6 +67,7 @@ public struct EmptyIndexFacts: Sendable, Equatable {
         self.filteredSourceFileCount = filteredSourceFileCount
         self.objectiveCSourceCount = objectiveCSourceCount
         self.unitCount = unitCount
+        self.projectShape = projectShape
     }
 
     /// 무엇을 보고 그렇게 판단했는지를 적은 사실 블록.
@@ -90,8 +94,8 @@ public struct EmptyIndexFacts: Sendable, Equatable {
         }
         if filteredSourceFileCount == 0 { return Self.filteredOutRemedy }
         switch unitCount {
-        case 0: return Self.nothingCompiledRemedy
-        case nil: return Self.unknownStoreRemedy
+        case 0: return nothingCompiledRemedy
+        case nil: return unknownStoreRemedy
         default: return Self.foreignStoreRemedy
         }
     }
@@ -146,19 +150,29 @@ public struct EmptyIndexFacts: Sendable, Equatable {
         `include` and `exclude` in .cartograph.yml.
         """
 
-    private static let nothingCompiledRemedy = """
-        The store holds no units: nothing has been compiled into it yet. Build first, then run again:
-          swift build
-          xcodebuild build COMPILER_INDEX_STORE_ENABLE=YES -derivedDataPath <path>
+    private var nothingCompiledRemedy: String {
         """
+        The store holds no units: nothing has been compiled into it yet. Build first, then run again:
+        \(buildCommandsBlock)
+        """
+    }
 
-    private static let unknownStoreRemedy = """
+    private var unknownStoreRemedy: String {
+        """
         The store's unit directory could not be read, so this is either a store nothing has been \
         compiled into yet or one written for a different checkout, scheme or target. Build first, \
         or pass --index-store <path> to name the right store:
-          swift build
-          xcodebuild build COMPILER_INDEX_STORE_ENABLE=YES -derivedDataPath <path>
+        \(buildCommandsBlock)
         """
+    }
+
+    /// 형태를 알면 그것에 맞는 명령을, 모르면 일반 명령 둘을 늘어놓는다.
+    private var buildCommandsBlock: String {
+        (projectShape?.buildCommands
+            ?? ["swift build", "xcodebuild build COMPILER_INDEX_STORE_ENABLE=YES -derivedDataPath <path>"])
+            .map { "  " + $0 }
+            .joined(separator: "\n")
+    }
 
     private static let foreignStoreRemedy = """
         The store holds units, but none of them covers a file in this project — it was written for \

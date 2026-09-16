@@ -9,7 +9,13 @@ public enum CartographError: Error, Equatable, LocalizedError {
     ///
     /// `derivedData` 는 DerivedData 를 훑어본 결과다. 이름이 하나도 맞지 않으면 후보
     /// 경로가 한 줄도 생기지 않아, 목록만으로는 그곳을 보기라도 했는지 알 수 없었다.
-    case indexStoreNotFound(searchedPaths: [String], derivedData: DerivedDataSearch? = nil)
+    /// `projectShape` 은 루트가 제공하는 빌드 진입점이다 — 빌드 명령을 프로젝트
+    /// 형태에 맞게 골라 주려면 필요하고, 명시 경로 오류처럼 문맥이 없으면 nil 이다.
+    case indexStoreNotFound(
+        searchedPaths: [String],
+        derivedData: DerivedDataSearch? = nil,
+        projectShape: ProjectShape? = nil
+    )
     /// 인덱스 스토어를 열지 못함.
     case indexStoreUnreadable(path: String, underlying: String)
     /// 인덱스는 열렸지만 이 프로젝트의 선언을 하나도 담고 있지 않음.
@@ -48,17 +54,12 @@ public enum CartographError: Error, Equatable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case let .indexStoreNotFound(searchedPaths, derivedData):
+        case let .indexStoreNotFound(searchedPaths, derivedData, projectShape):
             return """
                 Could not find an index store. Searched:
                 \(searchedPaths.map { "  - \($0)" }.joined(separator: "\n"))\
                 \(derivedData.map { "\n\($0.explanation)" } ?? "")
-                Build first so the compiler writes an index store:
-                  swift build
-                  xcodebuild build COMPILER_INDEX_STORE_ENABLE=YES -derivedDataPath <path>
-                Then run again, or pass --index-store <path> to point at it directly.
-                Note: with SwiftPM's Xcode-based build system, -Xswiftc -index-store-path is
-                ignored; the store goes to <scratch path>/out.
+                \(projectShape?.remedy ?? Self.genericIndexRemedy)
                 """
         case let .indexStoreUnreadable(path, underlying):
             return """
@@ -123,4 +124,15 @@ public enum CartographError: Error, Equatable, LocalizedError {
             return "Could not write to \(path): \(underlying)"
         }
     }
+
+    /// 프로젝트 형태를 모를 때의 일반 안내. 명시 경로가 잘못된 경우처럼
+    /// 루트와 무관한 실패에 쓴다.
+    private static let genericIndexRemedy = """
+        Build first so the compiler writes an index store:
+          swift build
+          xcodebuild build COMPILER_INDEX_STORE_ENABLE=YES -derivedDataPath <path>
+        Then run again, or pass --index-store <path> to point at it directly.
+        Note: with SwiftPM's Xcode-based build system, -Xswiftc -index-store-path is
+        ignored; the store goes to <scratch path>/out.
+        """
 }

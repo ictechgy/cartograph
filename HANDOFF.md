@@ -1,5 +1,43 @@
 # Handoff
 
+## 2026-09-16 — 인덱스 없음 안내의 프로젝트 형태 맞춤 (feat/competitive-hardening)
+
+`우선순위대로 개선` 4번째(빌드/인덱스 온보딩 마찰). "인덱스 없음 안내 강화 또는
+선택적 빌드 프리스텝" 중 안내 강화를 택했다 — "Cartograph never drives your build"가
+README의 설계 원칙이고 스킬 문서가 "never runs a build"를 가르치며, 프리스텝은
+scheme을 모르는 Xcode 프로젝트엔 어차피 못 돌아가기 때문이다.
+
+### 설계
+
+- `ProjectShape`(CartographCore): 루트의 빌드 진입점 사실 — `hasPackageManifest`,
+  `hasBuildDirectory`(.build만 있고 스토어는 없음 = 해석/중단 빌드),
+  `xcodeDocuments`(워크스페이스 우선 정렬).
+- `IndexStoreLocator.projectShape(at:)`가 실패 경로에서만 루트를 한 번 훑어 형태를
+  만들고 `indexStoreNotFound`의 세 번째 연관 값(기본 nil, 하위 호환)으로 실린다.
+- 형태별 치유책: 패키지 → `swift build`만(+`.build` 흔적 문장, `-Xswiftc` 무시 경고),
+  Xcode 문서 → 문서 플래그와 `-scheme`을 채운 `xcodebuild` + `xcodebuild -list`,
+  둘 다 → 둘 다, 없음 → `--project` 경로 의심. 없음 루트에 `swift build`를 권하는
+  것은 그대로 실행해도 실패하는 안내라 넣지 않는다.
+- `EmptyIndexFacts`도 같은 형태를 받아 `nothingCompiled`/`unknownStore` 치유책의
+  빌드 명령이 형태를 따른다(`buildCommandsBlock` — 형태 없으면 기존 두 줄 유지).
+- 회귀: `reportsSearchedPaths`를 Package.swift 루트로 옮겼다 — 빈 루트는 이제
+  "진입점 없음" 형태라 swift build 안내가 나오지 않는 게 맞다.
+
+### 검증 근거
+
+- `swift test` 1432개 통과(신규 12: 형태 문장 8·로케이터 연결 3·빈 인덱스 1).
+- 변이 확인: remedy를 형태 무시로 바꾸면 형태별·연결 테스트가 전부 실패,
+  워크스페이스 우선을 빼면 해당 테스트만 실패, buildCommandsBlock이 형태를
+  무시하면 빈 인덱스 테스트가 실패 — 전부 문다.
+
+### 다음
+
+우선순위 목록 전부 완료 — P3 재측정·warm 단축, P2-1 미사용 파라미터(`cbdb6c9`),
+P2-2 assign-only(`f72af38`), P2-3 미사용 import(`7fb815f`), P4 온보딩 안내(이 항목).
+브랜치 정리·PR 여부는 지시 대기.
+
+---
+
 ## 2026-09-16 — 미사용 import 분석 (feat/competitive-hardening)
 
 `우선순위대로 개선` 3번째(분석 커버리지)의 셋째 항목. `dead`가 파일의 참조 근거가
