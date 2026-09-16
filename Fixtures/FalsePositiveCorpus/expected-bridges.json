@@ -16,7 +16,191 @@
     },
     {
       "channel": "com.example/camera",
+      "dependencies": [
+        {
+          "kind": "call",
+          "location": {
+            "column": 9,
+            "line": 25,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.channel",
+            "usr": "s:6Corpus12CameraBridgeC7channelAA20FlutterMethodChannelCvp"
+          }
+        },
+        {
+          "kind": "reference",
+          "location": {
+            "column": 9,
+            "line": 25,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.channel",
+            "usr": "s:6Corpus12CameraBridgeC7channelAA20FlutterMethodChannelCvp"
+          }
+        },
+        {
+          "kind": "reference",
+          "location": {
+            "column": 19,
+            "line": 25,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.FlutterMethodChannel",
+            "usr": "s:6Corpus20FlutterMethodChannelC"
+          }
+        },
+        {
+          "kind": "call",
+          "location": {
+            "column": 19,
+            "line": 25,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.init(name:binaryMessenger:)",
+            "usr": "s:6Corpus20FlutterMethodChannelC4name15binaryMessengerACSS_yptcfc"
+          }
+        },
+        {
+          "kind": "reference",
+          "location": {
+            "column": 46,
+            "line": 25,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.CameraBridge",
+            "usr": "s:6Corpus12CameraBridgeC"
+          }
+        },
+        {
+          "kind": "call",
+          "location": {
+            "column": 51,
+            "line": 25,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.channelName",
+            "usr": "s:6Corpus12CameraBridgeC11channelNameSSvpZ"
+          }
+        },
+        {
+          "kind": "reference",
+          "location": {
+            "column": 51,
+            "line": 25,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.channelName",
+            "usr": "s:6Corpus12CameraBridgeC11channelNameSSvpZ"
+          }
+        },
+        {
+          "kind": "call",
+          "location": {
+            "column": 9,
+            "line": 26,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.channel",
+            "usr": "s:6Corpus12CameraBridgeC7channelAA20FlutterMethodChannelCvp"
+          }
+        },
+        {
+          "kind": "reference",
+          "location": {
+            "column": 9,
+            "line": 26,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.channel",
+            "usr": "s:6Corpus12CameraBridgeC7channelAA20FlutterMethodChannelCvp"
+          }
+        },
+        {
+          "kind": "call",
+          "location": {
+            "column": 17,
+            "line": 26,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.setMethodCallHandler(_:)",
+            "usr": "s:6Corpus20FlutterMethodChannelC03setC11CallHandleryyyAA0bcF0V_yypSgXEtcSgF"
+          }
+        },
+        {
+          "kind": "call",
+          "location": {
+            "column": 25,
+            "line": 27,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.method",
+            "usr": "s:6Corpus17FlutterMethodCallV6methodSSvp"
+          }
+        },
+        {
+          "kind": "reference",
+          "location": {
+            "column": 25,
+            "line": 27,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.method",
+            "usr": "s:6Corpus17FlutterMethodCallV6methodSSvp"
+          }
+        },
+        {
+          "kind": "call",
+          "location": {
+            "column": 23,
+            "line": 29,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "handler",
+          "symbol": {
+            "qualifiedName": "Corpus.takePhoto()",
+            "usr": "s:6Corpus12CameraBridgeC9takePhotoyyF"
+          }
+        }
+      ],
       "dynamic": false,
+      "handlerScope": {
+        "complete": true,
+        "end": {
+          "column": 28,
+          "line": 30,
+          "path": "Sources/Corpus/Bridges.swift"
+        },
+        "start": {
+          "column": 13,
+          "line": 28,
+          "path": "Sources/Corpus/Bridges.swift"
+        }
+      },
       "kind": "method-handle",
       "location": {
         "column": 18,
@@ -45,7 +229,61 @@
     },
     {
       "channel": "com.example/photo",
+      "dependencies": [
+        {
+          "kind": "reference",
+          "location": {
+            "column": 32,
+            "line": 56,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.FlutterMethodCall",
+            "usr": "s:6Corpus17FlutterMethodCallV"
+          }
+        },
+        {
+          "kind": "call",
+          "location": {
+            "column": 21,
+            "line": 57,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.method",
+            "usr": "s:6Corpus17FlutterMethodCallV6methodSSvp"
+          }
+        },
+        {
+          "kind": "reference",
+          "location": {
+            "column": 21,
+            "line": 57,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.method",
+            "usr": "s:6Corpus17FlutterMethodCallV6methodSSvp"
+          }
+        }
+      ],
       "dynamic": false,
+      "handlerScope": {
+        "complete": true,
+        "end": {
+          "column": 37,
+          "line": 58,
+          "path": "Sources/Corpus/Bridges.swift"
+        },
+        "start": {
+          "column": 9,
+          "line": 58,
+          "path": "Sources/Corpus/Bridges.swift"
+        }
+      },
       "kind": "method-handle",
       "location": {
         "column": 14,
@@ -74,7 +312,61 @@
     },
     {
       "channel": "com.example/audio",
+      "dependencies": [
+        {
+          "kind": "reference",
+          "location": {
+            "column": 29,
+            "line": 73,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.FlutterMethodCall",
+            "usr": "s:6Corpus17FlutterMethodCallV"
+          }
+        },
+        {
+          "kind": "call",
+          "location": {
+            "column": 27,
+            "line": 74,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.method",
+            "usr": "s:6Corpus17FlutterMethodCallV6methodSSvp"
+          }
+        },
+        {
+          "kind": "reference",
+          "location": {
+            "column": 27,
+            "line": 74,
+            "path": "Sources/Corpus/Bridges.swift"
+          },
+          "scope": "registration",
+          "symbol": {
+            "qualifiedName": "Corpus.method",
+            "usr": "s:6Corpus17FlutterMethodCallV6methodSSvp"
+          }
+        }
+      ],
       "dynamic": false,
+      "handlerScope": {
+        "complete": true,
+        "end": {
+          "column": 44,
+          "line": 75,
+          "path": "Sources/Corpus/Bridges.swift"
+        },
+        "start": {
+          "column": 29,
+          "line": 75,
+          "path": "Sources/Corpus/Bridges.swift"
+        }
+      },
       "kind": "method-handle",
       "location": {
         "column": 22,
