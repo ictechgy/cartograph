@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Warm session queries re-check the input fingerprint without re-reading the filesystem.
+  Encoded fingerprint contributions are replayed while file stamps hold, directory walks are
+  reused while every observed directory stamp holds, and directory entries are built with native
+  path strings instead of `appendingPathComponent` (whose NSString-backed results hashed ~40×
+  slower inside sets and maps). A measured warm `cartograph_query` dropped from ~69 ms to ~12 ms.
+
 ## [0.16.0] - 2026-09-16
 
 ### Changed
