@@ -1678,6 +1678,44 @@ struct BridgeFactScannerTests {
         #expect(facts(source, of: .methodHandle).map(\.method) == ["snap"])
     }
 
+    @Test("멤버 체인이 붙은 DSL 호출도 JS 메서드다")
+    func expoDSLCallWithMemberChain() {
+        // expo-haptics 처럼 AsyncFunction(…) {…}.runOnQueue(.main) 형태다.
+        // 안쪽 호출이 바깥 호출의 callee 자리에 서도 체인 전체가 직접 문장이면
+        // DSL 문장이다.
+        let source = """
+            import ExpoModulesCore
+
+            class HapticsModule: Module {
+                func definition() -> ModuleDefinition {
+                    Name("ExpoHaptics")
+                    AsyncFunction("notify") { (type: String) in type }
+                        .runOnQueue(.main)
+                    Function("sync") { 0 }.runOnQueue(.utility)
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["notify", "sync"])
+        #expect(handled.allSatisfy { $0.channel == "ExpoHaptics" })
+    }
+
+    @Test("다른 호출의 인자인 DSL 호출은 문장이 아니다")
+    func expoDSLCallAsArgumentIsNotAStatement() {
+        // callee 통과를 허용해도 인자 자리는 여전히 DSL 문장이 아니다.
+        let source = """
+            import ExpoModulesCore
+
+            class HapticsModule: Module {
+                func definition() -> ModuleDefinition {
+                    Name("ExpoHaptics")
+                    print(AsyncFunction("hidden") { 0 })
+                }
+            }
+            """
+        #expect(facts(source, of: .methodHandle).isEmpty)
+    }
+
     @Test("definition을 찾지 못한 Expo 모듈은 이름을 동적으로 남긴다")
     func expoModuleWithoutVisibleDefinitionIsDynamic() {
         let source = """

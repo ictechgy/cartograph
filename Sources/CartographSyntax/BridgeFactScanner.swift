@@ -1778,12 +1778,20 @@ private final class ExpoDefinitionCollector: SyntaxVisitor {
     /// 조상에 `ModuleDefinition { … }` 래퍼의 후행 클로저가 아닌 클로저, 다른 함수
     /// 호출의 인자, 또는 지역 함수가 끼어 있으면 DSL 문장이 아니다. `if` 안의 호출은
     /// 결과 빌더가 변환하므로 직접 문장과 같이 본다.
+    ///
+    /// `AsyncFunction("f") { … }.runOnQueue(.main)` 처럼 DSL 호출 결과에 멤버 체인이
+    /// 붙으면 안쪽 호출이 바깥 호출의 callee 자리에 선다. 체인 전체가 직접 문장일 때
+    /// 안쪽 호출도 DSL 문장이므로, callee 자리 통과를 허용한다.
     private func isDSLStatement(_ node: FunctionCallExprSyntax) -> Bool {
         var current = Syntax(node)
         while let parent = current.parent {
             if parent.id == rootID { return true }
             if parent.is(FunctionDeclSyntax.self) || parent.is(InitializerDeclSyntax.self) { return false }
             if let call = parent.as(FunctionCallExprSyntax.self) {
+                if call.calledExpression.id == current.id {
+                    current = parent
+                    continue
+                }
                 guard let closure = current.as(ClosureExprSyntax.self),
                       call.trailingClosure == closure,
                       BindingCollector.calleeName(of: call) == "ModuleDefinition"
