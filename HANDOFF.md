@@ -10,6 +10,11 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 
 ## Current Status
 
+- 지침 재배치·HANDOFF 압축 [PR #101](https://github.com/ictechgy/cartograph/pull/101) 머지(`b468541`).
+  루트 `AGENTS.md`는 색인, 구현 주의점은 `Sources/AGENTS.md`, 인덱스 규칙은
+  `Sources/CartographIndexStore/AGENTS.md`(신규, 타깃 exclude 등록)에 있다.
+- 워크트리는 `/Users/jinhongan/Desktop/cartograph` 하나(main). `cartograph-p1` 제거,
+  로컬·원격 낡은 브랜치 전부 삭제, 바탕화면의 날짜별 산출물 디렉터리(~6.4GB) 정리 완료.
 - [0.17.0 릴리스](https://github.com/ictechgy/cartograph/releases/tag/0.17.0) 공개.
   버전 범프 [PR #95](https://github.com/ictechgy/cartograph/pull/95)(`5582341`), 태그 `0.17.0`,
   릴리스 워크플로 `35169960516` 성공. Homebrew는 `HOMEBREW_TAP_TOKEN` 부재로 워크플로가
@@ -20,9 +25,6 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
   재지정·열거 실패 감지). [PR #93](https://github.com/ictechgy/cartograph/pull/93) 스쿼시 머지.
 - Expo Modules 지원 [PR #97](https://github.com/ictechgy/cartograph/pull/97)(`513cbef`),
   README 영·한 퇴고 [PR #98](https://github.com/ictechgy/cartograph/pull/98)(`8a09625`) 머지.
-- 워크트리는 `/Users/jinhongan/Desktop/cartograph`(이 브랜치)와
-  `/Users/jinhongan/Desktop/cartograph-p1`(main) 두 개.
-- 로컬·원격의 낡은 브랜치는 전부 삭제 완료(머지 확인 후 정리).
 
 ## Completed
 
@@ -82,7 +84,7 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 | `Scripts/verify-cli-contract.sh` | 통과 (0/64/2 종료 코드 전 구간) |
 | `Scripts/verify-fixtures.sh` | 통과 — 골든 갱신 후 재검증 |
 | strict 자기 분석 | dead **0 경고**·cycles·type cycles·rules 모두 findings 없음 |
-| CI (PR #93~#100) | Build/test/coverage gate + 자기 분석 전부 SUCCESS |
+| CI (PR #93~#101) | Build/test/coverage gate + 자기 분석 전부 SUCCESS |
 | Release `35169960516` | 성공; 공개 asset 해시·universal·버전 직접 검증 |
 | Homebrew | formula 0.17.0 + 검증된 sha256(`ff1bbbc6…7087cb`); `brew upgrade`·`brew test` 통과 |
 | 변이 확인 | 새 테스트 9종이 수정 전 코드에서 실패함을 확인 |
@@ -113,11 +115,10 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ## Next Steps
 
 1. `git status --short --branch`, `git worktree list`, `git log --oneline -3 origin/main`으로 확인.
-2. 이 브랜치의 guidance 재배치 + HANDOFF 압축을 PR로 올려 머지한다.
-3. 새 제품 변경에는 관련 하위 지침과 필수 검사를 적용한다. 배포·태그 생성을 자동 재개하지 않는다.
+2. 새 제품 변경에는 관련 하위 지침과 필수 검사를 적용한다. 배포·태그 생성을 자동 재개하지 않는다.
 
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
-0.17.0 배포·Homebrew 갱신·PR #90~#100 머지와 브랜치 정리는 완료됐습니다. Git 상태를
-확인한 뒤 최신 사용자 요청만 이어가세요. 완료된 배포나 정리를 반복하지 마세요.
+0.17.0 배포·Homebrew 갱신·PR #90~#101 머지와 브랜치·워크트리·Desktop 정리는 완료됐습니다.
+Git 상태를 확인한 뒤 최신 사용자 요청만 이어가세요. 완료된 배포나 정리를 반복하지 마세요.
