@@ -7,6 +7,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `bridges` recognizes Expo Modules. In files that `import ExpoModulesCore`, a `Module`
+  subclass's `definition()` builder or an `@ExpoModule`/`@JS` macro pair produces
+  `module-export`/`component-export` facts marked `mechanism: "expo"` plus `method-handle`
+  facts for the module's JS-callable functions. The
+  module name follows Expo's own rules — an explicit `Name(...)`/`@ExpoModule(...)` argument,
+  otherwise the class name (`String(describing:)` default). A `View` definition emits
+  `component-export` on the module name, matching `requireNativeViewManager(moduleName)`.
+  A `Module` subclass whose `definition()` is not visible in the file keeps a `dynamic`
+  name rather than guessing. Facts keep `target: "react-native"`; the field is omitted for
+  core React Native and `method-handle` facts, which old consumers read unchanged.
+
 ## [0.17.0] - 2026-09-17
 
 ### Added

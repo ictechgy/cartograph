@@ -207,6 +207,22 @@ final class BindingCollector: SyntaxVisitor {
     private(set) var declaredTypeNames: Set<String> = []
     /// `@objc(Name)` 클래스 이름 → 모듈 이름과 `@objcMembers` 여부. 익스텐션이 이것을 이어받는다.
     private(set) var reactModules: [String: (name: String, exportsAllMembers: Bool)] = [:]
+    /// `import ExpoModulesCore` 가 있는지. Expo DSL 인식의 파일 단위 관문이다.
+    ///
+    /// 이 import 없이 `class X: Module` 이나 `Name("…")` 를 보면 같은 이름의 무관한
+    /// 선언일 수 있으므로 Expo 사실로 만들지 않는다.
+    private(set) var importsExpoModulesCore = false
+    /// `@ExpoModule` 을 달았거나 `Module` 을 상속한 타입의 이름. `extension X: Module`
+    /// 처럼 익스텐션에서 준수를 선언한 경우도 포함한다.
+    private(set) var expoModuleClasses: Set<String> = []
+    /// `expoModuleClasses` 중 이 파일에 `class` 선언이 있는 이름. 익스텐션만으로
+    /// Expo 가 표시된 타입은 클래스 방문이 아니라 익스텐션 방문에서 사실을 낸다.
+    private(set) var expoClassDeclarations: Set<String> = []
+    /// 타입(또는 같은 파일 익스텐션)의 직속 멤버 `func definition` 들. 안쪽 타입 이름이 키다.
+    ///
+    /// Expo 의 모듈 이름(`Name`)·뷰(`View`)·함수(`Function` 계열) 정의는 이 본문
+    /// 안의 결과 빌더 문장에만 있다. 다른 멤버의 동명 호출과 구분하려고 따로 모은다.
+    private(set) var definitionFunctions: [String: [FunctionDeclSyntax]] = [:]
     /// `FlutterEventChannel(name:)` 생성 수.
     private(set) var eventChannelCount = 0
     /// `FlutterBasicMessageChannel(name:)` / `BasicMessageChannel(name:)` 생성 수.
@@ -304,9 +320,18 @@ final class BindingCollector: SyntaxVisitor {
 
     // MARK: 스코프 문맥
 
+    override func visit(_ node: ImportDeclSyntax) -> SyntaxVisitorContinueKind {
+        // `import ExpoModulesCore` 와 `import struct ExpoModulesCore.X` 를 함께 잡는다.
+        if node.path.first?.name.text == "ExpoModulesCore" { importsExpoModulesCore = true }
+        return .visitChildren
+    }
+
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         var key: String? = nil
         if !DeclarationCollector.isInsideBody(node) {
+            if node.name.text == "definition", let type = typeNames.last {
+                definitionFunctions[type, default: []].append(node)
+            }
             let handlerKey = Self.handlerKey(DeclarationCollector.unescaped(node.name.text), enclosingTypes: typeNames)
             functionCounts[handlerKey, default: 0] += 1
             if node.body != nil && Self.takesMethodCall(node) {
@@ -377,9 +402,30 @@ final class BindingCollector: SyntaxVisitor {
         if let name = SyntaxAttributes.objectiveCName(in: node.attributes) {
             reactModules[node.name.text] = (name, SyntaxAttributes.has("objcMembers", in: node.attributes))
         }
+        if isExpoModuleClass(node) {
+            expoModuleClasses.insert(node.name.text)
+            expoClassDeclarations.insert(node.name.text)
+        }
         return pushType(node.name.text)
     }
     override func visitPost(_: ClassDeclSyntax) { typeNames.removeLast() }
+
+    /// `@ExpoModule` 을 달았거나 `Module` 을 상속한 클래스인지.
+    private func isExpoModuleClass(_ node: ClassDeclSyntax) -> Bool {
+        guard importsExpoModulesCore else { return false }
+        if SyntaxAttributes.has("ExpoModule", in: node.attributes) { return true }
+        return Self.hasModuleInheritance(node.inheritanceClause)
+    }
+
+    /// 상속 절에 Expo `Module` 이 있는지.
+    ///
+    /// Expo 의 `Module` 은 `AnyModule & BaseModule` 타입 별칭이다. 상속 절의 마지막
+    /// 점 구성 요소만 본다 — `MyModule` 이나 `ModuleFactory` 같은 무관한 이름은 걸러 낸다.
+    private static func hasModuleInheritance(_ clause: InheritanceClauseSyntax?) -> Bool {
+        clause?.inheritedTypes.contains {
+            $0.type.trimmedDescription.split(separator: ".").last == "Module"
+        } ?? false
+    }
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind { pushType(node.name.text) }
     override func visitPost(_: StructDeclSyntax) { typeNames.removeLast() }
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind { pushType(node.name.text) }
@@ -387,7 +433,11 @@ final class BindingCollector: SyntaxVisitor {
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind { pushType(node.name.text) }
     override func visitPost(_: ActorDeclSyntax) { typeNames.removeLast() }
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(node.extendedType.trimmedDescription)
+        // `extension X: Module` — 준수를 클래스가 아니라 익스텐션이 선언할 수 있다.
+        if importsExpoModulesCore, Self.hasModuleInheritance(node.inheritanceClause) {
+            expoModuleClasses.insert(node.extendedType.trimmedDescription)
+        }
+        return pushType(node.extendedType.trimmedDescription)
     }
     override func visitPost(_: ExtensionDeclSyntax) { typeNames.removeLast() }
 
@@ -981,6 +1031,8 @@ final class BridgeFactCollector: SyntaxVisitor {
     private var methodCallFunctionDepth = 0
     /// `@objc(Name)` 클래스(또는 그 익스텐션) 안에 있으면 그 이름과, 멤버 전부를 내보내는지.
     private var reactModules: [(name: String, exportsAllMembers: Bool)?] = []
+    /// Expo `Module` 클래스(또는 그 익스텐션) 안에 있으면 해석된 모듈 이름과 매크로 형태 여부.
+    private var expoModules: [(name: ResolvedName, viaMacro: Bool)?] = []
     /// `let m = call.method` 로 메서드 이름을 담아 둔 지역 변수들. 함수·클로저마다 한 층.
     ///
     /// `switch m` 을 못 알아보면 그 핸들러의 메서드가 전부 사라진다. 실제 플러그인에서
@@ -1009,25 +1061,31 @@ final class BridgeFactCollector: SyntaxVisitor {
         if let module {
             emit(.moduleExport, target: .reactNative, channel: .literal(module.name), at: node.name)
         }
+        let expo = expoModuleInfo(of: node)
+        expoModules.append(expo.map { ($0.name, $0.viaMacro) })
+        if let expo {
+            emit(.moduleExport, target: .reactNative, channel: expo.name, mechanism: .expo, at: node.name)
+            emitExpoDSL(moduleName: expo.name, extracted: expo.extracted)
+        }
         return .visitChildren
     }
-    override func visitPost(_: ClassDeclSyntax) { popType(); reactModules.removeLast() }
+    override func visitPost(_: ClassDeclSyntax) { popType(); reactModules.removeLast(); expoModules.removeLast() }
 
     // 중첩 타입은 바깥 클래스의 Objective-C 노출을 물려받지 않는다.
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(node.name.text, node: node); reactModules.append(nil); return .visitChildren
+        pushType(node.name.text, node: node); reactModules.append(nil); expoModules.append(nil); return .visitChildren
     }
-    override func visitPost(_: StructDeclSyntax) { popType(); reactModules.removeLast() }
+    override func visitPost(_: StructDeclSyntax) { popType(); reactModules.removeLast(); expoModules.removeLast() }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(node.name.text, node: node); reactModules.append(nil); return .visitChildren
+        pushType(node.name.text, node: node); reactModules.append(nil); expoModules.append(nil); return .visitChildren
     }
-    override func visitPost(_: EnumDeclSyntax) { popType(); reactModules.removeLast() }
+    override func visitPost(_: EnumDeclSyntax) { popType(); reactModules.removeLast(); expoModules.removeLast() }
 
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(node.name.text, node: node); reactModules.append(nil); return .visitChildren
+        pushType(node.name.text, node: node); reactModules.append(nil); expoModules.append(nil); return .visitChildren
     }
-    override func visitPost(_: ActorDeclSyntax) { popType(); reactModules.removeLast() }
+    override func visitPost(_: ActorDeclSyntax) { popType(); reactModules.removeLast(); expoModules.removeLast() }
 
     /// `@objc(Name)` 클래스의 익스텐션에 둔 `@objc` 메서드도 JS 에 보인다.
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
@@ -1038,9 +1096,23 @@ final class BridgeFactCollector: SyntaxVisitor {
             (name: $0.name, exportsAllMembers: $0.exportsAllMembers || SyntaxAttributes.has("objcMembers", in: node.attributes))
         }
         reactModules.append(module)
+        // 이 파일에 `class` 선언이 없는 Expo 타입 — `extension X: Module` 준수나
+        // `func definition` 본문의 DSL 호출이 증거다. 클래스를 본 타입은 클래스 방문이 낸다.
+        if !Self.isFilePrivate(node.modifiers), !bindings.expoClassDeclarations.contains(typeName) {
+            let bodies = bindings.definitionFunctions[typeName] ?? []
+            let extracted = bodies.map { (body: $0, dsl: ExpoDefinitionCollector.collect($0)) }
+            let marked = bindings.expoModuleClasses.contains(typeName)
+            if marked || extracted.contains(where: { !$0.dsl.isEmpty }) {
+                let fallback: ResolvedName = bodies.isEmpty ? .dynamic(typeName) : .literal(typeName)
+                let moduleName = expoModuleName(extracted: extracted, defaultName: fallback)
+                emit(.moduleExport, target: .reactNative, channel: moduleName, mechanism: .expo, at: node.extendedType)
+                emitExpoDSL(moduleName: moduleName, extracted: extracted)
+            }
+        }
+        expoModules.append(nil)
         return .visitChildren
     }
-    override func visitPost(_: ExtensionDeclSyntax) { popType(); reactModules.removeLast() }
+    override func visitPost(_: ExtensionDeclSyntax) { popType(); reactModules.removeLast(); expoModules.removeLast() }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         // 스코프는 지역 함수에도 쌓는다. 1차 패스와 같은 키여야 지역 상수가 맞는다.
@@ -1056,6 +1128,7 @@ final class BridgeFactCollector: SyntaxVisitor {
         if BindingCollector.takesMethodCall(node) { methodCallFunctionDepth += 1 }
         if let channel = referencedHandlerChannel(of: node) { handlerChannels.append(channel) }
         emitReactMethodIfExported(node)
+        emitExpoMethodIfMacroMember(node)
         return .visitChildren
     }
     override func visitPost(_ node: FunctionDeclSyntax) {
@@ -1493,8 +1566,95 @@ final class BridgeFactCollector: SyntaxVisitor {
         emit(.methodHandle, target: .reactNative, channel: .literal(module.name), method: .literal(method), at: node.name)
     }
 
+    /// `@ExpoModule` 매크로 모듈의 `@JS` 멤버는 JS 가 부르는 메서드다.
+    ///
+    /// `@JS("name")` 첫 인자가 이름이고 생략하면 함수 이름이다. `@JS(.concurrent)` 처럼
+    /// 선행 점 인자는 `JSOptions` 라 이름이 아니다. `method-handle` 은 이름 경계 사실이
+    /// 아니라 mechanism 을 싣지 않는다.
+    private func emitExpoMethodIfMacroMember(_ node: FunctionDeclSyntax) {
+        guard let expo = expoModules.last ?? nil, expo.viaMacro,
+              SyntaxAttributes.has("JS", in: node.attributes)
+        else { return }
+        let method: ResolvedName
+        if let argument = SyntaxAttributes.firstArgumentExpression(of: "JS", in: node.attributes) {
+            let resolved = bindings.resolveString(argument, in: context)
+            let isOption = resolved.isDynamic
+                && argument.as(MemberAccessExprSyntax.self)?.base == nil
+            method = isOption ? .literal(DeclarationCollector.unescaped(node.name.text)) : resolved
+        } else {
+            method = .literal(DeclarationCollector.unescaped(node.name.text))
+        }
+        emit(.methodHandle, target: .reactNative, channel: expo.name, method: method, at: node.name)
+    }
+
     private static func isFilePrivate(_ modifiers: DeclModifierListSyntax) -> Bool {
         modifiers.contains { $0.name.text == "private" || $0.name.text == "fileprivate" }
+    }
+
+    // MARK: Expo Modules
+
+    /// `func definition` 본문 하나에서 모은 DSL 호출.
+    private typealias ExtractedDefinition = (body: FunctionDeclSyntax, dsl: ExpoDefinitionCollector.Result)
+
+    /// `class X: Module` 또는 `@ExpoModule class X` — Expo Modules DSL 모듈이면
+    /// 해석된 모듈 이름과 `func definition` 본문에서 모은 DSL 호출들을 돌려준다.
+    ///
+    /// 이름 규칙은 Expo 소스와 같다 — `@ExpoModule("…")` 인자, `Name("…")` 의 마지막
+    /// 호출, 그것도 없으면 클래스 이름(`String(describing: type)`). `func definition`
+    /// 을 이 파일에서 못 찾으면 보지 못한 `Name` 이 이름을 덮을 수 있어 동적으로 둔다.
+    private func expoModuleInfo(of node: ClassDeclSyntax)
+        -> (name: ResolvedName, viaMacro: Bool, extracted: [ExtractedDefinition])?
+    {
+        // `class X` + `extension X: Module` 처럼 준수가 익스텐션에 있으면 익스텐션 방문이 낸다.
+        guard bindings.expoClassDeclarations.contains(node.name.text) else { return nil }
+        let className = DeclarationCollector.unescaped(node.name.text)
+        if SyntaxAttributes.has("ExpoModule", in: node.attributes) {
+            let name = SyntaxAttributes.firstArgumentExpression(of: "ExpoModule", in: node.attributes)
+                .map { bindings.resolveString($0, in: context) }
+                ?? .literal(className)
+            return (name, true, [])
+        }
+        let bodies = bindings.definitionFunctions[className] ?? []
+        if bodies.isEmpty {
+            return (.dynamic(className), false, [])
+        }
+        let extracted: [ExtractedDefinition] = bodies.map { ($0, ExpoDefinitionCollector.collect($0)) }
+        return (expoModuleName(extracted: extracted, defaultName: .literal(className)), false, extracted)
+    }
+
+    /// 모듈 이름 — `Name(…)` 의 마지막 인자가 이기고, 없으면 주어진 기본값이다.
+    private func expoModuleName(extracted: [ExtractedDefinition], defaultName: ResolvedName) -> ResolvedName {
+        for entry in extracted.reversed() {
+            if let argument = entry.dsl.nameArguments.last {
+                return bindings.resolveString(
+                    argument,
+                    in: BindingCollector.Context(scopes: [BindingCollector.scopeKey(entry.body)], enclosingTypes: typeNames)
+                )
+            }
+        }
+        return defaultName
+    }
+
+    /// 모은 DSL 호출을 사실로 옮긴다.
+    ///
+    /// `View` 가 하나라도 있으면 JS 의 `requireNativeViewManager(모듈이름)` 이 이 클래스를
+    /// 찾으므로 component-export 를 첫 `View` 호출 자리에 낸다. `Function` 계열 호출은
+    /// JS 가 부르는 메서드다 — 이름 경계 사실이 아니라 mechanism 을 싣지 않는다.
+    private func emitExpoDSL(moduleName: ResolvedName, extracted: [ExtractedDefinition]) {
+        if let view = extracted.lazy.compactMap({ $0.dsl.viewCalls.first }).first {
+            emit(.componentExport, target: .reactNative, channel: moduleName, mechanism: .expo, at: view)
+        }
+        for entry in extracted {
+            guard !entry.dsl.functionCalls.isEmpty else { continue }
+            let context = BindingCollector.Context(
+                scopes: [BindingCollector.scopeKey(entry.body)], enclosingTypes: typeNames
+            )
+            for call in entry.dsl.functionCalls {
+                guard let argument = call.arguments.first?.expression else { continue }
+                let method = bindings.resolveString(argument, in: context)
+                emit(.methodHandle, target: .reactNative, channel: moduleName, method: method, at: call)
+            }
+        }
     }
 
 
@@ -1534,6 +1694,7 @@ final class BridgeFactCollector: SyntaxVisitor {
         method: ResolvedName? = nil,
         handlerScope: BridgeFact.HandlerScope? = nil,
         inferred: Bool = false,
+        mechanism: BridgeFact.Mechanism? = nil,
         at node: some SyntaxProtocol
     ) {
         guard !messages || kind == .messageHandle else { return }
@@ -1548,8 +1709,87 @@ final class BridgeFactCollector: SyntaxVisitor {
             channelPrefix: (messages || events) ? channel?.channelPrefix : nil,
             handlerScope: handlerScope,
             isChannelInferred: inferred,
+            mechanism: mechanism,
             location: SourceLocation(path: path, line: location.line, column: location.column)
         )
         facts.append(ScannedBridgeFact(fact: fact, declaration: declarations.last))
+    }
+}
+
+// MARK: - Expo definition 본문 수집
+
+/// `func definition` 의 결과 빌더 본문에서 Expo Modules DSL 호출을 모은다.
+///
+/// `Name`·`View`·`Function` 은 흔한 이름이라 `definition` 본문의 직접 문장만 본다.
+/// `Function("f") { … }` 의 클로저나 지역 함수 안에 있는 동명 호출은 세지 않는다.
+/// `ModuleDefinition { … }` 처럼 명시적 래퍼의 후행 클로저만 투명하게 지나간다.
+private final class ExpoDefinitionCollector: SyntaxVisitor {
+    /// 모은 DSL 호출.
+    struct Result {
+        /// `Name(…)` 의 인자 식. 같은 정의에 여러 개면 뒤의 것이 이긴다(정의 덮어쓰기).
+        var nameArguments: [ExprSyntax] = []
+        /// `View(…)`·`View { … }` 호출.
+        var viewCalls: [FunctionCallExprSyntax] = []
+        /// `Function` 계열 — JS 가 부르는 메서드 정의 호출.
+        var functionCalls: [FunctionCallExprSyntax] = []
+        var isEmpty: Bool { nameArguments.isEmpty && viewCalls.isEmpty && functionCalls.isEmpty }
+    }
+
+    /// JS 가 부르는 메서드를 정의하는 DSL 팩토리 이름들.
+    private static let functionFactories: Set<String> = [
+        "Function", "AsyncFunction", "SyncFunction", "ConcurrentFunction",
+        "StaticFunction", "StaticAsyncFunction",
+    ]
+
+    static func collect(_ function: FunctionDeclSyntax) -> Result {
+        let collector = ExpoDefinitionCollector()
+        if let body = function.body {
+            collector.rootID = body.id
+            collector.walk(body)
+        }
+        return collector.result
+    }
+
+    private var result = Result()
+    /// 걸어 들어간 본문. 조상 검사는 이 뿌리에 닿으면 직접 문장으로 멈춘다.
+    private var rootID: SyntaxIdentifier?
+
+    init() { super.init(viewMode: .sourceAccurate) }
+
+    /// 이 호출이 결과 빌더의 직접 문장인지.
+    ///
+    /// 조상에 `ModuleDefinition { … }` 래퍼의 후행 클로저가 아닌 클로저, 다른 함수
+    /// 호출의 인자, 또는 지역 함수가 끼어 있으면 DSL 문장이 아니다. `if` 안의 호출은
+    /// 결과 빌더가 변환하므로 직접 문장과 같이 본다.
+    private func isDSLStatement(_ node: FunctionCallExprSyntax) -> Bool {
+        var current = Syntax(node)
+        while let parent = current.parent {
+            if parent.id == rootID { return true }
+            if parent.is(FunctionDeclSyntax.self) || parent.is(InitializerDeclSyntax.self) { return false }
+            if let call = parent.as(FunctionCallExprSyntax.self) {
+                guard let closure = current.as(ClosureExprSyntax.self),
+                      call.trailingClosure == closure,
+                      BindingCollector.calleeName(of: call) == "ModuleDefinition"
+                else { return false }
+            }
+            current = parent
+        }
+        return true
+    }
+
+    override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+        guard isDSLStatement(node), let callee = BindingCollector.calleeName(of: node)
+        else { return .visitChildren }
+        switch callee {
+        case "Name":
+            if let argument = node.arguments.first { result.nameArguments.append(argument.expression) }
+        case "View":
+            result.viewCalls.append(node)
+        case let name where Self.functionFactories.contains(name):
+            result.functionCalls.append(node)
+        default:
+            break
+        }
+        return .visitChildren
     }
 }

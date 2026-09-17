@@ -889,6 +889,16 @@ project contains more than one bridge mechanism, pass `--target flutter` or
 `--target react-native` before feeding the document to isthmus v0.1. The targeted document reports
 the number of omitted facts under the `target-filter` limitation.
 
+Within `--target react-native`, Expo Modules are marked with `mechanism: "expo"` on the
+name-boundary facts (`module-export`, `component-export`); omitted means core React Native.
+A `Module` subclass is recognized by its `definition()` builder (`Name`, `View`,
+`Function`/`AsyncFunction`, …) or the `@ExpoModule`/`@JS` macros, gated on
+`import ExpoModulesCore` so lookalike names elsewhere stay silent. The module name follows
+Expo's rules — `Name(...)`/the macro argument, otherwise the class name — and a `View`
+definition exports a component under the module name, which is what
+`requireNativeViewManager(moduleName)` looks up. `method-handle` facts carry no `mechanism`
+per the exchange contract.
+
 isthmus hands back `external-retentions`: for each Swift declaration it found a caller for, the USR
 and the evidence. `--external-retentions <path>` (or `external_retentions_path` in the
 configuration) turns each into a retained root with reason `externalBridge`, and `--explain` quotes

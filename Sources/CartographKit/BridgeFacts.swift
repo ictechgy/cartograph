@@ -33,6 +33,8 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         }
 
         public let kind: String
+        /// 코어 RN이면 생략. Expo Modules DSL 사실만 "expo"다.
+        public let mechanism: String?
         /// 채널 또는 모듈 이름. 없으면 null. 리터럴이 아니면 원문 표현식.
         public let channel: String?
         public let method: String?
@@ -45,12 +47,13 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         public let sourceLanguage: BridgeFact.SourceLanguage?
 
         private enum CodingKeys: String, CodingKey {
-            case kind, channel, method, channelPrefix, handlerScope, dependencies, dynamic, location, symbol, sourceLanguage
+            case kind, mechanism, channel, method, channelPrefix, handlerScope, dependencies, dynamic, location, symbol, sourceLanguage
         }
 
         public init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             kind = try container.decode(String.self, forKey: .kind)
+            mechanism = try container.decodeIfPresent(String.self, forKey: .mechanism)
             channel = try container.decodeIfPresent(String.self, forKey: .channel)
             method = try container.decodeIfPresent(String.self, forKey: .method)
             channelPrefix = try container.decodeIfPresent(String.self, forKey: .channelPrefix)
@@ -65,6 +68,7 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         public func encode(to encoder: any Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(kind, forKey: .kind)
+            try container.encodeIfPresent(mechanism, forKey: .mechanism)
             // 채널이 없는 것은 정보다. 키를 빼면 소비자가 "빠졌다"와 "몰랐다"를 못 가른다.
             // 계약이 `null` 을 명시하므로 그대로 쓴다. 나머지 선택 필드는 계약대로 뺀다.
             try container.encode(channel, forKey: .channel)
@@ -81,6 +85,7 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
         init(_ fact: BridgeFact, relativeToBaseVariants baseVariants: [String], includeExecution: Bool = true) {
             sourceLanguage = fact.sourceLanguage
             kind = fact.kind.rawValue
+            mechanism = fact.mechanism?.rawValue
             channel = fact.channel
             method = fact.method
             channelPrefix = includeExecution ? fact.channelPrefix : nil

@@ -490,6 +490,37 @@ struct BridgeFactsTests {
         #expect(!document.limitations.contains { $0.hasPrefix("opaque-handler-bodies:") })
     }
 
+    @Test("Expo DSL 사실은 mechanism expo 로 직렬화되고 나머지는 키를 생략한다")
+    func expoMechanismSerialization() throws {
+        let source = """
+            import ExpoModulesCore
+
+            class PhotoModule: Module {
+                func definition() -> ModuleDefinition {
+                    Name("ExpoPhoto")
+                    View(PhotoView.self) { Prop("url") { view, url in } }
+                    Function("pick") { (filter: String) in filter }
+                }
+            }
+            """
+        let document = try makeService(files: ["/p/Photo.swift": source], snapshot: IndexSnapshot())
+            .bridgeFacts(generatedAt: fixedDate, target: .reactNative)
+        let exports = document.facts.filter { $0.kind == "module-export" || $0.kind == "component-export" }
+        #expect(exports.count == 2)
+        #expect(exports.allSatisfy { $0.mechanism == "expo" && $0.channel == "ExpoPhoto" })
+        // method-handle 은 이름 경계가 아니라 mechanism 을 싣지 않는다.
+        #expect(document.facts.allSatisfy { $0.kind != "method-handle" || $0.mechanism == nil })
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(document)
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(text.contains("\"mechanism\":\"expo\""))
+        // 코어 RN 사실이나 메서드 사실에는 키가 없다.
+        #expect(!text.contains("\"mechanism\":\"core\""))
+        #expect(try JSONDecoder().decode(BridgeFactsDocument.self, from: data) == document)
+    }
+
     @Test("ObjC 사실에 출처 언어를 싣고 일반 ObjC 공백은 채널 리터럴로 좁히지 않는다")
     func objectiveCEvidenceAndConservativeGap() throws {
         let source = """

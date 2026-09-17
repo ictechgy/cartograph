@@ -58,6 +58,18 @@ enum SyntaxAttributes {
             return attribute.attributeName.trimmedDescription == name
         }
     }
+
+    /// `@ExpoModule("…")`·`@JS("…")` 처럼 속성의 첫 번째 위치 인자 식. 없으면 nil.
+    static func firstArgumentExpression(of name: String, in attributes: AttributeListSyntax) -> ExprSyntax? {
+        for element in attributes {
+            guard case let .attribute(attribute) = element,
+                  attribute.attributeName.trimmedDescription == name,
+                  case let .argumentList(arguments) = attribute.arguments
+            else { continue }
+            return arguments.first?.expression
+        }
+        return nil
+    }
 }
 
 /// 트리비아에서 주석 줄을 뽑는다.

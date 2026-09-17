@@ -84,10 +84,20 @@ public struct BridgeFact: Hashable, Sendable {
         /// 스트림 핸들러는 클로저가 아니라 객체이므로 호출 지점에만 귀속한다. 핸들러 객체의
         /// `onListen`/`onCancel` 구현은 등록 선언의 인덱스 참조로 이어진다.
         case streamHandle = "stream-handle"
-        /// React Native 모듈을 내보냈다(`@objc(Name)`, `RCT_EXPORT_MODULE`).
+        /// React Native 모듈을 내보냈다(`@objc(Name)`, `RCT_EXPORT_MODULE`, Expo `Module`/`@ExpoModule`).
         case moduleExport = "module-export"
-        /// React Native 뷰 매니저를 내보냈다(`RCT_EXPORT_VIEW_PROPERTY`).
+        /// React Native 뷰 매니저를 내보냈다(`RCT_EXPORT_VIEW_PROPERTY`, Expo `View` 정의).
         case componentExport = "component-export"
+    }
+
+    /// 이름 경계 사실이 어느 React Native 해석 경로에 속하는지. 생략은 `core`다.
+    ///
+    /// 교환 형식은 이 필드를 이름 경계 사실(`module-*`·`component-*`)에만 허용하고
+    /// `method-handle`·`channel-register` 등에는 싣지 않는다. 생략된 사실은 코어 RN
+    /// 경로로 읽힌다 — Expo DSL로 만든 사실에만 `.expo` 를 단다.
+    public enum Mechanism: String, Sendable, Codable {
+        case core
+        case expo
     }
 
     /// 이 사실이 어느 브리지 메커니즘에 속하는지.
@@ -118,6 +128,8 @@ public struct BridgeFact: Hashable, Sendable {
     public let sourceLanguage: SourceLanguage?
     public let kind: Kind
     public let target: Target
+    /// 코어 RN이면 nil(생략). Expo Modules DSL에서 온 이름 경계 사실만 `.expo`다.
+    public let mechanism: Mechanism?
     /// 채널 이름 또는 모듈 이름. 알 수 없으면 nil, 리터럴이 아니면 원문 표현식.
     public let channel: String?
     /// `method-handle` 에만 있는 메서드 이름.
@@ -146,6 +158,7 @@ public struct BridgeFact: Hashable, Sendable {
         handlerScope: HandlerScope? = nil,
         dependencies: [Dependency]? = nil,
         isChannelInferred: Bool = false,
+        mechanism: Mechanism? = nil,
         location: SourceLocation,
         symbol: Symbol? = nil,
         sourceLanguage: SourceLanguage? = nil
@@ -153,6 +166,7 @@ public struct BridgeFact: Hashable, Sendable {
         self.sourceLanguage = sourceLanguage
         self.kind = kind
         self.target = target
+        self.mechanism = mechanism
         self.channel = channel
         self.method = method
         self.isDynamic = isDynamic
@@ -180,6 +194,7 @@ public struct BridgeFact: Hashable, Sendable {
             handlerScope: handlerScope,
             dependencies: dependencies,
             isChannelInferred: isChannelInferred,
+            mechanism: mechanism,
             location: location,
             symbol: symbol,
             sourceLanguage: sourceLanguage
@@ -200,6 +215,7 @@ public struct BridgeFact: Hashable, Sendable {
             handlerScope: handlerScope,
             dependencies: dependencies,
             isChannelInferred: isChannelInferred,
+            mechanism: mechanism,
             location: location,
             symbol: symbol,
             sourceLanguage: sourceLanguage
@@ -216,6 +232,7 @@ extension BridgeFact: Comparable {
         if lhs.method != rhs.method { return (lhs.method ?? "") < (rhs.method ?? "") }
         if lhs.channelPrefix != rhs.channelPrefix { return (lhs.channelPrefix ?? "") < (rhs.channelPrefix ?? "") }
         if lhs.handlerScope != rhs.handlerScope { return (lhs.handlerScope?.start ?? .init(path: "", line: 0, column: 0)) < (rhs.handlerScope?.start ?? .init(path: "", line: 0, column: 0)) }
+        if lhs.mechanism != rhs.mechanism { return (lhs.mechanism?.rawValue ?? "") < (rhs.mechanism?.rawValue ?? "") }
         if lhs.target != rhs.target { return lhs.target.rawValue < rhs.target.rawValue }
         if lhs.symbol?.usr != rhs.symbol?.usr { return (lhs.symbol?.usr ?? "") < (rhs.symbol?.usr ?? "") }
         return (lhs.sourceLanguage?.rawValue ?? "") < (rhs.sourceLanguage?.rawValue ?? "")

@@ -1511,4 +1511,229 @@ struct BridgeFactScannerTests {
         // 메모가 없으면 2⁴⁰ 번 풀고, 크기 제한이 없으면 2⁴⁰ 바이트를 만든다.
         #expect(facts(lines.joined(separator: "\n"), of: .channelRegister).first?.isDynamic == true)
     }
+
+    // MARK: Expo Modules
+
+    @Test("Expo Module 클래스는 mechanism이 expo인 module-export를 낸다")
+    func expoModuleExport() {
+        let source = """
+            import ExpoModulesCore
+
+            public class PhotoModule: Module {
+                public func definition() -> ModuleDefinition {
+                    Name("ExpoPhoto")
+                    Function("pick") { (filter: String) in filter }
+                    AsyncFunction("upload") { _ in }
+                }
+            }
+            """
+        let scanned = scan(source)
+        let exported = scanned.filter { $0.fact.kind == .moduleExport }
+        #expect(exported.count == 1)
+        #expect(exported.first?.fact.channel == "ExpoPhoto")
+        #expect(exported.first?.fact.mechanism == .expo)
+        #expect(exported.first?.fact.target == .reactNative)
+        #expect(exported.first?.fact.isDynamic == false)
+        #expect(exported.first?.declaration?.name == "PhotoModule")
+
+        // Function 계열은 JS 메서드지만 이름 경계 사실이 아니라 mechanism을 싣지 않는다.
+        let handled = scanned.filter { $0.fact.kind == .methodHandle }
+        #expect(handled.map(\.fact.method) == ["pick", "upload"])
+        #expect(handled.allSatisfy { $0.fact.channel == "ExpoPhoto" && $0.fact.mechanism == nil })
+    }
+
+    @Test("Name이 없으면 모듈 이름은 클래스 이름이다")
+    func expoModuleNameDefaultsToClassName() {
+        let source = """
+            import ExpoModulesCore
+
+            class BatteryModule: Module {
+                func definition() -> ModuleDefinition {
+                    Function("level") { 0 }
+                }
+            }
+            """
+        let exported = facts(source, of: .moduleExport)
+        #expect(exported.map(\.channel) == ["BatteryModule"])
+        #expect(exported.first?.mechanism == .expo)
+    }
+
+    @Test("마지막 Name 호출이 모듈 이름을 덮어쓴다")
+    func expoModuleLastNameWins() {
+        let source = """
+            import ExpoModulesCore
+
+            class SoundModule: Module {
+                func definition() -> ModuleDefinition {
+                    Name("first")
+                    Name("ExpoSound")
+                }
+            }
+            """
+        #expect(facts(source, of: .moduleExport).map(\.channel) == ["ExpoSound"])
+    }
+
+    @Test("View 정의가 있으면 모듈 이름으로 component-export를 낸다")
+    func expoViewComponentExport() {
+        let source = """
+            import ExpoModulesCore
+
+            class PhotoModule: Module {
+                func definition() -> ModuleDefinition {
+                    Name("ExpoPhoto")
+                    View(PhotoView.self) {
+                        Prop("url") { view, url in }
+                    }
+                }
+            }
+            """
+        let components = facts(source, of: .componentExport)
+        // JS 의 requireNativeViewManager 는 모듈 이름으로 기본 뷰를 찾는다.
+        #expect(components.count == 1)
+        #expect(components.first?.channel == "ExpoPhoto")
+        #expect(components.first?.mechanism == .expo)
+    }
+
+    @Test("ExpoModule 매크로 모듈은 인자 이름과 JS 메서드를 낸다")
+    func expoMacroModule() {
+        let source = """
+            import ExpoModulesCore
+
+            @ExpoModule("ExpoCrypto")
+            class CryptoModule {
+                @JS func digest(_ input: String) -> String { input }
+                @JS("sign") func signData(_ data: String) -> String { data }
+                @JS(.concurrent) func slow() {}
+                func helper() {}
+            }
+            """
+        let scanned = scan(source)
+        let exported = scanned.filter { $0.fact.kind == .moduleExport }
+        #expect(exported.map(\.fact.channel) == ["ExpoCrypto"])
+        #expect(exported.first?.fact.mechanism == .expo)
+
+        let handled = scanned.filter { $0.fact.kind == .methodHandle }
+        // @JS(.concurrent) 의 첫 인자는 옵션이라 이름이 아니다 — 함수 이름으로 둔다.
+        #expect(handled.map(\.fact.method) == ["digest", "sign", "slow"])
+    }
+
+    @Test("ExpoModule 매크로 인자가 없으면 클래스 이름이다")
+    func expoMacroModuleDefaultName() {
+        let source = """
+            import ExpoModulesCore
+
+            @ExpoModule
+            class SensorModule {
+                @JS func read() {}
+            }
+            """
+        #expect(facts(source, of: .moduleExport).map(\.channel) == ["SensorModule"])
+    }
+
+    @Test("ExpoModulesCore를 임포트하지 않은 Module 상속은 사실을 내지 않는다")
+    func ignoresModuleInheritanceWithoutExpoImport() {
+        let source = """
+            class Plugin: Module {
+                func definition() -> ModuleDefinition {
+                    Name("Wrong")
+                }
+            }
+            """
+        #expect(scan(source).isEmpty)
+    }
+
+    @Test("definition 밖의 동명 호출은 Expo 사실로 보지 않는다")
+    func ignoresLookalikeCallsOutsideDefinition() {
+        let source = """
+            import ExpoModulesCore
+
+            class Helper {
+                func definition() -> Int { 0 }
+                func build() {
+                    Name("not-a-module")
+                    View {}
+                }
+            }
+            """
+        #expect(scan(source).isEmpty)
+    }
+
+    @Test("definition 안 클로저의 동명 호출은 DSL 문장이 아니다")
+    func ignoresNestedClosureCalls() {
+        let source = """
+            import ExpoModulesCore
+
+            class CameraModule: Module {
+                func definition() -> ModuleDefinition {
+                    Function("snap") {
+                        Name("inner")
+                        print("x")
+                    }
+                }
+            }
+            """
+        let exported = facts(source, of: .moduleExport)
+        // 클로저 안의 Name은 모듈 이름이 아니므로 기본값인 클래스 이름이 남는다.
+        #expect(exported.map(\.channel) == ["CameraModule"])
+        #expect(facts(source, of: .methodHandle).map(\.method) == ["snap"])
+    }
+
+    @Test("definition을 찾지 못한 Expo 모듈은 이름을 동적으로 남긴다")
+    func expoModuleWithoutVisibleDefinitionIsDynamic() {
+        let source = """
+            import ExpoModulesCore
+
+            class LocationModule: Module {
+            }
+            """
+        let exported = facts(source, of: .moduleExport)
+        #expect(exported.count == 1)
+        #expect(exported.first?.mechanism == .expo)
+        // 다른 파일의 익스텐션에 Name() 이 있을 수 있어 리터럴로 확정하지 않는다.
+        #expect(exported.first?.isDynamic == true)
+        #expect(exported.first?.channel == "LocationModule")
+    }
+
+    @Test("클래스가 없는 파일의 익스텐션 definition도 Expo 모듈이다")
+    func expoModuleDefinedInExtensionOnly() {
+        let source = """
+            import ExpoModulesCore
+
+            extension RemoteModule {
+                func definition() -> ModuleDefinition {
+                    Name("ExpoRemote")
+                    Function("ping") { true }
+                }
+            }
+            """
+        let scanned = scan(source)
+        let exported = scanned.filter { $0.fact.kind == .moduleExport }
+        #expect(exported.map(\.fact.channel) == ["ExpoRemote"])
+        #expect(exported.first?.fact.mechanism == .expo)
+        #expect(facts(source, of: .methodHandle).map(\.method) == ["ping"])
+    }
+
+    @Test("Expo 모듈과 코어 RN 모듈은 같은 파일에서 구분된다")
+    func expoAndCoreModulesInOneFile() {
+        let source = """
+            import ExpoModulesCore
+
+            @objc(LegacyManager)
+            class LegacyManager: NSObject {
+                @objc func oldWay() {}
+            }
+
+            class ModernModule: Module {
+                func definition() -> ModuleDefinition {
+                    Name("ExpoModern")
+                }
+            }
+            """
+        let exported = facts(source, of: .moduleExport)
+        #expect(exported.count == 2)
+        let core = exported.first { $0.channel == "LegacyManager" }
+        let expo = exported.first { $0.channel == "ExpoModern" }
+        #expect(core?.mechanism == nil)
+        #expect(expo?.mechanism == .expo)
+    }
 }
