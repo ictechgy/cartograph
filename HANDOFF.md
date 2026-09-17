@@ -21,7 +21,7 @@
 - `module-export`·`component-export`에만 `mechanism: "expo"`. 메서드 사실에는 없음.
   컴포넌트 채널은 뷰 클래스가 아니라 모듈 이름(Expo JS 계약 `requireNativeViewManager(moduleName, viewName?)`).
 - 검증: `swift test` 1,362개 통과, 커버리지 93.01%, 도그푸딩 dead/cycles/rules 전부 no findings.
-- 남은 것: GLM 리뷰 반영 후 머지(사용자 승인). isthmus 쪽 계약·조인은 PR #77로 이미 머지됨.
+- 머지됨(2026-09-17, 스쿼시 `513cbef`). isthmus 쪽 계약·조인은 PR #77로 이미 머지됨.
   kartograph 대응은 PR #67.
 
 ## 2026-09-17 — 브리지 스캐너 상수 해석 + 한 홉 위임 (feat/bounded-direct-query)
