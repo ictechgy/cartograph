@@ -8,8 +8,13 @@
 > For the project overview in English, see [README.md](README.md);
 > for contributor-facing build and style rules, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-디렉터리별 세부 규칙은 각 디렉터리의 AGENTS.md를 따릅니다.
-- [Sources/AGENTS.md](Sources/AGENTS.md) — 모듈 경계와 계층 규칙
+## Scoped Guidance Index
+
+이 링크는 탐색용 색인입니다. 하위 `AGENTS.md`는 해당 디렉터리와 그 아래에서만 적용됩니다.
+여러 범위에 걸친 작업은 각 범위의 지침을 함께 따릅니다.
+
+- [Sources/AGENTS.md](Sources/AGENTS.md) — 모듈 경계, 그래프·경로·브리지 구현 규칙
+- [Sources/CartographIndexStore/AGENTS.md](Sources/CartographIndexStore/AGENTS.md) — 인덱스 관계 방향과 소유자 귀속
 - [Tests/AGENTS.md](Tests/AGENTS.md) — 테스트 작성 규칙
 - [Fixtures/AGENTS.md](Fixtures/AGENTS.md) — 오탐 코퍼스 규칙
 - [Skills/AGENTS.md](Skills/AGENTS.md) — 에이전트 스킬 문서 규칙
@@ -19,6 +24,8 @@
 자매 프로젝트가 바탕화면에 있습니다: [kartograph](../kartograph)(Kotlin/Android) ·
 [dartograph](../dartograph)(Dart/Flutter) · [isthmus](../isthmus)(언어 경계 조인).
 이들의 `query` 출력 스키마와 스킬 문장은 이 저장소와 같아야 합니다. 여기서 바꾸면 그쪽에도 알리세요.
+브리지 교환 형식은 `../isthmus/docs/GRAPH-EXCHANGE.md`가 정본입니다. 형식 변경은
+`BridgeFactsDocument`와 자매 저장소에 함께 반영합니다.
 
 ---
 
@@ -45,7 +52,8 @@ swift run cartograph query <이름>   # 심볼 하나: 누가 쓰나·무엇을 
 swift run cartograph skill         # 에이전트 스킬을 프로젝트에 설치
 ```
 
-작업을 끝냈다고 말하기 전에 반드시 네 가지를 통과시키세요.
+완료를 보고할 때 아래 네 가지의 통과 근거가 있어야 합니다. 입력이 바뀌지 않은 검사는 기존 근거를
+재사용합니다. 문서만 바꾸면 구조·링크·적용 범위를 검증하고, 제품 검사를 새로 실행했다고 쓰지 마세요.
 
 ```bash
 Scripts/coverage.sh
@@ -58,14 +66,12 @@ swift build \
   && swift run cartograph rules  --strict
 ```
 
-**순환 검사는 타입 레벨까지 돌립니다.** Swift 는 모듈 사이의 순환 import 를 컴파일러가 막으므로,
-`.cartograph.yml` 의 기본값인 모듈 레벨에서 `cycles --strict` 는 **구조적으로 발화할 수 없습니다.**
-그것만 돌리고 "순환 없음" 이라고 적으면, 아무것도 검사하지 않은 초록불을 증거로 인용하는 셈입니다.
-실제로 이 저장소에도 타입 레벨 순환이 두 건 있었고 모듈 레벨 게이트는 그것을 통과시켰습니다.
-모듈 레벨 검사는 남겨 둡니다 — 빌드 시스템이 무너져 모듈 그래프가 이상해지는 경우를 잡습니다.
+**순환 검사는 타입 레벨까지 돌립니다.** Swift 컴파일러가 모듈 간 순환 import를 막으므로,
+기본 모듈 검사만으로 "순환 없음"을 주장하지 마세요. 타입 검사가 실제 순환을 잡고,
+모듈 검사는 빌드 시스템 이상을 확인하기 위해 함께 유지합니다.
 
-두 번째가 자기 분석(dogfooding)입니다. 이 도구가 실제로 찾아낸 결함 세 가지(프로토콜 구현 오탐,
-`@main` 오탐, 절대/상대 경로 글롭 불일치)는 전부 이 단계에서 드러났습니다. 단위 테스트는 하나도 잡지 못했습니다.
+자기 분석도 필수입니다. 프로토콜 구현·`@main` 오탐과 절대/상대 경로 글롭 불일치는
+단위 테스트가 통과한 뒤 자기 분석에서 발견됐습니다.
 
 **`-Xswiftc -index-store-path`를 믿지 마세요.** Swift 6.4부터 기본이 된 Xcode 기반 빌드
 시스템은 이 플래그를 무시하고 `<스크래치 경로>/out`에 인덱스를 남깁니다. 요청한 경로는
@@ -120,10 +126,7 @@ swift build \
 - **스킬 문서는 규칙을 통과한 뒤 무엇을 할지까지 말합니다.** 금지만 적으면 체크리스트가
   "통과하면 진행"으로 무너져, 확인 절차가 면책 증명서가 됩니다. 자세한 것은 [Skills/AGENTS.md](Skills/AGENTS.md).
 
-## 자주 틀리는 지점
-
-**`unusedCode(in:)`는 설정과 무관하게 항상 심볼 레벨 그래프를 만듭니다.** 응답에 `configuration.level`을
-실어 보내면 심볼 레벨 답에 `module`이라고 적힙니다. 실제로 그랬고 회귀 테스트가 있습니다.
+## 분석·검증 시 주의점
 
 **인덱스 스토어 루트의 수정 시각은 믿을 수 없습니다.** `.build/out`처럼 스토어를 품은 상위 디렉터리는
 처음 만들어진 날짜 그대로이고 레코드는 `v5/units`에 쌓입니다. 루트만 보면 모든 소스가 낡았다고
@@ -133,46 +136,14 @@ swift build \
 `unreachable`로 나옵니다. 이것을 모르는 소비자(특히 에이전트)에게는 가장 위험한 사실이라 스킬이
 규칙 2로 말합니다. 기본값을 바꾸지 말고, 바꾼다면 스킬과 README를 같이 고치세요.
 
-**인덱스 심볼 이름에는 인자 목록이 붙습니다.** `main()`, `describe(_:)`, `buildBlock(_:)`처럼요.
-이름으로 규칙을 걸 때는 `GraphNode.baseName`을 쓰세요.
-
-**경로는 절대 경로로 들어오고 설정은 상대 경로로 쓰입니다.** 경로 글롭을 새로 쓰는 곳이 생기면
-`PathFilter.matchCandidates(for:relativeTo:)`를 거치세요. 한쪽만 지원하면 같은 패턴이
-설정 위치에 따라 다르게 동작합니다.
-
-**단, 대조하는 형태는 방향마다 다릅니다.** include 는 절대·상대 두 형태를 모두 보고, exclude 는
-프로젝트 안의 경로면 상대 경로만 봅니다(절대 경로로 쓴 패턴은 예외). 두 방향의 실패 비용이 다르기
-때문입니다. include 를 좁히면 아무것도 안 골라 "정점 0개"가 되고, exclude 를 넓히면 프로젝트 루트의
-조상 디렉터리 이름 하나로 프로젝트 전체가 사라집니다. 실제로 `~/DerivedData/App` 아래 있는
-프로젝트가 기본 제외에 통째로 걸려 `--strict` 가 0줄을 분석하고 통과했습니다.
-
 **`Scripts/verify-fixtures.sh`는 릴리스 바이너리를 빌드하지 않고 경로만 찾습니다.** 낡은 릴리스
 바이너리가 있으면 그것으로 검증해 방금 고친 것이 반영되지 않은 결과가 나옵니다. 실제로 그렇게
 "수정이 안 먹는다"고 오해한 적이 있습니다. 먼저 `swift build -c release`를 돌리거나, 디버그
 바이너리 경로를 첫 인자로 넘기세요.
 
-**`bridges`는 문자열을 읽습니다.** 인덱스는 `FlutterMethodChannel(name: "…")`의 문자열을 모릅니다.
-스캐너(`CartographSyntax/BridgeFactScanner`)가 구문에서 리터럴을 뽑고, `CartographKit`의
-`BridgeSymbolResolver`가 감싸는 선언의 USR을 인덱스에서 붙입니다. 교환 형식은
-`../isthmus/docs/GRAPH-EXCHANGE.md`가 정본이며, 바뀌면 `BridgeFactsDocument`와 자매 저장소가 같이 바뀝니다.
-이항 연산자는 `SwiftOperators`로 접어야 `a = b`와 `x == "y"`가 보입니다. 접지 않으면 `SequenceExpr`로 남습니다.
-
-**`CodeGraph`는 양 끝 정점이 모두 있는 간선만 남깁니다.** 분석 범위 밖(SDK 등)으로 향하는
-관계는 그래프에 없습니다. 외부 관계를 봐야 하는 규칙은 원본 `IndexSnapshot`을 읽으세요.
-
-**인덱서가 관계를 붙여 주지 않는 자리가 있습니다.** 열거형 케이스의 연관 값 타입, 타입 별칭의
-우변, `associatedtype` 증인이 그렇습니다. 참조는 `ref` 로 기록되는데 `containedBy` 가 없어,
-관계만 보고 간선을 만들면 그 타입에는 들어오는 간선이 하나도 없습니다. 그래서
-`IndexStoreProvider` 가 같은 파일의 바로 앞 선언에 붙입니다. 인덱스가 주는 것은 범위가 아니라
-위치뿐이라 그 방법밖에 없습니다. **넓게 잡지 마세요.** 매크로가 펼친 코드는 속성 줄에 기록되어
-앞 타입에 붙고, 실제 프로젝트에서 서로 참조하지 않는 두 타입 사이에 거짓 순환을 만들었습니다.
-
-**인덱스 관계는 "심볼 발생이 상대 심볼과 맺는 관계"로 읽습니다.**
-`baseOf`는 파생→기반, `overrideOf`는 오버라이드→기반, `calledBy`는 호출자→피호출자,
-`extendedBy`는 익스텐션→확장 대상입니다. 방향을 뒤집으면 그래프 전체가 조용히 뒤집힙니다.
-
-**심볼 레벨 그래프는 정점이 수만 개가 됩니다.** 재귀 순회와 경로 배열 복사는 실제로 돌려 보면 바로
-멈춥니다. 그래서 `CycleDetector`는 반복형 Tarjan과 선행 정점 기반 경로 복원을 씁니다.
+**릴리스 성공과 Homebrew 갱신은 따로 확인합니다.** `HOMEBREW_TAP_TOKEN`이 없으면 탭 갱신 단계도
+exit 0으로 건너뜁니다. 공개 asset의 해시, 실제 formula의 URL·해시, 설치 버전과 `brew test`를 확인하세요.
+README가 참조하는 계약 문서도 archive에 포함하고 압축을 푼 파일을 검증합니다.
 
 ## 커밋
 

@@ -2,6 +2,14 @@
 
 모듈 경계 규칙입니다. 루트 [AGENTS.md](../AGENTS.md)를 먼저 읽으세요.
 
+## Scoped Guidance Index
+
+다음 링크는 탐색용입니다. 하위 지침은 해당 모듈 디렉터리와 그 아래에서만 적용됩니다.
+
+- [CartographIndexStore/AGENTS.md](CartographIndexStore/AGENTS.md) — 인덱스 관계 변환과 소유자 귀속
+
+타깃 안에 지침 문서를 추가하면 `Package.swift`의 해당 타깃 `exclude`에 넣어 미처리 파일 경고를 막습니다.
+
 ## 의존 방향
 
 의존은 아래에서 위로만 흐릅니다. 역방향 참조는 `cartograph rules`가 CI에서 막습니다.
@@ -85,3 +93,43 @@ cartograph
 `GraphFormat` 또는 `ReportFormat`에 케이스를 넣고 팩토리에 연결합니다.
 두 팩토리 모두 `allCases`를 도는 테스트가 있어, 케이스만 추가하고 구현을 빠뜨리면 컴파일이
 실패하거나 테스트가 잡습니다.
+
+## 그래프·경로 구현 주의점
+
+**`unusedCode(in:)`는 설정과 무관하게 항상 심볼 레벨 그래프를 만듭니다.** 응답에 `configuration.level`을
+실어 보내면 심볼 레벨 답에 `module`이라고 적힙니다. 실제로 그랬고 회귀 테스트가 있습니다.
+
+**인덱스 심볼 이름에는 인자 목록이 붙습니다.** `main()`, `describe(_:)`, `buildBlock(_:)`처럼요.
+이름으로 규칙을 걸 때는 `GraphNode.baseName`을 쓰세요.
+
+**경로는 절대 경로로 들어오고 설정은 상대 경로로 쓰입니다.** 경로 글롭을 새로 쓰는 곳이 생기면
+`PathFilter.matchCandidates(for:relativeTo:)`를 거치세요. 한쪽만 지원하면 같은 패턴이
+설정 위치에 따라 다르게 동작합니다.
+
+**단, 대조하는 형태는 방향마다 다릅니다.** include 는 절대·상대 두 형태를 모두 보고, exclude 는
+프로젝트 안의 경로면 상대 경로만 봅니다(절대 경로로 쓴 패턴은 예외). 두 방향의 실패 비용이 다르기
+때문입니다. include 를 좁히면 아무것도 안 골라 "정점 0개"가 되고, exclude 를 넓히면 프로젝트 루트의
+조상 디렉터리 이름 하나로 프로젝트 전체가 사라집니다. 실제로 `~/DerivedData/App` 아래 있는
+프로젝트가 기본 제외에 통째로 걸려 `--strict` 가 0줄을 분석하고 통과했습니다.
+
+**`CodeGraph`는 양 끝 정점이 모두 있는 간선만 남깁니다.** 분석 범위 밖(SDK 등)으로 향하는
+관계는 그래프에 없습니다. 외부 관계를 봐야 하는 규칙은 원본 `IndexSnapshot`을 읽으세요.
+
+**심볼 레벨 그래프는 정점이 수만 개가 됩니다.** 재귀 순회와 경로 배열 복사는 실제로 돌려 보면 바로
+멈춥니다. 그래서 `CycleDetector`는 반복형 Tarjan과 선행 정점 기반 경로 복원을 씁니다.
+
+## 브리지 구문과 인덱스 결합
+
+**`bridges`는 문자열을 읽습니다.** 인덱스는 `FlutterMethodChannel(name: "…")`의 문자열을 모릅니다.
+스캐너(`CartographSyntax/BridgeFactScanner`)가 구문에서 리터럴을 뽑고, `CartographKit`의
+`BridgeSymbolResolver`가 감싸는 선언의 USR을 인덱스에서 붙입니다.
+이항 연산자는 `SwiftOperators`로 접어야 `a = b`와 `x == "y"`가 보입니다. 접지 않으면 `SequenceExpr`로 남습니다.
+
+## 질의 근거와 지역 함수
+
+[질의 근거 계약](../docs/QUERY-EVIDENCE.md)을 따릅니다. 선언 위치를 빠진 호출 위치로 대신 쓰거나,
+구문으로 복원한 지역 함수 ID(`cartograph:local-function:`)를 컴파일러 USR로 표현하지 마세요.
+소스가 신선하고 소유자·참조 사슬이 유일하게 입증될 때만 지역 함수 소유권을 정밀화합니다.
+
+MCP 배치는 `QueryEvidenceBudget`으로 선택 근거를 **배치 전체**에서 제한합니다. 단건 한도만 지키면
+큰 배치가 전송 한도를 넘습니다. 요청 순서·중복·이웃·상태와 전체/생략 개수는 유지하세요.

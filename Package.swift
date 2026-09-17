@@ -63,7 +63,8 @@ let package = Package(
             dependencies: [
                 "CartographCore",
                 .product(name: "IndexStoreDB", package: "indexstore-db"),
-            ]
+            ],
+            exclude: ["AGENTS.md"]
         ),
 
         // MARK: - 조립 계층

@@ -6,17 +6,23 @@
 
 이 파일은 **생성물**입니다. 원본은 `Sources/CartographConfig/AgentSkillTemplate.swift`의 `markdown` 상수이고, `cartograph skill`이 그것을 설치합니다. 저장소의 사본은 사람이 GitHub에서 읽기 위한 것이며, `AgentSkillTemplateTests`의 드리프트 테스트가 둘이 같은지 비교합니다.
 
-고치는 순서:
+저장소 루트에서 고치는 순서(각 명령이 성공한 뒤 다음으로 진행):
 
 ```bash
 # 1. 템플릿을 고친다
 $EDITOR Sources/CartographConfig/AgentSkillTemplate.swift
 # 2. 사본을 다시 생성한다
-swift build && .build/debug/cartograph skill --project . --force \
-  && cp .claude/skills/cartograph/SKILL.md Skills/cartograph/SKILL.md \
-  && rm -rf .claude/skills && rmdir .claude 2>/dev/null
+swift build
+skill_bin_dir="$(swift build --show-bin-path)"
+skill_stage="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-skill.XXXXXX")"
+"$skill_bin_dir/cartograph" skill --project "$skill_stage"
+cp "$skill_stage/.claude/skills/cartograph/SKILL.md" Skills/cartograph/SKILL.md
 # 3. 드리프트 테스트를 돌린다
 swift test --filter AgentSkillTemplateTests
+# 4. 이번에 만든 임시 사본만 정리한다. 알 수 없는 파일이 있으면 rmdir가 실패한다.
+rm "$skill_stage/.claude/skills/cartograph/SKILL.md"
+rmdir "$skill_stage/.claude/skills/cartograph" "$skill_stage/.claude/skills" \
+  "$skill_stage/.claude" "$skill_stage"
 ```
 
 이 저장소 자체에 `.claude/skills/`를 남기지 마세요. 두 사본이 되는 순간 드리프트 문제가 다시 생깁니다.
