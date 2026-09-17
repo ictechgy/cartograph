@@ -897,7 +897,9 @@ A `Module` subclass is recognized by its `definition()` builder (`Name`, `View`,
 Expo's rules — `Name(...)`/the macro argument, otherwise the class name — and a `View`
 definition exports a component under the module name, which is what
 `requireNativeViewManager(moduleName)` looks up. `method-handle` facts carry no `mechanism`
-per the exchange contract.
+per the exchange contract. A module that defines several `View`s is represented by the first
+one — secondary views are only reachable through `requireNativeViewManager(module, viewName)`
+and are not separate name-boundary facts.
 
 isthmus hands back `external-retentions`: for each Swift declaration it found a caller for, the USR
 and the evidence. `--external-retentions <path>` (or `external_retentions_path` in the

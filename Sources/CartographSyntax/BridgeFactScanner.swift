@@ -218,6 +218,9 @@ final class BindingCollector: SyntaxVisitor {
     /// `expoModuleClasses` 중 이 파일에 `class` 선언이 있는 이름. 익스텐션만으로
     /// Expo 가 표시된 타입은 클래스 방문이 아니라 익스텐션 방문에서 사실을 낸다.
     private(set) var expoClassDeclarations: Set<String> = []
+    /// 이 파일에 `class` 선언이 있는 모든 타입 이름. 클래스가 보이는데 Expo 표시가
+    /// 없으면 익스텐션의 DSL 호출을 그 타입의 모듈 증거로 쓰지 않기 위한 경계다.
+    private(set) var classDeclarations: Set<String> = []
     /// 타입(또는 같은 파일 익스텐션)의 직속 멤버 `func definition` 들. 안쪽 타입 이름이 키다.
     ///
     /// Expo 의 모듈 이름(`Name`)·뷰(`View`)·함수(`Function` 계열) 정의는 이 본문
@@ -402,6 +405,7 @@ final class BindingCollector: SyntaxVisitor {
         if let name = SyntaxAttributes.objectiveCName(in: node.attributes) {
             reactModules[node.name.text] = (name, SyntaxAttributes.has("objcMembers", in: node.attributes))
         }
+        classDeclarations.insert(node.name.text)
         if isExpoModuleClass(node) {
             expoModuleClasses.insert(node.name.text)
             expoClassDeclarations.insert(node.name.text)
@@ -1033,6 +1037,9 @@ final class BridgeFactCollector: SyntaxVisitor {
     private var reactModules: [(name: String, exportsAllMembers: Bool)?] = []
     /// Expo `Module` 클래스(또는 그 익스텐션) 안에 있으면 해석된 모듈 이름과 매크로 형태 여부.
     private var expoModules: [(name: ResolvedName, viaMacro: Bool)?] = []
+    /// 익스텐션 방문에서 Expo 사실을 이미 낸 타입. `extension X: Module` + `extension X`
+    /// 처럼 같은 타입의 익스텐션이 여러 개여도 모듈 사실을 한 번만 내기 위한 메모다.
+    private var emittedExpoExtensionTypes: Set<String> = []
     /// `let m = call.method` 로 메서드 이름을 담아 둔 지역 변수들. 함수·클로저마다 한 층.
     ///
     /// `switch m` 을 못 알아보면 그 핸들러의 메서드가 전부 사라진다. 실제 플러그인에서
@@ -1098,11 +1105,17 @@ final class BridgeFactCollector: SyntaxVisitor {
         reactModules.append(module)
         // 이 파일에 `class` 선언이 없는 Expo 타입 — `extension X: Module` 준수나
         // `func definition` 본문의 DSL 호출이 증거다. 클래스를 본 타입은 클래스 방문이 낸다.
-        if !Self.isFilePrivate(node.modifiers), !bindings.expoClassDeclarations.contains(typeName) {
+        // DSL 증거 경로도 import 게이트를 요구하고, 클래스 선언이 보이는 비-Expo 타입의
+        // `definition` 은 증거로 쓰지 않는다. 같은 타입의 익스텐션이 여러 개여도 한 번만 낸다.
+        if !Self.isFilePrivate(node.modifiers),
+           bindings.importsExpoModulesCore,
+           !bindings.expoClassDeclarations.contains(typeName),
+           emittedExpoExtensionTypes.insert(typeName).inserted {
             let bodies = bindings.definitionFunctions[typeName] ?? []
             let extracted = bodies.map { (body: $0, dsl: ExpoDefinitionCollector.collect($0)) }
             let marked = bindings.expoModuleClasses.contains(typeName)
-            if marked || extracted.contains(where: { !$0.dsl.isEmpty }) {
+            if marked || (!bindings.classDeclarations.contains(typeName)
+                && extracted.contains(where: { !$0.dsl.isEmpty })) {
                 let fallback: ResolvedName = bodies.isEmpty ? .dynamic(typeName) : .literal(typeName)
                 let moduleName = expoModuleName(extracted: extracted, defaultName: fallback)
                 emit(.moduleExport, target: .reactNative, channel: moduleName, mechanism: .expo, at: node.extendedType)
@@ -1578,8 +1591,12 @@ final class BridgeFactCollector: SyntaxVisitor {
         let method: ResolvedName
         if let argument = SyntaxAttributes.firstArgumentExpression(of: "JS", in: node.attributes) {
             let resolved = bindings.resolveString(argument, in: context)
+            // `@JS(.concurrent)`·`@JS(JSMethodOptions.concurrent)` 처럼 옵션 인자는 이름이 아니다.
+            let memberAccess = argument.as(MemberAccessExprSyntax.self)
+            let optionBases: Set<String> = ["JSOptions", "JSMethodOptions"]
             let isOption = resolved.isDynamic
-                && argument.as(MemberAccessExprSyntax.self)?.base == nil
+                && (memberAccess?.base == nil
+                    || optionBases.contains(memberAccess?.base?.trimmedDescription ?? ""))
             method = isOption ? .literal(DeclarationCollector.unescaped(node.name.text)) : resolved
         } else {
             method = .literal(DeclarationCollector.unescaped(node.name.text))

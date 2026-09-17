@@ -1736,4 +1736,80 @@ struct BridgeFactScannerTests {
         #expect(core?.mechanism == nil)
         #expect(expo?.mechanism == .expo)
     }
+
+    @Test("익스텐션의 definition도 ExpoModulesCore 임포트 없이는 Expo 사실이 아니다")
+    func extensionDefinitionRequiresExpoImport() {
+        let source = """
+            extension RemoteModule {
+                func definition() -> ModuleDefinition {
+                    Name("ExpoRemote")
+                    Function("ping") { true }
+                }
+            }
+            """
+        #expect(scan(source).isEmpty)
+    }
+
+    @Test("같은 타입의 익스텐션이 여러 개여도 Expo 사실은 한 번만 낸다")
+    func conformanceAndPlainExtensionDoNotDoubleEmit() {
+        let source = """
+            import ExpoModulesCore
+
+            extension CounterModule: Module {
+                func definition() -> ModuleDefinition {
+                    Name("Counter")
+                    Function("tick") { true }
+                }
+            }
+            extension CounterModule {
+                func increment() {}
+            }
+            """
+        let scanned = scan(source)
+        #expect(scanned.filter { $0.fact.kind == .moduleExport }.count == 1)
+        #expect(scanned.filter { $0.fact.kind == .methodHandle }.map(\.fact.method) == ["tick"])
+    }
+
+    @Test("비-Expo 클래스의 definition을 익스텐션이 Expo 증거로 쓰지 않는다")
+    func plainClassDefinitionIsNotExtensionEvidence() {
+        let source = """
+            import ExpoModulesCore
+
+            class Weird {
+                func definition() -> ModuleDefinition {
+                    Function("go") { true }
+                }
+            }
+            extension Weird {
+                func unrelated() {}
+            }
+            """
+        #expect(scan(source).filter { $0.fact.mechanism == .expo }.isEmpty)
+    }
+
+    @Test("@JS의 한정 옵션 인자는 메서드 이름이 아니라 함수 이름 폴백이다")
+    func qualifiedJSOptionFallsBackToFunctionName() {
+        let source = """
+            import ExpoModulesCore
+
+            @ExpoModule
+            class SensorModule {
+                @JS(JSMethodOptions.concurrent) func measure() {}
+            }
+            """
+        let methods = facts(source, of: .methodHandle)
+        #expect(methods.map(\.method) == ["measure"])
+    }
+
+    @Test("@ExpoModule의 라벨 붙은 첫 인자는 모듈 이름이 아니다")
+    func labeledExpoModuleArgumentIsNotTheName() {
+        let source = """
+            import ExpoModulesCore
+
+            @ExpoModule(classes: [SensorView.self])
+            class SensorModule {}
+            """
+        let exported = facts(source, of: .moduleExport)
+        #expect(exported.map(\.channel) == ["SensorModule"])
+    }
 }
