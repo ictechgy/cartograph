@@ -56,6 +56,21 @@ CI 두 잡 통과 후 머지 — 리뷰 처리 내역은 PR 코멘트에 있다.
 기각한 지적: scopeDiff의 심볼 추가·제거는 범위 소속 차이라는 정해진 의미
 (주석 정정), 비교 문서 버전 1 디코딩 호환(출력 전용이라 소비자 없음).
 
+### 배포: 0.17.0 (2026-09-17)
+
+버전 범프 [PR #95](https://github.com/ictechgy/cartograph/pull/95)(`5582341`) 후 태그
+`0.17.0`을 발행해 릴리스 워크플로 `35169960516`이 성공했다(유니버설 빌드 + 압축 해제
+바이너리로 계약·픽스처·전수 검증 스크립트 재실행 후 GitHub Release 공개).
+`.claude-plugin/plugin.json`은 0.12.0에서 밀려 있던 것을 함께 맞췄다.
+
+- **자산 독립 검증**: tarball을 내려받아 sha256 재계산 — `ff1bbbc6…7087cb`이 노트·
+  GitHub API digest와 일치. `lipo`로 x86_64+arm64 확인, `--version` = 0.17.0.
+- **Homebrew tap**: `HOMEBREW_TAP_TOKEN` 부재로 워크플로가 건너뛰어 수동으로
+  [tap PR #46](https://github.com/ictechgy/homebrew-tap/pull/46)을 내고 머지했다.
+  원격 formula의 url·sha256을 API로 대조해 일치 확인. `brew upgrade`로
+  0.16.0→0.17.0 갱신과 `brew test` 통과를 로컬에서 확인했다.
+- **HANDOFF 머지 기록**은 머지 후 커밋이라 본류에 안 올라 [PR #94]로 따로 옮겼다.
+
 남은 알려진 공백: 파일 스코프 `let`을 `var` 프로퍼티 외 경로(비-init 대입)로
 채우는 형태, Objective-C 전용 플러그인 핸들러.
 
