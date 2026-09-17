@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-17
+
 ### Added
 
 - `bridges` resolves three more source shapes. `+` string concatenation yields a literal when
@@ -31,6 +33,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reused while every observed directory stamp holds, and directory entries are built with native
   path strings instead of `appendingPathComponent` (whose NSString-backed results hashed ~40×
   slower inside sets and maps). A measured warm `cartograph_query` dropped from ~69 ms to ~12 ms.
+
+### Fixed
+
+- A warm session could keep serving a stale file list in two cases: a symbolic link dropped for
+  visiting an already-seen target could be retargeted without invalidating the walk, and a
+  directory whose enumeration failed was cached as a complete result, so a transient failure
+  became permanent for the session. Both are now tracked — discarded links contribute their
+  file stamps and a failed directory is never stored as a finished walk.
 
 ## [0.16.0] - 2026-09-16
 
@@ -1076,7 +1086,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.16.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.17.0...HEAD
+[0.17.0]: https://github.com/ictechgy/cartograph/compare/0.16.0...0.17.0
 [0.16.0]: https://github.com/ictechgy/cartograph/compare/0.15.1...0.16.0
 [0.15.1]: https://github.com/ictechgy/cartograph/compare/0.15.0...0.15.1
 [0.15.0]: https://github.com/ictechgy/cartograph/compare/0.14.0...0.15.0
