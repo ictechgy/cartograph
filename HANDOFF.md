@@ -1,5 +1,19 @@
 # Handoff
 
+## 2026-09-17 — README 영·한 퇴고 (PR #98)
+
+- 영문본: 0.14.0 핀 → 0.17.0, DerivedData 후보 선택 설명을 `IndexStoreLocator` 실제 동작
+  (info.plist 소유 증명 우선, 미증명 2개 이상일 때만 모호 오류)에 맞게 정정, limitations
+  글머리 들여쓰기·이중 빈 줄 정리.
+- 한글본: 합니다체 통일, 백틱·조사·괄호 띄어쓰기 정규화, 직역체 재작성, `보내기` 통일.
+  영문본에만 있던 `rules --strict` 블록·SARIF CI 단락·구조 표를 채워 구성을 맞춤.
+- Claude(sonnet) 교정 2회. 유효 지적 반영, `--retain-public`→`retain_public` 제안은 실제
+  플래그라 기각.
+- 브랜치 정리: 머지된 원격 브랜치 전부 삭제, 로컬 `feat/bounded-direct-query`도 삭제
+  (스쿼시 머지라 조상이 아니지만 내용은 PR #93으로 본류에 있음).
+- 검증: 헤딩 영·한 1:1, 코드 펜스 균형, 링크 유효성. CI 2잡 통과(문서만 바뀐 PR이라 제품
+  검사 재실행 근거는 아님).
+
 ## 2026-09-17 — Expo Modules 지원 (feat/expo-mechanism, PR #97)
 
 - `import ExpoModulesCore` + `class X: Module`(·`extension X: Module`)을 Expo 모듈로 스캔하고
