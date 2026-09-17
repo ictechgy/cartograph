@@ -70,7 +70,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.14.0
+mint install ictechgy/cartograph@0.17.0
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -78,7 +78,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.14.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.17.0"),
 ```
 
 ```bash
@@ -141,13 +141,14 @@ after the folder that holds it. So Cartograph tries every name the project root 
 `.xcodeproj` and `.xcworkspace` directly inside it, plus the folder's own name. That is what makes
 `cartograph dead` work from a Flutter or React Native `ios/` directory, where the folder is `ios`
 and the project is `Runner.xcodeproj`. Only the root is scanned, so a `Pods/Pods.xcodeproj` never
-becomes a name. When several directories match by name, the `WorkspacePath` in each one's
-`info.plist` decides which belongs to this project; if none of them names it, Cartograph says so
-rather than picking the most recent.
-When several candidates exist it takes the most recently written one, because a stale index fails
-quietly rather than loudly. The exception is ambiguity: if two or more name-matched directories
-remain and none proves ownership through `WorkspacePath`, Cartograph lists them instead of
-guessing — the same rule that makes `query` return candidates instead of a guess.
+becomes a name.
+
+A name-matched directory whose `info.plist` points back at this project through `WorkspacePath`
+wins outright, and one that names a different workspace is never used. Among the candidates that
+remain, Cartograph takes the most recently written one, because a stale index fails quietly rather
+than loudly. The exception is ambiguity: if two or more name-matched directories are left and none
+proves ownership through `WorkspacePath`, Cartograph lists them instead of guessing — the same
+rule that makes `query` return candidates instead of a guess.
 Recent SwiftPM writes an index automatically, so for a Swift package
 `cartograph graph` alone usually works.
 
@@ -336,19 +337,19 @@ Five things this output does deliberately:
   that is declared in Objective-C and being told only "no such thing" would hide the difference
   between absent and invisible. `limitations` is counted from *your* project, within the same
   include/exclude scope the graph uses, so it stays quiet when there is nothing to warn about. It
-  reports Objective-C sources, Interface Builder documents, sources edited since their own index unit was
-   written, a package that exports library products while `retain_public` is off, and a path filter
-   that narrows the analysis *beyond the defaults*, or an edge-kind filter — any of which could be
-   the reason `usedBy` is empty. The default excludes alone do not count —
-  they are a noise guard, not a narrowing you chose, and a warning that fires on every project is
-  not read. File-level timestamps prevent a build of another target from hiding an edited file.
-  `unindexed-sources` counts files without a known index unit; `missing-sources` counts indexed
-  files that disappeared. `unreadable-sources` reports other read failures: declarations in those
-  files are kept with reason `sourceUnavailable` until source access is restored and the analysis
-  is rerun. These limits also appear in `dead` reports — and on the other discovery gates: `cycles`
-and `rules` carry them in every format they emit, and `metrics` carries the same `limitations` key
-in its JSON and prints `Limitation:` lines under the table. A gate that passes while the analysis
-was blind is the one thing a gate must never do.
+  reports Objective-C sources, Interface Builder documents, sources edited since their own index
+  unit was written, a package that exports library products while `retain_public` is off, a path
+  filter narrower than the defaults, or an edge-kind filter — any of which could be the reason
+  `usedBy` is empty. The default excludes alone do not count: they are a noise guard, not a
+  narrowing you chose, and a warning that fires on every project is not read. File-level
+  timestamps prevent a build of another target from hiding an edited file. `unindexed-sources`
+  counts files without a known index unit; `missing-sources` counts indexed files that disappeared.
+  `unreadable-sources` reports other read failures: declarations in those files are kept with
+  reason `sourceUnavailable` until source access is restored and the analysis is rerun. These
+  limits also appear in `dead` reports and on the other discovery gates: `cycles` and `rules`
+  carry them in every format they emit, and `metrics` carries the same `limitations` key in its
+  JSON and prints `Limitation:` lines under the table. A gate that passes while the analysis was
+  blind is the one thing a gate must never do.
 - **A baseline the team already accepted is marked as such** (`suppressedByBaseline`), so nobody
   re-litigates a decision that was already made. It is only set when the declaration would actually
   have been reported.
@@ -799,7 +800,6 @@ The exported `project` is the root's POSIX `realpath`, resolving symlinks so `/t
 Fact locations remain relative to the project. Consumers still require exact `project` equality;
 normalization does not combine different plugin or monorepo roots.
 
-
 The v1 extension in 0.9.0 adds optional `limitationScopes`, each binding a `limitationIndex`
 to an exact `channels` array. This is an upper bound on the entire gap, never a list of names
 merely found in unread code. External-object or factory-supplied Swift handlers produce a scoped
@@ -865,7 +865,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.14.0" },
+  "tool" : { "name" : "cartograph", "version" : "0.17.0" },
   "version" : 1
 }
 ```
