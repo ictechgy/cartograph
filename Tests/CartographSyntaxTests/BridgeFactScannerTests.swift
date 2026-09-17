@@ -181,10 +181,31 @@ struct BridgeFactScannerTests {
             FlutterMethodChannel(name: mutable, binaryMessenger: m).setMethodCallHandler { _, _ in }
             FlutterMethodChannel(name: alias, binaryMessenger: m).setMethodCallHandler { _, _ in }
             FlutterMethodChannel(name: a, binaryMessenger: m).setMethodCallHandler { _, _ in }
-            FlutterMethodChannel(name: "a" + "b", binaryMessenger: m).setMethodCallHandler { _, _ in }
+            FlutterMethodChannel(name: "a" + mutable, binaryMessenger: m).setMethodCallHandler { _, _ in }
             """
         #expect(facts(source, of: .channelRegister).count == 4)
         #expect(facts(source, of: .channelRegister).allSatisfy { $0.isDynamic })
+    }
+
+    @Test("많은 핸들러의 범위는 사실마다 복사하지 않고 선언별로 보존한다")
+    func storesHandlerScopesOncePerDeclaration() {
+        let registrations = (0..<100).map { index in
+            "let channel\(index) = BasicMessageChannel<Any?>(name: \"channel\(index)\", binaryMessenger: messenger)\n"
+                + "channel\(index).setMessageHandler { _, _ in reply(\(index)) }"
+        }.joined(separator: "\n")
+        let split = registrations.split(separator: "\n", omittingEmptySubsequences: true)
+        let first = split.prefix(100)
+        let second = split.dropFirst(100)
+        let result = BridgeFactScanner().scan(
+            source: "func install() {\n\(first.joined(separator: "\n"))\n}\n"
+                + "func installSecond() {\n\(second.joined(separator: "\n"))\n}",
+            path: "/p/Plugin.swift", messages: true
+        )
+
+        #expect(result.facts.count == 100)
+        #expect(result.handlerScopes.count == 2)
+        #expect(result.handlerScopes.map(\.scopes.count) == [50, 50])
+        #expect(result.facts.allSatisfy { $0.handlerScopes.isEmpty })
     }
 
     @Test("채널을 만들기만 한 것은 사실이 아니다")
@@ -877,6 +898,239 @@ struct BridgeFactScannerTests {
         #expect(result.unscannedMessageChannels == 1)
     }
 
+    @Test("messages 선택은 BasicMessageChannel의 non-nil 핸들러만 message-handle로 낸다")
+    func recordsBasicMessageHandlersOnlyWhenOptedIn() {
+        let source = """
+            let name = "wrong"
+            let basic = FlutterBasicMessageChannel<Any?>(name: "literal", binaryMessenger: m)
+            let alias = basic
+            alias.setMessageHandler { _, _ in }
+            basic.setMessageHandler(nil)
+            other.setMessageHandler { _, _ in }
+            FlutterMethodChannel(name: name, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", messages: true)
+        // 수신자를 못 푸는 `other` 도 사실로 남긴다. 버리면 클로저 범위가 목록에서
+        // 빠져 그 안의 참조가 다른 핸들러의 공통 등록 근거로 오염된다.
+        #expect(result.facts.map(\.fact.kind) == [.messageHandle, .messageHandle])
+        #expect(result.facts.map(\.fact.channel) == ["literal", "other"])
+        #expect(result.facts.last?.fact.isDynamic == true)
+        #expect(result.facts.first?.fact.method == nil)
+        #expect(result.unscannedMessageChannels == 1)
+    }
+
+    @Test("수신자가 파라미터·필드라도 setMessageHandler 는 동적 이름의 사실과 범위를 남긴다")
+    func unresolvedMessageReceiverKeepsFactAndScope() {
+        let source = """
+            func install(channel: BasicMessageChannel<Any?>) {
+                channel.setMessageHandler { _, _ in }
+            }
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", messages: true)
+        #expect(result.facts.map(\.fact.kind) == [.messageHandle])
+        #expect(result.facts.first?.fact.channel == "channel")
+        #expect(result.facts.first?.fact.isDynamic == true)
+        #expect(result.facts.first?.fact.handlerScope != nil)
+        #expect(result.handlerScopes.first?.scopes.count == 1)
+    }
+
+    @Test("메시지·이벤트 채널은 메서드 핸들러의 단일 채널 추측을 오염시키지 않는다")
+    func otherChannelKindsDoNotContaminateMethodInference() {
+        let source = """
+            let basic = BasicMessageChannel<Any?>(name: "pigeon", binaryMessenger: m)
+            let events = FlutterEventChannel(name: "stream", binaryMessenger: m)
+            let channel = FlutterMethodChannel(name: "method", binaryMessenger: m)
+            func handle(_ call: FlutterMethodCall, result: FlutterResult) {
+                switch call.method {
+                case "ping": result("pong")
+                default: break
+                }
+            }
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift")
+        let handled = result.facts.first { $0.fact.kind == .methodHandle }?.fact
+        #expect(handled?.channel == "method")
+        #expect(handled?.isChannelInferred == true)
+    }
+
+    @Test("qualified generic BasicMessageChannel과 읽기 전용 문자열 별칭을 해석한다")
+    func resolvesQualifiedGenericMessageChannels() {
+        let source = """
+            let prefix = "dev.flutter.pigeon.CameraApi.method"
+            let name = prefix
+            let channel = Flutter.FlutterBasicMessageChannel<Any?, Any?>(name: name, binaryMessenger: m)
+            channel.setMessageHandler { _, _ in }
+            """
+        let fact = BridgeFactScanner().scan(source: source, path: "/p/A.swift", messages: true).facts.first?.fact
+        #expect(fact?.kind == .messageHandle)
+        #expect(fact?.isDynamic == false)
+        #expect(fact?.channel == "dev.flutter.pigeon.CameraApi.method")
+    }
+
+    @Test("보간 채널은 원문과 디코드한 선행 리터럴을 함께 보존한다")
+    func preservesInterpolatedMessagePrefix() {
+        let source = #"""
+            let c = BasicMessageChannel<Any?>(name: "dev.flutter.pigeon.\u{1F4F7}\(suffix)", binaryMessenger: m)
+            c.setMessageHandler { _, _ in }
+            """#
+        let fact = BridgeFactScanner().scan(source: source, path: "/p/A.swift", messages: true).facts.first?.fact
+        #expect(fact?.isDynamic == true)
+        #expect(fact?.channel == #""dev.flutter.pigeon.\u{1F4F7}\(suffix)""#)
+        #expect(fact?.channelPrefix == "dev.flutter.pigeon.📷")
+    }
+
+    @Test("BasicMessageChannel 메서드 참조는 closure 범위 근거 없이 fallback한다")
+    func messageMethodReferenceHasNoClosureScope() {
+        let source = """
+            let c = BasicMessageChannel<Any?>(name: "c", binaryMessenger: m)
+            c.setMessageHandler(handler)
+            """
+        let fact = BridgeFactScanner().scan(source: source, path: "/p/A.swift", messages: true).facts.first?.fact
+        #expect(fact?.kind == .messageHandle)
+        #expect(fact?.handlerScope == nil)
+        #expect(fact?.dependencies == nil)
+    }
+
+    @Test("events 선택은 setStreamHandler만 stream-handle로 내고 MethodChannel 사실은 버린다")
+    func recordsStreamHandlersOnlyWhenOptedIn() {
+        let source = """
+            let events = FlutterEventChannel(name: "com.example/charging", binaryMessenger: m)
+            events.setStreamHandler(self)
+            let channel = FlutterMethodChannel(name: "com.example/battery", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                switch call.method { case "getBatteryLevel": result(1) default: break }
+            }
+            let basic = BasicMessageChannel<Any?>(name: "pigeon", binaryMessenger: m)
+            basic.setMessageHandler { _, _ in }
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", events: true)
+        #expect(result.facts.map(\.fact.kind) == [.streamHandle])
+        #expect(result.facts.first?.fact.channel == "com.example/charging")
+        #expect(result.facts.first?.fact.isDynamic == false)
+        #expect(result.facts.first?.fact.method == nil)
+    }
+
+    @Test("풀지 못한 수신자의 setStreamHandler도 동적 이름의 사실로 남긴다")
+    func unresolvedStreamReceiverKeepsFact() {
+        let source = """
+            func install(stream: FlutterStreamHandler, channel: FlutterEventChannel) {
+                channel.setStreamHandler(stream)
+            }
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", events: true)
+        #expect(result.facts.map(\.fact.kind) == [.streamHandle])
+        #expect(result.facts.first?.fact.channel == "channel")
+        #expect(result.facts.first?.fact.isDynamic == true)
+    }
+
+    @Test("nil 스트림 핸들러는 해제라 사실로 남기지 않는다")
+    func nilStreamHandlerIsNotAFact() {
+        let source = """
+            let events = FlutterEventChannel(name: "com.example/charging", binaryMessenger: m)
+            events.setStreamHandler(nil)
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", events: true)
+        #expect(result.facts.isEmpty)
+    }
+
+    @Test("다른 채널 종류로 증명된 수신자의 setStreamHandler는 사실로 남기지 않는다")
+    func provenNonEventReceiverProducesNoStreamFact() {
+        let source = """
+            let methods = FlutterMethodChannel(name: "com.example/methods", binaryMessenger: m)
+            methods.setStreamHandler(self)
+            let basics = BasicMessageChannel<Any?>(name: "com.example/basic", binaryMessenger: m)
+            basics.setStreamHandler(self)
+            FlutterMethodChannel(name: "com.example/inline", binaryMessenger: m).setStreamHandler(self)
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", events: true)
+        #expect(result.facts.isEmpty)
+    }
+
+    @Test("channel: 인자보다 수신자의 증명된 종류가 우선이다")
+    func provenReceiverBeatsChannelArgument() {
+        let source = """
+            let methods = FlutterMethodChannel(name: "com.example/methods", binaryMessenger: m)
+            let events = FlutterEventChannel(name: "com.example/events", binaryMessenger: m)
+            methods.setStreamHandler(self, channel: events)
+            """
+        let result = BridgeFactScanner().scan(source: source, path: "/p/A.swift", events: true)
+        #expect(result.facts.isEmpty)
+    }
+
+    @Test("비교가 참임을 보장하지 않는 조건 형태의 if는 분기 근거를 붙이지 않는다")
+    func negatedIfConditionCarriesNoBranchScope() throws {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                if !(call.method == "a") { result(helperA()) }
+                if call.method == "b" || flag { result(helperB()) }
+                if call.method == "c" { result(helperC()) }
+                if (call.method == "d") { result(helperD()) }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        // #require — 목록이 짧으면 아래 인덱싱이 트랩해 테스트 런 전체를 멈춘다.
+        try #require(handled.map(\.method) == ["a", "b", "c", "d"])
+        // 양성 대조군 — 그 `==` 인 조건과 괄호로 감싼 형태는 여전히 범위를 단다.
+        // 없으면 "모든 if 에 범위가 안 붙는" 회귀도 이 테스트를 통과한다.
+        #expect(handled[2].handlerScope != nil && handled[3].handlerScope != nil)
+        #expect(handled[0].handlerScope == nil && handled[1].handlerScope == nil)
+    }
+
+    @Test("같은 절의 case 항목들은 같은 분기 범위를 나눈다")
+    func siblingCaseItemsShareBranchScope() {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                switch call.method {
+                case "a":
+                    result(helperA())
+                case "b", "c":
+                    result(helperB())
+                default: break
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["a", "b", "c"])
+        #expect(handled.allSatisfy { $0.handlerScope != nil })
+        let scopes = handled.map { ($0.handlerScope!.start.line, $0.handlerScope!.end.line) }
+        #expect(scopes[0] != scopes[1])
+        #expect(scopes[1] == scopes[2])
+    }
+
+    @Test("if 조건의 메서드 비교는 then 본문을 분기 범위로 단다")
+    func methodComparisonAttachesThenBodyScope() {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                if call.method == "a" {
+                    result(helperA())
+                }
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["a"])
+        #expect(handled.first?.handlerScope != nil)
+        // then 본문은 `if` 머리가 아니라 `{`(3행)에서 `}`(5행)까지다.
+        #expect(handled.first?.handlerScope?.start.line == 3)
+        #expect(handled.first?.handlerScope?.end.line == 5)
+    }
+
+    @Test("조건 위치가 아닌 메서드 비교는 범위 없이 사실만 남긴다")
+    func nonConditionComparisonKeepsFactWithoutScope() {
+        let source = """
+            let channel = FlutterMethodChannel(name: "c", binaryMessenger: m)
+            channel.setMethodCallHandler { call, result in
+                let matches = call.method == "a"
+                result(matches)
+            }
+            """
+        let handled = facts(source, of: .methodHandle)
+        #expect(handled.map(\.method) == ["a"])
+        #expect(handled.first?.handlerScope == nil)
+    }
+
     @Test("call.method 가 아닌 switch 는 건드리지 않는다")
     func ignoresUnrelatedSwitches() {
         let source = """
@@ -961,5 +1215,601 @@ struct BridgeFactScannerTests {
         let second = scan(source)
         #expect(first == second)
         #expect(first.map(\.fact.location.line) == [1, 2])
+    }
+
+    // audioplayers 플러그인의 형태다. 파일 최상위 상수가 채널 이름이고, 프로퍼티는
+    // init 인자로 채워지며, `handle` 은 `call` 을 그대로 넘겨 비동기 메서드가 분기한다.
+    @Test("init 인자로 채워진 채널과 call 을 그대로 넘기는 한 홉 위임은 등록 채널에 붙는다")
+    func injectedChannelAndForwardedHandler() {
+        let source = """
+            let channelName = "xyz.luan/audioplayers"
+            let globalChannelName = "xyz.luan/audioplayers.global"
+            class Plugin {
+                var methods: FlutterMethodChannel
+                var globalMethods: FlutterMethodChannel
+                init(methodChannel: FlutterMethodChannel, globalMethodChannel: FlutterMethodChannel) {
+                    self.methods = methodChannel
+                    self.globalMethods = globalMethodChannel
+                    self.globalMethods.setMethodCallHandler(handleGlobalMethodCall)
+                }
+                static func register(with registrar: FlutterPluginRegistrar) {
+                    let methods = FlutterMethodChannel(name: channelName, binaryMessenger: m)
+                    let globalMethods = FlutterMethodChannel(name: globalChannelName, binaryMessenger: m)
+                    let instance = Plugin(methodChannel: methods, globalMethodChannel: globalMethods)
+                    registrar.addMethodCallDelegate(instance, channel: methods)
+                }
+                func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    Task { await handleAsync(call, result: result) }
+                }
+                private func handleAsync(_ call: FlutterMethodCall, result: @escaping FlutterResult) async {
+                    switch call.method {
+                    case "pause": result(nil)
+                    default: result(nil)
+                    }
+                }
+                private func handleGlobalMethodCall(call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    Task { await handleGlobalAsync(call: call, result: result) }
+                }
+                private func handleGlobalAsync(call: FlutterMethodCall, result: @escaping FlutterResult) async {
+                    switch call.method {
+                    case "init": result(nil)
+                    default: result(nil)
+                    }
+                }
+            }
+            """
+        let handles = facts(source, of: .methodHandle)
+        #expect(Set(handles.map(\.method)) == ["pause", "init"])
+        #expect(handles.first { $0.method == "pause" }?.channel == "xyz.luan/audioplayers")
+        #expect(handles.first { $0.method == "init" }?.channel == "xyz.luan/audioplayers.global")
+        #expect(handles.allSatisfy { !$0.isDynamic && !$0.isChannelInferred })
+        let registered = facts(source, of: .channelRegister)
+        #expect(Set(registered.map(\.channel)) == ["xyz.luan/audioplayers", "xyz.luan/audioplayers.global"])
+        #expect(registered.allSatisfy { !$0.isDynamic })
+    }
+
+    @Test("채널 이름의 문자열 연결은 양쪽이 리터럴이면 리터럴로 푼다")
+    func concatenatedChannelName() {
+        let source = """
+            let base = "com.example/plugin"
+            func attach(m: FlutterBinaryMessenger) {
+                FlutterMethodChannel(name: base + "/methods", binaryMessenger: m).setMethodCallHandler { _, _ in }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.first?.channel == "com.example/plugin/methods")
+        #expect(registered.first?.isDynamic == false)
+    }
+
+    @Test("연결의 한쪽을 모르면 리터럴이 아닌 dynamic 으로 남긴다")
+    func halfResolvedConcatenationStaysDynamic() {
+        let source = """
+            let base = "com.example/plugin"
+            func attach(m: FlutterBinaryMessenger, suffix: String) {
+                FlutterMethodChannel(name: base + suffix, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.first?.isDynamic == true)
+        #expect(registered.first?.channel != "com.example/plugin")
+    }
+
+    @Test("주입 프로퍼티에 다른 값의 호출 지점이나 다른 대입이 있으면 추측하지 않는다")
+    func conflictingInjectionStaysUnknown() {
+        let source = """
+            class Plugin {
+                var channel: FlutterMethodChannel
+                init(c: FlutterMethodChannel) { self.channel = c }
+                func attach() { channel.setMethodCallHandler { _, _ in } }
+            }
+            func one(m: FlutterBinaryMessenger) { Plugin(c: FlutterMethodChannel(name: "a", binaryMessenger: m)) }
+            func two(m: FlutterBinaryMessenger) { Plugin(c: FlutterMethodChannel(name: "b", binaryMessenger: m)) }
+            """
+        #expect(facts(source, of: .channelRegister).first?.isDynamic == true)
+
+        let reassigned = """
+            class Plugin {
+                var channel: FlutterMethodChannel
+                init(c: FlutterMethodChannel) { self.channel = c }
+                func swap(other: FlutterMethodChannel) { self.channel = other }
+                func attach() { channel.setMethodCallHandler { _, _ in } }
+            }
+            func one(m: FlutterBinaryMessenger) { Plugin(c: FlutterMethodChannel(name: "a", binaryMessenger: m)) }
+            """
+        #expect(facts(reassigned, of: .channelRegister).first?.isDynamic == true)
+    }
+
+    @Test("위임받은 메서드를 서로 다른 채널의 핸들러가 부르면 채널을 고르지 않는다")
+    func conflictingForwardersKeepChannelUnknown() {
+        let source = """
+            class Plugin {
+                func attach(m: FlutterBinaryMessenger) {
+                    FlutterMethodChannel(name: "a", binaryMessenger: m).setMethodCallHandler(handle1)
+                    FlutterMethodChannel(name: "b", binaryMessenger: m).setMethodCallHandler(handle2)
+                }
+                func handle1(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    Task { await shared(call, result: result) }
+                }
+                func handle2(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    Task { await shared(call, result: result) }
+                }
+                private func shared(_ call: FlutterMethodCall, result: @escaping FlutterResult) async {
+                    switch call.method {
+                    case "x": result(nil)
+                    default: result(nil)
+                    }
+                }
+            }
+            """
+        let handles = facts(source, of: .methodHandle)
+        #expect(handles.map(\.method) == ["x"])
+        #expect(handles.first?.channel == nil)
+        #expect(handles.first?.isChannelInferred == false)
+    }
+
+    @Test("call 이 아닌 값을 넘기는 호출은 위임으로 보지 않는다")
+    func alteredArgumentIsNotForwarding() {
+        let source = """
+            class Plugin {
+                func attach(c1: FlutterMethodChannel, c2: FlutterMethodChannel) {
+                    c1.setMethodCallHandler(handle)
+                }
+                func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    Task { await shared(other, result: result) }
+                }
+                private func shared(_ call: FlutterMethodCall, result: @escaping FlutterResult) async {
+                    switch call.method {
+                    case "x": result(nil)
+                    default: result(nil)
+                    }
+                }
+            }
+            """
+        let handles = facts(source, of: .methodHandle)
+        #expect(handles.map(\.method) == ["x"])
+        #expect(handles.first?.channel == nil)
+    }
+
+    @Test("주입 프로퍼티와 같은 이름의 지역 파라미터는 주입 채널을 물려받지 않는다")
+    func localParameterShadowsInjectedChannel() {
+        let source = """
+            class Plugin {
+                var channel: FlutterMethodChannel
+                init(c: FlutterMethodChannel) { self.channel = c }
+                func attach(channel: FlutterMethodChannel) { channel.setMethodCallHandler { _, _ in } }
+            }
+            func make(m: FlutterBinaryMessenger) {
+                Plugin(c: FlutterMethodChannel(name: "injected", binaryMessenger: m))
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.first?.isDynamic == true)
+        #expect(registered.first?.channel != "injected")
+    }
+
+    @Test("주입 레이블을 쓰지 않는 생성자 호출이 있으면 채널을 단정하지 않는다")
+    func unlabelledConstructorCallStaysUnknown() {
+        let source = """
+            class Plugin {
+                var channel = FlutterMethodChannel(name: "fallback", binaryMessenger: m)
+                init(c: FlutterMethodChannel) { self.channel = c }
+                init(other: Int) {}
+                func attach() { channel.setMethodCallHandler { _, _ in } }
+            }
+            func a(m: FlutterBinaryMessenger) { Plugin(c: FlutterMethodChannel(name: "a", binaryMessenger: m)) }
+            func b() { Plugin(other: 1) }
+            """
+        // `Plugin(other:)` 은 `c` 를 거치지 않으므로 그 인스턴스의 채널은 "a" 가 아니다.
+        #expect(facts(source, of: .channelRegister).first?.isDynamic == true)
+    }
+
+    @Test("Type.init 으로 쓴 생성자 호출도 주입 호출 지점이다")
+    func explicitInitConstructorCallResolvesInjection() {
+        let source = """
+            class Plugin {
+                var channel: FlutterMethodChannel
+                init(c: FlutterMethodChannel) { self.channel = c }
+                func attach() { channel.setMethodCallHandler { _, _ in } }
+            }
+            func make(m: FlutterBinaryMessenger) {
+                Plugin.init(c: FlutterMethodChannel(name: "via-init", binaryMessenger: m))
+            }
+            """
+        let registered = facts(source, of: .channelRegister)
+        #expect(registered.first?.channel == "via-init")
+        #expect(registered.first?.isDynamic == false)
+    }
+
+    @Test("self 아닌 수신자에 같은 이름 프로퍼티가 대입되면 주입 채널을 단정하지 않는다")
+    func otherReceiverAssignmentInvalidatesInjection() {
+        let source = """
+            class Plugin {
+                var channel: FlutterMethodChannel
+                init(c: FlutterMethodChannel) { self.channel = c }
+                func attach() { channel.setMethodCallHandler { _, _ in } }
+            }
+            func make(m: FlutterBinaryMessenger) {
+                Plugin(c: FlutterMethodChannel(name: "a", binaryMessenger: m))
+            }
+            func rewrite(_ peer: Plugin, with other: FlutterMethodChannel) { peer.channel = other }
+            """
+        #expect(facts(source, of: .channelRegister).first?.isDynamic == true)
+    }
+
+    @Test("본문 안 클로저가 call 이름을 다시 선언하면 위임으로 세지 않는다")
+    func closureShadowedCallIsNotForwarding() {
+        let source = """
+            class Plugin {
+                func setup(m: FlutterBinaryMessenger) {
+                    let c = FlutterMethodChannel(name: "fixed", binaryMessenger: m)
+                    let other = FlutterMethodChannel(name: "other", binaryMessenger: m)
+                    c.setMethodCallHandler(handle)
+                }
+                func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    [call].forEach { call in Task { await handleAsync(call, result: result) } }
+                }
+                private func handleAsync(_ call: FlutterMethodCall, result: @escaping FlutterResult) async {
+                    switch call.method {
+                    case "ping": result(nil)
+                    default: result(nil)
+                    }
+                }
+            }
+            """
+        let handles = facts(source, of: .methodHandle)
+        #expect(handles.map(\.method) == ["ping"])
+        #expect(handles.first?.channel == nil)
+    }
+
+    @Test("call 을 FlutterMethodCall 자리가 아닌 다른 인자로 넘기면 위임으로 세지 않는다")
+    func callPassedToOtherPositionIsNotForwarding() {
+        let source = """
+            class Plugin {
+                func setup(m: FlutterBinaryMessenger) {
+                    let c = FlutterMethodChannel(name: "fixed", binaryMessenger: m)
+                    let other = FlutterMethodChannel(name: "other", binaryMessenger: m)
+                    c.setMethodCallHandler(handle)
+                }
+                func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+                    Task { await shared(result, context: call) }
+                }
+                private func shared(_ call: FlutterMethodCall, context: FlutterMethodCall,
+                                    result: @escaping FlutterResult) async {
+                    switch call.method {
+                    case "ping": result(nil)
+                    default: result(nil)
+                    }
+                }
+            }
+            """
+        let handles = facts(source, of: .methodHandle)
+        #expect(handles.map(\.method) == ["ping"])
+        #expect(handles.first?.channel == nil)
+    }
+
+    @Test("합친 이름이 채널이 될 수 없는 크기면 리터럴로 단정하지 않는다")
+    func oversizedConcatenationStaysDynamic() {
+        let chunk = String(repeating: "x", count: 3000)
+        let source = """
+            let a = "\(chunk)"
+            func attach(m: FlutterBinaryMessenger) {
+                FlutterMethodChannel(name: a + a, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            }
+            """
+        #expect(facts(source, of: .channelRegister).first?.isDynamic == true)
+    }
+
+    @Test("갈라지는 별칭 연결 사슬도 결과 크기 제한 안에서 끝난다")
+    func branchingAliasChainTerminates() {
+        var lines = ["let a0 = \"x\""]
+        for index in 1...40 { lines.append("let a\(index) = a\(index - 1) + a\(index - 1)") }
+        lines.append("""
+            func attach(m: FlutterBinaryMessenger) {
+                FlutterMethodChannel(name: a40, binaryMessenger: m).setMethodCallHandler { _, _ in }
+            }
+            """)
+        // 메모가 없으면 2⁴⁰ 번 풀고, 크기 제한이 없으면 2⁴⁰ 바이트를 만든다.
+        #expect(facts(lines.joined(separator: "\n"), of: .channelRegister).first?.isDynamic == true)
+    }
+
+    // MARK: Expo Modules
+
+    @Test("Expo Module 클래스는 mechanism이 expo인 module-export를 낸다")
+    func expoModuleExport() {
+        let source = """
+            import ExpoModulesCore
+
+            public class PhotoModule: Module {
+                public func definition() -> ModuleDefinition {
+                    Name("ExpoPhoto")
+                    Function("pick") { (filter: String) in filter }
+                    AsyncFunction("upload") { _ in }
+                }
+            }
+            """
+        let scanned = scan(source)
+        let exported = scanned.filter { $0.fact.kind == .moduleExport }
+        #expect(exported.count == 1)
+        #expect(exported.first?.fact.channel == "ExpoPhoto")
+        #expect(exported.first?.fact.mechanism == .expo)
+        #expect(exported.first?.fact.target == .reactNative)
+        #expect(exported.first?.fact.isDynamic == false)
+        #expect(exported.first?.declaration?.name == "PhotoModule")
+
+        // Function 계열은 JS 메서드지만 이름 경계 사실이 아니라 mechanism을 싣지 않는다.
+        let handled = scanned.filter { $0.fact.kind == .methodHandle }
+        #expect(handled.map(\.fact.method) == ["pick", "upload"])
+        #expect(handled.allSatisfy { $0.fact.channel == "ExpoPhoto" && $0.fact.mechanism == nil })
+    }
+
+    @Test("Name이 없으면 모듈 이름은 클래스 이름이다")
+    func expoModuleNameDefaultsToClassName() {
+        let source = """
+            import ExpoModulesCore
+
+            class BatteryModule: Module {
+                func definition() -> ModuleDefinition {
+                    Function("level") { 0 }
+                }
+            }
+            """
+        let exported = facts(source, of: .moduleExport)
+        #expect(exported.map(\.channel) == ["BatteryModule"])
+        #expect(exported.first?.mechanism == .expo)
+    }
+
+    @Test("마지막 Name 호출이 모듈 이름을 덮어쓴다")
+    func expoModuleLastNameWins() {
+        let source = """
+            import ExpoModulesCore
+
+            class SoundModule: Module {
+                func definition() -> ModuleDefinition {
+                    Name("first")
+                    Name("ExpoSound")
+                }
+            }
+            """
+        #expect(facts(source, of: .moduleExport).map(\.channel) == ["ExpoSound"])
+    }
+
+    @Test("View 정의가 있으면 모듈 이름으로 component-export를 낸다")
+    func expoViewComponentExport() {
+        let source = """
+            import ExpoModulesCore
+
+            class PhotoModule: Module {
+                func definition() -> ModuleDefinition {
+                    Name("ExpoPhoto")
+                    View(PhotoView.self) {
+                        Prop("url") { view, url in }
+                    }
+                }
+            }
+            """
+        let components = facts(source, of: .componentExport)
+        // JS 의 requireNativeViewManager 는 모듈 이름으로 기본 뷰를 찾는다.
+        #expect(components.count == 1)
+        #expect(components.first?.channel == "ExpoPhoto")
+        #expect(components.first?.mechanism == .expo)
+    }
+
+    @Test("ExpoModule 매크로 모듈은 인자 이름과 JS 메서드를 낸다")
+    func expoMacroModule() {
+        let source = """
+            import ExpoModulesCore
+
+            @ExpoModule("ExpoCrypto")
+            class CryptoModule {
+                @JS func digest(_ input: String) -> String { input }
+                @JS("sign") func signData(_ data: String) -> String { data }
+                @JS(.concurrent) func slow() {}
+                func helper() {}
+            }
+            """
+        let scanned = scan(source)
+        let exported = scanned.filter { $0.fact.kind == .moduleExport }
+        #expect(exported.map(\.fact.channel) == ["ExpoCrypto"])
+        #expect(exported.first?.fact.mechanism == .expo)
+
+        let handled = scanned.filter { $0.fact.kind == .methodHandle }
+        // @JS(.concurrent) 의 첫 인자는 옵션이라 이름이 아니다 — 함수 이름으로 둔다.
+        #expect(handled.map(\.fact.method) == ["digest", "sign", "slow"])
+    }
+
+    @Test("ExpoModule 매크로 인자가 없으면 클래스 이름이다")
+    func expoMacroModuleDefaultName() {
+        let source = """
+            import ExpoModulesCore
+
+            @ExpoModule
+            class SensorModule {
+                @JS func read() {}
+            }
+            """
+        #expect(facts(source, of: .moduleExport).map(\.channel) == ["SensorModule"])
+    }
+
+    @Test("ExpoModulesCore를 임포트하지 않은 Module 상속은 사실을 내지 않는다")
+    func ignoresModuleInheritanceWithoutExpoImport() {
+        let source = """
+            class Plugin: Module {
+                func definition() -> ModuleDefinition {
+                    Name("Wrong")
+                }
+            }
+            """
+        #expect(scan(source).isEmpty)
+    }
+
+    @Test("definition 밖의 동명 호출은 Expo 사실로 보지 않는다")
+    func ignoresLookalikeCallsOutsideDefinition() {
+        let source = """
+            import ExpoModulesCore
+
+            class Helper {
+                func definition() -> Int { 0 }
+                func build() {
+                    Name("not-a-module")
+                    View {}
+                }
+            }
+            """
+        #expect(scan(source).isEmpty)
+    }
+
+    @Test("definition 안 클로저의 동명 호출은 DSL 문장이 아니다")
+    func ignoresNestedClosureCalls() {
+        let source = """
+            import ExpoModulesCore
+
+            class CameraModule: Module {
+                func definition() -> ModuleDefinition {
+                    Function("snap") {
+                        Name("inner")
+                        print("x")
+                    }
+                }
+            }
+            """
+        let exported = facts(source, of: .moduleExport)
+        // 클로저 안의 Name은 모듈 이름이 아니므로 기본값인 클래스 이름이 남는다.
+        #expect(exported.map(\.channel) == ["CameraModule"])
+        #expect(facts(source, of: .methodHandle).map(\.method) == ["snap"])
+    }
+
+    @Test("definition을 찾지 못한 Expo 모듈은 이름을 동적으로 남긴다")
+    func expoModuleWithoutVisibleDefinitionIsDynamic() {
+        let source = """
+            import ExpoModulesCore
+
+            class LocationModule: Module {
+            }
+            """
+        let exported = facts(source, of: .moduleExport)
+        #expect(exported.count == 1)
+        #expect(exported.first?.mechanism == .expo)
+        // 다른 파일의 익스텐션에 Name() 이 있을 수 있어 리터럴로 확정하지 않는다.
+        #expect(exported.first?.isDynamic == true)
+        #expect(exported.first?.channel == "LocationModule")
+    }
+
+    @Test("클래스가 없는 파일의 익스텐션 definition도 Expo 모듈이다")
+    func expoModuleDefinedInExtensionOnly() {
+        let source = """
+            import ExpoModulesCore
+
+            extension RemoteModule {
+                func definition() -> ModuleDefinition {
+                    Name("ExpoRemote")
+                    Function("ping") { true }
+                }
+            }
+            """
+        let scanned = scan(source)
+        let exported = scanned.filter { $0.fact.kind == .moduleExport }
+        #expect(exported.map(\.fact.channel) == ["ExpoRemote"])
+        #expect(exported.first?.fact.mechanism == .expo)
+        #expect(facts(source, of: .methodHandle).map(\.method) == ["ping"])
+    }
+
+    @Test("Expo 모듈과 코어 RN 모듈은 같은 파일에서 구분된다")
+    func expoAndCoreModulesInOneFile() {
+        let source = """
+            import ExpoModulesCore
+
+            @objc(LegacyManager)
+            class LegacyManager: NSObject {
+                @objc func oldWay() {}
+            }
+
+            class ModernModule: Module {
+                func definition() -> ModuleDefinition {
+                    Name("ExpoModern")
+                }
+            }
+            """
+        let exported = facts(source, of: .moduleExport)
+        #expect(exported.count == 2)
+        let core = exported.first { $0.channel == "LegacyManager" }
+        let expo = exported.first { $0.channel == "ExpoModern" }
+        #expect(core?.mechanism == nil)
+        #expect(expo?.mechanism == .expo)
+    }
+
+    @Test("익스텐션의 definition도 ExpoModulesCore 임포트 없이는 Expo 사실이 아니다")
+    func extensionDefinitionRequiresExpoImport() {
+        let source = """
+            extension RemoteModule {
+                func definition() -> ModuleDefinition {
+                    Name("ExpoRemote")
+                    Function("ping") { true }
+                }
+            }
+            """
+        #expect(scan(source).isEmpty)
+    }
+
+    @Test("같은 타입의 익스텐션이 여러 개여도 Expo 사실은 한 번만 낸다")
+    func conformanceAndPlainExtensionDoNotDoubleEmit() {
+        let source = """
+            import ExpoModulesCore
+
+            extension CounterModule: Module {
+                func definition() -> ModuleDefinition {
+                    Name("Counter")
+                    Function("tick") { true }
+                }
+            }
+            extension CounterModule {
+                func increment() {}
+            }
+            """
+        let scanned = scan(source)
+        #expect(scanned.filter { $0.fact.kind == .moduleExport }.count == 1)
+        #expect(scanned.filter { $0.fact.kind == .methodHandle }.map(\.fact.method) == ["tick"])
+    }
+
+    @Test("비-Expo 클래스의 definition을 익스텐션이 Expo 증거로 쓰지 않는다")
+    func plainClassDefinitionIsNotExtensionEvidence() {
+        let source = """
+            import ExpoModulesCore
+
+            class Weird {
+                func definition() -> ModuleDefinition {
+                    Function("go") { true }
+                }
+            }
+            extension Weird {
+                func unrelated() {}
+            }
+            """
+        #expect(scan(source).filter { $0.fact.mechanism == .expo }.isEmpty)
+    }
+
+    @Test("@JS의 한정 옵션 인자는 메서드 이름이 아니라 함수 이름 폴백이다")
+    func qualifiedJSOptionFallsBackToFunctionName() {
+        let source = """
+            import ExpoModulesCore
+
+            @ExpoModule
+            class SensorModule {
+                @JS(JSMethodOptions.concurrent) func measure() {}
+            }
+            """
+        let methods = facts(source, of: .methodHandle)
+        #expect(methods.map(\.method) == ["measure"])
+    }
+
+    @Test("@ExpoModule의 라벨 붙은 첫 인자는 모듈 이름이 아니다")
+    func labeledExpoModuleArgumentIsNotTheName() {
+        let source = """
+            import ExpoModulesCore
+
+            @ExpoModule(classes: [SensorView.self])
+            class SensorModule {}
+            """
+        let exported = facts(source, of: .moduleExport)
+        #expect(exported.map(\.channel) == ["SensorModule"])
     }
 }

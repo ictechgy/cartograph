@@ -46,7 +46,8 @@ struct IndexStoreLocatorTests {
 
     @Test("어디에도 없으면 찾아본 경로를 모두 알려 준다")
     func reportsSearchedPaths() {
-        let locator = IndexStoreLocator(fileSystem: InMemoryFileSystem())
+        let fileSystem = InMemoryFileSystem(files: ["/p/Package.swift": "// p"])
+        let locator = IndexStoreLocator(fileSystem: fileSystem)
         do {
             _ = try locator.locate(explicitPath: nil, projectPath: "/p")
             Issue.record("오류가 발생해야 한다")
@@ -195,6 +196,48 @@ struct DerivedDataMatchingTests {
             .derivedDataCandidates(projectNames: ["App"], derivedDataPath: "/dd", projectPath: "/src/main/App")
         #expect(candidates.contains("/dd/App-aaaaaa/Index.noindex/DataStore"))
         #expect(candidates.contains("/dd/App-bbbbbb/Index.noindex/DataStore"))
+    }
+
+    @Test("패키지 루트의 실패 안내는 xcodebuild 를 권하지 않는다")
+    func packageRootFailureDoesNotSuggestXcodebuild() {
+        // 패키지에 xcodebuild 를 권하면 절반이 틀린 안내다.
+        let fileSystem = InMemoryFileSystem(files: ["/p/Package.swift": "// p"])
+        let error = locateError(fileSystem: fileSystem, projectPath: "/p")
+        #expect(error.contains("swift build"))
+        #expect(!error.contains("xcodebuild"))
+    }
+
+    @Test("Xcode 문서만 있는 루트는 스킴을 실은 xcodebuild 를 안내한다")
+    func xcodeRootFailureIncludesSchemeFlag() {
+        // -scheme 없는 xcodebuild 는 그대로 실행하면 실패한다.
+        let fileSystem = InMemoryFileSystem(files: ["/p/App.xcodeproj/project.pbxproj": "x"])
+        let error = locateError(fileSystem: fileSystem, projectPath: "/p")
+        #expect(error.contains("xcodebuild"))
+        #expect(error.contains("-project 'App.xcodeproj'"))
+        #expect(error.contains("-scheme"))
+    }
+
+    @Test("빌드 진입점이 없는 루트는 --project 를 의심하게 한다")
+    func bareRootSuspectsThePath() {
+        // `ios/` 같은 하위 디렉터리를 가리킨 경우가 흔하다.
+        let fileSystem = InMemoryFileSystem(files: ["/p/Sources/main.swift": "import Foundation"])
+        let error = locateError(fileSystem: fileSystem, projectPath: "/p")
+        #expect(error.contains("--project"))
+    }
+
+    /// locate 실패를 잡아 설명 문자열로 돌려준다.
+    private func locateError(fileSystem: InMemoryFileSystem, projectPath: String) -> String {
+        do {
+            _ = try IndexStoreLocator(fileSystem: fileSystem)
+                .locate(explicitPath: nil, projectPath: projectPath)
+            Issue.record("오류가 발생해야 한다")
+            return ""
+        } catch let error as CartographError {
+            return error.errorDescription ?? ""
+        } catch {
+            Issue.record("예상하지 못한 오류: \(error)")
+            return ""
+        }
     }
 
     @Test("트리플 디렉터리 아래의 인덱스도 후보로 본다")

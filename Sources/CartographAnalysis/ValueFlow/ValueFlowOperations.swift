@@ -70,7 +70,7 @@ extension ValueFlowSolver {
             let receiver = value(base, in: state)
             if receiver.isBottom { return FlowCallOutcome(mayReturn: false, value: ValueFlowValue(), state: state) }
             edge(base, to: instruction.id, kind: "receiver")
-            result = memberValue(reference, receiver: receiver, state: state)
+            result = memberValue(reference, receiver: receiver)
             if result.isUnknown {
                 invalidate(&state, roots: [receiver], reason: "unknown-member-evaluation", escape: false)
             }
@@ -134,8 +134,7 @@ extension ValueFlowSolver {
         return .unknown("unmodeled-symbol")
     }
 
-    func memberValue(_ reference: ValueFlowSymbolReference, receiver: ValueFlowValue,
-                     state: FlowState) -> ValueFlowValue {
+    func memberValue(_ reference: ValueFlowSymbolReference, receiver: ValueFlowValue) -> ValueFlowValue {
         guard let usr = reference.usr else { return .unknown("unresolved-member") }
         if let type = typeByUSR[usr] { return ValueFlowValue(atoms: [.type(type)]) }
         if let id = functionByUSR[usr], let function = functions[id], function.ownerType == nil || function.isStatic {

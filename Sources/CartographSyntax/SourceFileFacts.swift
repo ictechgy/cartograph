@@ -29,6 +29,26 @@ public struct DeclarationFacts: Codable, Sendable, Equatable {
     }
 }
 
+/// 함수 시그니처 파라미터 하나의 본문 사용 근거.
+///
+/// 인덱스는 지역 심볼의 참조 발생을 기록하지 않으므로, 파라미터가 본문에서
+/// 읽혔는지는 구문 분석으로만 알 수 있다. 인덱스 쪽 파라미터 선언과는
+/// `location`(내부 이름 토큰의 위치)으로 조인한다.
+public struct ParameterUsageFacts: Codable, Sendable, Equatable {
+    /// 본문에서 쓰는 내부 이름(`func f(label x:)` 이면 `x`).
+    public let name: String
+    /// 내부 이름 토큰의 위치.
+    public let location: SourceLocation
+    /// 본문(다른 파라미터의 기본값 포함)에서 이 이름의 참조가 보였는지 여부.
+    public let isUsedInBody: Bool
+
+    public init(name: String, location: SourceLocation, isUsedInBody: Bool) {
+        self.name = name
+        self.location = location
+        self.isUsedInBody = isUsedInBody
+    }
+}
+
 /// 소스 파일 하나에서 얻은 구문 정보.
 public struct SourceFileFacts: Codable, Sendable, Equatable {
     public let path: String
@@ -39,19 +59,29 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
     public let runtimeFacts: RuntimeFileFacts?
     /// 컴파일러가 생략한 지역 함수의 구문 근거. nil은 아직 수집하지 않은 캐시다.
     public let localFunctionScopes: [LocalFunctionScopeFacts]?
+    /// 본문 있는 함수의 파라미터 사용 근거. nil은 아직 수집하지 않은 캐시다.
+    /// nil일 때는 파라미터의 사용 여부를 모르는 것이므로 미사용으로 보고하지 않는다.
+    public let parameterUsages: [ParameterUsageFacts]?
+    /// 파일의 `import` 선언 목록. nil은 아직 수집하지 않은 캐시다.
+    /// nil일 때는 그 파일의 import를 판정할 수 없으므로 보고하지 않는다.
+    public let imports: [IndexedImport]?
 
     public init(
         path: String,
         declarations: [DeclarationFacts],
         ignoresEntireFile: Bool = false,
         runtimeFacts: RuntimeFileFacts? = nil,
-        localFunctionScopes: [LocalFunctionScopeFacts]? = nil
+        localFunctionScopes: [LocalFunctionScopeFacts]? = nil,
+        parameterUsages: [ParameterUsageFacts]? = nil,
+        imports: [IndexedImport]? = nil
     ) {
         self.path = path
         self.declarations = declarations
         self.ignoresEntireFile = ignoresEntireFile
         self.runtimeFacts = runtimeFacts
         self.localFunctionScopes = localFunctionScopes
+        self.parameterUsages = parameterUsages
+        self.imports = imports
     }
 
     /// 줄 번호로 선언을 찾는다.

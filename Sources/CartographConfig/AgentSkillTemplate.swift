@@ -68,7 +68,10 @@ public enum AgentSkillTemplate {
         `--since` selects modeled Swift/Objective-C/Interface Builder and Core Data resource paths
         (model contents and `.xccurrentversion`) and lists other changes
         in `limitations`. `noChanges` means no modeled source was selected, not that every changed
-        script, configuration file or resource is harmless. Use full `check --strict` for CI;
+        script, configuration file or resource is harmless. Read `scopeDiff` for edges and
+        declarations that appeared or disappeared inside the selected change scope — impact
+        traversal alone cannot surface an edge removed between two changed files. Use full
+        `check --strict` for CI;
         report scoping is not incremental analysis or a proof about everything a PR caused.
 
         ## Efficient MCP queries

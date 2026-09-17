@@ -176,6 +176,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                         ? $0.path : Self.rebase($0.path, from: projectRoot, to: currentProjectRoot),
                           line: $0.line, column: $0.column)
                 },
+                targetKind: reference.targetKind,
                 origin: reference.origin
             )
         }
@@ -184,11 +185,36 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 (Self.rebase(path, from: projectRoot, to: currentProjectRoot), date)
             }, uniquingKeysWith: { first, _ in first })
         }
+        let parameters = snapshot.parameters.map { parameter in
+            IndexedParameter(
+                usr: parameter.usr, name: parameter.name, module: parameter.module,
+                location: .init(
+                    path: Self.rebase(parameter.location.path, from: projectRoot, to: currentProjectRoot),
+                    line: parameter.location.line, column: parameter.location.column),
+                functionUSR: parameter.functionUSR, isReferenced: parameter.isReferenced
+            )
+        }
+        let imports = snapshot.imports.map { fact in
+            IndexedImport(
+                modulePath: fact.modulePath, scopedKind: fact.scopedKind,
+                isConditional: fact.isConditional, isReexported: fact.isReexported,
+                isIgnored: fact.isIgnored,
+                location: .init(
+                    path: Self.rebase(fact.location.path, from: projectRoot, to: currentProjectRoot),
+                    line: fact.location.line, column: fact.location.column)
+            )
+        }
+        let moduleUsages = Dictionary(snapshot.fileModuleUsages.map { path, usage in
+            (Self.rebase(path, from: projectRoot, to: currentProjectRoot), usage)
+        }, uniquingKeysWith: { first, _ in first })
         return AnalysisSnapshotDocument(
             projectRoot: currentProjectRoot,
             toolVersion: toolVersion,
             revision: revision,
-            snapshot: .init(symbols: symbols, references: references, indexedFileDates: dates),
+            snapshot: .init(
+                symbols: symbols, references: references, indexedFileDates: dates,
+                parameters: parameters, propertyAccesses: snapshot.propertyAccesses,
+                imports: imports, fileModuleUsages: moduleUsages),
             edgeKinds: Set(edgeKinds),
             limitations: limitations,
             externalRetentions: externalRetentions,
@@ -419,15 +445,38 @@ extension CartographService {
         }.sorted { left, right in
             let leftKey = Self.referenceOrderKey(left)
             let rightKey = Self.referenceOrderKey(right)
-            return leftKey == rightKey ? left.origin.rawValue < right.origin.rawValue : leftKey < rightKey
+            guard leftKey == rightKey else { return leftKey < rightKey }
+            return (left.origin.rawValue, left.targetKind?.rawValue ?? "")
+                < (right.origin.rawValue, right.targetKind?.rawValue ?? "")
         }
         let capturedDates = context.snapshot.indexedFileDates.map { dates in
             dates.filter { includedSourcePaths.contains($0.key) }
         }
+        // 파라미터는 그래프에 남은 함수의 것만 담는다 — 부모가 빠진 선언은
+        // 미사용 판정의 재료가 못 된다.
+        let capturedParameters = context.snapshot.parameters.filter {
+            includedUSRs.contains($0.functionUSR) && includedSourcePaths.contains($0.location.path)
+        }
+        // 접근 근거도 남은 정점의 것만 담는다 — 잘린 심볼의 근거는 질의할 수 없다.
+        let capturedAccesses = context.snapshot.propertyAccesses.filter {
+            includedUSRs.contains($0.key)
+        }
+        // import와 모듈 사용 근거는 남은 파일의 것만 담는다 — 잘린 파일의
+        // import는 판정할 수 없다.
+        let capturedImports = context.snapshot.imports.filter {
+            includedSourcePaths.contains($0.location.path)
+        }
+        let capturedUsages = context.snapshot.fileModuleUsages.filter {
+            includedSourcePaths.contains($0.key)
+        }
         let capturedSnapshot = IndexSnapshot(
             symbols: capturedSymbols,
             references: capturedReferences,
-            indexedFileDates: capturedDates
+            indexedFileDates: capturedDates,
+            parameters: capturedParameters,
+            propertyAccesses: capturedAccesses,
+            imports: capturedImports,
+            fileModuleUsages: capturedUsages
         )
         let supplementalPaths = context.supplementalRuntimeSourcePaths
         let capturedRuntimeFiles = context.runtimeFiles?.filter { facts in

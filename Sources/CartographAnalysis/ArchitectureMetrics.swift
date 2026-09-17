@@ -1,5 +1,4 @@
 import CartographCore
-import Foundation
 
 /// 정점 하나에 대한 타입 구성. 추상도 계산의 입력이다.
 public struct TypeComposition: Sendable, Equatable, Codable {

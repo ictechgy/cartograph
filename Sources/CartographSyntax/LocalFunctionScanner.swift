@@ -212,37 +212,37 @@ private final class LocalFunctionBody: SyntaxVisitor {
         return DeclarationCollector.hasUnresolvedAttributes(in: remaining)
     }
 
-    override func visit(_ node: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
         markUnsupported(.conditionalCompilation)
         return .visitChildren
     }
 
-    override func visit(_ node: MacroExpansionExprSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: MacroExpansionExprSyntax) -> SyntaxVisitorContinueKind {
         markUnsupported(.macroExpansion)
         return .skipChildren
     }
 
-    override func visit(_ node: MacroExpansionDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: MacroExpansionDeclSyntax) -> SyntaxVisitorContinueKind {
         markUnsupported(.macroExpansion)
         return .skipChildren
     }
 
-    override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
         markUnsupported(.localType)
         return .skipChildren
     }
 
-    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: StructDeclSyntax) -> SyntaxVisitorContinueKind {
         markUnsupported(.localType)
         return .skipChildren
     }
 
-    override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         markUnsupported(.localType)
         return .skipChildren
     }
 
-    override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
         markUnsupported(.localType)
         return .skipChildren
     }

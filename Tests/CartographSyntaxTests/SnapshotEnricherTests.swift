@@ -237,3 +237,119 @@ struct SnapshotEnricherTests {
         #expect(SnapshotEnricher(fileSystem: fileSystem).enrich(snapshot) == snapshot)
     }
 }
+
+@Suite("파라미터 사용 근거 보강")
+struct ParameterEnrichmentTests {
+    private func snapshotWithParameter() -> IndexSnapshot {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, path: "/p/App.swift")
+        builder.parameter("p:x", name: "x", functionUSR: "App.run",
+            path: "/p/App.swift", line: 10, column: 20)
+        return builder.build()
+    }
+
+    @Test("본문 스캔 결과가 파라미터의 사용 여부를 채운다")
+    func joinsUsageByLocation() {
+        let facts = [
+            "/p/App.swift": SourceFileFacts(
+                path: "/p/App.swift",
+                declarations: [],
+                parameterUsages: [
+                    ParameterUsageFacts(
+                        name: "x",
+                        location: SourceLocation(path: "/p/App.swift", line: 10, column: 20),
+                        isUsedInBody: true
+                    )
+                ]
+            )
+        ]
+        let enriched = SnapshotEnricher.enrich(snapshotWithParameter(), with: facts)
+        #expect(enriched.parameters[0].isReferenced == true)
+    }
+
+    @Test("스캔 결과에 없는 위치의 파라미터는 모름으로 남는다")
+    func unmatchedParameterStaysUnknown() {
+        let facts = [
+            "/p/App.swift": SourceFileFacts(
+                path: "/p/App.swift",
+                declarations: [],
+                parameterUsages: [
+                    ParameterUsageFacts(
+                        name: "other",
+                        location: SourceLocation(path: "/p/App.swift", line: 99, column: 5),
+                        isUsedInBody: false
+                    )
+                ]
+            )
+        ]
+        let enriched = SnapshotEnricher.enrich(snapshotWithParameter(), with: facts)
+        #expect(enriched.parameters[0].isReferenced == nil)
+    }
+
+    @Test("사실이 없는 파일의 파라미터는 모름으로 남는다")
+    func unscannedFileStaysUnknown() {
+        let enriched = SnapshotEnricher.enrich(snapshotWithParameter(), with: [:])
+        #expect(enriched.parameters[0].isReferenced == nil)
+    }
+
+    @Test("파라미터 스캔을 안 한 옛 캐시 사실은 모름으로 남는다")
+    func cachedFactsWithoutUsagesStayUnknown() {
+        let facts = [
+            "/p/App.swift": SourceFileFacts(path: "/p/App.swift", declarations: [])
+        ]
+        let enriched = SnapshotEnricher.enrich(snapshotWithParameter(), with: facts)
+        #expect(enriched.parameters[0].isReferenced == nil)
+    }
+}
+
+@Suite("import 사실 보강")
+struct ImportEnrichmentTests {
+    private func importFact(_ modulePath: String, path: String, line: Int) -> IndexedImport {
+        IndexedImport(
+            modulePath: modulePath.components(separatedBy: "."),
+            location: SourceLocation(path: path, line: line, column: 1)
+        )
+    }
+
+    @Test("구문 스캔의 import 사실을 파일 순으로 스냅샷에 싣는다")
+    func joinsImportsSortedByPath() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, path: "/p/B.swift")
+        let facts = [
+            "/p/B.swift": SourceFileFacts(
+                path: "/p/B.swift", declarations: [],
+                imports: [importFact("CartographCore", path: "/p/B.swift", line: 2)]
+            ),
+            "/p/A.swift": SourceFileFacts(
+                path: "/p/A.swift", declarations: [],
+                imports: [importFact("Foundation", path: "/p/A.swift", line: 1)]
+            ),
+        ]
+        let enriched = SnapshotEnricher.enrich(builder.build(), with: facts)
+        #expect(enriched.imports.map(\.location.path) == ["/p/A.swift", "/p/B.swift"])
+        #expect(enriched.imports.map(\.module) == ["Foundation", "CartographCore"])
+    }
+
+    @Test("사실을 얻지 못한 파일의 import는 스냅샷에 남기지 않는다")
+    func dropsImportsWithoutFacts() {
+        // 인덱스는 import의 속성·`#if` 여부를 모른다. 구문 사실이 없는 파일의
+        // import를 남기면 판정 재료가 반쪽짜리라 오탐이 되므로 통째로 뺀다.
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, path: "/p/Gone.swift")
+        builder.importDecl("Foundation", path: "/p/Gone.swift", line: 1)
+        let enriched = SnapshotEnricher.enrich(builder.build(), with: [:])
+        #expect(enriched.imports.isEmpty)
+    }
+
+    @Test("import 스캔을 안 한 옛 캐시 사실은 그 파일의 import를 싣지 않는다")
+    func cachedFactsWithoutImportsContributeNothing() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, path: "/p/App.swift")
+        builder.importDecl("Foundation", path: "/p/App.swift", line: 1)
+        let facts = [
+            "/p/App.swift": SourceFileFacts(path: "/p/App.swift", declarations: [])
+        ]
+        let enriched = SnapshotEnricher.enrich(builder.build(), with: facts)
+        #expect(enriched.imports.isEmpty)
+    }
+}

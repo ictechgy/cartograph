@@ -84,6 +84,35 @@ public enum IndexStoreMapping {
         )
     }
 
+    /// 파라미터 선언 발생을 옮긴다. 선언이 아니거나 보고 가치가 없으면 nil.
+    ///
+    /// 파라미터는 `indexedSymbol` 이 걸러 내는 종류다 — 그래프 정점이 아니라
+    /// 미사용 파라미터 질의 전용 입력이므로 별도의 통로를 둔다. 이름이 `_` 이면
+    /// 쓰지 않겠다고 선언한 것이고, 접근자(`newValue` 같은)의 파라미터는 사용자가
+    /// 이름을 바꿀 수 없는 컴파일러 계약이라 보고하지 않는다 — 부모가 접근자인
+    /// 선언은 그래프 정점으로 이어지지 않으므로 어차피 분석 단계에서 걸러진다.
+    public static func indexedParameter(from occurrence: SymbolOccurrence) -> IndexedParameter? {
+        guard occurrence.roles.contains(.definition) || occurrence.roles.contains(.declaration) else {
+            return nil
+        }
+        guard symbolKind(occurrence.symbol.kind, subKind: occurrence.symbol.subKind) == .parameter,
+              !occurrence.roles.contains(.implicit),
+              !occurrence.location.isSystem,
+              occurrence.symbol.name != "_",
+              let functionUSR = parentUSR(of: occurrence)
+        else { return nil }
+
+        // 사용 여부는 인덱스에 없다. 지역 심볼의 참조 발생이 기록되지 않기 때문에
+        // 구문 보강(`SnapshotEnricher`)이 본문 스캔 결과로 `isReferenced` 를 채운다.
+        return IndexedParameter(
+            usr: occurrence.symbol.usr,
+            name: occurrence.symbol.name,
+            module: occurrence.location.moduleName,
+            location: sourceLocation(occurrence.location),
+            functionUSR: functionUSR
+        )
+    }
+
     /// 참조된 외부 심볼을 외부 정점으로 만든다.
     ///
     /// 위치는 참조가 나타난 자리다. 정의 위치는 인덱스에 없기 때문이며,
@@ -103,6 +132,72 @@ public enum IndexStoreMapping {
         )
     }
 
+    /// 프로퍼티·변수를 대상으로 한 참조 발생의 접근 방향.
+    ///
+    /// 인덱스는 `self.x = v` 에 write, `_ = x` 에 read 역할을 단다. 방향 비트가
+    /// 전혀 없는 참조도 있다 — 전수 조사에서 그 모양은 전부 멤버와이즈
+    /// 이니셜라이저의 인자 라벨이었다(`S(x: v)` 의 `x:` 자리). 값이 그 자리로
+    /// 들어가는 것은 쓰기이므로 쓰기로 센다. 반대로 동적 디스패치·주소 접근·
+    /// 암시적 발생은 방향을 알 수 없어 불명으로 센다 — 하나라도 있으면
+    /// "읽힌 적 없다" 는 말을 못 한다.
+    ///
+    /// 대상이 프로퍼티·변수가 아니거나 참조가 아니면 nil.
+    public static func propertyAccess(of occurrence: SymbolOccurrence) -> PropertyAccessFacts? {
+        guard occurrence.roles.contains(.reference) else { return nil }
+        let kind = symbolKind(occurrence.symbol.kind, subKind: occurrence.symbol.subKind)
+        guard kind == .property || kind == .variable else { return nil }
+        // 암시적·동적·주소 접근은 방향 비트가 있어도 신뢰하지 않는다 — `&x` 처럼
+        // 포인터를 넘기는 접근은 write 만 달고도 읽을 수 있다.
+        if occurrence.roles.contains(.implicit) || occurrence.roles.contains(.dynamic)
+            || occurrence.roles.contains(.addressOf) {
+            return PropertyAccessFacts(hasAmbiguous: true)
+        }
+        let read = occurrence.roles.contains(.read)
+        let write = occurrence.roles.contains(.write)
+        if read || write { return PropertyAccessFacts(hasRead: read, hasWrite: write) }
+        // `handler()` 처럼 호출되는 프로퍼티는 읽어야 호출할 수 있지만, 호출 역할만
+        // 있고 방향이 없으면 추측하지 않는다.
+        if occurrence.roles.contains(.call) { return PropertyAccessFacts(hasAmbiguous: true) }
+        return PropertyAccessFacts(hasWrite: true)
+    }
+
+    /// 참조 USR 하나가 어느 모듈의 선언을 가리키는지에 대한 단서.
+    public enum ModuleEvidence: Equatable {
+        /// USR에 모듈 이름이 박혀 있어 바로 읽었다.
+        case module(String)
+        /// import 없이 참조할 수 있는 대상 — stdlib·컴파일러 생성 심볼이거나
+        /// `import` 문 자체가 남기는 모듈 심볼 표식(`c:@M@…`)이다. 후자를
+        /// 사용 근거로 세면 모든 import가 자기 자신 때문에 "사용됨"이 된다.
+        case implicit
+        /// USR에 모듈이 없어(`c:objc…` 같은 clang 심볼) 선언 조회가 필요하다.
+        case deferred
+    }
+
+    /// 참조 대상 USR의 모듈 귀속 단서를 읽는다.
+    ///
+    /// Swift USR은 `s:<길이><모듈>` 로 모듈 이름을 담는다. `s:` 다음이 숫자가
+    /// 아니면(`s:Si`, `s:s8SendableP` 등) 모듈 문맥이 없는 stdlib·컴파일러
+    /// 생성 심볼이다. `c:@M@` 는 `import M` 문과 `M.name` 한정자가 남기는
+    /// 모듈 심볼 참조로, 사용 증거로 세면 자기 자신의 표식을 사용으로 읽게 되어
+    /// 무시한다 — `M.name` 의 실제 사용은 멤버의 참조 발생이 따로 귀속한다.
+    public static func moduleEvidence(ofUSR usr: String) -> ModuleEvidence {
+        guard usr.hasPrefix("s:") else {
+            return usr.hasPrefix("c:@M@") ? .implicit : .deferred
+        }
+        let rest = usr.dropFirst(2)
+        guard let first = rest.first, first.isNumber else { return .implicit }
+        var length = 0
+        var index = rest.startIndex
+        while index < rest.endIndex, rest[index].isNumber {
+            length = length * 10 + Int(String(rest[index]))!
+            index = rest.index(after: index)
+        }
+        guard let end = rest.index(index, offsetBy: length, limitedBy: rest.endIndex) else {
+            return .deferred
+        }
+        return .module(String(rest[index..<end]))
+    }
+
     /// 발생에 붙은 관계를 "의존하는 쪽 → 의존되는 쪽" 방향의 참조로 정규화한다.
     ///
     /// libIndexStore 의 관계 역할은 언제나 "발생 심볼이 관련 심볼에 대해 갖는 관계"로
@@ -117,42 +212,48 @@ public enum IndexStoreMapping {
         for relation in occurrence.relations {
             let other = relation.symbol.usr
             guard other != subject.usr || includeSelfReferences else { continue }
+            let subjectKind = symbolKind(subject.kind, subKind: subject.subKind)
+            let otherKind = symbolKind(relation.symbol.kind, subKind: relation.symbol.subKind)
 
             if relation.roles.contains(.baseOf) {
                 let kind: EdgeKind = subject.kind == .protocol ? .conformance : .inheritance
                 result.append(
-                    IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: kind, location: location)
+                    IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: kind, location: location,
+                        targetKind: subjectKind)
                 )
             }
             if relation.roles.contains(.overrideOf) {
                 result.append(
                     IndexedReference(
-                        sourceUSR: subject.usr, targetUSR: other, kind: .overrides, location: location
+                        sourceUSR: subject.usr, targetUSR: other, kind: .overrides, location: location,
+                        targetKind: otherKind
                     )
                 )
             }
             if relation.roles.contains(.extendedBy) {
-                result.append(
-                    IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: .extends, location: location)
-                )
+                result.append(IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: .extends,
+                    location: location, targetKind: subjectKind))
             }
             // receivedBy는 수신 타입이다. 그것을 호출자로 읽으면 모든 인스턴스 호출에
             // 타입 → 메서드 간선이 붙어 사용·영향 범위가 부풀고 미사용 멤버도 살아난다.
             if relation.roles.contains(.calledBy) {
                 result.append(
-                    IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: .call, location: location)
+                    IndexedReference(sourceUSR: other, targetUSR: subject.usr, kind: .call, location: location,
+                        targetKind: subjectKind)
                 )
             } else if relation.roles.contains(.containedBy), occurrence.roles.contains(.reference) {
                 result.append(
                     IndexedReference(
-                        sourceUSR: other, targetUSR: subject.usr, kind: .reference, location: location
+                        sourceUSR: other, targetUSR: subject.usr, kind: .reference, location: location,
+                        targetKind: subjectKind
                     )
                 )
             }
             if relation.roles.contains(.specializationOf) {
                 result.append(
                     IndexedReference(
-                        sourceUSR: subject.usr, targetUSR: other, kind: .reference, location: location
+                        sourceUSR: subject.usr, targetUSR: other, kind: .reference, location: location,
+                        targetKind: otherKind
                     )
                 )
             }
@@ -163,7 +264,8 @@ public enum IndexStoreMapping {
         }
         return result.map {
             IndexedReference(sourceUSR: $0.sourceUSR, targetUSR: $0.targetUSR,
-                kind: $0.kind, location: $0.location, origin: $0.origin == .unknown ? .compiler : $0.origin)
+                kind: $0.kind, location: $0.location, targetKind: $0.targetKind,
+                origin: $0.origin == .unknown ? .compiler : $0.origin)
         }
     }
 
@@ -187,6 +289,7 @@ public enum IndexStoreMapping {
             targetUSR: occurrence.symbol.usr,
             kind: occurrence.roles.contains(.call) ? .call : .reference,
             location: location,
+            targetKind: symbolKind(occurrence.symbol.kind, subKind: occurrence.symbol.subKind),
             origin: .inferred
         )
     }
@@ -208,7 +311,7 @@ public enum IndexStoreMapping {
         topLevelCodeUSRPrefix + path
     }
 
-    static let topLevelCodeUSRPrefix = "cartograph:top-level-code:"
+    public static let topLevelCodeUSRPrefix = "cartograph:top-level-code:"
 
     /// Swift 가 최상위 코드를 허용하는 유일한 파일 이름.
     static func isTopLevelCodeFile(_ path: String) -> Bool {
@@ -295,7 +398,8 @@ public enum IndexStoreMapping {
             guard source != target || includeSelfReferences else { return nil }
             return IndexedReference(
                 sourceUSR: source, targetUSR: target, kind: reference.kind,
-                location: reference.location, origin: reference.origin
+                location: reference.location, targetKind: reference.targetKind,
+                origin: reference.origin
             )
         }
     }

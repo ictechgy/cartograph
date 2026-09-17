@@ -1,5 +1,4 @@
 import CartographCore
-import Foundation
 
 /// 보고할 발견의 범위를 좁힌다.
 ///

@@ -11,11 +11,15 @@ extension CartographService {
     ) throws -> ImpactDocument {
         try makeImpactDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
             runtimeContracts: runtimeContracts, recordedLimitations: recordedLimitations,
-            selectionLimitations: selectionLimitations, runtimeTrace: nil, in: existingContext)
+            selectionLimitations: selectionLimitations, runtimeTrace: nil, in: existingContext).document
     }
 
     /// 실행 근거는 공개 파일 검증 경로에서 같은 문맥에 묶은 값만 넘긴다.
-    private func makeImpactDocument(
+    ///
+    /// 스냅샷 비교는 선택이 각 그래프에서 실제로 어떤 정점으로 풀렸는지도 필요로 한다.
+    /// 범위를 다시 계산하면 두 번째 `ImpactSelection` 이 첫 번째와 어긋날 수 있으므로,
+    /// 분석에 쓴 것을 그대로 돌려준다.
+    func makeImpactDocument(
         symbols: [String] = [],
         files: [String] = [],
         maxDepth: Int? = nil,
@@ -25,7 +29,7 @@ extension CartographService {
         selectionLimitations: [String] = [],
         runtimeTrace: RuntimeTraceReport? = nil,
         in existingContext: AnalysisContext? = nil
-    ) throws -> ImpactDocument {
+    ) throws -> (document: ImpactDocument, scope: Set<NodeID>) {
         guard (1...10_000).contains(limit), maxDepth.map({ (1...128).contains($0) }) ?? true else {
             throw CartographError.invalidConfiguration(
                 path: projectPath, reason: "Impact limits require 1...10000 results and an optional depth of 1...128."
@@ -89,22 +93,25 @@ extension CartographService {
             limitations.append("unresolved-impact-inputs: \(selection.issues.count) input(s) could not be resolved; "
                 + "deleted, renamed, excluded or unbuilt declarations require the pre-change index or explicit review")
         }
-        return ImpactDocument(
-            status: selection.status,
-            requestedSymbols: Array(symbols.prefix(limit)),
-            requestedFiles: Array(selection.files.prefix(limit)),
-            selected: selection.selected.sorted().prefix(limit).compactMap { graph.node($0) }.map(Self.describe),
-            changeScope: output.changeScope.compactMap { graph.node($0) }.map(Self.describe),
-            affected: report.affected.prefix(limit).compactMap { Self.describeImpact($0, in: graph, limit: limit) },
-            summary: summaries.summary,
-            tests: Array(summaries.tests.prefix(limit)),
-            entryPoints: Array(summaries.entryPoints.prefix(limit)),
-            runtimeReview: Array(summaries.runtimeReview.prefix(limit)),
-            runtimeDependencies: Array(summaries.runtimeDependencies.prefix(limit)),
-            selectionIssues: output.issues,
-            limitations: limitations,
-            truncated: .init(depth: report.truncatedByDepth, sections: truncatedSections),
-            automaticRuntime: automaticDocument, observedRuntime: observedDocument
+        return (
+            ImpactDocument(
+                status: selection.status,
+                requestedSymbols: Array(symbols.prefix(limit)),
+                requestedFiles: Array(selection.files.prefix(limit)),
+                selected: selection.selected.sorted().prefix(limit).compactMap { graph.node($0) }.map(Self.describe),
+                changeScope: output.changeScope.compactMap { graph.node($0) }.map(Self.describe),
+                affected: report.affected.prefix(limit).compactMap { Self.describeImpact($0, in: graph, limit: limit) },
+                summary: summaries.summary,
+                tests: Array(summaries.tests.prefix(limit)),
+                entryPoints: Array(summaries.entryPoints.prefix(limit)),
+                runtimeReview: Array(summaries.runtimeReview.prefix(limit)),
+                runtimeDependencies: Array(summaries.runtimeDependencies.prefix(limit)),
+                selectionIssues: output.issues,
+                limitations: limitations,
+                truncated: .init(depth: report.truncatedByDepth, sections: truncatedSections),
+                automaticRuntime: automaticDocument, observedRuntime: observedDocument
+            ),
+            selection.nodes
         )
     }
 
@@ -143,7 +150,7 @@ extension CartographService {
         }
         let document = try makeImpactDocument(symbols: symbols, files: files, maxDepth: maxDepth,
             limit: limit, runtimeContracts: runtime, selectionLimitations: selectionLimitations,
-            runtimeTrace: trace, in: context)
+            runtimeTrace: trace, in: context).document
         let incomplete = !document.selectionIssues.isEmpty
         let unresolvedEvidence = document.selectionIssues.contains { $0.kind == "runtimeContract" }
         let explanation = "Some impact inputs could not be resolved. Review selectionIssues and rebuild "

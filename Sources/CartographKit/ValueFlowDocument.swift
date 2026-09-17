@@ -1,7 +1,6 @@
 import CartographAnalysis
 import CartographCore
 import CartographSyntax
-import Foundation
 
 /// 선택한 함수의 호출 문맥과 그 근거 그래프를 함께 내보낸다.
 public struct ValueFlowDocument: Sendable, Codable {
@@ -103,7 +102,8 @@ struct ValueFlowSourceLoader {
         }
         let references = raw.references.map {
             IndexedReference(sourceUSR: $0.sourceUSR, targetUSR: $0.targetUSR, kind: $0.kind,
-                location: $0.location.map(location), origin: $0.origin)
+                location: $0.location.map(location), targetKind: $0.targetKind,
+                origin: $0.origin)
         }
         let dates = raw.indexedFileDates.map {
             Dictionary($0.map { (Self.canonicalPath($0.key), $0.value) }, uniquingKeysWith: min)

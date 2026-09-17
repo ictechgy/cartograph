@@ -493,6 +493,140 @@ struct AnalysisSessionTests {
         #expect(fileSystem.contentReadBytes > 0)
     }
 
+    @Test("디렉터리 구조가 그대로면 warm 갱신은 열거를 반복하지 않고 항목이 생기면 다시 훑는다")
+    func unchangedStructureSkipsEnumerationOnWarmStatus() throws {
+        let root = try makeTemporaryProject()
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        let fileSystem = CountingLocalFileSystem()
+        let source = root + "/App.m"
+        try fileSystem.write(text: "struct App {}", to: source)
+        try fileSystem.write(text: "unit", to: root + "/index-store/v5/units/App-unit")
+        let session = try AnalysisSession(
+            service: makeLocalService(fileSystem: fileSystem, project: root, source: source)
+        )
+
+        _ = try session.status()
+        let settled = fileSystem.directoryEnumerations
+        _ = try session.status()
+        // 디렉터리 지문이 전부 그대로면 목록·글롭 대조·열거를 재사용한다.
+        #expect(fileSystem.directoryEnumerations == settled)
+
+        try fileSystem.write(text: "struct New {}", to: root + "/New.m")
+        _ = try session.status()
+        // 상위 디렉터리 지문이 바뀌었으므로 탐색을 다시 수행해 새 파일을 본다.
+        #expect(fileSystem.directoryEnumerations > settled)
+    }
+
+    @Test("열거에 실패한 디렉터리의 지문도 감시해 읽을 수 있게 되면 다시 탐색한다")
+    func unwalkableDirectoryIsWatchedForChanges() throws {
+        let root = try makeTemporaryProject()
+        let locked = root + "/Locked"
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked)
+            try? FileManager.default.removeItem(atPath: root)
+        }
+        let fileSystem = CountingLocalFileSystem()
+        let source = root + "/App.m"
+        try fileSystem.write(text: "struct App {}", to: source)
+        try fileSystem.write(text: "struct Hidden {}", to: locked + "/Hidden.m")
+        try fileSystem.write(text: "unit", to: root + "/index-store/v5/units/App-unit")
+        // 소유자에게도 읽기·진입이 없으면 opendir 이 실패해 디렉터리가 탐색에서 빠진다.
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked)
+
+        let session = try AnalysisSession(
+            service: makeLocalService(fileSystem: fileSystem, project: root, source: source)
+        )
+        let first = try session.status()
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked)
+        let second = try session.status()
+        // 권한 회복은 디렉터리의 mode·ctime 을 바꾼다 — 실패한 디렉터리도 지문을
+        // 남겨 두었으므로 이 변경이 세대를 움직이고 새 탐색이 Hidden.m 을 본다.
+        #expect(second.generation == first.generation + 1)
+    }
+
+    @Test("같은 파일을 가리켜 버려진 심볼릭 링크도 지문으로 감시해 재지정을 잡는다")
+    func discardedLinkRetargetInvalidatesWalk() throws {
+        let parent = try makeTemporaryProject()
+        defer { try? FileManager.default.removeItem(atPath: parent) }
+        let root = parent + "/root"
+        let other = parent + "/other"
+        let mid = parent + "/mid"
+        let fileSystem = CountingLocalFileSystem()
+        try fileSystem.write(text: "struct App {}", to: root + "/F.m")
+        try fileSystem.write(text: "unit", to: root + "/index-store/v5/units/App-unit")
+        try fileSystem.write(text: "struct Other {}", to: other + "/F.m")
+        // mid 는 root 를 가리키는 링크다 — l.m 은 mid 를 경유해 F.m 과 같은 파일을
+        // 가리키므로 탐색 결과에는 들어가지 않고 버려진다.
+        try FileManager.default.createSymbolicLink(atPath: mid, withDestinationPath: root)
+        try FileManager.default.createSymbolicLink(atPath: root + "/l.m", withDestinationPath: mid + "/F.m")
+        let session = try AnalysisSession(
+            service: makeLocalService(fileSystem: fileSystem, project: root, source: root + "/F.m")
+        )
+        let first = try session.status()
+
+        // mid 를 other 로 옮기면 l.m 은 다른 파일을 가리킨다. l.m 의 항목 자체와
+        // root 의 구성은 그대로이므로, 버려진 링크의 지문이 없으면 이 변화가
+        // 어떤 디렉터리 지문에도 드러나지 않는다.
+        try FileManager.default.removeItem(atPath: mid)
+        try FileManager.default.createSymbolicLink(atPath: mid, withDestinationPath: other)
+        let second = try session.status()
+        #expect(second.generation == first.generation + 1)
+    }
+
+    @Test("일시적으로 열거에 실패한 디렉터리가 낀 탐색 결과는 캐시하지 않는다")
+    func transientEnumerationFailureIsNotCached() throws {
+        let root = try makeTemporaryProject()
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        // 지문은 정상으로 두고 열거만 실패한다 — 스탬프가 안 바뀌는 일시 오류를
+        // 캐시하면 다음 지문이 다시 시도할 기회를 잃는다. 탐색이 realpath 철자로
+        // 열거하므로 실패 대상은 마지막 경로 성분으로 맞춘다.
+        let locked = root + "/Locked"
+        let fileSystem = BlockedEnumerationFileSystem(blockedComponents: ["Locked"])
+        try fileSystem.write(text: "struct App {}", to: root + "/App.m")
+        try fileSystem.write(text: "struct Hidden {}", to: locked + "/Hidden.m")
+        try fileSystem.write(text: "unit", to: root + "/index-store/v5/units/App-unit")
+        let session = try AnalysisSession(
+            service: makeLocalService(fileSystem: fileSystem, project: root, source: root + "/App.m")
+        )
+        let first = try session.status()
+
+        // 스탬프는 그대로인 채 열거만 회복된다 — 실패한 탐색이 캐시돼 있으면
+        // Hidden.m 이 영구히 빠진 지문이 재생된다.
+        fileSystem.unblock()
+        let second = try session.status()
+        #expect(second.generation == first.generation + 1)
+    }
+
+    @Test("경로 필터가 바뀌면 이전 탐색 결과를 재사용하지 않는다")
+    func pathFilterChangeInvalidatesWalkedSourceList() throws {
+        let root = try makeTemporaryProject()
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        let fileSystem = CountingLocalFileSystem()
+        let source = root + "/App.m"
+        let gated = root + "/Gated/Gated.m"
+        try fileSystem.write(text: "struct App {}", to: source)
+        try fileSystem.write(text: "struct Gated {}", to: gated)
+        try fileSystem.write(text: "unit", to: root + "/index-store/v5/units/App-unit")
+        let state = FilterSwitchState(fileSystem: fileSystem, project: root, source: source)
+        let session = try AnalysisSession(serviceFactory: { state.makeService() })
+        let first = try session.status()
+
+        state.excludeGated = false
+        let second = try session.status()
+        #expect(second.generation == first.generation + 1)
+
+        // 포함으로 전환된 뒤의 지문이 Gated.m 을 추적하고 있어야 한다 — 이전
+        // 필터의 탐색 결과를 그대로 돌려주면 이 변경을 지문이 보지 못한다.
+        // 제자리 쓰기라 부모 디렉터리 지문은 그대로이고 파일 지문만 바뀐다.
+        let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: gated))
+        try handle.truncate(atOffset: 0)
+        try handle.write(contentsOf: Data("struct Gated { let value: Int }".utf8))
+        try handle.close()
+        let third = try session.status()
+        #expect(third.generation == second.generation + 1)
+    }
+
     private func makeSession(_ state: SessionState) throws -> AnalysisSession {
         try AnalysisSession(
             serviceFactory: { try state.makeService() },
@@ -628,6 +762,43 @@ private enum SessionFingerprintError: Error {
     case failed
 }
 
+/// 서비스 공장이 내놓는 설정의 경로 필터를 세션 도중 바꾼다.
+private final class FilterSwitchState: @unchecked Sendable {
+    private let lock = NSLock()
+    let fileSystem: CountingLocalFileSystem
+    let project: String
+    let source: String
+    let snapshot: IndexSnapshot
+    var excludeGated = true
+
+    init(fileSystem: CountingLocalFileSystem, project: String, source: String) {
+        self.fileSystem = fileSystem
+        self.project = project
+        self.source = source
+        var builder = SnapshotBuilder(path: source)
+        builder.symbol("App", kind: .structType, path: source)
+        snapshot = builder.build()
+    }
+
+    func makeService() -> CartographService {
+        lock.withLock {
+            var configuration = CartographConfiguration.default
+            configuration.projectPath = project
+            configuration.indexStorePath = project + "/index-store"
+            if excludeGated {
+                configuration.exclude = [GlobPattern("Gated/**")]
+            }
+            return CartographService(
+                configuration: configuration,
+                environment: CartographEnvironment(
+                    fileSystem: fileSystem,
+                    indexProviderOverride: StaticIndexProvider(snapshot)
+                )
+            )
+        }
+    }
+}
+
 private final class FactoryReloadState: @unchecked Sendable {
     private let lock = NSLock()
     let fileSystem: InMemoryFileSystem
@@ -697,6 +868,7 @@ private final class CountingLocalFileSystem: FileSystem, @unchecked Sendable {
     private let base = LocalFileSystem()
     private let lock = NSLock()
     private(set) var contentReadBytes = 0
+    private(set) var directoryEnumerations = 0
 
     func realPath(at path: String) throws -> String { try base.realPath(at: path) }
     func fileExists(at path: String) -> Bool { base.fileExists(at: path) }
@@ -711,12 +883,47 @@ private final class CountingLocalFileSystem: FileSystem, @unchecked Sendable {
 
     func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
     func contentsOfDirectory(at path: String) throws -> [String] { try base.contentsOfDirectory(at: path) }
-    func directoryEntries(at path: String) throws -> [DirectoryEntry] { try base.directoryEntries(at: path) }
+    func directoryEntries(at path: String) throws -> [DirectoryEntry] {
+        lock.withLock { directoryEnumerations += 1 }
+        return try base.directoryEntries(at: path)
+    }
     func modificationDate(at path: String) -> Date? { base.modificationDate(at: path) }
     func fingerprintStamp(at path: String) -> FileFingerprintStamp? { base.fingerprintStamp(at: path) }
     var currentDirectoryPath: String { base.currentDirectoryPath }
 
     func resetContentReads() { lock.withLock { contentReadBytes = 0 } }
+}
+
+/// 지정한 마지막 경로 성분의 디렉터리 열거를 `unblock` 전까지 실패시키는 래퍼.
+/// 지문은 실제 파일 상태를 그대로 돌려주므로, 실패한 탐색 결과가 스탬프 변화
+/// 없이 고정되는지를 검증한다. `status()` 가 지문을 여러 번 읽어 한 번의 실패는
+/// 같은 호출 안에서 회복되므로, 명시적으로 풀 때까지 실패해야 한다. 탐색은
+/// realpath 철자로 열거하므로 성분으로 맞춘다.
+private final class BlockedEnumerationFileSystem: FileSystem, @unchecked Sendable {
+    private let base = LocalFileSystem()
+    private let lock = NSLock()
+    private var blockedComponents: Set<String>
+
+    init(blockedComponents: Set<String>) { self.blockedComponents = blockedComponents }
+
+    func unblock() { lock.withLock { blockedComponents.removeAll() } }
+
+    func realPath(at path: String) throws -> String { try base.realPath(at: path) }
+    func fileExists(at path: String) -> Bool { base.fileExists(at: path) }
+    func directoryExists(at path: String) -> Bool { base.directoryExists(at: path) }
+    func readData(at path: String) throws -> Data { try base.readData(at: path) }
+    func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
+    func contentsOfDirectory(at path: String) throws -> [String] { try base.contentsOfDirectory(at: path) }
+    func directoryEntries(at path: String) throws -> [DirectoryEntry] {
+        let component = (path as NSString).lastPathComponent
+        if lock.withLock({ blockedComponents.contains(component) }) {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(EACCES))
+        }
+        return try base.directoryEntries(at: path)
+    }
+    func modificationDate(at path: String) -> Date? { base.modificationDate(at: path) }
+    func fingerprintStamp(at path: String) -> FileFingerprintStamp? { base.fingerprintStamp(at: path) }
+    var currentDirectoryPath: String { base.currentDirectoryPath }
 }
 
 private final class CountingUnstampedFileSystem: FileSystem, @unchecked Sendable {

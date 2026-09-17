@@ -812,10 +812,10 @@ private final class CoreDataSourceEntityCollector: NSObject, XMLParserDelegate {
     private var elements: [String] = []
 
     func parser(
-        _ parser: XMLParser,
+        _: XMLParser,
         didStartElement elementName: String,
-        namespaceURI: String?,
-        qualifiedName qName: String?,
+        namespaceURI _: String?,
+        qualifiedName _: String?,
         attributes attributeDict: [String: String]
     ) {
         defer { elements.append(elementName) }
@@ -833,26 +833,26 @@ private final class CoreDataSourceEntityCollector: NSObject, XMLParserDelegate {
     }
 
     func parser(
-        _ parser: XMLParser,
-        didEndElement elementName: String,
-        namespaceURI: String?,
-        qualifiedName qName: String?
+        _: XMLParser,
+        didEndElement _: String,
+        namespaceURI _: String?,
+        qualifiedName _: String?
     ) {
         if !elements.isEmpty { elements.removeLast() }
     }
 
-    func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) { error = parseError }
+    func parser(_: XMLParser, parseErrorOccurred parseError: Error) { error = parseError }
 
     func parser(
-        _ parser: XMLParser,
-        foundExternalEntityDeclarationWithName name: String,
-        publicID: String?,
-        systemID: String?
+        _: XMLParser,
+        foundExternalEntityDeclarationWithName _: String,
+        publicID _: String?,
+        systemID _: String?
     ) {
         foundExternalEntity = true
     }
 
-    func parser(_ parser: XMLParser, resolveExternalEntityName name: String, systemID: String?) -> Data? {
+    func parser(_: XMLParser, resolveExternalEntityName _: String, systemID _: String?) -> Data? {
         foundExternalEntity = true
         return nil
     }

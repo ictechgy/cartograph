@@ -736,3 +736,385 @@ struct ConditionalWitnessRetentionTests {
         #expect(result.unused.map(\.name).contains("Card"))
     }
 }
+
+@Suite("미사용 파라미터")
+struct UnusedParameterAnalysisTests {
+    private func analyze(_ snapshot: IndexSnapshot) -> UnusedCodeReport {
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        return ReachabilityAnalyzer().analyze(graph: graph, snapshot: snapshot)
+    }
+
+    @Test("살아 있는 함수의 읽히지 않는 파라미터를 보고한다")
+    func reportsUnusedParameterOfLiveFunction() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("App.run", kind: .method, parent: "App")
+        builder.reference(from: "App", to: "App.run", kind: .call)
+        builder.parameter("p:unused", name: "unused", functionUSR: "App.run",
+            line: 10, column: 20, isReferenced: false)
+
+        let report = analyze(builder.build())
+        #expect(report.unusedParameters.map(\.name) == ["unused"])
+    }
+
+    @Test("읽힌 파라미터는 보고하지 않는다")
+    func usedParameterIsNotReported() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("App.run", kind: .method, parent: "App")
+        builder.reference(from: "App", to: "App.run", kind: .call)
+        builder.parameter("p:used", name: "used", functionUSR: "App.run",
+            line: 10, column: 20, isReferenced: true)
+
+        let report = analyze(builder.build())
+        #expect(report.unusedParameters.isEmpty)
+    }
+
+    @Test("구문 근거가 없는 파라미터는 모르는 것이므로 보고하지 않는다")
+    func unknownParameterIsNotReported() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("App.run", kind: .method, parent: "App")
+        builder.reference(from: "App", to: "App.run", kind: .call)
+        builder.parameter("p:unknown", name: "unknown", functionUSR: "App.run",
+            line: 10, column: 20, isReferenced: nil)
+
+        let report = analyze(builder.build())
+        #expect(report.unusedParameters.isEmpty)
+    }
+
+    @Test("죽은 함수의 파라미터는 따로 보고하지 않는다")
+    func deadFunctionParametersAreNotDuplicated() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Dead", kind: .structType)
+        builder.symbol("Dead.run", kind: .method, parent: "Dead")
+        builder.parameter("p:deadParam", name: "x", functionUSR: "Dead.run",
+            line: 10, column: 20, isReferenced: false)
+
+        let report = analyze(builder.build())
+        #expect(report.unusedParameters.isEmpty)
+        #expect(report.unused.map(\.name).contains("Dead"))
+    }
+
+    @Test("프로토콜 요구사항의 파라미터는 본문이 없으므로 보고하지 않는다")
+    func protocolRequirementParametersAreNotReported() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("P", kind: .protocolType)
+        builder.symbol("P.req", kind: .method, parent: "P")
+        builder.reference(from: "P", to: "P.req", kind: .member)
+        builder.reference(from: "App", to: "P", kind: .reference)
+        builder.parameter("p:req", name: "x", functionUSR: "P.req",
+            line: 10, column: 20, isReferenced: false)
+
+        let report = analyze(builder.build())
+        #expect(report.unusedParameters.isEmpty)
+    }
+
+    @Test("미사용 파라미터는 미사용 심볼 목록과 섞이지 않는다")
+    func parametersAreSeparateFromSymbols() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("App.run", kind: .method, parent: "App")
+        builder.reference(from: "App", to: "App.run", kind: .call)
+        builder.parameter("p:x", name: "x", functionUSR: "App.run",
+            line: 10, column: 20, isReferenced: false)
+
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(report.unusedParameters.map(\.name) == ["x"])
+    }
+
+    @Test("여러 파라미터는 소스 순서로 정렬된다")
+    func unusedParametersAreSortedByLocation() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("App.run", kind: .method, parent: "App")
+        builder.reference(from: "App", to: "App.run", kind: .call)
+        builder.parameter("p:b", name: "b", functionUSR: "App.run",
+            line: 10, column: 30, isReferenced: false)
+        builder.parameter("p:a", name: "a", functionUSR: "App.run",
+            line: 10, column: 20, isReferenced: false)
+
+        let report = analyze(builder.build())
+        #expect(report.unusedParameters.map(\.name) == ["a", "b"])
+    }
+}
+
+@Suite("대입만 되는 프로퍼티")
+struct AssignOnlyPropertyTests {
+    private func analyze(_ snapshot: IndexSnapshot) -> UnusedCodeReport {
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        return ReachabilityAnalyzer().analyze(graph: graph, snapshot: snapshot)
+    }
+
+    private func liveOwner(_ builder: inout SnapshotBuilder) {
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Box", kind: .structType)
+        builder.reference(from: "App", to: "Box", kind: .reference)
+        builder.reference(from: "Box", to: "Box.x", kind: .member)
+        builder.symbol("Box.x", name: "x", kind: .property, line: 10, parent: "Box")
+        // 대입 발생이 만드는 참조 간선 — 쓰기만 있는 프로퍼티도 이 간선으로
+        // 도달 가능하다.
+        builder.reference(from: "App", to: "Box.x", kind: .reference)
+    }
+
+    @Test("살아 있는 타입의 쓰이기만 하는 프로퍼티를 보고한다")
+    func reportsWriteOnlyProperty() {
+        var builder = SnapshotBuilder()
+        liveOwner(&builder)
+        builder.propertyAccess("Box.x", write: true)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.map(\.name) == ["x"])
+    }
+
+    @Test("읽기가 하나라도 있으면 보고하지 않는다")
+    func readAndWrittenPropertyIsNotReported() {
+        var builder = SnapshotBuilder()
+        liveOwner(&builder)
+        builder.propertyAccess("Box.x", read: true, write: true)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.isEmpty)
+    }
+
+    @Test("읽기만 있는 프로퍼티는 보고하지 않는다")
+    func readOnlyPropertyIsNotReported() {
+        var builder = SnapshotBuilder()
+        liveOwner(&builder)
+        builder.propertyAccess("Box.x", read: true)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.isEmpty)
+    }
+
+    @Test("접근 근거가 아예 없으면 모르는 것이므로 보고하지 않는다")
+    func missingEvidenceIsNotReported() {
+        var builder = SnapshotBuilder()
+        liveOwner(&builder)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.isEmpty)
+    }
+
+    @Test("불명한 접근이 섞여 있으면 보고하지 않는다")
+    func ambiguousAccessIsNotReported() {
+        var builder = SnapshotBuilder()
+        liveOwner(&builder)
+        builder.propertyAccess("Box.x", write: true, ambiguous: true)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.isEmpty)
+    }
+
+    @Test("죽은 타입의 프로퍼티는 따로 보고하지 않는다")
+    func deadOwnerPropertiesAreNotReported() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Dead", kind: .structType)
+        builder.symbol("Dead.x", name: "x", kind: .property, line: 10, parent: "Dead")
+        builder.reference(from: "Dead", to: "Dead.x", kind: .member)
+        builder.propertyAccess("Dead.x", write: true)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.isEmpty)
+        #expect(report.unused.map(\.name).contains("Dead"))
+    }
+
+    @Test("프로토콜 요구사항은 저장소가 아니므로 보고하지 않는다")
+    func protocolRequirementsAreNotReported() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("P", kind: .protocolType)
+        builder.symbol("P.x", name: "x", kind: .property, line: 10, parent: "P")
+        builder.reference(from: "P", to: "P.x", kind: .member)
+        builder.reference(from: "App", to: "P", kind: .reference)
+        // 존재 타입 경유의 대입은 요구사항 심볼에 기록된다.
+        builder.reference(from: "App", to: "P.x", kind: .reference)
+        builder.propertyAccess("P.x", write: true)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.isEmpty)
+    }
+
+    @Test("준수 증인의 읽기는 요구사항 심볼에 기록되므로 보고하지 않는다")
+    func protocolWitnessesAreNotReported() {
+        // struct S: P { var x } 에서 x 를 P 경유로 읽으면 읽기는 P.x 에 남고
+        // S.x 는 쓰기만 있는 것처럼 보인다. 증인은 요구사항으로의 overrides
+        // 간선을 갖는다.
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("P", kind: .protocolType)
+        builder.symbol("P.x", name: "x", kind: .property, line: 10, parent: "P")
+        builder.symbol("S", kind: .structType)
+        builder.symbol("S.x", name: "x", kind: .property, line: 20, parent: "S")
+        builder.reference(from: "P", to: "P.x", kind: .member)
+        builder.reference(from: "S", to: "S.x", kind: .member)
+        builder.reference(from: "S", to: "P", kind: .conformance)
+        builder.reference(from: "S.x", to: "P.x", kind: .overrides)
+        builder.reference(from: "App", to: "S", kind: .reference)
+        builder.reference(from: "App", to: "P", kind: .reference)
+        builder.reference(from: "App", to: "S.x", kind: .reference)
+        builder.propertyAccess("S.x", write: true)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.isEmpty)
+    }
+
+    @Test("클래스 오버라이드는 기반 쪽에 읽기가 기록되므로 보고하지 않는다")
+    func overridesAreNotReported() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Base", kind: .classType)
+        builder.symbol("Base.x", name: "x", kind: .property, line: 10, parent: "Base")
+        builder.symbol("Sub", kind: .classType)
+        builder.symbol("Sub.x", name: "x", kind: .property, line: 20, parent: "Sub")
+        builder.reference(from: "Base", to: "Base.x", kind: .member)
+        builder.reference(from: "Sub", to: "Sub.x", kind: .member)
+        builder.reference(from: "Sub.x", to: "Base.x", kind: .overrides)
+        builder.reference(from: "Sub", to: "Base", kind: .extends)
+        builder.reference(from: "App", to: "Sub", kind: .reference)
+        builder.reference(from: "App", to: "Base", kind: .reference)
+        builder.reference(from: "App", to: "Sub.x", kind: .reference)
+        builder.propertyAccess("Sub.x", write: true)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.isEmpty)
+    }
+
+    @Test("런타임이 관리하는 프로퍼티는 보고하지 않는다")
+    func runtimeManagedPropertiesAreNotReported() {
+        var managed = SnapshotBuilder()
+        managed.symbol("App", kind: .structType, attributes: [.entryPoint])
+        managed.symbol("Entity", kind: .classType)
+        managed.symbol("Entity.x", name: "x", kind: .property,
+                       line: 10, parent: "Entity", attributes: [.runtimeManaged])
+        managed.reference(from: "Entity", to: "Entity.x", kind: .member)
+        managed.reference(from: "App", to: "Entity", kind: .reference)
+        managed.reference(from: "App", to: "Entity.x", kind: .reference)
+        managed.propertyAccess("Entity.x", write: true)
+
+        let report = analyze(managed.build())
+        #expect(report.assignOnly.isEmpty)
+    }
+
+    @Test("Objective-C·Interface Builder 노출 프로퍼티는 보고하지 않는다")
+    func exposedPropertiesAreNotReported() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("View", kind: .classType)
+        builder.symbol("View.a", name: "a", kind: .property,
+                       line: 10, parent: "View", attributes: [.objc])
+        builder.symbol("View.b", name: "b", kind: .property,
+                       line: 11, parent: "View", attributes: [.interfaceBuilderAnnotated])
+        builder.reference(from: "View", to: "View.a", kind: .member)
+        builder.reference(from: "View", to: "View.b", kind: .member)
+        builder.reference(from: "App", to: "View", kind: .reference)
+        builder.reference(from: "App", to: "View.a", kind: .reference)
+        builder.reference(from: "App", to: "View.b", kind: .reference)
+        builder.propertyAccess("View.a", write: true)
+        builder.propertyAccess("View.b", write: true)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.isEmpty)
+    }
+
+    @Test("합성 Equatable·Hashable·Codable 준수 타입의 저장 프로퍼티는 보고하지 않는다")
+    func synthesizedConformanceReadersHideAccess() {
+        // 합성 ==·hash·init(from:)·encode(to:) 는 저장 프로퍼티를 읽지만
+        // 소스 위치가 없어 인덱스에 읽기가 남지 않는다.
+        for usr in ["s:SQ", "s:SH", "s:SE", "s:Se"] {
+            var builder = SnapshotBuilder()
+            builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+            builder.symbol("Key", kind: .structType)
+            builder.symbol("Key.x", name: "x", kind: .property, line: 10, parent: "Key")
+            builder.reference(from: "Key", to: "Key.x", kind: .member)
+            builder.reference(from: "Key", to: usr, kind: .conformance)
+            builder.reference(from: "App", to: "Key", kind: .reference)
+            builder.reference(from: "App", to: "Key.x", kind: .reference)
+            builder.propertyAccess("Key.x", write: true)
+
+            let report = analyze(builder.build())
+            #expect(report.assignOnly.isEmpty, "conformance to \(usr) should hide accesses")
+        }
+    }
+
+    @Test("익스텐션에 선언된 합성 준수도 확장 대상 타입의 프로퍼티를 숨긴다")
+    func extensionConformanceHidesExtendedTypeAccess() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Key", kind: .structType)
+        builder.symbol("Key.x", name: "x", kind: .property, line: 10, parent: "Key")
+        builder.symbol("Ext", kind: .extensionDeclaration, line: 20)
+        builder.reference(from: "Key", to: "Key.x", kind: .member)
+        builder.reference(from: "Ext", to: "Key", kind: .extends)
+        builder.reference(from: "Ext", to: "s:SH", kind: .conformance)
+        builder.reference(from: "App", to: "Key", kind: .reference)
+        builder.reference(from: "App", to: "Ext", kind: .reference)
+        builder.reference(from: "App", to: "Key.x", kind: .reference)
+        builder.propertyAccess("Key.x", write: true)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.isEmpty)
+    }
+
+    @Test("런타임 관리 표식이 붙은 소유 타입의 프로퍼티는 보고하지 않는다")
+    func runtimeManagedOwnerHidesMemberAccess() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Model", kind: .classType, attributes: [.runtimeManaged])
+        builder.symbol("Model.x", name: "x", kind: .property, line: 10, parent: "Model")
+        builder.reference(from: "Model", to: "Model.x", kind: .member)
+        builder.reference(from: "App", to: "Model", kind: .reference)
+        builder.reference(from: "App", to: "Model.x", kind: .reference)
+        builder.propertyAccess("Model.x", write: true)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.isEmpty)
+    }
+
+    @Test("대입만 되는 프로퍼티는 미사용 심볼 목록과 섞이지 않는다")
+    func assignOnlyIsSeparateFromUnusedSymbols() {
+        var builder = SnapshotBuilder()
+        liveOwner(&builder)
+        builder.propertyAccess("Box.x", write: true)
+
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(report.assignOnly.map(\.name) == ["x"])
+    }
+
+    @Test("여러 프로퍼티는 소스 순서로 정렬된다")
+    func assignOnlyIsSortedByLocation() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Box", kind: .structType)
+        builder.symbol("Box.b", name: "b", kind: .property, line: 20, parent: "Box")
+        builder.symbol("Box.a", name: "a", kind: .property, line: 10, parent: "Box")
+        builder.reference(from: "Box", to: "Box.a", kind: .member)
+        builder.reference(from: "Box", to: "Box.b", kind: .member)
+        builder.reference(from: "App", to: "Box", kind: .reference)
+        builder.reference(from: "App", to: "Box.a", kind: .reference)
+        builder.reference(from: "App", to: "Box.b", kind: .reference)
+        builder.propertyAccess("Box.b", write: true)
+        builder.propertyAccess("Box.a", write: true)
+
+        let report = analyze(builder.build())
+        #expect(report.assignOnly.map(\.name) == ["a", "b"])
+    }
+
+    @Test("설정에서 제외된 심볼 종류는 보고하지 않는다")
+    func excludedKindsAreNotReported() {
+        var builder = SnapshotBuilder()
+        liveOwner(&builder)
+        builder.propertyAccess("Box.x", write: true)
+
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        let analyzer = ReachabilityAnalyzer(options: .init(excludedKinds: [.property]))
+        let report = analyzer.analyze(graph: graph, snapshot: snapshot)
+        #expect(report.assignOnly.isEmpty)
+    }
+}

@@ -103,9 +103,15 @@ public struct IndexStoreProvider: IndexProviding {
     ) -> IndexSnapshot {
         var symbolsByUSR: [String: IndexedSymbol] = [:]
         var definedUSRs: Set<String> = []
+        var parametersByUSR: [String: IndexedParameter] = [:]
         var references: [IndexedReference] = []
+        // 미사용 import 질의의 재료 — 파일이 참조한 선언의 모듈 귀속.
+        // `c:`/`e:` USR처럼 모듈을 담지 않는 대상은 선언 사전이 완성된 뒤에 푼다.
+        var fileModuleUsages: [String: FileModuleUsage] = [:]
+        var deferredUSRsByFile: [String: Set<String>] = [:]
         // 관계 없이 기록된 참조와, 그것을 붙일 후보가 되는 정의 위치들.
-        var unattributed: [(usr: String, location: SourceLocation)] = []
+        // 대상 종류는 발생이 직접 답게 싣는다 — 사전에 없는 그래프 밖 대상도 구분해야 한다.
+        var unattributed: [(usr: String, location: SourceLocation, targetKind: SymbolKind)] = []
         var definitionSites: [String: [(usr: String, location: SourceLocation)]] = [:]
         var conformanceAliases: [SymbolOccurrence] = []
         var implicitBaseOwners: [OccurrenceSite: Set<String>] = [:]
@@ -134,6 +140,10 @@ public struct IndexStoreProvider: IndexProviding {
                 }
                 if isDefinition { definedUSRs.insert(symbol.usr) }
             }
+            if let parameter = IndexStoreMapping.indexedParameter(from: occurrence),
+               parametersByUSR[parameter.usr] == nil {
+                parametersByUSR[parameter.usr] = parameter
+            }
             let occurrenceReferences = IndexStoreMapping.references(from: occurrence, includeSelfReferences: includeSelfReferences)
             references.append(contentsOf: occurrenceReferences)
 
@@ -149,7 +159,10 @@ public struct IndexStoreProvider: IndexProviding {
                       !occurrence.roles.contains(.implicit) {
                 // 암시적 발생은 매크로가 펼친 코드다. 위치가 사용자가 쓴 자리가 아니라
                 // 속성 줄이라, 위치로 소유자를 찾으면 앞 선언에 붙는다.
-                unattributed.append((occurrence.symbol.usr, location))
+                unattributed.append((
+                    occurrence.symbol.usr, location,
+                    IndexStoreMapping.symbolKind(occurrence.symbol.kind, subKind: occurrence.symbol.subKind)
+                ))
                 if occurrence.symbol.kind == .typealias, occurrence.symbol.subKind == .none {
                     conformanceAliases.append(occurrence)
                 }
@@ -164,14 +177,55 @@ public struct IndexStoreProvider: IndexProviding {
                     module: occurrence.location.moduleName
                 )
             }
+
+            // 파일의 모듈 사용 근거. 참조 발생의 대상과 선언의 관계 대상(상속·
+            // 준수·오버라이드 등)이 모두 "파일이 그 모듈을 썼다"는 증거다.
+            // 선언 발생 자체는 사용이 아니므로 심볼 USR은 참조 역할일 때만 센다.
+            let usagePath = occurrence.location.path
+            if !occurrence.location.moduleName.isEmpty {
+                fileModuleUsages[usagePath, default: FileModuleUsage()]
+                    .owningModule = occurrence.location.moduleName
+            }
+            if occurrence.roles.contains(.reference) {
+                accumulateModuleEvidence(
+                    usr: occurrence.symbol.usr, path: usagePath,
+                    usages: &fileModuleUsages, deferred: &deferredUSRsByFile)
+            }
+            for relation in occurrence.relations {
+                accumulateModuleEvidence(
+                    usr: relation.symbol.usr, path: usagePath,
+                    usages: &fileModuleUsages, deferred: &deferredUSRsByFile)
+            }
         }
 
+        var externalOnlyUSRs: Set<String> = []
         if includeExternalSymbols {
             for occurrence in occurrences {
                 guard symbolsByUSR[occurrence.symbol.usr] == nil,
                       let external = IndexStoreMapping.externalSymbol(from: occurrence)
                 else { continue }
                 symbolsByUSR[external.usr] = external
+                externalOnlyUSRs.insert(external.usr)
+            }
+        }
+
+        // 선언 사전이 완성된 뒤에 미뤄 둔 USR을 푼다. 프로젝트가 인덱스한
+        // clang 선언은 여기서 모듈이 드러나고, 끝내 못 찾은 것은 "어느
+        // 모듈인지 모르는 참조가 있다"는 표식으로 남긴다 — 그 파일에서는
+        // 어떤 import도 미사용으로 보고할 수 없다.
+        for (path, usrs) in deferredUSRsByFile {
+            for usr in usrs {
+                // 참조 발생만으로 심은 외부 심볼의 module 은 참조한 파일의
+                // 모듈이다 — 정의 모듈이 아니므로 귀속 근거로 쓰면 미귀속
+                // 표식이 사라지고 그 파일에서 import 억제가 풀린다. 시스템
+                // 헤더의 선언 발생이 만든 심볼의 module 은 정의 모듈이라
+                // 그대로 귀속 근거가 된다.
+                if let symbol = symbolsByUSR[usr], !externalOnlyUSRs.contains(usr),
+                   !symbol.module.isEmpty {
+                    fileModuleUsages[path]?.referencedModules.insert(symbol.module)
+                } else {
+                    fileModuleUsages[path]?.hasUnattributedReferences = true
+                }
             }
         }
 
@@ -183,19 +237,57 @@ public struct IndexStoreProvider: IndexProviding {
         )
 
         // 접근자와 프로퍼티 래퍼 곁가지를 모두 원래 선언으로 되돌린다.
+        // 곁가지 표는 접근 방향 합산에도 쓴다 — `$x` 의 읽기는 래핑된 `x` 의 읽기다.
+        let facets = IndexStoreMapping.propertyWrapperFacets(in: Array(symbolsByUSR.values))
         let owners = IndexStoreMapping.accessorOwners(in: occurrences)
-            .merging(IndexStoreMapping.propertyWrapperFacets(in: Array(symbolsByUSR.values))) { first, _ in first }
+            .merging(facets) { first, _ in first }
         let resolved = IndexStoreMapping.resolvingSynthesizedSymbols(references, owners: owners,
                                                                     includeSelfReferences: includeSelfReferences)
+
+        // 프로퍼티별 읽기·쓰기 근거. 저장소 곁가지(`_x`)는 합치지 않는다 — 합성
+        // 이니셜라이저와 접근자가 그것을 늘 건드리므로 접으면 신호가 아니라
+        // 소음이 된다. 이것은 곁가지를 간선으로 접을 때의 선택과 같다.
+        var propertyAccesses: [String: PropertyAccessFacts] = [:]
+        for occurrence in occurrences {
+            guard let access = IndexStoreMapping.propertyAccess(of: occurrence) else { continue }
+            let usr = facets[occurrence.symbol.usr] ?? occurrence.symbol.usr
+            propertyAccesses[usr, default: PropertyAccessFacts()].merge(access)
+        }
 
         // 심볼은 정렬한다. 사전으로 접을 때 같은 USR 이 겹치면 앞의 것이 이기므로
         // 순서가 결과에 남는다. 참조는 정렬하지 않는다 — `CodeGraph.init` 이 간선을
         // 서명으로 접고 다시 정렬하기 때문에 여기서의 순서는 출력에 닿지 않는다.
         // 참조 수는 심볼 수의 열 배 규모라 이 정렬만 없애도 명령마다 눈에 띄게 준다.
+        // 파라미터의 사용 여부(isReferenced)는 여기서 정하지 않는다. 인덱스가 지역
+        // 심볼의 참조 발생을 기록하지 않아 발생 단위로 세면 쓰이는 파라미터가 전부
+        // 미사용으로 보고된다 — `SnapshotEnricher` 가 본문 구문 근거로 채운다.
+        let parameters = parametersByUSR.values
+            .sorted { ($0.location.path, $0.location.line, $0.location.column) < ($1.location.path, $1.location.line, $1.location.column) }
+
         return IndexSnapshot(
             symbols: symbolsByUSR.values.sorted { $0.usr < $1.usr },
-            references: resolved
+            references: resolved,
+            parameters: parameters,
+            propertyAccesses: propertyAccesses,
+            fileModuleUsages: fileModuleUsages
         )
+    }
+
+    /// USR 하나의 모듈 귀속 단서를 파일의 사용 근거에 누적한다.
+    private static func accumulateModuleEvidence(
+        usr: String,
+        path: String,
+        usages: inout [String: FileModuleUsage],
+        deferred: inout [String: Set<String>]
+    ) {
+        switch IndexStoreMapping.moduleEvidence(ofUSR: usr) {
+        case .module(let module):
+            usages[path, default: FileModuleUsage()].referencedModules.insert(module)
+        case .implicit:
+            break
+        case .deferred:
+            deferred[path, default: []].insert(usr)
+        }
     }
 
     private func openDatabase() throws -> IndexStoreDB {
@@ -267,7 +359,10 @@ public struct IndexStoreProvider: IndexProviding {
                   let declaration = symbols[owner], ownerKinds.contains(declaration.kind)
             else { return nil }
             return IndexedReference(sourceUSR: owner, targetUSR: occurrence.symbol.usr, kind: .reference,
-                location: IndexStoreMapping.sourceLocation(occurrence.location), origin: .inferred)
+                location: IndexStoreMapping.sourceLocation(occurrence.location),
+                targetKind: IndexStoreMapping.symbolKind(
+                    occurrence.symbol.kind, subKind: occurrence.symbol.subKind),
+                origin: .inferred)
         }
     }
 
@@ -282,7 +377,7 @@ public struct IndexStoreProvider: IndexProviding {
     /// 범위를 주지 않으므로 시작 위치만으로 판단한다. 틀려도 간선이 하나 더 생길 뿐이라
     /// 보존이 늘고 없는 발견을 만들지 않는다. 이 저장소가 택하는 방향이다.
     static func enclosingReferences(
-        for unattributed: [(usr: String, location: SourceLocation)],
+        for unattributed: [(usr: String, location: SourceLocation, targetKind: SymbolKind)],
         definitionSites: [String: [(usr: String, location: SourceLocation)]],
         symbols: [String: IndexedSymbol]
     ) -> [IndexedReference] {
@@ -294,7 +389,8 @@ public struct IndexStoreProvider: IndexProviding {
             else { return nil }
             return IndexedReference(
                 sourceUSR: owner, targetUSR: entry.usr, kind: .reference,
-                location: entry.location, origin: .inferred
+                location: entry.location, targetKind: entry.targetKind,
+                origin: .inferred
             )
         }
     }

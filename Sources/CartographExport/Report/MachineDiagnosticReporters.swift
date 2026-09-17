@@ -90,7 +90,7 @@ public struct GitHubActionsDiagnosticReporter: DiagnosticReporting {
 public struct CheckstyleDiagnosticReporter: DiagnosticReporting {
     public init() {}
 
-    public func report(_ diagnostics: [Diagnostic], summary: ReportSummary) -> String {
+    public func report(_ diagnostics: [Diagnostic], summary _: ReportSummary) -> String {
         var lines = ["<?xml version=\"1.0\" encoding=\"utf-8\"?>", "<checkstyle version=\"4.3\">"]
         let grouped = Dictionary(grouping: diagnostics.sorted()) { $0.location?.path ?? "" }
 

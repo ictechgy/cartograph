@@ -335,7 +335,11 @@ public struct IndexStoreLocator: Sendable {
 
         let existing = candidates.filter { fileSystem.directoryExists(at: $0) }
         guard !existing.isEmpty else {
-            throw CartographError.indexStoreNotFound(searchedPaths: candidates, derivedData: scan?.search)
+            throw CartographError.indexStoreNotFound(
+                searchedPaths: candidates,
+                derivedData: scan?.search,
+                projectShape: projectShape(at: projectPath)
+            )
         }
         let selected = existing.max { lhs, rhs in
             let lhsDate = fileSystem.modificationDate(at: lhs) ?? .distantPast
@@ -355,6 +359,34 @@ public struct IndexStoreLocator: Sendable {
             )
         }
         return selected
+    }
+
+    /// 프로젝트 루트가 어떤 빌드 진입점을 제공하는지.
+    ///
+    /// "인덱스가 없다"는 오류의 다음 행동은 루트에 무엇이 있는지에 따라 갈린다.
+    /// 성공 경로에서 루트를 한 번 더 훑지 않게, 실패했을 때만 호출한다.
+    public func projectShape(at projectPath: String) -> ProjectShape {
+        let names = ((try? fileSystem.contentsOfDirectory(at: projectPath)) ?? [])
+            .map { ($0 as NSString).lastPathComponent }
+        let documents = names
+            .filter {
+                let pathExtension = ($0 as NSString).pathExtension.lowercased()
+                return pathExtension == "xcworkspace" || pathExtension == "xcodeproj"
+            }
+            .sorted { lhs, rhs in
+                // 워크스페이스가 먼저다 — 워크스페이스로 빌드해야 패키지까지
+                // 인덱싱되는 구성이 흔하다.
+                let lhsIsWorkspace = lhs.hasSuffix(".xcworkspace")
+                let rhsIsWorkspace = rhs.hasSuffix(".xcworkspace")
+                return lhsIsWorkspace == rhsIsWorkspace ? lhs < rhs : lhsIsWorkspace
+            }
+        return ProjectShape(
+            hasPackageManifest: names.contains("Package.swift"),
+            hasBuildDirectory: fileSystem.directoryExists(
+                at: (projectPath as NSString).appendingPathComponent(".build")
+            ),
+            xcodeDocuments: documents
+        )
     }
 
     /// libIndexStore 후보 경로.

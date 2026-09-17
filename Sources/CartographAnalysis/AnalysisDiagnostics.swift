@@ -14,6 +14,9 @@ public enum AnalysisDiagnostics {
         public static let mainSequenceDistance = "main-sequence-distance"
         public static let metricThreshold = "metric-threshold"
         public static let testOnlySymbol = "test-only-symbol"
+        public static let unusedParameter = "unused-parameter"
+        public static let assignOnly = "assign-only"
+        public static let unusedImport = "unused-import"
     }
 
     /// 순환 의존성 → 진단.
@@ -73,6 +76,70 @@ public enum AnalysisDiagnostics {
                 message: "\(node.kind.rawValue) '\(node.qualifiedName)' is reached only from tests or previews",
                 location: node.location,
                 subject: node.usr ?? node.id.rawValue
+            )
+        }
+    }
+
+    /// 본문에서 읽히지 않는 파라미터 → 진단.
+    ///
+    /// 도달 불가능한 선언이 아니라 살아 있는 함수의 사용되지 않은 입력이다.
+    /// 고치는 방법이 삭제가 아니라 `_` 표기일 수 있으므로 `unused-symbol` 과
+    /// 다른 규칙으로 분리하고, strict 카운트에는 넣지 않는다.
+    public static func unusedParameterDiagnostics(
+        for report: UnusedCodeReport,
+        in graph: CodeGraph
+    ) -> [Diagnostic] {
+        report.unusedParameters.map { parameter in
+            let owner = graph.node(NodeID(parameter.functionUSR))
+            let ownerName = owner?.qualifiedName ?? "function"
+            return Diagnostic(
+                ruleIdentifier: Rule.unusedParameter,
+                severity: .warning,
+                message: "parameter '\(parameter.name)' of '\(ownerName)' is never used",
+                location: parameter.location,
+                subject: parameter.usr
+            )
+        }
+    }
+
+    /// 대입만 되고 읽히지 않는 프로퍼티 → 진단.
+    ///
+    /// `unused-parameter` 와 같은 이유로 별도 규칙이다 — 살아 있는 코드가
+    /// 값을 넣기만 하고 꺼내 보지 않는 저장소이지 죽은 선언이 아니므로
+    /// `unused-symbol` 과 섞으면 "지워라" 로 읽힌다. 경고이며 strict
+    /// 카운트에는 넣지 않는다.
+    public static func assignOnlyDiagnostics(
+        for report: UnusedCodeReport,
+        in graph: CodeGraph
+    ) -> [Diagnostic] {
+        report.assignOnly.map { node in
+            let owner = graph.incomingEdges(to: node.id)
+                .first(where: { $0.kind == .member })
+                .flatMap { graph.node($0.source)?.name }
+            let context = owner.map { " of '\($0)'" } ?? ""
+            return Diagnostic(
+                ruleIdentifier: Rule.assignOnly,
+                severity: .warning,
+                message: "\(node.kind.rawValue) '\(node.name)'\(context) is assigned but never read",
+                location: node.location,
+                subject: node.usr ?? node.id.rawValue
+            )
+        }
+    }
+
+    /// 참조 근거가 증명하지 못하는 import → 진단.
+    ///
+    /// 선언의 생사가 아니라 파일의 모듈 의존 표시에 대한 발견이므로 별도
+    /// 규칙이다 — 지워도 되는가는 삭제 판정이 아니라 "이 파일에서 그 모듈의
+    /// 선언을 참조한 적이 없다"는 뜻이다. 경고이며 strict 카운트에는 넣지 않는다.
+    public static func unusedImportDiagnostics(for report: UnusedCodeReport) -> [Diagnostic] {
+        report.unusedImports.map { fact in
+            Diagnostic(
+                ruleIdentifier: Rule.unusedImport,
+                severity: .warning,
+                message: "import '\(fact.spelling)' is never used",
+                location: fact.location,
+                subject: "import:\(fact.location.path):\(fact.spelling)"
             )
         }
     }

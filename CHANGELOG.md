@@ -7,6 +7,139 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `bridges` recognizes Expo Modules. In files that `import ExpoModulesCore`, a `Module`
+  subclass's `definition()` builder or an `@ExpoModule`/`@JS` macro pair produces
+  `module-export`/`component-export` facts marked `mechanism: "expo"` plus `method-handle`
+  facts for the module's JS-callable functions. The
+  module name follows Expo's own rules — an explicit `Name(...)`/`@ExpoModule(...)` argument,
+  otherwise the class name (`String(describing:)` default). A `View` definition emits
+  `component-export` on the module name, matching `requireNativeViewManager(moduleName)`.
+  A `Module` subclass whose `definition()` is not visible in the file keeps a `dynamic`
+  name rather than guessing. Facts keep `target: "react-native"`; the field is omitted for
+  core React Native and `method-handle` facts, which old consumers read unchanged.
+
+## [0.17.0] - 2026-09-17
+
+### Added
+
+- `bridges` resolves three more source shapes. `+` string concatenation yields a literal when
+  both sides resolve (a resolved head alone stays as the name's prefix), a property only ever
+  assigned its initializer's parameter (`self.x = arg`) resolves through `Type(label:)` call
+  sites when every site agrees on one channel, and a `FlutterMethodCall` handler that passes
+  its `call` argument unchanged into one local method (`Task { await handleAsync(call, …) }`)
+  attributes the forwarded method's arms to the registered channel. Conflicting call sites,
+  rewritten arguments, overloaded names and cross-file values stay unproven.
+- `impact --before` comparisons now carry a `scopeDiff` section that diffs the subgraph induced
+  on the union of both change scopes. Impact traversal only walks consumers of the changed set,
+  so an edge removed between two changed files was invisible — both endpoints sat in `changeScope`
+  and neither appeared in `affected`. `scopeDiff.removedEdges`/`addedEdges` list edge triples that
+  exist in only one graph, and `removedSymbols`/`addedSymbols` list declarations that exist in only
+  one snapshot's scope. Edges whose kind the other graph's `edge_kinds` filter could not have
+  contained are not reported, and a filter mismatch is noted in `limitations`.
+
+### Changed
+
+- Warm session queries re-check the input fingerprint without re-reading the filesystem.
+  Encoded fingerprint contributions are replayed while file stamps hold, directory walks are
+  reused while every observed directory stamp holds, and directory entries are built with native
+  path strings instead of `appendingPathComponent` (whose NSString-backed results hashed ~40×
+  slower inside sets and maps). A measured warm `cartograph_query` dropped from ~69 ms to ~12 ms.
+
+### Fixed
+
+- A warm session could keep serving a stale file list in two cases: a symbolic link dropped for
+  visiting an already-seen target could be retargeted without invalidating the walk, and a
+  directory whose enumeration failed was cached as a complete result, so a transient failure
+  became permanent for the session. Both are now tracked — discarded links contribute their
+  file stamps and a failed directory is never stored as a finished walk.
+
+## [0.16.0] - 2026-09-16
+
+### Changed
+
+- The no-index-store error now reads the project root and tailors its build guidance to what
+  it finds: a `Package.swift` gets the `swift build` line (plus a note when `.build` exists but
+  holds no store), an `.xcodeproj`/`.xcworkspace` gets an `xcodebuild` command with the document
+  and `-scheme` flags filled in, both get both, and a root with neither is told to check
+  `--project` instead of being shown commands that cannot run there. The `indexStoreEmpty`
+  remedies that end in build commands follow the same shape.
+
+### Added
+
+- `dead` now reports parameters that a reachable function's body never reads, under the
+  `unused-parameter` rule at warning severity. The index does not record references to local
+  symbols, so usage is proven by a SwiftSyntax body scan (scope-aware for nested functions,
+  closures, and capture lists) joined to indexed parameter declarations by source position.
+  Parameters of protocol requirements, dead functions, and unscanned files are never reported,
+  and the warnings do not count toward `--strict` — the fix is a `_` name, not a deletion.
+- `dead` now reports properties that are assigned but never read, under the `assign-only` rule
+  at warning severity. The index records a read/write role on every property reference, so the
+  facts come straight from `SymbolOccurrence.roles`: undirected memberwise-initializer argument
+  labels count as writes, while implicit, dynamic, `addressOf`, or direction-less call accesses
+  mark the property's evidence ambiguous and suppress the finding entirely. Protocol
+  requirements and witnesses (whose reads record on the requirement symbol), overrides,
+  runtime-managed and Objective-C/Interface Builder-exposed declarations, and stored properties
+  of types with synthesized `Equatable`/`Hashable`/`Codable` conformances are excluded. The
+  warnings do not count toward `--strict`.
+- `dead` now reports `import` declarations a file's references never use, under the
+  `unused-import` rule at warning severity. A Swift USR encodes its owning module
+  (`s:<length><module>`), so each file's referenced-module set is recovered from the index;
+  `import M` marker occurrences (`c:@M@M`) never count as usage. Reporting is suppressed
+  whenever evidence is incomplete: files with unattributable references (clang/Objective-C
+  USRs carry no module), files that reference modules they never imported (a re-export may
+  supply them), conditional (`#if`) imports, re-exporting imports (`@_exported`, `public
+  import`), and `cartograph:ignore`-marked imports are all excluded. The warnings do not
+  count toward `--strict`.
+
+## [0.15.1] - 2026-09-16
+
+### Fixed
+
+- `setMessageHandler` on receivers the scanner cannot bind — parameters, fields, opaque
+  expressions — still yields a `message-handle` fact with a dynamic channel name and its handler
+  scope, instead of dropping the handler and contaminating shared registration evidence.
+- Single-channel inference for `FlutterMethodCall` handlers counts only method channels again,
+  so a Basic-message or event channel declared in the same file no longer defeats the guess or
+  lends its name to a method handler.
+- Handler scopes start at the closure `in` keyword, so capture-list initializers such as
+  `{ [s = make()] _, _ in … }` classify as registration evidence instead of per-message work.
+- Ambiguous evidence is reported rather than guessed: equidistant same-label symbols no longer
+  pick a USR by sort order, external requirements with in-project implementations mark the
+  handler scope incomplete, and top-level registrations attach the file's virtual top-level
+  symbol so every fact carries an enclosing symbol.
+- Inferred enclosing-symbol and conformance references keep the index-reported `targetKind`
+  even when the target is outside the graph, and snapshot reference ordering is fully
+  deterministic down to `targetKind`.
+
+## [0.15.0] - 2026-09-16
+
+### Added
+
+- `cartograph bridges --messages --target flutter` exports Flutter `BasicMessageChannel` and Pigeon
+  handler facts in the bridge-facts v2 exchange format. Each `message-handle` fact keeps the
+  enclosing setup symbol and adds the handler closure range plus the call/reference symbols the
+  compiler index actually observed at those locations, split into `registration` and `handler`
+  scopes. Verified override dispatch candidates are preserved transitively so a change to a
+  sub-override still reaches the bridge boundary. The scope was checked against the public
+  `url_launcher_macos@3.2.2` generated Swift source; it is not a compatibility promise for every
+  Pigeon form.
+- `IndexedReference` records the index-reported `targetKind`, letting consumers distinguish
+  graph-excluded targets such as parameters instead of treating every reference target alike.
+- Handler dependency evidence is bounded by a document-wide budget and classified once per
+  declaration, so large shared registration functions no longer rescan or recopy scopes per fact.
+
+### Fixed
+
+- Handler scopes with missing, stale, ambiguous or budget-bounded evidence stay `complete: false`
+  and are counted under `incomplete-message-handler-scopes` instead of looking fully analyzed.
+  Scopes duplicated through path aliases are merged rather than conflicted.
+- Method-channel handler closures no longer leak helper references into a sibling
+  Basic-message-channel registration scope when both kinds share one setup function.
+- References rebuilt while normalizing synthesized symbols, restoring local functions and rebasing
+  snapshots keep their `targetKind` instead of resetting it.
+
 ## [0.14.0] - 2026-09-15
 
 ### Added
@@ -966,7 +1099,11 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.14.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.17.0...HEAD
+[0.17.0]: https://github.com/ictechgy/cartograph/compare/0.16.0...0.17.0
+[0.16.0]: https://github.com/ictechgy/cartograph/compare/0.15.1...0.16.0
+[0.15.1]: https://github.com/ictechgy/cartograph/compare/0.15.0...0.15.1
+[0.15.0]: https://github.com/ictechgy/cartograph/compare/0.14.0...0.15.0
 [0.14.0]: https://github.com/ictechgy/cartograph/compare/0.13.0...0.14.0
 [0.13.0]: https://github.com/ictechgy/cartograph/compare/0.12.0...0.13.0
 [0.12.0]: https://github.com/ictechgy/cartograph/compare/0.11.0...0.12.0

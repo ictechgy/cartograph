@@ -8,21 +8,27 @@ public struct IndexedReference: Hashable, Sendable, Codable {
     public let targetUSR: String
     public let kind: EdgeKind
     public let location: SourceLocation?
+    /// 인덱스가 보고한 대상 종류. 그래프에서 제외한 매개변수 같은 대상을 구분할 때 쓴다.
+    public let targetKind: SymbolKind?
     /// 과거 스냅샷이나 출처를 명시하지 않은 공급자는 unknown으로 남긴다.
     public let origin: ReferenceOrigin
 
     public init(
         sourceUSR: String, targetUSR: String, kind: EdgeKind,
-        location: SourceLocation? = nil, origin: ReferenceOrigin = .unknown
+        location: SourceLocation? = nil, targetKind: SymbolKind? = nil,
+        origin: ReferenceOrigin = .unknown
     ) {
         self.sourceUSR = sourceUSR
         self.targetUSR = targetUSR
         self.kind = kind
         self.location = location
+        self.targetKind = targetKind
         self.origin = origin
     }
 
-    private enum CodingKeys: String, CodingKey { case sourceUSR, targetUSR, kind, location, origin }
+    private enum CodingKeys: String, CodingKey {
+        case sourceUSR, targetUSR, kind, location, targetKind, origin
+    }
 
     /// 이전 교환 파일에 출처가 없으면 컴파일러 증거라고 추정하지 않는다.
     public init(from decoder: any Decoder) throws {
@@ -31,6 +37,7 @@ public struct IndexedReference: Hashable, Sendable, Codable {
             targetUSR: try values.decode(String.self, forKey: .targetUSR),
             kind: try values.decode(EdgeKind.self, forKey: .kind),
             location: try values.decodeIfPresent(SourceLocation.self, forKey: .location),
+            targetKind: try values.decodeIfPresent(SymbolKind.self, forKey: .targetKind),
             origin: try values.decodeIfPresent(ReferenceOrigin.self, forKey: .origin) ?? .unknown)
     }
 
@@ -41,6 +48,7 @@ public struct IndexedReference: Hashable, Sendable, Codable {
         try values.encode(targetUSR, forKey: .targetUSR)
         try values.encode(kind, forKey: .kind)
         try values.encodeIfPresent(location, forKey: .location)
+        try values.encodeIfPresent(targetKind, forKey: .targetKind)
         if origin != .unknown { try values.encode(origin, forKey: .origin) }
     }
 }

@@ -238,9 +238,50 @@ public struct SnapshotEnricher: Sendable {
             }
             return updated
         }
+        enriched.parameters = joinedParameters(snapshot.parameters, with: facts)
+        // import는 인덱스가 모듈 심볼 표식(`c:@M@…`)만 남기고 속성·`#if` 여부를
+        // 모르므로 구문 사실이 유일한 출처다. 사실을 못 얻은 파일은 목록에
+        // 나타나지 않고, 그 파일의 import는 미사용으로 보고되지 않는다.
+        enriched.imports = facts.keys.sorted().flatMap { facts[$0]?.imports ?? [] }
         return LocalFunctionBinder.enrichWithDiagnostics(enriched,
             scopes: facts.keys.sorted().flatMap { facts[$0]?.localFunctionScopes ?? [] },
             freshPaths: freshSourcePaths, edgeKinds: edgeKinds, freshnessFailures: freshnessFailures)
+    }
+
+    /// 인덱스의 파라미터 선언과 본문 스캔 결과를 위치로 맞붙인다.
+    ///
+    /// 조인 키는 파라미터 내부 이름 토큰의 (줄, 열)이다 — 인덱스의 파라미터 선언
+    /// 위치와 스캐너가 기록한 토큰 위치가 같은 자리를 가리킨다. 맞는 레코드가
+    /// 없으면(본문 없는 요구사항, 스캔 못 한 파일) `isReferenced` 는 모름(nil)으로
+    /// 남겨 미사용으로 보고하지 않는다.
+    private static func joinedParameters(
+        _ parameters: [IndexedParameter],
+        with facts: [String: SourceFileFacts]
+    ) -> [IndexedParameter] {
+        guard !parameters.isEmpty else { return parameters }
+        let usageBySite = facts.mapValues { file in
+            Dictionary((file.parameterUsages ?? []).map {
+                (ParameterSite(line: $0.location.line, column: $0.location.column), $0.isUsedInBody)
+            }) { first, _ in first }
+        }
+        return parameters.map { parameter in
+            guard let fileFacts = facts[parameter.location.path],
+                  fileFacts.parameterUsages != nil,
+                  let used = usageBySite[parameter.location.path]?[
+                    ParameterSite(line: parameter.location.line, column: parameter.location.column)]
+            else { return parameter }
+            return IndexedParameter(
+                usr: parameter.usr, name: parameter.name, module: parameter.module,
+                location: parameter.location, functionUSR: parameter.functionUSR,
+                isReferenced: used
+            )
+        }
+    }
+
+    /// 파라미터 조인에 쓰는 소스 내 자리. 경로는 맵 키로 이미 구분된다.
+    private struct ParameterSite: Hashable {
+        let line: Int
+        let column: Int
     }
 
     private struct DeclarationKey: Hashable {

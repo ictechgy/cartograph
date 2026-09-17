@@ -351,7 +351,9 @@ extension CartographService {
     }
 
     fileprivate func sessionInputFingerprint(using cache: AnalysisInputFingerprintCache) throws -> String {
-        try AnalysisInputFingerprinter(
+        var environment = environment
+        environment.fileSystem = CachedListingFileSystem(base: environment.fileSystem, cache: cache)
+        return try AnalysisInputFingerprinter(
             configuration: configuration,
             environment: environment,
             reportScope: reportScope,
@@ -360,34 +362,256 @@ extension CartographService {
     }
 }
 
-fileprivate final class AnalysisInputFingerprintCache {
+/// 세션이 순서대로 재사용하는 변경 감지 상태.
+///
+/// 오늘의 호출 경로는 전부 직렬이지만(CLI·MCP 루프) `Sendable` 경계를 넘는
+/// 타입이 암묵 계약에 기대면 나중에 들어온 병렬 호출이 조용한 데이터 레이스가
+/// 된다. 상태는 전부 락 아래에 둔다.
+fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
     fileprivate struct Key: Hashable {
         let label: String
         let path: String
-    }
-
-    fileprivate enum State {
-        case missing
-        case unreadable
-        case digest(Data)
+        /// 수정 시각이 기여 바이트에 들어가는 입력인지. 같은 경로라도 시각 포함
+        /// 여부가 다르면 다른 항목이므로 키의 일부다.
+        let stampsModificationDate: Bool
     }
 
     fileprivate struct Entry {
         let stamp: FileFingerprintStamp?
-        let state: State
+        /// 이 입력이 지문에 기여하는 프레임된 바이트열. 스탬프가 그대로면 이전에
+        /// 검증·부호화해 둔 결과이므로 그대로 재생해도 같은 지문이 나온다.
+        let encoded: Data
     }
 
+    private let lock = NSLock()
     private var entries: [Key: Entry] = [:]
 
-    fileprivate func entry(for key: Key) -> Entry? { entries[key] }
+    /// 소스 탐색의 `isIncluded` 판정 메모. 판정은 경로와 필터만의 순수 함수이므로
+    /// 지문 계산마다 되풀이할 필요가 없다 — 실측에서 요청당 수백 번의 글롭 대조가
+    /// 지문 비용의 큰 부분이었다. 사라진 경로의 판정은 다시 조회되지 않아 무해하므로
+    /// 항목 수는 세션 동안 본 경로 수로 한정된다 — 가지치기 대상이 아니다.
+    private var inclusions: [String: Bool] = [:]
+    private var inclusionFilter: PathFilter?
 
-    fileprivate func store(_ state: State, stamp: FileFingerprintStamp?, for key: Key) {
-        entries[key] = Entry(stamp: stamp, state: state)
+    /// 지문 한 번에 관측한 디렉터리. 가지치기 기준이며 다음 지문 시작 때 비운다.
+    private var observedDirectories: Set<String> = []
+    private var directories: [String: DirectoryRecord] = [:]
+
+    /// 탐색 루트별 이전 결과와 그때 열거한 디렉터리의 지문.
+    ///
+    /// 디렉터리 지문(mtime·ctime·inode)은 항목 추가·삭제·이름 변경에 반응하므로,
+    /// 열거했던 디렉터리 전부의 지문이 그대로면 탐색 결과 목록도 그대로다.
+    /// 하나라도 다르거나 지문을 얻지 못하면 전체를 다시 걷는다.
+    private var walks: [String: WalkRecord] = [:]
+
+    fileprivate func entry(for key: Key) -> Entry? {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries[key]
+    }
+
+    fileprivate func store(encoded: Data, stamp: FileFingerprintStamp?, for key: Key) {
+        lock.lock()
+        defer { lock.unlock() }
+        entries[key] = Entry(stamp: stamp, encoded: encoded)
+    }
+
+    /// 탐색 시작 전에 호출한다. 필터가 바뀌면 판정 메모가 다른 규칙의 결과이므로 비운다.
+    fileprivate func prepareInclusion(filter: PathFilter) {
+        lock.lock()
+        defer { lock.unlock() }
+        if inclusionFilter != filter {
+            inclusionFilter = filter
+            inclusions.removeAll()
+        }
+    }
+
+    /// 저장된 포함 판정을 돌려준다.
+    fileprivate func inclusion(for path: String) -> Bool? {
+        lock.lock()
+        defer { lock.unlock() }
+        return inclusions[path]
+    }
+
+    fileprivate func storeInclusion(_ included: Bool, for path: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        // 오래 사는 세션에서 삭제된 경로의 판정이 무한히 쌓이지 않게 상한을 둔다.
+        // 메모는 비용 절약일 뿐이므로 넘치면 통째로 비워도 정답은 같다.
+        if inclusions.count >= 65_536 { inclusions.removeAll() }
+        inclusions[path] = included
+    }
+
+    /// 운영체제 지문이 그대로인 디렉터리의 이전 목록. 지문이 다르거나 없으면 nil.
+    fileprivate func cachedEntries(at path: String, stamp: DirectoryListingStamp) -> [DirectoryEntry]? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let record = directories[path], record.stamp == stamp else { return nil }
+        return record.entries
+    }
+
+    /// 열거 시도 전에 디렉터리 지문만 먼저 기록한다.
+    ///
+    /// 열거가 실패하는 디렉터리(읽기 권한 없음 등)도 지문을 남겨 두어야 탐색
+    /// 캐시가 그 변화를 감시할 수 있다 — 권한 회복이나 교체는 지문을 바꾼다.
+    /// 항목이 없는 기록은 `cachedEntries` 가 적중시키지 않으므로 매번 열거를
+    /// 다시 시도한다.
+    fileprivate func storeListingStamp(_ stamp: DirectoryListingStamp, at path: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        directories[path] = DirectoryRecord(stamp: stamp, entries: nil)
+    }
+
+    fileprivate func storeEntries(_ entries: [DirectoryEntry], stamp: DirectoryListingStamp, at path: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        directories[path] = DirectoryRecord(stamp: stamp, entries: entries)
+    }
+
+    fileprivate func observeDirectory(_ path: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        observedDirectories.insert(path)
+    }
+
+    /// 이전 탐색의 결과 목록. 기억된 디렉터리 전부의 지문이 그대로이고, 버려진
+    /// 링크 파일의 지문도 그대로이며, 같은 필터로 만든 결과일 때만 돌려준다.
+    fileprivate func walkedResult(root: String, filter: PathFilter?, fileSystem: any FileSystem) -> [String]? {
+        lock.lock()
+        let record = walks[root]
+        lock.unlock()
+        guard let record, record.filter == filter else { return nil }
+        // 지문 확인은 락 밖에서 한다 — 파일 시스템 호출이 락을 다시 타지 않게.
+        for (directory, stamp) in record.dirStamps {
+            guard fileSystem.directoryListingStamp(at: directory) == stamp else { return nil }
+        }
+        // 같은 파일을 가리켜 버려진 링크는 부모 디렉터리 지문에 드러나지 않는다 —
+        // 다른 파일을 가리키게 재지정되면 결과 목록이 달라지므로 따로 검증한다.
+        for (link, stamp) in record.linkStamps {
+            guard fileSystem.fingerprintStamp(at: link) == stamp else { return nil }
+        }
+        // 재사용한 디렉터리도 이번 지문에서 관측된 것으로 표시해 목록 레코드가
+        // 가지치기되지 않게 한다.
+        lock.lock()
+        for (directory, _) in record.dirStamps {
+            observedDirectories.insert(directory)
+        }
+        lock.unlock()
+        return record.result
+    }
+
+    /// 탐색 결과를 루트와 필터에 묶어 둔다. 열거한 디렉터리 중 지문이 없거나
+    /// 열거에 실패한 것이 있으면 검증할 수 없으므로 — 실패는 다음 지문에서 다시
+    /// 시도돼야 하므로 — 저장하지 않는다. 버려진 링크 파일의 지문도 함께 남긴다.
+    fileprivate func storeWalk(
+        root: String, filter: PathFilter?, directories walked: [String],
+        discardedLinks: [String], result: [String], fileSystem: any FileSystem
+    ) {
+        guard let resolvedRoot = walked.first else { return }
+        lock.lock()
+        var records: [(String, DirectoryRecord)] = []
+        for directory in walked {
+            guard let record = directories[directory] else { lock.unlock(); return }
+            records.append((directory, record))
+        }
+        lock.unlock()
+        // 파일 시스템 호출은 락 밖에서 한다 — walkedResult 와 같은 이유다.
+        var dirStamps: [(String, DirectoryListingStamp)] = []
+        dirStamps.reserveCapacity(records.count + 1)
+        for (directory, record) in records {
+            guard record.entries != nil else { return }
+            dirStamps.append((directory, record.stamp))
+        }
+        var linkStamps: [(String, FileFingerprintStamp)] = []
+        for link in discardedLinks {
+            guard let stamp = fileSystem.fingerprintStamp(at: link) else { return }
+            linkStamps.append((link, stamp))
+        }
+        // 루트가 링크면 열거는 풀린 철자로 남고 재지정은 그 철자들의 지문에 드러나지
+        // 않는다. stat 은 링크를 따라가므로 부른 철자의 지문도 함께 기록한다.
+        if resolvedRoot != root, let rootStamp = dirStamps.first?.1 {
+            dirStamps.append((root, rootStamp))
+        }
+        lock.lock()
+        walks[root] = WalkRecord(filter: filter, dirStamps: dirStamps, linkStamps: linkStamps, result: result)
+        lock.unlock()
+    }
+
+    fileprivate func resetObservations() {
+        lock.lock()
+        defer { lock.unlock() }
+        observedDirectories.removeAll()
     }
 
     fileprivate func prune(keeping keys: Set<Key>) {
+        lock.lock()
+        defer { lock.unlock() }
+        // 가지치기는 메모리 위생일 뿐 판정에 영향이 없다. 보낼 항목이 없으면 건너뛴다.
+        guard entries.count > keys.count || directories.count > observedDirectories.count
+        else { return }
         entries = entries.filter { keys.contains($0.key) }
+        directories = directories.filter { observedDirectories.contains($0.key) }
     }
+
+    private struct DirectoryRecord {
+        let stamp: DirectoryListingStamp
+        /// nil 은 열거에 실패한 디렉터리 — 지문만 감시하고 매번 다시 열거를 시도한다.
+        let entries: [DirectoryEntry]?
+    }
+
+    private struct WalkRecord {
+        /// 결과를 만든 경로 필터. 필터가 바뀌면 같은 디렉터리들이라도 목록이
+        /// 달라지므로 탐색 결과를 재사용할 수 없다.
+        let filter: PathFilter?
+        let dirStamps: [(String, DirectoryListingStamp)]
+        /// 같은 파일을 가리켜 버려진 심볼릭 링크의 지문. 부모 디렉터리 지문에는
+        /// 재지정이 드러나지 않으므로 따로 검증한다.
+        let linkStamps: [(String, FileFingerprintStamp)]
+        let result: [String]
+    }
+}
+
+/// 디렉터리 목록을 운영체제 지문으로 검증해 재열거를 건너뛰는 파일 시스템 래퍼.
+///
+/// 디렉터리의 지문(mtime·ctime·inode·mode)이 그대로이면 항목 구성이 바뀌지
+/// 않은 것으로 본다. 파일 내용 변경은 파일별 지문이 따로 잡으므로 이 목록은 구조
+/// 변화만 감시하면 된다. 지문을 제공하지 않는 구현은 매번 열거한다.
+fileprivate struct CachedListingFileSystem: FileSystem {
+    let base: any FileSystem
+    let cache: AnalysisInputFingerprintCache
+
+    func directoryEntries(at path: String) throws -> [DirectoryEntry] {
+        cache.observeDirectory(path)
+        guard let stamp = base.directoryListingStamp(at: path) else {
+            return try base.directoryEntries(at: path)
+        }
+        if let cached = cache.cachedEntries(at: path, stamp: stamp) {
+            return cached
+        }
+        // 열거에 실패해도 지문은 남겨 둔다 — 권한 회복처럼 열거 결과를 바꾸는
+        // 변화가 다음 지문에서 탐지되어야 한다.
+        cache.storeListingStamp(stamp, at: path)
+        let entries = try base.directoryEntries(at: path)
+        cache.storeEntries(entries, stamp: stamp, at: path)
+        return entries
+    }
+
+    func realPath(at path: String) throws -> String { try base.realPath(at: path) }
+    func fileExists(at path: String) -> Bool { base.fileExists(at: path) }
+    func directoryExists(at path: String) -> Bool { base.directoryExists(at: path) }
+    func readData(at path: String) throws -> Data { try base.readData(at: path) }
+    func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
+    func contentsOfDirectory(at path: String) throws -> [String] {
+        try base.contentsOfDirectory(at: path)
+    }
+    func modificationDate(at path: String) -> Date? { base.modificationDate(at: path) }
+    func fingerprintStamp(at path: String) -> FileFingerprintStamp? {
+        base.fingerprintStamp(at: path)
+    }
+    func directoryListingStamp(at path: String) -> DirectoryListingStamp? {
+        base.directoryListingStamp(at: path)
+    }
+    var currentDirectoryPath: String { base.currentDirectoryPath }
 }
 
 private struct AnalysisInputFingerprinter {
@@ -400,6 +624,7 @@ private struct AnalysisInputFingerprinter {
         var accumulator = FingerprintAccumulator()
         accumulator.addText(cache == nil ? "cartograph-analysis-input-v2" : "cartograph-analysis-input-v3")
         var observedKeys: Set<AnalysisInputFingerprintCache.Key> = []
+        cache?.resetObservations()
         let encodedConfiguration = try JSONEncoder.cartographDefault(prettyPrinted: false)
             .encode(configuration)
         accumulator.addData(label: "configuration", data: encodedConfiguration)
@@ -440,21 +665,63 @@ private struct AnalysisInputFingerprinter {
         observedKeys: inout Set<AnalysisInputFingerprintCache.Key>
     ) throws {
         let fileSystem = environment.fileSystem
-        let paths = fileSystem.recursiveFiles(
-            under: projectPath,
-            isIncluded: { path in
-                configuration.pathFilter.allows(path)
-                    && (AnalysisLimitationCollector.sourceSuffixes.contains { path.hasSuffix($0) }
-                        || RuntimeResourcePath.isSupported(path))
-            },
-            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
-        )
+        cache?.prepareInclusion(filter: configuration.pathFilter)
+        // 탐색 결과를 열거 디렉터리 전체의 지문으로 묶어 둔다 — 구조가 그대로면
+        // 다음 지문에서 글롭 대조·디렉터리 열거 없이 경로 목록을 재사용한다.
+        let paths: [String]
+        if let cached = cache?.walkedResult(
+            root: projectPath, filter: configuration.pathFilter, fileSystem: fileSystem
+        ) {
+            paths = cached
+        } else {
+            var walked: [String] = []
+            var discardedLinks: [String] = []
+            paths = fileSystem.recursiveFiles(
+                under: projectPath,
+                isIncluded: { path in
+                    if let cached = cache?.inclusion(for: path) { return cached }
+                    let included = Self.isSourceInput(path, filter: configuration.pathFilter)
+                    cache?.storeInclusion(included, for: path)
+                    return included
+                },
+                shouldDescend: BuildArtifactDirectories.shouldDescend(into:),
+                onDirectory: { walked.append($0) },
+                onDiscardedLink: { discardedLinks.append($0) }
+            )
+            cache?.storeWalk(
+                root: projectPath, filter: configuration.pathFilter,
+                directories: walked, discardedLinks: discardedLinks, result: paths,
+                fileSystem: fileSystem
+            )
+        }
         accumulator.addText("source-count:\(paths.count)")
         for path in paths {
             // 내용이 같아도 소스 시각은 인덱스 신선도 결과에 영향을 준다.
             try addFile(path, label: "source-file", includeModificationDate: true,
                 cache: cache, observedKeys: &observedKeys, to: &accumulator)
         }
+    }
+
+    /// 세션 입력에 들어가는 소스·리소스 경로 판정.
+    ///
+    /// 글롭 대조와 리소스 판정(URL 생성)은 항목당 비싸므로 이름으로 먼저 좁힌다.
+    /// 소스 접미사는 대소문자 구분 그대로, 리소스는 이름 게이트 뒤에 원래의 정밀
+    /// 판정을 부른다 — `xcdatamodel` 밖의 일반 `contents` 는 계속 빠져야 한다.
+    private static func isSourceInput(_ path: String, filter: PathFilter) -> Bool {
+        let name = (path as NSString).lastPathComponent
+        let ext = (path as NSString).pathExtension
+        if ext == "swift" || ext == "m" || ext == "mm"
+            || name == ".swift" || name == ".m" || name == ".mm" {
+            return filter.allows(path)
+        }
+        let lowerName = name.lowercased()
+        let resourceCandidate = ext.lowercased() == "xib"
+            || ext.lowercased() == "storyboard"
+            || lowerName == ".xib" || lowerName == ".storyboard"
+            || lowerName == "contents" || name == ".xccurrentversion"
+        return resourceCandidate
+            && RuntimeResourcePath.isSupported(path)
+            && filter.allows(path)
     }
 
     private func addOptionalConfigurationInputs(
@@ -496,11 +763,24 @@ private struct AnalysisInputFingerprinter {
                 } else {
                     accumulator.addText("index-unit-root-modified:unknown")
                 }
-                let paths = fileSystem.recursiveFiles(
-                    under: root,
-                    isIncluded: { _ in true },
-                    shouldDescend: { _ in true }
-                )
+                let paths: [String]
+                if let cached = cache?.walkedResult(root: root, filter: nil, fileSystem: fileSystem) {
+                    paths = cached
+                } else {
+                    var walked: [String] = []
+                    var discardedLinks: [String] = []
+                    paths = fileSystem.recursiveFiles(
+                        under: root,
+                        isIncluded: { _ in true },
+                        shouldDescend: { _ in true },
+                        onDirectory: { walked.append($0) },
+                        onDiscardedLink: { discardedLinks.append($0) }
+                    )
+                    cache?.storeWalk(
+                        root: root, filter: nil, directories: walked,
+                        discardedLinks: discardedLinks, result: paths, fileSystem: fileSystem
+                    )
+                }
                 accumulator.addText("index-unit-count:\(paths.count)")
                 for path in paths {
                     try addFile(
@@ -557,56 +837,59 @@ private struct AnalysisInputFingerprinter {
         observedKeys: inout Set<AnalysisInputFingerprintCache.Key>,
         to accumulator: inout FingerprintAccumulator
     ) throws {
-        accumulator.addText("\(label):\(path)")
-        let cacheKey = AnalysisInputFingerprintCache.Key(label: label, path: path)
+        let cacheKey = AnalysisInputFingerprintCache.Key(
+            label: label, path: path, stampsModificationDate: includeModificationDate
+        )
         observedKeys.insert(cacheKey)
         let fileSystem = environment.fileSystem
-        let resolvedPath = (try? fileSystem.realPath(at: path)) ?? path
+        // 파일마다 한 번의 stat 으로 실제 경로·수정 시각·캐시 비교 상태를 모두 얻는다.
+        // 요청마다 수백 입력을 다시 검증하는 세션 지문에서 항목당 syscall 수가 지배적이다.
+        let stamp = fileSystem.fingerprintStamp(at: path)
+        // 스탬프가 그대로면 경로·해결 철자·내용·시각이 전부 같다. 저장 시 이미 민감
+        // 이름 판정과 부호화를 마쳤으므로 히트 경로는 결과 바이트만 재생한다.
+        if let cache, let stamp, let entry = cache.entry(for: cacheKey), entry.stamp == stamp {
+            accumulator.appendEncoded(entry.encoded)
+            return
+        }
+        var contribution = FingerprintContribution()
+        contribution.addText("\(label):\(path)")
+        let resolvedPath = stamp?.resolvedPath ?? (try? fileSystem.realPath(at: path)) ?? path
         guard !Self.isSensitive(path), !Self.isSensitive(resolvedPath) else {
             throw AnalysisSessionError.sensitiveInput
         }
-        guard fileSystem.fileExists(at: path) else {
-            accumulator.addText("missing")
-            cache?.store(.missing, stamp: nil, for: cacheKey)
+        let missing = stamp.map { !$0.isRegularFile } ?? !fileSystem.fileExists(at: path)
+        // 디렉터리·끊어진 링크·FIFO 같은 비정규 입력은 읽지 않는다. stamp 를 주지
+        // 않는 구현은 예전처럼 존재 여부로만 판정한다.
+        guard !missing else {
+            contribution.addText("missing")
+            accumulator.appendEncoded(contribution.data)
+            cache?.store(encoded: contribution.data, stamp: nil, for: cacheKey)
             return
         }
         if includeModificationDate {
-            if let modified = fileSystem.modificationDate(at: path) {
-                accumulator.addText("modified:\(modified.timeIntervalSinceReferenceDate)")
-            } else {
-                accumulator.addText("modified:unknown")
-            }
-        }
-        let stamp = fileSystem.fingerprintStamp(at: path)
-        if let cache, let stamp, let entry = cache.entry(for: cacheKey), entry.stamp == stamp {
-            append(entry.state, to: &accumulator)
-            return
+            // 내용이 같아도 소스 시각은 인덱스 신선도 결과에 영향을 주므로 별도로 싣는다.
+            let modified = stamp.map {
+                Date(timeIntervalSince1970:
+                    Double($0.modificationSeconds) + Double($0.modificationNanoseconds) / 1e9)
+            } ?? fileSystem.modificationDate(at: path)
+            contribution.addText(
+                modified.map { "modified:\($0.timeIntervalSinceReferenceDate)" } ?? "modified:unknown"
+            )
         }
         guard let data = try? fileSystem.readData(at: path) else {
-            accumulator.addText("unreadable")
-            cache?.store(.unreadable, stamp: stamp, for: cacheKey)
+            contribution.addText("unreadable")
+            accumulator.appendEncoded(contribution.data)
+            cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
             return
         }
         if let cache {
             let digest = Data(SHA256.hash(data: data))
-            cache.store(.digest(digest), stamp: stamp, for: cacheKey)
-            accumulator.addData(label: "content-digest", data: digest)
+            contribution.addData(label: "content-digest", data: digest)
+            accumulator.appendEncoded(contribution.data)
+            cache.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
         } else {
-            accumulator.addData(label: "content", data: data)
-        }
-    }
-
-    private func append(
-        _ state: AnalysisInputFingerprintCache.State,
-        to accumulator: inout FingerprintAccumulator
-    ) {
-        switch state {
-        case .missing:
-            accumulator.addText("missing")
-        case .unreadable:
-            accumulator.addText("unreadable")
-        case let .digest(digest):
-            accumulator.addData(label: "content-digest", data: digest)
+            contribution.addData(label: "content", data: data)
+            accumulator.appendEncoded(contribution.data)
         }
     }
 
@@ -637,6 +920,13 @@ private struct FingerprintAccumulator {
         addBytes(data)
     }
 
+    /// 이미 길이-접두사로 프레임된 기여 바이트를 그대로 해시에 넣는다.
+    ///
+    /// 캐시된 입력의 재생에 쓴다 — 프레임 형식은 `FingerprintContribution` 이 만든다.
+    mutating func appendEncoded(_ data: Data) {
+        hasher.update(data: data)
+    }
+
     private mutating func addBytes(_ data: Data) {
         var length = UInt64(data.count).bigEndian
         let prefix = withUnsafeBytes(of: &length) { Data($0) }
@@ -646,5 +936,29 @@ private struct FingerprintAccumulator {
 
     mutating func finalize() -> String {
         hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// 지문 입력 하나가 기여하는 바이트열을 `FingerprintAccumulator` 와 같은
+/// 길이-접두사 프레이밍으로 만든다.
+///
+/// 스탬프가 그대로인 입력은 요청마다 민감 이름 판정·문자열 부호화·내용 읽기를
+/// 되풀이할 필요가 없다. 저장 시 한 번 만든 이 열을 히트 때 그대로 재생한다.
+private struct FingerprintContribution {
+    private(set) var data = Data()
+
+    mutating func addText(_ value: String) {
+        addBytes(Data(value.utf8))
+    }
+
+    mutating func addData(label: String, data: Data) {
+        addText(label)
+        addBytes(data)
+    }
+
+    private mutating func addBytes(_ bytes: Data) {
+        var length = UInt64(bytes.count).bigEndian
+        withUnsafeBytes(of: &length) { data.append(contentsOf: $0) }
+        data.append(bytes)
     }
 }

@@ -100,6 +100,12 @@ One shape remains open and is counted honestly: audioplayers' `handle(_:result:)
 to `handleAsync(_:result:)` inside a `Task`, and its 23 arms live there. Following one hop of
 `call` through a local function call is the next scanner change if a second plugin shows the shape.
 
+*(Update — the shape was implemented. A `call`-unchanged one-hop forward now inherits the
+registered channel, `self.x = arg` initializer injection resolves through `Type(label:)` call
+sites, and `+` concatenation of resolved operands yields a literal. Re-scanning this file
+attributes all 23 arms to their literal channels — 19 on `xyz.luan/audioplayers`, 4 on
+`xyz.luan/audioplayers.global` — with no `dynamic` or inferred flags.)*
+
 ## The join, on plus_plugins (added 2026-09-05, evening)
 
 With a Dart SDK installed, the seven plus_plugins packages that have Swift or Objective-C sources
@@ -191,7 +197,9 @@ verdict. They are also a reminder that `archived_packages/` is scanned as live c
 - A file-scope string constant used as a channel name is not resolved (audioplayers'
   `globalChannelName`). Narrowing this needs the opposite-direction corpus first — a constant table
   keyed by name alone is one of the shapes that produced false joinable literals before — so it is
-  recorded here, not implemented.
+  recorded here, not implemented. *(Update — resolved without a name-only table: the property is
+  proven through its initializer-injection call sites, and the constant is then resolved in the
+  call site's own scope.)*
 - `example/` is observed asymmetrically until dartograph learns `--exclude` or documents the filter
   contract.
 

@@ -70,7 +70,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.14.0
+mint install ictechgy/cartograph@0.17.0
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -78,7 +78,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.14.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.17.0"),
 ```
 
 ```bash
@@ -141,13 +141,14 @@ after the folder that holds it. So Cartograph tries every name the project root 
 `.xcodeproj` and `.xcworkspace` directly inside it, plus the folder's own name. That is what makes
 `cartograph dead` work from a Flutter or React Native `ios/` directory, where the folder is `ios`
 and the project is `Runner.xcodeproj`. Only the root is scanned, so a `Pods/Pods.xcodeproj` never
-becomes a name. When several directories match by name, the `WorkspacePath` in each one's
-`info.plist` decides which belongs to this project; if none of them names it, Cartograph says so
-rather than picking the most recent.
-When several candidates exist it takes the most recently written one, because a stale index fails
-quietly rather than loudly. The exception is ambiguity: if two or more name-matched directories
-remain and none proves ownership through `WorkspacePath`, Cartograph lists them instead of
-guessing — the same rule that makes `query` return candidates instead of a guess.
+becomes a name.
+
+A name-matched directory whose `info.plist` points back at this project through `WorkspacePath`
+wins outright, and one that names a different workspace is never used. Among the candidates that
+remain, Cartograph takes the most recently written one, because a stale index fails quietly rather
+than loudly. The exception is ambiguity: if two or more name-matched directories are left and none
+proves ownership through `WorkspacePath`, Cartograph lists them instead of guessing — the same
+rule that makes `query` return candidates instead of a guess.
 Recent SwiftPM writes an index automatically, so for a Swift package
 `cartograph graph` alone usually works.
 
@@ -207,6 +208,55 @@ cartograph dead --explain UserRepository
 
 Dead code is defined as *unreachable from a retained root*, not *zero references*. A cluster of
 declarations that only reference each other has plenty of references and is still dead.
+
+`dead` also reports parameters a live function's body never reads, as warnings under the
+`unused-parameter` rule:
+
+```console
+Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.Client.fetch(_:retry:)' is never used
+```
+
+The index does not record references to local symbols, so usage is proven by scanning the
+function body itself. A parameter is reported only when its function is reachable; parameters of
+protocol requirements (which have no body) and parameters in files that could not be scanned are
+never reported. `unused-parameter` warnings are not counted toward `--strict` — the fix is a `_`
+name, not a deletion.
+
+`dead` also reports properties that are assigned but never read, as warnings under the
+`assign-only` rule:
+
+```console
+Sources/Net/Client.swift:17:9: warning: property 'cacheKey' of 'Net.Client' is assigned but never read
+```
+
+The index records a read/write role on every property reference, so this check needs no source
+scan. A property is reported only when it is reachable and every observed access is a write —
+memberwise-initializer argument labels count as writes. Protocol requirements and witnesses are
+excluded (reads through the protocol record on the requirement symbol), as are overrides,
+runtime-managed declarations (`@NSManaged`, `@Observable`), Objective-C- and Interface
+Builder-exposed members, implicit declarations, and stored properties of types whose synthesized
+`Equatable`/`Hashable`/`Codable` conformances read them without leaving index evidence. Accesses
+with ambiguous direction — `&x`, dynamic dispatch, macro-expanded or implicit references —
+suppress the finding rather than guess. Like `unused-parameter`, these warnings are not counted
+toward `--strict`: the fix may be an observation point, not a deletion.
+
+`dead` also reports `import` declarations the file's references never use, as warnings under the
+`unused-import` rule:
+
+```console
+Sources/Net/Client.swift:3:1: warning: import 'Combine' is never used
+```
+
+A Swift USR encodes its owning module, so the set of modules a file actually references is
+recovered from the index; the `c:@M@M` marker an `import` itself leaves behind never counts as
+usage. Because usage can also arrive through a re-export, reporting is deliberately
+conservative: an import is reported only when the file's usage evidence is complete — no
+unattributable references (clang/Objective-C USRs carry no module) and no referenced module the
+file never imported. Conditional (`#if`) imports, re-exporting imports (`@_exported`,
+`public import`), and imports marked `// cartograph:ignore` are never reported. Scoped imports
+like `import struct Foundation.Bundle` are judged by their head module — a use of anything in
+`Foundation` counts as use of the import — and the diagnostic spells the full form. Like the
+other warning rules, `unused-import` does not count toward `--strict`.
 
 `--report-test-only` answers a different question: which production declarations are reached
 **only** from tests or previews. They are not dead — deleting one breaks a test — but a team wants
@@ -287,19 +337,19 @@ Five things this output does deliberately:
   that is declared in Objective-C and being told only "no such thing" would hide the difference
   between absent and invisible. `limitations` is counted from *your* project, within the same
   include/exclude scope the graph uses, so it stays quiet when there is nothing to warn about. It
-  reports Objective-C sources, Interface Builder documents, sources edited since their own index unit was
-   written, a package that exports library products while `retain_public` is off, and a path filter
-   that narrows the analysis *beyond the defaults*, or an edge-kind filter — any of which could be
-   the reason `usedBy` is empty. The default excludes alone do not count —
-  they are a noise guard, not a narrowing you chose, and a warning that fires on every project is
-  not read. File-level timestamps prevent a build of another target from hiding an edited file.
-  `unindexed-sources` counts files without a known index unit; `missing-sources` counts indexed
-  files that disappeared. `unreadable-sources` reports other read failures: declarations in those
-  files are kept with reason `sourceUnavailable` until source access is restored and the analysis
-  is rerun. These limits also appear in `dead` reports — and on the other discovery gates: `cycles`
-and `rules` carry them in every format they emit, and `metrics` carries the same `limitations` key
-in its JSON and prints `Limitation:` lines under the table. A gate that passes while the analysis
-was blind is the one thing a gate must never do.
+  reports Objective-C sources, Interface Builder documents, sources edited since their own index
+  unit was written, a package that exports library products while `retain_public` is off, a path
+  filter narrower than the defaults, or an edge-kind filter — any of which could be the reason
+  `usedBy` is empty. The default excludes alone do not count: they are a noise guard, not a
+  narrowing you chose, and a warning that fires on every project is not read. File-level
+  timestamps prevent a build of another target from hiding an edited file. `unindexed-sources`
+  counts files without a known index unit; `missing-sources` counts indexed files that disappeared.
+  `unreadable-sources` reports other read failures: declarations in those files are kept with
+  reason `sourceUnavailable` until source access is restored and the analysis is rerun. These
+  limits also appear in `dead` reports and on the other discovery gates: `cycles` and `rules`
+  carry them in every format they emit, and `metrics` carries the same `limitations` key in its
+  JSON and prints `Limitation:` lines under the table. A gate that passes while the analysis was
+  blind is the one thing a gate must never do.
 - **A baseline the team already accepted is marked as such** (`suppressedByBaseline`), so nobody
   re-litigates a decision that was already made. It is only set when the declaration would actually
   have been reported.
@@ -470,6 +520,15 @@ new declarations from the current snapshot. If an explicit input is missing in b
 ambiguous in either, the comparison stays unresolved. An unresolved explicit input exits 64;
 Git-derived selections and unresolved runtime evidence are incomplete analysis (exit 2). No path
 or consumer is synthesized by unioning the two graphs.
+
+Because impact only walks consumers of the changed set, an edge that disappeared between two
+changed files never shows up in `affected` — both endpoints sit inside the change scope. The
+`scopeDiff` section closes that gap by diffing the subgraph induced on the union of both change
+scopes: `addedSymbols`/`removedSymbols` list declarations that exist in only one snapshot's scope,
+and `addedEdges`/`removedEdges` list edge triples (source, target, kind) that exist in only one
+graph. Edge kinds the other graph's filter could not have contained are not reported, and a filter
+mismatch is called out in `limitations`. Each list is capped by `--limit`; the `*Count` fields and
+`scopeDiff.truncated` keep the uncapped truth.
 
 Nested runtime review evidence and contract ID lists also obey the output limit. Omitted entries
 carry `externalEvidenceCount`/`externalEvidenceOmitted` or
@@ -741,7 +800,6 @@ The exported `project` is the root's POSIX `realpath`, resolving symlinks so `/t
 Fact locations remain relative to the project. Consumers still require exact `project` equality;
 normalization does not combine different plugin or monorepo roots.
 
-
 The v1 extension in 0.9.0 adds optional `limitationScopes`, each binding a `limitationIndex`
 to an exact `channels` array. This is an upper bound on the entire gap, never a list of names
 merely found in unread code. External-object or factory-supplied Swift handlers produce a scoped
@@ -749,8 +807,12 @@ merely found in unread code. External-object or factory-supplied Swift handlers 
 channel leaves that gap unscoped; unscoped gaps continue to apply to the whole target.
 
 Swift bridge-name resolution follows immutable `let` aliases and parentheses within one file
-(up to 64 steps). Mutable strings, unknown shadowing bindings, operators, interpolation and cross-file values
-remain dynamic. See the [constant/Needle/storyboard checks](docs/scans/2026-09-analysis-blindspots.md).
+(up to 64 steps), joins `+` concatenation when both sides resolve (a resolved head alone stays
+as the name's prefix), resolves a property only ever assigned its initializer's parameter
+(`self.x = arg`) through `Type(label:)` call sites, and attributes a handler's `call`-unchanged
+one-hop forward (`Task { await handleAsync(call, …) }`) to the registered channel. Mutable
+strings, unknown shadowing bindings, other operators, interpolation, disagreeing call sites and
+cross-file values remain dynamic. See the [constant/Needle/storyboard checks](docs/scans/2026-09-analysis-blindspots.md).
 
 When a dynamic Swift name comes from a fresh indexed source, `bridges` also runs the bounded
 interprocedural value-flow analysis and applies a name only when every analyzed context agrees on
@@ -758,6 +820,15 @@ the same exact string. Supported argument, return, callback and memory paths can
 names across functions; disagreement, unknown values, unsupported syntax, stale sources and an
 exhausted analysis budget remain `dynamic`. See the [interprocedural analysis check](docs/scans/2026-09-interprocedural-flow.md)
 for runtime comparisons and scope.
+
+`cartograph bridges --messages --target flutter` is a bridge-facts v2 extension for Flutter
+`BasicMessageChannel` and Pigeon handlers. It emits `message-handle` facts
+without a synthetic method, plus a closure range and the call/reference symbols observed at those
+source locations in the compiler index. The existing enclosing setup symbol remains in every fact;
+when the range and index evidence are incomplete, consumers must keep the broad setup impact and
+report the gap. Dispatch candidates are included only for actual index `overrides` relationships.
+The current scope was verified against the public `url_launcher_macos@3.2.2` generated Swift source;
+it is not a published compatibility promise for every Pigeon form.
 
 Objective-C Flutter scanning supports direct channel construction, inline handler blocks and
 same-file registrar/delegate `handleMethodCall:result:` implementations, including file-local
@@ -794,7 +865,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.14.0" },
+  "tool" : { "name" : "cartograph", "version" : "0.17.0" },
   "version" : 1
 }
 ```
@@ -817,6 +888,18 @@ Fact locations are project-relative and `generatedAt` is normalized to UTC milli
 project contains more than one bridge mechanism, pass `--target flutter` or
 `--target react-native` before feeding the document to isthmus v0.1. The targeted document reports
 the number of omitted facts under the `target-filter` limitation.
+
+Within `--target react-native`, Expo Modules are marked with `mechanism: "expo"` on the
+name-boundary facts (`module-export`, `component-export`); omitted means core React Native.
+A `Module` subclass is recognized by its `definition()` builder (`Name`, `View`,
+`Function`/`AsyncFunction`, …) or the `@ExpoModule`/`@JS` macros, gated on
+`import ExpoModulesCore` so lookalike names elsewhere stay silent. The module name follows
+Expo's rules — `Name(...)`/the macro argument, otherwise the class name — and a `View`
+definition exports a component under the module name, which is what
+`requireNativeViewManager(moduleName)` looks up. `method-handle` facts carry no `mechanism`
+per the exchange contract. A module that defines several `View`s is represented by the first
+one — secondary views are only reachable through `requireNativeViewManager(module, viewName)`
+and are not separate name-boundary facts.
 
 isthmus hands back `external-retentions`: for each Swift declaration it found a caller for, the USR
 and the evidence. `--external-retentions <path>` (or `external_retentions_path` in the

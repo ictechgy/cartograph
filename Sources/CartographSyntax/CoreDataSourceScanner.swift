@@ -34,7 +34,6 @@ private final class CoreDataSourceCollector: SyntaxVisitor {
         let bindingName: String
         let modelName: String
         let constructorLocation: CartographCore.SourceLocation
-        let scope: Int
     }
 
     private struct Context {
@@ -48,7 +47,6 @@ private final class CoreDataSourceCollector: SyntaxVisitor {
         let constructorLocation: CartographCore.SourceLocation
         let resultTypeLocation: CartographCore.SourceLocation
         let hasConcreteResultType: Bool
-        let scope: Int
     }
 
     private struct ContainerCall {
@@ -89,21 +87,21 @@ private final class CoreDataSourceCollector: SyntaxVisitor {
         return .visitChildren
     }
 
-    override func visitPost(_ node: FunctionDeclSyntax) { functions.removeLast() }
+    override func visitPost(_: FunctionDeclSyntax) { functions.removeLast() }
 
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
         functions.append(location(node.initKeyword))
         return .visitChildren
     }
 
-    override func visitPost(_ node: InitializerDeclSyntax) { functions.removeLast() }
+    override func visitPost(_: InitializerDeclSyntax) { functions.removeLast() }
 
     override func visit(_ node: CodeBlockSyntax) -> SyntaxVisitorContinueKind {
         scopes.append(node.positionAfterSkippingLeadingTrivia.utf8Offset)
         return .visitChildren
     }
 
-    override func visitPost(_ node: CodeBlockSyntax) {
+    override func visitPost(_: CodeBlockSyntax) {
         if let scope = scopes.popLast() {
             containers.removeValue(forKey: scope)
             contexts.removeValue(forKey: scope)
@@ -119,20 +117,20 @@ private final class CoreDataSourceCollector: SyntaxVisitor {
         return .visitChildren
     }
 
-    override func visitPost(_ node: ClosureExprSyntax) { closureDepth -= 1 }
+    override func visitPost(_: ClosureExprSyntax) { closureDepth -= 1 }
 
-    override func visit(_ node: IfExprSyntax) -> SyntaxVisitorContinueKind { enterConditional() }
-    override func visitPost(_ node: IfExprSyntax) { leaveConditional() }
-    override func visit(_ node: SwitchExprSyntax) -> SyntaxVisitorContinueKind { enterConditional() }
-    override func visitPost(_ node: SwitchExprSyntax) { leaveConditional() }
-    override func visit(_ node: ForStmtSyntax) -> SyntaxVisitorContinueKind { enterConditional() }
-    override func visitPost(_ node: ForStmtSyntax) { leaveConditional() }
-    override func visit(_ node: WhileStmtSyntax) -> SyntaxVisitorContinueKind { enterConditional() }
-    override func visitPost(_ node: WhileStmtSyntax) { leaveConditional() }
-    override func visit(_ node: RepeatStmtSyntax) -> SyntaxVisitorContinueKind { enterConditional() }
-    override func visitPost(_ node: RepeatStmtSyntax) { leaveConditional() }
-    override func visit(_ node: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind { enterConditional() }
-    override func visitPost(_ node: IfConfigDeclSyntax) { leaveConditional() }
+    override func visit(_: IfExprSyntax) -> SyntaxVisitorContinueKind { enterConditional() }
+    override func visitPost(_: IfExprSyntax) { leaveConditional() }
+    override func visit(_: SwitchExprSyntax) -> SyntaxVisitorContinueKind { enterConditional() }
+    override func visitPost(_: SwitchExprSyntax) { leaveConditional() }
+    override func visit(_: ForStmtSyntax) -> SyntaxVisitorContinueKind { enterConditional() }
+    override func visitPost(_: ForStmtSyntax) { leaveConditional() }
+    override func visit(_: WhileStmtSyntax) -> SyntaxVisitorContinueKind { enterConditional() }
+    override func visitPost(_: WhileStmtSyntax) { leaveConditional() }
+    override func visit(_: RepeatStmtSyntax) -> SyntaxVisitorContinueKind { enterConditional() }
+    override func visitPost(_: RepeatStmtSyntax) { leaveConditional() }
+    override func visit(_: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind { enterConditional() }
+    override func visitPost(_: IfConfigDeclSyntax) { leaveConditional() }
 
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         guard node.bindings.count == 1,
@@ -199,8 +197,7 @@ private final class CoreDataSourceCollector: SyntaxVisitor {
         containers[scope, default: [:]][name] = Container(
             bindingName: name,
             modelName: modelName,
-            constructorLocation: call.constructorLocation,
-            scope: scope
+            constructorLocation: call.constructorLocation
         )
     }
 
@@ -218,8 +215,7 @@ private final class CoreDataSourceCollector: SyntaxVisitor {
             entityName: entityName,
             constructorLocation: call.constructorLocation,
             resultTypeLocation: resultLocation,
-            hasConcreteResultType: resultType != "NSManagedObject",
-            scope: scope
+            hasConcreteResultType: resultType != "NSManagedObject"
         )
     }
 

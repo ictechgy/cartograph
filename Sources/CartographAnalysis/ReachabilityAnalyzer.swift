@@ -43,6 +43,24 @@ public struct UnusedCodeReport: Sendable, Equatable {
     /// 죽은 코드가 아니므로 미사용으로 보고하지 않는다. 다만 테스트가 유일한
     /// 사용자라는 사실은 팀이 알아야 할 정보다. 계산하지 않았으면 비어 있다.
     public let testOnly: [GraphNode]
+    /// 본문에서 한 번도 읽히지 않은 함수 파라미터. 위치 순으로 정렬되어 있다.
+    ///
+    /// 미사용 선언과는 다른 종류의 발견이다 — 선언이 도달 불가능한 것이 아니라
+    /// 살아 있는 함수의 입력이 본문에서 쓰이지 않는다는 뜻이다. 고치는 방법이
+    /// 삭제가 아니라 `_` 표기나 시그니처 검토일 수 있으므로 별도 목록으로 분리한다.
+    public let unusedParameters: [IndexedParameter]
+    /// 대입은 되지만 한 번도 읽히지 않는 프로퍼티·변수. 위치 순으로 정렬되어 있다.
+    ///
+    /// 도달 불가능한 선언이 아니라 살아 있는 코드가 값을 넣기만 하고 꺼내 보지
+    /// 않는 저장소다. 고치는 방법이 삭제가 아닐 수 있으므로(로그·관측 지점으로
+    /// 쓰려던 것일 수 있다) 별도 목록으로 분리한다.
+    public let assignOnly: [GraphNode]
+    /// 파일의 참조 근거가 증명하지 못하는 `import` 선언. 위치 순으로 정렬되어 있다.
+    ///
+    /// 도달성과 무관한 별도 질이다 — 죽은 파일의 import도 import로서는
+    /// 미사용이다. 재수출·조건부·무시 표식이 있거나 근거를 확신할 수 없는
+    /// 파일의 import는 목록에 나타나지 않는다.
+    public let unusedImports: [IndexedImport]
     /// 도달 경로 복원을 위한 선행 정점 사전.
     private let predecessors: [NodeID: NodeID]
 
@@ -53,7 +71,10 @@ public struct UnusedCodeReport: Sendable, Equatable {
         totalCount: Int,
         inheritedRetentions: [NodeID: InheritedRetention] = [:],
         predecessors: [NodeID: NodeID] = [:],
-        testOnly: [GraphNode] = []
+        testOnly: [GraphNode] = [],
+        unusedParameters: [IndexedParameter] = [],
+        assignOnly: [GraphNode] = [],
+        unusedImports: [IndexedImport] = []
     ) {
         self.testOnly = testOnly
         self.unused = unused
@@ -62,6 +83,9 @@ public struct UnusedCodeReport: Sendable, Equatable {
         self.totalCount = totalCount
         self.inheritedRetentions = inheritedRetentions
         self.predecessors = predecessors
+        self.unusedParameters = unusedParameters
+        self.assignOnly = assignOnly
+        self.unusedImports = unusedImports
     }
 
     /// 도달 가능한 정점의 비율(0...1).
@@ -156,6 +180,17 @@ public struct ReachabilityAnalyzer: Sendable {
 
         let unreachable = graph.sortedNodes.filter { !traversal.reachable.contains($0.id) }
         let reported = filterReportable(unreachable, unreachableIDs: Set(unreachable.map(\.id)), graph: graph)
+        let unusedParameters = unusedParameters(
+            in: snapshot,
+            reachable: traversal.reachable,
+            protocolRequirementOwners: protocolRequirementOwners
+        )
+        let assignOnly = assignOnlyProperties(
+            in: graph,
+            snapshot: snapshot,
+            reachable: traversal.reachable,
+            protocolRequirementOwners: protocolRequirementOwners
+        )
 
         return UnusedCodeReport(
             unused: reported,
@@ -171,11 +206,154 @@ public struct ReachabilityAnalyzer: Sendable {
                 conditionalWitnesses: conditional,
                 protocolRequirementOwners: protocolRequirementOwners,
                 graph: graph
-            )
+            ),
+            unusedParameters: unusedParameters,
+            assignOnly: assignOnly,
+            unusedImports: UnusedImportAnalyzer.analyze(snapshot)
         )
     }
 
     // MARK: - 내부 구현
+
+    /// 본문에서 한 번도 읽히지 않은 파라미터.
+    ///
+    /// 파라미터는 정점이 아니므로 도달성 탐색이 아니라 별도 질의로 계산한다.
+    /// 보고 조건은 둘 다 보존 방향이다: 선언한 함수가 살아 있을 때만 보고하고
+    /// (죽은 함수의 파라미터는 함수의 발견에 덮인다), 프로토콜 요구사항의
+    /// 파라미터는 본문이 없어 미사용이 규칙이므로 제외한다. `newValue` 같은
+    /// 접근자 파라미터는 접근자가 정점이 아니라 부모 해석이 안 되어 자연히 빠진다.
+    private func unusedParameters(
+        in snapshot: IndexSnapshot,
+        reachable: Set<NodeID>,
+        protocolRequirementOwners: [NodeID: NodeID]
+    ) -> [IndexedParameter] {
+        snapshot.parameters.filter { parameter in
+            // 근거가 없는(nil) 파라미터는 모르는 것이므로 보고하지 않는다.
+            guard parameter.isReferenced == false else { return false }
+            let owner = NodeID(parameter.functionUSR)
+            guard reachable.contains(owner),
+                  protocolRequirementOwners[owner] == nil
+            else { return false }
+            return true
+        }
+        .sorted { $0.location < $1.location }
+    }
+
+    /// 대입은 되지만 한 번도 읽히지 않는 프로퍼티.
+    ///
+    /// 파라미터와 달리 사용 근거가 인덱스에 있다 — 참조 발생에 read/write
+    /// 역할이 붙는다. 쓰기만 있고 읽기가 없으며 불명한 접근도 없는 심볼만
+    /// 보고한다. 보고 조건은 전부 보존 방향이다: 정점이 살아 있을 때만(죽은
+    /// 코드의 저장소는 그 정점의 발견에 덮인다), 프로토콜 요구사항은 본문이
+    /// 없어 제외하고, 오버라이드·준수 증인은 요구사항 심볼 쪽으로 읽기가
+    /// 기록되어 제외한다. 런타임이 저장소를 관리하거나(`@NSManaged`·
+    /// `@Observable` 등) Objective-C·Interface Builder·합성 Codable 이
+    /// 접근을 숨길 수 있는 선언도 제외한다 — 인덱스 밖의 읽기가 있을 수 있다.
+    private func assignOnlyProperties(
+        in graph: CodeGraph,
+        snapshot: IndexSnapshot,
+        reachable: Set<NodeID>,
+        protocolRequirementOwners: [NodeID: NodeID]
+    ) -> [GraphNode] {
+        guard !snapshot.propertyAccesses.isEmpty else { return [] }
+        let hiddenOwners = accessHidingOwners(in: snapshot, graph: graph)
+        return graph.sortedNodes.filter { node in
+            guard node.kind == .property || node.kind == .variable,
+                  reachable.contains(node.id),
+                  snapshot.propertyAccesses[node.id.rawValue]?.isAssignOnly == true,
+                  !options.excludedKinds.contains(node.kind),
+                  isAccessVisible(node),
+                  protocolRequirementOwners[node.id] == nil,
+                  // 오버라이드·준수 증인의 읽기는 요구사항 심볼에 기록된다.
+                  !graph.outgoingEdges(from: node.id).contains(where: { $0.kind == .overrides }),
+                  !isAccessHidden(node, hiddenOwners: hiddenOwners, in: graph)
+            else { return false }
+            return true
+        }
+        .sorted { lhs, rhs in
+            switch (lhs.location, rhs.location) {
+            case let (left?, right?) where left != right:
+                return left < right
+            default:
+                return lhs.id < rhs.id
+            }
+        }
+    }
+
+    /// 이 선언 자체에 대한 접근이 인덱스에 보이는지 — 보이지 않는 경로가
+    /// 열려 있으면 "읽힌 적 없다" 를 주장할 수 없다.
+    private func isAccessVisible(_ node: GraphNode) -> Bool {
+        !node.attributes.contains(.implicit)
+            && !node.attributes.contains(.ignoreComment)
+            && !node.attributes.contains(.runtimeManaged)
+            && !node.attributes.contains(.dynamicDispatch)
+            && !node.attributes.contains(.dynamicReplacement)
+            && !node.attributes.contains { $0.isObjectiveCRelated || $0.isInterfaceBuilderRelated }
+    }
+
+    /// 프로퍼티의 소유자가 접근을 숨기는 선언인지.
+    ///
+    /// 어휘적 부모와 의미상 부모를 함께 본다 — `extension S: Hashable` 안에
+    /// 선언된 프로퍼티의 어휘적 부모는 익스텐션이고, `S` 안에 선언된
+    /// 프로퍼티의 소유 타입은 S 이다. 둘 다 검사해야 익스텐션에 선언된
+    /// 준수를 놓치지 않는다. 중첩 타입은 바깥 타입의 합성이 건드리지
+    /// 않으므로 직접 부모만 본다.
+    private func isAccessHidden(
+        _ node: GraphNode,
+        hiddenOwners: Set<NodeID>,
+        in graph: CodeGraph
+    ) -> Bool {
+        if let lexical = graph.incomingEdges(to: node.id).first(where: { $0.kind == .member })?.source,
+           hiddenOwners.contains(lexical) {
+            return true
+        }
+        if let semantic = graph.semanticParent(of: node.id), hiddenOwners.contains(semantic) {
+            return true
+        }
+        return false
+    }
+
+    /// 저장소 접근을 인덱스 밖으로 빼는 소유 선언의 USR 집합.
+    ///
+    /// 두 갈래다. 속성으로 알 수 있는 것(`@NSManaged`·`@objcMembers`·구문에서
+    /// 읽은 `.codable` 표식)과, 준수 합성으로만 생기는 것(`Equatable`·
+    /// `Hashable`·`Codable` 계열의 합성 구현은 저장 프로퍼티를 읽지만 소스
+    /// 위치가 없어 인덱스에 읽기가 남지 않는다). 후자는 준수 참조로 잡는다 —
+    /// 외부 프로토콜은 그래프 정점이 아니어서 간선이 아니라 스냅샷의
+    /// conformance 참조를 봐야 한다. 익스텐션에 선언된 준수는 extends 대상
+    /// 타입으로 번역한다.
+    private func accessHidingOwners(in snapshot: IndexSnapshot, graph: CodeGraph) -> Set<NodeID> {
+        var hidden: Set<NodeID> = []
+        for reference in snapshot.references where reference.kind == .conformance {
+            guard Self.synthesizedReaderProtocolUSRs.contains(reference.targetUSR) else { continue }
+            hidden.insert(NodeID(reference.sourceUSR))
+        }
+        for node in graph.sortedNodes {
+            let attrs = node.attributes
+            if attrs.contains(.codable) || attrs.contains(.runtimeManaged)
+                || attrs.contains(.objcMembers) {
+                hidden.insert(node.id)
+            }
+        }
+        // 익스텐션 선언에 붙은 숨김 근거는 확장 대상 타입에도 적용한다.
+        for node in graph.sortedNodes
+        where node.kind == .extensionDeclaration && hidden.contains(node.id) {
+            if let extended = graph.outgoingEdges(from: node.id)
+                .first(where: { $0.kind == .extends })?.target {
+                hidden.insert(extended)
+            }
+        }
+        return hidden
+    }
+
+    /// 준수하면 컴파일러가 저장 프로퍼티를 읽는 멤버를 합성해 주는 stdlib 프로토콜 USR.
+    /// 합성 본문은 소스 위치가 없어 인덱스에 읽기 참조가 남지 않는다.
+    static let synthesizedReaderProtocolUSRs: Set<String> = [
+        "s:SQ",  // Equatable
+        "s:SH",  // Hashable
+        "s:SE",  // Encodable
+        "s:Se",  // Decodable
+    ]
 
     /// 테스트·프리뷰만 붙잡고 있는 선언.
     ///

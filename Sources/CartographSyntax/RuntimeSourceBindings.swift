@@ -139,47 +139,47 @@ final class RuntimeBindingCollector: SyntaxVisitor {
         }
         return pushType(node.name.text)
     }
-    override func visitPost(_ node: ClassDeclSyntax) { types.removeLast() }
+    override func visitPost(_: ClassDeclSyntax) { types.removeLast() }
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind { pushType(node.name.text) }
-    override func visitPost(_ node: StructDeclSyntax) { types.removeLast() }
+    override func visitPost(_: StructDeclSyntax) { types.removeLast() }
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind { pushType(node.name.text) }
-    override func visitPost(_ node: EnumDeclSyntax) { types.removeLast() }
+    override func visitPost(_: EnumDeclSyntax) { types.removeLast() }
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind { pushType(node.name.text) }
-    override func visitPost(_ node: ActorDeclSyntax) { types.removeLast() }
+    override func visitPost(_: ActorDeclSyntax) { types.removeLast() }
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
         pushType(node.extendedType.trimmedDescription)
     }
-    override func visitPost(_ node: ExtensionDeclSyntax) { types.removeLast() }
+    override func visitPost(_: ExtensionDeclSyntax) { types.removeLast() }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: FunctionDeclSyntax) { scopes.removeLast() }
+    override func visitPost(_: FunctionDeclSyntax) { scopes.removeLast() }
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: InitializerDeclSyntax) { scopes.removeLast() }
+    override func visitPost(_: InitializerDeclSyntax) { scopes.removeLast() }
     override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: ClosureExprSyntax) { scopes.removeLast() }
+    override func visitPost(_: ClosureExprSyntax) { scopes.removeLast() }
     override func visit(_ node: AccessorBlockSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: AccessorBlockSyntax) { scopes.removeLast() }
+    override func visitPost(_: AccessorBlockSyntax) { scopes.removeLast() }
     override func visit(_ node: AccessorDeclSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: AccessorDeclSyntax) { scopes.removeLast() }
+    override func visitPost(_: AccessorDeclSyntax) { scopes.removeLast() }
     override func visit(_ node: CodeBlockSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: CodeBlockSyntax) { scopes.removeLast() }
+    override func visitPost(_: CodeBlockSyntax) { scopes.removeLast() }
     override func visit(_ node: IfExprSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: IfExprSyntax) { scopes.removeLast() }
+    override func visitPost(_: IfExprSyntax) { scopes.removeLast() }
     override func visit(_ node: WhileStmtSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: WhileStmtSyntax) { scopes.removeLast() }
+    override func visitPost(_: WhileStmtSyntax) { scopes.removeLast() }
     override func visit(_ node: ForStmtSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: ForStmtSyntax) { scopes.removeLast() }
+    override func visitPost(_: ForStmtSyntax) { scopes.removeLast() }
     override func visit(_ node: SwitchExprSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: SwitchExprSyntax) { scopes.removeLast() }
+    override func visitPost(_: SwitchExprSyntax) { scopes.removeLast() }
     override func visit(_ node: SwitchCaseSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: SwitchCaseSyntax) { scopes.removeLast() }
+    override func visitPost(_: SwitchCaseSyntax) { scopes.removeLast() }
     override func visit(_ node: CatchClauseSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
-    override func visitPost(_ node: CatchClauseSyntax) { scopes.removeLast() }
-    override func visit(_ node: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
+    override func visitPost(_: CatchClauseSyntax) { scopes.removeLast() }
+    override func visit(_: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
         conditionalCompilationDepth += 1
         return .visitChildren
     }
-    override func visitPost(_ node: IfConfigDeclSyntax) { conditionalCompilationDepth -= 1 }
+    override func visitPost(_: IfConfigDeclSyntax) { conditionalCompilationDepth -= 1 }
 
     private func pushType(_ name: String) -> SyntaxVisitorContinueKind {
         types.append(SyntaxIdentifiers.unescaped(name))
