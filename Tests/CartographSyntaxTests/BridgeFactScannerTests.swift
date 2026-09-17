@@ -1716,6 +1716,38 @@ struct BridgeFactScannerTests {
         #expect(facts(source, of: .methodHandle).isEmpty)
     }
 
+    @Test("인자 자리의 멤버 체인 DSL 호출도 문장이 아니다")
+    func expoChainedDSLCallAsArgumentIsNotAStatement() {
+        // 체인 꼭대기 호출이 인자면 안쪽 DSL 호출도 인자다.
+        let source = """
+            import ExpoModulesCore
+
+            class HapticsModule: Module {
+                func definition() -> ModuleDefinition {
+                    Name("ExpoHaptics")
+                    print(AsyncFunction("hidden") { 0 }.runOnQueue(.main))
+                }
+            }
+            """
+        #expect(facts(source, of: .methodHandle).isEmpty)
+    }
+
+    @Test("DSL 클로저 안의 멤버 체인 호출은 문장이 아니다")
+    func expoChainedDSLCallInsideClosureIsNotAStatement() {
+        let source = """
+            import ExpoModulesCore
+
+            class HapticsModule: Module {
+                func definition() -> ModuleDefinition {
+                    Function("snap") {
+                        AsyncFunction("inner") { 0 }.runOnQueue(.main)
+                    }
+                }
+            }
+            """
+        #expect(facts(source, of: .methodHandle).map(\.method) == ["snap"])
+    }
+
     @Test("definition을 찾지 못한 Expo 모듈은 이름을 동적으로 남긴다")
     func expoModuleWithoutVisibleDefinitionIsDynamic() {
         let source = """
