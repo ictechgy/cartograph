@@ -7,7 +7,7 @@ _Last updated: 2026-09-18 by devin_
 경쟁 강화(warm 질의·dead 경고 3종·온보딩 안내), **0.17.0 릴리스와 Homebrew 배포**,
 bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴고까지
 **전부 머지·배포 완료**했다. 0.18.0(Expo Modules + impact 인접 목록)도 릴리스됐다.
-이후 경쟁 갭 분석(`docs/evaluation/2026-09-18-competitive-gaps.md`, **미커밋**)을
+이후 경쟁 갭 분석(`docs/evaluation/2026-09-18-competitive-gaps.md`, PR #107에 포함)을
 거쳐 사용자가 "순차적으로" 갭을 닫기를 요청했다. 순서: ①웜 query 지연 →
 ②불필요 ignore 감지 → ③불필요 public 경고 → ④impact --before 제거 간선 →
 ⑤기계적 fix → ⑥impact 입도 → ⑦테스트 영향 질의 → ⑧공식 GitHub Action →
@@ -278,6 +278,9 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 - `run-external`은 세션 디렉터리가 `mktemp -d` 수준(700)의 사설 디렉터리여야 하고, 재시도 전에
   stale `attempts/w001-<출력명>-` 디렉터리를 지워야 한다.
 - 실기기·임의 DI/heap/반사의 완전성과 Core Data dynamic-framework-only 정의는 미지원/미검증.
+- `$TMPDIR/cartograph-index-db`가 6.9GB까지 누적됐다(2026-09-18 정리). 형제 정리는 같은
+  baseName만 보니 서로 다른 스토어의 판독기 DB는 영구히 남는다 — 전역 상한이나 오래된
+  항목 GC가 없다. 개선 후보.
 - 브리지 스캐너의 남은 공백: 파일 스코프 `let`을 `var` 프로퍼티 외 경로(비-init 대입)로
   채우는 형태, Objective-C 전용 플러그인 핸들러.
 
@@ -293,10 +296,62 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 - CI에는 로컬 필수 게이트에 없는 검증 스크립트가 있다(`verify-analysis-blindspots.py` 등).
   CI 실패 시 로컬에서 같은 스크립트를 직접 돌려 재현한다.
 
+## 경쟁 조사 — codegraph 대비 개선점 (2026-09-18)
+
+조사 대상: [colbymchenry/codegraph](https://github.com/colbymchenry/codegraph) v1.6.0 (스타 71,337, tree-sitter+Rust 커널,
+SQLite+FTS5, MCP 단일 툴 `codegraph_explore`, 파일 감시 자동 동기화, `codegraph install`로 9개 에이전트
+배선, 텔레메트리 기본 on, 호스팅 유료 플랫폼 예고). 판정: **경쟁이 아니라 보완 관계** — codegraph는
+"에이전트가 어디를 읽을까"에, cartograph는 "지워도 되나·무엇이 깨지나"에 답한다. 자매 저장소
+(kartograph·dartograph·isthmus)에도 같은 날짜의 동일 섹션이 있고, 아래 "공통" 항목은 네 곳에서 겹친다.
+Goal 섹션의 갭 순서(③~⑩)는 그대로 두고, 아래는 그 순서에 끼워 넣을 **후보**다.
+
+### 실측 사실
+- `gh api repos/ictechgy/cartograph`: 스타 3 · 포크 1 · 열린 이슈 0. PR 105개 머지, 릴리스 18회,
+  테스트 1,505건, 커버리지 93.03%. 엔지니어링 품질과 도달 범위의 격차가 모든 기능 갭보다 크다.
+- `Sources/` 전체에 `snippet|verbatim|sourceText` 0건 — `query`는 메타데이터만 반환한다.
+- `CartographMCPTools.swift`: MCP 툴 5개(status·query·impact·check·runtime_discover).
+- `cartograph skill`은 `.claude/skills/cartograph/SKILL.md` 하나만 쓴다(README:924).
+- `docs/evaluation/2026-09-16-harder-comparison.md`의 LSP 대조(H1 브리지 42ms 정확 vs LSP 290ms 실패,
+  H2 전이 디스패치에서 LSP `UploadRequest` 누락, H5 지역 함수 LSP `references` 0건)가 README에 없다.
+- `docs/evaluation/2026-09-18-competitive-gaps.md`의 "Periphery Pro는 setup polish만, 분석 모델 불변"은
+  현재 periphery.pro 광고(`agent-prompt` 출력 형식, 스캔 3× 단축, GitHub Actions 재사용 워크플로,
+  VS Code 확장, 인디 무료)와 어긋난다.
+
+### 공통 (네 저장소 동일)
+| # | 부족한 점 | 근거 | 제안 | 난이도 |
+|---|---|---|---|---|
+| C1 | 에이전트 배선이 Claude Code 단일 타깃 | `cartograph skill`·`.claude-plugin/` 전용. codegraph `install`은 9개 에이전트 감지 + MCP 설정 + AGENTS.md 마커 블록. 마커 블록 이유: **서브에이전트·non-MCP 하네스는 MCP 초기화 지시를 못 받는다** | `cartograph install`(다중 에이전트 감지 + AGENTS.md 블록) + `curl \| sh` 설치 스크립트 | 중 |
+| C2 | MCP 툴 5개 — 에이전트가 고르고 예산을 계산해야 함 | SKILL.md가 툴 선택과 `symbols × limit ≤ 1000` 예산을 문단째 가르치는 것이 증상. codegraph는 8개 중 `explore` 1개만 노출하고 `_meta.anthropic/alwaysLoad: true`로 Claude Code 툴 지연 로딩을 우회 | 디스패처 `cartograph_explore` 신설(판정+근거+경로+영향), 기존 5개는 env opt-in, `alwaysLoad` 부착 | 중 |
+| C3 | 근거를 가리키기만 하고 보여주지 않음 | 소스 원문 반환 0건. codegraph의 "파일 읽기 0회" 주장은 원문을 한 페이로드에 담는 데서 나옴 | `--include-source`(기본 off)로 상위 N 심볼 라인 범위 스니펫. codegraph 스스로 이 방식이 세션 잔류 컨텍스트를 80% 늘린다고 공개 → 기본 off가 맞음 | 중 |
+| C4 | 검증된 강점이 README 밖에 묻힘 | 위 LSP 대조표 · 동결 오라클 · 컴파일러 변이 · 바이너리 해시 검증 전부 README 부재. codegraph는 불리한 수치(잔류 컨텍스트 +80%, 대조군 오염 통제)까지 상단 공개 | README 상단에 대조표 1개 + 2026-09-15 파일럿이 **이점을 못 찾은** 과제도 같이 게재. 고칠 것은 문장이 아니라 **순서** | 소 |
+| C5 | 채택 퍼널 부재 | 스타 3, 이슈 0, GitHub Action 없음(갭 ⑧). 에러가 이탈을 가르침 — codegraph AGENTS.md "Errors teach abandonment" | Action(⑧) 승격 + "오탐 신고" 이슈 템플릿 + `notFound`류를 오류톤 대신 `suggestions` 동봉 중립 응답으로 | 소 |
+
+### cartograph 고유
+| # | 부족한 점 | 근거 | 제안 | 난이도 |
+|---|---|---|---|---|
+| S1 | 경쟁 갭 문서가 stale — Periphery Pro가 에이전트 레인에 진입 | 위 실측. README "Why another tool" 표는 아카이브 OSS Periphery만 상대 | 갭 문서 갱신 + 비교축을 Pro가 못 따라오는 impact·dataflow·cycles·bridges로 이동 | 소 |
+| S2 | Swift MCP 서버 카테고리가 경쟁 인식에서 빠짐 | SwiftLens · swiftadopt-mcp · anvyxhq/swift-mcp-server · XcodeBuildMCP · Apple `xcrun mcpbridge` — 전부 sourcekit-lsp 기반. 갭 문서는 Serena·ios-agent-mcp만 다룸 | (추측) Apple 1st-party 심볼 MCP가 정식화되면 심볼 질의는 범용화 → 방어선은 LSP가 못 답하는 그래프 질문(H2·H5가 이미 증명). 포지셔닝 문구를 그 축으로 | 소 |
+| S3 | 인덱스 신선도를 "사람이 빌드하라"는 문단으로 넘김 | SKILL.md가 편집 후 빌드를 **부탁**. `limitations`에 `index-staleness: 3 of 214` 집계는 이미 계산 중 | 질의된 심볼의 **자기 파일**이 stale이면 심볼 단위 플래그(프로젝트 전역 한 줄이 아니라). 워처는 선택적 opt-in | 중(플래그)/대(워처) |
+| S4 | README 1,281줄·73KB, 한·영 수동 동기화, 문서 사이트 없음 | PR #98이 통째로 퇴고 작업. 평가자가 30초에 "뭐고 되는가"를 못 읽음 | ~200줄(문제·벤치 표·설치·5줄 퀵스타트·정직성 문단)로 축소, 레퍼런스는 GitHub Pages | 중 |
+| S5 | 추론 간선 provenance 축이 명령마다 다른 필드로 흩어짐 | proven/dynamic 채널, `automaticRuntime`/`observedRuntime`, `RetentionReason` 각각. codegraph는 `provenance:'heuristic'`+`synthesizedBy` 단일 축(단, 코드상 synthesizer 4종에만 실제 부착) | 모든 간선·사실에 `provenance: compiler\|syntax\|heuristic\|observed` 단일 축. isthmus 조인이 기계 판독 신뢰도를 얻음 | 중 |
+| S6 | 테스트 영향 질의(갭 ⑦) | codegraph `affected` + 복붙 CI 스니펫으로 출시. cartograph는 역방향 도달성과 impact `tests` 필드 보유 | `cartograph affected --since` 승격 + 동일 CI 레시피 | 소~중 |
+
+### 지킬 것 (따라가면 안 되는 것)
+1. **기본 on 텔레메트리·호스팅 유료 티어.** "100% 로컬·계정 없음·MIT·유료 티어 없음"은 Periphery Pro
+   라이선스 게이트에 맞선 가장 날카로운 차별점이다.
+2. **추측으로 산 폭.** codegraph는 이름 일치·관행(`View`/`Manager` 접미사, Cocoa 전치사)으로 해소하고
+   태깅한다. cartograph는 컴파일러가 기록한 것만 읽고 `deletable: true`를 영원히 내지 않는다(AGENTS.md).
+   provenance 태그 아이디어는 빌리되, 증명 못 한 간선을 합성하려는 의지는 빌리지 않는다.
+
+### 권장 착수 순서
+C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) → C3(중). 기존 갭 ③~⑩과의 병합은 메인테이너 판단.
+
 ## Next Steps
 
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
-2. ②불필요 ignore: PR #107 스쿼시 머지 완료(`66037f8`). 다음은 ③.
+2. ②불필요 ignore: PR #107 스쿼시 머지 완료(`66037f8`). 다음 기본 순서는 ③이지만,
+   아래 "경쟁 조사 — codegraph 대비 개선점" 섹션의 후보(C1~C5·S1~S6)와 병합 여부는
+   메인테이너 판단이다 — 권장 착수 순서는 그 섹션 끝에 있다.
 3. 이후 순서: ③불필요 public → ④impact --before 제거 간선 →
    ⑤기계적 fix → ⑥impact 입도 → ⑦테스트 영향 → ⑧GitHub Action → ⑨equatable 옵션.
    ⑩런타임 텔레메트리는 연구 전용 보류.
@@ -308,5 +363,7 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
 0.18.0 릴리스와 PR #104·#106·#107은 전부 머지·배포됐습니다. 경쟁 갭 목록의
 ②불필요 ignore 감지는 PR #107 스쿼시 머지(`66037f8`)로 완료됐습니다.
-다음은 ③불필요 public 경고입니다 — 아직 브랜치가 없습니다.
+다음은 ③불필요 public 경고입니다 — 아직 브랜치가 없습니다. 단, HANDOFF의
+"경쟁 조사 — codegraph 대비 개선점" 섹션에 메인테이너가 정리한 우선 후보
+(C1~C5·S1~S6와 권장 착수 순서)가 있으니 ③과의 병합 순서를 먼저 확인하세요.
 완료된 배포·검증을 반복하지 마세요. 나머지 갭 순서는 Goal 섹션에 있습니다.
