@@ -112,3 +112,14 @@ Removing receiver-as-caller edges makes the uninstantiated Flutter channel stub 
 type instead of separate initializer/method findings. The registrar protocol is used only by an
 unreached registration method unless public APIs are retained. External bridge roots still keep
 the actual channel/handler paths they identify.
+
+## Ignore comments — both judgements
+
+`IgnoreComments.swift` and `FileIgnored.swift` pin the two verdicts a `cartograph:ignore`
+comment can get, matching Periphery 3.7's superfluous-ignore detection. `IgnoredButUsed` is
+called by `exerciseIgnoreCommentShapes()` (itself reachable from `main.swift`), so its comment
+suppresses nothing and must be reported. `IgnoredAndDead` is genuinely unreachable, so its
+comment is doing real work: it must neither be reported as superfluous nor let the declaration
+surface in `expected-unused.txt`. `FileIgnored.swift` carries `cartograph:ignore:all` over a
+file whose only declaration is used, producing one file-scope diagnostic instead of one per
+declaration. The full list lives in `expected-superfluous-ignore.txt`.

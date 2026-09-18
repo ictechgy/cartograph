@@ -17,6 +17,7 @@ public enum AnalysisDiagnostics {
         public static let unusedParameter = "unused-parameter"
         public static let assignOnly = "assign-only"
         public static let unusedImport = "unused-import"
+        public static let superfluousIgnore = "superfluous-ignore"
     }
 
     /// 순환 의존성 → 진단.
@@ -140,6 +141,37 @@ public enum AnalysisDiagnostics {
                 message: "import '\(fact.spelling)' is never used",
                 location: fact.location,
                 subject: "import:\(fact.location.path):\(fact.spelling)"
+            )
+        }
+    }
+
+    /// 떼어 내도 아무 보고도 억제하지 않는 `cartograph:ignore` → 진단.
+    ///
+    /// 억제할 발견이 없는 주석은 죽은 주석이다 — 선언을 죽은 것으로 영원히
+    /// 덮고, 지워도 된다는 잘못된 확신을 남긴다. 경고이며 strict 카운트에는
+    /// 넣지 않는다. 베이스라인 키는 선언 자체의 발견과 섞이지 않도록 주석임을
+    /// 표시한다.
+    public static func superfluousIgnoreDiagnostics(for report: UnusedCodeReport) -> [Diagnostic] {
+        report.superfluousIgnores.map { entry in
+            let message: String
+            let subject: String
+            if entry.coversWholeFile, let path = entry.node.location?.path {
+                message = "file-level ignore comment is superfluous "
+                    + "— no declaration in this file needs it"
+                subject = "ignore:file:\(path)"
+            } else {
+                let covered = entry.coveredCount > 1
+                    ? " and \(entry.coveredCount - 1) declaration(s) it covers" : ""
+                message = "ignore comment on '\(entry.node.qualifiedName)'\(covered) is superfluous "
+                    + "— removing it would report nothing"
+                subject = (entry.node.usr ?? entry.node.id.rawValue) + "|ignore"
+            }
+            return Diagnostic(
+                ruleIdentifier: Rule.superfluousIgnore,
+                severity: .warning,
+                message: message,
+                location: entry.node.location,
+                subject: subject
             )
         }
     }

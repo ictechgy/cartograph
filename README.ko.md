@@ -256,6 +256,21 @@ Swift USR은 소유 모듈을 담고 있으므로, 파일이 실제로 참조한
 `Foundation`의 무엇이든 쓰면 사용으로 셉니다 — 그리고 진단에는 좁힌 형태 그대로를 적습니다.
 다른 경고 규칙과 마찬가지로 `unused-import`는 `--strict` 계산에 넣지 않습니다.
 
+`dead`는 아무것도 억제하지 않는 `cartograph:ignore` 주석도 `superfluous-ignore` 규칙의
+경고로 보고합니다:
+
+```console
+Sources/Net/Client.swift:41:1: warning: ignore comment on 'Net.Client' and 2 declaration(s) it covers is superfluous — removing it would report nothing
+```
+
+일반 참조가 이미 살려 두는 선언에 붙은 주석은 아무 일도 하지 않지만, 그 코드가 죽었다는
+잘못된 인상을 남깁니다. 판정은 반사실적입니다 — 그 주석만 뗀 상태로 도달성을 다시 돌려
+새 발견이 하나도 생기지 않을 때만 보고합니다. 그래서 실제로 죽은 선언의 주석은 억제를
+계속하고, 떼면 도달 불가 선언이 드러날 주석은 절대 표시하지 않습니다. 파일의 선언 전체가
+무시되면 주석을 파일 범위 단위 하나로 봅니다(`cartograph:ignore:all`과 선언별 주석은
+그래프에서 구별되지 않음) 한 건으로 보고합니다. 다른 경고 규칙과 마찬가지로
+`superfluous-ignore`는 `--strict` 계산에 넣지 않습니다.
+
 `--report-test-only`는 다른 질문에 답합니다 — **테스트나 프리뷰에서만** 도달하는 생산
 선언이 무엇인가입니다. 죽은 코드가 아닙니다. 지우면 테스트가 깨집니다. 다만 테스트가 유일한
 호출자라는 사실은 팀이 알아야 합니다. `info`로 보고하므로 빌드를 실패시키지 않습니다.

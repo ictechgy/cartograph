@@ -50,6 +50,26 @@ if [ "$actual_unused" != "$expected_unused" ]; then
 fi
 echo "  ok  미사용 보고 $(echo "$expected_unused" | grep -c .)건이 기대와 일치"
 
+# 무시 주석 자체의 진단도 통째로 고정한다. 쓰이는 선언의 주석과 파일 전체
+# 주석은 불필요로 보고되어야 하고, 실제로 죽은 선언의 주석은 나오면 안 된다.
+actual_superfluous_ignore="$(
+    "$CARTOGRAPH" dead --project "$FIXTURE" --report-format json 2>/dev/null |
+        python3 -c "
+import json, sys
+document = json.load(sys.stdin)
+names = sorted(d['message'] for d in document['diagnostics'] if d['ruleIdentifier'] == 'superfluous-ignore')
+print('\n'.join(names))
+"
+)"
+expected_superfluous_ignore="$(cat "$FIXTURE/expected-superfluous-ignore.txt")"
+
+if [ "$actual_superfluous_ignore" != "$expected_superfluous_ignore" ]; then
+    echo "불필요 무시 주석 보고가 기대와 다릅니다." >&2
+    diff <(echo "$expected_superfluous_ignore") <(echo "$actual_superfluous_ignore") || true
+    exit 1
+fi
+echo "  ok  불필요 무시 주석 보고 $(echo "$expected_superfluous_ignore" | grep -c .)건이 기대와 일치"
+
 actual_test_only="$(
     "$CARTOGRAPH" dead --project "$FIXTURE" --report-test-only --report-format json 2>/dev/null |
         python3 -c "

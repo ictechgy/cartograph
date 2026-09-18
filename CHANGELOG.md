@@ -7,6 +7,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `dead` reports `cartograph:ignore` comments that suppress nothing, as warnings under the
+  `superfluous-ignore` rule — the same judgement Periphery 3.7 added. The check is
+  counterfactual: reachability is re-run with only that comment removed, and the comment is
+  reported only when no new finding would appear. Comments on genuinely dead declarations keep
+  suppressing them, a comment covering a used declaration is flagged, and a file whose every
+  declaration is ignored is reported once as a file-scope unit (`cartograph:ignore:all` and
+  per-declaration comments are indistinguishable in the graph). Warnings do not count toward
+  `--strict`.
+
+### Fixed
+
+- The persistent index-reader database no longer serves a file's occurrences from a deleted
+  "ghost" unit. IndexStoreDB keeps unit entries after the unit file is removed, and
+  `symbolOccurrences(inFilePath:)` could resolve to such a stale unit and return zero
+  occurrences — silently dropping a whole file's edges (observed as `main.swift` losing all
+  top-level references after `.build` was recreated). The unit-file set is now part of the
+  database path, so a changed unit set opens a fresh reader database while an unchanged set
+  keeps reusing the cache.
+
 ### Changed
 
 - `serve` re-verifies the session input fingerprint at most once per second instead of

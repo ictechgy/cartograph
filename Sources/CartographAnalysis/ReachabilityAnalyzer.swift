@@ -26,6 +26,26 @@ public enum ReachabilityExplanation: Sendable, Equatable {
     case unknown
 }
 
+/// `cartograph:ignore` 를 떼어 내도 아무 보고도 생기지 않는, 아무 일도 하지 않는 무시 주석 하나.
+public struct SuperfluousIgnore: Sendable, Equatable {
+    /// 주석이 덮는 범위의 최상위 선언. 파일 단위면 그 파일의 첫 무시 선언이다.
+    public let node: GraphNode
+    /// 주석 하나가 덮는 선언 수(앵커 포함).
+    public let coveredCount: Int
+    /// 파일의 선언 전체가 한 단위로 묶였는지 여부.
+    ///
+    /// `cartograph:ignore:all` 도 선언마다 같은 속성으로 번지므로 그래프만으로는
+    /// 파일 코멘트 하나와 선언별 코멘트를 구별할 수 없다. 파일의 정점이 전부
+    /// 무시된 경우는 하나의 파일 범위 주석으로 본다.
+    public let coversWholeFile: Bool
+
+    public init(node: GraphNode, coveredCount: Int, coversWholeFile: Bool) {
+        self.node = node
+        self.coveredCount = coveredCount
+        self.coversWholeFile = coversWholeFile
+    }
+}
+
 /// 데드코드 분석 결과.
 public struct UnusedCodeReport: Sendable, Equatable {
     /// 보고 대상 미사용 선언. 위치 순으로 정렬되어 있다.
@@ -61,6 +81,11 @@ public struct UnusedCodeReport: Sendable, Equatable {
     /// 미사용이다. 재수출·조건부·무시 표식이 있거나 근거를 확신할 수 없는
     /// 파일의 import는 목록에 나타나지 않는다.
     public let unusedImports: [IndexedImport]
+    /// 떼어 내도 아무 보고도 생기지 않는 `cartograph:ignore` 주석. 위치 순으로 정렬되어 있다.
+    ///
+    /// 억제할 발견이 없는 주석은 선언을 죽은 것으로 영원히 덮는 죽은 주석이다.
+    /// 무시 정점이 하나도 없으면 비어 있고, 그때는 반사실 탐색도 돌지 않는다.
+    public let superfluousIgnores: [SuperfluousIgnore]
     /// 도달 경로 복원을 위한 선행 정점 사전.
     private let predecessors: [NodeID: NodeID]
 
@@ -74,7 +99,8 @@ public struct UnusedCodeReport: Sendable, Equatable {
         testOnly: [GraphNode] = [],
         unusedParameters: [IndexedParameter] = [],
         assignOnly: [GraphNode] = [],
-        unusedImports: [IndexedImport] = []
+        unusedImports: [IndexedImport] = [],
+        superfluousIgnores: [SuperfluousIgnore] = []
     ) {
         self.testOnly = testOnly
         self.unused = unused
@@ -86,6 +112,7 @@ public struct UnusedCodeReport: Sendable, Equatable {
         self.unusedParameters = unusedParameters
         self.assignOnly = assignOnly
         self.unusedImports = unusedImports
+        self.superfluousIgnores = superfluousIgnores
     }
 
     /// 도달 가능한 정점의 비율(0...1).
@@ -209,7 +236,14 @@ public struct ReachabilityAnalyzer: Sendable {
             ),
             unusedParameters: unusedParameters,
             assignOnly: assignOnly,
-            unusedImports: UnusedImportAnalyzer.analyze(snapshot)
+            unusedImports: UnusedImportAnalyzer.analyze(snapshot),
+            superfluousIgnores: superfluousIgnores(
+                declared: declared,
+                reachable: traversal.reachable,
+                protocolRequirementOwners: protocolRequirementOwners,
+                graph: graph,
+                snapshot: snapshot
+            )
         )
     }
 
@@ -681,5 +715,189 @@ public struct ReachabilityAnalyzer: Sendable {
             current = parent
         }
         return false
+    }
+
+    // MARK: - 불필요한 무시 주석
+
+    /// `cartograph:ignore` 코멘트 하나가 덮는 선언 묶음.
+    private struct IgnoreUnit {
+        /// 단위에 속한 정점.
+        var members: Set<NodeID>
+        /// 진단 위치를 제공하는, 위치가 가장 앞선 선언.
+        var anchor: GraphNode
+        /// 파일의 선언 전체가 한 단위로 묶였는지.
+        var coversWholeFile: Bool
+    }
+
+    /// 주석을 떼어 내도 보고가 달라지지 않는 무시 단위를 찾는다.
+    ///
+    /// 이 판정은 "그 주석이 없었다면 무엇이 보고됐는가" 하는 반사실 질의다.
+    /// 모든 주석을 동시에 뗀 탐색을 한 번 돌려 그래도 살아남는 단위는 즉시
+    /// 불필요로 확정하고, 그래도 죽는 단위만 자기 범위의 무지만 뗀 탐색으로
+    /// 다시 본다 — 다른 주석이 살려 두는 선언에 기대 죽는 것과 스스로 죽는
+    /// 것을 구분해야 연쇄된 주석을 억지로 붙잡지 않기 때문이다.
+    private func superfluousIgnores(
+        declared: [NodeID: RetentionReason],
+        reachable: Set<NodeID>,
+        protocolRequirementOwners: [NodeID: NodeID],
+        graph: CodeGraph,
+        snapshot: IndexSnapshot
+    ) -> [SuperfluousIgnore] {
+        let units = ignoreUnits(in: graph)
+        guard !units.isEmpty else { return [] }
+
+        // 정점 하나를 덮는 단위 수. 무시된 익스텐션의 멤버가 무시된 확장 대상에도
+        // 속하면 두 주석이 같은 선언을 덮는데, 한쪽을 떼어도 다른 쪽이 남으므로
+        // 그 정점의 무지는 살아 있는 것으로 둬야 한다.
+        var coverageCount: [NodeID: Int] = [:]
+        for unit in units {
+            for member in unit.members { coverageCount[member, default: 0] += 1 }
+        }
+
+        let fallback = policy.retainedNodesWithoutIgnoreComments(in: graph, snapshot: snapshot)
+        let reachableWithoutAnyIgnore = reachableSet(
+            retentions: fallback,
+            protocolRequirementOwners: protocolRequirementOwners,
+            graph: graph
+        )
+        let allIDs = Set(graph.sortedNodes.map(\.id))
+
+        var result: [SuperfluousIgnore] = []
+        for unit in units {
+            var isSuperfluous = unit.members.isSubset(of: reachableWithoutAnyIgnore)
+            if !isSuperfluous {
+                // 이 단위만 뗀 세계. 다른 단위가 함께 덮는 정점은 무시가 남는다.
+                var counterfactual = declared
+                for member in unit.members
+                where coverageCount[member] == 1 && declared[member] == .ignoreComment {
+                    counterfactual[member] = fallback[member]
+                }
+                let reachableWithoutUnit = reachableSet(
+                    retentions: counterfactual,
+                    protocolRequirementOwners: protocolRequirementOwners,
+                    graph: graph
+                )
+                let killed = reachable.subtracting(reachableWithoutUnit)
+                // 죽는 정점이 생겨도 보고되지 않으면(제외 종류이거나 보고 대상
+                // 조상에 숨으면) 주석은 여전히 아무 일도 하지 않는다.
+                isSuperfluous = filterReportable(
+                    graph.sortedNodes.filter { killed.contains($0.id) },
+                    unreachableIDs: allIDs.subtracting(reachableWithoutUnit),
+                    graph: graph
+                ).isEmpty
+            }
+            if isSuperfluous {
+                result.append(SuperfluousIgnore(
+                    node: unit.anchor,
+                    coveredCount: unit.members.count,
+                    coversWholeFile: unit.coversWholeFile
+                ))
+            }
+        }
+        return result.sorted { lhs, rhs in
+            switch (lhs.node.location, rhs.node.location) {
+            case let (left?, right?) where left != right:
+                return left < right
+            default:
+                return lhs.node.id < rhs.node.id
+            }
+        }
+    }
+
+    /// 무시 코멘트가 덮는 범위를 그래프에서 복원한다.
+    ///
+    /// 구문 분석은 코멘트마다 다른 표식을 남기지 않고 전부 `.ignoreComment`
+    /// 하나로 번지므로 범위는 그래프에서 다시 세운다. 무시된 `.member` 부모가
+    /// 없는 무시 정점이 한 범위의 꼭대기이고 그 아래의 무시된 자손이 같은 범위다.
+    /// 파일의 정점이 전부 무시된 경우는 파일 범위 주석 하나로 본다 — `ignore:all`
+    /// 과 선언별 주석을 그래프가 구별하지 못하고, 코멘트를 떼면 파일 전체의 보고가
+    /// 한꺼번에 결정되기 때문이다.
+    private func ignoreUnits(in graph: CodeGraph) -> [IgnoreUnit] {
+        let ignored = Set(graph.sortedNodes.filter {
+            !$0.isExternal && $0.attributes.contains(.ignoreComment)
+        }.map(\.id))
+        guard !ignored.isEmpty else { return [] }
+
+        var nodesByPath: [String: [GraphNode]] = [:]
+        for node in graph.sortedNodes {
+            guard let path = node.location?.path else { continue }
+            nodesByPath[path, default: []].append(node)
+        }
+
+        var fileScopeIDs: Set<NodeID> = []
+        var units: [IgnoreUnit] = []
+        for (_, nodes) in nodesByPath.sorted(by: { $0.key < $1.key }) {
+            let fileIgnored = nodes.filter { ignored.contains($0.id) }
+            guard !fileIgnored.isEmpty,
+                  nodes.allSatisfy({ ignored.contains($0.id) || $0.isExternal })
+            else { continue }
+            let members = Set(fileIgnored.map(\.id))
+            fileScopeIDs.formUnion(members)
+            units.append(IgnoreUnit(
+                members: members,
+                anchor: fileIgnored.min(by: Self.locationThenID) ?? fileIgnored[0],
+                coversWholeFile: true
+            ))
+        }
+
+        // 나머지는 무시된 `.member` 부모가 없는 꼭대기에서 무시된 자손으로 묶는다.
+        // 파일 범위 정점은 이미 한 단위로 묶였으므로 부모 판정에서도 뺀다 — 다른
+        // 파일의 무시된 확장 대상 타입이 이쪽 선언의 독립된 주석을 삼키면 안 된다.
+        for node in graph.sortedNodes
+        where ignored.contains(node.id) && !fileScopeIDs.contains(node.id) {
+            let hasIgnoredParent = graph.incomingEdges(to: node.id).contains {
+                $0.kind == .member && ignored.contains($0.source)
+                    && !fileScopeIDs.contains($0.source)
+            }
+            guard !hasIgnoredParent else { continue }
+            var members: Set<NodeID> = [node.id]
+            var queue = [node.id]
+            var head = 0
+            while head < queue.count {
+                let current = queue[head]
+                head += 1
+                for edge in graph.outgoingEdges(from: current)
+                where edge.kind == .member && ignored.contains(edge.target)
+                    && !fileScopeIDs.contains(edge.target) {
+                    if members.insert(edge.target).inserted { queue.append(edge.target) }
+                }
+            }
+            units.append(IgnoreUnit(members: members, anchor: node, coversWholeFile: false))
+        }
+        return units
+    }
+
+    /// 보존 판정부터 도달성 탐색까지 한 번 돌린 도달 가능 집합.
+    ///
+    /// 반사실 탐색은 뿌리 선언만 바꾸고 증인 조건·물려받은 보존·역방향
+    /// 오버라이드 규칙은 본분석과 똑같이 둔다 — 주석을 떼어도 그 규칙들의
+    /// 의미는 변하지 않는다.
+    private func reachableSet(
+        retentions: [NodeID: RetentionReason],
+        protocolRequirementOwners: [NodeID: NodeID],
+        graph: CodeGraph
+    ) -> Set<NodeID> {
+        let (unconditional, conditional) = partitionWitnesses(retentions, graph: graph)
+        let inherited = inheritedRetentions(retentions: unconditional, graph: graph)
+        return traverse(
+            from: Set(unconditional.keys).union(inherited.keys),
+            conditionalWitnesses: conditional,
+            protocolRequirementOwners: protocolRequirementOwners,
+            in: graph
+        ).reachable
+    }
+
+    /// 위치가 앞선 정점을 고르는 비교자. 위치가 없거나 같으면 식별자로 자른다.
+    private static func locationThenID(_ lhs: GraphNode, _ rhs: GraphNode) -> Bool {
+        switch (lhs.location, rhs.location) {
+        case let (left?, right?) where left != right:
+            return left < right
+        case (nil, _?):
+            return false
+        case (_?, nil):
+            return true
+        default:
+            return lhs.id < rhs.id
+        }
     }
 }

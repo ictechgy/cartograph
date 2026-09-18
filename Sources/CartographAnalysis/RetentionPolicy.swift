@@ -34,6 +34,24 @@ public struct RetentionPolicy: Sendable {
     ///   - graph: 심볼 레벨 그래프.
     ///   - snapshot: 외부 심볼 판정에 필요한 원본 스냅샷.
     public func retainedNodes(in graph: CodeGraph, snapshot: IndexSnapshot) -> [NodeID: RetentionReason] {
+        retainedNodes(in: graph, snapshot: snapshot, honoringIgnoreComments: true)
+    }
+
+    /// `cartograph:ignore` 를 보존 근거로 인정하지 않은 판정.
+    ///
+    /// 무시 주석이 실제로 보고를 억제하고 있는지 재는 데 쓴다. 주석을 떼어 내도
+    /// 다른 근거가 살리는 선언에는 주석이 아무 일도 하지 않는다.
+    public func retainedNodesWithoutIgnoreComments(
+        in graph: CodeGraph, snapshot: IndexSnapshot
+    ) -> [NodeID: RetentionReason] {
+        retainedNodes(in: graph, snapshot: snapshot, honoringIgnoreComments: false)
+    }
+
+    private func retainedNodes(
+        in graph: CodeGraph,
+        snapshot: IndexSnapshot,
+        honoringIgnoreComments: Bool
+    ) -> [NodeID: RetentionReason] {
         let externalBases = Set(outsideGraphRelations(in: snapshot, graph: graph).map(\.sourceUSR))
         var decisions: [NodeID: RetentionReason] = [:]
         // 같은 파일의 정점은 수백 개다. retained_files 판정은 파일의 성질이지
@@ -43,7 +61,7 @@ public struct RetentionPolicy: Sendable {
         for node in graph.sortedNodes {
             if let reason = reason(
                 for: node, in: graph, symbolsWithExternalBase: externalBases,
-                pathDecisions: &pathDecisions
+                pathDecisions: &pathDecisions, honoringIgnoreComments: honoringIgnoreComments
             ) {
                 decisions[node.id] = reason
             }
@@ -96,12 +114,13 @@ public struct RetentionPolicy: Sendable {
         for node: GraphNode,
         in graph: CodeGraph,
         symbolsWithExternalBase: Set<String>,
-        pathDecisions: inout [String: Bool]
+        pathDecisions: inout [String: Bool],
+        honoringIgnoreComments: Bool = true
     ) -> RetentionReason? {
         // 구문 누락을 설명해야 하므로 이미 있던 근거보다 우선한다.
         // 테스트 전용 판정도 소스 접근을 복구하기 전에는 보수적으로 억제한다.
         if node.attributes.contains(.sourceUnavailable) { return .sourceUnavailable }
-        if node.attributes.contains(.ignoreComment) { return .ignoreComment }
+        if honoringIgnoreComments, node.attributes.contains(.ignoreComment) { return .ignoreComment }
         if isUserRetained(node, memo: &pathDecisions) { return .userConfigured }
         // 사용자 설정 다음이다. 외부 도구의 주장은 설정보다 약하고, 인덱스에서 유도한
         // 나머지 규칙보다는 구체적이다(어느 줄이 불렀는지까지 안다).
