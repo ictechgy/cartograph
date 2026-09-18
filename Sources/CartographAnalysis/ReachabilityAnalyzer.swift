@@ -86,6 +86,12 @@ public struct UnusedCodeReport: Sendable, Equatable {
     /// 억제할 발견이 없는 주석은 선언을 죽은 것으로 영원히 덮는 죽은 주석이다.
     /// 무시 정점이 하나도 없으면 비어 있고, 그때는 반사실 탐색도 돌지 않는다.
     public let superfluousIgnores: [SuperfluousIgnore]
+    /// 자기 모듈 밖에서 참조되지 않아 internal 로 줄일 수 있는 public 선언.
+    ///
+    /// 죽은 코드가 아니다 — 같은 모듈 안에서만 쓰이는 것이 확인된 선언이다.
+    /// 참조가 없는 표면은 여기 오지 않는다(`unused-symbol` 의 몫이거나 의도된
+    /// API 이고), `--retain-public` 이 켜져 있으면 규칙 자체가 침묵한다.
+    public let redundantPublic: [RedundantPublic]
     /// 도달 경로 복원을 위한 선행 정점 사전.
     private let predecessors: [NodeID: NodeID]
 
@@ -100,7 +106,8 @@ public struct UnusedCodeReport: Sendable, Equatable {
         unusedParameters: [IndexedParameter] = [],
         assignOnly: [GraphNode] = [],
         unusedImports: [IndexedImport] = [],
-        superfluousIgnores: [SuperfluousIgnore] = []
+        superfluousIgnores: [SuperfluousIgnore] = [],
+        redundantPublic: [RedundantPublic] = []
     ) {
         self.testOnly = testOnly
         self.unused = unused
@@ -113,6 +120,7 @@ public struct UnusedCodeReport: Sendable, Equatable {
         self.assignOnly = assignOnly
         self.unusedImports = unusedImports
         self.superfluousIgnores = superfluousIgnores
+        self.redundantPublic = redundantPublic
     }
 
     /// 도달 가능한 정점의 비율(0...1).
@@ -228,6 +236,13 @@ public struct ReachabilityAnalyzer: Sendable {
             graph: graph
         )
 
+        let redundantPublicAnalyzer = RedundantPublicAnalyzer(
+            graph: graph,
+            snapshot: snapshot,
+            testModules: testModules(in: retentions, graph: graph),
+            retentions: retentions
+        )
+
         return UnusedCodeReport(
             unused: reported,
             retentions: retentions,
@@ -244,9 +259,11 @@ public struct ReachabilityAnalyzer: Sendable {
                 reachable: traversal.reachable,
                 testOnly: testOnly,
                 protocolRequirementOwners: protocolRequirementOwners,
+                redundantPublic: redundantPublicAnalyzer,
                 graph: graph,
                 snapshot: snapshot
-            )
+            ),
+            redundantPublic: redundantPublicAnalyzer.findings(reachable: traversal.reachable)
         )
     }
 
@@ -427,10 +444,7 @@ public struct ReachabilityAnalyzer: Sendable {
         // 그래프가 말해 주는 사실로 판단한다. 이것이 없으면 목록의 대부분이 테스트
         // 타깃 내부의 도우미로 채워져, 정작 알고 싶은 것 — 테스트만 붙잡고 있는
         // *생산* 코드 — 이 묻힌다. 실측에서 408건 중 318건이 그런 잡음이었다.
-        var testModules: Set<String> = []
-        for (node, reason) in retentions where reason.isTestTargetRoot {
-            if let module = graph.node(node)?.module { testModules.insert(module) }
-        }
+        let testModules = testModules(in: retentions, graph: graph)
 
         // 같은 조건을 여기에도 건다. 걸러진 목록만 넘기면 "이미 살아난 증인이라 무조건
         // 뿌리여도 된다" 는 우연에 기대게 되고, 다음 사람이 목록을 바꾸는 순간 증인과 그
@@ -458,6 +472,18 @@ public struct ReachabilityAnalyzer: Sendable {
                 && !isTestInfrastructure($0.id, retentions: retentions, graph: graph)
         }
         return filterReportable(candidates, unreachableIDs: Set(candidates.map(\.id)), graph: graph)
+    }
+
+    /// 테스트 선언을 뿌리로 가진 모듈들. 이름 규칙이 아니라 보존 근거가 말한다.
+    private func testModules(
+        in retentions: [NodeID: RetentionReason],
+        graph: CodeGraph
+    ) -> Set<String> {
+        var modules: Set<String> = []
+        for (node, reason) in retentions where reason.isTestTargetRoot {
+            if let module = graph.node(node)?.module { modules.insert(module) }
+        }
+        return modules
     }
 
     /// 테스트 코드 자신인지 판단한다.
@@ -752,11 +778,14 @@ public struct ReachabilityAnalyzer: Sendable {
     ///
     /// 보고 대상은 죽은 선언만이 아니다. 테스트에서만 도달되는 선언도 보고에
     /// 오르므로, 주석을 떼면 test-only 발견이 되는 선언을 덮는 주석도 일을 한다.
+    /// 불필요한 public 접근 수준도 같은 방식으로 억제된다 — 주석을 떼면 그
+    /// 발견이 드러나는 선언을 덮는 주석은 일을 한다.
     private func superfluousIgnores(
         declared: [NodeID: RetentionReason],
         reachable: Set<NodeID>,
         testOnly: [GraphNode],
         protocolRequirementOwners: [NodeID: NodeID],
+        redundantPublic: RedundantPublicAnalyzer,
         graph: CodeGraph,
         snapshot: IndexSnapshot
     ) -> [SuperfluousIgnore] {
@@ -820,6 +849,7 @@ public struct ReachabilityAnalyzer: Sendable {
             let newlyUncovered = unit.members.filter { remainingCoverage[$0, default: 0] == 1 }
             var isSuperfluous = unit.members.isSubset(of: reachableWithoutAnyIgnore)
                 && unit.members.isDisjoint(with: testOnlyWithoutAll)
+            var counterfactualReachable = reachableWithoutAnyIgnore
             if isSuperfluous {
                 // 도달성이 같아도 주석이 assign-only나 미사용 import 보고를
                 // 억제하고 있을 수 있다 — 그 보고를 떠받치는 주석은 필요하다.
@@ -840,6 +870,7 @@ public struct ReachabilityAnalyzer: Sendable {
                     graph: graph,
                     alreadyReached: reachableWithoutAnyIgnore
                 )
+                counterfactualReachable = world.reachable
                 let killed = reachable.subtracting(world.reachable)
                 // 죽는 정점이 생겨도 보고되지 않으면(제외 종류이거나 보고 대상
                 // 조상에 숨으면) 주석은 여전히 아무 일도 하지 않는다.
@@ -874,6 +905,16 @@ public struct ReachabilityAnalyzer: Sendable {
                     isSuperfluous = newAssignOnly.allSatisfy { !newlyUncovered.contains($0.id) }
                         && !exposesIgnoredImport(unit, in: snapshot, reportedLocations: reportedImportLocations)
                 }
+            }
+            if isSuperfluous {
+                // 주석을 떼면 불필요한 public 접근 수준 보고가 드러나는 선언이
+                // 있으면 주석은 그 보고를 억제하고 있던 것이다.
+                isSuperfluous = !exposesRedundantPublic(
+                    newlyUncovered,
+                    reachable: counterfactualReachable,
+                    analyzer: redundantPublic,
+                    graph: graph
+                )
             }
             if isSuperfluous {
                 // 확정된 주석은 이 세계에서 영구히 뗀다. 다른 단위가 함께 덮는
@@ -1023,6 +1064,23 @@ public struct ReachabilityAnalyzer: Sendable {
         }
         return UnusedImportAnalyzer.analyze(unignored).contains {
             $0.location.path == path && !reportedLocations.contains($0.location)
+        }
+    }
+
+    /// 주석을 떼면 불필요한 public 접근 수준 보고가 새로 드러나는지.
+    ///
+    /// 무시 주석은 모든 규칙에서 선언을 빼낸다 — 새 규칙이 생기면 그 규칙의
+    /// 발견도 함께 재야 한다. 그러지 않으면 실제로 보고를 억제하던 주석을
+    /// "아무 일도 하지 않는다"고 말하게 된다.
+    private func exposesRedundantPublic(
+        _ newlyUncovered: Set<NodeID>,
+        reachable: Set<NodeID>,
+        analyzer: RedundantPublicAnalyzer,
+        graph: CodeGraph
+    ) -> Bool {
+        newlyUncovered.contains { id in
+            guard let node = graph.node(id) else { return false }
+            return analyzer.finding(for: node, reachable: reachable, honoringIgnoreComments: false) != nil
         }
     }
 

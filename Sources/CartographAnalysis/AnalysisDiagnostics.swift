@@ -18,6 +18,7 @@ public enum AnalysisDiagnostics {
         public static let assignOnly = "assign-only"
         public static let unusedImport = "unused-import"
         public static let superfluousIgnore = "superfluous-ignore"
+        public static let redundantPublic = "redundant-public"
     }
 
     /// 순환 의존성 → 진단.
@@ -172,6 +173,27 @@ public enum AnalysisDiagnostics {
                 message: message,
                 location: entry.node.location,
                 subject: subject
+            )
+        }
+    }
+
+    /// 자기 모듈 밖에서 참조되지 않는 public 선언 → 진단.
+    ///
+    /// 접근 수준을 낮추자는 발견이지 삭제 판정이 아니다. 같은 모듈 안에서만
+    /// 쓰이는 선언도 여기 오므로 "미사용"과 섞으면 지워도 된다고 읽힌다.
+    /// 경고이며 strict 카운트에는 넣지 않는다.
+    public static func redundantPublicDiagnostics(for report: UnusedCodeReport) -> [Diagnostic] {
+        report.redundantPublic.map { finding in
+            let node = finding.node
+            let references = finding.referenceCount == 1
+                ? "1 reference" : "\(finding.referenceCount) references"
+            return Diagnostic(
+                ruleIdentifier: Rule.redundantPublic,
+                severity: .warning,
+                message: "\(node.kind.rawValue) '\(node.qualifiedName)' is referenced only within "
+                    + "its own module (\(references)) — it could be internal",
+                location: node.location,
+                subject: node.usr ?? node.id.rawValue
             )
         }
     }
