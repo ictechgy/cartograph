@@ -336,7 +336,11 @@ final class DeclarationCollector: SyntaxVisitor {
     ) -> DeclarationFacts {
         var resolved = attributes
         if context.inheritsObjectiveCExposure { resolved.insert(.objcAccessible) }
-        if context.isIgnored { resolved.insert(.ignoreComment) }
+        if context.isIgnored, resolved.insert(.ignoreComment).inserted {
+            // 조상의 주석이 물려준 무시다 — 자기 주석이 있는 선언과 구분해
+            // 둬야 불필요 주석 진단이 존재하지 않는 코멘트를 찾지 않는다.
+            resolved.insert(.ignoreInherited)
+        }
         if modifiers.contains(where: { $0.name.text == "override" }) { resolved.insert(.overrideDeclaration) }
         if modifiers.contains(where: { $0.name.text == "dynamic" }) { resolved.insert(.dynamicDispatch) }
 

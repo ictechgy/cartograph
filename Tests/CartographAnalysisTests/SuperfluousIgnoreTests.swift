@@ -57,8 +57,8 @@ struct SuperfluousIgnoreTests {
         #expect(superfluousNames(report) == ["App"])
     }
 
-    @Test("무시된 타입의 죽은 멤버가 있으면 그 주석은 필요하다")
-    func ignoreCoveringDeadMemberIsNeeded() {
+    @Test("멤버에 자기 주석이 있으면 타입의 주석만 불필요다")
+    func parentIgnoreIsSuperfluousWhenMemberHasOwnComment() {
         var builder = SnapshotBuilder()
         builder.symbol("App", kind: .structType, attributes: [.entryPoint])
         builder.symbol("Used", kind: .structType, attributes: [.ignoreComment])
@@ -68,14 +68,58 @@ struct SuperfluousIgnoreTests {
         )
         builder.reference(from: "App", to: "Used", kind: .reference)
 
-        // 코멘트 하나가 타입과 멤버를 함께 덮는다. 떼어 내면 helper 가
-        // 미사용으로 보고되므로 주석은 필요하다.
+        // 코멘트는 선언마다 따로 판정한다. 타입의 주석을 떼어도 Used 는
+        // 참조로 살아 있고 helper 는 자기 주석이 덮으므로 새 보고가 없다
+        // — 타입의 주석은 불필요다. 반대로 helper 의 주석은 떼면 멤버가
+        // 미사용으로 보고되므로 필요하다. 둘을 한 단위로 묶으면 helper
+        // 때문에 타입의 불필요 주석이 숨겨진다.
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(superfluousNames(report) == ["Used"])
+    }
+
+    @Test("조상 주석이 물려준 무시는 자기 단위를 만들지 않는다")
+    func inheritedIgnoreDoesNotFormOwnUnit() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Dead", kind: .structType, attributes: [.ignoreComment])
+        builder.symbol(
+            "Dead.member", name: "member", kind: .method,
+            parent: "Dead", attributes: [.ignoreComment, .ignoreInherited]
+        )
+
+        // member 에는 자기 코멘트가 없다 — Dead 의 주석 하나가 서브트리를
+        // 덮는다. member 를 따로 판정하면 커버리지가 둘로 세어져 Dead 가
+        // member 의 물려받은 보존으로 살아남아 필요한 주석이 불필요로 오판된다.
+        // 떼면 둘 다 죽고 Dead 가 보고되므로 주석은 필요하다.
         let report = analyze(builder.build())
         #expect(report.unused.isEmpty)
         #expect(report.superfluousIgnores.isEmpty)
     }
 
-    @Test("무시된 타입과 멤버가 모두 살아 있으면 주석은 불필요다")
+    @Test("살아 있는 서브트리를 덮는 주석 하나는 한 건으로 보고한다")
+    func liveSubtreeCoveredByOneCommentReportsOnce() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Used", kind: .structType, attributes: [.ignoreComment])
+        builder.symbol(
+            "Used.member", name: "member", kind: .method,
+            parent: "Used", attributes: [.ignoreComment, .ignoreInherited]
+        )
+        builder.reference(from: "App", to: "Used", kind: .reference)
+        builder.reference(from: "App", to: "Used.member", kind: .call)
+
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        // 코멘트는 Used 에 하나뿐 — member 에 대한 발견이 따로 나오면
+        // 없는 코멘트를 찾아 헤맨 것이다.
+        let finding = try #require(report.superfluousIgnores.first)
+        #expect(report.superfluousIgnores.count == 1)
+        #expect(finding.node.name == "Used")
+        #expect(finding.coveredCount == 2)
+    }
+
+    @Test("무시된 타입과 멤버가 모두 살아 있으면 두 주석 모두 불필요다")
     func ignoreOnFullyUsedTypeIsSuperfluous() throws {
         var builder = SnapshotBuilder()
         builder.symbol("App", kind: .structType, attributes: [.entryPoint])
@@ -89,9 +133,9 @@ struct SuperfluousIgnoreTests {
 
         let report = analyze(builder.build())
         #expect(report.unused.isEmpty)
-        // 코멘트 하나가 타입과 멤버를 함께 덮으므로 한 건이다.
+        // 코멘트는 선언마다 따로 판정한다 — 둘 다 아무것도 억제하지 않는다.
+        #expect(superfluousNames(report) == ["Used", "helper"])
         let finding = try #require(report.superfluousIgnores.first)
-        #expect(report.superfluousIgnores.count == 1)
         #expect(finding.node.name == "Used")
         #expect(finding.coveredCount == 2)
         #expect(!finding.coversWholeFile)
@@ -325,6 +369,78 @@ struct SuperfluousIgnoreTests {
         let report = analyze(
             builder.build(), options: .init(findsTestOnlyCode: true))
         #expect(superfluousNames(report) == ["Used"])
+    }
+
+    @Test("무시 주석이 assign-only 보고를 억제하면 필요하다")
+    func ignoreSuppressingAssignOnlyFindingIsNeeded() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Box", kind: .structType)
+        builder.symbol(
+            "Box.state", name: "state", kind: .property,
+            parent: "Box", attributes: [.ignoreComment]
+        )
+        builder.reference(from: "App", to: "Box", kind: .reference)
+        builder.reference(from: "App", to: "Box.state", kind: .reference)
+        builder.propertyAccess("Box.state", write: true)
+
+        // state 는 쓰기만 되고 읽히지 않는다 — 주석이 없으면 assign-only
+        // 발견이 된다. 주석을 떼어도 참조로 도달되므로 죽음 판정만으로는
+        // 잡히지 않는다. 그 보고를 억제하는 주석은 필요하다.
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(report.superfluousIgnores.isEmpty)
+    }
+
+    @Test("ignore:all 이 미사용 import 를 억제하면 파일 주석은 필요하다")
+    func fileIgnoreSuppressingUnusedImportIsNeeded() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol(
+            "Used", kind: .structType,
+            path: "/project/Sources/App/Other.swift",
+            attributes: [.ignoreComment, .ignoreAllComment]
+        )
+        builder.reference(from: "App", to: "Used", kind: .reference)
+        builder.importDecl(
+            "UnusedModule", path: "/project/Sources/App/Other.swift",
+            isIgnored: true
+        )
+        builder.fileModuleUsage(
+            path: "/project/Sources/App/Other.swift", owningModule: "App")
+
+        // 파일 주석을 떼면 import 도 무시가 풀려 미사용 import 발견이
+        // 새로 생긴다 — import 는 그래프 정점이 아니라 도달성 반사실에
+        // 잡히지 않으므로 따로 재본다.
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(report.superfluousIgnores.isEmpty)
+    }
+
+    @Test("ignore:all 파일의 import 가 쓰이면 파일 주석은 불필요다")
+    func fileIgnoreWithUsedImportIsSuperfluous() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol(
+            "Used", kind: .structType,
+            path: "/project/Sources/App/Other.swift",
+            attributes: [.ignoreComment, .ignoreAllComment]
+        )
+        builder.reference(from: "App", to: "Used", kind: .reference)
+        builder.importDecl(
+            "UsedModule", path: "/project/Sources/App/Other.swift",
+            isIgnored: true
+        )
+        builder.fileModuleUsage(
+            path: "/project/Sources/App/Other.swift",
+            owningModule: "App", referencedModules: ["UsedModule"])
+
+        // import 가 실제로 쓰이면 무시를 풀어도 발견이 생기지 않는다 —
+        // import 검사가 무관한 파일 주석까지 붙잡으면 안 된다.
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(report.superfluousIgnores.count == 1)
+        #expect(report.superfluousIgnores.first?.coversWholeFile == true)
     }
 
     @Test("무시 주석이 없으면 아무것도 보고하지 않는다")

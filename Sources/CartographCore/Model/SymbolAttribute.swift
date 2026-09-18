@@ -68,6 +68,13 @@ public enum SymbolAttribute: String, Codable, Sendable, CaseIterable {
     /// 구분할 필요가 없고, 이 표식은 "무시된 이유가 파일 단위인가" 라는 출처만
     /// 남긴다. 불필요한 무시 주석 진단이 파일 범위와 선언 범위를 나눌 때 읽는다.
     case ignoreAllComment
+    /// 조상 선언의 `// cartograph:ignore` 가 물려준 무시.
+    ///
+    /// 선언의 주석은 그 안쪽 서브트리 전체를 덮는다. 그래프에서 전파된 표식과
+    /// 자기 주석은 둘 다 `ignoreComment` 로 보이므로, 이 표식이 "무시의 출처가
+    /// 조상의 코멘트"임을 남긴다. 불필요한 무시 주석 진단은 자기 주석이 있는
+    /// 선언만 코멘트 단위로 세워야 하므로 둘을 구분해야 한다.
+    case ignoreInherited
     /// 소스를 읽지 못해 보존에 필요한 주석·접근 수준을 확인하지 못했다.
     case sourceUnavailable
     /// 제네릭 파라미터를 가진 선언.

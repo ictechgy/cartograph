@@ -290,7 +290,8 @@ public struct ReachabilityAnalyzer: Sendable {
         in graph: CodeGraph,
         snapshot: IndexSnapshot,
         reachable: Set<NodeID>,
-        protocolRequirementOwners: [NodeID: NodeID]
+        protocolRequirementOwners: [NodeID: NodeID],
+        honoringIgnoreComments: Bool = true
     ) -> [GraphNode] {
         guard !snapshot.propertyAccesses.isEmpty else { return [] }
         let hiddenOwners = accessHidingOwners(in: snapshot, graph: graph)
@@ -299,7 +300,7 @@ public struct ReachabilityAnalyzer: Sendable {
                   reachable.contains(node.id),
                   snapshot.propertyAccesses[node.id.rawValue]?.isAssignOnly == true,
                   !options.excludedKinds.contains(node.kind),
-                  isAccessVisible(node),
+                  isAccessVisible(node, honoringIgnoreComments: honoringIgnoreComments),
                   protocolRequirementOwners[node.id] == nil,
                   // 오버라이드·준수 증인의 읽기는 요구사항 심볼에 기록된다.
                   !graph.outgoingEdges(from: node.id).contains(where: { $0.kind == .overrides }),
@@ -312,9 +313,13 @@ public struct ReachabilityAnalyzer: Sendable {
 
     /// 이 선언 자체에 대한 접근이 인덱스에 보이는지 — 보이지 않는 경로가
     /// 열려 있으면 "읽힌 적 없다" 를 주장할 수 없다.
-    private func isAccessVisible(_ node: GraphNode) -> Bool {
+    ///
+    /// 반사실 질의에서는 `honoringIgnoreComments` 를 꺼서 "주석이 없었다면"
+    /// 보고될지를 재본다 — 주석이 assign-only 보고를 억제하고 있었다면
+    /// 그 주석은 불필요가 아니다.
+    private func isAccessVisible(_ node: GraphNode, honoringIgnoreComments: Bool = true) -> Bool {
         !node.attributes.contains(.implicit)
-            && !node.attributes.contains(.ignoreComment)
+            && !(honoringIgnoreComments && node.attributes.contains(.ignoreComment))
             && !node.attributes.contains(.runtimeManaged)
             && !node.attributes.contains(.dynamicDispatch)
             && !node.attributes.contains(.dynamicReplacement)
@@ -783,8 +788,22 @@ public struct ReachabilityAnalyzer: Sendable {
             protocolRequirementOwners: protocolRequirementOwners,
             graph: graph
         ).map(\.id))
+        // assign-only 보고도 주석이 억제한다. 모든 주석을 뗀 세계에서
+        // assign-only로 보고될 정점이면, 그 정점을 덮는 주석은 억제
+        // 역할을 하고 있으므로 불필요가 아니다.
+        let assignOnlyWithoutAll = Set(assignOnlyProperties(
+            in: graph,
+            snapshot: snapshot,
+            reachable: reachableWithoutAnyIgnore,
+            protocolRequirementOwners: protocolRequirementOwners,
+            honoringIgnoreComments: false
+        ).map(\.id))
         let allIDs = Set(graph.sortedNodes.map(\.id))
         let reportedTestOnly = Set(testOnly.map(\.id))
+        // 파일 범위 주석이 억제하는 미사용 import 발견의 기준선.
+        let reportedImportLocations = Set(
+            UnusedImportAnalyzer.analyze(snapshot).map(\.location)
+        )
 
         // 불필요로 확정된 주석은 뗀 채로 두고 다음 단위를 판정한다. 서로만
         // 참조하는 무시 덩어리는 각각을 따로 보면 둘 다 "다른 주석이 살려 준다"로
@@ -796,14 +815,23 @@ public struct ReachabilityAnalyzer: Sendable {
 
         var result: [SuperfluousIgnore] = []
         for unit in units.sorted(by: { Self.locationThenID($0.anchor, $1.anchor) }) {
+            // 이 단위를 떼면 무시가 실제로 풀리는 정점 — 다른 단위가 함께
+            // 덮는 정점은 무시가 남아 새 보고를 만들지 않는다.
+            let newlyUncovered = unit.members.filter { remainingCoverage[$0, default: 0] == 1 }
             var isSuperfluous = unit.members.isSubset(of: reachableWithoutAnyIgnore)
                 && unit.members.isDisjoint(with: testOnlyWithoutAll)
+            if isSuperfluous {
+                // 도달성이 같아도 주석이 assign-only나 미사용 import 보고를
+                // 억제하고 있을 수 있다 — 그 보고를 떠받치는 주석은 필요하다.
+                isSuperfluous = newlyUncovered.isDisjoint(with: assignOnlyWithoutAll)
+                    && !exposesIgnoredImport(unit, in: snapshot, reportedLocations: reportedImportLocations)
+            }
             if !isSuperfluous {
                 // 이 단위만 뗀 세계. 아직 확정되지 않은 다른 단위가 함께 덮는
                 // 정점은 무시가 남는다.
                 var counterfactual = remainingRetentions
-                for member in unit.members
-                where remainingCoverage[member] == 1 && counterfactual[member] == .ignoreComment {
+                for member in newlyUncovered
+                where counterfactual[member] == .ignoreComment {
                     counterfactual[member] = fallback[member]
                 }
                 let world = reachabilityWorld(
@@ -821,8 +849,8 @@ public struct ReachabilityAnalyzer: Sendable {
                     graph: graph
                 ).isEmpty
                 if isSuperfluous {
-                    // 살아남아도 테스트 전용 보고가 새로 생기면 주석은 그 보고를
-                    // 억제하고 있던 것이다 — 필요한 주석으로 둔다.
+                    // 살아남아도 테스트 전용·assign-only·미사용 import 보고가
+                    // 새로 생기면 주석은 그 보고를 억제하고 있던 것이다.
                     let newTestOnly = testOnlyCode(
                         reachable: world.reachable,
                         retentions: world.retentions,
@@ -834,6 +862,17 @@ public struct ReachabilityAnalyzer: Sendable {
                     isSuperfluous = newTestOnly.allSatisfy {
                         reportedTestOnly.contains($0.id)
                     }
+                }
+                if isSuperfluous {
+                    let newAssignOnly = assignOnlyProperties(
+                        in: graph,
+                        snapshot: snapshot,
+                        reachable: world.reachable,
+                        protocolRequirementOwners: protocolRequirementOwners,
+                        honoringIgnoreComments: false
+                    )
+                    isSuperfluous = newAssignOnly.allSatisfy { !newlyUncovered.contains($0.id) }
+                        && !exposesIgnoredImport(unit, in: snapshot, reportedLocations: reportedImportLocations)
                 }
             }
             if isSuperfluous {
@@ -882,6 +921,9 @@ public struct ReachabilityAnalyzer: Sendable {
             guard nodes.contains(where: { $0.attributes.contains(.ignoreAllComment) })
             else { continue }
             let fileIgnored = nodes.filter { ignored.contains($0.id) }
+            // 표식만 있고 무시 정점이 하나도 없는 파일(외부 심볼뿐)은 단위를
+            // 만들지 않는다 — 빈 멤버 집합은 닻도 보고도 못 만든다.
+            guard !fileIgnored.isEmpty else { continue }
             let members = Set(fileIgnored.map(\.id))
             fileScopeIDs.formUnion(members)
             units.append(IgnoreUnit(
@@ -891,18 +933,24 @@ public struct ReachabilityAnalyzer: Sendable {
             ))
         }
 
-        // 나머지는 무시된 `.member` 부모가 없는 꼭대기에서 무시된 자손으로 묶는다.
-        // 부모·자손 판정은 같은 파일 안에서만 한다 — 다른 파일의 무시된 확장
-        // 대상 타입이 이쪽 선언의 독립된 주석을 삼키면 안 된다.
+        // 나머지는 자기 주석이 있는 정점마다 단위를 세운다. 주석 단 선언이
+        // 무시된 부모 아래에 있어도 자기 단위를 가진다 — 부모의 주석은 자손까지
+        // 덮지만, 자식의 주석이 억제하는 발견은 자식 주석만 뗐을 때
+        // 드러나므로 따로 판정해야 한다. 부모 단위는 무시된 자손을 함께
+        // 덮고(부모 주석이 없어져도 자식의 주석은 남는다), 그 겹침은
+        // 커버리지 중복도로 판정한다. 조상 주석이 물려준 무시(`.ignoreInherited`)
+        // 는 자기 코멘트가 없으므로 단위를 세우지 않는다 — 그 무시를 거둘
+        // 코멘트는 물려준 조상의 것이다. 부모·자손 판정은 같은 파일
+        // 안에서만 한다 — 다른 파일의 무시된 확장 대상 타입이 이쪽
+        // 선언의 독립된 주석을 삼키면 안 된다. 위치가 없는 정점은
+        // 같은 파일로 묶을 근거가 없어 자기 단위만 둔다.
         for node in graph.sortedNodes
-        where ignored.contains(node.id) && !fileScopeIDs.contains(node.id) {
-            let path = node.location?.path
-            let hasIgnoredParent = graph.incomingEdges(to: node.id).contains {
-                $0.kind == .member && ignored.contains($0.source)
-                    && !fileScopeIDs.contains($0.source)
-                    && graph.node($0.source)?.location?.path == path
+        where ignored.contains(node.id) && !fileScopeIDs.contains(node.id)
+            && !node.attributes.contains(.ignoreInherited) {
+            guard let path = node.location?.path else {
+                units.append(IgnoreUnit(members: [node.id], anchor: node, coversWholeFile: false))
+                continue
             }
-            guard !hasIgnoredParent else { continue }
             var members: Set<NodeID> = [node.id]
             var queue = [node.id]
             var head = 0
@@ -919,6 +967,39 @@ public struct ReachabilityAnalyzer: Sendable {
             units.append(IgnoreUnit(members: members, anchor: node, coversWholeFile: false))
         }
         return units
+    }
+
+    /// 파일 범위 주석을 떼면 그 파일에서 새로 보고되는 미사용 import 가 있는지.
+    ///
+    /// 파일 맨 앞의 `ignore:all` 은 첫 import 의 주석 trivia 에도 걸려
+    /// 그 import 에 무시 표식을 붙인다. 주석을 떼면 미사용 import 발견이
+    /// 새로 생길 수 있고, 그 경우 파일 주석은 그 보고도 억제하고 있던
+    /// 것이다. import 는 그래프 정점이 아니므로 도달성 반사실에 잡히지
+    /// 않아 스냅샷을 바꿔 별도로 재본다.
+    private func exposesIgnoredImport(
+        _ unit: IgnoreUnit,
+        in snapshot: IndexSnapshot,
+        reportedLocations: Set<SourceLocation>
+    ) -> Bool {
+        guard unit.coversWholeFile,
+              let path = unit.anchor.location?.path,
+              snapshot.imports.contains(where: { $0.location.path == path && $0.isIgnored })
+        else { return false }
+        var unignored = snapshot
+        unignored.imports = snapshot.imports.map { fact in
+            guard fact.location.path == path, fact.isIgnored else { return fact }
+            return IndexedImport(
+                modulePath: fact.modulePath,
+                scopedKind: fact.scopedKind,
+                isConditional: fact.isConditional,
+                isReexported: fact.isReexported,
+                isIgnored: false,
+                location: fact.location
+            )
+        }
+        return UnusedImportAnalyzer.analyze(unignored).contains {
+            $0.location.path == path && !reportedLocations.contains($0.location)
+        }
     }
 
     /// 보존 판정부터 도달성 탐색까지 한 번 돌린 세계.
