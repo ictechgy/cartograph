@@ -251,7 +251,7 @@ struct ImpactSelection {
         }
         self.selected = nodes
         requestedSymbolCount = symbols.count
-        self.nodes = Self.expandingContainers(nodes, graph: graph)
+        self.nodes = ImpactSelectionExpansion.expandingContainers(nodes, graph: graph)
         self.files = normalizedFiles.sorted()
         self.issues = issues
         status = !issues.isEmpty ? "incomplete" : (symbols.isEmpty && files.isEmpty ? "noChanges" : "found")
@@ -269,32 +269,6 @@ struct ImpactSelection {
         return type
     }
 
-    /// 타입 전체를 수정 대상으로 고르면 익스텐션의 멤버도 포함한다. 이후 소비자의 형제까지 확장하지 않는다.
-    private static func expandingContainers(_ selected: Set<NodeID>, graph: CodeGraph) -> Set<NodeID> {
-        let roots = selected.filter {
-            graph.node($0)?.kind.isTypeDeclaration == true || graph.node($0)?.kind == .extensionDeclaration
-        }.sorted()
-        guard !roots.isEmpty else { return selected }
-        var children: [NodeID: Set<NodeID>] = [:]
-        for edge in graph.edges where edge.kind == .member {
-            children[edge.source, default: []].insert(edge.target)
-            if let owner = graph.semanticParent(of: edge.target) { children[owner, default: []].insert(edge.target) }
-        }
-        for edge in graph.edges where edge.kind == .extends && graph.node(edge.source)?.kind == .extensionDeclaration {
-            children[edge.target, default: []].insert(edge.source)
-        }
-        var result = selected
-        var queue = roots
-        var head = 0
-        while head < queue.count {
-            let parent = queue[head]
-            head += 1
-            for child in (children[parent] ?? []).sorted() where result.insert(child).inserted {
-                queue.append(child)
-            }
-        }
-        return result
-    }
 }
 
 /// 집계는 표시 한도 적용 전에 만든다. 출력에서 생략된 테스트가 없다고 오해하게 해서는 안 된다.

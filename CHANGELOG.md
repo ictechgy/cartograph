@@ -20,6 +20,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   name rather than guessing. Facts keep `target: "react-native"`; the field is omitted for
   core React Native and `method-handle` facts, which old consumers read unchanged.
 
+### Changed
+
+- `impact` expands type/extension selections through the graph's adjacency lists
+  instead of scanning the whole edge array twice. Resolving a narrow selection on a
+  large graph dropped from tens of milliseconds to sub-millisecond in measurement;
+  the expanded set is unchanged — member children under reached non-container
+  nodes (e.g. local declarations inside a changed method) are still followed.
+
 ## [0.17.0] - 2026-09-17
 
 ### Added
