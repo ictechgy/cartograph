@@ -578,12 +578,13 @@ cartograph check --report-format json
 받습니다. 세션은 늦게 만들어 빌드 전에도 discover와 도구 목록을 제공합니다.
 `cartograph_status`, `cartograph_query`, `cartograph_impact`, `cartograph_check`,
 `cartograph_runtime_discover`는 `{ "session": ..., "result": ... }` 봉투를 쓰고(status는
-메타데이터를 직접 반환), 인덱스 입력이 바뀌면 다시 준비합니다. 입력 지문은 최대 1초에
-한 번만 다시 검증하며, 그 창 안의 호출은 마지막으로 검증된 세대로 응답합니다. 창 길이는
-`--session-freshness-interval <초>`로 조절하고(`0`이면 요청마다 다시 검증, `[0, 86400]`
-밖의 값은 거부), 편집 직후
-즉시 반영이 필요하면 `cartograph_status`에 `refresh: true`를 넘겨 창을 우회할 수 있고,
-이어지는 도구 호출은 새로 만든 세대로 응답합니다. 서버가 빌드를 시작하지는 않습니다. query는 `symbols × limit` 공통 예산을 1000으로 제한하고, MCP 배치는 추가로 모든
+메타데이터를 직접 반환), 인덱스 입력이 바뀌면 다시 준비합니다. 입력 지문은 자동으로
+최대 1초에 한 번만 다시 검증하며, 그 창 안의 호출은 마지막으로 검증된 세대로 응답합니다.
+창 길이는 `--session-freshness-interval <초>`로 조절하고(`0`이면 요청마다 다시 검증,
+`[0, 86400]` 밖의 값은 거부), 편집 직후 즉시 반영이 필요하면 `cartograph_status`에
+`refresh: true`를 넘겨 창을 우회할 수 있고, 이어지는 도구 호출은 새로 만든 세대로
+응답합니다. 서버가 빌드를 시작하지는 않습니다. query는 `symbols × limit` 공통 예산을
+1000으로 제한하고, MCP 배치는 추가로 모든
 결과에 걸쳐 참조 근거 200개와 지역 함수 상세 50개의 예산을 공유합니다 — 결과별 전체·생략
 개수는 유지되며, 더 필요한 근거는 해당 심볼을 다시 질의해 확인할 수 있습니다. check는
 limit을 받으며 진단이 잘려도 전체 발견 수를 보고합니다.

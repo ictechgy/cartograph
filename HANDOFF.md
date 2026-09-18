@@ -26,17 +26,20 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
   캐시된다. 웜 호출의 실질 비용은 `ensurePrepared`의 **매 요청 입력 지문 재계산** —
   이 저장소에서 ~9ms(status≈query로 분리 측정), 소스+인덱스 파일 전부 stat.
 - **구현:** `AnalysisSession`에 `freshnessCheckInterval`(기본 `.zero` = 기존 동작인
-  요청마다 검증)을 추가하고, 창 안의 연속 요청은 마지막 검증 세대를 그대로 쓴다.
-  `serve`만 `.seconds(1)`로 opt-in. 성공한 reload도 검증 시각으로 간주해 찍는다.
-  `runtimeContext`의 Core Data 증거 검증은 명시적이므로 창과 무관하게 매번 수행.
+  요청마다 검증)과 주입 가능한 `now` 시각 소스를 추가하고, 창 안의 연속 요청은
+  마지막 검증 세대를 그대로 쓴다. `serve`는 `--session-freshness-interval`로
+  창을 받는다(기본 1초, `[0, 86400]` 밖은 거부 — inf/nan 포함). 성공한 reload도
+  검증 시각으로 간주해 관측 시작 시각을 찍는다. `cartograph_status`의
+  `refresh: true`는 `session.refresh()`로 창을 우회한다. `runtimeContext`의
+  Core Data 증거 검증은 명시적이므로 창과 무관하게 매번 수행.
 - **계측**(release, 이 저장소): 창 안 웜 status/query **~0.0-0.1ms**(이전 ~9ms),
   창 경과 후 첫 호출 ~9-11ms(재검증 정상), 첫 요청 ~0.7-1.9s(세션 준비, 무관).
-- **계약 검사 갱신:** `verify-mcp.py`의 "편집 직후 세대 증가" 기대가 옛 계약이라
-  창(1.1s)을 기다린 뒤 확인하게 수정 — 같은 내용의 감지 계약은 유지.
-  `verify-coredata-build-evidence.py`의 돌연변이 거부 경로는 `runtimeContext`의
-  명시 검증+invalidate라 그대로 통과.
-- 테스트 3개: 창 안 미재독+이전 세대 사용(변이로 실제 무는지 확인), 창 경과 후
-  재검증(50ms 창+100ms 수면), 명시 refresh는 창 무관하게 재독.
+- **계약 검사:** `verify-mcp.py`는 기본 창 경로를 측정 구간이 창 안인 시도만
+  단언하며 최대 세 번 재시도하고, 창 메커니즘은 `--session-freshness-interval 300`
+  별도 서버에서 재사용·우회·편집 감지를 스케줄러 지연과 무관하게 단언한다.
+- **테스트 8개(주입 시계로 수면 없이 결정적):** 창 안 미재독+이전 세대 사용,
+  창 경과 후 재검증, 명시 refresh 우회+창 재시작, `.zero`·음수 기본값, 변경 없는
+  재검증의 창 재시작, refresh 실패 폐기, 창 만료 후 지문 실패 폐기·복구.
 - **남은 것:** 커밋·푸시·PR·리뷰(머지 승인 전까지 머지하지 않음), HANDOFF의
   Verification 표는 이 변경 기준으로 갱신함.
 
@@ -157,8 +160,8 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 
 | 검사 | 결과 |
 | --- | --- |
-| `swift test`(coverage.sh 내 번들) | 전부 통과 — 세션 테스트 32개(신규 창 테스트 3개 포함) |
-| `Scripts/coverage.sh` | **93.02%** (기준 90%, 계측 CLI 통합·MCP 검사 포함 전부 통과) |
+| `swift test`(coverage.sh 내 번들) | 전부 통과 — 세션 테스트 37개(창 테스트 8개, 주입 시계로 수면 없음) |
+| `Scripts/coverage.sh` | **93.04%** (기준 90%, 계측 CLI 통합·MCP 검사 포함 전부 통과) |
 | `Scripts/verify-cli-contract.sh` | 통과 |
 | `Scripts/verify-fixtures.sh` | 통과 — **반드시 디버그 바이너리 경로를 첫 인자로** 넘길 것 |
 | strict 자기 분석 | dead·cycles·type cycles·rules 모두 findings 없음 |
