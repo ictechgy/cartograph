@@ -123,3 +123,12 @@ comment is doing real work: it must neither be reported as superfluous nor let t
 surface in `expected-unused.txt`. `FileIgnored.swift` carries `cartograph:ignore:all` over a
 file whose only declaration is used, producing one file-scope diagnostic instead of one per
 declaration. The full list lives in `expected-superfluous-ignore.txt`.
+
+## Redundant public accessibility stays quiet here
+
+`Scripts/verify-fixtures.sh` asserts that `redundant-public` reports nothing in either mode.
+Everything public in this corpus is used across targets (`CorpusApp`, `CorpusTests`), kept alive
+only by `--retain-public`, or consumed outside the index (the Dart bridge) — in none of those
+cases may the rule suggest `internal`. The `--retain-public` half also pins the interaction: that
+mode declares the public surface intentional, so the rule falls silent instead of listing every
+public property the module reads itself.
