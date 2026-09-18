@@ -434,8 +434,20 @@ public struct IndexStoreProvider: IndexProviding {
         let signature = unitsSignature()
         guard !signature.isEmpty else {
             let path = configuration.databasePath + "-unverified"
-            try? fileSystem.removeItem(at: path)
-            return path
+            do {
+                try fileSystem.removeItem(at: path)
+                return path
+            } catch {
+                // 없는 경로는 지울 것도 없으니 그대로 쓴다. 그 밖의 실패는
+                // 낡은 DB 를 그대로 여는 셈이니 재사용하지 않고 한 번만 쓰는
+                // 경로로 돌린다 — `unverified-` 접미는 정리 대상 형태라
+                // 다음 정리가 거둔다.
+                let nsError = error as NSError
+                let isAbsent =
+                    (nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileNoSuchFileError)
+                    || (nsError.domain == NSPOSIXErrorDomain && nsError.code == ENOENT)
+                return isAbsent ? path : path + "-" + UUID().uuidString
+            }
         }
         let path = configuration.databasePath + "-" + signature
         pruneStaleReaderDatabases(keeping: path)
@@ -463,16 +475,37 @@ public struct IndexStoreProvider: IndexProviding {
             guard name == baseName || isReaderDatabaseSuffix(name, baseName: baseName),
                   (entry as NSString).standardizingPath != current
             else { continue }
+            // 같은 스토어를 동시에 여는 프로세스가 서로의 열린 DB 를 지우는
+            // 것을 유예로 줄인다 — 막 만든 형제를 지우는 것이 가장 위험하다.
+            // 유예를 넘긴 낡은 형제는 여전히 지워 캐시 누적은 막는다.
+            if let modified = fileSystem.modificationDate(at: entry),
+               Date().timeIntervalSince(modified) < Self.pruneGraceInterval { continue }
             try? fileSystem.removeItem(at: entry)
         }
     }
 
-    /// `baseName-` 뒤가 우리가 붙인 접미 형태인지 — 16진 지문이나 `unverified`.
+    /// 형제 DB 를 지우기 전에 기다리는 유예(초). 열린 지 얼마 안 된 DB 를
+    /// 지우는 경쟁만 피하면 되므로 짧게 둔다.
+    private static let pruneGraceInterval: TimeInterval = 300
+
+    /// `baseName-` 뒤가 우리가 붙인 접미 형태인지 — `unverified`,
+    /// `unverified-…`(삭제 실패 폴백), 고정폭 16자 FNV-1a 지문.
+    ///
+    /// 길이나 문자 집합을 넓게 보면 `db-2024` 같은 호출자 소유 항목까지
+    /// 지우게 되므로 지문은 `unitsSignature()` 가 만드는 형태 그대로만
+    /// 인정한다.
     private func isReaderDatabaseSuffix(_ name: String, baseName: String) -> Bool {
         guard name.hasPrefix(baseName + "-") else { return false }
-        let suffix = String(name.dropFirst(baseName.count + 1))
-        return suffix == "unverified"
-            || (!suffix.isEmpty && suffix.allSatisfy(\.isHexDigit))
+        let suffix = name.dropFirst(baseName.count + 1)
+        if suffix == "unverified" || suffix.hasPrefix("unverified-") { return true }
+        // 지문은 `unitsSignature()` 가 만드는 고정폭 16자 소문자 ASCII
+        // 16진이다 — `db-2024`·`db-dead` 처럼 짧은 16진 접미는 호출자
+        // 소유일 수 있어 지우지 않는다.
+        return suffix.count == 16
+            && suffix.utf8.allSatisfy {
+                ($0 >= UInt8(ascii: "0") && $0 <= UInt8(ascii: "9"))
+                    || ($0 >= UInt8(ascii: "a") && $0 <= UInt8(ascii: "f"))
+            }
     }
 
     /// `<스토어>/v5/units`(없으면 `units`)의 유닛 파일 이름 지문.
@@ -487,7 +520,11 @@ public struct IndexStoreProvider: IndexProviding {
         guard let unitsDir = candidates.first(where: { fileSystem.directoryExists(at: $0) }),
               let names = try? fileSystem.contentsOfDirectory(at: unitsDir)
         else { return "" }
-        return Self.stableHash(names.sorted().joined(separator: "\n"))
+        // 앞자리 0을 떼는 radix 문자열 대신 고정폭으로 둔다 — 형제 정리가
+        // "16자 16진" 하나의 형태만 지우게 하려면 지문 자체가 항상 그
+        // 형태여야 한다.
+        let raw = Self.stableHash(names.sorted().joined(separator: "\n"))
+        return String(repeating: "0", count: max(0, 16 - raw.count)) + raw
     }
 
     /// 인덱스 스토어마다 안정적으로 대응되는 캐시 디렉터리 경로.

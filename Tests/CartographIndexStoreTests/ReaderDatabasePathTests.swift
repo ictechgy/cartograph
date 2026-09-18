@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 import CartographCore
 import CartographTestSupport
 @testable import CartographIndexStore
@@ -9,7 +10,7 @@ import CartographTestSupport
 @Suite("판독기 DB 경로")
 struct ReaderDatabasePathTests {
     private func provider(
-        fileSystem: InMemoryFileSystem,
+        fileSystem: any FileSystem,
         storePath: String = "/store"
     ) -> IndexStoreProvider {
         IndexStoreProvider(
@@ -104,17 +105,54 @@ struct ReaderDatabasePathTests {
         #expect(!fileSystem.directoryExists(at: "/db-unverified"))
     }
 
+    @Test("검증 못 한 경로를 지우지 못하면 낡은 DB 를 다시 열지 않는다")
+    func unverifiedFallsBackToUniquePathWhenRemovalFails() throws {
+        // 삭제가 실패한 낡은 `-unverified` 를 그대로 열면 유령 유닛 버그가
+        // 그대로 재현된다 — 한 번만 쓰는 경로로 돌리고 낡은 DB 는 건드리지
+        // 않는다. `FileSystem.removeItem` 의 기본 구현처럼 항상 던지는
+        // 채택 타입에서도 이 경로로 빠진다.
+        final class FailingRemoveFileSystem: FileSystem, @unchecked Sendable {
+            let inner = InMemoryFileSystem()
+            var currentDirectoryPath: String { inner.currentDirectoryPath }
+            func realPath(at path: String) throws -> String { try inner.realPath(at: path) }
+            func fileExists(at path: String) -> Bool { inner.fileExists(at: path) }
+            func directoryExists(at path: String) -> Bool { inner.directoryExists(at: path) }
+            func readData(at path: String) throws -> Data { try inner.readData(at: path) }
+            func write(_ data: Data, to path: String) throws { try inner.write(data, to: path) }
+            func removeItem(at _: String) throws { throw CocoaError(.featureUnsupported) }
+            func contentsOfDirectory(at path: String) throws -> [String] {
+                try inner.contentsOfDirectory(at: path)
+            }
+            func directoryEntries(at path: String) throws -> [DirectoryEntry] {
+                try inner.directoryEntries(at: path)
+            }
+            func modificationDate(at path: String) -> Date? { inner.modificationDate(at: path) }
+            func fingerprintStamp(at path: String) -> FileFingerprintStamp? {
+                inner.fingerprintStamp(at: path)
+            }
+            func directoryListingStamp(at path: String) -> DirectoryListingStamp? {
+                inner.directoryListingStamp(at: path)
+            }
+        }
+        let fileSystem = FailingRemoveFileSystem()
+        try fileSystem.inner.write(text: "stale", to: "/db-unverified/data.mdb")
+
+        let path = provider(fileSystem: fileSystem).prepareReaderDatabase()
+        #expect(path.hasPrefix("/db-unverified-"))
+        #expect(fileSystem.inner.fileExists(at: "/db-unverified/data.mdb"))
+    }
+
     @Test("지문을 못 만들면 형제를 정리하지 않는다")
     func unverifiedDoesNotPruneSiblings() {
         // 목록 실패가 일시적일 수 있으므로, 지문이 없을 때 검증된 캐시를
         // 지우는 것은 유령보다 나쁘다.
         let fileSystem = InMemoryFileSystem(files: [
-            "/db-aaa/data.mdb": "keep",
+            "/db-0123456789abcdef/data.mdb": "keep",
         ])
         let provider = provider(fileSystem: fileSystem)
 
         _ = provider.prepareReaderDatabase()
-        #expect(fileSystem.directoryExists(at: "/db-aaa"))
+        #expect(fileSystem.directoryExists(at: "/db-0123456789abcdef"))
     }
 
     @Test("v5 없는 스토어는 units 디렉터리를 읽는다")
@@ -133,15 +171,21 @@ struct ReaderDatabasePathTests {
     func prunesStaleSiblingDatabases() throws {
         let fileSystem = InMemoryFileSystem(files: [
             "/store/v5/units/main.o-AAA": "u1",
-            // 지문을 못 만들던 시절의 버전 없는 경로와 다른 지문의 형제.
+            // 지문을 못 만들던 시절의 버전 없는 경로와 다른 지문의 형제,
+            // 그리고 삭제 실패 폴백이 남긴 unverified 형제.
             "/db/data.mdb": "stale",
-            "/db-aaa/data.mdb": "stale",
-            "/db-bbb/data.mdb": "stale",
+            "/db-aaaaaaaaaaaaaaaa/data.mdb": "stale",
+            "/db-bbbbbbbbbbbbbbbb/data.mdb": "stale",
+            "/db-unverified/data.mdb": "stale",
+            "/db-unverified-12345/data.mdb": "stale",
             // 이름이 비슷해도 다른 스토어의 DB(baseName 이 다름)는 건드리지 않는다.
             "/other-db/data.mdb": "keep",
             // 지문 형태가 아닌 접미도 우리 것이 아니다 — 백업 같은 무관한
-            // 항목을 접두사만 맞는다고 지우면 안 된다.
+            // 항목을 접두사만 맞는다고 지우면 안 된다. 16자가 안 되는
+            // 16진 접미(`db-2024`, `db-dead`)도 호출자 소유일 수 있어 보존한다.
             "/db-backup/data.mdb": "keep",
+            "/db-2024/data.mdb": "keep",
+            "/db-dead/data.mdb": "keep",
         ])
         let provider = provider(fileSystem: fileSystem)
         let current = provider.prepareReaderDatabase()
@@ -152,8 +196,33 @@ struct ReaderDatabasePathTests {
         #expect(fileSystem.fileExists(at: "\(current)/data.mdb"))
         #expect(fileSystem.fileExists(at: "/other-db/data.mdb"))
         #expect(fileSystem.directoryExists(at: "/db-backup"))
+        #expect(fileSystem.directoryExists(at: "/db-2024"))
+        #expect(fileSystem.directoryExists(at: "/db-dead"))
         #expect(!fileSystem.directoryExists(at: "/db"))
-        #expect(!fileSystem.directoryExists(at: "/db-aaa"))
-        #expect(!fileSystem.directoryExists(at: "/db-bbb"))
+        #expect(!fileSystem.directoryExists(at: "/db-aaaaaaaaaaaaaaaa"))
+        #expect(!fileSystem.directoryExists(at: "/db-bbbbbbbbbbbbbbbb"))
+        #expect(!fileSystem.directoryExists(at: "/db-unverified"))
+        #expect(!fileSystem.directoryExists(at: "/db-unverified-12345"))
+    }
+
+    @Test("막 수정된 형제 DB 는 정리 유예가 지키다")
+    func recentlyModifiedSiblingsSurvivePruning() throws {
+        // 같은 스토어를 여는 다른 프로세스가 막 만든 DB 를 지우는 경쟁을
+        // 줄인다 — 수정 시각이 유예 안쪽이면 이번 정리는 건너뛴다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/store/v5/units/main.o-AAA": "u1",
+            "/db-aaaaaaaaaaaaaaaa/data.mdb": "young",
+            "/db-bbbbbbbbbbbbbbbb/data.mdb": "old",
+        ])
+        fileSystem.setModificationDate(Date(), for: "/db-aaaaaaaaaaaaaaaa")
+        fileSystem.setModificationDate(
+            Date(timeIntervalSinceNow: -3600), for: "/db-bbbbbbbbbbbbbbbb")
+
+        let provider = provider(fileSystem: fileSystem)
+        let current = provider.prepareReaderDatabase()
+        provider.pruneStaleReaderDatabases(keeping: current)
+
+        #expect(fileSystem.directoryExists(at: "/db-aaaaaaaaaaaaaaaa"))
+        #expect(!fileSystem.directoryExists(at: "/db-bbbbbbbbbbbbbbbb"))
     }
 }
