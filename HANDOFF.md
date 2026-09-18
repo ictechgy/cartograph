@@ -19,7 +19,10 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 
 ## Current Status
 
-### 진행 중 — ② 불필요 `cartograph:ignore` 감지 (브랜치 `feat/superfluous-ignore-warning`, PR #107)
+### 완료 — ② 불필요 `cartograph:ignore` 감지
+
+[PR #107](https://github.com/ictechgy/cartograph/pull/107) 스쿼시 머지(`66037f8`, 2026-09-18).
+ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래는 구현 기록이다.
 
 - **구현:** `ReachabilityAnalyzer.superfluousIgnores`가 반사실 판정을 한다.
   자기 주석이 있는 `.ignoreComment` 정점(`.ignoreInherited`가 아닌 것)마다
@@ -85,7 +88,7 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
   구문 핀 테스트. 변이 확인: 고아 승격 제거·`isIgnoredOnlyByFileComment`→`isIgnored`·
   지문 길이 제한 제거·unverified 폴백 `try?`·prune 유예 제거 각각 해당 테스트 실패.
   전 게이트 통과(테스트·커버리지 93.05%·fixture·CLI 계약·strict 자기 분석).
-- **남은 것:** 머지 승인(PR #107, head `1dddddc`+3라운드 반영 커밋).
+- **남은 것:** 없음 — 2026-09-18 머지 완료.
 
 ### 완료 — ① 웜 query 지연
 
@@ -293,8 +296,7 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ## Next Steps
 
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
-2. ②불필요 ignore: PR #107에 ultra-review 3라운드 반영까지 커밋·푸시됐다.
-   머지는 사용자 승인 후.
+2. ②불필요 ignore: PR #107 스쿼시 머지 완료(`66037f8`). 다음은 ③.
 3. 이후 순서: ③불필요 public → ④impact --before 제거 간선 →
    ⑤기계적 fix → ⑥impact 입도 → ⑦테스트 영향 → ⑧GitHub Action → ⑨equatable 옵션.
    ⑩런타임 텔레메트리는 연구 전용 보류.
@@ -304,7 +306,7 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
-0.18.0 릴리스와 PR #104·#106은 전부 머지·배포됐습니다. 진행 중인 것은 경쟁 갭 목록의
-②불필요 ignore 감지 — `feat/superfluous-ignore-warning`(PR #107)에 ultra-review
-3라운드 반영과 전 게이트 통과가 끝났고 머지 승인만 남았습니다.
+0.18.0 릴리스와 PR #104·#106·#107은 전부 머지·배포됐습니다. 경쟁 갭 목록의
+②불필요 ignore 감지는 PR #107 스쿼시 머지(`66037f8`)로 완료됐습니다.
+다음은 ③불필요 public 경고입니다 — 아직 브랜치가 없습니다.
 완료된 배포·검증을 반복하지 마세요. 나머지 갭 순서는 Goal 섹션에 있습니다.
