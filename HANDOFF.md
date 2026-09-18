@@ -7,19 +7,25 @@ _Last updated: 2026-09-18 by devin_
 경쟁 강화(warm 질의·dead 경고 3종·온보딩 안내), **0.17.0 릴리스와 Homebrew 배포**,
 bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴고까지
 **전부 머지·배포 완료**했다. 이후 사용자가 성능·보안·구조 리뷰와 개선을 요청했다.
-컨테이너 확장 인접-목록 개선은 **구현·독립 리뷰 반영·게이트 통과까지 완료**했다.
-커밋·푸시·PR·배포는 요청되지 않았으며 실행하지 않았다. 브리지 `sourceCache` 최적화는
-미착수 보류다.
+컨테이너 확장 인접-목록 개선은
+[PR #104](https://github.com/ictechgy/cartograph/pull/104)로 **스쿼시 머지 완료**했다
+(`6bbf766`, 리뷰 head `be7af2a`, CI 녹색). 브리지 `sourceCache` 최적화는 미착수 보류다.
 
 ## Current Status
 
 ### 완료된 개선 — 2026-09-18
 
-- 브랜치 `refactor/impact-selection-performance`, 워크트리는 이 저장소 하나.
+- [PR #104](https://github.com/ictechgy/cartograph/pull/104) 스쿼시 머지(`6bbf766`,
+  2026-09-18). ultra-review 3라운드 — 라운드 1에서 상대 타이밍 상한·진짜 순환
+  픽스처·생성기 확장·계약 고정 테스트를 반영했고, 라운드 2·3은 블로커 0건으로
+  수렴했다(사용 가능 트랙: Claude·Codex·Antigravity; Grok은 출력 계약 무효로 제외).
+  agy 단독 HIGH("방문 집합 재사용이 비컨테이너 시드 자식을 생략")는 기준 구현과
+  동일한 상속 계약이라 기각하고 테스트로 고정했다. CI에서만 드러난 `Expander`
+  memberwise init 접근 수준 오류는 명시 init으로 고쳤다(`be7af2a`).
   변경 파일: `Sources/CartographKit/ImpactService.swift`(위임으로 축소), 신규
   `Sources/CartographAnalysis/ImpactSelectionExpansion.swift`·
   `Tests/CartographAnalysisTests/ImpactSelectionExpansionTests.swift`,
-  `CHANGELOG.md`(`Unreleased`의 Changed에 impact 확장 개선 항목). **모두 미커밋**이다.
+  `CHANGELOG.md`(`Unreleased`의 Changed에 impact 확장 개선 항목).
 - **초안의 동등성 갭을 찾아 고쳤다.** 초안은 도달한 정점이 컨테이너(타입·익스텐션)일
   때만 이웃을 수집해, 도달된 메서드 아래 지역 선언(인덱스는 parentUSR로 남기고
   `LocalFunctionBinder`도 `?? owner.usr`로 단다)과 그 하위 트리를 빠뜨렸다.
@@ -172,15 +178,13 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ## Next Steps
 
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
-2. 커밋·푸시·PR은 별도 요청 전 실행하지 않는다. 요청되면 `refactor/impact-selection-performance`
-   브랜치의 변경(Analysis 신규 타입 + Kit 위임 + 테스트 + CHANGELOG)을 커밋한다.
-3. 브리지 `sourceCache` 최적화는 동일 소스 스냅샷 보존 조건에서 검토한다. 근거 없이 제거하지
+   (이 문서의 머지 반영 갱신은 `main`의 미커밋 변경이다 — 커밋은 요청 시에만.)
+2. 브리지 `sourceCache` 최적화는 동일 소스 스냅샷 보존 조건에서 검토한다. 근거 없이 제거하지
    않으며, 입증되지 않으면 메모리 계측 결과부터 확보한다.
 
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
-0.17.0 배포는 완료됐습니다. `refactor/impact-selection-performance`의 컨테이너 확장 인접-목록
-개선은 동등성 검증(무작위 프로퍼티·지역 선언 회귀)과 필수 게이트 4종 통과까지 끝났고
-미커밋 상태입니다. 완료된 배포·검증을 반복하지 말고, 커밋은 요청 시에만 하세요.
-보류된 브리지 `sourceCache` 최적화는 일관성 조건을 입증한 뒤에만 진행합니다.
+0.17.0 배포와 컨테이너 확장 인접-목록 개선(PR #104, 스쿼시 `6bbf766`)은 전부 머지됐습니다.
+완료된 배포·검증·리뷰를 반복하지 마세요. 보류된 브리지 `sourceCache` 최적화는 일관성 조건을
+입증한 뒤에만 진행합니다.
