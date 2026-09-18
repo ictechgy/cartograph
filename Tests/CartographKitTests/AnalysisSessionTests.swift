@@ -116,9 +116,13 @@ struct AnalysisSessionTests {
     @Test("명시적 refresh는 재검증 창 안에서도 항상 입력을 다시 읽는다")
     func explicitRefreshIgnoresFreshnessWindow() throws {
         let state = SessionState(snapshot: makeSnapshot())
+        var fingerprintReads = 0
         let session = try AnalysisSession(
             serviceFactory: { try state.makeService() },
-            inputFingerprintProvider: { try state.nextFingerprint() },
+            inputFingerprintProvider: {
+                fingerprintReads += 1
+                return try state.nextFingerprint()
+            },
             freshnessCheckInterval: .seconds(3600)
         )
         state.fingerprint = "second"
@@ -128,6 +132,52 @@ struct AnalysisSessionTests {
 
         #expect(metadata.generation == 2)
         #expect(metadata.fingerprint == "second")
+
+        // refresh 가 찍은 검증 시각부터 창이 다시 시작되므로 직후 요청은
+        // 새 세대를 그대로 쓰고 지문을 다시 읽지 않는다.
+        let readsAfterRefresh = fingerprintReads
+        _ = try session.query(symbols: ["Reloaded"])
+        #expect(fingerprintReads == readsAfterRefresh)
+        #expect(session.metadata?.generation == 2)
+    }
+
+    @Test("기본 재검증 창 .zero 는 요청마다 입력 지문을 다시 읽는다")
+    func defaultFreshnessIntervalChecksEveryRequest() throws {
+        let state = SessionState(snapshot: makeSnapshot())
+        var fingerprintReads = 0
+        let session = try AnalysisSession(
+            serviceFactory: { try state.makeService() },
+            inputFingerprintProvider: {
+                fingerprintReads += 1
+                return try state.nextFingerprint()
+            }
+        )
+        let readsDuringPrepare = fingerprintReads
+
+        _ = try session.status()
+        _ = try session.status()
+
+        #expect(fingerprintReads >= readsDuringPrepare + 2)
+    }
+
+    @Test("음수 재검증 창도 .zero 와 같이 요청마다 입력 지문을 다시 읽는다")
+    func negativeFreshnessIntervalChecksEveryRequest() throws {
+        let state = SessionState(snapshot: makeSnapshot())
+        var fingerprintReads = 0
+        let session = try AnalysisSession(
+            serviceFactory: { try state.makeService() },
+            inputFingerprintProvider: {
+                fingerprintReads += 1
+                return try state.nextFingerprint()
+            },
+            freshnessCheckInterval: .seconds(-1)
+        )
+        let readsDuringPrepare = fingerprintReads
+
+        _ = try session.status()
+        _ = try session.status()
+
+        #expect(fingerprintReads >= readsDuringPrepare + 2)
     }
 
     @Test("변경 없는 재검증은 창을 다시 시작해 직후의 변경도 다음 창까지 유보한다")
@@ -136,10 +186,11 @@ struct AnalysisSessionTests {
         let session = try AnalysisSession(
             serviceFactory: { try state.makeService() },
             inputFingerprintProvider: { try state.nextFingerprint() },
-            freshnessCheckInterval: .milliseconds(50)
+            freshnessCheckInterval: .milliseconds(500)
         )
         // 창이 지난 뒤의 요청은 지문을 다시 읽고 그 시각부터 창이 다시 시작된다.
-        Thread.sleep(forTimeInterval: 0.06)
+        // 창 안 단언은 두 호출이 500ms 안에 끝나야 하므로 여유를 크게 둔다.
+        Thread.sleep(forTimeInterval: 0.6)
         _ = try session.status()
         #expect(session.metadata?.generation == 1)
 
@@ -149,7 +200,7 @@ struct AnalysisSessionTests {
         _ = try session.status()
         #expect(session.metadata?.generation == 1)
 
-        Thread.sleep(forTimeInterval: 0.06)
+        Thread.sleep(forTimeInterval: 0.6)
         _ = try session.status()
         #expect(session.metadata?.generation == 2)
         #expect(session.metadata?.fingerprint == "second")
