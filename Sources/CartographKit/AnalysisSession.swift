@@ -327,9 +327,8 @@ public final class AnalysisSession {
                 continue
             }
 
-            // 지문 관측을 시작한 시각을 찍는다. 관측·메타데이터 생성 시간까지
-            // 유보에 포함시키지 않아 문서화된 창 상한을 지킨다.
-            let verifiedAt = checkedAt
+            // 관측 시작 시각을 찍는다 — 관측 자체의 소요도 창에 포함시켜
+            // 유보가 정확히 창으로 상한을 갖게 한다.
             let candidateMetadata = metadata(
                 for: candidateService,
                 context: candidateContext,
@@ -340,7 +339,7 @@ public final class AnalysisSession {
             context = candidateContext
             querySession = nil
             preparedFingerprint = observed
-            lastFingerprintCheck = verifiedAt
+            lastFingerprintCheck = checkedAt
             generation = candidateMetadata.generation
             metadata = candidateMetadata
             return candidateMetadata
