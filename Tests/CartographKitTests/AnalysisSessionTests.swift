@@ -232,6 +232,31 @@ struct AnalysisSessionTests {
         #expect(session.metadata?.generation == 2)
     }
 
+    @Test("창이 지난 뒤 지문 읽기가 실패해도 세션을 폐기해 다음 요청이 다시 읽게 한다")
+    func expiredWindowFingerprintFailureDiscardsSession() throws {
+        let state = SessionState(snapshot: makeSnapshot())
+        let session = try AnalysisSession(
+            serviceFactory: { try state.makeService() },
+            inputFingerprintProvider: { try state.nextFingerprint() },
+            freshnessCheckInterval: .milliseconds(50)
+        )
+        state.fingerprintShouldFail = true
+        Thread.sleep(forTimeInterval: 0.1)
+
+        #expect(throws: SessionFingerprintError.self) {
+            _ = try session.status()
+        }
+        #expect(session.metadata == nil)
+
+        // 폐기된 세션은 복구된 입력으로 다음 요청에서 새 세대를 만든다.
+        state.fingerprintShouldFail = false
+        state.fingerprint = "recovered"
+        state.snapshot = makeSnapshot(extra: "Recovered")
+        _ = try session.status()
+        #expect(session.metadata?.generation == 2)
+        #expect(session.metadata?.fingerprint == "recovered")
+    }
+
     @Test("serviceFactory 초기화는 새 서비스의 설정과 문맥을 다시 읽는다")
     func factoryConvenienceReloadsFreshService() throws {
         let fileSystem = InMemoryFileSystem(
