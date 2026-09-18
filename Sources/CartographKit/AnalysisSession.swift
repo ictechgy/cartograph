@@ -295,12 +295,16 @@ public final class AnalysisSession {
             return
         }
         do {
+            // 관측 시작 시각을 쓰면 관측 자체의 소요도 창에 포함돼 문서화된
+            // 상한이 지켜진다. 일치가 확인된 경우에만 찍는다 — 불일치 분기는
+            // reload 성공 시의 검증 시각에 맡기고, 실패는 폐기로 이어진다.
+            let checkedAt = clock.now
             let observed = try inputFingerprintProvider()
-            lastFingerprintCheck = clock.now
             guard preparedFingerprint == observed, service != nil, context != nil else {
                 _ = try reload(expectedFingerprint: observed)
                 return
             }
+            lastFingerprintCheck = checkedAt
         } catch {
             // 입력 상태를 읽는 것 자체가 실패하면 이전 문맥도 현재 상태를
             // 대표하지 못한다. 오래된 결과를 재사용할 수 없게 즉시 폐기한다.
@@ -316,15 +320,16 @@ public final class AnalysisSession {
         for _ in 1...Self.maximumRefreshAttempts {
             let candidateService = try serviceFactory()
             let candidateContext = try candidateService.loadContext()
+            let checkedAt = clock.now
             let observed = try inputFingerprintProvider()
             guard observed == expected else {
                 expected = observed
                 continue
             }
 
-            // 지문을 마지막으로 확인한 시각을 찍는다. 메타데이터를 만드는 시간까지
+            // 지문 관측을 시작한 시각을 찍는다. 관측·메타데이터 생성 시간까지
             // 유보에 포함시키지 않아 문서화된 창 상한을 지킨다.
-            let verifiedAt = clock.now
+            let verifiedAt = checkedAt
             let candidateMetadata = metadata(
                 for: candidateService,
                 context: candidateContext,
