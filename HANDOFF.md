@@ -19,7 +19,40 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 
 ## Current Status
 
-### 진행 중 — ① 웜 query 지연 (브랜치 `perf/session-freshness-window`)
+### 진행 중 — ② 불필요 `cartograph:ignore` 감지 (브랜치 `feat/superfluous-ignore-warning`)
+
+- **구현:** `ReachabilityAnalyzer.superfluousIgnores`가 반사실 판정을 한다.
+  `.ignoreComment` 정점을 `.member` 간선으로 "주석 하나가 덮는 범위"(무시 단위)로
+  묶고(파일 전체가 무시면 파일 범위 단위 하나 — `ignore:all`과 선언별 주석은
+  그래프에서 구별 불가), 그 단위만 뗀 도달성을 다시 돌려 새 발견이 없으면
+  `superfluous-ignore` 경고로 보고한다. 겹친 단위는 커버리지 중복도로 처리하고,
+  전원 도달 가능 단위는 빠른 경로로 즉시 확정한다. `RetentionPolicy`에
+  `retainedNodesWithoutIgnoreComments`(무시 근거 무시)를 둬 같은 규칙으로
+  보존을 재계산한다. 진단은 `dead` 전용 경고(unused-parameter 등과 같은 패턴,
+  strict 미포함), 베이스라인 키는 `usr|ignore`·`ignore:file:<path>`로
+  선언 발견과 충돌하지 않는다.
+- **그 과정에서 찾아 고친 버그 두 개:**
+  - `CommentCommand.parse`가 `contains` 부분 문자열 매칭이라 문서 주석이
+    명령을 *언급*만 해도 `.ignoreComment`가 붙던 기존 오탐 — 주석 맨 앞 접두사+
+    단어 경계 매칭으로 교체. 자기 분석의 12건 경고가 전부 이것이었다.
+  - 영속 IndexStoreDB 캐시가 지워진 유닛을 잊지 않아 `symbolOccurrences`가
+    유령 유닛으로 0개를 반환, 파일 전체(main.swift)가 스냅샷에서 빠지던
+    결함 — 유닛 집합의 안정 해시(FNV-1a)를 DB 경로에 섞어 유닛이 바뀌면
+    새 DB로 갈아탄다(`effectiveDatabasePath`/`unitsSignature`, 내부 가시성).
+- **검증:** SuperfluousIgnoreTests 12개 + ReaderDatabasePathTests 4개 +
+  CommentCommandTests 신규 2개. 픽스처에 IgnoreComments.swift·
+  FileIgnored.swift를 추가해 `expected-superfluous-ignore.txt` 통째 비교를
+  verify-fixtures.sh에 배선. 변이 확인: 판정 끄면 7개·단위별 탐색 제거면 2개·
+  지문 끄면 2개 실패.
+- **남은 것:** 커밋·푸시·PR·리뷰.
+
+### 완료 — ① 웜 query 지연
+
+[PR #106](https://github.com/ictechgy/cartograph/pull/106) 스쿼시 머지(`72f3be0`).
+웜 `query`/`status` ~9ms → ~0.1ms. ultra-review 6라운드로 수렴, serve에
+`--session-freshness-interval`(기본 1초, [0, 86400]) 추가.
+
+<details><summary>① 상세(완료 기록)</summary>
 
 - **병목 규명:** `describeQuery`는 이미 완전히 bounded(explain + `GraphNeighborhood`
   BFS 2개 + containment 2개 + 증거 예산 200)이고, `QuerySession`은 세션당 한 번 만들어
@@ -40,8 +73,8 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 - **테스트 8개(주입 시계로 수면 없이 결정적):** 창 안 미재독+이전 세대 사용,
   창 경과 후 재검증, 명시 refresh 우회+창 재시작, `.zero`·음수 기본값, 변경 없는
   재검증의 창 재시작, refresh 실패 폐기, 창 만료 후 지문 실패 폐기·복구.
-- **남은 것:** 커밋·푸시·PR·리뷰(머지 승인 전까지 머지하지 않음), HANDOFF의
-  Verification 표는 이 변경 기준으로 갱신함.
+
+</details>
 
 ### 완료된 개선 — 2026-09-18
 
