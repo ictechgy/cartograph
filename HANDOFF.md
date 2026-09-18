@@ -1,14 +1,57 @@
 # Handoff
 
-_Last updated: 2026-09-17 by Devin_
+_Last updated: 2026-09-18 by devin_
 
 ## Goal
 
 경쟁 강화(warm 질의·dead 경고 3종·온보딩 안내), **0.17.0 릴리스와 Homebrew 배포**,
 bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴고까지
-**전부 머지·배포 완료**했다. 새 제품 구현·커밋은 요청되지 않았다.
+**전부 머지·배포 완료**했다. 이후 사용자가 성능·보안·구조 리뷰와 개선을 요청했다.
+컨테이너 확장 인접-목록 개선은 **구현·독립 리뷰 반영·게이트 통과까지 완료**했다.
+커밋·푸시·PR·배포는 요청되지 않았으며 실행하지 않았다. 브리지 `sourceCache` 최적화는
+미착수 보류다.
 
 ## Current Status
+
+### 완료된 개선 — 2026-09-18
+
+- 브랜치 `refactor/impact-selection-performance`, 워크트리는 이 저장소 하나.
+  변경 파일: `Sources/CartographKit/ImpactService.swift`(위임으로 축소), 신규
+  `Sources/CartographAnalysis/ImpactSelectionExpansion.swift`·
+  `Tests/CartographAnalysisTests/ImpactSelectionExpansionTests.swift`,
+  `CHANGELOG.md`(`Unreleased`의 Changed에 impact 확장 개선 항목). **모두 미커밋**이다.
+- **초안의 동등성 갭을 찾아 고쳤다.** 초안은 도달한 정점이 컨테이너(타입·익스텐션)일
+  때만 이웃을 수집해, 도달된 메서드 아래 지역 선언(인덱스는 parentUSR로 남기고
+  `LocalFunctionBinder`도 `?? owner.usr`로 단다)과 그 하위 트리를 빠뜨렸다.
+  최종 구현은 도달한 **모든** 정점의 자식 집합을 방문 시점에 인접 목록으로
+  계산한다(pull 모델): 어휘 멤버 + `semanticParent`가 그 정점인 멤버 + 그 정점을
+  확장하는 익스텐션. 다중 member 부모·다중 extends 같은 비정상 그래프까지
+  원 구현의 `children[X]` 집합과 정확히 같다.
+- **Codex 독립 리뷰 1건 확정·수정.** 익스텐션 하나가 도달된 타입 여럿을 확장하면
+  멤버 목록을 타입마다 다시 훑어 `semanticParent` 조회까지 곱해지는 최악
+  (병적 그래프에서 원 구현보다 나쁨). `Expander`가 익스텐션 멤버를 의미 부모별로
+  한 번만 그룹핑해 캐시하게 고쳤다. LOW 2건도 반영: 순환 테스트를 진짜 순환
+  (익스텐션 둘의 상호 extends)으로 교체, "익스텐션 시드는 확장 대상 타입을
+  포함하지 않는다" 계약을 문서·테스트로 고정. 30ms 상한의 한계(간선 방문 횟수가
+  아닌 타이밍 단언)는 인정하나 저장소 관례와 CodeGraph API 범위 안에서는 유지.
+- **계측**(디버그, 44k 정점/140k 간선): 좁은 선택 58.3ms → 0.15ms(~400×),
+  넓은 선택(22k 정점 도달) 78.9ms → 38.1ms(~2×). 두 결과 집합은 동일했다.
+- 테스트 9개: 지역 선언 하위 트리, 익스텐션·의미 부모, 익스텐션 시드 계약,
+  진짜 순환 종료, 비컨테이너 시드, 기준 구현 대조, **시드 고정 무작위
+  프로퍼티**(40 그래프×12 시드 — 초안에서는 114건 불일치로 실패 확인),
+  좁은 선택 상한 30ms(기준 구현은 ~58ms라 분리됨; 노이즈 간선은 도달 범위 밖
+  정점끼리 둬야 상한이 의미 있다).
+- 실 저장소 스모크: `cartograph impact CodeGraph` → changeScope 39 · affected 260
+  (신규 파일이 인덱스에 들어와 +2; 리뷰 수정 후 재실행도 동일).
+- 브리지 원문 캐시(`CartographService.swift`의 `sourceCache`)는 **변경하지 않았다**.
+  재읽기로 메모리를 줄이면 2패스가 서로 다른 소스 상태를 볼 수 있다. 일관성을 유지하는
+  작은 개선이 입증되지 않으면 보류하고 메모리 계측 결과부터 확보한다.
+- 보안: Codex 읽기 전용 정적 검토에서 MCP·런타임 경계의 확정 취약점 없음.
+  전체 저장소/의존성 감사나 동적 보안 검증은 아니며 보안 수정은 없다.
+- 리뷰 오탐: `GraphQueryIndex.similarCandidates`가 동명 정점 전부를 추천한다는 제안은 기각.
+  실제 70행은 이름별 `.first`를 이미 고른다. 이 제안을 근거로 수정하지 말 것.
+
+### 이미 완료된 릴리스 이력
 
 - 지침 재배치·HANDOFF 압축 [PR #101](https://github.com/ictechgy/cartograph/pull/101) 머지(`b468541`).
   루트 `AGENTS.md`는 색인, 구현 주의점은 `Sources/AGENTS.md`, 인덱스 규칙은
@@ -77,6 +120,20 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 
 ## Verification
 
+현재 미커밋 변경의 통과 근거(전부 직접 실행):
+
+| 검사 | 결과 |
+| --- | --- |
+| `swift test`(coverage.sh 내 8번들) | **1,505 tests** 전부 통과, 이슈 0(리뷰 수정 후 재실행도 통과) |
+| `Scripts/coverage.sh` | **93.03%** (기준 90%, 리뷰 수정 후 재측정) |
+| `Scripts/verify-cli-contract.sh` | 통과 |
+| `Scripts/verify-fixtures.sh` | 통과 — **반드시 디버그 바이너리 경로를 첫 인자로** 넘길 것. 인자 없이 돌리면 낡은 release 바이너리가 골든과 다른 브리지 출력을 내 실패로 보인다(AGENTS.md에 기록된 함정) |
+| strict 자기 분석 | dead·cycles·type cycles·rules 모두 findings 없음 |
+| 동등성 | 무작위 프로퍼티 480 비교·고정 케이스가 기준 구현과 일치; 초안은 114건 불일치로 실패 확인(테스트가 실제로 뭄); Codex 측 독립 모델 25,216 비교도 불일치 없음 |
+| 성능 계측 | 좁은 선택 58.3→0.15ms, 넓은 선택 78.9→38.1ms(디버그, 44k/140k) |
+
+아래 표는 **이전 릴리스의 근거**다.
+
 | 검사 | 결과 |
 | --- | --- |
 | `swift test` (PR #93 헤드) | **1,479 tests** 전부 통과 |
@@ -114,11 +171,16 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 
 ## Next Steps
 
-1. `git status --short --branch`, `git worktree list`, `git log --oneline -3 origin/main`으로 확인.
-2. 새 제품 변경에는 관련 하위 지침과 필수 검사를 적용한다. 배포·태그 생성을 자동 재개하지 않는다.
+1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
+2. 커밋·푸시·PR은 별도 요청 전 실행하지 않는다. 요청되면 `refactor/impact-selection-performance`
+   브랜치의 변경(Analysis 신규 타입 + Kit 위임 + 테스트 + CHANGELOG)을 커밋한다.
+3. 브리지 `sourceCache` 최적화는 동일 소스 스냅샷 보존 조건에서 검토한다. 근거 없이 제거하지
+   않으며, 입증되지 않으면 메모리 계측 결과부터 확보한다.
 
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
-0.17.0 배포·Homebrew 갱신·PR #90~#101 머지와 브랜치·워크트리·Desktop 정리는 완료됐습니다.
-Git 상태를 확인한 뒤 최신 사용자 요청만 이어가세요. 완료된 배포나 정리를 반복하지 마세요.
+0.17.0 배포는 완료됐습니다. `refactor/impact-selection-performance`의 컨테이너 확장 인접-목록
+개선은 동등성 검증(무작위 프로퍼티·지역 선언 회귀)과 필수 게이트 4종 통과까지 끝났고
+미커밋 상태입니다. 완료된 배포·검증을 반복하지 말고, 커밋은 요청 시에만 하세요.
+보류된 브리지 `sourceCache` 최적화는 일관성 조건을 입증한 뒤에만 진행합니다.
