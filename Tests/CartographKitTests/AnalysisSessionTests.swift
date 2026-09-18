@@ -104,7 +104,7 @@ struct AnalysisSessionTests {
 
         state.fingerprint = "second"
         state.snapshot = makeSnapshot(extra: "Reloaded")
-        // ContinuousClock 은 벽시계를 따르므로 창보다 긴 수면 뒤에는 반드시 다시 읽는다.
+        // ContinuousClock 은 단조 시계라 수면한 시간만큼 반드시 경과해 다시 읽는다.
         Thread.sleep(forTimeInterval: 0.1)
 
         let batch = try session.query(symbols: ["Reloaded"])
@@ -128,6 +128,57 @@ struct AnalysisSessionTests {
 
         #expect(metadata.generation == 2)
         #expect(metadata.fingerprint == "second")
+    }
+
+    @Test("변경 없는 재검증은 창을 다시 시작해 직후의 변경도 다음 창까지 유보한다")
+    func unchangedReverificationRestartsFreshnessWindow() throws {
+        let state = SessionState(snapshot: makeSnapshot())
+        let session = try AnalysisSession(
+            serviceFactory: { try state.makeService() },
+            inputFingerprintProvider: { try state.nextFingerprint() },
+            freshnessCheckInterval: .milliseconds(50)
+        )
+        // 창이 지난 뒤의 요청은 지문을 다시 읽고 그 시각부터 창이 다시 시작된다.
+        Thread.sleep(forTimeInterval: 0.06)
+        _ = try session.status()
+        #expect(session.metadata?.generation == 1)
+
+        // 재검증 직후의 입력 변경은 다시 시작된 창 안이라 이전 세대로 응답한다.
+        state.fingerprint = "second"
+        state.snapshot = makeSnapshot(extra: "Reloaded")
+        _ = try session.status()
+        #expect(session.metadata?.generation == 1)
+
+        Thread.sleep(forTimeInterval: 0.06)
+        _ = try session.status()
+        #expect(session.metadata?.generation == 2)
+        #expect(session.metadata?.fingerprint == "second")
+    }
+
+    @Test("창이 켜진 세션에서도 명시적 refresh 실패는 문맥을 폐기해 다음 요청이 다시 읽게 한다")
+    func failedRefreshDiscardsWindowedSession() throws {
+        let state = SessionState(snapshot: makeSnapshot())
+        var fingerprintReads = 0
+        let session = try AnalysisSession(
+            serviceFactory: { try state.makeService() },
+            inputFingerprintProvider: {
+                fingerprintReads += 1
+                return try state.nextFingerprint()
+            },
+            freshnessCheckInterval: .seconds(3600)
+        )
+        state.fingerprintShouldFail = true
+        #expect(throws: SessionFingerprintError.self) {
+            _ = try session.refresh()
+        }
+        #expect(session.metadata == nil)
+
+        // 실패로 폐기된 세션은 창과 무관하게 다음 요청에서 지문을 다시 읽는다.
+        state.fingerprintShouldFail = false
+        let readsBeforeRecovery = fingerprintReads
+        _ = try session.status()
+        #expect(fingerprintReads > readsBeforeRecovery)
+        #expect(session.metadata?.generation == 2)
     }
 
     @Test("serviceFactory 초기화는 새 서비스의 설정과 문맥을 다시 읽는다")
