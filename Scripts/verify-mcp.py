@@ -174,17 +174,26 @@ def main() -> int:
         generation = payload["session"]["generation"]
         repeated = legacy.request(5, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
         assert_true(legacy_payload(repeated)["session"]["generation"] == generation, "session was not reused")
-        # serve 는 입력 지문을 최대 1초에 한 번만 다시 검증한다 — 창 안의 호출은 마지막
-        # 세대로 응답하므로, 편집이 반영되는지 확인하려면 창이 지나기를 기다린다.
-        time.sleep(1.1)
+        # serve 는 입력 지문을 최대 1초에 한 번만 다시 검증한다 — 편집 직후의 호출은
+        # 아직 창 안이라 이전 세대로 응답해야 한다. 이 단언이 없으면 serve 의 창이
+        # .zero 로 돌아가도 검사가 통과해 연결 자체를 보증하지 못한다.
         source_path.write_text(source_path.read_text() + "struct Added {}\n")
+        in_window = legacy.request(61, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
+        assert_true(
+            legacy_payload(in_window)["session"]["generation"] == generation,
+            "in-window request did not reuse the verified generation",
+        )
+        # 창이 지난 뒤의 호출은 편집을 감지해 새 세대를 준비한다.
+        time.sleep(1.1)
         stale = legacy.request(6, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
         stale_session = legacy_payload(stale)["session"]
         assert_true(stale_session["generation"] > generation, "source edit did not refresh session")
         assert_true(any("index-staleness" in item for item in stale_session["limitations"]), "staleness was not reported")
         build("refresh-build")
-        fresh = legacy.request(7, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
-        fresh_limits = legacy_payload(fresh)["session"]["limitations"]
+        # 재빌드 직후의 호출은 아직 창 안일 수 있으므로, 문서화된 우회 수단인 status 의
+        # refresh 인자로 창을 넘겨 새 세대를 즉시 검증한다 — 이 인자 계약도 함께 검증된다.
+        refreshed = legacy.request(62, "tools/call", {"name": "cartograph_status", "arguments": {"refresh": True}})
+        fresh_limits = legacy_payload(refreshed)["limitations"]
         assert_true(not any("index-staleness" in item for item in fresh_limits), "rebuild did not clear staleness")
         legacy.send(request(None, "notifications/unknown", {}))
         assert_true(legacy.request(8, "ping", {})["result"] == {}, "notification disturbed next request")
