@@ -590,7 +590,8 @@ discover and tool listing work before a project is built. `cartograph_status`, `
 (status returns metadata directly), and refresh automatically when indexed inputs change. Input
 fingerprints are re-verified at most once per second; calls inside that window are answered by
 the last verified generation. `--session-freshness-interval <seconds>` tunes the window
-(`0` re-verifies every request). Pass `refresh: true` to `cartograph_status` to bypass the
+(`0` re-verifies every request, values outside `[0, 86400]` are rejected). Pass
+`refresh: true` to `cartograph_status` to bypass the
 window and re-verify inputs immediately after an edit; subsequent tool calls then answer from
 the refreshed generation. The server never starts a build. Query responses cap the shared `symbols × limit` budget at 1000;
 MCP batches additionally share 200 reference-evidence and 50 local-diagnostic records across

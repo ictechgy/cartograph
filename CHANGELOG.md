@@ -15,7 +15,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   latency dropped from ~9ms to ~0.1ms on this repository in measurement. Calls inside
   the one-second window are answered by the last verified generation, and a later call
   still re-reads inputs; `AnalysisSession` embedders keep the previous
-  verify-every-request behavior unless they opt into `freshnessCheckInterval`.
+  verify-every-request behavior unless they opt into `freshnessCheckInterval`. The
+  window length is tunable via `serve --session-freshness-interval <seconds>`
+  (`0` restores every-request verification, values outside `[0, 86400]` are rejected),
+  and `cartograph_status` accepts `refresh: true` to bypass the window after an edit.
 
 ## [0.18.0] - 2026-09-18
 
