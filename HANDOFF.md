@@ -6,12 +6,39 @@ _Last updated: 2026-09-18 by devin_
 
 경쟁 강화(warm 질의·dead 경고 3종·온보딩 안내), **0.17.0 릴리스와 Homebrew 배포**,
 bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴고까지
-**전부 머지·배포 완료**했다. 이후 사용자가 성능·보안·구조 리뷰와 개선을 요청했다.
+**전부 머지·배포 완료**했다. 0.18.0(Expo Modules + impact 인접 목록)도 릴리스됐다.
+이후 경쟁 갭 분석(`docs/evaluation/2026-09-18-competitive-gaps.md`, **미커밋**)을
+거쳐 사용자가 "순차적으로" 갭을 닫기를 요청했다. 순서: ①웜 query 지연 →
+②불필요 ignore 감지 → ③불필요 public 경고 → ④impact --before 제거 간선 →
+⑤기계적 fix → ⑥impact 입도 → ⑦테스트 영향 질의 → ⑧공식 GitHub Action →
+⑨equatable/hashable 옵션 → ⑩런타임 텔레메트리(연구 전용 보류).
+
 컨테이너 확장 인접-목록 개선은
 [PR #104](https://github.com/ictechgy/cartograph/pull/104)로 **스쿼시 머지 완료**했다
 (`6bbf766`, 리뷰 head `be7af2a`, CI 녹색). 브리지 `sourceCache` 최적화는 미착수 보류다.
 
 ## Current Status
+
+### 진행 중 — ① 웜 query 지연 (브랜치 `perf/session-freshness-window`)
+
+- **병목 규명:** `describeQuery`는 이미 완전히 bounded(explain + `GraphNeighborhood`
+  BFS 2개 + containment 2개 + 증거 예산 200)이고, `QuerySession`은 세션당 한 번 만들어
+  캐시된다. 웜 호출의 실질 비용은 `ensurePrepared`의 **매 요청 입력 지문 재계산** —
+  이 저장소에서 ~9ms(status≈query로 분리 측정), 소스+인덱스 파일 전부 stat.
+- **구현:** `AnalysisSession`에 `freshnessCheckInterval`(기본 `.zero` = 기존 동작인
+  요청마다 검증)을 추가하고, 창 안의 연속 요청은 마지막 검증 세대를 그대로 쓴다.
+  `serve`만 `.seconds(1)`로 opt-in. 성공한 reload도 검증 시각으로 간주해 찍는다.
+  `runtimeContext`의 Core Data 증거 검증은 명시적이므로 창과 무관하게 매번 수행.
+- **계측**(release, 이 저장소): 창 안 웜 status/query **~0.0-0.1ms**(이전 ~9ms),
+  창 경과 후 첫 호출 ~9-11ms(재검증 정상), 첫 요청 ~0.7-1.9s(세션 준비, 무관).
+- **계약 검사 갱신:** `verify-mcp.py`의 "편집 직후 세대 증가" 기대가 옛 계약이라
+  창(1.1s)을 기다린 뒤 확인하게 수정 — 같은 내용의 감지 계약은 유지.
+  `verify-coredata-build-evidence.py`의 돌연변이 거부 경로는 `runtimeContext`의
+  명시 검증+invalidate라 그대로 통과.
+- 테스트 3개: 창 안 미재독+이전 세대 사용(변이로 실제 무는지 확인), 창 경과 후
+  재검증(50ms 창+100ms 수면), 명시 refresh는 창 무관하게 재독.
+- **남은 것:** 커밋·푸시·PR·리뷰(머지 승인 전까지 머지하지 않음), HANDOFF의
+  Verification 표는 이 변경 기준으로 갱신함.
 
 ### 완료된 개선 — 2026-09-18
 
@@ -126,14 +153,26 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 
 ## Verification
 
-현재 미커밋 변경의 통과 근거(전부 직접 실행):
+현재 브랜치(`perf/session-freshness-window`) 변경의 통과 근거(전부 직접 실행):
+
+| 검사 | 결과 |
+| --- | --- |
+| `swift test`(coverage.sh 내 번들) | 전부 통과 — 세션 테스트 32개(신규 창 테스트 3개 포함) |
+| `Scripts/coverage.sh` | **93.02%** (기준 90%, 계측 CLI 통합·MCP 검사 포함 전부 통과) |
+| `Scripts/verify-cli-contract.sh` | 통과 |
+| `Scripts/verify-fixtures.sh` | 통과 — **반드시 디버그 바이너리 경로를 첫 인자로** 넘길 것 |
+| strict 자기 분석 | dead·cycles·type cycles·rules 모두 findings 없음 |
+| 변이 확인 | `ensurePrepared`의 창 조기 반환을 끄면 새 테스트가 2개 단언 모두 실패함을 확인 |
+| 성능 계측 | 창 안 웜 status/query ~0.0-0.1ms(이전 ~9ms, release·MCP stdio); 창 경과 후 재검증 ~9-11ms 정상 |
+
+아래 표는 **PR #104의 근거**다.
 
 | 검사 | 결과 |
 | --- | --- |
 | `swift test`(coverage.sh 내 8번들) | **1,505 tests** 전부 통과, 이슈 0(리뷰 수정 후 재실행도 통과) |
 | `Scripts/coverage.sh` | **93.03%** (기준 90%, 리뷰 수정 후 재측정) |
 | `Scripts/verify-cli-contract.sh` | 통과 |
-| `Scripts/verify-fixtures.sh` | 통과 — **반드시 디버그 바이너리 경로를 첫 인자로** 넘길 것. 인자 없이 돌리면 낡은 release 바이너리가 골든과 다른 브리지 출력을 내 실패로 보인다(AGENTS.md에 기록된 함정) |
+| `Scripts/verify-fixtures.sh` | 통과 — 디버그 바이너리 경로 지정 |
 | strict 자기 분석 | dead·cycles·type cycles·rules 모두 findings 없음 |
 | 동등성 | 무작위 프로퍼티 480 비교·고정 케이스가 기준 구현과 일치; 초안은 114건 불일치로 실패 확인(테스트가 실제로 뭄); Codex 측 독립 모델 25,216 비교도 불일치 없음 |
 | 성능 계측 | 좁은 선택 58.3→0.15ms, 넓은 선택 78.9→38.1ms(디버그, 44k/140k) |
@@ -178,13 +217,20 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ## Next Steps
 
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
-   (이 문서의 머지 반영 갱신은 `main`의 미커밋 변경이다 — 커밋은 요청 시에만.)
-2. 브리지 `sourceCache` 최적화는 동일 소스 스냅샷 보존 조건에서 검토한다. 근거 없이 제거하지
+   (이 문서 갱신과 `docs/evaluation/2026-09-18-competitive-gaps.md`는 미커밋 —
+   커밋은 요청 시에만.)
+2. ①웜 query: `perf/session-freshness-window`를 커밋·푸시·PR로 만들고 리뷰한다.
+   머지는 사용자 승인 후.
+3. 이후 순서: ②불필요 ignore 감지 → ③불필요 public → ④impact --before 제거 간선 →
+   ⑤기계적 fix → ⑥impact 입도 → ⑦테스트 영향 → ⑧GitHub Action → ⑨equatable 옵션.
+   ⑩런타임 텔레메트리는 연구 전용 보류.
+4. 브리지 `sourceCache` 최적화는 동일 소스 스냅샷 보존 조건에서 검토한다. 근거 없이 제거하지
    않으며, 입증되지 않으면 메모리 계측 결과부터 확보한다.
 
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
-0.17.0 배포와 컨테이너 확장 인접-목록 개선(PR #104, 스쿼시 `6bbf766`)은 전부 머지됐습니다.
-완료된 배포·검증·리뷰를 반복하지 마세요. 보류된 브리지 `sourceCache` 최적화는 일관성 조건을
-입증한 뒤에만 진행합니다.
+0.18.0 릴리스와 PR #104는 전부 머지·배포됐습니다. 진행 중인 것은 경쟁 갭 목록의
+①웜 query 지연 — `perf/session-freshness-window` 브랜치에 구현·검증이 끝났고
+커밋·PR·리뷰가 남았습니다(머지는 승인 후). 완료된 배포·검증을 반복하지 마세요.
+나머지 갭 순서는 Goal 섹션에 있습니다.
