@@ -273,7 +273,9 @@ removal would expose an unreachable declaration is never flagged. Dead-code is n
 counterfactual: test-only, assign-only-property and unused-import findings count too. A
 declaration-level comment covers its whole member subtree — a member it ignores is folded into
 that comment's judgement rather than treated as a comment of its own, while a member carrying
-its own comment is judged separately. A file-level `cartograph:ignore:all` comment is judged as
+its own comment is judged separately. Since a retained member keeps its containing type alive,
+an unreferenced type's own comment can be judged superfluous when a member's comment is doing
+the retaining. A file-level `cartograph:ignore:all` comment is judged as
 one file-scope unit and reported once; comments on individual declarations are judged
 independently, even when every declaration in a file carries one. Like the other warning rules,
 `superfluous-ignore` does not count toward `--strict`.

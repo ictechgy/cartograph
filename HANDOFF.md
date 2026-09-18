@@ -68,13 +68,24 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
   `ping()` 발견과 `IgnoredAndDead` 필요 주석의 불필요 오판을 냈다. 신규
   `.ignoreInherited` 표식으로 전파 무시를 구별해 자기 주석이 있는 정점만
   단위로 세운다 — 부모 주석은 서브트리 전체를 덮는 것이 실제 의미다.
-- **검증:** SuperfluousIgnoreTests 23개(전파 무시·assign-only·import 반사실·
-  대조군 포함) + ReaderDatabasePathTests + CommentCommandTests. 변이 확인:
-  `honoringIgnoreComments: true`·`exposesIgnoredImport` 제거 각각 해당 테스트
-  실패, fixture가 수정 전 유령 발견 2건으로 실패 후 복구 확인. 전 게이트
-  통과(테스트·커버리지 93.03%·fixture·CLI 계약·strict 자기 분석 — 자기
-  분석이 잔재 `effectiveDatabasePath`를 잡아 삭제).
-- **남은 것:** 커밋·푸시(PR #107 갱신)·후속 리뷰·머지 승인.
+- **ultra-review 3라운드 반영(수정분 대상):** claude·codex 전부 CHANGES_REQUESTED
+  (agy·grok은 지속 무효로 미투입 — 커버리지 갭 기록). 합의: 형제 정리 접미가
+  임의 길이 16진을 지움(`db-2024` 등) → 지문을 고정폭 16자로 두고 접미도 정확히
+  그 형태만; `-unverified` 삭제 실패 삼킴 → 없음 외 실패 시 일회용
+  `-unverified-<uuid>` 경로(낡은 DB 재사용 금지). 단독 실결함: 무시 부모 없는
+  `.ignoreInherited` 고아가 어느 단위에도 못 들어가 주석이 영구 미판정 → 고아를
+  단위 꼭대기로 승격(이전 동작 복원); `exposesIgnoredImport`가 자기 `ignore`
+  있는 import까지 풂 → `IndexedImport.isIgnoredOnlyByFileComment` 출처 추가.
+  LOW 반영: prune의 동시 실행 경쟁 → `modificationDate` 유예(300초),
+  구문 계층 `.ignoreInherited` 핀 테스트, 죽은 부모+자기 주석 멤버·삼단 중첩
+  핀 테스트, README에 멤버→부모 보존 규칙 한 문장. 부수 수정: `.ignoreInherited`
+  도입 때 누락된 SourceFactsCache schemaVersion 12→13(낡은 캐시의 상속 표식
+  없는 facts가 유령 단위를 되살림).
+- **검증:** SuperfluousIgnoreTests 28개 + ReaderDatabasePathTests 11개 +
+  구문 핀 테스트. 변이 확인: 고아 승격 제거·`isIgnoredOnlyByFileComment`→`isIgnored`·
+  지문 길이 제한 제거·unverified 폴백 `try?`·prune 유예 제거 각각 해당 테스트 실패.
+  전 게이트 통과(테스트·커버리지 93.05%·fixture·CLI 계약·strict 자기 분석).
+- **남은 것:** 머지 승인(PR #107, head `1dddddc`+3라운드 반영 커밋).
 
 ### 완료 — ① 웜 query 지연
 
@@ -223,12 +234,12 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 
 | 검사 | 결과 |
 | --- | --- |
-| `swift test` | 8번들 전부 통과 — SuperfluousIgnore 23·ReaderDatabasePath 9 |
-| `Scripts/coverage.sh` | **93.03%** (기준 90%, 계측 CLI 통합 포함) |
+| `swift test` | 8번들 전부 통과 — SuperfluousIgnore 28·ReaderDatabasePath 11(3라운드 반영 후) |
+| `Scripts/coverage.sh` | **93.05%** (기준 90%, 계측 CLI 통합 포함) |
 | `Scripts/verify-cli-contract.sh` | 통과 |
 | `Scripts/verify-fixtures.sh` | 통과 — 디버그 바이너리 경로 지정, superfluous-ignore 2건 골든 일치(수정 전 유령 발견으로 실패 후 복구) |
 | strict 자기 분석 | dead·cycles·type cycles·rules 모두 findings 없음 — 자기 분석이 잔재 `effectiveDatabasePath`를 잡아 삭제 |
-| 변이 확인 | 파일단위 휴리스틱·누적 제거·시드 스캔 제거·`honoringIgnoreComments: true`·`exposesIgnoredImport` 제거 각각 해당 테스트 실패 |
+| 변이 확인 | 파일단위 휴리스틱·누적 제거·시드 스캔 제거·`honoringIgnoreComments: true`·`exposesIgnoredImport` 제거·고아 승격·import 출처·지문 길이·unverified 폴백·prune 유예 각각 해당 테스트 실패 |
 
 아래 표는 **PR #104의 근거**다.
 
@@ -282,8 +293,8 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ## Next Steps
 
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
-2. ②불필요 ignore: `feat/superfluous-ignore-warning`을 커밋·푸시해 PR #107을 갱신하고
-   후속 리뷰를 돌린다. 머지는 사용자 승인 후.
+2. ②불필요 ignore: PR #107에 ultra-review 3라운드 반영까지 커밋·푸시됐다.
+   머지는 사용자 승인 후.
 3. 이후 순서: ③불필요 public → ④impact --before 제거 간선 →
    ⑤기계적 fix → ⑥impact 입도 → ⑦테스트 영향 → ⑧GitHub Action → ⑨equatable 옵션.
    ⑩런타임 텔레메트리는 연구 전용 보류.
@@ -295,5 +306,5 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
 0.18.0 릴리스와 PR #104·#106은 전부 머지·배포됐습니다. 진행 중인 것은 경쟁 갭 목록의
 ②불필요 ignore 감지 — `feat/superfluous-ignore-warning`(PR #107)에 ultra-review
-1라운드 반영과 전 게이트 통과가 끝났고 커밋·푸시·후속 리뷰가 남았습니다(머지는 승인 후).
+3라운드 반영과 전 게이트 통과가 끝났고 머지 승인만 남았습니다.
 완료된 배포·검증을 반복하지 마세요. 나머지 갭 순서는 Goal 섹션에 있습니다.
