@@ -392,4 +392,6 @@ private final class MutatingTraceFileSystem: FileSystem, @unchecked Sendable {
     func write(_ data: Data, to path: String) throws {
         try base.write(data, to: path)
     }
+
+    func removeItem(at path: String) throws { try base.removeItem(at: path) }
 }

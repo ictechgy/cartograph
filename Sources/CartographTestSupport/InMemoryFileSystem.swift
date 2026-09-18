@@ -60,6 +60,17 @@ public final class InMemoryFileSystem: FileSystem, @unchecked Sendable {
         lock.withLock { files[path] = data }
     }
 
+    public func removeItem(at path: String) throws {
+        try lock.withLock {
+            let prefix = path + "/"
+            let children = files.keys.filter { $0.hasPrefix(prefix) }
+            guard files.removeValue(forKey: path) != nil || !children.isEmpty else {
+                throw CocoaError(.fileNoSuchFile)
+            }
+            for child in children { files.removeValue(forKey: child) }
+        }
+    }
+
     /// 테스트에서 지정할 수 있는 경로별 수정 시각.
     ///
     /// 저장소 전체가 잠금 뒤에 있어야 하므로 외부에서는 메서드로만 설정한다.

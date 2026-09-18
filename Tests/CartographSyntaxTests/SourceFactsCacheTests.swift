@@ -187,4 +187,5 @@ private final class CountingFileSystem: FileSystem, @unchecked Sendable {
         lock.withLock { counts[path, default: 0] += 1 }
         try base.write(data, to: path)
     }
+    func removeItem(at path: String) throws { try base.removeItem(at: path) }
 }

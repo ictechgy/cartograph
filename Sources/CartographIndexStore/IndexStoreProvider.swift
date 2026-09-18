@@ -307,9 +307,11 @@ public struct IndexStoreProvider: IndexProviding {
             // readonly 는 거짓이어야 한다. 참이면 같은 함수가 유닛을 넣기 전에
             // 곧바로 반환해 빈 인덱스가 된다. 여기서 쓰는 데이터베이스는 우리가
             // 만드는 캐시이므로 쓰기가 필요하다.
+            let databasePath = effectiveDatabasePath()
+            pruneStaleReaderDatabases(keeping: databasePath)
             return try IndexStoreDB(
                 storePath: configuration.storePath,
-                databasePath: effectiveDatabasePath(),
+                databasePath: databasePath,
                 library: library,
                 waitUntilDoneInitializing: true,
                 readonly: false,
@@ -423,8 +425,32 @@ public struct IndexStoreProvider: IndexProviding {
     /// 갈아타 유령이 로드될 수 없다. 지문이 같으면 같은 DB 를 재사용한다.
     func effectiveDatabasePath() -> String {
         let signature = unitsSignature()
-        guard !signature.isEmpty else { return configuration.databasePath }
-        return configuration.databasePath + "-" + signature
+        // 지문을 못 만들어도 버전 없는 경로는 쓰지 않는다 — 이전 버전이 그
+        // 경로에 남긴 DB 는 지워진 유닛을 담고 있어, 유령 유닛 버그를 그대로
+        // 재현할 수 있다.
+        let suffix = signature.isEmpty ? "unverified" : signature
+        return configuration.databasePath + "-" + suffix
+    }
+
+    /// 지문이 바뀔 때마다 생기는 형제 판독기 DB 디렉터리를 정리한다.
+    ///
+    /// 현재 경로만 남기고, 버전 없는 예전 경로와 다른 지문의 형제는 전부
+    /// 지운다 — 버전 없는 경로에는 유령 유닛 버그를 일으킨 낡은 DB 가
+    /// 남아 있을 수 있다. 정리는 정확도와 무관한 부수 작업이라 지우지 못한
+    /// 항목은 다음 실행의 정리에 맡긴다.
+    func pruneStaleReaderDatabases(keeping currentPath: String) {
+        let base = configuration.databasePath
+        let baseName = (base as NSString).lastPathComponent
+        let parent = (base as NSString).deletingLastPathComponent
+        guard let entries = try? fileSystem.contentsOfDirectory(at: parent)
+        else { return }
+        for entry in entries {
+            let name = (entry as NSString).lastPathComponent
+            guard name == baseName || name.hasPrefix(baseName + "-"),
+                  entry != currentPath
+            else { continue }
+            try? fileSystem.removeItem(at: entry)
+        }
     }
 
     /// `<스토어>/v5/units`(없으면 `units`)의 유닛 파일 이름 지문.

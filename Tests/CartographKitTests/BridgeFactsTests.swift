@@ -1307,5 +1307,6 @@ private struct UnsupportedRealPathFileSystem: FileSystem {
     func directoryExists(at path: String) -> Bool { backing.directoryExists(at: path) }
     func readData(at path: String) throws -> Data { try backing.readData(at: path) }
     func write(_ data: Data, to path: String) throws { try backing.write(data, to: path) }
+    func removeItem(at path: String) throws { try backing.removeItem(at: path) }
     func contentsOfDirectory(at path: String) throws -> [String] { try backing.contentsOfDirectory(at: path) }
 }

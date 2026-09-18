@@ -1082,6 +1082,7 @@ private final class CountingLocalFileSystem: FileSystem, @unchecked Sendable {
     }
 
     func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
+    func removeItem(at path: String) throws { try base.removeItem(at: path) }
     func contentsOfDirectory(at path: String) throws -> [String] { try base.contentsOfDirectory(at: path) }
     func directoryEntries(at path: String) throws -> [DirectoryEntry] {
         lock.withLock { directoryEnumerations += 1 }
@@ -1113,6 +1114,7 @@ private final class BlockedEnumerationFileSystem: FileSystem, @unchecked Sendabl
     func directoryExists(at path: String) -> Bool { base.directoryExists(at: path) }
     func readData(at path: String) throws -> Data { try base.readData(at: path) }
     func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
+    func removeItem(at path: String) throws { try base.removeItem(at: path) }
     func contentsOfDirectory(at path: String) throws -> [String] { try base.contentsOfDirectory(at: path) }
     func directoryEntries(at path: String) throws -> [DirectoryEntry] {
         let component = (path as NSString).lastPathComponent
@@ -1145,6 +1147,7 @@ private final class CountingUnstampedFileSystem: FileSystem, @unchecked Sendable
     }
 
     func write(_ data: Data, to path: String) throws { try backing.write(data, to: path) }
+    func removeItem(at path: String) throws { try backing.removeItem(at: path) }
     func contentsOfDirectory(at path: String) throws -> [String] { try backing.contentsOfDirectory(at: path) }
     func directoryEntries(at path: String) throws -> [DirectoryEntry] { try backing.directoryEntries(at: path) }
     func modificationDate(at path: String) -> Date? { backing.modificationDate(at: path) }

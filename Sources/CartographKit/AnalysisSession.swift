@@ -646,6 +646,7 @@ fileprivate struct CachedListingFileSystem: FileSystem {
     func directoryExists(at path: String) -> Bool { base.directoryExists(at: path) }
     func readData(at path: String) throws -> Data { try base.readData(at: path) }
     func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
+    func removeItem(at path: String) throws { try base.removeItem(at: path) }
     func contentsOfDirectory(at path: String) throws -> [String] {
         try base.contentsOfDirectory(at: path)
     }

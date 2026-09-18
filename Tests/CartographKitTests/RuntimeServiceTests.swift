@@ -352,6 +352,7 @@ private final class MutatingRuntimeFileSystem: FileSystem, @unchecked Sendable {
         return data
     }
     func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
+    func removeItem(at path: String) throws { try base.removeItem(at: path) }
     func contentsOfDirectory(at path: String) throws -> [String] {
         try base.contentsOfDirectory(at: path)
     }

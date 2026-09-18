@@ -13,6 +13,11 @@ public protocol FileSystem: Sendable {
     func directoryExists(at path: String) -> Bool
     func readData(at path: String) throws -> Data
     func write(_ data: Data, to path: String) throws
+    /// 경로의 파일이나 디렉터리를 지운다. 디렉터리는 내용물까지 함께 지운다.
+    ///
+    /// 낡은 캐시 디렉터리 정리처럼 쓰기가 필요한 곳에서만 호출한다. 없는 경로를
+    /// 지우면 오류다 — 호출자가 "이미 없다" 를 허용할지는 각자 정한다.
+    func removeItem(at path: String) throws
     /// 디렉터리 바로 아래 항목들의 전체 경로. 순서는 정렬되어 있다.
     func contentsOfDirectory(at path: String) throws -> [String]
     /// 디렉터리 바로 아래 항목을 종류와 함께 돌려준다.
@@ -356,6 +361,10 @@ public struct LocalFileSystem: FileSystem {
             withIntermediateDirectories: true
         )
         try data.write(to: url, options: .atomic)
+    }
+
+    public func removeItem(at path: String) throws {
+        try FileManager.default.removeItem(atPath: path)
     }
 
     public func contentsOfDirectory(at path: String) throws -> [String] {
