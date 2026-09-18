@@ -174,6 +174,9 @@ def main() -> int:
         generation = payload["session"]["generation"]
         repeated = legacy.request(5, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
         assert_true(legacy_payload(repeated)["session"]["generation"] == generation, "session was not reused")
+        # serve 는 입력 지문을 최대 1초에 한 번만 다시 검증한다 — 창 안의 호출은 마지막
+        # 세대로 응답하므로, 편집이 반영되는지 확인하려면 창이 지나기를 기다린다.
+        time.sleep(1.1)
         source_path.write_text(source_path.read_text() + "struct Added {}\n")
         stale = legacy.request(6, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
         stale_session = legacy_payload(stale)["session"]

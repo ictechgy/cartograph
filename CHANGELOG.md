@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `serve` re-verifies the session input fingerprint at most once per second instead of
+  on every tool call. Fingerprinting stats every source and index-unit file, so on
+  consecutive calls it cost more than the bounded query itself — warm `query`/`status`
+  latency dropped from ~9ms to ~0.1ms on this repository in measurement. Calls inside
+  the one-second window are answered by the last verified generation, and a later call
+  still re-reads inputs; `AnalysisSession` embedders keep the previous
+  verify-every-request behavior unless they opt into `freshnessCheckInterval`.
+
 ## [0.18.0] - 2026-09-18
 
 ### Added
