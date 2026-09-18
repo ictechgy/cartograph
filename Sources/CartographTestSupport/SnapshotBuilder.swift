@@ -59,7 +59,8 @@ public struct SnapshotBuilder {
         path: String? = nil,
         line: Int = 1,
         targetKind: SymbolKind? = nil,
-        origin: ReferenceOrigin = .unknown
+        origin: ReferenceOrigin = .unknown,
+        position: ReferencePosition = .unknown
     ) -> Self {
         references.append(
             IndexedReference(
@@ -68,7 +69,8 @@ public struct SnapshotBuilder {
                 kind: kind,
                 location: SourceLocation(path: path ?? defaultPath, line: line, column: 1),
                 targetKind: targetKind,
-                origin: origin
+                origin: origin,
+                position: position
             )
         )
         return self

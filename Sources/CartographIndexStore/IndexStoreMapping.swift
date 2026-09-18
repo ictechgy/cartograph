@@ -399,7 +399,7 @@ public enum IndexStoreMapping {
             return IndexedReference(
                 sourceUSR: source, targetUSR: target, kind: reference.kind,
                 location: reference.location, targetKind: reference.targetKind,
-                origin: reference.origin
+                origin: reference.origin, position: reference.position
             )
         }
     }

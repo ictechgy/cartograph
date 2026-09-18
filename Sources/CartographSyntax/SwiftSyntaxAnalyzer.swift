@@ -19,7 +19,7 @@ public struct SwiftSyntaxAnalyzer: Sendable {
     ///
     /// 툴체인(SwiftSyntax) 교체는 이 값으로 잡히지 않는다. 그때는 캐시 디렉터리를
     /// 지우면 된다. 릴리스 간 이동은 도구 버전이 함께 키에 들어가 자동으로 갈린다.
-    public static let analysisRevision = 20
+    public static let analysisRevision = 21
 
     /// XCTestCase 외에 테스트 기반 클래스로 볼 이름들.
     ///
@@ -46,7 +46,8 @@ public struct SwiftSyntaxAnalyzer: Sendable {
             runtimeFacts: RuntimeFactScanner().scan(tree: tree, path: path),
             localFunctionScopes: LocalFunctionScanner().scan(tree: tree, path: path),
             parameterUsages: ParameterUsageScanner().scan(tree: tree, path: path, converter: converter),
-            imports: ImportScanner().scan(tree: tree, path: path, converter: converter)
+            imports: ImportScanner().scan(tree: tree, path: path, converter: converter),
+            bodyRanges: ReferenceBodyScanner().scan(tree: tree, path: path, converter: converter)
         )
     }
 

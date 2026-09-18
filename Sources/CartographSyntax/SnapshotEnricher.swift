@@ -247,9 +247,31 @@ public struct SnapshotEnricher: Sendable {
         // 모르므로 구문 사실이 유일한 출처다. 사실을 못 얻은 파일은 목록에
         // 나타나지 않고, 그 파일의 import는 미사용으로 보고되지 않는다.
         enriched.imports = facts.keys.sorted().flatMap { facts[$0]?.imports ?? [] }
-        return LocalFunctionBinder.enrichWithDiagnostics(enriched,
+        let bound = LocalFunctionBinder.enrichWithDiagnostics(enriched,
             scopes: facts.keys.sorted().flatMap { facts[$0]?.localFunctionScopes ?? [] },
             freshPaths: freshSourcePaths, edgeKinds: edgeKinds, freshnessFailures: freshnessFailures)
+        var snapshot = bound.snapshot
+        snapshot.references = markingReferencePositions(snapshot.references, with: facts)
+        return LocalFunctionBinder.Result(snapshot: snapshot, diagnostics: bound.diagnostics)
+    }
+
+    /// 참조가 선언의 인터페이스에 있는지 본문에 있는지 표시한다.
+    ///
+    /// 구문 사실이 없는 파일의 참조는 `unknown` 으로 남긴다 — 위치를 모르는 것을
+    /// 본문이라고 낮추면 필요 없는 공개 노출을 요구하지 않게 되어, "internal 로
+    /// 줄여도 된다"는 틀린 답이 나온다.
+    static func markingReferencePositions(
+        _ references: [IndexedReference],
+        with facts: [String: SourceFileFacts]
+    ) -> [IndexedReference] {
+        guard facts.contains(where: { $0.value.bodyRanges != nil }) else { return references }
+        return references.map { reference in
+            guard let location = reference.location,
+                  let ranges = facts[location.path]?.bodyRanges
+            else { return reference }
+            let inBody = ranges.contains { $0.contains(location) }
+            return reference.withPosition(inBody ? .body : .signature)
+        }
     }
 
     /// 인덱스의 파라미터 선언과 본문 스캔 결과를 위치로 맞붙인다.

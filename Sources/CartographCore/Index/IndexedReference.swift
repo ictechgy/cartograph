@@ -12,11 +12,13 @@ public struct IndexedReference: Hashable, Sendable, Codable {
     public let targetKind: SymbolKind?
     /// 과거 스냅샷이나 출처를 명시하지 않은 공급자는 unknown으로 남긴다.
     public let origin: ReferenceOrigin
+    /// 구문 보강이 채운 참조 자리. 보강하지 못한 공급자는 unknown으로 남긴다.
+    public let position: ReferencePosition
 
     public init(
         sourceUSR: String, targetUSR: String, kind: EdgeKind,
         location: SourceLocation? = nil, targetKind: SymbolKind? = nil,
-        origin: ReferenceOrigin = .unknown
+        origin: ReferenceOrigin = .unknown, position: ReferencePosition = .unknown
     ) {
         self.sourceUSR = sourceUSR
         self.targetUSR = targetUSR
@@ -24,13 +26,14 @@ public struct IndexedReference: Hashable, Sendable, Codable {
         self.location = location
         self.targetKind = targetKind
         self.origin = origin
+        self.position = position
     }
 
     private enum CodingKeys: String, CodingKey {
-        case sourceUSR, targetUSR, kind, location, targetKind, origin
+        case sourceUSR, targetUSR, kind, location, targetKind, origin, position
     }
 
-    /// 이전 교환 파일에 출처가 없으면 컴파일러 증거라고 추정하지 않는다.
+    /// 이전 교환 파일에 출처나 자리가 없으면 추정하지 않는다.
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.init(sourceUSR: try values.decode(String.self, forKey: .sourceUSR),
@@ -38,10 +41,11 @@ public struct IndexedReference: Hashable, Sendable, Codable {
             kind: try values.decode(EdgeKind.self, forKey: .kind),
             location: try values.decodeIfPresent(SourceLocation.self, forKey: .location),
             targetKind: try values.decodeIfPresent(SymbolKind.self, forKey: .targetKind),
-            origin: try values.decodeIfPresent(ReferenceOrigin.self, forKey: .origin) ?? .unknown)
+            origin: try values.decodeIfPresent(ReferenceOrigin.self, forKey: .origin) ?? .unknown,
+            position: try values.decodeIfPresent(ReferencePosition.self, forKey: .position) ?? .unknown)
     }
 
-    /// 모르는 출처는 키를 생략해 기존 공급자의 출력 계약을 유지한다.
+    /// 모르는 출처·자리는 키를 생략해 기존 공급자의 출력 계약을 유지한다.
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(sourceUSR, forKey: .sourceUSR)
@@ -50,5 +54,14 @@ public struct IndexedReference: Hashable, Sendable, Codable {
         try values.encodeIfPresent(location, forKey: .location)
         try values.encodeIfPresent(targetKind, forKey: .targetKind)
         if origin != .unknown { try values.encode(origin, forKey: .origin) }
+        if position != .unknown { try values.encode(position, forKey: .position) }
+    }
+
+    /// 구문 보강이 채운 자리를 갈아 끼운 복사본.
+    public func withPosition(_ position: ReferencePosition) -> IndexedReference {
+        IndexedReference(
+            sourceUSR: sourceUSR, targetUSR: targetUSR, kind: kind, location: location,
+            targetKind: targetKind, origin: origin, position: position
+        )
     }
 }

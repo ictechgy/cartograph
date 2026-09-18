@@ -29,6 +29,27 @@ public struct DeclarationFacts: Codable, Sendable, Equatable {
     }
 }
 
+/// 소스 파일 안의 한 구간.
+///
+/// 시작과 끝 모두 경계를 포함한다. 열은 UTF-8 바이트 기준으로 인덱스 스토어가
+/// 주는 위치와 같은 단위를 쓴다.
+public struct SourceRange: Codable, Sendable, Equatable, Hashable {
+    public let start: SourceLocation
+    public let end: SourceLocation
+
+    public init(start: SourceLocation, end: SourceLocation) {
+        self.start = start
+        self.end = end
+    }
+
+    /// 위치가 이 구간 안인지 여부. 경로가 다르면 거짓이다.
+    public func contains(_ location: SourceLocation) -> Bool {
+        guard location.path == start.path else { return false }
+        return (location.line, location.column) >= (start.line, start.column)
+            && (location.line, location.column) <= (end.line, end.column)
+    }
+}
+
 /// 함수 시그니처 파라미터 하나의 본문 사용 근거.
 ///
 /// 인덱스는 지역 심볼의 참조 발생을 기록하지 않으므로, 파라미터가 본문에서
@@ -65,6 +86,9 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
     /// 파일의 `import` 선언 목록. nil은 아직 수집하지 않은 캐시다.
     /// nil일 때는 그 파일의 import를 판정할 수 없으므로 보고하지 않는다.
     public let imports: [IndexedImport]?
+    /// 함수·접근자 본문의 구간. 이 안의 참조는 그 선언의 인터페이스를 바꾸지 않는다.
+    /// nil은 아직 수집하지 않은 캐시다 — 위치를 모르는 참조와 같이 보수적으로 다룬다.
+    public let bodyRanges: [SourceRange]?
 
     public init(
         path: String,
@@ -73,7 +97,8 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
         runtimeFacts: RuntimeFileFacts? = nil,
         localFunctionScopes: [LocalFunctionScopeFacts]? = nil,
         parameterUsages: [ParameterUsageFacts]? = nil,
-        imports: [IndexedImport]? = nil
+        imports: [IndexedImport]? = nil,
+        bodyRanges: [SourceRange]? = nil
     ) {
         self.path = path
         self.declarations = declarations
@@ -82,6 +107,7 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
         self.localFunctionScopes = localFunctionScopes
         self.parameterUsages = parameterUsages
         self.imports = imports
+        self.bodyRanges = bodyRanges
     }
 
     /// 줄 번호로 선언을 찾는다.

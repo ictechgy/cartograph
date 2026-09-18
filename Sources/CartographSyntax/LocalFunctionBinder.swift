@@ -113,7 +113,8 @@ enum LocalFunctionBinder {
                 kind: reference.kind,
                 location: reference.location,
                 targetKind: reference.targetKind,
-                origin: movedOrigin(reference.origin)
+                origin: movedOrigin(reference.origin),
+                position: reference.position
             )
         } + localUses
         return Result(snapshot: result, diagnostics: normalized(diagnostics))

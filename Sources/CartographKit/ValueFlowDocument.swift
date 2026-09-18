@@ -103,7 +103,7 @@ struct ValueFlowSourceLoader {
         let references = raw.references.map {
             IndexedReference(sourceUSR: $0.sourceUSR, targetUSR: $0.targetUSR, kind: $0.kind,
                 location: $0.location.map(location), targetKind: $0.targetKind,
-                origin: $0.origin)
+                origin: $0.origin, position: $0.position)
         }
         let dates = raw.indexedFileDates.map {
             Dictionary($0.map { (Self.canonicalPath($0.key), $0.value) }, uniquingKeysWith: min)
