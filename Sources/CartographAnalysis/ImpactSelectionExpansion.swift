@@ -16,8 +16,8 @@ public enum ImpactSelectionExpansion {
     /// `incomingEdges`) 방문한 정점의 자식 집합을 그때 계산하면, 같은 결과를
     /// 도달한 범위의 차수 합에 비례하는 비용으로 낸다. 함수 본문의 지역 선언처럼
     /// 컨테이너가 아닌 정점 아래에도 자식이 달릴 수 있으므로, 도달한 정점이면
-    /// 종류를 가리지 않고 자식 집합을 읽는다. 순환(타입 ↔ 익스텐션을 잇는
-    /// 간선 상호 참조)은 방문 집합으로 잘라 종료를 보장한다.
+    /// 종류를 가리지 않고 자식 집합을 읽는다. 순환(서로를 확장하는 익스텐션이나
+    /// member 간선 상호 참조)은 방문 집합으로 잘라 종료를 보장한다.
     ///
     /// - Parameters:
     ///   - selected: 입력 시드. 컨테이너가 아니면 그대로 남는다.
@@ -50,10 +50,20 @@ public enum ImpactSelectionExpansion {
 /// 익스텐션의 멤버 목록은 의미 부모별로 나눠 처음 필요할 때 한 번만 만든다.
 /// 여러 타입을 확장하는 익스텐션이 도달되어도 멤버 목록을 타입마다 다시 훑으면
 /// `semanticParent` 조회까지 곱해져, 간선 전수 스캔이던 원 구현보다 최악이 나빠진다.
+/// 이 그룹핑은 비용을 위한 것일 뿐 결과에는 영향이 없다 — 익스텐션이 큐에
+/// 들어가면 어휘 멤버 전체가 어차피 확장되므로, 어느 소유자 아래로 분류돼도
+/// 최종 집합은 같다.
+///
+/// 동등성이 서려 있는 불변식 하나: `semanticParent(t)`가 어휘 부모가 아닌 X를
+/// 돌려주려면, 어휘 부모는 X를 확장하는 익스텐션이어야 한다 — `semanticParent`는
+/// 익스텐션의 extends 간선을 거쳐서만 다른 소유자를 돌려주기 때문이다. 그래야
+/// "의미 부모 아래의 멤버"를 incoming extends 조회로 재구성할 수 있다. 두 구현이
+/// 같은 `semanticParent`를 부르므로 이 함수의 의미가 바뀌면 기준 대조 테스트는
+/// 잡아내지 못한다 — 바꿀 때는 이 불변식도 함께 확인한다.
 private struct Expander {
     let graph: CodeGraph
     /// 익스텐션 정점 → (의미 부모 정점 → 멤버 집합). 지연 계산 후 캐시한다.
-    private var extensionMembers: [NodeID: [NodeID: Set<NodeID>]] = [:]
+    private var groupedExtensionMembers: [NodeID: [NodeID: Set<NodeID>]] = [:]
 
     /// `owner` 를 컨테이너로 삼는 자식 집합 — 옮기기 전 구현이 간선 전수 스캔으로
     /// 미리 만들던 `children[owner]` 와 같은 집합이다.
@@ -81,14 +91,14 @@ private struct Expander {
     /// 같은 멤버가 다른 소유자 아래로 새지 않게 `semanticParent` 와 대조해 나눈다 —
     /// 익스텐션이 여러 타입을 확장하는 비정상 그래프에서도 원 구현과 같다.
     private mutating func extensionMembers(of ext: NodeID, under owner: NodeID) -> Set<NodeID> {
-        if let grouped = extensionMembers[ext] { return grouped[owner] ?? [] }
+        if let grouped = groupedExtensionMembers[ext] { return grouped[owner] ?? [] }
         var grouped: [NodeID: Set<NodeID>] = [:]
         for edge in graph.outgoingEdges(from: ext) where edge.kind == .member {
             if let parent = graph.semanticParent(of: edge.target) {
                 grouped[parent, default: []].insert(edge.target)
             }
         }
-        extensionMembers[ext] = grouped
+        groupedExtensionMembers[ext] = grouped
         return grouped[owner] ?? []
     }
 }
