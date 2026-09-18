@@ -67,6 +67,10 @@ private struct Expander {
     /// 익스텐션 정점 → (의미 부모 정점 → 멤버 집합). 지연 계산 후 캐시한다.
     private var groupedExtensionMembers: [NodeID: [NodeID: Set<NodeID>]] = [:]
 
+    init(graph: CodeGraph) {
+        self.graph = graph
+    }
+
     /// `owner` 를 컨테이너로 삼는 자식 집합 — 옮기기 전 구현이 간선 전수 스캔으로
     /// 미리 만들던 `children[owner]` 와 같은 집합이다.
     ///
