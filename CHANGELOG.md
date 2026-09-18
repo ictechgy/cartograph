@@ -12,11 +12,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `dead` reports `cartograph:ignore` comments that suppress nothing, as warnings under the
   `superfluous-ignore` rule — the same judgement Periphery 3.7 added. The check is
   counterfactual: reachability is re-run with only that comment removed, and the comment is
-  reported only when no new finding would appear. Comments on genuinely dead declarations keep
+  reported only when no new finding would appear — dead-code, test-only, assign-only-property
+  and unused-import findings all count. Comments on genuinely dead declarations keep
   suppressing them, a comment covering a used declaration is flagged, and a file-level
   `cartograph:ignore:all` comment is judged once as a file-scope unit while per-declaration
-  comments are judged independently even when every declaration in a file carries one.
-  Warnings do not count toward `--strict`.
+  comments are judged independently even when every declaration in a file carries one. A
+  declaration-level comment covers its whole member subtree — members it ignores are folded
+  into that comment's judgement instead of being mistaken for comments of their own, while a
+  member carrying its own comment is judged separately. Warnings do not count toward
+  `--strict`.
 
 ### Fixed
 

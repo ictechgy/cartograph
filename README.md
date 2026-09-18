@@ -269,11 +269,14 @@ A comment on a declaration that ordinary references already keep alive does no w
 the false impression that the code is dead. The check is counterfactual: the analysis re-runs
 reachability with only that comment removed, and the comment is reported only when no new
 finding appears — so a comment on genuinely dead code keeps suppressing it, and a comment whose
-removal would expose an unreachable declaration is never flagged. A file-level
-`cartograph:ignore:all` comment is judged as one file-scope unit and reported once; comments
-on individual declarations are judged independently, even when every declaration in a file
-carries one. Like the other warning rules, `superfluous-ignore` does not count toward
-`--strict`.
+removal would expose an unreachable declaration is never flagged. Dead-code is not the only
+counterfactual: test-only, assign-only-property and unused-import findings count too. A
+declaration-level comment covers its whole member subtree — a member it ignores is folded into
+that comment's judgement rather than treated as a comment of its own, while a member carrying
+its own comment is judged separately. A file-level `cartograph:ignore:all` comment is judged as
+one file-scope unit and reported once; comments on individual declarations are judged
+independently, even when every declaration in a file carries one. Like the other warning rules,
+`superfluous-ignore` does not count toward `--strict`.
 
 `--report-test-only` answers a different question: which production declarations are reached
 **only** from tests or previews. They are not dead — deleting one breaks a test — but a team wants

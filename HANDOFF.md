@@ -22,17 +22,20 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ### 진행 중 — ② 불필요 `cartograph:ignore` 감지 (브랜치 `feat/superfluous-ignore-warning`, PR #107)
 
 - **구현:** `ReachabilityAnalyzer.superfluousIgnores`가 반사실 판정을 한다.
-  `.ignoreComment` 정점을 `.member` 간선(같은 파일 한정)으로 "주석 하나가 덮는
-  범위"(무시 단위)로 묶고, 그 단위만 뗀 도달성을 다시 돌려 새 발견이 없으면
-  `superfluous-ignore` 경고로 보고한다. 파일 범위 단위는 `.ignoreAllComment`
-  표식이 있을 때만 만든다 — `SnapshotEnricher`가 `ignore:all` 파일의 심볼에
-  `.ignoreComment`와 함께 출처 표식을 단다. 겹친 단위는 커버리지 중복도로
-  처리하고, **확정된 단위의 주석은 뒤 판정에서 뗀 채로 누적한다** — 서로만
-  참조하는 무시 덩어리에서 앞 주석 하나만 보고해 "보고된 주석을 모두 떼어도
-  새 발견이 없다"는 보장이 성립한다. `RetentionPolicy`의
-  `retainedNodesWithoutIgnoreComments`로 같은 규칙의 보존을 재계산하고,
-  `findsTestOnlyCode`가 켜져 있으면 반사실 세계의 test-only 보고 변화도
-  필요 조건으로 본다. 진단은 `dead` 전용 경고(strict 미포함), 베이스라인 키는
+  자기 주석이 있는 `.ignoreComment` 정점(`.ignoreInherited`가 아닌 것)마다
+  단위를 세우고, 단위는 `.member` 간선(같은 파일 한정)으로 덮는 무시 자손을
+  함께 묶는다 — 조상 주석이 물려준 무시(`.ignoreInherited`)는 자기 단위를
+  만들지 않고 덮는 주석의 판정에 접힌다. 그 단위만 뗀 도달성을 다시 돌려
+  새 발견이 없으면 `superfluous-ignore` 경고로 보고한다. 파일 범위 단위는
+  `.ignoreAllComment` 표식이 있을 때만 만든다 — `SnapshotEnricher`가
+  `ignore:all` 파일의 심볼에 `.ignoreComment`와 함께 출처 표식을 단다.
+  겹친 단위는 커버리지 중복도로 처리하고, **확정된 단위의 주석은 뒤 판정에서
+  뗀 채로 누적한다** — 서로만 참조하는 무시 덩어리에서 앞 주석 하나만 보고해
+  "보고된 주석을 모두 떼어도 새 발견이 없다"는 보장이 성립한다.
+  `RetentionPolicy`의 `retainedNodesWithoutIgnoreComments`로 같은 규칙의
+  보존을 재계산하고, `findsTestOnlyCode`가 켜져 있으면 반사실 세계의
+  test-only 보고 변화도, assign-only·미사용 import 발견 변화도 필요 조건으로
+  본다. 진단은 `dead` 전용 경고(strict 미포함), 베이스라인 키는
   `usr|ignore`·`ignore:file:<path>`.
 - **성능:** 단위별 반사실은 `traverse`의 `alreadyReached` 시드로 무시 영역만
   걷는다. 시드 정점은 큐에 들어가지 않아 역방향 오버라이드 증인이 누락될 수
@@ -43,18 +46,35 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
   - 영속 IndexStoreDB 캐시가 지워진 유닛을 잊지 않아 파일 발생을 통째로
     삼키던 결함 — 유닛 집합 지문(FNV-1a)을 DB 경로에 섞고, 지문 실패 시
     `-unverified` 전용 경로(버전 없는 낡은 경로 재사용 금지), 열 때 형제 DB를
-    정리한다(`effectiveDatabasePath`/`pruneStaleReaderDatabases`,
+    정리한다(`prepareReaderDatabase`/`pruneStaleReaderDatabases`,
     `FileSystem.removeItem` 추가로 모든 래퍼 갱신).
 - **ultra-review 1라운드 반영:** claude×2·codex 전부 CHANGES_REQUESTED, agy
   6/16샤드(3 APPROVE·3 CR, 나머지 headless 권한 거부 무출력), grok 무효.
   반영: strict-weak-ordering 비교자(`locationThenID` 통일), 크로스파일 멤버
   흡수 차단, `.ignoreAllComment` 출처, testOnly 반사실, -unverified+형제 정리,
   누적 판정(상호 의존), 시드 오버라이드, `#require` 안전 단언.
-- **검증:** SuperfluousIgnoreTests 18개 + ReaderDatabasePathTests 7개 +
-  CommentCommandTests. 변이 확인: 파일단위 휴리스틱 복원·누적 제거·시드 스캔
-  제거 각각 해당 테스트 실패 확인. 전 게이트 통과(테스트·커버리지 93.03%·
-  fixture·CLI 계약·strict 자기 분석).
-- **남은 것:** 커밋·푸시(PR #107 갱신)·후속 리뷰.
+- **ultra-review 2라운드 반영:** claude-A 10건·claude-B 8건·codex 6건(전부 CR),
+  agy·grok 재시도 무효(타임아웃·무출력). 합의 블로커: `-unverified` 재사용
+  (실행 간 유령 재현) → 열기 전 삭제로, `baseName-*` 광범위 정리 → 접미가
+  `unverified`|16진인 항목만, 빈 `fileIgnored` 가드. 단독 트랙 실결함: 중첩
+  주석 독립 단위화, 위치 없는 정점 nil==nil 그룹화 → 단일 단위,
+  `FileSystem.removeItem` 필수 메서드 → 기본 구현으로 소스 호환성 유지,
+  assign-only·unused-import 반사실 누락 → `honoringIgnoreComments`·
+  `exposesIgnoredImport` 추가. 기각: 조건부 증인(기존 처리)·InMemory 모델 일치·
+  문서화 한계·스냅샷 캐치 없음.
+- **2라운드 반영이 드러낸 근본 문제:** 중첩 단위화가 전파 무시와 자기 주석을
+  구별하지 못해 fixture가 깨졌다 — 선언 주석은 `context.isIgnored`로 멤버에
+  `.ignoreComment`를 물려주므로, 자기 주석 없는 멤버가 유령 단위를 만들어
+  `ping()` 발견과 `IgnoredAndDead` 필요 주석의 불필요 오판을 냈다. 신규
+  `.ignoreInherited` 표식으로 전파 무시를 구별해 자기 주석이 있는 정점만
+  단위로 세운다 — 부모 주석은 서브트리 전체를 덮는 것이 실제 의미다.
+- **검증:** SuperfluousIgnoreTests 23개(전파 무시·assign-only·import 반사실·
+  대조군 포함) + ReaderDatabasePathTests + CommentCommandTests. 변이 확인:
+  `honoringIgnoreComments: true`·`exposesIgnoredImport` 제거 각각 해당 테스트
+  실패, fixture가 수정 전 유령 발견 2건으로 실패 후 복구 확인. 전 게이트
+  통과(테스트·커버리지 93.03%·fixture·CLI 계약·strict 자기 분석 — 자기
+  분석이 잔재 `effectiveDatabasePath`를 잡아 삭제).
+- **남은 것:** 커밋·푸시(PR #107 갱신)·후속 리뷰·머지 승인.
 
 ### 완료 — ① 웜 query 지연
 
@@ -203,12 +223,12 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 
 | 검사 | 결과 |
 | --- | --- |
-| `swift test` | 8번들 전부 통과 — SuperfluousIgnore 18·ReaderDatabasePath 7 |
+| `swift test` | 8번들 전부 통과 — SuperfluousIgnore 23·ReaderDatabasePath 9 |
 | `Scripts/coverage.sh` | **93.03%** (기준 90%, 계측 CLI 통합 포함) |
 | `Scripts/verify-cli-contract.sh` | 통과 |
-| `Scripts/verify-fixtures.sh` | 통과 — 디버그 바이너리 경로 지정, superfluous-ignore 2건 골든 일치 |
-| strict 자기 분석 | dead·cycles·type cycles·rules 모두 findings 없음(문서 주석 오탐 12건 해소 유지) |
-| 변이 확인 | 파일단위 휴리스틱·누적 제거·시드 스캔 제거 각각 해당 테스트 실패 |
+| `Scripts/verify-fixtures.sh` | 통과 — 디버그 바이너리 경로 지정, superfluous-ignore 2건 골든 일치(수정 전 유령 발견으로 실패 후 복구) |
+| strict 자기 분석 | dead·cycles·type cycles·rules 모두 findings 없음 — 자기 분석이 잔재 `effectiveDatabasePath`를 잡아 삭제 |
+| 변이 확인 | 파일단위 휴리스틱·누적 제거·시드 스캔 제거·`honoringIgnoreComments: true`·`exposesIgnoredImport` 제거 각각 해당 테스트 실패 |
 
 아래 표는 **PR #104의 근거**다.
 
