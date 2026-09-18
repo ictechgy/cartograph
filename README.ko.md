@@ -579,7 +579,8 @@ cartograph check --report-format json
 `cartograph_status`, `cartograph_query`, `cartograph_impact`, `cartograph_check`,
 `cartograph_runtime_discover`는 `{ "session": ..., "result": ... }` 봉투를 쓰고(status는
 메타데이터를 직접 반환), 인덱스 입력이 바뀌면 다시 준비합니다. 입력 지문은 최대 1초에
-한 번만 다시 검증하며, 그 창 안의 호출은 마지막으로 검증된 세대로 응답합니다. 편집 직후
+한 번만 다시 검증하며, 그 창 안의 호출은 마지막으로 검증된 세대로 응답합니다. 창 길이는
+`--session-freshness-interval <초>`로 조절하고(`0`이면 요청마다 다시 검증), 편집 직후
 즉시 반영이 필요하면 `cartograph_status`에 `refresh: true`를 넘겨 창을 우회할 수 있고,
 이어지는 도구 호출은 새로 만든 세대로 응답합니다. 서버가 빌드를 시작하지는 않습니다. query는 `symbols × limit` 공통 예산을 1000으로 제한하고, MCP 배치는 추가로 모든
 결과에 걸쳐 참조 근거 200개와 지역 함수 상세 50개의 예산을 공유합니다 — 결과별 전체·생략
