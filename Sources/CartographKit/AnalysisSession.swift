@@ -101,7 +101,8 @@ public final class AnalysisSession {
     /// 세대를 믿는 시간이다. 지문 계산은 소스·인덱스 파일 전부를 다시 stat 하므로
     /// 프로젝트에 비례해 커지고, MCP 서버처럼 호출이 연속으로 오는 소비자는 짧은
     /// 창으로 그 비용을 한 번으로 묶을 수 있다. 창은 신선도 확인을 미루는 상한이며
-    /// 기본값 `.zero`는 지금까지와 같은 요청마다 검증이다.
+    /// 기본값 `.zero`는 지금까지와 같은 요청마다 검증이다. 음수도 `.zero`와 같이
+    /// 매 요청 검증한다.
     public init(
         serviceFactory: @escaping ServiceFactory,
         inputFingerprintProvider: @escaping InputFingerprintProvider,
@@ -321,6 +322,9 @@ public final class AnalysisSession {
                 continue
             }
 
+            // 지문을 마지막으로 확인한 시각을 찍는다. 메타데이터를 만드는 시간까지
+            // 유보에 포함시키지 않아 문서화된 창 상한을 지킨다.
+            let verifiedAt = clock.now
             let candidateMetadata = metadata(
                 for: candidateService,
                 context: candidateContext,
@@ -331,8 +335,7 @@ public final class AnalysisSession {
             context = candidateContext
             querySession = nil
             preparedFingerprint = observed
-            // 방금 검증을 마친 세대이므로 직후 요청은 지문을 다시 읽지 않는다.
-            lastFingerprintCheck = clock.now
+            lastFingerprintCheck = verifiedAt
             generation = candidateMetadata.generation
             metadata = candidateMetadata
             return candidateMetadata
