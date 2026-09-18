@@ -40,13 +40,19 @@ private final class Collector: SyntaxVisitor {
         let position = converter.location(for: node.importKeyword.positionAfterSkippingLeadingTrivia)
         let comments = SyntaxComments.lines(in: node.leadingTrivia)
             + SyntaxComments.lines(in: node.trailingTrivia)
+        let commands = comments.compactMap { CommentCommand.parse(comment: $0) }
         imports.append(
             IndexedImport(
                 modulePath: node.path.map { $0.name.text },
                 scopedKind: node.importKind?.text,
                 isConditional: conditionalDepth > 0,
                 isReexported: isReexported(node),
-                isIgnored: comments.contains { CommentCommand.parse(comment: $0) != nil },
+                isIgnored: !commands.isEmpty,
+                // 파일 맨 앞의 `ignore:all` 은 첫 import 의 trivia 에 걸려
+                // 파일 지시로 무시된다. 자기 `ignore` 주석이 같이 있으면
+                // 파일 주석을 떼어도 무시가 남으므로 출처를 따로 남긴다.
+                isIgnoredOnlyByFileComment: commands.contains(.ignoreAll)
+                    && !commands.contains(.ignore),
                 location: CartographCore.SourceLocation(
                     path: path, line: position.line, column: position.column)
             )

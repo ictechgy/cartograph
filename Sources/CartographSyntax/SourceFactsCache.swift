@@ -30,7 +30,7 @@ public struct SourceFactsCache: Sendable {
 
     /// 캐시 형식이나 분석기 동작이 바뀌면 예전 항목을 통째로 버려야 한다.
     /// 버전을 올리는 것을 잊으면 낡은 결과로 조용히 틀린 분석을 하게 된다.
-    static let schemaVersion = 12
+    static let schemaVersion = 13
 
     private let fileSystem: any FileSystem
     private let path: String

@@ -130,7 +130,8 @@ public struct SnapshotBuilder {
         scopedKind: String? = nil,
         isConditional: Bool = false,
         isReexported: Bool = false,
-        isIgnored: Bool = false
+        isIgnored: Bool = false,
+        isIgnoredOnlyByFileComment: Bool = false
     ) -> Self {
         imports.append(
             IndexedImport(
@@ -139,6 +140,7 @@ public struct SnapshotBuilder {
                 isConditional: isConditional,
                 isReexported: isReexported,
                 isIgnored: isIgnored,
+                isIgnoredOnlyByFileComment: isIgnoredOnlyByFileComment,
                 location: SourceLocation(path: path ?? defaultPath, line: line, column: 1)
             )
         )

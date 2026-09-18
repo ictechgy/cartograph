@@ -933,6 +933,23 @@ public struct ReachabilityAnalyzer: Sendable {
             ))
         }
 
+        // 전파 무시 정점 중 같은 파일에 무시된 `.member` 부모가 있는 것만
+        // 부모 단위에 접힌다. 무시 부모가 없는 전파 정점은 — 주석을 단
+        // 컨테이너가 그래프 정점이 아니어서 물려주기만 한 경우 — 어느 단위에도
+        // 속하지 않아 그 주석이 영원히 판정되지 않는다. 그런 고아는 스스로
+        // 단위 꼭대기가 되어 실제로 존재하는 무시 효과를 판정한다.
+        var coveredInherited: Set<NodeID> = []
+        for node in graph.sortedNodes
+        where ignored.contains(node.id) {
+            guard let path = node.location?.path else { continue }
+            for edge in graph.outgoingEdges(from: node.id)
+            where edge.kind == .member && ignored.contains(edge.target)
+                && graph.node(edge.target)?.attributes.contains(.ignoreInherited) == true
+                && graph.node(edge.target)?.location?.path == path {
+                coveredInherited.insert(edge.target)
+            }
+        }
+
         // 나머지는 자기 주석이 있는 정점마다 단위를 세운다. 주석 단 선언이
         // 무시된 부모 아래에 있어도 자기 단위를 가진다 — 부모의 주석은 자손까지
         // 덮지만, 자식의 주석이 억제하는 발견은 자식 주석만 뗐을 때
@@ -946,7 +963,8 @@ public struct ReachabilityAnalyzer: Sendable {
         // 같은 파일로 묶을 근거가 없어 자기 단위만 둔다.
         for node in graph.sortedNodes
         where ignored.contains(node.id) && !fileScopeIDs.contains(node.id)
-            && !node.attributes.contains(.ignoreInherited) {
+            && (!node.attributes.contains(.ignoreInherited)
+                || !coveredInherited.contains(node.id)) {
             guard let path = node.location?.path else {
                 units.append(IgnoreUnit(members: [node.id], anchor: node, coversWholeFile: false))
                 continue
@@ -983,17 +1001,23 @@ public struct ReachabilityAnalyzer: Sendable {
     ) -> Bool {
         guard unit.coversWholeFile,
               let path = unit.anchor.location?.path,
-              snapshot.imports.contains(where: { $0.location.path == path && $0.isIgnored })
+              snapshot.imports.contains(where: {
+                  $0.location.path == path && $0.isIgnoredOnlyByFileComment
+              })
         else { return false }
         var unignored = snapshot
         unignored.imports = snapshot.imports.map { fact in
-            guard fact.location.path == path, fact.isIgnored else { return fact }
+            // 자기 `ignore` 주석이 있는 import 는 파일 주석을 떼어도
+            // 무시가 남는다 — 파일 지시로만 무시된 import 만 푼다.
+            guard fact.location.path == path, fact.isIgnoredOnlyByFileComment
+            else { return fact }
             return IndexedImport(
                 modulePath: fact.modulePath,
                 scopedKind: fact.scopedKind,
                 isConditional: fact.isConditional,
                 isReexported: fact.isReexported,
                 isIgnored: false,
+                isIgnoredOnlyByFileComment: false,
                 location: fact.location
             )
         }

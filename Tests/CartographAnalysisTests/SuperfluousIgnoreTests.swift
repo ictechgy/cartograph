@@ -404,7 +404,7 @@ struct SuperfluousIgnoreTests {
         builder.reference(from: "App", to: "Used", kind: .reference)
         builder.importDecl(
             "UnusedModule", path: "/project/Sources/App/Other.swift",
-            isIgnored: true
+            isIgnored: true, isIgnoredOnlyByFileComment: true
         )
         builder.fileModuleUsage(
             path: "/project/Sources/App/Other.swift", owningModule: "App")
@@ -429,7 +429,7 @@ struct SuperfluousIgnoreTests {
         builder.reference(from: "App", to: "Used", kind: .reference)
         builder.importDecl(
             "UsedModule", path: "/project/Sources/App/Other.swift",
-            isIgnored: true
+            isIgnored: true, isIgnoredOnlyByFileComment: true
         )
         builder.fileModuleUsage(
             path: "/project/Sources/App/Other.swift",
@@ -441,6 +441,120 @@ struct SuperfluousIgnoreTests {
         #expect(report.unused.isEmpty)
         #expect(report.superfluousIgnores.count == 1)
         #expect(report.superfluousIgnores.first?.coversWholeFile == true)
+    }
+
+    @Test("ignore:all 을 떼어도 자기 ignore 가 있는 import 는 무시가 남는다")
+    func fileIgnoreLeavesOwnCommentedImportIgnored() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol(
+            "Used", kind: .structType,
+            path: "/project/Sources/App/Other.swift",
+            attributes: [.ignoreComment, .ignoreAllComment]
+        )
+        builder.reference(from: "App", to: "Used", kind: .reference)
+        // 파일 지시로만 무시된 import — `ignore:all` 을 떼면 풀리지만 쓰인다.
+        builder.importDecl(
+            "UsedModule", path: "/project/Sources/App/Other.swift",
+            isIgnored: true, isIgnoredOnlyByFileComment: true
+        )
+        // 자기 `ignore` 주석이 있는 미사용 import — 파일 주석을 떼도
+        // 무시가 남아 보고가 생기지 않는다.
+        builder.importDecl(
+            "OwnIgnoredModule", path: "/project/Sources/App/Other.swift",
+            line: 2, isIgnored: true
+        )
+        builder.fileModuleUsage(
+            path: "/project/Sources/App/Other.swift",
+            owningModule: "App", referencedModules: ["UsedModule"])
+
+        // 출처를 구분하지 않고 파일의 무시 import 를 전부 풀면 자기 주석이
+        // 억제하는 OwnIgnoredModule 보고를 파일 주석이 떠받치는 것으로
+        // 오판해 필요한 주석으로 남는다.
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(report.superfluousIgnores.count == 1)
+        #expect(report.superfluousIgnores.first?.coversWholeFile == true)
+    }
+
+    @Test("무시 부모가 없는 전파 무시 정점은 스스로 단위를 만든다")
+    func orphanInheritedIgnoreFormsOwnUnit() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Parent", kind: .structType)
+        builder.symbol(
+            "Parent.member", name: "member", kind: .method,
+            parent: "Parent", attributes: [.ignoreComment, .ignoreInherited]
+        )
+        builder.reference(from: "App", to: "Parent", kind: .reference)
+        builder.reference(from: "App", to: "Parent.member", kind: .call)
+
+        // member 의 무시는 주석을 단 조상이 물려준 것인데 그 조상은 그래프
+        // 정점이 아니다(비정점 컨테이너거나 부모 바인딩 실패). 어느 단위에도
+        // 접히지 않으면 그 무시를 거둘 주석이 영원히 판정되지 않으므로
+        // 고아는 스스로 단위 꼭대기가 된다 — member 는 참조로 살아 있어
+        // 그 무시는 불필요다.
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(superfluousNames(report) == ["member"])
+    }
+
+    @Test("고아 전파 무시가 죽은 선언을 덮으면 그 무시는 필요하다")
+    func orphanInheritedIgnoreOnDeadDeclarationIsNeeded() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Parent", kind: .structType)
+        builder.symbol(
+            "Parent.member", name: "member", kind: .method,
+            parent: "Parent", attributes: [.ignoreComment, .ignoreInherited]
+        )
+        builder.reference(from: "App", to: "Parent", kind: .reference)
+
+        // 고아 단위를 떼면 member 가 미사용으로 보고되므로 그 무시는 필요하다.
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(report.superfluousIgnores.isEmpty)
+    }
+
+    @Test("자기 주석 있는 멤버가 부모를 살리면 부모의 주석은 불필요다")
+    func memberCommentKeepingParentAliveMakesParentCommentSuperfluous() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Dead", kind: .structType, attributes: [.ignoreComment])
+        builder.symbol(
+            "Dead.member", name: "member", kind: .method,
+            parent: "Dead", attributes: [.ignoreComment]
+        )
+
+        // member 의 자기 주석이 member 를 보존하고 보존된 멤버는 부모를
+        // 살린다 — Dead 의 주석을 떼어도 Dead 는 살아 있어 새 보고가 없다.
+        // member 의 주석을 떼면 member 가 죽으므로 그쪽은 필요하다.
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(superfluousNames(report) == ["Dead"])
+    }
+
+    @Test("삼단 자기 주석 중첩은 누적 판정으로 위쪽 둘만 불필요다")
+    func threeLevelNestedOwnCommentsJudgeCumulatively() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Outer", kind: .structType, attributes: [.ignoreComment])
+        builder.symbol(
+            "Outer.mid", name: "mid", kind: .method,
+            parent: "Outer", attributes: [.ignoreComment]
+        )
+        builder.symbol(
+            "Outer.mid.leaf", name: "leaf", kind: .method,
+            parent: "Outer.mid", attributes: [.ignoreComment]
+        )
+
+        // 셋 다 참조가 없다. Outer 를 떼어도 mid 의 주석이 Outer 를 살리고,
+        // mid 를 떼어도 leaf 의 주석이 mid 를 살린다 — 위쪽 둘은 불필요다.
+        // leaf 를 떼면 이미 확정된 mid 와 함께 죽으므로 필요하다 — 확정분을
+        // 누적해 빼지 않으면 mid 도 살아 있다고 나와 leaf 가 불필요로 오판된다.
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(superfluousNames(report) == ["Outer", "mid"])
     }
 
     @Test("무시 주석이 없으면 아무것도 보고하지 않는다")
