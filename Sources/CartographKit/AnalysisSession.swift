@@ -71,10 +71,16 @@ public final class AnalysisSession {
 
     private let serviceFactory: ServiceFactory
     private let inputFingerprintProvider: InputFingerprintProvider
+    /// 입력 지문을 다시 읽기 전에 준비된 세대를 그대로 쓸 시간 창.
+    /// `.zero` 이면 요청마다 지문을 다시 읽는다.
+    private let freshnessCheckInterval: Duration
+    private let clock = ContinuousClock()
     private var service: CartographService?
     private var context: AnalysisContext?
     private var querySession: CartographService.QuerySession?
     private var preparedFingerprint: String?
+    /// 마지막으로 입력 지문을 검증한 시각. 창이 `.zero` 일 때는 쓰지 않는다.
+    private var lastFingerprintCheck: ContinuousClock.Instant?
     private var generation = 0
 
     /// 마지막으로 성공한 세대의 메타데이터. 새로고침에 실패하면 nil 이 된다.
@@ -90,23 +96,35 @@ public final class AnalysisSession {
     ///
     /// 초기화 시 문맥을 준비하므로 반환된 세션은 즉시 메타데이터를 제공한다.
     /// 질의 색인과 도달성 보고서는 첫 `query` 때까지 만들지 않는다.
+    ///
+    /// `freshnessCheckInterval`은 요청마다 입력 지문을 다시 읽기 전에 마지막 검증
+    /// 세대를 믿는 시간이다. 지문 계산은 소스·인덱스 파일 전부를 다시 stat 하므로
+    /// 프로젝트에 비례해 커지고, MCP 서버처럼 호출이 연속으로 오는 소비자는 짧은
+    /// 창으로 그 비용을 한 번으로 묶을 수 있다. 창은 신선도 확인을 미루는 상한이며
+    /// 기본값 `.zero`는 지금까지와 같은 요청마다 검증이다.
     public init(
         serviceFactory: @escaping ServiceFactory,
-        inputFingerprintProvider: @escaping InputFingerprintProvider
+        inputFingerprintProvider: @escaping InputFingerprintProvider,
+        freshnessCheckInterval: Duration = .zero
     ) throws {
         self.serviceFactory = serviceFactory
         self.inputFingerprintProvider = inputFingerprintProvider
+        self.freshnessCheckInterval = freshnessCheckInterval
         try refresh()
     }
 
     /// 고정된 서비스의 안전한 입력 지문을 사용하는 세션을 만든다.
     ///
     /// 설정을 다시 읽어야 한다면 serviceFactory 초기화를 사용한다.
-    public convenience init(service: CartographService) throws {
+    public convenience init(
+        service: CartographService,
+        freshnessCheckInterval: Duration = .zero
+    ) throws {
         let cache = AnalysisInputFingerprintCache()
         try self.init(
             serviceFactory: { service },
-            inputFingerprintProvider: { try service.sessionInputFingerprint(using: cache) }
+            inputFingerprintProvider: { try service.sessionInputFingerprint(using: cache) },
+            freshnessCheckInterval: freshnessCheckInterval
         )
     }
 
@@ -115,14 +133,18 @@ public final class AnalysisSession {
     /// 지문을 계산할 때도 공장에서 서비스를 하나 받아 현재 설정을 읽는다.
     /// 따라서 호출자가 설정 파일을 다시 읽는 공장을 주입하면 입력 변경 뒤
     /// 다음 요청에서 새 설정이 적용된다.
-    public convenience init(serviceFactory: @escaping ServiceFactory) throws {
+    public convenience init(
+        serviceFactory: @escaping ServiceFactory,
+        freshnessCheckInterval: Duration = .zero
+    ) throws {
         let cache = AnalysisInputFingerprintCache()
         try self.init(
             serviceFactory: serviceFactory,
             inputFingerprintProvider: {
                 let service = try serviceFactory()
                 return try service.sessionInputFingerprint(using: cache)
-            }
+            },
+            freshnessCheckInterval: freshnessCheckInterval
         )
     }
 
@@ -263,8 +285,17 @@ public final class AnalysisSession {
     // MARK: - 문맥 수명
 
     private func ensurePrepared() throws {
+        // 마지막 검증 직후의 연속 요청은 입력을 다시 읽지 않는다. 지문 계산은 입력
+        // 수에 비례해 요청마다 수백 파일을 다시 stat 하므로, 창 안에서는 이 비용이
+        // 질의 자체보다 커진다. 검증을 미루는 시간은 창으로 상한이 정해져 있다.
+        if freshnessCheckInterval > .zero, service != nil, context != nil,
+           let lastFingerprintCheck,
+           lastFingerprintCheck.duration(to: clock.now) < freshnessCheckInterval {
+            return
+        }
         do {
             let observed = try inputFingerprintProvider()
+            lastFingerprintCheck = clock.now
             guard preparedFingerprint == observed, service != nil, context != nil else {
                 _ = try reload(expectedFingerprint: observed)
                 return
@@ -300,6 +331,8 @@ public final class AnalysisSession {
             context = candidateContext
             querySession = nil
             preparedFingerprint = observed
+            // 방금 검증을 마친 세대이므로 직후 요청은 지문을 다시 읽지 않는다.
+            lastFingerprintCheck = clock.now
             generation = candidateMetadata.generation
             metadata = candidateMetadata
             return candidateMetadata
@@ -315,6 +348,7 @@ public final class AnalysisSession {
         context = nil
         querySession = nil
         preparedFingerprint = nil
+        lastFingerprintCheck = nil
         metadata = nil
     }
 
