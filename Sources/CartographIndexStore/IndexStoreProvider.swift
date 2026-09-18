@@ -309,7 +309,7 @@ public struct IndexStoreProvider: IndexProviding {
             // 만드는 캐시이므로 쓰기가 필요하다.
             return try IndexStoreDB(
                 storePath: configuration.storePath,
-                databasePath: configuration.databasePath,
+                databasePath: effectiveDatabasePath(),
                 library: library,
                 waitUntilDoneInitializing: true,
                 readonly: false,
@@ -413,6 +413,33 @@ public struct IndexStoreProvider: IndexProviding {
             if sites[middle].location < location { low = middle + 1 } else { high = middle }
         }
         return low > 0 ? sites[low - 1].usr : nil
+    }
+
+    /// 현재 유닛 집합에 묶인 판독기 DB 경로.
+    ///
+    /// 판독기 DB 는 사라진 유닛을 잊지 않는다 — 유닛 파일이 지워져도 항목이 남아,
+    /// `symbolOccurrences(inFilePath:)` 가 유령 유닛으로 해석해 그 파일의 발생을
+    /// 통째로 비운다. 유닛 목록의 지문을 경로에 섞으면 유닛이 바뀔 때마다 새 DB 로
+    /// 갈아타 유령이 로드될 수 없다. 지문이 같으면 같은 DB 를 재사용한다.
+    func effectiveDatabasePath() -> String {
+        let signature = unitsSignature()
+        guard !signature.isEmpty else { return configuration.databasePath }
+        return configuration.databasePath + "-" + signature
+    }
+
+    /// `<스토어>/v5/units`(없으면 `units`)의 유닛 파일 이름 지문.
+    ///
+    /// 유닛 이름은 컴파일 호출의 해시라, 출력물이 교체되거나 파일이 추가·삭제될
+    /// 때만 바뀐다 — 본문만 바뀐 재컴파일에서는 그대로라 캐시가 계속 유효하다.
+    /// 목록을 읽지 못하면 빈 문자열을 돌려 경로를 바꾸지 않는다.
+    func unitsSignature() -> String {
+        let candidates = ["v5/units", "units"].map {
+            (configuration.storePath as NSString).appendingPathComponent($0)
+        }
+        guard let unitsDir = candidates.first(where: { fileSystem.directoryExists(at: $0) }),
+              let names = try? fileSystem.contentsOfDirectory(at: unitsDir)
+        else { return "" }
+        return Self.stableHash(names.sorted().joined(separator: "\n"))
     }
 
     /// 인덱스 스토어마다 안정적으로 대응되는 캐시 디렉터리 경로.
