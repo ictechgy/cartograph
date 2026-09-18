@@ -1,2 +1,2 @@
-file-level ignore comment is superfluous — no declaration in this file needs it
+file-level 'cartograph:ignore:all' comment is superfluous — no declaration in this file needs it
 ignore comment on 'Corpus.IgnoredButUsed' and 1 declaration(s) it covers is superfluous — removing it would report nothing

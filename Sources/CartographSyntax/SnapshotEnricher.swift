@@ -212,6 +212,10 @@ public struct SnapshotEnricher: Sendable {
 
             if fileFacts.ignoresEntireFile {
                 updated.attributes.insert(.ignoreComment)
+                // 파일 범위라는 출처도 남긴다. 선언별 주석으로 파일 전체가
+                // 무시된 경우와 구별하지 못하면 불필요 주석 진단이 선언 여럿의
+                // 코멘트를 하나로 오인한다.
+                updated.attributes.insert(.ignoreAllComment)
             }
             // 이름이 맞는 선언만 신뢰한다. 줄 번호만 보면 한 줄에 선언이 여럿일 때
             // 엉뚱한 선언의 접근 수준과 속성이 붙어 실제로 쓰이는 심볼이

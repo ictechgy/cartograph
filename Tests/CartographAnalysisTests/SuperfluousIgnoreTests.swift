@@ -10,10 +10,10 @@ struct SuperfluousIgnoreTests {
         _ snapshot: IndexSnapshot,
         retention: RetentionOptions = .default,
         options: ReachabilityAnalyzer.Options = .init()
-    ) -> (report: UnusedCodeReport, graph: CodeGraph) {
+    ) -> UnusedCodeReport {
         let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
         let analyzer = ReachabilityAnalyzer(policy: RetentionPolicy(options: retention), options: options)
-        return (analyzer.analyze(graph: graph, snapshot: snapshot), graph)
+        return analyzer.analyze(graph: graph, snapshot: snapshot)
     }
 
     /// 불필요로 판정된 주석의 앵커 이름.
@@ -27,7 +27,7 @@ struct SuperfluousIgnoreTests {
         builder.symbol("App", kind: .structType, attributes: [.entryPoint])
         builder.symbol("Dead", kind: .structType, attributes: [.ignoreComment])
 
-        let (report, _) = analyze(builder.build())
+        let report = analyze(builder.build())
         #expect(report.unused.isEmpty)
         #expect(report.superfluousIgnores.isEmpty)
     }
@@ -39,7 +39,7 @@ struct SuperfluousIgnoreTests {
         builder.symbol("Used", kind: .structType, attributes: [.ignoreComment])
         builder.reference(from: "App", to: "Used", kind: .reference)
 
-        let (report, _) = analyze(builder.build())
+        let report = analyze(builder.build())
         #expect(report.unused.isEmpty)
         #expect(superfluousNames(report) == ["Used"])
     }
@@ -52,7 +52,7 @@ struct SuperfluousIgnoreTests {
             attributes: [.entryPoint, .ignoreComment]
         )
 
-        let (report, _) = analyze(builder.build())
+        let report = analyze(builder.build())
         #expect(report.unused.isEmpty)
         #expect(superfluousNames(report) == ["App"])
     }
@@ -61,21 +61,22 @@ struct SuperfluousIgnoreTests {
     func ignoreCoveringDeadMemberIsNeeded() {
         var builder = SnapshotBuilder()
         builder.symbol("App", kind: .structType, attributes: [.entryPoint])
-        builder.symbol("Used", kind: .structType)
+        builder.symbol("Used", kind: .structType, attributes: [.ignoreComment])
         builder.symbol(
             "Used.helper", name: "helper", kind: .method,
             parent: "Used", attributes: [.ignoreComment]
         )
         builder.reference(from: "App", to: "Used", kind: .reference)
 
-        // helper 에 붙은 주석 하나가 없으면 멤버가 미사용으로 보고된다.
-        let (report, _) = analyze(builder.build())
+        // 코멘트 하나가 타입과 멤버를 함께 덮는다. 떼어 내면 helper 가
+        // 미사용으로 보고되므로 주석은 필요하다.
+        let report = analyze(builder.build())
         #expect(report.unused.isEmpty)
         #expect(report.superfluousIgnores.isEmpty)
     }
 
     @Test("무시된 타입과 멤버가 모두 살아 있으면 주석은 불필요다")
-    func ignoreOnFullyUsedTypeIsSuperfluous() {
+    func ignoreOnFullyUsedTypeIsSuperfluous() throws {
         var builder = SnapshotBuilder()
         builder.symbol("App", kind: .structType, attributes: [.entryPoint])
         builder.symbol("Used", kind: .structType, attributes: [.ignoreComment])
@@ -86,42 +87,71 @@ struct SuperfluousIgnoreTests {
         builder.reference(from: "App", to: "Used", kind: .reference)
         builder.reference(from: "App", to: "Used.helper", kind: .call)
 
-        let (report, _) = analyze(builder.build())
+        let report = analyze(builder.build())
         #expect(report.unused.isEmpty)
         // 코멘트 하나가 타입과 멤버를 함께 덮으므로 한 건이다.
+        let finding = try #require(report.superfluousIgnores.first)
         #expect(report.superfluousIgnores.count == 1)
-        #expect(report.superfluousIgnores[0].node.name == "Used")
-        #expect(report.superfluousIgnores[0].coveredCount == 2)
-        #expect(report.superfluousIgnores[0].coversWholeFile == false)
+        #expect(finding.node.name == "Used")
+        #expect(finding.coveredCount == 2)
+        #expect(!finding.coversWholeFile)
     }
 
-    @Test("파일 전체가 무시되고 모두 살아 있으면 파일 범위로 한 건 보고한다")
-    func fullyIgnoredLiveFileReportsOneFileScopeFinding() {
+    @Test("ignore:all 파일이 모두 살아 있으면 파일 범위로 한 건 보고한다")
+    func fullyIgnoredLiveFileReportsOneFileScopeFinding() throws {
         var builder = SnapshotBuilder()
         builder.symbol("App", kind: .structType, attributes: [.entryPoint])
         builder.symbol(
             "Used", kind: .structType,
-            path: "/project/Sources/App/Other.swift", attributes: [.ignoreComment]
+            path: "/project/Sources/App/Other.swift",
+            attributes: [.ignoreComment, .ignoreAllComment]
         )
         builder.symbol(
             "AlsoUsed", kind: .classType,
-            path: "/project/Sources/App/Other.swift", attributes: [.ignoreComment]
+            path: "/project/Sources/App/Other.swift",
+            attributes: [.ignoreComment, .ignoreAllComment]
         )
         builder.reference(from: "App", to: "Used", kind: .reference)
         builder.reference(from: "App", to: "AlsoUsed", kind: .reference)
 
-        let (report, _) = analyze(builder.build())
+        let report = analyze(builder.build())
         #expect(report.unused.isEmpty)
-        // ignore:all 과 선언별 주석은 그래프에서 구별할 수 없다 — 파일 하나가
-        // 전부 무시되면 코멘트 하나라고 보고 한 건만 낸다.
+        let finding = try #require(report.superfluousIgnores.first)
         #expect(report.superfluousIgnores.count == 1)
-        #expect(report.superfluousIgnores[0].coversWholeFile)
+        #expect(finding.coversWholeFile)
+        #expect(finding.coveredCount == 2)
+        #expect(finding.node.location?.path == "/project/Sources/App/Other.swift")
     }
 
-    @Test("파일 전체가 무시돼도 일부가 죽으면 그 주석은 필요하다")
+    @Test("ignore:all 파일의 일부가 죽으면 그 주석은 필요하다")
     func fullyIgnoredFileWithDeadDeclarationIsNeeded() {
         var builder = SnapshotBuilder()
         builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol(
+            "Used", kind: .structType,
+            path: "/project/Sources/App/Other.swift",
+            attributes: [.ignoreComment, .ignoreAllComment]
+        )
+        builder.symbol(
+            "Dead", kind: .structType,
+            path: "/project/Sources/App/Other.swift",
+            attributes: [.ignoreComment, .ignoreAllComment]
+        )
+        builder.reference(from: "App", to: "Used", kind: .reference)
+
+        let report = analyze(builder.build())
+        // 코멘트 하나가 파일 전체를 덮으므로, 살아 있는 Used 쪽 범위가
+        // 불필요해 보여도 코멘트를 떼면 Dead 가 보고된다 — 필요한 주석이다.
+        #expect(report.unused.isEmpty)
+        #expect(report.superfluousIgnores.isEmpty)
+    }
+
+    @Test("선언별 주석으로 전부 무시된 파일은 주석마다 따로 판정한다")
+    func perDeclarationIgnoresInFullyIgnoredFileAreJudgedIndependently() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        // ignore:all 이 아니라 선언마다 주석이 붙은 파일 — 그래프의 모든
+        // 정점이 무시돼도 파일 범위 주석은 없다.
         builder.symbol(
             "Used", kind: .structType,
             path: "/project/Sources/App/Other.swift", attributes: [.ignoreComment]
@@ -132,11 +162,14 @@ struct SuperfluousIgnoreTests {
         )
         builder.reference(from: "App", to: "Used", kind: .reference)
 
-        let (report, _) = analyze(builder.build())
-        // 코멘트 하나가 파일 전체를 덮으므로, 살아 있는 Used 쪽 범위가
-        // 불필요해 보여도 코멘트를 떼면 Dead 가 보고된다 — 필요한 주석이다.
+        let report = analyze(builder.build())
         #expect(report.unused.isEmpty)
-        #expect(report.superfluousIgnores.isEmpty)
+        // 두 주석을 한 단위로 묶으면 Dead 때문에 둘 다 필요해 보여
+        // Used 의 불필요 주석이 숨겨진다.
+        let finding = try #require(report.superfluousIgnores.first)
+        #expect(report.superfluousIgnores.count == 1)
+        #expect(finding.node.name == "Used")
+        #expect(!finding.coversWholeFile)
     }
 
     @Test("다른 무시가 살리는 선언을 덮는 주석은 불필요다")
@@ -150,8 +183,81 @@ struct SuperfluousIgnoreTests {
         builder.symbol("Covered", kind: .structType, attributes: [.ignoreComment])
         builder.reference(from: "Dead", to: "Covered", kind: .reference)
 
-        let (report, _) = analyze(builder.build())
+        let report = analyze(builder.build())
         #expect(report.unused.isEmpty)
+        #expect(superfluousNames(report) == ["Covered"])
+    }
+
+    @Test("서로만 참조하는 무시 덩어리는 한쪽 주석만 불필요로 보고한다")
+    func mutuallyDependentIgnoresReportOnlyOne() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("First", kind: .structType, line: 5, attributes: [.ignoreComment])
+        builder.symbol("Second", kind: .structType, line: 10, attributes: [.ignoreComment])
+        builder.reference(from: "First", to: "Second", kind: .reference)
+        builder.reference(from: "Second", to: "First", kind: .reference)
+
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        // 각각을 따로 보면 상대 주석이 살려 주므로 둘 다 불필요해 보이지만,
+        // 한꺼번에 떼면 둘 다 죽는다. 위치가 앞선 주석 하나만 보고해야
+        // 보고된 주석을 모두 떼어도 새 보고가 생기지 않는다.
+        let finding = try #require(report.superfluousIgnores.first)
+        #expect(report.superfluousIgnores.count == 1)
+        #expect(finding.node.name == "First")
+    }
+
+    @Test("다른 파일의 무시된 부모가 이 파일의 주석을 삼키지 않는다")
+    func crossFileIgnoredMemberFormsOwnUnit() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol(
+            "Target", kind: .structType,
+            path: "/project/Sources/App/A.swift", attributes: [.ignoreComment]
+        )
+        // 인덱스가 확장 대상을 멤버 부모로 기록하는 형태. 멤버와 부모가
+        // 다른 파일이면 주석도 따로 있으므로 단위를 합치면 안 된다.
+        builder.symbol(
+            "Target.extMember", name: "extMember", kind: .method,
+            path: "/project/Sources/App/B.swift",
+            parent: "Target", attributes: [.ignoreComment]
+        )
+        builder.reference(from: "App", to: "Target", kind: .reference)
+
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        // Target 의 주석은 불필요하지만 extMember 는 떼면 죽는다 — 두
+        // 코멘트를 한 단위로 보면 Target 의 불필요 주석이 숨겨진다.
+        let finding = try #require(report.superfluousIgnores.first)
+        #expect(report.superfluousIgnores.count == 1)
+        #expect(finding.node.name == "Target")
+        #expect(finding.coveredCount == 1)
+    }
+
+    @Test("시드 정점의 역방향 오버라이드 증인도 반사실 세계에서 살아남는다")
+    func seededRequirementKeepsReverseOverrideWitnessAlive() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        // 요구사항은 시드(무시 없는 세계)에 들어간다 — App 이 호출하므로.
+        builder.symbol("P", kind: .protocolType, line: 2)
+        builder.symbol("P.req", name: "req", kind: .method, line: 3, parent: "P")
+        // 판정 대상: 다른 무시가 살려 주는 선언의 불필요 주석. 무시 없는
+        // 세계에서는 죽어 있어야 빠른 경로가 아니라 반사실 탐색을 탄다.
+        builder.symbol("Keeper", kind: .structType, line: 5, attributes: [.ignoreComment])
+        builder.symbol("Covered", kind: .structType, line: 6, attributes: [.ignoreComment])
+        // 세 번째 무시 단위: 요구사항의 구현을 가진 타입. 멤버에는 주석이 없고
+        // 요구사항 역방향 디스패치로만 살아난다.
+        builder.symbol("Impl", kind: .structType, line: 10, attributes: [.ignoreComment])
+        builder.symbol("Impl.req", name: "req", kind: .method, line: 11, parent: "Impl")
+        builder.reference(from: "App", to: "P", kind: .reference)
+        builder.reference(from: "App", to: "P.req", kind: .call)
+        builder.reference(from: "Keeper", to: "Covered", kind: .reference)
+        builder.reference(from: "Impl.req", to: "P.req", kind: .overrides)
+
+        let report = analyze(builder.build())
+        // Covered 의 주석을 떼어도 Keeper 의 주석이 살려 준다. 반사실 탐색이
+        // 시드 정점의 오버라이드 관계를 건너뛰면 Impl.req 가 죽은 것으로
+        // 계산되어 무관한 Covered 의 주석이 필요로 오판된다.
         #expect(superfluousNames(report) == ["Covered"])
     }
 
@@ -168,7 +274,7 @@ struct SuperfluousIgnoreTests {
         // anchor 의 무지가 물려받은 보존으로 Shell 까지 살린다. 떼어 내면
         // 둘 다 보고되므로 주석은 필요하다 — 상속 보존을 다시 계산하지 않으면
         // 이 판정이 틀어진다.
-        let (report, _) = analyze(builder.build())
+        let report = analyze(builder.build())
         #expect(report.unused.isEmpty)
         #expect(report.superfluousIgnores.isEmpty)
     }
@@ -184,9 +290,41 @@ struct SuperfluousIgnoreTests {
             attributes: [.ignoreComment]
         )
 
-        let (report, _) = analyze(builder.build())
+        let report = analyze(builder.build())
         #expect(report.unused.isEmpty)
         #expect(superfluousNames(report) == ["extension"])
+    }
+
+    @Test("테스트에서만 도달되는 선언의 무시 주석은 test-only 보고를 억제하므로 필요하다")
+    func ignoreCoveringTestOnlyDeclarationIsNeeded() {
+        var builder = SnapshotBuilder()
+        builder.symbol("TestRoot", kind: .classType, module: "AppTests", attributes: [.unitTest])
+        builder.symbol(
+            "Helper", kind: .structType, module: "App", attributes: [.ignoreComment]
+        )
+        builder.reference(from: "TestRoot", to: "Helper", kind: .call)
+
+        let report = analyze(
+            builder.build(), options: .init(findsTestOnlyCode: true))
+        // 주석이 있으면 보고가 없고, 떼면 test-only 발견이 된다 — 주석은
+        // 일을 하고 있으므로 불필요로 보고하면 안 된다.
+        #expect(report.unused.isEmpty)
+        #expect(report.testOnly.isEmpty)
+        #expect(report.superfluousIgnores.isEmpty)
+    }
+
+    @Test("생산 코드가 참조하면 테스트 참조가 있어도 주석은 불필요다")
+    func productionReachableIgnoreIsSuperfluousEvenWithTestReferences() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, module: "App", attributes: [.entryPoint])
+        builder.symbol("Used", kind: .structType, module: "App", attributes: [.ignoreComment])
+        builder.symbol("TestRoot", kind: .classType, module: "AppTests", attributes: [.unitTest])
+        builder.reference(from: "App", to: "Used", kind: .reference)
+        builder.reference(from: "TestRoot", to: "Used", kind: .call)
+
+        let report = analyze(
+            builder.build(), options: .init(findsTestOnlyCode: true))
+        #expect(superfluousNames(report) == ["Used"])
     }
 
     @Test("무시 주석이 없으면 아무것도 보고하지 않는다")
@@ -195,7 +333,7 @@ struct SuperfluousIgnoreTests {
         builder.symbol("App", kind: .structType, attributes: [.entryPoint])
         builder.symbol("Dead", kind: .structType)
 
-        let (report, _) = analyze(builder.build())
+        let report = analyze(builder.build())
         #expect(unusedNames(report) == ["Dead"])
         #expect(report.superfluousIgnores.isEmpty)
     }
@@ -204,17 +342,18 @@ struct SuperfluousIgnoreTests {
     func superfluousIgnoresAreSortedByLocation() {
         var builder = SnapshotBuilder()
         builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        // 이름 순서와 줄 순서가 어긋나게 두어 정렬 기준이 위치임을 고정한다.
         builder.symbol(
-            "Late", kind: .structType, line: 20, attributes: [.ignoreComment]
+            "Zulu", kind: .structType, line: 5, attributes: [.ignoreComment]
         )
         builder.symbol(
-            "Early", kind: .structType, line: 5, attributes: [.ignoreComment]
+            "Alpha", kind: .structType, line: 20, attributes: [.ignoreComment]
         )
-        builder.reference(from: "App", to: "Late", kind: .reference)
-        builder.reference(from: "App", to: "Early", kind: .reference)
+        builder.reference(from: "App", to: "Zulu", kind: .reference)
+        builder.reference(from: "App", to: "Alpha", kind: .reference)
 
-        let (report, _) = analyze(builder.build())
-        #expect(report.superfluousIgnores.map(\.node.name) == ["Early", "Late"])
+        let report = analyze(builder.build())
+        #expect(report.superfluousIgnores.map(\.node.name) == ["Zulu", "Alpha"])
     }
 
     private func unusedNames(_ report: UnusedCodeReport) -> [String] {

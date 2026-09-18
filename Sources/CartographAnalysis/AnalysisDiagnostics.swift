@@ -156,7 +156,7 @@ public enum AnalysisDiagnostics {
             let message: String
             let subject: String
             if entry.coversWholeFile, let path = entry.node.location?.path {
-                message = "file-level ignore comment is superfluous "
+                message = "file-level 'cartograph:ignore:all' comment is superfluous "
                     + "— no declaration in this file needs it"
                 subject = "ignore:file:\(path)"
             } else {

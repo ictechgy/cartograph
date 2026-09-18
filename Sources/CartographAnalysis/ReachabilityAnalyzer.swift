@@ -219,6 +219,15 @@ public struct ReachabilityAnalyzer: Sendable {
             protocolRequirementOwners: protocolRequirementOwners
         )
 
+        let testOnly = testOnlyCode(
+            reachable: traversal.reachable,
+            retentions: retentions,
+            inherited: inherited,
+            conditionalWitnesses: conditional,
+            protocolRequirementOwners: protocolRequirementOwners,
+            graph: graph
+        )
+
         return UnusedCodeReport(
             unused: reported,
             retentions: retentions,
@@ -226,20 +235,14 @@ public struct ReachabilityAnalyzer: Sendable {
             totalCount: graph.nodeCount,
             inheritedRetentions: inherited,
             predecessors: traversal.predecessors,
-            testOnly: testOnlyCode(
-                reachable: traversal.reachable,
-                retentions: retentions,
-                inherited: inherited,
-                conditionalWitnesses: conditional,
-                protocolRequirementOwners: protocolRequirementOwners,
-                graph: graph
-            ),
+            testOnly: testOnly,
             unusedParameters: unusedParameters,
             assignOnly: assignOnly,
             unusedImports: UnusedImportAnalyzer.analyze(snapshot),
             superfluousIgnores: superfluousIgnores(
                 declared: declared,
                 reachable: traversal.reachable,
+                testOnly: testOnly,
                 protocolRequirementOwners: protocolRequirementOwners,
                 graph: graph,
                 snapshot: snapshot
@@ -304,14 +307,7 @@ public struct ReachabilityAnalyzer: Sendable {
             else { return false }
             return true
         }
-        .sorted { lhs, rhs in
-            switch (lhs.location, rhs.location) {
-            case let (left?, right?) where left != right:
-                return left < right
-            default:
-                return lhs.id < rhs.id
-            }
-        }
+        .sorted(by: Self.locationThenID)
     }
 
     /// 이 선언 자체에 대한 접근이 인덱스에 보이는지 — 보이지 않는 경로가
@@ -555,11 +551,14 @@ public struct ReachabilityAnalyzer: Sendable {
         from roots: Set<NodeID>,
         conditionalWitnesses: [NodeID: NodeID] = [:],
         protocolRequirementOwners: [NodeID: NodeID],
-        in graph: CodeGraph
+        in graph: CodeGraph,
+        alreadyReached: Set<NodeID> = []
     ) -> Traversal {
-        var reachable = roots
+        var reachable = alreadyReached.union(roots)
         var predecessors: [NodeID: NodeID] = [:]
-        var queue = roots.sorted()
+        // 이미 도달한 정점은 펼쳐도 새로 닿는 곳이 없다 — 그 폐쇄 부분집합의
+        // 간선을 단위마다 다시 훑으면 무시 단위 수만큼 전체 탐색 비용이 곱해진다.
+        var queue = roots.subtracting(alreadyReached).sorted()
         var head = 0
         /// 소유 타입이 아직 살아나지 않은 구현체들. 타입이 살아나면 그때 함께 살린다.
         ///
@@ -583,6 +582,39 @@ public struct ReachabilityAnalyzer: Sendable {
             queue.append(node)
         }
 
+        /// `current` 를 오버라이드한 구현체를 조건에 맞게 살린다.
+        ///
+        /// 요구사항이 쓰였다고 해서 "한 번도 만들어지지 않는 타입"의 구현까지
+        /// 살리면, 그 구현이 호출하는 바깥 심볼들이 줄줄이 되살아난다.
+        /// 소유 타입이 살아 있을 때만 구현을 살린다.
+        func examineOverrides(of current: NodeID) {
+            for edge in graph.incomingEdges(to: current) where edge.kind == .overrides {
+                let witness = edge.source
+                guard !reachable.contains(witness) else { continue }
+                if isDefaultProtocolWitness(
+                    witness,
+                    protocolID: protocolRequirementOwners[current],
+                    in: graph
+                ) {
+                    visit(witness, from: current)
+                } else if let owner = owningType(of: witness, in: graph), !reachable.contains(owner) {
+                    pendingWitnesses[owner, default: []].append((witness, current))
+                } else {
+                    visit(witness, from: current)
+                }
+            }
+        }
+
+        // 시드로 받은 정점은 큐에 들어가지 않아 아래 순회에서 간선 검사가 건너뛰어진다.
+        // 시드 집합은 전체 탐색에서 닫혀 있어도, 아직 살아나지 않은 소유 타입에 걸려
+        // 있던 증인은 이 세계의 뿌리에서 새로 살아날 수 있다. 오버라이드 관계만은
+        // 시드에 대해서도 다시 본다.
+        if options.followOverridesInReverse {
+            for seed in alreadyReached.sorted() {
+                examineOverrides(of: seed)
+            }
+        }
+
         while head < queue.count {
             let current = queue[head]
             head += 1
@@ -601,24 +633,7 @@ public struct ReachabilityAnalyzer: Sendable {
             }
 
             if options.followOverridesInReverse {
-                for edge in graph.incomingEdges(to: current) where edge.kind == .overrides {
-                    let witness = edge.source
-                    guard !reachable.contains(witness) else { continue }
-                    // 요구사항이 쓰였다고 해서 "한 번도 만들어지지 않는 타입"의 구현까지
-                    // 살리면, 그 구현이 호출하는 바깥 심볼들이 줄줄이 되살아난다.
-                    // 소유 타입이 살아 있을 때만 구현을 살린다.
-                    if isDefaultProtocolWitness(
-                        witness,
-                        protocolID: protocolRequirementOwners[current],
-                        in: graph
-                    ) {
-                        visit(witness, from: current)
-                    } else if let owner = owningType(of: witness, in: graph), !reachable.contains(owner) {
-                        pendingWitnesses[owner, default: []].append((witness, current))
-                    } else {
-                        visit(witness, from: current)
-                    }
-                }
+                examineOverrides(of: current)
             }
 
             for entry in pendingWitnesses.removeValue(forKey: current) ?? [] {
@@ -682,14 +697,7 @@ public struct ReachabilityAnalyzer: Sendable {
             if options.reportMembersOfUnusedTypes, !SourceLocalSymbol.contains(node.usr ?? "") { return true }
             return !hasReportableUnreachableTypeAncestor(node, unreachableIDs: unreachableIDs, graph: graph)
         }
-        .sorted { lhs, rhs in
-            switch (lhs.location, rhs.location) {
-            case let (left?, right?) where left != right:
-                return left < right
-            default:
-                return lhs.id < rhs.id
-            }
-        }
+        .sorted(by: Self.locationThenID)
     }
 
     private func hasReportableUnreachableTypeAncestor(
@@ -722,11 +730,11 @@ public struct ReachabilityAnalyzer: Sendable {
     /// `cartograph:ignore` 코멘트 하나가 덮는 선언 묶음.
     private struct IgnoreUnit {
         /// 단위에 속한 정점.
-        var members: Set<NodeID>
+        let members: Set<NodeID>
         /// 진단 위치를 제공하는, 위치가 가장 앞선 선언.
-        var anchor: GraphNode
-        /// 파일의 선언 전체가 한 단위로 묶였는지.
-        var coversWholeFile: Bool
+        let anchor: GraphNode
+        /// 파일 범위 주석(`ignore:all`)이 덮는 단위인지.
+        let coversWholeFile: Bool
     }
 
     /// 주석을 떼어 내도 보고가 달라지지 않는 무시 단위를 찾는다.
@@ -736,9 +744,13 @@ public struct ReachabilityAnalyzer: Sendable {
     /// 불필요로 확정하고, 그래도 죽는 단위만 자기 범위의 무지만 뗀 탐색으로
     /// 다시 본다 — 다른 주석이 살려 두는 선언에 기대 죽는 것과 스스로 죽는
     /// 것을 구분해야 연쇄된 주석을 억지로 붙잡지 않기 때문이다.
+    ///
+    /// 보고 대상은 죽은 선언만이 아니다. 테스트에서만 도달되는 선언도 보고에
+    /// 오르므로, 주석을 떼면 test-only 발견이 되는 선언을 덮는 주석도 일을 한다.
     private func superfluousIgnores(
         declared: [NodeID: RetentionReason],
         reachable: Set<NodeID>,
+        testOnly: [GraphNode],
         protocolRequirementOwners: [NodeID: NodeID],
         graph: CodeGraph,
         snapshot: IndexSnapshot
@@ -751,42 +763,89 @@ public struct ReachabilityAnalyzer: Sendable {
         // 그 정점의 무지는 살아 있는 것으로 둬야 한다.
         var coverageCount: [NodeID: Int] = [:]
         for unit in units {
-            for member in unit.members { coverageCount[member, default: 0] += 1 }
+            for member in unit.members {
+                coverageCount[member, default: 0] += 1
+            }
         }
 
         let fallback = policy.retainedNodesWithoutIgnoreComments(in: graph, snapshot: snapshot)
-        let reachableWithoutAnyIgnore = reachableSet(
+        let fallbackWorld = reachabilityWorld(
             retentions: fallback,
             protocolRequirementOwners: protocolRequirementOwners,
             graph: graph
         )
+        let reachableWithoutAnyIgnore = fallbackWorld.reachable
+        let testOnlyWithoutAll = Set(testOnlyCode(
+            reachable: reachableWithoutAnyIgnore,
+            retentions: fallbackWorld.retentions,
+            inherited: fallbackWorld.inherited,
+            conditionalWitnesses: fallbackWorld.conditionalWitnesses,
+            protocolRequirementOwners: protocolRequirementOwners,
+            graph: graph
+        ).map(\.id))
         let allIDs = Set(graph.sortedNodes.map(\.id))
+        let reportedTestOnly = Set(testOnly.map(\.id))
+
+        // 불필요로 확정된 주석은 뗀 채로 두고 다음 단위를 판정한다. 서로만
+        // 참조하는 무시 덩어리는 각각을 따로 보면 둘 다 "다른 주석이 살려 준다"로
+        // 보이지만, 하나를 확정하고 나면 나머지는 스스로 죽는다 — 확정분을 누적해
+        // 빼야 보고된 주석들을 한꺼번에 떼어도 새 보고가 생기지 않는다는 보장이
+        // 성립한다. 판정 순서는 결과 순서와 같은 위치 순으로 고정한다.
+        var remainingRetentions = declared
+        var remainingCoverage = coverageCount
 
         var result: [SuperfluousIgnore] = []
-        for unit in units {
+        for unit in units.sorted(by: { Self.locationThenID($0.anchor, $1.anchor) }) {
             var isSuperfluous = unit.members.isSubset(of: reachableWithoutAnyIgnore)
+                && unit.members.isDisjoint(with: testOnlyWithoutAll)
             if !isSuperfluous {
-                // 이 단위만 뗀 세계. 다른 단위가 함께 덮는 정점은 무시가 남는다.
-                var counterfactual = declared
+                // 이 단위만 뗀 세계. 아직 확정되지 않은 다른 단위가 함께 덮는
+                // 정점은 무시가 남는다.
+                var counterfactual = remainingRetentions
                 for member in unit.members
-                where coverageCount[member] == 1 && declared[member] == .ignoreComment {
+                where remainingCoverage[member] == 1 && counterfactual[member] == .ignoreComment {
                     counterfactual[member] = fallback[member]
                 }
-                let reachableWithoutUnit = reachableSet(
+                let world = reachabilityWorld(
                     retentions: counterfactual,
                     protocolRequirementOwners: protocolRequirementOwners,
-                    graph: graph
+                    graph: graph,
+                    alreadyReached: reachableWithoutAnyIgnore
                 )
-                let killed = reachable.subtracting(reachableWithoutUnit)
+                let killed = reachable.subtracting(world.reachable)
                 // 죽는 정점이 생겨도 보고되지 않으면(제외 종류이거나 보고 대상
                 // 조상에 숨으면) 주석은 여전히 아무 일도 하지 않는다.
                 isSuperfluous = filterReportable(
-                    graph.sortedNodes.filter { killed.contains($0.id) },
-                    unreachableIDs: allIDs.subtracting(reachableWithoutUnit),
+                    killed.compactMap { graph.node($0) },
+                    unreachableIDs: allIDs.subtracting(world.reachable),
                     graph: graph
                 ).isEmpty
+                if isSuperfluous {
+                    // 살아남아도 테스트 전용 보고가 새로 생기면 주석은 그 보고를
+                    // 억제하고 있던 것이다 — 필요한 주석으로 둔다.
+                    let newTestOnly = testOnlyCode(
+                        reachable: world.reachable,
+                        retentions: world.retentions,
+                        inherited: world.inherited,
+                        conditionalWitnesses: world.conditionalWitnesses,
+                        protocolRequirementOwners: protocolRequirementOwners,
+                        graph: graph
+                    )
+                    isSuperfluous = newTestOnly.allSatisfy {
+                        reportedTestOnly.contains($0.id)
+                    }
+                }
             }
             if isSuperfluous {
+                // 확정된 주석은 이 세계에서 영구히 뗀다. 다른 단위가 함께 덮는
+                // 정점은 마지막 덮개가 확정될 때까지 무시가 남는다.
+                for member in unit.members {
+                    remainingCoverage[member, default: 0] -= 1
+                    if remainingCoverage[member] == 0,
+                       remainingRetentions[member] == .ignoreComment {
+                        remainingRetentions[member] = fallback[member]
+                    }
+                }
                 result.append(SuperfluousIgnore(
                     node: unit.anchor,
                     coveredCount: unit.members.count,
@@ -794,24 +853,17 @@ public struct ReachabilityAnalyzer: Sendable {
                 ))
             }
         }
-        return result.sorted { lhs, rhs in
-            switch (lhs.node.location, rhs.node.location) {
-            case let (left?, right?) where left != right:
-                return left < right
-            default:
-                return lhs.node.id < rhs.node.id
-            }
-        }
+        return result
     }
 
     /// 무시 코멘트가 덮는 범위를 그래프에서 복원한다.
     ///
-    /// 구문 분석은 코멘트마다 다른 표식을 남기지 않고 전부 `.ignoreComment`
+    /// 선언별 주석은 코멘트마다 다른 표식을 남기지 않고 전부 `.ignoreComment`
     /// 하나로 번지므로 범위는 그래프에서 다시 세운다. 무시된 `.member` 부모가
     /// 없는 무시 정점이 한 범위의 꼭대기이고 그 아래의 무시된 자손이 같은 범위다.
-    /// 파일의 정점이 전부 무시된 경우는 파일 범위 주석 하나로 본다 — `ignore:all`
-    /// 과 선언별 주석을 그래프가 구별하지 못하고, 코멘트를 떼면 파일 전체의 보고가
-    /// 한꺼번에 결정되기 때문이다.
+    /// `ignore:all` 은 enricher 가 `.ignoreAllComment` 를 남기므로 출처가
+    /// 확실할 때만 파일 단위로 묶는다 — 선언별 주석으로 전부 무시된 파일을
+    /// 한 단위로 보면 필요한 코멘트 하나가 나머지 불필요 코멘트를 숨긴다.
     private func ignoreUnits(in graph: CodeGraph) -> [IgnoreUnit] {
         let ignored = Set(graph.sortedNodes.filter {
             !$0.isExternal && $0.attributes.contains(.ignoreComment)
@@ -827,10 +879,9 @@ public struct ReachabilityAnalyzer: Sendable {
         var fileScopeIDs: Set<NodeID> = []
         var units: [IgnoreUnit] = []
         for (_, nodes) in nodesByPath.sorted(by: { $0.key < $1.key }) {
-            let fileIgnored = nodes.filter { ignored.contains($0.id) }
-            guard !fileIgnored.isEmpty,
-                  nodes.allSatisfy({ ignored.contains($0.id) || $0.isExternal })
+            guard nodes.contains(where: { $0.attributes.contains(.ignoreAllComment) })
             else { continue }
+            let fileIgnored = nodes.filter { ignored.contains($0.id) }
             let members = Set(fileIgnored.map(\.id))
             fileScopeIDs.formUnion(members)
             units.append(IgnoreUnit(
@@ -841,13 +892,15 @@ public struct ReachabilityAnalyzer: Sendable {
         }
 
         // 나머지는 무시된 `.member` 부모가 없는 꼭대기에서 무시된 자손으로 묶는다.
-        // 파일 범위 정점은 이미 한 단위로 묶였으므로 부모 판정에서도 뺀다 — 다른
-        // 파일의 무시된 확장 대상 타입이 이쪽 선언의 독립된 주석을 삼키면 안 된다.
+        // 부모·자손 판정은 같은 파일 안에서만 한다 — 다른 파일의 무시된 확장
+        // 대상 타입이 이쪽 선언의 독립된 주석을 삼키면 안 된다.
         for node in graph.sortedNodes
         where ignored.contains(node.id) && !fileScopeIDs.contains(node.id) {
+            let path = node.location?.path
             let hasIgnoredParent = graph.incomingEdges(to: node.id).contains {
                 $0.kind == .member && ignored.contains($0.source)
                     && !fileScopeIDs.contains($0.source)
+                    && graph.node($0.source)?.location?.path == path
             }
             guard !hasIgnoredParent else { continue }
             var members: Set<NodeID> = [node.id]
@@ -858,7 +911,8 @@ public struct ReachabilityAnalyzer: Sendable {
                 head += 1
                 for edge in graph.outgoingEdges(from: current)
                 where edge.kind == .member && ignored.contains(edge.target)
-                    && !fileScopeIDs.contains(edge.target) {
+                    && !fileScopeIDs.contains(edge.target)
+                    && graph.node(edge.target)?.location?.path == path {
                     if members.insert(edge.target).inserted { queue.append(edge.target) }
                 }
             }
@@ -867,24 +921,45 @@ public struct ReachabilityAnalyzer: Sendable {
         return units
     }
 
-    /// 보존 판정부터 도달성 탐색까지 한 번 돌린 도달 가능 집합.
+    /// 보존 판정부터 도달성 탐색까지 한 번 돌린 세계.
     ///
     /// 반사실 탐색은 뿌리 선언만 바꾸고 증인 조건·물려받은 보존·역방향
     /// 오버라이드 규칙은 본분석과 똑같이 둔다 — 주석을 떼어도 그 규칙들의
-    /// 의미는 변하지 않는다.
-    private func reachableSet(
+    /// 의미는 변하지 않는다. `alreadyReached` 에 이미 닫힌 도달 집합을 주면
+    /// 그 부분집합의 간선은 다시 훑지 않아 단위별 반사실이 죽은 영역만큼만
+    /// 걷는다.
+    private struct ReachabilityWorld {
+        /// 뿌리에서 사용 의미 간선만 따라 도달한 정점.
+        let reachable: Set<NodeID>
+        /// 도달 가능한 정점으로 거른 보존 근거. `testOnlyCode` 의 뿌리 목록이다.
+        let retentions: [NodeID: RetentionReason]
+        /// 보존된 멤버 때문에 함께 살아난 조상들.
+        let inherited: [NodeID: InheritedRetention]
+        /// 소유 타입이 살아야 성립하는 증인과 그 소유자.
+        let conditionalWitnesses: [NodeID: NodeID]
+    }
+
+    private func reachabilityWorld(
         retentions: [NodeID: RetentionReason],
         protocolRequirementOwners: [NodeID: NodeID],
-        graph: CodeGraph
-    ) -> Set<NodeID> {
+        graph: CodeGraph,
+        alreadyReached: Set<NodeID> = []
+    ) -> ReachabilityWorld {
         let (unconditional, conditional) = partitionWitnesses(retentions, graph: graph)
         let inherited = inheritedRetentions(retentions: unconditional, graph: graph)
-        return traverse(
+        let traversal = traverse(
             from: Set(unconditional.keys).union(inherited.keys),
             conditionalWitnesses: conditional,
             protocolRequirementOwners: protocolRequirementOwners,
-            in: graph
-        ).reachable
+            in: graph,
+            alreadyReached: alreadyReached
+        )
+        return ReachabilityWorld(
+            reachable: traversal.reachable,
+            retentions: retentions.filter { traversal.reachable.contains($0.key) },
+            inherited: inherited,
+            conditionalWitnesses: conditional
+        )
     }
 
     /// 위치가 앞선 정점을 고르는 비교자. 위치가 없거나 같으면 식별자로 자른다.
