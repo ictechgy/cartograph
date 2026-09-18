@@ -280,6 +280,31 @@ one file-scope unit and reported once; comments on individual declarations are j
 independently, even when every declaration in a file carries one. Like the other warning rules,
 `superfluous-ignore` does not count toward `--strict`.
 
+`dead` also reports public declarations whose references all come from their own module, as
+warnings under the `redundant-public` rule:
+
+```console
+Sources/Net/Client.swift:12:12: warning: class 'Net.Client' is referenced only within its own module (3 references) — it could be internal
+```
+
+A public declaration the module itself is the only user of does not need to be public. The check
+asks two conservative questions. Does any reference come from another module? A reference whose
+source module cannot be proven to be the declaring module suppresses the finding. Is the
+declaration mentioned in the interface of another public declaration? A type mention in a
+signature, superclass clause, generic constraint or default argument keeps the target public,
+while a use inside a function or accessor body does not — syntax analysis classifies every
+reference, and a reference whose position cannot be determined counts as an interface mention.
+Overrides, protocol requirements, protocol witnesses, enum cases, and declarations already marked
+`@objc`/`@objcMembers`/`@IBOutlet`/`dynamic`/`@NSManaged` are never reported. A declaration with
+no references at all is left alone too: `unused-symbol` answers the unused question separately.
+With `retain_public` enabled the rule stays silent — that setting declares the public surface
+intentional, and a module reading its own public API would otherwise flood the report; run the
+default mode (where `retain_public` is off) to ask this question. Members are judged individually,
+so a public method only the module calls is reported even when its class is used across modules.
+Only the modules in the index are evidence — a consumer outside the workspace is invisible, so
+read the finding as a question, not a verdict. Like the other warning rules, `redundant-public`
+does not count toward `--strict`.
+
 `--report-test-only` answers a different question: which production declarations are reached
 **only** from tests or previews. They are not dead — deleting one breaks a test — but a team wants
 to know that tests are the sole caller. Reported as `info`, so they never fail a build.

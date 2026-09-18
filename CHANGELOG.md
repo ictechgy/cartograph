@@ -9,11 +9,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `dead` reports public declarations whose references all come from their own module, as warnings
+  under the `redundant-public` rule. The check asks two conservative questions: does any reference
+  come from another module, and is the declaration mentioned in the interface of another public
+  declaration? Syntax analysis classifies every reference as an interface mention or a body use —
+  a type mention in a signature, superclass clause, generic constraint or default argument keeps
+  the target public, while a use inside a function or accessor body does not, and a reference
+  whose position cannot be determined counts as an interface mention. Overrides, protocol
+  requirements and witnesses, enum cases, Objective-C/Interface-Builder/dynamic declarations, and
+  declarations with no references at all are never reported (`unused-symbol` answers the unused
+  question separately). With `retain_public` enabled the rule stays silent: that setting declares
+  the public surface intentional, and a module reading its own public API would otherwise flood
+  the report. Members are judged individually, so a public method only the module calls is
+  reported even when its class is used across modules. Modules outside the index are invisible,
+  so the finding is a question, not a verdict. Warnings do not count toward `--strict`.
 - `dead` reports `cartograph:ignore` comments that suppress nothing, as warnings under the
   `superfluous-ignore` rule — the same judgement Periphery 3.7 added. The check is
   counterfactual: reachability is re-run with only that comment removed, and the comment is
-  reported only when no new finding would appear — dead-code, test-only, assign-only-property
-  and unused-import findings all count. Comments on genuinely dead declarations keep
+  reported only when no new finding would appear — dead-code, test-only, assign-only-property,
+  unused-import and redundant-public findings all count. Comments on genuinely dead declarations keep
   suppressing them, a comment covering a used declaration is flagged, and a file-level
   `cartograph:ignore:all` comment is judged once as a file-scope unit while per-declaration
   comments are judged independently even when every declaration in a file carries one. A

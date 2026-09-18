@@ -276,6 +276,29 @@ Sources/Net/Client.swift:41:1: warning: ignore comment on 'Net.Client' and 2 dec
 파일의 모든 선언에 붙어 있어도 각각 따로 판정합니다. 다른 경고 규칙과 마찬가지로
 `superfluous-ignore`는 `--strict` 계산에 넣지 않습니다.
 
+`dead`는 참조가 전부 자기 모듈 안에 있는 public 선언도 `redundant-public` 규칙의 경고로
+보고합니다:
+
+```console
+Sources/Net/Client.swift:12:12: warning: class 'Net.Client' is referenced only within its own module (3 references) — it could be internal
+```
+
+모듈 자신이 유일한 사용자인 public 선언은 public일 필요가 없습니다. 판정은 보수적인 두
+질문입니다. 다른 모듈에서 온 참조가 있는가? 출처 모듈이 선언 모듈임을 증명할 수 없는 참조가
+있으면 보고하지 않습니다. 다른 공개 선언의 인터페이스가 이 선언을 참조하는가? 시그니처·상속
+절·제네릭 제약·기본값의 타입 표기는 대상을 public으로 유지하고, 함수나 접근자 본문 안의
+사용은 그렇지 않습니다 — 구문 분석이 참조마다 어느 쪽인지 분류하고, 자리를 판단하지 못한
+참조는 인터페이스 사용으로 셉니다. 오버라이드, 프로토콜 요구사항, 프로토콜 증인, 열거형
+케이스, `@objc`/`@objcMembers`/`@IBOutlet`/`dynamic`/`@NSManaged` 표식이 이미 붙은 선언은
+보고하지 않습니다. 참조가 아예 없는 선언도 보고하지 않습니다 — 미사용 여부는
+`unused-symbol`이 따로 답합니다. `retain_public`이 켜져 있으면 이 규칙은 침묵합니다 — 그
+설정은 공개 표면이 의도적이라고 선언한 것이고, 모듈이 자기 공개 API를 읽는다는 이유로 표면
+전체가 보고되기 때문입니다. 기본 모드(`retain_public` 꺼짐)에서 이 질문을 던지세요. 멤버는
+각각 판정하므로, 타입이 모듈 밖에서 쓰여도 모듈 안에서만 불리는 public 메서드는 보고됩니다.
+인덱스에 있는 모듈만 증거입니다 — 워크스페이스 밖 소비자는 보이지 않으므로 이 발견은 판정이
+아니라 질문으로 읽어야 합니다. 다른 경고 규칙과 마찬가지로 `redundant-public`은 `--strict`
+계산에 넣지 않습니다.
+
 `--report-test-only`는 다른 질문에 답합니다 — **테스트나 프리뷰에서만** 도달하는 생산
 선언이 무엇인가입니다. 죽은 코드가 아닙니다. 지우면 테스트가 깨집니다. 다만 테스트가 유일한
 호출자라는 사실은 팀이 알아야 합니다. `info`로 보고하므로 빌드를 실패시키지 않습니다.
