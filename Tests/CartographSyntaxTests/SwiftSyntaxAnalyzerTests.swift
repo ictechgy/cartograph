@@ -351,6 +351,34 @@ struct CommentCommandTests {
         #expect(CommentCommand.parse(comment: "// cartograph:ignore") == .ignore)
         #expect(CommentCommand.parse(comment: "// 그냥 주석") == nil)
     }
+
+    @Test("명령을 언급하는 문장은 지시가 아니다")
+    func mentionIsNotACommand() {
+        // 도구의 문서 주석이 무시 표식으로 오인된 실제 오탐.
+        #expect(CommentCommand.parse(comment: "/// `cartograph:ignore` 를 떼어 내도") == nil)
+        #expect(CommentCommand.parse(comment: "// NOTE: cartograph:ignore") == nil)
+        #expect(CommentCommand.parse(comment: "// cartograph:ignore-something") == nil)
+        #expect(CommentCommand.parse(comment: "// cartograph:ignore:other") == nil)
+        // 명령 뒤의 설명은 허용한다.
+        #expect(CommentCommand.parse(comment: "// cartograph:ignore — 외부 DI 대상") == .ignore)
+        #expect(CommentCommand.parse(comment: "//cartograph:ignore") == .ignore)
+    }
+
+    @Test("명령을 언급하는 문서 주석은 선언을 무시하지 않는다")
+    func docMentionDoesNotIgnore() {
+        let facts = SwiftSyntaxAnalyzer().analyze(
+            source: """
+                /// `cartograph:ignore` 를 떼어 내도 보고되지 않는 선언.
+                struct MentionedButNotIgnored {
+                    /// `cartograph:ignore:all` 은 파일 전체를 덮는다.
+                    func ping() {}
+                }
+                """,
+            path: "/Mention.swift"
+        )
+        #expect(facts.declaration(named: "MentionedButNotIgnored")?.attributes.contains(.ignoreComment) == false)
+        #expect(facts.declaration(named: "ping")?.attributes.contains(.ignoreComment) == false)
+    }
 }
 
 @Suite("런타임 관리 속성과 외부 테스트 기반 클래스")

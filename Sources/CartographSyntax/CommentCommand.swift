@@ -11,12 +11,22 @@ public enum CommentCommand: String, Sendable, CaseIterable {
 
     /// 주석 한 줄에서 명령을 찾는다.
     ///
+    /// 명령은 주석 맨 앞에 와야 한다 — 본문에서 명령을 언급하는 문서 주석까지
+    /// 지시로 읽으면 도구 자신의 설명 문서가 무시 표식이 된다. 명령 뒤에는 줄
+    /// 끝이나 공백만 허용해 `cartograph:ignore-something` 같은 낱말 조각을
+    /// 지시로 오인하지 않는다.
+    ///
     /// 더 구체적인 명령(`ignore:all`)을 먼저 확인한다. 그렇지 않으면
     /// `ignore` 가 항상 먼저 걸려 파일 단위 지시가 무시된다.
     public static func parse(comment: String) -> CommentCommand? {
         let normalized = comment.trimmingCharacters(in: .whitespaces)
-        if normalized.contains(CommentCommand.ignoreAll.rawValue) { return .ignoreAll }
-        if normalized.contains(CommentCommand.ignore.rawValue) { return .ignore }
+            .drop(while: { $0 == "/" || $0 == "*" })
+            .trimmingCharacters(in: .whitespaces)
+        for command in [CommentCommand.ignoreAll, .ignore] {
+            guard normalized.hasPrefix(command.rawValue) else { continue }
+            let rest = normalized.dropFirst(command.rawValue.count)
+            if rest.isEmpty || rest.first?.isWhitespace == true { return command }
+        }
         return nil
     }
 }
