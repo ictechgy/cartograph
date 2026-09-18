@@ -19,32 +19,42 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 
 ## Current Status
 
-### 진행 중 — ② 불필요 `cartograph:ignore` 감지 (브랜치 `feat/superfluous-ignore-warning`)
+### 진행 중 — ② 불필요 `cartograph:ignore` 감지 (브랜치 `feat/superfluous-ignore-warning`, PR #107)
 
 - **구현:** `ReachabilityAnalyzer.superfluousIgnores`가 반사실 판정을 한다.
-  `.ignoreComment` 정점을 `.member` 간선으로 "주석 하나가 덮는 범위"(무시 단위)로
-  묶고(파일 전체가 무시면 파일 범위 단위 하나 — `ignore:all`과 선언별 주석은
-  그래프에서 구별 불가), 그 단위만 뗀 도달성을 다시 돌려 새 발견이 없으면
-  `superfluous-ignore` 경고로 보고한다. 겹친 단위는 커버리지 중복도로 처리하고,
-  전원 도달 가능 단위는 빠른 경로로 즉시 확정한다. `RetentionPolicy`에
-  `retainedNodesWithoutIgnoreComments`(무시 근거 무시)를 둬 같은 규칙으로
-  보존을 재계산한다. 진단은 `dead` 전용 경고(unused-parameter 등과 같은 패턴,
-  strict 미포함), 베이스라인 키는 `usr|ignore`·`ignore:file:<path>`로
-  선언 발견과 충돌하지 않는다.
-- **그 과정에서 찾아 고친 버그 두 개:**
-  - `CommentCommand.parse`가 `contains` 부분 문자열 매칭이라 문서 주석이
-    명령을 *언급*만 해도 `.ignoreComment`가 붙던 기존 오탐 — 주석 맨 앞 접두사+
-    단어 경계 매칭으로 교체. 자기 분석의 12건 경고가 전부 이것이었다.
-  - 영속 IndexStoreDB 캐시가 지워진 유닛을 잊지 않아 `symbolOccurrences`가
-    유령 유닛으로 0개를 반환, 파일 전체(main.swift)가 스냅샷에서 빠지던
-    결함 — 유닛 집합의 안정 해시(FNV-1a)를 DB 경로에 섞어 유닛이 바뀌면
-    새 DB로 갈아탄다(`effectiveDatabasePath`/`unitsSignature`, 내부 가시성).
-- **검증:** SuperfluousIgnoreTests 12개 + ReaderDatabasePathTests 4개 +
-  CommentCommandTests 신규 2개. 픽스처에 IgnoreComments.swift·
-  FileIgnored.swift를 추가해 `expected-superfluous-ignore.txt` 통째 비교를
-  verify-fixtures.sh에 배선. 변이 확인: 판정 끄면 7개·단위별 탐색 제거면 2개·
-  지문 끄면 2개 실패.
-- **남은 것:** 커밋·푸시·PR·리뷰.
+  `.ignoreComment` 정점을 `.member` 간선(같은 파일 한정)으로 "주석 하나가 덮는
+  범위"(무시 단위)로 묶고, 그 단위만 뗀 도달성을 다시 돌려 새 발견이 없으면
+  `superfluous-ignore` 경고로 보고한다. 파일 범위 단위는 `.ignoreAllComment`
+  표식이 있을 때만 만든다 — `SnapshotEnricher`가 `ignore:all` 파일의 심볼에
+  `.ignoreComment`와 함께 출처 표식을 단다. 겹친 단위는 커버리지 중복도로
+  처리하고, **확정된 단위의 주석은 뒤 판정에서 뗀 채로 누적한다** — 서로만
+  참조하는 무시 덩어리에서 앞 주석 하나만 보고해 "보고된 주석을 모두 떼어도
+  새 발견이 없다"는 보장이 성립한다. `RetentionPolicy`의
+  `retainedNodesWithoutIgnoreComments`로 같은 규칙의 보존을 재계산하고,
+  `findsTestOnlyCode`가 켜져 있으면 반사실 세계의 test-only 보고 변화도
+  필요 조건으로 본다. 진단은 `dead` 전용 경고(strict 미포함), 베이스라인 키는
+  `usr|ignore`·`ignore:file:<path>`.
+- **성능:** 단위별 반사실은 `traverse`의 `alreadyReached` 시드로 무시 영역만
+  걷는다. 시드 정점은 큐에 들어가지 않아 역방향 오버라이드 증인이 누락될 수
+  있어, 시드의 incoming `.overrides` 간선만 따로 검사한다(회귀 테스트 고정).
+- **그 과정에서 찾아 고친 버그:**
+  - `CommentCommand.parse`가 부분 문자열 매칭이라 문서 주석이 명령을 *언급*만
+    해도 `.ignoreComment`가 붙던 기존 오탐 — 주석 맨 앞 접두사+경계 매칭으로.
+  - 영속 IndexStoreDB 캐시가 지워진 유닛을 잊지 않아 파일 발생을 통째로
+    삼키던 결함 — 유닛 집합 지문(FNV-1a)을 DB 경로에 섞고, 지문 실패 시
+    `-unverified` 전용 경로(버전 없는 낡은 경로 재사용 금지), 열 때 형제 DB를
+    정리한다(`effectiveDatabasePath`/`pruneStaleReaderDatabases`,
+    `FileSystem.removeItem` 추가로 모든 래퍼 갱신).
+- **ultra-review 1라운드 반영:** claude×2·codex 전부 CHANGES_REQUESTED, agy
+  6/16샤드(3 APPROVE·3 CR, 나머지 headless 권한 거부 무출력), grok 무효.
+  반영: strict-weak-ordering 비교자(`locationThenID` 통일), 크로스파일 멤버
+  흡수 차단, `.ignoreAllComment` 출처, testOnly 반사실, -unverified+형제 정리,
+  누적 판정(상호 의존), 시드 오버라이드, `#require` 안전 단언.
+- **검증:** SuperfluousIgnoreTests 18개 + ReaderDatabasePathTests 7개 +
+  CommentCommandTests. 변이 확인: 파일단위 휴리스틱 복원·누적 제거·시드 스캔
+  제거 각각 해당 테스트 실패 확인. 전 게이트 통과(테스트·커버리지 93.03%·
+  fixture·CLI 계약·strict 자기 분석).
+- **남은 것:** 커밋·푸시(PR #107 갱신)·후속 리뷰.
 
 ### 완료 — ① 웜 query 지연
 
@@ -189,17 +199,16 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 
 ## Verification
 
-현재 브랜치(`perf/session-freshness-window`) 변경의 통과 근거(전부 직접 실행):
+현재 브랜치(`feat/superfluous-ignore-warning`) 변경의 통과 근거(전부 직접 실행):
 
 | 검사 | 결과 |
 | --- | --- |
-| `swift test`(coverage.sh 내 번들) | 전부 통과 — 세션 테스트 37개(창 테스트 8개, 주입 시계로 수면 없음) |
-| `Scripts/coverage.sh` | **93.04%** (기준 90%, 계측 CLI 통합·MCP 검사 포함 전부 통과) |
+| `swift test` | 8번들 전부 통과 — SuperfluousIgnore 18·ReaderDatabasePath 7 |
+| `Scripts/coverage.sh` | **93.03%** (기준 90%, 계측 CLI 통합 포함) |
 | `Scripts/verify-cli-contract.sh` | 통과 |
-| `Scripts/verify-fixtures.sh` | 통과 — **반드시 디버그 바이너리 경로를 첫 인자로** 넘길 것 |
-| strict 자기 분석 | dead·cycles·type cycles·rules 모두 findings 없음 |
-| 변이 확인 | `ensurePrepared`의 창 조기 반환을 끄면 새 테스트가 2개 단언 모두 실패함을 확인 |
-| 성능 계측 | 창 안 웜 status/query ~0.0-0.1ms(이전 ~9ms, release·MCP stdio); 창 경과 후 재검증 ~9-11ms 정상 |
+| `Scripts/verify-fixtures.sh` | 통과 — 디버그 바이너리 경로 지정, superfluous-ignore 2건 골든 일치 |
+| strict 자기 분석 | dead·cycles·type cycles·rules 모두 findings 없음(문서 주석 오탐 12건 해소 유지) |
+| 변이 확인 | 파일단위 휴리스틱·누적 제거·시드 스캔 제거 각각 해당 테스트 실패 |
 
 아래 표는 **PR #104의 근거**다.
 
@@ -253,11 +262,9 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ## Next Steps
 
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
-   (이 문서 갱신과 `docs/evaluation/2026-09-18-competitive-gaps.md`는 미커밋 —
-   커밋은 요청 시에만.)
-2. ①웜 query: `perf/session-freshness-window`를 커밋·푸시·PR로 만들고 리뷰한다.
-   머지는 사용자 승인 후.
-3. 이후 순서: ②불필요 ignore 감지 → ③불필요 public → ④impact --before 제거 간선 →
+2. ②불필요 ignore: `feat/superfluous-ignore-warning`을 커밋·푸시해 PR #107을 갱신하고
+   후속 리뷰를 돌린다. 머지는 사용자 승인 후.
+3. 이후 순서: ③불필요 public → ④impact --before 제거 간선 →
    ⑤기계적 fix → ⑥impact 입도 → ⑦테스트 영향 → ⑧GitHub Action → ⑨equatable 옵션.
    ⑩런타임 텔레메트리는 연구 전용 보류.
 4. 브리지 `sourceCache` 최적화는 동일 소스 스냅샷 보존 조건에서 검토한다. 근거 없이 제거하지
@@ -266,7 +273,7 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
-0.18.0 릴리스와 PR #104는 전부 머지·배포됐습니다. 진행 중인 것은 경쟁 갭 목록의
-①웜 query 지연 — `perf/session-freshness-window` 브랜치에 구현·검증이 끝났고
-커밋·PR·리뷰가 남았습니다(머지는 승인 후). 완료된 배포·검증을 반복하지 마세요.
-나머지 갭 순서는 Goal 섹션에 있습니다.
+0.18.0 릴리스와 PR #104·#106은 전부 머지·배포됐습니다. 진행 중인 것은 경쟁 갭 목록의
+②불필요 ignore 감지 — `feat/superfluous-ignore-warning`(PR #107)에 ultra-review
+1라운드 반영과 전 게이트 통과가 끝났고 커밋·푸시·후속 리뷰가 남았습니다(머지는 승인 후).
+완료된 배포·검증을 반복하지 마세요. 나머지 갭 순서는 Goal 섹션에 있습니다.

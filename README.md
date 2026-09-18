@@ -269,10 +269,11 @@ A comment on a declaration that ordinary references already keep alive does no w
 the false impression that the code is dead. The check is counterfactual: the analysis re-runs
 reachability with only that comment removed, and the comment is reported only when no new
 finding appears — so a comment on genuinely dead code keeps suppressing it, and a comment whose
-removal would expose an unreachable declaration is never flagged. When every declaration in a
-file is ignored, the comment is treated as one file-scope unit (`cartograph:ignore:all` and a
-comment on each declaration are indistinguishable in the graph) and reported once. Like the
-other warning rules, `superfluous-ignore` does not count toward `--strict`.
+removal would expose an unreachable declaration is never flagged. A file-level
+`cartograph:ignore:all` comment is judged as one file-scope unit and reported once; comments
+on individual declarations are judged independently, even when every declaration in a file
+carries one. Like the other warning rules, `superfluous-ignore` does not count toward
+`--strict`.
 
 `--report-test-only` answers a different question: which production declarations are reached
 **only** from tests or previews. They are not dead — deleting one breaks a test — but a team wants

@@ -41,10 +41,13 @@ github-actions formats, MCP serve, snapshot diffs.
    The open item named there is a **bounded direct-consumer path** — the same
    pull-model pattern PR #104 applied to `impact` (compute only what the
    question needs from adjacency lists, cache reachability per session).
+   **Done** — `AnalysisSession` caches the prepared analysis per generation;
+   warm `query` ≈ 0.1 ms inside the freshness window (PR #106).
 2. **Superfluous `cartograph:ignore` detection** — Periphery 3.7 reports an
    ignore comment when the declaration is actually used. Prevents
    suppression-rot. Warning-class diagnostic; cheap (reachability result +
-   attribute set already exist).
+   attribute set already exist). **In progress** — counterfactual `dead`
+   warning under `superfluous-ignore` (PR #107).
 3. **Redundant public accessibility** — Periphery's redundant-public analysis
    (disabled in our comparisons) flags decls referenced only inside their own
    module → could be `internal`. Computable from index references; fits the

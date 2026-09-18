@@ -13,10 +13,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `superfluous-ignore` rule — the same judgement Periphery 3.7 added. The check is
   counterfactual: reachability is re-run with only that comment removed, and the comment is
   reported only when no new finding would appear. Comments on genuinely dead declarations keep
-  suppressing them, a comment covering a used declaration is flagged, and a file whose every
-  declaration is ignored is reported once as a file-scope unit (`cartograph:ignore:all` and
-  per-declaration comments are indistinguishable in the graph). Warnings do not count toward
-  `--strict`.
+  suppressing them, a comment covering a used declaration is flagged, and a file-level
+  `cartograph:ignore:all` comment is judged once as a file-scope unit while per-declaration
+  comments are judged independently even when every declaration in a file carries one.
+  Warnings do not count toward `--strict`.
 
 ### Fixed
 
@@ -26,7 +26,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   occurrences — silently dropping a whole file's edges (observed as `main.swift` losing all
   top-level references after `.build` was recreated). The unit-file set is now part of the
   database path, so a changed unit set opens a fresh reader database while an unchanged set
-  keeps reusing the cache.
+  keeps reusing the cache. Stale sibling databases and the unversioned legacy path are pruned
+  on open, and an unreadable unit directory falls back to a dedicated `-unverified` path
+  instead of reusing the legacy cache.
+- `// cartograph:ignore` detection no longer treats a doc comment that merely mentions the
+  directive as an ignore comment. The marker is now only recognized at the start of a comment
+  line and must be followed by whitespace or end of line, so `/// Use // cartograph:ignore
+  to …` documents the feature without marking the declaration ignored.
 
 ### Changed
 
