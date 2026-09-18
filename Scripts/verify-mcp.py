@@ -167,7 +167,6 @@ def main() -> int:
         assert_true(failed is not None and failed["result"]["isError"], "missing-index query did not return tool error")
         assert_true(legacy.process.poll() is None, "server exited after missing-index tool error")
         build("initial-build")
-        verify_bound = time.monotonic()
         success = legacy.request(4, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
         assert_true(not success["result"]["isError"], "query did not recover after build")
         payload = legacy_payload(success)
@@ -175,19 +174,22 @@ def main() -> int:
         generation = payload["session"]["generation"]
         repeated = legacy.request(5, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
         assert_true(legacy_payload(repeated)["session"]["generation"] == generation, "session was not reused")
-        # serve 는 입력 지문을 최대 1초에 한 번만 다시 검증한다 — 편집 직후의 호출은
-        # 아직 창 안이라 이전 세대로 응답해야 한다. 이 단언이 없으면 serve 의 창이
-        # .zero 로 돌아가도 검사가 통과해 연결 자체를 보증하지 못한다.
+        # serve 는 입력 지문을 최대 1초에 한 번만 다시 검증한다. 창이 지난 뒤 변경 없는
+        # 호출로 검증 시각을 새로 찍은 다음, 편집 직후의 호출이 같은 세대를 쓰는지 무조건
+        # 단언한다 — 이 단언이 없거나 건너뛰어지면 serve 의 창이 .zero 로 돌아가도
+        # 검사가 통과해 연결 자체를 보증하지 못한다.
+        time.sleep(1.1)
+        reverify = legacy.request(63, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
+        assert_true(
+            legacy_payload(reverify)["session"]["generation"] == generation,
+            "unchanged re-verification advanced the generation",
+        )
         source_path.write_text(source_path.read_text() + "struct Added {}\n")
         in_window = legacy.request(61, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
-        # 마지막 검증은 verify_bound 이후에 일어났으므로, 그 시각부터 1초 안에 응답이
-        # 왔을 때만 창 안임이 보장된다 — 느린 환경에서 경과가 1초를 넘으면 유지 여부를
-        # 구분할 수 없어 단언은 건너뛰고 감지는 아래에서 본다.
-        if time.monotonic() - verify_bound < 1.0:
-            assert_true(
-                legacy_payload(in_window)["session"]["generation"] == generation,
-                "in-window request did not reuse the verified generation",
-            )
+        assert_true(
+            legacy_payload(in_window)["session"]["generation"] == generation,
+            "in-window request did not reuse the verified generation",
+        )
         # 창이 지난 뒤의 호출은 편집을 감지해 새 세대를 준비한다.
         time.sleep(1.1)
         stale = legacy.request(6, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
@@ -205,7 +207,7 @@ def main() -> int:
         # refresh 가 실제로 이후 query 의 세션을 갱신하는지까지 본다.
         fresh = legacy.request(7, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
         fresh_session = legacy_payload(fresh)["session"]
-        assert_true(fresh_session["generation"] == refreshed_meta["generation"], "in-window query did not reuse the refreshed generation")
+        assert_true(fresh_session["generation"] == refreshed_meta["generation"], "query did not reuse the refreshed generation")
         assert_true(not any("index-staleness" in item for item in fresh_session["limitations"]), "query did not reuse the refreshed limitations")
         legacy.send(request(None, "notifications/unknown", {}))
         assert_true(legacy.request(8, "ping", {})["result"] == {}, "notification disturbed next request")
