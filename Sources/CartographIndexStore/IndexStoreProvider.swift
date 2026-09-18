@@ -307,8 +307,7 @@ public struct IndexStoreProvider: IndexProviding {
             // readonly 는 거짓이어야 한다. 참이면 같은 함수가 유닛을 넣기 전에
             // 곧바로 반환해 빈 인덱스가 된다. 여기서 쓰는 데이터베이스는 우리가
             // 만드는 캐시이므로 쓰기가 필요하다.
-            let databasePath = effectiveDatabasePath()
-            pruneStaleReaderDatabases(keeping: databasePath)
+            let databasePath = prepareReaderDatabase()
             return try IndexStoreDB(
                 storePath: configuration.storePath,
                 databasePath: databasePath,
@@ -417,40 +416,63 @@ public struct IndexStoreProvider: IndexProviding {
         return low > 0 ? sites[low - 1].usr : nil
     }
 
-    /// 현재 유닛 집합에 묶인 판독기 DB 경로.
+    /// 판독기 DB를 열기 전에 경로를 정하고 형제를 정리한다.
     ///
-    /// 판독기 DB 는 사라진 유닛을 잊지 않는다 — 유닛 파일이 지워져도 항목이 남아,
-    /// `symbolOccurrences(inFilePath:)` 가 유령 유닛으로 해석해 그 파일의 발생을
-    /// 통째로 비운다. 유닛 목록의 지문을 경로에 섞으면 유닛이 바뀔 때마다 새 DB 로
-    /// 갈아타 유령이 로드될 수 없다. 지문이 같으면 같은 DB 를 재사용한다.
-    func effectiveDatabasePath() -> String {
+    /// 판독기 DB 는 사라진 유닛을 잊지 않는다 — 유닛 파일이 지워져도 항목이
+    /// 남아, `symbolOccurrences(inFilePath:)` 가 유령 유닛으로 해석해 그 파일의
+    /// 발생을 통째로 비운다. 유닛 목록의 지문을 경로에 섞으면 유닛이 바뀔
+    /// 때마다 새 DB 로 갈아타 유령이 로드될 수 없고, 지문이 같으면 같은 DB 를
+    /// 재사용한다.
+    ///
+    /// 지문을 만들 수 있으면 지문 경로를 쓰고 다른 형제를 지운다. 지문을 못
+    /// 만들면 `-unverified` 경로를 쓰는데, 이 경로는 실행 간에 재사용되므로
+    /// 지워진 유닛을 담은 낡은 DB 가 유령 유닛 버그를 그대로 재현할 수 있다 —
+    /// 열기 전에 항상 지워 새 DB 만 만든다. 같은 이유로 지문이 없을 때는
+    /// 형제를 건드리지 않는다 — 일시적인 목록 실패 하나가 검증된 캐시 전체를
+    /// 지우는 것은 유령보다 나쁘다.
+    func prepareReaderDatabase() -> String {
         let signature = unitsSignature()
-        // 지문을 못 만들어도 버전 없는 경로는 쓰지 않는다 — 이전 버전이 그
-        // 경로에 남긴 DB 는 지워진 유닛을 담고 있어, 유령 유닛 버그를 그대로
-        // 재현할 수 있다.
-        let suffix = signature.isEmpty ? "unverified" : signature
-        return configuration.databasePath + "-" + suffix
+        guard !signature.isEmpty else {
+            let path = configuration.databasePath + "-unverified"
+            try? fileSystem.removeItem(at: path)
+            return path
+        }
+        let path = configuration.databasePath + "-" + signature
+        pruneStaleReaderDatabases(keeping: path)
+        return path
     }
 
     /// 지문이 바뀔 때마다 생기는 형제 판독기 DB 디렉터리를 정리한다.
     ///
     /// 현재 경로만 남기고, 버전 없는 예전 경로와 다른 지문의 형제는 전부
     /// 지운다 — 버전 없는 경로에는 유령 유닛 버그를 일으킨 낡은 DB 가
-    /// 남아 있을 수 있다. 정리는 정확도와 무관한 부수 작업이라 지우지 못한
-    /// 항목은 다음 실행의 정리에 맡긴다.
+    /// 남아 있을 수 있다. 지우는 대상은 우리가 만든 이름 형태(`baseName`,
+    /// `baseName-16진 지문`, `baseName-unverified`)뿐이다 — `databasePath`
+    /// 를 호출자가 정할 수 있어, 접두사만 맞으면 지우는 방식은 `db-backup`
+    /// 같은 무관한 항목까지 지울 수 있다. 정리는 정확도와 무관한 부수
+    /// 작업이라 지우지 못한 항목은 다음 실행의 정리에 맡긴다.
     func pruneStaleReaderDatabases(keeping currentPath: String) {
-        let base = configuration.databasePath
+        let base = (configuration.databasePath as NSString).standardizingPath
         let baseName = (base as NSString).lastPathComponent
         let parent = (base as NSString).deletingLastPathComponent
+        let current = (currentPath as NSString).standardizingPath
         guard let entries = try? fileSystem.contentsOfDirectory(at: parent)
         else { return }
         for entry in entries {
             let name = (entry as NSString).lastPathComponent
-            guard name == baseName || name.hasPrefix(baseName + "-"),
-                  entry != currentPath
+            guard name == baseName || isReaderDatabaseSuffix(name, baseName: baseName),
+                  (entry as NSString).standardizingPath != current
             else { continue }
             try? fileSystem.removeItem(at: entry)
         }
+    }
+
+    /// `baseName-` 뒤가 우리가 붙인 접미 형태인지 — 16진 지문이나 `unverified`.
+    private func isReaderDatabaseSuffix(_ name: String, baseName: String) -> Bool {
+        guard name.hasPrefix(baseName + "-") else { return false }
+        let suffix = String(name.dropFirst(baseName.count + 1))
+        return suffix == "unverified"
+            || (!suffix.isEmpty && suffix.allSatisfy(\.isHexDigit))
     }
 
     /// `<스토어>/v5/units`(없으면 `units`)의 유닛 파일 이름 지문.

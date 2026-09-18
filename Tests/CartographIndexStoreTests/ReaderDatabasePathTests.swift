@@ -27,10 +27,10 @@ struct ReaderDatabasePathTests {
     func pathChangesWithUnits() throws {
         let fileSystem = InMemoryFileSystem()
         try fileSystem.write(text: "u1", to: "/store/v5/units/main.o-AAA")
-        let first = provider(fileSystem: fileSystem).effectiveDatabasePath()
+        let first = provider(fileSystem: fileSystem).prepareReaderDatabase()
 
         try fileSystem.write(text: "u2", to: "/store/v5/units/other.o-BBB")
-        let second = provider(fileSystem: fileSystem).effectiveDatabasePath()
+        let second = provider(fileSystem: fileSystem).prepareReaderDatabase()
 
         #expect(first != second)
         #expect(first.hasPrefix("/db-"))
@@ -43,8 +43,8 @@ struct ReaderDatabasePathTests {
         try fileSystem.write(text: "u1", to: "/store/v5/units/main.o-AAA")
         try fileSystem.write(text: "u2", to: "/store/v5/units/other.o-BBB")
 
-        let first = provider(fileSystem: fileSystem).effectiveDatabasePath()
-        let second = provider(fileSystem: fileSystem).effectiveDatabasePath()
+        let first = provider(fileSystem: fileSystem).prepareReaderDatabase()
+        let second = provider(fileSystem: fileSystem).prepareReaderDatabase()
 
         #expect(first == second)
     }
@@ -54,14 +54,14 @@ struct ReaderDatabasePathTests {
         let fileSystem = InMemoryFileSystem()
         try fileSystem.write(text: "u1", to: "/store/v5/units/main.o-AAA")
         try fileSystem.write(text: "u2", to: "/store/v5/units/other.o-BBB")
-        let first = provider(fileSystem: fileSystem).effectiveDatabasePath()
+        let first = provider(fileSystem: fileSystem).prepareReaderDatabase()
 
         // 지워진 유닛을 다른 유닛이 대신하는 일반 재빌드 형태 — 개수는
         // 그대로지만 집합이 달라졌으므로 낡은 DB 를 재사용하면 유령이 온다.
         try fileSystem.removeItem(at: "/store/v5/units/other.o-BBB")
         try fileSystem.write(text: "u3", to: "/store/v5/units/other.o-CCC")
 
-        #expect(provider(fileSystem: fileSystem).effectiveDatabasePath() != first)
+        #expect(provider(fileSystem: fileSystem).prepareReaderDatabase() != first)
     }
 
     @Test("유닛 일부가 지워져도 판독기 DB 경로가 달라진다")
@@ -69,13 +69,13 @@ struct ReaderDatabasePathTests {
         let fileSystem = InMemoryFileSystem()
         try fileSystem.write(text: "u1", to: "/store/v5/units/main.o-AAA")
         try fileSystem.write(text: "u2", to: "/store/v5/units/other.o-BBB")
-        let first = provider(fileSystem: fileSystem).effectiveDatabasePath()
+        let first = provider(fileSystem: fileSystem).prepareReaderDatabase()
 
         try fileSystem.removeItem(at: "/store/v5/units/other.o-BBB")
 
         // 유닛이 지워져도 남은 목록으로 지문을 만들어 새 DB 를 연다 —
         // 지워진 유닛을 담은 낡은 DB 로는 돌아가지 않는다.
-        let second = provider(fileSystem: fileSystem).effectiveDatabasePath()
+        let second = provider(fileSystem: fileSystem).prepareReaderDatabase()
         #expect(second != first)
         #expect(second.hasPrefix("/db-"))
         #expect(!second.hasSuffix("-unverified"))
@@ -88,18 +88,44 @@ struct ReaderDatabasePathTests {
 
         // 버전 없는 경로에는 지워진 유닛을 담은 낡은 DB 가 남아 있을 수
         // 있어 재사용하지 않는다.
-        #expect(provider.effectiveDatabasePath() == "/db-unverified")
+        #expect(provider.prepareReaderDatabase() == "/db-unverified")
+    }
+
+    @Test("검증 못 한 경로는 열 때마다 지우고 다시 만든다")
+    func unverifiedPathIsRecreatedOnOpen() {
+        // 검증 못 한 DB 는 지워진 유닛을 담은 채 재사용될 수 있으므로
+        // 열기 전에 항상 지운다 — 이것이 유령 유닛 버그의 재발 방지다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/db-unverified/data.mdb": "stale",
+        ])
+        let provider = provider(fileSystem: fileSystem)
+
+        #expect(provider.prepareReaderDatabase() == "/db-unverified")
+        #expect(!fileSystem.directoryExists(at: "/db-unverified"))
+    }
+
+    @Test("지문을 못 만들면 형제를 정리하지 않는다")
+    func unverifiedDoesNotPruneSiblings() {
+        // 목록 실패가 일시적일 수 있으므로, 지문이 없을 때 검증된 캐시를
+        // 지우는 것은 유령보다 나쁘다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/db-aaa/data.mdb": "keep",
+        ])
+        let provider = provider(fileSystem: fileSystem)
+
+        _ = provider.prepareReaderDatabase()
+        #expect(fileSystem.directoryExists(at: "/db-aaa"))
     }
 
     @Test("v5 없는 스토어는 units 디렉터리를 읽는다")
     func fallsBackToUnitsDirectory() throws {
         let fileSystem = InMemoryFileSystem()
         try fileSystem.write(text: "u1", to: "/store/units/main.o-AAA")
-        let first = provider(fileSystem: fileSystem).effectiveDatabasePath()
+        let first = provider(fileSystem: fileSystem).prepareReaderDatabase()
 
         try fileSystem.write(text: "u2", to: "/store/units/other.o-BBB")
 
-        #expect(first != provider(fileSystem: fileSystem).effectiveDatabasePath())
+        #expect(first != provider(fileSystem: fileSystem).prepareReaderDatabase())
         #expect(first.hasPrefix("/db-"))
     }
 
@@ -113,15 +139,19 @@ struct ReaderDatabasePathTests {
             "/db-bbb/data.mdb": "stale",
             // 이름이 비슷해도 다른 스토어의 DB(baseName 이 다름)는 건드리지 않는다.
             "/other-db/data.mdb": "keep",
+            // 지문 형태가 아닌 접미도 우리 것이 아니다 — 백업 같은 무관한
+            // 항목을 접두사만 맞는다고 지우면 안 된다.
+            "/db-backup/data.mdb": "keep",
         ])
         let provider = provider(fileSystem: fileSystem)
-        let current = provider.effectiveDatabasePath()
+        let current = provider.prepareReaderDatabase()
         try fileSystem.write(text: "keep", to: "\(current)/data.mdb")
 
         provider.pruneStaleReaderDatabases(keeping: current)
 
         #expect(fileSystem.fileExists(at: "\(current)/data.mdb"))
         #expect(fileSystem.fileExists(at: "/other-db/data.mdb"))
+        #expect(fileSystem.directoryExists(at: "/db-backup"))
         #expect(!fileSystem.directoryExists(at: "/db"))
         #expect(!fileSystem.directoryExists(at: "/db-aaa"))
         #expect(!fileSystem.directoryExists(at: "/db-bbb"))
