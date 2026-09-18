@@ -22,7 +22,7 @@ struct ImpactSelectionExpansionTests {
         #expect(expanded == ["Outer", "Inner", "Leaf"])
     }
 
-    @Test("타입 시드는 그 타입을 확장하는 익스텐션과 의미 부모 아래의 익스텐션 멤버까지 닿는다")
+    @Test("타입 시드는 그 타입을 확장하는 익스텐션과 그 멤버까지 닿는다")
     func reachesExtensionMembersFromTypeSeed() {
         let t = GraphNode(id: "T", name: "T", kind: .structType)
         let e = GraphNode(id: "E", name: "E", kind: .extensionDeclaration)
@@ -65,9 +65,27 @@ struct ImpactSelectionExpansionTests {
         builder.reference(from: "A", to: "B", kind: .extends)
         let graph = GraphBuilder(options: .init(level: .symbol)).build(from: builder.build())
 
-        let expanded = ImpactSelectionExpansion.expandingContainers(["A", "B"], graph: graph)
+        // 시드를 하나만 두어 순환을 따라가는 탐색 자체를 검증한다 — 둘을 넣으면
+        // 확장이 깨져도 시드 보존만으로 통과해 순회를 검사하지 못한다.
+        let expanded = ImpactSelectionExpansion.expandingContainers(["A"], graph: graph)
 
         #expect(expanded == ["A", "B", "a", "b"])
+    }
+
+    @Test("컨테이너가 아닌 시드 멤버는 자기 자식을 확장하지 않는다 — 옮기기 전 구현의 기존 계약")
+    func nonContainerSeedMemberDoesNotExpandItsChildren() {
+        // 큐에는 컨테이너 시드만 들어간다. 타입과 그 멤버를 함께 골라도 멤버는
+        // 결과에 남기만 하고 자기 자식(지역 선언)을 확장하지는 않는다. 옮기기 전
+        // 구현도 같은 동작이므로, 바꾸려면 이 계약을 의식해서 바꿔야 한다.
+        var builder = SnapshotBuilder()
+        builder.symbol("T", kind: .classType)
+        builder.symbol("m", kind: .method, parent: "T")
+        builder.symbol("local", kind: .function, parent: "m")
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: builder.build())
+
+        let expanded = ImpactSelectionExpansion.expandingContainers(["T", "m"], graph: graph)
+
+        #expect(expanded == ["T", "m"])
     }
 
     @Test("도달한 멤버 아래의 지역 선언과 그 안의 중첩 컨테이너까지 확장한다")
@@ -120,20 +138,28 @@ struct ImpactSelectionExpansionTests {
         let graph = CodeGraph(level: .symbol, nodes: nodes, edges: edges)
 
         let clock = ContinuousClock()
+        let baselineStart = clock.now
+        let baselineExpanded = Self.fullEdgeScanExpandingContainers(["Root"], graph: graph)
+        let baselineElapsed = clock.now - baselineStart
         let start = clock.now
         let expanded = ImpactSelectionExpansion.expandingContainers(["Root"], graph: graph)
         let elapsed = clock.now - start
 
+        #expect(expanded == baselineExpanded)
         #expect(expanded.count == memberCount + 1)
         #expect(expanded.contains("Root"))
-        // 옮기기 전 구현은 member·extends 간선 배열을 두 번 훑어 이 크기 입력에서
-        // 디버그 기준 수십 ms 였다. 인접 목록은 도달한 501개 정점의 이웃만 읽는다.
-        #expect(elapsed < .milliseconds(30))
+        // 절대 시각은 기계·CI 부하에 따라 흔들리므로, 같은 입력 위에서 전수 스캔
+        // 기준과 견준다 — 도달 범위만 읽는 구현이 4배 이상 빨라야 한다
+        // (디버그 계측으로는 약 400배 차이가 났다).
+        #expect(elapsed * 4 < baselineElapsed)
     }
 
     /// 옮기기 전 CartographKit 구현. 결과 동등성과 비용 차이의 기준선으로 남긴다.
     ///
     /// 간선 배열을 두 번 훑어 자식 사전을 전부 만든 뒤 BFS로 확장한다.
+    /// 확장 의미를 의도적으로 바꾸면 이 복사본도 함께 갱신하거나 프로퍼티 비교를
+    /// 거둔다. 두 구현이 같은 `graph.semanticParent`를 부르므로, 그 함수의
+    /// 의미가 바뀌는 회귀는 이 비교로는 잡히지 않는다.
     private static func fullEdgeScanExpandingContainers(
         _ selected: Set<NodeID>, graph: CodeGraph
     ) -> Set<NodeID> {
@@ -192,7 +218,7 @@ struct ImpactSelectionExpansionTests {
         var generator = SeededRandomNumberGenerator(seed: 0xC0FF_EE)
         let kinds: [SymbolKind] = [.classType, .structType, .enumType, .protocolType,
             .extensionDeclaration, .method, .function, .property, .variable]
-        for _ in 0..<40 {
+        for graphIndex in 0..<40 {
             let nodeCount = 8 + Int.random(in: 0..<12, using: &generator)
             let ids = (0..<nodeCount).map { "n\($0)" }
             let nodes = ids.map {
@@ -208,7 +234,9 @@ struct ImpactSelectionExpansionTests {
                         target: NodeID(target), kind: .member))
                 }
             }
-            for node in nodes where node.kind == .extensionDeclaration {
+            // extends 는 모든 종류의 정점에서 만든다 — 익스텐션이 아닌 source 의
+            // extends 간선이 양쪽 구현에서 똑같이 무시되는지도 비교 대상이다.
+            for node in nodes {
                 for _ in 0..<Int.random(in: 0...2, using: &generator) {
                     edges.append(GraphEdge(
                         source: node.id,
@@ -224,9 +252,11 @@ struct ImpactSelectionExpansionTests {
 
             for _ in 0..<12 {
                 let seed = Set(ids.filter { _ in generator.next() % 2 == 0 }.map { NodeID($0) })
+                // 불일치 한 건만으로는 재현 정보가 없으므로 그래프 번호와 시드를 남긴다.
                 #expect(
                     ImpactSelectionExpansion.expandingContainers(seed, graph: graph)
-                        == Self.fullEdgeScanExpandingContainers(seed, graph: graph)
+                        == Self.fullEdgeScanExpandingContainers(seed, graph: graph),
+                    "graph \(graphIndex), seed \(seed.map(\.rawValue).sorted())"
                 )
             }
         }
