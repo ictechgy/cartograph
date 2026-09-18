@@ -144,6 +144,8 @@ expect_status 64 "서버 음수 재검증 간격" serve --session-freshness-inte
 expect_status 64 "서버 무한 재검증 간격" serve --session-freshness-interval=inf
 expect_status 64 "서버 비수 재검증 간격" serve --session-freshness-interval=nan
 expect_status 64 "서버 상한 초과 재검증 간격" serve --session-freshness-interval=86401
+expect_status 0 "서버 0초 재검증 간격 수용" serve --session-freshness-interval=0
+expect_status 0 "서버 상한 재검증 간격 수용" serve --session-freshness-interval=86400
 expect_status 64 "스냅샷과 since 동시" snapshot --since HEAD
 expect_status 64 "스냅샷과 level 동시" snapshot --level type
 expect_status 64 "스냅샷과 strict 동시" snapshot --strict
