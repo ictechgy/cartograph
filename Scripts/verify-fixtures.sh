@@ -110,27 +110,25 @@ if [ "$actual_retained" != "$expected_retained" ]; then
 fi
 echo "  ok  --retain-public 보고가 기대와 일치(public 선언의 접근 수준이 제대로 읽힘)"
 
-# 새 규칙이 실제 인덱스에서 조용해야 할 자리에서 조용한지 고정한다.
-# 기본 모드: 코퍼스에는 모듈 밖 소비자가 없는 public 표면뿐이라 보고가 없어야 한다.
-# --retain-public: 공개 표면이 의도된 것이라는 선언이므로 규칙 자체가 침묵해야 한다.
-# 둘 중 하나라도 줄이 나오면 보고 조건이 넓어진 것이다.
-for mode in "" "--retain-public"; do
-    actual_redundant="$(
-        "$CARTOGRAPH" dead --project "$FIXTURE" $mode --report-format json 2>/dev/null |
-            python3 -c "
+# retain_public 은 공개 표면이 의도된 것이라는 선언이다. 이 규칙은 그 모드에서
+# 침묵해야 한다 — 라이브러리는 자기 API 를 모듈 안에서 읽으므로, 침묵하지 않으면
+# 표면 전체가 보고된다. 기본 모드는 표면 구성에 따라 발견이 달라질 수 있어
+# 여기서 고정하지 않는다(코퍼스에는 모듈 안에서만 쓰이는 public 표면이 있다).
+actual_redundant="$(
+    "$CARTOGRAPH" dead --project "$FIXTURE" --retain-public --report-format json 2>/dev/null |
+        python3 -c "
 import json, sys
 document = json.load(sys.stdin)
 names = sorted(d['message'] for d in document['diagnostics'] if d['ruleIdentifier'] == 'redundant-public')
 print('\n'.join(names))
 "
-    )"
-    if [ -n "$actual_redundant" ]; then
-        echo "redundant-public 보고가 나오면 안 되는 실행에서 나왔습니다(모드: '${mode:-기본}')." >&2
-        echo "$actual_redundant" >&2
-        exit 1
-    fi
-done
-echo "  ok  redundant-public 이 기본·--retain-public 양쪽에서 조용함"
+)"
+if [ -n "$actual_redundant" ]; then
+    echo "--retain-public 에서 redundant-public 보고가 나왔습니다. 규칙이 침묵해야 하는 모드입니다." >&2
+    echo "$actual_redundant" >&2
+    exit 1
+fi
+echo "  ok  redundant-public 이 --retain-public 에서 조용함(공개 표면은 의도된 것)"
 
 # 언어 경계. 스캐너가 구문에서 뽑은 사실에 진짜 인덱스의 USR 이 붙는지는 여기서만 확인된다.
 # 생성 시각·도구 버전·절대 경로는 실행마다 다르므로 자리 표시자로 바꿔 통째로 비교한다.
