@@ -22,8 +22,11 @@ struct ServeCommand: ParsableCommand {
         guard coreDataBuildEvidencePath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != true else {
             throw ValidationError("--coredata-build-evidence cannot be empty")
         }
-        guard sessionFreshnessInterval >= 0 else {
-            throw ValidationError("--session-freshness-interval must be at least 0 seconds")
+        // inf 나 과도한 유한값은 Duration 변환에서 트랩되므로 유한 범위로 제한한다.
+        // 하루를 넘는 유보는 신선도 검증을 사실상 끄는 실수로 본다.
+        guard sessionFreshnessInterval.isFinite, sessionFreshnessInterval >= 0,
+              sessionFreshnessInterval <= 86_400 else {
+            throw ValidationError("--session-freshness-interval must be a finite number of seconds in [0, 86400]")
         }
         guard options.since == nil else {
             throw ValidationError("--since cannot be combined with serve; use the impact tool's file selectors")
