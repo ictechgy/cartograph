@@ -74,7 +74,8 @@ public final class AnalysisSession {
     /// 입력 지문을 다시 읽기 전에 준비된 세대를 그대로 쓸 시간 창.
     /// `.zero` 이면 요청마다 지문을 다시 읽는다.
     private let freshnessCheckInterval: Duration
-    private let clock = ContinuousClock()
+    /// 시각 소스. 창 의미론 검증이 실제 수면 없이 시간을 진행할 수 있게 주입한다.
+    private let now: () -> ContinuousClock.Instant
     private var service: CartographService?
     private var context: AnalysisContext?
     private var querySession: CartographService.QuerySession?
@@ -102,15 +103,18 @@ public final class AnalysisSession {
     /// 프로젝트에 비례해 커지고, MCP 서버처럼 호출이 연속으로 오는 소비자는 짧은
     /// 창으로 그 비용을 한 번으로 묶을 수 있다. 창은 신선도 확인을 미루는 상한이며
     /// 기본값 `.zero`는 지금까지와 같은 요청마다 검증이다. 음수도 `.zero`와 같이
-    /// 매 요청 검증한다.
+    /// 매 요청 검증한다. `now`는 창의 시각 소스로, 호출마다 새 ContinuousClock 을
+    /// 만들어도 같은 단조 시간대를 읽는다.
     public init(
         serviceFactory: @escaping ServiceFactory,
         inputFingerprintProvider: @escaping InputFingerprintProvider,
-        freshnessCheckInterval: Duration = .zero
+        freshnessCheckInterval: Duration = .zero,
+        now: @escaping () -> ContinuousClock.Instant = { ContinuousClock().now }
     ) throws {
         self.serviceFactory = serviceFactory
         self.inputFingerprintProvider = inputFingerprintProvider
         self.freshnessCheckInterval = freshnessCheckInterval
+        self.now = now
         try refresh()
     }
 
@@ -291,14 +295,14 @@ public final class AnalysisSession {
         // 질의 자체보다 커진다. 검증을 미루는 시간은 창으로 상한이 정해져 있다.
         if freshnessCheckInterval > .zero, service != nil, context != nil,
            let lastFingerprintCheck,
-           lastFingerprintCheck.duration(to: clock.now) < freshnessCheckInterval {
+           lastFingerprintCheck.duration(to: now()) < freshnessCheckInterval {
             return
         }
         do {
             // 관측 시작 시각을 쓰면 관측 자체의 소요도 창에 포함돼 문서화된
             // 상한이 지켜진다. 일치가 확인된 경우에만 찍는다 — 불일치 분기는
             // reload 성공 시의 검증 시각에 맡기고, 실패는 폐기로 이어진다.
-            let checkedAt = clock.now
+            let checkedAt = now()
             let observed = try inputFingerprintProvider()
             guard preparedFingerprint == observed, service != nil, context != nil else {
                 _ = try reload(expectedFingerprint: observed)
@@ -320,15 +324,15 @@ public final class AnalysisSession {
         for _ in 1...Self.maximumRefreshAttempts {
             let candidateService = try serviceFactory()
             let candidateContext = try candidateService.loadContext()
-            let checkedAt = clock.now
+            // 관측 시작 시각을 찍는다 — 관측 자체의 소요도 창에 포함시켜
+            // 유보가 정확히 창으로 상한을 갖게 한다.
+            let checkedAt = now()
             let observed = try inputFingerprintProvider()
             guard observed == expected else {
                 expected = observed
                 continue
             }
 
-            // 관측 시작 시각을 찍는다 — 관측 자체의 소요도 창에 포함시켜
-            // 유보가 정확히 창으로 상한을 갖게 한다.
             let candidateMetadata = metadata(
                 for: candidateService,
                 context: candidateContext,

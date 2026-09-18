@@ -94,18 +94,20 @@ struct AnalysisSessionTests {
     @Test("재검증 창이 지나면 다음 요청에서 입력을 다시 읽는다")
     func reverifiesAfterFreshnessWindowElapses() throws {
         let state = SessionState(snapshot: makeSnapshot())
+        var virtualNow = ContinuousClock().now
         let session = try AnalysisSession(
             serviceFactory: { try state.makeService() },
             inputFingerprintProvider: { try state.nextFingerprint() },
-            freshnessCheckInterval: .milliseconds(50)
+            freshnessCheckInterval: .milliseconds(50),
+            now: { virtualNow }
         )
         _ = try session.query(symbols: ["App"])
         #expect(session.metadata?.generation == 1)
 
         state.fingerprint = "second"
         state.snapshot = makeSnapshot(extra: "Reloaded")
-        // ContinuousClock 은 단조 시계라 수면한 시간만큼 반드시 경과해 다시 읽는다.
-        Thread.sleep(forTimeInterval: 0.1)
+        // 창 경과는 수면 대신 주입한 시각을 진행해 결정적으로 확인한다.
+        virtualNow = virtualNow.advanced(by: .milliseconds(100))
 
         let batch = try session.query(symbols: ["Reloaded"])
         #expect(batch.results.first?.status == "found")
@@ -183,14 +185,16 @@ struct AnalysisSessionTests {
     @Test("변경 없는 재검증은 창을 다시 시작해 직후의 변경도 다음 창까지 유보한다")
     func unchangedReverificationRestartsFreshnessWindow() throws {
         let state = SessionState(snapshot: makeSnapshot())
+        var virtualNow = ContinuousClock().now
         let session = try AnalysisSession(
             serviceFactory: { try state.makeService() },
             inputFingerprintProvider: { try state.nextFingerprint() },
-            freshnessCheckInterval: .milliseconds(500)
+            freshnessCheckInterval: .milliseconds(500),
+            now: { virtualNow }
         )
         // 창이 지난 뒤의 요청은 지문을 다시 읽고 그 시각부터 창이 다시 시작된다.
-        // 창 안 단언은 두 호출이 500ms 안에 끝나야 하므로 여유를 크게 둔다.
-        Thread.sleep(forTimeInterval: 0.6)
+        // 주입한 시각을 진행하면 호출 소요와 무관하게 경계가 결정적이다.
+        virtualNow = virtualNow.advanced(by: .milliseconds(600))
         _ = try session.status()
         #expect(session.metadata?.generation == 1)
 
@@ -200,7 +204,7 @@ struct AnalysisSessionTests {
         _ = try session.status()
         #expect(session.metadata?.generation == 1)
 
-        Thread.sleep(forTimeInterval: 0.6)
+        virtualNow = virtualNow.advanced(by: .milliseconds(600))
         _ = try session.status()
         #expect(session.metadata?.generation == 2)
         #expect(session.metadata?.fingerprint == "second")
@@ -235,13 +239,15 @@ struct AnalysisSessionTests {
     @Test("창이 지난 뒤 지문 읽기가 실패해도 세션을 폐기해 다음 요청이 다시 읽게 한다")
     func expiredWindowFingerprintFailureDiscardsSession() throws {
         let state = SessionState(snapshot: makeSnapshot())
+        var virtualNow = ContinuousClock().now
         let session = try AnalysisSession(
             serviceFactory: { try state.makeService() },
             inputFingerprintProvider: { try state.nextFingerprint() },
-            freshnessCheckInterval: .milliseconds(50)
+            freshnessCheckInterval: .milliseconds(50),
+            now: { virtualNow }
         )
         state.fingerprintShouldFail = true
-        Thread.sleep(forTimeInterval: 0.1)
+        virtualNow = virtualNow.advanced(by: .milliseconds(100))
 
         #expect(throws: SessionFingerprintError.self) {
             _ = try session.status()
