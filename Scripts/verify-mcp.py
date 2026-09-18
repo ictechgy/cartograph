@@ -174,50 +174,57 @@ def main() -> int:
         generation = payload["session"]["generation"]
         repeated = legacy.request(5, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
         assert_true(legacy_payload(repeated)["session"]["generation"] == generation, "session was not reused")
-        # serve 는 입력 지문을 최대 1초에 한 번만 다시 검증한다. 창이 지난 뒤 변경 없는
-        # 호출로 검증 시각을 새로 찍은 다음, 편집 직후의 호출이 같은 세대를 쓰는지 무조건
-        # 단언한다 — 이 단언이 없거나 건너뛰어지면 serve 의 창이 .zero 로 돌아가도
-        # 검사가 통과해 연결 자체를 보증하지 못한다.
-        time.sleep(1.1)
-        reverify = legacy.request(63, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
-        assert_true(
-            legacy_payload(reverify)["session"]["generation"] == generation,
-            "unchanged re-verification advanced the generation",
-        )
-        source_path.write_text(source_path.read_text() + "struct Added {}\n")
-        in_window = legacy.request(61, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
-        assert_true(
-            legacy_payload(in_window)["session"]["generation"] == generation,
-            "in-window request did not reuse the verified generation",
-        )
+        # serve 의 기본 창은 1초다. 창이 지난 뒤 변경 없는 호출로 검증 시각을 새로
+        # 찍은 다음, 편집 직후의 호출이 같은 세대를 쓰는지 단언한다 — 기본 창의
+        # 존재를 검증하는 유일한 경로라 생략되면 창이 .zero 로 돌아가도 통과한다.
+        # 검증~호출 구간이 1초를 넘으면 창이 합법적으로 만료됐을 수 있어 그 시도만
+        # 다시 하고, 계속 넘으면 검사 환경의 문제로 명시적으로 실패한다.
+        in_window_checked = False
+        verified_generation = generation
+        for attempt in range(3):
+            time.sleep(1.1)
+            cycle_started = time.monotonic()
+            reverify = legacy.request(10 + attempt * 2, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
+            verified_generation = legacy_payload(reverify)["session"]["generation"]
+            source_path.write_text(source_path.read_text() + f"struct Added{attempt} {{}}\n")
+            in_window = legacy.request(11 + attempt * 2, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
+            if time.monotonic() - cycle_started >= 1.0:
+                continue
+            assert_true(
+                legacy_payload(in_window)["session"]["generation"] == verified_generation,
+                "in-window request did not reuse the verified generation",
+            )
+            in_window_checked = True
+            break
+        assert_true(in_window_checked, "in-window assertion never fit inside the freshness window")
         # 창이 지난 뒤의 호출은 편집을 감지해 새 세대를 준비한다.
         time.sleep(1.1)
-        stale = legacy.request(6, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
+        stale = legacy.request(20, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
         stale_session = legacy_payload(stale)["session"]
-        assert_true(stale_session["generation"] > generation, "source edit did not refresh session")
+        assert_true(stale_session["generation"] > verified_generation, "source edit did not refresh session")
         assert_true(any("index-staleness" in item for item in stale_session["limitations"]), "staleness was not reported")
         build("refresh-build")
         # 재빌드 직후의 호출은 아직 창 안일 수 있으므로, 문서화된 우회 수단인 status 의
         # refresh 인자로 창을 넘겨 새 세대를 즉시 검증한다 — 이 인자 계약도 함께 검증된다.
-        refreshed = legacy.request(62, "tools/call", {"name": "cartograph_status", "arguments": {"refresh": True}})
+        refreshed = legacy.request(21, "tools/call", {"name": "cartograph_status", "arguments": {"refresh": True}})
         refreshed_meta = legacy_payload(refreshed)
         assert_true(refreshed_meta["generation"] > stale_session["generation"], "explicit refresh did not advance generation")
         assert_true(not any("index-staleness" in item for item in refreshed_meta["limitations"]), "rebuild did not clear staleness")
         # 우회로 만든 새 세대는 창 안의 질의에도 그대로 보여야 한다 — status 의
         # refresh 가 실제로 이후 query 의 세션을 갱신하는지까지 본다.
-        fresh = legacy.request(7, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
+        fresh = legacy.request(22, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
         fresh_session = legacy_payload(fresh)["session"]
         assert_true(fresh_session["generation"] == refreshed_meta["generation"], "query did not reuse the refreshed generation")
         assert_true(not any("index-staleness" in item for item in fresh_session["limitations"]), "query did not reuse the refreshed limitations")
         legacy.send(request(None, "notifications/unknown", {}))
-        assert_true(legacy.request(8, "ping", {})["result"] == {}, "notification disturbed next request")
+        assert_true(legacy.request(23, "ping", {})["result"] == {}, "notification disturbed next request")
         legacy.send(b"{broken\n")
         assert_true(legacy.receive()["error"]["code"] == -32700, "malformed JSON was not rejected")
-        oversized = b"x" * (MAX_LINE + 1) + b"\n" + request(9, "ping", {})
+        oversized = b"x" * (MAX_LINE + 1) + b"\n" + request(24, "ping", {})
         legacy.send(oversized)
         oversize_error = legacy.receive(timeout=args.timeout)
         ping = legacy.receive(timeout=args.timeout)
-        assert_true(oversize_error["error"]["code"] == -32600 and ping["id"] == 9, "oversize recovery failed")
+        assert_true(oversize_error["error"]["code"] == -32600 and ping["id"] == 24, "oversize recovery failed")
         evidence["legacy"] = {"generation": generation, "staleGeneration": stale_session["generation"]}
         assert_true(legacy.close() == 0, "legacy server did not exit cleanly at EOF")
         processes.remove(legacy)
@@ -252,6 +259,36 @@ def main() -> int:
         modern.send(request(None, "ping", modern_params()))
         assert_true(modern.close() == 0, "modern server did not exit cleanly at EOF")
         processes.remove(modern)
+
+        # 창 메커니즘 자체는 훨씬 긴 간격으로 띄운 서버에서 시간 여유 없이 단언한다 —
+        # 검증 후 편집·호출까지의 지연이 어떤 크기여도 같은 세대를 써야 하므로
+        # 스케줄러 지연에 무관하게 창 재사용·명시적 우회·편집 감지를 전부 본다.
+        windowed = MCPProcess(binary, package, output / "windowed.stderr.log",
+                              extra_arguments=["--session-freshness-interval", "300"])
+        processes.append(windowed)
+        windowed.request(1, "initialize", {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {},
+            "clientInfo": {"name": "verify-mcp", "version": "1"},
+        })
+        windowed.send(request(None, "notifications/initialized"))
+        warmed = windowed.request(2, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
+        warmed_generation = legacy_payload(warmed)["session"]["generation"]
+        source_path.write_text(source_path.read_text() + "struct Windowed {}\n")
+        held = windowed.request(3, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}})
+        assert_true(
+            legacy_payload(held)["session"]["generation"] == warmed_generation,
+            "wide-window request did not reuse the verified generation",
+        )
+        released = windowed.request(4, "tools/call", {"name": "cartograph_status", "arguments": {"refresh": True}})
+        released_meta = legacy_payload(released)
+        assert_true(released_meta["generation"] > warmed_generation, "wide-window refresh did not advance generation")
+        assert_true(
+            any("index-staleness" in item for item in released_meta["limitations"]),
+            "wide-window refresh did not detect the edit",
+        )
+        assert_true(windowed.close() == 0, "windowed server did not exit cleanly at EOF")
+        processes.remove(windowed)
         evidence["status"] = "passed"
         (output / "result.json").write_text(json.dumps(evidence, indent=2, ensure_ascii=False) + "\n")
         print(json.dumps(evidence, indent=2, ensure_ascii=False))
