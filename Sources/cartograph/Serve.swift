@@ -14,10 +14,16 @@ struct ServeCommand: ParsableCommand {
     @Option(name: .customLong("coredata-build-evidence"),
         help: "Fixed project-contained Core Data build evidence for runtime and impact tools.")
     var coreDataBuildEvidencePath: String?
+    @Option(name: .customLong("session-freshness-interval"),
+        help: "Seconds a verified session may be reused before re-checking inputs (0 checks every request).")
+    var sessionFreshnessInterval: Double = 1.0
 
     func validate() throws {
         guard coreDataBuildEvidencePath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != true else {
             throw ValidationError("--coredata-build-evidence cannot be empty")
+        }
+        guard sessionFreshnessInterval >= 0 else {
+            throw ValidationError("--session-freshness-interval must be at least 0 seconds")
         }
         guard options.since == nil else {
             throw ValidationError("--since cannot be combined with serve; use the impact tool's file selectors")
@@ -36,18 +42,14 @@ struct ServeCommand: ParsableCommand {
         }
     }
 
-    /// 도구 호출 사이에 준비된 세대를 그대로 믿는 시간.
-    ///
-    /// 입력 지문 검증은 소스·인덱스 파일 전부를 다시 stat 하므로 프로젝트에 비례해
-    /// 커지고, MCP 도구 호출은 연속으로 온다. 창 안의 반복 검증은 같은 세대를
-    /// 확인할 뿐이라 웜 지연만 키운다 — 1초는 어떤 재빌드보다 짧은 유보 상한이다.
-    private static let sessionFreshnessCheckInterval = Duration.seconds(1)
-
     func run() throws {
+        // 입력 지문 검증은 소스·인덱스 파일 전부를 다시 stat 하므로 프로젝트에 비례해
+        // 커지고, MCP 도구 호출은 연속으로 온다. 창 안의 반복 검증은 같은 세대를
+        // 확인할 뿐이라 웜 지연만 키운다 — 1초는 어떤 재빌드보다 짧은 유보 상한이다.
         let tools = CartographMCPTools(makeSession: {
             try AnalysisSession(serviceFactory: {
                 try CommandSupport.makeContext(options).service
-            }, freshnessCheckInterval: Self.sessionFreshnessCheckInterval)
+            }, freshnessCheckInterval: .seconds(sessionFreshnessInterval))
         }, coreDataBuildEvidencePath: coreDataBuildEvidencePath)
         let handler = MCPMessageHandler(
             tools: CartographMCPTools.definitions,

@@ -140,6 +140,7 @@ expect_status 64 "서버와 strict 동시" serve --strict
 expect_status 64 "서버와 출력 파일 동시" serve --output /dev/null
 expect_status 64 "서버와 리포트 형식 동시" serve --report-format json
 expect_status 64 "서버 빈 모델 근거 경로" serve --coredata-build-evidence ""
+expect_status 64 "서버 음수 재검증 간격" serve --session-freshness-interval=-1
 expect_status 64 "스냅샷과 since 동시" snapshot --since HEAD
 expect_status 64 "스냅샷과 level 동시" snapshot --level type
 expect_status 64 "스냅샷과 strict 동시" snapshot --strict
