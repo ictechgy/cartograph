@@ -70,7 +70,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.19.0
+mint install ictechgy/cartograph@0.20.0
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -78,7 +78,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.19.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.20.0"),
 ```
 
 ```bash
@@ -950,11 +950,11 @@ from the source; a wrong USR is worse than none, and USRs are never guessed. Con
 files, rebinding and unsupported delegation remain uncertain. The general `objective-c-sources`
 gap stays unscoped even when some literals were extracted. See the [bounded scan results](docs/scans/2026-09-objc-flutter.md).
 
-Deploy an isthmus version supporting this extension before deploying the new producer. Old v1
-consumers keep the broad limitation behavior; old isthmus cannot distinguish ObjC graph scope and may fail
-on missing symbols or emit Clang retentions that the Swift graph cannot apply. New isthmus keeps their join evidence, omits them from Swift-only
-retentions, and reports `omittedObjectiveCHandlers`; cartograph exposes that count as a limitation.
-Unmarked Swift handlers without a symbol still fail retention generation.
+Cartograph 0.20.0 includes available indexed Clang declarations in the analysis graph. Pair it
+with isthmus 0.8.0+: matched Objective-C handlers require actual Clang USRs for retention export;
+name-only or missing identities fail with code 2 instead of producing a partial retention document.
+Legacy `omittedObjectiveCHandlers` counts remain readable as limitations, but new isthmus output
+does not silently omit matched Objective-C handlers. Missing Swift handler symbols also fail.
 
 ```console
 $ cartograph bridges
@@ -975,7 +975,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.19.0" },
+  "tool" : { "name" : "cartograph", "version" : "0.20.0" },
   "version" : 1
 }
 ```
@@ -1448,10 +1448,10 @@ MIT. See [LICENSE](LICENSE).
 
 Cartograph is an independent project. It is not affiliated with Periphery or Apple.
 
-## RN event emissions in development
+## RN event emissions
 
 `cartograph bridges --rn-events` exports `sendEvent(withName:body:)` from directly declared
 `RCTEventEmitter` subclasses importing React, as a separate v2 `react-native-event` document.
-Join it with a development isthmus `extract-js --events` document. Dynamic names remain
+Join it with an isthmus 0.8.0+ `extract-js --events` document. Dynamic names remain
 unresolved; Objective-C events, Expo module events, wrappers and indirect inheritance are outside
 this scan. Run this separately from the default bridge export.

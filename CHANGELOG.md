@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-09-20
+
 ### Added
 
 - Include indexed Clang declarations and references from Objective-C implementation files in the
@@ -1209,7 +1211,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.19.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.20.0...HEAD
+[0.20.0]: https://github.com/ictechgy/cartograph/compare/0.19.0...0.20.0
 [0.19.0]: https://github.com/ictechgy/cartograph/compare/0.18.0...0.19.0
 [0.18.0]: https://github.com/ictechgy/cartograph/compare/0.17.0...0.18.0
 [0.17.0]: https://github.com/ictechgy/cartograph/compare/0.16.0...0.17.0

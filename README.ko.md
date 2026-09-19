@@ -73,7 +73,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — 소스에서 빌드되며, tap을 추가할 필요가 없습니다.
 
 ```bash
-mint install ictechgy/cartograph@0.19.0
+mint install ictechgy/cartograph@0.20.0
 ```
 
 **아예 설치하지 않기** — Swift 패키지라면 의존성으로 추가해 커맨드 플러그인을 씁니다.
@@ -81,7 +81,7 @@ mint install ictechgy/cartograph@0.19.0
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.19.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.20.0"),
 ```
 
 ```bash
@@ -927,17 +927,16 @@ ObjC Flutter 스캔은 직접 채널 생성, 인라인 블록, 같은 파일의 
 심볼을 지어내지 않습니다. Clang 인덱스에 선언이 유일하게 있으면 실제 `c:` USR을 싣고,
 없거나 위치가 모호하면 구문의 정규화된 이름(`Plugin.handleMethodCall:result:`)만 이름뿐인
 심볼로 싣습니다(Swift 사실과 같은 대칭). 이름은 소스에서 결정적이지만 USR은 추측하지
-않습니다. USR이 있어도 현재 Swift 분석 그래프의 정점은 아닙니다. 조건부 컴파일·매크로·
+않습니다. 0.20.0은 사용 가능한 Clang 인덱스 선언을 분석 그래프에 포함합니다. 조건부 컴파일·매크로·
 재대입·미지원 위임은 불확실하게 남기고, 리터럴 일부를 읽었어도 일반 `objective-c-sources`
 공백은 좁히지 않습니다. [제한된 스캔 실측](docs/scans/2026-09-objc-flutter.md)에 관측 범위를
 기록했습니다.
 
-새 생산자보다 이 확장을 지원하는 isthmus를 먼저 배포해야 합니다. 옛 v1 소비자는 기존의 넓은
-한계를 유지하지만, 옛 isthmus는 ObjC의 그래프 범위를 구분하지 못해 symbol 누락으로
-실패하거나 Swift 그래프에 적용할 수 없는 Clang 보존 근거를 내보낼 수 있습니다. 새 isthmus는
-조인 증거를 남기고 Swift 전용 보존 목록에서 제외한 수를 `omittedObjectiveCHandlers`로
-알립니다. cartograph도 이 수를 한계에 싣습니다. 표식 없는 Swift 핸들러의 symbol 누락은
-여전히 보존 생성 실패입니다.
+cartograph 0.20.0은 isthmus 0.8.0 이상과 함께 사용합니다. 매치된 Objective-C 핸들러의
+보존 근거에는 실제 Clang USR이 필요하며, 이름뿐이거나 식별자가 없으면 부분 보존 문서
+대신 코드 2로 실패합니다. 옛 `omittedObjectiveCHandlers` 계수는 한계로 계속 읽지만,
+새 isthmus 출력은 매치된 Objective-C 핸들러를 조용히 제외하지 않습니다. Swift 핸들러의
+symbol 누락도 보존 생성 실패입니다.
 
 ```console
 $ cartograph bridges
@@ -958,7 +957,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.19.0" },
+  "tool" : { "name" : "cartograph", "version" : "0.20.0" },
   "version" : 1
 }
 ```
@@ -1415,9 +1414,11 @@ MIT. [LICENSE](LICENSE)를 보세요.
 
 Cartograph는 독립 프로젝트이며 Periphery나 Apple과 관련이 없습니다.
 
-## 개발 중인 RN 이벤트 방출
+## RN 이벤트 방출
+
+이 릴리스의 Objective-C 보존·RN 이벤트 교환에는 isthmus 0.8.0 이상을 사용합니다.
 
 `cartograph bridges --rn-events`는 React를 import한 직접 `RCTEventEmitter` 하위 타입의
-`sendEvent(withName:body:)`를 별도 v2 `react-native-event` 문서로 냅니다. isthmus 개발
-빌드의 `extract-js --events`와 조인합니다. 동적 이름은 그대로 남기며 ObjC 이벤트·Expo
+`sendEvent(withName:body:)`를 별도 v2 `react-native-event` 문서로 냅니다. isthmus 0.8.0 이상의
+`extract-js --events`와 조인합니다. 동적 이름은 그대로 남기며 ObjC 이벤트·Expo
 모듈별 이벤트·래퍼·간접 상속은 해석하지 않습니다. Swift/ObjC 기본 브리지 출력과 별도 실행합니다.
