@@ -12,17 +12,39 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ②불필요 ignore 감지 → ③불필요 public 경고 → ④impact --before 제거 간선 →
 ⑤기계적 fix → ⑥impact 입도 → ⑦테스트 영향 질의 → ⑧공식 GitHub Action →
 ⑨equatable/hashable 옵션 → ⑩런타임 텔레메트리(연구 전용 보류).
-①은 PR #106, ②는 PR #107, ③은 PR #110, ⑤는 PR #112, ⑦은 PR #114로 **완료**했다.
-④impact --before 제거 간선은 **0.17.0의 `scopeDiff`(PR #93)로 이미 완료**, ⑥impact 입도도
-**수신 타입을 호출자로 세던 결함 수정(0.14.0)으로 이미 완료**돼 있었다 — 고정 리비전
-Alamofire·Kingfisher에 현재 바이너리를 돌려 gold 소비자만 나옴을 확인했다(2026-09-19).
-경쟁 갭 문서의 4·6번이 stale이었다. 다음은 ⑧공식 GitHub Action이다.
+①은 PR #106, ②는 PR #107, ③은 PR #110, ⑤는 PR #112, ⑦은 PR #114, ⑧은 PR #116으로
+**완료**했다. ④impact --before 제거 간선은 **0.17.0의 `scopeDiff`(PR #93)로 이미 완료**,
+⑥impact 입도도 **수신 타입을 호출자로 세던 결함 수정(0.14.0)으로 이미 완료**돼 있었다 —
+고정 리비전 Alamofire·Kingfisher에 현재 바이너리를 돌려 gold 소비자만 나옴을 확인했다
+(2026-09-19). 경쟁 갭 문서의 4·6번이 stale이었다. 다음은 ⑨equatable/hashable 옵션이다.
 
 컨테이너 확장 인접-목록 개선은
 [PR #104](https://github.com/ictechgy/cartograph/pull/104)로 **스쿼시 머지 완료**했다
 (`6bbf766`, 리뷰 head `be7af2a`, CI 녹색). 브리지 `sourceCache` 최적화는 미착수 보류다.
 
 ## Current Status
+
+### 완료 — ⑧ 공식 GitHub Action
+
+[PR #116](https://github.com/ictechgy/cartograph/pull/116) 스쿼시 머지(`195e25b`, 2026-09-19).
+CI 녹색(Build/test/coverage + 자기 분석, 자기 분석의 `GitHub Action smoke` 단계 실행 성공).
+아래는 구현 기록이다.
+
+- **구현:** 루트 `action.yml` composite action. 흐름은 릴리스 자산 다운로드(또는 `binary`
+  입력) → 인덱스 빌드(`build: swift` 기본, `none` 가능) → 게이트 하나
+  (`check|dead|cycles|rules`) `--strict` → SARIF 출력 → 기본 업로드
+  (`github/codeql-action/upload-sarif@v4`).
+- **계약:** `fail-on-findings: false`면 보고 전용이고, 종료 코드로 발견(1)과 툴 실패(2)를
+  구분한다. 비-macOS 러너는 `libIndexStore`를 읽을 수 없어 명확한 메시지로 실패한다.
+  출력은 `exit-code`·`sarif-file`.
+- **검증:** CI 자기 분석 잡이 `uses: ./`로 커밋된 action.yml을 매 PR마다 태운다(이미 빌드한
+  바이너리를 `binary`로 전달, 업로드 off). 매니페스트 테스트 4개가 선언/참조 입력 드리프트,
+  컴포지트 `run` 단계의 `shell` 누락, 게이트 허용 목록 vs 등록 하위 명령, README 안내를
+  고정한다. 셸 로직은 통과 게이트(exit 0)·픽스처 `dead`(exit 1, SARIF results 30)·
+  `fail-on-findings` true/false 경로로 로컬 재현했고, Yams로 action.yml 파싱을 확인했다.
+- **남은 것:** 다음 릴리스가 action.yml을 포함하면 README 예시를 태그로 고정(현재 `@main`),
+  Marketplace 게시와 이동 메이저 태그(`v1`)는 저장소 설정 몫. `upload-sarif` 경로 자체는
+  코드 스캐닝 설정에 의존해 이 저장소 CI에서는 실행하지 않았다(스모크는 SARIF 파일 생성까지).
 
 ### 완료 — ⑦ 테스트 영향 질의 (`affected`)
 
@@ -328,6 +350,7 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 | [Sources/CartographKit/MechanicalFixDocument.swift](Sources/CartographKit/MechanicalFixDocument.swift) | fix 계획/적용 — 스코프·베이스라인 선별과 `mechanical-fixes` 문서 |
 | [Sources/CartographKit/AffectedDocument.swift](Sources/CartographKit/AffectedDocument.swift) | 테스트 영향 질의 — impact 배관 재사용, `change-affected` 문서 |
 | [Sources/cartograph/Affected.swift](Sources/cartograph/Affected.swift) | affected 하위 명령 — 시드 검증과 `ChangedSelectionSupport` 공유 |
+| [action.yml](action.yml) | 공식 composite action — 바이너리 해석·인덱스 빌드·게이트·SARIF 업로드 계약 |
 | [Fixtures/FalsePositiveCorpus/expected-bridges.json](Fixtures/FalsePositiveCorpus/expected-bridges.json) | 브리지 골든 — 출력 필드 추가 시 갱신 필요 |
 | [.github/workflows/release.yml](.github/workflows/release.yml) | 태그 검증, universal archive, 탭 갱신(토큰 없으면 조용히 건너뜀) |
 | [docs/evaluation/2026-09-16-harder-comparison.md](docs/evaluation/2026-09-16-harder-comparison.md) | 어려운 작업 재측정 근거 |
@@ -364,11 +387,28 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 - **확정:** `PrintableText.printable`은 기본으로 개행을 지운다 — 여러 줄 출력은 줄마다
   적용해 join해야 한다(`ImpactComparison.renderText`는 전체를 넘겨 한 줄로 뭉개는 기존
   결함이 있다 — Blockers의 후속 후보).
+- **확정:** 공식 액션은 릴리스 자산(universal)을 기본으로 받고 `binary` 입력으로 대체할 수
+  있다. macOS 러너 전용이며(`libIndexStore`), 종료 코드 1(발견)과 2(툴 실패)를 사용자
+  워크플로에 그대로 전달한다. 액션의 게이트 목록은 `check|dead|cycles|rules`로 고정하고,
+  매니페스트 테스트가 실제 하위 명령과의 일치를 지킨다.
+- **확정:** 로컬 액션(`uses: ./`)은 체크아웃된 리비전에서 실행된다 — CI 스모크가 커밋된
+  action.yml 자체를 매 PR마다 검증할 수 있는 이유다.
 - **미입증:** 한정 코퍼스·커버리지 수치는 전체 정확도나 에이전트 생산성의 증거가 아니다.
 - **가정/후보:** `ImportScanner`의 `importKind`→`importKindSpecifier` 이전은 swift-syntax 하한을
   603+로 올릴 때.
 
 ## Verification
+
+아래 표는 **PR #116(⑧)의 근거**다.
+
+| 검사 | 결과 |
+| --- | --- |
+| 매니페스트 테스트 | ActionManifestTests 4개 통과 — 입력 드리프트·셸 단계·게이트 목록·README |
+| 셸 로직 로컬 재현 | 통과 게이트(exit 0, SARIF version 2.1.0), 픽스처 `dead`(exit 1, results 30·rules 4), `fail-on-findings` true=1/false=0 |
+| YAML 파싱 | Yams로 action.yml 파싱 — composite, inputs 9, outputs 2, steps 5 |
+| 전체 `swift test` | 1,634개 중 실패 56건은 전부 샌드박스 임시 디렉터리 차단(단언 실패 0) |
+| strict 자기 분석·CLI 계약 | 4종·계약 모두 통과 |
+| CI `35425320710` | 두 잡 통과 — 자기 분석의 `GitHub Action smoke`(step 20) 실행 성공 |
 
 아래 표는 **PR #114(⑦)의 근거**다.
 
@@ -464,6 +504,9 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 - ⑦ 후속 후보: affected 코퍼스 골든(코퍼스 `.cartograph.yml`이 `Tests/**`를 제외해
   테스트 타깃이 그래프에 없다 — 테스트 포함 설정이 필요), `cartograph affected`를 스킬
   문서에 안내.
+- ⑧ 후속 후보: 다음 릴리스가 action.yml을 포함하면 README의 `@main`을 릴리스 태그로 고정,
+  Marketplace 게시와 이동 메이저 태그(`v1`), `upload-sarif` 경로를 코드 스캐닝이 켜진
+  저장소에서 한 번 실측.
 - 별건 후보: `ImpactComparison.renderText`가 `PrintableText.printable`에 전체 문자열을
   넘겨 여러 줄 출력이 한 줄로 뭉개진다 — 줄 단위 적용으로 고칠 것.
 - 브리지 스캐너의 남은 공백: 파일 스코프 `let`을 `var` 프로퍼티 외 경로(비-init 대입)로
@@ -492,6 +535,9 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
   없던 기능을 다시 만들게 된다. 고정 리비전을 빌드해 결과를 재현하는 비용이 더 싸다.
 - 공유 헬퍼는 명령 타입을 참조하지 않는다 — `ImpactCommand ↔ ChangedSelectionSupport`
   자기 순환이 생겨 `cycles --level type --strict`가 잡았다(⑤의 중첩 방문자와 같은 부류).
+- GitHub Action은 `uses: ./`로 스모크를 돌린다. 로컬 액션은 체크아웃된 리비전을 실행하므로
+  릴리스 자산 없이도 YAML 파싱·단계 배선·출력 계약을 PR CI에서 검증할 수 있다. 처음부터
+  `binary` 입력을 둔 것이 이 스모크를 가능하게 했다.
 - 여러 줄 사람용 출력을 `PrintableText.printable`에 통째로 넘기지 않는다. 기본값이 개행을
   지워 한 줄로 뭉개진다(⑤에서 발견). 줄마다 적용해 join한다.
 
@@ -543,31 +589,32 @@ Goal 섹션의 갭 순서(③~⑩)는 그대로 두고, 아래는 그 순서에 
    provenance 태그 아이디어는 빌리되, 증명 못 한 간선을 합성하려는 의지는 빌리지 않는다.
 
 ### 권장 착수 순서
-C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) → C3(중). 기존 갭 ⑧~⑩과의 병합은 메인테이너 판단.
+C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) → C3(중). 기존 갭 ⑨~⑩과의 병합은 메인테이너 판단.
 
 ## Next Steps
 
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
 2. ②불필요 ignore는 PR #107(`66037f8`), ③불필요 public은 PR #110(`711a2b4`), ⑤기계적 fix는
-   PR #112(`1bd0cf7`), ⑦테스트 영향은 PR #114(`49ce665`)로 머지 완료. ④impact --before 제거
-   간선은 `scopeDiff`(PR #93), ⑥impact 입도는 수신 타입 호출자 결함 수정(0.14.0)으로 이미
-   완료돼 있었다 — 갭 문서 4·6은 완료로 정리했다. 다음 기본 순서는 ⑧공식 GitHub Action이지만,
-   아래 "경쟁 조사 — codegraph 대비 개선점" 섹션의 후보(C1~C5·S1~S6)와 병합 여부는
-   메인테이너 판단이다 — 권장 착수 순서는 그 섹션 끝에 있다.
-3. 이후 순서: ⑧GitHub Action → ⑨equatable 옵션. ⑩런타임 텔레메트리는 연구 전용 보류.
+   PR #112(`1bd0cf7`), ⑦테스트 영향은 PR #114(`49ce665`), ⑧GitHub Action은 PR #116
+   (`195e25b`)로 머지 완료. ④impact --before 제거 간선은 `scopeDiff`(PR #93), ⑥impact 입도는
+   수신 타입 호출자 결함 수정(0.14.0)으로 이미 완료돼 있었다 — 갭 문서 4·6은 완료로 정리했다.
+   다음 기본 순서는 ⑨equatable/hashable 옵션이지만, 아래 "경쟁 조사 — codegraph 대비
+   개선점" 섹션의 후보(C1~C5·S1~S6)와 병합 여부는 메인테이너 판단이다 — 권장 착수 순서는
+   그 섹션 끝에 있다.
+3. 이후 순서: ⑨equatable 옵션. ⑩런타임 텔레메트리는 연구 전용 보류.
 4. 브리지 `sourceCache` 최적화는 동일 소스 스냅샷 보존 조건에서 검토한다. 근거 없이 제거하지
    않으며, 입증되지 않으면 메모리 계측 결과부터 확보한다.
 
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
-0.18.0 릴리스와 PR #104·#106·#107·#110·#112·#114는 전부 머지·배포됐습니다. 경쟁 갭 목록의
-②불필요 ignore는 PR #107(`66037f8`), ③불필요 public은 PR #110(`711a2b4`), ⑤기계적 fix는
-PR #112(`1bd0cf7`), ⑦테스트 영향은 PR #114(`49ce665`)로 완료됐습니다. ④impact --before 제거
-간선은 `scopeDiff`(PR #93), ⑥impact 입도는 수신 타입 호출자 결함 수정(0.14.0)으로 **이미**
-완료돼 있었습니다 — 경쟁 갭 문서 4·6은 stale이었고 완료로 정리했습니다.
-다음은 ⑧공식 GitHub Action입니다 — 아직 브랜치가 없습니다. 단, HANDOFF의 "경쟁 조사 —
+0.18.0 릴리스와 PR #104·#106·#107·#110·#112·#114·#116는 전부 머지·배포됐습니다. 경쟁 갭
+목록의 ②는 PR #107(`66037f8`), ③은 PR #110(`711a2b4`), ⑤는 PR #112(`1bd0cf7`), ⑦은
+PR #114(`49ce665`), ⑧은 PR #116(`195e25b`)로 완료됐습니다. ④impact --before 제거 간선은
+`scopeDiff`(PR #93), ⑥impact 입도는 수신 타입 호출자 결함 수정(0.14.0)으로 **이미** 완료돼
+있었습니다 — 경쟁 갭 문서 4·6은 stale이었고 완료로 정리했습니다.
+다음은 ⑨equatable/hashable 옵션입니다 — 아직 브랜치가 없습니다. 단, HANDOFF의 "경쟁 조사 —
 codegraph 대비 개선점" 섹션에 메인테이너가 정리한 우선 후보(C1~C5·S1~S6와 권장 착수 순서)가
-있으니 ⑧과의 병합 순서를 먼저 확인하세요. ③·⑤·⑦의 남은 후속(코퍼스 골든, 스킬 안내,
-impact text 렌더러 개행 결함)은 Blockers에 있습니다. 완료된 배포·검증을 반복하지 마세요.
-나머지 갭 순서는 Goal 섹션에 있습니다.
+있으니 ⑨와의 병합 순서를 먼저 확인하세요. ③·⑤·⑦·⑧의 남은 후속(코퍼스 골든, 스킬 안내,
+액션 태그 고정·Marketplace, impact text 렌더러 개행 결함)은 Blockers에 있습니다. 완료된
+배포·검증을 반복하지 마세요. 나머지 갭 순서는 Goal 섹션에 있습니다.
