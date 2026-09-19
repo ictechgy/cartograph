@@ -1149,6 +1149,8 @@ retention:
   retain_tests: true
   retain_previews: true
   retain_codable_properties: true
+  retain_equatable_properties: true
+  retain_hashable_properties: true
   retain_raw_representable_enum_cases: true
   retained_names: ["*.shared"]
   retained_files: ["Sources/Generated/**"]
@@ -1193,6 +1195,7 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 | `@propertyWrapper`의 `wrappedValue`, `projectedValue` | 래퍼 규약 |
 | `@resultBuilder`의 `build*` | 빌더 규약 |
 | `Codable` 타입의 저장 프로퍼티 | 합성된 인코딩이 참조를 남기지 않음 |
+| `Equatable`/`Hashable` 타입의 저장 프로퍼티 | 합성된 `==`/`hash(into:)`가 참조를 남기지 않음 |
 | 분석 범위 밖 선언을 오버라이드하거나 준수하는 **멤버** | 프레임워크가 호출. 이 규칙만으로 소유 타입까지 살리지는 않음 |
 | `subscript(dynamicMember:)`, `@_dynamicReplacement`, `dynamic` | 동적 디스패치 |
 | 컴파일러 합성 선언 | 지울 수 없음. 그것을 담은 타입까지 살리지도 않음 |
@@ -1204,6 +1207,11 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 **`retain_objc_accessible`은 기본값으로 켜져 있습니다.** Periphery는 기본값이 꺼져 있었고,
 그것이 혼합 언어 UIKit 프로젝트에서 오탐의 가장 큰 원인이었습니다. 아무도 믿지 않는 미사용
 코드 탐지기는 없는 것만 못하므로, Cartograph는 살리는 쪽으로 기웁니다.
+
+**`retain_equatable_properties`와 `retain_hashable_properties`도 기본값으로 켜져 있습니다.**
+Periphery는 둘 다 꺼져 있습니다. 합성된 `==`나 `hash(into:)`만 읽는 저장 프로퍼티는 인덱스에
+읽기 흔적을 남기지 않으므로, 살리는 쪽이 보수적입니다. 그런 프로퍼티를 보고받고 싶으면 둘을
+끄세요.
 
 프로토콜 요구사항은 오버라이드 관계를 역방향으로 따라가며 처리합니다. 요구사항이 호출되면
 그 구현이 전부 도달 가능해집니다 — 단, 구현을 소유한 타입 자체가 도달 가능할 때만이어서,

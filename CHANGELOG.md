@@ -9,6 +9,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `retain_equatable_properties` and `retain_hashable_properties` retention options (both on by
+  default) keep the stored properties of `Equatable`/`Hashable` value types. The synthesized `==`
+  and `hash(into:)` read those properties without leaving index evidence, so dead-code analysis
+  could otherwise report them — matching Periphery's option parity, except Cartograph keeps the
+  conservative default. `Hashable` implies `Equatable`, so the Equatable option alone also keeps
+  Hashable types' properties; classes are excluded because synthesis does not apply to them.
 - The repository ships an official composite GitHub Action (`action.yml`). It downloads a release
   binary (or uses the `binary` input), builds the index with `swift build` (or `build: none`), runs
   one gate (`check`, `dead`, `cycles` or `rules`) with SARIF output, uploads it to code scanning by

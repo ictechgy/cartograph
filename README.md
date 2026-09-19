@@ -1177,6 +1177,8 @@ retention:
   retain_tests: true
   retain_previews: true
   retain_codable_properties: true
+  retain_equatable_properties: true
+  retain_hashable_properties: true
   retain_raw_representable_enum_cases: true
   retained_names: ["*.shared"]
   retained_files: ["Sources/Generated/**"]
@@ -1221,6 +1223,7 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | `wrappedValue`, `projectedValue` on `@propertyWrapper` types | wrapper contract |
 | `build*` on `@resultBuilder` types | builder contract |
 | Stored properties of `Codable` types | synthesized coding leaves no reference |
+| Stored properties of `Equatable`/`Hashable` types | synthesized `==`/`hash(into:)` leaves no reference |
 | Members that override or satisfy a declaration outside the analyzed code | the framework calls them — the owning type is not kept by this rule |
 | `subscript(dynamicMember:)`, `@_dynamicReplacement`, `dynamic` | dynamic dispatch |
 | Compiler-synthesized declarations | you cannot delete them — they do not keep their type alive either |
@@ -1232,6 +1235,11 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 **`retain_objc_accessible` defaults to on.** Periphery defaulted it off, which made mixed-language
 UIKit projects its largest source of false positives. A dead-code tool nobody trusts is worse than
 no tool, so Cartograph errs toward keeping code.
+
+**`retain_equatable_properties` and `retain_hashable_properties` also default to on.** Periphery
+defaults both off. A stored property whose only reader is the synthesized `==` or `hash(into:)`
+leaves no index evidence, so keeping it is the conservative side; turn them off when you want such
+properties reported.
 
 Protocol requirements are handled by walking override relations in reverse: if a requirement is
 called, every implementation of it is reachable — but only once the implementing type itself is

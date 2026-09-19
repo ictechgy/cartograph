@@ -78,6 +78,9 @@ github-actions formats, MCP serve, snapshot diffs.
 8. **Official GitHub Action** — composite action wrapping
    `check`/`dead --strict` + SARIF upload. Distribution friction only.
 9. **`retain_equatable/hashable_properties`** — minor option parity.
+   **Done** — both options default on (Cartograph keeps the conservative
+   side; Periphery defaults them off), `Hashable` implies `Equatable`, and
+   classes are excluded because synthesis does not apply to them.
 10. **Runtime-telemetry retention (Reaper-style)** — ingest production
     used-type reports as external retention evidence. Large; the `runtime`
     evidence pipeline is the natural seam. Research only.
