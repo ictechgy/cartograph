@@ -601,6 +601,30 @@ Codable, preview와 기타 런타임 관리 경로를 수동 또는 런타임 �
 생략은 생산자의 기존 `callersOmitted`에 더하며, `truncated.sections`에 `runtimeEvidence`나
 `runtimeContracts`를 표시합니다.
 
+### `affected` — 이 변경에 도달하는 테스트
+
+```bash
+cartograph affected --since origin/main            # 이 브랜치 변경에 닿는 테스트
+cartograph affected UserService                    # 선언 하나에 닿는 테스트
+cartograph affected --file Sources/Net/Client.swift --format json
+```
+
+CI가 반복해서 묻는 질문은 impact보다 좁습니다 — **이 변경에 어떤 테스트를 돌려야 하나?** 이
+명령은 `impact`와 같은 시드(선언·파일·`--since`)에서 출발해 소비자를 따라가다 테스트 선언
+(XCTest 또는 swift-testing)을 만나면 그 거리와 도달 경로를 보고합니다:
+
+```console
+$ cartograph affected UserService
+affected: 2 test declaration(s) reach this change — 11 affected symbol(s), 1 test file(s), 3 in change scope
+  Tests/UserServiceTests.swift:42 App.UserServiceTests.testSelectsData() (depth 2 via App.Loader, dependent [call])
+  Tests/UserServiceTests.swift:77 App.UserServiceTests.testRefresh() (depth 3 via App.Loader, dependent [call])
+```
+
+변경이 직접 건드린 테스트 파일은 depth 0의 `changed`로 올라옵니다. 테스트가 하나도 닿지 않으면
+그 사실을 명시합니다 — 빈 목록은 그래프에 대한 진술이지 기존 테스트가 그 동작을 덮는다는 증거가
+아니며, 모든 응답에 그 문장과 분석 한계가 함께 실립니다. 시드 선택·컨테이너 확장·디스패치 투영·
+깊이 제한은 `impact`와 같은 배관을 쓰므로, 같은 변경에 대해 두 명령이 다른 답을 내지 않습니다.
+
 ### `snapshot` — 분석 입력 캡처
 
 ```bash

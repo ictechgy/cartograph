@@ -614,6 +614,32 @@ carry `externalEvidenceCount`/`externalEvidenceOmitted` or
 `runtimeContractsCount`/`runtimeContractsOmitted`; caller omissions add to the producer's existing
 `callersOmitted`. `truncated.sections` names `runtimeEvidence` or `runtimeContracts` when applicable.
 
+### `affected` — which tests reach a change
+
+```bash
+cartograph affected --since origin/main            # tests that reach this branch's change
+cartograph affected UserService                    # tests that reach one declaration
+cartograph affected --file Sources/Net/Client.swift --format json
+```
+
+CI's recurring question is narrower than impact: *which tests should run for this change?* This
+command starts from the same seeds as `impact` — a declaration, one or more files, or `--since` —
+and follows consumers until test declarations (XCTest or swift-testing) are found, reporting each
+test's distance and the path that reached it:
+
+```console
+$ cartograph affected UserService
+affected: 2 test declaration(s) reach this change — 11 affected symbol(s), 1 test file(s), 3 in change scope
+  Tests/UserServiceTests.swift:42 App.UserServiceTests.testSelectsData() (depth 2 via App.Loader, dependent [call])
+  Tests/UserServiceTests.swift:77 App.UserServiceTests.testRefresh() (depth 3 via App.Loader, dependent [call])
+```
+
+A test file the change touched is listed at depth 0 as `changed`. When no test declaration reaches
+the change the command says so explicitly — an empty list is a statement about the graph, not proof
+that existing tests cover the behavior, and every response carries that sentence plus the analysis
+limitations. Selection, container expansion, dispatch projection and depth limits are the same
+plumbing `impact` uses, so the two commands cannot disagree about the same change.
+
 ### `snapshot` — capture an analysis input
 
 ```bash

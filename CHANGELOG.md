@@ -9,6 +9,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cartograph affected` answers the CI question "which tests does this change touch": from a
+  declaration, one or more files, or `--since <revision>`, it follows consumers until test
+  declarations (XCTest or swift-testing) are found and reports each test's distance, the path that
+  reached it, and the relationship (dependent, dispatch projection, or `changed` for a test the
+  change itself touched). Selection, container expansion, dispatch projection and depth limits are
+  the same machinery `impact` uses, so the two commands cannot disagree about the same change. An
+  empty list says so explicitly and every response repeats that static reachability is not proof
+  that existing tests cover the behavior.
 - `cartograph fix` plans and applies the safe mechanical fixes for two warning classes:
   `unused-import` removes the import declaration, and `unused-parameter` drops the parameter's
   internal name while keeping its argument label. The default is a dry run that writes nothing;

@@ -46,24 +46,35 @@ github-actions formats, MCP serve, snapshot diffs.
 2. **Superfluous `cartograph:ignore` detection** — Periphery 3.7 reports an
    ignore comment when the declaration is actually used. Prevents
    suppression-rot. Warning-class diagnostic; cheap (reachability result +
-   attribute set already exist). **In progress** — counterfactual `dead`
+   attribute set already exist). **Done** — counterfactual `dead`
    warning under `superfluous-ignore` (PR #107).
 3. **Redundant public accessibility** — Periphery's redundant-public analysis
    (disabled in our comparisons) flags decls referenced only inside their own
    module → could be `internal`. Computable from index references; fits the
    non-strict warning class. Watch the `retain_public` interaction.
+   **Done** — `redundant-public` warning; the rule falls silent when
+   `retain_public` declares the surface intentional (PR #110).
 4. **File-seeded `impact --before` misses edges removed between two changed
    files** — documented H4 limitation: both endpoints land in `changeScope`,
    not `affected`. Fix = diff the change-scope subgraphs between snapshots.
+   **Done** — `scopeDiff` diffs the change-scope subgraphs (0.17.0, PR #93).
 5. **Mechanical fix path** — SwiftLint autocorrects `unused_import`. A
    `cartograph fix` (or `--fix`) for the safe warning classes (remove unused
    imports, `_` for unused parameters) is the one piece of write-path a
    competitor ships. Agents can do it by hand; a verified fixer is safer.
+   **Done** — `cartograph fix`, dry run by default, re-locating every edit in
+   the current source and re-parsing before writing (PR #112).
 6. **Impact granularity flag** — pilot noted exact consumers +2 containing
    types. Distinguish them in output instead of flattening.
+   **Done** — the extras were receiver types counted as callers; the
+   receiver-as-caller fix (0.14.0) removed them. Reproduced on the pinned
+   Alamofire/Kingfisher revisions against the current binary: `impact` returns
+   only the gold consumers, at depth 1 and depth 3.
 7. **Test-impact query** *(differentiator, not gap)* — reverse reachability
    from XCTest/`@Test` roots: "which tests does this change touch". No Swift
    competitor does this; reuses the existing graph + `impact` plumbing.
+   **Done** — `cartograph affected` promotes the query to a first-class
+   command; `impact` remains the wider report.
 8. **Official GitHub Action** — composite action wrapping
    `check`/`dead --strict` + SARIF upload. Distribution friction only.
 9. **`retain_equatable/hashable_properties`** — minor option parity.
