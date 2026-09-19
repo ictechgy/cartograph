@@ -66,4 +66,24 @@ struct UnsupportedFlagValidationTests {
             #expect("\(error)".contains("--strict cannot be combined with query"))
         }
     }
+
+    @Test("fix 는 level 을 받지 않는다")
+    func fixRejectsLevel() {
+        rejectsFix(["--level", "module"], contains: "--level cannot be combined with fix")
+    }
+
+    @Test("fix 는 진단 리포트 형식을 받지 않는다")
+    func fixRejectsReportFormat() {
+        rejectsFix(["--report-format", "json"], contains: "--report-format cannot be combined with fix")
+    }
+
+    private func rejectsFix(_ arguments: [String], contains needle: String) {
+        do {
+            let command = try FixCommand.parse(arguments)
+            try command.validate()
+            Issue.record("오류가 발생해야 한다: \(arguments)")
+        } catch {
+            #expect("\(error)".contains(needle), "\(error)")
+        }
+    }
 }

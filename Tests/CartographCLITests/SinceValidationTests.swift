@@ -63,6 +63,7 @@ struct SinceValidationTests {
     @Test("목록 조회와 설명 단독은 그대로 통과한다")
     func validCombinationsPass() throws {
         try DeadCommand.parse(["--since", "HEAD"]).validate()
+        try FixCommand.parse(["--since", "HEAD"]).validate()
         try CyclesCommand.parse(["--since", "HEAD"]).validate()
         try RulesCommand.parse(["--since", "HEAD"]).validate()
         try DeadCommand.parse(["--explain", "Foo"]).validate()

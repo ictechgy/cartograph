@@ -65,7 +65,7 @@ echo "종료 코드 0 — 정상"
 expect_status 0 "--help"              --help
 expect_status 0 "--version"           --version
 expect_status 0 "인자 없음(도움말)"    
-for subcommand in graph cycles dead query impact snapshot runtime check serve dataflow bridges metrics rules baseline init skill; do
+for subcommand in graph cycles dead fix query impact snapshot runtime check serve dataflow bridges metrics rules baseline init skill; do
     expect_status 0 "$subcommand --help" "$subcommand" --help
 done
 expect_status 0 "runtime plan --help" runtime plan --help
@@ -88,6 +88,9 @@ expect_status 64 "0 이하의 값 흐름 예산" dataflow Foo --max-contexts 0
 expect_status 64 "값 흐름 호출 깊이 범위" dataflow Foo --call-depth 9
 expect_status 64 "질의 대상과 배치 동시" query Foo --batch /dev/null
 expect_status 64 "미사용과 level 동시"   dead --level module
+expect_status 64 "수정과 level 동시"     fix --level module
+expect_status 64 "수정과 형식 동시"      fix --report-format text
+expect_status 64 "수정 잘못된 형식"      fix --format yaml
 expect_status 64 "질의와 level 동시"     query Foo --level module
 expect_status 64 "값 흐름과 level 동시"  dataflow Foo --level module
 expect_status 64 "값 흐름과 since 동시"  dataflow Foo --since HEAD

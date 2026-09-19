@@ -33,6 +33,7 @@ struct CartographCommand: ParsableCommand {
             GraphCommand.self,
             CyclesCommand.self,
             DeadCommand.self,
+            FixCommand.self,
             QueryCommand.self,
             RuntimeCommand.self,
             ImpactCommand.self,
