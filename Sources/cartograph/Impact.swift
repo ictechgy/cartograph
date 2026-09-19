@@ -106,19 +106,11 @@ struct ImpactCommand: ParsableCommand {
         }
         var selectionLimitations: [String] = []
         if let reference = options.since {
-            let changed = try ChangedFiles.since(
-                reference,
-                workingDirectory: context.service.projectPath,
-                includingDeleted: true
+            let changed = try ChangedSelectionSupport.files(
+                reference: reference, projectPath: context.service.projectPath
             )
-            selectedFiles.append(contentsOf: changed.filter(Self.isModeledChange).sorted())
-            let outsideModel = changed.filter { !Self.isModeledChange($0) }.sorted()
-            if !outsideModel.isEmpty {
-                selectionLimitations.append("unmodeled-changed-files: \(outsideModel.count) change(s) are outside "
-                    + "Swift/Objective-C/runtime resource selection: " + outsideModel.prefix(10).joined(separator: ", ")
-                    + (outsideModel.count > 10 ? ", …" : "")
-                    + ". Review build scripts, configuration and resources separately; noChanges means no modeled source changes.")
-            }
+            selectedFiles.append(contentsOf: changed.files)
+            selectionLimitations = changed.limitations
         }
 
         let runtimePath = runtimeContracts.map {
@@ -166,15 +158,42 @@ struct ImpactCommand: ParsableCommand {
         !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// 보고서와 문서를 소스 선택으로 혼동하지 않는다. 모델 밖 변경도 응답의 limitations에 남긴다.
-    static func isModeledChange(_ path: String) -> Bool {
-        [".swift", ".m", ".mm", ".h"].contains { path.hasSuffix($0) }
-            || RuntimeResourcePath.isSupported(path)
-    }
 }
 
 /// `impact --format` 의 출력 형식.
 enum ImpactFormat: String, ExpressibleByArgument, CaseIterable {
     case text
     case json
+}
+
+/// `--since` 로 시드할 파일 목록과, 모델 밖 변경을 알리는 한계 문구.
+///
+/// `impact` 와 `affected` 가 같은 시드를 쓰도록 절차를 한 곳에 둔다. 갈라지면
+/// 같은 변경에 대해 두 명령이 다른 파일을 시작점으로 삼는다.
+enum ChangedSelectionSupport {
+    /// 보고서와 문서를 소스 선택으로 혼동하지 않는다. 모델 밖 변경도 응답의 limitations에 남긴다.
+    static func isModeledChange(_ path: String) -> Bool {
+        [".swift", ".m", ".mm", ".h"].contains { path.hasSuffix($0) }
+            || RuntimeResourcePath.isSupported(path)
+    }
+
+    static func files(
+        reference: String,
+        projectPath: String
+    ) throws -> (files: [String], limitations: [String]) {
+        let changed = try ChangedFiles.since(
+            reference,
+            workingDirectory: projectPath,
+            includingDeleted: true
+        )
+        let outsideModel = changed.filter { !isModeledChange($0) }.sorted()
+        var limitations: [String] = []
+        if !outsideModel.isEmpty {
+            limitations.append("unmodeled-changed-files: \(outsideModel.count) change(s) are outside "
+                + "Swift/Objective-C/runtime resource selection: " + outsideModel.prefix(10).joined(separator: ", ")
+                + (outsideModel.count > 10 ? ", …" : "")
+                + ". Review build scripts, configuration and resources separately; noChanges means no modeled source changes.")
+        }
+        return (changed.filter(isModeledChange).sorted(), limitations)
+    }
 }

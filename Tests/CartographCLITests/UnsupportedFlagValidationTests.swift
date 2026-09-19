@@ -77,6 +77,31 @@ struct UnsupportedFlagValidationTests {
         rejectsFix(["--report-format", "json"], contains: "--report-format cannot be combined with fix")
     }
 
+    @Test("affected 는 level 을 받지 않는다")
+    func affectedRejectsLevel() {
+        rejectsAffected(["--level", "module"], contains: "--level cannot be combined with affected")
+    }
+
+    @Test("affected 는 진단 리포트 형식을 받지 않는다")
+    func affectedRejectsReportFormat() {
+        rejectsAffected(["--report-format", "json"], contains: "--report-format cannot be combined with affected")
+    }
+
+    @Test("affected 는 발견이 아니라 사실을 보고하므로 strict 를 받지 않는다")
+    func affectedRejectsStrict() {
+        rejectsAffected(["--strict"], contains: "--strict cannot be combined with affected")
+    }
+
+    private func rejectsAffected(_ arguments: [String], contains needle: String) {
+        do {
+            let command = try AffectedCommand.parse(["HomeView"] + arguments)
+            try command.validate()
+            Issue.record("오류가 발생해야 한다: \(arguments)")
+        } catch {
+            #expect("\(error)".contains(needle), "\(error)")
+        }
+    }
+
     private func rejectsFix(_ arguments: [String], contains needle: String) {
         do {
             let command = try FixCommand.parse(arguments)

@@ -2,19 +2,11 @@ import ArgumentParser
 @testable import cartograph
 import Testing
 
-@Suite("impact 인자 검증")
-struct ImpactCommandTests {
-    @Test("Core Data 내용과 버전 선택 변경도 since 영향 분석의 입력이다")
-    func includesCoreDataChangesInImpactSeeds() {
-        #expect(ChangedSelectionSupport.isModeledChange("Sources/Store.xcdatamodel/contents"))
-        #expect(ChangedSelectionSupport.isModeledChange("Sources/Store.xcdatamodeld/.xccurrentversion"))
-        #expect(!ChangedSelectionSupport.isModeledChange("Documentation/contents"))
-        #expect(!ChangedSelectionSupport.isModeledChange("Documentation/.xccurrentversion"))
-    }
-
+@Suite("affected 인자 검증")
+struct AffectedCommandTests {
     @Test("심볼 선택 모드와 기본값을 파싱한다")
     func parsesSymbolSelectorAndDefaults() throws {
-        let command = try ImpactCommand.parse(["HomeView", "UserService"])
+        let command = try AffectedCommand.parse(["HomeView", "UserService"])
         try command.validate()
         #expect(command.symbols == ["HomeView", "UserService"])
         #expect(command.files.isEmpty)
@@ -24,26 +16,9 @@ struct ImpactCommandTests {
         #expect(command.format == .text)
     }
 
-    @Test("Core Data 빌드 근거는 현재 영향 분석에서만 선택하고 trace와 섞지 않는다")
-    func parsesCoreDataBuildEvidence() throws {
-        let command = try ImpactCommand.parse([
-            "--file", "Store.xcdatamodel/contents",
-            "--coredata-build-evidence", "coredata.json",
-        ])
-        try command.validate()
-        #expect(command.coreDataBuildEvidence == "coredata.json")
-        #expect(throws: (any Error).self) {
-            let mixed = try ImpactCommand.parse([
-                "Record", "--trace", "trace.json", "--executable", "App",
-                "--coredata-build-evidence", "coredata.json",
-            ])
-            try mixed.validate()
-        }
-    }
-
     @Test("파일 선택을 반복하고 git 기준점을 선택한다")
     func parsesFileAndSinceSelectors() throws {
-        let fileCommand = try ImpactCommand.parse([
+        let fileCommand = try AffectedCommand.parse([
             "--file", "Sources/App.swift", "--file", "Sources/Feature.swift",
             "--format", "json", "--depth", "8", "--limit", "1000",
         ])
@@ -53,7 +28,7 @@ struct ImpactCommandTests {
         #expect(fileCommand.depth == 8)
         #expect(fileCommand.limit == 1000)
 
-        let sinceCommand = try ImpactCommand.parse(["--since", "origin/main"])
+        let sinceCommand = try AffectedCommand.parse(["--since", "origin/main"])
         try sinceCommand.validate()
         #expect(sinceCommand.options.since == "origin/main")
     }
@@ -69,7 +44,7 @@ struct ImpactCommandTests {
             ["--file", ""],
         ] {
             do {
-                let command = try ImpactCommand.parse(arguments)
+                let command = try AffectedCommand.parse(arguments)
                 try command.validate()
                 Issue.record("오류가 발생해야 한다: \(arguments)")
             } catch {
@@ -87,7 +62,7 @@ struct ImpactCommandTests {
             ["HomeView", "--limit", "10001"],
         ] {
             do {
-                let command = try ImpactCommand.parse(arguments)
+                let command = try AffectedCommand.parse(arguments)
                 try command.validate()
                 Issue.record("오류가 발생해야 한다: \(arguments)")
             } catch {
@@ -104,7 +79,7 @@ struct ImpactCommandTests {
             ["HomeView", "--strict"],
         ] {
             do {
-                let command = try ImpactCommand.parse(arguments)
+                let command = try AffectedCommand.parse(arguments)
                 try command.validate()
                 Issue.record("오류가 발생해야 한다: \(arguments)")
             } catch {

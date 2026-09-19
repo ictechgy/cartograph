@@ -65,7 +65,7 @@ echo "종료 코드 0 — 정상"
 expect_status 0 "--help"              --help
 expect_status 0 "--version"           --version
 expect_status 0 "인자 없음(도움말)"    
-for subcommand in graph cycles dead fix query impact snapshot runtime check serve dataflow bridges metrics rules baseline init skill; do
+for subcommand in graph cycles dead fix query impact affected snapshot runtime check serve dataflow bridges metrics rules baseline init skill; do
     expect_status 0 "$subcommand --help" "$subcommand" --help
 done
 expect_status 0 "runtime plan --help" runtime plan --help
@@ -106,6 +106,12 @@ expect_status 64 "영향과 strict 동시"   impact Foo --strict
 expect_status 64 "영향 깊이 범위"       impact Foo --depth 0
 expect_status 64 "영향 결과 수 범위"    impact Foo --limit 10001
 expect_status 64 "영향 잘못된 형식"     impact Foo --format yaml
+expect_status 64 "테스트 영향 선택자 누락" affected
+expect_status 64 "테스트 영향 선택자 혼용" affected Foo --file Sources/App.swift
+expect_status 64 "테스트 영향과 level 동시" affected Foo --level module
+expect_status 64 "테스트 영향과 형식 동시" affected Foo --report-format json
+expect_status 64 "테스트 영향과 strict 동시" affected Foo --strict
+expect_status 64 "테스트 영향 잘못된 형식" affected Foo --format yaml
 expect_status 64 "영향 trace 실행 파일 누락" impact Foo --trace /dev/null
 expect_status 64 "영향 trace 없는 실행 파일" impact Foo --executable /dev/null
 expect_status 64 "영향 과거와 trace 혼용" impact Foo --before /dev/null --trace /dev/null --executable /dev/null

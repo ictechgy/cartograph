@@ -37,6 +37,7 @@ struct CartographCommand: ParsableCommand {
             QueryCommand.self,
             RuntimeCommand.self,
             ImpactCommand.self,
+            AffectedCommand.self,
             CheckCommand.self,
             ServeCommand.self,
             SnapshotCommand.self,

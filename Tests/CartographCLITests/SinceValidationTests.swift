@@ -64,6 +64,7 @@ struct SinceValidationTests {
     func validCombinationsPass() throws {
         try DeadCommand.parse(["--since", "HEAD"]).validate()
         try FixCommand.parse(["--since", "HEAD"]).validate()
+        try AffectedCommand.parse(["--since", "HEAD"]).validate()
         try CyclesCommand.parse(["--since", "HEAD"]).validate()
         try RulesCommand.parse(["--since", "HEAD"]).validate()
         try DeadCommand.parse(["--explain", "Foo"]).validate()
