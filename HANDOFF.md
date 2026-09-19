@@ -36,7 +36,7 @@ formula가 0.19.0을 가리킨다.
 ### 완료 — 자매 브리지 확장 (2026-09-20, PR #123)
 
 - [PR #123](https://github.com/ictechgy/cartograph/pull/123)을 squash merge했다(`5c43c36`).
-  로컬 `main`과 원격 `main`이 같고 머지 트리는 검토·CI를 통과한 PR head와 일치한다.
+  로컬 `main`과 원격 `main`이 같고 머지 트리의 내용 해시는 검토·CI를 통과한 PR head의 tree 해시와 일치한다.
   이 HANDOFF는 해당 머지의 인계 기록이다.
 - `.m`/`.mm`의 Clang 선언·참조를 일반 그래프에 포함하고 RN 구현 매크로에 실제 USR를
   연결한다. 같은 줄의 보조 class method와 instance method를 구분하며, 다른 파일의 선언이나
@@ -56,8 +56,8 @@ formula가 0.19.0을 가리킨다.
 - 동반 머지: isthmus [#96](https://github.com/ictechgy/isthmus/pull/96), kartograph
   [#82](https://github.com/ictechgy/kartograph/pull/82), dartograph
   [#127](https://github.com/ictechgy/dartograph/pull/127).
-  계약은 [GRAPH-EXCHANGE](../isthmus/docs/GRAPH-EXCHANGE.md), 전체 실행 기록은
-  [isthmus HANDOFF](../isthmus/HANDOFF.md)를 참조한다.
+  계약은 [GRAPH-EXCHANGE](https://github.com/ictechgy/isthmus/blob/main/docs/GRAPH-EXCHANGE.md), 전체 실행 기록은
+  [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md)를 참조한다.
 - 이번 구현·검증·머지의 남은 작업은 없다. 새 태그/배포는 하지 않았고, 이 변경을 기존
   0.19.0 발행본에 포함된 기능으로 설명하지 않는다. 브리지 `sourceCache` 최적화는 여전히 별도 후보다.
 
