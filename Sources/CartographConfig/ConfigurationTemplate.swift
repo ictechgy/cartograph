@@ -41,6 +41,9 @@ public enum ConfigurationTemplate {
           retain_tests: true
           retain_previews: true
           retain_codable_properties: true
+          # Synthesized == and hash(into:) read stored properties without leaving index evidence.
+          retain_equatable_properties: true
+          retain_hashable_properties: true
           retain_raw_representable_enum_cases: true
           retained_names: []
           retained_files: []

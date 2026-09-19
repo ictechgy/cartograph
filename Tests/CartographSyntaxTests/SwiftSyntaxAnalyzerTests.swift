@@ -38,6 +38,19 @@ struct SwiftSyntaxAnalyzerTests {
         #expect(facts.declaration(named: "inner")?.accessibility == .privateLevel)
     }
 
+    @Test("상속 절에서 Equatable/Hashable 준수를 알아낸다")
+    func readsEquatableAndHashableConformances() {
+        let facts = analyze("""
+            struct A: Equatable {}
+            struct B: Hashable {}
+            struct C: Codable {}
+            """)
+        #expect(facts.declaration(named: "A")?.attributes.contains(.equatable) == true)
+        #expect(facts.declaration(named: "A")?.attributes.contains(.hashable) == false)
+        #expect(facts.declaration(named: "B")?.attributes.contains(.hashable) == true)
+        #expect(facts.declaration(named: "C")?.attributes.contains(.equatable) == false)
+    }
+
     @Test("선언 속성을 표식으로 옮긴다")
     func readsAttributes() {
         let facts = analyze("""

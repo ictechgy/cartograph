@@ -95,6 +95,23 @@ struct ConfigurationLoaderTests {
         #expect(result.warnings.contains { $0.contains("'thresholds.max_cyles'") })
     }
 
+    @Test("합성 판독기 보존 옵션을 읽고, 옛 설정에는 기본값을 쓴다")
+    func readsSynthesizedReaderRetentionOptions() throws {
+        let yaml = """
+            retention:
+              retain_equatable_properties: false
+              retain_hashable_properties: false
+            """
+        let result = try ConfigurationLoader().load(yaml: yaml, path: "/p/.cartograph.yml")
+        #expect(!result.configuration.retention.retainEquatableProperties)
+        #expect(!result.configuration.retention.retainHashableProperties)
+        #expect(result.warnings.isEmpty)
+
+        let legacy = try ConfigurationLoader().load(yaml: "level: module", path: "/p/.cartograph.yml")
+        #expect(legacy.configuration.retention.retainEquatableProperties)
+        #expect(legacy.configuration.retention.retainHashableProperties)
+    }
+
     @Test("규칙과 레이어의 알 수 없는 키도 경고한다")
     func warnsAboutUnknownKeysInRulesAndLayers() throws {
         // `deny` 를 `denyed` 로 잘못 쓰면 필수 키가 아니라서 조용히 비어 있는 규칙이

@@ -529,6 +529,10 @@ final class DeclarationCollector: SyntaxVisitor {
 
         if inherited.contains(where: codableProtocols.contains) { result.insert(.codable) }
         if inherited.contains("CodingKey") { result.insert(.codingKey) }
+        // 합성된 `==`/`hash(into:)` 도 저장 프로퍼티를 읽는다. 소스 범위가 없어
+        // 인덱스에 읽기가 남지 않으므로 준수 사실을 표식으로 남긴다.
+        if inherited.contains("Equatable") { result.insert(.equatable) }
+        if inherited.contains("Hashable") { result.insert(.hashable) }
         // 케이스를 소스에서 한 번도 이름으로 부르지 않고 `allCases` 로만 쓰는 것은 흔하다.
         // 합성된 `allCases` 의 몸통은 소스 범위가 없어 인덱스에 참조를 남기지 않는다.
         if inherited.contains("CaseIterable") { result.insert(.caseIterable) }

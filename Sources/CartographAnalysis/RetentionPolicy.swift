@@ -255,6 +255,8 @@ public struct RetentionPolicy: Sendable {
             switch reason {
             case .rawRepresentableEnumCase: options.retainRawRepresentableEnumCases
             case .codableProperty: options.retainCodableProperties
+            case .equatableProperty: options.retainEquatableProperties
+            case .hashableProperty: options.retainHashableProperties
             default: true
             }
         }
@@ -287,6 +289,18 @@ public struct RetentionPolicy: Sendable {
         }
         if conformances.contains(.codable), node.kind == .property {
             reasons.append(.codableProperty)
+        }
+        // 합성된 `==`/`hash(into:)` 는 클래스에서 합성되지 않으므로 값 타입만
+        // 본다. Periphery 도 같은 이유로 클래스를 제외한다. `Hashable` 은
+        // `Equatable` 을 상속하므로 Equatable 옵션만 켜도 Hashable 타입의
+        // 프로퍼티를 보존한다 — Periphery 의 isEquatable 목록과 같다.
+        if node.kind == .property, parent.kind != .classType {
+            if conformances.contains(.hashable) {
+                reasons.append(.hashableProperty)
+            }
+            if conformances.contains(.equatable) || conformances.contains(.hashable) {
+                reasons.append(.equatableProperty)
+            }
         }
         if parent.attributes.contains(.runtimeManaged), node.kind == .property {
             reasons.append(.runtimeManaged)
@@ -347,7 +361,7 @@ public struct RetentionPolicy: Sendable {
 
     /// 익스텐션에서 타입으로 옮겨 오는 표식.
     static let conformanceDerivedAttributes: Set<SymbolAttribute> = [
-        .codable, .codingKey, .rawRepresentable, .caseIterable,
+        .codable, .codingKey, .rawRepresentable, .caseIterable, .equatable, .hashable,
     ]
 
     /// 포함 관계를 거슬러 의미상의 부모 선언을 찾는다.

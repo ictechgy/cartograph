@@ -222,6 +222,62 @@ struct RetentionPolicyTests {
         #expect(reasons(snapshot, options: disabled)["User.name"] == nil)
     }
 
+    @Test("Equatable 타입의 저장 프로퍼티를 보존하고 끌 수 있다")
+    func equatablePropertiesAreRetained() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Money", kind: .structType, attributes: [.equatable])
+        builder.symbol("Money.cents", name: "cents", kind: .property, parent: "Money")
+        builder.symbol("Money.compute", name: "compute", kind: .method, parent: "Money")
+        let snapshot = builder.build()
+
+        #expect(reasons(snapshot)["Money.cents"] == .equatableProperty)
+        #expect(reasons(snapshot)["Money.compute"] == nil)
+
+        var disabled = RetentionOptions.default
+        disabled.retainEquatableProperties = false
+        #expect(reasons(snapshot, options: disabled)["Money.cents"] == nil)
+    }
+
+    @Test("Hashable 타입의 저장 프로퍼티는 hashable 근거로 보존된다")
+    func hashablePropertiesAreRetained() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Key", kind: .structType, attributes: [.hashable])
+        builder.symbol("Key.id", name: "id", kind: .property, parent: "Key")
+        let snapshot = builder.build()
+
+        #expect(reasons(snapshot)["Key.id"] == .hashableProperty)
+
+        // Hashable 은 Equatable 을 상속하므로 Equatable 옵션만으로도 보존된다.
+        var onlyEquatable = RetentionOptions.default
+        onlyEquatable.retainHashableProperties = false
+        #expect(reasons(snapshot, options: onlyEquatable)["Key.id"] == .equatableProperty)
+
+        var bothOff = onlyEquatable
+        bothOff.retainEquatableProperties = false
+        #expect(reasons(snapshot, options: bothOff)["Key.id"] == nil)
+    }
+
+    @Test("클래스의 Equatable 준수는 저장 프로퍼티 보존 근거가 아니다")
+    func classEquatableConformanceDoesNotRetainProperties() {
+        // 클래스에서는 ==/hash(into:) 가 합성되지 않아 직접 구현이 프로퍼티를
+        // 읽고 그 읽기가 인덱스에 남는다. Periphery 도 클래스를 제외한다.
+        var builder = SnapshotBuilder()
+        builder.symbol("C", kind: .classType, attributes: [.equatable, .hashable])
+        builder.symbol("C.value", name: "value", kind: .property, parent: "C")
+        #expect(reasons(builder.build())["C.value"] == nil)
+    }
+
+    @Test("익스텐션에 선언한 Equatable 준수도 저장 프로퍼티에 적용된다")
+    func equatableDeclaredInAnExtensionRetainsProperties() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Money", kind: .structType)
+        builder.symbol("Money.cents", name: "cents", kind: .property, parent: "Money")
+        builder.symbol("Money.ext", name: "Money", kind: .extensionDeclaration, attributes: [.equatable])
+        builder.reference(from: "Money.ext", to: "Money", kind: .extends)
+
+        #expect(reasons(builder.build())["Money.cents"] == .equatableProperty)
+    }
+
     @Test("외부 선언을 오버라이드·준수하는 멤버는 보존하되 타입 자신은 보존하지 않는다")
     func externalRelationsRetainWitnessesButNotTypes() {
         // 그래프는 양쪽 끝이 모두 있는 간선만 남기므로, 외부로 향하는 관계는

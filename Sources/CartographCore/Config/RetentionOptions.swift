@@ -24,6 +24,16 @@ public struct RetentionOptions: Sendable, Codable, Equatable {
     ///
     /// 합성된 `init(from:)`/`encode(to:)` 는 인덱스에 참조를 남기지 않는다.
     public var retainCodableProperties: Bool
+    /// Equatable 타입(과 Hashable 타입)의 저장 프로퍼티를 보존한다.
+    ///
+    /// 합성된 `==` 가 저장 프로퍼티를 읽지만 소스 범위가 없어 인덱스에 읽기가
+    /// 남지 않는다. Periphery 는 같은 이름의 옵션을 기본값 꺼짐으로 둔다 —
+    /// 이 저장소는 다른 합성 판독기 옵션과 같이 켬으로 둔다.
+    public var retainEquatableProperties: Bool
+    /// Hashable 타입의 저장 프로퍼티를 보존한다.
+    ///
+    /// 합성된 `hash(into:)` 가 저장 프로퍼티를 읽는다.
+    public var retainHashableProperties: Bool
     /// 원시값 열거형의 케이스를 보존한다.
     public var retainRawRepresentableEnumCases: Bool
     /// 이름이 일치하면 보존할 심볼 글롭 목록. 예: `*.shared`, `AppDelegate`.
@@ -40,6 +50,8 @@ public struct RetentionOptions: Sendable, Codable, Equatable {
         retainTests: Bool = true,
         retainPreviews: Bool = true,
         retainCodableProperties: Bool = true,
+        retainEquatableProperties: Bool = true,
+        retainHashableProperties: Bool = true,
         retainRawRepresentableEnumCases: Bool = true,
         retainedNames: [GlobPattern] = [],
         retainedFiles: [GlobPattern] = [],
@@ -51,6 +63,8 @@ public struct RetentionOptions: Sendable, Codable, Equatable {
         self.retainTests = retainTests
         self.retainPreviews = retainPreviews
         self.retainCodableProperties = retainCodableProperties
+        self.retainEquatableProperties = retainEquatableProperties
+        self.retainHashableProperties = retainHashableProperties
         self.retainRawRepresentableEnumCases = retainRawRepresentableEnumCases
         self.retainedNames = retainedNames
         self.retainedFiles = retainedFiles
@@ -66,6 +80,8 @@ public struct RetentionOptions: Sendable, Codable, Equatable {
         case retainTests = "retain_tests"
         case retainPreviews = "retain_previews"
         case retainCodableProperties = "retain_codable_properties"
+        case retainEquatableProperties = "retain_equatable_properties"
+        case retainHashableProperties = "retain_hashable_properties"
         case retainRawRepresentableEnumCases = "retain_raw_representable_enum_cases"
         case retainedNames = "retained_names"
         case retainedFiles = "retained_files"
@@ -88,6 +104,10 @@ public struct RetentionOptions: Sendable, Codable, Equatable {
                 ?? fallback.retainPreviews,
             retainCodableProperties: try container.decodeIfPresent(Bool.self, forKey: .retainCodableProperties)
                 ?? fallback.retainCodableProperties,
+            retainEquatableProperties: try container.decodeIfPresent(Bool.self, forKey: .retainEquatableProperties)
+                ?? fallback.retainEquatableProperties,
+            retainHashableProperties: try container.decodeIfPresent(Bool.self, forKey: .retainHashableProperties)
+                ?? fallback.retainHashableProperties,
             retainRawRepresentableEnumCases: try container.decodeIfPresent(
                 Bool.self, forKey: .retainRawRepresentableEnumCases) ?? fallback.retainRawRepresentableEnumCases,
             retainedNames: try container.decodeIfPresent([GlobPattern].self, forKey: .retainedNames) ?? [],

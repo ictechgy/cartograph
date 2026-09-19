@@ -177,6 +177,9 @@ struct RetentionReasonSentenceTests {
             .caseIterableEnumCase: "a case of a CaseIterable enum, enumerated by allCases",
             .codingKey: "a CodingKey case used by synthesized Codable conformance",
             .codableProperty: "a stored property of a Codable type, read by synthesized coding",
+            .equatableProperty: "a stored property of an Equatable type, read by the synthesized ==",
+            .hashableProperty:
+                "a stored property of a Hashable type, read by the synthesized hash(into:)",
             .runtimeManaged: "stored and read by a runtime (Core Data, SwiftData or Observation)",
             .propertyWrapperRequirement: "required by the @propertyWrapper contract",
             .resultBuilderRequirement: "required by the @resultBuilder contract",

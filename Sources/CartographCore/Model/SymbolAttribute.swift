@@ -58,6 +58,16 @@ public enum SymbolAttribute: String, Codable, Sendable, CaseIterable {
     /// 합성된 `init(from:)`/`encode(to:)` 는 저장 프로퍼티 참조를 인덱스에 남기지
     /// 않으므로, 이 표식이 붙은 타입의 프로퍼티는 미사용으로 오인되기 쉽다.
     case codable
+    /// `Equatable` 을 준수하는 타입.
+    ///
+    /// 합성된 `==` 는 저장 프로퍼티를 읽지만 소스 범위가 없어 인덱스에 읽기가
+    /// 남지 않는다. `Hashable` 은 `Equatable` 을 상속하므로 이 표식도 함께
+    /// 취급한다.
+    case equatable
+    /// `Hashable` 을 준수하는 타입.
+    ///
+    /// 합성된 `hash(into:)` 가 저장 프로퍼티를 읽는다는 점이 `Equatable` 과 같다.
+    case hashable
     /// `override` 제어자.
     case overrideDeclaration
     /// `// cartograph:ignore` 주석으로 사용자가 제외한 선언.

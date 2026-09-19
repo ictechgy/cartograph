@@ -88,7 +88,8 @@ public struct ConfigurationLoader: Sendable {
     ]
     private static let knownRetentionKeys: Set<String> = [
         "retain_public", "retain_objc_accessible", "retain_interface_builder", "retain_tests",
-        "retain_previews", "retain_codable_properties", "retain_raw_representable_enum_cases",
+        "retain_previews", "retain_codable_properties", "retain_equatable_properties",
+        "retain_hashable_properties", "retain_raw_representable_enum_cases",
         "retained_names", "retained_files", "external_test_case_classes",
     ]
     private static let knownThresholdKeys: Set<String> = [
