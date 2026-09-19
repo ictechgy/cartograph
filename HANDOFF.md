@@ -8,7 +8,8 @@ _Last updated: 2026-09-19 by opencode_
 bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴고까지
 **전부 머지·배포 완료**했다. 0.18.0(Expo Modules + impact 인접 목록)도 릴리스됐다.
 0.19.0(불필요 ignore·public 경고, fix, affected, GitHub Action, equatable/hashable 보존)도
-릴리스됐다 — Homebrew 탭 PR #48만 머지 대기다.
+릴리스됐다 — Homebrew 탭 [PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)도 머지돼
+formula가 0.19.0을 가리킨다.
 이후 경쟁 갭 분석(`docs/evaluation/2026-09-18-competitive-gaps.md`, PR #107에 포함)을
 거쳐 사용자가 "순차적으로" 갭을 닫기를 요청했다. 순서: ①웜 query 지연 →
 ②불필요 ignore 감지 → ③불필요 public 경고 → ④impact --before 제거 간선 →
@@ -330,7 +331,9 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
   sha256 `4079e4f9…c0424e3`, 압축 해제 바이너리 `--version` 0.19.0·universal(x86_64+arm64)·
   `docs/QUERY-EVIDENCE.md` 포함, 릴리스 바이너리로 CLI 계약 통과까지 직접 확인했다.
   Homebrew는 `HOMEBREW_TAP_TOKEN` 부재로 워크플로가 건너뛰어
-  [tap PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)을 수동으로 냈다 — **머지 대기**.
+  [tap PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)을 수동으로 냈고 **머지됐다**
+  (`1a8f707`; formula url·sha256이 0.19.0 asset과 일치함을 확인). `brew upgrade`·`brew test`는
+  이 샌드박스에서 `/opt/homebrew` 쓰기가 막혀 호스트 확인이 남았다.
 - 0.19.0에 포함된 작업: `superfluous-ignore`·`redundant-public` 경고(PR #107·#110),
   `cartograph fix`(#112), `cartograph affected`(#114), 공식 GitHub Action(#116),
   `retain_equatable/hashable_properties`(#118), warm query 세션 지문 창(#106),
@@ -542,7 +545,7 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 ## Blockers & Open Questions
 
 - `HOMEBREW_TAP_TOKEN`이 없어 탭 갱신은 계속 수동 PR. 자동화하려면 저장소 시크릿 추가 필요.
-  0.19.0 탭 [PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)이 **머지 대기** 중이다.
+  0.19.0 탭 [PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)은 머지 완료(`1a8f707`).
 - 리뷰 인프라: Grok은 quota-exhausted로 두 번 연속 사용 불가. agy는 headless에서 도구 호출이
   자동 거부돼 프롬프트에 "도구 사용 금지" 문구가 필요하고, 가끔 그래도 무출력.
 - `run-external`은 세션 디렉터리가 `mktemp -d` 수준(700)의 사설 디렉터리여야 하고, 재시도 전에
@@ -655,8 +658,8 @@ C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) �
 
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
 2. **0.19.0 릴리스 완료**(태그 `0.19.0`, 릴리스 워크플로 `35435788783`, asset sha256
-   `4079e4f9…c0424e3`). Homebrew 탭 [PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)만
-   머지 대기 — 머지 후 `brew upgrade`·`brew test` 확인이 남았다.
+   `4079e4f9…c0424e3`). Homebrew 탭 [PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)도
+   머지 완료(`1a8f707`) — `brew upgrade`·`brew test`만 호스트에서 확인하면 된다.
 3. 순차 갭 목록이 끝났다: ②#107·③#110·⑤#112·⑦#114·⑧#116·⑨#118 머지, ④는 `scopeDiff`(PR #93),
    ⑥은 수신 타입 호출자 결함 수정(0.14.0)으로 이미 완료. ⑩런타임 텔레메트리는 연구 전용 보류.
 4. 다음 작업은 아래 "경쟁 조사 — codegraph 대비 개선점" 후보(C1~C5·S1~S6, 권장 순서
@@ -669,8 +672,8 @@ C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) �
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
 0.19.0이 릴리스됐습니다(태그 `0.19.0`, 워크플로 `35435788783`, asset sha256 `4079e4f9…c0424e3`).
-Homebrew 탭 [PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)만 머지 대기입니다 —
-머지 후 `brew upgrade`·`brew test`를 확인하세요.
+Homebrew 탭 [PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)도 머지됐습니다(`1a8f707`).
+`brew upgrade`·`brew test`는 호스트에서 확인하세요.
 순차 경쟁 갭 목록이 끝났습니다: ②#107·③#110·⑤#112·⑦#114·⑧#116·⑨#118 완료, ④는
 `scopeDiff`(PR #93), ⑥은 수신 타입 호출자 결함 수정(0.14.0)으로 **이미** 완료돼 있었고 경쟁
 갭 문서 4·6은 stale 정리했습니다. ⑩런타임 텔레메트리는 연구 전용 보류입니다.
