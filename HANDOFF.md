@@ -12,17 +12,41 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ②불필요 ignore 감지 → ③불필요 public 경고 → ④impact --before 제거 간선 →
 ⑤기계적 fix → ⑥impact 입도 → ⑦테스트 영향 질의 → ⑧공식 GitHub Action →
 ⑨equatable/hashable 옵션 → ⑩런타임 텔레메트리(연구 전용 보류).
-①은 PR #106, ②는 PR #107, ③은 PR #110, ⑤는 PR #112, ⑦은 PR #114, ⑧은 PR #116으로
-**완료**했다. ④impact --before 제거 간선은 **0.17.0의 `scopeDiff`(PR #93)로 이미 완료**,
-⑥impact 입도도 **수신 타입을 호출자로 세던 결함 수정(0.14.0)으로 이미 완료**돼 있었다 —
-고정 리비전 Alamofire·Kingfisher에 현재 바이너리를 돌려 gold 소비자만 나옴을 확인했다
-(2026-09-19). 경쟁 갭 문서의 4·6번이 stale이었다. 다음은 ⑨equatable/hashable 옵션이다.
+①은 PR #106, ②는 PR #107, ③은 PR #110, ⑤는 PR #112, ⑦은 PR #114, ⑧은 PR #116,
+⑨는 PR #118로 **완료**했다. ④impact --before 제거 간선은 **0.17.0의 `scopeDiff`(PR #93)로
+이미 완료**, ⑥impact 입도도 **수신 타입을 호출자로 세던 결함 수정(0.14.0)으로 이미 완료**돼
+있었다 — 고정 리비전 Alamofire·Kingfisher에 현재 바이너리를 돌려 gold 소비자만 나옴을
+확인했다(2026-09-19). 경쟁 갭 문서의 4·6번이 stale이었다.
+순차 갭 목록은 **⑩런타임 텔레메트리(연구 전용 보류)만 남았다** — 이후 작업은 아래
+"경쟁 조사 — codegraph 대비 개선점" 섹션의 후보(C1~C5·S1~S6)와 릴리스 후속이다.
 
 컨테이너 확장 인접-목록 개선은
 [PR #104](https://github.com/ictechgy/cartograph/pull/104)로 **스쿼시 머지 완료**했다
 (`6bbf766`, 리뷰 head `be7af2a`, CI 녹색). 브리지 `sourceCache` 최적화는 미착수 보류다.
 
 ## Current Status
+
+### 완료 — ⑨ Equatable/Hashable 저장 프로퍼티 보존
+
+[PR #118](https://github.com/ictechgy/cartograph/pull/118) 스쿼시 머지(`773ee6d`, 2026-09-19).
+CI 녹색(Build/test/coverage + 자기 분석). 아래는 구현 기록이다.
+
+- **구현:** `retain_equatable_properties`·`retain_hashable_properties` 옵션(기본 켬). 구문
+  상속 절에서 `.equatable`/`.hashable` 표식을 남기고, 부모가 값 타입이면 저장 프로퍼티를
+  `.equatableProperty`/`.hashableProperty` 근거로 보존한다. 익스텐션에 선언한 준수도 타입
+  본체에 적용된다(`conformanceDerivedAttributes`).
+- **의미:** `Hashable`은 `Equatable`을 상속하므로 Equatable 옵션만으로도 Hashable 타입의
+  프로퍼티가 보존된다(Periphery `isEquatable` 목록과 동일). 클래스는 제외 — `==`/`hash(into:)`
+  합성이 값 타입에만 적용되고, 클래스의 직접 구현 읽기는 인덱스에 남는다.
+- **기본값 선택:** Periphery는 두 옵션 모두 기본 꺼짐이지만 이 저장소는 켬으로 둔다
+  (`retain_codable_properties`와 같은 이유 — 인덱스에 읽기 흔적이 없는 합성 판독기).
+  README가 그 차이를 설명한다.
+- **검증:** 신규 테스트 6개(Equatable/Hashable 근거·옵션 off·Hashable→Equatable 폴백·클래스
+  제외·익스텐션 준수·상속 절 표식·옛 설정 기본값). 변이 3종(옵션 게이팅 제거·클래스 제외
+  제거·폴백 제거) 각각 해당 테스트 실패. 전체 1,640개 중 실패 56건은 전부 샌드박스 임시
+  디렉터리 차단(단언 실패 0). strict 자기 분석 4종·CLI 계약·release 빌드 통과.
+  근거 문장 고정 테스트(ModelTests)에 새 문구를 추가.
+- **남은 것:** 없음 — 순차 갭 목록은 ⑩(연구 전용)만 남았다.
 
 ### 완료 — ⑧ 공식 GitHub Action
 
@@ -351,6 +375,7 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 | [Sources/CartographKit/AffectedDocument.swift](Sources/CartographKit/AffectedDocument.swift) | 테스트 영향 질의 — impact 배관 재사용, `change-affected` 문서 |
 | [Sources/cartograph/Affected.swift](Sources/cartograph/Affected.swift) | affected 하위 명령 — 시드 검증과 `ChangedSelectionSupport` 공유 |
 | [action.yml](action.yml) | 공식 composite action — 바이너리 해석·인덱스 빌드·게이트·SARIF 업로드 계약 |
+| [Sources/CartographCore/Config/RetentionOptions.swift](Sources/CartographCore/Config/RetentionOptions.swift) | 보존 옵션 계약 — 새 옵션은 여기·템플릿·키 목록·README를 함께 고친다 |
 | [Fixtures/FalsePositiveCorpus/expected-bridges.json](Fixtures/FalsePositiveCorpus/expected-bridges.json) | 브리지 골든 — 출력 필드 추가 시 갱신 필요 |
 | [.github/workflows/release.yml](.github/workflows/release.yml) | 태그 검증, universal archive, 탭 갱신(토큰 없으면 조용히 건너뜀) |
 | [docs/evaluation/2026-09-16-harder-comparison.md](docs/evaluation/2026-09-16-harder-comparison.md) | 어려운 작업 재측정 근거 |
@@ -393,11 +418,27 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
   매니페스트 테스트가 실제 하위 명령과의 일치를 지킨다.
 - **확정:** 로컬 액션(`uses: ./`)은 체크아웃된 리비전에서 실행된다 — CI 스모크가 커밋된
   action.yml 자체를 매 PR마다 검증할 수 있는 이유다.
+- **확정:** `retain_equatable_properties`·`retain_hashable_properties`는 기본 켬이다
+  (Periphery와 다른 선택 — 합성 판독기 흔적이 없다는 같은 이유). Hashable은 Equatable
+  옵션만으로도 보존되고, 클래스는 두 옵션의 대상이 아니다. 보존 옵션을 새로 만들면
+  `RetentionOptions`·설정 템플릿·`knownRetentionKeys`·README 영·한·근거 문장 표를 함께
+  고친다.
 - **미입증:** 한정 코퍼스·커버리지 수치는 전체 정확도나 에이전트 생산성의 증거가 아니다.
 - **가정/후보:** `ImportScanner`의 `importKind`→`importKindSpecifier` 이전은 swift-syntax 하한을
   603+로 올릴 때.
 
 ## Verification
+
+아래 표는 **PR #118(⑨)의 근거**다.
+
+| 검사 | 결과 |
+| --- | --- |
+| 신규·관련 테스트 | 통과 — RetentionPolicy 5종·SwiftSyntaxAnalyzer 1종·ConfigurationLoader 1종 추가 |
+| 변이 확인 | 옵션 게이팅 제거·클래스 제외 제거·Hashable→Equatable 폴백 제거 각각 해당 테스트 실패 |
+| 전체 `swift test`(클린 빌드) | 1,640개 중 실패 56건은 전부 샌드박스 임시 디렉터리 차단(단언 실패 0) |
+| strict 자기 분석·CLI 계약 | 4종·계약 모두 통과 |
+| `swift build -c release` | 통과 |
+| CI `35427455325` | Build/test/coverage·자기 분석 두 잡 통과 |
 
 아래 표는 **PR #116(⑧)의 근거**다.
 
@@ -538,6 +579,11 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 - GitHub Action은 `uses: ./`로 스모크를 돌린다. 로컬 액션은 체크아웃된 리비전을 실행하므로
   릴리스 자산 없이도 YAML 파싱·단계 배선·출력 계약을 PR CI에서 검증할 수 있다. 처음부터
   `binary` 입력을 둔 것이 이 스모크를 가능하게 했다.
+- 증분 빌드 산출물이 손상되면 불가능한 테스트 실패(순수 함수 단언 실패, 엉뚱한 파일 오류)가
+  나온다. ⑨에서 전체 실행이 요약 없이 중단되고 `AffectedDocumentTests`가 빌드 전용 설정으로
+  실패하는 것처럼 보였다 — 개별 필터에서는 통과했다. `$TMPDIR` 스크래치의
+  `arm64-apple-macosx` 디렉터리를 지워 클린 빌드하니 1,640개·환경 실패만 남았다.
+  코드를 의심하기 전에 빌드 산출물을 의심한다.
 - 여러 줄 사람용 출력을 `PrintableText.printable`에 통째로 넘기지 않는다. 기본값이 개행을
   지워 한 줄로 뭉개진다(⑤에서 발견). 줄마다 적용해 join한다.
 
@@ -594,27 +640,24 @@ C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) �
 ## Next Steps
 
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
-2. ②불필요 ignore는 PR #107(`66037f8`), ③불필요 public은 PR #110(`711a2b4`), ⑤기계적 fix는
-   PR #112(`1bd0cf7`), ⑦테스트 영향은 PR #114(`49ce665`), ⑧GitHub Action은 PR #116
-   (`195e25b`)로 머지 완료. ④impact --before 제거 간선은 `scopeDiff`(PR #93), ⑥impact 입도는
-   수신 타입 호출자 결함 수정(0.14.0)으로 이미 완료돼 있었다 — 갭 문서 4·6은 완료로 정리했다.
-   다음 기본 순서는 ⑨equatable/hashable 옵션이지만, 아래 "경쟁 조사 — codegraph 대비
-   개선점" 섹션의 후보(C1~C5·S1~S6)와 병합 여부는 메인테이너 판단이다 — 권장 착수 순서는
-   그 섹션 끝에 있다.
-3. 이후 순서: ⑨equatable 옵션. ⑩런타임 텔레메트리는 연구 전용 보류.
+2. 순차 갭 목록이 끝났다: ②#107·③#110·⑤#112·⑦#114·⑧#116·⑨#118 머지 완료, ④는 `scopeDiff`
+   (PR #93), ⑥은 수신 타입 호출자 결함 수정(0.14.0)으로 이미 완료돼 있었다. ⑩런타임
+   텔레메트리는 연구 전용 보류다.
+3. 다음 작업은 아래 "경쟁 조사 — codegraph 대비 개선점" 섹션의 후보(C1~C5·S1~S6)와 릴리스
+   후속(다음 버전 범프·릴리스, 액션 태그 고정)이다 — 권장 착수 순서는 그 섹션 끝에 있다.
+   메인테이너 판단으로 진행한다.
 4. 브리지 `sourceCache` 최적화는 동일 소스 스냅샷 보존 조건에서 검토한다. 근거 없이 제거하지
    않으며, 입증되지 않으면 메모리 계측 결과부터 확보한다.
 
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
-0.18.0 릴리스와 PR #104·#106·#107·#110·#112·#114·#116는 전부 머지·배포됐습니다. 경쟁 갭
-목록의 ②는 PR #107(`66037f8`), ③은 PR #110(`711a2b4`), ⑤는 PR #112(`1bd0cf7`), ⑦은
-PR #114(`49ce665`), ⑧은 PR #116(`195e25b`)로 완료됐습니다. ④impact --before 제거 간선은
-`scopeDiff`(PR #93), ⑥impact 입도는 수신 타입 호출자 결함 수정(0.14.0)으로 **이미** 완료돼
-있었습니다 — 경쟁 갭 문서 4·6은 stale이었고 완료로 정리했습니다.
-다음은 ⑨equatable/hashable 옵션입니다 — 아직 브랜치가 없습니다. 단, HANDOFF의 "경쟁 조사 —
-codegraph 대비 개선점" 섹션에 메인테이너가 정리한 우선 후보(C1~C5·S1~S6와 권장 착수 순서)가
-있으니 ⑨와의 병합 순서를 먼저 확인하세요. ③·⑤·⑦·⑧의 남은 후속(코퍼스 골든, 스킬 안내,
-액션 태그 고정·Marketplace, impact text 렌더러 개행 결함)은 Blockers에 있습니다. 완료된
-배포·검증을 반복하지 마세요. 나머지 갭 순서는 Goal 섹션에 있습니다.
+0.18.0 릴리스와 PR #104·#106·#107·#110·#112·#114·#116·#118은 전부 머지됐습니다. 순차 경쟁
+갭 목록이 끝났습니다: ②#107·③#110·⑤#112·⑦#114·⑧#116·⑨#118 완료, ④는 `scopeDiff`(PR #93),
+⑥은 수신 타입 호출자 결함 수정(0.14.0)으로 **이미** 완료돼 있었고 경쟁 갭 문서 4·6은 stale
+정리했습니다. ⑩런타임 텔레메트리는 연구 전용 보류입니다.
+다음 작업은 HANDOFF의 "경쟁 조사 — codegraph 대비 개선점" 섹션 후보(C1~C5·S1~S6, 권장 착수
+순서 C4 → S1·S2 → C1 → C2 → S3 플래그 → C3)와 릴리스 후속(버전 범프·릴리스, 액션 태그 고정)을
+메인테이너 판단으로 고르면 됩니다. 각 갭의 남은 후속(코퍼스 골든, 스킬 안내, 액션 태그 고정·
+Marketplace, impact text 렌더러 개행 결함)은 Blockers에 있습니다. 완료된 배포·검증을 반복하지
+마세요.
