@@ -150,6 +150,22 @@ jobs:
       - name: Combined CI checks
         run: '"$CARTOGRAPH" check --strict --report-format github-actions'
 
+      # 커밋된 action.yml 을 실제로 태운다. 로컬 액션은 체크아웃된 리비전에서
+      # 실행되므로 릴리스 자산을 받지 않고, 이미 빌드한 바이너리를 넘겨 배선
+      # (바이너리 해석·인자 조립·종료 코드·SARIF 기록)을 검증한다. 업로드는
+      # 코드 스캐닝 설정에 의존하므로 스모크에서는 끈다.
+      - name: GitHub Action smoke
+        uses: ./
+        with:
+          binary: ${{ env.CARTOGRAPH }}
+          build: none
+          command: check
+          upload-sarif: "false"
+          sarif-file: "${{ runner.temp }}/cartograph-action-smoke.sarif"
+
+      - name: Verify the action wrote SARIF
+        run: test -s "${{ runner.temp }}/cartograph-action-smoke.sarif"
+
       - name: Architecture rules
         run: |
           "$CARTOGRAPH" rules --strict
