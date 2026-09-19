@@ -1308,6 +1308,52 @@ Exit codes let a script tell "your code has problems" from "the tool did not run
 | `2` | Tool failure — no index store, an index that knows nothing about this project, unreadable index, invalid configuration |
 | `64` | Usage error — unknown option, unknown subcommand, invalid value, or a flag combination the command cannot honor |
 
+### The official action
+
+The composite action downloads a release binary, builds the index, runs one gate and uploads the
+SARIF report to code scanning:
+
+```yaml
+name: Cartograph
+on: [push, pull_request]
+permissions:
+  contents: read
+  security-events: write          # needed for upload-sarif
+jobs:
+  cartograph:
+    runs-on: macos-15             # Cartograph loads libIndexStore from the Xcode toolchain
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0          # --since needs the base commit
+      - uses: ictechgy/cartograph@main
+        with:
+          command: check
+          since: ${{ github.event.pull_request.base.sha || github.event.before }}
+```
+
+Pin the action to a release tag once one includes `action.yml` (`@main` tracks the development
+branch). Inputs:
+
+| Input | Default | Meaning |
+|---|---|---|
+| `command` | `check` | `check` (dead + cycles + rules together), `dead`, `cycles` or `rules` |
+| `args` | — | Extra arguments, for example `--limit 500` |
+| `version` | `latest` | Release tag to download, or `latest` for the newest release |
+| `binary` | — | Path to an existing binary; skips the download |
+| `project` | `.` | Project root; the index store is discovered from it |
+| `build` | `swift` | `swift build` before analyzing, or `none` when you build yourself |
+| `sarif-file` | `cartograph.sarif` | Where to write the SARIF 2.1.0 report |
+| `upload-sarif` | `true` | Upload to code scanning (requires `security-events: write`) |
+| `fail-on-findings` | `true` | `false` reports without failing the step |
+
+Outputs: `exit-code` (`0` success, `1` findings, `2` tool failure) and `sarif-file`. The action
+fails with a clear message on a non-macOS runner, because the tool loads `libIndexStore` from the
+Xcode toolchain. Building with `xcodebuild`? Set `build: none` and either pass your binary through
+`binary` or install Cartograph yourself and keep the manual commands below.
+
+Without the action, the same gate is two commands:
+
 ```yaml
 - run: swift build
 - run: cartograph check --strict --report-format github-actions
@@ -1317,7 +1363,7 @@ For GitHub code scanning, emit SARIF:
 
 ```yaml
 - run: cartograph dead --report-format sarif -o cartograph.sarif
-- uses: github/codeql-action/upload-sarif@v3
+- uses: github/codeql-action/upload-sarif@v4
   with:
     sarif_file: cartograph.sarif
 ```

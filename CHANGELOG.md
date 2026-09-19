@@ -9,6 +9,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The repository ships an official composite GitHub Action (`action.yml`). It downloads a release
+  binary (or uses the `binary` input), builds the index with `swift build` (or `build: none`), runs
+  one gate (`check`, `dead`, `cycles` or `rules`) with SARIF output, uploads it to code scanning by
+  default, and separates "findings" from "the tool could not run" through the documented exit
+  codes. `fail-on-findings: false` turns it into a report-only run, and a non-macOS runner fails
+  with a clear message because the tool loads `libIndexStore` from the Xcode toolchain.
 - `cartograph affected` answers the CI question "which tests does this change touch": from a
   declaration, one or more files, or `--since <revision>`, it follows consumers until test
   declarations (XCTest or swift-testing) are found and reports each test's distance, the path that

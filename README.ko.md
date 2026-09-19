@@ -1277,6 +1277,52 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 | `2` | 도구 실패 — 인덱스 스토어 없음, 인덱스가 이 프로젝트를 하나도 모름, 읽기 실패, 설정 오류 |
 | `64` | 사용 오류 — 알 수 없는 옵션·하위 명령·값, 명령이 받을 수 없는 플래그 조합 |
 
+### 공식 액션
+
+컴포지트 액션이 릴리스 바이너리를 내려받고, 인덱스를 만들고, 게이트 하나를 돌린 뒤 SARIF
+리포트를 code scanning에 올립니다.
+
+```yaml
+name: Cartograph
+on: [push, pull_request]
+permissions:
+  contents: read
+  security-events: write          # upload-sarif 에 필요
+jobs:
+  cartograph:
+    runs-on: macos-15             # Cartograph 는 Xcode 툴체인의 libIndexStore 를 읽습니다
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0          # --since 에 기준 커밋 이력이 필요
+      - uses: ictechgy/cartograph@main
+        with:
+          command: check
+          since: ${{ github.event.pull_request.base.sha || github.event.before }}
+```
+
+릴리스 태그가 `action.yml`을 포함하게 되면 그 태그로 고정하세요(`@main`은 개발 브랜치를
+따릅니다). 입력:
+
+| 입력 | 기본값 | 의미 |
+|---|---|---|
+| `command` | `check` | `check`(dead·cycles·rules 한 번에), `dead`, `cycles`, `rules` |
+| `args` | — | 추가 인자, 예: `--limit 500` |
+| `version` | `latest` | 내려받을 릴리스 태그, `latest`면 최신 릴리스 |
+| `binary` | — | 이미 있는 바이너리 경로. 지정하면 내려받지 않음 |
+| `project` | `.` | 분석할 프로젝트 루트. 인덱스 스토어는 여기서 자동 탐색 |
+| `build` | `swift` | 분석 전 `swift build`, 직접 빌드했다면 `none` |
+| `sarif-file` | `cartograph.sarif` | SARIF 2.1.0 리포트 경로 |
+| `upload-sarif` | `true` | code scanning 업로드(`security-events: write` 필요) |
+| `fail-on-findings` | `true` | `false`면 발견이 있어도 스텝을 실패시키지 않음 |
+
+출력: `exit-code`(`0` 정상, `1` 발견, `2` 도구 실패)와 `sarif-file`. Xcode 툴체인의
+`libIndexStore`를 읽으므로 macOS 러너가 아니면 명확한 메시지와 함께 실패합니다.
+`xcodebuild`로 빌드한다면 `build: none`으로 두고 만든 바이너리를 `binary`로 넘기거나,
+Cartograph를 직접 설치해 아래 수동 명령을 쓰세요.
+
+액션 없이 같은 게이트를 돌리려면 두 줄이면 됩니다.
+
 ```yaml
 - run: swift build
 - run: cartograph check --strict --report-format github-actions
@@ -1286,7 +1332,7 @@ GitHub code scanning에는 SARIF를 냅니다.
 
 ```yaml
 - run: cartograph dead --report-format sarif -o cartograph.sarif
-- uses: github/codeql-action/upload-sarif@v3
+- uses: github/codeql-action/upload-sarif@v4
   with:
     sarif_file: cartograph.sarif
 ```
