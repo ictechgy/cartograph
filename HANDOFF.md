@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-09-20 (PR #123 머지·CI 통과, main `5c43c36`; 브리지 확장은 미발행)_
+_Last updated: 2026-09-20 (0.20.0 GitHub·Homebrew 발행/설치 검증 완료)_
 
 재개 시 [Current Status](#current-status) → [Next Steps](#next-steps) →
 [Resume Prompt](#resume-prompt)를 읽는다. 아래 Goal과 날짜별 완료·검증·배포 기록은 당시의
@@ -32,6 +32,21 @@ formula가 0.19.0을 가리킨다.
 (`6bbf766`, 리뷰 head `be7af2a`, CI 녹색). 브리지 `sourceCache` 최적화는 미착수 보류다.
 
 ## Current Status
+
+### 0.20.0 발행 검증 — 2026-09-20
+
+- [PR #125](https://github.com/ictechgy/cartograph/pull/125)·tag `0.20.0`은 `d7df412`다. 브리지 커밋 `5c43c36`의 포함 관계를 Git으로 확인했다.
+  [release run 35459152441](https://github.com/ictechgy/cartograph/actions/runs/35459152441)이 성공했다.
+- GitHub universal archive SHA256은 `833eb3c86deffc8e7c845297df57d41e35bb644bd5a943b09843e52075c6f072`.
+  독립 다운로드 파일·릴리스 노트를 대조했고 arm64/x86_64·--version 0.20.0·CLI 계약을 확인했다.
+- Homebrew 탭 [PR #49](https://github.com/ictechgy/homebrew-tap/pull/49)이 머지됐다(`72144ee`).
+  formula URL·SHA를 대조하고 호스트에서 0.18.0→0.20.0 upgrade 및 brew test를 통과했다.
+- Clang ObjC 그래프·보존과 Swift RN 이벤트 추출이 이 발행본에 포함된다. isthmus 0.8.0 후보
+  아카이브 및 자매 발행본으로 실제 Clang/이벤트/공개 plugin 왕복을 검증했다. isthmus npm 발행은
+  인증 갱신 대기이므로 이 native 배포는 완료됐지만 npm 발행 전까지 전체 호환 세트는 미완료다.
+- 이번 브리지의 이전 미발행 표기는 이 절의 0.20.0 발행으로 해소됐다. 아래 0.19.0의 호스트 설치 대기와
+  과거 미검증 표기는 해당 시점의 기록이며 반복할 작업이 아니다. 전체 후속 진행은
+  [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md)를 확인한다.
 
 ### 완료 — 자매 브리지 확장 (2026-09-20, PR #123)
 
