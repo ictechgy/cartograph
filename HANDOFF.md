@@ -12,13 +12,48 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ②불필요 ignore 감지 → ③불필요 public 경고 → ④impact --before 제거 간선 →
 ⑤기계적 fix → ⑥impact 입도 → ⑦테스트 영향 질의 → ⑧공식 GitHub Action →
 ⑨equatable/hashable 옵션 → ⑩런타임 텔레메트리(연구 전용 보류).
-①은 PR #106, ②는 PR #107, ③은 PR #110으로 **완료**했다 — 다음은 ④다.
+①은 PR #106, ②는 PR #107, ③은 PR #110, ⑤는 PR #112로 **완료**했다.
+④impact --before 제거 간선은 착수 전 확인 결과 **0.17.0의 `scopeDiff`(PR #93)로 이미
+완료**돼 있었다 — 2026-09-18 경쟁 갭 문서의 4번이 stale이다. 다음은 ⑥impact 입도다.
 
 컨테이너 확장 인접-목록 개선은
 [PR #104](https://github.com/ictechgy/cartograph/pull/104)로 **스쿼시 머지 완료**했다
 (`6bbf766`, 리뷰 head `be7af2a`, CI 녹색). 브리지 `sourceCache` 최적화는 미착수 보류다.
 
 ## Current Status
+
+### 완료 — ⑤ 기계적 fix
+
+[PR #112](https://github.com/ictechgy/cartograph/pull/112) 스쿼시 머지(`1bd0cf7`, 2026-09-19).
+CI 녹색(Build/test/coverage + 자기 분석). 아래는 구현 기록이다.
+
+- **구현:** `cartograph fix [--apply] [--format text|json] [--since <rev>]`. 기본은
+  드라이런이고 `--apply`로만 파일을 쓴다. 고치는 규칙은 두 개로 고정한다 —
+  `unused-import`는 import 선언을 줄째로 제거, `unused-parameter`는 인자 레이블을
+  남긴 채 내부 이름만 제거(`func f(retry:)` → `func f(retry _:)`, 연산자 함수는
+  레이블이 무의미해 이름만 `_`). 나머지 경고는 사람의 판단이 필요해 건드리지 않는다.
+- **검증이 곧 구현:** 위치로 밀어 넣지 않는다. 지금 소스를 다시 파싱해 (a) 기록된
+  자리에 기대한 선언이 있고, (b) import 줄에 다른 코드·블록 주석이 없고, (c) 편집
+  결과가 다시 파싱되는 편집만 계획으로 인정한다. 드라이런에서도 메모리에서
+  편집·재파싱을 수행한다. 실패한 편집은 이유(`notFound`·`lineHasOtherCode`·
+  `alreadyUnnamed`·`sourceHasErrors`·`resultHasErrors`·`overlapping`·`unreadable`)와
+  함께 skip으로 보고한다.
+- **쓰기:** `FileSystem.write`의 파일 단위 원자적 쓰기 그대로. 텍스트 재작성 없이
+  구문 트리에서 찾은 UTF-8 범위만 바꿔 끼워 주석·공백을 보존한다.
+- **선별:** `dead`와 같은 `filterAndApplyBaseline` 경로로 `--since` 렌즈와
+  베이스라인을 적용한다 — 이미 받아들인 발견은 건드리지 않는다.
+- **종료 코드:** `--apply` 없이 `--strict`면 계획이 남아 있는 동안 1(CI 게이트),
+  적용 뒤에는 skip이 있을 때만 1.
+- **낡은 인덱스에서 멈춘다:** 편집 뒤 같은 스냅샷으로 다시 돌리면 import 발견은
+  사라지고, 자리가 어긋난 파라미터는 `notFound`로 skip된다 — 두 번째 편집을
+  추측하지 않는다. README가 새 빌드에서 돌리라고 안내한다.
+- **검증:** 신규 테스트 26개(구문 16·Kit 8·CLI 2). 변이 5종(소스 파싱 가드 제거·
+  모듈 경로 대조 제거·줄 내용 가드 제거·레이블 보존 제거·드라이런 쓰기 조건 제거)
+  각각 해당 테스트 실패. 전체 1,614개 중 실패 56건은 전부 샌드박스 임시 디렉터리
+  차단(단언 실패 0). CLI 계약·strict 자기 분석 4종(새 인덱스)·release 빌드 통과.
+  자기 분석에서 `fix`는 `no mechanical fixes found`.
+- **남은 것:** 코퍼스 fix 골든(검출 방향, 샌드박스에서 픽스처 재빌드 불가),
+  스킬 문서에 `cartograph fix` 안내 추가 후보.
 
 ### 완료 — ③ 불필요 public 접근 수준
 
@@ -254,6 +289,8 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 | [Sources/CartographKit/AnalysisSession.swift](Sources/CartographKit/AnalysisSession.swift) | 세션 캐시 — walk 레코드, 링크·디렉터리 스탬프, 입력 지문 재사용 |
 | [Sources/CartographAnalysis/RedundantPublicAnalyzer.swift](Sources/CartographAnalysis/RedundantPublicAnalyzer.swift) | redundant-public 판정 — 교차 모듈·인터페이스 참조·보수 제외 조건 |
 | [Sources/CartographSyntax/ReferenceBodyScanner.swift](Sources/CartographSyntax/ReferenceBodyScanner.swift) | 본문 구간 수집 — `IndexedReference.position` 분류의 근거 |
+| [Sources/CartographSyntax/MechanicalFixer.swift](Sources/CartographSyntax/MechanicalFixer.swift) | 안전한 소스 편집 — 위치 재확인·줄 가드·재파싱 검증 |
+| [Sources/CartographKit/MechanicalFixDocument.swift](Sources/CartographKit/MechanicalFixDocument.swift) | fix 계획/적용 — 스코프·베이스라인 선별과 `mechanical-fixes` 문서 |
 | [Fixtures/FalsePositiveCorpus/expected-bridges.json](Fixtures/FalsePositiveCorpus/expected-bridges.json) | 브리지 골든 — 출력 필드 추가 시 갱신 필요 |
 | [.github/workflows/release.yml](.github/workflows/release.yml) | 태그 검증, universal archive, 탭 갱신(토큰 없으면 조용히 건너뜀) |
 | [docs/evaluation/2026-09-16-harder-comparison.md](docs/evaluation/2026-09-16-harder-comparison.md) | 어려운 작업 재측정 근거 |
@@ -276,11 +313,30 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
   잘못 낮추면 필요 없는 공개 노출을 요구하지 않아 "internal로 줄여도 된다"는 오탐이 된다.
 - **확정:** 참조 0건 public 선언은 redundant-public으로 보고하지 않는다 — 의도된 API 표면일
   수 있고, 미사용 여부는 `unused-symbol`이 답한다.
+- **확정:** `fix`가 고치는 규칙은 `unused-import`·`unused-parameter` 둘뿐이고 기본은
+  드라이런이다. 편집은 현재 소스에서 다시 찾아 검증한 것만 적용하며, 어긋나면 이유와 함께
+  skip한다 — 추측한 텍스트를 쓰지 않는다. `unused-parameter`는 인자 레이블을 절대 떨어뜨리지
+  않는다(둘째 이름이 없으면 `x _:`를 넣는다).
+- **확정:** `PrintableText.printable`은 기본으로 개행을 지운다 — 여러 줄 출력은 줄마다
+  적용해 join해야 한다(`ImpactComparison.renderText`는 전체를 넘겨 한 줄로 뭉개는 기존
+  결함이 있다 — Blockers의 후속 후보).
 - **미입증:** 한정 코퍼스·커버리지 수치는 전체 정확도나 에이전트 생산성의 증거가 아니다.
 - **가정/후보:** `ImportScanner`의 `importKind`→`importKindSpecifier` 이전은 swift-syntax 하한을
   603+로 올릴 때.
 
 ## Verification
+
+아래 표는 **PR #112(⑤)의 근거**다.
+
+| 검사 | 결과 |
+| --- | --- |
+| `swift test`(신규·관련 55개) | 통과 — MechanicalFixerTests 16·MechanicalFixTests 8·CLI 3종 |
+| 변이 확인 | 소스 파싱 가드·모듈 경로 대조·줄 내용 가드·레이블 보존·드라이런 쓰기 조건 제거 각각 해당 테스트 실패 |
+| 전체 `swift test` | 1,614개 중 실패 56건은 전부 샌드박스 임시 디렉터리 차단(단언 실패 0) |
+| `Scripts/verify-cli-contract.sh` | 통과 — fix --help·사용 오류 3종 추가 |
+| strict 자기 분석(새 인덱스) | dead·cycles·cycles type·rules 모두 findings 없음. `fix`는 `no mechanical fixes found` |
+| `swift build -c release` | 통과 |
+| CI `35412180773` | Build/test/coverage·자기 분석 두 잡 통과 |
 
 아래 표는 **PR #110(③)의 근거**다. 자리 분류·게이트·가드는 호스트/CI에서 한 번 더 돌렸다.
 
@@ -346,6 +402,10 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 - ③ 후속 후보: 코퍼스에 검출 방향 케이스+골든 추가(픽스처 재빌드가 되는 호스트에서),
   `retain_public: true`인 라이브러리용 `--no-retain-public` 탈출구, 두 README의 라이브러리
   안내 보강.
+- ⑤ 후속 후보: 코퍼스 fix 골든(호스트에서 `AliasConformance.swift` 파라미터 3건이 실제
+  검출됨을 확인), `cartograph fix`를 스킬 문서에 안내.
+- 별건 후보: `ImpactComparison.renderText`가 `PrintableText.printable`에 전체 문자열을
+  넘겨 여러 줄 출력이 한 줄로 뭉개진다 — 줄 단위 적용으로 고칠 것.
 - 브리지 스캐너의 남은 공백: 파일 스코프 `let`을 `var` 프로퍼티 외 경로(비-init 대입)로
   채우는 형태, Objective-C 전용 플러그인 핸들러.
 
@@ -365,6 +425,10 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
   방문자는 파일 범위에 두고 공유 상수는 바깥 타입을 참조하지 않게 분리한다.
 - 로컬 픽스처 인덱스는 낡을 수 있다(③ 당시 staleness 3/15). CI의 새 인덱스가 코퍼스의 실제
   표면을 드러내 가드 가정을 뒤집었다 — 픽스처 판정을 바꾸면 로컬 통과만 믿지 않는다.
+- 착수 전에 갭 문서와 릴리스 이력을 대조한다. ④로 기록된 `impact --before` 제거 간선은
+  이미 0.17.0의 `scopeDiff`(PR #93)로 완료돼 있었다 — 경쟁 갭 문서가 stale이었다.
+- 여러 줄 사람용 출력을 `PrintableText.printable`에 통째로 넘기지 않는다. 기본값이 개행을
+  지워 한 줄로 뭉개진다(⑤에서 발견). 줄마다 적용해 join한다.
 
 ## 경쟁 조사 — codegraph 대비 개선점 (2026-09-18)
 
@@ -414,27 +478,30 @@ Goal 섹션의 갭 순서(③~⑩)는 그대로 두고, 아래는 그 순서에 
    provenance 태그 아이디어는 빌리되, 증명 못 한 간선을 합성하려는 의지는 빌리지 않는다.
 
 ### 권장 착수 순서
-C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) → C3(중). 기존 갭 ④~⑩과의 병합은 메인테이너 판단.
+C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) → C3(중). 기존 갭 ⑥~⑩과의 병합은 메인테이너 판단.
 
 ## Next Steps
 
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
-2. ②불필요 ignore는 PR #107(`66037f8`), ③불필요 public은 PR #110(`711a2b4`)로 머지 완료.
-   다음 기본 순서는 ④ `impact --before` 제거 간선이지만, 아래 "경쟁 조사 — codegraph 대비
-   개선점" 섹션의 후보(C1~C5·S1~S6)와 병합 여부는 메인테이너 판단이다 — 권장 착수 순서는
-   그 섹션 끝에 있다.
-3. 이후 순서: ④impact --before 제거 간선 → ⑤기계적 fix → ⑥impact 입도 → ⑦테스트 영향 →
-   ⑧GitHub Action → ⑨equatable 옵션. ⑩런타임 텔레메트리는 연구 전용 보류.
+2. ②불필요 ignore는 PR #107(`66037f8`), ③불필요 public은 PR #110(`711a2b4`), ⑤기계적 fix는
+   PR #112(`1bd0cf7`)로 머지 완료. ④impact --before 제거 간선은 0.17.0의 `scopeDiff`(PR #93)
+   로 이미 완료돼 있었다 — 갭 문서 4번은 stale이다. 다음 기본 순서는 ⑥impact 입도지만,
+   아래 "경쟁 조사 — codegraph 대비 개선점" 섹션의 후보(C1~C5·S1~S6)와 병합 여부는
+   메인테이너 판단이다 — 권장 착수 순서는 그 섹션 끝에 있다.
+3. 이후 순서: ⑥impact 입도 → ⑦테스트 영향 → ⑧GitHub Action → ⑨equatable 옵션.
+   ⑩런타임 텔레메트리는 연구 전용 보류.
 4. 브리지 `sourceCache` 최적화는 동일 소스 스냅샷 보존 조건에서 검토한다. 근거 없이 제거하지
    않으며, 입증되지 않으면 메모리 계측 결과부터 확보한다.
 
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
-0.18.0 릴리스와 PR #104·#106·#107·#110은 전부 머지·배포됐습니다. 경쟁 갭 목록의
-②불필요 ignore는 PR #107(`66037f8`), ③불필요 public은 PR #110(`711a2b4`)로 완료됐습니다.
-다음은 ④ `impact --before` 제거 간선입니다 — 아직 브랜치가 없습니다. 단, HANDOFF의
-"경쟁 조사 — codegraph 대비 개선점" 섹션에 메인테이너가 정리한 우선 후보
-(C1~C5·S1~S6와 권장 착수 순서)가 있으니 ④와의 병합 순서를 먼저 확인하세요.
-③의 남은 후속(코퍼스 검출 골든, `--no-retain-public` 탈출구)은 Blockers에 있습니다.
-완료된 배포·검증을 반복하지 마세요. 나머지 갭 순서는 Goal 섹션에 있습니다.
+0.18.0 릴리스와 PR #104·#106·#107·#110·#112는 전부 머지·배포됐습니다. 경쟁 갭 목록의
+②불필요 ignore는 PR #107(`66037f8`), ③불필요 public은 PR #110(`711a2b4`), ⑤기계적 fix는
+PR #112(`1bd0cf7`)로 완료됐습니다. ④impact --before 제거 간선은 0.17.0의 `scopeDiff`
+(PR #93)로 이미 완료돼 있었습니다 — 경쟁 갭 문서 4번은 stale입니다.
+다음은 ⑥impact 입도입니다 — 아직 브랜치가 없습니다. 단, HANDOFF의 "경쟁 조사 — codegraph
+대비 개선점" 섹션에 메인테이너가 정리한 우선 후보(C1~C5·S1~S6와 권장 착수 순서)가 있으니
+⑥과의 병합 순서를 먼저 확인하세요. ③·⑤의 남은 후속(코퍼스 골든, `--no-retain-public`,
+impact text 렌더러 개행 결함)은 Blockers에 있습니다. 완료된 배포·검증을 반복하지 마세요.
+나머지 갭 순서는 Goal 섹션에 있습니다.
