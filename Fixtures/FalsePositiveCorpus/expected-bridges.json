@@ -387,6 +387,11 @@
         "column": 1,
         "line": 9,
         "path": "Sources/CorpusObjC/RNCalendar.m"
+      },
+      "sourceLanguage": "objective-c",
+      "symbol": {
+        "qualifiedName": "RNCalendar",
+        "usr": "c:objc(cs)RNCalendar"
       }
     },
     {
@@ -398,7 +403,12 @@
         "line": 11,
         "path": "Sources/CorpusObjC/RNCalendar.m"
       },
-      "method": "addEvent"
+      "method": "addEvent",
+      "sourceLanguage": "objective-c",
+      "symbol": {
+        "qualifiedName": "RNCalendar.addEvent:",
+        "usr": "c:objc(cs)RNCalendar(im)addEvent:"
+      }
     },
     {
       "channel": "com.example/objc-camera",
@@ -435,7 +445,6 @@
   "format": "bridge-facts",
   "generatedAt": "<generatedAt>",
   "limitations": [
-    "objective-c-handlers: 2 method handlers come from Objective-C sources and are outside the Swift analysis graph, so their retentions cannot be applied by --external-retentions",
     "objective-c-sources: 1 Objective-C file(s) were read for React Native export macros and supported direct Flutter patterns; other Objective-C handlers may be absent",
     "mixed-targets: facts come from more than one bridge (flutter 8, react-native 2); 'target' is the majority"
   ],

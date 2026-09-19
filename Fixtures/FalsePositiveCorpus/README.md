@@ -30,7 +30,7 @@ nothing. Building against SwiftUI measured at 7 seconds, so fidelity won.
 | `Bridges.swift` | a Flutter method-call handler that only Dart invokes | the handler's type, until `--external-retentions` supplies the caller |
 | `Bridges.swift` | the standard `FlutterPlugin` shape: `addMethodCallDelegate(instance, channel:)` plus `handle(_:result:)` | the handler method; the registration call names the channel without guessing, and the retention round-trips by the method's real USR |
 | `Bridges.swift` | a handler passed as a method reference, `setMethodCallHandler(handleCall)` (audioplayers) | the arms of that method had no channel |
-| `CorpusObjC/RNCalendar.m` | an Objective-C source with React Native export macros | not analysed; counted in `limitations` as `objective-c-sources` and read textually by `bridges` |
+| `CorpusObjC/RNCalendar.m` | an Objective-C source with React Native export macros | Clang declarations enter the graph; bridge facts carry actual class/method USRs, while Objective-C runtime gaps remain in limitations |
 
 `expected-bridges.json` is the `bridges` output with the generation time, tool version and project
 path replaced by placeholders; it pins that the literal found by syntax gets the USR the compiler
@@ -42,10 +42,10 @@ the two reports differ — a retentions file that changes nothing has silently f
 project root, so isthmus can run both producers and return retention evidence without rewriting
 either document's `project` field.
 
-Objective-C is not compiled into the graph. The `CorpusObjC` target exists so that the
-`objective-c-sources` limitation is verified against a real `.m` file rather than a hand-built
-snapshot. Every iOS project on the maintainer's desk was pure Swift, so this was the only place to
-check it.
+The `CorpusObjC` target verifies actual Clang declarations in the graph, source-language
+markers and class/method identities in bridge facts, and the remaining `objective-c-sources`
+limitation. Its module/method macro identities are checked in the complete expected bridge
+document. An absent or ambiguous compiler identity remains unresolved.
 
 `expected-unused.txt` lists what *should* be reported. `verify-fixtures.sh` also runs with
 `--retain-public` and compares against `expected-retain-public.txt`: every declaration a consumer

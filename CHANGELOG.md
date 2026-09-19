@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Include indexed Clang declarations and references from Objective-C implementation files in the
+  graph, enabling external bridge retentions by actual `c:` USR. RN implementation macros now carry
+  their source language and uniquely matched compiler identity; remapped JS names are not used as
+  selector guesses. Missing or ambiguous identities remain unresolved.
+- Export direct Swift `RCTEventEmitter` emissions with `bridges --rn-events` in a separate
+  `react-native-event` v2 document for isthmus JS subscriptions. Expo, Objective-C event emitters,
+  wrappers and indirect inheritance are outside the scanner's scope.
+
 ## [0.19.0] - 2026-09-19
 
 ### Added

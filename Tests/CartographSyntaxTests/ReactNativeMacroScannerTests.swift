@@ -4,6 +4,24 @@ import Testing
 
 @Suite("React Native 매크로 스캐너")
 struct ReactNativeMacroScannerTests {
+    @Test("ObjC 구현 매크로에는 정확한 선언 줄을 붙이고 extern 선언은 구현으로 표시하지 않는다")
+    func implementationIdentitySites() {
+        let scanned = ReactNativeMacroScanner().scanDeclarations(source: """
+            @implementation Camera
+            RCT_EXPORT_MODULE(PublicCamera)
+            RCT_REMAP_METHOD(capture, takePhoto:(id)value) {}
+            @end
+            @interface RCT_EXTERN_MODULE(SwiftCamera, NSObject)
+            RCT_EXTERN_METHOD(capture)
+            @end
+            """, path: "/p/Camera.m")
+        #expect(scanned.prefix(2).allSatisfy { $0.fact.sourceLanguage == .objectiveC })
+        #expect(scanned[0].declaration?.line == 1)
+        #expect(scanned[1].declaration?.line == 3)
+        #expect(scanned[1].fact.method == "capture")
+        #expect(scanned.suffix(2).allSatisfy { $0.declaration == nil && $0.fact.sourceLanguage == nil })
+    }
+
     private func scan(_ source: String) -> [BridgeFact] {
         ReactNativeMacroScanner().scan(source: source, path: "/p/Module.m")
     }

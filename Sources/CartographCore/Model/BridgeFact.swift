@@ -84,6 +84,8 @@ public struct BridgeFact: Hashable, Sendable {
         /// 스트림 핸들러는 클로저가 아니라 객체이므로 호출 지점에만 귀속한다. 핸들러 객체의
         /// `onListen`/`onCancel` 구현은 등록 선언의 인덱스 참조로 이어진다.
         case streamHandle = "stream-handle"
+        /// 코어 RN 전역 이벤트의 실제 네이티브 방출 위치다.
+        case eventEmit = "event-emit"
         /// React Native 모듈을 내보냈다(`@objc(Name)`, `RCT_EXPORT_MODULE`, Expo `Module`/`@ExpoModule`).
         case moduleExport = "module-export"
         /// React Native 뷰 매니저를 내보냈다(`RCT_EXPORT_VIEW_PROPERTY`, Expo `View` 정의).

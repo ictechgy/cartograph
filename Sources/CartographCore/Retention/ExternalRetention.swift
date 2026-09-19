@@ -132,7 +132,7 @@ public struct ExternalRetentionsDocument: Sendable, Equatable, Codable {
     public let producedBy: Producer?
     public let generatedAt: String?
     public let retentions: [ExternalRetention]
-    /// 조인됐지만 Swift 그래프 밖이라 보존 목록에 담지 않은 Objective-C 핸들러 수.
+    /// 옛 생산자가 보존 목록에서 제외한 Objective-C 핸들러 수. 현재도 그 공백을 보존한다.
     public let omittedObjectiveCHandlers: Int?
 
     public init(

@@ -215,15 +215,21 @@ if ! grep -q "evidence: dart lib/camera.dart:42 invokes 'takePhoto' on channel '
 fi
 echo "  ok  --explain 이 외부 근거를 문장으로 만듦"
 
-# Objective-C 소스는 인덱스로 분석되지 않는다. 그 사실이 실제 프로젝트에서 세어져 나와야 한다.
-# 이 저장소 밖의 iOS 프로젝트는 전부 순수 Swift 라 .m 이 없었고, 이 한계가 실제로 뜨는지는
-# 여기서만 확인된다.
+# ObjC 선언은 Clang 그래프에 들어오지만 runtime·미인덱스 소스 한계는 실제 파일 수로 남는다.
+objc_graph="$("$CARTOGRAPH" graph --project "$FIXTURE" --level symbol --format json 2>/dev/null)"
+python3 -c "
+import json, sys
+usrs = {node.get('usr') for node in json.load(sys.stdin)['nodes']}
+expected = {'c:objc(cs)RNCalendar', 'c:objc(cs)RNCalendar(im)addEvent:'}
+assert expected <= usrs, 'compiled Objective-C declarations are missing from the graph'
+" <<< "$objc_graph"
+echo "  ok  실제 Clang 클래스·메서드가 그래프 정점으로 포함됨"
 limitations="$(
     "$CARTOGRAPH" query CameraBridge --project "$FIXTURE" 2>/dev/null |
         python3 -c "import json, sys; print('\n'.join(json.load(sys.stdin)['limitations']))"
 )"
-if ! grep -q "^objective-c-sources: 1 file(s) are not analysed" <<< "$limitations"; then
-    echo "query 의 limitations 에 objective-c-sources 가 없습니다:" >&2
+if ! grep -q "^objective-c-sources: 1 " <<< "$limitations"; then
+    echo "query 의 Objective-C 소스 계수가 기대와 다릅니다:" >&2
     echo "$limitations" >&2
     exit 1
 fi

@@ -374,11 +374,13 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
                     + "a React Native module"
             )
         }
-        let objectiveCHandlers = facts.count { $0.kind == .methodHandle && !$0.location.path.hasSuffix(".swift") }
+        let objectiveCHandlers = facts.count {
+            $0.kind == .methodHandle && !$0.location.path.hasSuffix(".swift") && $0.symbol?.usr == nil
+        }
         if objectiveCHandlers > 0 {
             result.append(
-                "objective-c-handlers: \(objectiveCHandlers) method handlers come from Objective-C sources and "
-                    + "are outside the Swift analysis graph, so their retentions cannot be applied by --external-retentions"
+                "objective-c-handlers: \(objectiveCHandlers) method handlers lack a compiler identity; "
+                    + "rebuild their Clang index before exporting external retentions"
             )
         }
         if unscannedEventChannels > 0 {
@@ -583,7 +585,16 @@ struct BridgeSymbolResolver {
             if entry.fact.sourceLanguage == .objectiveC {
                 // 이름이나 가장 가까운 줄로 추측하지 않는다. Clang 정의 위치가 유일할 때만 USR 을 붙인다.
                 let exact = candidates.filter {
-                    $0.usr.hasPrefix("c:") && $0.name == declaration.indexName && $0.location.line == declaration.line
+                    guard $0.usr.hasPrefix("c:"), $0.location.line == declaration.line else { return false }
+                    if entry.fact.target == .reactNative {
+                        // 매크로의 JS 이름과 ObjC 셀렉터는 다를 수 있다. 정확한 선언 줄에서
+                        // 컴파일러가 확인한 종류의 심볼이 하나일 때만 결합한다.
+                        // RN 매크로는 같은 줄에 메타데이터 class method도 만들 수 있다.
+                        // Clang USR의 instance-method 종류 `(im)`로 구분하며 셀렉터 이름을 추측하지 않는다.
+                        return entry.fact.kind == .methodHandle ? $0.kind == .method && $0.usr.contains("(im)") :
+                            $0.kind == .classType && $0.name == declaration.indexName
+                    }
+                    return $0.name == declaration.indexName
                 }
                 // 여러 빌드 구성을 묶은 스토어에서는 같은 선언이 같은 USR 로 두 번 기록되기도 한다.
                 // USR 이 하나로 유일하면 그것이 이 선언의 신원이다.
@@ -593,7 +604,9 @@ struct BridgeSymbolResolver {
                     // 인덱스 없이 빌드된 환경의 ObjC 핸들러가 신원 없는 증거로만 남는 것을 막는다(#75).
                     return entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: nil))
                 }
-                return entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: symbol.usr))
+                let qualifiedName = entry.fact.target == .reactNative && entry.fact.kind == .methodHandle
+                    ? declaration.indexName + "." + symbol.name : declaration.qualifiedName
+                return entry.fact.attaching(BridgeFact.Symbol(qualifiedName: qualifiedName, usr: symbol.usr))
             }
             let symbol = Self.match(declaration, among: candidates)
             let resolved = entry.fact.attaching(BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: symbol?.usr))

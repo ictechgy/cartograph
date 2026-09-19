@@ -445,6 +445,38 @@ struct BridgeFactsTests {
             .symbol?.usr == "c:objc(cs)P(im)handle:")
     }
 
+    @Test("RN 재명명 매크로는 JS 이름을 추측 매칭하지 않고 정확한 Clang 선언 위치로 결합한다")
+    func objectiveCMacroCompilerIdentity() {
+        let scanned = ReactNativeMacroScanner().scanDeclarations(source: """
+            @implementation Camera
+            RCT_EXPORT_MODULE(PublicCamera)
+            RCT_REMAP_METHOD(capture, takePhoto:(id)value) {}
+            @end
+            """, path: "/p/Camera.m")
+        let module = IndexedSymbol(usr: "c:objc(cs)Camera", name: "Camera", kind: .classType, module: "App",
+            location: .init(path: "/p/Camera.m", line: 1, column: 17))
+        func method(_ usr: String, line: Int = 3) -> IndexedSymbol {
+            IndexedSymbol(usr: usr, name: "takePhoto:", kind: .method, module: "App",
+                location: .init(path: "/p/Camera.m", line: line, column: 24))
+        }
+        func resolved(_ symbols: [IndexedSymbol]) -> [BridgeFact] {
+            BridgeSymbolResolver(snapshot: IndexSnapshot(symbols: symbols)).resolve(scanned)
+        }
+        let facts = resolved([module, method("c:objc(cs)Camera(im)takePhoto:")])
+        #expect(facts[0].symbol?.usr == module.usr)
+        #expect(facts[1].method == "capture")
+        #expect(facts[1].symbol?.usr == "c:objc(cs)Camera(im)takePhoto:")
+        #expect(facts[1].symbol?.qualifiedName == "Camera.takePhoto:")
+        let otherFile = IndexedSymbol(usr: "c:objc(cs)Other(im)takePhoto:", name: "takePhoto:", kind: .method,
+            module: "App", location: .init(path: "/p/Other.m", line: 3, column: 24))
+        #expect(resolved([module, otherFile])[1].symbol?.usr == nil)
+        #expect(resolved([module, method("c:objc(cs)Camera(im)takePhoto:"),
+            method("c:objc(cs)Camera(cm)metadata")])[1].symbol?.usr == "c:objc(cs)Camera(im)takePhoto:")
+        #expect(resolved([module, method("c:a", line: 2)])[1].symbol?.usr == nil)
+        #expect(resolved([module, method("c:a"), method("c:b")])[1].symbol?.usr == nil)
+        #expect(resolved([module, method("s:wrong-language")])[1].symbol?.usr == nil)
+    }
+
     @Test("외부 핸들러 본문의 공백은 등록 채널을 확실히 알 때만 좁힌다")
     func scopesKnownOpaqueHandlers() throws {
         let source = """

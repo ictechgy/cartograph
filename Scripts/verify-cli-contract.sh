@@ -74,10 +74,14 @@ expect_status 0 "runtime discover --help" runtime discover --help
 expect_status 0 "runtime collect --help" runtime collect --help
 expect_status 0 "runtime prepare-coredata --help" runtime prepare-coredata --help
 expect_status 0 "serve EOF 종료(빌드 불필요)" serve
+expect_output "--rn-events" "RN 이벤트 플래그 도움말" bridges --help
 
 echo "종료 코드 64 — 사용 오류"
 expect_status 64 "알 수 없는 옵션"     --no-such-option
 expect_status 64 "알 수 없는 하위 명령" no-such-command
+expect_status 64 "RN 이벤트와 Basic 동시" bridges --rn-events --messages
+expect_status 64 "RN 이벤트와 Flutter 스트림 동시" bridges --rn-events --events
+expect_status 64 "RN 이벤트에 Flutter target" bridges --rn-events --target flutter
 expect_status 64 "잘못된 열거형 값"    graph --level galaxy
 expect_status 64 "잘못된 형식 값"      dead --report-format yaml
 expect_status 64 "질의 대상 누락"      query

@@ -16,11 +16,24 @@ public struct ReactNativeMacroScanner: Sendable {
 
     /// 파일 내용에서 사실을 뽑아낸다. 위치는 매크로가 시작하는 자리다.
     public func scan(source: String, path: String) -> [BridgeFact] {
-        var facts: [BridgeFact] = []
+        scanDeclarations(source: source, path: path).map(\.fact).sorted()
+    }
+
+    /// 구현 매크로의 정확한 선언 줄을 인덱스 결합에 제공한다. extern 쉼은 구현으로 바꾸지 않는다.
+    public func scanDeclarations(source: String, path: String) -> [ScannedBridgeFact] {
+        var facts: [ScannedBridgeFact] = []
         for block in Self.implementationBlocks(in: Self.blankingDisabledRegions(Self.blankingNoise(source))) {
-            facts += Self.facts(in: block, path: path)
+            facts += Self.facts(in: block, path: path).map { fact in
+                let declaration = block.isImplementation ? EnclosingDeclaration(
+                    name: block.className,
+                    indexName: block.className,
+                    qualifiedName: fact.kind == .methodHandle ? block.className + "." + (fact.method ?? "<dynamic>") : block.className,
+                    line: fact.kind == .methodHandle ? fact.location.line : block.declarationLine
+                ) : nil
+                return ScannedBridgeFact(fact: fact, declaration: declaration)
+            }
         }
-        return facts.sorted()
+        return facts
     }
 
     /// 주석과 문자열 리터럴의 내용을 공백으로 지운다. 줄 수는 그대로다.
@@ -91,6 +104,8 @@ public struct ReactNativeMacroScanner: Sendable {
     struct ImplementationBlock {
         /// 클래스 이름. RN 은 `RCT_EXPORT_MODULE()` 에 인자가 없으면 이것을 모듈 이름으로 쓴다.
         let className: String
+        let declarationLine: Int
+        let isImplementation: Bool
         /// 블록에 속한 줄들. 파일 기준 줄 번호(1부터)와 함께.
         let lines: [(number: Int, text: String)]
     }
@@ -98,22 +113,26 @@ public struct ReactNativeMacroScanner: Sendable {
     static func implementationBlocks(in source: String) -> [ImplementationBlock] {
         var blocks: [ImplementationBlock] = []
         var className: String?
+        var declarationLine = 0
+        var isImplementation = false
         var lines: [(number: Int, text: String)] = []
         // `@end` 가 빠진 블록도 버리지 않는다. 컴파일은 안 되겠지만 사실은 사실이다.
         // 파일 끝에서도, 다음 `@implementation` 을 만났을 때도 같은 규칙이다.
         func flush() {
-            if let name = className { blocks.append(ImplementationBlock(className: name, lines: lines)) }
+            if let name = className { blocks.append(ImplementationBlock(className: name,
+                declarationLine: declarationLine, isImplementation: isImplementation, lines: lines)) }
             className = nil; lines = []
         }
         for (offset, rawLine) in source.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
             let line = String(rawLine)
             let number = offset + 1
             if let match = line.firstMatch(of: implementationPattern) {
-                flush(); className = String(match.output.1)
+                flush(); className = String(match.output.1); declarationLine = number; isImplementation = true
             } else if className == nil, let match = line.firstMatch(of: externModulePattern) {
                 // Swift 모듈은 `@interface RCT_EXTERN_MODULE(Name, NSObject) … @end` 로 잇는다.
                 // `@implementation` 이 없으므로 이 줄 자체가 블록의 시작이자 첫 사실이다.
-                className = String(match.output.1); lines.append((number, line))
+                className = String(match.output.1); declarationLine = number; isImplementation = false
+                lines.append((number, line))
             } else if line.trimmingCharacters(in: .whitespaces).hasPrefix("@end") {
                 flush()
             } else if className != nil {
@@ -141,29 +160,33 @@ public struct ReactNativeMacroScanner: Sendable {
                     guard !hasComponentExport else { continue }
                     hasComponentExport = true
                 }
-                let column = line.distance(from: line.startIndex, to: match.range.lowerBound) + 1
+                let column = line[..<match.range.lowerBound].utf8.count + 1
                 let location = SourceLocation(path: path, line: number, column: column)
                 // 빈 캡처(`RCT_EXPORT_METHOD()`)는 이름이 없는 것이지 빈 이름이 아니다.
                 let argument = match.output.1.map(String.init).flatMap { $0.isEmpty ? nil : $0 }
-                facts.append(fact(kind, argument: argument, module: moduleName, at: location))
+                facts.append(fact(kind, argument: argument, module: moduleName, at: location,
+                    sourceLanguage: block.isImplementation ? .objectiveC : nil))
             }
         }
         return facts
     }
 
-    private static func fact(_ kind: MacroKind, argument: String?, module: String, at location: SourceLocation) -> BridgeFact {
+    private static func fact(_ kind: MacroKind, argument: String?, module: String, at location: SourceLocation,
+                             sourceLanguage: BridgeFact.SourceLanguage?) -> BridgeFact {
         switch kind {
         case .module:
-            return BridgeFact(kind: .moduleExport, target: .reactNative, channel: module, location: location)
+            return BridgeFact(kind: .moduleExport, target: .reactNative, channel: module, location: location,
+                sourceLanguage: sourceLanguage)
         case .method:
             // 이름이 다음 줄로 넘어가 못 읽었으면 메서드 없는 핸들이 아니라 동적 이름이다.
             // 조인은 안 되지만 한계로 세어진다.
             return BridgeFact(
                 kind: .methodHandle, target: .reactNative, channel: module, method: argument,
-                isDynamic: argument == nil, location: location
+                isDynamic: argument == nil, location: location, sourceLanguage: sourceLanguage
             )
         case .viewProperty:
-            return BridgeFact(kind: .componentExport, target: .reactNative, channel: module, location: location)
+            return BridgeFact(kind: .componentExport, target: .reactNative, channel: module, location: location,
+                sourceLanguage: sourceLanguage)
         }
     }
 

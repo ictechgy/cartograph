@@ -56,7 +56,7 @@ public struct CartographService: Sendable {
     /// 대해 공집합은 거짓말이 아니다. 비었을 때 실패해야 하는 것은 분석 문맥 쪽이라
     /// 가드는 `loadContext()` 에만 둔다. `bridges` 가 이 경로로 내려오는 것도 이유다.
     public func loadSnapshot() throws -> IndexSnapshot {
-        try enrich(makeIndexSource().provider.loadSnapshot()).snapshot
+        try enrich(makeIndexSource(includeObjectiveCSources: true).provider.loadSnapshot()).snapshot
     }
 
     /// 원시 스냅샷에 구문 정보를 얹는다.
@@ -85,7 +85,7 @@ public struct CartographService: Sendable {
         let externalPath = configuration.externalRetentionsPath.map(resolveProjectRelativePath)
         let externalRetentions = try ExternalRetentionStore(fileSystem: environment.fileSystem)
             .loadIfConfigured(at: externalPath)
-        let source = try makeIndexSource()
+        let source = try makeIndexSource(includeObjectiveCSources: true)
         let enriched = try enrich(source.provider.loadSnapshot())
         let snapshot = enriched.snapshot
         try requireNonEmptyIndex(snapshot, from: source)
@@ -788,7 +788,8 @@ public struct CartographService: Sendable {
         generatedAt: Date = Date(),
         target: BridgeFact.Target? = nil,
         messages: Bool = false,
-        events: Bool = false
+        events: Bool = false,
+        rnEvents: Bool = false
     ) throws -> BridgeFactsDocument {
         // 두 플래그를 함께 켜면 종류별 emit 가드가 서로를 상쇄해 어떤 사실도 나오지
         // 않는다. 조용히 빈 문서를 돌려주는 대신 설정 오류로 거절한다 — CLI 도 같은
@@ -796,6 +797,10 @@ public struct CartographService: Sendable {
         guard !(messages && events) else {
             throw CartographError.invalidConfiguration(path: projectPath, reason:
                 "--messages and --events produce separate documents; pass one flag at a time.")
+        }
+        guard !rnEvents || (!messages && !events && target != .flutter) else {
+            throw CartographError.invalidConfiguration(path: projectPath, reason:
+                "--rn-events requires a separate React Native event document.")
         }
         let canonicalProject: String
         do {
@@ -824,6 +829,34 @@ public struct CartographService: Sendable {
             return ValueFlowSourceLoader.canonicalPath(path)
         })
         let resolver = BridgeSymbolResolver(snapshot: snapshot, freshPaths: freshPaths)
+        if rnEvents {
+            var facts: [BridgeFact] = []
+            var limitations = ["rn-event-scan-scope: only direct Swift RCTEventEmitter subclasses are scanned; Objective-C, Expo, codegen, wrappers, extensions, conditional compilation/imports and inherited emitter types are not resolved; shadowed identifiers exclude their file"]
+            var unsupportedScopes: [String: Int] = [:]
+            var unreadable = 0
+            for path in sources where path.hasSuffix(".swift") {
+                do {
+                    let source = try environment.fileSystem.readText(at: path)
+                    facts += resolver.resolve(ReactNativeEventScanner().scan(source: source, path: path) {
+                        unsupportedScopes[$0, default: 0] += 1
+                    })
+                } catch {
+                    unreadable += 1
+                }
+            }
+            if unreadable > 0 { limitations.append("unreadable-sources: \(unreadable) Swift source(s) could not be read; native emissions may be absent") }
+            for reason in unsupportedScopes.keys.sorted() {
+                limitations.append("unattributed-event-emits: \(unsupportedScopes[reason]!) source scope(s) were not scanned (\(reason))")
+            }
+            let missing = facts.count { $0.symbol?.usr == nil }
+            if missing > 0 { limitations.append("missing-event-usrs: \(missing) native event emissions lack indexed identities") }
+            let dynamic = facts.count { $0.isDynamic }
+            if dynamic > 0 { limitations.append("dynamic-event-names: \(dynamic) native event emissions have non-literal names") }
+            try BridgeFactsDocument.validateNames(facts, opaqueHandlerChannels: [])
+            return BridgeFactsDocument(tool: .init(name: Cartograph.toolName, version: Cartograph.version),
+                generatedAt: Self.bridgeTimestamp(generatedAt), project: canonicalProject, facts: facts,
+                extraLimitations: limitations, version: 2, transport: "react-native-event")
+        }
         var unreadable = 0
         var objectiveCSources = 0
         var ffiInteropSources = 0
@@ -942,7 +975,7 @@ public struct CartographService: Sendable {
                 unscannedEventChannels += scanned.unscannedEventChannels
                 unscannedMessageChannels += scanned.unscannedMessageChannels
             } else {
-                facts += ReactNativeMacroScanner().scan(source: source, path: path)
+                facts += resolver.resolve(ReactNativeMacroScanner().scanDeclarations(source: source, path: path))
                 let scanned = ObjectiveCFlutterScanner().scan(source: source, path: path)
                 facts += resolver.resolve(scanned.scannedFacts)
                 opaqueHandlerChannels += scanned.opaqueHandlerChannels
@@ -1012,9 +1045,10 @@ public struct CartographService: Sendable {
         asText: Bool = false,
         target: BridgeFact.Target? = nil,
         messages: Bool = false,
-        events: Bool = false
+        events: Bool = false,
+        rnEvents: Bool = false
     ) throws -> CommandOutcome {
-        let document = try bridgeFacts(generatedAt: generatedAt, target: target, messages: messages, events: events)
+        let document = try bridgeFacts(generatedAt: generatedAt, target: target, messages: messages, events: events, rnEvents: rnEvents)
         return CommandOutcome(output: asText ? document.renderText() : try Self.encodeSortedJSON(document))
     }
 

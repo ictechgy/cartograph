@@ -399,6 +399,9 @@ struct BridgesCommand: ParsableCommand {
     @Flag(name: .customLong("events"), help: "Export Flutter EventChannel stream-handler facts as bridge-facts v2.")
     var events: Bool = false
 
+    @Flag(name: .customLong("rn-events"), help: "Export core React Native global event emissions as bridge-facts v2.")
+    var rnEvents: Bool = false
+
     func validate() throws {
         // 사실 문서는 조인용 전체 내보내기다. 바뀐 파일만 담으면 하류 조인이
         // 빠진 핸들러로 읽는다. 조용히 전체를 내보내는 쪽도 `--since` 비교를
@@ -440,6 +443,9 @@ struct BridgesCommand: ParsableCommand {
         guard !(messages && events) else {
             throw ValidationError("--messages and --events are separate documents; run one flag at a time")
         }
+        guard !rnEvents || (!messages && !events && target != .flutter) else {
+            throw ValidationError("--rn-events requires a separate React Native event document")
+        }
     }
 
     func run() throws {
@@ -449,7 +455,8 @@ struct BridgesCommand: ParsableCommand {
                 asText: format == .text,
                 target: target?.bridgeTarget,
                 messages: messages,
-                events: events
+                events: events,
+                rnEvents: rnEvents
             ),
             options: options,
             context: context

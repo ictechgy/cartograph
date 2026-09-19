@@ -379,7 +379,7 @@ $ cartograph query UserService
 {
   "level" : "symbol",
   "limitations" : [
-    "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
+    "objective-c-sources: 12 file(s); the graph uses available Clang index evidence, while runtime dispatch and unindexed source paths may be absent",
     "index-staleness: 3 of 214 source file(s) changed after the file's index unit was written, so a call added since the last build is not here yet"
   ],
   "requested" : "UserService",
@@ -1290,10 +1290,10 @@ override the extension's default access.
 - **Interface Builder connections are not matched individually.** Every `@IBOutlet` and `@IBAction`
   is kept when `retain_interface_builder` is on, whether or not a xib actually connects it, so
   disconnected outlets are not reported. Custom classes *are* matched by name.
-- **Objective-C sources are not analyzed by the symbol graph.** `.m` and `.h` files are invisible to
-  the graph; Swift declarations they reach are covered by `retain_objc_accessible`, which is on by
-  default. `bridges` separately scans `.m` files for Flutter channel/handler patterns and React Native
-  export macros, but that fact scan does not make Objective-C declarations graph nodes.
+- **Objective-C uses compiled Clang index evidence.** Development builds include declarations and
+  references from `.m`/`.mm` implementations and apply external retentions using actual `c:` USRs.
+  Headers are not separately scanned and runtime message dispatch is not completely resolved.
+  The conservative `retain_objc_accessible` default remains; unindexed sources remain a gap.
 - **Callers in another language are known only through isthmus.** `bridges` exports what Swift
   declares; whether Dart or JavaScript actually calls it is a join this tool does not perform.
 - **A property that is only ever assigned counts as used.** The graph has one `reference` edge
@@ -1447,3 +1447,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Agents working in this repository should
 MIT. See [LICENSE](LICENSE).
 
 Cartograph is an independent project. It is not affiliated with Periphery or Apple.
+
+## RN event emissions in development
+
+`cartograph bridges --rn-events` exports `sendEvent(withName:body:)` from directly declared
+`RCTEventEmitter` subclasses importing React, as a separate v2 `react-native-event` document.
+Join it with a development isthmus `extract-js --events` document. Dynamic names remain
+unresolved; Objective-C events, Expo module events, wrappers and indirect inheritance are outside
+this scan. Run this separately from the default bridge export.

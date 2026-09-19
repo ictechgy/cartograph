@@ -20,7 +20,7 @@ public struct IndexStoreProvider: IndexProviding {
         public var pathFilter: PathFilter
         /// SDK 등 외부 심볼도 정점 후보로 수집할지 여부.
         public var includeExternalSymbols: Bool
-        /// 브리지 식별자를 읽을 때만 Clang 구현 파일도 포함한다.
+        /// Clang 구현 선언을 그래프와 브리지 식별자 양쪽에 포함할 때 사용한다.
         public var includeObjectiveCSources: Bool
         /// 값 흐름에서 재귀 호출의 실제 USR을 잃지 않도록 자기 참조도 보존한다.
         public var includeSelfReferences: Bool

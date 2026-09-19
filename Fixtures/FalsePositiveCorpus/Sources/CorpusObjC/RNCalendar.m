@@ -1,7 +1,7 @@
-// Objective-C 소스. 이 도구는 이 파일을 인덱스로 분석하지 않는다.
+// Objective-C 소스의 실제 Clang 그래프와 브리지 정체성을 검증한다.
 //
-// 두 가지를 확인한다. `query` 와 `bridges` 의 limitations 에 `objective-c-sources` 가
-// 실제로 세어져 나오는지, 그리고 React Native 매크로가 텍스트로 읽히는지.
+// 소스 한계가 실제로 세어지고, React Native 매크로의 클래스·메서드에
+// 유일한 컴파일러 USR이 붙는지 확인한다.
 #import "CorpusObjC.h"
 
 @implementation RNCalendar

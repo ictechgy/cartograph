@@ -372,7 +372,7 @@ $ cartograph query UserService
 {
   "level" : "symbol",
   "limitations" : [
-    "objective-c-sources: 12 file(s) are not analysed, so a Swift declaration used only from Objective-C looks unreached",
+    "objective-c-sources: 12 file(s); the graph uses available Clang index evidence, while runtime dispatch and unindexed source paths may be absent",
     "index-staleness: 3 of 214 source file(s) changed after the file's index unit was written, so a call added since the last build is not here yet"
   ],
   "requested" : "UserService",
@@ -1259,10 +1259,10 @@ Periphery는 둘 다 꺼져 있습니다. 합성된 `==`나 `hash(into:)`만 읽
 - **Interface Builder 연결을 개별로 대조하지 않습니다.** `retain_interface_builder`가 켜져
   있으면 실제 연결 여부와 무관하게 모든 `@IBOutlet`·`@IBAction`을 보존하므로, 연결이 끊긴
   아웃렛은 보고되지 않습니다. 커스텀 클래스는 이름으로 대조합니다.
-- **Objective-C 소스는 심볼 그래프로 분석하지 않습니다.** `.m`/`.h`는 그래프에 보이지
-  않으며, 그쪽에서 참조되는 Swift 선언은 기본값이 켜진 `retain_objc_accessible`이 덮습니다.
-  `bridges`는 별도로 `.m`의 Flutter 채널·핸들러 패턴과 React Native export 매크로를
-  스캔하지만, 이 사실 스캔이 Objective-C 선언을 그래프 정점으로 만들지는 않습니다.
+- **Objective-C는 컴파일된 Clang 인덱스 범위에서 분석합니다.** 개발 브랜치는 `.m`/`.mm`
+  구현의 선언·참조를 그래프에 포함하고, 실제 `c:` USR의 외부 보존을 적용합니다.
+  헤더 자체를 별도 스캔하거나 동적 메시지 전달을 완전히 해석하지는 않습니다.
+  `retain_objc_accessible`의 보수적 기본값은 유지합니다. 인덱스가 없는 소스는 여전히 공백입니다.
 - **다른 언어의 호출자는 isthmus를 통해서만 압니다.** `bridges`는 Swift가 선언한 것을
   내보낼 뿐이고, Dart나 JavaScript가 실제로 부르는지는 이 도구가 하지 않는 조인입니다.
 - **대입만 되는 프로퍼티는 쓰이는 것으로 셉니다.** 그래프의 참조 간선은 한 종류뿐이라
@@ -1414,3 +1414,10 @@ let (_, metrics, _) = service.metrics(in: context)
 MIT. [LICENSE](LICENSE)를 보세요.
 
 Cartograph는 독립 프로젝트이며 Periphery나 Apple과 관련이 없습니다.
+
+## 개발 중인 RN 이벤트 방출
+
+`cartograph bridges --rn-events`는 React를 import한 직접 `RCTEventEmitter` 하위 타입의
+`sendEvent(withName:body:)`를 별도 v2 `react-native-event` 문서로 냅니다. isthmus 개발
+빌드의 `extract-js --events`와 조인합니다. 동적 이름은 그대로 남기며 ObjC 이벤트·Expo
+모듈별 이벤트·래퍼·간접 상속은 해석하지 않습니다. Swift/ObjC 기본 브리지 출력과 별도 실행합니다.

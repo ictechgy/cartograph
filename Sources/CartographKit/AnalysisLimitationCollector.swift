@@ -68,8 +68,8 @@ struct AnalysisLimitationCollector {
         }
         if objectiveCCount > 0 {
             result.append(
-                "objective-c-sources: \(objectiveCCount) file(s) are not analysed, "
-                    + "so a Swift declaration used only from Objective-C looks unreached"
+                "objective-c-sources: \(objectiveCCount) file(s); the graph uses available Clang index evidence, "
+                    + "while runtime dispatch and unindexed source paths may be absent"
             )
         }
         if interfaceBuilderCount > 0 {
@@ -159,8 +159,8 @@ struct AnalysisLimitationCollector {
         ]
         if let omitted = document.omittedObjectiveCHandlers, omitted > 0 {
             result.append(
-                "external-retentions-objective-c: \(omitted) matched Objective-C handler(s) are outside the Swift graph; "
-                    + "their bridge evidence is available in isthmus check/query/graph"
+                "external-retentions-objective-c: \(omitted) matched Objective-C handler(s) were omitted by the producer; "
+                    + "regenerate retentions with an isthmus build that supports indexed Clang identities"
             )
         }
         // 부르는 쪽이 이미 만든 심볼 그래프를 받는다. 여기서 다시 만들면 `query` 한 번에
