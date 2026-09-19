@@ -7,6 +7,8 @@ _Last updated: 2026-09-19 by opencode_
 경쟁 강화(warm 질의·dead 경고 3종·온보딩 안내), **0.17.0 릴리스와 Homebrew 배포**,
 bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴고까지
 **전부 머지·배포 완료**했다. 0.18.0(Expo Modules + impact 인접 목록)도 릴리스됐다.
+0.19.0(불필요 ignore·public 경고, fix, affected, GitHub Action, equatable/hashable 보존)도
+릴리스됐다 — Homebrew 탭 PR #48만 머지 대기다.
 이후 경쟁 갭 분석(`docs/evaluation/2026-09-18-competitive-gaps.md`, PR #107에 포함)을
 거쳐 사용자가 "순차적으로" 갭을 닫기를 요청했다. 순서: ①웜 query 지연 →
 ②불필요 ignore 감지 → ③불필요 public 경고 → ④impact --before 제거 간선 →
@@ -322,6 +324,17 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 
 ### 이미 완료된 릴리스 이력
 
+- [0.19.0 릴리스](https://github.com/ictechgy/cartograph/releases/tag/0.19.0) 공개(2026-09-19).
+  버전 범프 [PR #120](https://github.com/ictechgy/cartograph/pull/120)(`9baf1ab`), 태그 `0.19.0`,
+  릴리스 워크플로 `35435788783` 성공. asset `cartograph-0.19.0-macos-universal.tar.gz`
+  sha256 `4079e4f9…c0424e3`, 압축 해제 바이너리 `--version` 0.19.0·universal(x86_64+arm64)·
+  `docs/QUERY-EVIDENCE.md` 포함, 릴리스 바이너리로 CLI 계약 통과까지 직접 확인했다.
+  Homebrew는 `HOMEBREW_TAP_TOKEN` 부재로 워크플로가 건너뛰어
+  [tap PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)을 수동으로 냈다 — **머지 대기**.
+- 0.19.0에 포함된 작업: `superfluous-ignore`·`redundant-public` 경고(PR #107·#110),
+  `cartograph fix`(#112), `cartograph affected`(#114), 공식 GitHub Action(#116),
+  `retain_equatable/hashable_properties`(#118), warm query 세션 지문 창(#106),
+  판독기 DB 유령 유닛 수정(#107).
 - 지침 재배치·HANDOFF 압축 [PR #101](https://github.com/ictechgy/cartograph/pull/101) 머지(`b468541`).
   루트 `AGENTS.md`는 색인, 구현 주의점은 `Sources/AGENTS.md`, 인덱스 규칙은
   `Sources/CartographIndexStore/AGENTS.md`(신규, 타깃 exclude 등록)에 있다.
@@ -529,6 +542,7 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 ## Blockers & Open Questions
 
 - `HOMEBREW_TAP_TOKEN`이 없어 탭 갱신은 계속 수동 PR. 자동화하려면 저장소 시크릿 추가 필요.
+  0.19.0 탭 [PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)이 **머지 대기** 중이다.
 - 리뷰 인프라: Grok은 quota-exhausted로 두 번 연속 사용 불가. agy는 headless에서 도구 호출이
   자동 거부돼 프롬프트에 "도구 사용 금지" 문구가 필요하고, 가끔 그래도 무출력.
 - `run-external`은 세션 디렉터리가 `mktemp -d` 수준(700)의 사설 디렉터리여야 하고, 재시도 전에
@@ -545,9 +559,9 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 - ⑦ 후속 후보: affected 코퍼스 골든(코퍼스 `.cartograph.yml`이 `Tests/**`를 제외해
   테스트 타깃이 그래프에 없다 — 테스트 포함 설정이 필요), `cartograph affected`를 스킬
   문서에 안내.
-- ⑧ 후속 후보: 다음 릴리스가 action.yml을 포함하면 README의 `@main`을 릴리스 태그로 고정,
-  Marketplace 게시와 이동 메이저 태그(`v1`), `upload-sarif` 경로를 코드 스캐닝이 켜진
-  저장소에서 한 번 실측.
+- ⑧ 후속 후보: **0.19.0 태그가 action.yml을 포함하므로 README의 `uses: ictechgy/cartograph@main`을
+  `@0.19.0`으로 고정**, Marketplace 게시와 이동 메이저 태그(`v1`), `upload-sarif` 경로를
+  코드 스캐닝이 켜진 저장소에서 한 번 실측.
 - 별건 후보: `ImpactComparison.renderText`가 `PrintableText.printable`에 전체 문자열을
   넘겨 여러 줄 출력이 한 줄로 뭉개진다 — 줄 단위 적용으로 고칠 것.
 - 브리지 스캐너의 남은 공백: 파일 스코프 `let`을 `var` 프로퍼티 외 경로(비-init 대입)로
@@ -640,24 +654,28 @@ C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) �
 ## Next Steps
 
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
-2. 순차 갭 목록이 끝났다: ②#107·③#110·⑤#112·⑦#114·⑧#116·⑨#118 머지 완료, ④는 `scopeDiff`
-   (PR #93), ⑥은 수신 타입 호출자 결함 수정(0.14.0)으로 이미 완료돼 있었다. ⑩런타임
-   텔레메트리는 연구 전용 보류다.
-3. 다음 작업은 아래 "경쟁 조사 — codegraph 대비 개선점" 섹션의 후보(C1~C5·S1~S6)와 릴리스
-   후속(다음 버전 범프·릴리스, 액션 태그 고정)이다 — 권장 착수 순서는 그 섹션 끝에 있다.
+2. **0.19.0 릴리스 완료**(태그 `0.19.0`, 릴리스 워크플로 `35435788783`, asset sha256
+   `4079e4f9…c0424e3`). Homebrew 탭 [PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)만
+   머지 대기 — 머지 후 `brew upgrade`·`brew test` 확인이 남았다.
+3. 순차 갭 목록이 끝났다: ②#107·③#110·⑤#112·⑦#114·⑧#116·⑨#118 머지, ④는 `scopeDiff`(PR #93),
+   ⑥은 수신 타입 호출자 결함 수정(0.14.0)으로 이미 완료. ⑩런타임 텔레메트리는 연구 전용 보류.
+4. 다음 작업은 아래 "경쟁 조사 — codegraph 대비 개선점" 후보(C1~C5·S1~S6, 권장 순서
+   C4 → S1·S2 → C1 → C2 → S3 플래그 → C3)와 릴리스 후속(액션 태그 고정 등)이다 —
    메인테이너 판단으로 진행한다.
-4. 브리지 `sourceCache` 최적화는 동일 소스 스냅샷 보존 조건에서 검토한다. 근거 없이 제거하지
+5. 브리지 `sourceCache` 최적화는 동일 소스 스냅샷 보존 조건에서 검토한다. 근거 없이 제거하지
    않으며, 입증되지 않으면 메모리 계측 결과부터 확보한다.
 
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
-0.18.0 릴리스와 PR #104·#106·#107·#110·#112·#114·#116·#118은 전부 머지됐습니다. 순차 경쟁
-갭 목록이 끝났습니다: ②#107·③#110·⑤#112·⑦#114·⑧#116·⑨#118 완료, ④는 `scopeDiff`(PR #93),
-⑥은 수신 타입 호출자 결함 수정(0.14.0)으로 **이미** 완료돼 있었고 경쟁 갭 문서 4·6은 stale
-정리했습니다. ⑩런타임 텔레메트리는 연구 전용 보류입니다.
-다음 작업은 HANDOFF의 "경쟁 조사 — codegraph 대비 개선점" 섹션 후보(C1~C5·S1~S6, 권장 착수
-순서 C4 → S1·S2 → C1 → C2 → S3 플래그 → C3)와 릴리스 후속(버전 범프·릴리스, 액션 태그 고정)을
-메인테이너 판단으로 고르면 됩니다. 각 갭의 남은 후속(코퍼스 골든, 스킬 안내, 액션 태그 고정·
-Marketplace, impact text 렌더러 개행 결함)은 Blockers에 있습니다. 완료된 배포·검증을 반복하지
-마세요.
+0.19.0이 릴리스됐습니다(태그 `0.19.0`, 워크플로 `35435788783`, asset sha256 `4079e4f9…c0424e3`).
+Homebrew 탭 [PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)만 머지 대기입니다 —
+머지 후 `brew upgrade`·`brew test`를 확인하세요.
+순차 경쟁 갭 목록이 끝났습니다: ②#107·③#110·⑤#112·⑦#114·⑧#116·⑨#118 완료, ④는
+`scopeDiff`(PR #93), ⑥은 수신 타입 호출자 결함 수정(0.14.0)으로 **이미** 완료돼 있었고 경쟁
+갭 문서 4·6은 stale 정리했습니다. ⑩런타임 텔레메트리는 연구 전용 보류입니다.
+다음 작업은 HANDOFF의 "경쟁 조사 — codegraph 대비 개선점" 후보(C1~C5·S1~S6, 권장 순서
+C4 → S1·S2 → C1 → C2 → S3 플래그 → C3)와 릴리스 후속(액션 태그를 `@0.19.0`으로 고정,
+Marketplace 등)을 메인테이너 판단으로 고르면 됩니다. 각 갭의 남은 후속(코퍼스 골든,
+스킬 안내, impact text 렌더러 개행 결함)은 Blockers에 있습니다. 완료된 배포·검증을
+반복하지 마세요.
