@@ -12,15 +12,50 @@ bridge-facts EventChannel·FFI interop 한계·Expo Modules, README 영·한 퇴
 ②불필요 ignore 감지 → ③불필요 public 경고 → ④impact --before 제거 간선 →
 ⑤기계적 fix → ⑥impact 입도 → ⑦테스트 영향 질의 → ⑧공식 GitHub Action →
 ⑨equatable/hashable 옵션 → ⑩런타임 텔레메트리(연구 전용 보류).
-①은 PR #106, ②는 PR #107, ③은 PR #110, ⑤는 PR #112로 **완료**했다.
-④impact --before 제거 간선은 착수 전 확인 결과 **0.17.0의 `scopeDiff`(PR #93)로 이미
-완료**돼 있었다 — 2026-09-18 경쟁 갭 문서의 4번이 stale이다. 다음은 ⑥impact 입도다.
+①은 PR #106, ②는 PR #107, ③은 PR #110, ⑤는 PR #112, ⑦은 PR #114로 **완료**했다.
+④impact --before 제거 간선은 **0.17.0의 `scopeDiff`(PR #93)로 이미 완료**, ⑥impact 입도도
+**수신 타입을 호출자로 세던 결함 수정(0.14.0)으로 이미 완료**돼 있었다 — 고정 리비전
+Alamofire·Kingfisher에 현재 바이너리를 돌려 gold 소비자만 나옴을 확인했다(2026-09-19).
+경쟁 갭 문서의 4·6번이 stale이었다. 다음은 ⑧공식 GitHub Action이다.
 
 컨테이너 확장 인접-목록 개선은
 [PR #104](https://github.com/ictechgy/cartograph/pull/104)로 **스쿼시 머지 완료**했다
 (`6bbf766`, 리뷰 head `be7af2a`, CI 녹색). 브리지 `sourceCache` 최적화는 미착수 보류다.
 
 ## Current Status
+
+### 완료 — ⑦ 테스트 영향 질의 (`affected`)
+
+[PR #114](https://github.com/ictechgy/cartograph/pull/114) 스쿼시 머지(`49ce665`, 2026-09-19).
+CI 녹색(Build/test/coverage + 자기 분석). 아래는 구현 기록이다.
+
+- **구현:** `cartograph affected [--since <rev> | --file <path> | <symbol>] [--depth]
+  [--limit] [--format text|json]`. CI의 "이 변경에 어떤 테스트를 돌리나"에 답한다.
+  소비자를 따라가 테스트 선언(XCTest·swift-testing)만 depth·경유(`via`)·관계·간선과
+  함께 보고하고, 변경이 직접 건드린 테스트는 depth 0 `changed`로 싣는다.
+- **배관 공유:** 시드 선택·컨테이너 확장·디스패치 투영·깊이 제한은 `impact`와 같은
+  것을 쓴다 — 답이 갈라지면 같은 변경에 두 명령이 다른 테스트를 말하게 된다.
+  `--since` 변경 목록 계산은 `ChangedSelectionSupport`로 모아 impact와 공유한다.
+- **정직성 계약:** 정적 도달성이다. 빈 목록은 명시적으로 "테스트가 닿지 않는다"고
+  말하고, 모든 응답에 "기존 테스트의 커버리지 증거가 아니다" 문장과 분석
+  `limitations`를 싣는다. 테스트 타깃이 분석 범위 밖이면 `configured-path-filter`
+  한계가 그 사실을 설명한다.
+- **문서:** `change-affected` v1(text/json). `--limit` 초과 시 전체 개수와
+  `truncated.sections == ["tests"]`.
+- **착수 전 확인:** ⑥impact 입도는 stale이었다 — 파일럿의 containing type 2건은
+  `self.` 호출의 수신 타입이 소비자로 새던 결함(`receivedBy`)이었고 "Stop treating
+  receiver types as callers"(0.14.0)로 이미 수정됐다. 고정 리비전 Alamofire(`bda9ed5`)·
+  Kingfisher(`ab1c1de`)를 빌드해 현재 바이너리로 depth 1·3 재현 → gold 소비자만 나오고
+  containing type 0건. 경쟁 갭 문서 4·6을 완료로 표시하고 2·3·5·7 표시도 함께 정리했다.
+- **검증:** 신규 테스트 13개(Kit 8·CLI 5). 변이 2종(테스트 근거 필터 제거·depth 0
+  변경 테스트 포함 제거) 각각 해당 테스트 실패. 전체 1,630개 중 실패 56건은 전부
+  샌드박스 임시 디렉터리 차단(단언 실패 0). CLI 계약(affected --help·사용 오류 6종)·
+  strict 자기 분석 4종·release 빌드 통과.
+- **CI가 잡은 것:** 새 CLI 파일이 `ImpactCommand ↔ ChangedSelectionSupport` 타입
+  순환을 만들어 `cycles --level type --strict`가 실패 — `isModeledChange`를 helper로
+  옮겨 해소(공유 시드 헬퍼는 명령 타입을 참조하지 않는다).
+- **남은 것:** affected 코퍼스 골든(코퍼스 설정이 테스트 타깃을 제외해 불가),
+  스킬 문서 안내 추가 후보.
 
 ### 완료 — ⑤ 기계적 fix
 
@@ -291,6 +326,8 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 | [Sources/CartographSyntax/ReferenceBodyScanner.swift](Sources/CartographSyntax/ReferenceBodyScanner.swift) | 본문 구간 수집 — `IndexedReference.position` 분류의 근거 |
 | [Sources/CartographSyntax/MechanicalFixer.swift](Sources/CartographSyntax/MechanicalFixer.swift) | 안전한 소스 편집 — 위치 재확인·줄 가드·재파싱 검증 |
 | [Sources/CartographKit/MechanicalFixDocument.swift](Sources/CartographKit/MechanicalFixDocument.swift) | fix 계획/적용 — 스코프·베이스라인 선별과 `mechanical-fixes` 문서 |
+| [Sources/CartographKit/AffectedDocument.swift](Sources/CartographKit/AffectedDocument.swift) | 테스트 영향 질의 — impact 배관 재사용, `change-affected` 문서 |
+| [Sources/cartograph/Affected.swift](Sources/cartograph/Affected.swift) | affected 하위 명령 — 시드 검증과 `ChangedSelectionSupport` 공유 |
 | [Fixtures/FalsePositiveCorpus/expected-bridges.json](Fixtures/FalsePositiveCorpus/expected-bridges.json) | 브리지 골든 — 출력 필드 추가 시 갱신 필요 |
 | [.github/workflows/release.yml](.github/workflows/release.yml) | 태그 검증, universal archive, 탭 갱신(토큰 없으면 조용히 건너뜀) |
 | [docs/evaluation/2026-09-16-harder-comparison.md](docs/evaluation/2026-09-16-harder-comparison.md) | 어려운 작업 재측정 근거 |
@@ -317,6 +354,13 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
   드라이런이다. 편집은 현재 소스에서 다시 찾아 검증한 것만 적용하며, 어긋나면 이유와 함께
   skip한다 — 추측한 텍스트를 쓰지 않는다. `unused-parameter`는 인자 레이블을 절대 떨어뜨리지
   않는다(둘째 이름이 없으면 `x _:`를 넣는다).
+- **확정:** `affected`는 `impact`와 같은 시드 선택·컨테이너 확장·디스패치 투영·깊이
+  제한을 쓴다. 새 질의를 만들 때도 이 배관을 복제하지 말고 공유한다 — 같은 변경에 두
+  명령이 다른 답을 내면 어느 쪽도 믿을 수 없다. 시드 파일 계산은
+  `ChangedSelectionSupport`가 유일한 구현이고, 이 헬퍼는 명령 타입을 참조하지 않는다
+  (타입 순환이 생긴다).
+- **확정:** `affected`의 빈 목록은 "테스트가 닿지 않는다"는 그래프 사실이지 커버리지
+  증거가 아니다. 렌더러가 그 문장을 항상 싣는다.
 - **확정:** `PrintableText.printable`은 기본으로 개행을 지운다 — 여러 줄 출력은 줄마다
   적용해 join해야 한다(`ImpactComparison.renderText`는 전체를 넘겨 한 줄로 뭉개는 기존
   결함이 있다 — Blockers의 후속 후보).
@@ -325,6 +369,19 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
   603+로 올릴 때.
 
 ## Verification
+
+아래 표는 **PR #114(⑦)의 근거**다.
+
+| 검사 | 결과 |
+| --- | --- |
+| `swift test`(신규·관련 26개) | 통과 — AffectedDocumentTests 8·AffectedCommandTests 5 포함 |
+| 변이 확인 | 테스트 근거 필터 제거·depth 0 변경 테스트 포함 제거 각각 해당 테스트 실패 |
+| 전체 `swift test` | 1,630개 중 실패 56건은 전부 샌드박스 임시 디렉터리 차단(단언 실패 0) |
+| `Scripts/verify-cli-contract.sh` | 통과 — affected --help·사용 오류 6종 추가 |
+| strict 자기 분석(새 인덱스) | dead·cycles·cycles type·rules 통과 — 새 CLI 타입 순환을 helper 이동으로 해소 |
+| `swift build -c release` | 통과 |
+| CI `35418799363` | Build/test/coverage·자기 분석 두 잡 통과 |
+| 갭 문서 재현 | 고정 리비전 Alamofire·Kingfisher 빌드 후 `impact` depth 1·3 → containing type 0건(⑥ stale 확인) |
 
 아래 표는 **PR #112(⑤)의 근거**다.
 
@@ -404,6 +461,9 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
   안내 보강.
 - ⑤ 후속 후보: 코퍼스 fix 골든(호스트에서 `AliasConformance.swift` 파라미터 3건이 실제
   검출됨을 확인), `cartograph fix`를 스킬 문서에 안내.
+- ⑦ 후속 후보: affected 코퍼스 골든(코퍼스 `.cartograph.yml`이 `Tests/**`를 제외해
+  테스트 타깃이 그래프에 없다 — 테스트 포함 설정이 필요), `cartograph affected`를 스킬
+  문서에 안내.
 - 별건 후보: `ImpactComparison.renderText`가 `PrintableText.printable`에 전체 문자열을
   넘겨 여러 줄 출력이 한 줄로 뭉개진다 — 줄 단위 적용으로 고칠 것.
 - 브리지 스캐너의 남은 공백: 파일 스코프 `let`을 `var` 프로퍼티 외 경로(비-init 대입)로
@@ -427,6 +487,11 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
   표면을 드러내 가드 가정을 뒤집었다 — 픽스처 판정을 바꾸면 로컬 통과만 믿지 않는다.
 - 착수 전에 갭 문서와 릴리스 이력을 대조한다. ④로 기록된 `impact --before` 제거 간선은
   이미 0.17.0의 `scopeDiff`(PR #93)로 완료돼 있었다 — 경쟁 갭 문서가 stale이었다.
+- 갭 문서의 평가 기록은 **현재 바이너리로 재현해 확인한다.** ⑥의 "containing type" 2건은
+  평가 시점의 `receivedBy` 결함이었고 이후 버전에서 이미 사라졌는데, 문서만 보고 착수하면
+  없던 기능을 다시 만들게 된다. 고정 리비전을 빌드해 결과를 재현하는 비용이 더 싸다.
+- 공유 헬퍼는 명령 타입을 참조하지 않는다 — `ImpactCommand ↔ ChangedSelectionSupport`
+  자기 순환이 생겨 `cycles --level type --strict`가 잡았다(⑤의 중첩 방문자와 같은 부류).
 - 여러 줄 사람용 출력을 `PrintableText.printable`에 통째로 넘기지 않는다. 기본값이 개행을
   지워 한 줄로 뭉개진다(⑤에서 발견). 줄마다 적용해 join한다.
 
@@ -478,30 +543,31 @@ Goal 섹션의 갭 순서(③~⑩)는 그대로 두고, 아래는 그 순서에 
    provenance 태그 아이디어는 빌리되, 증명 못 한 간선을 합성하려는 의지는 빌리지 않는다.
 
 ### 권장 착수 순서
-C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) → C3(중). 기존 갭 ⑥~⑩과의 병합은 메인테이너 판단.
+C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) → C3(중). 기존 갭 ⑧~⑩과의 병합은 메인테이너 판단.
 
 ## Next Steps
 
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
 2. ②불필요 ignore는 PR #107(`66037f8`), ③불필요 public은 PR #110(`711a2b4`), ⑤기계적 fix는
-   PR #112(`1bd0cf7`)로 머지 완료. ④impact --before 제거 간선은 0.17.0의 `scopeDiff`(PR #93)
-   로 이미 완료돼 있었다 — 갭 문서 4번은 stale이다. 다음 기본 순서는 ⑥impact 입도지만,
+   PR #112(`1bd0cf7`), ⑦테스트 영향은 PR #114(`49ce665`)로 머지 완료. ④impact --before 제거
+   간선은 `scopeDiff`(PR #93), ⑥impact 입도는 수신 타입 호출자 결함 수정(0.14.0)으로 이미
+   완료돼 있었다 — 갭 문서 4·6은 완료로 정리했다. 다음 기본 순서는 ⑧공식 GitHub Action이지만,
    아래 "경쟁 조사 — codegraph 대비 개선점" 섹션의 후보(C1~C5·S1~S6)와 병합 여부는
    메인테이너 판단이다 — 권장 착수 순서는 그 섹션 끝에 있다.
-3. 이후 순서: ⑥impact 입도 → ⑦테스트 영향 → ⑧GitHub Action → ⑨equatable 옵션.
-   ⑩런타임 텔레메트리는 연구 전용 보류.
+3. 이후 순서: ⑧GitHub Action → ⑨equatable 옵션. ⑩런타임 텔레메트리는 연구 전용 보류.
 4. 브리지 `sourceCache` 최적화는 동일 소스 스냅샷 보존 조건에서 검토한다. 근거 없이 제거하지
    않으며, 입증되지 않으면 메모리 계측 결과부터 확보한다.
 
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
-0.18.0 릴리스와 PR #104·#106·#107·#110·#112는 전부 머지·배포됐습니다. 경쟁 갭 목록의
+0.18.0 릴리스와 PR #104·#106·#107·#110·#112·#114는 전부 머지·배포됐습니다. 경쟁 갭 목록의
 ②불필요 ignore는 PR #107(`66037f8`), ③불필요 public은 PR #110(`711a2b4`), ⑤기계적 fix는
-PR #112(`1bd0cf7`)로 완료됐습니다. ④impact --before 제거 간선은 0.17.0의 `scopeDiff`
-(PR #93)로 이미 완료돼 있었습니다 — 경쟁 갭 문서 4번은 stale입니다.
-다음은 ⑥impact 입도입니다 — 아직 브랜치가 없습니다. 단, HANDOFF의 "경쟁 조사 — codegraph
-대비 개선점" 섹션에 메인테이너가 정리한 우선 후보(C1~C5·S1~S6와 권장 착수 순서)가 있으니
-⑥과의 병합 순서를 먼저 확인하세요. ③·⑤의 남은 후속(코퍼스 골든, `--no-retain-public`,
+PR #112(`1bd0cf7`), ⑦테스트 영향은 PR #114(`49ce665`)로 완료됐습니다. ④impact --before 제거
+간선은 `scopeDiff`(PR #93), ⑥impact 입도는 수신 타입 호출자 결함 수정(0.14.0)으로 **이미**
+완료돼 있었습니다 — 경쟁 갭 문서 4·6은 stale이었고 완료로 정리했습니다.
+다음은 ⑧공식 GitHub Action입니다 — 아직 브랜치가 없습니다. 단, HANDOFF의 "경쟁 조사 —
+codegraph 대비 개선점" 섹션에 메인테이너가 정리한 우선 후보(C1~C5·S1~S6와 권장 착수 순서)가
+있으니 ⑧과의 병합 순서를 먼저 확인하세요. ③·⑤·⑦의 남은 후속(코퍼스 골든, 스킬 안내,
 impact text 렌더러 개행 결함)은 Blockers에 있습니다. 완료된 배포·검증을 반복하지 마세요.
 나머지 갭 순서는 Goal 섹션에 있습니다.
