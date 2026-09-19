@@ -1,6 +1,10 @@
 # Handoff
 
-_Last updated: 2026-09-19 by opencode_
+_Last updated: 2026-09-20 (PR #123 머지·CI 통과, main `5c43c36`; 브리지 확장은 미발행)_
+
+재개 시 [Current Status](#current-status) → [Next Steps](#next-steps) →
+[Resume Prompt](#resume-prompt)를 읽는다. 아래 Goal과 날짜별 완료·검증·배포 기록은 당시의
+범위를 설명하며, 이번 미발행 변경의 현재 상태는 Current Status 첫 항목을 우선한다.
 
 ## Goal
 
@@ -28,6 +32,34 @@ formula가 0.19.0을 가리킨다.
 (`6bbf766`, 리뷰 head `be7af2a`, CI 녹색). 브리지 `sourceCache` 최적화는 미착수 보류다.
 
 ## Current Status
+
+### 완료 — 자매 브리지 확장 (2026-09-20, PR #123)
+
+- [PR #123](https://github.com/ictechgy/cartograph/pull/123)을 squash merge했다(`5c43c36`).
+  로컬 `main`과 원격 `main`이 같고 머지 트리는 검토·CI를 통과한 PR head와 일치한다.
+  이 HANDOFF는 해당 머지의 인계 기록이다.
+- `.m`/`.mm`의 Clang 선언·참조를 일반 그래프에 포함하고 RN 구현 매크로에 실제 USR를
+  연결한다. 같은 줄의 보조 class method와 instance method를 구분하며, 다른 파일의 선언이나
+  셀렉터 이름으로 ID를 추측하지 않는다. isthmus의 ObjC retention이 실제 정점까지 연결된다.
+- `bridges --rn-events`는 직접 Swift RCTEventEmitter 하위 타입의 방출을 v2
+  `react-native-event`로 낸다. 조건부 import/본문·extension·파일 단위 가림·읽기 실패로
+  관찰하지 못한 범위를 limitations에 남긴다. ObjC/Expo 이벤트·간접 emitter·전체 앱 실행은
+  이번 정적 추출 범위에 포함되지 않는다.
+- [CI run 35453717002](https://github.com/ictechgy/cartograph/actions/runs/35453717002)의
+  coverage와 자기 분석 잡 모두 성공했다. 앞선 로컬 검증은 테스트 1,647개·coverage 92.84%,
+  CLI·실제 compiler fixture·strict 자기 분석 4종 통과다. Clang→ObjC retention→explain,
+  JS/Swift/Kotlin RN 이벤트 조인, Dart/Swift 왕복·limitation-scopes·고정 공개 battery
+  플러그인의 macOS retention도 isthmus 하네스로 검증했다.
+- GLM은 packet-ask 패킷 `0d5b0f1cd8cc`와 수정분 `125112deba78`로 검토했다.
+  [반영·기각 근거](https://github.com/ictechgy/cartograph/pull/123#issuecomment-5743320171)를
+  PR에 남겼다. 이전 임시 로그 경로의 존재를 가정하지 말고 PR/CI를 근거로 사용한다.
+- 동반 머지: isthmus [#96](https://github.com/ictechgy/isthmus/pull/96), kartograph
+  [#82](https://github.com/ictechgy/kartograph/pull/82), dartograph
+  [#127](https://github.com/ictechgy/dartograph/pull/127).
+  계약은 [GRAPH-EXCHANGE](../isthmus/docs/GRAPH-EXCHANGE.md), 전체 실행 기록은
+  [isthmus HANDOFF](../isthmus/HANDOFF.md)를 참조한다.
+- 이번 구현·검증·머지의 남은 작업은 없다. 새 태그/배포는 하지 않았고, 이 변경을 기존
+  0.19.0 발행본에 포함된 기능으로 설명하지 않는다. 브리지 `sourceCache` 최적화는 여전히 별도 후보다.
 
 ### 완료 — ⑨ Equatable/Hashable 저장 프로퍼티 보존
 
@@ -568,7 +600,8 @@ ultra-review 3라운드 반영까지 전 게이트·CI 통과 후 머지. 아래
 - 별건 후보: `ImpactComparison.renderText`가 `PrintableText.printable`에 전체 문자열을
   넘겨 여러 줄 출력이 한 줄로 뭉개진다 — 줄 단위 적용으로 고칠 것.
 - 브리지 스캐너의 남은 공백: 파일 스코프 `let`을 `var` 프로퍼티 외 경로(비-init 대입)로
-  채우는 형태, Objective-C 전용 플러그인 핸들러.
+  채우는 형태와 RN 매크로 외 Objective-C 플러그인 핸들러 추출. PR #123의 Clang 그래프·
+  RN 매크로 ID 지원은 일반적인 Objective-C 핸들러 스캔의 완전성을 뜻하지 않는다.
 
 ## What Worked / Avoid
 
@@ -656,6 +689,9 @@ C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) �
 
 ## Next Steps
 
+자매 브리지 확장 PR #123과 동반 세 PR은 모두 머지됐고 추가 구현·리뷰 대기는 없다.
+해당 기능은 미발행 상태이며 릴리스나 아래 후보 착수는 최신 사용자 요청 범위를 따른다.
+
 1. `git status --short --branch`, `git worktree list`, `git diff`로 미커밋 변경을 확인한다.
 2. **0.19.0 릴리스 완료**(태그 `0.19.0`, 릴리스 워크플로 `35435788783`, asset sha256
    `4079e4f9…c0424e3`). Homebrew 탭 [PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)도
@@ -671,6 +707,9 @@ C4(소) → S1·S2(소, 문서) → C1(중) → C2(중) → S3 플래그(중) �
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 `HANDOFF.md`와 적용되는 `AGENTS.md`를 읽으세요.
+현재 main은 `5c43c36`(PR #123)입니다. Clang ObjC 그래프/보존 연결과 Swift RN 이벤트 추출은
+CI·GLM·자매 왕복 검증을 거쳐 머지됐지만 아직 새 릴리스로 발행하지 않았습니다.
+Current Status의 첫 절과 실제 Git 상태를 먼저 확인하고, 이 HANDOFF의 로컬 수정도 보존하세요.
 0.19.0이 릴리스됐습니다(태그 `0.19.0`, 워크플로 `35435788783`, asset sha256 `4079e4f9…c0424e3`).
 Homebrew 탭 [PR #48](https://github.com/ictechgy/homebrew-tap/pull/48)도 머지됐습니다(`1a8f707`).
 `brew upgrade`·`brew test`는 호스트에서 확인하세요.
