@@ -324,6 +324,37 @@ Data.UserRepository is reachable:
   Presentation.HomeView → Domain.UserService → Data.UserRepository
 ```
 
+### `fix` — 안전한 기계적 수정 적용
+
+```bash
+cartograph fix                      # 계획만 출력; 파일을 쓰지 않음
+cartograph fix --apply              # 수정을 기록
+cartograph fix --since origin/main  # 바뀐 파일의 발견만
+```
+
+기계적으로 고칠 수 있는 경고는 딱 두 종류입니다. `unused-import`는 import 선언을 지우고,
+`unused-parameter`는 파라미터의 내부 이름을 없애되 인자 레이블은 유지합니다
+(`func f(retry:)`는 `func f(retry _:)`가 됩니다 — 레이블은 절대 떨어지지 않습니다).
+`dead`가 보고하는 나머지는 사람의 판단이 필요합니다.
+
+기본은 드라이런입니다. 편집은 위치로 밀어 넣지 않고 **지금 소스**에서 다시 찾습니다:
+기록된 자리의 선언이 요청과 일치해야 하고, import 줄에 다른 코드가 없어야 하며,
+고쳐 쓴 파일이 다시 파싱되어야 씁니다. 이 검사를 통과하지 못한 편집은 추측하지 않고
+이유와 함께 건너뜁니다. 쓰기는 파일 단위로 원자적이고, 베이스라인이 이미 받아들였거나
+`--since` 범위 밖인 발견은 건드리지 않습니다. `--apply` 없이 `--strict`를 주면 계획이
+남아 있는 동안 실패하고, `--apply`와 함께면 건너뛴 편집이 있을 때만 실패합니다.
+
+```console
+$ cartograph fix
+Sources/Net/Client.swift:3:1: import 'Combine' is never used
+Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.Client.fetch(_:retry:)' is never used
+2 fix(es) in 1 file(s) — dry run; pass --apply to write
+```
+
+새로 빌드한 인덱스에서 돌리세요. 계획은 `dead`가 읽는 같은 인덱스에서 나오고, 인덱스가
+낡으면 편집이 잘못된 자리에 가지 않고 건너뛰어집니다. `--format json`은 각 편집의 파일·위치·
+규칙·대체 텍스트를 담은 `mechanical-fixes` 문서를 돌려줍니다.
+
 ### `query` — 선언 하나에 대해 되묻기
 
 ```bash

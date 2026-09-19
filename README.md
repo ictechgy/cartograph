@@ -330,6 +330,38 @@ Data.UserRepository is reachable:
   Presentation.HomeView → Domain.UserService → Data.UserRepository
 ```
 
+### `fix` — apply the safe mechanical fixes
+
+```bash
+cartograph fix                      # print the plan; writes nothing
+cartograph fix --apply              # write the fixes
+cartograph fix --since origin/main  # only findings in changed files
+```
+
+Two warning classes are mechanically fixable, and only those two: `unused-import` removes the
+import declaration, and `unused-parameter` drops the parameter's internal name while keeping its
+argument label (`func f(retry:)` becomes `func f(retry _:)` — the label is never dropped).
+Everything else that `dead` reports needs a human decision.
+
+The default is a dry run. Every edit is looked up in the current source rather than applied by
+position: the declaration at the recorded location must still match, an import line must not carry
+other code, and the rewritten file must re-parse before anything is written. Anything that fails
+those checks is reported as skipped with a reason instead of guessed at. Writes are atomic per
+file, and findings already accepted in the baseline or outside `--since` are left alone. Without
+`--apply`, `--strict` fails while the plan is non-empty; with `--apply` it fails only when an edit
+had to be skipped.
+
+```console
+$ cartograph fix
+Sources/Net/Client.swift:3:1: import 'Combine' is never used
+Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.Client.fetch(_:retry:)' is never used
+2 fix(es) in 1 file(s) — dry run; pass --apply to write
+```
+
+Run it on a fresh build: the plan comes from the same index `dead` reads, and a stale index makes
+edits get skipped rather than misplaced. `--format json` returns the `mechanical-fixes` document
+with each edit's file, position, rule and replacement text.
+
 ### `query` — ask about one declaration
 
 ```bash

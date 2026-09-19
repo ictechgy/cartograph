@@ -9,6 +9,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cartograph fix` plans and applies the safe mechanical fixes for two warning classes:
+  `unused-import` removes the import declaration, and `unused-parameter` drops the parameter's
+  internal name while keeping its argument label. The default is a dry run that writes nothing;
+  `--apply` edits the files, atomically per file. Every edit is re-located in the current source
+  (the declaration at the recorded position must still match), an import line must not carry other
+  code, and the rewritten file must re-parse before it is written — anything else is reported as
+  skipped with a reason instead of guessed at. Baseline-suppressed findings and findings outside
+  `--since` are left alone. Without `--apply`, `--strict` fails while the plan is non-empty; with
+  `--apply` it fails only when an edit had to be skipped. `--format json` returns the
+  `mechanical-fixes` document.
 - `dead` reports public declarations whose references all come from their own module, as warnings
   under the `redundant-public` rule. The check asks two conservative questions: does any reference
   come from another module, and is the declaration mentioned in the interface of another public
