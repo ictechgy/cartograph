@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-19
+
 ### Added
 
 - `retain_equatable_properties` and `retain_hashable_properties` retention options (both on by
@@ -1197,7 +1199,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.18.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.19.0...HEAD
+[0.19.0]: https://github.com/ictechgy/cartograph/compare/0.18.0...0.19.0
 [0.18.0]: https://github.com/ictechgy/cartograph/compare/0.17.0...0.18.0
 [0.17.0]: https://github.com/ictechgy/cartograph/compare/0.16.0...0.17.0
 [0.16.0]: https://github.com/ictechgy/cartograph/compare/0.15.1...0.16.0
