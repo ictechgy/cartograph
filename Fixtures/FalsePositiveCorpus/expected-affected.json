@@ -1,0 +1,100 @@
+{
+  "changeScope": [
+    {
+      "accessibility": "public",
+      "kind": "function",
+      "location": {
+        "column": 13,
+        "line": 31,
+        "path": "<project>/Sources/Corpus/Names.swift"
+      },
+      "module": "Corpus",
+      "name": "onlyTestsCallThis()",
+      "qualifiedName": "Corpus.onlyTestsCallThis()",
+      "usr": "s:6Corpus17onlyTestsCallThisSiyF"
+    }
+  ],
+  "format": "change-affected",
+  "level": "symbol",
+  "limitations": [
+    "objective-c-sources: 1 file(s); the graph uses available Clang index evidence, while runtime dispatch and unindexed source paths may be absent",
+    "local-function-projection: 1 source local function(s) could not be bound through a fresh, unambiguous call/reference chain; their indexed references remain attributed to enclosing declarations. Inspect source for exact local ownership."
+  ],
+  "requestedFiles": [],
+  "requestedSymbols": [
+    "onlyTestsCallThis"
+  ],
+  "selected": [
+    {
+      "accessibility": "public",
+      "kind": "function",
+      "location": {
+        "column": 13,
+        "line": 31,
+        "path": "<project>/Sources/Corpus/Names.swift"
+      },
+      "module": "Corpus",
+      "name": "onlyTestsCallThis()",
+      "qualifiedName": "Corpus.onlyTestsCallThis()",
+      "usr": "s:6Corpus17onlyTestsCallThisSiyF"
+    }
+  ],
+  "selectionIssues": [],
+  "status": "found",
+  "summary": {
+    "affectedSymbols": 4,
+    "changeScopeSymbols": 1,
+    "changedTestCount": 0,
+    "moduleCount": 1,
+    "modules": [
+      "CorpusTests"
+    ],
+    "testCount": 1,
+    "testFileCount": 1,
+    "testFiles": [
+      "<project>/Tests/CorpusTests/CorpusTests.swift"
+    ],
+    "unresolvedInputs": 0
+  },
+  "tests": [
+    {
+      "depth": 1,
+      "edges": [
+        "call"
+      ],
+      "relationship": "dependent",
+      "symbol": {
+        "accessibility": "internal",
+        "kind": "function",
+        "location": {
+          "column": 12,
+          "line": 4,
+          "path": "<project>/Tests/CorpusTests/CorpusTests.swift"
+        },
+        "module": "CorpusTests",
+        "name": "exercisesTestOnlyCode()",
+        "qualifiedName": "CorpusTests.exercisesTestOnlyCode()",
+        "usr": "s:11CorpusTests21exercisesTestOnlyCodeyyF"
+      },
+      "via": {
+        "accessibility": "public",
+        "kind": "function",
+        "location": {
+          "column": 13,
+          "line": 31,
+          "path": "<project>/Sources/Corpus/Names.swift"
+        },
+        "module": "Corpus",
+        "name": "onlyTestsCallThis()",
+        "qualifiedName": "Corpus.onlyTestsCallThis()",
+        "usr": "s:6Corpus17onlyTestsCallThisSiyF"
+      }
+    }
+  ],
+  "truncated": {
+    "depth": false,
+    "output": false,
+    "sections": []
+  },
+  "version": 1
+}

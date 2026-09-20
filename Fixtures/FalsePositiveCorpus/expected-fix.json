@@ -1,0 +1,41 @@
+{
+  "applied": false,
+  "editCount": 3,
+  "edits": [
+    {
+      "column": 21,
+      "file": "<project>/Sources/Corpus/AliasConformance.swift",
+      "line": 9,
+      "message": "parameter 'context' of 'Corpus.makeNSView(context:)' is never used",
+      "replacement": "context _",
+      "rule": "unused-parameter"
+    },
+    {
+      "column": 25,
+      "file": "<project>/Sources/Corpus/AliasConformance.swift",
+      "line": 10,
+      "message": "parameter 'nsView' of 'Corpus.updateNSView(_:context:)' is never used",
+      "replacement": "_",
+      "rule": "unused-parameter"
+    },
+    {
+      "column": 41,
+      "file": "<project>/Sources/Corpus/AliasConformance.swift",
+      "line": 10,
+      "message": "parameter 'context' of 'Corpus.updateNSView(_:context:)' is never used",
+      "replacement": "context _",
+      "rule": "unused-parameter"
+    }
+  ],
+  "fileCount": 1,
+  "format": "mechanical-fixes",
+  "limitations": [
+    "objective-c-sources: 1 file(s); the graph uses available Clang index evidence, while runtime dispatch and unindexed source paths may be absent",
+    "local-function-projection: 1 source local function(s) could not be bound through a fresh, unambiguous call/reference chain; their indexed references remain attributed to enclosing declarations. Inspect source for exact local ownership."
+  ],
+  "project": "<project>",
+  "skipped": [],
+  "skippedCount": 0,
+  "suppressedCount": 0,
+  "version": 1
+}

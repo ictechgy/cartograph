@@ -53,6 +53,38 @@ traversal alone cannot surface an edge removed between two changed files. Use fu
 `check --strict` for CI;
 report scoping is not incremental analysis or a proof about everything a PR caused.
 
+## Choose tests and mechanical fixes
+
+After building the production and test targets, use one selector to find test consumers:
+
+```bash
+cartograph affected <name-or-USR> --format json
+cartograph affected --file Sources/Feature.swift --format json
+```
+
+Read `tests`, `selectionIssues`, `limitations`, and `truncated` together. Tests must be
+indexed and included by the configured path filters. An empty list means no test consumer
+was found in this graph; it is not test coverage or permission to skip validation. Run the
+relevant tests and add regression coverage for the behavior being changed.
+
+For unused imports and parameter names, inspect a mechanical edit plan first:
+
+```bash
+cartograph fix --format json
+# Apply only when these edits are within the user's requested scope:
+cartograph fix --apply --format json
+```
+
+The default writes nothing. Review `edits`, `skipped`, and `limitations`; application removes
+unused imports or internal parameter names while preserving argument labels. It does not
+delete declarations or reduce public accessibility. Rebuild after applying and rerun the
+relevant analysis and tests; a parsing check alone does not verify behavior. Do not force
+skipped edits against a stale index.
+
+`redundant-public` describes references observed within this repository. Before reducing
+visibility, check external library consumers and public interface requirements. With
+`retain_public: true` the rule stays silent because that public surface is intentional.
+
 ## Efficient MCP queries
 
 When a Cartograph MCP server is connected, reuse it instead of launching one process per

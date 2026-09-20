@@ -124,10 +124,22 @@ surface in `expected-unused.txt`. `FileIgnored.swift` carries `cartograph:ignore
 file whose only declaration is used, producing one file-scope diagnostic instead of one per
 declaration. The full list lives in `expected-superfluous-ignore.txt`.
 
-## Redundant public accessibility stays quiet under retention
+## Public accessibility, mechanical fixes and test impact
 
 `Scripts/verify-fixtures.sh` asserts that `redundant-public` reports nothing under
 `--retain-public`. That mode declares the public surface intentional, so the rule must fall silent
-instead of listing every public member the module reads itself. The default mode is not pinned
-here: the corpus legitimately contains public surface used only inside the module (for example the
-`InheritedAccessHost` the public extension APIs hang off), and the rule is allowed to say so.
+instead of listing every public member the module reads itself. The default mode is pinned in
+`expected-redundant-public.json`: seven complete diagnostics, including source locations and USRs,
+cover actual same-module references in the existing accessor, enum, name, inherited-access and
+SwiftUI wrapper cases. Cross-module and public-interface dependencies remain absent from that list.
+
+`expected-fix.json` records the three parameter-name edits in Kingfisher's alias-conformance
+reproduction. `verify-corpus-commands.py` checks the entire plan and verifies that a dry run leaves
+all Swift source bytes unchanged. No fixture is edited by `fix --apply`.
+
+`expected-affected.json` pins the real `CorpusTests.exercisesTestOnlyCode()` consumer of
+`onlyTestsCallThis()`. The changed-test and empty-result goldens separately cover a directly selected
+test at depth zero and a production function with no test consumer. The fixture has no configuration
+excluding tests; `--build-tests` provides their index. An explicit temporary configuration excludes
+`Tests/**` to verify that an empty test list then includes the path-filter limitation. These are
+compiler-backed command contracts, not claims about test coverage.

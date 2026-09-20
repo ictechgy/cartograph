@@ -1,0 +1,62 @@
+{
+  "changeScope": [
+    {
+      "accessibility": "public",
+      "kind": "function",
+      "location": {
+        "column": 13,
+        "line": 2,
+        "path": "<project>/Sources/Corpus/Accessors.swift"
+      },
+      "module": "Corpus",
+      "name": "calledOnlyFromGetter()",
+      "qualifiedName": "Corpus.calledOnlyFromGetter()",
+      "usr": "s:6Corpus20calledOnlyFromGetterSiyF"
+    }
+  ],
+  "format": "change-affected",
+  "level": "symbol",
+  "limitations": [
+    "objective-c-sources: 1 file(s); the graph uses available Clang index evidence, while runtime dispatch and unindexed source paths may be absent",
+    "local-function-projection: 1 source local function(s) could not be bound through a fresh, unambiguous call/reference chain; their indexed references remain attributed to enclosing declarations. Inspect source for exact local ownership."
+  ],
+  "requestedFiles": [],
+  "requestedSymbols": [
+    "calledOnlyFromGetter"
+  ],
+  "selected": [
+    {
+      "accessibility": "public",
+      "kind": "function",
+      "location": {
+        "column": 13,
+        "line": 2,
+        "path": "<project>/Sources/Corpus/Accessors.swift"
+      },
+      "module": "Corpus",
+      "name": "calledOnlyFromGetter()",
+      "qualifiedName": "Corpus.calledOnlyFromGetter()",
+      "usr": "s:6Corpus20calledOnlyFromGetterSiyF"
+    }
+  ],
+  "selectionIssues": [],
+  "status": "found",
+  "summary": {
+    "affectedSymbols": 2,
+    "changeScopeSymbols": 1,
+    "changedTestCount": 0,
+    "moduleCount": 0,
+    "modules": [],
+    "testCount": 0,
+    "testFileCount": 0,
+    "testFiles": [],
+    "unresolvedInputs": 0
+  },
+  "tests": [],
+  "truncated": {
+    "depth": false,
+    "output": false,
+    "sections": []
+  },
+  "version": 1
+}

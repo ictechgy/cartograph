@@ -1,0 +1,86 @@
+[
+  {
+    "details": [],
+    "location": {
+      "column": 13,
+      "line": 2,
+      "path": "Sources/Corpus/Accessors.swift"
+    },
+    "message": "function 'Corpus.calledOnlyFromGetter()' is referenced only within its own module (1 reference) — it could be internal",
+    "ruleIdentifier": "redundant-public",
+    "severity": "warning",
+    "subject": "s:6Corpus20calledOnlyFromGetterSiyF"
+  },
+  {
+    "details": [],
+    "location": {
+      "column": 13,
+      "line": 3,
+      "path": "Sources/Corpus/Accessors.swift"
+    },
+    "message": "function 'Corpus.calledOnlyFromWillSet()' is referenced only within its own module (1 reference) — it could be internal",
+    "ruleIdentifier": "redundant-public",
+    "severity": "warning",
+    "subject": "s:6Corpus21calledOnlyFromWillSetSiyF"
+  },
+  {
+    "details": [],
+    "location": {
+      "column": 13,
+      "line": 2,
+      "path": "Sources/Corpus/Enums.swift"
+    },
+    "message": "enum 'Corpus.Mode' is referenced only within its own module (1 reference) — it could be internal",
+    "ruleIdentifier": "redundant-public",
+    "severity": "warning",
+    "subject": "s:6Corpus4ModeO"
+  },
+  {
+    "details": [],
+    "location": {
+      "column": 12,
+      "line": 13,
+      "path": "Sources/Corpus/InheritedAccess.swift"
+    },
+    "message": "init 'Corpus.init()' is referenced only within its own module (1 reference) — it could be internal",
+    "ruleIdentifier": "redundant-public",
+    "severity": "warning",
+    "subject": "s:6Corpus19InheritedAccessHostVACycfc"
+  },
+  {
+    "details": [],
+    "location": {
+      "column": 16,
+      "line": 3,
+      "path": "Sources/Corpus/Names.swift"
+    },
+    "message": "property 'Corpus.amount' is referenced only within its own module (4 references) — it could be internal",
+    "ruleIdentifier": "redundant-public",
+    "severity": "warning",
+    "subject": "s:6Corpus5MoneyV6amountSivp"
+  },
+  {
+    "details": [],
+    "location": {
+      "column": 16,
+      "line": 21,
+      "path": "Sources/Corpus/Names.swift"
+    },
+    "message": "property 'Corpus.scale' is referenced only within its own module (2 references) — it could be internal",
+    "ruleIdentifier": "redundant-public",
+    "severity": "warning",
+    "subject": "s:6Corpus6ScreenV5scaleSdvp"
+  },
+  {
+    "details": [],
+    "location": {
+      "column": 15,
+      "line": 8,
+      "path": "Sources/Corpus/PropertyWrappers.swift"
+    },
+    "message": "struct 'Corpus.Child' is referenced only within its own module (1 reference) — it could be internal",
+    "ruleIdentifier": "redundant-public",
+    "severity": "warning",
+    "subject": "s:6Corpus5ChildV"
+  }
+]

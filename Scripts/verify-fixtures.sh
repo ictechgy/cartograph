@@ -29,8 +29,9 @@ SWIFTPM_FLAGS="${SWIFTPM_FLAGS:-}"
 echo "픽스처를 빌드합니다(인덱스 스토어가 필요합니다)."
 swift build --package-path "$FIXTURE" --build-tests $SWIFTPM_FLAGS >/dev/null
 
-# 캐시가 결과를 가리지 않도록 매번 새로 분석한다. 캐시 자체는 별도 테스트가 있다.
-rm -rf "${TMPDIR:-/tmp}/cartograph-syntax-cache"
+# 다른 실행의 캐시를 지우지 않고 이 검증만 독립된 임시 캐시를 사용한다.
+# 실패 근거도 같은 경로에 남아 후속 조사에서 재사용할 수 있다.
+export TMPDIR="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-fixtures.XXXXXX")/"
 
 actual_unused="$(
     "$CARTOGRAPH" dead --project "$FIXTURE" --report-format json 2>/dev/null |
@@ -112,8 +113,8 @@ echo "  ok  --retain-public 보고가 기대와 일치(public 선언의 접근 �
 
 # retain_public 은 공개 표면이 의도된 것이라는 선언이다. 이 규칙은 그 모드에서
 # 침묵해야 한다 — 라이브러리는 자기 API 를 모듈 안에서 읽으므로, 침묵하지 않으면
-# 표면 전체가 보고된다. 기본 모드는 표면 구성에 따라 발견이 달라질 수 있어
-# 여기서 고정하지 않는다(코퍼스에는 모듈 안에서만 쓰이는 public 표면이 있다).
+# 표면 전체가 보고된다. 기본 모드의 전체 검출 목록은 아래 Python 하네스가
+# 별도 골든으로 고정해, 규칙 자체가 사라져도 검증이 실패하도록 한다.
 actual_redundant="$(
     "$CARTOGRAPH" dead --project "$FIXTURE" --retain-public --report-format json 2>/dev/null |
         python3 -c "
@@ -129,6 +130,8 @@ if [ -n "$actual_redundant" ]; then
     exit 1
 fi
 echo "  ok  redundant-public 이 --retain-public 에서 조용함(공개 표면은 의도된 것)"
+
+python3 "$REPO_ROOT/Scripts/verify-corpus-commands.py" "$CARTOGRAPH" "$FIXTURE"
 
 # 언어 경계. 스캐너가 구문에서 뽑은 사실에 진짜 인덱스의 USR 이 붙는지는 여기서만 확인된다.
 # 생성 시각·도구 버전·절대 경로는 실행마다 다르므로 자리 표시자로 바꿔 통째로 비교한다.
