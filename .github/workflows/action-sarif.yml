@@ -1,0 +1,106 @@
+name: Action SARIF integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'feature/action-*']
+    paths:
+      - action.yml
+      - .github/workflows/action-sarif.yml
+      - Fixtures/FalsePositiveCorpus/**
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select the newest Xcode
+        run: |
+          latest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          swift --version
+
+      - name: Build the indexed corpus
+        run: swift build --package-path Fixtures/FalsePositiveCorpus --build-tests
+
+      # 코퍼스의 실제 발견을 업로드해야 빈 리포트 성공과 구별할 수 있다.
+      - name: Analyze and upload through the composite action
+        id: cartograph
+        uses: ./
+        with:
+          version: 0.20.0
+          project: Fixtures/FalsePositiveCorpus
+          build: none
+          command: dead
+          fail-on-findings: "false"
+          sarif-file: cartograph-corpus.sarif
+
+      - name: Require nonempty uploaded results
+        env:
+          REPORT: ${{ steps.cartograph.outputs.sarif-file }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = json.loads(Path(os.environ['REPORT']).read_text())
+          assert report['version'] == '2.1.0'
+          results = [result for run in report['runs'] for result in run['results']]
+          assert results, 'The integration probe must upload actual findings'
+          print(f'SARIF findings: {len(results)}')
+          PY
+
+      - name: Verify GitHub accepted the analysis
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SARIF_ID: ${{ steps.cartograph.outputs.sarif-id }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, time
+          from urllib.parse import quote
+          from pathlib import Path
+          repo, sha = os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_SHA']
+          receipt = os.environ['SARIF_ID']
+          assert receipt, 'The upload action returned no SARIF receipt'
+          def get(path):
+              return json.loads(subprocess.check_output(['gh', 'api', path], text=True))
+          for attempt in range(12):
+              status = get(f'repos/{repo}/code-scanning/sarifs/{receipt}')
+              if status['processing_status'] != 'pending':
+                  break
+              time.sleep(5)
+          assert status['processing_status'] == 'complete', status
+          expected = sum(len(run['results']) for run in json.loads(Path('cartograph-corpus.sarif').read_text())['runs'])
+          analyses = get(f'repos/{repo}/code-scanning/analyses?per_page=100')
+          matches = [item for item in analyses if item['commit_sha'] == sha
+                     and item['tool']['name'] == 'cartograph' and item['category'].rstrip('/') == 'cartograph']
+          assert len(matches) == 1, matches
+          analysis = matches[0]
+          assert analysis['results_count'] == expected and not analysis['error'], analysis
+          evidence = {key: analysis[key] for key in
+                      ['id', 'commit_sha', 'ref', 'category', 'results_count', 'rules_count', 'error', 'warning', 'tool']}
+          evidence.update(sarifID=receipt, processingStatus=status['processing_status'])
+          alerts = get(f'repos/{repo}/code-scanning/alerts?ref={quote(os.environ["GITHUB_REF"], safe="")}&per_page=100')
+          paths = sorted({alert['most_recent_instance']['location']['path'] for alert in alerts
+                          if alert['tool']['name'] == 'cartograph'})
+          assert paths and all(path.startswith('Fixtures/FalsePositiveCorpus/') and Path(path).is_file()
+                               for path in paths), paths
+          evidence['alertPaths'] = paths
+          Path('cartograph-sarif-acceptance.json').write_text(json.dumps(evidence, indent=2, sort_keys=True) + '\n')
+          print(json.dumps(evidence, indent=2, sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: cartograph-corpus-sarif
+          path: |
+            cartograph-corpus.sarif
+            cartograph-sarif-acceptance.json
+          retention-days: 7

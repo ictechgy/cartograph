@@ -1344,11 +1344,12 @@ jobs:
       - uses: ictechgy/cartograph@0.20.0
         with:
           command: check
-          since: ${{ github.event.pull_request.base.sha || github.event.before }}
+          version: 0.20.0
+          args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-Pin the action to a release tag once one includes `action.yml` (`@main` tracks the development
-branch). Inputs:
+The `0.20.0` tag includes `action.yml`. Pin both the action revision and the downloaded binary
+version for a repeatable setup (`@main` tracks the development branch). Inputs:
 
 | Input | Default | Meaning |
 |---|---|---|
@@ -1362,10 +1363,15 @@ branch). Inputs:
 | `upload-sarif` | `true` | Upload to code scanning (requires `security-events: write`) |
 | `fail-on-findings` | `true` | `false` reports without failing the step |
 
-Outputs: `exit-code` (`0` success, `1` findings, `2` tool failure) and `sarif-file`. The action
+Outputs: `exit-code` (the raw CLI code, including `64` for usage errors) and `sarif-file`. The action
 fails with a clear message on a non-macOS runner, because the tool loads `libIndexStore` from the
 Xcode toolchain. Building with `xcodebuild`? Set `build: none` and either pass your binary through
 `binary` or install Cartograph yourself and keep the manual commands below.
+
+The development action rejects unexpected exit codes and missing reports, and never uploads a
+report left by an earlier invocation. These fixes are not part of the existing `0.20.0` action tag.
+The [integration workflow](.github/workflows/action-sarif.yml) uploads actual corpus findings;
+[validation notes](docs/ACTION-CORPUS-CACHE.md) distinguish local checks from GitHub acceptance.
 
 Without the action, the same gate is two commands:
 

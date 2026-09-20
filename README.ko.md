@@ -1305,11 +1305,12 @@ jobs:
       - uses: ictechgy/cartograph@0.20.0
         with:
           command: check
-          since: ${{ github.event.pull_request.base.sha || github.event.before }}
+          version: 0.20.0
+          args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-릴리스 태그가 `action.yml`을 포함하게 되면 그 태그로 고정하세요(`@main`은 개발 브랜치를
-따릅니다). 입력:
+`0.20.0` 태그는 `action.yml`을 포함합니다. 재현 가능한 실행을 위해 액션 리비전과 내려받는
+바이너리 버전을 함께 고정하세요(`@main`은 개발 브랜치를 따릅니다). 입력:
 
 | 입력 | 기본값 | 의미 |
 |---|---|---|
@@ -1323,10 +1324,15 @@ jobs:
 | `upload-sarif` | `true` | code scanning 업로드(`security-events: write` 필요) |
 | `fail-on-findings` | `true` | `false`면 발견이 있어도 스텝을 실패시키지 않음 |
 
-출력: `exit-code`(`0` 정상, `1` 발견, `2` 도구 실패)와 `sarif-file`. Xcode 툴체인의
+출력: `exit-code`(사용 오류 `64`를 포함한 원래 CLI 코드)와 `sarif-file`. Xcode 툴체인의
 `libIndexStore`를 읽으므로 macOS 러너가 아니면 명확한 메시지와 함께 실패합니다.
 `xcodebuild`로 빌드한다면 `build: none`으로 두고 만든 바이너리를 `binary`로 넘기거나,
 Cartograph를 직접 설치해 아래 수동 명령을 쓰세요.
+
+개발 버전 액션은 예상 밖 종료 코드와 리포트 누락을 실패로 처리하고, 이전 실행이 남긴 리포트를
+업로드하지 않습니다. 이 수정은 기존 `0.20.0` 액션 태그에 포함되지 않습니다.
+[통합 워크플로](.github/workflows/action-sarif.yml)는 실제 코퍼스 발견을 업로드하며,
+[검증 기록](docs/ACTION-CORPUS-CACHE.md)은 로컬 검사와 GitHub 수락 근거를 구분합니다.
 
 액션 없이 같은 게이트를 돌리려면 두 줄이면 됩니다.
 

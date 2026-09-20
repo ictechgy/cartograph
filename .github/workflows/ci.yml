@@ -96,7 +96,10 @@ jobs:
       # 테스트는 상수가 동작과 맞는지는 말해 주지 않는다. 실제로 --help 가 2 로
       # 실패한 적이 있고 단위 테스트는 전부 통과했다.
       - name: CLI contract
-        run: Scripts/verify-cli-contract.sh "$CARTOGRAPH"
+        run: |
+          Scripts/verify-cli-contract.sh "$CARTOGRAPH"
+          python3 Scripts/verify-action.py
+          python3 Scripts/verify-index-cache.py
 
       - name: Circular dependencies
         run: |

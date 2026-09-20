@@ -7,6 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Compiler-backed complete goldens for redundant public visibility, mechanical fix plans and
+  affected tests, with agent guidance on using these reports within the requested editing scope.
+- Opt-in reader-cache maintenance with age and disk-budget previews, last-use markers and
+  reader locks, plus a bridge source-payload/peak-memory measurement harness. Source snapshots
+  remain unchanged and no memory improvement is claimed.
+- A GitHub workflow that exercises composite-action SARIF uploads with actual corpus findings.
+
+### Fixed
+
+- Reject unexpected action exit codes and missing SARIF reports; discard stale reports before
+  running a gate. README examples now pass `--since` through the supported `args` input and pin
+  the downloaded binary as well as the action revision.
+
 ## [0.20.0] - 2026-09-20
 
 ### Added

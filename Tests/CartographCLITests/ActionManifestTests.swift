@@ -25,7 +25,7 @@ struct ActionManifestTests {
     @Test("컴포지트 액션으로 선언되어 있고 모든 실행 단계가 셸을 지정한다")
     func isCompositeWithShellSteps() throws {
         let text = try manifest
-        #expect(text.hasPrefix("name: Cartograph\n"))
+        #expect(text.hasPrefix("name: Cartograph Swift Analysis\n"))
         #expect(text.contains("\nruns:\n  using: composite\n"))
         // 컴포지트 단계의 `run` 은 shell 이 없으면 런타임에 거부된다.
         let runSteps = text.split(separator: "\n").count { $0.hasPrefix("      run:") }

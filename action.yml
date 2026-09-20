@@ -1,4 +1,4 @@
-name: Cartograph
+name: Cartograph Swift Analysis
 description: >-
   Dead code, circular dependencies and architecture rules for Swift, read from the index store
   the compiler already writes, with SARIF upload to GitHub code scanning.
@@ -18,7 +18,7 @@ inputs:
     required: false
     default: ""
   version:
-    description: "Release tag to download (for example 0.19.0), or latest for the newest release."
+    description: "Release tag to download (for example 0.20.0), or latest for the newest release."
     required: false
     default: latest
   binary:
@@ -47,11 +47,14 @@ inputs:
     default: "true"
 
 outputs:
+  sarif-id:
+    description: "GitHub's upload receipt, empty when upload-sarif is disabled."
+    value: ${{ steps.upload.outputs.sarif-id }}
   sarif-file:
     description: "Path to the SARIF report that was written, empty when none was produced."
     value: ${{ steps.run.outputs.sarif-file }}
   exit-code:
-    description: "cartograph exit code: 0 success, 1 findings, 2 tool failure."
+    description: "Raw cartograph exit code: 0 success, 1 findings, 2 tool failure, 64 usage error."
     value: ${{ steps.run.outputs.exit-code }}
 
 runs:
@@ -83,9 +86,7 @@ runs:
           version="$(gh api repos/ictechgy/cartograph/releases/latest --jq .tag_name)"
         fi
         archive="cartograph-${version}-macos-universal.tar.gz"
-        directory="${RUNNER_TEMP:-/tmp}/cartograph-action"
-        rm -rf "$directory"
-        mkdir -p "$directory"
+        directory="$(mktemp -d "${RUNNER_TEMP:-/tmp}/cartograph-action.XXXXXX")"
         gh release download "$version" --repo ictechgy/cartograph \
           --pattern "$archive" --dir "$directory" --clobber
         tar -xzf "$directory/$archive" -C "$directory"
@@ -121,6 +122,8 @@ runs:
         strict=()
         if [ "$INPUT_FAIL_ON_FINDINGS" = "true" ]; then strict=(--strict); fi
         mkdir -p "$(dirname "$INPUT_SARIF")"
+        # A failed invocation must not upload a report left by an earlier run.
+        rm -f -- "$INPUT_SARIF"
         # Findings are expected to exit 1; the final step decides whether that fails the job.
         set +e
         # shellcheck disable=SC2086 — args is a workflow-author controlled argument list.
@@ -129,13 +132,36 @@ runs:
         code=$?
         set -e
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
-        if [ -s "$INPUT_SARIF" ]; then
+        if { [ "$code" = "0" ] || [ "$code" = "1" ]; } && [ -s "$INPUT_SARIF" ]; then
+          # CLI paths are project-relative; GitHub resolves paths from the checkout root.
+          python3 - "$INPUT_SARIF" "$INPUT_PROJECT" <<'PY'
+        import json, sys
+        from pathlib import Path
+        from urllib.parse import unquote, urlsplit
+        report, project = Path(sys.argv[1]), Path(sys.argv[2]).resolve()
+        document = json.loads(report.read_text())
+        def visit(value):
+            if isinstance(value, dict):
+                location = value.get('artifactLocation')
+                if isinstance(location, dict) and isinstance(location.get('uri'), str):
+                    uri = location['uri']
+                    if not urlsplit(uri).scheme and not location.get('uriBaseId'):
+                        location['uri'] = (project / unquote(uri)).as_uri()
+                for item in value.values():
+                    visit(item)
+            elif isinstance(value, list):
+                for item in value:
+                    visit(item)
+        visit(document)
+        report.write_text(json.dumps(document, indent=2, sort_keys=True) + '\n')
+        PY
           echo "sarif-file=$INPUT_SARIF" >> "$GITHUB_OUTPUT"
         else
           echo "::warning::no SARIF report was written (cartograph exit $code)"
         fi
 
     - name: Upload SARIF
+      id: upload
       if: ${{ inputs.upload-sarif == 'true' && steps.run.outputs.sarif-file != '' }}
       uses: github/codeql-action/upload-sarif@v4
       with:
@@ -149,8 +175,15 @@ runs:
         FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
         SARIF: ${{ steps.run.outputs.sarif-file }}
       run: |
-        if [ "$EXIT_CODE" = "2" ]; then
-          echo "::error::cartograph could not analyze the project (exit 2); see the log above."
+        case "$EXIT_CODE" in
+          0|1) ;;
+          *)
+            echo "::error::cartograph could not analyze the project (exit $EXIT_CODE); see the log above."
+            exit 2
+            ;;
+        esac
+        if [ -z "$SARIF" ]; then
+          echo "::error::cartograph produced no SARIF report; check command arguments and output permissions."
           exit 2
         fi
         if [ "$EXIT_CODE" = "1" ]; then
