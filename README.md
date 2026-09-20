@@ -905,6 +905,13 @@ Objective-C Flutter handlers and React Native export macros), attaches the USR t
 the enclosing declaration, and writes the
 `bridge-facts` exchange format that [isthmus](../isthmus) joins with the other platform's facts.
 
+`generatedAt` records document extraction time, not source modification or index build time.
+The shared v1/v2 contract also permits `sourceModifiedAt` for the newest observed source mtime;
+cartograph does not collect that inventory and omits the optional field. Neither timestamp proves
+that the compiler index matches the current sources. Keep index freshness evidence and limitations
+when joining documents. [Kartograph versions through 0.12.0](https://github.com/ictechgy/kartograph/blob/v0.12.0/index/src/main/kotlin/dev/kartograph/index/BridgeFactScanner.kt) used source mtime for their default
+`generatedAt`, so a large cross-producer time difference alone is not evidence of an old build.
+
 The exported `project` is the root's POSIX `realpath`, resolving symlinks so `/tmp` and
 `/private/tmp` identify the same project across producers. An unresolvable root is an error.
 Fact locations remain relative to the project. Consumers still require exact `project` equality;

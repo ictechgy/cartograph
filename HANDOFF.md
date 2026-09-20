@@ -7,6 +7,13 @@ _Last updated: 2026-09-20_
 
 ## Current Status
 
+- 자매 후속에서 `generatedAt`을 문서 추출 시각으로 통일하고 optional `sourceModifiedAt`을
+  source mtime 관찰값으로 분리했다. cartograph는 기존 추출 시각 의미를 유지하고 mtime은
+  측정하지 않아 생략한다. [README](README.md#bridges--export-native-bridge-evidence)에 명시했다.
+  이번 cartograph 변경은 문서만이며 새 버전·태그를 발행하지 않았다.
+- isthmus의 실제 Flutter3.47.2 macOS·Android 앱 검사와 공개 RN 컴파일 retention은
+  자매 인계의 개발 소스 근거다. cartograph 자체의 모든 플랫폼 정확도나 RN 엔진 실행으로 해석하지 않는다.
+
 - cartograph **0.20.0**은 [GitHub](https://github.com/ictechgy/cartograph/releases/tag/0.20.0)와
   Homebrew에 발행됐다. 릴리스 소스는 `d7df412`, 브리지 확장 PR은
   [#123](https://github.com/ictechgy/cartograph/pull/123)이다.
