@@ -42,7 +42,7 @@
   "selectionIssues": [],
   "status": "found",
   "summary": {
-    "affectedSymbols": 3,
+    "affectedSymbols": 0,
     "changeScopeSymbols": 1,
     "changedTestCount": 1,
     "moduleCount": 1,

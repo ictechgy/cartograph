@@ -1,0 +1,33 @@
+{
+  "alertPaths": [
+    "Fixtures/FalsePositiveCorpus/Sources/Corpus/Accessors.swift",
+    "Fixtures/FalsePositiveCorpus/Sources/Corpus/AliasConformance.swift",
+    "Fixtures/FalsePositiveCorpus/Sources/Corpus/Bridges.swift",
+    "Fixtures/FalsePositiveCorpus/Sources/Corpus/Enums.swift",
+    "Fixtures/FalsePositiveCorpus/Sources/Corpus/FileIgnored.swift",
+    "Fixtures/FalsePositiveCorpus/Sources/Corpus/IgnoreComments.swift",
+    "Fixtures/FalsePositiveCorpus/Sources/Corpus/InheritedAccess.swift",
+    "Fixtures/FalsePositiveCorpus/Sources/Corpus/Names.swift",
+    "Fixtures/FalsePositiveCorpus/Sources/Corpus/PropertyWrappers.swift",
+    "Fixtures/FalsePositiveCorpus/Sources/Corpus/ProtocolDispatch.swift",
+    "Fixtures/FalsePositiveCorpus/Sources/Corpus/Retention.swift",
+    "Fixtures/FalsePositiveCorpus/Sources/Corpus/StaticExtensionDispatch.swift"
+  ],
+  "category": "cartograph",
+  "commit_sha": "a0c5206a58ed5fa367ca58e1fb121e9572695702",
+  "error": "",
+  "id": 1807230986,
+  "processingStatus": "complete",
+  "ref": "refs/heads/feature/action-corpus-cache",
+  "results_count": 37,
+  "rules_count": 5,
+  "runURL": "https://github.com/ictechgy/cartograph/actions/runs/35521323934",
+  "sarifID": "7b66d6c4-b50c-11f1-81f9-3c7b574f4584",
+  "source": "Downloaded Actions artifact and independently re-read code-scanning API",
+  "tool": {
+    "guid": null,
+    "name": "cartograph",
+    "version": "0.20.0"
+  },
+  "warning": ""
+}

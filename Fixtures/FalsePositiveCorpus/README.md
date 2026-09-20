@@ -143,3 +143,9 @@ test at depth zero and a production function with no test consumer. The fixture 
 excluding tests; `--build-tests` provides their index. An explicit temporary configuration excludes
 `Tests/**` to verify that an empty test list then includes the path-filter limitation. These are
 compiler-backed command contracts, not claims about test coverage.
+
+Swift 6.3 and 6.4 emit different numbers of `@Test` helper declarations. For `affectedSymbols`
+only, the harness first checks the raw count against the full `impact` consumer list, then excludes
+compiler-marked implicit nodes at this fixture's exact `@Test` expansion site from the golden count.
+The helper names and raw counts remain in the log. All explicit consumers, the complete test list,
+depths, relationships and other fields still compare exactly; no product output is changed.

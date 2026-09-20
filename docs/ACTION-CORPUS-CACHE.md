@@ -24,7 +24,8 @@ prohibit an action name matching another GitHub account. The existing `Cartograp
 with the `cartograph` organization, so the development manifest uses `Cartograph Swift Analysis`.
 The candidate Marketplace URL returned 404. The signed-in release editor shows that the
 GitHub Marketplace Developer Agreement has not been accepted. Public listing is not yet complete;
-a new immutable action release is needed for the renamed manifest and fixes.
+the prepared `action-v1.0.0` action-only draft does not replace the latest binary release. The draft editor subsequently requested a new
+GitHub browser login. Agreement acceptance and public listing remain pending.
 
 The [integration workflow](../.github/workflows/action-sarif.yml) builds the real compiler corpus,
 downloads the pinned 0.20.0 binary and runs the checked-out composite action with SARIF upload
@@ -45,10 +46,20 @@ file URIs before upload, so nested projects map back to their checkout paths. Th
 checks the saved alert paths as well as result counts. README examples use the supported `args`
 input for `--since`.
 
+The [live integration run](https://github.com/ictechgy/cartograph/actions/runs/35521323934) passed.
+GitHub accepted analysis `1807230986`, SARIF receipt `7b66d6c4-b50c-11f1-81f9-3c7b574f4584`,
+at commit `a0c5206a58ed5fa367ca58e1fb121e9572695702`, category/tool `cartograph`: 37 results,
+5 rules, processing `complete`, empty error and warning fields. All 12 distinct saved alert paths
+resolve under `Fixtures/FalsePositiveCorpus/` to existing files. The artifact receipt was downloaded
+and the analysis API was independently reread; [machine-readable evidence](evidence/sarif-acceptance-20260921.json).
+[PR #130](https://github.com/ictechgy/cartograph/pull/130) contains the implementation.
+
 ## Compiler corpus and skill
 
-`Scripts/verify-corpus-commands.py` compares complete JSON documents after replacing only the
-absolute project root. The existing fixture produces seven `redundant-public` diagnostics and
+`Scripts/verify-corpus-commands.py` compares complete JSON documents after replacing the
+absolute project root. The raw affected-symbol count is independently checked against the full
+impact list; only compiler-marked implicit nodes at the fixture’s exact `@Test` expansion site
+are separated from that golden count, since Swift 6.3/6.4 generate different helper counts. The existing fixture produces seven `redundant-public` diagnostics and
 three mechanical parameter-name edits. Fix dry runs preserve source hashes. Three affected
 goldens cover a test consumer, a directly selected test at depth zero and an empty test result;
 excluding tests must expose the configured-path-filter limitation. Removing the public expected
@@ -59,8 +70,7 @@ parsing or an empty test list as permission to delete code or skip verification.
 frontmatter and template-drift tests validate the installed content. The optional skill-creator
 Python validator could not run because PyYAML is absent from both the interpreter and offline
 package cache; Ruby's YAML parser also validated the frontmatter. No dependency was fetched.
-Local handoff notices were added to kartograph and
-dartograph; their product code and skill templates were not changed.
+Local handoff notices were added to kartograph and dartograph; their product code and skill templates were not changed.
 
 ## Reader cache lifetime
 
