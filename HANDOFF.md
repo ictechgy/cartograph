@@ -4,7 +4,7 @@ _Last updated: 2026-09-20 (0.20.0 GitHub·Homebrew 발행/설치 검증 완료)_
 
 재개 시 [Current Status](#current-status) → [Next Steps](#next-steps) →
 [Resume Prompt](#resume-prompt)를 읽는다. 아래 Goal과 날짜별 완료·검증·배포 기록은 당시의
-범위를 설명하며, 이번 미발행 변경의 현재 상태는 Current Status 첫 항목을 우선한다.
+범위를 설명하며, 현재 발행·개발 상태는 Current Status 첫 항목을 우선한다.
 
 ## Goal
 
@@ -42,8 +42,10 @@ formula가 0.19.0을 가리킨다.
 - Homebrew 탭 [PR #49](https://github.com/ictechgy/homebrew-tap/pull/49)이 머지됐다(`72144ee`).
   formula URL·SHA를 대조하고 호스트에서 0.18.0→0.20.0 upgrade 및 brew test를 통과했다.
 - Clang ObjC 그래프·보존과 Swift RN 이벤트 추출이 이 발행본에 포함된다. isthmus 0.8.0 후보
-  아카이브 및 자매 발행본으로 실제 Clang/이벤트/공개 plugin 왕복을 검증했다. isthmus npm 발행은
-  인증 갱신 대기이므로 이 native 배포는 완료됐지만 npm 발행 전까지 전체 호환 세트는 미완료다.
+  아카이브 및 자매 발행본으로 실제 Clang/이벤트/공개 plugin 왕복을 검증했다. 이후 사용자가
+  npm 0.8.0을 발행했고, registry 아카이브가 후보와 바이트 단위로 같으며 별도 설치의 CLI 계약·
+  cold-cache 검사가 통과했다. 네 저장소 호환 세트의 발행·설치 검증은 완료됐다.
+  최종 근거는 [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md)에 있다.
 - 이번 브리지의 이전 미발행 표기는 이 절의 0.20.0 발행으로 해소됐다. 아래 0.19.0의 호스트 설치 대기와
   과거 미검증 표기는 해당 시점의 기록이며 반복할 작업이 아니다. 전체 후속 진행은
   [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md)를 확인한다.
