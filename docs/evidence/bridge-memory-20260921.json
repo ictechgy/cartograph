@@ -1,0 +1,89 @@
+{
+  "archiveSHA256": "b25033fa000222b4792c74261f1f9d41ca8b7ce392cea96fe8e94a55cb8a0544",
+  "limitations": [
+    "sourceCacheUTF8Bytes is source payload, excluding String and Dictionary overhead.",
+    "peakRSSBytes covers the entire instrumented process, including index and syntax work.",
+    "Peak differences do not isolate sourceCache allocations or prove an optimization.",
+    "The first sample may populate disk caches; later samples reuse them."
+  ],
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "projects": [
+    {
+      "project": "cartograph",
+      "samples": [
+        {
+          "documentSHA256": "b9f3d768922100e9823c62394681ac5d287840be2e7488da609017c9126d931b",
+          "elapsedSeconds": 9.03357195854187,
+          "factCount": 0,
+          "maxReadsPerSource": 1,
+          "peakBeforeFirstSourceBytes": 209158144,
+          "peakRSSBytes": 209158144,
+          "sourceCacheUTF8Bytes": 2083941,
+          "sourceFiles": 189,
+          "sourceReads": 189
+        },
+        {
+          "documentSHA256": "b9f3d768922100e9823c62394681ac5d287840be2e7488da609017c9126d931b",
+          "elapsedSeconds": 6.0599870681762695,
+          "factCount": 0,
+          "maxReadsPerSource": 1,
+          "peakBeforeFirstSourceBytes": 150454272,
+          "peakRSSBytes": 164790272,
+          "sourceCacheUTF8Bytes": 2083941,
+          "sourceFiles": 189,
+          "sourceReads": 189
+        },
+        {
+          "documentSHA256": "b9f3d768922100e9823c62394681ac5d287840be2e7488da609017c9126d931b",
+          "elapsedSeconds": 5.960767984390259,
+          "factCount": 0,
+          "maxReadsPerSource": 1,
+          "peakBeforeFirstSourceBytes": 151617536,
+          "peakRSSBytes": 165789696,
+          "sourceCacheUTF8Bytes": 2083941,
+          "sourceFiles": 189,
+          "sourceReads": 189
+        }
+      ]
+    },
+    {
+      "project": "FalsePositiveCorpus",
+      "samples": [
+        {
+          "documentSHA256": "0923c26feeb63d3cd1648df493821a932f7e5641b366974df0334a99db924196",
+          "elapsedSeconds": 0.11002397537231445,
+          "factCount": 10,
+          "maxReadsPerSource": 1,
+          "peakBeforeFirstSourceBytes": 17924096,
+          "peakRSSBytes": 26476544,
+          "sourceCacheUTF8Bytes": 20446,
+          "sourceFiles": 17,
+          "sourceReads": 17
+        },
+        {
+          "documentSHA256": "0923c26feeb63d3cd1648df493821a932f7e5641b366974df0334a99db924196",
+          "elapsedSeconds": 0.08874201774597168,
+          "factCount": 10,
+          "maxReadsPerSource": 1,
+          "peakBeforeFirstSourceBytes": 17973248,
+          "peakRSSBytes": 26378240,
+          "sourceCacheUTF8Bytes": 20446,
+          "sourceFiles": 17,
+          "sourceReads": 17
+        },
+        {
+          "documentSHA256": "0923c26feeb63d3cd1648df493821a932f7e5641b366974df0334a99db924196",
+          "elapsedSeconds": 0.09008097648620605,
+          "factCount": 10,
+          "maxReadsPerSource": 1,
+          "peakBeforeFirstSourceBytes": 17891328,
+          "peakRSSBytes": 26427392,
+          "sourceCacheUTF8Bytes": 20446,
+          "sourceFiles": 17,
+          "sourceReads": 17
+        }
+      ]
+    }
+  ],
+  "swift": "Apple Swift version 6.4 (swiftlang-6.4.0.34.1 clang-2100.3.34.1)\nTarget: arm64-apple-macosx26.0"
+}

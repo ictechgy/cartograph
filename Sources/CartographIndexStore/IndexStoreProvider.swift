@@ -55,6 +55,21 @@ public struct IndexStoreProvider: IndexProviding {
     }
 
     public func loadSnapshot() throws -> IndexSnapshot {
+        // 실제 디스크 DB에만 프로세스 간 잠금을 쓴다. 주입된 파일 시스템은
+        // 호스트 파일 시스템을 건드리지 않아야 한다.
+        let lease: ReaderDatabaseLease?
+        do {
+            lease = fileSystem is LocalFileSystem
+                ? try ReaderDatabaseLease(parent: (configuration.databasePath as NSString).deletingLastPathComponent)
+                : nil
+        } catch {
+            throw CartographError.indexStoreUnreadable(path: configuration.storePath,
+                underlying: "Could not lock the reader cache: \(error). Check cache directory permissions.")
+        }
+        return try withExtendedLifetime(lease) { try readSnapshot() }
+    }
+
+    private func readSnapshot() throws -> IndexSnapshot {
         let database = try openDatabase()
         let paths = sourceFilePaths()
         var occurrences: [SymbolOccurrence] = []
@@ -308,7 +323,7 @@ public struct IndexStoreProvider: IndexProviding {
             // 곧바로 반환해 빈 인덱스가 된다. 여기서 쓰는 데이터베이스는 우리가
             // 만드는 캐시이므로 쓰기가 필요하다.
             let databasePath = prepareReaderDatabase()
-            return try IndexStoreDB(
+            let database = try IndexStoreDB(
                 storePath: configuration.storePath,
                 databasePath: databasePath,
                 library: library,
@@ -316,6 +331,10 @@ public struct IndexStoreProvider: IndexProviding {
                 readonly: false,
                 listenToUnitEvents: false
             )
+            // 디렉터리 mtime은 DB 재사용을 반영하지 않는다. 성공한 열기를
+            // 별도 표시해 오래됐어도 자주 쓰는 DB가 정리 후보가 되지 않게 한다.
+            try? fileSystem.write(text: "", to: databasePath + "/.cartograph-last-used")
+            return database
         } catch {
             throw CartographError.indexStoreUnreadable(
                 path: configuration.storePath,
