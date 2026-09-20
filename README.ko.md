@@ -1302,7 +1302,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0          # --since 에 기준 커밋 이력이 필요
-      - uses: ictechgy/cartograph@main
+      - uses: ictechgy/cartograph@0.20.0
         with:
           command: check
           since: ${{ github.event.pull_request.base.sha || github.event.before }}
