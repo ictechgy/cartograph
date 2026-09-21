@@ -1,7 +1,6 @@
-name: Cartograph
+name: Cartograph Swift Analysis
 description: >-
-  Dead code, circular dependencies and architecture rules for Swift, read from the index store
-  the compiler already writes, with SARIF upload to GitHub code scanning.
+  Swift dead code, dependency cycles and architecture checks from compiler indexes, with SARIF upload to code scanning.
 author: ictechgy
 
 branding:
