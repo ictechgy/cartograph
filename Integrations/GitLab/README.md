@@ -8,12 +8,11 @@ publishes GitLab Code Quality findings and preserves the complete native report 
 
 The component version and CLI version are separate: the planned component release is `1.0.0`,
 and its default CLI binary is the existing Cartograph `0.20.0` release. The first Catalog release
-is pending GitLab project setup and a successful pipeline; the example below is the intended usage.
-Replace `<namespace>` with the project's actual namespace before using it.
+is pending a successful GitLab pipeline; the example below is the intended usage.
 
 ```yaml
 include:
-  - component: gitlab.com/<namespace>/cartograph-ci/cartograph@1.0.0
+  - component: gitlab.com/ictechgy/cartograph-ci/cartograph@1.0.0
     inputs:
       runner-tags: [macos]
       command: check
@@ -43,7 +42,7 @@ Choose a toolchain compatible with your application and Cartograph; a Linux runn
 
 ```yaml
 include:
-  - component: gitlab.com/<namespace>/cartograph-ci/cartograph@1.0.0
+  - component: gitlab.com/ictechgy/cartograph-ci/cartograph@1.0.0
     inputs:
       job-name: swift-architecture
       runner-tags: [macos]
@@ -100,7 +99,8 @@ python3 -m unittest discover -s tests -v
 ```
 
 The project pipeline includes this exact component at `$CI_COMMIT_SHA`, compiles the tracked Swift
-fixture on a `macos` runner, uploads actual findings and verifies the reports before releasing.
+fixture on a GitLab-hosted `saas-macos-medium-m1` runner, uploads actual findings and verifies the reports.
+The test job pins `macos-26-xcode-26`; maintainers can select an eligible compatible runner and image.
 It also runs the behavioral tests on Linux. A release cannot skip the macOS integration job.
 Configure an eligible runner before creating a version tag; no runner is installed or registered by this project.
 

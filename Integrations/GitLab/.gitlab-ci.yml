@@ -5,10 +5,13 @@ include:
     inputs:
       job-name: cartograph-corpus
       stage: analyze
-      runner-tags: [macos]
+      runner-tags: [saas-macos-medium-m1]
       project: fixtures/Smoke
       command: dead
       fail-on-findings: false
+
+cartograph-corpus:
+  image: macos-26-xcode-26
 
 component-tests:
   stage: test
