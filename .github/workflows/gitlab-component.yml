@@ -1,0 +1,46 @@
+name: GitLab component
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - Integrations/GitLab/**
+      - .github/workflows/gitlab-component.yml
+  push:
+    branches: [main]
+    paths:
+      - Integrations/GitLab/**
+      - .github/workflows/gitlab-component.yml
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: GitLab component behavioral contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m unittest discover -s Integrations/GitLab/tests -v
+
+  compiler:
+    name: GitLab component real macOS analysis
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select the newest Xcode
+        run: |
+          latest="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$latest"
+          swift --version
+      - name: Download the pinned binary and analyze the consumer fixture
+        run: python3 Integrations/GitLab/tests/run_smoke.py
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gitlab-component-reports
+          path: |
+            Integrations/GitLab/gl-code-quality-report.json
+            Integrations/GitLab/cartograph-report.json
+            Integrations/GitLab/cartograph-status.json
+          if-no-files-found: error

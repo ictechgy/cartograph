@@ -1,0 +1,238 @@
+spec:
+  inputs:
+    job-name:
+      description: "Unique job name when including this component more than once."
+      default: cartograph
+    stage:
+      description: "Pipeline stage for the analysis job."
+      default: test
+    runner-tags:
+      description: "Tags selecting a macOS runner with a compatible Xcode toolchain and Python 3."
+      type: array
+      default: [macos]
+    project:
+      description: "Swift project directory relative to the checkout root."
+      default: .
+    command:
+      description: "Analysis gate; findings are graph evidence and do not authorize deletion."
+      options: [check, dead, cycles, rules]
+      default: check
+    build:
+      description: "Build with swift, or use none after your own Swift/Xcode build."
+      options: [swift, none]
+      default: swift
+    args:
+      description: "Additional CLI arguments, parsed as quoted words without executing a shell."
+      default: ""
+    fail-on-findings:
+      description: "Fail on findings; false still fails for tool errors or invalid/missing reports."
+      type: boolean
+      default: true
+    version:
+      description: "CLI release to download; changing this also requires its matching SHA-256."
+      regex: '^[0-9]+\.[0-9]+\.[0-9]+$'
+      default: "0.20.0"
+    sha256:
+      description: "Expected SHA-256 of the macOS universal release archive."
+      regex: '^[a-f0-9]{64}$'
+      default: "833eb3c86deffc8e7c845297df57d41e35bb644bd5a943b09843e52075c6f072"
+    binary:
+      description: "Existing executable, absolute or relative to the checkout; skips downloading."
+      default: ""
+---
+"$[[ inputs.job-name ]]":
+  stage: $[[ inputs.stage ]]
+  tags: $[[ inputs.runner-tags ]]
+  variables:
+    CARTOGRAPH_PROJECT:
+      value: $[[ inputs.project ]]
+      expand: false
+    CARTOGRAPH_COMMAND: $[[ inputs.command ]]
+    CARTOGRAPH_BUILD: $[[ inputs.build ]]
+    CARTOGRAPH_ARGS:
+      value: $[[ inputs.args ]]
+      expand: false
+    CARTOGRAPH_FAIL_ON_FINDINGS: "$[[ inputs.fail-on-findings ]]"
+    CARTOGRAPH_VERSION: $[[ inputs.version ]]
+    CARTOGRAPH_SHA256: $[[ inputs.sha256 ]]
+    CARTOGRAPH_BINARY:
+      value: $[[ inputs.binary ]]
+      expand: false
+  script:
+    - |
+      python3 - <<'PY'
+      # CARTOGRAPH_RUNNER_BEGIN
+      import hashlib
+      import json
+      import os
+      from pathlib import Path
+      import platform
+      import re
+      import shlex
+      import shutil
+      import subprocess
+      import sys
+      import tarfile
+      import tempfile
+      import urllib.request
+
+
+      def write_json(path, value):
+          path.write_text(json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+
+
+      def nonempty_string(value, label):
+          if not isinstance(value, str) or not value:
+              raise ValueError(f"Invalid {label}; use an unmodified Cartograph JSON report.")
+          return value
+
+
+      def checkout_path(path, base, checkout):
+          value = Path(path)
+          resolved = (value if value.is_absolute() else base / value).resolve()
+          if not resolved.is_relative_to(checkout):
+              raise ValueError("A project or diagnostic path escapes the checkout; check project and source paths.")
+          return resolved
+
+
+      def quality_report(document, project, checkout, command):
+          if not isinstance(document, dict) or document.get("tool") != "cartograph":
+              raise ValueError("Missing Cartograph report identity; check the CLI version and JSON output.")
+          if document.get("command") != command or not isinstance(document.get("diagnostics"), list):
+              raise ValueError("Invalid Cartograph report command or diagnostics; check the CLI JSON output.")
+          limitations = document.get("limitations", [])
+          if not isinstance(limitations, list) or any(not isinstance(item, str) for item in limitations):
+              raise ValueError("Invalid analysis limitations; check the CLI JSON output.")
+          findings, unlocated = [], 0
+          severities = {"info": "info", "warning": "minor", "error": "major"}
+          for diagnostic in document["diagnostics"]:
+              if not isinstance(diagnostic, dict):
+                  raise ValueError("Invalid diagnostic object; check the CLI JSON output.")
+              rule = nonempty_string(diagnostic.get("ruleIdentifier"), "rule identifier")
+              message = nonempty_string(diagnostic.get("message"), "diagnostic message")
+              severity = diagnostic.get("severity")
+              if severity not in severities:
+                  raise ValueError("Unknown diagnostic severity; update the component for this CLI version.")
+              location = diagnostic.get("location")
+              if location is None:
+                  unlocated += 1
+                  continue
+              if not isinstance(location, dict):
+                  raise ValueError("Invalid diagnostic location; check the CLI JSON output.")
+              path = checkout_path(nonempty_string(location.get("path"), "location path"), project, checkout)
+              relative = path.relative_to(checkout).as_posix()
+              line = location.get("line")
+              if relative == "." or type(line) is not int or line < 1:
+                  raise ValueError("Invalid source file or line; Code Quality requires a file and positive line.")
+              subject = diagnostic.get("subject")
+              if subject is not None:
+                  nonempty_string(subject, "diagnostic subject")
+              # CLI의 규칙/subject 식별을 유지해 앞쪽 줄 추가만으로 새 발견이 되지 않게 한다.
+              identity = [rule, relative, subject or message]
+              fingerprint = hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()
+              findings.append({"description": message, "check_name": rule, "fingerprint": fingerprint,
+                               "severity": severities[severity],
+                               "location": {"path": relative, "lines": {"begin": line}}})
+          findings.sort(key=lambda value: json.dumps(value, sort_keys=True, ensure_ascii=False))
+          return findings, unlocated, limitations
+
+
+      def resolve_binary(checkout, temporary):
+          existing = os.environ.get("CARTOGRAPH_BINARY", "")
+          if existing:
+              path = Path(existing)
+              binary = (path if path.is_absolute() else checkout / path).resolve()
+              if not binary.is_file() or not os.access(binary, os.X_OK):
+                  raise ValueError("The binary input is not executable; install Cartograph or leave binary empty.")
+              return binary
+          version = os.environ["CARTOGRAPH_VERSION"]
+          checksum = os.environ["CARTOGRAPH_SHA256"]
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) or not re.fullmatch(r"[a-f0-9]{64}", checksum):
+              raise ValueError("Invalid release version or SHA-256; provide an exact version and archive checksum.")
+          archive = temporary / "cartograph.tar.gz"
+          url = (f"https://github.com/ictechgy/cartograph/releases/download/{version}/"
+                 f"cartograph-{version}-macos-universal.tar.gz")
+          with urllib.request.urlopen(url, timeout=60) as response, archive.open("wb") as output:
+              shutil.copyfileobj(response, output)
+          if hashlib.sha256(archive.read_bytes()).hexdigest() != checksum:
+              raise ValueError("Release SHA-256 mismatch; verify that version and sha256 refer to the same archive.")
+          binary = temporary / "cartograph"
+          # 검증된 archive에서도 실행 파일 하나만 추출해 링크나 다른 경로를 쓰지 않는다.
+          with tarfile.open(archive, "r:gz") as package:
+              member = package.getmember("cartograph/cartograph")
+              if not member.isfile():
+                  raise ValueError("The release executable is not a regular file; verify the release archive.")
+              with package.extractfile(member) as source, binary.open("wb") as output:
+                  shutil.copyfileobj(source, output)
+          binary.chmod(0o700)
+          return binary
+
+
+      def run():
+          checkout = Path(os.environ["CI_PROJECT_DIR"]).resolve()
+          raw = checkout / "cartograph-report.json"
+          quality = checkout / "gl-code-quality-report.json"
+          status = checkout / "cartograph-status.json"
+          # 성공 결과로 오인될 낡은 산출물을 실행 전에 제거한다.
+          for output in (raw, quality, status):
+              output.unlink(missing_ok=True)
+          if platform.system() != "Darwin":
+              raise ValueError("Cartograph requires a macOS runner with Xcode; configure runner-tags accordingly.")
+          command = os.environ["CARTOGRAPH_COMMAND"]
+          build = os.environ["CARTOGRAPH_BUILD"]
+          fail = os.environ["CARTOGRAPH_FAIL_ON_FINDINGS"]
+          if command not in {"check", "dead", "cycles", "rules"} or build not in {"swift", "none"}:
+              raise ValueError("Unsupported command or build mode; use the component's documented input options.")
+          if fail not in {"true", "false"}:
+              raise ValueError("Invalid fail-on-findings input; use true or false.")
+          project = checkout_path(os.environ["CARTOGRAPH_PROJECT"], checkout, checkout)
+          if not project.is_dir():
+              raise ValueError("The project directory does not exist; set project relative to the checkout root.")
+          arguments = shlex.split(os.environ.get("CARTOGRAPH_ARGS", ""))
+          managed = {"--project", "--report-format", "--output", "--strict", "--quiet"}
+          if any(arg.split("=", 1)[0] in managed or arg.startswith("-o") for arg in arguments):
+              raise ValueError("args overrides a managed option; use the project and fail-on-findings inputs.")
+          with tempfile.TemporaryDirectory(prefix="cartograph-gitlab-") as directory:
+              temporary = Path(directory)
+              binary = resolve_binary(checkout, temporary)
+              if build == "swift":
+                  subprocess.run(["swift", "build"], cwd=project, check=True)
+              target = temporary / "report.json"
+              result = subprocess.run([str(binary), command, *arguments, "--project", str(project), "--strict",
+                                       "--report-format", "json", "--output", str(target), "--quiet"], cwd=checkout)
+              write_json(status, {"cli_exit_code": result.returncode})
+              if result.returncode not in {0, 1}:
+                  raise ValueError(f"Cartograph failed with exit {result.returncode}; review the CLI output above.")
+              if not target.is_file():
+                  raise ValueError("Cartograph produced no JSON report; check the CLI arguments and version.")
+              document = json.loads(target.read_text())
+              findings, unlocated, limitations = quality_report(document, project, checkout, command)
+              write_json(raw, document)
+              write_json(quality, findings)
+              write_json(status, {"cli_exit_code": result.returncode, "diagnostics": len(document["diagnostics"]),
+                                  "code_quality_findings": len(findings), "unlocated_diagnostics": unlocated})
+              print(f"Cartograph: {len(findings)} Code Quality findings; {unlocated} diagnostics without locations.")
+              if limitations:
+                  print(f"Analysis has {len(limitations)} limitation(s); review cartograph-report.json before acting.")
+              if unlocated:
+                  print("Diagnostics without locations remain in cartograph-report.json and still affect the gate.")
+              return 1 if result.returncode == 1 and fail == "true" else 0
+
+
+      if __name__ == "__main__":
+          try:
+              sys.exit(run())
+          except (ValueError, OSError, KeyError, TypeError, tarfile.TarError, subprocess.CalledProcessError) as error:
+              print(f"Cartograph component error: {error}", file=sys.stderr)
+              sys.exit(2)
+      # CARTOGRAPH_RUNNER_END
+      PY
+  artifacts:
+    when: always
+    expire_in: 1 week
+    reports:
+      codequality: gl-code-quality-report.json
+    paths:
+      - gl-code-quality-report.json
+      - cartograph-report.json
+      - cartograph-status.json
