@@ -5,6 +5,17 @@ The action changes are published as `action-v1.0.0`. Changes here are not includ
 published 0.20.0 action or binary. The cache lifetime and installed skill updates are included
 in CLI 0.21.0; the measurements below retain their original revisions and dates.
 
+[CLI 0.21.0](https://github.com/ictechgy/cartograph/releases/tag/0.21.0) was published from `ba9af2f`
+after [PR #133](https://github.com/ictechgy/cartograph/pull/133) passed 1,650 tests, 92.83% combined
+coverage (87.50% unit-only), compiler corpus, CLI contracts and strict self-analysis.
+The [release workflow](https://github.com/ictechgy/cartograph/actions/runs/35777799863) verified the
+packaged universal binary before publishing. An independent download matched GitHub's asset digest:
+`4b204d2e343281499163df8def35374956d38b813d589519130f1f53244b623f`.
+Both architecture slices, version output, bundled documents and CLI contracts passed verification.
+[Homebrew PR #50](https://github.com/ictechgy/homebrew-tap/pull/50) updated the formula; host upgrade
+and `brew test` passed, and the installed binary matched the downloaded binary byte for byte.
+The GitLab Catalog 1.0.0 component remains pinned to its separately verified CLI 0.20.0.
+
 ## Local verification
 
 - 1,650 Swift tests passed; `Scripts/coverage.sh` passed at 92.84% (32,216/34,701 production lines),
