@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-09-23
+
 ### Added
 
 - Compiler-backed complete goldens for redundant public visibility, mechanical fix plans and
@@ -15,6 +17,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reader locks, plus a bridge source-payload/peak-memory measurement harness. Source snapshots
   remain unchanged and no memory improvement is claimed.
 - A GitHub workflow that exercises composite-action SARIF uploads with actual corpus findings.
+- A GitLab CI/CD component, published separately as Catalog version `1.0.0`, that runs on a
+  macOS runner and publishes Code Quality findings together with the native analysis report.
+  The component keeps its verified CLI `0.20.0` and archive checksum pins.
 
 ### Fixed
 
@@ -1226,7 +1231,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.20.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.21.0...HEAD
+[0.21.0]: https://github.com/ictechgy/cartograph/compare/0.20.0...0.21.0
 [0.20.0]: https://github.com/ictechgy/cartograph/compare/0.19.0...0.20.0
 [0.19.0]: https://github.com/ictechgy/cartograph/compare/0.18.0...0.19.0
 [0.18.0]: https://github.com/ictechgy/cartograph/compare/0.17.0...0.18.0

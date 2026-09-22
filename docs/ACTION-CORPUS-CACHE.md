@@ -2,7 +2,8 @@
 
 Date: 2026-09-21. Publication status checked: 2026-09-22. Development branch: `feature/action-corpus-cache`.
 The action changes are published as `action-v1.0.0`. Changes here are not included in the
-published 0.20.0 action or binary; 0.20.0 remains the latest CLI binary release.
+published 0.20.0 action or binary. The cache lifetime and installed skill updates are included
+in CLI 0.21.0; the measurements below retain their original revisions and dates.
 
 ## Local verification
 

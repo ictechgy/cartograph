@@ -7,6 +7,19 @@ _Last updated: 2026-09-23_
 
 ## Current Status
 
+- **CLI 0.21.0 릴리스 진행 중(2026-09-23 사용자 승인):** `feature/release-0.21.0`은
+  PR #130이 병합된 `90f4d8c`에서 시작했다. 버전 상수·설치 예제·변경 기록을 0.21.0으로
+  맞추고, PR 검증·병합 후 새 태그로 universal 바이너리를 발행한다. 공개 archive의 해시·
+  arm64/x86_64·CLI 계약과 Homebrew formula·설치 버전·brew test까지 확인하는 범위다.
+  아직 0.21.0 공개 발행·Homebrew 갱신이 완료됐다고 해석하지 않는다. 근거는 로컬
+  `.git/evidence-release-0.21.0-20260923/`에 모은다. GitHub Action `action-v1.0.0`과
+  GitLab Catalog `1.0.0` 태그는 유지하며, GitLab의 CLI 0.20.0 고정은 별도 발행 계약이다.
+- **PR #130 병합 완료:** `90f4d8c`로 병합했고 [main CI](https://github.com/ictechgy/cartograph/actions/runs/35773385182)와
+  [SARIF 검증](https://github.com/ictechgy/cartograph/actions/runs/35773385293)도 통과했다.
+  최종 PR CI의 테스트 1,650개·통합 커버리지 92.84%(단위 87.51%), CLI 계약·코퍼스·
+  strict 자기 분석(모듈·타입 순환 포함)을 확인했다. 문서 4개도 반영됐고 당시 작업 폴더는 깨끗했다.
+  `.git/evidence-pr130-final-20260923/`가 최종 근거다. 아래 발행 기록의 0.20.0 latest는 당시 상태다.
+
 - **GitLab Catalog 1.0.0 발행 완료:** [Cartograph CI](https://gitlab.com/explore/catalog/ictechgy/cartograph-ci)
   (프로젝트 ID `86723928`)의 이름·버전·`cartograph@1.0.0` 설치 구문과 비로그인 HTTP 200을 확인했다.
   [태그 파이프라인 2871315648](https://gitlab.com/ictechgy/cartograph-ci/-/pipelines/2871315648)의 Linux 검사,
@@ -35,8 +48,8 @@ _Last updated: 2026-09-23_
 
 - **액션 릴리스 공개 완료:** [action-v1.0.0](https://github.com/ictechgy/cartograph/releases/tag/action-v1.0.0)은
   `567d91fb0d4e99866c6f52c8650792baf13b71c7`을 가리킨다. 이름은 `Cartograph Swift Analysis`다.
-  액션 전용 릴리스이며 새 CLI 바이너리는 발행하지 않았다. 최신 바이너리 릴리스와 Homebrew는
-  기존 **0.20.0**을 유지한다. 기존 태그를 옮기거나 릴리스를 다시 만들지 않는다.
+  액션 전용 릴리스이며 그때 새 CLI 바이너리는 발행하지 않았다. 당시 바이너리 릴리스와 Homebrew는
+  **0.20.0**이었다. 기존 태그를 옮기거나 릴리스를 다시 만들지 않는다.
 - **공개 태그 실행 검증 완료:** [실행 35547841097](https://github.com/ictechgy/cartograph/actions/runs/35547841097)이
   실제 `uses: ictechgy/cartograph@action-v1.0.0`을 내려받아 실행했다. GitHub가 **37개 결과·5개 규칙**을
   처리 완료했고 처리 오류·경고는 없었다. 12개 진단 파일 경로도 실제 코퍼스 파일과 일치했다.
@@ -50,7 +63,7 @@ _Last updated: 2026-09-23_
   `76219c0`으로 머지했다. 이름 `Cartograph Swift Analysis`, 설명 117자이며 기존 매니페스트 테스트의
   이름 기대값만 함께 갱신했다. 실행 설정은 그대로다. [CI](https://github.com/ictechgy/cartograph/actions/runs/35635573987)는
   1,647개 테스트·통합 커버리지 92.84%·자기 분석 모두 통과했다.
-  Marketplace 기본 "Use latest version"은 저장소 latest인 `0.20.0`을 따르며 액션 버전에는
+  Marketplace 기본 "Use latest version"은 당시 저장소 latest인 `0.20.0`을 따르며 액션 버전에는
   older 표시가 붙는다. 위 버전별 링크로 안내한다. CLI latest와 `action-v1.0.0`의 SHA가
   그대로임을 검증했다. 이 표시를 없애려고 latest를 바꾸거나 태그를 옮기지 않는다.
   최종 근거는 `.git/evidence-marketplace-20260922/status.json`과 인접 공개 HTML·CI 로그다.
@@ -96,9 +109,9 @@ _Last updated: 2026-09-23_
   머지 뒤 호스트 upgrade·brew test도 통과했다. 이전 인증·설치 대기를 재개하지 않는다.
 - Clang ObjC 그래프·실제 USR 보존과 Swift RN 전역 이벤트 추출이 포함된다. 일반 ObjC
   핸들러 스캔 전체나 RN 엔진·앱 런타임을 검증했다는 뜻은 아니다.
-- 영·한 README의 Action 설치 예제를 로컬에서 `ictechgy/cartograph@action-v1.0.0`으로 맞췄고,
-  바이너리 입력은 `version: 0.20.0`을 유지했다. `sarif-id` 출력과 상세 기록의 발행 상태도 갱신했다.
-  Marketplace 버전별 링크와 기본 latest 동작도 안내한다. 문서 변경은 PR #130에 함께 커밋했다.
+- 영·한 README의 Action 설치 예제를 PR #130에서 `ictechgy/cartograph@action-v1.0.0`으로 맞췄고,
+  `sarif-id` 출력, Marketplace 버전별 링크와 기본 latest 동작, 상세 기록의 발행 상태도 반영했다.
+  바이너리 입력은 이번 릴리스 브랜치에서 `version: 0.21.0`으로 갱신했다.
   로컬 링크와 버전 표기, `git diff --check`를 검증했다.
 - 자매 발행본·왕복 검증의 최신 근거는 [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md),
   사용법은 [README](README.md)를 따른다. 현재 branch·원격 머지 상태는 Git으로 확인한다.
@@ -115,12 +128,12 @@ RN 새 아키텍처/lifecycle/미디어 재생 검증, 새 선택적 collector �
 선택 후보는 다음과 같으며, 현재 사용자 요청 범위에서 필요한 항목만 진행한다.
 
 GitHub Marketplace와 GitLab Catalog 게시 작업은 모두 끝났다. PR #131·#132의 구현·병합·
-인증·임시 러너 등록·게시를 반복하지 않는다. CLI/Homebrew 최신은 계속 0.20.0이다.
+인증·임시 러너 등록·게시를 반복하지 않는다. CLI 0.21.0 발행은 새로 승인된 범위다.
 
-이번 사용자 요청은 문서 커밋과 PR #130의 최신 main 통합·검토·검증·병합까지다(2026-09-23 승인).
-문서 커밋과 main 통합은 끝났으며, 재개 시 PR의 최종 CI·병합 상태와 로컬 Git 상태를 확인한다.
-병합이 완료됐다면 이 작업을 반복하지 않고 다음 사용자 요청을 따른다. 추가 기능·새 릴리스·
-실제 캐시 삭제는 이번 범위가 아니다. 두 Orca 작업 폴더 `fix-action-marketplace-metadata/`,
+현재 요청은 CLI 0.21.0의 GitHub·Homebrew 발행과 설치 검증까지다(2026-09-23 승인).
+PR #130과 문서 정리는 완료됐다. 릴리스 PR·새 태그·Release 워크플로·공개 asset·tap formula·
+설치 결과를 확인하며 이어간다. 실제 캐시 삭제와 추가 기능은 이번 범위가 아니다.
+두 Orca 작업 폴더 `fix-action-marketplace-metadata/`,
 `feature-gitlab-component/`는 부모 저장소의 로컬 exclude에 있고 정리 대상으로 승인받지 않았다.
 
 SARIF 실측·공개 태그 실행·코퍼스·스킬·캐시 수명 관리·메모리 기준 계측은 구현과 검증이 완료됐다.
@@ -131,10 +144,9 @@ SARIF 실측·공개 태그 실행·코퍼스·스킬·캐시 수명 관리·메
 
 ## Resume Prompt
 
-HANDOFF.md와 적용 AGENTS.md를 읽고 branch/status를 확인해줘. GitHub Marketplace action-v1.0.0과
-GitLab Catalog cartograph-ci 1.0.0의 발행·소비자 검증은 완료됐어. PR #131과 #132, GitLab MR !1은
-머지했고 검증 MR !2는 새 Code Quality 진단 1건을 확인한 뒤 병합 없이 닫았어. 임시 Mac 러너와
-인증정보·실행 프로세스도 정리했어. 인증·러너 승인·발행을 다시 진행하지 마. CLI/Homebrew는 0.20.0이야.
-루트의 README 두 개·상세 기록·HANDOFF는 PR #130에 함께 커밋했고 기존 사용자 변경을 보존했어.
-사용자는 문서 커밋부터 PR #130의 main 통합·검토·검증·병합까지 승인했어. 실제 PR·CI·로컬 상태를
-먼저 확인해. 병합됐다면 반복하지 말고 다음 사용자 요청을 따라. 새 릴리스·캐시 삭제·작업 폴더 정리는 별도야.
+HANDOFF.md와 적용 AGENTS.md를 읽고 branch/status를 확인해줘. PR #130은 병합됐고 main CI와
+SARIF 검증도 통과했어. 현재 승인된 작업은 CLI 0.21.0 발행과 Homebrew 갱신·설치 검증이야.
+현재 브랜치는 feature/release-0.21.0이며 근거는 .git/evidence-release-0.21.0-20260923/에 모아.
+GitHub Marketplace action-v1.0.0과 GitLab Catalog 1.0.0의 발행·소비자 검증은 끝났으니
+인증·러너 승인·기존 태그 발행을 반복하지 마. GitLab 컴포넌트의 CLI 0.20.0 고정도 유지해.
+사용자 변경을 보존하고 실제 릴리스·CI·tap 상태를 확인하며 이어가. 캐시 삭제와 작업 폴더 정리는 별도야.
