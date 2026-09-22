@@ -1,0 +1,43 @@
+stages: [test, analyze, verify, release]
+
+variables:
+  CARTOGRAPH_CI_RUNNER_TAG: cartograph-ci-macos
+
+include:
+  - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/cartograph@$CI_COMMIT_SHA
+    inputs:
+      job-name: cartograph-corpus
+      stage: analyze
+      runner-tags: ["$CARTOGRAPH_CI_RUNNER_TAG"]
+      project: fixtures/Smoke
+      command: dead
+      fail-on-findings: false
+
+component-tests:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - python3 -m unittest discover -s tests -v
+
+verify-corpus-report:
+  stage: verify
+  image: python:3.12-slim
+  needs:
+    - job: cartograph-corpus
+      artifacts: true
+  script:
+    - python3 tests/verify_pipeline.py
+
+publish-catalog:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^[0-9]+\.[0-9]+\.[0-9]+$/'
+  script:
+    - echo "Publishing the verified Cartograph CI component."
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "Cartograph CI $CI_COMMIT_TAG"
+    description: >-
+      Cartograph Swift analysis for macOS runners, with GitLab Code Quality reports.
+      See README.md for inputs and analysis limitations.

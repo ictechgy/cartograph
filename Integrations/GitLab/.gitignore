@@ -1,0 +1,5 @@
+__pycache__/
+.build/
+cartograph-report.json
+cartograph-status.json
+gl-code-quality-report.json
