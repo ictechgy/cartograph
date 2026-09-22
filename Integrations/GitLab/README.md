@@ -6,9 +6,8 @@ publishes GitLab Code Quality findings and preserves the complete native report 
 
 ## Component: `cartograph`
 
-The component version and CLI version are separate: the planned component release is `1.0.0`,
-and its default CLI binary is the existing Cartograph `0.20.0` release. The first Catalog release
-is pending a successful GitLab pipeline; the example below is the intended usage.
+The component and CLI are versioned separately. The example below pins the component to `1.0.0`;
+its default CLI binary is the existing Cartograph `0.20.0` release.
 
 ```yaml
 include:
@@ -99,8 +98,9 @@ python3 -m unittest discover -s tests -v
 ```
 
 The project pipeline includes this exact component at `$CI_COMMIT_SHA`, compiles the tracked Swift
-fixture on a GitLab-hosted `saas-macos-medium-m1` runner, uploads actual findings and verifies the reports.
-The test job pins `macos-26-xcode-26`; maintainers can select an eligible compatible runner and image.
+fixture on a project runner tagged `cartograph-ci-macos`, uploads findings and verifies the reports.
+Maintainers can override `CARTOGRAPH_CI_RUNNER_TAG` for an eligible runner. When using GitLab-hosted
+macOS, also set a compatible `image` on the `cartograph-corpus` job. Shell runners use their installed toolchain.
 It also runs the behavioral tests on Linux. A release cannot skip the macOS integration job.
 Configure an eligible runner before creating a version tag; no runner is installed or registered by this project.
 

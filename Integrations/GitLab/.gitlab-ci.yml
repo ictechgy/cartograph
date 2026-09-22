@@ -1,17 +1,17 @@
 stages: [test, analyze, verify, release]
 
+variables:
+  CARTOGRAPH_CI_RUNNER_TAG: cartograph-ci-macos
+
 include:
   - component: $CI_SERVER_FQDN/$CI_PROJECT_PATH/cartograph@$CI_COMMIT_SHA
     inputs:
       job-name: cartograph-corpus
       stage: analyze
-      runner-tags: [saas-macos-medium-m1]
+      runner-tags: ["$CARTOGRAPH_CI_RUNNER_TAG"]
       project: fixtures/Smoke
       command: dead
       fail-on-findings: false
-
-cartograph-corpus:
-  image: macos-26-xcode-26
 
 component-tests:
   stage: test
