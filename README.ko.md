@@ -1288,6 +1288,7 @@ Periphery는 둘 다 꺼져 있습니다. 합성된 `==`나 `hash(into:)`만 읽
 
 컴포지트 액션이 릴리스 바이너리를 내려받고, 인덱스를 만들고, 게이트 하나를 돌린 뒤 SARIF
 리포트를 code scanning에 올립니다.
+[Marketplace의 Cartograph Swift Analysis](https://github.com/marketplace/actions/cartograph-swift-analysis?version=action-v1.0.0)에서 설치할 수 있습니다.
 
 ```yaml
 name: Cartograph
@@ -1302,15 +1303,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0          # --since 에 기준 커밋 이력이 필요
-      - uses: ictechgy/cartograph@0.20.0
+      - uses: ictechgy/cartograph@action-v1.0.0
         with:
           command: check
           version: 0.20.0
           args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-`0.20.0` 태그는 `action.yml`을 포함합니다. 재현 가능한 실행을 위해 액션 리비전과 내려받는
-바이너리 버전을 함께 고정하세요(`@main`은 개발 브랜치를 따릅니다). 입력:
+`action-v1.0.0`은 액션 릴리스 태그이고, `version: 0.20.0`은 CLI 바이너리를 선택합니다.
+재현 가능한 실행을 위해 둘을 함께 고정하세요(`@main`은 개발 브랜치를 따릅니다).
+Marketplace의 기본 "Use latest version"은 현재 저장소의 최신 CLI 릴리스인 `0.20.0`을 따릅니다.
+액션 릴리스를 쓰려면 `action-v1.0.0`을 선택하거나 위의 버전별 링크를 이용하세요. 입력:
 
 | 입력 | 기본값 | 의미 |
 |---|---|---|
@@ -1324,12 +1327,13 @@ jobs:
 | `upload-sarif` | `true` | code scanning 업로드(`security-events: write` 필요) |
 | `fail-on-findings` | `true` | `false`면 발견이 있어도 스텝을 실패시키지 않음 |
 
-출력: `exit-code`(사용 오류 `64`를 포함한 원래 CLI 코드)와 `sarif-file`. Xcode 툴체인의
+출력: `exit-code`(사용 오류 `64`를 포함한 원래 CLI 코드), `sarif-file`, `sarif-id`(GitHub 업로드
+접수 ID, 업로드를 끄면 빈 값). Xcode 툴체인의
 `libIndexStore`를 읽으므로 macOS 러너가 아니면 명확한 메시지와 함께 실패합니다.
 `xcodebuild`로 빌드한다면 `build: none`으로 두고 만든 바이너리를 `binary`로 넘기거나,
 Cartograph를 직접 설치해 아래 수동 명령을 쓰세요.
 
-개발 버전 액션은 예상 밖 종료 코드와 리포트 누락을 실패로 처리하고, 이전 실행이 남긴 리포트를
+`action-v1.0.0` 액션은 예상 밖 종료 코드와 리포트 누락을 실패로 처리하고, 이전 실행이 남긴 리포트를
 업로드하지 않습니다. 이 수정은 기존 `0.20.0` 액션 태그에 포함되지 않습니다.
 [통합 워크플로](.github/workflows/action-sarif.yml)는 실제 코퍼스 발견을 업로드하며,
 [검증 기록](docs/ACTION-CORPUS-CACHE.md)은 로컬 검사와 GitHub 수락 근거를 구분합니다.
@@ -1360,6 +1364,22 @@ Scripts/benchmark-workflows.py --cartograph .build/debug/cartograph --project .
 시간 초과, 잘못된 프로토콜 출력, 정합성 불일치가 있으면 실패하며, 비교가 유효하지 않은 속도
 측정은 통과로 기록하지 않습니다.
 검증 워크로드·측정값·적용 범위는 [워크플로 검증 기록](docs/WORKFLOW-VALIDATION.md)에 있습니다.
+
+### GitLab CI/CD 컴포넌트
+
+[GitLab Catalog의 Cartograph CI](https://gitlab.com/explore/catalog/ictechgy/cartograph-ci)는
+macOS 러너에서 같은 분석기를 실행하고 Code Quality 진단과 원본 보고서를 함께 올립니다.
+
+```yaml
+include:
+  - component: gitlab.com/ictechgy/cartograph-ci/cartograph@1.0.0
+    inputs:
+      runner-tags: [macos]
+```
+
+선택한 러너는 프로젝트에서 이미 사용할 수 있어야 하며, 컴포넌트가 러너를 설치하지는 않습니다.
+기본 CLI는 archive 체크섬과 함께 `0.20.0`으로 고정합니다. 빌드 입력·보고 전용 모드·분석 한계와
+GitLab 결과 표시는 [컴포넌트 안내](https://gitlab.com/ictechgy/cartograph-ci/-/blob/1.0.0/README.md)를 보세요.
 
 ## 구조
 

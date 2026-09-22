@@ -1,7 +1,8 @@
 # Action, corpus and cache follow-up
 
-Date: 2026-09-21. Development branch: `feature/action-corpus-cache`.
-Changes here are not included in the published 0.20.0 action or binary.
+Date: 2026-09-21. Publication status checked: 2026-09-22. Development branch: `feature/action-corpus-cache`.
+The action changes are published as `action-v1.0.0`. Changes here are not included in the
+published 0.20.0 action or binary; 0.20.0 remains the latest CLI binary release.
 
 ## Local verification
 
@@ -16,16 +17,31 @@ Changes here are not included in the published 0.20.0 action or binary.
 
 ## Action publication and upload
 
-The publication candidate is the existing Cartograph action: name `Cartograph Swift Analysis`, author `ictechgy`,
+The published Cartograph action has name `Cartograph Swift Analysis`, author `ictechgy`,
 search icon, blue branding, and the description in [action.yml](../action.yml). The existing
 `0.20.0` release contains the action manifest. Do not move that tag to include these fixes.
 The [official publication rules](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/publish-in-github-marketplace)
 prohibit an action name matching another GitHub account. The existing `Cartograph` name conflicts
-with the `cartograph` organization, so the development manifest uses `Cartograph Swift Analysis`.
-The candidate Marketplace URL returned 404. The signed-in release editor shows that the
-GitHub Marketplace Developer Agreement has not been accepted. Public listing is not yet complete;
-the prepared `action-v1.0.0` action-only draft does not replace the latest binary release. The draft editor subsequently requested a new
-GitHub browser login. Agreement acceptance and public listing remain pending.
+with the `cartograph` organization, so the published manifest uses `Cartograph Swift Analysis`.
+The [action-only release](https://github.com/ictechgy/cartograph/releases/tag/action-v1.0.0)
+was published on 2026-09-21 at `567d91fb0d4e99866c6f52c8650792baf13b71c7` (release ID `392487216`).
+The [published-tag run](https://github.com/ictechgy/cartograph/actions/runs/35547841097) downloaded
+that action and GitHub accepted 37 results across 5 rules, without processing errors or warnings.
+On 2026-09-22, the release API confirmed the action is public and the latest binary is still 0.20.0.
+Marketplace registration completed on 2026-09-22 after the user completed GitHub's account
+reauthentication in Chrome. The default branch's name collision and overlong description were
+fixed by [PR #131](https://github.com/ictechgy/cartograph/pull/131), merged as
+`76219c0900d886dc8f5383cdfd34f3e2a9b77c6f`. It changes the action name and description (117 characters),
+plus the existing manifest test's name expectation; runtime metadata is unchanged.
+[CI](https://github.com/ictechgy/cartograph/actions/runs/35635573987) passed all 1,647 tests,
+the coverage gate at 92.84% and self-analysis. The public listing has the expected name and
+`Code quality` category; its [action-v1.0.0 version](https://github.com/marketplace/actions/cartograph-swift-analysis?version=action-v1.0.0)
+offers `uses: ictechgy/cartograph@action-v1.0.0`. Both listing URLs returned HTTP 200 without authentication.
+The default Marketplace "Use latest version" instead follows the repository's latest release,
+`0.20.0`, and labels the explicit action version as older. Use the version-specific link;
+the CLI latest release and existing action tag were intentionally preserved.
+Public-page captures and comparison evidence are in `.git/evidence-marketplace-20260922/status.json`
+and the adjacent HTML files.
 
 The [integration workflow](../.github/workflows/action-sarif.yml) builds the real compiler corpus,
 downloads the pinned 0.20.0 binary and runs the checked-out composite action with SARIF upload

@@ -1326,7 +1326,8 @@ Exit codes let a script tell "your code has problems" from "the tool did not run
 ### The official action
 
 The composite action downloads a release binary, builds the index, runs one gate and uploads the
-SARIF report to code scanning:
+SARIF report to code scanning. Get
+[Cartograph Swift Analysis on Marketplace](https://github.com/marketplace/actions/cartograph-swift-analysis?version=action-v1.0.0):
 
 ```yaml
 name: Cartograph
@@ -1341,15 +1342,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0          # --since needs the base commit
-      - uses: ictechgy/cartograph@0.20.0
+      - uses: ictechgy/cartograph@action-v1.0.0
         with:
           command: check
           version: 0.20.0
           args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-The `0.20.0` tag includes `action.yml`. Pin both the action revision and the downloaded binary
-version for a repeatable setup (`@main` tracks the development branch). Inputs:
+The `action-v1.0.0` tag is the action release; `version: 0.20.0` selects the CLI binary.
+Pin both for a repeatable setup (`@main` tracks the development branch). Marketplace's default
+"Use latest version" currently follows the repository's latest CLI release, `0.20.0`; select
+`action-v1.0.0` or use the version-specific link above for the action release. Inputs:
 
 | Input | Default | Meaning |
 |---|---|---|
@@ -1363,12 +1366,13 @@ version for a repeatable setup (`@main` tracks the development branch). Inputs:
 | `upload-sarif` | `true` | Upload to code scanning (requires `security-events: write`) |
 | `fail-on-findings` | `true` | `false` reports without failing the step |
 
-Outputs: `exit-code` (the raw CLI code, including `64` for usage errors) and `sarif-file`. The action
+Outputs: `exit-code` (the raw CLI code, including `64` for usage errors), `sarif-file` and `sarif-id`
+(GitHub's upload receipt, empty when upload is disabled). The action
 fails with a clear message on a non-macOS runner, because the tool loads `libIndexStore` from the
 Xcode toolchain. Building with `xcodebuild`? Set `build: none` and either pass your binary through
 `binary` or install Cartograph yourself and keep the manual commands below.
 
-The development action rejects unexpected exit codes and missing reports, and never uploads a
+The `action-v1.0.0` action rejects unexpected exit codes and missing reports, and never uploads a
 report left by an earlier invocation. These fixes are not part of the existing `0.20.0` action tag.
 The [integration workflow](.github/workflows/action-sarif.yml) uploads actual corpus findings;
 [validation notes](docs/ACTION-CORPUS-CACHE.md) distinguish local checks from GitHub acceptance.
@@ -1400,6 +1404,23 @@ They fail on a timeout, malformed protocol output or a correctness mismatch; a r
 measurement is not treated as a pass unless its comparison is also valid.
 See [workflow validation](docs/WORKFLOW-VALIDATION.md) for the acceptance workloads, measurements
 and their limits.
+
+### GitLab CI/CD component
+
+[Cartograph CI in the GitLab Catalog](https://gitlab.com/explore/catalog/ictechgy/cartograph-ci)
+runs the same analyzer on a macOS runner and publishes Code Quality findings alongside the native report:
+
+```yaml
+include:
+  - component: gitlab.com/ictechgy/cartograph-ci/cartograph@1.0.0
+    inputs:
+      runner-tags: [macos]
+```
+
+The selected runner must already be available to your project; the component does not provision one.
+The default CLI is pinned to `0.20.0` with its archive checksum. See the
+[component guide](https://gitlab.com/ictechgy/cartograph-ci/-/blob/1.0.0/README.md)
+for build inputs, report-only mode, analysis limitations and GitLab report views.
 
 ## Architecture
 
