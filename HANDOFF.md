@@ -54,10 +54,16 @@ _Last updated: 2026-09-23_
   older 표시가 붙는다. 위 버전별 링크로 안내한다. CLI latest와 `action-v1.0.0`의 SHA가
   그대로임을 검증했다. 이 표시를 없애려고 latest를 바꾸거나 태그를 옮기지 않는다.
   최종 근거는 `.git/evidence-marketplace-20260922/status.json`과 인접 공개 HTML·CI 로그다.
-- **구현·검증 완료, PR은 미머지:** 작업 브랜치는 `feature/action-corpus-cache`,
-  [PR #130](https://github.com/ictechgy/cartograph/pull/130)은 `567d91f`의 초안 상태다.
+- **PR #130 최종 통합:** 작업 브랜치는 `feature/action-corpus-cache`다.
+  [PR #130](https://github.com/ictechgy/cartograph/pull/130)이 최종 CI·병합 상태의 정본이다.
+  9월 23일 사용자 승인으로 문서 4개를 `6a28298`에 커밋했고, `c7c5c48`에서 최신 main
+  (`3171998`, PR #131·#132 포함)을 충돌 없이 통합했다. 기존 사용자 인계 내용은 보존했다.
+  캐시 정리·잠금, Action 실패 처리·경로 보정, 코퍼스·스킬 계약의 최종 코드 검토에서
+  새 병합 차단 결함은 발견하지 않았다. Action·캐시 하네스, GitLab 행동 검사 15개,
+  YAML·Python·셸 구문, 문서 47개 로컬 링크와 버전·러너 예제 검증을 통과했다.
   public/fix/affected 컴파일러 골든·스킬 안내, 캐시 정리 preview/apply·사용 중 잠금·최근 사용 표식,
-  Action 실패 처리·SARIF 경로 보정을 구현했다. [전체 CI](https://github.com/ictechgy/cartograph/actions/runs/35521930946)
+  Action 실패 처리·SARIF 경로 보정을 구현했다. 통합 전 `567d91f`의
+  [전체 CI](https://github.com/ictechgy/cartograph/actions/runs/35521930946)
   통과: 테스트 **1,650개**, 통합 커버리지 **92.83%**(단위 87.50%), CLI 계약·코퍼스·런타임/MCP·
   strict 자기 분석(모듈·타입 순환 포함). 로컬 통합 커버리지는 92.84%였다.
   Swift 6.3의 추가 `@Test` implicit accessor는 원시 영향 목록과 대조한 뒤 골든 집계에서만
@@ -92,7 +98,7 @@ _Last updated: 2026-09-23_
   핸들러 스캔 전체나 RN 엔진·앱 런타임을 검증했다는 뜻은 아니다.
 - 영·한 README의 Action 설치 예제를 로컬에서 `ictechgy/cartograph@action-v1.0.0`으로 맞췄고,
   바이너리 입력은 `version: 0.20.0`을 유지했다. `sarif-id` 출력과 상세 기록의 발행 상태도 갱신했다.
-  Marketplace 버전별 링크와 기본 latest 동작도 안내한다. 문서 변경은 PR #130에 함께 반영한다.
+  Marketplace 버전별 링크와 기본 latest 동작도 안내한다. 문서 변경은 PR #130에 함께 커밋했다.
   로컬 링크와 버전 표기, `git diff --check`를 검증했다.
 - 자매 발행본·왕복 검증의 최신 근거는 [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md),
   사용법은 [README](README.md)를 따른다. 현재 branch·원격 머지 상태는 Git으로 확인한다.
@@ -111,12 +117,11 @@ RN 새 아키텍처/lifecycle/미디어 재생 검증, 새 선택적 collector �
 GitHub Marketplace와 GitLab Catalog 게시 작업은 모두 끝났다. PR #131·#132의 구현·병합·
 인증·임시 러너 등록·게시를 반복하지 않는다. CLI/Homebrew 최신은 계속 0.20.0이다.
 
-1. **사용자가 문서 커밋과 PR #130 검토·병합을 승인했다(2026-09-23).** 영·한 README에 양쪽
-   설치 링크·버전·Mac 러너 요건을 맞췄고 상세 기록과 이 인계도 함께 반영한다. 두 Orca 작업 폴더
-   `fix-action-marketplace-metadata/`, `feature-gitlab-component/`는 부모 저장소의 로컬 exclude에 있다.
-2. **PR #130을 최신 main과 통합하고 최종 검증한 뒤 병합한다.** 현재 초안·미머지다.
-   사용자 파일을 보존하고 실제 브랜치·PR 상태를 확인한다. 인계 파일에는 세션 시작 전 사용자
-   수정과 이번 기록이 함께 있으므로 사용자 부분을 버리지 않는다.
+이번 사용자 요청은 문서 커밋과 PR #130의 최신 main 통합·검토·검증·병합까지다(2026-09-23 승인).
+문서 커밋과 main 통합은 끝났으며, 재개 시 PR의 최종 CI·병합 상태와 로컬 Git 상태를 확인한다.
+병합이 완료됐다면 이 작업을 반복하지 않고 다음 사용자 요청을 따른다. 추가 기능·새 릴리스·
+실제 캐시 삭제는 이번 범위가 아니다. 두 Orca 작업 폴더 `fix-action-marketplace-metadata/`,
+`feature-gitlab-component/`는 부모 저장소의 로컬 exclude에 있고 정리 대상으로 승인받지 않았다.
 
 SARIF 실측·공개 태그 실행·코퍼스·스킬·캐시 수명 관리·메모리 기준 계측은 구현과 검증이 완료됐다.
 전역 실제 캐시 삭제나 `sourceCache` 최적화는 수행하지 않았다. 완료된 항목을 다시 착수하지 않는다.
@@ -130,5 +135,6 @@ HANDOFF.md와 적용 AGENTS.md를 읽고 branch/status를 확인해줘. GitHub M
 GitLab Catalog cartograph-ci 1.0.0의 발행·소비자 검증은 완료됐어. PR #131과 #132, GitLab MR !1은
 머지했고 검증 MR !2는 새 Code Quality 진단 1건을 확인한 뒤 병합 없이 닫았어. 임시 Mac 러너와
 인증정보·실행 프로세스도 정리했어. 인증·러너 승인·발행을 다시 진행하지 마. CLI/Homebrew는 0.20.0이야.
-루트의 README 두 개·상세 기록·HANDOFF는 PR #130에 함께 반영하며 기존 사용자 변경을 보존해.
-사용자는 문서 커밋부터 PR #130의 main 통합·검토·검증·병합까지 승인했어. 실제 PR·CI 상태를 확인하고 이어가.
+루트의 README 두 개·상세 기록·HANDOFF는 PR #130에 함께 커밋했고 기존 사용자 변경을 보존했어.
+사용자는 문서 커밋부터 PR #130의 main 통합·검토·검증·병합까지 승인했어. 실제 PR·CI·로컬 상태를
+먼저 확인해. 병합됐다면 반복하지 말고 다음 사용자 요청을 따라. 새 릴리스·캐시 삭제·작업 폴더 정리는 별도야.
