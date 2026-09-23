@@ -1,5 +1,7 @@
 # Cartograph
 
+<img src="icon.png" alt="cartograph's swift mascot" width="112" height="112" align="right">
+
 **A queryable dependency graph for Swift and iOS codebases.**
 
 [한국어 문서](README.ko.md)

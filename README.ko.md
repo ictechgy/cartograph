@@ -1,5 +1,7 @@
 # Cartograph
 
+<img src="icon.png" alt="cartograph의 칼새 마스코트" width="112" height="112" align="right">
+
 **Swift·iOS 코드베이스의 의존성 그래프에 질문을 던지는 도구.**
 
 [English](README.md)
