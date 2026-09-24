@@ -125,7 +125,7 @@ struct CommandConfigurationTests {
         let names = CartographCommand.configuration.subcommands.map { $0.configuration.commandName }
         #expect(names == [
             "graph", "cycles", "dead", "fix", "query", "runtime", "impact", "affected", "check", "serve", "snapshot", "dataflow", "bridges",
-            "metrics", "rules", "baseline", "init", "skill",
+            "schema", "metrics", "rules", "baseline", "init", "skill",
         ])
         // 인자 없이 실행하면 도움말이 나와야 한다. 기본 하위 명령이 있으면
         // 처음 써 보는 사용자가 DOT 덤프를 마주하게 된다.

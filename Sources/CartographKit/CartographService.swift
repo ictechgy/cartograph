@@ -1052,6 +1052,128 @@ public struct CartographService: Sendable {
         return CommandOutcome(output: asText ? document.renderText() : try Self.encodeSortedJSON(document))
     }
 
+    /// Swift 소스에서 DB 관계 참조를 모아 isthmus 가 읽는 persistence 문서로 만든다.
+    ///
+    /// `bridges` 가 이름 경계를 읽는 것과 같은 원리다 — 인덱스는 문자열을 모르니
+    /// `sqlite3_prepare(db, "DELETE FROM …")` 의 SQL 은 구문에서만 나온다. 여기서 낸
+    /// `relation-use` 사실은 schemagraph 의 `relation-decl` 과 조인돼야 비로소
+    /// "이 코드가 이 테이블을 쓴다"가 된다. 인덱스는 `bridges` 와 같은 이유로
+    /// 읽는다 — 조인 결과가 `--external-retentions` 로 돌아오려면 USR 이 필요하다.
+    ///
+    /// - Parameter generatedAt: 문서에 적을 생성 시각. 테스트가 고정하려고 받는다.
+    public func schemaFacts(generatedAt: Date = Date()) throws -> BridgeFactsDocument {
+        let canonicalProject: String
+        do {
+            canonicalProject = try environment.fileSystem.realPath(at: projectPath)
+        } catch let error as CocoaError where error.code == .featureUnsupported {
+            throw CartographError.invalidConfiguration(path: projectPath, reason:
+                "The provided FileSystem does not support realPath(at:). Implement it before exporting schema facts.")
+        } catch {
+            let reason = "Could not resolve the project root: \(error.localizedDescription). "
+                + "Check that it exists and is accessible."
+            throw CartographError.invalidConfiguration(path: projectPath, reason: reason)
+        }
+        let snapshot = try makeIndexSource(includeObjectiveCSources: true, includeExternalSymbols: true)
+            .provider.loadSnapshot()
+        let sources = schemaSourceFiles()
+        let indexedDates = Dictionary((snapshot.indexedFileDates ?? [:]).map {
+            (ValueFlowSourceLoader.canonicalPath($0.key), $0.value)
+        }, uniquingKeysWith: min)
+        let freshPaths = Set(sources.compactMap { path -> String? in
+            guard let indexed = indexedDates[ValueFlowSourceLoader.canonicalPath(path)],
+                  let modified = environment.fileSystem.modificationDate(at: path), modified <= indexed
+            else { return nil }
+            return ValueFlowSourceLoader.canonicalPath(path)
+        })
+        let resolver = BridgeSymbolResolver(snapshot: snapshot, freshPaths: freshPaths)
+        let scanner = SchemaFactScanner()
+        var facts: [BridgeFact] = []
+        var unreadable = 0
+        var unjoinedDynamic = 0
+        var skippedSqlLiterals = 0
+        var coreDataReferences = 0
+        var swiftDataReferences = 0
+        var realmReferences = 0
+        var unsupportedFrameworkFiles: [String: Int] = [:]
+        for path in sources {
+            do {
+                let source = try environment.fileSystem.readText(at: path)
+                let result = scanner.scan(source: source, path: path)
+                facts += resolver.resolve(result.facts)
+                unjoinedDynamic += result.counts.unjoinedDynamic
+                skippedSqlLiterals += result.counts.skippedSqlLiterals
+                coreDataReferences += result.counts.coreDataReferences
+                swiftDataReferences += result.counts.swiftDataReferences
+                realmReferences += result.counts.realmReferences
+                for framework in result.counts.unsupportedFrameworks {
+                    unsupportedFrameworkFiles[framework, default: 0] += 1
+                }
+            } catch {
+                unreadable += 1
+            }
+        }
+        var limitations: [String] = []
+        if unreadable > 0 {
+            limitations.append("unreadable-sources: \(unreadable) file(s) could not be read and were skipped")
+        }
+        if unjoinedDynamic > 0 {
+            limitations.append(
+                "unjoined-dynamic-relations: \(unjoinedDynamic) SQL argument(s) or relation operand(s) "
+                    + "were not statically readable; their relations are uncounted"
+            )
+        }
+        if skippedSqlLiterals > 0 {
+            limitations.append(
+                "skipped-sql-literals: \(skippedSqlLiterals) ungated literal(s) contained SQL verbs but not "
+                    + "the uppercase form required for heuristic scanning; not counted"
+            )
+        }
+        if coreDataReferences > 0 {
+            limitations.append(
+                "core-data-references: \(coreDataReferences) Core Data fetch/entity reference(s) were observed; "
+                    + "entity names are not SQL catalog relations, so no facts were emitted for them"
+            )
+        }
+        if swiftDataReferences > 0 {
+            limitations.append(
+                "swiftdata-references: \(swiftDataReferences) SwiftData model/fetch reference(s) were observed; "
+                    + "predicate surfaces are not SQL catalog relations, so no facts were emitted for them"
+            )
+        }
+        if realmReferences > 0 {
+            limitations.append(
+                "realm-references: \(realmReferences) Realm object reference(s) were observed; "
+                    + "Realm objects are not SQL catalog relations, so no facts were emitted for them"
+            )
+        }
+        if !unsupportedFrameworkFiles.isEmpty {
+            let breakdown = unsupportedFrameworkFiles.keys.sorted()
+                .map { "\($0) (\(unsupportedFrameworkFiles[$0] ?? 0))" }.joined(separator: ", ")
+            limitations.append(
+                "unsupported-db-frameworks: \(unsupportedFrameworkFiles.values.reduce(0, +)) source file(s) "
+                    + "import persistence framework(s) outside the supported surface: \(breakdown)"
+            )
+        }
+        let missingUSRs = facts.count { $0.symbol?.usr == nil }
+        if missingUSRs > 0 {
+            limitations.append("missing-relation-usrs: \(missingUSRs) relation-use fact(s) lack indexed identities")
+        }
+        try BridgeFactsDocument.validateNames(facts, opaqueHandlerChannels: [])
+        return BridgeFactsDocument(
+            tool: .init(name: Cartograph.toolName, version: Cartograph.version),
+            generatedAt: Self.bridgeTimestamp(generatedAt),
+            project: canonicalProject,
+            facts: facts,
+            extraLimitations: limitations
+        )
+    }
+
+    /// `schema` 명령. 항상 JSON 이다. 소비자는 사람이 아니라 isthmus 다.
+    public func exportSchemaFacts(generatedAt: Date = Date(), asText: Bool = false) throws -> CommandOutcome {
+        let document = try schemaFacts(generatedAt: generatedAt)
+        return CommandOutcome(output: asText ? document.renderText() : try Self.encodeSortedJSON(document))
+    }
+
     /// 교환 생산자가 요구하는 UTC 밀리초 세 자리 시각을 만든다.
     private static func bridgeTimestamp(_ date: Date) -> String {
         let formatter = ISO8601DateFormatter()
@@ -1070,6 +1192,19 @@ public struct CartographService: Sendable {
         return environment.fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { path in filter.allows(path) && suffixes.contains { path.hasSuffix($0) } },
+            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
+        )
+    }
+
+    /// 관계 참조를 찾을 Swift 소스 파일. 분석 범위와 같은 경로 필터를 건다.
+    ///
+    /// 인덱스의 파일 목록이 아니라 디스크를 걷는다. 아직 빌드하지 않은 파일은
+    /// 인덱스에 없지만 SQL 문자열은 거기에도 있다.
+    private func schemaSourceFiles() -> [String] {
+        let filter = configuration.pathFilter
+        return environment.fileSystem.recursiveFiles(
+            under: projectPath,
+            isIncluded: { path in filter.allows(path) && path.hasSuffix(".swift") },
             shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
         )
     }

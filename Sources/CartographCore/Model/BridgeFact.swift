@@ -90,6 +90,10 @@ public struct BridgeFact: Hashable, Sendable {
         case moduleExport = "module-export"
         /// React Native 뷰 매니저를 내보냈다(`RCT_EXPORT_VIEW_PROPERTY`, Expo `View` 정의).
         case componentExport = "component-export"
+        /// 코드가 DB 관계(테이블·뷰)를 참조했다 — `relation-decl`은 schemagraph의 몫이다.
+        ///
+        /// `channel`은 관계 이름, `method`는 컬럼 이름이다. persistence 문서에서만 나온다.
+        case relationUse = "relation-use"
     }
 
     /// 이름 경계 사실이 어느 React Native 해석 경로에 속하는지. 생략은 `core`다.
@@ -106,6 +110,8 @@ public struct BridgeFact: Hashable, Sendable {
     public enum Target: String, Sendable, CaseIterable {
         case flutter
         case reactNative = "react-native"
+        /// 코드 ↔ DB 스키마 경계. 브리지 메커니즘은 아니지만 같은 교환 문서가 실는다.
+        case persistence = "persistence"
     }
 
     /// 이 사실을 담고 있는 선언. 인덱스에서 찾았으면 USR 이 있다.

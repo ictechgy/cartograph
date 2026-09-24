@@ -43,6 +43,7 @@ struct CartographCommand: ParsableCommand {
             SnapshotCommand.self,
             DataflowCommand.self,
             BridgesCommand.self,
+            SchemaCommand.self,
             MetricsCommand.self,
             RulesCommand.self,
             BaselineCommand.self,
@@ -458,6 +459,67 @@ struct BridgesCommand: ParsableCommand {
                 events: events,
                 rnEvents: rnEvents
             ),
+            options: options,
+            context: context
+        )
+    }
+}
+
+/// 코드가 참조하는 DB 관계를 보낸다.
+struct SchemaCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "schema",
+        abstract: "Export which database relations Swift code references, for isthmus to join.",
+        discussion: """
+            Reads SQL arguments out of the sources — sqlite3 calls, GRDB `sql:` arguments and \
+            `Table`/`databaseTableName` declarations, SQLite.swift `Table`/`prepare`/`run`, Fluent \
+            `schema`/`query(_:)` — plus ungated uppercase SQL literals, and attaches the index's \
+            USR to each enclosing declaration it can match. The output is the bridge-facts \
+            exchange format with `target: "persistence"`, which isthmus joins against the \
+            `relation-decl` facts schemagraph produces. Core Data, SwiftData and Realm surfaces \
+            are counted under `limitations` — entity names are not SQL catalog relations.
+
+            This command states facts, not verdicts. It does not know whether a relation exists; \
+            a name that is not a literal is kept and marked `dynamic` rather than dropped.
+            """
+    )
+
+    @OptionGroup var options: GlobalOptions
+
+    @Option(name: .customLong("format"), help: "json (the exchange format) or text (one line per fact).")
+    var format: BridgesFormat = .json
+
+    func validate() throws {
+        // 사실 문서는 조인용 전체보내기다 — `bridges`와 같은 이유로 증분·해상도·
+        // 진단 형식·strict 인자를 앞에서 거부한다.
+        guard options.since == nil else {
+            throw ValidationError(
+                "--since cannot be combined with schema; the document must carry the whole "
+                    + "boundary or the join reads a missing reference"
+            )
+        }
+        guard options.level == nil else {
+            throw ValidationError(
+                "--level cannot be combined with schema; relation facts have no graph level"
+            )
+        }
+        guard options.reportFormat == nil else {
+            throw ValidationError(
+                "--report-format cannot be combined with schema; use --format for the document format"
+            )
+        }
+        guard !options.strict else {
+            throw ValidationError(
+                "--strict cannot be combined with schema; relation facts state the boundary, "
+                    + "they are not findings"
+            )
+        }
+    }
+
+    func run() throws {
+        let context = try CommandSupport.makeContext(options)
+        try CommandSupport.emit(
+            try context.service.exportSchemaFacts(asText: format == .text),
             options: options,
             context: context
         )

@@ -65,7 +65,7 @@ echo "종료 코드 0 — 정상"
 expect_status 0 "--help"              --help
 expect_status 0 "--version"           --version
 expect_status 0 "인자 없음(도움말)"    
-for subcommand in graph cycles dead fix query impact affected snapshot runtime check serve dataflow bridges metrics rules baseline init skill; do
+for subcommand in graph cycles dead fix query impact affected snapshot runtime check serve dataflow bridges schema metrics rules baseline init skill; do
     expect_status 0 "$subcommand --help" "$subcommand" --help
 done
 expect_status 0 "runtime plan --help" runtime plan --help
@@ -178,6 +178,11 @@ expect_status 64 "그래프와 형식 동시"    graph --report-format json
 expect_status 64 "그래프와 strict 동시"  graph --strict
 expect_status 64 "브리지와 형식 동시"    bridges --report-format json
 expect_status 64 "브리지와 strict 동시"  bridges --strict
+expect_status 64 "스키마와 형식 동시"    schema --report-format json
+expect_status 64 "스키마와 strict 동시"  schema --strict
+expect_status 64 "스키마와 since 동시"   schema --since HEAD
+expect_status 64 "스키마와 level 동시"   schema --level module
+expect_status 64 "잘못된 스키마 형식"    schema --format yaml
 expect_status 64 "베이스라인과 형식 동시" baseline --report-format json
 expect_status 64 "베이스라인과 strict 동시" baseline --strict
 expect_status 64 "설명과 테스트 전용 동시" dead --explain Foo --report-test-only
