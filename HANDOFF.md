@@ -7,27 +7,32 @@ _Last updated: 2026-09-24 by Devin_
 
 ## Goal
 
-0.21.0 발행·배포는 전부 끝났다(아래 Completed 참고). 현재 작업은 isthmus의 두 번째 조인
-도메인 **persistence**의 Swift 생산자 — `cartograph schema` 명령이다. gartograph(Go)·
-rustograph(Rust)·kartograph(Kotlin) 생산자는 이미 각자 main에 머지됐고, schemagraph가
-`relation-decl`을 내는 수신 측이다. cartograph는 호출 측 `relation-use`를 낸다.
+0.21.0 발행·배포는 전부 끝났고(아래 Completed 참고), isthmus의 두 번째 조인 도메인
+**persistence**의 Swift 생산자 `cartograph schema`도 [PR #136](https://github.com/ictechgy/cartograph/pull/136)으로
+머지 완료했다(`7ed102e`). persistence 생산자는 gartograph(Go)·rustograph(Rust)·
+kartograph(Kotlin)·cartograph(Swift)가 호출 측 `relation-use`를 내고, schemagraph가
+`relation-decl`을 내는 수신 측이다.
 
 ## Current Status
 
-- 저장소: `/Users/jinhongan/Desktop/cartograph`.
-- 작업 브랜치 `feature/schema-facts-swift`(`origin/main` 기준 새로 땄다 — 이전
-  `feature/schema-facts`는 squash 머지된 릴리스 커밋 위에 있어 폐기).
+- 저장소: `/Users/jinhongan/Desktop/cartograph`. `main`은 `7ed102e`다.
+- `cartograph schema`는 `feature/schema-facts-swift`에서 squash 머지됐다(원격·로컬 브랜치
+  정리 완료). isthmus 측 수용 테스트·계약 문서는 isthmus PR #112(`b6a0eec`)로 머지됐다.
 - `cartograph schema`는 SwiftSyntax 스캐너(`SchemaFactScanner` + `SqlRelations`)로
-  sqlite3 인자·GRDB `sql:`/`Table`/`databaseTableName`·SQLite.swift·Fluent·게이트 없는
-  대문자 SQL 리터럴을 읽어 `platform: "swift"`, `target: "persistence"` 문서를 낸다.
-  Core Data·SwiftData·Realm·미지원 DB 프레임워크는 사실이 아니라 limitation 개수로 센다.
-- 검증 상태: `swift build`·전체 `swift test`(스캐너 24 + 렉서 8 포함)·`verify-cli-contract`·
-  `verify-fixtures`·`coverage.sh`(통합 91.87%)·strict dead/cycles/cycles-type/rules 모두 통과.
-  실제 인덱스가 있는 fixture에서 isthmus `check` 조인까지 확인했다(matchedRelations·
-  `relation-use-without-decl`·실제 USR 부착).
-- 남은 일: 커밋 → PR → GLM 리뷰 → CI 후 머지. isthmus 쪽 수용 테스트·계약 문서는
-  `feature/swift-persistence` 브랜치(커밋 `1f990d3`)로 분리해 뒀다.
-- HANDOFF 두 파일의 이전 인계 갱신은 이번 작업과 함께 커밋됐다.
+  sqlite3 인자·GRDB `sql:`/`Table`/`tableExists`/`databaseTableName`·SQLite.swift·Fluent·
+  게이트 없는 대문자 SQL 리터럴을 읽어 `platform: "swift"`, `target: "persistence"`
+  문서를 낸다. Core Data·SwiftData·Realm·미지원 DB 프레임워크는 사실이 아니라
+  limitation 개수로 센다.
+- GLM 리뷰 2라운드를 반영했다. 1라운드: extension 안 static 테이블 선언 귀속,
+  `SQLite.Table` 한정 생성자, 바인딩 리터럴 이중 발화 억제, 표현식 빌더 과대계수,
+  같은 이름 재바인딩 오귀속 방지, `tableExists`, limitation 파일 수 계수.
+  2라운드: 중첩된 다른 테이블 수신자 호출의 컬럼이 바깥 채널로 오귀속하던 문제를
+  ColumnCollector 서브트리 건너뛰기로 수정했다.
+- 검증 상태: `swift build`·전체 `swift test` 390개(스캐너 31 + 렉서 8 포함)·
+  `verify-cli-contract`·`verify-fixtures`·`coverage.sh`(통합 91.87%)·strict
+  dead/cycles/cycles-type/rules 모두 통과. 실제 인덱스가 있는 fixture에서 isthmus
+  `check` 조인까지 확인했다(matchedRelations·`relation-use-without-decl`·실제 USR 부착).
+- `schema`는 아직 발행본에 없다 — 0.21.0 이후 main 기능이다. 다음 릴리스에서 포함된다.
 
 | 발행물 | 현재 버전·상태 |
 |---|---|
@@ -94,14 +99,20 @@ rustograph(Rust)·kartograph(Kotlin) 생산자는 이미 각자 main에 머지�
   코퍼스 `.build`, Python 캐시, 0.21.0 다운로드/압축 해제 사본·임시 tap 체크아웃.
   현재 Debug 빌드·인덱스·의존성 캐시와 검증 로그·manifest는 보존했다.
   Release·코퍼스 빌드가 다시 필요하면 재생성한다. 설치본과 `.build/debug/cartograph`는 모두 0.21.0이다.
+- 2026-09-24 두 번째 정리: 머지 완료된 로컬 브랜치 13개를 삭제했다(각 PR 병합 확인,
+  원격 브랜치는 유지). 원격이 없던 `feature/gitlab-catalog-export`(고아 브랜치)는 트리가
+  `main:Integrations/GitLab`과 동일(`840d35c`)함을, `feature/schema-facts`는 #134 병합본과
+  같은 커밋임을 확인했다. 산출물은 ValueFlowBenchmark 실행별 `swift-build`·`.swift-build`,
+  `Fixtures/FalsePositiveCorpus/.build`, 루트 `default.profraw`, `Scripts/__pycache__`,
+  `.DS_Store`를 지워 약 680 MiB를 확보했다. 벤치마크 결과 JSON·로그와 `.build`(Debug·인덱스)는 보존했다.
 - 제품 소스는 바뀌지 않았다. 정리 대상 부재·현재 인덱스·CLI 버전·문서 보존을 확인했으며,
   기존 제품 검증 근거를 재사용했다. 산출물을 다시 만드는 전체 테스트는 재실행하지 않았다.
 
 ## Next Steps
 
-`feature/schema-facts-swift`를 커밋·PR하고 GLM 리뷰·CI 뒤 머지한다. isthmus
-`feature/swift-persistence`도 함께 PR한다. 머지 후 남은 확장 후보는 dartograph(Dart)
-생산자, 도메인 간 상관(공유 심볼 키), 세 번째 도메인(네트워크 경계)이다.
+`cartograph schema`는 머지 완료다. 남은 확장 후보는 dartograph(Dart) 생산자,
+도메인 간 상관(공유 심볼 키 — DB 컬럼 변경 → API 핸들러 → 위젯), 세 번째
+도메인(네트워크 경계)이다.
 자매 확장의 KAPT/KSP receipt snapshot/cache 연동, iPhone·iOS release·RN 새 아키텍처 검증,
 collector 발행은 [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md)가 정본이다.
 런타임 텔레메트리는 연구 전용 보류다. 이 후보들을 자동으로 착수하지 않는다.
@@ -109,7 +120,7 @@ collector 발행은 [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/m
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 HANDOFF.md와 적용 AGENTS.md를 읽고 Git 상태를 확인해줘.
-`feature/schema-facts-swift`에 `cartograph schema`(Swift persistence 생산자) 구현이 있어 —
-빌드·테스트·strict 게이트·실제 fixture e2e까지 통과한 상태야. 커밋→PR→GLM 리뷰→CI→머지를 이어가줘.
-isthmus는 `feature/swift-persistence`(`1f990d3`)에 수용 테스트·계약 문서가 커밋돼 있어.
+`cartograph schema`(Swift persistence 생산자)는 PR #136으로 머지 완료됐어(`7ed102e`) —
+로컬 브랜치·재생성 가능한 산출물 정리도 끝났다(로컬에는 `main`만 남음).
+남은 후보는 dartograph 생산자·교차 도메인 상관·네트워크 도메인이고 자동 착수하지 말 것.
 0.21.0 발행·검증은 전부 끝났으니 반복하지 말 것.
