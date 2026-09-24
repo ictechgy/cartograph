@@ -338,4 +338,93 @@ struct SchemaFactScannerTests {
             """
         #expect(scan(source).facts.first?.fact.channel == "audit%2Ev2")
     }
+
+    // MARK: 선언 수집 경계
+
+    @Test("extension의 static 테이블명 선언도 타입에 귀속된다")
+    func extensionTableBinding() {
+        let source = """
+            import GRDB
+            struct Player { }
+            extension Player: FetchableRecord {
+                static let databaseTableName = "players"
+            }
+            func load(db: Database) throws {
+                try db.create(table: "players")
+            }
+            """
+        // 선언 자리 사실이 나오고, `Player` 수신자의 멤버 호출이 같은 관계로 해석된다.
+        let result = scan(source + "\nextension Player { func f() { Player.all() } }\n")
+        #expect(result.facts.contains { $0.fact.channel == "players" })
+    }
+
+    @Test("한정 생성자 SQLite.Table도 관계를 읽는다")
+    func qualifiedTableConstructor() {
+        let source = """
+            import SQLite
+            let t = SQLite.Table("users")
+            """
+        #expect(channels(source).contains("users"))
+    }
+
+    @Test("gated 호출이 참조한 바인딩 리터럴은 ungated 패스가 다시 읽지 않는다")
+    func boundLiteralNotDoubleCounted() {
+        let source = """
+            import SQLite3
+            let sql = "DELETE FROM logs"
+            func f(db: OpaquePointer) {
+                sqlite3_exec(db, sql, nil, nil, nil)
+            }
+            """
+        let logs = scan(source).facts.filter { $0.fact.channel == "logs" }
+        #expect(logs.count == 1)
+        #expect(logs.first?.fact.location.line == 4)
+    }
+
+    @Test("표현식 빌더 인자는 바깥 호출에서 동적 근거를 만들지 않는다")
+    func expressionBuilderNotOvercounted() {
+        let source = """
+            import SQLite
+            let users = Table("users")
+            func seed(db: Connection) throws {
+                try db.run(users.insert(Column("email") <- "a"))
+            }
+            """
+        let result = scan(source)
+        #expect(result.counts.unjoinedDynamic == 0)
+        #expect(result.facts.contains { $0.fact.channel == "users" })
+    }
+
+    @Test("같은 이름이 다른 값으로 재바인딩되면 어느 쪽에도 귀속하지 않는다")
+    func conflictingRebindIsNotMisattributed() {
+        let source = """
+            import SQLite
+            func f(db: Connection) {
+                let users = Table("a")
+            }
+            func g(db: Connection) {
+                let users = Table("b")
+            }
+            func h(db: Connection) {
+                _ = users.filter(Column("id") > 0)
+            }
+            """
+        let result = scan(source)
+        // `Table("a")`·`Table("b")` 호출 자리의 사실은 각 1건씩이고,
+        // `users.filter`는 어느 바인딩에도 귀속하지 않아 추가 사실이 없다.
+        #expect(result.facts.filter { $0.fact.channel == "a" }.count == 1)
+        #expect(result.facts.filter { $0.fact.channel == "b" }.count == 1)
+        #expect(!result.facts.contains { $0.fact.location.line == 10 })
+    }
+
+    @Test("GRDB tableExists의 첫 인자는 관계명이다")
+    func tableExistsReadsRelation() {
+        let source = """
+            import GRDB
+            func check(db: Database) throws {
+                _ = try db.tableExists("users")
+            }
+            """
+        #expect(channels(source).contains("users"))
+    }
 }

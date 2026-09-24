@@ -1095,6 +1095,7 @@ public struct CartographService: Sendable {
         var swiftDataReferences = 0
         var realmReferences = 0
         var unsupportedFrameworkFiles: [String: Int] = [:]
+        var unsupportedFrameworkSources: Set<String> = []
         for path in sources {
             do {
                 let source = try environment.fileSystem.readText(at: path)
@@ -1105,6 +1106,9 @@ public struct CartographService: Sendable {
                 coreDataReferences += result.counts.coreDataReferences
                 swiftDataReferences += result.counts.swiftDataReferences
                 realmReferences += result.counts.realmReferences
+                if !result.counts.unsupportedFrameworks.isEmpty {
+                    unsupportedFrameworkSources.insert(path)
+                }
                 for framework in result.counts.unsupportedFrameworks {
                     unsupportedFrameworkFiles[framework, default: 0] += 1
                 }
@@ -1150,7 +1154,7 @@ public struct CartographService: Sendable {
             let breakdown = unsupportedFrameworkFiles.keys.sorted()
                 .map { "\($0) (\(unsupportedFrameworkFiles[$0] ?? 0))" }.joined(separator: ", ")
             limitations.append(
-                "unsupported-db-frameworks: \(unsupportedFrameworkFiles.values.reduce(0, +)) source file(s) "
+                "unsupported-db-frameworks: \(unsupportedFrameworkSources.count) source file(s) "
                     + "import persistence framework(s) outside the supported surface: \(breakdown)"
             )
         }

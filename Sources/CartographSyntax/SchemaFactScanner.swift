@@ -83,6 +83,14 @@ final class SchemaDeclCollector: SyntaxVisitor {
     private(set) var typeTables: [String: String] = [:]
     /// 타입 선언의 중첩 스택 — `static let`이 어느 타입의 것인지 귀속한다.
     private var typeStack: [String] = []
+    /// `let sql = "…"`의 리터럴 노드들 — gated 호출이 이름으로 참조한 리터럴은
+    /// ungated 리터럴 패스가 다시 읽지 않게 억제 목록으로 넘긴다.
+    /// 같은 값의 재바인딩도 허용되므로 이름당 여러 리터럴을 기억한다.
+    private var stringBindingLiteralIds: [String: [SyntaxIdentifier]] = [:]
+    /// gated 호출의 SQL 인자로 참조된 바인딩 리터럴 — 중복 발화 억제용.
+    private(set) var suppressedLiteralIds: Set<SyntaxIdentifier> = []
+    /// 같은 이름이 다른 값으로 다시 묶인 식별자 — 어느 쪽도 믿을 수 없어 귀속을 끊는다.
+    private var poisonedNames: Set<String> = []
 
     init() { super.init(viewMode: .sourceAccurate) }
 
@@ -127,33 +135,91 @@ final class SchemaDeclCollector: SyntaxVisitor {
     override func visitPost(_: StructDeclSyntax) { typeStack.removeLast() }
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind { pushType(node) }
     override func visitPost(_: EnumDeclSyntax) { typeStack.removeLast() }
+    /// `extension Player { static let databaseTableName = … }` — 준수를 extension으로
+    /// 나누는 관용구가 흔해 타입→테이블 귀속에 반드시 필요하다.
+    override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
+        // 확장 대상은 한정형일 수 있다 — `typeTables` 조회는 단순 이름 기준이라 마지막
+        // 구성요소만 취한다(중첩 타입의 단순 이름 한계는 조회 쪽과 같은 규약이다).
+        typeStack.append(node.extendedType.trimmedDescription.components(separatedBy: ".").last
+            ?? node.extendedType.trimmedDescription)
+        return .visitChildren
+    }
+    override func visitPost(_: ExtensionDeclSyntax) { typeStack.removeLast() }
+
+    /// 이름이 새 값으로 재바인딩되면 두 선언 중 어느 것도 믿을 수 없다 — 잘못된 관계명을
+    /// 싣는 오귀속보다 사용 지점의 동적 근거가 낫다.
+    private func bind<T: Equatable>(
+        _ name: String, _ value: T, into bindings: inout [String: T]
+    ) {
+        if poisonedNames.contains(name) { return }
+        if let existing = bindings[name], existing != value {
+            bindings.removeValue(forKey: name)
+            poisonedNames.insert(name)
+            return
+        }
+        bindings[name] = value
+    }
 
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         let isStatic = node.modifiers.contains { $0.name.text == "static" || $0.name.text == "class" }
         for binding in node.bindings {
             guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text
             else { continue }
-            if let literal = binding.initializer?.value.as(StringLiteralExprSyntax.self)?.representedLiteralValue {
-                stringBindings[identifier] = literal
+            if let literal = binding.initializer?.value.as(StringLiteralExprSyntax.self),
+               let value = literal.representedLiteralValue {
+                bind(identifier, value, into: &stringBindings)
+                stringBindingLiteralIds[identifier, default: []].append(literal.id)
             } else if let call = binding.initializer?.value.as(FunctionCallExprSyntax.self),
-                      let callee = call.calledExpression.as(DeclReferenceExprSyntax.self),
-                      callee.baseName.text == "Table",
+                      isTableConstructorCall(call),
                       let name = call.arguments.first?.expression
                         .as(StringLiteralExprSyntax.self)?.representedLiteralValue {
                 // `let users = Table("users")` — 식별자→관계 바인딩. 호출 인자 리터럴은
                 // `.`가 한정자라 `escapeQualified`로 채널 형태를 미리 만들어 둔다.
-                tableBindings[identifier] = escapeQualified(name)
+                bind(identifier, escapeQualified(name), into: &tableBindings)
             }
             // 타입 안의 static 테이블명 선언 — `static let schema = "users"`나
             // `static var databaseTableName: String { "users" }` 둘 다다.
             if isStatic, let type = typeStack.last,
                ["databaseTableName", "schema", "tableName"].contains(identifier),
                let literal = Self.tableNameLiteral(of: binding) {
-                typeTables[type] = escapeName(literal)
+                bind(type, escapeName(literal), into: &typeTables)
             }
         }
         return .visitChildren
     }
+
+    /// gated 호출의 SQL 인자가 바인딩 상수를 가리키면 선언 자리의 리터럴을 억제한다 —
+    /// 억제하지 않으면 같은 SQL이 선언 위치와 호출 위치에서 두 번 사실이 된다.
+    override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+        guard let calleeName = sqlCallName(of: node) else { return .visitChildren }
+        var sqlArg: ExprSyntax?
+        if sqlite, SchemaSqlSurface.sqliteSqlFunctions.contains(calleeName),
+           node.arguments.count > 1 {
+            sqlArg = Array(node.arguments)[1].expression
+        } else if sqliteSwift, SchemaSqlSurface.sqliteSwiftSqlMethods.contains(calleeName),
+                  let first = node.arguments.first, first.label == nil {
+            sqlArg = first.expression
+        } else if (grdb || sqliteSwift || fluent),
+                  let labeled = node.arguments.first(where: { $0.label?.text == "sql" }) {
+            sqlArg = labeled.expression
+        } else if (fluent || grdb), SchemaSqlSurface.sqlConstructors.contains(calleeName),
+                  let first = node.arguments.first, first.label == nil {
+            sqlArg = first.expression
+        }
+        if let reference = sqlArg?.as(DeclReferenceExprSyntax.self),
+           let ids = stringBindingLiteralIds[reference.baseName.text] {
+            suppressedLiteralIds.formUnion(ids)
+        }
+        return .visitChildren
+    }
+
+    private func importsAny(_ modules: [String]) -> Bool {
+        modules.contains { imports.contains($0) }
+    }
+    private var sqlite: Bool { importsAny(["SQLite3", "SQLite3_ObjC"]) }
+    private var grdb: Bool { importsAny(["GRDB"]) }
+    private var sqliteSwift: Bool { importsAny(["SQLite"]) }
+    private var fluent: Bool { importsAny(["Fluent", "FluentKit", "FluentSQL"]) }
 }
 
 // MARK: - 사실 수집 패스
@@ -171,6 +237,9 @@ final class SchemaFactCollector: SyntaxVisitor {
     private var typeNames: [String] = []
     /// 게이트가 있는 인자로 이미 읽은 문자열 리터럴 — 원시 리터럴 패스가 다시 읽지 않게 한다.
     private var consumedLiterals: Set<SyntaxIdentifier> = []
+    /// 이미 사실이 된 `Column("x")` 노드 — 중첩 수신자 호출이 서브트리를 중복 방문해도
+    /// 같은 컬럼 사실이 한 번만 나온다.
+    private var emittedColumnIds: Set<SyntaxIdentifier> = []
 
     init(converter: SourceLocationConverter, declarations: SchemaDeclCollector, path: String) {
         self.converter = converter
@@ -290,16 +359,17 @@ final class SchemaFactCollector: SyntaxVisitor {
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
         let callee = node.calledExpression.as(MemberAccessExprSyntax.self)
-        // `NSFetchRequest<Dog>(…)` 같은 제네릭 생성자는 참조가 특수화 노드를 한 겹 입는다.
+        guard let calleeName = sqlCallName(of: node) else { return .visitChildren }
+        let base = callee?.base
         let called = node.calledExpression.as(GenericSpecializationExprSyntax.self)?.expression
             ?? node.calledExpression
-        let calleeName = callee?.declName.baseName.text
-            ?? called.as(DeclReferenceExprSyntax.self)?.baseName.text
-        guard let calleeName else { return .visitChildren }
-        let base = callee?.base
         let isConstructor = called.is(DeclReferenceExprSyntax.self)
+        // `SQLite.Table("users")` 같은 한정 생성자 — 대문자 기본 식별자는 모듈·타입이다.
+        let isQualifiedConstructor = callee != nil
+            && calleeName == "Table"
+            && base?.as(DeclReferenceExprSyntax.self)?.baseName.text.first?.isUppercase == true
 
-        if sqlite && Self.sqliteSqlFunctions.contains(calleeName) {
+        if sqlite && SchemaSqlSurface.sqliteSqlFunctions.contains(calleeName) {
             // sqlite3_prepare_v2(db, sql, …) — SQL은 두 번째 인자다.
             let args = Array(node.arguments)
             if args.count > 1 {
@@ -316,20 +386,31 @@ final class SchemaFactCollector: SyntaxVisitor {
             emitSqlArgument(sqlArg.expression, at: sqlArg)
         }
         // SQLite.swift `db.prepare("…")`·`db.run("…")` — 첫 인자가 SQL이다.
-        if sqliteSwift && Self.sqliteSwiftSqlMethods.contains(calleeName),
+        if sqliteSwift && SchemaSqlSurface.sqliteSwiftSqlMethods.contains(calleeName),
            let first = node.arguments.first, first.label == nil {
-            consumedLiterals.insert(first.expression.id)
-            emitSqlArgument(first.expression, at: first)
+            if let literal = first.expression.as(StringLiteralExprSyntax.self) {
+                consumedLiterals.insert(literal.id)
+            }
+            // `db.run(users.insert(…))` — 표현식 빌더 인자는 안쪽 호출이 자기 사실을
+            // 내므로 바깥에서 동적 근거를 중복 계수하지 않는다.
+            if !resolvesToBoundTable(first.expression) {
+                emitSqlArgument(first.expression, at: first)
+            }
         }
         // `Table("users")` — GRDB·SQLite.swift 공용 타입 이름.
-        if (grdb || sqliteSwift), calleeName == "Table", isConstructor,
+        if (grdb || sqliteSwift), calleeName == "Table", isConstructor || isQualifiedConstructor,
            let arg = node.arguments.first, arg.label == nil {
             emitNameArgument(arg.expression, at: arg)
         }
         // GRDB `db.create(table:)` 계열 — `table:` 라벨 인자가 관계명이다.
-        if grdb, Self.grdbTableLabelMethods.contains(calleeName),
+        if grdb, SchemaSqlSurface.grdbTableLabelMethods.contains(calleeName),
            let tableArg = node.arguments.first(where: { $0.label?.text == "table" }) {
             emitNameArgument(tableArg.expression, at: tableArg)
+        }
+        // GRDB `db.tableExists("users")` — 첫 인자가 관계명이다.
+        if grdb, SchemaSqlSurface.grdbTableArgMethods.contains(calleeName),
+           let arg = node.arguments.first, arg.label == nil {
+            emitNameArgument(arg.expression, at: arg)
         }
         // Fluent `schema("users")`·`database.schema("users")`.
         if fluent, calleeName == "schema",
@@ -342,7 +423,7 @@ final class SchemaFactCollector: SyntaxVisitor {
             emitModelArgument(arg.expression, at: arg)
         }
         // `SQLQueryString("SELECT …")`·`SQLLiteral("…")` — SQL을 담는 생성자.
-        if (fluent || grdb), isConstructor, ["SQLQueryString", "SQLLiteral", "SQL"].contains(calleeName),
+        if (fluent || grdb), isConstructor, SchemaSqlSurface.sqlConstructors.contains(calleeName),
            let arg = node.arguments.first, arg.label == nil {
             consumedLiterals.insert(arg.expression.id)
             emitSqlArgument(arg.expression, at: arg)
@@ -353,13 +434,27 @@ final class SchemaFactCollector: SyntaxVisitor {
             // 호출 인자 안의 `Column("x")`는 그 테이블의 컬럼 참조다.
             let columns = ColumnCollector()
             columns.walk(node)
-            for found in columns.names {
+            for found in columns.names where emittedColumnIds.insert(found.node.id).inserted {
                 emit(channel: table, method: escapeName(found.name), dynamic: false, at: found.node)
             }
         }
         // Core Data·SwiftData·Realm 표면은 관계 사실이 아니라 관측 개수다.
         countUnsupportedSurface(calleeName: calleeName, node: node)
         return .visitChildren
+    }
+
+    /// SQLite.swift 표현식 빌더 인자가 바인딩된 테이블로 해석되는지 본다 —
+    /// `users.insert(…)`의 안쪽 호출이 수신자 처리로 자기 사실을 낸다.
+    private func resolvesToBoundTable(_ expression: ExprSyntax) -> Bool {
+        if let reference = expression.as(DeclReferenceExprSyntax.self) {
+            let name = reference.baseName.text
+            return declarations.tableBindings[name] != nil || declarations.typeTables[name] != nil
+        }
+        if let call = expression.as(FunctionCallExprSyntax.self),
+           let base = call.calledExpression.as(MemberAccessExprSyntax.self)?.base {
+            return tableName(of: base) != nil
+        }
+        return false
     }
 
     /// 수신자 식이 가리키는 관계의 채널 이름 — 바인딩값은 수집 때 이미 이스케이프됐다.
@@ -412,7 +507,9 @@ final class SchemaFactCollector: SyntaxVisitor {
 
     /// 어느 게이트 인자로도 소비되지 않은 리터럴 — strict 모드로만 발화한다.
     override func visit(_ node: StringLiteralExprSyntax) -> SyntaxVisitorContinueKind {
-        guard !consumedLiterals.contains(node.id) else { return .visitChildren }
+        guard !consumedLiterals.contains(node.id),
+              !declarations.suppressedLiteralIds.contains(node.id)
+        else { return .visitChildren }
         if let value = node.representedLiteralValue {
             if looksLikeSql(value, strict: true) {
                 emitSql(value, strict: true, at: node)
@@ -421,9 +518,13 @@ final class SchemaFactCollector: SyntaxVisitor {
                 // 관계를 만들지 않되 버린 개수는 limitation으로 남긴다.
                 counts.skippedSqlLiterals += 1
             }
-        } else if let prefix = interpolatedPrefix(of: node), looksLikeSql(prefix, strict: true) {
-            counts.unjoinedDynamic += 1
-            emitDynamic(expression: node.trimmedDescription, channelPrefix: prefix, at: node)
+        } else if let prefix = interpolatedPrefix(of: node) {
+            if looksLikeSql(prefix, strict: true) {
+                counts.unjoinedDynamic += 1
+                emitDynamic(expression: node.trimmedDescription, channelPrefix: prefix, at: node)
+            } else if looksLikeSql(prefix) {
+                counts.skippedSqlLiterals += 1
+            }
         }
         return .visitChildren
     }
@@ -458,6 +559,10 @@ final class SchemaFactCollector: SyntaxVisitor {
     /// 관계명 인자 하나(`Table(…)`, `schema(…)`, `table:`) — 비리터럴은 동적 근거다.
     /// 호출 인자 리터럴의 `.`는 한정자라 `escapeQualified`로 채널을 만든다.
     private func emitNameArgument(_ expression: ExprSyntax, at node: some SyntaxProtocol) {
+        // 이름이 대문자 SQL 동사 형태여도 ungated 리터럴 패스가 다시 읽지 않게 한다.
+        if let literalExpr = expression.as(StringLiteralExprSyntax.self) {
+            consumedLiterals.insert(literalExpr.id)
+        }
         if let literal = expression.as(StringLiteralExprSyntax.self)?.representedLiteralValue {
             emit(channel: escapeQualified(literal), method: nil, dynamic: false, at: node)
             return
@@ -558,7 +663,9 @@ private func interpolatedPrefix(of literal: StringLiteralExprSyntax) -> String? 
     return prefix.representedLiteralValue
 }
 
-extension SchemaFactCollector {
+/// 두 수집 패스가 함께 쓰는 지원 표면 상수 — Decl→Fact 방향 참조를 막기 위해
+/// 어느 수집기의 멤버로도 두지 않는다.
+enum SchemaSqlSurface {
     /// sqlite3 C API의 SQL 인자를 가진 함수들 — 두 번째 인자가 SQL이다.
     static let sqliteSqlFunctions: Set<String> = [
         "sqlite3_prepare", "sqlite3_prepare_v2", "sqlite3_prepare_v3",
@@ -567,6 +674,33 @@ extension SchemaFactCollector {
     ]
     /// SQLite.swift의 첫 인자가 SQL인 메서드다 — `db.prepare("…")`·`db.run("…")`.
     static let sqliteSwiftSqlMethods: Set<String> = ["prepare", "run", "execute", "scalar"]
+    /// SQL 텍스트를 담는 생성자 — `SQLQueryString("…")`·`SQLLiteral("…")`.
+    static let sqlConstructors: Set<String> = ["SQLQueryString", "SQLLiteral", "SQL"]
     /// GRDB에서 `table:` 라벨 인자가 관계명인 메서드다.
-    static let grdbTableLabelMethods: Set<String> = ["create", "drop", "alter", "rename", "exists"]
+    static let grdbTableLabelMethods: Set<String> = ["create", "drop", "alter", "rename"]
+    /// GRDB에서 첫 번째 무표기 인자가 관계명인 메서드다 — `db.tableExists("users")`.
+    static let grdbTableArgMethods: Set<String> = ["tableExists"]
+}
+
+/// 호출의 함수 이름 — `NSFetchRequest<Dog>(…)` 같은 제네릭 특수화 노드는 한 겹 벗긴다.
+func sqlCallName(of node: FunctionCallExprSyntax) -> String? {
+    if let member = node.calledExpression.as(MemberAccessExprSyntax.self) {
+        return member.declName.baseName.text
+    }
+    let called = node.calledExpression.as(GenericSpecializationExprSyntax.self)?.expression
+        ?? node.calledExpression
+    return called.as(DeclReferenceExprSyntax.self)?.baseName.text
+}
+
+/// `Table("…")` 또는 `SQLite.Table("…")` 같은 관계 생성자 호출인지 본다 —
+/// 한정 형태는 기본 식별자가 대문자(모듈·타입)일 때만 인정한다.
+func isTableConstructorCall(_ call: FunctionCallExprSyntax) -> Bool {
+    if let ref = call.calledExpression.as(DeclReferenceExprSyntax.self) {
+        return ref.baseName.text == "Table"
+    }
+    if let member = call.calledExpression.as(MemberAccessExprSyntax.self) {
+        return member.declName.baseName.text == "Table"
+            && member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text.first?.isUppercase == true
+    }
+    return false
 }
