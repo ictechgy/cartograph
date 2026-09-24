@@ -237,9 +237,6 @@ final class SchemaFactCollector: SyntaxVisitor {
     private var typeNames: [String] = []
     /// 게이트가 있는 인자로 이미 읽은 문자열 리터럴 — 원시 리터럴 패스가 다시 읽지 않게 한다.
     private var consumedLiterals: Set<SyntaxIdentifier> = []
-    /// 이미 사실이 된 `Column("x")` 노드 — 중첩 수신자 호출이 서브트리를 중복 방문해도
-    /// 같은 컬럼 사실이 한 번만 나온다.
-    private var emittedColumnIds: Set<SyntaxIdentifier> = []
 
     init(converter: SourceLocationConverter, declarations: SchemaDeclCollector, path: String) {
         self.converter = converter
@@ -431,10 +428,15 @@ final class SchemaFactCollector: SyntaxVisitor {
         // 테이블 바인딩된 수신자의 멤버 호출 — `users.filter(…)`, `User.select(…)` 등.
         if let table = base.flatMap(tableName(of:)) {
             emit(channel: table, method: nil, dynamic: false, at: node.calledExpression)
-            // 호출 인자 안의 `Column("x")`는 그 테이블의 컬럼 참조다.
-            let columns = ColumnCollector()
+            // 호출 인자 안의 `Column("x")`는 그 테이블의 컬럼 참조다. 중첩된 바인딩
+            // 수신자 호출은 건너뛴다 — 그쪽 방문이 자기 채널로 낸다.
+            let columns = ColumnCollector(root: node) { [self] nested in
+                guard let nestedBase = nested.calledExpression
+                    .as(MemberAccessExprSyntax.self)?.base else { return false }
+                return tableName(of: nestedBase) != nil
+            }
             columns.walk(node)
-            for found in columns.names where emittedColumnIds.insert(found.node.id).inserted {
+            for found in columns.names {
                 emit(channel: table, method: escapeName(found.name), dynamic: false, at: found.node)
             }
         }
@@ -627,16 +629,25 @@ final class SchemaFactCollector: SyntaxVisitor {
 }
 
 /// 호출 표현식 안의 `Column("name")` 생성자를 찾는다 — 수신자 테이블의 컬럼 참조다.
+/// 바인딩된 수신자의 중첩 멤버 호출은 건너뛴다 — 그 컬럼은 그 호출 자신의 채널 소유다.
 private final class ColumnCollector: SyntaxVisitor {
     struct Found {
         let name: String
         let node: FunctionCallExprSyntax
     }
     private(set) var names: [Found] = []
+    private let root: FunctionCallExprSyntax
+    private let isBoundReceiverCall: (FunctionCallExprSyntax) -> Bool
 
-    init() { super.init(viewMode: .sourceAccurate) }
+    init(root: FunctionCallExprSyntax,
+         isBoundReceiverCall: @escaping (FunctionCallExprSyntax) -> Bool) {
+        self.root = root
+        self.isBoundReceiverCall = isBoundReceiverCall
+        super.init(viewMode: .sourceAccurate)
+    }
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+        if node.id != root.id, isBoundReceiverCall(node) { return .skipChildren }
         guard let callee = node.calledExpression.as(DeclReferenceExprSyntax.self),
               callee.baseName.text == "Column",
               let literal = node.arguments.first?.expression.as(StringLiteralExprSyntax.self)?.representedLiteralValue

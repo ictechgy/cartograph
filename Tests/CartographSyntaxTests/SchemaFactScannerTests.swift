@@ -353,9 +353,27 @@ struct SchemaFactScannerTests {
                 try db.create(table: "players")
             }
             """
-        // 선언 자리 사실이 나오고, `Player` 수신자의 멤버 호출이 같은 관계로 해석된다.
+        // 선언 자리(4행)·`create` 인자(7행)가 아니라 `Player.all()` 수신자 해석(9행)의
+        // 사실을 구분해 단정한다 — 선언만으로는 9행 사실이 나올 수 없다.
         let result = scan(source + "\nextension Player { func f() { Player.all() } }\n")
-        #expect(result.facts.contains { $0.fact.channel == "players" })
+        #expect(result.facts.contains { $0.fact.channel == "players" && $0.fact.location.line == 9 })
+    }
+
+    @Test("중첩된 다른 테이블 수신자 호출의 컬럼은 자기 채널로 귀속된다")
+    func nestedReceiverColumnKeepsOwnChannel() {
+        let source = """
+            import SQLite
+            let users = Table("users")
+            let orders = Table("orders")
+            func sync(db: Connection) {
+                _ = users.filter(Column("id") == orders.count(Column("oid")))
+            }
+            """
+        let result = scan(source)
+        // `oid`는 바깥 `users` 채널이 아니라 안쪽 `orders` 채널로만 나온다.
+        #expect(result.facts.contains { $0.fact.channel == "orders" && $0.fact.method == "oid" })
+        #expect(!result.facts.contains { $0.fact.channel == "users" && $0.fact.method == "oid" })
+        #expect(result.facts.contains { $0.fact.channel == "users" && $0.fact.method == "id" })
     }
 
     @Test("한정 생성자 SQLite.Table도 관계를 읽는다")
