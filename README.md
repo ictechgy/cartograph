@@ -45,6 +45,7 @@ What that buys you:
 | What will this change affect? | — | `impact` finds direct and transitive consumers before editing |
 | How does a value reach this function? | not answerable | `dataflow` returns bounded interprocedural contexts as JSON |
 | Callers in Dart or JavaScript | invisible | `bridges` exports the Swift side of a platform channel; `--external-retentions` reads the join back |
+| Which tables does this code touch? | invisible | `schema` exports `relation-use` facts for isthmus to join with the SQL catalog |
 | Runtime or dispatch-only risk | — | `impact` marks runtime review targets and dispatch contracts |
 | Graph export | — | ✅ DOT, Mermaid, JSON, self-contained HTML |
 | SARIF for code scanning | — | ✅ |
@@ -1039,6 +1040,34 @@ A path that is configured but missing is a tool failure (exit 2), not a silent n
 supplied the file expects it to be applied. `query` lists the file's provenance under
 `limitations`, along with how many of its retentions name no declaration in the index — a renamed
 handler shows up there before it shows up as a bug.
+
+### `schema` — export database relation references
+
+```bash
+cartograph schema                        # persistence bridge-facts JSON on stdout
+cartograph schema --format text          # one line per fact, for a quick look
+```
+
+A Swift file that runs `sqlite3_prepare_v2(db, "DELETE FROM sessions …")` references a table the
+compiler index knows nothing about — the name only ever exists inside a string literal. `schema`
+reads those literals out of the sources and writes `relation-use` facts in the same `bridge-facts`
+exchange format, with `target: "persistence"`, so [isthmus](../isthmus) can join them against the
+`relation-decl` facts schemagraph produces from the live catalog: code that references a dropped
+table, or a table no code touches, becomes a check finding instead of a guess.
+
+The covered surface is evidence-gated by import: sqlite3 C API arguments, GRDB `sql:` arguments,
+`Table(…)` and `static let/var databaseTableName`, SQLite.swift `Table`/`prepare`/`run`, Fluent
+`schema`/`query(_:)` and `static let schema`, plus ungated uppercase SQL literals anywhere. Core
+Data, SwiftData, Realm and other database frameworks are counted under `limitations` rather than
+read — entity names are not SQL catalog relations, and emitting them as facts would produce
+diagnostics for declarations that were never supposed to exist. SQL arguments that are not
+literals, and relation names that cannot be resolved statically, stay in the document marked
+`dynamic` so the join can count what it could not see.
+
+Like `bridges`, the command attaches the index's USR to the enclosing declaration when it can,
+so isthmus retentions can name the function that touches a table. Facts at file scope carry no
+symbol. The command refuses `--since`, `--level`, `--report-format` and `--strict` for the same
+reasons `bridges` does: the document is a complete boundary export, not a finding.
 
 ### `skill` — teach a coding agent to use this
 

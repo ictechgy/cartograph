@@ -47,6 +47,7 @@ Cartograph의 문장은 *"의존성 그래프를 내놓는다"*이며, 미사용
 | 이 변경이 무엇에 영향을 주나? | — | `impact`가 편집 전에 직접·전이 소비자를 찾음 |
 | 이 값이 이 함수까지 어떻게 오나? | 답할 수 없음 | `dataflow`가 한정된 함수 간 문맥을 JSON으로 답함 |
 | Dart·JavaScript 쪽 호출자 | 보이지 않음 | `bridges`가 플랫폼 채널의 Swift 쪽을 내보내고 `--external-retentions`가 조인 결과를 읽어 옴 |
+| 이 코드가 어떤 테이블을 건드는가 | 보이지 않음 | `schema`가 `relation-use` 사실을보내 isthmus가 SQL 카탈로그와 조인함 |
 | 런타임·디스패치 전용 위험 | — | `impact`가 런타임 검토 대상과 디스패치 계약을 표시함 |
 | 그래프 내보내기 | — | ✅ DOT, Mermaid, JSON, 단일 HTML |
 | SARIF(code scanning) | — | ✅ |
@@ -1000,6 +1001,33 @@ App.CameraPlugin is retained because its member App.init(messenger:) is called f
 지정했는데 없는 파일은 조용히 넘어가지 않고 도구 실패(종료 코드 2)입니다. 파일을 준 사람은
 그것이 반영되기를 기대합니다. `query`는 `limitations`에 파일의 출처와, 인덱스의 어느 선언과도
 맞지 않는 근거의 수를 싣습니다. 이름을 바꾼 핸들러는 버그가 되기 전에 거기서 먼저 드러납니다.
+
+### `schema` — 데이터베이스 관계 참조 보내기
+
+```bash
+cartograph schema                        # persistence bridge-facts JSON을 표준 출력으로
+cartograph schema --format text          # 사실마다 한 줄, 훑어보기용
+```
+
+`sqlite3_prepare_v2(db, "DELETE FROM sessions …")`를 실행하는 Swift 파일은 컴파일러 인덱스가
+모르는 테이블을 참조합니다 — 그 이름은 문자열 리터럴 안에만 존재합니다. `schema`는 소스에서 그
+리터럴을 읽어 `target: "persistence"`인 `relation-use` 사실로 같은 `bridge-facts` 교환 형식에
+담습니다. 그러면 [isthmus](../isthmus)가 schemagraph가 라이브 카탈로그에서 낸 `relation-decl`
+사실과 조인해, 삭제된 테이블을 참조하는 코드나 아무 코드도 건드리지 않는 테이블이 추측이 아니라
+check 발견이 됩니다.
+
+읽는 표면은 import로 게이트됩니다: sqlite3 C API 인자, GRDB `sql:` 인자·`Table(…)`·
+`static let/var databaseTableName`, SQLite.swift `Table`/`prepare`/`run`, Fluent
+`schema`/`query(_:)`·`static let schema`, 그리고 어디에 있든 게이트 없는 대문자 SQL 리터럴.
+Core Data·SwiftData·Realm과 나머지 DB 프레임워크는 읽지 않고 `limitations`에 관측 개수로
+남깁니다 — 엔티티 이름은 SQL 카탈로그의 관계가 아니므로, 사실로 만들면 존재하지 않는 선언을
+찾는 진단이 됩니다. 리터럴이 아닌 SQL 인자와 정적으로 풀 수 없는 관계 이름은 문서에 `dynamic`
+표식으로 남겨, 조인이 보지 못한 것을 셀 수 있게 합니다.
+
+`bridges`처럼 인덱스의 USR을 감싸는 선언에 붙일 수 있으면 붙입니다 — isthmus 보존 근거가
+테이블을 건드는 함수를 가리킬 수 있게. 파일 최상위의 사실은 심볼을 싣지 않습니다.
+`--since`, `--level`, `--report-format`, `--strict`를 거부하는 이유도 `bridges`와 같습니다:
+이 문서는 발견 목록이 아니라 경계의 전체보내기입니다.
 
 ### `skill` — 코딩 에이전트에게 이 도구 쓰는 법 설치하기
 

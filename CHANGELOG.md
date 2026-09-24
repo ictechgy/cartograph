@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `cartograph schema` exports the database relations Swift code references as a
+  `target: "persistence"` bridge-facts document, so isthmus can join them with the
+  `relation-decl` facts schemagraph produces from the SQL catalog. The scanner is
+  import-gated — sqlite3 call arguments, GRDB `sql:`/`Table`/`databaseTableName`,
+  SQLite.swift `Table`/`prepare`/`run`, Fluent `schema`/`query(_:)` — and also reads
+  ungated uppercase SQL literals; Core Data, SwiftData, Realm and other frameworks are
+  counted under `limitations` because entity names are not catalog relations.
+
 ## [0.21.0] - 2026-09-23
 
 ### Added
