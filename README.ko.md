@@ -76,7 +76,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — 소스에서 빌드되며, tap을 추가할 필요가 없습니다.
 
 ```bash
-mint install ictechgy/cartograph@0.21.0
+mint install ictechgy/cartograph@0.22.0
 ```
 
 **아예 설치하지 않기** — Swift 패키지라면 의존성으로 추가해 커맨드 플러그인을 씁니다.
@@ -84,7 +84,7 @@ mint install ictechgy/cartograph@0.21.0
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.21.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.22.0"),
 ```
 
 ```bash
@@ -960,7 +960,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.21.0" },
+  "tool" : { "name" : "cartograph", "version" : "0.22.0" },
   "version" : 1
 }
 ```
@@ -1336,11 +1336,11 @@ jobs:
       - uses: ictechgy/cartograph@action-v1.0.0
         with:
           command: check
-          version: 0.21.0
+          version: 0.22.0
           args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-`action-v1.0.0`은 액션 릴리스 태그이고, `version: 0.21.0`은 CLI 바이너리를 선택합니다.
+`action-v1.0.0`은 액션 릴리스 태그이고, `version: 0.22.0`은 CLI 바이너리를 선택합니다.
 재현 가능한 실행을 위해 둘을 함께 고정하세요(`@main`은 개발 브랜치를 따릅니다).
 Marketplace의 기본 "Use latest version"은 저장소의 최신 CLI 릴리스를 따릅니다.
 액션 릴리스를 쓰려면 `action-v1.0.0`을 선택하거나 위의 버전별 링크를 이용하세요. 입력:
