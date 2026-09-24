@@ -1,21 +1,21 @@
 # Handoff
 
-_Last updated: 2026-09-24 by Devin_
+_Last updated: 2026-09-25 by Claude_
 
 작업 규칙은 [AGENTS.md](AGENTS.md), 이전 원문은 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 있다.
 이력의 오래된 버전·승인 대기·미발행 표기는 현재 지시로 되살리지 않는다.
 
 ## Goal
 
-0.21.0 발행·배포는 전부 끝났고(아래 Completed 참고), isthmus의 두 번째 조인 도메인
-**persistence**의 Swift 생산자 `cartograph schema`도 [PR #136](https://github.com/ictechgy/cartograph/pull/136)으로
-머지 완료했다(`7ed102e`). persistence 생산자는 gartograph(Go)·rustograph(Rust)·
+**0.22.0 발행·배포까지 전부 끝났다**(아래 Completed 참고). isthmus의 두 번째 조인 도메인
+**persistence**의 Swift 생산자 `cartograph schema`([PR #136](https://github.com/ictechgy/cartograph/pull/136))가
+0.22.0에 포함돼 공개됐다. persistence 생산자는 gartograph(Go)·rustograph(Rust)·
 kartograph(Kotlin)·cartograph(Swift)가 호출 측 `relation-use`를 내고, schemagraph가
 `relation-decl`을 내는 수신 측이다.
 
 ## Current Status
 
-- 저장소: `/Users/jinhongan/Desktop/cartograph`. `main`은 `7ed102e`다.
+- 저장소: `/Users/jinhongan/Desktop/cartograph`. 태그 `0.22.0`은 `df577ad`(릴리스 PR #138)다.
 - `cartograph schema`는 `feature/schema-facts-swift`에서 squash 머지됐다(원격·로컬 브랜치
   정리 완료). isthmus 측 수용 테스트·계약 문서는 isthmus PR #112(`b6a0eec`)로 머지됐다.
 - `cartograph schema`는 SwiftSyntax 스캐너(`SchemaFactScanner` + `SqlRelations`)로
@@ -32,15 +32,25 @@ kartograph(Kotlin)·cartograph(Swift)가 호출 측 `relation-use`를 내고, sc
   `verify-cli-contract`·`verify-fixtures`·`coverage.sh`(통합 91.87%)·strict
   dead/cycles/cycles-type/rules 모두 통과. 실제 인덱스가 있는 fixture에서 isthmus
   `check` 조인까지 확인했다(matchedRelations·`relation-use-without-decl`·실제 USR 부착).
-- `schema`는 아직 발행본에 없다 — 0.21.0 이후 main 기능이다. 다음 릴리스에서 포함된다.
+- `schema`는 CLI 0.22.0부터 발행본에 포함된다.
 
 | 발행물 | 현재 버전·상태 |
 |---|---|
-| CLI / Homebrew | [0.21.0](https://github.com/ictechgy/cartograph/releases/tag/0.21.0), 호스트 설치·검증 완료 |
+| CLI / Homebrew | [0.22.0](https://github.com/ictechgy/cartograph/releases/tag/0.22.0), 호스트 설치·검증 완료 |
 | GitHub Action | [action-v1.0.0](https://github.com/marketplace/actions/cartograph-swift-analysis?version=action-v1.0.0), Marketplace 등록 완료 |
 | GitLab component | [cartograph-ci 1.0.0](https://gitlab.com/explore/catalog/ictechgy/cartograph-ci), 별도 검증된 CLI 0.20.0 고정 유지 |
 
 ## Completed & Verification
+
+- **0.22.0 (2026-09-25)**: [릴리스 PR #138](https://github.com/ictechgy/cartograph/pull/138)과 태그 `0.22.0`의 소스는
+  `df577adfafe84e053e6381e887ad07e43539a49c`다. [PR CI](https://github.com/ictechgy/cartograph/actions/runs/36012937738):
+  테스트 **1,689개**, 통합 커버리지 **92.38%**(단위 **87.15%**), strict 자기 분석 통과.
+  [Release 실행](https://github.com/ictechgy/cartograph/actions/runs/36014489440) 성공.
+  공개 universal archive SHA256 `442a1940ac8ff8757c59d6432b7e150e4157a7e26ca7319daa83500656b08414` —
+  독립 다운로드와 GitHub digest 일치, arm64/x86_64·`--version`·포함 문서·실제 바이너리 CLI 계약 통과.
+  Release의 tap 단계는 토큰 미설정으로 건너뛰어 [Homebrew PR #51](https://github.com/ictechgy/homebrew-tap/pull/51)
+  (`6413c01`)로 반영했다. 호스트 0.21.0→0.22.0 upgrade·`brew test` 통과, 설치 바이너리와 공개 바이너리 바이트 일치.
+  Action `action-v1.0.0`·GitLab Catalog `1.0.0` 태그는 그대로 유지했다.
 
 - PR #130은 `90f4d8c`로 병합됐다. public/fix/affected 컴파일러 골든·스킬 안내,
   캐시 preview/apply·사용 중 잠금·최근 사용 표식, Action 실패 처리·SARIF 경로 보정이 포함된다.
@@ -66,7 +76,7 @@ kartograph(Kotlin)·cartograph(Swift)가 호출 측 `relation-use`를 내고, sc
 
 ## Key Files & Evidence
 
-- [README](README.md), [한국어 README](README.ko.md): 직접 설치·Action 바이너리 예제는 0.21.0.
+- [README](README.md), [한국어 README](README.ko.md): 직접 설치·Action 바이너리 예제는 0.22.0.
   [상세 기록](docs/ACTION-CORPUS-CACHE.md): 코퍼스·캐시·Action·메모리 기준 계측과 발행 근거.
 - `Integrations/GitLab/`: Catalog 배포 소스, 테스트. `.github/workflows/gitlab-component.yml`: GitHub 하네스.
 - 로컬 `.git/evidence-release-0.21.0-20260923/status.json`: 릴리스·tap·설치 검증 완료와 원시 로그.
@@ -110,7 +120,7 @@ kartograph(Kotlin)·cartograph(Swift)가 호출 측 `relation-use`를 내고, sc
 
 ## Next Steps
 
-`cartograph schema`는 머지 완료다. 남은 확장 후보는 dartograph(Dart) 생산자,
+`cartograph schema`는 0.22.0으로 발행 완료다. 남은 확장 후보는 dartograph(Dart) 생산자,
 도메인 간 상관(공유 심볼 키 — DB 컬럼 변경 → API 핸들러 → 위젯), 세 번째
 도메인(네트워크 경계)이다.
 자매 확장의 KAPT/KSP receipt snapshot/cache 연동, iPhone·iOS release·RN 새 아키텍처 검증,
@@ -120,7 +130,6 @@ collector 발행은 [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/m
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 HANDOFF.md와 적용 AGENTS.md를 읽고 Git 상태를 확인해줘.
-`cartograph schema`(Swift persistence 생산자)는 PR #136으로 머지 완료됐어(`7ed102e`) —
-로컬 브랜치·재생성 가능한 산출물 정리도 끝났다(로컬에는 `main`만 남음).
+`cartograph schema`(Swift persistence 생산자)를 포함한 0.22.0이 발행·Homebrew 반영·설치 검증까지 끝났어.
 남은 후보는 dartograph 생산자·교차 도메인 상관·네트워크 도메인이고 자동 착수하지 말 것.
-0.21.0 발행·검증은 전부 끝났으니 반복하지 말 것.
+0.21.0·0.22.0 발행·검증은 전부 끝났으니 반복하지 말 것.
