@@ -1148,7 +1148,8 @@ When a metric does need a ceiling, `thresholds` in `.cartograph.yml` turns it in
 `max_instability` and `max_distance` bound the ratios, and `max_efferent_coupling` bounds Ce itself.
 Instability is a ratio, so a module that depends on three others and one that depends on thirty
 can both read 1.00; the absolute count is what catches a module reaching into every layer.
-Isolated nodes are never flagged, and `--strict` fails the run when a warning remains.
+Isolated nodes are never flagged, and `metrics --strict` fails the run when a warning remains.
+`check` does not evaluate metric thresholds; run `metrics --strict` as its own CI step.
 
 ### `rules` — enforce architecture in CI
 

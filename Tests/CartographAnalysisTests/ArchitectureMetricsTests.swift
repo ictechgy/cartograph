@@ -192,8 +192,10 @@ struct IsolatedNodeMetricsTests {
         #expect(diagnostics.first?.severity == .warning)
         #expect(diagnostics.first?.message == "Wide depends on 30 distinct nodes (efferent coupling), "
             + "above the configured limit of 8")
+        // 고립 정점은 Ce=0 이라, 0 이상의 상한으로는 제외 필터가 없어도 걸리지 않는다.
+        // 필터가 실제로 판정을 가르는 것은 음수 상한뿐이다(설정 로더는 이를 거부한다).
         let isolated = AnalysisDiagnostics.diagnostics(
-            for: [isolatedConcrete()], thresholds: Thresholds(maxEfferentCoupling: 0)
+            for: [isolatedConcrete()], thresholds: Thresholds(maxEfferentCoupling: -1)
         )
         #expect(isolated.isEmpty)
     }

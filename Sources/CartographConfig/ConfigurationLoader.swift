@@ -71,6 +71,7 @@ public struct ConfigurationLoader: Sendable {
         }
 
         try configuration.validate()
+        try Self.validateCountThresholds(configuration.thresholds, path: path)
         return LoadResult(
             configuration: configuration,
             warnings: try Self.unknownKeyWarnings(in: yaml, path: path),
@@ -92,6 +93,19 @@ public struct ConfigurationLoader: Sendable {
         "retain_hashable_properties", "retain_raw_representable_enum_cases",
         "retained_names", "retained_files", "external_test_case_classes",
     ]
+    /// 개수 상한은 0 이상이어야 한다.
+    ///
+    /// 음수 `max_efferent_coupling` 은 의존이 하나도 없는 정점까지 "0 > -1" 로 걸어,
+    /// 설정 실수가 모든 제공자 모듈의 경고와 `--strict` 실패로 바뀐다. 조용히 받지 않는다.
+    private static func validateCountThresholds(_ thresholds: Thresholds, path: String) throws {
+        guard let limit = thresholds.maxEfferentCoupling, limit < 0 else { return }
+        throw CartographError.invalidConfiguration(
+            path: path,
+            reason: "thresholds.max_efferent_coupling must be 0 or greater (got \(limit)); "
+                + "it counts the distinct nodes one node may depend on"
+        )
+    }
+
     private static let knownThresholdKeys: Set<String> = [
         "max_cycles", "max_unused_symbols", "max_rule_violations", "max_instability", "max_distance",
         "max_efferent_coupling",

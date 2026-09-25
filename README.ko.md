@@ -1106,7 +1106,8 @@ cartograph              0   3  1.00  0.00  0.00  main-sequence
 `max_distance`는 비율의 상한이고, `max_efferent_coupling`은 Ce 자체의 상한입니다. 불안정도는
 비율이라 셋에 의존하는 모듈과 서른에 의존하는 모듈이 모두 1.00으로 읽힐 수 있습니다. 모든
 계층에 손을 뻗는 모듈을 잡는 것은 절대 개수입니다. 고립 정점은 판정하지 않으며, 경고가 남으면
-`--strict`가 실행을 실패시킵니다.
+`metrics --strict`가 실행을 실패시킵니다.
+`check`는 지표 임계값을 평가하지 않으므로 CI에서는 `metrics --strict`를 별도 단계로 돌리세요.
 
 ### `rules` — CI에서 아키텍처 강제
 

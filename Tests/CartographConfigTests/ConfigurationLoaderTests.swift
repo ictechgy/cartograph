@@ -158,6 +158,20 @@ struct ConfigurationLoaderTests {
         #expect(!result.warnings.contains { $0.contains("rationale") || $0.contains("hint") })
     }
 
+    @Test("음수 원심 결합도 상한은 경로와 이유를 담은 설정 오류가 된다")
+    func rejectsNegativeEfferentCouplingLimit() {
+        let yaml = """
+            thresholds:
+              max_efferent_coupling: -1
+            """
+        #expect {
+            try ConfigurationLoader().load(yaml: yaml, path: "/p/.cartograph.yml")
+        } throws: { error in
+            let message = (error as? CartographError)?.errorDescription ?? ""
+            return message.contains("/p/.cartograph.yml") && message.contains("max_efferent_coupling must be 0 or greater")
+        }
+    }
+
     @Test("잘못된 타입은 고칠 위치를 알려 주는 오류가 된다")
     func typeMismatchReportsPath() {
         #expect(throws: CartographError.self) {

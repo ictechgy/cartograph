@@ -130,6 +130,14 @@ struct CartographServiceTests {
         #expect(outcome.hasFindings)
     }
 
+    @Test("원심 결합도 상한을 넘은 지표 경고는 metrics 의 발견으로 센다")
+    func efferentCouplingWarningCountsAsMetricsFinding() throws {
+        let service = makeService { $0.thresholds.maxEfferentCoupling = 0 }
+        let outcome = try service.measureMetrics()
+        #expect(outcome.output.contains("(efferent coupling), above the configured limit of 0"))
+        #expect(outcome.hasFindings)
+    }
+
     @Test("레이어 규칙 위반을 보고한다")
     func checksLayerRules() throws {
         let service = makeService {
