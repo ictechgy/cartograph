@@ -209,6 +209,18 @@ struct AffectedDocumentTests {
         #expect(outcome.incompleteAnalysis?.contains("xcodebuild would run every test") == true)
     }
 
+    @Test("모듈 이름이 비어 있는 테스트가 닿으면 빈 선택자 대신 인자 없이 거부한다")
+    func xcodebuildRefusesEmptyModule() throws {
+        var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
+        builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift", line: 1)
+        builder.symbol("T", name: "checks()", kind: .function, module: "", path: "/p/Tests/T.swift", line: 1,
+            attributes: [.unitTest])
+        builder.reference(from: "T", to: "P", kind: .call, path: "/p/Tests/T.swift")
+        let outcome = try service(builder.build()).affected(symbols: ["P"], format: "xcodebuild")
+        #expect(outcome.output.isEmpty)
+        #expect(outcome.incompleteAnalysis?.contains("no module to select") == true)
+    }
+
     @Test("xcodebuild 형식도 없는 이름은 인자 없이 사용 오류로 알린다")
     func xcodebuildUnresolvedSelectionIsUsageError() throws {
         let outcome = try service(snapshot()).affected(symbols: ["NoSuchSymbol"], format: "xcodebuild")

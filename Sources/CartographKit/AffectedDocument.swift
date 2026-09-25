@@ -267,7 +267,7 @@ extension AffectedDocument {
             return XcodebuildSelection(output: "", notes: limitations, refusal: refusal)
         }
         let widened = tests.filter { $0.xcodebuildIdentifier == nil }
-        let wholeModules = Set(widened.compactMap(\.symbol.module))
+        let wholeModules = Set(widened.compactMap(\.symbol.module).filter { !$0.isEmpty })
         // 모듈 전체를 고르면 그 안의 개별 식별자는 중복이다.
         let narrowed = tests.compactMap(\.xcodebuildIdentifier).filter { identifier in
             !wholeModules.contains(String(identifier.prefix { $0 != "/" }))
@@ -276,8 +276,9 @@ extension AffectedDocument {
         var notes = limitations
         if !widened.isEmpty {
             notes.insert(
-                "\(widened.count) test declaration(s) are selected by their whole test module: only test methods "
-                    + "of top-level XCTest classes without subclasses have a provable -only-testing identifier.",
+                "\(widened.count) test declaration(s) are selected by their whole test module: only top-level "
+                    + "XCTest classes without subclasses, and their test methods, have a provable -only-testing "
+                    + "identifier.",
                 at: 0
             )
         }
@@ -294,7 +295,8 @@ extension AffectedDocument {
         if truncated.output || truncated.depth {
             return "The affected test list was truncated; increase --limit or --depth." + fallback
         }
-        if tests.contains(where: { $0.xcodebuildIdentifier == nil && $0.symbol.module == nil }) {
+        // 빈 모듈 이름은 `-only-testing:` 빈 선택자가 되어 아무것도 고르지 못한다.
+        if tests.contains(where: { $0.xcodebuildIdentifier == nil && ($0.symbol.module ?? "").isEmpty }) {
             return "A reached test declaration has no module to select." + fallback
         }
         return nil

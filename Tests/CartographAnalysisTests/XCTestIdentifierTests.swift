@@ -1,4 +1,4 @@
-import CartographAnalysis
+@testable import CartographAnalysis
 import CartographCore
 import CartographTestSupport
 import Testing
@@ -56,6 +56,25 @@ struct XCTestIdentifierTests {
             parent: "Outer.Inner", attributes: [.unitTest])
         #expect(identifier("Outer.Inner.testA", builder) == nil)
         #expect(identifier("Outer.Inner", builder) == nil)
+    }
+
+    @Test("@objc 로 런타임 이름을 바꾼 클래스는 좁히지 않고 이름이 같으면 좁힌다")
+    func refusesObjectiveCRenamedClass() {
+        var renamed = SnapshotBuilder(path: "/p/Tests/Renamed.swift")
+        renamed.symbol("c:@M@AppTests@objc(cs)SuiteRenamedTests", name: "RenamedTests", kind: .classType,
+            module: "AppTests", attributes: [.unitTest])
+        renamed.symbol("c:@M@AppTests@objc(cs)SuiteRenamedTests(im)testA", name: "testA()", kind: .method,
+            module: "AppTests", parent: "c:@M@AppTests@objc(cs)SuiteRenamedTests", attributes: [.unitTest])
+        #expect(identifier("c:@M@AppTests@objc(cs)SuiteRenamedTests(im)testA", renamed) == nil)
+
+        var plain = SnapshotBuilder(path: "/p/Tests/Plain.swift")
+        plain.symbol("c:@M@AppTests@objc(cs)PlainTests", name: "PlainTests", kind: .classType,
+            module: "AppTests", attributes: [.unitTest])
+        plain.symbol("c:@M@AppTests@objc(cs)PlainTests(im)testA", name: "testA()", kind: .method,
+            module: "AppTests", parent: "c:@M@AppTests@objc(cs)PlainTests", attributes: [.unitTest])
+        #expect(identifier("c:@M@AppTests@objc(cs)PlainTests(im)testA", plain) == "AppTests/PlainTests/testA")
+        #expect(XCTestIdentifier.objectiveCClassName(usr: "c:@M@App@objc(cs)Name(im)testA") == "Name")
+        #expect(XCTestIdentifier.objectiveCClassName(usr: "s:3App5NameC") == nil)
     }
 
     @Test("XCTest 표식이 없거나 실행 형태가 아닌 선언은 좁히지 않는다")

@@ -16,8 +16,8 @@ struct AffectedCommand: ParsableCommand {
             means no test declaration was found on a consumer path; it does not prove that existing
             tests cover the change. `impact` remains the wider report of every affected declaration.
 
-            --format xcodebuild prints one -only-testing: argument per line. Only test methods of
-            top-level XCTest classes without subclasses are narrowed to a method; every other test
+            --format xcodebuild prints one -only-testing: argument per line. Only top-level XCTest
+            classes without subclasses, and their test methods, are narrowed; every other test
             selects its whole test module. A truncated or unresolved answer prints no arguments.
             """
     )
