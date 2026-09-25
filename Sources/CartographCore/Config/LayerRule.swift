@@ -61,8 +61,9 @@ public struct LayerRule: Sendable, Codable, Equatable {
         self.allow = allow
         self.deny = deny
         self.severity = severity
-        self.rationale = rationale
-        self.hint = hint
+        // 설정 파일이든 코드든 같은 불변식을 지키도록 정규화는 여기 한 곳에서 한다.
+        self.rationale = Self.singleLine(rationale)
+        self.hint = Self.singleLine(hint)
     }
 
     /// 위반 진단에 붙일 설명 줄. 규칙 이름, 그리고 적혀 있으면 이유와 수정 안내.
@@ -102,17 +103,17 @@ public struct LayerRule: Sendable, Codable, Equatable {
             allow: try container.decodeIfPresent([String].self, forKey: .allow),
             deny: try container.decodeIfPresent([String].self, forKey: .deny),
             severity: try container.decodeIfPresent(Diagnostic.Severity.self, forKey: .severity) ?? .error,
-            rationale: try Self.decodeText(container, key: .rationale),
-            hint: try Self.decodeText(container, key: .hint)
+            rationale: try container.decodeIfPresent(String.self, forKey: .rationale),
+            hint: try container.decodeIfPresent(String.self, forKey: .hint)
         )
     }
 
-    /// 선택 설명 문자열을 읽는다. 빈 값은 적지 않은 것과 같다.
+    /// 선택 설명 문자열을 한 줄로 정규화한다. 빈 값은 적지 않은 것과 같다.
     ///
-    /// 한 줄 진단 형식에 섞여 출력되므로 줄바꿈은 공백으로 접는다. 여러 줄 YAML 블록으로
-    /// 적어도 리포트의 한 줄 구조가 깨지지 않는다.
-    private static func decodeText(_ container: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) throws -> String? {
-        guard let raw = try container.decodeIfPresent(String.self, forKey: key) else { return nil }
+    /// 한 줄 진단 형식에 섞여 출력되므로 줄바꿈은 공백으로 접는다. 여러 줄 YAML 블록이나
+    /// 여러 줄 문자열 리터럴로 적어도 리포트의 한 줄 구조가 깨지지 않는다.
+    private static func singleLine(_ raw: String?) -> String? {
+        guard let raw else { return nil }
         let folded = raw.split(whereSeparator: \.isNewline).joined(separator: " ")
             .trimmingCharacters(in: .whitespaces)
         return folded.isEmpty ? nil : folded

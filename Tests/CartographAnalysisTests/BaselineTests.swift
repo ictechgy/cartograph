@@ -176,6 +176,15 @@ struct AnalysisDiagnosticsTests {
         #expect(plain?.fingerprint == explained?.fingerprint)
     }
 
+    @Test("코드로 만든 규칙도 여러 줄 설명을 한 줄로 접고 빈 설명은 없는 것으로 본다")
+    func programmaticRuleNormalizesRationale() {
+        let rule = LayerRule(from: "P", deny: ["D"], rationale: "Views stay testable\nwithout a database.", hint: " ")
+        #expect(rule.rationale == "Views stay testable without a database.")
+        #expect(rule.hint == nil)
+        #expect(rule == LayerRule(from: "P", deny: ["D"], rationale: "Views stay testable without a database."))
+        #expect(rule.violationDetails.allSatisfy { !$0.contains("\n") })
+    }
+
     @Test("레이어 미지정 정점은 정보성으로 보고된다")
     func unassignedLayerDiagnostics() {
         let graph = TestGraph.make(["X": []])
