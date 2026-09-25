@@ -175,6 +175,29 @@ struct IsolatedNodeMetricsTests {
         #expect(metrics.last?.node == NodeID("Alone"))
     }
 
+    @Test("원심 결합도 상한은 비율이 아니라 의존 대상의 개수로 판정한다")
+    func efferentCouplingThresholdCountsDependencies() {
+        // 둘 다 불안정도 1.0 이지만 의존 대상 수가 다르다. 비율 상한으로는 가를 수 없다.
+        let narrow = NodeMetrics(node: "Narrow", name: "Narrow", afferentCoupling: 0, efferentCoupling: 3,
+            composition: TypeComposition(total: 1, abstract: 0))
+        let wide = NodeMetrics(node: "Wide", name: "Wide", afferentCoupling: 0, efferentCoupling: 30,
+            composition: TypeComposition(total: 1, abstract: 0))
+        let atLimit = NodeMetrics(node: "Edge", name: "Edge", afferentCoupling: 1, efferentCoupling: 8,
+            composition: TypeComposition(total: 1, abstract: 0))
+        let diagnostics = AnalysisDiagnostics.diagnostics(
+            for: [narrow, wide, atLimit], thresholds: Thresholds(maxEfferentCoupling: 8)
+        )
+        #expect(diagnostics.map(\.subject) == ["Wide"])
+        #expect(diagnostics.first?.ruleIdentifier == "efferent-coupling")
+        #expect(diagnostics.first?.severity == .warning)
+        #expect(diagnostics.first?.message == "Wide depends on 30 distinct nodes (efferent coupling), "
+            + "above the configured limit of 8")
+        let isolated = AnalysisDiagnostics.diagnostics(
+            for: [isolatedConcrete()], thresholds: Thresholds(maxEfferentCoupling: 0)
+        )
+        #expect(isolated.isEmpty)
+    }
+
     @Test("고립 정점은 임계값 판정에서 제외된다")
     func isolatedNodesAreExemptFromThresholds() {
         let diagnostics = AnalysisDiagnostics.diagnostics(

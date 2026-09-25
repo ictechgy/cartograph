@@ -25,6 +25,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and passed). Swift Testing functions, nested or `@objc`-renamed classes and filtered graphs select
   their whole test module, and a truncated or unresolved answer prints no arguments and exits 2. The JSON
   document carries the proven identifier as `xcodebuildIdentifier`.
+- `thresholds.max_efferent_coupling` warns when a node depends on more distinct nodes than the
+  configured limit (`efferent-coupling`). Instability is a ratio, so a module depending on three
+  others and one depending on thirty can both read 1.00; the absolute count catches a module that
+  reaches into every layer.
 
 ## [0.22.0] - 2026-09-24
 

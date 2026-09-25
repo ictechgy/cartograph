@@ -1144,6 +1144,12 @@ cartograph              0   3  1.00  0.00  0.00  main-sequence
 `CartographCore` sitting deep in the zone of pain is honest: it is a concrete domain model that
 everything depends on. The metric is a question to answer, not a rule to obey.
 
+When a metric does need a ceiling, `thresholds` in `.cartograph.yml` turns it into warnings:
+`max_instability` and `max_distance` bound the ratios, and `max_efferent_coupling` bounds Ce itself.
+Instability is a ratio, so a module that depends on three others and one that depends on thirty
+can both read 1.00; the absolute count is what catches a module reaching into every layer.
+Isolated nodes are never flagged, and `--strict` fails the run when a warning remains.
+
 ### `rules` — enforce architecture in CI
 
 ```yaml
@@ -1280,6 +1286,7 @@ thresholds:
   max_rule_violations: 0
   max_instability: 0.9
   max_distance: 0.8
+  max_efferent_coupling: 8   # distinct nodes one node may depend on (Ce)
 
 baseline_path: .cartograph-baseline.json    # where --baseline READS suppression findings;
                                             # `cartograph baseline` writes only via --write or the

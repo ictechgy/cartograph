@@ -29,6 +29,7 @@ struct ConfigurationLoaderTests {
         thresholds:
           max_cycles: 0
           max_instability: 0.75
+          max_efferent_coupling: 12
         baseline_path: .cartograph-baseline.json
         external_retentions_path: .isthmus/retentions.cartograph.json
         derived_data_path: DerivedData
@@ -53,6 +54,7 @@ struct ConfigurationLoaderTests {
         #expect(configuration.rules.first?.deny == ["Data"])
         #expect(configuration.thresholds.maxCycles == 0)
         #expect(configuration.thresholds.maxInstability == 0.75)
+        #expect(configuration.thresholds.maxEfferentCoupling == 12)
         #expect(configuration.baselinePath == ".cartograph-baseline.json")
         #expect(configuration.externalRetentionsPath == ".isthmus/retentions.cartograph.json")
         #expect(configuration.derivedDataPath == "DerivedData")

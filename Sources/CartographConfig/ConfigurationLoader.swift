@@ -94,6 +94,7 @@ public struct ConfigurationLoader: Sendable {
     ]
     private static let knownThresholdKeys: Set<String> = [
         "max_cycles", "max_unused_symbols", "max_rule_violations", "max_instability", "max_distance",
+        "max_efferent_coupling",
     ]
     private static let knownLayerKeys: Set<String> = ["name", "match"]
     private static let knownRuleKeys: Set<String> = ["name", "from", "allow", "deny", "severity", "rationale", "hint"]

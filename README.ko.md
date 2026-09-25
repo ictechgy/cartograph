@@ -1102,6 +1102,12 @@ cartograph              0   3  1.00  0.00  0.00  main-sequence
 `CartographCore`가 zone-of-pain 깊숙이 자리한 것은 예상대로입니다 — 모두가 의존하는 구체적인
 도메인 모델이기 때문입니다. 지표는 따라야 할 규칙이 아니라 답해야 할 질문입니다.
 
+지표에 상한이 꼭 필요하면 `.cartograph.yml`의 `thresholds`가 경고로 바꿔 줍니다. `max_instability`와
+`max_distance`는 비율의 상한이고, `max_efferent_coupling`은 Ce 자체의 상한입니다. 불안정도는
+비율이라 셋에 의존하는 모듈과 서른에 의존하는 모듈이 모두 1.00으로 읽힐 수 있습니다. 모든
+계층에 손을 뻗는 모듈을 잡는 것은 절대 개수입니다. 고립 정점은 판정하지 않으며, 경고가 남으면
+`--strict`가 실행을 실패시킵니다.
+
 ### `rules` — CI에서 아키텍처 강제
 
 ```yaml
@@ -1240,6 +1246,7 @@ thresholds:
   max_rule_violations: 0
   max_instability: 0.9
   max_distance: 0.8
+  max_efferent_coupling: 8   # 정점 하나가 의존해도 되는 서로 다른 정점 수(Ce)
 
 baseline_path: .cartograph-baseline.json    # 억제 발견을 읽어 오는 위치.
                                             # `cartograph baseline`은 --write 또는

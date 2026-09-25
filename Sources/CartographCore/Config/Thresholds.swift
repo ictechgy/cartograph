@@ -14,19 +14,26 @@ public struct Thresholds: Sendable, Codable, Equatable {
     public var maxInstability: Double?
     /// 허용할 주계열로부터의 최대 거리 D(0...1).
     public var maxDistanceFromMainSequence: Double?
+    /// 정점 하나가 의존해도 되는 서로 다른 정점의 최대 개수 Ce.
+    ///
+    /// 불안정도 I 는 비율이라 의존 대상이 3개인 모듈과 30개인 모듈을 같은 1.0 으로 본다.
+    /// 여러 계층에 손을 뻗는 "만능" 모듈을 잡으려면 절대 개수의 상한이 필요하다.
+    public var maxEfferentCoupling: Int?
 
     public init(
         maxCycles: Int? = nil,
         maxUnusedSymbols: Int? = nil,
         maxRuleViolations: Int? = nil,
         maxInstability: Double? = nil,
-        maxDistanceFromMainSequence: Double? = nil
+        maxDistanceFromMainSequence: Double? = nil,
+        maxEfferentCoupling: Int? = nil
     ) {
         self.maxCycles = maxCycles
         self.maxUnusedSymbols = maxUnusedSymbols
         self.maxRuleViolations = maxRuleViolations
         self.maxInstability = maxInstability
         self.maxDistanceFromMainSequence = maxDistanceFromMainSequence
+        self.maxEfferentCoupling = maxEfferentCoupling
     }
 
     /// 아무 임계값도 검사하지 않는 설정.
@@ -40,5 +47,6 @@ public struct Thresholds: Sendable, Codable, Equatable {
         case maxRuleViolations = "max_rule_violations"
         case maxInstability = "max_instability"
         case maxDistanceFromMainSequence = "max_distance"
+        case maxEfferentCoupling = "max_efferent_coupling"
     }
 }

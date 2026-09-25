@@ -12,6 +12,7 @@ public enum AnalysisDiagnostics {
         public static let unassignedLayer = "unassigned-layer"
         public static let instability = "instability"
         public static let mainSequenceDistance = "main-sequence-distance"
+        public static let efferentCoupling = "efferent-coupling"
         public static let metricThreshold = "metric-threshold"
         public static let testOnlySymbol = "test-only-symbol"
         public static let unusedParameter = "unused-parameter"
@@ -250,6 +251,17 @@ public enum AnalysisDiagnostics {
                         message: Self.format(
                             "instability", value: entry.instability, limit: limit, name: entry.name
                         ),
+                        subject: entry.node.rawValue
+                    )
+                )
+            }
+            if let limit = thresholds.maxEfferentCoupling, entry.efferentCoupling > limit {
+                diagnostics.append(
+                    Diagnostic(
+                        ruleIdentifier: Rule.efferentCoupling,
+                        severity: .warning,
+                        message: "\(entry.name) depends on \(entry.efferentCoupling) distinct nodes "
+                            + "(efferent coupling), above the configured limit of \(limit)",
                         subject: entry.node.rawValue
                     )
                 )

@@ -72,6 +72,7 @@ public enum ConfigurationTemplate {
         #  max_rule_violations: 0
         #  max_instability: 0.8
         #  max_distance: 0.7
+        #  max_efferent_coupling: 8      # distinct nodes one node may depend on (Ce)
 
         # baseline_path: \(Cartograph.defaultBaselineFileName)
         # Retentions produced by `isthmus retentions --for cartograph`, for handlers that
