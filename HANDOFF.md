@@ -120,9 +120,17 @@ kartograph(Kotlin)·cartograph(Swift)가 호출 측 `relation-use`를 내고, sc
 
 ## Next Steps
 
-`cartograph schema`는 0.22.0으로 발행 완료다. 남은 확장 후보는 dartograph(Dart) 생산자,
-도메인 간 상관(공유 심볼 키 — DB 컬럼 변경 → API 핸들러 → 위젯), 세 번째
-도메인(네트워크 경계)이다.
+`cartograph schema`는 0.22.0으로 발행 완료다. **이 저장소에 예정된 작업은 없다.**
+
+아래 확장 후보는 isthmus 생태계의 후보이지 cartograph 작업이 아니다. 여기서 착수하지 않는다.
+
+- dartograph(Dart) persistence 생산자: 구현은 dartograph 저장소, 수용 테스트·계약 문서는
+  isthmus 저장소에서 한다. cartograph는 설계 선례(PR #136의 `SchemaFactScanner`,
+  이스케이프 규약, 관계·컬럼 사실 분리, 미지원 프레임워크 limitation 계수)로만 참고한다.
+- 도메인 간 상관(공유 심볼 키 — DB 컬럼 변경 → API 핸들러 → 위젯)과 세 번째 도메인
+  (네트워크 경계): isthmus 계약 설계가 먼저다. cartograph 생산자 변경은 그 계약이
+  확정된 뒤에만 이 저장소의 작업이 된다.
+
 자매 확장의 KAPT/KSP receipt snapshot/cache 연동, iPhone·iOS release·RN 새 아키텍처 검증,
 collector 발행은 [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md)가 정본이다.
 런타임 텔레메트리는 연구 전용 보류다. 이 후보들을 자동으로 착수하지 않는다.
@@ -131,5 +139,6 @@ collector 발행은 [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/m
 
 `/Users/jinhongan/Desktop/cartograph`에서 HANDOFF.md와 적용 AGENTS.md를 읽고 Git 상태를 확인해줘.
 `cartograph schema`(Swift persistence 생산자)를 포함한 0.22.0이 발행·Homebrew 반영·설치 검증까지 끝났어.
-남은 후보는 dartograph 생산자·교차 도메인 상관·네트워크 도메인이고 자동 착수하지 말 것.
+이 저장소에 예정된 작업은 없어. dartograph 생산자·교차 도메인 상관·네트워크 도메인은
+isthmus/dartograph 쪽 후보라 여기서 착수하지 말 것.
 0.21.0·0.22.0 발행·검증은 전부 끝났으니 반복하지 말 것.
