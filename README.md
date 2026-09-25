@@ -643,6 +643,35 @@ that existing tests cover the behavior, and every response carries that sentence
 limitations. Selection, container expansion, dispatch projection and depth limits are the same
 plumbing `impact` uses, so the two commands cannot disagree about the same change.
 
+`--format xcodebuild` turns the answer into `-only-testing:` arguments, one per line, ready for a
+script:
+
+```bash
+xcodebuild test -scheme App $(cartograph affected --since origin/main --format xcodebuild)
+```
+
+```console
+$ cartograph affected negate --format xcodebuild
+-only-testing:CalcTests/AddTests/testNegate
+```
+
+A wrong identifier is worse than none — xcodebuild runs zero tests and reports success — so only
+identifiers the graph proves are narrowed. A test method is narrowed to `Module/Class/method` only
+when it is a parameterless `test…` method the index marks as an XCTest, of a top-level class with
+no subclass (a subclass runs the inherited test under its own name, which the base-class identifier
+skips). Every other reached test selects its whole test module: swift-testing functions, whose
+identifier format has varied between Xcode releases, nested classes, and graphs narrowed by
+`edge_kinds` or path filters, where a subclass may be invisible. Standard error says how many tests
+were widened this way, followed by the analysis limitations.
+
+The module name stands in for the xcodebuild test target name. They match for SwiftPM test targets
+and for Xcode targets whose names are valid identifiers; a target named `My App Tests` has the
+module `My_App_Tests`, which xcodebuild does not accept. When the list is truncated by `--limit` or
+`--depth`, or an input is unresolved, the command prints no arguments and exits 2 (unresolved named
+declarations still exit 64) — with no `-only-testing:` argument xcodebuild runs every test, which is
+the safe side. No reached test also prints nothing and exits 0; check `summary.testCount` in the JSON
+if skipping the test run is the intent.
+
 ### `snapshot` — capture an analysis input
 
 ```bash

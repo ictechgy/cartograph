@@ -36,6 +36,10 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
         public let relationship: String
         public let edges: [String]
         public let dispatchContract: SymbolQuery.Subject?
+        /// `xcodebuild -only-testing:` 에 그대로 넘길 수 있다고 증명한 XCTest 식별자.
+        ///
+        /// 증명하지 못하면 키가 빠진다. 그때 이 테스트를 고르는 안전한 방법은 모듈 전체다.
+        public let xcodebuildIdentifier: String?
     }
 
     public struct Summary: Sendable, Equatable, Codable {
@@ -105,12 +109,19 @@ extension CartographService {
         func isTest(_ id: NodeID) -> Bool {
             reasons[id]?.contains(where: \.isTestTargetRoot) == true
         }
+        let canProveHierarchy = XCTestIdentifier.canProveClassHierarchy(
+            edgeKinds: configuration.edgeKinds, narrowsPaths: configuration.narrowsPathsBeyondDefaults
+        )
+        func identifier(_ id: NodeID) -> String? {
+            XCTestIdentifier.identifier(for: id, in: graph, canProveClassHierarchy: canProveHierarchy)
+        }
         var tests: [AffectedDocument.Test] = []
         for id in report.changed where isTest(id) {
             guard let node = graph.node(id) else { continue }
             tests.append(AffectedDocument.Test(
                 symbol: Self.describe(node), depth: 0, via: nil,
-                relationship: "changed", edges: [], dispatchContract: nil
+                relationship: "changed", edges: [], dispatchContract: nil,
+                xcodebuildIdentifier: identifier(id)
             ))
         }
         for visit in report.affected where isTest(visit.node) {
@@ -120,7 +131,8 @@ extension CartographService {
                 via: graph.node(visit.via).map(Self.describe),
                 relationship: visit.relationship.rawValue,
                 edges: visit.edges.map(\.rawValue),
-                dispatchContract: visit.dispatchContract.flatMap { graph.node($0) }.map(Self.describe)
+                dispatchContract: visit.dispatchContract.flatMap { graph.node($0) }.map(Self.describe),
+                xcodebuildIdentifier: identifier(visit.node)
             ))
         }
         // 사람과 CI 모두 파일·줄 순으로 읽는다. 깊이는 답의 일부라 먼저 본다.
@@ -166,9 +178,9 @@ extension CartographService {
         format: String = "text", fileSelectionIsDerived: Bool = false,
         selectionLimitations: [String] = []
     ) throws -> CommandOutcome {
-        guard format == "text" || format == "json" else {
+        guard ["text", "json", "xcodebuild"].contains(format) else {
             throw CartographError.invalidConfiguration(
-                path: projectPath, reason: "Affected format must be text or json."
+                path: projectPath, reason: "Affected format must be text, json or xcodebuild."
             )
         }
         let document = try affectedDocument(
@@ -178,6 +190,17 @@ extension CartographService {
         let incomplete = !document.selectionIssues.isEmpty
         let explanation = "Some affected inputs could not be resolved. Review selectionIssues and rebuild "
             + "the relevant targets, or inspect the pre-change index for deleted or renamed declarations."
+        if format == "xcodebuild" {
+            let selection = document.xcodebuildSelection()
+            return CommandOutcome(
+                output: selection.output,
+                subjectNotFound: incomplete && !fileSelectionIsDerived,
+                notFoundMessage: explanation,
+                // 이름을 못 찾은 사용 오류(64)가 아니면, 거부 자체가 불완전한 분석(2)이다.
+                incompleteAnalysis: incomplete && !fileSelectionIsDerived ? nil : selection.refusal,
+                notes: selection.notes
+            )
+        }
         return CommandOutcome(
             output: format == "json" ? try Self.encodeSortedJSON(document) : document.renderAffectedText(),
             subjectNotFound: incomplete && !fileSelectionIsDerived,
@@ -221,5 +244,59 @@ extension AffectedDocument {
         for limitation in limitations { lines.append("Limitation: \(limitation)") }
         lines.append("Static reachability only: an empty list does not prove existing tests cover this change.")
         return lines.map { PrintableText.printable($0) }.joined(separator: "\n") + "\n"
+    }
+}
+
+extension AffectedDocument {
+    /// `xcodebuild` 형식의 답. 표준 출력에는 인자 줄만 싣고 설명은 따로 둔다.
+    struct XcodebuildSelection: Equatable {
+        /// `-only-testing:` 인자 한 줄씩. 거부했으면 빈 문자열이다.
+        let output: String
+        /// 표준 오류로 보낼 범위 확대와 분석 한계.
+        let notes: [String]
+        /// 일부만 고른 목록을 내지 않은 이유. 내보냈으면 nil.
+        let refusal: String?
+    }
+
+    /// 테스트마다 `-only-testing:` 인자를 만든다. 식별자를 증명하지 못한 테스트는 모듈 전체로 넓힌다.
+    ///
+    /// 목록이 잘렸거나 입력을 다 풀지 못했으면 인자를 하나도 내지 않는다. 인자가 없으면
+    /// xcodebuild 는 모든 테스트를 돌린다 — 도달한 테스트 일부만 고른 목록보다 그쪽이 안전하다.
+    func xcodebuildSelection() -> XcodebuildSelection {
+        if let refusal = xcodebuildRefusal() {
+            return XcodebuildSelection(output: "", notes: limitations, refusal: refusal)
+        }
+        let widened = tests.filter { $0.xcodebuildIdentifier == nil }
+        let wholeModules = Set(widened.compactMap(\.symbol.module))
+        // 모듈 전체를 고르면 그 안의 개별 식별자는 중복이다.
+        let narrowed = tests.compactMap(\.xcodebuildIdentifier).filter { identifier in
+            !wholeModules.contains(String(identifier.prefix { $0 != "/" }))
+        }
+        let selectors = Set(narrowed).union(wholeModules).sorted()
+        var notes = limitations
+        if !widened.isEmpty {
+            notes.insert(
+                "\(widened.count) test declaration(s) are selected by their whole test module: only test methods "
+                    + "of top-level XCTest classes without subclasses have a provable -only-testing identifier.",
+                at: 0
+            )
+        }
+        let output = selectors.map { "-only-testing:" + PrintableText.printable($0) + "\n" }.joined()
+        return XcodebuildSelection(output: output, notes: notes, refusal: nil)
+    }
+
+    /// 인자 목록을 내면 안 되는 이유. 일부만 고른 목록은 빠진 테스트를 조용히 건너뛴다.
+    private func xcodebuildRefusal() -> String? {
+        let fallback = " No -only-testing arguments were written, so xcodebuild would run every test."
+        if !selectionIssues.isEmpty {
+            return "Some affected inputs could not be resolved." + fallback
+        }
+        if truncated.output || truncated.depth {
+            return "The affected test list was truncated; increase --limit or --depth." + fallback
+        }
+        if tests.contains(where: { $0.xcodebuildIdentifier == nil && $0.symbol.module == nil }) {
+            return "A reached test declaration has no module to select." + fallback
+        }
+        return nil
     }
 }

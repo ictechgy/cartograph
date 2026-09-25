@@ -74,6 +74,9 @@ enum CommandSupport {
         } else {
             print(outcome.output, terminator: "")
         }
+        for note in outcome.notes {
+            FileHandle.standardError.write(Data(("note: " + note + "\n").utf8))
+        }
 
         // 없는 이름을 물어본 것은 코드의 문제가 아니라 인자의 문제다. 사용 오류로
         // 끝내야 CI 스크립트의 오타가 드러난다. 설명은 이미 출력한 뒤다.

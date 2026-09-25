@@ -15,6 +15,10 @@ struct AffectedCommand: ParsableCommand {
             The answer is static reachability over the symbol graph, not a test run. An empty list
             means no test declaration was found on a consumer path; it does not prove that existing
             tests cover the change. `impact` remains the wider report of every affected declaration.
+
+            --format xcodebuild prints one -only-testing: argument per line. Only test methods of
+            top-level XCTest classes without subclasses are narrowed to a method; every other test
+            selects its whole test module. A truncated or unresolved answer prints no arguments.
             """
     )
 
@@ -32,7 +36,7 @@ struct AffectedCommand: ParsableCommand {
     @Option(name: .customLong("limit"), help: "Maximum test declarations to report (default: 200).")
     var limit: Int = 200
 
-    @Option(name: .customLong("format"), help: "text or json.")
+    @Option(name: .customLong("format"), help: "text, json or xcodebuild (-only-testing arguments).")
     var format: AffectedFormat = .text
 
     func validate() throws {
@@ -107,4 +111,5 @@ struct AffectedCommand: ParsableCommand {
 enum AffectedFormat: String, ExpressibleByArgument, CaseIterable {
     case text
     case json
+    case xcodebuild
 }

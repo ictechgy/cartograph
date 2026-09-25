@@ -33,6 +33,12 @@ public struct CommandOutcome: Sendable, Equatable {
     public let notFoundMessage: String?
     /// 인자가 맞더라도 분석에 필요한 과거 선언이나 근거가 없으면 완전한 점검처럼 끝내지 않는다.
     public let incompleteAnalysis: String?
+    /// 표준 출력이 아니라 표준 오류로 보낼 설명.
+    ///
+    /// 표준 출력이 다른 도구의 인자로 그대로 들어가는 형식(`affected --format xcodebuild`)은
+    /// 한계나 범위 확대를 표준 출력에 섞을 수 없다. 그렇다고 버리면 사용자는 결과가 왜
+    /// 넓어졌는지 알 수 없다.
+    public let notes: [String]
 
     public init(
         output: String,
@@ -42,7 +48,8 @@ public struct CommandOutcome: Sendable, Equatable {
         subjectNotFound: Bool = false,
         missingSubjects: [String] = [],
         notFoundMessage: String? = nil,
-        incompleteAnalysis: String? = nil
+        incompleteAnalysis: String? = nil,
+        notes: [String] = []
     ) {
         self.output = output
         self.findingCount = findingCount
@@ -52,6 +59,7 @@ public struct CommandOutcome: Sendable, Equatable {
         self.missingSubjects = missingSubjects
         self.notFoundMessage = notFoundMessage
         self.incompleteAnalysis = incompleteAnalysis
+        self.notes = notes
     }
 
     public var hasFindings: Bool { findingCount > 0 }

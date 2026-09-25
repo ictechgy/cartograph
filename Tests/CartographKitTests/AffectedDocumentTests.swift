@@ -151,4 +151,77 @@ struct AffectedDocumentTests {
         #expect(outcome.subjectNotFound)
         #expect(outcome.incompleteAnalysis == nil)
     }
+
+    /// P를 XCTest 메서드 두 개가 부른다: 최상위 클래스 안의 것과 클래스 밖의 것.
+    private func xctestSnapshot() -> IndexSnapshot {
+        var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
+        builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift", line: 1)
+        builder.symbol("C", name: "ProcessTests", kind: .classType, module: "AppTests",
+            path: "/p/Tests/ProcessTests.swift", line: 1, attributes: [.unitTest])
+        builder.symbol("C.test", name: "testProcess()", kind: .method, module: "AppTests",
+            path: "/p/Tests/ProcessTests.swift", line: 2, parent: "C", attributes: [.unitTest])
+        builder.reference(from: "C.test", to: "P", kind: .call, path: "/p/Tests/ProcessTests.swift")
+        builder.symbol("S", name: "processes()", kind: .function, module: "SuiteTests",
+            path: "/p/Tests/Suite.swift", line: 1, attributes: [.unitTest])
+        builder.reference(from: "S", to: "P", kind: .call, path: "/p/Tests/Suite.swift")
+        return builder.build()
+    }
+
+    @Test("xcodebuild 형식은 증명한 식별자만 좁히고 나머지는 모듈 전체로 넓힌다")
+    func xcodebuildNarrowsOnlyProvableIdentifiers() throws {
+        let outcome = try service(xctestSnapshot()).affected(symbols: ["P"], format: "xcodebuild")
+        #expect(outcome.output == "-only-testing:AppTests/ProcessTests/testProcess\n-only-testing:SuiteTests\n")
+        #expect(outcome.incompleteAnalysis == nil)
+        #expect(outcome.notes.first?.hasPrefix("1 test declaration(s) are selected by their whole test module") == true)
+        let document = try document(service(xctestSnapshot()), symbols: ["P"])
+        #expect(document.tests.first { $0.symbol.usr == "C.test" }?.xcodebuildIdentifier
+            == "AppTests/ProcessTests/testProcess")
+        #expect(document.tests.first { $0.symbol.usr == "S" }?.xcodebuildIdentifier == nil)
+    }
+
+    @Test("같은 모듈을 통째로 고르면 그 모듈의 개별 식별자는 싣지 않는다")
+    func xcodebuildDropsIdentifiersCoveredByWholeModule() throws {
+        var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
+        builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift", line: 1)
+        builder.symbol("C", name: "ProcessTests", kind: .classType, path: "/p/Tests/A.swift", line: 1,
+            attributes: [.unitTest])
+        builder.symbol("C.test", name: "testProcess()", kind: .method, path: "/p/Tests/A.swift", line: 2,
+            parent: "C", attributes: [.unitTest])
+        builder.symbol("F", name: "free()", kind: .function, path: "/p/Tests/B.swift", line: 1,
+            attributes: [.unitTest])
+        builder.reference(from: "C.test", to: "P", kind: .call, path: "/p/Tests/A.swift")
+        builder.reference(from: "F", to: "P", kind: .call, path: "/p/Tests/B.swift")
+        let outcome = try service(builder.build()).affected(symbols: ["P"], format: "xcodebuild")
+        #expect(outcome.output == "-only-testing:App\n")
+    }
+
+    @Test("xcodebuild 형식은 잘린 목록 대신 인자를 비우고 불완전한 분석으로 끝낸다")
+    func xcodebuildRefusesTruncatedList() throws {
+        var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
+        builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift", line: 1)
+        for index in 1...2 {
+            builder.symbol("T\(index)", name: "test\(index)()", kind: .method,
+                path: "/p/Tests/ATests.swift", line: index, attributes: [.unitTest])
+            builder.reference(from: "T\(index)", to: "P", kind: .call, path: "/p/Tests/ATests.swift")
+        }
+        let outcome = try service(builder.build()).affected(symbols: ["P"], limit: 1, format: "xcodebuild")
+        #expect(outcome.output.isEmpty)
+        #expect(outcome.incompleteAnalysis?.contains("xcodebuild would run every test") == true)
+    }
+
+    @Test("xcodebuild 형식도 없는 이름은 인자 없이 사용 오류로 알린다")
+    func xcodebuildUnresolvedSelectionIsUsageError() throws {
+        let outcome = try service(snapshot()).affected(symbols: ["NoSuchSymbol"], format: "xcodebuild")
+        #expect(outcome.output.isEmpty)
+        #expect(outcome.subjectNotFound)
+        #expect(outcome.incompleteAnalysis == nil)
+    }
+
+    @Test("테스트가 닿지 않으면 xcodebuild 인자도 없고 경고 없이 끝난다")
+    func xcodebuildEmptyWhenNoTestReaches() throws {
+        let outcome = try service(snapshot(includeTest: false)).affected(symbols: ["P"], format: "xcodebuild")
+        #expect(outcome.output.isEmpty)
+        #expect(outcome.incompleteAnalysis == nil)
+        #expect(!outcome.subjectNotFound)
+    }
 }

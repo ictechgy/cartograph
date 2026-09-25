@@ -628,6 +628,33 @@ affected: 2 test declaration(s) reach this change — 11 affected symbol(s), 1 t
 아니며, 모든 응답에 그 문장과 분석 한계가 함께 실립니다. 시드 선택·컨테이너 확장·디스패치 투영·
 깊이 제한은 `impact`와 같은 배관을 쓰므로, 같은 변경에 대해 두 명령이 다른 답을 내지 않습니다.
 
+`--format xcodebuild`는 답을 `-only-testing:` 인자로 바꿔 한 줄에 하나씩 출력합니다. 스크립트에
+그대로 넘길 수 있습니다:
+
+```bash
+xcodebuild test -scheme App $(cartograph affected --since origin/main --format xcodebuild)
+```
+
+```console
+$ cartograph affected negate --format xcodebuild
+-only-testing:CalcTests/AddTests/testNegate
+```
+
+틀린 식별자는 없는 것보다 나쁩니다 — xcodebuild가 테스트를 하나도 돌리지 않고 성공으로 끝납니다.
+그래서 그래프가 증명한 식별자만 좁힙니다. 테스트 메서드가 `Module/Class/method`로 좁혀지는 것은
+인덱스가 XCTest로 표시한 인자 없는 `test…` 메서드이고, 하위 클래스가 없는 최상위 클래스에 속할
+때뿐입니다(하위 클래스는 상속한 테스트를 자기 이름으로 실행하므로 상위 클래스 식별자로는 빠집니다).
+그 밖에 도달한 테스트는 테스트 모듈 전체를 고릅니다 — Xcode 릴리스마다 식별자 형식이 달라진
+swift-testing 함수, 중첩 클래스, 그리고 `edge_kinds`나 경로 필터로 좁혀 하위 클래스가 안 보일 수
+있는 그래프가 그렇습니다. 이렇게 넓힌 테스트 수와 분석 한계는 표준 오류로 알립니다.
+
+모듈 이름을 xcodebuild 테스트 타깃 이름으로 씁니다. SwiftPM 테스트 타깃과, 이름이 올바른 식별자인
+Xcode 타깃에서는 둘이 같습니다. `My App Tests` 타깃의 모듈은 `My_App_Tests`라 xcodebuild가 받지
+않습니다. `--limit`·`--depth`로 목록이 잘렸거나 풀지 못한 입력이 있으면 인자를 하나도 출력하지 않고
+종료 코드 2로 끝납니다(이름을 찾지 못한 선언은 여전히 64) — `-only-testing:` 인자가 없으면
+xcodebuild는 모든 테스트를 돌리므로 그쪽이 안전합니다. 닿는 테스트가 없을 때도 아무것도 출력하지
+않고 0으로 끝납니다. 테스트 실행을 건너뛰려는 목적이면 JSON의 `summary.testCount`를 확인하세요.
+
 ### `snapshot` — 분석 입력 캡처
 
 ```bash
