@@ -1334,12 +1334,11 @@ override the extension's default access.
   The conservative `retain_objc_accessible` default remains; unindexed sources remain a gap.
 - **Callers in another language are known only through isthmus.** `bridges` exports what Swift
   declares; whether Dart or JavaScript actually calls it is a join this tool does not perform.
-- **A property that is only ever assigned counts as used.** The graph has one `reference` edge
-  kind and does not carry the index's read/write distinction, so `counter.neverRead = 1` looks
-  exactly like reading it. In a four-line package where `bump()` assigns `neverRead` and nothing
-  ever reads it, `dead` reports nothing and `query` answers `reachable`, used by `bump()`. Deleting
-  such a property is safe and this tool will not suggest it. Telling the two apart needs read and
-  write edge kinds, which the graph does not have yet.
+- **Assignment still counts as a use in the graph.** `dead` reports a property that is only ever
+  assigned as an `assign-only` warning, using the read/write roles the index records (see `dead`).
+  The graph itself has one `reference` edge kind, though, so `counter.neverRead = 1` still makes
+  `bump()` a user of `neverRead`: `query` answers `reachable`, and `impact` and `graph` show the
+  edge. Read the warning together with those answers rather than expecting them to agree.
 - **`#if` branches that did not compile do not exist.** The index store only knows the
   configuration you built.
 
