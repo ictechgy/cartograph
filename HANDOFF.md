@@ -2,143 +2,121 @@
 
 _Last updated: 2026-09-25 by Claude_
 
-작업 규칙은 [AGENTS.md](AGENTS.md), 이전 원문은 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 있다.
+작업 규칙은 [AGENTS.md](AGENTS.md), 이전 원문은 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 있다
+(0.21.0·0.22.0 발행 세부 기록은 그 파일 끝 절로 옮겼다).
 이력의 오래된 버전·승인 대기·미발행 표기는 현재 지시로 되살리지 않는다.
 
 ## Goal
 
-**0.22.0 발행·배포까지 전부 끝났다**(아래 Completed 참고). isthmus의 두 번째 조인 도메인
-**persistence**의 Swift 생산자 `cartograph schema`([PR #136](https://github.com/ictechgy/cartograph/pull/136))가
-0.22.0에 포함돼 공개됐다. persistence 생산자는 gartograph(Go)·rustograph(Rust)·
-kartograph(Kotlin)·cartograph(Swift)가 호출 측 `relation-use`를 내고, schemagraph가
-`relation-decl`을 내는 수신 측이다.
+시중·경쟁 도구 대비 공백을 채운다. 2026-09-25 조사(아래 "경쟁 조사 요약")에서 뽑은
+**A 항목(작고 효과 큰 것) 다섯 개는 전부 리뷰·머지 완료**했다. 남은 것은 B·C 후보와,
+A 기능을 사용자에게 내보낼 다음 릴리스(0.23.0)다. 무엇을 할지는 사용자가 고른다.
 
 ## Current Status
 
-- 저장소: `/Users/jinhongan/Desktop/cartograph`. 태그 `0.22.0`은 `df577ad`(릴리스 PR #138)다.
-- `cartograph schema`는 `feature/schema-facts-swift`에서 squash 머지됐다(원격·로컬 브랜치
-  정리 완료). isthmus 측 수용 테스트·계약 문서는 isthmus PR #112(`b6a0eec`)로 머지됐다.
-- `cartograph schema`는 SwiftSyntax 스캐너(`SchemaFactScanner` + `SqlRelations`)로
-  sqlite3 인자·GRDB `sql:`/`Table`/`tableExists`/`databaseTableName`·SQLite.swift·Fluent·
-  게이트 없는 대문자 SQL 리터럴을 읽어 `platform: "swift"`, `target: "persistence"`
-  문서를 낸다. Core Data·SwiftData·Realm·미지원 DB 프레임워크는 사실이 아니라
-  limitation 개수로 센다.
-- GLM 리뷰 2라운드를 반영했다. 1라운드: extension 안 static 테이블 선언 귀속,
-  `SQLite.Table` 한정 생성자, 바인딩 리터럴 이중 발화 억제, 표현식 빌더 과대계수,
-  같은 이름 재바인딩 오귀속 방지, `tableExists`, limitation 파일 수 계수.
-  2라운드: 중첩된 다른 테이블 수신자 호출의 컬럼이 바깥 채널로 오귀속하던 문제를
-  ColumnCollector 서브트리 건너뛰기로 수정했다.
-- 검증 상태: `swift build`·전체 `swift test` 390개(스캐너 31 + 렉서 8 포함)·
-  `verify-cli-contract`·`verify-fixtures`·`coverage.sh`(통합 91.87%)·strict
-  dead/cycles/cycles-type/rules 모두 통과. 실제 인덱스가 있는 fixture에서 isthmus
-  `check` 조인까지 확인했다(matchedRelations·`relation-use-without-decl`·실제 USR 부착).
-- `schema`는 CLI 0.22.0부터 발행본에 포함된다.
+- 저장소 `/Users/jinhongan/Desktop/cartograph`, `main`은 `c52d418`(#145), 로컬 브랜치는 `main` 하나.
+- 발행본은 0.22.0이다. 아래 A 기능은 **`main`에만 있고 발행되지 않았다**(CHANGELOG `[Unreleased]`에 4건).
 
 | 발행물 | 현재 버전·상태 |
 |---|---|
-| CLI / Homebrew | [0.22.0](https://github.com/ictechgy/cartograph/releases/tag/0.22.0), 호스트 설치·검증 완료 |
-| GitHub Action | [action-v1.0.0](https://github.com/marketplace/actions/cartograph-swift-analysis?version=action-v1.0.0), Marketplace 등록 완료 |
-| GitLab component | [cartograph-ci 1.0.0](https://gitlab.com/explore/catalog/ictechgy/cartograph-ci), 별도 검증된 CLI 0.20.0 고정 유지 |
+| CLI / Homebrew | [0.22.0](https://github.com/ictechgy/cartograph/releases/tag/0.22.0), 호스트 설치·`brew test`·바이트 일치 검증 완료 |
+| GitHub Action | [action-v1.0.0](https://github.com/marketplace/actions/cartograph-swift-analysis?version=action-v1.0.0) |
+| GitLab component | [cartograph-ci 1.0.0](https://gitlab.com/explore/catalog/ictechgy/cartograph-ci), 검증된 CLI 0.20.0 고정 유지 |
 
-## Completed & Verification
+## Completed (2026-09-24 ~ 25)
 
-- **0.22.0 (2026-09-25)**: [릴리스 PR #138](https://github.com/ictechgy/cartograph/pull/138)과 태그 `0.22.0`의 소스는
-  `df577adfafe84e053e6381e887ad07e43539a49c`다. [PR CI](https://github.com/ictechgy/cartograph/actions/runs/36012937738):
-  테스트 **1,689개**, 통합 커버리지 **92.38%**(단위 **87.15%**), strict 자기 분석 통과.
-  [Release 실행](https://github.com/ictechgy/cartograph/actions/runs/36014489440) 성공.
-  공개 universal archive SHA256 `442a1940ac8ff8757c59d6432b7e150e4157a7e26ca7319daa83500656b08414` —
-  독립 다운로드와 GitHub digest 일치, arm64/x86_64·`--version`·포함 문서·실제 바이너리 CLI 계약 통과.
-  Release의 tap 단계는 토큰 미설정으로 건너뛰어 [Homebrew PR #51](https://github.com/ictechgy/homebrew-tap/pull/51)
-  (`6413c01`)로 반영했다. 호스트 0.21.0→0.22.0 upgrade·`brew test` 통과, 설치 바이너리와 공개 바이너리 바이트 일치.
-  Action `action-v1.0.0`·GitLab Catalog `1.0.0` 태그는 그대로 유지했다.
+- **0.22.0 발행**: `cartograph schema`(Swift persistence `relation-use` 생산자, #136) 포함. 릴리스 PR #138,
+  태그 `df577ad`, Release 성공, 공개 archive SHA256 `442a1940…08414` 독립 검증, Homebrew tap PR #51(`6413c01`),
+  호스트 0.21.0→0.22.0 upgrade. 발행 기록 PR #139.
+- **정리**: 머지된 로컬 브랜치 13개 삭제(원격 유지)와 재생성 가능한 산출물 약 680 MiB 삭제(#137).
+  HANDOFF에 "dartograph 생산자 등은 cartograph 작업이 아님"을 명시(#140).
+- **경쟁 조사 A 항목 5건 — 전부 GLM 리뷰(`packet-ask review --effort high`) 반영 후 머지**:
 
-- PR #130은 `90f4d8c`로 병합됐다. public/fix/affected 컴파일러 골든·스킬 안내,
-  캐시 preview/apply·사용 중 잠금·최근 사용 표식, Action 실패 처리·SARIF 경로 보정이 포함된다.
-- [릴리스 PR #133](https://github.com/ictechgy/cartograph/pull/133)과 태그 `0.21.0`의 소스는
-  `ba9af2fa3cc426a42bfbed391cebfc1708b1b2f2`다. [PR CI](https://github.com/ictechgy/cartograph/actions/runs/35776430976):
-  테스트 **1,650개**, 통합 커버리지 **92.83%**(단위 **87.50%**), CLI 계약·실제 코퍼스·런타임/MCP·
-  strict dead·모듈/타입 cycles·rules 통과. [Release 실행](https://github.com/ictechgy/cartograph/actions/runs/35777799863)도 성공했다.
-- 공개 universal archive SHA256:
-  `4b204d2e343281499163df8def35374956d38b813d589519130f1f53244b623f`.
-  독립 다운로드와 GitHub digest가 일치했다. arm64/x86_64·버전·CLI 계약과 포함된
-  LICENSE·README·QUERY-EVIDENCE 문서를 검증했다.
-- [Homebrew PR #50](https://github.com/ictechgy/homebrew-tap/pull/50)은 `0ef8908`로 병합됐다.
-  formula URL·SHA, 호스트 0.20.0→0.21.0 upgrade, `brew test` 통과.
-  설치 바이너리와 공개 바이너리의 바이트도 일치한다. 인계 시 `cartograph --version`은 0.21.0이다.
-- Marketplace 메타데이터 PR #131, GitLab 구현 PR #132, GitLab MR !1은 병합됐다.
-  공개 Action 태그의 실제 SARIF 실행에서 **37개 결과·5개 규칙·12개 파일 경로**와 서버 처리 완료를 확인했다.
-- GitLab [태그 파이프라인](https://gitlab.com/ictechgy/cartograph-ci/-/pipelines/2871315648)과
-  [소비자 파이프라인](https://gitlab.com/ictechgy/cartograph-ci/-/pipelines/2871345482)이 성공했다.
-  같은 프로젝트의 검증 브랜치에서 진단 3개와 MR의 새 Code Quality 진단 1건을 확인했다.
-  검증 MR !2는 병합 없이 닫았고 브랜치는 근거로 보존했다. 외부 별도 프로젝트 검증으로 확대 해석하지 않는다.
-- 임시 GitLab Mac 러너 `56611172`의 등록·프로세스·임시 인증파일·체크아웃을 모두 정리했다.
-  상시 서비스는 없다. 다음 유지관리 CI와 소비자는 적격 Mac 러너가 필요하다.
+| PR | 내용 | 리뷰 처리 |
+|---|---|---|
+| #141 | README Known limitations의 낡은 assign-only 설명 정정 | 문서 |
+| #143 | MCP `cartograph_affected` 도구(`AnalysisSession.affected`, symbols\|files·depth·limit) | 결함 없음 |
+| #144 | 레이어 규칙 `rationale`·`hint` → 위반 `details`·`rules --explain` | 정규화를 공개 init으로 이동 |
+| #142 | `affected --format xcodebuild` → `-only-testing:` 인자 | `@objc` 개명 클래스·빈 모듈 거부, 문서 정정 |
+| #145 | `thresholds.max_efferent_coupling`(Ce 상한, `efferent-coupling` 경고) | 음수 거부, 공허한 테스트 수정, `check` 범위 명시 |
 
-## Key Files & Evidence
+  각 PR은 로컬에서 `coverage.sh`(92.33–92.39%), `verify-cli-contract`, `verify-fixtures`, strict 자기 분석을
+  통과했고, 새 테스트는 구현을 일부러 되돌려 실패하는 것을 확인했다. 리뷰 판단은 PR 코멘트에 남겼다.
 
-- [README](README.md), [한국어 README](README.ko.md): 직접 설치·Action 바이너리 예제는 0.22.0.
-  [상세 기록](docs/ACTION-CORPUS-CACHE.md): 코퍼스·캐시·Action·메모리 기준 계측과 발행 근거.
-- `Integrations/GitLab/`: Catalog 배포 소스, 테스트. `.github/workflows/gitlab-component.yml`: GitHub 하네스.
-- 로컬 `.git/evidence-release-0.21.0-20260923/status.json`: 릴리스·tap·설치 검증 완료와 원시 로그.
-- 로컬 `.git/evidence-pr130-final-20260923/review.json`: 최종 검토·병합·CI·SARIF 근거.
-- 로컬 `.git/evidence-gitlab-20260922/`: `status.json`, `pipeline-*.json`, `consumer-mr-report.txt`,
-  `runner-cleanup/cleanup.json`. Marketplace 근거는 `.git/evidence-marketplace-20260922/`.
-  `.git` 근거는 버전 관리되지 않는다. 공개 PR·CI 링크와 상세 기록을 함께 따른다.
-- 로컬 `.git/evidence-cleanup-20260923/cleanup.json`: 사용자 요청으로 삭제한 경로·용량·보존 검증.
-  GitLab 작업 폴더의 작은 smoke 보고서 3개는 같은 폴더의 `gitlab-smoke-reports/`에 보존했다.
+## What Worked
+
+- **실제 도구로 실측하고 판단한다.** `affected --format xcodebuild`는 스크래치 SwiftPM 패키지
+  (XCTest 클래스·하위 클래스·`@objc` 개명·Swift Testing 혼합)에서 실제 `xcodebuild test`로 검증했다.
+  Xcode 27.0 실측: 없는 **클래스**는 0개 실행 후 성공(조용한 누락), 없는 **타깃**은 exit 70 오류,
+  상위 클래스 식별자는 하위 클래스의 상속 테스트를 건너뜀. 이 사실들이 설계(증명된 식별자만 좁힘)를 정했다.
+- **GLM 리뷰 절차**: PR마다 스크래치 git 저장소에 `pr.diff`와 변경 파일 전체를 복사하고 질문을 파일로 둔 뒤
+  `packet-ask review --provider glm --effort high --files … --question-stdin`. 네 개를 병렬로 돌리면 5–12분.
+  지적은 코드·실측으로 확인해 반영/거절하고 PR 코멘트에 이유를 남긴다.
+- **돌연변이 확인**: 새 테스트마다 구현을 잠시 되돌려 실패를 본 뒤 복원했다.
+- **CHANGELOG `[Unreleased]` 충돌**: 여러 PR을 차례로 머지하면 매번 충돌한다. rebase하며 양쪽 항목을 모두
+  살리고(`<<<<<<<` 블록을 이어 붙임), 관련 테스트를 돌린 뒤 `--force-with-lease`로 푸시, CI 통과 후 머지.
+
+## What Didn't Work / Pitfalls
+
+- **돌연변이 테스트 뒤 재빌드를 잊으면 `.build/debug/cartograph`가 망가진 코드로 남는다.**
+  `swift test`가 실행 파일도 다시 빌드하기 때문이다. 실제로 "하위 클래스 검사가 안 먹는다"는 가짜 결함을 봤다.
+  소스를 복원한 뒤 반드시 `swift build`를 다시 돌린다.
+- `packet-ask`의 `--line-numbers`는 줄 번호 거터가 전화번호 탐지에 걸려 전송이 거부됐다(exit 12). 빼고 보낸다.
+- 조사 에이전트의 주장도 틀릴 수 있다: "metrics 임계값 게이트 없음"(실제로 `max_instability`·`max_distance`
+  존재), "IB per-member 지원"(실제로 `dead`는 `retain_interface_builder`로 일괄 보존). 코드로 확인한다.
+- 이 저장소의 `.cartograph.yml`은 테스트 경로를 제외하므로 `affected`를 여기서 돌리면 빈 결과다.
+  테스트 영향 기능은 스크래치 패키지로 확인한다.
+- rebase 도중 `git push`는 이전 브랜치 참조를 민다(효과 없음). 충돌을 끝까지 해결한 뒤 민다.
 
 ## Important Context / Avoid
 
-- 완료된 발행·계정 재인증·임시 러너 승인·설치를 다시 시작하지 않는다. 기존 태그를 이동하지 않는다.
-  Marketplace 기본 최신 선택은 저장소 CLI latest를 따르므로 Action은 버전별 링크로 안내한다.
-- Release 잡 성공만으로 tap 갱신을 단정하지 않는다. 이번에도 토큰 미설정으로 자동 갱신을 건너뛰어
-  별도 tap PR로 반영했다. 토큰 파일을 읽거나 재설정할 필요는 없다.
-- GitLab 유지관리 러너는 `CARTOGRAPH_CI_RUNNER_TAG`로 선택한다. Orca의 파일 Replace 업로드가
-  동작했으며, 편집 후 API/Git로 대조했다. 완료한 인증·편집기 실패를 재시도하지 않는다.
-- `sourceCache`는 최적화하지 않았고 메모리 기준 계측만 했다. 실제 전역 캐시는 삭제하지 않았다.
-  `ReactNativeEventScanner.swift`의 unused `import Foundation`은 schema-facts 작업에서 제거했다
-  — `dead --strict`가 경고를 위반으로 세기 때문에 게이트를 막고 있었다.
-- schema 스캐너의 채널 이스케이프 규약: 호출 인자 리터럴(`Table("main.users")`)은 `.`가
-  한정자라 `escapeQualified`, 선언 이름(`static let databaseTableName`)은 리터럴 식별자라
-  `escapeName`. `SchemaDeclCollector`/`SchemaFactCollector`는 단방향 참조여야 한다
-  (공유 상수는 Decl 쪽에 둠 — 타입 순환이 `cycles --level type --strict`에 걸린다).
-- 2026-09-23 사용자 정리 요청으로 `fix-action-marketplace-metadata/`, `feature-gitlab-component/`와
-  연결 로컬 브랜치·셸을 Orca에서 제거했다. 미커밋 변경 없음과 병합 커밋의 파일 일치를 먼저 확인했다.
-  원격 브랜치와 태그는 유지했다. 삭제된 폴더의 로컬 exclude 항목도 제거했다.
-- 약 1.15 GiB의 불필요한 사본·산출물을 정리했다: 오래된 0.18.0 Release 제품·중간 산출물,
-  코퍼스 `.build`, Python 캐시, 0.21.0 다운로드/압축 해제 사본·임시 tap 체크아웃.
-  현재 Debug 빌드·인덱스·의존성 캐시와 검증 로그·manifest는 보존했다.
-  Release·코퍼스 빌드가 다시 필요하면 재생성한다. 설치본과 `.build/debug/cartograph`는 모두 0.21.0이다.
-- 2026-09-24 두 번째 정리: 머지 완료된 로컬 브랜치 13개를 삭제했다(각 PR 병합 확인,
-  원격 브랜치는 유지). 원격이 없던 `feature/gitlab-catalog-export`(고아 브랜치)는 트리가
-  `main:Integrations/GitLab`과 동일(`840d35c`)함을, `feature/schema-facts`는 #134 병합본과
-  같은 커밋임을 확인했다. 산출물은 ValueFlowBenchmark 실행별 `swift-build`·`.swift-build`,
-  `Fixtures/FalsePositiveCorpus/.build`, 루트 `default.profraw`, `Scripts/__pycache__`,
-  `.DS_Store`를 지워 약 680 MiB를 확보했다. 벤치마크 결과 JSON·로그와 `.build`(Debug·인덱스)는 보존했다.
-- 제품 소스는 바뀌지 않았다. 정리 대상 부재·현재 인덱스·CLI 버전·문서 보존을 확인했으며,
-  기존 제품 검증 근거를 재사용했다. 산출물을 다시 만드는 전체 테스트는 재실행하지 않았다.
+- **`check`는 dead·모듈/타입 cycles·rules만 묶는다. 지표 임계값(`max_instability`·`max_distance`·
+  `max_efferent_coupling`)은 `metrics --strict`에서만 게이트가 된다.** README에 명시했다.
+- `affected --format xcodebuild`: 모듈 이름을 xcodebuild 타깃 이름으로 쓴다(SwiftPM과 식별자형 Xcode 타깃은 일치).
+  잘림·미해결이면 인자 없이 exit 2(이름을 못 찾으면 64). 표준 오류 `note:`는 `CommandOutcome.notes`로 나간다.
+- 레이어 규칙 `rationale`·`hint`는 `text`·`json`과 `--explain`에만 나오고, 한 줄 메시지 형식(xcode·
+  github-actions·checkstyle·sarif)에는 없다. 베이스라인 지문에는 들어가지 않는다.
+- AGENTS.md "삭제 판정을 내지 마세요" 때문에 Periphery Pro식 미사용 코드 삭제 지침은 만들지 않는다.
+- 완료된 발행·설치·태그를 반복하거나 옮기지 않는다. Release의 tap 단계는 `HOMEBREW_TAP_TOKEN` 미설정이라
+  매번 건너뛴다 — tap PR을 따로 내고 upgrade·`brew test`·바이트 일치를 확인한다.
+- schema 스캐너 규약(`escapeQualified`/`escapeName`, `SchemaDeclCollector`→`SchemaFactCollector` 단방향)은 유지한다.
+
+## 경쟁 조사 요약 (2026-09-25)
+
+- 시장 변화: **Periphery OSS가 2026-08-12 보관(archived)**, 개발은 유료 Periphery Pro로 이동.
+  Tuist `inspect dependencies`(2025-12)는 import 텍스트 기반이라 조건부 import를 놓친다.
+  Tuist 선택적 테스트는 Tuist 생성 프로젝트 전용 — `affected`는 일반 Xcode/SwiftPM에서 동작한다(문서화 후보).
+- **B 후보(중간 규모·차별화)**
+  1. 매니페스트 수준 암묵·중복 의존성 검사: Package.swift/xcodeproj 선언 의존 vs 인덱스의 실제 모듈 참조.
+     인덱스 기반이라 Tuist보다 정확할 수 있다. **가장 큰 기회로 평가.**
+  2. 연결 안 된 `@IBOutlet`/`@IBAction` 개별 보고: `runtime discover`는 이미 멤버 단위로 연결을 푼다
+     (`RuntimeDiscoveryResolver`), `dead`만 `RetentionPolicy.swift`에서 일괄 보존한다. 보존을 좁히는 일이라
+     CONTRIBUTING "Narrowing one"(반대 방향 코퍼스 + 실제 프로젝트 3곳 델타)을 통과해야 한다.
+  3. Redundant protocol conformance(Periphery OSS 기능, cartograph에 없음).
+  4. Xcode 27 에이전트 플러그인(skills + MCP) 패키징. 5. 삭제 가능 LOC 요약.
+- **C 후보(크거나 연구)**: 편집 뒤 인덱스 낡음(watch/백그라운드 인덱싱 — 에이전트 사용성 최대 약점),
+  빌드 없는 구문 전용 모드(원칙 충돌 주의), xccov 커버리지 보조 근거, Bazel, VS Code 진단, Reaper 연동.
+- MCP에 넣지 않은 것: `since`(서버가 git 실행 필요), `dataflow`(세션 캐시 밖·출력이 커서 4 MiB 한도 설계 필요).
+- 범위 밖: 편집/빌드/시뮬레이터, 번들 크기, 빌드 시간, 보안 SAST, 호스팅 대시보드, 자연어·임베딩.
 
 ## Next Steps
 
-`cartograph schema`는 0.22.0으로 발행 완료다. **이 저장소에 예정된 작업은 없다.**
+사용자가 고르기 전에는 착수하지 않는다. 후보:
 
-아래 확장 후보는 isthmus 생태계의 후보이지 cartograph 작업이 아니다. 여기서 착수하지 않는다.
+1. **0.23.0 릴리스**: `[Unreleased]` 4건 발행. 0.22.0 절차(#138·#139·tap #51)를 그대로 따른다 —
+   버전 상수·README 예제·CHANGELOG 확정 → PR CI → 머지 → 태그 → Release → archive 독립 검증 → tap PR →
+   호스트 upgrade·`brew test`.
+2. **자매 저장소 알림**: #143이 스킬 문장(MCP 도구 목록에 `cartograph_affected`)을 바꿨다. AGENTS.md 규칙상
+   kartograph·dartograph에 알려야 하는데 아직 하지 않았다.
+3. **B 후보 착수**(위 목록). 1번(매니페스트 의존성 검사)이 추천이다.
 
-- dartograph(Dart) persistence 생산자: 구현은 dartograph 저장소, 수용 테스트·계약 문서는
-  isthmus 저장소에서 한다. cartograph는 설계 선례(PR #136의 `SchemaFactScanner`,
-  이스케이프 규약, 관계·컬럼 사실 분리, 미지원 프레임워크 limitation 계수)로만 참고한다.
-- 도메인 간 상관(공유 심볼 키 — DB 컬럼 변경 → API 핸들러 → 위젯)과 세 번째 도메인
-  (네트워크 경계): isthmus 계약 설계가 먼저다. cartograph 생산자 변경은 그 계약이
-  확정된 뒤에만 이 저장소의 작업이 된다.
-
-자매 확장의 KAPT/KSP receipt snapshot/cache 연동, iPhone·iOS release·RN 새 아키텍처 검증,
-collector 발행은 [isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md)가 정본이다.
-런타임 텔레메트리는 연구 전용 보류다. 이 후보들을 자동으로 착수하지 않는다.
+isthmus 생태계 후보(dartograph persistence 생산자, 도메인 간 상관, 네트워크 도메인)는 cartograph 작업이
+아니다 — 구현은 dartograph·isthmus 저장소에서 한다. 정본은
+[isthmus HANDOFF](https://github.com/ictechgy/isthmus/blob/main/HANDOFF.md).
 
 ## Resume Prompt
 
 `/Users/jinhongan/Desktop/cartograph`에서 HANDOFF.md와 적용 AGENTS.md를 읽고 Git 상태를 확인해줘.
-`cartograph schema`(Swift persistence 생산자)를 포함한 0.22.0이 발행·Homebrew 반영·설치 검증까지 끝났어.
-이 저장소에 예정된 작업은 없어. dartograph 생산자·교차 도메인 상관·네트워크 도메인은
-isthmus/dartograph 쪽 후보라 여기서 착수하지 말 것.
-0.21.0·0.22.0 발행·검증은 전부 끝났으니 반복하지 말 것.
+경쟁 조사 A 항목 5건(#141–#145)은 리뷰·머지까지 끝났고 아직 발행 전이야(`[Unreleased]`).
+다음 후보는 0.23.0 릴리스, 자매 저장소에 스킬 문장 변경 알림, B 후보(매니페스트 의존성 검사 추천)야.
+내가 고르기 전에는 착수하지 말고, 0.21.0·0.22.0 발행과 A 항목 작업을 반복하지 말 것.
