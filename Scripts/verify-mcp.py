@@ -161,7 +161,7 @@ def main() -> int:
         assert_true(initialize["result"]["protocolVersion"] == "2025-11-25", "legacy negotiation failed")
         legacy.send(request(None, "notifications/initialized"))
         listed = legacy.request(2, "tools/list")
-        assert_true(len(listed["result"]["tools"]) == 5, "legacy tools/list did not expose five tools")
+        assert_true(len(listed["result"]["tools"]) == 6, "legacy tools/list did not expose six tools")
         legacy.send(request(3, "tools/call", {"name": "cartograph_query", "arguments": {"symbols": ["Root"]}}))
         failed = legacy.receive(timeout=args.timeout)
         assert_true(failed is not None and failed["result"]["isError"], "missing-index query did not return tool error")

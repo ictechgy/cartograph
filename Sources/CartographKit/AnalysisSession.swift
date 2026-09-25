@@ -227,6 +227,21 @@ public final class AnalysisSession {
         )
     }
 
+    /// 준비된 문맥에서 변경에 도달하는 테스트를 답한다.
+    ///
+    /// `impact` 와 같은 준비된 문맥을 쓴다. 에이전트가 편집 뒤 "어떤 테스트를 돌리나"를
+    /// 물을 때마다 인덱스를 다시 읽지 않고, 두 답이 서로 다른 세대를 섞지도 않는다.
+    public func affected(
+        symbols: [String] = [], files: [String] = [], maxDepth: Int? = nil, limit: Int = 200
+    ) throws -> AffectedDocument {
+        runtimeBuildEvidenceMetadata = nil
+        try ensurePrepared()
+        guard let service, let context else { throw AnalysisSessionError.unavailable }
+        return try service.affectedDocument(
+            symbols: symbols, files: files, maxDepth: maxDepth, limit: limit, in: context
+        )
+    }
+
     /// 준비된 문맥에서 자동으로 발견한 런타임 경계와 미해결 항목을 반환한다.
     ///
     /// 같은 문맥의 구문·리소스 사실을 사용하므로 query나 impact 뒤에 호출해도

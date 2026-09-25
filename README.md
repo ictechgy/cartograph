@@ -694,7 +694,7 @@ of a PR was checked.
 `2026-07-28` requests with per-request `_meta` protocol and client-capabilities fields, plus the
 legacy initialization versions supported by the protocol. The session is created lazily, so
 discover and tool listing work before a project is built. `cartograph_status`, `cartograph_query`,
-`cartograph_impact`, `cartograph_check` and `cartograph_runtime_discover` return `{ "session": ..., "result": ... }` envelopes
+`cartograph_impact`, `cartograph_affected`, `cartograph_check` and `cartograph_runtime_discover` return `{ "session": ..., "result": ... }` envelopes
 (status returns metadata directly), and refresh automatically when indexed inputs change. Input
 fingerprints are automatically re-verified at most once per second; calls inside that window
 are answered by the last verified generation. `--session-freshness-interval <seconds>` tunes the window

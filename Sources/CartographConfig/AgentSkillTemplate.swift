@@ -109,7 +109,7 @@ public enum AgentSkillTemplate {
         ## Efficient MCP queries
 
         When a Cartograph MCP server is connected, reuse it instead of launching one process per
-        question. Its tools are `cartograph_status`, `cartograph_query`, `cartograph_impact`,
+        question. Its tools are `cartograph_status`, `cartograph_query`, `cartograph_impact`, `cartograph_affected`,
         `cartograph_check`, and `cartograph_runtime_discover`. Analysis tools return `{session, result}`; inspect the metadata of
         the same result instead of issuing an extra status call after every question.
 

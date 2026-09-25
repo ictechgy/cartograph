@@ -46,11 +46,11 @@ struct MCPToolsTests {
         }
     }
 
-    @Test("도구 정의는 다섯 도구를 읽기 전용 힌트와 함께 공개한다")
+    @Test("도구 정의는 여섯 도구를 읽기 전용 힌트와 함께 공개한다")
     func publishesToolDefinitions() {
         #expect(CartographMCPTools.definitions.map(\.name).sorted() == [
-            "cartograph_check", "cartograph_impact", "cartograph_query", "cartograph_runtime_discover",
-            "cartograph_status",
+            "cartograph_affected", "cartograph_check", "cartograph_impact", "cartograph_query",
+            "cartograph_runtime_discover", "cartograph_status",
         ])
         #expect(CartographMCPTools.definitions.allSatisfy { $0.readOnly && !$0.destructive })
     }
@@ -287,6 +287,61 @@ struct MCPToolsTests {
                 ])]),
             ]))
         }
+    }
+
+    @Test("affected는 같은 세대의 세션 메타데이터와 함께 도달한 테스트를 반환한다")
+    func affectedReturnsReachedTests() throws {
+        let tools = CartographMCPTools(makeSession: {
+            var builder = SnapshotBuilder()
+            builder.symbol("Service", kind: .classType)
+            builder.symbol("ServiceTests", name: "testService()", kind: .method, attributes: [.unitTest])
+            builder.reference(from: "ServiceTests", to: "Service", kind: .call)
+            var configuration = CartographConfiguration.default
+            configuration.projectPath = "/p"
+            return try AnalysisSession(service: CartographService(
+                configuration: configuration,
+                environment: CartographEnvironment(
+                    fileSystem: InMemoryFileSystem(), indexProviderOverride: StaticIndexProvider(builder.build())
+                )
+            ))
+        })
+        let result = try tools.call(name: "cartograph_affected", arguments: .object([
+            "symbols": .array([.string("Service")]),
+        ]))
+        #expect(!result.isError)
+        let payload = object(result)
+        #expect(payload["session"]?.objectValue != nil)
+        let document = payload["result"]?.objectValue
+        #expect(document?["format"] == .string("change-affected"))
+        let tests = document?["tests"]?.arrayValue ?? []
+        #expect(tests.count == 1)
+        #expect(tests.first?.objectValue?["depth"] == .integer(1))
+
+        let missing = try tools.call(name: "cartograph_affected", arguments: .object([
+            "symbols": .array([.string("NoSuchSymbol")]),
+        ]))
+        #expect(missing.isError)
+    }
+
+    @Test("affected는 세션을 만들기 전에 선택 모드와 범위를 검증한다")
+    func validatesAffectedArguments() throws {
+        var sessionCount = 0
+        let tools = CartographMCPTools(makeSession: {
+            sessionCount += 1
+            return try makeSession()
+        })
+        for arguments: [String: MCPJSONValue] in [
+            [:],
+            ["symbols": .array([.string("Service")]), "files": .array([.string("Sources/App.swift")])],
+            ["symbols": .array([.string("Service")]), "depth": .integer(129)],
+            ["symbols": .array([.string("Service")]), "limit": .integer(0)],
+            ["symbols": .array([.string("Service")]), "since": .string("HEAD")],
+        ] {
+            #expect(throws: MCPToolFailure.self) {
+                try tools.call(name: "cartograph_affected", arguments: .object(arguments))
+            }
+        }
+        #expect(sessionCount == 0)
     }
 
     @Test("runtime contract는 정적 간선 없이도 영향과 계약 근거를 연결한다")

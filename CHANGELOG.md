@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- The MCP server exposes `cartograph_affected`, the test-reachability answer `affected` gives on the
+  command line. An agent that has just edited code can ask which tests reach the change from the
+  session's prepared analysis instead of launching a process per question; it accepts `symbols` or
+  `files` with `depth` and `limit`, like `cartograph_impact`.
+
 ## [0.22.0] - 2026-09-24
 
 ### Added

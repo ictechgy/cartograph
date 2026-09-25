@@ -677,7 +677,7 @@ cartograph check --report-format json
 `serve`는 stdio만 사용하며 네트워크나 서버 주도 요청을 만들지 않습니다. 최신 `2026-07-28`
 요청의 요청별 `_meta` 프로토콜·클라이언트 능력 필드와 지원되는 레거시 초기화를 함께
 받습니다. 세션은 늦게 만들어 빌드 전에도 discover와 도구 목록을 제공합니다.
-`cartograph_status`, `cartograph_query`, `cartograph_impact`, `cartograph_check`,
+`cartograph_status`, `cartograph_query`, `cartograph_impact`, `cartograph_affected`, `cartograph_check`,
 `cartograph_runtime_discover`는 `{ "session": ..., "result": ... }` 봉투를 쓰고(status는
 메타데이터를 직접 반환), 인덱스 입력이 바뀌면 다시 준비합니다. 입력 지문은 자동으로
 최대 1초에 한 번만 다시 검증하며, 그 창 안의 호출은 마지막으로 검증된 세대로 응답합니다.

@@ -34,6 +34,17 @@ final class CartographMCPTools {
             ])
         ),
         MCPToolDefinition(
+            name: "cartograph_affected",
+            description: "List the test declarations that reach changed declarations or files, with their depth "
+                + "and the path that reached them. Static reachability, not a test run.",
+            inputSchema: objectSchema(properties: [
+                "symbols": arraySchema(minimum: 1, maximum: 1000),
+                "files": arraySchema(minimum: 1, maximum: 1000),
+                "depth": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(128)]),
+                "limit": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(10_000)]),
+            ])
+        ),
+        MCPToolDefinition(
             name: "cartograph_runtime_discover",
             description: "Discover supported runtime-only dependencies and unresolved review items.",
             inputSchema: objectSchema(properties: [
@@ -70,6 +81,7 @@ final class CartographMCPTools {
             case "cartograph_status": return try status(object)
             case "cartograph_query": return try query(object)
             case "cartograph_impact": return try impact(object)
+            case "cartograph_affected": return try affected(object)
             case "cartograph_runtime_discover": return try runtimeDiscover(object)
             case "cartograph_check": return try check(object)
             default: throw MCPToolFailure(message: "unknown Cartograph tool")
@@ -134,6 +146,23 @@ final class CartographMCPTools {
             SessionResult(session: try preparedMetadata(session), result: document,
                 coreDataBuildEvidence: session.runtimeBuildEvidenceMetadata),
             isError: document.status == "incomplete"
+        )
+    }
+
+    private func affected(_ arguments: [String: MCPJSONValue]) throws -> MCPToolResult {
+        try rejectUnknown(arguments, allowed: ["symbols", "files", "depth", "limit"])
+        let symbols = try optionalStrings(arguments["symbols"], name: "symbols", range: 1...1000) ?? []
+        let files = try optionalStrings(arguments["files"], name: "files", range: 1...1000) ?? []
+        guard [!symbols.isEmpty, !files.isEmpty].count(where: { $0 }) == 1 else {
+            throw MCPToolFailure(message: "affected requires exactly one non-empty symbols or files selector")
+        }
+        let depth = try optionalInt(arguments["depth"], name: "depth", range: 1...128)
+        let limit = try optionalInt(arguments["limit"], name: "limit", range: 1...10_000) ?? 200
+        let session = try requireSession()
+        let document = try session.affected(symbols: symbols, files: files, maxDepth: depth, limit: limit)
+        return try structured(
+            SessionResult(session: try preparedMetadata(session), result: document),
+            isError: !document.selectionIssues.isEmpty
         )
     }
 
