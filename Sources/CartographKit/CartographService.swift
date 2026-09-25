@@ -386,6 +386,8 @@ public struct CartographService: Sendable {
         output += "  rules from '\(match.layer)':\n"
         for rule in rules {
             output += "    \(rule.displayName)\n"
+            if let rationale = rule.rationale { output += "      rationale: \(rationale)\n" }
+            if let hint = rule.hint { output += "      hint: \(hint)\n" }
         }
         return output
     }

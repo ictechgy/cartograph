@@ -133,6 +133,29 @@ struct ConfigurationLoaderTests {
         #expect(!result.warnings.contains { $0.contains("'rules[0].from'") })
     }
 
+    @Test("규칙의 이유와 수정 안내를 읽고 여러 줄은 한 줄로 접는다")
+    func loadsRuleRationaleAndHint() throws {
+        let yaml = """
+            layers:
+              - name: Presentation
+                match: ["Features/**"]
+              - name: Data
+                match: ["Data/**"]
+            rules:
+              - from: Presentation
+                deny: [Data]
+                rationale: |
+                  Views stay testable
+                  without a database.
+                hint: "  "
+            """
+        let result = try ConfigurationLoader().load(yaml: yaml, path: "/p/.cartograph.yml")
+        let rule = try #require(result.configuration.rules.first)
+        #expect(rule.rationale == "Views stay testable without a database.")
+        #expect(rule.hint == nil)
+        #expect(!result.warnings.contains { $0.contains("rationale") || $0.contains("hint") })
+    }
+
     @Test("잘못된 타입은 고칠 위치를 알려 주는 오류가 된다")
     func typeMismatchReportsPath() {
         #expect(throws: CartographError.self) {

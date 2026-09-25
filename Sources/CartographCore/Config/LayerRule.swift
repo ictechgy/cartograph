@@ -1,3 +1,5 @@
+import Foundation
+
 /// 아키텍처 레이어 정의.
 ///
 /// 레이어는 모듈/타입/파일 이름에 대한 글롭 집합이다. 정점이 어느 레이어에
@@ -37,19 +39,37 @@ public struct LayerRule: Sendable, Codable, Equatable {
     /// 금지되는 도착 레이어 이름 목록.
     public let deny: [String]?
     public let severity: Diagnostic.Severity
+    /// 이 규칙이 왜 있는지. 위반 진단의 `details` 에 그대로 실린다.
+    ///
+    /// 위반만 알리면 읽는 쪽(특히 코딩 에이전트)은 규칙을 우회하는 가장 짧은 편집을
+    /// 고른다. 팀이 적은 이유가 함께 가야 그 의도에 맞는 수정을 고를 수 있다.
+    public let rationale: String?
+    /// 위반을 어떻게 고치는지에 대한 팀의 안내. 위반 진단의 `details` 에 실린다.
+    public let hint: String?
 
     public init(
         name: String? = nil,
         from: String,
         allow: [String]? = nil,
         deny: [String]? = nil,
-        severity: Diagnostic.Severity = .error
+        severity: Diagnostic.Severity = .error,
+        rationale: String? = nil,
+        hint: String? = nil
     ) {
         self.name = name
         self.from = from
         self.allow = allow
         self.deny = deny
         self.severity = severity
+        self.rationale = rationale
+        self.hint = hint
+    }
+
+    /// 위반 진단에 붙일 설명 줄. 규칙 이름, 그리고 적혀 있으면 이유와 수정 안내.
+    public var violationDetails: [String] {
+        ["rule: \(displayName)"]
+            + (rationale.map { ["rationale: \($0)"] } ?? [])
+            + (hint.map { ["hint: \($0)"] } ?? [])
     }
 
     /// 사람이 읽는 규칙 이름. 지정하지 않으면 내용으로 만들어 준다.
@@ -71,7 +91,7 @@ public struct LayerRule: Sendable, Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, from, allow, deny, severity
+        case name, from, allow, deny, severity, rationale, hint
     }
 
     public init(from decoder: any Decoder) throws {
@@ -81,7 +101,20 @@ public struct LayerRule: Sendable, Codable, Equatable {
             from: try container.decode(String.self, forKey: .from),
             allow: try container.decodeIfPresent([String].self, forKey: .allow),
             deny: try container.decodeIfPresent([String].self, forKey: .deny),
-            severity: try container.decodeIfPresent(Diagnostic.Severity.self, forKey: .severity) ?? .error
+            severity: try container.decodeIfPresent(Diagnostic.Severity.self, forKey: .severity) ?? .error,
+            rationale: try Self.decodeText(container, key: .rationale),
+            hint: try Self.decodeText(container, key: .hint)
         )
+    }
+
+    /// 선택 설명 문자열을 읽는다. 빈 값은 적지 않은 것과 같다.
+    ///
+    /// 한 줄 진단 형식에 섞여 출력되므로 줄바꿈은 공백으로 접는다. 여러 줄 YAML 블록으로
+    /// 적어도 리포트의 한 줄 구조가 깨지지 않는다.
+    private static func decodeText(_ container: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) throws -> String? {
+        guard let raw = try container.decodeIfPresent(String.self, forKey: key) else { return nil }
+        let folded = raw.split(whereSeparator: \.isNewline).joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+        return folded.isEmpty ? nil : folded
     }
 }

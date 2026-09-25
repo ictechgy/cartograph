@@ -13,6 +13,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   command line. An agent that has just edited code can ask which tests reach the change from the
   session's prepared analysis instead of launching a process per question; it accepts `symbols` or
   `files` with `depth` and `limit`, like `cartograph_impact`.
+- Layer rules accept optional `rationale` and `hint` fields that travel with every violation, as
+  `details` lines in the `text` and `json` reports and under `rules --explain`. A bare violation
+  invites the shortest edit that gets around the rule, especially from a coding agent; the team's
+  reasoning now reaches whoever fixes it. Neither field is part of the baseline fingerprint.
 
 ## [0.22.0] - 2026-09-24
 

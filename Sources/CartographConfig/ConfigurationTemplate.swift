@@ -61,6 +61,8 @@ public enum ConfigurationTemplate {
         #  - name: Presentation must not reach the data layer directly
         #    from: Presentation
         #    deny: [Data]
+        #    rationale: Views stay testable without a database.      # optional, shown with violations
+        #    hint: Inject a use case from the Domain layer instead.   # optional, shown with violations
         #  - from: Domain
         #    allow: []
 

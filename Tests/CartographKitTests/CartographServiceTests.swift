@@ -386,11 +386,12 @@ struct CartographServiceTests {
     func explainsLayerMembership() throws {
         let service = makeService {
             $0.layers = [LayerDefinition(name: "Presentation", patterns: ["Presentation"])]
-            $0.rules = [LayerRule(name: "no data", from: "Presentation", deny: ["Data"])]
+            $0.rules = [LayerRule(name: "no data", from: "Presentation", deny: ["Data"],
+                rationale: "Views stay testable.", hint: "Inject a use case.")]
         }
         let explained = try service.explainRules(of: "Presentation", level: .module)
         #expect(explained.output.contains("layer 'Presentation'"))
-        #expect(explained.output.contains("no data"))
+        #expect(explained.output.contains("    no data\n      rationale: Views stay testable.\n      hint: Inject a use case.\n"))
 
         let orphan = try service.explainRules(of: "Domain", level: .module)
         #expect(orphan.output.contains("belongs to no layer"))

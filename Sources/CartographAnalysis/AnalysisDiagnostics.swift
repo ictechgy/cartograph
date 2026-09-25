@@ -211,7 +211,7 @@ public enum AnalysisDiagnostics {
                 // 아직 보지 못한 위반까지 함께 묻힌다.
                 subject: "\(violation.rule.displayName)|\(violation.edge.kind.rawValue)|"
                     + "\(violation.edge.source.rawValue)->\(violation.edge.target.rawValue)",
-                details: ["rule: \(violation.rule.displayName)"]
+                details: violation.rule.violationDetails
             )
         }
     }

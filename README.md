@@ -1150,6 +1150,26 @@ CartographKit is in layer 'Assembly'.
     the assembly layer does not know about the interface
 ```
 
+A rule can carry an optional `rationale` (why the rule exists) and `hint` (how to fix a violation).
+A bare violation invites the shortest edit that gets around the rule, especially from a coding agent
+that turns reports straight into edits; the team's reasoning has to travel with the finding for the
+fix to match the intent.
+
+```yaml
+rules:
+  - name: Presentation must not reach the data layer directly
+    from: Presentation
+    deny: [Data]
+    rationale: Views stay testable without a database.
+    hint: Inject a use case from the Domain layer instead.
+```
+
+Both appear as `rationale:` and `hint:` lines in the violation's `details`, which the `text` and
+`json` reports print, and under `--explain`. Formats that carry a single message line (`xcode`,
+`github-actions`, `checkstyle`, `sarif`) do not show them. Multi-line values are folded onto one
+line and empty values count as absent. Neither is part of the baseline fingerprint, so rewording
+them never invalidates a baseline.
+
 ### `baseline` — adopt on an existing codebase
 
 ```bash

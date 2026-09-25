@@ -156,6 +156,26 @@ struct AnalysisDiagnosticsTests {
         #expect(diagnostics[0].details.first?.hasPrefix("rule:") == true)
     }
 
+    @Test("레이어 위반은 규칙의 이유와 수정 안내를 싣되 지문은 바꾸지 않는다")
+    func layerViolationCarriesRationaleWithoutChangingFingerprint() {
+        let layers = [
+            LayerDefinition(name: "P", patterns: ["P"]),
+            LayerDefinition(name: "D", patterns: ["D"]),
+        ]
+        let graph = TestGraph.make(["P": ["D"]])
+        func diagnostic(_ rule: LayerRule) -> Diagnostic? {
+            let violations = LayerRuleEvaluator(layers: layers, rules: [rule]).evaluate(graph: graph)
+            return AnalysisDiagnostics.diagnostics(for: violations).first
+        }
+        let plain = diagnostic(LayerRule(name: "no data", from: "P", deny: ["D"]))
+        let explained = diagnostic(LayerRule(name: "no data", from: "P", deny: ["D"],
+            rationale: "Views stay testable.", hint: "Inject a use case."))
+        #expect(plain?.details == ["rule: no data"])
+        #expect(explained?.details == ["rule: no data", "rationale: Views stay testable.", "hint: Inject a use case."])
+        // 베이스라인이 이유 문구를 고칠 때마다 깨지면 안 된다.
+        #expect(plain?.fingerprint == explained?.fingerprint)
+    }
+
     @Test("레이어 미지정 정점은 정보성으로 보고된다")
     func unassignedLayerDiagnostics() {
         let graph = TestGraph.make(["X": []])

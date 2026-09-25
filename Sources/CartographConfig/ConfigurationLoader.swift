@@ -96,7 +96,7 @@ public struct ConfigurationLoader: Sendable {
         "max_cycles", "max_unused_symbols", "max_rule_violations", "max_instability", "max_distance",
     ]
     private static let knownLayerKeys: Set<String> = ["name", "match"]
-    private static let knownRuleKeys: Set<String> = ["name", "from", "allow", "deny", "severity"]
+    private static let knownRuleKeys: Set<String> = ["name", "from", "allow", "deny", "severity", "rationale", "hint"]
 
     static func unknownKeyWarnings(in yaml: String, path: String) throws -> [String] {
         guard let root = try Yams.load(yaml: yaml) as? [String: Any] else { return [] }
