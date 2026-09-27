@@ -130,7 +130,7 @@ struct LanguageTraversalServiceTests {
             try service.languageTraversalDocument(symbols: ["s:Client.logout"], generatedAt: fixedDate,
                 revision: "rev\n1", in: context)
         }
-        #expect(!CartographService.containsExchangeControlCharacter("s:14CoreNetworking9EndpointV"))
+        #expect(!ExchangeText.containsControlCharacter("s:14CoreNetworking9EndpointV"))
     }
 
     @Test("타입 root 는 멤버로 넓히지 않고 한계로 알린다")

@@ -95,18 +95,12 @@ extension CartographService {
     /// isthmus 는 제어 문자(C0·DEL·C1·U+2028·U+2029)가 든 id·revision 이 있는 문서를 통째로 거부한다.
     /// 해석하지 못한 root 는 원문이 그대로 `id` 가 되므로, 문서를 만들기 전에 막는다.
     private func validateExchangeText(_ values: [String]) throws {
-        guard let bad = values.first(where: { $0.isEmpty || Self.containsExchangeControlCharacter($0) }) else { return }
+        guard let bad = values.first(where: { $0.isEmpty || ExchangeText.containsControlCharacter($0) }) else { return }
         throw CartographError.invalidConfiguration(path: projectPath, reason:
             "A language traversal root or revision is empty or contains a control character "
                 + "(\(bad.debugDescription)); isthmus rejects such ids. Pass the symbol.usr from routes or bridges facts.")
     }
 
-    /// isthmus `controlCharacterPattern` 과 같은 범위.
-    public static func containsExchangeControlCharacter(_ value: String) -> Bool {
-        value.unicodeScalars.contains { scalar in
-            scalar.value < 0x20 || (0x7F...0x9F).contains(scalar.value) || scalar.value == 0x2028 || scalar.value == 0x2029
-        }
-    }
 
     /// 순회에 쓴 그래프의 내용 해시.
     ///
@@ -158,6 +152,18 @@ extension CartographService {
 
     static func isClosedWorld(_ limitations: [String]) -> Bool {
         !limitations.contains { limitation in openWorldLimitationPrefixes.contains { limitation.hasPrefix($0) } }
+    }
+}
+
+// MARK: - 교환 문자열
+
+/// isthmus 교환 문서가 받는 문자열 규칙. 서비스·표현·CLI 가 함께 쓰므로 어느 한 타입에 두지 않는다.
+public enum ExchangeText {
+    /// isthmus `controlCharacterPattern` 과 같은 범위(C0·DEL·C1·U+2028·U+2029)의 문자가 있는지.
+    public static func containsControlCharacter(_ value: String) -> Bool {
+        value.unicodeScalars.contains { scalar in
+            scalar.value < 0x20 || (0x7F...0x9F).contains(scalar.value) || scalar.value == 0x2028 || scalar.value == 0x2029
+        }
     }
 }
 
@@ -286,7 +292,7 @@ struct TraversalPresenter {
         let candidates = [ExternalRetentionIndex.syntaxQualifiedName(of: node, in: graph), node.name, node.id.rawValue]
         return candidates.first { name in
             !name.isEmpty && !name.hasPrefix(".") && !name.hasSuffix(".") && !name.contains("..")
-                && !CartographService.containsExchangeControlCharacter(name)
+                && !ExchangeText.containsControlCharacter(name)
         } ?? node.id.rawValue
     }
 

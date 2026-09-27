@@ -133,7 +133,7 @@ struct ImpactCommand: ParsableCommand {
         guard !symbols.isEmpty else {
             throw ValidationError("--format language-traversal takes declaration roots; --file and --since are not supported")
         }
-        if let bad = (symbols + (revision.map { [$0] } ?? [])).first(where: CartographService.containsExchangeControlCharacter) {
+        if let bad = (symbols + (revision.map { [$0] } ?? [])).first(where: ExchangeText.containsControlCharacter) {
             throw ValidationError("--format language-traversal roots and --revision cannot contain control characters "
                 + "(\(bad.debugDescription)); isthmus rejects such ids. Pass the symbol.usr from routes or bridges facts.")
         }
