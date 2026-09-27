@@ -46,6 +46,7 @@ What that buys you:
 | How does a value reach this function? | not answerable | `dataflow` returns bounded interprocedural contexts as JSON |
 | Callers in Dart or JavaScript | invisible | `bridges` exports the Swift side of a platform channel; `--external-retentions` reads the join back |
 | Which tables does this code touch? | invisible | `schema` exports `relation-use` facts for isthmus to join with the SQL catalog |
+| Which server routes does the app call? | invisible | `routes` exports `route-call` facts for isthmus to join with server routes and OpenAPI operations |
 | Runtime or dispatch-only risk | — | `impact` marks runtime review targets and dispatch contracts |
 | Graph export | — | ✅ DOT, Mermaid, JSON, self-contained HTML |
 | SARIF for code scanning | — | ✅ |
@@ -1101,6 +1102,51 @@ Like `bridges`, the command attaches the index's USR to the enclosing declaratio
 so isthmus retentions can name the function that touches a table. Facts at file scope carry no
 symbol. The command refuses `--since`, `--level`, `--report-format` and `--strict` for the same
 reasons `bridges` does: the document is a complete boundary export, not a finding.
+
+### `routes` — export the HTTP requests the app makes
+
+```bash
+cartograph routes --wrappers http-wrappers.json          # http bridge-facts JSON on stdout
+cartograph routes --wrappers http-wrappers.json --include-tests --format text
+```
+
+An app rarely calls `URLSession` with a literal URL; it goes through its own endpoint type or a
+`send(path:method:)` helper, and which argument is the path is not something the source says. You
+declare those wrappers in an `http-wrappers` v1 file (the schema belongs to isthmus,
+`../isthmus/docs/HTTP-WRAPPERS.md`), and `routes` emits one `route-call` fact per call site in the
+`bridge-facts` exchange format with `target: "http"` and `roles: ["client"]`, so [isthmus](../isthmus)
+can join them by (method, path template) against server route declarations and OpenAPI operations.
+
+```json
+{"format": "http-wrappers", "version": 1, "wrappers": [
+  {"language": "swift", "kind": "constructor", "owner": "Endpoint", "name": "init",
+   "methodArg": {"label": "method"}, "pathArg": {"label": "path"},
+   "methodEnum": {"get": "GET", "post": "POST"}, "pathAnchor": "root"}
+]}
+```
+
+Arguments bind by label first and position second; an omitted verb takes `defaultMethod`, an enum
+case (including the implicit member `.get`) maps through `methodEnum`, and anything else is
+`methodDynamic`. Direct `URLRequest` and `URLSession` requests are read too when their verb and path
+are statically provable — the verb comes from `httpMethod` assignments in the same body, and a
+request that leaves the function unassigned is `methodDynamic` rather than a guessed `GET`. Paths
+follow the shared producer rules and their conformance vectors (vendored under `conformance/`): a
+whole-segment interpolation becomes `{}`, a query tail and a proven query-suffix local are stripped,
+same-file constants are substituted, `URL(string:relativeTo:)` roots `/x` and bases `x`, and
+anything else is kept as `dynamic` with the proven `channelPrefix`. Userinfo, query, fragment,
+high-entropy segments and webhook paths are removed or masked in every field that carries path
+text, including the source expression of a dynamic fact.
+
+Test sources — `Tests/`, `…Tests` directories and `…Tests.swift` files, judged on the
+project-relative path — are skipped and declared `sourceSets: {"tests": "excluded"}`;
+`--include-tests` reads them and marks their facts `testSource`. `--service` names the document's
+service for isthmus attribution. What the command could not turn into a fact is counted with the
+contract's client-side prefixes: `route-call-coverage:` for request URLs it could not read,
+`http-wrapper-undeclared:` for functions that pass a parameter through as the path,
+`http-wrapper-unresolved:` for a declared wrapper that matched no declaration or no call, and
+`ambiguous-base-join:` for a relative path after an unknown base. The index is optional here: USRs
+are attached when one is found, otherwise facts carry qualified names and `missing-route-usrs:`
+says so. The same flags `bridges` refuses are refused for the same reason.
 
 ### `skill` — teach a coding agent to use this
 

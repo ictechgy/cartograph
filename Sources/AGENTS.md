@@ -125,6 +125,15 @@ cartograph
 `BridgeSymbolResolver`가 감싸는 선언의 USR을 인덱스에서 붙입니다.
 이항 연산자는 `SwiftOperators`로 접어야 `a = b`와 `x == "y"`가 보입니다. 접지 않으면 `SequenceExpr`로 남습니다.
 
+## HTTP 호출 사실
+
+**`routes` 는 URL 문자열을 읽습니다.** 경로 규칙(정규 템플릿·조립·마스킹·인자 바인딩)은 구문을 모르는
+`CartographCore`(`HTTPRouteTemplate`·`HTTPRouteComposer`·`HTTPRouteURLResolver`·`HTTPWrapperBinding`)에 두고,
+구문 스캐너(`CartographSyntax/HTTPRouteCallScanner`)는 식을 조각(리터럴·값·query 꼬리)으로 펼치기만 합니다.
+규칙을 스캐너에 섞으면 isthmus 공유 벡터(`conformance/`)가 제품 코드를 검사하지 못합니다. 벡터는 두 파일과
+`conformance/conformance.lock` 을 함께 갱신하고, 새 `ruleId` 가 생기면 `HTTPConformanceTests` 가 실행기 없음으로
+실패합니다. 호출 측 한계는 계약의 닫힌 접두사 목록에서만 고르세요 — 모르는 접두사는 소비자가 공백으로 읽지 않습니다.
+
 ## 질의 근거와 지역 함수
 
 [질의 근거 계약](../docs/QUERY-EVIDENCE.md)을 따릅니다. 선언 위치를 빠진 호출 위치로 대신 쓰거나,

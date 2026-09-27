@@ -48,6 +48,7 @@ Cartograph의 문장은 *"의존성 그래프를 내놓는다"*이며, 미사용
 | 이 값이 이 함수까지 어떻게 오나? | 답할 수 없음 | `dataflow`가 한정된 함수 간 문맥을 JSON으로 답함 |
 | Dart·JavaScript 쪽 호출자 | 보이지 않음 | `bridges`가 플랫폼 채널의 Swift 쪽을 내보내고 `--external-retentions`가 조인 결과를 읽어 옴 |
 | 이 코드가 어떤 테이블을 건드는가 | 보이지 않음 | `schema`가 `relation-use` 사실을보내 isthmus가 SQL 카탈로그와 조인함 |
+| 앱이 어떤 서버 라우트를 부르는가 | 보이지 않음 | `routes`가 `route-call` 사실을 보내 isthmus가 서버 라우트·OpenAPI operation과 조인함 |
 | 런타임·디스패치 전용 위험 | — | `impact`가 런타임 검토 대상과 디스패치 계약을 표시함 |
 | 그래프 내보내기 | — | ✅ DOT, Mermaid, JSON, 단일 HTML |
 | SARIF(code scanning) | — | ✅ |
@@ -1059,6 +1060,47 @@ Core Data·SwiftData·Realm과 나머지 DB 프레임워크는 읽지 않고 `li
 테이블을 건드는 함수를 가리킬 수 있게. 파일 최상위의 사실은 심볼을 싣지 않습니다.
 `--since`, `--level`, `--report-format`, `--strict`를 거부하는 이유도 `bridges`와 같습니다:
 이 문서는 발견 목록이 아니라 경계의 전체보내기입니다.
+
+### `routes` — 앱이 만드는 HTTP 요청 보내기
+
+```bash
+cartograph routes --wrappers http-wrappers.json          # http bridge-facts JSON을 표준 출력으로
+cartograph routes --wrappers http-wrappers.json --include-tests --format text
+```
+
+앱은 리터럴 URL로 `URLSession`을 부르는 일이 드뭅니다. 자체 엔드포인트 타입이나
+`send(path:method:)` 같은 도우미를 거치고, 어느 인자가 경로인지는 소스가 말해 주지 않습니다.
+그런 래퍼를 `http-wrappers` v1 파일(스키마는 isthmus 소유, `../isthmus/docs/HTTP-WRAPPERS.md`)에
+선언하면 `routes`가 호출 지점마다 `route-call` 사실을 `target: "http"`·`roles: ["client"]`인
+`bridge-facts` 교환 형식으로 냅니다. [isthmus](../isthmus)가 이것을 (동사, 경로 템플릿)으로 서버
+라우트 선언·OpenAPI operation과 조인합니다.
+
+```json
+{"format": "http-wrappers", "version": 1, "wrappers": [
+  {"language": "swift", "kind": "constructor", "owner": "Endpoint", "name": "init",
+   "methodArg": {"label": "method"}, "pathArg": {"label": "path"},
+   "methodEnum": {"get": "GET", "post": "POST"}, "pathAnchor": "root"}
+]}
+```
+
+인자는 레이블을 먼저, 위치를 다음으로 묶습니다. 동사 인자를 생략하면 `defaultMethod`, enum
+case(암시적 멤버 `.get` 포함)는 `methodEnum`으로 바꾸고, 그 밖은 `methodDynamic`입니다. 동사와
+경로를 정적으로 증명할 수 있는 `URLRequest`·`URLSession` 직접 요청도 읽습니다 — 동사는 같은
+본문의 `httpMethod` 대입에서 얻고, 대입 없이 함수 밖으로 나가는 요청은 `GET`으로 추측하지 않고
+`methodDynamic`으로 둡니다. 경로는 공유 생산자 규칙과 그 적합성 벡터(`conformance/`에 벤더링)를
+따릅니다: 세그먼트 전체 보간은 `{}`, query 꼬리와 증명된 query 접미 지역 변수는 떼고, 같은 파일
+상수는 치환하며, `URL(string:relativeTo:)`는 `/x`를 root, `x`를 base로 봅니다. 그 밖은 증명된
+`channelPrefix`와 함께 `dynamic`으로 남깁니다. userinfo·query·fragment·고엔트로피 세그먼트·웹훅
+경로는 경로 문자열을 싣는 모든 필드에서 제거하거나 가립니다 — dynamic 사실의 원문 식도 포함입니다.
+
+테스트 소스(프로젝트 상대 경로 기준 `Tests/`, `…Tests` 디렉터리, `…Tests.swift` 파일)는 읽지 않고
+`sourceSets: {"tests": "excluded"}`를 선언합니다. `--include-tests`는 그것까지 읽고 사실에
+`testSource`를 답니다. `--service`는 isthmus 귀속에 쓰는 문서의 서비스 이름입니다. 사실로 만들지
+못한 것은 계약의 호출 측 접두사로 셉니다: 읽지 못한 요청 URL은 `route-call-coverage:`, 매개변수를
+경로로 흘려보내는 함수는 `http-wrapper-undeclared:`, 선언과 맞는 심볼이나 호출이 없는 래퍼는
+`http-wrapper-unresolved:`, 알 수 없는 base 뒤의 상대 경로는 `ambiguous-base-join:`입니다.
+여기서는 인덱스가 선택입니다: 찾으면 USR을 붙이고, 없으면 qualifiedName만 싣고
+`missing-route-usrs:`로 알립니다. `bridges`가 거부하는 인자는 같은 이유로 거부합니다.
 
 ### `skill` — 코딩 에이전트에게 이 도구 쓰는 법 설치하기
 

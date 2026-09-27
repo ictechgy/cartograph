@@ -9,6 +9,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cartograph routes` exports the HTTP requests Swift code makes as an http bridge-facts document
+  (`target: "http"`, `roles: ["client"]`, one `route-call` per call site), so isthmus can join app
+  calls with server routes and OpenAPI operations by (method, path template). Apps call their own
+  endpoint types rather than `URLSession`, and which argument is the path is not in the source, so
+  wrappers are declared in an `http-wrappers` v1 file (`--wrappers`); direct `URLRequest`/`URLSession`
+  requests are read when their verb and path are provable. Path composition, masking and argument
+  binding follow the shared rules of the isthmus contract, and the vendored conformance vectors run
+  in the test suite. Unreadable requests, pass-through helpers and stale wrapper declarations are
+  counted under the contract's client-side limitation prefixes instead of disappearing, test sources
+  are excluded unless `--include-tests`, and the index is optional — without one facts carry
+  qualified names and `missing-route-usrs` says so.
 - The MCP server exposes `cartograph_affected`, the test-reachability answer `affected` gives on the
   command line. An agent that has just edited code can ask which tests reach the change from the
   session's prepared analysis instead of launching a process per question; it accepts `symbols` or
