@@ -61,7 +61,7 @@ extension CartographService {
     // MARK: - 입력
 
     /// 교환 문서의 `project`. 소비자는 이 문자열을 바꾸지 않고 비교하므로 실제 경로로 푼다.
-    private func canonicalProjectForExchange() throws -> String {
+    func canonicalProjectForExchange() throws -> String {
         do {
             return try environment.fileSystem.realPath(at: projectPath)
         } catch let error as CocoaError where error.code == .featureUnsupported {

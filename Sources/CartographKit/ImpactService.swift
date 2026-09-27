@@ -38,11 +38,7 @@ extension CartographService {
         let context = try existingContext ?? loadContext()
         let graph = context.buildGraph(level: .symbol).graph
         let automatic = context.runtimeDiscovery()
-        let automaticDependencies = automatic?.connections.compactMap { connection -> ImpactDependency? in
-            guard let source = connection.source, source != connection.target else { return nil }
-            return .init(source: source, target: connection.target, contract: connection.boundaryID,
-                origin: .automatic, kind: connection.kind)
-        } ?? []
+        let automaticDependencies = Self.automaticImpactDependencies(automatic)
         let observedDependencies = runtimeTrace?.evidenceCurrent == true
             ? (runtimeTrace?.connections ?? []).map { connection in
                 ImpactDependency(source: connection.source, target: connection.target,
@@ -75,13 +71,7 @@ extension CartographService {
             RuntimeDiscoveryDocument(report: $0, files: context.runtimeFiles, graph: graph, limitations: [], limit: limit)
         }
         let observedDocument = runtimeTrace.map { RuntimeTraceReportDocument(report: $0, graph: graph, limit: limit) }
-        let unresolvedStates: Set<RuntimeDiscoveryStatus> = [.dynamic, .unresolved, .ambiguous, .stale, .unindexed]
-        let unresolvedRuntime = automatic?.findings.count { unresolvedStates.contains($0.status) } ?? 0
-        if unresolvedRuntime > 0 {
-            limitations.append("unresolved-runtime-boundaries: \(unresolvedRuntime) boundary(s) have unresolved names, "
-                + "receivers or index evidence; impact can miss paths through them. Inspect runtime discover or collect a trace.")
-        }
-        limitations += automatic?.limitations ?? []
+        limitations += Self.automaticRuntimeLimitations(automatic)
         limitations += runtimeTrace?.limitations ?? []
         var truncatedSections = output.truncatedSections
         if automaticDocument?.truncated == true { truncatedSections.append("automaticRuntime") }
@@ -258,7 +248,7 @@ struct ImpactSelection {
     }
 
     /// 타입과 그 타입의 익스텐션만 동명이면 의미상 같은 타입 선택이다. 다른 선언이 섞이면 추측하지 않는다.
-    private static func sharedExtendedType(_ candidates: [GraphNode], graph: CodeGraph) -> GraphNode? {
+    static func sharedExtendedType(_ candidates: [GraphNode], graph: CodeGraph) -> GraphNode? {
         let types = candidates.filter { $0.kind.isTypeDeclaration }
         guard types.count == 1, let type = types.first else { return nil }
         let others = candidates.filter { $0.id != type.id }
