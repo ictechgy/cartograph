@@ -1,0 +1,11 @@
+{
+  "files" : {
+    "http-template.json" : "fafecbc7ae34d68b1628462d28e9dd513704867a7078b0f104fffddaf0b3a446",
+    "url-compose.json" : "5ba0c2a3ac2fcf2e44b9a3cb5f0616b85fbe78fd2a739bd5636a1b8a1152e73a"
+  },
+  "source" : {
+    "commit" : "750b1ff4e37ea1055e003d6737994fbcb22bc4e6",
+    "path" : "conformance/",
+    "repository" : "isthmus"
+  }
+}

@@ -979,6 +979,39 @@ final class BindingCollector: SyntaxVisitor {
         return bindings[type + "." + name]
     }
 
+    // MARK: HTTP 경로 조립이 쓰는 조회
+
+    /// 상수 바인딩의 표현식과 그 선언 문맥.
+    ///
+    /// `resolveString` 은 보간이 섞인 상수를 접두사만 남긴 dynamic 으로 접는다. HTTP 경로 조립은
+    /// `"/items/\(id)"` 같은 상수를 조각(리터럴·값) 단위로 다시 펼쳐야 하므로 식 자체가 필요하다.
+    func constantExpression(for expression: ExprSyntax, in context: Context) -> (expression: ExprSyntax, context: Context)? {
+        guard case let .constant(value, scopes, types)?? = constantBinding(for: Self.unparenthesized(expression), in: context)
+        else { return nil }
+        return (value, Context(scopes: scopes, enclosingTypes: types))
+    }
+
+    /// 값 흐름 분석이 모든 호출 문맥에서 같은 문자열로 증명한 식이면 그 값.
+    ///
+    /// 값 그래프는 멤버 읽기(`Paths.orders`)를 식의 시작이 아니라 멤버 이름 위치에 기록한다.
+    /// 두 위치를 모두 본다.
+    func resolvedValue(of expression: ExprSyntax) -> String? {
+        var positions = [expression.positionAfterSkippingLeadingTrivia]
+        if let member = expression.as(MemberAccessExprSyntax.self) {
+            positions.append(member.declName.positionAfterSkippingLeadingTrivia)
+        }
+        return positions.lazy.compactMap { position -> String? in
+            let location = self.converter.location(for: position)
+            return self.resolvedValues[CartographCore.SourceLocation(path: location.file, line: location.line, column: location.column)]
+        }.first
+    }
+
+    /// `let x = Type(…)` 처럼 생성자 호출로 묶인 이름의 타입 이름. 모르면 nil.
+    func instanceTypeName(named name: String, in context: Context) -> String? {
+        guard case let .instance(typeName)?? = binding(named: name, in: context, membersOnly: false) else { return nil }
+        return typeName
+    }
+
     /// `x`, `self.x`, `Self.x`, `Type.x`, `.x`, `x?`, `x!` 에서 `x`.
     ///
     /// 채널 변수와 호출된 타입을 찾는 용도다. 문자열 상수는 수신자를 보는 `resolveString` 을 쓴다.

@@ -1180,8 +1180,24 @@ public struct CartographService: Sendable {
         return CommandOutcome(output: asText ? document.renderText() : try Self.encodeSortedJSON(document))
     }
 
+    /// route-call 문서의 USR 결합에 쓰는 인덱스 스냅샷. 인덱스가 없으면 nil 이다.
+    ///
+    /// `bridges` 와 달리 인덱스 없는 실행을 실패로 끝내지 않는다. route-call 의 본체는 구문 스캔이고
+    /// 인덱스는 감싸는 선언의 USR 을 붙이는 데만 쓰므로, 자동 탐색이 스토어를 찾지 못하면
+    /// `qualifiedName` 만 싣고 `missing-route-usrs:` 로 알린다. 사용자가 경로를 명시했다면 그 경로가
+    /// 틀린 것이므로 그대로 실패한다.
+    func routeIndexSnapshot() throws -> IndexSnapshot? {
+        do {
+            return try makeIndexSource(includeExternalSymbols: true).provider.loadSnapshot()
+        } catch CartographError.indexStoreNotFound where configuration.indexStorePath == nil {
+            return nil
+        } catch CartographError.indexStoreLibraryNotFound where configuration.indexStorePath == nil {
+            return nil
+        }
+    }
+
     /// 교환 생산자가 요구하는 UTC 밀리초 세 자리 시각을 만든다.
-    private static func bridgeTimestamp(_ date: Date) -> String {
+    static func bridgeTimestamp(_ date: Date) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
@@ -1206,7 +1222,7 @@ public struct CartographService: Sendable {
     ///
     /// 인덱스의 파일 목록이 아니라 디스크를 걷는다. 아직 빌드하지 않은 파일은
     /// 인덱스에 없지만 SQL 문자열은 거기에도 있다.
-    private func schemaSourceFiles() -> [String] {
+    func schemaSourceFiles() -> [String] {
         let filter = configuration.pathFilter
         return environment.fileSystem.recursiveFiles(
             under: projectPath,
