@@ -533,6 +533,12 @@ struct HTTPRouteCallScannerTests {
         #expect(routes(body, wrappers: []) == ["GET /a", "GET /b", "GET /c", "GET /d"])
     }
 
+    @Test("경로 리터럴의 NUL 은 보간 자리가 아니라 인코딩된 문자다")
+    func literalNULIsNotAHole() {
+        #expect(routes("func a() { _ = Endpoint(method: .get, path: \"/items\\u{0}tail\") }") == ["GET /items%00tail"])
+        #expect(HTTPRouteComposer.compose([.literal("/a\u{0}"), .literal("/"), .value]) == .template("/a%00/{}", queryTailStripped: false))
+    }
+
     // MARK: 문서 성질
 
     @Test("테스트 소스의 호출에는 표식을 단다")

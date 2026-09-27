@@ -85,7 +85,8 @@ public enum HTTPRouteComposer {
         var text = ""
         for (index, part) in kept.enumerated() {
             if case let .literal(literal) = part {
-                text += literal
+                // NUL 은 조립 중 보간 자리 표시다. 리터럴의 NUL 은 인코딩해 구멍과 섞이지 않게 한다.
+                text += literal.replacingNUL()
                 continue
             }
             guard part == .value, text.hasSuffix("/"), startsSegmentOrEnds(kept, after: index) else {
@@ -301,5 +302,13 @@ public enum HTTPRouteURLResolver {
     private static func isLiteral(_ part: HTTPURLPart) -> Bool {
         if case .literal = part { return true }
         return false
+    }
+}
+
+private extension String {
+    /// NUL 을 `%00` 으로 바꾼다. 정규화는 이미 인코딩된 비 unreserved 바이트를 그대로 둔다.
+    func replacingNUL() -> String {
+        guard unicodeScalars.contains("\0") else { return self }
+        return unicodeScalars.map { $0 == "\0" ? "%00" : String(Character($0)) }.joined()
     }
 }
