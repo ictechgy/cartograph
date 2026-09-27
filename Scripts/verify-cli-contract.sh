@@ -65,7 +65,7 @@ echo "종료 코드 0 — 정상"
 expect_status 0 "--help"              --help
 expect_status 0 "--version"           --version
 expect_status 0 "인자 없음(도움말)"    
-for subcommand in graph cycles dead fix query impact affected snapshot runtime check serve dataflow bridges schema metrics rules baseline init skill; do
+for subcommand in graph cycles dead fix query impact affected snapshot runtime check serve dataflow bridges schema routes metrics rules baseline init skill; do
     expect_status 0 "$subcommand --help" "$subcommand" --help
 done
 expect_status 0 "runtime plan --help" runtime plan --help
@@ -183,6 +183,12 @@ expect_status 64 "스키마와 strict 동시"  schema --strict
 expect_status 64 "스키마와 since 동시"   schema --since HEAD
 expect_status 64 "스키마와 level 동시"   schema --level module
 expect_status 64 "잘못된 스키마 형식"    schema --format yaml
+expect_status 64 "호출과 형식 동시"      routes --report-format json
+expect_status 64 "호출과 strict 동시"    routes --strict
+expect_status 64 "호출과 since 동시"     routes --since HEAD
+expect_status 64 "호출과 level 동시"     routes --level module
+expect_status 64 "잘못된 호출 형식"      routes --format yaml
+expect_status 64 "빈 호출 서비스"        routes --service ""
 expect_status 64 "베이스라인과 형식 동시" baseline --report-format json
 expect_status 64 "베이스라인과 strict 동시" baseline --strict
 expect_status 64 "설명과 테스트 전용 동시" dead --explain Foo --report-test-only
@@ -211,6 +217,13 @@ expect_status 2 "없는 인덱스 경로"     cycles --index-store "$MISSING/nop
 expect_status 2 "브리지: 인덱스 없음"  bridges --project "$MISSING"
 expect_status 2 "통합 검사: 인덱스 없음" check --project "$MISSING" --strict
 expect_status 2 "스냅샷: 인덱스 없음" snapshot --project "$MISSING"
+# route-call 의 본체는 구문 스캔이다. 자동 탐색이 스토어를 못 찾으면 USR 없이 문서를 낸다.
+expect_status 0 "호출: 인덱스 없음"    routes --project "$MISSING"
+expect_output '"target" : "http"' "호출: 사실 0건도 http 문서" routes --project "$MISSING"
+expect_status 2 "호출: 명시한 인덱스 경로 없음" routes --project "$MISSING" --index-store "$MISSING/nope"
+# 선언 파일을 지정했는데 못 읽으면 조용히 0건을 내지 않는다. 소비자는 그것을 "호출 없음"으로 읽는다.
+expect_status 2 "호출: 없는 선언 파일" routes --project "$MISSING" --wrappers "$MISSING/none.json"
+expect_status 2 "호출: 깨진 선언 파일" routes --project "$MISSING" --wrappers "$MISSING/broken.json"
 # 파일을 못 쓴 것과 순환을 찾은 것이 CI 에서 같은 신호가 되어서는 안 된다.
 # 실제 쓰기 실패는 아래 "빈 인덱스" 픽스처 다음에서 검증한다 — 없는 부모
 # 디렉터리는 -o 가 만들어 주므로 경로만으로는 실패하지 않는다.

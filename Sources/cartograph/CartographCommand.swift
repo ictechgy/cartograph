@@ -44,6 +44,7 @@ struct CartographCommand: ParsableCommand {
             DataflowCommand.self,
             BridgesCommand.self,
             SchemaCommand.self,
+            RoutesCommand.self,
             MetricsCommand.self,
             RulesCommand.self,
             BaselineCommand.self,
@@ -520,6 +521,80 @@ struct SchemaCommand: ParsableCommand {
         let context = try CommandSupport.makeContext(options)
         try CommandSupport.emit(
             try context.service.exportSchemaFacts(asText: format == .text),
+            options: options,
+            context: context
+        )
+    }
+}
+
+/// 클라이언트 코드가 만드는 HTTP 요청을 보낸다.
+struct RoutesCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "routes",
+        abstract: "Export the HTTP requests Swift code makes, for isthmus to join against server routes.",
+        discussion: """
+            Reads calls to the HTTP wrappers you declare in an http-wrappers v1 file (--wrappers) and \
+            direct URLRequest / URLSession requests whose verb and path are statically provable. Paths are \
+            normalized to canonical templates: a whole-segment interpolation becomes {}, a query tail is \
+            stripped, same-file constants are substituted, and userinfo, query, fragment and high-entropy \
+            segments never reach the output. The output is the bridge-facts exchange format with \
+            `target: "http"` and `roles: ["client"]`, one `route-call` fact per call site.
+
+            Test sources (Tests/, *Tests directories and *Tests.swift files) are skipped unless you pass \
+            --include-tests, which marks their facts `testSource`. The index is optional: without one the \
+            facts carry qualified names only and `missing-route-usrs` says so.
+
+            This command states facts, not verdicts. A path that cannot be resolved is kept and marked \
+            `dynamic`; a request that cannot be read at all is counted under `limitations`.
+            """
+    )
+
+    @OptionGroup var options: GlobalOptions
+
+    @Option(name: .customLong("format"), help: "json (the exchange format) or text (one line per call).")
+    var format: BridgesFormat = .json
+
+    @Option(name: .customLong("wrappers"), help: "http-wrappers v1 file declaring your HTTP wrapper constructors and functions.")
+    var wrappersPath: String?
+
+    @Flag(name: .customLong("include-tests"), help: "Also read test sources and mark their facts testSource.")
+    var includeTests: Bool = false
+
+    @Option(name: .customLong("service"), help: "Service identity written on the document, used by isthmus to attribute calls.")
+    var service: String?
+
+    func validate() throws {
+        // 호출 사실 문서도 조인용 전체보내기다 — `bridges`·`schema` 와 같은 이유로 증분·해상도·
+        // 진단 형식·strict 인자를 앞에서 거부한다.
+        guard options.since == nil else {
+            throw ValidationError(
+                "--since cannot be combined with routes; the document must carry every call "
+                    + "or the join reads a missing call as an uncalled route"
+            )
+        }
+        guard options.level == nil else {
+            throw ValidationError("--level cannot be combined with routes; route calls have no graph level")
+        }
+        guard options.reportFormat == nil else {
+            throw ValidationError("--report-format cannot be combined with routes; use --format for the document format")
+        }
+        guard !options.strict else {
+            throw ValidationError("--strict cannot be combined with routes; route calls state the boundary, they are not findings")
+        }
+        if let service, service.isEmpty || service.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) {
+            throw ValidationError("--service must be a non-empty name without control characters")
+        }
+    }
+
+    func run() throws {
+        let context = try CommandSupport.makeContext(options)
+        let wrappers = wrappersPath.map {
+            GlobalOptions.absolutePath($0, relativeTo: context.fileSystem.currentDirectoryPath)
+        }
+        try CommandSupport.emit(
+            try context.service.exportRouteCalls(
+                asText: format == .text, wrappersPath: wrappers, includeTests: includeTests, service: service
+            ),
             options: options,
             context: context
         )
