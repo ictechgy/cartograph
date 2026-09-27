@@ -1613,7 +1613,145 @@
           "GET /admin/items/{}",
           "GET /api/v1/items/{}"
         ]
+      },
+      "note": "Both suffix candidates rank equally on the call's segments, so the call stays ambiguous. Specificity does apply to suffix candidates within one scope and declaration side."
+    },
+    {
+      "ruleId": "match.anchor",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "id": "match/anchor-base-call-literal-beats-param",
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/api/v1/companies/tech"
+          },
+          {
+            "method": "GET",
+            "template": "/api/v1/companies/{}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/companies/tech",
+          "pathAnchor": "base"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "suffix",
+        "targets": [
+          "GET /api/v1/companies/tech"
+        ]
       }
+    },
+    {
+      "ruleId": "match.anchor",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "id": "match/anchor-base-call-literal-to-param-sibling",
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/api/v1/companies/tech"
+          },
+          {
+            "method": "GET",
+            "template": "/api/v1/companies/{}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/companies/42",
+          "pathAnchor": "base"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "suffix",
+        "targets": [
+          "GET /api/v1/companies/{}"
+        ]
+      }
+    },
+    {
+      "ruleId": "match.anchor",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "id": "match/anchor-root-call-base-decl-literal-beats-param",
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/companies/{}",
+            "pathAnchor": "base"
+          },
+          {
+            "method": "GET",
+            "template": "/companies/tech",
+            "pathAnchor": "base"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/api/companies/tech",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "suffix",
+        "targets": [
+          "GET /companies/tech"
+        ]
+      }
+    },
+    {
+      "ruleId": "match.anchor",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "id": "match/anchor-root-call-base-decl-aligned-on-call",
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/tech",
+            "pathAnchor": "base"
+          },
+          {
+            "method": "GET",
+            "template": "/{}/tech",
+            "pathAnchor": "base"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/api/companies/tech",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "suffix",
+        "targets": [
+          "GET /{}/tech"
+        ]
+      },
+      "note": "Suffix ranks are compared on the call's segments; call segments covered by the unknown base rank below every template segment."
     },
     {
       "id": "match/anchor-base-call-needs-literal",
