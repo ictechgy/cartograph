@@ -276,8 +276,18 @@ struct TraversalPresenter {
     /// 감싸는 타입까지 붙인 이름과 프로젝트 상대 위치.
     private func symbol(for id: NodeID) -> LanguageTraversalDocument.Symbol? {
         guard let node = graph.node(id) else { return nil }
-        return .init(usr: id.rawValue, qualifiedName: ExternalRetentionIndex.syntaxQualifiedName(of: node, in: graph),
+        return .init(usr: id.rawValue, qualifiedName: Self.exchangeName(of: node, in: graph),
             kind: node.kind.rawValue, location: relativeLocation(of: node))
+    }
+
+    /// 감싸는 타입까지 붙인 구문 표기. isthmus 는 빈 이름·제어 문자가 든 이름이 하나라도 있으면 문서를
+    /// 통째로 거부하므로, 인자 목록을 떼어 비었거나 쓸 수 없는 표기는 인덱스 이름, 그다음 USR 로 대신한다.
+    static func exchangeName(of node: GraphNode, in graph: CodeGraph) -> String {
+        let candidates = [ExternalRetentionIndex.syntaxQualifiedName(of: node, in: graph), node.name, node.id.rawValue]
+        return candidates.first { name in
+            !name.isEmpty && !name.hasPrefix(".") && !name.hasSuffix(".") && !name.contains("..")
+                && !CartographService.containsExchangeControlCharacter(name)
+        } ?? node.id.rawValue
     }
 
     private func relativeLocation(of node: GraphNode) -> SourceLocation? {

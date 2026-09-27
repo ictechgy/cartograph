@@ -1,3 +1,4 @@
+import CartographAnalysis
 import CartographCore
 @testable import CartographKit
 import CartographTestSupport
@@ -146,6 +147,24 @@ struct LanguageTraversalServiceTests {
         #expect(CartographService.isClosedWorld(["unindexed-sources: 3 of 9 source file(s) have no known index unit"])
             == false)
         #expect(CartographService.isClosedWorld(["external-retentions: 2 retention(s)"]))
+    }
+
+    @Test("인자 목록을 떼면 비는 이름은 인덱스 이름으로 대신해 isthmus 가 문서를 거부하지 않게 한다")
+    func fallsBackFromEmptySyntaxName() {
+        let graph = CodeGraph(level: .symbol, nodes: [
+            GraphNode(id: "s:Box", name: "Box", kind: .structType),
+            GraphNode(id: "s:Box.anon", name: "(_:)", kind: .method),
+            GraphNode(id: "s:Box.run", name: "run()", kind: .method),
+        ], edges: [
+            GraphEdge(source: "s:Box", target: "s:Box.anon", kind: .member),
+            GraphEdge(source: "s:Box", target: "s:Box.run", kind: .member),
+        ])
+        #expect(TraversalPresenter.exchangeName(of: graph.node("s:Box.run")!, in: graph) == "Box.run")
+        #expect(TraversalPresenter.exchangeName(of: graph.node("s:Box.anon")!, in: graph) == "(_:)")
+        let topLevel = CodeGraph(level: .symbol, nodes: [GraphNode(id: "s:anon", name: "(_:)", kind: .function)], edges: [])
+        // 부모가 없으면 구문 표기가 빈 문자열이 된다. isthmus 는 빈 qualifiedName 을 거부한다.
+        #expect(ExternalRetentionIndex.syntaxQualifiedName(of: topLevel.node("s:anon")!, in: topLevel).isEmpty)
+        #expect(TraversalPresenter.exchangeName(of: topLevel.node("s:anon")!, in: topLevel) == "(_:)")
     }
 
     @Test("프로젝트 밖 위치는 싣지 않는다")
