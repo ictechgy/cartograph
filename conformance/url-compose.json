@@ -1,0 +1,959 @@
+{
+  "format": "isthmus-conformance",
+  "version": 1,
+  "suite": "url-compose",
+  "description": "Shared producer rules for turning client URL expressions and declared HTTP wrapper calls into route-call templates: interpolation, query tails, base joins, stripping, masking, and wrapper argument binding.",
+  "contract": "docs/HTTP-WRAPPERS.md",
+  "cases": [
+    {
+      "id": "interpolation/whole-segment",
+      "ruleId": "compose.interpolation",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/api/v1/items/"
+          },
+          {
+            "value": "id"
+          }
+        ]
+      },
+      "expect": {
+        "template": "/api/v1/items/{}"
+      }
+    },
+    {
+      "id": "interpolation/middle-segment",
+      "ruleId": "compose.interpolation",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/users/"
+          },
+          {
+            "value": "user"
+          },
+          {
+            "literal": "/items/"
+          },
+          {
+            "value": "item"
+          }
+        ]
+      },
+      "expect": {
+        "template": "/users/{}/items/{}"
+      }
+    },
+    {
+      "id": "interpolation/partial-segment-is-dynamic",
+      "ruleId": "compose.interpolation",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/files/"
+          },
+          {
+            "value": "name"
+          },
+          {
+            "literal": ".json"
+          }
+        ]
+      },
+      "expect": {
+        "channelPrefix": "/files/"
+      },
+      "expectDynamic": true,
+      "note": "Only an interpolation that fills a whole segment becomes {}. Partial call segments are dynamic even though server templates may use p{}s."
+    },
+    {
+      "id": "interpolation/glued-to-literal-is-dynamic",
+      "ruleId": "compose.interpolation",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/items"
+          },
+          {
+            "value": "suffix"
+          }
+        ]
+      },
+      "expect": {
+        "channelPrefix": "/items"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "interpolation/two-in-segment",
+      "ruleId": "compose.interpolation",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/v"
+          },
+          {
+            "value": "major"
+          },
+          {
+            "literal": "."
+          },
+          {
+            "value": "minor"
+          }
+        ]
+      },
+      "expect": {
+        "channelPrefix": "/v"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "interpolation/leading-value-is-base",
+      "ruleId": "compose.interpolation",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "value": "baseUrl"
+          },
+          {
+            "literal": "/items"
+          }
+        ]
+      },
+      "expectDynamic": true,
+      "note": "A value before the first literal slash is a base expression; apply compose.base-join instead of this rule."
+    },
+    {
+      "id": "query-tail/literal-question-mark",
+      "ruleId": "compose.query-tail",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/items?page="
+          },
+          {
+            "value": "page"
+          }
+        ]
+      },
+      "expect": {
+        "template": "/items",
+        "queryTailStripped": true
+      }
+    },
+    {
+      "id": "query-tail/first-question-mark",
+      "ruleId": "compose.query-tail",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/search?q="
+          },
+          {
+            "value": "q"
+          },
+          {
+            "literal": "&next=/x?y"
+          }
+        ]
+      },
+      "expect": {
+        "template": "/search",
+        "queryTailStripped": true
+      }
+    },
+    {
+      "id": "query-tail/after-path-value",
+      "ruleId": "compose.query-tail",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/items/"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "literal": "?expand=true"
+          }
+        ]
+      },
+      "expect": {
+        "template": "/items/{}",
+        "queryTailStripped": true
+      }
+    },
+    {
+      "id": "query-tail/fragment",
+      "ruleId": "compose.query-tail",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/docs#section"
+          }
+        ]
+      },
+      "expect": {
+        "template": "/docs",
+        "queryTailStripped": true
+      }
+    },
+    {
+      "id": "suffix/proven-query-local",
+      "ruleId": "compose.suffix",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/api/v1/articles"
+          },
+          {
+            "queryTail": "suffix"
+          }
+        ]
+      },
+      "expect": {
+        "template": "/api/v1/articles",
+        "queryTailStripped": true
+      },
+      "note": "A trailing local whose initializer provably starts with '?' or is empty/orEmpty on every other branch is a query tail."
+    },
+    {
+      "id": "suffix/unproven-local",
+      "ruleId": "compose.suffix",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/api/v1/articles"
+          },
+          {
+            "value": "suffix"
+          }
+        ]
+      },
+      "expect": {
+        "channelPrefix": "/api/v1/articles"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "suffix/query-local-not-last",
+      "ruleId": "compose.suffix",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/a"
+          },
+          {
+            "queryTail": "q"
+          },
+          {
+            "literal": "/b"
+          }
+        ]
+      },
+      "expect": {
+        "channelPrefix": "/a"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "normalize/non-ascii-literal",
+      "ruleId": "compose.normalize",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/café/"
+          },
+          {
+            "value": "id"
+          }
+        ]
+      },
+      "expect": {
+        "template": "/caf%C3%A9/{}"
+      }
+    },
+    {
+      "id": "normalize/literal-brace",
+      "ruleId": "compose.normalize",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "parts": [
+          {
+            "literal": "/tpl/{x}"
+          }
+        ]
+      },
+      "expect": {
+        "template": "/tpl/%7Bx%7D"
+      }
+    },
+    {
+      "id": "base-join/rfc3986-absolute-path",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": null,
+        "path": "/items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "root"
+      }
+    },
+    {
+      "id": "base-join/rfc3986-relative-path",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": null,
+        "path": "items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "base"
+      }
+    },
+    {
+      "id": "base-join/slash-join-absolute-path",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "join": "slash-join",
+        "base": null,
+        "path": "/items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "base"
+      }
+    },
+    {
+      "id": "base-join/slash-join-relative-path",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "join": "slash-join",
+        "base": null,
+        "path": "items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "base"
+      }
+    },
+    {
+      "id": "base-join/dio-literal-base",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "join": "dio-concat",
+        "base": "https://api.example.com/v1",
+        "path": "/items"
+      },
+      "expect": {
+        "template": "/v1/items",
+        "pathAnchor": "root"
+      }
+    },
+    {
+      "id": "base-join/dio-unknown-base-rooted",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "join": "dio-concat",
+        "base": null,
+        "path": "/items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "base"
+      }
+    },
+    {
+      "id": "base-join/dio-unknown-base-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "join": "dio-concat",
+        "base": null,
+        "path": "items"
+      },
+      "expectDynamic": true,
+      "expectLimitation": "ambiguous-base-join:"
+    },
+    {
+      "id": "strip/userinfo-query-fragment",
+      "ruleId": "compose.strip",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "url": "https://user:secret@API.Example.com/v1/items?token=abc#top"
+      },
+      "expect": {
+        "template": "/v1/items",
+        "authority": "api.example.com",
+        "queryTailStripped": true
+      }
+    },
+    {
+      "id": "strip/port-kept",
+      "ruleId": "compose.strip",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "url": "http://api.example.com:8080/v1"
+      },
+      "expect": {
+        "template": "/v1",
+        "authority": "api.example.com:8080"
+      }
+    },
+    {
+      "id": "strip/root",
+      "ruleId": "compose.strip",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "url": "https://api.example.com"
+      },
+      "expect": {
+        "template": "/",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "mask/high-entropy-id",
+      "ruleId": "compose.mask",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "authority": "api.example.com",
+        "template": "/v1/items/550e8400-e29b-41d4-a716-446655440000"
+      },
+      "expect": {
+        "template": "/v1/items/{}",
+        "maskedSegments": 1
+      }
+    },
+    {
+      "id": "mask/long-word-kept",
+      "ruleId": "compose.mask",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "authority": "api.example.com",
+        "template": "/internationalization/settings"
+      },
+      "expect": {
+        "template": "/internationalization/settings",
+        "maskedSegments": 0
+      }
+    },
+    {
+      "id": "mask/short-token-kept",
+      "ruleId": "compose.mask",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "authority": "api.example.com",
+        "template": "/v2/abc123"
+      },
+      "expect": {
+        "template": "/v2/abc123",
+        "maskedSegments": 0
+      }
+    },
+    {
+      "id": "mask/slack-webhook",
+      "ruleId": "compose.mask",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "authority": "hooks.slack.com",
+        "template": "/services/T0000/B0000/XXXXXXXXXXXXXXXX"
+      },
+      "expect": {
+        "template": "/{}/{}/{}/{}",
+        "maskedSegments": 4
+      }
+    },
+    {
+      "id": "mask/discord-webhook",
+      "ruleId": "compose.mask",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "authority": "discord.com",
+        "template": "/api/webhooks/123/abcDEF"
+      },
+      "expect": {
+        "template": "/api/webhooks/{}/{}",
+        "maskedSegments": 2
+      }
+    },
+    {
+      "id": "mask/param-segments-untouched",
+      "ruleId": "compose.mask",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "authority": "api.example.com",
+        "template": "/v1/{}/a1b2c3d4e5f6a7b8c9"
+      },
+      "expect": {
+        "template": "/v1/{}/{}",
+        "maskedSegments": 1
+      }
+    },
+    {
+      "id": "method/enum-case",
+      "ruleId": "wrapper.method",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "methodArg": {
+            "label": "method"
+          },
+          "methodEnum": {
+            "get": "GET",
+            "post": "POST"
+          }
+        },
+        "call": {
+          "args": [
+            {
+              "label": "method",
+              "value": {
+                "enumCase": "get"
+              }
+            },
+            {
+              "label": "path",
+              "value": {
+                "literal": "/x"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "method": "GET"
+      }
+    },
+    {
+      "id": "method/enum-constant-name",
+      "ruleId": "wrapper.method",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "methodArg": {
+            "index": 0
+          },
+          "methodEnum": {
+            "GET": "GET",
+            "DELETE": "DELETE"
+          }
+        },
+        "call": {
+          "args": [
+            {
+              "value": {
+                "enumCase": "DELETE"
+              }
+            },
+            {
+              "value": {
+                "literal": "/x"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "method": "DELETE"
+      }
+    },
+    {
+      "id": "method/enum-without-verb",
+      "ruleId": "wrapper.method",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "methodArg": {
+            "label": "method"
+          },
+          "methodEnum": {
+            "get": "GET"
+          }
+        },
+        "call": {
+          "args": [
+            {
+              "label": "method",
+              "value": {
+                "enumCase": "custom"
+              }
+            }
+          ]
+        }
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "method/default-argument",
+      "ruleId": "wrapper.method",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "methodArg": {
+            "index": 2,
+            "label": "method"
+          },
+          "defaultMethod": "POST"
+        },
+        "call": {
+          "args": [
+            {
+              "value": {
+                "literal": "/x"
+              }
+            },
+            {
+              "value": {
+                "value": "token"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "method": "POST"
+      }
+    },
+    {
+      "id": "method/named-out-of-order",
+      "ruleId": "wrapper.method",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "methodArg": {
+            "index": 2,
+            "label": "method"
+          },
+          "defaultMethod": "POST"
+        },
+        "call": {
+          "args": [
+            {
+              "label": "path",
+              "value": {
+                "literal": "/x"
+              }
+            },
+            {
+              "label": "auth",
+              "value": {
+                "value": "t"
+              }
+            },
+            {
+              "label": "method",
+              "value": {
+                "literal": "GET"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "method": "GET"
+      }
+    },
+    {
+      "id": "method/positional",
+      "ruleId": "wrapper.method",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "methodArg": {
+            "index": 0
+          }
+        },
+        "call": {
+          "args": [
+            {
+              "value": {
+                "literal": "PATCH"
+              }
+            },
+            {
+              "value": {
+                "literal": "/x"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "method": "PATCH"
+      }
+    },
+    {
+      "id": "method/non-literal-argument",
+      "ruleId": "wrapper.method",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "methodArg": {
+            "index": 0
+          },
+          "defaultMethod": "GET"
+        },
+        "call": {
+          "args": [
+            {
+              "value": {
+                "value": "verb"
+              }
+            }
+          ]
+        }
+      },
+      "expectDynamic": true,
+      "note": "A present but non-literal argument is methodDynamic; the default applies only when the argument is omitted."
+    },
+    {
+      "id": "method/no-argument-no-default",
+      "ruleId": "wrapper.method",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "methodArg": {
+            "label": "method"
+          }
+        },
+        "call": {
+          "args": [
+            {
+              "label": "path",
+              "value": {
+                "literal": "/x"
+              }
+            }
+          ]
+        }
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "method/lowercase-literal-not-a-verb",
+      "ruleId": "wrapper.method",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "methodArg": {
+            "index": 0
+          }
+        },
+        "call": {
+          "args": [
+            {
+              "value": {
+                "literal": "get"
+              }
+            }
+          ]
+        }
+      },
+      "expectDynamic": true,
+      "note": "Only the exact upper-case verb literal is a verb; map other spellings through methodEnum."
+    },
+    {
+      "id": "location/multi-line-call",
+      "ruleId": "wrapper.location",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#공통-해석-규칙",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "callStartLine": 89,
+        "methodArgLine": 90,
+        "pathArgLine": 91
+      },
+      "expect": {
+        "line": 89
+      }
+    }
+  ]
+}

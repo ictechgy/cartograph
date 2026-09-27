@@ -1,0 +1,1761 @@
+{
+  "format": "isthmus-conformance",
+  "version": 1,
+  "suite": "http-template",
+  "description": "Canonical path template grammar, producer normalization, framework conversion, and consumer segment matching for the http domain. Case ids are stable; producers vendor this file with its sha256 from SHA256SUMS.",
+  "contract": "docs/GRAPH-EXCHANGE.md#개발-중-http-경계-합의-초안",
+  "cases": [
+    {
+      "id": "grammar/root",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/"
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "grammar/empty-segments-preserved",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/api//items/"
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "grammar/case-preserved",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/Items/ID"
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "grammar/whole-param",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/items/{}"
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "grammar/partial-segment",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/files/{}.json"
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "grammar/catch-all-last",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/files/{**}"
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "grammar/root-catch-all",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/{**}"
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "grammar/pchar-sub-delims",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/a:b@c!$&'()*+,;=-._~"
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "grammar/uppercase-percent",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/caf%C3%A9"
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "grammar/encoded-braces",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/%7B%7D"
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "grammar/encoded-slash-kept",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/a%2Fb"
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "grammar/not-rooted",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "items"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "not-rooted"
+      }
+    },
+    {
+      "id": "grammar/space",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/a b"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "invalid-character"
+      }
+    },
+    {
+      "id": "grammar/raw-non-ascii",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/café"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "invalid-character"
+      }
+    },
+    {
+      "id": "grammar/query-not-stripped-by-consumer",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/items?page=1"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "invalid-character"
+      }
+    },
+    {
+      "id": "grammar/fragment",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/items#top"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "invalid-character"
+      }
+    },
+    {
+      "id": "grammar/lowercase-hex",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/a%2fb"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "lowercase-percent-hex"
+      }
+    },
+    {
+      "id": "grammar/encoded-unreserved",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/%41bc"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "encoded-unreserved"
+      }
+    },
+    {
+      "id": "grammar/encoded-tilde",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/%7E"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "encoded-unreserved"
+      }
+    },
+    {
+      "id": "grammar/malformed-percent",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/%2"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "malformed-percent"
+      }
+    },
+    {
+      "id": "grammar/named-param-unconverted-brace",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/items/{id}"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "stray-brace"
+      }
+    },
+    {
+      "id": "grammar/stray-open",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/{"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "stray-brace"
+      }
+    },
+    {
+      "id": "grammar/two-params-one-segment",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/v{}.n{}"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "multiple-parameters"
+      }
+    },
+    {
+      "id": "grammar/catch-all-partial",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/a{**}"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "catch-all-partial"
+      }
+    },
+    {
+      "id": "grammar/catch-all-middle",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/{**}/a"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "catch-all-not-last"
+      }
+    },
+    {
+      "id": "grammar/catch-all-before-trailing-slash",
+      "ruleId": "template.grammar",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "template": "/{**}/"
+      },
+      "expect": {
+        "valid": false,
+        "reason": "catch-all-not-last"
+      }
+    },
+    {
+      "id": "normalize/uppercase-hex",
+      "ruleId": "template.normalize",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "path": "/caf%c3%a9"
+      },
+      "expect": {
+        "template": "/caf%C3%A9"
+      }
+    },
+    {
+      "id": "normalize/decode-unreserved",
+      "ruleId": "template.normalize",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "path": "/%41bc/%7euser"
+      },
+      "expect": {
+        "template": "/Abc/~user"
+      }
+    },
+    {
+      "id": "normalize/encode-non-ascii",
+      "ruleId": "template.normalize",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "path": "/café"
+      },
+      "expect": {
+        "template": "/caf%C3%A9"
+      }
+    },
+    {
+      "id": "normalize/encode-space",
+      "ruleId": "template.normalize",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "path": "/a b"
+      },
+      "expect": {
+        "template": "/a%20b"
+      }
+    },
+    {
+      "id": "normalize/literal-braces",
+      "ruleId": "template.normalize",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "path": "/tpl/{x}"
+      },
+      "expect": {
+        "template": "/tpl/%7Bx%7D"
+      },
+      "note": "A literal brace in a client path is not a parameter; producers encode it. Server parameter syntax is converted by the framework table, not by this rule."
+    },
+    {
+      "id": "normalize/keep-encoded-slash",
+      "ruleId": "template.normalize",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "path": "/a%2Fb"
+      },
+      "expect": {
+        "template": "/a%2Fb"
+      },
+      "note": "An encoded slash stays inside one segment."
+    },
+    {
+      "id": "normalize/keep-duplicate-and-trailing-slash",
+      "ruleId": "template.normalize",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "path": "//a/"
+      },
+      "expect": {
+        "template": "//a/"
+      }
+    },
+    {
+      "id": "openapi/whole-segment",
+      "ruleId": "framework.openapi.path-templating",
+      "provenance": "verified-doc",
+      "source": "https://spec.openapis.org/oas/v3.1.0#path-templating",
+      "versionRange": ">=2.0",
+      "appliesTo": [
+        "producer:openapi"
+      ],
+      "input": {
+        "framework": "openapi",
+        "path": "/items/{itemId}"
+      },
+      "expect": {
+        "template": "/items/{}"
+      }
+    },
+    {
+      "id": "openapi/two-params",
+      "ruleId": "framework.openapi.path-templating",
+      "provenance": "verified-doc",
+      "source": "https://spec.openapis.org/oas/v3.1.0#path-templating",
+      "versionRange": ">=2.0",
+      "appliesTo": [
+        "producer:openapi"
+      ],
+      "input": {
+        "framework": "openapi",
+        "path": "/users/{userId}/items/{itemId}"
+      },
+      "expect": {
+        "template": "/users/{}/items/{}"
+      }
+    },
+    {
+      "id": "openapi/literal-segment",
+      "ruleId": "framework.openapi.path-templating",
+      "provenance": "verified-doc",
+      "source": "https://spec.openapis.org/oas/v3.1.0#path-templating",
+      "versionRange": ">=2.0",
+      "appliesTo": [
+        "producer:openapi"
+      ],
+      "input": {
+        "framework": "openapi",
+        "path": "/items/featured"
+      },
+      "expect": {
+        "template": "/items/featured"
+      }
+    },
+    {
+      "id": "openapi/two-params-one-segment",
+      "ruleId": "framework.openapi.path-templating",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "producer:openapi"
+      ],
+      "input": {
+        "framework": "openapi",
+        "path": "/v{major}.{minor}"
+      },
+      "expectDynamic": true,
+      "note": "A segment with two parameters has no skeleton in the canonical grammar; emit the operation as dynamic plus contract-coverage:."
+    },
+    {
+      "id": "openapi/partial-segment",
+      "ruleId": "framework.openapi.path-templating",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "producer:openapi"
+      ],
+      "input": {
+        "framework": "openapi",
+        "path": "/reports/{id}.pdf"
+      },
+      "expect": {
+        "template": "/reports/{}.pdf"
+      }
+    },
+    {
+      "id": "match/literal-exact",
+      "ruleId": "match.exact",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/users/me"
+          },
+          {
+            "method": "GET",
+            "template": "/users/{}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/users/me",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /users/me"
+        ]
+      }
+    },
+    {
+      "id": "match/call-param-prefers-decl-param",
+      "ruleId": "match.param",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/users/me"
+          },
+          {
+            "method": "GET",
+            "template": "/users/{}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/users/{}",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /users/{}"
+        ]
+      }
+    },
+    {
+      "id": "match/call-literal-to-param",
+      "ruleId": "match.param",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/users/{}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/users/42",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /users/{}"
+        ]
+      }
+    },
+    {
+      "id": "match/param-to-literal-only",
+      "ruleId": "match.param-to-literal",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/articles/featured"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/articles/{}",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "param-to-literal",
+        "targets": [
+          "GET /articles/featured"
+        ]
+      }
+    },
+    {
+      "id": "match/param-to-literal-two",
+      "ruleId": "match.param-to-literal",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/tags/new"
+          },
+          {
+            "method": "GET",
+            "template": "/tags/top"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/tags/{}",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "ambiguous",
+        "targets": [
+          "GET /tags/new",
+          "GET /tags/top"
+        ]
+      }
+    },
+    {
+      "id": "match/empty-segment-not-param",
+      "ruleId": "match.param",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a/{}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/a/",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "missing"
+      }
+    },
+    {
+      "id": "match/specificity-left-first",
+      "ruleId": "match.specificity",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/users/{}"
+          },
+          {
+            "method": "GET",
+            "template": "/{}/me"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/users/me",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /users/{}"
+        ]
+      }
+    },
+    {
+      "id": "match/specificity-tie",
+      "ruleId": "match.specificity",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a{}"
+          },
+          {
+            "method": "GET",
+            "template": "/{}b"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/axb",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "ambiguous",
+        "targets": [
+          "GET /a{}",
+          "GET /{}b"
+        ]
+      }
+    },
+    {
+      "id": "match/partial-segment",
+      "ruleId": "match.partial",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/files/{}.json"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/files/a.json",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "param-to-literal",
+        "targets": [
+          "GET /files/{}.json"
+        ]
+      }
+    },
+    {
+      "id": "match/partial-needs-middle",
+      "ruleId": "match.partial",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/files/{}.json"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/files/.json",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "missing"
+      }
+    },
+    {
+      "id": "match/catch-all-one-or-more",
+      "ruleId": "match.catch-all",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/files/{**}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/files/a/b",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "catch-all",
+        "targets": [
+          "GET /files/{**}"
+        ]
+      }
+    },
+    {
+      "id": "match/catch-all-zero-segments-needs-prefix",
+      "ruleId": "match.catch-all",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/files/{**}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/files",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "near-miss",
+        "reason": "trailing-slash"
+      },
+      "note": "Without the expanded catchAllPrefix decl, /files does not match /files/{**}. Adding the trailing slash reaches {**} only through an unproven empty tail, so the result is a trailing-slash warning, never route-call-without-decl."
+    },
+    {
+      "id": "match/catch-all-prefix",
+      "ruleId": "match.catch-all",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/files/{**}",
+            "usr": "h1"
+          },
+          {
+            "method": "GET",
+            "template": "/files",
+            "usr": "h1",
+            "catchAllPrefix": true
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/files",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "catch-all",
+        "targets": [
+          "GET /files"
+        ]
+      }
+    },
+    {
+      "id": "match/explicit-beats-catch-all-prefix",
+      "ruleId": "match.catch-all",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/files/{**}",
+            "usr": "h1"
+          },
+          {
+            "method": "GET",
+            "template": "/files",
+            "usr": "h1",
+            "catchAllPrefix": true
+          },
+          {
+            "method": "GET",
+            "template": "/files",
+            "usr": "h2"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/files",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /files"
+        ],
+        "catchAllPrefixTargets": 0
+      }
+    },
+    {
+      "id": "match/catch-all-empty-tail-unproven",
+      "ruleId": "match.catch-all",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/files/{**}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/files/",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "param-to-literal",
+        "targets": [
+          "GET /files/{**}"
+        ]
+      }
+    },
+    {
+      "id": "match/constraint-int-excludes",
+      "ruleId": "match.constraints",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/users/{}",
+            "paramConstraints": [
+              {
+                "segment": 1,
+                "kind": "int"
+              }
+            ]
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/users/me",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "missing"
+      }
+    },
+    {
+      "id": "match/constraint-int-signed",
+      "ruleId": "match.constraints",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/users/{}",
+            "paramConstraints": [
+              {
+                "segment": 1,
+                "kind": "int"
+              }
+            ]
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/users/-1",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /users/{}"
+        ]
+      }
+    },
+    {
+      "id": "match/constraint-percent-unevaluated",
+      "ruleId": "match.constraints",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/users/{}",
+            "paramConstraints": [
+              {
+                "segment": 1,
+                "kind": "int"
+              }
+            ]
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/users/%20",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /users/{}"
+        ]
+      }
+    },
+    {
+      "id": "match/constraint-regex-unproven",
+      "ruleId": "match.constraints",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/orders/{}",
+            "paramConstraints": [
+              {
+                "segment": 1,
+                "kind": "regex",
+                "pattern": "[0-9]+"
+              }
+            ]
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/orders/abc",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "param-to-literal-constrained",
+        "targets": [
+          "GET /orders/{}"
+        ]
+      }
+    },
+    {
+      "id": "match/constraint-only-difference",
+      "ruleId": "match.constraints",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/v/{}",
+            "paramConstraints": [
+              {
+                "segment": 1,
+                "kind": "uuid"
+              }
+            ]
+          },
+          {
+            "method": "GET",
+            "template": "/v/{}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/v/550e8400-e29b-41d4-a716-446655440000",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /v/{}",
+          "GET /v/{}"
+        ]
+      }
+    },
+    {
+      "id": "match/method-any",
+      "ruleId": "match.method",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "ANY",
+            "template": "/b"
+          }
+        ],
+        "call": {
+          "method": "DELETE",
+          "template": "/b",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "any-method",
+        "targets": [
+          "ANY /b"
+        ]
+      }
+    },
+    {
+      "id": "match/method-head-as-get",
+      "ruleId": "match.method",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a"
+          }
+        ],
+        "call": {
+          "method": "HEAD",
+          "template": "/a",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "head-as-get",
+        "targets": [
+          "GET /a"
+        ]
+      }
+    },
+    {
+      "id": "match/method-options-any",
+      "ruleId": "match.method",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "POST",
+            "template": "/c"
+          }
+        ],
+        "call": {
+          "method": "OPTIONS",
+          "template": "/c",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "options-any",
+        "targets": [
+          "POST /c"
+        ]
+      }
+    },
+    {
+      "id": "match/method-dynamic-path-only",
+      "ruleId": "match.method",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "POST",
+            "template": "/c"
+          }
+        ],
+        "call": {
+          "template": "/c",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "POST /c"
+        ]
+      }
+    },
+    {
+      "id": "match/method-mismatch",
+      "ruleId": "match.method",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a"
+          }
+        ],
+        "call": {
+          "method": "PUT",
+          "template": "/a",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "method-mismatch",
+        "provable": true
+      }
+    },
+    {
+      "id": "match/method-filter-first",
+      "ruleId": "match.method",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "POST",
+            "template": "/users/{}"
+          },
+          {
+            "method": "GET",
+            "template": "/users/me"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/users/{}",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "param-to-literal",
+        "targets": [
+          "GET /users/me"
+        ]
+      }
+    },
+    {
+      "id": "match/trailing-slash-unknown",
+      "ruleId": "match.trailing-slash",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/a/",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "near-miss",
+        "reason": "trailing-slash"
+      }
+    },
+    {
+      "id": "match/trailing-slash-optional",
+      "ruleId": "match.trailing-slash",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a",
+            "trailingSlash": "optional"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/a/",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /a"
+        ]
+      }
+    },
+    {
+      "id": "match/case-mismatch",
+      "ruleId": "match.case",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/Items"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/items",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "near-miss",
+        "reason": "case"
+      }
+    },
+    {
+      "id": "match/case-insensitive",
+      "ruleId": "match.case",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/Items",
+            "caseInsensitive": true
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/items",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /Items"
+        ]
+      }
+    },
+    {
+      "id": "match/anchor-base-call-suffix",
+      "ruleId": "match.anchor",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/api/v1/items/{}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/v1/items/{}",
+          "pathAnchor": "base"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "suffix",
+        "targets": [
+          "GET /api/v1/items/{}"
+        ]
+      }
+    },
+    {
+      "id": "match/anchor-base-call-no-specificity",
+      "ruleId": "match.anchor",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/api/v1/items/{}"
+          },
+          {
+            "method": "GET",
+            "template": "/admin/items/{}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/items/{}",
+          "pathAnchor": "base"
+        }
+      },
+      "expect": {
+        "status": "ambiguous",
+        "targets": [
+          "GET /admin/items/{}",
+          "GET /api/v1/items/{}"
+        ]
+      }
+    },
+    {
+      "id": "match/anchor-base-call-needs-literal",
+      "ruleId": "match.anchor",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/api/{}"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/{}",
+          "pathAnchor": "base"
+        }
+      },
+      "expect": {
+        "status": "missing"
+      }
+    },
+    {
+      "id": "match/anchor-root-call-base-decl",
+      "ruleId": "match.anchor",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/reports/{}",
+            "pathAnchor": "base"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/api/reports/7",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "suffix",
+        "targets": [
+          "GET /reports/{}"
+        ]
+      }
+    },
+    {
+      "id": "match/anchor-root-call-base-decl-method",
+      "ruleId": "match.anchor",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "POST",
+            "template": "/exports",
+            "pathAnchor": "base"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/svc/exports",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "method-mismatch",
+        "provable": false
+      }
+    },
+    {
+      "id": "match/anchor-root-exact-wins",
+      "ruleId": "match.anchor",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/api/reports/{}"
+          },
+          {
+            "method": "GET",
+            "template": "/reports/{}",
+            "pathAnchor": "base"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/api/reports/7",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /api/reports/{}"
+        ]
+      }
+    },
+    {
+      "id": "match/anchor-base-base-never",
+      "ruleId": "match.anchor",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#조인-규칙-http",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/reports/{}",
+            "pathAnchor": "base"
+          }
+        ],
+        "call": {
+          "method": "GET",
+          "template": "/reports/7",
+          "pathAnchor": "base"
+        }
+      },
+      "expect": {
+        "status": "missing"
+      }
+    }
+  ]
+}
