@@ -623,6 +623,7 @@ carry `externalEvidenceCount`/`externalEvidenceOmitted` or
 ```bash
 cartograph impact 's:3App6ClientC6logoutyyF' 's:3App6ClientC5fetchyyF' --format language-traversal
 cartograph impact 's:3App6ClientC5fetchyyF' --format language-traversal --direction dependencies
+cartograph impact --format language-traversal --roots-from routes.json   # roots from a file (or - for stdin)
 ```
 
 This form emits one [`language-traversal` v1](../isthmus/docs/LANGUAGE-TRAVERSAL.md) document for
@@ -667,6 +668,19 @@ excluded), so dependents and dependencies documents over the same graph agree. `
 project's real path, as in `routes` and `bridges`. Roots and `--revision` containing control
 characters are rejected with exit 64 because isthmus rejects such ids. Files, `--since`, `--before` and runtime evidence inputs are
 `change-impact` inputs and are rejected here.
+
+`--roots-from <file|->` reads more roots from a file, or from stdin with `-`, so thousands of
+route-call symbols do not hit the argument-length limit. It accepts the same inputs as kartograph's
+`--roots-from` — a JSON string array, or a bridge-facts document whose facts' `symbol.usr` become
+roots in document order (facts without a `symbol.usr` are skipped and counted in a stderr note) —
+plus a plain line format: one root per line, LF or CRLF, surrounding spaces trimmed, blank lines and
+lines starting with `#` skipped. A first non-blank character of `[` or `{` selects JSON; USRs never
+start with either. File roots follow the positional roots, exact duplicates are dropped, the input
+may be at most 16 MiB and the combined list at most 10000 roots. The file is read and checked before
+the index is opened, and every problem — a missing or unreadable file, invalid JSON, non-UTF-8 text,
+an oversized input, an empty or whitespace-only root, a control character (tabs and lone CRs are not
+trimmed, so they are rejected rather than silently repaired), or no roots at all — is a usage error
+(exit 64). `--roots-from` is only accepted with `--format language-traversal`, like kartograph.
 
 ### `affected` — which tests reach a change
 
