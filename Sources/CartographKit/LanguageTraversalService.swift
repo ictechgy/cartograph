@@ -324,7 +324,8 @@ struct TraversalPresenter {
                 + "project implementation, but other limitations say the index does not cover the whole project, "
                 + "so they are reported as candidate.")
         }
-        let outside = (requests.resolved.map(\.node) + rows.nodes).count { id in
+        // 다른 root 에서 닿은 root 는 두 목록에 모두 있으므로 집합으로 한 번만 센다.
+        let outside = Set(requests.resolved.map(\.node) + rows.nodes).count { id in
             guard let node = graph.node(id), node.location != nil else { return false }
             return relativeLocation(of: node) == nil
         }

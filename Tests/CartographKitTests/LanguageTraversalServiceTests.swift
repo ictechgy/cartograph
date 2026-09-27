@@ -133,6 +133,44 @@ struct LanguageTraversalServiceTests {
         #expect(!ExchangeText.containsControlCharacter("s:14CoreNetworking9EndpointV"))
     }
 
+    @Test("64개를 넘는 root 는 가장 작은 64개만 싣되 근거 등급은 목록에서 빠진 root 까지 포함한다")
+    func capsRootListButKeepsEvidenceOverAllRoots() throws {
+        // 계약: evidence 는 "64개 상한으로 잘린 목록이면 목록에서 빠진 root도 포함한다".
+        var builder = SnapshotBuilder(module: "App", path: "/p/Sources/Hub.swift")
+        builder.symbol("s:Hub", name: "hub()", kind: .function)
+        let roots = (0..<65).map { String(format: "s:R%02d", $0) }
+        for root in roots.prefix(64) {
+            builder.symbol(root, name: root, kind: .function)
+            builder.reference(from: "s:Hub", to: root, kind: .call)
+        }
+        // 마지막 root 는 dispatch(후보)로만 Hub 에 닿는다: Hub 는 계약 P.f 를 부르고 R64 가 그 구현이다.
+        builder.symbol("s:P", name: "P", kind: .protocolType)
+        builder.symbol("s:P.f", name: "f()", kind: .method, parent: "s:P")
+        builder.symbol(roots[64], name: "f()", kind: .method)
+        builder.reference(from: roots[64], to: "s:P.f", kind: .overrides)
+        builder.reference(from: "s:Hub", to: "s:P.f", kind: .call)
+        let (service, _) = fixture()
+        let document = try service.languageTraversalDocument(symbols: roots, generatedAt: fixedDate,
+            in: AnalysisContext(snapshot: builder.build()))
+        let hub = try #require(document.reached.first { $0.symbol.usr == "s:Hub" })
+        #expect(hub.roots == Array(0..<64))
+        #expect(document.rootsTruncated == true)
+        #expect(hub.evidence == "candidate")
+    }
+
+    @Test("다른 root 에서 닿은 root 도 프로젝트 밖 위치를 한 번만 센다")
+    func countsOutsideLocationsOnce() throws {
+        var builder = SnapshotBuilder(module: "App", path: "/elsewhere/Outside.swift")
+        builder.symbol("s:Outside", name: "outside()", kind: .function)
+        builder.symbol("s:Inside", name: "inside()", kind: .function, path: "/p/Sources/Inside.swift")
+        builder.reference(from: "s:Outside", to: "s:Inside", kind: .call)
+        let (service, _) = fixture()
+        let document = try service.languageTraversalDocument(symbols: ["s:Inside", "s:Outside"],
+            generatedAt: fixedDate, in: AnalysisContext(snapshot: builder.build()))
+        #expect(document.reached.map(\.symbol.usr) == ["s:Outside"])
+        #expect(document.limitations.contains { $0.hasPrefix("traversal-location-outside-project: 1 symbol") })
+    }
+
     @Test("타입 root 는 멤버로 넓히지 않고 한계로 알린다")
     func doesNotExpandContainerRoots() throws {
         let (service, context) = fixture()

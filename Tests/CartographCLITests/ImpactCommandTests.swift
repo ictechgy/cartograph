@@ -63,6 +63,10 @@ struct ImpactCommandTests {
             ["Missing\u{1}", "--format", "language-traversal"],
             ["Missing\u{85}", "--format", "language-traversal"],
             ["Missing\u{2028}", "--format", "language-traversal"],
+            // 선언과 파일·since 를 함께 주면 선택 모드 검사가 먼저 거부한다(순회 문서가 파일을 조용히 버리지 않는다).
+            ["s:A", "--file", "A.swift", "--format", "language-traversal"],
+            ["s:A", "--since", "HEAD", "--format", "language-traversal"],
+            ["s:A", "--format", "language-traversal", "--direction", "sideways"],
         ] {
             do {
                 let command = try ImpactCommand.parse(arguments)
