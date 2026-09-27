@@ -1,5 +1,6 @@
 import CartographAnalysis
 import CartographCore
+import CryptoKit
 import Foundation
 
 extension CartographService {
@@ -20,12 +21,14 @@ extension CartographService {
     ///   - maxDepth: 보고할 최대 depth. 없으면 계약 상한 128 이다.
     ///   - limit: 보고할 최대 도달 정점 수(1...100000).
     ///   - generatedAt: 문서 시각. 같은 입력에 같은 바이트를 내려면 고정한다.
+    ///   - revision: 분석한 소스의 revision. 이 계층은 git 을 모르므로 호출자가 정해 넘긴다.
     public func languageTraversalDocument(
         symbols: [String], direction: TraversalDirection = .dependents, maxDepth: Int? = nil,
-        limit: Int = Self.languageTraversalReachedLimit, generatedAt: Date = Date(),
+        limit: Int = Self.languageTraversalReachedLimit, generatedAt: Date = Date(), revision: String? = nil,
         in existingContext: AnalysisContext? = nil
     ) throws -> LanguageTraversalDocument {
         try validateTraversalLimits(symbols: symbols, maxDepth: maxDepth, limit: limit)
+        try validateExchangeText(symbols + (revision.map { [$0] } ?? []))
         let project = try canonicalProjectForExchange()
         let context = try existingContext ?? loadContext()
         let graph = context.buildGraph(level: .symbol).graph
@@ -33,9 +36,10 @@ extension CartographService {
         var limitations = analysisLimitations(context: context, symbolGraph: graph)
             + Self.automaticRuntimeLimitations(automatic)
         let requests = TraversalRootRequests(symbols: symbols, graph: graph)
-        let generator = TraversalHopGenerator(graph: graph, direction: direction,
-            closedWorld: Self.isClosedWorld(limitations),
-            runtimeDependencies: Self.automaticImpactDependencies(automatic))
+        let closedWorld = Self.isClosedWorld(limitations)
+        let runtime = Self.automaticImpactDependencies(automatic)
+        let generator = TraversalHopGenerator(graph: graph, direction: direction, closedWorld: closedWorld,
+            runtimeDependencies: runtime)
         let result = MultiRootTraversal(generator: generator)
             .traverse(roots: requests.resolved.map(\.node), maxDepth: maxDepth ?? 128)
         let presenter = TraversalPresenter(graph: graph, project: project, requests: requests)
@@ -44,7 +48,9 @@ extension CartographService {
             direction: direction, reasons: context.impactReviewReasons())
         return LanguageTraversalDocument(
             tool: .init(name: Cartograph.toolName, version: Cartograph.version),
-            generatedAt: Self.bridgeTimestamp(generatedAt), project: project, direction: direction.rawValue,
+            generatedAt: Self.bridgeTimestamp(generatedAt), project: project, revision: revision,
+            graphRevision: try Self.graphRevision(graph: graph, runtime: runtime, closedWorld: closedWorld),
+            direction: direction.rawValue,
             roots: presenter.roots(), reached: rows.values, rootsTruncated: rows.rootsTruncated,
             truncationReasons: (result.truncatedByDepth ? ["depth"] : []) + (rows.outputTruncated ? ["output"] : [])
                 + (requests.unresolved.isEmpty ? [] : ["root-not-found"]),
@@ -57,14 +63,14 @@ extension CartographService {
     /// 방향은 문자열로 받는다. 실행 타깃이 분석 모듈을 직접 import 하지 않게 하려는 것이다(`impact` 의 `format` 과 같다).
     public func languageTraversal(
         symbols: [String], direction: String = "dependents", maxDepth: Int? = nil,
-        limit: Int = Self.languageTraversalReachedLimit, generatedAt: Date = Date()
+        limit: Int = Self.languageTraversalReachedLimit, generatedAt: Date = Date(), revision: String? = nil
     ) throws -> CommandOutcome {
         guard let parsed = TraversalDirection(rawValue: direction) else {
             throw CartographError.invalidConfiguration(path: projectPath,
                 reason: "Traversal direction must be dependents or dependencies.")
         }
         let document = try languageTraversalDocument(symbols: symbols, direction: parsed, maxDepth: maxDepth,
-            limit: limit, generatedAt: generatedAt)
+            limit: limit, generatedAt: generatedAt, revision: revision)
         let unresolved = document.roots.filter { $0.symbol == nil }.map(\.id)
         return CommandOutcome(
             output: try Self.encodeSortedJSON(document),
@@ -84,6 +90,41 @@ extension CartographService {
             throw CartographError.invalidConfiguration(path: projectPath, reason:
                 "A language traversal needs 1...10000 roots, a limit of 1...100000 and an optional depth of 1...128.")
         }
+    }
+
+    /// isthmus 는 제어 문자(C0·DEL·C1·U+2028·U+2029)가 든 id·revision 이 있는 문서를 통째로 거부한다.
+    /// 해석하지 못한 root 는 원문이 그대로 `id` 가 되므로, 문서를 만들기 전에 막는다.
+    private func validateExchangeText(_ values: [String]) throws {
+        guard let bad = values.first(where: { $0.isEmpty || Self.containsExchangeControlCharacter($0) }) else { return }
+        throw CartographError.invalidConfiguration(path: projectPath, reason:
+            "A language traversal root or revision is empty or contains a control character "
+                + "(\(bad.debugDescription)); isthmus rejects such ids. Pass the symbol.usr from routes or bridges facts.")
+    }
+
+    /// isthmus `controlCharacterPattern` 과 같은 범위.
+    public static func containsExchangeControlCharacter(_ value: String) -> Bool {
+        value.unicodeScalars.contains { scalar in
+            scalar.value < 0x20 || (0x7F...0x9F).contains(scalar.value) || scalar.value == 0x2028 || scalar.value == 0x2029
+        }
+    }
+
+    /// 순회에 쓴 그래프의 내용 해시.
+    ///
+    /// 정점(id·종류), 간선(양 끝·종류), 자동 발견 런타임 연결, 닫힌 세계 판정을 정렬해 담는다. 위치는
+    /// 넣지 않는다 — 줄만 옮긴 편집은 순회 결과를 바꾸지 않는다. 닫힌 세계 판정은 dispatch 걸음의
+    /// 근거 등급을 정하므로 넣는다. 그래서 같은 그래프 위의 정·역방향 문서가 같은 값을 낸다.
+    static func graphRevision(graph: CodeGraph, runtime: [ImpactDependency], closedWorld: Bool) throws -> String {
+        let nodes = graph.sortedNodes.map { [$0.id.rawValue, $0.kind.rawValue] }
+        let edges = graph.edges.map { [$0.source.rawValue, $0.target.rawValue, $0.kind.rawValue] }
+        let connections = Set(runtime.map { [$0.source.rawValue, $0.target.rawValue] })
+        let content: [[[String]]] = [nodes.sorted(by: Self.lexicographic), edges.sorted(by: Self.lexicographic),
+            connections.sorted(by: Self.lexicographic), [[closedWorld ? "closed-world" : "open-world"]]]
+        let data = try JSONEncoder.cartographDefault(prettyPrinted: false).encode(content)
+        return "sha256:" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func lexicographic(_ lhs: [String], _ rhs: [String]) -> Bool {
+        lhs.lexicographicallyPrecedes(rhs) { $0.utf8.lexicographicallyPrecedes($1.utf8) }
     }
 
     // MARK: - 런타임과 닫힌 세계

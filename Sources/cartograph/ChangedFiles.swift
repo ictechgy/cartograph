@@ -88,7 +88,7 @@ enum ChangedFiles {
     /// `-z` 를 준 명령은 NUL 로 구분된다. 기본 출력은 `core.quotePath` 때문에
     /// 비ASCII 이름을 따옴표로 감싸고 8진수로 이스케이프해, 실제 경로와 절대
     /// 일치하지 않는 문자열이 나온다. 한국어 파일명에서 바로 재현된다.
-    private static func lines(
+    static func lines(
         of arguments: [String],
         in workingDirectory: String,
         reference: String

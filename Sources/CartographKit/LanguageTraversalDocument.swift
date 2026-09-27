@@ -40,6 +40,10 @@ public struct LanguageTraversalDocument: Sendable, Equatable, Encodable {
     public let generatedAt: String
     public let platform = "swift"
     public let project: String
+    /// 분석한 소스의 revision. 주어졌거나 작업 트리가 깨끗해 확인한 HEAD 일 때만 싣는다.
+    public let revision: String?
+    /// 순회에 쓴 그래프의 내용 해시(`sha256:`). 같은 그래프면 방향과 root 가 달라도 같다.
+    public let graphRevision: String?
     public let direction: String
     public let roots: [Root]
     public let reached: [Reached]
@@ -51,17 +55,20 @@ public struct LanguageTraversalDocument: Sendable, Equatable, Encodable {
     public let limitations: [String]
 
     private enum CodingKeys: String, CodingKey {
-        case format, version, tool, generatedAt, platform, project, direction, roots, reached
+        case format, version, tool, generatedAt, platform, project, revision, graphRevision, direction, roots, reached
         case rootsTruncated, truncated, truncationReasons, limitations
     }
 
     init(
-        tool: BridgeFactsDocument.Tool, generatedAt: String, project: String, direction: String,
-        roots: [Root], reached: [Reached], rootsTruncated: Bool, truncationReasons: [String], limitations: [String]
+        tool: BridgeFactsDocument.Tool, generatedAt: String, project: String, revision: String?,
+        graphRevision: String?, direction: String, roots: [Root], reached: [Reached], rootsTruncated: Bool,
+        truncationReasons: [String], limitations: [String]
     ) {
         self.tool = tool
         self.generatedAt = generatedAt
         self.project = project
+        self.revision = revision
+        self.graphRevision = graphRevision
         self.direction = direction
         self.roots = roots
         self.reached = reached

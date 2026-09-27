@@ -658,7 +658,14 @@ program has no caller, and no caller is invented. Roots are not expanded to thei
 (`container-roots-not-expanded` says when a type was given). An unresolved root keeps its text as
 `id` without `symbol`, adds `root-not-found:` and `truncated`, and exits 64 after printing.
 `--limit` defaults to 100000 (the contract maximum) and `--generated-at` fixes the timestamp for
-byte-identical output. Files, `--since`, `--before` and runtime evidence inputs are
+byte-identical output. `revision` is `--revision <rev>` when given; otherwise it is the git `HEAD`
+commit only when the project directory has no uncommitted or untracked changes, and it is omitted
+when the tree is dirty or not a repository — a `HEAD` recorded over edited sources would make isthmus
+treat a stale analysis as current. `graphRevision` is `sha256:` over the symbol graph's node ids and
+kinds, its edges, the automatic runtime connections and the closed-world decision (locations
+excluded), so dependents and dependencies documents over the same graph agree. `project` is the
+project's real path, as in `routes` and `bridges`. Roots and `--revision` containing control
+characters are rejected with exit 64 because isthmus rejects such ids. Files, `--since`, `--before` and runtime evidence inputs are
 `change-impact` inputs and are rejected here.
 
 ### `affected` — which tests reach a change

@@ -116,6 +116,9 @@ expect_status 64 "순회 문서 결과 수 범위" impact Foo --format language-
 expect_status 64 "순회 문서 잘못된 시각" impact Foo --format language-traversal --generated-at yesterday
 expect_status 64 "순회 방향만 단독"     impact Foo --direction dependencies
 expect_status 64 "순회 잘못된 방향"     impact Foo --format language-traversal --direction sideways
+expect_status 64 "순회 root 제어 문자"   impact "$(printf 'Foo\001')" --format language-traversal
+expect_status 64 "순회 revision 단독"   impact Foo --revision abc
+expect_status 64 "순회 빈 revision"     impact Foo --format language-traversal --revision ""
 expect_status 64 "테스트 영향 선택자 누락" affected
 expect_status 64 "테스트 영향 선택자 혼용" affected Foo --file Sources/App.swift
 expect_status 64 "테스트 영향과 level 동시" affected Foo --level module

@@ -49,6 +49,12 @@ struct ImpactCommand: ParsableCommand {
     )
     var generatedAt: String?
 
+    @Option(
+        name: .customLong("revision"),
+        help: "language-traversal only: source revision to record. Default: the git HEAD when the project has no uncommitted changes."
+    )
+    var revision: String?
+
     @Option(name: .customLong("runtime-contracts"), help: "Include declared runtime dependencies from runtime-contracts v1 JSON.")
     var runtimeContracts: String?
 
@@ -127,6 +133,13 @@ struct ImpactCommand: ParsableCommand {
         guard !symbols.isEmpty else {
             throw ValidationError("--format language-traversal takes declaration roots; --file and --since are not supported")
         }
+        if let bad = (symbols + (revision.map { [$0] } ?? [])).first(where: CartographService.containsExchangeControlCharacter) {
+            throw ValidationError("--format language-traversal roots and --revision cannot contain control characters "
+                + "(\(bad.debugDescription)); isthmus rejects such ids. Pass the symbol.usr from routes or bridges facts.")
+        }
+        guard revision.map(Self.isNonEmpty) ?? true else {
+            throw ValidationError("--revision cannot be empty")
+        }
         guard symbols.count <= 10_000 else {
             throw ValidationError("--format language-traversal accepts at most 10000 roots")
         }
@@ -148,8 +161,8 @@ struct ImpactCommand: ParsableCommand {
         guard (1...10_000).contains(resolvedLimit) else {
             throw ValidationError("--limit must be between 1 and 10000")
         }
-        guard direction == nil, generatedAt == nil else {
-            throw ValidationError("--direction and --generated-at require --format language-traversal")
+        guard direction == nil, generatedAt == nil, revision == nil else {
+            throw ValidationError("--direction, --generated-at and --revision require --format language-traversal")
         }
     }
 
@@ -229,7 +242,8 @@ struct ImpactCommand: ParsableCommand {
         let context = try CommandSupport.makeContext(options)
         let outcome = try context.service.languageTraversal(
             symbols: symbols, direction: (direction ?? .dependents).rawValue, maxDepth: depth,
-            limit: resolvedLimit, generatedAt: generatedAt.flatMap(Self.parseTimestamp) ?? Date()
+            limit: resolvedLimit, generatedAt: generatedAt.flatMap(Self.parseTimestamp) ?? Date(),
+            revision: revision ?? GitRevision.cleanHead(projectPath: context.service.projectPath)
         )
         try CommandSupport.emit(outcome, options: options, context: context)
     }

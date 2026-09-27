@@ -77,8 +77,8 @@ struct LanguageTraversalServiceTests {
         let second = try service.languageTraversal(symbols: ["s:Client.logout"], generatedAt: fixedDate).output
         #expect(first == second)
         let object = try #require(JSONSerialization.jsonObject(with: Data(first.utf8)) as? [String: Any])
-        #expect(Set(object.keys) == ["format", "version", "tool", "generatedAt", "platform", "project", "direction",
-            "roots", "reached", "truncated", "limitations"])
+        #expect(Set(object.keys) == ["format", "version", "tool", "generatedAt", "platform", "project", "graphRevision",
+            "direction", "roots", "reached", "truncated", "limitations"])
         #expect(object["generatedAt"] as? String == "2027-01-15T08:00:00.000Z")
         #expect(!first.contains("dispatch\"") && !first.contains("unresolvedCalls"))
     }
@@ -93,6 +93,43 @@ struct LanguageTraversalServiceTests {
         let rootIDs = Set(document.roots.map(\.id))
         let rowIDs = Set(document.reached.map(\.symbol.usr))
         #expect(document.reached.allSatisfy { rootIDs.contains($0.via) || rowIDs.contains($0.via) })
+    }
+
+    @Test("revision 은 받은 값만 싣고 graphRevision 은 같은 그래프면 방향·root 와 무관하게 같다")
+    func recordsRevisionAndGraphHash() throws {
+        let (service, context) = fixture()
+        let pinned = try service.languageTraversalDocument(symbols: ["s:Client.logout"], generatedAt: fixedDate,
+            revision: "rev-1", in: context)
+        #expect(pinned.revision == "rev-1")
+        let unpinned = try service.languageTraversalDocument(symbols: ["s:Client.fetch"], direction: .dependencies,
+            generatedAt: fixedDate, in: context)
+        #expect(unpinned.revision == nil)
+        let hash = try #require(pinned.graphRevision)
+        #expect(hash.hasPrefix("sha256:") && hash.count == 71)
+        #expect(unpinned.graphRevision == hash)
+
+        var builder = SnapshotBuilder(module: "App", path: "/p/Sources/Client.swift")
+        builder.symbol("s:Client.logout", name: "logout()", kind: .method)
+        builder.symbol("s:Other", name: "Other", kind: .function)
+        builder.reference(from: "s:Other", to: "s:Client.logout", kind: .call)
+        let changed = try service.languageTraversalDocument(symbols: ["s:Client.logout"], generatedAt: fixedDate,
+            in: AnalysisContext(snapshot: builder.build()))
+        #expect(changed.graphRevision != hash)
+    }
+
+    @Test("제어 문자가 든 root 원문은 문서를 만들기 전에 거부한다")
+    func rejectsControlCharacters() {
+        let (service, context) = fixture()
+        for text in ["Missing\u{1}", "Missing\u{7F}", "Missing\u{85}", "Missing\u{2029}", ""] {
+            #expect(throws: CartographError.self) {
+                try service.languageTraversalDocument(symbols: [text], generatedAt: fixedDate, in: context)
+            }
+        }
+        #expect(throws: CartographError.self) {
+            try service.languageTraversalDocument(symbols: ["s:Client.logout"], generatedAt: fixedDate,
+                revision: "rev\n1", in: context)
+        }
+        #expect(!CartographService.containsExchangeControlCharacter("s:14CoreNetworking9EndpointV"))
     }
 
     @Test("타입 root 는 멤버로 넓히지 않고 한계로 알린다")

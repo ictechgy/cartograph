@@ -643,6 +643,12 @@ cartograph impact 's:3App6ClientC5fetchyyF' --format language-traversal --direct
 `container-roots-not-expanded`가 알립니다). 해석하지 못한 root는 원문을 `id`로 두고 `symbol` 없이
 실리며 `root-not-found:`와 `truncated`를 더한 뒤 문서를 출력하고 64로 끝납니다. `--limit` 기본값은
 계약 상한인 100000이고, `--generated-at`으로 시각을 고정하면 같은 입력이 같은 바이트가 됩니다.
+`revision`은 `--revision <rev>`를 주면 그 값이고, 주지 않으면 프로젝트 디렉터리에 커밋하지 않은
+변경·추적되지 않는 파일이 없을 때만 git `HEAD` 커밋입니다. 작업 트리가 더럽거나 저장소가 아니면
+싣지 않습니다 — 고친 소스 위에서 `HEAD`를 실으면 isthmus가 낡은 분석을 최신으로 읽습니다.
+`graphRevision`은 심볼 그래프의 정점 id·종류, 간선, 자동 발견 런타임 연결, 닫힌 세계 판정(위치 제외)의
+`sha256:` 해시라서 같은 그래프 위의 정·역방향 문서가 같은 값을 냅니다. `project`는 `routes`·`bridges`와
+같은 실제 경로입니다. 제어 문자가 든 root와 `--revision`은 isthmus가 그런 id를 거부하므로 64로 거부합니다.
 파일·`--since`·`--before`·런타임 근거 입력은 `change-impact`의 입력이라 이 형식에서는 거부합니다.
 
 ### `affected` — 이 변경에 도달하는 테스트

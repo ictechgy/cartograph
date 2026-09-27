@@ -22,7 +22,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   index. Framework- and runtime-invoked declarations such as SwiftUI `body` and `@main` are named in
   `runtime-invoked-entry-points` rather than given invented callers. `--direction dependencies` walks
   the inverse relation. `unresolvedCalls` and `dispatch` are not emitted because the Swift index does
-  not record calls through closures in parameters or locals. The `change-impact` output is unchanged.
+  not record calls through closures in parameters or locals. `revision` comes from `--revision` or,
+  only for a clean project tree, the git `HEAD`; `graphRevision` hashes the traversed graph, so isthmus
+  can flag stale analyses instead of reporting `analysis-revision-unknown`. Roots with control
+  characters are rejected up front. The `change-impact` output is unchanged.
 - `cartograph routes` exports the HTTP requests Swift code makes as an http bridge-facts document
   (`target: "http"`, `roles: ["client"]`, one `route-call` per call site), so isthmus can join app
   calls with server routes and OpenAPI operations by (method, path template). Apps call their own

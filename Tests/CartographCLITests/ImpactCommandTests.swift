@@ -35,6 +35,10 @@ struct ImpactCommandTests {
         #expect(command.format == .languageTraversal)
         #expect(command.resolvedLimit == 100_000)
         #expect(command.direction == .dependencies)
+        #expect(command.revision == nil)
+        let pinned = try ImpactCommand.parse(["s:A", "--format", "language-traversal", "--revision", "rev-1"])
+        try pinned.validate()
+        #expect(pinned.revision == "rev-1")
         #expect(ImpactCommand.parseTimestamp("2026-01-01T00:00:00.250Z") != nil)
         #expect(ImpactCommand.parseTimestamp("yesterday") == nil)
     }
@@ -53,6 +57,12 @@ struct ImpactCommandTests {
             ["s:A", "--direction", "dependents"],
             ["s:A", "--format", "json", "--generated-at", "2026-01-01T00:00:00Z"],
             ["s:A", "--format", "json", "--limit", "10001"],
+            ["s:A", "--revision", "abc"],
+            ["s:A", "--format", "language-traversal", "--revision", ""],
+            ["s:A", "--format", "language-traversal", "--revision", "abc\u{7}"],
+            ["Missing\u{1}", "--format", "language-traversal"],
+            ["Missing\u{85}", "--format", "language-traversal"],
+            ["Missing\u{2028}", "--format", "language-traversal"],
         ] {
             do {
                 let command = try ImpactCommand.parse(arguments)
