@@ -87,28 +87,6 @@ public enum HTTPRouteTemplate {
         return ("/" + result.joined(separator: "/"), masked)
     }
 
-    /// dynamic 호출의 원문 식에 든 문자열 리터럴 조각을 가린다.
-    ///
-    /// 계약은 제거·마스킹을 `channel` 만이 아니라 리터럴 경로를 싣는 모든 필드에 요구한다. dynamic
-    /// 원문은 식 전체라 URL 리터럴이 그대로 들어 있을 수 있다 — query 의 토큰, userinfo 의 비밀번호,
-    /// 웹훅 경로. 같은 규칙(첫 `?`·`#` 뒤 제거, 마지막 `@` 까지의 userinfo 제거, 고엔트로피·웹훅
-    /// 세그먼트 가림)을 조각에 적용한다. 더 가리는 쪽은 허용되므로 host 조각도 같은 기준을 받는다.
-    public static func sanitizeLiteral(_ text: String) -> String {
-        var body = String(text.prefix { $0 != "?" && $0 != "#" })
-        if let schemeEnd = schemeLength(body) {
-            let rest = body.dropFirst(schemeEnd)
-            let authority = rest.prefix { $0 != "/" }
-            if let at = authority.lastIndex(of: "@") {
-                body = String(body.prefix(schemeEnd)) + rest[rest.index(after: at)...]
-            }
-        }
-        let pieces = body.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-        let webhookStart = literalWebhookStart(pieces)
-        return pieces.enumerated().map { index, piece in
-            (index >= webhookStart && !piece.isEmpty) || isHighEntropy(piece) ? "{}" : piece
-        }.joined(separator: "/")
-    }
-
     /// `scheme://` 의 UTF-8 길이. scheme 이 없으면 nil. scheme 은 ASCII 라 글자 수와 같다.
     static func schemeLength(_ text: String) -> Int? {
         let scalars = Array(text.unicodeScalars.prefix(64))
@@ -125,19 +103,6 @@ public enum HTTPRouteTemplate {
 
     private static func isASCIILetter(_ scalar: Unicode.Scalar) -> Bool {
         ("A"..."Z").contains(scalar) || ("a"..."z").contains(scalar)
-    }
-
-    /// 원문 조각에서 웹훅 host 뒤 경로가 시작하는 위치. 없으면 `Int.max`.
-    private static func literalWebhookStart(_ pieces: [String]) -> Int {
-        for (index, piece) in pieces.enumerated() {
-            let host = piece.lowercased()
-            if host == "hooks.slack.com" { return index + 1 }
-            if host == "discord.com" || host == "discordapp.com",
-               pieces.count > index + 2, pieces[index + 1] == "api", pieces[index + 2] == "webhooks" {
-                return index + 3
-            }
-        }
-        return .max
     }
 
     // MARK: - 세부 규칙
@@ -227,7 +192,7 @@ public enum HTTPRouteTemplate {
     }
 
     /// 퍼센트 디코드한 세그먼트가 16자 이상이고 ASCII 글자와 숫자를 모두 담는지.
-    private static func isHighEntropy(_ segment: String) -> Bool {
+    static func isHighEntropy(_ segment: String) -> Bool {
         let decoded = percentDecoded(segment)
         guard decoded.utf16.count >= 16 else { return false }
         let scalars = decoded.unicodeScalars

@@ -471,6 +471,29 @@ struct HTTPRouteCallScannerTests {
         #expect(found[3].isDynamic && found[3].channelPrefix == nil)
     }
 
+    @Test("여러 리터럴로 나뉜 query·userinfo·고엔트로피 세그먼트도 dynamic 원문에 남지 않는다")
+    func sanitizesAcrossLiteralTokens() throws {
+        let body = """
+            final class Api {
+                var base = ""
+                func a() { _ = URLRequest(url: URL(string: base + "/v1?token=" + "A1b2C3d4E5f6")!) }
+                func b(host: String) { _ = URLRequest(url: URL(string: base + "https://" + "admin:" + "s3cret" + "@" + host + "/x")!) }
+                func c() { _ = URLRequest(url: URL(string: base + "/hooks/" + "a1b2c3d4" + "e5f6a7b8c9" + "/run")!) }
+                func d() { _ = URLRequest(url: URL(string: base + "/q" + "#frag" + "ment")!) }
+                func e() { _ = URLRequest(url: URL(string: base + "?token=" + "A1b2C3d4E5f6")!) }
+            }
+            """
+        let found = facts(body, wrappers: [])
+        #expect(found.count == 5)
+        let texts = found.compactMap(\.channel)
+        #expect(texts.count == 5)
+        #expect(found.map(\.isDynamic) == [false, true, false, false, true])
+        for secret in ["A1b2C3d4E5f6", "token", "admin", "s3cret", "a1b2c3d4", "e5f6a7b8c9", "frag", "ment"] {
+            #expect(!texts.contains { $0.contains(secret) }, "\(secret) leaked: \(texts)")
+        }
+        #expect(texts[2].contains("run"))
+    }
+
     // MARK: 문서 성질
 
     @Test("테스트 소스의 호출에는 표식을 단다")

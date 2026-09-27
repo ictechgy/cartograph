@@ -407,18 +407,19 @@ enum HTTPSyntax {
         return nil
     }
 
-    /// dynamic 원문. 공백을 한 칸으로 접고 문자열 리터럴 조각을 가린 뒤 길이 상한으로 자른다.
+    /// dynamic 원문. 문자열 조각을 하나의 흐름으로 가리고, 공백을 한 칸으로 접은 뒤 길이 상한으로 자른다.
     static func sanitizedText(_ expression: some SyntaxProtocol) -> String? {
-        var text = ""
+        var pieces: [HTTPSourceTextSanitizer.Piece] = []
         for token in expression.tokens(viewMode: .sourceAccurate) {
-            if !text.isEmpty, !token.leadingTrivia.isEmpty { text += " " }
+            if !pieces.isEmpty, !token.leadingTrivia.isEmpty { pieces.append(.code(" ")) }
             if case let .stringSegment(raw) = token.tokenKind {
-                text += HTTPRouteTemplate.sanitizeLiteral(raw)
+                pieces.append(.literal(raw))
             } else {
-                text += token.text
+                pieces.append(.code(token.text))
             }
-            if !token.trailingTrivia.isEmpty { text += " " }
+            if !token.trailingTrivia.isEmpty { pieces.append(.code(" ")) }
         }
+        let text = HTTPSourceTextSanitizer.sanitize(pieces)
         // 소비자는 제어 문자가 든 원문을 입력 오류로 거부한다. 공백류는 한 칸으로 접는다.
         let collapsed = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
             .filter { character in !character.unicodeScalars.contains { $0.value < 0x20 || (0x7F...0x9F).contains($0.value) } }

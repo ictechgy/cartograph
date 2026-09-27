@@ -28,13 +28,17 @@ struct HTTPRouteRulesTests {
         #expect(HTTPRouteTemplate.mask("/other/webhooks/1", authority: "discord.com").maskedSegments == 0)
     }
 
-    @Test("dynamic 원문의 리터럴 조각에서 비밀이 될 수 있는 부분을 가린다")
-    func sanitizeLiteral() {
-        #expect(HTTPRouteTemplate.sanitizeLiteral("https://user:pw@api.example.com/v1/items?token=abc") == "https://api.example.com/v1/items")
-        #expect(HTTPRouteTemplate.sanitizeLiteral("/v1/a1b2c3d4e5f6a7b8c9/x#frag") == "/v1/{}/x")
-        #expect(HTTPRouteTemplate.sanitizeLiteral("https://hooks.slack.com/services/T0/B0/") == "https://hooks.slack.com/{}/{}/{}/")
-        #expect(HTTPRouteTemplate.sanitizeLiteral("https://discord.com/api/webhooks/1/abc") == "https://discord.com/api/webhooks/{}/{}")
-        #expect(HTTPRouteTemplate.sanitizeLiteral("plain") == "plain")
+    @Test("dynamic 원문의 문자열 조각을 하나의 흐름으로 읽어 비밀이 될 수 있는 부분을 지운다")
+    func sanitizeSourceText() {
+        let text = { (pieces: [HTTPSourceTextSanitizer.Piece]) in HTTPSourceTextSanitizer.sanitize(pieces) }
+        #expect(text([.literal("https://user:pw@api.example.com/v1/items?token=abc")]) == "https://api.example.com/v1/items")
+        #expect(text([.code("p + \""), .literal("?token="), .code("\" + \""), .literal("A1b2C3d4E5f6"), .code("\"")]) == "p + \"")
+        #expect(text([.literal("https://"), .code(" + \""), .literal("admin:"), .code("\" + user + \""),
+                      .literal("@host/x"), .code("\"")]) == "https://host/x\"")
+        #expect(text([.literal("/v1/a1b2c3d4"), .code("\" + \""), .literal("e5f6a7b8c9/x")]) == "/v1/{}\" + \"/x")
+        #expect(text([.literal("https://hooks.slack.com/services/T0/B0/")]) == "https://hooks.slack.com/{}/{}/{}/")
+        #expect(text([.literal("https://discord.com/api/webhooks/1/abc")]) == "https://discord.com/api/webhooks/{}/{}")
+        #expect(text([.code("send("), .literal("plain"), .code(")")]) == "send(plain)")
     }
 
     // MARK: 결합
