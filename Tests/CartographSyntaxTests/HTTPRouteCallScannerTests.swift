@@ -494,6 +494,31 @@ struct HTTPRouteCallScannerTests {
         #expect(texts[2].contains("run"))
     }
 
+    @Test("요청을 다른 이름에 복사하거나 넘기면 동사를 확정하지 않는다")
+    func requestAliasesEscape() {
+        let body = """
+            func a() {
+                var request = URLRequest(url: URL(string: "https://api.example.com/a")!)
+                var copy = request
+                copy.httpMethod = "POST"
+            }
+            func b(session: URLSession) async throws {
+                let request = URLRequest(url: URL(string: "https://api.example.com/b")!)
+                _ = try await session.data(for: request)
+            }
+            func c() {
+                let request = URLRequest(url: URL(string: "https://api.example.com/c")!)
+                execute(request)
+            }
+            func d() {
+                var request = URLRequest(url: URL(string: "https://api.example.com/d")!)
+                var other = URLRequest(url: URL(string: "https://api.example.com/e")!)
+                other = request
+            }
+            """
+        #expect(routes(body, wrappers: []) == ["? /a", "GET /b", "? /c", "? /d", "GET /e"])
+    }
+
     // MARK: 문서 성질
 
     @Test("테스트 소스의 호출에는 표식을 단다")

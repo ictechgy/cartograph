@@ -635,8 +635,18 @@ private enum QueryTailShape {
     case empty
 }
 
-/// 한 본문 안의 `name.httpMethod = …` 대입과, 이름이 반환·inout 으로 나가는지를 모은다.
+/// 한 본문 안의 `name.httpMethod = …` 대입과, 요청 값이 다른 곳으로 나가는지를 모은다.
+///
+/// `URLRequest` 는 값 타입이라 다른 이름에 복사하거나(`var copy = request`) 함수에 넘기면 그쪽에서 동사가
+/// 바뀐 사본이 전송될 수 있다. 이름이 멤버 접근(`request.x`)의 수신자나 알려진 세션 전송 호출의 인자가
+/// 아닌 자리에 나오면 나간 것으로 보고 동사를 확정하지 않는다. 틀린 동사는 거짓 method 불일치 error 다.
 private final class HTTPMethodAssignmentCollector: SyntaxVisitor {
+    /// 요청을 받아 그대로 전송하는 URLSession 호출. 이름과 첫 인자 레이블.
+    private static let sendingCalls: Set<String> = [
+        "data\0for", "upload\0for", "download\0for", "bytes\0for", "dataTaskPublisher\0for",
+        "dataTask\0with", "uploadTask\0with", "downloadTask\0with",
+    ]
+
     private let name: String
     private(set) var values: [ExprSyntax] = []
     private(set) var escapes = false
@@ -650,23 +660,42 @@ private final class HTTPMethodAssignmentCollector: SyntaxVisitor {
         guard node.operator.is(AssignmentExprSyntax.self),
               let member = node.leftOperand.as(MemberAccessExprSyntax.self),
               member.declName.baseName.text == "httpMethod",
-              member.base?.as(DeclReferenceExprSyntax.self).map({ SyntaxIdentifiers.unescaped($0.baseName.text) }) == name
+              member.base.map(isName) == true
         else { return .visitChildren }
         values.append(node.rightOperand)
         return .visitChildren
     }
 
-    override func visit(_ node: ReturnStmtSyntax) -> SyntaxVisitorContinueKind {
-        if isName(node.expression) { escapes = true }
+    override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
+        guard isName(ExprSyntax(node)), !isMemberReceiver(node), !isSentDirectly(node), !isOverwrittenOrDiscarded(node)
+        else { return .visitChildren }
+        escapes = true
         return .visitChildren
     }
 
-    override func visit(_ node: InOutExprSyntax) -> SyntaxVisitorContinueKind {
-        if isName(node.expression) { escapes = true }
-        return .visitChildren
+    /// `name.x` 의 수신자인지. 속성 읽기·쓰기는 같은 값을 다룬다.
+    private func isMemberReceiver(_ node: DeclReferenceExprSyntax) -> Bool {
+        node.parent?.as(MemberAccessExprSyntax.self)?.base?.id == ExprSyntax(node).id
     }
 
-    private func isName(_ expression: ExprSyntax?) -> Bool {
-        expression?.as(DeclReferenceExprSyntax.self).map { SyntaxIdentifiers.unescaped($0.baseName.text) } == name
+    /// `name = …` 로 값을 덮어쓰거나 `_ = name` 으로 버리는 자리인지. 둘 다 요청 값을 내보내지 않는다.
+    private func isOverwrittenOrDiscarded(_ node: DeclReferenceExprSyntax) -> Bool {
+        guard let assignment = node.parent?.as(InfixOperatorExprSyntax.self),
+              assignment.operator.is(AssignmentExprSyntax.self) else { return false }
+        if assignment.leftOperand.id == ExprSyntax(node).id { return true }
+        return assignment.leftOperand.is(DiscardAssignmentExprSyntax.self)
+    }
+
+    /// `session.data(for: name)` 처럼 전송 호출의 첫 인자로 바로 넘어가는지.
+    private func isSentDirectly(_ node: DeclReferenceExprSyntax) -> Bool {
+        guard let argument = node.parent?.as(LabeledExprSyntax.self),
+              let call = argument.parent?.parent?.as(FunctionCallExprSyntax.self),
+              call.arguments.first?.id == argument.id,
+              let member = call.calledExpression.as(MemberAccessExprSyntax.self) else { return false }
+        return Self.sendingCalls.contains(member.declName.baseName.text + "\0" + (argument.label?.text ?? ""))
+    }
+
+    private func isName(_ expression: ExprSyntax) -> Bool {
+        expression.as(DeclReferenceExprSyntax.self).map { SyntaxIdentifiers.unescaped($0.baseName.text) } == name
     }
 }
