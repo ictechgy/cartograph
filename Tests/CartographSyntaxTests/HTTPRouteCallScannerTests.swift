@@ -519,6 +519,20 @@ struct HTTPRouteCallScannerTests {
         #expect(routes(body, wrappers: []) == ["? /a", "GET /b", "? /c", "? /d", "GET /e"])
     }
 
+    @Test("모듈로 한정하거나 init 으로 부른 URLRequest·URL 도 요청이다")
+    func qualifiedFoundationTypes() {
+        let body = """
+            func a() {
+                _ = Foundation.URLRequest(url: URL(string: "https://api.example.com/a")!)
+                _ = URLRequest.init(url: URL(string: "https://api.example.com/b")!)
+                _ = URLRequest(url: Foundation.URL(string: "https://api.example.com/c")!)
+                _ = URLRequest(url: URL.init(string: "https://api.example.com/d")!)
+                _ = Other.URLRequest(url: URL(string: "https://api.example.com/e")!)
+            }
+            """
+        #expect(routes(body, wrappers: []) == ["GET /a", "GET /b", "GET /c", "GET /d"])
+    }
+
     // MARK: 문서 성질
 
     @Test("테스트 소스의 호출에는 표식을 단다")

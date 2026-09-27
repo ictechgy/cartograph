@@ -163,7 +163,7 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
         if let (index, declaration) = matchWrapper(node) {
             emitWrapperCall(node, index: index, declaration: declaration)
-        } else if node.calledExpression.as(DeclReferenceExprSyntax.self)?.baseName.text == "URLRequest",
+        } else if HTTPSyntax.isFoundationInitializer(node, type: "URLRequest"),
                   let url = node.arguments.first(where: { $0.label?.text == "url" }), !Self.isPageLoad(node) {
             emitDirectRequest(node, urlExpression: url.expression, method: requestMethod(of: node), countsOpaque: true)
         } else if let url = sessionURLArgument(of: node) {
@@ -396,7 +396,7 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
         guard depth < 16 else { return nil }
         let value = HTTPSyntax.unwrapped(expression)
         if let call = value.as(FunctionCallExprSyntax.self) {
-            if call.calledExpression.as(DeclReferenceExprSyntax.self)?.baseName.text == "URL",
+            if HTTPSyntax.isFoundationInitializer(call, type: "URL"),
                let string = call.arguments.first, string.label?.text == "string" {
                 let isRelative = call.arguments.dropFirst().first?.label?.text == "relativeTo"
                 return (parts(of: string.expression, context: context), isRelative ? .rfc3986 : .absoluteURL)

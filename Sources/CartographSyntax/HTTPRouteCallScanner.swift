@@ -263,10 +263,19 @@ enum HTTPSyntax {
     static func isURLConstruction(_ expression: ExprSyntax) -> Bool {
         let value = unwrapped(expression)
         guard let call = value.as(FunctionCallExprSyntax.self) else { return false }
-        if call.calledExpression.as(DeclReferenceExprSyntax.self)?.baseName.text == "URL" {
+        if isFoundationInitializer(call, type: "URL") {
             return call.arguments.first?.label?.text == "string"
         }
         return appendedComponent(of: call) != nil
+    }
+
+    /// `Type(`·`Type.init(`·`Foundation.Type(`·`Foundation.Type.init(` 처럼 Foundation 타입을 만드는 호출인지.
+    ///
+    /// 다른 모듈로 한정한 같은 이름(`Other.URLRequest`)은 Foundation 타입이 아니므로 받지 않는다.
+    static func isFoundationInitializer(_ call: FunctionCallExprSyntax, type: String) -> Bool {
+        guard var name = dottedName(call.calledExpression) else { return false }
+        if name.last == "init" { name.removeLast() }
+        return name == [type] || name == ["Foundation", type]
     }
 
     /// `base.appendingPathComponent(x)`·`base.appending(path:)`·`base.appending(component:)` 의 (base, x).
