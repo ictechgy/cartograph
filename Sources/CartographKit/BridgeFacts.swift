@@ -644,6 +644,19 @@ struct BridgeSymbolResolver {
         }
     }
 
+    /// 사실 종류와 무관하게 감싸는 선언 하나의 심볼. route-call 처럼 실행 근거가 없는 사실이 쓴다.
+    ///
+    /// 선언이 없으면(파일 최상위) 파일의 가상 최상위 심볼이 소유자다. 그것도 없으면 nil 이다.
+    /// 이름 대조 규칙은 `resolve` 와 같다 — 라벨까지 같은 심볼, 여럿이면 줄이 가장 가까운 유일한 것.
+    func symbol(for declaration: EnclosingDeclaration?, at location: SourceLocation) -> BridgeFact.Symbol? {
+        guard let declaration else {
+            guard let usr = topLevelUSRByPath[canonicalPath(location.path)], let topLevel = uniqueSymbols[usr] else { return nil }
+            return BridgeFact.Symbol(qualifiedName: Self.contractName(of: topLevel), usr: topLevel.usr)
+        }
+        let candidates = symbolsByPath[canonicalPath(location.path)] ?? []
+        return BridgeFact.Symbol(qualifiedName: declaration.qualifiedName, usr: Self.match(declaration, among: candidates)?.usr)
+    }
+
     private struct DependencyResult {
         let values: [BridgeFact.Dependency]
         let complete: Bool
