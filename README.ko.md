@@ -605,6 +605,52 @@ Codable, preview와 기타 런타임 관리 경로를 수동 또는 런타임 �
 생략은 생산자의 기존 `callersOmitted`에 더하며, `truncated.sections`에 `runtimeEvidence`나
 `runtimeContracts`를 표시합니다.
 
+#### isthmus 용 다중 root 순회 (`--format language-traversal`)
+
+```bash
+cartograph impact 's:3App6ClientC6logoutyyF' 's:3App6ClientC5fetchyyF' --format language-traversal
+cartograph impact 's:3App6ClientC5fetchyyF' --format language-traversal --direction dependencies
+```
+
+이 형식은 `isthmus trace`가 읽는 [`language-traversal` v1](../isthmus/docs/LANGUAGE-TRAVERSAL.md)
+문서 하나를 냅니다. 선언 인자 전부가 입력 순서대로 root입니다. root id와 도달 정점의
+`symbol.usr`는 인덱스 USR과 바이트까지 같으므로 `routes`·`bridges` 사실의 `symbol.usr`를 그대로
+넘기세요. 도달 정점마다 거기에 닿는 **모든** root를 싣습니다(`roots`, 오름차순, 64개 초과 시
+`rootsTruncated`). 그래서 root마다 `change-impact`를 돌리지 않고도 어느 route가 어느 화면에
+닿는지 잃지 않습니다. `depth`는 가장 가까운 root까지의 거리이고, 다른 root에서 닿은 root는 자기
+인덱스 없이 다른 root 기준 depth로 실립니다. `via`는 최단 경로의 목격입니다.
+`--direction dependents`(기본)는 `change-impact`와 똑같이 소비자를 따라가고,
+`--direction dependencies`는 그 역관계(피호출자, 계약 호출에서 구현으로)를 따라갑니다.
+`qualifiedName`에는 감싸는 타입이 붙습니다(`Module.body`가 아니라 `ProfileView.body`).
+
+근거 등급(`evidence`, 모든 도달 정점에 실림)은 root마다 성립하는 하한입니다.
+
+| 등급 | Swift 간선 |
+|---|---|
+| `direct` | 컴파일러 인덱스 간선만(호출, 참조, 준수, 상속, 익스텐션, 선언된 오버라이드) |
+| `bound` | 여기에 더해, 구현과 준수 타입이 인덱스 전체에서 하나뿐임을 입증한 프로토콜 요구사항 dispatch |
+| `candidate` | 여기에 더해, 다른 구현으로 갈 수 있는 오버라이드·프로토콜 dispatch나 자동 발견한 런타임 연결 |
+
+`bound`는 닫힌 세계가 필요합니다. 인덱스가 프로젝트 전체를 담지 않는다는 한계(인덱스 없는·낡은·
+사라진·읽지 못한 소스, 경로·간선 필터, Objective-C 소스, 라이브러리 내보내기)가 하나라도 있으면
+그런 걸음을 `candidate`로 낮추고 `dispatch-bound-unproven`을 싣습니다. 문서는 `dispatch`를 선언하지
+않고 `unresolvedCalls`도 싣지 않습니다. Swift 인덱스는 매개변수·지역 변수에 담긴 클로저 호출을
+기록하지 않아 잇지 못한 호출을 빠짐없이 신고한다고 주장할 수 없고, isthmus는 없는 필드를
+"알 수 없음"으로 읽습니다. 외부 프레임워크나 런타임이 부르는 선언 — SwiftUI `body`, `@main`,
+`@objc`/Interface Builder 연결, 외부 프로토콜 구현 — 은 역방향에서
+`runtime-invoked-entry-points`에 이름을 남깁니다. 프로그램 안에 호출자가 없어 순회가 거기서
+멈추며, 호출자를 지어내지 않습니다. root는 멤버로 넓히지 않습니다(타입을 주면
+`container-roots-not-expanded`가 알립니다). 해석하지 못한 root는 원문을 `id`로 두고 `symbol` 없이
+실리며 `root-not-found:`와 `truncated`를 더한 뒤 문서를 출력하고 64로 끝납니다. `--limit` 기본값은
+계약 상한인 100000이고, `--generated-at`으로 시각을 고정하면 같은 입력이 같은 바이트가 됩니다.
+`revision`은 `--revision <rev>`를 주면 그 값이고, 주지 않으면 프로젝트 디렉터리에 커밋하지 않은
+변경·추적되지 않는 파일이 없을 때만 git `HEAD` 커밋입니다. 작업 트리가 더럽거나 저장소가 아니면
+싣지 않습니다 — 고친 소스 위에서 `HEAD`를 실으면 isthmus가 낡은 분석을 최신으로 읽습니다.
+`graphRevision`은 심볼 그래프의 정점 id·종류, 간선, 자동 발견 런타임 연결, 닫힌 세계 판정(위치 제외)의
+`sha256:` 해시라서 같은 그래프 위의 정·역방향 문서가 같은 값을 냅니다. `project`는 `routes`·`bridges`와
+같은 실제 경로입니다. 제어 문자가 든 root와 `--revision`은 isthmus가 그런 id를 거부하므로 64로 거부합니다.
+파일·`--since`·`--before`·런타임 근거 입력은 `change-impact`의 입력이라 이 형식에서는 거부합니다.
+
 ### `affected` — 이 변경에 도달하는 테스트
 
 ```bash

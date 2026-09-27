@@ -1,4 +1,5 @@
 import ArgumentParser
+import Foundation
 import CartographCore
 import CartographKit
 
@@ -12,6 +13,10 @@ struct ImpactCommand: ParsableCommand {
             The result follows direct and transitive consumers so a person or coding agent can
             review the likely effect before editing. A git selection includes deleted paths and
             both sides of a rename.
+
+            --format language-traversal emits one multi-root traversal for isthmus trace: every
+            declaration argument is a root, and each reached declaration lists every root that
+            reaches it. --direction dependencies follows callees instead of consumers.
             """
     )
 
@@ -26,8 +31,29 @@ struct ImpactCommand: ParsableCommand {
     @Option(name: .customLong("depth"), help: "Maximum consumer depth from 1 through 128.")
     var depth: Int?
 
-    @Option(name: .customLong("limit"), help: "Maximum affected declarations to report (default: 200).")
-    var limit: Int = 200
+    @Option(
+        name: .customLong("limit"),
+        help: "Maximum affected declarations to report (default: 200; language-traversal: 100000)."
+    )
+    var limit: Int?
+
+    @Option(
+        name: .customLong("direction"),
+        help: "language-traversal only: dependents (consumers, the default) or dependencies (callees)."
+    )
+    var direction: ImpactDirection?
+
+    @Option(
+        name: .customLong("generated-at"),
+        help: "language-traversal only: fixed ISO-8601 UTC timestamp for byte-identical output."
+    )
+    var generatedAt: String?
+
+    @Option(
+        name: .customLong("revision"),
+        help: "language-traversal only: source revision to record. Default: the git HEAD when the project has no uncommitted changes."
+    )
+    var revision: String?
 
     @Option(name: .customLong("runtime-contracts"), help: "Include declared runtime dependencies from runtime-contracts v1 JSON.")
     var runtimeContracts: String?
@@ -46,8 +72,13 @@ struct ImpactCommand: ParsableCommand {
     @Option(name: .customLong("before"), help: "An analysis-snapshot v1 or v2 file captured before the change.")
     var before: String?
 
-    @Option(name: .customLong("format"), help: "text or json.")
+    @Option(name: .customLong("format"), help: "text, json (change-impact v1) or language-traversal (isthmus v1).")
     var format: ImpactFormat = .text
+
+    /// 형식마다 기본 한도와 상한이 다르다. 순회 문서는 isthmus 계약의 도달 정점 상한까지 싣는다.
+    var resolvedLimit: Int {
+        limit ?? (format == .languageTraversal ? 100_000 : 200)
+    }
 
     func validate() throws {
         let hasSymbols = !symbols.isEmpty
@@ -69,8 +100,10 @@ struct ImpactCommand: ParsableCommand {
         guard depth.map({ (1...128).contains($0) }) ?? true else {
             throw ValidationError("--depth must be between 1 and 128")
         }
-        guard (1...10_000).contains(limit) else {
-            throw ValidationError("--limit must be between 1 and 10000")
+        if format == .languageTraversal {
+            try validateLanguageTraversal()
+        } else {
+            try validateChangeImpactOnlyOptions()
         }
         guard options.level == nil else {
             throw ValidationError("--level cannot be combined with impact; impact follows symbol consumers")
@@ -95,7 +128,58 @@ struct ImpactCommand: ParsableCommand {
         }
     }
 
+    /// 순회 문서는 선언 root 만 받는다. 파일·스냅샷·실행 근거는 `change-impact` 의 입력이다.
+    private func validateLanguageTraversal() throws {
+        guard !symbols.isEmpty else {
+            throw ValidationError("--format language-traversal takes declaration roots; --file and --since are not supported")
+        }
+        if let bad = (symbols + (revision.map { [$0] } ?? [])).first(where: ExchangeText.containsControlCharacter) {
+            throw ValidationError("--format language-traversal roots and --revision cannot contain control characters "
+                + "(\(bad.debugDescription)); isthmus rejects such ids. Pass the symbol.usr from routes or bridges facts.")
+        }
+        guard revision.map(Self.isNonEmpty) ?? true else {
+            throw ValidationError("--revision cannot be empty")
+        }
+        guard symbols.count <= 10_000 else {
+            throw ValidationError("--format language-traversal accepts at most 10000 roots")
+        }
+        guard (1...100_000).contains(resolvedLimit) else {
+            throw ValidationError("--limit must be between 1 and 100000 for language-traversal")
+        }
+        let unsupported = [("--before", before), ("--trace", trace), ("--runtime-contracts", runtimeContracts),
+                           ("--coredata-build-evidence", coreDataBuildEvidence)].filter { $0.1 != nil }.map(\.0)
+        guard unsupported.isEmpty else {
+            throw ValidationError("\(unsupported.joined(separator: ", ")) cannot be combined with "
+                + "--format language-traversal; the traversal covers the compiler graph and automatic runtime facts")
+        }
+        guard generatedAt.map({ Self.parseTimestamp($0) != nil }) ?? true else {
+            throw ValidationError("--generated-at must be an ISO-8601 UTC timestamp such as 2026-01-01T00:00:00Z")
+        }
+    }
+
+    private func validateChangeImpactOnlyOptions() throws {
+        guard (1...10_000).contains(resolvedLimit) else {
+            throw ValidationError("--limit must be between 1 and 10000")
+        }
+        guard direction == nil, generatedAt == nil, revision == nil else {
+            throw ValidationError("--direction, --generated-at and --revision require --format language-traversal")
+        }
+    }
+
+    /// 소수 초가 있든 없든 ISO-8601 UTC 시각을 받는다.
+    static func parseTimestamp(_ text: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: text)
+    }
+
     func run() throws {
+        if format == .languageTraversal {
+            try runLanguageTraversal()
+            return
+        }
         // `--since` 는 영향 분석의 입력 시드다. 전역 옵션을 그대로 넘기면
         // 결과 소비자까지 변경 파일로 잘려, 바뀐 파일 밖의 영향이 사라진다.
         var contextOptions = options
@@ -121,7 +205,7 @@ struct ImpactCommand: ParsableCommand {
             outcome = try context.service.compareImpact(
                 symbols: symbols, files: selectedFiles,
                 beforePath: GlobalOptions.absolutePath(before, relativeTo: context.fileSystem.currentDirectoryPath),
-                maxDepth: depth, limit: limit, format: format.rawValue,
+                maxDepth: depth, limit: resolvedLimit, format: format.rawValue,
                 fileSelectionIsDerived: options.since != nil, runtimeContractsPath: runtimePath,
                 selectionLimitations: selectionLimitations,
                 coreDataBuildEvidencePath: coreDataBuildEvidence.map {
@@ -133,7 +217,7 @@ struct ImpactCommand: ParsableCommand {
                 symbols: symbols,
                 files: selectedFiles,
                 maxDepth: depth,
-                limit: limit,
+                limit: resolvedLimit,
                 format: format.rawValue,
                 fileSelectionIsDerived: options.since != nil,
                 runtimeContractsPath: runtimePath,
@@ -154,6 +238,16 @@ struct ImpactCommand: ParsableCommand {
         )
     }
 
+    private func runLanguageTraversal() throws {
+        let context = try CommandSupport.makeContext(options)
+        let outcome = try context.service.languageTraversal(
+            symbols: symbols, direction: (direction ?? .dependents).rawValue, maxDepth: depth,
+            limit: resolvedLimit, generatedAt: generatedAt.flatMap(Self.parseTimestamp) ?? Date(),
+            revision: revision ?? GitRevision.cleanHead(projectPath: context.service.projectPath)
+        )
+        try CommandSupport.emit(outcome, options: options, context: context)
+    }
+
     private static func isNonEmpty(_ value: String) -> Bool {
         !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -164,6 +258,14 @@ struct ImpactCommand: ParsableCommand {
 enum ImpactFormat: String, ExpressibleByArgument, CaseIterable {
     case text
     case json
+    /// isthmus `language-traversal` v1. 다중 root 순회와 정점별 root 출처를 싣는다.
+    case languageTraversal = "language-traversal"
+}
+
+/// `impact --direction` 의 값. `language-traversal` 문서의 `direction` 과 같다.
+enum ImpactDirection: String, ExpressibleByArgument, CaseIterable {
+    case dependents
+    case dependencies
 }
 
 /// `--since` 로 시드할 파일 목록과, 모델 밖 변경을 알리는 한계 문구.

@@ -618,6 +618,56 @@ carry `externalEvidenceCount`/`externalEvidenceOmitted` or
 `runtimeContractsCount`/`runtimeContractsOmitted`; caller omissions add to the producer's existing
 `callersOmitted`. `truncated.sections` names `runtimeEvidence` or `runtimeContracts` when applicable.
 
+#### Multi-root traversal for isthmus (`--format language-traversal`)
+
+```bash
+cartograph impact 's:3App6ClientC6logoutyyF' 's:3App6ClientC5fetchyyF' --format language-traversal
+cartograph impact 's:3App6ClientC5fetchyyF' --format language-traversal --direction dependencies
+```
+
+This form emits one [`language-traversal` v1](../isthmus/docs/LANGUAGE-TRAVERSAL.md) document for
+`isthmus trace`. Every declaration argument is a root, in input order; pass the `symbol.usr` values
+that `routes` and `bridges` facts carry, because root ids and reached `symbol.usr` values are the
+index USRs, byte for byte. Each reached declaration lists **every** root that reaches it
+(`roots`, ascending, at most 64 with `rootsTruncated`), so one run replaces one `change-impact` run
+per root without losing which route reached which view. `depth` is the distance to the nearest
+root; a root reached from another root is listed without its own index, with its depth measured
+from the other roots. `via` is a shortest-path witness. `--direction dependents` (the default)
+follows consumers exactly like `change-impact`; `--direction dependencies` follows the inverse
+relation (callees, and from a contract call to its implementations). `qualifiedName` includes the
+enclosing type (`ProfileView.body`, not `Module.body`).
+
+Evidence tiers (`evidence`, on every reached declaration) are per-root lower bounds:
+
+| Tier | Swift edges |
+|---|---|
+| `direct` | compiler index edges only (calls, references, conformance, inheritance, extension, a declared override) |
+| `bound` | also a protocol-requirement dispatch whose only implementation, and only conforming type, is proven across the whole index |
+| `candidate` | also an override or protocol dispatch that may reach another implementation, or an automatically discovered runtime connection |
+
+`bound` needs a closed world, so any limitation that says the index does not cover the whole
+project (unindexed, stale, missing or unreadable sources, path or edge filters, Objective-C
+sources, an exported library) downgrades such hops to `candidate` and adds
+`dispatch-bound-unproven`. The document does not declare `dispatch` and never carries
+`unresolvedCalls`: the Swift index does not record calls through closures held in parameters or
+local variables, so cartograph cannot claim complete unresolved-call reporting, and isthmus reads the
+missing field as unknown. Declarations an external framework or the runtime invokes — SwiftUI
+`body`, `@main`, `@objc`/Interface Builder hooks, external protocol witnesses — are named under
+`runtime-invoked-entry-points` in the dependents direction; the traversal stops there because the
+program has no caller, and no caller is invented. Roots are not expanded to their members
+(`container-roots-not-expanded` says when a type was given). An unresolved root keeps its text as
+`id` without `symbol`, adds `root-not-found:` and `truncated`, and exits 64 after printing.
+`--limit` defaults to 100000 (the contract maximum) and `--generated-at` fixes the timestamp for
+byte-identical output. `revision` is `--revision <rev>` when given; otherwise it is the git `HEAD`
+commit only when the project directory has no uncommitted or untracked changes, and it is omitted
+when the tree is dirty or not a repository — a `HEAD` recorded over edited sources would make isthmus
+treat a stale analysis as current. `graphRevision` is `sha256:` over the symbol graph's node ids and
+kinds, its edges, the automatic runtime connections and the closed-world decision (locations
+excluded), so dependents and dependencies documents over the same graph agree. `project` is the
+project's real path, as in `routes` and `bridges`. Roots and `--revision` containing control
+characters are rejected with exit 64 because isthmus rejects such ids. Files, `--since`, `--before` and runtime evidence inputs are
+`change-impact` inputs and are rejected here.
+
 ### `affected` — which tests reach a change
 
 ```bash

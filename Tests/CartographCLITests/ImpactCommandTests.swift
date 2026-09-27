@@ -20,8 +20,62 @@ struct ImpactCommandTests {
         #expect(command.files.isEmpty)
         #expect(command.options.since == nil)
         #expect(command.depth == nil)
-        #expect(command.limit == 200)
+        #expect(command.limit == nil)
+        #expect(command.resolvedLimit == 200)
         #expect(command.format == .text)
+    }
+
+    @Test("language-traversal 은 선언 root 만 받고 형식별 기본 한도와 방향을 쓴다")
+    func parsesLanguageTraversal() throws {
+        let command = try ImpactCommand.parse([
+            "s:A", "s:B", "--format", "language-traversal", "--direction", "dependencies",
+            "--generated-at", "2026-01-01T00:00:00Z",
+        ])
+        try command.validate()
+        #expect(command.format == .languageTraversal)
+        #expect(command.resolvedLimit == 100_000)
+        #expect(command.direction == .dependencies)
+        #expect(command.revision == nil)
+        let pinned = try ImpactCommand.parse(["s:A", "--format", "language-traversal", "--revision", "rev-1"])
+        try pinned.validate()
+        #expect(pinned.revision == "rev-1")
+        #expect(ImpactCommand.parseTimestamp("2026-01-01T00:00:00.250Z") != nil)
+        #expect(ImpactCommand.parseTimestamp("yesterday") == nil)
+    }
+
+    @Test("language-traversal 과 섞을 수 없는 입력과 그 형식 전용 옵션의 오용을 거부한다")
+    func rejectsLanguageTraversalMisuse() {
+        for arguments in [
+            ["--file", "A.swift", "--format", "language-traversal"],
+            ["--since", "HEAD", "--format", "language-traversal"],
+            ["s:A", "--format", "language-traversal", "--before", "before.json"],
+            ["s:A", "--format", "language-traversal", "--runtime-contracts", "contracts.json"],
+            ["s:A", "--format", "language-traversal", "--trace", "t.json", "--executable", "App"],
+            ["s:A", "--format", "language-traversal", "--coredata-build-evidence", "e.json"],
+            ["s:A", "--format", "language-traversal", "--limit", "100001"],
+            ["s:A", "--format", "language-traversal", "--generated-at", "yesterday"],
+            ["s:A", "--direction", "dependents"],
+            ["s:A", "--format", "json", "--generated-at", "2026-01-01T00:00:00Z"],
+            ["s:A", "--format", "json", "--limit", "10001"],
+            ["s:A", "--revision", "abc"],
+            ["s:A", "--format", "language-traversal", "--revision", ""],
+            ["s:A", "--format", "language-traversal", "--revision", "abc\u{7}"],
+            ["Missing\u{1}", "--format", "language-traversal"],
+            ["Missing\u{85}", "--format", "language-traversal"],
+            ["Missing\u{2028}", "--format", "language-traversal"],
+            // 선언과 파일·since 를 함께 주면 선택 모드 검사가 먼저 거부한다(순회 문서가 파일을 조용히 버리지 않는다).
+            ["s:A", "--file", "A.swift", "--format", "language-traversal"],
+            ["s:A", "--since", "HEAD", "--format", "language-traversal"],
+            ["s:A", "--format", "language-traversal", "--direction", "sideways"],
+        ] {
+            do {
+                let command = try ImpactCommand.parse(arguments)
+                try command.validate()
+                Issue.record("오류가 발생해야 한다: \(arguments)")
+            } catch {
+                #expect(!"\(error)".isEmpty)
+            }
+        }
     }
 
     @Test("Core Data 빌드 근거는 현재 영향 분석에서만 선택하고 trace와 섞지 않는다")
