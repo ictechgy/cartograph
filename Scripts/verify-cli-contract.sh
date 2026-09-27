@@ -110,6 +110,12 @@ expect_status 64 "영향과 strict 동시"   impact Foo --strict
 expect_status 64 "영향 깊이 범위"       impact Foo --depth 0
 expect_status 64 "영향 결과 수 범위"    impact Foo --limit 10001
 expect_status 64 "영향 잘못된 형식"     impact Foo --format yaml
+expect_status 64 "순회 문서와 파일 선택" impact --file Sources/App.swift --format language-traversal
+expect_status 64 "순회 문서와 과거 스냅샷" impact Foo --format language-traversal --before /dev/null
+expect_status 64 "순회 문서 결과 수 범위" impact Foo --format language-traversal --limit 100001
+expect_status 64 "순회 문서 잘못된 시각" impact Foo --format language-traversal --generated-at yesterday
+expect_status 64 "순회 방향만 단독"     impact Foo --direction dependencies
+expect_status 64 "순회 잘못된 방향"     impact Foo --format language-traversal --direction sideways
 expect_status 64 "테스트 영향 선택자 누락" affected
 expect_status 64 "테스트 영향 선택자 혼용" affected Foo --file Sources/App.swift
 expect_status 64 "테스트 영향과 level 동시" affected Foo --level module
@@ -248,6 +254,8 @@ expect_status 2 "빈 인덱스: rules"     rules  --strict --project "$EMPTY"
 expect_status 2 "빈 인덱스: check"     check --strict --project "$EMPTY"
 expect_status 2 "빈 인덱스: snapshot"  snapshot --project "$EMPTY"
 expect_status 64 "빈 인덱스 영향 대상 없음" impact Missing --project "$EMPTY" --allow-empty-index
+expect_status 64 "빈 인덱스 순회 root 없음" impact Missing --format language-traversal \
+    --project "$EMPTY" --allow-empty-index
 # 목적지를 디렉터리로 준다. 파일로 못 쓰는 자리이므로 이 실패는 진짜 쓰기 실패다.
 expect_status 2 "출력 파일 쓰기 실패"  graph --project "$EMPTY" --allow-empty-index -o "$EMPTY"
 
