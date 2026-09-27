@@ -259,6 +259,29 @@ expect_status 2 "빈 인덱스: snapshot"  snapshot --project "$EMPTY"
 expect_status 64 "빈 인덱스 영향 대상 없음" impact Missing --project "$EMPTY" --allow-empty-index
 expect_status 64 "빈 인덱스 순회 root 없음" impact Missing --format language-traversal \
     --project "$EMPTY" --allow-empty-index
+# --roots-from 은 인덱스를 열기 전에 읽고 검사한다. 형식·내용 오류는 전부 사용 오류(64)다.
+printf '# 주석\n\ns:Missing\n' > "$EMPTY/roots.txt"
+printf 's:A\001\n' > "$EMPTY/roots-control.txt"
+printf '# 주석뿐\n' > "$EMPTY/roots-empty.txt"
+printf '["s:A", 1]' > "$EMPTY/roots-bad.json"
+head -c 16777217 /dev/zero | tr '\0' ' ' > "$EMPTY/roots-large.txt"
+ROOTS_ARGS=(--format language-traversal --project "$EMPTY" --allow-empty-index)
+expect_status 64 "순회 root 파일 없음"      impact "${ROOTS_ARGS[@]}" --roots-from "$EMPTY/none.txt"
+expect_status 64 "순회 root 파일 제어 문자" impact "${ROOTS_ARGS[@]}" --roots-from "$EMPTY/roots-control.txt"
+expect_status 64 "순회 root 파일 비어 있음" impact "${ROOTS_ARGS[@]}" --roots-from "$EMPTY/roots-empty.txt"
+expect_status 64 "순회 root 파일 JSON 위반" impact "${ROOTS_ARGS[@]}" --roots-from "$EMPTY/roots-bad.json"
+expect_status 64 "순회 root 파일 16MiB 초과" impact "${ROOTS_ARGS[@]}" --roots-from "$EMPTY/roots-large.txt"
+expect_status 64 "빈 표준 입력 root"        impact "${ROOTS_ARGS[@]}" --roots-from -
+expect_status 64 "root 파일은 순회 문서 전용" impact --roots-from "$EMPTY/roots.txt" --project "$EMPTY" --allow-empty-index
+# 해석하지 못한 root 도 문서에 싣고 나서 64 로 끝난다. 사용 오류와 구분하려고 문서의 root id 를 본다.
+expect_output '"id" : "s:Missing"' "root 파일의 root 가 문서에 실린다" impact "${ROOTS_ARGS[@]}" --roots-from "$EMPTY/roots.txt"
+STDIN_OUT="$(printf 's:FromStdin\n' | "$BINARY" impact s:First "${ROOTS_ARGS[@]}" --roots-from - 2>/dev/null)"
+if grep -q -- '"id" : "s:First"' <<< "$STDIN_OUT" && grep -q -- '"id" : "s:FromStdin"' <<< "$STDIN_OUT"; then
+    printf '  ok        표준 입력 root 가 위치 인자 root 와 함께 실린다\n'
+else
+    printf '  FAIL      표준 입력 root 가 위치 인자 root 와 함께 실린다\n'
+    FAILURES=$((FAILURES + 1))
+fi
 # 목적지를 디렉터리로 준다. 파일로 못 쓰는 자리이므로 이 실패는 진짜 쓰기 실패다.
 expect_status 2 "출력 파일 쓰기 실패"  graph --project "$EMPTY" --allow-empty-index -o "$EMPTY"
 
