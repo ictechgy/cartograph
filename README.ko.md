@@ -610,6 +610,7 @@ Codable, preview와 기타 런타임 관리 경로를 수동 또는 런타임 �
 ```bash
 cartograph impact 's:3App6ClientC6logoutyyF' 's:3App6ClientC5fetchyyF' --format language-traversal
 cartograph impact 's:3App6ClientC5fetchyyF' --format language-traversal --direction dependencies
+cartograph impact --format language-traversal --roots-from routes.json   # 파일(또는 - 로 표준 입력)에서 root 읽기
 ```
 
 이 형식은 `isthmus trace`가 읽는 [`language-traversal` v1](../isthmus/docs/LANGUAGE-TRAVERSAL.md)
@@ -650,6 +651,17 @@ cartograph impact 's:3App6ClientC5fetchyyF' --format language-traversal --direct
 `sha256:` 해시라서 같은 그래프 위의 정·역방향 문서가 같은 값을 냅니다. `project`는 `routes`·`bridges`와
 같은 실제 경로입니다. 제어 문자가 든 root와 `--revision`은 isthmus가 그런 id를 거부하므로 64로 거부합니다.
 파일·`--since`·`--before`·런타임 근거 입력은 `change-impact`의 입력이라 이 형식에서는 거부합니다.
+
+`--roots-from <file|->`는 root를 파일에서, `-`면 표준 입력에서 더 읽습니다. route-call 심볼 수천 개를
+넘겨도 인자 길이 상한에 걸리지 않게 하려는 것입니다. kartograph `--roots-from`과 같은 입력 — JSON 문자열
+배열, 또는 사실의 `symbol.usr`를 문서 순서대로 root로 쓰는 bridge-facts 문서(`symbol.usr`가 없는 사실은
+건너뛰고 그 수를 stderr 안내로 알립니다) — 에 더해 줄 형식도 받습니다: 한 줄에 root 하나, LF·CRLF,
+앞뒤 공백 제거, 빈 줄과 `#`으로 시작하는 줄은 건너뜀. 공백이 아닌 첫 글자가 `[`나 `{`면 JSON으로 읽습니다
+(USR은 둘 중 어느 것으로도 시작하지 않습니다). 파일 root는 위치 인자 root 뒤에 붙고, 똑같은 문자열은 한 번만
+쓰며, 입력은 16 MiB, 합친 목록은 root 10000개까지입니다. 파일은 인덱스를 열기 전에 읽고 검사하며, 없거나
+읽지 못하는 파일, 깨진 JSON, UTF-8이 아닌 텍스트, 크기 초과, 빈(공백뿐인) root, 제어 문자(탭과 홀로 선 CR은
+떼지 않으므로 조용히 고치지 않고 거부합니다), root가 하나도 없음은 모두 사용 오류(64)입니다. kartograph와
+같이 `--format language-traversal`에서만 받습니다.
 
 ### `affected` — 이 변경에 도달하는 테스트
 

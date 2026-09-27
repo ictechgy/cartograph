@@ -43,6 +43,39 @@ struct ImpactCommandTests {
         #expect(ImpactCommand.parseTimestamp("yesterday") == nil)
     }
 
+    @Test("--roots-from 은 위치 인자 root 없이도 language-traversal 의 선언 선택이 된다")
+    func parsesRootsFrom() throws {
+        let fromFile = try ImpactCommand.parse(["--format", "language-traversal", "--roots-from", "roots.txt"])
+        try fromFile.validate()
+        #expect(fromFile.rootsFrom == "roots.txt")
+        #expect(fromFile.symbols.isEmpty)
+        let combined = try ImpactCommand.parse(["s:A", "--format", "language-traversal", "--roots-from", "-"])
+        try combined.validate()
+        #expect(combined.rootsFrom == "-")
+        #expect(combined.symbols == ["s:A"])
+    }
+
+    @Test("--roots-from 은 language-traversal 전용이고 파일·since 선택과 섞지 않으며 비어 있을 수 없다")
+    func rejectsRootsFromMisuse() {
+        for arguments in [
+            ["--roots-from", "roots.txt"],
+            ["s:A", "--roots-from", "roots.txt"],
+            ["--roots-from", "roots.txt", "--format", "json"],
+            ["--roots-from", "roots.txt", "--file", "A.swift", "--format", "language-traversal"],
+            ["--roots-from", "roots.txt", "--since", "HEAD", "--format", "language-traversal"],
+            ["--roots-from", "", "--format", "language-traversal"],
+            ["--roots-from", "  ", "--format", "language-traversal"],
+        ] {
+            do {
+                let command = try ImpactCommand.parse(arguments)
+                try command.validate()
+                Issue.record("오류가 발생해야 한다: \(arguments)")
+            } catch {
+                #expect(!"\(error)".isEmpty)
+            }
+        }
+    }
+
     @Test("language-traversal 과 섞을 수 없는 입력과 그 형식 전용 옵션의 오용을 거부한다")
     func rejectsLanguageTraversalMisuse() {
         for arguments in [

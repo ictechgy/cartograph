@@ -9,6 +9,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cartograph impact --format language-traversal --roots-from <file|->` reads roots from a file or
+  stdin, so isthmus capture can pass thousands of route-call symbols without hitting the argv limit or
+  splitting the run. It accepts kartograph's `--roots-from` inputs (a JSON string array, or a
+  bridge-facts document whose facts' `symbol.usr` become roots in document order) plus a line format
+  (one root per line, LF or CRLF, blank lines and `#` comments skipped). File roots follow positional
+  roots, exact duplicates are dropped, and input is capped at 16 MiB and 10000 combined roots. The
+  list is checked before the index opens; unreadable or malformed input, empty roots and control
+  characters are usage errors (64). The option is rejected outside `--format language-traversal`.
 - `cartograph impact --format language-traversal` emits one multi-root traversal as an isthmus
   `language-traversal` v1 document. `change-impact` keeps one `via` per declaration, so with several
   roots isthmus could not tell which route reached which view (a logout route lost the screen `body`
