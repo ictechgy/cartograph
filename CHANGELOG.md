@@ -9,6 +9,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cartograph impact --format language-traversal` emits one multi-root traversal as an isthmus
+  `language-traversal` v1 document. `change-impact` keeps one `via` per declaration, so with several
+  roots isthmus could not tell which route reached which view (a logout route lost the screen `body`
+  that called it), and running once per root was slow and bulky. The new document lists every root
+  that reaches each declaration, computed in a single pass (a two-nearest-roots BFS plus per-tier
+  root-set propagation, checked against per-root brute force and per-root `ImpactAnalyzer` runs), with
+  ids equal to the `symbol.usr` of `routes`/`bridges` facts. Names carry the enclosing type
+  (`ProfileView.body`) instead of only the module. Evidence tiers are per-root lower bounds: index
+  edges are `direct`, override/protocol dispatch and automatic runtime connections are `candidate`,
+  and a protocol dispatch is `bound` only when its single implementation is proven in a closed-world
+  index. Framework- and runtime-invoked declarations such as SwiftUI `body` and `@main` are named in
+  `runtime-invoked-entry-points` rather than given invented callers. `--direction dependencies` walks
+  the inverse relation. `unresolvedCalls` and `dispatch` are not emitted because the Swift index does
+  not record calls through closures in parameters or locals. The `change-impact` output is unchanged.
 - `cartograph routes` exports the HTTP requests Swift code makes as an http bridge-facts document
   (`target: "http"`, `roles: ["client"]`, one `route-call` per call site), so isthmus can join app
   calls with server routes and OpenAPI operations by (method, path template). Apps call their own

@@ -11,7 +11,7 @@ public struct LanguageTraversalDocument: Sendable, Equatable, Encodable {
     /// 순회 정점의 신원. `usr` 는 routes·bridges 사실의 `symbol.usr` 와 같은 문자열이다.
     public struct Symbol: Sendable, Equatable, Encodable {
         public let usr: String
-        /// 감싸는 타입까지 붙인 구문 표기(`JobsListView.body`). 모듈은 붙이지 않는다.
+        /// 감싸는 타입까지 붙인 구문 표기(`ProfileView.body`). 모듈은 붙이지 않는다.
         public let qualifiedName: String
         public let kind: String
         /// 프로젝트 상대 위치. 프로젝트 밖이면 생략한다.
