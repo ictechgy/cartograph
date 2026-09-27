@@ -451,6 +451,26 @@ struct HTTPRouteCallScannerTests {
         #expect(result.counts == RouteCallScanCounts())
     }
 
+    // MARK: 리뷰 회귀
+
+    @Test("scheme 리터럴 뒤 host 값과 경로를 연결하면 host 뒤 경로가 base 앵커다")
+    func concatenatedDynamicHost() {
+        let body = """
+            let fixedHost = "api.example.com"
+            func a(host: String) {
+                _ = URLRequest(url: URL(string: "https://" + host + "/v1/items")!)
+                _ = URLRequest(url: URL(string: "https://" + host + ":8443/v1/items?x=1")!)
+                _ = URLRequest(url: URL(string: "https://" + fixedHost + "/v1/items")!)
+                _ = URLRequest(url: URL(string: "https://" + host)!)
+            }
+            """
+        let found = facts(body, wrappers: [])
+        #expect(found.map { "\($0.channel ?? "nil") \($0.pathAnchor.rawValue) \($0.authority ?? "-")" } == [
+            "/v1/items base -", "/v1/items base -", "/v1/items root api.example.com", found[3].channel.map { "\($0) base -" },
+        ])
+        #expect(found[3].isDynamic && found[3].channelPrefix == nil)
+    }
+
     // MARK: 문서 성질
 
     @Test("테스트 소스의 호출에는 표식을 단다")

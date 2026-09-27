@@ -63,6 +63,8 @@ struct HTTPRouteRulesTests {
         #expect(query?.template == "/" && query?.queryTailStripped == true && query?.pathAnchor == .root)
         let noPath = HTTPRouteURLResolver.resolve([.literal("https://"), .value, .literal(".example.com")], join: .absoluteURL)
         #expect(noPath?.isDynamic == true && noPath?.channelPrefix == nil && noPath?.pathAnchor == .base)
+        let concatenated = HTTPRouteURLResolver.resolve([.literal("https://"), .value, .literal("/v1/items")], join: .absoluteURL)
+        #expect(concatenated?.template == "/v1/items" && concatenated?.pathAnchor == .base && concatenated?.authority == nil)
         let dynamicQuery = HTTPRouteURLResolver.resolve([.literal("https://"), .value, .literal("?a=1")], join: .absoluteURL)
         #expect(dynamicQuery?.template == "/" && dynamicQuery?.pathAnchor == .base)
     }
