@@ -4,7 +4,7 @@
     "url-compose.json" : "5ba0c2a3ac2fcf2e44b9a3cb5f0616b85fbe78fd2a739bd5636a1b8a1152e73a"
   },
   "source" : {
-    "commit" : "750b1ff4e37ea1055e003d6737994fbcb22bc4e6",
+    "commit" : "1ffb0e006ee854f05485df55f6af43d9e3d158fe",
     "path" : "conformance/",
     "repository" : "isthmus"
   }
