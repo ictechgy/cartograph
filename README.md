@@ -46,7 +46,7 @@ What that buys you:
 | How does a value reach this function? | not answerable | `dataflow` returns bounded interprocedural contexts as JSON |
 | Callers in Dart or JavaScript | invisible | `bridges` exports the Swift side of a platform channel; `--external-retentions` reads the join back |
 | Which tables does this code touch? | invisible | `schema` exports `relation-use` facts for isthmus to join with the SQL catalog |
-| Which server routes does the app call? | invisible | `routes` exports `route-call` facts for isthmus to join with server routes and OpenAPI operations |
+| Which server routes does the app call? | invisible | `routes` exports `route-call` facts (URLSession, URLComponents, Alamofire and Moya without declarations) for isthmus to join with server routes and OpenAPI operations |
 | Runtime or dispatch-only risk | — | `impact` marks runtime review targets and dispatch contracts |
 | Graph export | — | ✅ DOT, Mermaid, JSON, self-contained HTML |
 | SARIF for code scanning | — | ✅ |
@@ -1170,7 +1170,8 @@ reasons `bridges` does: the document is a complete boundary export, not a findin
 ### `routes` — export the HTTP requests the app makes
 
 ```bash
-cartograph routes --wrappers http-wrappers.json          # http bridge-facts JSON on stdout
+cartograph routes                                        # library calls, no declarations needed
+cartograph routes --wrappers http-wrappers.json          # plus your own wrappers; JSON on stdout
 cartograph routes --wrappers http-wrappers.json --include-tests --format text
 ```
 
@@ -1201,11 +1202,40 @@ anything else is kept as `dynamic` with the proven `channelPrefix`. Userinfo, qu
 high-entropy segments and webhook paths are removed or masked in every field that carries path
 text, including the source expression of a dynamic fact.
 
+Common libraries need no declaration. Each rule follows the library's source and was checked against
+the request line a local server actually received (`experiments/http-client-oracle`, 35 requests on
+macOS 26.7 with Alamofire 5.12.2 and Moya 15.0.3; a test replays the recording on every run):
+
+| Library | Read without declarations |
+|---|---|
+| Foundation | `URL(string:)`, `URL(string:relativeTo:)` (RFC 3986 merge when the base is a literal URL), `appendingPathComponent` / `appending(path:)` / `appending(component:)`, URL constants on types, `httpMethod` assignments, `data(from:)` / `dataTask(with:)` / `dataTaskPublisher(for:)` |
+| URLComponents | `scheme`, `host`, `port`, `path`, `percentEncodedPath` assigned in the same block before `.url` is read; a conditional assignment or `&components` makes the URL unreadable |
+| Alamofire | `request` / `download` / `streamRequest` / `upload(_:to:)` on `AF`, `Session.default` or a property typed `Session`, with `method:` or the method's default verb (`upload` is POST); `URLRequest(url:method:)` and `request.method =`; routers conforming to `URLRequestConvertible` whose `asURLRequest()` appends `path` to a base |
+| Moya | types conforming to `TargetType`, directly or through a project protocol: one fact per enum case from the `baseURL`, `path` and `method` switches (a protocol-extension default counts), `rawValue` paths included |
+
+Foundation's `appendingPathComponent`, `appending(path:)` and `URLComponents.path` take decoded text
+and percent-encode `?`, `#` and `%`, so a Moya `path` of `users/search?draft=1` is sent as
+`/users/search%3Fdraft=1` and emitted that way — the join then shows the call never reaches
+`/users/search`. A value that may hold slashes (`appending(path: path)`) is not guessed to be one
+segment: the fact is `dynamic` with the proven `channelPrefix`. Router facts are attributed to the
+**enum case** (or the target type, for a struct target): the index records every reference to the
+case, so isthmus trace's reverse traversal reaches `provider.request(.users)` and the callers of a
+function that receives the case as a parameter, which call-site attribution could not follow. A switch
+arm with `where`, or one the command cannot read, makes that case `dynamic` rather than borrowing
+another arm's path. A struct target whose `path` is a stored property is a descriptor filled in by its
+callers — declare its initializer in `http-wrappers` (it is counted under `http-wrapper-undeclared:`
+until you do). A project that declares its own `Session`, `TargetType` or `URLRequestConvertible`
+type is not read with these rules.
+
 Test sources — `Tests/`, `…Tests` directories and `…Tests.swift` files, judged on the
 project-relative path — are skipped and declared `sourceSets: {"tests": "excluded"}`;
 `--include-tests` reads them and marks their facts `testSource`. `--service` names the document's
 service for isthmus attribution. What the command could not turn into a fact is counted with the
-contract's client-side prefixes: `route-call-coverage:` for request URLs it could not read,
+contract's client-side prefixes: `route-call-coverage:` for request URLs it could not read, routers
+whose request assembly it could not read, and files importing HTTP clients it does not model (APIKit,
+Get, Siesta, RxAlamofire, Apollo, AFNetworking), `url-rewrite-interceptors:` for a custom Moya
+endpoint mapping or an Alamofire request adapter that rewrites the URL, `generated-client-unscanned:`
+for files importing an OpenAPI generated-client runtime,
 `http-wrapper-undeclared:` for functions that pass a parameter through as the path,
 `http-wrapper-unresolved:` for a declared wrapper that matched no declaration or no call, and
 `ambiguous-base-join:` for a relative path after an unknown base. None of these gaps can bound the
