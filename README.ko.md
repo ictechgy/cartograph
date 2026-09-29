@@ -1172,7 +1172,8 @@ Foundation의 `appendingPathComponent`·`appending(path:)`·`URLComponents.path`
 `provider.request(.users)`와, case를 매개변수로 받는 함수의 호출자까지 닿습니다 — 호출 지점 귀속으로는
 따라갈 수 없던 곳입니다. `where`가 붙은 분기나 읽지 못한 분기의 case는 다른 분기의 경로를 빌리지 않고
 `dynamic`입니다. `path`가 저장 프로퍼티인 구조체 타겟은 호출자가 값을 채우는 기술자입니다 —
-이니셜라이저를 `http-wrappers`에 선언하세요(선언 전까지 `http-wrapper-undeclared:`로 셉니다). 프로젝트가
+이니셜라이저를 `http-wrappers`에 선언하세요(선언 전까지 `http-wrapper-undeclared:`로 셉니다). 선언한 래퍼의
+소유 타입인 라우터는 선언에 맡겨 같은 요청을 두 번 내지 않습니다. 프로젝트가
 `Session`·`TargetType`·`URLRequestConvertible` 타입을 직접 선언했으면 이 규칙으로 읽지 않습니다.
 
 테스트 소스(프로젝트 상대 경로 기준 `Tests/`, `…Tests` 디렉터리, `…Tests.swift` 파일)는 읽지 않고

@@ -1224,7 +1224,8 @@ function that receives the case as a parameter, which call-site attribution coul
 arm with `where`, or one the command cannot read, makes that case `dynamic` rather than borrowing
 another arm's path. A struct target whose `path` is a stored property is a descriptor filled in by its
 callers — declare its initializer in `http-wrappers` (it is counted under `http-wrapper-undeclared:`
-until you do). A project that declares its own `Session`, `TargetType` or `URLRequestConvertible`
+until you do); a router type that owns any declared wrapper is left to the declaration, so one request
+is never emitted twice. A project that declares its own `Session`, `TargetType` or `URLRequestConvertible`
 type is not read with these rules.
 
 Test sources — `Tests/`, `…Tests` directories and `…Tests.swift` files, judged on the

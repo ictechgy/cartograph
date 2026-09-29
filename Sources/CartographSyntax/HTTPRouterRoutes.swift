@@ -16,24 +16,25 @@ extension HTTPRouteCallScanner {
     /// case 의 경로 분기이고, 경로 분기가 없으면 case 선언이다.
     ///
     /// - Parameters:
-    ///   - declaredDescriptorOwners: 사용자가 생성자 래퍼로 선언한 타입의 마지막 이름. 저장 프로퍼티로 경로를
-    ///     받는 기술자 라우터가 이미 래퍼 호출로 덮였는지 판단한다.
+    ///   - declaredWrapperOwners: 사용자가 `http-wrappers` 로 선언한 래퍼 소유 타입의 마지막 이름. 그 타입의
+    ///     요청은 선언이 책임지므로 라우터 사실을 따로 내지 않는다 — 같은 요청이 두 사실(서로 다른 템플릿일 수도
+    ///     있다)로 조인되지 않게 하려는 것이다.
     public static func routerRouteCalls(
         tables: [HTTPTargetMemberTable], recipes: [HTTPRouterRecipe], surface: HTTPDeclarationSurface,
-        declaredDescriptorOwners: Set<String> = []
+        declaredWrapperOwners: Set<String> = []
     ) -> RouterRouteCalls {
         let index = RouterTableIndex(tables: tables, recipes: recipes, surface: surface)
         var calls: [ScannedRouteCall] = []
         var counts = RouteCallScanCounts()
         for chain in surface.routerChains {
-            guard let kind = surface.routerKind(of: chain) else { continue }
+            guard let kind = surface.routerKind(of: chain),
+                  !declaredWrapperOwners.contains(chain.split(separator: ".").last.map(String.init) ?? chain) else { continue }
             guard let pathTable = index.table(.path, of: chain) else {
                 counts.unmodelledRouters += 1
                 continue
             }
             if pathTable.isStoredWithoutValue {
-                let name = chain.split(separator: ".").last.map(String.init) ?? chain
-                if !declaredDescriptorOwners.contains(name) { counts.undeclaredWrapperSinks += 1 }
+                counts.undeclaredWrapperSinks += 1
                 continue
             }
             let recipe = kind == .alamofire ? index.recipe(of: chain) : nil

@@ -148,10 +148,10 @@ extension CartographService {
             pass.routerRecipes += result.routerRecipes
         }
         // 라우터 멤버는 여러 파일의 익스텐션에 흩어질 수 있어 모든 파일을 읽은 뒤 case 별 사실로 합친다.
-        let descriptorOwners = Set(scanner.wrappers.filter { $0.kind == .constructor }.compactMap(\.ownerComponents.last))
+        let wrapperOwners = Set(scanner.wrappers.compactMap(\.ownerComponents.last))
         let routers = HTTPRouteCallScanner.routerRouteCalls(
             tables: pass.routerTables, recipes: pass.routerRecipes, surface: scanner.surface,
-            declaredDescriptorOwners: descriptorOwners
+            declaredWrapperOwners: wrapperOwners
         )
         pass.calls += routers.calls
         pass.counts = pass.counts + routers.counts
@@ -203,8 +203,8 @@ extension CartographService {
         }
         let unmodelled = counts.unmodelledClientImports
         if !unmodelled.isEmpty {
-            result.append("route-call-coverage: \(unmodelled.values.reduce(0, +)) Swift source(s) import HTTP client "
-                + "libraries that routes does not model (\(unmodelled.keys.sorted().joined(separator: ", "))); their requests are absent")
+            result.append("route-call-coverage: \(unmodelled.values.reduce(0, +)) import(s) of HTTP client libraries that "
+                + "routes does not model (\(unmodelled.keys.sorted().joined(separator: ", "))); requests made through them are absent")
         }
         if counts.unprovenReceiverCalls > 0 {
             result.append("route-call-coverage: \(counts.unprovenReceiverCalls) call(s) match a declared wrapper function's "

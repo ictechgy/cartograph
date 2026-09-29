@@ -296,8 +296,13 @@ extension HTTPRouteCallCollector {
     }
 
     /// Alamofire `RequestAdapter.adapt(_:for:completion:)` 가 요청의 `url` 을 바꾸는지 센다.
+    ///
+    /// 감싸는 타입이 `RequestAdapter`·`RequestInterceptor` 를 준수할 때만 어댑터다. 같은 이름의 무관한 함수를
+    /// 세면 모든 미호출 진단이 근거 없이 `-unverified` 로 내려간다.
     func recordURLRewritingAdapter(_ node: FunctionDeclSyntax, name: String) {
-        guard name == "adapt", let first = node.signature.parameterClause.parameters.first,
+        let conformances = chain.isEmpty ? [] : surface.conformedNames(of: chain.joined(separator: "."))
+        guard name == "adapt", conformances.contains("RequestAdapter") || conformances.contains("RequestInterceptor"),
+              let first = node.signature.parameterClause.parameters.first,
               HTTPSyntax.typeBaseName(first.type) == "URLRequest", let body = node.body else { return }
         let finder = HTTPURLAssignmentFinder()
         finder.walk(body)
@@ -342,8 +347,13 @@ struct HTTPComponentsState {
         let rest = head.dropFirst(schemeEnd)
         let cut = rest.firstIndex { "/?#".contains($0) } ?? rest.endIndex
         initialOrigin = [.literal(String(head[..<cut]))]
-        let tail = String(rest[cut...])
-        path = (tail.isEmpty ? [] : [HTTPScannedPart.literal(tail)]) + Self.remainder(whole, afterMerging: head)
+        let tail = rest[cut...]
+        // query·fragment 는 경로가 아니다. 뒤따르는 `path +=` 가 query 뒤에 붙지 않게 경로에서 뗀다.
+        if let query = tail.firstIndex(where: { "?#".contains($0) }) {
+            path = query == tail.startIndex ? [] : [.literal(String(tail[..<query]))]
+            return
+        }
+        path = (tail.isEmpty ? [] : [HTTPScannedPart.literal(String(tail))]) + Self.remainder(whole, afterMerging: head)
     }
 
     /// 병합한 첫 리터럴 뒤의 원래 조각들(보간 값의 원문 식을 보존한다).
@@ -397,7 +407,7 @@ enum HTTPComponentsMutations {
         let end = item.endPositionBeforeTrailingTrivia
         let usePosition = use.positionAfterSkippingLeadingTrivia
         for found in finder.uses where found.position >= end && found.position < usePosition {
-            if found.isInOut { return nil }
+            if found.isInOut || found.isUnprovableWrite { return nil }
             guard let mutation = found.mutation else { continue }
             // 같은 블록의 최상위 문장이 아니면(조건문·클로저 안) 사용 시점의 값을 증명할 수 없다.
             guard found.statementList == list.id else { return nil }
@@ -423,6 +433,8 @@ final class HTTPComponentsUseFinder: SyntaxVisitor {
         let position: AbsolutePosition
         /// `&name` 으로 넘겨 어디서든 바뀔 수 있는지.
         let isInOut: Bool
+        /// 값 전체를 바꾸거나(`name = …`, `name.string = …`) 읽지 않는 속성을 대입해 경로를 증명할 수 없는지.
+        var isUnprovableWrite = false
         /// 경로·host 를 바꾸는 대입이면 그 내용.
         let mutation: HTTPComponentsMutation?
         /// 대입 문장이 속한 코드 블록 목록. 최상위 문장이 아니면 nil.
@@ -432,6 +444,11 @@ final class HTTPComponentsUseFinder: SyntaxVisitor {
     private let name: String
     private let properties: Set<String>
     private(set) var uses: [Use] = []
+    /// 대입해도 경로·host 가 바뀌지 않는 속성. 그 밖의 속성 대입(`string` 등)은 URL 전체를 바꿀 수 있다.
+    private static let pathNeutral: Set<String> = [
+        "queryItems", "percentEncodedQueryItems", "query", "percentEncodedQuery", "fragment", "percentEncodedFragment",
+        "user", "password", "percentEncodedUser", "percentEncodedPassword",
+    ]
 
     init(name: String, properties: Set<String>) {
         self.name = name
@@ -442,14 +459,43 @@ final class HTTPComponentsUseFinder: SyntaxVisitor {
     override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
         guard SyntaxIdentifiers.unescaped(node.baseName.text) == name else { return .visitChildren }
         let isInOut = node.parent?.is(InOutExprSyntax.self) == true
-        let (mutation, statement) = mutation(at: node)
-        uses.append(Use(position: node.positionAfterSkippingLeadingTrivia, isInOut: isInOut, mutation: mutation, statementList: statement))
+        let receiver = Self.receiver(of: node)
+        let (mutation, statement) = mutation(at: receiver)
+        var use = Use(position: node.positionAfterSkippingLeadingTrivia, isInOut: isInOut, mutation: mutation, statementList: statement)
+        use.isUnprovableWrite = mutation == nil && isUnprovableWrite(receiver)
+        uses.append(use)
         return .visitChildren
     }
 
-    /// `name.path = x`, `name.path += x`, `name.path.append(x)` 를 읽는다.
-    private func mutation(at node: DeclReferenceExprSyntax) -> (HTTPComponentsMutation?, SyntaxIdentifier?) {
-        guard let member = node.parent?.as(MemberAccessExprSyntax.self), member.base?.id == ExprSyntax(node).id else { return (nil, nil) }
+    /// `name?`·`name!` 처럼 이름을 감싼 옵셔널 접근까지 올라간 수신자 식.
+    private static func receiver(of node: DeclReferenceExprSyntax) -> ExprSyntax {
+        var current = ExprSyntax(node)
+        while let parent = current.parent,
+              parent.is(OptionalChainingExprSyntax.self) || parent.is(ForceUnwrapExprSyntax.self) {
+            current = ExprSyntax(parent)!
+        }
+        return current
+    }
+
+    /// 값 전체 대입(`name = …`)이나 경로를 모르는 속성 대입(`name.string = …`)인지.
+    private func isUnprovableWrite(_ receiver: ExprSyntax) -> Bool {
+        if Self.isAssignmentTarget(receiver) { return true }
+        guard let member = receiver.parent?.as(MemberAccessExprSyntax.self), member.base?.id == receiver.id,
+              Self.isAssignmentTarget(ExprSyntax(member)) else { return false }
+        return !Self.pathNeutral.contains(member.declName.baseName.text)
+    }
+
+    private static func isAssignmentTarget(_ expression: ExprSyntax) -> Bool {
+        guard let infix = expression.parent?.as(InfixOperatorExprSyntax.self), infix.leftOperand.id == expression.id else { return false }
+        if infix.operator.is(AssignmentExprSyntax.self) { return true }
+        // 복합 대입(`+=`)만 쓰기다. 비교 연산자(`==`·`<=`)도 `=` 로 끝난다.
+        guard let text = infix.operator.as(BinaryOperatorExprSyntax.self)?.operator.text else { return false }
+        return text.hasSuffix("=") && !["==", "!=", "<=", ">=", "===", "!=="].contains(text)
+    }
+
+    /// `name.path = x`, `name.path += x`, `name.path.append(x)` 를 읽는다(`name?.path` 도 같다).
+    private func mutation(at receiver: ExprSyntax) -> (HTTPComponentsMutation?, SyntaxIdentifier?) {
+        guard let member = receiver.parent?.as(MemberAccessExprSyntax.self), member.base?.id == receiver.id else { return (nil, nil) }
         let property = member.declName.baseName.text
         guard properties.contains(property) else { return (nil, nil) }
         if let infix = member.parent?.as(InfixOperatorExprSyntax.self), infix.leftOperand.id == ExprSyntax(member).id {

@@ -32,8 +32,8 @@ struct HTTPClientLibraryScannerTests {
             tables += result.routerTables
             recipes += result.routerRecipes
         }
-        let owners = Set(wrappers.filter { $0.kind == .constructor }.compactMap(\.ownerComponents.last))
-        let routers = HTTPRouteCallScanner.routerRouteCalls(tables: tables, recipes: recipes, surface: surface, declaredDescriptorOwners: owners)
+        let owners = Set(wrappers.compactMap(\.ownerComponents.last))
+        let routers = HTTPRouteCallScanner.routerRouteCalls(tables: tables, recipes: recipes, surface: surface, declaredWrapperOwners: owners)
         return (calls + routers.calls, counts + routers.counts)
     }
 
@@ -143,6 +143,16 @@ struct HTTPClientLibraryScannerTests {
                 components.percentEncodedPath = "/v1/a%2fb"
                 _ = URLRequest(url: components.url!)
             }
+            func e() {
+                var components = URLComponents(string: "https://api.example.com/v1?lang=en")!
+                components.path += "/users"
+                _ = URLRequest(url: components.url!)
+            }
+            func f() {
+                guard var components = URLComponents(string: "https://api.example.com") else { return }
+                components.path = "/v1/guarded"
+                _ = URLRequest(url: components.url!)
+            }
             func d(id: String) {
                 var components = URLComponents(string: "https://api.example.com")!
                 components.path = "/v1/items/\\(id)"
@@ -151,7 +161,8 @@ struct HTTPClientLibraryScannerTests {
             """
         let found = scan(source).calls.map(\.fact)
         #expect(found.map(Self.describe) == [
-            "GET /v1/search%3Fdraft root", "GET /v1/users root", "GET /v1/a%2Fb root", "GET /v1/items/{} root",
+            "GET /v1/search%3Fdraft root", "GET /v1/users root", "GET /v1/a%2Fb root", "GET /v1/users root",
+            "GET /v1/guarded root", "GET /v1/items/{} root",
         ])
         #expect(found.first?.authority == "api.example.com")
     }
@@ -175,10 +186,39 @@ struct HTTPClientLibraryScannerTests {
                 _ = URLRequest(url: components.url!)
             }
             func tweak(_ components: inout URLComponents) {}
+            func d() {
+                var components = URLComponents(string: "https://api.example.com/v1/orders")!
+                components.string = "https://api.example.com/v2/claims"
+                _ = URLRequest(url: components.url!)
+            }
+            func e() {
+                var components = URLComponents(string: "https://api.example.com/v1")!
+                components = URLComponents(string: "https://api.example.com/v3")!
+                _ = URLRequest(url: components.url!)
+            }
             """
         let result = scan(source)
         #expect(result.calls.isEmpty)
-        #expect(result.counts.unreadableSinks == 3)
+        #expect(result.counts.unreadableSinks == 5)
+    }
+
+    @Test("옵셔널 URLComponents 의 대입과 경로 중립 속성·비교는 경로를 증명하는 데 방해가 되지 않는다")
+    func optionalAndNeutralComponents() {
+        let source = """
+            func a() {
+                var components = URLComponents(string: "https://api.example.com/v1")
+                components?.path = "/v2/users"
+                _ = URLRequest(url: components!.url!)
+            }
+            func b() {
+                var components = URLComponents(string: "https://api.example.com")!
+                components.path = "/v1/items"
+                components.query = "a=1"
+                if components.path == "/v1/items" { print("same") }
+                _ = URLRequest(url: components.url!)
+            }
+            """
+        #expect(routes(source) == ["GET /v2/users root", "GET /v1/items root"])
     }
 
     @Test("URL 을 받는 dataTaskPublisher 는 GET 이고 URLRequest 를 받으면 사실이 아니다")
@@ -454,6 +494,30 @@ struct HTTPClientLibraryScannerTests {
         #expect(call.declaration?.start?.line == 2)
     }
 
+    @Test("래퍼로 선언한 타입의 라우터는 선언이 책임지므로 라우터 사실을 내지 않는다")
+    func declaredWrapperOwnersSuppressRouterFacts() {
+        let source = """
+            import Moya
+            enum UserAPI: TargetType {
+                case list
+                var baseURL: URL { URL(string: "https://api.example.com")! }
+                var path: String { "/users" }
+                var method: Moya.Method { .get }
+                var task: Task { .requestPlain }
+                var headers: [String: String]? { nil }
+                static func make(path: String) -> UserAPI { .list }
+            }
+            """
+        let wrapper = HTTPWrapperDeclaration(
+            language: "swift", kind: .function, owner: "UserAPI", name: "make", methodArg: nil,
+            pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .base
+        )
+        #expect(project(["/p/UserAPI.swift": source]).calls.count == 1)
+        let declared = project(["/p/UserAPI.swift": source], wrappers: [wrapper])
+        #expect(declared.calls.isEmpty)
+        #expect(declared.counts == RouteCallScanCounts())
+    }
+
     @Test("프로젝트가 TargetType 을 직접 선언하면 Moya 타겟으로 읽지 않는다")
     func projectTargetTypeIsNotMoya() {
         let source = """
@@ -581,6 +645,12 @@ struct HTTPClientLibraryScannerTests {
                     var request = urlRequest
                     request.url = URL(string: "https://mirror.example.com")
                     completion(.success(request))
+                }
+            }
+            final class NotAnAdapter {
+                func adapt(_ urlRequest: URLRequest) {
+                    var request = urlRequest
+                    request.url = nil
                 }
             }
             """

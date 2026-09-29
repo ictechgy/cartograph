@@ -27,7 +27,7 @@ public struct RouteCallScanCounts: Hashable, Sendable {
     public var unmodelledRouters = 0
     /// 요청 URL 을 바꾸는 Moya `endpointClosure` 매핑과 Alamofire 요청 어댑터 수.
     public var urlRewriters = 0
-    /// 요청을 읽지 않는 HTTP 클라이언트 모듈 → 그 모듈을 import 한 소스 수.
+    /// 요청을 읽지 않는 HTTP 클라이언트 모듈 → 그 모듈의 import 문 수(파일마다 하나).
     public var unmodelledClientImports: [String: Int] = [:]
     /// OpenAPI 생성 클라이언트 런타임을 import 한 소스 수.
     public var generatedClientImports = 0
@@ -95,8 +95,9 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
         inheritedNames.merge(other.inheritedNames) { $0.union($1) }
         protocolChains.formUnion(other.protocolChains)
         // 같은 파일을 두 번 합치면(스캔이 이 파일의 표면을 다시 더한다) case 가 겹친다. 위치로 중복을 없앤다.
+        // 경로 없이 만든 표면(임베더 기본값)은 위치만으로 파일을 가를 수 없어 중복으로 보지 않는다.
         enumCases.merge(other.enumCases) { first, second in
-            first + second.filter { candidate in !first.contains { $0.start == candidate.start } }
+            first + second.filter { candidate in candidate.start.path.isEmpty || !first.contains { $0.start == candidate.start } }
         }
         typeSites.merge(other.typeSites) { $0.start <= $1.start ? $0 : $1 }
         memberTypes.merge(other.memberTypes) { $0.union($1) }
@@ -355,7 +356,7 @@ final class HTTPLocalCollector: SyntaxVisitor {
     }
 
     /// `var components = URLComponents(…)` 을 기록한다. 사용 지점이 같은 블록의 대입을 다시 읽는다.
-    private func bindComponents(_ name: String, _ value: ExprSyntax, at node: PatternBindingSyntax) {
+    private func bindComponents(_ name: String, _ value: ExprSyntax, at node: some SyntaxProtocol) {
         guard HTTPSyntax.isComponentsConstruction(value) else { return }
         let key = HTTPSyntax.localKey(SyntaxIdentifiers.unescaped(name), scope: HTTPSyntax.innermostScope(of: node))
         componentsBindings[key] = componentsBindings[key] == nil ? .some((value, Syntax(node))) : .some(nil)
@@ -412,6 +413,7 @@ final class HTTPLocalCollector: SyntaxVisitor {
         guard let name = node.pattern.as(IdentifierPatternSyntax.self)?.identifier.text,
               let value = node.initializer?.value else { return .visitChildren }
         bindURL(name, value, at: node)
+        bindComponents(name, value, at: node)
         return .visitChildren
     }
 
