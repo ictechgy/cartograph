@@ -5,10 +5,20 @@ import SwiftSyntax
 struct HTTPScannedPart {
     let part: HTTPURLPart
     let expression: ExprSyntax?
+    /// 소스에 없는데 결합 규칙이 끼워 넣은 조각(`appendingPathComponent` 의 `/`)인지.
+    var isSynthetic = false
 
     static func literal(_ text: String) -> HTTPScannedPart { .init(part: .literal(text), expression: nil) }
     static func value(_ expression: ExprSyntax) -> HTTPScannedPart { .init(part: .value, expression: expression) }
+    static func pathValue(_ expression: ExprSyntax?) -> HTTPScannedPart { .init(part: .pathValue, expression: expression) }
     static let queryTail = HTTPScannedPart(part: .queryTail, expression: nil)
+    static let joiningSlash = HTTPScannedPart(part: .literal("/"), expression: nil, isSynthetic: true)
+
+    /// 경로를 읽었다고 할 근거가 되는 소스 리터럴인지. 결합 규칙이 끼워 넣은 `/` 는 근거가 아니다.
+    var isMeaningfulLiteral: Bool {
+        guard case .literal = part else { return false }
+        return !isSynthetic
+    }
 }
 
 /// 호출 대상의 모양. `f(`, `a.b.f(`, `.f(` 를 가른다.
@@ -46,7 +56,7 @@ private enum HTTPWrapperMatch {
 }
 
 /// 경로가 함수 매개변수를 그대로 흘려보내는지. 선언된 생성자 래퍼 타입의 매개변수면 이미 덮인 경로다.
-private enum HTTPPassThrough {
+enum HTTPPassThrough {
     case none
     case covered
     case undeclared
@@ -54,19 +64,23 @@ private enum HTTPPassThrough {
 
 /// route-call 을 실제로 뽑아내는 방문자.
 final class HTTPRouteCallCollector: SyntaxVisitor {
-    private(set) var calls: [ScannedRouteCall] = []
-    private(set) var counts = RouteCallScanCounts()
+    var calls: [ScannedRouteCall] = []
+    var counts = RouteCallScanCounts()
     private(set) var callsByWrapper: [Int: Int] = [:]
+    /// 라우터 타입 멤버(`path`·`method`·`baseURL`)의 분기 표. 문서 단위로 합쳐 case 별 사실이 된다.
+    var routerTables: [HTTPTargetMemberTable] = []
+    /// Alamofire 라우터 `asURLRequest()` 에서 읽은 요청 조립 방식.
+    var routerRecipes: [HTTPRouterRecipe] = []
 
     private let wrappers: [HTTPWrapperDeclaration]
-    private let surface: HTTPDeclarationSurface
-    private let converter: SourceLocationConverter
-    private let bindings: BindingCollector
-    private let locals: HTTPLocalCollector
-    private let path: String
-    private let isTestSource: Bool
+    let surface: HTTPDeclarationSurface
+    let converter: SourceLocationConverter
+    let bindings: BindingCollector
+    let locals: HTTPLocalCollector
+    let path: String
+    let isTestSource: Bool
     /// 선언된 생성자 래퍼의 타입 이름. 이 타입의 매개변수에서 온 경로는 래퍼 호출이 이미 사실로 냈다.
-    private let constructorOwners: Set<String>
+    let constructorOwners: Set<String>
 
     /// 감싸는 선언의 스택. 사실을 어느 USR 에 귀속시킬지 정한다.
     private var declarations: [EnclosingDeclaration] = []
@@ -89,7 +103,7 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     }
 
     /// 지금 타입 문맥의 구성 요소. 익스텐션 이름 `A.B` 는 두 요소로 펼친다.
-    private var chain: [String] { typeNames.flatMap { $0.split(separator: ".").map(String.init) } }
+    var chain: [String] { typeNames.flatMap { $0.split(separator: ".").map(String.init) } }
 
     // MARK: 선언 문맥
 
@@ -131,6 +145,8 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         let base = SyntaxIdentifiers.unescaped(node.name.text)
+        recordRouterRequestBuilder(node, name: base)
+        recordURLRewritingAdapter(node, name: base)
         pushDeclaration(name: base, indexName: RuntimeSyntaxNames.indexName(base, parameters: node.signature.parameterClause.parameters), node: node)
         return .visitChildren
     }
@@ -145,6 +161,7 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     /// 계산 프로퍼티나 `lazy var` 초기식 안의 호출은 그 프로퍼티에 귀속시킨다. 지역 변수는 정점이 없다.
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         guard let name = Self.memberVariableName(node) else { return .visitChildren }
+        recordRouterMember(node, name: name)
         pushDeclaration(name: name, indexName: name, node: node)
         return .visitChildren
     }
@@ -160,15 +177,26 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
 
     // MARK: 호출
 
+    override func visit(_ node: ImportDeclSyntax) -> SyntaxVisitorContinueKind {
+        recordImport(node)
+        return .skipChildren
+    }
+
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
         if let (index, declaration) = matchWrapper(node) {
             emitWrapperCall(node, index: index, declaration: declaration)
         } else if HTTPSyntax.isFoundationInitializer(node, type: "URLRequest"),
                   let url = node.arguments.first(where: { $0.label?.text == "url" }), !Self.isPageLoad(node) {
-            emitDirectRequest(node, urlExpression: url.expression, method: requestMethod(of: node), countsOpaque: true)
+            // Alamofire 의 `URLRequest(url:method:headers:)` 는 `URLConvertible`(문자열 포함)을 받는다.
+            let acceptsString = node.arguments.contains { $0.label?.text == "method" }
+            emitDirectRequest(node, urlExpression: url.expression, method: requestMethod(of: node), countsOpaque: true,
+                              acceptsString: acceptsString)
         } else if let url = sessionURLArgument(of: node) {
             emitDirectRequest(node, urlExpression: url, method: "GET", countsOpaque: false)
+        } else if let request = alamofireRequest(node) {
+            emitAlamofireRequest(node, request)
         }
+        countURLRewritingEndpoint(node)
         return .visitChildren
     }
 
@@ -269,7 +297,7 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     }
 
     /// 수신자 식의 타입 이름. 파일 안에서 한 가지로만 표기됐거나 생성자로 묶였을 때만 안다.
-    private func receiverType(of base: ExprSyntax) -> String? {
+    func receiverType(of base: ExprSyntax) -> String? {
         let name: String
         if let reference = base.as(DeclReferenceExprSyntax.self) {
             name = SyntaxIdentifiers.unescaped(reference.baseName.text)
@@ -279,8 +307,12 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
             return nil
         }
         if let types = locals.annotatedTypes[name], types.count == 1 { return types.first }
-        let instance = bindings.instanceTypeName(named: name, in: HTTPSyntax.context(of: base))
-        return instance?.split(separator: ".").last.map(String.init)
+        let context = HTTPSyntax.context(of: base)
+        if let instance = bindings.instanceTypeName(named: name, in: context) {
+            return instance.split(separator: ".").last.map(String.init)
+        }
+        // 프로퍼티가 다른 파일(주 선언)에 표기되고 호출은 익스텐션에 있는 흔한 모양.
+        return surface.memberType(named: name, in: context.enclosingTypes)
     }
 
     private static func isSelfReference(_ expression: ExprSyntax) -> Bool {
@@ -327,7 +359,7 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     }
 
     /// 호출이 선언된 래퍼 자신의 본문 안에 있는지.
-    private func isInsideDeclaredWrapper(_ node: some SyntaxProtocol) -> Bool {
+    func isInsideDeclaredWrapper(_ node: some SyntaxProtocol) -> Bool {
         var current = node.parent
         while let syntax = current, HTTPSyntax.typeName(of: syntax) == nil {
             if let function = syntax.as(FunctionDeclSyntax.self) {
@@ -353,20 +385,29 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     ///
     /// 선언된 함수 래퍼 본문 안의 싱크는 래퍼 구현이라 건너뛴다. URL 을 읽지 못하면 매개변수를
     /// 흘려보내는지 보고, 아니면 읽지 못한 싱크로 센다(세션 호출은 인자가 URL 인지조차 모르므로 세지 않는다).
-    private func emitDirectRequest(_ node: FunctionCallExprSyntax, urlExpression: ExprSyntax, method: String?, countsOpaque: Bool) {
-        guard !isInsideDeclaredWrapper(node) else { return }
+    func emitDirectRequest(
+        _ node: FunctionCallExprSyntax, urlExpression: ExprSyntax, method: String?, countsOpaque: Bool, acceptsString: Bool = false
+    ) {
+        guard !isInsideDeclaredWrapper(node), !isInsideRouterRequestBuilder(node) else { return }
         let context = HTTPSyntax.context(of: node)
-        guard let url = urlParts(urlExpression, context: context, depth: 0) else {
+        let read = urlParts(urlExpression, context: context, depth: 0)
+            ?? (acceptsString ? stringURLParts(urlExpression, context: context).map { ($0, HTTPPathJoin.absoluteURL) } : nil)
+        guard let url = read else {
             if countsOpaque { recordOpaque(urlExpression, node: node) }
             return
         }
+        emitReadURL(node, url: url, method: method, source: urlExpression)
+    }
+
+    /// 펼친 요청 URL 하나를 사실로 낸다. 매개변수 통과면 세고, 리터럴이 하나도 없으면 읽지 못한 싱크다.
+    func emitReadURL(_ node: FunctionCallExprSyntax, url: (parts: [HTTPScannedPart], join: HTTPPathJoin), method: String?, source: ExprSyntax) {
         guard recordPassThrough(url.parts, node: node) == .none else { return }
-        guard url.parts.contains(where: { if case .literal = $0.part { true } else { false } }),
+        guard url.parts.contains(where: \.isMeaningfulLiteral),
               let resolution = HTTPRouteURLResolver.resolve(url.parts.map(\.part), join: url.join) else {
             counts.unreadableSinks += 1
             return
         }
-        emit(resolution, method: method, source: urlExpression, service: nil, node: node)
+        emit(resolution, method: method, source: source, service: nil, node: node)
     }
 
     /// `webView.load(URLRequest(url:))` 처럼 요청을 곧바로 `load` 에 넘기는 모양인지.
@@ -385,43 +426,37 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
               let argument = node.arguments.first else { return nil }
         let label = argument.label?.text
         let name = member.declName.baseName.text
+        // `dataTaskPublisher(for:)` 는 URL·URLRequest 겹지정이다. 인자가 URL 식일 때만 아래에서 받는다.
         let isGet = (["data", "download", "bytes"].contains(name) && label == "from")
             || (["dataTask", "downloadTask"].contains(name) && label == "with")
+            || (name == "dataTaskPublisher" && label == "for")
         guard isGet, urlParts(argument.expression, context: HTTPSyntax.context(of: node), depth: 0) != nil else { return nil }
         return argument.expression
     }
 
     /// URL 식을 조각과 결합 방식으로 펼친다. 읽을 수 없는 식이면 nil.
-    private func urlParts(_ expression: ExprSyntax, context: BindingCollector.Context, depth: Int) -> (parts: [HTTPScannedPart], join: HTTPPathJoin)? {
+    func urlParts(_ expression: ExprSyntax, context: BindingCollector.Context, depth: Int) -> (parts: [HTTPScannedPart], join: HTTPPathJoin)? {
         guard depth < 16 else { return nil }
         let value = HTTPSyntax.unwrapped(expression)
         if let call = value.as(FunctionCallExprSyntax.self) {
             if HTTPSyntax.isFoundationInitializer(call, type: "URL"),
                let string = call.arguments.first, string.label?.text == "string" {
-                let isRelative = call.arguments.dropFirst().first?.label?.text == "relativeTo"
-                return (parts(of: string.expression, context: context), isRelative ? .rfc3986 : .absoluteURL)
+                let path = parts(of: string.expression, context: context)
+                guard let relative = call.arguments.dropFirst().first, relative.label?.text == "relativeTo" else {
+                    return (path, .absoluteURL)
+                }
+                return relativeURLParts(path, base: relative.expression, context: context, depth: depth)
             }
+            if let converted = convertedURLParts(call, context: context, depth: depth) { return converted }
             guard let appended = HTTPSyntax.appendedComponent(of: call) else { return nil }
-            let component = parts(of: appended.component, context: context)
-            guard let base = urlParts(appended.base, context: context, depth: depth + 1) else { return (component, .slashJoin) }
-            return (Self.slashJoined(base.parts, component), base.join)
+            return appendedURLParts(call, appended: appended, context: context, depth: depth)
         }
+        if let components = componentsURLParts(value, context: context, depth: depth) { return components }
         if let reference = value.as(DeclReferenceExprSyntax.self),
            let bound = locals.urlExpression(named: SyntaxIdentifiers.unescaped(reference.baseName.text), scopes: context.scopes) {
             return urlParts(bound, context: HTTPSyntax.context(of: bound), depth: depth + 1)
         }
-        return nil
-    }
-
-    /// `appendingPathComponent` 결합. 앞의 끝 슬래시와 뒤의 앞 슬래시를 떼고 하나만 둔다.
-    private static func slashJoined(_ base: [HTTPScannedPart], _ component: [HTTPScannedPart]) -> [HTTPScannedPart] {
-        var head = base
-        if case let .literal(text)? = head.last?.part {
-            head[head.count - 1] = .literal(String(text.reversed().drop { $0 == "/" }.reversed()))
-        }
-        var tail = component
-        if case let .literal(text)? = tail.first?.part { tail[0] = .literal(String(text.drop { $0 == "/" })) }
-        return head + [.literal("/")] + tail
+        return memberURLParts(value, context: context, depth: depth)
     }
 
     /// 요청의 동사. `URLRequest` 기본값은 GET 이지만, 바깥으로 나가 다른 곳에서 바뀔 수 있으면 모른다.
@@ -430,21 +465,35 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     /// 그 동사, 대입이 없고 이름이 반환·inout 으로 나가지 않으면 GET 이다. 동사를 틀리게 내면
     /// 거짓 `route-method-mismatch` 가 되므로 확신이 없으면 `methodDynamic` 쪽을 고른다.
     private func requestMethod(of node: FunctionCallExprSyntax) -> String? {
+        let context = HTTPSyntax.context(of: node)
+        // Alamofire `URLRequest(url:method:headers:)` 는 생성 때 동사를 정한다. 없으면 URLRequest 기본값 GET.
+        let initial = node.arguments.first { $0.label?.text == "method" }
+            .map { libraryVerb($0.expression, context: context) } ?? "GET"
         guard let binding = node.parent?.as(InitializerClauseSyntax.self)?.parent?.as(PatternBindingSyntax.self),
               let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else {
-            return Self.isReturned(node) ? nil : "GET"
+            return Self.isReturned(node) ? nil : initial
         }
         guard let body = Self.enclosingBody(of: node) else { return nil }
-        let assignments = HTTPMethodAssignmentCollector(name: SyntaxIdentifiers.unescaped(name))
+        let assignments = HTTPMethodAssignmentCollector(name: SyntaxIdentifiers.unescaped(name)) { [self] in isAlamofireSession($0) }
         assignments.walk(body)
         guard !assignments.escapes else { return nil }
-        let context = HTTPSyntax.context(of: node)
-        let verbs = assignments.values.map { value -> String? in
-            let resolved = bindings.resolveString(value, in: context)
-            return !resolved.isDynamic && HTTPRouteTemplate.methods.contains(resolved.text) ? resolved.text : nil
+        let verbs = assignments.values.map { assignment -> String? in
+            assignment.isLibraryMethod ? libraryVerb(assignment.value, context: context)
+                : stringVerb(assignment.value, context: context)
         }
-        guard let first = verbs.first else { return "GET" }
+        guard let first = verbs.first else { return initial }
         return verbs.allSatisfy { $0 == first } ? first : nil
+    }
+
+    /// `httpMethod` 에 대입한 문자열 식의 동사. `HTTPMethod.post.rawValue` 처럼 라이브러리 멤버의 원시값도 읽는다.
+    func stringVerb(_ expression: ExprSyntax, context: BindingCollector.Context) -> String? {
+        let value = HTTPSyntax.unwrapped(expression)
+        if let member = value.as(MemberAccessExprSyntax.self), member.declName.baseName.text == "rawValue",
+           let base = member.base, let verb = libraryVerbMember(base) {
+            return verb
+        }
+        let resolved = bindings.resolveString(value, in: context)
+        return resolved.isDynamic ? nil : HTTPLibraryMethod.verb(forRawValue: resolved.text)
     }
 
     /// 반환되는 식인지. 반환된 요청은 호출자가 동사를 바꿀 수 있다.
@@ -513,11 +562,20 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     private func expanded(_ expression: ExprSyntax, context: BindingCollector.Context, depth: Int) -> [HTTPScannedPart] {
         let value = BindingCollector.unparenthesized(expression)
         if let text = bindings.resolvedValue(of: value) { return [.literal(text)] }
+        if let raw = enumRawValue(value) { return [.literal(raw)] }
         if isQueryTailLocal(value, context: context) { return [.queryTail] }
         if let bound = bindings.constantExpression(for: value, in: context) {
             return parts(of: bound.expression, context: bound.context, depth: depth + 1)
         }
         return [.value(value)]
+    }
+
+    /// `Path.users.rawValue` 의 문자열 원시값. 프로젝트 어느 파일의 enum 이든 표면에서 찾는다.
+    private func enumRawValue(_ expression: ExprSyntax) -> String? {
+        guard let member = expression.as(MemberAccessExprSyntax.self), member.declName.baseName.text == "rawValue",
+              let caseAccess = member.base?.as(MemberAccessExprSyntax.self), let typeExpression = caseAccess.base,
+              let type = HTTPSyntax.dottedName(typeExpression) else { return nil }
+        return surface.rawValue(ofCase: SyntaxIdentifiers.unescaped(caseAccess.declName.baseName.text), inTypeNamed: type)
     }
 
     /// `compose.suffix`: 같은 함수의 불변 지역 변수이고, 초기식의 비어 있지 않은 값이 모두 `?` 로
@@ -577,8 +635,8 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     ///
     /// 매개변수 뒤에 경로 리터럴이 붙으면(`"\(base)/items"`) 그 매개변수는 base 식이고 경로는
     /// 읽힌다. 뒤가 없거나 query·fragment 뿐일 때만 경로 전체가 매개변수에서 온다.
-    private func recordPassThrough(_ parts: [HTTPScannedPart], node: FunctionCallExprSyntax) -> HTTPPassThrough {
-        guard let first = parts.first, first.part == .value, let expression = first.expression else { return .none }
+    func recordPassThrough(_ parts: [HTTPScannedPart], node: FunctionCallExprSyntax) -> HTTPPassThrough {
+        guard let first = parts.first, first.part.isValue, let expression = first.expression else { return .none }
         let nextLiteral = parts.dropFirst().lazy.compactMap { part -> String? in
             if case let .literal(text) = part.part { return text }
             return nil
@@ -593,7 +651,7 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     ///
     /// 선언된 생성자 래퍼 타입을 매개변수로 받는 함수(엔드포인트 기술자로 요청을 만드는 실행기)의
     /// 싱크는 세지 않는다. 그 요청의 경로는 기술자를 만든 호출 지점이 이미 사실로 냈다.
-    private func recordOpaque(_ expression: ExprSyntax, node: FunctionCallExprSyntax) {
+    func recordOpaque(_ expression: ExprSyntax, node: FunctionCallExprSyntax) {
         switch passThrough(expression, node: node) {
         case .none where takesDeclaredDescriptor(node): break
         case .none: counts.unreadableSinks += 1
@@ -617,7 +675,7 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
 
     // MARK: 내보내기
 
-    private func emit(_ resolution: HTTPRouteResolution, method: String?, source: ExprSyntax?, service: String?, node: FunctionCallExprSyntax) {
+    func emit(_ resolution: HTTPRouteResolution, method: String?, source: ExprSyntax?, service: String?, node: FunctionCallExprSyntax) {
         let start = converter.location(for: node.positionAfterSkippingLeadingTrivia)
         let fact = RouteCallFact(
             resolution: resolution, method: method,
@@ -640,29 +698,38 @@ private enum QueryTailShape {
 /// `URLRequest` 는 값 타입이라 다른 이름에 복사하거나(`var copy = request`) 함수에 넘기면 그쪽에서 동사가
 /// 바뀐 사본이 전송될 수 있다. 이름이 멤버 접근(`request.x`)의 수신자나 알려진 세션 전송 호출의 인자가
 /// 아닌 자리에 나오면 나간 것으로 보고 동사를 확정하지 않는다. 틀린 동사는 거짓 method 불일치 error 다.
-private final class HTTPMethodAssignmentCollector: SyntaxVisitor {
+final class HTTPMethodAssignmentCollector: SyntaxVisitor {
     /// 요청을 받아 그대로 전송하는 URLSession 호출. 이름과 첫 인자 레이블.
     private static let sendingCalls: Set<String> = [
         "data\0for", "upload\0for", "download\0for", "bytes\0for", "dataTaskPublisher\0for",
         "dataTask\0with", "uploadTask\0with", "downloadTask\0with",
     ]
 
+    /// 동사 대입 하나. `method` 는 Alamofire 의 `URLRequest.method`(`HTTPMethod`) 대입이다.
+    struct Assignment {
+        let value: ExprSyntax
+        let isLibraryMethod: Bool
+    }
+
     private let name: String
-    private(set) var values: [ExprSyntax] = []
+    /// 수신자가 Alamofire `Session` 인지. `session.request(request)` 도 요청을 그대로 전송한다.
+    private let isAlamofireSession: (ExprSyntax) -> Bool
+    private(set) var values: [Assignment] = []
     private(set) var escapes = false
 
-    init(name: String) {
+    init(name: String, isAlamofireSession: @escaping (ExprSyntax) -> Bool = { _ in false }) {
         self.name = name
+        self.isAlamofireSession = isAlamofireSession
         super.init(viewMode: .sourceAccurate)
     }
 
     override func visit(_ node: InfixOperatorExprSyntax) -> SyntaxVisitorContinueKind {
         guard node.operator.is(AssignmentExprSyntax.self),
               let member = node.leftOperand.as(MemberAccessExprSyntax.self),
-              member.declName.baseName.text == "httpMethod",
+              ["httpMethod", "method"].contains(member.declName.baseName.text),
               member.base.map(isName) == true
         else { return .visitChildren }
-        values.append(node.rightOperand)
+        values.append(Assignment(value: node.rightOperand, isLibraryMethod: member.declName.baseName.text == "method"))
         return .visitChildren
     }
 
@@ -692,7 +759,11 @@ private final class HTTPMethodAssignmentCollector: SyntaxVisitor {
               let call = argument.parent?.parent?.as(FunctionCallExprSyntax.self),
               call.arguments.first?.id == argument.id,
               let member = call.calledExpression.as(MemberAccessExprSyntax.self) else { return false }
-        return Self.sendingCalls.contains(member.declName.baseName.text + "\0" + (argument.label?.text ?? ""))
+        let key = member.declName.baseName.text + "\0" + (argument.label?.text ?? "")
+        if Self.sendingCalls.contains(key) { return true }
+        // Alamofire 5.12.2 의 `request(_:)`·`download(_:)`·`streamRequest(_:)` 는 `URLRequestConvertible` 을 받아
+        // `asURLRequest()`(URLRequest 는 자기 자신)로 그대로 보낸다.
+        return ["request\0", "download\0", "streamRequest\0"].contains(key) && member.base.map(isAlamofireSession) == true
     }
 
     private func isName(_ expression: ExprSyntax) -> Bool {
