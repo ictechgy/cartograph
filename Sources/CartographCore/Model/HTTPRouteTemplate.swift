@@ -88,7 +88,7 @@ public enum HTTPRouteTemplate {
     }
 
     /// `scheme://` 의 UTF-8 길이. scheme 이 없으면 nil. scheme 은 ASCII 라 글자 수와 같다.
-    static func schemeLength(_ text: String) -> Int? {
+    public static func schemeLength(_ text: String) -> Int? {
         let scalars = Array(text.unicodeScalars.prefix(64))
         guard let first = scalars.first, isASCIILetter(first) else { return nil }
         var index = 1
