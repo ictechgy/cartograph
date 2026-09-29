@@ -1894,6 +1894,332 @@
       "expect": {
         "status": "missing"
       }
+    },
+    {
+      "id": "spring/double-wildcard-zero-segments",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-web/src/main/java/org/springframework/web/util/pattern/WildcardTheRestPathElement.java#L35",
+      "versionRange": ">=6.2 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "classMapping": "/files",
+        "mapping": "/**"
+      },
+      "expect": {
+        "templates": [
+          "/files",
+          "/files/{**}"
+        ],
+        "catchAllPrefixTemplates": [
+          "/files"
+        ],
+        "trailingSlash": "strict"
+      },
+      "note": "Verified at v6.2.10: the parser folds the separator before a trailing ** into WildcardTheRestPathElement (InternalPathPatternParser#peekDoubleWildcard), which matches when no path data remains, so /files/** also matches /files (PathPattern javadoc L44: \"** matches zero or more path segments until the end of the path\"). Emit the {**} decl plus the catchAllPrefix decl. Combined class and method mappings use PathPattern#combine/concat."
+    },
+    {
+      "id": "spring/capture-rest-zero-segments",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-web/src/main/java/org/springframework/web/util/pattern/CaptureTheRestPathElement.java#L57",
+      "versionRange": ">=6.2 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "mapping": "/files/{*path}"
+      },
+      "expect": {
+        "templates": [
+          "/files",
+          "/files/{**}"
+        ],
+        "catchAllPrefixTemplates": [
+          "/files"
+        ],
+        "trailingSlash": "strict"
+      },
+      "note": "Verified at v6.2.10: CaptureTheRestPathElement replaces the preceding separator and matches an empty remainder; PathPattern javadoc L68-L69 says /resources/{*path} matches /resources as well."
+    },
+    {
+      "id": "spring/root-double-wildcard",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-web/src/main/java/org/springframework/web/util/pattern/WildcardTheRestPathElement.java#L35",
+      "versionRange": ">=6.2 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "mapping": "/**"
+      },
+      "expect": {
+        "templates": [
+          "/",
+          "/{**}"
+        ],
+        "catchAllPrefixTemplates": [
+          "/"
+        ],
+        "trailingSlash": "strict"
+      },
+      "note": "The prefix decl of a root catch-all is \"/\" (GRAPH-EXCHANGE 0-segment catch-all rule); verified at v6.2.10 that /** matches the root path."
+    },
+    {
+      "id": "spring/middle-double-wildcard-rejected",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-web/src/main/java/org/springframework/web/util/pattern/InternalPathPatternParser.java#L251",
+      "versionRange": ">=6.2 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "mapping": "/files/**/meta"
+      },
+      "expectDynamic": true,
+      "expectLimitation": "route-coverage:",
+      "note": "PathPatternParser rejects ** followed by more pattern (NO_MORE_DATA_EXPECTED_AFTER_CAPTURE_THE_REST, verified at v6.2.10). Such a mapping only exists with AntPathMatcher configuration, which this producer does not model: emit dynamic plus route-coverage:."
+    },
+    {
+      "id": "spring/trailing-slash-strict-default",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-web/src/main/java/org/springframework/web/util/pattern/PathPatternParser.java#L38",
+      "versionRange": ">=6.0 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "mapping": "/items"
+      },
+      "expect": {
+        "templates": [
+          "/items"
+        ],
+        "trailingSlash": "strict"
+      },
+      "note": "matchOptionalTrailingSeparator defaults to false; the javadoc (L52) says the default changed in 6.0 from true to false. Spring 5.x defaults are out of this range."
+    },
+    {
+      "id": "spring/trailing-slash-optional-when-enabled",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-web/src/main/java/org/springframework/web/util/pattern/PathPatternParser.java#L45",
+      "versionRange": ">=6.0 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "mapping": "/items",
+        "matchOptionalTrailingSeparator": true
+      },
+      "expect": {
+        "templates": [
+          "/items"
+        ],
+        "trailingSlash": "optional"
+      },
+      "note": "Only when the application explicitly calls the deprecated setMatchOptionalTrailingSeparator(true) (verified at v6.2.10) does /items also match /items/. Emit optional only when that call is proven for the parser in use; otherwise strict."
+    },
+    {
+      "id": "spring/empty-method-mapping-keeps-class-path",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-webmvc/src/main/java/org/springframework/web/servlet/mvc/condition/PathPatternsRequestCondition.java#L164",
+      "versionRange": ">=6.2 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "classMapping": "/api",
+        "mapping": ""
+      },
+      "expect": {
+        "templates": [
+          "/api"
+        ],
+        "trailingSlash": "strict"
+      },
+      "note": "An empty method mapping is the empty path mapping (L78: no text), and combine returns the class condition unchanged (L164), so the handler serves /api, not /api/ (verified at v6.2.10)."
+    },
+    {
+      "id": "spring/slash-method-mapping-adds-trailing-slash",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-web/src/main/java/org/springframework/web/util/pattern/PathPattern.java#L561",
+      "versionRange": ">=6.2 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "classMapping": "/api",
+        "mapping": "/"
+      },
+      "expect": {
+        "templates": [
+          "/api/"
+        ],
+        "trailingSlash": "strict"
+      },
+      "note": "PathPattern#combine concatenates /api and / into /api/ (concat, verified at v6.2.10). With the strict 6.x default a call to /api is a trailing-slash mismatch, not a match."
+    },
+    {
+      "id": "spring/empty-class-and-method-mapping-is-root",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-webmvc/src/main/java/org/springframework/web/servlet/mvc/condition/PathPatternsRequestCondition.java#L162",
+      "versionRange": ">=6.2 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "classMapping": "",
+        "mapping": ""
+      },
+      "expect": {
+        "templates": [
+          "/"
+        ],
+        "trailingSlash": "strict"
+      },
+      "note": "When both class and method mappings are empty, combine uses the root patterns \"\" and \"/\" (L156-L162, verified at v6.2.10). The canonical grammar has no empty template, so producers emit \"/\" only."
+    },
+    {
+      "id": "spring/trailing-wildcard-matches-empty",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-web/src/main/java/org/springframework/web/util/pattern/WildcardPathElement.java#L26",
+      "versionRange": ">=6.2 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "mapping": "/files/*"
+      },
+      "expect": {
+        "templates": [
+          "/files/",
+          "/files/{}"
+        ],
+        "trailingSlash": "strict"
+      },
+      "note": "A * that is the last pattern element matches zero characters (class javadoc L25-L26 and matches(), verified at v6.2.10), so /files/* serves /files/. Emit the {} decl plus an empty-value variant decl /files/ (same method, symbol, and location); consumer {} never matches an empty segment."
+    },
+    {
+      "id": "spring/middle-wildcard-needs-a-character",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-web/src/main/java/org/springframework/web/util/pattern/WildcardPathElement.java#L76",
+      "versionRange": ">=6.2 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "mapping": "/files/*/meta"
+      },
+      "expect": {
+        "templates": [
+          "/files/{}/meta"
+        ],
+        "trailingSlash": "strict"
+      },
+      "note": "Within a path a * must match at least one character (L76, verified at v6.2.10); no empty-value variant."
+    },
+    {
+      "id": "spring/whole-segment-variable-needs-a-character",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-web/src/main/java/org/springframework/web/util/pattern/CaptureVariablePathElement.java#L76",
+      "versionRange": ">=6.2 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "mapping": "/users/{id}"
+      },
+      "expect": {
+        "templates": [
+          "/users/{}"
+        ],
+        "trailingSlash": "strict"
+      },
+      "note": "A whole-segment variable rejects an empty capture (L76, verified at v6.2.10); no empty-value variant."
+    },
+    {
+      "id": "spring/partial-variable-allows-empty",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-web/src/main/java/org/springframework/web/util/pattern/RegexPathElement.java#L42",
+      "versionRange": ">=6.2 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "mapping": "/files/{name}.json"
+      },
+      "expect": {
+        "templates": [
+          "/files/.json",
+          "/files/{}.json"
+        ],
+        "trailingSlash": "strict"
+      },
+      "note": "A segment mixing literals and a variable becomes RegexPathElement whose default variable pattern is (.*) (L42), so the capture may be empty; the last-element check (L143) only requires the whole segment text to be non-empty (verified at v6.2.10). Consumer partial matching requires a non-empty middle, so emit the empty-value variant decl /files/.json as well."
+    },
+    {
+      "id": "spring/partial-wildcard-allows-empty",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.10/spring-web/src/main/java/org/springframework/web/util/pattern/RegexPathElement.java#L77",
+      "versionRange": ">=6.2 <7.0",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "mapping": "/files/*.json"
+      },
+      "expect": {
+        "templates": [
+          "/files/.json",
+          "/files/{}.json"
+        ],
+        "trailingSlash": "strict"
+      },
+      "note": "A * inside a segment becomes .* in RegexPathElement (verified at v6.2.10) and may be empty; same expansion as a partial variable."
+    },
+    {
+      "id": "spring/empty-value-expansion-capped",
+      "ruleId": "framework.spring.path-pattern",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#정규-경로-템플릿",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "framework": "spring-mvc",
+        "mapping": "/{a}.x/{b}.x/{c}.x/{d}.x/{e}.x"
+      },
+      "expectDynamic": true,
+      "expectLimitation": "route-template-expansion-capped:",
+      "note": "Empty-value variants follow the optional-segment expansion limit: more than 16 decls are emitted as dynamic plus route-template-expansion-capped:."
     }
   ]
 }

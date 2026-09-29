@@ -1157,6 +1157,8 @@ case(암시적 멤버 `.get` 포함)는 `methodEnum`으로 바꾸고, 그 밖은
 못한 것은 계약의 호출 측 접두사로 셉니다: 읽지 못한 요청 URL은 `route-call-coverage:`, 매개변수를
 경로로 흘려보내는 함수는 `http-wrapper-undeclared:`, 선언과 맞는 심볼이나 호출이 없는 래퍼는
 `http-wrapper-unresolved:`, 알 수 없는 base 뒤의 상대 경로는 `ambiguous-base-join:`입니다.
+이 공백들은 숨긴 호출의 경로 상한을 증명할 수 없어 `limitationScopes`를 싣지 않습니다 — 계약대로
+스코프 없는 한계는 모든 선언에 적용됩니다.
 여기서는 인덱스가 선택입니다: 찾으면 USR을 붙이고, 없으면 qualifiedName만 싣고
 `missing-route-usrs:`로 알립니다. `bridges`가 거부하는 인자는 같은 이유로 거부합니다.
 
