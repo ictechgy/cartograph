@@ -264,4 +264,64 @@ struct RouteCallsTests {
         #expect(text.contains("\"channel\" : null"))
         #expect(text.contains("\"pathAnchor\" : \"base\""))
     }
+
+    // MARK: 라이브러리 라우터
+
+    @Test("Moya case 사실은 래퍼 없이 나오고 다른 파일의 enum case 선언 USR 이 붙는다")
+    func moyaCasesCarryEnumCaseUSRs() throws {
+        let api = "import Moya\nenum UserAPI {\n    case list\n    case detail(id: Int)\n}\n"
+        let target = """
+            import Moya
+            extension UserAPI: TargetType {
+                var baseURL: URL { URL(string: "https://api.example.com/v1")! }
+                var path: String {
+                    switch self {
+                    case .list: return "/users"
+                    case .detail(let id): return "/users/\\(id)"
+                    }
+                }
+                var method: Moya.Method { .get }
+                var task: Task { .requestPlain }
+                var headers: [String: String]? { nil }
+            }
+            """
+        var builder = SnapshotBuilder(module: "App", path: "/p/Sources/UserAPI.swift")
+        builder.symbol("s:UserAPI", name: "UserAPI", kind: .enumType, line: 2)
+        builder.symbol("s:list", name: "list", kind: .enumCase, line: 3, parent: "s:UserAPI")
+        builder.symbol("s:detail", name: "detail(id:)", kind: .enumCase, line: 4, parent: "s:UserAPI")
+        let files = ["/p/Sources/UserAPI.swift": api, "/p/Sources/UserAPI+Target.swift": target]
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        let service = CartographService(configuration: configuration, environment: CartographEnvironment(
+            fileSystem: InMemoryFileSystem(files: files), indexProviderOverride: StaticIndexProvider(builder.build())
+        ))
+        let result = try service.routeCalls(generatedAt: fixedDate)
+        #expect(result.facts.map { "\($0.method ?? "?") \($0.channel ?? "nil") \($0.symbol?.usr ?? "-")" } == [
+            "GET /v1/users s:list", "GET /v1/users/{} s:detail",
+        ])
+        #expect(result.facts.map(\.symbol?.qualifiedName) == ["UserAPI.list", "UserAPI.detail"])
+        #expect(result.facts.allSatisfy { $0.location.path == "Sources/UserAPI+Target.swift" })
+        #expect(result.limitations.isEmpty)
+    }
+
+    @Test("라이브러리 한계를 계약의 호출 측 접두사로 알린다")
+    func libraryLimitations() throws {
+        let source = """
+            import APIKit
+            import OpenAPIURLSession
+            import Moya
+            import Alamofire
+            enum Remote: TargetType { case a }
+            let mapping = { (target: Remote) -> Endpoint in
+                Endpoint(url: "https://mirror.example.com", sampleResponseClosure: { .networkResponse(200, Data()) },
+                         method: .get, task: .requestPlain, httpHeaderFields: nil)
+            }
+            """
+        let result = try makeService(files: ["/p/Sources/Net.swift": source]).routeCalls(generatedAt: fixedDate)
+        #expect(result.facts.isEmpty)
+        let prefixes = result.limitations.map { String($0.prefix { $0 != ":" }) + ":" }
+        #expect(prefixes == ["route-call-coverage:", "route-call-coverage:", "url-rewrite-interceptors:", "generated-client-unscanned:"])
+        #expect(result.limitations[0].contains("1 router type(s)"))
+        #expect(result.limitations[1].contains("(APIKit)"))
+    }
 }

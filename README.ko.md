@@ -48,7 +48,7 @@ Cartograph의 문장은 *"의존성 그래프를 내놓는다"*이며, 미사용
 | 이 값이 이 함수까지 어떻게 오나? | 답할 수 없음 | `dataflow`가 한정된 함수 간 문맥을 JSON으로 답함 |
 | Dart·JavaScript 쪽 호출자 | 보이지 않음 | `bridges`가 플랫폼 채널의 Swift 쪽을 내보내고 `--external-retentions`가 조인 결과를 읽어 옴 |
 | 이 코드가 어떤 테이블을 건드는가 | 보이지 않음 | `schema`가 `relation-use` 사실을보내 isthmus가 SQL 카탈로그와 조인함 |
-| 앱이 어떤 서버 라우트를 부르는가 | 보이지 않음 | `routes`가 `route-call` 사실을 보내 isthmus가 서버 라우트·OpenAPI operation과 조인함 |
+| 앱이 어떤 서버 라우트를 부르는가 | 보이지 않음 | `routes`가 `route-call` 사실(URLSession·URLComponents·Alamofire·Moya는 선언 없이)을 보내 isthmus가 서버 라우트·OpenAPI operation과 조인함 |
 | 런타임·디스패치 전용 위험 | — | `impact`가 런타임 검토 대상과 디스패치 계약을 표시함 |
 | 그래프 내보내기 | — | ✅ DOT, Mermaid, JSON, 단일 HTML |
 | SARIF(code scanning) | — | ✅ |
@@ -1122,7 +1122,8 @@ Core Data·SwiftData·Realm과 나머지 DB 프레임워크는 읽지 않고 `li
 ### `routes` — 앱이 만드는 HTTP 요청 보내기
 
 ```bash
-cartograph routes --wrappers http-wrappers.json          # http bridge-facts JSON을 표준 출력으로
+cartograph routes                                        # 라이브러리 호출은 선언 없이
+cartograph routes --wrappers http-wrappers.json          # 자체 래퍼까지, JSON을 표준 출력으로
 cartograph routes --wrappers http-wrappers.json --include-tests --format text
 ```
 
@@ -1151,10 +1152,38 @@ case(암시적 멤버 `.get` 포함)는 `methodEnum`으로 바꾸고, 그 밖은
 `channelPrefix`와 함께 `dynamic`으로 남깁니다. userinfo·query·fragment·고엔트로피 세그먼트·웹훅
 경로는 경로 문자열을 싣는 모든 필드에서 제거하거나 가립니다 — dynamic 사실의 원문 식도 포함입니다.
 
+흔한 라이브러리는 선언이 필요 없습니다. 규칙마다 라이브러리 소스를 따랐고, 로컬 서버가 실제로 받은
+요청 줄과 대조했습니다(`experiments/http-client-oracle`, macOS 26.7·Alamofire 5.12.2·Moya 15.0.3에서
+요청 35건. 테스트가 매번 그 기록을 다시 대조합니다):
+
+| 라이브러리 | 선언 없이 읽는 것 |
+|---|---|
+| Foundation | `URL(string:)`, `URL(string:relativeTo:)`(base가 리터럴 URL이면 RFC 3986 병합), `appendingPathComponent`·`appending(path:)`·`appending(component:)`, 타입의 URL 상수, `httpMethod` 대입, `data(from:)`·`dataTask(with:)`·`dataTaskPublisher(for:)` |
+| URLComponents | `.url`을 읽기 전 같은 블록에서 대입한 `scheme`·`host`·`port`·`path`·`percentEncodedPath`. 조건부 대입이나 `&components`가 있으면 URL을 읽지 않습니다 |
+| Alamofire | `AF`·`Session.default`·`Session`으로 표기된 프로퍼티의 `request`·`download`·`streamRequest`·`upload(_:to:)`. 동사는 `method:` 또는 메서드 기본값(`upload`는 POST). `URLRequest(url:method:)`와 `request.method =`. `asURLRequest()`가 `path`를 base에 붙이는 `URLRequestConvertible` 라우터 |
+| Moya | `TargetType`을 직접 또는 프로젝트 프로토콜을 거쳐 준수하는 타입. `baseURL`·`path`·`method` 분기로 enum case마다 사실 하나(프로토콜 익스텐션의 기본 구현 포함, `rawValue` 경로 포함) |
+
+Foundation의 `appendingPathComponent`·`appending(path:)`·`URLComponents.path`는 디코드된 텍스트를
+받아 `?`·`#`·`%`를 퍼센트 인코딩합니다. 그래서 Moya `path`가 `users/search?draft=1`이면
+`/users/search%3Fdraft=1`로 전송되고 그대로 사실이 됩니다 — 조인이 그 호출이 `/users/search`에 닿지
+않음을 보여 줍니다. `/`를 담을 수 있는 값(`appending(path: path)`)은 세그먼트 하나로 추측하지 않고
+증명된 `channelPrefix`와 함께 `dynamic`으로 둡니다. 라우터 사실은 **enum case**(구조체 타겟이면 타입)에
+귀속합니다. 인덱스가 case 참조를 모두 기록하므로 isthmus trace의 역방향 순회가
+`provider.request(.users)`와, case를 매개변수로 받는 함수의 호출자까지 닿습니다 — 호출 지점 귀속으로는
+따라갈 수 없던 곳입니다. `where`가 붙은 분기나 읽지 못한 분기의 case는 다른 분기의 경로를 빌리지 않고
+`dynamic`입니다. `path`가 저장 프로퍼티인 구조체 타겟은 호출자가 값을 채우는 기술자입니다 —
+이니셜라이저를 `http-wrappers`에 선언하세요(선언 전까지 `http-wrapper-undeclared:`로 셉니다). 선언한 래퍼의
+소유 타입인 라우터는 선언에 맡겨 같은 요청을 두 번 내지 않습니다. 프로젝트가
+`Session`·`TargetType`·`URLRequestConvertible` 타입을 직접 선언했으면 이 규칙으로 읽지 않습니다.
+
 테스트 소스(프로젝트 상대 경로 기준 `Tests/`, `…Tests` 디렉터리, `…Tests.swift` 파일)는 읽지 않고
 `sourceSets: {"tests": "excluded"}`를 선언합니다. `--include-tests`는 그것까지 읽고 사실에
 `testSource`를 답니다. `--service`는 isthmus 귀속에 쓰는 문서의 서비스 이름입니다. 사실로 만들지
-못한 것은 계약의 호출 측 접두사로 셉니다: 읽지 못한 요청 URL은 `route-call-coverage:`, 매개변수를
+못한 것은 계약의 호출 측 접두사로 셉니다: 읽지 못한 요청 URL·요청 조립을 읽지 못한 라우터·모델링하지
+않는 HTTP 클라이언트(APIKit·Get·Siesta·RxAlamofire·Apollo·AFNetworking)를 import한 파일은
+`route-call-coverage:`, URL을 바꾸는 Moya endpoint 매핑·Alamofire 요청 어댑터는
+`url-rewrite-interceptors:`, OpenAPI 생성 클라이언트 런타임을 import한 파일은
+`generated-client-unscanned:`, 매개변수를
 경로로 흘려보내는 함수는 `http-wrapper-undeclared:`, 선언과 맞는 심볼이나 호출이 없는 래퍼는
 `http-wrapper-unresolved:`, 알 수 없는 base 뒤의 상대 경로는 `ambiguous-base-join:`입니다.
 이 공백들은 숨긴 호출의 경로 상한을 증명할 수 없어 `limitationScopes`를 싣지 않습니다 — 계약대로

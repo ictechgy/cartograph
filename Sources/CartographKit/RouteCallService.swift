@@ -29,14 +29,19 @@ extension CartographService {
             do { texts[source.path] = try environment.fileSystem.readText(at: source.path) } catch { unreadable += 1 }
         }
         var surface = HTTPDeclarationSurface()
-        for source in sources { if let text = texts[source.path] { surface.merge(HTTPRouteCallScanner.declarations(source: text)) } }
+        for source in sources {
+            if let text = texts[source.path] { surface.merge(HTTPRouteCallScanner.declarations(source: text, path: source.path)) }
+        }
         let scanner = HTTPRouteCallScanner(wrappers: wrappers.filter { $0.language == "swift" }, surface: surface)
         var pass = scanRoutes(scanner, sources: sources, texts: texts, resolvedValues: [:])
         if let snapshot, let resolved = routeValueFlowConstants(pass, snapshot: snapshot, texts: texts) {
             pass = scanRoutes(scanner, sources: sources, texts: texts, resolvedValues: resolved)
         }
         let resolver = BridgeSymbolResolver(snapshot: snapshot ?? IndexSnapshot())
-        let facts = pass.calls.map { $0.fact.attaching(resolver.symbol(for: $0.declaration, at: $0.fact.location)) }
+        // 라우터 사실의 심볼(enum case)은 경로 분기와 다른 파일에 있을 수 있다. 선언 위치의 파일에서 찾는다.
+        let facts = pass.calls.map { call in
+            call.fact.attaching(resolver.symbol(for: call.declaration, at: call.declaration?.start ?? call.fact.location))
+        }
         let limitations = routeLimitations(
             facts: facts, pass: pass, scanner: scanner, unreadable: unreadable, hasIndex: snapshot != nil
         )
@@ -121,6 +126,8 @@ extension CartographService {
         var calls: [ScannedRouteCall] = []
         var counts = RouteCallScanCounts()
         var callsByWrapper: [Int: Int] = [:]
+        var routerTables: [HTTPTargetMemberTable] = []
+        var routerRecipes: [HTTPRouterRecipe] = []
     }
 
     private func scanRoutes(
@@ -137,7 +144,17 @@ extension CartographService {
             pass.calls += result.calls
             pass.counts = pass.counts + result.counts
             pass.callsByWrapper.merge(result.callsByWrapper, uniquingKeysWith: +)
+            pass.routerTables += result.routerTables
+            pass.routerRecipes += result.routerRecipes
         }
+        // 라우터 멤버는 여러 파일의 익스텐션에 흩어질 수 있어 모든 파일을 읽은 뒤 case 별 사실로 합친다.
+        let wrapperOwners = Set(scanner.wrappers.compactMap(\.ownerComponents.last))
+        let routers = HTTPRouteCallScanner.routerRouteCalls(
+            tables: pass.routerTables, recipes: pass.routerRecipes, surface: scanner.surface,
+            declaredWrapperOwners: wrapperOwners
+        )
+        pass.calls += routers.calls
+        pass.counts = pass.counts + routers.counts
         return pass
     }
 
@@ -180,9 +197,26 @@ extension CartographService {
             result.append("route-call-coverage: \(counts.unreadableSinks) direct request sink(s) build a URL that could not "
                 + "be read statically, so they were not emitted")
         }
+        if counts.unmodelledRouters > 0 {
+            result.append("route-call-coverage: \(counts.unmodelledRouters) router type(s) (Moya TargetType or Alamofire "
+                + "URLRequestConvertible) have no readable path member or request builder, so their cases were not emitted")
+        }
+        let unmodelled = counts.unmodelledClientImports
+        if !unmodelled.isEmpty {
+            result.append("route-call-coverage: \(unmodelled.values.reduce(0, +)) import(s) of HTTP client libraries that "
+                + "routes does not model (\(unmodelled.keys.sorted().joined(separator: ", "))); requests made through them are absent")
+        }
         if counts.unprovenReceiverCalls > 0 {
             result.append("route-call-coverage: \(counts.unprovenReceiverCalls) call(s) match a declared wrapper function's "
                 + "name and labels but their receiver type could not be proven, so they were not emitted")
+        }
+        if counts.urlRewriters > 0 {
+            result.append("url-rewrite-interceptors: \(counts.urlRewriters) custom Moya endpoint mapping(s) or Alamofire "
+                + "request adapter(s) rewrite request URLs, so the emitted paths may differ from the paths sent")
+        }
+        if counts.generatedClientImports > 0 {
+            result.append("generated-client-unscanned: \(counts.generatedClientImports) Swift source(s) import an OpenAPI "
+                + "generated-client runtime; requests made through generated clients are not emitted")
         }
         let ambiguous = facts.count { $0.limitation == HTTPRouteComposer.ambiguousBaseJoin }
         if ambiguous > 0 {

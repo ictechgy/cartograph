@@ -10,6 +10,17 @@ public enum HTTPURLPart: Hashable, Sendable {
     case value
     /// 값은 모르지만 query 꼬리임을 증명한 지역 변수(`compose.suffix`).
     case queryTail
+    /// `/` 를 담을 수 있는 경로 값(`base.appending(path: path)` 의 `path`). 세그먼트 하나(`{}`)로 볼
+    /// 근거가 없어, 그 자리부터 dynamic 이고 앞선 조립 결과만 `channelPrefix` 가 된다.
+    case pathValue
+
+    /// 리터럴이 아닌 조각인지. 값의 종류와 무관하게 base·host 판정에서는 같은 자리를 차지한다.
+    public var isValue: Bool {
+        switch self {
+        case .value, .pathValue: true
+        case .literal, .queryTail: false
+        }
+    }
 }
 
 /// base URL 과 경로를 결합하는 방식. 결합 방식마다 경로가 root 에서 확정되는지가 다르다.
@@ -191,7 +202,7 @@ public enum HTTPRouteURLResolver {
     }
 
     /// 이웃한 리터럴을 하나로 합친다. `"https://" + host` 처럼 나뉜 리터럴도 같은 규칙을 받는다.
-    static func mergedLiterals(_ parts: [HTTPURLPart]) -> [HTTPURLPart] {
+    public static func mergedLiterals(_ parts: [HTTPURLPart]) -> [HTTPURLPart] {
         parts.reduce(into: []) { result, part in
             if case let .literal(next) = part, case let .literal(previous)? = result.last {
                 result[result.count - 1] = .literal(previous + next)
@@ -242,8 +253,10 @@ public enum HTTPRouteURLResolver {
         case .slashJoin: anchor = .base
         case let .wrapper(declared): anchor = declared
         }
-        // 슬래시 결합은 앞의 슬래시를 모두 떼고 하나만 붙인다. 나머지는 없을 때만 하나 붙인다.
-        let path = join == .slashJoin ? "/" + head.drop { $0 == "/" } : (isRooted ? head : "/" + head)
+        // 슬래시 결합은 Foundation `appendingPathComponent` 처럼 앞 슬래시 하나만 떼고 하나를 붙인다
+        // (`//x` 는 `//x` 로 남는다). 나머지는 없을 때만 하나 붙인다.
+        let path = join == .slashJoin ? "/" + HTTPFoundationPath.joinTrimmingOneSlash(base: "", component: head).component
+            : (isRooted ? head : "/" + head)
         return rooted([.literal(path)] + parts.dropFirst(), anchor: anchor, authority: nil)
     }
 

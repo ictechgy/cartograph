@@ -1,0 +1,255 @@
+{
+  "metadata": {
+    "alamofire": "5.12.2",
+    "moya": "15.0.3",
+    "os": "macOS 26.7 (25G229)",
+    "swift": "swift-driver version: 1.168.6 Apple Swift version 6.4 (swiftlang-6.4.0.34.1 clang-2100.3.34.1)"
+  },
+  "records": [
+    {
+      "case": "urlsession.literal",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/users",
+      "target": "http://api.oracle.test/v1/users"
+    },
+    {
+      "case": "urlsession.post",
+      "host": "api.oracle.test",
+      "method": "POST",
+      "path": "/v1/users",
+      "target": "http://api.oracle.test/v1/users"
+    },
+    {
+      "case": "urlsession.apc-question-mark",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/users%3Fdraft=1",
+      "target": "http://api.oracle.test/v1/users%3Fdraft=1"
+    },
+    {
+      "case": "urlsession.apc-percent",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/a%2520b",
+      "target": "http://api.oracle.test/v1/a%2520b"
+    },
+    {
+      "case": "urlsession.apc-double-slash",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1//x",
+      "target": "http://api.oracle.test/v1//x"
+    },
+    {
+      "case": "urlsession.apc-interpolated",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/users/42",
+      "target": "http://api.oracle.test/v1/users/42"
+    },
+    {
+      "case": "urlsession.apc-subdelims",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/a!$&'()*+,;=:@~b",
+      "target": "http://api.oracle.test/v1/a!$&'()*+,;=:@~b"
+    },
+    {
+      "case": "urlsession.append-component-slash",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/a%2Fb",
+      "target": "http://api.oracle.test/v1/a%2Fb"
+    },
+    {
+      "case": "urlsession.append-path-unicode",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/c%20d/%C3%A9",
+      "target": "http://api.oracle.test/v1/c%20d/%C3%A9"
+    },
+    {
+      "case": "urlsession.relative-to",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/items",
+      "target": "http://api.oracle.test/v1/items"
+    },
+    {
+      "case": "urlsession.relative-to-rooted",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/items",
+      "target": "http://api.oracle.test/items"
+    },
+    {
+      "case": "urlsession.data-from",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/feed",
+      "target": "http://api.oracle.test/v1/feed"
+    },
+    {
+      "case": "urlsession.member-constant",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/items",
+      "target": "http://api.oracle.test/v1/items"
+    },
+    {
+      "case": "components.path-question-mark",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/search%3Fdraft",
+      "target": "http://api.oracle.test/v1/search%3Fdraft?q=x"
+    },
+    {
+      "case": "components.path-percent",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/a%2520b",
+      "target": "http://api.oracle.test/v1/a%2520b"
+    },
+    {
+      "case": "components.percent-encoded-path",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/a%2Fb",
+      "target": "http://api.oracle.test/v1/a%2Fb"
+    },
+    {
+      "case": "components.string-append",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/users",
+      "target": "http://api.oracle.test/v1/users"
+    },
+    {
+      "case": "components.interpolated",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/items/7",
+      "target": "http://api.oracle.test/v1/items/7"
+    },
+    {
+      "case": "alamofire.request-post",
+      "host": "api.oracle.test",
+      "method": "POST",
+      "path": "/v2/users",
+      "target": "http://api.oracle.test/v2/users"
+    },
+    {
+      "case": "alamofire.request-interpolated",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v2/users/9",
+      "target": "http://api.oracle.test/v2/users/9"
+    },
+    {
+      "case": "alamofire.upload-default-post",
+      "host": "api.oracle.test",
+      "method": "POST",
+      "path": "/v2/upload",
+      "target": "http://api.oracle.test/v2/upload"
+    },
+    {
+      "case": "alamofire.download-get",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v2/export",
+      "target": "http://api.oracle.test/v2/export"
+    },
+    {
+      "case": "alamofire.urlrequest-init",
+      "host": "api.oracle.test",
+      "method": "PUT",
+      "path": "/v2/put",
+      "target": "http://api.oracle.test/v2/put"
+    },
+    {
+      "case": "alamofire.components",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v2/c%3Fx",
+      "target": "http://api.oracle.test/v2/c%3Fx"
+    },
+    {
+      "case": "router.users",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v3/users",
+      "target": "http://api.oracle.test/v3/users"
+    },
+    {
+      "case": "router.user",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v3/users/5",
+      "target": "http://api.oracle.test/v3/users/5"
+    },
+    {
+      "case": "router.create-question-mark",
+      "host": "api.oracle.test",
+      "method": "POST",
+      "path": "/v3/users%3Fdraft",
+      "target": "http://api.oracle.test/v3/users%3Fdraft"
+    },
+    {
+      "case": "moya.list",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/users",
+      "target": "http://api.oracle.test/v1/users"
+    },
+    {
+      "case": "moya.detail",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/users/3",
+      "target": "http://api.oracle.test/v1/users/3"
+    },
+    {
+      "case": "moya.search-question-mark",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/users/search%3Fdraft=1",
+      "target": "http://api.oracle.test/v1/users/search%3Fdraft=1"
+    },
+    {
+      "case": "moya.avatar",
+      "host": "api.oracle.test",
+      "method": "POST",
+      "path": "/v1/users/avatar",
+      "target": "http://api.oracle.test/v1/users/avatar"
+    },
+    {
+      "case": "moya.root",
+      "host": "api.oracle.test",
+      "method": "POST",
+      "path": "/v1",
+      "target": "http://api.oracle.test/v1"
+    },
+    {
+      "case": "moya.percent",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v1/files/a%2520b",
+      "target": "http://api.oracle.test/v1/files/a%2520b"
+    },
+    {
+      "case": "moya.rawvalue-implicit",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v4/health",
+      "target": "http://api.oracle.test/v4/health"
+    },
+    {
+      "case": "moya.rawvalue-explicit",
+      "host": "api.oracle.test",
+      "method": "GET",
+      "path": "/v4/blog/posts",
+      "target": "http://api.oracle.test/v4/blog/posts"
+    }
+  ]
+}

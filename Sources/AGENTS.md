@@ -135,6 +135,15 @@ cartograph
 생기면 `HTTPConformanceTests` 가 실행기 없음으로 실패합니다. 호출 측 스코프를 내지 않으므로
 `http-limitation-scope` 는 해시만 대조하고 실행을 미룹니다(`deferredSuites`). 호출 측 한계는 계약의 닫힌 접두사 목록에서만 고르세요 — 모르는 접두사는 소비자가 공백으로 읽지 않습니다.
 
+**라이브러리 규칙은 실측으로만 바꿉니다.** Foundation·Alamofire·Moya 의 인코딩·결합·기본 동사는
+`HTTPFoundationPath`·`HTTPLibraryMethod`·`HTTPTargetRouteRules`(Core)에 있고, 근거는 라이브러리 소스와
+`experiments/http-client-oracle/recorded.json`(로컬 서버가 받은 요청 줄)입니다. 규칙을 바꾸면 `record.sh` 로
+다시 기록하고 `HTTPClientOracleTests` 가 통과해야 합니다 — `appendingPathComponent` 가 `?` 를 query 로 둔다는
+직관은 실측에서 틀렸습니다(`%3F` 로 전송). 라우터(Moya `TargetType`, Alamofire `URLRequestConvertible`)는
+멤버를 파일별 분기 표(`HTTPTargetMemberTable`)로 모은 뒤 문서 단위에서 case 별 사실로 합칩니다
+(`HTTPRouteCallScanner.routerRouteCalls`). 심볼은 enum case 선언이고, 호출 지점으로 옮기지 마세요 — case 참조를
+따라가는 역방향 순회가 case 를 매개변수로 넘기는 중간 함수 뒤의 호출자까지 닿는 유일한 길입니다.
+
 ## 질의 근거와 지역 함수
 
 [질의 근거 계약](../docs/QUERY-EVIDENCE.md)을 따릅니다. 선언 위치를 빠진 호출 위치로 대신 쓰거나,

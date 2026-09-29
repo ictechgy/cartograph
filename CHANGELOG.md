@@ -9,6 +9,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `cartograph routes` reads common Swift HTTP libraries without an `http-wrappers` declaration:
+  URLSession/URLRequest (type URL constants, `dataTaskPublisher(for:)`, literal `relativeTo:` bases
+  merged per RFC 3986), URLComponents (straight-line `scheme`/`host`/`port`/`path`/
+  `percentEncodedPath` assignments), Alamofire (`AF`/`Session` requests with `method:` or the method's
+  default verb, `URLRequest(url:method:)`, `request.method =`, and `URLRequestConvertible` routers), and
+  Moya (`TargetType`, one fact per enum case). Apps that use these libraries directly had no facts
+  unless they wrote declarations for library code. The rules follow the library sources and a recorded
+  oracle: a synthetic client's 35 requests, sent through a local recording proxy on macOS 26.7 with
+  Alamofire 5.12.2 and Moya 15.0.3 (`experiments/http-client-oracle`), all agree with the emitted
+  templates, and a test replays the recording offline. The recording showed that
+  `appendingPathComponent`, `appending(path:)` and `URLComponents.path` percent-encode `?`, `#` and
+  `%` — a Moya `path` containing `?` is sent as `%3F`, not as a query — so those paths are encoded
+  instead of cut at `?`. Router facts carry the enum case's USR (the target type for a struct target):
+  the index records every reference to the case, so isthmus trace's reverse traversal reaches
+  `provider.request(.x)` and the callers of functions that pass the case along. New gaps use the
+  contract's client-side prefixes: unreadable routers and imports of unmodelled clients
+  (`route-call-coverage:`), URL-rewriting Moya endpoint mappings and Alamofire adapters
+  (`url-rewrite-interceptors:`), and OpenAPI generated-client runtimes (`generated-client-unscanned:`).
+  `limitationScopes` are still not emitted, because none of these gaps bounds the paths it hides.
+
+### Fixed
+
+- `routes` no longer collapses every leading slash of an `appendingPathComponent` argument:
+  Foundation removes exactly one, so `//x` is sent as `//x`, and a bare path value appended to a URL
+  is no longer guessed to be a single `{}` segment when it may contain slashes.
+
 - `cartograph impact --format language-traversal --roots-from <file|->` reads roots from a file or
   stdin, so isthmus capture can pass thousands of route-call symbols without hitting the argv limit or
   splitting the run. It accepts kartograph's `--roots-from` inputs (a JSON string array, or a

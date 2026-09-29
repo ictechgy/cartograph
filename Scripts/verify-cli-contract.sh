@@ -233,6 +233,20 @@ expect_status 2 "호출: 명시한 인덱스 경로 없음" routes --project "$M
 # 선언 파일을 지정했는데 못 읽으면 조용히 0건을 내지 않는다. 소비자는 그것을 "호출 없음"으로 읽는다.
 expect_status 2 "호출: 없는 선언 파일" routes --project "$MISSING" --wrappers "$MISSING/none.json"
 expect_status 2 "호출: 깨진 선언 파일" routes --project "$MISSING" --wrappers "$MISSING/broken.json"
+# 라이브러리 규칙은 선언 없이 동작한다. Moya case 하나가 사실 하나이고 path 의 `?` 는 `%3F` 로 전송된다.
+mkdir -p "$MISSING/moya"
+cat > "$MISSING/moya/API.swift" <<'SWIFT'
+import Moya
+enum API: TargetType {
+    case search
+    var baseURL: URL { URL(string: "https://api.example.com/v1")! }
+    var path: String { "users/search?draft" }
+    var method: Moya.Method { .get }
+    var task: Task { .requestPlain }
+    var headers: [String: String]? { nil }
+}
+SWIFT
+expect_output '"channel" : "/v1/users/search%3Fdraft"' "호출: 선언 없는 Moya 타겟" routes --project "$MISSING/moya"
 # 파일을 못 쓴 것과 순환을 찾은 것이 CI 에서 같은 신호가 되어서는 안 된다.
 # 실제 쓰기 실패는 아래 "빈 인덱스" 픽스처 다음에서 검증한다 — 없는 부모
 # 디렉터리는 -o 가 만들어 주므로 경로만으로는 실패하지 않는다.

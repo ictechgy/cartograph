@@ -533,12 +533,16 @@ struct RoutesCommand: ParsableCommand {
         commandName: "routes",
         abstract: "Export the HTTP requests Swift code makes, for isthmus to join against server routes.",
         discussion: """
-            Reads calls to the HTTP wrappers you declare in an http-wrappers v1 file (--wrappers) and \
-            direct URLRequest / URLSession requests whose verb and path are statically provable. Paths are \
-            normalized to canonical templates: a whole-segment interpolation becomes {}, a query tail is \
-            stripped, same-file constants are substituted, and userinfo, query, fragment and high-entropy \
-            segments never reach the output. The output is the bridge-facts exchange format with \
-            `target: "http"` and `roles: ["client"]`, one `route-call` fact per call site.
+            Reads calls to the HTTP wrappers you declare in an http-wrappers v1 file (--wrappers) and, \
+            without any declaration, requests made through common libraries whose verb and path are \
+            statically provable: URLRequest / URLSession, URLComponents, Alamofire Session requests and \
+            routers (URLRequestConvertible), and Moya targets (TargetType, one fact per enum case, attributed \
+            to the case). Paths follow each library's encoding — appendingPathComponent and \
+            URLComponents.path percent-encode `?`, `#` and `%`. Paths are normalized to canonical templates: \
+            a whole-segment interpolation becomes {}, a query tail is stripped, same-file constants and enum \
+            raw values are substituted, and userinfo, query, fragment and high-entropy segments never reach \
+            the output. The output is the bridge-facts exchange format with `target: "http"` and \
+            `roles: ["client"]`, one `route-call` fact per call site or router case.
 
             Test sources (Tests/, *Tests directories and *Tests.swift files) are skipped unless you pass \
             --include-tests, which marks their facts `testSource`. The index is optional: without one the \

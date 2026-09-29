@@ -23,6 +23,14 @@ public struct RouteCallScanCounts: Hashable, Sendable {
     public var unreadableSinks = 0
     /// 선언된 래퍼 함수와 이름·레이블이 맞지만 수신자 타입을 증명하지 못한 호출.
     public var unprovenReceiverCalls = 0
+    /// 요청 조립을 읽지 못한 Alamofire 라우터(`URLRequestConvertible`)와 경로 멤버가 없는 Moya 타겟 수.
+    public var unmodelledRouters = 0
+    /// 요청 URL 을 바꾸는 Moya `endpointClosure` 매핑과 Alamofire 요청 어댑터 수.
+    public var urlRewriters = 0
+    /// 요청을 읽지 않는 HTTP 클라이언트 모듈 → 그 모듈의 import 문 수(파일마다 하나).
+    public var unmodelledClientImports: [String: Int] = [:]
+    /// OpenAPI 생성 클라이언트 런타임을 import 한 소스 수.
+    public var generatedClientImports = 0
 
     public init() {}
 
@@ -32,6 +40,10 @@ public struct RouteCallScanCounts: Hashable, Sendable {
         result.undeclaredWrapperSinks += rhs.undeclaredWrapperSinks
         result.unreadableSinks += rhs.unreadableSinks
         result.unprovenReceiverCalls += rhs.unprovenReceiverCalls
+        result.unmodelledRouters += rhs.unmodelledRouters
+        result.urlRewriters += rhs.urlRewriters
+        result.unmodelledClientImports.merge(rhs.unmodelledClientImports, uniquingKeysWith: +)
+        result.generatedClientImports += rhs.generatedClientImports
         return result
     }
 }
@@ -42,6 +54,11 @@ public struct RouteCallScanResult: Hashable, Sendable {
     public let counts: RouteCallScanCounts
     /// 선언별 발견 호출 수. 키는 스캐너에 넘긴 래퍼 목록의 위치다. 0건 래퍼를 한계로 알리는 데 쓴다.
     public let callsByWrapper: [Int: Int]
+    /// 라우터 타입 멤버의 분기 표. 멤버가 여러 파일에 흩어질 수 있어 문서 단위로 합쳐
+    /// `HTTPRouteCallScanner.routerRouteCalls` 에 넘긴다.
+    public let routerTables: [HTTPTargetMemberTable]
+    /// Alamofire 라우터의 요청 조립 방식.
+    public let routerRecipes: [HTTPRouterRecipe]
 }
 
 /// 프로젝트가 선언한 타입과 함수의 구문 표면. 래퍼 선언이 실제 심볼과 맞는지 확인하고,
@@ -49,21 +66,75 @@ public struct RouteCallScanResult: Hashable, Sendable {
 public struct HTTPDeclarationSurface: Hashable, Sendable {
     /// 선언하거나 확장한 타입 사슬(`A.B`).
     public private(set) var typeChains: Set<String> = []
+    /// 타입 사슬의 마지막 구성 요소들. "프로젝트가 이 이름의 타입을 선언했는가"를 사슬 전체를 훑지 않고 답한다.
+    private(set) var typeLastNames: Set<String> = []
     /// `타입 사슬\0함수 이름` → 오버로드별 외부 레이블(레이블 없음은 nil). 최상위 함수는 빈 사슬이다.
     public private(set) var functions: [String: [[String?]]] = [:]
     /// 타입 사슬 → 명시적 이니셜라이저의 외부 레이블들.
     public private(set) var initializers: [String: [[String?]]] = [:]
+    /// 타입 사슬 → 상속 절에 적힌 이름의 마지막 구성 요소(주 선언과 익스텐션을 합친 것).
+    public private(set) var inheritedNames: [String: Set<String>] = [:]
+    /// 프로토콜로 선언된 타입 사슬.
+    public private(set) var protocolChains: Set<String> = []
+    /// enum 사슬 → case 선언들(선언 순서).
+    public private(set) var enumCases: [String: [HTTPEnumCaseDeclaration]] = [:]
+    /// 타입 사슬 → 주 선언 위치. 여러 곳이면 위치가 가장 앞선 것.
+    public private(set) var typeSites: [String: HTTPTypeDeclarationSite] = [:]
+    /// `타입 사슬.프로퍼티` → 타입 표기의 마지막 구성 요소들. 다른 파일의 익스텐션에서 `session.request` 의
+    /// 수신자 타입을 증명하는 데 쓴다.
+    public private(set) var memberTypes: [String: Set<String>] = [:]
 
     public init() {}
 
     /// 여러 파일의 표면을 합친다. 순서와 무관하게 같은 값이 되도록 집합과 목록만 더한다.
     public mutating func merge(_ other: HTTPDeclarationSurface) {
         typeChains.formUnion(other.typeChains)
+        typeLastNames.formUnion(other.typeLastNames)
         functions.merge(other.functions) { $0 + $1 }
         initializers.merge(other.initializers) { $0 + $1 }
+        inheritedNames.merge(other.inheritedNames) { $0.union($1) }
+        protocolChains.formUnion(other.protocolChains)
+        // 같은 파일을 두 번 합치면(스캔이 이 파일의 표면을 다시 더한다) case 가 겹친다. 위치로 중복을 없앤다.
+        // 경로 없이 만든 표면(임베더 기본값)은 위치만으로 파일을 가를 수 없어 중복으로 보지 않는다.
+        enumCases.merge(other.enumCases) { first, second in
+            first + second.filter { candidate in candidate.start.path.isEmpty || !first.contains { $0.start == candidate.start } }
+        }
+        typeSites.merge(other.typeSites) { $0.start <= $1.start ? $0 : $1 }
+        memberTypes.merge(other.memberTypes) { $0.union($1) }
     }
 
-    mutating func addType(_ chain: [String]) { typeChains.insert(chain.joined(separator: ".")) }
+    mutating func addMemberType(_ key: String, type: String) {
+        memberTypes[key, default: []].insert(type)
+    }
+
+    /// 타입 문맥 안 프로퍼티 이름의 표기된 타입. 바깥 타입부터 안쪽으로 찾고, 두 가지 이상이면 모른다.
+    func memberType(named name: String, in enclosingTypes: [String]) -> String? {
+        let types = enclosingTypes.flatMap { $0.split(separator: ".").map(String.init) }
+        for depth in stride(from: types.count, through: 1, by: -1) {
+            guard let found = memberTypes[(types.prefix(depth) + [name]).joined(separator: ".")] else { continue }
+            return found.count == 1 ? found.first : nil
+        }
+        return nil
+    }
+
+    mutating func addInheritance(_ chain: String, names: [String], isProtocol: Bool) {
+        inheritedNames[chain, default: []].formUnion(names)
+        if isProtocol { protocolChains.insert(chain) }
+    }
+
+    mutating func addCase(_ chain: String, _ declaration: HTTPEnumCaseDeclaration) {
+        enumCases[chain, default: []].append(declaration)
+    }
+
+    mutating func addTypeSite(_ chain: String, _ site: HTTPTypeDeclarationSite) {
+        if let existing = typeSites[chain], existing.start <= site.start { return }
+        typeSites[chain] = site
+    }
+
+    mutating func addType(_ chain: [String]) {
+        typeChains.insert(chain.joined(separator: "."))
+        if let last = chain.last { typeLastNames.insert(last) }
+    }
 
     mutating func addFunction(chain: [String], name: String, labels: [String?]) {
         functions[chain.joined(separator: ".") + "\0" + name, default: []].append(labels)
@@ -118,9 +189,14 @@ public struct HTTPRouteCallScanner: Sendable {
     }
 
     /// 파일 하나의 선언 표면. 모든 파일을 먼저 훑어 합친 뒤 `scan` 에 넘긴다.
-    public static func declarations(source: String) -> HTTPDeclarationSurface {
-        let collector = HTTPSurfaceCollector()
-        collector.walk(Parser.parse(source: source))
+    ///
+    /// - Parameter path: enum case·라우터 타입의 위치를 적을 경로. 라우터 사실의 심볼을 이 위치로 찾는다.
+    public static func declarations(source: String, path: String = "") -> HTTPDeclarationSurface {
+        let tree = Parser.parse(source: source)
+        let collector = HTTPSurfaceCollector(recorder: HTTPRouterSurfaceRecorder(
+            converter: SourceLocationConverter(fileName: path, tree: tree), path: path
+        ))
+        collector.walk(tree)
         return collector.surface
     }
 
@@ -141,7 +217,7 @@ public struct HTTPRouteCallScanner: Sendable {
         locals.walk(tree)
         // 이 파일의 선언은 위층이 모은 표면에 이미 있을 수 있다. 합쳐도 시그니처 목록이 겹칠 뿐이라
         // 판정은 같고, 단독 파일을 넘긴 호출자(테스트·임베더)도 같은 답을 받는다.
-        let local = HTTPSurfaceCollector()
+        let local = HTTPSurfaceCollector(recorder: HTTPRouterSurfaceRecorder(converter: converter, path: path))
         local.walk(tree)
         var surface = self.surface
         surface.merge(local.surface)
@@ -150,7 +226,10 @@ public struct HTTPRouteCallScanner: Sendable {
             surface: surface, path: path, isTestSource: isTestSource
         )
         collector.walk(tree)
-        return RouteCallScanResult(calls: collector.calls, counts: collector.counts, callsByWrapper: collector.callsByWrapper)
+        return RouteCallScanResult(
+            calls: collector.calls, counts: collector.counts, callsByWrapper: collector.callsByWrapper,
+            routerTables: collector.routerTables, routerRecipes: collector.routerRecipes
+        )
     }
 }
 
@@ -160,31 +239,73 @@ public struct HTTPRouteCallScanner: Sendable {
 private final class HTTPSurfaceCollector: SyntaxVisitor {
     private(set) var surface = HTTPDeclarationSurface()
     private var typeNames: [String] = []
+    /// 원시 타입이 `String` 인 enum 선언의 깊이별 표시. case 의 암시적 원시값을 정한다.
+    private var stringBacked: [Bool] = []
+    private let recorder: HTTPRouterSurfaceRecorder
 
-    init() { super.init(viewMode: .sourceAccurate) }
+    init(recorder: HTTPRouterSurfaceRecorder) {
+        self.recorder = recorder
+        super.init(viewMode: .sourceAccurate)
+    }
 
     private var chain: [String] { typeNames.flatMap { $0.split(separator: ".").map(String.init) } }
 
-    private func push(_ name: String) -> SyntaxVisitorContinueKind {
+    private func push(_ name: String, _ node: some DeclSyntaxProtocol, inheritance: InheritanceClauseSyntax?,
+                      isProtocol: Bool = false, isExtension: Bool = false, isStringBacked: Bool = false) -> SyntaxVisitorContinueKind {
         typeNames.append(SyntaxIdentifiers.unescaped(name))
+        stringBacked.append(isStringBacked)
         surface.addType(chain)
+        recorder.recordType(node, chain: chain, inheritance: inheritance, isProtocol: isProtocol,
+                            isExtension: isExtension, into: &surface)
         return .visitChildren
     }
 
-    override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind { push(node.name.text) }
-    override func visitPost(_: ClassDeclSyntax) { typeNames.removeLast() }
-    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind { push(node.name.text) }
-    override func visitPost(_: StructDeclSyntax) { typeNames.removeLast() }
-    override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind { push(node.name.text) }
-    override func visitPost(_: EnumDeclSyntax) { typeNames.removeLast() }
-    override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind { push(node.name.text) }
-    override func visitPost(_: ActorDeclSyntax) { typeNames.removeLast() }
-    override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind { push(node.name.text) }
-    override func visitPost(_: ProtocolDeclSyntax) { typeNames.removeLast() }
-    override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
-        push(node.extendedType.trimmedDescription)
+    private func pop() {
+        typeNames.removeLast()
+        stringBacked.removeLast()
     }
-    override func visitPost(_: ExtensionDeclSyntax) { typeNames.removeLast() }
+
+    override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
+        push(node.name.text, node, inheritance: node.inheritanceClause)
+    }
+    override func visitPost(_: ClassDeclSyntax) { pop() }
+    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
+        push(node.name.text, node, inheritance: node.inheritanceClause)
+    }
+    override func visitPost(_: StructDeclSyntax) { pop() }
+    override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
+        push(node.name.text, node, inheritance: node.inheritanceClause,
+             isStringBacked: HTTPRouterSurfaceRecorder.isStringBacked(node.inheritanceClause))
+    }
+    override func visitPost(_: EnumDeclSyntax) { pop() }
+    override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
+        push(node.name.text, node, inheritance: node.inheritanceClause)
+    }
+    override func visitPost(_: ActorDeclSyntax) { pop() }
+    override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
+        push(node.name.text, node, inheritance: node.inheritanceClause, isProtocol: true)
+    }
+    override func visitPost(_: ProtocolDeclSyntax) { pop() }
+    override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
+        push(node.extendedType.trimmedDescription, node, inheritance: node.inheritanceClause, isExtension: true)
+    }
+    override func visitPost(_: ExtensionDeclSyntax) { pop() }
+
+    override func visit(_ node: EnumCaseDeclSyntax) -> SyntaxVisitorContinueKind {
+        if !typeNames.isEmpty {
+            recorder.recordCases(node, chain: chain, isStringBacked: stringBacked.last ?? false, into: &surface)
+        }
+        return .skipChildren
+    }
+
+    override func visit(_ node: PatternBindingSyntax) -> SyntaxVisitorContinueKind {
+        if !typeNames.isEmpty, !DeclarationCollector.isInsideBody(node),
+           let name = node.pattern.as(IdentifierPatternSyntax.self)?.identifier.text,
+           let type = node.typeAnnotation.flatMap({ HTTPSyntax.typeBaseName($0.type) }) {
+            surface.addMemberType((chain + [SyntaxIdentifiers.unescaped(name)]).joined(separator: "."), type: type)
+        }
+        return .skipChildren
+    }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         if !DeclarationCollector.isInsideBody(node) {
@@ -213,20 +334,86 @@ final class HTTPLocalCollector: SyntaxVisitor {
     private(set) var urlBindings: [String: ExprSyntax?] = [:]
     /// 이름 → 타입 표기의 마지막 구성 요소들. 파일 안에서 둘 이상이면 증명하지 못한다.
     private(set) var annotatedTypes: [String: Set<String>] = [:]
+    /// `스코프 키#이름` → `URLComponents(…)` 초기식과 그 선언. 같은 키에 두 번 묶이면 nil.
+    private var componentsBindings: [String: (value: ExprSyntax, node: Syntax)?] = [:]
+    /// `타입 사슬.이름` → 멤버 URL 상수의 식(`static let base = URL(string: …)`, 단일 식 계산 프로퍼티).
+    private var memberURLs: [String: ExprSyntax?] = [:]
 
     init() { super.init(viewMode: .sourceAccurate) }
 
     override func visit(_ node: PatternBindingSyntax) -> SyntaxVisitorContinueKind {
         guard let name = node.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else { return .visitChildren }
         if let type = node.typeAnnotation?.type { noteType(name, type) }
-        if let value = node.initializer?.value, DeclarationCollector.isInsideBody(node) { bindURL(name, value, at: node) }
+        if DeclarationCollector.isInsideBody(node) {
+            if let value = node.initializer?.value {
+                bindURL(name, value, at: node)
+                bindComponents(name, value, at: node)
+            }
+        } else {
+            bindMemberURL(name, node)
+        }
         return .visitChildren
+    }
+
+    /// `var components = URLComponents(…)` 을 기록한다. 사용 지점이 같은 블록의 대입을 다시 읽는다.
+    private func bindComponents(_ name: String, _ value: ExprSyntax, at node: some SyntaxProtocol) {
+        guard HTTPSyntax.isComponentsConstruction(value) else { return }
+        let key = HTTPSyntax.localKey(SyntaxIdentifiers.unescaped(name), scope: HTTPSyntax.innermostScope(of: node))
+        componentsBindings[key] = componentsBindings[key] == nil ? .some((value, Syntax(node))) : .some(nil)
+    }
+
+    /// 타입 멤버의 URL 상수. 불변 `let` 의 초기식이거나, 본문이 식 하나뿐인 읽기 전용 계산 프로퍼티다.
+    ///
+    /// `var` 저장 프로퍼티는 어디서든 바뀔 수 있어 상수가 아니다.
+    private func bindMemberURL(_ name: String, _ node: PatternBindingSyntax) {
+        let declaration = node.parent?.parent?.as(VariableDeclSyntax.self)
+        let value: ExprSyntax?
+        if let initializer = node.initializer?.value, declaration?.bindingSpecifier.tokenKind == .keyword(.let) {
+            value = initializer
+        } else if let getter = node.accessorBlock.flatMap(HTTPSyntax.singleGetterExpression) {
+            value = getter
+        } else {
+            value = nil
+        }
+        guard let value, HTTPSyntax.isURLConstruction(value) else { return }
+        let key = (HTTPSyntax.context(of: node).enclosingTypes + [SyntaxIdentifiers.unescaped(name)]).joined(separator: ".")
+        memberURLs[key] = memberURLs[key] == nil ? .some(value) : .some(nil)
+    }
+
+    /// 사용 지점 문맥에서 이름이 가리키는 `URLComponents` 초기식과 선언.
+    func componentsBinding(named name: String, scopes: [Int]) -> (value: ExprSyntax, node: Syntax)? {
+        for scope in scopes.reversed() {
+            if let found = componentsBindings[HTTPSyntax.localKey(name, scope: scope)] { return found }
+        }
+        return nil
+    }
+
+    /// `baseURL`·`self.baseURL`·`Self.baseURL`·`API.baseURL` 이 가리키는 멤버 URL 상수의 식.
+    func memberURLExpression(_ expression: ExprSyntax, enclosingTypes: [String]) -> ExprSyntax? {
+        let types = enclosingTypes.flatMap { $0.split(separator: ".").map(String.init) }
+        if let reference = expression.as(DeclReferenceExprSyntax.self) {
+            let name = SyntaxIdentifiers.unescaped(reference.baseName.text)
+            for depth in stride(from: types.count, through: 1, by: -1) {
+                if let found = memberURLs[(types.prefix(depth) + [name]).joined(separator: ".")] { return found }
+            }
+            return nil
+        }
+        guard let member = expression.as(MemberAccessExprSyntax.self), let base = member.base,
+              let owner = HTTPSyntax.dottedName(base) else { return nil }
+        let name = SyntaxIdentifiers.unescaped(member.declName.baseName.text)
+        if owner == ["self"] || owner == ["Self"] {
+            return memberURLs[(types + [name]).joined(separator: ".")] ?? nil
+        }
+        let suffix = "." + (owner + [name]).joined(separator: ".")
+        let matches = memberURLs.filter { ("." + $0.key).hasSuffix(suffix) }
+        return matches.count == 1 ? matches.first?.value ?? nil : nil
     }
 
     override func visit(_ node: OptionalBindingConditionSyntax) -> SyntaxVisitorContinueKind {
         guard let name = node.pattern.as(IdentifierPatternSyntax.self)?.identifier.text,
               let value = node.initializer?.value else { return .visitChildren }
         bindURL(name, value, at: node)
+        bindComponents(name, value, at: node)
         return .visitChildren
     }
 
@@ -259,14 +446,23 @@ final class HTTPLocalCollector: SyntaxVisitor {
 
 /// 수집기들이 함께 쓰는 구문 판정. 상태가 없다.
 enum HTTPSyntax {
-    /// 요청 URL 을 만드는 식인지(`URL(string:)`, `…appendingPathComponent(…)`, 그 강제 해제).
+    /// 요청 URL 을 만드는 식인지(`URL(string:)`, `…appendingPathComponent(…)`, `x.asURL()`, 그 강제 해제).
     static func isURLConstruction(_ expression: ExprSyntax) -> Bool {
         let value = unwrapped(expression)
         guard let call = value.as(FunctionCallExprSyntax.self) else { return false }
         if isFoundationInitializer(call, type: "URL") {
             return call.arguments.first?.label?.text == "string"
         }
+        if let member = call.calledExpression.as(MemberAccessExprSyntax.self), member.declName.baseName.text == "asURL",
+           call.arguments.isEmpty, member.base != nil {
+            return true
+        }
         return appendedComponent(of: call) != nil
+    }
+
+    /// `URLComponents(…)` 생성식인지.
+    static func isComponentsConstruction(_ expression: ExprSyntax) -> Bool {
+        unwrapped(expression).as(FunctionCallExprSyntax.self).map { isFoundationInitializer($0, type: "URLComponents") } ?? false
     }
 
     /// `Type(`·`Type.init(`·`Foundation.Type(`·`Foundation.Type.init(` 처럼 Foundation 타입을 만드는 호출인지.
@@ -289,7 +485,7 @@ enum HTTPSyntax {
         return isAppend ? (base, argument.expression) : nil
     }
 
-    /// 괄호·강제 해제·옵셔널 체이닝을 벗긴다.
+    /// 괄호·강제 해제·옵셔널 체이닝·`try`·`await` 를 벗긴다.
     static func unwrapped(_ expression: ExprSyntax) -> ExprSyntax {
         var value = BindingCollector.unparenthesized(expression)
         while true {
@@ -297,10 +493,29 @@ enum HTTPSyntax {
                 value = BindingCollector.unparenthesized(forced.expression)
             } else if let optional = value.as(OptionalChainingExprSyntax.self) {
                 value = BindingCollector.unparenthesized(optional.expression)
+            } else if let attempt = value.as(TryExprSyntax.self) {
+                value = BindingCollector.unparenthesized(attempt.expression)
+            } else if let awaited = value.as(AwaitExprSyntax.self) {
+                value = BindingCollector.unparenthesized(awaited.expression)
             } else {
                 return value
             }
         }
+    }
+
+    /// 읽기 전용 계산 프로퍼티의 본문이 식 하나(또는 `return` 하나)뿐이면 그 식.
+    static func singleGetterExpression(_ block: AccessorBlockSyntax) -> ExprSyntax? {
+        let statements: CodeBlockItemListSyntax
+        switch block.accessors {
+        case let .getter(items): statements = items
+        case let .accessors(list):
+            guard list.count == 1, let getter = list.first, getter.accessorSpecifier.tokenKind == .keyword(.get),
+                  let body = getter.body else { return nil }
+            statements = body.statements
+        }
+        guard statements.count == 1, let item = statements.first?.item else { return nil }
+        if let expression = item.as(ExprSyntax.self) { return expression }
+        return item.as(ReturnStmtSyntax.self)?.expression
     }
 
     /// 외부 레이블 목록. `_` 는 nil 이다.

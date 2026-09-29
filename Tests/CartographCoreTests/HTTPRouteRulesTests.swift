@@ -80,12 +80,15 @@ struct HTTPRouteRulesTests {
         #expect(bare?.isDynamic == true && bare?.channelPrefix == nil && bare?.limitation == nil)
     }
 
-    @Test("래퍼는 선언한 앵커를 쓰고, 슬래시 결합은 앞 슬래시를 모두 떼고 하나만 붙인다")
+    @Test("래퍼는 선언한 앵커를 쓰고, 슬래시 결합은 Foundation 처럼 앞 슬래시 하나만 뗀다")
     func declaredAnchorAndSlashJoin() {
         let wrapper = HTTPRouteURLResolver.resolve([.literal("items")], join: .wrapper(.root))
         #expect(wrapper?.template == "/items" && wrapper?.pathAnchor == .root)
-        let joined = HTTPRouteURLResolver.resolve([.literal("//items")], join: .slashJoin)
+        let joined = HTTPRouteURLResolver.resolve([.literal("/items")], join: .slashJoin)
         #expect(joined?.template == "/items" && joined?.pathAnchor == .base)
+        // macOS 26.7 실측: `URL(string: "http://h/api")!.appendingPathComponent("//items")` → `/api//items`.
+        let doubled = HTTPRouteURLResolver.resolve([.literal("//items")], join: .slashJoin)
+        #expect(doubled?.template == "//items" && doubled?.pathAnchor == .base)
         let rootQuery = HTTPRouteURLResolver.resolve([.literal("?q=1")], join: .wrapper(.base))
         #expect(rootQuery?.template == "/" && rootQuery?.queryTailStripped == true)
     }
