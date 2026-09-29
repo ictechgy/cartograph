@@ -1,0 +1,689 @@
+{
+  "format": "isthmus-conformance",
+  "version": 1,
+  "suite": "http-limitation-scope",
+  "description": "Consumer reading of http limitationScopes (templates, templatePrefixes, templateSuffixes, methods): which calls (server/contract-side gaps) or declarations (client-side gaps) a scoped limitation applies to, and which scope entries are rejected. Comparisons are conservative over-approximations. Case ids are stable; producers vendor this file with its sha256 from SHA256SUMS.",
+  "contract": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+  "cases": [
+    {
+      "id": "applies/template-exact",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/error"
+          ]
+        },
+        "probe": {
+          "template": "/error",
+          "method": "PUT",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "applies/template-other-path",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/error"
+          ]
+        },
+        "probe": {
+          "template": "/api/orders",
+          "method": "POST",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": false
+      },
+      "note": "A scoped limitation does not block error judgement for calls outside its scope."
+    },
+    {
+      "id": "applies/template-trailing-slash-folded",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/error"
+          ]
+        },
+        "probe": {
+          "template": "/error/",
+          "method": "GET",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": true
+      },
+      "note": "One trailing slash is ignored in scope comparisons (conservative)."
+    },
+    {
+      "id": "applies/template-case-folded",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/error"
+          ]
+        },
+        "probe": {
+          "template": "/ERROR",
+          "method": "GET",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": true
+      },
+      "note": "ASCII case is folded in scope comparisons (conservative); producers need not list case variants."
+    },
+    {
+      "id": "applies/call-param-may-hit-literal",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/error"
+          ]
+        },
+        "probe": {
+          "template": "/{}",
+          "method": "GET",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": true
+      },
+      "note": "A call parameter can take any value, so it may reach a literal scope element."
+    },
+    {
+      "id": "applies/template-catch-all-zero-segments",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/files/{**}"
+          ]
+        },
+        "probe": {
+          "template": "/files",
+          "method": "GET",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": true
+      },
+      "note": "{**} in a scope element means zero or more segments."
+    },
+    {
+      "id": "applies/prefix-covers-subtree",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templatePrefixes": [
+            "/actuator"
+          ]
+        },
+        "probe": {
+          "template": "/actuator/health/{}",
+          "method": "GET",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "applies/prefix-segment-boundary",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templatePrefixes": [
+            "/actuator"
+          ]
+        },
+        "probe": {
+          "template": "/actuators",
+          "method": "GET",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": false
+      }
+    },
+    {
+      "id": "applies/root-prefix-covers-everything",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templatePrefixes": [
+            "/"
+          ]
+        },
+        "probe": {
+          "template": "/any/path",
+          "method": "DELETE",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "applies/suffix-after-unknown-prefix",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templateSuffixes": [
+            "/items/{}"
+          ]
+        },
+        "probe": {
+          "template": "/v2/items/7",
+          "method": "GET",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "applies/suffix-other-tail",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templateSuffixes": [
+            "/items/{}"
+          ]
+        },
+        "probe": {
+          "template": "/v2/items/7/extra",
+          "method": "GET",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": false
+      }
+    },
+    {
+      "id": "applies/base-call-unknown-prefix",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/app/error"
+          ]
+        },
+        "probe": {
+          "template": "/error",
+          "method": "GET",
+          "pathAnchor": "base",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": true
+      },
+      "note": "A base-anchored call has an unknown leading path, so any scope element ending with its template may overlap."
+    },
+    {
+      "id": "applies/methods-exclude-other-verbs",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templatePrefixes": [
+            "/"
+          ],
+          "methods": [
+            "GET",
+            "HEAD"
+          ]
+        },
+        "probe": {
+          "template": "/api/orders",
+          "method": "POST",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": false
+      },
+      "note": "Spring static resources (GET/HEAD under /**) do not block POST judgements."
+    },
+    {
+      "id": "applies/methods-head-via-get",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/a"
+          ],
+          "methods": [
+            "GET"
+          ]
+        },
+        "probe": {
+          "template": "/a",
+          "method": "HEAD",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "applies/methods-options-always",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/a"
+          ],
+          "methods": [
+            "GET"
+          ]
+        },
+        "probe": {
+          "template": "/a",
+          "method": "OPTIONS",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "applies/methods-dynamic-verb",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/a"
+          ],
+          "methods": [
+            "GET"
+          ]
+        },
+        "probe": {
+          "template": "/a",
+          "pathAnchor": "root",
+          "side": "call"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "applies/declaration-side-head",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/items"
+          ],
+          "methods": [
+            "HEAD"
+          ]
+        },
+        "probe": {
+          "template": "/items",
+          "method": "GET",
+          "pathAnchor": "root",
+          "side": "declaration"
+        }
+      },
+      "expect": {
+        "applies": true
+      },
+      "note": "Client-side scopes describe hidden calls; a HEAD call can reach a GET declaration."
+    },
+    {
+      "id": "applies/declaration-side-other-verb",
+      "ruleId": "scope.applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/items"
+          ],
+          "methods": [
+            "HEAD"
+          ]
+        },
+        "probe": {
+          "template": "/items",
+          "method": "POST",
+          "pathAnchor": "root",
+          "side": "declaration"
+        }
+      },
+      "expect": {
+        "applies": false
+      }
+    },
+    {
+      "id": "validate/channels-rejected",
+      "ruleId": "scope.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "channels": [
+            "/error"
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/path-field-required",
+      "ruleId": "scope.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "methods": [
+            "GET"
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/non-canonical-template",
+      "ruleId": "scope.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/a/{id}"
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/prefix-catch-all",
+      "ruleId": "scope.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templatePrefixes": [
+            "/files/{**}"
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/prefix-trailing-slash",
+      "ruleId": "scope.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templatePrefixes": [
+            "/actuator/"
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/root-suffix",
+      "ruleId": "scope.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templateSuffixes": [
+            "/"
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/any-method",
+      "ruleId": "scope.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/a"
+          ],
+          "methods": [
+            "ANY"
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/unknown-key",
+      "ruleId": "scope.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/a"
+          ],
+          "hosts": [
+            "example.test"
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/spring-web-defaults",
+      "ruleId": "scope.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "scope": {
+          "templates": [
+            "/error"
+          ]
+        }
+      },
+      "expect": {
+        "valid": true
+      }
+    }
+  ]
+}

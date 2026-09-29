@@ -26,6 +26,22 @@ struct HTTPConformanceTests {
         return try #require(document["cases"] as? [[String: Any]])
     }
 
+    /// 생산자 케이스를 제품 규칙으로 실행하는 suite.
+    private static let producerSuites = ["http-template", "url-compose"]
+
+    /// 벤더링·해시 대조만 하고 케이스는 실행하지 않는 suite 와, 그 suite 에서 알고 있는 규칙 식별자.
+    ///
+    /// `http-limitation-scope` 는 http 문서의 `limitationScopes` 를 소비자가 읽는 규칙(`scope.applies`)과
+    /// 스코프 항목 검증(`scope.validate`)이다. cartograph 의 `routes` 는 호출 측 한계에 스코프를 싣지
+    /// 않는다 — 지금 내는 호출 측 한계(읽지 못한 소스·URL, 받는 쪽을 증명하지 못한 래퍼 호출, 경로를
+    /// 흘려보내는 함수, 낡은 래퍼 선언)는 숨은 호출의 경로 상한을 증명할 수 없어, 계약대로 스코프를
+    /// 생략(문서 전체 효과)하는 것이 맞다. 그래서 생산자로서 이 suite 에 지킬 케이스가 없다. 스코프를
+    /// 내기 시작하면 이 목록에서 빼고 `scope.validate` 실행기를 붙인다. 알고 있는 규칙 밖의 식별자가
+    /// 생기면 실패해 다시 판단하게 한다.
+    private static let deferredSuites: [String: Set<String>] = [
+        "http-limitation-scope": ["scope.applies", "scope.validate"],
+    ]
+
     /// `producer` 또는 이 도구 이름을 지목한 케이스만 생산자가 통과해야 한다.
     private static func appliesToProducer(_ testCase: [String: Any]) -> Bool {
         let targets = testCase["appliesTo"] as? [String] ?? []
@@ -36,17 +52,27 @@ struct HTTPConformanceTests {
     func vendoredFilesMatchLock() throws {
         let lock = try #require(try JSONSerialization.jsonObject(with: Self.load("conformance.lock")) as? [String: Any])
         let files = try #require(lock["files"] as? [String: String])
-        #expect(Set(files.keys) == ["http-template.json", "url-compose.json"])
+        let suites = Self.producerSuites + Self.deferredSuites.keys
+        #expect(Set(files.keys) == Set(suites.map { $0 + ".json" }))
         for (name, expected) in files {
             let digest = SHA256.hash(data: try Self.load(name)).map { String(format: "%02x", $0) }.joined()
-            #expect(digest == expected, "\(name) differs from conformance.lock; re-vendor both files from isthmus")
+            #expect(digest == expected, "\(name) differs from conformance.lock; re-vendor the files from isthmus")
+        }
+    }
+
+    @Test("실행을 미룬 suite 는 알고 있는 규칙만 담는다")
+    func deferredSuitesHoldOnlyKnownRules() throws {
+        for (suite, knownRules) in Self.deferredSuites {
+            let rules = Set(try Self.cases(suite).compactMap { $0["ruleId"] as? String })
+            #expect(!rules.isEmpty, "\(suite) has no cases")
+            #expect(rules.isSubset(of: knownRules), "\(suite) has new rules \(rules.subtracting(knownRules)); decide whether cartograph must run them")
         }
     }
 
     @Test("생산자 케이스를 모두 제품 규칙으로 통과한다")
     func producerCasesPass() throws {
         var executed = 0
-        for suite in ["http-template", "url-compose"] {
+        for suite in Self.producerSuites {
             for testCase in try Self.cases(suite) where Self.appliesToProducer(testCase) {
                 let label = "\(suite)#\(testCase["id"] as? String ?? "?")"
                 let actual = try run(testCase, label: label)
