@@ -1208,7 +1208,9 @@ service for isthmus attribution. What the command could not turn into a fact is 
 contract's client-side prefixes: `route-call-coverage:` for request URLs it could not read,
 `http-wrapper-undeclared:` for functions that pass a parameter through as the path,
 `http-wrapper-unresolved:` for a declared wrapper that matched no declaration or no call, and
-`ambiguous-base-join:` for a relative path after an unknown base. The index is optional here: USRs
+`ambiguous-base-join:` for a relative path after an unknown base. None of these gaps can bound the
+paths of the calls they hide, so the document carries no `limitationScopes` and each gap applies to
+every declaration, as the contract prescribes for unscoped limitations. The index is optional here: USRs
 are attached when one is found, otherwise facts carry qualified names and `missing-route-usrs:`
 says so. The same flags `bridges` refuses are refused for the same reason.
 
