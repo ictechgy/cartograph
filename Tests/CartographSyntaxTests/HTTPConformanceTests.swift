@@ -38,8 +38,14 @@ struct HTTPConformanceTests {
     /// 생략(문서 전체 효과)하는 것이 맞다. 그래서 생산자로서 이 suite 에 지킬 케이스가 없다. 스코프를
     /// 내기 시작하면 이 목록에서 빼고 `scope.validate` 실행기를 붙인다. 알고 있는 규칙 밖의 식별자가
     /// 생기면 실패해 다시 판단하게 한다.
+    ///
+    /// `http-dispatch` 는 서버 `route-decl` 의 `order`(registration-order 문서)를 검증하는 규칙(`dispatch.validate`)과
+    /// 소비자의 순서 기반 match·가림 판정(`dispatch.match`·`dispatch.shadow`)이다. cartograph `routes` 는 클라이언트
+    /// `route-call` 만 내고 `route-decl`·`order` 를 내지 않으므로, 생산자 대상인 `dispatch.validate` 도 지킬 케이스가
+    /// 없다. 서버 선언을 내기 시작하면 이 목록에서 빼고 `order` 검증 실행기를 붙인다.
     private static let deferredSuites: [String: Set<String>] = [
         "http-limitation-scope": ["scope.applies", "scope.validate"],
+        "http-dispatch": ["dispatch.validate", "dispatch.match", "dispatch.shadow"],
     ]
 
     /// `producer` 또는 이 도구 이름을 지목한 케이스만 생산자가 통과해야 한다.

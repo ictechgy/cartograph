@@ -1,11 +1,12 @@
 {
   "files" : {
+    "http-dispatch.json" : "efeecae0622ac8ee4185d10ea117fb9c3c2b2dc504137cae0abd1841f3414f47",
     "http-limitation-scope.json" : "757200f40b1fa54a30b9486ff24bf5f89c2f7bc4fac26eb9a79d62004a1c847e",
     "http-template.json" : "770f3a79986560579c94b2548d392eb66ef877dc95b6284211551eeb27cf53e6",
-    "url-compose.json" : "5ba0c2a3ac2fcf2e44b9a3cb5f0616b85fbe78fd2a739bd5636a1b8a1152e73a"
+    "url-compose.json" : "afb689685e3dc987d37ce6b8ff32088604956a67dfe8a7e1556aa462f09a1c7a"
   },
   "source" : {
-    "commit" : "78d3dee879c8ccc562b27aecb233830f1dc712ae",
+    "commit" : "76b6141e71c84e0ab1026ad1f18f910b9d966dc8",
     "path" : "conformance/",
     "repository" : "isthmus"
   }

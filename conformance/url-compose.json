@@ -489,6 +489,248 @@
       "expectLimitation": "ambiguous-base-join:"
     },
     {
+      "id": "base-join/spring-literal-base-rooted",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.19/spring-web/src/main/java/org/springframework/web/util/UriComponentsBuilder.java",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-uri-builder",
+        "base": "http://users.internal:8081/api",
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root",
+        "authority": "users.internal:8081"
+      },
+      "note": "DefaultUriBuilderFactory copies the base builder and appends the template path as a plain string (FullPathComponentBuilder.append)."
+    },
+    {
+      "id": "base-join/spring-literal-base-double-slash",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.19/spring-web/src/main/java/org/springframework/web/util/UriComponentsBuilder.java",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-uri-builder",
+        "base": "http://users.internal:8081/api/",
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root"
+      },
+      "note": "The concatenation is /api//users; getSanitizedPath collapses every // in the path (not only after the scheme)."
+    },
+    {
+      "id": "base-join/spring-literal-base-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.19/spring-web/src/main/java/org/springframework/web/util/UriComponentsBuilder.java",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-uri-builder",
+        "base": "http://users.internal:8081/api",
+        "path": "users"
+      },
+      "expect": {
+        "template": "/apiusers",
+        "pathAnchor": "root"
+      },
+      "note": "No slash is inserted between the base path and a relative template."
+    },
+    {
+      "id": "base-join/spring-host-only-base-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.19/spring-web/src/main/java/org/springframework/web/util/HierarchicalUriComponents.java",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-uri-builder",
+        "base": "http://users.internal:8081",
+        "path": "users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "root"
+      },
+      "note": "With no base path the URI string inserts / after the authority, so the relative template is not glued to the host (unlike dio). Confirmed by the kartograph Spring client oracle."
+    },
+    {
+      "id": "base-join/spring-keeps-dot-segments",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.19/spring-web/src/main/java/org/springframework/web/util/DefaultUriBuilderFactory.java",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-uri-builder",
+        "base": "http://users.internal:8081/api",
+        "path": "/users/./me/../self"
+      },
+      "expect": {
+        "template": "/api/users/./me/../self",
+        "pathAnchor": "root"
+      },
+      "note": "DefaultUriBuilderFactory never calls normalize(); the kartograph oracle recorded the request path with the dot segments intact."
+    },
+    {
+      "id": "base-join/spring-unknown-base-rooted",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#base-결합",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-uri-builder",
+        "base": null,
+        "path": "/users//42"
+      },
+      "expect": {
+        "template": "/users/42",
+        "pathAnchor": "base"
+      },
+      "note": "Unknown base: a rooted template is a base-anchored suffix; // collapses in the template too."
+    },
+    {
+      "id": "base-join/spring-unknown-base-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#base-결합",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-uri-builder",
+        "base": null,
+        "path": "users"
+      },
+      "expectDynamic": true,
+      "expectLimitation": "ambiguous-base-join:",
+      "note": "Without the base path the plain concatenation cannot be resolved (like dio)."
+    },
+    {
+      "id": "base-join/spring-root-uri-literal-rooted",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-boot/blob/v3.5.16/spring-boot-project/spring-boot/src/main/java/org/springframework/boot/web/client/RootUriTemplateHandler.java",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-root-uri",
+        "base": "http://legacy.internal:8080/v1",
+        "path": "/orders"
+      },
+      "expect": {
+        "template": "/v1/orders",
+        "pathAnchor": "root",
+        "authority": "legacy.internal:8080"
+      },
+      "note": "RestTemplateBuilder.rootUri prepends the root only to templates starting with /; the result is parsed without a base (// collapses)."
+    },
+    {
+      "id": "base-join/spring-root-uri-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-boot/blob/v3.5.16/spring-boot-project/spring-boot/src/main/java/org/springframework/boot/web/client/RootUriTemplateHandler.java",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-root-uri",
+        "base": "http://legacy.internal:8080/v1",
+        "path": "orders"
+      },
+      "expectDynamic": true,
+      "note": "A template not starting with / gets no root and has no host, so no request path can be claimed."
+    },
+    {
+      "id": "base-join/spring-root-uri-unknown-rooted",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#base-결합",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-root-uri",
+        "base": null,
+        "path": "/orders"
+      },
+      "expect": {
+        "template": "/orders",
+        "pathAnchor": "base"
+      }
+    },
+    {
+      "id": "base-join/spring-http-exchange-slash-inserted",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.19/spring-web/src/main/java/org/springframework/web/service/invoker/HttpServiceMethod.java",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-http-exchange",
+        "base": "http://users.internal:8081/svc",
+        "typeUrl": "/api",
+        "path": "users"
+      },
+      "expect": {
+        "template": "/svc/api/users",
+        "pathAnchor": "root"
+      },
+      "note": "HttpServiceMethod.initUrl inserts / only when the type url does not end with / and the method url does not start with /; the result then joins the client base like spring-uri-builder."
+    },
+    {
+      "id": "base-join/spring-http-exchange-double-slash",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.19/spring-web/src/main/java/org/springframework/web/service/invoker/HttpServiceMethod.java",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-http-exchange",
+        "base": null,
+        "typeUrl": "/api/",
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "base"
+      }
+    },
+    {
+      "id": "base-join/spring-http-exchange-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "https://github.com/spring-projects/spring-framework/blob/v6.2.19/spring-web/src/main/java/org/springframework/web/service/invoker/HttpServiceMethod.java",
+      "appliesTo": [
+        "producer:kartograph"
+      ],
+      "input": {
+        "join": "spring-http-exchange",
+        "base": null,
+        "typeUrl": "api",
+        "path": "users"
+      },
+      "expectDynamic": true,
+      "expectLimitation": "ambiguous-base-join:"
+    },
+    {
       "id": "strip/userinfo-query-fragment",
       "ruleId": "compose.strip",
       "provenance": "contract",
