@@ -7,8 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-09-30
+
 ### Added
 
+- `cartograph routes` exports the HTTP requests Swift code makes as an http bridge-facts document
+  (`target: "http"`, `roles: ["client"]`, one `route-call` per call site), so isthmus can join app
+  calls with server routes and OpenAPI operations by (method, path template). Apps call their own
+  endpoint types rather than `URLSession`, and which argument is the path is not in the source, so
+  wrappers are declared in an `http-wrappers` v1 file (`--wrappers`); direct `URLRequest`/`URLSession`
+  requests are read when their verb and path are provable. Path composition, masking and argument
+  binding follow the shared rules of the isthmus contract, and the vendored conformance vectors run
+  in the test suite. Unreadable requests, pass-through helpers and stale wrapper declarations are
+  counted under the contract's client-side limitation prefixes instead of disappearing, test sources
+  are excluded unless `--include-tests`, and the index is optional — without one facts carry
+  qualified names and `missing-route-usrs` says so.
 - `cartograph routes` reads common Swift HTTP libraries without an `http-wrappers` declaration:
   URLSession/URLRequest (type URL constants, `dataTaskPublisher(for:)`, literal `relativeTo:` bases
   merged per RFC 3986), URLComponents (straight-line `scheme`/`host`/`port`/`path`/
@@ -28,21 +41,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`route-call-coverage:`), URL-rewriting Moya endpoint mappings and Alamofire adapters
   (`url-rewrite-interceptors:`), and OpenAPI generated-client runtimes (`generated-client-unscanned:`).
   `limitationScopes` are still not emitted, because none of these gaps bounds the paths it hides.
-
-### Fixed
-
-- `routes` no longer collapses every leading slash of an `appendingPathComponent` argument:
-  Foundation removes exactly one, so `//x` is sent as `//x`, and a bare path value appended to a URL
-  is no longer guessed to be a single `{}` segment when it may contain slashes.
-
-- `cartograph impact --format language-traversal --roots-from <file|->` reads roots from a file or
-  stdin, so isthmus capture can pass thousands of route-call symbols without hitting the argv limit or
-  splitting the run. It accepts kartograph's `--roots-from` inputs (a JSON string array, or a
-  bridge-facts document whose facts' `symbol.usr` become roots in document order) plus a line format
-  (one root per line, LF or CRLF, blank lines and `#` comments skipped). File roots follow positional
-  roots, exact duplicates are dropped, and input is capped at 16 MiB and 10000 combined roots. The
-  list is checked before the index opens; unreadable or malformed input, empty roots and control
-  characters are usage errors (64). The option is rejected outside `--format language-traversal`.
 - `cartograph impact --format language-traversal` emits one multi-root traversal as an isthmus
   `language-traversal` v1 document. `change-impact` keeps one `via` per declaration, so with several
   roots isthmus could not tell which route reached which view (a logout route lost the screen `body`
@@ -60,17 +58,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   only for a clean project tree, the git `HEAD`; `graphRevision` hashes the traversed graph, so isthmus
   can flag stale analyses instead of reporting `analysis-revision-unknown`. Roots with control
   characters are rejected up front. The `change-impact` output is unchanged.
-- `cartograph routes` exports the HTTP requests Swift code makes as an http bridge-facts document
-  (`target: "http"`, `roles: ["client"]`, one `route-call` per call site), so isthmus can join app
-  calls with server routes and OpenAPI operations by (method, path template). Apps call their own
-  endpoint types rather than `URLSession`, and which argument is the path is not in the source, so
-  wrappers are declared in an `http-wrappers` v1 file (`--wrappers`); direct `URLRequest`/`URLSession`
-  requests are read when their verb and path are provable. Path composition, masking and argument
-  binding follow the shared rules of the isthmus contract, and the vendored conformance vectors run
-  in the test suite. Unreadable requests, pass-through helpers and stale wrapper declarations are
-  counted under the contract's client-side limitation prefixes instead of disappearing, test sources
-  are excluded unless `--include-tests`, and the index is optional — without one facts carry
-  qualified names and `missing-route-usrs` says so.
+- `cartograph impact --format language-traversal --roots-from <file|->` reads roots from a file or
+  stdin, so isthmus capture can pass thousands of route-call symbols without hitting the argv limit or
+  splitting the run. It accepts kartograph's `--roots-from` inputs (a JSON string array, or a
+  bridge-facts document whose facts' `symbol.usr` become roots in document order) plus a line format
+  (one root per line, LF or CRLF, blank lines and `#` comments skipped). File roots follow positional
+  roots, exact duplicates are dropped, and input is capped at 16 MiB and 10000 combined roots. The
+  list is checked before the index opens; unreadable or malformed input, empty roots and control
+  characters are usage errors (64). The option is rejected outside `--format language-traversal`.
 - The MCP server exposes `cartograph_affected`, the test-reachability answer `affected` gives on the
   command line. An agent that has just edited code can ask which tests reach the change from the
   session's prepared analysis instead of launching a process per question; it accepts `symbols` or
@@ -91,6 +86,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   configured limit (`efferent-coupling`). Instability is a ratio, so a module depending on three
   others and one depending on thirty can both read 1.00; the absolute count catches a module that
   reaches into every layer.
+
+### Fixed
+
+- `routes` no longer collapses every leading slash of an `appendingPathComponent` argument:
+  Foundation removes exactly one, so `//x` is sent as `//x`, and a bare path value appended to a URL
+  is no longer guessed to be a single `{}` segment when it may contain slashes.
 
 ## [0.22.0] - 2026-09-24
 
@@ -1328,7 +1329,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.22.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.23.0...HEAD
+[0.23.0]: https://github.com/ictechgy/cartograph/compare/0.22.0...0.23.0
 [0.22.0]: https://github.com/ictechgy/cartograph/compare/0.21.0...0.22.0
 [0.21.0]: https://github.com/ictechgy/cartograph/compare/0.20.0...0.21.0
 [0.20.0]: https://github.com/ictechgy/cartograph/compare/0.19.0...0.20.0
