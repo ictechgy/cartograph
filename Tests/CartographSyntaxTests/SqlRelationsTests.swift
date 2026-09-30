@@ -8,6 +8,14 @@ struct SqlRelationsTests {
         sqlRelations(sql, strict: strict).relations.map(\.name)
     }
 
+    @Test("테이블 값 함수는 관계가 아니고 미해석 근거를 남긴다")
+    func tableValuedFunctions() {
+        #expect(relations("SELECT * FROM pragma_table_info('t')").isEmpty)
+        #expect(relations("SELECT * FROM users JOIN main.pragma_table_info('t') p ON true") == ["users"])
+        #expect(relations("SELECT * FROM pragma_table_info('t') AS p, users") == ["users"])
+        #expect(sqlRelations("SELECT * FROM pragma_table_info('t')").unresolved == 1)
+    }
+
     @Test("기본 관계 키워드의 피연산자를 읽는다")
     func basicRelationKeywords() {
         #expect(relations("SELECT * FROM users") == ["users"])

@@ -284,13 +284,21 @@ func sqlRelations(_ text: String, strict: Bool = false) -> (relations: [SqlRelat
                     break
                 }
                 let (name, next) = read
-                if bufferedGrant {
-                    buf.append(name)
-                } else if seen.insert("\(tok.offset) \(name)").inserted {
-                    out.append(SqlRelation(name: name, keyword: tok.offset))
-                }
                 for c in j..<next { consumed[c] = true }
-                operandEnd = next
+                if ["from", "join"].contains(word), next < tokens.count,
+                   !tokens[next].quoted, tokens[next].text == "(" {
+                    // 함수의 내부 관계를 추측하지 않고 미해석 근거를 남긴다.
+                    unresolved += 1
+                    guard let end = skipParens(tokens, next) else { break }
+                    operandEnd = end
+                } else {
+                    if bufferedGrant {
+                        buf.append(name)
+                    } else if seen.insert("\(tok.offset) \(name)").inserted {
+                        out.append(SqlRelation(name: name, keyword: tok.offset))
+                    }
+                    operandEnd = next
+                }
             }
             // `AS alias` 또는 쉼표 직전 별칭(`FROM users u, ..`)을 건너뛴다.
             var k = operandEnd
