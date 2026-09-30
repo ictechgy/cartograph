@@ -1,0 +1,1755 @@
+{
+  "format": "isthmus-conformance",
+  "version": 1,
+  "suite": "http-dispatch",
+  "description": "Route dispatch models for the http domain: registration-order validation (order field), consumer binding across order groups and dispatch models, and sound shadowing (route-decl-shadowed and route-decl-path-shadowed). Case ids are stable; producers vendor this file with its sha256 from SHA256SUMS.",
+  "contract": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+  "cases": [
+    {
+      "id": "validate/order-accepted",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/{}/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 0
+              }
+            },
+            {
+              "method": "ANY",
+              "channel": "/items/featured/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 1
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "validate/index-shared-by-one-registration",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "note": "One registration (one source location) may emit several facts (methods, expanded templates) with the same index.",
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 3
+              },
+              "location": {
+                "line": 7,
+                "column": 10
+              }
+            },
+            {
+              "method": "POST",
+              "channel": "/items/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 3
+              },
+              "location": {
+                "line": 7,
+                "column": 10
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "validate/order-optional",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "note": "A declaration whose order was not proven omits order; it is never ordered against other declarations.",
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 0
+              }
+            },
+            {
+              "method": "GET",
+              "channel": "/legacy/"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "validate/order-requires-registration-order",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "specificity",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 0
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/index-negative",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": -1
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/index-fraction",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 1.5
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/index-string",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": "1"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/group-empty",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": "",
+                "index": 0
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/group-surrounding-whitespace",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": " django:shop.urls",
+                "index": 0
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/group-too-long",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": "ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+                "index": 0
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/group-not-string",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": 3,
+                "index": 0
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/order-extra-key",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 0,
+                "depth": 1
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/order-missing-index",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": "django:shop.urls"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/group-max-length",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/items/",
+              "order": {
+                "group": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+                "index": 0
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "validate/index-shared-by-two-registrations",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/a/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 4
+              },
+              "location": {
+                "line": 3,
+                "column": 10
+              }
+            },
+            {
+              "method": "GET",
+              "channel": "/b/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 4
+              },
+              "location": {
+                "line": 9,
+                "column": 10
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/group-across-services",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/a/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 1
+              },
+              "service": "shop"
+            },
+            {
+              "method": "GET",
+              "channel": "/b/",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 2
+              },
+              "service": "blog"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/catch-all-prefix-inherits-order",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/files/{**}",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 5
+              },
+              "symbol": {
+                "qualifiedName": "files",
+                "usr": "shop/views.py#files"
+              },
+              "location": {
+                "line": 12,
+                "column": 10
+              }
+            },
+            {
+              "method": "GET",
+              "channel": "/files",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 5
+              },
+              "symbol": {
+                "qualifiedName": "files",
+                "usr": "shop/views.py#files"
+              },
+              "location": {
+                "line": 12,
+                "column": 10
+              },
+              "catchAllPrefix": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "validate/catch-all-prefix-other-order",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "registration-order",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/files/{**}",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 5
+              },
+              "symbol": {
+                "qualifiedName": "files",
+                "usr": "shop/views.py#files"
+              },
+              "location": {
+                "line": 12,
+                "column": 10
+              }
+            },
+            {
+              "method": "GET",
+              "channel": "/files",
+              "order": {
+                "group": "django:shop.urls",
+                "index": 6
+              },
+              "symbol": {
+                "qualifiedName": "files",
+                "usr": "shop/views.py#files"
+              },
+              "location": {
+                "line": 12,
+                "column": 10
+              },
+              "catchAllPrefix": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "match/first-registration-wins",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "note": "Specificity would pick the literal; registration order picks the earlier parameter declaration.",
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/items/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 5
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/items/featured/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 6
+            }
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "GET",
+          "template": "/items/featured/"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /items/{}/"
+        ]
+      }
+    },
+    {
+      "id": "match/literal-registered-first",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/items/featured/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 5
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/items/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 6
+            }
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "GET",
+          "template": "/items/featured/"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /items/featured/"
+        ]
+      }
+    },
+    {
+      "id": "match/call-param-skips-earlier-literal",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/users/me/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/users/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "GET",
+          "template": "/users/{}/"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /users/{}/"
+        ]
+      }
+    },
+    {
+      "id": "match/call-param-literals-only-ambiguous",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/codes/you/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/codes/me/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "GET",
+          "template": "/codes/{}/"
+        }
+      },
+      "expect": {
+        "status": "ambiguous",
+        "targets": [
+          "GET /codes/you/",
+          "GET /codes/me/"
+        ]
+      }
+    },
+    {
+      "id": "match/earlier-regex-may-intercept",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/years/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 3
+            },
+            "paramConstraints": [
+              {
+                "segment": 1,
+                "kind": "regex",
+                "pattern": "[0-9]{4}"
+              }
+            ]
+          },
+          {
+            "method": "GET",
+            "template": "/years/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 4
+            }
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "GET",
+          "template": "/years/2024/"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "param-to-literal-constrained",
+        "targets": [
+          "GET /years/{}/",
+          "GET /years/{}/"
+        ]
+      }
+    },
+    {
+      "id": "match/method-filtered-first",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "note": "Methods are filtered before order, so a path-first framework may answer 405 here: a false match, never a false error.",
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/items/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            }
+          },
+          {
+            "method": "ANY",
+            "template": "/items/featured/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "POST",
+          "template": "/items/featured/"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "any-method",
+        "targets": [
+          "ANY /items/featured/"
+        ]
+      }
+    },
+    {
+      "id": "match/method-mismatch-unchanged",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/reports/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/reports/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "POST",
+          "template": "/reports/"
+        }
+      },
+      "expect": {
+        "status": "method-mismatch",
+        "provable": true
+      }
+    },
+    {
+      "id": "match/narrowed-falls-through",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/late/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            },
+            "narrowed": true
+          },
+          {
+            "method": "GET",
+            "template": "/late/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "GET",
+          "template": "/late/"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /late/",
+          "GET /late/"
+        ]
+      }
+    },
+    {
+      "id": "match/groups-not-compared",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "note": "Orders are compared only inside one document and one group; the same group string in two documents is two chains.",
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/items/featured/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 9
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/items/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            },
+            "document": 1
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "GET",
+          "template": "/items/featured/"
+        }
+      },
+      "expect": {
+        "status": "ambiguous",
+        "targets": [
+          "GET /items/featured/",
+          "GET /items/{}/"
+        ]
+      }
+    },
+    {
+      "id": "match/unordered-not-compared",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/free/{}/",
+            "trailingSlash": "strict"
+          },
+          {
+            "method": "GET",
+            "template": "/free/x/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "GET",
+          "template": "/free/x/"
+        }
+      },
+      "expect": {
+        "status": "ambiguous",
+        "targets": [
+          "GET /free/{}/",
+          "GET /free/x/"
+        ]
+      }
+    },
+    {
+      "id": "match/across-dispatch-models-ambiguous",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/mixed/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 3
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/mixed/me/",
+            "dispatch": "specificity"
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "GET",
+          "template": "/mixed/me/"
+        }
+      },
+      "expect": {
+        "status": "ambiguous",
+        "targets": [
+          "GET /mixed/{}/",
+          "GET /mixed/me/"
+        ]
+      }
+    },
+    {
+      "id": "match/definite-unit-beats-conditional-unit",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/mixed/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 3
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/mixed/me/",
+            "dispatch": "specificity"
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "GET",
+          "template": "/mixed/{}/"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "exact",
+        "targets": [
+          "GET /mixed/{}/"
+        ]
+      }
+    },
+    {
+      "id": "match/suffix-drops-shadowed",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "note": "A fully shadowed declaration receives no request under any base, so it is not a suffix candidate.",
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/api/companies/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/api/companies/tech/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          }
+        ],
+        "call": {
+          "pathAnchor": "base",
+          "method": "GET",
+          "template": "/companies/tech/"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "suffix",
+        "targets": [
+          "GET /api/companies/{}/"
+        ]
+      }
+    },
+    {
+      "id": "match/shadowed-never-target",
+      "ruleId": "dispatch.match",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "note": "The earlier partial segment is unprovable for this call, but the later declaration is fully shadowed and receives no request.",
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/p/{}t",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 0
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/p/ab{}t",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            }
+          }
+        ],
+        "call": {
+          "pathAnchor": "root",
+          "method": "GET",
+          "template": "/p/ab{}t"
+        }
+      },
+      "expect": {
+        "status": "matched",
+        "quality": "param-to-literal",
+        "targets": [
+          "GET /p/{}t"
+        ]
+      }
+    },
+    {
+      "id": "shadow/path-only-when-methods-differ",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "note": "A path-first framework (Django) answers 405 at the earlier registration; a method-aware router still reaches the later one.",
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/items/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 5
+            }
+          },
+          {
+            "method": "ANY",
+            "template": "/items/featured/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 6
+            }
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [],
+        "pathShadowed": [
+          "ANY /items/featured/ @6"
+        ]
+      }
+    },
+    {
+      "id": "shadow/full-when-method-covered",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/items/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 5
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/items/new/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 6
+            }
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [
+          "GET /items/new/ @6"
+        ],
+        "pathShadowed": []
+      }
+    },
+    {
+      "id": "shadow/any-covers-every-method",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "ANY",
+            "template": "/dup/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 8
+            }
+          },
+          {
+            "method": "ANY",
+            "template": "/dup/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 9
+            }
+          },
+          {
+            "method": "DELETE",
+            "template": "/dup/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 10
+            }
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [
+          "ANY /dup/ @9",
+          "DELETE /dup/ @10"
+        ],
+        "pathShadowed": []
+      }
+    },
+    {
+      "id": "shadow/closed-constraint-not-evaluated-on-literal",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            },
+            "paramConstraints": [
+              {
+                "segment": 1,
+                "kind": "int"
+              }
+            ]
+          },
+          {
+            "method": "GET",
+            "template": "/a/1/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [],
+        "pathShadowed": []
+      }
+    },
+    {
+      "id": "shadow/same-closed-constraint",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            },
+            "paramConstraints": [
+              {
+                "segment": 1,
+                "kind": "int"
+              }
+            ]
+          },
+          {
+            "method": "GET",
+            "template": "/a/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            },
+            "paramConstraints": [
+              {
+                "segment": 1,
+                "kind": "int"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [
+          "GET /a/{}/ @2"
+        ],
+        "pathShadowed": []
+      }
+    },
+    {
+      "id": "shadow/regex-covers-nothing",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            },
+            "paramConstraints": [
+              {
+                "segment": 1,
+                "kind": "regex",
+                "pattern": "[a-z]+"
+              }
+            ]
+          },
+          {
+            "method": "GET",
+            "template": "/a/b/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [],
+        "pathShadowed": []
+      }
+    },
+    {
+      "id": "shadow/optional-later-needs-optional-earlier",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/a/b",
+            "trailingSlash": "optional",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [],
+        "pathShadowed": []
+      }
+    },
+    {
+      "id": "shadow/optional-covers-optional",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a/{}",
+            "trailingSlash": "optional",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/a/b",
+            "trailingSlash": "optional",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [
+          "GET /a/b @2"
+        ],
+        "pathShadowed": []
+      }
+    },
+    {
+      "id": "shadow/catch-all-covers-non-empty-rest",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/docs/{**}",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/docs/api/{}",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/docs/a/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 3
+            }
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [
+          "GET /docs/api/{} @2"
+        ],
+        "pathShadowed": []
+      }
+    },
+    {
+      "id": "shadow/narrowed-never-shadows",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/late/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            },
+            "narrowed": true
+          },
+          {
+            "method": "GET",
+            "template": "/late/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [],
+        "pathShadowed": []
+      }
+    },
+    {
+      "id": "shadow/same-index-is-one-registration",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 3
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/a/b/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 3
+            }
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [],
+        "pathShadowed": []
+      }
+    },
+    {
+      "id": "shadow/other-group-not-compared",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/a/{}/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/a/b/",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "other",
+              "index": 2
+            }
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [],
+        "pathShadowed": []
+      }
+    },
+    {
+      "id": "shadow/partial-segment-covers-literal-and-narrower-skeleton",
+      "ruleId": "dispatch.shadow",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "decls": [
+          {
+            "method": "GET",
+            "template": "/f/{}.json",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 1
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/f/a.json",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 2
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/f/x{}.json",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 3
+            }
+          },
+          {
+            "method": "GET",
+            "template": "/f/{}.xml",
+            "trailingSlash": "strict",
+            "order": {
+              "group": "django:shop.urls",
+              "index": 4
+            }
+          }
+        ]
+      },
+      "expect": {
+        "shadowed": [
+          "GET /f/a.json @2",
+          "GET /f/x{}.json @3"
+        ],
+        "pathShadowed": []
+      }
+    }
+  ]
+}

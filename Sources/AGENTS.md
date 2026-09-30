@@ -133,7 +133,8 @@ cartograph
 규칙을 스캐너에 섞으면 isthmus 공유 벡터(`conformance/`)가 제품 코드를 검사하지 못합니다. 벡터는 isthmus
 `conformance/` 의 파일과 `conformance/conformance.lock` 을 함께 갱신하고(새 suite 는 lock 에 새 항목), 새 `ruleId` 가
 생기면 `HTTPConformanceTests` 가 실행기 없음으로 실패합니다. 호출 측 스코프를 내지 않으므로
-`http-limitation-scope` 는 해시만 대조하고 실행을 미룹니다(`deferredSuites`). 호출 측 한계는 계약의 닫힌 접두사 목록에서만 고르세요 — 모르는 접두사는 소비자가 공백으로 읽지 않습니다.
+`http-limitation-scope` 는 해시만 대조하고 실행을 미룹니다(`deferredSuites`). `route-decl`·`order` 를 내지 않으므로
+`http-dispatch` 도 같습니다. 호출 측 한계는 계약의 닫힌 접두사 목록에서만 고르세요 — 모르는 접두사는 소비자가 공백으로 읽지 않습니다.
 
 **라이브러리 규칙은 실측으로만 바꿉니다.** Foundation·Alamofire·Moya 의 인코딩·결합·기본 동사는
 `HTTPFoundationPath`·`HTTPLibraryMethod`·`HTTPTargetRouteRules`(Core)에 있고, 근거는 라이브러리 소스와
