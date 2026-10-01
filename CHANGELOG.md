@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.23.1] - 2026-10-01
+
 ### Fixed
 
 - Stop reporting table-valued SQL functions such as `pragma_table_info(...)` as table relations; retain unresolved evidence and subsequent real tables.
