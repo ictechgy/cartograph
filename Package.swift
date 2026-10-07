@@ -63,6 +63,7 @@ let package = Package(
             dependencies: [
                 "CartographCore",
                 .product(name: "IndexStoreDB", package: "indexstore-db"),
+                .product(name: "IndexStore", package: "indexstore-db"),
             ],
             exclude: ["AGENTS.md"]
         ),

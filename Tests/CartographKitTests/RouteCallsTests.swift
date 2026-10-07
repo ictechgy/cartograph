@@ -51,6 +51,64 @@ struct RouteCallsTests {
         try service.routeCalls(generatedAt: fixedDate, wrappersPath: "/w/http-wrappers.json", includeTests: includeTests, service: name)
     }
 
+    private static func moyaTargetSource(
+        declaration: String = "enum UserTarget { case users }", pathBody: String
+    ) -> String {
+        """
+        import Moya
+        \(declaration)
+        extension UserTarget: TargetType {
+            var baseURL: URL { URL(string: "https://api.example.com")! }
+            var path: String \(pathBody)
+            var method: Moya.Method { .get }
+            var task: Task { .requestPlain }
+            var headers: [String: String]? { nil }
+        }
+        """
+    }
+
+    private func crossFileMoyaDocument(
+        routeSource: String, pathBody: String, targetDeclaration: String = "enum UserTarget { case users }"
+    ) throws -> RouteCallsDocument {
+        try crossFileMoyaDocument(routeSources: [routeSource], pathBody: pathBody, targetDeclaration: targetDeclaration)
+    }
+
+    private func crossFileMoyaDocument(
+        routeSources: [String], pathBody: String, targetDeclaration: String = "enum UserTarget { case users }"
+    ) throws -> RouteCallsDocument {
+        var files = Dictionary(uniqueKeysWithValues: routeSources.enumerated().map { index, source in
+            ("/p/Sources/RoutePaths\(index).swift", source)
+        })
+        files["/p/Sources/UserTarget.swift"] = Self.moyaTargetSource(
+            declaration: targetDeclaration, pathBody: pathBody
+        )
+        let service = makeService(files: files)
+        return try service.routeCalls(generatedAt: fixedDate)
+    }
+
+    private func expectDynamicMoyaRoute(routeSource: String, pathBody: String) throws {
+        let result = try crossFileMoyaDocument(routeSource: routeSource, pathBody: pathBody)
+        let fact = try #require(result.facts.first)
+        #expect(result.facts.count == 1)
+        #expect(fact.method == "GET")
+        #expect(fact.dynamic)
+        #expect(fact.channel != "/users")
+        #expect(fact.symbol?.qualifiedName == "UserTarget.users")
+        #expect(result.limitations == ["missing-route-usrs: 1 route-call fact(s) lack indexed identities"])
+    }
+
+    private func expectResolvedMoyaRoute(routeSource: String, pathBody: String) throws {
+        let result = try crossFileMoyaDocument(routeSource: routeSource, pathBody: pathBody)
+        let fact = try #require(result.facts.first)
+        #expect(result.facts.count == 1)
+        #expect(fact.method == "GET")
+        #expect(fact.channel == "/users")
+        #expect(!fact.dynamic)
+        #expect(fact.symbol?.qualifiedName == "UserTarget.users")
+        #expect(fact.symbol?.usr == nil)
+        #expect(result.limitations == ["missing-route-usrs: 1 route-call fact(s) lack indexed identities"])
+    }
+
     private func json(_ value: some Encodable) throws -> [String: Any] {
         let text = try CartographService.encodeSortedJSON(value)
         return try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
@@ -302,6 +360,267 @@ struct RouteCallsTests {
         #expect(result.facts.map(\.symbol?.qualifiedName) == ["UserAPI.list", "UserAPI.detail"])
         #expect(result.facts.allSatisfy { $0.location.path == "Sources/UserAPI+Target.swift" })
         #expect(result.limitations.isEmpty)
+    }
+
+    @Test("다른 파일의 문자열 원시값 경로는 Moya enum case 사실의 동사와 채널을 보존한다")
+    func crossFileRawEnumRoutePathIsResolved() throws {
+        try expectResolvedMoyaRoute(
+            routeSource: "enum RoutePaths: String { case users = \"/users\" }",
+            pathBody: "{ RoutePaths.users.rawValue }"
+        )
+    }
+
+    @Test("다른 파일 protocol의 associatedtype 이름은 라우터 익스텐션의 전역 경로 타입을 가린다")
+    func crossFileAssociatedTypeShadowsStaticType() throws {
+        let result = try crossFileMoyaDocument(
+            routeSource: """
+                protocol UserTargetProtocol { associatedtype RoutePaths }
+                enum RoutePaths: String { case users = "/wrong" }
+                """,
+            pathBody: "{ RoutePaths.users.rawValue }",
+            targetDeclaration: "enum UserTarget: UserTargetProtocol { case users }"
+        )
+        let fact = try #require(result.facts.first)
+        #expect(result.facts.count == 1)
+        #expect(fact.dynamic)
+        #expect(fact.channel != "/wrong")
+    }
+
+    @Test("조건부 enum case는 한 분기만 보여도 원시값을 추측하지 않는다")
+    func conditionalSingleBranchRawEnumRoutePathRemainsDynamic() throws {
+        try expectDynamicMoyaRoute(
+            routeSource: """
+                enum RoutePaths: String {
+                #if STAGING
+                    case users = "/staging"
+                #endif
+                }
+                """,
+            pathBody: "{ RoutePaths.users.rawValue }"
+        )
+    }
+
+    @Test("조건부 분기마다 같은 enum case가 있으면 원시값을 추측하지 않는다")
+    func conditionalMultiBranchRawEnumRoutePathRemainsDynamic() throws {
+        try expectDynamicMoyaRoute(
+            routeSource: """
+                enum RoutePaths: String {
+                #if STAGING
+                    case users = "/staging"
+                #else
+                    case users = "/production"
+                #endif
+                }
+                """,
+            pathBody: "{ RoutePaths.users.rawValue }"
+        )
+    }
+
+    @Test("같은 enum 사슬의 다른 파일 정의가 있으면 원시값을 추측하지 않는다")
+    func duplicateCrossFileRawEnumRoutePathRemainsDynamic() throws {
+        let result = try crossFileMoyaDocument(
+            routeSources: [
+                "enum RoutePaths: String { case users = \"/a\" }",
+                "enum RoutePaths: String { case users = \"/b\" }",
+            ],
+            pathBody: "{ RoutePaths.users.rawValue }"
+        )
+        let fact = try #require(result.facts.first)
+        #expect(result.facts.count == 1)
+        #expect(fact.dynamic)
+        #expect(fact.channel != "/a")
+        #expect(fact.channel != "/b")
+    }
+
+    @Test("무조건부 enum case는 주변의 다른 조건부 선언과 함께 원시값을 보존한다")
+    func unconditionalRawEnumRoutePathRemainsResolved() throws {
+        try expectResolvedMoyaRoute(
+            routeSource: """
+                enum RoutePaths: String {
+                #if STAGING
+                    case staging = "/staging"
+                #endif
+                    case users = "/users"
+                }
+                """,
+            pathBody: "{ RoutePaths.users.rawValue }"
+        )
+    }
+
+    @Test("다른 파일의 정적 문자열 멤버도 Moya enum case 사실의 동사와 채널을 보존한다")
+    func crossFileStaticMemberRoutePathIsResolved() throws {
+        try expectResolvedMoyaRoute(
+            routeSource: "enum RoutePaths { static let users = \"/users\" }",
+            pathBody: "{ RoutePaths.users }"
+        )
+    }
+
+    @Test("명시한 StaticString 정적 멤버는 문자열 리터럴처럼 해석하지 않는다")
+    func explicitStaticStringMemberRemainsDynamic() throws {
+        try expectDynamicMoyaRoute(
+            routeSource: "enum RoutePaths { static let users: StaticString = \"/users\" }",
+            pathBody: "{ RoutePaths.users }"
+        )
+    }
+
+    @Test("문자열 리터럴 프로토콜을 따르는 사용자 타입의 정적 멤버는 해석하지 않는다")
+    func customStringLiteralMemberRemainsDynamic() throws {
+        try expectDynamicMoyaRoute(
+            routeSource: """
+                struct CustomPath: ExpressibleByStringLiteral {
+                    init(stringLiteral: String) {}
+                }
+                enum RoutePaths { static let users: CustomPath = "/users" }
+                """,
+            pathBody: "{ RoutePaths.users }"
+        )
+    }
+
+    @Test("명시한 String과 Swift.String 정적 멤버는 문자열 경로로 해석한다")
+    func explicitStringMembersResolveStaticPath() throws {
+        try expectResolvedMoyaRoute(
+            routeSource: "enum RoutePaths { static let users: String = \"/users\" }",
+            pathBody: "{ RoutePaths.users }"
+        )
+        try expectResolvedMoyaRoute(
+            routeSource: "enum RoutePaths { static let users: Swift.String = \"/users\" }",
+            pathBody: "{ RoutePaths.users }"
+        )
+    }
+
+    @Test("다른 파일의 원시값 enum을 typealias로 쓴 경로도 Moya enum case 사실을 보존한다")
+    func crossFileTypealiasRawEnumRoutePathIsResolved() throws {
+        try expectResolvedMoyaRoute(
+            routeSource: "typealias Paths = RoutePaths\nenum RoutePaths: String { case users = \"/users\" }",
+            pathBody: "{ Paths.users.rawValue }"
+        )
+    }
+
+    @Test("다른 파일의 중첩 네임스페이스 정적 멤버도 소유 타입을 확인해 해석한다")
+    func crossFileNestedNamespaceStaticMemberRoutePathIsResolved() throws {
+        try expectResolvedMoyaRoute(
+            routeSource: "enum Namespace { enum RoutePaths { static let users = \"/users\" } }",
+            pathBody: "{ Namespace.RoutePaths.users }"
+        )
+    }
+
+    @Test("공유하는 작은 정적 문자열 참조는 순환으로 잘못 거부하지 않는다")
+    func crossFileSharedStaticReferencesRemainResolved() throws {
+        let result = try crossFileMoyaDocument(
+            routeSource: "enum RoutePaths { static let root = \"/users\"; static let users = RoutePaths.root + RoutePaths.root }",
+            pathBody: "{ RoutePaths.users }"
+        )
+        let fact = try #require(result.facts.first)
+        #expect(result.facts.count == 1)
+        #expect(!fact.dynamic)
+        #expect(result.facts.first?.channel == "/users/users")
+        #expect(fact.symbol?.qualifiedName == "UserTarget.users")
+    }
+
+    @Test("최대 경로 길이를 넘는 정적 문자열 조립은 값을 만들지 않고 dynamic 으로 남긴다")
+    func crossFileOverBudgetStaticStringRemainsDynamic() throws {
+        var declarations = ["enum RoutePaths { static let p0 = \"/a\""]
+        for index in 1...12 {
+            declarations.append("static let p\(index) = RoutePaths.p\(index - 1) + RoutePaths.p\(index - 1)")
+        }
+        declarations.append("}")
+        let routeSource = declarations.joined(separator: "\n")
+        let underBudget = try crossFileMoyaDocument(routeSource: routeSource, pathBody: "{ RoutePaths.p2 }")
+        let smallFact = try #require(underBudget.facts.first)
+        #expect(underBudget.facts.count == 1)
+        #expect(!smallFact.dynamic)
+        #expect(smallFact.channel == "/a/a/a/a")
+        try expectDynamicMoyaRoute(
+            routeSource: routeSource,
+            pathBody: "{ RoutePaths.p12 }"
+        )
+    }
+
+    @Test("깊은 정적 문자열 별칭 사슬은 제한 안에서만 해석한다")
+    func crossFileDeepStaticStringChainIsBounded() throws {
+        var declarations = ["enum RoutePaths { static let p0 = \"/users\""]
+        for index in 1...65 {
+            declarations.append("static let p\(index) = RoutePaths.p\(index - 1) + \"/next\"")
+        }
+        declarations.append("}")
+        try expectDynamicMoyaRoute(
+            routeSource: declarations.joined(separator: "\n"),
+            pathBody: "{ RoutePaths.p65 }"
+        )
+    }
+
+    @Test("알 수 없거나 모호한 다른 파일의 원시값 경로는 추측하지 않고 dynamic 으로 남긴다")
+    func crossFileUnknownAndAmbiguousPathsRemainDynamic() throws {
+        try expectDynamicMoyaRoute(
+            routeSource: "enum RoutePaths: String { case users = \"/users\" }",
+            pathBody: "{ RoutePaths.missing.rawValue }"
+        )
+        try expectDynamicMoyaRoute(
+            routeSource: """
+                enum FeatureA { enum RoutePaths: String { case users = "/a" } }
+                enum FeatureB { enum RoutePaths: String { case users = "/b" } }
+                """,
+            pathBody: "{ RoutePaths.users.rawValue }"
+        )
+        try expectDynamicMoyaRoute(
+            routeSource: """
+                enum FeatureA { enum RoutePaths { static let users = "/a" } }
+                enum FeatureB { enum RoutePaths { static let users = "/b" } }
+                """,
+            pathBody: "{ RoutePaths.users }"
+        )
+        try expectDynamicMoyaRoute(
+            routeSource: """
+                typealias Paths = Other
+                typealias Other = Paths
+                enum RoutePaths: String { case users = "/users" }
+                """,
+            pathBody: "{ Paths.users.rawValue }"
+        )
+    }
+
+    @Test("동적·변경 가능 Moya 경로는 정적 채널로 오인하지 않고 연관값 경로는 템플릿을 보존한다")
+    func dynamicMutableAndParameterDependentPathsRemainDynamic() throws {
+        try expectDynamicMoyaRoute(
+            routeSource: "enum RoutePaths { static let users = \"/users\" }",
+            pathBody: "{ runtimePath() }"
+        )
+        try expectDynamicMoyaRoute(
+            routeSource: "enum RoutePaths { static var users = \"/users\" }",
+            pathBody: "{ RoutePaths.users }"
+        )
+        try expectDynamicMoyaRoute(
+            routeSource: "enum RoutePaths { static let users = \"/users\" }",
+            pathBody: """
+                {
+                    var value = "/users"
+                    value += "/mutable"
+                    return value
+                }
+                """
+        )
+
+        let parameterDependentTarget = Self.moyaTargetSource(
+            declaration: "enum UserTarget { case user(id: String) }",
+            pathBody: """
+                {
+                    switch self {
+                    case .user(let id): return "/users/" + id
+                    }
+                }
+                """
+        )
+        let result = try makeService(files: [
+            "/p/Sources/RoutePaths.swift": "enum RoutePaths { static let users = \"/users\" }",
+            "/p/Sources/UserTarget.swift": parameterDependentTarget,
+        ]).routeCalls(generatedAt: fixedDate)
+        let fact = try #require(result.facts.first)
+        #expect(result.facts.count == 1)
+        #expect(fact.method == "GET")
+        #expect(fact.channel == "/users/{}")
+        #expect(!fact.dynamic)
+        #expect(fact.symbol?.qualifiedName == "UserTarget.user")
+        #expect(result.limitations == ["missing-route-usrs: 1 route-call fact(s) lack indexed identities"])
     }
 
     @Test("라이브러리 한계를 계약의 호출 측 접두사로 알린다")

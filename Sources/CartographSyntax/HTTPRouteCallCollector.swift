@@ -562,8 +562,25 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     private func expanded(_ expression: ExprSyntax, context: BindingCollector.Context, depth: Int) -> [HTTPScannedPart] {
         let value = BindingCollector.unparenthesized(expression)
         if let text = bindings.resolvedValue(of: value) { return [.literal(text)] }
-        if let raw = enumRawValue(value) { return [.literal(raw)] }
+        // 지역 타입 이름은 기존 상수 바인딩의 전역 멤버 치환도 막아야 한다.
+        if let root = HTTPSyntax.dottedName(value)?.first,
+           isLexicalTypeShadow(named: root, expression: value, context: context) { return [.value(value)] }
+        if let raw = enumRawValue(value, context: context) { return [.literal(raw)] }
+        if let member = value.as(MemberAccessExprSyntax.self),
+           let base = member.base.flatMap(HTTPSyntax.dottedName),
+           staticLookupIsUnbound(base, expression: value, context: context),
+           let resolved = surface.staticStringValue(
+               ofMember: SyntaxIdentifiers.unescaped(member.declName.baseName.text), inTypeNamed: base
+           ) {
+            return [.literal(resolved)]
+        }
         if isQueryTailLocal(value, context: context) { return [.queryTail] }
+        if let member = value.as(MemberAccessExprSyntax.self),
+           let type = member.base.flatMap(HTTPSyntax.dottedName), let root = type.first,
+           !["self", "Self"].contains(root), !bindings.hasBinding(named: root, in: context),
+           !surface.allowsLegacyStaticExpansion(
+               ofMember: SyntaxIdentifiers.unescaped(member.declName.baseName.text), inTypeNamed: type
+           ) { return [.value(value)] }
         if let bound = bindings.constantExpression(for: value, in: context) {
             return parts(of: bound.expression, context: bound.context, depth: depth + 1)
         }
@@ -571,11 +588,89 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     }
 
     /// `Path.users.rawValue` 의 문자열 원시값. 프로젝트 어느 파일의 enum 이든 표면에서 찾는다.
-    private func enumRawValue(_ expression: ExprSyntax) -> String? {
+    private func enumRawValue(_ expression: ExprSyntax, context: BindingCollector.Context) -> String? {
         guard let member = expression.as(MemberAccessExprSyntax.self), member.declName.baseName.text == "rawValue",
               let caseAccess = member.base?.as(MemberAccessExprSyntax.self), let typeExpression = caseAccess.base,
-              let type = HTTPSyntax.dottedName(typeExpression) else { return nil }
+              let type = HTTPSyntax.dottedName(typeExpression),
+              staticLookupIsUnbound(type, expression: expression, context: context) else { return nil }
         return surface.rawValue(ofCase: SyntaxIdentifiers.unescaped(caseAccess.declName.baseName.text), inTypeNamed: type)
+    }
+
+    /// 타입처럼 보이는 정적 라우트 이름이 현재 문맥의 값으로 가려졌으면 프로젝트 표면을 조회하지 않는다.
+    private func staticLookupIsUnbound(
+        _ type: [String], expression: ExprSyntax, context: BindingCollector.Context
+    ) -> Bool {
+        guard let root = type.first, !["self", "Self"].contains(root) else { return true }
+        guard !bindings.hasBinding(named: root, in: context) else { return false }
+        return !isLexicalTypeShadow(named: root, expression: expression, context: context)
+    }
+
+    /// 값 바인딩과 별개로 현재 문맥의 타입 이름이 전역 타입을 가리는지 확인한다.
+    private func isLexicalTypeShadow(
+        named name: String, expression: ExprSyntax, context: BindingCollector.Context
+    ) -> Bool {
+        if context.enclosingTypes.contains(where: { surface.associatedTypeNames(in: $0).contains(name) }) {
+            return true
+        }
+        var current = expression.parent
+        while let syntax = current {
+            if let function = syntax.as(FunctionDeclSyntax.self),
+               function.genericParameterClause?.parameters.contains(where: { $0.name.text == name }) == true {
+                return true
+            }
+            if let initializer = syntax.as(InitializerDeclSyntax.self),
+               initializer.genericParameterClause?.parameters.contains(where: { $0.name.text == name }) == true {
+                return true
+            }
+            if let declaration = syntax.as(SubscriptDeclSyntax.self),
+               declaration.genericParameterClause?.parameters.contains(where: { $0.name.text == name }) == true {
+                return true
+            }
+            if let declaration = syntax.as(ClassDeclSyntax.self),
+               declaration.genericParameterClause?.parameters.contains(where: { $0.name.text == name }) == true {
+                return true
+            }
+            if let declaration = syntax.as(StructDeclSyntax.self),
+               declaration.genericParameterClause?.parameters.contains(where: { $0.name.text == name }) == true {
+                return true
+            }
+            if let declaration = syntax.as(EnumDeclSyntax.self),
+               declaration.genericParameterClause?.parameters.contains(where: { $0.name.text == name }) == true {
+                return true
+            }
+            if let declaration = syntax.as(ActorDeclSyntax.self),
+               declaration.genericParameterClause?.parameters.contains(where: { $0.name.text == name }) == true {
+                return true
+            }
+            if let list = syntax.as(CodeBlockItemListSyntax.self), list.parent?.is(SourceFileSyntax.self) != true,
+               containsLocalTypeShadow(list, named: name) {
+                return true
+            }
+            current = syntax.parent
+        }
+        return false
+    }
+
+    /// 조건부 선언도 같은 지역 스코프를 가릴 수 있다. 함수·중첩 타입의 내부로는 들어가지 않는다.
+    private func containsLocalTypeShadow(
+        _ list: CodeBlockItemListSyntax, named name: String, depth: Int = 0
+    ) -> Bool {
+        guard depth < 64 else { return true }
+        for item in list {
+            let declaration = item.item
+            if declaration.as(TypeAliasDeclSyntax.self)?.name.text == name
+                || declaration.as(ClassDeclSyntax.self)?.name.text == name
+                || declaration.as(StructDeclSyntax.self)?.name.text == name
+                || declaration.as(EnumDeclSyntax.self)?.name.text == name
+                || declaration.as(ActorDeclSyntax.self)?.name.text == name { return true }
+            if let conditional = declaration.as(IfConfigDeclSyntax.self) {
+                for clause in conditional.clauses {
+                    if let items = clause.elements?.as(CodeBlockItemListSyntax.self),
+                       containsLocalTypeShadow(items, named: name, depth: depth + 1) { return true }
+                }
+            }
+        }
+        return false
     }
 
     /// `compose.suffix`: 같은 함수의 불변 지역 변수이고, 초기식의 비어 있지 않은 값이 모두 `?` 로

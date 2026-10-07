@@ -562,10 +562,10 @@ struct UnattributedReferenceTests {
         // 있을 때만 간선을 만들면 페이로드 타입은 아무도 쓰지 않는 것처럼 보이고,
         // 실제로는 지우면 컴파일이 깨진다. 오늘은 합성 init 이 우연히 살리고 있다.
         let references = IndexStoreProvider.enclosingReferences(
-            for: [(usr: "s:Payload", location: at(6, 16), targetKind: .structType)],
+            for: [(usr: "s:Payload", location: at(6, 16), targetKind: .structType, module: "App")],
             definitionSites: ["/p/A.swift": [
-                (usr: "s:Failure", location: at(5, 6)),
-                (usr: "s:broke", location: at(6, 10)),
+                (usr: "s:Failure", location: at(5, 6), module: "App"),
+                (usr: "s:broke", location: at(6, 10), module: "App"),
             ]],
             symbols: [
                 "s:Failure": symbol("s:Failure", kind: .enumType, line: 5),
@@ -581,8 +581,10 @@ struct UnattributedReferenceTests {
     @Test("타입 별칭의 우변도 같은 방식으로 붙는다")
     func typeAliasRightHandSideGetsAnEdge() {
         let references = IndexStoreProvider.enclosingReferences(
-            for: [(usr: "s:Aliased", location: at(9, 22), targetKind: .structType)],
-            definitionSites: ["/p/A.swift": [(usr: "s:Shortcut", location: at(9, 11))]],
+            for: [(usr: "s:Aliased", location: at(9, 22), targetKind: .structType, module: "App")],
+            definitionSites: ["/p/A.swift": [
+                (usr: "s:Shortcut", location: at(9, 11), module: "App")
+            ]],
             symbols: ["s:Shortcut": symbol("s:Shortcut", kind: .typeAlias, line: 9)]
         )
         #expect(references.map(\.sourceUSR) == ["s:Shortcut"])
@@ -595,8 +597,10 @@ struct UnattributedReferenceTests {
         // 자리가 아니라 속성 줄이다. 넓게 잡으면 앞 선언에 붙어 없는 의존성을 만든다.
         // 실제로 `@Observable` 이 그 모양으로 거짓 순환 두 건을 만들었다.
         let references = IndexStoreProvider.enclosingReferences(
-            for: [(usr: "s:Other", location: at(50, 2), targetKind: .structType)],
-            definitionSites: ["/p/A.swift": [(usr: "s:id", location: at(42, 9))]],
+            for: [(usr: "s:Other", location: at(50, 2), targetKind: .structType, module: "App")],
+            definitionSites: ["/p/A.swift": [
+                (usr: "s:id", location: at(42, 9), module: "App")
+            ]],
             symbols: ["s:id": symbol("s:id", kind: .property, line: 42)]
         )
         #expect(references.isEmpty)
@@ -607,10 +611,10 @@ struct UnattributedReferenceTests {
         // 이름 없는 파라미터는 자기 타입과 같은 자리에 기록된다. 그것을 소유자로 뽑으면
         // 파라미터는 그래프의 정점이 아니라 간선이 통째로 사라진다.
         let references = IndexStoreProvider.enclosingReferences(
-            for: [(usr: "s:Payload", location: at(6, 16), targetKind: .structType)],
+            for: [(usr: "s:Payload", location: at(6, 16), targetKind: .structType, module: "App")],
             definitionSites: ["/p/A.swift": [
-                (usr: "s:broke", location: at(6, 10)),
-                (usr: "s:param", location: at(6, 16)),
+                (usr: "s:broke", location: at(6, 10), module: "App"),
+                (usr: "s:param", location: at(6, 16), module: "App"),
             ]],
             symbols: [
                 "s:broke": symbol("s:broke", kind: .enumCase, line: 6),
@@ -623,11 +627,170 @@ struct UnattributedReferenceTests {
     @Test("앞에 정의가 없으면 아무 데도 붙이지 않는다")
     func referencesBeforeAnyDefinitionAreDropped() {
         let references = IndexStoreProvider.enclosingReferences(
-            for: [(usr: "s:Imported", location: at(1, 8), targetKind: .structType)],
-            definitionSites: ["/p/A.swift": [(usr: "s:Later", location: at(5, 1))]],
+            for: [(usr: "s:Imported", location: at(1, 8), targetKind: .structType, module: "App")],
+            definitionSites: ["/p/A.swift": [
+                (usr: "s:Later", location: at(5, 1), module: "App")
+            ]],
             symbols: ["s:Later": symbol("s:Later", kind: .enumCase, line: 5)]
         )
         #expect(references.isEmpty)
+    }
+}
+
+@Suite("공유 소스의 관계 없는 참조 귀속")
+struct SharedSourceUnattributedReferenceTests {
+    private let sharedPath = "/p/Shared.swift"
+
+    @Test("같은 공유 소스를 빌드한 두 모듈의 연관 값 간선을 각각 보존한다")
+    func preservesOwnerModuleForSharedEnumCases() {
+        let modules = [
+            sharedModuleOccurrences(module: "A", ownerKind: .enumConstant),
+            sharedModuleOccurrences(module: "B", ownerKind: .enumConstant),
+        ]
+        let expected = modules.flatMap { $0.expectedEdge }
+
+        for occurrences in [
+            modules.flatMap { $0.occurrences },
+            modules.reversed().flatMap { $0.occurrences },
+        ] {
+            let snapshot = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+            let actual = inferredEdgeKeys(in: snapshot)
+            #expect(actual == sortedEdgeKeys(expected))
+            #expect(!actual.contains(edgeKey(source: modules[0].ownerUSR, target: modules[1].targetUSR)))
+            #expect(!actual.contains(edgeKey(source: modules[1].ownerUSR, target: modules[0].targetUSR)))
+
+            let graph = GraphBuilder(options: .init(level: .symbol, edgeKinds: [.reference])).build(from: snapshot)
+            #expect(graph.edges.map { edgeKey(source: $0.source.rawValue, target: $0.target.rawValue) }
+                == sortedEdgeKeys(expected))
+        }
+    }
+
+    @Test("같은 위치의 타입 별칭과 associatedtype 간선도 모듈별로 결정한다")
+    func preservesOwnerModuleForTypeAliasKinds() {
+        let cases: [(IndexSymbolKind, IndexSymbolSubKind)] = [
+            (.typealias, .none),
+            (.typealias, .swiftAssociatedType),
+        ]
+        for (kind, subKind) in cases {
+            let modules = [
+                sharedModuleOccurrences(module: "A", ownerKind: kind, ownerSubKind: subKind),
+                sharedModuleOccurrences(module: "B", ownerKind: kind, ownerSubKind: subKind),
+            ]
+            let snapshot = IndexStoreProvider.snapshot(
+                from: modules.flatMap { $0.occurrences }, includeExternalSymbols: false)
+            #expect(inferredEdgeKeys(in: snapshot) == sortedEdgeKeys(modules.flatMap { $0.expectedEdge }))
+        }
+    }
+
+    @Test("모듈을 모르는 공유 소스 참조는 임의의 소유자에 붙이지 않는다")
+    func dropsAmbiguousUnknownModuleReference() {
+        let modules = [
+            sharedModuleOccurrences(module: "A", ownerKind: .enumConstant),
+            sharedModuleOccurrences(module: "B", ownerKind: .enumConstant),
+        ]
+        let unknown = occurrence(
+            Symbol(usr: modules[0].targetUSR, name: "Payload", kind: .struct, subKind: .none,
+                   properties: [], language: .swift),
+            roles: .reference,
+            location: location(line: 10, column: 20, module: "")
+        )
+        let occurrences = modules.map(\.occurrences).flatMap { $0 } + [unknown]
+        let snapshot = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+
+        #expect(inferredEdgeKeys(in: snapshot) == sortedEdgeKeys(modules.flatMap { $0.expectedEdge }))
+        #expect(snapshot.references.allSatisfy { reference in
+            !(reference.sourceUSR == modules[1].ownerUSR && reference.targetUSR == modules[0].targetUSR)
+        })
+    }
+
+    @Test("한 모듈의 일반적인 같은 파일 참조는 기존 소유를 유지한다")
+    func retainsSingleModuleSameFileOwnership() {
+        let occurrences = sharedModuleOccurrences(module: "A", ownerKind: .enumConstant).occurrences
+        let snapshot = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false)
+        #expect(inferredEdgeKeys(in: snapshot) == [
+            edgeKey(source: "s:1A5OwnerO", target: "s:1A7PayloadV"),
+        ])
+    }
+
+    private func inferredEdgeKeys(
+        in snapshot: IndexSnapshot
+    ) -> [String] {
+        snapshot.references
+            .filter { $0.origin == .inferred && $0.kind == .reference }
+            .map { edgeKey(source: $0.sourceUSR, target: $0.targetUSR) }
+            .sorted()
+    }
+
+    private func sortedEdgeKeys(
+        _ edges: [(source: String, target: String)]
+    ) -> [String] {
+        edges.map { edgeKey(source: $0.source, target: $0.target) }.sorted()
+    }
+
+    private func edgeKey(source: String, target: String) -> String {
+        "\(source)->\(target)"
+    }
+
+    private func sharedModuleOccurrences(
+        module: String,
+        ownerKind: IndexSymbolKind,
+        ownerSubKind: IndexSymbolSubKind = .none
+    ) -> SharedModuleOccurrences {
+        let ownerUSR = "s:1\(module)5OwnerO"
+        let targetUSR = "s:1\(module)7PayloadV"
+        let target = occurrence(
+            Symbol(usr: targetUSR, name: "Payload", kind: .struct, subKind: .none,
+                   properties: [], language: .swift),
+            roles: .definition,
+            location: location(line: 1, column: 1, module: module)
+        )
+        let owner = occurrence(
+            Symbol(usr: ownerUSR, name: "SharedOwner", kind: ownerKind, subKind: ownerSubKind,
+                   properties: [], language: .swift),
+            roles: .definition,
+            location: location(line: 10, column: 5, module: module)
+        )
+        let reference = occurrence(
+            Symbol(usr: targetUSR, name: "Payload", kind: .struct, subKind: .none,
+                   properties: [], language: .swift),
+            roles: .reference,
+            location: location(line: 10, column: 20, module: module)
+        )
+        let container: [SymbolOccurrence] = ownerKind == .enumConstant ? [
+            occurrence(
+                Symbol(usr: "s:1\(module)6SharedO", name: "Shared", kind: .enum, subKind: .none,
+                       properties: [], language: .swift),
+                roles: .definition,
+                location: location(line: 5, column: 1, module: module)
+            ),
+        ] : []
+        return SharedModuleOccurrences(
+            occurrences: container + [target, owner, reference], ownerUSR: ownerUSR, targetUSR: targetUSR)
+    }
+
+    private func occurrence(
+        _ symbol: Symbol,
+        roles: SymbolRole,
+        location: SymbolLocation
+    ) -> SymbolOccurrence {
+        SymbolOccurrence(symbol: symbol, location: location, roles: roles, symbolProvider: .swift, relations: [])
+    }
+
+    private func location(line: Int, column: Int, module: String) -> SymbolLocation {
+        SymbolLocation(
+            path: sharedPath, timestamp: Date(timeIntervalSince1970: 0), moduleName: module,
+            isSystem: false, line: line, utf8Column: column
+        )
+    }
+
+    private struct SharedModuleOccurrences {
+        let occurrences: [SymbolOccurrence]
+        let ownerUSR: String
+        let targetUSR: String
+
+        var expectedEdge: [(source: String, target: String)] {
+            [(source: ownerUSR, target: targetUSR)]
+        }
     }
 }
 

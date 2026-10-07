@@ -366,6 +366,8 @@ final class BindingCollector: SyntaxVisitor {
         return pushScope(node)
     }
     override func visitPost(_: InitializerDeclSyntax) { scopes.removeLast(); initParamStack.removeLast() }
+    override func visit(_ node: SubscriptDeclSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
+    override func visitPost(_: SubscriptDeclSyntax) { scopes.removeLast() }
     override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind { pushScope(node) }
     override func visitPost(_: ClosureExprSyntax) { scopes.removeLast() }
 
@@ -793,6 +795,14 @@ final class BindingCollector: SyntaxVisitor {
             if let found = bindings[key] { return found }
         }
         return nil
+    }
+
+    /// 현재 문맥에서 이름이 지역·매개변수·캡처·멤버로 선언되었는지 확인한다.
+    ///
+    /// 값이 모호하거나 가변이어도 이름이 가리려는 타입 표기보다 먼저 적용해야 한다. 바깥 정적
+    /// 라우트 멤버를 그 이름의 런타임 값으로 잘못 대체하지 않기 위한 관문이다.
+    func hasBinding(named name: String, in context: Context) -> Bool {
+        binding(named: DeclarationCollector.unescaped(name), in: context, membersOnly: false) != nil
     }
 
     /// 채널 변수의 이름과 생성자 종류를 함께 푼다.

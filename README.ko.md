@@ -1152,6 +1152,11 @@ case(암시적 멤버 `.get` 포함)는 `methodEnum`으로 바꾸고, 그 밖은
 `channelPrefix`와 함께 `dynamic`으로 남깁니다. userinfo·query·fragment·고엔트로피 세그먼트·웹훅
 경로는 경로 문자열을 싣는 모든 필드에서 제거하거나 가립니다 — dynamic 사실의 원문 식도 포함입니다.
 
+프로젝트의 다른 파일에 있는 `Paths.users.rawValue`, 불변 `static let` String 멤버와 모호하지 않은
+타입 별칭도 스캔한 파일 전체에서 해석합니다. 문자열 리터럴·해당 멤버 참조·문자열 연결을 지원합니다.
+조건부 선언, 이름 충돌, 지역 값·타입 이름 가림, String이 아닌 멤버, 가변 프로퍼티, 순환 참조와
+깊이·경로 길이 제한을 넘는 식은 `dynamic`으로 남깁니다.
+
 흔한 라이브러리는 선언이 필요 없습니다. 규칙마다 라이브러리 소스를 따랐고, 로컬 서버가 실제로 받은
 요청 줄과 대조했습니다(`experiments/http-client-oracle`, macOS 26.7·Alamofire 5.12.2·Moya 15.0.3에서
 요청 35건. 테스트가 매번 그 기록을 다시 대조합니다):

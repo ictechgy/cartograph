@@ -388,6 +388,212 @@ struct HTTPRouteCallScannerTests {
         #expect(routes(body, wrappers: []) == ["GET /a", "PUT /b", "? /c", "? /d", "? /e", "? /f", "GET /g"])
     }
 
+    @Test("매개변수와 지역 이름이 같은 정적 타입 이름을 가리면 경로를 추측하지 않는다")
+    func boundRouteNamesShadowStaticTypes() throws {
+        let body = """
+            enum routes { static let users = "/wrong" }
+            struct RuntimePaths { let users: String }
+            func foundation(routes: RuntimePaths) {
+                _ = URLRequest(url: URL(string: "https://api.example.com" + routes.users)!)
+            }
+            func alamofire(routes: RuntimePaths) {
+                _ = AF.request("https://api.example.com" + routes.users)
+            }
+            func local() {
+                let routes: RuntimePaths = fatalError()
+                _ = URLRequest(url: URL(string: "https://api.example.com" + routes.users)!)
+            }
+            """
+        let found = facts(body, wrappers: [])
+        #expect(found.count == 3)
+        #expect(found.allSatisfy { $0.isDynamic })
+        #expect(found.allSatisfy { $0.channel != "/wrong" })
+    }
+
+    @Test("제네릭 타입·지역 타입·지역 별칭·associatedtype 이름은 전역 경로 타입을 가린다")
+    func lexicalTypeNamesShadowStaticTypes() throws {
+        let body = """
+            enum RoutePaths: String { case users = "/wrong" }
+            struct RuntimePaths { let users: String }
+            protocol RouteProvider { associatedtype RoutePaths }
+            func generic<RoutePaths>(_ value: RoutePaths) {
+                _ = URLRequest(url: URL(string: "https://api.example.com" + RoutePaths.users.rawValue)!)
+            }
+            func localType() {
+                struct RoutePaths { static let users = "/runtime" }
+                _ = URLRequest(url: URL(string: "https://api.example.com" + RoutePaths.users)!)
+            }
+            func localAlias() {
+                typealias RoutePaths = RuntimePaths
+                _ = URLRequest(url: URL(string: "https://api.example.com" + RoutePaths.users.rawValue)!)
+            }
+            extension RouteProvider {
+                static func request() -> URLRequest {
+                    URLRequest(url: URL(string: "https://api.example.com" + RoutePaths.users.rawValue)!)
+                }
+            }
+            """
+        let found = facts(body, wrappers: [])
+        #expect(found.count == 4)
+        #expect(found.allSatisfy { $0.isDynamic })
+        #expect(found.allSatisfy { $0.channel != "/wrong" })
+    }
+
+    @Test("파일 수준에서 모호하지 않은 타입 별칭은 정적 경로로 해석한다")
+    func unambiguousFileTypeAliasStillResolvesStaticType() throws {
+        let body = """
+            enum RoutePaths: String { case users = "/users" }
+            typealias APIPaths = RoutePaths
+            func request() {
+                _ = URLRequest(url: URL(string: "https://api.example.com" + APIPaths.users.rawValue)!)
+            }
+            """
+        let found = facts(body, wrappers: [])
+        #expect(found.count == 1)
+        #expect(found.first?.channel == "/users")
+        #expect(found.first?.isDynamic == false)
+    }
+
+    @Test("여러 단계 상속한 프로토콜의 associatedtype도 전역 경로 타입을 가린다")
+    func transitiveAssociatedTypeShadow() throws {
+        let body = """
+            enum RoutePaths { static let users = "/wrong" }
+            protocol RuntimeRouteValues { static var users: String { get } }
+            protocol Root { associatedtype RoutePaths: RuntimeRouteValues }
+            protocol Mid: Root {}
+            protocol Leaf: Mid {}
+            extension Leaf {
+                func request() {
+                    _ = URLRequest(url: URL(string: "https://api.example.com" + RoutePaths.users)!)
+                }
+            }
+            """
+        let fact = try #require(facts(body, wrappers: []).first)
+        #expect(fact.isDynamic)
+        #expect(fact.channel != "/wrong")
+    }
+
+    @Test("조건부 지역 타입 별칭이 전역 경로 타입을 가릴 수 있으면 경로를 단정하지 않는다")
+    func conditionalLocalTypeShadow() throws {
+        let body = """
+            enum RoutePaths { static let users = "/wrong" }
+            struct RuntimePaths { static var users: String { runtimePath() } }
+            func runtimePath() -> String { "/runtime" }
+            func request() {
+                #if RUNTIME
+                typealias RoutePaths = RuntimePaths
+                #endif
+                _ = URLRequest(url: URL(string: "https://api.example.com" + RoutePaths.users)!)
+            }
+            """
+        let fact = try #require(facts(body, wrappers: []).first)
+        #expect(fact.isDynamic)
+        #expect(fact.channel != "/wrong")
+    }
+
+    @Test("호출 뒤에 선언한 지역 타입 별칭도 같은 블록 전체의 전역 타입 이름을 가린다")
+    func forwardLocalTypeShadow() throws {
+        for conditional in [false, true] {
+            let declaration = conditional
+                ? "#if RUNTIME\ntypealias RoutePaths = RuntimePaths\n#endif"
+                : "typealias RoutePaths = RuntimePaths"
+            let body = """
+                enum RoutePaths { static let users = "/wrong" }
+                struct RuntimePaths { static var users: String { runtimePath() } }
+                func runtimePath() -> String { "/runtime" }
+                func request() {
+                    _ = URLRequest(url: URL(string: "https://api.example.com" + RoutePaths.users)!)
+                    \(declaration)
+                }
+                """
+            let fact = try #require(facts(body, wrappers: []).first)
+            #expect(fact.isDynamic)
+            #expect(fact.channel != "/wrong")
+        }
+    }
+
+    @Test("같은 파일의 조건부·비문자열 정적 멤버도 상수 바인딩 우회로로 치환하지 않는다")
+    func sameFileUnsafeStaticMembersStayDynamic() throws {
+        for declaration in [
+            "enum RoutePaths { static let users: StaticString = \"/wrong\" }",
+            "enum RoutePaths { #if STAGING\nstatic let users = \"/wrong\"\n#endif\n}",
+        ] {
+            let body = """
+                \(declaration)
+                func request() {
+                    _ = URLRequest(url: URL(string: "https://api.example.com" + RoutePaths.users)!)
+                }
+                """
+            let fact = try #require(facts(body, wrappers: []).first)
+            #expect(fact.isDynamic)
+            #expect(fact.channel != "/wrong")
+        }
+    }
+
+    @Test("첨자의 제네릭 타입 이름도 전역 경로 타입을 가린다")
+    func genericSubscriptTypeShadow() throws {
+        let body = """
+            protocol RouteValues { static var users: String { get } }
+            enum RoutePaths { static let users = "/wrong" }
+            struct Client {
+                subscript<RoutePaths: RouteValues>(_: RoutePaths.Type) -> URLRequest {
+                    URLRequest(url: URL(string: "https://api.example.com" + RoutePaths.users)!)
+                }
+            }
+            """
+        let fact = try #require(facts(body, wrappers: []).first)
+        #expect(fact.isDynamic)
+        #expect(fact.channel != "/wrong")
+    }
+
+    @Test("첨자 매개변수의 값 이름도 전역 경로 타입을 가린다")
+    func subscriptValueShadow() throws {
+        let body = """
+            struct RuntimePaths { let users: String }
+            enum RoutePaths { static let users = "/wrong" }
+            struct Client {
+                subscript(RoutePaths: RuntimePaths) -> URLRequest {
+                    URLRequest(url: URL(string: "https://api.example.com" + RoutePaths.users)!)
+                }
+            }
+            """
+        let fact = try #require(facts(body, wrappers: []).first)
+        #expect(fact.isDynamic)
+        #expect(fact.channel != "/wrong")
+    }
+
+    @Test("타입 본문과 익스텐션에 나뉜 정적 멤버와 파일 별칭은 모두 정적으로 해석한다")
+    func extensionMemberAndSameFileAliasResolveStaticTypes() throws {
+        let body = """
+            enum RoutePaths: String { case users = "/users" }
+            typealias APIPaths = RoutePaths
+            extension RoutePaths { static let root = "/root" }
+            func request() {
+                _ = URLRequest(url: URL(string: "https://api.example.com" + APIPaths.users.rawValue)!)
+                _ = URLRequest(url: URL(string: "https://api.example.com" + RoutePaths.root)!)
+            }
+            """
+        let found = facts(body, wrappers: [])
+        #expect(found.map(\.channel) == ["/users", "/root"])
+        #expect(found.allSatisfy { !$0.isDynamic })
+    }
+
+    @Test("컨테이너의 제네릭 타입 이름은 전역 경로 타입을 가린다")
+    func genericContainerTypeShadowsStaticType() throws {
+        let body = """
+            enum RoutePaths: String { case users = "/wrong" }
+            struct GenericContainer<RoutePaths> {
+                func request() {
+                    _ = URLRequest(url: URL(string: "https://api.example.com" + RoutePaths.users.rawValue)!)
+                }
+            }
+            """
+        let found = facts(body, wrappers: [])
+        #expect(found.count == 1)
+        #expect(found.first?.isDynamic == true)
+        #expect(found.first?.channel != "/wrong")
+    }
+
     @Test("URL 을 받는 세션 호출은 GET 이고, 요청 변수를 받는 호출은 사실이 아니다")
     func sessionCalls() {
         let body = """

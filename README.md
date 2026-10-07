@@ -1202,6 +1202,12 @@ anything else is kept as `dynamic` with the proven `channelPrefix`. Userinfo, qu
 high-entropy segments and webhook paths are removed or masked in every field that carries path
 text, including the source expression of a dynamic fact.
 
+Paths can also come from another file in the project: `Paths.users.rawValue`, immutable
+`static let` String members, and unambiguous type aliases are resolved across the scanned files.
+Literal strings, references to those members and string concatenation are supported. Conditional
+declarations, conflicting names, local value/type shadows, non-String members, mutable properties,
+cycles and expressions exceeding the depth or path-length limits stay dynamic.
+
 Common libraries need no declaration. Each rule follows the library's source and was checked against
 the request line a local server actually received (`experiments/http-client-oracle`, 35 requests on
 macOS 26.7 with Alamofire 5.12.2 and Moya 15.0.3; a test replays the recording on every run):
