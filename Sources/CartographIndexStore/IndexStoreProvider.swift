@@ -72,15 +72,26 @@ public struct IndexStoreProvider: IndexProviding {
     private func readSnapshot() throws -> IndexSnapshot {
         let database = try openDatabase()
         let paths = sourceFilePaths()
-        var occurrences: [SymbolOccurrence] = []
-        for path in paths {
-            occurrences.append(contentsOf: database.symbolOccurrences(inFilePath: path))
+        let occurrences: [SymbolOccurrence]
+        do {
+            occurrences = try RawIndexStoreReader(
+                storePath: configuration.storePath,
+                libraryPath: configuration.libraryPath,
+                fileSystem: fileSystem
+            ).occurrences(in: Set(paths))
+        } catch {
+            throw CartographError.indexStoreUnreadable(
+                path: configuration.storePath,
+                underlying: "Could not read all compiler contexts from the index store: \(error)"
+            )
         }
         var snapshot = Self.snapshot(from: occurrences, includeExternalSymbols: configuration.includeExternalSymbols,
                                      includeSelfReferences: configuration.includeSelfReferences)
-        snapshot.indexedFileDates = Dictionary(uniqueKeysWithValues: paths.compactMap { path in
-            database.dateOfLatestUnitFor(filePath: path).map { (path, $0) }
-        })
+        snapshot.indexedFileDates = Dictionary(paths.compactMap { path in
+            database.dateOfLatestUnitFor(filePath: path).map {
+                ((try? fileSystem.realPath(at: path)) ?? fileSystem.canonicalPath(path), $0)
+            }
+        }, uniquingKeysWith: max)
         return snapshot
     }
 
@@ -123,11 +134,12 @@ public struct IndexStoreProvider: IndexProviding {
         // 미사용 import 질의의 재료 — 파일이 참조한 선언의 모듈 귀속.
         // `c:`/`e:` USR처럼 모듈을 담지 않는 대상은 선언 사전이 완성된 뒤에 푼다.
         var fileModuleUsages: [String: FileModuleUsage] = [:]
+        var owningModulesByFile: [String: Set<String>] = [:]
         var deferredUSRsByFile: [String: Set<String>] = [:]
         // 관계 없이 기록된 참조와, 그것을 붙일 후보가 되는 정의 위치들.
         // 대상 종류는 발생이 직접 답게 싣는다 — 사전에 없는 그래프 밖 대상도 구분해야 한다.
-        var unattributed: [(usr: String, location: SourceLocation, targetKind: SymbolKind)] = []
-        var definitionSites: [String: [(usr: String, location: SourceLocation)]] = [:]
+        var unattributed: [UnattributedReference] = []
+        var definitionSites: [String: [DefinitionSite]] = [:]
         var conformanceAliases: [SymbolOccurrence] = []
         var implicitBaseOwners: [OccurrenceSite: Set<String>] = [:]
 
@@ -169,14 +181,21 @@ public struct IndexStoreProvider: IndexProviding {
                 }
             }
             if occurrence.roles.contains(.definition) {
-                definitionSites[location.path, default: []].append((occurrence.symbol.usr, location))
+                definitionSites[location.path, default: []].append((
+                    usr: occurrence.symbol.usr,
+                    location: location,
+                    module: occurrence.location.moduleName
+                ))
             } else if occurrenceReferences.isEmpty, occurrence.roles.contains(.reference),
                       !occurrence.roles.contains(.implicit) {
                 // 암시적 발생은 매크로가 펼친 코드다. 위치가 사용자가 쓴 자리가 아니라
                 // 속성 줄이라, 위치로 소유자를 찾으면 앞 선언에 붙는다.
                 unattributed.append((
-                    occurrence.symbol.usr, location,
-                    IndexStoreMapping.symbolKind(occurrence.symbol.kind, subKind: occurrence.symbol.subKind)
+                    usr: occurrence.symbol.usr,
+                    location: location,
+                    targetKind: IndexStoreMapping.symbolKind(
+                        occurrence.symbol.kind, subKind: occurrence.symbol.subKind),
+                    module: occurrence.location.moduleName
                 ))
                 if occurrence.symbol.kind == .typealias, occurrence.symbol.subKind == .none {
                     conformanceAliases.append(occurrence)
@@ -198,8 +217,12 @@ public struct IndexStoreProvider: IndexProviding {
             // 선언 발생 자체는 사용이 아니므로 심볼 USR은 참조 역할일 때만 센다.
             let usagePath = occurrence.location.path
             if !occurrence.location.moduleName.isEmpty {
-                fileModuleUsages[usagePath, default: FileModuleUsage()]
-                    .owningModule = occurrence.location.moduleName
+                owningModulesByFile[usagePath, default: []].insert(occurrence.location.moduleName)
+                let modules = owningModulesByFile[usagePath] ?? []
+                fileModuleUsages[usagePath, default: FileModuleUsage()].owningModule = modules.count == 1
+                    ? occurrence.location.moduleName : nil
+                // 공유 파일의 import는 특정 타깃 하나의 소유 모듈로 단정하지 않는다.
+                if modules.count > 1 { fileModuleUsages[usagePath]?.hasUnattributedReferences = true }
             }
             if occurrence.roles.contains(.reference) {
                 accumulateModuleEvidence(
@@ -363,6 +386,17 @@ public struct IndexStoreProvider: IndexProviding {
         }
     }
 
+    /// 공유 소스의 발생을 컴파일 문맥별로 나누기 위한 키.
+    private struct DefinitionScope: Hashable {
+        let path: String
+        let module: String
+    }
+
+    typealias DefinitionSite = (usr: String, location: SourceLocation, module: String)
+    typealias UnattributedReference = (
+        usr: String, location: SourceLocation, targetKind: SymbolKind, module: String
+    )
+
     /// 명시적 별칭 ref와 같은 자리의 암시적 baseOf가 준수 선언의 소유자를 증명한다.
     ///
     /// Kingfisher의 NSViewRepresentable 별칭에서 관찰했다. 가까운 타입을 고르지 않고
@@ -393,17 +427,28 @@ public struct IndexStoreProvider: IndexProviding {
     /// 간선을 만들면 이런 타입은 아무도 쓰지 않는 것처럼 보이고, 실제로는 지우면 컴파일이
     /// 깨진다. 오늘은 합성 이니셜라이저 보존이 우연히 그것들을 살리고 있다.
     ///
-    /// 같은 파일에서 그 참조보다 앞에 있는 가장 가까운 정의에 붙인다. 인덱스는 선언의
-    /// 범위를 주지 않으므로 시작 위치만으로 판단한다. 틀려도 간선이 하나 더 생길 뿐이라
-    /// 보존이 늘고 없는 발견을 만들지 않는다. 이 저장소가 택하는 방향이다.
+    /// 같은 파일과 컴파일 모듈에서 그 참조보다 앞에 있는 가장 가까운 정의에 붙인다.
+    /// 인덱스는 선언의 범위를 주지 않으므로 시작 위치만으로 판단한다. 컴파일 모듈이
+    /// 비어 있으면 공유 소스의 어느 정의인지 증명할 수 없어 추론하지 않는다.
     static func enclosingReferences(
-        for unattributed: [(usr: String, location: SourceLocation, targetKind: SymbolKind)],
-        definitionSites: [String: [(usr: String, location: SourceLocation)]],
+        for unattributed: [UnattributedReference],
+        definitionSites: [String: [DefinitionSite]],
         symbols: [String: IndexedSymbol]
     ) -> [IndexedReference] {
-        let sorted = definitionSites.mapValues { $0.sorted { $0.location < $1.location } }
+        var sorted: [DefinitionScope: [DefinitionSite]] = [:]
+        for (path, sites) in definitionSites {
+            for site in sites {
+                sorted[DefinitionScope(path: path, module: site.module), default: []].append(site)
+            }
+        }
+        for scope in Array(sorted.keys) {
+            sorted[scope]?.sort { $0.location < $1.location }
+        }
         return unattributed.compactMap { entry in
-            guard let owner = enclosingDefinition(of: entry.location, in: sorted[entry.location.path] ?? []),
+            guard !entry.module.isEmpty,
+                  let owner = enclosingDefinition(
+                    of: entry.location,
+                    in: sorted[DefinitionScope(path: entry.location.path, module: entry.module)] ?? []),
                   owner != entry.usr,
                   let kind = symbols[owner]?.kind, Self.omitsContainment.contains(kind)
             else { return nil }
@@ -424,7 +469,7 @@ public struct IndexStoreProvider: IndexProviding {
     /// 파일 하나에 정의가 수천 개인 프로젝트가 있어 선형 탐색을 쓰지 않는다.
     private static func enclosingDefinition(
         of location: SourceLocation,
-        in sites: [(usr: String, location: SourceLocation)]
+        in sites: [DefinitionSite]
     ) -> String? {
         var low = 0
         var high = sites.count

@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Read every compiler record for a shared Swift file compiled in multiple targets, preserving
+  module-specific declarations, cross-target calls and orphan-reference ownership. Relative and
+  symbolic-link paths match the selected sources while declaration locations retain their real paths.
+- Resolve cross-file String enum raw values, immutable static String members and unambiguous type
+  aliases in HTTP paths. Conditional or conflicting declarations, lexical shadows, non-String values
+  and bounded evaluation failures remain dynamic instead of producing a guessed route.
+
 ## [0.23.1] - 2026-10-01
 
 ### Fixed

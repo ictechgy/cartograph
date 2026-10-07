@@ -83,6 +83,10 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
     /// `타입 사슬.프로퍼티` → 타입 표기의 마지막 구성 요소들. 다른 파일의 익스텐션에서 `session.request` 의
     /// 수신자 타입을 증명하는 데 쓴다.
     public private(set) var memberTypes: [String: Set<String>] = [:]
+    var staticStringMembers: [String: [HTTPStaticStringMember]] = [:]
+    var typeAliases: [String: [HTTPTypeAliasDeclaration]] = [:]
+    var associatedTypes: [String: [HTTPAssociatedTypeDeclaration]] = [:]
+    var typeConditionality: [String: [Bool]] = [:]
 
     public init() {}
 
@@ -101,6 +105,26 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
         }
         typeSites.merge(other.typeSites) { $0.start <= $1.start ? $0 : $1 }
         memberTypes.merge(other.memberTypes) { $0.union($1) }
+        for (key, declarations) in other.staticStringMembers {
+            for declaration in declarations where !staticStringMembers[key, default: []].contains(declaration) {
+                staticStringMembers[key, default: []].append(declaration)
+            }
+        }
+        for (key, declarations) in other.typeAliases {
+            for declaration in declarations where !typeAliases[key, default: []].contains(declaration) {
+                typeAliases[key, default: []].append(declaration)
+            }
+        }
+        for (key, declarations) in other.associatedTypes {
+            for declaration in declarations where !associatedTypes[key, default: []].contains(declaration) {
+                associatedTypes[key, default: []].append(declaration)
+            }
+        }
+        for (key, states) in other.typeConditionality {
+            for state in states where !typeConditionality[key, default: []].contains(state) {
+                typeConditionality[key, default: []].append(state)
+            }
+        }
     }
 
     mutating func addMemberType(_ key: String, type: String) {
@@ -131,9 +155,17 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
         typeSites[chain] = site
     }
 
-    mutating func addType(_ chain: [String]) {
-        typeChains.insert(chain.joined(separator: "."))
+    mutating func addType(_ chain: [String], isConditional: Bool, isExtension: Bool = false) {
+        let key = chain.joined(separator: ".")
+        typeChains.insert(key)
         if let last = chain.last { typeLastNames.insert(last) }
+        if !isExtension || typeConditionality[key, default: []].isEmpty {
+            typeConditionality[key, default: []].append(isConditional)
+        }
+    }
+
+    mutating func addAssociatedType(_ chain: String, name: String, isConditional: Bool) {
+        associatedTypes[chain, default: []].append(.init(name: name, isConditional: isConditional))
     }
 
     mutating func addFunction(chain: [String], name: String, labels: [String?]) {
@@ -192,7 +224,9 @@ public struct HTTPRouteCallScanner: Sendable {
     ///
     /// - Parameter path: enum case·라우터 타입의 위치를 적을 경로. 라우터 사실의 심볼을 이 위치로 찾는다.
     public static func declarations(source: String, path: String = "") -> HTTPDeclarationSurface {
-        let tree = Parser.parse(source: source)
+        let parsed = Parser.parse(source: source)
+        let tree = OperatorTable.standardOperators.foldAll(parsed) { _ in }
+            .as(SourceFileSyntax.self) ?? parsed
         let collector = HTTPSurfaceCollector(recorder: HTTPRouterSurfaceRecorder(
             converter: SourceLocationConverter(fileName: path, tree: tree), path: path
         ))
@@ -241,6 +275,7 @@ private final class HTTPSurfaceCollector: SyntaxVisitor {
     private var typeNames: [String] = []
     /// 원시 타입이 `String` 인 enum 선언의 깊이별 표시. case 의 암시적 원시값을 정한다.
     private var stringBacked: [Bool] = []
+    private var conditionalDepth = 0
     private let recorder: HTTPRouterSurfaceRecorder
 
     init(recorder: HTTPRouterSurfaceRecorder) {
@@ -254,7 +289,7 @@ private final class HTTPSurfaceCollector: SyntaxVisitor {
                       isProtocol: Bool = false, isExtension: Bool = false, isStringBacked: Bool = false) -> SyntaxVisitorContinueKind {
         typeNames.append(SyntaxIdentifiers.unescaped(name))
         stringBacked.append(isStringBacked)
-        surface.addType(chain)
+        surface.addType(chain, isConditional: conditionalDepth > 0, isExtension: isExtension)
         recorder.recordType(node, chain: chain, inheritance: inheritance, isProtocol: isProtocol,
                             isExtension: isExtension, into: &surface)
         return .visitChildren
@@ -291,9 +326,29 @@ private final class HTTPSurfaceCollector: SyntaxVisitor {
     }
     override func visitPost(_: ExtensionDeclSyntax) { pop() }
 
+    override func visit(_: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
+        conditionalDepth += 1
+        return .visitChildren
+    }
+
+    override func visitPost(_: IfConfigDeclSyntax) { conditionalDepth -= 1 }
+
     override func visit(_ node: EnumCaseDeclSyntax) -> SyntaxVisitorContinueKind {
         if !typeNames.isEmpty {
-            recorder.recordCases(node, chain: chain, isStringBacked: stringBacked.last ?? false, into: &surface)
+            recorder.recordCases(
+                node, chain: chain, isStringBacked: stringBacked.last ?? false,
+                isConditional: conditionalDepth > 0, into: &surface
+            )
+        }
+        return .skipChildren
+    }
+
+    override func visit(_ node: AssociatedTypeDeclSyntax) -> SyntaxVisitorContinueKind {
+        let chain = typeNames.joined(separator: ".")
+        if surface.protocolChains.contains(chain) {
+            surface.addAssociatedType(
+                chain, name: SyntaxIdentifiers.unescaped(node.name.text), isConditional: conditionalDepth > 0
+            )
         }
         return .skipChildren
     }
@@ -304,7 +359,52 @@ private final class HTTPSurfaceCollector: SyntaxVisitor {
            let type = node.typeAnnotation.flatMap({ HTTPSyntax.typeBaseName($0.type) }) {
             surface.addMemberType((chain + [SyntaxIdentifiers.unescaped(name)]).joined(separator: "."), type: type)
         }
+        if !typeNames.isEmpty, !DeclarationCollector.isInsideBody(node),
+           let name = node.pattern.as(IdentifierPatternSyntax.self)?.identifier.text,
+           let declaration = node.parent?.parent?.as(VariableDeclSyntax.self) {
+            let isStatic = declaration.modifiers.contains { modifier in
+                ["static", "class"].contains(modifier.name.text)
+            }
+            guard isStatic else { return .skipChildren }
+            let isLet = declaration.bindingSpecifier.tokenKind == .keyword(.let)
+            let expression = node.initializer.map { HTTPRouterSurfaceRecorder.stringExpression($0.value) }
+                ?? .unknown
+            let isStringTyped: Bool
+            if let annotation = node.typeAnnotation?.type.trimmedDescription {
+                isStringTyped = annotation == "String" || annotation == "Swift.String"
+            } else {
+                isStringTyped = expression != .unknown || node.initializer?.value.is(StringLiteralExprSyntax.self) == true
+            }
+            let location = recorderLocation(of: node)
+            surface.addStaticStringMember(.init(
+                owner: chain.joined(separator: "."), name: SyntaxIdentifiers.unescaped(name),
+                expression: expression, isSafe: isLet && node.initializer != nil && isStringTyped,
+                location: location, isConditional: conditionalDepth > 0
+            ))
+        }
         return .skipChildren
+    }
+
+    override func visit(_ node: TypeAliasDeclSyntax) -> SyntaxVisitorContinueKind {
+        guard !DeclarationCollector.isInsideBody(node),
+              let target = HTTPRouterSurfaceRecorder.typeComponents(node.initializer.value) else {
+            return .skipChildren
+        }
+        let location = recorderLocation(of: node)
+        surface.addTypeAlias(
+            typeNames.flatMap { $0.split(separator: ".").map(String.init) },
+            name: SyntaxIdentifiers.unescaped(node.name.text), target: target, location: location,
+            isConditional: conditionalDepth > 0
+        )
+        return .skipChildren
+    }
+
+    private func recorderLocation(of node: some SyntaxProtocol) -> CartographCore.SourceLocation {
+        guard let converter = recorder.converter else {
+            return CartographCore.SourceLocation(path: recorder.path, line: 1, column: 1)
+        }
+        let location = converter.location(for: node.positionAfterSkippingLeadingTrivia)
+        return CartographCore.SourceLocation(path: recorder.path, line: location.line, column: location.column)
     }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
@@ -550,7 +650,7 @@ enum HTTPSyntax {
     /// 바인딩 수집기와 같은 규칙의 스코프 노드인지. 두 수집기가 같은 키를 써야 문맥이 맞는다.
     static func isScope(_ node: Syntax) -> Bool {
         node.is(FunctionDeclSyntax.self) || node.is(InitializerDeclSyntax.self) || node.is(ClosureExprSyntax.self)
-            || node.is(AccessorBlockSyntax.self) || node.is(AccessorDeclSyntax.self)
+            || node.is(SubscriptDeclSyntax.self) || node.is(AccessorBlockSyntax.self) || node.is(AccessorDeclSyntax.self)
     }
 
     /// 노드를 감싸는 가장 안쪽 스코프의 키.
