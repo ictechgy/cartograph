@@ -39,13 +39,13 @@ enum HTTPWrapperFile {
             do {
                 return try declaration(value, version: version)
             } catch let reason as DeclarationError {
-                throw fail(path, "wrappers[\(index)]: \(reason.message)", version: version)
+                throw fail(path, "wrappers[\(index)]: \(reason.message)")
             }
         }
     }
 
     /// 파일 경로와 고칠 방향을 붙인 설정 오류.
-    private static func fail(_ path: String, _ reason: String, version: Int = 1) -> CartographError {
+    private static func fail(_ path: String, _ reason: String) -> CartographError {
         .invalidConfiguration(path: path, reason: reason + " Fix the http-wrappers declaration file (supported versions: 1 and 2).")
     }
 

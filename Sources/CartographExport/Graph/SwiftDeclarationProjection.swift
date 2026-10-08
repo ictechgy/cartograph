@@ -1,5 +1,8 @@
 import CartographCore
 
+/// builder와 resolver가 독립적으로 사용하는 lexical 부모 추적 상한이다.
+private let maximumDeclarationParentDepth = 64
+
 /// 선언 projection의 전제 위반이다. raw 분석 그래프를 바꾸는 대신 export만 실패시킨다.
 public enum SwiftDeclarationProjectionError: Error, Equatable {
     case symbolLevelRequired
@@ -8,8 +11,6 @@ public enum SwiftDeclarationProjectionError: Error, Equatable {
 
 /// symbol graph 위에 공유 소스 선언의 module별 USR 대응을 얹는 순수 builder.
 struct SwiftDeclarationProjectionBuilder {
-    fileprivate static let maximumParentDepth = 64
-
     func build(
         result: GraphBuilder.BuildResult,
         snapshot: IndexSnapshot,
@@ -357,13 +358,13 @@ private struct DeclarationKeyResolver {
         visiting: Set<String>,
         depth: Int
     ) -> DeclarationKeyResolution {
-        guard depth < SwiftDeclarationProjectionBuilder.maximumParentDepth else {
+        guard depth < maximumDeclarationParentDepth else {
             return .budgetExceeded
         }
         if let known = memo[usr] {
             switch known {
             case let .available(key, ancestryHeight):
-                guard depth + ancestryHeight < SwiftDeclarationProjectionBuilder.maximumParentDepth else {
+                guard depth + ancestryHeight < maximumDeclarationParentDepth else {
                     return .budgetExceeded
                 }
                 return .available(key: key, ancestryHeight: ancestryHeight)
