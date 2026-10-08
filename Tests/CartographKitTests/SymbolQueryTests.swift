@@ -51,6 +51,20 @@ struct SymbolQueryTests {
         )
     }
 
+    @Test("found 질의가 없으면 도달성·근거 facts를 만들지 않고, 혼합 질의는 한 번만 만든다")
+    func preparesFoundFactsOnlyForFoundSubjects() throws {
+        let service = makeService()
+        let context = try service.loadContext()
+
+        let missing = try service.makeQuerySession(in: context, subjects: ["Missing"])
+        #expect(missing.foundFactsBuildCount == 0)
+
+        let mixed = try service.makeQuerySession(in: context, subjects: ["Missing", "UserService"])
+        #expect(mixed.foundFactsBuildCount == 1)
+        _ = try service.queryDocument(symbol: "UserService", depth: 1, limit: 50, in: mixed)
+        #expect(mixed.foundFactsBuildCount == 1)
+    }
+
     @Test("누가 쓰는지와 무엇을 쓰는지를 함께 답한다")
     func answersBothDirections() throws {
         let document = try makeService().queryDocument(symbol: "UserService")
@@ -150,6 +164,37 @@ struct SymbolQueryTests {
         let outcome = try makeService().query(symbol: "NoSuchThing")
         #expect(outcome.subjectNotFound)
         #expect(outcome.output.contains("\"notFound\""))
+    }
+
+    @Test("손상된 baseline은 notFound와 ambiguous 질의도 먼저 실패시킨다")
+    func malformedBaselineFailsBeforeLookup() throws {
+        let fileSystem = InMemoryFileSystem(files: ["/p/baseline.json": "{ malformed"])
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        configuration.baselinePath = "/p/baseline.json"
+
+        let missingService = CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(
+                fileSystem: fileSystem, indexProviderOverride: StaticIndexProvider(makeSnapshot())
+            )
+        )
+        #expect(throws: CartographError.self) {
+            try missingService.queryDocument(symbol: "NoSuchThing")
+        }
+
+        var ambiguousBuilder = SnapshotBuilder()
+        ambiguousBuilder.symbol("left", name: "Duplicate", path: "/p/Left.swift")
+        ambiguousBuilder.symbol("right", name: "Duplicate", path: "/p/Right.swift")
+        let ambiguousService = CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(
+                fileSystem: fileSystem, indexProviderOverride: StaticIndexProvider(ambiguousBuilder.build())
+            )
+        )
+        #expect(throws: CartographError.self) {
+            try ambiguousService.queryDocument(symbol: "Duplicate")
+        }
     }
 
     @Test("notFound 는 오타와 비슷한 이름의 추천을 함께 돌려준다")

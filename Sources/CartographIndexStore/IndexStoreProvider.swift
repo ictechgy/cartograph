@@ -8,10 +8,18 @@ import IndexStoreDB
 /// 변환 규칙은 `IndexStoreMapping` 에 순수 함수로 빼 두었기 때문에,
 /// 여기 남은 책임은 "열고, 파일을 훑고, 모으는 것" 뿐이다.
 public struct IndexStoreProvider: IndexProviding {
+    /// 인덱스 스토어를 읽는 구현을 선택한다.
+    public enum ReaderMode: Sendable, Equatable {
+        /// IndexStoreDB 판독기 캐시를 사용하는 기존 구현이다.
+        case databaseBacked
+        /// 원본 IndexStore 유닛과 레코드를 직접 읽는다.
+        case raw
+    }
+
     public struct Configuration: Sendable, Equatable {
         /// 컴파일러가 인덱스를 기록한 디렉터리.
         public var storePath: String
-        /// IndexStoreDB 가 만들 LMDB 캐시 위치.
+        /// IndexStoreDB 가 만들 LMDB 캐시 위치. `readerMode == .databaseBacked`일 때만 사용한다.
         public var databasePath: String
         /// libIndexStore 동적 라이브러리 경로.
         public var libraryPath: String
@@ -24,6 +32,8 @@ public struct IndexStoreProvider: IndexProviding {
         public var includeObjectiveCSources: Bool
         /// 값 흐름에서 재귀 호출의 실제 USR을 잃지 않도록 자기 참조도 보존한다.
         public var includeSelfReferences: Bool
+        /// 원본 인덱스를 직접 읽을지, 기존 IndexStoreDB 캐시를 사용할지 선택한다.
+        public var readerMode: ReaderMode
 
         public init(
             storePath: String,
@@ -33,7 +43,8 @@ public struct IndexStoreProvider: IndexProviding {
             pathFilter: PathFilter = .passthrough,
             includeExternalSymbols: Bool = false,
             includeObjectiveCSources: Bool = false,
-            includeSelfReferences: Bool = false
+            includeSelfReferences: Bool = false,
+            readerMode: ReaderMode = .databaseBacked
         ) {
             self.storePath = storePath
             self.databasePath = databasePath
@@ -43,6 +54,7 @@ public struct IndexStoreProvider: IndexProviding {
             self.includeExternalSymbols = includeExternalSymbols
             self.includeObjectiveCSources = includeObjectiveCSources
             self.includeSelfReferences = includeSelfReferences
+            self.readerMode = readerMode
         }
     }
 
@@ -55,6 +67,9 @@ public struct IndexStoreProvider: IndexProviding {
     }
 
     public func loadSnapshot() throws -> IndexSnapshot {
+        if configuration.readerMode == .raw {
+            return try readRawSnapshot()
+        }
         // 실제 디스크 DB에만 프로세스 간 잠금을 쓴다. 주입된 파일 시스템은
         // 호스트 파일 시스템을 건드리지 않아야 한다.
         let lease: ReaderDatabaseLease?
@@ -67,6 +82,30 @@ public struct IndexStoreProvider: IndexProviding {
                 underlying: "Could not lock the reader cache: \(error). Check cache directory permissions.")
         }
         return try withExtendedLifetime(lease) { try readSnapshot() }
+    }
+
+    private func readRawSnapshot() throws -> IndexSnapshot {
+        let paths = sourceFilePaths()
+        let result: RawReadResult
+        do {
+            result = try RawIndexStoreReader(
+                storePath: configuration.storePath,
+                libraryPath: configuration.libraryPath,
+                fileSystem: fileSystem
+            ).read(in: Set(paths))
+        } catch let error as CartographError {
+            throw error
+        } catch {
+            throw CartographError.indexStoreUnreadable(
+                path: configuration.storePath,
+                underlying: "Could not read all compiler contexts from the index store: \(error)"
+            )
+        }
+        var snapshot = Self.snapshot(from: result.occurrences,
+                                     includeExternalSymbols: configuration.includeExternalSymbols,
+                                     includeSelfReferences: configuration.includeSelfReferences)
+        snapshot.indexedFileDates = result.indexedFileDates
+        return snapshot
     }
 
     private func readSnapshot() throws -> IndexSnapshot {

@@ -34,6 +34,67 @@ struct AnalysisSessionTests {
         #expect(try session.status().generation == 1)
     }
 
+    @Test("모호한 첫 질의 뒤 found 질의가 같은 세션 facts를 한 번만 만든다")
+    func upgradesFoundFactsOnceAfterAmbiguousQuery() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("left", name: "Duplicate", kind: .structType, path: "/p/Left.swift")
+        builder.symbol("right", name: "Duplicate", kind: .structType, path: "/p/Right.swift")
+        let state = SessionState(snapshot: builder.build())
+        let session = try makeSession(state)
+
+        let ambiguous = try session.query(symbols: ["Duplicate"])
+        #expect(ambiguous.results.first?.status == "ambiguous")
+        #expect(session.querySession?.foundFactsBuildCount == 0)
+
+        let found = try session.query(symbols: ["App"])
+        #expect(found.results.first?.status == "found")
+        #expect(session.querySession?.foundFactsBuildCount == 1)
+
+        _ = try session.query(symbols: ["App"])
+        #expect(session.querySession?.foundFactsBuildCount == 1)
+    }
+
+    @Test("모호한 뒤 found로 승격한 query JSON은 처음부터 found한 세션과 근거 예산까지 같다")
+    func promotedFoundQueryMatchesFreshFoundSession() throws {
+        let path = "/p/Local.swift"
+        let fileSystem = InMemoryFileSystem(files: [
+            path: "func owner() {\n    func hidden() {}\n}\n",
+        ])
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 10), for: path)
+        var builder = SnapshotBuilder(path: path)
+        builder.symbol("owner", name: "owner()", kind: .function, path: path, line: 1, column: 6)
+        builder.symbol("target", name: "target()", kind: .function, path: path, line: 4, column: 6)
+        builder.symbol("left", name: "Duplicate", path: "/p/Left.swift")
+        builder.symbol("right", name: "Duplicate", path: "/p/Right.swift")
+        builder.reference(from: "owner", to: "target", kind: .call, path: path, line: 1)
+        var snapshot = builder.build()
+        snapshot.indexedFileDates = [path: Date(timeIntervalSince1970: 20)]
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        let service = CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(
+                fileSystem: fileSystem, indexProviderOverride: StaticIndexProvider(snapshot)
+            )
+        )
+        let makeSession = { try AnalysisSession(service: service) }
+        let promotedSession = try makeSession()
+        let ambiguous = try promotedSession.query(symbols: ["Duplicate"])
+        #expect(ambiguous.results.first?.status == "ambiguous")
+
+        let promoted = try promotedSession.query(
+            symbols: ["owner()"], evidenceBudget: QueryEvidenceBudget(referenceLimit: 0, localFunctionLimit: 0)
+        )
+        let freshSession = try makeSession()
+        let fresh = try freshSession.query(
+            symbols: ["owner()"], evidenceBudget: QueryEvidenceBudget(referenceLimit: 0, localFunctionLimit: 0)
+        )
+
+        #expect(promoted == fresh)
+        #expect(promotedSession.querySession?.foundFactsBuildCount == 1)
+    }
+
     @Test("지문이 바뀌면 새 서비스와 문맥으로 교체한다")
     func reloadsWhenFingerprintChanges() throws {
         let state = SessionState(snapshot: makeSnapshot())

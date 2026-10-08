@@ -56,12 +56,19 @@ public struct CartographService: Sendable {
     /// 대해 공집합은 거짓말이 아니다. 비었을 때 실패해야 하는 것은 분석 문맥 쪽이라
     /// 가드는 `loadContext()` 에만 둔다. `bridges` 가 이 경로로 내려오는 것도 이유다.
     public func loadSnapshot() throws -> IndexSnapshot {
-        try enrich(makeIndexSource(includeObjectiveCSources: true).provider.loadSnapshot()).snapshot
+        let inventory = projectFileInventory()
+        let source = try makeIndexSource(
+            includeObjectiveCSources: true, sourceRoots: inventory.sourceFiles, inventory: inventory
+        )
+        return try enrich(source.provider.loadSnapshot(), inventory: inventory).snapshot
     }
 
     /// 원시 스냅샷에 구문 정보를 얹는다.
-    private func enrich(_ raw: IndexSnapshot) -> SnapshotEnricher.Result {
-        SnapshotEnricher(
+    private func enrich(_ raw: IndexSnapshot, inventory: ProjectFileInventory? = nil) -> SnapshotEnricher.Result {
+        let interfaceBuilderFiles = inventory.map {
+            configuration.retention.retainInterfaceBuilder ? $0.interfaceBuilderFiles : []
+        }
+        return SnapshotEnricher(
             fileSystem: environment.fileSystem,
             retention: configuration.retention,
             cachePath: environment.usesSyntaxCache
@@ -70,9 +77,11 @@ public struct CartographService: Sendable {
         )
         .enrichWithDiagnostics(
             raw,
-            interfaceBuilderRoots: configuration.retention.retainInterfaceBuilder ? [projectPath] : [],
+            interfaceBuilderRoots: inventory == nil && configuration.retention.retainInterfaceBuilder
+                ? [projectPath] : [],
             pathFilter: configuration.pathFilter,
-            edgeKinds: configuration.edgeKinds
+            edgeKinds: configuration.edgeKinds,
+            interfaceBuilderFiles: interfaceBuilderFiles
         )
     }
 
@@ -85,11 +94,14 @@ public struct CartographService: Sendable {
         let externalPath = configuration.externalRetentionsPath.map(resolveProjectRelativePath)
         let externalRetentions = try ExternalRetentionStore(fileSystem: environment.fileSystem)
             .loadIfConfigured(at: externalPath)
-        let source = try makeIndexSource(includeObjectiveCSources: true)
-        let enriched = try enrich(source.provider.loadSnapshot())
+        let inventory = projectFileInventory()
+        let source = try makeIndexSource(
+            includeObjectiveCSources: true, sourceRoots: inventory.sourceFiles, inventory: inventory
+        )
+        let enriched = try enrich(source.provider.loadSnapshot(), inventory: inventory)
         let snapshot = enriched.snapshot
         try requireNonEmptyIndex(snapshot, from: source)
-        return AnalysisContext(
+        let context = AnalysisContext(
             snapshot: snapshot,
             pathFilter: configuration.pathFilter,
             edgeKinds: configuration.edgeKinds,
@@ -98,10 +110,11 @@ public struct CartographService: Sendable {
             unreadableSourcePaths: enriched.unreadableSourcePaths,
             unresolvedLocalFunctionsByPath: enriched.unresolvedLocalFunctionsByPath,
             localFunctionDiagnostics: enriched.localFunctionDiagnostics,
-            runtimeFiles: enriched.runtimeFiles + runtimeResourceFacts(),
+            runtimeFiles: enriched.runtimeFiles + runtimeResourceFacts(paths: inventory.runtimeFiles),
             runtimeFreshness: runtimeSourceFreshness(snapshot: snapshot,
                 missing: enriched.missingSourcePaths, unreadable: enriched.unreadableSourcePaths)
         )
+        return context.bindingProjectFileInventory(inventory)
     }
 
     /// 탈출구를 켜고 아무것도 분석하지 않은 실행이면, 요약 줄에 붙일 단서.
@@ -143,11 +156,17 @@ public struct CartographService: Sendable {
         findingTestOnlyCode: Bool = false
     ) -> (graph: CodeGraph, report: UnusedCodeReport) {
         let graph = context.buildGraph(level: .symbol).graph
-        let analyzer = ReachabilityAnalyzer(
+        return (graph, analyzeUnusedCode(in: context, graph: graph, findingTestOnlyCode: findingTestOnlyCode))
+    }
+
+    /// dead와 found query가 같은 보존 정책·옵션으로 같은 심볼 그래프를 판정한다.
+    private func analyzeUnusedCode(
+        in context: AnalysisContext, graph: CodeGraph, findingTestOnlyCode: Bool = false
+    ) -> UnusedCodeReport {
+        ReachabilityAnalyzer(
             policy: makeRetentionPolicy(externalRetentions: context.externalRetentionIndex),
             options: .init(findsTestOnlyCode: findingTestOnlyCode)
-        )
-        return (graph, analyzer.analyze(graph: graph, snapshot: context.snapshot))
+        ).analyze(graph: graph, snapshot: context.snapshot)
     }
 
     /// 아키텍처 지표.
@@ -449,7 +468,7 @@ public struct CartographService: Sendable {
     /// 하나라도 찾지 못하면 종료 코드는 사용 오류가 되지만 **나머지 답은 전부 돌려준다.**
     /// 이름 하나가 틀렸다고 마흔둘의 답을 버리게 하지 않는다.
     public func queryBatch(symbols: [String], depth: Int = 1, limit: Int = 50) throws -> CommandOutcome {
-        let session = try makeQuerySession()
+        let session = try makeQuerySession(subjects: symbols)
         let results = try symbols.map {
             try queryDocument(symbol: $0, depth: depth, limit: limit, in: session)
         }
@@ -464,47 +483,85 @@ public struct CartographService: Sendable {
 
     /// `query` 가 내보낼 문서를 만든다. 인코딩과 종료 코드는 부르는 쪽이 정한다.
     public func queryDocument(symbol subject: String, depth: Int = 1, limit: Int = 50) throws -> SymbolQueryDocument {
-        try queryDocument(symbol: subject, depth: depth, limit: limit, in: try makeQuerySession())
+        let context = try loadContext()
+        let session = try makeQuerySession(in: context, subjects: [subject])
+        return try queryDocument(symbol: subject, depth: depth, limit: limit, in: session)
     }
 
     /// 질의 여러 건이 나눠 쓰는 준비물.
     ///
     /// 값으로 묶어 두지 않으면 배치 경로가 요청마다 인덱스를 다시 읽는다.
+    struct FoundQueryFacts {
+        let report: UnusedCodeReport
+        let referenceEvidence: ReferenceEvidenceIndex
+    }
+
     struct QuerySession {
         let graph: CodeGraph
         let lookup: GraphQueryIndex
-        let report: UnusedCodeReport
+        var foundFacts: FoundQueryFacts?
         let limitations: [String]
-        let referenceEvidence: ReferenceEvidenceIndex
         let localFunctionDiagnostics: LocalFunctionDiagnostics?
         /// 억제 판정에 쓸 지문 집합. 답마다 `filtering` 을 부르면 답 수 × 지문 수의
         /// 해싱이 매번 다시 일어난다.
         let baselineFingerprints: Set<String>
+        private(set) var foundFactsBuildCount: Int
+
+        mutating func installFoundFacts(_ facts: FoundQueryFacts) {
+            guard foundFacts == nil else { return }
+            foundFacts = facts
+            foundFactsBuildCount += 1
+        }
     }
 
-    func makeQuerySession() throws -> QuerySession {
+    func makeQuerySession(subjects: [String]? = nil) throws -> QuerySession {
         let context = try loadContext()
-        return try makeQuerySession(in: context)
+        return try makeQuerySession(in: context, subjects: subjects)
     }
 
     /// 이미 읽은 문맥에서 질의 준비물을 만든다. 세션이 인덱스와 구문 보강을 다시 읽지 않게 한다.
     ///
     /// 베이스라인도 한 번만 읽는다. 없으면 요청마다 파일을 다시 읽는다. 답은 같지만,
     /// 1000건 배치에서 33 밀리초를 파일 시스템에 쓰고 그 값은 베이스라인이 커질수록 커진다.
-    func makeQuerySession(in context: AnalysisContext) throws -> QuerySession {
-        let (graph, report) = unusedCode(in: context)
+    func makeQuerySession(in context: AnalysisContext, subjects: [String]? = nil) throws -> QuerySession {
+        let graph = context.buildGraph(level: .symbol).graph
         let baseline = try loadBaseline()
-        return QuerySession(
+        var session = QuerySession(
             graph: graph,
             lookup: GraphQueryIndex(graph: graph),
-            report: report,
+            foundFacts: nil,
             limitations: analysisLimitations(context: context, symbolGraph: graph),
-            referenceEvidence: ReferenceEvidenceIndex(snapshot: context.snapshot, graph: graph),
             localFunctionDiagnostics: LocalFunctionDiagnostics.presenting(
                 context.localFunctionDiagnostics.filter { configuration.pathFilter.allows($0.location.path) }
             ),
-            baselineFingerprints: baseline.map { Set($0.fingerprints) } ?? []
+            baselineFingerprints: baseline.map { Set($0.fingerprints) } ?? [],
+            foundFactsBuildCount: 0
         )
+        if subjects.map({ $0.contains(where: { Self.isFound(session.lookup.resolve($0)) }) }) ?? true {
+            session.installFoundFacts(makeFoundQueryFacts(in: context, graph: graph))
+        }
+        return session
+    }
+
+    func ensureFoundQueryFacts(
+        in context: AnalysisContext, subjects: [String], session: inout QuerySession
+    ) {
+        guard session.foundFacts == nil,
+              subjects.contains(where: { Self.isFound(session.lookup.resolve($0)) })
+        else { return }
+        session.installFoundFacts(makeFoundQueryFacts(in: context, graph: session.graph))
+    }
+
+    private func makeFoundQueryFacts(in context: AnalysisContext, graph: CodeGraph) -> FoundQueryFacts {
+        let report = analyzeUnusedCode(in: context, graph: graph)
+        return FoundQueryFacts(
+            report: report, referenceEvidence: ReferenceEvidenceIndex(snapshot: context.snapshot, graph: graph)
+        )
+    }
+
+    private static func isFound(_ lookup: GraphNodeLookup) -> Bool {
+        if case .found = lookup { return true }
+        return false
     }
 
     func queryDocument(
@@ -514,7 +571,6 @@ public struct CartographService: Sendable {
         in session: QuerySession
     ) throws -> SymbolQueryDocument {
         let graph = session.graph
-        let report = session.report
         // `unusedCode` 는 설정과 무관하게 항상 심볼 레벨로 만든다. 여기서 설정값을
         // 실어 보내면 심볼 레벨 답을 모듈 레벨 답이라고 말하게 된다.
         let level = GraphLevel.symbol.rawValue
@@ -549,15 +605,20 @@ public struct CartographService: Sendable {
                 localFunctionDiagnostics: session.localFunctionDiagnostics
             )
         case let .found(node):
+            guard let foundFacts = session.foundFacts else {
+                throw CartographError.invalidConfiguration(
+                    path: projectPath, reason: "The query session has no prepared found-symbol facts."
+                )
+            }
             return SymbolQueryDocument(
                 status: "found",
                 requested: subject,
                 level: level,
                 limitations: limitations,
                 result: try describeQuery(
-                    of: node, report: report, in: graph,
+                    of: node, report: foundFacts.report, in: graph,
                     depth: depth, limit: limit, baselineFingerprints: session.baselineFingerprints,
-                    referenceEvidence: session.referenceEvidence
+                    referenceEvidence: foundFacts.referenceEvidence
                 ),
                 localFunctionDiagnostics: session.localFunctionDiagnostics
             )
@@ -684,7 +745,7 @@ public struct CartographService: Sendable {
     ) -> [String] {
         var emptyIndexCounts: (total: Int, inScope: Int)?
         if allowsEmptyIndex, let context, context.snapshot.symbols.isEmpty {
-            let counts = projectSourceCounts()
+            let counts = projectSourceCounts(inventory: context.projectFileInventory)
             emptyIndexCounts = (counts.total, counts.inScope)
         }
         return AnalysisLimitationCollector(
@@ -692,7 +753,8 @@ public struct CartographService: Sendable {
             fileSystem: environment.fileSystem,
             projectPath: projectPath,
             // 외부 보존 파일의 기존 비교 기준은 유지한다. 소스 신선도는 수집기에서 파일별로 본다.
-            storeDate: storeDate ?? indexStoreDate()
+            storeDate: storeDate ?? indexStoreDate(),
+            inventory: context?.projectFileInventory ?? projectFileInventory()
         ).collect(context: context, symbolGraph: symbolGraph, emptyIndexCounts: emptyIndexCounts)
     }
 
@@ -818,9 +880,14 @@ public struct CartographService: Sendable {
         // 빈 인덱스 가드를 지나지 않는다. `bridges` 는 구문 스캔이 본체이고 인덱스는
         // USR 을 붙이는 데만 쓴다. 공개 플러그인 스캔은 인덱스 기여가 0인 상태로 도는
         // 것이 정상이라, 여기서 실패하면 그 용법이 통째로 막힌다.
-        let snapshot = try makeIndexSource(includeObjectiveCSources: true, includeExternalSymbols: true)
-            .provider.loadSnapshot()
-        let sources = bridgeSourceFiles()
+        let inventory = projectFileInventory()
+        let snapshot = try makeIndexSource(
+            includeObjectiveCSources: true,
+            includeExternalSymbols: true,
+            sourceRoots: inventory.sourceFiles,
+            inventory: inventory
+        ).provider.loadSnapshot()
+        let sources = bridgeSourceFiles(inventory: inventory)
         let indexedDates = Dictionary((snapshot.indexedFileDates ?? [:]).map {
             (ValueFlowSourceLoader.canonicalPath($0.key), $0.value)
         }, uniquingKeysWith: min)
@@ -1075,9 +1142,14 @@ public struct CartographService: Sendable {
                 + "Check that it exists and is accessible."
             throw CartographError.invalidConfiguration(path: projectPath, reason: reason)
         }
-        let snapshot = try makeIndexSource(includeObjectiveCSources: true, includeExternalSymbols: true)
-            .provider.loadSnapshot()
-        let sources = schemaSourceFiles()
+        let inventory = projectFileInventory()
+        let snapshot = try makeIndexSource(
+            includeObjectiveCSources: true,
+            includeExternalSymbols: true,
+            sourceRoots: inventory.sourceFiles,
+            inventory: inventory
+        ).provider.loadSnapshot()
+        let sources = schemaSourceFiles(inventory: inventory)
         let indexedDates = Dictionary((snapshot.indexedFileDates ?? [:]).map {
             (ValueFlowSourceLoader.canonicalPath($0.key), $0.value)
         }, uniquingKeysWith: min)
@@ -1186,9 +1258,13 @@ public struct CartographService: Sendable {
     /// 인덱스는 감싸는 선언의 USR 을 붙이는 데만 쓰므로, 자동 탐색이 스토어를 찾지 못하면
     /// `qualifiedName` 만 싣고 `missing-route-usrs:` 로 알린다. 사용자가 경로를 명시했다면 그 경로가
     /// 틀린 것이므로 그대로 실패한다.
-    func routeIndexSnapshot() throws -> IndexSnapshot? {
+    func routeIndexSnapshot(inventory: ProjectFileInventory? = nil) throws -> IndexSnapshot? {
         do {
-            return try makeIndexSource(includeExternalSymbols: true).provider.loadSnapshot()
+            return try makeIndexSource(
+                includeExternalSymbols: true,
+                sourceRoots: inventory?.sourceFiles,
+                inventory: inventory
+            ).provider.loadSnapshot()
         } catch CartographError.indexStoreNotFound where configuration.indexStorePath == nil {
             return nil
         } catch CartographError.indexStoreLibraryNotFound where configuration.indexStorePath == nil {
@@ -1208,9 +1284,14 @@ public struct CartographService: Sendable {
     ///
     /// 인덱스의 파일 목록이 아니라 디스크를 걷는다. 아직 빌드하지 않은 파일과
     /// Objective-C 파일은 인덱스에 없지만 사실은 거기에도 있다.
-    private func bridgeSourceFiles() -> [String] {
+    private func bridgeSourceFiles(inventory: ProjectFileInventory? = nil) -> [String] {
         let filter = configuration.pathFilter
         let suffixes = [".swift"] + ReactNativeMacroScanner.sourceExtensions.map { "." + $0 }
+        if let inventory {
+            return inventory.sourceFiles.filter { path in
+                suffixes.contains { suffix in path.hasSuffix(suffix) }
+            }
+        }
         return environment.fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { path in filter.allows(path) && suffixes.contains { path.hasSuffix($0) } },
@@ -1222,8 +1303,11 @@ public struct CartographService: Sendable {
     ///
     /// 인덱스의 파일 목록이 아니라 디스크를 걷는다. 아직 빌드하지 않은 파일은
     /// 인덱스에 없지만 SQL 문자열은 거기에도 있다.
-    func schemaSourceFiles() -> [String] {
+    func schemaSourceFiles(inventory: ProjectFileInventory? = nil) -> [String] {
         let filter = configuration.pathFilter
+        if let inventory {
+            return inventory.sourceFiles.filter { $0.hasSuffix(".swift") }
+        }
         return environment.fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { path in filter.allows(path) && path.hasSuffix(".swift") },
@@ -1504,6 +1588,12 @@ public struct CartographService: Sendable {
         return (projectPath as NSString).appendingPathComponent(path)
     }
 
+    func projectFileInventory() -> ProjectFileInventory {
+        ProjectFileInventory(
+            fileSystem: environment.fileSystem, projectPath: projectPath, pathFilter: configuration.pathFilter
+        )
+    }
+
     private func describe(_ graph: CodeGraph) -> String {
         "\(graph.level.rawValue) graph · \(graph.nodeCount) nodes · \(graph.edgeCount) edges"
     }
@@ -1518,6 +1608,7 @@ public struct CartographService: Sendable {
         let storePath: String
         let libraryPath: String
         let origin: EmptyIndexFacts.StoreOrigin
+        let inventory: ProjectFileInventory?
     }
 
     /// 명시한 생성 소스만 기존 인덱스 스토어에서 읽어 기본 분석 범위와 분리한다.
@@ -1547,7 +1638,8 @@ public struct CartographService: Sendable {
         includeObjectiveCSources: Bool = false,
         includeExternalSymbols: Bool = false,
         sourceRoots: [String]? = nil,
-        pathFilter: PathFilter? = nil
+        pathFilter: PathFilter? = nil,
+        inventory: ProjectFileInventory? = nil
     ) throws -> IndexSource {
         if let override = environment.indexProviderOverride {
             // 주입된 공급자에는 스토어가 없다. 모르는 것을 아는 척하지 않는다.
@@ -1555,7 +1647,8 @@ public struct CartographService: Sendable {
                 provider: override,
                 storePath: "(injected provider)",
                 libraryPath: "(injected provider)",
-                origin: .injected
+                origin: .injected,
+                inventory: inventory
             )
         }
 
@@ -1569,6 +1662,7 @@ public struct CartographService: Sendable {
             explicitPath: nil,
             developerDirectory: environment.developerDirectory
         )
+        let effectivePathFilter = pathFilter ?? configuration.pathFilter
         let provider = IndexStoreProvider(
             configuration: .init(
                 storePath: storePath,
@@ -1578,11 +1672,12 @@ public struct CartographService: Sendable {
                     libraryModificationDate: environment.fileSystem.modificationDate(at: libraryPath)
                 ),
                 libraryPath: libraryPath,
-                sourceRoots: sourceRoots ?? [projectPath],
-                pathFilter: pathFilter ?? configuration.pathFilter,
+                sourceRoots: sourceRoots ?? inventory?.sourceFiles ?? [projectPath],
+                pathFilter: effectivePathFilter,
                 includeExternalSymbols: includeExternalSymbols,
                 includeObjectiveCSources: includeObjectiveCSources,
-                includeSelfReferences: includeExternalSymbols
+                includeSelfReferences: includeExternalSymbols,
+                readerMode: .raw
             ),
             fileSystem: environment.fileSystem
         )
@@ -1590,7 +1685,8 @@ public struct CartographService: Sendable {
             provider: provider,
             storePath: storePath,
             libraryPath: libraryPath,
-            origin: storeOrigin(of: storePath)
+            origin: storeOrigin(of: storePath),
+            inventory: inventory
         )
     }
 
@@ -1604,7 +1700,7 @@ public struct CartographService: Sendable {
 
     /// 빈 인덱스의 원인을 좁히는 사실들. 오류 경로에서만 계산한다.
     private func emptyIndexFacts(from source: IndexSource) -> EmptyIndexFacts {
-        let counts = projectSourceCounts()
+        let counts = projectSourceCounts(inventory: source.inventory)
         return EmptyIndexFacts(
             projectPath: projectPath,
             resolvedProjectPath: LocalFileSystem.canonicalPath(projectPath),
@@ -1625,20 +1721,22 @@ public struct CartographService: Sendable {
     /// 세 숫자가 원인을 가른다. Swift 전체가 0이면 `--project` 가 틀렸거나 이 도구가 못 읽는
     /// 언어로 쓰인 프로젝트이고(Objective-C 수가 그 둘을 가른다), 전체는 있는데 통과가 0이면
     /// include/exclude 가 다 걸러 낸 것이다.
-    private func projectSourceCounts() -> (total: Int, inScope: Int, objectiveC: Int) {
+    private func projectSourceCounts(inventory: ProjectFileInventory? = nil)
+        -> (total: Int, inScope: Int, objectiveC: Int) {
         let filter = configuration.pathFilter
-        let files = environment.fileSystem.recursiveFiles(
+        let files = inventory?.sourceFiles ?? environment.fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { path in
                 AnalysisLimitationCollector.sourceSuffixes.contains { path.hasSuffix($0) }
             },
             shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
         )
-        let swiftFiles = files.filter { $0.hasSuffix(".swift") }
+        let allFiles = inventory?.allSourceFiles ?? files
+        let swiftFiles = allFiles.filter { $0.hasSuffix(".swift") }
         return (
             swiftFiles.count,
             swiftFiles.count { filter.allows($0) },
-            files.count { $0.hasSuffix(".m") || $0.hasSuffix(".mm") }
+            allFiles.count { $0.hasSuffix(".m") || $0.hasSuffix(".mm") }
         )
     }
 

@@ -20,6 +20,8 @@ cycles: 1 error — module graph · 9 nodes · 36 edges
 
 ---
 
+Compiler-backed queries preserve every compilation target when a source file is shared. Analysis reuses one project file inventory per load, and ambiguous or missing-symbol queries avoid work needed only for found declarations. Baseline errors, measured limitations, and found-reference evidence remain unchanged.
+
 ## Why another tool
 
 [Periphery](https://github.com/peripheryapp/periphery) was the best unused-code detector Swift had,
