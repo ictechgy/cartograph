@@ -76,7 +76,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.23.1
+mint install ictechgy/cartograph@0.24.0
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -84,7 +84,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.23.1"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.24.0"),
 ```
 
 ```bash
@@ -1085,7 +1085,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.23.1" },
+  "tool" : { "name" : "cartograph", "version" : "0.24.0" },
   "version" : 1
 }
 ```
@@ -1587,11 +1587,11 @@ jobs:
       - uses: ictechgy/cartograph@action-v1.0.0
         with:
           command: check
-          version: 0.23.1
+          version: 0.24.0
           args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-The `action-v1.0.0` tag is the action release; `version: 0.23.1` selects the CLI binary.
+The `action-v1.0.0` tag is the action release; `version: 0.24.0` selects the CLI binary.
 Pin both for a repeatable setup (`@main` tracks the development branch). Marketplace's default
 "Use latest version" currently follows the repository's latest CLI release; select
 `action-v1.0.0` or use the version-specific link above for the action release. Inputs:
