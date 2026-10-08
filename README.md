@@ -179,11 +179,28 @@ cartograph init          # write a commented .cartograph.yml
 cartograph graph --level module --format dot   -o graph.dot
 cartograph graph --level type   --format mermaid            # paste into a PR description
 cartograph graph --level symbol --format json  -o graph.json
+cartograph graph --level symbol --format json --evidence -o graph-with-evidence.json
 cartograph graph --level module --format html  -o graph.html
 ```
 
 Four resolutions: `module`, `file`, `type`, `symbol`. The HTML export is a single self-contained
 file with no CDN references — it opens on an air-gapped machine and passes a security review.
+
+`--evidence` adds all indexed reference occurrences supporting the final graph edges, with relative
+file/line/column when available, original USRs, origin and position. It has no query evidence cap.
+Roll-up and graph filters still apply; generated member edges receive no invented occurrence.
+Separate `moduleImports` are declaration facts, and source/index `inventory` preserves unknown
+versus known-empty coverage. Unlocated and omitted records are counted. An import-topology
+limitation identifies recorded imports that are absent from the graph's import edges. This optional
+JSON output still buffers a complete String; it is not a streaming export.
+
+`graph --level symbol --format json --declaration-projection --primary-module Main` writes a separate
+`cartograph-declaration-projection` v1 artifact. It keeps the raw graph and every variant's USR,
+module, access and attributes, alongside a projection with an explicitly selected representative.
+Only exact normalized declaration location/name/kind and bounded lexical parent correspondence are
+merged. Missing or ambiguous groups remain raw. The output reports conditional-compilation uncertainty;
+lexical correspondence does not prove semantic equivalence or source freshness. Query/analysis IDs
+remain unchanged. This option and `--evidence` select different artifacts.
 
 ### `cycles` — find circular dependencies
 
@@ -1192,6 +1209,27 @@ can join them by (method, path template) against server route declarations and O
 ]}
 ```
 
+
+`http-wrappers` v2 also supports an explicit `pathSuffix` list:
+
+```json
+{"format":"http-wrappers","version":2,"wrappers":[
+  {"language":"swift","kind":"constructor","owner":"Endpoint","name":"init",
+   "pathArg":{"label":"path"},"defaultMethod":"GET","pathAnchor":"root",
+   "pathSuffix":[{"literal":"details"},{"argument":{"label":"segments"},"shape":"array"}]}
+]}
+```
+
+Each suffix entry describes decoded single path segments. Literal `/` is encoded as `%2F` inside
+one segment; use multiple entries to describe multiple segments. Scalar unknown values become `{}`;
+array expansion requires a known literal/constant array, and unknown length remains dynamic.
+Files are limited to 1 MiB, declarations to 32 suffix entries, and expansion to 64 segments.
+A dynamic main path stays dynamic and unresolved suffix composition is counted.
+Use separate v1 configuration for sibling producers that have not adopted v2.
+Constructor label/type inference fixes apply to both v1 and v2; v2 without suffix has the same
+behavior as v1 in this version. Wrapper `service` can distinguish configured HTTP services.
+
+
 Arguments bind by label first and position second; an omitted verb takes `defaultMethod`, an enum
 case (including the implicit member `.get`) maps through `methodEnum`, and anything else is
 `methodDynamic`. Direct `URLRequest` and `URLSession` requests are read too when their verb and path
@@ -1209,6 +1247,11 @@ Paths can also come from another file in the project: `Paths.users.rawValue`, im
 Literal strings, references to those members and string concatenation are supported. Conditional
 declarations, conflicting names, local value/type shadows, non-String members, mutable properties,
 cycles and expressions exceeding the depth or path-length limits stay dynamic.
+Constructor wrappers select a declaration whose configured path argument actually matches the call.
+An implicit path enum case is resolved only when a complete, unambiguous initializer signature
+proves its String-backed enum type, including safe project type aliases. Missing or competing
+initializer surfaces, inherited/memberwise possibilities, and generic/local shadows stay dynamic.
+
 
 Common libraries need no declaration. Each rule follows the library's source and was checked against
 the request line a local server actually received (`experiments/http-client-oracle`, 35 requests on

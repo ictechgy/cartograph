@@ -50,6 +50,8 @@ private enum HTTPCallee {
 /// 래퍼 선언과 호출의 대조 결과.
 private enum HTTPWrapperMatch {
     case match
+    /// 구성된 경로 매개변수가 기본값이라 호출에서 생략됐다. 명시 경로 래퍼보다 뒤에서 고른다.
+    case defaultPath
     /// 이름·레이블은 맞지만 수신자 타입을 증명하지 못했다. 사실로 내지 않고 센다.
     case unproven
     case none
@@ -206,16 +208,20 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     private func matchWrapper(_ node: FunctionCallExprSyntax) -> (Int, HTTPWrapperDeclaration)? {
         guard !wrappers.isEmpty, let callee = HTTPCallee(node.calledExpression) else { return nil }
         var isUnproven = false
+        var defaultPathMatch: (Int, HTTPWrapperDeclaration)?
         for (index, declaration) in wrappers.enumerated() {
             let match = declaration.kind == .constructor
                 ? constructorMatch(declaration, callee: callee, node: node)
                 : functionMatch(declaration, callee: callee, node: node)
             switch match {
             case .match: return (index, declaration)
+            case .defaultPath:
+                if defaultPathMatch == nil { defaultPathMatch = (index, declaration) }
             case .unproven: isUnproven = true
             case .none: continue
             }
         }
+        if let defaultPathMatch { return defaultPathMatch }
         if isUnproven { counts.unprovenReceiverCalls += 1 }
         return nil
     }
@@ -241,9 +247,16 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
         case let .implicit(name):
             let label = declaration.pathArg.label
             isOwner = name == "init" && declaration.ownerMatches(chain)
-                && label != nil && node.arguments.contains { $0.label?.text == label }
+                && label != nil && node.arguments.contains {
+                    $0.label.map { SyntaxIdentifiers.unescaped($0.text) } == label
+                }
         }
-        return isOwner && labelsCompatible(node, declaration) ? .match : .none
+        guard isOwner else { return .none }
+        let labels = node.arguments.map { $0.label.map { SyntaxIdentifiers.unescaped($0.text) } }
+        if HTTPWrapperBinding.argumentIndex(for: declaration.pathArg, labels: labels) != nil {
+            return labelsCompatible(node, declaration) ? .match : .none
+        }
+        return surface.acceptsOmittedPath(of: declaration, labels: labels) ? .defaultPath : .none
     }
 
     /// `name(` 은 소유 타입 안(또는 모듈 함수), `self.name(`·`Owner.name(` 은 증명된 소유자,
@@ -330,18 +343,140 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
             HTTPWrapperCallArgument(label: $0.label, value: argumentValue($0.expression, context: context))
         })
         guard let pathIndex = HTTPWrapperBinding.argumentIndex(for: declaration.pathArg, labels: arguments.map(\.label)) else {
+            if !declaration.pathSuffix.isEmpty { counts.wrapperSuffixUnresolved += 1 }
             emit(.init(template: nil, pathAnchor: declaration.pathAnchor), method: method, source: nil,
                  service: declaration.service, node: node)
             callsByWrapper[index, default: 0] += 1
             return
         }
         let pathExpression = arguments[pathIndex].expression
-        let parts = parts(of: pathExpression, context: context)
+        let hasTrailingClosures = node.trailingClosure != nil || !node.additionalTrailingClosures.isEmpty
+        let parts = implicitEnumPathParts(
+            pathExpression, declaration: declaration, labels: arguments.map(\.label),
+            hasTrailingClosures: hasTrailingClosures, context: context
+        )
+            ?? parts(of: pathExpression, context: context)
         guard recordPassThrough(parts, node: node) == .none else { return }
-        let resolution = HTTPRouteURLResolver.resolve(parts.map(\.part), join: .wrapper(declaration.pathAnchor))
+        let baseResolution = HTTPRouteURLResolver.resolve(
+            parts.map(\.part), join: .wrapper(declaration.pathAnchor)
+        )
             ?? .init(template: nil, pathAnchor: declaration.pathAnchor)
+        let suffix = wrapperSuffixExpansion(declaration, arguments: arguments, context: context)
+        let resolution = HTTPWrapperSuffixComposer.append(suffix, to: baseResolution)
+        if suffix == .dynamic
+            || (!declaration.pathSuffix.isEmpty && resolution.isDynamic) {
+            counts.wrapperSuffixUnresolved += 1
+        }
         emit(resolution, method: method, source: pathExpression, service: declaration.service, node: node)
         callsByWrapper[index, default: 0] += 1
+    }
+
+    private func implicitEnumPathParts(
+        _ expression: ExprSyntax, declaration: HTTPWrapperDeclaration, labels: [String?],
+        hasTrailingClosures: Bool, context: BindingCollector.Context
+    ) -> [HTTPScannedPart]? {
+        let value = BindingCollector.unparenthesized(expression)
+        guard let member = value.as(MemberAccessExprSyntax.self), member.base == nil else { return nil }
+        guard !hasTrailingClosures else { return [.value(value)] }
+        guard let type = surface.pathTypes(of: declaration, labels: labels).first else { return [.value(value)] }
+        guard let raw = surface.rawValue(ofCase: SyntaxIdentifiers.unescaped(member.declName.baseName.text), inTypeNamed: type),
+              !isLexicalTypeShadow(named: type.first ?? "", expression: value, context: context) else { return [.value(value)] }
+        return [.literal(raw)]
+    }
+
+    private func wrapperSuffixExpansion(
+        _ declaration: HTTPWrapperDeclaration,
+        arguments: [(label: String?, expression: ExprSyntax)],
+        context: BindingCollector.Context
+    ) -> HTTPWrapperSuffixComposer.Expansion {
+        var segments: [HTTPWrapperSuffixComposer.Segment] = []
+        for suffix in declaration.pathSuffix {
+            switch suffix {
+            case let .literal(text):
+                segments.append(.literal(text))
+            case let .argument(binding, shape):
+                guard let index = HTTPWrapperBinding.argumentIndex(
+                    for: binding, labels: arguments.map(\.label)
+                ) else { return .dynamic }
+                let expression = arguments[index].expression
+                switch shape {
+                case .scalar:
+                    guard let segment = wrapperSuffixScalar(
+                        expression, context: context, remaining: HTTPWrapperSuffixComposer.maximumExpandedSegments
+                    ) else { return .dynamic }
+                    segments.append(segment)
+                case .array:
+                    guard let expanded = wrapperSuffixArray(
+                        expression, context: context, remaining: HTTPWrapperSuffixComposer.maximumExpandedSegments
+                    ) else { return .dynamic }
+                    segments.append(contentsOf: expanded)
+                }
+            }
+            if segments.count > HTTPWrapperSuffixComposer.maximumExpandedSegments {
+                return .dynamic
+            }
+        }
+        return .segments(segments)
+    }
+
+    /// scalar 선언은 값의 실행 시 문자열을 몰라도 segment 하나라는 모델 주장을 보존한다.
+    private func wrapperSuffixScalar(
+        _ expression: ExprSyntax,
+        context: BindingCollector.Context,
+        remaining: Int
+    ) -> HTTPWrapperSuffixComposer.Segment? {
+        guard remaining > 0 else { return nil }
+        let value = wrapperSuffixValue(expression)
+        guard !isNonScalarSuffixValue(value) else { return nil }
+        let resolved = bindings.resolveString(value, in: context)
+        if !resolved.isDynamic { return .literal(resolved.text) }
+        if let bound = bindings.constantExpression(for: value, in: context) {
+            return wrapperSuffixScalar(
+                bound.expression, context: bound.context, remaining: remaining - 1
+            )
+        }
+        return .value
+    }
+
+    /// array 선언은 길이를 증명한 배열 리터럴만 펼친다. 빈 배열은 segment를 추가하지 않는다.
+    private func wrapperSuffixArray(
+        _ expression: ExprSyntax,
+        context: BindingCollector.Context,
+        remaining: Int
+    ) -> [HTTPWrapperSuffixComposer.Segment]? {
+        guard remaining > 0 else { return nil }
+        let value = wrapperSuffixValue(expression)
+        if let array = value.as(ArrayExprSyntax.self) {
+            guard array.elements.count <= HTTPWrapperSuffixComposer.maximumExpandedSegments else { return nil }
+            var result: [HTTPWrapperSuffixComposer.Segment] = []
+            for element in array.elements {
+                guard let segment = wrapperSuffixScalar(
+                    element.expression, context: context, remaining: remaining - 1
+                ) else { return nil }
+                result.append(segment)
+            }
+            return result
+        }
+        guard let bound = bindings.constantExpression(for: value, in: context) else { return nil }
+        return wrapperSuffixArray(
+            bound.expression, context: bound.context, remaining: remaining - 1
+        )
+    }
+
+    private func wrapperSuffixValue(_ expression: ExprSyntax) -> ExprSyntax {
+        var value = HTTPSyntax.unwrapped(expression)
+        while let cast = value.as(AsExprSyntax.self) {
+            value = HTTPSyntax.unwrapped(cast.expression)
+        }
+        return value
+    }
+
+    private func isNonScalarSuffixValue(_ expression: ExprSyntax) -> Bool {
+        expression.is(NilLiteralExprSyntax.self)
+            || expression.is(ArrayExprSyntax.self)
+            || expression.is(DictionaryExprSyntax.self)
+            || expression.is(TupleExprSyntax.self)
+            || expression.is(ClosureExprSyntax.self)
     }
 
     /// 인자 값의 모양. 동사 판정에 필요한 만큼만 가른다.

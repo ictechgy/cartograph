@@ -1,4 +1,4 @@
-/// 사용자가 선언한 HTTP 래퍼 하나(`http-wrappers` v1, `../isthmus/docs/HTTP-WRAPPERS.md`).
+/// 사용자가 선언한 HTTP 래퍼 하나(`http-wrappers` v1/v2, `../isthmus/docs/HTTP-WRAPPERS.md`).
 ///
 /// 앱은 HTTP 라이브러리를 직접 부르지 않고 자체 래퍼를 거친다. 어느 인자가 경로이고 어느
 /// 인자가 동사인지는 소스만 보고 일반적으로 추측할 수 없으므로 사용자가 선언하고, 생산자는
@@ -21,6 +21,25 @@ public struct HTTPWrapperDeclaration: Hashable, Sendable {
         }
     }
 
+    /// v2 래퍼가 기본 경로 뒤에 붙이는 segment 선언이다.
+    public enum PathSuffix: Hashable, Sendable {
+        /// 파일에 적힌 decoded segment 하나. 슬래시와 퍼센트 표기도 segment 원문이다.
+        case literal(String)
+        /// 호출 인자가 제공하는 segment. scalar는 정확히 하나, array는 배열 원소마다 하나다.
+        case argument(ArgumentBinding, shape: ArgumentShape)
+
+        /// 인자 값이 선언하는 segment 개수의 모양이다.
+        public enum ArgumentShape: String, Hashable, Sendable {
+            /// 런타임 값이어도 segment 하나라는 모델 선언이므로 빈 hole로 보존할 수 있다.
+            case scalar
+            /// 길이를 증명한 배열 리터럴만 원소별 segment로 펼친다.
+            case array
+        }
+    }
+
+    /// 한 wrapper가 선언할 수 있는 suffix 항목 수다.
+    public static let maximumPathSuffixEntries = 32
+
     /// 호출 측 생산자 언어. 이 도구는 `swift` 선언만 쓴다.
     public let language: String
     public let kind: Kind
@@ -33,12 +52,30 @@ public struct HTTPWrapperDeclaration: Hashable, Sendable {
     public let methodEnum: [String: String]
     public let pathAnchor: HTTPPathAnchor
     public let service: String?
+    /// v2 경로 뒤에 선언 순서대로 붙일 segment 항목. v1은 항상 비어 있다.
+    public let pathSuffix: [PathSuffix]
 
     public init(
         language: String, kind: Kind, owner: String, name: String,
         methodArg: ArgumentBinding?, pathArg: ArgumentBinding,
         defaultMethod: String? = nil, methodEnum: [String: String] = [:],
         pathAnchor: HTTPPathAnchor, service: String? = nil
+    ) {
+        self.init(
+            language: language, kind: kind, owner: owner, name: name,
+            methodArg: methodArg, pathArg: pathArg,
+            defaultMethod: defaultMethod, methodEnum: methodEnum,
+            pathAnchor: pathAnchor, service: service, pathSuffix: []
+        )
+    }
+
+    /// v2 suffix를 요구하는 overload다. 기존 initializer 호출 시그니처와 suffix 없는 동작을 유지한다.
+    public init(
+        language: String, kind: Kind, owner: String, name: String,
+        methodArg: ArgumentBinding?, pathArg: ArgumentBinding,
+        defaultMethod: String? = nil, methodEnum: [String: String] = [:],
+        pathAnchor: HTTPPathAnchor, service: String? = nil,
+        pathSuffix: [PathSuffix]
     ) {
         self.language = language
         self.kind = kind
@@ -50,6 +87,7 @@ public struct HTTPWrapperDeclaration: Hashable, Sendable {
         self.methodEnum = methodEnum
         self.pathAnchor = pathAnchor
         self.service = service
+        self.pathSuffix = pathSuffix
     }
 
     /// 한계 문구에 쓰는 표기. 사용자가 선언한 이름뿐이라 경로·비밀을 담지 않는다.
@@ -69,6 +107,95 @@ public struct HTTPWrapperDeclaration: Hashable, Sendable {
         guard !chain.isEmpty, !owner.isEmpty else { return false }
         return owner.count >= chain.count ? Array(owner.suffix(chain.count)) == chain
             : Array(chain.suffix(owner.count)) == owner
+    }
+}
+
+/// v2 wrapper suffix를 기존 main-path 해석 결과에 붙이는 순수 규칙이다.
+public enum HTTPWrapperSuffixComposer {
+    /// suffix 인자 하나를 펼친 segment다.
+    public enum Segment: Hashable, Sendable {
+        /// 퍼센트 인코딩 전 decoded segment.
+        case literal(String)
+        /// 값은 모르지만 모델이 segment 하나라고 보장한 자리.
+        case value
+    }
+
+    /// Syntax 생산자가 증명한 전체 suffix 또는 적용할 수 없다는 사실이다.
+    public enum Expansion: Hashable, Sendable {
+        case segments([Segment])
+        case dynamic
+    }
+
+    /// 한 호출에서 펼칠 수 있는 suffix segment 수다.
+    public static let maximumExpandedSegments = 64
+
+    /// main path의 query와 fragment 제거 상태를 보존하면서 suffix를 경로 끝에 붙인다.
+    ///
+    /// main path가 이미 dynamic이면 suffix로 정적으로 승격하지 않는다. suffix가 불확실하거나
+    /// 확장 한도를 넘으면 기존 정적 main path만 channelPrefix로 남긴다.
+    public static func append(_ expansion: Expansion, to base: HTTPRouteResolution) -> HTTPRouteResolution {
+        guard let template = base.template else { return base }
+        guard case let .segments(segments) = expansion,
+              segments.count <= maximumExpandedSegments else {
+            return dynamic(after: base, prefix: template)
+        }
+        guard !segments.isEmpty else { return base }
+        var path = template
+        for (index, segment) in segments.enumerated() {
+            if index > 0 || !path.hasSuffix("/") { path += "/" }
+            switch segment {
+            case let .literal(text):
+                guard let encoded = encodeSegment(text) else {
+                    return dynamic(after: base, prefix: template)
+                }
+                path += encoded
+            case .value:
+                path += "{}"
+            }
+        }
+        let masked = HTTPRouteTemplate.mask(path, authority: base.authority)
+        guard HTTPRouteTemplate.validate(masked.template) == nil else {
+            return dynamic(after: base, prefix: template)
+        }
+        return HTTPRouteResolution(
+            template: masked.template,
+            pathAnchor: base.pathAnchor,
+            authority: base.authority,
+            queryTailStripped: base.queryTailStripped,
+            maskedSegments: base.maskedSegments + masked.maskedSegments,
+            limitation: base.limitation
+        )
+    }
+
+    private static func dynamic(after base: HTTPRouteResolution, prefix: String) -> HTTPRouteResolution {
+        HTTPRouteResolution(
+            template: nil,
+            channelPrefix: prefix,
+            pathAnchor: base.pathAnchor,
+            authority: base.authority,
+            queryTailStripped: base.queryTailStripped,
+            maskedSegments: base.maskedSegments,
+            limitation: base.limitation
+        )
+    }
+
+    /// decoded 단일 segment를 RFC 3986 unreserved만 남기고 UTF-8 대문자 percent 형식으로 바꾼다.
+    private static func encodeSegment(_ text: String) -> String? {
+        guard !text.isEmpty, text != ".", text != "..",
+              !text.unicodeScalars.contains(where: {
+                $0.value < 0x20 || (0x7F...0x9F).contains($0.value)
+                    || (0xD800...0xDFFF).contains($0.value)
+              }) else { return nil }
+        return text.unicodeScalars.map { scalar in
+            if HTTPRouteTemplate.isUnreserved(scalar) { return String(Character(scalar)) }
+            return String(Character(scalar)).utf8.map { "%" + hexByte($0) }.joined()
+        }
+        .joined()
+    }
+
+    private static func hexByte(_ byte: UInt8) -> String {
+        let digits = Array("0123456789ABCDEF")
+        return String([digits[Int(byte >> 4)], digits[Int(byte & 0x0F)]])
     }
 }
 

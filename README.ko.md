@@ -179,11 +179,26 @@ cartograph init          # 주석 달린 .cartograph.yml 생성
 cartograph graph --level module --format dot   -o graph.dot
 cartograph graph --level type   --format mermaid            # PR 본문에 그대로 붙여넣기
 cartograph graph --level symbol --format json  -o graph.json
+cartograph graph --level symbol --format json --evidence -o graph-with-evidence.json
 cartograph graph --level module --format html  -o graph.html
 ```
 
 레벨은 `module`, `file`, `type`, `symbol` 네 가지입니다. HTML은 외부 CDN을 전혀 쓰지 않는
 단일 파일이라 폐쇄망에서도 열리고 보안 검토를 통과합니다.
+
+`--evidence`는 최종 간선을 뒷받침하는 모든 인덱스 참조 발생을 원래 USR·origin·position,
+가능한 상대 파일/줄/열과 함께 내보냅니다. query 근거 상한은 적용하지 않습니다.
+레벨 병합과 그래프 필터는 유지하며, 생성한 member 간선의 발생 위치는 만들지 않습니다.
+별도 `moduleImports`는 import 선언 사실이고 source/index `inventory`는 미상과 알려진 빈 입력을
+구분합니다. 위치 미상과 제외한 레코드를 세며, import 사실이 있지만 import 간선이 없으면
+topology 한계를 알립니다. 이 JSON은 아직 전체 String을 버퍼링하는 선택적 내보내기입니다.
+
+`graph --level symbol --format json --declaration-projection --primary-module Main`은 별도
+`cartograph-declaration-projection` v1 artifact를 만듭니다. raw graph와 변형별 USR·모듈·접근 수준·
+attributes를 보존하고 명시적으로 고른 대표 선언의 projection을 함께 냅니다. 정규화된 정확한
+위치·이름·kind와 제한된 lexical parent 대응만 병합하며, 없거나 모호한 그룹은 raw로 남깁니다.
+조건부 컴파일의 불확실성을 보고하며 의미상 동등함이나 소스 신선도를 증명하지 않습니다.
+query·분석 ID는 유지합니다. `--evidence`와는 서로 다른 artifact를 고르는 옵션입니다.
 
 ### `cycles` — 순환 의존성 찾기
 
@@ -1144,6 +1159,27 @@ cartograph routes --wrappers http-wrappers.json --include-tests --format text
 ]}
 ```
 
+
+`http-wrappers` v2는 명시적인 `pathSuffix` 목록도 지원합니다.
+
+```json
+{"format":"http-wrappers","version":2,"wrappers":[
+  {"language":"swift","kind":"constructor","owner":"Endpoint","name":"init",
+   "pathArg":{"label":"path"},"defaultMethod":"GET","pathAnchor":"root",
+   "pathSuffix":[{"literal":"details"},{"argument":{"label":"segments"},"shape":"array"}]}
+]}
+```
+
+각 항목은 디코딩된 단일 경로 세그먼트를 나타냅니다. 리터럴 `/`는 한 세그먼트 안의 `%2F`로
+인코딩하므로 여러 세그먼트는 여러 항목으로 선언하세요. 미상 scalar는 `{}`로 남기며,
+array 확장은 길이를 아는 리터럴·상수 배열만 지원합니다. 미상 길이는 dynamic입니다.
+파일은 1 MiB, 선언은 suffix 32항목, 확장은 64세그먼트로 제한합니다.
+미상 main 경로는 dynamic으로 유지하며 suffix를 확정하지 못한 발생은 한계로 셉니다.
+v2를 아직 지원하지 않는 자매 생산자에는 별도의 v1 설정을 사용하세요.
+생성자 레이블·타입 추론 수정은 v1과 v2 모두에 적용하며, 이 버전에서 suffix 없는 v2는
+v1과 같은 동작을 합니다. wrapper의 `service`로 선언한 HTTP 서비스를 구분할 수 있습니다.
+
+
 인자는 레이블을 먼저, 위치를 다음으로 묶습니다. 동사 인자를 생략하면 `defaultMethod`, enum
 case(암시적 멤버 `.get` 포함)는 `methodEnum`으로 바꾸고, 그 밖은 `methodDynamic`입니다. 동사와
 경로를 정적으로 증명할 수 있는 `URLRequest`·`URLSession` 직접 요청도 읽습니다 — 동사는 같은
@@ -1158,6 +1194,11 @@ case(암시적 멤버 `.get` 포함)는 `methodEnum`으로 바꾸고, 그 밖은
 타입 별칭도 스캔한 파일 전체에서 해석합니다. 문자열 리터럴·해당 멤버 참조·문자열 연결을 지원합니다.
 조건부 선언, 이름 충돌, 지역 값·타입 이름 가림, String이 아닌 멤버, 가변 프로퍼티, 순환 참조와
 깊이·경로 길이 제한을 넘는 식은 `dynamic`으로 남깁니다.
+생성자 래퍼는 설정한 경로 인자가 실제 호출과 맞는 선언을 선택합니다. 암시적 경로 enum case는
+완전하고 모호하지 않은 initializer 시그니처로 String 원시값 enum 타입을 증명할 때만 풉니다.
+안전한 프로젝트 타입 별칭도 지원하며, 미상·경쟁 시그니처·상속·memberwise 가능성과
+제네릭·지역 이름 가림은 dynamic으로 남깁니다.
+
 
 흔한 라이브러리는 선언이 필요 없습니다. 규칙마다 라이브러리 소스를 따랐고, 로컬 서버가 실제로 받은
 요청 줄과 대조했습니다(`experiments/http-client-oracle`, macOS 26.7·Alamofire 5.12.2·Moya 15.0.3에서
