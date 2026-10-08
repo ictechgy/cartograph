@@ -21,8 +21,9 @@ extension CartographService {
         let project = try canonicalProjectForExchange()
         let wrappers = try wrappersPath.map(loadRouteWrappers) ?? []
         try validateRouteServices(service, wrappers: wrappers, path: wrappersPath)
-        let snapshot = try routeIndexSnapshot()
-        let sources = routeSources(includeTests: includeTests)
+        let inventory = projectFileInventory()
+        let snapshot = try routeIndexSnapshot(inventory: inventory)
+        let sources = routeSources(includeTests: includeTests, inventory: inventory)
         var texts: [String: String] = [:]
         var unreadable = 0
         for source in sources {
@@ -99,9 +100,11 @@ extension CartographService {
     }
 
     /// 읽을 Swift 소스와 테스트 소스 여부. 기본은 테스트 소스를 읽지 않는다.
-    private func routeSources(includeTests: Bool) -> [(path: String, isTest: Bool)] {
+    private func routeSources(
+        includeTests: Bool, inventory: ProjectFileInventory? = nil
+    ) -> [(path: String, isTest: Bool)] {
         let baseVariants = PathFilter.variants(of: projectPath)
-        return schemaSourceFiles().compactMap { path in
+        return schemaSourceFiles(inventory: inventory).compactMap { path in
             let isTest = Self.isTestSource(path, baseVariants: baseVariants)
             return isTest && !includeTests ? nil : (path, isTest)
         }

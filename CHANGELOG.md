@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- CLI analysis reads compiler records and per-file unit dates directly, sharing one relevant-file inventory across graph, resource, limitation, and route scans. The library provider retains its database-backed default mode.
+- Ambiguous and missing-symbol queries avoid constructing found-symbol reports and reference indexes. Baseline validation and measured limitations remain eager; mixed and later found queries prepare the same facts once.
+
+
 ### Fixed
 
 - Read every compiler record for a shared Swift file compiled in multiple targets, preserving

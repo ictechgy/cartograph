@@ -67,10 +67,11 @@ public struct SnapshotEnricher: Sendable {
         _ snapshot: IndexSnapshot,
         interfaceBuilderRoots: [String] = [],
         pathFilter: PathFilter = .passthrough,
-        edgeKinds: Set<EdgeKind> = []
+        edgeKinds: Set<EdgeKind> = [],
+        interfaceBuilderFiles: [String]? = nil
     ) -> IndexSnapshot {
         enrichWithDiagnostics(snapshot, interfaceBuilderRoots: interfaceBuilderRoots,
-            pathFilter: pathFilter, edgeKinds: edgeKinds).snapshot
+            pathFilter: pathFilter, edgeKinds: edgeKinds, interfaceBuilderFiles: interfaceBuilderFiles).snapshot
     }
 
     /// 실패 경로를 한 번의 읽기에서 수집한다. 파일을 다시 읽어 추측하면 실행 사이에 상태가 달라진다.
@@ -78,7 +79,8 @@ public struct SnapshotEnricher: Sendable {
         _ snapshot: IndexSnapshot,
         interfaceBuilderRoots: [String] = [],
         pathFilter: PathFilter = .passthrough,
-        edgeKinds: Set<EdgeKind> = []
+        edgeKinds: Set<EdgeKind> = [],
+        interfaceBuilderFiles: [String]? = nil
     ) -> Result {
         let stored = cache?.load() ?? [:]
         var facts: [String: SourceFileFacts] = [:]
@@ -133,7 +135,10 @@ public struct SnapshotEnricher: Sendable {
         for index in enriched.symbols.indices where unreadablePaths.contains(enriched.symbols[index].location.path) {
             enriched.symbols[index].attributes.insert(.sourceUnavailable)
         }
-        if !interfaceBuilderRoots.isEmpty {
+        if let interfaceBuilderFiles {
+            let references = interfaceBuilderReferences(files: interfaceBuilderFiles)
+            enriched = Self.marking(enriched, interfaceBuilderReferences: references)
+        } else if !interfaceBuilderRoots.isEmpty {
             let references = InterfaceBuilderScanner(fileSystem: fileSystem)
                 .scan(roots: interfaceBuilderRoots, pathFilter: pathFilter)
             enriched = Self.marking(enriched, interfaceBuilderReferences: references)
@@ -149,6 +154,13 @@ public struct SnapshotEnricher: Sendable {
         return (error.domain == NSCocoaErrorDomain
             && [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(error.code))
             || (error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT))
+    }
+
+    private func interfaceBuilderReferences(files: [String]) -> InterfaceBuilderReferences {
+        files.reduce(into: InterfaceBuilderReferences()) { result, path in
+            guard let contents = try? fileSystem.readText(at: path) else { return }
+            result = result.merging(InterfaceBuilderScanner.references(in: contents))
+        }
     }
 
     /// Interface Builder 문서가 이름으로 지목한 타입에 표식을 붙인다.

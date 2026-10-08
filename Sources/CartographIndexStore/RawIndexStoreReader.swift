@@ -39,15 +39,23 @@ private typealias DBSymbolProviderKind = SymbolProviderKind
 /// `IndexStoreDB.symbolOccurrences(inFilePath:)` 는 보이는 첫 공급자에서 멈춘다.
 /// 공유 Swift 파일은 컴파일 대상마다 레코드가 하나씩 있으므로, 대상 문맥을 보존하려면
 /// raw IndexStore 계층을 거쳐야 한다.
+struct RawReadResult {
+    let occurrences: [SymbolOccurrence]
+    let indexedFileDates: [String: Date]
+}
+
 struct RawIndexStoreReader {
     let storePath: String
     let libraryPath: String
     let fileSystem: any FileSystem
 
-    func occurrences(in paths: Set<String>) throws -> [SymbolOccurrence] {
+    func read(
+        in paths: Set<String>, recordCachePeak: ((Int, Int) -> Void)? = nil
+    ) throws -> RawReadResult {
         let session = try Session(storePath: storePath, libraryPath: libraryPath)
         let allowedPaths = Set(paths.map(fileSystem.canonicalPath))
         var records: [Record] = []
+        var indexedFileDates: [String: Date] = [:]
         let unitNames = session.store.unitNames(sorted: true).map { $0.string }
         for unitName in unitNames {
             let unit: RawStoreUnit
@@ -68,13 +76,23 @@ struct RawIndexStoreReader {
                     isSystem: dependency.isSystem
                 )
             }
-            for dependency in dependencies where dependency.kind == .record {
+            var unitProvider: DBSymbolProviderKind?
+            for dependency in dependencies where dependency.kind == .record || dependency.kind == .file {
                 let path = canonicalDependencyPath(dependency.path, relativeTo: workingDirectory)
                 guard allowedPaths.contains(path) else { continue }
-                let provider = try providerKind(unit.providerIdentifier.string, unit: unitName)
                 // Foundation 정규화는 /private/var를 /var로 바꾼다. 선언 위치는
                 // 다른 인덱스 소비자와 같이 실제 경로를 써야 정확히 결합된다.
                 let locationPath = (try? fileSystem.realPath(at: path)) ?? path
+                indexedFileDates[locationPath] = max(indexedFileDates[locationPath] ?? timestamp, timestamp)
+                guard dependency.kind == .record else { continue }
+                let provider: DBSymbolProviderKind
+                if let unitProvider {
+                    provider = unitProvider
+                } else {
+                    let parsed = try providerKind(unit.providerIdentifier.string, unit: unitName)
+                    unitProvider = parsed
+                    provider = parsed
+                }
                 let dependencyModule = dependency.module
                 let recordModule = dependencyModule.isEmpty && path.hasSuffix(".swift") ? module : dependencyModule
                 records.append(Record(
@@ -92,10 +110,14 @@ struct RawIndexStoreReader {
         records.sort { $0.sortKey < $1.sortKey }
         var result: [DBSymbolOccurrence] = []
         var seen: Set<OccurrenceKey> = []
+        var loadedRecords = RecordCache(capacity: 64)
+        var remainingUses = Dictionary(records.map { ($0.record, 1) }, uniquingKeysWith: +)
         for record in records {
             let rawRecord: RawStoreRecord
             do {
-                rawRecord = try session.store.record(named: record.record)
+                rawRecord = try loadedRecords.record(
+                    named: record.record, from: session.store, onPeak: recordCachePeak
+                )
             } catch {
                 throw RawIndexStoreReaderError.record(record.unit, record.record, underlying: error)
             }
@@ -106,8 +128,16 @@ struct RawIndexStoreReader {
                 result.append(occurrence)
                 return .continue
             }
+            remainingUses[record.record, default: 1] -= 1
+            if remainingUses[record.record] == 0 {
+                loadedRecords.removeValue(forKey: record.record)
+            }
         }
-        return result
+        return RawReadResult(occurrences: result, indexedFileDates: indexedFileDates)
+    }
+
+    func occurrences(in paths: Set<String>) throws -> [SymbolOccurrence] {
+        try read(in: paths).occurrences
     }
 
     private func canonicalDependencyPath(_ path: String, relativeTo workingDirectory: String) -> String {
@@ -297,6 +327,61 @@ struct RawIndexStoreReader {
         }
     }
 
+    private struct RecordCache {
+        private struct Entry {
+            let record: RawStoreRecord
+            let token: Int
+        }
+
+        private struct Token {
+            let name: String
+            let value: Int
+        }
+
+        let capacity: Int
+        private var entries: [String: Entry] = [:]
+        private var order: [Token] = []
+        private var nextToken = 0
+
+        init(capacity: Int) {
+            self.capacity = max(1, capacity)
+        }
+
+        mutating func record(
+            named name: String,
+            from store: RawStore,
+            onPeak: ((Int, Int) -> Void)?
+        ) throws -> RawStoreRecord {
+            if let cached = entries[name] { return cached.record }
+            evictIfNeeded()
+            let record = try store.record(named: name)
+            nextToken += 1
+            let token = Token(name: name, value: nextToken)
+            entries[name] = Entry(record: record, token: token.value)
+            order.append(token)
+            onPeak?(entries.count, order.count)
+            return record
+        }
+
+        mutating func removeValue(forKey name: String) {
+            guard let entry = entries.removeValue(forKey: name) else { return }
+            if let index = order.firstIndex(where: { $0.name == name && $0.value == entry.token }) {
+                order.remove(at: index)
+            }
+        }
+
+        private mutating func evictIfNeeded() {
+            while entries.count >= capacity, !order.isEmpty {
+                let candidate = order.removeFirst()
+                guard let current = entries[candidate.name], current.token == candidate.value else {
+                    continue
+                }
+                entries.removeValue(forKey: candidate.name)
+                break
+            }
+        }
+    }
+
     private final class Session: @unchecked Sendable {
         let store: RawStore
 
@@ -307,9 +392,13 @@ struct RawIndexStoreReader {
             Task.detached {
                 do {
                     let library = try await RawStoreLibrary.at(dylibPath: libraryURL)
-                    box.store = try library.indexStore(at: storeURL)
+                    do {
+                        box.store = try library.indexStore(at: storeURL)
+                    } catch {
+                        box.error = error
+                    }
                 } catch {
-                    box.error = error
+                    box.error = CartographError.indexStoreLibraryNotFound(searchedPaths: [libraryPath])
                 }
                 box.semaphore.signal()
             }

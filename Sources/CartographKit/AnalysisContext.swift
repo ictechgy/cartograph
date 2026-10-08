@@ -33,6 +33,10 @@ public struct AnalysisContext: Sendable {
     let supplementalRuntimeSourcePaths: Set<String>
     /// 실행 근거용 입력 해시를 읽기 전후로 확인한 문맥에만 설정한다.
     public private(set) var runtimeInputFingerprint: String?
+    /// 같은 loadContext 실행에서 수집한 프로젝트 파일 목록.
+    ///
+    /// 외부에서 직접 만든 문맥은 nil일 수 있고, 그 경우 소비자가 기존 walk로 폴백한다.
+    private(set) var projectFileInventory: ProjectFileInventory?
 
     public init(
         snapshot: IndexSnapshot,
@@ -59,7 +63,14 @@ public struct AnalysisContext: Sendable {
         self.edgeKinds = edgeKinds
         self.externalRetentions = externalRetentions
         externalRetentionIndex = externalRetentions.map { ExternalRetentionIndex($0.retentions) } ?? .empty
+        projectFileInventory = nil
         graphCache = GraphBuildCache()
+    }
+
+    func bindingProjectFileInventory(_ inventory: ProjectFileInventory) -> AnalysisContext {
+        var copy = self
+        copy.projectFileInventory = inventory
+        return copy
     }
 
     /// 같은 문맥이 만든 그래프를 레벨별로 한 번씩만 간직한다.

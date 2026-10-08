@@ -20,6 +20,8 @@ cycles: 1 error — module graph · 9 nodes · 36 edges
 
 ---
 
+하나의 소스가 여러 타깃에 컴파일돼도 각 타깃의 연결을 보존한다. 분석은 로드마다 프로젝트 파일 목록을 공유하고, 모호하거나 없는 심볼 질의에서 found 선언에만 필요한 계산을 건너뛴다. 베이스라인 오류·측정된 한계·found 참조 근거는 그대로 유지한다.
+
 ## 왜 새로 만들었나
 
 [Periphery](https://github.com/peripheryapp/periphery)는 Swift 진영 최고의 미사용 코드

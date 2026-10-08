@@ -36,10 +36,10 @@ extension CartographService {
         return context.bindingRuntimeInputFingerprint(before)
     }
 
-    /// 리소스와 코드의 소유 관계를 경로 필터 안에서 수집한다. 기존 보존 규칙과 독립적이다.
-    func runtimeResourceFacts() -> [RuntimeFileFacts] {
+    /// 프로젝트 파일 목록을 재사용하고, 직접 호출한 문맥은 기존 탐색으로 리소스를 모은다.
+    func runtimeResourceFacts(paths suppliedPaths: [String]? = nil) -> [RuntimeFileFacts] {
         let fs = environment.fileSystem
-        let paths = fs.recursiveFiles(under: projectPath, isIncluded: {
+        let paths = suppliedPaths ?? fs.recursiveFiles(under: projectPath, isIncluded: {
             let path = $0.lowercased()
             return RuntimeResourcePath.isSupported(path)
                 && configuration.pathFilter.allows($0)

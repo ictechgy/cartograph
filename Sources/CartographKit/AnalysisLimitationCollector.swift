@@ -8,6 +8,21 @@ struct AnalysisLimitationCollector {
     let fileSystem: any FileSystem
     let projectPath: String
     let storeDate: Date?
+    let inventory: ProjectFileInventory?
+
+    init(
+        configuration: CartographConfiguration,
+        fileSystem: any FileSystem,
+        projectPath: String,
+        storeDate: Date?,
+        inventory: ProjectFileInventory? = nil
+    ) {
+        self.configuration = configuration
+        self.fileSystem = fileSystem
+        self.projectPath = projectPath
+        self.storeDate = storeDate
+        self.inventory = inventory
+    }
 
     /// 이 분석이 보지 못하는 채널을 프로젝트에서 실제로 찾아 알린다.
     ///
@@ -22,7 +37,7 @@ struct AnalysisLimitationCollector {
         // 파일까지 세지 않는다. 범위 밖의 파일을 한계로 알리면 매번 붙는 경보가
         // 되고, 매번 붙는 경보는 읽히지 않는다.
         let filter = configuration.pathFilter
-        let files = fileSystem.recursiveFiles(
+        let files = inventory?.limitationFiles ?? fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { path in
                 filter.allows(path) && (Self.sourceSuffixes.contains { path.hasSuffix($0) }

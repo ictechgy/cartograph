@@ -78,7 +78,7 @@ public final class AnalysisSession {
     private let now: () -> ContinuousClock.Instant
     private var service: CartographService?
     private var context: AnalysisContext?
-    private var querySession: CartographService.QuerySession?
+    private(set) var querySession: CartographService.QuerySession?
     private var preparedFingerprint: String?
     /// 마지막으로 입력 지문을 검증한 시각. 창이 `.zero` 일 때는 쓰지 않는다.
     private var lastFingerprintCheck: ContinuousClock.Instant?
@@ -186,7 +186,10 @@ public final class AnalysisSession {
         try ensurePrepared()
         guard let service, let context else { throw AnalysisSessionError.unavailable }
         if querySession == nil {
-            querySession = try service.makeQuerySession(in: context)
+            querySession = try service.makeQuerySession(in: context, subjects: symbols)
+        } else if var querySession {
+            service.ensureFoundQueryFacts(in: context, subjects: symbols, session: &querySession)
+            self.querySession = querySession
         }
         guard let querySession else { throw AnalysisSessionError.unavailable }
         var remaining = evidenceBudget
