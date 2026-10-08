@@ -248,6 +248,524 @@ struct HTTPRouteCallScannerTests {
         #expect(routes(body) == ["GET /a", "GET /b", "GET /c", "GET /d"])
     }
 
+    @Test("생성자 오버로드는 구성된 경로 레이블이 있는 시그니처만 선택한다")
+    func constructorOverloadsSelectConfiguredPathLabel() {
+        let wrappers = [
+            HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "ParcelEndpoint", name: "init",
+                methodArg: nil, pathArg: .init(label: "route"), defaultMethod: "GET", pathAnchor: .root),
+            HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "ParcelEndpoint", name: "init",
+                methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root),
+        ]
+        let source = """
+            enum Verb { case get, post }
+            struct ParcelEndpoint {
+                init(verb: Verb, route: String) {}
+                init(method: Verb, path: String) {}
+                static func a() -> ParcelEndpoint { ParcelEndpoint(verb: .get, route: "/a") }
+                static func b() -> ParcelEndpoint { ParcelEndpoint(method: .post, path: "/b") }
+                static func c() -> ParcelEndpoint { .init(verb: .get, route: "/c") }
+                static func d() -> ParcelEndpoint { .init(method: .post, path: "/d") }
+            }
+            """
+        let result = HTTPRouteCallScanner(wrappers: wrappers).scan(source: source, path: "/p/Parcel.swift")
+        #expect(result.calls.map { "\($0.fact.method ?? "?") \($0.fact.channel ?? "nil")" } == ["GET /a", "GET /b", "GET /c", "GET /d"])
+        #expect(result.counts.unprovenReceiverCalls == 0)
+    }
+
+    @Test("다른 파일의 타입이 지정한 암시적 enum 경로만 원시값으로 푼다")
+    func crossFileTypedImplicitEnumPath() {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "ParcelEndpoint", name: "init",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root)
+        var surface = HTTPDeclarationSurface()
+        surface.merge(HTTPRouteCallScanner.declarations(
+            source: "enum ResourceCatalog: String { case item = \"/items\" }", path: "/p/Catalog.swift"))
+        surface.merge(HTTPRouteCallScanner.declarations(
+            source: "struct ParcelEndpoint { init(path: ResourceCatalog) {} }", path: "/p/Endpoint.swift"))
+        let scanner = HTTPRouteCallScanner(wrappers: [wrapper], surface: surface)
+        let result = scanner.scan(source: "func load() { _ = ParcelEndpoint(path: .item) }", path: "/p/Call.swift")
+        #expect(result.calls.map(\.fact.channel) == ["/items"])
+    }
+
+    @Test("생략한 기본 인자 뒤의 typed enum 경로는 실제 선언 위치를 사용한다")
+    func typedImplicitEnumAfterDefaultParameter() {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "ParcelEndpoint", name: "init",
+            methodArg: nil, pathArg: .init(label: "resource"), defaultMethod: "GET", pathAnchor: .root)
+        var surface = HTTPDeclarationSurface()
+        surface.merge(HTTPRouteCallScanner.declarations(
+            source: "enum ResourceCatalog: String { case item = \"/items\" }", path: "/p/Catalog.swift"))
+        surface.merge(HTTPRouteCallScanner.declarations(
+            source: "struct ParcelEndpoint { init(context: String = \"default\", resource: ResourceCatalog) {} }",
+            path: "/p/Endpoint.swift"))
+        let result = HTTPRouteCallScanner(wrappers: [wrapper], surface: surface).scan(
+            source: "func load() { _ = ParcelEndpoint(resource: .item) }", path: "/p/Call.swift"
+        )
+        #expect(result.calls.map(\.fact.channel) == ["/items"])
+    }
+
+    @Test("암시적 enum 경로는 다른 레이블·충돌 타입·조건부·별칭 순환이면 dynamic 이다")
+    func implicitEnumPathRejectsAmbiguity() {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "ParcelEndpoint", name: "init",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root)
+        var surface = HTTPDeclarationSurface()
+        surface.merge(HTTPRouteCallScanner.declarations(source: """
+            enum ResourceCatalog: String { case item = "/items" }
+            enum OtherCatalog: String { case item = "/other" }
+            enum ConditionalCatalog: String {
+                #if DEBUG
+                case item = "/debug"
+                #endif
+            }
+            typealias AliasA = AliasB
+            typealias AliasB = AliasA
+            """, path: "/p/Catalog.swift"))
+        surface.merge(HTTPRouteCallScanner.declarations(source: """
+            struct ParcelEndpoint {
+                init(path: ResourceCatalog) {}
+                init(path: OtherCatalog) {}
+                init(route: ResourceCatalog) {}
+                init(path: ConditionalCatalog) {}
+                init(path: AliasA) {}
+                static func a() -> ParcelEndpoint { .init(path: .item) }
+            }
+            """, path: "/p/Endpoint.swift"))
+        let result = HTTPRouteCallScanner(wrappers: [wrapper], surface: surface)
+            .scan(source: "func load() { _ = ParcelEndpoint(path: .item) }", path: "/p/Call.swift")
+        #expect(result.calls.count == 1)
+        #expect(result.calls[0].fact.isDynamic)
+    }
+
+    @Test("암시적 enum 경로의 각 불확실성은 독립적으로 dynamic 이다")
+    func implicitEnumPathRejectsIndependentUncertainty() {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "ParcelEndpoint", name: "init",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root)
+        let cases: [(String, String)] = [
+            ("enum ResourceCatalog: String { #if DEBUG\ncase item = \"/debug\"\n#endif }", "init(path: ResourceCatalog) {}"),
+            ("typealias AliasA = AliasB\ntypealias AliasB = AliasA", "init(path: AliasA) {}"),
+            ("", "init(path: MissingCatalog) {}"),
+            ("enum ResourceCatalog: String { case item = \"/items\" }\nenum OtherCatalog: String { case item = \"/other\" }", "init(path: ResourceCatalog) {}\ninit(path: OtherCatalog) {}"),
+        ]
+        for (declarations, initializer) in cases {
+            var surface = HTTPDeclarationSurface()
+            surface.merge(HTTPRouteCallScanner.declarations(source: declarations, path: "/p/Types.swift"))
+            surface.merge(HTTPRouteCallScanner.declarations(source: "struct ParcelEndpoint { \(initializer) }", path: "/p/Endpoint.swift"))
+            let result = HTTPRouteCallScanner(wrappers: [wrapper], surface: surface)
+                .scan(source: "func load() { _ = ParcelEndpoint(path: .item) }", path: "/p/Call.swift")
+            #expect(result.calls.count == 1)
+            #expect(result.calls[0].fact.isDynamic)
+        }
+    }
+
+    @Test("qualified nested enum type와 owner-local shadow는 basename으로 섞지 않는다")
+    func implicitEnumPathKeepsQualifiedAndLexicalOwners() {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "ParcelEndpoint", name: "init",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root)
+        var surface = HTTPDeclarationSurface()
+        surface.merge(HTTPRouteCallScanner.declarations(source: """
+            enum Outer { enum Catalog: String { case item = "/outer" } }
+            enum Catalog: String { case item = "/global" }
+            struct ParcelEndpoint { init(path: Outer.Catalog) {} }
+            """, path: "/p/Types.swift"))
+        let qualified = HTTPRouteCallScanner(wrappers: [wrapper], surface: surface)
+            .scan(source: "func load() { _ = ParcelEndpoint(path: .item) }", path: "/p/Call.swift")
+        #expect(qualified.calls[0].fact.channel == "/outer")
+
+        var local = HTTPDeclarationSurface()
+        local.merge(HTTPRouteCallScanner.declarations(source: """
+            enum Catalog: String { case item = "/global" }
+            struct ParcelEndpoint {
+                enum Catalog: String { case item = "/local" }
+                init(path: Catalog) {}
+            }
+            """, path: "/p/Types.swift"))
+        let shadowed = HTTPRouteCallScanner(wrappers: [wrapper], surface: local)
+            .scan(source: "func load() { _ = ParcelEndpoint(path: .item) }", path: "/p/Call.swift")
+        #expect(shadowed.calls[0].fact.channel == "/local")
+    }
+
+    @Test("소유자와 무관한 중첩 타입의 같은 basename은 암시적 경로를 만들지 않는다")
+    func implicitEnumPathRejectsUnrelatedNestedType() {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "ParcelEndpoint", name: "init",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root)
+        var surface = HTTPDeclarationSurface()
+        surface.merge(HTTPRouteCallScanner.declarations(source: """
+            enum Other { enum Catalog: String { case item = "/other" } }
+            struct ParcelEndpoint { init(path: Catalog) {} }
+            """, path: "/p/Types.swift"))
+        let result = HTTPRouteCallScanner(wrappers: [wrapper], surface: surface)
+            .scan(source: "func load() { _ = ParcelEndpoint(path: .item) }", path: "/p/Call.swift")
+        #expect(result.calls.count == 1)
+        #expect(result.calls[0].fact.isDynamic)
+    }
+
+    @Test("후행 클로저가 빠진 인자 목록으로 생성자 오버로드를 추측하지 않는다")
+    func trailingClosureKeepsImplicitEnumPathDynamic() throws {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "ClosureEndpoint", name: "init",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root)
+        let source = """
+            enum CatalogA: String { case item = "/a" }
+            enum CatalogB: String { case item = "/b" }
+            struct ClosureEndpoint {
+                init(path: CatalogA, build: () -> Void) {}
+                init(path: CatalogB) {}
+            }
+            func load() { _ = ClosureEndpoint(path: .item) {} }
+            """
+        let fact = try #require(HTTPRouteCallScanner(wrappers: [wrapper])
+            .scan(source: source, path: "/p/Trailing.swift").calls.first?.fact)
+        #expect(fact.isDynamic)
+        #expect(fact.channel != "/b")
+    }
+
+    @Test("소유 타입의 별칭은 같은 이름의 전역 enum보다 먼저 경로 타입을 정한다")
+    func ownerTypeAliasShadowsGlobalEnumForImplicitPath() throws {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "AliasEndpoint", name: "init",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root)
+        let source = """
+            enum Catalog: String { case item = "/global" }
+            enum OtherCatalog: String { case item = "/other" }
+            struct AliasEndpoint {
+                typealias Catalog = OtherCatalog
+                init(path: Catalog) {}
+            }
+            func load() { _ = AliasEndpoint(path: .item) }
+            """
+        let fact = try #require(HTTPRouteCallScanner(wrappers: [wrapper])
+            .scan(source: source, path: "/p/Alias.swift").calls.first?.fact)
+        #expect(fact.channel == "/other")
+        #expect(!fact.isDynamic)
+    }
+
+    @Test("소유 타입의 제네릭 매개변수는 같은 이름의 전역 enum을 가린다")
+    func ownerGenericShadowsGlobalEnumForImplicitPath() throws {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "GenericEndpoint", name: "init",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root)
+        var surface = HTTPDeclarationSurface()
+        surface.merge(HTTPRouteCallScanner.declarations(source: """
+            enum Catalog: String { case item = "/global" }
+            enum RuntimeCatalog: String { case item = "/runtime" }
+            struct GenericEndpoint<Catalog> {}
+            """, path: "/p/Owner.swift"))
+        surface.merge(HTTPRouteCallScanner.declarations(
+            source: "extension GenericEndpoint { init(path: Catalog) {} }", path: "/p/Extension.swift"))
+        let fact = try #require(HTTPRouteCallScanner(wrappers: [wrapper], surface: surface)
+            .scan(source: "func load() { _ = GenericEndpoint<RuntimeCatalog>(path: .item) }",
+                  path: "/p/Call.swift").calls.first?.fact)
+        #expect(fact.isDynamic)
+        #expect(fact.channel != "/global")
+    }
+
+    @Test("생성자의 제네릭 매개변수는 같은 이름의 전역 enum을 가린다")
+    func initializerGenericShadowsGlobalEnumForImplicitPath() throws {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "GenericInitializer", name: "init",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root)
+        let source = """
+            protocol PathCatalog { static var item: Self { get } }
+            enum Catalog: String { case item = "/global" }
+            enum RuntimeCatalog: String, PathCatalog { case item = "/runtime" }
+            struct GenericInitializer {
+                init<Catalog: PathCatalog>(path: Catalog) {}
+            }
+            func load() { _ = GenericInitializer(path: .item) }
+            """
+        let fact = try #require(HTTPRouteCallScanner(wrappers: [wrapper])
+            .scan(source: source, path: "/p/InitializerGeneric.swift").calls.first?.fact)
+        #expect(fact.isDynamic)
+        #expect(fact.channel != "/global")
+    }
+
+    @Test("기본 경로 인자를 생략한 생성자 호출도 dynamic 사실로 남긴다")
+    func omittedDefaultPathRemainsDynamic() throws {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "DefaultEndpoint", name: "init",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root)
+        let source = """
+            enum Catalog: String { case item = "/items" }
+            struct DefaultEndpoint { init(path: Catalog = .item) {} }
+            func load() { _ = DefaultEndpoint() }
+            """
+        let result = HTTPRouteCallScanner(wrappers: [wrapper]).scan(source: source, path: "/p/Default.swift")
+        let fact = try #require(result.calls.first?.fact)
+        #expect(result.calls.count == 1)
+        #expect(fact.isDynamic)
+        #expect(fact.channel == nil)
+    }
+
+    @Test("명시한 다른 경로 래퍼는 기본 경로를 생략할 수 있는 래퍼보다 우선한다")
+    func explicitPathWrapperWinsOverOmittedDefaultPath() throws {
+        let wrappers = [
+            HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "DefaultEndpoint", name: "init",
+                methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root),
+            HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "DefaultEndpoint", name: "init",
+                methodArg: nil, pathArg: .init(label: "route"), defaultMethod: "POST", pathAnchor: .root),
+        ]
+        let source = """
+            enum Catalog: String { case item = "/items" }
+            struct DefaultEndpoint {
+                init(path: Catalog = .item, route: String) {}
+            }
+            func load() { _ = DefaultEndpoint(route: "/chosen") }
+            """
+        let fact = try #require(HTTPRouteCallScanner(wrappers: wrappers)
+            .scan(source: source, path: "/p/Explicit.swift").calls.first?.fact)
+        #expect(fact.method == "POST")
+        #expect(fact.channel == "/chosen")
+        #expect(!fact.isDynamic)
+    }
+
+    @Test("타입을 확정할 수 없는 실행 가능 오버로드도 enum 경로의 모호성에 포함한다")
+    func unknownViableParameterTypeKeepsImplicitPathDynamic() throws {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "AmbiguousEndpoint", name: "init",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root)
+        let source = """
+            protocol PathCatalog { static var item: Self { get } }
+            enum Catalog: String, PathCatalog { case item = "/catalog" }
+            struct AmbiguousEndpoint {
+                init(path: Catalog) {}
+                init<Other: PathCatalog>(path: Other) {}
+            }
+            func load() { _ = AmbiguousEndpoint(path: .item) }
+            """
+        let fact = try #require(HTTPRouteCallScanner(wrappers: [wrapper])
+            .scan(source: source, path: "/p/Ambiguous.swift").calls.first?.fact)
+        #expect(fact.isDynamic)
+        #expect(fact.channel != "/catalog")
+    }
+
+    @Test("완전하지 않은 생성자 집합에서는 암시적 enum 경로를 확정하지 않는다")
+    func incompleteInitializerSetsKeepImplicitPathDynamic() throws {
+        let cases: [(owner: String, declarations: [String])] = [
+            ("InheritedEndpoint", [
+                """
+                enum OtherCatalog: String { case item = "/other" }
+                enum Catalog: String { case item = "/catalog" }
+                class BaseEndpoint {
+                    init() {}
+                    convenience init(path: OtherCatalog) { self.init() }
+                }
+                """,
+                """
+                class InheritedEndpoint: BaseEndpoint {
+                    override init() { super.init() }
+                    convenience init(path: Catalog) { self.init() }
+                }
+                """,
+            ]),
+            ("ExternalEndpoint", [
+                """
+                enum Catalog: String { case item = "/catalog" }
+                class ExternalEndpoint: FrameworkEndpoint {
+                    init(path: Catalog) {}
+                }
+                """,
+            ]),
+            ("ExtensionEndpoint", [
+                "enum Catalog: String { case item = \"/catalog\" }",
+                "extension ExtensionEndpoint { init(path: Catalog) {} }",
+            ]),
+            ("MemberwiseEndpoint", [
+                """
+                enum OtherCatalog: String { case item = "/other" }
+                enum Catalog: String { case item = "/catalog" }
+                struct MemberwiseEndpoint { let path: OtherCatalog }
+                """,
+                "extension MemberwiseEndpoint { init(path: Catalog) { self.path = .item } }",
+            ]),
+        ]
+        for item in cases {
+            let wrapper = HTTPWrapperDeclaration(
+                language: "swift", kind: .constructor, owner: item.owner, name: "init",
+                methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root
+            )
+            var surface = HTTPDeclarationSurface()
+            for (index, source) in item.declarations.enumerated() {
+                surface.merge(HTTPRouteCallScanner.declarations(
+                    source: source, path: "/p/\(item.owner)-\(index).swift"
+                ))
+            }
+            let result = HTTPRouteCallScanner(wrappers: [wrapper], surface: surface).scan(
+                source: "func load() { _ = \(item.owner)(path: .item) }",
+                path: "/p/\(item.owner)-Call.swift"
+            )
+            let fact = try #require(result.calls.first?.fact)
+            #expect(result.calls.count == 1)
+            #expect(fact.isDynamic)
+            #expect(fact.channel != "/catalog")
+        }
+    }
+
+    @Test("일반 struct와 프로젝트에서 확인한 protocol-only class는 암시적 enum 경로를 유지한다")
+    func completeInitializerSetsResolveImplicitPath() throws {
+        let cases: [(owner: String, channel: String, source: String)] = [
+            ("StructEndpoint", "/struct", """
+                enum Catalog: String { case item = "/struct" }
+                struct StructEndpoint {
+                    init(path: Catalog) {}
+                }
+                func load() { _ = StructEndpoint(path: .item) }
+                """),
+            ("PrimaryInitEndpoint", "/extension", """
+                enum OtherCatalog: String { case item = "/other" }
+                enum Catalog: String { case item = "/extension" }
+                struct PrimaryInitEndpoint {
+                    let stored: OtherCatalog
+                    init() { stored = .item }
+                }
+                extension PrimaryInitEndpoint {
+                    init(path: Catalog) { stored = .item }
+                }
+                func load() { _ = PrimaryInitEndpoint(path: .item) }
+                """),
+            ("ProtocolEndpoint", "/protocol", """
+                enum Catalog: String { case item = "/protocol" }
+                enum Namespace { protocol Marker {} }
+                final class ProtocolEndpoint: Namespace.Marker {
+                    init(path: Catalog) {}
+                }
+                func load() { _ = ProtocolEndpoint(path: .item) }
+                """),
+            ("KnownSubclass", "/known", """
+                enum Catalog: String { case item = "/known" }
+                class KnownBase { init(value: Int) {} }
+                final class KnownSubclass: KnownBase {
+                    init(path: Catalog) { super.init(value: 0) }
+                }
+                func load() { _ = KnownSubclass(path: .item) }
+                """),
+        ]
+        for item in cases {
+            let wrapper = HTTPWrapperDeclaration(
+                language: "swift", kind: .constructor, owner: item.owner, name: "init",
+                methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET", pathAnchor: .root
+            )
+            let fact = try #require(HTTPRouteCallScanner(wrappers: [wrapper])
+                .scan(source: item.source, path: "/p/\(item.owner).swift").calls.first?.fact)
+            #expect(fact.channel == item.channel)
+            #expect(!fact.isDynamic)
+        }
+    }
+
+    @Test("wrapper suffix는 scalar와 array segment만 경로에 붙이고 불확실하면 base prefix를 보존한다")
+    func wrapperPathSuffixSegments() throws {
+        let wrapper = HTTPWrapperDeclaration(
+            language: "swift", kind: .function, owner: "Client", name: "request",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET",
+            pathAnchor: .root,
+            pathSuffix: [
+                .literal("fixed/segment"),
+                .argument(.init(label: "id"), shape: .scalar),
+                .argument(.init(label: "tags"), shape: .array),
+            ]
+        )
+        let scan: (String) throws -> RouteCallFact = { body in
+            let source = """
+                final class Client {
+                    func request(path: String, id: Any? = nil, tags: [Any] = []) {}
+                    \(body)
+                }
+                """
+            return try #require(HTTPRouteCallScanner(wrappers: [wrapper])
+                .scan(source: source, path: "/p/Suffix.swift").calls.first?.fact)
+        }
+
+        let resolved = try scan("""
+            func load(id: String) {
+                let parts = ["red", id]
+                request(path: "/v1/items?token=secret", id: "a/b", tags: parts)
+            }
+            """)
+        #expect(resolved.channel == "/v1/items/fixed%2Fsegment/a%2Fb/red/{}")
+        #expect(resolved.queryTailStripped)
+        #expect(!resolved.isDynamic)
+
+        let opaqueScalar = try scan("""
+            func makeID() -> String { "runtime" }
+            func load() { request(path: "/v1/items", id: makeID(), tags: ["x"]) }
+            """)
+        #expect(opaqueScalar.channel == "/v1/items/fixed%2Fsegment/{}/x")
+        #expect(!opaqueScalar.isDynamic)
+
+        let scalarBits = try scan(
+            "func load() { request(path: \"/v1/items\", id: true, tags: [1, false]) }"
+        )
+        #expect(scalarBits.channel == "/v1/items/fixed%2Fsegment/{}/{}/{}")
+        #expect(!scalarBits.isDynamic)
+
+        for body in [
+            "func load(tags: [String]) { request(path: \"/v1/items\", id: \"x\", tags: tags) }",
+            "func load() { request(path: \"/v1/items\") }",
+            "func load() { request(path: \"/v1/items\", id: nil, tags: []) }",
+            "func load() { request(path: \"/v1/items\", id: [\"x\"], tags: []) }",
+            "func load() { request(path: \"/v1/items\", id: \".\", tags: []) }",
+            "func load() { request(path: \"/v1/items\", id: \"x\", tags: [\"\"]) }",
+            "func load() { request(path: \"/v1/items\", id: \"x\", tags: [\"..\"]) }",
+        ] {
+            let fact = try scan(body)
+            #expect(fact.isDynamic)
+            #expect(fact.channel != "/v1/items/fixed%2Fsegment/x")
+            #expect(fact.channelPrefix == "/v1/items")
+        }
+
+        let emptyArray = try scan(
+            "func load() { request(path: \"/v1/items\", id: \"x\", tags: []) }"
+        )
+        #expect(emptyArray.channel == "/v1/items/fixed%2Fsegment/x")
+        #expect(!emptyArray.isDynamic)
+
+        let measuredSource = """
+            final class Client {
+                func request(path: String, id: String, tags: [String]) {}
+                func load(tags: [String]) {
+                    request(path: "/v1/items", id: "x", tags: tags)
+                }
+            }
+            """
+        let measured = HTTPRouteCallScanner(wrappers: [wrapper]).scan(
+            source: measuredSource,
+            path: "/p/SuffixCount.swift"
+        )
+        #expect(measured.calls.count == 1)
+        #expect(measured.counts.wrapperSuffixUnresolved == 1)
+
+        let oversizedWrapper = HTTPWrapperDeclaration(
+            language: "swift", kind: .function, owner: "Client", name: "request",
+            methodArg: nil, pathArg: .init(label: "path"), defaultMethod: "GET",
+            pathAnchor: .root,
+            pathSuffix: [.literal(String(repeating: "a", count: HTTPRouteTemplate.maxLength))]
+        )
+        let oversized = HTTPRouteCallScanner(wrappers: [oversizedWrapper]).scan(
+            source: """
+                final class Client {
+                    func request(path: String) {}
+                    func load() { request(path: "/v1") }
+                }
+                """,
+            path: "/p/SuffixLength.swift"
+        )
+        #expect(oversized.calls.first?.fact.channelPrefix == "/v1")
+        #expect(oversized.counts.wrapperSuffixUnresolved == 1)
+
+        let uncertainMain = try scan(
+            #"func load(id: String) { request(path: "/v1/\(id).json", id: "x", tags: []) }"#
+        )
+        #expect(uncertainMain.isDynamic)
+        #expect(uncertainMain.channel != "/v1/fixed%2Fsegment/x")
+        #expect(uncertainMain.channelPrefix == "/v1/")
+    }
+
+    @Test("백틱 식별자의 레이블과 enum case도 선언 표면과 같은 이름으로 대조한다")
+    func backtickedIdentifiersPreserveImplicitEnumBinding() throws {
+        let wrapper = HTTPWrapperDeclaration(language: "swift", kind: .constructor, owner: "KeywordEndpoint", name: "init",
+            methodArg: nil, pathArg: .init(label: "default"), defaultMethod: "GET", pathAnchor: .root)
+        let source = """
+            enum `Type`: String { case `default` = "/default" }
+            struct KeywordEndpoint { init(`default`: `Type`) {} }
+            func load() { _ = KeywordEndpoint(`default`: .`default`) }
+            """
+        let fact = try #require(HTTPRouteCallScanner(wrappers: [wrapper])
+            .scan(source: source, path: "/p/Backticks.swift").calls.first?.fact)
+        #expect(fact.channel == "/default")
+        #expect(!fact.isDynamic)
+    }
+
     @Test("모듈로 한정한 소유 타입은 다르게 한정된 같은 이름을 받지 않는다")
     func qualifiedOwner() {
         let wrapper = HTTPWrapperDeclaration(

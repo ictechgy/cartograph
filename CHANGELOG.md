@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Optional full graph occurrence evidence, source/index inventories and separate module import facts
+  support location-aware graph consumers without the bounded query evidence window.
+- A separate shared-declaration projection preserves raw graph identities and per-module variants while
+  choosing an explicit primary module; unresolved and conditionally compiled correspondence stays visible.
+- Explicit `http-wrappers` v2 suffix segment bindings support scalar/array paths with bounded expansion,
+  encoding and dynamic fallback. v1 behavior remains unchanged.
+
+### Fixed
+
+- Constructor wrapper selection checks the configured path argument for every constructor spelling.
+  Implicit enum paths use uniquely resolved initializer parameter types across source files; ambiguous,
+  generic, shadowed and trailing-closure cases remain dynamic.
+
 ## [0.24.0] - 2026-10-08
 
 ### Changed

@@ -12,6 +12,8 @@ public protocol FileSystem: Sendable {
     func fileExists(at path: String) -> Bool
     func directoryExists(at path: String) -> Bool
     func readData(at path: String) throws -> Data
+    /// 크기를 판정하도록 최대 상한+1 byte만 돌려준다. 실제 IO 구현은 읽기 전에 예산을 적용한다.
+    func readData(at path: String, maximumBytes: Int) throws -> Data
     func write(_ data: Data, to path: String) throws
     /// 경로의 파일이나 디렉터리를 지운다. 디렉터리는 내용물까지 함께 지운다.
     ///
@@ -47,6 +49,12 @@ public protocol FileSystem: Sendable {
 }
 
 extension FileSystem {
+    /// 기존 채택 타입은 유지한다. 메모리 상한이 필요한 디스크 구현은 이 메서드를 구현한다.
+    public func readData(at path: String, maximumBytes: Int) throws -> Data {
+        guard maximumBytes >= 0, maximumBytes < Int.max else { throw CocoaError(.fileReadUnknown) }
+        return try readData(at: path).prefix(maximumBytes + 1)
+    }
+
     /// 정규화를 지원하지 않는 구현은 경로를 추측해 교환 문서를 만들지 않는다.
     public func realPath(at _: String) throws -> String {
         throw CocoaError(.featureUnsupported)
@@ -359,6 +367,33 @@ public struct LocalFileSystem: FileSystem {
 
     public func readData(at path: String) throws -> Data {
         try Data(contentsOf: URL(fileURLWithPath: path))
+    }
+
+    /// 일반 파일만 고정 크기 조각으로 읽어 stat 이후 성장도 상한+1에서 멈춘다.
+    public func readData(at path: String, maximumBytes: Int) throws -> Data {
+        guard maximumBytes >= 0, maximumBytes < Int.max else { throw CocoaError(.fileReadUnknown) }
+        let descriptor = path.withCString { Darwin.open($0, O_RDONLY | O_NONBLOCK) }
+        guard descriptor >= 0 else { throw CocoaError(.fileReadUnknown) }
+        defer { _ = Darwin.close(descriptor) }
+        var info = Darwin.stat()
+        guard fstat(descriptor, &info) == 0, info.st_mode & 0o170000 == 0o100000 else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        let budget = maximumBytes + 1
+        var output = Data()
+        var buffer = [UInt8](repeating: 0, count: min(64 * 1024, budget))
+        while output.count < budget {
+            let count = buffer.withUnsafeMutableBytes { bytes in
+                Darwin.read(descriptor, bytes.baseAddress, min(bytes.count, budget - output.count))
+            }
+            if count == 0 { break }
+            if count < 0 {
+                if errno == EINTR { continue }
+                throw CocoaError(.fileReadUnknown)
+            }
+            output.append(contentsOf: buffer.prefix(count))
+        }
+        return output
     }
 
     public func write(_ data: Data, to path: String) throws {

@@ -54,6 +54,53 @@ struct CartographServiceTests {
         #expect(outcome.output.contains("HomeView"))
     }
 
+    @Test("occurrence 근거는 opt-in JSON에만 추가하고 기존 JSON은 그대로 둔다")
+    func rendersGraphEvidenceOnlyWhenRequested() throws {
+        let service = makeService(fileSystem: InMemoryFileSystem(files: [
+            "/p/Features/HomeView.swift": "struct HomeView {}",
+            "/p/Domain/UserService.swift": "final class UserService {}",
+            "/p/Data/UserRepository.swift": "final class UserRepository {}",
+        ]))
+        let plain = try service.renderGraph(level: .symbol, format: .json)
+        let evidenced = try service.renderGraph(level: .symbol, format: .json, includingEvidence: true)
+        #expect(!plain.output.contains("\"evidence\""))
+        #expect(evidenced.output.contains("\"evidenceCount\""))
+        #expect(evidenced.output.contains("\"source\""))
+        #expect(evidenced.output.contains("\"inventory\""))
+        #expect(throws: CartographError.self) {
+            try service.renderGraph(level: .symbol, format: .dot, includingEvidence: true)
+        }
+    }
+
+    @Test("declaration projection은 별도 artifact이고 primary module 부재를 안전하게 거부한다")
+    func rendersDeclarationProjectionSeparately() throws {
+        let service = makeService(fileSystem: InMemoryFileSystem(files: [
+            "/p/Features/HomeView.swift": "struct HomeView {}",
+            "/p/Domain/UserService.swift": "final class UserService {}",
+            "/p/Data/UserRepository.swift": "final class UserRepository {}",
+        ]))
+        let projected = try service.renderDeclarationProjection(
+            primaryModule: "Presentation", level: .symbol, format: .json
+        )
+        #expect(projected.output.contains("\"format\" : \"cartograph-declaration-projection\""))
+        #expect(projected.output.contains("\"rawGraph\""))
+        let ordinary = try service.renderGraph(level: .symbol, format: .json)
+        #expect(!ordinary.output.contains("cartograph-declaration-projection"))
+
+        #expect(throws: CartographError.self) {
+            try service.renderDeclarationProjection(primaryModule: "Missing", level: .symbol, format: .json)
+        }
+        #expect(throws: CartographError.self) {
+            try service.renderDeclarationProjection(primaryModule: "Presentation", level: .type, format: .json)
+        }
+        #expect(throws: CartographError.self) {
+            try service.renderDeclarationProjection(primaryModule: "Presentation", level: .symbol, format: .dot)
+        }
+        #expect(throws: CartographError.self) {
+            try service.renderDeclarationProjection(primaryModule: "Bad Module", level: .symbol, format: .json)
+        }
+    }
+
     @Test("순환 의존성을 찾아 보고한다")
     func detectsCycles() throws {
         let outcome = try makeService().detectCycles()

@@ -99,6 +99,24 @@ struct GraphCommand: ParsableCommand {
     @Option(name: .customLong("format"), help: "dot, mermaid, json or html.")
     var graphFormat: GraphFormat?
 
+    @Flag(
+        name: .customLong("evidence"),
+        help: "Include every indexed edge occurrence and separate import/inventory facts in JSON output."
+    )
+    var includeEvidence = false
+
+    @Flag(
+        name: .customLong("declaration-projection"),
+        help: "Project module-specific USRs for shared Swift declarations into a separate symbol JSON artifact."
+    )
+    var declarationProjection = false
+
+    @Option(
+        name: .customLong("primary-module"),
+        help: "Choose the canonical module for --declaration-projection."
+    )
+    var primaryModule: String?
+
     func validate() throws {
         // 그래프는 전체를 덤프한다. 바뀐 파일만 잘라내면 도달성부터 틀린
         // 그림이 되고, 그렇다고 조용히 전체를 그리면 `--since` 를 걸고 비교한
@@ -123,12 +141,55 @@ struct GraphCommand: ParsableCommand {
                     + "it has no findings to enforce"
             )
         }
+        if includeEvidence, let graphFormat, graphFormat != .json {
+            throw ValidationError("--evidence requires graph --format json")
+        }
+        guard declarationProjection == (primaryModule != nil) else {
+            throw ValidationError("--declaration-projection and --primary-module must be given together")
+        }
+        guard !declarationProjection || options.level == .symbol else {
+            throw ValidationError("--declaration-projection requires explicit --level symbol")
+        }
+        guard !declarationProjection || graphFormat == .json else {
+            throw ValidationError("--declaration-projection requires explicit --format json")
+        }
+        guard !declarationProjection || !includeEvidence else {
+            throw ValidationError("--declaration-projection cannot be combined with --evidence")
+        }
+        if let primaryModule, !Self.isValidModuleName(primaryModule) {
+            throw ValidationError("--primary-module must be a valid Swift module name")
+        }
     }
 
     func run() throws {
         let context = try CommandSupport.makeContext(options)
-        let outcome = try context.service.renderGraph(level: options.level, format: graphFormat)
+        let format = graphFormat ?? context.configuration.graphFormat
+        guard !includeEvidence || format == .json else {
+            throw ValidationError("--evidence requires graph --format json")
+        }
+        let outcome: CommandOutcome
+        if declarationProjection {
+            guard let primaryModule else {
+                throw ValidationError("--declaration-projection requires --primary-module")
+            }
+            outcome = try context.service.renderDeclarationProjection(
+                primaryModule: primaryModule,
+                level: options.level,
+                format: format
+            )
+        } else {
+            outcome = try context.service.renderGraph(
+                level: options.level,
+                format: format,
+                includingEvidence: includeEvidence
+            )
+        }
         try CommandSupport.emit(outcome, options: options, context: context)
+    }
+
+    private static func isValidModuleName(_ value: String) -> Bool {
+        guard let first = value.first, first.isLetter || first == "_", value.utf8.count <= 255 else { return false }
+        return value.dropFirst().allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
     }
 }
 

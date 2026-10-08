@@ -23,6 +23,8 @@ public struct RouteCallScanCounts: Hashable, Sendable {
     public var unreadableSinks = 0
     /// 선언된 래퍼 함수와 이름·레이블이 맞지만 수신자 타입을 증명하지 못한 호출.
     public var unprovenReceiverCalls = 0
+    /// 호출은 사실로 냈지만 구성된 v2 suffix segment를 정적으로 적용하지 못한 수.
+    public var wrapperSuffixUnresolved = 0
     /// 요청 조립을 읽지 못한 Alamofire 라우터(`URLRequestConvertible`)와 경로 멤버가 없는 Moya 타겟 수.
     public var unmodelledRouters = 0
     /// 요청 URL 을 바꾸는 Moya `endpointClosure` 매핑과 Alamofire 요청 어댑터 수.
@@ -40,6 +42,7 @@ public struct RouteCallScanCounts: Hashable, Sendable {
         result.undeclaredWrapperSinks += rhs.undeclaredWrapperSinks
         result.unreadableSinks += rhs.unreadableSinks
         result.unprovenReceiverCalls += rhs.unprovenReceiverCalls
+        result.wrapperSuffixUnresolved += rhs.wrapperSuffixUnresolved
         result.unmodelledRouters += rhs.unmodelledRouters
         result.urlRewriters += rhs.urlRewriters
         result.unmodelledClientImports.merge(rhs.unmodelledClientImports, uniquingKeysWith: +)
@@ -64,14 +67,53 @@ public struct RouteCallScanResult: Hashable, Sendable {
 /// 프로젝트가 선언한 타입과 함수의 구문 표면. 래퍼 선언이 실제 심볼과 맞는지 확인하고,
 /// 호출의 인자 레이블이 선언된 시그니처와 맞는지 볼 때 쓴다.
 public struct HTTPDeclarationSurface: Hashable, Sendable {
+    private enum PrimaryTypeKind: Hashable, Sendable {
+        case actor
+        case classType
+        case enumType
+        case structType
+    }
+
+    private struct InheritedType: Hashable, Sendable {
+        let components: [String]?
+    }
+
+    private struct ClassInheritanceClause: Hashable, Sendable {
+        let types: [InheritedType]
+    }
+
+    private enum KnownInheritedType {
+        case classType(String)
+        case protocolType
+        case other
+        case unknown
+    }
+
+    /// 이니셜라이저 오버로드 하나의 레이블·타입·기본값, 제네릭 이름과 선언 위치 종류.
+    struct InitializerSignature: Hashable, Sendable {
+        let labels: [String?]
+        let types: [[String]?]
+        let defaults: [Bool]
+        let shadowedTypeNames: Set<String>
+        let isInExtension: Bool
+    }
     /// 선언하거나 확장한 타입 사슬(`A.B`).
     public private(set) var typeChains: Set<String> = []
+    /// 실제 주 선언이 확인된 타입 종류. extension-only 소유자와 구분한다.
+    private var primaryTypeKinds: [String: Set<PrimaryTypeKind>] = [:]
+    /// class 주 선언에 적힌 전체 상속 타입 사슬. 첫 타입이 superclass인지 확인한다.
+    private var classInheritanceClauses: [String: Set<ClassInheritanceClause>] = [:]
+    /// 주 타입 본문이 직접 initializer를 선언한 소유자.
+    private var primaryInitializerOwners: Set<String> = []
+    /// 타입 사슬 → 소유 타입과 바깥 타입이 선언한 제네릭 매개변수 이름.
+    private var genericParametersByType: [String: Set<String>] = [:]
     /// 타입 사슬의 마지막 구성 요소들. "프로젝트가 이 이름의 타입을 선언했는가"를 사슬 전체를 훑지 않고 답한다.
     private(set) var typeLastNames: Set<String> = []
     /// `타입 사슬\0함수 이름` → 오버로드별 외부 레이블(레이블 없음은 nil). 최상위 함수는 빈 사슬이다.
     public private(set) var functions: [String: [[String?]]] = [:]
     /// 타입 사슬 → 명시적 이니셜라이저의 외부 레이블들.
     public private(set) var initializers: [String: [[String?]]] = [:]
+    var initializerSignatures: [String: [InitializerSignature]] = [:]
     /// 타입 사슬 → 상속 절에 적힌 이름의 마지막 구성 요소(주 선언과 익스텐션을 합친 것).
     public private(set) var inheritedNames: [String: Set<String>] = [:]
     /// 프로토콜로 선언된 타입 사슬.
@@ -93,9 +135,14 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
     /// 여러 파일의 표면을 합친다. 순서와 무관하게 같은 값이 되도록 집합과 목록만 더한다.
     public mutating func merge(_ other: HTTPDeclarationSurface) {
         typeChains.formUnion(other.typeChains)
+        primaryTypeKinds.merge(other.primaryTypeKinds) { $0.union($1) }
+        classInheritanceClauses.merge(other.classInheritanceClauses) { $0.union($1) }
+        primaryInitializerOwners.formUnion(other.primaryInitializerOwners)
+        genericParametersByType.merge(other.genericParametersByType) { $0.union($1) }
         typeLastNames.formUnion(other.typeLastNames)
         functions.merge(other.functions) { $0 + $1 }
         initializers.merge(other.initializers) { $0 + $1 }
+        initializerSignatures.merge(other.initializerSignatures) { $0 + $1 }
         inheritedNames.merge(other.inheritedNames) { $0.union($1) }
         protocolChains.formUnion(other.protocolChains)
         // 같은 파일을 두 번 합치면(스캔이 이 파일의 표면을 다시 더한다) case 가 겹친다. 위치로 중복을 없앤다.
@@ -164,6 +211,38 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
         }
     }
 
+    fileprivate mutating func addPrimaryClass(_ chain: [String], inheritance: InheritanceClauseSyntax?) {
+        addPrimaryType(chain, kind: .classType, inheritance: inheritance)
+    }
+
+    fileprivate mutating func addPrimaryStruct(_ chain: [String]) {
+        addPrimaryType(chain, kind: .structType, inheritance: nil)
+    }
+
+    fileprivate mutating func addPrimaryEnum(_ chain: [String]) {
+        addPrimaryType(chain, kind: .enumType, inheritance: nil)
+    }
+
+    fileprivate mutating func addPrimaryActor(_ chain: [String]) {
+        addPrimaryType(chain, kind: .actor, inheritance: nil)
+    }
+
+    private mutating func addPrimaryType(
+        _ chain: [String], kind: PrimaryTypeKind, inheritance: InheritanceClauseSyntax?
+    ) {
+        let key = chain.joined(separator: ".")
+        primaryTypeKinds[key, default: []].insert(kind)
+        guard kind == .classType else { return }
+        let types = inheritance?.inheritedTypes.map {
+            InheritedType(components: HTTPSyntax.typeComponents($0.type))
+        } ?? []
+        classInheritanceClauses[key, default: []].insert(ClassInheritanceClause(types: types))
+    }
+
+    mutating func addGenericParameters(_ names: Set<String>, to chain: [String]) {
+        genericParametersByType[chain.joined(separator: "."), default: []].formUnion(names)
+    }
+
     mutating func addAssociatedType(_ chain: String, name: String, isConditional: Bool) {
         associatedTypes[chain, default: []].append(.init(name: name, isConditional: isConditional))
     }
@@ -174,6 +253,185 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
 
     mutating func addInitializer(chain: [String], labels: [String?]) {
         initializers[chain.joined(separator: "."), default: []].append(labels)
+    }
+
+    mutating func addInitializerSignature(
+        chain: [String], labels: [String?], types: [[String]?], defaults: [Bool],
+        shadowedTypeNames: Set<String>, isInExtension: Bool
+    ) {
+        let owner = chain.joined(separator: ".")
+        initializerSignatures[owner, default: []].append(
+            .init(
+                labels: labels, types: types, defaults: defaults,
+                shadowedTypeNames: shadowedTypeNames, isInExtension: isInExtension
+            )
+        )
+        if !isInExtension { primaryInitializerOwners.insert(owner) }
+    }
+
+    /// 실행 가능한 오버로드의 경로 타입을 유일하게 찾는다. 모호하면 해석하지 않는다.
+    func pathTypes(of declaration: HTTPWrapperDeclaration, labels: [String?]) -> [[String]] {
+        guard declaration.kind == .constructor else { return [] }
+        guard let actualIndex = HTTPWrapperBinding.argumentIndex(for: declaration.pathArg, labels: labels) else {
+            return []
+        }
+        let owners = chains(matching: declaration)
+        guard !owners.isEmpty, owners.allSatisfy({
+            initializerSetIsComplete(owner: $0, suppliedLabels: labels)
+        }) else { return [] }
+        let candidates = viableInitializers(of: declaration, labels: labels).map { candidate -> [String]? in
+            guard actualIndex < candidate.mapping.count else { return nil }
+            let parameterIndex = candidate.mapping[actualIndex]
+            guard parameterIndex < candidate.signature.types.count,
+                  let type = candidate.signature.types[parameterIndex] else { return nil }
+            return resolveParameterType(
+                type, owner: candidate.owner,
+                shadowedBy: candidate.signature.shadowedTypeNames
+                    .union(genericParametersByType[candidate.owner, default: []]),
+                depth: 0, visitedAliases: []
+            )
+        }
+        guard !candidates.isEmpty, candidates.allSatisfy({ $0 != nil }) else { return [] }
+        let resolved = candidates.compactMap { $0 }
+        let unique = Set(resolved.map { $0.joined(separator: ".") })
+        return unique.count == 1 ? [resolved[0]] : []
+    }
+
+    /// 표면 밖에서 같은 레이블의 initializer가 추가될 수 있으면 enum 문맥 타입을 확정하지 않는다.
+    private func initializerSetIsComplete(owner: String, suppliedLabels: [String?]) -> Bool {
+        guard let kinds = primaryTypeKinds[owner], kinds.count == 1, let kind = kinds.first else { return false }
+        switch kind {
+        case .actor, .enumType:
+            return true
+        case .structType:
+            let hasApplicableExtensionInitializer = initializerSignatures[owner, default: []].contains {
+                $0.isInExtension && argumentMapping(signature: $0, supplied: suppliedLabels) != nil
+            }
+            return !hasApplicableExtensionInitializer || primaryInitializerOwners.contains(owner)
+        case .classType:
+            guard let clauses = classInheritanceClauses[owner], clauses.count == 1,
+                  let clause = clauses.first else { return false }
+            guard let inherited = clause.types.first else { return true }
+            guard let components = inherited.components else { return false }
+            switch knownInheritedType(components, relativeTo: owner) {
+            case .protocolType:
+                return true
+            case let .classType(superclass):
+                return !classHierarchyMaySupplyInitializer(
+                    superclass, suppliedLabels: suppliedLabels, visiting: [owner], depth: 0
+                )
+            case .other, .unknown:
+                return false
+            }
+        }
+    }
+
+    private func classHierarchyMaySupplyInitializer(
+        _ owner: String, suppliedLabels: [String?], visiting: Set<String>, depth: Int
+    ) -> Bool {
+        guard depth < 64, !visiting.contains(owner) else { return true }
+        if initializerSignatures[owner, default: []].contains(where: {
+            argumentMapping(signature: $0, supplied: suppliedLabels) != nil
+        }) {
+            return true
+        }
+        guard primaryTypeKinds[owner] == [.classType],
+              let clauses = classInheritanceClauses[owner], clauses.count == 1,
+              let clause = clauses.first else { return true }
+        guard let inherited = clause.types.first else { return false }
+        guard let components = inherited.components else { return true }
+        switch knownInheritedType(components, relativeTo: owner) {
+        case .protocolType:
+            return false
+        case let .classType(superclass):
+            return classHierarchyMaySupplyInitializer(
+                superclass, suppliedLabels: suppliedLabels,
+                visiting: visiting.union([owner]), depth: depth + 1
+            )
+        case .other, .unknown:
+            return true
+        }
+    }
+
+    /// 상속 절 위치의 이름 찾기로 프로젝트 내부 protocol과 class만 증명한다.
+    private func knownInheritedType(_ type: [String], relativeTo owner: String) -> KnownInheritedType {
+        let scope = owner.split(separator: ".").dropLast().map(String.init)
+        for depth in stride(from: scope.count, through: 0, by: -1) {
+            let key = (Array(scope.prefix(depth)) + type).joined(separator: ".")
+            let isProtocol = protocolChains.contains(key)
+            let kinds = primaryTypeKinds[key, default: []]
+            let aliases = typeAliases[key, default: []]
+            guard isProtocol || !kinds.isEmpty || typeChains.contains(key) || !aliases.isEmpty else { continue }
+            guard aliases.isEmpty else { return .unknown }
+            guard !isProtocol || kinds.isEmpty else { return .unknown }
+            if isProtocol { return .protocolType }
+            guard kinds.count == 1, let kind = kinds.first else { return .unknown }
+            return kind == .classType ? .classType(key) : .other
+        }
+        return .unknown
+    }
+
+    /// 호출이 경로 매개변수를 기본값으로 생략한 실행 가능한 이니셜라이저와 맞는지.
+    func acceptsOmittedPath(of declaration: HTTPWrapperDeclaration, labels: [String?]) -> Bool {
+        viableInitializers(of: declaration, labels: labels).contains { candidate in
+            guard let parameterIndex = HTTPWrapperBinding.argumentIndex(
+                for: declaration.pathArg, labels: candidate.signature.labels
+            ), parameterIndex < candidate.signature.defaults.count else { return false }
+            return candidate.signature.defaults[parameterIndex] && !candidate.mapping.contains(parameterIndex)
+        }
+    }
+
+    private func viableInitializers(
+        of declaration: HTTPWrapperDeclaration, labels: [String?]
+    ) -> [(owner: String, signature: InitializerSignature, mapping: [Int])] {
+        chains(matching: declaration).flatMap { owner in
+            initializerSignatures[owner, default: []].compactMap { signature in
+                argumentMapping(signature: signature, supplied: labels).map {
+                    (owner: owner, signature: signature, mapping: $0)
+                }
+            }
+        }
+    }
+
+    /// 선언 위치의 타입 이름 찾기 규칙으로 매개변수 타입을 구체 선언까지 푼다.
+    private func resolveParameterType(
+        _ type: [String], owner: String, shadowedBy names: Set<String>, depth: Int,
+        visitedAliases: Set<String>
+    ) -> [String]? {
+        guard depth < 64, let root = type.first, !names.contains(root) else { return nil }
+        let ownerComponents = owner.split(separator: ".").map(String.init)
+        for scopeDepth in stride(from: ownerComponents.count, through: 0, by: -1) {
+            let candidate = Array(ownerComponents.prefix(scopeDepth)) + type
+            let key = candidate.joined(separator: ".")
+            let aliases = typeAliases[key, default: []]
+            let isDirect = typeChains.contains(key)
+            guard isDirect || !aliases.isEmpty else { continue }
+            guard !(isDirect && !aliases.isEmpty) else { return nil }
+            if isDirect { return candidate }
+            guard aliases.count == 1, let alias = aliases.first, !alias.isConditional,
+                  !visitedAliases.contains(key) else { return nil }
+            return resolveParameterType(
+                alias.target, owner: candidate.dropLast().joined(separator: "."), shadowedBy: names,
+                depth: depth + 1, visitedAliases: visitedAliases.union([key])
+            )
+        }
+        return nil
+    }
+
+    private func argumentMapping(signature: InitializerSignature, supplied: [String?]) -> [Int]? {
+        var position = 0
+        var mapping: [Int] = []
+        for label in supplied {
+            while position < signature.labels.count, signature.labels[position] != label {
+                guard signature.defaults[position] else { return nil }
+                position += 1
+            }
+            guard position < signature.labels.count else { return nil }
+            mapping.append(position)
+            position += 1
+        }
+        guard signature.defaults.dropFirst(position).allSatisfy({ $0 }) else { return nil }
+        return mapping
     }
 
     /// 소유 타입과 맞는 선언된 타입 사슬들.
@@ -273,6 +531,8 @@ public struct HTTPRouteCallScanner: Sendable {
 private final class HTTPSurfaceCollector: SyntaxVisitor {
     private(set) var surface = HTTPDeclarationSurface()
     private var typeNames: [String] = []
+    private var genericTypeNames: [Set<String>] = []
+    private var typeIsExtension: [Bool] = []
     /// 원시 타입이 `String` 인 enum 선언의 깊이별 표시. case 의 암시적 원시값을 정한다.
     private var stringBacked: [Bool] = []
     private var conditionalDepth = 0
@@ -285,11 +545,21 @@ private final class HTTPSurfaceCollector: SyntaxVisitor {
 
     private var chain: [String] { typeNames.flatMap { $0.split(separator: ".").map(String.init) } }
 
-    private func push(_ name: String, _ node: some DeclSyntaxProtocol, inheritance: InheritanceClauseSyntax?,
-                      isProtocol: Bool = false, isExtension: Bool = false, isStringBacked: Bool = false) -> SyntaxVisitorContinueKind {
+    private func push(
+        _ name: String, _ node: some DeclSyntaxProtocol, inheritance: InheritanceClauseSyntax?,
+        genericParameters: GenericParameterClauseSyntax? = nil, isProtocol: Bool = false,
+        isExtension: Bool = false, isStringBacked: Bool = false
+    ) -> SyntaxVisitorContinueKind {
         typeNames.append(SyntaxIdentifiers.unescaped(name))
+        genericTypeNames.append(Set(genericParameters?.parameters.map {
+            SyntaxIdentifiers.unescaped($0.name.text)
+        } ?? []))
+        typeIsExtension.append(isExtension)
         stringBacked.append(isStringBacked)
         surface.addType(chain, isConditional: conditionalDepth > 0, isExtension: isExtension)
+        surface.addGenericParameters(
+            genericTypeNames.reduce(into: Set<String>()) { $0.formUnion($1) }, to: chain
+        )
         recorder.recordType(node, chain: chain, inheritance: inheritance, isProtocol: isProtocol,
                             isExtension: isExtension, into: &surface)
         return .visitChildren
@@ -297,24 +567,46 @@ private final class HTTPSurfaceCollector: SyntaxVisitor {
 
     private func pop() {
         typeNames.removeLast()
+        genericTypeNames.removeLast()
+        typeIsExtension.removeLast()
         stringBacked.removeLast()
     }
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
-        push(node.name.text, node, inheritance: node.inheritanceClause)
+        let result = push(
+            node.name.text, node, inheritance: node.inheritanceClause,
+            genericParameters: node.genericParameterClause
+        )
+        surface.addPrimaryClass(chain, inheritance: node.inheritanceClause)
+        return result
     }
     override func visitPost(_: ClassDeclSyntax) { pop() }
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
-        push(node.name.text, node, inheritance: node.inheritanceClause)
+        let result = push(
+            node.name.text, node, inheritance: node.inheritanceClause,
+            genericParameters: node.genericParameterClause
+        )
+        surface.addPrimaryStruct(chain)
+        return result
     }
     override func visitPost(_: StructDeclSyntax) { pop() }
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
-        push(node.name.text, node, inheritance: node.inheritanceClause,
-             isStringBacked: HTTPRouterSurfaceRecorder.isStringBacked(node.inheritanceClause))
+        let result = push(
+            node.name.text, node, inheritance: node.inheritanceClause,
+            genericParameters: node.genericParameterClause,
+            isStringBacked: HTTPRouterSurfaceRecorder.isStringBacked(node.inheritanceClause)
+        )
+        surface.addPrimaryEnum(chain)
+        return result
     }
     override func visitPost(_: EnumDeclSyntax) { pop() }
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
-        push(node.name.text, node, inheritance: node.inheritanceClause)
+        let result = push(
+            node.name.text, node, inheritance: node.inheritanceClause,
+            genericParameters: node.genericParameterClause
+        )
+        surface.addPrimaryActor(chain)
+        return result
     }
     override func visitPost(_: ActorDeclSyntax) { pop() }
     override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
@@ -417,7 +709,18 @@ private final class HTTPSurfaceCollector: SyntaxVisitor {
 
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
         if !typeNames.isEmpty {
-            surface.addInitializer(chain: chain, labels: HTTPSyntax.labels(node.signature.parameterClause.parameters))
+            let parameters = node.signature.parameterClause.parameters
+            surface.addInitializer(chain: chain, labels: HTTPSyntax.labels(parameters))
+            surface.addInitializerSignature(
+                chain: chain, labels: HTTPSyntax.labels(parameters),
+                types: parameters.map { HTTPSyntax.typeComponents($0.type) },
+                defaults: parameters.map { $0.defaultValue != nil },
+                shadowedTypeNames: genericTypeNames.reduce(into: Set<String>()) { $0.formUnion($1) }
+                    .union(node.genericParameterClause?.parameters.map {
+                        SyntaxIdentifiers.unescaped($0.name.text)
+                    } ?? []),
+                isInExtension: typeIsExtension.last ?? false
+            )
         }
         return .skipChildren
     }
@@ -631,6 +934,19 @@ enum HTTPSyntax {
         if let forced = type.as(ImplicitlyUnwrappedOptionalTypeSyntax.self) { return typeBaseName(forced.wrappedType) }
         if let some = type.as(SomeOrAnyTypeSyntax.self) { return typeBaseName(some.constraint) }
         if let attributed = type.as(AttributedTypeSyntax.self) { return typeBaseName(attributed.baseType) }
+        return nil
+    }
+
+    /// 타입 표기를 보존한 구성 요소(`Outer.Inner` → `["Outer", "Inner"]`).
+    static func typeComponents(_ type: TypeSyntax) -> [String]? {
+        if let identifier = type.as(IdentifierTypeSyntax.self) { return [SyntaxIdentifiers.unescaped(identifier.name.text)] }
+        if let member = type.as(MemberTypeSyntax.self), let base = typeComponents(member.baseType) {
+            return base + [SyntaxIdentifiers.unescaped(member.name.text)]
+        }
+        if let optional = type.as(OptionalTypeSyntax.self) { return typeComponents(optional.wrappedType) }
+        if let forced = type.as(ImplicitlyUnwrappedOptionalTypeSyntax.self) { return typeComponents(forced.wrappedType) }
+        if let some = type.as(SomeOrAnyTypeSyntax.self) { return typeComponents(some.constraint) }
+        if let attributed = type.as(AttributedTypeSyntax.self) { return typeComponents(attributed.baseType) }
         return nil
     }
 

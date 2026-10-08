@@ -212,6 +212,80 @@ public struct CartographService: Sendable {
         return CommandOutcome(output: try renderer.render(graph))
     }
 
+    /// 기존 그래프 API를 유지하면서 opt-in occurrence 근거 JSON을 내보낸다.
+    public func renderGraph(
+        level: GraphLevel?,
+        format: GraphFormat?,
+        includingEvidence: Bool
+    ) throws -> CommandOutcome {
+        guard includingEvidence else { return try renderGraph(level: level, format: format) }
+        let selectedFormat = format ?? configuration.graphFormat
+        guard selectedFormat == .json else {
+            throw CartographError.invalidConfiguration(
+                path: projectPath,
+                reason: "Graph occurrence evidence is available only with JSON format. Use --format json."
+            )
+        }
+        let context = try loadContext()
+        let result = context.buildGraph(level: level ?? configuration.level)
+        let output = try JSONGraphEvidenceRenderer().render(
+            result: result,
+            snapshot: context.snapshot,
+            projectPath: projectPath,
+            sourceFiles: context.projectFileInventory?.sourceFiles
+        )
+        return CommandOutcome(output: output)
+    }
+
+    /// raw symbol graph를 유지하면서 공유 Swift 선언의 module별 USR projection을
+    /// 별도 JSON으로 내보낸다.
+    public func renderDeclarationProjection(
+        primaryModule: String,
+        level: GraphLevel? = nil,
+        format: GraphFormat? = nil
+    ) throws -> CommandOutcome {
+        let selectedLevel = level ?? configuration.level
+        guard selectedLevel == .symbol else {
+            throw CartographError.invalidConfiguration(
+                path: projectPath,
+                reason: "Declaration projection requires symbol level. Use --level symbol."
+            )
+        }
+        let selectedFormat = format ?? configuration.graphFormat
+        guard selectedFormat == .json else {
+            throw CartographError.invalidConfiguration(
+                path: projectPath,
+                reason: "Declaration projection is available only with JSON format. Use --format json."
+            )
+        }
+        guard Self.isValidModuleName(primaryModule) else {
+            throw CartographError.invalidConfiguration(
+                path: projectPath,
+                reason: "The primary module must be a valid Swift module name."
+            )
+        }
+        let context = try loadContext()
+        guard context.snapshot.symbols.contains(where: { $0.module == primaryModule }) else {
+            throw CartographError.invalidConfiguration(
+                path: projectPath,
+                reason: "Primary module '\(primaryModule)' does not occur in the project index."
+            )
+        }
+        let result = context.buildGraph(level: selectedLevel)
+        let output = try SwiftDeclarationProjectionRenderer().render(
+            result: result,
+            snapshot: context.snapshot,
+            projectPath: projectPath,
+            primaryModule: primaryModule
+        )
+        return CommandOutcome(output: output)
+    }
+
+    private static func isValidModuleName(_ value: String) -> Bool {
+        guard let first = value.first, first.isLetter || first == "_", value.utf8.count <= 255 else { return false }
+        return value.dropFirst().allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+    }
+
     public func detectCycles(level: GraphLevel? = nil) throws -> CommandOutcome {
         let context = try loadContext()
         let (graph, cycles) = cycles(in: context, level: level)

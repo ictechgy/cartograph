@@ -110,6 +110,62 @@ struct HTTPRouteRulesTests {
         #expect(HTTPWrapperBinding.argumentIndex(for: .init(index: 0, label: "path"), labels: ["other"]) == nil)
     }
 
+    @Test("wrapper suffix는 decoded segment를 인코딩하고 불확실성에서 기존 경로를 접두사로 보존한다")
+    func wrapperPathSuffixComposition() {
+        let base = HTTPRouteResolution(
+            template: "/v1/items",
+            pathAnchor: .root,
+            queryTailStripped: true
+        )
+        let resolved = HTTPWrapperSuffixComposer.append(
+            .segments([.literal("a/b%:@!#{}é"), .value, .literal("?tail")]),
+            to: base
+        )
+        #expect(resolved.template == "/v1/items/a%2Fb%25%3A%40%21%23%7B%7D%C3%A9/{}/%3Ftail")
+        #expect(resolved.queryTailStripped)
+        #expect(!resolved.isDynamic)
+
+        let uncertain = HTTPWrapperSuffixComposer.append(.dynamic, to: base)
+        #expect(uncertain.template == nil)
+        #expect(uncertain.channelPrefix == "/v1/items")
+        #expect(uncertain.queryTailStripped)
+
+        let dynamicBase = HTTPRouteResolution(
+            template: nil,
+            channelPrefix: "/v1",
+            pathAnchor: .base
+        )
+        #expect(HTTPWrapperSuffixComposer.append(.segments([.literal("fixed")]), to: dynamicBase) == dynamicBase)
+        #expect(HTTPWrapperSuffixComposer.append(.segments([]), to: base) == base)
+        for invalid in ["", ".", "..", "\u{001F}"] {
+            let result = HTTPWrapperSuffixComposer.append(.segments([.literal(invalid)]), to: base)
+            #expect(result.template == nil)
+            #expect(result.channelPrefix == "/v1/items")
+        }
+    }
+
+    @Test("wrapper suffix 확장은 64 segment를 넘으면 기존 정적 경로 뒤를 dynamic으로 둔다")
+    func wrapperPathSuffixExpansionLimit() {
+        let base = HTTPRouteResolution(template: "/v1", pathAnchor: .base)
+        let exact = Array(
+            repeating: HTTPWrapperSuffixComposer.Segment.literal("x"),
+            count: HTTPWrapperSuffixComposer.maximumExpandedSegments
+        )
+        #expect(!HTTPWrapperSuffixComposer.append(.segments(exact), to: base).isDynamic)
+        let over = exact + [.literal("x")]
+        let result = HTTPWrapperSuffixComposer.append(.segments(over), to: base)
+        #expect(result.template == nil)
+        #expect(result.channelPrefix == "/v1")
+        #expect(result.pathAnchor == .base)
+
+        let tooLong = HTTPWrapperSuffixComposer.append(
+            .segments([.literal(String(repeating: "a", count: HTTPRouteTemplate.maxLength))]),
+            to: base
+        )
+        #expect(tooLong.template == nil)
+        #expect(tooLong.channelPrefix == "/v1")
+    }
+
     @Test("사실은 위치·채널·동사 순으로 정렬하고 선언을 붙인 사본은 나머지를 보존한다")
     func factOrderingAndAttaching() {
         let location = SourceLocation(path: "/p/A.swift", line: 1, column: 1)

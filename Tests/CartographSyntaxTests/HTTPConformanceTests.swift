@@ -105,6 +105,8 @@ struct HTTPConformanceTests {
             return ["template": HTTPRouteTemplate.normalize(input["path"] as? String ?? "")]
         case "compose.interpolation", "compose.query-tail", "compose.suffix", "compose.normalize":
             return composed(input["parts"] as? [[String: Any]] ?? [])
+        case "compose.wrapper-suffix":
+            return wrapperSuffix(input)
         case "compose.base-join":
             return baseJoined(input)
         case "compose.strip":
@@ -136,6 +138,30 @@ struct HTTPConformanceTests {
         case let .dynamic(prefix):
             return prefix.map { ["dynamic": true, "channelPrefix": $0] } ?? ["dynamic": true]
         }
+    }
+
+    private func wrapperSuffix(_ input: [String: Any]) -> [String: Any] {
+        let base = HTTPRouteResolution(
+            template: input["main"] as? String,
+            channelPrefix: input["channelPrefix"] as? String,
+            pathAnchor: .root
+        )
+        let expansion: HTTPWrapperSuffixComposer.Expansion
+        if input["unresolved"] as? Bool == true {
+            expansion = .dynamic
+        } else {
+            let segments: [HTTPWrapperSuffixComposer.Segment] =
+                (input["segments"] as? [[String: Any]] ?? []).map { segment in
+                    segment["literal"].map { .literal($0 as? String ?? "") } ?? .value
+                }
+            expansion = .segments(segments)
+        }
+        let resolution = HTTPWrapperSuffixComposer.append(expansion, to: base)
+        var result: [String: Any] = [:]
+        if let template = resolution.template { result["template"] = template }
+        if let prefix = resolution.channelPrefix { result["channelPrefix"] = prefix }
+        if resolution.isDynamic { result["dynamic"] = true }
+        return result
     }
 
     private func baseJoined(_ input: [String: Any]) -> [String: Any] {

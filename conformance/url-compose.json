@@ -1196,6 +1196,1722 @@
       "expect": {
         "line": 89
       }
+    },
+    {
+      "id": "base-join/go-resolve-reference-base-directory",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/golang/go/blob/go1.23.0/src/net/url/url.go#L1116-L1153",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": "https://api.example.com/api/",
+        "path": "users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      },
+      "note": "(*url.URL).ResolveReference merges a relative reference after the last / of the base path (RFC 3986 5.2.3). Reproduced with go1.27.1; go1.23.0 source is identical."
+    },
+    {
+      "id": "base-join/go-resolve-reference-base-file",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/golang/go/blob/go1.23.0/src/net/url/url.go#L1116-L1153",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": "https://api.example.com/api",
+        "path": "users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "root"
+      },
+      "note": "Without a trailing slash the last base segment is replaced, not extended."
+    },
+    {
+      "id": "base-join/go-resolve-reference-rooted",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/golang/go/blob/go1.23.0/src/net/url/url.go#L1116-L1153",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": "https://api.example.com/api/",
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      },
+      "note": "An absolute-path reference replaces the whole base path."
+    },
+    {
+      "id": "base-join/go-resolve-reference-dot-segments",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/golang/go/blob/go1.23.0/src/net/url/url.go#L1116-L1153",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": "https://api.example.com/api/v1/",
+        "path": "../users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root"
+      },
+      "note": "remove_dot_segments (RFC 3986 5.2.4) runs after the merge."
+    },
+    {
+      "id": "base-join/go-resolve-reference-network-path",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/golang/go/blob/go1.23.0/src/net/url/url.go#L1116-L1153",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": "https://api.example.com/api/",
+        "path": "//other.example.com/x"
+      },
+      "expect": {
+        "template": "/x",
+        "pathAnchor": "root",
+        "authority": "other.example.com"
+      },
+      "note": "A network-path reference (//host/...) replaces the authority as well as the path."
+    },
+    {
+      "id": "base-join/go-join-path-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/golang/go/blob/go1.23.0/src/net/url/url.go#L1237-L1256",
+      "versionRange": ">=1.19",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "go-join-path",
+        "base": "https://api.example.com/api",
+        "path": "users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      },
+      "note": "(*url.URL).JoinPath (Go 1.19+) joins with path.Join, so the base path is always extended."
+    },
+    {
+      "id": "base-join/go-join-path-rooted-element",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/golang/go/blob/go1.23.0/src/net/url/url.go#L1237-L1256",
+      "versionRange": ">=1.19",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "go-join-path",
+        "base": "https://api.example.com/api/",
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root"
+      },
+      "note": "A leading / on an element does not reset the path (unlike ResolveReference)."
+    },
+    {
+      "id": "base-join/go-join-path-collapses",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/golang/go/blob/go1.23.0/src/net/url/url.go#L1237-L1256",
+      "versionRange": ">=1.19",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "go-join-path",
+        "base": "https://api.example.com/api",
+        "path": "a//b"
+      },
+      "expect": {
+        "template": "/api/a/b",
+        "pathAnchor": "root"
+      },
+      "note": "path.Join collapses repeated slashes."
+    },
+    {
+      "id": "base-join/go-join-path-dot-dot-escapes",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/golang/go/blob/go1.23.0/src/net/url/url.go#L1237-L1256",
+      "versionRange": ">=1.19",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "go-join-path",
+        "base": "https://api.example.com/api",
+        "path": "../x"
+      },
+      "expect": {
+        "template": "/x",
+        "pathAnchor": "root"
+      },
+      "note": "path.Join cleans .. against the base path, so it can leave the base path."
+    },
+    {
+      "id": "base-join/go-join-path-trailing-slash",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/golang/go/blob/go1.23.0/src/net/url/url.go#L1237-L1256",
+      "versionRange": ">=1.19",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "go-join-path",
+        "base": "https://api.example.com/api",
+        "path": "users/"
+      },
+      "expect": {
+        "template": "/api/users/",
+        "pathAnchor": "root"
+      },
+      "note": "JoinPath keeps one trailing slash when the last element ends with /."
+    },
+    {
+      "id": "base-join/go-join-path-host-only",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/golang/go/blob/go1.23.0/src/net/url/url.go#L1237-L1256",
+      "versionRange": ">=1.19",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "go-join-path",
+        "base": "https://api.example.com",
+        "path": "users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/go-join-path-unknown-base",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#go-rust-python-클라이언트",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "go-join-path",
+        "base": null,
+        "path": "/users/"
+      },
+      "expect": {
+        "template": "/users/",
+        "pathAnchor": "base"
+      },
+      "note": "Unknown base: the cleaned element path is a tail behind the unknown base path."
+    },
+    {
+      "id": "base-join/go-join-path-unknown-base-dot-dot",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#go-rust-python-클라이언트",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "go-join-path",
+        "base": null,
+        "path": "../users"
+      },
+      "expectDynamic": true,
+      "expectLimitation": "ambiguous-base-join:",
+      "note": "Unknown base: which segment .. removes cannot be known."
+    },
+    {
+      "id": "base-join/resty-base-trailing-slash-trimmed",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/go-resty/resty/blob/v2.17.2/client.go#L193-L197",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "resty-base-url",
+        "base": "https://api.example.com/api/",
+        "path": "users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      },
+      "note": "SetBaseURL trims trailing slashes and parseRequestURL prefixes a missing / before concatenating (resty v2.17.2; v3.0.0-rc.4 composes the same path). Recorded as the RequestURI seen by a local server."
+    },
+    {
+      "id": "base-join/resty-rooted-path",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/go-resty/resty/blob/v2.17.2/middleware.go#L103-L126",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "resty-base-url",
+        "base": "https://api.example.com/api",
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root"
+      },
+      "note": "A leading / does not reset the base path (plain concatenation, not RFC 3986)."
+    },
+    {
+      "id": "base-join/resty-double-slash-kept",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/go-resty/resty/blob/v2.17.2/middleware.go#L103-L126",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "resty-base-url",
+        "base": "https://api.example.com/api",
+        "path": "//users"
+      },
+      "expect": {
+        "template": "/api//users",
+        "pathAnchor": "root"
+      },
+      "note": "The concatenation is sent as is; // is not collapsed."
+    },
+    {
+      "id": "base-join/resty-dot-segments-kept",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/go-resty/resty/blob/v2.17.2/middleware.go#L103-L126",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "resty-base-url",
+        "base": "https://api.example.com/api/",
+        "path": "./users"
+      },
+      "expect": {
+        "template": "/api/./users",
+        "pathAnchor": "root"
+      },
+      "note": "Dot segments are not removed; the server receives /api/./users."
+    },
+    {
+      "id": "base-join/resty-unknown-base",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#go-rust-python-클라이언트",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "resty-base-url",
+        "base": null,
+        "path": "users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "base"
+      }
+    },
+    {
+      "id": "base-join/resty-unknown-base-rooted",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#go-rust-python-클라이언트",
+      "appliesTo": [
+        "producer:gartograph"
+      ],
+      "input": {
+        "join": "resty-base-url",
+        "base": null,
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "base"
+      },
+      "note": "Unlike rfc3986 a rooted path stays behind the unknown base."
+    },
+    {
+      "id": "base-join/rust-url-join-base-directory",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/servo/rust-url/blob/v2.5.8/url/src/lib.rs#L413-L473",
+      "appliesTo": [
+        "producer:rustograph"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": "https://api.example.com/api/",
+        "path": "users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      },
+      "note": "url::Url::join parses the input with the base (WHATWG URL Standard); for these http(s) inputs the result equals RFC 3986 resolution. reqwest has no base URL, so this applies only when the code calls Url::join. Reproduced with url 2.5.8."
+    },
+    {
+      "id": "base-join/rust-url-join-base-file",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/servo/rust-url/blob/v2.5.8/url/src/lib.rs#L413-L473",
+      "appliesTo": [
+        "producer:rustograph"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": "https://api.example.com/api",
+        "path": "users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "root"
+      },
+      "note": "Url::join docs: without a trailing slash the last path component is a file name and is replaced."
+    },
+    {
+      "id": "base-join/rust-url-join-rooted",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/servo/rust-url/blob/v2.5.8/url/src/lib.rs#L413-L473",
+      "appliesTo": [
+        "producer:rustograph"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": "https://api.example.com/api/",
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "root"
+      }
+    },
+    {
+      "id": "base-join/rust-url-join-dot-segments",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/servo/rust-url/blob/v2.5.8/url/src/lib.rs#L413-L473",
+      "appliesTo": [
+        "producer:rustograph"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": "https://api.example.com/api/",
+        "path": "./users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root"
+      }
+    },
+    {
+      "id": "base-join/rfc3986-unknown-base-dot-segment",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#go-rust-python-클라이언트",
+      "appliesTo": [
+        "producer:gartograph",
+        "producer:rustograph",
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": null,
+        "path": "./users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "base"
+      },
+      "note": "./ is removed; the rest is a tail behind the unknown base directory."
+    },
+    {
+      "id": "base-join/rfc3986-unknown-base-dot-dot",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#go-rust-python-클라이언트",
+      "appliesTo": [
+        "producer:gartograph",
+        "producer:rustograph",
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": null,
+        "path": "../users"
+      },
+      "expectDynamic": true,
+      "expectLimitation": "ambiguous-base-join:",
+      "note": "Unknown base: which segment .. removes cannot be known."
+    },
+    {
+      "id": "base-join/rfc3986-unknown-base-rooted-dot-segments",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#go-rust-python-클라이언트",
+      "appliesTo": [
+        "producer:gartograph",
+        "producer:rustograph",
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "rfc3986",
+        "base": null,
+        "path": "/a/../users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "root"
+      }
+    },
+    {
+      "id": "base-join/httpx-base-without-trailing-slash",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/encode/httpx/blob/0.28.1/httpx/_client.py#L391-L411",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "httpx-base-url",
+        "base": "https://api.example.com/api",
+        "path": "users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      },
+      "note": "The base_url setter enforces a trailing / and _merge_url appends the relative path (httpx 0.28.1)."
+    },
+    {
+      "id": "base-join/httpx-rooted-path",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/encode/httpx/blob/0.28.1/httpx/_client.py#L391-L411",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "httpx-base-url",
+        "base": "https://api.example.com/api/",
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root"
+      },
+      "note": "_merge_url strips every leading / of the relative path, so a rooted path does not reset the base path (unlike RFC 3986)."
+    },
+    {
+      "id": "base-join/httpx-dot-dot-escapes",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/encode/httpx/blob/0.28.1/httpx/_urlparse.py#L447-L475",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "httpx-base-url",
+        "base": "https://api.example.com/api",
+        "path": "../users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "root"
+      },
+      "note": "normalize_path (RFC 3986 5.2.4) runs on the merged URL, so .. can leave the base path."
+    },
+    {
+      "id": "base-join/httpx-inner-double-slash-kept",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/encode/httpx/blob/0.28.1/httpx/_client.py#L391-L411",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "httpx-base-url",
+        "base": "https://api.example.com/api/",
+        "path": "a//b"
+      },
+      "expect": {
+        "template": "/api/a//b",
+        "pathAnchor": "root"
+      }
+    },
+    {
+      "id": "base-join/httpx-network-path",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/encode/httpx/blob/0.28.1/httpx/_client.py#L391-L411",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "httpx-base-url",
+        "base": "https://api.example.com/api",
+        "path": "//users"
+      },
+      "expectDynamic": true,
+      "expectLimitation": "ambiguous-base-join:",
+      "note": "URL('//users') parses users as a host with an empty path; the request goes to the base path. Producers do not claim a route for it."
+    },
+    {
+      "id": "base-join/httpx-unknown-base",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#go-rust-python-클라이언트",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "httpx-base-url",
+        "base": null,
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "base"
+      }
+    },
+    {
+      "id": "base-join/httpx-unknown-base-dot-dot",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#go-rust-python-클라이언트",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "httpx-base-url",
+        "base": null,
+        "path": "../users"
+      },
+      "expectDynamic": true,
+      "expectLimitation": "ambiguous-base-join:"
+    },
+    {
+      "id": "base-join/aiohttp-base-directory-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/aio-libs/aiohttp/blob/v3.14.3/aiohttp/client.py#L531-L535",
+      "versionRange": ">=3.11",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "aiohttp-base-url",
+        "base": "https://api.example.com/api/",
+        "path": "users"
+      },
+      "expect": {
+        "template": "/api/users",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      },
+      "note": "ClientSession._build_url joins with yarl URL.join (RFC 3986). Base URLs with a path and relative paths without a leading / are accepted since aiohttp 3.11. Reproduced with aiohttp 3.14.3 / yarl 1.25.1."
+    },
+    {
+      "id": "base-join/aiohttp-rooted-replaces-base-path",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/aio-libs/aiohttp/blob/v3.14.3/aiohttp/client.py#L531-L535",
+      "versionRange": ">=3.11",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "aiohttp-base-url",
+        "base": "https://api.example.com/api/",
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "root"
+      },
+      "note": "As in RFC 3986 a rooted path replaces the base path (aiohttp docs: request URLs should have no leading slash)."
+    },
+    {
+      "id": "base-join/aiohttp-host-only-base",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/aio-libs/aiohttp/blob/v3.14.3/aiohttp/client.py#L531-L535",
+      "versionRange": ">=3.8",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "aiohttp-base-url",
+        "base": "https://api.example.com",
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      },
+      "note": "The origin-only form accepted since aiohttp 3.8."
+    },
+    {
+      "id": "base-join/aiohttp-base-path-without-trailing-slash",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-run",
+      "source": "https://github.com/aio-libs/aiohttp/blob/v3.14.3/aiohttp/client.py#L355-L363",
+      "versionRange": ">=3.11",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "aiohttp-base-url",
+        "base": "https://api.example.com/api",
+        "path": "users"
+      },
+      "expectDynamic": true,
+      "expectLimitation": "ambiguous-base-join:",
+      "note": "ClientSession raises ValueError('base_url must have a trailing /'); no request is made."
+    },
+    {
+      "id": "base-join/aiohttp-unknown-base-rooted",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#go-rust-python-클라이언트",
+      "versionRange": ">=3.8",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "aiohttp-base-url",
+        "base": null,
+        "path": "/users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "root"
+      },
+      "note": "A rooted path works on every base_url form since aiohttp 3.8 (origin-only base in 3.8-3.10, a base path is replaced from 3.11)."
+    },
+    {
+      "id": "base-join/aiohttp-unknown-base-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#go-rust-python-클라이언트",
+      "versionRange": ">=3.11",
+      "appliesTo": [
+        "producer:pythograph"
+      ],
+      "input": {
+        "join": "aiohttp-base-url",
+        "base": null,
+        "path": "users"
+      },
+      "expect": {
+        "template": "/users",
+        "pathAnchor": "base"
+      },
+      "note": "Relative paths without a leading / are accepted since aiohttp 3.11; a producer that cannot prove 3.11+ emits dynamic + ambiguous-base-join:."
+    },
+    {
+      "id": "base-join/js-axios-root",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": "https://api.example.com/v1/",
+        "path": "/items"
+      },
+      "expect": {
+        "template": "/v1/items",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-axios-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": "https://api.example.com/v1",
+        "path": "items"
+      },
+      "expect": {
+        "template": "/v1/items",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-axios-empty",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": "https://api.example.com/v1",
+        "path": ""
+      },
+      "expect": {
+        "template": "/v1",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-axios-absolute",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": "https://api.example.com/v1",
+        "path": "https://other.example.com/items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "root",
+        "authority": "other.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-axios-authority",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": "https://api.example.com/v1",
+        "path": "//other.example.com/items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "root",
+        "authority": "other.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-axios-boundary",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": "https://api.example.com/v1///",
+        "path": "items"
+      },
+      "expect": {
+        "template": "/v1/items",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-axios-dot",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": "https://api.example.com/v1",
+        "path": "/items/../users"
+      },
+      "expect": {
+        "template": "/v1/users",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-axios-unknown",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": null,
+        "path": "/items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "base"
+      }
+    },
+    {
+      "id": "base-join/js-ky1-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix-url",
+        "base": "https://api.example.com/v1",
+        "path": "items"
+      },
+      "expect": {
+        "template": "/v1/items",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-ky1-double-slash",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix-url",
+        "base": "https://api.example.com/v1//",
+        "path": "items"
+      },
+      "expect": {
+        "template": "/v1//items",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-ky1-absolute-prefix",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix-url",
+        "base": "https://api.example.com/v1",
+        "path": "https://other.example.com/items"
+      },
+      "expect": {
+        "template": "/v1/https://other.example.com/items",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-ky2-prefix-root",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix",
+        "base": "https://api.example.com/v1///",
+        "path": "/items"
+      },
+      "expect": {
+        "template": "/v1/items",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-ky2-prefix-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix",
+        "base": "https://api.example.com/v1",
+        "path": "items"
+      },
+      "expect": {
+        "template": "/v1/items",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-ky2-prefix-absolute",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix",
+        "base": "https://api.example.com/v1",
+        "path": "https://other.example.com/items"
+      },
+      "expect": {
+        "template": "/v1/https://other.example.com/items",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-ky2-prefix-unknown",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix",
+        "base": null,
+        "path": "/items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "base"
+      }
+    },
+    {
+      "id": "base-join/js-ky2-base-file",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-base-url",
+        "base": "https://api.example.com/v1",
+        "path": "items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-ky2-base-dir",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-base-url",
+        "base": "https://api.example.com/v1/",
+        "path": "items"
+      },
+      "expect": {
+        "template": "/v1/items",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-ky2-base-root",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-base-url",
+        "base": "https://api.example.com/v1/",
+        "path": "/items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "root",
+        "authority": "api.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-ky2-base-absolute",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-base-url",
+        "base": "https://api.example.com/v1/",
+        "path": "https://other.example.com/items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "root",
+        "authority": "other.example.com"
+      }
+    },
+    {
+      "id": "base-join/js-ky2-base-unknown-root",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-base-url",
+        "base": null,
+        "path": "/items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "root"
+      }
+    },
+    {
+      "id": "base-join/js-ky2-base-unknown-relative",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-base-url",
+        "base": null,
+        "path": "items"
+      },
+      "expect": {
+        "template": "/items",
+        "pathAnchor": "base"
+      }
+    },
+    {
+      "id": "base-join/js-ky1-root-invalid",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix-url",
+        "base": "https://api.example.com/v1",
+        "path": "/items"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-axios-unknown-dot",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": null,
+        "path": "../items"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-ky2-prefix-unknown-dot",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix",
+        "base": null,
+        "path": "../items"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-axios-base-url-unknown-protocol-0",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": null,
+        "path": "data:payload"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-axios-base-url-unknown-protocol-1",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": null,
+        "path": "http:/missing-host"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-axios-base-url-unknown-protocol-2",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": null,
+        "path": "ftp://other.example.com/items"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-ky-prefix-url-unknown-protocol-0",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix-url",
+        "base": null,
+        "path": "data:payload"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-ky-prefix-url-unknown-protocol-1",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix-url",
+        "base": null,
+        "path": "http:/missing-host"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-ky-prefix-url-unknown-protocol-2",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix-url",
+        "base": null,
+        "path": "ftp://other.example.com/items"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-ky-prefix-unknown-protocol-0",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix",
+        "base": null,
+        "path": "data:payload"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-ky-prefix-unknown-protocol-1",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix",
+        "base": null,
+        "path": "http:/missing-host"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-ky-prefix-unknown-protocol-2",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-prefix",
+        "base": null,
+        "path": "ftp://other.example.com/items"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-ky-base-url-unknown-protocol-0",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-base-url",
+        "base": null,
+        "path": "data:payload"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-ky-base-url-unknown-protocol-1",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-base-url",
+        "base": null,
+        "path": "http:/missing-host"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-ky-base-url-unknown-protocol-2",
+      "ruleId": "compose.base-join",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "ky-base-url",
+        "base": null,
+        "path": "ftp://other.example.com/items"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-axios-invalid-protocol-0",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": "https://api.example.com/v1",
+        "path": "http:/missing-host"
+      },
+      "expectDynamic": true
+    },
+    {
+      "id": "base-join/js-axios-invalid-protocol-1",
+      "ruleId": "compose.base-join",
+      "provenance": "verified-source",
+      "source": "docs/HTTP-WRAPPERS.md#javascript-웹react-native-클라이언트",
+      "appliesTo": [
+        "producer:tsograph"
+      ],
+      "input": {
+        "join": "axios-base-url",
+        "base": "https://api.example.com/v1",
+        "path": "ftp://other.example.com/items"
+      },
+      "expectDynamic": true
+    },
+    {
+      "ruleId": "compose.wrapper-suffix",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#v2의-선택적-경로-suffix",
+      "appliesTo": [
+        "producer:cartograph"
+      ],
+      "id": "wrapper-suffix/decoded-segments",
+      "input": {
+        "main": "/v2/items",
+        "segments": [
+          {
+            "literal": "a/b"
+          },
+          {
+            "value": "slug"
+          },
+          {
+            "literal": "%?{}é"
+          }
+        ]
+      },
+      "expect": {
+        "template": "/v2/items/a%2Fb/{}/%25%3F%7B%7D%C3%A9"
+      }
+    },
+    {
+      "ruleId": "compose.wrapper-suffix",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#v2의-선택적-경로-suffix",
+      "appliesTo": [
+        "producer:cartograph"
+      ],
+      "id": "wrapper-suffix/empty-array",
+      "input": {
+        "main": "/v2/items",
+        "segments": []
+      },
+      "expect": {
+        "template": "/v2/items"
+      }
+    },
+    {
+      "ruleId": "compose.wrapper-suffix",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#v2의-선택적-경로-suffix",
+      "appliesTo": [
+        "producer:cartograph"
+      ],
+      "id": "wrapper-suffix/unresolved",
+      "input": {
+        "main": "/v2/items",
+        "unresolved": true
+      },
+      "expect": {
+        "channelPrefix": "/v2/items"
+      },
+      "expectDynamic": true
+    },
+    {
+      "ruleId": "compose.wrapper-suffix",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#v2의-선택적-경로-suffix",
+      "appliesTo": [
+        "producer:cartograph"
+      ],
+      "id": "wrapper-suffix/dot-segment",
+      "input": {
+        "main": "/v2/items",
+        "segments": [
+          {
+            "literal": ".."
+          }
+        ]
+      },
+      "expect": {
+        "channelPrefix": "/v2/items"
+      },
+      "expectDynamic": true
+    },
+    {
+      "ruleId": "compose.wrapper-suffix",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#v2의-선택적-경로-suffix",
+      "appliesTo": [
+        "producer:cartograph"
+      ],
+      "id": "wrapper-suffix/main-dynamic",
+      "input": {
+        "main": null,
+        "channelPrefix": "/v2",
+        "segments": [
+          {
+            "literal": "detail"
+          }
+        ]
+      },
+      "expect": {
+        "channelPrefix": "/v2"
+      },
+      "expectDynamic": true
+    },
+    {
+      "ruleId": "compose.wrapper-suffix",
+      "provenance": "contract",
+      "source": "docs/HTTP-WRAPPERS.md#v2의-선택적-경로-suffix",
+      "appliesTo": [
+        "producer:cartograph"
+      ],
+      "id": "wrapper-suffix/expanded-limit",
+      "input": {
+        "main": "/v2/items",
+        "segments": [
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          },
+          {
+            "value": "id"
+          }
+        ]
+      },
+      "expect": {
+        "channelPrefix": "/v2/items"
+      },
+      "expectDynamic": true
     }
   ]
 }

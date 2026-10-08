@@ -275,6 +275,157 @@ struct RouteCallsTests {
         #expect(wrappers[1].language == "kotlin" && wrappers[1].pathArg == .init(index: 0) && wrappers[1].defaultMethod == "GET")
     }
 
+    @Test("v2 suffix를 닫힌 형식으로 읽고 suffix 없는 v1과 v2는 같은 선언이다")
+    func parsesVersionTwoWrapperSuffix() throws {
+        let base = """
+            {"format":"http-wrappers","version":VERSION,"wrappers":[{
+              "language":"kotlin","kind":"function","owner":"Api","name":"call",
+              "pathArg":{"index":0},"defaultMethod":"GET","pathAnchor":"base"
+            }]}
+            """
+        let legacy = try HTTPWrapperFile.parse(
+            Data(base.replacingOccurrences(of: "VERSION", with: "1").utf8),
+            path: "/w.json"
+        )
+        let versionTwo = try HTTPWrapperFile.parse(
+            Data(base.replacingOccurrences(of: "VERSION", with: "2").utf8),
+            path: "/w.json"
+        )
+        #expect(legacy == versionTwo)
+        #expect(legacy[0].pathSuffix.isEmpty)
+
+        let suffix = """
+            {"format":"http-wrappers","version":2,"wrappers":[{
+              "language":"kotlin","kind":"function","owner":"Api","name":"call",
+              "pathArg":{"index":0},"defaultMethod":"GET","pathAnchor":"base",
+              "pathSuffix":[
+                {"literal":"fixed/segment"},
+                {"argument":{"label":"id"},"shape":"scalar"},
+                {"argument":{"index":2},"shape":"array"}
+              ]
+            }]}
+            """
+        let parsed = try HTTPWrapperFile.parse(Data(suffix.utf8), path: "/w.json")
+        #expect(parsed[0].pathSuffix == [
+            .literal("fixed/segment"),
+            .argument(.init(label: "id"), shape: .scalar),
+            .argument(.init(index: 2), shape: .array),
+        ])
+        for language in ["go", "python"] {
+            let foreign = try HTTPWrapperFile.parse(
+                Data(suffix.replacingOccurrences(of: "kotlin", with: language).utf8),
+                path: "/w.json"
+            )
+            #expect(foreign[0].language == language)
+            #expect(foreign[0].pathSuffix == parsed[0].pathSuffix)
+        }
+    }
+
+    @Test("v1 suffix와 열린 v2 suffix 항목, 잘못된 shape, 32개 초과를 거부한다")
+    func rejectsInvalidVersionTwoWrapperSuffix() {
+        let wrapper = """
+            "language":"swift","kind":"function","owner":"Api","name":"call",
+            "pathArg":{"index":0},"defaultMethod":"GET","pathAnchor":"base"
+            """
+        func document(version: Int, suffix: String) -> String {
+            """
+            {"format":"http-wrappers","version":\(version),"wrappers":[{
+              \(wrapper),"pathSuffix":\(suffix)
+            }]}
+            """
+        }
+        let tooMany = Array(repeating: #"{"literal":"x"}"#, count: 33).joined(separator: ",")
+        let invalid = [
+            document(version: 1, suffix: #"[{"literal":"x"}]"#),
+            document(version: 2, suffix: #"[{"literal":"x","extra":1}]"#),
+            document(version: 2, suffix: #"[{"literal":""}]"#),
+            document(version: 2, suffix: #"[{"literal":"."}]"#),
+            document(version: 2, suffix: #"[{"literal":".."}]"#),
+            document(version: 2, suffix: #"[{"literal":"\u0001"}]"#),
+            document(version: 2, suffix: #"[{"literal":"\uD800"}]"#),
+            document(
+                version: 2,
+                suffix: #"[{"literal":"x","argument":{"index":1},"shape":"scalar"}]"#
+            ),
+            document(version: 2, suffix: #"[{"argument":{"index":1},"shape":"many"}]"#),
+            document(version: 2, suffix: "[\(tooMany)]"),
+        ]
+        for text in invalid {
+            #expect(throws: CartographError.self, "\(text)") {
+                try HTTPWrapperFile.parse(Data(text.utf8), path: "/w.json")
+            }
+        }
+    }
+
+    @Test("wrapper parser는 정확히 1 MiB를 받고 한 byte 초과는 크기 오류로 거부한다")
+    func wrapperFileSizeLimit() throws {
+        let prefix = Data(#"{"format":"http-wrappers","version":2,"wrappers":[]}"#.utf8)
+        var exact = prefix
+        exact.append(Data(repeating: 0x20, count: HTTPWrapperFile.maximumBytes - prefix.count))
+        #expect(try HTTPWrapperFile.parse(exact, path: "/w.json").isEmpty)
+        var over = exact
+        over.append(0x20)
+        do {
+            _ = try HTTPWrapperFile.parse(over, path: "/w.json")
+            Issue.record("cap+1 input should fail")
+        } catch let error as CartographError {
+            #expect(error.errorDescription?.contains("exceeds 1 MiB") == true)
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+    }
+
+    @Test("미상 main 뒤의 알려진 suffix도 조립 공백을 계량한다")
+    func reportsSuffixOnDynamicMain() throws {
+        let wrappers = """
+            {"format":"http-wrappers","version":2,"wrappers":[{
+              "language":"swift","kind":"function","owner":"Client","name":"request",
+              "pathArg":{"label":"path"},"defaultMethod":"GET","pathAnchor":"root",
+              "pathSuffix":[{"literal":"detail"}]
+            }]}
+            """
+        let source = """
+            final class Client {
+                func request(path: String) {}
+                func load() { request(path: "/base/" + value() + "-tail") }
+            }
+            """
+        let document = try makeService(files: ["/p/Sources/Client.swift": source, "/w/model.json": wrappers])
+            .routeCalls(wrappersPath: "/w/model.json")
+        #expect(document.facts.count == 1)
+        #expect(try #require(document.facts.first).dynamic)
+        #expect(document.limitations.contains("http-wrapper-unresolved: 1 call(s) had unresolved configured suffix segments"))
+    }
+
+    @Test("적용하지 못한 v2 suffix 호출은 dynamic 사실과 기존 unresolved 한계를 함께 남긴다")
+    func reportsUnresolvedVersionTwoWrapperSuffix() throws {
+        let wrappers = """
+            {"format":"http-wrappers","version":2,"wrappers":[{
+              "language":"swift","kind":"function","owner":"Client","name":"request",
+              "pathArg":{"label":"path"},"defaultMethod":"GET","pathAnchor":"root",
+              "pathSuffix":[{"argument":{"label":"segments"},"shape":"array"}]
+            }]}
+            """
+        let source = """
+            final class Client {
+                func request(path: String, segments: [String]) {}
+                func load(segments: [String]) {
+                    request(path: "/v1/items", segments: segments)
+                }
+            }
+            """
+        let result = try document(makeService(files: [
+            "/p/Sources/Client.swift": source,
+            "/w/http-wrappers.json": wrappers,
+        ]))
+        let fact = try #require(result.facts.first)
+        #expect(fact.dynamic)
+        #expect(fact.channelPrefix == "/v1/items")
+        #expect(result.limitations.contains(
+            "http-wrapper-unresolved: 1 call(s) had unresolved configured suffix segments"
+        ))
+    }
+
     @Test("선언 파일을 읽지 못하면 경로를 고치라고 안내한다")
     func unreadableWrapperFile() {
         let service = makeService(files: ["/p/Sources/Api.swift": Self.apiSource])

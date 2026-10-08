@@ -80,14 +80,14 @@ extension CartographService {
     }
 
     private func loadRouteWrappers(_ path: String) throws -> [HTTPWrapperDeclaration] {
-        let text: String
+        let data: Data
         do {
-            text = try environment.fileSystem.readText(at: path)
+            data = try environment.fileSystem.readData(at: path, maximumBytes: HTTPWrapperFile.maximumBytes)
         } catch {
             throw CartographError.invalidConfiguration(path: path, reason:
-                "Could not read the http-wrappers file: \(error.localizedDescription). Check the --wrappers path.")
+                "Could not read the http-wrappers file. Check the --wrappers path and file permissions.")
         }
-        return try HTTPWrapperFile.parse(Data(text.utf8), path: path)
+        return try HTTPWrapperFile.parse(data, path: path)
     }
 
     /// 문서와 사실의 service 가 다르면 소비자가 문서 전체를 거부한다. 내보내기 전에 막는다.
@@ -212,6 +212,11 @@ extension CartographService {
         if counts.unprovenReceiverCalls > 0 {
             result.append("route-call-coverage: \(counts.unprovenReceiverCalls) call(s) match a declared wrapper function's "
                 + "name and labels but their receiver type could not be proven, so they were not emitted")
+        }
+        if counts.wrapperSuffixUnresolved > 0 {
+            result.append(
+                "http-wrapper-unresolved: \(counts.wrapperSuffixUnresolved) call(s) had unresolved configured suffix segments"
+            )
         }
         if counts.urlRewriters > 0 {
             result.append("url-rewrite-interceptors: \(counts.urlRewriters) custom Moya endpoint mapping(s) or Alamofire "
