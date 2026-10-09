@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-09
+
 ### Added
 
 - Optional full graph occurrence evidence, source/index inventories and separate module import facts
@@ -14,7 +16,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A separate shared-declaration projection preserves raw graph identities and per-module variants while
   choosing an explicit primary module; unresolved and conditionally compiled correspondence stays visible.
 - Explicit `http-wrappers` v2 suffix segment bindings support scalar/array paths with bounded expansion,
-  encoding and dynamic fallback. v1 behavior remains unchanged.
+  encoding and dynamic fallback. Suffix-free v2 and v1 use the same behavior in this version;
+  constructor label/type fixes apply to both.
 
 ### Fixed
 
