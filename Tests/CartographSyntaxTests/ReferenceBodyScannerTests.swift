@@ -121,6 +121,21 @@ struct ReferencePositionEnrichmentTests {
         #expect(SnapshotEnricher.markingReferencePositions(references, with: facts) == references)
     }
 
+    @Test("다른 파일의 본문이 알려져 있어도 미수집 구간은 보존하고 빈 구간만 signature로 분류한다")
+    func preservesUnknownBesideKnownEmptyRanges() {
+        let unknown = reference(from: "A", to: "B", line: 1, column: 1, path: "/p/Unknown.swift")
+            .withPosition(.body)
+        let empty = reference(from: "C", to: "D", line: 1, column: 1, path: "/p/Empty.swift")
+            .withPosition(.body)
+        let facts = [
+            "/p/Unknown.swift": SourceFileFacts(path: "/p/Unknown.swift", declarations: []),
+            "/p/Empty.swift": SourceFileFacts(path: "/p/Empty.swift", declarations: [], bodyRanges: []),
+        ]
+        let result = SnapshotEnricher.markingReferencePositions([unknown, empty], with: facts)
+        #expect(result[0] == unknown)
+        #expect(result[1].position == .signature)
+    }
+
     @Test("보강이 기존 자리 표시를 덮어쓰지 않는다")
     func enrichmentKeepsExplicitPositionWhenFactsAbsent() {
         var builder = SnapshotBuilder()

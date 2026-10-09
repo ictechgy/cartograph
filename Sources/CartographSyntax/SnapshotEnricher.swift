@@ -277,11 +277,14 @@ public struct SnapshotEnricher: Sendable {
         with facts: [String: SourceFileFacts]
     ) -> [IndexedReference] {
         guard facts.contains(where: { $0.value.bodyRanges != nil }) else { return references }
+        let rangesByFile = facts.compactMapValues { file in
+            file.bodyRanges.map(SourceBodyRangeIndex.init)
+        }
         return references.map { reference in
             guard let location = reference.location,
-                  let ranges = facts[location.path]?.bodyRanges
+                  let ranges = rangesByFile[location.path]
             else { return reference }
-            let inBody = ranges.contains { $0.contains(location) }
+            let inBody = ranges.contains(location)
             return reference.withPosition(inBody ? .body : .signature)
         }
     }
