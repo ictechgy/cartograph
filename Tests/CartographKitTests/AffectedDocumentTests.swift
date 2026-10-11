@@ -13,7 +13,8 @@ struct AffectedDocumentTests {
         return CartographService(
             configuration: configuration,
             environment: .init(
-                fileSystem: InMemoryFileSystem(),
+                fileSystem: InMemoryFileSystem(files: Dictionary(uniqueKeysWithValues:
+                    snapshot.filePaths.map { ($0, "") })),
                 indexProviderOverride: StaticIndexProvider(snapshot),
                 usesSyntaxCache: false
             )
@@ -305,6 +306,92 @@ struct AffectedDocumentTests {
         let decoded = try JSONDecoder().decode(AffectedDocument.self, from: Data(outcome.output.utf8))
         #expect(decoded.version == 1)
         #expect(decoded.tests.first?.runtimeEvidence == nil)
+    }
+
+
+    /// B의 런타임 조회에는 타입으로 향하는 컴파일러 간선이 없다.
+    private func skippedRuntimeSourceSnapshot() -> IndexSnapshot {
+        var builder = SnapshotBuilder(path: "/p/Sources/Screen.swift")
+        builder.symbol("Screen", kind: .classType)
+        builder.symbol("A", name: "testScreen()", kind: .method,
+            path: "/p/Tests/A.swift", attributes: [.unitTest])
+        builder.symbol("B", name: "testLookup()", kind: .method,
+            path: "/p/Tests/B.swift", attributes: [.unitTest])
+        builder.reference(from: "A", to: "Screen", kind: .reference)
+        builder.reference(from: "B", to: "c:@F@NSClassFromString", kind: .call, path: "/p/Tests/B.swift")
+        return builder.build()
+    }
+
+    @Test("런타임 사실을 만들지 못한 누락·읽기 실패 소스도 테스트 축소를 막는다", arguments: [false, true])
+    func skippedSourceWithoutRuntimeFactsRefusesSelection(unreadable: Bool) throws {
+        let snapshot = skippedRuntimeSourceSnapshot()
+        let hidden = "/p/Tests/B.swift"
+        let context = AnalysisContext(snapshot: snapshot,
+            missingSourcePaths: unreadable ? [] : [hidden],
+            unreadableSourcePaths: unreadable ? [hidden] : [], runtimeFiles: [])
+        let document = try service(snapshot).affectedDocument(symbols: ["Screen"], in: context)
+        #expect(document.tests.map(\.symbol.usr) == ["A"])
+        #expect(context.runtimeDiscovery()?.findings.isEmpty == true)
+        #expect(!document.limitations.contains { $0.hasPrefix("unresolved-runtime-boundaries:") })
+        let prefix = unreadable ? "unreadable-sources:" : "missing-sources:"
+        #expect(document.limitations.contains { $0.hasPrefix(prefix) })
+        #expect(document.xcodebuildSelection().output.isEmpty)
+        #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
+    }
+
+    @Test("실제 소스 읽기 실패가 명령의 불완전 분석 종료 결과까지 전달된다")
+    func unreadableRuntimeSourceRefusesCommandSelection() throws {
+        let snapshot = skippedRuntimeSourceSnapshot()
+        let fileSystem = InMemoryFileSystem(files: Dictionary(uniqueKeysWithValues:
+            snapshot.filePaths.map { ($0, "") }))
+        fileSystem.setReadError(.fileReadNoPermission, for: "/p/Tests/B.swift")
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        let service = CartographService(configuration: configuration, environment: .init(
+            fileSystem: fileSystem, indexProviderOverride: StaticIndexProvider(snapshot), usesSyntaxCache: false))
+        let outcome = try service.affected(symbols: ["Screen"], format: "xcodebuild")
+        #expect(outcome.output.isEmpty)
+        #expect(!outcome.subjectNotFound)
+        #expect(outcome.incompleteAnalysis?.contains("Source/index coverage is incomplete") == true)
+        #expect(outcome.notes.contains { $0.hasPrefix("unreadable-sources:") })
+    }
+
+    @Test("런타임 경계가 없어도 낡거나 인덱스가 없는 소스가 테스트 축소를 막는다", arguments: [false, true])
+    func incompleteIndexRefusesSelection(stale: Bool) throws {
+        let hidden = "/p/Tests/Unseen.swift"
+        let indexed = Date(timeIntervalSince1970: 1_000)
+        let fileSystem = InMemoryFileSystem(files: [hidden: ""])
+        fileSystem.setModificationDate(indexed.addingTimeInterval(10), for: hidden)
+        var snapshot = snapshot()
+        snapshot.indexedFileDates = stale ? [hidden: indexed] : [:]
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        let service = CartographService(configuration: configuration, environment: .init(
+            fileSystem: fileSystem, indexProviderOverride: StaticIndexProvider(snapshot)))
+        let context = AnalysisContext(snapshot: snapshot, runtimeFiles: [])
+        let document = try service.affectedDocument(symbols: ["P"], in: context)
+        #expect(document.tests.map(\.symbol.usr) == ["T"])
+        let prefix = stale ? "index-staleness:" : "unindexed-sources:"
+        #expect(document.limitations.contains { $0.hasPrefix(prefix) })
+        #expect(document.xcodebuildSelection().output.isEmpty)
+        #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
+    }
+
+    @Test("분석 범위를 좁힌 필터가 숨긴 테스트를 모듈 확대만으로 덮었다고 주장하지 않는다", arguments: [false, true])
+    func filteredGraphRefusesSelection(pathFilter: Bool) throws {
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        if pathFilter { configuration.include = ["Sources/**"] } else { configuration.edgeKinds = [.call] }
+        let snapshot = snapshot()
+        let service = CartographService(configuration: configuration, environment: .init(
+            fileSystem: InMemoryFileSystem(), indexProviderOverride: StaticIndexProvider(snapshot)))
+        let context = AnalysisContext(snapshot: snapshot, pathFilter: configuration.pathFilter,
+            edgeKinds: configuration.edgeKinds, runtimeFiles: [])
+        let document = try service.affectedDocument(symbols: ["P"], in: context)
+        let prefix = pathFilter ? "configured-path-filter:" : "configured-edge-kinds:"
+        #expect(document.limitations.contains { $0.hasPrefix(prefix) })
+        #expect(document.xcodebuildSelection().output.isEmpty)
+        #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
     }
 
 }

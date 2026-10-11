@@ -13,7 +13,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   bindings as default `impact`, preserving automatic evidence separately from compiler calls.
   String-based class lookup and resource changes no longer silently omit reachable tests.
 - `affected --format xcodebuild` refuses a narrowed test run when automatic runtime analysis has
-  unresolved, stale or unsupported paths. JSON/text still report known tests and measured limitations.
+  unresolved, stale or unsupported paths, or source/index coverage is incomplete. Missing/unreadable
+  sources, stale/unindexed files, empty indexes and narrowing filters also block partial selectors,
+  including files that produced no runtime facts. JSON/text still report known tests and limitations.
 - Affected-result selection, summary and unresolved-input lists now report every output truncation;
   ambiguous candidates share a document-wide budget and colliding test names have deterministic ordering.
 

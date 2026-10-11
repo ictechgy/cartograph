@@ -754,9 +754,9 @@ class is a top-level XCTest class with no subclass (a subclass runs the inherite
 name, which the base-class identifier skips) whose Objective-C runtime name is its source name, and
 the method is a parameterless `test…` method the index marks as an XCTest. Every other reached test
 selects its whole test module: swift-testing functions, whose identifier format has varied between
-Xcode releases, nested classes, classes renamed with `@objc(…)`, and graphs narrowed by
-`edge_kinds` or path filters, where a subclass may be invisible. Standard error says how many tests
-were widened this way, followed by the analysis limitations.
+Xcode releases, nested classes, and classes renamed with `@objc(…)`. Standard error says how many
+tests were widened this way, followed by the analysis limitations. A graph narrowed by `edge_kinds`
+or path filters cannot establish all affected test modules, so it refuses selection entirely.
 
 The module name stands in for the xcodebuild test target name. They match for SwiftPM test targets
 and for Xcode targets whose names are valid identifiers; a target named `My App Tests` has the
@@ -764,8 +764,10 @@ module `My_App_Tests`. Unlike an unknown class, an unknown target is a loud fail
 stops with "isn't a member of the specified test plan or scheme" — so such a project sees the
 mismatch rather than a silently empty run; use the JSON output there. When the list is truncated by `--limit` or
 `--depth`, or an input is unresolved, the command prints no arguments and exits 2 (unresolved named
-declarations still exit 64). Unresolved, stale or unsupported automatic runtime analysis also
-prints no selectors and exits 2: additional tests may reach the change through those paths. With no
+declarations still exit 64). Missing/unreadable sources, stale or absent index units, an empty index,
+and narrowing path/edge filters also print no selectors and exit 2. These checks apply even when a
+skipped source produced no runtime facts. Unresolved, stale or unsupported automatic runtime analysis
+likewise refuses selection: additional tests may reach the change through those paths. With no
 `-only-testing:` argument xcodebuild runs every test. Inspect `runtime discover` and rebuild before
 narrowing the run. When there are no such gaps, no reached test prints nothing and exits 0; check
 `summary.testCount` in the JSON if skipping the test run is the intent.

@@ -319,6 +319,17 @@ extension AffectedDocument {
         if truncated.output || truncated.depth {
             return "The affected test list was truncated; increase --limit or --depth." + fallback
         }
+        // 읽지 못한 파일은 런타임 경계 자체를 만들지 못한다. 경계 경고만 확인하면
+        // 그런 파일의 테스트를 빠뜨린 채 부분 선택자를 내보내므로 소스 범위도 확인한다.
+        let coverageGaps = [
+            "empty-index:", "index-staleness:", "unindexed-sources:", "missing-sources:",
+            "unreadable-sources:", "configured-path-filter:", "configured-edge-kinds:",
+        ]
+        if limitations.contains(where: { limitation in coverageGaps.contains { limitation.hasPrefix($0) } }) {
+            return "Source/index coverage is incomplete; additional tests may reach this change."
+                + " Restore source access, rebuild relevant targets and remove analysis filters before narrowing the run."
+                + fallback
+        }
         if limitations.contains(where: {
             $0.hasPrefix("unresolved-runtime-boundaries:") || $0.hasPrefix("incomplete-runtime-analysis:")
         }) {
