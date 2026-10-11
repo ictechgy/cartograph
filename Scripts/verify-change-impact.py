@@ -124,6 +124,31 @@ def main() -> int:
             ["impact", "LiveStore", "--limit", "1", "--format", "json"], "limited")
         if not limited["truncated"]["output"] or len(limited["affected"]) != 1:
             raise RuntimeError("output truncation was hidden")
+        runtime_impact = json_document(binary, workspace, before_store, output,
+            ["impact", "RuntimeController", "--format", "json"], "runtime-impact")
+        runtime_affected = json_document(binary, workspace, before_store, output,
+            ["affected", "RuntimeController", "--format", "json"], "runtime-affected")
+        expected_runtime_tests = {"resolvesRuntimeController()"}
+        runtime_test_names = {row["symbol"]["name"] for row in runtime_affected["tests"]}
+        if runtime_test_names != expected_runtime_tests:
+            raise RuntimeError(f"runtime test selection omitted a test or included unrelated tests: {runtime_test_names}")
+        if {row["name"] for row in runtime_impact["tests"]} != runtime_test_names:
+            raise RuntimeError("affected and impact disagree about automatically discovered runtime consumers")
+        if not any(row["symbol"]["name"] == "resolveRuntimeController()"
+                   and row["relationship"] == "automaticRuntime" for row in runtime_impact["affected"]):
+            raise RuntimeError("fixture no longer exercises the missing compiler-edge boundary")
+        resource_affected = json_document(binary, workspace, before_store, output,
+            ["affected", "--file", "Sources/ImpactData/Resources/RuntimeScreen.xib", "--format", "json"],
+            "resource-affected")
+        if resource_affected["status"] != "found" or {
+            row["symbol"]["name"] for row in resource_affected["tests"]
+        } != expected_runtime_tests:
+            raise RuntimeError("resource change lost its bound Swift declaration or runtime test consumers")
+        runtime_selectors = run(
+            [str(binary), "affected", "RuntimeController", "--format", "xcodebuild", "--project", str(workspace),
+             "--index-store", str(before_store)], cwd=workspace, output=output, name="runtime-selectors")
+        if runtime_selectors != "-only-testing:ImpactChecks\n":
+            raise RuntimeError(f"runtime test module selector was not preserved: {runtime_selectors!r}")
         before_snapshot = output / "before.json"
         run(
             [str(binary), "snapshot", "--revision", "before-change", "--project", str(workspace), "--index-store", str(before_store), "--output", str(before_snapshot)],
@@ -174,6 +199,9 @@ def main() -> int:
             "status": "passed",
             "witnessDependents": len(witness["affected"]),
             "containerDependents": len(container["affected"]),
+            "runtimeAffectedTests": sorted(runtime_test_names),
+            "resourceAffectedTests": sorted(row["symbol"]["name"] for row in resource_affected["tests"]),
+            "runtimeSelector": runtime_selectors.strip(),
             "beforeSnapshot": str(before_snapshot),
             "deletedBeforeAffected": sorted(before_names),
             "renamedBeforeAffected": sorted(renamed_before),

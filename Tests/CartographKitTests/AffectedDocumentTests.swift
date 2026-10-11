@@ -236,4 +236,75 @@ struct AffectedDocumentTests {
         #expect(outcome.incompleteAnalysis == nil)
         #expect(!outcome.subjectNotFound)
     }
+
+    @Test("선택과 변경 범위 잘림도 테스트 수와 무관하게 명시한다")
+    func reportsSelectionTruncation() throws {
+        let document = try document(service(snapshot(includeTest: false)), symbols: ["P", "M"], limit: 1)
+        #expect(document.summary.changeScopeSymbols == 2)
+        #expect(document.summary.testCount == 0)
+        #expect(document.selected.count == 1)
+        #expect(document.changeScope.count == 1)
+        #expect(document.requestedSymbols.count == 1)
+        #expect(document.truncated.sections == ["changeScope", "requestedSymbols", "selected"])
+        #expect(document.renderAffectedText().contains("Truncated sections: changeScope, requestedSymbols, selected"))
+        #expect(document.xcodebuildSelection().refusal?.contains("truncated") == true)
+    }
+
+    @Test("미해결 입력과 모호한 후보도 문서 전체 한도로 제한하며 전체 개수는 보존한다")
+    func boundsUnresolvedInputsAndCandidates() throws {
+        var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
+        for index in 1...3 {
+            builder.symbol("P\(index)", name: "process()", kind: .function, module: "M\(index)")
+        }
+        let document = try document(service(builder.build()), symbols: ["process", "process", "missing"], limit: 2)
+        #expect(document.summary.unresolvedInputs == 3)
+        #expect(document.selectionIssues.count == 2)
+        #expect(document.selectionIssues.first?.candidates?.count == 2)
+        #expect(document.selectionIssues.first?.candidatesOmitted == 1)
+        #expect(document.selectionIssues.last?.candidates?.isEmpty == true)
+        #expect(document.selectionIssues.last?.candidatesOmitted == 3)
+        #expect(document.truncated.sections == ["candidates", "requestedSymbols", "selectionIssues"])
+        #expect(document.xcodebuildSelection().output.isEmpty)
+    }
+
+    @Test("파일과 모듈 요약의 잘림도 전체 개수와 함께 명시한다")
+    func reportsFileAndModuleTruncation() throws {
+        var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
+        builder.symbol("P", kind: .function)
+        for index in 1...3 {
+            builder.symbol("T\(index)", name: "testProcess()", kind: .method,
+                module: "Tests\(index)", path: "/p/Tests/T\(index).swift", attributes: [.unitTest])
+            builder.reference(from: "T\(index)", to: "P", kind: .call)
+        }
+        let document = try document(service(builder.build()), symbols: ["P"], limit: 1)
+        #expect(document.summary.testCount == 3)
+        #expect(document.summary.testFileCount == 3)
+        #expect(document.summary.moduleCount == 3)
+        #expect(document.summary.testFiles.count == 1)
+        #expect(document.summary.modules.count == 1)
+        #expect(document.truncated.sections == ["modules", "testFiles", "tests"])
+    }
+
+    @Test("동일 위치와 한정 이름의 테스트도 USR로 순서를 고정한다")
+    func sortsCollidingTestIdentities() throws {
+        var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
+        builder.symbol("P", kind: .function)
+        for id in ["z", "a", "m"] {
+            builder.symbol(id, name: "testProcess()", kind: .method,
+                path: "/p/Tests/T.swift", line: 1, attributes: [.unitTest])
+            builder.reference(from: id, to: "P", kind: .call)
+        }
+        let document = try document(service(builder.build()), symbols: ["P"])
+        #expect(document.tests.map(\.symbol.usr) == ["a", "m", "z"])
+    }
+
+    @Test("일반 간선 응답은 선택적 런타임 필드를 생략하고 기존 v1 응답도 읽는다")
+    func preservesVersionOneCompatibility() throws {
+        let outcome = try service(snapshot()).affected(symbols: ["P"], format: "json")
+        #expect(!outcome.output.contains("runtimeEvidence"))
+        let decoded = try JSONDecoder().decode(AffectedDocument.self, from: Data(outcome.output.utf8))
+        #expect(decoded.version == 1)
+        #expect(decoded.tests.first?.runtimeEvidence == nil)
+    }
+
 }
