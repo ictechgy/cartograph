@@ -36,6 +36,10 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
         public let relationship: String
         public let edges: [String]
         public let dispatchContract: SymbolQuery.Subject?
+        /// 컴파일러 간선과 구분한 자동 런타임 연결의 출처. 실행 관측을 뜻하지 않는다.
+        public let runtimeEvidence: [RuntimeEvidenceReference]?
+        /// 출력 예산 때문에 생략한 근거 수. 없으면 키를 싣지 않는다.
+        public let runtimeEvidenceOmitted: Int?
         /// `xcodebuild -only-testing:` 에 그대로 넘길 수 있다고 증명한 XCTest 식별자.
         ///
         /// 증명하지 못하면 키가 빠진다. 그때 이 테스트를 고르는 안전한 방법은 모듈 전체다.
@@ -102,8 +106,13 @@ extension CartographService {
         }
         let context = try existingContext ?? loadContext()
         let graph = context.buildGraph(level: .symbol).graph
-        let selection = ImpactSelection(symbols: symbols, files: files, projectPath: projectPath, graph: graph)
-        let report = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth)
+        let automatic = context.runtimeDiscovery()
+        let artifactTargets = ImpactSelection.artifactTargets(in: automatic,
+            resourcePaths: context.runtimeFiles?.map(\.path) ?? [])
+        let selection = ImpactSelection(symbols: symbols, files: files, projectPath: projectPath,
+            graph: graph, artifactTargets: artifactTargets)
+        let report = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth,
+            additionalDependencies: Self.automaticImpactDependencies(automatic))
         let reasons = context.impactReviewReasons()
 
         func isTest(_ id: NodeID) -> Bool {
@@ -121,6 +130,7 @@ extension CartographService {
             tests.append(AffectedDocument.Test(
                 symbol: Self.describe(node), depth: 0, via: nil,
                 relationship: "changed", edges: [], dispatchContract: nil,
+                runtimeEvidence: nil, runtimeEvidenceOmitted: nil,
                 xcodebuildIdentifier: identifier(id)
             ))
         }
@@ -132,6 +142,8 @@ extension CartographService {
                 relationship: visit.relationship.rawValue,
                 edges: visit.edges.map(\.rawValue),
                 dispatchContract: visit.dispatchContract.flatMap { graph.node($0) }.map(Self.describe),
+                runtimeEvidence: visit.runtimeEvidence.isEmpty ? nil : Array(visit.runtimeEvidence.prefix(limit)),
+                runtimeEvidenceOmitted: visit.runtimeEvidence.count > limit ? visit.runtimeEvidence.count - limit : nil,
                 xcodebuildIdentifier: identifier(visit.node)
             ))
         }
@@ -142,12 +154,22 @@ extension CartographService {
             let right = rhs.symbol.location
             if let left, let right, left != right { return left < right }
             if (left == nil) != (right == nil) { return right == nil }
-            return lhs.symbol.qualifiedName < rhs.symbol.qualifiedName
+            if lhs.symbol.qualifiedName != rhs.symbol.qualifiedName {
+                return lhs.symbol.qualifiedName < rhs.symbol.qualifiedName
+            }
+            return (lhs.symbol.usr ?? "") < (rhs.symbol.usr ?? "")
         }
         let testFiles = Set(tests.compactMap(\.symbol.location?.path)).sorted()
         let modules = Set(tests.compactMap(\.symbol.module)).sorted()
-        let limitations = analysisLimitations(context: context, symbolGraph: graph) + selectionLimitations
-        let truncatedTests = tests.count > limit
+        var limitations = analysisLimitations(context: context, symbolGraph: graph) + selectionLimitations
+            + Self.automaticRuntimeLimitations(automatic)
+        if let automatic, !automatic.limitations.isEmpty {
+            limitations.append("incomplete-runtime-analysis: runtime discovery reported \(automatic.limitations.count) "
+                + "limitation(s); unmodeled runtime paths may reach additional tests")
+        }
+        let output = AffectedOutput(selection: selection, report: report, testCount: tests.count,
+            testFileCount: testFiles.count, moduleCount: modules.count,
+            runtimeEvidenceTruncated: tests.prefix(limit).contains { $0.runtimeEvidenceOmitted != nil }, limit: limit)
         return AffectedDocument(
             status: selection.status,
             requestedSymbols: Array(symbols.prefix(limit)),
@@ -166,9 +188,9 @@ extension CartographService {
                 modules: Array(modules.prefix(limit)),
                 unresolvedInputs: selection.issues.count
             ),
-            selectionIssues: selection.issues,
+            selectionIssues: output.issues,
             limitations: limitations,
-            truncated: .init(depth: report.truncatedByDepth, sections: truncatedTests ? ["tests"] : [])
+            truncated: .init(depth: report.truncatedByDepth, sections: output.truncatedSections)
         )
     }
 
@@ -232,8 +254,10 @@ extension AffectedDocument {
         }
         if summary.testCount == 0 {
             lines.append("no test declaration reaches this change — review the affected declarations manually")
-        } else if truncated.output {
-            lines.append("tests truncated: counts are uncapped; increase --limit")
+        }
+        if truncated.output {
+            lines.append("Truncated sections: \(truncated.sections.joined(separator: ", ")); "
+                + "counts are uncapped; increase --limit")
         }
         if truncated.depth {
             lines.append("Truncated: consumer depth reached; increase --depth or omit it.")
@@ -295,10 +319,56 @@ extension AffectedDocument {
         if truncated.output || truncated.depth {
             return "The affected test list was truncated; increase --limit or --depth." + fallback
         }
+        // 읽지 못한 파일은 런타임 경계 자체를 만들지 못한다. 경계 경고만 확인하면
+        // 그런 파일의 테스트를 빠뜨린 채 부분 선택자를 내보내므로 소스 범위도 확인한다.
+        let coverageGaps = [
+            "empty-index:", "index-staleness:", "unindexed-sources:", "missing-sources:",
+            "unreadable-sources:", "configured-path-filter:", "configured-edge-kinds:",
+        ]
+        if limitations.contains(where: { limitation in coverageGaps.contains { limitation.hasPrefix($0) } }) {
+            return "Source/index coverage is incomplete; additional tests may reach this change."
+                + " Restore source access, rebuild relevant targets and remove analysis filters before narrowing the run."
+                + fallback
+        }
+        if limitations.contains(where: {
+            $0.hasPrefix("unresolved-runtime-boundaries:") || $0.hasPrefix("incomplete-runtime-analysis:")
+        }) {
+            return "Runtime analysis is incomplete; additional tests may reach this change."
+                + " Review runtime discover and rebuild before narrowing the test run." + fallback
+        }
         // 빈 모듈 이름은 `-only-testing:` 빈 선택자가 되어 아무것도 고르지 못한다.
         if tests.contains(where: { $0.xcodebuildIdentifier == nil && ($0.symbol.module ?? "").isEmpty }) {
             return "A reached test declaration has no module to select." + fallback
         }
         return nil
+    }
+}
+
+/// 모든 제한된 배열을 기록하고 모호한 입력 후보에도 문서 전체 예산을 적용한다.
+private struct AffectedOutput {
+    let issues: [ImpactDocument.SelectionIssue]
+    let truncatedSections: [String]
+
+    init(selection: ImpactSelection, report: ImpactReport, testCount: Int,
+         testFileCount: Int, moduleCount: Int, runtimeEvidenceTruncated: Bool, limit: Int) {
+        var remainingCandidates = limit
+        var candidatesTruncated = false
+        issues = selection.issues.prefix(limit).map { issue in
+            let candidates = issue.candidates.map { Array($0.prefix(remainingCandidates)) }
+            let omitted = (issue.candidates?.count ?? 0) - (candidates?.count ?? 0)
+            remainingCandidates -= candidates?.count ?? 0
+            candidatesTruncated = candidatesTruncated || omitted > 0
+            return .init(requested: issue.requested, kind: issue.kind, status: issue.status,
+                candidates: candidates, candidatesOmitted: omitted > 0 ? omitted : nil)
+        }
+        let counts = [
+            "requestedSymbols": selection.requestedSymbolCount, "requestedFiles": selection.files.count,
+            "selected": selection.selected.count, "changeScope": report.changed.count,
+            "tests": testCount, "testFiles": testFileCount, "modules": moduleCount,
+            "selectionIssues": selection.issues.count,
+        ]
+        truncatedSections = counts.filter { $0.value > limit }.map(\.key)
+            + (candidatesTruncated ? ["candidates"] : [])
+            + (runtimeEvidenceTruncated ? ["runtimeEvidence"] : [])
     }
 }

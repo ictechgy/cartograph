@@ -13,7 +13,8 @@ struct AffectedDocumentTests {
         return CartographService(
             configuration: configuration,
             environment: .init(
-                fileSystem: InMemoryFileSystem(),
+                fileSystem: InMemoryFileSystem(files: Dictionary(uniqueKeysWithValues:
+                    snapshot.filePaths.map { ($0, "") })),
                 indexProviderOverride: StaticIndexProvider(snapshot),
                 usesSyntaxCache: false
             )
@@ -236,4 +237,161 @@ struct AffectedDocumentTests {
         #expect(outcome.incompleteAnalysis == nil)
         #expect(!outcome.subjectNotFound)
     }
+
+    @Test("선택과 변경 범위 잘림도 테스트 수와 무관하게 명시한다")
+    func reportsSelectionTruncation() throws {
+        let document = try document(service(snapshot(includeTest: false)), symbols: ["P", "M"], limit: 1)
+        #expect(document.summary.changeScopeSymbols == 2)
+        #expect(document.summary.testCount == 0)
+        #expect(document.selected.count == 1)
+        #expect(document.changeScope.count == 1)
+        #expect(document.requestedSymbols.count == 1)
+        #expect(document.truncated.sections == ["changeScope", "requestedSymbols", "selected"])
+        #expect(document.renderAffectedText().contains("Truncated sections: changeScope, requestedSymbols, selected"))
+        #expect(document.xcodebuildSelection().refusal?.contains("truncated") == true)
+    }
+
+    @Test("미해결 입력과 모호한 후보도 문서 전체 한도로 제한하며 전체 개수는 보존한다")
+    func boundsUnresolvedInputsAndCandidates() throws {
+        var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
+        for index in 1...3 {
+            builder.symbol("P\(index)", name: "process()", kind: .function, module: "M\(index)")
+        }
+        let document = try document(service(builder.build()), symbols: ["process", "process", "missing"], limit: 2)
+        #expect(document.summary.unresolvedInputs == 3)
+        #expect(document.selectionIssues.count == 2)
+        #expect(document.selectionIssues.first?.candidates?.count == 2)
+        #expect(document.selectionIssues.first?.candidatesOmitted == 1)
+        #expect(document.selectionIssues.last?.candidates?.isEmpty == true)
+        #expect(document.selectionIssues.last?.candidatesOmitted == 3)
+        #expect(document.truncated.sections == ["candidates", "requestedSymbols", "selectionIssues"])
+        #expect(document.xcodebuildSelection().output.isEmpty)
+    }
+
+    @Test("파일과 모듈 요약의 잘림도 전체 개수와 함께 명시한다")
+    func reportsFileAndModuleTruncation() throws {
+        var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
+        builder.symbol("P", kind: .function)
+        for index in 1...3 {
+            builder.symbol("T\(index)", name: "testProcess()", kind: .method,
+                module: "Tests\(index)", path: "/p/Tests/T\(index).swift", attributes: [.unitTest])
+            builder.reference(from: "T\(index)", to: "P", kind: .call)
+        }
+        let document = try document(service(builder.build()), symbols: ["P"], limit: 1)
+        #expect(document.summary.testCount == 3)
+        #expect(document.summary.testFileCount == 3)
+        #expect(document.summary.moduleCount == 3)
+        #expect(document.summary.testFiles.count == 1)
+        #expect(document.summary.modules.count == 1)
+        #expect(document.truncated.sections == ["modules", "testFiles", "tests"])
+    }
+
+    @Test("동일 위치와 한정 이름의 테스트도 USR로 순서를 고정한다")
+    func sortsCollidingTestIdentities() throws {
+        var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
+        builder.symbol("P", kind: .function)
+        for id in ["z", "a", "m"] {
+            builder.symbol(id, name: "testProcess()", kind: .method,
+                path: "/p/Tests/T.swift", line: 1, attributes: [.unitTest])
+            builder.reference(from: id, to: "P", kind: .call)
+        }
+        let document = try document(service(builder.build()), symbols: ["P"])
+        #expect(document.tests.map(\.symbol.usr) == ["a", "m", "z"])
+    }
+
+    @Test("일반 간선 응답은 선택적 런타임 필드를 생략하고 기존 v1 응답도 읽는다")
+    func preservesVersionOneCompatibility() throws {
+        let outcome = try service(snapshot()).affected(symbols: ["P"], format: "json")
+        #expect(!outcome.output.contains("runtimeEvidence"))
+        let decoded = try JSONDecoder().decode(AffectedDocument.self, from: Data(outcome.output.utf8))
+        #expect(decoded.version == 1)
+        #expect(decoded.tests.first?.runtimeEvidence == nil)
+    }
+
+
+    /// B의 런타임 조회에는 타입으로 향하는 컴파일러 간선이 없다.
+    private func skippedRuntimeSourceSnapshot() -> IndexSnapshot {
+        var builder = SnapshotBuilder(path: "/p/Sources/Screen.swift")
+        builder.symbol("Screen", kind: .classType)
+        builder.symbol("A", name: "testScreen()", kind: .method,
+            path: "/p/Tests/A.swift", attributes: [.unitTest])
+        builder.symbol("B", name: "testLookup()", kind: .method,
+            path: "/p/Tests/B.swift", attributes: [.unitTest])
+        builder.reference(from: "A", to: "Screen", kind: .reference)
+        builder.reference(from: "B", to: "c:@F@NSClassFromString", kind: .call, path: "/p/Tests/B.swift")
+        return builder.build()
+    }
+
+    @Test("런타임 사실을 만들지 못한 누락·읽기 실패 소스도 테스트 축소를 막는다", arguments: [false, true])
+    func skippedSourceWithoutRuntimeFactsRefusesSelection(unreadable: Bool) throws {
+        let snapshot = skippedRuntimeSourceSnapshot()
+        let hidden = "/p/Tests/B.swift"
+        let context = AnalysisContext(snapshot: snapshot,
+            missingSourcePaths: unreadable ? [] : [hidden],
+            unreadableSourcePaths: unreadable ? [hidden] : [], runtimeFiles: [])
+        let document = try service(snapshot).affectedDocument(symbols: ["Screen"], in: context)
+        #expect(document.tests.map(\.symbol.usr) == ["A"])
+        #expect(context.runtimeDiscovery()?.findings.isEmpty == true)
+        #expect(!document.limitations.contains { $0.hasPrefix("unresolved-runtime-boundaries:") })
+        let prefix = unreadable ? "unreadable-sources:" : "missing-sources:"
+        #expect(document.limitations.contains { $0.hasPrefix(prefix) })
+        #expect(document.xcodebuildSelection().output.isEmpty)
+        #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
+    }
+
+    @Test("실제 소스 읽기 실패가 명령의 불완전 분석 종료 결과까지 전달된다")
+    func unreadableRuntimeSourceRefusesCommandSelection() throws {
+        let snapshot = skippedRuntimeSourceSnapshot()
+        let fileSystem = InMemoryFileSystem(files: Dictionary(uniqueKeysWithValues:
+            snapshot.filePaths.map { ($0, "") }))
+        fileSystem.setReadError(.fileReadNoPermission, for: "/p/Tests/B.swift")
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        let service = CartographService(configuration: configuration, environment: .init(
+            fileSystem: fileSystem, indexProviderOverride: StaticIndexProvider(snapshot), usesSyntaxCache: false))
+        let outcome = try service.affected(symbols: ["Screen"], format: "xcodebuild")
+        #expect(outcome.output.isEmpty)
+        #expect(!outcome.subjectNotFound)
+        #expect(outcome.incompleteAnalysis?.contains("Source/index coverage is incomplete") == true)
+        #expect(outcome.notes.contains { $0.hasPrefix("unreadable-sources:") })
+    }
+
+    @Test("런타임 경계가 없어도 낡거나 인덱스가 없는 소스가 테스트 축소를 막는다", arguments: [false, true])
+    func incompleteIndexRefusesSelection(stale: Bool) throws {
+        let hidden = "/p/Tests/Unseen.swift"
+        let indexed = Date(timeIntervalSince1970: 1_000)
+        let fileSystem = InMemoryFileSystem(files: [hidden: ""])
+        fileSystem.setModificationDate(indexed.addingTimeInterval(10), for: hidden)
+        var snapshot = snapshot()
+        snapshot.indexedFileDates = stale ? [hidden: indexed] : [:]
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        let service = CartographService(configuration: configuration, environment: .init(
+            fileSystem: fileSystem, indexProviderOverride: StaticIndexProvider(snapshot)))
+        let context = AnalysisContext(snapshot: snapshot, runtimeFiles: [])
+        let document = try service.affectedDocument(symbols: ["P"], in: context)
+        #expect(document.tests.map(\.symbol.usr) == ["T"])
+        let prefix = stale ? "index-staleness:" : "unindexed-sources:"
+        #expect(document.limitations.contains { $0.hasPrefix(prefix) })
+        #expect(document.xcodebuildSelection().output.isEmpty)
+        #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
+    }
+
+    @Test("분석 범위를 좁힌 필터가 숨긴 테스트를 모듈 확대만으로 덮었다고 주장하지 않는다", arguments: [false, true])
+    func filteredGraphRefusesSelection(pathFilter: Bool) throws {
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        if pathFilter { configuration.include = ["Sources/**"] } else { configuration.edgeKinds = [.call] }
+        let snapshot = snapshot()
+        let service = CartographService(configuration: configuration, environment: .init(
+            fileSystem: InMemoryFileSystem(), indexProviderOverride: StaticIndexProvider(snapshot)))
+        let context = AnalysisContext(snapshot: snapshot, pathFilter: configuration.pathFilter,
+            edgeKinds: configuration.edgeKinds, runtimeFiles: [])
+        let document = try service.affectedDocument(symbols: ["P"], in: context)
+        let prefix = pathFilter ? "configured-path-filter:" : "configured-edge-kinds:"
+        #expect(document.limitations.contains { $0.hasPrefix(prefix) })
+        #expect(document.xcodebuildSelection().output.isEmpty)
+        #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
+    }
+
 }
