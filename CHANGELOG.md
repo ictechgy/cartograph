@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-10-11
+
 ### Fixed
 
 - `affected` now follows the same automatically discovered runtime connections and resource-to-Swift
@@ -1383,6 +1385,9 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.25.1...HEAD
+[0.25.1]: https://github.com/ictechgy/cartograph/compare/0.25.0...0.25.1
+[0.25.0]: https://github.com/ictechgy/cartograph/compare/0.24.0...0.25.0
 [0.24.0]: https://github.com/ictechgy/cartograph/compare/0.23.1...0.24.0
 [0.23.0]: https://github.com/ictechgy/cartograph/compare/0.22.0...0.23.0
 [0.22.0]: https://github.com/ictechgy/cartograph/compare/0.21.0...0.22.0
