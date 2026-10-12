@@ -184,12 +184,11 @@ class ParsingTests(unittest.TestCase):
         def recorded_cli(command, *args, **kwargs):
             return ({"unit-1": unit, "record-1": record}[command[1]], {"wall_seconds": 0.001})
 
-        with mock.patch.object(BENCH, "capture", side_effect=recorded_cli), mock.patch.object(
-            BENCH, "selectors", side_effect=AssertionError("Selector work leaked into query")
-        ), mock.patch.object(
-            BENCH, "components", side_effect=AssertionError("SCC work leaked into query")
-        ), mock.patch.object(
-            BENCH, "graph_answers", side_effect=AssertionError("Graph task leaked into query")
+        with (
+            mock.patch.object(BENCH, "capture", side_effect=recorded_cli),
+            mock.patch.object(BENCH, "selectors", side_effect=AssertionError("Selector work leaked into query")),
+            mock.patch.object(BENCH, "components", side_effect=AssertionError("SCC work leaked into query")),
+            mock.patch.object(BENCH, "graph_answers", side_effect=AssertionError("Graph task leaked into query")),
         ):
             result = BENCH.baseline_graph(
                 Path("index-dump"),
@@ -257,6 +256,73 @@ class CheckoutTests(unittest.TestCase):
         (self.checkout / ".research").mkdir()
         (self.checkout / ".research" / "note.swift").write_text("not a package target\n")
         self.assertTrue(BENCH.verify_untracked_build_inputs(self.checkout, self.root / "evidence")["passed"])
+
+
+class CompilerTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.project = self.root / "fixture"
+        (self.project / "Sources").mkdir(parents=True)
+        (self.project / "Sources" / "Entry.swift").write_text("@main struct Entry { static func main() {} }\n")
+        self.sdk = self.root / "SDK With Spaces.sdk"
+        self.sdk.mkdir()
+        self.oracle = {"module": "Fixture", "runtime_stdout": "expected\n"}
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def compile(self):
+        return BENCH.compile_fixture(
+            Path("/toolchain/swiftc"), self.project, self.project / "index", self.oracle, self.root / "run", 30
+        )
+
+    def test_macos_compiler_receives_explicit_sdk_with_measured_discovery(self):
+        with (
+            mock.patch.object(BENCH.sys, "platform", "darwin"),
+            mock.patch.object(
+                BENCH,
+                "capture",
+                side_effect=[
+                    (str(self.sdk) + "\n", {"wall_seconds": 0.1}),
+                    ("26.4\n", {"wall_seconds": 0.2}),
+                    ("expected\n", {"wall_seconds": 0.3}),
+                ],
+            ) as capture,
+            mock.patch.object(BENCH, "run", return_value={"wall_seconds": 1.0}) as run,
+        ):
+            result = self.compile()
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index("-sdk") + 1], str(self.sdk))
+        self.assertEqual(capture.call_args_list[0].args[0], ["xcrun", "--sdk", "macosx", "--show-sdk-path"])
+        self.assertEqual(capture.call_args_list[1].args[0], ["xcrun", "--sdk", "macosx", "--show-sdk-version"])
+        self.assertEqual(result["sdk"]["path"], str(self.sdk))
+        self.assertEqual(result["sdk"]["version"], "26.4")
+        self.assertEqual(result["sdk"]["path_discovery"]["wall_seconds"], 0.1)
+        self.assertEqual(result["sdk"]["version_discovery"]["wall_seconds"], 0.2)
+        self.assertTrue(result["runtime_oracle_passed"])
+
+    def test_macos_missing_sdk_fails_before_compile(self):
+        with (
+            mock.patch.object(BENCH.sys, "platform", "darwin"),
+            mock.patch.object(BENCH, "capture", return_value=(str(self.sdk / "missing"), {})),
+            mock.patch.object(BENCH, "run") as run,
+            self.assertRaisesRegex(ValueError, "macOS SDK directory"),
+        ):
+            self.compile()
+        run.assert_not_called()
+
+    def test_linux_keeps_sdk_free_compile_and_runtime_oracle(self):
+        with (
+            mock.patch.object(BENCH.sys, "platform", "linux"),
+            mock.patch.object(BENCH, "capture", return_value=("expected\n", {})) as capture,
+            mock.patch.object(BENCH, "run", return_value={}) as run,
+        ):
+            result = self.compile()
+        self.assertNotIn("-sdk", run.call_args.args[0])
+        self.assertEqual(capture.call_count, 1)
+        self.assertIsNone(result["sdk"])
+        self.assertTrue(result["runtime_oracle_passed"])
 
 
 class ProcessTests(unittest.TestCase):

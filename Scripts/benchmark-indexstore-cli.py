@@ -782,6 +782,25 @@ def cg_sample(
     return result, measurement
 
 
+def fixture_sdk(project: Path, out: Path) -> dict | None:
+    """직접 호출한 Xcode swiftc에도 같은 선택 환경의 SDK를 명시하고 탐색 비용을 보존한다."""
+    if sys.platform != "darwin":
+        return None
+    path, path_measurement = capture(["xcrun", "--sdk", "macosx", "--show-sdk-path"], project, out / "sdk-path", 30)
+    sdk = Path(path.strip())
+    if not sdk.is_absolute() or not sdk.is_dir():
+        raise ValueError(f"Selected macOS SDK directory is missing or invalid: {path.strip()}")
+    version, version_measurement = capture(
+        ["xcrun", "--sdk", "macosx", "--show-sdk-version"], project, out / "sdk-version", 30
+    )
+    return {
+        "path": str(sdk),
+        "version": version.strip(),
+        "path_discovery": path_measurement,
+        "version_discovery": version_measurement,
+    }
+
+
 def compile_fixture(swiftc: Path, project: Path, store: Path, oracle: dict, out: Path, timeout: float) -> dict:
     build = project / ".build"
     build.mkdir(exist_ok=True)
@@ -790,8 +809,10 @@ def compile_fixture(swiftc: Path, project: Path, store: Path, oracle: dict, out:
         for source in sorted((project / "Sources").glob("*.swift"))
     }
     save(build / "output-file-map.json", mapping)
+    sdk = fixture_sdk(project, out)
     command = [
         str(swiftc),
+        *(["-sdk", sdk["path"]] if sdk else []),
         "-g",
         "-Onone",
         "-parse-as-library",
@@ -809,7 +830,7 @@ def compile_fixture(swiftc: Path, project: Path, store: Path, oracle: dict, out:
     text, runtime = capture([str(build / "fixture")], project, out / "runtime", 30)
     if text != oracle["runtime_stdout"]:
         raise ValueError(f"Fixture runtime oracle failed: expected {oracle['runtime_stdout']!r}, got {text!r}")
-    return {"compile": measurement, "runtime": runtime, "runtime_oracle_passed": True}
+    return {"sdk": sdk, "compile": measurement, "runtime": runtime, "runtime_oracle_passed": True}
 
 
 def fixture_run(args: argparse.Namespace, source: Path, cli: Path, library: Path, swiftc: Path, root: Path) -> dict:
