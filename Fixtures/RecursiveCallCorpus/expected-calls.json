@@ -1,0 +1,114 @@
+{
+  "source": "Sources/RecursiveCalls/RecursiveCalls.swift",
+  "symbols": {
+    "initializer": {
+      "name": "init(error:type:)",
+      "kind": "init",
+      "line": 4,
+      "column": 5,
+      "spelling": "init"
+    },
+    "method": {
+      "name": "makeErrorMessage(_:)",
+      "kind": "method",
+      "line": 14,
+      "column": 10,
+      "spelling": "makeErrorMessage"
+    },
+    "format": {
+      "name": "formatMessage()",
+      "kind": "function",
+      "line": 22,
+      "column": 6,
+      "spelling": "formatMessage"
+    },
+    "render": {
+      "name": "renderMessage()",
+      "kind": "function",
+      "line": 27,
+      "column": 6,
+      "spelling": "renderMessage"
+    },
+    "unused": {
+      "name": "unusedRecursion(_:)",
+      "kind": "function",
+      "line": 31,
+      "column": 6,
+      "spelling": "unusedRecursion"
+    },
+    "main": {
+      "name": "main()",
+      "kind": "method",
+      "line": 40,
+      "column": 17,
+      "spelling": "main"
+    }
+  },
+  "calls": [
+    {
+      "source": "initializer",
+      "target": "initializer",
+      "line": 6,
+      "column": 18,
+      "spelling": "init"
+    },
+    {
+      "source": "initializer",
+      "target": "initializer",
+      "line": 8,
+      "column": 18,
+      "spelling": "init"
+    },
+    {
+      "source": "method",
+      "target": "method",
+      "line": 16,
+      "column": 20,
+      "spelling": "makeErrorMessage"
+    },
+    {
+      "source": "format",
+      "target": "initializer",
+      "line": 23,
+      "column": 19,
+      "spelling": "RecursiveMessageInfo"
+    },
+    {
+      "source": "format",
+      "target": "method",
+      "line": 24,
+      "column": 20,
+      "spelling": "makeErrorMessage"
+    },
+    {
+      "source": "render",
+      "target": "format",
+      "line": 28,
+      "column": 5,
+      "spelling": "formatMessage"
+    },
+    {
+      "source": "unused",
+      "target": "unused",
+      "line": 33,
+      "column": 16,
+      "spelling": "unusedRecursion"
+    },
+    {
+      "source": "main",
+      "target": "render",
+      "line": 41,
+      "column": 22,
+      "spelling": "renderMessage"
+    }
+  ],
+  "recursiveSymbols": [
+    "initializer",
+    "method",
+    "unused"
+  ],
+  "unusedSymbols": [
+    "unused"
+  ],
+  "runtimeOutput": "recursive calls completed\n"
+}

@@ -1,0 +1,5 @@
+# 상위 저장소의 공개 API 보존 정책을 이 회귀 코퍼스에 적용하지 않는다.
+include:
+  - "Sources/**"
+retention:
+  retain_public: false

@@ -180,11 +180,18 @@ cartograph graph --level module --format dot   -o graph.dot
 cartograph graph --level type   --format mermaid            # PR 본문에 그대로 붙여넣기
 cartograph graph --level symbol --format json  -o graph.json
 cartograph graph --level symbol --format json --evidence -o graph-with-evidence.json
+cartograph graph --level symbol --format json --edge-kind call --include-self-loops -o calls.json
 cartograph graph --level module --format html  -o graph.html
 ```
 
 레벨은 `module`, `file`, `type`, `symbol` 네 가지입니다. HTML은 외부 CDN을 전혀 쓰지 않는
 단일 파일이라 폐쇄망에서도 열리고 보안 검토를 통과합니다.
+
+기본 그래프는 기존 그림 계약을 유지하기 위해 재귀 호출을 포함한 자기 간선을 생략합니다.
+`--include-self-loops`는 인덱스의 자기 참조 간선을 명시적으로 보존하며 `--level symbol`이 필요합니다.
+재귀 호출만 보려면 `--edge-kind call`, 각 호출 위치까지 보려면 `--evidence`를 함께 사용하세요.
+기본 `cycles`, 질의의 시작점 제외, 모듈·파일·타입 롤업은 바꾸지 않으며 `--declaration-projection`과
+함께 쓸 수 없습니다. 컴파일러 인덱스에 없는 호출을 복원하는 옵션은 아닙니다.
 
 `--evidence`는 최종 간선을 뒷받침하는 모든 인덱스 참조 발생을 원래 USR·origin·position,
 가능한 상대 파일/줄/열과 함께 내보냅니다. query 근거 상한은 적용하지 않습니다.

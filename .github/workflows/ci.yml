@@ -100,6 +100,7 @@ jobs:
           Scripts/verify-cli-contract.sh "$CARTOGRAPH"
           python3 Scripts/verify-action.py
           python3 Scripts/verify-index-cache.py
+          python3 Scripts/verify-recursive-calls.py --cartograph "$CARTOGRAPH"
 
       - name: Circular dependencies
         run: |

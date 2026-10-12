@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Add explicit `graph --include-self-loops --level symbol` export for recursive compiler calls and
+  their occurrence evidence, while preserving default graph, query and architecture-cycle behavior.
+
 ### Fixed
 
 - Refuse partial `affected --format xcodebuild` selectors when modeled source edits coexist with

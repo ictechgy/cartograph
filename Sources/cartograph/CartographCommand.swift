@@ -106,6 +106,12 @@ struct GraphCommand: ParsableCommand {
     var includeEvidence = false
 
     @Flag(
+        name: .customLong("include-self-loops"),
+        help: "Preserve recursive/self-reference edges in an explicit symbol-level graph; defaults remain unchanged."
+    )
+    var includeSelfLoops = false
+
+    @Flag(
         name: .customLong("declaration-projection"),
         help: "Project module-specific USRs for shared Swift declarations into a separate symbol JSON artifact."
     )
@@ -144,6 +150,12 @@ struct GraphCommand: ParsableCommand {
         if includeEvidence, let graphFormat, graphFormat != .json {
             throw ValidationError("--evidence requires graph --format json")
         }
+        guard !includeSelfLoops || options.level == .symbol else {
+            throw ValidationError("--include-self-loops requires explicit --level symbol")
+        }
+        guard !includeSelfLoops || !declarationProjection else {
+            throw ValidationError("--include-self-loops cannot be combined with --declaration-projection")
+        }
         guard declarationProjection == (primaryModule != nil) else {
             throw ValidationError("--declaration-projection and --primary-module must be given together")
         }
@@ -181,7 +193,8 @@ struct GraphCommand: ParsableCommand {
             outcome = try context.service.renderGraph(
                 level: options.level,
                 format: format,
-                includingEvidence: includeEvidence
+                includingEvidence: includeEvidence,
+                includingSelfLoops: includeSelfLoops
             )
         }
         try CommandSupport.emit(outcome, options: options, context: context)

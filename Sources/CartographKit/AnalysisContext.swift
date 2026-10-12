@@ -89,6 +89,7 @@ public struct AnalysisContext: Sendable {
         struct Key: Hashable {
             let level: GraphLevel
             let includeExternal: Bool
+            let includeSelfLoops: Bool
         }
 
         func result(for key: Key, make: () -> GraphBuilder.BuildResult) -> GraphBuilder.BuildResult {
@@ -162,13 +163,24 @@ public struct AnalysisContext: Sendable {
 
     /// 지정한 해상도의 그래프를 만든다. 같은 문맥·같은 해상도면 처음 만든 것을 돌려준다.
     public func buildGraph(level: GraphLevel, includeExternal: Bool = false) -> GraphBuilder.BuildResult {
-        graphCache.result(for: .init(level: level, includeExternal: includeExternal)) {
+        buildGraph(level: level, includeExternal: includeExternal, includeSelfLoops: false)
+    }
+
+    /// 자기 간선은 명시한 심볼 투영에만 포함한다. 롤업 내부 관계는 기존처럼 제거한다.
+    public func buildGraph(
+        level: GraphLevel, includeExternal: Bool = false, includeSelfLoops: Bool
+    ) -> GraphBuilder.BuildResult {
+        let keepsSelfLoops = includeSelfLoops && level == .symbol
+        return graphCache.result(for: .init(
+            level: level, includeExternal: includeExternal, includeSelfLoops: keepsSelfLoops
+        )) {
             GraphBuilder(
                 options: .init(
                     level: level,
                     pathFilter: pathFilter,
                     edgeKinds: edgeKinds,
-                    includeExternal: includeExternal
+                    includeExternal: includeExternal,
+                    dropSelfLoops: !keepsSelfLoops
                 )
             )
             .buildResult(from: snapshot)

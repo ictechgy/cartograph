@@ -89,6 +89,11 @@ public struct CartographService: Sendable {
     ///
     /// 여기를 지난 스냅샷은 비어 있지 않다. 그 불변식이 이 타입의 계약이다.
     public func loadContext() throws -> AnalysisContext {
+        try loadContext(includeSelfReferences: false)
+    }
+
+    /// 그래프 표현과 원시 참조 수집을 분리해 재귀 호출을 명시적으로 보존할 수 있게 한다.
+    public func loadContext(includeSelfReferences: Bool) throws -> AnalysisContext {
         // 근거 파일을 인덱스보다 먼저 읽는다. 파일이 깨졌을 때 인덱스 없는 프로젝트에서도
         // 그 오류가 보여야 CLI 계약 검증이 이 경로를 실제로 증명한다.
         let externalPath = configuration.externalRetentionsPath.map(resolveProjectRelativePath)
@@ -96,7 +101,8 @@ public struct CartographService: Sendable {
             .loadIfConfigured(at: externalPath)
         let inventory = projectFileInventory()
         let source = try makeIndexSource(
-            includeObjectiveCSources: true, sourceRoots: inventory.sourceFiles, inventory: inventory
+            includeObjectiveCSources: true, includeSelfReferences: includeSelfReferences,
+            sourceRoots: inventory.sourceFiles, inventory: inventory
         )
         let enriched = try enrich(source.provider.loadSnapshot(), inventory: inventory)
         let snapshot = enriched.snapshot
@@ -218,16 +224,36 @@ public struct CartographService: Sendable {
         format: GraphFormat?,
         includingEvidence: Bool
     ) throws -> CommandOutcome {
-        guard includingEvidence else { return try renderGraph(level: level, format: format) }
+        try renderGraph(level: level, format: format, includingEvidence: includingEvidence, includingSelfLoops: false)
+    }
+
+    /// 기본 그래프 계약을 유지하면서 명시적 심볼 자기 간선과 호출 위치를 함께 내보낸다.
+    public func renderGraph(
+        level: GraphLevel?,
+        format: GraphFormat?,
+        includingEvidence: Bool,
+        includingSelfLoops: Bool
+    ) throws -> CommandOutcome {
+        guard includingEvidence || includingSelfLoops else { return try renderGraph(level: level, format: format) }
+        let selectedLevel = level ?? configuration.level
+        guard !includingSelfLoops || selectedLevel == .symbol else {
+            throw CartographError.invalidConfiguration(
+                path: projectPath,
+                reason: "Self-loop export requires symbol level. Use --level symbol."
+            )
+        }
         let selectedFormat = format ?? configuration.graphFormat
-        guard selectedFormat == .json else {
+        guard !includingEvidence || selectedFormat == .json else {
             throw CartographError.invalidConfiguration(
                 path: projectPath,
                 reason: "Graph occurrence evidence is available only with JSON format. Use --format json."
             )
         }
-        let context = try loadContext()
-        let result = context.buildGraph(level: level ?? configuration.level)
+        let context = try loadContext(includeSelfReferences: includingSelfLoops)
+        let result = context.buildGraph(level: selectedLevel, includeSelfLoops: includingSelfLoops)
+        guard includingEvidence else {
+            return CommandOutcome(output: try GraphRendererFactory.make(selectedFormat).render(result.graph))
+        }
         let output = try JSONGraphEvidenceRenderer().render(
             result: result,
             snapshot: context.snapshot,
@@ -958,6 +984,7 @@ public struct CartographService: Sendable {
         let snapshot = try makeIndexSource(
             includeObjectiveCSources: true,
             includeExternalSymbols: true,
+            includeSelfReferences: true,
             sourceRoots: inventory.sourceFiles,
             inventory: inventory
         ).provider.loadSnapshot()
@@ -1142,7 +1169,7 @@ public struct CartographService: Sendable {
     /// 구문 값 그래프를 실제 컴파일러 대상과 연결해 호출별 요약을 질의한다.
     public func valueFlowDocument(symbol subject: String, limits: ValueFlowLimits = ValueFlowLimits()) throws
         -> ValueFlowDocument {
-        let source = try makeIndexSource(includeExternalSymbols: true)
+        let source = try makeIndexSource(includeExternalSymbols: true, includeSelfReferences: true)
         let raw = try source.provider.loadSnapshot()
         let loaded = ValueFlowSourceLoader(fileSystem: environment.fileSystem, projectPath: projectPath,
             pathFilter: configuration.pathFilter).load(snapshot: raw)
@@ -1220,6 +1247,7 @@ public struct CartographService: Sendable {
         let snapshot = try makeIndexSource(
             includeObjectiveCSources: true,
             includeExternalSymbols: true,
+            includeSelfReferences: true,
             sourceRoots: inventory.sourceFiles,
             inventory: inventory
         ).provider.loadSnapshot()
@@ -1336,6 +1364,7 @@ public struct CartographService: Sendable {
         do {
             return try makeIndexSource(
                 includeExternalSymbols: true,
+                includeSelfReferences: true,
                 sourceRoots: inventory?.sourceFiles,
                 inventory: inventory
             ).provider.loadSnapshot()
@@ -1691,6 +1720,7 @@ public struct CartographService: Sendable {
         guard !allowed.isEmpty else { return IndexSnapshot() }
         let source = try makeIndexSource(
             includeExternalSymbols: true,
+            includeSelfReferences: true,
             sourceRoots: allowed.sorted(),
             pathFilter: .passthrough
         )
@@ -1711,6 +1741,7 @@ public struct CartographService: Sendable {
     private func makeIndexSource(
         includeObjectiveCSources: Bool = false,
         includeExternalSymbols: Bool = false,
+        includeSelfReferences: Bool = false,
         sourceRoots: [String]? = nil,
         pathFilter: PathFilter? = nil,
         inventory: ProjectFileInventory? = nil
@@ -1750,7 +1781,7 @@ public struct CartographService: Sendable {
                 pathFilter: effectivePathFilter,
                 includeExternalSymbols: includeExternalSymbols,
                 includeObjectiveCSources: includeObjectiveCSources,
-                includeSelfReferences: includeExternalSymbols,
+                includeSelfReferences: includeSelfReferences,
                 readerMode: .raw
             ),
             fileSystem: environment.fileSystem
