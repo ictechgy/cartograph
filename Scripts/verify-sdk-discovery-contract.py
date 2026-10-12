@@ -814,6 +814,64 @@ class NativeDiscoveryTests(unittest.TestCase):
         attempt = self.synthetic_attempt(raw, code=1)
         return raw, attempt, alias
 
+    def cpp_parser_result_fixture(self):
+        raw, attempt, path, spellings = self.complete_cpp_fixture()
+        headers = self.sdk / "usr/include/c++/v1"
+        headers.mkdir(parents=True, exist_ok=True)
+        result_path = raw / "setup/discovery/results.json"
+        result = json.loads(result_path.read_text())
+        result["compiler_path_aliases"] = dict(
+            aliases={str(spellings[0]): str(spellings[1])}, directory_identity_sha256="a" * 64
+        )
+        coverage = M.SELECTOR.covered_path(str(headers), {"SDK": self.sdk})
+        result["proposal"]["clang_search_paths"] = [
+            dict(
+                context_id="cxx",
+                language="c++",
+                context_options=["-std=c++17"],
+                effective=[dict(path=str(headers), framework=False, coverage=coverage)],
+                ignored=[],
+            )
+        ]
+        result_path.write_text(json.dumps(result))
+        return raw, attempt, result_path, result, coverage
+
+    def test_complete_parser_result_relative_cpp_path_is_lossless_and_publishable(self):
+        raw, attempt, result_path, result, coverage = self.cpp_parser_result_fixture()
+        original = result_path.read_bytes()
+        status, code = self.publish(
+            raw, attempt, self.root / "public", ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)]
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(status["discovery_bundle_status"], "normalized")
+        self.assertNotIn("relative_path", coverage)
+        self.assertEqual(coverage["relative_path_components"], ["usr", "include", "c++", "v1"])
+        self.assertEqual(str(self.sdk.joinpath(*coverage["relative_path_components"])), coverage["canonical_path"])
+        self.assertEqual(result_path.read_bytes(), original)
+        public = json.loads((self.root / "public/discovery/setup/discovery/results.json").read_text())
+        saved = public["proposal"]["clang_search_paths"][0]["effective"][0]["coverage"]
+        self.assertEqual(saved["relative_path_components"], coverage["relative_path_components"])
+        self.assertEqual(saved["canonical_path"], "$SDK_CXX_HEADERS")
+
+    def test_complete_parser_result_retains_private_path_and_credential_blocks(self):
+        for extra in [
+            dict(note="/unmapped-private/person"),
+            dict(GITHUB_TOKEN="synthetic-only"),
+            dict(AWS_SECRET_ACCESS_KEY="synthetic-only"),
+        ]:
+            with self.subTest(extra=extra):
+                raw, attempt, result_path, result, coverage = self.cpp_parser_result_fixture()
+                coverage.update(extra)
+                result_path.write_text(json.dumps(result))
+                status, code = self.publish(
+                    raw, attempt, self.root / "public", ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)]
+                )
+                self.assertEqual(code, 1)
+                self.assertEqual(status["discovery_bundle_status"], "blocked")
+                self.assertTrue((self.root / "public/attempt.json").exists())
+                self.assertFalse((self.root / "public/discovery").exists())
+                self.tearDown_fixture_for_subtest()
+
     def test_verified_clang_cpp_parent_alias_normalizes_without_scanner_change(self):
         raw, attempt, alias = self.cpp_alias_fixture()
         public = self.root / "public"

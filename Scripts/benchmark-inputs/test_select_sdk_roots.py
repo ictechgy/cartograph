@@ -17,6 +17,27 @@ spec.loader.exec_module(selector)
 
 
 class RootSelectionTests(unittest.TestCase):
+    def test_root_relative_components_roundtrip_without_special_path_syntax(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name).resolve()
+            path = root / "usr/include/c++/v1"
+            path.mkdir(parents=True)
+            covered = selector.covered_path(str(path), {"SDK": root})
+            self.assertEqual(covered["relative_path_components"], ["usr", "include", "c++", "v1"])
+            self.assertEqual(root.joinpath(*covered["relative_path_components"]), Path(covered["canonical_path"]))
+            self.assertEqual(covered["path"], str(path))
+            self.assertEqual(covered["root"], "SDK")
+            self.assertNotIn("relative_path", covered)
+            self.assertEqual(selector.covered_path(str(root), {"SDK": root})["relative_path_components"], [])
+
+    def test_relative_components_reject_empty_dot_parent_separator_and_controls(self):
+        for value in ["", ".", "..", "/absolute", "a/b", "a\\b", "a\n", "a\x7f", None, 1]:
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(selector.DiscoveryError, "invalid-relative-path-component"):
+                    selector.relative_components(("valid", value))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

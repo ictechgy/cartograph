@@ -173,6 +173,21 @@ def parse_clang_search(text: str, aliases: dict[str, str] | None = None) -> dict
     return dict(effective=effective, ignored=ignored)
 
 
+def relative_components(parts: tuple[str, ...]) -> list[str]:
+    """루트 상대 경로를 손실 없는 JSON 조각으로 나타내며 경로 구문은 새로 허용하지 않는다."""
+    if any(
+        not isinstance(part, str)
+        or not part
+        or part in {".", ".."}
+        or "/" in part
+        or "\\" in part
+        or any(ord(c) < 32 or ord(c) == 127 for c in part)
+        for part in parts
+    ):
+        raise DiscoveryError("invalid-relative-path-component")
+    return list(parts)
+
+
 def covered_path(value: str, roots: dict[str, Path]) -> dict:
     target = existing_directory(value)
     for label, root in roots.items():
@@ -181,7 +196,7 @@ def covered_path(value: str, roots: dict[str, Path]) -> dict:
                 path=value,
                 canonical_path=str(target),
                 root=label,
-                relative_path=target.relative_to(root).as_posix(),
+                relative_path_components=relative_components(target.relative_to(root).parts),
                 scope="declared-immutable-root",
             )
     raise DiscoveryError("external-search-path")

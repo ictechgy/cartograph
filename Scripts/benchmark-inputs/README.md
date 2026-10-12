@@ -177,3 +177,23 @@ The native diagnostic directly observes /usr/lib/swift as a directory used for S
 search, with no content read. It remains an unresolved effective path. This observation establishes
 neither executable loader closure nor SDK/root acceptance. The next attempt must still retain that
 unresolved status and any further compiler context rather than silently broadening the root set.
+
+
+### Root-relative diagnostic path encoding
+
+Discovery coverage now stores `relative_path_components`, a lossless list beneath its explicit root,
+instead of the earlier `relative_path` scalar. For example, the selected SDK's libc++ path is
+`["usr", "include", "c++", "v1"]`; joining those components to the retained root reconstructs the
+retained canonical path. The root itself is an empty list. Components never contain empty strings,
+dot/parent elements, separators or control characters. Original absolute and canonical path fields,
+root identity and pre/post directory guards remain present; this is not new path or root admission.
+
+This producer representation avoids an ambiguous slash suffix in strict publication scanning. The
+full synthetic parser result, including compiler alias mappings and coverage, reproduces the retained
+round-21 artifact/error/suffix hashes. Its raw native detail was blocked and remains unavailable;
+the local reproduction does not reconstruct that whole native result. The privacy scanner and
+publication allowlist are unchanged, with adjacent private-path and credential negatives retained.
+
+Repository consumer audit: the old coverage field was emitted only by `covered_path`; no selector,
+wrapper, normalizer or benchmark consumer read it. Native root discovery remains a review-only
+proposal. Existing archived scalar-form evidence stays byte-identical.
