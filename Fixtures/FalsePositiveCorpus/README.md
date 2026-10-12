@@ -150,7 +150,10 @@ compiler-marked implicit nodes at this fixture's exact `@Test` expansion site fr
 The helper names and raw counts remain in the log. All explicit consumers, the complete test list,
 depths, relationships and other fields still compare exactly; no product output is changed.
 
-The compiler-backed command goldens include `unindexed-sources: 1 of 17`: the project header
-`Sources/CorpusObjC/include/CorpusObjC.h` has no independently tracked index unit in the
-current provider. The audit regression keeps that coverage uncertainty visible instead of
-assuming absent callers. This warning does not change the expected unused-declaration lists.
+The compiler-backed command goldens no longer report the included project header
+`Sources/CorpusObjC/include/CorpusObjC.h` as unindexed: its covering Clang unit now
+supplies dependency freshness metadata. Headers without a covering unit still
+produce the warning. A separate `header-projection` limitation remains because
+fresh dependency dates do not admit header declarations or calls into the graph.
+It names this header and keeps narrowed test selection conservative. The expected
+unused-declaration lists are unchanged.

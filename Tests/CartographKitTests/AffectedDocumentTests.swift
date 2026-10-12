@@ -378,6 +378,28 @@ struct AffectedDocumentTests {
         #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
     }
 
+    @Test("헤더의 날짜가 최신이어도 선언·호출 투영 한계가 있으면 테스트를 축소하지 않는다")
+    func indexedHeaderProjectionStillRefusesSelection() throws {
+        let header = "/p/Sources/API.h"
+        let indexed = Date(timeIntervalSince1970: 1_000)
+        let fileSystem = InMemoryFileSystem(files: [header: "int hidden(void);"])
+        fileSystem.setModificationDate(indexed.addingTimeInterval(-10), for: header)
+        var snapshot = snapshot()
+        snapshot.indexedFileDates = [header: indexed]
+        snapshot.oldestIndexedFileDates = [header: indexed]
+        let configuration = CartographConfiguration(projectPath: "/p")
+        let service = CartographService(configuration: configuration, environment: .init(
+            fileSystem: fileSystem, indexProviderOverride: StaticIndexProvider(snapshot)))
+        let document = try service.affectedDocument(symbols: ["P"], in: AnalysisContext(snapshot: snapshot))
+        #expect(document.tests.map(\.symbol.usr) == ["T"])
+        #expect(document.limitations.contains { $0.hasPrefix("header-projection:") })
+        #expect(!document.limitations.contains {
+            $0.hasPrefix("unindexed-sources:") || $0.hasPrefix("index-staleness:")
+        })
+        #expect(document.xcodebuildSelection().output.isEmpty)
+        #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
+    }
+
     @Test("분석 범위를 좁힌 필터가 숨긴 테스트를 모듈 확대만으로 덮었다고 주장하지 않는다", arguments: [false, true])
     func filteredGraphRefusesSelection(pathFilter: Bool) throws {
         var configuration = CartographConfiguration.default

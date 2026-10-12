@@ -451,8 +451,20 @@ Five things this output does deliberately:
   filter narrower than the defaults, or an edge-kind filter — any of which could be the reason
   `usedBy` is empty. The default excludes alone do not count: they are a noise guard, not a
   narrowing you chose, and a warning that fires on every project is not read. File-level
-  timestamps prevent a build of another target from hiding an edited file. `unindexed-sources`
-  counts files without a known index unit; `missing-sources` counts indexed files that disappeared.
+  timestamps use the oldest observed covering unit, so rebuilding only one context of a shared
+  source cannot hide another context's stale facts. Scoped project-header dependencies and deleted
+  source paths are tracked even without graph declarations. `unindexed-sources` counts files without
+  a known covering unit; `missing-sources` counts indexed files that disappeared. These diagnostics
+  identify sorted project-relative paths with escaped control characters. Each diagnostic displays
+  at most 64 paths and an 8 KiB UTF-8 JSON path array; `omitted-paths` explicitly counts any omitted
+  paths while the aggregate file counts stay exact. The snapshot's optional
+  `oldestIndexedFileDates` preserves this evidence separately from the latest-date `indexedFileDates`
+  API; older snapshots/providers fall back to the latter and cannot prove multi-context freshness.
+  This covers observed units, not unbuilt configurations. Obsolete units can keep warnings active
+  after a rename or incremental rebuild; create a fresh index to remove them.
+  A separate `header-projection` limitation identifies scoped project headers whose dependency
+  timestamps do not establish declaration/call coverage. It remains a coverage gap for narrowed
+  test selection and closed-world traversal, even when every covering timestamp is fresh.
   `unreadable-sources` reports other read failures: declarations in those files are kept with
   reason `sourceUnavailable` until source access is restored and the analysis is rerun. These
   limits also appear in `dead` reports and on the other discovery gates: `cycles` and `rules`
@@ -1602,9 +1614,11 @@ override the extension's default access.
   references, or containment disable refinement. Default type/file/module rollups stay unchanged; symbol graphs can now
   show actual recursion between promoted locals.
 
-- **File-level freshness is not build-configuration completeness.** A file's latest index unit
-  prevents unrelated targets from hiding its edits, but does not prove that every configuration
-  containing that same file has been rebuilt. Files without a known unit are reported separately.
+- **File-level freshness is not build-configuration completeness.** The oldest observed covering
+  unit exposes partial rebuilds of the same file, including scoped header dependencies. It cannot
+  reveal configurations never indexed. Obsolete units may keep a file stale or missing until a fresh
+  index removes them. Legacy snapshots without oldest-unit metadata use the prior latest-date
+  fallback and cannot establish multi-context freshness. Files without a known unit are reported separately.
 
 - **`#Preview` macro bodies.** Types used only inside a `#Preview` block are kept only when the
   compiler recorded the reference during macro expansion. `PreviewProvider` conformances are

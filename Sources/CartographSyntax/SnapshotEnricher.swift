@@ -91,7 +91,7 @@ public struct SnapshotEnricher: Sendable {
         var freshPaths: Set<String> = []
         var freshnessFailures: [String: LocalFunctionSkipReason] = [:]
 
-        let sourcePaths = Set(snapshot.filePaths).union(snapshot.indexedFileDates?.keys.map { $0 } ?? [])
+        let sourcePaths = Set(snapshot.filePaths).union(snapshot.sourceFreshnessDates?.keys.map { $0 } ?? [])
         for path in sourcePaths.sorted() where [".swift", ".m", ".mm", ".h"].contains(where: path.hasSuffix) {
             let sourceDate = fileSystem.modificationDate(at: path)
             let source: String
@@ -106,11 +106,11 @@ public struct SnapshotEnricher: Sendable {
             // Clang 소스는 접근 실패만 진단한다. Swift 구문 분석기에 넣으면 거짓 속성이 생긴다.
             guard path.hasSuffix(".swift") else { continue }
             let afterRead = fileSystem.modificationDate(at: path)
-            if snapshot.indexedFileDates?[path] == nil {
+            if snapshot.sourceFreshnessDates?[path] == nil {
                 freshnessFailures[path] = .indexDateUnavailable
             } else if sourceDate == nil || afterRead == nil {
                 freshnessFailures[path] = .sourceDateUnavailable
-            } else if let sourceDate, let indexed = snapshot.indexedFileDates?[path], sourceDate <= indexed,
+            } else if let sourceDate, let indexed = snapshot.sourceFreshnessDates?[path], sourceDate <= indexed,
                       afterRead == sourceDate {
                 freshPaths.insert(path)
             } else {

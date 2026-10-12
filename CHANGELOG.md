@@ -17,6 +17,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Track scoped header and deleted-source dependency dates independently of graph declarations;
+  identify affected relative paths in freshness/readability limitations, preserve oldest observed
+  coverage across partial multi-context rebuilds, and invalidate cached analyses on header edits.
+  The latest-unit timestamp API and legacy snapshot decoding remain compatible.
 - Refuse partial `affected --format xcodebuild` selectors when modeled source edits coexist with
   unmodeled configuration or fixture changes; preserve the all-unmodeled all-tests fallback.
 - Include Clang implementations and project headers in source/index coverage diagnostics and

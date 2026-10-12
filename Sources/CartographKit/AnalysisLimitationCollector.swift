@@ -54,11 +54,13 @@ struct AnalysisLimitationCollector {
         let sourceFiles = files.filter { path in
             Self.sourceSuffixes.contains { path.hasSuffix($0) } && !Self.isPackageManifest(path, projectPath: projectPath)
         }
-        let indexedDates = context?.snapshot.indexedFileDates
-        let newerThanStore = sourceFiles.count { path in
+        let indexedDates = context?.snapshot.sourceFreshnessDates.map { dates in
+            Dictionary(dates.map { (fileSystem.canonicalPath($0.key), $0.value) }, uniquingKeysWith: min)
+        }
+        let newerFiles = sourceFiles.filter { path in
             // 공급자가 파일별 시각을 줬다면 전체 스토어 시각으로 대체하지 않는다.
             // 다른 타깃만 빌드했어도 스토어 시각은 최신이기 때문이다.
-            let built = indexedDates == nil ? storeDate : indexedDates?[path]
+            let built = indexedDates == nil ? storeDate : indexedDates?[fileSystem.canonicalPath(path)]
             guard let built, let modified = fileSystem.modificationDate(at: path) else { return false }
             return modified > built
         }
@@ -89,31 +91,46 @@ struct AnalysisLimitationCollector {
                     + "while runtime dispatch and unindexed source paths may be absent"
             )
         }
+        let headers = sourceFiles.filter { $0.hasSuffix(".h") }
+        if !headers.isEmpty {
+            result.append(
+                "header-projection: \(headers.count) project header file(s) are tracked for dependency freshness; "
+                    + "coverage dates do not establish that their declarations and calls are present in the graph"
+                    + diagnosticPaths(headers)
+            )
+        }
         if interfaceBuilderCount > 0 {
             result.append(
                 "interface-builder-documents: \(interfaceBuilderCount) document(s) are matched by "
                     + "custom class name only, never connection by connection"
             )
         }
-        if newerThanStore > 0 {
+        if !newerFiles.isEmpty {
             result.append(
-                "index-staleness: \(newerThanStore) of \(sourceFiles.count) source file(s) changed after the "
+                "index-staleness: \(newerFiles.count) of \(sourceFiles.count) source file(s) changed after the "
                     + (indexedDates == nil ? "index store was written" : "file's index unit was written")
                     + ", so a call added since the last build is not here yet"
+                    + diagnosticPaths(newerFiles)
             )
         }
         if let indexedDates, emptyIndexCounts == nil {
-            let unindexed = sourceFiles.count { indexedDates[$0] == nil }
-            if unindexed > 0 {
+            let unindexed = sourceFiles.filter { indexedDates[fileSystem.canonicalPath($0)] == nil }
+            if !unindexed.isEmpty {
                 result.append(
-                    "unindexed-sources: \(unindexed) of \(sourceFiles.count) source file(s) have no known index unit; "
+                    "unindexed-sources: \(unindexed.count) of \(sourceFiles.count) source file(s) "
+                        + "have no known index unit; "
                         + "build their targets, or exclude files that are not target sources, "
                         + "before relying on absent callers"
+                        + diagnosticPaths(unindexed)
                 )
             }
         }
-        let missing = context?.missingSourcePaths.count { filter.allows($0) } ?? 0
-        let unreadable = context?.unreadableSourcePaths.count { filter.allows($0) } ?? 0
+        let missing = context?.missingSourcePaths.filter {
+            filter.allows($0) && relativeDiagnosticPath($0) != nil
+        } ?? []
+        let unreadable = context?.unreadableSourcePaths.filter {
+            filter.allows($0) && relativeDiagnosticPath($0) != nil
+        } ?? []
         let localFunctions = context?.unresolvedLocalFunctionsByPath.reduce(0) { count, entry in
             count + (filter.allows(entry.key) ? entry.value : 0)
         } ?? 0
@@ -124,16 +141,18 @@ struct AnalysisLimitationCollector {
                     + "remain attributed to enclosing declarations. Inspect source for exact local ownership."
             )
         }
-        if missing > 0 {
+        if !missing.isEmpty {
             result.append(
-                "missing-sources: \(missing) indexed source file(s) no longer exist; rebuild with a fresh index "
+                "missing-sources: \(missing.count) indexed source file(s) no longer exist; rebuild with a fresh index "
                     + "to remove obsolete declarations"
+                    + diagnosticPaths(missing)
             )
         }
-        if unreadable > 0 {
+        if !unreadable.isEmpty {
             result.append(
-                "unreadable-sources: \(unreadable) source file(s) could not be read; their declarations are kept "
+                "unreadable-sources: \(unreadable.count) source file(s) could not be read; their declarations are kept "
                     + "with reason 'sourceUnavailable' because retention annotations are unknown. Restore access and rebuild"
+                    + diagnosticPaths(unreadable)
             )
         }
         if configuration.narrowsPathsBeyondDefaults {
@@ -156,6 +175,47 @@ struct AnalysisLimitationCollector {
         // 스킬에 있고, 여기서는 알릴 것이 있을 때만 말한다.
         result += externalRetentionLimitations(in: context, symbolGraph: symbolGraph, storeDate: storeDate)
         return result
+    }
+
+    static let maximumDiagnosticPaths = 64
+    static let maximumDiagnosticPathBytes = 8_192
+
+    /// 경고마다 최대 64개·JSON 배열 8 KiB만 내보낸다. 남은 경로 수는 숨기지 않는다.
+    private func diagnosticPaths(_ paths: [String]) -> String {
+        let relative = Set(paths.compactMap(relativeDiagnosticPath)).sorted()
+        guard !relative.isEmpty else { return "" }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        var displayed: [String] = []
+        var bytes = 2 // JSON 배열의 대괄호.
+        for path in relative {
+            guard displayed.count < Self.maximumDiagnosticPaths,
+                  let data = try? encoder.encode(path),
+                  let encoded = String(data: data, encoding: .utf8) else { break }
+            let safe = Self.escapedDiagnosticControls(encoded)
+            let added = safe.utf8.count + (displayed.isEmpty ? 0 : 1)
+            guard bytes + added <= Self.maximumDiagnosticPathBytes else { break }
+            displayed.append(safe)
+            bytes += added
+        }
+        let omitted = relative.count - displayed.count
+        return "; paths: [" + displayed.joined(separator: ",") + "]"
+            + (omitted == 0 ? "" : "; omitted-paths: \(omitted)")
+    }
+
+    private static func escapedDiagnosticControls(_ encoded: String) -> String {
+        encoded.unicodeScalars.map { scalar in
+            CharacterSet.controlCharacters.contains(scalar)
+                ? String(scalar).utf16.map { String(format: "\\u%04X", $0) }.joined() : String(scalar)
+        }.joined()
+    }
+
+    private func relativeDiagnosticPath(_ path: String) -> String? {
+        let canonical = fileSystem.canonicalPath(path)
+        let relative = SourceLocation(path: canonical, line: 1, column: 1)
+            .relative(to: projectPath).path
+        guard !relative.hasPrefix("/"), !relative.split(separator: "/").contains("..") else { return nil }
+        return relative
     }
 
     /// 외부 보존 근거가 걸려 있으면 그 사실과 신선도를 알린다.

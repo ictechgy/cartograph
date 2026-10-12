@@ -168,7 +168,7 @@ extension CartographService {
     private func routeValueFlowConstants(
         _ pass: RoutePass, snapshot: IndexSnapshot, texts: [String: String]
     ) -> [SourceLocation: String]? {
-        let indexedDates = Dictionary((snapshot.indexedFileDates ?? [:]).map {
+        let indexedDates = Dictionary((snapshot.sourceFreshnessDates ?? [:]).map {
             (ValueFlowSourceLoader.canonicalPath($0.key), $0.value)
         }, uniquingKeysWith: min)
         let hasFreshDynamic = pass.calls.contains { call in

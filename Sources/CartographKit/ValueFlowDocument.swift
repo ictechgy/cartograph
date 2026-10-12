@@ -73,7 +73,7 @@ struct ValueFlowSourceLoader {
             program.fields += parsed.fields
             program.types += parsed.types
             program.limitations += parsed.limitations
-            if let indexed = snapshot.indexedFileDates?[canonical] {
+            if let indexed = snapshot.sourceFreshnessDates?[canonical] {
                 if let modified = fileSystem.modificationDate(at: path) {
                     if modified <= indexed { fresh.insert(canonical) } else { stale += 1 }
                 } else { undated += 1 }
@@ -108,6 +108,10 @@ struct ValueFlowSourceLoader {
         let dates = raw.indexedFileDates.map {
             Dictionary($0.map { (Self.canonicalPath($0.key), $0.value) }, uniquingKeysWith: min)
         }
-        return IndexSnapshot(symbols: symbols, references: references, indexedFileDates: dates)
+        let oldestDates = raw.oldestIndexedFileDates.map {
+            Dictionary($0.map { (Self.canonicalPath($0.key), $0.value) }, uniquingKeysWith: min)
+        }
+        return IndexSnapshot(symbols: symbols, references: references, indexedFileDates: dates,
+            oldestIndexedFileDates: oldestDates)
     }
 }

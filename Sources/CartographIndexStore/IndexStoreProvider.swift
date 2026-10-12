@@ -25,6 +25,8 @@ public struct IndexStoreProvider: IndexProviding {
         public var libraryPath: String
         /// 소스 파일을 찾기 시작할 디렉터리들.
         public var sourceRoots: [String]
+        /// 선언 목록을 파일로 미리 좁혀도 삭제·헤더 의존 경로를 추적할 원래 범위. nil이면 sourceRoots를 쓴다.
+        public var dependencyRoots: [String]?
         public var pathFilter: PathFilter
         /// SDK 등 외부 심볼도 정점 후보로 수집할지 여부.
         public var includeExternalSymbols: Bool
@@ -44,12 +46,14 @@ public struct IndexStoreProvider: IndexProviding {
             includeExternalSymbols: Bool = false,
             includeObjectiveCSources: Bool = false,
             includeSelfReferences: Bool = false,
-            readerMode: ReaderMode = .databaseBacked
+            readerMode: ReaderMode = .databaseBacked,
+            dependencyRoots: [String]? = nil
         ) {
             self.storePath = storePath
             self.databasePath = databasePath
             self.libraryPath = libraryPath
             self.sourceRoots = sourceRoots
+            self.dependencyRoots = dependencyRoots
             self.pathFilter = pathFilter
             self.includeExternalSymbols = includeExternalSymbols
             self.includeObjectiveCSources = includeObjectiveCSources
@@ -92,7 +96,7 @@ public struct IndexStoreProvider: IndexProviding {
                 storePath: configuration.storePath,
                 libraryPath: configuration.libraryPath,
                 fileSystem: fileSystem
-            ).read(in: Set(paths))
+            ).read(in: Set(paths), trackedSourcePath: trackedSourcePathPredicate())
         } catch let error as CartographError {
             throw error
         } catch {
@@ -105,33 +109,65 @@ public struct IndexStoreProvider: IndexProviding {
                                      includeExternalSymbols: configuration.includeExternalSymbols,
                                      includeSelfReferences: configuration.includeSelfReferences)
         snapshot.indexedFileDates = result.indexedFileDates
+        snapshot.oldestIndexedFileDates = result.oldestIndexedFileDates
         return snapshot
     }
 
     private func readSnapshot() throws -> IndexSnapshot {
         let database = try openDatabase()
         let paths = sourceFilePaths()
-        let occurrences: [SymbolOccurrence]
+        let result: RawReadResult
         do {
-            occurrences = try RawIndexStoreReader(
+            result = try RawIndexStoreReader(
                 storePath: configuration.storePath,
                 libraryPath: configuration.libraryPath,
                 fileSystem: fileSystem
-            ).occurrences(in: Set(paths))
+            ).read(in: Set(paths), trackedSourcePath: trackedSourcePathPredicate())
         } catch {
             throw CartographError.indexStoreUnreadable(
                 path: configuration.storePath,
                 underlying: "Could not read all compiler contexts from the index store: \(error)"
             )
         }
-        var snapshot = Self.snapshot(from: occurrences, includeExternalSymbols: configuration.includeExternalSymbols,
-                                     includeSelfReferences: configuration.includeSelfReferences)
+        var snapshot = Self.snapshot(
+            from: result.occurrences,
+            includeExternalSymbols: configuration.includeExternalSymbols,
+            includeSelfReferences: configuration.includeSelfReferences
+        )
         snapshot.indexedFileDates = Dictionary(paths.compactMap { path in
             database.dateOfLatestUnitFor(filePath: path).map {
                 ((try? fileSystem.realPath(at: path)) ?? fileSystem.canonicalPath(path), $0)
             }
-        }, uniquingKeysWith: max)
+        }, uniquingKeysWith: max).merging(result.indexedFileDates, uniquingKeysWith: max)
+        snapshot.oldestIndexedFileDates = result.oldestIndexedFileDates
         return snapshot
+    }
+
+    /// 선언 탐색과 별개로 인덱스에 남은 범위 안의 의존 경로를 추적한다. 외부·빌드 산출물은 노출하지 않는다.
+    func isTrackedSourcePath(_ path: String) -> Bool {
+        trackedSourcePathPredicate()(path)
+    }
+
+    private func trackedSourcePathPredicate() -> (String) -> Bool {
+        let suffixes = configuration.includeObjectiveCSources ? [".swift", ".m", ".mm", ".h"] : [".swift"]
+        let roots = (configuration.dependencyRoots ?? configuration.sourceRoots).map {
+            fileSystem.canonicalPath((try? fileSystem.realPath(at: $0)) ?? $0)
+        }
+        return { path in
+            let canonical = fileSystem.canonicalPath(path)
+            guard suffixes.contains(where: canonical.hasSuffix), configuration.pathFilter.allows(canonical) else {
+                return false
+            }
+            return roots.contains { normalized in
+                if canonical == normalized { return true }
+                let prefix = normalized.hasSuffix("/") ? normalized : normalized + "/"
+                guard canonical.hasPrefix(prefix) else { return false }
+                let relative = String(canonical.dropFirst(prefix.count))
+                return relative.split(separator: "/").dropLast().allSatisfy {
+                    BuildArtifactDirectories.shouldDescend(into: String($0))
+                }
+            }
+        }
     }
 
     /// 분석 대상 Swift 소스 파일 목록.

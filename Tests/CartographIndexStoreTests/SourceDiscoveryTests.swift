@@ -5,6 +5,21 @@ import Testing
 
 @Suite("소스 파일 탐색")
 struct SourceDiscoveryTests {
+    @Test("선언 파일 목록과 별개인 의존 범위는 헤더·삭제 소스만 추적하고 외부·빌드·제외 경로는 거부한다")
+    func dependencyScopeDoesNotBroadenDeclarationDiscovery() {
+        let fs = InMemoryFileSystem(files: ["/p/A.swift": "", "/p/API.h": ""])
+        let provider = IndexStoreProvider(configuration: .init(storePath: "/s", databasePath: "/d",
+            libraryPath: "/l", sourceRoots: ["/p/A.swift"], pathFilter: PathFilter(exclude: ["**/Excluded/**"]),
+            includeObjectiveCSources: true, dependencyRoots: ["/p"]), fileSystem: fs)
+        #expect(provider.sourceFilePaths() == ["/p/A.swift"])
+        #expect(provider.isTrackedSourcePath("/p/API.h"))
+        #expect(provider.isTrackedSourcePath("/p/Deleted.swift"))
+        for path in ["/elsewhere/API.h", "/prefix/API.h", "/p/Excluded/API.h", "/p/.build/API.h",
+            "/p/.build-custom/API.h", "/p/DerivedData/API.h", "/p/../elsewhere/API.h", "/p/data.txt"] {
+            #expect(!provider.isTrackedSourcePath(path), "\(path)")
+        }
+    }
+
     private func makeProvider(
         fileSystem: InMemoryFileSystem,
         roots: [String],

@@ -536,6 +536,33 @@ struct ImpactComparisonTests {
         #expect(throws: CartographError.self) { try invalid.validate() }
     }
 
+    @Test("선언 없는 헤더·삭제 파일의 의존 날짜도 범위 안에서 캡처·왕복·루트 이동된다")
+    func dependencyCoverageSurvivesCaptureAndRebase() throws {
+        let old = Date(timeIntervalSince1970: 1_000)
+        let latest = old.addingTimeInterval(100)
+        var builder = SnapshotBuilder(path: "/old/Sources/App.swift")
+        builder.symbol("App", kind: .structType)
+        var snapshot = builder.build()
+        snapshot.indexedFileDates = ["/old/Sources/App.swift": latest]
+        snapshot.oldestIndexedFileDates = ["/old/Sources/App.swift": old,
+            "/old/Sources/API.h": old, "/old/Sources/Deleted.swift": old,
+            "/old/Excluded/Private.h": old, "/private/Secret.h": old]
+        let service = CartographService(configuration: .init(projectPath: "/old", include: ["Sources/**"]),
+            environment: CartographEnvironment(fileSystem: InMemoryFileSystem(),
+                indexProviderOverride: StaticIndexProvider(snapshot)))
+        let captured = try service.captureSnapshot(in: AnalysisContext(snapshot: snapshot))
+        #expect(Set(captured.snapshot.oldestIndexedFileDates?.keys.map { $0 } ?? []) == [
+            "/old/Sources/App.swift", "/old/Sources/API.h", "/old/Sources/Deleted.swift",
+        ])
+        let data = try JSONEncoder.cartographDefault().encode(captured)
+        let moved = try JSONDecoder().decode(AnalysisSnapshotDocument.self, from: data).rebased(to: "/new")
+        #expect(moved.snapshot.indexedFileDates?["/new/Sources/App.swift"] == latest)
+        #expect(moved.snapshot.oldestIndexedFileDates?["/new/Sources/API.h"] == old)
+        #expect(moved.snapshot.oldestIndexedFileDates?["/new/Sources/Deleted.swift"] == old)
+        #expect(!String(decoding: data, as: UTF8.self).contains("Secret.h"))
+        #expect(!String(decoding: data, as: UTF8.self).contains("Private.h"))
+    }
+
     @Test("스냅샷 캡처는 대상 종류만 다른 참조도 입력 순서와 무관하게 정렬한다")
     func captureOrdersSameKeyReferencesDeterministically() throws {
         // 옛 캡처와 새 인덱스가 섞이면 소스·대상·위치·출처는 같고 대상 종류만 다른

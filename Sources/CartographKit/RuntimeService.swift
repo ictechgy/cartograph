@@ -130,7 +130,7 @@ extension CartographService {
             throw runtimeInputsChanged()
         }
         let graphData = try Self.encodedData(graph)
-        let indexedDateFingerprint = try Self.digest(context.snapshot.indexedFileDates ?? [:])
+        let indexedDateFingerprint = try Self.digest(context.snapshot.sourceFreshnessDates ?? [:])
         let graphFingerprint = Self.digest(parts: [
             graphData,
             Data(indexedDateFingerprint.utf8),
@@ -219,7 +219,7 @@ extension CartographService {
     ) -> [NodeID: RuntimeFreshness] {
         let fileSystem = environment.fileSystem
         let indexedDates = Dictionary(
-            (context.snapshot.indexedFileDates ?? [:]).map {
+            (context.snapshot.sourceFreshnessDates ?? [:]).map {
                 (fileSystem.canonicalPath($0.key), $0.value)
             },
             uniquingKeysWith: min

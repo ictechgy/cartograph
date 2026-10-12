@@ -18,7 +18,7 @@
   "level": "symbol",
   "limitations": [
     "objective-c-sources: 1 file(s); the graph uses available Clang index evidence, while runtime dispatch and unindexed source paths may be absent",
-    "unindexed-sources: 1 of 17 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers",
+    "header-projection: 1 project header file(s) are tracked for dependency freshness; coverage dates do not establish that their declarations and calls are present in the graph; paths: [\"Sources/CorpusObjC/include/CorpusObjC.h\"]",
     "local-function-projection: 1 source local function(s) could not be bound through a fresh, unambiguous call/reference chain; their indexed references remain attributed to enclosing declarations. Inspect source for exact local ownership."
   ],
   "requestedFiles": [],
