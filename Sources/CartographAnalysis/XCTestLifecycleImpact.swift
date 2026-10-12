@@ -29,7 +29,8 @@ public struct XCTestLifecycleImpact: Sendable, Equatable {
             let current = pending[index]
             index += 1
             for edge in graph.incomingEdges(to: current) where edge.kind == .inheritance {
-                guard graph.node(edge.source)?.kind == .classType, classes.insert(edge.source).inserted else { continue }
+                guard graph.node(edge.source)?.kind == .classType,
+                      classes.insert(edge.source).inserted else { continue }
                 pending.append(edge.source)
             }
         }

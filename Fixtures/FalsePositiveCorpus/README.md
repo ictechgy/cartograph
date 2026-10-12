@@ -149,3 +149,8 @@ only, the harness first checks the raw count against the full `impact` consumer 
 compiler-marked implicit nodes at this fixture's exact `@Test` expansion site from the golden count.
 The helper names and raw counts remain in the log. All explicit consumers, the complete test list,
 depths, relationships and other fields still compare exactly; no product output is changed.
+
+The compiler-backed command goldens include `unindexed-sources: 1 of 17`: the project header
+`Sources/CorpusObjC/include/CorpusObjC.h` has no independently tracked index unit in the
+current provider. The audit regression keeps that coverage uncertainty visible instead of
+assuming absent callers. This warning does not change the expected unused-declaration lists.

@@ -419,7 +419,7 @@ struct AffectedDocumentTests {
     @Test("생명주기 의존성과 직접 호출 테스트를 모두 선택하고 구문 근거를 구분한다",
           arguments: ["setUp()", "setUpWithError()", "tearDown()", "tearDownWithError()", "setUp"])
     func lifecycleDependencySelectsOwningClass(hook: String) throws {
-        var builder = SnapshotBuilder(path: "/p/Tests/Checks.swift", module: "AppTests")
+        var builder = SnapshotBuilder(module: "AppTests", path: "/p/Tests/Checks.swift")
         builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift")
         builder.symbol("A", name: "ATests", kind: .classType, attributes: [.unitTest])
         builder.symbol("A.hook", name: hook, kind: .method, line: 2, parent: "A")
@@ -442,6 +442,12 @@ struct AffectedDocumentTests {
             == "-only-testing:AppTests/ATests\n-only-testing:AppTests/BTests/testDirect\n")
         let impact = try service.impactDocument(symbols: ["P"])
         #expect(Set(impact.tests.compactMap(\.usr)) == ["A", "B.test"])
+        let traversal = try service.languageTraversalDocument(symbols: ["P"])
+        #expect(Set(traversal.reached.map(\.symbol.usr)) == ["A.hook", "A", "B.test"])
+        let traversedOwner = try #require(traversal.reached.first { $0.symbol.usr == "A" })
+        #expect(traversedOwner.relationships == ["automaticRuntime"])
+        #expect(traversedOwner.evidence == "candidate")
+        #expect(traversedOwner.via == "A.hook")
         let bounded = try service.affectedDocument(symbols: ["P"], maxDepth: 1)
         #expect(bounded.truncated.depth)
         #expect(bounded.xcodebuildSelection().output.isEmpty)
@@ -452,7 +458,7 @@ struct AffectedDocumentTests {
     @Test("상속된 생명주기와 테스트는 다른 모듈의 표식 없는 하위 클래스 실행도 포함한다",
           arguments: [false, true])
     func inheritedExecutionIncludesOtherModules(testMethod: Bool) throws {
-        var builder = SnapshotBuilder(path: "/p/Tests/Checks.swift", module: "BaseTests")
+        var builder = SnapshotBuilder(module: "BaseTests", path: "/p/Tests/Checks.swift")
         builder.symbol("P", kind: .function, path: "/p/Sources/P.swift")
         builder.symbol("Base", kind: .classType, attributes: [.unitTest])
         builder.symbol("Base.run", name: testMethod ? "testInherited()" : "setUp()", kind: .method,
