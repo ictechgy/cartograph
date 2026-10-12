@@ -63,6 +63,42 @@ def source_manifest(project: Path) -> dict:
     return result
 
 
+def module_artifact_manifest(commands: list[dict], builds: list[dict]) -> dict:
+    """관측 훅 전에 성공한 명시적 모듈 산출물과 소스/오브젝트 문맥을 봉인한다."""
+    if len(commands) != len(builds) or any(
+        type(build.get("exit_code")) is not int or build["exit_code"] != 0 or build.get("command") != command["args"]
+        for command, build in zip(commands, builds)
+    ):
+        raise ValueError("Module artifacts require complete successful compiler evidence")
+    result = {}
+    for command in commands:
+        args = command["args"]
+        if "-emit-module-path" not in args:
+            continue
+        options = {}
+        for key in ["-emit-module-path", "-module-name", "-target", "-sdk"]:
+            if args.count(key) != 1 or args.index(key) + 1 == len(args):
+                raise ValueError(f"Missing/ambiguous accepted module option: {key}")
+            options[key] = args[args.index(key) + 1]
+        path = Path(options["-emit-module-path"])
+        if not path.is_absolute() or not path.is_file() or str(path.resolve()) in result:
+            raise ValueError("Missing/duplicate accepted module output")
+        if not command["source_paths"] or not command["outputs"]:
+            raise ValueError("Accepted module lacks source/output inventory")
+        canonical = str(path.resolve())
+        result[canonical] = dict(
+            path=canonical,
+            sha256=digest(path),
+            module=options["-module-name"],
+            provider="swift",
+            target=options["-target"],
+            sysroot=str(Path(options["-sdk"]).resolve()),
+            sources=sorted(str(Path(p).resolve()) for p in command["source_paths"]),
+            outputs=sorted(str(Path(p).resolve()) for p in command["outputs"]),
+        )
+    return result
+
+
 def replace_exact(path: Path, old: str, new: str) -> None:
     text = path.read_text()
     if text.count(old) != 1:

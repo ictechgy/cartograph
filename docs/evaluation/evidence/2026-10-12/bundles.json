@@ -132,12 +132,37 @@
       "sha256": "93336459fab74e2eccc366258a6634f6bd25b64070fcd6934cd24a09000ee841",
       "uncompressed_bytes": 15506969,
       "verified_normalized_files": 1693
+    },
+    {
+      "archive": "run-38203029381-normalized.zip",
+      "archive_entries": 3146,
+      "auxiliary_files": [
+        {
+          "bytes": 836961,
+          "path": "bundle-status.json",
+          "sha256": "7fc97615e2bed57b7610b27cf035e224c551dfa5b51904ca2c7ea6cc64a504c0"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 5779907,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38203029381,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38203029381",
+      "scope": "Exact public Actions artifact: all four normalized text bundles, including all failed mixed observations and costs; raw binary indexes intentionally omitted",
+      "sha256": "ac76dcee5c51dcda8f9b595ca4836b12a5f2176c45418de60fc1f6b5b58a2a19",
+      "uncompressed_bytes": 24199083,
+      "verified_normalized_files": 3141
     }
   ],
   "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
   "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 8080294,
-  "total_uncompressed_bytes": 58068805
+  "total_compressed_bytes": 13860201,
+  "total_uncompressed_bytes": 82267888
 }

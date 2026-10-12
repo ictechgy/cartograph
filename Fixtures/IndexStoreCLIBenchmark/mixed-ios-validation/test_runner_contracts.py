@@ -20,7 +20,7 @@ import unittest
 from unittest.mock import patch
 
 import run_ios_validation as runner
-from validation_common import STAGES, manifest, save, source_manifest
+from validation_common import STAGES, manifest, module_artifact_manifest, save, source_manifest
 
 
 def peer_module(name, relative):
@@ -115,6 +115,8 @@ class RunnerContracts(unittest.TestCase):
                 return subprocess.CompletedProcess(args, 17, b"observer output", b"observer failed")
             if self.hook_action == "mutate":
                 (Path(state["store"]) / "hook-tamper").write_bytes(b"tampered")
+            if self.hook_action == "mutate-module":
+                Path(next(iter(state["module_artifacts"]))).write_bytes(b"tampered module")
             return subprocess.CompletedProcess(args, 0, b"observer output", b"")
         if "-index-store-path" not in args:
             return subprocess.CompletedProcess(args, 0, b"stub version or help", b"")
@@ -134,6 +136,10 @@ class RunnerContracts(unittest.TestCase):
             (store / "v5/units").mkdir(parents=True, exist_ok=True)
             (store / "v5/units/stub-unit").write_bytes(b"stub-index-not-native-evidence")
         if self.failure != "missing-output":
+            if "-emit-module-path" in args:
+                module = Path(args[args.index("-emit-module-path") + 1])
+                module.parent.mkdir(parents=True, exist_ok=True)
+                module.write_bytes(b"stub-module-not-native-evidence")
             if "-output-file-map" in args:
                 mapping = json.loads(Path(args[args.index("-output-file-map") + 1]).read_text())
                 for entry in mapping.values():
@@ -143,6 +149,24 @@ class RunnerContracts(unittest.TestCase):
                 obj.write_bytes(b"stub-object")
                 obj.with_suffix(".d").write_text("stub.o: CGCore.h\n")
         return subprocess.CompletedProcess(args, 0, b"stub compile success", b"")
+
+    def test_accepted_module_hashes_precede_observation(self):
+        self.assertEqual(self.invoke(native=True, stages=[STAGES[0]]), 0)
+        state = self.read("runs/initial/state.json")
+        self.assertEqual(
+            {entry["module"] for entry in state["module_artifacts"].values()},
+            {"FeatureAlpha", "FeatureBeta", "AppFlow"},
+        )
+        commands = self.read("runs/initial/commands.json")
+        self.assertEqual(module_artifact_manifest(commands, state["builds"]), state["module_artifacts"])
+        first_path = next(iter(state["module_artifacts"]))
+        Path(first_path).write_bytes(b"replacement")
+        self.assertNotEqual(module_artifact_manifest(commands, state["builds"]), state["module_artifacts"])
+        for altered in [state["builds"][:-1], [{**record, "exit_code": 1} for record in state["builds"]]]:
+            with self.assertRaises(ValueError):
+                module_artifact_manifest(commands, altered)
+        with self.assertRaises(ValueError):
+            module_artifact_manifest(commands + commands, state["builds"] + state["builds"])
 
     def test_plan_layout_preserves_all_states_and_sources(self):
         self.assertEqual(self.invoke("--plan", "--with-tests"), 0)
@@ -283,7 +307,7 @@ class RunnerContracts(unittest.TestCase):
     def test_hook_failure_and_input_mutation_stop_after_retaining_state(self):
         hook = self.root / "hook.json"
         save(hook, ["stub-observer"])
-        for action in ["fail", "mutate"]:
+        for action in ["fail", "mutate", "mutate-module"]:
             with self.subTest(action=action):
                 self.output = self.root / action
                 self.hook_action = action
@@ -299,6 +323,20 @@ class RunnerContracts(unittest.TestCase):
                 if action == "mutate":
                     self.assertNotIn("hook-tamper", state["index_files"])
                     self.assertIn("hook-tamper", state["failure_index_files"])
+                if action == "mutate-module":
+                    path = next(iter(state["module_artifacts"]))
+                    self.assertNotEqual(state["module_artifacts"][path]["sha256"], state["failure_module_hashes"][path])
+
+    def test_continue_aborts_module_mutation_before_next_state(self):
+        hook = self.root / "hook.json"
+        save(hook, ["stub-observer"])
+        self.hook_action = "mutate-module"
+        self.assertEqual(
+            self.invoke("--hook-json", str(hook), "--continue-observation-failures", native=True, stages=STAGES[:2]), 2
+        )
+        self.assertIn("changed accepted module artifact", self.read("results.json")["error"])
+        self.assertEqual(len(self.hook_calls), 1)
+        self.assertFalse((self.output / "runs/header_edit_unbuilt").exists())
 
     def test_corrupt_retained_state_does_not_hide_original_failure(self):
         def fail(args, output):

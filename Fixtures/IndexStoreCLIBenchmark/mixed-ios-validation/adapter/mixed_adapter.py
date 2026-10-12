@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+import hashlib
 from pathlib import Path
 import re
 
@@ -46,6 +47,29 @@ def kind_base(value: str) -> str:
     return re.split(r"[.(]", value, maxsplit=1)[0]
 
 
+def parse_dependency(line: str) -> dict:
+    """고정 CLI가 빈 필드를 생략하므로 절대 경로 위치로만 선택 필드를 구분한다."""
+    fields = line.split(" | ")
+    if len(fields) < 3 or fields[0] not in {"Unit", "Record", "File"} or fields[1] not in {"user", "system"}:
+        raise ValueError(f"Unsupported pinned dependency: {line}")
+    kind, scope, *tail = fields
+    paths = [index for index, field in enumerate(tail) if Path(field).is_absolute()]
+    if len(paths) != 1 or paths[0] not in {0, 1} or any(not value for value in tail):
+        raise ValueError(f"Ambiguous pinned dependency: {line}")
+    index = paths[0]
+    module = tail[0] if index else ""
+    # 시스템 레코드의 모듈 표시는 Swift.Collection.Lazy Views처럼 공백도 포함한다.
+    if module and (any(character in module for character in "/\\|") or any(ord(c) < 32 for c in module)):
+        raise ValueError(f"Unsupported dependency module: {line}")
+    rest = tail[index + 1 :]
+    if len(rest) > 1 or (rest and ("/" in rest[0] or "\\" in rest[0])):
+        raise ValueError(f"Ambiguous pinned dependency name: {line}")
+    name = rest[0] if rest else None
+    if (kind == "Record" and name is None) or (kind == "File" and name is not None):
+        raise ValueError(f"Missing or unexpected pinned dependency name: {line}")
+    return dict(kind=kind, scope=scope, module=module, path=tail[index], name=name)
+
+
 def parse_unit(name: str, text: str) -> dict:
     metadata, dependencies, includes = {}, [], []
     section = "metadata"
@@ -61,17 +85,7 @@ def parse_unit(name: str, text: str) -> dict:
                 raise ValueError(f"Unsupported/duplicate pinned unit metadata: {line}")
             metadata[key] = value
         elif section == "dependencies":
-            fields = line.split(" | ")
-            if len(fields) < 3 or fields[0] not in {"Unit", "Record", "File"} or fields[1] not in {"user", "system"}:
-                raise ValueError(f"Unsupported pinned dependency: {line}")
-            kind, scope, *tail = fields
-            required = 1 if kind == "File" else 2
-            if len(tail) not in {required, required + 1}:
-                raise ValueError(f"Ambiguous pinned dependency: {line}")
-            module = tail.pop(0) if len(tail) == required + 1 else ""
-            dependencies.append(
-                dict(kind=kind, scope=scope, module=module, path=tail[0], name=tail[1] if kind != "File" else None)
-            )
+            dependencies.append(parse_dependency(line))
         else:
             source, sep, target = line.partition(" | ")
             path, colon, row = source.rpartition(":")
@@ -155,6 +169,58 @@ def target_key(value: str) -> str:
     return match.group(1) + ".".join(parts) + (match.group(3) or "")
 
 
+def module_artifact_association(dependency: dict, unit: dict, roots: list[str], units: dict, expected: list) -> dict:
+    """빌드 산출물 연관은 CLI 유닛 도달성과 별개이며 독립 선택된 소스 루트만 확인한다."""
+    meta = unit["metadata"]
+    path = absolute(dependency["path"], meta["Working Directory"])
+    candidates = [entry for entry in expected if entry.get("module_artifact", {}).get("path") == path]
+    if not candidates or dependency["scope"] != "user" or not dependency["module"]:
+        raise ValueError(f"Nameless unit dependency lacks accepted project module evidence: {path}")
+    artifact = candidates[0]["module_artifact"]
+    if any(entry["module_artifact"] != artifact for entry in candidates):
+        raise ValueError(f"Conflicting accepted module artifacts: {path}")
+    if (
+        artifact["module"] != dependency["module"]
+        or artifact["provider"] != "swift"
+        or meta["Provider Identifier"] != "swift"
+        or target_key(artifact["target"]) != target_key(meta["Target"])
+        or artifact["sysroot"] != absolute(meta["Sysroot"], meta["Working Directory"])
+        or sorted(artifact["sources"]) != sorted(entry["source"] for entry in candidates)
+        or sorted(artifact["outputs"]) != sorted(entry["output"] for entry in candidates)
+        or len(set(artifact["outputs"])) != len(artifact["outputs"])
+    ):
+        raise ValueError(f"Nameless module build context/inventory mismatch: {path}")
+    source_roots = []
+    for entry in candidates:
+        if (
+            entry["module"] != artifact["module"]
+            or entry["provider"] != artifact["provider"]
+            or target_key(entry["target"]) != target_key(artifact["target"])
+            or entry.get("sysroot") != artifact["sysroot"]
+        ):
+            raise ValueError(f"Module source root context mismatch: {path}")
+        found = [
+            name
+            for name in roots
+            if absolute(units[name]["metadata"]["Output File"], units[name]["metadata"]["Working Directory"])
+            == entry["output"]
+        ]
+        if len(found) != 1:
+            raise ValueError(f"Module source is not an independently selected current root: {path}")
+        source_roots.extend(found)
+    if not re.fullmatch(r"[0-9a-f]{64}", artifact["sha256"]) or not Path(path).is_file():
+        raise ValueError(f"Accepted module artifact unavailable: {path}")
+    if hashlib.sha256(Path(path).read_bytes()).hexdigest() != artifact["sha256"]:
+        raise ValueError(f"Accepted module artifact bytes changed: {path}")
+    return dict(
+        **dependency,
+        absolute_path=path,
+        source_roots=sorted(source_roots),
+        artifact_sha256=artifact["sha256"],
+        association="accepted-build-artifact-not-cli-unit-reachability",
+    )
+
+
 def select_units(units: dict, expected_outputs: list[dict]) -> dict:
     """활성 산출물에서만 시작하며, 남은 레코드 디렉터리를 입력으로 쓰지 않는다."""
     by_output = defaultdict(list)
@@ -184,7 +250,7 @@ def select_units(units: dict, expected_outputs: list[dict]) -> dict:
         ):
             raise ValueError(f"Current unit SDK mismatch: {name}")
         roots.append(name)
-    selected, provenance, files = set(), {}, {}
+    selected, provenance, files, module_artifacts = set(), {}, {}, {}
     pending = deque((root, root) for root in sorted(roots))
     visits = set()
     while pending:
@@ -197,6 +263,13 @@ def select_units(units: dict, expected_outputs: list[dict]) -> dict:
         for dependency in unit["dependencies"]:
             if dependency["kind"] == "Unit":
                 child = dependency["name"]
+                if child is None:
+                    association = module_artifact_association(dependency, unit, roots, units, expected_outputs)
+                    entry = module_artifacts.setdefault(
+                        (name, association["absolute_path"]), dict(**association, unit=name, root_units=[])
+                    )
+                    entry["root_units"].append(root)
+                    continue
                 if child not in units:
                     raise ValueError(f"Missing reachable unit dependency: {name} -> {child}")
                 if dependency["module"] and units[child]["metadata"]["Module"] != dependency["module"]:
@@ -213,7 +286,7 @@ def select_units(units: dict, expected_outputs: list[dict]) -> dict:
                 ),
             )
             entry["root_units"].append(root)
-    for entry in [*provenance.values(), *files.values()]:
+    for entry in [*provenance.values(), *files.values(), *module_artifacts.values()]:
         entry["root_units"] = sorted(set(entry["root_units"]))
     return dict(
         roots=sorted(roots),
@@ -221,6 +294,7 @@ def select_units(units: dict, expected_outputs: list[dict]) -> dict:
         excluded_units=sorted(set(units) - selected),
         records=list(provenance.values()),
         files=list(files.values()),
+        module_artifact_dependencies=list(module_artifacts.values()),
     )
 
 

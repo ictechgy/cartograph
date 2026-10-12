@@ -174,8 +174,8 @@
       "fix_commit": null,
       "head": "d668ca613908d905eea71c79b08ebfaa2cc41417",
       "missing_evidence": "The blocked mixed-ios bundle has only path/content hashes and byte counts for 1,448 selected text candidates. Detailed native graph/query/freshness grades, observation failure reasons, and per-state mixed costs/samples were not published and cannot be reconstructed from that inventory.",
-      "mixed_validation_states": 13,
       "mixed_native_detailed_correctness": null,
+      "mixed_validation_states": 13,
       "mixed_wrapper_exit_code": 1,
       "mixed_wrapper_wall_seconds": 44.743501917,
       "native_failure_reason": null,
@@ -200,6 +200,37 @@
       "status": "mixed-observation-failed-partial-evidence-retained",
       "synthetic_correctness_and_freshness_passed": true,
       "url": "https://github.com/ictechgy/cartograph/actions/runs/38201210141"
+    },
+    {
+      "adapter_failure": "Apple index-dump omits empty dependency names; module/path pairs were misparsed as path/unit-name for FeatureAlpha and FeatureBeta.",
+      "archive_sha256": "ac76dcee5c51dcda8f9b595ca4836b12a5f2176c45418de60fc1f6b5b58a2a19",
+      "configuration_diagnostic": "Ignored fixture retain_public key warned on stderr; this is not freshness evidence. Original configuration and outputs retained.",
+      "expectation_changes": false,
+      "graph_scoring": "not-run: seven successful-build states failed baseline adapter unit selection before graph/query grading",
+      "head": "76ca938991ed278ac6bbc3dcfdf70d75ad260a45",
+      "mixed_validation_states": 13,
+      "mixed_wrapper_exit_code": 1,
+      "native_freshness": {
+        "completed_query_exits": 6,
+        "failed_state_specific_checks": 6,
+        "query_exit_code": 0,
+        "reason": "Only count-based or unrelated limitations; no changed header or renamed/deleted Swift path identified in a recognized diagnostic."
+      },
+      "normalized_bundles": {
+        "argument-parser": 606,
+        "mixed-ios": 1448,
+        "mixed-setup": 6,
+        "synthetic": 1081
+      },
+      "normalized_manifest_files": 3141,
+      "public_project_validation_passed": true,
+      "publication_status": "publication_prepared",
+      "raw_fallback": false,
+      "retained_cost_evidence": "All manifest-listed setup/build/observation records; this failed pilot cannot establish performance or superiority.",
+      "run_id": 38203029381,
+      "status": "mixed-adapter-and-state-specific-freshness-failed",
+      "synthetic_correctness_and_freshness_passed": true,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38203029381"
     }
   ],
   "superiority_claim": null

@@ -16,7 +16,17 @@ import shutil
 import subprocess
 import sys
 import time
-from validation_common import ROOT, STAGES, command_plan, digest, manifest, mutate, save, source_manifest
+from validation_common import (
+    ROOT,
+    STAGES,
+    command_plan,
+    digest,
+    manifest,
+    module_artifact_manifest,
+    mutate,
+    save,
+    source_manifest,
+)
 
 
 def run(args: list[str], cwd: Path, stem: Path, timeout: int = 300) -> dict:
@@ -123,6 +133,9 @@ def retain_failed_state(output: Path, state: dict, error: BaseException, archive
     try:
         state["failure_current_sources"] = source_manifest(Path(state["project"]))
         state["failure_index_files"] = manifest(Path(state["store"]))
+        state["failure_module_hashes"] = {
+            path: digest(Path(path)) if Path(path).is_file() else None for path in state.get("module_artifacts", {})
+        }
     except Exception as retention_error:
         failures.append(f"Input manifests: {type(retention_error).__name__}: {retention_error}")
     if state["execution"] == "executed":
@@ -214,6 +227,7 @@ def execute(args: argparse.Namespace, output: Path) -> int:
         raise ValueError("Hook must be a nonempty JSON argv array; shell commands are not accepted")
     active_hook = hook if not args.plan else None
     accepted_sources, accepted_state, accepted_outputs = {}, None, []
+    accepted_modules = {}
     index_archives = {}
     stages = []
     observation_failures = []
@@ -237,6 +251,7 @@ def execute(args: argparse.Namespace, output: Path) -> int:
             expected_fresh=variant is not None,
             last_successful_build=accepted_state,
             active_object_outputs=accepted_outputs,
+            module_artifacts=accepted_modules,
             builds=builds,
             input_contract="Same physical compiler store for both arms; verify hashes before and after each arm",
         )
@@ -305,6 +320,8 @@ def execute(args: argparse.Namespace, output: Path) -> int:
             if expected_build == "success":
                 accepted_sources, accepted_state, stale = sources, stage, []
                 accepted_outputs = [p for c in commands for p in c["outputs"]]
+                if not args.plan:
+                    accepted_modules = module_artifact_manifest(commands, builds)
             state.update(
                 phase="evidence",
                 last_successful_build=accepted_state,
@@ -312,6 +329,7 @@ def execute(args: argparse.Namespace, output: Path) -> int:
                 current_sources=sources,
                 index_files=after,
                 active_object_outputs=accepted_outputs,
+                module_artifacts=accepted_modules,
             )
             save(state_dir / "state.json", state)
             if not args.plan:
@@ -329,6 +347,11 @@ def execute(args: argparse.Namespace, output: Path) -> int:
                 state["observation_hook"] = invocation
                 if manifest(store) != after or source_manifest(project) != sources:
                     raise RuntimeError(f"Observation hook changed shared input at {stage}")
+                if any(
+                    not Path(p).is_file() or digest(Path(p)) != record["sha256"]
+                    for p, record in accepted_modules.items()
+                ):
+                    raise RuntimeError(f"Observation hook changed accepted module artifact at {stage}")
                 if invocation["exit_code"] != 0:
                     error = RuntimeError(f"Observation failed at {stage}; evidence retained")
                     completed_exit = type(invocation["exit_code"]) is int and invocation["exit_code"] > 0

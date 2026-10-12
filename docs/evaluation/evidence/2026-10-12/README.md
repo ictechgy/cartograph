@@ -51,6 +51,15 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    separately reviewed in `bundles.json`; it is not counted as a normalized observation. Neither the
    publication status nor the inventory establishes native correctness, graph errors or superiority.
 
+10. Run 38203029381 preserved all four normalized bundles and completed all 13 validation states.
+   Seven successful-build states stopped before graph/query scoring: the adapter misread Apple CLI
+   module dependencies whose unit name was omitted. Six stale states did execute Cartograph queries
+   with exit 0, but their limitations did not identify the relevant edited/deleted header or moved/deleted
+   Swift path. All six state-specific freshness gates failed. An ignored `retain_public` fixture setting
+   warning is a separate configuration diagnostic, never freshness evidence. The exact original outputs,
+   configuration, every failed observation and setup/build/observation costs remain in this archive.
+   No graph accuracy score or superiority claim is inferred from the adapter failure.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -61,9 +70,9 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text, their manifests and the reviewed publication status.
 They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
 Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Five archives retain
+private; each manifest distinguishes original hashes from normalized public hashes. Six archives retain
 the exact bytes of their public Actions artifacts. The three test-phase archives and round eight's partial
-driver-phase archive were normalized separately after their failures. Round nine preserves all original
+driver-phase archive were normalized separately after their failures. Rounds nine and ten preserve all original
 ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
 when Actions retention expires.
 

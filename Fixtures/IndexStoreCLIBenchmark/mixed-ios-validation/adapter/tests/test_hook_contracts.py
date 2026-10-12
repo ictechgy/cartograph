@@ -55,6 +55,72 @@ class HookContracts(unittest.TestCase):
         self.assertEqual(expected[0]["project_headers"], [str((self.project / "Sources/API.h").resolve())])
         self.assertEqual(contexts["Sources/Core.m"], ["BridgeKit"])
 
+    def test_swift_module_artifact_requires_pre_observation_build_seal(self):
+        source = (self.project / "Sources/Shared.swift").resolve()
+        source.write_text("public func leaf() {}\n")
+        module = (self.root / "FeatureAlpha.swiftmodule").resolve()
+        module.write_bytes(b"accepted module")
+        sdk = str((self.root / "SDK").resolve())
+        argv = [
+            "swiftc",
+            "-module-name",
+            "FeatureAlpha",
+            "-target",
+            self.state["triple"],
+            "-sdk",
+            sdk,
+            "-emit-module-path",
+            str(module),
+        ]
+        command = dict(args=argv, source_paths=[str(source)], outputs=[str(self.obj)])
+        record = dict(
+            path=str(module),
+            sha256=hook.digest(module),
+            module="FeatureAlpha",
+            provider="swift",
+            target=self.state["triple"],
+            sysroot=sdk,
+            sources=[str(source.resolve())],
+            outputs=[str(self.obj.resolve())],
+        )
+        state = {
+            **self.state,
+            "current_sources": hook.source_manifest(self.project),
+            "builds": [dict(command=argv, exit_code=0)],
+            "module_artifacts": {str(module): record},
+        }
+        expected, _ = hook.compile_manifest([command], state, {"sdk_path": sdk})
+        self.assertEqual(expected[0]["module_artifact"], record)
+        for artifacts in [
+            {},
+            {str(module): {**record, "sha256": "0" * 64}},
+            {str(module): record, str(module) + ".extra": record},
+        ]:
+            with self.subTest(artifacts=artifacts), self.assertRaises(ValueError):
+                hook.compile_manifest([command], {**state, "module_artifacts": artifacts}, {"sdk_path": sdk})
+        module.write_bytes(b"replaced module")
+        with self.assertRaises(ValueError):
+            hook.compile_manifest([command], state, {"sdk_path": sdk})
+
+    def test_input_guard_rechecks_accepted_module_bytes(self):
+        module = self.root / "M.swiftmodule"
+        module.write_bytes(b"before")
+        store = self.root / "Store"
+        store.mkdir()
+        library, cli = self.root / "library", self.root / "cli"
+        library.write_bytes(b"library")
+        cli.write_bytes(b"cli")
+        state = {
+            **self.state,
+            "store": str(store),
+            "index_files": {},
+            "module_artifacts": {str(module): dict(path=str(module), sha256=hook.digest(module))},
+        }
+        hook.input_guard(state, library, hook.digest(library), cli, hook.digest(cli))
+        module.write_bytes(b"after")
+        with self.assertRaisesRegex(ValueError, "module artifact"):
+            hook.input_guard(state, library, hook.digest(library), cli, hook.digest(cli))
+
     def test_compiler_header_manifest_accepts_project_alias(self):
         alias = self.root / "project-alias"
         alias.symlink_to(self.project, target_is_directory=True)

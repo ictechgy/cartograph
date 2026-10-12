@@ -145,6 +145,7 @@ def option(command: list[str], name: str) -> str | None:
 
 def compile_manifest(commands: list[dict], state: dict, setup: dict) -> tuple[list[dict], dict]:
     expected, contexts = [], defaultdict(set)
+    module_paths = set()
     project = Path(state["project"])
     builds = state.get("builds", [])
     if len(builds) != len(commands) or any(
@@ -168,6 +169,25 @@ def compile_manifest(commands: list[dict], state: dict, setup: dict) -> tuple[li
         )
         if len(pairs) != len(command["outputs"]) or {p[1] for p in pairs} != set(command["outputs"]):
             raise ValueError("Compiler source/output association is incomplete")
+        module_artifact = None
+        module_output = option(argv, "-emit-module-path")
+        if module_output:
+            module_path = str(Path(module_output).resolve())
+            if module_path in module_paths or not Path(module_path).is_file() or not module or not sysroot:
+                raise ValueError("Missing/duplicate accepted Swift module output")
+            module_paths.add(module_path)
+            module_artifact = dict(
+                path=module_path,
+                sha256=digest(Path(module_path)),
+                module=module,
+                provider=provider,
+                target=target,
+                sysroot=str(Path(sysroot).resolve()),
+                sources=sorted(str(Path(p).resolve()) for p in command["source_paths"]),
+                outputs=sorted(str(Path(p).resolve()) for p in command["outputs"]),
+            )
+            if state.get("module_artifacts", {}).get(module_path) != module_artifact:
+                raise ValueError("Module output differs from pre-observation accepted compiler artifact")
         for source, output in pairs:
             relative = adapter.relative_path(project, source)
             if not relative or relative not in state["current_sources"]:
@@ -190,21 +210,24 @@ def compile_manifest(commands: list[dict], state: dict, setup: dict) -> tuple[li
                         if value.endswith(".h") and adapter.relative_path(project, value) in state["current_sources"]
                     }
                 )
-            expected.append(
-                dict(
-                    output=output,
-                    source=source,
-                    module=module,
-                    provider=provider,
-                    target=target,
-                    sysroot=sysroot,
-                    project_headers=headers,
-                )
+            entry = dict(
+                output=str(Path(output).resolve()),
+                source=str(Path(source).resolve()),
+                module=module,
+                provider=provider,
+                target=target,
+                sysroot=str(Path(sysroot).resolve()) if sysroot else None,
+                project_headers=headers,
             )
+            if module_artifact:
+                entry["module_artifact"] = module_artifact
+            expected.append(entry)
             if relative.startswith("Sources/"):
                 contexts[relative].add(module or "BridgeKit")
-    if {e["output"] for e in expected} != set(state["active_object_outputs"]):
+    if {e["output"] for e in expected} != {str(Path(p).resolve()) for p in state["active_object_outputs"]}:
         raise ValueError("State active outputs differ from accepted compiler command manifest")
+    if module_paths != set(state.get("module_artifacts", {})):
+        raise ValueError("Accepted module inventory differs from successful compiler commands")
     # 헤더는 정답 노드 목록이 아니라, 독립 소스/빌드 입력 목록에서 가져온다.
     for relative in state["current_sources"]:
         if relative.startswith("Sources/") and relative.endswith(".h"):
@@ -487,6 +510,9 @@ def input_guard(state: dict, library: Path, library_hash: str, cli: Path, cli_ha
         raise ValueError("Shared compiler store or source bytes differ from recorded state")
     if digest(library) != library_hash or digest(cli) != cli_hash:
         raise ValueError("Compiler reader library/native CLI changed during observation")
+    for path, record in state.get("module_artifacts", {}).items():
+        if record.get("path") != path or not Path(path).is_file() or digest(Path(path)) != record.get("sha256"):
+            raise ValueError("Accepted compiler module artifact changed during observation")
 
 
 def freshness_diagnostics(native: dict, project: Path, changed: list[str]) -> dict:
@@ -748,6 +774,7 @@ def main() -> int:
             project_record_provenances=len(provenance["records"]),
             distinct_records=len(texts),
             source_definitions=sum(e["definition"] for e in catalog),
+            module_artifact_associations=len(provenance["module_artifact_dependencies"]),
         )
         result["index_dump_native_freshness"] = dict(
             capability="unsupported", precision=None, recall=None, scored=False

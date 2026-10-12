@@ -41,6 +41,21 @@ XCTest units/records are identified separately but never enter the Sources-only 
 
 ## Verified execution
 
+Run 38203029381 is the first retained complete normalized mixed-iOS observation bundle. It completed
+13 validation states, including five unbuilt states and one expected compiler failure. Seven successful
+build states stopped in the previous adapter before call-graph scoring: Apple CLI output omits empty
+unit names for locally built Swift modules. Six stale-state native queries completed with exit 0, but
+none identified the required changed path in a recognized limitation. These failures and the ignored
+fixture `retain_public` configuration warning remain in the unchanged archive.
+
+The dependency parser now distinguishes the absolute path field before assigning optional module/name
+fields. Ambiguous, relative or malformed layouts are refused. A nameless Unit dependency retains
+`name: null`; it never becomes an invented CLI unit edge. A separate build-artifact association requires
+the exact module output path/hash sealed before observation, successful command evidence, matching
+provider/target/SDK, and complete source/object inventory. Every associated source unit must already be
+an independently selected current root. Module bytes are rechecked after each arm and by the outer
+lifecycle before any next state. Old archives lacking this seal are not reconstructed into passing runs.
+
 The preserved original verification is `portable-results-reviewed/results.json`. Current integration repairs are additionally verified in `portable-integration-legacy/results.json` and `portable-integration-nested/results.json`; both execute the same portable contracts with the actual pinned CLI:
 
 - Eight actual Clang lifecycle states: initial, header-only unbuilt/edit rebuild, header rename unbuilt/rebuild, header delete unbuilt/expected failed build, and restoration rebuild.
@@ -52,7 +67,9 @@ The preserved original verification is `portable-results-reviewed/results.json`.
 
 Earlier `portable-results-01` preserves an initial Swift module-cache failure caused by a read-only default cache directory. The runner now passes a writable explicit module-cache path. `portable-results-02` passed the smaller contract before adding the current-source rename/delete and compile dependency gates. The later portable-results-03 and portable-results-final runs also preserve intermediate verification. They are historical diagnostics, not final evidence for current code.
 
-Not run: real iOS SDK compilation, Foundation Objective-C, Swift/Objective-C interoperability, native Cartograph graph/query execution, native header freshness, full thirteen-state product comparison, framework selection, XCTest runtime, or performance/holdout protocol.
+Real iOS SDK compilation and six native freshness queries ran in the retained failed round above.
+Fresh post-repair mixed call-graph grades remain pending. Framework selection, XCTest runtime and the
+final performance/holdout protocol remain unrun. Portable Linux results below are validation only.
 
 ## Run
 
