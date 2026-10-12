@@ -147,7 +147,8 @@ extension CartographService {
     /// 증명은 보이지 않는 구현이 없을 때만 성립하므로 `bound` 를 내지 않는다.
     static let openWorldLimitationPrefixes = [
         "empty-index:", "index-staleness:", "unindexed-sources:", "missing-sources:", "unreadable-sources:",
-        "configured-path-filter:", "configured-edge-kinds:", "objective-c-sources:", "public-api-not-retained:",
+        "header-projection:", "configured-path-filter:", "configured-edge-kinds:",
+        "objective-c-sources:", "public-api-not-retained:",
     ]
 
     static func isClosedWorld(_ limitations: [String]) -> Bool {

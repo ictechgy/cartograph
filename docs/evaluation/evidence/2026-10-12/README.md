@@ -70,6 +70,21 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    text evidence cannot distinguish stale PCM reuse from missing re-indexing. No still-reachable record
    was discarded and no source expectation changed. Every setup, build, observation and failure remains.
 
+12. Run 38207788767 was mandatory exact-head CI after the evidence-only archival commit.
+   It reproduces the original mixed outcomes: 13 completed validation states, all 13 observations
+   failed, initial baseline 23/23 versus native 19/23 edges, six freshness failures and the same
+   stale indexed-module provenance contradiction. No source oracle or product behavior changed.
+
+13. Run 38209165923 keeps that same failed mixed lifecycle and adds a separate five-stage Apple
+   compiler diagnostic under macOS SDK 26.5 / Apple Clang 2100.1.1.101. Object relocations and LLVM
+   IR reflect the edited target after header edit/rename. PCM bytes change, but the indexed module
+   unit remains byte-identical through a PCM-cache refresh. Rebuilding into an empty task-owned
+   IndexStore makes the authored edge current while retaining the same refreshed PCM bytes.
+   Initial/fresh-index index controls pass; the three intermediate stale index observations remain.
+   All five object/IR targets and pre/post diagnostic guards pass. This establishes the bounded
+   macOS compiler-input diagnosis, not mixed iOS correctness or an engine advantage. All original
+   mixed failures, diagnostic commands, setup/refresh costs and hash manifests are retained.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -80,9 +95,9 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text, their manifests and the reviewed publication status.
 They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
 Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Seven archives retain
+private; each manifest distinguishes original hashes from normalized public hashes. Nine archives retain
 the exact bytes of their public Actions artifacts. The three test-phase archives and round eight's partial
-driver-phase archive were normalized separately after their failures. Rounds nine through eleven preserve all original
+driver-phase archive were normalized separately after their failures. Rounds nine through thirteen preserve all original
 ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
 when Actions retention expires.
 

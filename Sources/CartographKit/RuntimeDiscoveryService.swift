@@ -96,7 +96,7 @@ extension CartographService {
             let state: RuntimeFreshness
             if absent.contains(path) { state = .missingFile }
             else if failed.contains(path) { state = .unreadableFile }
-            else if let indexed = snapshot.indexedFileDates?[path],
+            else if let indexed = snapshot.sourceFreshnessDates?[path],
                     let modified = environment.fileSystem.modificationDate(at: path) {
                 state = modified > indexed ? .sourceNewerThanIndex : .fresh
             } else { state = .unknownIndexDate }

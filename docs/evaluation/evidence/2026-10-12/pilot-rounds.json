@@ -278,6 +278,203 @@
       "status": "mixed-native-header-admission-freshness-and-compiler-provenance-failed",
       "synthetic_correctness_and_freshness_passed": true,
       "url": "https://github.com/ictechgy/cartograph/actions/runs/38205053093"
+    },
+    {
+      "archive_sha256": "c16955a83ce045cb26a8e7b8032b75f33adb3e1ca85dad3ba2b3edc0f8b80144",
+      "artifact_id": 11728221453,
+      "compiler_provenance_failure": {
+        "header_edit_rebuilt": "C/ObjC++ current units reference edited header records calling CGAlternate, while a Swift-reachable BridgeKit PCM unit still references the initial header record calling CGBase.",
+        "header_rename_rebuilt": "Current Swift roots still reach that byte-identical initial module unit and its deleted old header dependency; adapter refuses.",
+        "interpretation": "Stale indexed module facts are proven; retained text alone does not distinguish stale PCM reuse from missing re-indexing. No engine winner is graded for these two states.",
+        "same_normalized_module_unit_dump_sha256": "3892f0dc2180594444a412cb2832297239ac929eaf97592c732af550e94ac360"
+      },
+      "expectation_changes": false,
+      "head": "4643dbd8451e2ac691fe6ec723f6f96670cce4ae",
+      "initial_graph": {
+        "cartograph": {
+          "fn": 4,
+          "fp": 0,
+          "missing_scope": "The two project header-inline definitions and their four call edges.",
+          "tp": 19,
+          "unresolved_definitions": 2
+        },
+        "index_dump_assembly": {
+          "fn": 0,
+          "fp": 0,
+          "tp": 23
+        }
+      },
+      "mixed_validation_states": 13,
+      "nameless_module_associations": "Two sealed artifact associations executed in each of six graph-scored successful-build states; header rename rebuild separately failed stale module provenance.",
+      "native_freshness": {
+        "completed_query_exits": 6,
+        "failed_state_specific_checks": 6,
+        "query_exit_code": 0
+      },
+      "normalized_bundles": {
+        "argument-parser": 606,
+        "mixed-ios": 1760,
+        "mixed-setup": 6,
+        "synthetic": 1081
+      },
+      "normalized_manifest_files": 3453,
+      "public_project_validation_passed": true,
+      "publication_status": "publication_prepared",
+      "raw_fallback": false,
+      "rerun_reason": "Required exact-head CI after evidence-only archival update",
+      "retained_cost_evidence": "Every manifest-listed setup/build/observation cost retained; no final performance or superiority inference.",
+      "run_id": 38207788767,
+      "status": "mixed-native-header-admission-freshness-and-compiler-provenance-failed",
+      "synthetic_correctness_and_freshness_passed": true,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38207788767"
+    },
+    {
+      "archive_sha256": "8ab5ed6fa64ed7621acd648f059e1d7e5eadf72b49ef9ed14171330793b95a4c",
+      "artifact_id": 11729022088,
+      "compiler_only_diagnostic": {
+        "evidence_path": "synthetic/runs/module-refresh-diagnostic/results.json",
+        "harness_sha256": "f8a652fff8178edd1036bc21d191aa29c20fbee6ff07af634dd72bcb4b52efb3",
+        "interpretation": "Emitted code and PCM contents refresh after edit/rename, while the module index stays stale through PCM-cache refresh; fresh-index rebuild corrects it. Bounded macOS reproduction, not proof of every mixed iOS compiler context.",
+        "platform": "Apple macOS SDK 26.5; Apple Clang 2100.1.1.101; mixed iOS policy unchanged",
+        "role": "compiler-only; no engine timing or superiority grade",
+        "states": [
+          {
+            "expected_target": "base",
+            "index_matches_authored_source": true,
+            "ir_targets": [
+              "base"
+            ],
+            "module_unit_sha256": "aabc6c7eb666da893b84ba61f71b27702bd5ea0776f5ee39ccce8a59aa90fd29",
+            "object_targets": [
+              "base"
+            ],
+            "pcm_after_ir": {
+              "1VFNKEJN0PYCC/Bridge-1XI4CCRTBUIKR.pcm": "a29dc75fce7e609798debfe1fb417c9628a22fdc92f9321d182c4909741a1cc2"
+            },
+            "pcm_before_ir": {
+              "1VFNKEJN0PYCC/Bridge-1XI4CCRTBUIKR.pcm": "a29dc75fce7e609798debfe1fb417c9628a22fdc92f9321d182c4909741a1cc2"
+            },
+            "stage": "initial"
+          },
+          {
+            "expected_target": "alternate",
+            "index_matches_authored_source": false,
+            "ir_targets": [
+              "alternate"
+            ],
+            "module_unit_sha256": "aabc6c7eb666da893b84ba61f71b27702bd5ea0776f5ee39ccce8a59aa90fd29",
+            "object_targets": [
+              "alternate"
+            ],
+            "pcm_after_ir": {
+              "1VFNKEJN0PYCC/Bridge-1XI4CCRTBUIKR.pcm": "64e2eb28cb58cc9c4ab21394337df94deeb1cd6773fd4986887fa5c56a3e48c0"
+            },
+            "pcm_before_ir": {
+              "1VFNKEJN0PYCC/Bridge-1XI4CCRTBUIKR.pcm": "64e2eb28cb58cc9c4ab21394337df94deeb1cd6773fd4986887fa5c56a3e48c0"
+            },
+            "stage": "edited"
+          },
+          {
+            "expected_target": "alternate",
+            "index_matches_authored_source": false,
+            "ir_targets": [
+              "alternate"
+            ],
+            "module_unit_sha256": "aabc6c7eb666da893b84ba61f71b27702bd5ea0776f5ee39ccce8a59aa90fd29",
+            "object_targets": [
+              "alternate"
+            ],
+            "pcm_after_ir": {
+              "1VFNKEJN0PYCC/Bridge-1XI4CCRTBUIKR.pcm": "eb7e82bf5d4c15a9bdaada5f7d37dc37215c4518901bdc21cd43523c4fb9f23a"
+            },
+            "pcm_before_ir": {
+              "1VFNKEJN0PYCC/Bridge-1XI4CCRTBUIKR.pcm": "eb7e82bf5d4c15a9bdaada5f7d37dc37215c4518901bdc21cd43523c4fb9f23a"
+            },
+            "stage": "renamed"
+          },
+          {
+            "expected_target": "alternate",
+            "index_matches_authored_source": false,
+            "ir_targets": [
+              "alternate"
+            ],
+            "module_unit_sha256": "aabc6c7eb666da893b84ba61f71b27702bd5ea0776f5ee39ccce8a59aa90fd29",
+            "object_targets": [
+              "alternate"
+            ],
+            "pcm_after_ir": {
+              "1VFNKEJN0PYCC/Bridge-1XI4CCRTBUIKR.pcm": "eb7e82bf5d4c15a9bdaada5f7d37dc37215c4518901bdc21cd43523c4fb9f23a"
+            },
+            "pcm_before_ir": {
+              "1VFNKEJN0PYCC/Bridge-1XI4CCRTBUIKR.pcm": "eb7e82bf5d4c15a9bdaada5f7d37dc37215c4518901bdc21cd43523c4fb9f23a"
+            },
+            "stage": "cache-refreshed"
+          },
+          {
+            "expected_target": "alternate",
+            "index_matches_authored_source": true,
+            "ir_targets": [
+              "alternate"
+            ],
+            "module_unit_sha256": "0f95b98acc019b7397f3fb3a1e2444370ee75e033d2c98c8a570ba830343e04a",
+            "object_targets": [
+              "alternate"
+            ],
+            "pcm_after_ir": {
+              "1VFNKEJN0PYCC/Bridge-1XI4CCRTBUIKR.pcm": "eb7e82bf5d4c15a9bdaada5f7d37dc37215c4518901bdc21cd43523c4fb9f23a"
+            },
+            "pcm_before_ir": {
+              "1VFNKEJN0PYCC/Bridge-1XI4CCRTBUIKR.pcm": "eb7e82bf5d4c15a9bdaada5f7d37dc37215c4518901bdc21cd43523c4fb9f23a"
+            },
+            "stage": "fresh-index"
+          }
+        ]
+      },
+      "compiler_provenance_failure": {
+        "header_edit_rebuilt": "C/ObjC++ current units reference edited header records calling CGAlternate, while a Swift-reachable BridgeKit PCM unit still references the initial header record calling CGBase.",
+        "header_rename_rebuilt": "Current Swift roots still reach that byte-identical initial module unit and its deleted old header dependency; adapter refuses.",
+        "interpretation": "Stale indexed module facts are proven; retained text alone does not distinguish stale PCM reuse from missing re-indexing. No engine winner is graded for these two states.",
+        "same_normalized_module_unit_dump_sha256": "7e64403fcf07a8e7f96f4f33f02a236d121f89a09c9b907dd4a7229967e171a5"
+      },
+      "expectation_changes": false,
+      "head": "d6bab511fa23baba15a2e3128947da9e5a84472f",
+      "initial_graph": {
+        "cartograph": {
+          "fn": 4,
+          "fp": 0,
+          "missing_scope": "The two project header-inline definitions and their four call edges.",
+          "tp": 19,
+          "unresolved_definitions": 2
+        },
+        "index_dump_assembly": {
+          "fn": 0,
+          "fp": 0,
+          "tp": 23
+        }
+      },
+      "mixed_validation_states": 13,
+      "nameless_module_associations": "Two sealed artifact associations executed in each of six graph-scored successful-build states; header rename rebuild separately failed stale module provenance.",
+      "native_freshness": {
+        "completed_query_exits": 6,
+        "failed_state_specific_checks": 6,
+        "query_exit_code": 0
+      },
+      "normalized_bundles": {
+        "argument-parser": 606,
+        "mixed-ios": 1760,
+        "mixed-setup": 6,
+        "synthetic": 1216
+      },
+      "normalized_manifest_files": 3588,
+      "public_project_validation_passed": true,
+      "publication_status": "publication_prepared",
+      "raw_fallback": false,
+      "rerun_reason": "Added compiler-only diagnostic; original mixed comparison lifecycle and oracle unchanged",
+      "retained_cost_evidence": "Every manifest-listed setup/build/observation cost retained; no final performance or superiority inference.",
+      "run_id": 38209165923,
+      "status": "mixed-native-header-admission-freshness-and-compiler-provenance-failed",
+      "synthetic_correctness_and_freshness_passed": true,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38209165923"
     }
   ],
   "superiority_claim": null

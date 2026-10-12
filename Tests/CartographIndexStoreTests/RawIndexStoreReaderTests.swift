@@ -31,7 +31,7 @@ struct RawIndexStoreReaderTests {
         let reader = RawIndexStoreReader(
             storePath: fixture.store.path, libraryPath: fixture.library, fileSystem: LocalFileSystem()
         )
-        #expect(throws: (any Error).self) { try reader.occurrences(in: [fixture.source.path]) }
+        #expect(throws: (any Error).self) { try reader.read(in: [fixture.source.path]).occurrences }
     }
     @Test("상대 소스와 링크 경로를 두 모듈의 실제 선언 위치에 결합한다")
     func sharedRecordsKeepCanonicalLocations() throws {
@@ -44,7 +44,7 @@ struct RawIndexStoreReaderTests {
             storePath: fixture.store.path, libraryPath: fixture.library, fileSystem: fileSystem
         )
         for path in [fixture.source.path, link.path, fileSystem.canonicalPath(physicalPath)] {
-            let occurrences = try reader.occurrences(in: [path])
+            let occurrences = try reader.read(in: [path]).occurrences
             let definitions = occurrences.filter { $0.roles.contains(.definition) && $0.symbol.name == "Payload" }
             #expect(Set(definitions.map(\.location.moduleName)) == ["SyntheticAlpha", "SyntheticBeta"])
             #expect(definitions.count == 2)
@@ -61,7 +61,8 @@ struct RawIndexStoreReaderTests {
                 })
             }
         }
-        #expect(try reader.occurrences(in: [fixture.root.appendingPathComponent("Unrequested.swift").path]).isEmpty)
+        let unrequested = fixture.root.appendingPathComponent("Unrequested.swift").path
+        #expect(try reader.read(in: [unrequested]).occurrences.isEmpty)
         let provider = IndexStoreProvider(configuration: .init(
             storePath: fixture.store.path, databasePath: fixture.root.appendingPathComponent("ReaderDB").path,
             libraryPath: fixture.library, sourceRoots: [link.path]
@@ -111,6 +112,61 @@ struct RawIndexStoreReaderTests {
             .compactMap { try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
         let physicalPath = try fileSystem.realPath(at: fixture.source.path)
         #expect(closeEnough(raw.indexedFileDates?[physicalPath], unitDates.max()))
+        #expect(datesMatch(raw.oldestIndexedFileDates, database.oldestIndexedFileDates))
+    }
+
+    @Test("같은 Swift 파일의 한 타깃만 다시 빌드하면 오래된 문맥 날짜를 보존한다")
+    func partialSharedSourceRebuildPreservesOldCoverageDate() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        Thread.sleep(forTimeInterval: 1.1)
+        let original = try String(contentsOf: fixture.source, encoding: .utf8)
+        try Data((original + "// source edit before rebuilding only SyntheticAlpha\n").utf8).write(to: fixture.source)
+        let fileSystem = LocalFileSystem()
+        let modified = try #require(fileSystem.modificationDate(at: fixture.source.path))
+        _ = try runCompiler(executable: "/usr/bin/xcrun", arguments: [
+            "swiftc", "-module-name", "SyntheticAlpha", "-parse-as-library", "-emit-object", "Shared.swift",
+            "-o", fixture.root.appendingPathComponent("SyntheticAlpha.o").path, "-index-store-path", fixture.store.path,
+        ], in: fixture.root)
+        let snapshot = try IndexStoreProvider(configuration: .init(storePath: fixture.store.path,
+            databasePath: fixture.root.appendingPathComponent("UnusedDB").path, libraryPath: fixture.library,
+            sourceRoots: [fixture.source.path], readerMode: .raw, dependencyRoots: [fixture.root.path])).loadSnapshot()
+        let path = try fileSystem.realPath(at: fixture.source.path)
+        #expect(try #require(snapshot.indexedFileDates?[path]) >= modified)
+        #expect(try #require(snapshot.oldestIndexedFileDates?[path]) < modified)
+        #expect(snapshot.sourceFreshnessDates?[path] == snapshot.oldestIndexedFileDates?[path])
+        #expect(Set(snapshot.symbols.map(\.module)) == ["SyntheticAlpha", "SyntheticBeta"])
+    }
+
+    @Test("범위 안의 헤더와 삭제 Swift 의존성은 선언 투영을 넓히지 않고 날짜만 남긴다")
+    func dependencyDatesSurviveSourceDeletionWithoutAddingDeclarations() throws {
+        let fixture = try makeObjectiveCFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let fileSystem = LocalFileSystem()
+        let headerPath = try fileSystem.realPath(at: fixture.header.path)
+        let provider = IndexStoreProvider(configuration: .init(storePath: fixture.store.path,
+            databasePath: fixture.root.appendingPathComponent("UnusedDB").path, libraryPath: fixture.library,
+            sourceRoots: [fixture.source.path], includeObjectiveCSources: true, readerMode: .raw,
+            dependencyRoots: [fixture.root.path]))
+        let before = try provider.loadSnapshot()
+        #expect(before.oldestIndexedFileDates?[headerPath] != nil)
+        #expect(!before.symbols.contains { $0.location.path == headerPath && !$0.isExternal })
+        try FileManager.default.removeItem(at: fixture.header)
+        let after = try provider.loadSnapshot()
+        #expect(after.oldestIndexedFileDates?[headerPath] == before.oldestIndexedFileDates?[headerPath])
+        #expect(after.symbols == before.symbols)
+        #expect(after.references == before.references)
+        #expect(after.oldestIndexedFileDates?[fixture.systemHeader] == nil)
+
+        let swift = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: swift.root) }
+        let deletedPath = try fileSystem.realPath(at: swift.source.path)
+        try FileManager.default.removeItem(at: swift.source)
+        let deleted = try IndexStoreProvider(configuration: .init(storePath: swift.store.path,
+            databasePath: swift.root.appendingPathComponent("UnusedDB").path, libraryPath: swift.library,
+            sourceRoots: [], readerMode: .raw, dependencyRoots: [swift.root.path])).loadSnapshot()
+        #expect(deleted.symbols.isEmpty && deleted.references.isEmpty)
+        #expect(deleted.oldestIndexedFileDates?[deletedPath] != nil)
     }
 
     @Test(
@@ -211,7 +267,8 @@ struct RawIndexStoreReaderTests {
             libraryPath: fixture.library,
             sourceRoots: [fixture.source.path],
             includeObjectiveCSources: true,
-            readerMode: .raw
+            readerMode: .raw,
+            dependencyRoots: [fixture.root.path]
         )).loadSnapshot()
         #expect(!raw.symbols.isEmpty)
         #expect(raw.symbols == baseline.symbols)
@@ -224,9 +281,11 @@ struct RawIndexStoreReaderTests {
             #expect(closeEnough(date, baseline.indexedFileDates?[path]))
         }
         let physicalHeader = try fileSystem.realPath(at: fixture.header.path)
-        // .h와 SDK 헤더는 기존 sourceFilePaths의 분석 대상에 포함되지 않는다.
-        #expect(raw.indexedFileDates?[physicalHeader] == nil)
-        #expect(baseline.indexedFileDates?[physicalHeader] == nil)
+        // 헤더는 선언 투영에 추가하지 않고 범위 안의 의존 시각만 보존한다.
+        #expect(raw.indexedFileDates?[physicalHeader] != nil)
+        #expect(baseline.indexedFileDates?[physicalHeader] != nil)
+        #expect(raw.oldestIndexedFileDates?[physicalHeader] != nil)
+        #expect(!raw.symbols.contains { $0.location.path == physicalHeader && !$0.isExternal })
         #expect(!FileManager.default.fileExists(atPath:
             fixture.root.appendingPathComponent("UnusedRawDB").path))
     }
@@ -243,7 +302,7 @@ struct RawIndexStoreReaderTests {
         let reader = RawIndexStoreReader(
             storePath: fixture.store.path, libraryPath: fixture.library, fileSystem: LocalFileSystem()
         )
-        #expect(throws: (any Error).self) { try reader.occurrences(in: [fixture.source.path]) }
+        #expect(throws: (any Error).self) { try reader.read(in: [fixture.source.path]).occurrences }
     }
 
     @Test("많은 공유 레코드도 bounded cache 안에서 두 모듈 문맥을 모두 보존한다")
@@ -255,10 +314,10 @@ struct RawIndexStoreReaderTests {
         var peakReaders = 0
         var peakQueue = 0
 
-        let result = try reader.read(in: Set(fixture.sources)) { readers, queue in
+        let result = try reader.read(in: Set(fixture.sources), recordCachePeak: { readers, queue in
             peakReaders = max(peakReaders, readers)
             peakQueue = max(peakQueue, queue)
-        }
+        })
         let definitions = result.occurrences.filter { $0.roles.contains(.definition) }
         let sharedDefinitions = definitions.filter { $0.symbol.name.hasPrefix("Shared") }
 

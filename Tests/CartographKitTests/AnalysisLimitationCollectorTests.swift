@@ -6,6 +6,94 @@ import Testing
 
 @Suite("분석 한계 수집")
 struct AnalysisLimitationCollectorTests {
+    @Test("범위에 헤더가 없으면 헤더 투영 경고를 만들지 않는다")
+    func headerProjectionDoesNotInventAbsentHeaders() {
+        let fileSystem = InMemoryFileSystem(files: ["/p/A.swift": ""])
+        let result = collector(fileSystem).collect(context: nil, symbolGraph: nil, emptyIndexCounts: nil)
+        #expect(!result.contains { $0.hasPrefix("header-projection:") })
+    }
+
+    @Test("한 문맥만 재빌드하면 최신 시각이 다른 문맥의 낡은 소스를 가리지 않는다")
+    func partialContextCoverageRemainsStale() {
+        let old = Date(timeIntervalSince1970: 1_000)
+        let fileSystem = InMemoryFileSystem(files: ["/p/Shared.swift": ""])
+        fileSystem.setModificationDate(old.addingTimeInterval(50), for: "/p/Shared.swift")
+        let snapshot = IndexSnapshot(indexedFileDates: ["/p/Shared.swift": old.addingTimeInterval(100)],
+            oldestIndexedFileDates: ["/p/Shared.swift": old])
+        let result = collector(fileSystem).collect(context: AnalysisContext(snapshot: snapshot),
+            symbolGraph: nil, emptyIndexCounts: nil)
+        #expect(result.contains { $0.hasPrefix("index-staleness: 1 of 1") && $0.contains("Shared.swift") })
+        let legacy = IndexSnapshot(indexedFileDates: snapshot.indexedFileDates)
+        let legacyResult = collector(fileSystem).collect(context: AnalysisContext(snapshot: legacy),
+            symbolGraph: nil, emptyIndexCounts: nil)
+        #expect(!legacyResult.contains { $0.hasPrefix("index-staleness:") })
+    }
+
+    @Test("경고 경로의 줄바꿈·따옴표·방향 제어 문자는 출력 행을 바꾸지 않는다")
+    func diagnosticPathsEscapeControls() throws {
+        let path = "/p/A\n\"B\u{202E}.swift"
+        let fileSystem = InMemoryFileSystem(files: [path: ""])
+        let context = AnalysisContext(snapshot: IndexSnapshot(indexedFileDates: [:]))
+        let result = collector(fileSystem).collect(context: context, symbolGraph: nil, emptyIndexCounts: nil)
+        let warning = result.first { $0.hasPrefix("unindexed-sources:") } ?? ""
+        #expect(warning.contains("paths:"))
+        #expect(!warning.contains("\n") && !warning.contains("\u{202E}"))
+        #expect(warning.contains("\\n") && warning.contains("\\\"") && warning.contains("\\u202E"))
+        let encoded = try #require(warning.components(separatedBy: "; paths: ").last)
+        #expect(try JSONDecoder().decode([String].self, from: Data(encoded.utf8)) == [String(path.dropFirst(3))])
+    }
+
+    @Test("많은 경고 경로는 결정적인 앞 64개와 생략 수를 내보내고 전체 개수는 유지한다")
+    func diagnosticPathCountIsBounded() throws {
+        let paths = (0..<100).map { String(format: "/p/Sources/File%03d.swift", $0) }
+        let fileSystem = InMemoryFileSystem(files: Dictionary(uniqueKeysWithValues: paths.map { ($0, "") }))
+        let context = AnalysisContext(snapshot: IndexSnapshot(indexedFileDates: [:]), missingSourcePaths: paths)
+        let result = collector(fileSystem).collect(context: context, symbolGraph: nil, emptyIndexCounts: nil)
+        for prefix in ["unindexed-sources: 100 of 100", "missing-sources: 100"] {
+            let warning = try #require(result.first { $0.hasPrefix(prefix) })
+            #expect(warning.hasSuffix("; omitted-paths: 36"))
+            let encoded = warning.components(separatedBy: "; paths: ")[1]
+                .components(separatedBy: "; omitted-paths: ")[0]
+            let displayed = try JSONDecoder().decode([String].self, from: Data(encoded.utf8))
+            #expect(displayed == Array(paths.prefix(64)).map { String($0.dropFirst(3)) })
+        }
+    }
+
+    @Test("긴 유니코드와 제어 문자 경로는 이스케이프 후 UTF-8 예산을 지키며 생략을 알린다")
+    func diagnosticPathByteBudgetIncludesEscapes() throws {
+        for tail in [String(repeating: "😀", count: 3_000), String(repeating: "\u{202E}", count: 2_000)] {
+            let path = "/p/Z" + tail + ".swift"
+            let fileSystem = InMemoryFileSystem(files: ["/p/A.swift": "", path: ""])
+            let result = collector(fileSystem).collect(
+                context: AnalysisContext(snapshot: IndexSnapshot(indexedFileDates: [:])),
+                symbolGraph: nil, emptyIndexCounts: nil)
+            let warning = try #require(result.first { $0.hasPrefix("unindexed-sources: 2 of 2") })
+            #expect(warning.hasSuffix("; paths: [\"A.swift\"]; omitted-paths: 1"))
+            #expect(warning.utf8.count < AnalysisLimitationCollector.maximumDiagnosticPathBytes)
+            #expect(!warning.contains("\u{202E}"))
+        }
+    }
+
+    @Test("신선도와 누락 경고는 관련된 프로젝트 상대 경로만 안전하게 식별한다")
+    func diagnosticsIdentifyOnlyRelevantScopedPaths() {
+        let old = Date(timeIntervalSince1970: 1_000)
+        let fileSystem = InMemoryFileSystem(files: ["/p/Sources/API.h": "", "/p/Sources/New.swift": "",
+            "/p/Excluded/Private.h": ""])
+        fileSystem.setModificationDate(old.addingTimeInterval(50), for: "/p/Sources/API.h")
+        let context = AnalysisContext(snapshot: IndexSnapshot(indexedFileDates: ["/p/Sources/API.h": old]),
+            missingSourcePaths: ["/p/Sources/Deleted.swift", "/private/Secret.h", "/p/Excluded/Private.h"])
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        configuration.include = ["Sources/**"]
+        let result = AnalysisLimitationCollector(configuration: configuration, fileSystem: fileSystem,
+            projectPath: "/p", storeDate: nil).collect(context: context, symbolGraph: nil, emptyIndexCounts: nil)
+        #expect(result.contains { $0.hasPrefix("index-staleness:") && $0.contains("Sources/API.h") })
+        #expect(result.contains { $0.hasPrefix("header-projection: 1 ") && $0.contains("Sources/API.h") })
+        #expect(result.contains { $0.hasPrefix("unindexed-sources:") && $0.contains("Sources/New.swift") })
+        #expect(result.contains { $0.hasPrefix("missing-sources:") && $0.contains("Sources/Deleted.swift") })
+        #expect(result.allSatisfy { !$0.contains("/private/") && !$0.contains("Excluded/") && !$0.contains("/p/") })
+    }
+
     @Test("다른 타깃의 새 유닛이 낡은 파일의 인덱스를 가리지 않는다")
     func partialBuildDoesNotHideStaleFile() {
         let old = Date(timeIntervalSince1970: 1_000)

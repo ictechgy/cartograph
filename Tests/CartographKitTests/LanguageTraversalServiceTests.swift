@@ -184,6 +184,7 @@ struct LanguageTraversalServiceTests {
         #expect(CartographService.isClosedWorld(["objective-c-sources: 2 file(s)"]) == false)
         #expect(CartographService.isClosedWorld(["unindexed-sources: 3 of 9 source file(s) have no known index unit"])
             == false)
+        #expect(!CartographService.isClosedWorld(["header-projection: 1 project header file(s)"]))
         #expect(CartographService.isClosedWorld(["external-retentions: 2 retention(s)"]))
     }
 

@@ -182,12 +182,58 @@
       "sha256": "8919b828d496a1b2a287108e7444218454f34196cada03ddfed851dd6a25982f",
       "uncompressed_bytes": 34794662,
       "verified_normalized_files": 3453
+    },
+    {
+      "archive": "run-38207788767-normalized.zip",
+      "archive_entries": 3458,
+      "auxiliary_files": [
+        {
+          "bytes": 919974,
+          "path": "bundle-status.json",
+          "sha256": "9872d0f783637054e78d7fd2199377589ea5e5bd39b01a89d9568ff773b27f7c"
+        }
+      ],
+      "compressed_bytes": 6570985,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38207788767,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38207788767",
+      "sha256": "c16955a83ce045cb26a8e7b8032b75f33adb3e1ca85dad3ba2b3edc0f8b80144",
+      "uncompressed_bytes": 34796042,
+      "verified_normalized_files": 3453
+    },
+    {
+      "archive": "run-38209165923-normalized.zip",
+      "archive_entries": 3593,
+      "auxiliary_files": [
+        {
+          "bytes": 955815,
+          "path": "bundle-status.json",
+          "sha256": "2f68cf4168f9cf2073846a4ede92f3454c77ac29d8457450293d5c0025ea52b9"
+        }
+      ],
+      "compressed_bytes": 6675105,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38209165923,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38209165923",
+      "sha256": "8ab5ed6fa64ed7621acd648f059e1d7e5eadf72b49ef9ed14171330793b95a4c",
+      "uncompressed_bytes": 35072236,
+      "verified_normalized_files": 3588
     }
   ],
   "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
   "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 20431554,
-  "total_uncompressed_bytes": 117062550
+  "total_compressed_bytes": 33677644,
+  "total_uncompressed_bytes": 186930828
 }

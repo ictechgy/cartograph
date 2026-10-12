@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import time
+import compiler_generations as generations
 from validation_common import (
     ROOT,
     STAGES,
@@ -66,7 +67,8 @@ def run(args: list[str], cwd: Path, stem: Path, timeout: int = 300) -> dict:
 def setup_capture(args: list[str], root: Path, name: str) -> str:
     record = run(args, root, root / "setup" / name)
     if record["exit_code"] != 0:
-        raise RuntimeError(f'Setup failed: {name}; see {record["stderr"]}')
+        error = generations.IncompleteProcess if generations.incomplete_exit(record["exit_code"]) else RuntimeError
+        raise error(f'Setup failed: {name}; see {record["stderr"]}')
     return Path(record["stdout"]).read_text().strip()
 
 
@@ -111,6 +113,7 @@ def selected_setup(args: argparse.Namespace, output: Path) -> dict:
 
 def retain_private_snapshots(output: Path, state: dict, archives: dict, *, failure: bool = False) -> None:
     """Raw sources and compiler bytes stay outside the public-text selection roots."""
+    started = time.perf_counter()
     destination = output / "private-snapshots" / state["name"]
     if failure:
         destination /= "failure"
@@ -122,15 +125,28 @@ def retain_private_snapshots(output: Path, state: dict, archives: dict, *, failu
     if key not in archives:
         archives[key] = shutil.make_archive(str(destination / "index"), "gztar", state["store"])
     state[prefix + "index_snapshot"] = archives[key]
+    state[prefix + "private_evidence_snapshot_wall_seconds"] = time.perf_counter() - started
 
 
 def retain_failed_state(output: Path, state: dict, error: BaseException, archives: dict) -> None:
     """Save the primary failure even if a secondary evidence operation also fails."""
     state.update(status="failed", error=f"{type(error).__name__}: {error}")
+    attempt = state.get("generation_attempt")
+    if attempt and attempt["status"] == "building":
+        attempt["status"] = "rejected"
     path = output / "runs" / state["name"] / "state.json"
     save(path, state)
     failures = []
     try:
+        if state["phase"] == "compiler-validation" and state.get("command_record"):
+            command = json.loads(Path(state["command_record"]).read_text())
+            code = command["exit_code"]
+            if generations.incomplete_exit(code):
+                state["compiler_process_lifecycle"] = dict(completed=False, descendant_cleanup_verified=False)
+                if attempt:
+                    attempt["snapshot_consistency"] = "unverified-incomplete-process"
+        if attempt and attempt["status"] == "rejected":
+            generations.capture_attempt(attempt)
         state["failure_current_sources"] = source_manifest(Path(state["project"]))
         state["failure_index_files"] = manifest(Path(state["store"]))
         state["failure_module_hashes"] = {
@@ -156,6 +172,10 @@ def main() -> int:
     parser.add_argument("--with-tests", action="store_true", help="Compile optional XCTest module; never runs tests")
     parser.add_argument("--plan", action="store_true", help="Plan only, works on Linux; no compiler execution")
     parser.add_argument(
+        "--compiler-index-policy", choices=generations.POLICIES, default=generations.POLICIES[0],
+        help="Versioned shared compiler input policy; original incremental diagnostic remains the default",
+    )
+    parser.add_argument(
         "--continue-observation-failures",
         action="store_true",
         help="Preserve all failed observations across the declared lifecycle, return failure, and still abort on input mutation",
@@ -170,7 +190,11 @@ def main() -> int:
     if output.exists() and any(output.iterdir()):
         parser.error("Output must be absent or empty; existing evidence is never overwritten")
     output.mkdir(parents=True, exist_ok=True)
-    save(output / "results.json", dict(status="running", role="validation-only", superiority_claim=None))
+    save(
+        output / "results.json",
+        dict(status="running", role="validation-only", superiority_claim=None,
+             compiler_index_policy=args.compiler_index_policy),
+    )
     try:
         return execute(args, output)
     except (Exception, KeyboardInterrupt) as error:
@@ -187,21 +211,27 @@ def main() -> int:
             dict(
                 status="failed",
                 role="validation-only",
+                compiler_index_policy=args.compiler_index_policy,
                 error=f"{type(error).__name__}: {error}",
                 retained_states=states,
                 retention_errors=retention_errors,
+                process_lifecycle=dict(completed=False, descendant_cleanup_verified=False)
+                if isinstance(error, (generations.IncompleteProcess, KeyboardInterrupt)) else None,
                 superiority_claim=None,
             ),
         )
         print(f"Validation failed: {type(error).__name__}: {error}", file=sys.stderr)
-        return 2
+        return (generations.INCOMPLETE_PROCESS_EXIT
+                if isinstance(error, (generations.IncompleteProcess, KeyboardInterrupt)) else 2)
 
 
 def execute(args: argparse.Namespace, output: Path) -> int:
     if source_manifest(ROOT / "fixture") != json.loads((ROOT / "source-manifest.json").read_text()):
         raise ValueError("Fixture source hashes changed; review and refreeze validation artifacts")
+    copy_started = time.perf_counter()
     project = output / "Project"
     shutil.copytree(ROOT / "fixture", project)
+    project_copy_seconds = time.perf_counter() - copy_started
     store, build = output / "IndexStore", output / "Build"
     for p in [store, build / "modules"]:
         p.mkdir(parents=True, exist_ok=True)
@@ -221,13 +251,29 @@ def execute(args: argparse.Namespace, output: Path) -> int:
         "-simulator" if args.sdk == "iphonesimulator" else ""
     )
     setup["target_triple"] = triple
+    setup["compiler_index_policy"] = args.compiler_index_policy
+    setup["shared_project_copy_wall_seconds_by_arm"] = {arm: project_copy_seconds for arm in generations.ARMS}
+    fresh_generations = args.compiler_index_policy == "fresh-shared-v2"
+    seal_started = time.perf_counter()
+    setup["runtime_helper_sha256"] = {
+        p.name: digest(p) for p in [Path(__file__), Path(generations.__file__), ROOT / "validation_common.py"]
+    }
+    if fresh_generations and not args.plan:
+        setup["compiler_toolchain_files"] = generations.toolchain_manifest(setup)
+    seal_seconds = None if args.plan else time.perf_counter() - seal_started
+    setup["shared_toolchain_seal_wall_seconds_by_arm"] = {arm: seal_seconds for arm in generations.ARMS}
+    setup["sdk_content_identity"] = dict(
+        path=sdk, version=setup.get("sdk_version"), build=setup.get("sdk_build"), contents_sha256=None,
+        verification="version-path-only-validation", final_protocol_gate="not-satisfied",
+        limitation="SDK header/module contents and their immutability across generations are not established",
+    )
     save(output / "setup" / "setup.json", setup)
     hook = json.loads(args.hook_json.read_text()) if args.hook_json else None
     if hook is not None and (not isinstance(hook, list) or not hook or not all(isinstance(v, str) for v in hook)):
         raise ValueError("Hook must be a nonempty JSON argv array; shell commands are not accepted")
     active_hook = hook if not args.plan else None
     accepted_sources, accepted_state, accepted_outputs = {}, None, []
-    accepted_modules = {}
+    accepted_modules, accepted_generation = {}, None
     index_archives = {}
     stages = []
     observation_failures = []
@@ -253,11 +299,28 @@ def execute(args: argparse.Namespace, output: Path) -> int:
             active_object_outputs=accepted_outputs,
             module_artifacts=accepted_modules,
             builds=builds,
+            compiler_index_policy=args.compiler_index_policy,
+            accepted_generation=accepted_generation,
+            generation_attempt=None,
+            shared_input_cost=generations.cost(None, [], planned=args.plan),
+            shared_preflight_integrity_wall_seconds_by_arm={
+                arm: None if args.plan else 0.0 for arm in generations.ARMS
+            },
             input_contract="Same physical compiler store for both arms; verify hashes before and after each arm",
         )
         save(state_dir / "state.json", state)
+        preparation_started, preparation_complete = None, False
         try:
-            before = manifest(store)
+            guard_started = time.perf_counter()
+            try:
+                if fresh_generations and not args.plan:
+                    generations.guard(accepted_generation)
+                before = manifest(store)
+            finally:
+                guard_seconds = None if args.plan else time.perf_counter() - guard_started
+                state["shared_preflight_integrity_wall_seconds_by_arm"] = {
+                    arm: guard_seconds for arm in generations.ARMS
+                }
             if operation:
                 if not args.plan:
                     time.sleep(1.1)
@@ -265,8 +328,15 @@ def execute(args: argparse.Namespace, output: Path) -> int:
             commands = []
             state["phase"] = "compiler-validation"
             if expected_build:
+                preparation_started = time.perf_counter()
+                compile_store, compile_build = store, build
+                if fresh_generations:
+                    state["generation_attempt"] = generations.begin(output, stage, project, setup, args.plan)
+                    compile_store = Path(state["generation_attempt"]["store"])
+                    compile_build = Path(state["generation_attempt"]["build"])
+                    save(state_dir / "state.json", state)
                 commands = command_plan(
-                    project, store, build, sdk, triple, swiftc, clang, platform_path, args.with_tests
+                    project, compile_store, compile_build, sdk, triple, swiftc, clang, platform_path, args.with_tests
                 )
                 save(state_dir / "commands.json", commands)
                 if not args.plan:
@@ -281,6 +351,8 @@ def execute(args: argparse.Namespace, output: Path) -> int:
                         builds.append(record)
                         save(state_dir / "state.json", state)
                         if record["exit_code"] != 0:
+                            if generations.incomplete_exit(record["exit_code"]):
+                                raise generations.IncompleteProcess(f"Incomplete compiler process: {stage}")
                             break
                     success = len(builds) == len(commands) and all(b["exit_code"] == 0 for b in builds)
                     if (expected_build == "success") != success:
@@ -295,7 +367,7 @@ def execute(args: argparse.Namespace, output: Path) -> int:
                             or "file not found" not in diagnostic
                         ):
                             raise RuntimeError("Expected missing-header diagnostic was not observed")
-                    if success and not list((store / "v5/units").glob("*")):
+                    if success and not list((compile_store / "v5/units").glob("*")):
                         raise RuntimeError("Compiler succeeded but emitted no completed index units")
                     if success:
                         for command in commands:
@@ -313,6 +385,24 @@ def execute(args: argparse.Namespace, output: Path) -> int:
                                         f'Expected header absent from compile dependencies: {command["name"]}'
                                     )
             sources = source_manifest(project)
+            next_modules = accepted_modules
+            if expected_build == "success" and not args.plan:
+                next_modules = module_artifact_manifest(commands, builds)
+            if fresh_generations and expected_build:
+                attempt = state["generation_attempt"]
+                if not args.plan:
+                    if expected_build == "success":
+                        generations.seal(attempt, project, commands)
+                    else:
+                        generations.verify_inputs(attempt, project)
+                        generations.capture_attempt(attempt)
+                        attempt["status"] = "rejected"
+                        generations.guard(accepted_generation)
+                        if accepted_generation is None:
+                            raise RuntimeError("Failed generation has no accepted predecessor to observe")
+                if expected_build == "success":
+                    store, build = compile_store, compile_build
+                    accepted_generation = attempt
             after = manifest(store)
             if not expected_build and before != after:
                 raise RuntimeError(f"Source-only stage mutated index bytes: {stage}")
@@ -320,10 +410,12 @@ def execute(args: argparse.Namespace, output: Path) -> int:
             if expected_build == "success":
                 accepted_sources, accepted_state, stale = sources, stage, []
                 accepted_outputs = [p for c in commands for p in c["outputs"]]
-                if not args.plan:
-                    accepted_modules = module_artifact_manifest(commands, builds)
+                accepted_modules = next_modules
             state.update(
                 phase="evidence",
+                store=str(store),
+                accepted_generation=accepted_generation,
+                shared_input_cost=generations.cost(preparation_started, builds, planned=args.plan),
                 last_successful_build=accepted_state,
                 changed_since_success=stale,
                 current_sources=sources,
@@ -331,6 +423,7 @@ def execute(args: argparse.Namespace, output: Path) -> int:
                 active_object_outputs=accepted_outputs,
                 module_artifacts=accepted_modules,
             )
+            preparation_complete = True
             save(state_dir / "state.json", state)
             if not args.plan:
                 retain_private_snapshots(output, state, index_archives)
@@ -345,6 +438,8 @@ def execute(args: argparse.Namespace, output: Path) -> int:
                     600,
                 )
                 state["observation_hook"] = invocation
+                if fresh_generations:
+                    generations.guard(accepted_generation)
                 if manifest(store) != after or source_manifest(project) != sources:
                     raise RuntimeError(f"Observation hook changed shared input at {stage}")
                 if any(
@@ -354,7 +449,9 @@ def execute(args: argparse.Namespace, output: Path) -> int:
                     raise RuntimeError(f"Observation hook changed accepted module artifact at {stage}")
                 if invocation["exit_code"] != 0:
                     error = RuntimeError(f"Observation failed at {stage}; evidence retained")
-                    completed_exit = type(invocation["exit_code"]) is int and invocation["exit_code"] > 0
+                    completed_exit = (
+                        not generations.incomplete_exit(invocation["exit_code"]) and invocation["exit_code"] > 0
+                    )
                     if not completed_exit:
                         state["observation_process_lifecycle"] = {
                             "completed": False,
@@ -362,7 +459,9 @@ def execute(args: argparse.Namespace, output: Path) -> int:
                             "continuation": "aborted-before-next-source-state",
                             "limitation": "Inner subprocess timeout/signal termination does not prove all descendants exited",
                         }
-                    if not args.continue_observation_failures or not completed_exit:
+                    if not completed_exit:
+                        raise generations.IncompleteProcess(str(error))
+                    if not args.continue_observation_failures:
                         raise error
                     retain_failed_state(output, state, error, index_archives)
                     observation_failures.append(stage)
@@ -372,6 +471,8 @@ def execute(args: argparse.Namespace, output: Path) -> int:
             save(state_dir / "state.json", state)
             stages.append(state)
         except (Exception, KeyboardInterrupt) as error:
+            if not preparation_complete:
+                state["shared_input_cost"] = generations.cost(preparation_started, builds, planned=args.plan)
             retain_failed_state(output, state, error, index_archives)
             raise
     save(
@@ -379,6 +480,7 @@ def execute(args: argparse.Namespace, output: Path) -> int:
         dict(
             status="failed" if observation_failures else "passed",
             observation_failures=observation_failures,
+            compiler_index_policy=args.compiler_index_policy,
             role="validation-only",
             setup=setup,
             states=stages,

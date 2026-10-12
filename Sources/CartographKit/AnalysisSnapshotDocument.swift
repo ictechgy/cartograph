@@ -186,6 +186,11 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 (Self.rebase(path, from: projectRoot, to: currentProjectRoot), date)
             }, uniquingKeysWith: { first, _ in first })
         }
+        let oldestDates = snapshot.oldestIndexedFileDates.map { values in
+            Dictionary(values.sorted { $0.key < $1.key }.map { path, date in
+                (Self.rebase(path, from: projectRoot, to: currentProjectRoot), date)
+            }, uniquingKeysWith: min)
+        }
         let parameters = snapshot.parameters.map { parameter in
             IndexedParameter(
                 usr: parameter.usr, name: parameter.name, module: parameter.module,
@@ -214,6 +219,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
             revision: revision,
             snapshot: .init(
                 symbols: symbols, references: references, indexedFileDates: dates,
+                oldestIndexedFileDates: oldestDates,
                 parameters: parameters, propertyAccesses: snapshot.propertyAccesses,
                 imports: imports, fileModuleUsages: moduleUsages),
             edgeKinds: Set(edgeKinds),
@@ -453,6 +459,14 @@ extension CartographService {
         let capturedDates = context.snapshot.indexedFileDates.map { dates in
             dates.filter { includedSourcePaths.contains($0.key) }
         }
+        // 선언 없는 헤더와 삭제된 소스도 신선도 근거다. 프로젝트 밖·제외된 경로만 제거한다.
+        let capturedOldestDates = context.snapshot.oldestIndexedFileDates.map { dates in
+            dates.filter { path, _ in
+                guard configuration.pathFilter.allows(path) else { return false }
+                let relative = SourceLocation(path: path, line: 1, column: 1).relative(to: projectPath).path
+                return !relative.hasPrefix("/") && !relative.split(separator: "/").contains("..")
+            }
+        }
         // 파라미터는 그래프에 남은 함수의 것만 담는다 — 부모가 빠진 선언은
         // 미사용 판정의 재료가 못 된다.
         let capturedParameters = context.snapshot.parameters.filter {
@@ -474,6 +488,7 @@ extension CartographService {
             symbols: capturedSymbols,
             references: capturedReferences,
             indexedFileDates: capturedDates,
+            oldestIndexedFileDates: capturedOldestDates,
             parameters: capturedParameters,
             propertyAccesses: capturedAccesses,
             imports: capturedImports,

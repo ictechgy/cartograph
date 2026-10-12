@@ -1,10 +1,55 @@
 import CartographCore
 @testable import CartographIndexStore
 import CartographTestSupport
+import Foundation
 import Testing
 
 @Suite("소스 파일 탐색")
 struct SourceDiscoveryTests {
+    @Test("선언 파일 목록과 별개인 의존 범위는 헤더·삭제 소스만 추적하고 외부·빌드·제외 경로는 거부한다")
+    func dependencyScopeDoesNotBroadenDeclarationDiscovery() {
+        let fs = InMemoryFileSystem(files: ["/p/A.swift": "", "/p/API.h": ""])
+        let provider = IndexStoreProvider(configuration: .init(storePath: "/s", databasePath: "/d",
+            libraryPath: "/l", sourceRoots: ["/p/A.swift"], pathFilter: PathFilter(exclude: ["**/Excluded/**"]),
+            includeObjectiveCSources: true, dependencyRoots: ["/p"]), fileSystem: fs)
+        #expect(provider.sourceFilePaths() == ["/p/A.swift"])
+        #expect(provider.trackedSourcePathPredicate()("/p/API.h"))
+        #expect(provider.trackedSourcePathPredicate()("/p/Deleted.swift"))
+        for path in ["/elsewhere/API.h", "/prefix/API.h", "/p/Excluded/API.h", "/p/.build/API.h",
+            "/p/.build-custom/API.h", "/p/DerivedData/API.h", "/p/../elsewhere/API.h", "/p/data.txt"] {
+            #expect(!provider.trackedSourcePathPredicate()(path), "\(path)")
+        }
+    }
+
+    @Test("삭제 경로는 살아 있는 조상의 링크를 풀어 범위를 유지하고 외부 링크는 거부한다")
+    func missingDependencyResolvesExistingAncestorAliases() throws {
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? manager.removeItem(at: root) }
+        let real = root.appendingPathComponent("Real")
+        let alias = root.appendingPathComponent("Alias")
+        let outside = root.appendingPathComponent("Outside")
+        try manager.createDirectory(at: real.appendingPathComponent("Sources"), withIntermediateDirectories: true)
+        try manager.createDirectory(at: outside, withIntermediateDirectories: true)
+        try manager.createSymbolicLink(at: alias, withDestinationURL: real)
+        try manager.createSymbolicLink(at: real.appendingPathComponent("Escaping"), withDestinationURL: outside)
+        let header = alias.appendingPathComponent("Sources/API.h")
+        try Data("int api(void);".utf8).write(to: header)
+        let fileSystem = LocalFileSystem()
+        let physical = try fileSystem.realPath(at: header.path)
+        let provider = IndexStoreProvider(configuration: .init(storePath: "/s", databasePath: "/d",
+            libraryPath: "/l", sourceRoots: [], includeObjectiveCSources: true, dependencyRoots: [alias.path]))
+        #expect(provider.trackedSourcePathPredicate()(header.path))
+        try manager.removeItem(at: header)
+        #expect(provider.trackedSourcePathPredicate()(header.path))
+        #expect(provider.trackedSourcePathPredicate()(physical))
+        #expect(RawIndexStoreReader.sourceLocationPath(header.path, fileSystem: fileSystem) == physical)
+        #expect(!provider.trackedSourcePathPredicate()(alias.appendingPathComponent("Escaping/Missing.h").path))
+        try manager.removeItem(at: real.appendingPathComponent("Sources"))
+        #expect(provider.trackedSourcePathPredicate()(header.path))
+        #expect(RawIndexStoreReader.sourceLocationPath(header.path, fileSystem: fileSystem) == physical)
+    }
+
     private func makeProvider(
         fileSystem: InMemoryFileSystem,
         roots: [String],

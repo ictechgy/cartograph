@@ -67,6 +67,36 @@ class SetupContracts(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "bytes differ"):
             DRIVER.build_hook(self.path)
 
+    def test_ci_selects_one_fresh_validation_cohort_without_changing_default(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        self.assertEqual(workflow.count("python3 Scripts/benchmark-indexstore-mixed.py"), 1)
+        self.assertEqual(workflow.count("--compiler-index-policy fresh-shared-v2"), 1)
+        self.assertEqual(DRIVER.POLICIES[0], "incremental-diagnostic-v1")
+
+    def test_policy_is_forwarded_and_incomplete_lifecycle_exit_is_preserved(self):
+        for kind in ["nested", "timeout", "signal", "launch", "interrupt"]:
+            output = self.root / kind
+            def failed(command, cwd, stem, timeout):
+                self.assertEqual(command[command.index("--compiler-index-policy") + 1], "fresh-shared-v2")
+                if kind == "launch":
+                    raise FileNotFoundError("missing lifecycle executable")
+                if kind == "interrupt":
+                    raise KeyboardInterrupt()
+                code = 125 if kind == "nested" else 124 if kind == "timeout" else -9
+                DRIVER.BASE.save(Path(str(stem) + ".json"), dict(
+                    command=command, returncode=code, timed_out=kind == "timeout", wall_seconds=0.25))
+                raise RuntimeError("incomplete lifecycle")
+            with mock.patch.object(sys, "argv", [
+                "driver", "--setup-results", str(self.path), "--output", str(output),
+                "--compiler-index-policy", "fresh-shared-v2",
+            ]), mock.patch.object(DRIVER.BASE, "run", side_effect=failed):
+                self.assertEqual(DRIVER.main(), 125)
+            result = json.loads((output / "results.json").read_text())
+            self.assertFalse(result["process_lifecycle"]["completed"])
+            self.assertFalse(result["process_lifecycle"]["descendant_cleanup_verified"])
+            self.assertGreater(result["lifecycle"]["wall_seconds"], 0)
+            self.assertEqual(result["compiler_index_policy"], "fresh-shared-v2")
+
     def test_nonempty_output_is_preserved(self):
         output = self.root / "output"
         output.mkdir()

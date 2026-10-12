@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -49,6 +50,51 @@ class HookContracts(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def test_nested_incomplete_process_is_never_a_normal_observation_failure(self):
+        for failure in ["timeout", "signal", "launch", "interrupt"]:
+            stem = self.root / failure
+            if failure == "timeout":
+                outcome = subprocess.TimeoutExpired(["child"], 1, b"partial", b"timeout")
+            elif failure == "signal":
+                outcome = subprocess.CompletedProcess(["child"], -9, b"partial", b"signal")
+            elif failure == "interrupt":
+                outcome = KeyboardInterrupt()
+            else:
+                outcome = FileNotFoundError("missing child")
+            with patch.object(hook.subprocess, "run", side_effect=outcome if isinstance(outcome, BaseException) else None,
+                              return_value=outcome):
+                with self.assertRaises(hook.IncompleteObservation):
+                    hook.run(["child"], self.root, stem)
+            record = json.loads(Path(str(stem) + ".json").read_text())
+            self.assertFalse(record["process_lifecycle"]["completed"])
+            self.assertFalse(record["process_lifecycle"]["descendant_cleanup_verified"])
+
+    def test_observer_wrapper_preserves_nested_incomplete_exit(self):
+        store = self.root / "Store"
+        store.mkdir()
+        library = self.root / "library"
+        library.write_bytes(b"reader")
+        setup = self.root / "setup/setup.json"
+        setup.parent.mkdir()
+        setup.write_text(json.dumps({"library_sha256": hook.digest(library)}))
+        state_path = self.root / "runs/initial/state.json"
+        state_path.parent.mkdir(parents=True)
+        state_path.write_text(json.dumps({"execution": "executed"}))
+        argv = ["observer", "--state", str(state_path), "--fixture-root", str(self.root),
+                "--index-dump", str(self.root / "index-dump"), "--indexstore-checkout", str(self.root),
+                "--cli-build-evidence", str(self.root / "build.json"), "--library", str(library), "--baseline-only"]
+        with patch.object(sys, "argv", argv), patch.object(
+            hook, "verify_cli", side_effect=hook.IncompleteObservation("nested child did not complete")
+        ):
+            self.assertEqual(hook.main(), 125)
+        result = json.loads((state_path.parent / "observation/results.json").read_text())
+        self.assertFalse(result["process_lifecycle"]["completed"])
+        self.assertFalse(result["process_lifecycle"]["descendant_cleanup_verified"])
+        self.assertEqual(result["adapter_sha256"]["compiler_generations.py"],
+                         hook.digest(Path(hook.generations.__file__)))
+        self.assertIn("validation_common.py", result["adapter_sha256"])
+        self.assertFalse((state_path.parent / "observation/index-dump").exists())
 
     def test_compiler_manifest_preserves_header_dependency(self):
         expected, contexts = hook.compile_manifest([self.command], self.state, {})

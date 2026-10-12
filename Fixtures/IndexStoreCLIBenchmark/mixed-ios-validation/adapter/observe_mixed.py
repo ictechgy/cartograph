@@ -14,9 +14,13 @@ import platform
 import re
 import shlex
 import subprocess
+import sys
 import time
 
 import mixed_adapter as adapter
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import compiler_generations as generations
 
 REVISION = "64aa0b26913249c4e7c21d351a215fba02702003"
 PINS = {
@@ -47,6 +51,10 @@ def source_manifest(root: Path) -> dict:
     return result
 
 
+class IncompleteObservation(generations.IncompleteProcess):
+    """미완료 자식 프로세스가 정상 종료 실패로 바뀌어 다음 소스 상태로 넘어가지 않게 한다."""
+
+
 def run(command: list[str], cwd: Path, stem: Path, timeout: int = 120) -> dict:
     stem.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
@@ -55,6 +63,10 @@ def run(command: list[str], cwd: Path, stem: Path, timeout: int = 120) -> dict:
         code, stdout, stderr = result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired as error:
         code, stdout, stderr = "timeout", error.stdout or b"", error.stderr or b""
+    except OSError as error:
+        code, stdout, stderr = "launch-error", b"", f"{type(error).__name__}: {error}\n".encode()
+    except KeyboardInterrupt:
+        code, stdout, stderr = "interrupted", b"", b"Interrupted; partial child output unavailable.\n"
     stdout_path, stderr_path = Path(str(stem) + ".stdout"), Path(str(stem) + ".stderr")
     stdout_path.write_bytes(stdout)
     stderr_path.write_bytes(stderr)
@@ -66,7 +78,12 @@ def run(command: list[str], cwd: Path, stem: Path, timeout: int = 120) -> dict:
         stderr=str(stderr_path),
         wall_seconds=time.monotonic() - started,
     )
+    incomplete = generations.incomplete_exit(code)
+    if incomplete:
+        record["process_lifecycle"] = dict(completed=False, descendant_cleanup_verified=False)
     save(Path(str(stem) + ".json"), record)
+    if incomplete:
+        raise IncompleteObservation(f"Incomplete child process; abort lifecycle, see retained evidence: {stem}")
     return record
 
 
@@ -144,6 +161,14 @@ def option(command: list[str], name: str) -> str | None:
 
 
 def compile_manifest(commands: list[dict], state: dict, setup: dict) -> tuple[list[dict], dict]:
+    if state.get("compiler_index_policy") == "fresh-shared-v2":
+        accepted = state.get("accepted_generation")
+        if (
+            not accepted or accepted["status"] != "accepted"
+            or accepted["commands_sha256"] != generations.content_digest(commands)
+            or accepted["source_files"] != state["current_sources"]
+        ):
+            raise ValueError("Fresh compiler generation command/source seals differ")
     expected, contexts = [], defaultdict(set)
     module_paths = set()
     project = Path(state["project"])
@@ -503,6 +528,14 @@ def find_run_root(state_path: Path) -> Path:
 
 
 def input_guard(state: dict, library: Path, library_hash: str, cli: Path, cli_hash: str) -> None:
+    if state.get("compiler_index_policy") == "fresh-shared-v2":
+        accepted = state.get("accepted_generation")
+        if (
+            not accepted or accepted["store"] != state["store"]
+            or accepted["index_files"] != state["index_files"]
+        ):
+            raise ValueError("Observation requires the accepted shared compiler generation")
+        generations.guard(accepted)
     if (
         manifest(Path(state["store"])) != state["index_files"]
         or source_manifest(Path(state["project"])) != state["current_sources"]
@@ -605,7 +638,10 @@ def stale_observation(args, state: dict, accepted: dict, out: Path) -> dict:
     )
     if changed != state["changed_since_success"] or not changed:
         raise ValueError("Source-only stale state lacks exact independent hash delta")
-    if state["expected_build"] == "not-run" and state["index_files"] != accepted["index_files"]:
+    if (state["expected_build"] == "not-run" or state.get("compiler_index_policy") == "fresh-shared-v2") and (
+        state["index_files"] != accepted["index_files"]
+        or (state.get("compiler_index_policy") == "fresh-shared-v2" and state["store"] != accepted["store"])
+    ):
         raise ValueError("Unbuilt source-only state changed compiler index bytes")
     result = dict(
         status="stale-current-source-not-scored",
@@ -690,13 +726,27 @@ def main() -> int:
         ),
     )
     try:
+        result["adapter_sha256"] = {
+            p.name: digest(p) for p in [
+                Path(__file__), Path(adapter.__file__), args.query_spec,
+                Path(generations.__file__), Path(generations.__file__).with_name("validation_common.py"),
+            ]
+        }
         state = json.loads(state_path.read_text())
+        result["compiler_index_policy"] = state.get("compiler_index_policy", "incremental-diagnostic-v1")
+        result["shared_input_cost"] = state.get("shared_input_cost", {"status": "not-recorded-legacy"})
+        result["shared_preflight_integrity_wall_seconds_by_arm"] = state.get(
+            "shared_preflight_integrity_wall_seconds_by_arm"
+        )
         if state.get("execution") != "executed":
             raise ValueError("Plan-only compiler states cannot be observed as native evidence")
         root = args.run_root.resolve() if args.run_root else find_run_root(state_path)
         setup_path = setup_path_for(root)
         setup = json.loads(setup_path.read_text())
         result["setup_path"] = str(setup_path)
+        result["shared_project_copy_wall_seconds_by_arm"] = setup.get("shared_project_copy_wall_seconds_by_arm")
+        result["shared_toolchain_seal_wall_seconds_by_arm"] = setup.get("shared_toolchain_seal_wall_seconds_by_arm")
+        result["sdk_content_identity"] = setup.get("sdk_content_identity", {"verification": "not-recorded-legacy"})
         result["setup_layout"] = str(setup_path.relative_to(root))
         library = args.library.resolve()
         library_hash = digest(library)
@@ -822,9 +872,6 @@ def main() -> int:
             )
         )
         result["same_input_bytes_verified"] = True
-        result["adapter_sha256"] = {
-            p.name: digest(p) for p in [Path(__file__), Path(adapter.__file__), args.query_spec]
-        }
         save(out / "results.json", result)
         return int(result["status"] == "failed")
     except Exception as error:
@@ -836,9 +883,11 @@ def main() -> int:
                 result["same_input_bytes_after_failure"] = False
                 result["input_integrity_error"] = str(integrity_error)
         result.update(status="failed", error=f"{type(error).__name__}: {error}")
+        if isinstance(error, IncompleteObservation):
+            result["process_lifecycle"] = dict(completed=False, descendant_cleanup_verified=False)
         save(out / "results.json", result)
         print(result["error"])
-        return 1
+        return generations.INCOMPLETE_PROCESS_EXIT if isinstance(error, IncompleteObservation) else 1
 
 
 if __name__ == "__main__":

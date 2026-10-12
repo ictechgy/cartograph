@@ -63,6 +63,25 @@ struct IndexSnapshotTests {
         #expect(try JSONDecoder().decode(IndexSnapshot.self, from: encoder.encode(snapshot)) == snapshot)
     }
 
+    @Test("최신 유닛 시각과 가장 오래된 의존 유닛 시각을 따로 왕복한다")
+    func dependencyCoverageDatesRoundTripWithoutReplacingLatestDates() throws {
+        let data = Data("""
+            {"symbols":[],"references":[],"indexedFileDates":{"/p/API.h":200},
+             "oldestIndexedFileDates":{"/p/API.h":100}}
+            """.utf8)
+        let snapshot = try JSONDecoder().decode(IndexSnapshot.self, from: data)
+        #expect(snapshot.indexedFileDates?["/p/API.h"] == Date(timeIntervalSinceReferenceDate: 200))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let encoded = try encoder.encode(snapshot)
+        let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        #expect((object["oldestIndexedFileDates"] as? [String: Double])?["/p/API.h"] == 100)
+        let legacy = try JSONDecoder().decode(IndexSnapshot.self, from: Data(#"{"symbols":[],"references":[]}"#.utf8))
+        let legacyObject = try #require(
+            JSONSerialization.jsonObject(with: encoder.encode(legacy)) as? [String: Any])
+        #expect(legacyObject["oldestIndexedFileDates"] == nil)
+    }
+
     @Test("스냅샷을 합쳐도 소스별 신선도 근거가 사라지거나 새 시각에 가려지지 않는다")
     func mergingPreservesIndexDates() {
         let old = Date(timeIntervalSince1970: 1_000)
@@ -73,6 +92,23 @@ struct IndexSnapshotTests {
         #expect(first.merging(IndexSnapshot()).indexedFileDates == first.indexedFileDates)
         #expect(IndexSnapshot().merging(first).indexedFileDates == first.indexedFileDates)
         #expect(IndexSnapshot().merging(IndexSnapshot()).indexedFileDates == nil)
+    }
+
+    @Test("관측 문맥의 오래된 시각은 병합과 옛 공급자 폴백에서 사라지지 않는다")
+    func oldestDatesMergeAndLegacyFallback() {
+        let old = Date(timeIntervalSince1970: 1_000)
+        let fresh = old.addingTimeInterval(100)
+        let first = IndexSnapshot(indexedFileDates: ["/p/A.swift": fresh], oldestIndexedFileDates: ["/p/A.swift": old])
+        let second = IndexSnapshot(indexedFileDates: ["/p/A.swift": fresh],
+            oldestIndexedFileDates: ["/p/A.swift": fresh])
+        #expect(first.merging(second).oldestIndexedFileDates == ["/p/A.swift": old])
+        #expect(first.merging(IndexSnapshot()).oldestIndexedFileDates == first.oldestIndexedFileDates)
+        #expect(IndexSnapshot().merging(first).oldestIndexedFileDates == first.oldestIndexedFileDates)
+        #expect(first.sourceFreshnessDates == ["/p/A.swift": old])
+        let legacy = IndexSnapshot(indexedFileDates: ["/p/A.swift": old, "/p/B.swift": fresh])
+        #expect(second.merging(legacy).sourceFreshnessDates == ["/p/A.swift": old, "/p/B.swift": fresh])
+        #expect(IndexSnapshot(indexedFileDates: ["/p/A.swift": fresh]).sourceFreshnessDates == ["/p/A.swift": fresh])
+        #expect(IndexSnapshot().sourceFreshnessDates == nil)
     }
 }
 

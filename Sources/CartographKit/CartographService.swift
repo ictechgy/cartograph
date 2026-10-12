@@ -989,7 +989,7 @@ public struct CartographService: Sendable {
             inventory: inventory
         ).provider.loadSnapshot()
         let sources = bridgeSourceFiles(inventory: inventory)
-        let indexedDates = Dictionary((snapshot.indexedFileDates ?? [:]).map {
+        let indexedDates = Dictionary((snapshot.sourceFreshnessDates ?? [:]).map {
             (ValueFlowSourceLoader.canonicalPath($0.key), $0.value)
         }, uniquingKeysWith: min)
         let freshPaths = Set(sources.compactMap { path -> String? in
@@ -1252,7 +1252,7 @@ public struct CartographService: Sendable {
             inventory: inventory
         ).provider.loadSnapshot()
         let sources = schemaSourceFiles(inventory: inventory)
-        let indexedDates = Dictionary((snapshot.indexedFileDates ?? [:]).map {
+        let indexedDates = Dictionary((snapshot.sourceFreshnessDates ?? [:]).map {
             (ValueFlowSourceLoader.canonicalPath($0.key), $0.value)
         }, uniquingKeysWith: min)
         let freshPaths = Set(sources.compactMap { path -> String? in
@@ -1735,7 +1735,11 @@ public struct CartographService: Sendable {
         let dates = loaded.indexedFileDates.map { values in
             values.filter { allowed.contains(LocalFileSystem.canonicalPath($0.key)) }
         }
-        return IndexSnapshot(symbols: local + external, references: references, indexedFileDates: dates)
+        let oldestDates = loaded.oldestIndexedFileDates.map { values in
+            values.filter { allowed.contains(LocalFileSystem.canonicalPath($0.key)) }
+        }
+        return IndexSnapshot(symbols: local + external, references: references, indexedFileDates: dates,
+            oldestIndexedFileDates: oldestDates)
     }
 
     private func makeIndexSource(
@@ -1782,7 +1786,8 @@ public struct CartographService: Sendable {
                 includeExternalSymbols: includeExternalSymbols,
                 includeObjectiveCSources: includeObjectiveCSources,
                 includeSelfReferences: includeSelfReferences,
-                readerMode: .raw
+                readerMode: .raw,
+                dependencyRoots: inventory.map { _ in [projectPath] }
             ),
             fileSystem: environment.fileSystem
         )

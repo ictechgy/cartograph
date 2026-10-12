@@ -85,12 +85,13 @@ jobs:
             --sdk "$(xcrun --sdk macosx --show-sdk-path)" \
             --objdump "$(xcrun --find llvm-objdump)"
 
-      - name: Validate mixed Swift and Objective-C iOS states
+      - name: Validate fresh shared compiler generations for mixed iOS
         if: always() && steps.tools.outcome == 'success'
         run: |
           set +e
           python3 Scripts/benchmark-indexstore-mixed.py \
             --setup-results "$RUNNER_TEMP/indexstore-cli-benchmark/results.json" \
+            --compiler-index-policy fresh-shared-v2 \
             --output "$RUNNER_TEMP/indexstore-mixed-validation" \
             > "$RUNNER_TEMP/indexstore-mixed-console.log" 2>&1
           status=$?
@@ -230,6 +231,8 @@ jobs:
           python3 Scripts/verify-action.py
           python3 Scripts/verify-index-cache.py
           python3 Scripts/verify-recursive-calls.py --cartograph "$CARTOGRAPH"
+          python3 Scripts/verify-index-freshness-contract.py
+          python3 Scripts/verify-index-freshness.py --cartograph "$CARTOGRAPH"
 
       - name: Circular dependencies
         run: |

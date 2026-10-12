@@ -40,9 +40,8 @@ Official Swift 6.4 and pinned IndexStoreDB revision
   keeping the PCM cache, updates the unit to the renamed header and correct call.
 
 The object relocation and pre-IR PCM controls distinguish fresh compiled code from
-stale indexed module facts in this Linux reproduction. They do not prove the Apple
-compiler has the same cause. The existing macOS CI now executes the diagnostic;
-its result remains a separate native gate. SDK/disassembler discovery in the workflow
+stale indexed module facts in this Linux reproduction. They alone do not prove the Apple compiler has the same cause. The separately
+retained Apple execution below supplies that bounded native confirmation. SDK/disassembler discovery in the workflow
 is outside the recorded diagnostic commands. No timing dominance or complete setup-cost
 claim is made from this diagnostic.
 
@@ -72,3 +71,23 @@ A later common-build refresh policy must be reviewed separately, applied before 
 arms see the same index bytes, and charge its actual full rebuild/refresh cost to each
 composed source-to-result endpoint. This diagnostic does not silently substitute a
 fresh-build regime for the failed incremental round.
+
+## Actual Apple validation
+
+Run [38209165923](https://github.com/ictechgy/cartograph/actions/runs/38209165923),
+head `d6bab511fa23baba15a2e3128947da9e5a84472f`, executed the identical harness with
+macOS SDK 26.5 / Apple Clang 2100.1.1.101. All five stages completed. Object/IR calls
+match the source in every stage, and PCM contents change after edit/rename. The module
+index unit stays byte-identical across initial/edit/rename/PCM-cache-refresh; only the
+fresh-index rebuild updates its header identity and call target. The refreshed PCM
+bytes remain identical into that final stage. Every stage retains source/index/PCM
+hashes and guards proving the read-only diagnostics did not mutate those inputs.
+
+The normalized archive is included as round 13 in
+[`evidence/2026-10-12/bundles.json`](evidence/2026-10-12/bundles.json), with all exact
+command, output and cost records under `synthetic/runs/module-refresh-diagnostic/`.
+Its complete artifact has 3,588 normalized files, 6,675,105 compressed bytes and
+35,072,236 expanded bytes. The original mixed iOS lifecycle still has all 13 failed
+observations; that cohort has not yet adopted or validated a fresh-generation policy.
+Neither the macOS diagnostic nor its initial/final index matches is a Cartograph
+accuracy or performance win. The original incremental failures are not relabeled.

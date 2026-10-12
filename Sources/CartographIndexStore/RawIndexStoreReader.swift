@@ -42,6 +42,7 @@ private typealias DBSymbolProviderKind = SymbolProviderKind
 struct RawReadResult {
     let occurrences: [SymbolOccurrence]
     let indexedFileDates: [String: Date]
+    let oldestIndexedFileDates: [String: Date]
 }
 
 struct RawIndexStoreReader {
@@ -50,12 +51,14 @@ struct RawIndexStoreReader {
     let fileSystem: any FileSystem
 
     func read(
-        in paths: Set<String>, recordCachePeak: ((Int, Int) -> Void)? = nil
+        in paths: Set<String>, trackedSourcePath: ((String) -> Bool)? = nil,
+        recordCachePeak: ((Int, Int) -> Void)? = nil
     ) throws -> RawReadResult {
         let session = try Session(storePath: storePath, libraryPath: libraryPath)
         let allowedPaths = Set(paths.map(fileSystem.canonicalPath))
         var records: [Record] = []
         var indexedFileDates: [String: Date] = [:]
+        var oldestIndexedFileDates: [String: Date] = [:]
         let unitNames = session.store.unitNames(sorted: true).map { $0.string }
         for unitName in unitNames {
             let unit: RawStoreUnit
@@ -79,12 +82,14 @@ struct RawIndexStoreReader {
             var unitProvider: DBSymbolProviderKind?
             for dependency in dependencies where dependency.kind == .record || dependency.kind == .file {
                 let path = canonicalDependencyPath(dependency.path, relativeTo: workingDirectory)
-                guard allowedPaths.contains(path) else { continue }
+                let readsOccurrences = allowedPaths.contains(path)
+                guard readsOccurrences || trackedSourcePath?(path) == true else { continue }
                 // Foundation 정규화는 /private/var를 /var로 바꾼다. 선언 위치는
                 // 다른 인덱스 소비자와 같이 실제 경로를 써야 정확히 결합된다.
-                let locationPath = (try? fileSystem.realPath(at: path)) ?? path
+                let locationPath = Self.sourceLocationPath(path, fileSystem: fileSystem)
                 indexedFileDates[locationPath] = max(indexedFileDates[locationPath] ?? timestamp, timestamp)
-                guard dependency.kind == .record else { continue }
+                oldestIndexedFileDates[locationPath] = min(oldestIndexedFileDates[locationPath] ?? timestamp, timestamp)
+                guard readsOccurrences, dependency.kind == .record else { continue }
                 let provider: DBSymbolProviderKind
                 if let unitProvider {
                     provider = unitProvider
@@ -133,11 +138,24 @@ struct RawIndexStoreReader {
                 loadedRecords.removeValue(forKey: record.record)
             }
         }
-        return RawReadResult(occurrences: result, indexedFileDates: indexedFileDates)
+        return RawReadResult(occurrences: result, indexedFileDates: indexedFileDates,
+            oldestIndexedFileDates: oldestIndexedFileDates)
     }
 
-    func occurrences(in paths: Set<String>) throws -> [SymbolOccurrence] {
-        try read(in: paths).occurrences
+    /// 삭제된 파일도 남아 있는 조상의 실제 경로를 사용해 /var와 /private/var의 식별자를 유지한다.
+    static func sourceLocationPath(_ path: String, fileSystem: any FileSystem) -> String {
+        var ancestor = path
+        var suffix: [String] = []
+        while !ancestor.isEmpty {
+            if let resolved = try? fileSystem.realPath(at: ancestor) {
+                return suffix.reversed().reduce(resolved) { ($0 as NSString).appendingPathComponent($1) }
+            }
+            let parent = (ancestor as NSString).deletingLastPathComponent
+            guard parent != ancestor else { break }
+            suffix.append((ancestor as NSString).lastPathComponent)
+            ancestor = parent
+        }
+        return path
     }
 
     private func canonicalDependencyPath(_ path: String, relativeTo workingDirectory: String) -> String {

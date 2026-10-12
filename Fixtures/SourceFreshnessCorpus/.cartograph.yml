@@ -1,0 +1,4 @@
+include:
+  - "Sources/**"
+retention:
+  retain_public: false

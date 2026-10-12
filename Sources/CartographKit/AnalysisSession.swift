@@ -774,8 +774,8 @@ private struct AnalysisInputFingerprinter {
     private static func isSourceInput(_ path: String, filter: PathFilter) -> Bool {
         let name = (path as NSString).lastPathComponent
         let ext = (path as NSString).pathExtension
-        if ext == "swift" || ext == "m" || ext == "mm"
-            || name == ".swift" || name == ".m" || name == ".mm" {
+        if ext == "swift" || ext == "m" || ext == "mm" || ext == "h"
+            || name == ".swift" || name == ".m" || name == ".mm" || name == ".h" {
             return filter.allows(path)
         }
         let lowerName = name.lowercased()
