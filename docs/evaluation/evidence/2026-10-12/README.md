@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all fourteen rounds. `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all fifteen rounds. `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -98,6 +98,22 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    separately retained. SDK content identity is still unproved and the final performance protocol
    remains unrun. All 13 validation states and all failed native results remain in the exact archive.
 
+15. Run38217594404 combines the independently merged header-record admission fix with the same
+   shared fresh-generation policy. All seven rebuilt states now pass both engines' exact graph and
+   ten-query source oracles, with zero missing/extra edges or unresolved definitions and identical
+   shared input bytes. All six native state-specific freshness diagnostics pass, including deleted
+   headers/Swift files and renames. Rebuilt restoration graph/query checks also pass. The original
+   two missing header definitions/four
+   edges are now present without an oracle change. This closes that omission on the validation
+   corpus; it is neither a new holdout nor comparative performance proof.
+   The separate fixed native synthetic measurement-helper step completed successfully, but its
+   evidence normalizer rejected package-contact metadata in the full pip install report. The helper
+   artifact was correctly withheld; its detailed samples/results remain unavailable and are not
+   reconstructed from later runs. All four compiler-comparison bundles survived unchanged. The
+   exact blocker category, artifact and value-hash prefix remain in the ledger. Product coverage
+   and strict self-analysis passed; the comparison job remains red for this publication failure.
+   Full shared costs remain equal and retained. SDK contents and final20-session endpoints remain open.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -108,9 +124,9 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text, their manifests and the reviewed publication status.
 They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
 Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Ten archives retain
+private; each manifest distinguishes original hashes from normalized public hashes. Eleven archives retain
 the exact bytes of their public Actions artifacts. The three test-phase archives and round eight's partial
-driver-phase archive were normalized separately after their failures. Rounds nine through fourteen preserve all original
+driver-phase archive were normalized separately after their failures. Rounds nine through fifteen preserve all original
 ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
 when Actions retention expires.
 

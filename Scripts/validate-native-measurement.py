@@ -8,10 +8,12 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import sys
 import time
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPERS = ROOT / "Scripts/benchmark-measurement"
@@ -114,6 +116,113 @@ def helper_hashes() -> dict:
     }
 
 
+def install_provenance(output: Path) -> dict:
+    """공개 패키지의 연락처/설명은 원본에만 두고 필요한 배포 증거를 엄격히 추린다."""
+    path = output / "private-setup/install-report.json"
+    target = output / "setup/install-provenance.json"
+    if target.exists() or path.is_symlink() or not path.is_file():
+        raise ValueError("Invalid or existing package provenance evidence")
+    with path.open("rb") as stream:
+        raw = stream.read(4 * 1024**2 + 1)
+    if len(raw) > 4 * 1024**2:
+        raise ValueError("Package report exceeds fixed size limit")
+    retained = dict(
+        private_relative_path="private-setup/install-report.json",
+        sha256=hashlib.sha256(raw).hexdigest(),
+        bytes=len(raw),
+        publication="Full original omitted; package metadata and environment remain private",
+    )
+    save(output / "setup/install-report-retention.json", retained)
+
+    def unique_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate package report key")
+            result[key] = value
+        return result
+
+    report = json.loads(raw, object_pairs_hook=unique_pairs)
+    if (
+        not isinstance(report, dict)
+        or set(report) != {"version", "pip_version", "install", "environment"}
+        or report["version"] != "1"
+        or not isinstance(report["pip_version"], str)
+        or not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", report["pip_version"])
+        or not isinstance(report["environment"], dict)
+        or not isinstance(report["install"], list)
+        or len(report["install"]) != 1
+    ):
+        raise ValueError("Unsupported package report schema or distribution count")
+    entry = report["install"][0]
+    if (
+        not isinstance(entry, dict)
+        or set(entry) != {"download_info", "is_direct", "is_yanked", "requested", "metadata"}
+        or entry["is_direct"] is not False
+        or entry["is_yanked"] is not False
+        or entry["requested"] is not True
+    ):
+        raise ValueError("Unsupported package distribution flags")
+    metadata, download = entry["metadata"], entry["download_info"]
+    if (
+        not isinstance(metadata, dict)
+        or metadata.get("name") != "psutil"
+        or metadata.get("version") != "7.2.2"
+        or not isinstance(download, dict)
+        or set(download) != {"url", "archive_info"}
+        or not isinstance(download["url"], str)
+    ):
+        raise ValueError("Unexpected package or distribution schema")
+    url = urlsplit(download["url"])
+    if (
+        url.scheme != "https"
+        or url.netloc != "files.pythonhosted.org"
+        or url.query
+        or url.fragment
+        or not re.fullmatch(
+            r"/packages/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]{60}/psutil-7\.2\.2-[A-Za-z0-9._-]+\.whl",
+            url.path,
+        )
+    ):
+        raise ValueError("Distribution URL is not the expected unsigned official wheel URL")
+    archive = download["archive_info"]
+    if (
+        not isinstance(archive, dict)
+        or set(archive) != {"hash", "hashes"}
+        or not isinstance(archive["hashes"], dict)
+        or set(archive["hashes"]) != {"sha256"}
+        or not isinstance(archive["hashes"]["sha256"], str)
+        or not re.fullmatch(r"[a-f0-9]{64}", archive["hashes"]["sha256"])
+        or archive["hash"] != "sha256=" + archive["hashes"]["sha256"]
+    ):
+        raise ValueError("Distribution hash is missing, inconsistent or unsupported")
+    projected = dict(
+        schema_version=1,
+        source_format="pip-install-report-v1",
+        raw_report=retained,
+        report_version=report["version"],
+        pip_version=report["pip_version"],
+        distributions=[
+            dict(
+                name="psutil",
+                version="7.2.2",
+                url=download["url"],
+                sha256=archive["hashes"]["sha256"],
+                is_direct=False,
+                is_yanked=False,
+                requested=True,
+            )
+        ],
+        omitted_metadata=[
+            "package contacts",
+            "long description and other non-provenance package metadata",
+            "environment",
+        ],
+    )
+    save(target, projected)
+    return projected
+
+
 def calibration_passed(output: Path, config: dict) -> bool:
     """도우미의 종료 0만으로 실패한 합성 쌍이나 빠진 그룹을 통과시키지 않는다."""
     directory = output / "runs/calibration"
@@ -151,6 +260,7 @@ def validate(output: Path, dependencies: Path) -> dict:
     started = time.perf_counter()
     output.mkdir(parents=True, exist_ok=True)
     (output / "runs").mkdir()
+    (output / "private-setup").mkdir()
     config, hashes = plan(), helper_hashes()
     save(output / "setup/plan.json", config)
     save(output / "setup/helper-hashes.json", hashes)
@@ -171,10 +281,11 @@ def validate(output: Path, dependencies: Path) -> dict:
                 "--no-input",
                 "--disable-pip-version-check",
                 "--no-cache-dir",
+                "--only-binary=:all:",
                 "--target",
                 str(dependencies),
                 "--report",
-                str(output / "setup/install-report.json"),
+                str(output / "private-setup/install-report.json"),
                 "-r",
                 str(HELPERS / "requirements.txt"),
             ],
@@ -225,6 +336,15 @@ def validate(output: Path, dependencies: Path) -> dict:
             break
         row = command(argv, ROOT, output / "setup" / name, environment, timeout)
         result["phases"][name] = row
+        if name == "install" and ((output / "private-setup/install-report.json").exists() or row["passed"]):
+            projection_started = time.perf_counter()
+            try:
+                result["install_provenance"] = install_provenance(output)
+            except (ValueError, OSError):
+                result.update(status="failed", failed_phase="install-provenance", failure="package-provenance-refused")
+                break
+            finally:
+                result["install_provenance_wall_seconds"] = time.perf_counter() - projection_started
         if not row["passed"] or helper_hashes() != hashes:
             result.update(
                 status="failed",

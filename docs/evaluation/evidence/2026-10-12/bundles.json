@@ -253,12 +253,37 @@
       "sha256": "f0d561f842e0f6a4d832320841e8a97ba8b2a4cc5f71c01e23ee038dd0ae106a",
       "uncompressed_bytes": 40123042,
       "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38217594404-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965742,
+          "path": "bundle-status.json",
+          "sha256": "4d4ded1434aa2e9402128d279d93e67f9d6c903f454e7d08223525c4305c2440"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7658175,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38217594404,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38217594404",
+      "scope": "Exact public Actions artifact: four normalized compiler-comparison bundles and all13 successful mixed state/result pairs. Separate native helper diagnostic completed but its detailed publication was blocked by package-contact metadata; unavailable helper samples are not included or reconstructed.",
+      "sha256": "f3339b2798b11f5222ab7552b46ac3988096a7091ab4d4a3b299ec9eb51ee191",
+      "uncompressed_bytes": 39085012,
+      "verified_normalized_files": 3625
     }
   ],
   "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
   "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 41995512,
-  "total_uncompressed_bytes": 227053870
+  "total_compressed_bytes": 49653687,
+  "total_uncompressed_bytes": 266138882
 }

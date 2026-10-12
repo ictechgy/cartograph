@@ -173,3 +173,22 @@ CI normalizes this small diagnostic independently and uploads only after its nor
 under `measurement-helper-validation`. It is separate from the larger compiler-comparison artifact.
 Original command/sample bytes remain private and normalized manifests retain their hashes.
 No final paired sessions, holdout, oracle or comparison endpoint are run or changed by this step.
+
+
+### Package install provenance publication
+
+The complete pip install report is kept under private-setup, outside the public text selection.
+Its public receipt retains the raw report hash/byte count and explicitly declares omitted package
+contacts, long descriptions, other package metadata and environment fields. The strict projection
+requires report schema1, one requested non-yanked psutil7.2.2 wheel, the unsigned HTTPS distribution
+URL on files.pythonhosted.org, consistent SHA256 fields and the actual pip/report versions. Missing,
+duplicate or unexpected distributions, schema fields, signed/credential-bearing URLs or inconsistent
+hashes fail the diagnostic before later phases. Binary-only installation avoids an implicit source build.
+
+Install command/stdout/stderr, completed/incomplete state and full costs remain public after normal
+screening; projection cost is recorded separately. No email or credential allowance was added to the
+normalizer. A raw report hash is integrity evidence, not a substitute for successful installation or
+verification of the installed binary bytes. Native run38217594404 completed its synthetic diagnostic,
+but its helper artifact was correctly withheld because the earlier full report contained package
+contact metadata. That round's detailed helper samples remain unavailable; they are not reconstructed
+from a later run. All four independently normalized compiler-comparison bundles survived.

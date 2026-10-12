@@ -192,6 +192,142 @@ class DiagnosticContracts(unittest.TestCase):
         self.assertEqual(row["returncode"], 125)
         self.assertFalse(row["completed"])
 
+    def install_report(self):
+        return dict(
+            version="1",
+            pip_version="26.2.1",
+            environment={"SYNTHETIC_PRIVATE_FIELD": "not published"},
+            install=[
+                dict(
+                    download_info=dict(
+                        url="https://files.pythonhosted.org/packages/aa/bb/"
+                        + "c" * 60
+                        + "/psutil-7.2.2-cp36-abi3-macosx_11_0_arm64.whl",
+                        archive_info=dict(hash="sha256=" + "a" * 64, hashes={"sha256": "a" * 64}),
+                    ),
+                    is_direct=False,
+                    is_yanked=False,
+                    requested=True,
+                    metadata=dict(
+                        name="psutil",
+                        version="7.2.2",
+                        author_email="maintainer@example.invalid",
+                        description="SYNTHETIC_PRIVATE_DESCRIPTION",
+                    ),
+                )
+            ],
+        )
+
+    def write_install_report(self, report):
+        path = self.root / "raw/private-setup/install-report.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(report))
+        return path
+
+    def test_pip_projection_retains_exact_provenance_and_omits_contact_metadata(self):
+        path = self.write_install_report(self.install_report())
+        raw = path.read_bytes()
+        projected = MODULE.install_provenance(self.root / "raw")
+        self.assertEqual(projected["raw_report"]["sha256"], MODULE.hashlib.sha256(raw).hexdigest())
+        self.assertEqual(projected["raw_report"]["bytes"], len(raw))
+        self.assertEqual(projected["distributions"][0]["sha256"], "a" * 64)
+        self.assertEqual(projected["distributions"][0]["version"], "7.2.2")
+        self.assertNotIn("maintainer@", json.dumps(projected))
+        self.assertNotIn("SYNTHETIC_PRIVATE", json.dumps(projected))
+        self.assertEqual(path.read_bytes(), raw)
+
+    def test_pip_projection_rejects_wrong_package_version_hash_and_urls(self):
+        changes = [
+            ("name", "unexpected"),
+            ("version", "7.2.3"),
+            ("sha256", "z" * 64),
+            ("url", "https://evil.invalid/psutil.whl"),
+            ("url", "https://files.pythonhosted.org/pkg.whl?token=synthetic"),
+            ("url", "https://user:secret@files.pythonhosted.org/pkg.whl"),
+        ]
+        for key, value in changes:
+            report = self.install_report()
+            entry = report["install"][0]
+            if key in ("name", "version"):
+                entry["metadata"][key] = value
+            elif key == "sha256":
+                entry["download_info"]["archive_info"]["hashes"][key] = value
+            else:
+                entry["download_info"][key] = value
+            self.write_install_report(report)
+            with self.assertRaises(ValueError):
+                MODULE.install_provenance(self.root / "raw")
+
+    def test_pip_projection_rejects_missing_duplicate_and_unexpected_distribution(self):
+        for count in [0, 2]:
+            report = self.install_report()
+            report["install"] = report["install"] * count
+            self.write_install_report(report)
+            with self.assertRaises(ValueError):
+                MODULE.install_provenance(self.root / "raw")
+        path = self.write_install_report(self.install_report())
+        path.write_text(path.read_text().replace('"version": "1"', '"version": "2", "version": "1"', 1))
+        with self.assertRaises(ValueError):
+            MODULE.install_provenance(self.root / "raw")
+
+    def test_pip_projection_rejects_schema_flags_and_inconsistent_hash(self):
+        for kind in ["report", "entry", "hash", "flags", "missing-hash"]:
+            report = self.install_report()
+            entry = report["install"][0]
+            if kind == "report":
+                report["version"] = "2"
+            elif kind == "entry":
+                entry["unknown"] = True
+            elif kind == "hash":
+                entry["download_info"]["archive_info"]["hash"] = "sha256=" + "b" * 64
+            elif kind == "flags":
+                entry["is_yanked"] = True
+            else:
+                del entry["download_info"]["archive_info"]["hashes"]["sha256"]
+            self.write_install_report(report)
+            with self.assertRaises(ValueError):
+                MODULE.install_provenance(self.root / "raw")
+
+    def test_projection_failure_prevents_next_phase_and_retains_install_cost(self):
+        calls = []
+
+        def installed(argv, cwd, stem, environment, timeout):
+            calls.append(argv)
+            report_path = MODULE.Path(argv[argv.index("--report") + 1])
+            report_path.write_text('{"version": "unsupported"}')
+            return dict(passed=True, completed=True, returncode=0, wall_seconds=0.25)
+
+        with mock.patch.object(MODULE.sys, "platform", "darwin"), mock.patch.object(MODULE, "command", installed):
+            result = MODULE.validate(self.root / "raw", self.root / "deps")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(result["failed_phase"], "install-provenance")
+        self.assertEqual(result["phases"]["install"]["wall_seconds"], 0.25)
+        self.assertGreater(result["install_provenance_wall_seconds"], 0)
+        self.assertTrue((self.root / "raw/setup/install-report-retention.json").exists())
+
+    def test_private_report_is_excluded_but_derived_provenance_is_normalized(self):
+        report = self.install_report()
+        report["install"][0]["metadata"]["GITHUB_TOKEN"] = "synthetic credential-shaped metadata"
+        path = self.write_install_report(report)
+        before = path.read_bytes()
+        MODULE.install_provenance(self.root / "raw")
+        MODULE.save(self.root / "raw/results.json", dict(status="synthetic-projection-test"))
+        spec = importlib.util.spec_from_file_location(
+            "normalizer_projection", ROOT / "Scripts/normalize-indexstore-evidence.py"
+        )
+        normalizer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(normalizer)
+        args = normalizer.argparse.Namespace(input=self.root / "raw", output=self.root / "public", prefix=[])
+        manifest = normalizer.package(args)
+        selected = {entry["path"] for entry in manifest["files"]}
+        self.assertIn("setup/install-provenance.json", selected)
+        self.assertIn("setup/install-report-retention.json", selected)
+        self.assertNotIn("private-setup/install-report.json", selected)
+        public = (self.root / "public/setup/install-provenance.json").read_text()
+        for private in ["maintainer@", "SYNTHETIC_PRIVATE", "GITHUB_TOKEN", "synthetic credential"]:
+            self.assertNotIn(private, public)
+        self.assertEqual(path.read_bytes(), before)
+
     def test_workflow_has_separate_normalized_ready_gated_artifact(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text()
         self.assertIn("name: Validate native measurement helpers", workflow)

@@ -1015,6 +1015,408 @@
       "status": "fresh-shared-index-baseline-and-native-freshness-passed-header-admission-failed",
       "synthetic_correctness_and_freshness_passed": true,
       "url": "https://github.com/ictechgy/cartograph/actions/runs/38212888445"
+    },
+    {
+      "archive_sha256": "f3339b2798b11f5222ab7552b46ac3988096a7091ab4d4a3b299ec9eb51ee191",
+      "artifact_id": 11732733281,
+      "compiler_index_policy": "fresh-shared-v2",
+      "expectation_changes": false,
+      "head": "e2b6584baffffafe7fb0b0149e0f8dbfa762039c",
+      "mixed_validation_states": 13,
+      "native_freshness_checks_passed": 6,
+      "native_header_omission_states": 0,
+      "native_helper_diagnostic": {
+        "artifact": "setup/install-report.json",
+        "execution_step": "success",
+        "observation_scope": "Fixed synthetic helper validation only; actual sample/results bundle was not published",
+        "public_evidence": "unavailable-normalization-blocked",
+        "reason": "email-address",
+        "samples_reconstructed": false,
+        "value_sha256_prefix": "a146cf7605b9602b"
+      },
+      "normalized_bundles": {
+        "argument-parser": 606,
+        "mixed-ios": 1797,
+        "mixed-setup": 6,
+        "synthetic": 1216
+      },
+      "normalized_manifest_files": 3625,
+      "observation_failures": [],
+      "public_project_validation_passed": true,
+      "publication_status": "compiler-comparison-publication-prepared-helper-publication-blocked",
+      "raw_fallback": false,
+      "rebuilt_baseline_graph_and_query_states_passed": 7,
+      "rebuilt_native_graph_and_query_states_passed": 7,
+      "retained_cost_evidence": "Full equal shared compiler/index preparation cost plus separately measured setup/toolchain/preflight costs retained. No final timing or superiority inference.",
+      "run_id": 38217594404,
+      "sdk_content_identity": {
+        "build": "23F81a",
+        "contents_sha256": null,
+        "final_protocol_gate": "not-satisfied",
+        "limitation": "SDK header/module contents and their immutability across generations are not established",
+        "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk",
+        "verification": "version-path-only-validation",
+        "version": "26.5"
+      },
+      "shared_policy_interpretation": "The separately merged header admission repair and shared fresh-generation policy now match the unchanged source-authored graph and ten-query oracles for both engines in all7 rebuilt states. All6 state-specific native freshness checks pass. This closes the bounded validation-corpus omission, not a fresh holdout or comparative performance claim.",
+      "states": [
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 5.665602749999948,
+              "index_dump_assembly": 5.665602749999948
+            },
+            "compiler_subprocess_wall_seconds": 4.436977500000012,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 5.665602749999948
+          },
+          "state": "initial",
+          "status": "passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/CGCore.h"
+              ],
+              "diagnostic": "index-staleness: 1 of 9 source file(s) changed after the file's index unit was written, so a call added since the last build is not here yet; paths: [\"Sources/BridgeKit/include/CGCore.h\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/BridgeKit/include/CGCore.h"
+          ],
+          "required_changed_paths": [
+            "Sources/BridgeKit/include/CGCore.h"
+          ],
+          "state": "header_edit_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 3.999499541999967,
+              "index_dump_assembly": 3.999499541999967
+            },
+            "compiler_subprocess_wall_seconds": 3.2830294999997705,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 3.999499541999967
+          },
+          "state": "header_edit_rebuilt",
+          "status": "passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/RenamedCore.h"
+              ],
+              "diagnostic": "unindexed-sources: 1 of 9 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers; paths: [\"Sources/BridgeKit/include/RenamedCore.h\"]"
+            },
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/CGCore.h"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/BridgeKit/include/CGCore.h\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/BridgeKit/include/CGCore.h",
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "required_changed_paths": [
+            "Sources/BridgeKit/include/CGCore.h",
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "state": "header_rename_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.630970709000053,
+              "index_dump_assembly": 4.630970709000053
+            },
+            "compiler_subprocess_wall_seconds": 3.727858500000025,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.630970709000053
+          },
+          "state": "header_rename_rebuilt",
+          "status": "passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/RenamedCore.h"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/BridgeKit/include/RenamedCore.h\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "required_changed_paths": [
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "state": "header_delete_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/RenamedCore.h"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/BridgeKit/include/RenamedCore.h\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "required_changed_paths": [
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "state": "header_delete_build_failed",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.52193166699999,
+              "index_dump_assembly": 4.52193166699999
+            },
+            "compiler_subprocess_wall_seconds": 3.456280207999953,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.52193166699999
+          },
+          "state": "header_restored_rebuilt",
+          "status": "passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/AppFlow/Relocated.swift"
+              ],
+              "diagnostic": "unindexed-sources: 1 of 9 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers; paths: [\"Sources/AppFlow/Relocated.swift\"]"
+            },
+            {
+              "changed_paths": [
+                "Sources/AppFlow/Legacy.swift"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/AppFlow/Legacy.swift\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/AppFlow/Legacy.swift",
+            "Sources/AppFlow/Relocated.swift"
+          ],
+          "required_changed_paths": [
+            "Sources/AppFlow/Legacy.swift",
+            "Sources/AppFlow/Relocated.swift"
+          ],
+          "state": "swift_rename_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 5.495417624999959,
+              "index_dump_assembly": 5.495417624999959
+            },
+            "compiler_subprocess_wall_seconds": 4.324157208999964,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 5.495417624999959
+          },
+          "state": "swift_rename_rebuilt",
+          "status": "passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/AppFlow/Relocated.swift"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/AppFlow/Relocated.swift\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/AppFlow/Relocated.swift"
+          ],
+          "required_changed_paths": [
+            "Sources/AppFlow/Relocated.swift"
+          ],
+          "state": "swift_delete_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 3.2469492080000464,
+              "index_dump_assembly": 3.2469492080000464
+            },
+            "compiler_subprocess_wall_seconds": 2.5543012089999593,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 3.2469492080000464
+          },
+          "state": "swift_delete_rebuilt",
+          "status": "passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 3.4622775000000274,
+              "index_dump_assembly": 3.4622775000000274
+            },
+            "compiler_subprocess_wall_seconds": 2.8000154569999722,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 3.4622775000000274
+          },
+          "state": "restored_rebuilt",
+          "status": "passed"
+        }
+      ],
+      "status": "mixed-graph-query-freshness-passed-helper-publication-blocked",
+      "synthetic_correctness_and_freshness_passed": true,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38217594404"
     }
   ],
   "superiority_claim": null
