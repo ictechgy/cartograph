@@ -134,6 +134,8 @@ public struct ExternalRetentionsDocument: Sendable, Equatable, Codable {
     public let retentions: [ExternalRetention]
     /// 옛 생산자가 보존 목록에서 제외한 Objective-C 핸들러 수. 현재도 그 공백을 보존한다.
     public let omittedObjectiveCHandlers: Int?
+    /// 실제 상류 문맥. 없거나 미지원이어도 기존 매치 심볼을 계속 보존한다.
+    public let provenance: ExternalRetentionProvenance?
 
     public init(
         format: String = ExternalRetentionsDocument.expectedFormat,
@@ -141,7 +143,8 @@ public struct ExternalRetentionsDocument: Sendable, Equatable, Codable {
         producedBy: Producer? = nil,
         generatedAt: String? = nil,
         retentions: [ExternalRetention],
-        omittedObjectiveCHandlers: Int? = nil
+        omittedObjectiveCHandlers: Int? = nil,
+        provenance: ExternalRetentionProvenance? = nil
     ) {
         self.format = format
         self.version = version
@@ -149,6 +152,30 @@ public struct ExternalRetentionsDocument: Sendable, Equatable, Codable {
         self.generatedAt = generatedAt
         self.retentions = retentions
         self.omittedObjectiveCHandlers = omittedObjectiveCHandlers
+        self.provenance = provenance
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case format, version, producedBy, generatedAt, retentions, omittedObjectiveCHandlers, provenance
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        format = try container.decode(String.self, forKey: .format)
+        version = try container.decode(Int.self, forKey: .version)
+        producedBy = try container.decodeIfPresent(Producer.self, forKey: .producedBy)
+        generatedAt = try container.decodeIfPresent(String.self, forKey: .generatedAt)
+        retentions = try container.decode([ExternalRetention].self, forKey: .retentions)
+        omittedObjectiveCHandlers = try container.decodeIfPresent(Int.self, forKey: .omittedObjectiveCHandlers)
+        // present null은 옛 문서가 아니다. 로딩 경계의 원본 token 검사를 반드시 거친다.
+        provenance = container.contains(.provenance)
+            ? try container.decode(ExternalRetentionProvenance.self, forKey: .provenance) : nil
+    }
+
+    /// snapshot의 별도 원본 출처 저장/복원에 쓰며 보존 배열은 손대지 않는다.
+    public func withProvenance(_ provenance: ExternalRetentionProvenance?) -> Self {
+        Self(format: format, version: version, producedBy: producedBy, generatedAt: generatedAt,
+             retentions: retentions, omittedObjectiveCHandlers: omittedObjectiveCHandlers, provenance: provenance)
     }
 
     /// 한계 목록에 적을 출처. "isthmus 0.1.0, generated 2026-…" 처럼.

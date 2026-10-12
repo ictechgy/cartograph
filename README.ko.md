@@ -1142,6 +1142,20 @@ ObjC 핸들은 `objective-c-handlers` 쪽에서 셉니다), React Native 모듈�
 `--target react-native`로 문서를 분리합니다. target 문서는 제외한 사실 수를
 `target-filter` limitation으로 알립니다.
 
+개발 범위(미발행): external-retentions v0의 선택 상류 출처를 분석과 snapshot에 보존합니다.
+항목이나 매치가 0개여도 문서 한계는 남습니다. 옛 문서는 출처 미상, 모르는 출처 버전은
+미지원 문맥으로 알리며 매치된 루트는 계속 보존합니다. 새 변환 시각으로 상류 소스 변경
+경고를 지우지 않습니다. 파일은 16 MiB, 출처는 헤더 256개·한계 4096개·정규 UTF-8 1 MiB로
+제한합니다. scalar Unicode·정수 리터럴·중복 decoded 키·깊이 64를 원본 token 단계에서
+검사하고 잘못되거나 초과한 입력은 빈 성공 대신 실패합니다. 표시는 escape 뒤 64개·8192바이트와
+정확한 생략 수로 줄이지만 snapshot의 별도 compact JSON 필드는 전체 문맥을 보존합니다.
+Foundation keyed Codable이 합치는 정규화 동등 Unicode 키도 구별하며 복원 때 다시 검증하고
+두 출처 표현이 충돌하면 실패합니다. 임베더는 새 snapshot을 `AnalysisSnapshotDocument.decode(from:)`로
+읽어야 하며, 출처 없는 옛 snapshot은 일반 JSONDecoder와 계속 호환됩니다. 시각은 실제 Gregorian 날짜,
+t/z 대소문자, 시·offset 시 00–23, 분·offset 분 00–59, 초 00–59와 임의 소수 자릿수를 허용하는
+명시적 profile입니다. 윤초 :60은 정규화하지 않고 미지원 형식으로 거부합니다. 원문을 보존하며
+삭제 안전성을 뜻하거나 매치 보존을 취소하지 않습니다.
+
 isthmus는 `external-retentions`를 돌려줍니다 — 호출자를 찾은 Swift 선언마다 USR과 근거입니다.
 `--external-retentions <경로>`(또는 설정의 `external_retentions_path`)는 각각을 이유가
 `externalBridge`인 보존 루트로 만들고, `--explain`은 파일을 가리키는 대신 근거를 문장으로

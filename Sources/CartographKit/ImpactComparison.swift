@@ -197,7 +197,7 @@ extension CartographService {
 
     private func loadAnalysisSnapshot(at path: String) throws -> AnalysisSnapshotDocument {
         let data: Data
-        do { data = try environment.fileSystem.readData(at: path) }
+        do { data = try environment.fileSystem.readData(at: path, maximumBytes: AnalysisSnapshotDocument.maximumByteCount) }
         catch {
             throw CartographError.invalidConfiguration(path: path, reason: "Could not read the analysis snapshot.")
         }
@@ -205,9 +205,7 @@ extension CartographService {
             throw CartographError.invalidConfiguration(path: path, reason: "Analysis snapshot exceeds 128 MiB.")
         }
         do {
-            let document = try JSONDecoder().decode(AnalysisSnapshotDocument.self, from: data)
-            try document.validate()
-            return document
+            return try AnalysisSnapshotDocument.decode(from: data)
         } catch let error as CartographError {
             throw error
         } catch {

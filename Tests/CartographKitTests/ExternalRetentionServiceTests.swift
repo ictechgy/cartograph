@@ -20,6 +20,41 @@ struct ExternalRetentionServiceTests {
         #expect(document.limitations.contains { $0.hasPrefix("external-retentions-objective-c: 2") })
     }
 
+    @Test("새 변환 시각 아래 오래된 상류 한계도 dead·query·explain에 남고 같은 루트를 보존한다")
+    func staleProvenanceKeepsRootsAndCaveats() throws {
+        let raw = #"{"version":1,"sources":[],"limitations":[{"platform":"swift","target":"flutter","tool":"cartograph","message":"index-freshness: source changed after index capture"}]}"#
+        let extended = Self.retentions.replacingOccurrences(of: "\"version\": 0,", with: "\"version\":0,\"provenance\":\(raw),")
+            .replacingOccurrences(of: "2026-09-04T12:00:00.000Z", with: "2026-10-12T14:00:00.000Z")
+        var config = CartographConfiguration.default
+        config.projectPath = "/p"
+        config.externalRetentionsPath = "/p/retentions.json"
+        let service = CartographService(configuration: config, environment: CartographEnvironment(
+            fileSystem: InMemoryFileSystem(files: ["/p/retentions.json": extended]),
+            indexProviderOverride: StaticIndexProvider(makeSnapshot())))
+        #expect(try service.detectUnusedCode().findingCount == 0)
+        let query = try service.queryDocument(symbol: "s:handle")
+        #expect(query.result?.reachability.state == "retained")
+        #expect(query.limitations.contains { $0.contains("source changed after index capture") })
+        let explained = try service.explainRetention(of: "s:handle")
+        #expect(explained.output.contains("is retained"))
+        #expect(explained.notes.contains { $0.contains("source changed after index capture") })
+        #expect(try service.explainRetention(of: "notFound").notes.contains { $0.contains("source changed after index capture") })
+    }
+
+    @Test("아무 보존 항목이나 매치가 없어도 문서 전체 한계는 남는다")
+    func emptyDocumentKeepsCaveats() throws {
+        let raw = #"{"format":"external-retentions","version":0,"retentions":[],"provenance":{"version":1,"limitations":[{"platform":"dart","target":null,"tool":"future","message":"unresolved-caller: unknown"}]}}"#
+        var config = CartographConfiguration.default
+        config.projectPath = "/p"
+        config.externalRetentionsPath = "/p/retentions.json"
+        let service = CartographService(configuration: config, environment: CartographEnvironment(
+            fileSystem: InMemoryFileSystem(files: ["/p/retentions.json": raw]),
+            indexProviderOverride: StaticIndexProvider(makeSnapshot())))
+        let result = try service.queryDocument(symbol: "notFound")
+        #expect(result.limitations.contains { $0.contains("unresolved-caller: unknown") })
+        #expect(result.limitations.contains { $0.contains("source-context-unavailable") })
+    }
+
     private static let retentions = """
         {
           "format": "external-retentions",

@@ -6,6 +6,8 @@ import Foundation
 /// 베이스라인과 같은 이유로 형식과 버전을 검사한다. 조용히 아무것도 보존하지 않으면
 /// 사용자는 isthmus 가 돌려준 결과가 반영됐다고 믿은 채 핸들러를 지운다.
 public struct ExternalRetentionStore: Sendable {
+    /// JSON 디코딩/출처 검증 전에 적용하는 실제 파일 읽기 상한이다.
+    public static let maximumByteCount = 16 * 1024 * 1024
     private let fileSystem: any FileSystem
 
     public init(fileSystem: any FileSystem = LocalFileSystem()) {
@@ -18,7 +20,14 @@ public struct ExternalRetentionStore: Sendable {
         }
         let document: ExternalRetentionsDocument
         do {
-            document = try JSONDecoder().decode(ExternalRetentionsDocument.self, from: fileSystem.readData(at: path))
+            let data = try fileSystem.readData(at: path, maximumBytes: Self.maximumByteCount)
+            guard data.count <= Self.maximumByteCount else {
+                throw CartographError.invalidExternalRetentions(path: path, reason: "External retentions exceed 16 MiB.")
+            }
+            let provenance = try RetentionProvenanceAdmission.read(from: data)
+            let decoder = JSONDecoder()
+            if let provenance { decoder.userInfo[ExternalRetentionProvenance.admittedCodingKey] = provenance }
+            document = try decoder.decode(ExternalRetentionsDocument.self, from: data)
         } catch {
             throw CartographError.invalidExternalRetentions(path: path, reason: "\(error)")
         }

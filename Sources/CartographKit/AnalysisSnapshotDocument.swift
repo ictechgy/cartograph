@@ -55,9 +55,23 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         self.runtimeContracts = runtimeContracts.map(Self.withoutExpectedValues)
     }
 
+    /// 신뢰할 수 없는 snapshot bytes는 이 경계에서 크기와 원본 출처 token을 먼저 검사한다.
+    public static func decode(from data: Data) throws -> Self {
+        guard data.count <= maximumByteCount else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Analysis snapshot exceeds 128 MiB."))
+        }
+        let decoder = JSONDecoder()
+        if let provenance = try RetentionProvenanceAdmission.read(from: data, snapshot: true) {
+            decoder.userInfo[ExternalRetentionProvenance.admittedCodingKey] = provenance
+        }
+        let document = try decoder.decode(Self.self, from: data)
+        try document.validate()
+        return document
+    }
+
     private enum CodingKeys: String, CodingKey {
         case format, version, projectRoot, toolVersion, revision, snapshot, edgeKinds, limitations
-        case externalRetentions, runtimeContracts, runtimeFiles, runtimeFreshness
+        case externalRetentions, externalRetentionProvenanceJSON, runtimeContracts, runtimeFiles, runtimeFreshness
         case localFunctionDiagnostics
     }
 
@@ -70,10 +84,28 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         revision = try container.decodeIfPresent(String.self, forKey: .revision)
         snapshot = try container.decode(IndexSnapshot.self, forKey: .snapshot)
         edgeKinds = try container.decode([EdgeKind].self, forKey: .edgeKinds)
-        externalRetentions = try container.decodeIfPresent(
+        let decodedRetentions = try container.decodeIfPresent(
             ExternalRetentionsDocument.self,
             forKey: .externalRetentions
         )
+        if container.contains(.externalRetentionProvenanceJSON) {
+            let raw = try container.decode(String.self, forKey: .externalRetentionProvenanceJSON)
+            guard raw.utf8.count <= ExternalRetentionProvenance.maximumBytes, let decodedRetentions else {
+                throw DecodingError.dataCorruptedError(forKey: .externalRetentionProvenanceJSON, in: container,
+                    debugDescription: "Snapshot external retention provenance is malformed or exceeds its bound.")
+            }
+            let restored = try RetentionProvenanceAdmission.parseEnvelope(Data(raw.utf8))
+            guard let admitted = decoder.userInfo[ExternalRetentionProvenance.admittedCodingKey] as? ExternalRetentionProvenance,
+                  admitted == restored else {
+                throw DecodingError.dataCorruptedError(forKey: .externalRetentionProvenanceJSON, in: container,
+                    debugDescription: "Snapshot provenance requires matching raw admission; use AnalysisSnapshotDocument.decode(from:).")
+            }
+            if let inline = decodedRetentions.provenance, inline != restored {
+                throw DecodingError.dataCorruptedError(forKey: .externalRetentionProvenanceJSON, in: container,
+                    debugDescription: "Snapshot external retention provenance representations conflict.")
+            }
+            externalRetentions = decodedRetentions.withProvenance(restored)
+        } else { externalRetentions = decodedRetentions }
         runtimeContracts = try container.decodeIfPresent(RuntimeContractsDocument.self, forKey: .runtimeContracts)
 
         // v1에는 이 계약이 없었다. 새 이름의 필드를 임의로 주입한 v1도 과거
@@ -102,7 +134,10 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         try container.encode(snapshot, forKey: .snapshot)
         try container.encode(edgeKinds, forKey: .edgeKinds)
         try container.encode(limitations, forKey: .limitations)
-        try container.encodeIfPresent(externalRetentions, forKey: .externalRetentions)
+        // Foundation keyed encoder가 Unicode 키를 합치지 않도록 compact 원본을 따로 보관한다.
+        try container.encodeIfPresent(externalRetentions?.withProvenance(nil), forKey: .externalRetentions)
+        try container.encodeIfPresent(externalRetentions?.provenance?.value.canonicalJSON,
+                                      forKey: .externalRetentionProvenanceJSON)
         try container.encodeIfPresent(runtimeContracts, forKey: .runtimeContracts)
         try container.encodeIfPresent(runtimeFiles, forKey: .runtimeFiles)
         if runtimeFiles != nil { try container.encode(runtimeFreshness, forKey: .runtimeFreshness) }
