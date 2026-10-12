@@ -139,7 +139,7 @@ struct SwiftDeclarationProjectionTests {
             for node in value.nodes where node.state == .raw {
                 #expect(node.aliases.isEmpty)
                 #expect(node.variants.count == 1)
-                #expect(value.rawToProjected[node.id] == node.id)
+                #expect(node.variants.first?.usr == node.id.rawValue)
             }
         }
     }

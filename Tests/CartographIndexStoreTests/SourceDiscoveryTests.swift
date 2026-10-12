@@ -13,11 +13,11 @@ struct SourceDiscoveryTests {
             libraryPath: "/l", sourceRoots: ["/p/A.swift"], pathFilter: PathFilter(exclude: ["**/Excluded/**"]),
             includeObjectiveCSources: true, dependencyRoots: ["/p"]), fileSystem: fs)
         #expect(provider.sourceFilePaths() == ["/p/A.swift"])
-        #expect(provider.isTrackedSourcePath("/p/API.h"))
-        #expect(provider.isTrackedSourcePath("/p/Deleted.swift"))
+        #expect(provider.trackedSourcePathPredicate()("/p/API.h"))
+        #expect(provider.trackedSourcePathPredicate()("/p/Deleted.swift"))
         for path in ["/elsewhere/API.h", "/prefix/API.h", "/p/Excluded/API.h", "/p/.build/API.h",
             "/p/.build-custom/API.h", "/p/DerivedData/API.h", "/p/../elsewhere/API.h", "/p/data.txt"] {
-            #expect(!provider.isTrackedSourcePath(path), "\(path)")
+            #expect(!provider.trackedSourcePathPredicate()(path), "\(path)")
         }
     }
 
@@ -39,14 +39,14 @@ struct SourceDiscoveryTests {
         let physical = try fileSystem.realPath(at: header.path)
         let provider = IndexStoreProvider(configuration: .init(storePath: "/s", databasePath: "/d",
             libraryPath: "/l", sourceRoots: [], includeObjectiveCSources: true, dependencyRoots: [alias.path]))
-        #expect(provider.isTrackedSourcePath(header.path))
+        #expect(provider.trackedSourcePathPredicate()(header.path))
         try manager.removeItem(at: header)
-        #expect(provider.isTrackedSourcePath(header.path))
-        #expect(provider.isTrackedSourcePath(physical))
+        #expect(provider.trackedSourcePathPredicate()(header.path))
+        #expect(provider.trackedSourcePathPredicate()(physical))
         #expect(RawIndexStoreReader.sourceLocationPath(header.path, fileSystem: fileSystem) == physical)
-        #expect(!provider.isTrackedSourcePath(alias.appendingPathComponent("Escaping/Missing.h").path))
+        #expect(!provider.trackedSourcePathPredicate()(alias.appendingPathComponent("Escaping/Missing.h").path))
         try manager.removeItem(at: real.appendingPathComponent("Sources"))
-        #expect(provider.isTrackedSourcePath(header.path))
+        #expect(provider.trackedSourcePathPredicate()(header.path))
         #expect(RawIndexStoreReader.sourceLocationPath(header.path, fileSystem: fileSystem) == physical)
     }
 

@@ -616,6 +616,23 @@ struct AnalysisSessionTests {
         }
     }
 
+    @Test("실제 파일 읽기 계측은 모든 Clang 확장자를 기록한다", arguments: ["m", "mm", "h"])
+    func contentReadCounterCoversClangSources(extensionName: String) throws {
+        let root = try makeTemporaryProject()
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        let fileSystem = CountingLocalFileSystem()
+        let source = root + "/App." + extensionName
+        try fileSystem.write(text: "int value;", to: source)
+
+        _ = try fileSystem.readData(at: source)
+
+        #expect(fileSystem.contentReadBytes == "int value;".utf8.count)
+        #expect(fileSystem.contentReadPaths == [source])
+        fileSystem.resetContentReads()
+        #expect(fileSystem.contentReadBytes == 0)
+        #expect(fileSystem.contentReadPaths.isEmpty)
+    }
+
     @Test("같은 stamp의 상태 조회는 읽기를 건너뛰고 명시적 refresh만 Clang 소스를 다시 확인한다",
         arguments: ["m", "mm", "h"])
     func cachedFingerprintSkipsWarmContentReads(extensionName: String) throws {
@@ -1143,7 +1160,8 @@ private final class CountingLocalFileSystem: FileSystem, @unchecked Sendable {
 
     func readData(at path: String) throws -> Data {
         let data = try base.readData(at: path)
-        guard path.hasSuffix(".m") || path.contains("/index-store/") else { return data }
+        guard [".m", ".mm", ".h"].contains(where: path.hasSuffix)
+            || path.contains("/index-store/") else { return data }
         lock.withLock {
             contentReadBytes += data.count
             contentReadPaths.append(path)

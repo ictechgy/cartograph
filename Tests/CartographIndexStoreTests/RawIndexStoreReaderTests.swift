@@ -31,7 +31,7 @@ struct RawIndexStoreReaderTests {
         let reader = RawIndexStoreReader(
             storePath: fixture.store.path, libraryPath: fixture.library, fileSystem: LocalFileSystem()
         )
-        #expect(throws: (any Error).self) { try reader.occurrences(in: [fixture.source.path]) }
+        #expect(throws: (any Error).self) { try reader.read(in: [fixture.source.path]).occurrences }
     }
     @Test("상대 소스와 링크 경로를 두 모듈의 실제 선언 위치에 결합한다")
     func sharedRecordsKeepCanonicalLocations() throws {
@@ -44,7 +44,7 @@ struct RawIndexStoreReaderTests {
             storePath: fixture.store.path, libraryPath: fixture.library, fileSystem: fileSystem
         )
         for path in [fixture.source.path, link.path, fileSystem.canonicalPath(physicalPath)] {
-            let occurrences = try reader.occurrences(in: [path])
+            let occurrences = try reader.read(in: [path]).occurrences
             let definitions = occurrences.filter { $0.roles.contains(.definition) && $0.symbol.name == "Payload" }
             #expect(Set(definitions.map(\.location.moduleName)) == ["SyntheticAlpha", "SyntheticBeta"])
             #expect(definitions.count == 2)
@@ -61,7 +61,8 @@ struct RawIndexStoreReaderTests {
                 })
             }
         }
-        #expect(try reader.occurrences(in: [fixture.root.appendingPathComponent("Unrequested.swift").path]).isEmpty)
+        let unrequested = fixture.root.appendingPathComponent("Unrequested.swift").path
+        #expect(try reader.read(in: [unrequested]).occurrences.isEmpty)
         let provider = IndexStoreProvider(configuration: .init(
             storePath: fixture.store.path, databasePath: fixture.root.appendingPathComponent("ReaderDB").path,
             libraryPath: fixture.library, sourceRoots: [link.path]
@@ -301,7 +302,7 @@ struct RawIndexStoreReaderTests {
         let reader = RawIndexStoreReader(
             storePath: fixture.store.path, libraryPath: fixture.library, fileSystem: LocalFileSystem()
         )
-        #expect(throws: (any Error).self) { try reader.occurrences(in: [fixture.source.path]) }
+        #expect(throws: (any Error).self) { try reader.read(in: [fixture.source.path]).occurrences }
     }
 
     @Test("많은 공유 레코드도 bounded cache 안에서 두 모듈 문맥을 모두 보존한다")

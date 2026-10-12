@@ -144,11 +144,7 @@ public struct IndexStoreProvider: IndexProviding {
     }
 
     /// 선언 탐색과 별개로 인덱스에 남은 범위 안의 의존 경로를 추적한다. 외부·빌드 산출물은 노출하지 않는다.
-    func isTrackedSourcePath(_ path: String) -> Bool {
-        trackedSourcePathPredicate()(path)
-    }
-
-    private func trackedSourcePathPredicate() -> (String) -> Bool {
+    func trackedSourcePathPredicate() -> (String) -> Bool {
         let suffixes = configuration.includeObjectiveCSources ? [".swift", ".m", ".mm", ".h"] : [".swift"]
         let roots = (configuration.dependencyRoots ?? configuration.sourceRoots).map {
             RawIndexStoreReader.sourceLocationPath(fileSystem.canonicalPath($0), fileSystem: fileSystem)

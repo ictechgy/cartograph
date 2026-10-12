@@ -142,10 +142,6 @@ struct RawIndexStoreReader {
             oldestIndexedFileDates: oldestIndexedFileDates)
     }
 
-    func occurrences(in paths: Set<String>) throws -> [SymbolOccurrence] {
-        try read(in: paths).occurrences
-    }
-
     /// 삭제된 파일도 남아 있는 조상의 실제 경로를 사용해 /var와 /private/var의 식별자를 유지한다.
     static func sourceLocationPath(_ path: String, fileSystem: any FileSystem) -> String {
         var ancestor = path
