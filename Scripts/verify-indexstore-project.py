@@ -371,6 +371,28 @@ class IdentityAndAnswerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Multiple compiler records"):
                 BENCH.baseline_discovery(config)
 
+    def test_discovery_preserves_records_through_a_symlinked_project_root(self):
+        alias = self.project / "project-alias"
+        alias.symlink_to(self.project, target_is_directory=True)
+        store = self.project / "store"
+        (store / "v5" / "units").mkdir(parents=True)
+        (store / "v5" / "units" / "unit").write_text("")
+        config = {
+            "project": str(alias),
+            "store": str(store),
+            "out": str(self.project / "raw"),
+            "allowed": list(self.allowed),
+            "oracle": self.oracle,
+            "cli": "unused",
+            "library": "unused",
+            "timeout": 1,
+        }
+        unit = f"Record | user | {self.project / self.relative} | one\n"
+        with mock.patch.object(BENCH.BASE, "capture", side_effect=[(unit, {}), (self.records()[self.relative], {})]):
+            result = BENCH.baseline_discovery(config)
+        self.assertEqual(result["record_count"], 1)
+        self.assertTrue(BENCH.graph_grade(result, self.oracle)["exact_match"])
+
 
 class CommandContractTests(unittest.TestCase):
     def test_missing_setup_odd_pairs_and_nonempty_output_are_rejected(self):

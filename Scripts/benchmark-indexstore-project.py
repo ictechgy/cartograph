@@ -241,7 +241,7 @@ def parse_records(texts: dict[str, str], project: Path, allowed: set[str], oracl
 
 
 def baseline_discovery(config: dict) -> dict:
-    project, store, out = (Path(config[key]) for key in ("project", "store", "out"))
+    project, store, out = (Path(config[key]).resolve() for key in ("project", "store", "out"))
     allowed, records, measurements = set(config["allowed"]), {}, []
     started = time.perf_counter()
 
