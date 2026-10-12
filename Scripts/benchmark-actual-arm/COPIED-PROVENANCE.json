@@ -1,0 +1,132 @@
+{
+  "copied": [
+    {
+      "bytes": 13904,
+      "path": "runtime/isolated_measure.py",
+      "sha256": "af1e6f1f04f978d868d4d3a04af12b31efcc2b7b7e3b0fdb05b82e0f2711edec",
+      "source_path": "isolated_measure.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 11491,
+      "path": "runtime/runtime_identity.py",
+      "sha256": "815443af8d79b7b4ceed31f4219b9ad505ca06642a99a1f5940146c74fc5f14e",
+      "source_path": "runtime_identity.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 6934,
+      "path": "runtime/test_runtime_identity.py",
+      "sha256": "a014a406e8f195483fd388a0fbb2476ba448e968a56cf31843ec14dab1f368f1",
+      "source_path": "test_runtime_identity.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 12604,
+      "path": "runtime/runtime_bootstrap.py",
+      "sha256": "6f60929fa29f90ec92e1541e54acd7c7f3162cef94aaa831ba24058573cd3825",
+      "source_path": "runtime_bootstrap.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 23563,
+      "path": "runtime/test_runtime_bootstrap.py",
+      "sha256": "4bb06417a97a1a5bb501dd58f88d01d3eb9a167ed4e2f3169ec9e913387bbec2",
+      "source_path": "test_runtime_bootstrap.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 21016,
+      "path": "runtime/vendor/sdk_content_seal.py",
+      "sha256": "cc289e5e44062b0c41ed998e3ea7ce9c357b4ead4be1fbae778ee5247e7b2195",
+      "source_path": "vendor/sdk_content_seal.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 34857,
+      "path": "runtime/vendor/normalize_evidence.py",
+      "sha256": "8df67ad5c34408cc99b78cdb0f235c1f41b09be4725448648dd5ca38f3ae7a7b",
+      "source_path": "Scripts/normalize-indexstore-evidence.py",
+      "source_role": "Cartograph-b503c516"
+    },
+    {
+      "bytes": 25018,
+      "path": "runtime/vendor/process_tree_measure.py",
+      "sha256": "03a6cc72657a560e983b95fa99b7df4ff907a6d41f37fcd3692f6ed694d92101",
+      "source_path": "vendor/process_tree_measure.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 34767,
+      "path": "runtime/vendor/discovery_receipts.py",
+      "sha256": "01629fbd8490a730f4bc83d6bd94198c3e5eaff8cdb28442441e985e9af451a3",
+      "source_path": "Scripts/benchmark-inputs/select_sdk_roots.py",
+      "source_role": "Cartograph-b503c516"
+    },
+    {
+      "bytes": 6259,
+      "path": "primitive/generation_inputs.py",
+      "sha256": "1db712191d3b2f4703823b686c84f443d7d058b707024d491b6b6922e30f686f",
+      "source_path": "generation_inputs.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 37256,
+      "path": "primitive/arm_sessions.py",
+      "sha256": "821f985b7d6140fcf04ac0b6a6d95073c5cc621eacad36a5909ea7f60819e47b",
+      "source_path": "arm_sessions.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 15708,
+      "path": "primitive/vendor/command_runner.py",
+      "sha256": "7305066cdfa9acf17076d0ee7fe95d927883a2224ff1ba62c15eeb2e62807d50",
+      "source_path": "vendor/command_runner.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 25018,
+      "path": "primitive/vendor/process_tree_measure.py",
+      "sha256": "03a6cc72657a560e983b95fa99b7df4ff907a6d41f37fcd3692f6ed694d92101",
+      "source_path": "vendor/process_tree_measure.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 5663,
+      "path": "primitive/vendor/mixed/compiler_generations.py",
+      "sha256": "3d249f7cd1ac1a6bd62edafb116c1ea389b903899373e3fe29878f0215e79fca",
+      "source_path": "vendor/mixed/compiler_generations.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 8307,
+      "path": "primitive/vendor/mixed/validation_common.py",
+      "sha256": "1abf5f434ea0616bc671d5b017945e66c584f515883fa4c6e2086ea5f71b58d1",
+      "source_path": "vendor/mixed/validation_common.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 5065,
+      "path": "primitive/vendor/mixed/score_calls.py",
+      "sha256": "725363589b415cb655e6bb071a2b7e0da5a0014f3554372c416a57806f3165ee",
+      "source_path": "Fixtures/IndexStoreCLIBenchmark/mixed-ios-validation/score_calls.py",
+      "source_role": "Cartograph-b503c516-source-oracle-grader"
+    },
+    {
+      "bytes": 28860,
+      "path": "primitive/vendor/mixed/adapter/mixed_adapter.py",
+      "sha256": "9e1d552d6350d1fbfa592e03a68b61dee32ddcc65a57e68c27ae8b8516caab33",
+      "source_path": "vendor/mixed/adapter/mixed_adapter.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 42668,
+      "path": "primitive/vendor/mixed/adapter/observe_mixed.py",
+      "sha256": "974a89ebe89c809d97a6050537e3e8818c15ef93f4012e4e90c6deec9784c1a1",
+      "source_path": "vendor/mixed/adapter/observe_mixed.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "Byte identity only; runtime and native integration execution remain separately verified"
+}

@@ -41,6 +41,8 @@ jobs:
           python3 Scripts/verify-native-measurement-contract.py
           python3 -m unittest discover -s Scripts/benchmark-inputs -v
           python3 Scripts/verify-sdk-discovery-contract.py
+          python3 -m unittest discover -s Scripts/benchmark-actual-arm -p 'test_*.py' -v
+          python3 -m unittest discover -s Scripts/benchmark-actual-arm/runtime -p 'test_*.py' -v
 
       # 두 제품 모두 새 release 스크래치에서 빌드한다. 전역 SDK/의존성 캐시는
       # 지우지 않으며, 획득·빌드 비용과 각 질의의 원시 출력을 증거에 남긴다.
@@ -183,6 +185,38 @@ jobs:
         with:
           name: sdk-input-discovery
           path: ${{ runner.temp }}/sdk-discovery-public/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Validate one restored-state bound runtime pair
+        id: actual_arm
+        if: always() && !cancelled() && steps.mixed.outcome == 'success' && steps.measurement.outcome == 'success' && steps.sdk_discovery.outcome != 'skipped'
+        run: |
+          python3 -I -S -B Scripts/benchmark-actual-arm/correctness_controller.py \
+            --repository "$GITHUB_WORKSPACE" \
+            --lifecycle "$RUNNER_TEMP/indexstore-mixed-validation/validation/results.json" \
+            --setup "$RUNNER_TEMP/indexstore-cli-benchmark/results.json" \
+            --measurement "$RUNNER_TEMP/measurement-helper-raw/results.json" \
+            --scratch-root "$RUNNER_TEMP"
+
+      - name: Prepare safe actual-arm correctness evidence
+        id: actual_arm_normalize
+        if: always() && !cancelled() && steps.actual_arm.outcome != 'skipped'
+        run: |
+          python3 -I -S -B Scripts/benchmark-actual-arm/publish_correctness.py \
+            --repository "$GITHUB_WORKSPACE" \
+            --lifecycle "$RUNNER_TEMP/indexstore-mixed-validation/validation/results.json" \
+            --setup "$RUNNER_TEMP/indexstore-cli-benchmark/results.json" \
+            --measurement "$RUNNER_TEMP/measurement-helper-raw/results.json" \
+            --scratch-root "$RUNNER_TEMP"
+
+      - name: Preserve normalized actual-arm correctness evidence
+        if: always() && steps.actual_arm_normalize.outputs.ready == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: actual-arm-correctness-validation
+          path: ${{ runner.temp }}/actual-arm-correctness-public/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14

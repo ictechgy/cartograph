@@ -17,7 +17,7 @@ import time
 MAX_TEXT_BYTES = 4 * 1024**2
 MAX_TOOL_BYTES = 1024**3
 CONTEXTS = ["c", "objective-c", "c++", "objective-c++"]
-RUNNER_SHA256 = "7305066cdfa9acf17076d0ee7fe95d927883a2224ff1ba62c15eeb2e62807d50"
+RUNNER_SHA256 = "266d771fdff4e193c328c14487edc383079e4e44780c293a4ecbb405824c0dd2"
 OVERRIDES = (
     "CPATH",
     "C_INCLUDE_PATH",

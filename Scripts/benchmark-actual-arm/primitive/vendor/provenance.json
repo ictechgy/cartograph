@@ -1,0 +1,11 @@
+{
+  "base_commit": "9151278c4e09017c555402e82d2d276999c5c540",
+  "sha256": {
+    "vendor/command_runner.py": "7305066cdfa9acf17076d0ee7fe95d927883a2224ff1ba62c15eeb2e62807d50",
+    "vendor/mixed/adapter/mixed_adapter.py": "9e1d552d6350d1fbfa592e03a68b61dee32ddcc65a57e68c27ae8b8516caab33",
+    "vendor/mixed/adapter/observe_mixed.py": "974a89ebe89c809d97a6050537e3e8818c15ef93f4012e4e90c6deec9784c1a1",
+    "vendor/mixed/compiler_generations.py": "3d249f7cd1ac1a6bd62edafb116c1ea389b903899373e3fe29878f0215e79fca",
+    "vendor/mixed/validation_common.py": "1abf5f434ea0616bc671d5b017945e66c584f515883fa4c6e2086ea5f71b58d1",
+    "vendor/process_tree_measure.py": "03a6cc72657a560e983b95fa99b7df4ff907a6d41f37fcd3692f6ed694d92101"
+  }
+}

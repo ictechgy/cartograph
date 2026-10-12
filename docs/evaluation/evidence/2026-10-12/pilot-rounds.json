@@ -5806,6 +5806,1972 @@
       ],
       "status": "native-sdk-detail-publication-blocked",
       "url": "https://github.com/ictechgy/cartograph/actions/runs/38244410533"
+    },
+    {
+      "archive_sha256": "ff5dbb09749c6953e65fb6409d677461467c775386157750744a8d47a7fda431",
+      "artifact_id": 11747770783,
+      "compiler_index_policy": "fresh-shared-v2",
+      "expectation_changes": false,
+      "head": "b503c516176eaf22518bc538ff36eae4b94dd913",
+      "helper_archive_sha256": "f3dfb1d85c8895273d34c70f05ec3beb56537e1f8e06729847e48773b615b0fc",
+      "helper_artifact_id": 11747900470,
+      "mixed_validation_states": 13,
+      "native_freshness_checks_passed": 6,
+      "native_header_omission_states": 0,
+      "native_helper_diagnostic": {
+        "calibration_groups": [
+          {
+            "AB_count": 2,
+            "BA_count": 2,
+            "failed_pairs": [],
+            "maximum_run_evidence_bytes": 5755,
+            "median_observer_over_no_observer_ratio": 1.0042315213831878,
+            "mode": "timing",
+            "no_observer_median_seconds": 0.210098708500027,
+            "observed_median_seconds": 0.20707208350000883,
+            "pair_count": 4,
+            "ratio_95_ci": [
+              0.8942840408232701,
+              1.2833048733949715
+            ],
+            "raw_ratios": [
+              0.9605285834669477,
+              1.2833048733949715,
+              0.8942840408232701,
+              1.047934459299428
+            ],
+            "rss_bytes_per_run": [],
+            "rss_bytes_total": 0,
+            "workload": "one_sustained_process"
+          },
+          {
+            "AB_count": 2,
+            "BA_count": 2,
+            "failed_pairs": [],
+            "maximum_run_evidence_bytes": 11053,
+            "median_observer_over_no_observer_ratio": 1.055450728213962,
+            "mode": "memory",
+            "no_observer_median_seconds": 0.20613591649998853,
+            "observed_median_seconds": 0.2211859579999782,
+            "pair_count": 4,
+            "ratio_95_ci": [
+              0.9256292697723931,
+              1.0889572268515695
+            ],
+            "raw_ratios": [
+              1.05709394378029,
+              1.0889572268515695,
+              1.0538075126476343,
+              0.9256292697723931
+            ],
+            "rss_bytes_per_run": [
+              3468,
+              3470,
+              3565,
+              3116
+            ],
+            "rss_bytes_total": 13619,
+            "workload": "one_sustained_process"
+          },
+          {
+            "AB_count": 2,
+            "BA_count": 2,
+            "failed_pairs": [],
+            "maximum_run_evidence_bytes": 6022,
+            "median_observer_over_no_observer_ratio": 1.059156994937753,
+            "mode": "timing",
+            "no_observer_median_seconds": 0.6474803119999706,
+            "observed_median_seconds": 0.6576259375000291,
+            "pair_count": 4,
+            "ratio_95_ci": [
+              0.8781156083672427,
+              1.1540817950432152
+            ],
+            "raw_ratios": [
+              0.8781156083672427,
+              1.1214485531236953,
+              1.1540817950432152,
+              0.9968654367518109
+            ],
+            "rss_bytes_per_run": [],
+            "rss_bytes_total": 0,
+            "workload": "twelve_cli_subprocesses"
+          },
+          {
+            "AB_count": 2,
+            "BA_count": 2,
+            "failed_pairs": [],
+            "maximum_run_evidence_bytes": 15815,
+            "median_observer_over_no_observer_ratio": 1.0830223296875583,
+            "mode": "memory",
+            "no_observer_median_seconds": 0.5748002294999992,
+            "observed_median_seconds": 0.6093381459999705,
+            "pair_count": 4,
+            "ratio_95_ci": [
+              0.8083267791518008,
+              1.1376737848475742
+            ],
+            "raw_ratios": [
+              1.0595681863311364,
+              1.1376737848475742,
+              0.8083267791518008,
+              1.10647647304398
+            ],
+            "rss_bytes_per_run": [
+              8057,
+              7178,
+              8050,
+              8042
+            ],
+            "rss_bytes_total": 31327,
+            "workload": "twelve_cli_subprocesses"
+          }
+        ],
+        "diagnostic_wall_seconds": 30.85631408400002,
+        "final_comparison": false,
+        "memory_records": [
+          {
+            "maximum_interval_seconds": 0.02832437500001106,
+            "median_interval_seconds": 0.023153937000017777,
+            "members": 50,
+            "observed_process_count": 13,
+            "pair": 3,
+            "peak_bytes": 35438592,
+            "samples": 27,
+            "workload": "twelve_cli_subprocesses"
+          },
+          {
+            "maximum_interval_seconds": 0.05058229099995515,
+            "median_interval_seconds": 0.023777125000037813,
+            "members": 42,
+            "observed_process_count": 13,
+            "pair": 1,
+            "peak_bytes": 35405824,
+            "samples": 26,
+            "workload": "twelve_cli_subprocesses"
+          },
+          {
+            "maximum_interval_seconds": 0.015016374999959226,
+            "median_interval_seconds": 0.013594832999956452,
+            "members": 15,
+            "observed_process_count": 1,
+            "pair": 1,
+            "peak_bytes": 17661952,
+            "samples": 16,
+            "workload": "one_sustained_process"
+          },
+          {
+            "maximum_interval_seconds": 0.01639866699997583,
+            "median_interval_seconds": 0.013641333999999006,
+            "members": 15,
+            "observed_process_count": 1,
+            "pair": 4,
+            "peak_bytes": 17596416,
+            "samples": 16,
+            "workload": "one_sustained_process"
+          },
+          {
+            "maximum_interval_seconds": 0.030086875000051805,
+            "median_interval_seconds": 0.02337897949996659,
+            "members": 50,
+            "observed_process_count": 13,
+            "pair": 4,
+            "peak_bytes": 35405824,
+            "samples": 27,
+            "workload": "twelve_cli_subprocesses"
+          },
+          {
+            "maximum_interval_seconds": 0.02991287499992268,
+            "median_interval_seconds": 0.023199979500020618,
+            "members": 50,
+            "observed_process_count": 13,
+            "pair": 2,
+            "peak_bytes": 35389440,
+            "samples": 27,
+            "workload": "twelve_cli_subprocesses"
+          },
+          {
+            "maximum_interval_seconds": 0.013571540999919307,
+            "median_interval_seconds": 0.01239608399998815,
+            "members": 16,
+            "observed_process_count": 1,
+            "pair": 3,
+            "peak_bytes": 17727488,
+            "samples": 16,
+            "workload": "one_sustained_process"
+          },
+          {
+            "maximum_interval_seconds": 0.023571958000047744,
+            "median_interval_seconds": 0.018923083000004226,
+            "members": 14,
+            "observed_process_count": 1,
+            "pair": 2,
+            "peak_bytes": 17694720,
+            "samples": 14,
+            "workload": "one_sustained_process"
+          }
+        ],
+        "memory_runs": 8,
+        "package_provenance": {
+          "distributions": [
+            {
+              "is_direct": false,
+              "is_yanked": false,
+              "name": "psutil",
+              "requested": true,
+              "sha256": "1a7b04c10f32cc88ab39cbf606e117fd74721c831c98a27dc04578deb0c16979",
+              "url": "https://files.pythonhosted.org/packages/80/c4/f5af4c1ca8c1eeb2e92ccca14ce8effdeec651d5ab6053c589b074eda6e1/psutil-7.2.2-cp36-abi3-macosx_11_0_arm64.whl",
+              "version": "7.2.2"
+            }
+          ],
+          "omitted_metadata": [
+            "package contacts",
+            "long description and other non-provenance package metadata",
+            "environment"
+          ],
+          "pip_version": "26.2.1",
+          "raw_report": {
+            "bytes": 24523,
+            "private_relative_path": "private-setup/install-report.json",
+            "publication": "Full original omitted; package metadata and environment remain private",
+            "sha256": "b5f942a4c852f6411c96958535aa896c304c3b3d867508143fd892d1639386ca"
+          },
+          "report_version": "1",
+          "schema_version": 1,
+          "source_format": "pip-install-report-v1"
+        },
+        "pairs": 16,
+        "primary_timing_qualification": "Synthetic diagnostic observations only; actual-arm calibration remains unrun.",
+        "real_engine_calibration": "not-run",
+        "sample_members": 252,
+        "sample_rows": 169,
+        "scope": "fixed synthetic native helper validation only",
+        "skipped_scope": "Explicit Linux-only orphan-adoption controls; macOS unobserved ancestry gap remains",
+        "status": "completed-synthetic-native-validation",
+        "test_failure_evidence": "Native test outcome log retained; temporary individual test-failure artifacts are not included",
+        "tests_passed": 42,
+        "tests_run": 44,
+        "tests_skipped": 2
+      },
+      "normalized_bundles": {
+        "argument-parser": 606,
+        "mixed-ios": 1797,
+        "mixed-setup": 6,
+        "synthetic": 1216
+      },
+      "normalized_helper_files": 204,
+      "normalized_manifest_files": 3625,
+      "normalized_sdk_files": 42,
+      "observation_failures": [],
+      "product_tests": {
+        "covered_lines": 40477,
+        "files": 210,
+        "integrated_coverage_percent": 92.81,
+        "suites": 203,
+        "tests": 2008,
+        "total_lines": 43614
+      },
+      "publication_status": "Full normalized comparison/helper/SDK details retained; SDK fails only explicit unresolved runtime-library search root, accepted=false",
+      "raw_fallback": false,
+      "rebuilt_baseline_graph_and_query_states_passed": 7,
+      "rebuilt_native_graph_and_query_states_passed": 7,
+      "retained_cost_evidence": "Full identical shared build/index and complete SDK diagnostic costs plus all synthetic pairs/RSS retained; inner probe/selector costs are nested, not added to whole wrapper time again. No final sessions or superiority claim.",
+      "run_id": 38247331431,
+      "sdk_archive_sha256": "5ab4b0b160b0bc637f6dbf913df9741b921dd54ef899e1c8f45db0215450ece9",
+      "sdk_artifact_id": 11747445757,
+      "sdk_content_identity": {
+        "build": "23F81a",
+        "contents_sha256": null,
+        "final_protocol_gate": "not-satisfied",
+        "limitation": "SDK header/module contents and their immutability across generations are not established",
+        "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk",
+        "verification": "version-path-only-validation",
+        "version": "26.5"
+      },
+      "sdk_discovery": {
+        "accepted": false,
+        "attempt": {
+          "argv_sha256": "9de1a7bdbcefbb8aa501f5316a33ac8ae5ddb0d0042861993f9c31a28db2faf0",
+          "child_failure": null,
+          "child_wall_seconds": 17.42263616699995,
+          "cleanup_root_unfinished": false,
+          "cleanup_signals": [],
+          "completed": true,
+          "descendant_cleanup_verified": false,
+          "exit_code": 1,
+          "failure_category": "child-nonzero",
+          "observed_returncode": 1,
+          "phase_receipt_sha256": "b0f4de5b6cbf120e59e0eb281270f72e74c43909b746b4173ef00fdc10948e76",
+          "publication_log_identities": {
+            "stderr": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "status": "available"
+            },
+            "stdout": {
+              "bytes": 71,
+              "sha256": "3ccf700ee1a4c312d09fbec348a78ade4a014ef72ca7ca8f207ff2fb46851f17",
+              "status": "available"
+            }
+          },
+          "raw_output_exists": true,
+          "role": "sdk-discovery-attempt-envelope",
+          "runner_sha256": "7305066cdfa9acf17076d0ee7fe95d927883a2224ff1ba62c15eeb2e62807d50",
+          "schema_version": 1,
+          "source_inputs_unchanged": true,
+          "stderr": {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "status": "available"
+          },
+          "stderr_diagnostic_status": "invalid-json",
+          "stdout": {
+            "bytes": 71,
+            "sha256": "3ccf700ee1a4c312d09fbec348a78ade4a014ef72ca7ca8f207ff2fb46851f17",
+            "status": "available"
+          },
+          "total_wall_seconds": 17.458268207999936,
+          "wrapper_sha256": "c33dbfe3794c5e9eaa9ae1714207bccd31fe42914b65545853e314544cd547a0"
+        },
+        "available_detail": "All ten probes, proposal, path observations and terminal guard outcomes normalized; external directory content and device/inode identities are not captured",
+        "charged_wall_seconds_by_arm": {
+          "cartograph": 17.211219999999912,
+          "index_dump_assembly": 17.211219999999912
+        },
+        "completed_probe_count": 10,
+        "exit_code": 1,
+        "failure": "unresolved-effective-paths",
+        "final_protocol_ready": false,
+        "probe_wall_seconds": 4.800051126999847,
+        "probes": [
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$SYSTEM_BIN/xcrun",
+              "--sdk",
+              "iphonesimulator",
+              "--show-sdk-path"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "sdk-path",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.3512175419999721
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/sdk-path.stderr",
+            "stdout": "setup/discovery/probes/sdk-path.stdout",
+            "wall_seconds": 2.259717417000047
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$SYSTEM_BIN/xcrun",
+              "--sdk",
+              "iphonesimulator",
+              "--show-sdk-version"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "sdk-version",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.4800947910000559
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/sdk-version.stderr",
+            "stdout": "setup/discovery/probes/sdk-version.stdout",
+            "wall_seconds": 0.8877063329999828
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$SYSTEM_BIN/xcrun",
+              "--sdk",
+              "iphonesimulator",
+              "--show-sdk-build-version"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "sdk-build",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.4267053749999832
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/sdk-build.stderr",
+            "stdout": "setup/discovery/probes/sdk-build.stdout",
+            "wall_seconds": 1.0765739170000188
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "-print-resource-dir"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "clang-resource",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.44111083300003884
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/clang-resource.stderr",
+            "stdout": "setup/discovery/probes/clang-resource.stdout",
+            "wall_seconds": 0.03307070899995779
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+              "-print-target-info",
+              "-target",
+              "arm64-apple-ios16.0-simulator",
+              "-sdk",
+              "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Generations/restored_rebuilt/Build/modules"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "swift-target",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.3616560829999571
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/swift-target.stderr",
+            "stdout": "setup/discovery/probes/swift-target.stdout",
+            "wall_seconds": 0.23409241699994254
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "-target",
+              "arm64-apple-ios16.0-simulator",
+              "-isysroot",
+              "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+              "-E",
+              "-v",
+              "-x",
+              "c",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "$EVIDENCE/setup/discovery/probe-input"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "clang-c",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.3772815410000021
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/clang-c.stderr",
+            "stdout": "setup/discovery/probes/clang-c.stdout",
+            "wall_seconds": 0.07345729200005735
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "-target",
+              "arm64-apple-ios16.0-simulator",
+              "-isysroot",
+              "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+              "-E",
+              "-v",
+              "-x",
+              "objective-c",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "$EVIDENCE/setup/discovery/probe-input"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "clang-objective-c",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.3470959579999544
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/clang-objective-c.stderr",
+            "stdout": "setup/discovery/probes/clang-objective-c.stdout",
+            "wall_seconds": 0.05161962499994388
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "-target",
+              "arm64-apple-ios16.0-simulator",
+              "-isysroot",
+              "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+              "-E",
+              "-v",
+              "-x",
+              "c++",
+              "-std=c++17",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "$EVIDENCE/setup/discovery/probe-input"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "clang-cxx",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.3477534580000565
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/clang-cxx.stderr",
+            "stdout": "setup/discovery/probes/clang-cxx.stdout",
+            "wall_seconds": 0.06836687500003791
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "-target",
+              "arm64-apple-ios16.0-simulator",
+              "-isysroot",
+              "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+              "-E",
+              "-v",
+              "-x",
+              "objective-c++",
+              "-std=c++17",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "$EVIDENCE/setup/discovery/probe-input"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "clang-objective-cxx",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.6847750830000905
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/clang-objective-cxx.stderr",
+            "stdout": "setup/discovery/probes/clang-objective-cxx.stdout",
+            "wall_seconds": 0.0707932919999621
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "-target",
+              "arm64-apple-ios16.0-simulator",
+              "-isysroot",
+              "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+              "-E",
+              "-v",
+              "-x",
+              "objective-c",
+              "-fobjc-arc",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "$EVIDENCE/setup/discovery/probe-input"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "clang-objective-c-arc",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.4400694170000179
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/clang-objective-c-arc.stderr",
+            "stdout": "setup/discovery/probes/clang-objective-c-arc.stdout",
+            "wall_seconds": 0.044653249999896616
+          }
+        ],
+        "proposal": {
+          "clang_resource": {
+            "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21",
+            "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21",
+            "relative_path_components": [
+              "usr",
+              "lib",
+              "clang",
+              "21"
+            ],
+            "root": "TOOLCHAIN",
+            "scope": "declared-immutable-root"
+          },
+          "clang_search_paths": [
+            {
+              "context_id": "c",
+              "context_options": [],
+              "effective": [
+                {
+                  "coverage": {
+                    "canonical_path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                    "manifest_sha256": "7d8769dd0449ccdaa5b3c5e17020e5c7ef5d127c42f700391aab15787e714781",
+                    "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                    "relative_path_components": [
+                      "Sources",
+                      "BridgeKit",
+                      "include"
+                    ],
+                    "root": "PROJECT",
+                    "scope": "project-generation-reference"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include",
+                    "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include",
+                    "relative_path_components": [
+                      "usr",
+                      "lib",
+                      "clang",
+                      "21",
+                      "include"
+                    ],
+                    "root": "TOOLCHAIN",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include",
+                    "relative_path_components": [
+                      "usr",
+                      "include"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include",
+                    "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include",
+                    "relative_path_components": [
+                      "usr",
+                      "include"
+                    ],
+                    "root": "TOOLCHAIN",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks",
+                    "relative_path_components": [
+                      "System",
+                      "Library",
+                      "Frameworks"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "framework",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks",
+                    "relative_path_components": [
+                      "System",
+                      "Library",
+                      "SubFrameworks"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "framework",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks"
+                }
+              ],
+              "ignored": [
+                {
+                  "coverage": "unsealed-absence",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/local/include",
+                  "reason": "nonexistent"
+                },
+                {
+                  "coverage": "unsealed-absence",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/Library/Frameworks",
+                  "reason": "nonexistent"
+                }
+              ],
+              "language": "c"
+            },
+            {
+              "context_id": "objective-c",
+              "context_options": [],
+              "effective": [
+                {
+                  "coverage": {
+                    "canonical_path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                    "manifest_sha256": "7d8769dd0449ccdaa5b3c5e17020e5c7ef5d127c42f700391aab15787e714781",
+                    "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                    "relative_path_components": [
+                      "Sources",
+                      "BridgeKit",
+                      "include"
+                    ],
+                    "root": "PROJECT",
+                    "scope": "project-generation-reference"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include",
+                    "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include",
+                    "relative_path_components": [
+                      "usr",
+                      "lib",
+                      "clang",
+                      "21",
+                      "include"
+                    ],
+                    "root": "TOOLCHAIN",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include",
+                    "relative_path_components": [
+                      "usr",
+                      "include"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include",
+                    "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include",
+                    "relative_path_components": [
+                      "usr",
+                      "include"
+                    ],
+                    "root": "TOOLCHAIN",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks",
+                    "relative_path_components": [
+                      "System",
+                      "Library",
+                      "Frameworks"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "framework",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks",
+                    "relative_path_components": [
+                      "System",
+                      "Library",
+                      "SubFrameworks"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "framework",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks"
+                }
+              ],
+              "ignored": [
+                {
+                  "coverage": "unsealed-absence",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/local/include",
+                  "reason": "nonexistent"
+                },
+                {
+                  "coverage": "unsealed-absence",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/Library/Frameworks",
+                  "reason": "nonexistent"
+                }
+              ],
+              "language": "objective-c"
+            },
+            {
+              "context_id": "c++",
+              "context_options": [
+                "-std=c++17"
+              ],
+              "effective": [
+                {
+                  "coverage": {
+                    "canonical_path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                    "manifest_sha256": "7d8769dd0449ccdaa5b3c5e17020e5c7ef5d127c42f700391aab15787e714781",
+                    "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                    "relative_path_components": [
+                      "Sources",
+                      "BridgeKit",
+                      "include"
+                    ],
+                    "root": "PROJECT",
+                    "scope": "project-generation-reference"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$SDK_CXX_HEADERS",
+                    "path": "$SDK_CXX_HEADERS",
+                    "relative_path_components": [
+                      "usr",
+                      "include",
+                      "c++",
+                      "v1"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$SDK_CXX_HEADERS"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include",
+                    "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include",
+                    "relative_path_components": [
+                      "usr",
+                      "lib",
+                      "clang",
+                      "21",
+                      "include"
+                    ],
+                    "root": "TOOLCHAIN",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include",
+                    "relative_path_components": [
+                      "usr",
+                      "include"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include",
+                    "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include",
+                    "relative_path_components": [
+                      "usr",
+                      "include"
+                    ],
+                    "root": "TOOLCHAIN",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks",
+                    "relative_path_components": [
+                      "System",
+                      "Library",
+                      "Frameworks"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "framework",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks",
+                    "relative_path_components": [
+                      "System",
+                      "Library",
+                      "SubFrameworks"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "framework",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks"
+                }
+              ],
+              "ignored": [
+                {
+                  "coverage": "unsealed-absence",
+                  "lexical_alias": "selected-compiler-libcxx",
+                  "path": "$CLANG_CXX_HEADERS",
+                  "reason": "nonexistent",
+                  "reported_path": "$CLANG_CXX_HEADERS"
+                },
+                {
+                  "coverage": "unsealed-absence",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/local/include",
+                  "reason": "nonexistent"
+                },
+                {
+                  "coverage": "unsealed-absence",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/Library/Frameworks",
+                  "reason": "nonexistent"
+                }
+              ],
+              "language": "c++"
+            },
+            {
+              "context_id": "objective-c++",
+              "context_options": [
+                "-std=c++17"
+              ],
+              "effective": [
+                {
+                  "coverage": {
+                    "canonical_path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                    "manifest_sha256": "7d8769dd0449ccdaa5b3c5e17020e5c7ef5d127c42f700391aab15787e714781",
+                    "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                    "relative_path_components": [
+                      "Sources",
+                      "BridgeKit",
+                      "include"
+                    ],
+                    "root": "PROJECT",
+                    "scope": "project-generation-reference"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$SDK_CXX_HEADERS",
+                    "path": "$SDK_CXX_HEADERS",
+                    "relative_path_components": [
+                      "usr",
+                      "include",
+                      "c++",
+                      "v1"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$SDK_CXX_HEADERS"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include",
+                    "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include",
+                    "relative_path_components": [
+                      "usr",
+                      "lib",
+                      "clang",
+                      "21",
+                      "include"
+                    ],
+                    "root": "TOOLCHAIN",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include",
+                    "relative_path_components": [
+                      "usr",
+                      "include"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include",
+                    "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include",
+                    "relative_path_components": [
+                      "usr",
+                      "include"
+                    ],
+                    "root": "TOOLCHAIN",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks",
+                    "relative_path_components": [
+                      "System",
+                      "Library",
+                      "Frameworks"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "framework",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks",
+                    "relative_path_components": [
+                      "System",
+                      "Library",
+                      "SubFrameworks"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "framework",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks"
+                }
+              ],
+              "ignored": [
+                {
+                  "coverage": "unsealed-absence",
+                  "lexical_alias": "selected-compiler-libcxx",
+                  "path": "$CLANG_CXX_HEADERS",
+                  "reason": "nonexistent",
+                  "reported_path": "$CLANG_CXX_HEADERS"
+                },
+                {
+                  "coverage": "unsealed-absence",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/local/include",
+                  "reason": "nonexistent"
+                },
+                {
+                  "coverage": "unsealed-absence",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/Library/Frameworks",
+                  "reason": "nonexistent"
+                }
+              ],
+              "language": "objective-c++"
+            },
+            {
+              "context_id": "objective-c-arc",
+              "context_options": [
+                "-fobjc-arc"
+              ],
+              "effective": [
+                {
+                  "coverage": {
+                    "canonical_path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                    "manifest_sha256": "7d8769dd0449ccdaa5b3c5e17020e5c7ef5d127c42f700391aab15787e714781",
+                    "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                    "relative_path_components": [
+                      "Sources",
+                      "BridgeKit",
+                      "include"
+                    ],
+                    "root": "PROJECT",
+                    "scope": "project-generation-reference"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include",
+                    "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include",
+                    "relative_path_components": [
+                      "usr",
+                      "lib",
+                      "clang",
+                      "21",
+                      "include"
+                    ],
+                    "root": "TOOLCHAIN",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include",
+                    "relative_path_components": [
+                      "usr",
+                      "include"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include",
+                    "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include",
+                    "relative_path_components": [
+                      "usr",
+                      "include"
+                    ],
+                    "root": "TOOLCHAIN",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "include",
+                  "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/include"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks",
+                    "relative_path_components": [
+                      "System",
+                      "Library",
+                      "Frameworks"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "framework",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks"
+                },
+                {
+                  "coverage": {
+                    "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks",
+                    "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks",
+                    "relative_path_components": [
+                      "System",
+                      "Library",
+                      "SubFrameworks"
+                    ],
+                    "root": "SDK",
+                    "scope": "declared-immutable-root"
+                  },
+                  "group": "angle",
+                  "kind": "framework",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/SubFrameworks"
+                }
+              ],
+              "ignored": [
+                {
+                  "coverage": "unsealed-absence",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/local/include",
+                  "reason": "nonexistent"
+                },
+                {
+                  "coverage": "unsealed-absence",
+                  "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/Library/Frameworks",
+                  "reason": "nonexistent"
+                }
+              ],
+              "language": "objective-c"
+            }
+          ],
+          "explicit_search_paths": {
+            "clang": [
+              {
+                "coverage": {
+                  "canonical_path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                  "manifest_sha256": "7d8769dd0449ccdaa5b3c5e17020e5c7ef5d127c42f700391aab15787e714781",
+                  "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                  "relative_path_components": [
+                    "Sources",
+                    "BridgeKit",
+                    "include"
+                  ],
+                  "root": "PROJECT",
+                  "scope": "project-generation-reference"
+                },
+                "flag": "-I"
+              }
+            ],
+            "swift": [
+              {
+                "coverage": {
+                  "canonical_path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                  "manifest_sha256": "7d8769dd0449ccdaa5b3c5e17020e5c7ef5d127c42f700391aab15787e714781",
+                  "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+                  "relative_path_components": [
+                    "Sources",
+                    "BridgeKit",
+                    "include"
+                  ],
+                  "root": "PROJECT",
+                  "scope": "project-generation-reference"
+                },
+                "flag": "-I"
+              },
+              {
+                "coverage": {
+                  "canonical_path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Generations/restored_rebuilt/Build/modules",
+                  "manifest_sha256": "0a5f76325cbfb49c762e77612fcde6a81fe8522c71b547e9a8cf08e6e013ed0b",
+                  "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Generations/restored_rebuilt/Build/modules",
+                  "relative_path_components": [],
+                  "root": "MODULES",
+                  "scope": "project-generation-reference"
+                },
+                "flag": "-I"
+              }
+            ]
+          },
+          "project_roots": {
+            "MODULES": {
+              "manifest_sha256": "0a5f76325cbfb49c762e77612fcde6a81fe8522c71b547e9a8cf08e6e013ed0b",
+              "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Generations/restored_rebuilt/Build/modules"
+            },
+            "PROJECT": {
+              "manifest_sha256": "7d8769dd0449ccdaa5b3c5e17020e5c7ef5d127c42f700391aab15787e714781",
+              "path": "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project"
+            }
+          },
+          "roots": {
+            "SDK": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+            "TOOLCHAIN": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain"
+          },
+          "sdk_build": "23F81a",
+          "sdk_name": "iphonesimulator",
+          "sdk_version": "26.5",
+          "search_flags": {
+            "clang": [
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include"
+            ],
+            "swift": [
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Generations/restored_rebuilt/Build/modules"
+            ]
+          },
+          "swift_paths": {
+            "runtimeLibraryImportPaths": [
+              {
+                "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator",
+                "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator",
+                "relative_path_components": [
+                  "usr",
+                  "lib",
+                  "swift",
+                  "iphonesimulator"
+                ],
+                "root": "TOOLCHAIN",
+                "scope": "declared-immutable-root"
+              },
+              {
+                "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/lib/swift",
+                "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/lib/swift",
+                "relative_path_components": [
+                  "usr",
+                  "lib",
+                  "swift"
+                ],
+                "root": "SDK",
+                "scope": "declared-immutable-root"
+              }
+            ],
+            "runtimeLibraryPaths": [
+              {
+                "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator",
+                "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator",
+                "relative_path_components": [
+                  "usr",
+                  "lib",
+                  "swift",
+                  "iphonesimulator"
+                ],
+                "root": "TOOLCHAIN",
+                "scope": "declared-immutable-root"
+              },
+              {
+                "observation": {
+                  "canonical_path": "$SYSTEM_LIB/swift",
+                  "components": [
+                    {
+                      "component": "usr",
+                      "entry_type": "directory"
+                    },
+                    {
+                      "component": "lib",
+                      "entry_type": "directory"
+                    },
+                    {
+                      "component": "swift",
+                      "entry_type": "directory"
+                    }
+                  ],
+                  "content_read": false,
+                  "entry_type": "directory"
+                },
+                "path": "$SYSTEM_LIB/swift",
+                "reason": "external-search-path",
+                "scope": "diagnostic-only-uncovered-path",
+                "usage": "swift-runtime-library-search"
+              }
+            ],
+            "runtimeResourcePath": [
+              {
+                "canonical_path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift",
+                "path": "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift",
+                "relative_path_components": [
+                  "usr",
+                  "lib",
+                  "swift"
+                ],
+                "root": "TOOLCHAIN",
+                "scope": "declared-immutable-root"
+              }
+            ],
+            "sdkPath": [
+              {
+                "canonical_path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+                "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+                "relative_path_components": [],
+                "root": "SDK",
+                "scope": "declared-immutable-root"
+              }
+            ]
+          },
+          "target": "arm64-apple-ios16.0-simulator",
+          "unsealed_absence_dependencies": [
+            {
+              "coverage": "unsealed-absence",
+              "language": "c",
+              "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/local/include",
+              "reason": "nonexistent"
+            },
+            {
+              "coverage": "unsealed-absence",
+              "language": "c",
+              "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/Library/Frameworks",
+              "reason": "nonexistent"
+            },
+            {
+              "coverage": "unsealed-absence",
+              "language": "objective-c",
+              "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/local/include",
+              "reason": "nonexistent"
+            },
+            {
+              "coverage": "unsealed-absence",
+              "language": "objective-c",
+              "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/Library/Frameworks",
+              "reason": "nonexistent"
+            },
+            {
+              "coverage": "unsealed-absence",
+              "language": "c++",
+              "lexical_alias": "selected-compiler-libcxx",
+              "path": "$CLANG_CXX_HEADERS",
+              "reason": "nonexistent",
+              "reported_path": "$CLANG_CXX_HEADERS"
+            },
+            {
+              "coverage": "unsealed-absence",
+              "language": "c++",
+              "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/local/include",
+              "reason": "nonexistent"
+            },
+            {
+              "coverage": "unsealed-absence",
+              "language": "c++",
+              "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/Library/Frameworks",
+              "reason": "nonexistent"
+            },
+            {
+              "coverage": "unsealed-absence",
+              "language": "objective-c++",
+              "lexical_alias": "selected-compiler-libcxx",
+              "path": "$CLANG_CXX_HEADERS",
+              "reason": "nonexistent",
+              "reported_path": "$CLANG_CXX_HEADERS"
+            },
+            {
+              "coverage": "unsealed-absence",
+              "language": "objective-c++",
+              "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/local/include",
+              "reason": "nonexistent"
+            },
+            {
+              "coverage": "unsealed-absence",
+              "language": "objective-c++",
+              "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/Library/Frameworks",
+              "reason": "nonexistent"
+            },
+            {
+              "coverage": "unsealed-absence",
+              "language": "objective-c",
+              "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/local/include",
+              "reason": "nonexistent"
+            },
+            {
+              "coverage": "unsealed-absence",
+              "language": "objective-c",
+              "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/Library/Frameworks",
+              "reason": "nonexistent"
+            }
+          ]
+        },
+        "publication": {
+          "attempt_path_sha256": "8f4e32d979bb4827a73c99ffa4e37bdd4324da32e081e1feb3ec7f2526964773",
+          "attempt_raw_identity": {
+            "bytes": 1140,
+            "sha256": "3408618b50319c509c9510bfa720d6c726c10ae7f279cc62452c9b69dfe085d4"
+          },
+          "attempt_status": "verified",
+          "complete_run_evidence": false,
+          "discovery_bundle_status": "normalized",
+          "exit_code": 1,
+          "manifests": [
+            "discovery/manifest.json"
+          ],
+          "normalization_aliases": {
+            "canonical_prefix_sha256": "355da315f4b481f1c5359ccc33038b010d2e3de714f36ab1a1838fab714890f2",
+            "clang_sha256": "d2e4bf622758eee1bf7267c060497fb2c41e098d37b0fca8be73898dc7e14eda",
+            "lexical_prefix_sha256": "bcd4b0d0a281089f0f748fe914617aacfd377263671922f560dafa3788ab7e4c",
+            "lifecycle_sha256": "c8c6a3f8d5d2e7c4a6298a9cacecde97938b62c69782bdc6ba44843d73063a3f",
+            "request_sha256": "be0bf01e22818d7e5b7f7167844110d3992f9f91af4d5a47db9c5546c1c68fe8",
+            "retained_lifecycle_sha256": "c8c6a3f8d5d2e7c4a6298a9cacecde97938b62c69782bdc6ba44843d73063a3f",
+            "scope": "Two fixed libc++ candidate families only; no SDK contents or input-root acceptance",
+            "sdk_canonical_prefix_sha256": "643953b603c5c952f18f44ab34bd69f7851fb1d4dceec3c25c583b5c94b77365",
+            "sdk_lexical_prefix_sha256": "b5c602d9950d2e4f77c191d71aa7ae5bde19967adb9282c9e058eba9bfe1f911",
+            "sdk_request_binding": "exact-selected-sdk",
+            "sdk_root_metadata_sha256": "2e4d44b7c3afbe1bb6ea234f759159a19d35c247f20dad6960e20ee4324c5c0c",
+            "status": "verified",
+            "token": "$CLANG_CXX_HEADERS"
+          },
+          "publication_exit_code": 1,
+          "publication_failure": null,
+          "publication_wall_seconds": 9.017874000000006,
+          "raw_fallback": false,
+          "raw_path_sha256": "206d7c1232091555092ef3541a73bc95f5b0f80ef798de85e2dba9db649a2e0f",
+          "role": "sdk-discovery-publication-envelope",
+          "schema_version": 1,
+          "status": "prepared-with-failures"
+        },
+        "scope": "Only observed runtime-library search boundary; no implicit root admission, loader closure, full content seal or winner claim",
+        "selector_total_wall_seconds": 14.07518845800007,
+        "setup_and_guard_wall_seconds": 9.275137331000224,
+        "status": "failed",
+        "unresolved_effective_paths": [
+          {
+            "observation": {
+              "canonical_path": "$SYSTEM_LIB/swift",
+              "components": [
+                {
+                  "component": "usr",
+                  "entry_type": "directory"
+                },
+                {
+                  "component": "lib",
+                  "entry_type": "directory"
+                },
+                {
+                  "component": "swift",
+                  "entry_type": "directory"
+                }
+              ],
+              "content_read": false,
+              "entry_type": "directory"
+            },
+            "path": "$SYSTEM_LIB/swift",
+            "reason": "external-search-path",
+            "scope": "diagnostic-only-uncovered-path",
+            "usage": "swift-runtime-library-search"
+          }
+        ],
+        "wrapper_wall_seconds": 17.211219999999912
+      },
+      "states": [
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 5.3752068750000035,
+              "index_dump_assembly": 5.3752068750000035
+            },
+            "compiler_subprocess_wall_seconds": 4.547323708000249,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 5.3752068750000035
+          },
+          "state": "initial",
+          "status": "passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/CGCore.h"
+              ],
+              "diagnostic": "index-staleness: 1 of 9 source file(s) changed after the file's index unit was written, so a call added since the last build is not here yet; paths: [\"Sources/BridgeKit/include/CGCore.h\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/BridgeKit/include/CGCore.h"
+          ],
+          "required_changed_paths": [
+            "Sources/BridgeKit/include/CGCore.h"
+          ],
+          "state": "header_edit_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.324119250000081,
+              "index_dump_assembly": 4.324119250000081
+            },
+            "compiler_subprocess_wall_seconds": 3.4114948740000273,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.324119250000081
+          },
+          "state": "header_edit_rebuilt",
+          "status": "passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/RenamedCore.h"
+              ],
+              "diagnostic": "unindexed-sources: 1 of 9 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers; paths: [\"Sources/BridgeKit/include/RenamedCore.h\"]"
+            },
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/CGCore.h"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/BridgeKit/include/CGCore.h\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/BridgeKit/include/CGCore.h",
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "required_changed_paths": [
+            "Sources/BridgeKit/include/CGCore.h",
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "state": "header_rename_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 5.55888733300003,
+              "index_dump_assembly": 5.55888733300003
+            },
+            "compiler_subprocess_wall_seconds": 4.437049374999901,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 5.55888733300003
+          },
+          "state": "header_rename_rebuilt",
+          "status": "passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/RenamedCore.h"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/BridgeKit/include/RenamedCore.h\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "required_changed_paths": [
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "state": "header_delete_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/RenamedCore.h"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/BridgeKit/include/RenamedCore.h\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "required_changed_paths": [
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "state": "header_delete_build_failed",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 3.6224332079999613,
+              "index_dump_assembly": 3.6224332079999613
+            },
+            "compiler_subprocess_wall_seconds": 2.8576542079999854,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 3.6224332079999613
+          },
+          "state": "header_restored_rebuilt",
+          "status": "passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/AppFlow/Relocated.swift"
+              ],
+              "diagnostic": "unindexed-sources: 1 of 9 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers; paths: [\"Sources/AppFlow/Relocated.swift\"]"
+            },
+            {
+              "changed_paths": [
+                "Sources/AppFlow/Legacy.swift"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/AppFlow/Legacy.swift\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/AppFlow/Legacy.swift",
+            "Sources/AppFlow/Relocated.swift"
+          ],
+          "required_changed_paths": [
+            "Sources/AppFlow/Legacy.swift",
+            "Sources/AppFlow/Relocated.swift"
+          ],
+          "state": "swift_rename_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 6.422434707999969,
+              "index_dump_assembly": 6.422434707999969
+            },
+            "compiler_subprocess_wall_seconds": 5.145316667000088,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 6.422434707999969
+          },
+          "state": "swift_rename_rebuilt",
+          "status": "passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/AppFlow/Relocated.swift"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/AppFlow/Relocated.swift\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/AppFlow/Relocated.swift"
+          ],
+          "required_changed_paths": [
+            "Sources/AppFlow/Relocated.swift"
+          ],
+          "state": "swift_delete_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.912458500000071,
+              "index_dump_assembly": 4.912458500000071
+            },
+            "compiler_subprocess_wall_seconds": 3.9626995009999746,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.912458500000071
+          },
+          "state": "swift_delete_rebuilt",
+          "status": "passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "native_queries": "passed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 5.231548249999946,
+              "index_dump_assembly": 5.231548249999946
+            },
+            "compiler_subprocess_wall_seconds": 4.0360391260003325,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 5.231548249999946
+          },
+          "state": "restored_rebuilt",
+          "status": "passed"
+        }
+      ],
+      "status": "native-sdk-runtime-search-root-unresolved",
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38247331431"
     }
   ],
   "superiority_claim": null
