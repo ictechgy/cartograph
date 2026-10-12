@@ -1,0 +1,77 @@
+{
+  "bundles": [
+    {
+      "archive": "run-38190877188-normalized.zip",
+      "archive_entries": 3,
+      "compressed_bytes": 4236,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38190877188,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38190877188",
+      "sha256": "5d67dc2c8a22ce231afc36268efc4ef4f5df510de3ba8ff7e1221dbb86383b8c",
+      "uncompressed_bytes": 14543,
+      "verified_normalized_files": 2
+    },
+    {
+      "archive": "run-38191268489-normalized.zip",
+      "archive_entries": 62,
+      "compressed_bytes": 51767,
+      "manifests": [
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38191268489,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38191268489",
+      "sha256": "892fb35e819bc0fc776382bd5441c3d7fdb326198143c824c0bff3b58c2eadb1",
+      "uncompressed_bytes": 121129,
+      "verified_normalized_files": 61
+    },
+    {
+      "archive": "run-38192130782-normalized.zip",
+      "archive_entries": 1685,
+      "compressed_bytes": 1859339,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38192130782,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38192130782",
+      "sha256": "ba83aeb0921f33d90276fd498bf5fbb51baab2a33eedfd59e0810c107681128d",
+      "uncompressed_bytes": 12914131,
+      "verified_normalized_files": 1683
+    },
+    {
+      "archive": "run-38194971111-normalized.zip",
+      "archive_entries": 1689,
+      "compressed_bytes": 1971265,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38194971111,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38194971111",
+      "sha256": "497cef94ea5a21bfce8c79db8151b71c8355ec95561aa480274f68839cc69969",
+      "uncompressed_bytes": 14656881,
+      "verified_normalized_files": 1687
+    },
+    {
+      "archive": "run-38195985366-normalized.zip",
+      "archive_entries": 1689,
+      "compressed_bytes": 1971329,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38195985366,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38195985366",
+      "sha256": "38bc0736ad9c1d59ab06fd246c763f5ac8a75d411a306631b88f1ee854a80328",
+      "uncompressed_bytes": 14657658,
+      "verified_normalized_files": 1687
+    }
+  ],
+  "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
+  "role": "complete-normalized-pilot-evidence",
+  "superiority_claim": null,
+  "total_compressed_bytes": 5857936,
+  "total_uncompressed_bytes": 42364342
+}

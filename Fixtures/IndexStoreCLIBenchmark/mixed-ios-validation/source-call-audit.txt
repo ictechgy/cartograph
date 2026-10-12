@@ -1,0 +1,319 @@
+SOURCE-ONLY AUDIT: final draft; no expected compiler USRs
+
+STATE header_edit
+DECL base | BridgeKit::Sources/BridgeKit/Core.m:3:5 | CGBase(int)
+DECL alternate | BridgeKit::Sources/BridgeKit/Core.m:7:5 | CGAlternate(int)
+DECL bridge | BridgeKit::Sources/BridgeKit/Core.m:11:5 | CGBridge(int)
+DECL unused_c | BridgeKit::Sources/BridgeKit/Core.m:15:5 | CGUnusedC(int)
+DECL header | BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19 | CGHeaderRoute(int)
+DECL header_cpp | BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19 | CGHeaderCppRoute(int)
+DECL cpp_int | BridgeKit::Sources/BridgeKit/CppBridge.mm:3:12 | cppHelper(int)
+DECL cpp_long | BridgeKit::Sources/BridgeKit/CppBridge.mm:7:13 | cppHelper(long)
+DECL cpp_bridge | BridgeKit::Sources/BridgeKit/CppBridge.mm:11:16 | CGCppBridge(int)
+DECL objc_quote | BridgeKit::Sources/BridgeKit/ObjCQuote.m:5:8 | +[CGQuoteEngine quote:]
+DECL objc_isolated | BridgeKit::Sources/BridgeKit/ObjCQuote.m:9:8 | +[CGQuoteEngine isolated:]
+DECL alpha_extension | FeatureAlpha::Sources/Shared/SharedCalls.swift:6:10 | QuoteSource.extensionQuote(Int32)
+DECL alpha_init | FeatureAlpha::Sources/Shared/SharedCalls.swift:12:12 | SharedQuote.init()
+DECL alpha_int | FeatureAlpha::Sources/Shared/SharedCalls.swift:14:17 | SharedQuote.quote(Int32)
+DECL alpha_string | FeatureAlpha::Sources/Shared/SharedCalls.swift:18:17 | SharedQuote.quote(String)
+DECL alpha_run | FeatureAlpha::Sources/Shared/SharedCalls.swift:22:17 | SharedQuote.run(Int32)
+DECL alpha_untouched | FeatureAlpha::Sources/Shared/SharedCalls.swift:26:17 | SharedQuote.untouched(Int32)
+DECL beta_extension | FeatureBeta::Sources/Shared/SharedCalls.swift:6:10 | QuoteSource.extensionQuote(Int32)
+DECL beta_init | FeatureBeta::Sources/Shared/SharedCalls.swift:12:12 | SharedQuote.init()
+DECL beta_int | FeatureBeta::Sources/Shared/SharedCalls.swift:14:17 | SharedQuote.quote(Int32)
+DECL beta_string | FeatureBeta::Sources/Shared/SharedCalls.swift:18:17 | SharedQuote.quote(String)
+DECL beta_run | FeatureBeta::Sources/Shared/SharedCalls.swift:22:17 | SharedQuote.run(Int32)
+DECL beta_untouched | FeatureBeta::Sources/Shared/SharedCalls.swift:26:17 | SharedQuote.untouched(Int32)
+DECL checkout | AppFlow::Sources/AppFlow/Checkout.swift:5:13 | checkout(Int32)
+DECL checkout_beta | AppFlow::Sources/AppFlow/Checkout.swift:9:13 | checkoutBeta(Int32)
+DECL direct | AppFlow::Sources/AppFlow/Checkout.swift:13:13 | directC(Int32)
+DECL unrelated | AppFlow::Sources/AppFlow/Checkout.swift:21:13 | unrelated(Int32)
+DECL overload | AppFlow::Sources/AppFlow/Checkout.swift:17:13 | overloadControl()
+DECL legacy | AppFlow::Sources/AppFlow/Legacy.swift:1:13 | retiredRoute(Int32)
+CALL header -> alternate | Sources/BridgeKit/include/CGCore.h:20 | return CGAlternate(value);
+CALL bridge -> header | Sources/BridgeKit/Core.m:12 | return CGHeaderRoute(value);
+CALL header_cpp -> alternate | Sources/BridgeKit/include/CGCore.h:16 | return CGAlternate(value);
+CALL cpp_int -> header_cpp | Sources/BridgeKit/CppBridge.mm:4 | return CGHeaderCppRoute(value);
+CALL cpp_bridge -> cpp_int | Sources/BridgeKit/CppBridge.mm:12 | return cppHelper(value);
+CALL objc_quote -> base | Sources/BridgeKit/ObjCQuote.m:6 | return CGBase(value);
+CALL alpha_extension -> bridge | Sources/Shared/SharedCalls.swift:7 | return CGBridge(value)
+CALL alpha_int -> objc_quote | Sources/Shared/SharedCalls.swift:15 | return CGQuoteEngine.quote(value)
+CALL alpha_run -> alpha_int | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL alpha_run -> alpha_extension | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL beta_extension -> bridge | Sources/Shared/SharedCalls.swift:7 | return CGBridge(value)
+CALL beta_int -> objc_quote | Sources/Shared/SharedCalls.swift:15 | return CGQuoteEngine.quote(value)
+CALL beta_run -> beta_int | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL beta_run -> beta_extension | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL checkout -> alpha_init | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout -> alpha_run | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout -> cpp_bridge | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout_beta -> beta_init | Sources/AppFlow/Checkout.swift:10 | return FeatureBeta.SharedQuote().run(value)
+CALL checkout_beta -> beta_run | Sources/AppFlow/Checkout.swift:10 | return FeatureBeta.SharedQuote().run(value)
+CALL direct -> base | Sources/AppFlow/Checkout.swift:14 | return CGBase(value)
+CALL overload -> alpha_init | Sources/AppFlow/Checkout.swift:18 | return FeatureAlpha.SharedQuote().quote("control")
+CALL overload -> alpha_string | Sources/AppFlow/Checkout.swift:18 | return FeatureAlpha.SharedQuote().quote("control")
+CALL legacy -> checkout | Sources/AppFlow/Legacy.swift:2 | return checkout(value)
+QUERY q01 | base | direct=2 | transitive=9 | negatives=19
+QUERY q02 | alternate | direct=2 | transitive=12 | negatives=16
+QUERY q03 | header | direct=1 | transitive=8 | negatives=20
+QUERY q04 | cpp_bridge | direct=1 | transitive=2 | negatives=26
+QUERY q05 | objc_quote | direct=2 | transitive=7 | negatives=21
+QUERY q06 | alpha_int | direct=1 | transitive=3 | negatives=25
+QUERY q07 | beta_int | direct=1 | transitive=2 | negatives=26
+QUERY q08 | alpha_extension | direct=1 | transitive=3 | negatives=25
+QUERY q09 | alpha_string | direct=1 | transitive=1 | negatives=27
+QUERY q10 | checkout | direct=1 | transitive=1 | negatives=27
+
+STATE header_rename
+DECL base | BridgeKit::Sources/BridgeKit/Core.m:3:5 | CGBase(int)
+DECL alternate | BridgeKit::Sources/BridgeKit/Core.m:7:5 | CGAlternate(int)
+DECL bridge | BridgeKit::Sources/BridgeKit/Core.m:11:5 | CGBridge(int)
+DECL unused_c | BridgeKit::Sources/BridgeKit/Core.m:15:5 | CGUnusedC(int)
+DECL header | BridgeKit::Sources/BridgeKit/include/RenamedCore.h:19:19 | CGHeaderRoute(int)
+DECL header_cpp | BridgeKit::Sources/BridgeKit/include/RenamedCore.h:15:19 | CGHeaderCppRoute(int)
+DECL cpp_int | BridgeKit::Sources/BridgeKit/CppBridge.mm:3:12 | cppHelper(int)
+DECL cpp_long | BridgeKit::Sources/BridgeKit/CppBridge.mm:7:13 | cppHelper(long)
+DECL cpp_bridge | BridgeKit::Sources/BridgeKit/CppBridge.mm:11:16 | CGCppBridge(int)
+DECL objc_quote | BridgeKit::Sources/BridgeKit/ObjCQuote.m:5:8 | +[CGQuoteEngine quote:]
+DECL objc_isolated | BridgeKit::Sources/BridgeKit/ObjCQuote.m:9:8 | +[CGQuoteEngine isolated:]
+DECL alpha_extension | FeatureAlpha::Sources/Shared/SharedCalls.swift:6:10 | QuoteSource.extensionQuote(Int32)
+DECL alpha_init | FeatureAlpha::Sources/Shared/SharedCalls.swift:12:12 | SharedQuote.init()
+DECL alpha_int | FeatureAlpha::Sources/Shared/SharedCalls.swift:14:17 | SharedQuote.quote(Int32)
+DECL alpha_string | FeatureAlpha::Sources/Shared/SharedCalls.swift:18:17 | SharedQuote.quote(String)
+DECL alpha_run | FeatureAlpha::Sources/Shared/SharedCalls.swift:22:17 | SharedQuote.run(Int32)
+DECL alpha_untouched | FeatureAlpha::Sources/Shared/SharedCalls.swift:26:17 | SharedQuote.untouched(Int32)
+DECL beta_extension | FeatureBeta::Sources/Shared/SharedCalls.swift:6:10 | QuoteSource.extensionQuote(Int32)
+DECL beta_init | FeatureBeta::Sources/Shared/SharedCalls.swift:12:12 | SharedQuote.init()
+DECL beta_int | FeatureBeta::Sources/Shared/SharedCalls.swift:14:17 | SharedQuote.quote(Int32)
+DECL beta_string | FeatureBeta::Sources/Shared/SharedCalls.swift:18:17 | SharedQuote.quote(String)
+DECL beta_run | FeatureBeta::Sources/Shared/SharedCalls.swift:22:17 | SharedQuote.run(Int32)
+DECL beta_untouched | FeatureBeta::Sources/Shared/SharedCalls.swift:26:17 | SharedQuote.untouched(Int32)
+DECL checkout | AppFlow::Sources/AppFlow/Checkout.swift:5:13 | checkout(Int32)
+DECL checkout_beta | AppFlow::Sources/AppFlow/Checkout.swift:9:13 | checkoutBeta(Int32)
+DECL direct | AppFlow::Sources/AppFlow/Checkout.swift:13:13 | directC(Int32)
+DECL unrelated | AppFlow::Sources/AppFlow/Checkout.swift:21:13 | unrelated(Int32)
+DECL overload | AppFlow::Sources/AppFlow/Checkout.swift:17:13 | overloadControl()
+DECL legacy | AppFlow::Sources/AppFlow/Legacy.swift:1:13 | retiredRoute(Int32)
+CALL header -> alternate | Sources/BridgeKit/include/RenamedCore.h:20 | return CGAlternate(value);
+CALL bridge -> header | Sources/BridgeKit/Core.m:12 | return CGHeaderRoute(value);
+CALL header_cpp -> alternate | Sources/BridgeKit/include/RenamedCore.h:16 | return CGAlternate(value);
+CALL cpp_int -> header_cpp | Sources/BridgeKit/CppBridge.mm:4 | return CGHeaderCppRoute(value);
+CALL cpp_bridge -> cpp_int | Sources/BridgeKit/CppBridge.mm:12 | return cppHelper(value);
+CALL objc_quote -> base | Sources/BridgeKit/ObjCQuote.m:6 | return CGBase(value);
+CALL alpha_extension -> bridge | Sources/Shared/SharedCalls.swift:7 | return CGBridge(value)
+CALL alpha_int -> objc_quote | Sources/Shared/SharedCalls.swift:15 | return CGQuoteEngine.quote(value)
+CALL alpha_run -> alpha_int | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL alpha_run -> alpha_extension | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL beta_extension -> bridge | Sources/Shared/SharedCalls.swift:7 | return CGBridge(value)
+CALL beta_int -> objc_quote | Sources/Shared/SharedCalls.swift:15 | return CGQuoteEngine.quote(value)
+CALL beta_run -> beta_int | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL beta_run -> beta_extension | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL checkout -> alpha_init | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout -> alpha_run | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout -> cpp_bridge | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout_beta -> beta_init | Sources/AppFlow/Checkout.swift:10 | return FeatureBeta.SharedQuote().run(value)
+CALL checkout_beta -> beta_run | Sources/AppFlow/Checkout.swift:10 | return FeatureBeta.SharedQuote().run(value)
+CALL direct -> base | Sources/AppFlow/Checkout.swift:14 | return CGBase(value)
+CALL overload -> alpha_init | Sources/AppFlow/Checkout.swift:18 | return FeatureAlpha.SharedQuote().quote("control")
+CALL overload -> alpha_string | Sources/AppFlow/Checkout.swift:18 | return FeatureAlpha.SharedQuote().quote("control")
+CALL legacy -> checkout | Sources/AppFlow/Legacy.swift:2 | return checkout(value)
+QUERY q01 | base | direct=2 | transitive=9 | negatives=19
+QUERY q02 | alternate | direct=2 | transitive=12 | negatives=16
+QUERY q03 | header | direct=1 | transitive=8 | negatives=20
+QUERY q04 | cpp_bridge | direct=1 | transitive=2 | negatives=26
+QUERY q05 | objc_quote | direct=2 | transitive=7 | negatives=21
+QUERY q06 | alpha_int | direct=1 | transitive=3 | negatives=25
+QUERY q07 | beta_int | direct=1 | transitive=2 | negatives=26
+QUERY q08 | alpha_extension | direct=1 | transitive=3 | negatives=25
+QUERY q09 | alpha_string | direct=1 | transitive=1 | negatives=27
+QUERY q10 | checkout | direct=1 | transitive=1 | negatives=27
+
+STATE initial
+DECL base | BridgeKit::Sources/BridgeKit/Core.m:3:5 | CGBase(int)
+DECL alternate | BridgeKit::Sources/BridgeKit/Core.m:7:5 | CGAlternate(int)
+DECL bridge | BridgeKit::Sources/BridgeKit/Core.m:11:5 | CGBridge(int)
+DECL unused_c | BridgeKit::Sources/BridgeKit/Core.m:15:5 | CGUnusedC(int)
+DECL header | BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19 | CGHeaderRoute(int)
+DECL header_cpp | BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19 | CGHeaderCppRoute(int)
+DECL cpp_int | BridgeKit::Sources/BridgeKit/CppBridge.mm:3:12 | cppHelper(int)
+DECL cpp_long | BridgeKit::Sources/BridgeKit/CppBridge.mm:7:13 | cppHelper(long)
+DECL cpp_bridge | BridgeKit::Sources/BridgeKit/CppBridge.mm:11:16 | CGCppBridge(int)
+DECL objc_quote | BridgeKit::Sources/BridgeKit/ObjCQuote.m:5:8 | +[CGQuoteEngine quote:]
+DECL objc_isolated | BridgeKit::Sources/BridgeKit/ObjCQuote.m:9:8 | +[CGQuoteEngine isolated:]
+DECL alpha_extension | FeatureAlpha::Sources/Shared/SharedCalls.swift:6:10 | QuoteSource.extensionQuote(Int32)
+DECL alpha_init | FeatureAlpha::Sources/Shared/SharedCalls.swift:12:12 | SharedQuote.init()
+DECL alpha_int | FeatureAlpha::Sources/Shared/SharedCalls.swift:14:17 | SharedQuote.quote(Int32)
+DECL alpha_string | FeatureAlpha::Sources/Shared/SharedCalls.swift:18:17 | SharedQuote.quote(String)
+DECL alpha_run | FeatureAlpha::Sources/Shared/SharedCalls.swift:22:17 | SharedQuote.run(Int32)
+DECL alpha_untouched | FeatureAlpha::Sources/Shared/SharedCalls.swift:26:17 | SharedQuote.untouched(Int32)
+DECL beta_extension | FeatureBeta::Sources/Shared/SharedCalls.swift:6:10 | QuoteSource.extensionQuote(Int32)
+DECL beta_init | FeatureBeta::Sources/Shared/SharedCalls.swift:12:12 | SharedQuote.init()
+DECL beta_int | FeatureBeta::Sources/Shared/SharedCalls.swift:14:17 | SharedQuote.quote(Int32)
+DECL beta_string | FeatureBeta::Sources/Shared/SharedCalls.swift:18:17 | SharedQuote.quote(String)
+DECL beta_run | FeatureBeta::Sources/Shared/SharedCalls.swift:22:17 | SharedQuote.run(Int32)
+DECL beta_untouched | FeatureBeta::Sources/Shared/SharedCalls.swift:26:17 | SharedQuote.untouched(Int32)
+DECL checkout | AppFlow::Sources/AppFlow/Checkout.swift:5:13 | checkout(Int32)
+DECL checkout_beta | AppFlow::Sources/AppFlow/Checkout.swift:9:13 | checkoutBeta(Int32)
+DECL direct | AppFlow::Sources/AppFlow/Checkout.swift:13:13 | directC(Int32)
+DECL unrelated | AppFlow::Sources/AppFlow/Checkout.swift:21:13 | unrelated(Int32)
+DECL overload | AppFlow::Sources/AppFlow/Checkout.swift:17:13 | overloadControl()
+DECL legacy | AppFlow::Sources/AppFlow/Legacy.swift:1:13 | retiredRoute(Int32)
+CALL header -> base | Sources/BridgeKit/include/CGCore.h:20 | return CGBase(value);
+CALL bridge -> header | Sources/BridgeKit/Core.m:12 | return CGHeaderRoute(value);
+CALL header_cpp -> base | Sources/BridgeKit/include/CGCore.h:16 | return CGBase(value);
+CALL cpp_int -> header_cpp | Sources/BridgeKit/CppBridge.mm:4 | return CGHeaderCppRoute(value);
+CALL cpp_bridge -> cpp_int | Sources/BridgeKit/CppBridge.mm:12 | return cppHelper(value);
+CALL objc_quote -> base | Sources/BridgeKit/ObjCQuote.m:6 | return CGBase(value);
+CALL alpha_extension -> bridge | Sources/Shared/SharedCalls.swift:7 | return CGBridge(value)
+CALL alpha_int -> objc_quote | Sources/Shared/SharedCalls.swift:15 | return CGQuoteEngine.quote(value)
+CALL alpha_run -> alpha_int | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL alpha_run -> alpha_extension | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL beta_extension -> bridge | Sources/Shared/SharedCalls.swift:7 | return CGBridge(value)
+CALL beta_int -> objc_quote | Sources/Shared/SharedCalls.swift:15 | return CGQuoteEngine.quote(value)
+CALL beta_run -> beta_int | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL beta_run -> beta_extension | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL checkout -> alpha_init | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout -> alpha_run | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout -> cpp_bridge | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout_beta -> beta_init | Sources/AppFlow/Checkout.swift:10 | return FeatureBeta.SharedQuote().run(value)
+CALL checkout_beta -> beta_run | Sources/AppFlow/Checkout.swift:10 | return FeatureBeta.SharedQuote().run(value)
+CALL direct -> base | Sources/AppFlow/Checkout.swift:14 | return CGBase(value)
+CALL overload -> alpha_init | Sources/AppFlow/Checkout.swift:18 | return FeatureAlpha.SharedQuote().quote("control")
+CALL overload -> alpha_string | Sources/AppFlow/Checkout.swift:18 | return FeatureAlpha.SharedQuote().quote("control")
+CALL legacy -> checkout | Sources/AppFlow/Legacy.swift:2 | return checkout(value)
+QUERY q01 | base | direct=4 | transitive=16 | negatives=12
+QUERY q02 | alternate | direct=0 | transitive=0 | negatives=28
+QUERY q03 | header | direct=1 | transitive=8 | negatives=20
+QUERY q04 | cpp_bridge | direct=1 | transitive=2 | negatives=26
+QUERY q05 | objc_quote | direct=2 | transitive=7 | negatives=21
+QUERY q06 | alpha_int | direct=1 | transitive=3 | negatives=25
+QUERY q07 | beta_int | direct=1 | transitive=2 | negatives=26
+QUERY q08 | alpha_extension | direct=1 | transitive=3 | negatives=25
+QUERY q09 | alpha_string | direct=1 | transitive=1 | negatives=27
+QUERY q10 | checkout | direct=1 | transitive=1 | negatives=27
+
+STATE swift_delete
+DECL base | BridgeKit::Sources/BridgeKit/Core.m:3:5 | CGBase(int)
+DECL alternate | BridgeKit::Sources/BridgeKit/Core.m:7:5 | CGAlternate(int)
+DECL bridge | BridgeKit::Sources/BridgeKit/Core.m:11:5 | CGBridge(int)
+DECL unused_c | BridgeKit::Sources/BridgeKit/Core.m:15:5 | CGUnusedC(int)
+DECL header | BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19 | CGHeaderRoute(int)
+DECL header_cpp | BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19 | CGHeaderCppRoute(int)
+DECL cpp_int | BridgeKit::Sources/BridgeKit/CppBridge.mm:3:12 | cppHelper(int)
+DECL cpp_long | BridgeKit::Sources/BridgeKit/CppBridge.mm:7:13 | cppHelper(long)
+DECL cpp_bridge | BridgeKit::Sources/BridgeKit/CppBridge.mm:11:16 | CGCppBridge(int)
+DECL objc_quote | BridgeKit::Sources/BridgeKit/ObjCQuote.m:5:8 | +[CGQuoteEngine quote:]
+DECL objc_isolated | BridgeKit::Sources/BridgeKit/ObjCQuote.m:9:8 | +[CGQuoteEngine isolated:]
+DECL alpha_extension | FeatureAlpha::Sources/Shared/SharedCalls.swift:6:10 | QuoteSource.extensionQuote(Int32)
+DECL alpha_init | FeatureAlpha::Sources/Shared/SharedCalls.swift:12:12 | SharedQuote.init()
+DECL alpha_int | FeatureAlpha::Sources/Shared/SharedCalls.swift:14:17 | SharedQuote.quote(Int32)
+DECL alpha_string | FeatureAlpha::Sources/Shared/SharedCalls.swift:18:17 | SharedQuote.quote(String)
+DECL alpha_run | FeatureAlpha::Sources/Shared/SharedCalls.swift:22:17 | SharedQuote.run(Int32)
+DECL alpha_untouched | FeatureAlpha::Sources/Shared/SharedCalls.swift:26:17 | SharedQuote.untouched(Int32)
+DECL beta_extension | FeatureBeta::Sources/Shared/SharedCalls.swift:6:10 | QuoteSource.extensionQuote(Int32)
+DECL beta_init | FeatureBeta::Sources/Shared/SharedCalls.swift:12:12 | SharedQuote.init()
+DECL beta_int | FeatureBeta::Sources/Shared/SharedCalls.swift:14:17 | SharedQuote.quote(Int32)
+DECL beta_string | FeatureBeta::Sources/Shared/SharedCalls.swift:18:17 | SharedQuote.quote(String)
+DECL beta_run | FeatureBeta::Sources/Shared/SharedCalls.swift:22:17 | SharedQuote.run(Int32)
+DECL beta_untouched | FeatureBeta::Sources/Shared/SharedCalls.swift:26:17 | SharedQuote.untouched(Int32)
+DECL checkout | AppFlow::Sources/AppFlow/Checkout.swift:5:13 | checkout(Int32)
+DECL checkout_beta | AppFlow::Sources/AppFlow/Checkout.swift:9:13 | checkoutBeta(Int32)
+DECL direct | AppFlow::Sources/AppFlow/Checkout.swift:13:13 | directC(Int32)
+DECL unrelated | AppFlow::Sources/AppFlow/Checkout.swift:21:13 | unrelated(Int32)
+DECL overload | AppFlow::Sources/AppFlow/Checkout.swift:17:13 | overloadControl()
+CALL header -> base | Sources/BridgeKit/include/CGCore.h:20 | return CGBase(value);
+CALL bridge -> header | Sources/BridgeKit/Core.m:12 | return CGHeaderRoute(value);
+CALL header_cpp -> base | Sources/BridgeKit/include/CGCore.h:16 | return CGBase(value);
+CALL cpp_int -> header_cpp | Sources/BridgeKit/CppBridge.mm:4 | return CGHeaderCppRoute(value);
+CALL cpp_bridge -> cpp_int | Sources/BridgeKit/CppBridge.mm:12 | return cppHelper(value);
+CALL objc_quote -> base | Sources/BridgeKit/ObjCQuote.m:6 | return CGBase(value);
+CALL alpha_extension -> bridge | Sources/Shared/SharedCalls.swift:7 | return CGBridge(value)
+CALL alpha_int -> objc_quote | Sources/Shared/SharedCalls.swift:15 | return CGQuoteEngine.quote(value)
+CALL alpha_run -> alpha_int | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL alpha_run -> alpha_extension | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL beta_extension -> bridge | Sources/Shared/SharedCalls.swift:7 | return CGBridge(value)
+CALL beta_int -> objc_quote | Sources/Shared/SharedCalls.swift:15 | return CGQuoteEngine.quote(value)
+CALL beta_run -> beta_int | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL beta_run -> beta_extension | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL checkout -> alpha_init | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout -> alpha_run | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout -> cpp_bridge | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout_beta -> beta_init | Sources/AppFlow/Checkout.swift:10 | return FeatureBeta.SharedQuote().run(value)
+CALL checkout_beta -> beta_run | Sources/AppFlow/Checkout.swift:10 | return FeatureBeta.SharedQuote().run(value)
+CALL direct -> base | Sources/AppFlow/Checkout.swift:14 | return CGBase(value)
+CALL overload -> alpha_init | Sources/AppFlow/Checkout.swift:18 | return FeatureAlpha.SharedQuote().quote("control")
+CALL overload -> alpha_string | Sources/AppFlow/Checkout.swift:18 | return FeatureAlpha.SharedQuote().quote("control")
+QUERY q01 | base | direct=4 | transitive=15 | negatives=12
+QUERY q02 | alternate | direct=0 | transitive=0 | negatives=27
+QUERY q03 | header | direct=1 | transitive=7 | negatives=20
+QUERY q04 | cpp_bridge | direct=1 | transitive=1 | negatives=26
+QUERY q05 | objc_quote | direct=2 | transitive=6 | negatives=21
+QUERY q06 | alpha_int | direct=1 | transitive=2 | negatives=25
+QUERY q07 | beta_int | direct=1 | transitive=2 | negatives=25
+QUERY q08 | alpha_extension | direct=1 | transitive=2 | negatives=25
+QUERY q09 | alpha_string | direct=1 | transitive=1 | negatives=26
+QUERY q10 | checkout | direct=0 | transitive=0 | negatives=27
+
+STATE swift_rename
+DECL base | BridgeKit::Sources/BridgeKit/Core.m:3:5 | CGBase(int)
+DECL alternate | BridgeKit::Sources/BridgeKit/Core.m:7:5 | CGAlternate(int)
+DECL bridge | BridgeKit::Sources/BridgeKit/Core.m:11:5 | CGBridge(int)
+DECL unused_c | BridgeKit::Sources/BridgeKit/Core.m:15:5 | CGUnusedC(int)
+DECL header | BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19 | CGHeaderRoute(int)
+DECL header_cpp | BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19 | CGHeaderCppRoute(int)
+DECL cpp_int | BridgeKit::Sources/BridgeKit/CppBridge.mm:3:12 | cppHelper(int)
+DECL cpp_long | BridgeKit::Sources/BridgeKit/CppBridge.mm:7:13 | cppHelper(long)
+DECL cpp_bridge | BridgeKit::Sources/BridgeKit/CppBridge.mm:11:16 | CGCppBridge(int)
+DECL objc_quote | BridgeKit::Sources/BridgeKit/ObjCQuote.m:5:8 | +[CGQuoteEngine quote:]
+DECL objc_isolated | BridgeKit::Sources/BridgeKit/ObjCQuote.m:9:8 | +[CGQuoteEngine isolated:]
+DECL alpha_extension | FeatureAlpha::Sources/Shared/SharedCalls.swift:6:10 | QuoteSource.extensionQuote(Int32)
+DECL alpha_init | FeatureAlpha::Sources/Shared/SharedCalls.swift:12:12 | SharedQuote.init()
+DECL alpha_int | FeatureAlpha::Sources/Shared/SharedCalls.swift:14:17 | SharedQuote.quote(Int32)
+DECL alpha_string | FeatureAlpha::Sources/Shared/SharedCalls.swift:18:17 | SharedQuote.quote(String)
+DECL alpha_run | FeatureAlpha::Sources/Shared/SharedCalls.swift:22:17 | SharedQuote.run(Int32)
+DECL alpha_untouched | FeatureAlpha::Sources/Shared/SharedCalls.swift:26:17 | SharedQuote.untouched(Int32)
+DECL beta_extension | FeatureBeta::Sources/Shared/SharedCalls.swift:6:10 | QuoteSource.extensionQuote(Int32)
+DECL beta_init | FeatureBeta::Sources/Shared/SharedCalls.swift:12:12 | SharedQuote.init()
+DECL beta_int | FeatureBeta::Sources/Shared/SharedCalls.swift:14:17 | SharedQuote.quote(Int32)
+DECL beta_string | FeatureBeta::Sources/Shared/SharedCalls.swift:18:17 | SharedQuote.quote(String)
+DECL beta_run | FeatureBeta::Sources/Shared/SharedCalls.swift:22:17 | SharedQuote.run(Int32)
+DECL beta_untouched | FeatureBeta::Sources/Shared/SharedCalls.swift:26:17 | SharedQuote.untouched(Int32)
+DECL checkout | AppFlow::Sources/AppFlow/Checkout.swift:5:13 | checkout(Int32)
+DECL checkout_beta | AppFlow::Sources/AppFlow/Checkout.swift:9:13 | checkoutBeta(Int32)
+DECL direct | AppFlow::Sources/AppFlow/Checkout.swift:13:13 | directC(Int32)
+DECL unrelated | AppFlow::Sources/AppFlow/Checkout.swift:21:13 | unrelated(Int32)
+DECL overload | AppFlow::Sources/AppFlow/Checkout.swift:17:13 | overloadControl()
+DECL legacy | AppFlow::Sources/AppFlow/Relocated.swift:1:13 | retiredRoute(Int32)
+CALL header -> base | Sources/BridgeKit/include/CGCore.h:20 | return CGBase(value);
+CALL bridge -> header | Sources/BridgeKit/Core.m:12 | return CGHeaderRoute(value);
+CALL header_cpp -> base | Sources/BridgeKit/include/CGCore.h:16 | return CGBase(value);
+CALL cpp_int -> header_cpp | Sources/BridgeKit/CppBridge.mm:4 | return CGHeaderCppRoute(value);
+CALL cpp_bridge -> cpp_int | Sources/BridgeKit/CppBridge.mm:12 | return cppHelper(value);
+CALL objc_quote -> base | Sources/BridgeKit/ObjCQuote.m:6 | return CGBase(value);
+CALL alpha_extension -> bridge | Sources/Shared/SharedCalls.swift:7 | return CGBridge(value)
+CALL alpha_int -> objc_quote | Sources/Shared/SharedCalls.swift:15 | return CGQuoteEngine.quote(value)
+CALL alpha_run -> alpha_int | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL alpha_run -> alpha_extension | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL beta_extension -> bridge | Sources/Shared/SharedCalls.swift:7 | return CGBridge(value)
+CALL beta_int -> objc_quote | Sources/Shared/SharedCalls.swift:15 | return CGQuoteEngine.quote(value)
+CALL beta_run -> beta_int | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL beta_run -> beta_extension | Sources/Shared/SharedCalls.swift:23 | return quote(value) + extensionQuote(value)
+CALL checkout -> alpha_init | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout -> alpha_run | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout -> cpp_bridge | Sources/AppFlow/Checkout.swift:6 | return FeatureAlpha.SharedQuote().run(value) + CGCppBridge(value)
+CALL checkout_beta -> beta_init | Sources/AppFlow/Checkout.swift:10 | return FeatureBeta.SharedQuote().run(value)
+CALL checkout_beta -> beta_run | Sources/AppFlow/Checkout.swift:10 | return FeatureBeta.SharedQuote().run(value)
+CALL direct -> base | Sources/AppFlow/Checkout.swift:14 | return CGBase(value)
+CALL overload -> alpha_init | Sources/AppFlow/Checkout.swift:18 | return FeatureAlpha.SharedQuote().quote("control")
+CALL overload -> alpha_string | Sources/AppFlow/Checkout.swift:18 | return FeatureAlpha.SharedQuote().quote("control")
+CALL legacy -> checkout | Sources/AppFlow/Relocated.swift:2 | return checkout(value)
+QUERY q01 | base | direct=4 | transitive=16 | negatives=12
+QUERY q02 | alternate | direct=0 | transitive=0 | negatives=28
+QUERY q03 | header | direct=1 | transitive=8 | negatives=20
+QUERY q04 | cpp_bridge | direct=1 | transitive=2 | negatives=26
+QUERY q05 | objc_quote | direct=2 | transitive=7 | negatives=21
+QUERY q06 | alpha_int | direct=1 | transitive=3 | negatives=25
+QUERY q07 | beta_int | direct=1 | transitive=2 | negatives=26
+QUERY q08 | alpha_extension | direct=1 | transitive=3 | negatives=25
+QUERY q09 | alpha_string | direct=1 | transitive=1 | negatives=27
+QUERY q10 | checkout | direct=1 | transitive=1 | negatives=27

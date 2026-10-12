@@ -1,0 +1,129 @@
+{
+  "role": "pilot-validation-only",
+  "rounds": [
+    {
+      "expectation_changes": false,
+      "failure": "macOS /var and /private/var path aliases were normalized on only one side of source coverage comparison",
+      "fix_commit": "725232384327134b2caf4daf524684254fab28fb",
+      "head": "0a8811cb63fa3b989d1fb1e617934935afbac336",
+      "run_id": 38190877188,
+      "stage": "offline-public-project-adapter-regression",
+      "status": "failed-before-native-comparison",
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38190877188"
+    },
+    {
+      "artifact_id": 11721319913,
+      "artifact_sha256": "892fb35e819bc0fc776382bd5441c3d7fdb326198143c824c0bff3b58c2eadb1",
+      "baseline_release_build_seconds": 19.50240591699992,
+      "baseline_total_measured_setup_seconds": 20.67771816599975,
+      "cartograph_release_build_seconds": 381.565820958,
+      "cost_caveat": "One diagnostic run with uncontrolled global dependency/SDK caches. Cartograph repository acquisition supplied by CI was outside measurement; not a paired setup-performance estimate.",
+      "expectation_changes": false,
+      "failure": "Direct Xcode swiftc invocation did not select a macOS SDK; standard library loading failed",
+      "fix_commit": "2d687418d46273e1e7b83397eb0ecf782e4b48de",
+      "head": "725232384327134b2caf4daf524684254fab28fb",
+      "normalized_manifest_files": 61,
+      "run_id": 38191268489,
+      "stage": "synthetic-fixture-compile",
+      "status": "failed-before-native-comparison",
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38191268489"
+    },
+    {
+      "artifact_id": 11722395677,
+      "artifact_sha256": "ba83aeb0921f33d90276fd498bf5fbb51baab2a33eedfd59e0810c107681128d",
+      "caller_queries_both_passed": true,
+      "contract_diagnosis": "Default graph deliberately filters self-loops. Explicit full symbol self-loop export requires separate product feature; preserve failed default-mode result.",
+      "fix_commit": null,
+      "head": "2d687418d46273e1e7b83397eb0ecf782e4b48de",
+      "native_comparison_result": null,
+      "public_project_baseline_edges": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 13
+      },
+      "public_project_native_edges": {
+        "fn": 2,
+        "fp": 0,
+        "tp": 11
+      },
+      "run_id": 38192130782,
+      "status": "failed-public-graph-fidelity",
+      "synthetic_correctness_and_freshness_passed": true,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38192130782"
+    },
+    {
+      "artifact_id": 11723217593,
+      "artifact_sha256": "497cef94ea5a21bfce8c79db8151b71c8355ec95561aa480274f68839cc69969",
+      "baseline_release_build_seconds": 29.983780209000088,
+      "baseline_total_measured_setup_seconds": 31.412841960000037,
+      "caller_queries_both_passed": true,
+      "cartograph_release_build_seconds": 677.623863458,
+      "complete_projection_both_edges": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 13
+      },
+      "cost_caveat": "Different state regimes: cached baseline BFS versus fresh native CLI. Extra default diagnostic warms native state. Shared CI/global caches uncontrolled. Descriptive pilot only. Full setup cost retained; no superiority conclusion.",
+      "discovery_plus_first_query_seconds": {
+        "baseline": 5.653787124000019,
+        "cartograph": 1.236494332999996
+      },
+      "expectation_changes": false,
+      "head": "7e707443440fe9738aed763131e1fe1117091d3b",
+      "history_reconciliation_head": "0dbe0bd694b6c69d5a20aead3a44857a379630a9",
+      "history_reconciliation_reason": "Merged squash main as second parent with byte-identical tree; new CI required for merge eligibility, not a result-selected rerun.",
+      "normalized_manifest_files": 1687,
+      "repeated_n": 4,
+      "repeated_workflow_median_seconds": {
+        "baseline": 0.12471768750003775,
+        "cartograph": 0.4462531875000195
+      },
+      "retained_default_native_edges": {
+        "fn": 2,
+        "fp": 0,
+        "tp": 11
+      },
+      "run_id": 38194971111,
+      "status": "passed-validation-only",
+      "synthetic_correctness_and_freshness_passed": true,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38194971111"
+    },
+    {
+      "artifact_id": 11723527973,
+      "artifact_sha256": "38bc0736ad9c1d59ab06fd246c763f5ac8a75d411a306631b88f1ee854a80328",
+      "baseline_release_build_seconds": 19.37714104099996,
+      "baseline_total_measured_setup_seconds": 20.536791625999967,
+      "caller_queries_both_passed": true,
+      "cartograph_release_build_seconds": 458.28145975,
+      "complete_projection_both_edges": {
+        "fn": 0,
+        "fp": 0,
+        "tp": 13
+      },
+      "cost_caveat": "Different state regimes: cached baseline BFS versus fresh native CLI. Extra default diagnostic warms native state. Shared CI/global caches uncontrolled. Descriptive pilot only. Full setup cost retained; no superiority conclusion.",
+      "discovery_plus_first_query_seconds": {
+        "baseline": 4.064715167000031,
+        "cartograph": 0.8098785000000817
+      },
+      "expectation_changes": false,
+      "head": "0dbe0bd694b6c69d5a20aead3a44857a379630a9",
+      "normalized_manifest_files": 1687,
+      "repeated_n": 4,
+      "repeated_workflow_median_seconds": {
+        "baseline": 0.07939595850001524,
+        "cartograph": 0.3271331665000048
+      },
+      "rerun_reason": "Required exact-head CI after reconciling squash-merged main, with byte-identical tree; not a result-selected rerun.",
+      "retained_default_native_edges": {
+        "fn": 2,
+        "fp": 0,
+        "tp": 11
+      },
+      "run_id": 38195985366,
+      "status": "passed-validation-only",
+      "synthetic_correctness_and_freshness_passed": true,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38195985366"
+    }
+  ],
+  "superiority_claim": null
+}

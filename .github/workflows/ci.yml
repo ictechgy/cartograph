@@ -34,10 +34,13 @@ jobs:
           python3 Scripts/verify-indexstore-benchmark.py
           python3 Scripts/verify-indexstore-project.py
           python3 Scripts/verify-indexstore-evidence.py
+          python3 Scripts/verify-indexstore-mixed.py
+          python3 Scripts/verify-indexstore-pilot-evidence.py
 
       # 두 제품 모두 새 release 스크래치에서 빌드한다. 전역 SDK/의존성 캐시는
       # 지우지 않으며, 획득·빌드 비용과 각 질의의 원시 출력을 증거에 남긴다.
       - name: Compare real executables on the same compiler index
+        id: tools
         run: |
           set +e
           python3 Scripts/benchmark-indexstore-cli.py \
@@ -67,6 +70,22 @@ jobs:
             mkdir -p "$RUNNER_TEMP/indexstore-project-validation/setup"
             cp "$RUNNER_TEMP/indexstore-project-console.log" \
               "$RUNNER_TEMP/indexstore-project-validation/setup/driver.stdout"
+          fi
+          exit "$status"
+
+      - name: Validate mixed Swift and Objective-C iOS states
+        if: always() && steps.tools.outcome == 'success'
+        run: |
+          set +e
+          python3 Scripts/benchmark-indexstore-mixed.py \
+            --setup-results "$RUNNER_TEMP/indexstore-cli-benchmark/results.json" \
+            --output "$RUNNER_TEMP/indexstore-mixed-validation" \
+            > "$RUNNER_TEMP/indexstore-mixed-console.log" 2>&1
+          status=$?
+          if [ -d "$RUNNER_TEMP/indexstore-mixed-validation" ]; then
+            mkdir -p "$RUNNER_TEMP/indexstore-mixed-validation/setup"
+            cp "$RUNNER_TEMP/indexstore-mixed-console.log" \
+              "$RUNNER_TEMP/indexstore-mixed-validation/setup/driver.stdout"
           fi
           exit "$status"
 
@@ -104,6 +123,17 @@ jobs:
               --input "$RUNNER_TEMP/indexstore-project-validation" \
               --output "$RUNNER_TEMP/indexstore-cli-public/argument-parser" "${prefixes[@]}" \
               --prefix "SYNTHETIC_EVIDENCE=$RUNNER_TEMP/indexstore-cli-benchmark"
+          fi
+
+          if [ -d "$RUNNER_TEMP/indexstore-mixed-validation" ]; then
+            python3 Scripts/normalize-indexstore-evidence.py \
+              --input "$RUNNER_TEMP/indexstore-mixed-validation" \
+              --output "$RUNNER_TEMP/indexstore-cli-public/mixed-setup" "${prefixes[@]}"
+          fi
+          if [ -d "$RUNNER_TEMP/indexstore-mixed-validation/validation" ]; then
+            python3 Scripts/normalize-indexstore-evidence.py \
+              --input "$RUNNER_TEMP/indexstore-mixed-validation/validation" \
+              --output "$RUNNER_TEMP/indexstore-cli-public/mixed-ios" "${prefixes[@]}"
           fi
 
       # 원본은 러너 안에만 둔다. 바이너리 인덱스에는 절대 경로가 남으므로

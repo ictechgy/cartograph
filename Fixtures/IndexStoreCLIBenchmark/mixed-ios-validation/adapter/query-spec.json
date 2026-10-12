@@ -1,0 +1,12 @@
+[
+  {"id":"q01","context":"BridgeKit","signature":"CGBase(int)","max_depth":8},
+  {"id":"q02","context":"BridgeKit","signature":"CGAlternate(int)","max_depth":8},
+  {"id":"q03","context":"BridgeKit","signature":"CGHeaderRoute(int)","max_depth":8},
+  {"id":"q04","context":"BridgeKit","signature":"CGCppBridge(int)","max_depth":8},
+  {"id":"q05","context":"BridgeKit","signature":"+[CGQuoteEngine quote:]","max_depth":8},
+  {"id":"q06","context":"FeatureAlpha","signature":"SharedQuote.quote(Int32)","max_depth":8},
+  {"id":"q07","context":"FeatureBeta","signature":"SharedQuote.quote(Int32)","max_depth":8},
+  {"id":"q08","context":"FeatureAlpha","signature":"QuoteSource.extensionQuote(Int32)","max_depth":8},
+  {"id":"q09","context":"FeatureAlpha","signature":"SharedQuote.quote(String)","max_depth":8},
+  {"id":"q10","context":"AppFlow","signature":"checkout(Int32)","max_depth":8}
+]
