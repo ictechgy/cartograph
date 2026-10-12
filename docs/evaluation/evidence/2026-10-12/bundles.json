@@ -518,12 +518,80 @@
       "sha256": "a036a0ffcfb40fa19af1e84ae942d6b6507aa50aba37dc08946408be2f4fa568",
       "uncompressed_bytes": 3337,
       "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38240360620-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965753,
+          "path": "bundle-status.json",
+          "sha256": "27a28386e007b890177fef0e9a66f20694cb94e0d64e8378845897bfe16d8379"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7658026,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38240360620,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38240360620",
+      "scope": "Exact normalized Actions comparison artifact; failed SDK parser and successful other validation retained without final superiority claim.",
+      "sha256": "159c51aab39f9e8de0f23346e10b24306252a30e23b64f4b12636834d1500286",
+      "uncompressed_bytes": 39085845,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38240360620-helper-normalized.zip",
+      "archive_entries": 205,
+      "complete_run_evidence": false,
+      "compressed_bytes": 142042,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38240360620,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38240360620",
+      "scope": "Exact normalized Actions helper artifact; failed SDK parser and successful other validation retained without final superiority claim.",
+      "sha256": "b6788153efc6b293001cacf3c8ec7d6e774a28b96b5ba494814bba57a23753c5",
+      "uncompressed_bytes": 333680,
+      "verified_normalized_files": 204
+    },
+    {
+      "archive": "run-38240360620-sdk-normalized.zip",
+      "archive_entries": 39,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1486,
+          "path": "attempt.json",
+          "sha256": "6ac69d2975e2be112475c5632b1b2dc8d4dd974da8f0849a4b7f91246fd69a59"
+        },
+        {
+          "bytes": 1854,
+          "path": "publication-status.json",
+          "sha256": "93b8a29b5585646e59692e2e393e82e73b861422a2653efd1fa9ff5f79d11f9f"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 1779637,
+      "manifests": [
+        "discovery/manifest.json"
+      ],
+      "run_id": 38240360620,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38240360620",
+      "scope": "Exact normalized Actions sdk artifact; failed SDK parser and successful other validation retained without final superiority claim.",
+      "sha256": "f366dba58a0946820cf98d458888f935c8cf05765945ebe0a58a4934beee4270",
+      "uncompressed_bytes": 3853203,
+      "verified_normalized_files": 36
     }
   ],
   "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
   "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 82625712,
-  "total_uncompressed_bytes": 427645891
+  "total_compressed_bytes": 92205417,
+  "total_uncompressed_bytes": 470918619
 }

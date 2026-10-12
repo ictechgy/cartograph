@@ -129,10 +129,17 @@ def existing_directory(value: object) -> Path:
         raise DiscoveryError("unreadable-directory") from error
 
 
-def parse_clang_search(text: str) -> dict:
+def parse_clang_search(text: str, aliases: dict[str, str] | None = None) -> dict:
     """하나의 완결된 순서 보존 검색 목록과 명시한 무시 사유를 해석한다."""
     effective, ignored = [], []
     state, finished = None, False
+
+    def reported(value):
+        if aliases and value in aliases:
+            canonical = str(clean_path(aliases[value]))
+            return dict(path=canonical, reported_path=value, lexical_alias="selected-compiler-libcxx")
+        return dict(path=str(clean_path(value)))
+
     for line in text.splitlines():
         if line == '#include "..." search starts here:':
             if state is not None or finished:
@@ -155,14 +162,12 @@ def parse_clang_search(text: str) -> dict:
                 value = value[: -len(" (framework directory)")]
             elif re.search(r" \([^)]*\)$", value):
                 raise DiscoveryError("invalid-clang-search-entry")
-            clean_path(value)
-            effective.append(dict(path=value, kind=kind, group=state))
+            effective.append(dict(**reported(value), kind=kind, group=state))
         elif line.startswith("ignoring "):
             match = re.fullmatch(r'ignoring (nonexistent|duplicate) directory "([^"\r\n]+)"', line)
             if not match:
                 raise DiscoveryError("unknown-clang-ignore-diagnostic")
-            clean_path(match.group(2))
-            ignored.append(dict(path=match.group(2), reason=match.group(1)))
+            ignored.append(dict(**reported(match.group(2)), reason=match.group(1)))
     if not finished or state is not None:
         raise DiscoveryError("incomplete-clang-search-list")
     return dict(effective=effective, ignored=ignored)
@@ -421,11 +426,52 @@ def prepare(request: dict) -> dict:
     )
 
 
+def compiler_alias_state(selection: dict) -> dict:
+    """선택한 Clang의 고정 후보만 허용하고 실제로 지나는 디렉터리 정체성을 묶는다."""
+    original = Path(selection["tools"]["clang"]["original_path"])
+    chain = selection["roots"]["TOOLCHAIN"]
+    canonical = chain / "usr/include/c++/v1"
+    alias = original.parent / "../include/c++/v1"
+    if original.parent.resolve(strict=True) != chain / "usr/bin":
+        return dict(aliases={}, directory_identity_sha256=None)
+    if alias.resolve() != canonical or canonical.resolve() != canonical:
+        raise DiscoveryError("compiler-alias-escape")
+    watched = [
+        original.parent,
+        chain,
+        Path(selection["root_aliases"]["SDK"]),
+        selection["roots"]["SDK"],
+        canonical,
+    ]
+    identities = {}
+    for path in watched:
+        current = Path(path.anchor)
+        for component in ("", *path.parts[1:]):
+            if component:
+                current = current / component
+            try:
+                info = current.lstat()
+            except FileNotFoundError:
+                identities[str(current)] = dict(entry_type="missing")
+                break
+            if not (stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)):
+                raise DiscoveryError("compiler-alias-nondirectory")
+            identities[str(current)] = dict(identity=[info.st_dev, info.st_ino, info.st_mode])
+            if stat.S_ISLNK(info.st_mode):
+                identities[str(current)]["link_target"] = os.readlink(current)
+    return dict(
+        aliases={str(alias): str(canonical)},
+        directory_identity_sha256=hashlib.sha256(json.dumps(identities, sort_keys=True).encode()).hexdigest(),
+    )
+
+
 def guard(selection: dict) -> None:
     """루트 별칭과 실행 도구는 매 프로브 뒤 다시 확인하며 전체 SDK 봉인은 별도다."""
     for label, original in selection["root_aliases"].items():
         if existing_directory(original) != {**selection["roots"], **selection["project_paths"]}[label]:
             raise DiscoveryError("root-selection-changed")
+    if "compiler_alias_state" in selection and compiler_alias_state(selection) != selection["compiler_alias_state"]:
+        raise DiscoveryError("compiler-alias-generation-changed")
     for name, item in selection["tools"].items():
         try:
             path = Path(item["original_path"]).resolve(strict=True)
@@ -486,6 +532,8 @@ def record(
         save(output / "request-input.json", request_identity)
     try:
         selection = prepare(request)
+        selection["compiler_alias_state"] = compiler_alias_state(selection)
+        result["compiler_path_aliases"] = selection["compiler_alias_state"]
         guard(selection)
         result["selected_tools"] = selection["tools"]
         env = dict(os.environ)
@@ -609,7 +657,7 @@ def record(
                     str(source),
                 ],
             )
-            parsed = parse_clang_search(data["stderr"])
+            parsed = parse_clang_search(data["stderr"], selection["compiler_alias_state"]["aliases"])
             for item in parsed["effective"]:
                 item["coverage"] = diagnostic_binding(
                     item["path"],

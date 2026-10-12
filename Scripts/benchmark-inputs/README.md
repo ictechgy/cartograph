@@ -156,3 +156,24 @@ Raw hashes, ordered observations and distinct family tokens are retained. Missin
 be normalized without claiming that they exist. A fresh native attempt must verify publication;
 previous unavailable details remain unavailable. SDK contents and any additional effective root
 still require their separate review and seal before final comparison use.
+
+## Selected compiler spelling in search diagnostics
+
+Run 38240360620 publishes the full normalized SDK diagnostic (36 files and two envelopes). Eight
+probes completed normally with passed terminal guards before C++ search parsing failed with
+invalid-absolute-path. Its exact normalized Clang text and original/raw hash binding are retained in
+fixtures/apple-clang-cxx-21.*. Expanding its tokens into synthetic fixture paths reproduces the
+selected compiler's usr/bin/../include/c++/v1 refusal; this does not reconstruct private native prefixes.
+
+Only that exact selected-compiler alias is now interpreted as its canonical in-toolchain path.
+The parsed item preserves reported_path separately; ordinary clean_path still rejects parent segments.
+The alias cannot add another root, another compiler or a suffix/parent escape. Canonical confinement
+and all traversed directory identities (device/inode/mode, symlink targets and exact missing-prefix
+states) are bound before the first probe and checked before/after each terminal probe and at completion.
+Directory identity is not directory-content sealing; unrelated sibling writes do not prove path changes.
+Existing header symlinks that change the canonical target are refused, including in-root redirects.
+
+The native diagnostic directly observes /usr/lib/swift as a directory used for Swift runtime-library
+search, with no content read. It remains an unresolved effective path. This observation establishes
+neither executable loader closure nor SDK/root acceptance. The next attempt must still retain that
+unresolved status and any further compiler context rather than silently broadening the root set.

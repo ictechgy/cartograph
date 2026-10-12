@@ -1,0 +1,12 @@
+{
+  "artifact_sha256": "f366dba58a0946820cf98d458888f935c8cf05765945ebe0a58a4934beee4270",
+  "manifest_row": {
+    "normalized_bytes": 4681,
+    "normalized_sha256": "dfe2638c095e79dde3afb7355ed8d8f245996c2993512fda41965eaaa5287a33",
+    "original_bytes": 5801,
+    "original_raw_sha256": "e5c8cdd3dcf66c087526c1290d3b0263e033c4930df38270f4dec6d9b8808e6f",
+    "path": "setup/discovery/probes/clang-cxx.stderr"
+  },
+  "member": "discovery/setup/discovery/probes/clang-cxx.stderr",
+  "scope": "Exact normalized native stderr retained; token expansion in local controls is explicitly synthetic, not reconstruction of private prefixes."
+}

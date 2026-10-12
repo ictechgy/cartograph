@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all nineteen rounds (twenty-six archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all twenty rounds (twenty-nine archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -173,6 +173,20 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    16 synthetic pairs, 162 RSS rows and 232 members remain retained with their limits. No SDK root,
    final runtime closure or comparative performance result is accepted.
 
+20. Run 38240360620 passes product/self-analysis, all 13 mixed states and synthetic helper checks.
+   Product: 2,008 tests, 203 suites, 92.81% coverage (40,477/43,614 lines). All 14 graph projections
+   and 21 ten-query batches regrade exactly; helper evidence retains 16 pairs and 171 RSS rows/248 members.
+   The two-family normalization repair succeeds: all 36 SDK files and two safe envelopes are available.
+   Eight probes exit0 with passed post-guards, then C++ search parsing fails invalid-absolute-path.
+   Exact normalized Clang output and original raw hashes remain retained; a synthetic selected-compiler
+   parent-alias control reproduces this stage without reconstructing private path prefixes.
+   Swift runtimeLibraryPaths directly names /usr/lib/swift, observed as a directory with directory-only
+   components and no content read. It remains unresolved; this is not loader closure or root acceptance.
+   Selector costs reconcile 4.492 seconds of probes plus 6.865 seconds of setup/guards to 11.358 seconds.
+   The wrapper's full 14.696-second diagnostic is assigned identically to both arms; outer child 14.888,
+   supervisor14.931 and publication7.249 seconds are separate/nested receipts, not added twice.
+   Discovery remains red and unaccepted. Earlier unavailable SDK rounds retain their original status.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -183,9 +197,9 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text, their manifests and the reviewed publication status.
 They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
 Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Twenty-two archives retain
+private; each manifest distinguishes original hashes from normalized public hashes. Twenty-five archives retain
 the exact bytes of their public Actions artifacts. The three test-phase archives and round eight's partial
-driver-phase archive were normalized separately after their failures. Rounds nine through nineteen preserve all original
+driver-phase archive were normalized separately after their failures. Rounds nine through twenty preserve all original
 ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
 when Actions retention expires.
 

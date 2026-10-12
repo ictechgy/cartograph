@@ -116,6 +116,112 @@ class RootSelectionTests(unittest.TestCase):
     def run_select(self, request=None, runner=None):
         return selector.record(request or self.request, self.root / "evidence", runner=runner or self.runner)
 
+    def alias_runner(self, *args):
+        row = self.runner(*args)
+        if "-E" in args[0]:
+            alias = self.tools["clang"].parent / "../include/c++/v1"
+            path = Path(row["stderr"])
+            path.write_text(f'ignoring nonexistent directory "{alias}"\n' + path.read_text())
+        return row
+
+    def test_exact_selected_compiler_parent_alias_is_retained_and_canonicalized(self):
+        self.request["context_options"]["c++"] = ["-std=c++17"]
+        self.request["context_options"]["objective-c++"] = ["-std=c++17"]
+        self.request["extra_contexts"] = [dict(id="objective-c-arc", language="objective-c", options=["-fobjc-arc"])]
+        result = self.run_select(runner=self.alias_runner)
+        self.assertEqual(result["status"], "awaiting-root-review")
+        self.assertFalse(result["accepted"])
+        for context in result["proposal"]["clang_search_paths"]:
+            item = context["ignored"][0]
+            self.assertEqual(item["reported_path"], str(self.tools["clang"].parent / "../include/c++/v1"))
+            self.assertEqual(item["path"], str(self.toolchain / "usr/include/c++/v1"))
+            self.assertEqual(item["coverage"], "unsealed-absence")
+        self.assertEqual(len(result["probes"]), 10)
+
+    def test_compiler_parent_alias_does_not_accept_nearby_escape_or_other_driver(self):
+        aliases = selector.compiler_alias_state(selector.prepare(self.request))["aliases"]
+        base = str(self.tools["clang"].parent / "../include/c++/v1")
+        for value in [base + suffix for suffix in ["/../../private", "-other", "/../v2"]] + [
+            str(self.root / "Other.xctoolchain/usr/bin/../include/c++/v1")
+        ]:
+            text = f'ignoring nonexistent directory "{value}"\n#include "..." search starts here:\n#include <...> search starts here:\nEnd of search list.\n'
+            with self.assertRaises(selector.DiscoveryError):
+                selector.parse_clang_search(text, aliases)
+
+    def test_retained_apple_cpp_text_uses_explicit_synthetic_prefix_expansion(self):
+        path = HERE / "fixtures/apple-clang-cxx-21.normalized.stderr"
+        meta = json.loads((HERE / "fixtures/apple-clang-cxx-21.provenance.json").read_text())
+        self.assertEqual(
+            selector.hashlib.sha256(path.read_bytes()).hexdigest(), meta["manifest_row"]["normalized_sha256"]
+        )
+        text = path.read_text()
+        replacements = {
+            "$CLANG_CXX_HEADERS": str(self.tools["clang"].parent / "../include/c++/v1"),
+            "$SDK_CXX_HEADERS": str(self.sdk / "usr/include/c++/v1"),
+            "$DEVELOPER": str(self.developer),
+            "$RUNNER_TEMP": str(self.root),
+            "$EVIDENCE": str(self.root / "evidence"),
+        }
+        for token, value in replacements.items():
+            text = text.replace(token, value)
+        aliases = selector.compiler_alias_state(selector.prepare(self.request))["aliases"]
+        parsed = selector.parse_clang_search(text, aliases)
+        self.assertEqual(len(parsed["effective"]), 7)
+        self.assertEqual(parsed["ignored"][0]["reported_path"], replacements["$CLANG_CXX_HEADERS"])
+        self.assertEqual(parsed["ignored"][0]["path"], str(self.toolchain / "usr/include/c++/v1"))
+        self.assertEqual(parsed["effective"][1]["path"], replacements["$SDK_CXX_HEADERS"])
+
+    def test_sdk_root_same_path_replacement_is_not_hidden(self):
+        def run(*args):
+            row = self.runner(*args)
+            self.sdk.rename(self.sdk.with_name("old.sdk"))
+            self.sdk.mkdir()
+            return row
+
+        result = self.run_select(runner=run)
+        self.assertEqual(len(result["probes"]), 1)
+        self.assertEqual(result["failure"], "compiler-alias-generation-changed")
+
+    def test_symlinked_sdk_canonical_target_replacement_stops_first_probe(self):
+        physical = self.sdk.with_name("iPhoneSimulator26.5.sdk")
+        self.sdk.rename(physical)
+        self.sdk.symlink_to(physical, target_is_directory=True)
+
+        def run(*args):
+            row = self.runner(*args)
+            if len(self.commands) == 1:
+                physical.rename(physical.with_name("old-physical.sdk"))
+                physical.mkdir()
+            return row
+
+        result = self.run_select(runner=run)
+        self.assertEqual(len(result["probes"]), 1)
+        self.assertEqual(result["failure"], "compiler-alias-generation-changed")
+        self.assertEqual(result["probes"][0]["post_probe_guard"]["status"], "failed")
+
+    def test_alias_include_symlink_escape_stops_before_probe(self):
+        external = self.root / "external"
+        external.mkdir()
+        (self.toolchain / "usr/include").symlink_to(external, target_is_directory=True)
+        result = self.run_select(runner=self.alias_runner)
+        self.assertEqual(result["failure"], "compiler-alias-escape")
+        self.assertEqual(result["probes"], [])
+
+    def test_alias_directory_replacement_after_probe_stops_later_probes(self):
+        directory = self.toolchain / "usr/include"
+        directory.mkdir()
+
+        def run(*args):
+            row = self.alias_runner(*args)
+            directory.rename(directory.with_name("old-include"))
+            directory.mkdir()
+            return row
+
+        result = self.run_select(runner=run)
+        self.assertEqual(result["failure"], "compiler-alias-generation-changed")
+        self.assertEqual(len(result["probes"]), 1)
+        self.assertEqual(result["probes"][0]["post_probe_guard"]["failure"], "compiler-alias-generation-changed")
+
     def test_apple_optional_sdk_path_matches_selected_sdk(self):
         def run(*args):
             row = self.runner(*args)
