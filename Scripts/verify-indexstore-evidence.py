@@ -183,6 +183,45 @@ class EvidenceTests(unittest.TestCase):
                 )
                 self.assert_blocked_without_output("credential-json-field")
 
+    def test_complete_official_compiler_help_corpus_preserves_bytes(self):
+        corpus = SCRIPT.parents[1] / "Fixtures/IndexStoreCLIBenchmark/compiler-help-validation"
+        manifest = json.loads((corpus / "manifest.json").read_text())
+        for item in manifest["files"]:
+            data = (corpus / item["path"]).read_bytes()
+            self.assertEqual(MODULE.digest(data), item["sha256"])
+            self.assertEqual(len(data), item["bytes"])
+            self.write("setup/" + item["path"], data)
+        MODULE.package(self.args)
+        for item in manifest["files"]:
+            self.assertEqual((self.public / "setup" / item["path"]).read_bytes(), (corpus / item["path"]).read_bytes())
+
+    def test_swift_help_tokens_do_not_exempt_suffixes_neighbors_or_generic_text(self):
+        profile = "  Generate instrumented code to collect execution counts into <directory>/default.profraw (overridden by LLVM_PROFILE_FILE env var)"
+        language = "  -Xcc <arg>              Pass <arg> to the C/C++/Objective-C compiler"
+        for text in (
+            profile.replace("/default.profraw", "/default.profraw/private"),
+            profile + " /Users/private/file",
+            profile.replace("<directory>", "<arbitrary>"),
+            language.replace("/Objective-C", "/Objective-C/private"),
+            language + " /Users/private/file",
+            "C/C++/Objective-C",
+            "<directory>/default.profraw",
+        ):
+            with self.subTest(text=text):
+                self.write("setup/swift-help.stdout", text + "\n")
+                self.assert_blocked_without_output("unmapped-absolute-path")
+        self.write("setup/swift-help.stdout", "safe\n")
+        self.write("setup/other-help.stdout", profile + "\n" + language + "\n")
+        self.assert_blocked_without_output("unmapped-absolute-path")
+
+    def test_swift_help_tokens_still_screen_escaped_credentials(self):
+        self.write(
+            "setup/swift-help.stdout",
+            "  -Xcc <arg>              Pass <arg> to the C/C++/Objective-C compiler "
+            '{"\\u0041WS_SESSION_TOKEN":"synthetic-only"}',
+        )
+        self.assert_blocked_without_output("credential-json-field")
+
     def test_unmapped_absolute_path_blocks(self):
         self.write("setup/build.stderr", "Failure: /Users/unknown-person/private/file.swift\n")
         self.assert_blocked_without_output("unmapped-absolute-path")

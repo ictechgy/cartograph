@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all eight rounds. `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all nine rounds. `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -40,6 +40,17 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    matches that exact fingerprint. Only ANSI color escapes were removed from the selected CI phase;
    the original phase/job hashes and transformation count are retained. This is not complete run evidence.
 
+9. Run 38201210141 passed the synthetic/public validation stages and completed all 13 iOS validation
+   states (including unbuilt and expected-failure states), but the observation wrapper exited 1. The mixed-ios normalizer blocked publication under
+   `unmapped-absolute-path`; the native failure reason and detailed graph/query/freshness grades remain
+   unavailable. This time the three independently safe bundles survived: synthetic (1,081 files),
+   argument-parser (606) and mixed-setup (6), totaling 1,693 normalized files. Their setup/sample costs
+   and the mixed wrapper's measured wall/CPU time and OS-reported wait4 peak-RSS record survive; mixed
+   per-state and per-arm costs/samples do not. The root `bundle-status.json` retains hash-only inventory
+   for 1,448 blocked mixed-ios text candidates, not their payloads. Its exact path, bytes and SHA256 are
+   separately reviewed in `bundles.json`; it is not counted as a normalized observation. Neither the
+   publication status nor the inventory establishes native correctness, graph errors or superiority.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -47,14 +58,17 @@ default diagnostic also warmed native state. Release compilation was 677.624 sec
 and 29.984 seconds for `index-dump`, with the remaining setup costs separately retained. None of these
 pilot observations establish the preregistered twenty-session composed-cost endpoint or memory dominance.
 
-The archives contain only already-normalized text and their manifests. They contain no raw compiler
-indexes, objects, executables, toolchains, global caches or environment dumps. Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Four archives retain
-the exact bytes of their public Actions artifacts. The three test-phase archives and the last partial
-driver-phase archive were normalized separately after their failures. Archives are committed to avoid losing evidence when
-Actions retention expires.
+The archives contain only already-normalized text, their manifests and the reviewed publication status.
+They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
+Retained raw originals remain
+private; each manifest distinguishes original hashes from normalized public hashes. Five archives retain
+the exact bytes of their public Actions artifacts. The three test-phase archives and round eight's partial
+driver-phase archive were normalized separately after their failures. Round nine preserves all original
+ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
+when Actions retention expires.
 
-All bundle hashes, file lists, UTF-8 contents and normalized file hashes are checked by:
+All bundle hashes, file lists, UTF-8 contents, normalized file hashes and explicitly inventoried
+auxiliary status bytes/hashes are checked by:
 
 ```sh
 python3 Scripts/verify-indexstore-pilot-evidence.py

@@ -368,6 +368,28 @@ class BundleTests(unittest.TestCase):
         self.assertNotIn(name, self.published_text() + logs)
         self.assertFalse((self.public / "synthetic").exists())
 
+    def test_structured_blocker_hashes_identify_artifact_without_raw_text(self):
+        artifact, value = "setup/private-person.stdout", "/Users/private-person/private-file"
+        with self.assertRaises(MODULE.EVIDENCE.PublicationBlocked) as raised:
+            MODULE.EVIDENCE.block("unmapped-absolute-path", artifact, value)
+        diagnostic = MODULE.diagnostic(raised.exception)
+        self.assertEqual(diagnostic["artifact_identifier_sha256"], hashlib.sha256(artifact.encode()).hexdigest())
+        self.assertEqual(diagnostic["offending_value_sha256"], hashlib.sha256(value.encode()).hexdigest())
+        self.assertNotIn("private-person", json.dumps(diagnostic))
+
+    def test_unstructured_or_malformed_blocker_fields_are_never_parsed_as_metadata(self):
+        error = MODULE.EVIDENCE.PublicationBlocked(
+            "unmapped-absolute-path; artifact=/private; value_sha256_prefix=secret"
+        )
+        self.assertEqual(MODULE.diagnostic(error)["reason"], "normalization-blocked")
+        error.reason = "unmapped-absolute-path"
+        error.artifact_sha256 = "private-path-not-a-digest"
+        error.value_sha256 = "1" * 63
+        diagnostic = MODULE.diagnostic(error)
+        self.assertNotIn("artifact_identifier_sha256", diagnostic)
+        self.assertNotIn("offending_value_sha256", diagnostic)
+        self.assertNotIn("private-path-not-a-digest", json.dumps(diagnostic))
+
     def test_unexpected_exception_text_is_never_exposed(self):
         raw = self.raw("raw")
         with mock.patch.object(MODULE.EVIDENCE, "package", side_effect=RuntimeError("password=synthetic-PRIVATE")):

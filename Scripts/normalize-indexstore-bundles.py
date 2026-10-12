@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -67,9 +68,19 @@ def diagnostic(error: Exception) -> dict[str, Any]:
     """예외에는 경로나 비밀이 들어갈 수 있으므로 고정 사유와 해시만 공개한다."""
     reason = "unexpected-normalization-error"
     if isinstance(error, EVIDENCE.PublicationBlocked):
-        candidate = str(error).split(";", 1)[0]
-        reason = candidate if candidate in SAFE_REASONS else "normalization-blocked"
+        candidate = getattr(error, "reason", None)
+        if candidate is None and str(error) in SAFE_REASONS:
+            candidate = str(error)
+        reason = candidate if isinstance(candidate, str) and candidate in SAFE_REASONS else "normalization-blocked"
     result = {"reason": reason, "error_sha256": fingerprint(str(error))}
+    if isinstance(error, EVIDENCE.PublicationBlocked) and reason in SAFE_REASONS:
+        for attribute, field in (
+            ("artifact_sha256", "artifact_identifier_sha256"),
+            ("value_sha256", "offending_value_sha256"),
+        ):
+            value = getattr(error, attribute, None)
+            if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value):
+                result[field] = value
     if isinstance(error, OSError):
         result["reason"] = "filesystem-error"
         if isinstance(error.errno, int):

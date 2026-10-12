@@ -161,6 +161,45 @@
       "stage": "mixed-ios-native-and-evidence-normalization",
       "status": "mixed-execution-failed-diagnostics-unavailable",
       "url": "https://github.com/ictechgy/cartograph/actions/runs/38199381784"
+    },
+    {
+      "archive_sha256": "93336459fab74e2eccc366258a6634f6bd25b64070fcd6934cd24a09000ee841",
+      "blocked_bundle": "mixed-ios",
+      "blocked_bundle_inventory_scope": "Hash-only normalizer-selected text candidates; no raw payload, detailed native diagnostic, or reconstructed result",
+      "blocked_bundle_selected_raw_bytes": 8945385,
+      "blocked_bundle_selected_raw_candidates": 1448,
+      "cost_caveat": "Synthetic/public setup and individual sample costs remain retained. Mixed wrapper wall/CPU/OS-reported wait4 peak RSS survive, but detailed mixed per-state, per-arm costs and samples are unavailable. Different reuse regimes and uncontrolled shared caches remain; no composed-cost, memory-dominance or superiority conclusion.",
+      "expectation_changes": false,
+      "failure": "All 13 iOS validation states completed (including unbuilt and expected-failure states); the observation wrapper exited 1. Mixed-ios normalization blocked on an unmapped-absolute-path category, so native detailed correctness and failure reasons remain unavailable.",
+      "fix_commit": null,
+      "head": "d668ca613908d905eea71c79b08ebfaa2cc41417",
+      "missing_evidence": "The blocked mixed-ios bundle has only path/content hashes and byte counts for 1,448 selected text candidates. Detailed native graph/query/freshness grades, observation failure reasons, and per-state mixed costs/samples were not published and cannot be reconstructed from that inventory.",
+      "mixed_validation_states": 13,
+      "mixed_native_detailed_correctness": null,
+      "mixed_wrapper_exit_code": 1,
+      "mixed_wrapper_wall_seconds": 44.743501917,
+      "native_failure_reason": null,
+      "normalization_diagnostic": "unmapped-absolute-path",
+      "normalization_diagnostic_error_sha256": "db67ab5328edcc3d9acdaf552d3a7b1471bcea12570997c8176d080d4cca62a3",
+      "normalized_bundles": {
+        "argument-parser": 606,
+        "mixed-setup": 6,
+        "synthetic": 1081
+      },
+      "normalized_manifest_files": 1693,
+      "public_project_validation_passed": true,
+      "publication_status": "publication_prepared_with_blocked_bundles",
+      "raw_fallback": false,
+      "retained_cost_evidence": [
+        "synthetic/results.json and manifest-listed setup/sample records",
+        "argument-parser/results.json and manifest-listed setup/sample records",
+        "mixed-setup/setup/lifecycle.json"
+      ],
+      "run_id": 38201210141,
+      "stage": "mixed-ios-native-and-evidence-normalization",
+      "status": "mixed-observation-failed-partial-evidence-retained",
+      "synthetic_correctness_and_freshness_passed": true,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38201210141"
     }
   ],
   "superiority_claim": null

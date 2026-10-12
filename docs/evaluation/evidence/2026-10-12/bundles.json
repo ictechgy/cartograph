@@ -108,12 +108,36 @@
       "sha256": "68d8031024163a12603f35d631fe4eb08f6eda266b29d806f119ac465a2b97fc",
       "uncompressed_bytes": 154228,
       "verified_normalized_files": 5
+    },
+    {
+      "archive": "run-38201210141-normalized.zip",
+      "archive_entries": 1697,
+      "auxiliary_files": [
+        {
+          "bytes": 837092,
+          "path": "bundle-status.json",
+          "sha256": "2780e2d3aeaaa32ec6414771c844fc64bfd0bc9c4c22ad44f5b956085465e54b"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 2168937,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38201210141,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38201210141",
+      "scope": "Exact public Actions artifact: three complete normalized bundles and reviewed root publication status; mixed-ios detailed diagnostics and per-state costs unavailable after its normalization was blocked",
+      "sha256": "93336459fab74e2eccc366258a6634f6bd25b64070fcd6934cd24a09000ee841",
+      "uncompressed_bytes": 15506969,
+      "verified_normalized_files": 1693
     }
   ],
   "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
   "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 5911357,
-  "total_uncompressed_bytes": 42561836
+  "total_compressed_bytes": 8080294,
+  "total_uncompressed_bytes": 58068805
 }

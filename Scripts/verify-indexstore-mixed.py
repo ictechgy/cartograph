@@ -119,6 +119,87 @@ class EvidenceBundleContracts(unittest.TestCase):
         )
         return archive
 
+    def review_auxiliary(self, records):
+        path = self.root / "bundles.json"
+        inventory = json.loads(path.read_text())
+        inventory["bundles"][0]["auxiliary_files"] = records
+        path.write_text(json.dumps(inventory))
+
+    def auxiliary_record(self, data=b'{"complete_run_evidence": false}\n'):
+        return {"path": "bundle-status.json", "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+    def test_reviewed_auxiliary_status_passes_without_normalized_count_inflation(self):
+        data = b'{"complete_run_evidence": false}\n'
+        self.fixture(extra=("bundle-status.json", data))
+        self.review_auxiliary([self.auxiliary_record(data)])
+        result = EVIDENCE.verify(self.root)
+        self.assertEqual(result["normalized_files"], 1)
+        self.assertEqual(result["auxiliary_files"], 1)
+        self.assertFalse((self.root / "bundle-status.json").exists())
+
+    def test_altered_auxiliary_hash_or_size_is_rejected(self):
+        data = b'{"complete_run_evidence": false}\n'
+        for changed in [data.replace(b"false", b"true "), data + b"\n"]:
+            with self.subTest(changed=changed):
+                self.fixture(extra=("bundle-status.json", changed))
+                self.review_auxiliary([self.auxiliary_record(data)])
+                with self.assertRaisesRegex(ValueError, "Auxiliary evidence bytes"):
+                    EVIDENCE.verify(self.root)
+
+    def test_missing_reviewed_auxiliary_status_is_rejected(self):
+        self.fixture()
+        self.review_auxiliary([self.auxiliary_record()])
+        with self.assertRaisesRegex(ValueError, "Missing auxiliary evidence"):
+            EVIDENCE.verify(self.root)
+
+    def test_duplicate_auxiliary_reference_is_rejected(self):
+        data = b'{"complete_run_evidence": false}\n'
+        self.fixture(extra=("bundle-status.json", data))
+        record = self.auxiliary_record(data)
+        self.review_auxiliary([record, record])
+        with self.assertRaisesRegex(ValueError, "Duplicated auxiliary evidence reference"):
+            EVIDENCE.verify(self.root)
+
+    def test_unreviewed_auxiliary_status_is_rejected(self):
+        self.fixture(extra=("bundle-status.json", b'{"complete_run_evidence": false}\n'))
+        with self.assertRaisesRegex(ValueError, "unmanifested"):
+            EVIDENCE.verify(self.root)
+
+    def test_auxiliary_inventory_cannot_admit_other_paths(self):
+        data = b"unrelated evidence\n"
+        self.fixture(extra=("other-status.json", data))
+        self.review_auxiliary([{**self.auxiliary_record(data), "path": "other-status.json"}])
+        with self.assertRaisesRegex(ValueError, "Unexpected auxiliary evidence path"):
+            EVIDENCE.verify(self.root)
+
+    def test_duplicate_auxiliary_zip_member_is_rejected(self):
+        data = b'{"complete_run_evidence": false}\n'
+        archive = self.fixture(extra=("bundle-status.json", data))
+        self.review_auxiliary([self.auxiliary_record(data)])
+        with self.assertWarns(UserWarning):
+            with zipfile.ZipFile(archive, "a") as output:
+                output.writestr("bundle-status.json", data)
+        path = self.root / "bundles.json"
+        inventory = json.loads(path.read_text())
+        bundle = inventory["bundles"][0]
+        bundle["sha256"] = hashlib.sha256(archive.read_bytes()).hexdigest()
+        bundle["compressed_bytes"] = archive.stat().st_size
+        with zipfile.ZipFile(archive) as source:
+            bundle["archive_entries"] = len(source.infolist())
+            bundle["uncompressed_bytes"] = sum(entry.file_size for entry in source.infolist())
+        inventory["total_compressed_bytes"] = bundle["compressed_bytes"]
+        inventory["total_uncompressed_bytes"] = bundle["uncompressed_bytes"]
+        path.write_text(json.dumps(inventory))
+        with self.assertRaisesRegex(ValueError, "Duplicate entries"):
+            EVIDENCE.verify(self.root)
+
+    def test_auxiliary_status_must_remain_utf8_text(self):
+        data = b"\xff\x00"
+        self.fixture(extra=("bundle-status.json", data))
+        self.review_auxiliary([self.auxiliary_record(data)])
+        with self.assertRaises(UnicodeDecodeError):
+            EVIDENCE.verify(self.root)
+
     def test_complete_bounded_bundle_passes_without_extracting(self):
         self.fixture()
         self.assertEqual(EVIDENCE.verify(self.root)["normalized_files"], 1)

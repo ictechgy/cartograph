@@ -116,6 +116,19 @@ SENSITIVE_PATTERNS = [
 class PublicationBlocked(ValueError):
     """불확실한 데이터를 공개 묶음에 싣지 않고 호출자에게 검토를 요구한다."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str | None = None,
+        artifact_sha256: str | None = None,
+        value_sha256: str | None = None,
+    ):
+        super().__init__(message)
+        self.reason = reason
+        self.artifact_sha256 = artifact_sha256
+        self.value_sha256 = value_sha256
+
 
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -127,7 +140,12 @@ def block(category: str, relative: str, value: str = "") -> None:
     safe_relative = relative
     if relative.startswith("/") or any(pattern.search(relative) for _, pattern in SENSITIVE_PATTERNS):
         safe_relative = "artifact-sha256-" + digest(relative.encode())[:16]
-    raise PublicationBlocked(f"{category}; artifact={safe_relative}; value_sha256_prefix={signature}")
+    raise PublicationBlocked(
+        f"{category}; artifact={safe_relative}; value_sha256_prefix={signature}",
+        reason=category,
+        artifact_sha256=digest(relative.encode("utf-8")),
+        value_sha256=digest(value.encode("utf-8")) if value else None,
+    )
 
 
 def check_sensitive(text: str, relative: str) -> None:
@@ -310,6 +328,21 @@ class Normalizer:
             path_text = re.sub(
                 r"(?m)^([ \t]+--show-includes[ \t]+Print cl\.exe style )/showIncludes(?= to stdout[ \t]*$)",
                 r"\1CLANG_SHOW_INCLUDES_OPTION",
+                path_text,
+            )
+        if relative == "setup/swift-help.stdout":
+            # Swift 도움말의 정확한 예시/언어 이름만 다룬다. 일반 자리표시자나
+            # 경로 접두사는 허용하지 않고 토큰 앞뒤의 원문 검사도 유지한다.
+            path_text = re.sub(
+                r"(?m)^([ \t]+Generate instrumented code to collect (?:context sensitive )?"
+                r"execution counts into <directory>)/default\.profraw"
+                r"(?= \(overridden by LLVM_PROFILE_FILE env var\)[ \t]*$)",
+                r"\1SWIFT_DEFAULT_PROFILE_FILE",
+                path_text,
+            )
+            path_text = re.sub(
+                r"(?m)^([ \t]+-Xcc <arg>[ \t]+Pass <arg> to the C/C\+\+)/Objective-C(?= compiler[ \t]*$)",
+                r"\1SWIFT_OBJC_LANGUAGE",
                 path_text,
             )
         windows_path = re.search(r"(?:[A-Za-z]:[\\/]|\\\\[A-Za-z0-9])", path_text)

@@ -17,7 +17,7 @@ MAX_FILES = 10_000
 
 def verify(root: Path = ROOT) -> dict:
     inventory = json.loads((root / "bundles.json").read_text())
-    archives, normalized = [], 0
+    archives, normalized, auxiliary = [], 0, 0
     total_compressed, total_uncompressed = 0, 0
     for bundle in inventory["bundles"]:
         name = bundle["archive"]
@@ -66,6 +66,19 @@ def verify(root: Path = ROOT) -> dict:
                         raise ValueError("Normalized evidence bytes changed")
                     selected.add(member)
                     verified += 1
+            for record in bundle.get("auxiliary_files", []):
+                member = record["path"]
+                if member != "bundle-status.json":
+                    raise ValueError("Unexpected auxiliary evidence path")
+                if member in selected:
+                    raise ValueError("Duplicated auxiliary evidence reference")
+                if member not in names:
+                    raise ValueError("Missing auxiliary evidence")
+                data = archive.read(member)
+                if len(data) != record["bytes"] or hashlib.sha256(data).hexdigest() != record["sha256"]:
+                    raise ValueError("Auxiliary evidence bytes changed")
+                selected.add(member)
+                auxiliary += 1
             if selected != set(names) or verified != bundle["verified_normalized_files"]:
                 raise ValueError("Missing or unmanifested public artifact")
         normalized += verified
@@ -79,6 +92,7 @@ def verify(root: Path = ROOT) -> dict:
         raise ValueError("Combined bundle sizes changed")
     return {
         "archives": len(archives),
+        "auxiliary_files": auxiliary,
         "normalized_files": normalized,
         "compressed_bytes": total_compressed,
         "uncompressed_bytes": total_uncompressed,
