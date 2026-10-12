@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all fifteen rounds. `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all sixteen rounds (seventeen archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -114,6 +114,23 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    and strict self-analysis passed; the comparison job remains red for this publication failure.
    Full shared costs remain equal and retained. SDK contents and final20-session endpoints remain open.
 
+16. Run 38220745660 passes all three exact-head CI jobs and repeats all 13 successful mixed states
+   without changing the source oracle. It also preserves the first fully published native synthetic
+   helper packet after the strict package-provenance repair. Both exact public artifact ZIPs are kept:
+   3,625 normalized comparison files and 204 normalized helper files, with independent hash replay.
+   The helper runs 44 tests: 42 pass and two explicit Linux-only orphan-adoption controls are skipped.
+   All 16 fixed calibration pairs agree on output. Eight RSS runs retain 174 rows / 245 process members;
+   each repeated-child run observes all 13 identities. Requested 10 ms sampling actually has median
+   intervals 15–31 ms and maxima up to 42 ms, as the unchanged receipts disclose.
+   Timing-only observer/no-observer median ratios are 0.972 and 1.051, with both 95% intervals crossing
+   parity. Memory-observed ratios are 1.099 and 1.104, showing measurable observer overhead and supporting
+   separate matched RSS runs. These synthetic diagnostics are not product timing or superiority proof.
+   Native failure-control outcomes remain in the test log; their temporary individual artifacts are
+   not present. macOS detached/unobserved ancestry gaps, moving-runner control, actual-engine
+   calibration, SDK content identity, a fresh holdout and final 20-session endpoints remain open.
+   Full product coverage is 92.81% (40,478/43,614 lines), with 2,008 tests in 203 suites. Earlier failed
+   rounds, including round 15's unavailable helper details, are unchanged.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -124,9 +141,9 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text, their manifests and the reviewed publication status.
 They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
 Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Eleven archives retain
+private; each manifest distinguishes original hashes from normalized public hashes. Thirteen archives retain
 the exact bytes of their public Actions artifacts. The three test-phase archives and round eight's partial
-driver-phase archive were normalized separately after their failures. Rounds nine through fifteen preserve all original
+driver-phase archive were normalized separately after their failures. Rounds nine through sixteen preserve all original
 ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
 when Actions retention expires.
 

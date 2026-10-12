@@ -39,6 +39,8 @@ jobs:
           python3 Scripts/verify-indexstore-pilot-evidence.py
           python3 Scripts/verify-module-refresh-diagnostic.py
           python3 Scripts/verify-native-measurement-contract.py
+          python3 -m unittest discover -s Scripts/benchmark-inputs -v
+          python3 Scripts/verify-sdk-discovery-contract.py
 
       # 두 제품 모두 새 release 스크래치에서 빌드한다. 전역 SDK/의존성 캐시는
       # 지우지 않으며, 획득·빌드 비용과 각 질의의 원시 출력을 증거에 남긴다.
@@ -87,6 +89,7 @@ jobs:
             --objdump "$(xcrun --find llvm-objdump)"
 
       - name: Validate fresh shared compiler generations for mixed iOS
+        id: mixed
         if: always() && steps.tools.outcome == 'success'
         run: |
           set +e
@@ -131,6 +134,55 @@ jobs:
         with:
           name: measurement-helper-validation
           path: ${{ runner.temp }}/measurement-helper-public/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+      # 검색 경계 제안만 만든다. SDK 전체 봉인/승인이나 최종 성능 세션은 실행하지 않는다.
+      - name: Discover native SDK input roots
+        id: sdk_discovery
+        if: always() && !cancelled() && steps.mixed.outcome == 'success'
+        run: |
+          set +e
+          python3 Scripts/validate-native-sdk-discovery.py \
+            --lifecycle-results "$RUNNER_TEMP/indexstore-mixed-validation/validation/results.json" \
+            --output "$RUNNER_TEMP/sdk-discovery-raw" \
+            --attempt-output "$RUNNER_TEMP/sdk-discovery-attempt" \
+            > "$RUNNER_TEMP/sdk-discovery-console.log" 2>&1
+          status=$?
+          if [ -d "$RUNNER_TEMP/sdk-discovery-raw" ]; then
+            mkdir -p "$RUNNER_TEMP/sdk-discovery-raw/setup"
+            cp "$RUNNER_TEMP/sdk-discovery-console.log" \
+              "$RUNNER_TEMP/sdk-discovery-raw/setup/driver.stdout"
+          fi
+          exit "$status"
+
+      - name: Prepare safe SDK discovery evidence
+        id: sdk_normalize
+        if: always() && !cancelled() && steps.sdk_discovery.outcome != 'skipped'
+        run: |
+          python3 Scripts/normalize-sdk-discovery-evidence.py \
+            --lifecycle-results "$RUNNER_TEMP/indexstore-mixed-validation/validation/results.json" \
+            --scratch-root "$RUNNER_TEMP" \
+            --input "$RUNNER_TEMP/sdk-discovery-raw" \
+            --attempt "$RUNNER_TEMP/sdk-discovery-attempt" \
+            --ready-output "$GITHUB_OUTPUT" \
+            --output "$RUNNER_TEMP/sdk-discovery-public" \
+            --prefix "WORKSPACE=$GITHUB_WORKSPACE" \
+            --prefix "RUNNER_TEMP=$RUNNER_TEMP" \
+            --prefix "RUNNER_HOME=$HOME" \
+            --prefix "DEVELOPER=$(xcode-select -p)" \
+            --prefix "APPLICATIONS=/Applications" --prefix "LIBRARY=/Library" \
+            --prefix "SYSTEM=/System" --prefix "PRIVATE=/private" \
+            --prefix "USR=/usr" --prefix "OPT=/opt" --prefix "BIN=/bin" \
+            --prefix "DEV=/dev" --prefix "TEMP=/var"
+
+      - name: Preserve normalized SDK discovery evidence
+        if: always() && steps.sdk_normalize.outputs.ready == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: sdk-input-discovery
+          path: ${{ runner.temp }}/sdk-discovery-public/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14

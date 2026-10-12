@@ -278,12 +278,52 @@
       "sha256": "f3339b2798b11f5222ab7552b46ac3988096a7091ab4d4a3b299ec9eb51ee191",
       "uncompressed_bytes": 39085012,
       "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38220745660-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965752,
+          "path": "bundle-status.json",
+          "sha256": "221c43f1c7b910822ab4c8a9201fc9a228c45b3a889a2ee696339856f600ad67"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7658073,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38220745660,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38220745660",
+      "scope": "Exact normalized Actions comparison artifact. Validation-only; raw binaries and private metadata omitted; no final superiority evidence.",
+      "sha256": "6829e9b344157e801f008fad3ee7585dff355c2265ee8602bcea16c19062ce6d",
+      "uncompressed_bytes": 39085344,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38220745660-helper-normalized.zip",
+      "archive_entries": 205,
+      "complete_run_evidence": false,
+      "compressed_bytes": 142074,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38220745660,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38220745660",
+      "scope": "Exact normalized Actions helper artifact. Validation-only; raw binaries and private metadata omitted; no final superiority evidence.",
+      "sha256": "dbbc7ce4dd66a984df9013d71094df56914d718f029a786a8ebbc5d4231b5865",
+      "uncompressed_bytes": 333925,
+      "verified_normalized_files": 204
     }
   ],
   "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
   "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 49653687,
-  "total_uncompressed_bytes": 266138882
+  "total_compressed_bytes": 57453834,
+  "total_uncompressed_bytes": 305558151
 }
