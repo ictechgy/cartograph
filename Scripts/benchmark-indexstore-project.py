@@ -621,6 +621,49 @@ def prepare_project(
     )
 
 
+def discover_native_graph(
+    binary: str,
+    project: Path,
+    store: Path,
+    config: Path,
+    out: Path,
+    timeout: float,
+    allowed: set[str],
+    oracle: dict,
+    mode: str,
+) -> tuple[dict, dict, dict | None]:
+    if mode not in {"default", "include-self-loops"}:
+        raise ValueError(f"Unknown graph projection: {mode}")
+
+    def observe(projection: str, directory: Path) -> tuple[dict, dict]:
+        started = time.perf_counter()
+        flags = ["--include-self-loops"] if projection == "include-self-loops" else []
+        text, measurement = BASE.capture(
+            [binary, "graph", "--format", "json", "--level", "symbol", *flags, *cg_options(project, store, config)],
+            project,
+            directory / "graph",
+            timeout,
+        )
+        graph = parse_cg_graph(json.loads(text), project, allowed, oracle)
+        BASE.save(directory / "normalized.json", graph)
+        measurement["workflow_seconds"] = time.perf_counter() - started
+        return graph, measurement
+
+    graph, measurement = observe(mode, out)
+    diagnostic = None
+    if mode == "include-self-loops":
+        default_graph, default_measurement = observe("default", out / "default-projection")
+        diagnostic = {
+            "projection": "default",
+            "measurement": default_measurement,
+            "graph_grade": graph_grade(default_graph, oracle),
+            "query_grade": grade(baseline_queries(default_graph, query_requests(oracle)), oracle),
+            "timing_role": "Separate default-projection diagnostic, outside complete-projection discovery/query clocks.",
+            "correctness_role": "Retained against the unchanged full-call oracle; default filtering is not a complete-call contract.",
+        }
+    return graph, measurement, diagnostic
+
+
 def run_validation(args: argparse.Namespace, root: Path, report: dict, oracle: dict, manifest: dict) -> None:
     tools = reuse_tools(args.setup_results.resolve(), args.baseline_only, root)
     report["reused_tools"] = tools
@@ -661,26 +704,22 @@ def run_validation(args: argparse.Namespace, root: Path, report: dict, oracle: d
     }
     BASE.save(root / "results.json", report)
     if not args.baseline_only:
-        started = time.perf_counter()
-        text, measurement = BASE.capture(
-            [
-                tools["cartograph"],
-                "graph",
-                "--format",
-                "json",
-                "--level",
-                "symbol",
-                *cg_options(project, store, config),
-            ],
+        graph, measurement, diagnostic = discover_native_graph(
+            tools["cartograph"],
             project,
-            root / "runs" / "discovery" / "cartograph" / "graph",
+            store,
+            config,
+            root / "runs" / "discovery" / "cartograph",
             args.query_timeout,
+            source_files(manifest),
+            oracle,
+            args.cartograph_graph_mode,
         )
-        graph = parse_cg_graph(json.loads(text), project, source_files(manifest), oracle)
         graphs["cartograph"] = graph
-        BASE.save(root / "runs" / "discovery" / "cartograph" / "normalized.json", graph)
-        measurement["workflow_seconds"] = time.perf_counter() - started
+        if diagnostic is not None:
+            report["default_projection_diagnostic"] = diagnostic
         report["discovery"]["cartograph"] = {
+            "projection": args.cartograph_graph_mode,
             "measurement": measurement,
             "graph_grade": graph_grade(graph, oracle),
             "query_grade": grade(baseline_queries(graph, query_requests(oracle)), oracle),
@@ -801,6 +840,12 @@ def main(argv: list[str] | None = None) -> int:
         default=4,
         help="Even number of repeated AB/BA workload pairs, plus one separately labelled first workload",
     )
+    parser.add_argument(
+        "--cartograph-graph-mode",
+        choices=["default", "include-self-loops"],
+        default="default",
+        help="Explicit symbol graph projection; complete mode also retains default graph diagnostics without fallback",
+    )
     parser.add_argument("--jobs", type=int, default=4)
     parser.add_argument("--seed", type=int, default=20261012)
     parser.add_argument("--setup-timeout", type=float, default=1200)
@@ -850,6 +895,7 @@ def main(argv: list[str] | None = None) -> int:
             "seed": args.seed,
             "jobs": args.jobs,
             "baseline_only": args.baseline_only,
+            "cartograph_graph_mode": args.cartograph_graph_mode,
         },
     }
     BASE.save(root / "results.json", report)

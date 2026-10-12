@@ -173,6 +173,20 @@ minimum depths. See the [fixture protocol](../../Fixtures/IndexStoreCLIBenchmark
 This remains validation data, not the final independent holdout. Repeated cached-assembler and fresh native CLI
 measurements are explicitly different state regimes and cannot establish persistent-session superiority.
 
+For the complete compiler-call contract, invoke the project runner with
+`--cartograph-graph-mode include-self-loops`. This explicitly requests the symbol graph's recursive edges and
+retains a second, separately graded default graph. Unsupported options fail without retrying a weaker projection.
+The default remains available as `--cartograph-graph-mode default`; both modes use the unchanged 13-edge oracle.
+Query seed exclusion is unchanged. The extra default diagnostic's measured cost is reported separately from
+complete-projection discovery/query timings.
+
+The first native public-project round at `2d687418d46273e1e7b83397eb0ecf782e4b48de`
+([CI run 38192130782](https://github.com/ictechgy/cartograph/actions/runs/38192130782)) retained 11/13 default graph
+edges versus 13/13 in the assembled CLI graph. The two filtered recursive edges are the `MessageInfo` initializer
+(calls at lines 56/70) and `UsageGenerator.makeErrorMessage` (line 229). All depth-1/3/5 caller sets matched.
+The failure and oracle remain unchanged. This documents an intentional default projection difference and motivates
+an equivalent explicit complete-call comparison; it does not establish a performance or accuracy advantage.
+
 ## Public evidence bundle
 
 For public CI artifacts, keep raw evidence locally and run

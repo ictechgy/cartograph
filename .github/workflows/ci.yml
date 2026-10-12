@@ -59,6 +59,7 @@ jobs:
           python3 Scripts/benchmark-indexstore-project.py \
             --setup-results "$RUNNER_TEMP/indexstore-cli-benchmark/results.json" \
             --output "$RUNNER_TEMP/indexstore-project-validation" \
+            --cartograph-graph-mode include-self-loops \
             --repetitions 4 --jobs 3 \
             > "$RUNNER_TEMP/indexstore-project-console.log" 2>&1
           status=$?
@@ -201,6 +202,7 @@ jobs:
           Scripts/verify-cli-contract.sh "$CARTOGRAPH"
           python3 Scripts/verify-action.py
           python3 Scripts/verify-index-cache.py
+          python3 Scripts/verify-recursive-calls.py --cartograph "$CARTOGRAPH"
 
       - name: Circular dependencies
         run: |

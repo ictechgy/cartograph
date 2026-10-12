@@ -185,6 +185,10 @@ expect_status 64 "런타임과 형식 동시" runtime plan --contracts /dev/null
 expect_status 64 "런타임과 베이스라인 동시" runtime plan --contracts /dev/null --executable /dev/null --baseline /dev/null
 expect_status 64 "그래프와 형식 동시"    graph --report-format json
 expect_status 64 "그래프와 strict 동시"  graph --strict
+expect_status 64 "자기 간선에 해상도 없음" graph --include-self-loops
+expect_status 64 "자기 간선과 롤업 동시" graph --include-self-loops --level module
+expect_status 64 "자기 간선과 선언 투영 동시" graph --include-self-loops --level symbol --format json \
+  --declaration-projection --primary-module Main
 expect_status 64 "브리지와 형식 동시"    bridges --report-format json
 expect_status 64 "브리지와 strict 동시"  bridges --strict
 expect_status 64 "스키마와 형식 동시"    schema --report-format json

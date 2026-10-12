@@ -285,6 +285,82 @@ class IdentityAndAnswerTests(unittest.TestCase):
         answers["depth_5"] = BENCH.parse_cg_query(document, BENCH.query_requests(self.oracle)[2], self.graph)["answer"]
         self.assertFalse(BENCH.grade(answers, self.oracle)["passed"])
 
+    def test_complete_projection_is_explicit_and_keeps_default_diagnostic(self):
+        self.oracle["edges"].append({"caller": "caller", "callee": "caller"})
+        complete = self.cg_document()
+        complete["edges"].append({"kind": "call", "source": "node:caller", "target": "node:caller"})
+        documents = [complete, self.cg_document()]
+        with mock.patch.object(
+            BENCH.BASE, "capture", side_effect=[(json.dumps(document), {}) for document in documents]
+        ) as capture:
+            graph, measurement, diagnostic = BENCH.discover_native_graph(
+                "native",
+                self.project,
+                self.project / "store",
+                self.project / "config",
+                self.project / "evidence",
+                10,
+                self.allowed,
+                self.oracle,
+                "include-self-loops",
+            )
+        self.assertTrue(BENCH.graph_grade(graph, self.oracle)["exact_match"])
+        self.assertEqual(capture.call_count, 2)
+        complete, default = [call.args[0] for call in capture.call_args_list]
+        self.assertIn("--include-self-loops", complete)
+        self.assertNotIn("--include-self-loops", default)
+        self.assertEqual(complete[complete.index("--level") + 1], "symbol")
+        self.assertEqual(diagnostic["projection"], "default")
+        self.assertFalse(diagnostic["graph_grade"]["exact_match"])
+        self.assertEqual(diagnostic["graph_grade"]["fn"], 1)
+        self.assertTrue(diagnostic["query_grade"]["passed"])
+        self.assertTrue((self.project / "evidence" / "default-projection" / "normalized.json").is_file())
+        self.assertIn("workflow_seconds", measurement)
+        self.assertIn("workflow_seconds", diagnostic["measurement"])
+
+    def test_default_projection_is_unchanged_and_unknown_or_unsupported_mode_fails(self):
+        with mock.patch.object(BENCH.BASE, "capture", return_value=(json.dumps(self.cg_document()), {})) as capture:
+            _, _, diagnostic = BENCH.discover_native_graph(
+                "native",
+                self.project,
+                self.project / "store",
+                self.project / "config",
+                self.project / "evidence",
+                10,
+                self.allowed,
+                self.oracle,
+                "default",
+            )
+        self.assertIsNone(diagnostic)
+        self.assertEqual(capture.call_count, 1)
+        self.assertNotIn("--include-self-loops", capture.call_args.args[0])
+        with mock.patch.object(BENCH.BASE, "capture", side_effect=RuntimeError("unsupported flag")) as capture:
+            with self.assertRaisesRegex(RuntimeError, "unsupported flag"):
+                BENCH.discover_native_graph(
+                    "native",
+                    self.project,
+                    self.project / "store",
+                    self.project / "config",
+                    self.project / "unsupported",
+                    10,
+                    self.allowed,
+                    self.oracle,
+                    "include-self-loops",
+                )
+        self.assertEqual(capture.call_count, 1)
+        with self.assertRaisesRegex(ValueError, "Unknown graph projection"):
+            BENCH.discover_native_graph(
+                "native",
+                self.project,
+                self.project / "store",
+                self.project / "config",
+                self.project / "unknown",
+                10,
+                self.allowed,
+                self.oracle,
+                "future-mode",
+            )
+
     def test_combined_native_workload_runs_one_max_depth_query(self):
         graph_path = self.project / "graph.json"
         BENCH.BASE.save(graph_path, self.graph)

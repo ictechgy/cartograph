@@ -180,11 +180,18 @@ cartograph graph --level module --format dot   -o graph.dot
 cartograph graph --level type   --format mermaid            # paste into a PR description
 cartograph graph --level symbol --format json  -o graph.json
 cartograph graph --level symbol --format json --evidence -o graph-with-evidence.json
+cartograph graph --level symbol --format json --edge-kind call --include-self-loops -o calls.json
 cartograph graph --level module --format html  -o graph.html
 ```
 
 Four resolutions: `module`, `file`, `type`, `symbol`. The HTML export is a single self-contained
 file with no CDN references — it opens on an air-gapped machine and passes a security review.
+
+Graphs omit self-loops by default, including recursive calls, to preserve the existing diagram contract.
+`--include-self-loops` explicitly retains indexed self-reference edges and requires `--level symbol`;
+combine it with `--edge-kind call` for recursive call edges and `--evidence` for their source occurrences.
+It does not change default `cycles`, query seed exclusion, or module/file/type roll-ups, and cannot be
+combined with `--declaration-projection`. It does not recover calls missing from the compiler index.
 
 `--evidence` adds all indexed reference occurrences supporting the final graph edges, with relative
 file/line/column when available, original USRs, origin and position. It has no query evidence cap.

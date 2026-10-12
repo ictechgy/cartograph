@@ -1,11 +1,13 @@
 {
   "build": "Fresh standalone pinned swift-argument-parser clone; fresh scratch; ArgumentParser target with ArgumentParserToolInfo; --enable-index-store; discover and require one actual completed index; source compilation measured separately.",
   "correctness": "Exact source-ID sets and minimum depths at 1/3/5, explicit negatives, and all 13 audited incoming call edges before the depth-5 frontier. Extra/ambiguous/unmapped reachable identities fail. Oracle expectations are never filtered using tool output.",
+  "default_diagnostic": "Default-projection capture occurs after complete-projection discovery. Its measured cost and grade are retained separately and excluded from the chosen complete-projection discovery/query clock. All costs remain visible; this validation pilot makes no cold-cache or superiority claim.",
   "discovery": "Measured separately: actual index-dump unit/record subprocesses plus generic source normalization and graph assembly; native Cartograph graph plus its own source normalization. Native outputs and graph caches persist.",
   "first": "First observed query workflow follows separately measured discovery in both arms; no cold-cache claim. First discovery plus first query is separately reported, without summing RSS.",
   "identity": "Each arm independently binds all source-declared callable locations. Expected source selectors require unique USRs; all other in-scope callers remain eligible false positives. No bare-name or type-owner aliasing.",
   "interpretation": "Depths are correlated boundary checks from one immutable source state. Descriptive validation timings cannot establish final edit-refresh session cost, independent cold samples, universal superiority, or the final holdout decision gate. No superiority conclusion is emitted.",
   "native_depth_contract": "Separate depth 1/3/5 native commands check CLI boundaries and exact answers. Their measured costs are retained separately, outside repeated combined-user-task timings.",
+  "projection": "The CLI mode is explicitly selected and frozen in parameters. include-self-loops invokes graph --level symbol --include-self-loops for the full compiler-call oracle; it also retains and separately grades the unchanged default graph with all failures visible. No unsupported-option fallback. Query seed exclusion and the 13-edge source oracle are unchanged.",
   "queries": "Same combined reverse-caller user task: one depth-5 minimum-distance answer also supplies depth-1/3 subsets. Baseline reuses its persisted actual-CLI call graph and runs one external BFS in a new Python process. Cartograph executes one native query --batch --depth 5 in a new CLI process. No repeated dumps of unchanged records are imposed on the baseline. Native Cartograph ingestion remains part of its CLI query cost.",
   "repeated": "Even preregistered repetition count with shuffled balanced AB/BA order plus separately labelled first workload; one diagnostic arm on Linux. New processes, likely warm uncontrolled OS caches; no persistent MCP sessions. All runs retained; errors/timeouts fail and retain raw evidence.",
   "role": "real-project validation only; not the final holdout",
@@ -14,5 +16,5 @@
   "source_oracle": "Frozen source-only audit; neither arm supplies or changes expected answers. Unknown compiler representations fail for human review.",
   "state_regimes": "Persisted generic baseline graph versus fresh native Cartograph CLI ingestion are different state regimes. Descriptive timings are not a fair final persistent-session performance comparison. Final 10-query sessions must offer equivalent reuse to each arm, including available native/MCP session reuse.",
   "timing": "Parent workflow clock includes request writes, worker startup, cache reads, subprocesses, JSON parsing, normalization, answer serialization, and evidence writes. Outer wait4 wall/RSS additionally recorded for every worker; each native invocation has separate wait4 wall/RSS. Common compilation and correctness grading excluded from query clocks.",
-  "version": 1
+  "version": 2
 }
