@@ -133,9 +133,9 @@
     "base_commit": "a9854f68545dd1b403458cf504ee4bd99215f439",
     "files": [
       {
-        "bytes": 8665,
+        "bytes": 12408,
         "path": "attempt_receipts.py",
-        "sha256": "1b39c91975eefae199dd550cc94891a9993bc84d3a7651a8eab70514d51cad40"
+        "sha256": "7949b125598f0f94927076ef231ca61a91bd96d63c27c3cb7713d4d980003c1f"
       },
       {
         "bytes": 9150,
@@ -145,7 +145,7 @@
       {
         "bytes": 3578,
         "path": "contract_suite.py",
-        "sha256": "7243d53e0cad0d3cd4a5cdd22e9be933063b4a42705bd58434397332520d5a4c"
+        "sha256": "9fa854576f49cd0890b275829ba40ac7557cd71f3db4bdead8e10bbe0d6fec4c"
       },
       {
         "bytes": 14993,
@@ -178,9 +178,9 @@
         "sha256": "e4621add22b381de9374d37766558c896e6fbfa90b4c23de504eb49ad75f1bf9"
       },
       {
-        "bytes": 11434,
+        "bytes": 11508,
         "path": "selected_launch.py",
-        "sha256": "3e1dcb84e5aa3e2c11f31b84b58b74c3f3ab5b94e047907c933b25d142f7f033"
+        "sha256": "776677a6e1099328efee54727526003de117902695d83da7592b5cda0d950f96"
       },
       {
         "bytes": 10269,
@@ -213,9 +213,9 @@
         "sha256": "400b5dd99f9cca8f857662d1df03feda0d75cdb65d5869ab8968409a17a67098"
       },
       {
-        "bytes": 5116,
+        "bytes": 10120,
         "path": "test_pre_record_diagnostics.py",
-        "sha256": "6f2899007a92222db6cd285cf088a073c47af9681030e10a161729739ddb54c8"
+        "sha256": "373fb7251fe20473fc514bb1f515da93f580be8d06c3aff60c7078dbaab40446"
       },
       {
         "bytes": 14472,
@@ -228,9 +228,9 @@
         "sha256": "11144892b970c2d024be7b4a3fadd83e8c7e94e725d87d7cbca8e89b1566d523"
       },
       {
-        "bytes": 14659,
+        "bytes": 15046,
         "path": "test_selected_launch.py",
-        "sha256": "1686f2e8ce558e32a3a439d39088beaaf7213fd8b6a9f4a89ae4915100334ee4"
+        "sha256": "28ef5c61ce05ce73b79b9b5a5a343865fb95032229e0ac2960a67cc479ca1d8f"
       },
       {
         "bytes": 9283,
@@ -239,6 +239,6 @@
       }
     ],
     "role": "bound-full-contract-prerequisites-after-existing-install",
-    "scope": "Original copied hashes remain historical. Runtime bootstrap/identity/measurement implementations stay unchanged. The private vendored normalizer adds identity-default transformation/type injection before its unchanged scanner; runtime test fixture cache destination is explicit. Only request-bound module maps receive lossless publication projection. The generation-input successor binds developer context from accepted compiler/library/SDK paths, retains an optional explicit override and rechecks directory identities. Original copied primitive hashes remain historical. Typed pre-record diagnostics add finite stages/reasons and hash-only unknown errors without changing admission predicates; original logs/exit/cost remain authoritative. Prospective selected launch adds one measured same-physical-interpreter exec with exclusive request/actual observation and completion binding. Original installation predicates and runtime/vendor implementations remain unchanged."
+    "scope": "Original copied hashes remain historical. Runtime bootstrap/identity/measurement implementations stay unchanged. The private vendored normalizer adds identity-default transformation/type injection before its unchanged scanner; runtime test fixture cache destination is explicit. Only request-bound module maps receive lossless publication projection. The generation-input successor binds developer context from accepted compiler/library/SDK paths, retains an optional explicit override and rechecks directory identities. Original copied primitive hashes remain historical. Typed pre-record diagnostics add finite stages/reasons and hash-only unknown errors without changing admission predicates; original logs/exit/cost remain authoritative. Prospective selected launch adds one measured same-physical-interpreter exec with exclusive request/actual observation and completion binding. Original installation predicates and runtime/vendor implementations remain unchanged. The selected-launch environment refusal additionally carries a bounded fixed-key/count/hash-only difference diagnostic; exact environment equality and original interpreter binding remain unchanged."
   }
 }

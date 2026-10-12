@@ -8,6 +8,7 @@ from pathlib import Path
 import time
 
 import installation_binding as installation
+import attempt_receipts
 
 ROOT = Path(__file__).resolve().parent
 require = installation.require
@@ -194,7 +195,8 @@ def prepare(args, root, current, source_hashes, save, *, execve=os.execve, envir
     started = time.perf_counter()
     expected_environment = private_environment(root)
     environment = dict(os.environ) if environment is None else dict(environment)
-    require(environment == expected_environment, "Private launch environment differs")
+    if environment != expected_environment:
+        raise attempt_receipts.PrivateEnvironmentMismatch(expected_environment, environment)
     request_path, observed_path = paths(root)
     marker = getattr(args, "selected_launch_sha256", None)
     if marker is not None:

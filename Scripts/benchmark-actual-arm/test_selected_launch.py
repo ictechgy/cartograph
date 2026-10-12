@@ -199,9 +199,13 @@ class SelectedLaunchTests(unittest.TestCase):
     def test_ambient_environment_cannot_be_forwarded(self):
         self.env["UNEXPECTED_PRIVATE_VALUE"] = "do-not-forward"
         execute = mock.Mock()
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "Private launch environment differs") as caught:
             self.prepare(execve=execute)
         execute.assert_not_called()
+        self.assertEqual(caught.exception.summary["extra_key_count"], 1)
+        self.assertNotIn("UNEXPECTED_PRIVATE_VALUE", json.dumps(caught.exception.summary))
+        self.assertFalse((self.attempt / "selected-launch-request.json").exists())
+        self.assertFalse((self.attempt / "selected-launch-observation.json").exists())
 
     def test_retargeted_selected_alias_is_not_same_physical_installation(self):
         copied = self.root / "copied-selected"

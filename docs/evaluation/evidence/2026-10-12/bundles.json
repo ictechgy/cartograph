@@ -1037,12 +1037,38 @@
       "sha256": "3ab03d8eb1ad654c469bd02828acdd1d88e7542d908ca1e130a58336b61942e9",
       "uncompressed_bytes": 12405,
       "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38274111344-actual-arm-normalized.zip",
+      "archive_entries": 2,
+      "artifact_kind": "actual-arm-correctness-validation",
+      "auxiliary_files": [
+        {
+          "bytes": 439,
+          "path": "publication-status.json",
+          "sha256": "9f95a66608ad25020e0d8a04eb4e95f74aa21a46f7b38c2d04d08e24e8ac4cf4"
+        },
+        {
+          "bytes": 12510,
+          "path": "attempt.json",
+          "sha256": "d59a19da5ba3607c19261d4448a78d6668b9e3d3a1732e64e6e7922899146b2c"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 3692,
+      "manifests": [],
+      "run_id": 38274111344,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38274111344",
+      "scope": "Exact public Actions ZIP; only two safe attempt/publication envelopes. Other detailed packets from this run remain unarchived and unregraded.",
+      "sha256": "14812f53dd230f18fc41d8c2d24031b994abcba1d74f04b9bb85e9efd3e51233",
+      "uncompressed_bytes": 12949,
+      "verified_normalized_files": 0
     }
   ],
   "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
   "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 138379871,
-  "total_uncompressed_bytes": 683721537
+  "total_compressed_bytes": 138383563,
+  "total_uncompressed_bytes": 683734486
 }

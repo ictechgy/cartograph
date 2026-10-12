@@ -51,6 +51,84 @@ PRE_RECORD_REASONS = {
 PRE_RECORD_FAILURES = {"OSError", "ValueError", "RuntimeError", "KeyError", "TypeError", "KeyboardInterrupt"}
 
 
+EXPECTED_ENVIRONMENT_KEYS = {
+    "PATH": "executable-search-path",
+    "LANG": "language",
+    "LC_ALL": "all-locale-categories",
+    "TZ": "time-zone",
+    "PYTHONDONTWRITEBYTECODE": "bytecode-policy",
+    "HOME": "home-directory",
+    "TMPDIR": "temporary-directory",
+    "XDG_CACHE_HOME": "cache-directory",
+    "RUNNER_TEMP": "runner-scratch",
+}
+KNOWN_STARTUP_KEYS = {
+    "LC_CTYPE": "python-locale-category",
+    "__CF_USER_TEXT_ENCODING": "core-foundation-user-text-encoding",
+    "__PYVENV_LAUNCHER__": "python-venv-launcher",
+}
+
+
+def environment_difference(expected, actual):
+    """예상 키의 고정 식별자와 추가 키 이름 집합의 지문만 보존한다. 값은 읽어 비교만 한다."""
+    if set(expected) != set(EXPECTED_ENVIRONMENT_KEYS):
+        raise ValueError("Fixed private environment schema differs")
+    extra = sorted(set(actual) - set(expected))
+    return dict(
+        missing_expected_keys=sorted(EXPECTED_ENVIRONMENT_KEYS[key] for key in expected if key not in actual),
+        changed_expected_keys=sorted(
+            EXPECTED_ENVIRONMENT_KEYS[key] for key in expected if key in actual and expected[key] != actual[key]
+        ),
+        extra_key_count=len(extra),
+        extra_key_names_sha256=sha(json.dumps(extra, separators=(",", ":"), ensure_ascii=True).encode()),
+        known_extra_keys=sorted(KNOWN_STARTUP_KEYS[key] for key in extra if key in KNOWN_STARTUP_KEYS),
+    )
+
+
+def valid_environment_difference(row):
+    if not isinstance(row, dict) or set(row) != {
+        "missing_expected_keys",
+        "changed_expected_keys",
+        "extra_key_count",
+        "extra_key_names_sha256",
+        "known_extra_keys",
+    }:
+        return False
+    for name, allowed in [
+        ("missing_expected_keys", set(EXPECTED_ENVIRONMENT_KEYS.values())),
+        ("changed_expected_keys", set(EXPECTED_ENVIRONMENT_KEYS.values())),
+        ("known_extra_keys", set(KNOWN_STARTUP_KEYS.values())),
+    ]:
+        values = row[name]
+        if (
+            not isinstance(values, list)
+            or len(values) > len(allowed)
+            or any(not isinstance(value, str) or value not in allowed for value in values)
+            or values != sorted(set(values))
+        ):
+            return False
+    count = row["extra_key_count"]
+    key_hash = row["extra_key_names_sha256"]
+    return (
+        type(count) is int
+        and 0 <= count <= 65536
+        and len(row["known_extra_keys"]) <= count
+        and isinstance(key_hash, str)
+        and re.fullmatch("[a-f0-9]{64}", key_hash) is not None
+        and (count != 0 or key_hash == sha(b"[]"))
+        and not set(row["missing_expected_keys"]) & set(row["changed_expected_keys"])
+        and bool(count or row["missing_expected_keys"] or row["changed_expected_keys"])
+    )
+
+
+class PrivateEnvironmentMismatch(ValueError):
+    def __init__(self, expected, actual):
+        self.summary = environment_difference(expected, actual)
+        if not valid_environment_difference(self.summary):
+            raise ValueError("Environment mismatch diagnostic requires a difference")
+        super().__init__("Private launch environment differs")
+
+
 class PreRecordFailure(RuntimeError):
     """메시지 원문 없이 허용된 단계와 알려진 이유 또는 전체 메시지 지문만 전달한다."""
 
@@ -83,6 +161,8 @@ class PreRecordFailure(RuntimeError):
             ),
             exit_code=self.exit_code,
         )
+        if type(error) is PrivateEnvironmentMismatch and stage == "selected-launch":
+            self.diagnostic["environment_difference"] = error.summary
         super().__init__("Pre-record admission failed")
 
 
@@ -109,9 +189,10 @@ def pre_record_diagnostic(phase, historical):
         if {k: identity[k] for k in ("bytes", "sha256")} != {k: historical[k] for k in ("bytes", "sha256")}:
             return None
         row = READER.strict_json(identity["text"])
+        fields = {"schema_version", "status", "stage", "failure", "reason", "message_sha256", "exit_code"}
         if (
             not isinstance(row, dict)
-            or set(row) != {"schema_version", "status", "stage", "failure", "reason", "message_sha256", "exit_code"}
+            or set(row) not in (fields, fields | {"environment_difference"})
             or type(row["schema_version"]) is not int
             or row["schema_version"] != 1
             or row["status"] != "refused-before-record"
@@ -127,6 +208,14 @@ def pre_record_diagnostic(phase, historical):
             if not isinstance(row["message_sha256"], str) or not re.fullmatch("[a-f0-9]{64}", row["message_sha256"]):
                 return None
         elif row["message_sha256"] is not None:
+            return None
+        if "environment_difference" in row and not (
+            row["stage"] == "selected-launch"
+            and row["reason"] == "selected-launch-private-environment-mismatch"
+            and row["failure"] == "ValueError"
+            and row["exit_code"] == 1
+            and valid_environment_difference(row["environment_difference"])
+        ):
             return None
         return row
     except (OSError, ValueError, TypeError, KeyError, READER.DiscoveryError):

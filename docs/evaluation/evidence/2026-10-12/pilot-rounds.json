@@ -23578,6 +23578,410 @@
       "status": "mixed-correctness-passed-actual-arm-pre-record-refusal",
       "superiority_claim": null,
       "url": "https://github.com/ictechgy/cartograph/actions/runs/38269035141"
+    },
+    {
+      "actual_arm": {
+        "artifact_id": 11758489640,
+        "artifact_sha256": "14812f53dd230f18fc41d8c2d24031b994abcba1d74f04b9bb85e9efd3e51233",
+        "attempt": {
+          "child_wall_seconds": 1.8841405000000577,
+          "completed": true,
+          "exit_code": 1,
+          "observed_returncode": 1,
+          "pre_record_diagnostic": {
+            "exit_code": 1,
+            "failure": "ValueError",
+            "message_sha256": null,
+            "reason": "selected-launch-private-environment-mismatch",
+            "schema_version": 1,
+            "stage": "selected-launch",
+            "status": "refused-before-record"
+          },
+          "publication_source_inputs_unchanged": true,
+          "selected_launch": {
+            "observation_sha256": null,
+            "reason": "selected-launch-not-verified",
+            "request_sha256": null,
+            "status": "unavailable"
+          },
+          "source_inputs_unchanged": true,
+          "stderr": {
+            "bytes": 208,
+            "sha256": "13ececdf06b71d515160b8103c79c86834ce0c80a5d805e2e9663a404306f15f",
+            "status": "available"
+          },
+          "stdout": {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "status": "available"
+          },
+          "supervisor_wall_seconds": 1.9199962079999295
+        },
+        "differing_keys_and_values": "unavailable",
+        "exact_failing_predicate": "Private launch environment differs",
+        "failure_stage": "selected-launch",
+        "historical_attribution": "No retrospective environment classification of earlier refusal rounds",
+        "pair_execution_established": false,
+        "publication": {
+          "attempt_status": "verified",
+          "bundle_status": "missing",
+          "complete_run_evidence": false,
+          "controller_completion": {
+            "reason": "no-verified-staged-completion",
+            "status": "unavailable"
+          },
+          "exit_code": 1,
+          "final_evidence": false,
+          "publication_exit_code": 1,
+          "publication_wall_seconds": 0.03786883300017507,
+          "raw_fallback": false,
+          "role": "actual-arm-correctness-publication-envelope",
+          "schema_version": 1
+        },
+        "raw_bundle": "unavailable",
+        "selected_exec_established": false
+      },
+      "detailed_current_packets": {
+        "comparison": "unarchived-unregraded",
+        "helper": "unarchived-unregraded",
+        "sdk": "unarchived-unregraded"
+      },
+      "expectation_changes": false,
+      "head": "54f789e55cb6d2e26c090184d44b66ef80bfd773",
+      "official_job_status_scope": "Workflow API statuses only; no detailed current mixed/helper/SDK outcome regrade or numeric product coverage claim.",
+      "official_job_statuses": [
+        {
+          "conclusion": "success",
+          "id": 114895279224,
+          "name": "Analyze this repository with itself",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Select the newest Xcode",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Cache resolved dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "CLI contract",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Circular dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Unused declarations",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "False-positive corpus",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Value-flow and bridge runtime regressions",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Change impact and historical snapshots",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Runtime contract execution and stale evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Automatic runtime discovery corpus",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "KVC, predicates and immutable factory registries",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Core Data model version and runtime behavior",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Core Data executable, generated classes and MCP evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Native runtime collection",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "MCP sessions and invalidation",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Combined CI checks",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "GitHub Action smoke",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Verify the action wrote SARIF",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Architecture rules",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Architecture metrics",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Export graphs",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/upload-artifact@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post GitHub Action smoke",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Cache resolved dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/ictechgy/cartograph/actions/runs/38274111344/job/114895279224"
+        },
+        {
+          "conclusion": "success",
+          "id": 114895279475,
+          "name": "Build, test and gate coverage",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Select the newest Xcode",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Cache resolved dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Build",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Test with coverage gate",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Preserve integration diagnostics",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Cache resolved dependencies",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/ictechgy/cartograph/actions/runs/38274111344/job/114895279475"
+        },
+        {
+          "conclusion": "failure",
+          "id": 114895279664,
+          "name": "Compare the pinned IndexStoreDB CLI",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Select the newest Xcode",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Verify comparison contracts",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Compare real executables on the same compiler index",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate the frozen public Swift project",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Diagnose compiler module re-indexing",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate fresh shared compiler generations for mixed iOS",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Validate native measurement helpers",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Prepare normalized measurement evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Preserve normalized measurement evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Discover native SDK input roots",
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Prepare safe SDK discovery evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Preserve normalized SDK discovery evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Validate one restored-state bound runtime pair",
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Prepare safe actual-arm correctness evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Preserve normalized actual-arm correctness evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Prepare portable public evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Preserve normalized comparison evidence",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/ictechgy/cartograph/actions/runs/38274111344/job/114895279664"
+        }
+      ],
+      "run_id": 38274111344,
+      "status": "actual-arm-selected-launch-environment-refusal",
+      "superiority_claim": null,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38274111344"
     }
   ],
   "superiority_claim": null

@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all twenty-six rounds (forty-nine archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all twenty-seven rounds (fifty archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -262,6 +262,17 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    original public ZIPs are preserved unchanged. The proposed selected-launch correction is a separate
    prospective change that retains the original installation predicates and full measured outer cost.
 
+27. Run 38274111344 retains a completed selected-launch environment refusal in the exact two-envelope
+   actual-arm artifact. The child exits 1 after 1.884 seconds within 1.920 seconds of supervisor wall;
+   no selected-launch request/observation or AB result is available. The typed predicate is
+   selected-launch-private-environment-mismatch. Which keys or values differ remains unavailable.
+   A diagnostic-only successor preserves exact equality while exposing bounded fixed-key/count/hash
+   identifiers. Linux startup controls cannot identify the original macOS cause. Official job statuses
+   show product/self-analysis success and successful mixed/helper steps; SDK and actual-arm steps remain
+   red. This round deliberately archives only the tiny actual-arm ZIP. Other current detailed packets
+   are unarchived and unregraded, and older full packets are not substituted for them. All earlier
+   archives, failures and source expectations remain unchanged.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -272,10 +283,10 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text, their manifests and the reviewed publication status.
 They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
 Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Forty-four archives retain
+private; each manifest distinguishes original hashes from normalized public hashes. Forty-five archives retain
 the exact bytes of their public Actions artifacts. The four test-phase archives and round eight's partial
 driver-phase archive were normalized separately after their failures. Rounds nine through twenty-two, round twenty-three's status-only artifact and all twelve round twenty-four/twenty-five/twenty-six artifacts preserve all original
-ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
+ZIP bytes, including the publication-status inventory. Round twenty-seven retains only its exact actual-arm ZIP. Archives are committed to avoid losing evidence
 when Actions retention expires.
 
 All bundle hashes, file lists, UTF-8 contents, normalized file hashes and explicitly inventoried

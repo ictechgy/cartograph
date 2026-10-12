@@ -32,7 +32,7 @@ SUITES = {
             "test_contract_prerequisites",
             "test_runtime_publication",
         ],
-        182,
+        190,
     ),
     "runtime": (["test_runtime_bootstrap", "test_runtime_identity"], 43),
 }

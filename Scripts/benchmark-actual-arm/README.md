@@ -9,7 +9,7 @@ See [the execution and failure contract](INTEGRATION-BOUNDARIES.md),
 [exact copied-source provenance](COPIED-PROVENANCE.json). Historical original/successor scripts are
 explicit test fixtures; production selects the reviewed files named by the controller.
 
-The controller first runs all 182 integration and 43 runtime controls through the reviewed isolated
+The controller first runs all 190 integration and 43 runtime controls through the reviewed isolated
 bootstrap, using a separately sealed test-source manifest and the existing single private `--target`
 installation. Both full suite counts, module inventories, runtime receipts and normal exits are required;
 skips, missing imports, incomplete execution or failures stop before the AB pair. Their complete costs
@@ -98,3 +98,18 @@ observation, installation binding, source/argument hashes and runtime interprete
 rechecks the request/observation after staging and verifies exact raw-copy hashes before accepting complete
 evidence. Missing or changed launch details retain a red safe attempt. The credential/path scanner is
 unchanged. Local alias controls do not establish native Homebrew behavior, SDK acceptance or loader closure.
+
+
+Run 38274111344 stopped before creating the selected-launch request: the actual child's environment
+failed exact equality with the requested private environment. The safe native envelope identifies only
+that predicate; it does not identify a differing key or value and does not establish an exec or AB result.
+A diagnostic-only successor preserves that refusal and adds fixed identifiers for missing or changed
+expected keys, the count and SHA-256 of sorted extra key names, and presence identifiers for three
+predeclared Python/macOS startup candidates. No environment values or unknown names are published.
+The bounded stderr parser accepts this extension only for the exact selected-launch ValueError/exit 1
+and rechecks the original log identity at publication. It does not grant any new environment admission.
+
+A Linux Python 3.12.14 process replay with the exact `-I -S -B` flags preserved the requested environment.
+Removing `LC_ALL` in a separate control caused Python to add `LC_CTYPE`, even under isolated startup.
+This establishes a diagnostic control only; the original native environment and macOS cause remain
+unavailable until an actual prospective observation. Local controls never substitute for that evidence.
