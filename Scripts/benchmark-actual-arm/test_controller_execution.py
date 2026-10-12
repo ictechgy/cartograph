@@ -33,6 +33,7 @@ class ExecutionTests(unittest.TestCase):
             prior_costs={},
         )
         self.binding = dict(package={"target": str(self.root / "package")}, python={})
+        self.contract_result = dict(status="passed", exit_code=0)
         self.phase = dict(completed=True, returncode=0, passed=True, wall_seconds=0.0)
         self.raw = self.root / "actual-arm-correctness-raw"
 
@@ -53,6 +54,8 @@ class ExecutionTests(unittest.TestCase):
             controller.installation_binding, "bind", return_value=self.binding
         ), mock.patch.object(
             controller.command_runner, "command", side_effect=command
+        ) as commands, mock.patch.object(
+            controller.contract_prerequisites, "run", return_value=self.contract_result
         ), mock.patch.object(
             controller.isolated_measure,
             "verify_runtime_receipt",
@@ -62,6 +65,7 @@ class ExecutionTests(unittest.TestCase):
             controller.state_inputs, "guard", return_value={"status": "passed"}
         ) as guard:
             result = controller.execute(self.args)
+        self.commands = commands
         return result, guard
 
     def test_success_closes_contiguous_outer_components_and_receipts(self):
@@ -96,6 +100,27 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(result["exit_code"], 125)
         self.assertEqual(guard.call_count, 0)
         self.assertNotIn("terminal_guard", result)
+
+    def test_failed_contracts_prevent_whole_state_and_preserve_exit(self):
+        self.contract_result.update(status="failed", exit_code=1)
+        result, guard = self.execute()
+        self.assertEqual(result["exit_code"], 1)
+        self.assertEqual(result["contracts"], self.contract_result)
+        failure = json.loads((self.raw / "results.json").read_text())
+        self.assertEqual(failure["exit_code"], 1)
+        self.assertFalse(failure["whole_state_started"])
+        self.commands.assert_not_called()
+        guard.assert_not_called()
+
+    def test_incomplete_contracts_remain125_without_next_phase(self):
+        self.contract_result.update(status="incomplete", exit_code=125)
+        result, guard = self.execute()
+        self.assertEqual(result["exit_code"], 125)
+        failure = json.loads((self.raw / "results.json").read_text())
+        self.assertEqual(failure["exit_code"], 125)
+        self.assertFalse(failure["whole_state_started"])
+        self.commands.assert_not_called()
+        guard.assert_not_called()
 
 
 if __name__ == "__main__":

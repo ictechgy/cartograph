@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import publish_correctness as publication
 import state_inputs
 
@@ -100,6 +101,7 @@ class CompletionBindingTests(unittest.TestCase):
             preparation_wall_seconds=0,
             controller_intervals=[],
             whole_state_process=copy.deepcopy(self.phase),
+            contracts=dict(status="passed", exit_code=0),
             terminal_guard=dict(status="passed", generation=self.plan["accepted"]),
             runtime_source_inputs_unchanged=True,
             state_runtime=copy.deepcopy(self.receipt),
@@ -124,7 +126,8 @@ class CompletionBindingTests(unittest.TestCase):
             self.write(name, value)
 
     def result(self):
-        return publication.completion_receipt(self.raw, dict(exit_code=0))
+        with mock.patch.object(publication.controller.contract_prerequisites, "verify", return_value={}):
+            return publication.completion_receipt(self.raw, dict(exit_code=0))
 
     def test_consistent_synthetic_files_bind_all_five_hashes(self):
         row = self.result()

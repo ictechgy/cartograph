@@ -41,8 +41,6 @@ jobs:
           python3 Scripts/verify-native-measurement-contract.py
           python3 -m unittest discover -s Scripts/benchmark-inputs -v
           python3 Scripts/verify-sdk-discovery-contract.py
-          python3 -m unittest discover -s Scripts/benchmark-actual-arm -p 'test_*.py' -v
-          python3 -m unittest discover -s Scripts/benchmark-actual-arm/runtime -p 'test_*.py' -v
 
       # 두 제품 모두 새 release 스크래치에서 빌드한다. 전역 SDK/의존성 캐시는
       # 지우지 않으며, 획득·빌드 비용과 각 질의의 원시 출력을 증거에 남긴다.

@@ -7772,6 +7772,32 @@
       ],
       "status": "native-sdk-runtime-search-root-unresolved",
       "url": "https://github.com/ictechgy/cartograph/actions/runs/38247331431"
+    },
+    {
+      "actual_arm_pair_executed": false,
+      "artifact_id": 11748219570,
+      "artifact_sha256": "600ae293206e7f5dab9196db34e90188593b9aae5656138640ab1efa29094a4f",
+      "compiler_comparison_executed": false,
+      "expectation_changes": false,
+      "failure": "Three module imports lacked psutil before its existing installation. In-process publication controls also failed while the isolated CLI control passed; exact historical verification predicate unavailable.",
+      "full_private_job_log_sha256": "99b51392d532d43e627639bab8042bca133741d089ea3cd669470a3e9ceaa517",
+      "head": "a9854f68545dd1b403458cf504ee4bd99215f439",
+      "inprocess_publication_failure_predicate": "unavailable",
+      "integration_errors": 5,
+      "integration_failures": 5,
+      "integration_tests_run": 88,
+      "isolated_publication_cli_control_passed": true,
+      "missing_psutil_imports": 3,
+      "mixed_validation_executed": false,
+      "native_comparison_result": null,
+      "product_tests_and_coverage": "passed",
+      "retained_contract_phase_original_sha256": "a4836769a34f54da201806f75cb677a305434060ada88f5898ab08f746ba0f8e",
+      "run_id": 38253805122,
+      "sdk_discovery_executed": false,
+      "self_analysis": "passed",
+      "status": "failed-offline-runtime-prerequisites-before-native-execution",
+      "unavailable_comparison_bundles": 4,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38253805122"
     }
   ],
   "superiority_claim": null

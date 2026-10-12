@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 import correctness_controller as controller
 import attempt_receipts
+import runtime_publication
 import state_inputs
 import runtime_bootstrap as bootstrap
 
@@ -148,7 +149,9 @@ def public_attempt(args, attempt):
         row["scope"]
         == "Whole process, serialization and normal teardown observed; detached macOS descendants remain unproved"
     )
-    expected_sources = {str(ROOT / name) for name in controller.SOURCE_FILES}
+    expected_sources = {
+        str(ROOT / name) for name in controller.contract_prerequisites.source_paths(controller.SOURCE_FILES)
+    }
     require(set(row["source_sha256"]) == expected_sources)
     try:
         current_sources = controller.source_hashes()
@@ -238,6 +241,7 @@ def completed_success(record, raw):
         "preparation_wall_seconds",
         "controller_intervals",
         "whole_state_process",
+        "contracts",
         "terminal_guard",
         "runtime_source_inputs_unchanged",
         "state_runtime",
@@ -262,6 +266,7 @@ def completed_success(record, raw):
     )
     runtime_ref = state_inputs.reference(raw / "setup/runtime.json")
     runtime = state_inputs.document(runtime_ref)
+    contract_refs = controller.contract_prerequisites.verify(raw / "setup/contracts", record["contracts"], runtime)
     plan_ref = state_inputs.reference(raw / "setup/plan.json")
     plan = state_inputs.document(plan_ref)
     state_ref = state_inputs.reference(raw / "results.json")
@@ -323,6 +328,7 @@ def completed_success(record, raw):
         state=state_ref,
         plan=plan_ref,
         runtime_inputs=runtime_ref,
+        **contract_refs,
     )
 
 
@@ -373,6 +379,14 @@ def verify_completion_manifest(completion, manifest):
         "plan": "setup/plan.json",
         "runtime_inputs": "setup/runtime.json",
     }
+    paths.update(contracts_results="setup/contracts/results.json", contracts_inputs="setup/contracts/runtime.json")
+    for label in ["integration", "runtime"]:
+        for key, suffix in [
+            ("process", "process.json"),
+            ("runtime", "runtime-result.json"),
+            ("summary", "summary.json"),
+        ]:
+            paths["contracts_" + label + "_" + key] = "setup/contracts/" + label + "/" + suffix
     for key, digest in completion.get("bound_file_sha256", {}).items():
         require(hashes.get(paths[key]) == digest)
 
@@ -431,7 +445,7 @@ def publish(args):
             except (OSError, ValueError, KeyError, TypeError):
                 pass
             dest = pending / "normalized"
-            manifest = NORMALIZER.package(argparse.Namespace(input=raw, output=dest, prefix=prefixes))
+            manifest = runtime_publication.package(NORMALIZER, argparse.Namespace(input=raw, output=dest, prefix=prefixes))
             staged_receipt = public_attempt(args, attempt)
             controller.save(ready / "attempt-after-staging.json", staged_receipt)
             status["post_staging_source_inputs_unchanged"] = staged_receipt["publication_source_inputs_unchanged"]

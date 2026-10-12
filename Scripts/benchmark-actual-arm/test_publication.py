@@ -45,6 +45,17 @@ class PublicationTests(unittest.TestCase):
         self.attempt = self.root / "actual-arm-correctness-attempt"
         self.raw = self.root / "actual-arm-correctness-raw"
         self.public = self.root / "actual-arm-correctness-public"
+        phase = json.loads((self.attempt / "process.json").read_text())
+        selected = phase["command"][0]
+        # 별칭/TMP 문제를 구분하되 경로 원문이나 환경 덤프를 진단에 싣지 않는다.
+        diagnostic = dict(
+            selected_spelling_matches=selected == sys.executable,
+            resolved_interpreter_matches=Path(selected).resolve() == Path(sys.executable).resolve(),
+            selected_sha256=hashlib.sha256(selected.encode()).hexdigest(),
+            current_sha256=hashlib.sha256(sys.executable.encode()).hexdigest(),
+            scratch_is_canonical=self.root == self.root.resolve(),
+        )
+        self.assertTrue(selected == sys.executable, json.dumps(diagnostic, sort_keys=True))
 
     def publish(self):
         with mock.patch.object(controller, "isolation"), mock.patch.dict(os.environ, {"RUNNER_TEMP": str(self.root)}):
@@ -233,6 +244,23 @@ class PublicationTests(unittest.TestCase):
         status, code = self.publish()
         self.assertEqual(code, 1)
         self.assertEqual(status["attempt_status"], "blocked")
+
+    def test_same_physical_interpreter_alias_does_not_relax_request_binding(self):
+        alias = self.root / "python-alias"
+        alias.symlink_to(Path(sys.executable).resolve())
+        self.assertEqual(alias.resolve(), Path(sys.executable).resolve())
+        with mock.patch.object(sys, "executable", str(alias)):
+            with self.assertRaises(ValueError):
+                publication.public_attempt(self.args, self.attempt)
+
+    def test_scratch_alias_keeps_existing_physical_path_contract(self):
+        alias = self.root / "scratch-alias"
+        alias.symlink_to(self.root, target_is_directory=True)
+        self.args.scratch_root = alias
+        status, code = self.publish()
+        self.assertEqual(code, 1)
+        self.assertEqual(status["attempt_status"], "verified")
+        self.assertTrue((self.public / "attempt.json").is_file())
 
 
 if __name__ == "__main__":

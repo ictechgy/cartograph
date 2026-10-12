@@ -720,12 +720,47 @@
       "sha256": "5ab4b0b160b0bc637f6dbf913df9741b921dd54ef899e1c8f45db0215450ece9",
       "uncompressed_bytes": 3905046,
       "verified_normalized_files": 42
+    },
+    {
+      "archive": "run-38253805122-contracts-normalized.zip",
+      "archive_entries": 3,
+      "complete_run_evidence": false,
+      "compressed_bytes": 7630,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38253805122,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38253805122",
+      "scope": "Separately normalized complete failing integration unittest output, with exact original phase and full private log hashes; no native comparator outcome.",
+      "sha256": "8b20aaa7b72fa48909934d982dbb2f99b0f8ef6fd846669a8478d1fd303aee0f",
+      "uncompressed_bytes": 38284,
+      "verified_normalized_files": 2
+    },
+    {
+      "archive": "run-38253805122-comparison-normalized.zip",
+      "archive_entries": 1,
+      "auxiliary_files": [
+        {
+          "bytes": 2044,
+          "path": "bundle-status.json",
+          "sha256": "5665b32029bb88c36513452b57ea3d5702f8578a4c5913b4e1c264908d11723b"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 837,
+      "manifests": [],
+      "run_id": 38253805122,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38253805122",
+      "scope": "Exact status-only Actions artifact; all four requested comparison bundles unavailable.",
+      "sha256": "600ae293206e7f5dab9196db34e90188593b9aae5656138640ab1efa29094a4f",
+      "uncompressed_bytes": 2044,
+      "verified_normalized_files": 0
     }
   ],
   "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
   "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 109594698,
-  "total_uncompressed_bytes": 553664474
+  "total_compressed_bytes": 109603165,
+  "total_uncompressed_bytes": 553704802
 }

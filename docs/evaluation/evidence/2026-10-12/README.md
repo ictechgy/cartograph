@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all twenty-two rounds (thirty-five archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all twenty-three rounds (thirty-seven archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -214,6 +214,16 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    wrapper cost is 17.211 seconds, charged identically to both arms. These clocks are nested and are
    not added twice. Full content sealing, actual-arm calibration, fresh holdouts and final proof remain open.
 
+23. Run 38253805122 passed product tests/coverage and self-analysis, but the new integration contracts
+   were scheduled before the existing single psutil installation. Three test modules failed to import;
+   the attempted suite reported 88 tests, five failures and five errors. The isolated publication CLI
+   control passed, while direct in-process publication controls failed. The exact historical predicate
+   is unavailable, so no interpreter or temporary-path cause is asserted. The complete failing test
+   invocation is retained in a separately normalized archive with original phase/full-log hashes.
+   The exact 837-byte public status artifact contains only four unavailable comparison bundles.
+   Compiler comparison, mixed lifecycle, helper setup, SDK discovery and the actual AB pair did not execute.
+   No native result or performance sample is inferred from this failure.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -224,9 +234,9 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text, their manifests and the reviewed publication status.
 They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
 Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Thirty-one archives retain
-the exact bytes of their public Actions artifacts. The three test-phase archives and round eight's partial
-driver-phase archive were normalized separately after their failures. Rounds nine through twenty-two preserve all original
+private; each manifest distinguishes original hashes from normalized public hashes. Thirty-two archives retain
+the exact bytes of their public Actions artifacts. The four test-phase archives and round eight's partial
+driver-phase archive were normalized separately after their failures. Rounds nine through twenty-two and round twenty-three's status-only artifact preserve all original
 ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
 when Actions retention expires.
 

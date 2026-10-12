@@ -593,10 +593,14 @@ class Normalizer:
             block("helper-process-identity-schema", relative)
         return result
 
+    def transform_input(self, data: bytes, relative: str) -> bytes:
+        """호출자가 검증한 표현 변환도 기존 민감값·경로 검사보다 먼저만 적용한다."""
+        return data
+
     def file(self, path: Path) -> bytes:
         relative = str(path.relative_to(self.raw))
         check_sensitive(relative, relative)
-        data = path.read_bytes()
+        data = self.transform_input(path.read_bytes(), relative)
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
@@ -636,7 +640,7 @@ class Normalizer:
         return self.string(text, relative).encode("utf-8")
 
 
-def package(args: argparse.Namespace) -> dict[str, Any]:
+def package(args: argparse.Namespace, *, normalizer_type=Normalizer) -> dict[str, Any]:
     raw, output = args.input.resolve(), args.output.resolve()
     if not raw.is_dir():
         raise PublicationBlocked("--input must be an existing evidence directory")
@@ -646,7 +650,7 @@ def package(args: argparse.Namespace) -> dict[str, Any]:
         raise PublicationBlocked("--output must be absent or empty")
     selected = select_files(raw)
     verified_samples = verify_sample_chunks(raw, selected)
-    normalizer = Normalizer(args, raw, selected, verified_samples)
+    normalizer = normalizer_type(args, raw, selected, verified_samples)
     prepared, entries = [], []
     normalized_total = 0
     for path in selected:

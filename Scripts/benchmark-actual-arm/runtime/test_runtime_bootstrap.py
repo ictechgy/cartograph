@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import psutil
 import runtime_identity as runtime
@@ -355,7 +356,10 @@ class BootstrapTests(unittest.TestCase):
         import struct
 
         source = self.target / "psutil/__init__.py"
-        cache = Path(importlib.util.cache_from_source(str(source)))
+        # 바깥 계약 런타임의 캐시 prefix가 아니라 패키지 안의 낡은 캐시를 재현한다.
+        with mock.patch.object(sys, "pycache_prefix", None):
+            cache = Path(importlib.util.cache_from_source(str(source)))
+        self.assertTrue(cache.is_relative_to(self.target))
         cache.parent.mkdir(exist_ok=True)
         header = importlib.util.MAGIC_NUMBER + struct.pack(
             "<III", 0, int(source.stat().st_mtime), source.stat().st_size

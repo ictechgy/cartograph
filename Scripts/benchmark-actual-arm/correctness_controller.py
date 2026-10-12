@@ -21,6 +21,7 @@ import isolated_measure
 import installation_binding
 import state_inputs
 import attempt_receipts
+import contract_prerequisites
 
 sys.path.insert(0, str(ROOT / "primitive/vendor"))
 import command_runner
@@ -55,8 +56,10 @@ SOURCE_FILES += [
 ]
 
 
-def source_hashes():
-    return {str((ROOT / name).resolve()): identity.file_identity(ROOT / name)["sha256"] for name in SOURCE_FILES}
+def source_hashes(names=None):
+    if names is None:
+        names = contract_prerequisites.source_paths(SOURCE_FILES)
+    return {str((ROOT / name).resolve()): identity.file_identity(ROOT / name)["sha256"] for name in names}
 
 
 def isolation():
@@ -156,10 +159,13 @@ def execute(args):
     )
     try:
         save(output / "setup/installation-binding.json", binding)
+        result["contracts"] = contract_prerequisites.run(binding, output, SOURCE_FILES, command_runner, save)
+        if result["contracts"]["status"] != "passed":
+            raise contract_prerequisites.Failed(result["contracts"]["exit_code"])
         plan["input_roots"] = roots
         plan["raw_output"] = str(output)
         save(output / "setup/plan.json", plan)
-        sources = source_hashes()
+        sources = source_hashes(SOURCE_FILES)
         runtime = dict(schema_version=1, package=binding["package"], python=binding["python"], code_files=sources)
         runtime_path = output / "setup/runtime.json"
         save(runtime_path, runtime)
@@ -206,7 +212,7 @@ def execute(args):
             result.update(status="incomplete", exit_code=125)
         else:
             result["terminal_guard"] = state_inputs.guard(plan)
-            result["runtime_source_inputs_unchanged"] = source_hashes() == sources
+            result["runtime_source_inputs_unchanged"] = source_hashes(SOURCE_FILES) == sources
             receipt = isolated_measure.verify_runtime_receipt(
                 output / "setup/state-runtime/runtime-result.json",
                 runtime,
@@ -226,6 +232,8 @@ def execute(args):
                 result["exit_code"] = phase["returncode"] or 1
         if result.get("runtime_source_inputs_unchanged") is False and result["exit_code"] != 125:
             result.update(status="failed", exit_code=1)
+    except contract_prerequisites.Failed as error:
+        result.update(status="incomplete" if error.code == 125 else "failed", exit_code=error.code)
     except (OSError, ValueError, RuntimeError, KeyError, TypeError, KeyboardInterrupt) as error:
         result.update(status="incomplete", exit_code=125, failure=type(error).__name__)
     ended = time.perf_counter()
@@ -238,6 +246,19 @@ def execute(args):
     result["cost_accounting"] = (
         "Preparation + whole-state process + terminal verification are nested in outer child wall; no endpoint or ratio is exported"
     )
+    # 상태 작업자가 시작되기 전 실패해도 정규화기의 필수 루트 영수증을 보존한다.
+    if not (output / "results.json").exists():
+        save(
+            output / "results.json",
+            dict(
+                schema_version=1,
+                role="actual-arm-controller-failure-before-state-result",
+                status=result["status"],
+                exit_code=result["exit_code"],
+                final_evidence=False,
+                whole_state_started="whole_state_process" in result,
+            ),
+        )
     save(output / "setup/controller-result.json", result)
     return result
 
