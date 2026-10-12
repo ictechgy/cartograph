@@ -19,6 +19,7 @@ SUITES = {
             "test_controller_execution",
             "test_correctness_controller",
             "test_engine_worker",
+            "test_developer_context",
             "test_installation_binding",
             "test_installer_identity",
             "test_publication",
@@ -29,7 +30,7 @@ SUITES = {
             "test_contract_prerequisites",
             "test_runtime_publication",
         ],
-        139,
+        154,
     ),
     "runtime": (["test_runtime_bootstrap", "test_runtime_identity"], 43),
 }

@@ -48,6 +48,90 @@ def read_reference(reference):
     return value
 
 
+def developer_context(setup):
+    """null override 는 이미 선택된 도구 문맥에서만 복원하며 환경을 다시 검색하지 않는다."""
+
+    def selected(value):
+        if not isinstance(value, str) or not value or not Path(value).is_absolute() or ".." in Path(value).parts:
+            raise ValueError("Invalid selected developer input path")
+        return Path(value)
+
+    tools = [selected(setup[key]).resolve(strict=True) for key in ("clang", "swiftc", "library")]
+    toolchains = []
+    for path in tools:
+        ancestors = [p for p in path.parents if p.name.endswith(".xctoolchain")]
+        if not path.is_file() or len(ancestors) != 1:
+            raise ValueError("Selected compiler/library lacks one toolchain context")
+        toolchains.append(ancestors[0])
+    if len(set(toolchains)) != 1 or toolchains[0].parent.name != "Toolchains":
+        raise ValueError("Selected compiler/library developer contexts disagree")
+    toolchain = toolchains[0]
+    developer = toolchain.parent.parent
+    override = setup.get("developer_dir")
+    if override is not None and selected(override).resolve(strict=True) != developer:
+        raise ValueError("Explicit developer override differs from accepted compiler context")
+    platform_alias = selected(setup["platform_path"])
+    sdk_alias = selected(setup["sdk_path"])
+    platform, sdk = platform_alias.resolve(strict=True), sdk_alias.resolve(strict=True)
+    if (
+        not platform.is_dir()
+        or not sdk.is_dir()
+        or platform.parent != developer / "Platforms"
+        or not platform.name.endswith(".platform")
+        or sdk.parent != platform / "Developer/SDKs"
+        or not sdk.name.endswith(".sdk")
+    ):
+        raise ValueError("Selected SDK is outside accepted developer/platform context")
+    watched = {developer}
+    for value in [
+        *tools,
+        platform_alias,
+        sdk_alias,
+        platform,
+        sdk,
+        *[selected(setup[k]) for k in ("clang", "swiftc", "library")],
+        *([selected(override)] if override is not None else []),
+    ]:
+        directory = value if value.is_dir() else value.parent
+        aliases = [p for p in [directory, *directory.parents] if p.resolve(strict=True) == developer]
+        if len(aliases) != 1:
+            raise ValueError("Selected lexical input lacks the accepted developer ancestor")
+        lexical_root = aliases[0]
+        for path in [directory, *directory.parents]:
+            if not path.is_relative_to(lexical_root):
+                break
+            if not path.is_dir() or not path.resolve(strict=True).is_relative_to(developer):
+                raise ValueError("Selected developer directory alias escapes")
+            watched.add(path)
+        # Xcode.app 같은 상위 별칭은 물리 루트를 넓히지 않고 링크 자체의 교체만 감시한다.
+        for path in lexical_root.parents:
+            if path.resolve(strict=True) == path:
+                break
+            watched.add(path)
+    identities = {}
+    for path in sorted(watched):
+        info = path.lstat()
+        identities[str(path)] = [info.st_dev, info.st_ino, info.st_mode, info.st_mtime_ns, info.st_ctime_ns]
+    return dict(
+        requested_override=override,
+        developer_directory=str(developer),
+        toolchain=str(toolchain),
+        sdk=str(sdk),
+        platform=str(platform),
+        directory_identities=identities,
+        scope="Selected compiler/library/SDK context only; no content seal or loader closure",
+    )
+
+
+def verify_developer_context(config, setup):
+    current = developer_context(setup)
+    if (
+        config.get("developer_context") != current
+        or config.get("developer_directory") != current["developer_directory"]
+    ):
+        raise ValueError("Accepted developer directory context changed")
+
+
 def verify(config):
     """정답 목록을 읽지 않고 승인 명령과 소스 인벤토리로 관측 문맥을 만든다."""
     allowed = {
@@ -65,6 +149,7 @@ def verify(config):
         "output",
         "accepted_sources",
         "developer_directory",
+        "developer_context",
         "queries",
         "limit",
         "timeout",
@@ -123,6 +208,7 @@ def verify(config):
     ):
         raise ValueError("Generation path boundary mismatch")
     setup = data["setup"]
+    verify_developer_context(config, setup)
     if accepted["toolchain_files"] != setup["compiler_toolchain_files"]:
         raise ValueError("Toolchain acceptance mismatch")
     expected_tools = {str(Path(setup[k]).absolute()) for k in ("swiftc", "clang", "library")}

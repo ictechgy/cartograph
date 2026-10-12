@@ -440,12 +440,14 @@ def publish(args):
             # 공개 prefix 는 경로 정규화만 하며 입력 봉인이나 실행 경계 승인으로 사용하지 않는다.
             try:
                 data = state_inputs.document(state_inputs.reference(args.lifecycle))
-                developer = data["setup"]["developer_dir"]
+                developer = state_inputs.generation.developer_context(data["setup"])["developer_directory"]
                 prefixes += ["DEVELOPER=" + str(Path(developer).resolve())]
             except (OSError, ValueError, KeyError, TypeError):
                 pass
             dest = pending / "normalized"
-            manifest = runtime_publication.package(NORMALIZER, argparse.Namespace(input=raw, output=dest, prefix=prefixes))
+            manifest = runtime_publication.package(
+                NORMALIZER, argparse.Namespace(input=raw, output=dest, prefix=prefixes)
+            )
             staged_receipt = public_attempt(args, attempt)
             controller.save(ready / "attempt-after-staging.json", staged_receipt)
             status["post_staging_source_inputs_unchanged"] = staged_receipt["publication_source_inputs_unchanged"]

@@ -143,6 +143,7 @@ def prepare(repository, lifecycle_path, setup_path, measurement_path):
     require(generation.digest(native["binary"]) == native["binary_sha256"], "Native binary changed")
     require(generation.digest(baseline["binary"]) == baseline["binary_sha256"], "Pinned CLI binary changed")
     setup = lifecycle["setup"]
+    developer = generation.developer_context(setup)
     root = Path(lifecycle_path).resolve().parent
     config = dict(
         project=str(root / "Project"),
@@ -156,7 +157,8 @@ def prepare(repository, lifecycle_path, setup_path, measurement_path):
         helper_sha256=generation.helper_hashes(),
         state_id="restored_rebuilt",
         accepted_sources=source_snapshot(root / "Project"),
-        developer_directory=setup["developer_dir"],
+        developer_directory=developer["developer_directory"],
+        developer_context=developer,
         queries=queries,
         limit=10000,
         timeout=240,
@@ -165,7 +167,7 @@ def prepare(repository, lifecycle_path, setup_path, measurement_path):
     derived = generation.verify(config)
     roots = [ROOT, repository, root, Path(measurement_path).resolve().parent, Path(setup_path).resolve().parent]
     roots.extend(Path(v["path"]) for v in inputs.values())
-    roots += [Path(setup["sdk_path"]), Path(setup["developer_dir"])]
+    roots += [Path(setup["sdk_path"]), Path(developer["developer_directory"])]
     roots += [Path(v) for v in (native["binary"], baseline["binary"], setup["library"], sys.executable)]
     roots += [p for p in Path(setup["clang"]).resolve().parents if p.name.endswith(".xctoolchain")]
     return dict(

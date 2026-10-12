@@ -9,7 +9,7 @@ See [the execution and failure contract](INTEGRATION-BOUNDARIES.md),
 [exact copied-source provenance](COPIED-PROVENANCE.json). Historical original/successor scripts are
 explicit test fixtures; production selects the reviewed files named by the controller.
 
-The controller first runs all 139 integration and 43 runtime controls through the reviewed isolated
+The controller first runs all 154 integration and 43 runtime controls through the reviewed isolated
 bootstrap, using a separately sealed test-source manifest and the existing single private `--target`
 installation. Both full suite counts, module inventories, runtime receipts and normal exits are required;
 skips, missing imports, incomplete execution or failures stop before the AB pair. Their complete costs
@@ -50,3 +50,18 @@ The private vendored normalizer now has an explicit identity-default input-trans
 injection point. This is a reviewed implementation delta, recorded in the provenance overrides. Its scanner
 and default CLI behavior are unchanged. Failure-only controller root receipts preserve detailed prerequisite
 logs even when the state worker has not started; existing worker output is never replaced.
+
+The next native attempt (run 38260361983) retained a completed pre-record TypeError refusal and no AB
+result. Its accepted mixed setup has `developer_dir: null`, meaning no explicit override was requested;
+the compiler, library, platform and SDK paths are still explicit. The original traceback is unavailable.
+Replaying that exact null shape against the old controller reproduces `Path(None)` before raw output.
+The successor derives one developer directory only from the accepted physical compiler/library toolchain
+and requires the SDK/platform to belong to it. An explicit override must agree. Lexical/physical directory
+identities are recorded and rechecked with every generation guard; different toolchains, escaping aliases,
+replacement directories and absent context refuse execution. There is no ambient Xcode lookup, additional
+root acceptance or weakening of interpreter equality. These directory identities are not SDK content seals.
+
+The normalized native receipts merge developer aliases into one token, so the original alias spelling
+cannot be fully replayed on Linux. An explicit Xcode bundle-alias control resolves the selected lexical
+ancestor to exactly the accepted physical developer directory and watches the traversed alias identities.
+It neither searches for another Xcode nor admits a different physical SDK/toolchain context.

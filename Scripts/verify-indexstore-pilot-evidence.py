@@ -16,18 +16,22 @@ MAX_FILES = 10_000
 
 
 def verify_auxiliary(member: str, bundle: dict, data: bytes) -> None:
-    """명시적으로 검토한 SDK 공개 영수증만 기존 상태 인벤토리와 함께 허용한다."""
+    """명시적으로 검토한 SDK·실제 팔의 공개 영수증만 상태 인벤토리와 함께 허용한다."""
     if member == "bundle-status.json":
         return
-    roles = {
-        "attempt.json": "sdk-discovery-attempt-envelope",
-        "publication-status.json": "sdk-discovery-publication-envelope",
+    contracts = {
+        "sdk-input-discovery": ("sdk-discovery", ([], ["discovery/manifest.json"])),
+        "actual-arm-correctness-validation": ("actual-arm-correctness", ([],)),
     }
-    if (
-        bundle.get("artifact_kind") != "sdk-input-discovery"
-        or member not in roles
-        or bundle["manifests"] not in ([], ["discovery/manifest.json"])
-    ):
+    kind = bundle.get("artifact_kind")
+    if kind not in contracts:
+        raise ValueError("Unexpected auxiliary evidence path")
+    role_prefix, manifests = contracts[kind]
+    roles = {
+        "attempt.json": role_prefix + "-attempt-envelope",
+        "publication-status.json": role_prefix + "-publication-envelope",
+    }
+    if member not in roles or bundle["manifests"] not in manifests:
         raise ValueError("Unexpected auxiliary evidence path")
     value = json.loads(data)
     if (

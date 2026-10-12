@@ -27,12 +27,21 @@ class InputTests(unittest.TestCase):
         self.binary = self.tools / "binary"
         self.binary.write_bytes(b"synthetic executable")
         self.digest = hashlib.sha256(self.binary.read_bytes()).hexdigest()
-        setup = dict(
-            library=str(self.binary),
-            developer_dir=str(self.root / "Developer"),
-            sdk_path=str(self.root / "SDK.sdk"),
-            clang=str(self.root / "Developer/T.xctoolchain/usr/bin/clang"),
-        )
+        developer = self.root / "Developer"
+        toolchain = developer / "Toolchains/T.xctoolchain"
+        platform = developer / "Platforms/iPhoneSimulator.platform"
+        sdk = platform / "Developer/SDKs/Simulator.sdk"
+        sdk.mkdir(parents=True)
+        setup = dict(developer_dir=str(developer), sdk_path=str(sdk), platform_path=str(platform))
+        for key, relative in [
+            ("clang", "usr/bin/clang"),
+            ("swiftc", "usr/bin/swiftc"),
+            ("library", "usr/lib/libIndexStore.dylib"),
+        ]:
+            path = toolchain / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"synthetic compiler bytes")
+            setup[key] = str(path)
         self.state = dict(
             name="restored_rebuilt",
             status="passed",
@@ -97,6 +106,15 @@ class InputTests(unittest.TestCase):
         self.assertNotIn("oracle", config["generation_receipts"])
         self.assertEqual(set(config["generation_receipts"]), {"lifecycle", "state", "commands"})
         self.assertEqual(plan["inputs"]["oracle"]["sha256"], inputs.ORACLE_SHA256)
+
+    def test_native_unset_override_binds_explicit_runtime_and_output_root(self):
+        self.data["setup"]["developer_dir"] = None
+        self.write()
+        plan = self.prepare()
+        expected = str(self.root / "Developer")
+        self.assertEqual(plan["engine_config"]["developer_directory"], expected)
+        self.assertIsNone(plan["engine_config"]["developer_context"]["requested_override"])
+        self.assertIn(expected, plan["input_roots"])
 
     def test_prearm_input_guard_hashes_oracle_without_parsing_answers(self):
         plan = self.prepare()
