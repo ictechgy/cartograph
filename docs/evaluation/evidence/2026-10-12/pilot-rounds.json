@@ -231,6 +231,53 @@
       "status": "mixed-adapter-and-state-specific-freshness-failed",
       "synthetic_correctness_and_freshness_passed": true,
       "url": "https://github.com/ictechgy/cartograph/actions/runs/38203029381"
+    },
+    {
+      "archive_sha256": "8919b828d496a1b2a287108e7444218454f34196cada03ddfed851dd6a25982f",
+      "compiler_provenance_failure": {
+        "header_edit_rebuilt": "C/ObjC++ current units reference edited header records calling CGAlternate, while a Swift-reachable BridgeKit PCM unit still references the initial header record calling CGBase.",
+        "header_rename_rebuilt": "Current Swift roots still reach that byte-identical initial module unit and its deleted old header dependency; adapter refuses.",
+        "interpretation": "Stale indexed module facts are proven; retained text alone does not distinguish stale PCM reuse from missing re-indexing. No engine winner is graded for these two states.",
+        "same_normalized_module_unit_dump_sha256": "bbc71b2483dd6fc8ba0f6cbd912054ba1309761df4e4e9cf3452d682a631e989"
+      },
+      "expectation_changes": false,
+      "head": "d033ac199d45c5273df33f4aa9b73cc3952d5a83",
+      "initial_graph": {
+        "cartograph": {
+          "fn": 4,
+          "fp": 0,
+          "missing_scope": "The two project header-inline definitions and their four call edges.",
+          "tp": 19,
+          "unresolved_definitions": 2
+        },
+        "index_dump_assembly": {
+          "fn": 0,
+          "fp": 0,
+          "tp": 23
+        }
+      },
+      "mixed_validation_states": 13,
+      "nameless_module_associations": "Two sealed artifact associations executed in each of six graph-scored successful-build states; header rename rebuild separately failed stale module provenance.",
+      "native_freshness": {
+        "completed_query_exits": 6,
+        "failed_state_specific_checks": 6,
+        "query_exit_code": 0
+      },
+      "normalized_bundles": {
+        "argument-parser": 606,
+        "mixed-ios": 1760,
+        "mixed-setup": 6,
+        "synthetic": 1081
+      },
+      "normalized_manifest_files": 3453,
+      "public_project_validation_passed": true,
+      "publication_status": "publication_prepared",
+      "raw_fallback": false,
+      "retained_cost_evidence": "Every manifest-listed setup/build/observation cost retained; no final performance or superiority inference.",
+      "run_id": 38205053093,
+      "status": "mixed-native-header-admission-freshness-and-compiler-provenance-failed",
+      "synthetic_correctness_and_freshness_passed": true,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38205053093"
     }
   ],
   "superiority_claim": null

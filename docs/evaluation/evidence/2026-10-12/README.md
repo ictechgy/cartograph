@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all nine rounds. `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all eleven rounds. `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -60,6 +60,16 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    configuration, every failed observation and setup/build/observation costs remain in this archive.
    No graph accuracy score or superiority claim is inferred from the adapter failure.
 
+11. Run 38205053093 executed the repaired Apple nameless-module association and retained all 13
+   state/result pairs. The initial actual CLI assembly matches all 23 authored edges; native Cartograph
+   has 19, omitting the two project header-inline definitions and their four edges, with no extra edges.
+   All six relevant-path freshness checks still fail. The edited-header rebuild carries both fresh C
+   header records and a stale Swift-reachable BridgeKit PCM index unit; the renamed-header rebuild
+   refuses that same unit's deleted old header dependency. Its unit dump is byte-identical in initial,
+   edited and renamed states. This is retained compiler-input provenance failure, not an engine win;
+   text evidence cannot distinguish stale PCM reuse from missing re-indexing. No still-reachable record
+   was discarded and no source expectation changed. Every setup, build, observation and failure remains.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -70,9 +80,9 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text, their manifests and the reviewed publication status.
 They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
 Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Six archives retain
+private; each manifest distinguishes original hashes from normalized public hashes. Seven archives retain
 the exact bytes of their public Actions artifacts. The three test-phase archives and round eight's partial
-driver-phase archive were normalized separately after their failures. Rounds nine and ten preserve all original
+driver-phase archive were normalized separately after their failures. Rounds nine through eleven preserve all original
 ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
 when Actions retention expires.
 
