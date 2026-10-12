@@ -9,12 +9,12 @@ See [the execution and failure contract](INTEGRATION-BOUNDARIES.md),
 [exact copied-source provenance](COPIED-PROVENANCE.json). Historical original/successor scripts are
 explicit test fixtures; production selects the reviewed files named by the controller.
 
-The controller first runs all 165 integration and 43 runtime controls through the reviewed isolated
+The controller first runs all 182 integration and 43 runtime controls through the reviewed isolated
 bootstrap, using a separately sealed test-source manifest and the existing single private `--target`
 installation. Both full suite counts, module inventories, runtime receipts and normal exits are required;
 skips, missing imports, incomplete execution or failures stop before the AB pair. Their complete costs
 remain nested in controller preparation and the outer attempt wall. The actual-engine source inventory
-remains separate and unchanged. CI no longer attempts these dependency-requiring suites before installation.
+remains separately sealed; its query adapters and source-authored oracle are unchanged. CI no longer attempts these dependency-requiring suites before installation.
 
 For a local environment that already has psutil 7.2.2, the direct developer controls are:
 
@@ -75,3 +75,26 @@ attempt verifies the bounded typed JSON against the original stderr bytes and ac
 Signals, timeouts, malformed/changed logs and historical unavailable logs cannot certify a stage.
 Publication rechecks the same diagnostic and preserves original red/incomplete exit and costs. No raw
 exception messages, paths, environment or source data are added to the safe envelope.
+
+Run 38269035141 gives the first specific native boundary: installation-binding refused because the
+current interpreter spelling differs from a prior helper command. All original helper commands and
+prospective selected paths use the same installation-selected Homebrew spelling. An exact whole-argv
+hash replay identifies the supervisor request as the shorter Homebrew launcher spelling. The child's
+reported spelling and current physical identity are not recovered from that envelope. Earlier generic
+refusals remain unclassified.
+
+A prospective selected-launch step first binds the unchanged original installation receipts to their
+exact selected spelling and checks the current interpreter is the same physical file, metadata and bytes.
+It records an exclusive request in the existing attempt directory and may replace the already measured
+child once using that selected spelling, fixed isolated flags, original arguments and unchanged private
+environment. The replacement must actually report the exact selected spelling and pass the original
+installation binder; framework-launcher rewriting still refuses, without another exec. No package is
+installed again. Original preparation, exec, repeated verification and teardown stay inside the original
+outer child cost. Nested preparation/observation fields are diagnostic intervals, never additive endpoint
+components or exclusions.
+
+A successful controller and public completion require the original request, actual selected-process
+observation, installation binding, source/argument hashes and runtime interpreter to agree. The publisher
+rechecks the request/observation after staging and verifies exact raw-copy hashes before accepting complete
+evidence. Missing or changed launch details retain a red safe attempt. The credential/path scanner is
+unchanged. Local alias controls do not establish native Homebrew behavior, SDK acceptance or loader closure.

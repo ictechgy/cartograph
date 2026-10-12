@@ -25,11 +25,16 @@ PRE_RECORD_STAGES = {
     "output-boundary",
     "state-inputs",
     "installation-binding",
+    "selected-launch",
     "sdk-binding",
     "accepted-output-boundary",
     "raw-output-create",
 }
 PRE_RECORD_REASONS = {
+    "Different physical interpreter cannot be selected": "selected-launch-physical-mismatch",
+    "Selected launch request changed": "selected-launch-request-changed",
+    "Selected launch source changed": "selected-launch-source-changed",
+    "Private launch environment differs": "selected-launch-private-environment-mismatch",
     "Prior interpreter spellings differ": "installation-interpreter-spelling-mismatch",
     "Prospective interpreter identity differs from current input": "prospective-interpreter-identity-mismatch",
     "Private installation target is not canonical": "installation-target-not-canonical",

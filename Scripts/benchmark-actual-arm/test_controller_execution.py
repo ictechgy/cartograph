@@ -33,6 +33,9 @@ class ExecutionTests(unittest.TestCase):
             prior_costs={},
         )
         self.binding = dict(package={"target": str(self.root / "package")}, python={})
+        self.launch = dict(
+            request={}, observation={}, request_ref={"sha256": "a" * 64}, observation_ref={"sha256": "b" * 64}
+        )
         self.contract_result = dict(status="passed", exit_code=0)
         self.phase = dict(completed=True, returncode=0, passed=True, wall_seconds=0.0)
         self.raw = self.root / "actual-arm-correctness-raw"
@@ -52,6 +55,10 @@ class ExecutionTests(unittest.TestCase):
             controller.state_inputs, "bind_sdk_discovery"
         ), mock.patch.object(
             controller.installation_binding, "bind", return_value=self.binding
+        ), mock.patch.object(
+            controller.selected_launch, "prepare", return_value=(self.binding, self.launch)
+        ), mock.patch.object(
+            controller.selected_launch, "verify", return_value=self.launch
         ), mock.patch.object(
             controller.command_runner, "command", side_effect=command
         ) as commands, mock.patch.object(

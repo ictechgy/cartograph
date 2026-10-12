@@ -108,6 +108,7 @@ class CompletionBindingTests(unittest.TestCase):
             state_result=copy.deepcopy(self.state),
             total_wall_seconds_before_receipt=0,
             cost_accounting="synthetic schema test only",
+            selected_launch={},
         )
         self.rewrite()
 
@@ -126,7 +127,9 @@ class CompletionBindingTests(unittest.TestCase):
             self.write(name, value)
 
     def result(self):
-        with mock.patch.object(publication.controller.contract_prerequisites, "verify", return_value={}):
+        with mock.patch.object(
+            publication.controller.contract_prerequisites, "verify", return_value={}
+        ), mock.patch.object(publication, "completed_launch", return_value={}):
             return publication.completion_receipt(self.raw, dict(exit_code=0))
 
     def test_consistent_synthetic_files_bind_all_five_hashes(self):

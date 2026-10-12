@@ -229,11 +229,59 @@ def public_attempt(args, attempt):
             in {"OSError", "ValueError", "RuntimeError", "FileNotFoundError", "PermissionError"}
         )
         public["source_guard_failure"] = row["source_guard_failure"]
+    public["selected_launch"] = selected_launch_summary(args, attempt, row["source_sha256"])
     NORMALIZER.check_sensitive(json.dumps(public), "attempt.json")
     return public
 
 
-def completed_success(record, raw):
+def selected_launch_summary(args, attempt, sources):
+    result = dict(
+        status="unavailable", reason="selected-launch-not-verified", request_sha256=None, observation_sha256=None
+    )
+    for key in ("request", "observation"):
+        try:
+            result[key + "_sha256"] = state_inputs.reference(attempt / ("selected-launch-" + key + ".json"))["sha256"]
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
+    try:
+        record = controller.selected_launch.verify(args, attempt.parent, sources)
+        return dict(
+            status="verified",
+            mode=record["request"]["mode"],
+            request_sha256=record["request_ref"]["sha256"],
+            observation_sha256=record["observation_ref"]["sha256"],
+        )
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+        return result
+
+
+def completed_launch(record, raw, attempt, runtime):
+    summary = attempt.get("selected_launch")
+    require(isinstance(summary, dict) and set(summary) == {"status", "mode", "request_sha256", "observation_sha256"})
+    require(summary["status"] == "verified" and summary["mode"] in {"direct", "one-exec"})
+    require(
+        same_json(record.get("selected_launch"), {key: summary[key + "_sha256"] for key in ("request", "observation")})
+    )
+    references, values = {}, {}
+    for key in ("request", "observation"):
+        reference = state_inputs.reference(raw / ("setup/selected-launch-" + key + ".json"))
+        require(reference["sha256"] == summary[key + "_sha256"])
+        references["selected_launch_" + key] = reference
+        values[key] = state_inputs.document(reference)
+    binding_ref = state_inputs.reference(raw / "setup/installation-binding.json")
+    binding = state_inputs.document(binding_ref)
+    actual = values["observation"]
+    require(values["request"]["mode"] == summary["mode"])
+    require(actual["request_sha256"] == summary["request_sha256"])
+    require(same_json(actual["installation"], controller.selected_launch.identity(binding)))
+    require(same_json(runtime["python"], binding["python"]))
+    require(actual["actual_interpreter"]["selected_path"] == runtime["python"]["path"])
+    require(all(actual["source_sha256"].get(path) == digest for path, digest in runtime["code_files"].items()))
+    references["installation_binding"] = binding_ref
+    return references
+
+
+def completed_success(record, raw, attempt):
     required = {
         "schema_version",
         "status",
@@ -252,6 +300,7 @@ def completed_success(record, raw):
         "state_result",
         "total_wall_seconds_before_receipt",
         "cost_accounting",
+        "selected_launch",
     }
     require(set(record) == required and record["performance_ratio"] is None and record["superiority_claim"] is None)
     phase_ref = state_inputs.reference(raw / "setup/whole-state.json")
@@ -270,6 +319,7 @@ def completed_success(record, raw):
     )
     runtime_ref = state_inputs.reference(raw / "setup/runtime.json")
     runtime = state_inputs.document(runtime_ref)
+    launch_refs = completed_launch(record, raw, attempt, runtime)
     contract_refs = controller.contract_prerequisites.verify(raw / "setup/contracts", record["contracts"], runtime)
     plan_ref = state_inputs.reference(raw / "setup/plan.json")
     plan = state_inputs.document(plan_ref)
@@ -333,6 +383,7 @@ def completed_success(record, raw):
         plan=plan_ref,
         runtime_inputs=runtime_ref,
         **contract_refs,
+        **launch_refs,
     )
 
 
@@ -356,7 +407,7 @@ def completion_receipt(raw, attempt):
         require((record["status"] == "passed") is (record["exit_code"] == 0))
         require((record["status"] == "incomplete") is (record["exit_code"] == 125))
         if record["status"] == "passed":
-            references = completed_success(record, raw)
+            references = completed_success(record, raw, attempt)
             return dict(
                 status="verified",
                 outcome="passed",
@@ -382,6 +433,9 @@ def verify_completion_manifest(completion, manifest):
         "state": "results.json",
         "plan": "setup/plan.json",
         "runtime_inputs": "setup/runtime.json",
+        "selected_launch_request": "setup/selected-launch-request.json",
+        "selected_launch_observation": "setup/selected-launch-observation.json",
+        "installation_binding": "setup/installation-binding.json",
     }
     paths.update(contracts_results="setup/contracts/results.json", contracts_inputs="setup/contracts/runtime.json")
     for label in ["integration", "runtime"]:
@@ -456,6 +510,7 @@ def publish(args):
             controller.save(ready / "attempt-after-staging.json", staged_receipt)
             status["post_staging_source_inputs_unchanged"] = staged_receipt["publication_source_inputs_unchanged"]
             require(staged_receipt["publication_source_inputs_unchanged"] is True)
+            require(same_json(staged_receipt.get("selected_launch"), receipt.get("selected_launch")))
             status["controller_completion"] = completion_receipt(raw, receipt)
             verify_completion_manifest(status["controller_completion"], manifest)
             dest.rename(ready / "validation")

@@ -133,9 +133,9 @@
     "base_commit": "a9854f68545dd1b403458cf504ee4bd99215f439",
     "files": [
       {
-        "bytes": 8312,
+        "bytes": 8665,
         "path": "attempt_receipts.py",
-        "sha256": "53c73db88c185338b5676e135256b3a2956d7d9904b6e38866b9776d6d8a05e4"
+        "sha256": "1b39c91975eefae199dd550cc94891a9993bc84d3a7651a8eab70514d51cad40"
       },
       {
         "bytes": 9150,
@@ -143,14 +143,14 @@
         "sha256": "d51b7d166378b5ccb16e6d7a5d731e5297ccbbe8058e8c8ff123123995a20c96"
       },
       {
-        "bytes": 3542,
+        "bytes": 3578,
         "path": "contract_suite.py",
-        "sha256": "ea6de9303fa091293e62364710af047216a682ba7704fead14d97cc01fade6a8"
+        "sha256": "7243d53e0cad0d3cd4a5cdd22e9be933063b4a42705bd58434397332520d5a4c"
       },
       {
-        "bytes": 13985,
+        "bytes": 14993,
         "path": "correctness_controller.py",
-        "sha256": "530a63a87ab7e0535e63dcf6a58ec7098032c11a62728ddc0e13a1d3ff4fee33"
+        "sha256": "c2897c27472d3863e6b3520610613f0d257d8293a7ec8d9672db2fddc1cd39e4"
       },
       {
         "bytes": 10143,
@@ -158,9 +158,9 @@
         "sha256": "96b106581b64dfe8fe626ece29062233d4c6e0a25ce75be355ecc9a015143c32"
       },
       {
-        "bytes": 21299,
+        "bytes": 24223,
         "path": "publish_correctness.py",
-        "sha256": "bfe5d4996d048f813c1db019501b39633002d6c68d084fb05f8a2dad1043e102"
+        "sha256": "b6c94067f059e2c75f5a2139b3fd6b1fa2ad0d472ac9b3d34a3913f945146751"
       },
       {
         "bytes": 23825,
@@ -178,14 +178,19 @@
         "sha256": "e4621add22b381de9374d37766558c896e6fbfa90b4c23de504eb49ad75f1bf9"
       },
       {
+        "bytes": 11434,
+        "path": "selected_launch.py",
+        "sha256": "3e1dcb84e5aa3e2c11f31b84b58b74c3f3ab5b94e047907c933b25d142f7f033"
+      },
+      {
         "bytes": 10269,
         "path": "state_inputs.py",
         "sha256": "2bee66279ff0121545b93fcdfeb88708022179d4bc6494643941143d02b948c6"
       },
       {
-        "bytes": 8743,
+        "bytes": 8866,
         "path": "test_completion_binding.py",
-        "sha256": "1dabdc28d1e445ef53989dae3933e03591b8d8a15805238b08d0972b4b6f45df"
+        "sha256": "4be5aa928f7f502af940d0084caa16e583dcd4a928ead23a8dc2bd6807b05417"
       },
       {
         "bytes": 9646,
@@ -193,9 +198,9 @@
         "sha256": "4a4c3d0c2480742086d4a8d340d5cd8364b1449de2281d73cd5ab134df9e8604"
       },
       {
-        "bytes": 5775,
+        "bytes": 6151,
         "path": "test_controller_execution.py",
-        "sha256": "10d8b90c6ae6e6d6e0136a477dadf0fb4c32fd2bf6abfe2d1ee09a4af98c7ff6"
+        "sha256": "2096b4adf4b7884c778ea09d9c5505e3c4c01e3594f12213512d65779849eadd"
       },
       {
         "bytes": 6809,
@@ -213,14 +218,19 @@
         "sha256": "6f2899007a92222db6cd285cf088a073c47af9681030e10a161729739ddb54c8"
       },
       {
-        "bytes": 13586,
+        "bytes": 14472,
         "path": "test_publication.py",
-        "sha256": "4cdb3084d9af888a3c9fb6f9c8d1c79832b4ad849907db30c65903cf56150189"
+        "sha256": "63144005b790c1fe036e764b6094adc4678b6a8afa8cfd419fdf8122f2cd8fe0"
       },
       {
         "bytes": 12530,
         "path": "test_runtime_publication.py",
         "sha256": "11144892b970c2d024be7b4a3fadd83e8c7e94e725d87d7cbca8e89b1566d523"
+      },
+      {
+        "bytes": 14659,
+        "path": "test_selected_launch.py",
+        "sha256": "1686f2e8ce558e32a3a439d39088beaaf7213fd8b6a9f4a89ae4915100334ee4"
       },
       {
         "bytes": 9283,
@@ -229,6 +239,6 @@
       }
     ],
     "role": "bound-full-contract-prerequisites-after-existing-install",
-    "scope": "Original copied hashes remain historical. Runtime bootstrap/identity/measurement implementations stay unchanged. The private vendored normalizer adds identity-default transformation/type injection before its unchanged scanner; runtime test fixture cache destination is explicit. Only request-bound module maps receive lossless publication projection. The generation-input successor binds developer context from accepted compiler/library/SDK paths, retains an optional explicit override and rechecks directory identities. Original copied primitive hashes remain historical. Typed pre-record diagnostics add finite stages/reasons and hash-only unknown errors without changing admission predicates; original logs/exit/cost remain authoritative."
+    "scope": "Original copied hashes remain historical. Runtime bootstrap/identity/measurement implementations stay unchanged. The private vendored normalizer adds identity-default transformation/type injection before its unchanged scanner; runtime test fixture cache destination is explicit. Only request-bound module maps receive lossless publication projection. The generation-input successor binds developer context from accepted compiler/library/SDK paths, retains an optional explicit override and rechecks directory identities. Original copied primitive hashes remain historical. Typed pre-record diagnostics add finite stages/reasons and hash-only unknown errors without changing admission predicates; original logs/exit/cost remain authoritative. Prospective selected launch adds one measured same-physical-interpreter exec with exclusive request/actual observation and completion binding. Original installation predicates and runtime/vendor implementations remain unchanged."
   }
 }

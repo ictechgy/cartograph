@@ -197,6 +197,23 @@ class PublicationTests(unittest.TestCase):
         self.assertNotIn("normalization_diagnostic", status)
         self.assertNotIn("unrelated personal", json.dumps(status))
 
+    def test_selected_launch_change_during_staging_blocks_whole_subtree(self):
+        self.raw.mkdir()
+        (self.raw / "results.json").write_text("{}")
+        before = dict(status="verified", mode="direct", request_sha256="a" * 64, observation_sha256="b" * 64)
+        after = dict(
+            status="unavailable",
+            reason="selected-launch-not-verified",
+            request_sha256="a" * 64,
+            observation_sha256="c" * 64,
+        )
+        with mock.patch.object(publication, "selected_launch_summary", side_effect=[before, after]):
+            status, code = self.publish()
+        self.assertEqual(code, 1)
+        self.assertEqual(status["bundle_status"], "blocked")
+        self.assertFalse((self.public / "validation").exists())
+        self.assertEqual(json.loads((self.public / "attempt-after-staging.json").read_text())["selected_launch"], after)
+
     def test_source_change_during_staging_keeps_second_observation_and_blocks_promotion(self):
         self.raw.mkdir()
         (self.raw / "results.json").write_text("{}")

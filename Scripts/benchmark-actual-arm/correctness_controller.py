@@ -19,6 +19,7 @@ import runtime_bootstrap as bootstrap
 import runtime_identity as identity
 import isolated_measure
 import installation_binding
+import selected_launch
 import state_inputs
 import attempt_receipts
 import contract_prerequisites
@@ -31,6 +32,7 @@ SOURCE_FILES = [
     "publish_correctness.py",
     "runtime/vendor/normalize_evidence.py",
     "installation_binding.py",
+    "selected_launch.py",
     "state_inputs.py",
     "state_worker.py",
     "engine_worker.py",
@@ -145,6 +147,9 @@ def execute(args):
     plan = pre_record(
         "state-inputs", state_inputs.prepare, args.repository, args.lifecycle, args.setup, args.measurement
     )
+    _, launch = pre_record(
+        "selected-launch", selected_launch.prepare, args, root, Path(sys.executable), source_hashes, save
+    )
     binding = pre_record(
         "installation-binding", installation_binding.bind, args.measurement, args.repository, Path(sys.executable)
     )
@@ -161,9 +166,12 @@ def execute(args):
         role="actual-arm-correctness-controller",
         performance_ratio=None,
         superiority_claim=None,
+        selected_launch={key: launch[key + "_ref"]["sha256"] for key in ("request", "observation")},
     )
     try:
         save(output / "setup/installation-binding.json", binding)
+        for key in ("request", "observation"):
+            save(output / ("setup/selected-launch-" + key + ".json"), launch[key])
         result["contracts"] = contract_prerequisites.run(binding, output, SOURCE_FILES, command_runner, save)
         if result["contracts"]["status"] != "passed":
             raise contract_prerequisites.Failed(result["contracts"]["exit_code"])
@@ -227,6 +235,14 @@ def execute(args):
                 phase["returncode"],
             )
             result["state_runtime"] = receipt
+            rechecked_launch = selected_launch.verify(args, root, source_hashes())
+            state_inputs.require(
+                all(
+                    rechecked_launch[key + "_ref"]["sha256"] == value
+                    for key, value in result["selected_launch"].items()
+                ),
+                "Selected launch receipts changed during whole state",
+            )
             state = state_inputs.document(state_inputs.reference(output / "results.json"))
             result["state_result"] = state
             if result["terminal_guard"]["status"] == "incomplete":
@@ -318,8 +334,11 @@ def main():
     for name in ("repository", "lifecycle", "setup", "measurement", "scratch-root"):
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--selected-launch-sha256")
     args = parser.parse_args()
     try:
+        if args.selected_launch_sha256 is not None and not args.execute:
+            raise ValueError("Selected launch marker requires measured child")
         result = execute(args) if args.execute else supervise(args)
     except attempt_receipts.PreRecordFailure as error:
         print(json.dumps(error.diagnostic, sort_keys=True), file=sys.stderr)

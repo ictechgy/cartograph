@@ -18309,6 +18309,5275 @@
       "status": "mixed-correctness-passed-actual-arm-pre-record-refusal",
       "superiority_claim": null,
       "url": "https://github.com/ictechgy/cartograph/actions/runs/38265144652"
+    },
+    {
+      "actual_arm": {
+        "artifact_id": 11757450317,
+        "artifact_sha256": "3ab03d8eb1ad654c469bd02828acdd1d88e7542d908ca1e130a58336b61942e9",
+        "attempt": {
+          "child_wall_seconds": 1.6806301249999933,
+          "completed": true,
+          "exit_code": 1,
+          "observed_returncode": 1,
+          "pre_record_diagnostic": {
+            "exit_code": 1,
+            "failure": "ValueError",
+            "message_sha256": null,
+            "reason": "installation-interpreter-spelling-mismatch",
+            "schema_version": 1,
+            "stage": "installation-binding",
+            "status": "refused-before-record"
+          },
+          "publication_source_inputs_unchanged": true,
+          "source_inputs_unchanged": true,
+          "stderr": {
+            "bytes": 211,
+            "sha256": "9d99b913dc68a905587d90768fd8fe0ccb925b5231805d582e4cee36ebad6f57",
+            "status": "available"
+          },
+          "stdout": {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "status": "available"
+          },
+          "supervisor_wall_seconds": 1.7109495000000834
+        },
+        "child_reported_spelling": "unavailable",
+        "current_physical_identity": "unavailable",
+        "exact_failing_predicate": "Prior interpreter spellings differ",
+        "failure_stage": "installation-binding",
+        "historical_attribution": "No retrospective classification of prior generic refusals",
+        "pair_execution_established": false,
+        "prior_selected_spelling": "$OPT/homebrew/opt/python@3.14/bin/python3.14",
+        "publication": {
+          "attempt_status": "verified",
+          "bundle_status": "missing",
+          "complete_run_evidence": false,
+          "controller_completion": {
+            "reason": "no-verified-staged-completion",
+            "status": "unavailable"
+          },
+          "exit_code": 1,
+          "final_evidence": false,
+          "publication_exit_code": 1,
+          "publication_wall_seconds": 0.037615375000086715,
+          "raw_fallback": false,
+          "role": "actual-arm-correctness-publication-envelope",
+          "schema_version": 1
+        },
+        "raw_bundle": "unavailable",
+        "requested_argv_sha256": "c473733c9410f6cccb0898bcf95234464b57e78a73ce561a3a0e11e408728358",
+        "requested_outer_spelling": "$OPT/homebrew/bin/python3"
+      },
+      "compiler_index_policy": "fresh-shared-v2",
+      "expectation_changes": false,
+      "head": "b4c55e6b6dfdea2974ffd7bb78eba2811fa03281",
+      "mixed_validation_states": 13,
+      "native_freshness_checks_passed": 6,
+      "native_helper_diagnostic": {
+        "all_16_pairs_preserved": true,
+        "archive_sha256": "6ce62f8f1ef83c93eb1dbd5f465d5aba2db247e61c4161e99c30f056358a21a4",
+        "compressed_bytes": 142830,
+        "expanded_bytes": 334229,
+        "groups": [
+          {
+            "AB_count": 2,
+            "BA_count": 2,
+            "failed_pairs": [],
+            "maximum_run_evidence_bytes": 5755,
+            "median_observer_over_no_observer_ratio": 1.0086511038639123,
+            "mode": "timing",
+            "no_observer_median_seconds": 0.2507217085000093,
+            "observed_median_seconds": 0.2526867500000094,
+            "pair_count": 4,
+            "ratio_95_ci": [
+              0.8878114052512652,
+              1.0839787510674601
+            ],
+            "raw_ratios": [
+              1.0839787510674601,
+              0.9921734671171812,
+              0.8878114052512652,
+              1.0251287406106435
+            ],
+            "rss_bytes_per_run": [],
+            "rss_bytes_total": 0,
+            "workload": "one_sustained_process"
+          },
+          {
+            "AB_count": 2,
+            "BA_count": 2,
+            "failed_pairs": [],
+            "maximum_run_evidence_bytes": 10831,
+            "median_observer_over_no_observer_ratio": 1.1233372988537145,
+            "mode": "memory",
+            "no_observer_median_seconds": 0.2317715830000111,
+            "observed_median_seconds": 0.2679964794999705,
+            "pair_count": 4,
+            "ratio_95_ci": [
+              1.0002005237201224,
+              1.2202014358663384
+            ],
+            "raw_ratios": [
+              1.0918866028876975,
+              1.1547879948197315,
+              1.2202014358663384,
+              1.0002005237201224
+            ],
+            "rss_bytes_per_run": [
+              3114,
+              3342,
+              3247,
+              3334
+            ],
+            "rss_bytes_total": 13037,
+            "workload": "one_sustained_process"
+          },
+          {
+            "AB_count": 2,
+            "BA_count": 2,
+            "failed_pairs": [],
+            "maximum_run_evidence_bytes": 6022,
+            "median_observer_over_no_observer_ratio": 1.0668388490863323,
+            "mode": "timing",
+            "no_observer_median_seconds": 0.703029062999974,
+            "observed_median_seconds": 0.7338912084999833,
+            "pair_count": 4,
+            "ratio_95_ci": [
+              0.9560965355043948,
+              1.1175134863990148
+            ],
+            "raw_ratios": [
+              1.1175134863990148,
+              1.0466154957830538,
+              0.9560965355043948,
+              1.0870622023896108
+            ],
+            "rss_bytes_per_run": [],
+            "rss_bytes_total": 0,
+            "workload": "twelve_cli_subprocesses"
+          },
+          {
+            "AB_count": 2,
+            "BA_count": 2,
+            "failed_pairs": [],
+            "maximum_run_evidence_bytes": 15094,
+            "median_observer_over_no_observer_ratio": 1.1120035414908682,
+            "mode": "memory",
+            "no_observer_median_seconds": 0.7836105415000247,
+            "observed_median_seconds": 0.8318439375000253,
+            "pair_count": 4,
+            "ratio_95_ci": [
+              0.9170682232393061,
+              1.2641947227181656
+            ],
+            "raw_ratios": [
+              1.2641947227181656,
+              1.0843115126736655,
+              1.139695570308071,
+              0.9170682232393061
+            ],
+            "rss_bytes_per_run": [
+              6896,
+              6979,
+              7161,
+              7337
+            ],
+            "rss_bytes_total": 28373,
+            "workload": "twelve_cli_subprocesses"
+          }
+        ],
+        "memory_records": [
+          {
+            "maximum_interval_seconds": 0.05722462500000347,
+            "median_interval_seconds": 0.041669853999962925,
+            "members": 40,
+            "observed_process_count": 13,
+            "pair": 3,
+            "peak_bytes": 35389440,
+            "samples": 25,
+            "workload": "twelve_cli_subprocesses"
+          },
+          {
+            "maximum_interval_seconds": 0.05016675000001669,
+            "median_interval_seconds": 0.03405112499996221,
+            "members": 41,
+            "observed_process_count": 13,
+            "pair": 1,
+            "peak_bytes": 35405824,
+            "samples": 25,
+            "workload": "twelve_cli_subprocesses"
+          },
+          {
+            "maximum_interval_seconds": 0.02086575000009816,
+            "median_interval_seconds": 0.017961958000000777,
+            "members": 14,
+            "observed_process_count": 1,
+            "pair": 1,
+            "peak_bytes": 17563648,
+            "samples": 14,
+            "workload": "one_sustained_process"
+          },
+          {
+            "maximum_interval_seconds": 0.023309833999974217,
+            "median_interval_seconds": 0.016436020500009363,
+            "members": 15,
+            "observed_process_count": 1,
+            "pair": 4,
+            "peak_bytes": 17580032,
+            "samples": 15,
+            "workload": "one_sustained_process"
+          },
+          {
+            "maximum_interval_seconds": 0.05355883400000039,
+            "median_interval_seconds": 0.03158189600003425,
+            "members": 43,
+            "observed_process_count": 13,
+            "pair": 4,
+            "peak_bytes": 35405824,
+            "samples": 25,
+            "workload": "twelve_cli_subprocesses"
+          },
+          {
+            "maximum_interval_seconds": 0.04256583300002603,
+            "median_interval_seconds": 0.03265010450002137,
+            "members": 45,
+            "observed_process_count": 13,
+            "pair": 2,
+            "peak_bytes": 35323904,
+            "samples": 25,
+            "workload": "twelve_cli_subprocesses"
+          },
+          {
+            "maximum_interval_seconds": 0.027181541999993897,
+            "median_interval_seconds": 0.018168375000016113,
+            "members": 14,
+            "observed_process_count": 1,
+            "pair": 3,
+            "peak_bytes": 17678336,
+            "samples": 15,
+            "workload": "one_sustained_process"
+          },
+          {
+            "maximum_interval_seconds": 0.02666341700000885,
+            "median_interval_seconds": 0.021303812999974525,
+            "members": 15,
+            "observed_process_count": 1,
+            "pair": 2,
+            "peak_bytes": 17645568,
+            "samples": 15,
+            "workload": "one_sustained_process"
+          }
+        ],
+        "normalized_files": 205,
+        "remaining_limits": [
+          "macOS unobserved reparenting gap",
+          "moving runner and uncontrolled host load",
+          "actual engine calibration not run",
+          "SDK contents not proved"
+        ],
+        "sample_members": 227,
+        "sample_rows": 159,
+        "test_failure_controls": "Passed retained test log; temporary per-test failure artifacts are not in this bundle",
+        "tests_passed": 42,
+        "tests_run": 44,
+        "tests_skipped": 2
+      },
+      "product_tests": {
+        "coverage_percent": 92.82,
+        "covered_lines": 40481,
+        "files": 210,
+        "suites": 203,
+        "tests": 2008,
+        "total_lines": 43614
+      },
+      "rebuilt_baseline_graph_and_query_states_passed": 7,
+      "rebuilt_native_graph_and_query_states_passed": 7,
+      "run_id": 38269035141,
+      "sdk_discovery": {
+        "accepted": false,
+        "charged_wall_seconds_by_arm": {
+          "cartograph": 17.55499570799998,
+          "index_dump_assembly": 17.55499570799998
+        },
+        "completed_probe_count": 10,
+        "exit_code": 1,
+        "failure": "unresolved-effective-paths",
+        "final_protocol_ready": false,
+        "full_wrapper_wall_seconds": 17.55499570799998,
+        "probe_wall_seconds": 5.255268874999842,
+        "probes": [
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$SYSTEM_BIN/xcrun",
+              "--sdk",
+              "iphonesimulator",
+              "--show-sdk-path"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "sdk-path",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.3485909169999104
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/sdk-path.stderr",
+            "stdout": "setup/discovery/probes/sdk-path.stdout",
+            "wall_seconds": 2.8073832500000435
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$SYSTEM_BIN/xcrun",
+              "--sdk",
+              "iphonesimulator",
+              "--show-sdk-version"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "sdk-version",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.3857949580000195
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/sdk-version.stderr",
+            "stdout": "setup/discovery/probes/sdk-version.stdout",
+            "wall_seconds": 0.8793246249999811
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$SYSTEM_BIN/xcrun",
+              "--sdk",
+              "iphonesimulator",
+              "--show-sdk-build-version"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "sdk-build",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.42473766600005547
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/sdk-build.stderr",
+            "stdout": "setup/discovery/probes/sdk-build.stdout",
+            "wall_seconds": 0.9895021670000688
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "-print-resource-dir"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "clang-resource",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.3982512500000439
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/clang-resource.stderr",
+            "stdout": "setup/discovery/probes/clang-resource.stdout",
+            "wall_seconds": 0.033609083999976974
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+              "-print-target-info",
+              "-target",
+              "arm64-apple-ios16.0-simulator",
+              "-sdk",
+              "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Generations/restored_rebuilt/Build/modules"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "swift-target",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.3913627910000059
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/swift-target.stderr",
+            "stdout": "setup/discovery/probes/swift-target.stdout",
+            "wall_seconds": 0.23363533299993833
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "-target",
+              "arm64-apple-ios16.0-simulator",
+              "-isysroot",
+              "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+              "-E",
+              "-v",
+              "-x",
+              "c",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "$EVIDENCE/setup/discovery/probe-input"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "clang-c",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.3915737500000205
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/clang-c.stderr",
+            "stdout": "setup/discovery/probes/clang-c.stdout",
+            "wall_seconds": 0.17025454099996296
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "-target",
+              "arm64-apple-ios16.0-simulator",
+              "-isysroot",
+              "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+              "-E",
+              "-v",
+              "-x",
+              "objective-c",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "$EVIDENCE/setup/discovery/probe-input"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "clang-objective-c",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.40148320800005877
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/clang-objective-c.stderr",
+            "stdout": "setup/discovery/probes/clang-objective-c.stdout",
+            "wall_seconds": 0.03526516699992044
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "-target",
+              "arm64-apple-ios16.0-simulator",
+              "-isysroot",
+              "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+              "-E",
+              "-v",
+              "-x",
+              "c++",
+              "-std=c++17",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "$EVIDENCE/setup/discovery/probe-input"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "clang-cxx",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.43105212500006473
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/clang-cxx.stderr",
+            "stdout": "setup/discovery/probes/clang-cxx.stdout",
+            "wall_seconds": 0.03785545799996726
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "-target",
+              "arm64-apple-ios16.0-simulator",
+              "-isysroot",
+              "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+              "-E",
+              "-v",
+              "-x",
+              "objective-c++",
+              "-std=c++17",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "$EVIDENCE/setup/discovery/probe-input"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "clang-objective-cxx",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.37607600000001185
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/clang-objective-cxx.stderr",
+            "stdout": "setup/discovery/probes/clang-objective-cxx.stdout",
+            "wall_seconds": 0.034266375000015614
+          },
+          {
+            "cleanup_root_unfinished": false,
+            "cleanup_signals": [],
+            "command": [
+              "$DEVELOPER/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "-target",
+              "arm64-apple-ios16.0-simulator",
+              "-isysroot",
+              "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+              "-E",
+              "-v",
+              "-x",
+              "objective-c",
+              "-fobjc-arc",
+              "-I",
+              "$RUNNER_TEMP/indexstore-mixed-validation/validation/Project/Sources/BridgeKit/include",
+              "$EVIDENCE/setup/discovery/probe-input"
+            ],
+            "completed": true,
+            "containment": "POSIX process-group fallback only; no detached-descendant guarantee",
+            "cwd": "$EVIDENCE/setup/discovery",
+            "descendant_cleanup_verified": false,
+            "failure": null,
+            "name": "clang-objective-c-arc",
+            "observed_returncode": 0,
+            "passed": true,
+            "post_probe_guard": {
+              "status": "passed",
+              "wall_seconds": 0.3666740830000208
+            },
+            "returncode": 0,
+            "stderr": "setup/discovery/probes/clang-objective-c-arc.stderr",
+            "stdout": "setup/discovery/probes/clang-objective-c-arc.stdout",
+            "wall_seconds": 0.03417287499996746
+          }
+        ],
+        "publication": {
+          "attempt_path_sha256": "8f4e32d979bb4827a73c99ffa4e37bdd4324da32e081e1feb3ec7f2526964773",
+          "attempt_raw_identity": {
+            "bytes": 1133,
+            "sha256": "b1d1587a98f0d4e9872f9c28f0fff1c4058cc025d1de44d6a4066f5be64befc3"
+          },
+          "attempt_status": "verified",
+          "complete_run_evidence": false,
+          "discovery_bundle_status": "normalized",
+          "exit_code": 1,
+          "manifests": [
+            "discovery/manifest.json"
+          ],
+          "normalization_aliases": {
+            "canonical_prefix_sha256": "355da315f4b481f1c5359ccc33038b010d2e3de714f36ab1a1838fab714890f2",
+            "clang_sha256": "d2e4bf622758eee1bf7267c060497fb2c41e098d37b0fca8be73898dc7e14eda",
+            "lexical_prefix_sha256": "bcd4b0d0a281089f0f748fe914617aacfd377263671922f560dafa3788ab7e4c",
+            "lifecycle_sha256": "8e5394c1e37ab9ee9b8a6207a722664c609a75f4ae1feddc08fee89222e6047b",
+            "request_sha256": "b8ab06322da42228436b0f5dc65dca1f93f9ca9bed33d6abb69e369c3ba2169b",
+            "retained_lifecycle_sha256": "8e5394c1e37ab9ee9b8a6207a722664c609a75f4ae1feddc08fee89222e6047b",
+            "scope": "Two fixed libc++ candidate families only; no SDK contents or input-root acceptance",
+            "sdk_canonical_prefix_sha256": "643953b603c5c952f18f44ab34bd69f7851fb1d4dceec3c25c583b5c94b77365",
+            "sdk_lexical_prefix_sha256": "b5c602d9950d2e4f77c191d71aa7ae5bde19967adb9282c9e058eba9bfe1f911",
+            "sdk_request_binding": "exact-selected-sdk",
+            "sdk_root_metadata_sha256": "136d97cad94c2fba51e11c396a0a83009c363496d2e23d5d13ef959db516cd66",
+            "status": "verified",
+            "token": "$CLANG_CXX_HEADERS"
+          },
+          "publication_exit_code": 1,
+          "publication_failure": null,
+          "publication_wall_seconds": 8.585911832999955,
+          "raw_fallback": false,
+          "raw_path_sha256": "206d7c1232091555092ef3541a73bc95f5b0f80ef798de85e2dba9db649a2e0f",
+          "role": "sdk-discovery-publication-envelope",
+          "schema_version": 1,
+          "status": "prepared-with-failures"
+        },
+        "setup_and_guard_wall_seconds": 9.073823041000196,
+        "status": "failed",
+        "total_selector_wall_seconds": 14.329091916000039,
+        "unresolved_effective_paths": [
+          {
+            "observation": {
+              "canonical_path": "$SYSTEM_LIB/swift",
+              "components": [
+                {
+                  "component": "usr",
+                  "entry_type": "directory"
+                },
+                {
+                  "component": "lib",
+                  "entry_type": "directory"
+                },
+                {
+                  "component": "swift",
+                  "entry_type": "directory"
+                }
+              ],
+              "content_read": false,
+              "entry_type": "directory"
+            },
+            "path": "$SYSTEM_LIB/swift",
+            "reason": "external-search-path",
+            "scope": "diagnostic-only-uncovered-path",
+            "usage": "swift-runtime-library-search"
+          }
+        ]
+      },
+      "self_analysis": "passed",
+      "states": [
+        {
+          "freshness": null,
+          "graph_scores": {
+            "cartograph": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            },
+            "index_dump_assembly": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            }
+          },
+          "name": "initial",
+          "observation_status": "passed",
+          "scores": {
+            "graph": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "index_dump_assembly": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "query": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            }
+          },
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.949746290999997,
+              "index_dump_assembly": 4.949746290999997
+            },
+            "compiler_subprocess_wall_seconds": 4.197559791000003,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.949746290999997
+          },
+          "status": "passed"
+        },
+        {
+          "freshness": {
+            "diagnostic": {
+              "command": [
+                "$RUNNER_TEMP/indexstore-cli-benchmark/cartograph-release-build/arm64-apple-macosx/release/cartograph",
+                "query",
+                "CGBase",
+                "--depth",
+                "8",
+                "--limit",
+                "100000",
+                "--project",
+                "$EVIDENCE/Project",
+                "--config",
+                "$EVIDENCE/Project/.cartograph.yml",
+                "--index-store",
+                "$EVIDENCE/Generations/initial/IndexStore",
+                "--include",
+                "Sources/**",
+                "--edge-kind",
+                "call"
+              ],
+              "cwd": "$EVIDENCE/Project",
+              "exit_code": 0,
+              "stderr": "runs/header_edit_unbuilt/observation/cartograph-stale.stderr",
+              "stdout": "runs/header_edit_unbuilt/observation/cartograph-stale.stdout",
+              "wall_seconds": 0.16843220799989922
+            },
+            "exact_changed_paths": [
+              "Sources/BridgeKit/include/CGCore.h"
+            ],
+            "matched_diagnostics": [
+              {
+                "changed_paths": [
+                  "Sources/BridgeKit/include/CGCore.h"
+                ],
+                "diagnostic": "index-staleness: 1 of 9 source file(s) changed after the file's index unit was written, so a call added since the last build is not here yet; paths: [\"Sources/BridgeKit/include/CGCore.h\"]"
+              }
+            ],
+            "reason": "A recognized limitations entry itself must identify a changed dependency; graph locations and stderr do not qualify",
+            "reported_changed_paths": [
+              "Sources/BridgeKit/include/CGCore.h"
+            ],
+            "required_changed_paths": [
+              "Sources/BridgeKit/include/CGCore.h"
+            ],
+            "status": "passed",
+            "warning_present": true
+          },
+          "graph_scores": null,
+          "name": "header_edit_unbuilt",
+          "observation_status": "stale-gate-passed",
+          "scores": null,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 0.0,
+              "index_dump_assembly": 0.0
+            },
+            "compiler_subprocess_wall_seconds": 0,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 0.0
+          },
+          "status": "passed"
+        },
+        {
+          "freshness": null,
+          "graph_scores": {
+            "cartograph": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            },
+            "index_dump_assembly": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            }
+          },
+          "name": "header_edit_rebuilt",
+          "observation_status": "passed",
+          "scores": {
+            "graph": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "index_dump_assembly": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "query": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            }
+          },
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.176741624999977,
+              "index_dump_assembly": 4.176741624999977
+            },
+            "compiler_subprocess_wall_seconds": 3.4354074579998723,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.176741624999977
+          },
+          "status": "passed"
+        },
+        {
+          "freshness": {
+            "diagnostic": {
+              "command": [
+                "$RUNNER_TEMP/indexstore-cli-benchmark/cartograph-release-build/arm64-apple-macosx/release/cartograph",
+                "query",
+                "CGBase",
+                "--depth",
+                "8",
+                "--limit",
+                "100000",
+                "--project",
+                "$EVIDENCE/Project",
+                "--config",
+                "$EVIDENCE/Project/.cartograph.yml",
+                "--index-store",
+                "$EVIDENCE/Generations/header_edit_rebuilt/IndexStore",
+                "--include",
+                "Sources/**",
+                "--edge-kind",
+                "call"
+              ],
+              "cwd": "$EVIDENCE/Project",
+              "exit_code": 0,
+              "stderr": "runs/header_rename_unbuilt/observation/cartograph-stale.stderr",
+              "stdout": "runs/header_rename_unbuilt/observation/cartograph-stale.stdout",
+              "wall_seconds": 0.18922683300002063
+            },
+            "exact_changed_paths": [
+              "Sources/BridgeKit/Core.m",
+              "Sources/BridgeKit/CppBridge.mm",
+              "Sources/BridgeKit/ObjCQuote.m",
+              "Sources/BridgeKit/include/BridgeKit.h",
+              "Sources/BridgeKit/include/CGCore.h",
+              "Sources/BridgeKit/include/RenamedCore.h"
+            ],
+            "matched_diagnostics": [
+              {
+                "changed_paths": [
+                  "Sources/BridgeKit/include/RenamedCore.h"
+                ],
+                "diagnostic": "unindexed-sources: 1 of 9 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers; paths: [\"Sources/BridgeKit/include/RenamedCore.h\"]"
+              },
+              {
+                "changed_paths": [
+                  "Sources/BridgeKit/include/CGCore.h"
+                ],
+                "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/BridgeKit/include/CGCore.h\"]"
+              }
+            ],
+            "reason": "A recognized limitations entry itself must identify a changed dependency; graph locations and stderr do not qualify",
+            "reported_changed_paths": [
+              "Sources/BridgeKit/include/CGCore.h",
+              "Sources/BridgeKit/include/RenamedCore.h"
+            ],
+            "required_changed_paths": [
+              "Sources/BridgeKit/include/CGCore.h",
+              "Sources/BridgeKit/include/RenamedCore.h"
+            ],
+            "status": "passed",
+            "warning_present": true
+          },
+          "graph_scores": null,
+          "name": "header_rename_unbuilt",
+          "observation_status": "stale-gate-passed",
+          "scores": null,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 0.0,
+              "index_dump_assembly": 0.0
+            },
+            "compiler_subprocess_wall_seconds": 0,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 0.0
+          },
+          "status": "passed"
+        },
+        {
+          "freshness": null,
+          "graph_scores": {
+            "cartograph": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            },
+            "index_dump_assembly": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            }
+          },
+          "name": "header_rename_rebuilt",
+          "observation_status": "passed",
+          "scores": {
+            "graph": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "index_dump_assembly": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "query": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            }
+          },
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.665641624999921,
+              "index_dump_assembly": 4.665641624999921
+            },
+            "compiler_subprocess_wall_seconds": 3.972162916999878,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.665641624999921
+          },
+          "status": "passed"
+        },
+        {
+          "freshness": {
+            "diagnostic": {
+              "command": [
+                "$RUNNER_TEMP/indexstore-cli-benchmark/cartograph-release-build/arm64-apple-macosx/release/cartograph",
+                "query",
+                "CGBase",
+                "--depth",
+                "8",
+                "--limit",
+                "100000",
+                "--project",
+                "$EVIDENCE/Project",
+                "--config",
+                "$EVIDENCE/Project/.cartograph.yml",
+                "--index-store",
+                "$EVIDENCE/Generations/header_rename_rebuilt/IndexStore",
+                "--include",
+                "Sources/**",
+                "--edge-kind",
+                "call"
+              ],
+              "cwd": "$EVIDENCE/Project",
+              "exit_code": 0,
+              "stderr": "runs/header_delete_unbuilt/observation/cartograph-stale.stderr",
+              "stdout": "runs/header_delete_unbuilt/observation/cartograph-stale.stdout",
+              "wall_seconds": 0.6415420409999797
+            },
+            "exact_changed_paths": [
+              "Sources/BridgeKit/include/RenamedCore.h"
+            ],
+            "matched_diagnostics": [
+              {
+                "changed_paths": [
+                  "Sources/BridgeKit/include/RenamedCore.h"
+                ],
+                "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/BridgeKit/include/RenamedCore.h\"]"
+              }
+            ],
+            "reason": "A recognized limitations entry itself must identify a changed dependency; graph locations and stderr do not qualify",
+            "reported_changed_paths": [
+              "Sources/BridgeKit/include/RenamedCore.h"
+            ],
+            "required_changed_paths": [
+              "Sources/BridgeKit/include/RenamedCore.h"
+            ],
+            "status": "passed",
+            "warning_present": true
+          },
+          "graph_scores": null,
+          "name": "header_delete_unbuilt",
+          "observation_status": "stale-gate-passed",
+          "scores": null,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 0.0,
+              "index_dump_assembly": 0.0
+            },
+            "compiler_subprocess_wall_seconds": 0,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 0.0
+          },
+          "status": "passed"
+        },
+        {
+          "freshness": {
+            "diagnostic": {
+              "command": [
+                "$RUNNER_TEMP/indexstore-cli-benchmark/cartograph-release-build/arm64-apple-macosx/release/cartograph",
+                "query",
+                "CGBase",
+                "--depth",
+                "8",
+                "--limit",
+                "100000",
+                "--project",
+                "$EVIDENCE/Project",
+                "--config",
+                "$EVIDENCE/Project/.cartograph.yml",
+                "--index-store",
+                "$EVIDENCE/Generations/header_rename_rebuilt/IndexStore",
+                "--include",
+                "Sources/**",
+                "--edge-kind",
+                "call"
+              ],
+              "cwd": "$EVIDENCE/Project",
+              "exit_code": 0,
+              "stderr": "runs/header_delete_build_failed/observation/cartograph-stale.stderr",
+              "stdout": "runs/header_delete_build_failed/observation/cartograph-stale.stdout",
+              "wall_seconds": 0.5716663750000635
+            },
+            "exact_changed_paths": [
+              "Sources/BridgeKit/include/RenamedCore.h"
+            ],
+            "matched_diagnostics": [
+              {
+                "changed_paths": [
+                  "Sources/BridgeKit/include/RenamedCore.h"
+                ],
+                "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/BridgeKit/include/RenamedCore.h\"]"
+              }
+            ],
+            "reason": "A recognized limitations entry itself must identify a changed dependency; graph locations and stderr do not qualify",
+            "reported_changed_paths": [
+              "Sources/BridgeKit/include/RenamedCore.h"
+            ],
+            "required_changed_paths": [
+              "Sources/BridgeKit/include/RenamedCore.h"
+            ],
+            "status": "passed",
+            "warning_present": true
+          },
+          "graph_scores": null,
+          "name": "header_delete_build_failed",
+          "observation_status": "stale-gate-passed",
+          "scores": null,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 2.1013863749999473,
+              "index_dump_assembly": 2.1013863749999473
+            },
+            "compiler_subprocess_wall_seconds": 0.04754737500002193,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 2.1013863749999473
+          },
+          "status": "passed"
+        },
+        {
+          "freshness": null,
+          "graph_scores": {
+            "cartograph": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            },
+            "index_dump_assembly": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            }
+          },
+          "name": "header_restored_rebuilt",
+          "observation_status": "passed",
+          "scores": {
+            "graph": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "index_dump_assembly": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "query": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            }
+          },
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 8.001276624999946,
+              "index_dump_assembly": 8.001276624999946
+            },
+            "compiler_subprocess_wall_seconds": 6.757040832999905,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 8.001276624999946
+          },
+          "status": "passed"
+        },
+        {
+          "freshness": {
+            "diagnostic": {
+              "command": [
+                "$RUNNER_TEMP/indexstore-cli-benchmark/cartograph-release-build/arm64-apple-macosx/release/cartograph",
+                "query",
+                "CGBase",
+                "--depth",
+                "8",
+                "--limit",
+                "100000",
+                "--project",
+                "$EVIDENCE/Project",
+                "--config",
+                "$EVIDENCE/Project/.cartograph.yml",
+                "--index-store",
+                "$EVIDENCE/Generations/header_restored_rebuilt/IndexStore",
+                "--include",
+                "Sources/**",
+                "--edge-kind",
+                "call"
+              ],
+              "cwd": "$EVIDENCE/Project",
+              "exit_code": 0,
+              "stderr": "runs/swift_rename_unbuilt/observation/cartograph-stale.stderr",
+              "stdout": "runs/swift_rename_unbuilt/observation/cartograph-stale.stdout",
+              "wall_seconds": 0.4081802499999867
+            },
+            "exact_changed_paths": [
+              "Sources/AppFlow/Legacy.swift",
+              "Sources/AppFlow/Relocated.swift"
+            ],
+            "matched_diagnostics": [
+              {
+                "changed_paths": [
+                  "Sources/AppFlow/Relocated.swift"
+                ],
+                "diagnostic": "unindexed-sources: 1 of 9 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers; paths: [\"Sources/AppFlow/Relocated.swift\"]"
+              },
+              {
+                "changed_paths": [
+                  "Sources/AppFlow/Legacy.swift"
+                ],
+                "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/AppFlow/Legacy.swift\"]"
+              }
+            ],
+            "reason": "A recognized limitations entry itself must identify a changed dependency; graph locations and stderr do not qualify",
+            "reported_changed_paths": [
+              "Sources/AppFlow/Legacy.swift",
+              "Sources/AppFlow/Relocated.swift"
+            ],
+            "required_changed_paths": [
+              "Sources/AppFlow/Legacy.swift",
+              "Sources/AppFlow/Relocated.swift"
+            ],
+            "status": "passed",
+            "warning_present": true
+          },
+          "graph_scores": null,
+          "name": "swift_rename_unbuilt",
+          "observation_status": "stale-gate-passed",
+          "scores": null,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 0.0,
+              "index_dump_assembly": 0.0
+            },
+            "compiler_subprocess_wall_seconds": 0,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 0.0
+          },
+          "status": "passed"
+        },
+        {
+          "freshness": null,
+          "graph_scores": {
+            "cartograph": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            },
+            "index_dump_assembly": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            }
+          },
+          "name": "swift_rename_rebuilt",
+          "observation_status": "passed",
+          "scores": {
+            "graph": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "index_dump_assembly": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "query": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            }
+          },
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.579522582999971,
+              "index_dump_assembly": 4.579522582999971
+            },
+            "compiler_subprocess_wall_seconds": 3.661700960000303,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.579522582999971
+          },
+          "status": "passed"
+        },
+        {
+          "freshness": {
+            "diagnostic": {
+              "command": [
+                "$RUNNER_TEMP/indexstore-cli-benchmark/cartograph-release-build/arm64-apple-macosx/release/cartograph",
+                "query",
+                "CGBase",
+                "--depth",
+                "8",
+                "--limit",
+                "100000",
+                "--project",
+                "$EVIDENCE/Project",
+                "--config",
+                "$EVIDENCE/Project/.cartograph.yml",
+                "--index-store",
+                "$EVIDENCE/Generations/swift_rename_rebuilt/IndexStore",
+                "--include",
+                "Sources/**",
+                "--edge-kind",
+                "call"
+              ],
+              "cwd": "$EVIDENCE/Project",
+              "exit_code": 0,
+              "stderr": "runs/swift_delete_unbuilt/observation/cartograph-stale.stderr",
+              "stdout": "runs/swift_delete_unbuilt/observation/cartograph-stale.stdout",
+              "wall_seconds": 0.15768616700006532
+            },
+            "exact_changed_paths": [
+              "Sources/AppFlow/Relocated.swift"
+            ],
+            "matched_diagnostics": [
+              {
+                "changed_paths": [
+                  "Sources/AppFlow/Relocated.swift"
+                ],
+                "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/AppFlow/Relocated.swift\"]"
+              }
+            ],
+            "reason": "A recognized limitations entry itself must identify a changed dependency; graph locations and stderr do not qualify",
+            "reported_changed_paths": [
+              "Sources/AppFlow/Relocated.swift"
+            ],
+            "required_changed_paths": [
+              "Sources/AppFlow/Relocated.swift"
+            ],
+            "status": "passed",
+            "warning_present": true
+          },
+          "graph_scores": null,
+          "name": "swift_delete_unbuilt",
+          "observation_status": "stale-gate-passed",
+          "scores": null,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 0.0,
+              "index_dump_assembly": 0.0
+            },
+            "compiler_subprocess_wall_seconds": 0,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 0.0
+          },
+          "status": "passed"
+        },
+        {
+          "freshness": null,
+          "graph_scores": {
+            "cartograph": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            },
+            "index_dump_assembly": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            }
+          },
+          "name": "swift_delete_rebuilt",
+          "observation_status": "passed",
+          "scores": {
+            "graph": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "index_dump_assembly": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "query": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            }
+          },
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.01087337499996,
+              "index_dump_assembly": 4.01087337499996
+            },
+            "compiler_subprocess_wall_seconds": 3.209643249999999,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.01087337499996
+          },
+          "status": "passed"
+        },
+        {
+          "freshness": null,
+          "graph_scores": {
+            "cartograph": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            },
+            "index_dump_assembly": {
+              "false_negative": [],
+              "false_positive": [],
+              "status": "passed",
+              "unresolved": []
+            }
+          },
+          "name": "restored_rebuilt",
+          "observation_status": "passed",
+          "scores": {
+            "graph": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "index_dump_assembly": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            },
+            "query": {
+              "queries": {
+                "q01": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q02": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": null,
+                    "recall": null
+                  },
+                  "wrong_depth": {}
+                },
+                "q03": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q04": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q05": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q06": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q07": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q08": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q09": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                },
+                "q10": {
+                  "direct": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "negative_hits": [],
+                  "transitive": {
+                    "exact": true,
+                    "false_negative": [],
+                    "false_positive": [],
+                    "precision": 1.0,
+                    "recall": 1.0
+                  },
+                  "wrong_depth": {}
+                }
+              },
+              "role": "validation-only",
+              "scored": true,
+              "status": "passed"
+            }
+          },
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 7.132875000000013,
+              "index_dump_assembly": 7.132875000000013
+            },
+            "compiler_subprocess_wall_seconds": 5.766550538999809,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 7.132875000000013
+          },
+          "status": "passed"
+        }
+      ],
+      "status": "mixed-correctness-passed-actual-arm-pre-record-refusal",
+      "superiority_claim": null,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38269035141"
     }
   ],
   "superiority_claim": null

@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all twenty-five rounds (forty-five archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all twenty-six rounds (forty-nine archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -248,6 +248,20 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    successor adds finite stage/reason identifiers and hash-only unknown errors, with existing admission
    predicates and original exit/cost semantics unchanged.
 
+26. Run 38269035141 passes product/self-analysis, all 13 mixed states and synthetic helper checks.
+   Product: 2,008 tests, 203 suites, 92.82% coverage (40,481/43,614 lines). All 14 graph projections
+   and 21 ten-query batches regrade exactly; helper retains 16 pairs and 159 RSS rows/227 members.
+   SDK retains 42 normalized files and ten successful guarded probes, with the same unresolved
+   runtime-library search root. The actual-arm attempt's two safe envelopes now identify the exact
+   installation-binding refusal: installation-interpreter-spelling-mismatch. Its completed exit 1
+   preserves 1.681 seconds of child work within 1.711 seconds of supervisor wall. Original helper
+   commands and prospective selected paths agree with each other; the exact whole-argv hash replay
+   identifies a different requested outer launcher spelling. The child's reported spelling and current
+   physical identity remain unavailable. No AB execution or different-binary finding is established,
+   and previous generic ValueError/TypeError refusals are not retrospectively classified. All four
+   original public ZIPs are preserved unchanged. The proposed selected-launch correction is a separate
+   prospective change that retains the original installation predicates and full measured outer cost.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -258,9 +272,9 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text, their manifests and the reviewed publication status.
 They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
 Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Forty archives retain
+private; each manifest distinguishes original hashes from normalized public hashes. Forty-four archives retain
 the exact bytes of their public Actions artifacts. The four test-phase archives and round eight's partial
-driver-phase archive were normalized separately after their failures. Rounds nine through twenty-two, round twenty-three's status-only artifact and all eight round twenty-four/twenty-five artifacts preserve all original
+driver-phase archive were normalized separately after their failures. Rounds nine through twenty-two, round twenty-three's status-only artifact and all twelve round twenty-four/twenty-five/twenty-six artifacts preserve all original
 ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
 when Actions retention expires.
 

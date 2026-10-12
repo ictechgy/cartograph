@@ -22,6 +22,7 @@ SUITES = {
             "test_developer_context",
             "test_pre_record_diagnostics",
             "test_installation_binding",
+            "test_selected_launch",
             "test_installer_identity",
             "test_publication",
             "test_runner_pin",
@@ -31,7 +32,7 @@ SUITES = {
             "test_contract_prerequisites",
             "test_runtime_publication",
         ],
-        165,
+        182,
     ),
     "runtime": (["test_runtime_bootstrap", "test_runtime_identity"], 43),
 }
