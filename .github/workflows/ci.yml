@@ -37,6 +37,7 @@ jobs:
           python3 Scripts/verify-indexstore-bundles.py
           python3 Scripts/verify-indexstore-mixed.py
           python3 Scripts/verify-indexstore-pilot-evidence.py
+          python3 Scripts/verify-module-refresh-diagnostic.py
 
       # 두 제품 모두 새 release 스크래치에서 빌드한다. 전역 SDK/의존성 캐시는
       # 지우지 않으며, 획득·빌드 비용과 각 질의의 원시 출력을 증거에 남긴다.
@@ -73,6 +74,16 @@ jobs:
               "$RUNNER_TEMP/indexstore-project-validation/setup/driver.stdout"
           fi
           exit "$status"
+
+      - name: Diagnose compiler module re-indexing
+        if: always() && steps.tools.outcome == 'success'
+        run: |
+          python3 Scripts/diagnose-indexstore-module-refresh.py \
+            --setup-results "$RUNNER_TEMP/indexstore-cli-benchmark/results.json" \
+            --output "$RUNNER_TEMP/indexstore-cli-benchmark/runs/module-refresh-diagnostic" \
+            --workspace "$RUNNER_TEMP/indexstore-module-diagnostic-work" \
+            --sdk "$(xcrun --sdk macosx --show-sdk-path)" \
+            --objdump "$(xcrun --find llvm-objdump)"
 
       - name: Validate mixed Swift and Objective-C iOS states
         if: always() && steps.tools.outcome == 'success'

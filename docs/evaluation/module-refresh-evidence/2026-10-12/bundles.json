@@ -1,0 +1,46 @@
+{
+  "bundles": [
+    {
+      "archive": "linux-formal-01-normalized.zip",
+      "archive_entries": 36,
+      "compressed_bytes": 11635,
+      "manifests": [
+        "manifest.json"
+      ],
+      "role": "local-linux-compiler-only-diagnostic",
+      "sha256": "04f2d55b7c49b7baac854d1f9ac9643fa058a0ebffea09fe0701e5473c311b3d",
+      "status": "failed-driver-alias",
+      "uncompressed_bytes": 20910,
+      "verified_normalized_files": 35
+    },
+    {
+      "archive": "linux-formal-02-normalized.zip",
+      "archive_entries": 136,
+      "compressed_bytes": 85019,
+      "manifests": [
+        "manifest.json"
+      ],
+      "role": "local-linux-compiler-only-diagnostic",
+      "sha256": "a9363a4635d0c51cc61ceb3a6dfe36b6385506052072aedd3892ea5952e23229",
+      "status": "completed-five-states",
+      "uncompressed_bytes": 247854,
+      "verified_normalized_files": 135
+    },
+    {
+      "archive": "linux-formal-03-normalized.zip",
+      "archive_entries": 136,
+      "compressed_bytes": 85182,
+      "manifests": [
+        "manifest.json"
+      ],
+      "role": "local-linux-compiler-only-diagnostic",
+      "sha256": "c056cd6e835a4b6d6695a9e0985cec511c1d656bfee66aa5519f38081def7279",
+      "status": "completed-five-states-after-tool-hash-hardening",
+      "uncompressed_bytes": 248106,
+      "verified_normalized_files": 135
+    }
+  ],
+  "superiority_claim": null,
+  "total_compressed_bytes": 181836,
+  "total_uncompressed_bytes": 516870
+}
