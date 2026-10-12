@@ -99,10 +99,9 @@ python3 -m unittest discover -s Scripts/benchmark-inputs -v
 python3 Scripts/verify-sdk-discovery-contract.py
 ```
 
-The first command covers32 seal and45 selector controls. Wrapper controls verify actual compiler
+The first command covers32 seal and52 selector controls. Wrapper controls verify actual compiler
 recipe binding, pre/post generation guards, nested125, source/index mutations, conservative acceptance,
-normalized failure retention and credential-screen refusal. No actual Apple discovery has yet run on
-this new code. Actual root/link review, full content sealing, actual-arm calibration, independent
+normalized failure retention and credential-screen refusal. Actual Apple discovery failures are retained below. Actual root/link review, full content sealing, actual-arm calibration, independent
 holdouts and the preregistered20-session performance gate remain open.
 
 ## First Apple discovery and bounded path diagnostics
@@ -129,3 +128,20 @@ These labels distinguish reported path roles; they do not prove actual file acce
 runtime-loader closure for Apple's compiler binary. The actual host path existence/link layout still
 requires the next native diagnostic. It remains outside declared roots and blocks final acceptance;
 no runtime-root expansion or omission from the final input contract is authorized by this repair.
+
+## Exact compiler-relative C++ path normalization
+
+Run 38233336308 retains a completed SDK child exit1, but its detailed discovery bundle was blocked by
+the unchanged privacy scanner. The safe public envelope identifies only a hash-bound blocker in
+setup/discovery/probes/clang-cxx.stderr and the suffix /include/c++/v1. The preceding raw path and
+actual discovered root/link layout are unavailable; no root conclusion is inferred from that envelope.
+
+A focused reproduction uses Clang's compiler-relative usr/bin/../include/c++/v1 spelling. Publication
+now derives one explicit CLANG_CXX_HEADERS alias from the exact selected Clang path, sealed lifecycle
+receipt and current compiler hash. It checks that both the lexical alias and canonical header location
+remain inside the selected toolchain without a symlink escape, before and after staging. Only that
+fixed full prefix is normalized; arbitrary parent segments, adjacent private paths and credentials
+still block. Raw text hashes and original ordered path observations remain in the manifest. The
+normalizer's general scanner is unchanged, and this mapping neither admits a new compiler input root
+nor establishes that a missing header directory exists. A fresh native attempt must verify that this
+bounded mapping addresses the retained failure; detailed outcomes from the old round stay unavailable.

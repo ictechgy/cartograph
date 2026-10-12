@@ -755,6 +755,179 @@ class NativeDiscoveryTests(unittest.TestCase):
         self.assertEqual(published["publication_log_identities"]["stdout"], M.log_identity(attempt / "process.stdout"))
         self.assertEqual(published["publication_log_identities"]["stdout"]["status"], "available")
 
+    def verify_synthetic_archive(
+        self, extra_kind="sdk-input-discovery", attempt_name="attempt.json", role="sdk-discovery-attempt-envelope"
+    ):
+        import zipfile
+
+        module = M.load_module("pilot_archive", ROOT / "Scripts/verify-indexstore-pilot-evidence.py")
+        directory = self.root / "archive"
+        directory.mkdir()
+        archive = directory / "test-normalized.zip"
+        files = {
+            "discovery/manifest.json": json.dumps({"files": []}).encode(),
+            attempt_name: json.dumps({"schema_version": 1, "role": role}).encode(),
+            "publication-status.json": json.dumps(
+                {
+                    "schema_version": 1,
+                    "role": "sdk-discovery-publication-envelope",
+                    "raw_fallback": False,
+                    "complete_run_evidence": False,
+                }
+            ).encode(),
+        }
+        with zipfile.ZipFile(archive, "w") as z:
+            for name, data in files.items():
+                z.writestr(name, data)
+        bundle = {
+            "archive": archive.name,
+            "artifact_kind": extra_kind,
+            "sha256": M.digest(archive),
+            "compressed_bytes": archive.stat().st_size,
+            "uncompressed_bytes": sum(map(len, files.values())),
+            "archive_entries": 3,
+            "manifests": ["discovery/manifest.json"],
+            "verified_normalized_files": 0,
+            "auxiliary_files": [
+                {"path": name, "bytes": len(files[name]), "sha256": hashlib.sha256(files[name]).hexdigest()}
+                for name in [attempt_name, "publication-status.json"]
+            ],
+        }
+        (directory / "bundles.json").write_text(
+            json.dumps(
+                {
+                    "bundles": [bundle],
+                    "total_compressed_bytes": bundle["compressed_bytes"],
+                    "total_uncompressed_bytes": bundle["uncompressed_bytes"],
+                }
+            )
+        )
+        return module.verify(directory)
+
+    def cpp_alias_fixture(self, extra=""):
+        self.execute()
+        raw = self.root / "output"
+        stem = raw / "setup/discovery/probes/clang-cxx.stderr"
+        stem.parent.mkdir(parents=True, exist_ok=True)
+        alias = self.tools["clang"].parent / "../include/c++/v1"
+        stem.write_text(f'ignoring nonexistent directory "{alias}"' + extra + "\n")
+        attempt = self.synthetic_attempt(raw, code=1)
+        return raw, attempt, alias
+
+    def test_verified_clang_cpp_parent_alias_normalizes_without_scanner_change(self):
+        raw, attempt, alias = self.cpp_alias_fixture()
+        public = self.root / "public"
+        result, code = self.publish(raw, attempt, public, ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)])
+        self.assertEqual(code, 1)
+        self.assertEqual(result["discovery_bundle_status"], "normalized")
+        self.assertEqual(result["normalization_aliases"]["status"], "verified")
+        text = (public / "discovery/setup/discovery/probes/clang-cxx.stderr").read_text()
+        self.assertEqual(text, 'ignoring nonexistent directory "$CLANG_CXX_HEADERS"\n')
+        manifest = json.loads((public / "discovery/manifest.json").read_text())
+        row = next(r for r in manifest["files"] if r["path"].endswith("clang-cxx.stderr"))
+        self.assertEqual(row["original_raw_sha256"], M.digest(raw / row["path"]))
+        self.assertFalse(result["complete_run_evidence"])
+
+    def test_cpp_alias_does_not_allow_neighbor_private_path_or_credential(self):
+        for name, extra in [
+            ("path", ' note "/unmapped-private/person"'),
+            ("credential", ' {"GITHUB_TOKEN":"synthetic-token-only"}'),
+        ]:
+            with self.subTest(name=name):
+                raw, attempt, alias = self.cpp_alias_fixture(extra)
+                result, code = self.publish(
+                    raw, attempt, self.root / "public", ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)]
+                )
+                self.assertEqual(code, 1)
+                self.assertEqual(result["discovery_bundle_status"], "blocked")
+                self.assertTrue((self.root / "public/attempt.json").exists())
+                self.assertFalse((self.root / "public/discovery").exists())
+                self.tearDown_fixture_for_subtest()
+
+    def tearDown_fixture_for_subtest(self):
+        import shutil
+
+        for name in ["output", "attempt", "public", "public.pending"]:
+            shutil.rmtree(self.root / name, ignore_errors=True)
+
+    def test_cpp_alias_cannot_hide_parent_escape_suffix(self):
+        raw, attempt, alias = self.cpp_alias_fixture()
+        path = raw / "setup/discovery/probes/clang-cxx.stderr"
+        path.write_text(f'ignoring nonexistent directory "{alias}/../../private-owner"\n')
+        result, code = self.publish(
+            raw, attempt, self.root / "public", ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)]
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(result["discovery_bundle_status"], "blocked")
+
+    def test_cpp_alias_refuses_changed_compiler_or_lifecycle_binding(self):
+        for changed in ["compiler", "lifecycle"]:
+            with self.subTest(changed=changed):
+                raw, attempt, alias = self.cpp_alias_fixture()
+                path = self.tools["clang"] if changed == "compiler" else self.lifecycle / "results.json"
+                original = path.read_bytes()
+                path.write_bytes(original + (b"changed" if changed == "compiler" else b" "))
+                result, code = self.publish(
+                    raw, attempt, self.root / "public", ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)]
+                )
+                self.assertEqual(code, 1)
+                self.assertEqual(result["discovery_bundle_status"], "blocked")
+                self.assertTrue((self.root / "public/attempt.json").exists())
+                path.write_bytes(original)
+                self.tearDown_fixture_for_subtest()
+
+    def test_cpp_alias_changed_during_staging_never_promotes_candidate(self):
+        raw, attempt, alias = self.cpp_alias_fixture()
+        module = self.publication_module()
+        package = module.BUNDLES.EVIDENCE.package
+
+        def mutate(args):
+            result = package(args)
+            self.tools["clang"].write_bytes(b"changed after normalization")
+            return result
+
+        with mock.patch.object(module.BUNDLES.EVIDENCE, "package", side_effect=mutate):
+            result, code = module.publish(
+                raw,
+                attempt,
+                self.root / "public",
+                ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)],
+                self.lifecycle / "results.json",
+            )
+        self.assertEqual(code, 1)
+        self.assertEqual(result["discovery_bundle_status"], "blocked")
+        self.assertFalse((self.root / "public/discovery").exists())
+        self.assertTrue((self.root / "public/attempt.json").exists())
+
+    def test_cpp_alias_refuses_existing_include_symlink_escape(self):
+        raw, attempt, alias = self.cpp_alias_fixture()
+        outside = self.root / "external-headers"
+        outside.mkdir()
+        include = self.toolchain / "usr/include"
+        include.symlink_to(outside, target_is_directory=True)
+        result, code = self.publish(
+            raw, attempt, self.root / "public", ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)]
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(result["discovery_bundle_status"], "blocked")
+
+    def test_archive_retains_exact_sdk_attempt_and_publication_envelopes(self):
+        result = self.verify_synthetic_archive()
+        self.assertEqual(result["archives"], 1)
+        self.assertEqual(result["auxiliary_files"], 2)
+
+    def test_archive_does_not_broaden_other_artifact_auxiliary_paths(self):
+        with self.assertRaises(ValueError):
+            self.verify_synthetic_archive(extra_kind="other")
+
+    def test_archive_rejects_unexpected_auxiliary_name(self):
+        with self.assertRaises(ValueError):
+            self.verify_synthetic_archive(attempt_name="private-console.json")
+
+    def test_archive_rejects_wrong_envelope_role(self):
+        with self.assertRaises(ValueError):
+            self.verify_synthetic_archive(role="unrecognized")
+
     def test_workflow_upload_requires_normalized_success_and_keeps_budget(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text()
         self.assertIn("steps.sdk_normalize.outputs.ready == 'true'", workflow)

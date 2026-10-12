@@ -212,6 +212,47 @@ def publication_boundary(
     require(not scratch.is_relative_to(lifecycle.resolve()))
 
 
+def compiler_path_aliases(raw: Path, lifecycle_results: Path) -> tuple[list[str], dict]:
+    """검증한 Clang 설치 위치의 고정 C++ 헤더 별칭만 정규화 접두사로 묶는다."""
+    paths = [raw / "results.json", raw / "setup/lifecycle-input.json", raw / "setup/selector-request.json"]
+    if not all(path.is_file() for path in paths):
+        return [], dict(status="unavailable", reason="missing-discovery-input-bindings")
+    result, _ = DISCOVERY.document(paths[0])
+    retained, retained_identity = DISCOVERY.document(paths[1])
+    request, request_identity = DISCOVERY.document(paths[2])
+    current, current_identity = DISCOVERY.document(lifecycle_results)
+    expected = result.get("input_files", {}).get("results.json", {})
+    require(current_identity["sha256"] == expected.get("sha256"))
+    require(current == retained)
+    setup = current["setup"]
+    clang = SELECTOR.clean_path(setup["clang"])
+    requested = request["tools"]["clang"]
+    require(requested["path"] == str(clang))
+    expected_hash = setup["compiler_toolchain_files"][str(clang.absolute())]
+    require(requested["sha256"] == expected_hash)
+    physical = clang.resolve(strict=True)
+    require(SELECTOR.file_identity(physical)["sha256"] == expected_hash)
+    chains = [p for p in physical.parents if p.name.endswith(".xctoolchain")]
+    require(len(chains) == 1)
+    chain = chains[0]
+    require(physical.parent == chain / "usr/bin" and clang.parent.resolve() == physical.parent)
+    canonical = chain / "usr/include/c++/v1"
+    alias = clang.parent / "../include/c++/v1"
+    require(alias.resolve() == canonical and canonical.resolve() == canonical)
+    prefixes = ["CLANG_CXX_HEADERS=" + str(alias)]
+    return prefixes, dict(
+        status="verified",
+        token="$CLANG_CXX_HEADERS",
+        scope="Fixed compiler-relative header spelling only; no SDK/input-root acceptance",
+        lifecycle_sha256=current_identity["sha256"],
+        retained_lifecycle_sha256=retained_identity["sha256"],
+        request_sha256=request_identity["sha256"],
+        clang_sha256=expected_hash,
+        lexical_prefix_sha256=hashlib.sha256(str(alias).encode()).hexdigest(),
+        canonical_prefix_sha256=hashlib.sha256(str(canonical).encode()).hexdigest(),
+    )
+
+
 def publish(
     raw: Path,
     attempt: Path,
@@ -276,8 +317,11 @@ def publish(
         status["publication_failure"] = "missing-attempt-receipt"
     if raw.is_dir():
         try:
-            args = argparse.Namespace(input=raw, output=staging / "candidate", prefix=prefixes)
+            aliases, alias_receipt = compiler_path_aliases(raw, lifecycle_results)
+            status["normalization_aliases"] = alias_receipt
+            args = argparse.Namespace(input=raw, output=staging / "candidate", prefix=[*prefixes, *aliases])
             BUNDLES.EVIDENCE.package(args)
+            require(compiler_path_aliases(raw, lifecycle_results) == (aliases, alias_receipt))
             os.replace(staging / "candidate", ready / "discovery")
             status.update(discovery_bundle_status="normalized", manifests=["discovery/manifest.json"])
         except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
