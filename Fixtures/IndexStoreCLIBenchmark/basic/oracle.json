@@ -1,0 +1,85 @@
+{
+  "cycles": [
+    [
+      "cycle_a",
+      "cycle_b"
+    ]
+  ],
+  "edges": [
+    [
+      "middle",
+      "leaf_int"
+    ],
+    [
+      "entry",
+      "middle"
+    ],
+    [
+      "main",
+      "entry"
+    ],
+    [
+      "cycle_a",
+      "cycle_b"
+    ],
+    [
+      "cycle_b",
+      "cycle_a"
+    ]
+  ],
+  "edit": {
+    "after": "{ value + 1 }",
+    "before": "{ leaf(value) }",
+    "expected_callers": {
+      "disconnected": {
+        "direct": [],
+        "transitive": []
+      },
+      "leaf_int": {
+        "direct": [],
+        "transitive": []
+      },
+      "leaf_string": {
+        "direct": [],
+        "transitive": []
+      }
+    },
+    "file": "Calls.swift",
+    "remove_edges": [
+      [
+        "middle",
+        "leaf_int"
+      ]
+    ]
+  },
+  "expected_callers": {
+    "disconnected": {
+      "direct": [],
+      "transitive": []
+    },
+    "leaf_int": {
+      "direct": [
+        "middle"
+      ],
+      "transitive": [
+        "middle",
+        "entry",
+        "main"
+      ]
+    },
+    "leaf_string": {
+      "direct": [],
+      "transitive": []
+    }
+  },
+  "module": "ISDBBasic",
+  "name": "basic",
+  "oracle_basis": "Expected semantic edges and caller sets authored directly from source before comparator runs. No product output generates expected answers.",
+  "purpose": "Overload identity, cross-file reverse callers, disconnected declaration and cycle.",
+  "runtime_stdout": "2\n",
+  "targets": [
+    "leaf_int",
+    "leaf_string",
+    "disconnected"
+  ]
+}

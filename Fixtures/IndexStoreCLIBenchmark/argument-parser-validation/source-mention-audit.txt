@@ -1,0 +1,29 @@
+Source-only lexical mention inventory. Comments and LocalizedError.errorDescription are not call edges.
+Sources/ArgumentParser/Validators/ParsableArgumentsValidation.swift:58:    let errorDescriptions =
+Sources/ArgumentParser/Validators/ParsableArgumentsValidation.swift:68:      \(errorDescriptions.joined(separator: "\n"))
+Sources/ArgumentParser/Usage/UsageGenerator.swift:143:  func errorDescription(error: Swift.Error) -> String? {
+Sources/ArgumentParser/Usage/UsageGenerator.swift:147:        .makeErrorMessage()
+Sources/ArgumentParser/Usage/UsageGenerator.swift:152:      .makeErrorMessage()
+Sources/ArgumentParser/Usage/UsageGenerator.swift:180:  func makeErrorMessage() -> String? {
+Sources/ArgumentParser/Usage/UsageGenerator.swift:196:      return unknownOptionMessage(origin: o, name: n)
+Sources/ArgumentParser/Usage/UsageGenerator.swift:201:      return missingValueOrUnknownCompositeOptionMessage(
+Sources/ArgumentParser/Usage/UsageGenerator.swift:229:          .makeErrorMessage()
+Sources/ArgumentParser/Usage/UsageGenerator.swift:297:  func unknownOptionMessage(origin: InputOrigin.Element, name: Name) -> String {
+Sources/ArgumentParser/Usage/UsageGenerator.swift:316:        $0.synopsisString.editDistance(to: name.synopsisString)
+Sources/ArgumentParser/Usage/UsageGenerator.swift:321:        lhs.synopsisString.editDistance(to: name.synopsisString)
+Sources/ArgumentParser/Usage/UsageGenerator.swift:322:          < rhs.synopsisString.editDistance(to: name.synopsisString)
+Sources/ArgumentParser/Usage/UsageGenerator.swift:340:  func missingValueOrUnknownCompositeOptionMessage(
+Sources/ArgumentParser/Usage/UsageGenerator.swift:345:    let unknownOptionMessage = unknownOptionMessage(
+Sources/ArgumentParser/Usage/UsageGenerator.swift:352:      \(unknownOptionMessage)
+Sources/ArgumentParser/Usage/UsageGenerator.swift:472:    // We favor `LocalizedError.errorDescription` and fall back to
+Sources/ArgumentParser/Usage/MessageInfo.swift:12:enum MessageInfo {
+Sources/ArgumentParser/Usage/MessageInfo.swift:141:      let message = argumentSet.errorDescription(error: parserError) ?? ""
+Sources/ArgumentParser/Utilities/Foundation.swift:20:    if let description = (self as? LocalizedError)?.errorDescription {
+Sources/ArgumentParser/Utilities/StringExtensions.swift:141:  ///     "kitten".editDistance(to: "sitting")
+Sources/ArgumentParser/Utilities/StringExtensions.swift:143:  ///     "bar".editDistance(to: "baz")
+Sources/ArgumentParser/Utilities/StringExtensions.swift:145:  func editDistance(to target: String) -> Int {
+Sources/ArgumentParser/Parsable Types/ParsableArguments.swift:124:    MessageInfo(error: error, type: self).message
+Sources/ArgumentParser/Parsable Types/ParsableArguments.swift:132:    MessageInfo(error: _error, type: self).fullText(for: self)
+Sources/ArgumentParser/Parsable Types/ParsableArguments.swift:149:    MessageInfo(error: error, type: self, columns: columns).fullText(for: self)
+Sources/ArgumentParser/Parsable Types/ParsableArguments.swift:201:    MessageInfo(error: error, type: self).exitCode
+Sources/ArgumentParser/Parsable Types/ParsableArguments.swift:235:    let messageInfo = MessageInfo(error: error, type: self)

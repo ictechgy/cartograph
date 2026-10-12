@@ -1,0 +1,24 @@
+{
+  "originHash" : "ae3459ddb04d317580cd48567a79a89c6d03f9508d08a7a1c1e4261b5545635d",
+  "pins" : [
+    {
+      "identity" : "swift-argument-parser",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-argument-parser.git",
+      "state" : {
+        "revision" : "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+        "version" : "1.8.2"
+      }
+    },
+    {
+      "identity" : "swift-lmdb",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-lmdb.git",
+      "state" : {
+        "branch" : "release/6.4.x",
+        "revision" : "a4bc87807721c1fd114bf35464457e2db0d0e6c0"
+      }
+    }
+  ],
+  "version" : 3
+}

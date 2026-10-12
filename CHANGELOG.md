@@ -9,6 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Reproducible comparison against the pinned upstream `index-dump` executable, with independent
+  source oracles, real release-build costs, caller precision/recall, incremental freshness and raw
+  timing/RSS evidence. The bounded synthetic fixtures do not establish universal superiority.
 - Add explicit `graph --include-self-loops --level symbol` export for recursive compiler calls and
   their occurrence evidence, while preserving default graph, query and architecture-cycle behavior.
 

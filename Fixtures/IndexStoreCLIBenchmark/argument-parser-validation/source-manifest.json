@@ -1,0 +1,335 @@
+{
+  "files": [
+    {
+      "bytes": 11751,
+      "lines": 211,
+      "path": "LICENSE.txt",
+      "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+    },
+    {
+      "bytes": 4396,
+      "lines": 144,
+      "path": "Package.swift",
+      "sha256": "4eae0e28d24671d6ab75c2c7a0dd0326e6d48f8785510a3e403886fe8cf17d88"
+    },
+    {
+      "bytes": 14256,
+      "lines": 411,
+      "path": "Sources/ArgumentParser/Completions/BashCompletionsGenerator.swift",
+      "sha256": "b75be23ef032771d6b9e64aecfb411fb54abeabec0b67d9de8fa2043ff0aa3bf"
+    },
+    {
+      "bytes": 8250,
+      "lines": 274,
+      "path": "Sources/ArgumentParser/Completions/CompletionsGenerator.swift",
+      "sha256": "6924909ed059ce20d45c2395a1c94a044b966f2ce9b5ce7c20cea5634051d3bd"
+    },
+    {
+      "bytes": 10813,
+      "lines": 319,
+      "path": "Sources/ArgumentParser/Completions/FishCompletionsGenerator.swift",
+      "sha256": "0a6b53ddddbbb69451d2ef670d10119977a0906963652db1018698ea239a2318"
+    },
+    {
+      "bytes": 9230,
+      "lines": 290,
+      "path": "Sources/ArgumentParser/Completions/ZshCompletionsGenerator.swift",
+      "sha256": "90f765c9c65aa12bc94256f1f54217fd9ed8ca01da0ada05e6256228765de445"
+    },
+    {
+      "bytes": 25174,
+      "lines": 789,
+      "path": "Sources/ArgumentParser/Parsable Properties/Argument.swift",
+      "sha256": "ece864095503ce41e4e997ec8632ce3810e92425de7c38c9649c6327f724d50d"
+    },
+    {
+      "bytes": 4730,
+      "lines": 164,
+      "path": "Sources/ArgumentParser/Parsable Properties/ArgumentDiscussion.swift",
+      "sha256": "a237be142c990753c957581211a9573fd0b2a2d12d8a9f403cec0da10e0bad79"
+    },
+    {
+      "bytes": 3032,
+      "lines": 96,
+      "path": "Sources/ArgumentParser/Parsable Properties/ArgumentHelp.swift",
+      "sha256": "4faa2b61c6b8303efe50d69d34d421776284c0f642322be6090c2f5489d03b59"
+    },
+    {
+      "bytes": 2488,
+      "lines": 84,
+      "path": "Sources/ArgumentParser/Parsable Properties/ArgumentVisibility.swift",
+      "sha256": "38c19f8f5af9fc599a45ae8d76801055d6821168eb94e8065e96c542c2fd1ef0"
+    },
+    {
+      "bytes": 8308,
+      "lines": 210,
+      "path": "Sources/ArgumentParser/Parsable Properties/CompletionKind.swift",
+      "sha256": "983534f712a69184915a145eceefbccf9a4ed476dcdc9131f2cb095365e8fb99"
+    },
+    {
+      "bytes": 4015,
+      "lines": 119,
+      "path": "Sources/ArgumentParser/Parsable Properties/Errors.swift",
+      "sha256": "dabdb0ef1e23bc2d76a16589d45a893608c5bfc4ec05601cd8eaeed7e41be120"
+    },
+    {
+      "bytes": 23387,
+      "lines": 677,
+      "path": "Sources/ArgumentParser/Parsable Properties/Flag.swift",
+      "sha256": "788e9bdddd3e59256c36a494408f4ba206e1ca85f90515ff2b560e4d15fa951e"
+    },
+    {
+      "bytes": 11274,
+      "lines": 324,
+      "path": "Sources/ArgumentParser/Parsable Properties/NameSpecification.swift",
+      "sha256": "9c34ac32105cab7d1572ce1d3c688b8d12abfc688c383114ea02b008da0bf0c3"
+    },
+    {
+      "bytes": 45433,
+      "lines": 1219,
+      "path": "Sources/ArgumentParser/Parsable Properties/Option.swift",
+      "sha256": "443bbf268a13a8228adf24ff81d2639c0336c0b5783edba7b6aaa6a13c54e9e9"
+    },
+    {
+      "bytes": 4425,
+      "lines": 154,
+      "path": "Sources/ArgumentParser/Parsable Properties/OptionGroup.swift",
+      "sha256": "c336cc5389ca7b6814197150fe9d06c787e4b509fe150edf9ea5890ff36abd56"
+    },
+    {
+      "bytes": 2540,
+      "lines": 94,
+      "path": "Sources/ArgumentParser/Parsable Properties/ParentCommand.swift",
+      "sha256": "fea9d80311221af0f11adfbec7f01d2d87a49e4b0abe18909b8e82bfb4ccfa81"
+    },
+    {
+      "bytes": 4646,
+      "lines": 122,
+      "path": "Sources/ArgumentParser/Parsable Types/AsyncParsableCommand.swift",
+      "sha256": "7f926bf49b0a51470664f8a167bcbc0606281bbcdf797a4b06f1f2b6cd57cf00"
+    },
+    {
+      "bytes": 8397,
+      "lines": 231,
+      "path": "Sources/ArgumentParser/Parsable Types/CommandConfiguration.swift",
+      "sha256": "cbf63a870ced5ae6a0f9a162c39497dad5cab8f444e270cf020f6cd3ea1ada89"
+    },
+    {
+      "bytes": 919,
+      "lines": 28,
+      "path": "Sources/ArgumentParser/Parsable Types/CommandGroup.swift",
+      "sha256": "f7fa73f4e908abb592d0f59565c81ca86aa3684499aab308bcf2e0f6d1cf9046"
+    },
+    {
+      "bytes": 2884,
+      "lines": 90,
+      "path": "Sources/ArgumentParser/Parsable Types/EnumerableFlag.swift",
+      "sha256": "d6b086f4661fdff9f38ee3d32cca87b6f67ef4b1d1411a6b5e17e157fcaafc30"
+    },
+    {
+      "bytes": 4882,
+      "lines": 150,
+      "path": "Sources/ArgumentParser/Parsable Types/ExpressibleByArgument.swift",
+      "sha256": "c4aa99483e92f50d8e1960703ea9dc02ba01708ca8ec3804ba3955a719a250a5"
+    },
+    {
+      "bytes": 12518,
+      "lines": 369,
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift",
+      "sha256": "1ad16fa584662bfe539dbbce2e2b9d305af40856f433a60439ecad71e4c9087e"
+    },
+    {
+      "bytes": 10088,
+      "lines": 277,
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableCommand.swift",
+      "sha256": "018ebcb67e439854f55256c92aecc155dfa8add50752d658ac47c29b36045444"
+    },
+    {
+      "bytes": 9211,
+      "lines": 327,
+      "path": "Sources/ArgumentParser/Parsing/ArgumentDecoder.swift",
+      "sha256": "fe523e37c0af62e6b92dfc3ed3233b58ac5db81ddcc113d5d4b3c1f3f56bbb3a"
+    },
+    {
+      "bytes": 13942,
+      "lines": 474,
+      "path": "Sources/ArgumentParser/Parsing/ArgumentDefinition.swift",
+      "sha256": "896a08b61fa0556ac2000e7f9261e7a6dd6fa4c9b6b826e097c08481d022270a"
+    },
+    {
+      "bytes": 26737,
+      "lines": 730,
+      "path": "Sources/ArgumentParser/Parsing/ArgumentSet.swift",
+      "sha256": "3efebca89627ffe628a0e839661e25342601e57ef0531bf4284e86abfc43a348"
+    },
+    {
+      "bytes": 22303,
+      "lines": 691,
+      "path": "Sources/ArgumentParser/Parsing/CommandParser.swift",
+      "sha256": "4cf3c3d88c550f57527c1615a9bfa00bf2230f5d5f41e0b316074bb2ea39ba51"
+    },
+    {
+      "bytes": 2398,
+      "lines": 78,
+      "path": "Sources/ArgumentParser/Parsing/InputKey.swift",
+      "sha256": "e2398a6c53b73a44226dfcff7412610cce95d712ddaef70bf59d72a9196d6fc4"
+    },
+    {
+      "bytes": 3331,
+      "lines": 127,
+      "path": "Sources/ArgumentParser/Parsing/InputOrigin.swift",
+      "sha256": "892e6868cd33e24f645a82c1103d6570b02846b1c22f48355d7c90cbeeb485b2"
+    },
+    {
+      "bytes": 3043,
+      "lines": 118,
+      "path": "Sources/ArgumentParser/Parsing/Name.swift",
+      "sha256": "af8c38916518da7701d4272476ed27ec36fe490b3b4060026e0c762fdc64fb70"
+    },
+    {
+      "bytes": 2923,
+      "lines": 94,
+      "path": "Sources/ArgumentParser/Parsing/Parsed.swift",
+      "sha256": "896399b71e5d4cae8c026283780ed53baf4904b98bf74028004140618642d7ac"
+    },
+    {
+      "bytes": 2761,
+      "lines": 91,
+      "path": "Sources/ArgumentParser/Parsing/ParsedValues.swift",
+      "sha256": "78dc0820979af302393eec3ca98b74883d66068a099ec3fec638e69b105f2859"
+    },
+    {
+      "bytes": 2143,
+      "lines": 52,
+      "path": "Sources/ArgumentParser/Parsing/ParserError.swift",
+      "sha256": "6bbaba1e1f98621e3f04b1628dd8e621155e70b1fb99d95390b9563285fcbb4a"
+    },
+    {
+      "bytes": 24511,
+      "lines": 769,
+      "path": "Sources/ArgumentParser/Parsing/SplitArguments.swift",
+      "sha256": "b32a6b55b123bbfb1371fbd90d29738bbcca2f74fb676f0b3cdbc74c9e2b1e20"
+    },
+    {
+      "bytes": 6466,
+      "lines": 211,
+      "path": "Sources/ArgumentParser/Usage/DumpHelpGenerator.swift",
+      "sha256": "58cf01a02b40287691878c0b336213f72015bb1b1289f0fa5d7df3788396b1c3"
+    },
+    {
+      "bytes": 2116,
+      "lines": 68,
+      "path": "Sources/ArgumentParser/Usage/HelpCommand.swift",
+      "sha256": "4124912ea36be951eb93a4e742d925f9c02dd125a8024f8fecbf156e8aec2165"
+    },
+    {
+      "bytes": 17618,
+      "lines": 541,
+      "path": "Sources/ArgumentParser/Usage/HelpGenerator.swift",
+      "sha256": "8022faf1a1b22210f13481e007c0f4ce1140a1faef228dd9a1586a1c95d5bf74"
+    },
+    {
+      "bytes": 6281,
+      "lines": 188,
+      "path": "Sources/ArgumentParser/Usage/MessageInfo.swift",
+      "sha256": "a9951d7ef347dcd9c45bc39fab4748f41dd222304be4335712f0ddeb29f8da6d"
+    },
+    {
+      "bytes": 16372,
+      "lines": 523,
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift",
+      "sha256": "18fbcc3af0b7385666de2ef184c806dbda087c52068630496ebbc000b909c05b"
+    },
+    {
+      "bytes": 781,
+      "lines": 26,
+      "path": "Sources/ArgumentParser/Utilities/CollectionExtensions.swift",
+      "sha256": "083552da35fe522596ef3703d9514417cd61cf0061ba803b8d5f117072fb0088"
+    },
+    {
+      "bytes": 1448,
+      "lines": 48,
+      "path": "Sources/ArgumentParser/Utilities/Foundation.swift",
+      "sha256": "84a93a23fbd20041ad236f4c6ed7056a9e488e4945563d727815313090e8e2ef"
+    },
+    {
+      "bytes": 4366,
+      "lines": 143,
+      "path": "Sources/ArgumentParser/Utilities/Mutex.swift",
+      "sha256": "83648cfc5ee1d95e3546d77687937c1e12c24147ab17eec94bb1f867fcee1499"
+    },
+    {
+      "bytes": 9626,
+      "lines": 333,
+      "path": "Sources/ArgumentParser/Utilities/Platform.swift",
+      "sha256": "e9ace9152744d26152a76bc40f5131b37958fdbd019902dd37367d4f13c21b8f"
+    },
+    {
+      "bytes": 1274,
+      "lines": 38,
+      "path": "Sources/ArgumentParser/Utilities/SequenceExtensions.swift",
+      "sha256": "3e6ba5670d31516affab4edba4e5a562ac8a3b7b10c945d6f3b4750a3e89a3b0"
+    },
+    {
+      "bytes": 9135,
+      "lines": 279,
+      "path": "Sources/ArgumentParser/Utilities/StringExtensions.swift",
+      "sha256": "e1fbe1a57d2f482edb9669e13b8baf0f784c41defd18bd9d516aea5cd91eb26d"
+    },
+    {
+      "bytes": 641,
+      "lines": 17,
+      "path": "Sources/ArgumentParser/Utilities/SwiftExtensions.swift",
+      "sha256": "59faa2bb35067ff5cfe00d94bb01b1f08c827f0ef181da5107549cfb3ca15c37"
+    },
+    {
+      "bytes": 3261,
+      "lines": 112,
+      "path": "Sources/ArgumentParser/Utilities/Tree.swift",
+      "sha256": "a626c0701c41eb88bbb2a6dd01267337f06720371de1f630d15644bf7c537c4c"
+    },
+    {
+      "bytes": 2969,
+      "lines": 93,
+      "path": "Sources/ArgumentParser/Validators/AsyncCompletionsValidator.swift",
+      "sha256": "25d0c18209f536eb2961f47f432927009d8670c4f253e603fc075baca304bb65"
+    },
+    {
+      "bytes": 3912,
+      "lines": 130,
+      "path": "Sources/ArgumentParser/Validators/CodingKeyValidator.swift",
+      "sha256": "b4430274b496b5c85b9ef093751e076f41ec2d5ed33e1caabb49a7fa7bbfaa16"
+    },
+    {
+      "bytes": 2166,
+      "lines": 68,
+      "path": "Sources/ArgumentParser/Validators/NonsenseFlagsValidator.swift",
+      "sha256": "0666ce49c85873fa4bcc2a76972b4f4fe28a37a04f1181b102e142df7f1a8b16"
+    },
+    {
+      "bytes": 1997,
+      "lines": 71,
+      "path": "Sources/ArgumentParser/Validators/ParsableArgumentsValidation.swift",
+      "sha256": "31ce1a387c95154cd10a3c6f84369c59ab80e602d023ab717d8c31f3907d7761"
+    },
+    {
+      "bytes": 3044,
+      "lines": 86,
+      "path": "Sources/ArgumentParser/Validators/PositionalArgumentsValidator.swift",
+      "sha256": "00f2db09098b7ead1f2e8faeb5501782f6dee67191eebaf7d007bf6253990a5c"
+    },
+    {
+      "bytes": 1877,
+      "lines": 57,
+      "path": "Sources/ArgumentParser/Validators/UniqueNamesValidator.swift",
+      "sha256": "6a659e7c8f88c0f6feacb26a87bca615906fec2b0fe88fd9cd4938b8f9a2a71b"
+    },
+    {
+      "bytes": 9575,
+      "lines": 276,
+      "path": "Sources/ArgumentParserToolInfo/ToolInfo.swift",
+      "sha256": "fb87e458c14843a319ba76ad5a95aff76628215251318d0c1b9d68e083235dd0"
+    }
+  ],
+  "revision": "6a52f3251125d74daf04fcbd5e6f08a75d074382"
+}

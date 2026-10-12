@@ -1,0 +1,124 @@
+{
+  "cycles": [
+    [
+      "audit_a",
+      "audit_b"
+    ]
+  ],
+  "edges": [
+    [
+      "subtotal",
+      "price_int"
+    ],
+    [
+      "total",
+      "subtotal"
+    ],
+    [
+      "total",
+      "tax"
+    ],
+    [
+      "receipt",
+      "total"
+    ],
+    [
+      "preview",
+      "subtotal"
+    ],
+    [
+      "main",
+      "receipt"
+    ],
+    [
+      "main",
+      "preview"
+    ],
+    [
+      "audit_a",
+      "audit_b"
+    ],
+    [
+      "audit_b",
+      "audit_a"
+    ]
+  ],
+  "edit": {
+    "after": "{ quantity * 10 }",
+    "before": "{ price(quantity) }",
+    "expected_callers": {
+      "price_int": {
+        "direct": [],
+        "transitive": []
+      },
+      "price_string": {
+        "direct": [],
+        "transitive": []
+      },
+      "tax": {
+        "direct": [
+          "total"
+        ],
+        "transitive": [
+          "total",
+          "receipt",
+          "main"
+        ]
+      },
+      "unused_quote": {
+        "direct": [],
+        "transitive": []
+      }
+    },
+    "file": "Pricing.swift",
+    "remove_edges": [
+      [
+        "subtotal",
+        "price_int"
+      ]
+    ]
+  },
+  "expected_callers": {
+    "price_int": {
+      "direct": [
+        "subtotal"
+      ],
+      "transitive": [
+        "subtotal",
+        "total",
+        "receipt",
+        "preview",
+        "main"
+      ]
+    },
+    "price_string": {
+      "direct": [],
+      "transitive": []
+    },
+    "tax": {
+      "direct": [
+        "total"
+      ],
+      "transitive": [
+        "total",
+        "receipt",
+        "main"
+      ]
+    },
+    "unused_quote": {
+      "direct": [],
+      "transitive": []
+    }
+  },
+  "module": "ISDBCheckout",
+  "name": "holdout",
+  "oracle_basis": "Expected semantic edges and caller sets authored directly from source before comparator runs. No product output generates expected answers.",
+  "purpose": "Checkout impact: a price change reaches receipt and preview through shared subtotal; tax has a separate consumer path. This fixed validation fixture is not a statistically blinded holdout.",
+  "runtime_stdout": "22\n10\n",
+  "targets": [
+    "price_int",
+    "price_string",
+    "tax",
+    "unused_quote"
+  ]
+}
