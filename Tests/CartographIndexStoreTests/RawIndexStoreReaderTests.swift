@@ -138,8 +138,8 @@ struct RawIndexStoreReaderTests {
         #expect(Set(snapshot.symbols.map(\.module)) == ["SyntheticAlpha", "SyntheticBeta"])
     }
 
-    @Test("범위 안의 헤더와 삭제 Swift 의존성은 선언 투영을 넓히지 않고 날짜만 남긴다")
-    func dependencyDatesSurviveSourceDeletionWithoutAddingDeclarations() throws {
+    @Test("헤더 선언은 읽되 삭제 뒤에는 되살리지 않고 헤더·Swift 의존성 날짜를 보존한다")
+    func dependencyDatesSurviveWithoutRevivingDeletedDeclarations() throws {
         let fixture = try makeObjectiveCFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let fileSystem = LocalFileSystem()
@@ -150,11 +150,15 @@ struct RawIndexStoreReaderTests {
             dependencyRoots: [fixture.root.path]))
         let before = try provider.loadSnapshot()
         #expect(before.oldestIndexedFileDates?[headerPath] != nil)
-        #expect(!before.symbols.contains { $0.location.path == headerPath && !$0.isExternal })
+        #expect(before.admittedHeaderPaths == [headerPath])
+        let headerSymbols = before.symbols.filter { $0.location.path == headerPath }
+        #expect(headerSymbols.map(\.name).sorted() == ["HEADER_VALUE", "headerValue"])
+        #expect(headerSymbols.allSatisfy { !$0.isExternal })
         try FileManager.default.removeItem(at: fixture.header)
         let after = try provider.loadSnapshot()
         #expect(after.oldestIndexedFileDates?[headerPath] == before.oldestIndexedFileDates?[headerPath])
-        #expect(after.symbols == before.symbols)
+        #expect(after.symbols == before.symbols.filter { $0.location.path != headerPath })
+        #expect(after.admittedHeaderPaths == [])
         #expect(after.references == before.references)
         #expect(after.oldestIndexedFileDates?[fixture.systemHeader] == nil)
 
