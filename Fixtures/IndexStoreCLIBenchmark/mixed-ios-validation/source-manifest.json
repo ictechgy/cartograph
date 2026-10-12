@@ -1,0 +1,14 @@
+{
+  ".cartograph.yml": "0e3dd6bd84c114795b74982e0c3f3efb7f8c9f18502d688bb2e166557ee69307",
+  "Sources/AppFlow/Checkout.swift": "fa8e2c793034624b15969a908d44f1ab76e41d158aab9239e4322d763c3ec2d1",
+  "Sources/AppFlow/Legacy.swift": "5bc48282609c90f17c788647531282ff4a1aac2ff1316b2a8c90086701895da3",
+  "Sources/BridgeKit/Core.m": "c31dd26f2cea9c92ca90ac3f144cd71f64258b0e6515215bdffe06024b5c1a7a",
+  "Sources/BridgeKit/CppBridge.mm": "b0ba8c990a209310aad49d5facd31f3584aed44091d7fe2d83fbc484a4efdca3",
+  "Sources/BridgeKit/ObjCQuote.m": "5d5f6a9274a3ae1292052ddab058229d40adcff7e13b53cf8ffbc53b77c0e802",
+  "Sources/BridgeKit/include/BridgeKit.h": "8df751af1f16039ab649cd9c48019f6c62a72bb787ea5f95d2ef5f4db3dfcf9c",
+  "Sources/BridgeKit/include/CGCore.h": "cd1d1088545f1de880d7ea3653605eac861292d3a1306bdf8c1251fe48598b1d",
+  "Sources/BridgeKit/include/CGQuoteEngine.h": "31849ebc1b64f89cd115af29f6ab3a1b65fda5d291e09a068b382c9e4ce2cfb8",
+  "Sources/BridgeKit/include/module.modulemap": "7df71e4d256dcf4b7e510eb05cd9e3091785aba8b6d7344e395ae22cddc9393b",
+  "Sources/Shared/SharedCalls.swift": "c820b2d23ce2bfb3869cb487a1d030fde4ea62b899622d03642b58de93fc6f48",
+  "Tests/FixtureTests.swift": "6f6a3f8f8daa9b3d8dbdb3937f76419ab39da1735e1da32335afca3e3139591f"
+}

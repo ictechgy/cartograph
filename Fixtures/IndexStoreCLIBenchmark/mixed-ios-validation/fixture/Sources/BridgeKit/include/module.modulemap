@@ -1,0 +1,4 @@
+module BridgeKit {
+    header "BridgeKit.h"
+    export *
+}

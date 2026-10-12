@@ -1,0 +1,6 @@
+level: symbol
+retain_public: false
+include:
+  - Sources/**
+exclude:
+  - .build/**

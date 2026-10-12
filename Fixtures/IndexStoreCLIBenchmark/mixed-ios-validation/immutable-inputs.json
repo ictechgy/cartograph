@@ -1,0 +1,101 @@
+{
+  "files": [
+    {
+      "path": "fixture/.cartograph.yml",
+      "predecessor_sha256": "0e3dd6bd84c114795b74982e0c3f3efb7f8c9f18502d688bb2e166557ee69307",
+      "sha256": "0e3dd6bd84c114795b74982e0c3f3efb7f8c9f18502d688bb2e166557ee69307",
+      "unchanged": true
+    },
+    {
+      "path": "fixture/Sources/AppFlow/Checkout.swift",
+      "predecessor_sha256": "fa8e2c793034624b15969a908d44f1ab76e41d158aab9239e4322d763c3ec2d1",
+      "sha256": "fa8e2c793034624b15969a908d44f1ab76e41d158aab9239e4322d763c3ec2d1",
+      "unchanged": true
+    },
+    {
+      "path": "fixture/Sources/AppFlow/Legacy.swift",
+      "predecessor_sha256": "5bc48282609c90f17c788647531282ff4a1aac2ff1316b2a8c90086701895da3",
+      "sha256": "5bc48282609c90f17c788647531282ff4a1aac2ff1316b2a8c90086701895da3",
+      "unchanged": true
+    },
+    {
+      "path": "fixture/Sources/BridgeKit/Core.m",
+      "predecessor_sha256": "c31dd26f2cea9c92ca90ac3f144cd71f64258b0e6515215bdffe06024b5c1a7a",
+      "sha256": "c31dd26f2cea9c92ca90ac3f144cd71f64258b0e6515215bdffe06024b5c1a7a",
+      "unchanged": true
+    },
+    {
+      "path": "fixture/Sources/BridgeKit/CppBridge.mm",
+      "predecessor_sha256": "b0ba8c990a209310aad49d5facd31f3584aed44091d7fe2d83fbc484a4efdca3",
+      "sha256": "b0ba8c990a209310aad49d5facd31f3584aed44091d7fe2d83fbc484a4efdca3",
+      "unchanged": true
+    },
+    {
+      "path": "fixture/Sources/BridgeKit/ObjCQuote.m",
+      "predecessor_sha256": "5d5f6a9274a3ae1292052ddab058229d40adcff7e13b53cf8ffbc53b77c0e802",
+      "sha256": "5d5f6a9274a3ae1292052ddab058229d40adcff7e13b53cf8ffbc53b77c0e802",
+      "unchanged": true
+    },
+    {
+      "path": "fixture/Sources/BridgeKit/include/BridgeKit.h",
+      "predecessor_sha256": "8df751af1f16039ab649cd9c48019f6c62a72bb787ea5f95d2ef5f4db3dfcf9c",
+      "sha256": "8df751af1f16039ab649cd9c48019f6c62a72bb787ea5f95d2ef5f4db3dfcf9c",
+      "unchanged": true
+    },
+    {
+      "path": "fixture/Sources/BridgeKit/include/CGCore.h",
+      "predecessor_sha256": "cd1d1088545f1de880d7ea3653605eac861292d3a1306bdf8c1251fe48598b1d",
+      "sha256": "cd1d1088545f1de880d7ea3653605eac861292d3a1306bdf8c1251fe48598b1d",
+      "unchanged": true
+    },
+    {
+      "path": "fixture/Sources/BridgeKit/include/CGQuoteEngine.h",
+      "predecessor_sha256": "31849ebc1b64f89cd115af29f6ab3a1b65fda5d291e09a068b382c9e4ce2cfb8",
+      "sha256": "31849ebc1b64f89cd115af29f6ab3a1b65fda5d291e09a068b382c9e4ce2cfb8",
+      "unchanged": true
+    },
+    {
+      "path": "fixture/Sources/BridgeKit/include/module.modulemap",
+      "predecessor_sha256": "7df71e4d256dcf4b7e510eb05cd9e3091785aba8b6d7344e395ae22cddc9393b",
+      "sha256": "7df71e4d256dcf4b7e510eb05cd9e3091785aba8b6d7344e395ae22cddc9393b",
+      "unchanged": true
+    },
+    {
+      "path": "fixture/Sources/Shared/SharedCalls.swift",
+      "predecessor_sha256": "c820b2d23ce2bfb3869cb487a1d030fde4ea62b899622d03642b58de93fc6f48",
+      "sha256": "c820b2d23ce2bfb3869cb487a1d030fde4ea62b899622d03642b58de93fc6f48",
+      "unchanged": true
+    },
+    {
+      "path": "fixture/Tests/FixtureTests.swift",
+      "predecessor_sha256": "6f6a3f8f8daa9b3d8dbdb3937f76419ab39da1735e1da32335afca3e3139591f",
+      "sha256": "6f6a3f8f8daa9b3d8dbdb3937f76419ab39da1735e1da32335afca3e3139591f",
+      "unchanged": true
+    },
+    {
+      "path": "oracle.json",
+      "predecessor_sha256": "ca71acc4d669e8aa04f7c0e7400417f9f20b78063289c9b76c4a4f4564e7beec",
+      "sha256": "ca71acc4d669e8aa04f7c0e7400417f9f20b78063289c9b76c4a4f4564e7beec",
+      "unchanged": true
+    },
+    {
+      "path": "framework-oracle.json",
+      "predecessor_sha256": "755ebd9fa215d81c17091c306e7c03170d9a2593bee92283ac19ee7eb713bceb",
+      "sha256": "755ebd9fa215d81c17091c306e7c03170d9a2593bee92283ac19ee7eb713bceb",
+      "unchanged": true
+    },
+    {
+      "path": "source-manifest.json",
+      "predecessor_sha256": "6dfdcf2461ef7ab118554932b088eb849f86c426d8503ba1b17b3be6acfa6657",
+      "sha256": "6dfdcf2461ef7ab118554932b088eb849f86c426d8503ba1b17b3be6acfa6657",
+      "unchanged": true
+    },
+    {
+      "path": "source-call-audit.txt",
+      "predecessor_sha256": "40d0288db9cd578843dce4659220571e4659fa593d0ddbe61b713e07ccf73a62",
+      "sha256": "40d0288db9cd578843dce4659220571e4659fa593d0ddbe61b713e07ccf73a62",
+      "unchanged": true
+    }
+  ],
+  "role": "validation-only"
+}

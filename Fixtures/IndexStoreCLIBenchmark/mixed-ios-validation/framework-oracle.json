@@ -1,0 +1,20 @@
+{
+  "compiler_direct_test_callers": [
+    "FixtureTests.QuoteTests.setUpWithError()"
+  ],
+  "compiler_transitive_test_callers": [
+    "FixtureTests.QuoteTests.setUpWithError()"
+  ],
+  "expected_affected_tests": [
+    "FixtureTests.QuoteTests.testDirectBody()",
+    "FixtureTests.QuoteTests.testUnrelatedBody()"
+  ],
+  "native_baseline": "unsupported; do not score as zero recall",
+  "negative_affected_tests": [
+    "FixtureTests.OtherTests.testUnrelated()"
+  ],
+  "role": "separate-framework-selection-validation",
+  "runtime_test_execution": "not implemented by compile-only build; simulator execution requires a separately declared bundle/runner",
+  "seed": "AppFlow.checkout(Int32)",
+  "semantics": "XCTest runs QuoteTests.setUpWithError before each test method. Test bodies do not compiler-call the lifecycle method. Compiler-call queries must not fabricate lifecycle edges; conservative affected-test selection may include both QuoteTests methods."
+}

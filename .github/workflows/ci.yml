@@ -34,10 +34,16 @@ jobs:
           python3 Scripts/verify-indexstore-benchmark.py
           python3 Scripts/verify-indexstore-project.py
           python3 Scripts/verify-indexstore-evidence.py
+          python3 Scripts/verify-indexstore-bundles.py
+          python3 Scripts/verify-indexstore-mixed.py
+          python3 Scripts/verify-indexstore-pilot-evidence.py
+          python3 Scripts/verify-module-refresh-diagnostic.py
+          python3 Scripts/verify-native-measurement-contract.py
 
       # 두 제품 모두 새 release 스크래치에서 빌드한다. 전역 SDK/의존성 캐시는
       # 지우지 않으며, 획득·빌드 비용과 각 질의의 원시 출력을 증거에 남긴다.
       - name: Compare real executables on the same compiler index
+        id: tools
         run: |
           set +e
           python3 Scripts/benchmark-indexstore-cli.py \
@@ -70,6 +76,65 @@ jobs:
           fi
           exit "$status"
 
+      - name: Diagnose compiler module re-indexing
+        if: always() && steps.tools.outcome == 'success'
+        run: |
+          python3 Scripts/diagnose-indexstore-module-refresh.py \
+            --setup-results "$RUNNER_TEMP/indexstore-cli-benchmark/results.json" \
+            --output "$RUNNER_TEMP/indexstore-cli-benchmark/runs/module-refresh-diagnostic" \
+            --workspace "$RUNNER_TEMP/indexstore-module-diagnostic-work" \
+            --sdk "$(xcrun --sdk macosx --show-sdk-path)" \
+            --objdump "$(xcrun --find llvm-objdump)"
+
+      - name: Validate fresh shared compiler generations for mixed iOS
+        if: always() && steps.tools.outcome == 'success'
+        run: |
+          set +e
+          python3 Scripts/benchmark-indexstore-mixed.py \
+            --setup-results "$RUNNER_TEMP/indexstore-cli-benchmark/results.json" \
+            --compiler-index-policy fresh-shared-v2 \
+            --output "$RUNNER_TEMP/indexstore-mixed-validation" \
+            > "$RUNNER_TEMP/indexstore-mixed-console.log" 2>&1
+          status=$?
+          if [ -d "$RUNNER_TEMP/indexstore-mixed-validation" ]; then
+            mkdir -p "$RUNNER_TEMP/indexstore-mixed-validation/setup"
+            cp "$RUNNER_TEMP/indexstore-mixed-console.log" \
+              "$RUNNER_TEMP/indexstore-mixed-validation/setup/driver.stdout"
+          fi
+          exit "$status"
+
+      # 최종 성능 세션이 아니라 고정 합성 진단이다. 메모리 표본은 별도 아티팩트로 보존한다.
+      - name: Validate native measurement helpers
+        id: measurement
+        run: |
+          python3 Scripts/validate-native-measurement.py \
+            --output "$RUNNER_TEMP/measurement-helper-raw" \
+            --dependencies "$RUNNER_TEMP/measurement-helper-dependencies"
+
+      - name: Prepare normalized measurement evidence
+        if: always() && !cancelled() && steps.measurement.outcome != 'skipped'
+        id: measurement_normalize
+        run: |
+          python3 Scripts/normalize-indexstore-evidence.py \
+            --input "$RUNNER_TEMP/measurement-helper-raw" \
+            --output "$RUNNER_TEMP/measurement-helper-public" \
+            --prefix "WORKSPACE=$GITHUB_WORKSPACE" \
+            --prefix "RUNNER_TEMP=$RUNNER_TEMP" \
+            --prefix "RUNNER_HOME=$HOME" \
+            --prefix "DEVELOPER=$(xcode-select -p)" \
+            --prefix "PRIVATE=/private" --prefix "USR=/usr" --prefix "OPT=/opt" \
+            --prefix "BIN=/bin" --prefix "DEV=/dev" --prefix "TEMP=/var"
+
+      - name: Preserve normalized measurement evidence
+        if: always() && steps.measurement_normalize.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: measurement-helper-validation
+          path: ${{ runner.temp }}/measurement-helper-public/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Prepare portable public evidence
         id: normalize
         if: always()
@@ -94,22 +159,18 @@ jobs:
             --prefix "CARTOGRAPH_BUILD=/cartograph.build"
             --prefix "INDEXSTORE_BUILD=/indexstore-db.build"
           )
-          if [ -d "$RUNNER_TEMP/indexstore-cli-benchmark" ]; then
-            python3 Scripts/normalize-indexstore-evidence.py \
-              --input "$RUNNER_TEMP/indexstore-cli-benchmark" \
-              --output "$RUNNER_TEMP/indexstore-cli-public/synthetic" "${prefixes[@]}"
-          fi
-          if [ -d "$RUNNER_TEMP/indexstore-project-validation" ]; then
-            python3 Scripts/normalize-indexstore-evidence.py \
-              --input "$RUNNER_TEMP/indexstore-project-validation" \
-              --output "$RUNNER_TEMP/indexstore-cli-public/argument-parser" "${prefixes[@]}" \
-              --prefix "SYNTHETIC_EVIDENCE=$RUNNER_TEMP/indexstore-cli-benchmark"
-          fi
+          python3 Scripts/normalize-indexstore-bundles.py \
+            --synthetic "$RUNNER_TEMP/indexstore-cli-benchmark" \
+            --argument-parser "$RUNNER_TEMP/indexstore-project-validation" \
+            --mixed-setup "$RUNNER_TEMP/indexstore-mixed-validation" \
+            --mixed-ios "$RUNNER_TEMP/indexstore-mixed-validation/validation" \
+            --output "$RUNNER_TEMP/indexstore-cli-public" \
+            --github-output "$GITHUB_OUTPUT" "${prefixes[@]}"
 
       # 원본은 러너 안에만 둔다. 바이너리 인덱스에는 절대 경로가 남으므로
       # 공개 업로드는 검증된 정규화 텍스트와 원본/정규화 해시 목록으로 제한한다.
       - name: Preserve normalized comparison evidence
-        if: always() && steps.normalize.outcome == 'success'
+        if: always() && steps.normalize.outputs.ready == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: indexstore-cli-comparison

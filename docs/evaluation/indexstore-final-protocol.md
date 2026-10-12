@@ -89,6 +89,13 @@ silently removed and then presented as proof for mixed iOS projects. Native unsu
 operations are distinguished from comparable operations supplied by the external assembler; they
 are never converted into fabricated zero-recall scores.
 
+A final compiler-generation policy must be frozen with the adapters. SDK path/version/build receipts
+alone do not establish SDK content identity or freshness: seal the SDK headers/modules and relevant
+compiler inputs (or an independently verified immutable SDK image), then verify that identity across
+all generations. `fresh-shared-v2` currently records version/path-only SDK binding as validation-only
+and does not satisfy this final gate. Composed costs must retain one-time toolchain/helper seals,
+preflight integrity checks, full shared rebuilds and arm/session work as distinct charged components.
+
 The final source revision, adapter hashes, oracle hashes, toolchain/SDK versions, exact query list,
 edit sequence, randomization seed and bootstrap implementation must be committed before execution.
 Record nonidentifying CPU model, core counts, RAM and load/concurrency policy. The moving

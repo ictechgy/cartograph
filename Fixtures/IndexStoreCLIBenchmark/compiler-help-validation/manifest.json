@@ -1,0 +1,46 @@
+{
+  "files": [
+    {
+      "bytes": 32134,
+      "command": [
+        "$TOOLCHAIN/usr/bin/swiftc",
+        "-help"
+      ],
+      "compiler_sha256": "67ec2dbd5fd08bd50ea40572970659aa6cc0c3ea78058ea9d80beba0b2330def",
+      "path": "swift-help.stdout",
+      "sha256": "c68df33b4e35a35e9378de2e0ec645d971e4585a425aedd7ddbb2b375333f671",
+      "version": "Swift version 6.4 (swift-6.4-RELEASE)\nTarget: x86_64-unknown-linux-gnu\n"
+    },
+    {
+      "bytes": 120623,
+      "command": [
+        "$TOOLCHAIN/usr/bin/clang",
+        "-cc1",
+        "--help"
+      ],
+      "compiler_sha256": "409ce6d638ba2e3c6fe5ce50906bded8ca43d6512978031ee3bd9221f60e949e",
+      "path": "clang-frontend-help.stdout",
+      "sha256": "f22f46b2600e593fc6de423b60d78616f05bcf7448dc822a4eea323b074f472c",
+      "version": "clang version 21.0.0 (https://github.com/swiftlang/llvm-project.git 903b9faaae5c43ecc9b7e33f8db9c94c7429374a)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: $TOOLCHAIN/usr/bin\n"
+    }
+  ],
+  "matched_ci_blockers": [
+    {
+      "artifact": "setup/clang-frontend-help.stdout",
+      "observed_value_sha256_prefix": "4481f48fee5de938",
+      "offending_value_sha256": "4481f48fee5de9384955bd240a6d981e14e8a6a604f5b839aa86f38dc66c686a",
+      "run_id": 38199381784
+    },
+    {
+      "artifact": "setup/swift-help.stdout",
+      "observed_error_sha256": "db67ab5328edcc3d9acdaf552d3a7b1471bcea12570997c8176d080d4cca62a3",
+      "offending_value_sha256": "180167554728ee07f2af545017301eba66cc5ac3af46a34cbbf6d398003443fd",
+      "run_id": 38201210141
+    }
+  ],
+  "native_macos_help_validated": false,
+  "platform": "Linux x86_64",
+  "role": "official-linux-compiler-help-privacy-validation",
+  "superiority_claim": null,
+  "toolchain": "Official Swift 6.4 Debian 12 toolchain"
+}
