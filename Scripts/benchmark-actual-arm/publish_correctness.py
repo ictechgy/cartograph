@@ -210,6 +210,10 @@ def public_attempt(args, attempt):
             "phase_receipt_sha256",
         ]
     }
+    if "pre_record_diagnostic" in row:
+        diagnostic = attempt_receipts.pre_record_diagnostic(phase, row["stderr"])
+        require(same_json(row["pre_record_diagnostic"], diagnostic))
+        public["pre_record_diagnostic"] = diagnostic
     public["source_sha256"] = {str(Path(path).relative_to(ROOT)): value for path, value in row["source_sha256"].items()}
     public["publication_log_identities"] = current
     public["publication_source_sha256"] = (

@@ -19,6 +19,115 @@ SPEC.loader.exec_module(READER)
 REASONS = {"input-not-regular-file", "input-byte-limit", "input-changed-during-read", "unreadable-input"}
 
 
+PRE_RECORD_STAGES = {
+    "isolation",
+    "scratch-boundary",
+    "output-boundary",
+    "state-inputs",
+    "installation-binding",
+    "sdk-binding",
+    "accepted-output-boundary",
+    "raw-output-create",
+}
+PRE_RECORD_REASONS = {
+    "Prior interpreter spellings differ": "installation-interpreter-spelling-mismatch",
+    "Prospective interpreter identity differs from current input": "prospective-interpreter-identity-mismatch",
+    "Private installation target is not canonical": "installation-target-not-canonical",
+    "Prior helper phase was not normally successful": "measurement-prerequisite-not-successful",
+    "Installation request differs": "installation-request-mismatch",
+    "Unexpected installed target entries": "package-unexpected-entries",
+    "Original native/tool setup prerequisites failed": "tool-setup-prerequisite-failed",
+    "Accepted developer directory context changed": "developer-context-changed",
+    "Selected lexical input lacks the accepted developer ancestor": "developer-ancestor-mismatch",
+    "Selected compiler/library developer contexts disagree": "compiler-context-disagreement",
+    "Selected SDK is outside accepted developer/platform context": "sdk-context-disagreement",
+    "Evidence/input overlap": "output-input-overlap",
+}
+PRE_RECORD_FAILURES = {"OSError", "ValueError", "RuntimeError", "KeyError", "TypeError", "KeyboardInterrupt"}
+
+
+class PreRecordFailure(RuntimeError):
+    """메시지 원문 없이 허용된 단계와 알려진 이유 또는 전체 메시지 지문만 전달한다."""
+
+    def __init__(self, stage, error):
+        if stage not in PRE_RECORD_STAGES:
+            raise ValueError("Unknown pre-record stage")
+        self.exit_code = 125 if isinstance(error, KeyboardInterrupt) else 1
+        failure = next(
+            name
+            for name, kind in [
+                ("KeyboardInterrupt", KeyboardInterrupt),
+                ("KeyError", KeyError),
+                ("TypeError", TypeError),
+                ("ValueError", ValueError),
+                ("OSError", OSError),
+                ("RuntimeError", RuntimeError),
+            ]
+            if isinstance(error, kind)
+        )
+        message = str(error)
+        reason = PRE_RECORD_REASONS.get(message, "unclassified-error")
+        self.diagnostic = dict(
+            schema_version=1,
+            status="refused-before-record",
+            stage=stage,
+            failure=failure,
+            reason=reason,
+            message_sha256=(
+                sha(message.encode("utf-8", errors="surrogatepass")) if reason == "unclassified-error" else None
+            ),
+            exit_code=self.exit_code,
+        )
+        super().__init__("Pre-record admission failed")
+
+
+def pre_record(stage, operation, *args):
+    try:
+        return operation(*args)
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError, KeyboardInterrupt) as error:
+        raise PreRecordFailure(stage, error) from error
+
+
+def pre_record_diagnostic(phase, historical):
+    """정상적으로 반환한 한정된 자식 진단만 원래 로그 지문에 묶어 공개한다."""
+    if (
+        historical.get("status") != "available"
+        or type(phase.get("returncode")) is not int
+        or phase["returncode"] not in (1, 125)
+        or type(phase.get("observed_returncode")) is not int
+        or phase["observed_returncode"] != phase["returncode"]
+        or phase.get("failure") not in (None, "nested-incomplete")
+    ):
+        return None
+    try:
+        identity = READER.file_identity(Path(phase["stderr"]), 4096, include_text=True)
+        if {k: identity[k] for k in ("bytes", "sha256")} != {k: historical[k] for k in ("bytes", "sha256")}:
+            return None
+        row = READER.strict_json(identity["text"])
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"schema_version", "status", "stage", "failure", "reason", "message_sha256", "exit_code"}
+            or type(row["schema_version"]) is not int
+            or row["schema_version"] != 1
+            or row["status"] != "refused-before-record"
+            or row["stage"] not in PRE_RECORD_STAGES
+            or row["failure"] not in PRE_RECORD_FAILURES
+            or type(row["exit_code"]) is not int
+            or row["exit_code"] != phase["returncode"]
+            or (row["failure"] == "KeyboardInterrupt") != (row["exit_code"] == 125)
+            or row["reason"] not in {*PRE_RECORD_REASONS.values(), "unclassified-error"}
+        ):
+            return None
+        if row["reason"] == "unclassified-error":
+            if not isinstance(row["message_sha256"], str) or not re.fullmatch("[a-f0-9]{64}", row["message_sha256"]):
+                return None
+        elif row["message_sha256"] is not None:
+            return None
+        return row
+    except (OSError, ValueError, TypeError, KeyError, READER.DiscoveryError):
+        return None
+
+
 def sha(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -48,6 +157,7 @@ def envelope(phase, argv, sources, total_seconds):
         supervisor_wall_seconds=total_seconds,
         stdout=stdout,
         stderr=stderr,
+        pre_record_diagnostic=pre_record_diagnostic(phase, stderr),
         cleanup_signals=phase.get("cleanup_signals", []),
         cleanup_root_unfinished=phase.get("cleanup_root_unfinished", False),
         descendant_cleanup_verified=False,

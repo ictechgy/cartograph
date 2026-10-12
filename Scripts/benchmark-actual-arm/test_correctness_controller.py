@@ -68,6 +68,10 @@ class ControllerTests(unittest.TestCase):
         self.assertGreaterEqual(row["supervisor_wall_seconds"], row["child_wall_seconds"])
         self.assertEqual(row["stderr"]["sha256"], hashlib.sha256((attempt / "process.stderr").read_bytes()).hexdigest())
         self.assertFalse((self.root / "actual-arm-correctness-raw").exists())
+        self.assertEqual(row["pre_record_diagnostic"]["stage"], "state-inputs")
+        self.assertEqual(row["pre_record_diagnostic"]["failure"], "OSError")
+        self.assertEqual(row["pre_record_diagnostic"]["reason"], "unclassified-error")
+        self.assertNotIn(str(self.root), json.dumps(row["pre_record_diagnostic"]))
 
     def test_malformed_lifecycle_still_has_safe_original_attempt(self):
         self.args.lifecycle.parent.mkdir()

@@ -849,12 +849,106 @@
       "sha256": "7633b0a43f1af62aa4bab08487bccc7ddb950291cace93c2c19ff57ff26cd41c",
       "uncompressed_bytes": 11718,
       "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38265144652-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965745,
+          "path": "bundle-status.json",
+          "sha256": "8fa524213a3517578a6bb6d7c87d8446c05f42df732f7327208809e95f7a1ec0"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7658552,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38265144652,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38265144652",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "498531bd1378c1f81767698b5f0d3708c86db752a4c0a22168e3e5e44c0ae636",
+      "uncompressed_bytes": 39084817,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38265144652-helper-normalized.zip",
+      "archive_entries": 206,
+      "complete_run_evidence": false,
+      "compressed_bytes": 143440,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38265144652,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38265144652",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "abffb17883cb229b8823993ce2056c9b5264d53fca68c3d5bf9b5b59fe4473b5",
+      "uncompressed_bytes": 337777,
+      "verified_normalized_files": 205
+    },
+    {
+      "archive": "run-38265144652-sdk-normalized.zip",
+      "archive_entries": 45,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1485,
+          "path": "attempt.json",
+          "sha256": "77f671fa30f0fe91fe7e43e3ea1143f4bd3fd6fcf985f071324ce38d5c3ecd48"
+        },
+        {
+          "bytes": 1854,
+          "path": "publication-status.json",
+          "sha256": "ef1d55253db7a9418dc8c012d803ed796536a6d62ad8bd74dcfe8c8f359b1000"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 1787305,
+      "manifests": [
+        "discovery/manifest.json"
+      ],
+      "run_id": 38265144652,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38265144652",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "d05e2fd4ddf4fc7603a9541bcbe0995b5e6dfa735b8de4a64433371497bae408",
+      "uncompressed_bytes": 3905045,
+      "verified_normalized_files": 42
+    },
+    {
+      "archive": "run-38265144652-actual-arm-normalized.zip",
+      "archive_entries": 2,
+      "artifact_kind": "actual-arm-correctness-validation",
+      "auxiliary_files": [
+        {
+          "bytes": 11480,
+          "path": "attempt.json",
+          "sha256": "f237bf9e82d3f57957f43260704e8bb36f4268e68bc21d4464091645433f1268"
+        },
+        {
+          "bytes": 439,
+          "path": "publication-status.json",
+          "sha256": "b695212de29095942ced2dafd52595fe316b964563749361d91a14a25b87b86c"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 3389,
+      "manifests": [],
+      "run_id": 38265144652,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38265144652",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "cdf04bf3f05d62eda64e8ff4b19eac9ba26d4ad38bffa0b512fc2f00a4a25ae4",
+      "uncompressed_bytes": 11919,
+      "verified_normalized_files": 0
     }
   ],
   "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
   "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 119195056,
-  "total_uncompressed_bytes": 597043806
+  "total_compressed_bytes": 128787742,
+  "total_uncompressed_bytes": 640383364
 }

@@ -68,8 +68,20 @@ class PublicationTests(unittest.TestCase):
         receipt = json.loads((self.public / "attempt.json").read_text())
         self.assertEqual(receipt["observed_returncode"], 1)
         self.assertGreater(receipt["child_wall_seconds"], 0)
+        self.assertEqual(receipt["pre_record_diagnostic"]["stage"], "state-inputs")
+        self.assertNotIn(str(self.root), json.dumps(receipt["pre_record_diagnostic"]))
         self.assertFalse(status["complete_run_evidence"])
         self.assertEqual(set(p.name for p in self.public.iterdir()), {"attempt.json", "publication-status.json"})
+
+    def test_changed_typed_stage_cannot_be_published_against_original_log(self):
+        path = self.attempt / "results.json"
+        row = json.loads(path.read_text())
+        row["pre_record_diagnostic"]["stage"] = "installation-binding"
+        path.write_text(json.dumps(row))
+        status, code = self.publish()
+        self.assertEqual(code, 1)
+        self.assertEqual(status["attempt_status"], "blocked")
+        self.assertFalse((self.public / "attempt.json").exists())
 
     def test_actual_publication_cli_is_isolated_and_preserves_red(self):
         result = subprocess.run(

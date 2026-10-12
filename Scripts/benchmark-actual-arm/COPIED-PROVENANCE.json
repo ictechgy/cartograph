@@ -133,19 +133,24 @@
     "base_commit": "a9854f68545dd1b403458cf504ee4bd99215f439",
     "files": [
       {
+        "bytes": 8312,
+        "path": "attempt_receipts.py",
+        "sha256": "53c73db88c185338b5676e135256b3a2956d7d9904b6e38866b9776d6d8a05e4"
+      },
+      {
         "bytes": 9150,
         "path": "contract_prerequisites.py",
         "sha256": "d51b7d166378b5ccb16e6d7a5d731e5297ccbbe8058e8c8ff123123995a20c96"
       },
       {
-        "bytes": 3499,
+        "bytes": 3542,
         "path": "contract_suite.py",
-        "sha256": "66fa2e8e957d5e6cb4bd6184a64a50497fef9d2b084da8e7a689bf7b84276c94"
+        "sha256": "ea6de9303fa091293e62364710af047216a682ba7704fead14d97cc01fade6a8"
       },
       {
-        "bytes": 13490,
+        "bytes": 13985,
         "path": "correctness_controller.py",
-        "sha256": "65e076b4d5bdc79792bb3e9993cf585eab5d23b094e6f94e4dea5568d8eafa99"
+        "sha256": "530a63a87ab7e0535e63dcf6a58ec7098032c11a62728ddc0e13a1d3ff4fee33"
       },
       {
         "bytes": 10143,
@@ -153,9 +158,9 @@
         "sha256": "96b106581b64dfe8fe626ece29062233d4c6e0a25ce75be355ecc9a015143c32"
       },
       {
-        "bytes": 21056,
+        "bytes": 21299,
         "path": "publish_correctness.py",
-        "sha256": "ec4366dfbbc39dc9bc6329a8a653fa67e081eaad223b4ce9bfc4a51a4eb37a3e"
+        "sha256": "bfe5d4996d048f813c1db019501b39633002d6c68d084fb05f8a2dad1043e102"
       },
       {
         "bytes": 23825,
@@ -193,14 +198,24 @@
         "sha256": "10d8b90c6ae6e6d6e0136a477dadf0fb4c32fd2bf6abfe2d1ee09a4af98c7ff6"
       },
       {
+        "bytes": 6809,
+        "path": "test_correctness_controller.py",
+        "sha256": "0c9dfb532d1d79be04ddc6c320d9bd79b6e7817484ececec0754e8f7461149c8"
+      },
+      {
         "bytes": 7480,
         "path": "test_developer_context.py",
         "sha256": "400b5dd99f9cca8f857662d1df03feda0d75cdb65d5869ab8968409a17a67098"
       },
       {
-        "bytes": 12933,
+        "bytes": 5116,
+        "path": "test_pre_record_diagnostics.py",
+        "sha256": "6f2899007a92222db6cd285cf088a073c47af9681030e10a161729739ddb54c8"
+      },
+      {
+        "bytes": 13586,
         "path": "test_publication.py",
-        "sha256": "e19a07219250e563769a73619c0a34dd6aaedc73d4fd87d77f4ab6e3aca93346"
+        "sha256": "4cdb3084d9af888a3c9fb6f9c8d1c79832b4ad849907db30c65903cf56150189"
       },
       {
         "bytes": 12530,
@@ -214,6 +229,6 @@
       }
     ],
     "role": "bound-full-contract-prerequisites-after-existing-install",
-    "scope": "Original copied hashes remain historical. Runtime bootstrap/identity/measurement implementations stay unchanged. The private vendored normalizer adds identity-default transformation/type injection before its unchanged scanner; runtime test fixture cache destination is explicit. Only request-bound module maps receive lossless publication projection. The generation-input successor binds developer context from accepted compiler/library/SDK paths, retains an optional explicit override and rechecks directory identities. Original copied primitive hashes remain historical."
+    "scope": "Original copied hashes remain historical. Runtime bootstrap/identity/measurement implementations stay unchanged. The private vendored normalizer adds identity-default transformation/type injection before its unchanged scanner; runtime test fixture cache destination is explicit. Only request-bound module maps receive lossless publication projection. The generation-input successor binds developer context from accepted compiler/library/SDK paths, retains an optional explicit override and rechecks directory identities. Original copied primitive hashes remain historical. Typed pre-record diagnostics add finite stages/reasons and hash-only unknown errors without changing admission predicates; original logs/exit/cost remain authoritative."
   }
 }

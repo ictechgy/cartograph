@@ -137,17 +137,22 @@ def before_write(args, destination):
 def execute(args):
     """독립 시도 감독기 내부에서만 새 원시 출력과 런타임을 준비한다."""
     started = time.perf_counter()
-    isolation()
-    root = canonical_scratch(args.scratch_root)
+    pre_record = attempt_receipts.pre_record
+    pre_record("isolation", isolation)
+    root = pre_record("scratch-boundary", canonical_scratch, args.scratch_root)
     output = root / "actual-arm-correctness-raw"
-    before_write(args, output)
-    plan = state_inputs.prepare(args.repository, args.lifecycle, args.setup, args.measurement)
-    binding = installation_binding.bind(args.measurement, args.repository, Path(sys.executable))
+    pre_record("output-boundary", before_write, args, output)
+    plan = pre_record(
+        "state-inputs", state_inputs.prepare, args.repository, args.lifecycle, args.setup, args.measurement
+    )
+    binding = pre_record(
+        "installation-binding", installation_binding.bind, args.measurement, args.repository, Path(sys.executable)
+    )
     sdk_path = root / "sdk-discovery-raw/results.json"
-    state_inputs.bind_sdk_discovery(plan, sdk_path)
+    pre_record("sdk-binding", state_inputs.bind_sdk_discovery, plan, sdk_path)
     roots = plan["input_roots"] + [binding["package"]["target"], str(sdk_path.parent)]
-    state_inputs.disjoint(output, roots)
-    output.mkdir()
+    pre_record("accepted-output-boundary", state_inputs.disjoint, output, roots)
+    pre_record("raw-output-create", output.mkdir)
     result = dict(
         schema_version=1,
         status="failed",
@@ -316,6 +321,9 @@ def main():
     args = parser.parse_args()
     try:
         result = execute(args) if args.execute else supervise(args)
+    except attempt_receipts.PreRecordFailure as error:
+        print(json.dumps(error.diagnostic, sort_keys=True), file=sys.stderr)
+        raise SystemExit(error.exit_code)
     except (OSError, ValueError, RuntimeError, KeyError, TypeError, KeyboardInterrupt) as error:
         print(json.dumps(dict(status="refused-before-record", failure=type(error).__name__)), file=sys.stderr)
         raise SystemExit(125 if isinstance(error, KeyboardInterrupt) else 1)

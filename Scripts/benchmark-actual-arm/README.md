@@ -9,7 +9,7 @@ See [the execution and failure contract](INTEGRATION-BOUNDARIES.md),
 [exact copied-source provenance](COPIED-PROVENANCE.json). Historical original/successor scripts are
 explicit test fixtures; production selects the reviewed files named by the controller.
 
-The controller first runs all 154 integration and 43 runtime controls through the reviewed isolated
+The controller first runs all 165 integration and 43 runtime controls through the reviewed isolated
 bootstrap, using a separately sealed test-source manifest and the existing single private `--target`
 installation. Both full suite counts, module inventories, runtime receipts and normal exits are required;
 skips, missing imports, incomplete execution or failures stop before the AB pair. Their complete costs
@@ -65,3 +65,13 @@ The normalized native receipts merge developer aliases into one token, so the or
 cannot be fully replayed on Linux. An explicit Xcode bundle-alias control resolves the selected lexical
 ancestor to exactly the accepted physical developer directory and watches the traversed alias identities.
 It neither searches for another Xcode nor admits a different physical SDK/toolchain context.
+
+Run 38265144652 retained another completed pre-record refusal, now with the generic ValueError envelope.
+Its precise predicate and stage are unavailable; no alias or interpreter cause is assumed and no AB
+execution is established. A subsequent diagnostic-only addition wraps the existing finite pre-record
+stages without changing their admission predicates. A controlled reason identifier is emitted only for
+an exact known error message; other messages are represented solely by their full SHA-256. The outer
+attempt verifies the bounded typed JSON against the original stderr bytes and actual process return.
+Signals, timeouts, malformed/changed logs and historical unavailable logs cannot certify a stage.
+Publication rechecks the same diagnostic and preserves original red/incomplete exit and costs. No raw
+exception messages, paths, environment or source data are added to the safe envelope.

@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all twenty-four rounds (forty-one archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all twenty-five rounds (forty-five archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -236,6 +236,18 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    Path(None) in the original preparation code. The child cost is 2.675 seconds inside the 2.730-second
    supervisor wall. All four original public ZIPs are retained without byte changes.
 
+25. Run 38265144652 passes product/self-analysis, all 13 mixed states and synthetic helper checks.
+   Product: 2,008 tests, 203 suites, 92.81% coverage (40,477/43,614 lines). All 14 graph projections
+   and 21 ten-query batches regrade exactly; helper retains 16 pairs and 179 RSS rows/250 members.
+   SDK discovery retains all 42 normalized files and ten successful guarded probes, with the same
+   unresolved runtime-library search root. Actual-arm preparation again exits 1 before raw output;
+   exactly two safe envelopes retain 2.282 seconds of child work within 2.324 seconds of supervisor wall.
+   The 61-byte stderr hash matches the fixed ValueError envelope. Its exact stage/predicate and
+   traceback are unavailable; no interpreter, alias or SDK cause is assigned and no AB execution
+   is established. All four original public ZIPs remain unchanged. A separately reviewed diagnostic
+   successor adds finite stage/reason identifiers and hash-only unknown errors, with existing admission
+   predicates and original exit/cost semantics unchanged.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -246,9 +258,9 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text, their manifests and the reviewed publication status.
 They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
 Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Thirty-six archives retain
+private; each manifest distinguishes original hashes from normalized public hashes. Forty archives retain
 the exact bytes of their public Actions artifacts. The four test-phase archives and round eight's partial
-driver-phase archive were normalized separately after their failures. Rounds nine through twenty-two, round twenty-three's status-only artifact and all four round twenty-four artifacts preserve all original
+driver-phase archive were normalized separately after their failures. Rounds nine through twenty-two, round twenty-three's status-only artifact and all eight round twenty-four/twenty-five artifacts preserve all original
 ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
 when Actions retention expires.
 
