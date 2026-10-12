@@ -30,7 +30,7 @@ public struct IndexStoreProvider: IndexProviding {
         public var includeExternalSymbols: Bool
         /// Clang 구현 선언을 그래프와 브리지 식별자 양쪽에 포함할 때 사용한다.
         public var includeObjectiveCSources: Bool
-        /// 값 흐름에서 재귀 호출의 실제 USR을 잃지 않도록 자기 참조도 보존한다.
+        /// 값 흐름과 명시적 그래프 투영에서 재귀 호출의 실제 USR을 잃지 않도록 자기 참조를 보존한다.
         public var includeSelfReferences: Bool
         /// 원본 인덱스를 직접 읽을지, 기존 IndexStoreDB 캐시를 사용할지 선택한다.
         public var readerMode: ReaderMode
