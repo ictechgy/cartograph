@@ -17,12 +17,21 @@ class CompletionBindingTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.raw = Path(self.temp.name).resolve()
+        env = publication.controller.identity.private_environment(self.raw / "private-state")
+        startup = publication.controller.startup_profile
+        observed = startup.observe_request(startup.environment_request(env), env)
         self.runtime = dict(
+            schema_version=2,
+            startup_profile=startup.profile(observed),
             python=dict(path=sys.executable, sha256="b" * 64, bytes=20),
             code_files={str(publication.ROOT / "state_worker.py"): "c" * 64},
             package=dict(target=str(self.raw / "private-package"), content=dict(content_sha256="a" * 64)),
         )
-        self.plan = dict(accepted=dict(sdk_content_identity=None))
+        self.plan = dict(
+            accepted=dict(sdk_content_identity=None), engine_config=dict(developer_directory=str(self.raw))
+        )
+        env["DEVELOPER_DIR"] = str(self.raw)
+        observed = startup.observe_request(startup.environment_request(env), env)
         self.write("setup/runtime.json", self.runtime)
         self.write("setup/plan.json", self.plan)
         runtime_ref = state_inputs.reference(self.raw / "setup/runtime.json")
@@ -80,6 +89,17 @@ class CompletionBindingTests(unittest.TestCase):
             modules_before=snapshot,
             modules_after=snapshot,
         )
+        request = publication.controller.isolated_measure.STARTUP.launch_row(
+            self.runtime, runtime_ref["sha256"], publication.ROOT / "state_worker.py", arguments, env
+        )
+        self.write("setup/state-runtime/environment-request.json", request)
+        self.receipt.update(
+            environment_request_sha256=state_inputs.reference(
+                self.raw / "setup/state-runtime/environment-request.json"
+            )["sha256"],
+            environment_before=observed,
+            environment_after=observed,
+        )
         self.state = dict(
             role="single-restored-state-correctness-validation",
             final_evidence=False,
@@ -136,7 +156,10 @@ class CompletionBindingTests(unittest.TestCase):
         row = self.result()
         self.assertEqual(row["status"], "verified")
         self.assertEqual(row["outcome"], "passed")
-        self.assertEqual(set(row["bound_file_sha256"]), {"phase", "runtime", "state", "plan", "runtime_inputs"})
+        self.assertEqual(
+            set(row["bound_file_sha256"]),
+            {"phase", "runtime", "state", "plan", "runtime_inputs", "runtime_environment"},
+        )
 
     def test_missing_actual_phase_or_runtime_is_not_success(self):
         for name in ["setup/whole-state.json", "setup/state-runtime/runtime-result.json"]:
@@ -192,6 +215,7 @@ class CompletionBindingTests(unittest.TestCase):
             "state": "results.json",
             "plan": "setup/plan.json",
             "runtime_inputs": "setup/runtime.json",
+            "runtime_environment": "setup/state-runtime/environment-request.json",
         }
         manifest = dict(
             files=[dict(path="setup/controller-result.json", original_raw_sha256=completion["sha256"])]

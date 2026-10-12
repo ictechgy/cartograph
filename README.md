@@ -1189,6 +1189,22 @@ per the exchange contract. A module that defines several `View`s is represented 
 one — secondary views are only reachable through `requireNativeViewManager(module, viewName)`
 and are not separate name-boundary facts.
 
+Development scope (unreleased): optional upstream provenance on external-retentions v0 is preserved
+through analysis and snapshots, including zero-entry and unmatched documents. Old documents explicitly
+report unavailable context; unknown provenance versions retain matching roots and report unsupported
+context. A newer conversion timestamp never clears upstream stale-source warnings. The input file is
+bounded to 16 MiB; provenance is limited to 256 source headers, 4,096 limitations and 1 MiB canonical
+UTF-8, with strict scalar Unicode, integer-literal tokens, duplicate-key rejection and depth 64. Invalid
+or oversized input fails instead of yielding an empty success. Display is capped at 64 records and
+8,192 escaped UTF-8 bytes with exact omitted counts; snapshots retain the full admitted context in a
+separate compact JSON field. This preserves byte-distinct Unicode keys that Foundation keyed Codable
+would otherwise coalesce. Raw snapshot context is revalidated on restore, and conflicting duplicate
+representations fail. Embedders must load new snapshots through `AnalysisSnapshotDocument.decode(from:)`;
+plain `JSONDecoder` remains supported for legacy snapshots without provenance. Capture timestamps use
+an explicit portable profile: real Gregorian dates, lower/upper-case t/z, hour/offset-hour 00–23,
+minute/offset-minute 00–59 and seconds 00–59, with arbitrary fraction digits preserved. Leap seconds
+(:60) are unsupported, rather than normalized. None of this establishes deletion safety or cancels a matched retention.
+
 isthmus hands back `external-retentions`: for each Swift declaration it found a caller for, the USR
 and the evidence. `--external-retentions <path>` (or `external_retentions_path` in the
 configuration) turns each into a retained root with reason `externalBridge`, and `--explain` quotes

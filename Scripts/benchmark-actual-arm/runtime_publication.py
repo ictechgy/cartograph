@@ -11,6 +11,7 @@ from pathlib import Path
 import state_inputs
 import isolated_measure
 import runtime_bootstrap as bootstrap
+import startup_binding
 
 ROOT = Path(__file__).resolve().parent
 FORMAT = "sorted-named-module-entries-v1"
@@ -127,7 +128,7 @@ class Projection:
         self.files[reference["path"]] = reference["sha256"]
         return state_inputs.document(reference), reference
 
-    def bind(self, config_path, report, script, arguments, code, command=None):
+    def bind(self, config_path, report, script, arguments, code, command=None, environment=None):
         if not report.exists():
             return
         state_inputs.require(
@@ -139,9 +140,11 @@ class Projection:
             state_inputs.require(command == expected, "Runtime projection request differs")
         original, reference = self.read(report)
         verified = isolated_measure.verify_runtime_receipt(
-            report, config, config_ref["sha256"], script, arguments, code
+            report, config, config_ref["sha256"], script, arguments, code, environment
         )
         state_inputs.require(encoded(original) == encoded(verified), "Runtime receipt changed during verification")
+        if config.get("schema_version") == 2:
+            self.read(startup_binding.launch_path(report))
         key = digest(original)
         project(original)
         self.accepted[key] = original
@@ -169,6 +172,17 @@ class Projection:
         )
         return code
 
+    def environment(self, path, developer=None):
+        config_path = self.raw / "setup/runtime.json"
+        if not config_path.exists():
+            config_path = self.raw / "setup/contracts/runtime.json"
+        config, _ = self.read(config_path)
+        return startup_binding.existing_environment(path, developer) if config.get("schema_version") == 2 else None
+
+    def arm_environment(self, arm, role):
+        plan, _ = self.read(self.raw / "setup/plan.json")
+        return self.environment(self.raw / "private-readers" / arm / role, plan["engine_config"]["developer_directory"])
+
     def collect(self):
         for label in ["integration", "runtime"]:
             folder = self.raw / "setup/contracts" / label
@@ -181,12 +195,13 @@ class Projection:
                     ["--suite", label, "--output", str(folder / "summary.json")],
                     self.phase_code(phase),
                     phase["command"],
+                    self.environment(self.raw / "private-contracts" / label),
                 )
         config_path = self.raw / "setup/runtime.json"
         report = self.raw / "setup/state-runtime/runtime-result.json"
         if report.exists():
             phase, _ = self.read(self.raw / "setup/whole-state.json")
-            _, plan_ref = self.read(self.raw / "setup/plan.json")
+            plan, plan_ref = self.read(self.raw / "setup/plan.json")
             _, config_ref = self.read(config_path)
             args = [
                 "--plan",
@@ -200,7 +215,15 @@ class Projection:
                 "--output",
                 str(self.raw),
             ]
-            self.bind(config_path, report, ROOT / "state_worker.py", args, self.phase_code(phase), phase["command"])
+            self.bind(
+                config_path,
+                report,
+                ROOT / "state_worker.py",
+                args,
+                self.phase_code(phase),
+                phase["command"],
+                self.environment(self.raw / "private-state", plan["engine_config"]["developer_directory"]),
+            )
         for arm in ["baseline", "cartograph"]:
             folder = self.raw / "runs/restored_rebuilt" / arm
             observer_report = folder / "observer-runtime/runtime-result.json"
@@ -213,6 +236,7 @@ class Projection:
                     isolated_measure.HELPER,
                     ["--worker"],
                     observer["observed_helper_returncode"],
+                    environment=self.arm_environment(arm, "observer"),
                 )
             if engine_report.exists():
                 measured, _ = self.read(folder / "whole-arm.json")
@@ -231,6 +255,7 @@ class Projection:
                     ["--input", inputs["path"], "--sha256", inputs["sha256"]],
                     measured["root_returncode"],
                     request["command"],
+                    self.arm_environment(arm, "engine"),
                 )
         return self
 

@@ -55,6 +55,27 @@ struct ExternalRetentionTests {
         ExternalRetentionStore(fileSystem: InMemoryFileSystem(files: [path: contents]))
     }
 
+    @Test("상류 출처는 원본 token 검사 뒤 붙이고 legacy 보존 배열은 바꾸지 않는다")
+    func loadsProvenanceWithoutChangingRoots() throws {
+        let original = try makeStore(Self.validDocument).load(from: "/p/retentions.json")
+        let extended = Self.validDocument.replacingOccurrences(of: "\"version\": 0,", with:
+            #""version":0,"provenance":{"version":2,"é":1,"e\u0301":2},"#)
+        let document = try makeStore(extended).load(from: "/p/retentions.json")
+        #expect(document.retentions == original.retentions)
+        #expect(document.provenance?.value.object?.members.count == 3)
+        #expect(throws: CartographError.self) {
+            try makeStore(extended.replacingOccurrences(of: #""é":1"#, with: #""é":1e-400"#)).load(from: "/p/retentions.json")
+        }
+    }
+
+    @Test("실제 외부 파일 바이트 상한 초과는 빈 성공 대신 실패한다")
+    func rejectsOversizedFile() throws {
+        let exact = Self.validDocument + String(repeating: " ",
+            count: ExternalRetentionStore.maximumByteCount - Self.validDocument.utf8.count)
+        #expect(try makeStore(exact).load(from: "/p/retentions.json").retentions.count == 1)
+        #expect(throws: CartographError.self) { try makeStore(exact + " ").load(from: "/p/retentions.json") }
+    }
+
     @Test("계약대로 쓰인 파일을 읽는다")
     func loadsValidDocument() throws {
         let document = try makeStore(Self.validDocument).load(from: "/p/retentions.json")

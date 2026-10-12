@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- Preserve optional external-retentions upstream provenance and limitations through analysis,
+  explain notes and lossless snapshots. Bound raw input and display independently; stale, unknown,
+  legacy and zero-entry context stays explicit without changing retention matching. Coordinated
+  Isthmus/Cartograph/Kartograph provenance support remains unreleased pending integration gates.
+
 ### Added
 
 - Reproducible comparison against the pinned upstream `index-dump` executable, with independent

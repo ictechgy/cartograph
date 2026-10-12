@@ -9,7 +9,7 @@ See [the execution and failure contract](INTEGRATION-BOUNDARIES.md),
 [exact copied-source provenance](COPIED-PROVENANCE.json). Historical original/successor scripts are
 explicit test fixtures; production selects the reviewed files named by the controller.
 
-The controller first runs all 190 integration and 43 runtime controls through the reviewed isolated
+The controller first runs all 267 integration and 53 runtime controls through the reviewed isolated
 bootstrap, using a separately sealed test-source manifest and the existing single private `--target`
 installation. Both full suite counts, module inventories, runtime receipts and normal exits are required;
 skips, missing imports, incomplete execution or failures stop before the AB pair. Their complete costs
@@ -113,3 +113,42 @@ A Linux Python 3.12.14 process replay with the exact `-I -S -B` flags preserved 
 Removing `LC_ALL` in a separate control caused Python to add `LC_CTYPE`, even under isolated startup.
 This establishes a diagnostic control only; the original native environment and macOS cause remain
 unavailable until an actual prospective observation. Local controls never substitute for that evidence.
+
+Run 38278741516 identifies one additional startup key in the actual child: the fixed identifier for
+`__CF_USER_TEXT_ENCODING`, with no missing or changed expected keys. The two-envelope artifact does not
+reveal its value or exact origin and contains no selected-launch or AB result. Earlier failures remain
+unclassified. Official CoreFoundation/CPython source supports a prospective startup hypothesis, not a
+claim that the historical runner used those exact source revisions.
+
+The prospective successor collects at most two fresh, physically identical interpreter spellings inside
+the already supervised correctness child. Every outgoing environment remains the exact original fixed
+private request. A bounded Darwin-only addition is admitted solely when its UTF-8 length and SHA-256
+agree at early/post-controller-import observations, across both probes, and in each actual selected,
+contract-suite, state, engine and observer process. Unknown additions, changed or missing requested
+keys, changed value hashes and incomplete probes refuse before later execution. No value is copied
+from an ambient environment, deleted, overwritten, guessed or published. The profile describes Python's
+observed environment mapping; it does not establish native cached state or loader closure.
+
+Probe imports compile the exact admitted source bytes, including local transitive imports, rather than
+trusting bytecode caches. Lexical and physical local aliases cannot escape that source inventory. Final
+request/log/observation rereads are followed by source, interpreter and directory guards. A one-exec
+replacement reuses the exclusive verified collection and cannot launch another probe or second exec.
+
+Runtime configuration version 2 binds the shared profile plus an exclusive environment request for each
+actual process. Original request/interpreter/package/code and terminal checks remain mandatory. Historical
+version-1 runtime controls remain available as explicit unit fixtures, but complete current controller
+publication requires version 2 and the verified selected-launch collection. This changes the local
+bootstrap and measurement adapters; the frozen measurement worker and strict normalizer bytes remain
+unchanged. Provenance distinguishes these changes from historical copies.
+
+The original collection and exact copied evidence keep their raw hashes. A copy manifest maps original
+private log locations to public artifact-relative members without changing receipt semantics. Publication
+rechecks the original collection, each copied byte stream, actual environment-request receipts, runtime
+observations and staged hashes. A failed collection keeps its original typed outcome/hash and nested cost
+in the safe attempt summary. Startup collection, rechecks, selected exec, suites and both actual arms all
+remain within the original whole-child wall; nested measurements are explanatory and never added twice.
+Native startup behavior, current SDK content acceptance and performance proof remain unestablished.
+
+The controller and publisher also compile their bounded initial local imports directly from the fixed source inventory. The policy file itself is read without following links or consulting bytecode caches. Unknown local source/bytecode and lexical aliases escaping that inventory refuse before their bodies execute. Standard-library/loader closure remains outside this bounded claim.
+
+Local native-extension loader create/exec paths are also rejected before native code can run, using both lexical and resolved origins. This applies only to the declared controller source tree; the separately sealed private psutil installation remains outside that tree. Regression controls mock the native loader and never compile or load a new binary.

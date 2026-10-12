@@ -25,6 +25,7 @@ class ExecutionTests(unittest.TestCase):
             setup=self.root / "tools/results.json",
             measurement=self.root / "measurement/results.json",
             scratch_root=self.root,
+            startup_profile_sha256="c" * 64,
         )
         self.plan = dict(
             input_roots=[str(self.project)],
@@ -34,7 +35,10 @@ class ExecutionTests(unittest.TestCase):
         )
         self.binding = dict(package={"target": str(self.root / "package")}, python={})
         self.launch = dict(
-            request={}, observation={}, request_ref={"sha256": "a" * 64}, observation_ref={"sha256": "b" * 64}
+            request={"startup_profile": {"accepted_profile": {}}},
+            observation={},
+            request_ref={"sha256": "a" * 64},
+            observation_ref={"sha256": "b" * 64},
         )
         self.contract_result = dict(status="passed", exit_code=0)
         self.phase = dict(completed=True, returncode=0, passed=True, wall_seconds=0.0)
@@ -51,7 +55,13 @@ class ExecutionTests(unittest.TestCase):
 
         with mock.patch.dict(os.environ, {"RUNNER_TEMP": str(self.root)}), mock.patch.object(
             controller, "isolation"
-        ), mock.patch.object(controller.state_inputs, "prepare", return_value=self.plan), mock.patch.object(
+        ), mock.patch.object(controller, "prepare_startup_profile"), mock.patch.object(
+            controller, "copy_startup_profile"
+        ), mock.patch.object(
+            controller.isolated_measure, "bind_launch"
+        ), mock.patch.object(
+            controller.state_inputs, "prepare", return_value=self.plan
+        ), mock.patch.object(
             controller.state_inputs, "bind_sdk_discovery"
         ), mock.patch.object(
             controller.installation_binding, "bind", return_value=self.binding

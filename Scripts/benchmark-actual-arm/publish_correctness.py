@@ -4,26 +4,57 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import importlib.util
 import json
 import math
+import os
+import stat
+import types
 import re
 from pathlib import Path
 import sys
 import time
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
-import correctness_controller as controller
-import attempt_receipts
-import runtime_publication
-import state_inputs
-import runtime_bootstrap as bootstrap
 
-SPEC = importlib.util.spec_from_file_location("actual_arm_normalizer", ROOT / "runtime/vendor/normalize_evidence.py")
-NORMALIZER = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(NORMALIZER)
+# 초기 정책 파일은 자체 import 캐시를 거치지 않는다. 바깥 원래 소스 가드도 이 파일을 봉인한다.
+_policy_path = ROOT / "source_import_policy.py"
+_policy_fd = os.open(_policy_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+try:
+    _before = os.fstat(_policy_fd)
+    _identity = lambda row: (row.st_dev, row.st_ino, row.st_mode, row.st_size, row.st_mtime_ns, row.st_ctime_ns)
+    if not stat.S_ISREG(_before.st_mode) or not 0 < _before.st_size <= 65536:
+        raise ValueError("Initial source policy is not bounded")
+    _data = os.read(_policy_fd, 65537)
+    if (
+        len(_data) != _before.st_size
+        or _identity(os.fstat(_policy_fd)) != _identity(_before)
+        or _identity(_policy_path.lstat()) != _identity(_before)
+    ):
+        raise ValueError("Initial source policy changed")
+finally:
+    os.close(_policy_fd)
+source_policy = types.ModuleType("source_import_policy")
+source_policy.__file__ = str(_policy_path)
+exec(compile(_data, str(_policy_path), "exec"), source_policy.__dict__)
+sys.modules["source_import_policy"] = source_policy
+
+with source_policy.guarded_imports(ROOT):
+    sys.path.insert(0, str(ROOT))
+    import correctness_controller as controller
+    import attempt_receipts
+    import runtime_publication
+    import state_inputs
+    import runtime_bootstrap as bootstrap
+
+    SPEC = importlib.util.spec_from_file_location(
+        "actual_arm_normalizer", ROOT / "runtime/vendor/normalize_evidence.py"
+    )
+    NORMALIZER = importlib.util.module_from_spec(SPEC)
+    SPEC.loader.exec_module(NORMALIZER)
+
 FAILURES = {None, "nested-incomplete", "signal", "timeout", "interrupt", "launch"}
 CLEANUP = {"term-sent", "kill-sent", "term-target-already-exited", "kill-target-already-exited"}
 
@@ -229,9 +260,44 @@ def public_attempt(args, attempt):
             in {"OSError", "ValueError", "RuntimeError", "FileNotFoundError", "PermissionError"}
         )
         public["source_guard_failure"] = row["source_guard_failure"]
+    public["startup_profile_collection"] = profile_summary(attempt)
     public["selected_launch"] = selected_launch_summary(args, attempt, row["source_sha256"])
     NORMALIZER.check_sensitive(json.dumps(public), "attempt.json")
     return public
+
+
+def profile_summary(attempt):
+    """실패한 수집도 원래 해시와 비용을 보존하되 성공 승인으로 사용하지 않는다."""
+    path = attempt / "startup-profile/results.json"
+    result = dict(status="unavailable", reason="startup-profile-collection-not-verified")
+    try:
+        reference = state_inputs.reference(path)
+        result["sha256"] = reference["sha256"]
+        value = state_inputs.document(reference)
+        require(
+            type(value.get("schema_version")) is int
+            and value["schema_version"] == 1
+            and value.get("role") == "prospective-startup-profile-collection"
+            and type(value.get("exit_code")) is int
+            and value["exit_code"] in {0, 1, 125}
+            and value.get("status") == {0: "passed", 1: "failed", 125: "incomplete"}[value["exit_code"]]
+            and value.get("final_evidence") is False
+        )
+        wall = value["wall_seconds_before_receipt"]
+        require(type(wall) in (int, float) and math.isfinite(wall) and wall >= 0)
+        require(isinstance(value["probes"], list) and len(value["probes"]) <= 2)
+        result.update(
+            status="retained",
+            outcome=value["status"],
+            exit_code=value["exit_code"],
+            probe_attempts=len(value["probes"]),
+            wall_seconds_before_receipt=wall,
+            cost_scope="Nested in original supervised child wall; no additive double count",
+        )
+        require(state_inputs.reference(path) == reference)
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+        result["status"] = "unavailable"
+    return result
 
 
 def selected_launch_summary(args, attempt, sources):
@@ -244,12 +310,16 @@ def selected_launch_summary(args, attempt, sources):
         except (OSError, ValueError, TypeError, KeyError):
             pass
     try:
-        record = controller.selected_launch.verify(args, attempt.parent, sources)
+        bound_args = copy.copy(args)
+        profile_ref = state_inputs.reference(attempt / "startup-profile/results.json")
+        bound_args.startup_profile_sha256 = profile_ref["sha256"]
+        record = controller.selected_launch.verify(bound_args, attempt.parent, sources)
         return dict(
             status="verified",
             mode=record["request"]["mode"],
             request_sha256=record["request_ref"]["sha256"],
             observation_sha256=record["observation_ref"]["sha256"],
+            startup_profile_sha256=profile_ref["sha256"],
         )
     except (OSError, ValueError, TypeError, KeyError, RuntimeError):
         return result
@@ -257,7 +327,10 @@ def selected_launch_summary(args, attempt, sources):
 
 def completed_launch(record, raw, attempt, runtime):
     summary = attempt.get("selected_launch")
-    require(isinstance(summary, dict) and set(summary) == {"status", "mode", "request_sha256", "observation_sha256"})
+    require(
+        isinstance(summary, dict)
+        and set(summary) == {"status", "mode", "request_sha256", "observation_sha256", "startup_profile_sha256"}
+    )
     require(summary["status"] == "verified" and summary["mode"] in {"direct", "one-exec"})
     require(
         same_json(record.get("selected_launch"), {key: summary[key + "_sha256"] for key in ("request", "observation")})
@@ -277,8 +350,59 @@ def completed_launch(record, raw, attempt, runtime):
     require(same_json(runtime["python"], binding["python"]))
     require(actual["actual_interpreter"]["selected_path"] == runtime["python"]["path"])
     require(all(actual["source_sha256"].get(path) == digest for path, digest in runtime["code_files"].items()))
+    require(type(runtime.get("schema_version")) is int and runtime["schema_version"] == 2)
+    profile = values["request"]["startup_profile"]
+    require(profile["collection_sha256"] == summary["startup_profile_sha256"])
+    require(same_json(profile, actual["startup_profile"]))
+    require(same_json(runtime["startup_profile"], profile["accepted_profile"]))
+    references.update(completed_profile(raw, summary["startup_profile_sha256"]))
     references["installation_binding"] = binding_ref
     return references
+
+
+def completed_profile(raw, expected):
+    folder = raw / "setup/startup-profile"
+    manifest_ref = state_inputs.reference(folder / "copy-manifest.json")
+    manifest = state_inputs.document(manifest_ref)
+    require(
+        set(manifest) == {"schema_version", "role", "collection_sha256", "files"}
+        and type(manifest["schema_version"]) is int
+        and manifest["schema_version"] == 1
+        and manifest["role"] == "exact-startup-profile-copies"
+        and manifest["collection_sha256"] == expected
+    )
+    collection = state_inputs.document(state_inputs.reference(folder / "results.json"))
+    require(
+        type(collection.get("exit_code")) is int
+        and collection["exit_code"] == 0
+        and collection.get("status") == "passed"
+        and 1 <= len(collection["probes"]) <= 2
+    )
+    names = ["results.json"]
+    for number in range(1, len(collection["probes"]) + 1):
+        names += [
+            f"spelling-{number:04d}/" + name
+            for name in ["request.json", "observation.json", "process.json", "process.stdout", "process.stderr"]
+        ]
+    rows = manifest["files"]
+    require(isinstance(rows, list) and len(rows) == len(names))
+    refs = {"startup-copy:setup/startup-profile/copy-manifest.json": manifest_ref}
+    for row, name in zip(rows, names):
+        require(
+            set(row) == {"original_path", "artifact", "sha256", "bytes"}
+            and row["artifact"] == "setup/startup-profile/" + name
+            and type(row["bytes"]) is int
+        )
+        source = raw.parent / "actual-arm-correctness-attempt/startup-profile" / name
+        require(row["original_path"] == str(source))
+        original = controller.startup_profile.file_identity(source, controller.startup_profile.MAX_RECEIPT_BYTES)
+        copied = controller.startup_profile.file_identity(
+            raw / row["artifact"], controller.startup_profile.MAX_RECEIPT_BYTES
+        )
+        require(all(original[key] == copied[key] == row[key] for key in ("sha256", "bytes")))
+        refs["startup-copy:" + row["artifact"]] = state_inputs.reference(raw / row["artifact"])
+    require(refs["startup-copy:setup/startup-profile/results.json"]["sha256"] == expected)
+    return refs
 
 
 def completed_success(record, raw, attempt):
@@ -369,6 +493,9 @@ def completed_success(record, raw, attempt):
         ROOT / "state_worker.py",
         arguments,
         0,
+        controller.isolated_measure.STARTUP.existing_environment(
+            raw / "private-state", plan["engine_config"]["developer_directory"]
+        ),
     )
     require(same_json(record["state_runtime"], runtime_receipt))
     require(
@@ -382,6 +509,7 @@ def completed_success(record, raw, attempt):
         state=state_ref,
         plan=plan_ref,
         runtime_inputs=runtime_ref,
+        runtime_environment=state_inputs.reference(raw / "setup/state-runtime/environment-request.json"),
         **contract_refs,
         **launch_refs,
     )
@@ -433,6 +561,7 @@ def verify_completion_manifest(completion, manifest):
         "state": "results.json",
         "plan": "setup/plan.json",
         "runtime_inputs": "setup/runtime.json",
+        "runtime_environment": "setup/state-runtime/environment-request.json",
         "selected_launch_request": "setup/selected-launch-request.json",
         "selected_launch_observation": "setup/selected-launch-observation.json",
         "installation_binding": "setup/installation-binding.json",
@@ -443,10 +572,12 @@ def verify_completion_manifest(completion, manifest):
             ("process", "process.json"),
             ("runtime", "runtime-result.json"),
             ("summary", "summary.json"),
+            ("environment", "environment-request.json"),
         ]:
             paths["contracts_" + label + "_" + key] = "setup/contracts/" + label + "/" + suffix
     for key, digest in completion.get("bound_file_sha256", {}).items():
-        require(hashes.get(paths[key]) == digest)
+        target = key.removeprefix("startup-copy:") if key.startswith("startup-copy:") else paths[key]
+        require(hashes.get(target) == digest)
 
 
 def publish(args):

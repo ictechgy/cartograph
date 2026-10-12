@@ -9,6 +9,8 @@ import time
 
 import installation_binding as installation
 import attempt_receipts
+import startup_profile
+import profile_collection
 
 ROOT = Path(__file__).resolve().parent
 require = installation.require
@@ -22,7 +24,10 @@ def same(left, right):
 
 
 def arguments(args):
-    return {name: str(getattr(args, name)) for name in ARGUMENTS}
+    values = {name: str(getattr(args, name)) for name in ARGUMENTS}
+    if getattr(args, "startup_profile_sha256", None) is not None:
+        values["startup_profile_sha256"] = args.startup_profile_sha256
+    return values
 
 
 def command(args, interpreter):
@@ -112,6 +117,7 @@ def validate_request(args, request, binding, sources):
             "source_sha256",
             "preparation_wall_seconds",
             "scope",
+            *({"startup_profile"} if getattr(args, "startup_profile_sha256", None) is not None else set()),
         },
         "Selected launch request shape differs",
     )
@@ -143,6 +149,11 @@ def validate_request(args, request, binding, sources):
     require(
         (request["mode"] == "direct") is (initial["selected_path"] == str(selected)), "Selected launch mode disagrees"
     )
+    if getattr(args, "startup_profile_sha256", None) is not None:
+        require(
+            same(request["startup_profile"], startup_binding(args, Path(args.scratch_root), sources)),
+            "Selected launch startup profile changed",
+        )
     installation.cost(request["preparation_wall_seconds"])
 
 
@@ -165,6 +176,11 @@ def verify(args, root, sources):
             "source_sha256",
             "verification_wall_seconds",
             "scope",
+            *(
+                {"startup_profile", "environment_observation"}
+                if getattr(args, "startup_profile_sha256", None) is not None
+                else set()
+            ),
         },
         "Selected launch observation shape differs",
     )
@@ -184,10 +200,37 @@ def verify(args, root, sources):
         same(observed["installation"], identity(binding)) and same(observed["source_sha256"], sources),
         "Selected launch final bindings differ",
     )
+    if getattr(args, "startup_profile_sha256", None) is not None:
+        startup = startup_binding(args, root, sources)
+        require(same(observed["startup_profile"], startup), "Selected launch observed profile changed")
+        startup_profile.verify_observation(
+            observed["environment_observation"], startup["requested_environment"], startup["accepted_profile"]
+        )
     installation.cost(observed["verification_wall_seconds"])
     for ref in [request_ref, observed_ref]:
         require(read(Path(ref["path"]))[1] == ref, "Selected launch receipt changed during verification")
     return dict(request=request, observation=observed, request_ref=request_ref, observation_ref=observed_ref)
+
+
+def startup_binding(args, root, sources):
+    digest = getattr(args, "startup_profile_sha256", None)
+    if digest is None:
+        return None
+    selected, _ = selected_binding(args)
+    path = Path(root) / "actual-arm-correctness-attempt/startup-profile/results.json"
+    record = profile_collection.verify_collection(
+        path,
+        digest,
+        private_environment(root),
+        selected,
+        ROOT / "correctness_controller.py",
+        [Path(p) for p in sources],
+    )
+    return dict(
+        collection_sha256=digest,
+        accepted_profile=record["accepted_profile"],
+        requested_environment=record["requested_environment"],
+    )
 
 
 def prepare(args, root, current, source_hashes, save, *, execve=os.execve, environment=None):
@@ -195,8 +238,13 @@ def prepare(args, root, current, source_hashes, save, *, execve=os.execve, envir
     started = time.perf_counter()
     expected_environment = private_environment(root)
     environment = dict(os.environ) if environment is None else dict(environment)
-    if environment != expected_environment:
-        raise attempt_receipts.PrivateEnvironmentMismatch(expected_environment, environment)
+    startup = startup_binding(args, root, source_hashes())
+    if startup is None:
+        if environment != expected_environment:
+            raise attempt_receipts.PrivateEnvironmentMismatch(expected_environment, environment)
+    else:
+        actual = startup_profile.observe_request(startup["requested_environment"], environment)
+        startup_profile.verify_observation(actual, startup["requested_environment"], startup["accepted_profile"])
     request_path, observed_path = paths(root)
     marker = getattr(args, "selected_launch_sha256", None)
     if marker is not None:
@@ -230,6 +278,7 @@ def prepare(args, root, current, source_hashes, save, *, execve=os.execve, envir
             source_sha256=source_hashes(),
             preparation_wall_seconds=time.perf_counter() - started,
             scope=SCOPE,
+            **({"startup_profile": startup} if startup is not None else {}),
         )
         save(request_path, request)
         request_read, reference = read(request_path)
@@ -240,7 +289,7 @@ def prepare(args, root, current, source_hashes, save, *, execve=os.execve, envir
             execve(
                 str(selected),
                 request["replacement_command"] + ["--selected-launch-sha256", reference["sha256"]],
-                environment,
+                expected_environment,
             )
             raise RuntimeError("Selected launch exec unexpectedly returned")
         binding = installation.bind(args.measurement, args.repository, Path(current))
@@ -254,6 +303,16 @@ def prepare(args, root, current, source_hashes, save, *, execve=os.execve, envir
         source_sha256=source_hashes(),
         verification_wall_seconds=time.perf_counter() - started,
         scope=SCOPE,
+        **(
+            {
+                "startup_profile": startup,
+                "environment_observation": startup_profile.observe_request(
+                    startup["requested_environment"], environment
+                ),
+            }
+            if startup is not None
+            else {}
+        ),
     )
     require(
         observed["actual_interpreter"]["selected_path"] == binding["python"]["path"],

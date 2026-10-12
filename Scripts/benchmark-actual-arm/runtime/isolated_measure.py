@@ -13,6 +13,7 @@ import sys
 import time
 
 import runtime_bootstrap as BOOTSTRAP
+import startup_binding as STARTUP
 
 ROOT = Path(__file__).resolve().parent
 HELPER = ROOT / "vendor/process_tree_measure.py"
@@ -129,7 +130,7 @@ def verify_import_guard(receipt, config, phase):
         raise ValueError("Runtime module receipt content or package origin differs")
 
 
-def verify_runtime_receipt(path, config, runtime_sha256, script, arguments, code):
+def verify_runtime_receipt(path, config, runtime_sha256, script, arguments, code, expected_environment=None):
     receipt = BOOTSTRAP.strict_json(BOOTSTRAP.read_regular(path))
     expected_arguments = hashlib.sha256(json.dumps(arguments, separators=(",", ":")).encode()).hexdigest()
     if (
@@ -165,7 +166,23 @@ def verify_runtime_receipt(path, config, runtime_sha256, script, arguments, code
         ):
             raise ValueError("Runtime receipt lacks completed terminal guards")
         verify_import_guard(receipt, config, "after")
+    STARTUP.verify_receipt(receipt, config, runtime_sha256, script, arguments, path, code, expected_environment)
     return receipt
+
+
+def bind_launch(command, runtime_path, runtime_sha256, config, environment):
+    if type(config.get("schema_version")) is int and config["schema_version"] == 1:
+        return None
+    script, report, arguments = engine_request(command, runtime_path, runtime_sha256, config)
+    return STARTUP.write_launch(
+        config,
+        runtime_sha256,
+        script,
+        arguments,
+        environment,
+        report,
+        lambda: BOOTSTRAP.boundary(report, runtime_path, config),
+    )
 
 
 def run(command, cwd, stem, runtime_path, runtime_sha256, environment, observer_environment, timeout=300):
@@ -233,6 +250,8 @@ def run(command, cwd, stem, runtime_path, runtime_sha256, environment, observer_
             measurement_mode="timing",
         ),
     )
+    bind_launch(command, runtime_path, runtime_sha256, config_binding, environment)
+    bind_launch(argv, runtime_path, runtime_sha256, config_binding, observer_environment)
     result = dict(
         status="incomplete",
         exit_code=125,
@@ -280,7 +299,9 @@ def run(command, cwd, stem, runtime_path, runtime_sha256, environment, observer_
         result["observed_helper_returncode"] = process.returncode
         if process.returncode != 0 or not runtime_report.is_file():
             raise ValueError("Observer runtime did not complete")
-        runtime = verify_runtime_receipt(runtime_report, config_binding, runtime_sha256, HELPER, ["--worker"], 0)
+        runtime = verify_runtime_receipt(
+            runtime_report, config_binding, runtime_sha256, HELPER, ["--worker"], 0, observer_environment
+        )
         result["runtime"] = runtime
         measured = json.loads(Path(str(stem) + ".json").read_text())
         result["measurement"] = measured
@@ -299,7 +320,7 @@ def run(command, cwd, stem, runtime_path, runtime_sha256, environment, observer_
             raise ValueError("Runtime input receipt changed during measurement")
         if type(code) is int and code >= 0 and measured.get("failure") in (None, "nonzero_exit"):
             result["engine_runtime"] = verify_runtime_receipt(
-                engine_report, config_binding, runtime_sha256, engine_script, engine_arguments, code
+                engine_report, config_binding, runtime_sha256, engine_script, engine_arguments, code, environment
             )
         else:
             result["engine_runtime_unavailable_reason"] = "incomplete-process-outcome"

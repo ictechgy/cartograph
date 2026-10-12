@@ -129,6 +129,12 @@
   ],
   "schema_version": 1,
   "scope": "Byte identity only; runtime and native integration execution remain separately verified",
+  "startup_primitive_origin": {
+    "manifest_sha256": "93eedd056e48e81f2e2542e1ed8f628ebbd28b9e4d3666bab39c6b5567d41886",
+    "production_profile_sha256": "d00cc5a64355c4b1bc45852fd6bbd2f611f48f12415a2765014dd9cf51ff98d7",
+    "source_role": "reviewed-startup-profile-1743",
+    "successor_scope": "Collector adds original-evidence completion reconstruction. Local native-extension create/exec are refused in the probe and initial source policies. Two bytecode regression fixtures explicitly select their own cache files. Full controller/runtime/publication wiring is a separately reviewed successor."
+  },
   "successor_overrides": {
     "base_commit": "a9854f68545dd1b403458cf504ee4bd99215f439",
     "files": [
@@ -138,19 +144,19 @@
         "sha256": "7949b125598f0f94927076ef231ca61a91bd96d63c27c3cb7713d4d980003c1f"
       },
       {
-        "bytes": 9150,
+        "bytes": 10096,
         "path": "contract_prerequisites.py",
-        "sha256": "d51b7d166378b5ccb16e6d7a5d731e5297ccbbe8058e8c8ff123123995a20c96"
+        "sha256": "9d9df6c3a976c2d72641260ba76ad6495dd5a60fc14202b799eff1d9aaf0b296"
       },
       {
-        "bytes": 3578,
+        "bytes": 3753,
         "path": "contract_suite.py",
-        "sha256": "9fa854576f49cd0890b275829ba40ac7557cd71f3db4bdead8e10bbe0d6fec4c"
+        "sha256": "7f9a3c66652a907ceecc9af5bcd1d813e595d3d0a775a58fb6ec37dbea410981"
       },
       {
-        "bytes": 14993,
+        "bytes": 19036,
         "path": "correctness_controller.py",
-        "sha256": "c2897c27472d3863e6b3520610613f0d257d8293a7ec8d9672db2fddc1cd39e4"
+        "sha256": "29a94330269a81f03df177a98e1122f8875a76f2ca4c6a881c30e0cffb6a9499"
       },
       {
         "bytes": 10143,
@@ -158,9 +164,34 @@
         "sha256": "96b106581b64dfe8fe626ece29062233d4c6e0a25ce75be355ecc9a015143c32"
       },
       {
-        "bytes": 24223,
+        "bytes": 15983,
+        "path": "profile_collection.py",
+        "sha256": "f1d66fb08bd2a57b902128970508625d9a03e7c3cde5b66c9c5080e81dc096cd"
+      },
+      {
+        "bytes": 30617,
         "path": "publish_correctness.py",
-        "sha256": "b6c94067f059e2c75f5a2139b3fd6b1fa2ad0d472ac9b3d34a3913f945146751"
+        "sha256": "a0f801beeb5fa53121091f51cad0f8348e80dfc74a26500e7294a9654ba143b5"
+      },
+      {
+        "bytes": 14803,
+        "path": "runtime/isolated_measure.py",
+        "sha256": "8507c5cdb3fa1b740d6fe2d9a933df9e2169e4631b2154dd70ef3b6f0d82bd51"
+      },
+      {
+        "bytes": 14132,
+        "path": "runtime/runtime_bootstrap.py",
+        "sha256": "f1ba55182ea6c87b0f5b1a0847d27474b8377ed3090615119d5b7397db80ecd8"
+      },
+      {
+        "bytes": 4925,
+        "path": "runtime/startup_binding.py",
+        "sha256": "bc88f2b554b872a0c678b4cd042c2a45a1647f9ae839dcb85b55a2b072c95d67"
+      },
+      {
+        "bytes": 17980,
+        "path": "runtime/startup_profile.py",
+        "sha256": "d00cc5a64355c4b1bc45852fd6bbd2f611f48f12415a2765014dd9cf51ff98d7"
       },
       {
         "bytes": 23825,
@@ -168,19 +199,29 @@
         "sha256": "6eabea699c67b3166e82af4d2a8211890f9020da8606922f05e614c3128d3ab4"
       },
       {
+        "bytes": 7785,
+        "path": "runtime/test_startup_runtime.py",
+        "sha256": "2aabcb092cde357ec1ccd7b16346e11fdae7d9c16726099e739c09853b1495f4"
+      },
+      {
         "bytes": 35130,
         "path": "runtime/vendor/normalize_evidence.py",
         "sha256": "66113686413bf37f9f4e8b7a3e457c1b759fedffa4fc2e95d6f10d42336f192c"
       },
       {
-        "bytes": 12325,
+        "bytes": 13502,
         "path": "runtime_publication.py",
-        "sha256": "e4621add22b381de9374d37766558c896e6fbfa90b4c23de504eb49ad75f1bf9"
+        "sha256": "806bcaa7c0e7deb79fa27ca7ca3a2e5ec0d4683395a0c1750ad13cbd17d05a75"
       },
       {
-        "bytes": 11508,
+        "bytes": 14034,
         "path": "selected_launch.py",
-        "sha256": "776677a6e1099328efee54727526003de117902695d83da7592b5cda0d950f96"
+        "sha256": "68d2abf2e34bcd4a62d67536c1f39ed982d4542e0c5944ee320005c89b5224dd"
+      },
+      {
+        "bytes": 4688,
+        "path": "source_import_policy.py",
+        "sha256": "f7963829a18cb540f40cc357086d0fb690ad368beca7857c8c9205a9cb07d490"
       },
       {
         "bytes": 10269,
@@ -188,9 +229,9 @@
         "sha256": "2bee66279ff0121545b93fcdfeb88708022179d4bc6494643941143d02b948c6"
       },
       {
-        "bytes": 8866,
+        "bytes": 10077,
         "path": "test_completion_binding.py",
-        "sha256": "4be5aa928f7f502af940d0084caa16e583dcd4a928ead23a8dc2bd6807b05417"
+        "sha256": "3cc788aade2aacbddee9f51c27d18c2feb0efbf1b56429f45f77eeca254309c8"
       },
       {
         "bytes": 9646,
@@ -198,9 +239,9 @@
         "sha256": "4a4c3d0c2480742086d4a8d340d5cd8364b1449de2281d73cd5ab134df9e8604"
       },
       {
-        "bytes": 6151,
+        "bytes": 6518,
         "path": "test_controller_execution.py",
-        "sha256": "2096b4adf4b7884c778ea09d9c5505e3c4c01e3594f12213512d65779849eadd"
+        "sha256": "2889d77f9e374db2eafcf1950f8724ebdb32fed07fa628c588b7e9be860e80b1"
       },
       {
         "bytes": 6809,
@@ -218,19 +259,39 @@
         "sha256": "373fb7251fe20473fc514bb1f515da93f580be8d06c3aff60c7078dbaab40446"
       },
       {
+        "bytes": 12624,
+        "path": "test_profile_collection.py",
+        "sha256": "c8ad4685363a966c0ec56632d6a73608033a82cac24f8f938f9879290812bed6"
+      },
+      {
         "bytes": 14472,
         "path": "test_publication.py",
         "sha256": "63144005b790c1fe036e764b6094adc4678b6a8afa8cfd419fdf8122f2cd8fe0"
       },
       {
-        "bytes": 12530,
+        "bytes": 12637,
         "path": "test_runtime_publication.py",
-        "sha256": "11144892b970c2d024be7b4a3fadd83e8c7e94e725d87d7cbca8e89b1566d523"
+        "sha256": "e4bdaa0b467092bd0796bea28dc2f28b82e0bce8f2da73f0b3ff37f01d30ad2c"
       },
       {
-        "bytes": 15046,
+        "bytes": 16998,
         "path": "test_selected_launch.py",
-        "sha256": "28ef5c61ce05ce73b79b9b5a5a343865fb95032229e0ac2960a67cc479ca1d8f"
+        "sha256": "b8adf9a9e79cde9270c33f859fc0c9ef927db4494bedf48e6b53f7d571ac7870"
+      },
+      {
+        "bytes": 4871,
+        "path": "test_source_import_policy.py",
+        "sha256": "cc17d5318558aae97d530a36dc2b7004e88a5148b1cfd6aae7b2246e06a611b8"
+      },
+      {
+        "bytes": 15227,
+        "path": "test_startup_profile.py",
+        "sha256": "4a95e0bb9eec1de1362e1ca12e925fc6ba9ec084e27ead07814066f8071c8c77"
+      },
+      {
+        "bytes": 7033,
+        "path": "test_startup_wiring.py",
+        "sha256": "dde3115bbeb30e928eb43a75d9f50fde08e82e610686f9ac4e98bf13c7cdc154"
       },
       {
         "bytes": 9283,
@@ -239,6 +300,6 @@
       }
     ],
     "role": "bound-full-contract-prerequisites-after-existing-install",
-    "scope": "Original copied hashes remain historical. Runtime bootstrap/identity/measurement implementations stay unchanged. The private vendored normalizer adds identity-default transformation/type injection before its unchanged scanner; runtime test fixture cache destination is explicit. Only request-bound module maps receive lossless publication projection. The generation-input successor binds developer context from accepted compiler/library/SDK paths, retains an optional explicit override and rechecks directory identities. Original copied primitive hashes remain historical. Typed pre-record diagnostics add finite stages/reasons and hash-only unknown errors without changing admission predicates; original logs/exit/cost remain authoritative. Prospective selected launch adds one measured same-physical-interpreter exec with exclusive request/actual observation and completion binding. Original installation predicates and runtime/vendor implementations remain unchanged. The selected-launch environment refusal additionally carries a bounded fixed-key/count/hash-only difference diagnostic; exact environment equality and original interpreter binding remain unchanged."
+    "scope": "Original copied hashes and prior evidence remain historical. Current overrides include prospective startup-profile collection, bounded source-only initial/probe imports, version-2 runtime environment-request binding for every suite/state/engine/observer, completion and exact-copy publication checks, and explicit test fixture cache destinations. Runtime bootstrap and isolated measurement adapters are changed; runtime_identity, frozen process_tree_measure, SDK seal and strict normalizer bytes remain unchanged from the preceding repository head. The earlier identity-default normalizer hook/module-map projection remains as previously reviewed. Original installation/interpreter predicates and SDK acceptance limits remain intact. Darwin-only startup-key admission is prospective hash/length equality across clean-request probes and actual process observations; it is not native cached-environment or loader closure."
   }
 }

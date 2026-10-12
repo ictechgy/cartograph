@@ -237,6 +237,7 @@ struct AnalysisLimitationCollector {
             "external-retentions: \(index.count) retention(s) from \(document.provenanceDescription) are in "
                 + "effect, so a 'retained' answer with reason 'externalBridge' rests on that file, not on the index"
         ]
+        result.append(contentsOf: ExternalRetentionProvenanceDiagnostics.limitations(document.provenance))
         if let omitted = document.omittedObjectiveCHandlers, omitted > 0 {
             result.append(
                 "external-retentions-objective-c: \(omitted) matched Objective-C handler(s) were omitted by the producer; "

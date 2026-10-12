@@ -14,6 +14,7 @@ import runtime_identity as identity
 import isolated_measure
 import state_inputs
 import contract_suite
+import startup_binding
 
 COST_SCOPE = (
     "Both complete suite processes and receipt verification, nested in controller preparation and outer child wall"
@@ -119,6 +120,8 @@ def verify(root, expected=None, engine_runtime=None):
         state_inputs.require(
             same(runtime["package"], engine_runtime["package"])
             and same(runtime["python"], engine_runtime["python"])
+            and runtime.get("startup_profile") == engine_runtime.get("startup_profile")
+            and runtime["schema_version"] == engine_runtime["schema_version"]
             and all(runtime["code_files"].get(path) == digest for path, digest in engine_runtime["code_files"].items()),
             "Contract prerequisites use different installed/runtime inputs",
         )
@@ -148,7 +151,17 @@ def verify(root, expected=None, engine_runtime=None):
         )
         state_inputs.require(phase["command"] == command, "Contract bootstrap request differs")
         receipt = isolated_measure.verify_runtime_receipt(
-            folder / "runtime-result.json", runtime, runtime_ref["sha256"], ROOT / "contract_suite.py", args, 0
+            folder / "runtime-result.json",
+            runtime,
+            runtime_ref["sha256"],
+            ROOT / "contract_suite.py",
+            args,
+            0,
+            (
+                startup_binding.existing_environment(root.parent.parent / "private-contracts" / label)
+                if runtime.get("schema_version") == 2
+                else None
+            ),
         )
         state_inputs.require(same(receipt, row["runtime"]), "Embedded contract runtime differs")
         result_ref = state_inputs.reference(folder / "summary.json")
@@ -158,15 +171,23 @@ def verify(root, expected=None, engine_runtime=None):
         refs["contracts_" + label + "_process"] = phase_ref
         refs["contracts_" + label + "_runtime"] = state_inputs.reference(folder / "runtime-result.json")
         refs["contracts_" + label + "_summary"] = result_ref
+        if runtime.get("schema_version") == 2:
+            refs["contracts_" + label + "_environment"] = state_inputs.reference(folder / "environment-request.json")
     return refs
 
 
-def run(binding, output, engine_paths, command_runner, save):
+def run(binding, output, engine_paths, command_runner, save, startup_profile=None):
     started = time.perf_counter()
     root = Path(output) / "setup/contracts"
     root.mkdir()
     sources = {str(ROOT / name): identity.file_identity(ROOT / name)["sha256"] for name in source_paths(engine_paths)}
-    runtime = dict(schema_version=1, package=binding["package"], python=binding["python"], code_files=sources)
+    runtime = dict(
+        schema_version=2 if startup_profile is not None else 1,
+        package=binding["package"],
+        python=binding["python"],
+        code_files=sources,
+        **({"startup_profile": startup_profile} if startup_profile is not None else {}),
+    )
     save(root / "runtime.json", runtime)
     runtime_ref = state_inputs.reference(root / "runtime.json")
     result = dict(
@@ -190,6 +211,7 @@ def run(binding, output, engine_paths, command_runner, save):
                 arguments,
             )
             env = identity.private_environment(Path(output) / "private-contracts" / label)
+            isolated_measure.bind_launch(command, root / "runtime.json", runtime_ref["sha256"], runtime, env)
             phase = command_runner.command(command, ROOT, folder / "process", env, 180)
             row = dict(suite=label, process=phase)
             result["suites"].append(row)
@@ -203,6 +225,7 @@ def run(binding, output, engine_paths, command_runner, save):
                 ROOT / "contract_suite.py",
                 arguments,
                 phase["returncode"],
+                env,
             )
             row["summary"] = state_inputs.document(state_inputs.reference(folder / "summary.json"))
             if not phase["passed"]:

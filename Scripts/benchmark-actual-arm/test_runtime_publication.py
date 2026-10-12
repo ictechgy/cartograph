@@ -27,6 +27,7 @@ class RuntimePublicationTests(unittest.TestCase):
             "token": dict(kind="observed-stdlib", path=str(self.raw / "stdlib/token.py"), sha256="a" * 64, bytes=20),
         }
         self.config = dict(
+            schema_version=1,
             python=dict(path=sys.executable, sha256="b" * 64, bytes=20),
             package=dict(target=str(self.raw / "package"), content=dict(content_sha256="c" * 64)),
             code_files={
@@ -207,7 +208,9 @@ class RuntimePublicationTests(unittest.TestCase):
     def test_state_and_engine_observer_shapes_bind_original_requests(self):
         config = self.raw / "setup/runtime.json"
         ref = projection.state_inputs.reference(config)
-        plan = self.write("setup/plan.json", dict(accepted="synthetic"))
+        plan = self.write(
+            "setup/plan.json", dict(accepted="synthetic", engine_config=dict(developer_directory=str(self.raw)))
+        )
         planref = projection.state_inputs.reference(plan)
         args = [
             "--plan",

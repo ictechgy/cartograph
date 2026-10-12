@@ -31,10 +31,14 @@ SUITES = {
             "test_state_worker",
             "test_contract_prerequisites",
             "test_runtime_publication",
+            "test_startup_profile",
+            "test_profile_collection",
+            "test_startup_wiring",
+            "test_source_import_policy",
         ],
-        190,
+        267,
     ),
-    "runtime": (["test_runtime_bootstrap", "test_runtime_identity"], 43),
+    "runtime": (["test_runtime_bootstrap", "test_runtime_identity", "test_startup_runtime"], 53),
 }
 
 

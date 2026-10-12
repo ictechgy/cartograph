@@ -7,55 +7,55 @@ import argparse
 import hashlib
 import json
 import os
+import stat
+import types
 from pathlib import Path
 import sys
 import time
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "runtime"))
-sys.path.insert(0, str(ROOT / "primitive"))
-import runtime_bootstrap as bootstrap
-import runtime_identity as identity
-import isolated_measure
-import installation_binding
-import selected_launch
-import state_inputs
-import attempt_receipts
-import contract_prerequisites
 
-sys.path.insert(0, str(ROOT / "primitive/vendor"))
-import command_runner
+# 초기 정책 파일은 자체 import 캐시를 거치지 않는다. 바깥 원래 소스 가드도 이 파일을 봉인한다.
+_policy_path = ROOT / "source_import_policy.py"
+_policy_fd = os.open(_policy_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+try:
+    _before = os.fstat(_policy_fd)
+    _identity = lambda row: (row.st_dev, row.st_ino, row.st_mode, row.st_size, row.st_mtime_ns, row.st_ctime_ns)
+    if not stat.S_ISREG(_before.st_mode) or not 0 < _before.st_size <= 65536:
+        raise ValueError("Initial source policy is not bounded")
+    _data = os.read(_policy_fd, 65537)
+    if (
+        len(_data) != _before.st_size
+        or _identity(os.fstat(_policy_fd)) != _identity(_before)
+        or _identity(_policy_path.lstat()) != _identity(_before)
+    ):
+        raise ValueError("Initial source policy changed")
+finally:
+    os.close(_policy_fd)
+source_policy = types.ModuleType("source_import_policy")
+source_policy.__file__ = str(_policy_path)
+exec(compile(_data, str(_policy_path), "exec"), source_policy.__dict__)
+sys.modules["source_import_policy"] = source_policy
 
-SOURCE_FILES = [
-    "correctness_controller.py",
-    "publish_correctness.py",
-    "runtime/vendor/normalize_evidence.py",
-    "installation_binding.py",
-    "selected_launch.py",
-    "state_inputs.py",
-    "state_worker.py",
-    "engine_worker.py",
-    "selector_contract.py",
-    "attempt_receipts.py",
-    "runtime/runtime_bootstrap.py",
-    "runtime/runtime_identity.py",
-    "runtime/isolated_measure.py",
-    "runtime/vendor/sdk_content_seal.py",
-    "runtime/vendor/process_tree_measure.py",
-    "runtime/vendor/discovery_receipts.py",
-    "primitive/arm_sessions.py",
-    "primitive/generation_inputs.py",
-]
-SOURCE_FILES += [
-    "primitive/vendor/command_runner.py",
-    "primitive/vendor/mixed/adapter/mixed_adapter.py",
-    "primitive/vendor/mixed/adapter/observe_mixed.py",
-    "primitive/vendor/mixed/compiler_generations.py",
-    "primitive/vendor/mixed/score_calls.py",
-    "primitive/vendor/mixed/validation_common.py",
-    "primitive/vendor/process_tree_measure.py",
-]
+with source_policy.guarded_imports(ROOT):
+    sys.path.insert(0, str(ROOT))
+    sys.path.insert(0, str(ROOT / "runtime"))
+    sys.path.insert(0, str(ROOT / "primitive"))
+    import runtime_bootstrap as bootstrap
+    import runtime_identity as identity
+    import isolated_measure
+    import installation_binding
+    import selected_launch
+    import startup_profile
+    import profile_collection
+    import state_inputs
+    import attempt_receipts
+    import contract_prerequisites
+
+    sys.path.insert(0, str(ROOT / "primitive/vendor"))
+    import command_runner
+
+SOURCE_FILES = list(source_policy.ENGINE_SOURCES)
 
 
 def source_hashes(names=None):
@@ -147,6 +147,7 @@ def execute(args):
     plan = pre_record(
         "state-inputs", state_inputs.prepare, args.repository, args.lifecycle, args.setup, args.measurement
     )
+    pre_record("selected-launch", prepare_startup_profile, args, root)
     _, launch = pre_record(
         "selected-launch", selected_launch.prepare, args, root, Path(sys.executable), source_hashes, save
     )
@@ -172,14 +173,24 @@ def execute(args):
         save(output / "setup/installation-binding.json", binding)
         for key in ("request", "observation"):
             save(output / ("setup/selected-launch-" + key + ".json"), launch[key])
-        result["contracts"] = contract_prerequisites.run(binding, output, SOURCE_FILES, command_runner, save)
+        accepted_startup = launch["request"]["startup_profile"]["accepted_profile"]
+        copy_startup_profile(root, output, args.startup_profile_sha256)
+        result["contracts"] = contract_prerequisites.run(
+            binding, output, SOURCE_FILES, command_runner, save, startup_profile=accepted_startup
+        )
         if result["contracts"]["status"] != "passed":
             raise contract_prerequisites.Failed(result["contracts"]["exit_code"])
         plan["input_roots"] = roots
         plan["raw_output"] = str(output)
         save(output / "setup/plan.json", plan)
         sources = source_hashes(SOURCE_FILES)
-        runtime = dict(schema_version=1, package=binding["package"], python=binding["python"], code_files=sources)
+        runtime = dict(
+            schema_version=2,
+            package=binding["package"],
+            python=binding["python"],
+            code_files=sources,
+            startup_profile=accepted_startup,
+        )
         runtime_path = output / "setup/runtime.json"
         save(runtime_path, runtime)
         runtime_ref = state_inputs.reference(runtime_path)
@@ -203,6 +214,7 @@ def execute(args):
                 str(output),
             ],
         )
+        isolated_measure.bind_launch(command, runtime_path, runtime_ref["sha256"], runtime, env)
         call_started = time.perf_counter()
         result["preparation_wall_seconds"] = call_started - started
         result["controller_intervals"] = [
@@ -233,6 +245,7 @@ def execute(args):
                 ROOT / "state_worker.py",
                 command[14:],
                 phase["returncode"],
+                env,
             )
             result["state_runtime"] = receipt
             rechecked_launch = selected_launch.verify(args, root, source_hashes())
@@ -282,6 +295,76 @@ def execute(args):
         )
     save(output / "setup/controller-result.json", result)
     return result
+
+
+def prepare_startup_profile(args, root):
+    expected = selected_launch.private_environment(root)
+    # 알려지지 않은 키/변경은 프로브를 시작하기 전에도 그대로 거부한다.
+    startup_profile.observe_request(startup_profile.environment_request(expected), dict(os.environ))
+    path = root / "actual-arm-correctness-attempt/startup-profile/results.json"
+    if getattr(args, "selected_launch_sha256", None) is not None:
+        state_inputs.require(
+            getattr(args, "startup_profile_sha256", None) is not None, "Replacement startup profile is missing"
+        )
+        selected_launch.startup_binding(args, root, source_hashes())
+        return
+    state_inputs.require(
+        getattr(args, "startup_profile_sha256", None) is None, "Initial process cannot supply a prior startup profile"
+    )
+    selected, _ = selected_launch.selected_binding(args)
+    result = profile_collection.collect(
+        expected,
+        Path(sys.executable),
+        selected,
+        ROOT / "correctness_controller.py",
+        [Path(name) for name in source_hashes()],
+        path.parent,
+        command_runner.command,
+    )
+    if result["exit_code"] == 125:
+        raise KeyboardInterrupt("Startup profile collection incomplete")
+    state_inputs.require(
+        result["status"] == "passed" and type(result["exit_code"]) is int and result["exit_code"] == 0,
+        "Startup profile collection failed",
+    )
+    args.startup_profile_sha256 = state_inputs.reference(path)["sha256"]
+    selected_launch.startup_binding(args, root, source_hashes())
+
+
+def copy_startup_profile(root, output, expected_sha256):
+    source = root / "actual-arm-correctness-attempt/startup-profile"
+    reference = state_inputs.reference(source / "results.json")
+    state_inputs.require(reference["sha256"] == expected_sha256, "Startup profile changed before copy")
+    result = state_inputs.document(reference)
+    names = ["results.json"]
+    for index in range(1, len(result["probes"]) + 1):
+        names += [
+            f"spelling-{index:04d}/" + name
+            for name in ["request.json", "observation.json", "process.json", "process.stdout", "process.stderr"]
+        ]
+    copies = []
+    for name in names:
+        data, _ = startup_profile.read_file(source / name, startup_profile.MAX_RECEIPT_BYTES)
+        target = output / "setup/startup-profile" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("xb") as stream:
+            stream.write(data)
+        state_inputs.require(
+            startup_profile.read_file(source / name, startup_profile.MAX_RECEIPT_BYTES)[0] == data,
+            "Startup profile changed during copy",
+        )
+        copies.append(
+            dict(
+                original_path=str(source / name),
+                artifact="setup/startup-profile/" + name,
+                sha256=startup_profile.sha(data),
+                bytes=len(data),
+            )
+        )
+    save(
+        output / "setup/startup-profile/copy-manifest.json",
+        dict(schema_version=1, role="exact-startup-profile-copies", collection_sha256=expected_sha256, files=copies),
+    )
 
 
 def supervise(args):
@@ -335,6 +418,7 @@ def main():
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--selected-launch-sha256")
+    parser.add_argument("--startup-profile-sha256")
     args = parser.parse_args()
     try:
         if args.selected_launch_sha256 is not None and not args.execute:

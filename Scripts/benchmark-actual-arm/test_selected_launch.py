@@ -229,7 +229,27 @@ class SelectedLaunchTests(unittest.TestCase):
     def test_completed_publication_requires_actual_launch_copies_and_runtime_identity(self):
         import publish_correctness as publication
 
-        binding, launch = self.prepare(self.selected)
+        import correctness_controller as controller
+
+        self.sources = controller.source_hashes()
+        profile_path = self.attempt / "startup-profile"
+        collection = controller.profile_collection.collect(
+            self.env,
+            self.selected,
+            self.selected,
+            controller.ROOT / "correctness_controller.py",
+            [Path(p) for p in self.sources],
+            profile_path,
+            controller.command_runner.command,
+        )
+        self.assertEqual(collection["status"], "passed", collection)
+        self.args.startup_profile_sha256 = hashlib.sha256((profile_path / "results.json").read_bytes()).hexdigest()
+        effective = dict(self.env)
+        if sys.platform == "darwin" and "__CF_USER_TEXT_ENCODING" in os.environ:
+            effective["__CF_USER_TEXT_ENCODING"] = os.environ["__CF_USER_TEXT_ENCODING"]
+        binding, launch = selected_launch.prepare(
+            self.args, self.root, self.selected, lambda: self.sources, self.save, environment=effective
+        )
         raw = self.root / "raw"
         (raw / "setup").mkdir(parents=True)
         for key in ("request", "observation"):
@@ -240,9 +260,34 @@ class SelectedLaunchTests(unittest.TestCase):
         summary = publication.selected_launch_summary(self.args, self.attempt, self.sources)
         attempt = dict(selected_launch=summary)
         record = dict(selected_launch={key: launch[key + "_ref"]["sha256"] for key in ("request", "observation")})
-        runtime = dict(python=binding["python"], code_files=self.sources)
+        controller.copy_startup_profile(self.root, raw, self.args.startup_profile_sha256)
+        runtime = dict(
+            schema_version=2,
+            startup_profile=collection["accepted_profile"],
+            python=binding["python"],
+            code_files=self.sources,
+        )
         good = publication.completed_launch(record, raw, attempt, runtime)
-        self.assertEqual(set(good), {"selected_launch_request", "selected_launch_observation", "installation_binding"})
+        self.assertTrue({"selected_launch_request", "selected_launch_observation", "installation_binding"} <= set(good))
+        self.assertEqual(len([k for k in good if k.startswith("startup-copy:")]), 7)
+        (raw / "results.json").write_text("{}")
+        manifest = publication.NORMALIZER.package(
+            argparse.Namespace(
+                input=raw,
+                output=self.root / "profile-public",
+                prefix=[
+                    "FIXTURE=" + str(self.root),
+                    "SOURCES=" + str(controller.ROOT),
+                    "USR=/usr",
+                    "OPT=/opt",
+                    "PRIVATE=/private",
+                    "TEMP=/var",
+                    "TMP=/tmp",
+                ],
+            )
+        )
+        self.assertEqual(len([r for r in manifest["files"] if r["path"].startswith("setup/startup-profile/")]), 7)
+
         for field in ("summary", "copy", "runtime", "binding"):
             with self.subTest(field=field):
                 bad_attempt, bad_runtime = copy.deepcopy(attempt), copy.deepcopy(runtime)

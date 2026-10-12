@@ -362,6 +362,9 @@ public struct CartographService: Sendable {
         let context = try loadContext()
         let (graph, lookup, explanation) = retentionExplanation(of: subject, in: context)
 
+        let notes = context.externalRetentions.map {
+            ExternalRetentionProvenanceDiagnostics.limitations($0.provenance)
+        } ?? []
         switch lookup {
         case .notFound:
             return CommandOutcome(
@@ -370,21 +373,23 @@ public struct CartographService: Sendable {
                     similar: GraphQueryIndex(graph: graph).similarCandidates(to: subject),
                     noun: "declaration"
                 ),
-                subjectNotFound: true
+                subjectNotFound: true, notes: notes
             )
         case let .ambiguous(candidates):
-            return CommandOutcome(output: Self.describeCandidates(candidates, for: subject, in: graph))
+            return CommandOutcome(output: Self.describeCandidates(candidates, for: subject, in: graph), notes: notes)
         case let .found(node):
-            let outcome = Self.describeExplanation(
+            let described = Self.describeExplanation(
                 explanation, for: node, in: graph, externalRetentions: context.externalRetentionIndex
             )
+            let outcome = CommandOutcome(output: described.output, findingCount: described.findingCount,
+                                         suppressedCount: described.suppressedCount, notes: notes)
             guard outcome.hasFindings, let baseline = try loadBaseline() else { return outcome }
             // 베이스라인이 억제한 문제를 --explain 만 다시 살려 내면, 같은 저장소·같은
             // 베이스라인인데 보고 방식에 따라 반대 판정이 나온다. 설명은 그대로 두고
             // 판정만 맞춘다.
             let suppressed = baseline.filtering([Self.unusedDiagnostic(for: node)]).isEmpty
             guard suppressed else { return outcome }
-            return CommandOutcome(output: outcome.output, findingCount: 0, suppressedCount: 1)
+            return CommandOutcome(output: outcome.output, findingCount: 0, suppressedCount: 1, notes: notes)
         }
     }
 

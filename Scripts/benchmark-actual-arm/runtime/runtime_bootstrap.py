@@ -95,6 +95,8 @@ def execute(args):
     code = 1
     runtime = None
     config = None
+    startup = None
+    launch_request = None
     try:
         if not (sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode):
             raise ValueError("Python must start with -I -S -B")
@@ -104,9 +106,13 @@ def execute(args):
         config = strict_json(data)
         if (
             not isinstance(config, dict)
-            or set(config) != {"schema_version", "package", "python", "code_files"}
+            or set(config)
+            != (
+                {"schema_version", "package", "python", "code_files"}
+                | ({"startup_profile"} if config.get("schema_version") == 2 else set())
+            )
             or type(config["schema_version"]) is not int
-            or config["schema_version"] != 1
+            or config["schema_version"] not in (1, 2)
             or not isinstance(config["code_files"], dict)
             or not 1 <= len(config["code_files"]) <= 64
         ):
@@ -164,6 +170,21 @@ def execute(args):
             python[k] != config["python"][k] for k in ["sha256", "bytes"]
         ):
             raise ValueError("Interpreter binding changed")
+        if config["schema_version"] == 2:
+            for name in ["startup_profile", "startup_binding"]:
+                path = here.with_name(name + ".py")
+                if str(path) not in source_bytes:
+                    raise ValueError("Unbound startup profile helper")
+                module = types.ModuleType(name)
+                module.__file__ = str(path)
+                sys.modules[name] = module
+                exec(compile(source_bytes[str(path)], str(path), "exec"), module.__dict__)
+            startup = sys.modules["startup_binding"]
+            launch_request, launch_sha = startup.read_launch(
+                config, args.runtime_sha256, args.script.resolve(), args.arguments, args.report
+            )
+            record["environment_request_sha256"] = launch_sha
+            record["environment_before"] = startup.observe(config, launch_request, dict(os.environ))
         target = Path(config["package"]["target"])
         record["python"] = dict(
             path=sys.executable, version=sys.version, implementation=sys.implementation.name, **python
@@ -241,6 +262,13 @@ def execute(args):
             record["modules_after"] = runtime.module_snapshot(dict(sys.modules), target, code_files, pycache)
             if any(pycache.iterdir()):
                 raise ValueError("Private bytecode cache was modified")
+            if startup is not None:
+                current, digest = startup.read_launch(
+                    config, args.runtime_sha256, args.script.resolve(), args.arguments, args.report
+                )
+                if digest != record["environment_request_sha256"]:
+                    raise ValueError("Runtime environment request changed")
+                record["environment_after"] = startup.observe(config, current, dict(os.environ))
             record["status"] = "passed" if code == 0 else "failed"
     except KeyboardInterrupt:
         code = 125
