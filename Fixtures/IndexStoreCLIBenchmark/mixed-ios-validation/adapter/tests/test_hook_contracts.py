@@ -52,8 +52,15 @@ class HookContracts(unittest.TestCase):
 
     def test_compiler_manifest_preserves_header_dependency(self):
         expected, contexts = hook.compile_manifest([self.command], self.state, {})
-        self.assertEqual(expected[0]["project_headers"], [str(self.project / "Sources/API.h")])
+        self.assertEqual(expected[0]["project_headers"], [str((self.project / "Sources/API.h").resolve())])
         self.assertEqual(contexts["Sources/Core.m"], ["BridgeKit"])
+
+    def test_compiler_header_manifest_accepts_project_alias(self):
+        alias = self.root / "project-alias"
+        alias.symlink_to(self.project, target_is_directory=True)
+        self.project = alias
+        self.state["project"] = str(alias)
+        self.test_compiler_manifest_preserves_header_dependency()
 
     def test_failed_or_missing_compiler_evidence_rejected(self):
         for builds in [[], [dict(command=self.command["args"], exit_code=1)]]:

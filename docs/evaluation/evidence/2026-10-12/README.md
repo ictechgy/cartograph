@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all six rounds. `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all seven rounds. `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -27,6 +27,11 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    the issue on Linux; the repair resolves both sides while preserving all snapshot-content assertions.
    Its bundle retains the complete failing contract phase and the original full job-log hash.
 
+7. Run 38199069229 passed the wrapper suite, then failed a later adapter test comparing a canonical
+   header dependency against an unresolved expected path. A project-symlink regression reproduces it.
+   The entire offline comparison, adapter and privacy suite was then exercised under a deliberately
+   symlinked temporary root. Only filesystem identity expectations changed; lexical path contracts remain.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -37,7 +42,7 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text and their manifests. They contain no raw compiler
 indexes, objects, executables, toolchains, global caches or environment dumps. Raw originals remain
 private; each manifest distinguishes original hashes from normalized public hashes. The four native
-round archives retain the exact bytes of their public Actions artifacts. The two test-phase archives
+round archives retain the exact bytes of their public Actions artifacts. The three test-phase archives
 were normalized separately after their failures. Archives are committed to avoid losing evidence when
 Actions retention expires.
 
