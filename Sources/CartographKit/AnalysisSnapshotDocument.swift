@@ -221,7 +221,10 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 symbols: symbols, references: references, indexedFileDates: dates,
                 oldestIndexedFileDates: oldestDates,
                 parameters: parameters, propertyAccesses: snapshot.propertyAccesses,
-                imports: imports, fileModuleUsages: moduleUsages),
+                imports: imports, fileModuleUsages: moduleUsages,
+                admittedHeaderPaths: snapshot.admittedHeaderPaths.map { paths in
+                    paths.map { Self.rebase($0, from: projectRoot, to: currentProjectRoot) }.sorted()
+                }),
             edgeKinds: Set(edgeKinds),
             limitations: limitations,
             externalRetentions: externalRetentions,
@@ -460,12 +463,16 @@ extension CartographService {
             dates.filter { includedSourcePaths.contains($0.key) }
         }
         // 선언 없는 헤더와 삭제된 소스도 신선도 근거다. 프로젝트 밖·제외된 경로만 제거한다.
+        func capturesDependencyPath(_ path: String) -> Bool {
+            guard configuration.pathFilter.allows(path) else { return false }
+            let relative = SourceLocation(path: path, line: 1, column: 1).relative(to: projectPath).path
+            return !relative.hasPrefix("/") && !relative.split(separator: "/").contains("..")
+        }
         let capturedOldestDates = context.snapshot.oldestIndexedFileDates.map { dates in
-            dates.filter { path, _ in
-                guard configuration.pathFilter.allows(path) else { return false }
-                let relative = SourceLocation(path: path, line: 1, column: 1).relative(to: projectPath).path
-                return !relative.hasPrefix("/") && !relative.split(separator: "/").contains("..")
-            }
+            dates.filter { capturesDependencyPath($0.key) }
+        }
+        let capturedHeaders = context.snapshot.admittedHeaderPaths.map {
+            $0.filter(capturesDependencyPath).sorted()
         }
         // 파라미터는 그래프에 남은 함수의 것만 담는다 — 부모가 빠진 선언은
         // 미사용 판정의 재료가 못 된다.
@@ -492,7 +499,8 @@ extension CartographService {
             parameters: capturedParameters,
             propertyAccesses: capturedAccesses,
             imports: capturedImports,
-            fileModuleUsages: capturedUsages
+            fileModuleUsages: capturedUsages,
+            admittedHeaderPaths: capturedHeaders
         )
         let supplementalPaths = context.supplementalRuntimeSourcePaths
         let capturedRuntimeFiles = context.runtimeFiles?.filter { facts in

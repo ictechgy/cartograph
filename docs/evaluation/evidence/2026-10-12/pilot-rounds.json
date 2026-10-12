@@ -475,6 +475,546 @@
       "status": "mixed-native-header-admission-freshness-and-compiler-provenance-failed",
       "synthetic_correctness_and_freshness_passed": true,
       "url": "https://github.com/ictechgy/cartograph/actions/runs/38209165923"
+    },
+    {
+      "archive_sha256": "f0d561f842e0f6a4d832320841e8a97ba8b2a4cc5f71c01e23ee038dd0ae106a",
+      "artifact_id": 11730463841,
+      "compiler_index_policy": "fresh-shared-v2",
+      "expectation_changes": false,
+      "head": "906c22adec8b5f04e94cda7e28ff69d8958d0094",
+      "mixed_validation_states": 13,
+      "native_freshness_checks_passed": 6,
+      "native_header_omission_states": 7,
+      "normalized_bundles": {
+        "argument-parser": 606,
+        "mixed-ios": 1797,
+        "mixed-setup": 6,
+        "synthetic": 1216
+      },
+      "normalized_manifest_files": 3625,
+      "observation_failures": [
+        "initial",
+        "header_edit_rebuilt",
+        "header_rename_rebuilt",
+        "header_restored_rebuilt",
+        "swift_rename_rebuilt",
+        "swift_delete_rebuilt",
+        "restored_rebuilt"
+      ],
+      "public_project_validation_passed": true,
+      "publication_status": "publication_prepared",
+      "raw_fallback": false,
+      "rebuilt_baseline_graph_and_query_states_passed": 7,
+      "retained_cost_evidence": "Full equal shared compiler/index preparation cost plus separately measured setup/toolchain/preflight costs retained. No final timing or superiority inference.",
+      "run_id": 38212888445,
+      "sdk_content_identity": {
+        "build": "23F81a",
+        "contents_sha256": null,
+        "final_protocol_gate": "not-satisfied",
+        "limitation": "SDK header/module contents and their immutability across generations are not established",
+        "path": "$DEVELOPER/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk",
+        "verification": "version-path-only-validation",
+        "version": "26.5"
+      },
+      "shared_policy_interpretation": "Fresh task-owned compiler/index generations resolve the earlier shared stale module-index failures on this actual iOS fixture. All seven rebuilt states have exact baseline graph/query answers; no stale record filtering. Native header omissions remain separately failed until the product repair is executed.",
+      "states": [
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [
+              [
+                "BridgeKit::Sources/BridgeKit/Core.m:11:5",
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/CppBridge.mm:3:12",
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:3:5"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:3:5"
+              ]
+            ],
+            "false_positive": [],
+            "status": "failed",
+            "unresolved": [
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19",
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19"
+            ]
+          },
+          "native_queries": "failed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 6.088867875000005,
+              "index_dump_assembly": 6.088867875000005
+            },
+            "compiler_subprocess_wall_seconds": 4.5762327080000205,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 6.088867875000005
+          },
+          "state": "initial",
+          "status": "failed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/CGCore.h"
+              ],
+              "diagnostic": "index-staleness: 1 of 9 source file(s) changed after the file's index unit was written, so a call added since the last build is not here yet; paths: [\"Sources/BridgeKit/include/CGCore.h\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/BridgeKit/include/CGCore.h"
+          ],
+          "required_changed_paths": [
+            "Sources/BridgeKit/include/CGCore.h"
+          ],
+          "state": "header_edit_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [
+              [
+                "BridgeKit::Sources/BridgeKit/Core.m:11:5",
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/CppBridge.mm:3:12",
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:7:5"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:7:5"
+              ]
+            ],
+            "false_positive": [],
+            "status": "failed",
+            "unresolved": [
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19",
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19"
+            ]
+          },
+          "native_queries": "failed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.606913291999945,
+              "index_dump_assembly": 4.606913291999945
+            },
+            "compiler_subprocess_wall_seconds": 3.7326847500000895,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.606913291999945
+          },
+          "state": "header_edit_rebuilt",
+          "status": "failed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/RenamedCore.h"
+              ],
+              "diagnostic": "unindexed-sources: 1 of 9 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers; paths: [\"Sources/BridgeKit/include/RenamedCore.h\"]"
+            },
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/CGCore.h"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/BridgeKit/include/CGCore.h\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/BridgeKit/include/CGCore.h",
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "required_changed_paths": [
+            "Sources/BridgeKit/include/CGCore.h",
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "state": "header_rename_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [
+              [
+                "BridgeKit::Sources/BridgeKit/Core.m:11:5",
+                "BridgeKit::Sources/BridgeKit/include/RenamedCore.h:19:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/CppBridge.mm:3:12",
+                "BridgeKit::Sources/BridgeKit/include/RenamedCore.h:15:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/RenamedCore.h:15:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:7:5"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/RenamedCore.h:19:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:7:5"
+              ]
+            ],
+            "false_positive": [],
+            "status": "failed",
+            "unresolved": [
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/RenamedCore.h:15:19",
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/RenamedCore.h:19:19"
+            ]
+          },
+          "native_queries": "failed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.250810750000028,
+              "index_dump_assembly": 4.250810750000028
+            },
+            "compiler_subprocess_wall_seconds": 3.304169502000036,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.250810750000028
+          },
+          "state": "header_rename_rebuilt",
+          "status": "failed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/RenamedCore.h"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/BridgeKit/include/RenamedCore.h\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "required_changed_paths": [
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "state": "header_delete_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/BridgeKit/include/RenamedCore.h"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/BridgeKit/include/RenamedCore.h\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "required_changed_paths": [
+            "Sources/BridgeKit/include/RenamedCore.h"
+          ],
+          "state": "header_delete_build_failed",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [
+              [
+                "BridgeKit::Sources/BridgeKit/Core.m:11:5",
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/CppBridge.mm:3:12",
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:3:5"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:3:5"
+              ]
+            ],
+            "false_positive": [],
+            "status": "failed",
+            "unresolved": [
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19",
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19"
+            ]
+          },
+          "native_queries": "failed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.628231249999999,
+              "index_dump_assembly": 4.628231249999999
+            },
+            "compiler_subprocess_wall_seconds": 3.681237501000055,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.628231249999999
+          },
+          "state": "header_restored_rebuilt",
+          "status": "failed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/AppFlow/Relocated.swift"
+              ],
+              "diagnostic": "unindexed-sources: 1 of 9 source file(s) have no known index unit; build their targets, or exclude files that are not target sources, before relying on absent callers; paths: [\"Sources/AppFlow/Relocated.swift\"]"
+            },
+            {
+              "changed_paths": [
+                "Sources/AppFlow/Legacy.swift"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/AppFlow/Legacy.swift\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/AppFlow/Legacy.swift",
+            "Sources/AppFlow/Relocated.swift"
+          ],
+          "required_changed_paths": [
+            "Sources/AppFlow/Legacy.swift",
+            "Sources/AppFlow/Relocated.swift"
+          ],
+          "state": "swift_rename_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [
+              [
+                "BridgeKit::Sources/BridgeKit/Core.m:11:5",
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/CppBridge.mm:3:12",
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:3:5"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:3:5"
+              ]
+            ],
+            "false_positive": [],
+            "status": "failed",
+            "unresolved": [
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19",
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19"
+            ]
+          },
+          "native_queries": "failed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.709855542000014,
+              "index_dump_assembly": 4.709855542000014
+            },
+            "compiler_subprocess_wall_seconds": 3.751033083000152,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.709855542000014
+          },
+          "state": "swift_rename_rebuilt",
+          "status": "failed"
+        },
+        {
+          "matched_diagnostics": [
+            {
+              "changed_paths": [
+                "Sources/AppFlow/Relocated.swift"
+              ],
+              "diagnostic": "missing-sources: 1 indexed source file(s) no longer exist; rebuild with a fresh index to remove obsolete declarations; paths: [\"Sources/AppFlow/Relocated.swift\"]"
+            }
+          ],
+          "native_freshness": "passed",
+          "query_exit_code": 0,
+          "reported_changed_paths": [
+            "Sources/AppFlow/Relocated.swift"
+          ],
+          "required_changed_paths": [
+            "Sources/AppFlow/Relocated.swift"
+          ],
+          "state": "swift_delete_unbuilt",
+          "status": "stale-gate-passed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [
+              [
+                "BridgeKit::Sources/BridgeKit/Core.m:11:5",
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/CppBridge.mm:3:12",
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:3:5"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:3:5"
+              ]
+            ],
+            "false_positive": [],
+            "status": "failed",
+            "unresolved": [
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19",
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19"
+            ]
+          },
+          "native_queries": "failed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 3.5801222079999206,
+              "index_dump_assembly": 3.5801222079999206
+            },
+            "compiler_subprocess_wall_seconds": 2.90798408299986,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 3.5801222079999206
+          },
+          "state": "swift_delete_rebuilt",
+          "status": "failed"
+        },
+        {
+          "baseline_graph": {
+            "false_negative": [],
+            "false_positive": [],
+            "status": "passed",
+            "unresolved": []
+          },
+          "baseline_queries": "passed",
+          "native_graph": {
+            "false_negative": [
+              [
+                "BridgeKit::Sources/BridgeKit/Core.m:11:5",
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/CppBridge.mm:3:12",
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:3:5"
+              ],
+              [
+                "BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19",
+                "BridgeKit::Sources/BridgeKit/Core.m:3:5"
+              ]
+            ],
+            "false_positive": [],
+            "status": "failed",
+            "unresolved": [
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/CGCore.h:15:19",
+              "Missing compiled definition: BridgeKit::Sources/BridgeKit/include/CGCore.h:19:19"
+            ]
+          },
+          "native_queries": "failed",
+          "same_input_bytes_verified": true,
+          "shared_input_cost": {
+            "charged_wall_seconds_by_arm": {
+              "cartograph": 4.208535250000068,
+              "index_dump_assembly": 4.208535250000068
+            },
+            "compiler_subprocess_wall_seconds": 3.4326435840000613,
+            "index_or_cache_copy_operations": 0,
+            "scope": "full shared compiler/index preparation, command logs, output maps and acceptance seals",
+            "snapshot_copy_scope": "private evidence only; never used to seed compiler or engine inputs",
+            "status": "measured",
+            "wall_seconds": 4.208535250000068
+          },
+          "state": "restored_rebuilt",
+          "status": "failed"
+        }
+      ],
+      "status": "fresh-shared-index-baseline-and-native-freshness-passed-header-admission-failed",
+      "synthetic_correctness_and_freshness_passed": true,
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38212888445"
     }
   ],
   "superiority_claim": null

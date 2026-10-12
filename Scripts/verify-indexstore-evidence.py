@@ -93,6 +93,404 @@ class EvidenceTests(unittest.TestCase):
         self.assertFalse(self.public.exists() and any(self.public.iterdir()))
         self.assertEqual(before, self.snapshot())
 
+    def test_complete_jsonl_samples_preserve_values_hashes_and_relative_links(self):
+        relative = "runs/pair01/memory.samples.jsonl"
+        samples = [
+            {"time": 0.1234567890123, "rss_bytes": 123456789, "paths": [str(self.workspace / "a.swift")]},
+            {"time": 1.1234567890123, "rss_bytes": 0, "failed": True, "missing": None},
+        ]
+        raw_samples = "\n".join(json.dumps(item) for item in samples) + "\n"
+        self.write(relative, raw_samples)
+        self.values["samples"] = str(self.raw / relative)
+        self.write("results.json", json.dumps(self.values))
+        manifest = MODULE.package(self.args)
+        result = json.loads((self.public / "results.json").read_text())
+        self.assertEqual(result["samples"], relative)
+        actual = [json.loads(line) for line in (self.public / relative).read_text().splitlines()]
+        samples[0]["paths"] = ["$WORKSPACE/a.swift"]
+        self.assertEqual(actual, samples)
+        entry = next(item for item in manifest["files"] if item["path"] == relative)
+        self.assertEqual(entry["original_raw_sha256"], MODULE.digest(raw_samples.encode()))
+        self.assertEqual(entry["normalized_sha256"], MODULE.digest((self.public / relative).read_bytes()))
+        self.assertEqual((self.raw / relative).read_text(), raw_samples)
+
+    def helper_sample(self, pid=12345, identity=1, created=1700000000.25):
+        return {
+            "start_seconds": 0.5,
+            "end_seconds": 0.5001,
+            "rss_bytes": 4096,
+            "process_count": 1,
+            "processes": [{"process_id": identity, "pid": pid, "create_time": created, "rss_bytes": 4096}],
+        }
+
+    def write_helper_samples(
+        self, samples, helper_hash="03a6cc72657a560e983b95fa99b7df4ff907a6d41f37fcd3692f6ed694d92101"
+    ):
+        relative = "runs/helper.samples.0001.jsonl"
+        raw = "".join(json.dumps(sample) + "\n" for sample in samples)
+        self.write(relative, raw)
+        self.write(
+            "runs/helper.json",
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "measurement_mode": "memory",
+                    "helper_sha256": helper_hash,
+                    "rss": {
+                        "metric": "observed_sampled_near_simultaneous_process_tree_rss_bytes",
+                        "sample_chunks": [
+                            {
+                                "name": Path(relative).name,
+                                "sha256": MODULE.digest(raw.encode()),
+                                "bytes": len(raw.encode()),
+                                "sample_count": len(samples),
+                            }
+                        ],
+                        "sample_count": len(samples),
+                        "sample_total_bytes": len(raw.encode()),
+                    },
+                }
+            ),
+        )
+
+    def test_helper_identity_requires_verified_known_result(self):
+        self.write("runs/helper.samples.0001.jsonl", json.dumps(self.helper_sample()) + "\n")
+        self.assert_blocked_without_output("helper-process-identity-unbound")
+        self.write_helper_samples([self.helper_sample()], helper_hash="0" * 64)
+        self.assert_blocked_without_output("helper-process-identity-unbound")
+
+    def test_legacy_helper_without_creation_identity_is_rejected(self):
+        sample = self.helper_sample()
+        del sample["processes"][0]["create_time"]
+        self.write_helper_samples(
+            [sample], helper_hash="6f4e368ba6282ebd4b9591af61ef044ca4574ce217aec1a846fd6698b451fdb3"
+        )
+        self.assert_blocked_without_output("helper-process-identity-unbound")
+
+    def test_unknown_or_legacy_helper_cleanup_never_leaks_raw_identity(self):
+        for helper in ("0" * 64, "6f4e368ba6282ebd4b9591af61ef044ca4574ce217aec1a846fd6698b451fdb3", None):
+            with self.subTest(helper=helper):
+                self.write("runs/failed.json", json.dumps({
+                    "schema_version": 2, "measurement_mode": "timing", "helper_sha256": helper,
+                    "status": "failed", "cleanup": {"remaining_observed_pids": [12345], "seconds": 2.5,
+                    "method": "identity_checked_individual_TERM_then_STOP_discover_KILL; process-group independent"},
+                }))
+                self.assert_blocked_without_output("helper-process-identity-unbound")
+
+    def test_malformed_unbound_helper_samples_never_pass_raw_identity(self):
+        for sample in ({**self.helper_sample(), "extra": True}, {"processes": [{"pid": 12345}]},
+                       {"pid": 12345, "create_time": 1700000000.25}):
+            with self.subTest(sample=sample):
+                self.write("runs/helper.samples.jsonl", json.dumps(sample) + "\n")
+                self.assert_blocked_without_output("helper-process-identity-unbound")
+
+    def test_successor_requires_complete_finite_creation_identity(self):
+        for value in (None, 0, -1, True, float("inf")):
+            with self.subTest(value=value):
+                sample = self.helper_sample(created=value)
+                if value is None:
+                    del sample["processes"][0]["create_time"]
+                self.write_helper_samples([sample])
+                self.assert_blocked_without_output("helper-process-identity-schema|invalid-or-ambiguous-jsonl")
+
+    def test_helper_sample_timing_schema_cannot_be_invalid(self):
+        for changes in ({"start_seconds": -1}, {"end_seconds": 0.4}, {"start_seconds": True},
+                        {"end_seconds": "0.5001"}):
+            with self.subTest(changes=changes):
+                self.write_helper_samples([{**self.helper_sample(), **changes}])
+                self.assert_blocked_without_output("helper-process-identity-schema")
+
+    def test_helper_identity_metadata_is_omitted_without_losing_sample_values(self):
+        relative = "runs/helper.samples.0001.jsonl"
+        samples = [self.helper_sample(), self.helper_sample(pid=12345, identity=2, created=1700000001.25)]
+        raw = "".join(json.dumps(sample) + "\n" for sample in samples)
+        self.write(relative, raw)
+        self.write(
+            "runs/helper.json",
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "measurement_mode": "memory",
+                    "status": "failed",
+                    "failure": "cleanup_incomplete",
+                    "helper_sha256": "03a6cc72657a560e983b95fa99b7df4ff907a6d41f37fcd3692f6ed694d92101",
+                    "cleanup": {
+                        "seconds": 2.5,
+                        "remaining_observed_pids": [12345],
+                        "method": "identity_checked_individual_TERM_then_STOP_discover_KILL; process-group independent",
+                    },
+                    "rss": {
+                        "metric": "observed_sampled_near_simultaneous_process_tree_rss_bytes",
+                        "sample_chunks": [
+                            {
+                                "name": Path(relative).name,
+                                "sha256": MODULE.digest(raw.encode()),
+                                "bytes": len(raw.encode()),
+                                "sample_count": len(samples),
+                            }
+                        ],
+                        "sample_count": len(samples),
+                        "sample_total_bytes": len(raw.encode()),
+                    },
+                }
+            ),
+        )
+        before = self.snapshot()
+        manifest = MODULE.package(self.args)
+        actual = [json.loads(line) for line in (self.public / relative).read_text().splitlines()]
+        for sample in samples:
+            for member in sample["processes"]:
+                del member["pid"], member["create_time"]
+        self.assertEqual(actual, samples)
+        result = json.loads((self.public / "runs/helper.json").read_text())
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["failure"], "cleanup_incomplete")
+        self.assertEqual(result["cleanup"]["seconds"], 2.5)
+        self.assertNotIn("remaining_observed_pids", result["cleanup"])
+        self.assertEqual(result["cleanup"]["remaining_observed_process_count"], 1)
+        self.assertTrue(result["cleanup"]["remaining_identity_unresolved"])
+        self.assertEqual(before, self.snapshot())
+        self.assertIn("processes[].pid", manifest["omitted_helper_identity_fields"])
+        self.assertIn("processes[].create_time", manifest["omitted_helper_identity_fields"])
+
+    def test_identity_transform_is_schema_bound_and_rejects_reassigned_ids(self):
+        unrelated = {"pid": 22, "create_time": 4.5, "semantic": "unrelated domain object"}
+        self.write("runs/unrelated.json", json.dumps(unrelated))
+        MODULE.package(self.args)
+        self.assertEqual(json.loads((self.public / "runs/unrelated.json").read_text()), unrelated)
+        import shutil
+
+        shutil.rmtree(self.public)
+        samples = [self.helper_sample(), self.helper_sample(pid=54321)]
+        self.write_helper_samples(samples)
+        self.assert_blocked_without_output("helper-process-identity")
+
+    def test_helper_process_ids_remain_injective_and_members_cannot_disappear(self):
+        first, second = self.helper_sample(), self.helper_sample(identity=2)
+        self.write_helper_samples([first, second])
+        self.assert_blocked_without_output("helper-process-identity-not-injective")
+        second = self.helper_sample(pid=12346, identity=2)
+        first["processes"].extend(second["processes"])
+        first["process_count"], first["rss_bytes"] = 2, 8192
+        self.write_helper_samples([first])
+        MODULE.package(self.args)
+        actual = json.loads((self.public / "runs/helper.samples.0001.jsonl").read_text())
+        self.assertEqual(actual["process_count"], 2)
+        self.assertEqual(actual["rss_bytes"], 8192)
+        self.assertEqual([item["process_id"] for item in actual["processes"]], [1, 2])
+        self.assertEqual([item["rss_bytes"] for item in actual["processes"]], [4096, 4096])
+
+    def test_bound_helper_result_schema_and_cleanup_fail_closed(self):
+        for changes in ({"schema_version": 1}, {"measurement_mode": "legacy"}, {"rss": None},
+                        {"cleanup": {"remaining_observed_pids": [12345], "method": "unknown"}},
+                        {"cleanup": {"remaining_observed_pids": [12345, 12345], "seconds": 2.5,
+                         "method": "identity_checked_individual_TERM_then_STOP_discover_KILL; process-group independent"}},
+                        ):
+            with self.subTest(changes=changes):
+                self.write_helper_samples([self.helper_sample()])
+                path = self.raw / "runs/helper.json"
+                value = json.loads(path.read_text())
+                value.update(changes)
+                path.write_text(json.dumps(value))
+                self.assert_blocked_without_output("helper-process-identity")
+
+    def test_embedded_memory_requires_exact_verified_standalone_result(self):
+        for mutation in (
+            lambda value: value.update(status="manufactured-success"),
+            lambda value: value["rss"].update(sample_count=100),
+            lambda value: value.update(unreviewed_extra=True),
+        ):
+            self.write_helper_samples([self.helper_sample()])
+            value = json.loads((self.raw / "runs/helper.json").read_text())
+            value["caller_elapsed_seconds"] = 0.9
+            mutation(value)
+            self.write("runs/embedded.json", json.dumps({"observed": value}))
+            self.assert_blocked_without_output("helper-process-identity-unbound")
+
+    def test_embedded_memory_without_standalone_or_with_ambiguous_copy_blocks(self):
+        self.write_helper_samples([self.helper_sample()])
+        path = self.raw / "runs/helper.json"
+        value = json.loads(path.read_text())
+        self.write("runs/embedded.json", json.dumps({"observed": value}))
+        path.unlink()
+        self.assert_blocked_without_output("helper-process-identity-unbound")
+        self.write_helper_samples([self.helper_sample()])
+        for name in ("helper.json", "helper.samples.0001.jsonl"):
+            self.write("setup/" + name, (self.raw / "runs" / name).read_bytes())
+        self.assert_blocked_without_output("helper-process-identity-unbound")
+
+    def test_embedded_memory_caller_elapsed_must_be_finite_nonnegative(self):
+        for elapsed in (-1, True, None, float("inf")):
+            with self.subTest(elapsed=elapsed):
+                self.write_helper_samples([self.helper_sample()])
+                value = json.loads((self.raw / "runs/helper.json").read_text())
+                value["caller_elapsed_seconds"] = elapsed
+                self.write("runs/embedded.json", json.dumps({"observed": value}))
+                self.assert_blocked_without_output("helper-process-identity-schema|invalid-or-ambiguous-json")
+
+    def test_unrelated_helper_provenance_does_not_authorize_process_identity(self):
+        self.write("setup/provenance.json", json.dumps({
+            "helper_sha256": next(iter(MODULE.KNOWN_MEASUREMENT_HELPERS)), "scope": "provenance only",
+        }))
+        self.write("setup/manifest.json", json.dumps({"helper_sha256": "c" * 64, "machine": {"cores": 4}}))
+        MODULE.package(self.args)
+        value = json.loads((self.public / "setup/manifest.json").read_text())
+        self.assertEqual(value, {"helper_sha256": "c" * 64, "machine": {"cores": 4}})
+        import shutil
+
+        shutil.rmtree(self.public)
+        self.write("setup/manifest.json", json.dumps({"helper_sha256": "c" * 64,
+                                                       "cleanup": {"remaining_observed_pids": [12345]}}))
+        self.assert_blocked_without_output("helper-process-identity-unbound")
+
+    def test_nested_process_metadata_cannot_bypass_identity_screen(self):
+        for value in ({"nested": {"pid": 12345}}, {"nested": [{"create_time": 1700000000.25}]}):
+            with self.subTest(value=value):
+                self.write("runs/unbound.samples.jsonl", json.dumps(value) + "\n")
+                self.assert_blocked_without_output("helper-process-identity-unbound")
+        (self.raw / "runs/unbound.samples.jsonl").unlink()
+        self.write("runs/nested.json", json.dumps({"nested": {"cleanup": {"remaining_observed_pids": [12345]}}}))
+        self.assert_blocked_without_output("helper-process-identity-unbound")
+
+    def test_known_helper_does_not_exempt_extra_process_metadata(self):
+        self.write_helper_samples([self.helper_sample()])
+        path = self.raw / "runs/helper.json"
+        value = json.loads(path.read_text())
+        value["unexpected"] = {"create_time": 1700000000.25}
+        path.write_text(json.dumps(value))
+        self.assert_blocked_without_output("helper-process-identity-schema")
+
+    def test_helper_identity_binding_spans_all_chunks(self):
+        self.write_helper_samples([self.helper_sample()])
+        second = self.helper_sample(pid=23456)
+        data = json.dumps(second) + "\n"
+        name = "helper.samples.0002.jsonl"
+        self.write("runs/" + name, data)
+        path = self.raw / "runs/helper.json"
+        value = json.loads(path.read_text())
+        rss = value["rss"]
+        rss["sample_chunks"].append({"name": name, "sha256": MODULE.digest(data.encode()),
+                                     "bytes": len(data), "sample_count": 1})
+        rss["sample_count"] += 1
+        rss["sample_total_bytes"] += len(data)
+        path.write_text(json.dumps(value))
+        self.assert_blocked_without_output("helper-process-identity-reassigned")
+
+    def test_chunk_duplicate_noncontiguous_and_corruption_block(self):
+        for mutation in (lambda chunks: chunks.append(chunks[0]),
+                         lambda chunks: chunks[1].update(name="memory.samples.0003.jsonl")):
+            result = self.chunked_memory()
+            mutation(result["rss"]["sample_chunks"])
+            self.write("runs/memory.json", json.dumps(result))
+            self.assert_blocked_without_output("sample-chunk-integrity")
+        self.chunked_memory()
+        self.write("runs/memory.samples.0001.jsonl", '{"time": 99}\n')
+        self.assert_blocked_without_output("sample-chunk-integrity")
+
+    def test_cleanup_only_timing_failure_keeps_counts_and_failure(self):
+        self.write("runs/timing.json", json.dumps({
+            "schema_version": 2, "measurement_mode": "timing", "status": "failed", "failure": "cleanup_incomplete",
+            "helper_sha256": "03a6cc72657a560e983b95fa99b7df4ff907a6d41f37fcd3692f6ed694d92101", "rss": None,
+            "cleanup": {"remaining_observed_pids": [12345], "seconds": 2.5,
+                "method": "identity_checked_individual_TERM_then_STOP_discover_KILL; process-group independent"},
+        }))
+        MODULE.package(self.args)
+        value = json.loads((self.public / "runs/timing.json").read_text())
+        self.assertEqual(value["status"], "failed")
+        self.assertEqual(value["failure"], "cleanup_incomplete")
+        self.assertEqual(value["cleanup"]["seconds"], 2.5)
+        self.assertEqual(value["cleanup"]["remaining_observed_process_count"], 1)
+        self.assertTrue(value["cleanup"]["remaining_identity_unresolved"])
+        self.assertNotIn("remaining_observed_pids", value["cleanup"])
+
+    def test_jsonl_rotated_sample_chunks_are_included(self):
+        for number in (1, 2):
+            self.write(f"runs/tree.samples.{number:04d}.jsonl", json.dumps({"sequence": number}) + "\n")
+        manifest = MODULE.package(self.args)
+        selected = {item["path"] for item in manifest["files"]}
+        self.assertTrue({"runs/tree.samples.0001.jsonl", "runs/tree.samples.0002.jsonl"} <= selected)
+
+    def test_jsonl_empty_file_is_valid_zero_samples_but_blank_lines_fail(self):
+        self.write("runs/empty.samples.jsonl", "")
+        MODULE.package(self.args)
+        self.assertEqual((self.public / "runs/empty.samples.jsonl").read_text(), "")
+        self.public = self.root / "another-public"
+        self.args.output = self.public
+        self.write("runs/empty.samples.jsonl", "\n")
+        self.assert_blocked_without_output("invalid-or-ambiguous-jsonl")
+
+    def test_jsonl_malformed_duplicate_nonfinite_and_nonobject_values_block(self):
+        for value in ('{"x":1,"x":2}\n', '{"x":NaN}\n', '{"x":1e999}\n',
+                      "{}\nnot-json\n", "[1,2]\n", "null\n"):
+            with self.subTest(value=value):
+                self.write("runs/bad.samples.jsonl", value)
+                self.assert_blocked_without_output("invalid-or-ambiguous-jsonl")
+
+    def test_jsonl_escaped_credentials_and_unmapped_paths_block(self):
+        self.write("runs/bad.samples.jsonl", '{"GITHUB\\u005fTOKEN":"synthetic-credential-only"}\n')
+        self.assert_blocked_without_output("credential-json-field")
+        self.write("runs/bad.samples.jsonl", '{"path":"/unmapped/secret-workspace/file"}\n')
+        self.assert_blocked_without_output("unmapped-absolute-path")
+
+    def test_jsonl_missing_sample_reference_blocks(self):
+        self.values["samples"] = str(self.raw / "runs/missing.samples.jsonl")
+        self.write("results.json", json.dumps(self.values))
+        self.assert_blocked_without_output("log-reference-not-in-public-bundle")
+
+    def test_arbitrary_jsonl_is_not_silently_selected(self):
+        self.write("runs/unrelated.jsonl", '{"unrelated":true}\n')
+        manifest = MODULE.package(self.args)
+        self.assertNotIn("runs/unrelated.jsonl", {item["path"] for item in manifest["files"]})
+
+    def chunked_memory(self):
+        chunks = []
+        for number in (1, 2):
+            name = f"memory.samples.{number:04d}.jsonl"
+            data = json.dumps({"time": number, "rss_bytes": number * 1024}) + "\n"
+            self.write("runs/" + name, data)
+            chunks.append({"name": name, "sha256": MODULE.digest(data.encode()), "bytes": len(data), "sample_count": 1})
+        result = {
+            "rss": {"sample_chunks": chunks, "sample_total_bytes": sum(c["bytes"] for c in chunks), "sample_count": 2}
+        }
+        self.write("runs/memory.json", json.dumps(result))
+        return result
+
+    def test_chunk_manifest_is_verified_against_complete_raw_evidence(self):
+        self.chunked_memory()
+        manifest = MODULE.package(self.args)
+        self.assertEqual(manifest["verified_sample_chunk_results"], ["runs/memory.json"])
+
+    def test_chunk_missing_extra_reordered_or_wrong_metadata_blocks(self):
+        mutations = [
+            lambda rss: rss["sample_chunks"].reverse(),
+            lambda rss: rss["sample_chunks"][0].update(sha256="0" * 64),
+            lambda rss: rss["sample_chunks"][0].update(bytes=1),
+            lambda rss: rss["sample_chunks"][0].update(sample_count=2),
+            lambda rss: rss.update(sample_total_bytes=1),
+            lambda rss: rss.update(sample_count=1),
+            lambda rss: rss["sample_chunks"].pop(),
+            lambda rss: rss["sample_chunks"][0].update(name="../memory.samples.0001.jsonl"),
+        ]
+        for mutate in mutations:
+            with self.subTest(mutation=mutate):
+                result = self.chunked_memory()
+                mutate(result["rss"])
+                self.write("runs/memory.json", json.dumps(result))
+                self.assert_blocked_without_output("sample-chunk-integrity")
+        self.chunked_memory()
+        (self.raw / "runs/memory.samples.0001.jsonl").unlink()
+        self.assert_blocked_without_output("sample-chunk-integrity")
+
+    def test_unlisted_chunk_blocks_even_if_manifest_otherwise_valid(self):
+        self.chunked_memory()
+        self.write("runs/memory.samples.0003.jsonl", '{"time":3}\n')
+        self.assert_blocked_without_output("sample-chunk-integrity")
+
+    def test_unlisted_legacy_sample_file_cannot_hide_next_to_chunk_manifest(self):
+        self.chunked_memory()
+        self.write("runs/memory.samples.jsonl", '{"time":0}\n')
+        self.assert_blocked_without_output("sample-chunk-integrity")
+
     def test_values_paths_hashes_and_originals_preserved(self):
         original = self.snapshot()
         manifest = MODULE.package(self.args)

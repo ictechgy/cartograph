@@ -32,6 +32,11 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
     /// 현재 선언이 없어도 범위 안의 헤더·삭제 소스가 포함될 수 있다. nil은 옛 공급자/문서의 정보 부재다.
     public var oldestIndexedFileDates: [String: Date]?
 
+    /// 범위 안의 모든 관측 record 문맥을 성공적으로 읽은 프로젝트 헤더 경로.
+    /// 시각만 추적한 file 의존성은 포함하지 않는다. nil은 옛 공급자의 admission 근거 부재다.
+    /// 관측하지 않은 빌드 구성이나 런타임 디스패치의 완전성을 뜻하지 않는다.
+    public var admittedHeaderPaths: [String]?
+
     /// 새 공급자의 모든 관측 문맥을 우선하고, 옛 스냅샷은 기존 최신 시각 계약으로 폴백한다.
     public var sourceFreshnessDates: [String: Date]? {
         oldestIndexedFileDates ?? indexedFileDates
@@ -65,7 +70,8 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         parameters: [IndexedParameter] = [],
         propertyAccesses: [String: PropertyAccessFacts] = [:],
         imports: [IndexedImport] = [],
-        fileModuleUsages: [String: FileModuleUsage] = [:]
+        fileModuleUsages: [String: FileModuleUsage] = [:],
+        admittedHeaderPaths: [String]? = nil
     ) {
         self.symbols = symbols
         self.references = references
@@ -75,11 +81,12 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         self.propertyAccesses = propertyAccesses
         self.imports = imports
         self.fileModuleUsages = fileModuleUsages
+        self.admittedHeaderPaths = admittedHeaderPaths.map { Set($0).sorted() }
     }
 
     private enum CodingKeys: String, CodingKey {
         case symbols, references, indexedFileDates, parameters, propertyAccesses, imports, fileModuleUsages
-        case oldestIndexedFileDates
+        case oldestIndexedFileDates, admittedHeaderPaths
     }
 
     /// 파라미터 목록과 접근 합산·import 근거는 뒤늦게 추가된 필드라, 그것이 없는 예전 스냅샷 문서도 읽는다.
@@ -89,6 +96,7 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         references = try container.decode([IndexedReference].self, forKey: .references)
         indexedFileDates = try container.decodeIfPresent([String: Date].self, forKey: .indexedFileDates)
         oldestIndexedFileDates = try container.decodeIfPresent([String: Date].self, forKey: .oldestIndexedFileDates)
+        admittedHeaderPaths = try container.decodeIfPresent([String].self, forKey: .admittedHeaderPaths)
         parameters = try container.decodeIfPresent([IndexedParameter].self, forKey: .parameters) ?? []
         propertyAccesses = try container.decodeIfPresent(
             [String: PropertyAccessFacts].self, forKey: .propertyAccesses) ?? [:]
@@ -120,6 +128,11 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         let oldestDates: [String: Date]? = oldestIndexedFileDates == nil && other.oldestIndexedFileDates == nil
             ? nil
             : (sourceFreshnessDates ?? [:]).merging(other.sourceFreshnessDates ?? [:], uniquingKeysWith: min)
+        // 한 공급자의 불완전한 문맥을 다른 공급자의 성공으로 가리지 않는다.
+        // 서로 다른 범위라도 양쪽의 완전성을 증명할 추가 메타데이터가 없으므로 교집합만 남긴다.
+        let headers: [String]? = admittedHeaderPaths.flatMap { first in
+            other.admittedHeaderPaths.map { Set(first).intersection($0).sorted() }
+        }
         return IndexSnapshot(
             symbols: symbols + other.symbols,
             references: references + other.references,
@@ -139,7 +152,8 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
                     hasUnattributedReferences: base.hasUnattributedReferences
                         || extra.hasUnattributedReferences
                 )
-            }
+            },
+            admittedHeaderPaths: headers
         )
     }
 }

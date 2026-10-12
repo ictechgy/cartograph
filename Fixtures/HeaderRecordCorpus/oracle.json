@@ -1,0 +1,14 @@
+{
+  "symbols": {
+    "base": {"path":"Sources/BridgeKit/Core.m","line":3,"column":5,"name":"CGBase"},
+    "alternate": {"path":"Sources/BridgeKit/Core.m","line":7,"column":5,"name":"CGAlternate"},
+    "bridge": {"path":"Sources/BridgeKit/Core.m","line":11,"column":5,"name":"CGBridge"},
+    "unused": {"path":"Sources/BridgeKit/Core.m","line":15,"column":5,"name":"CGUnusedC"},
+    "cppHelper": {"path":"Sources/BridgeKit/CppBridge.mm","line":3,"column":12,"name":"cppHelper"},
+    "overload": {"path":"Sources/BridgeKit/CppBridge.mm","line":7,"column":13,"name":"cppHelper"},
+    "cppBridge": {"path":"Sources/BridgeKit/CppBridge.mm","line":11,"column":16,"name":"CGCppBridge"},
+    "headerCpp": {"path":"Sources/BridgeKit/include/CGCore.h","line":15,"column":19,"name":"CGHeaderCppRoute"},
+    "headerC": {"path":"Sources/BridgeKit/include/CGCore.h","line":19,"column":19,"name":"CGHeaderRoute"}
+  },
+  "calls": [["bridge","headerC"],["cppHelper","headerCpp"],["cppBridge","cppHelper"],["headerC","base"],["headerCpp","base"]]
+}

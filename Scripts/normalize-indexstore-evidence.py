@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -13,10 +14,14 @@ import sys
 from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
+KNOWN_MEASUREMENT_HELPERS = {
+    "03a6cc72657a560e983b95fa99b7df4ff907a6d41f37fcd3692f6ed694d92101",
+}
 MAX_FILES = 10_000
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_TOTAL_BYTES = 64 * 1024 * 1024
 TEXT_SUFFIXES = {".json", ".stdout", ".stderr"}
+SAMPLE_JSONL = re.compile(r".+\.samples(?:\.[0-9]{4,})?\.jsonl$")
 LOG_REFERENCE_KEYS = {
     "stdout",
     "stderr",
@@ -26,6 +31,8 @@ LOG_REFERENCE_KEYS = {
     "graph",
     "setup_results",
     "cg_config",
+    "samples",
+    "samples_path",
 }
 SYSTEM_PREFIXES = {
     "/usr/bin": "$SYSTEM_BIN",
@@ -197,7 +204,13 @@ def strict_json(text: str) -> Any:
     def constant(_: str) -> None:
         raise ValueError("Non-finite JSON value")
 
-    return json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
+    def finite_float(value: str) -> float:
+        parsed = float(value)
+        if not math.isfinite(parsed):
+            raise ValueError("Non-finite JSON value")
+        return parsed
+
+    return json.loads(text, object_pairs_hook=pairs, parse_constant=constant, parse_float=finite_float)
 
 
 def bounded_walk(base: Path, raw: Path) -> list[Path]:
@@ -221,7 +234,7 @@ def select_files(raw: Path) -> list[Path]:
     files = [raw / "results.json"]
     for name in ("setup", "runs"):
         for path in bounded_walk(raw / name, raw):
-            if path.suffix in TEXT_SUFFIXES or (
+            if path.suffix in TEXT_SUFFIXES or SAMPLE_JSONL.fullmatch(path.name) or (
                 name == "setup"
                 and path.relative_to(raw / name).as_posix() in {"indexstore-Package.resolved", "cartograph.yml"}
             ):
@@ -257,14 +270,98 @@ def select_files(raw: Path) -> list[Path]:
     return selected
 
 
+def verify_sample_chunks(raw: Path, selected: list[Path]) -> list[str]:
+    """분할된 원본 표본이 빠지거나 순서·내용이 바뀌어도 요약만 공개되지 않도록 막는다."""
+    verified = []
+    selected_set = set(selected)
+    for result in selected:
+        if result.suffix != ".json":
+            continue
+        relative = str(result.relative_to(raw))
+        try:
+            value = strict_json(result.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, ValueError, RecursionError):
+            block("invalid-or-ambiguous-json", relative)
+        rss = value.get("rss") if isinstance(value, dict) else None
+        if not isinstance(rss, dict) or "sample_chunks" not in rss:
+            continue
+        chunks = rss["sample_chunks"]
+        if not isinstance(chunks, list):
+            block("sample-chunk-integrity", relative)
+        prefix = result.stem + ".samples."
+        expected_names = [prefix + f"{number:04d}.jsonl" for number in range(1, len(chunks) + 1)]
+        names = [chunk.get("name") if isinstance(chunk, dict) else None for chunk in chunks]
+        present_names = sorted(path.name for path in result.parent.glob(result.stem + ".samples*.jsonl"))
+        if names != expected_names or present_names != expected_names:
+            block("sample-chunk-integrity", relative)
+        total_bytes, total_samples = 0, 0
+        for chunk in chunks:
+            path = result.parent / chunk["name"]
+            if path not in selected_set:
+                block("sample-chunk-integrity", relative)
+            data = path.read_bytes()
+            if (
+                chunk.get("sha256") != digest(data)
+                or type(chunk.get("bytes")) is not int
+                or chunk["bytes"] != len(data)
+                or type(chunk.get("sample_count")) is not int
+                or chunk["sample_count"] != len(data.splitlines())
+            ):
+                block("sample-chunk-integrity", relative)
+            total_bytes += len(data)
+            total_samples += len(data.splitlines())
+        if (
+            type(rss.get("sample_total_bytes")) is not int
+            or rss["sample_total_bytes"] != total_bytes
+            or type(rss.get("sample_count")) is not int
+            or rss["sample_count"] != total_samples
+        ):
+            block("sample-chunk-integrity", relative)
+        verified.append(relative)
+    return verified
+
+
+def has_process_identity(value: Any) -> bool:
+    """도우미 결과 안에서 예상하지 못한 위치로 이동한 원시 식별자를 공개하지 않는다."""
+    if isinstance(value, dict):
+        return bool({"pid", "create_time", "remaining_observed_pids"}.intersection(value)) or any(
+            has_process_identity(item) for item in value.values()
+        )
+    return isinstance(value, list) and any(has_process_identity(item) for item in value)
+
+
 class Normalizer:
     """선언된 경로 접두사만 치환하고 모르는 절대 경로는 공개 전에 차단한다."""
 
-    def __init__(self, args: argparse.Namespace, raw: Path, selected: list[Path]):
+    def __init__(self, args: argparse.Namespace, raw: Path, selected: list[Path], verified_samples: list[str]):
         self.raw = raw
         self.selected = {str(path.relative_to(raw)) for path in selected}
         self.mappings: list[tuple[str, str]] = []
         self.mapping_manifest = []
+        self.helper_identities = {}
+        self.helper_sample_paths = set()
+        self.verified_samples = set(verified_samples)
+        self.omitted_helper_identity_fields = set()
+        self.verified_memory_results = {}
+        self.embedded_memory_bindings = set()
+        for relative in verified_samples:
+            value = strict_json((raw / relative).read_text(encoding="utf-8"))
+            if (isinstance(value, dict) and isinstance(value.get("helper_sha256"), str)
+                    and value["helper_sha256"] in KNOWN_MEASUREMENT_HELPERS
+                    and value.get("measurement_mode") == "memory"):
+                fingerprint = self.memory_fingerprint(value, relative)
+                self.verified_memory_results.setdefault(fingerprint, []).append(relative)
+        for result in selected:
+            if result.suffix != ".json":
+                continue
+            relative = str(result.relative_to(raw))
+            value = strict_json(result.read_text(encoding="utf-8"))
+            self.helper_result(value, relative)
+            if (isinstance(value, dict) and isinstance(value.get("helper_sha256"), str)
+                    and value["helper_sha256"] in KNOWN_MEASUREMENT_HELPERS):
+                if value.get("measurement_mode") == "memory":
+                    for chunk in value["rss"]["sample_chunks"]:
+                        self.helper_sample_paths.add(str((result.parent / chunk["name"]).relative_to(raw)))
         explicit = [("--input", args.input, "$EVIDENCE"), ("--output", args.output, "$PUBLIC_BUNDLE")]
         labels = {"EVIDENCE", "PUBLIC_BUNDLE"}
         for specification in args.prefix:
@@ -359,6 +456,9 @@ class Normalizer:
         if isinstance(value, list):
             return [self.value(item, relative) for item in value]
         if isinstance(value, dict):
+            value = self.helper_result(value, relative)
+            if "remaining_observed_pids" in value or {"process_id", "pid", "rss_bytes"} <= set(value):
+                block("helper-process-identity-unbound", relative)
             if len(ENVIRONMENT_KEYS.intersection(value)) >= 3:
                 block("possible-json-environment-dump", relative)
             result = {}
@@ -372,6 +472,127 @@ class Normalizer:
             return result
         return value
 
+    def helper_sample(self, parsed: dict, relative: str) -> dict:
+        schema = {"start_seconds", "end_seconds", "rss_bytes", "process_count", "processes"}
+        if relative not in self.helper_sample_paths:
+            if "processes" in parsed or has_process_identity(parsed) or set(parsed) == schema:
+                block("helper-process-identity-unbound", relative)
+            return parsed
+        if set(parsed) != schema or any(
+            type(parsed[key]) not in (int, float) or not math.isfinite(parsed[key]) or parsed[key] < 0
+            for key in ("start_seconds", "end_seconds")
+        ) or parsed["end_seconds"] < parsed["start_seconds"]:
+            block("helper-process-identity-schema", relative)
+        members = parsed["processes"]
+        if (
+            not isinstance(members, list)
+            or type(parsed["process_count"]) is not int
+            or parsed["process_count"] != len(members)
+        ):
+            block("helper-process-identity-schema", relative)
+        run = re.sub(r"\.samples(?:\.[0-9]{4,})?\.jsonl$", "", relative)
+        identities = self.helper_identities.setdefault(run, {})
+        observed, observed_pids, normalized = set(), set(), []
+        for member in members:
+            if not isinstance(member, dict) or set(member) != {"process_id", "pid", "create_time", "rss_bytes"}:
+                block("helper-process-identity-schema", relative)
+            identity, pid, rss = member["process_id"], member["pid"], member["rss_bytes"]
+            created = member.get("create_time")
+            if (
+                type(identity) is not int
+                or identity < 1
+                or identity in observed
+                or type(pid) is not int
+                or pid < 1
+                or pid in observed_pids
+                or type(rss) is not int
+                or rss < 0
+                or type(created) not in (int, float)
+                or not math.isfinite(created)
+                or created <= 0
+            ):
+                block("helper-process-identity-schema", relative)
+            raw_identity = (pid, created)
+            if identity in identities and identities[identity] != raw_identity:
+                block("helper-process-identity-reassigned", relative)
+            if created is not None and any(
+                key != identity and value == raw_identity for key, value in identities.items()
+            ):
+                block("helper-process-identity-not-injective", relative)
+            identities[identity] = raw_identity
+            observed.add(identity)
+            observed_pids.add(pid)
+            normalized.append({"process_id": identity, "rss_bytes": rss})
+            self.omitted_helper_identity_fields.add("processes[].pid")
+            if "create_time" in member:
+                self.omitted_helper_identity_fields.add("processes[].create_time")
+        if type(parsed["rss_bytes"]) is not int or parsed["rss_bytes"] != sum(item["rss_bytes"] for item in normalized):
+            block("helper-process-identity-rss-sum", relative)
+        return {**parsed, "processes": normalized}
+
+    def memory_fingerprint(self, value: dict, relative: str) -> str:
+        """중첩 사본은 전체 원본과 일치해야 하며 호출자 측 경과 시간만 추가할 수 있다."""
+        if "caller_elapsed_seconds" in value:
+            elapsed = value["caller_elapsed_seconds"]
+            if type(elapsed) not in (int, float) or not math.isfinite(elapsed) or elapsed < 0:
+                block("helper-process-identity-schema", relative)
+        payload = {key: item for key, item in value.items() if key != "caller_elapsed_seconds"}
+        return digest(json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())
+
+    def helper_result(self, parsed: Any, relative: str) -> Any:
+        """알려진 도우미의 검증된 구조에서만 식별자를 제거하고 알 수 없는 결과는 차단한다."""
+        if not isinstance(parsed, dict):
+            return parsed
+        cleanup = parsed.get("cleanup")
+        looks_like_helper = (
+            ("measurement_mode" in parsed and "helper_sha256" in parsed and "schema_version" in parsed)
+            or (parsed.get("measurement_mode") in ("timing", "memory")
+                and ("rss" in parsed or "schema_version" in parsed))
+            or isinstance(cleanup, dict) and "remaining_observed_pids" in cleanup
+        )
+        if not looks_like_helper:
+            return parsed
+        helper = parsed.get("helper_sha256")
+        if not isinstance(helper, str) or helper not in KNOWN_MEASUREMENT_HELPERS:
+            block("helper-process-identity-unbound", relative)
+        if type(parsed.get("schema_version")) is not int or parsed["schema_version"] != 2:
+            block("helper-process-identity-schema", relative)
+        mode, rss = parsed.get("measurement_mode"), parsed.get("rss")
+        if mode == "memory":
+            if (not isinstance(rss, dict)
+                    or rss.get("metric") != "observed_sampled_near_simultaneous_process_tree_rss_bytes"):
+                block("helper-process-identity-unbound", relative)
+            candidates = self.verified_memory_results.get(self.memory_fingerprint(parsed, relative), [])
+            if relative not in candidates:
+                if len(candidates) != 1:
+                    block("helper-process-identity-unbound", relative)
+                self.embedded_memory_bindings.add((relative, candidates[0]))
+        elif mode != "timing" or rss is not None:
+            block("helper-process-identity-schema", relative)
+        if cleanup is None:
+            if has_process_identity(parsed):
+                block("helper-process-identity-schema", relative)
+            return parsed
+        if not isinstance(cleanup, dict) or set(cleanup) != {"method", "seconds", "remaining_observed_pids"}:
+            block("helper-process-identity-cleanup", relative)
+        if (cleanup["method"] != "identity_checked_individual_TERM_then_STOP_discover_KILL; process-group independent"
+                or type(cleanup["seconds"]) not in (int, float)
+                or not math.isfinite(cleanup["seconds"]) or cleanup["seconds"] < 0):
+            block("helper-process-identity-cleanup", relative)
+        remaining = cleanup["remaining_observed_pids"]
+        if (not isinstance(remaining, list) or any(type(pid) is not int or pid < 1 for pid in remaining)
+                or len(set(remaining)) != len(remaining)):
+            block("helper-process-identity-cleanup", relative)
+        normalized = {key: value for key, value in cleanup.items() if key != "remaining_observed_pids"}
+        normalized.update(
+            remaining_observed_process_count=len(remaining), remaining_identity_unresolved=bool(remaining)
+        )
+        self.omitted_helper_identity_fields.add("cleanup.remaining_observed_pids")
+        result = {**parsed, "cleanup": normalized}
+        if has_process_identity(result):
+            block("helper-process-identity-schema", relative)
+        return result
+
     def file(self, path: Path) -> bytes:
         relative = str(path.relative_to(self.raw))
         check_sensitive(relative, relative)
@@ -381,6 +602,24 @@ class Normalizer:
         except UnicodeDecodeError:
             block("non-utf8-or-binary-content", relative)
         check_sensitive(text, relative)
+        if SAMPLE_JSONL.fullmatch(path.name):
+            normalized_lines = []
+            for line in text.splitlines():
+                try:
+                    parsed = strict_json(line)
+                    if not isinstance(parsed, dict):
+                        raise ValueError("Samples must be JSON objects")
+                except (ValueError, json.JSONDecodeError, RecursionError):
+                    block("invalid-or-ambiguous-jsonl", relative)
+                normalized_lines.append(
+                    json.dumps(
+                        self.value(self.helper_sample(parsed, relative), relative),
+                        sort_keys=True,
+                        ensure_ascii=False,
+                        allow_nan=False,
+                    )
+                )
+            return "".join(line + "\n" for line in normalized_lines).encode("utf-8")
         mandatory_json = path.suffix == ".json" or path.name == "indexstore-Package.resolved"
         candidate_json = mandatory_json or text.lstrip().startswith(("{", "["))
         if candidate_json:
@@ -406,7 +645,8 @@ def package(args: argparse.Namespace) -> dict[str, Any]:
     if output.exists() and (not output.is_dir() or any(output.iterdir())):
         raise PublicationBlocked("--output must be absent or empty")
     selected = select_files(raw)
-    normalizer = Normalizer(args, raw, selected)
+    verified_samples = verify_sample_chunks(raw, selected)
+    normalizer = Normalizer(args, raw, selected, verified_samples)
     prepared, entries = [], []
     normalized_total = 0
     for path in selected:
@@ -435,6 +675,17 @@ def package(args: argparse.Namespace) -> dict[str, Any]:
         "command": normalizer.command,
         "prefix_mappings": normalizer.mapping_manifest,
         "files": entries,
+        "verified_sample_chunk_results": verified_samples,
+        "omitted_helper_identity_fields": sorted(normalizer.omitted_helper_identity_fields),
+        "identity_normalized_sample_chunks": sorted(normalizer.helper_sample_paths),
+        "embedded_memory_result_bindings": [
+            {"artifact": artifact, "verified_standalone_result": result}
+            for artifact, result in sorted(normalizer.embedded_memory_bindings)
+        ],
+        "sample_hash_policy": (
+            "Embedded sample chunk hashes describe unchanged raw inputs; "
+            "use manifest normalized_sha256 for public derivatives."
+        ),
         "limits": {
             "maximum_files": MAX_FILES,
             "maximum_file_bytes": MAX_FILE_BYTES,
@@ -442,12 +693,15 @@ def package(args: argparse.Namespace) -> dict[str, Any]:
         },
         "excluded": ["binary index records", "build objects", "executables", "dependency checkouts", "global caches"],
         "privacy_note": (
-            "Only declared path prefixes and fixed system paths were normalized. "
+            "Declared path prefixes and fixed system paths were normalized; "
+            "listed verified-helper identity metadata was omitted. "
             "Unknown absolute paths and configured sensitive-content patterns block generation. "
             "Automated screening is not a guarantee that arbitrary text is private; review before publication."
         ),
     }
     # 전체 검증이 끝나기 전에는 공개 디렉터리에 일부 원문조차 쓰지 않는다.
+    if verify_sample_chunks(raw, selected) != verified_samples:
+        block("sample-chunk-integrity-changed", "bundle")
     for entry in entries:
         if digest((raw / entry["path"]).read_bytes()) != entry["original_raw_sha256"]:
             block("raw-evidence-changed-during-normalization", entry["path"])

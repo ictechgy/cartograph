@@ -1,0 +1,38 @@
+{
+  "base_commit": "906c22adec8b5f04e94cda7e28ff69d8958d0094",
+  "files": {
+    "calibrate_observer.py": {
+      "frozen_sha256": "fd7685cf76e5339def02e6618dd69d9016bded0cb6a96e64f969b9652572cbd1"
+    },
+    "machine_manifest.py": {
+      "frozen_sha256": "c172de8bd5422c6ed32447a1717b777670b54bec45dfe10a0128d046b707144a"
+    },
+    "normalize-indexstore-evidence.py": {
+      "identity_port_source_sha256": "95ce44461ee8f4d4c14f7d603b50bfe862518e3d3436dafaae7e23c2c157542f",
+      "policy": "Additive port into current normalizer, not replacement"
+    },
+    "paired_sessions.py": {
+      "frozen_sha256": "627caf6dfbf5522e82faa93b4ee08b353a2adce0b980f16172b1c351e88b65c5"
+    },
+    "process_tree_measure.py": {
+      "frozen_sha256": "6f4e368ba6282ebd4b9591af61ef044ca4574ce217aec1a846fd6698b451fdb3",
+      "reviewed_successor_sha256": "03a6cc72657a560e983b95fa99b7df4ff907a6d41f37fcd3692f6ed694d92101"
+    },
+    "requirements.txt": {
+      "frozen_sha256": "ce972e5602f1badf47b56ce597ebf4a3cbc516ca6c8979c95ee75c067d275840"
+    },
+    "synthetic_workload.py": {
+      "frozen_sha256": "d0f0fdbe63a2dd85b3475e0406dbae32eb13ded3e8ddb3bc5af6e8b5fe57718b"
+    },
+    "test_measurement_helpers.py": {
+      "frozen_sha256": "645eb58a73e529833eb81c4fb2b137261097a462d3c75c569cc9d35b11c8f62d"
+    },
+    "verify-indexstore-evidence.py": {
+      "identity_port_source_sha256": "17c4d4dd14360870827e491006573b5cd199ae028d01b6827b40ab3689715685",
+      "policy": "Additive port into current normalizer, not replacement"
+    }
+  },
+  "freeze": "final-measurement-freeze-20261012T0158",
+  "schema_version": 1,
+  "status": "Linux synthetic validation only; not final product measurements"
+}

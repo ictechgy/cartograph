@@ -112,6 +112,7 @@ struct ValueFlowSourceLoader {
             Dictionary($0.map { (Self.canonicalPath($0.key), $0.value) }, uniquingKeysWith: min)
         }
         return IndexSnapshot(symbols: symbols, references: references, indexedFileDates: dates,
-            oldestIndexedFileDates: oldestDates)
+            oldestIndexedFileDates: oldestDates,
+            admittedHeaderPaths: raw.admittedHeaderPaths.map { $0.map(Self.canonicalPath).sorted() })
     }
 }

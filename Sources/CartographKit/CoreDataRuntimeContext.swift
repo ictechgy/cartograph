@@ -305,7 +305,12 @@ extension CartographService {
             symbols: baseSymbols + additions,
             references: references,
             indexedFileDates: dates,
-            oldestIndexedFileDates: oldestDates
+            oldestIndexedFileDates: oldestDates,
+            admittedHeaderPaths: base.snapshot.admittedHeaderPaths.flatMap { paths in
+                supplemental.admittedHeaderPaths.map {
+                    Set(paths.filter(configuration.pathFilter.allows)).intersection($0).sorted()
+                }
+            }
         )
         let generatedFacts = try evidence.declaredGeneratedMappings.map {
             RuntimeFactScanner().scan(source: try generatedSource(at: $0.source.path), path: $0.source.path)
@@ -445,6 +450,7 @@ extension CartographService {
             && Set(lhs.references) == Set(rhs.references)
             && lhs.indexedFileDates == rhs.indexedFileDates
             && lhs.oldestIndexedFileDates == rhs.oldestIndexedFileDates
+            && lhs.admittedHeaderPaths == rhs.admittedHeaderPaths
     }
 
     private func coreDataError(_ path: String, _ reason: String) -> CartographError {

@@ -547,6 +547,7 @@ struct ImpactComparisonTests {
         snapshot.oldestIndexedFileDates = ["/old/Sources/App.swift": old,
             "/old/Sources/API.h": old, "/old/Sources/Deleted.swift": old,
             "/old/Excluded/Private.h": old, "/private/Secret.h": old]
+        snapshot.admittedHeaderPaths = ["/old/Sources/API.h", "/old/Excluded/Private.h", "/private/Secret.h"]
         let service = CartographService(configuration: .init(projectPath: "/old", include: ["Sources/**"]),
             environment: CartographEnvironment(fileSystem: InMemoryFileSystem(),
                 indexProviderOverride: StaticIndexProvider(snapshot)))
@@ -554,10 +555,12 @@ struct ImpactComparisonTests {
         #expect(Set(captured.snapshot.oldestIndexedFileDates?.keys.map { $0 } ?? []) == [
             "/old/Sources/App.swift", "/old/Sources/API.h", "/old/Sources/Deleted.swift",
         ])
+        #expect(captured.snapshot.admittedHeaderPaths == ["/old/Sources/API.h"])
         let data = try JSONEncoder.cartographDefault().encode(captured)
         let moved = try JSONDecoder().decode(AnalysisSnapshotDocument.self, from: data).rebased(to: "/new")
         #expect(moved.snapshot.indexedFileDates?["/new/Sources/App.swift"] == latest)
         #expect(moved.snapshot.oldestIndexedFileDates?["/new/Sources/API.h"] == old)
+        #expect(moved.snapshot.admittedHeaderPaths == ["/new/Sources/API.h"])
         #expect(moved.snapshot.oldestIndexedFileDates?["/new/Sources/Deleted.swift"] == old)
         #expect(!String(decoding: data, as: UTF8.self).contains("Secret.h"))
         #expect(!String(decoding: data, as: UTF8.self).contains("Private.h"))

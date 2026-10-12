@@ -138,8 +138,8 @@ struct RawIndexStoreReaderTests {
         #expect(Set(snapshot.symbols.map(\.module)) == ["SyntheticAlpha", "SyntheticBeta"])
     }
 
-    @Test("범위 안의 헤더와 삭제 Swift 의존성은 선언 투영을 넓히지 않고 날짜만 남긴다")
-    func dependencyDatesSurviveSourceDeletionWithoutAddingDeclarations() throws {
+    @Test("헤더 선언은 읽되 삭제 뒤에는 되살리지 않고 헤더·Swift 의존성 날짜를 보존한다")
+    func dependencyDatesSurviveWithoutRevivingDeletedDeclarations() throws {
         let fixture = try makeObjectiveCFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let fileSystem = LocalFileSystem()
@@ -150,11 +150,15 @@ struct RawIndexStoreReaderTests {
             dependencyRoots: [fixture.root.path]))
         let before = try provider.loadSnapshot()
         #expect(before.oldestIndexedFileDates?[headerPath] != nil)
-        #expect(!before.symbols.contains { $0.location.path == headerPath && !$0.isExternal })
+        #expect(before.admittedHeaderPaths == [headerPath])
+        let headerSymbols = before.symbols.filter { $0.location.path == headerPath }
+        #expect(headerSymbols.map(\.name).sorted() == ["HEADER_VALUE", "headerValue"])
+        #expect(headerSymbols.allSatisfy { !$0.isExternal })
         try FileManager.default.removeItem(at: fixture.header)
         let after = try provider.loadSnapshot()
         #expect(after.oldestIndexedFileDates?[headerPath] == before.oldestIndexedFileDates?[headerPath])
-        #expect(after.symbols == before.symbols)
+        #expect(after.symbols == before.symbols.filter { $0.location.path != headerPath })
+        #expect(after.admittedHeaderPaths == [])
         #expect(after.references == before.references)
         #expect(after.oldestIndexedFileDates?[fixture.systemHeader] == nil)
 
@@ -281,11 +285,13 @@ struct RawIndexStoreReaderTests {
             #expect(closeEnough(date, baseline.indexedFileDates?[path]))
         }
         let physicalHeader = try fileSystem.realPath(at: fixture.header.path)
-        // 헤더는 선언 투영에 추가하지 않고 범위 안의 의존 시각만 보존한다.
+        // 범위 안의 모든 헤더 레코드는 날짜와 별개인 admission 근거로 남는다.
         #expect(raw.indexedFileDates?[physicalHeader] != nil)
         #expect(baseline.indexedFileDates?[physicalHeader] != nil)
         #expect(raw.oldestIndexedFileDates?[physicalHeader] != nil)
-        #expect(!raw.symbols.contains { $0.location.path == physicalHeader && !$0.isExternal })
+        #expect(raw.symbols.contains { $0.location.path == physicalHeader && !$0.isExternal })
+        #expect(raw.admittedHeaderPaths == [physicalHeader])
+        #expect(baseline.admittedHeaderPaths == [physicalHeader])
         #expect(!FileManager.default.fileExists(atPath:
             fixture.root.appendingPathComponent("UnusedRawDB").path))
     }

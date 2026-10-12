@@ -38,6 +38,7 @@ jobs:
           python3 Scripts/verify-indexstore-mixed.py
           python3 Scripts/verify-indexstore-pilot-evidence.py
           python3 Scripts/verify-module-refresh-diagnostic.py
+          python3 Scripts/verify-native-measurement-contract.py
 
       # 두 제품 모두 새 release 스크래치에서 빌드한다. 전역 SDK/의존성 캐시는
       # 지우지 않으며, 획득·빌드 비용과 각 질의의 원시 출력을 증거에 남긴다.
@@ -101,6 +102,38 @@ jobs:
               "$RUNNER_TEMP/indexstore-mixed-validation/setup/driver.stdout"
           fi
           exit "$status"
+
+      # 최종 성능 세션이 아니라 고정 합성 진단이다. 메모리 표본은 별도 아티팩트로 보존한다.
+      - name: Validate native measurement helpers
+        id: measurement
+        run: |
+          python3 Scripts/validate-native-measurement.py \
+            --output "$RUNNER_TEMP/measurement-helper-raw" \
+            --dependencies "$RUNNER_TEMP/measurement-helper-dependencies"
+
+      - name: Prepare normalized measurement evidence
+        if: always() && !cancelled() && steps.measurement.outcome != 'skipped'
+        id: measurement_normalize
+        run: |
+          python3 Scripts/normalize-indexstore-evidence.py \
+            --input "$RUNNER_TEMP/measurement-helper-raw" \
+            --output "$RUNNER_TEMP/measurement-helper-public" \
+            --prefix "WORKSPACE=$GITHUB_WORKSPACE" \
+            --prefix "RUNNER_TEMP=$RUNNER_TEMP" \
+            --prefix "RUNNER_HOME=$HOME" \
+            --prefix "DEVELOPER=$(xcode-select -p)" \
+            --prefix "PRIVATE=/private" --prefix "USR=/usr" --prefix "OPT=/opt" \
+            --prefix "BIN=/bin" --prefix "DEV=/dev" --prefix "TEMP=/var"
+
+      - name: Preserve normalized measurement evidence
+        if: always() && steps.measurement_normalize.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: measurement-helper-validation
+          path: ${{ runner.temp }}/measurement-helper-public/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Prepare portable public evidence
         id: normalize
@@ -233,6 +266,8 @@ jobs:
           python3 Scripts/verify-recursive-calls.py --cartograph "$CARTOGRAPH"
           python3 Scripts/verify-index-freshness-contract.py
           python3 Scripts/verify-index-freshness.py --cartograph "$CARTOGRAPH"
+          python3 Scripts/verify-header-records-contract.py
+          python3 Scripts/verify-header-records.py --cartograph "$CARTOGRAPH"
 
       - name: Circular dependencies
         run: |

@@ -153,7 +153,9 @@ depths, relationships and other fields still compare exactly; no product output 
 The compiler-backed command goldens no longer report the included project header
 `Sources/CorpusObjC/include/CorpusObjC.h` as unindexed: its covering Clang unit now
 supplies dependency freshness metadata. Headers without a covering unit still
-produce the warning. A separate `header-projection` limitation remains because
-fresh dependency dates do not admit header declarations or calls into the graph.
-It names this header and keeps narrowed test selection conservative. The expected
-unused-declaration lists are unchanged.
+produce the warning. The header-record admission change reads every observed
+in-scope record context, so these goldens no longer mark this actually read
+header as `header-projection`. Fresh timestamps alone still do not clear that
+limitation: missing admission metadata, file-only dependencies and unindexed
+headers remain conservative. The unused-declaration lists remain independently
+checked; no expected source identity or caller oracle is derived from output.

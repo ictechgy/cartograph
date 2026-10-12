@@ -228,12 +228,37 @@
       "sha256": "8ab5ed6fa64ed7621acd648f059e1d7e5eadf72b49ef9ed14171330793b95a4c",
       "uncompressed_bytes": 35072236,
       "verified_normalized_files": 3588
+    },
+    {
+      "archive": "run-38212888445-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965741,
+          "path": "bundle-status.json",
+          "sha256": "4c07d4f889c6aeca186bb4b33ccf5fa0ab07f5110b17003590b111af68ae419a"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 8317868,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38212888445,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38212888445",
+      "scope": "Exact public Actions artifact: four normalized text bundles, all 13 state/result pairs and preparation/observation costs. First fresh-shared-v2 mixed iOS validation; raw binary indexes and caches intentionally omitted.",
+      "sha256": "f0d561f842e0f6a4d832320841e8a97ba8b2a4cc5f71c01e23ee038dd0ae106a",
+      "uncompressed_bytes": 40123042,
+      "verified_normalized_files": 3625
     }
   ],
   "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
   "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 33677644,
-  "total_uncompressed_bytes": 186930828
+  "total_compressed_bytes": 41995512,
+  "total_uncompressed_bytes": 227053870
 }
