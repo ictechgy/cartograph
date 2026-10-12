@@ -1,0 +1,4 @@
+include: ["Sources/**"]
+exclude: ["Sources/Excluded/**"]
+retention:
+  retain_public: true

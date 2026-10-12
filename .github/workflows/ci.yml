@@ -205,6 +205,8 @@ jobs:
           python3 Scripts/verify-recursive-calls.py --cartograph "$CARTOGRAPH"
           python3 Scripts/verify-index-freshness-contract.py
           python3 Scripts/verify-index-freshness.py --cartograph "$CARTOGRAPH"
+          python3 Scripts/verify-header-records-contract.py
+          python3 Scripts/verify-header-records.py --cartograph "$CARTOGRAPH"
 
       - name: Circular dependencies
         run: |

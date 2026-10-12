@@ -114,10 +114,7 @@ class Harness:
         initial = self.snapshot("snapshot-initial")
         header = str(self.project / "Sources/Header.h")
         require(header in initial["oldestIndexedFileDates"], "Snapshot lost header dependency coverage")
-        require(
-            all(symbol["location"]["path"] != header for symbol in initial["symbols"]),
-            "Freshness-only change unexpectedly admitted header declarations",
-        )
+        require(initial["admittedHeaderPaths"] == [header], "Snapshot lost actual header record admission")
 
         # 관측된 유닛 시각과 파일 수정 시각이 분명히 갈리도록 기다린다.
         time.sleep(1.1)
@@ -147,6 +144,7 @@ class Harness:
         self.observe("header-delete-unbuilt", {"missing-sources": {"Sources/Renamed.h"}})
         missing = self.snapshot("snapshot-header-deleted")
         require(str(renamed) in missing["oldestIndexedFileDates"], "Snapshot dropped deleted header coverage")
+        require(missing["admittedHeaderPaths"] == [], "Deleted header was admitted as a current declaration source")
         renamed.write_text(content)
         self.clang_build("header-restore")
         self.observe("header-restored", {})
@@ -179,7 +177,7 @@ class Harness:
             "status": "passed",
             "states": self.states,
             "partial_context_control": True,
-            "header_graph_admission": "unchanged",
+            "header_graph_admission": "scoped-observed-records",
             "snapshot_dependency_dates": "passed",
         }
 
