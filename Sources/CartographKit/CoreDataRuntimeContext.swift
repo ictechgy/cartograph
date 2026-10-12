@@ -246,7 +246,7 @@ extension CartographService {
     }
 
     private func requireFreshIndex(path: String, snapshot: IndexSnapshot) throws {
-        let indexed = snapshot.indexedFileDates?.first {
+        let indexed = snapshot.sourceFreshnessDates?.first {
             LocalFileSystem.canonicalPath($0.key) == LocalFileSystem.canonicalPath(path)
         }?.value
         guard let indexed, let modified = environment.fileSystem.modificationDate(at: path),
@@ -297,10 +297,15 @@ extension CartographService {
         let dates = baseDates.merging(
             supplemental.indexedFileDates ?? [:], uniquingKeysWith: min
         )
+        let oldestDates: [String: Date]? = base.snapshot.oldestIndexedFileDates == nil
+            && supplemental.oldestIndexedFileDates == nil ? nil
+            : (base.snapshot.sourceFreshnessDates ?? [:]).filter { configuration.pathFilter.allows($0.key) }
+                .merging(supplemental.sourceFreshnessDates ?? [:], uniquingKeysWith: min)
         let snapshot = IndexSnapshot(
             symbols: baseSymbols + additions,
             references: references,
-            indexedFileDates: dates
+            indexedFileDates: dates,
+            oldestIndexedFileDates: oldestDates
         )
         let generatedFacts = try evidence.declaredGeneratedMappings.map {
             RuntimeFactScanner().scan(source: try generatedSource(at: $0.source.path), path: $0.source.path)
@@ -439,6 +444,7 @@ extension CartographService {
         Set(lhs.symbols) == Set(rhs.symbols)
             && Set(lhs.references) == Set(rhs.references)
             && lhs.indexedFileDates == rhs.indexedFileDates
+            && lhs.oldestIndexedFileDates == rhs.oldestIndexedFileDates
     }
 
     private func coreDataError(_ path: String, _ reason: String) -> CartographError {

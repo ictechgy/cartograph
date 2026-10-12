@@ -328,7 +328,7 @@ extension AffectedDocument {
         // 그런 파일의 테스트를 빠뜨린 채 부분 선택자를 내보내므로 소스 범위도 확인한다.
         let coverageGaps = [
             "empty-index:", "index-staleness:", "unindexed-sources:", "missing-sources:",
-            "unreadable-sources:", "configured-path-filter:", "configured-edge-kinds:",
+            "unreadable-sources:", "header-projection:", "configured-path-filter:", "configured-edge-kinds:",
         ]
         if limitations.contains(where: { limitation in coverageGaps.contains { limitation.hasPrefix($0) } }) {
             return "Source/index coverage is incomplete; additional tests may reach this change."

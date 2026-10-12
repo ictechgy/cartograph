@@ -371,7 +371,7 @@ struct SymbolQueryTests {
         let limitations = makeService(fileSystem: fileSystem).analysisLimitations(storeDate: built)
         #expect(limitations.contains("""
             index-staleness: 2 of 3 source file(s) changed after the index store was written, \
-            so a call added since the last build is not here yet
+            so a call added since the last build is not here yet; paths: ["Domain/Edited.swift","Domain/Fresh.swift"]
             """))
     }
 

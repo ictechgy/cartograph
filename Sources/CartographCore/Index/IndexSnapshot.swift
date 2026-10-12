@@ -28,6 +28,15 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
     /// nil 은 공급자가 이 정보를 주지 않았다는 뜻이고, 빈 사전은 조회했지만 유닛이 없었다는 뜻이다.
     public var indexedFileDates: [String: Date]?
 
+    /// 파일을 의존성으로 기록한 관측 유닛 중 가장 오래된 시각. 일부 문맥만 재빌드한 경우를 숨기지 않는다.
+    /// 현재 선언이 없어도 범위 안의 헤더·삭제 소스가 포함될 수 있다. nil은 옛 공급자/문서의 정보 부재다.
+    public var oldestIndexedFileDates: [String: Date]?
+
+    /// 새 공급자의 모든 관측 문맥을 우선하고, 옛 스냅샷은 기존 최신 시각 계약으로 폴백한다.
+    public var sourceFreshnessDates: [String: Date]? {
+        oldestIndexedFileDates ?? indexedFileDates
+    }
+
     /// 함수 파라미터 선언 목록. 그래프 정점이 아니라 미사용 파라미터 질의 전용 입력이다.
     public var parameters: [IndexedParameter]
 
@@ -52,6 +61,7 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         symbols: [IndexedSymbol] = [],
         references: [IndexedReference] = [],
         indexedFileDates: [String: Date]? = nil,
+        oldestIndexedFileDates: [String: Date]? = nil,
         parameters: [IndexedParameter] = [],
         propertyAccesses: [String: PropertyAccessFacts] = [:],
         imports: [IndexedImport] = [],
@@ -60,6 +70,7 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         self.symbols = symbols
         self.references = references
         self.indexedFileDates = indexedFileDates
+        self.oldestIndexedFileDates = oldestIndexedFileDates
         self.parameters = parameters
         self.propertyAccesses = propertyAccesses
         self.imports = imports
@@ -68,6 +79,7 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case symbols, references, indexedFileDates, parameters, propertyAccesses, imports, fileModuleUsages
+        case oldestIndexedFileDates
     }
 
     /// 파라미터 목록과 접근 합산·import 근거는 뒤늦게 추가된 필드라, 그것이 없는 예전 스냅샷 문서도 읽는다.
@@ -76,6 +88,7 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         symbols = try container.decode([IndexedSymbol].self, forKey: .symbols)
         references = try container.decode([IndexedReference].self, forKey: .references)
         indexedFileDates = try container.decodeIfPresent([String: Date].self, forKey: .indexedFileDates)
+        oldestIndexedFileDates = try container.decodeIfPresent([String: Date].self, forKey: .oldestIndexedFileDates)
         parameters = try container.decodeIfPresent([IndexedParameter].self, forKey: .parameters) ?? []
         propertyAccesses = try container.decodeIfPresent(
             [String: PropertyAccessFacts].self, forKey: .propertyAccesses) ?? [:]
@@ -104,10 +117,14 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         let dates: [String: Date]? = indexedFileDates == nil && other.indexedFileDates == nil
             ? nil
             : (indexedFileDates ?? [:]).merging(other.indexedFileDates ?? [:], uniquingKeysWith: min)
+        let oldestDates: [String: Date]? = oldestIndexedFileDates == nil && other.oldestIndexedFileDates == nil
+            ? nil
+            : (sourceFreshnessDates ?? [:]).merging(other.sourceFreshnessDates ?? [:], uniquingKeysWith: min)
         return IndexSnapshot(
             symbols: symbols + other.symbols,
             references: references + other.references,
             indexedFileDates: dates,
+            oldestIndexedFileDates: oldestDates,
             parameters: parameters + other.parameters,
             propertyAccesses: propertyAccesses.merging(other.propertyAccesses) {
                 var merged = $0

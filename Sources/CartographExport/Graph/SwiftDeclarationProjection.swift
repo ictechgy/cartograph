@@ -82,7 +82,6 @@ struct SwiftDeclarationProjectionBuilder {
         return SwiftDeclarationProjection(
             nodes: nodes.values.sorted { $0.id < $1.id },
             edges: edges,
-            rawToProjected: rawToProjected,
             evidence: evidence,
             mergedGroupCount: merged,
             unresolvedGroupCount: unresolved,
@@ -170,7 +169,6 @@ struct SwiftDeclarationProjectionBuilder {
 struct SwiftDeclarationProjection {
     let nodes: [ProjectionNode]
     let edges: [ProjectionEdge]
-    let rawToProjected: [NodeID: NodeID]
     let evidence: [ProjectionEvidence]
     let mergedGroupCount: Int
     let unresolvedGroupCount: Int
