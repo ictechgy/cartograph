@@ -68,7 +68,7 @@ public enum RetentionProvenanceAdmission {
                 try count(2)
                 offset += 1
                 whitespace()
-                var members: [RetentionProvenanceObject.Member] = []
+                var members: [RetentionProvenanceObject<RetentionProvenanceValue>.Member] = []
                 var keys: Set<Data> = []
                 if offset < data.count, data[offset] == 125 { offset += 1; return .object(.init([])) }
                 while true {

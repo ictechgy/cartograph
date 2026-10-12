@@ -2,7 +2,7 @@ import Foundation
 
 /// 모르는 출처 버전도 snapshot에 잃지 않고 보관하는 제한된 JSON 값이다.
 public indirect enum RetentionProvenanceValue: Sendable, Equatable, Encodable {
-    case object(RetentionProvenanceObject)
+    case object(RetentionProvenanceObject<RetentionProvenanceValue>)
     case array([RetentionProvenanceValue])
     case string(String)
     case integer(Int64)
@@ -35,7 +35,8 @@ public indirect enum RetentionProvenanceValue: Sendable, Equatable, Encodable {
             var container = encoder.container(keyedBy: Key.self)
             // Foundation keyed encoder가 정규화 동등 키를 합칠 때에는 원본을 조용히 잃지 않는다.
             guard Set(items.keys).count == items.members.count else {
-                throw ExternalRetentionProvenance.invalid()
+                throw EncodingError.invalidValue(self, .init(codingPath: encoder.codingPath,
+                    debugDescription: "Keyed encoding cannot preserve distinct Unicode provenance keys."))
             }
             for member in items.members { try container.encode(member.value, forKey: Key(member.key)) }
         case let .array(items):
@@ -53,7 +54,7 @@ public indirect enum RetentionProvenanceValue: Sendable, Equatable, Encodable {
         }
     }
 
-    public var object: RetentionProvenanceObject? { if case let .object(value) = self { value } else { nil } }
+    public var object: RetentionProvenanceObject<RetentionProvenanceValue>? { if case let .object(value) = self { value } else { nil } }
     public var array: [Self]? { if case let .array(value) = self { value } else { nil } }
     public var string: String? { if case let .string(value) = self { value } else { nil } }
     public var integer: Int64? { if case let .integer(value) = self { value } else { nil } }
@@ -94,12 +95,13 @@ public indirect enum RetentionProvenanceValue: Sendable, Equatable, Encodable {
 }
 
 
-/// Swift String의 정규화 동등성을 JSON 키 신원으로 쓰지 않는 객체다.
-public struct RetentionProvenanceObject: Sendable, Equatable {
+/// Swift String의 정규화 동등성을 JSON 키 신원으로 쓰지 않는 순서 있는 저장소다.
+/// 원소 타입에 독립적이므로 JSON 값/검증기로 되돌아가는 구체 의존이 없다.
+public struct RetentionProvenanceObject<Element: Sendable & Equatable>: Sendable, Equatable {
     public struct Member: Sendable, Equatable {
         public let key: String
-        public let value: RetentionProvenanceValue
-        public init(key: String, value: RetentionProvenanceValue) { self.key = key; self.value = value }
+        public let value: Element
+        public init(key: String, value: Element) { self.key = key; self.value = value }
         public static func == (left: Self, right: Self) -> Bool {
             left.key.utf8.elementsEqual(right.key.utf8) && left.value == right.value
         }
@@ -107,8 +109,8 @@ public struct RetentionProvenanceObject: Sendable, Equatable {
     public let members: [Member]
     public init(_ members: [Member]) { self.members = members }
     public var keys: [String] { members.map(\.key) }
-    public var values: [RetentionProvenanceValue] { members.map(\.value) }
-    public subscript(_ key: String) -> RetentionProvenanceValue? {
+    public var values: [Element] { members.map(\.value) }
+    public subscript(_ key: String) -> Element? {
         members.first { $0.key.utf8.elementsEqual(key.utf8) }?.value
     }
     public static func == (left: Self, right: Self) -> Bool {

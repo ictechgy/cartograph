@@ -8,6 +8,17 @@ struct RetentionProvenanceAdmissionTests {
         try RetentionProvenanceAdmission.parseEnvelope(Data(json.utf8))
     }
 
+    @Test("순서 있는 객체 저장소는 JSON 값 없이도 동작하며 Unicode 키 신원을 구분한다")
+    func storageDoesNotDependOnJSONValues() {
+        let object = RetentionProvenanceObject<Int>([
+            .init(key: "é", value: 1), .init(key: "e\u{0301}", value: 2)])
+        #expect(object["é"] == 1)
+        #expect(object["e\u{0301}"] == 2)
+        #expect(object.values == [1, 2])
+        #expect(object == RetentionProvenanceObject<Int>([
+            .init(key: "e\u{0301}", value: 2), .init(key: "é", value: 1)]))
+    }
+
     @Test("숫자 coercion 전 지수·소수·음의 영·안전 범위 밖을 거부한다",
           arguments: ["1.5", "1.0", "1e0", "1e-400", "1e400", "9007199254740992", "-9007199254740992", "-0"])
     func rejectsNumericTokens(_ token: String) {

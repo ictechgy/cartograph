@@ -27,7 +27,7 @@ public struct ExternalRetentionProvenance: Sendable, Equatable, Codable {
 
     /// 알 수 없는 버전에도 상한을 먼저 적용하고 알려진 모양으로 추측하지 않는다.
     private static func validate(_ value: RetentionProvenanceValue) throws {
-        var budget = ValueBudget()
+        var budget = ValueBudget(maximumBytes: maximumBytes, maximumDepth: maximumDepth)
         try budget.visit(value, parentDepth: 0)
         guard let object = value.object, let version = object["version"]?.integer, version > 0,
               (object["sources"]?.array?.count ?? 0) <= maximumSources,
@@ -66,9 +66,14 @@ public struct ExternalRetentionProvenance: Sendable, Equatable, Codable {
 
     /// 큰 typed API 값도 전체 정규 문자열/자식 배열을 복사하기 전에 상한에서 멈춘다.
     private struct ValueBudget {
+        let maximumBytes: Int
+        let maximumDepth: Int
         var bytes = 0
+        private static func invalid() -> DecodingError {
+            .dataCorrupted(.init(codingPath: [], debugDescription: "External retention provenance is malformed or exceeds its bounds."))
+        }
         mutating func add(_ count: Int) throws {
-            guard count <= maximumBytes - bytes else { throw invalid() }
+            guard count <= maximumBytes - bytes else { throw Self.invalid() }
             bytes += count
         }
         mutating func string(_ text: String) throws {
@@ -87,18 +92,18 @@ public struct ExternalRetentionProvenance: Sendable, Equatable, Codable {
         mutating func visit(_ value: RetentionProvenanceValue, parentDepth: Int) throws {
             switch value {
             case let .object(object):
-                guard parentDepth < maximumDepth else { throw invalid() }
+                guard parentDepth < maximumDepth else { throw Self.invalid() }
                 try add(2)
                 var keys: Set<Data> = []
                 for (index, member) in object.members.enumerated() {
                     if index > 0 { try add(1) }
                     try string(member.key)
-                    guard keys.insert(Data(member.key.utf8)).inserted else { throw invalid() }
+                    guard keys.insert(Data(member.key.utf8)).inserted else { throw Self.invalid() }
                     try add(1)
                     try visit(member.value, parentDepth: parentDepth + 1)
                 }
             case let .array(array):
-                guard parentDepth < maximumDepth else { throw invalid() }
+                guard parentDepth < maximumDepth else { throw Self.invalid() }
                 try add(2)
                 for (index, item) in array.enumerated() {
                     if index > 0 { try add(1) }
@@ -106,7 +111,7 @@ public struct ExternalRetentionProvenance: Sendable, Equatable, Codable {
                 }
             case let .string(text): try string(text)
             case let .integer(number):
-                guard (-9_007_199_254_740_991...9_007_199_254_740_991).contains(number) else { throw invalid() }
+                guard (-9_007_199_254_740_991...9_007_199_254_740_991).contains(number) else { throw Self.invalid() }
                 try add(String(number).utf8.count)
             case let .boolean(value): try add(value ? 4 : 5)
             case .null: try add(4)
@@ -117,10 +122,10 @@ public struct ExternalRetentionProvenance: Sendable, Equatable, Codable {
     private static func nullableString(_ value: RetentionProvenanceValue?) -> Bool {
         value == .null || value?.string != nil
     }
-    private static func optionalString(_ object: RetentionProvenanceObject, _ key: String) throws {
+    private static func optionalString(_ object: RetentionProvenanceObject<RetentionProvenanceValue>, _ key: String) throws {
         if let value = object[key], value.string == nil { throw invalid() }
     }
-    private static func optionalStrings(_ object: RetentionProvenanceObject, _ key: String) throws {
+    private static func optionalStrings(_ object: RetentionProvenanceObject<RetentionProvenanceValue>, _ key: String) throws {
         if let value = object[key] {
             guard let values = value.array, values.allSatisfy({ $0.string != nil }) else { throw invalid() }
         }
