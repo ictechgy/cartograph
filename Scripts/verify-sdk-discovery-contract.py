@@ -828,6 +828,114 @@ class NativeDiscoveryTests(unittest.TestCase):
         self.assertEqual(row["original_raw_sha256"], M.digest(raw / row["path"]))
         self.assertFalse(result["complete_run_evidence"])
 
+    def complete_cpp_fixture(self):
+        raw, attempt, alias = self.cpp_alias_fixture()
+        sdk_headers = self.sdk / "usr/include/c++/v1"
+        spellings = [alias, alias.resolve(), sdk_headers, sdk_headers.resolve()]
+        # 원격 원문을 추측하지 않고 공식 Darwin 드라이버의 두 후보 계열을 함께 검사한다.
+        lines = [f'ignoring nonexistent directory "{value}"' for value in spellings]
+        lines += [' "clang" ' + " ".join(f'-internal-isystem "{value}"' for value in spellings)]
+        lines += ['#include "..." search starts here:', "#include <...> search starts here:"]
+        lines += [" " + str(value) for value in spellings]
+        lines += ["End of search list."]
+        path = raw / "setup/discovery/probes/clang-cxx.stderr"
+        path.write_text("\n".join(lines) + "\n")
+        return raw, attempt, path, spellings
+
+    def test_complete_cpp_alias_families_preserve_order_and_raw_hash(self):
+        raw, attempt, path, spellings = self.complete_cpp_fixture()
+        before = path.read_text()
+        result, code = self.publish(
+            raw, attempt, self.root / "public", ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)]
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(result["discovery_bundle_status"], "normalized")
+        expected = before
+        for spelling, token in zip(spellings, ["$CLANG_CXX_HEADERS"] * 2 + ["$SDK_CXX_HEADERS"] * 2):
+            expected = expected.replace(str(spelling), token)
+        published = self.root / "public/discovery/setup/discovery/probes/clang-cxx.stderr"
+        self.assertEqual(published.read_text(), expected)
+        self.assertEqual(path.read_text(), before)
+        manifest = json.loads((self.root / "public/discovery/manifest.json").read_text())
+        row = next(r for r in manifest["files"] if r["path"].endswith("clang-cxx.stderr"))
+        self.assertEqual(row["original_raw_sha256"], M.digest(path))
+        self.assertEqual(result["normalization_aliases"]["sdk_request_binding"], "exact-selected-sdk")
+
+    def test_complete_cpp_alias_family_rejects_all_adjacent_blockers(self):
+        for suffix in [
+            ' note "/unmapped-private/person"',
+            ' {"GITHUB_TOKEN":"synthetic-only"}',
+            ' {"AWS_SECRET_ACCESS_KEY":"synthetic-only"}',
+            ' {"\\u0047ITHUB_TOKEN":"synthetic-only"}',
+            "/../../private-owner",
+            "-unreviewed",
+        ]:
+            with self.subTest(suffix=suffix):
+                raw, attempt, path, spellings = self.complete_cpp_fixture()
+                path.write_text(path.read_text() + f' "{spellings[-1]}{suffix}"\n')
+                result, code = self.publish(
+                    raw, attempt, self.root / "public", ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)]
+                )
+                self.assertEqual(code, 1)
+                self.assertEqual(result["discovery_bundle_status"], "blocked")
+                self.assertTrue((self.root / "public/attempt.json").exists())
+                self.assertFalse((self.root / "public/discovery").exists())
+                self.tearDown_fixture_for_subtest()
+
+    def test_sdk_cpp_alias_requires_exact_request_binding(self):
+        raw, attempt, path, spellings = self.complete_cpp_fixture()
+        request_path = raw / "setup/selector-request.json"
+        request = json.loads(request_path.read_text())
+        request["sdk"] = str(self.root / "another.sdk")
+        request_path.write_text(json.dumps(request))
+        result, code = self.publish(
+            raw, attempt, self.root / "public", ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)]
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(result["discovery_bundle_status"], "blocked")
+
+    def test_sdk_cpp_alias_normalizes_selected_sdk_symlink_spellings(self):
+        physical = self.sdk.with_name("iPhoneSimulator26.5.sdk")
+        self.sdk.rename(physical)
+        self.sdk.symlink_to(physical, target_is_directory=True)
+        self.test_complete_cpp_alias_families_preserve_order_and_raw_hash()
+
+    def test_sdk_cpp_alias_refuses_existing_include_symlink_escape(self):
+        raw, attempt, path, spellings = self.complete_cpp_fixture()
+        outside = self.root / "external-sdk-headers"
+        outside.mkdir()
+        (self.sdk / "usr").mkdir()
+        (self.sdk / "usr/include").symlink_to(outside, target_is_directory=True)
+        result, code = self.publish(
+            raw, attempt, self.root / "public", ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)]
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(result["discovery_bundle_status"], "blocked")
+
+    def test_sdk_cpp_alias_changed_during_staging_never_promotes_candidate(self):
+        raw, attempt, path, spellings = self.complete_cpp_fixture()
+        module = self.publication_module()
+        package = module.BUNDLES.EVIDENCE.package
+
+        def mutate(args):
+            result = package(args)
+            self.sdk.rename(self.sdk.with_name("old.sdk"))
+            self.sdk.mkdir()
+            return result
+
+        with mock.patch.object(module.BUNDLES.EVIDENCE, "package", side_effect=mutate):
+            result, code = module.publish(
+                raw,
+                attempt,
+                self.root / "public",
+                ["WORK=" + str(self.root), "WORKSPACE=" + str(ROOT)],
+                self.lifecycle / "results.json",
+            )
+        self.assertEqual(code, 1)
+        self.assertEqual(result["discovery_bundle_status"], "blocked")
+        self.assertTrue((self.root / "public/attempt.json").exists())
+        self.assertFalse((self.root / "public/discovery").exists())
+
     def test_cpp_alias_does_not_allow_neighbor_private_path_or_credential(self):
         for name, extra in [
             ("path", ' note "/unmapped-private/person"'),

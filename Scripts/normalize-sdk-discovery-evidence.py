@@ -213,7 +213,7 @@ def publication_boundary(
 
 
 def compiler_path_aliases(raw: Path, lifecycle_results: Path) -> tuple[list[str], dict]:
-    """검증한 Clang 설치 위치의 고정 C++ 헤더 별칭만 정규화 접두사로 묶는다."""
+    """봉인한 드라이버·SDK 요청의 두 고정 libc++ 후보 계열만 정규화한다."""
     paths = [raw / "results.json", raw / "setup/lifecycle-input.json", raw / "setup/selector-request.json"]
     if not all(path.is_file() for path in paths):
         return [], dict(status="unavailable", reason="missing-discovery-input-bindings")
@@ -239,11 +239,24 @@ def compiler_path_aliases(raw: Path, lifecycle_results: Path) -> tuple[list[str]
     canonical = chain / "usr/include/c++/v1"
     alias = clang.parent / "../include/c++/v1"
     require(alias.resolve() == canonical and canonical.resolve() == canonical)
-    prefixes = ["CLANG_CXX_HEADERS=" + str(alias)]
+    sdk = SELECTOR.clean_path(setup["sdk_path"])
+    require(request["sdk"] == str(sdk))
+    physical_sdk = SELECTOR.existing_directory(str(sdk))
+    sdk_canonical = physical_sdk / "usr/include/c++/v1"
+    sdk_alias = sdk / "usr/include/c++/v1"
+    require(sdk_alias.resolve() == sdk_canonical and sdk_canonical.resolve() == sdk_canonical)
+    sdk_stat = physical_sdk.stat()
+    # 내용 봉인이 아니라 staging 중 루트 대체를 감지하는 메타데이터 경계다.
+    sdk_metadata = [sdk_stat.st_dev, sdk_stat.st_ino, sdk_stat.st_mode, sdk_stat.st_mtime_ns, sdk_stat.st_ctime_ns]
+    prefixes = ["CLANG_CXX_HEADERS=" + str(alias), "SDK_CXX_HEADERS=" + str(sdk_alias)]
     return prefixes, dict(
         status="verified",
         token="$CLANG_CXX_HEADERS",
-        scope="Fixed compiler-relative header spelling only; no SDK/input-root acceptance",
+        scope="Two fixed libc++ candidate families only; no SDK contents or input-root acceptance",
+        sdk_request_binding="exact-selected-sdk",
+        sdk_lexical_prefix_sha256=hashlib.sha256(str(sdk_alias).encode()).hexdigest(),
+        sdk_canonical_prefix_sha256=hashlib.sha256(str(sdk_canonical).encode()).hexdigest(),
+        sdk_root_metadata_sha256=hashlib.sha256(json.dumps(sdk_metadata, separators=(",", ":")).encode()).hexdigest(),
         lifecycle_sha256=current_identity["sha256"],
         retained_lifecycle_sha256=retained_identity["sha256"],
         request_sha256=request_identity["sha256"],

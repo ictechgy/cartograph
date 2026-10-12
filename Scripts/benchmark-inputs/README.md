@@ -129,19 +129,30 @@ runtime-loader closure for Apple's compiler binary. The actual host path existen
 requires the next native diagnostic. It remains outside declared roots and blocks final acceptance;
 no runtime-root expansion or omission from the final input contract is authorized by this repair.
 
-## Exact compiler-relative C++ path normalization
+## Receipt-bound libc++ path normalization
 
-Run 38233336308 retains a completed SDK child exit1, but its detailed discovery bundle was blocked by
-the unchanged privacy scanner. The safe public envelope identifies only a hash-bound blocker in
-setup/discovery/probes/clang-cxx.stderr and the suffix /include/c++/v1. The preceding raw path and
-actual discovered root/link layout are unavailable; no root conclusion is inferred from that envelope.
+Runs 38233336308 and 38236591686 retain completed SDK child exit1 but only two safe public
+envelopes each. Detailed discovery is unavailable. The strict scanner reports hash-bound blockers
+in setup/discovery/probes/clang-cxx.stderr, with suffixes /include/c++/v1 and /v1 respectively.
+Neither suffix reveals its preceding raw path, the selector failure, or actual root/link layout.
 
-A focused reproduction uses Clang's compiler-relative usr/bin/../include/c++/v1 spelling. Publication
-now derives one explicit CLANG_CXX_HEADERS alias from the exact selected Clang path, sealed lifecycle
-receipt and current compiler hash. It checks that both the lexical alias and canonical header location
-remain inside the selected toolchain without a symlink escape, before and after staging. Only that
-fixed full prefix is normalized; arbitrary parent segments, adjacent private paths and credentials
-still block. Raw text hashes and original ordered path observations remain in the manifest. The
-normalizer's general scanner is unchanged, and this mapping neither admits a new compiler input root
-nor establishes that a missing header directory exists. A fresh native attempt must verify that this
-bounded mapping addresses the retained failure; detailed outcomes from the old round stay unavailable.
+A synthetic multi-path control covers both libc++ candidate families in the
+[official LLVM Darwin driver](https://clang.llvm.org/doxygen/Darwin_8cpp_source.html): the compiler
+folder's ../include/c++/v1 and the selected sysroot's usr/include/c++/v1. It includes ignored-directory
+messages, quoted frontend arguments and ordered search-list entries together. This is a source-based
+normalization control, not recovered Apple output or proof of Apple's exact driver implementation.
+
+Publication derives CLANG_CXX_HEADERS from the exact selected Clang path/current compiler hash and
+SDK_CXX_HEADERS from the exact selected SDK in both the sealed lifecycle and selector request.
+Each full lexical prefix and its canonical form maps to the same family token. The selected SDK
+itself may be an alias; the fixed header suffix must resolve to the corresponding canonical root
+without further symlink traversal. Current root metadata detects replacement during staging; it is
+not a content seal. All bindings and aliases are rechecked before the normalized tree is promoted.
+No compiler search result is used to discover or automatically admit another prefix.
+
+Only these two fixed full candidate families are mapped. Arbitrary parent segments, adjacent private
+paths, credentials and nonmatching suffixes still block; the general privacy scanner is unchanged.
+Raw hashes, ordered observations and distinct family tokens are retained. Missing directories can
+be normalized without claiming that they exist. A fresh native attempt must verify publication;
+previous unavailable details remain unavailable. SDK contents and any additional effective root
+still require their separate review and seal before final comparison use.

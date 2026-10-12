@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all eighteen rounds (twenty-three archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all nineteen rounds (twenty-six archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -159,6 +159,20 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    and 21 ten-query batches regraded against the existing source oracle. Every synthetic pair and RSS
    sample remains in the helper archive. Earlier failures remain unchanged; no performance proof.
 
+19. Run 38236591686 passes all 13 mixed validation states and the synthetic helper diagnostic.
+   Product checks pass 2,008 tests in 203 suites at 92.82% coverage (40,483/43,614 lines).
+   SDK discovery completes with exit1; its detailed bundle remains unavailable. Exactly two safe
+   envelopes retain the 14.117-second child, 14.149-second supervisor and 0.534-second publication
+   costs, with the original failure. The first compiler-relative normalization alias is verified,
+   but the strict scanner still blocks a suffix whose exact hash preimage is /v1 in
+   setup/discovery/probes/clang-cxx.stderr. This does not identify the preceding raw path or recover
+   any actual selector/probe/root-layout detail. A separate synthetic control covers both official
+   Darwin libc++ candidate families; it does not reclassify this unavailable native evidence.
+   All 3,625 comparison files and 204 helper files remain independently available and hash-verified:
+   14 graph projections and 21 ten-query batches exactly regrade against the unchanged oracle;
+   16 synthetic pairs, 162 RSS rows and 232 members remain retained with their limits. No SDK root,
+   final runtime closure or comparative performance result is accepted.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -169,9 +183,9 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text, their manifests and the reviewed publication status.
 They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
 Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Nineteen archives retain
+private; each manifest distinguishes original hashes from normalized public hashes. Twenty-two archives retain
 the exact bytes of their public Actions artifacts. The three test-phase archives and round eight's partial
-driver-phase archive were normalized separately after their failures. Rounds nine through eighteen preserve all original
+driver-phase archive were normalized separately after their failures. Rounds nine through nineteen preserve all original
 ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
 when Actions retention expires.
 
