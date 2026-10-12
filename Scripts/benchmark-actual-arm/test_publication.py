@@ -220,8 +220,21 @@ class PublicationTests(unittest.TestCase):
         actual = controller.source_hashes()
         changed = dict(actual)
         changed[next(iter(changed))] = "0" * 64
-        with mock.patch.object(controller, "source_hashes", side_effect=[actual, changed]):
+        staged = False
+        original_package = publication.runtime_publication.package
+
+        def stage(*args, **kwargs):
+            nonlocal staged
+            manifest = original_package(*args, **kwargs)
+            staged = True
+            return manifest
+
+        with mock.patch.object(
+            controller, "source_hashes", side_effect=lambda: changed if staged else actual
+        ), mock.patch.object(publication.runtime_publication, "package", side_effect=stage) as package:
             status, code = self.publish()
+        self.assertTrue(staged)
+        package.assert_called_once()
         self.assertEqual(code, 1)
         self.assertEqual(status["bundle_status"], "blocked")
         self.assertFalse((self.public / "validation").exists())
@@ -236,8 +249,26 @@ class PublicationTests(unittest.TestCase):
         self.raw.mkdir()
         (self.raw / "results.json").write_text("{}")
         actual = controller.source_hashes()
-        with mock.patch.object(controller, "source_hashes", side_effect=[actual, FileNotFoundError]):
+        staged = False
+        original_package = publication.runtime_publication.package
+
+        def stage(*args, **kwargs):
+            nonlocal staged
+            manifest = original_package(*args, **kwargs)
+            staged = True
+            return manifest
+
+        def current_sources():
+            if staged:
+                raise FileNotFoundError("Synthetic source became unavailable after staging")
+            return actual
+
+        with mock.patch.object(controller, "source_hashes", side_effect=current_sources), mock.patch.object(
+            publication.runtime_publication, "package", side_effect=stage
+        ) as package:
             status, code = self.publish()
+        self.assertTrue(staged)
+        package.assert_called_once()
         self.assertEqual(code, 1)
         self.assertEqual(status["bundle_status"], "blocked")
         self.assertFalse((self.public / "validation").exists())

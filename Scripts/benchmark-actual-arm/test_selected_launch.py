@@ -126,10 +126,14 @@ class SelectedLaunchTests(unittest.TestCase):
             (self.attempt / "selected-launch-request.json").read_bytes()
         ).hexdigest()
         execute = mock.Mock()
-        with self.assertRaisesRegex(ValueError, "Prior interpreter spellings differ"):
+        with self.assertRaisesRegex(ValueError, "Prior interpreter spellings differ") as caught:
             self.prepare(self.current, execute)
         execute.assert_not_called()
         self.assertFalse((self.attempt / "selected-launch-observation.json").exists())
+        diagnostic = caught.exception.summary
+        self.assertEqual(diagnostic["selected_request"]["mode"], "one-exec")
+        self.assertEqual(diagnostic["selected_request"]["request_sha256"], self.args.selected_launch_sha256)
+        self.assertEqual(diagnostic["physical_identity"], {"status": "observed-at-failure", "equal": True})
 
     def test_identical_bytes_at_different_physical_file_are_refused(self):
         copied = self.root / "copied-python"

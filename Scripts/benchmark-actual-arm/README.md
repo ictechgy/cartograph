@@ -9,7 +9,7 @@ See [the execution and failure contract](INTEGRATION-BOUNDARIES.md),
 [exact copied-source provenance](COPIED-PROVENANCE.json). Historical original/successor scripts are
 explicit test fixtures; production selects the reviewed files named by the controller.
 
-The controller first runs all 267 integration and 53 runtime controls through the reviewed isolated
+The controller first runs all 292 integration and 53 runtime controls through the reviewed isolated
 bootstrap, using a separately sealed test-source manifest and the existing single private `--target`
 installation. Both full suite counts, module inventories, runtime receipts and normal exits are required;
 skips, missing imports, incomplete execution or failures stop before the AB pair. Their complete costs
@@ -26,6 +26,22 @@ python3 Scripts/verify-native-measurement-contract.py
 
 Only normalized safe evidence is uploaded. SDK content acceptance, real-arm observer calibration,
 independent holdouts and final paired performance sessions remain separate gates.
+
+The prospective interpreter-failure projection adds 25 pure/mocked integration controls; their source-only
+freeze is not execution evidence. It does not alter the original exact phase-command/interpreter spelling
+comparison. A typed internal ValueError carries the failing fixed helper phase, original measurement hash,
+and both observed spelling hashes. Physical identity is either observed at failure as a boolean or explicitly
+unavailable. The bounded pre-record parser accepts the extension only for the exact spelling-mismatch reason,
+selected-launch or installation-binding stage, ValueError classification, and normal exit 1.
+
+Each retained startup probe may independently expose requested/reported spelling hashes and physical identity
+equality, bound to exact request, observation, process and source-inventory hashes. Missing historical or current
+observations remain unavailable; one failed projection does not erase the aggregate collection outcome or cost.
+A selected request can expose direct/one-exec mode only after its original installation, arguments, source and
+startup-profile bindings pass again. Request-only verification never proves an exec occurred or fills a missing
+selected-process observation. None of these summaries is execution authority. Diagnostic reads remain inside
+the original child or publication wall; costs are never excluded or subtracted. Earlier generic failures and
+round 29's missing details are not upgraded by this prospective schema.
 
 The first native integration attempt (run 38253805122) stopped in the prematurely scheduled offline suites:
 three module imports lacked psutil. In-process publication tests also failed while the actual isolated

@@ -49,6 +49,7 @@ PRE_RECORD_REASONS = {
     "Evidence/input overlap": "output-input-overlap",
 }
 PRE_RECORD_FAILURES = {"OSError", "ValueError", "RuntimeError", "KeyError", "TypeError", "KeyboardInterrupt"}
+HELPER_PHASES = {"install", "tests", "machine", "calibration"}
 
 
 EXPECTED_ENVIRONMENT_KEYS = {
@@ -129,6 +130,87 @@ class PrivateEnvironmentMismatch(ValueError):
         super().__init__("Private launch environment differs")
 
 
+def spelling_sha256(value):
+    """해석하거나 정규화하지 않은 정확한 표시 문자열만 지문으로 바꾼다."""
+    if not isinstance(value, str):
+        raise ValueError("Interpreter spelling is not text")
+    return sha(value.encode("utf-8", errors="surrogatepass"))
+
+
+def valid_digest(value):
+    return isinstance(value, str) and re.fullmatch("[a-f0-9]{64}", value) is not None
+
+
+def unavailable_selected_request():
+    return dict(status="unavailable", reason="selected-request-not-bound")
+
+
+def valid_selected_request_projection(row):
+    if row == unavailable_selected_request():
+        return True
+    return (
+        isinstance(row, dict)
+        and set(row) == {"status", "mode", "request_sha256", "source_inputs_sha256"}
+        and row["status"] == "bound-request"
+        and row["mode"] in {"direct", "one-exec"}
+        and valid_digest(row["request_sha256"])
+        and valid_digest(row["source_inputs_sha256"])
+    )
+
+
+def valid_interpreter_spelling(row):
+    if not isinstance(row, dict) or set(row) != {
+        "schema_version",
+        "measurement_sha256",
+        "phase",
+        "phase_command_spelling_sha256",
+        "interpreter_spelling_sha256",
+        "physical_identity",
+        "selected_request",
+    }:
+        return False
+    physical = row["physical_identity"]
+    return (
+        type(row["schema_version"]) is int
+        and row["schema_version"] == 1
+        and isinstance(row["phase"], str)
+        and row["phase"] in HELPER_PHASES
+        and all(
+            valid_digest(row[key])
+            for key in ("measurement_sha256", "phase_command_spelling_sha256", "interpreter_spelling_sha256")
+        )
+        and row["phase_command_spelling_sha256"] != row["interpreter_spelling_sha256"]
+        and (
+            physical == {"status": "unavailable", "reason": "interpreter-identity-not-observed"}
+            or (
+                isinstance(physical, dict)
+                and set(physical) == {"status", "equal"}
+                and physical["status"] == "observed-at-failure"
+                and type(physical["equal"]) is bool
+            )
+        )
+        and valid_selected_request_projection(row["selected_request"])
+    )
+
+
+class InterpreterSpellingMismatch(ValueError):
+    """거부된 원래 문자열 비교를 유지하며 그 순간 관측한 입력 지문만 더한다."""
+
+    def __init__(self, phase, command, interpreter, measurement_sha256, physical_identity):
+        self.summary = dict(
+            schema_version=1,
+            measurement_sha256=measurement_sha256,
+            phase=phase,
+            phase_command_spelling_sha256=spelling_sha256(command),
+            interpreter_spelling_sha256=spelling_sha256(interpreter),
+            physical_identity=physical_identity,
+            selected_request=unavailable_selected_request(),
+        )
+        if not valid_interpreter_spelling(self.summary):
+            raise ValueError("Interpreter spelling diagnostic is invalid")
+        super().__init__("Prior interpreter spellings differ")
+
+
 class PreRecordFailure(RuntimeError):
     """메시지 원문 없이 허용된 단계와 알려진 이유 또는 전체 메시지 지문만 전달한다."""
 
@@ -163,6 +245,9 @@ class PreRecordFailure(RuntimeError):
         )
         if type(error) is PrivateEnvironmentMismatch and stage == "selected-launch":
             self.diagnostic["environment_difference"] = error.summary
+        if type(error) is InterpreterSpellingMismatch and stage in {"selected-launch", "installation-binding"}:
+            if valid_interpreter_spelling(error.summary):
+                self.diagnostic["interpreter_spelling"] = error.summary
         super().__init__("Pre-record admission failed")
 
 
@@ -192,7 +277,7 @@ def pre_record_diagnostic(phase, historical):
         fields = {"schema_version", "status", "stage", "failure", "reason", "message_sha256", "exit_code"}
         if (
             not isinstance(row, dict)
-            or set(row) not in (fields, fields | {"environment_difference"})
+            or set(row) not in (fields, fields | {"environment_difference"}, fields | {"interpreter_spelling"})
             or type(row["schema_version"]) is not int
             or row["schema_version"] != 1
             or row["status"] != "refused-before-record"
@@ -215,6 +300,14 @@ def pre_record_diagnostic(phase, historical):
             and row["failure"] == "ValueError"
             and row["exit_code"] == 1
             and valid_environment_difference(row["environment_difference"])
+        ):
+            return None
+        if "interpreter_spelling" in row and not (
+            row["stage"] in {"selected-launch", "installation-binding"}
+            and row["reason"] == "installation-interpreter-spelling-mismatch"
+            and row["failure"] == "ValueError"
+            and row["exit_code"] == 1
+            and valid_interpreter_spelling(row["interpreter_spelling"])
         ):
             return None
         return row

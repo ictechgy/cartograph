@@ -233,6 +233,42 @@ def startup_binding(args, root, sources):
     )
 
 
+def request_projection(args, root, sources):
+    """관측 영수증 없이도 요청 자체를 재검증하되 실행 여부는 결론 내리지 않는다."""
+    request_path, _ = paths(root)
+    request, reference = read(request_path)
+    _, binding = selected_binding(args)
+    validate_request(args, request, binding, sources)
+    require(read(request_path)[1] == reference, "Selected launch request changed")
+    return dict(
+        status="bound-request",
+        mode=request["mode"],
+        request_sha256=reference["sha256"],
+        source_inputs_sha256=startup_profile.sha(startup_profile.encoded(sources)),
+    )
+
+
+def bind_current(args, root, current, source_hashes):
+    """기존 bind의 거부를 바꾸지 않고 검증된 요청 문맥만 그 실패에 붙인다."""
+    try:
+        return installation.bind(args.measurement, args.repository, Path(current))
+    except attempt_receipts.InterpreterSpellingMismatch as error:
+        try:
+            sources = source_hashes()
+            projected = request_projection(args, root, sources)
+            marker = getattr(args, "selected_launch_sha256", None)
+            require(
+                (marker is None and projected["mode"] == "direct")
+                or (marker == projected["request_sha256"] and projected["mode"] == "one-exec"),
+                "Selected launch marker differs",
+            )
+            require(same(source_hashes(), sources), "Selected launch source changed")
+            error.summary["selected_request"] = projected
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+            pass
+        raise
+
+
 def prepare(args, root, current, source_hashes, save, *, execve=os.execve, environment=None):
     """표시된 선택 경로가 또 달라지면 재시도 없이 원래 bind 오류를 그대로 보존한다."""
     started = time.perf_counter()
@@ -255,7 +291,7 @@ def prepare(args, root, current, source_hashes, save, *, execve=os.execve, envir
         request, reference = read(request_path)
         require(reference["sha256"] == marker and request.get("mode") == "one-exec", "Selected launch marker differs")
         # 교체 프로세스의 실제 보고 경로로 기존 엄격한 설치 조건을 다시 실행한다.
-        binding = installation.bind(args.measurement, args.repository, Path(current))
+        binding = bind_current(args, root, current, source_hashes)
         validate_request(args, request, binding, source_hashes())
     else:
         require(not request_path.exists() and not observed_path.exists(), "Selected launch request already exists")
@@ -292,7 +328,7 @@ def prepare(args, root, current, source_hashes, save, *, execve=os.execve, envir
                 expected_environment,
             )
             raise RuntimeError("Selected launch exec unexpectedly returned")
-        binding = installation.bind(args.measurement, args.repository, Path(current))
+        binding = bind_current(args, root, current, source_hashes)
     observed = dict(
         schema_version=1,
         role="installation-selected-launch-observation",

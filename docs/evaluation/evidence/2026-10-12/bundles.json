@@ -1089,12 +1089,66 @@
       "sha256": "97a5308e6bcb834cf9afa6eb8eed6f95be7f05741331ef1a3f7cd90758a9cafb",
       "uncompressed_bytes": 13267,
       "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38292249326-actual-arm-normalized.zip",
+      "archive_entries": 2,
+      "artifact_kind": "actual-arm-correctness-validation",
+      "auxiliary_files": [
+        {
+          "bytes": 14801,
+          "path": "attempt.json",
+          "sha256": "87a71b5829f93b3d2bede4e4512fba957bf688f36f29957f33052aedfd117fcb"
+        },
+        {
+          "bytes": 439,
+          "path": "publication-status.json",
+          "sha256": "d32d55aaa652e350c27b732b3a86d4a35bf236e03184d51f38032bf9a60e33a6"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 4312,
+      "manifests": [],
+      "run_id": 38292249326,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38292249326",
+      "scope": "Exact public Actions ZIP; bounded diagnostic evidence. Detailed comparison/helper packets from this run remain unarchived and unregraded.",
+      "sha256": "4e7daf3fddf6bdc959a4c3a304d0a3627bfa4b6bce0d90ead0c3ece3ba2ef086",
+      "uncompressed_bytes": 15240,
+      "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38292249326-sdk-normalized.zip",
+      "archive_entries": 45,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1486,
+          "path": "attempt.json",
+          "sha256": "f2db2e91f30ea1baf7f53de6100a6ab391a59a05fdaf3be00e0f5ff28152f75f"
+        },
+        {
+          "bytes": 1854,
+          "path": "publication-status.json",
+          "sha256": "f7711f90a42c609c5946b33b077abdea866dfb748cf2c81e4770beaa0fd0288c"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 1787281,
+      "manifests": [
+        "discovery/manifest.json"
+      ],
+      "run_id": 38292249326,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38292249326",
+      "scope": "Exact public Actions ZIP; bounded diagnostic evidence. Detailed comparison/helper packets from this run remain unarchived and unregraded.",
+      "sha256": "b6d614d5ab12274a992d631aab2072bcefeabe0e66d8f0c20ec0c73851c2d5a8",
+      "uncompressed_bytes": 3905024,
+      "verified_normalized_files": 42
     }
   ],
   "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
   "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 138387396,
-  "total_uncompressed_bytes": 683747753
+  "total_compressed_bytes": 140178989,
+  "total_uncompressed_bytes": 687668017
 }

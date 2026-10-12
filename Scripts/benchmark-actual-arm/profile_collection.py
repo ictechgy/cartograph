@@ -9,6 +9,112 @@ import time
 import startup_profile as probe
 
 
+def interpreter_projection(path, entry, number, environment, import_target, sources):
+    """원래 저장된 프로브 관측만 재결합하며 과거에 없는 관측은 복구하지 않는다."""
+    folder = Path(path).parent / ("spelling-%04d" % number)
+    request_path, report = folder / "request.json", folder / "observation.json"
+    probe.require(
+        isinstance(entry, dict)
+        and {"observation", "observation_identity", "process_identity", "stdout_identity", "stderr_identity"}
+        <= set(entry),
+        "probe-historical-observation-unavailable",
+    )
+    references = []
+
+    def retained(source):
+        data, _ = probe.read_file(source, probe.MAX_RECEIPT_BYTES)
+        references.append((source, probe.file_identity(source, probe.MAX_RECEIPT_BYTES)))
+        probe.require(
+            dict(sha256=probe.sha(data), bytes=len(data))
+            == {key: references[-1][1][key] for key in ("sha256", "bytes")},
+            "probe-projection-input-changed",
+        )
+        return data
+
+    data = retained(request_path)
+    request = probe.strict(data)
+    digest = probe.sha(data)
+    spelling = entry["requested_command"][0]
+    expected = probe.request(environment, spelling, import_target, [Path(p) for p in sources])
+    probe.require(probe.encoded(request) == probe.encoded(expected), "probe-projection-request-differs")
+    probe.require(
+        entry["request_path"] == str(request_path) and entry["request_sha256"] == digest,
+        "probe-projection-request-hash-differs",
+    )
+    probe.require(
+        {name: value["sha256"] for name, value in request["source_inputs"].items()} == sources,
+        "probe-projection-source-differs",
+    )
+    argv = [
+        spelling,
+        "-I",
+        "-S",
+        "-B",
+        str(Path(probe.__file__).resolve()),
+        "--request",
+        str(request_path),
+        "--sha256",
+        digest,
+        "--report",
+        str(report),
+    ]
+    phase = entry["process"]
+    probe.require(
+        entry["requested_command"] == argv
+        and phase["command"] == argv
+        and phase["cwd"] == str(Path(path).parent)
+        and entry["terminal_guard"] == {"status": "passed"},
+        "probe-projection-process-request-differs",
+    )
+    process = probe.strict(retained(folder / "process.json"))
+    probe.require(
+        probe.encoded(process) == probe.encoded(phase) and references[-1][1] == entry["process_identity"],
+        "probe-projection-process-differs",
+    )
+    for kind in ("stdout", "stderr"):
+        source = folder / ("process." + kind)
+        retained(source)
+        probe.require(
+            phase[kind] == str(source) and references[-1][1] == entry[kind + "_identity"],
+            "probe-projection-log-differs",
+        )
+    observed_data = retained(report)
+    observed = probe.strict(observed_data)
+    observation_identity = dict(sha256=probe.sha(observed_data), bytes=len(observed_data))
+    probe.require(
+        probe.encoded(observed) == probe.encoded(entry["observation"])
+        and observation_identity == entry["observation_identity"],
+        "probe-projection-observation-differs",
+    )
+    verify_record(observed, request, digest, phase)
+    probe.require(
+        isinstance(request["interpreter"]["selected_path"], str)
+        and isinstance(observed["actual_interpreter"]["selected_path"], str),
+        "probe-projection-spelling-type",
+    )
+    probe.guard(request)
+    for source, reference in references:
+        probe.require(
+            probe.file_identity(source, probe.MAX_RECEIPT_BYTES) == reference, "probe-projection-input-changed"
+        )
+    probe.guard(request)
+    return dict(
+        status="verified-observation",
+        probe=number,
+        request_sha256=digest,
+        observation_sha256=observation_identity["sha256"],
+        process_sha256=entry["process_identity"]["sha256"],
+        source_inputs_sha256=probe.sha(probe.encoded(sources)),
+        requested_spelling_sha256=probe.sha(
+            request["interpreter"]["selected_path"].encode("utf-8", errors="surrogatepass")
+        ),
+        reported_spelling_sha256=probe.sha(
+            observed["actual_interpreter"]["selected_path"].encode("utf-8", errors="surrogatepass")
+        ),
+        physical_identity_equal=probe.same_physical(request["interpreter"], observed["actual_interpreter"]),
+    )
+
+
 def completed(phase):
     return (
         isinstance(phase, dict)

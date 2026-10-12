@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "runtime"))
 import runtime_bootstrap as bootstrap
 import runtime_identity as runtime
+import startup_profile
+import attempt_receipts
 
 HELPER_PATHS = {
     ".github/workflows/ci.yml",
@@ -123,6 +125,17 @@ def prospective_interpreter(root, result, interpreter, python, required):
     return row, reference
 
 
+def spelling_failure(phase, command, interpreter, measurement_sha256):
+    """관측 실패는 부재로 남기고 동일 물리 파일 여부가 원래 거부를 바꾸지 않게 한다."""
+    physical = dict(status="unavailable", reason="interpreter-identity-not-observed")
+    try:
+        left, right = startup_profile.interpreter(command), startup_profile.interpreter(interpreter)
+        physical = dict(status="observed-at-failure", equal=startup_profile.same_physical(left, right))
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+        pass
+    return attempt_receipts.InterpreterSpellingMismatch(phase, command, interpreter, measurement_sha256, physical)
+
+
 def bind(measurement_results, repository, interpreter, require_prospective=True):
     started = time.perf_counter()
     source = Path(measurement_results)
@@ -133,9 +146,12 @@ def bind(measurement_results, repository, interpreter, require_prospective=True)
     require(result.get("final_comparison") is False, "Unexpected prerequisite scope")
     phases = result["phases"]
     require(set(phases) == {"install", "tests", "machine", "calibration"}, "Unexpected prior phase inventory")
-    for row in phases.values():
+    for phase_name, row in phases.items():
         completed(row)
-        require(row["command"][0] == str(interpreter), "Prior interpreter spellings differ")
+        try:
+            require(row["command"][0] == str(interpreter), "Prior interpreter spellings differ")
+        except ValueError as error:
+            raise spelling_failure(phase_name, row["command"][0], str(interpreter), result_ref["sha256"]) from error
     install, install_ref = read(root / "setup/install.json")
     require(install == phases["install"], "Duplicate installation receipts disagree")
     argv = install["command"]

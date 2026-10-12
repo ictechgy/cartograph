@@ -244,6 +244,8 @@ def public_attempt(args, attempt):
     if "pre_record_diagnostic" in row:
         diagnostic = attempt_receipts.pre_record_diagnostic(phase, row["stderr"])
         require(same_json(row["pre_record_diagnostic"], diagnostic))
+        if diagnostic is not None and "interpreter_spelling" in diagnostic:
+            verify_interpreter_spelling(args, attempt, row["source_sha256"], diagnostic["interpreter_spelling"])
         public["pre_record_diagnostic"] = diagnostic
     public["source_sha256"] = {str(Path(path).relative_to(ROOT)): value for path, value in row["source_sha256"].items()}
     public["publication_log_identities"] = current
@@ -260,13 +262,33 @@ def public_attempt(args, attempt):
             in {"OSError", "ValueError", "RuntimeError", "FileNotFoundError", "PermissionError"}
         )
         public["source_guard_failure"] = row["source_guard_failure"]
-    public["startup_profile_collection"] = profile_summary(attempt)
+    public["startup_profile_collection"] = profile_summary(attempt, row["source_sha256"])
     public["selected_launch"] = selected_launch_summary(args, attempt, row["source_sha256"])
     NORMALIZER.check_sensitive(json.dumps(public), "attempt.json")
     return public
 
 
-def profile_summary(attempt):
+def verify_interpreter_spelling(args, attempt, sources, summary):
+    """원래 실패의 측정 요청과 선택 요청을 다시 확인하며 누락된 관측은 보충하지 않는다."""
+    require(attempt_receipts.valid_interpreter_spelling(summary))
+    require(same_json(controller.source_hashes(), sources))
+    reference = state_inputs.reference(args.measurement)
+    require(reference["sha256"] == summary["measurement_sha256"])
+    measurement = state_inputs.document(reference)
+    phase = measurement["phases"][summary["phase"]]
+    controller.installation_binding.completed(phase)
+    require(attempt_receipts.spelling_sha256(phase["command"][0]) == summary["phase_command_spelling_sha256"])
+    selected = summary["selected_request"]
+    if selected["status"] == "bound-request":
+        bound_args = copy.copy(args)
+        profile = state_inputs.reference(attempt / "startup-profile/results.json")
+        bound_args.startup_profile_sha256 = profile["sha256"]
+        require(same_json(selected, controller.selected_launch.request_projection(bound_args, attempt.parent, sources)))
+        require(state_inputs.reference(attempt / "startup-profile/results.json") == profile)
+    require(state_inputs.reference(args.measurement) == reference)
+
+
+def profile_summary(attempt, sources=None):
     """실패한 수집도 원래 해시와 비용을 보존하되 성공 승인으로 사용하지 않는다."""
     path = attempt / "startup-profile/results.json"
     result = dict(status="unavailable", reason="startup-profile-collection-not-verified")
@@ -294,9 +316,30 @@ def profile_summary(attempt):
             wall_seconds_before_receipt=wall,
             cost_scope="Nested in original supervised child wall; no additive double count",
         )
+        result["interpreter_probes"] = []
+        for number, entry in enumerate(value["probes"], 1):
+            projected = dict(status="unavailable", reason="probe-interpreter-not-verified", probe=number)
+            try:
+                require(sources is not None and same_json(controller.source_hashes(), sources))
+                projected = controller.profile_collection.interpreter_projection(
+                    path,
+                    entry,
+                    number,
+                    controller.selected_launch.private_environment(attempt.parent),
+                    ROOT / "correctness_controller.py",
+                    sources,
+                )
+            except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+                pass
+            result["interpreter_probes"].append(projected)
         require(state_inputs.reference(path) == reference)
     except (OSError, ValueError, KeyError, TypeError, RuntimeError):
         result["status"] = "unavailable"
+        if "interpreter_probes" in result:
+            result["interpreter_probes"] = [
+                dict(status="unavailable", reason="probe-interpreter-not-verified", probe=number)
+                for number in range(1, len(result["interpreter_probes"]) + 1)
+            ]
     return result
 
 
@@ -322,6 +365,13 @@ def selected_launch_summary(args, attempt, sources):
             startup_profile_sha256=profile_ref["sha256"],
         )
     except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+        try:
+            require(same_json(controller.source_hashes(), sources))
+            projected = controller.selected_launch.request_projection(bound_args, attempt.parent, sources)
+            require(projected["request_sha256"] == result["request_sha256"])
+            result["request_projection"] = projected
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+            result["request_projection"] = attempt_receipts.unavailable_selected_request()
         return result
 
 

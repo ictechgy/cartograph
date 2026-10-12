@@ -46,7 +46,7 @@ published setup/runs allowlist. Only normalized identities, not cache contents, 
 
 1. stdlib-only supervisor -> isolated preparation child (600-second outer safety limit).
 2. preparation binds prior inputs, collects up to two clean startup probes (30-second bound each),
-   verifies the shared profile and one selected launch, then runs the complete 267+53 prerequisites
+   verifies the shared profile and one selected launch, then runs the complete 292+53 prerequisites
    through separate bound processes (180-second bound each) before creating runtime/plan manifests.
 3. preparation -> verified whole-state bootstrap (540-second limit).
 4. state worker -> verified frozen observer bootstrap -> verified engine bootstrap -> actual CLIs.
