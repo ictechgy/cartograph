@@ -1,6 +1,7 @@
 import CartographCore
 @testable import CartographIndexStore
 import CartographTestSupport
+import Foundation
 import Testing
 
 @Suite("소스 파일 탐색")
@@ -18,6 +19,35 @@ struct SourceDiscoveryTests {
             "/p/.build-custom/API.h", "/p/DerivedData/API.h", "/p/../elsewhere/API.h", "/p/data.txt"] {
             #expect(!provider.isTrackedSourcePath(path), "\(path)")
         }
+    }
+
+    @Test("삭제 경로는 살아 있는 조상의 링크를 풀어 범위를 유지하고 외부 링크는 거부한다")
+    func missingDependencyResolvesExistingAncestorAliases() throws {
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? manager.removeItem(at: root) }
+        let real = root.appendingPathComponent("Real")
+        let alias = root.appendingPathComponent("Alias")
+        let outside = root.appendingPathComponent("Outside")
+        try manager.createDirectory(at: real.appendingPathComponent("Sources"), withIntermediateDirectories: true)
+        try manager.createDirectory(at: outside, withIntermediateDirectories: true)
+        try manager.createSymbolicLink(at: alias, withDestinationURL: real)
+        try manager.createSymbolicLink(at: real.appendingPathComponent("Escaping"), withDestinationURL: outside)
+        let header = alias.appendingPathComponent("Sources/API.h")
+        try Data("int api(void);".utf8).write(to: header)
+        let fileSystem = LocalFileSystem()
+        let physical = try fileSystem.realPath(at: header.path)
+        let provider = IndexStoreProvider(configuration: .init(storePath: "/s", databasePath: "/d",
+            libraryPath: "/l", sourceRoots: [], includeObjectiveCSources: true, dependencyRoots: [alias.path]))
+        #expect(provider.isTrackedSourcePath(header.path))
+        try manager.removeItem(at: header)
+        #expect(provider.isTrackedSourcePath(header.path))
+        #expect(provider.isTrackedSourcePath(physical))
+        #expect(RawIndexStoreReader.sourceLocationPath(header.path, fileSystem: fileSystem) == physical)
+        #expect(!provider.isTrackedSourcePath(alias.appendingPathComponent("Escaping/Missing.h").path))
+        try manager.removeItem(at: real.appendingPathComponent("Sources"))
+        #expect(provider.isTrackedSourcePath(header.path))
+        #expect(RawIndexStoreReader.sourceLocationPath(header.path, fileSystem: fileSystem) == physical)
     }
 
     private func makeProvider(

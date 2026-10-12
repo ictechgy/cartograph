@@ -313,10 +313,10 @@ struct RawIndexStoreReaderTests {
         var peakReaders = 0
         var peakQueue = 0
 
-        let result = try reader.read(in: Set(fixture.sources)) { readers, queue in
+        let result = try reader.read(in: Set(fixture.sources), recordCachePeak: { readers, queue in
             peakReaders = max(peakReaders, readers)
             peakQueue = max(peakQueue, queue)
-        }
+        })
         let definitions = result.occurrences.filter { $0.roles.contains(.definition) }
         let sharedDefinitions = definitions.filter { $0.symbol.name.hasPrefix("Shared") }
 

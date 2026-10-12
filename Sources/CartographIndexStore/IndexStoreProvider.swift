@@ -151,10 +151,11 @@ public struct IndexStoreProvider: IndexProviding {
     private func trackedSourcePathPredicate() -> (String) -> Bool {
         let suffixes = configuration.includeObjectiveCSources ? [".swift", ".m", ".mm", ".h"] : [".swift"]
         let roots = (configuration.dependencyRoots ?? configuration.sourceRoots).map {
-            fileSystem.canonicalPath((try? fileSystem.realPath(at: $0)) ?? $0)
+            RawIndexStoreReader.sourceLocationPath(fileSystem.canonicalPath($0), fileSystem: fileSystem)
         }
         return { path in
-            let canonical = fileSystem.canonicalPath(path)
+            let canonical = RawIndexStoreReader.sourceLocationPath(
+                fileSystem.canonicalPath(path), fileSystem: fileSystem)
             guard suffixes.contains(where: canonical.hasSuffix), configuration.pathFilter.allows(canonical) else {
                 return false
             }

@@ -86,7 +86,7 @@ struct RawIndexStoreReader {
                 guard readsOccurrences || trackedSourcePath?(path) == true else { continue }
                 // Foundation 정규화는 /private/var를 /var로 바꾼다. 선언 위치는
                 // 다른 인덱스 소비자와 같이 실제 경로를 써야 정확히 결합된다.
-                let locationPath = sourceLocationPath(path)
+                let locationPath = Self.sourceLocationPath(path, fileSystem: fileSystem)
                 indexedFileDates[locationPath] = max(indexedFileDates[locationPath] ?? timestamp, timestamp)
                 oldestIndexedFileDates[locationPath] = min(oldestIndexedFileDates[locationPath] ?? timestamp, timestamp)
                 guard readsOccurrences, dependency.kind == .record else { continue }
@@ -147,7 +147,7 @@ struct RawIndexStoreReader {
     }
 
     /// 삭제된 파일도 남아 있는 조상의 실제 경로를 사용해 /var와 /private/var의 식별자를 유지한다.
-    private func sourceLocationPath(_ path: String) -> String {
+    static func sourceLocationPath(_ path: String, fileSystem: any FileSystem) -> String {
         var ancestor = path
         var suffix: [String] = []
         while !ancestor.isEmpty {
