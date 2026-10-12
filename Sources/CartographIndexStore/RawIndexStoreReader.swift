@@ -43,6 +43,7 @@ struct RawReadResult {
     let occurrences: [SymbolOccurrence]
     let indexedFileDates: [String: Date]
     let oldestIndexedFileDates: [String: Date]
+    let admittedHeaderPaths: [String]
 }
 
 struct RawIndexStoreReader {
@@ -52,6 +53,7 @@ struct RawIndexStoreReader {
 
     func read(
         in paths: Set<String>, trackedSourcePath: ((String) -> Bool)? = nil,
+        includeProjectHeaderRecords: Bool = false,
         recordCachePeak: ((Int, Int) -> Void)? = nil
     ) throws -> RawReadResult {
         let session = try Session(storePath: storePath, libraryPath: libraryPath)
@@ -59,6 +61,8 @@ struct RawIndexStoreReader {
         var records: [Record] = []
         var indexedFileDates: [String: Date] = [:]
         var oldestIndexedFileDates: [String: Date] = [:]
+        var systemHeaderPaths: Set<String> = []
+        var fileOnlyHeaderUnits: [String: Set<String>] = [:]
         let unitNames = session.store.unitNames(sorted: true).map { $0.string }
         for unitName in unitNames {
             let unit: RawStoreUnit
@@ -82,11 +86,22 @@ struct RawIndexStoreReader {
             var unitProvider: DBSymbolProviderKind?
             for dependency in dependencies where dependency.kind == .record || dependency.kind == .file {
                 let path = canonicalDependencyPath(dependency.path, relativeTo: workingDirectory)
-                let readsOccurrences = allowedPaths.contains(path)
-                guard readsOccurrences || trackedSourcePath?(path) == true else { continue }
+                let directlyAllowed = allowedPaths.contains(path)
+                let tracked = !directlyAllowed && trackedSourcePath?(path) == true
+                // 헤더 admission은 신선도 추적과 별개다. 삭제·외부 경로를 선언으로 되살리지 않는다.
+                let readsHeader = includeProjectHeaderRecords && tracked && path.hasSuffix(".h")
+                    && fileSystem.fileExists(at: path) && !fileSystem.directoryExists(at: path)
+                let readsOccurrences = directlyAllowed || readsHeader
+                guard readsOccurrences || tracked else { continue }
                 // Foundation 정규화는 /private/var를 /var로 바꾼다. 선언 위치는
                 // 다른 인덱스 소비자와 같이 실제 경로를 써야 정확히 결합된다.
                 let locationPath = Self.sourceLocationPath(path, fileSystem: fileSystem)
+                if path.hasSuffix(".h") {
+                    if unit.isSystemUnit || dependency.isSystem { systemHeaderPaths.insert(locationPath) }
+                    if dependency.kind == .file {
+                        fileOnlyHeaderUnits[locationPath, default: []].insert(unitName)
+                    }
+                }
                 indexedFileDates[locationPath] = max(indexedFileDates[locationPath] ?? timestamp, timestamp)
                 oldestIndexedFileDates[locationPath] = min(oldestIndexedFileDates[locationPath] ?? timestamp, timestamp)
                 guard readsOccurrences, dependency.kind == .record else { continue }
@@ -138,8 +153,19 @@ struct RawIndexStoreReader {
                 loadedRecords.removeValue(forKey: record.record)
             }
         }
+        // 모든 유닛·레코드·발생을 읽기 전에는 성공한 헤더 admission을 반환하지 않는다.
+        // 같은 레코드를 공유하는 여러 문맥도 위의 unit/record 키로 각각 처리한다.
+        let headerContexts = Dictionary(grouping: records.filter { $0.path.hasSuffix(".h") }, by: \.path)
+        // 시스템 문맥은 기본 그래프에서 외부 정점으로 걸러질 수 있다. 한 문맥이라도 그러면 경고를 유지한다.
+        let headers = headerContexts.filter { path, contexts in
+            // 다른 유닛의 record는 file-only 문맥의 선언·호출을 증명하지 않는다.
+            // 같은 유닛에 중복 file/record 항목이 있다면 성공한 record로 그 문맥만 확인한다.
+            let recordUnits = Set(contexts.map(\.unit))
+            return !systemHeaderPaths.contains(path)
+                && (fileOnlyHeaderUnits[path] ?? []).isSubset(of: recordUnits)
+        }.keys.sorted()
         return RawReadResult(occurrences: result, indexedFileDates: indexedFileDates,
-            oldestIndexedFileDates: oldestIndexedFileDates)
+            oldestIndexedFileDates: oldestIndexedFileDates, admittedHeaderPaths: headers)
     }
 
     /// 삭제된 파일도 남아 있는 조상의 실제 경로를 사용해 /var와 /private/var의 식별자를 유지한다.

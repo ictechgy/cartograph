@@ -30,7 +30,7 @@ public struct IndexStoreProvider: IndexProviding {
         public var pathFilter: PathFilter
         /// SDK 등 외부 심볼도 정점 후보로 수집할지 여부.
         public var includeExternalSymbols: Bool
-        /// Clang 구현 선언을 그래프와 브리지 식별자 양쪽에 포함할 때 사용한다.
+        /// Clang 구현과 범위 안의 프로젝트 헤더 레코드를 그래프·브리지 식별자에 포함한다.
         public var includeObjectiveCSources: Bool
         /// 값 흐름과 명시적 그래프 투영에서 재귀 호출의 실제 USR을 잃지 않도록 자기 참조를 보존한다.
         public var includeSelfReferences: Bool
@@ -96,7 +96,8 @@ public struct IndexStoreProvider: IndexProviding {
                 storePath: configuration.storePath,
                 libraryPath: configuration.libraryPath,
                 fileSystem: fileSystem
-            ).read(in: Set(paths), trackedSourcePath: trackedSourcePathPredicate())
+            ).read(in: Set(paths), trackedSourcePath: trackedSourcePathPredicate(),
+                includeProjectHeaderRecords: configuration.includeObjectiveCSources)
         } catch let error as CartographError {
             throw error
         } catch {
@@ -110,6 +111,7 @@ public struct IndexStoreProvider: IndexProviding {
                                      includeSelfReferences: configuration.includeSelfReferences)
         snapshot.indexedFileDates = result.indexedFileDates
         snapshot.oldestIndexedFileDates = result.oldestIndexedFileDates
+        snapshot.admittedHeaderPaths = result.admittedHeaderPaths
         return snapshot
     }
 
@@ -122,7 +124,8 @@ public struct IndexStoreProvider: IndexProviding {
                 storePath: configuration.storePath,
                 libraryPath: configuration.libraryPath,
                 fileSystem: fileSystem
-            ).read(in: Set(paths), trackedSourcePath: trackedSourcePathPredicate())
+            ).read(in: Set(paths), trackedSourcePath: trackedSourcePathPredicate(),
+                includeProjectHeaderRecords: configuration.includeObjectiveCSources)
         } catch {
             throw CartographError.indexStoreUnreadable(
                 path: configuration.storePath,
@@ -140,6 +143,7 @@ public struct IndexStoreProvider: IndexProviding {
             }
         }, uniquingKeysWith: max).merging(result.indexedFileDates, uniquingKeysWith: max)
         snapshot.oldestIndexedFileDates = result.oldestIndexedFileDates
+        snapshot.admittedHeaderPaths = result.admittedHeaderPaths
         return snapshot
     }
 

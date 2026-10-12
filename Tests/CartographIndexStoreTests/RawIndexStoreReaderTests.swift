@@ -281,11 +281,13 @@ struct RawIndexStoreReaderTests {
             #expect(closeEnough(date, baseline.indexedFileDates?[path]))
         }
         let physicalHeader = try fileSystem.realPath(at: fixture.header.path)
-        // 헤더는 선언 투영에 추가하지 않고 범위 안의 의존 시각만 보존한다.
+        // 범위 안의 모든 헤더 레코드는 날짜와 별개인 admission 근거로 남는다.
         #expect(raw.indexedFileDates?[physicalHeader] != nil)
         #expect(baseline.indexedFileDates?[physicalHeader] != nil)
         #expect(raw.oldestIndexedFileDates?[physicalHeader] != nil)
-        #expect(!raw.symbols.contains { $0.location.path == physicalHeader && !$0.isExternal })
+        #expect(raw.symbols.contains { $0.location.path == physicalHeader && !$0.isExternal })
+        #expect(raw.admittedHeaderPaths == [physicalHeader])
+        #expect(baseline.admittedHeaderPaths == [physicalHeader])
         #expect(!FileManager.default.fileExists(atPath:
             fixture.root.appendingPathComponent("UnusedRawDB").path))
     }

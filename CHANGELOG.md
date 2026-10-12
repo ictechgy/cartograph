@@ -17,6 +17,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Read all observed, scoped project-header record contexts in the Clang-enabled graph pipeline,
+  including inline call bodies. Record header admission separately from dependency timestamps;
+  missing, excluded, unindexed and legacy/unknown header coverage remains conservative.
 - Track scoped header and deleted-source dependency dates independently of graph declarations;
   identify affected relative paths in freshness/readability limitations, preserve oldest observed
   coverage across partial multi-context rebuilds, and invalidate cached analyses on header edits.

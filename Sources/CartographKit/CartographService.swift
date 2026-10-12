@@ -1739,7 +1739,10 @@ public struct CartographService: Sendable {
             values.filter { allowed.contains(LocalFileSystem.canonicalPath($0.key)) }
         }
         return IndexSnapshot(symbols: local + external, references: references, indexedFileDates: dates,
-            oldestIndexedFileDates: oldestDates)
+            oldestIndexedFileDates: oldestDates,
+            admittedHeaderPaths: loaded.admittedHeaderPaths.map { paths in
+                paths.filter { allowed.contains(LocalFileSystem.canonicalPath($0)) }.sorted()
+            })
     }
 
     private func makeIndexSource(

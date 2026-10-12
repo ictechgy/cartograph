@@ -82,6 +82,20 @@ struct IndexSnapshotTests {
         #expect(legacyObject["oldestIndexedFileDates"] == nil)
     }
 
+    @Test("헤더 레코드 admission 근거는 날짜와 별개로 왕복하고 옛 문서는 근거를 만들지 않는다")
+    func admittedHeaderRecordsRoundTripSeparatelyFromDates() throws {
+        let data = Data(#"{"symbols":[],"references":[],"admittedHeaderPaths":["/p/API.h"]}"#.utf8)
+        let snapshot = try JSONDecoder().decode(IndexSnapshot.self, from: data)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let object = try #require(JSONSerialization.jsonObject(with: encoder.encode(snapshot)) as? [String: Any])
+        #expect(object["admittedHeaderPaths"] as? [String] == ["/p/API.h"])
+        let legacy = try JSONDecoder().decode(IndexSnapshot.self,
+            from: Data(#"{"symbols":[],"references":[],"indexedFileDates":{"/p/API.h":100}}"#.utf8))
+        let legacyObject = try #require(JSONSerialization.jsonObject(with: encoder.encode(legacy)) as? [String: Any])
+        #expect(legacyObject["admittedHeaderPaths"] == nil)
+    }
+
     @Test("스냅샷을 합쳐도 소스별 신선도 근거가 사라지거나 새 시각에 가려지지 않는다")
     func mergingPreservesIndexDates() {
         let old = Date(timeIntervalSince1970: 1_000)
@@ -92,6 +106,18 @@ struct IndexSnapshotTests {
         #expect(first.merging(IndexSnapshot()).indexedFileDates == first.indexedFileDates)
         #expect(IndexSnapshot().merging(first).indexedFileDates == first.indexedFileDates)
         #expect(IndexSnapshot().merging(IndexSnapshot()).indexedFileDates == nil)
+    }
+
+    @Test("헤더 admission은 모든 공급자가 확인한 교집합만 남기고 불완전한 문맥을 숨기지 않는다")
+    func admittedHeadersMergeOnlyKnownCoverage() {
+        let first = IndexSnapshot(admittedHeaderPaths: ["/p/B.h", "/p/A.h", "/p/A.h"])
+        let second = IndexSnapshot(admittedHeaderPaths: ["/p/B.h", "/p/C.h"])
+        #expect(first.admittedHeaderPaths == ["/p/A.h", "/p/B.h"])
+        #expect(first.merging(second).admittedHeaderPaths == ["/p/B.h"])
+        #expect(second.merging(first).admittedHeaderPaths == ["/p/B.h"])
+        #expect(first.merging(IndexSnapshot(admittedHeaderPaths: [])).admittedHeaderPaths == [])
+        #expect(first.merging(IndexSnapshot()).admittedHeaderPaths == nil)
+        #expect(IndexSnapshot().merging(first).admittedHeaderPaths == nil)
     }
 
     @Test("관측 문맥의 오래된 시각은 병합과 옛 공급자 폴백에서 사라지지 않는다")

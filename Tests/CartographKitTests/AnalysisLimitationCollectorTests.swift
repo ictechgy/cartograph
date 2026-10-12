@@ -13,6 +13,27 @@ struct AnalysisLimitationCollectorTests {
         #expect(!result.contains { $0.hasPrefix("header-projection:") })
     }
 
+    @Test("실제 읽은 헤더 레코드만 투영 경고에서 빼고 신선도·미관측 헤더 한계는 유지한다")
+    func onlyAdmittedHeadersClearProjectionWarning() {
+        let old = Date(timeIntervalSince1970: 1_000)
+        let fileSystem = InMemoryFileSystem(files: ["/p/Read.h": "", "/p/FileOnly.h": "", "/p/NeverBuilt.h": ""])
+        fileSystem.setModificationDate(old.addingTimeInterval(10), for: "/p/Read.h")
+        let snapshot = IndexSnapshot(indexedFileDates: ["/p/Read.h": old, "/p/FileOnly.h": old],
+            admittedHeaderPaths: ["/p/Read.h"])
+        let result = collector(fileSystem).collect(context: AnalysisContext(snapshot: snapshot),
+            symbolGraph: nil, emptyIndexCounts: nil)
+        let projection = result.first { $0.hasPrefix("header-projection:") } ?? ""
+        #expect(projection.hasPrefix("header-projection: 2 "))
+        #expect(projection.contains("FileOnly.h") && projection.contains("NeverBuilt.h"))
+        #expect(!projection.contains("Read.h"))
+        #expect(result.contains { $0.hasPrefix("index-staleness:") && $0.contains("Read.h") })
+        #expect(result.contains { $0.hasPrefix("unindexed-sources:") && $0.contains("NeverBuilt.h") })
+        let legacy = IndexSnapshot(indexedFileDates: snapshot.indexedFileDates)
+        let legacyResult = collector(fileSystem).collect(context: AnalysisContext(snapshot: legacy),
+            symbolGraph: nil, emptyIndexCounts: nil)
+        #expect(legacyResult.contains { $0.hasPrefix("header-projection: 3 ") })
+    }
+
     @Test("한 문맥만 재빌드하면 최신 시각이 다른 문맥의 낡은 소스를 가리지 않는다")
     func partialContextCoverageRemainsStale() {
         let old = Date(timeIntervalSince1970: 1_000)

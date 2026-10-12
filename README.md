@@ -462,9 +462,19 @@ Five things this output does deliberately:
   API; older snapshots/providers fall back to the latter and cannot prove multi-context freshness.
   This covers observed units, not unbuilt configurations. Obsolete units can keep warnings active
   after a rename or incremental rebuild; create a fresh index to remove them.
-  A separate `header-projection` limitation identifies scoped project headers whose dependency
-  timestamps do not establish declaration/call coverage. It remains a coverage gap for narrowed
-  test selection and closed-world traversal, even when every covering timestamp is fresh.
+  The normal Clang-enabled pipeline also reads existing project `.h` record dependencies within
+  the configured project/path scope. All observed unit/record contexts must read successfully;
+  a failed context aborts the snapshot rather than returning partial header coverage. External,
+  excluded and deleted headers are not admitted as project declarations. Raw and database-backed
+  readers use the same record pass. Optional `admittedHeaderPaths` records actual header-record
+  admission independently of dates and survives snapshot capture/rebase. Snapshot merges conservatively
+  keep only headers admitted by every input; an incomplete input cannot be hidden by another reader. Legacy or unknown
+  admission, system-marked contexts filtered by the default graph, any observed file-only context
+  without a successfully read record for that same header in that same unit,
+  and unindexed headers retain the separate
+  `header-projection` limitation, which blocks narrowed tests and closed-world completeness.
+  A record in another unit cannot establish coverage for a file-only context.
+  Freshness/runtime limitations still apply to admitted headers; unbuilt configurations remain unknown.
   `unreadable-sources` reports other read failures: declarations in those files are kept with
   reason `sourceUnavailable` until source access is restored and the analysis is rerun. These
   limits also appear in `dead` reports and on the other discovery gates: `cycles` and `rules`

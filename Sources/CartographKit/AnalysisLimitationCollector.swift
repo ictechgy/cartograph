@@ -91,7 +91,10 @@ struct AnalysisLimitationCollector {
                     + "while runtime dispatch and unindexed source paths may be absent"
             )
         }
-        let headers = sourceFiles.filter { $0.hasSuffix(".h") }
+        let admittedHeaders = Set(context?.snapshot.admittedHeaderPaths?.map(fileSystem.canonicalPath) ?? [])
+        let headers = sourceFiles.filter {
+            $0.hasSuffix(".h") && !admittedHeaders.contains(fileSystem.canonicalPath($0))
+        }
         if !headers.isEmpty {
             result.append(
                 "header-projection: \(headers.count) project header file(s) are tracked for dependency freshness; "
