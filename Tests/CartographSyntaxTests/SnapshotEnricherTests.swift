@@ -1,6 +1,7 @@
 import CartographCore
 import CartographSyntax
 import CartographTestSupport
+import Foundation
 import Testing
 
 @Suite("스냅샷 보강")
@@ -185,21 +186,21 @@ struct SnapshotEnricherTests {
         #expect(enriched.symbols[0].attributes.contains(.entryPoint))
     }
 
-    @Test("삭제된 파일은 보강하지 않고 누락된 경로를 함께 돌려준다")
-    func missingFilesAreReported() {
+    @Test("삭제된 파일은 언어와 무관하게 누락된 경로를 함께 돌려준다", arguments: ["swift", "m", "mm", "h"])
+    func missingFilesAreReported(suffix: String) {
         // 인덱스에는 남아 있지만 이미 삭제된 파일 때문에 분석 전체가 실패해서는 안 된다.
         var builder = SnapshotBuilder()
-        builder.symbol("Ghost", kind: .structType, path: "/p/Deleted.swift")
+        builder.symbol("Ghost", kind: .structType, path: "/p/Deleted.\(suffix)")
         let snapshot = builder.build()
         let result = SnapshotEnricher(fileSystem: InMemoryFileSystem()).enrichWithDiagnostics(snapshot)
         #expect(result.snapshot == snapshot)
-        #expect(result.missingSourcePaths == ["/p/Deleted.swift"])
+        #expect(result.missingSourcePaths == ["/p/Deleted.\(suffix)"])
         #expect(result.unreadableSourcePaths.isEmpty)
     }
 
-    @Test("권한 오류는 삭제로 오인하지 않고 선언에 불완전한 소스 표식을 남긴다")
-    func unreadableSourcesAreMarked() {
-        let path = "/p/Service.swift"
+    @Test("권한 오류는 언어와 무관하게 불완전한 소스 표식을 남긴다", arguments: ["swift", "m", "mm", "h"])
+    func unreadableSourcesAreMarked(suffix: String) {
+        let path = "/p/Service.\(suffix)"
         let fileSystem = InMemoryFileSystem(files: [path: "// cartograph:ignore\npublic struct Service {}"])
         fileSystem.setReadError(.fileReadNoPermission, for: path)
         var builder = SnapshotBuilder()
@@ -214,7 +215,7 @@ struct SnapshotEnricherTests {
         let recovered = enricher.enrichWithDiagnostics(result.snapshot)
         #expect(recovered.unreadableSourcePaths.isEmpty)
         #expect(!recovered.snapshot.symbols[0].attributes.contains(.sourceUnavailable))
-        #expect(recovered.snapshot.symbols[0].accessibility == .publicLevel)
+        if suffix == "swift" { #expect(recovered.snapshot.symbols[0].accessibility == .publicLevel) }
     }
 
     @Test("존재 여부도 확인할 수 없는 권한 오류를 삭제로 숨기지 않는다")
@@ -226,6 +227,17 @@ struct SnapshotEnricherTests {
         let result = SnapshotEnricher(fileSystem: fileSystem).enrichWithDiagnostics(builder.build())
         #expect(result.unreadableSourcePaths == ["/p/Hidden.swift"])
         #expect(result.missingSourcePaths.isEmpty)
+    }
+
+    @Test("선언이 없는 인덱스 소스도 접근 실패를 숨기지 않는다", arguments: ["swift", "m", "mm", "h"])
+    func indexedFilesWithoutSymbolsAreChecked(suffix: String) {
+        let path = "/p/OnlyReferences.\(suffix)"
+        let fileSystem = InMemoryFileSystem(files: [path: ""])
+        fileSystem.setReadError(.fileReadNoPermission, for: path)
+        let snapshot = IndexSnapshot(indexedFileDates: [path: Date(timeIntervalSince1970: 1)])
+        let result = SnapshotEnricher(fileSystem: fileSystem).enrichWithDiagnostics(snapshot)
+        #expect(result.unreadableSourcePaths == [path])
+        #expect(result.snapshot.symbols.isEmpty)
     }
 
     @Test("Swift 가 아닌 파일은 분석하지 않는다")

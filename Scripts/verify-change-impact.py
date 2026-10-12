@@ -66,6 +66,47 @@ def patch_after_sources(project: Path) -> None:
     live.write_text(live.read_text().replace("public func extensionOnly()", "public func renamedExtensionOnly()"))
 
 
+def verify_selection_safety(binary: Path, project: Path, store: Path, output: Path) -> None:
+    affected = json_document(binary, project, store, output,
+        ["affected", "lifecycleValue", "--format", "json"], "lifecycle-affected")
+    expected = {"LifecycleSetupTests", "testDirect()"}
+    if {row["symbol"]["name"] for row in affected["tests"]} != expected:
+        raise RuntimeError("XCTest setup dependency was omitted or an ordinary helper was promoted")
+    setup = next(row for row in affected["tests"] if row["symbol"]["name"] == "LifecycleSetupTests")
+    if setup["relationship"] != "automaticRuntime" or setup["edges"] or not setup.get("runtimeEvidence"):
+        raise RuntimeError("XCTest lifecycle provenance was lost or presented as a compiler edge")
+    impact = json_document(binary, project, store, output,
+        ["impact", "lifecycleValue", "--format", "json"], "lifecycle-impact")
+    if {row["name"] for row in impact["tests"]} != expected:
+        raise RuntimeError("impact and affected disagree on XCTest lifecycle execution")
+    args = [str(binary), "affected", "--since", "HEAD", "--format", "xcodebuild",
+            "--project", str(project), "--index-store", str(store)]
+    run(["git", "init", "-q"], cwd=project, output=output, name="selection-git-init")
+    run(["git", "add", "."], cwd=project, output=output, name="selection-git-add")
+    run(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+         "commit", "-qm", "fixture baseline"], cwd=project, output=output, name="selection-git-commit")
+    fixture = project / "expected.json"
+    fixture.write_text('{"value": 42}\n')
+    if run(args, cwd=project, output=output, name="unmodeled-only-selectors"):
+        raise RuntimeError("unmodeled-only changes must keep the empty all-tests fallback")
+    # 작업 트리와 인덱스를 바꾸지 않고 HEAD 쪽 내용만 바꾼다. 신선도 거부가 회귀를 가리지 않는다.
+    source = "Sources/ImpactData/LifecycleValue.swift"
+    old = run(["git", "hash-object", "-w", "/dev/null"], cwd=project, output=output, name="selection-empty-blob").strip()
+    run(["git", "update-index", "--cacheinfo", f"100644,{old},{source}"],
+        cwd=project, output=output, name="selection-git-index")
+    run(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+         "commit", "-qm", "pre-change source"], cwd=project, output=output, name="selection-git-before")
+    mixed = run(args, cwd=project, output=output, name="mixed-unmodeled-selectors", expected=2)
+    if mixed or "outside the dependency model" not in (output / "mixed-unmodeled-selectors.stderr.log").read_text():
+        raise RuntimeError("mixed modeled/unmodeled changes silently narrowed the test run")
+    fixture.unlink()
+    selectors = run(args, cwd=project, output=output, name="modeled-only-selectors")
+    expected_selectors = ("-only-testing:ImpactChecks/LifecycleDirectTests/testDirect\n"
+                          "-only-testing:ImpactChecks/LifecycleSetupTests\n")
+    if selectors != expected_selectors:
+        raise RuntimeError(f"modeled-only lifecycle selectors differ: {selectors!r}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cartograph", type=Path, required=True)
@@ -149,6 +190,7 @@ def main() -> int:
              "--index-store", str(before_store)], cwd=workspace, output=output, name="runtime-selectors")
         if runtime_selectors != "-only-testing:ImpactChecks\n":
             raise RuntimeError(f"runtime test module selector was not preserved: {runtime_selectors!r}")
+        verify_selection_safety(binary, workspace, before_store, output)
         before_snapshot = output / "before.json"
         run(
             [str(binary), "snapshot", "--revision", "before-change", "--project", str(workspace), "--index-store", str(before_store), "--output", str(before_snapshot)],

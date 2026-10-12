@@ -310,15 +310,15 @@ struct AffectedDocumentTests {
 
 
     /// B의 런타임 조회에는 타입으로 향하는 컴파일러 간선이 없다.
-    private func skippedRuntimeSourceSnapshot() -> IndexSnapshot {
+    private func skippedRuntimeSourceSnapshot(suffix: String = "swift") -> IndexSnapshot {
         var builder = SnapshotBuilder(path: "/p/Sources/Screen.swift")
         builder.symbol("Screen", kind: .classType)
         builder.symbol("A", name: "testScreen()", kind: .method,
             path: "/p/Tests/A.swift", attributes: [.unitTest])
         builder.symbol("B", name: "testLookup()", kind: .method,
-            path: "/p/Tests/B.swift", attributes: [.unitTest])
+            path: "/p/Tests/B.\(suffix)", attributes: [.unitTest])
         builder.reference(from: "A", to: "Screen", kind: .reference)
-        builder.reference(from: "B", to: "c:@F@NSClassFromString", kind: .call, path: "/p/Tests/B.swift")
+        builder.reference(from: "B", to: "c:@F@NSClassFromString", kind: .call, path: "/p/Tests/B.\(suffix)")
         return builder.build()
     }
 
@@ -339,12 +339,13 @@ struct AffectedDocumentTests {
         #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
     }
 
-    @Test("실제 소스 읽기 실패가 명령의 불완전 분석 종료 결과까지 전달된다")
-    func unreadableRuntimeSourceRefusesCommandSelection() throws {
-        let snapshot = skippedRuntimeSourceSnapshot()
+    @Test("모든 인덱스 언어의 읽기 실패가 명령의 불완전 분석 종료 결과까지 전달된다",
+          arguments: ["swift", "m", "mm", "h"])
+    func unreadableRuntimeSourceRefusesCommandSelection(suffix: String) throws {
+        let snapshot = skippedRuntimeSourceSnapshot(suffix: suffix)
         let fileSystem = InMemoryFileSystem(files: Dictionary(uniqueKeysWithValues:
             snapshot.filePaths.map { ($0, "") }))
-        fileSystem.setReadError(.fileReadNoPermission, for: "/p/Tests/B.swift")
+        fileSystem.setReadError(.fileReadNoPermission, for: "/p/Tests/B.\(suffix)")
         var configuration = CartographConfiguration.default
         configuration.projectPath = "/p"
         let service = CartographService(configuration: configuration, environment: .init(
@@ -356,9 +357,9 @@ struct AffectedDocumentTests {
         #expect(outcome.notes.contains { $0.hasPrefix("unreadable-sources:") })
     }
 
-    @Test("런타임 경계가 없어도 낡거나 인덱스가 없는 소스가 테스트 축소를 막는다", arguments: [false, true])
-    func incompleteIndexRefusesSelection(stale: Bool) throws {
-        let hidden = "/p/Tests/Unseen.swift"
+    @Test("런타임 경계가 없어도 낡거나 인덱스가 없는 소스가 테스트 축소를 막는다", arguments: [false, true], ["swift", "m", "mm", "h"])
+    func incompleteIndexRefusesSelection(stale: Bool, suffix: String) throws {
+        let hidden = "/p/Tests/Unseen.\(suffix)"
         let indexed = Date(timeIntervalSince1970: 1_000)
         let fileSystem = InMemoryFileSystem(files: [hidden: ""])
         fileSystem.setModificationDate(indexed.addingTimeInterval(10), for: hidden)
@@ -392,6 +393,85 @@ struct AffectedDocumentTests {
         #expect(document.limitations.contains { $0.hasPrefix(prefix) })
         #expect(document.xcodebuildSelection().output.isEmpty)
         #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
+    }
+
+    @Test("모델 밖 변경과 Swift 변경이 섞이면 부분 테스트 선택을 거부한다")
+    func mixedUnmodeledChangesRefuseSelection() throws {
+        let outcome = try service(xctestSnapshot()).affected(
+            files: ["Sources/P.swift"], format: "xcodebuild", fileSelectionIsDerived: true,
+            selectionLimitations: ["unmodeled-changed-files: 1 change(s): Fixtures/expected.json"])
+        #expect(outcome.output.isEmpty)
+        #expect(!outcome.subjectNotFound)
+        #expect(outcome.incompleteAnalysis?.contains("outside the dependency model") == true)
+    }
+
+    @Test("모델 밖 변경만 있으면 모든 테스트 실행을 뜻하는 빈 선택자 계약을 유지한다")
+    func onlyUnmodeledChangesKeepAllTestsFallback() throws {
+        let outcome = try service(xctestSnapshot()).affected(
+            format: "xcodebuild", fileSelectionIsDerived: true,
+            selectionLimitations: ["unmodeled-changed-files: 1 change(s): Fixtures/expected.json"])
+        #expect(outcome.output.isEmpty)
+        #expect(!outcome.subjectNotFound)
+        #expect(outcome.incompleteAnalysis == nil)
+        #expect(outcome.notes.contains { $0.hasPrefix("unmodeled-changed-files:") })
+    }
+
+    @Test("생명주기 의존성과 직접 호출 테스트를 모두 선택하고 구문 근거를 구분한다",
+          arguments: ["setUp()", "setUpWithError()", "tearDown()", "tearDownWithError()", "setUp"])
+    func lifecycleDependencySelectsOwningClass(hook: String) throws {
+        var builder = SnapshotBuilder(module: "AppTests", path: "/p/Tests/Checks.swift")
+        builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift")
+        builder.symbol("A", name: "ATests", kind: .classType, attributes: [.unitTest])
+        builder.symbol("A.hook", name: hook, kind: .method, line: 2, parent: "A")
+        builder.symbol("B", name: "BTests", kind: .classType, line: 3, attributes: [.unitTest])
+        builder.symbol("B.test", name: "testDirect()", kind: .method, line: 4,
+            parent: "B", attributes: [.unitTest])
+        builder.reference(from: "A.hook", to: "P", kind: .call)
+        builder.reference(from: "B.test", to: "P", kind: .call)
+        let service = service(builder.build())
+        let document = try service.affectedDocument(symbols: ["P"])
+        #expect(Set(document.tests.compactMap(\.symbol.usr)) == ["A", "B.test"])
+        let owner = try #require(document.tests.first { $0.symbol.usr == "A" })
+        #expect(owner.depth == 2)
+        #expect(owner.via?.usr == "A.hook")
+        #expect(owner.relationship == "automaticRuntime")
+        #expect(owner.edges.isEmpty)
+        #expect(owner.runtimeEvidence?.first?.origin == .automatic)
+        #expect(owner.runtimeEvidence?.first?.id.hasPrefix("xctest-lifecycle:") == true)
+        #expect(document.xcodebuildSelection().output
+            == "-only-testing:AppTests/ATests\n-only-testing:AppTests/BTests/testDirect\n")
+        let impact = try service.impactDocument(symbols: ["P"])
+        #expect(Set(impact.tests.compactMap(\.usr)) == ["A", "B.test"])
+        let traversal = try service.languageTraversalDocument(symbols: ["P"])
+        #expect(Set(traversal.reached.map(\.symbol.usr)) == ["A.hook", "A", "B.test"])
+        let traversedOwner = try #require(traversal.reached.first { $0.symbol.usr == "A" })
+        #expect(traversedOwner.relationships == ["automaticRuntime"])
+        #expect(traversedOwner.evidence == "candidate")
+        #expect(traversedOwner.via == "A.hook")
+        let bounded = try service.affectedDocument(symbols: ["P"], maxDepth: 1)
+        #expect(bounded.truncated.depth)
+        #expect(bounded.xcodebuildSelection().output.isEmpty)
+        let changed = try service.affectedDocument(symbols: ["A.hook"])
+        #expect(changed.tests.map(\.symbol.usr) == ["A"])
+    }
+
+    @Test("상속된 생명주기와 테스트는 다른 모듈의 표식 없는 하위 클래스 실행도 포함한다",
+          arguments: [false, true])
+    func inheritedExecutionIncludesOtherModules(testMethod: Bool) throws {
+        var builder = SnapshotBuilder(module: "BaseTests", path: "/p/Tests/Checks.swift")
+        builder.symbol("P", kind: .function, path: "/p/Sources/P.swift")
+        builder.symbol("Base", kind: .classType, attributes: [.unitTest])
+        builder.symbol("Base.run", name: testMethod ? "testInherited()" : "setUp()", kind: .method,
+            line: 2, parent: "Base", attributes: testMethod ? [.unitTest] : [])
+        builder.symbol("Child", kind: .classType, module: "ChildTests", path: "/p/Tests/Child.swift")
+        builder.reference(from: "Child", to: "Base", kind: .inheritance)
+        builder.reference(from: "Base.run", to: "P", kind: .call)
+        let service = service(builder.build())
+        let document = try service.affectedDocument(symbols: ["P"])
+        #expect(Set(document.tests.compactMap(\.symbol.usr)) == [testMethod ? "Base.run" : "Base", "Child"])
+        #expect(document.xcodebuildSelection().output == "-only-testing:BaseTests\n-only-testing:ChildTests\n")
+        #expect(Set(try service.impactDocument(symbols: ["P"]).tests.compactMap(\.usr))
+            == Set(document.tests.compactMap(\.symbol.usr)))
     }
 
 }

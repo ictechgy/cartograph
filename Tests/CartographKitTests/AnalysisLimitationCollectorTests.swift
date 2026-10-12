@@ -22,6 +22,23 @@ struct AnalysisLimitationCollectorTests {
         #expect(!result.contains { $0.hasPrefix("unindexed-sources:") })
     }
 
+    @Test("Clang 소스와 헤더도 파일별 신선도와 누락을 함께 센다", arguments: [false, true])
+    func clangCoverageIncludesHeaders(withInventory: Bool) {
+        let old = Date(timeIntervalSince1970: 1_000)
+        let paths = ["/p/A.swift", "/p/B.m", "/p/C.mm", "/p/D.h"]
+        let fileSystem = InMemoryFileSystem(files: Dictionary(uniqueKeysWithValues: paths.map { ($0, "") }))
+        for path in paths { fileSystem.setModificationDate(old.addingTimeInterval(50), for: path) }
+        let context = AnalysisContext(snapshot: IndexSnapshot(indexedFileDates: ["/p/A.swift": old, "/p/B.m": old]))
+        let configuration = CartographConfiguration(projectPath: "/p")
+        let inventory = withInventory ? ProjectFileInventory(
+            fileSystem: fileSystem, projectPath: "/p", pathFilter: configuration.pathFilter) : nil
+        let result = AnalysisLimitationCollector(configuration: configuration, fileSystem: fileSystem,
+            projectPath: "/p", storeDate: old.addingTimeInterval(100), inventory: inventory)
+            .collect(context: context, symbolGraph: nil, emptyIndexCounts: nil)
+        #expect(result.contains { $0.hasPrefix("index-staleness: 2 of 4") })
+        #expect(result.contains { $0.hasPrefix("unindexed-sources: 2 of 4") })
+    }
+
     @Test("소스별 신선도 변경이 외부 보존 파일의 비교 기준까지 바꾸지 않는다")
     func externalRetentionsKeepTheirStoreDateComparison() {
         let store = "/p/.build/index/store"

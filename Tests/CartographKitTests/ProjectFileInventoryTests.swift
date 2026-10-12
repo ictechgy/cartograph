@@ -26,6 +26,14 @@ struct ProjectFileInventoryTests {
         ])
     }
 
+    @Test("헤더의 인덱스 불확실성을 소스 진입점 목록과 구분해 전달한다")
+    func headersAreCoverageInputs() {
+        let fileSystem = InMemoryFileSystem(files: ["/p/Handler.h": "", "/p/Handler.m": ""])
+        let inventory = ProjectFileInventory(fileSystem: fileSystem, projectPath: "/p", pathFilter: .passthrough)
+        #expect(inventory.sourceFiles == ["/p/Handler.m"])
+        #expect(inventory.limitationFiles == ["/p/Handler.h", "/p/Handler.m"])
+    }
+
     @Test("loadContext는 인덱스·구문·리소스·한계 수집이 같은 디렉터리 walk를 공유한다")
     func loadContextSharesTheInventoryWalk() throws {
         let base = InMemoryFileSystem(files: [

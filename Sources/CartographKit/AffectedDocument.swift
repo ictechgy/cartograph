@@ -107,16 +107,17 @@ extension CartographService {
         let context = try existingContext ?? loadContext()
         let graph = context.buildGraph(level: .symbol).graph
         let automatic = context.runtimeDiscovery()
+        let lifecycle = XCTestLifecycleImpact(in: graph)
         let artifactTargets = ImpactSelection.artifactTargets(in: automatic,
             resourcePaths: context.runtimeFiles?.map(\.path) ?? [])
         let selection = ImpactSelection(symbols: symbols, files: files, projectPath: projectPath,
             graph: graph, artifactTargets: artifactTargets)
         let report = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth,
-            additionalDependencies: Self.automaticImpactDependencies(automatic))
+            additionalDependencies: Self.automaticImpactDependencies(automatic) + lifecycle.dependencies)
         let reasons = context.impactReviewReasons()
 
         func isTest(_ id: NodeID) -> Bool {
-            reasons[id]?.contains(where: \.isTestTargetRoot) == true
+            lifecycle.testClasses.contains(id) || reasons[id]?.contains(where: \.isTestTargetRoot) == true
         }
         let canProveHierarchy = XCTestIdentifier.canProveClassHierarchy(
             edgeKinds: configuration.edgeKinds, narrowsPaths: configuration.narrowsPathsBeyondDefaults
@@ -318,6 +319,10 @@ extension AffectedDocument {
         }
         if truncated.output || truncated.depth {
             return "The affected test list was truncated; increase --limit or --depth." + fallback
+        }
+        if !tests.isEmpty, limitations.contains(where: { $0.hasPrefix("unmodeled-changed-files:") }) {
+            return "Some changed files are outside the dependency model; additional tests may depend on them."
+                + " Review build scripts, configuration and fixtures before narrowing the run." + fallback
         }
         // 읽지 못한 파일은 런타임 경계 자체를 만들지 못한다. 경계 경고만 확인하면
         // 그런 파일의 테스트를 빠뜨린 채 부분 선택자를 내보내므로 소스 범위도 확인한다.

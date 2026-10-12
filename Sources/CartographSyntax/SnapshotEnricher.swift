@@ -87,10 +87,12 @@ public struct SnapshotEnricher: Sendable {
         var fresh: [String: SourceFactsCache.Entry] = [:]
         var missing: [String] = []
         var unreadable: [String] = []
+        var readable: Set<String> = []
         var freshPaths: Set<String> = []
         var freshnessFailures: [String: LocalFunctionSkipReason] = [:]
 
-        for path in snapshot.filePaths where path.hasSuffix(".swift") {
+        let sourcePaths = Set(snapshot.filePaths).union(snapshot.indexedFileDates?.keys.map { $0 } ?? [])
+        for path in sourcePaths.sorted() where [".swift", ".m", ".mm", ".h"].contains(where: path.hasSuffix) {
             let sourceDate = fileSystem.modificationDate(at: path)
             let source: String
             do {
@@ -100,6 +102,9 @@ public struct SnapshotEnricher: Sendable {
                 if Self.isMissingFile(error) { missing.append(path) } else { unreadable.append(path) }
                 continue
             }
+            readable.insert(path)
+            // Clang 소스는 접근 실패만 진단한다. Swift 구문 분석기에 넣으면 거짓 속성이 생긴다.
+            guard path.hasSuffix(".swift") else { continue }
             let afterRead = fileSystem.modificationDate(at: path)
             if snapshot.indexedFileDates?[path] == nil {
                 freshnessFailures[path] = .indexDateUnavailable
@@ -131,6 +136,9 @@ public struct SnapshotEnricher: Sendable {
         let refinement = Self.enrichResult(snapshot, with: facts, freshSourcePaths: freshPaths,
             edgeKinds: edgeKinds, freshnessFailures: freshnessFailures)
         var enriched = refinement.snapshot
+        for index in enriched.symbols.indices where readable.contains(enriched.symbols[index].location.path) {
+            enriched.symbols[index].attributes.remove(.sourceUnavailable)
+        }
         let unreadablePaths = Set(unreadable)
         for index in enriched.symbols.indices where unreadablePaths.contains(enriched.symbols[index].location.path) {
             enriched.symbols[index].attributes.insert(.sourceUnavailable)

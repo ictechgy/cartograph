@@ -38,7 +38,8 @@ extension CartographService {
         let context = try existingContext ?? loadContext()
         let graph = context.buildGraph(level: .symbol).graph
         let automatic = context.runtimeDiscovery()
-        let automaticDependencies = Self.automaticImpactDependencies(automatic)
+        let lifecycle = XCTestLifecycleImpact(in: graph)
+        let automaticDependencies = Self.automaticImpactDependencies(automatic) + lifecycle.dependencies
         let observedDependencies = runtimeTrace?.evidenceCurrent == true
             ? (runtimeTrace?.connections ?? []).map { connection in
                 ImpactDependency(source: connection.source, target: connection.target,
@@ -54,7 +55,8 @@ extension CartographService {
             additionalDependencies: runtime.dependencies + automaticDependencies + observedDependencies)
         let reasons = context.impactReviewReasons()
         let summaries = try ImpactSummaries(report: report, selection: selection, graph: graph,
-            reasons: reasons, context: context, limit: limit, runtime: runtime, projectPath: projectPath)
+            reasons: reasons, context: context, limit: limit, runtime: runtime, projectPath: projectPath,
+            additionalTestRoots: lifecycle.testClasses)
         let output = ImpactOutput(report: report, selection: selection, summaries: summaries, limit: limit)
         var limitations = (recordedLimitations ?? analysisLimitations(context: context, symbolGraph: graph))
             + selectionLimitations
@@ -273,7 +275,7 @@ private struct ImpactSummaries {
 
     init(report: ImpactReport, selection: ImpactSelection, graph: CodeGraph,
          reasons: [NodeID: Set<RetentionReason>], context: AnalysisContext, limit: Int,
-         runtime: ImpactRuntimeInputs, projectPath: String) throws {
+         runtime: ImpactRuntimeInputs, projectPath: String, additionalTestRoots: Set<NodeID>) throws {
         let affected = report.affected.compactMap { graph.node($0.node) }
         let reviewed = (report.changed + report.affected.map(\.node)).compactMap { graph.node($0) }
         let reviewedIDs = Set(reviewed.map(\.id))
@@ -281,7 +283,9 @@ private struct ImpactSummaries {
             $0.source?.usr.map { reviewedIDs.contains(NodeID($0)) } == true
                 || $0.target?.usr.map { reviewedIDs.contains(NodeID($0)) } == true
         }
-        tests = reviewed.filter { reasons[$0.id]?.contains(where: \.isTestTargetRoot) == true }
+        tests = reviewed.filter {
+            additionalTestRoots.contains($0.id) || reasons[$0.id]?.contains(where: \.isTestTargetRoot) == true
+        }
             .map(SymbolQuery.Subject.init(node:))
         entryPoints = reviewed.filter { reasons[$0.id]?.contains(.entryPoint) == true }.map(SymbolQuery.Subject.init(node:))
         var evidenceTruncated = false

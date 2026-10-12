@@ -51,9 +51,11 @@ struct AnalysisLimitationCollector {
         }
         let objectiveCCount = count(".m", ".mm")
         let interfaceBuilderCount = count(".xib", ".storyboard")
-        let swiftFiles = files.filter { $0.hasSuffix(".swift") && !Self.isPackageManifest($0, projectPath: projectPath) }
+        let sourceFiles = files.filter { path in
+            Self.sourceSuffixes.contains { path.hasSuffix($0) } && !Self.isPackageManifest(path, projectPath: projectPath)
+        }
         let indexedDates = context?.snapshot.indexedFileDates
-        let newerThanStore = swiftFiles.count { path in
+        let newerThanStore = sourceFiles.count { path in
             // 공급자가 파일별 시각을 줬다면 전체 스토어 시각으로 대체하지 않는다.
             // 다른 타깃만 빌드했어도 스토어 시각은 최신이기 때문이다.
             let built = indexedDates == nil ? storeDate : indexedDates?[path]
@@ -95,16 +97,16 @@ struct AnalysisLimitationCollector {
         }
         if newerThanStore > 0 {
             result.append(
-                "index-staleness: \(newerThanStore) of \(swiftFiles.count) source file(s) changed after the "
+                "index-staleness: \(newerThanStore) of \(sourceFiles.count) source file(s) changed after the "
                     + (indexedDates == nil ? "index store was written" : "file's index unit was written")
                     + ", so a call added since the last build is not here yet"
             )
         }
         if let indexedDates, emptyIndexCounts == nil {
-            let unindexed = swiftFiles.count { indexedDates[$0] == nil }
+            let unindexed = sourceFiles.count { indexedDates[$0] == nil }
             if unindexed > 0 {
                 result.append(
-                    "unindexed-sources: \(unindexed) of \(swiftFiles.count) source file(s) have no known index unit; "
+                    "unindexed-sources: \(unindexed) of \(sourceFiles.count) source file(s) have no known index unit; "
                         + "build their targets, or exclude files that are not target sources, "
                         + "before relying on absent callers"
                 )
@@ -225,7 +227,7 @@ struct AnalysisLimitationCollector {
     }
 
     /// 한계 목록을 세는 데 필요한 확장자. 다른 파일은 걷지도 담지도 않는다.
-    static let sourceSuffixes = [".m", ".mm", ".swift"]
+    static let sourceSuffixes = [".m", ".mm", ".h", ".swift"]
 
     /// 매니페스트는 타깃 소스가 아니라 SwiftPM 입력이다. 인덱스 유닛이 없는 것이 정상이다.
     /// Sources/Package.swift 같은 실제 타깃 파일까지 제외하지 않도록 프로젝트 루트만 가른다.
