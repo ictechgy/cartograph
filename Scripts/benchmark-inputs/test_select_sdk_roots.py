@@ -116,6 +116,145 @@ class RootSelectionTests(unittest.TestCase):
     def run_select(self, request=None, runner=None):
         return selector.record(request or self.request, self.root / "evidence", runner=runner or self.runner)
 
+    def test_apple_optional_sdk_path_matches_selected_sdk(self):
+        def run(*args):
+            row = self.runner(*args)
+            if "-print-target-info" in args[0]:
+                path = Path(row["stdout"])
+                doc = json.loads(path.read_text())
+                doc["paths"]["sdkPath"] = str(self.sdk)
+                path.write_text(json.dumps(doc))
+            return row
+
+        result = self.run_select(runner=run)
+        self.assertEqual(result["status"], "awaiting-root-review")
+        self.assertEqual(result["proposal"]["swift_paths"]["sdkPath"][0]["root"], "SDK")
+        self.assertFalse(result["accepted"])
+
+    def test_apple_sdk_path_mismatch_refuses_before_language_probes(self):
+        def run(*args):
+            row = self.runner(*args)
+            if "-print-target-info" in args[0]:
+                path = Path(row["stdout"])
+                doc = json.loads(path.read_text())
+                doc["paths"]["sdkPath"] = str(self.toolchain)
+                path.write_text(json.dumps(doc))
+            return row
+
+        result = self.run_select(runner=run)
+        self.assertEqual(result["failure"], "swift-sdk-mismatch")
+        self.assertEqual(len(self.commands), 5)
+
+    def test_all_uncovered_paths_remain_diagnostic_without_root_expansion(self):
+        external = self.root / "runtime"
+        external.mkdir()
+        link = self.root / "runtime-alias"
+        link.symlink_to(external, target_is_directory=True)
+        missing = self.root / "missing-runtime"
+
+        def run(*args):
+            row = self.runner(*args)
+            if "-print-target-info" in args[0]:
+                path = Path(row["stdout"])
+                doc = json.loads(path.read_text())
+                doc["paths"]["runtimeLibraryPaths"] += [str(link), str(missing)]
+                path.write_text(json.dumps(doc))
+            if "-E" in args[0]:
+                path = Path(row["stderr"])
+                path.write_text(path.read_text().replace("End of search list.", f" {external}\nEnd of search list."))
+            return row
+
+        result = self.run_select(runner=run)
+        self.assertEqual(len(self.commands), 9)
+        self.assertEqual(result["exit_code"], 1)
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["proposal"]["roots"], {"SDK": str(self.sdk), "TOOLCHAIN": str(self.toolchain)})
+        issues = result["unresolved_effective_paths"]
+        self.assertEqual(len(issues), 6)
+        linked = next(item for item in issues if item["path"] == str(link))
+        self.assertEqual(linked["observation"]["entry_type"], "symlink")
+        self.assertEqual(linked["observation"]["canonical_path"], str(external))
+        self.assertEqual(linked["usage"], "swift-runtime-library-search")
+        self.assertEqual(
+            next(item for item in issues if item["path"] == str(missing))["observation"]["entry_type"], "missing"
+        )
+        self.assertTrue(all(item["scope"] == "diagnostic-only-uncovered-path" for item in issues))
+
+    def test_incomplete_probe_still_stops_after_uncovered_path(self):
+        external = self.root / "runtime"
+        external.mkdir()
+
+        def run(*args):
+            row = self.runner(*args)
+            if "-print-target-info" in args[0]:
+                path = Path(row["stdout"])
+                doc = json.loads(path.read_text())
+                doc["paths"]["runtimeLibraryPaths"] += [str(external)]
+                path.write_text(json.dumps(doc))
+            if "-E" in args[0]:
+                row.update(
+                    completed=False, passed=False, returncode=125, observed_returncode=125, failure="nested-incomplete"
+                )
+            return row
+
+        result = self.run_select(runner=run)
+        self.assertEqual(result["exit_code"], 125)
+        self.assertEqual(len(self.commands), 6)
+        self.assertEqual(len(result["unresolved_effective_paths"]), 1)
+        self.assertNotIn("proposal", result)
+
+    def test_retained_apple_target_info_fixture_preserves_diagnostic_boundary(self):
+        runtime = self.root / "runtime-library"
+        (runtime / "swift").mkdir(parents=True)
+        (self.sdk / "usr/lib/swift").mkdir(parents=True)
+        fixture = (HERE / "fixtures/apple-swift-target-info-6.3.3.json").read_text()
+
+        def run(*args):
+            row = self.runner(*args)
+            if "-print-target-info" in args[0]:
+                Path(row["stdout"]).write_text(
+                    fixture.replace("$DEVELOPER", str(self.developer)).replace("$SYSTEM_LIB", str(runtime))
+                )
+            return row
+
+        result = self.run_select(runner=run)
+        self.assertEqual(result["failure"], "unresolved-effective-paths")
+        self.assertEqual(result["exit_code"], 1)
+        self.assertEqual(len(self.commands), 9)
+        self.assertEqual(result["unresolved_effective_paths"][0]["usage"], "swift-runtime-library-search")
+        self.assertEqual(result["proposal"]["swift_paths"]["sdkPath"][0]["canonical_path"], str(self.sdk))
+        self.assertFalse(result["accepted"])
+
+    def test_sdk_path_wrong_type_stays_a_schema_failure(self):
+        def run(*args):
+            row = self.runner(*args)
+            if "-print-target-info" in args[0]:
+                path = Path(row["stdout"])
+                doc = json.loads(path.read_text())
+                doc["paths"]["sdkPath"] = [str(self.sdk)]
+                path.write_text(json.dumps(doc))
+            return row
+
+        self.assertEqual(self.run_select(runner=run)["failure"], "unexpected-swift-path-schema")
+
+    def test_path_diagnostics_are_bounded_and_do_not_open_content(self):
+        outside = self.root / "outside"
+        outside.mkdir()
+        with mock.patch.object(selector.os, "open", side_effect=AssertionError("no content reads")):
+            observed = selector.path_observation(str(outside))
+        self.assertEqual(observed["entry_type"], "directory")
+        self.assertFalse(observed["content_read"])
+        with self.assertRaisesRegex(selector.DiscoveryError, "diagnostic-component-limit"):
+            selector.path_observation("/" + "/".join(["part"] * 65))
+        result = {"observed_path_count": selector.MAX_DISCOVERED_PATHS, "unresolved_effective_paths": []}
+        with self.assertRaisesRegex(selector.DiscoveryError, "diagnostic-path-count-limit"):
+            selector.diagnostic_binding(str(outside), {}, result, "test")
+        result = {"observed_path_count": 0, "unresolved_effective_paths": []}
+        with mock.patch.object(selector, "MAX_PATH_DIAGNOSTIC_BYTES", 4):
+            with self.assertRaisesRegex(selector.DiscoveryError, "diagnostic-byte-limit"):
+                selector.diagnostic_binding(str(outside), {}, result, "test")
+        self.assertEqual(result["unresolved_effective_paths"], [])
+
     def test_complete_proposal_stays_unaccepted_and_probes_objcxx(self):
         result = self.run_select()
         self.assertEqual(result["status"], "awaiting-root-review")
@@ -271,7 +410,7 @@ class RootSelectionTests(unittest.TestCase):
                 path.write_text(path.read_text().replace("End of search list.", f" {extra}\nEnd of search list."))
             return row
 
-        self.assertEqual(self.run_select(runner=run)["failure"], "external-search-path")
+        self.assertEqual(self.run_select(runner=run)["failure"], "unresolved-effective-paths")
 
     def test_ignored_external_absence_is_explicit_unsealed_gate(self):
         extra = self.root / "not-present"
@@ -310,7 +449,7 @@ class RootSelectionTests(unittest.TestCase):
                 Path(row["stdout"]).write_text(json.dumps(doc))
             return row
 
-        self.assertEqual(self.run_select(runner=run)["failure"], "external-search-path")
+        self.assertEqual(self.run_select(runner=run)["failure"], "unresolved-effective-paths")
 
     def test_duplicate_swift_json_key_blocks(self):
         def run(*a):

@@ -182,6 +182,75 @@ def covered_path(value: str, roots: dict[str, Path]) -> dict:
     raise DiscoveryError("external-search-path")
 
 
+MAX_DISCOVERED_PATHS = 128
+MAX_PATH_COMPONENTS = 64
+MAX_PATH_DIAGNOSTIC_BYTES = 1024**2
+
+
+def path_observation(value: str) -> dict:
+    """범위를 확장하거나 내용을 열지 않고 예상 밖 경로의 존재와 링크 문맥만 남긴다."""
+    path = clean_path(value)
+    if len(path.parts) > MAX_PATH_COMPONENTS:
+        raise DiscoveryError("diagnostic-component-limit")
+    result = dict(entry_type="unavailable", components=[], content_read=False)
+    current = Path(path.anchor)
+    for component in path.parts[1:]:
+        current = current / component
+        row = dict(component=component)
+        try:
+            info = current.lstat()
+            kind = (
+                "symlink"
+                if stat.S_ISLNK(info.st_mode)
+                else "directory" if stat.S_ISDIR(info.st_mode) else "file" if stat.S_ISREG(info.st_mode) else "special"
+            )
+            row["entry_type"] = kind
+            if kind == "symlink":
+                target = os.readlink(current)
+                if len(target.encode("utf-8")) > 16384:
+                    raise DiscoveryError("diagnostic-link-limit")
+                row["link_target"] = target
+        except FileNotFoundError:
+            row["entry_type"] = "missing"
+        except OSError as error:
+            row.update(entry_type="unavailable", failure_type=type(error).__name__)
+        result["components"].append(row)
+        result["entry_type"] = row["entry_type"]
+        if row["entry_type"] in ("missing", "unavailable"):
+            break
+    try:
+        result["canonical_path"] = str(path.resolve(strict=True))
+    except (OSError, RuntimeError) as error:
+        result["canonical_status"] = "unavailable"
+        result["canonical_failure_type"] = type(error).__name__
+    return result
+
+
+def diagnostic_binding(value: str, roots: dict[str, Path], result: dict, usage: str) -> dict:
+    """미해결 검색 경로는 관측만 계속하고, 승인된 루트나 입력으로 승격하지 않는다."""
+    clean_path(value)
+    result["observed_path_count"] += 1
+    if result["observed_path_count"] > MAX_DISCOVERED_PATHS:
+        raise DiscoveryError("diagnostic-path-count-limit")
+    try:
+        return covered_path(value, roots)
+    except DiscoveryError as error:
+        if str(error) not in {"external-search-path", "input-not-directory", "unreadable-directory"}:
+            raise
+        entry = dict(
+            path=value,
+            scope="diagnostic-only-uncovered-path",
+            usage=usage,
+            reason=str(error),
+            observation=path_observation(value),
+        )
+        retained = result["unresolved_effective_paths"] + [entry]
+        if len(json.dumps(retained, ensure_ascii=False).encode("utf-8")) > MAX_PATH_DIAGNOSTIC_BYTES:
+            raise DiscoveryError("diagnostic-byte-limit")
+        result["unresolved_effective_paths"].append(entry)
+        return entry
+
+
 def prepare(request: dict) -> dict:
     expected = {
         "schema_version",
@@ -399,6 +468,8 @@ def record(
         final_protocol_ready=False,
         exit_code=1,
         probes=[],
+        observed_path_count=0,
+        unresolved_effective_paths=[],
         probe_wall_seconds=0.0,
         runner_identity=runner_identity,
         environment_policy=dict(removed_keys=list(OVERRIDES), explicit_developer_dir="selected-toolchain-parent"),
@@ -471,7 +542,7 @@ def record(
         if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", version) or not re.fullmatch(r"[A-Za-z0-9.]{1,64}", build):
             raise DiscoveryError("invalid-sdk-version")
         resource = probe("clang-resource", [clang, "-print-resource-dir"])["stdout"].strip()
-        resource_binding = covered_path(resource, roots)
+        resource_binding = diagnostic_binding(resource, roots, result, "clang-resource-directory")
         swift_info = strict_json(
             probe(
                 "swift-target",
@@ -490,7 +561,8 @@ def record(
         paths = swift_info.get("paths") if isinstance(swift_info, dict) else None
         if (
             not isinstance(paths, dict)
-            or set(paths) != expected_paths
+            or set(paths) not in (expected_paths, expected_paths | {"sdkPath"})
+            or ("sdkPath" in paths and not isinstance(paths["sdkPath"], str))
             or not isinstance(paths["runtimeResourcePath"], str)
             or any(
                 not isinstance(paths[k], list) or not all(isinstance(v, str) for v in paths[k])
@@ -500,8 +572,19 @@ def record(
             raise DiscoveryError("unexpected-swift-path-schema")
         if not isinstance(swift_info.get("target"), dict) or swift_info["target"].get("triple") != request["target"]:
             raise DiscoveryError("swift-target-mismatch")
+        if "sdkPath" in paths and existing_directory(paths["sdkPath"]) != roots["SDK"]:
+            raise DiscoveryError("swift-sdk-mismatch")
+        usages = {
+            "runtimeResourcePath": "swift-resource-directory",
+            "runtimeLibraryPaths": "swift-runtime-library-search",
+            "runtimeLibraryImportPaths": "swift-compiler-import-search",
+            "sdkPath": "swift-selected-sdk",
+        }
         swift_bindings = {
-            key: [covered_path(value, roots) for value in (values if isinstance(values, list) else [values])]
+            key: [
+                diagnostic_binding(value, roots, result, usages[key])
+                for value in (values if isinstance(values, list) else [values])
+            ]
             for key, values in paths.items()
         }
         searches, absences = [], []
@@ -528,8 +611,13 @@ def record(
             )
             parsed = parse_clang_search(data["stderr"])
             for item in parsed["effective"]:
-                item["coverage"] = covered_path(item["path"], {**roots, **selection["project_paths"]})
-                if item["coverage"]["root"] in request["project_roots"]:
+                item["coverage"] = diagnostic_binding(
+                    item["path"],
+                    {**roots, **selection["project_paths"]},
+                    result,
+                    "clang-" + context["id"] + "-include-search",
+                )
+                if item["coverage"].get("root") in request["project_roots"]:
                     item["coverage"].update(
                         scope="project-generation-reference",
                         manifest_sha256=request["project_roots"][item["coverage"]["root"]]["manifest_sha256"],
@@ -542,7 +630,12 @@ def record(
                     item["coverage"] = "unsealed-absence"
                     absences.append(dict(language=language, **item))
                 else:
-                    item["coverage"] = covered_path(item["path"], {**roots, **selection["project_paths"]})
+                    item["coverage"] = diagnostic_binding(
+                        item["path"],
+                        {**roots, **selection["project_paths"]},
+                        result,
+                        "clang-" + context["id"] + "-include-search",
+                    )
             searches.append(
                 dict(context_id=context["id"], language=language, context_options=context["options"], **parsed)
             )
@@ -561,6 +654,8 @@ def record(
             clang_search_paths=searches,
             unsealed_absence_dependencies=absences,
         )
+        if result["unresolved_effective_paths"]:
+            raise DiscoveryError("unresolved-effective-paths")
         result.update(status="awaiting-root-review", exit_code=0)
     except DiscoveryError as error:
         result["failure"] = str(error)

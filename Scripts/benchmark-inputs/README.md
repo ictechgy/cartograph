@@ -33,7 +33,7 @@ existing paths outside declared immutable/project roots refuse the proposal. No 
 Fixed search-override environment keys are removed only in compiler children. The selected
 DEVELOPER_DIR is explicit. Inherited environment values are not dumped. Full tool hashes and root
 aliases are guarded around completed probes. Completed nonzero outcomes and any failed post-guard
-are retained separately. Incomplete attempts preserve exit125 and record post-guard unavailability
+are retained separately. Incomplete attempts preserve exit 125 and record post-guard unavailability
 when cleanup is unproved. The existing reviewed runner's process-group fallback does not guarantee
 containment of detached macOS descendants.
 
@@ -104,3 +104,28 @@ recipe binding, pre/post generation guards, nested125, source/index mutations, c
 normalized failure retention and credential-screen refusal. No actual Apple discovery has yet run on
 this new code. Actual root/link review, full content sealing, actual-arm calibration, independent
 holdouts and the preregistered20-session performance gate remain open.
+
+## First Apple discovery and bounded path diagnostics
+
+Native run 38230196392 retains the first failure: all five initial probes and their terminal guards
+passed, then Apple Swift 6.3.3's additional paths.sdkPath field was rejected. The original output is
+retained byte-for-byte after public path normalization in fixtures/apple-swift-target-info-6.3.3.json.
+The optional sdkPath field is now accepted only as a string resolving to the exact selected SDK.
+Other unknown path fields, malformed values and a different SDK still fail.
+
+A structurally valid but uncovered path now retains bounded metadata: printed path category, terminal
+existence/type, component/link layout and canonical resolution outcome. No contents are read and no
+root is added. All otherwise successful fixed probes continue to collect their path observations;
+failed/incomplete probes still stop immediately. A proposal with any unresolved effective path remains
+exit 1, accepted=false and final_protocol_ready=false. Metadata is capped at 128 observed bindings,
+64 components per path and 1 MiB for the retained unresolved list; exceeding a limit fails rather than
+publishing a truncated success. Original probe stdout/stderr remains retained.
+
+Apple's output places /usr/lib/swift in runtimeLibraryPaths, while runtimeLibraryImportPaths names
+toolchain/SDK module directories. The upstream Swift 6.3.3 implementation separately appends the Darwin
+OS library location to runtime paths and constructs Swift-module import directories from toolchain
+and SDK paths. See [the official implementation](https://github.com/swiftlang/swift/blob/swift-6.3.3-RELEASE/lib/Frontend/CompilerInvocation.cpp#L185-L267).
+These labels distinguish reported path roles; they do not prove actual file access or a complete
+runtime-loader closure for Apple's compiler binary. The actual host path existence/link layout still
+requires the next native diagnostic. It remains outside declared roots and blocks final acceptance;
+no runtime-root expansion or omission from the final input contract is authorized by this repair.
