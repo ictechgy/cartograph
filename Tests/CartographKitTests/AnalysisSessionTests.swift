@@ -616,7 +616,7 @@ struct AnalysisSessionTests {
         }
     }
 
-    @Test("신뢰할 수 있는 stamp가 같으면 warm refresh에서 소스와 unit을 다시 읽지 않는다")
+    @Test("같은 stamp의 상태 조회는 읽기를 건너뛰고 명시적 refresh만 Clang 소스를 다시 확인한다")
     func cachedFingerprintSkipsWarmContentReads() throws {
         let root = try makeTemporaryProject()
         defer { try? FileManager.default.removeItem(atPath: root) }
@@ -631,10 +631,14 @@ struct AnalysisSessionTests {
         fileSystem.resetContentReads()
         _ = try session.status()
         #expect(fileSystem.contentReadBytes == 0)
+        #expect(fileSystem.contentReadPaths.isEmpty)
 
         fileSystem.resetContentReads()
         _ = try session.refresh()
-        #expect(fileSystem.contentReadBytes == 0)
+        // 지문 캐시는 재사용해도 명시적 새로고침은 소스 접근 가능성을 다시 검증한다.
+        // Clang 파일을 건너뛰면 읽을 수 없는 인덱스를 완전한 것으로 오인할 수 있다.
+        #expect(fileSystem.contentReadBytes == "struct App {}".utf8.count)
+        #expect(fileSystem.contentReadPaths == [source])
     }
 
     @Test("mtime를 복원한 내용 변경은 ctime stamp를 바꿔 다시 읽는다")
@@ -1129,6 +1133,7 @@ private final class CountingLocalFileSystem: FileSystem, @unchecked Sendable {
     private let base = LocalFileSystem()
     private let lock = NSLock()
     private(set) var contentReadBytes = 0
+    private(set) var contentReadPaths: [String] = []
     private(set) var directoryEnumerations = 0
 
     func realPath(at path: String) throws -> String { try base.realPath(at: path) }
@@ -1138,7 +1143,10 @@ private final class CountingLocalFileSystem: FileSystem, @unchecked Sendable {
     func readData(at path: String) throws -> Data {
         let data = try base.readData(at: path)
         guard path.hasSuffix(".m") || path.contains("/index-store/") else { return data }
-        lock.withLock { contentReadBytes += data.count }
+        lock.withLock {
+            contentReadBytes += data.count
+            contentReadPaths.append(path)
+        }
         return data
     }
 
@@ -1153,7 +1161,12 @@ private final class CountingLocalFileSystem: FileSystem, @unchecked Sendable {
     func fingerprintStamp(at path: String) -> FileFingerprintStamp? { base.fingerprintStamp(at: path) }
     var currentDirectoryPath: String { base.currentDirectoryPath }
 
-    func resetContentReads() { lock.withLock { contentReadBytes = 0 } }
+    func resetContentReads() {
+        lock.withLock {
+            contentReadBytes = 0
+            contentReadPaths = []
+        }
+    }
 }
 
 /// 지정한 마지막 경로 성분의 디렉터리 열거를 `unblock` 전까지 실패시키는 래퍼.
