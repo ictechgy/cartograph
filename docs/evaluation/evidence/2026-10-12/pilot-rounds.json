@@ -123,6 +123,18 @@
       "status": "passed-validation-only",
       "synthetic_correctness_and_freshness_passed": true,
       "url": "https://github.com/ictechgy/cartograph/actions/runs/38195985366"
+    },
+    {
+      "archive_sha256": "33cd039ce2070e25313ea5d031670aeb88ab6e5db64a335089eb21f8105d5ba1",
+      "expectation_changes": false,
+      "failure": "The test compared a resolved snapshot path against an unresolved macOS temporary output alias.",
+      "fix_commit": null,
+      "head": "92a9432d50d2544b94d825b06c992fcf91bdf489",
+      "normalized_manifest_files": 2,
+      "run_id": 38198751763,
+      "stage": "offline-mixed-wrapper-regression",
+      "status": "failed-before-native-comparison",
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38198751763"
     }
   ],
   "superiority_claim": null

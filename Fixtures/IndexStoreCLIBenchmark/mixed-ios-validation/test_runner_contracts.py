@@ -232,11 +232,21 @@ class RunnerContracts(unittest.TestCase):
         self.assertEqual(state["builds"][0]["exit_code"], 1)
         self.assertTrue(Path(state["source_snapshot"]).is_file())
         self.assertTrue(Path(state["index_snapshot"]).is_file())
-        self.assertTrue(Path(state["index_snapshot"]).is_relative_to(self.output / "private-snapshots"))
+        self.assertTrue(
+            Path(state["index_snapshot"]).resolve().is_relative_to((self.output / "private-snapshots").resolve())
+        )
         self.assertEqual(archive_manifest(state["source_snapshot"]), source_manifest(runner.ROOT / "fixture"))
         self.assertEqual(archive_manifest(state["index_snapshot"]), state["failure_index_files"])
         self.assertFalse(list((self.output / "runs").rglob("*.tar.gz")))
         self.assertFalse((self.output / "runs/header_edit_unbuilt").exists())
+
+    def test_failed_compiler_snapshot_containment_accepts_output_alias(self):
+        target = self.root / "real-output"
+        target.mkdir()
+        alias = self.root / "output-alias"
+        alias.symlink_to(target, target_is_directory=True)
+        self.output = alias
+        self.test_failed_compiler_stage_is_retained_with_private_snapshots()
 
     def test_compiler_success_without_units_or_outputs_is_not_promoted(self):
         for failure in ["missing-units", "missing-output"]:
