@@ -140,6 +140,15 @@ def check_sensitive(text: str, relative: str) -> None:
     for match in re.finditer(r"""\b([A-Za-z][A-Za-z0-9_-]*)["']?\s*[:=]\s*""", text):
         if re.sub(r"[^a-z0-9]", "", match.group(1).lower()) in CREDENTIAL_KEYS:
             block("credential-field-or-assignment", relative, match.group(1))
+    # 로그 안에 삽입된 JSON은 파일 전체 JSON 파서에 닿지 않을 수 있다.
+    # 값은 해석하지 않고 인코딩된 키만 확인해 비밀 필드 우회를 막는다.
+    for match in re.finditer(r'("(?:[^"\\\r\n]|\\.)*")\s*:', text):
+        try:
+            name = json.loads(match.group(1))
+        except (ValueError, json.JSONDecodeError):
+            continue
+        if re.sub(r"[^a-z0-9]", "", name.lower()) in CREDENTIAL_KEYS:
+            block("credential-json-field", relative, match.group(1))
     assignments = re.findall(r"(?m)^[A-Z][A-Z0-9_]{2,}=", text)
     if len(assignments) >= 3:
         block("possible-environment-dump", relative)
@@ -295,6 +304,14 @@ class Normalizer:
         path_text = URL.sub("PUBLIC_URL", value).replace("file://", "")
         # index-dump가 출력한 나눗셈 연산자 이름은 파일 경로가 아니다.
         path_text = re.sub(r"(?m)^((?:\d+:\d+ \| )?)/(?=\([^\n|]*\) \| )", r"\1SWIFT_DIVISION_OPERATOR", path_text)
+        # Clang 도움말의 고정 옵션 표기는 경로가 아니다. 해당 토큰만 가리고
+        # 같은 줄이나 다른 위치에 있는 경로/비밀값 검사는 그대로 둔다.
+        if relative == "setup/clang-frontend-help.stdout":
+            path_text = re.sub(
+                r"(?m)^([ \t]+--show-includes[ \t]+Print cl\.exe style )/showIncludes(?= to stdout[ \t]*$)",
+                r"\1CLANG_SHOW_INCLUDES_OPTION",
+                path_text,
+            )
         windows_path = re.search(r"(?:[A-Za-z]:[\\/]|\\\\[A-Za-z0-9])", path_text)
         if windows_path:
             block("unmapped-windows-absolute-path", relative, windows_path.group())

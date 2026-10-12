@@ -150,6 +150,39 @@ class EvidenceTests(unittest.TestCase):
         )
         self.assertTrue((self.public / observation["cg_config"]).is_file())
 
+    def test_exact_clang_help_flag_is_preserved_without_path_exemption(self):
+        line = "  --show-includes         Print cl.exe style /showIncludes to stdout\n"
+        self.assertEqual(MODULE.digest(b"/showIncludes")[:16], "4481f48fee5de938")
+        self.write("setup/clang-frontend-help.stdout", line)
+        MODULE.package(self.args)
+        self.assertEqual((self.public / "setup/clang-frontend-help.stdout").read_text(), line)
+
+    def test_clang_help_exception_cannot_hide_another_path(self):
+        for line in (
+            "  --show-includes         Print cl.exe style /showIncludes/private to stdout\n",
+            "  --show-includes         Print cl.exe style /showIncludes to stdout /unknown/private\n",
+            "  --show-includes /unknown/private Print cl.exe style /showIncludes to stdout\n",
+            "/showIncludes\n",
+        ):
+            with self.subTest(line=line):
+                self.write("setup/clang-frontend-help.stdout", line)
+                self.assert_blocked_without_output("unmapped-absolute-path")
+
+    def test_clang_help_exception_is_artifact_scoped(self):
+        self.write("setup/other.stdout", "  --show-includes         Print cl.exe style /showIncludes to stdout\n")
+        self.assert_blocked_without_output("unmapped-absolute-path")
+
+    def test_clang_help_exception_does_not_skip_credential_screen(self):
+        for separator in (" ", "\n"):
+            with self.subTest(separator=separator):
+                self.write(
+                    "setup/clang-frontend-help.stdout",
+                    "  --show-includes         Print cl.exe style /showIncludes to stdout"
+                    + separator
+                    + '{"\\u0041WS_SECRET_ACCESS_KEY":"synthetic-only"}',
+                )
+                self.assert_blocked_without_output("credential-json-field")
+
     def test_unmapped_absolute_path_blocks(self):
         self.write("setup/build.stderr", "Failure: /Users/unknown-person/private/file.swift\n")
         self.assert_blocked_without_output("unmapped-absolute-path")

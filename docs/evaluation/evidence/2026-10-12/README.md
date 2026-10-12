@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all seven rounds. `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all eight rounds. `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -32,6 +32,14 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    The entire offline comparison, adapter and privacy suite was then exercised under a deliberately
    symlinked temporary root. Only filesystem identity expectations changed; lexical path contracts remain.
 
+8. Run 38199381784 passed offline contracts and the synthetic/public driver stages, then the mixed
+   native driver exited 2. Its detailed reason remains unavailable: normalization rejected a literal
+   Clang help option (fingerprint `4481f48fee5de938`), and the previous all-or-nothing upload gate
+   withheld every bundle. The retained CI phase records that loss explicitly; native outputs, samples
+   and costs cannot be reconstructed. A separately labeled local official-Clang help reproduction
+   matches that exact fingerprint. Only ANSI color escapes were removed from the selected CI phase;
+   the original phase/job hashes and transformation count are retained. This is not complete run evidence.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -40,10 +48,10 @@ and 29.984 seconds for `index-dump`, with the remaining setup costs separately r
 pilot observations establish the preregistered twenty-session composed-cost endpoint or memory dominance.
 
 The archives contain only already-normalized text and their manifests. They contain no raw compiler
-indexes, objects, executables, toolchains, global caches or environment dumps. Raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. The four native
-round archives retain the exact bytes of their public Actions artifacts. The three test-phase archives
-were normalized separately after their failures. Archives are committed to avoid losing evidence when
+indexes, objects, executables, toolchains, global caches or environment dumps. Retained raw originals remain
+private; each manifest distinguishes original hashes from normalized public hashes. Four archives retain
+the exact bytes of their public Actions artifacts. The three test-phase archives and the last partial
+driver-phase archive were normalized separately after their failures. Archives are committed to avoid losing evidence when
 Actions retention expires.
 
 All bundle hashes, file lists, UTF-8 contents and normalized file hashes are checked by:

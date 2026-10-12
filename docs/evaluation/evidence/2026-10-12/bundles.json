@@ -93,11 +93,27 @@
       "sha256": "f11384691a708fa20afe72aac693c62853e827a455e652fe9e09ae072ad28361",
       "uncompressed_bytes": 22142,
       "verified_normalized_files": 2
+    },
+    {
+      "archive": "run-38199381784-normalized.zip",
+      "archive_entries": 6,
+      "complete_run_evidence": false,
+      "compressed_bytes": 41771,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38199381784,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38199381784",
+      "scope": "Retained CI contract/driver phase and separately labeled local official-compiler help reproduction; detailed native results, samples and cost records unavailable after blocked all-or-nothing upload",
+      "sha256": "68d8031024163a12603f35d631fe4eb08f6eda266b29d806f119ac465a2b97fc",
+      "uncompressed_bytes": 154228,
+      "verified_normalized_files": 5
     }
   ],
+  "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
-  "role": "complete-normalized-pilot-evidence",
+  "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 5869586,
-  "total_uncompressed_bytes": 42407608
+  "total_compressed_bytes": 5911357,
+  "total_uncompressed_bytes": 42561836
 }

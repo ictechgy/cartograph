@@ -140,13 +140,27 @@
       "archive_sha256": "f11384691a708fa20afe72aac693c62853e827a455e652fe9e09ae072ad28361",
       "expectation_changes": false,
       "failure": "The compiler-header manifest test compared canonical output with an unresolved expected macOS temporary path.",
-      "fix_commit": null,
+      "fix_commit": "7dbc2ece3ca506a6be997b284b90868a1464cd77",
       "head": "b2d470b6bd9c6e3cdf1cea4a85e5754a6873ae27",
       "normalized_manifest_files": 2,
       "run_id": 38199069229,
       "stage": "offline-mixed-adapter-regression",
       "status": "failed-before-native-comparison",
       "url": "https://github.com/ictechgy/cartograph/actions/runs/38199069229"
+    },
+    {
+      "archive_sha256": "68d8031024163a12603f35d631fe4eb08f6eda266b29d806f119ac465a2b97fc",
+      "expectation_changes": false,
+      "failure": "Mixed driver exited 2; detailed reason is unavailable. Normalization rejected the compiler-help option token fingerprint 4481f48fee5de938, preventing all bundle uploads.",
+      "fix_commit": null,
+      "head": "7dbc2ece3ca506a6be997b284b90868a1464cd77",
+      "missing_evidence": "Native detailed outputs, raw cost/sample records, and the three independently successful normalized bundles were not uploaded by the previous all-or-nothing gate; they cannot be reconstructed from this selected CI log.",
+      "native_failure_reason": null,
+      "normalized_manifest_files": 5,
+      "run_id": 38199381784,
+      "stage": "mixed-ios-native-and-evidence-normalization",
+      "status": "mixed-execution-failed-diagnostics-unavailable",
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38199381784"
     }
   ],
   "superiority_claim": null
