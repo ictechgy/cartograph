@@ -1,0 +1,512 @@
+{
+  "edges": [
+    {
+      "call_lines": [
+        316,
+        321,
+        322
+      ],
+      "call_text": [
+        "$0.synopsisString.editDistance(to: name.synopsisString)",
+        "lhs.synopsisString.editDistance(to: name.synopsisString)",
+        "< rhs.synopsisString.editDistance(to: name.synopsisString)"
+      ],
+      "callee": "edit_distance",
+      "caller": "unknown_option",
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift"
+    },
+    {
+      "call_lines": [
+        196
+      ],
+      "call_text": [
+        "return unknownOptionMessage(origin: o, name: n)"
+      ],
+      "callee": "unknown_option",
+      "caller": "make_error",
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift"
+    },
+    {
+      "call_lines": [
+        345
+      ],
+      "call_text": [
+        "let unknownOptionMessage = unknownOptionMessage("
+      ],
+      "callee": "unknown_option",
+      "caller": "composite_option",
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift"
+    },
+    {
+      "call_lines": [
+        201
+      ],
+      "call_text": [
+        "return missingValueOrUnknownCompositeOptionMessage("
+      ],
+      "callee": "composite_option",
+      "caller": "make_error",
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift"
+    },
+    {
+      "call_lines": [
+        147,
+        152
+      ],
+      "call_text": [
+        ".makeErrorMessage()",
+        ".makeErrorMessage()"
+      ],
+      "callee": "make_error",
+      "caller": "error_description",
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift"
+    },
+    {
+      "call_lines": [
+        229
+      ],
+      "call_text": [
+        ".makeErrorMessage()"
+      ],
+      "callee": "make_error",
+      "caller": "make_error",
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift"
+    },
+    {
+      "call_lines": [
+        141
+      ],
+      "call_text": [
+        "let message = argumentSet.errorDescription(error: parserError) ?? \"\""
+      ],
+      "callee": "error_description",
+      "caller": "message_info_init",
+      "path": "Sources/ArgumentParser/Usage/MessageInfo.swift"
+    },
+    {
+      "call_lines": [
+        56,
+        70
+      ],
+      "call_text": [
+        "self.init(error: error, type: type)",
+        "self.init("
+      ],
+      "callee": "message_info_init",
+      "caller": "message_info_init",
+      "path": "Sources/ArgumentParser/Usage/MessageInfo.swift"
+    },
+    {
+      "call_lines": [
+        124
+      ],
+      "call_text": [
+        "MessageInfo(error: error, type: self).message"
+      ],
+      "callee": "message_info_init",
+      "caller": "brief_message",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift"
+    },
+    {
+      "call_lines": [
+        132
+      ],
+      "call_text": [
+        "MessageInfo(error: _error, type: self).fullText(for: self)"
+      ],
+      "callee": "message_info_init",
+      "caller": "deprecated_full_message",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift"
+    },
+    {
+      "call_lines": [
+        149
+      ],
+      "call_text": [
+        "MessageInfo(error: error, type: self, columns: columns).fullText(for: self)"
+      ],
+      "callee": "message_info_init",
+      "caller": "full_message",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift"
+    },
+    {
+      "call_lines": [
+        201
+      ],
+      "call_text": [
+        "MessageInfo(error: error, type: self).exitCode"
+      ],
+      "callee": "message_info_init",
+      "caller": "exit_code",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift"
+    },
+    {
+      "call_lines": [
+        235
+      ],
+      "call_text": [
+        "let messageInfo = MessageInfo(error: error, type: self)"
+      ],
+      "callee": "message_info_init",
+      "caller": "exit",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift"
+    }
+  ],
+  "explicit_negative_controls": [
+    {
+      "declaration_line": 158,
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift",
+      "qualified_signature": "ArgumentSet.helpDescription(error:)",
+      "reason": "Sibling help-only route, not a caller of the changed distance helper."
+    },
+    {
+      "declaration_line": 238,
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift",
+      "qualified_signature": "ErrorMessageGenerator.makeHelpMessage()",
+      "reason": "Sibling dispatcher; it is called by helpDescription, not makeErrorMessage."
+    },
+    {
+      "declaration_line": 332,
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift",
+      "qualified_signature": "ErrorMessageGenerator.missingValueForOptionMessage(origin:name:)",
+      "reason": "Callee of composite_option and make_error; sharing a caller does not make it an ancestor."
+    },
+    {
+      "declaration_line": 160,
+      "path": "Sources/ArgumentParser/Usage/MessageInfo.swift",
+      "qualified_signature": "MessageInfo.fullText(for:)",
+      "reason": "Sibling callee of public message/exit APIs; formats an existing MessageInfo and does not invoke its initializer."
+    },
+    {
+      "declaration_line": 178,
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift",
+      "qualified_signature": "ParsableArguments.helpMessage(includeHidden:columns:)",
+      "reason": "Help route does not construct MessageInfo or call editDistance."
+    },
+    {
+      "declaration_line": 89,
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift",
+      "qualified_signature": "ParsableArguments.parse(_: [String]?)",
+      "reason": "Parsing-only route does not format errors; do not infer exception-handling or sibling call edges."
+    },
+    {
+      "declaration_line": 63,
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableCommand.swift",
+      "qualified_signature": "ParsableCommand.parseAsRoot(_:)",
+      "reason": "Parsing-only route; shares callers with exit but has no reverse call path to editDistance."
+    },
+    {
+      "declaration_line": 238,
+      "path": "Sources/ArgumentParser/Utilities/StringExtensions.swift",
+      "qualified_signature": "StringProtocol.indentingEachLine(by:) where SubSequence == Substring",
+      "reason": "Unrelated string helper in the same extension."
+    },
+    {
+      "declaration_line": 255,
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift",
+      "qualified_signature": "ParsableArguments.parseOrExit(_:)",
+      "reason": "Actual ancestor at depth 6, outside preregistered maximum depth 5."
+    },
+    {
+      "declaration_line": 148,
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableCommand.swift",
+      "qualified_signature": "ParsableCommand.main(_:)",
+      "reason": "Actual ancestor at depth 6, outside preregistered maximum depth 5."
+    },
+    {
+      "declaration_line": 65,
+      "path": "Sources/ArgumentParser/Parsable Types/AsyncParsableCommand.swift",
+      "qualified_signature": "AsyncParsableCommand.main(_:)",
+      "reason": "Actual ancestor at depth 6, outside preregistered maximum depth 5."
+    },
+    {
+      "declaration_line": 110,
+      "path": "Sources/ArgumentParser/Parsable Types/AsyncParsableCommand.swift",
+      "qualified_signature": "AsyncMainProtocol.main()",
+      "reason": "Actual ancestor at depth 6, outside preregistered maximum depth 5."
+    }
+  ],
+  "nodes": [
+    {
+      "declaration_line": 145,
+      "declaration_name_column": 8,
+      "declaration_text": "func editDistance(to target: String) -> Int {",
+      "definition_end_line": 236,
+      "extension_context": "extension StringProtocol where SubSequence == Substring",
+      "extension_context_line": 12,
+      "id": "edit_distance",
+      "minimum_caller_depth": 0,
+      "name": "editDistance",
+      "path": "Sources/ArgumentParser/Utilities/StringExtensions.swift",
+      "qualified_signature": "StringProtocol.editDistance(to:) where SubSequence == Substring",
+      "source_id": "Sources/ArgumentParser/Utilities/StringExtensions.swift:145:8",
+      "source_url": "https://github.com/apple/swift-argument-parser/blob/6a52f3251125d74daf04fcbd5e6f08a75d074382/Sources/ArgumentParser/Utilities/StringExtensions.swift#L145"
+    },
+    {
+      "declaration_line": 297,
+      "declaration_name_column": 8,
+      "declaration_text": "func unknownOptionMessage(origin: InputOrigin.Element, name: Name) -> String {",
+      "definition_end_line": 330,
+      "id": "unknown_option",
+      "minimum_caller_depth": 1,
+      "name": "unknownOptionMessage",
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift",
+      "qualified_signature": "ErrorMessageGenerator.unknownOptionMessage(origin:name:)",
+      "source_id": "Sources/ArgumentParser/Usage/UsageGenerator.swift:297:8",
+      "source_url": "https://github.com/apple/swift-argument-parser/blob/6a52f3251125d74daf04fcbd5e6f08a75d074382/Sources/ArgumentParser/Usage/UsageGenerator.swift#L297"
+    },
+    {
+      "declaration_line": 180,
+      "declaration_name_column": 8,
+      "declaration_text": "func makeErrorMessage() -> String? {",
+      "definition_end_line": 236,
+      "id": "make_error",
+      "minimum_caller_depth": 2,
+      "name": "makeErrorMessage",
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift",
+      "qualified_signature": "ErrorMessageGenerator.makeErrorMessage()",
+      "source_id": "Sources/ArgumentParser/Usage/UsageGenerator.swift:180:8",
+      "source_url": "https://github.com/apple/swift-argument-parser/blob/6a52f3251125d74daf04fcbd5e6f08a75d074382/Sources/ArgumentParser/Usage/UsageGenerator.swift#L180"
+    },
+    {
+      "declaration_line": 340,
+      "declaration_name_column": 8,
+      "declaration_text": "func missingValueOrUnknownCompositeOptionMessage(",
+      "definition_end_line": 355,
+      "id": "composite_option",
+      "minimum_caller_depth": 2,
+      "name": "missingValueOrUnknownCompositeOptionMessage",
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift",
+      "qualified_signature": "ErrorMessageGenerator.missingValueOrUnknownCompositeOptionMessage(origin:shortName:compositeName:)",
+      "source_id": "Sources/ArgumentParser/Usage/UsageGenerator.swift:340:8",
+      "source_url": "https://github.com/apple/swift-argument-parser/blob/6a52f3251125d74daf04fcbd5e6f08a75d074382/Sources/ArgumentParser/Usage/UsageGenerator.swift#L340"
+    },
+    {
+      "declaration_line": 143,
+      "declaration_name_column": 8,
+      "declaration_text": "func errorDescription(error: Swift.Error) -> String? {",
+      "definition_end_line": 156,
+      "id": "error_description",
+      "minimum_caller_depth": 3,
+      "name": "errorDescription",
+      "path": "Sources/ArgumentParser/Usage/UsageGenerator.swift",
+      "qualified_signature": "ArgumentSet.errorDescription(error:)",
+      "source_id": "Sources/ArgumentParser/Usage/UsageGenerator.swift:143:8",
+      "source_url": "https://github.com/apple/swift-argument-parser/blob/6a52f3251125d74daf04fcbd5e6f08a75d074382/Sources/ArgumentParser/Usage/UsageGenerator.swift#L143"
+    },
+    {
+      "declaration_line": 17,
+      "declaration_name_column": 3,
+      "declaration_text": "init(error: Error, type: ParsableArguments.Type, columns: Int? = nil) {",
+      "definition_end_line": 147,
+      "id": "message_info_init",
+      "minimum_caller_depth": 4,
+      "name": "init",
+      "path": "Sources/ArgumentParser/Usage/MessageInfo.swift",
+      "qualified_signature": "MessageInfo.init(error:type:columns:)",
+      "source_id": "Sources/ArgumentParser/Usage/MessageInfo.swift:17:3",
+      "source_url": "https://github.com/apple/swift-argument-parser/blob/6a52f3251125d74daf04fcbd5e6f08a75d074382/Sources/ArgumentParser/Usage/MessageInfo.swift#L17"
+    },
+    {
+      "declaration_line": 121,
+      "declaration_name_column": 22,
+      "declaration_text": "public static func message(",
+      "definition_end_line": 125,
+      "id": "brief_message",
+      "minimum_caller_depth": 5,
+      "name": "message",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift",
+      "qualified_signature": "ParsableArguments.message(for:)",
+      "source_id": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift:121:22",
+      "source_url": "https://github.com/apple/swift-argument-parser/blob/6a52f3251125d74daf04fcbd5e6f08a75d074382/Sources/ArgumentParser/Parsable%20Types/ParsableArguments.swift#L121"
+    },
+    {
+      "declaration_line": 129,
+      "declaration_name_column": 22,
+      "declaration_text": "public static func fullMessage(",
+      "definition_end_line": 133,
+      "id": "deprecated_full_message",
+      "minimum_caller_depth": 5,
+      "name": "fullMessage",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift",
+      "qualified_signature": "ParsableArguments.fullMessage(for:)",
+      "source_id": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift:129:22",
+      "source_url": "https://github.com/apple/swift-argument-parser/blob/6a52f3251125d74daf04fcbd5e6f08a75d074382/Sources/ArgumentParser/Parsable%20Types/ParsableArguments.swift#L129"
+    },
+    {
+      "declaration_line": 145,
+      "declaration_name_column": 22,
+      "declaration_text": "public static func fullMessage(",
+      "definition_end_line": 150,
+      "id": "full_message",
+      "minimum_caller_depth": 5,
+      "name": "fullMessage",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift",
+      "qualified_signature": "ParsableArguments.fullMessage(for:columns:)",
+      "source_id": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift:145:22",
+      "source_url": "https://github.com/apple/swift-argument-parser/blob/6a52f3251125d74daf04fcbd5e6f08a75d074382/Sources/ArgumentParser/Parsable%20Types/ParsableArguments.swift#L145"
+    },
+    {
+      "declaration_line": 198,
+      "declaration_name_column": 22,
+      "declaration_text": "public static func exitCode(",
+      "definition_end_line": 202,
+      "id": "exit_code",
+      "minimum_caller_depth": 5,
+      "name": "exitCode",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift",
+      "qualified_signature": "ParsableArguments.exitCode(for:)",
+      "source_id": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift:198:22",
+      "source_url": "https://github.com/apple/swift-argument-parser/blob/6a52f3251125d74daf04fcbd5e6f08a75d074382/Sources/ArgumentParser/Parsable%20Types/ParsableArguments.swift#L198"
+    },
+    {
+      "declaration_line": 228,
+      "declaration_name_column": 22,
+      "declaration_text": "public static func exit(",
+      "definition_end_line": 246,
+      "id": "exit",
+      "minimum_caller_depth": 5,
+      "name": "exit",
+      "path": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift",
+      "qualified_signature": "ParsableArguments.exit(withError:)",
+      "source_id": "Sources/ArgumentParser/Parsable Types/ParsableArguments.swift:228:22",
+      "source_url": "https://github.com/apple/swift-argument-parser/blob/6a52f3251125d74daf04fcbd5e6f08a75d074382/Sources/ArgumentParser/Parsable%20Types/ParsableArguments.swift#L228"
+    }
+  ],
+  "project": {
+    "license": "Apache-2.0 WITH Swift-exception",
+    "license_file": "LICENSE.txt",
+    "name": "swift-argument-parser",
+    "package_has_external_dependencies": false,
+    "repository": "https://github.com/apple/swift-argument-parser.git",
+    "revision": "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+    "source_tree": "c129dc47af2ef80b11512ad57d589f00d47b286a",
+    "tag": "1.8.2"
+  },
+  "protocol_scope_note": "The parent protocol requires a separate fresh final holdout after adapter freeze. This public project supports validation only and does not satisfy the final holdout requirements.",
+  "queries": [
+    {
+      "expected": [
+        {
+          "id": "unknown_option",
+          "minimum_depth": 1
+        }
+      ],
+      "expected_count": 1,
+      "id": "edit_distance_callers_depth_1",
+      "max_depth": 1,
+      "primary": false,
+      "seed": "edit_distance",
+      "validation_priority": "supplementary depth-boundary validation"
+    },
+    {
+      "expected": [
+        {
+          "id": "unknown_option",
+          "minimum_depth": 1
+        },
+        {
+          "id": "make_error",
+          "minimum_depth": 2
+        },
+        {
+          "id": "composite_option",
+          "minimum_depth": 2
+        },
+        {
+          "id": "error_description",
+          "minimum_depth": 3
+        }
+      ],
+      "expected_count": 4,
+      "id": "edit_distance_callers_depth_3",
+      "max_depth": 3,
+      "primary": false,
+      "seed": "edit_distance",
+      "validation_priority": "supplementary depth-boundary validation"
+    },
+    {
+      "expected": [
+        {
+          "id": "unknown_option",
+          "minimum_depth": 1
+        },
+        {
+          "id": "make_error",
+          "minimum_depth": 2
+        },
+        {
+          "id": "composite_option",
+          "minimum_depth": 2
+        },
+        {
+          "id": "error_description",
+          "minimum_depth": 3
+        },
+        {
+          "id": "message_info_init",
+          "minimum_depth": 4
+        },
+        {
+          "id": "brief_message",
+          "minimum_depth": 5
+        },
+        {
+          "id": "deprecated_full_message",
+          "minimum_depth": 5
+        },
+        {
+          "id": "full_message",
+          "minimum_depth": 5
+        },
+        {
+          "id": "exit_code",
+          "minimum_depth": 5
+        },
+        {
+          "id": "exit",
+          "minimum_depth": 5
+        }
+      ],
+      "expected_count": 10,
+      "id": "edit_distance_callers_depth_5",
+      "max_depth": 5,
+      "primary": false,
+      "seed": "edit_distance",
+      "validation_priority": "primary real-project validation task"
+    }
+  ],
+  "role": "real-project validation only; not the final holdout",
+  "schema_version": 1,
+  "scope": {
+    "anonymous_closure_rule": "Attribute calls in unnamed closures to their enclosing named callable; count each caller once.",
+    "build_target": "ArgumentParser",
+    "depth_rule": "Shortest number of caller-to-callee call edges reaching the seed; exclude seed from answer; self edges add no new symbols.",
+    "exclude": [
+      "Tests",
+      "Examples",
+      "Tools",
+      "Plugins",
+      "generated SwiftPM runner code",
+      "stdlib/SDK declarations",
+      "Cartograph and comparator sources"
+    ],
+    "included_source_files": 53,
+    "included_source_lines": 13350,
+    "included_targets": [
+      "ArgumentParser",
+      "ArgumentParserToolInfo"
+    ],
+    "not_claimed": [
+      "runtime control flow",
+      "precise dataflow impact",
+      "all package tests/examples/tools",
+      "dynamic dispatch completeness",
+      "unbounded whole-program reachability",
+      "universal tool superiority"
+    ],
+    "projection": "Unique source-declared named callables identified by project-relative path, declaration line, and qualified full signature. Exact overload identity is required; type names alone are not callers.",
+    "query_relation": "explicit static source call"
+  },
+  "status": "FROZEN_SOURCE_AUTHORED_BEFORE_ANY_PUBLIC_PROJECT_TOOL_RUN"
+}

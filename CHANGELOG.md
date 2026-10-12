@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Reproducible comparison against the pinned upstream `index-dump` executable, with independent
+  source oracles, real release-build costs, caller precision/recall, incremental freshness and raw
+  timing/RSS evidence. The bounded synthetic fixtures do not establish universal superiority.
+
 ### Fixed
 
 - Refuse partial `affected --format xcodebuild` selectors when modeled source edits coexist with

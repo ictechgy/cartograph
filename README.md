@@ -1783,6 +1783,10 @@ either language.
 See [CONTRIBUTING.md](CONTRIBUTING.md). Agents working in this repository should read
 [AGENTS.md](AGENTS.md) first.
 
+For the actual pinned IndexStoreDB CLI comparator, independent expected answers, setup costs and
+measurement limits, see the [reproducible comparison protocol](docs/evaluation/indexstore-cli-benchmark.md).
+CI preserves raw evidence; a synthetic fixture pass is not a universal performance or accuracy claim.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
