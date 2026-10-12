@@ -17,7 +17,7 @@ struct ProjectFileInventory: Sendable, Equatable {
         let paths = fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { path in
-                Self.isSource(path) || Self.isRuntimeResource(path)
+                Self.isSource(path) || path.hasSuffix(".h") || Self.isRuntimeResource(path)
             },
             shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
         )
@@ -25,7 +25,8 @@ struct ProjectFileInventory: Sendable, Equatable {
         sourceFiles = allSourceFiles.filter(pathFilter.allows)
         runtimeFiles = paths.filter { Self.isRuntimeResource($0) && pathFilter.allows($0) }
         interfaceBuilderFiles = runtimeFiles.filter(Self.isInterfaceBuilder)
-        limitationFiles = Set(sourceFiles + interfaceBuilderFiles).sorted()
+        let headers = paths.filter { $0.hasSuffix(".h") && pathFilter.allows($0) }
+        limitationFiles = Set(sourceFiles + headers + interfaceBuilderFiles).sorted()
     }
 
     private static func isSource(_ path: String) -> Bool {

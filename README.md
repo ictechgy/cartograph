@@ -758,6 +758,12 @@ Xcode releases, nested classes, and classes renamed with `@objc(…)`. Standard 
 tests were widened this way, followed by the analysis limitations. A graph narrowed by `edge_kinds`
 or path filters cannot establish all affected test modules, so it refuses selection entirely.
 
+XCTest setup/teardown dependencies select the executing class, including inherited hooks and
+classes in other test modules. Inherited test methods also retain descendant execution. These
+links carry `automaticRuntime` evidence with `xctest-lifecycle:` or `xctest-inherited-test:` IDs;
+they are static execution contracts, not observed calls. Ordinary unused helpers do not promote
+their owning class, and membership edges remain distinct from usage.
+
 The module name stands in for the xcodebuild test target name. They match for SwiftPM test targets
 and for Xcode targets whose names are valid identifiers; a target named `My App Tests` has the
 module `My_App_Tests`. Unlike an unknown class, an unknown target is a loud failure — xcodebuild
@@ -765,7 +771,11 @@ stops with "isn't a member of the specified test plan or scheme" — so such a p
 mismatch rather than a silently empty run; use the JSON output there. When the list is truncated by `--limit` or
 `--depth`, or an input is unresolved, the command prints no arguments and exits 2 (unresolved named
 declarations still exit 64). Missing/unreadable sources, stale or absent index units, an empty index,
-and narrowing path/edge filters also print no selectors and exit 2. These checks apply even when a
+and narrowing path/edge filters also print no selectors and exit 2. Freshness and readability
+checks cover Swift, Objective-C/Objective-C++ implementations, and project headers; an unindexed
+header is an uncertainty, not proof that its consumers are absent. Mixed modeled and unmodeled
+changes (for example a Swift edit plus a JSON fixture or build configuration) refuse partial
+selectors with exit 2. If only unmodeled files changed, the empty all-tests fallback remains exit 0. These checks apply even when a
 skipped source produced no runtime facts. Unresolved, stale or unsupported automatic runtime analysis
 likewise refuses selection: additional tests may reach the change through those paths. With no
 `-only-testing:` argument xcodebuild runs every test. Inspect `runtime discover` and rebuild before

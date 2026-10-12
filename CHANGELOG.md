@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Refuse partial `affected --format xcodebuild` selectors when modeled source edits coexist with
+  unmodeled configuration or fixture changes; preserve the all-unmodeled all-tests fallback.
+- Include Clang implementations and project headers in source/index coverage diagnostics and
+  check indexed Clang source readability before narrowing tests.
+- Preserve XCTest lifecycle and inherited test execution with explicit automatic provenance,
+  including descendants in other test modules, without turning membership into usage.
+
 ## [0.25.1] - 2026-10-11
 
 ### Fixed

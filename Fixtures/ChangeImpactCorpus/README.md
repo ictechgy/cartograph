@@ -17,6 +17,12 @@ Expected behavior:
   actually resolves the class at runtime without a source reference to the class. This synthetic
   regression reproduces the observed `affected`/`impact` wiring discrepancy; unrelated store tests
   must remain absent, and the supplemental relation must remain `automaticRuntime`.
+- Changing `lifecycleValue` selects `LifecycleSetupTests` through its implicit `setUp` execution,
+  plus `LifecycleDirectTests.testDirect` through its compiler call. It must not select
+  `LifecycleUnrelatedTests`: its unused helper is not a lifecycle hook. This synthetic regression
+  reproduces the repository audit's mixed lifecycle/direct-caller omission.
+- Mixed indexed Swift and JSON fixture edits refuse partial `xcodebuild` selectors; JSON-only edits
+  preserve the successful empty-selector (run every test) contract.
 - A depth or output limit is explicit. Unknown/deleted source selections are incomplete.
 - The executable prints `live` and `extension`; the tests exercise those actual results.
 
