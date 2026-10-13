@@ -9,12 +9,39 @@ See [the execution and failure contract](INTEGRATION-BOUNDARIES.md),
 [exact copied-source provenance](COPIED-PROVENANCE.json). Historical original/successor scripts are
 explicit test fixtures; production selects the reviewed files named by the controller.
 
-The controller first runs all 324 integration and 60 runtime controls through the reviewed isolated
+The controller first runs all 346 integration and 60 runtime controls through the reviewed isolated
 bootstrap, using a separately sealed test-source manifest and the existing single private `--target`
 installation. Both full suite counts, module inventories, runtime receipts and normal exits are required;
 skips, missing imports, incomplete execution or failures stop before the AB pair. Their complete costs
 remain nested in controller preparation and the outer attempt wall. The actual-engine source inventory
-remains separately sealed; its query adapters and source-authored oracle are unchanged. CI no longer attempts these dependency-requiring suites before installation.
+remains separately sealed; its graph/batch parsers and source-authored oracle are unchanged. CI no longer
+attempts these dependency-requiring suites before installation.
+
+The current baseline discovery adapter is `include-only-file-dependency-v1`. The native attempt at
+`7abb50d9` reached discovery and rejected the record-free `BridgeKit.h` umbrella. Its accepted bytes
+contain only quoted includes of `CGCore.h` and `CGQuoteEngine.h`; the active BridgeKit Clang module
+reports those headers as Records and the umbrella as a File dependency. This does not establish the
+cause of the earlier publication-blocked attempt at `4c7f491d`.
+
+The source-bound `engine_worker.py` successor preserves the frozen primitive/vendor files. It
+keeps the original discovery, main-source Record, declared-header, graph, query and input guards and
+adds separate coverage only for a sealed `.h` with no source-catalog declarations and exclusively
+quoted include/import directives. One active user Clang module File witness must match the declared
+namespace, target and SDK. Each quoted project-header target must have one same-unit Record reachable
+through every accepted root witnessing the umbrella. Missing, absolute, escaping, aliased, duplicate
+or ambiguous targets, conditional/macro/body text and declaration-bearing record-free headers refuse.
+Coverage is retained as `file_only_headers` plus the explicit adapter version; no Record is fabricated.
+The override is scoped to the isolated baseline engine call and restored even after failure. The helper
+and focused controls remain in the existing engine/test modules, preserving the original 64 admitted
+contract-source paths and source-count guard.
+
+Focused controls include the actual umbrella fixture, adversarial source/dependency cases and an
+unchanged-frozen-red/current-green discovery test. A separate retained-data replay parses all 35 raw
+unit outputs and derives named Unit reachability from the seven accepted object roots, reproducing the
+record-only failure and passing the narrow new coverage boundary. It verifies copied fixture source
+hashes against the original accepted inputs, but reconstructs a declared SDK alias and does not rerun
+module-byte, generation, SDK-content, CLI or native-worker validation. Native successor success remains
+to be established by a new complete run.
 
 For a local environment that already has psutil 7.2.2, the direct developer controls are:
 

@@ -154,6 +154,34 @@
       "source_role": "reviewed-engine-2cbe13ea"
     }
   ],
+  "file_dependency_coverage_overrides": {
+    "adapter_version": "include-only-file-dependency-v1",
+    "base_commit": "c94f5aab3e94ab8576de43e23bc556c648fbe692",
+    "files": [
+      {
+        "bytes": 19092,
+        "path": "README.md",
+        "sha256": "90c5633d509ce9eb0080eac382d4c85afceb0e0a0438a9b153d23f03077c82bc"
+      },
+      {
+        "bytes": 3873,
+        "path": "contract_suite.py",
+        "sha256": "30f25eaceca6d972612b49d1a4cc065c7840ba50b3fbcd9ea028c4b158088fd3"
+      },
+      {
+        "bytes": 11225,
+        "path": "engine_worker.py",
+        "sha256": "6e8be97bd6db830612698f314455b04769d9536b73a5efa7bf7be2ccd4403a29"
+      },
+      {
+        "bytes": 19224,
+        "path": "test_engine_worker.py",
+        "sha256": "7bc4924b1b5e0f879cb0c6f195a315dd36f4f9e43b48ef9b30335804078a295d"
+      }
+    ],
+    "role": "current-include-only-file-dependency-coverage",
+    "scope": "Additive successor identity only. Frozen primitive/vendor and historical copied/source hashes are unchanged. The selected baseline engine scopes the current discovery override with restoration. Accepted declaration-free quoted-include headers require an independently reachable user Clang module File dependency and sealed included-header Records in the same unit for every active root. No Record, graph or query fact is fabricated. Original input/root guards, graph/batch parsers, oracle and failure outcomes remain unchanged. Focused and retained-unit coverage replays are not native execution or performance evidence. The current helper and controls are consolidated into the existing engine/test modules to retain the original 64 admitted contract-source paths. The earlier 66-source layout failed the unchanged source-count guard and remains diagnostic evidence; new coverage-control qualified IDs move to test_engine_worker."
+  },
   "reconstruction_overrides": {
     "base_repository_commit": "1246bd07aa1ae7768e26a385b59b49d285e8f492",
     "files": [
