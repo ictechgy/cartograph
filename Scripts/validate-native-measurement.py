@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -114,6 +115,65 @@ def helper_hashes() -> dict:
         )
         if p.is_file()
     }
+
+
+def interpreter_observation(selected: str) -> dict:
+    """선택한 실행 경로와 실제 정규 파일을 제한된 no-follow 읽기로 묶는다."""
+    started = time.perf_counter()
+    row = dict(status="unavailable", selected_path=selected)
+    descriptor = None
+    try:
+        path = Path(selected)
+        if not path.is_absolute():
+            raise ValueError("interpreter-path-not-absolute")
+        resolved = path.resolve(strict=True)
+        before = resolved.lstat()
+        if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= 256 * 1024**2:
+            raise ValueError("interpreter-not-bounded-regular-file")
+
+        def identity(info):
+            return (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+        descriptor = os.open(resolved, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        if identity(os.fstat(descriptor)) != identity(before):
+            raise ValueError("interpreter-changed-during-capture")
+        digest, count = hashlib.sha256(), 0
+        while chunk := os.read(descriptor, 1024**2):
+            count += len(chunk)
+            if count > before.st_size:
+                raise ValueError("interpreter-changed-during-capture")
+            digest.update(chunk)
+        if (
+            count != before.st_size
+            or identity(os.fstat(descriptor)) != identity(before)
+            or identity(resolved.lstat()) != identity(before)
+            or path.resolve(strict=True) != resolved
+        ):
+            raise ValueError("interpreter-changed-during-capture")
+        row.update(
+            status="available",
+            resolved_path=str(resolved),
+            bytes=count,
+            sha256=digest.hexdigest(),
+            file_identity=list(identity(before)),
+        )
+    except ValueError as error:
+        row["failure"] = str(error)
+    except (OSError, RuntimeError):
+        row["failure"] = "interpreter-identity-unavailable"
+    except KeyboardInterrupt:
+        row.update(status="incomplete", failure="interpreter-capture-interrupted")
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        row["wall_seconds"] = time.perf_counter() - started
+    return row
+
+
+def same_interpreter(before: dict, after: dict) -> bool:
+    """시점별 비용은 정체성 비교에서 제외하고 경로·내용·메타데이터는 모두 비교한다."""
+    keys = ("selected_path", "resolved_path", "bytes", "sha256", "file_identity")
+    return before.get("status") == after.get("status") == "available" and all(before[key] == after[key] for key in keys)
 
 
 def install_provenance(output: Path) -> dict:
@@ -334,8 +394,43 @@ def validate(output: Path, dependencies: Path) -> dict:
         if helper_hashes() != hashes:
             result.update(status="failed", failed_phase=name, failure="helper-input-changed-before-phase")
             break
+        if name == "install":
+            before = interpreter_observation(argv[0])
+            result["install_interpreter"] = dict(
+                schema_version=1,
+                before=before,
+                after=dict(status="unavailable", failure="install-not-started"),
+                status=before["status"] if before["status"] != "available" else "pending",
+                cost_accounting="Capture costs are nested in diagnostic wall, outside command-only install wall",
+                scope="Prospective selected interpreter identity only; no dynamic-loader or wheel equivalence proof",
+            )
+            save(output / "setup/install-interpreter.json", result["install_interpreter"])
+            if before["status"] != "available":
+                result.update(
+                    status="failed", failed_phase="install-interpreter", failure="interpreter-precheck-failed"
+                )
+                break
         row = command(argv, ROOT, output / "setup" / name, environment, timeout)
         result["phases"][name] = row
+        if name == "install":
+            binding = result["install_interpreter"]
+            if row["completed"]:
+                binding["after"] = interpreter_observation(argv[0])
+                binding["status"] = (
+                    "matched"
+                    if same_interpreter(binding["before"], binding["after"])
+                    else ("changed" if binding["after"]["status"] == "available" else binding["after"]["status"])
+                )
+            else:
+                binding.update(status="incomplete", after=dict(status="unavailable", failure="install-incomplete"))
+            save(output / "setup/install-interpreter.json", binding)
+            if binding["status"] != "matched":
+                result.update(
+                    status="failed",
+                    failed_phase="install-interpreter" if row["passed"] else "install",
+                    failure="interpreter-postcheck-failed" if row["passed"] else "phase-failed",
+                )
+                break
         if name == "install" and ((output / "private-setup/install-report.json").exists() or row["passed"]):
             projection_started = time.perf_counter()
             try:
@@ -380,7 +475,10 @@ def main() -> int:
     )
     if result["status"] == "completed-synthetic-native-validation":
         return 0
-    return 125 if any(not r["completed"] for r in result["phases"].values()) else 1
+    incomplete = any(not r["completed"] for r in result["phases"].values()) or (
+        result.get("install_interpreter", {}).get("status") == "incomplete"
+    )
+    return 125 if incomplete else 1
 
 
 if __name__ == "__main__":

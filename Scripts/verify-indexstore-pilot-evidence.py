@@ -15,6 +15,38 @@ MAX_MEMBER = 8 * 1024 * 1024
 MAX_FILES = 10_000
 
 
+def verify_auxiliary(member: str, bundle: dict, data: bytes) -> None:
+    """명시적으로 검토한 SDK·실제 팔의 공개 영수증만 상태 인벤토리와 함께 허용한다."""
+    if member == "bundle-status.json":
+        return
+    contracts = {
+        "sdk-input-discovery": ("sdk-discovery", ([], ["discovery/manifest.json"])),
+        "actual-arm-correctness-validation": ("actual-arm-correctness", ([],)),
+    }
+    kind = bundle.get("artifact_kind")
+    if kind not in contracts:
+        raise ValueError("Unexpected auxiliary evidence path")
+    role_prefix, manifests = contracts[kind]
+    roles = {
+        "attempt.json": role_prefix + "-attempt-envelope",
+        "publication-status.json": role_prefix + "-publication-envelope",
+    }
+    if member not in roles or bundle["manifests"] not in manifests:
+        raise ValueError("Unexpected auxiliary evidence path")
+    value = json.loads(data)
+    if (
+        not isinstance(value, dict)
+        or type(value.get("schema_version")) is not int
+        or value["schema_version"] != 1
+        or value.get("role") != roles[member]
+    ):
+        raise ValueError("Unexpected auxiliary envelope role")
+    if member == "publication-status.json" and (
+        value.get("raw_fallback") is not False or value.get("complete_run_evidence") is not False
+    ):
+        raise ValueError("Unexpected auxiliary publication policy")
+
+
 def verify(root: Path = ROOT) -> dict:
     inventory = json.loads((root / "bundles.json").read_text())
     archives, normalized, auxiliary = [], 0, 0
@@ -68,13 +100,12 @@ def verify(root: Path = ROOT) -> dict:
                     verified += 1
             for record in bundle.get("auxiliary_files", []):
                 member = record["path"]
-                if member != "bundle-status.json":
-                    raise ValueError("Unexpected auxiliary evidence path")
                 if member in selected:
                     raise ValueError("Duplicated auxiliary evidence reference")
                 if member not in names:
                     raise ValueError("Missing auxiliary evidence")
                 data = archive.read(member)
+                verify_auxiliary(member, bundle, data)
                 if len(data) != record["bytes"] or hashlib.sha256(data).hexdigest() != record["sha256"]:
                     raise ValueError("Auxiliary evidence bytes changed")
                 selected.add(member)

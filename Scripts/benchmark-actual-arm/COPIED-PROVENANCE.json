@@ -1,0 +1,467 @@
+{
+  "catalog_publication_overrides": {
+    "base_commit": "66f7ea607d1cd5b274a309ab891ab6f4964a9a73",
+    "files": [
+      {
+        "bytes": 16919,
+        "path": "README.md",
+        "sha256": "7fed3b7d6a14f4329e59d79f4e5ece1647b7227ddf0cc47fa9035f663a699fd3"
+      },
+      {
+        "bytes": 3873,
+        "path": "contract_suite.py",
+        "sha256": "3b637c89ee3ed8c8f6a354f265f3360891268801d20fa81bf61c1f967f20c946"
+      },
+      {
+        "bytes": 20767,
+        "path": "runtime_publication.py",
+        "sha256": "c250e1792fb3ca38229bec4aee2348aa5428d8dbb8673c5c275d165c8e3b9980"
+      },
+      {
+        "bytes": 25343,
+        "path": "test_runtime_publication.py",
+        "sha256": "357b68c05d41dc71a3adfb037c5b41aff638cb816603e91d69e2408e5afd7b97"
+      }
+    ],
+    "role": "exact-source-derived-catalog-publication",
+    "scope": "Additive successor identity only. The two exact restored_rebuilt arm source catalogs are projected after original engine-request, selected-plan, current generation/source and producer validation plus full schema and regenerated-content equality. The existing frozen diagnostic renderer renames only the declaration field and roundtrip checks retain raw/content hash meanings. The scanner, vendored producer and original execution outcomes are unchanged. Focused controls are synthetic source/publication tests, not recovered native failure or performance evidence. All prior copied and successor hashes remain historical."
+  },
+  "copied": [
+    {
+      "bytes": 13904,
+      "path": "runtime/isolated_measure.py",
+      "sha256": "af1e6f1f04f978d868d4d3a04af12b31efcc2b7b7e3b0fdb05b82e0f2711edec",
+      "source_path": "isolated_measure.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 11491,
+      "path": "runtime/runtime_identity.py",
+      "sha256": "815443af8d79b7b4ceed31f4219b9ad505ca06642a99a1f5940146c74fc5f14e",
+      "source_path": "runtime_identity.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 6934,
+      "path": "runtime/test_runtime_identity.py",
+      "sha256": "a014a406e8f195483fd388a0fbb2476ba448e968a56cf31843ec14dab1f368f1",
+      "source_path": "test_runtime_identity.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 12604,
+      "path": "runtime/runtime_bootstrap.py",
+      "sha256": "6f60929fa29f90ec92e1541e54acd7c7f3162cef94aaa831ba24058573cd3825",
+      "source_path": "runtime_bootstrap.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 23563,
+      "path": "runtime/test_runtime_bootstrap.py",
+      "sha256": "4bb06417a97a1a5bb501dd58f88d01d3eb9a167ed4e2f3169ec9e913387bbec2",
+      "source_path": "test_runtime_bootstrap.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 21016,
+      "path": "runtime/vendor/sdk_content_seal.py",
+      "sha256": "cc289e5e44062b0c41ed998e3ea7ce9c357b4ead4be1fbae778ee5247e7b2195",
+      "source_path": "vendor/sdk_content_seal.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 34857,
+      "path": "runtime/vendor/normalize_evidence.py",
+      "sha256": "8df67ad5c34408cc99b78cdb0f235c1f41b09be4725448648dd5ca38f3ae7a7b",
+      "source_path": "Scripts/normalize-indexstore-evidence.py",
+      "source_role": "Cartograph-b503c516"
+    },
+    {
+      "bytes": 25018,
+      "path": "runtime/vendor/process_tree_measure.py",
+      "sha256": "03a6cc72657a560e983b95fa99b7df4ff907a6d41f37fcd3692f6ed694d92101",
+      "source_path": "vendor/process_tree_measure.py",
+      "source_role": "reviewed-runtime-c58845e8"
+    },
+    {
+      "bytes": 34767,
+      "path": "runtime/vendor/discovery_receipts.py",
+      "sha256": "01629fbd8490a730f4bc83d6bd94198c3e5eaff8cdb28442441e985e9af451a3",
+      "source_path": "Scripts/benchmark-inputs/select_sdk_roots.py",
+      "source_role": "Cartograph-b503c516"
+    },
+    {
+      "bytes": 6259,
+      "path": "primitive/generation_inputs.py",
+      "sha256": "1db712191d3b2f4703823b686c84f443d7d058b707024d491b6b6922e30f686f",
+      "source_path": "generation_inputs.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 37256,
+      "path": "primitive/arm_sessions.py",
+      "sha256": "821f985b7d6140fcf04ac0b6a6d95073c5cc621eacad36a5909ea7f60819e47b",
+      "source_path": "arm_sessions.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 15708,
+      "path": "primitive/vendor/command_runner.py",
+      "sha256": "7305066cdfa9acf17076d0ee7fe95d927883a2224ff1ba62c15eeb2e62807d50",
+      "source_path": "vendor/command_runner.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 25018,
+      "path": "primitive/vendor/process_tree_measure.py",
+      "sha256": "03a6cc72657a560e983b95fa99b7df4ff907a6d41f37fcd3692f6ed694d92101",
+      "source_path": "vendor/process_tree_measure.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 5663,
+      "path": "primitive/vendor/mixed/compiler_generations.py",
+      "sha256": "3d249f7cd1ac1a6bd62edafb116c1ea389b903899373e3fe29878f0215e79fca",
+      "source_path": "vendor/mixed/compiler_generations.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 8307,
+      "path": "primitive/vendor/mixed/validation_common.py",
+      "sha256": "1abf5f434ea0616bc671d5b017945e66c584f515883fa4c6e2086ea5f71b58d1",
+      "source_path": "vendor/mixed/validation_common.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 5065,
+      "path": "primitive/vendor/mixed/score_calls.py",
+      "sha256": "725363589b415cb655e6bb071a2b7e0da5a0014f3554372c416a57806f3165ee",
+      "source_path": "Fixtures/IndexStoreCLIBenchmark/mixed-ios-validation/score_calls.py",
+      "source_role": "Cartograph-b503c516-source-oracle-grader"
+    },
+    {
+      "bytes": 28860,
+      "path": "primitive/vendor/mixed/adapter/mixed_adapter.py",
+      "sha256": "9e1d552d6350d1fbfa592e03a68b61dee32ddcc65a57e68c27ae8b8516caab33",
+      "source_path": "vendor/mixed/adapter/mixed_adapter.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    },
+    {
+      "bytes": 42668,
+      "path": "primitive/vendor/mixed/adapter/observe_mixed.py",
+      "sha256": "974a89ebe89c809d97a6050537e3e8818c15ef93f4012e4e90c6deec9784c1a1",
+      "source_path": "vendor/mixed/adapter/observe_mixed.py",
+      "source_role": "reviewed-engine-2cbe13ea"
+    }
+  ],
+  "file_dependency_coverage_overrides": {
+    "adapter_version": "include-only-file-dependency-v1",
+    "base_commit": "c94f5aab3e94ab8576de43e23bc556c648fbe692",
+    "files": [
+      {
+        "bytes": 19092,
+        "path": "README.md",
+        "sha256": "90c5633d509ce9eb0080eac382d4c85afceb0e0a0438a9b153d23f03077c82bc"
+      },
+      {
+        "bytes": 3873,
+        "path": "contract_suite.py",
+        "sha256": "30f25eaceca6d972612b49d1a4cc065c7840ba50b3fbcd9ea028c4b158088fd3"
+      },
+      {
+        "bytes": 11225,
+        "path": "engine_worker.py",
+        "sha256": "6e8be97bd6db830612698f314455b04769d9536b73a5efa7bf7be2ccd4403a29"
+      },
+      {
+        "bytes": 19224,
+        "path": "test_engine_worker.py",
+        "sha256": "7bc4924b1b5e0f879cb0c6f195a315dd36f4f9e43b48ef9b30335804078a295d"
+      }
+    ],
+    "role": "current-include-only-file-dependency-coverage",
+    "scope": "Additive successor identity only. Frozen primitive/vendor and historical copied/source hashes are unchanged. The selected baseline engine scopes the current discovery override with restoration. Accepted declaration-free quoted-include headers require an independently reachable user Clang module File dependency and sealed included-header Records in the same unit for every active root. No Record, graph or query fact is fabricated. Original input/root guards, graph/batch parsers, oracle and failure outcomes remain unchanged. Focused and retained-unit coverage replays are not native execution or performance evidence. The current helper and controls are consolidated into the existing engine/test modules to retain the original 64 admitted contract-source paths. The earlier 66-source layout failed the unchanged source-count guard and remains diagnostic evidence; new coverage-control qualified IDs move to test_engine_worker."
+  },
+  "reconstruction_overrides": {
+    "base_repository_commit": "1246bd07aa1ae7768e26a385b59b49d285e8f492",
+    "files": [
+      {
+        "bytes": 10440,
+        "path": "contract_prerequisites.py",
+        "sha256": "90ab22b4751ccdd0acc8d69dcfe26ae985c7302656a58cb52d1f24535b02eb3e"
+      },
+      {
+        "bytes": 3873,
+        "path": "contract_suite.py",
+        "sha256": "01bcc345212b5ddaf3a4779ac46bad65a05c4110810383af403b3a7b56cd4949"
+      },
+      {
+        "bytes": 19114,
+        "path": "correctness_controller.py",
+        "sha256": "7c3a984f75556a2feeb84c377eaaa66ec565076ccd5635a9427e20e72407a8fb"
+      },
+      {
+        "bytes": 41257,
+        "path": "publish_correctness.py",
+        "sha256": "cca921cfc4a4b93e59bc2abba53d33ed83269deaf958cad857ed6839363d2bae"
+      },
+      {
+        "bytes": 6580,
+        "path": "runtime/interpreter_relation.py",
+        "sha256": "71d775dd09958b27d9e240f7c1e695ac5c7cba0d4b3a4f69cbebece48687dfed"
+      },
+      {
+        "bytes": 14979,
+        "path": "runtime/isolated_measure.py",
+        "sha256": "943bc7d5e8ac3dc3380e5200a94de4853d4110335ec879de7d5085b6a8c51330"
+      },
+      {
+        "bytes": 15145,
+        "path": "runtime/runtime_bootstrap.py",
+        "sha256": "a8f9ee4c6c53387d2fab2aa4433525d6bb4c9c4063b00282080a5489e8865cab"
+      },
+      {
+        "bytes": 6761,
+        "path": "runtime/startup_binding.py",
+        "sha256": "39717813562bced0d2de98f16a6d227333e2814ec19b93d379a8c800d9404eb9"
+      },
+      {
+        "bytes": 5992,
+        "path": "runtime/test_interpreter_runtime.py",
+        "sha256": "eb64bbbf9e7d871b800c1eb6b0d28776aa255801fc12dc554db11260de7e1ae2"
+      },
+      {
+        "bytes": 25289,
+        "path": "runtime/test_runtime_bootstrap.py",
+        "sha256": "3b3879087b3f5e9c7c35c7f26889045f2b31b56c76501c5bc25a2de6948f8397"
+      },
+      {
+        "bytes": 13827,
+        "path": "runtime_publication.py",
+        "sha256": "a5796f15a5bc30de588e409e8838a70f3da8b5d82c5160461cf9847e4dbe0de5"
+      },
+      {
+        "bytes": 17494,
+        "path": "selected_launch.py",
+        "sha256": "222a1c2bae834a1fd141f63c2b637f6f1e08e38f282cfb1d82054bdf21e7b3de"
+      },
+      {
+        "bytes": 4727,
+        "path": "source_import_policy.py",
+        "sha256": "e159e432d2031d8f5d2ed857087c12e4d9c8a143bc7b60ff9f1c86966c916f6d"
+      },
+      {
+        "bytes": 10578,
+        "path": "state_worker.py",
+        "sha256": "2772f57563820cfbf5e4e6abbeeb31472e938d8b06dc98edf55dc8c71db553b5"
+      },
+      {
+        "bytes": 24594,
+        "path": "test_completion_binding.py",
+        "sha256": "dd84e7ee22b19ba3383de3730970c3a3f090fb86a18cd72e1c8ce239fa8ac479"
+      },
+      {
+        "bytes": 6701,
+        "path": "test_controller_execution.py",
+        "sha256": "b460a90d97e4f7aa960ca0f9f010649ee29ac482f33df084872fd307a8ce2c11"
+      },
+      {
+        "bytes": 13410,
+        "path": "test_interpreter_relation.py",
+        "sha256": "496daa7f1cbe15840ba7793b87c74d3f2ed76430d0979fbc2f17901cfbe3b3df"
+      },
+      {
+        "bytes": 13281,
+        "path": "test_profile_collection.py",
+        "sha256": "220bb5e85ecefcdc32f45f63dfb3fefcf2a41666966ee23c0432187639f3fa41"
+      },
+      {
+        "bytes": 14652,
+        "path": "test_runtime_publication.py",
+        "sha256": "60ea752ffc1339a07561df647fc71ba96ba519d0b754db2018c09decf61ce260"
+      },
+      {
+        "bytes": 20059,
+        "path": "test_selected_launch.py",
+        "sha256": "598fe72e4da60d15a7248cc47c30624b875b563125e9e4273f9fe2a3f5619dd5"
+      }
+    ],
+    "role": "selected-probe-interpreter-relation-and-original-arm-completion",
+    "scope": "Reconstructed from the published PR head after the previous cloud workspace became unavailable. These current Python overrides add runtime version 3, the exact original selected-probe requested/reported interpreter relation, required original evidence for both successful arms, and focused controls. Prior copied and successor hashes remain historical. Installation binding, frozen vendor helpers, product sources, workflows and historical evidence archives are unchanged. Fresh Linux correctness validation does not establish macOS launcher behavior or a native performance comparison."
+  },
+  "schema_version": 1,
+  "scope": "Byte identity only; runtime and native integration execution remain separately verified",
+  "startup_primitive_origin": {
+    "manifest_sha256": "93eedd056e48e81f2e2542e1ed8f628ebbd28b9e4d3666bab39c6b5567d41886",
+    "production_profile_sha256": "d00cc5a64355c4b1bc45852fd6bbd2f611f48f12415a2765014dd9cf51ff98d7",
+    "source_role": "reviewed-startup-profile-1743",
+    "successor_scope": "Collector adds original-evidence completion reconstruction. Local native-extension create/exec are refused in the probe and initial source policies. Two bytecode regression fixtures explicitly select their own cache files. Full controller/runtime/publication wiring is a separately reviewed successor."
+  },
+  "successor_overrides": {
+    "base_commit": "a9854f68545dd1b403458cf504ee4bd99215f439",
+    "files": [
+      {
+        "bytes": 12408,
+        "path": "attempt_receipts.py",
+        "sha256": "7949b125598f0f94927076ef231ca61a91bd96d63c27c3cb7713d4d980003c1f"
+      },
+      {
+        "bytes": 10096,
+        "path": "contract_prerequisites.py",
+        "sha256": "9d9df6c3a976c2d72641260ba76ad6495dd5a60fc14202b799eff1d9aaf0b296"
+      },
+      {
+        "bytes": 3753,
+        "path": "contract_suite.py",
+        "sha256": "7f9a3c66652a907ceecc9af5bcd1d813e595d3d0a775a58fb6ec37dbea410981"
+      },
+      {
+        "bytes": 19036,
+        "path": "correctness_controller.py",
+        "sha256": "29a94330269a81f03df177a98e1122f8875a76f2ca4c6a881c30e0cffb6a9499"
+      },
+      {
+        "bytes": 10143,
+        "path": "primitive/generation_inputs.py",
+        "sha256": "96b106581b64dfe8fe626ece29062233d4c6e0a25ce75be355ecc9a015143c32"
+      },
+      {
+        "bytes": 15983,
+        "path": "profile_collection.py",
+        "sha256": "f1d66fb08bd2a57b902128970508625d9a03e7c3cde5b66c9c5080e81dc096cd"
+      },
+      {
+        "bytes": 30617,
+        "path": "publish_correctness.py",
+        "sha256": "a0f801beeb5fa53121091f51cad0f8348e80dfc74a26500e7294a9654ba143b5"
+      },
+      {
+        "bytes": 14803,
+        "path": "runtime/isolated_measure.py",
+        "sha256": "8507c5cdb3fa1b740d6fe2d9a933df9e2169e4631b2154dd70ef3b6f0d82bd51"
+      },
+      {
+        "bytes": 14132,
+        "path": "runtime/runtime_bootstrap.py",
+        "sha256": "f1ba55182ea6c87b0f5b1a0847d27474b8377ed3090615119d5b7397db80ecd8"
+      },
+      {
+        "bytes": 4925,
+        "path": "runtime/startup_binding.py",
+        "sha256": "bc88f2b554b872a0c678b4cd042c2a45a1647f9ae839dcb85b55a2b072c95d67"
+      },
+      {
+        "bytes": 17980,
+        "path": "runtime/startup_profile.py",
+        "sha256": "d00cc5a64355c4b1bc45852fd6bbd2f611f48f12415a2765014dd9cf51ff98d7"
+      },
+      {
+        "bytes": 23825,
+        "path": "runtime/test_runtime_bootstrap.py",
+        "sha256": "6eabea699c67b3166e82af4d2a8211890f9020da8606922f05e614c3128d3ab4"
+      },
+      {
+        "bytes": 7785,
+        "path": "runtime/test_startup_runtime.py",
+        "sha256": "2aabcb092cde357ec1ccd7b16346e11fdae7d9c16726099e739c09853b1495f4"
+      },
+      {
+        "bytes": 35130,
+        "path": "runtime/vendor/normalize_evidence.py",
+        "sha256": "66113686413bf37f9f4e8b7a3e457c1b759fedffa4fc2e95d6f10d42336f192c"
+      },
+      {
+        "bytes": 13502,
+        "path": "runtime_publication.py",
+        "sha256": "806bcaa7c0e7deb79fa27ca7ca3a2e5ec0d4683395a0c1750ad13cbd17d05a75"
+      },
+      {
+        "bytes": 14034,
+        "path": "selected_launch.py",
+        "sha256": "68d2abf2e34bcd4a62d67536c1f39ed982d4542e0c5944ee320005c89b5224dd"
+      },
+      {
+        "bytes": 4688,
+        "path": "source_import_policy.py",
+        "sha256": "f7963829a18cb540f40cc357086d0fb690ad368beca7857c8c9205a9cb07d490"
+      },
+      {
+        "bytes": 10269,
+        "path": "state_inputs.py",
+        "sha256": "2bee66279ff0121545b93fcdfeb88708022179d4bc6494643941143d02b948c6"
+      },
+      {
+        "bytes": 10077,
+        "path": "test_completion_binding.py",
+        "sha256": "3cc788aade2aacbddee9f51c27d18c2feb0efbf1b56429f45f77eeca254309c8"
+      },
+      {
+        "bytes": 9646,
+        "path": "test_contract_prerequisites.py",
+        "sha256": "4a4c3d0c2480742086d4a8d340d5cd8364b1449de2281d73cd5ab134df9e8604"
+      },
+      {
+        "bytes": 6518,
+        "path": "test_controller_execution.py",
+        "sha256": "2889d77f9e374db2eafcf1950f8724ebdb32fed07fa628c588b7e9be860e80b1"
+      },
+      {
+        "bytes": 6809,
+        "path": "test_correctness_controller.py",
+        "sha256": "0c9dfb532d1d79be04ddc6c320d9bd79b6e7817484ececec0754e8f7461149c8"
+      },
+      {
+        "bytes": 7480,
+        "path": "test_developer_context.py",
+        "sha256": "400b5dd99f9cca8f857662d1df03feda0d75cdb65d5869ab8968409a17a67098"
+      },
+      {
+        "bytes": 10120,
+        "path": "test_pre_record_diagnostics.py",
+        "sha256": "373fb7251fe20473fc514bb1f515da93f580be8d06c3aff60c7078dbaab40446"
+      },
+      {
+        "bytes": 12624,
+        "path": "test_profile_collection.py",
+        "sha256": "c8ad4685363a966c0ec56632d6a73608033a82cac24f8f938f9879290812bed6"
+      },
+      {
+        "bytes": 14472,
+        "path": "test_publication.py",
+        "sha256": "63144005b790c1fe036e764b6094adc4678b6a8afa8cfd419fdf8122f2cd8fe0"
+      },
+      {
+        "bytes": 12637,
+        "path": "test_runtime_publication.py",
+        "sha256": "e4bdaa0b467092bd0796bea28dc2f28b82e0bce8f2da73f0b3ff37f01d30ad2c"
+      },
+      {
+        "bytes": 16998,
+        "path": "test_selected_launch.py",
+        "sha256": "b8adf9a9e79cde9270c33f859fc0c9ef927db4494bedf48e6b53f7d571ac7870"
+      },
+      {
+        "bytes": 4871,
+        "path": "test_source_import_policy.py",
+        "sha256": "cc17d5318558aae97d530a36dc2b7004e88a5148b1cfd6aae7b2246e06a611b8"
+      },
+      {
+        "bytes": 15227,
+        "path": "test_startup_profile.py",
+        "sha256": "4a95e0bb9eec1de1362e1ca12e925fc6ba9ec084e27ead07814066f8071c8c77"
+      },
+      {
+        "bytes": 7033,
+        "path": "test_startup_wiring.py",
+        "sha256": "dde3115bbeb30e928eb43a75d9f50fde08e82e610686f9ac4e98bf13c7cdc154"
+      },
+      {
+        "bytes": 9283,
+        "path": "test_state_inputs.py",
+        "sha256": "bab05cd3f69f6bbcad67fdcc346159079fa5058f83710bb5323787de827890d7"
+      }
+    ],
+    "role": "bound-full-contract-prerequisites-after-existing-install",
+    "scope": "Original copied hashes and prior evidence remain historical. Current overrides include prospective startup-profile collection, bounded source-only initial/probe imports, version-2 runtime environment-request binding for every suite/state/engine/observer, completion and exact-copy publication checks, and explicit test fixture cache destinations. Runtime bootstrap and isolated measurement adapters are changed; runtime_identity, frozen process_tree_measure, SDK seal and strict normalizer bytes remain unchanged from the preceding repository head. The earlier identity-default normalizer hook/module-map projection remains as previously reviewed. Original installation/interpreter predicates and SDK acceptance limits remain intact. Darwin-only startup-key admission is prospective hash/length equality across clean-request probes and actual process observations; it is not native cached-environment or loader closure."
+  }
+}

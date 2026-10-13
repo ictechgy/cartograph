@@ -1,7 +1,7 @@
 # Retained pilot rounds: 2026-10-12
 
 These are validation observations, **not a final superiority result**. The source-authored oracle was
-unchanged through all fifteen rounds. `pilot-rounds.json` retains failed setup/adapter rounds and the
+unchanged through all twenty-nine rounds (fifty-three archives). `pilot-rounds.json` retains failed setup/adapter rounds and the
 contradictory performance regimes. `bundles.json` records exact archive hashes and bounded sizes.
 
 1. Run 38190877188 failed an offline adapter regression: macOS `/var` and `/private/var` aliases were
@@ -114,6 +114,183 @@ contradictory performance regimes. `bundles.json` records exact archive hashes a
    and strict self-analysis passed; the comparison job remains red for this publication failure.
    Full shared costs remain equal and retained. SDK contents and final20-session endpoints remain open.
 
+16. Run 38220745660 passes all three exact-head CI jobs and repeats all 13 successful mixed states
+   without changing the source oracle. It also preserves the first fully published native synthetic
+   helper packet after the strict package-provenance repair. Both exact public artifact ZIPs are kept:
+   3,625 normalized comparison files and 204 normalized helper files, with independent hash replay.
+   The helper runs 44 tests: 42 pass and two explicit Linux-only orphan-adoption controls are skipped.
+   All 16 fixed calibration pairs agree on output. Eight RSS runs retain 174 rows / 245 process members;
+   each repeated-child run observes all 13 identities. Requested 10 ms sampling actually has median
+   intervals 15–31 ms and maxima up to 42 ms, as the unchanged receipts disclose.
+   Timing-only observer/no-observer median ratios are 0.972 and 1.051, with both 95% intervals crossing
+   parity. Memory-observed ratios are 1.099 and 1.104, showing measurable observer overhead and supporting
+   separate matched RSS runs. These synthetic diagnostics are not product timing or superiority proof.
+   Native failure-control outcomes remain in the test log; their temporary individual artifacts are
+   not present. macOS detached/unobserved ancestry gaps, moving-runner control, actual-engine
+   calibration, SDK content identity, a fresh holdout and final 20-session endpoints remain open.
+   Full product coverage is 92.81% (40,478/43,614 lines), with 2,008 tests in 203 suites. Earlier failed
+   rounds, including round 15's unavailable helper details, are unchanged.
+
+17. Run 38230196392 again passes all 13 mixed validation states against the unchanged oracle.
+   Product checks pass 2,008 tests in 203 suites at 92.81% coverage (40,477/43,614 lines); self-analysis
+   also passes. The separate new SDK diagnostic fails after five successful probes because Apple
+   Swift 6.3.3 reports an additional sdkPath field. Its output also reports /usr/lib/swift outside
+   declared SDK/toolchain roots. This is retained as an input-discovery failure, not an engine loss.
+   All pre/post generation and completed-probe guards pass. Original child exit1, 11.526 seconds,
+   discovery's identical 11.403-second per-arm accounting, and red publication outcome remain visible.
+   The safe SDK artifact contains 27 normalized discovery files plus its exact hash-only attempt and
+   publication envelopes. No root is accepted. The original three artifacts are byte-preserved.
+   Synthetic helper validation retains all 16 pairs and 170 RSS rows/248 process members. Timing-only
+   median ratios are 0.998 and 1.007 with both confidence intervals crossing parity; memory-observed
+   ratios are 1.275 and 1.070. These remain diagnostic observer costs, not product performance proof.
+   Detailed host-path existence/link layout, full SDK contents, actual-arm calibration, fresh holdouts
+   and the final performance gates remain pending. Earlier failures are unchanged.
+
+18. Run 38233336308 again passes all 13 mixed validation states and the separate synthetic helper
+   diagnostic. Product checks pass 2,008 tests in 203 suites at 92.81% coverage (40,477/43,614 lines).
+   The SDK child completes with exit1 after 11.384 seconds, but its detailed discovery bundle is
+   blocked by the privacy scanner. The two-file safe SDK envelope retains the original outcome,
+   11.415-second supervisor cost and 0.243-second publication cost. The exact blocker hashes identify
+   setup/discovery/probes/clang-cxx.stderr and the suffix /include/c++/v1; the preceding raw path,
+   actual selector failure, probe count and path existence/link layout remain unavailable.
+   A focused compiler-relative parent-path reproduction motivates a separately reviewed explicit
+   normalization alias; it does not recover this round's missing detail. No root is accepted.
+   Independent comparison/helper artifacts survive unchanged, with all 14 rebuilt graph projections
+   and 21 ten-query batches regraded against the existing source oracle. Every synthetic pair and RSS
+   sample remains in the helper archive. Earlier failures remain unchanged; no performance proof.
+
+19. Run 38236591686 passes all 13 mixed validation states and the synthetic helper diagnostic.
+   Product checks pass 2,008 tests in 203 suites at 92.82% coverage (40,483/43,614 lines).
+   SDK discovery completes with exit1; its detailed bundle remains unavailable. Exactly two safe
+   envelopes retain the 14.117-second child, 14.149-second supervisor and 0.534-second publication
+   costs, with the original failure. The first compiler-relative normalization alias is verified,
+   but the strict scanner still blocks a suffix whose exact hash preimage is /v1 in
+   setup/discovery/probes/clang-cxx.stderr. This does not identify the preceding raw path or recover
+   any actual selector/probe/root-layout detail. A separate synthetic control covers both official
+   Darwin libc++ candidate families; it does not reclassify this unavailable native evidence.
+   All 3,625 comparison files and 204 helper files remain independently available and hash-verified:
+   14 graph projections and 21 ten-query batches exactly regrade against the unchanged oracle;
+   16 synthetic pairs, 162 RSS rows and 232 members remain retained with their limits. No SDK root,
+   final runtime closure or comparative performance result is accepted.
+
+20. Run 38240360620 passes product/self-analysis, all 13 mixed states and synthetic helper checks.
+   Product: 2,008 tests, 203 suites, 92.81% coverage (40,477/43,614 lines). All 14 graph projections
+   and 21 ten-query batches regrade exactly; helper evidence retains 16 pairs and 171 RSS rows/248 members.
+   The two-family normalization repair succeeds: all 36 SDK files and two safe envelopes are available.
+   Eight probes exit0 with passed post-guards, then C++ search parsing fails invalid-absolute-path.
+   Exact normalized Clang output and original raw hashes remain retained; a synthetic selected-compiler
+   parent-alias control reproduces this stage without reconstructing private path prefixes.
+   Swift runtimeLibraryPaths directly names /usr/lib/swift, observed as a directory with directory-only
+   components and no content read. It remains unresolved; this is not loader closure or root acceptance.
+   Selector costs reconcile 4.492 seconds of probes plus 6.865 seconds of setup/guards to 11.358 seconds.
+   The wrapper's full 14.696-second diagnostic is assigned identically to both arms; outer child 14.888,
+   supervisor14.931 and publication7.249 seconds are separate/nested receipts, not added twice.
+   Discovery remains red and unaccepted. Earlier unavailable SDK rounds retain their original status.
+
+21. Run 38244410533 passes product coverage, all 13 mixed states and synthetic helper checks.
+   Product: 2,008 tests, 203 suites, 92.81% coverage (40,477/43,614 lines). All 14 graph projections
+   and 21 ten-query batches regrade exactly; helper evidence retains 16 pairs and 165 RSS rows/233 members.
+   SDK discovery completes with exit 1, but its detailed JSON is blocked by strict normalization.
+   Exactly two safe envelopes retain the original exit, costs and failed publication; the actual
+   selector outcome, probe count and path layout are unavailable. Verified blocker hash preimages
+   identify setup/discovery/results.json and suffix /v1, without recovering the preceding path.
+   A complete synthetic parser-result control matches all blocker hashes at the root-relative
+   coverage string usr/include/c++/v1. Replacing that diagnostic scalar with validated lossless
+   components permits the prospective bundle while preserving original/canonical paths and scanner.
+   This local diagnosis does not reconstruct the blocked native result or accept any runtime root.
+   The original child wall is 12.716 seconds, supervisor 12.739 seconds and publication 0.592 seconds;
+   child time is nested in supervisor time. All failed/available evidence remains in the ledger.
+
+22. Run 38247331431 passes product/self-analysis, all 13 mixed states and synthetic helper checks.
+   Product: 2,008 tests, 203 suites, 92.81% coverage (40,477/43,614 lines). All 14 graph projections
+   and 21 ten-query batches regrade exactly; helper retains 16 pairs and 169 RSS rows/252 members.
+   SDK discovery now retains all 42 normalized files and all ten successful fixed probes with passed
+   terminal guards. Its sole unresolved effective path is /usr/lib/swift, explicitly reported as Swift
+   runtime-library search. The directory and its usr/lib/swift components exist as directories; contents
+   and device/inode identities were not captured. SDK 26.5/build 23F81a and all five Clang contexts are
+   retained, including ignored absent directories. The selector remains exit 1, accepted=false and
+   final_protocol_ready=false. This observation is neither implicit root admission nor loader closure.
+   Probe 4.800 seconds plus setup/guards 9.275 seconds gives selector 14.075 seconds; the complete
+   wrapper cost is 17.211 seconds, charged identically to both arms. These clocks are nested and are
+   not added twice. Full content sealing, actual-arm calibration, fresh holdouts and final proof remain open.
+
+23. Run 38253805122 passed product tests/coverage and self-analysis, but the new integration contracts
+   were scheduled before the existing single psutil installation. Three test modules failed to import;
+   the attempted suite reported 88 tests, five failures and five errors. The isolated publication CLI
+   control passed, while direct in-process publication controls failed. The exact historical predicate
+   is unavailable, so no interpreter or temporary-path cause is asserted. The complete failing test
+   invocation is retained in a separately normalized archive with original phase/full-log hashes.
+   The exact 837-byte public status artifact contains only four unavailable comparison bundles.
+   Compiler comparison, mixed lifecycle, helper setup, SDK discovery and the actual AB pair did not execute.
+   No native result or performance sample is inferred from this failure.
+
+24. Run 38260361983 passes product/self-analysis, all 13 mixed states and synthetic helper checks.
+   Product: 2,008 tests, 203 suites, 92.81% coverage (40,478/43,614 lines). All 14 graph projections
+   and 21 ten-query batches regrade exactly; helper retains 16 pairs and 172 RSS rows/247 members.
+   SDK discovery retains all 42 normalized files and ten successful guarded probes, but still refuses
+   the unresolved /usr/lib/swift runtime-library search root. No SDK content acceptance is inferred.
+   Actual-arm preparation completes with exit 1 before creating raw output; its exact public artifact
+   contains two safe envelopes, with original source guards, exit and costs preserved. No AB execution
+   is established. The 60-byte stderr hash matches the fixed TypeError envelope. The exact traceback
+   is unavailable; the retained setup has a null developer override, and a local first-red reproduces
+   Path(None) in the original preparation code. The child cost is 2.675 seconds inside the 2.730-second
+   supervisor wall. All four original public ZIPs are retained without byte changes.
+
+25. Run 38265144652 passes product/self-analysis, all 13 mixed states and synthetic helper checks.
+   Product: 2,008 tests, 203 suites, 92.81% coverage (40,477/43,614 lines). All 14 graph projections
+   and 21 ten-query batches regrade exactly; helper retains 16 pairs and 179 RSS rows/250 members.
+   SDK discovery retains all 42 normalized files and ten successful guarded probes, with the same
+   unresolved runtime-library search root. Actual-arm preparation again exits 1 before raw output;
+   exactly two safe envelopes retain 2.282 seconds of child work within 2.324 seconds of supervisor wall.
+   The 61-byte stderr hash matches the fixed ValueError envelope. Its exact stage/predicate and
+   traceback are unavailable; no interpreter, alias or SDK cause is assigned and no AB execution
+   is established. All four original public ZIPs remain unchanged. A separately reviewed diagnostic
+   successor adds finite stage/reason identifiers and hash-only unknown errors, with existing admission
+   predicates and original exit/cost semantics unchanged.
+
+26. Run 38269035141 passes product/self-analysis, all 13 mixed states and synthetic helper checks.
+   Product: 2,008 tests, 203 suites, 92.82% coverage (40,481/43,614 lines). All 14 graph projections
+   and 21 ten-query batches regrade exactly; helper retains 16 pairs and 159 RSS rows/227 members.
+   SDK retains 42 normalized files and ten successful guarded probes, with the same unresolved
+   runtime-library search root. The actual-arm attempt's two safe envelopes now identify the exact
+   installation-binding refusal: installation-interpreter-spelling-mismatch. Its completed exit 1
+   preserves 1.681 seconds of child work within 1.711 seconds of supervisor wall. Original helper
+   commands and prospective selected paths agree with each other; the exact whole-argv hash replay
+   identifies a different requested outer launcher spelling. The child's reported spelling and current
+   physical identity remain unavailable. No AB execution or different-binary finding is established,
+   and previous generic ValueError/TypeError refusals are not retrospectively classified. All four
+   original public ZIPs are preserved unchanged. The proposed selected-launch correction is a separate
+   prospective change that retains the original installation predicates and full measured outer cost.
+
+27. Run 38274111344 retains a completed selected-launch environment refusal in the exact two-envelope
+   actual-arm artifact. The child exits 1 after 1.884 seconds within 1.920 seconds of supervisor wall;
+   no selected-launch request/observation or AB result is available. The typed predicate is
+   selected-launch-private-environment-mismatch. Which keys or values differ remains unavailable.
+   A diagnostic-only successor preserves exact equality while exposing bounded fixed-key/count/hash
+   identifiers. Linux startup controls cannot identify the original macOS cause. Official job statuses
+   show product/self-analysis success and successful mixed/helper steps; SDK and actual-arm steps remain
+   red. This round deliberately archives only the tiny actual-arm ZIP. Other current detailed packets
+   are unarchived and unregraded, and older full packets are not substituted for them. All earlier
+   archives, failures and source expectations remain unchanged.
+
+28. Run 38278741516 retains the exact two-envelope actual-arm refusal. The typed diagnostic records no
+    missing or changed expected environment keys and exactly one added key. Its fixed identifier and
+    name-list digest identify `__CF_USER_TEXT_ENCODING`; no value or insertion origin was recorded.
+    The process completed with exit 1 before a verified selected-launch observation or AB pair, taking
+    1.774558 seconds in the child and 1.806939 seconds in the supervisor. Other current detailed packets
+    remain unarchived and unregraded; official job/step statuses are retained separately. Earlier
+    environment refusals are not retrospectively assigned this cause.
+
+29. Run 38292249326 retains the exact actual-arm and SDK diagnostic artifacts. The actual-arm process
+    completed with exit 1 at `selected-launch`, reporting `installation-interpreter-spelling-mismatch`.
+    Its selected request exists, but its observation and AB pair remain unavailable. The local startup
+    summary records two attempts and exit 0, explicitly without verified public profile acceptance.
+    Child/supervisor costs were 4.928441/4.974328 seconds. The SDK artifact contains 42 normalized files
+    and ten successful, guarded probes; `/usr/lib/swift` is still the sole unresolved search root, with
+    no content read or SDK acceptance. Probe plus setup/guard costs were 5.081495 + 9.444344 seconds.
+    Detailed current mixed/helper packets remain unarchived and unregraded; their official step
+    statuses are retained without substituting earlier packet bytes. Earlier refusals remain unchanged.
+
 Round four's discovery plus first-query workflow was 1.236 seconds for native Cartograph and
 5.654 seconds for CLI assembly. Repeated medians (four pairs) were 0.446 seconds for a fresh native CLI
 and 0.125 seconds for a persisted baseline graph/BFS. These are different state regimes; the extra
@@ -124,10 +301,10 @@ pilot observations establish the preregistered twenty-session composed-cost endp
 The archives contain only already-normalized text, their manifests and the reviewed publication status.
 They contain no raw compiler indexes, objects, executables, toolchains, global caches or environment dumps.
 Retained raw originals remain
-private; each manifest distinguishes original hashes from normalized public hashes. Eleven archives retain
-the exact bytes of their public Actions artifacts. The three test-phase archives and round eight's partial
-driver-phase archive were normalized separately after their failures. Rounds nine through fifteen preserve all original
-ZIP bytes, including the publication-status inventory. Archives are committed to avoid losing evidence
+private; each manifest distinguishes original hashes from normalized public hashes. Forty-eight archives retain
+the exact bytes of their public Actions artifacts. The four test-phase archives and round eight's partial
+driver-phase archive were normalized separately after their failures. Rounds nine through twenty-two, round twenty-three's status-only artifact and all twelve round twenty-four/twenty-five/twenty-six artifacts preserve all original
+ZIP bytes, including the publication-status inventory. Rounds twenty-seven and twenty-eight each retain only their exact actual-arm ZIP; round twenty-nine retains the exact actual-arm and SDK ZIPs. Archives are committed to avoid losing evidence
 when Actions retention expires.
 
 All bundle hashes, file lists, UTF-8 contents, normalized file hashes and explicitly inventoried

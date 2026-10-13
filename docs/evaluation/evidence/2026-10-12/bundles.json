@@ -278,12 +278,877 @@
       "sha256": "f3339b2798b11f5222ab7552b46ac3988096a7091ab4d4a3b299ec9eb51ee191",
       "uncompressed_bytes": 39085012,
       "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38220745660-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965752,
+          "path": "bundle-status.json",
+          "sha256": "221c43f1c7b910822ab4c8a9201fc9a228c45b3a889a2ee696339856f600ad67"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7658073,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38220745660,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38220745660",
+      "scope": "Exact normalized Actions comparison artifact. Validation-only; raw binaries and private metadata omitted; no final superiority evidence.",
+      "sha256": "6829e9b344157e801f008fad3ee7585dff355c2265ee8602bcea16c19062ce6d",
+      "uncompressed_bytes": 39085344,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38220745660-helper-normalized.zip",
+      "archive_entries": 205,
+      "complete_run_evidence": false,
+      "compressed_bytes": 142074,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38220745660,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38220745660",
+      "scope": "Exact normalized Actions helper artifact. Validation-only; raw binaries and private metadata omitted; no final superiority evidence.",
+      "sha256": "dbbc7ce4dd66a984df9013d71094df56914d718f029a786a8ebbc5d4231b5865",
+      "uncompressed_bytes": 333925,
+      "verified_normalized_files": 204
+    },
+    {
+      "archive": "run-38230196392-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965749,
+          "path": "bundle-status.json",
+          "sha256": "168864939fd6468878e5a9f6098f9e37fa340a6b3c7853907b73f939f5810397"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7658232,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38230196392,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38230196392",
+      "scope": "Exact normalized Actions comparison artifact. Validation-only; original failures and all available outcomes retained; no final superiority evidence.",
+      "sha256": "456398c61c0239c6f535a5654963829aed33ada997e75e38adaeaa6087f7cdc2",
+      "uncompressed_bytes": 39085496,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38230196392-helper-normalized.zip",
+      "archive_entries": 205,
+      "complete_run_evidence": false,
+      "compressed_bytes": 142234,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38230196392,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38230196392",
+      "scope": "Exact normalized Actions helper artifact. Validation-only; original failures and all available outcomes retained; no final superiority evidence.",
+      "sha256": "da2aba7da26d5cb8a721a43aff498c0505abcfaf89d92aacb455fa64ae2fb65e",
+      "uncompressed_bytes": 333450,
+      "verified_normalized_files": 204
+    },
+    {
+      "archive": "run-38230196392-sdk-normalized.zip",
+      "archive_entries": 30,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1485,
+          "path": "attempt.json",
+          "sha256": "c4413b42f11e4ee179885f0906195d7c2cbaf002072944e257b9ea47f17912bd"
+        },
+        {
+          "bytes": 741,
+          "path": "publication-status.json",
+          "sha256": "6da6c8553d920409bd9f705d72fc7068c4f4b36b6bf325e6092181f9613e66bf"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 1769867,
+      "manifests": [
+        "discovery/manifest.json"
+      ],
+      "run_id": 38230196392,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38230196392",
+      "scope": "Exact normalized Actions sdk artifact. Validation-only; original failures and all available outcomes retained; no final superiority evidence.",
+      "sha256": "c6c585bb2645f7757238068a325f00814986dd1756c74668d2a23a45ef0e774d",
+      "uncompressed_bytes": 3826812,
+      "verified_normalized_files": 27
+    },
+    {
+      "archive": "run-38233336308-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965749,
+          "path": "bundle-status.json",
+          "sha256": "c7b64b87896f38fdb067e12a91f3abcc9c9a39daf39f556eb3f777ae35881775"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7657047,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38233336308,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38233336308",
+      "scope": "Exact normalized Actions comparison artifact. Validation-only; available outcomes and unavailable SDK detail explicitly retained; no final superiority evidence.",
+      "sha256": "20cb31e140b29dd0df479062ea039f140938a7b13c7387df1a49c624266e2309",
+      "uncompressed_bytes": 39085162,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38233336308-helper-normalized.zip",
+      "archive_entries": 205,
+      "complete_run_evidence": false,
+      "compressed_bytes": 142004,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38233336308,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38233336308",
+      "scope": "Exact normalized Actions helper artifact. Validation-only; available outcomes and unavailable SDK detail explicitly retained; no final superiority evidence.",
+      "sha256": "5f47f49c4cd8261fdb820409ca293af9587e291cb3fd70aebe8765bc7d66e62c",
+      "uncompressed_bytes": 333876,
+      "verified_normalized_files": 204
+    },
+    {
+      "archive": "run-38233336308-sdk-normalized.zip",
+      "archive_entries": 2,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1486,
+          "path": "attempt.json",
+          "sha256": "7cd4355f7cf422457eb2bc62639e0a97ec3640359fa975f747de2147c5b3d888"
+        },
+        {
+          "bytes": 1099,
+          "path": "publication-status.json",
+          "sha256": "e839ee07abcec30cb5fcbb57c0e195f6bd90785b5d6577a3dbea50fc90d15c74"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 1552,
+      "manifests": [],
+      "run_id": 38233336308,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38233336308",
+      "scope": "Exact normalized Actions sdk artifact. Validation-only; available outcomes and unavailable SDK detail explicitly retained; no final superiority evidence.",
+      "sha256": "1f099e06b9cdad15b093e40a363ba1491edc4c6f4ee3d3ca0c7dec64a8cf6c27",
+      "uncompressed_bytes": 2585,
+      "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38236591686-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965750,
+          "path": "bundle-status.json",
+          "sha256": "90c1509c15f2cb2d362f87203910b487fc293b62075f0d9ded20817d9b5d7c3c"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7657047,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38236591686,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38236591686",
+      "scope": "Exact normalized Actions comparison artifact. Validation-only; available outcomes and unavailable SDK detail explicitly retained; no final superiority evidence.",
+      "sha256": "72c798f7f450da8f37e41b20c89c7b658457c859fe83dd3ce6845685ae288a88",
+      "uncompressed_bytes": 39085144,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38236591686-helper-normalized.zip",
+      "archive_entries": 205,
+      "complete_run_evidence": false,
+      "compressed_bytes": 141976,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38236591686,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38236591686",
+      "scope": "Exact normalized Actions helper artifact. Validation-only; available outcomes and unavailable SDK detail explicitly retained; no final superiority evidence.",
+      "sha256": "8544e07b976568a2d7c0e034b2b07d8953653d3845d519dc2248653c93b7cb3a",
+      "uncompressed_bytes": 331878,
+      "verified_normalized_files": 204
+    },
+    {
+      "archive": "run-38236591686-sdk-normalized.zip",
+      "archive_entries": 2,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1486,
+          "path": "attempt.json",
+          "sha256": "0b4da5cfce025c49c75b5533f9f59fa7444d81356e7823fde45848ed465a7cc9"
+        },
+        {
+          "bytes": 1851,
+          "path": "publication-status.json",
+          "sha256": "7e52ed3a28c0e6637644777e43649319311e1694163a6546dc322e46f5424297"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 1919,
+      "manifests": [],
+      "run_id": 38236591686,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38236591686",
+      "scope": "Exact normalized Actions sdk artifact. Validation-only; available outcomes and unavailable SDK detail explicitly retained; no final superiority evidence.",
+      "sha256": "a036a0ffcfb40fa19af1e84ae942d6b6507aa50aba37dc08946408be2f4fa568",
+      "uncompressed_bytes": 3337,
+      "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38240360620-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965753,
+          "path": "bundle-status.json",
+          "sha256": "27a28386e007b890177fef0e9a66f20694cb94e0d64e8378845897bfe16d8379"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7658026,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38240360620,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38240360620",
+      "scope": "Exact normalized Actions comparison artifact; failed SDK parser and successful other validation retained without final superiority claim.",
+      "sha256": "159c51aab39f9e8de0f23346e10b24306252a30e23b64f4b12636834d1500286",
+      "uncompressed_bytes": 39085845,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38240360620-helper-normalized.zip",
+      "archive_entries": 205,
+      "complete_run_evidence": false,
+      "compressed_bytes": 142042,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38240360620,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38240360620",
+      "scope": "Exact normalized Actions helper artifact; failed SDK parser and successful other validation retained without final superiority claim.",
+      "sha256": "b6788153efc6b293001cacf3c8ec7d6e774a28b96b5ba494814bba57a23753c5",
+      "uncompressed_bytes": 333680,
+      "verified_normalized_files": 204
+    },
+    {
+      "archive": "run-38240360620-sdk-normalized.zip",
+      "archive_entries": 39,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1486,
+          "path": "attempt.json",
+          "sha256": "6ac69d2975e2be112475c5632b1b2dc8d4dd974da8f0849a4b7f91246fd69a59"
+        },
+        {
+          "bytes": 1854,
+          "path": "publication-status.json",
+          "sha256": "93b8a29b5585646e59692e2e393e82e73b861422a2653efd1fa9ff5f79d11f9f"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 1779637,
+      "manifests": [
+        "discovery/manifest.json"
+      ],
+      "run_id": 38240360620,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38240360620",
+      "scope": "Exact normalized Actions sdk artifact; failed SDK parser and successful other validation retained without final superiority claim.",
+      "sha256": "f366dba58a0946820cf98d458888f935c8cf05765945ebe0a58a4934beee4270",
+      "uncompressed_bytes": 3853203,
+      "verified_normalized_files": 36
+    },
+    {
+      "archive": "run-38244410533-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965744,
+          "path": "bundle-status.json",
+          "sha256": "3e976fd564b3130acebdb7b27bd0b83c3bd43cab85c27f967ff72c632cc43693"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7657823,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38244410533,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38244410533",
+      "scope": "Exact normalized Actions comparison artifact; SDK unavailable-detail failure and successful comparison/helper validation retained without final superiority claim.",
+      "sha256": "b5891421734f2af7488b7e1344ae0bd6cea0529a4506d6be7768ebcdd2b03412",
+      "uncompressed_bytes": 39085357,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38244410533-helper-normalized.zip",
+      "archive_entries": 205,
+      "complete_run_evidence": false,
+      "compressed_bytes": 141889,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38244410533,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38244410533",
+      "scope": "Exact normalized Actions helper artifact; SDK unavailable-detail failure and successful comparison/helper validation retained without final superiority claim.",
+      "sha256": "8fd5128b8139c6d7183f04cdc75c66e2d3ac259487e035980c21c629723d2b70",
+      "uncompressed_bytes": 332330,
+      "verified_normalized_files": 204
+    },
+    {
+      "archive": "run-38244410533-sdk-normalized.zip",
+      "archive_entries": 2,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1486,
+          "path": "attempt.json",
+          "sha256": "e33c8f17d0cbb68ff368e24e3640fbf2967cb7803324024cb5dc1a51d57a316d"
+        },
+        {
+          "bytes": 2212,
+          "path": "publication-status.json",
+          "sha256": "283c5c743485ec57c0a10b1f26e3d8508b51a42e2d690ef4d4649ead368ac28f"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 2082,
+      "manifests": [],
+      "run_id": 38244410533,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38244410533",
+      "scope": "Exact normalized Actions sdk artifact; SDK unavailable-detail failure and successful comparison/helper validation retained without final superiority claim.",
+      "sha256": "c2a6c388d4dbcc3f770875031105a82938ff44a6a2ed6eadc38609026e3a439d",
+      "uncompressed_bytes": 3698,
+      "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38247331431-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965749,
+          "path": "bundle-status.json",
+          "sha256": "8e03c4158c1e363b4e2024a3abce4a3cf21ac0ea462f59c87efe979154aee591"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7658225,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38247331431,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38247331431",
+      "scope": "Exact normalized Actions comparison artifact; complete failed SDK discovery plus successful comparison/helper validation retained without final root acceptance or superiority claim.",
+      "sha256": "ff5dbb09749c6953e65fb6409d677461467c775386157750744a8d47a7fda431",
+      "uncompressed_bytes": 39085810,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38247331431-helper-normalized.zip",
+      "archive_entries": 205,
+      "complete_run_evidence": false,
+      "compressed_bytes": 141889,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38247331431,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38247331431",
+      "scope": "Exact normalized Actions helper artifact; complete failed SDK discovery plus successful comparison/helper validation retained without final root acceptance or superiority claim.",
+      "sha256": "f3dfb1d85c8895273d34c70f05ec3beb56537e1f8e06729847e48773b615b0fc",
+      "uncompressed_bytes": 333614,
+      "verified_normalized_files": 204
+    },
+    {
+      "archive": "run-38247331431-sdk-normalized.zip",
+      "archive_entries": 45,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1485,
+          "path": "attempt.json",
+          "sha256": "74566bb1a14d43c72f6c930bc555524fa2493a80e94cb4d4cfa3855c1bc2aca5"
+        },
+        {
+          "bytes": 1854,
+          "path": "publication-status.json",
+          "sha256": "930be33c5a3bf3256b197369bcd99ff2f78f447070e00767f316ec250f55dc90"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 1787373,
+      "manifests": [
+        "discovery/manifest.json"
+      ],
+      "run_id": 38247331431,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38247331431",
+      "scope": "Exact normalized Actions sdk artifact; complete failed SDK discovery plus successful comparison/helper validation retained without final root acceptance or superiority claim.",
+      "sha256": "5ab4b0b160b0bc637f6dbf913df9741b921dd54ef899e1c8f45db0215450ece9",
+      "uncompressed_bytes": 3905046,
+      "verified_normalized_files": 42
+    },
+    {
+      "archive": "run-38253805122-contracts-normalized.zip",
+      "archive_entries": 3,
+      "complete_run_evidence": false,
+      "compressed_bytes": 7630,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38253805122,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38253805122",
+      "scope": "Separately normalized complete failing integration unittest output, with exact original phase and full private log hashes; no native comparator outcome.",
+      "sha256": "8b20aaa7b72fa48909934d982dbb2f99b0f8ef6fd846669a8478d1fd303aee0f",
+      "uncompressed_bytes": 38284,
+      "verified_normalized_files": 2
+    },
+    {
+      "archive": "run-38253805122-comparison-normalized.zip",
+      "archive_entries": 1,
+      "auxiliary_files": [
+        {
+          "bytes": 2044,
+          "path": "bundle-status.json",
+          "sha256": "5665b32029bb88c36513452b57ea3d5702f8578a4c5913b4e1c264908d11723b"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 837,
+      "manifests": [],
+      "run_id": 38253805122,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38253805122",
+      "scope": "Exact status-only Actions artifact; all four requested comparison bundles unavailable.",
+      "sha256": "600ae293206e7f5dab9196db34e90188593b9aae5656138640ab1efa29094a4f",
+      "uncompressed_bytes": 2044,
+      "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38260361983-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965757,
+          "path": "bundle-status.json",
+          "sha256": "18a5d1c2680042ea510abfdd00cff8de3e6be30c87493f24bdb2b4e699a1c3ab"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7658225,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38260361983,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38260361983",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "52255756cc00b3319bb0bb03c8ff0a752f1a8cb631c69d8c50663c9639ce9207",
+      "uncompressed_bytes": 39085461,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38260361983-helper-normalized.zip",
+      "archive_entries": 206,
+      "complete_run_evidence": false,
+      "compressed_bytes": 143206,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38260361983,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38260361983",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "4af19ac6762b6d14a60144e23cc8efd51082a56c0f628e628a1a20a13b09aebe",
+      "uncompressed_bytes": 336778,
+      "verified_normalized_files": 205
+    },
+    {
+      "archive": "run-38260361983-sdk-normalized.zip",
+      "archive_entries": 45,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1485,
+          "path": "attempt.json",
+          "sha256": "5fa056f60ff430a2bdb0ffe41ed2e7622c055cd6dc15d2481ac613a503a9baac"
+        },
+        {
+          "bytes": 1854,
+          "path": "publication-status.json",
+          "sha256": "4eb6278898977be620bf682165952f72583e402bb677ec1f140eea43ae21e3c7"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 1787118,
+      "manifests": [
+        "discovery/manifest.json"
+      ],
+      "run_id": 38260361983,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38260361983",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "8d81fd1e623d372fc5af4340fe9188720b078f79b588e4b006ecf9aa135d63b6",
+      "uncompressed_bytes": 3905047,
+      "verified_normalized_files": 42
+    },
+    {
+      "archive": "run-38260361983-actual-arm-normalized.zip",
+      "archive_entries": 2,
+      "artifact_kind": "actual-arm-correctness-validation",
+      "auxiliary_files": [
+        {
+          "bytes": 11278,
+          "path": "attempt.json",
+          "sha256": "a68ba37eb7ef432780ba324bf90b4e3413f544c11d764bcec9b98d2fd390a4d9"
+        },
+        {
+          "bytes": 440,
+          "path": "publication-status.json",
+          "sha256": "35b11bdb76d2821b46ee01ee457d32367b05764695c5b7e251b8d82e05385479"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 3342,
+      "manifests": [],
+      "run_id": 38260361983,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38260361983",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "7633b0a43f1af62aa4bab08487bccc7ddb950291cace93c2c19ff57ff26cd41c",
+      "uncompressed_bytes": 11718,
+      "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38265144652-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965745,
+          "path": "bundle-status.json",
+          "sha256": "8fa524213a3517578a6bb6d7c87d8446c05f42df732f7327208809e95f7a1ec0"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7658552,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38265144652,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38265144652",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "498531bd1378c1f81767698b5f0d3708c86db752a4c0a22168e3e5e44c0ae636",
+      "uncompressed_bytes": 39084817,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38265144652-helper-normalized.zip",
+      "archive_entries": 206,
+      "complete_run_evidence": false,
+      "compressed_bytes": 143440,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38265144652,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38265144652",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "abffb17883cb229b8823993ce2056c9b5264d53fca68c3d5bf9b5b59fe4473b5",
+      "uncompressed_bytes": 337777,
+      "verified_normalized_files": 205
+    },
+    {
+      "archive": "run-38265144652-sdk-normalized.zip",
+      "archive_entries": 45,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1485,
+          "path": "attempt.json",
+          "sha256": "77f671fa30f0fe91fe7e43e3ea1143f4bd3fd6fcf985f071324ce38d5c3ecd48"
+        },
+        {
+          "bytes": 1854,
+          "path": "publication-status.json",
+          "sha256": "ef1d55253db7a9418dc8c012d803ed796536a6d62ad8bd74dcfe8c8f359b1000"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 1787305,
+      "manifests": [
+        "discovery/manifest.json"
+      ],
+      "run_id": 38265144652,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38265144652",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "d05e2fd4ddf4fc7603a9541bcbe0995b5e6dfa735b8de4a64433371497bae408",
+      "uncompressed_bytes": 3905045,
+      "verified_normalized_files": 42
+    },
+    {
+      "archive": "run-38265144652-actual-arm-normalized.zip",
+      "archive_entries": 2,
+      "artifact_kind": "actual-arm-correctness-validation",
+      "auxiliary_files": [
+        {
+          "bytes": 11480,
+          "path": "attempt.json",
+          "sha256": "f237bf9e82d3f57957f43260704e8bb36f4268e68bc21d4464091645433f1268"
+        },
+        {
+          "bytes": 439,
+          "path": "publication-status.json",
+          "sha256": "b695212de29095942ced2dafd52595fe316b964563749361d91a14a25b87b86c"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 3389,
+      "manifests": [],
+      "run_id": 38265144652,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38265144652",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "cdf04bf3f05d62eda64e8ff4b19eac9ba26d4ad38bffa0b512fc2f00a4a25ae4",
+      "uncompressed_bytes": 11919,
+      "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38269035141-comparison-normalized.zip",
+      "archive_entries": 3630,
+      "auxiliary_files": [
+        {
+          "bytes": 965757,
+          "path": "bundle-status.json",
+          "sha256": "0e457e3a171c4e3cbbccdd26db854c5c5247a8781748f0ab52092ef308afc62c"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 7658390,
+      "manifests": [
+        "argument-parser/manifest.json",
+        "mixed-ios/manifest.json",
+        "mixed-setup/manifest.json",
+        "synthetic/manifest.json"
+      ],
+      "run_id": 38269035141,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38269035141",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "dd31bcfd25c12da50e6dd5d3902e344b5fbb2541ea87d488d6092e9bdbd4406a",
+      "uncompressed_bytes": 39086519,
+      "verified_normalized_files": 3625
+    },
+    {
+      "archive": "run-38269035141-helper-normalized.zip",
+      "archive_entries": 206,
+      "complete_run_evidence": false,
+      "compressed_bytes": 142830,
+      "manifests": [
+        "manifest.json"
+      ],
+      "run_id": 38269035141,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38269035141",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "6ce62f8f1ef83c93eb1dbd5f465d5aba2db247e61c4161e99c30f056358a21a4",
+      "uncompressed_bytes": 334229,
+      "verified_normalized_files": 205
+    },
+    {
+      "archive": "run-38269035141-sdk-normalized.zip",
+      "archive_entries": 45,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1478,
+          "path": "attempt.json",
+          "sha256": "45b0714b641472474fcff65d72a7125e247dd9711c9512499b25630195c79c4c"
+        },
+        {
+          "bytes": 1854,
+          "path": "publication-status.json",
+          "sha256": "a7d9380708bd46878bd1a8206e09972d021e529b88b78696572c23af865cabad"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 1787351,
+      "manifests": [
+        "discovery/manifest.json"
+      ],
+      "run_id": 38269035141,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38269035141",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "4d022c7c6ec3bcb820b451cd1f137943ce8bb6fd7ed0e604471a8a34f41f3bf9",
+      "uncompressed_bytes": 3905020,
+      "verified_normalized_files": 42
+    },
+    {
+      "archive": "run-38269035141-actual-arm-normalized.zip",
+      "archive_entries": 2,
+      "artifact_kind": "actual-arm-correctness-validation",
+      "auxiliary_files": [
+        {
+          "bytes": 440,
+          "path": "publication-status.json",
+          "sha256": "61fdecfdbf21a0e5eb241d2195e7b9b2f03bbea73223511dc368afc66098d11b"
+        },
+        {
+          "bytes": 11965,
+          "path": "attempt.json",
+          "sha256": "16a95f0640e26155dc1694107956b70d208ee9d24b19fee54051dc4259b85f36"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 3558,
+      "manifests": [],
+      "run_id": 38269035141,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38269035141",
+      "scope": "Exact public Actions ZIP; bounded validation evidence, no superiority claim.",
+      "sha256": "3ab03d8eb1ad654c469bd02828acdd1d88e7542d908ca1e130a58336b61942e9",
+      "uncompressed_bytes": 12405,
+      "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38274111344-actual-arm-normalized.zip",
+      "archive_entries": 2,
+      "artifact_kind": "actual-arm-correctness-validation",
+      "auxiliary_files": [
+        {
+          "bytes": 439,
+          "path": "publication-status.json",
+          "sha256": "9f95a66608ad25020e0d8a04eb4e95f74aa21a46f7b38c2d04d08e24e8ac4cf4"
+        },
+        {
+          "bytes": 12510,
+          "path": "attempt.json",
+          "sha256": "d59a19da5ba3607c19261d4448a78d6668b9e3d3a1732e64e6e7922899146b2c"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 3692,
+      "manifests": [],
+      "run_id": 38274111344,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38274111344",
+      "scope": "Exact public Actions ZIP; only two safe attempt/publication envelopes. Other detailed packets from this run remain unarchived and unregraded.",
+      "sha256": "14812f53dd230f18fc41d8c2d24031b994abcba1d74f04b9bb85e9efd3e51233",
+      "uncompressed_bytes": 12949,
+      "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38278741516-actual-arm-normalized.zip",
+      "archive_entries": 2,
+      "artifact_kind": "actual-arm-correctness-validation",
+      "auxiliary_files": [
+        {
+          "bytes": 12828,
+          "path": "attempt.json",
+          "sha256": "51550c1e49ba830fd4bdefd5fa6b799a74351b93d3eb32a6cc0e4c6f29a77de8"
+        },
+        {
+          "bytes": 439,
+          "path": "publication-status.json",
+          "sha256": "3ee580a80301bf2334982a39c1eb285909bfc4db71ee45a5de2300ef90cfce5b"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 3833,
+      "manifests": [],
+      "run_id": 38278741516,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38278741516",
+      "scope": "Exact public Actions ZIP; only two safe attempt/publication envelopes. Other detailed packets from this run remain unarchived and unregraded.",
+      "sha256": "97a5308e6bcb834cf9afa6eb8eed6f95be7f05741331ef1a3f7cd90758a9cafb",
+      "uncompressed_bytes": 13267,
+      "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38292249326-actual-arm-normalized.zip",
+      "archive_entries": 2,
+      "artifact_kind": "actual-arm-correctness-validation",
+      "auxiliary_files": [
+        {
+          "bytes": 14801,
+          "path": "attempt.json",
+          "sha256": "87a71b5829f93b3d2bede4e4512fba957bf688f36f29957f33052aedfd117fcb"
+        },
+        {
+          "bytes": 439,
+          "path": "publication-status.json",
+          "sha256": "d32d55aaa652e350c27b732b3a86d4a35bf236e03184d51f38032bf9a60e33a6"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 4312,
+      "manifests": [],
+      "run_id": 38292249326,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38292249326",
+      "scope": "Exact public Actions ZIP; bounded diagnostic evidence. Detailed comparison/helper packets from this run remain unarchived and unregraded.",
+      "sha256": "4e7daf3fddf6bdc959a4c3a304d0a3627bfa4b6bce0d90ead0c3ece3ba2ef086",
+      "uncompressed_bytes": 15240,
+      "verified_normalized_files": 0
+    },
+    {
+      "archive": "run-38292249326-sdk-normalized.zip",
+      "archive_entries": 45,
+      "artifact_kind": "sdk-input-discovery",
+      "auxiliary_files": [
+        {
+          "bytes": 1486,
+          "path": "attempt.json",
+          "sha256": "f2db2e91f30ea1baf7f53de6100a6ab391a59a05fdaf3be00e0f5ff28152f75f"
+        },
+        {
+          "bytes": 1854,
+          "path": "publication-status.json",
+          "sha256": "f7711f90a42c609c5946b33b077abdea866dfb748cf2c81e4770beaa0fd0288c"
+        }
+      ],
+      "complete_run_evidence": false,
+      "compressed_bytes": 1787281,
+      "manifests": [
+        "discovery/manifest.json"
+      ],
+      "run_id": 38292249326,
+      "run_url": "https://github.com/ictechgy/cartograph/actions/runs/38292249326",
+      "scope": "Exact public Actions ZIP; bounded diagnostic evidence. Detailed comparison/helper packets from this run remain unarchived and unregraded.",
+      "sha256": "b6d614d5ab12274a992d631aab2072bcefeabe0e66d8f0c20ec0c73851c2d5a8",
+      "uncompressed_bytes": 3905024,
+      "verified_normalized_files": 42
     }
   ],
   "complete_run_evidence_for_every_round": false,
   "privacy": "Normalized text only; no raw index records, objects, executables or toolchain bytes. Embedded raw hashes describe private originals. Public normalized bytes use manifest normalized_sha256.",
   "role": "retained-pilot-evidence-with-explicit-availability",
   "superiority_claim": null,
-  "total_compressed_bytes": 49653687,
-  "total_uncompressed_bytes": 266138882
+  "total_compressed_bytes": 140178989,
+  "total_uncompressed_bytes": 687668017
 }
