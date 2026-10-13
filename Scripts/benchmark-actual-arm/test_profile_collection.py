@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -73,8 +74,10 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(len(self.calls), 1)
 
     def test_different_binary_refuses_before_mkdir(self):
+        executable = shutil.which("true", path=self.env["PATH"])
+        self.assertIsNotNone(executable, "The supported POSIX runner must provide true")
         with self.assertRaisesRegex(ValueError, "different-profile-interpreters"):
-            self.collect(selected=Path("/bin/true"))
+            self.collect(selected=Path(executable))
         self.assertFalse((self.root / "profile").exists())
         self.assertEqual(self.calls, [])
 
@@ -322,7 +325,15 @@ class CollectionTests(unittest.TestCase):
         for path in (self.root / "profile").rglob("*.json"):
             value = json.loads(path.read_text())
             self.assertNotIn("environment_values", value)
-        self.assertIsNone(row["accepted_profile"]["addition"])
+        accepted = row["accepted_profile"]
+        self.assertEqual(accepted["platform"], sys.platform)
+        probe.validate_observation(dict(accepted, requested_environment=row["requested_environment"]))
+        addition = accepted["addition"]
+        if addition is not None:
+            self.assertEqual(sys.platform, "darwin")
+            self.assertEqual(set(addition), {"identifier", "utf8_bytes", "sha256"})
+            self.assertEqual(addition["identifier"], probe.IDENTIFIER)
+            self.assertTrue(probe.valid_sha(addition["sha256"]))
 
 
 if __name__ == "__main__":

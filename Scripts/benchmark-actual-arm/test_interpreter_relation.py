@@ -235,7 +235,9 @@ class InterpreterRelationTests(unittest.TestCase):
                 elif kind == "report":
                     entry["observation"]["actual_interpreter"] = profile.interpreter(self.current)
                 else:
-                    changed["accepted_profile"]["platform"] = "darwin"
+                    admitted = original["accepted_profile"]["platform"]
+                    changed["accepted_profile"]["platform"] = "linux" if admitted == "darwin" else "darwin"
+                    self.assertNotEqual(changed["accepted_profile"]["platform"], admitted)
                 self.rehash_collection(changed)
                 with self.assertRaises(ValueError):
                     self.create()

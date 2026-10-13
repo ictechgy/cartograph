@@ -206,9 +206,14 @@
         "sha256": "b460a90d97e4f7aa960ca0f9f010649ee29ac482f33df084872fd307a8ce2c11"
       },
       {
-        "bytes": 13210,
+        "bytes": 13410,
         "path": "test_interpreter_relation.py",
-        "sha256": "92f463f1022c2456954e965e27c670a77460690fae9c0bc152fd8e68b73197e4"
+        "sha256": "496daa7f1cbe15840ba7793b87c74d3f2ed76430d0979fbc2f17901cfbe3b3df"
+      },
+      {
+        "bytes": 13281,
+        "path": "test_profile_collection.py",
+        "sha256": "220bb5e85ecefcdc32f45f63dfb3fefcf2a41666966ee23c0432187639f3fa41"
       },
       {
         "bytes": 14652,
