@@ -17,6 +17,7 @@ ENGINE_SOURCES = [
     "profile_collection.py",
     "runtime/startup_profile.py",
     "runtime/startup_binding.py",
+    "runtime/interpreter_relation.py",
     "state_inputs.py",
     "state_worker.py",
     "engine_worker.py",

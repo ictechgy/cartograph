@@ -135,7 +135,9 @@ class Projection:
             type(code) is int and 0 <= code <= 255, "Incomplete raw return has no accepted runtime receipt"
         )
         config, config_ref = self.read(config_path)
-        expected = isolated_measure.bootstrap_command(config_path, config_ref["sha256"], script, report, arguments)
+        expected = isolated_measure.bootstrap_command(
+            config_path, config_ref["sha256"], script, report, arguments, runtime=config
+        )
         if command is not None:
             state_inputs.require(command == expected, "Runtime projection request differs")
         original, reference = self.read(report)
@@ -143,7 +145,7 @@ class Projection:
             report, config, config_ref["sha256"], script, arguments, code, environment
         )
         state_inputs.require(encoded(original) == encoded(verified), "Runtime receipt changed during verification")
-        if config.get("schema_version") == 2:
+        if config.get("schema_version") in (2, 3):
             self.read(startup_binding.launch_path(report))
         key = digest(original)
         project(original)
@@ -177,7 +179,7 @@ class Projection:
         if not config_path.exists():
             config_path = self.raw / "setup/contracts/runtime.json"
         config, _ = self.read(config_path)
-        return startup_binding.existing_environment(path, developer) if config.get("schema_version") == 2 else None
+        return startup_binding.existing_environment(path, developer) if config.get("schema_version") in (2, 3) else None
 
     def arm_environment(self, arm, role):
         plan, _ = self.read(self.raw / "setup/plan.json")
@@ -230,12 +232,16 @@ class Projection:
             engine_report = folder / "engine-runtime/runtime-result.json"
             if observer_report.exists():
                 observer, _ = self.read(folder / "whole-arm.observer.json")
+                config, _ = self.read(config_path)
+                if config.get("schema_version") == 3:
+                    state_inputs.require(isinstance(observer.get("command"), list), "Observer launch argv is missing")
                 self.bind(
                     config_path,
                     observer_report,
                     isolated_measure.HELPER,
                     ["--worker"],
                     observer["observed_helper_returncode"],
+                    command=observer.get("command"),
                     environment=self.arm_environment(arm, "observer"),
                 )
             if engine_report.exists():

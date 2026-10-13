@@ -148,11 +148,8 @@ def execute(args):
         "state-inputs", state_inputs.prepare, args.repository, args.lifecycle, args.setup, args.measurement
     )
     pre_record("selected-launch", prepare_startup_profile, args, root)
-    _, launch = pre_record(
+    binding, launch = pre_record(
         "selected-launch", selected_launch.prepare, args, root, Path(sys.executable), source_hashes, save
-    )
-    binding = pre_record(
-        "installation-binding", installation_binding.bind, args.measurement, args.repository, Path(sys.executable)
     )
     sdk_path = root / "sdk-discovery-raw/results.json"
     pre_record("sdk-binding", state_inputs.bind_sdk_discovery, plan, sdk_path)
@@ -176,7 +173,8 @@ def execute(args):
         accepted_startup = launch["request"]["startup_profile"]["accepted_profile"]
         copy_startup_profile(root, output, args.startup_profile_sha256)
         result["contracts"] = contract_prerequisites.run(
-            binding, output, SOURCE_FILES, command_runner, save, startup_profile=accepted_startup
+            binding, output, SOURCE_FILES, command_runner, save, startup_profile=accepted_startup,
+            interpreter_relation=launch["request"]["startup_profile"]["interpreter_relation"]
         )
         if result["contracts"]["status"] != "passed":
             raise contract_prerequisites.Failed(result["contracts"]["exit_code"])
@@ -185,11 +183,12 @@ def execute(args):
         save(output / "setup/plan.json", plan)
         sources = source_hashes(SOURCE_FILES)
         runtime = dict(
-            schema_version=2,
+            schema_version=3,
             package=binding["package"],
             python=binding["python"],
             code_files=sources,
             startup_profile=accepted_startup,
+            interpreter_relation=launch["request"]["startup_profile"]["interpreter_relation"],
         )
         runtime_path = output / "setup/runtime.json"
         save(runtime_path, runtime)
@@ -213,6 +212,7 @@ def execute(args):
                 "--output",
                 str(output),
             ],
+            runtime=runtime,
         )
         isolated_measure.bind_launch(command, runtime_path, runtime_ref["sha256"], runtime, env)
         call_started = time.perf_counter()

@@ -127,6 +127,103 @@
       "source_role": "reviewed-engine-2cbe13ea"
     }
   ],
+  "reconstruction_overrides": {
+    "base_repository_commit": "1246bd07aa1ae7768e26a385b59b49d285e8f492",
+    "files": [
+      {
+        "bytes": 10440,
+        "path": "contract_prerequisites.py",
+        "sha256": "90ab22b4751ccdd0acc8d69dcfe26ae985c7302656a58cb52d1f24535b02eb3e"
+      },
+      {
+        "bytes": 3873,
+        "path": "contract_suite.py",
+        "sha256": "01bcc345212b5ddaf3a4779ac46bad65a05c4110810383af403b3a7b56cd4949"
+      },
+      {
+        "bytes": 19114,
+        "path": "correctness_controller.py",
+        "sha256": "7c3a984f75556a2feeb84c377eaaa66ec565076ccd5635a9427e20e72407a8fb"
+      },
+      {
+        "bytes": 41257,
+        "path": "publish_correctness.py",
+        "sha256": "cca921cfc4a4b93e59bc2abba53d33ed83269deaf958cad857ed6839363d2bae"
+      },
+      {
+        "bytes": 6580,
+        "path": "runtime/interpreter_relation.py",
+        "sha256": "71d775dd09958b27d9e240f7c1e695ac5c7cba0d4b3a4f69cbebece48687dfed"
+      },
+      {
+        "bytes": 14979,
+        "path": "runtime/isolated_measure.py",
+        "sha256": "943bc7d5e8ac3dc3380e5200a94de4853d4110335ec879de7d5085b6a8c51330"
+      },
+      {
+        "bytes": 15145,
+        "path": "runtime/runtime_bootstrap.py",
+        "sha256": "a8f9ee4c6c53387d2fab2aa4433525d6bb4c9c4063b00282080a5489e8865cab"
+      },
+      {
+        "bytes": 6761,
+        "path": "runtime/startup_binding.py",
+        "sha256": "39717813562bced0d2de98f16a6d227333e2814ec19b93d379a8c800d9404eb9"
+      },
+      {
+        "bytes": 5992,
+        "path": "runtime/test_interpreter_runtime.py",
+        "sha256": "eb64bbbf9e7d871b800c1eb6b0d28776aa255801fc12dc554db11260de7e1ae2"
+      },
+      {
+        "bytes": 13827,
+        "path": "runtime_publication.py",
+        "sha256": "a5796f15a5bc30de588e409e8838a70f3da8b5d82c5160461cf9847e4dbe0de5"
+      },
+      {
+        "bytes": 17494,
+        "path": "selected_launch.py",
+        "sha256": "222a1c2bae834a1fd141f63c2b637f6f1e08e38f282cfb1d82054bdf21e7b3de"
+      },
+      {
+        "bytes": 4727,
+        "path": "source_import_policy.py",
+        "sha256": "e159e432d2031d8f5d2ed857087c12e4d9c8a143bc7b60ff9f1c86966c916f6d"
+      },
+      {
+        "bytes": 10578,
+        "path": "state_worker.py",
+        "sha256": "2772f57563820cfbf5e4e6abbeeb31472e938d8b06dc98edf55dc8c71db553b5"
+      },
+      {
+        "bytes": 24594,
+        "path": "test_completion_binding.py",
+        "sha256": "dd84e7ee22b19ba3383de3730970c3a3f090fb86a18cd72e1c8ce239fa8ac479"
+      },
+      {
+        "bytes": 6701,
+        "path": "test_controller_execution.py",
+        "sha256": "b460a90d97e4f7aa960ca0f9f010649ee29ac482f33df084872fd307a8ce2c11"
+      },
+      {
+        "bytes": 13210,
+        "path": "test_interpreter_relation.py",
+        "sha256": "92f463f1022c2456954e965e27c670a77460690fae9c0bc152fd8e68b73197e4"
+      },
+      {
+        "bytes": 14652,
+        "path": "test_runtime_publication.py",
+        "sha256": "60ea752ffc1339a07561df647fc71ba96ba519d0b754db2018c09decf61ce260"
+      },
+      {
+        "bytes": 20059,
+        "path": "test_selected_launch.py",
+        "sha256": "598fe72e4da60d15a7248cc47c30624b875b563125e9e4273f9fe2a3f5619dd5"
+      }
+    ],
+    "role": "selected-probe-interpreter-relation-and-original-arm-completion",
+    "scope": "Reconstructed from the published PR head after the previous cloud workspace became unavailable. These current Python overrides add runtime version 3, the exact original selected-probe requested/reported interpreter relation, required original evidence for both successful arms, and focused controls. Prior copied and successor hashes remain historical. Installation binding, frozen vendor helpers, product sources, workflows and historical evidence archives are unchanged. Fresh Linux correctness validation does not establish macOS launcher behavior or a native performance comparison."
+  },
   "schema_version": 1,
   "scope": "Byte identity only; runtime and native integration execution remain separately verified",
   "startup_primitive_origin": {

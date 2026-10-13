@@ -54,6 +54,10 @@ def run_arm(plan, arm, output, runtime_path, runtime_sha256):
             if row["guard_before"]["status"] == "incomplete":
                 row.update(status="incomplete", exit_code=125)
         else:
+            runtime_data = bootstrap.read_regular(Path(runtime_path))
+            state_inputs.require(hashlib.sha256(runtime_data).hexdigest() == runtime_sha256,
+                                 "Runtime configuration changed before arm launch")
+            runtime = bootstrap.strict_json(runtime_data)
             save(output / "input.json", config)
             config_ref = state_inputs.reference(output / "input.json")
             developer = Path(config["developer_directory"])
@@ -66,6 +70,7 @@ def run_arm(plan, arm, output, runtime_path, runtime_sha256):
                 ROOT / "engine_worker.py",
                 output / "engine-runtime/runtime-result.json",
                 ["--input", config_ref["path"], "--sha256", config_ref["sha256"]],
+                runtime=runtime,
             )
             measurement = isolated_measure.run(
                 command,

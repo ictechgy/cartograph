@@ -266,8 +266,9 @@ class SelectedLaunchTests(unittest.TestCase):
         record = dict(selected_launch={key: launch[key + "_ref"]["sha256"] for key in ("request", "observation")})
         controller.copy_startup_profile(self.root, raw, self.args.startup_profile_sha256)
         runtime = dict(
-            schema_version=2,
+            schema_version=3,
             startup_profile=collection["accepted_profile"],
+            interpreter_relation=launch["observation"]["startup_profile"]["interpreter_relation"],
             python=binding["python"],
             code_files=self.sources,
         )
@@ -313,6 +314,47 @@ class SelectedLaunchTests(unittest.TestCase):
                     publication.completed_launch(record, raw, bad_attempt, bad_runtime)
                 path.write_bytes(prior_binding)
                 observation_path.write_bytes(prior_observation)
+
+        request_path = raw / "setup/selected-launch-request.json"
+        observation_path = raw / "setup/selected-launch-observation.json"
+        originals = {path: path.read_bytes() for path in (request_path, observation_path)}
+        for field in ("collection_sha256", "probe", "request_sha256", "observation_sha256", "process_sha256",
+                      "source_inputs", "reported_interpreter"):
+            with self.subTest(relation=field):
+                bad_runtime = copy.deepcopy(runtime)
+                relation = bad_runtime["interpreter_relation"]
+                if field == "probe":
+                    relation[field] = 2
+                elif field == "source_inputs":
+                    removed = next(iter(relation[field]))
+                    relation[field].pop(removed)
+                    bad_runtime["code_files"].pop(removed)
+                    relation["source_inputs_sha256"] = controller.startup_profile.sha(
+                        controller.startup_profile.encoded(relation[field])
+                    )
+                elif field == "reported_interpreter":
+                    relation[field] = controller.startup_profile.interpreter(self.current)
+                else:
+                    relation[field] = "0" * 64
+                forged = {key: copy.deepcopy(launch[key]) for key in ("request", "observation")}
+                for row in forged.values():
+                    row["startup_profile"]["interpreter_relation"] = relation
+                if field == "reported_interpreter":
+                    forged["observation"]["actual_interpreter"] = selected_launch.observation(self.current)
+                request_path.write_text(json.dumps(forged["request"]))
+                request_sha = hashlib.sha256(request_path.read_bytes()).hexdigest()
+                forged["observation"]["request_sha256"] = request_sha
+                observation_path.write_text(json.dumps(forged["observation"]))
+                observation_sha = hashlib.sha256(observation_path.read_bytes()).hexdigest()
+                bad_attempt = copy.deepcopy(attempt)
+                bad_attempt["selected_launch"].update(request_sha256=request_sha, observation_sha256=observation_sha)
+                bad_record = dict(selected_launch=dict(request=request_sha, observation=observation_sha))
+                try:
+                    with self.assertRaises(ValueError):
+                        publication.completed_launch(bad_record, raw, bad_attempt, bad_runtime)
+                finally:
+                    for path, data in originals.items():
+                        path.write_bytes(data)
 
     def test_launch_receipts_keep_strict_path_and_credential_scanning(self):
         import publish_correctness as publication

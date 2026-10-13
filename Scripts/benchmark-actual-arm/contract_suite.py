@@ -22,6 +22,7 @@ SUITES = {
             "test_developer_context",
             "test_pre_record_diagnostics",
             "test_interpreter_failure_projection",
+            "test_interpreter_relation",
             "test_installation_binding",
             "test_selected_launch",
             "test_installer_identity",
@@ -37,9 +38,9 @@ SUITES = {
             "test_startup_wiring",
             "test_source_import_policy",
         ],
-        292,
+        313,
     ),
-    "runtime": (["test_runtime_bootstrap", "test_runtime_identity", "test_startup_runtime"], 53),
+    "runtime": (["test_runtime_bootstrap", "test_runtime_identity", "test_startup_runtime", "test_interpreter_runtime"], 60),
 }
 
 

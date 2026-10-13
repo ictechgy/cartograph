@@ -29,9 +29,24 @@ def existing_environment(root, developer=None, runner_temp=None):
     return environment
 
 
+def relation(config):
+    """새 스키마에서만 관측된 인터프리터 관계를 실행 입력으로 사용한다."""
+    import interpreter_relation
+
+    return interpreter_relation.validate(
+        config["interpreter_relation"], config["python"], config["code_files"], config["startup_profile"]
+    )
+
+
+def launch_interpreter(config):
+    if config.get("schema_version") == 3:
+        return relation(config)["requested_interpreter"]["selected_path"]
+    return None
+
+
 def launch_row(config, runtime_sha256, script, arguments, environment):
     validate_profile(config["startup_profile"])
-    profile.require(type(config["schema_version"]) is int and config["schema_version"] == 2, "profile-runtime-version")
+    profile.require(type(config["schema_version"]) is int and config["schema_version"] in (2, 3), "profile-runtime-version")
     return dict(
         schema_version=1,
         role="bound-runtime-environment-request",
@@ -41,6 +56,8 @@ def launch_row(config, runtime_sha256, script, arguments, environment):
         arguments_sha256=profile.sha(json.dumps(arguments, separators=(",", ":")).encode()),
         startup_profile_sha256=profile.sha(profile.encoded(config["startup_profile"])),
         requested_environment=profile.environment_request(environment),
+        **({"interpreter_relation_sha256": profile.sha(profile.encoded(relation(config))),
+            "requested_interpreter": launch_interpreter(config)} if config["schema_version"] == 3 else {}),
     )
 
 
@@ -73,6 +90,8 @@ def read_launch(config, runtime_sha256, script, arguments, report, expected_envi
         "startup_profile_sha256",
         "requested_environment",
     }
+    if config.get("schema_version") == 3:
+        required |= {"interpreter_relation_sha256", "requested_interpreter"}
     profile.require(
         isinstance(row, dict)
         and set(row) == required
@@ -91,6 +110,12 @@ def read_launch(config, runtime_sha256, script, arguments, report, expected_envi
         and row["startup_profile_sha256"] == profile.sha(profile.encoded(config["startup_profile"])),
         "runtime-environment-request-differs",
     )
+    if config.get("schema_version") == 3:
+        profile.require(
+            row["interpreter_relation_sha256"] == profile.sha(profile.encoded(relation(config)))
+            and row["requested_interpreter"] == launch_interpreter(config),
+            "runtime-interpreter-request-differs",
+        )
     if expected_environment is not None:
         profile.require(
             row["requested_environment"] == profile.environment_request(expected_environment),
@@ -112,6 +137,19 @@ def verify_receipt(receipt, config, runtime_sha256, script, arguments, report, c
     profile.require(expected_environment is not None, "exact-launch-environment-required")
     row, digest = read_launch(config, runtime_sha256, script, arguments, report, expected_environment)
     profile.require(receipt.get("environment_request_sha256") == digest, "runtime-environment-receipt-differs")
+    if config.get("schema_version") == 3:
+        selected = relation(config)
+        profile.require(
+            receipt.get("interpreter_relation_sha256") == profile.sha(profile.encoded(selected)),
+            "runtime-interpreter-relation-differs",
+        )
+        for phase in ["before"] + ([] if code == 125 else ["after"]):
+            profile.require(
+                profile.encoded(receipt.get("interpreter_" + phase)) == profile.encoded(selected["reported_interpreter"]),
+                "runtime-reported-interpreter-differs",
+            )
+        profile.require(receipt.get("python", {}).get("path") == selected["reported_interpreter"]["selected_path"],
+                        "runtime-reported-spelling-differs")
     for phase in ["before"] + ([] if code == 125 else ["after"]):
         profile.verify_observation(
             receipt.get("environment_" + phase), row["requested_environment"], config["startup_profile"]

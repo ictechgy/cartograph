@@ -9,7 +9,7 @@ See [the execution and failure contract](INTEGRATION-BOUNDARIES.md),
 [exact copied-source provenance](COPIED-PROVENANCE.json). Historical original/successor scripts are
 explicit test fixtures; production selects the reviewed files named by the controller.
 
-The controller first runs all 292 integration and 53 runtime controls through the reviewed isolated
+The controller first runs all 313 integration and 60 runtime controls through the reviewed isolated
 bootstrap, using a separately sealed test-source manifest and the existing single private `--target`
 installation. Both full suite counts, module inventories, runtime receipts and normal exits are required;
 skips, missing imports, incomplete execution or failures stop before the AB pair. Their complete costs
@@ -23,6 +23,22 @@ python3 -m unittest discover -s Scripts/benchmark-actual-arm -p 'test_*.py' -v
 python3 -m unittest discover -s Scripts/benchmark-actual-arm/runtime -p 'test_*.py' -v
 python3 Scripts/verify-native-measurement-contract.py
 ```
+
+Runtime configuration version 3 separates the installation-selected executable spelling from the exact
+reported spelling observed in the original selected startup probe. Every suite, state, engine and observer
+launch still requests that installation-selected path. Before and after execution, receipts must report
+only the probe-established path and the same current physical interpreter, source and startup profile.
+The original installation binder and direct/one-exec limit remain unchanged. Versions 1 and 2 remain
+explicit historical fixtures and cannot gain this relation's admission.
+
+Successful publication now requires both arms' original input, arm, worker, command, measurement, observer
+and runtime/environment receipts. Embedded copies must agree with those originals, and their hashes are
+checked again after staging. A passed summary with missing originals is insufficient.
+
+The 2026-10-13 cloud reconstruction starts from published PR171 head `1246bd07`; unpublished local artifacts
+from the lost workspace remain unavailable. Fresh Linux controls exercise the comparator and real Python
+subprocesses. They do not establish macOS launcher behavior or a native Cartograph comparison; that needs
+the existing macOS CI job. Historical evidence archives are unchanged.
 
 Only normalized safe evidence is uploaded. SDK content acceptance, real-arm observer calibration,
 independent holdouts and final paired performance sessions remain separate gates.
@@ -150,10 +166,11 @@ trusting bytecode caches. Lexical and physical local aliases cannot escape that 
 request/log/observation rereads are followed by source, interpreter and directory guards. A one-exec
 replacement reuses the exclusive verified collection and cannot launch another probe or second exec.
 
-Runtime configuration version 2 binds the shared profile plus an exclusive environment request for each
+The preceding runtime configuration version 2 binds the shared profile plus an exclusive environment request for each
 actual process. Original request/interpreter/package/code and terminal checks remain mandatory. Historical
 version-1 runtime controls remain available as explicit unit fixtures, but complete current controller
-publication requires version 2 and the verified selected-launch collection. This changes the local
+publication at that revision required version 2 and the verified selected-launch collection.
+Current publication requires version 3 and its exact selected-probe interpreter relation. This changes the local
 bootstrap and measurement adapters; the frozen measurement worker and strict normalizer bytes remain
 unchanged. Provenance distinguishes these changes from historical copies.
 

@@ -11,6 +11,7 @@ import installation_binding as installation
 import attempt_receipts
 import startup_profile
 import profile_collection
+import interpreter_relation
 
 ROOT = Path(__file__).resolve().parent
 require = installation.require
@@ -195,7 +196,16 @@ def verify(args, root, sources):
         "Selected launch observation status differs",
     )
     require(observed["request_sha256"] == request_ref["sha256"], "Selected launch request changed")
-    require(same(observed["actual_interpreter"], observation(selected)), "Selected launch actual interpreter differs")
+    expected_actual = selected
+    if getattr(args, "startup_profile_sha256", None) is not None:
+        startup = startup_binding(args, root, sources)
+        expected_actual = Path(startup["interpreter_relation"]["reported_interpreter"]["selected_path"])
+        interpreter_relation.verify_current(
+            startup["interpreter_relation"], binding["python"], sources, startup["accepted_profile"], expected_actual
+        )
+    require(
+        same(observed["actual_interpreter"], observation(expected_actual)), "Selected launch actual interpreter differs"
+    )
     require(
         same(observed["installation"], identity(binding)) and same(observed["source_sha256"], sources),
         "Selected launch final bindings differ",
@@ -230,6 +240,9 @@ def startup_binding(args, root, sources):
         collection_sha256=digest,
         accepted_profile=record["accepted_profile"],
         requested_environment=record["requested_environment"],
+        interpreter_relation=interpreter_relation.from_collection(
+            path, digest, private_environment(root), selected, ROOT / "correctness_controller.py", sources
+        ),
     )
 
 
@@ -249,9 +262,17 @@ def request_projection(args, root, sources):
 
 
 def bind_current(args, root, current, source_hashes):
-    """기존 bind의 거부를 바꾸지 않고 검증된 요청 문맥만 그 실패에 붙인다."""
+    """기존 bind는 그대로 두고 현재 원래 프로브와 요청이 증명한 보고 경로만 따로 결합한다."""
     try:
-        return installation.bind(args.measurement, args.repository, Path(current))
+        binding = installation.bind(args.measurement, args.repository, Path(current))
+        if getattr(args, "startup_profile_sha256", None) is not None:
+            sources = source_hashes()
+            startup = startup_binding(args, root, sources)
+            interpreter_relation.verify_current(
+                startup["interpreter_relation"], binding["python"], sources, startup["accepted_profile"], current
+            )
+            require(same(source_hashes(), sources), "Selected launch source changed")
+        return binding
     except attempt_receipts.InterpreterSpellingMismatch as error:
         try:
             sources = source_hashes()
@@ -264,6 +285,14 @@ def bind_current(args, root, current, source_hashes):
             )
             require(same(source_hashes(), sources), "Selected launch source changed")
             error.summary["selected_request"] = projected
+            if getattr(args, "startup_profile_sha256", None) is not None:
+                startup = startup_binding(args, root, sources)
+                _, binding = selected_binding(args)
+                interpreter_relation.verify_current(
+                    startup["interpreter_relation"], binding["python"], sources, startup["accepted_profile"], current
+                )
+                require(same(source_hashes(), sources), "Selected launch source changed")
+                return binding
         except (OSError, ValueError, TypeError, KeyError, RuntimeError):
             pass
         raise
@@ -290,7 +319,7 @@ def prepare(args, root, current, source_hashes, save, *, execve=os.execve, envir
         require(not observed_path.exists(), "Selected launch observation already exists")
         request, reference = read(request_path)
         require(reference["sha256"] == marker and request.get("mode") == "one-exec", "Selected launch marker differs")
-        # 교체 프로세스의 실제 보고 경로로 기존 엄격한 설치 조건을 다시 실행한다.
+        # 원래 선택에 대한 엄격한 설치 검증과 선택 프로브의 실제 보고를 함께 확인한다.
         binding = bind_current(args, root, current, source_hashes)
         validate_request(args, request, binding, source_hashes())
     else:
@@ -350,10 +379,15 @@ def prepare(args, root, current, source_hashes, save, *, execve=os.execve, envir
             else {}
         ),
     )
-    require(
-        observed["actual_interpreter"]["selected_path"] == binding["python"]["path"],
-        "Prior interpreter spellings differ",
-    )
+    if startup is None:
+        require(
+            observed["actual_interpreter"]["selected_path"] == binding["python"]["path"],
+            "Prior interpreter spellings differ",
+        )
+    else:
+        interpreter_relation.verify_current(
+            startup["interpreter_relation"], binding["python"], source_hashes(), startup["accepted_profile"], current
+        )
     save(observed_path, observed)
     record = verify(args, root, source_hashes())
     return binding, record

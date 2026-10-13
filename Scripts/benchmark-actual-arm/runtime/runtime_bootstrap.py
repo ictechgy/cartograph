@@ -109,10 +109,11 @@ def execute(args):
             or set(config)
             != (
                 {"schema_version", "package", "python", "code_files"}
-                | ({"startup_profile"} if config.get("schema_version") == 2 else set())
+                | ({"startup_profile"} if config.get("schema_version") in (2, 3) else set())
+                | ({"interpreter_relation"} if config.get("schema_version") == 3 else set())
             )
             or type(config["schema_version"]) is not int
-            or config["schema_version"] not in (1, 2)
+            or config["schema_version"] not in (1, 2, 3)
             or not isinstance(config["code_files"], dict)
             or not 1 <= len(config["code_files"]) <= 64
         ):
@@ -170,8 +171,8 @@ def execute(args):
             python[k] != config["python"][k] for k in ["sha256", "bytes"]
         ):
             raise ValueError("Interpreter binding changed")
-        if config["schema_version"] == 2:
-            for name in ["startup_profile", "startup_binding"]:
+        if config["schema_version"] in (2, 3):
+            for name in ["startup_profile", *(["interpreter_relation"] if config["schema_version"] == 3 else []), "startup_binding"]:
                 path = here.with_name(name + ".py")
                 if str(path) not in source_bytes:
                     raise ValueError("Unbound startup profile helper")
@@ -180,6 +181,15 @@ def execute(args):
                 sys.modules[name] = module
                 exec(compile(source_bytes[str(path)], str(path), "exec"), module.__dict__)
             startup = sys.modules["startup_binding"]
+            if config["schema_version"] == 3:
+                relation = sys.modules["interpreter_relation"]
+                record["interpreter_before"] = relation.verify_current(
+                    config["interpreter_relation"], config["python"], code_files,
+                    config["startup_profile"], Path(sys.executable),
+                )
+                record["interpreter_relation_sha256"] = sys.modules["startup_profile"].sha(
+                    sys.modules["startup_profile"].encoded(config["interpreter_relation"])
+                )
             launch_request, launch_sha = startup.read_launch(
                 config, args.runtime_sha256, args.script.resolve(), args.arguments, args.report
             )
@@ -269,6 +279,11 @@ def execute(args):
                 if digest != record["environment_request_sha256"]:
                     raise ValueError("Runtime environment request changed")
                 record["environment_after"] = startup.observe(config, current, dict(os.environ))
+            if config["schema_version"] == 3:
+                record["interpreter_after"] = relation.verify_current(
+                    config["interpreter_relation"], config["python"], code_files,
+                    config["startup_profile"], Path(sys.executable),
+                )
             record["status"] = "passed" if code == 0 else "failed"
     except KeyboardInterrupt:
         code = 125

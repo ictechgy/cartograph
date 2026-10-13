@@ -398,19 +398,28 @@ def completed_launch(record, raw, attempt, runtime):
     require(actual["request_sha256"] == summary["request_sha256"])
     require(same_json(actual["installation"], controller.selected_launch.identity(binding)))
     require(same_json(runtime["python"], binding["python"]))
-    require(actual["actual_interpreter"]["selected_path"] == runtime["python"]["path"])
     require(all(actual["source_sha256"].get(path) == digest for path, digest in runtime["code_files"].items()))
-    require(type(runtime.get("schema_version")) is int and runtime["schema_version"] == 2)
+    require(type(runtime.get("schema_version")) is int and runtime["schema_version"] == 3)
     profile = values["request"]["startup_profile"]
+    relation = runtime["interpreter_relation"]
+    controller.selected_launch.interpreter_relation.validate(
+        relation, runtime["python"], runtime["code_files"], runtime["startup_profile"]
+    )
+    require(same_json(profile["interpreter_relation"], relation))
+    reported = relation["reported_interpreter"]
+    require(same_json(actual["actual_interpreter"], dict(
+        selected_path=reported["selected_path"], resolved_path=reported["resolved_path"],
+        sha256=reported["sha256"], bytes=reported["bytes"], file_identity=reported["metadata"],
+    )))
     require(profile["collection_sha256"] == summary["startup_profile_sha256"])
     require(same_json(profile, actual["startup_profile"]))
     require(same_json(runtime["startup_profile"], profile["accepted_profile"]))
-    references.update(completed_profile(raw, summary["startup_profile_sha256"]))
+    references.update(completed_profile(raw, summary["startup_profile_sha256"], relation))
     references["installation_binding"] = binding_ref
     return references
 
 
-def completed_profile(raw, expected):
+def completed_profile(raw, expected, relation=None):
     folder = raw / "setup/startup-profile"
     manifest_ref = state_inputs.reference(folder / "copy-manifest.json")
     manifest = state_inputs.document(manifest_ref)
@@ -452,7 +461,135 @@ def completed_profile(raw, expected):
         require(all(original[key] == copied[key] == row[key] for key in ("sha256", "bytes")))
         refs["startup-copy:" + row["artifact"]] = state_inputs.reference(raw / row["artifact"])
     require(refs["startup-copy:setup/startup-profile/results.json"]["sha256"] == expected)
+    if relation is not None:
+        completed_profile_relation(expected, collection, relation, refs)
     return refs
+
+
+def completed_profile_relation(expected, collection, relation, references):
+    """재구성한 관계도 게시한 원래 선택 프로브의 세 영수증 해시에 결합한다."""
+    require(relation["collection_sha256"] == expected and relation["probe"] == len(collection["probes"]))
+    probe = "spelling-%04d" % relation["probe"]
+    values = {}
+    for key in ("request", "observation", "process"):
+        name = probe + "/" + key + ".json"
+        reference = references["startup-copy:setup/startup-profile/" + name]
+        require(reference["sha256"] == relation[key + "_sha256"])
+        values[key] = state_inputs.document(reference)
+    entry = collection["probes"][-1]
+    require(
+        same_json(values["request"]["interpreter"], relation["requested_interpreter"])
+        and same_json(values["observation"]["actual_interpreter"], relation["reported_interpreter"])
+        and same_json(values["observation"], entry["observation"])
+        and same_json(values["process"], entry["process"])
+        and same_json({path: value["sha256"] for path, value in values["request"]["source_inputs"].items()},
+                      relation["source_inputs"])
+        and relation["startup_profile_sha256"] == controller.startup_profile.sha(
+            controller.startup_profile.encoded(collection["accepted_profile"]))
+    )
+    accepted = controller.profile_collection.verify_record(
+        values["observation"], values["request"], relation["request_sha256"], values["process"]
+    )
+    require(same_json(accepted, collection["accepted_profile"]))
+
+
+ARM_COMPLETION_FILES = (
+    "input.json",
+    "arm-result.json",
+    "worker-result.json",
+    "whole-arm.command.json",
+    "whole-arm.json",
+    "whole-arm.observer.json",
+    "engine-runtime/runtime-result.json",
+    "engine-runtime/environment-request.json",
+    "observer-runtime/runtime-result.json",
+    "observer-runtime/environment-request.json",
+)
+
+
+def completed_arm(raw, arm, embedded, plan, runtime, runtime_ref):
+    """성공 요약 대신 각 팔의 원래 요청·측정·관측·환경 파일을 연결한다."""
+    folder = raw / "runs/restored_rebuilt" / arm
+    references = {name: state_inputs.reference(folder / name) for name in ARM_COMPLETION_FILES}
+    values = {name: state_inputs.document(reference) for name, reference in references.items()}
+    row, worker = values["arm-result.json"], values["worker-result.json"]
+    observer, measured = values["whole-arm.observer.json"], values["whole-arm.json"]
+    request = values["whole-arm.command.json"]
+    require(same_json(values["input.json"], dict(plan["engine_config"], arm=arm, output=str(folder))))
+    require(
+        same_json(embedded, row)
+        and same_json(row.get("worker"), worker)
+        and same_json(row.get("observer"), observer)
+        and same_json(observer.get("measurement"), measured)
+        and same_json(observer.get("runtime"), values["observer-runtime/runtime-result.json"])
+        and same_json(observer.get("engine_runtime"), values["engine-runtime/runtime-result.json"])
+    )
+    require(
+        row.get("arm") == arm
+        and row.get("status") == "passed"
+        and type(row.get("exit_code")) is int
+        and row["exit_code"] == 0
+        and row.get("may_continue") is True
+        and row.get("final_evidence") is False
+        and worker.get("status") == "ok"
+        and worker.get("arm") == arm
+        and worker.get("state_id") == plan["engine_config"]["state_id"]
+    )
+    for phase in ("before", "after"):
+        guard = row.get("guard_" + phase, {})
+        require(guard.get("status") == "passed" and same_json(guard.get("generation"), plan["accepted"]))
+    require(
+        observer.get("status") == "passed"
+        and all(type(observer.get(key)) is int and observer[key] == 0
+                for key in ("exit_code", "observed_helper_returncode", "workload_returncode"))
+        and observer.get("failure") is None
+        and observer.get("cleanup_root_unfinished", False) is False
+        and observer.get("cleanup_signals") == []
+        and observer.get("final_evidence") is False
+        and observer.get("mode") == "timing"
+        and observer.get("periodic_sampling") is False
+    )
+    require(
+        measured.get("status") == "ok"
+        and all(type(measured.get(key)) is int and measured[key] == 0 for key in ("returncode", "root_returncode"))
+        and measured.get("failure") is None
+        and measured.get("timed_out") is False
+        and measured.get("helper_sha256") == controller.isolated_measure.HELPER_SHA256
+        and measured.get("measurement_mode") == "timing"
+        and measured.get("sampling_during_timing") is False
+        and measured.get("primary_timing_eligible") is True
+        and measured.get("containment", {}).get("read_errors") == []
+        and (measured.get("cleanup") is None or measured["cleanup"].get("remaining_observed_pids") == [])
+    )
+    require(
+        request.get("cwd") == str(Path(plan["engine_config"]["project"]).resolve())
+        and type(request.get("timeout_seconds")) in (int, float)
+        and request["timeout_seconds"] == 240
+        and type(request.get("interval_seconds")) in (int, float)
+        and request["interval_seconds"] == 0.01
+        and request.get("measurement_mode") == "timing"
+        and same_json(measured.get("artifacts", {}).get("command"),
+                      dict(name="whole-arm.command.json", sha256=references["whole-arm.command.json"]["sha256"]))
+    )
+    engine_arguments = ["--input", references["input.json"]["path"], "--sha256", references["input.json"]["sha256"]]
+    for role, script, arguments, actual in (
+        ("engine", ROOT / "engine_worker.py", engine_arguments, request.get("command")),
+        ("observer", controller.isolated_measure.HELPER, ["--worker"], observer.get("command")),
+    ):
+        report = folder / (role + "-runtime/runtime-result.json")
+        expected = controller.isolated_measure.bootstrap_command(
+            Path(runtime_ref["path"]), runtime_ref["sha256"], script, report, arguments, runtime=runtime
+        )
+        require(same_json(actual, expected))
+        environment = controller.isolated_measure.STARTUP.existing_environment(
+            raw / "private-readers" / arm / role, plan["engine_config"]["developer_directory"]
+        )
+        verified = controller.isolated_measure.verify_runtime_receipt(
+            report, runtime, runtime_ref["sha256"], script, arguments, 0, environment
+        )
+        require(same_json(verified, values[role + "-runtime/runtime-result.json"]))
+    return {"arm-copy:" + str(Path(reference["path"]).relative_to(raw)): reference
+            for reference in references.values()}
 
 
 def completed_success(record, raw, attempt):
@@ -516,6 +653,9 @@ def completed_success(record, raw, attempt):
             for a in state["arms"]
         )
     )
+    arm_refs = {}
+    for arm, embedded in zip(("baseline", "cartograph"), state["arms"]):
+        arm_refs.update(completed_arm(raw, arm, embedded, plan, runtime, runtime_ref))
     arguments = [
         "--plan",
         plan_ref["path"],
@@ -534,6 +674,7 @@ def completed_success(record, raw, attempt):
         ROOT / "state_worker.py",
         raw / "setup/state-runtime/runtime-result.json",
         arguments,
+        runtime=runtime,
     )
     require(phase.get("command") == expected)
     runtime_receipt = controller.isolated_measure.verify_runtime_receipt(
@@ -562,6 +703,7 @@ def completed_success(record, raw, attempt):
         runtime_environment=state_inputs.reference(raw / "setup/state-runtime/environment-request.json"),
         **contract_refs,
         **launch_refs,
+        **arm_refs,
     )
 
 
@@ -626,7 +768,10 @@ def verify_completion_manifest(completion, manifest):
         ]:
             paths["contracts_" + label + "_" + key] = "setup/contracts/" + label + "/" + suffix
     for key, digest in completion.get("bound_file_sha256", {}).items():
-        target = key.removeprefix("startup-copy:") if key.startswith("startup-copy:") else paths[key]
+        if key.startswith(("startup-copy:", "arm-copy:")):
+            target = key.split(":", 1)[1]
+        else:
+            target = paths[key]
         require(hashes.get(target) == digest)
 
 

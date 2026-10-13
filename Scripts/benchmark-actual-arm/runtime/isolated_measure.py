@@ -26,9 +26,9 @@ def save(path, value):
         stream.write("\n")
 
 
-def bootstrap_command(runtime_path, runtime_sha256, script, report, arguments=()):
+def bootstrap_command(runtime_path, runtime_sha256, script, report, arguments=(), *, runtime=None):
     return [
-        sys.executable,
+        STARTUP.launch_interpreter(runtime) if runtime and runtime.get("schema_version") == 3 else sys.executable,
         "-I",
         "-S",
         "-B",
@@ -97,7 +97,7 @@ def engine_request(command, runtime_path, runtime_sha256, config):
         or str(script) not in config["code_files"]
         or not report.is_absolute()
         or str(report.resolve()) != str(report)
-        or command != bootstrap_command(runtime_path, runtime_sha256, script, report, arguments)
+        or command != bootstrap_command(runtime_path, runtime_sha256, script, report, arguments, runtime=config)
     ):
         raise ValueError("Engine command bypasses selected runtime bootstrap")
     BOOTSTRAP.boundary(report, runtime_path, config)
@@ -229,7 +229,7 @@ def run(command, cwd, stem, runtime_path, runtime_sha256, environment, observer_
         if Path(str(stem) + suffix).exists() or Path(str(stem) + suffix).is_symlink():
             raise ValueError("Preserve previous measurement evidence")
     runtime_report = stem.parent / "observer-runtime/runtime-result.json"
-    argv = bootstrap_command(runtime_path, runtime_sha256, HELPER, runtime_report, ["--worker"])
+    argv = bootstrap_command(runtime_path, runtime_sha256, HELPER, runtime_report, ["--worker"], runtime=config_binding)
     config = dict(
         command=command,
         cwd=str(Path(cwd).resolve()),
@@ -253,6 +253,7 @@ def run(command, cwd, stem, runtime_path, runtime_sha256, environment, observer_
     bind_launch(command, runtime_path, runtime_sha256, config_binding, environment)
     bind_launch(argv, runtime_path, runtime_sha256, config_binding, observer_environment)
     result = dict(
+        command=list(argv),
         status="incomplete",
         exit_code=125,
         observed_helper_returncode=None,

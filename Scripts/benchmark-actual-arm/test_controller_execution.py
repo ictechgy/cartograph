@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 from unittest import mock
 import correctness_controller as controller
@@ -35,7 +36,7 @@ class ExecutionTests(unittest.TestCase):
         )
         self.binding = dict(package={"target": str(self.root / "package")}, python={})
         self.launch = dict(
-            request={"startup_profile": {"accepted_profile": {}}},
+            request={"startup_profile": {"accepted_profile": {}, "interpreter_relation": {"fixture": True}}},
             observation={},
             request_ref={"sha256": "a" * 64},
             observation_ref={"sha256": "b" * 64},
@@ -59,6 +60,8 @@ class ExecutionTests(unittest.TestCase):
             controller, "copy_startup_profile"
         ), mock.patch.object(
             controller.isolated_measure, "bind_launch"
+        ), mock.patch.object(
+            controller.isolated_measure.STARTUP, "launch_interpreter", return_value=sys.executable
         ), mock.patch.object(
             controller.state_inputs, "prepare", return_value=self.plan
         ), mock.patch.object(

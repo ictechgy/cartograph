@@ -121,6 +121,7 @@ def verify(root, expected=None, engine_runtime=None):
             same(runtime["package"], engine_runtime["package"])
             and same(runtime["python"], engine_runtime["python"])
             and runtime.get("startup_profile") == engine_runtime.get("startup_profile")
+            and runtime.get("interpreter_relation") == engine_runtime.get("interpreter_relation")
             and runtime["schema_version"] == engine_runtime["schema_version"]
             and all(runtime["code_files"].get(path) == digest for path, digest in engine_runtime["code_files"].items()),
             "Contract prerequisites use different installed/runtime inputs",
@@ -148,6 +149,7 @@ def verify(root, expected=None, engine_runtime=None):
             ROOT / "contract_suite.py",
             folder / "runtime-result.json",
             args,
+            runtime=runtime,
         )
         state_inputs.require(phase["command"] == command, "Contract bootstrap request differs")
         receipt = isolated_measure.verify_runtime_receipt(
@@ -159,7 +161,7 @@ def verify(root, expected=None, engine_runtime=None):
             0,
             (
                 startup_binding.existing_environment(root.parent.parent / "private-contracts" / label)
-                if runtime.get("schema_version") == 2
+                if runtime.get("schema_version") in (2, 3)
                 else None
             ),
         )
@@ -171,22 +173,23 @@ def verify(root, expected=None, engine_runtime=None):
         refs["contracts_" + label + "_process"] = phase_ref
         refs["contracts_" + label + "_runtime"] = state_inputs.reference(folder / "runtime-result.json")
         refs["contracts_" + label + "_summary"] = result_ref
-        if runtime.get("schema_version") == 2:
+        if runtime.get("schema_version") in (2, 3):
             refs["contracts_" + label + "_environment"] = state_inputs.reference(folder / "environment-request.json")
     return refs
 
 
-def run(binding, output, engine_paths, command_runner, save, startup_profile=None):
+def run(binding, output, engine_paths, command_runner, save, startup_profile=None, interpreter_relation=None):
     started = time.perf_counter()
     root = Path(output) / "setup/contracts"
     root.mkdir()
     sources = {str(ROOT / name): identity.file_identity(ROOT / name)["sha256"] for name in source_paths(engine_paths)}
     runtime = dict(
-        schema_version=2 if startup_profile is not None else 1,
+        schema_version=3 if interpreter_relation is not None else 2 if startup_profile is not None else 1,
         package=binding["package"],
         python=binding["python"],
         code_files=sources,
         **({"startup_profile": startup_profile} if startup_profile is not None else {}),
+        **({"interpreter_relation": interpreter_relation} if interpreter_relation is not None else {}),
     )
     save(root / "runtime.json", runtime)
     runtime_ref = state_inputs.reference(root / "runtime.json")
@@ -209,6 +212,7 @@ def run(binding, output, engine_paths, command_runner, save, startup_profile=Non
                 ROOT / "contract_suite.py",
                 folder / "runtime-result.json",
                 arguments,
+                runtime=runtime,
             )
             env = identity.private_environment(Path(output) / "private-contracts" / label)
             isolated_measure.bind_launch(command, root / "runtime.json", runtime_ref["sha256"], runtime, env)

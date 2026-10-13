@@ -262,10 +262,46 @@ class RuntimePublicationTests(unittest.TestCase):
             "runs/restored_rebuilt/baseline/observer-runtime/runtime-result.json",
             self.receipt(config, projection.isolated_measure.HELPER, ["--worker"]),
         )
-        self.write("runs/restored_rebuilt/baseline/whole-arm.observer.json", dict(observed_helper_returncode=0))
+        self.write("runs/restored_rebuilt/baseline/whole-arm.observer.json", dict(
+            observed_helper_returncode=0,
+            command=projection.isolated_measure.bootstrap_command(
+                config, ref["sha256"], projection.isolated_measure.HELPER,
+                folder / "observer-runtime/runtime-result.json", ["--worker"],
+            ),
+        ))
         p = projection.Projection(self.raw).collect()
         self.assertEqual(len(p.bindings), 3)
         self.package()
+
+    def setup_observer(self):
+        config = self.raw / "setup/runtime.json"
+        ref = projection.state_inputs.reference(config)
+        folder = self.raw / "runs/restored_rebuilt/baseline"
+        report = self.write("runs/restored_rebuilt/baseline/observer-runtime/runtime-result.json",
+                            self.receipt(config, projection.isolated_measure.HELPER, ["--worker"]))
+        command = projection.isolated_measure.bootstrap_command(
+            config, ref["sha256"], projection.isolated_measure.HELPER, report, ["--worker"]
+        )
+        self.write("setup/plan.json", dict(engine_config=dict(developer_directory=str(self.raw))))
+        path = self.write("runs/restored_rebuilt/baseline/whole-arm.observer.json",
+                          dict(command=command, observed_helper_returncode=0))
+        return path, command
+
+    def test_observer_original_argv_is_verified_when_retained(self):
+        path, command = self.setup_observer()
+        self.assertEqual(len(projection.Projection(self.raw).collect().bindings), 1)
+        command[0] = "/different-helper-python"
+        path.write_text(json.dumps(dict(command=command, observed_helper_returncode=0)))
+        with self.assertRaisesRegex(ValueError, "Runtime projection request differs"):
+            projection.Projection(self.raw).collect()
+
+    def test_schema3_observer_without_original_argv_is_not_projected(self):
+        path, _ = self.setup_observer()
+        path.write_text(json.dumps(dict(observed_helper_returncode=0)))
+        self.config["schema_version"] = 3
+        self.write("setup/runtime.json", self.config)
+        with self.assertRaisesRegex(ValueError, "Observer launch argv is missing"):
+            projection.Projection(self.raw).collect()
 
     def test_credential_named_arbitrary_module_payload_is_rejected(self):
         receipt, report = self.setup_integration()
