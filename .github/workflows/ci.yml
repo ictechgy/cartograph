@@ -33,6 +33,7 @@ jobs:
         run: |
           python3 Scripts/verify-indexstore-benchmark.py
           python3 Scripts/verify-indexstore-project.py
+          python3 Scripts/verify-prepared-indexstore-sessions.py
           python3 Scripts/verify-indexstore-evidence.py
           python3 Scripts/verify-indexstore-bundles.py
           python3 Scripts/verify-indexstore-mixed.py
@@ -77,6 +78,12 @@ jobs:
               "$RUNNER_TEMP/indexstore-project-validation/setup/driver.stdout"
           fi
           exit "$status"
+
+      - name: Diagnose prepared sessions on the frozen public project
+        timeout-minutes: 10
+        run: |
+          python3 Scripts/benchmark-prepared-indexstore-sessions.py \
+            --project-results "$RUNNER_TEMP/indexstore-project-validation/results.json"
 
       - name: Diagnose compiler module re-indexing
         if: always() && steps.tools.outcome == 'success'

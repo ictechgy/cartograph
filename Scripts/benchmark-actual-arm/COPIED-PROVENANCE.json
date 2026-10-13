@@ -176,6 +176,11 @@
         "sha256": "eb64bbbf9e7d871b800c1eb6b0d28776aa255801fc12dc554db11260de7e1ae2"
       },
       {
+        "bytes": 25289,
+        "path": "runtime/test_runtime_bootstrap.py",
+        "sha256": "3b3879087b3f5e9c7c35c7f26889045f2b31b56c76501c5bc25a2de6948f8397"
+      },
+      {
         "bytes": 13827,
         "path": "runtime_publication.py",
         "sha256": "a5796f15a5bc30de588e409e8838a70f3da8b5d82c5160461cf9847e4dbe0de5"

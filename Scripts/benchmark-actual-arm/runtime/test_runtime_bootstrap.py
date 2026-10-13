@@ -14,6 +14,7 @@ from unittest import mock
 
 import psutil
 import runtime_identity as runtime
+import startup_profile
 
 ROOT = Path(__file__).resolve().parent
 
@@ -192,7 +193,7 @@ class BootstrapTests(unittest.TestCase):
 
     def test_direct_true_cannot_bypass_engine_runtime(self):
         with self.assertRaises(ValueError):
-            self.measured_workload("pass", command_override=["/bin/true"])
+            self.measured_workload("pass", command_override=[sys.executable])
         self.assertFalse((self.root / "measurement").exists())
 
     def test_direct_python_cannot_bypass_engine_runtime(self):
@@ -348,7 +349,32 @@ class BootstrapTests(unittest.TestCase):
         environment = runtime.private_environment(self.root / "private")
         result = self.invoke(environment)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout), environment)
+        expected = startup_profile.environment_request(environment)
+
+        def observe(actual, platform):
+            # 발신 값은 그대로 비교하고 운영체제의 제한된 시작 추가만 따로 검증한다.
+            observation = startup_profile.observe_request(expected, actual, platform=platform)
+            startup_profile.validate_observation(observation)
+            self.assertEqual({key: actual[key] for key in environment}, environment)
+            return observation
+
+        observe(json.loads(result.stdout), sys.platform)
+        for platform in ["linux", "darwin"]:
+            with self.subTest(platform=platform):
+                self.assertIsNone(observe(dict(environment), platform)["addition"])
+                for changed in [
+                    dict(environment, UNKNOWN_STARTUP_KEY="synthetic"),
+                    dict(environment, TZ="changed"),
+                    {key: value for key, value in environment.items() if key != "HOME"},
+                ]:
+                    with self.assertRaises(ValueError):
+                        observe(changed, platform)
+        added = dict(environment, __CF_USER_TEXT_ENCODING="synthetic-darwin-value")
+        addition = observe(added, "darwin")["addition"]
+        self.assertEqual(addition["identifier"], startup_profile.IDENTIFIER)
+        self.assertEqual(addition["sha256"], hashlib.sha256(b"synthetic-darwin-value").hexdigest())
+        with self.assertRaises(ValueError):
+            observe(added, "linux")
 
     def test_captured_stale_package_bytecode_is_never_loaded(self):
         import importlib.util
