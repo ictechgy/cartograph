@@ -18,6 +18,13 @@ MAX_TEXT_BYTES = 4 * 1024**2
 MAX_TOOL_BYTES = 1024**3
 CONTEXTS = ["c", "objective-c", "c++", "objective-c++"]
 RUNNER_SHA256 = "266d771fdff4e193c328c14487edc383079e4e44780c293a4ecbb405824c0dd2"
+COMPILE_PHASE_PROFILE = "mixed-ios-object-module-v1"
+REVIEWED_COMPILE_PLAN_SHA256 = "174ce30a1c1cab4b7d23efea23093299b50523e5437d41dcd781b24724ceef6f"
+REVIEWED_COMPILER_SHA256 = {
+    "swift": "8a63cc031d970b57f03741ae83becbfb26f2b913565ac212b81b80bdcb35600f",
+    "clang": "d2e4bf622758eee1bf7267c060497fb2c41e098d37b0fca8be73898dc7e14eda",
+}
+REVIEWED_SWIFT_VERSION = "Apple Swift version 6.3.3 (swiftlang-6.3.3.1.3 clang-2100.1.1.101)"
 OVERRIDES = (
     "CPATH",
     "C_INCLUDE_PATH",
@@ -271,6 +278,132 @@ def diagnostic_binding(value: str, roots: dict[str, Path], result: dict, usage: 
         return entry
 
 
+def content_digest(value: object) -> str:
+    """수락된 세대와 같은 정렬 직렬화로 명령과 단계 증거를 연결한다."""
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def compile_phase_binding(request: dict) -> dict | None:
+    """일반 선택기의 기본값은 유지하고 검토한 여섯 명령만 단계 예외를 얻는다."""
+    if "compile_phase" not in request:
+        return None
+    phase = request["compile_phase"]
+    if (
+        not isinstance(phase, dict)
+        or set(phase) != {"profile", "commands", "commands_sha256"}
+        or phase["profile"] != COMPILE_PHASE_PROFILE
+        or request["target"] != "arm64-apple-ios16.0-simulator"
+        or request["sdk_name"] != "iphonesimulator"
+        or set(request["project_roots"]) != {"PROJECT", "MODULES"}
+        or request["additional_immutable_roots"] != {}
+        or any(request["tools"][name]["sha256"] != sha for name, sha in REVIEWED_COMPILER_SHA256.items())
+        or content_digest(phase["commands"]) != phase["commands_sha256"]
+    ):
+        raise DiscoveryError("unreviewed-compile-phase")
+    project = request["project_roots"]["PROJECT"]["path"]
+    modules = request["project_roots"]["MODULES"]["path"]
+    build = str(Path(modules).parent)
+    include = str(Path(project) / "Sources/BridgeKit/include")
+    if (
+        Path(modules).name != "modules"
+        or Path(build).name != "Build"
+        or request["search_flags"] != {"clang": ["-I", include], "swift": ["-I", include, "-I", modules]}
+        or request["context_options"]
+        != {"c": [], "objective-c": [], "c++": ["-std=c++17"], "objective-c++": ["-std=c++17"]}
+        or request["extra_contexts"] != [dict(id="objective-c-arc", language="objective-c", options=["-fobjc-arc"])]
+    ):
+        raise DiscoveryError("unreviewed-compile-phase")
+    substitutions = {
+        request["tools"]["swift"]["path"]: "$SWIFT",
+        request["tools"]["clang"]["path"]: "$CLANG",
+        request["sdk"]: "$SDK",
+        project: "$PROJECT",
+        build: "$BUILD",
+        str(Path(build).parent / "IndexStore"): "$INDEX_STORE",
+    }
+
+    def normalize(value):
+        if isinstance(value, str):
+            if value.startswith("$"):
+                raise DiscoveryError("unreviewed-compile-phase")
+            for prefix, replacement in substitutions.items():
+                if value == prefix or value.startswith(prefix + "/"):
+                    return replacement + value[len(prefix):]
+        if isinstance(value, list):
+            return [normalize(item) for item in value]
+        if isinstance(value, dict):
+            return {normalize(key): normalize(item) for key, item in value.items()}
+        return value
+
+    if content_digest(normalize(phase["commands"])) != REVIEWED_COMPILE_PLAN_SHA256:
+        raise DiscoveryError("unreviewed-compile-phase")
+    return dict(
+        profile=COMPILE_PHASE_PROFILE,
+        commands_sha256=phase["commands_sha256"],
+        normalized_commands_sha256=REVIEWED_COMPILE_PLAN_SHA256,
+        active_phase="object-and-module-compilation",
+        excluded_phases=["link", "jit", "target-execution"],
+        target=request["target"],
+        compiler_tools={name: request["tools"][name] for name in REVIEWED_COMPILER_SHA256},
+        project_roots=request["project_roots"],
+        runtime_closure_proven=False,
+    )
+
+
+def classify_target_runtime(selection: dict, swift_info: dict, stdout: str, result: dict) -> None:
+    """호스트 디렉터리를 봉인하지 않고 검토한 대상 런타임 참조만 후속 단계로 남긴다."""
+    binding = result.get("compile_phase")
+    if binding is None:
+        return
+    paths = swift_info["paths"]
+    swift_paths = result["proposal"]["swift_paths"]
+    resource = selection["roots"]["TOOLCHAIN"] / "usr/lib/swift"
+    runtime = "/usr/lib/swift"
+    if (
+        swift_info.get("compilerVersion") != REVIEWED_SWIFT_VERSION
+        or swift_info.get("swiftCompilerTag") != "swiftlang-6.3.3.1.3"
+        or swift_info["target"].get("platform") != "iphonesimulator"
+        or swift_paths["runtimeResourcePath"][0].get("canonical_path") != str(resource)
+        or len(paths["runtimeLibraryPaths"]) != 2
+        or swift_paths["runtimeLibraryPaths"][0].get("canonical_path") != str(resource / "iphonesimulator")
+        or paths["runtimeLibraryPaths"][1] != runtime
+    ):
+        raise DiscoveryError("unreviewed-target-runtime-profile")
+    unresolved = result["unresolved_effective_paths"]
+    references = [item for item in unresolved if item["path"] == runtime]
+    if (
+        len(references) != 1
+        or references[0]["usage"] != "swift-runtime-library-search"
+        or references[0]["reason"] != "external-search-path"
+        or references[0]["observation"].get("canonical_path") != runtime
+        or references[0]["observation"]["entry_type"] != "directory"
+        or any(row["entry_type"] != "directory" for row in references[0]["observation"]["components"])
+        or any(
+            item["usage"] != "swift-runtime-library-search"
+            and item["observation"].get("canonical_path") == runtime
+            for item in unresolved
+        )
+    ):
+        raise DiscoveryError("unreviewed-target-runtime-reference")
+    reference = references[0]
+    classification = dict(
+        scope="phase-deferred-target-runtime-reference",
+        path_field="runtimeLibraryPaths",
+        path_index=1,
+        compile_phase_sha256=content_digest(binding),
+        probe_name="swift-target",
+        probe_stdout_sha256=hashlib.sha256(stdout.encode()).hexdigest(),
+        required_for_phases=binding["excluded_phases"],
+        runtime_closure_proven=False,
+    )
+    retained = [{**item, **classification} if item is reference else item for item in unresolved]
+    if len(json.dumps(retained, ensure_ascii=False).encode("utf-8")) > MAX_PATH_DIAGNOSTIC_BYTES:
+        raise DiscoveryError("diagnostic-byte-limit")
+    reference.update(classification)
+    result["deferred_target_runtime_references"].append(reference)
+    result["unresolved_effective_paths"] = [item for item in unresolved if item is not reference]
+
+
 def prepare(request: dict) -> dict:
     expected = {
         "schema_version",
@@ -287,7 +420,7 @@ def prepare(request: dict) -> dict:
     }
     if (
         not isinstance(request, dict)
-        or set(request) != expected
+        or set(request) not in (expected, expected | {"compile_phase"})
         or type(request["schema_version"]) is not int
         or request["schema_version"] != 1
     ):
@@ -425,12 +558,20 @@ def prepare(request: dict) -> dict:
                     scope="project-generation-reference", manifest_sha256=projects[coverage["root"]]["manifest_sha256"]
                 )
             explicit[compiler].append(dict(flag=argv[index], coverage=coverage))
+    phase = compile_phase_binding(request)
+    if phase is not None:
+        frontend = Path(tools["swift"]["original_path"]).with_name("swift-frontend")
+        identity = file_identity(frontend.resolve(strict=True))
+        if identity["sha256"] != REVIEWED_COMPILER_SHA256["swift"]:
+            raise DiscoveryError("unreviewed-compile-frontend")
+        tools["swift_frontend"] = dict(original_path=str(frontend), path=str(frontend.resolve()), **identity)
     return dict(
         roots=roots,
         contexts=contexts,
         project_paths=project_paths,
         explicit_search_paths=explicit,
         tools=tools,
+        compile_phase=phase,
         developer=toolchain.parent.parent,
         root_aliases={
             "SDK": request["sdk"],
@@ -531,6 +672,7 @@ def record(
         probes=[],
         observed_path_count=0,
         unresolved_effective_paths=[],
+        deferred_target_runtime_references=[],
         probe_wall_seconds=0.0,
         runner_identity=runner_identity,
         environment_policy=dict(removed_keys=list(OVERRIDES), explicit_developer_dir="selected-toolchain-parent"),
@@ -540,6 +682,7 @@ def record(
             "Ignored external missing paths are unsealed absence dependencies requiring a final policy.",
             "Full tool identities, probes and pre/post guards are charged shared setup costs; no costs are subtracted.",
             "No complete OS/dynamic-loader dependency closure or detached-descendant containment is claimed.",
+            "Deferred target-runtime references require separate link/JIT/execution closure review; none is proved.",
         ],
     )
     save(output / "request.json", request)
@@ -547,6 +690,8 @@ def record(
         save(output / "request-input.json", request_identity)
     try:
         selection = prepare(request)
+        if selection["compile_phase"] is not None:
+            result["compile_phase"] = selection["compile_phase"]
         selection["compiler_alias_state"] = compiler_alias_state(selection)
         result["compiler_path_aliases"] = selection["compiler_alias_state"]
         guard(selection)
@@ -606,20 +751,19 @@ def record(
             raise DiscoveryError("invalid-sdk-version")
         resource = probe("clang-resource", [clang, "-print-resource-dir"])["stdout"].strip()
         resource_binding = diagnostic_binding(resource, roots, result, "clang-resource-directory")
-        swift_info = strict_json(
-            probe(
-                "swift-target",
-                [
-                    swift,
-                    "-print-target-info",
-                    "-target",
-                    request["target"],
-                    "-sdk",
-                    sdk,
-                    *request["search_flags"]["swift"],
-                ],
-            )["stdout"]
-        )
+        swift_stdout = probe(
+            "swift-target",
+            [
+                swift,
+                "-print-target-info",
+                "-target",
+                request["target"],
+                "-sdk",
+                sdk,
+                *request["search_flags"]["swift"],
+            ],
+        )["stdout"]
+        swift_info = strict_json(swift_stdout)
         expected_paths = {"runtimeResourcePath", "runtimeLibraryPaths", "runtimeLibraryImportPaths"}
         paths = swift_info.get("paths") if isinstance(swift_info, dict) else None
         if (
@@ -717,6 +861,7 @@ def record(
             clang_search_paths=searches,
             unsealed_absence_dependencies=absences,
         )
+        classify_target_runtime(selection, swift_info, swift_stdout, result)
         if result["unresolved_effective_paths"]:
             raise DiscoveryError("unresolved-effective-paths")
         result.update(status="awaiting-root-review", exit_code=0)

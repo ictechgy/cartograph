@@ -50,6 +50,12 @@ class NativeDiscoveryTests(unittest.TestCase):
             path.write_bytes(name.encode())
         self.frontend = self.tools["swiftc"].with_name("swift-frontend")
         self.frontend.write_bytes(b"frontend")
+        compiler_pins = mock.patch.object(
+            M.SELECTOR, "REVIEWED_COMPILER_SHA256",
+            {"swift": M.digest(self.tools["swiftc"]), "clang": M.digest(self.tools["clang"])},
+        )
+        compiler_pins.start()
+        self.addCleanup(compiler_pins.stop)
         self.xcrun = self.root / "usr/bin/xcrun"
         self.xcrun.parent.mkdir(parents=True)
         self.xcrun.write_bytes(b"xcrun")
@@ -137,6 +143,7 @@ class NativeDiscoveryTests(unittest.TestCase):
                 unsealed_absence_dependencies=[],
             ),
             request=request,
+            compile_phase=M.SELECTOR.compile_phase_binding(request),
         )
         (output / "results.json").write_text(json.dumps(proposal))
         for suffix in ["stdout", "stderr"]:
@@ -181,6 +188,9 @@ class NativeDiscoveryTests(unittest.TestCase):
         )
         self.assertEqual(r["generation_guard_before"]["status"], "passed")
         self.assertEqual(r["generation_guard_after"]["status"], "passed")
+        self.assertEqual(q["compile_phase"]["commands"], self.commands)
+        self.assertEqual(r["compile_phase"]["commands_sha256"], self.accepted["commands_sha256"])
+        self.assertFalse(r["compile_phase"]["runtime_closure_proven"])
         self.assertEqual(
             r["charged_wall_seconds_by_arm"]["cartograph"], r["charged_wall_seconds_by_arm"]["index_dump_assembly"]
         )
@@ -191,6 +201,42 @@ class NativeDiscoveryTests(unittest.TestCase):
         self.write_inputs()
         self.assertEqual(self.execute()["failure"], "compiler-context-mismatch")
         self.assertEqual(self.calls, [])
+
+    def test_generator_change_cannot_authorize_link_jit_or_execution(self):
+        original_plan = M.COMMON.command_plan
+        for extra in ["-emit-executable", "-interpret", "simctl"]:
+            with self.subTest(extra=extra):
+                commands = original_plan(
+                    self.project, self.store, self.build, str(self.sdk), self.setup["target_triple"],
+                    str(self.tools["swiftc"]), str(self.tools["clang"]), self.setup["platform_path"], False,
+                )
+                commands[-1]["args"].append(extra)
+                self.commands = commands
+                self.accepted["commands_sha256"] = M.GENERATIONS.content_digest(commands)
+                self.write_inputs()
+                with mock.patch.object(M.COMMON, "command_plan", return_value=commands):
+                    result = self.execute(output=self.root / extra.lstrip("-"))
+                self.assertEqual(result["failure"], "unreviewed-compile-phase")
+
+    def test_missing_or_changed_selector_phase_binding_refuses(self):
+        for mutation in ["missing", "commands_sha256", "runtime_closure_proven"]:
+            with self.subTest(mutation=mutation):
+                output = self.root / mutation
+
+                def command(*args):
+                    row = self.fake_command(*args)
+                    path = output / "setup/discovery/results.json"
+                    value = json.loads(path.read_text())
+                    if mutation == "missing":
+                        value.pop("compile_phase")
+                    else:
+                        value["compile_phase"][mutation] = True if mutation == "runtime_closure_proven" else "0" * 64
+                    path.write_text(json.dumps(value))
+                    return row
+
+                self.assertEqual(
+                    self.execute(command, output)["failure"], "invalid-compile-phase-binding"
+                )
 
     def test_edited_source_refuses_before_selector(self):
         (self.project / "Sources/BridgeKit/include/CGCore.h").write_text("edited")

@@ -1,5 +1,6 @@
 """명시한 Apple 입력 경계를 제안만 하고 자동 승인하지 않는지 검증한다."""
 
+import copy
 import importlib.util
 import json
 import os
@@ -351,6 +352,178 @@ class RootSelectionTests(unittest.TestCase):
         self.assertEqual(result["unresolved_effective_paths"][0]["usage"], "swift-runtime-library-search")
         self.assertEqual(result["proposal"]["swift_paths"]["sdkPath"][0]["canonical_path"], str(self.sdk))
         self.assertFalse(result["accepted"])
+
+    def reviewed_phase_request(self):
+        fixture = HERE.parents[1] / "Fixtures/IndexStoreCLIBenchmark/mixed-ios-validation"
+        plan_spec = importlib.util.spec_from_file_location("phase_command_plan", fixture / "validation_common.py")
+        plan = importlib.util.module_from_spec(plan_spec)
+        plan_spec.loader.exec_module(plan)
+        project = self.root / "Project"
+        (project / "Sources/BridgeKit/include").mkdir(parents=True)
+        (project / "Sources/AppFlow").mkdir(parents=True)
+        for name in ["Checkout.swift", "Legacy.swift"]:
+            (project / "Sources/AppFlow" / name).write_text("")
+        build = self.root / "Generations/restored_rebuilt/Build"
+        (build / "modules").mkdir(parents=True)
+        (self.sdk / "usr/lib/swift").mkdir(parents=True)
+        self.tools["swift"].with_name("swift-frontend").write_bytes(self.tools["swift"].read_bytes())
+        patch = mock.patch.object(selector, "REVIEWED_COMPILER_SHA256", {
+            name: self.request["tools"][name]["sha256"] for name in ["swift", "clang"]
+        })
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.request["project_roots"] = {
+            "PROJECT": dict(path=str(project), manifest_sha256="a" * 64),
+            "MODULES": dict(path=str(build / "modules"), manifest_sha256="b" * 64),
+        }
+        include = str(project / "Sources/BridgeKit/include")
+        self.request["search_flags"] = {
+            "clang": ["-I", include], "swift": ["-I", include, "-I", str(build / "modules")]
+        }
+        self.request["context_options"].update({"c++": ["-std=c++17"], "objective-c++": ["-std=c++17"]})
+        self.request["extra_contexts"] = [dict(id="objective-c-arc", language="objective-c", options=["-fobjc-arc"])]
+        commands = plan.command_plan(
+            project, build.parent / "IndexStore", build, str(self.sdk), self.request["target"],
+            str(self.tools["swift"]), str(self.tools["clang"]), str(self.sdk.parents[2]), False,
+        )
+        self.request["compile_phase"] = dict(
+            profile=selector.COMPILE_PHASE_PROFILE, commands=commands, commands_sha256=selector.content_digest(commands)
+        )
+
+    def run_apple_phase(self, mutate=None, observation=None, clang_usage=False):
+        fixture = json.loads((HERE / "fixtures/apple-swift-target-info-6.3.3.json").read_text()
+                             .replace("$DEVELOPER", str(self.developer)).replace("$SYSTEM_LIB", "/usr/lib"))
+        if mutate:
+            mutate(fixture)
+
+        def runner(*args):
+            row = self.runner(*args)
+            if "-print-target-info" in args[0]:
+                Path(row["stdout"]).write_text(json.dumps(fixture))
+            if clang_usage and "-E" in args[0]:
+                path = Path(row["stderr"])
+                path.write_text(path.read_text().replace(
+                    "End of search list.", " /usr/lib/swift (framework directory)\nEnd of search list."
+                ))
+            return row
+
+        existing = selector.existing_directory
+        observe = selector.path_observation
+        runtime_observation = observation or dict(
+            entry_type="directory", canonical_path="/usr/lib/swift", content_read=False,
+            components=[dict(component=part, entry_type="directory") for part in ["usr", "lib", "swift"]],
+        )
+        with mock.patch.object(selector, "existing_directory", side_effect=lambda path:
+                               Path(path) if path == "/usr/lib/swift" else existing(path)), \
+             mock.patch.object(selector, "path_observation", side_effect=lambda path:
+                               runtime_observation if path == "/usr/lib/swift" else observe(path)):
+            return self.run_select(runner=runner)
+
+    def test_exact_object_phase_retains_unsealed_ordered_target_runtime_reference(self):
+        self.reviewed_phase_request()
+        result = self.run_apple_phase()
+        self.assertEqual(result["status"], "awaiting-root-review")
+        self.assertFalse(result["accepted"])
+        self.assertFalse(result["final_protocol_ready"])
+        self.assertEqual(len(result["probes"]), 10)
+        self.assertEqual(result["unresolved_effective_paths"], [])
+        reference = result["deferred_target_runtime_references"][0]
+        self.assertEqual(reference["path"], "/usr/lib/swift")
+        self.assertEqual(reference["path_index"], 1)
+        self.assertFalse(reference["observation"]["content_read"])
+        self.assertFalse(reference["runtime_closure_proven"])
+        self.assertEqual(reference["required_for_phases"], ["link", "jit", "target-execution"])
+        self.assertEqual(reference["compile_phase_sha256"], selector.content_digest(result["compile_phase"]))
+        probe = next(item for item in result["probes"] if item["name"] == reference["probe_name"])
+        self.assertEqual(reference["probe_stdout_sha256"], selector.file_identity(Path(probe["stdout"]))["sha256"])
+        self.assertEqual(result["proposal"]["swift_paths"]["runtimeLibraryPaths"][1], reference)
+        self.assertEqual(set(result["proposal"]["roots"]), {"SDK", "TOOLCHAIN"})
+
+    def test_compile_phase_rejects_added_link_jit_run_and_changed_compiler_target(self):
+        self.reviewed_phase_request()
+        for change in ["-emit-executable", "-interpret", "simctl", "compiler", "target", "token-path"]:
+            with self.subTest(change=change):
+                request = copy.deepcopy(self.request)
+                if change == "compiler":
+                    request["tools"]["swift"]["sha256"] = "0" * 64
+                elif change == "target":
+                    request["target"] = "arm64-apple-ios17.0-simulator"
+                elif change == "token-path":
+                    request["compile_phase"]["commands"][0]["args"][0] = "$CLANG"
+                else:
+                    request["compile_phase"]["commands"][-1]["args"].append(change)
+                request["compile_phase"]["commands_sha256"] = selector.content_digest(
+                    request["compile_phase"]["commands"]
+                )
+                with self.assertRaisesRegex(selector.DiscoveryError, "unreviewed-compile-phase"):
+                    selector.compile_phase_binding(request)
+
+    def test_phase_retains_toolchain_alias_but_checks_existing_physical_root(self):
+        self.reviewed_phase_request()
+        alias = self.root / "SelectedDeveloper"
+        alias.symlink_to(self.developer, target_is_directory=True)
+
+        def mutate(doc):
+            for key in ["runtimeResourcePath", "runtimeLibraryPaths"]:
+                value = doc["paths"][key]
+                doc["paths"][key] = (
+                    [item.replace(str(self.developer), str(alias)) for item in value]
+                    if isinstance(value, list) else value.replace(str(self.developer), str(alias))
+                )
+
+        result = self.run_apple_phase(mutate)
+        self.assertEqual(result["status"], "awaiting-root-review")
+        entry = result["proposal"]["swift_paths"]["runtimeLibraryPaths"][0]
+        self.assertTrue(entry["path"].startswith(str(alias)))
+        self.assertEqual(entry["canonical_path"], str(self.swift_resource / "iphonesimulator"))
+
+    def test_changed_frontend_refuses_before_probes(self):
+        self.reviewed_phase_request()
+        self.tools["swift"].with_name("swift-frontend").write_bytes(b"changed frontend")
+        result = self.run_apple_phase()
+        self.assertEqual(result["failure"], "unreviewed-compile-frontend")
+        self.assertEqual(self.commands, [])
+
+    def test_unknown_runtime_profile_and_compile_time_reuse_stay_unresolved(self):
+        self.reviewed_phase_request()
+        mutations = [
+            lambda doc: doc.update(compilerVersion="other Swift"),
+            lambda doc: doc.update(swiftCompilerTag="other tag"),
+            lambda doc: doc["paths"]["runtimeLibraryPaths"].append(str(self.swift_resource)),
+            lambda doc: doc["paths"]["runtimeLibraryPaths"].reverse(),
+            lambda doc: doc["paths"]["runtimeLibraryImportPaths"].append("/usr/lib/swift"),
+            lambda doc: doc["paths"].update(runtimeResourcePath="/usr/lib/swift"),
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                with mock.patch.object(self, "run_select", side_effect=lambda request=None, runner=None:
+                                       selector.record(self.request, self.root / f"evidence-{index}", runner)):
+                    result = self.run_apple_phase(mutation)
+                self.assertEqual(result["exit_code"], 1)
+                self.assertEqual(result["deferred_target_runtime_references"], [])
+                self.assertTrue(result["unresolved_effective_paths"])
+
+    def test_changed_runtime_observation_never_proves_closure(self):
+        self.reviewed_phase_request()
+        result = self.run_apple_phase(observation=dict(
+            entry_type="symlink", canonical_path="/unreviewed/runtime", content_read=False,
+            components=[dict(component="swift", entry_type="symlink", link_target="/unreviewed/runtime")],
+        ))
+        self.assertEqual(result["failure"], "unreviewed-target-runtime-reference")
+        self.assertEqual(result["deferred_target_runtime_references"], [])
+
+    def test_runtime_reused_by_clang_framework_search_is_not_deferred(self):
+        self.reviewed_phase_request()
+        result = self.run_apple_phase(clang_usage=True)
+        self.assertEqual(result["failure"], "unreviewed-target-runtime-reference")
+        self.assertEqual(result["deferred_target_runtime_references"], [])
+        self.assertTrue(any(item["usage"].startswith("clang-") for item in result["unresolved_effective_paths"]))
+
+    def test_same_apple_runtime_path_without_phase_still_fails(self):
+        (self.sdk / "usr/lib/swift").mkdir(parents=True)
+        result = self.run_apple_phase()
+        self.assertEqual(result["failure"], "unresolved-effective-paths")
+        self.assertEqual(result["deferred_target_runtime_references"], [])
 
     def test_sdk_path_wrong_type_stays_a_schema_failure(self):
         def run(*args):

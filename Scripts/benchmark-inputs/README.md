@@ -99,7 +99,7 @@ python3 -m unittest discover -s Scripts/benchmark-inputs -v
 python3 Scripts/verify-sdk-discovery-contract.py
 ```
 
-The first command covers32 seal and52 selector controls. Wrapper controls verify actual compiler
+The first command covers32 seal and69 selector controls. Wrapper controls verify actual compiler
 recipe binding, pre/post generation guards, nested125, source/index mutations, conservative acceptance,
 normalized failure retention and credential-screen refusal. Actual Apple discovery failures are retained below. Actual root/link review, full content sealing, actual-arm calibration, independent
 holdouts and the preregistered20-session performance gate remain open.
@@ -125,9 +125,29 @@ toolchain/SDK module directories. The upstream Swift 6.3.3 implementation separa
 OS library location to runtime paths and constructs Swift-module import directories from toolchain
 and SDK paths. See [the official implementation](https://github.com/swiftlang/swift/blob/swift-6.3.3-RELEASE/lib/Frontend/CompilerInvocation.cpp#L185-L267).
 These labels distinguish reported path roles; they do not prove actual file access or a complete
-runtime-loader closure for Apple's compiler binary. The actual host path existence/link layout still
-requires the next native diagnostic. It remains outside declared roots and blocks final acceptance;
-no runtime-root expansion or omission from the final input contract is authorized by this repair.
+runtime-loader closure for Apple's compiler binary.
+
+The retained native artifact at head `987a6a68` (archive SHA256
+`81d010bbf421313a82318c8f62b546f49299e44d23fac481c2c4f5a80fe474e0`) completed all ten probes.
+Its only uncovered observation was `/usr/lib/swift`, a directory with no content read, appearing solely
+in `runtimeLibraryPaths`. The accepted six commands contain three Clang object compilations and three
+Swift object/module compilations; there is no link, JIT, simulator or target execution.
+
+The native wrapper now supplies an opt-in `mixed-ios-object-module-v1` phase context with those exact
+ordered commands and their accepted-generation digest. The selector independently checks a frozen
+path-normalized command digest, exact target, search/context recipe, current Swift/Clang/frontend bytes,
+and the reviewed Apple Swift version/tag and ordered runtime entries. Only that context can classify
+the observed target-runtime entry as `phase-deferred-target-runtime-reference`. Its original path,
+ordered position, directory/link observation, original probe-byte digest and compile-context binding
+remain in the result. The generic selector without this context still refuses uncovered paths.
+
+Added link/JIT/run commands, compiler/target changes, unknown runtime entries, changed directory/link classification or reuse
+in an import/resource/header role refuse the exception. SDK/toolchain/resource/header/framework/module
+paths retain their existing checks. No host runtime directory becomes a content-seal root. In particular,
+inventorying that directory cannot prove target runtime closure through Apple's dyld shared cache.
+Successful object-phase discovery still means only `awaiting-root-review`, with `accepted=false` and
+`final_protocol_ready=false`; runtime closure remains explicitly unproved, and any future link/JIT/target
+execution needs separate review. Full SDK sealing and final performance acceptance remain open.
 
 ## Receipt-bound libc++ path normalization
 

@@ -149,6 +149,11 @@ def build_request(setup: dict, state: dict, commands: list[dict], lifecycle: Pat
         },
         context_options={"c": [], "objective-c": [], "c++": ["-std=c++17"], "objective-c++": ["-std=c++17"]},
         extra_contexts=[dict(id="objective-c-arc", language="objective-c", options=["-fobjc-arc"])],
+        compile_phase=dict(
+            profile=SELECTOR.COMPILE_PHASE_PROFILE,
+            commands=commands,
+            commands_sha256=accepted["commands_sha256"],
+        ),
     )
 
 
@@ -176,6 +181,8 @@ def execute(lifecycle_results: Path, output: Path, *, command=None, xcrun: Path 
             "No compiler generation or graph/query oracle is changed.",
             "Project/module reference hashes are bound to this accepted generation only.",
             "Moving CI runner, OS/dynamic-loader dependencies and detached descendants are not hermetically proved.",
+            "Object/module discovery may defer reviewed target-runtime references; "
+            "link/JIT/execution closure is unproved.",
         ],
     )
     SELECTOR.save(output / "setup/lifecycle-input.json", data)
@@ -279,6 +286,11 @@ def execute(lifecycle_results: Path, output: Path, *, command=None, xcrun: Path 
             and proposal["proposal"]["sdk_build"] == setup["sdk_build"],
             "sdk-version-changed",
         )
+        require(
+            proposal.get("compile_phase") == SELECTOR.compile_phase_binding(request),
+            "invalid-compile-phase-binding",
+        )
+        result["compile_phase"] = proposal["compile_phase"]
         result.update(status="awaiting-root-review", exit_code=0, proposal="setup/discovery/results.json")
     except SELECTOR.DiscoveryError as error:
         result["failure"] = str(error)
