@@ -9,7 +9,7 @@ See [the execution and failure contract](INTEGRATION-BOUNDARIES.md),
 [exact copied-source provenance](COPIED-PROVENANCE.json). Historical original/successor scripts are
 explicit test fixtures; production selects the reviewed files named by the controller.
 
-The controller first runs all 313 integration and 60 runtime controls through the reviewed isolated
+The controller first runs all 324 integration and 60 runtime controls through the reviewed isolated
 bootstrap, using a separately sealed test-source manifest and the existing single private `--target`
 installation. Both full suite counts, module inventories, runtime receipts and normal exits are required;
 skips, missing imports, incomplete execution or failures stop before the AB pair. Their complete costs
@@ -77,6 +77,16 @@ runtime receipt and map digest is verified before a lossless roundtrip check; or
 execution authority. The existing credential/path scanner then checks all projected fields, including
 module records. Raw whole-file/map hashes retain their original meaning; normalized public paths and
 bytes are verified with the manifest's normalized hashes, not against private raw-map digests.
+
+The two exact `runs/restored_rebuilt/{baseline,cartograph}/source-catalog.json` artifacts additionally
+project the original declaration field `token` to `declaration_lexeme`. Their complete schema and exact types,
+original bound engine request, selected plan, current accepted generation and source snapshot must agree.
+The unchanged source-catalog producer regenerates every row for byte-equivalent JSON comparison before the
+existing diagnostic renderer makes that reversible field change. The manifest retains raw/content hashes,
+original input/plan/engine hashes, producer identity and the field mapping; source changes still block.
+Other paths, embedded lookalikes, unknown fields and credential values remain subject to the unchanged scanner.
+No worker status or process outcome is changed. Run 38430013161's completed child exit 1 remains a separate
+unresolved execution failure; its catalog-field publication block does not identify the child failure cause.
 
 The private vendored normalizer now has an explicit identity-default input-transform hook and constructor
 injection point. This is a reviewed implementation delta, recorded in the provenance overrides. Its scanner

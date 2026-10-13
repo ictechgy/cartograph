@@ -15,6 +15,7 @@ import startup_binding
 
 ROOT = Path(__file__).resolve().parent
 FORMAT = "sorted-named-module-entries-v1"
+CATALOG_FORMAT = "source-catalog-declaration-lexeme-v1"
 
 
 def encoded(value):
@@ -115,6 +116,47 @@ def project(receipt):
     return value
 
 
+def catalog_rows(value, lexeme):
+    fields = {"id", "context", "path", "line", "column", lexeme, "signature", "anchor", "definition", "language"}
+    state_inputs.require(isinstance(value, list), "Source catalog is not a list")
+    for row in value:
+        state_inputs.require(
+            isinstance(row, dict) and set(row) in (fields, fields | {"alias_of"}), "Unexpected source catalog fields"
+        )
+        state_inputs.require(
+            all(isinstance(row[key], str) and row[key] for key in fields - {"line", "column", "definition"})
+            and all(type(row[key]) is int and row[key] > 0 for key in ("line", "column"))
+            and type(row["definition"]) is bool
+            and ("alias_of" not in row or isinstance(row["alias_of"], str) and bool(row["alias_of"])),
+            "Unexpected source catalog types",
+        )
+        path = Path(row["path"])
+        state_inputs.require(
+            not path.is_absolute() and ".." not in path.parts and str(path) == row["path"]
+            and path.suffix in {".swift", ".m", ".mm", ".h", ".c", ".cpp"}
+            and row["language"] == ("swift" if path.suffix == ".swift" else "clang")
+            and re.fullmatch(r"\w+", row[lexeme]) is not None
+            and row["id"] == f'{row["context"]}::{row["path"]}:{row["line"]}:{row["column"]}',
+            "Unexpected source catalog declaration",
+        )
+    state_inputs.require(len({row["id"] for row in value}) == len(value), "Duplicate source catalog declaration")
+
+
+def restore_catalog(value):
+    catalog_rows(value, "declaration_lexeme")
+    return [{("token" if key == "declaration_lexeme" else key): item for key, item in row.items()} for row in value]
+
+
+def project_catalog(value):
+    catalog_rows(value, "token")
+    # 원래 진단 생산자의 동일한 필드 대응만 재사용하며 값을 지우거나 다시 해석하지 않는다.
+    result = state_inputs.generation.observer.catalog_evidence(value)
+    state_inputs.require(
+        encoded(restore_catalog(result)) == encoded(value), "Source catalog projection is not lossless"
+    )
+    return result
+
+
 class Projection:
     def __init__(self, raw):
         self.raw = Path(raw)
@@ -122,6 +164,10 @@ class Projection:
         self.bindings = []
         self.files = {}
         self.applied = []
+        self.catalogs = {}
+        self.catalog_bindings = []
+        self.catalog_applied = []
+        self.catalog_sources = []
 
     def read(self, path):
         reference = state_inputs.reference(path)
@@ -184,6 +230,55 @@ class Projection:
     def arm_environment(self, arm, role):
         plan, _ = self.read(self.raw / "setup/plan.json")
         return self.environment(self.raw / "private-readers" / arm / role, plan["engine_config"]["developer_directory"])
+
+    def bind_catalog(self, arm):
+        folder = self.raw / "runs/restored_rebuilt" / arm
+        path = folder / "source-catalog.json"
+        if not path.exists():
+            return
+        relative = str(path.relative_to(self.raw))
+        engine = str((folder / "engine-runtime/runtime-result.json").relative_to(self.raw))
+        binding = next((row for row in self.bindings if row["artifact"] == engine), None)
+        state_inputs.require(binding is not None, "Source catalog has no bound original engine request")
+        plan, plan_ref = self.read(self.raw / "setup/plan.json")
+        config, config_ref = self.read(folder / "input.json")
+        state_inputs.require(
+            encoded(config) == encoded(dict(plan["engine_config"], arm=arm, output=str(folder))),
+            "Source catalog engine input differs from selected plan",
+        )
+        derived = state_inputs.generation.verify(config)
+        state_inputs.require(encoded(derived) == encoded(plan["accepted"]), "Source catalog generation differs")
+        project = Path(config["project"])
+        snapshot = state_inputs.source_snapshot(project)
+        state_inputs.require(encoded(snapshot) == encoded(config["accepted_sources"]), "Source catalog sources changed")
+        for name, row in snapshot.items():
+            reference = state_inputs.reference(project / name)
+            state_inputs.require(reference["sha256"] == row["sha256"], "Source catalog source bytes changed")
+            self.files[reference["path"]] = reference["sha256"]
+        for reference in config["generation_receipts"].values():
+            _, current = self.read(Path(reference["path"]))
+            state_inputs.require(encoded(current) == encoded(reference), "Source catalog generation receipt changed")
+        producer = state_inputs.reference(Path(state_inputs.generation.observer.adapter.__file__))
+        state_inputs.require(
+            producer["sha256"] == config["helper_sha256"]["vendor/mixed/adapter/mixed_adapter.py"],
+            "Source catalog producer changed",
+        )
+        self.files[producer["path"]] = producer["sha256"]
+        original, reference = self.read(path)
+        project_catalog(original)
+        expected = state_inputs.generation.observer.adapter.source_catalog(project, derived["contexts"])
+        state_inputs.require(
+            encoded(original) == encoded(expected), "Source catalog differs from accepted source declarations"
+        )
+        self.catalog_sources.append((project, snapshot))
+        self.catalogs[relative] = original
+        self.catalog_bindings.append(dict(
+            artifact=relative, original_raw_sha256=reference["sha256"],
+            original_catalog_content_sha256=digest(original),
+            original_engine_receipt_sha256=binding["original_raw_sha256"], original_input_sha256=config_ref["sha256"],
+            original_plan_sha256=plan_ref["sha256"], accepted_generation_sha256=derived["accepted_generation_sha256"],
+            accepted_source_snapshot_sha256=digest(snapshot), producer_sha256=producer["sha256"],
+        ))
 
     def collect(self):
         for label in ["integration", "runtime"]:
@@ -263,9 +358,15 @@ class Projection:
                     request["command"],
                     self.arm_environment(arm, "engine"),
                 )
+            self.bind_catalog(arm)
         return self
 
     def unchanged(self):
+        for project, snapshot in self.catalog_sources:
+            state_inputs.require(
+                encoded(state_inputs.source_snapshot(project)) == encoded(snapshot),
+                "Source catalog source inventory changed"
+            )
         for path, expected in self.files.items():
             state_inputs.require(
                 state_inputs.reference(Path(path))["sha256"] == expected, "Runtime projection source changed"
@@ -275,6 +376,13 @@ class Projection:
         if not relative.endswith(".json"):
             return data
         original = bootstrap.strict_json(data)
+        if relative in self.catalogs:
+            state_inputs.require(encoded(original) == encoded(self.catalogs[relative]), "Bound source catalog changed")
+            result = project_catalog(original)
+            self.catalog_applied.append(dict(
+                artifact=relative, location=[], original_catalog_content_sha256=digest(original)
+            ))
+            return json.dumps(result, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False).encode() + b"\n"
         applied = []
 
         def visit(value, location):
@@ -316,6 +424,19 @@ def package(normalizer, args):
         hash_policy="Raw file/map hashes retain their original meaning. Reconstruct named entries before map verification; normalized paths still use normalized manifest hashes.",
     )
     normalizer.check_sensitive(json.dumps(manifest["runtime_module_projection"]), "runtime-module-projection")
+    if projection.catalog_bindings:
+        manifest["source_catalog_projection"] = dict(
+            format=CATALOG_FORMAT,
+            binding_scope="Exact source-derived catalogs for the original engine inputs; no execution outcome changes",
+            field_mapping=dict(original_field="token", public_field="declaration_lexeme"),
+            original_catalogs=projection.catalog_bindings,
+            transformed_artifacts=projection.catalog_applied,
+            hash_policy=(
+                "Raw file/content hashes retain their original meaning. Restore the declaration field before "
+                "content verification; normalized bytes use manifest hashes."
+            ),
+        )
+        normalizer.check_sensitive(json.dumps(manifest["source_catalog_projection"]), "source-catalog-projection")
     target = Path(args.output) / "manifest.json"
     target.write_text(json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False) + "\n")
     return manifest

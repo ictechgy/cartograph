@@ -1,4 +1,31 @@
 {
+  "catalog_publication_overrides": {
+    "base_commit": "66f7ea607d1cd5b274a309ab891ab6f4964a9a73",
+    "files": [
+      {
+        "bytes": 16919,
+        "path": "README.md",
+        "sha256": "7fed3b7d6a14f4329e59d79f4e5ece1647b7227ddf0cc47fa9035f663a699fd3"
+      },
+      {
+        "bytes": 3873,
+        "path": "contract_suite.py",
+        "sha256": "3b637c89ee3ed8c8f6a354f265f3360891268801d20fa81bf61c1f967f20c946"
+      },
+      {
+        "bytes": 20767,
+        "path": "runtime_publication.py",
+        "sha256": "c250e1792fb3ca38229bec4aee2348aa5428d8dbb8673c5c275d165c8e3b9980"
+      },
+      {
+        "bytes": 25343,
+        "path": "test_runtime_publication.py",
+        "sha256": "357b68c05d41dc71a3adfb037c5b41aff638cb816603e91d69e2408e5afd7b97"
+      }
+    ],
+    "role": "exact-source-derived-catalog-publication",
+    "scope": "Additive successor identity only. The two exact restored_rebuilt arm source catalogs are projected after original engine-request, selected-plan, current generation/source and producer validation plus full schema and regenerated-content equality. The existing frozen diagnostic renderer renames only the declaration field and roundtrip checks retain raw/content hash meanings. The scanner, vendored producer and original execution outcomes are unchanged. Focused controls are synthetic source/publication tests, not recovered native failure or performance evidence. All prior copied and successor hashes remain historical."
+  },
   "copied": [
     {
       "bytes": 13904,

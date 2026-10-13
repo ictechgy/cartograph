@@ -303,6 +303,183 @@ class RuntimePublicationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Observer launch argv is missing"):
             projection.Projection(self.raw).collect()
 
+    def setup_catalog(self, arms=("baseline",), lexeme="start"):
+        project = self.raw.parent / "Project"
+        sources = project / "Sources"
+        sources.mkdir(parents=True)
+        (sources / "Entry.swift").write_text("struct Entry {\n    func token() {}\n}\n")
+        (sources / "Bridge.h").write_text(f"int {lexeme}(void);\n")
+        (sources / "Bridge.c").write_text(f"int {lexeme}(void) {{ return 0; }}\n")
+        contexts = {"Sources/" + name: ["BridgeKit"] for name in ["Entry.swift", "Bridge.h", "Bridge.c"]}
+        derived = dict(contexts=contexts, accepted_generation_sha256="f" * 64)
+        references = {
+            name: projection.state_inputs.reference(self.write("setup/catalog-generation/" + name + ".json", {}))
+            for name in ("lifecycle", "state", "commands")
+        }
+        producer = projection.state_inputs.reference(Path(projection.state_inputs.generation.observer.adapter.__file__))
+        config = dict(
+            project=str(project), developer_directory=str(self.raw), state_id="restored_rebuilt",
+            accepted_sources=projection.state_inputs.source_snapshot(project), generation_receipts=references,
+            helper_sha256={"vendor/mixed/adapter/mixed_adapter.py": producer["sha256"]},
+        )
+        self.write("setup/plan.json", dict(engine_config=config, accepted=derived))
+        patcher = mock.patch.object(projection.state_inputs.generation, "verify", return_value=derived)
+        self.generation_verify = patcher.start()
+        self.addCleanup(patcher.stop)
+        catalog = projection.state_inputs.generation.observer.adapter.source_catalog(project, contexts)
+        runtime = self.raw / "setup/runtime.json"
+        runtime_ref = projection.state_inputs.reference(runtime)
+        for arm in arms:
+            relative = "runs/restored_rebuilt/" + arm
+            folder = self.raw / relative
+            inputs = self.write(relative + "/input.json", dict(config, arm=arm, output=str(folder)))
+            args = ["--input", str(inputs), "--sha256", projection.state_inputs.reference(inputs)["sha256"]]
+            receipt = self.receipt(runtime, projection.ROOT / "engine_worker.py", args)
+            receipt.update(status="failed", exit_code=1, observed_exit_code=1)
+            report = self.write(relative + "/engine-runtime/runtime-result.json", receipt)
+            command = projection.isolated_measure.bootstrap_command(
+                runtime, runtime_ref["sha256"], projection.ROOT / "engine_worker.py", report, args
+            )
+            self.write(relative + "/whole-arm.command.json", dict(command=command))
+            self.write(relative + "/whole-arm.json", dict(
+                root_returncode=1, helper_sha256=projection.isolated_measure.HELPER_SHA256,
+                measurement_mode="timing", sampling_during_timing=False,
+            ))
+            self.write(relative + "/source-catalog.json", catalog)
+        return catalog, self.raw / "runs/restored_rebuilt/baseline/source-catalog.json", project
+
+    def test_exact_source_catalogs_roundtrip_and_keep_failed_engine_outcomes(self):
+        catalog, path, _ = self.setup_catalog(("baseline", "cartograph"))
+        original = path.read_bytes()
+        self.assertTrue(any("alias_of" in row for row in catalog))
+        manifest = self.package()
+        mapping = manifest["source_catalog_projection"]
+        self.assertEqual(mapping["field_mapping"], dict(original_field="token", public_field="declaration_lexeme"))
+        self.assertEqual(len(mapping["original_catalogs"]), 2)
+        self.assertEqual(len(mapping["transformed_artifacts"]), 2)
+        for binding in mapping["original_catalogs"]:
+            public = json.loads((self.raw.parent / "public" / binding["artifact"]).read_text())
+            self.assertEqual(projection.restore_catalog(public), catalog)
+            self.assertEqual(binding["original_raw_sha256"], hashlib.sha256(original).hexdigest())
+            self.assertEqual(binding["original_catalog_content_sha256"], projection.digest(catalog))
+            row = next(row for row in manifest["files"] if row["path"] == binding["artifact"])
+            self.assertEqual(row["original_raw_sha256"], binding["original_raw_sha256"])
+            self.assertNotEqual(row["normalized_sha256"], row["original_raw_sha256"])
+            report = (self.raw.parent / "public" / binding["artifact"]).parent / "engine-runtime/runtime-result.json"
+            self.assertEqual(json.loads(report.read_text())["exit_code"], 1)
+            self.assertEqual(json.loads(report.read_text())["status"], "failed")
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_source_catalog_schema_and_exact_types_are_required(self):
+        catalog, path, _ = self.setup_catalog()
+        for changes in [dict(extra="unknown"), dict(declaration_lexeme="collision"), dict(line=True),
+                        dict(column=False), dict(definition=1), dict(alias_of=7), dict(token={}),
+                        dict(language="unknown"), dict(path="../escape.swift")]:
+            with self.subTest(changes=changes):
+                changed = copy.deepcopy(catalog)
+                changed[0].update(changes)
+                path.write_text(json.dumps(changed))
+                with self.assertRaises(ValueError):
+                    projection.Projection(self.raw).collect()
+        self.assertFalse((self.raw.parent / "public").exists())
+
+    def test_changed_or_incomplete_source_catalog_is_not_projected(self):
+        catalog, path, _ = self.setup_catalog()
+        changed = copy.deepcopy(catalog)
+        changed[0]["token"] = "differentDeclaration"
+        for value in [changed, catalog[:-1], list(reversed(catalog)), catalog + catalog[:1], []]:
+            path.write_text(json.dumps(value))
+            with self.assertRaises(ValueError):
+                projection.Projection(self.raw).collect()
+
+    def test_source_catalog_requires_bound_original_engine_request(self):
+        _, path, _ = self.setup_catalog()
+        (path.parent / "engine-runtime/runtime-result.json").unlink()
+        with self.assertRaisesRegex(ValueError, "no bound original engine request"):
+            projection.Projection(self.raw).collect()
+
+    def test_source_catalog_requires_selected_generation_and_contexts(self):
+        self.setup_catalog()
+        derived = self.generation_verify.return_value
+        for value in [dict(derived, accepted_generation_sha256="0" * 64), dict(derived, contexts={})]:
+            self.generation_verify.return_value = value
+            with self.assertRaisesRegex(ValueError, "generation differs"):
+                projection.Projection(self.raw).collect()
+        self.generation_verify.side_effect = ValueError("Accepted compiler generation bytes changed")
+        with self.assertRaisesRegex(ValueError, "Accepted compiler generation bytes changed"):
+            projection.Projection(self.raw).collect()
+
+    def test_source_catalog_requires_exact_selected_plan_and_producer(self):
+        self.setup_catalog()
+        path = self.raw / "setup/plan.json"
+        plan = json.loads(path.read_text())
+        plan["engine_config"]["state_id"] = "different-state"
+        path.write_text(json.dumps(plan))
+        with self.assertRaisesRegex(ValueError, "input differs"):
+            projection.Projection(self.raw).collect()
+        plan["engine_config"]["state_id"] = "restored_rebuilt"
+        path.write_text(json.dumps(plan))
+        original = projection.state_inputs.reference
+
+        def wrong_producer(path):
+            result = original(path)
+            if Path(path).name == "mixed_adapter.py":
+                result["sha256"] = "0" * 64
+            return result
+
+        with mock.patch.object(projection.state_inputs, "reference", side_effect=wrong_producer):
+            with self.assertRaisesRegex(ValueError, "producer changed"):
+                projection.Projection(self.raw).collect()
+
+    def test_unrecognized_or_embedded_catalog_is_not_projected(self):
+        catalog, _, _ = self.setup_catalog()
+        p = projection.Projection(self.raw).collect()
+        for relative, value in [("source-catalog.json", catalog),
+                                ("runs/other/baseline/source-catalog.json", catalog),
+                                ("results.json", dict(catalog=catalog))]:
+            data = json.dumps(value).encode()
+            self.assertEqual(p.transform(data, relative), data)
+            with self.assertRaises(publication.NORMALIZER.PublicationBlocked):
+                publication.NORMALIZER.check_sensitive(data.decode(), relative)
+
+    def test_real_credential_in_source_derived_catalog_still_blocks(self):
+        self.setup_catalog(lexeme="ghp_" + "x" * 40)
+        with self.assertRaises(publication.NORMALIZER.PublicationBlocked):
+            self.package()
+        self.assertFalse((self.raw.parent / "public").exists())
+
+    def test_unknown_credential_field_is_not_hidden_by_catalog_projection(self):
+        catalog, path, _ = self.setup_catalog()
+        catalog[0]["password"] = "synthetic-secret"
+        path.write_text(json.dumps(catalog))
+        with self.assertRaisesRegex(ValueError, "Unexpected source catalog fields"):
+            projection.Projection(self.raw).collect()
+        with self.assertRaises(publication.NORMALIZER.PublicationBlocked):
+            publication.NORMALIZER.check_sensitive(json.dumps(catalog), str(path.relative_to(self.raw)))
+
+    def test_catalog_and_source_changes_after_binding_are_refused(self):
+        catalog, path, project = self.setup_catalog()
+        p = projection.Projection(self.raw).collect()
+        catalog[0]["anchor"] += " changed"
+        path.write_text(json.dumps(catalog))
+        with self.assertRaisesRegex(ValueError, "Bound source catalog changed"):
+            p.transform(path.read_bytes(), str(path.relative_to(self.raw)))
+        with self.assertRaisesRegex(ValueError, "projection source changed"):
+            p.unchanged()
+        (project / "Sources/New.swift").write_text("func added() {}\n")
+        with self.assertRaisesRegex(ValueError, "source inventory changed"):
+            p.unchanged()
+        with self.assertRaisesRegex(ValueError, "sources changed"):
+            projection.Projection(self.raw).collect()
+
+    def test_catalog_reconstruction_rejects_collision_and_type_changes(self):
+        catalog, _, _ = self.setup_catalog()
+        for changes in [dict(token="collision"), dict(line=True), dict(definition=1), dict(declaration_lexeme={})]:
+            projected = projection.project_catalog(catalog)
+            projected[0].update(changes)
+            with self.assertRaises(ValueError):
+                projection.restore_catalog(projected)
+
     def test_credential_named_arbitrary_module_payload_is_rejected(self):
         receipt, report = self.setup_integration()
         receipt["modules_before"]["modules"]["AWS_SECRET_ACCESS_KEY"] = "synthetic-secret-scalar"
