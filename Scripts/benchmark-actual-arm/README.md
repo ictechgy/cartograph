@@ -404,3 +404,20 @@ intervening change-and-restoration, or close host macOS SDK, OS/loader, link/JIT
 A compiler driver exit does not establish detached-descendant containment. Successful output remains
 `accepted=false`, `final_protocol_ready=false` and validation-only. The rejected observer screen is
 unchanged, and this source preparation has no native generation-bracket execution result yet.
+
+
+The first native CI check of this generation route (CI506, source `1af4c465`) retained a
+one-error synthetic-publication refusal before any compiler-generation validation ran. Its safe value
+hash identifies `/Cellar/python@3.14/3.14.7`; the stack and prior interpreter record support a relative
+Homebrew interpreter-symlink target as the mechanism. The complete failed link-target bytes were not
+retained, so the exact original field value is not claimed as recovered. The prospective real temporary Homebrew-shaped
+symlink control checks that suffix through the original unchanged scanner.
+
+Only this new interpreter-alias record encodes each symlink target as explicitly marked slash-split
+components plus its original UTF-8 SHA256. Joining those components preserves leading, repeated and
+trailing separators and `..` as inert observed link metadata. The unsplit target receives the unchanged
+sensitive-value and Windows-path checks both before encoding and after inverse reconstruction. The
+entire reconstructed alias chain and physical executable identity must match fresh filesystem evidence;
+a matching rehash alone cannot admit changed metadata. Other fields, order, generic scanner rules and
+publication caps remain unchanged. This correction is source preparation pending its own native CI;
+it does not establish generation-bracket or direct-timing eligibility.

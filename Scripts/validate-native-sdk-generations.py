@@ -84,7 +84,7 @@ def verify_context(path, digest, root, *, current_environment=True):
     environment = context_environment(value)
     owned = GENERATIONS.environment_contract(environment, expected)
     require(value["environment_creation"] == dict(fresh=True, directories=owned), "generation-environment-changed")
-    require(value["python"] == GENERATIONS.interpreter_identity(sys.executable), "generation-python-changed")
+    require(GENERATIONS.verify_interpreter_identity(value["python"], sys.executable), "generation-python-changed")
     require(not current_environment or dict(os.environ) == environment, "generation-environment-changed")
     return value
 
@@ -352,7 +352,7 @@ def supervise(root):
     hashes = source_hashes()
     python = GENERATIONS.interpreter_identity(sys.executable)
     row = wrapper.COMMAND.command(controller_argv(root), ROOT, output / "command", dict(os.environ), 1815)
-    unchanged = source_hashes() == hashes and GENERATIONS.interpreter_identity(sys.executable) == python
+    unchanged = source_hashes() == hashes and GENERATIONS.verify_interpreter_identity(python, sys.executable)
     result = dict(schema_version=1, profile=PROFILE, accepted=False, final_protocol_ready=False,
                   actual_engine_calls=0, command=row, helper_sha256=hashes, python=python,
                   source_inputs_unchanged=unchanged, child_timeout_seconds=1815,
@@ -377,7 +377,7 @@ def verify_supervisor(root, inner):
             and type(value["actual_engine_calls"]) is int and value["actual_engine_calls"] == 0,
             "generation-supervisor-schema")
     require(value["helper_sha256"] == source_hashes() and value["source_inputs_unchanged"] is True
-            and value["python"] == GENERATIONS.interpreter_identity(sys.executable), "generation-supervisor-inputs")
+            and GENERATIONS.verify_interpreter_identity(value["python"], sys.executable), "generation-supervisor-inputs")
     require(type(value["child_timeout_seconds"]) is int and value["child_timeout_seconds"] == 1815,
             "generation-supervisor-bound")
     for suffix in (".json", ".stdout", ".stderr"):

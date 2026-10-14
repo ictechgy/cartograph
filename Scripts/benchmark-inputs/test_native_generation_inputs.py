@@ -307,6 +307,163 @@ class SyntheticLifecycle(unittest.TestCase):
 
 
 
+class InterpreterAliasTests(unittest.TestCase):
+    def homebrew(self, root):
+        physical = root / "Cellar/python@3.14/3.14.7/bin/python3.14"
+        physical.parent.mkdir(parents=True)
+        physical.write_bytes(b"authored interpreter identity, never executed")
+        alias = root / "opt/python@3.14"
+        alias.parent.mkdir()
+        alias.symlink_to("../Cellar/python@3.14/3.14.7", target_is_directory=True)
+        return alias / "bin/python3.14"
+
+    def test_homebrew_relative_interpreter_alias_survives_unchanged_scanner(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw).resolve()
+            python = self.homebrew(root)
+            original = M.interpreter_identity(str(python))
+            before = copy.deepcopy(original)
+            staging, public = root / "staging", root / "public"
+            write(staging / "results.json", dict(accepted=False, final_protocol_ready=False))
+            relative = "setup/original/calls/generation-context.json"
+            write(staging / relative, dict(python=original))
+            normalizer = M.load("generation_alias_first_red_normalizer", M.ROOT / "Scripts/normalize-indexstore-evidence.py")
+            result = normalizer.package(argparse.Namespace(input=staging, output=public, prefix=["WORK=" + str(root)]))
+            rows = {row["path"]: row for row in result["files"]}
+            self.assertIn(relative, rows)
+            self.assertEqual(original, before)
+            self.assertEqual(hashlib.sha256(b"/Cellar/python@3.14/3.14.7").hexdigest(),
+                "5ba21d2cd8e7ab1a10095ac150adb6f49055610597a1560fc1c6a3d0b1389571")
+
+    def raw_alias(self, target):
+        return dict(lexical_path="/declared/python", canonical_path="/physical/python", components=[
+            dict(component="", entry_type="directory", identity=[1, 2, 16877]),
+            dict(component="python", entry_type="symlink", identity=[1, 3, 41471], link_target=target)])
+
+    def test_link_metadata_roundtrip_preserves_exact_slashes_fields_and_order(self):
+        for target in ("../Cellar/python@3.14/3.14.7", "/absolute/target", "//absolute///target/",
+                       ".././folder//../python/", "../../up", "café-name/δ", "/"):
+            original = self.raw_alias(target)
+            before = copy.deepcopy(original)
+            encoded = M.interpreter_alias(original)
+            row = encoded["components"][1]["link_target"]
+            with self.subTest(target=target):
+                self.assertEqual(row, dict(encoding=M.LINK_ENCODING, components=target.split("/"),
+                    sha256=hashlib.sha256(target.encode()).hexdigest()))
+                self.assertEqual(M.interpreter_alias(encoded, restore=True), original)
+                self.assertEqual(original, before)
+                self.assertEqual(encoded["components"][0], original["components"][0])
+                self.assertEqual(list(encoded), list(original))
+                self.assertEqual(list(encoded["components"][1]), list(original["components"][1]))
+
+    def test_interpreter_alias_refuses_malformed_rehashed_target_and_record_shapes(self):
+        original = self.raw_alias("../Cellar/python@3.14/3.14.7")
+        encoded = M.interpreter_alias(original)
+        mutations = [lambda value: value.update(extra=1), lambda value: value.pop("encoding"),
+            lambda value: value.update(encoding="unknown"), lambda value: value.update(components="../target"),
+            lambda value: value.update(components=[]), lambda value: value.update(components=[True]),
+            lambda value: value.update(components=["../target"]), lambda value: value.update(components=[""]),
+            lambda value: value.update(sha256="0" * 64), lambda value: value.update(sha256=True)]
+        for change in mutations:
+            value = copy.deepcopy(encoded)
+            change(value["components"][1]["link_target"])
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                M.interpreter_alias(value, restore=True)
+        for change in (lambda value: value.update(extra=1), lambda value: value.pop("canonical_path"),
+                       lambda value: value.update(components={}),
+                       lambda value: value["components"][0].update(identity=[True, 2, 16877]),
+                       lambda value: value["components"][0].update(link_target="unexpected"),
+                       lambda value: value["components"][1].update(extra=1),
+                       lambda value: value["components"][1].pop("link_target")):
+            value = copy.deepcopy(encoded); change(value)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                M.interpreter_alias(value, restore=True)
+        with self.assertRaises(ValueError):
+            M.interpreter_alias(original, restore=True)
+
+    def test_unsplit_security_checks_apply_before_encoding_and_after_rehashed_inverse(self):
+        for target in ("https://name:secret@example.test/a", "https://example.test/a?X-Amz-Signature=secret",
+                       "https://example.test/a?to%6ben=secret", "prefix/token=secret/value",
+                       "C:/Windows/file", "C:\\Windows\\file", "\\\\server/share/file", "bad\x00/target"):
+            with self.subTest(target=target):
+                with self.assertRaises(ValueError):
+                    M.interpreter_alias(self.raw_alias(target))
+                forged = self.raw_alias(dict(encoding=M.LINK_ENCODING, components=target.split("/"),
+                    sha256=hashlib.sha256(target.encode()).hexdigest()))
+                with self.assertRaises(ValueError):
+                    M.interpreter_alias(forged, restore=True)
+        projection = M.load("generation_alias_security_projection", M.HERE / "native_calibration_publication.py")
+        self.assertEqual(M.WINDOWS_PATH.pattern, projection.WINDOWS_PATH.pattern)
+        target = "../a//b/"
+        with mock.patch.object(M.NORMALIZER, "check_sensitive", wraps=M.NORMALIZER.check_sensitive) as checked:
+            encoded = M.interpreter_alias(self.raw_alias(target))
+            M.interpreter_alias(encoded, restore=True)
+        self.assertEqual([call.args[0] for call in checked.call_args_list], [target, target])
+
+    def test_fresh_interpreter_binding_refuses_rehashed_alias_and_physical_changes(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw).resolve(); python = self.homebrew(root)
+            original = M.interpreter_identity(str(python))
+            self.assertTrue(M.verify_interpreter_identity(original, str(python)))
+            alias = M.interpreter_alias(original["alias"], restore=True)
+            self.assertEqual(alias, M.NATIVE.path_chain(python))
+            for change in (lambda value: value.update(extra=1), lambda value: value.update(bytes=True),
+                           lambda value: value.update(physical_path="/different/python"),
+                           lambda value: value["alias"]["components"].reverse()):
+                value = copy.deepcopy(original); change(value)
+                with self.subTest(change=change):
+                    self.assertFalse(M.verify_interpreter_identity(value, str(python)))
+            value = copy.deepcopy(original)
+            target = next(row["link_target"] for row in value["alias"]["components"] if row["entry_type"] == "symlink")
+            target["components"] = ["..", "Cellar", "other"]
+            target["sha256"] = hashlib.sha256("/".join(target["components"]).encode()).hexdigest()
+            self.assertFalse(M.verify_interpreter_identity(value, str(python)))
+            python.resolve().write_bytes(b"changed actual physical file")
+            self.assertFalse(M.verify_interpreter_identity(original, str(python)))
+
+    def test_changed_live_link_with_identical_file_bytes_is_not_the_same_interpreter(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw).resolve(); python = self.homebrew(root)
+            original = M.interpreter_identity(str(python))
+            next_file = root / "Cellar/python@3.14/3.14.8/bin/python3.14"
+            next_file.parent.mkdir(parents=True)
+            next_file.write_bytes(python.read_bytes())
+            alias = root / "opt/python@3.14"; alias.unlink()
+            alias.symlink_to("../Cellar/python@3.14/3.14.8", target_is_directory=True)
+            self.assertFalse(M.verify_interpreter_identity(original, str(python)))
+
+    def test_actual_context_creation_refuses_secret_link_before_writing_public_evidence(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw).resolve()
+            physical = root / "Cellar/token=private-fixture/bin/python"
+            physical.parent.mkdir(parents=True); physical.write_bytes(b"never executed")
+            alias = root / "opt/python"; alias.parent.mkdir()
+            target = "../Cellar/token=private-fixture"
+            alias.symlink_to(target, target_is_directory=True)
+            expected, _ = M.NATIVE.expectation()
+            with mock.patch.dict(os.environ, dict(DEVELOPER_DIR=expected["developer_lexical"], **expected["runner"]), clear=True), \
+                 mock.patch.object(sys, "executable", str(alias / "bin/python")):
+                with self.assertRaises(ValueError) as caught:
+                    CONTROLLER.create_context(root)
+            self.assertNotIn(target, str(caught.exception))
+            self.assertNotIn("private-fixture", str(caught.exception))
+            self.assertNotIn(str(root), str(caught.exception))
+            self.assertFalse((root / CONTROLLER.CONTEXT).exists())
+
+    def test_generation_request_binds_unchanged_normalizer_dependency(self):
+        name = "Scripts/normalize-indexstore-evidence.py"
+        expected = hashlib.sha256((M.ROOT / name).read_bytes()).hexdigest()
+        self.assertEqual(M.FROZEN_HELPERS[name], expected)
+        self.assertEqual(M.helper_hashes()[name], expected)
+        original = M.SELECTOR.file_identity
+        def changed(path, *args, **kwargs):
+            row = original(path, *args, **kwargs)
+            return {**row, "sha256": "0" * 64} if Path(path) == M.ROOT / name else row
+        with mock.patch.object(M.SELECTOR, "file_identity", side_effect=changed), \
+             self.assertRaisesRegex(M.GenerationError, "unreviewed-generation-helper"):
+            M.helper_hashes()
+
+
 class EnvironmentAndBudgetTests(unittest.TestCase):
     def environment(self):
         return dict(PATH=":".join(M.PATH_COMPONENTS), LC_ALL="C", LANG="C", DEVELOPER_DIR="/declared",

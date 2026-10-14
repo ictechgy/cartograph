@@ -9,6 +9,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import stat
@@ -21,6 +22,8 @@ FIXTURE = ROOT / "Fixtures/IndexStoreCLIBenchmark/mixed-ios-validation"
 BASELINE_SHA256 = "50fcaf77a96f5701e55ff5d16812d0d8ec2fdb2d250a826e58447dac4371613c"
 EXPECTATION_SHA256 = "4dfaa59503786926e79da5dec764122cd670cb36309a2fc0107b1fe28f621abc"
 FROZEN_HELPERS = {
+    "Scripts/normalize-indexstore-evidence.py":
+        "17c705fac8670a77f9cbd7305c8f658807e2f6045a0ccb00172c79bccd1f7c17",
     "Scripts/benchmark-inputs/native_calibration_inputs.py":
         "f15166e468db51e4443cb77dcdf2d75eedbc972103057482e59c780f1753c79a",
     "Fixtures/IndexStoreCLIBenchmark/mixed-ios-validation/validation_common.py":
@@ -69,6 +72,9 @@ def load(name: str, path: Path):
 NATIVE = load("generation_native_inputs", HERE / "native_calibration_inputs.py")
 SEAL, SELECTOR = NATIVE.SEAL, NATIVE.SELECTOR
 COMMON = load("generation_validation_common", FIXTURE / "validation_common.py")
+NORMALIZER = load("generation_alias_normalizer", HERE.parent / "normalize-indexstore-evidence.py")
+WINDOWS_PATH = re.compile(r"(?:[A-Za-z]:[\\/]|\\\\[A-Za-z0-9])")
+LINK_ENCODING = "interpreter-link-target-slash-components-v1"
 
 
 class GenerationError(ValueError):
@@ -152,13 +158,72 @@ def environment_contract(environment: dict, expected: dict) -> dict:
     return owned
 
 
+def checked_link_target(value: object) -> str:
+    """링크 원문은 분리 전과 역변환 뒤에 동일한 비밀·Windows 검사를 거친다."""
+    require(type(value) is str and bool(value) and len(os.fsencode(value)) <= 16384, "invalid-interpreter-link-target")
+    relative = "generation-interpreter-link-target"
+    NORMALIZER.check_sensitive(value, relative)
+    match = WINDOWS_PATH.search(value)
+    if match:
+        NORMALIZER.block("unmapped-windows-absolute-path", relative, match.group())
+    return value
+
+
+def interpreter_alias(alias: dict, *, restore=False) -> dict:
+    """새 Python 별칭의 링크 대상만 가역 변환하며 부모 이동도 실행하지 않는 원문으로 보존한다."""
+    require(type(alias) is dict and set(alias) == {"lexical_path", "canonical_path", "components"},
+            "interpreter-alias-schema")
+    require(all(type(alias[key]) is str and Path(alias[key]).is_absolute()
+                for key in ("lexical_path", "canonical_path")), "interpreter-alias-path")
+    rows = alias["components"]
+    require(type(rows) is list and 0 < len(rows) <= SELECTOR.MAX_PATH_COMPONENTS, "interpreter-alias-components")
+    projected = []
+    for row in rows:
+        require(type(row) is dict, "interpreter-alias-component")
+        kind = row.get("entry_type")
+        fields = {"component", "entry_type", "identity"} | ({"link_target"} if kind == "symlink" else set())
+        require(kind in ("directory", "file", "symlink") and set(row) == fields
+                and type(row["component"]) is str and "/" not in row["component"]
+                and type(row["identity"]) is list and len(row["identity"]) == 3
+                and all(type(item) is int and item >= 0 for item in row["identity"]), "interpreter-alias-component")
+        result = dict(row)
+        if kind == "symlink":
+            target = row["link_target"]
+            if restore:
+                require(type(target) is dict and set(target) == {"encoding", "components", "sha256"}
+                        and target["encoding"] == LINK_ENCODING, "interpreter-link-encoding")
+                parts = target["components"]
+                require(type(parts) is list and bool(parts)
+                        and all(type(part) is str and "/" not in part for part in parts), "interpreter-link-components")
+                value = checked_link_target("/".join(parts))
+                require(SEAL.valid_sha(target["sha256"])
+                        and hashlib.sha256(value.encode()).hexdigest() == target["sha256"], "interpreter-link-hash")
+                result["link_target"] = value
+            else:
+                value = checked_link_target(target)
+                result["link_target"] = dict(encoding=LINK_ENCODING, components=value.split("/"),
+                                             sha256=hashlib.sha256(value.encode()).hexdigest())
+        projected.append(result)
+    return {**alias, "components": projected}
+
+
 def interpreter_identity(path: str) -> dict:
-    """선택된 Python의 실제 실행 파일과 원래 경로 사슬을 같이 고정한다."""
+    """물리 실행 파일과 전체 별칭 사슬을 고정하되 링크 대상의 슬래시는 정확히 분리한다."""
     original = Path(path)
     require(original.is_absolute(), "absolute-python-required")
     physical = original.resolve(strict=True)
     record = SELECTOR.file_identity(physical)
-    return dict(path=str(original), physical_path=str(physical), **record, alias=NATIVE.path_chain(original))
+    return dict(path=str(original), physical_path=str(physical), **record,
+                alias=interpreter_alias(NATIVE.path_chain(original)))
+
+
+def verify_interpreter_identity(record: dict, path: str) -> bool:
+    """영수증의 원문 링크와 실제 최신 사슬·파일을 비교하여 재해시된 위조도 거부한다."""
+    require(type(record) is dict and "alias" in record, "interpreter-identity-schema")
+    restored = {**record, "alias": interpreter_alias(record["alias"], restore=True)}
+    current = interpreter_identity(path)
+    current["alias"] = interpreter_alias(current["alias"], restore=True)
+    return identity(restored) == identity(current)
 
 
 def validate_candidate(candidate: dict, expected: dict) -> dict:
@@ -228,7 +293,7 @@ def validate_request(path: Path, digest: str, *, current_environment=True) -> di
     require(environment_contract(environment, expected) == request["environment_directories"]
             and request["environment_creation"] == dict(fresh=True, directories=request["environment_directories"]),
             "environment-directory-changed")
-    require(interpreter_identity(sys.executable) == request["python"], "generation-python-mismatch")
+    require(verify_interpreter_identity(request["python"], sys.executable), "generation-python-mismatch")
     validate_candidate(request["candidate"], expected)
     return request
 

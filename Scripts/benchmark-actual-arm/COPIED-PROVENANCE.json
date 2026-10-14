@@ -182,6 +182,34 @@
     "role": "current-include-only-file-dependency-coverage",
     "scope": "Additive successor identity only. Frozen primitive/vendor and historical copied/source hashes are unchanged. The selected baseline engine scopes the current discovery override with restoration. Accepted declaration-free quoted-include headers require an independently reachable user Clang module File dependency and sealed included-header Records in the same unit for every active root. No Record, graph or query fact is fabricated. Original input/root guards, graph/batch parsers, oracle and failure outcomes remain unchanged. Focused and retained-unit coverage replays are not native execution or performance evidence. The current helper and controls are consolidated into the existing engine/test modules to retain the original 64 admitted contract-source paths. The earlier 66-source layout failed the unchanged source-count guard and remains diagnostic evidence; new coverage-control qualified IDs move to test_engine_worker."
   },
+  "generation_interpreter_alias_overrides": {
+    "base_commit": "1af4c46579eb538f53516560fe191ee0b8d8196e",
+    "base_tree": "3fd5d06968381b83cf64c6bdf4a9b8677fa6d611",
+    "files": [
+      {
+        "bytes": 66269,
+        "path": "Scripts/benchmark-inputs/native_generation_inputs.py",
+        "sha256": "28d76da4c20065d7adb56b0033d817488e6ed3df1db97e6ec5ab54ece3938877"
+      },
+      {
+        "bytes": 33869,
+        "path": "Scripts/benchmark-inputs/test_native_generation_inputs.py",
+        "sha256": "43a1740e63e173997162907e38f381a9c076dc121f12254b82f3e3e6749bf0ea"
+      },
+      {
+        "bytes": 25155,
+        "path": "Scripts/validate-native-sdk-generations.py",
+        "sha256": "c39023d367d9ed18b4c4085cf867962c99bd675f4175cf375aafae72ae3f80e0"
+      },
+      {
+        "bytes": 36439,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "fbb1da68d19989c4c86509a9ad12c4bcfb7b34fe5bca17c6f5c4cb6565946d49"
+      }
+    ],
+    "role": "lossless-new-interpreter-link-metadata",
+    "scope": "Only new generation interpreter alias targets use strict marked split/join metadata with original hashes and unsplit sensitive/Windows screening. Fresh complete alias and physical-file comparison remains required. CI506 remains a retained failure; native generation and timing admission remain unrun."
+  },
   "mapped_path_marker_fallback_overrides": {
     "base_commit": "b5c3251f8b26229e2906397a479ebc922c0e30c5",
     "failed_run_url": "https://github.com/ictechgy/cartograph/actions/runs/38585899731",
