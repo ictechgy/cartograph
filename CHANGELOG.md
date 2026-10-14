@@ -7,8 +7,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Planned for 0.26.0; no release date or tag has been assigned. Version 0.25.1 was prepared
-in source but never published. Its pending fixes are consolidated below.
+## [0.26.0] - 2026-10-14
+
+Version 0.25.1 was prepared in source but never published. Those fixes are included in this release.
 
 - Preserve optional external-retentions upstream provenance and limitations through analysis,
   explain notes and lossless snapshots. Bound raw input and display independently; stale, unknown,
@@ -1433,7 +1434,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.25.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.26.0...HEAD
+[0.26.0]: https://github.com/ictechgy/cartograph/compare/0.25.0...0.26.0
 [0.25.0]: https://github.com/ictechgy/cartograph/compare/0.24.0...0.25.0
 [0.24.0]: https://github.com/ictechgy/cartograph/compare/0.23.1...0.24.0
 [0.23.0]: https://github.com/ictechgy/cartograph/compare/0.22.0...0.23.0

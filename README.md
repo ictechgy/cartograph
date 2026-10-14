@@ -60,7 +60,7 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 ## Install
 
 Check [GitHub Releases](https://github.com/ictechgy/cartograph/releases) for published CLI versions
-and available binary assets. The versioned install examples below pin **0.25.0** for reproducibility;
+and available binary assets. The versioned install examples below pin **0.26.0** for reproducibility;
 change the pin only to a published version you have verified. A source checkout's `--version` reports
 its source version and does not establish release availability. Version 0.25.1 was prepared in source
 but never published; see [CHANGELOG.md](CHANGELOG.md) for the incorporated changes.
@@ -82,7 +82,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.25.0
+mint install ictechgy/cartograph@0.26.0
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -90,7 +90,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.25.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.26.0"),
 ```
 
 ```bash
@@ -1726,11 +1726,11 @@ jobs:
       - uses: ictechgy/cartograph@action-v1.0.0
         with:
           command: check
-          version: 0.25.0
+          version: 0.26.0
           args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-The `action-v1.0.0` tag is the action release; `version: 0.25.0` selects the CLI binary.
+The `action-v1.0.0` tag is the action release; `version: 0.26.0` selects the CLI binary.
 Pin both for a repeatable setup (`@main` tracks the development branch). Marketplace's default
 "Use latest version" currently follows the repository's latest CLI release; select
 `action-v1.0.0` or use the version-specific link above for the action release. Inputs:
