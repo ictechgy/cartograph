@@ -7,6 +7,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Planned for 0.26.0; no release date or tag has been assigned. Version 0.25.1 was prepared
+in source but never published. Its pending fixes are consolidated below.
+
 - Preserve optional external-retentions upstream provenance and limitations through analysis,
   explain notes and lossless snapshots. Bound raw input and display independently; stale, unknown,
   legacy and zero-entry context stays explicit without changing retention matching. Coordinated
@@ -19,6 +22,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   timing/RSS evidence. The bounded synthetic fixtures do not establish universal superiority.
 - Add explicit `graph --include-self-loops --level symbol` export for recursive compiler calls and
   their occurrence evidence, while preserving default graph, query and architecture-cycle behavior.
+- Add opt-in fresh-query phase diagnostics with `CARTOGRAPH_DIAGNOSTIC_QUERY_PHASES=1`.
+  Timing is diagnostic and instrumented; ordinary stdout and command outcomes remain unchanged.
+
+### Compatibility
+
+- Ordinary source calls retain defaulted arguments and graph/query defaults. Added initializer parameters
+  can affect captured initializer function references; binary ABI compatibility is not promised.
+- External-retentions v0, analysis-snapshot v2 and affected-output v1 retain their format versions with
+  optional context fields. Older readers may ignore these fields and lose new provenance on roundtrip.
+- Embedders must use `ExternalRetentionStore.load(from:)` for provenance-bearing retention documents and
+  `AnalysisSnapshotDocument.decode(from:)` for provenance-bearing snapshots so raw input is validated.
+  Plain `JSONDecoder` remains supported for legacy documents and snapshots without provenance.
+- More complete header and runtime facts can change analysis results and limitations. Conservative
+  `affected --format xcodebuild` refusals and bounded batch-input admission are intentional correctness fixes.
 
 ### Fixed
 
@@ -37,11 +54,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   check indexed Clang source readability before narrowing tests.
 - Preserve XCTest lifecycle and inherited test execution with explicit automatic provenance,
   including descendants in other test modules, without turning membership into usage.
-
-## [0.25.1] - 2026-10-11
-
-### Fixed
-
 - `affected` now follows the same automatically discovered runtime connections and resource-to-Swift
   bindings as default `impact`, preserving automatic evidence separately from compiler calls.
   String-based class lookup and resource changes no longer silently omit reachable tests.
@@ -1416,8 +1428,7 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.25.1...HEAD
-[0.25.1]: https://github.com/ictechgy/cartograph/compare/0.25.0...0.25.1
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.25.0...HEAD
 [0.25.0]: https://github.com/ictechgy/cartograph/compare/0.24.0...0.25.0
 [0.24.0]: https://github.com/ictechgy/cartograph/compare/0.23.1...0.24.0
 [0.23.0]: https://github.com/ictechgy/cartograph/compare/0.22.0...0.23.0

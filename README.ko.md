@@ -65,6 +65,11 @@ Cartograph의 문장은 *"의존성 그래프를 내놓는다"*이며, 미사용
 
 ## 설치
 
+현재 발행된 최신 CLI는 **0.25.0**이며, 아래 버전 고정 설치 예시는 이 릴리스를 사용합니다.
+개발 브랜치는 **0.26.0**을 준비 중이며, 아직 릴리스 태그나 내려받을 바이너리가 없습니다.
+0.25.1은 소스에서 준비됐지만 발행되지 않았고, 그 변경은
+[Unreleased](CHANGELOG.md#unreleased)에 포함돼 있습니다.
+
 macOS 14 이상과 Swift 툴체인(Xcode 또는 Command Line Tools)이 필요합니다 — Cartograph가
 실행 시 `libIndexStore`를 그 툴체인에서 불러오기 때문입니다. 개발은 Swift 6.4로 하며, CI는
 러너에 설치된 최신 Xcode를 골라 그 툴체인으로 만든 컴파일러 픽스처를 검증합니다.
@@ -83,7 +88,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — 소스에서 빌드되며, tap을 추가할 필요가 없습니다.
 
 ```bash
-mint install ictechgy/cartograph@0.25.1
+mint install ictechgy/cartograph@0.25.0
 ```
 
 **아예 설치하지 않기** — Swift 패키지라면 의존성으로 추가해 커맨드 플러그인을 씁니다.
@@ -91,7 +96,7 @@ mint install ictechgy/cartograph@0.25.1
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.25.1"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.25.0"),
 ```
 
 ```bash
@@ -1139,7 +1144,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.25.1" },
+  "tool" : { "name" : "cartograph", "version" : "0.25.0" },
   "version" : 1
 }
 ```
@@ -1170,8 +1175,9 @@ ObjC 핸들은 `objective-c-handlers` 쪽에서 셉니다), React Native 모듈�
 검사하고 잘못되거나 초과한 입력은 빈 성공 대신 실패합니다. 표시는 escape 뒤 64개·8192바이트와
 정확한 생략 수로 줄이지만 snapshot의 별도 compact JSON 필드는 전체 문맥을 보존합니다.
 Foundation keyed Codable이 합치는 정규화 동등 Unicode 키도 구별하며 복원 때 다시 검증하고
-두 출처 표현이 충돌하면 실패합니다. 임베더는 새 snapshot을 `AnalysisSnapshotDocument.decode(from:)`로
-읽어야 하며, 출처 없는 옛 snapshot은 일반 JSONDecoder와 계속 호환됩니다. 시각은 실제 Gregorian 날짜,
+두 출처 표현이 충돌하면 실패합니다. 임베더는 출처가 있는 외부 보존 문서를
+`ExternalRetentionStore.load(from:)`로, snapshot을 `AnalysisSnapshotDocument.decode(from:)`로 읽어야 합니다.
+출처 없는 옛 문서와 snapshot은 일반 JSONDecoder와 계속 호환됩니다. 시각은 실제 Gregorian 날짜,
 t/z 대소문자, 시·offset 시 00–23, 분·offset 분 00–59, 초 00–59와 임의 소수 자릿수를 허용하는
 명시적 profile입니다. 윤초 :60은 정규화하지 않고 미지원 형식으로 거부합니다. 원문을 보존하며
 삭제 안전성을 뜻하거나 매치 보존을 취소하지 않습니다.
@@ -1661,11 +1667,11 @@ jobs:
       - uses: ictechgy/cartograph@action-v1.0.0
         with:
           command: check
-          version: 0.25.1
+          version: 0.25.0
           args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-`action-v1.0.0`은 액션 릴리스 태그이고, `version: 0.25.1`은 CLI 바이너리를 선택합니다.
+`action-v1.0.0`은 액션 릴리스 태그이고, `version: 0.25.0`은 CLI 바이너리를 선택합니다.
 재현 가능한 실행을 위해 둘을 함께 고정하세요(`@main`은 개발 브랜치를 따릅니다).
 Marketplace의 기본 "Use latest version"은 저장소의 최신 CLI 릴리스를 따릅니다.
 액션 릴리스를 쓰려면 `action-v1.0.0`을 선택하거나 위의 버전별 링크를 이용하세요. 입력:
