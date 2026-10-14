@@ -25,6 +25,11 @@ PYTHON=dict(selected_path='/opt/homebrew/opt/python@3.14/bin/python3.14',
             resolved_path='/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/bin/python3.14',
             bytes=34640,sha256='87d4df53fd91304be5bac391fb204643c36b7df2023c04a0953bcbc7d4fdf634')
 IMAGE=dict(ImageOS='macos26',ImageVersion='20260907.0351.1')
+ADMISSION_REASONS=('native-python-version-mismatch','native-os-mismatch','native-image-mismatch',
+                   'selected-python-mismatch','physical-python-mismatch')
+ADMISSION_TEXT=dict(platform=r'darwin|linux|win32',machine=r'arm64|aarch64|x86_64|amd64',
+                    os_release=r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}',image_os=r'macos[0-9]{1,3}',
+                    image_version=r'[0-9]{8}\.[0-9]{4}\.[0-9]{1,2}')
 
 def load(name,path):
     spec=importlib.util.spec_from_file_location(name,path);module=importlib.util.module_from_spec(spec)
@@ -67,6 +72,9 @@ def source_bytes(path):
 
 class Cancelled(BaseException):pass
 class UnfinishedChild(ValueError):pass
+class InterpreterAdmissionFailure(ValueError):
+    def __init__(self,receipt,primary):
+        super().__init__(receipt['reason']);self.receipt=receipt;self.primary=primary
 
 
 def require_stable_child(row):
@@ -174,14 +182,76 @@ def bind_sources(source_sha,raw,environment,phase):
     return dict(files=observed,command=row)
 
 
+def admission_text_hash(value):
+    return hashlib.sha256(value.encode('utf-8',errors='surrogatepass')).hexdigest() if type(value) is str else None
+
+
+def admission_expected():
+    return dict(platform='darwin',python_version=[3,14,7],machine='arm64',os_release='25.6.0',
+                image_os=IMAGE['ImageOS'],image_version=IMAGE['ImageVersion'],
+                selected_path_sha256=admission_text_hash(PYTHON['selected_path']),physical_status='available',
+                physical_selected_path_sha256=admission_text_hash(PYTHON['selected_path']),
+                resolved_path_sha256=admission_text_hash(PYTHON['resolved_path']),bytes=PYTHON['bytes'],sha256=PYTHON['sha256'])
+
+
+def admission_checks(observed):
+    expected=admission_expected()
+    groups=(('platform','python_version'),('machine','os_release'),('image_os','image_version'),
+            ('selected_path_sha256',),('physical_status','physical_selected_path_sha256','resolved_path_sha256','bytes','sha256'))
+    checks={reason:all(observed.get(key)==expected[key] for key in keys)
+            for reason,keys in zip(ADMISSION_REASONS,groups)}
+    checks['physical-python-mismatch'] &= observed.get('file_identity_sha256') is not None
+    return checks
+
+
 def bind_interpreter():
-    require(sys.platform=='darwin' and tuple(sys.version_info[:3])==(3,14,7),'native-python-version-mismatch')
-    require(os.uname().machine=='arm64' and os.uname().release=='25.6.0','native-os-mismatch')
-    require(all(os.environ.get(key)==value for key,value in IMAGE.items()),'native-image-mismatch')
-    require(sys.executable==PYTHON['selected_path'],'selected-python-mismatch')
-    observed=OBS.interpreter_observation(sys.executable)
-    require(observed.get('status')=='available' and all(observed.get(k)==v for k,v in PYTHON.items()),'physical-python-mismatch')
-    return observed
+    # 실패 직전까지 관찰한 형식 제한 값만 보존하고 경로와 예외 원문은 해시로만 남긴다.
+    safe={key:None for key in admission_expected()}
+    safe.update(file_identity_sha256=None,physical_failure_sha256=None)
+    receipt=dict(status='incomplete',expected=admission_expected(),observed=safe,checks={})
+    stage=ADMISSION_REASONS[0]
+    def text_field(key,value):
+        safe[key]=value if type(value) is str and re.fullmatch(ADMISSION_TEXT[key],value) else None
+    def check(reason):
+        matched=admission_checks(safe)[reason];receipt['checks'][reason]=matched
+        if not matched:
+            receipt['reason']=reason
+            raise InterpreterAdmissionFailure(receipt,dict(type='ValueError',reason=reason))
+    try:
+        text_field('platform',sys.platform)
+        version=sys.version_info[:3]
+        safe['python_version']=list(version) if (len(version)==3 and
+            all(type(part) is int and 0<=part<=999 for part in version)) else None
+        check(stage)
+        stage=ADMISSION_REASONS[1];uname=os.uname()
+        text_field('machine',uname.machine);text_field('os_release',uname.release);check(stage)
+        stage=ADMISSION_REASONS[2]
+        text_field('image_os',os.environ.get('ImageOS'));text_field('image_version',os.environ.get('ImageVersion'));check(stage)
+        stage=ADMISSION_REASONS[3];safe['selected_path_sha256']=admission_text_hash(sys.executable);check(stage)
+        stage=ADMISSION_REASONS[4];observed=OBS.interpreter_observation(sys.executable)
+        if type(observed) is dict:
+            status=observed.get('status')
+            safe['physical_status']=status if status in ('available','unavailable','incomplete') else 'invalid'
+            safe['physical_selected_path_sha256']=admission_text_hash(observed.get('selected_path'))
+            safe['resolved_path_sha256']=admission_text_hash(observed.get('resolved_path'))
+            size=observed.get('bytes');sha=observed.get('sha256');identity=observed.get('file_identity')
+            safe['bytes']=size if type(size) is int and 0<size<=256*1024**2 else None
+            safe['sha256']=sha if type(sha) is str and re.fullmatch(r'[0-9a-f]{64}',sha) else None
+            safe['file_identity_sha256']=digest(identity) if (type(identity) is list and len(identity)==6 and
+                all(type(part) is int and 0<=part<2**128 for part in identity) and
+                identity[2]<=0o177777 and stat.S_ISREG(identity[2]) and identity[3]==safe['bytes']) else None
+            safe['physical_failure_sha256']=admission_text_hash(observed.get('failure'))
+        else:safe['physical_status']='invalid'
+        check(stage)
+        return observed
+    except InterpreterAdmissionFailure:raise
+    except BaseException as error:
+        receipt.update(reason='interpreter-admission-observation-failed',observation_stage=stage,
+                       error_type_sha256=admission_text_hash(type(error).__name__),
+                       message_sha256=admission_text_hash(str(error)))
+        primary=dict(type='InterpreterObservationError',reason=receipt['reason'],
+                     error_type_sha256=receipt['error_type_sha256'],message_sha256=receipt['message_sha256'])
+        raise InterpreterAdmissionFailure(receipt,primary) from None
 
 
 def same_interpreter(before,after):
@@ -249,14 +319,17 @@ def execute(raw,source_sha):
     environment=environment_for(raw)
     result=dict(schema_version=1,profile='native-waitid-capability-outer-v1',source_sha=source_sha,status='incomplete',
                 capability_only=True,descendant_closure_eligible=False,timing_eligible=False,final_protocol_ready=False,
+                checkpoint='interpreter-admission-before',
                 actual_engine_calls=0,interpreter_scope='Observed executable only; Python framework/stdlib and dynamic-loader closure unproved',
                 command_schedule='two source-query metadata children and one capability child; at most13 actor children inside that child')
     material_safe=True
     try:
         before=bind_interpreter();result['interpreter_before']=before
+        result['checkpoint']='source-before'
         material_safe=False
         source=bind_sources(source_sha,raw,environment,'before');result['source_before']=source
         material_safe=True
+        result['checkpoint']='capability-command'
         argv=[sys.executable,'-I','-S','-B',str(HELPER),'--output',str(raw/'runs/capability')]
         (raw/'runs').mkdir()
         material_safe=False
@@ -266,8 +339,10 @@ def execute(raw,source_sha):
             material_safe=False
             raise UnfinishedChild('capability-actor-cleanup-not-proved')
         material_safe=False
+        result['checkpoint']='source-after'
         result['source_after']=bind_sources(source_sha,raw,environment,'after')
         material_safe=True
+        result['checkpoint']='interpreter-admission-after'
         result['interpreter_after']=bind_interpreter()
         require(source['files']==result['source_after']['files'] and same_interpreter(before,result['interpreter_after']),'input-identity-changed')
         require(outer['status']=='completed-zero','capability-command-incomplete')
@@ -275,8 +350,11 @@ def execute(raw,source_sha):
         result['capability_result']=dict(bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
         result['verification']=regrade(value,outer,source,sys.version)
         result['status']='capability-only-complete'
+        result['checkpoint']='complete'
     except BaseException as error:
-        result['failure']=dict(type=type(error).__name__,reason=str(error))
+        if isinstance(error,InterpreterAdmissionFailure):
+            result['failure']=error.primary;result['interpreter_admission_failure']=error.receipt
+        else:result['failure']=dict(type=type(error).__name__,reason=str(error))
         if isinstance(error,UnfinishedChild):material_safe=False
     result['stable_originals']=material_safe
     if material_safe:
@@ -334,6 +412,7 @@ def verify_command(row,raw,stem,argv,bound):
 
 
 def verify_source_record(record,source_sha,raw,phase):
+    require(type(record) is dict,'missing-source-record')
     files=record.get('files');require(type(files) is dict and set(files)==set(SOURCE_PATHS),'source-set-mismatch')
     row=record['command'];verify_command(row,raw,'source-'+phase,
         ['/usr/bin/git','ls-tree',source_sha,'--',*SOURCE_PATHS],5)
@@ -356,15 +435,57 @@ def complete_membership():
     return names
 
 
+def verify_admission_failure(value):
+    # 누락된 소스 결속을 허용하는 유일한 경로이며 성공 영수증을 복원하거나 추측하지 않는다.
+    receipt=value.get('interpreter_admission_failure')
+    require(type(receipt) is dict,'missing-interpreter-admission-failure-receipt')
+    reason=receipt.get('reason');unexpected=reason=='interpreter-admission-observation-failed'
+    keys={'status','expected','observed','checks','reason'}
+    if unexpected:keys.update(('observation_stage','error_type_sha256','message_sha256'))
+    require(set(receipt)==keys and receipt.get('status')=='incomplete'
+            and digest(receipt.get('expected'))==digest(admission_expected()),'admission-failure-schema')
+    observed=receipt.get('observed');expected=admission_expected()
+    require(type(observed) is dict and set(observed)==set(expected)|{'file_identity_sha256','physical_failure_sha256'},
+            'admission-observation-schema')
+    for key,pattern in ADMISSION_TEXT.items():
+        item=observed[key]
+        require(item is None or type(item) is str and re.fullmatch(pattern,item),'admission-observation-text')
+    version=observed['python_version']
+    require(version is None or type(version) is list and len(version)==3 and
+            all(type(part) is int and 0<=part<=999 for part in version),'admission-observation-version')
+    size=observed['bytes']
+    require(size is None or type(size) is int and 0<size<=256*1024**2,'admission-observation-bytes')
+    require(observed['physical_status'] in (None,'available','unavailable','incomplete','invalid'),'admission-observation-status')
+    for key in ('selected_path_sha256','physical_selected_path_sha256','resolved_path_sha256','sha256',
+                'file_identity_sha256','physical_failure_sha256'):
+        item=observed[key]
+        require(item is None or type(item) is str and re.fullmatch(r'[0-9a-f]{64}',item),'admission-observation-hash')
+    stage=receipt.get('observation_stage') if unexpected else reason
+    require(stage in ADMISSION_REASONS,'admission-failure-reason')
+    position=ADMISSION_REASONS.index(stage);checked=ADMISSION_REASONS[:position+(0 if unexpected else 1)]
+    checks=receipt.get('checks');computed=admission_checks(observed)
+    require(type(checks) is dict and set(checks)==set(checked) and all(type(v) is bool for v in checks.values())
+            and all(checks[key] is computed[key] for key in checked)
+            and all(checks[key] is True for key in ADMISSION_REASONS[:position]),'admission-failure-checks')
+    if unexpected:
+        for key in ('error_type_sha256','message_sha256'):
+            require(type(receipt[key]) is str and re.fullmatch(r'[0-9a-f]{64}',receipt[key]),'admission-error-hash')
+        failure=dict(type='InterpreterObservationError',reason=reason,
+                     error_type_sha256=receipt['error_type_sha256'],message_sha256=receipt['message_sha256'])
+    else:
+        require(checks[reason] is False,'admission-failure-checks')
+        failure=dict(type='ValueError',reason=reason)
+    require(digest(value.get('failure'))==digest(failure),'admission-primary-failure-changed')
+
+
 def verify_originals(raw):
-    value=read_json(raw/'results.json');status=read_json(raw/'setup/execute-status.json')
+    value=read_json(raw/'results.json')
     require(type(value) is dict and value.get('profile')=='native-waitid-capability-outer-v1'
             and type(value.get('schema_version')) is int and value['schema_version']==1,'outer-schema')
     require(value.get('capability_only') is True and type(value.get('actual_engine_calls')) is int
             and value['actual_engine_calls']==0,'outer-scope')
     for key in ('descendant_closure_eligible','timing_eligible','final_protocol_ready'):
         require(value.get(key) is False,'promoted-eligibility')
-    require(set(status)=={'exit_code'} and type(status['exit_code']) is int,'workflow-exit-schema')
     source_sha=value.get('source_sha')
     require(type(source_sha) is str and re.fullmatch(r'[0-9a-f]{40}',source_sha)
             and os.environ.get('GITHUB_SHA')==source_sha,'publication-source-mismatch')
@@ -372,12 +493,36 @@ def verify_originals(raw):
     if 'command' in value:
         require_stable_child(value['command'])
         require(value['command'].get('status')=='completed-zero','capability-actor-cleanup-not-proved')
+    status=read_json(raw/'setup/execute-status.json')
+    require(type(status) is dict and set(status)=={'exit_code'} and type(status['exit_code']) is int,'workflow-exit-schema')
+    require(value.get('status') in ('capability-only-complete','incomplete'),'outer-status')
+    if value['status']=='incomplete':require(status['exit_code']!=0,'incomplete-with-successful-exit')
+    else:require(status['exit_code']==0 and 'failure' not in value,'actual-outer-incomplete')
+    if 'source_before' not in value:
+        require(value['status']=='incomplete' and value.get('checkpoint')=='interpreter-admission-before',
+                'missing-source-before-outside-early-admission')
+        require(1<=status['exit_code']<=255,'early-admission-exit-code')
+        wall=value.get('full_caller_wall_seconds_before_receipt')
+        require(type(wall) in (int,float) and wall>=0 and (type(wall) is int or math.isfinite(wall)),
+                'early-admission-caller-wall')
+        require(value.get('interpreter_scope')=='Observed executable only; Python framework/stdlib and dynamic-loader closure unproved'
+                and value.get('command_schedule')=='two source-query metadata children and one capability child; at most13 actor children inside that child'
+                and value.get('cost_scope')=='Caller includes admission and actual child/cleanup; nested intervals overlap; final receipt/teardown and publication excluded',
+                'early-admission-scope-text')
+        verify_admission_failure(value)
+        require(set(value)=={'schema_version','profile','source_sha','status','capability_only',
+                'descendant_closure_eligible','timing_eligible','final_protocol_ready','checkpoint','actual_engine_calls',
+                'interpreter_scope','command_schedule','failure','interpreter_admission_failure','stable_originals',
+                'original_files','full_caller_wall_seconds_before_receipt','cost_scope'},
+                'early-admission-unexpected-records')
+        require(type(value.get('original_files')) is dict and value['original_files']=={},'early-admission-member-set')
+        require(inventory(raw)=={},'early-admission-member-set')
+        return value
     require(digest(value.get('original_files'))==digest(inventory(raw)),'original-membership-or-bytes-changed')
     verify_source_record(value['source_before'],source_sha,raw,'before')
+    require(type(value.get('interpreter_before')) is dict,'missing-interpreter-before-receipt')
     current=bind_interpreter();require(same_interpreter(current,value['interpreter_before']),'interpreter-changed')
-    require(value.get('status') in ('capability-only-complete','incomplete'),'outer-status')
     if value['status']=='capability-only-complete':
-        require(status['exit_code']==0 and 'failure' not in value,'actual-outer-incomplete')
         require(set(value['original_files'])==complete_membership(),'completed-member-set')
         verify_source_record(value['source_after'],source_sha,raw,'after')
         require(digest(value['source_before']['files'])==digest(value['source_after']['files'])
@@ -395,14 +540,13 @@ def verify_originals(raw):
         for name in complete_membership():
             if name.startswith('runs/') and name.endswith(('.stdout','.stderr')):
                 require(value['original_files'][name]==dict(bytes=0,sha256=hashlib.sha256(b'').hexdigest()),'unexpected-actor-output')
-    else:
-        require(status['exit_code']!=0,'incomplete-with-successful-exit')
     return value
 
 
 def publish(raw,public):
     started=time.monotonic();value=verify_originals(raw)
     bindings={name:hashlib.sha256(source_bytes(raw/name)).hexdigest() for name in ('results.json','setup/execute-status.json')}
+    execute_exit_code=read_json(raw/'setup/execute-status.json')['exit_code']
     manifest=NORMALIZER.package(argparse.Namespace(input=raw,output=public,prefix=[
         'WORKSPACE='+str(ROOT),'OPT=/opt','USR=/usr','BIN=/bin','SBIN=/sbin','SYSTEM=/System','PRIVATE=/private']))
     require(set(row['path'] for row in manifest['files'])==set(value['original_files'])|set(bindings),'published-member-set')
@@ -411,9 +555,14 @@ def publish(raw,public):
         require(row['original_raw_sha256']==hashlib.sha256(original).hexdigest(),'manifest-original-mismatch')
     require(digest(verify_originals(raw))==digest(value),'publication-original-changed')
     require(all(hashlib.sha256(source_bytes(raw/name)).hexdigest()==sha for name,sha in bindings.items()),'publication-terminal-changed')
-    return dict(status='scanned',capability_status=value['status'],files=len(manifest['files']),
+    result=dict(status='scanned',capability_status=value['status'],files=len(manifest['files']),
                 wall_seconds=time.monotonic()-started,capability_only=True,descendant_closure_eligible=False,
-                timing_eligible=False,final_protocol_ready=False,actual_engine_calls=0)
+                timing_eligible=False,final_protocol_ready=False,actual_engine_calls=0,
+                execute_exit_code=execute_exit_code)
+    if value.get('checkpoint')=='interpreter-admission-before':
+        result.update(checkpoint=value['checkpoint'],failure=value['failure'],
+                      interpreter_admission_failure=value['interpreter_admission_failure'])
+    return result
 
 
 def main():
@@ -422,6 +571,9 @@ def main():
     if args.public:
         result=publish(args.raw,args.public);print(json.dumps(result));return 0
     result=execute(args.raw,args.source_sha)
+    if result.get('checkpoint')=='interpreter-admission-before' and 'interpreter_admission_failure' in result:
+        print(json.dumps(dict(status=result['status'],checkpoint=result['checkpoint'],failure=result['failure'],
+                              interpreter_admission_failure=result['interpreter_admission_failure'])))
     return 0 if result['status']=='capability-only-complete' else 1
 
 

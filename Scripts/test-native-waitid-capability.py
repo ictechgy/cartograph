@@ -6,6 +6,7 @@ import copy
 import errno
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -345,6 +346,312 @@ class OuterControls(unittest.TestCase):
         with mock.patch.object(M,'bind_interpreter',side_effect=ValueError('unavailable')),mock.patch.object(M,'command') as command:
             result=M.execute(self.raw,self.sha)
         command.assert_not_called();self.assertEqual(result['status'],'incomplete');self.assertEqual(result['actual_engine_calls'],0)
+
+    @contextlib.contextmanager
+    def native_file_identity(self):
+        # 실행 가능한 자식 대신 실제 임시 정규 파일과 심볼릭 링크의 정체성을 관찰한다.
+        physical=self.root/'physical-python';selected=self.root/'selected-python'
+        body=b'owned interpreter identity fixture';physical.write_bytes(body);selected.symlink_to(physical)
+        pins=dict(selected_path=str(selected),resolved_path=str(physical),bytes=len(body),sha256=hashlib.sha256(body).hexdigest())
+        with mock.patch.object(M,'PYTHON',pins),mock.patch.object(M.sys,'platform','darwin'), \
+             mock.patch.object(M.sys,'version_info',(3,14,7,'final',0)), \
+             mock.patch.object(M.sys,'executable',str(selected)), \
+             mock.patch.object(M.os,'uname',return_value=SimpleNamespace(machine='arm64',release='25.6.0')), \
+             mock.patch.dict(os.environ,M.IMAGE):
+            yield selected,physical,pins
+
+    def early_execute(self,reason):
+        output=io.StringIO()
+        with mock.patch.object(M.sys,'argv',['outer','--source-sha',self.sha,'--raw',str(self.raw)]), \
+             contextlib.redirect_stdout(output),mock.patch.object(M,'command') as command, \
+             mock.patch.object(M,'bind_sources') as sources,mock.patch.object(M.subprocess,'Popen') as launched:
+            code=M.main()
+        command.assert_not_called();sources.assert_not_called();launched.assert_not_called()
+        self.assertEqual(code,1)
+        self.write(self.raw/'setup/execute-status.json',dict(exit_code=code))
+        value=M.read_json(self.raw/'results.json')
+        self.assertEqual(value['status'],'incomplete');self.assertEqual(value['checkpoint'],'interpreter-admission-before')
+        self.assertEqual(value['failure']['reason'],reason);self.assertEqual(value['original_files'],{})
+        self.assertTrue(value['stable_originals']);self.assertNotIn('source_before',value)
+        self.assertEqual(json.loads(output.getvalue())['failure'],value['failure'])
+        return value,output.getvalue()
+
+    def early_publish(self,value,*,exit_code=1,private=()):
+        output=io.StringIO();original=(self.raw/'results.json').read_bytes()
+        with mock.patch.object(M.sys,'argv',['outer','--raw',str(self.raw),'--public',str(self.public)]), \
+             contextlib.redirect_stdout(output),mock.patch.object(M,'bind_interpreter') as rebound, \
+             mock.patch.object(M,'bind_sources') as sources,mock.patch.object(M,'command') as command, \
+             mock.patch.object(M.subprocess,'Popen') as launched:
+            code=M.main()
+        rebound.assert_not_called();sources.assert_not_called();command.assert_not_called();launched.assert_not_called()
+        self.assertEqual(code,0);result=json.loads(output.getvalue())
+        self.assertEqual(result['capability_status'],'incomplete');self.assertEqual(result['execute_exit_code'],exit_code)
+        self.assertEqual(result['failure'],value['failure']);self.assertEqual(result['files'],2)
+        self.assertEqual((self.raw/'results.json').read_bytes(),original)
+        self.assertEqual(M.read_json(self.raw/'setup/execute-status.json'),dict(exit_code=exit_code))
+        for row in (value,result,M.read_json(self.public/'results.json')):
+            self.assertTrue(row['capability_only']);self.assertEqual(row['actual_engine_calls'],0)
+            for key in ('descendant_closure_eligible','timing_eligible','final_protocol_ready'):self.assertFalse(row[key])
+            for key in ('native_actor_launches','actual_launches','cases','source_before','verification'):self.assertNotIn(key,row)
+        manifest=M.read_json(self.public/'manifest.json')
+        self.assertEqual({row['path'] for row in manifest['files']},{'results.json','setup/execute-status.json'})
+        for row in manifest['files']:
+            self.assertEqual(row['original_raw_sha256'],hashlib.sha256((self.raw/row['path']).read_bytes()).hexdigest())
+        text=output.getvalue()+original.decode()+''.join(path.read_text() for path in self.public.rglob('*') if path.is_file())
+        for item in (str(self.root),*private):self.assertNotIn(item,text)
+        return result
+
+    def test_early_version_refusal_main_status_publisher_retains_incomplete(self):
+        # 이전 소스에서도 출판 호출까지 도달하여 source_before 누락 자체를 첫 실패로 남긴다.
+        with self.native_file_identity(),mock.patch.object(M.sys,'version_info',(3,14,8,'final',0)), \
+             mock.patch.object(M,'command') as command,mock.patch.object(M,'bind_sources') as sources, \
+             mock.patch.object(M.subprocess,'Popen') as launched:
+            with mock.patch.object(M.sys,'argv',['outer','--source-sha',self.sha,'--raw',str(self.raw)]), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                execute_code=M.main()
+            self.assertEqual(execute_code,1)
+            self.write(self.raw/'setup/execute-status.json',dict(exit_code=execute_code))
+            original=(self.raw/'results.json').read_bytes();output=io.StringIO()
+            with mock.patch.object(M.sys,'argv',['outer','--raw',str(self.raw),'--public',str(self.public)]), \
+                 contextlib.redirect_stdout(output):
+                publication_code=M.main()
+            command.assert_not_called();sources.assert_not_called();launched.assert_not_called()
+            self.assertEqual(publication_code,0);published=json.loads(output.getvalue())
+            self.assertEqual(published['capability_status'],'incomplete')
+            self.assertEqual(published['execute_exit_code'],execute_code)
+            self.assertEqual(published['failure'],dict(type='ValueError',reason='native-python-version-mismatch'))
+            self.assertEqual((self.raw/'results.json').read_bytes(),original)
+            self.assertEqual(M.read_json(self.public/'setup/execute-status.json'),dict(exit_code=1))
+            self.assertEqual({row['path'] for row in M.read_json(self.public/'manifest.json')['files']},
+                             {'results.json','setup/execute-status.json'})
+            for key in ('descendant_closure_eligible','timing_eligible','final_protocol_ready'):self.assertFalse(published[key])
+
+    def test_changed_python_version_full_failure_chain_retains_primary_without_rebinding(self):
+        with self.native_file_identity(),mock.patch.object(M.sys,'version_info',(3,14,8,'final',0)), \
+             mock.patch.object(M.OBS,'interpreter_observation',wraps=M.OBS.interpreter_observation) as observation:
+            value,output=self.early_execute('native-python-version-mismatch')
+            self.assertEqual(value['interpreter_admission_failure']['observed']['python_version'],[3,14,8])
+            self.assertEqual(value['interpreter_admission_failure']['expected']['python_version'],[3,14,7])
+            self.early_publish(value)
+        observation.assert_not_called()
+
+    def test_changed_selected_executable_is_hash_only_and_never_observed_or_launched(self):
+        with self.native_file_identity():
+            alternate=self.root/'token=private-sensitive-value';alternate.write_bytes(b'owned alternate')
+            with mock.patch.object(M.sys,'executable',str(alternate)), \
+                 mock.patch.object(M.OBS,'interpreter_observation',wraps=M.OBS.interpreter_observation) as observation:
+                value,output=self.early_execute('selected-python-mismatch')
+                receipt=value['interpreter_admission_failure']
+                self.assertEqual(receipt['observed']['selected_path_sha256'],hashlib.sha256(str(alternate).encode()).hexdigest())
+                self.assertNotEqual(receipt['observed']['selected_path_sha256'],receipt['expected']['selected_path_sha256'])
+                self.assertNotIn(str(alternate),output);self.early_publish(value,private=('private-sensitive-value',))
+            observation.assert_not_called()
+
+    def test_changed_real_executable_bytes_keep_helper_identity_in_full_failure_chain(self):
+        with self.native_file_identity() as (selected,physical,pins):
+            admitted=M.bind_interpreter();self.assertEqual(admitted['sha256'],pins['sha256'])
+            changed=b'token=private-sensitive-value';physical.write_bytes(changed)
+            with mock.patch.object(M.OBS,'interpreter_observation',wraps=M.OBS.interpreter_observation) as observation:
+                value,output=self.early_execute('physical-python-mismatch')
+            observation.assert_called_once_with(str(selected))
+            info=physical.stat();identity=[info.st_dev,info.st_ino,info.st_mode,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+            observed=value['interpreter_admission_failure']['observed']
+            self.assertEqual(observed['bytes'],len(changed));self.assertEqual(observed['sha256'],hashlib.sha256(changed).hexdigest())
+            self.assertEqual(observed['file_identity_sha256'],M.digest(identity))
+            self.early_publish(value,private=('private-sensitive-value',))
+
+    def test_changed_real_resolved_target_keeps_original_pin_and_refuses(self):
+        with self.native_file_identity() as (selected,physical,pins):
+            alternate=self.root/'other-physical-python';alternate.write_bytes(physical.read_bytes())
+            selected.unlink();selected.symlink_to(alternate)
+            value,output=self.early_execute('physical-python-mismatch')
+            receipt=value['interpreter_admission_failure']
+            self.assertEqual(receipt['observed']['sha256'],pins['sha256'])
+            self.assertNotEqual(receipt['observed']['resolved_path_sha256'],receipt['expected']['resolved_path_sha256'])
+            self.early_publish(value)
+
+    def test_unsupported_or_malformed_native_fields_are_bounded_or_unavailable_through_scanner(self):
+        secret='token=private-sensitive-value /unknown/private/path person@example.invalid'
+        cases=(('version',(3,14,secret),'native-python-version-mismatch','python_version',None),
+               ('version',(3,14,7.0),'native-python-version-mismatch','python_version',None),
+               ('platform',secret,'native-python-version-mismatch','platform',None),
+               ('machine',secret,'native-os-mismatch','machine',None),
+               ('release','25.7.0','native-os-mismatch','os_release','25.7.0'),
+               ('release',secret,'native-os-mismatch','os_release',None),
+               ('ImageOS','macos27','native-image-mismatch','image_os','macos27'),
+               ('ImageOS',secret,'native-image-mismatch','image_os',None),
+               ('ImageVersion','20260908.0351.1','native-image-mismatch','image_version','20260908.0351.1'),
+               ('ImageVersion',secret,'native-image-mismatch','image_version',None))
+        with self.native_file_identity():
+            for index,(field,changed,reason,key,expected) in enumerate(cases):
+                self.raw=self.root/f'raw-{index}';self.public=self.root/f'public-{index}'
+                patch=(mock.patch.object(M.sys,'version_info',changed) if field=='version' else
+                       mock.patch.object(M.sys,'platform',changed) if field=='platform' else
+                       mock.patch.object(M.os,'uname',return_value=SimpleNamespace(
+                           machine=changed if field=='machine' else 'arm64',release=changed if field=='release' else '25.6.0'))
+                       if field in ('machine','release') else mock.patch.dict(os.environ,{field:changed}))
+                with self.subTest(field=field,changed=changed),patch:
+                    value,output=self.early_execute(reason)
+                    self.assertEqual(value['interpreter_admission_failure']['observed'][key],expected)
+                    self.assertNotIn(secret,output);self.early_publish(value,private=('private-sensitive-value','person@example.invalid'))
+
+    def test_malformed_helper_fields_do_not_leak_or_promote_real_file_observation(self):
+        secret='token=private-sensitive-value /unknown/private/path'
+        changes=(dict(bytes=True),dict(bytes=1.0),dict(bytes=256*1024**2+1),dict(sha256=secret),
+                 dict(status=secret),dict(selected_path=secret),dict(resolved_path=secret))
+        with self.native_file_identity():
+            real=M.OBS.interpreter_observation
+            for index,change in enumerate(changes):
+                self.raw=self.root/f'raw-{index}';self.public=self.root/f'public-{index}'
+                def malformed(path):
+                    row=real(path);row.update(change);return row
+                with self.subTest(change=change),mock.patch.object(M.OBS,'interpreter_observation',side_effect=malformed):
+                    value,output=self.early_execute('physical-python-mismatch')
+                    self.assertNotIn(secret,output);self.early_publish(value,private=('private-sensitive-value',))
+
+    def test_missing_or_malformed_real_helper_identity_refuses_through_full_failure_chain(self):
+        with self.native_file_identity():
+            real=M.OBS.interpreter_observation
+            cases=('missing','null','short','tuple','boolean','float','negative','directory','oversize-mode','wrong-size')
+            for index,case in enumerate(cases):
+                self.raw=self.root/f'raw-{index}';self.public=self.root/f'public-{index}'
+                def malformed(path):
+                    row=real(path);identity=row['file_identity']
+                    if case=='missing':del row['file_identity']
+                    elif case=='null':row['file_identity']=None
+                    elif case=='short':row['file_identity']=identity[:-1]
+                    elif case=='tuple':row['file_identity']=tuple(identity)
+                    elif case=='boolean':identity[0]=True
+                    elif case=='float':identity[0]=1.0
+                    elif case=='negative':identity[0]=-1
+                    elif case=='directory':identity[2]=0o040700
+                    elif case=='oversize-mode':identity[2]=2**80
+                    elif case=='wrong-size':identity[3]+=1
+                    return row
+                with self.subTest(case=case),mock.patch.object(M.OBS,'interpreter_observation',side_effect=malformed):
+                    value,output=self.early_execute('physical-python-mismatch')
+                    observed=value['interpreter_admission_failure']['observed']
+                    self.assertEqual(observed['physical_status'],'available')
+                    self.assertIsNone(observed['file_identity_sha256'])
+                    self.assertEqual(value['failure'],dict(type='ValueError',reason='physical-python-mismatch'))
+                    self.early_publish(value)
+
+    def test_real_helper_missing_file_failure_and_unexpected_error_are_safe(self):
+        with self.native_file_identity() as (selected,physical,pins):
+            physical.unlink()
+            value,output=self.early_execute('physical-python-mismatch')
+            self.assertEqual(value['interpreter_admission_failure']['observed']['physical_status'],'unavailable')
+            self.early_publish(value)
+            self.raw=self.root/'error-raw';self.public=self.root/'error-public'
+            message='token=private-sensitive-value /unknown/private/path'
+            with mock.patch.object(M.OBS,'interpreter_observation',side_effect=OSError(message)):
+                value,output=self.early_execute('interpreter-admission-observation-failed')
+                self.assertEqual(value['failure']['message_sha256'],hashlib.sha256(message.encode()).hexdigest())
+                self.assertNotIn(message,output);self.early_publish(value,private=('private-sensitive-value',))
+
+    def test_early_admission_missing_receipts_never_get_secondary_keyerror(self):
+        with self.native_file_identity(),mock.patch.object(M.sys,'version_info',(3,14,8)):
+            value,output=self.early_execute('native-python-version-mismatch')
+            del value['interpreter_admission_failure'];self.write(self.raw/'results.json',value)
+            with mock.patch.object(M.NORMALIZER,'package') as package, \
+                 self.assertRaisesRegex(ValueError,'missing-interpreter-admission-failure-receipt'):
+                M.publish(self.raw,self.public)
+            package.assert_not_called()
+            (self.raw/'setup/execute-status.json').unlink()
+            with self.assertRaises(FileNotFoundError):M.publish(self.raw,self.public)
+
+    def test_early_admission_nonzero_shell_status_is_preserved_and_zero_boolean_refuse_first(self):
+        with self.native_file_identity(),mock.patch.object(M.sys,'version_info',(3,14,8)):
+            value,output=self.early_execute('native-python-version-mismatch')
+            for code in (0,False,1.0):
+                self.write(self.raw/'setup/execute-status.json',dict(exit_code=code))
+                with self.subTest(code=code),mock.patch.object(M,'inventory') as inventory, \
+                     mock.patch.object(M.NORMALIZER,'package') as package, self.assertRaisesRegex(ValueError,
+                        'incomplete-with-successful-exit' if type(code) is int else 'workflow-exit-schema'):
+                    M.publish(self.raw,self.public)
+                inventory.assert_not_called();package.assert_not_called()
+            self.write(self.raw/'setup/execute-status.json',dict(exit_code=125))
+            self.early_publish(value,exit_code=125)
+
+    def test_early_admission_rehashed_cost_scope_and_shell_range_refuse_before_material_reads(self):
+        with self.native_file_identity(),mock.patch.object(M.sys,'version_info',(3,14,8)):
+            original,output=self.early_execute('native-python-version-mismatch')
+            cases=[('full_caller_wall_seconds_before_receipt',value,'early-admission-caller-wall')
+                   for value in (-1,-.01,True,False,None,'private-arbitrary-value',{})]
+            cases.extend((field,value,'early-admission-scope-text')
+                         for field in ('interpreter_scope','command_schedule','cost_scope')
+                         for value in ('private-arbitrary-value',None,True,{}))
+            cases.extend(('exit_code',value,'early-admission-exit-code') for value in (-1,256,2**80))
+            for field,item,reason in cases:
+                value=copy.deepcopy(original);code=1
+                if field=='exit_code':code=item
+                else:value[field]=item
+                self.write(self.raw/'results.json',value);self.write(self.raw/'setup/execute-status.json',dict(exit_code=code))
+                with self.subTest(field=field,item=item),mock.patch.object(M,'inventory') as inventory, \
+                     mock.patch.object(M.NORMALIZER,'package') as package,self.assertRaisesRegex(ValueError,reason):
+                    M.publish(self.raw,self.public)
+                inventory.assert_not_called();package.assert_not_called()
+            for wall in (float('nan'),float('inf'),-float('inf')):
+                value=copy.deepcopy(original);value['full_caller_wall_seconds_before_receipt']=wall
+                self.write(self.raw/'results.json',value);self.write(self.raw/'setup/execute-status.json',dict(exit_code=1))
+                with self.subTest(wall=wall),mock.patch.object(M,'inventory') as inventory, \
+                     mock.patch.object(M.NORMALIZER,'package') as package,self.assertRaisesRegex(ValueError,'Non-finite JSON value'):
+                    M.publish(self.raw,self.public)
+                inventory.assert_not_called();package.assert_not_called()
+
+    def test_early_admission_rejects_later_checkpoint_records_membership_and_promotions(self):
+        with self.native_file_identity(),mock.patch.object(M.sys,'version_info',(3,14,8)):
+            original,output=self.early_execute('native-python-version-mismatch')
+            changes=(dict(checkpoint='source-before'),dict(interpreter_before=self.interpreter),dict(source_after={}),
+                     dict(command={}),dict(capability_result={}),dict(verification={}),dict(native_actor_launches=0),
+                     dict(actual_launches=0),dict(cases=[]),dict(status='capability-only-complete'),
+                     dict(timing_eligible=True),dict(descendant_closure_eligible=True),dict(final_protocol_ready=True))
+            for change in changes:
+                value=copy.deepcopy(original);value.update(change);self.write(self.raw/'results.json',value)
+                with self.subTest(change=change),mock.patch.object(M.NORMALIZER,'package') as package, \
+                     self.assertRaises(ValueError):M.publish(self.raw,self.public)
+                package.assert_not_called()
+            self.write(self.raw/'results.json',original);(self.raw/'setup/unexpected.json').write_text('{}')
+            with self.assertRaisesRegex(ValueError,'early-admission-member-set'):M.publish(self.raw,self.public)
+            original['original_files']=M.inventory(self.raw);self.write(self.raw/'results.json',original)
+            with self.assertRaisesRegex(ValueError,'early-admission-member-set'):M.publish(self.raw,self.public)
+
+    def test_early_admission_receipt_schema_rejects_rehashed_arbitrary_values(self):
+        with self.native_file_identity(),mock.patch.object(M.sys,'version_info',(3,14,8)):
+            original,output=self.early_execute('native-python-version-mismatch')
+            changes=(('observed','python_version',[3,True,8]),('observed','platform','arbitrary-private-value'),
+                     ('observed','bytes',True),('observed','selected_path_sha256','/private/arbitrary'),
+                     ('checks','native-python-version-mismatch',True),('expected','python_version',[3,14,8]))
+            for group,key,item in changes:
+                value=copy.deepcopy(original);value['interpreter_admission_failure'][group][key]=item
+                self.write(self.raw/'results.json',value)
+                with self.subTest(group=group,key=key),mock.patch.object(M.NORMALIZER,'package') as package, \
+                     self.assertRaises(ValueError):M.publish(self.raw,self.public)
+                package.assert_not_called()
+
+    def test_later_partial_missing_source_or_interpreter_receipt_cannot_use_early_branch(self):
+        value,inner=self.complete_fixture();value.update(status='incomplete',checkpoint='source-after',
+                                                       failure=dict(type='ValueError',reason='later refusal'))
+        self.write(self.raw/'setup/execute-status.json',dict(exit_code=1))
+        source=value.pop('source_before');self.write(self.raw/'results.json',value)
+        with self.assertRaisesRegex(ValueError,'missing-source-before-outside-early-admission'):M.publish(self.raw,self.public)
+        value['source_before']=source;del value['interpreter_before'];self.write(self.raw/'results.json',value)
+        with self.assertRaisesRegex(ValueError,'missing-interpreter-before-receipt'):M.publish(self.raw,self.public)
+
+    def test_unproved_ownership_reads_only_outer_receipt_and_never_shell_streams_or_scanner(self):
+        original,inner=self.complete_fixture();real=M.source_bytes
+        cases=((False,{},'writer-not-proved'),(True,dict(ownership_uncertain=True),'owned-child-not-proved'),
+               (True,dict(cleanup_root_unfinished=True),'owned-child-not-proved'),
+               (True,dict(observed_returncode=None),'owned-child-not-proved'),
+               (True,dict(status='incomplete',observed_returncode=1),'capability-actor-cleanup-not-proved'))
+        for stable,changes,reason in cases:
+            value=copy.deepcopy(original);value.update(status='incomplete',stable_originals=stable)
+            value['command'].update(changes);self.write(self.raw/'results.json',value)
+            with self.subTest(stable=stable,changes=changes),mock.patch.object(M,'source_bytes',wraps=real) as reads, \
+                 mock.patch.object(M,'inventory') as inventory,mock.patch.object(M.NORMALIZER,'package') as package, \
+                 self.assertRaisesRegex(ValueError,reason):M.publish(self.raw,self.public)
+            self.assertEqual(reads.call_args_list,[mock.call(self.raw/'results.json')])
+            inventory.assert_not_called();package.assert_not_called()
 
     def test_unfinished_or_uncertain_child_prevents_inventory_and_publication(self):
         for changes in (dict(cleanup_root_unfinished=True),dict(ownership_uncertain=True),dict(status='incomplete',observed_returncode=1)):

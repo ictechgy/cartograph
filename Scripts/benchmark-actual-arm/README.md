@@ -523,3 +523,38 @@ brackets matched. Corrected ordinary CI512 passed all 394 integration and 99 run
 the unchanged 180-second native allowance on its bound Python 3.14.7 interpreter. That result does not
 claim a native Python 3.15 successor run. This change supplies no native benchmark, compiler-generation,
 observer-eligibility or final-protocol result.
+
+### Prospective early-admission failure retention
+
+The first manual capability run, [38646168312](https://github.com/ictechgy/cartograph/actions/runs/38646168312),
+used source `d1821b20ca865ac43b014f48699cdc19f22c4bc8` and tree
+`c036fb6d2249b664c25ea7bb70335f0985b6ddef`. Its 17 inner and 27 outer mock methods passed;
+the observation step exited 1 and publication exited 125 with `KeyError`. The safe message SHA256
+`a81f2c5cf82730e8069e59c7f74129cbb564a42322c2b549692843c76e348dcc` matches
+`str(KeyError('source_before'))`. The run retained zero artifacts. This identifies the secondary
+missing-source-record failure only: the primary admission reason and actual metadata-child,
+capability-child and actor counts remain unavailable.
+
+The prospective correction retains fixed admission reasons, bounded typed version/OS/image fields,
+and executable-path, file-identity and exception hashes. Malformed observations are unavailable or
+hash-only. Physical admission also requires six exact nonnegative identity integers, regular-file
+mode and size equal to observed executable bytes. Python 3.14.7, Darwin 25.6.0/arm64, image
+`macos26` / `20260907.0351.1`, executable/source pins and all child budgets remain unchanged.
+
+Missing `source_before` is permitted only at the literal pre-child interpreter-admission checkpoint,
+with no source, command or capability records and exactly empty original membership. Retention
+requires an integer shell exit in 1–255, finite nonnegative non-boolean caller cost and exact scope
+strings. The unchanged scanner can retain the two terminal receipts as incomplete evidence;
+publication success never replaces the original failed exit or creates completed membership or
+actor counts. Later partial attempts retain their existing source/interpreter checks, and uncertain
+child ownership still suppresses material reads and publication. All capability-only and false
+eligibility flags above remain unchanged; no admission fallback is introduced.
+
+The retained baseline-compatible first-red reproduced exactly `KeyError('source_before')` through
+the real early-failure execute/status/publisher route. The successor then passed all 43 outer and
+17 unchanged inner mock/file controls, with all nine current-source and five retained-input brackets
+equal. The outer controls include actual temporary-file identity observations and unchanged-scanner
+publication, while command and actor launches are blocked. The declared local limits were 30 seconds
+per child, 120 seconds overall and 10 seconds cleanup grace; actual successful child and outer exits
+were zero. No native retry or capability, descendant-closure, timing or final-protocol acceptance is
+established by this correction.
