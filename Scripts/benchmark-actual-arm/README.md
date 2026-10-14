@@ -324,4 +324,25 @@ suffix characters left an internal marker visible to the path scanner. The succe
 unconsumed marker to its prior logical-root text before the existing absolute-path scan; it does not
 expand the trusted component alphabet. The specific-alias and above-root checks still govern paths
 granted new masking. The original native refusal remains retained, and this correction has no manual
-SDK or observer execution result.
+observer execution result. The later SDK-only result is recorded below.
+
+[The changed-source SDK-only attempt](https://github.com/ictechgy/cartograph/actions/runs/38601748380)
+again completed its before-compilation capture with zero engine calls. Publication then refused
+`/v1` in the first projected SDK entry chunk, identified by the retained artifact/value hashes.
+The original seal stores entry paths and symlink target paths relative to their declared roots;
+those strings do not undergo an absolute-root replacement. A real temporary SDK directory and
+contained symlink reproduce this mechanism through the original capture and publication helpers.
+The failed raw chunk is unavailable, so its exact offending entry or field is not established.
+
+The successor internal projection format is version 2. Only validated `entry.path` and symlink
+`target.path` fields become explicit `path_components` arrays. Their full unsplit strings pass the
+existing sensitive-content and Windows-path checks before encoding, and every projected byte still
+passes the unchanged normalizer. The strict inverse restores each exact original path string before
+the existing original-value and content-identity checks; other fields, entry order, counts, original
+hashes, costs and byte caps remain bound. Invalid or mixed path forms, unknown fields/roots and
+noncanonical components refuse, even when enclosing checksums are recomputed. Version 1 artifacts
+remain preserved with their original source; the version 2 reader does not silently reinterpret them.
+Early privacy refusals from the projection retain the wrapper's generic safe failure diagnostic;
+ordinary normalizer refusals keep their existing category/hash diagnostic.
+This source correction has no native SDK publication result yet. Candidate-only flags, missing later
+seals and the retained observer timing refusal remain unchanged.

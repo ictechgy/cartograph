@@ -1,11 +1,15 @@
 """전체 SDK 항목 투영의 역변환과 기존 공개 한도 경계를 작은 합성 파일로 검증한다."""
 
 import argparse
+import ast
+import contextlib
 import copy
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -54,6 +58,233 @@ class ProjectionTests(unittest.TestCase):
         _, manifest = self.manifest()
         row = manifest["records"]["before-compilation"]["chunks"][0]
         return self.stage / projection.PROJECTION / row["path"]
+
+    def rewrite_first_chunk(self, entries):
+        path, manifest = self.manifest()
+        record = manifest["records"]["before-compilation"]
+        self.assertEqual(len(record["chunks"]), 1)
+        data = projection.encoded(entries)
+        self.first_chunk().write_bytes(data)
+        record["chunks"][0].update(bytes=len(data), sha256=projection.digest(data), entry_count=len(entries))
+        record["entry_count"] = len(entries)
+        path.write_bytes(projection.encoded(manifest))
+
+    def test_v2_encodes_only_known_paths_without_mutating_originals(self):
+        originals = copy.deepcopy(self.documents)
+        self.prepare()
+        _, manifest = self.manifest()
+        self.assertEqual((manifest["schema_version"], manifest["kind"]),
+                         (2, "native-calibration-sdk-entry-chunks-v2"))
+        entries = projection.strict_array(self.first_chunk().read_bytes())
+        for original, projected in zip(self.seal["entries"], entries, strict=True):
+            self.assertNotIn("path", projected)
+            self.assertEqual(projected["path_components"], original["path"].split("/"))
+            self.assertEqual(projection.restore_entry(projected, "test.json"), original)
+        self.assertEqual(entries[0]["path_components"], ["."])
+        link = dict(root="SDK", path="libcxx", mode=0o777, type="symlink", link_text_sha256="a" * 64,
+                    target=dict(root="SDK", path="include/c++/v1"))
+        original_link = copy.deepcopy(link)
+        with mock.patch.object(projection.NORMALIZER, "check_sensitive",
+                               wraps=projection.NORMALIZER.check_sensitive) as sensitive:
+            projected = projection.project_entry(link, "test.json")
+        self.assertEqual(sensitive.call_args_list,
+                         [mock.call("libcxx", "test.json"), mock.call("include/c++/v1", "test.json")])
+        self.assertEqual(projected["target"], dict(root="SDK", path_components=["include", "c++", "v1"]))
+        self.assertEqual(projection.restore_entry(projected, "test.json"), original_link)
+        self.assertEqual(link, original_link)
+        self.assertEqual(self.documents, originals)
+
+    def test_v1_and_mixed_projection_versions_are_refused(self):
+        self.prepare()
+        path, original = self.manifest()
+        for version, kind in [(1, "native-calibration-sdk-entry-chunks-v1"),
+                              (1, "native-calibration-sdk-entry-chunks-v2"),
+                              (2, "native-calibration-sdk-entry-chunks-v1"),
+                              (True, "native-calibration-sdk-entry-chunks-v2")]:
+            with self.subTest(version=version, kind=kind):
+                manifest = dict(original, schema_version=version, kind=kind)
+                path.write_bytes(projection.encoded(manifest))
+                with self.assertRaisesRegex(projection.ProjectionError, "invalid-projection-status"):
+                    projection.verify_projection(self.stage)
+
+    def test_windows_pattern_matches_unchanged_normalizer_source(self):
+        source = ast.parse(Path(projection.NORMALIZER.__file__).read_text())
+        assignments = [node for node in ast.walk(source) if isinstance(node, ast.Assign)
+                       and any(isinstance(target, ast.Name) and target.id == "windows_path"
+                               for target in node.targets)]
+        self.assertEqual(len(assignments), 1)
+        call = assignments[0].value
+        self.assertEqual((call.func.value.id, call.func.attr), ("re", "search"))
+        self.assertEqual(projection.WINDOWS_PATH.pattern, ast.literal_eval(call.args[0]))
+
+    def test_unsplit_entry_and_target_paths_cannot_hide_sensitive_or_windows_text(self):
+        cases = [
+            ("include/password=/secret_value", "secret-assignment"),
+            ("include/Bearer abcdef/ghijklmnop", "bearer-token"),
+            ("include/https://user:secret@localhost/path", "credential-url"),
+            ("include/https://example.invalid/a/b?X-Amz-Signature=abcdefgh", "token-bearing-or-signed-url"),
+            ("include/C:/private/file", "unmapped-windows-absolute-path"),
+            (r"include/C:\private\file", "unmapped-windows-absolute-path"),
+            (r"include/\\server\share/file", "unmapped-windows-absolute-path"),
+            ("include/control\x00/child", "unexpected-control-or-binary-content"),
+        ]
+        for value, reason in cases:
+            for location in ["entry", "target"]:
+                with self.subTest(value=value, location=location):
+                    entry = dict(root="SDK", path="alias", mode=0o777, type="symlink",
+                                 link_text_sha256="a" * 64, target=dict(root="SDK", path="."))
+                    (entry if location == "entry" else entry["target"])["path"] = value
+                    with self.assertRaises(projection.NORMALIZER.PublicationBlocked) as blocked:
+                        projection.project_entry(entry, "test.json")
+                    self.assertEqual(blocked.exception.reason, reason)
+                    self.assertNotIn(value, str(blocked.exception))
+
+    def test_rehashed_invalid_original_seals_are_rejected_before_projection(self):
+        mutations = [
+            lambda entries: entries.append(copy.deepcopy(entries[0])),
+            lambda entries: entries[1].update(extra="unexpected"),
+            lambda entries: entries[1].update(path_components=["header-00.h"]),
+            lambda entries: entries[1].update(path="../outside.h"),
+            lambda entries: entries[1].update(root="UNKNOWN"),
+            lambda entries: entries.append(dict(root="SDK", path="link", mode=0o777, type="symlink",
+                                                link_text_sha256="a" * 64,
+                                                target=dict(root="UNKNOWN", path="."))),
+        ]
+        for number, mutate in enumerate(mutations):
+            with self.subTest(number=number):
+                seal = copy.deepcopy(self.seal)
+                mutate(seal["entries"])
+                seal["content_sha256"] = projection.SEAL.identity(sorted(seal["roots"]), seal["entries"])
+                seal["manifest_sha256"] = projection.SEAL.manifest_identity(seal)
+                self.write_raw("before-compilation", seal)
+                stage = self.root / f"invalid-source-{number}"
+                with mock.patch.object(projection, "project_entry", side_effect=AssertionError("must validate first")):
+                    with self.assertRaisesRegex(projection.SEAL.SealError, "invalid-seal"):
+                        projection.prepare_projection(self.raw, stage)
+                self.assertFalse((stage / projection.PROJECTION).exists())
+
+    def test_real_presplit_failure_retains_safe_publication_receipt(self):
+        value = "Bearer abcdef/ghijkl"
+        (self.sdk / value).mkdir(parents=True)
+        seal = projection.SEAL.capture({"SDK": self.sdk, "TOOLCHAIN": self.chain})
+        verification = dict(matches=True, expected_sha256=seal["content_sha256"],
+                            actual_sha256=seal["content_sha256"], actual=seal, wall_seconds=1.234)
+        for label in projection.SOURCES:
+            self.write_raw(label, seal if label == "before-compilation" else verification)
+        spec = importlib.util.spec_from_file_location("projection_publication_wrapper",
+                                                     HERE.parent / "validate-native-calibration-inputs.py")
+        wrapper = importlib.util.module_from_spec(spec)
+        with mock.patch.object(sys, "path", sys.path.copy()):
+            spec.loader.exec_module(wrapper)
+        raw = self.root / "native-calibration-sdk-raw"
+        self.raw.rename(raw)
+        wrapper.save(raw / "results.json", dict(status="captured-candidate", accepted=False,
+                                                final_protocol_ready=False, helper_sha256=wrapper.helper_hashes()))
+        originals = {path.relative_to(raw): path.read_bytes() for path in raw.rglob("*") if path.is_file()}
+        with mock.patch.object(wrapper.NORMALIZER, "package", wraps=wrapper.NORMALIZER.package) as package:
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(wrapper.publish(self.root), 1)
+        package.assert_not_called()
+        receipt = json.loads((self.root / "native-calibration-sdk-publication.json").read_text())
+        logged = json.loads(output.getvalue())
+        safe_failure = dict(category="publication-failure", artifact_sha256=None, value_sha256=None)
+        for result in [receipt, logged]:
+            self.assertEqual((result["status"], result["exit_code"]), ("failed", 1))
+            self.assertEqual(result["publication_failure"], safe_failure)
+            self.assertEqual(set(result["costs"]), {"prepare_projection"})
+            self.assertEqual(result["costs"]["prepare_projection"]["status"], "failed")
+            self.assertGreaterEqual(result["costs"]["prepare_projection"]["full_wall_seconds"], 0)
+        self.assertEqual(receipt["failure_type"], "PublicationBlocked")
+        self.assertFalse(receipt["accepted"])
+        self.assertFalse(receipt["final_protocol_ready"])
+        self.assertFalse((self.root / "native-calibration-sdk-public").exists())
+        self.assertFalse((self.root / "native-calibration-sdk-staging" / projection.PROJECTION).exists())
+        for text in [output.getvalue(), json.dumps(receipt)]:
+            self.assertNotIn(value, text)
+            self.assertNotIn("Bearer abcdef", text)
+            self.assertNotIn(str(self.root), text)
+        self.assertEqual({path.relative_to(raw): path.read_bytes() for path in raw.rglob("*") if path.is_file()},
+                         originals)
+
+    def test_rehashed_malformed_projected_entries_are_rejected_before_inverse(self):
+        self.prepare()
+        original = projection.strict_array(self.first_chunk().read_bytes())
+        base = original[0]
+        scalar = {key: value for key, value in base.items() if key != "path_components"}
+        cases = [(value, "invalid-projected-entry") for value in [None, [], 7, {},
+                 dict(base, root=[]), dict(base, mode=True), dict(base, mode=-1),
+                 dict(base, type="unknown"), dict(base, type=[]), dict(base, path="."),
+                 dict(base, extra="unexpected"), scalar, dict(scalar, path=".")]]
+        cases += [(dict(base, path_components=parts), "invalid-path-components")
+                  for parts in [None, "include", [], [True], [""], ["/private"], ["a/b"], [".."],
+                                [".", "child"], ["include", "."], ["include", "..", "outside"]]]
+        cases += [(dict(base, root="UNKNOWN"), "entry-root-mismatch")]
+        file = next(entry for entry in original if entry["type"] == "file")
+        cases += [(dict(file, **change), "invalid-projected-entry")
+                  for change in [dict(bytes=True), dict(bytes=-1), dict(sha256="invalid"), dict(target={})]]
+        for value, reason in cases:
+            with self.subTest(value=value):
+                entries = copy.deepcopy(original)
+                entries[0] = value
+                self.rewrite_first_chunk(entries)
+                for normalized in [False, True]:
+                    with self.assertRaisesRegex(projection.ProjectionError, reason):
+                        projection.restore_documents(self.stage / projection.PROJECTION, normalized=normalized)
+
+    def test_rehashed_malformed_symlink_targets_are_rejected_before_inverse(self):
+        self.prepare()
+        original = projection.strict_array(self.first_chunk().read_bytes())
+        link = dict(root="SDK", path_components=["alias"], mode=0o777, type="symlink",
+                    link_text_sha256="a" * 64, target=dict(root="SDK", path_components=["."]))
+        target = link["target"]
+        cases = [(value, "invalid-projected-target") for value in [None, [], {}, dict(target, path="."),
+                 dict(target, root=[]), dict(target, extra="unexpected"), dict(root="SDK"),
+                 dict(root="SDK", path=".")]]
+        cases += [(dict(target, path_components=parts), "invalid-path-components")
+                  for parts in [[], [""], ["/private"], [".."], ["include", ".."], [".", "child"], ["a/b"]]]
+        cases += [(dict(target, root="UNKNOWN"), "entry-root-mismatch")]
+        for value, reason in cases:
+            with self.subTest(value=value):
+                entries = copy.deepcopy(original)
+                entries[0] = dict(link, target=value)
+                self.rewrite_first_chunk(entries)
+                for normalized in [False, True]:
+                    with self.assertRaisesRegex(projection.ProjectionError, reason):
+                        projection.restore_documents(self.stage / projection.PROJECTION, normalized=normalized)
+
+    def test_rehashed_components_are_rejoined_before_sensitive_checks(self):
+        self.prepare()
+        original = projection.strict_array(self.first_chunk().read_bytes())
+        for parts, reason in [(["include", "password=", "secret_value"], "secret-assignment"),
+                              (["include", "Bearer abcdef", "ghijklmnop"], "bearer-token"),
+                              (["include", "C:", "private", "file"], "unmapped-windows-absolute-path")]:
+            for location in ["entry", "target"]:
+                with self.subTest(parts=parts, location=location):
+                    entry = dict(root="SDK", path_components=["alias"], mode=0o777, type="symlink",
+                                 link_text_sha256="a" * 64, target=dict(root="SDK", path_components=["."]))
+                    (entry if location == "entry" else entry["target"])["path_components"] = parts
+                    entries = copy.deepcopy(original)
+                    entries[0] = entry
+                    self.rewrite_first_chunk(entries)
+                    with self.assertRaises(projection.NORMALIZER.PublicationBlocked) as blocked:
+                        projection.verify_projection(self.stage)
+                    self.assertEqual(blocked.exception.reason, reason)
+
+    def test_referenced_entries_still_require_declared_roots(self):
+        self.prepare()
+        path, manifest = self.manifest()
+        del manifest["records"]["after-generation"]["document_without_entries"]["actual"]["roots"]["SDK"]
+        path.write_bytes(projection.encoded(manifest))
+        with self.assertRaisesRegex(projection.ProjectionError, "entry-root-mismatch"):
+            projection.verify_projection(self.stage)
+
+    def test_non_sdk_paths_still_receive_the_unchanged_generic_scan(self):
+        self.prepare()
+        (self.stage / "results.json").write_text('{"note":"include/c++/v1"}\n')
+        with self.assertRaises(projection.NORMALIZER.PublicationBlocked) as blocked:
+            projection.NORMALIZER.package(argparse.Namespace(input=self.stage, output=self.root / "public",
+                                                             prefix=["WORKSPACE=" + str(self.root)]))
+        self.assertEqual(blocked.exception.reason, "unmapped-absolute-path")
 
     def test_inverse_keeps_every_original_field_entry_and_cost(self):
         result = self.prepare()
@@ -253,6 +484,29 @@ class ProjectionTests(unittest.TestCase):
         self.assertNotEqual(restored["before-compilation"]["roots"], self.seal["roots"])
         self.assertEqual(restored["before-compilation"]["content_sha256"], self.seal["content_sha256"])
         self.assertEqual(restored["before-compilation"]["entries"], self.seal["entries"])
+
+    def test_cpp_relative_paths_and_symlink_targets_publish_losslessly(self):
+        headers = self.sdk / "include/c++/v1"
+        headers.mkdir(parents=True)
+        (headers / "vector").write_text("template<class T> class vector;\n")
+        (self.sdk / "libcxx").symlink_to("include/c++/v1", target_is_directory=True)
+        self.seal = projection.SEAL.capture({"SDK": self.sdk, "TOOLCHAIN": self.chain})
+        self.verification = dict(matches=True, expected_sha256=self.seal["content_sha256"],
+                                 actual_sha256=self.seal["content_sha256"], actual=copy.deepcopy(self.seal),
+                                 wall_seconds=1.234)
+        self.documents = {"before-compilation": self.seal, "after-generation": self.verification,
+                          "after-calibration": copy.deepcopy(self.verification)}
+        for label, document in self.documents.items():
+            self.write_raw(label, document)
+        public, manifest = self.normalize()
+        result = projection.verify_publication(self.stage, public, manifest)
+        self.assertEqual(result["status"], "verified-normalized-projection")
+        restored, _ = projection.restore_documents(public / projection.PROJECTION, normalized=True)
+        self.assertEqual(set(restored), set(self.documents))
+        for label, document in restored.items():
+            seal = document if label == "before-compilation" else document["actual"]
+            self.assertEqual(seal["entries"], self.seal["entries"])
+            self.assertEqual(seal["content_sha256"], self.seal["content_sha256"])
 
     def test_normalized_output_or_receipt_mutation_is_refused(self):
         public, manifest = self.normalize()
