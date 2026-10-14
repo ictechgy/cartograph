@@ -480,6 +480,126 @@ class RuntimePublicationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 projection.restore_catalog(projected)
 
+    def setup_calibration(self, count=32):
+        catalog, _, _ = self.setup_catalog(arms=())
+        plan_path = self.raw / "setup/plan.json"
+        plan = json.loads(plan_path.read_text())
+        plan["calibration"] = projection.state_inputs.calibration_plan()
+        plan_path.write_text(json.dumps(plan))
+        runtime = self.raw / "setup/runtime.json"
+        runtime_ref = projection.state_inputs.reference(runtime)
+        rows = []
+        for item in plan["calibration"]["invocations"][:count]:
+            relative = "runs/calibration/" + item["folder"]
+            folder = self.raw / relative
+            inputs = self.write(relative + "/input.json", dict(plan["engine_config"], arm=item["engine"], output=str(folder)))
+            arguments = ["--input", str(inputs), "--sha256", projection.state_inputs.reference(inputs)["sha256"]]
+            receipt = self.receipt(runtime, projection.ROOT / "engine_worker.py", arguments)
+            report = self.write(relative + "/engine-runtime/runtime-result.json", receipt)
+            command = projection.isolated_measure.bootstrap_command(
+                runtime, runtime_ref["sha256"], projection.ROOT / "engine_worker.py", report, arguments
+            )
+            direct = item["observer"] == "direct"
+            request = dict(command=command, cwd=plan["engine_config"]["project"], timeout_seconds=240)
+            request.update(dict(mode="direct") if direct else dict(interval_seconds=0.01, measurement_mode=item["observer"]))
+            request_path = self.write(relative + "/whole-arm.command.json", request)
+            measured = dict(
+                schema_version=2, measurement_mode=item["observer"], root_returncode=0, returncode=0,
+                status="ok", failure=None, timed_out=False, sampling_during_timing=False,
+                helper_sha256=projection.isolated_measure.HELPER_SHA256, wall_seconds=1.0,
+                root_exit_observed_seconds=1.0, supervision_total_seconds=1.0,
+                artifacts=dict(command=dict(name="whole-arm.command.json", sha256=projection.state_inputs.reference(request_path)["sha256"])),
+            )
+            observer = dict(mode=item["observer"], command=command, workload_returncode=0,
+                            measurement=measured, engine_runtime=receipt)
+            if not direct:
+                observer_receipt = self.receipt(runtime, projection.isolated_measure.HELPER, ["--worker"])
+                observer_report = self.write(relative + "/observer-runtime/runtime-result.json", observer_receipt)
+                observer.update(runtime=observer_receipt, periodic_sampling=item["observer"] == "memory",
+                                observed_helper_returncode=0, command=projection.isolated_measure.bootstrap_command(
+                                    runtime, runtime_ref["sha256"], projection.isolated_measure.HELPER,
+                                    observer_report, ["--worker"],
+                                ))
+                self.write(relative + "/whole-arm.json", measured)
+            self.write(relative + ("/whole-arm.direct.json" if direct else "/whole-arm.observer.json"), observer)
+            self.write(relative + "/source-catalog.json", catalog)
+            arm = dict(arm=item["engine"], observer=observer, status="passed", exit_code=0)
+            row = dict(arm, invocation=item, evaluation=dict(status="passed"))
+            arm_path = self.write(relative + "/arm-result.json", arm)
+            self.write(relative + "/calibration-result.json", dict(
+                invocation=item, evaluation=row["evaluation"], arm_result=projection.state_inputs.reference(arm_path),
+            ))
+            rows.append(row)
+        return plan, rows
+
+    def test_calibration_all_declared_catalogs_and_runtimes_use_existing_projection(self):
+        _, rows = self.setup_calibration()
+        with mock.patch.object(projection.isolated_measure, "verify_memory") as memory:
+            result = projection.Projection(self.raw).collect()
+        self.assertEqual(memory.call_count, 8)
+        self.assertEqual(len(result.catalog_bindings), 32)
+        self.assertEqual(len(result.bindings), 48)
+        for row in rows:
+            relative = "runs/calibration/" + row["invocation"]["folder"] + "/arm-result.json"
+            original = (self.raw / relative).read_bytes()
+            projected = json.loads(result.transform(original, relative))
+            self.assertEqual(projection.restore(projected["observer"]["engine_runtime"]), row["observer"]["engine_runtime"])
+            catalog_path = str(Path(relative).parent / "source-catalog.json")
+            catalog = json.loads(result.transform((self.raw / catalog_path).read_bytes(), catalog_path))
+            self.assertEqual(projection.restore_catalog(catalog), result.catalogs[catalog_path])
+
+    def test_calibration_partial_declared_history_is_projected_without_completion(self):
+        _, rows = self.setup_calibration(count=1)
+        result = projection.Projection(self.raw).collect()
+        self.assertEqual(len(result.bindings), 1)
+        self.assertEqual(len(result.catalog_bindings), 1)
+        self.assertEqual(rows[0]["invocation"]["number"], 1)
+
+    def test_calibration_extra_or_unsealed_folders_are_refused(self):
+        plan, _ = self.setup_calibration(count=1)
+        extra = self.raw / "runs/calibration/invocation-33"
+        extra.mkdir()
+        with self.assertRaisesRegex(ValueError, "folders differ"):
+            projection.Projection(self.raw).collect()
+        extra.rmdir()
+        plan["calibration"]["invocations"][0]["number"] = True
+        self.write("setup/plan.json", plan)
+        with self.assertRaisesRegex(ValueError, "plan differs"):
+            projection.Projection(self.raw).collect()
+
+    def test_calibration_original_and_embedded_receipts_must_agree(self):
+        _, rows = self.setup_calibration(count=1)
+        path = self.raw / "runs/calibration/invocation-01/calibration-result.json"
+        row = json.loads(path.read_text())
+        row["arm_result"]["sha256"] = "0" * 64
+        path.write_text(json.dumps(row))
+        with self.assertRaisesRegex(ValueError, "arm reference differs"):
+            projection.Projection(self.raw).collect()
+
+    def test_calibration_declared_mode_and_original_command_hash_are_verified(self):
+        self.setup_calibration(count=2)
+        path = self.raw / "runs/calibration/invocation-02/whole-arm.command.json"
+        request = json.loads(path.read_text())
+        for change in (dict(measurement_mode="memory"), dict(timeout_seconds=241)):
+            path.write_text(json.dumps(dict(request, **change)))
+            with self.assertRaises(ValueError):
+                projection.Projection(self.raw).collect()
+
+    def test_calibration_memory_verification_failure_is_not_bypassed(self):
+        self.setup_calibration(count=3)
+        with mock.patch.object(projection.isolated_measure, "verify_memory", side_effect=ValueError("changed sample")):
+            with self.assertRaisesRegex(ValueError, "changed sample"):
+                projection.Projection(self.raw).collect()
+
+    def test_calibration_catalog_requires_exact_source_and_original_engine_request(self):
+        self.setup_calibration(count=1)
+        path = self.raw / "runs/calibration/invocation-01/source-catalog.json"
+        catalog = json.loads(path.read_text())
+        catalog[0]["token"] = "wrongDeclaration"
+        path.write_text(json.dumps(catalog))
+        with self.assertRaisesRegex(ValueError, "source declarations"):
+            projection.Projection(self.raw).collect()
+
     def test_credential_named_arbitrary_module_payload_is_rejected(self):
         receipt, report = self.setup_integration()
         receipt["modules_before"]["modules"]["AWS_SECRET_ACCESS_KEY"] = "synthetic-secret-scalar"

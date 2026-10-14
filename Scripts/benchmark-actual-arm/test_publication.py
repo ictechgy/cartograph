@@ -61,6 +61,34 @@ class PublicationTests(unittest.TestCase):
         with mock.patch.object(controller, "isolation"), mock.patch.dict(os.environ, {"RUNNER_TEMP": str(self.root)}):
             return publication.publish(self.args)
 
+    def test_calibration_attempt_requires_exact_optional_controller_argument(self):
+        self.args.calibration_mode = "native-observer-v1"
+        with self.assertRaises(ValueError):
+            publication.public_attempt(self.args, self.attempt)
+        phase_path = self.attempt / "process.json"
+        row_path = self.attempt / "results.json"
+        phase, row = json.loads(phase_path.read_text()), json.loads(row_path.read_text())
+        phase["command"] += ["--calibration-mode", "native-observer-v1"]
+        phase_path.write_text(json.dumps(phase))
+        row["argv_sha256"] = attempt_receipts.sha(json.dumps(phase["command"], separators=(",", ":"), ensure_ascii=True).encode())
+        row["phase_receipt_sha256"] = publication.state_inputs.reference(phase_path)["sha256"]
+        row_path.write_text(json.dumps(row))
+        result = publication.public_attempt(self.args, self.attempt)
+        self.assertEqual(result["calibration_mode"], "native-observer-v1")
+        self.args.calibration_mode = None
+        with self.assertRaises(ValueError):
+            publication.public_attempt(self.args, self.attempt)
+
+    def test_publication_cli_accepts_only_declared_calibration_mode(self):
+        argv = ["publish_correctness.py", *self.values, "--calibration-mode", "native-observer-v1"]
+        with mock.patch.object(sys, "argv", argv), mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(publication, "publish", return_value=({}, 1)) as publish, \
+                mock.patch("builtins.print"):
+            with self.assertRaises(SystemExit) as outcome:
+                publication.main()
+        self.assertEqual(outcome.exception.code, 1)
+        self.assertEqual(publish.call_args.args[0].calibration_mode, "native-observer-v1")
+
     def test_missing_raw_keeps_verified_original_exit_cost(self):
         status, code = self.publish()
         self.assertEqual(code, 1)

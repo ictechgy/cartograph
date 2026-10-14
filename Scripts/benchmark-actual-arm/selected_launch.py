@@ -26,6 +26,9 @@ def same(left, right):
 
 def arguments(args):
     values = {name: str(getattr(args, name)) for name in ARGUMENTS}
+    if getattr(args, "calibration_mode", None) is not None:
+        require(args.calibration_mode == "native-observer-v1", "Unknown calibration mode")
+        values["calibration_mode"] = args.calibration_mode
     if getattr(args, "startup_profile_sha256", None) is not None:
         values["startup_profile_sha256"] = args.startup_profile_sha256
     return values

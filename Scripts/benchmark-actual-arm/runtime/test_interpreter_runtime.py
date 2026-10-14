@@ -122,6 +122,21 @@ class InterpreterRuntimeTests(unittest.TestCase):
             self.assertEqual(receipt["interpreter_before"], self.relation["reported_interpreter"])
             self.assertEqual(receipt["interpreter_after"], receipt["interpreter_before"])
 
+    def test_direct_actual_engine_keeps_selected_interpreter_environment_and_runtime_relation(self):
+        command = self.command()
+        result = isolated_measure.run_direct(
+            command, self.f.root, self.f.root / "measured/whole", self.f.receipt,
+            self.owner.digest, self.environment, timeout=5,
+        )
+        self.assertEqual(result["status"], "passed", result)
+        self.assertEqual(result["command"], command)
+        receipt = result["engine_runtime"]
+        self.assertEqual(receipt["interpreter_before"], self.relation["reported_interpreter"])
+        self.assertEqual(receipt["interpreter_after"], receipt["interpreter_before"])
+        self.assertEqual(receipt["environment_before"], receipt["environment_after"])
+        self.assertEqual(receipt["runtime_receipt_sha256"], self.owner.digest)
+        self.assertEqual(receipt["observed_exit_code"], result["workload_returncode"])
+
 
 if __name__ == "__main__":
     unittest.main()

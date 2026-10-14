@@ -182,6 +182,133 @@
     "role": "current-include-only-file-dependency-coverage",
     "scope": "Additive successor identity only. Frozen primitive/vendor and historical copied/source hashes are unchanged. The selected baseline engine scopes the current discovery override with restoration. Accepted declaration-free quoted-include headers require an independently reachable user Clang module File dependency and sealed included-header Records in the same unit for every active root. No Record, graph or query fact is fabricated. Original input/root guards, graph/batch parsers, oracle and failure outcomes remain unchanged. Focused and retained-unit coverage replays are not native execution or performance evidence. The current helper and controls are consolidated into the existing engine/test modules to retain the original 64 admitted contract-source paths. The earlier 66-source layout failed the unchanged source-count guard and remains diagnostic evidence; new coverage-control qualified IDs move to test_engine_worker."
   },
+  "native_calibration_overrides": {
+    "base_commit": "5ae3a1c96d1cc918281d87ec4ccb691355875066",
+    "files": [
+      {
+        "bytes": 11479,
+        "path": ".github/workflows/native-calibration.yml",
+        "sha256": "15eefb6a1891aa42e847d83fac766b3833998a675a4a1bcc61e8057a53b45a27"
+      },
+      {
+        "bytes": 23535,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "3fcf4000c0c7a8a00391e6a18fe676d00ccce0e84022acd37d6fac73683a87f1"
+      },
+      {
+        "bytes": 3873,
+        "path": "Scripts/benchmark-actual-arm/contract_suite.py",
+        "sha256": "41e3a268aa0ef91828beedb9691ecfeaee31dde3a2a8544705069b6de0aab355"
+      },
+      {
+        "bytes": 20055,
+        "path": "Scripts/benchmark-actual-arm/correctness_controller.py",
+        "sha256": "7c6281a02ef244ed360bc0312c6802482e3d1b43a2046e025af81be226db505f"
+      },
+      {
+        "bytes": 52897,
+        "path": "Scripts/benchmark-actual-arm/publish_correctness.py",
+        "sha256": "08f3d86fdcdb3ff37452b1b0c56555771572b905af40ba51be7afb436984bffc"
+      },
+      {
+        "bytes": 34519,
+        "path": "Scripts/benchmark-actual-arm/runtime/isolated_measure.py",
+        "sha256": "2c50cc20203f8567ee0ad1df509502d243a336cda6fae44bcae9ebc95fb0625e"
+      },
+      {
+        "bytes": 6915,
+        "path": "Scripts/benchmark-actual-arm/runtime/test_interpreter_runtime.py",
+        "sha256": "cd2cdddb001ceed7d4dff7b94fc79a7b99d97fc898b084473c21fc1dad4f2743"
+      },
+      {
+        "bytes": 55685,
+        "path": "Scripts/benchmark-actual-arm/runtime/test_runtime_bootstrap.py",
+        "sha256": "27abbcfe0bc08895bf1eca1f377c89a8036aba1990287c228660b8ffede6b632"
+      },
+      {
+        "bytes": 26501,
+        "path": "Scripts/benchmark-actual-arm/runtime_publication.py",
+        "sha256": "48195076992697f97a030e15d540df32d09019ce4958eb0e2c691310aec5c2a9"
+      },
+      {
+        "bytes": 17704,
+        "path": "Scripts/benchmark-actual-arm/selected_launch.py",
+        "sha256": "6ade9e3ddbc80f5e32be3cbbfcc1ef7bfeb5373336684b8271c0dd45e41de6f0"
+      },
+      {
+        "bytes": 20423,
+        "path": "Scripts/benchmark-actual-arm/state_inputs.py",
+        "sha256": "b9f8fbfc25102018d6d6e71679a78257695ef701767c877b55ce603d97d64505"
+      },
+      {
+        "bytes": 16393,
+        "path": "Scripts/benchmark-actual-arm/state_worker.py",
+        "sha256": "90974c5a1c6b8b961922e8b2b1bd7bf9717302a752ea2baffb5c739f49131126"
+      },
+      {
+        "bytes": 40612,
+        "path": "Scripts/benchmark-actual-arm/test_completion_binding.py",
+        "sha256": "6adf73d39a69825dc273d97fc2819ea63b9e34eb85102f3f4b5b1e405383deda"
+      },
+      {
+        "bytes": 17335,
+        "path": "Scripts/benchmark-actual-arm/test_publication.py",
+        "sha256": "d28c9c99ed2b9458ca9b2469172579e2e86ac749f466fb845db6e1c678e8330d"
+      },
+      {
+        "bytes": 32926,
+        "path": "Scripts/benchmark-actual-arm/test_runtime_publication.py",
+        "sha256": "03263b66090c3bd2dbaaf396b292589dce9d52ee31b1c3cfa8411ddb93aa70f1"
+      },
+      {
+        "bytes": 22581,
+        "path": "Scripts/benchmark-actual-arm/test_state_inputs.py",
+        "sha256": "22701a78c6048305223942ea9e6685e36f5f1ca7b23e73fc606469d86316785e"
+      },
+      {
+        "bytes": 15741,
+        "path": "Scripts/benchmark-actual-arm/test_state_worker.py",
+        "sha256": "ac7b68f15beb99532c0af045131ca8da238646e1ea96a678155efdf9ae65d6d8"
+      },
+      {
+        "bytes": 5229,
+        "path": "Scripts/benchmark-inputs/native_calibration_expectation.json",
+        "sha256": "484080a6ea231795c81349da13ab55bb8f6670942d353ef74838db6956d11cde"
+      },
+      {
+        "bytes": 28372,
+        "path": "Scripts/benchmark-inputs/native_calibration_inputs.py",
+        "sha256": "f15166e468db51e4443cb77dcdf2d75eedbc972103057482e59c780f1753c79a"
+      },
+      {
+        "bytes": 19377,
+        "path": "Scripts/benchmark-inputs/native_calibration_publication.py",
+        "sha256": "0e00516e0454ab72c504494c3e9c90aefe2e807570f463c832e27f283c287679"
+      },
+      {
+        "bytes": 21768,
+        "path": "Scripts/benchmark-inputs/test_native_calibration_inputs.py",
+        "sha256": "8ade756ed5ac3167399e17ecbf7950e0e44a4e5dcc17c204819044e40e6f9d37"
+      },
+      {
+        "bytes": 15501,
+        "path": "Scripts/benchmark-inputs/test_native_calibration_publication.py",
+        "sha256": "63a89d6b3f36a1738911347ec7fcd0015820c4c31a63eb93b5deddbbfbcc4140"
+      },
+      {
+        "bytes": 18557,
+        "path": "Scripts/validate-native-calibration-inputs.py",
+        "sha256": "9b0bdc69751d77dfc746ab4c350b9ee15d9ef4ddb2a4e5722049ba1c9c09d877"
+      },
+      {
+        "bytes": 47458,
+        "path": "Scripts/verify-native-calibration-contract.py",
+        "sha256": "cc0465bf62048420e4aba8c60070e5f1c862ed54948f5b73c31ed1f272445e29"
+      }
+    ],
+    "role": "prospective-native-observer-sdk-admission",
+    "scope": "Additive source identity only. Optional fixed32 actual-engine diagnostic with timing-only empirical eligibility, exact same-engine typed outputs, independent memory observation and two-root SDK pre/post candidate evidence. Existing ordinary AB path, frozen vendor helpers, source cap and normalizer limits remain. Original execution outcomes and all earlier provenance entries remain historical. Native execution, reviewed SDK acceptance and final-protocol comparison remain separate; no final holdout or superiority is established."
+  },
   "reconstruction_overrides": {
     "base_repository_commit": "1246bd07aa1ae7768e26a385b59b49d285e8f492",
     "files": [

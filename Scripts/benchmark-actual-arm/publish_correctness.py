@@ -47,6 +47,7 @@ with source_policy.guarded_imports(ROOT):
     import attempt_receipts
     import runtime_publication
     import state_inputs
+    import state_worker
     import runtime_bootstrap as bootstrap
 
     SPEC = importlib.util.spec_from_file_location(
@@ -159,6 +160,10 @@ def public_attempt(args, attempt):
         "--scratch-root",
         str(Path(args.scratch_root).resolve()),
     ]
+    mode = getattr(args, "calibration_mode", None)
+    if mode is not None:
+        require(mode == "native-observer-v1")
+        argv += ["--calibration-mode", mode]
     require(
         phase["command"] == argv
         and row["argv_sha256"]
@@ -241,6 +246,8 @@ def public_attempt(args, attempt):
             "phase_receipt_sha256",
         ]
     }
+    if mode is not None:
+        public["calibration_mode"] = mode
     if "pre_record_diagnostic" in row:
         diagnostic = attempt_receipts.pre_record_diagnostic(phase, row["stderr"])
         require(same_json(row["pre_record_diagnostic"], diagnostic))
@@ -395,6 +402,7 @@ def completed_launch(record, raw, attempt, runtime):
     binding = state_inputs.document(binding_ref)
     actual = values["observation"]
     require(values["request"]["mode"] == summary["mode"])
+    require(values["request"]["arguments"].get("calibration_mode") == attempt.get("calibration_mode"))
     require(actual["request_sha256"] == summary["request_sha256"])
     require(same_json(actual["installation"], controller.selected_launch.identity(binding)))
     require(same_json(runtime["python"], binding["python"]))
@@ -592,6 +600,166 @@ def completed_arm(raw, arm, embedded, plan, runtime, runtime_ref):
             for reference in references.values()}
 
 
+CALIBRATION_COMMON_FILES = (
+    "input.json", "arm-result.json", "calibration-result.json", "worker-result.json", "source-catalog.json",
+    "normalized-graph.json", "observation.json",
+    "whole-arm.command.json", "whole-arm.stdout", "whole-arm.stderr",
+    "engine-runtime/runtime-result.json", "engine-runtime/environment-request.json",
+)
+
+
+def completed_calibration_invocation(raw, item, embedded, plan, runtime, runtime_ref, oracle):
+    """같은 엔진의 직접·관측 호출을 각 원래 파일과 다시 계산한 정답에 결합한다."""
+    folder = raw / "runs/calibration" / item["folder"]
+    direct = item["observer"] == "direct"
+    names = CALIBRATION_COMMON_FILES + (("whole-arm.direct.json",) if direct else (
+        "whole-arm.json", "whole-arm.observer.json", "whole-arm.observer.stdout", "whole-arm.observer.stderr",
+        "observer-runtime/runtime-result.json", "observer-runtime/environment-request.json",
+    ))
+    references = {name: state_inputs.reference(folder / name) for name in names}
+    values = {name: state_inputs.document(ref) for name, ref in references.items() if name.endswith(".json")}
+    calibration, arm, worker = (
+        values[name] for name in ("calibration-result.json", "arm-result.json", "worker-result.json")
+    )
+    row = dict(arm, invocation=calibration.get("invocation"), evaluation=calibration.get("evaluation"))
+    observer = values["whole-arm.direct.json" if direct else "whole-arm.observer.json"]
+    measured, request = observer.get("measurement"), values["whole-arm.command.json"]
+    require(
+        set(calibration) == {"invocation", "evaluation", "arm_result"}
+        and "invocation" not in arm and "evaluation" not in arm
+        and same_json(calibration["arm_result"], references["arm-result.json"])
+        and same_json(embedded, dict(invocation=item, result=references["calibration-result.json"],
+                                    status=arm.get("status"), exit_code=arm.get("exit_code")))
+        and same_json(row.get("invocation"), item)
+        and same_json(arm.get("worker"), worker) and same_json(arm.get("observer"), observer)
+        and same_json(worker.get("graph"), values["normalized-graph.json"])
+        and same_json(worker.get("observation"), values["observation.json"])
+        and same_json(values["input.json"], dict(plan["engine_config"], arm=item["engine"], output=str(folder)))
+        and row.get("arm") == item["engine"] and row.get("status") == "passed"
+        and type(row.get("exit_code")) is int and row["exit_code"] == 0 and row.get("may_continue") is True
+        and row.get("final_evidence") is False and worker.get("status") == "ok"
+        and worker.get("arm") == item["engine"] and worker.get("state_id") == plan["engine_config"]["state_id"]
+    )
+    for phase in ("before", "after"):
+        guard = row.get("guard_" + phase, {})
+        require(guard.get("status") == "passed" and same_json(guard.get("generation"), plan["accepted"]))
+    require(
+        isinstance(measured, dict) and observer.get("mode") == item["observer"]
+        and observer.get("status") == "passed" and observer.get("failure") is None
+        and observer.get("final_evidence") is False and observer.get("cleanup_root_unfinished", False) is False
+        and observer.get("cleanup_signals") == []
+        and all(type(observer.get(key)) is int and observer[key] == 0 for key in ("exit_code", "workload_returncode"))
+        and measured.get("measurement_mode") == item["observer"] and measured.get("status") == "ok"
+        and type(measured.get("root_returncode")) is int and measured["root_returncode"] == 0
+        and measured.get("failure") is None and measured.get("timed_out") is False
+        and type(measured.get("wall_seconds")) in (int, float)
+        and math.isfinite(measured["wall_seconds"]) and measured["wall_seconds"] > 0
+        and request.get("cwd") == str(Path(plan["engine_config"]["project"]).resolve())
+        and type(request.get("timeout_seconds")) in (int, float) and request["timeout_seconds"] == 240
+    )
+    if direct:
+        require(
+            set(request) == {"command", "cwd", "timeout_seconds", "mode"} and request["mode"] == "direct"
+            and same_json(observer.get("command"), request.get("command"))
+            and type(observer.get("engine_wall_seconds")) in (int, float)
+            and same_json(observer["engine_wall_seconds"], measured["wall_seconds"])
+            and 0 < measured["wall_seconds"] <= request["timeout_seconds"]
+            and measured.get("primary_timing_eligible") is False
+            and observer.get("wait_method") == "blocking_Popen_wait_with_one_POSIX_ITIMER_REAL_deadline"
+            and type(observer.get("cleanup_errors")) is list and observer["cleanup_errors"] == []
+            and not (folder / "observer-runtime").exists() and not (folder / "whole-arm.json").exists()
+        )
+    else:
+        require(
+            same_json(measured, values["whole-arm.json"])
+            and same_json(observer.get("runtime"), values["observer-runtime/runtime-result.json"])
+            and type(observer.get("observed_helper_returncode")) is int and observer["observed_helper_returncode"] == 0
+            and observer.get("periodic_sampling") is (item["observer"] == "memory")
+            and set(request) == {"command", "cwd", "timeout_seconds", "interval_seconds", "measurement_mode"}
+            and type(request.get("interval_seconds")) in (int, float) and request["interval_seconds"] == 0.01
+            and request.get("measurement_mode") == item["observer"]
+            and measured.get("primary_timing_eligible") is (item["observer"] == "timing")
+            and (measured.get("cleanup") is None or measured["cleanup"].get("remaining_observed_pids") == [])
+            and not (folder / "whole-arm.direct.json").exists()
+        )
+        controller.isolated_measure.verify_measurement(folder / "whole-arm", measured, item["observer"], request)
+        if item["observer"] == "timing":
+            require(measured.get("containment", {}).get("read_errors") == [])
+        for name in ("stdout", "stderr"):
+            require(same_json(measured.get("artifacts", {}).get(name),
+                              dict(name="whole-arm." + name, sha256=references["whole-arm." + name]["sha256"])))
+        for chunk in (measured.get("rss") or {}).get("sample_chunks", []):
+            path = folder / chunk["name"]
+            data = controller.isolated_measure.read_sample_chunk(path)
+            references[chunk["name"]] = dict(path=str(path), sha256=hashlib.sha256(data).hexdigest())
+            require(references[chunk["name"]]["sha256"] == chunk["sha256"])
+    require(same_json(observer.get("engine_runtime"), values["engine-runtime/runtime-result.json"]))
+    arguments = ["--input", references["input.json"]["path"], "--sha256", references["input.json"]["sha256"]]
+    roles = [("engine", ROOT / "engine_worker.py", arguments, request.get("command"))]
+    if not direct:
+        roles.append(("observer", controller.isolated_measure.HELPER, ["--worker"], observer.get("command")))
+    for role, script, argv, actual in roles:
+        report = folder / (role + "-runtime/runtime-result.json")
+        expected = controller.isolated_measure.bootstrap_command(
+            Path(runtime_ref["path"]), runtime_ref["sha256"], script, report, argv, runtime=runtime
+        )
+        require(same_json(actual, expected))
+        environment = controller.isolated_measure.STARTUP.existing_environment(
+            raw / "private-readers" / item["folder"] / role, plan["engine_config"]["developer_directory"]
+        )
+        verified = controller.isolated_measure.verify_runtime_receipt(
+            report, runtime, runtime_ref["sha256"], script, argv, 0, environment
+        )
+        require(same_json(verified, values[role + "-runtime/runtime-result.json"]))
+    evaluation = state_worker.evaluate(arm, oracle)
+    require(evaluation.get("status") == "passed" and same_json(row.get("evaluation"), evaluation))
+    return ({"calibration-copy:" + str(Path(ref["path"]).relative_to(raw)): ref for ref in references.values()}, row)
+
+
+def completed_calibration(raw, state, plan, runtime, runtime_ref, attempt):
+    """32개 원래 호출과 엔진별 시간 적격성을 모두 재검증해야 성공으로 취급한다."""
+    require(attempt.get("calibration_mode") == "native-observer-v1")
+    rebound = copy.deepcopy(plan)
+    state_inputs.bind_calibration_sdk(rebound, raw.parent)
+    require(same_json(rebound["calibration_sdk"], plan["calibration_sdk"])
+            and same_json(rebound["prior_costs"]["calibration_sdk"], plan["prior_costs"]["calibration_sdk"])
+            and same_json(rebound["inputs"], plan["inputs"]))
+    jobs = runtime_publication.calibration_inventory(raw, plan, complete=True)
+    plan_ref = state_inputs.reference(raw / "setup/calibration-plan.json")
+    require(
+        same_json(state_inputs.document(plan_ref), plan["calibration"])
+        and same_json(state.get("plan"), plan["calibration"])
+        and type(state.get("schema_version")) is int and state["schema_version"] == 1
+        and state.get("role") == "actual-engine-observer-calibration"
+        and state.get("skipped_invocations") == [] and state.get("superiority_claim") is None
+        and isinstance(state.get("invocations"), list) and len(state["invocations"]) == len(jobs)
+        and same_json([row.get("invocation") for row in state["invocations"]], jobs)
+        and type(state.get("wall_seconds_before_receipt")) in (int, float)
+        and math.isfinite(state["wall_seconds_before_receipt"]) and 0 <= state["wall_seconds_before_receipt"] < 900
+    )
+    for name in ("initial_guard", "terminal_guard"):
+        require(state.get(name, {}).get("status") == "passed"
+                and same_json(state[name].get("generation"), plan["accepted"]))
+    oracle = state_inputs.document(plan["inputs"]["oracle"])
+    references = {"calibration-copy:setup/calibration-plan.json": plan_ref}
+    started = raw / "setup/calibration-started"
+    require(not started.is_symlink()
+            and {path.name for path in started.iterdir()} == {item["folder"] + ".json" for item in jobs})
+    rows = []
+    for item, row in zip(jobs, state["invocations"]):
+        ref = state_inputs.reference(started / (item["folder"] + ".json"))
+        require(same_json(state_inputs.document(ref), item))
+        references["calibration-copy:" + str(Path(ref["path"]).relative_to(raw))] = ref
+        bound, full = completed_calibration_invocation(raw, item, row, plan, runtime, runtime_ref, oracle)
+        references.update(bound)
+        rows.append(full)
+    groups = state_inputs.calibration_groups(rows)
+    require(same_json(state.get("groups"), groups))
+    require({group["engine"] for group in groups if group["mode"] == "timing" and group["timing_eligible"] is True}
+            == {"baseline", "cartograph"})
+    return references
+
+
 def completed_success(record, raw, attempt):
     required = {
         "schema_version",
@@ -642,20 +810,26 @@ def completed_success(record, raw, attempt):
         and type(state.get("exit_code")) is int
         and state["exit_code"] == 0
         and state.get("final_evidence") is False
-        and state.get("order") == "AB"
-        and state.get("role") == "single-restored-state-correctness-validation"
-        and [a.get("arm") for a in state.get("arms", [])] == ["baseline", "cartograph"]
-        and all(
-            a.get("status") == "passed"
-            and type(a.get("exit_code")) is int
-            and a["exit_code"] == 0
-            and a.get("may_continue") is True
-            for a in state["arms"]
-        )
     )
     arm_refs = {}
-    for arm, embedded in zip(("baseline", "cartograph"), state["arms"]):
-        arm_refs.update(completed_arm(raw, arm, embedded, plan, runtime, runtime_ref))
+    if "calibration" in plan:
+        arm_refs.update(completed_calibration(raw, state, plan, runtime, runtime_ref, attempt))
+    else:
+        require(attempt.get("calibration_mode") is None)
+        require(
+            state.get("order") == "AB"
+            and state.get("role") == "single-restored-state-correctness-validation"
+            and [a.get("arm") for a in state.get("arms", [])] == ["baseline", "cartograph"]
+            and all(
+                a.get("status") == "passed"
+                and type(a.get("exit_code")) is int
+                and a["exit_code"] == 0
+                and a.get("may_continue") is True
+                for a in state["arms"]
+            )
+        )
+        for arm, embedded in zip(("baseline", "cartograph"), state["arms"]):
+            arm_refs.update(completed_arm(raw, arm, embedded, plan, runtime, runtime_ref))
     arguments = [
         "--plan",
         plan_ref["path"],
@@ -768,7 +942,7 @@ def verify_completion_manifest(completion, manifest):
         ]:
             paths["contracts_" + label + "_" + key] = "setup/contracts/" + label + "/" + suffix
     for key, digest in completion.get("bound_file_sha256", {}).items():
-        if key.startswith(("startup-copy:", "arm-copy:")):
+        if key.startswith(("startup-copy:", "arm-copy:", "calibration-copy:")):
             target = key.split(":", 1)[1]
         else:
             target = paths[key]
@@ -884,6 +1058,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ["repository", "lifecycle", "setup", "measurement", "scratch-root"]:
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--calibration-mode", choices=["native-observer-v1"])
     args = parser.parse_args()
     try:
         status, code = publish(args)

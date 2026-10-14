@@ -154,6 +154,9 @@ def execute(args):
     sdk_path = root / "sdk-discovery-raw/results.json"
     pre_record("sdk-binding", state_inputs.bind_sdk_discovery, plan, sdk_path)
     roots = plan["input_roots"] + [binding["package"]["target"], str(sdk_path.parent)]
+    if getattr(args, "calibration_mode", None) is not None:
+        pre_record("calibration-sdk-binding", state_inputs.bind_calibration_sdk, plan, root)
+        roots += [str(root / name) for name in ("native-calibration-sdk-raw", "native-calibration-sdk-calls")]
     pre_record("accepted-output-boundary", state_inputs.disjoint, output, roots)
     pre_record("raw-output-create", output.mkdir)
     result = dict(
@@ -180,6 +183,9 @@ def execute(args):
             raise contract_prerequisites.Failed(result["contracts"]["exit_code"])
         plan["input_roots"] = roots
         plan["raw_output"] = str(output)
+        if getattr(args, "calibration_mode", None) is not None:
+            state_inputs.require(args.calibration_mode == "native-observer-v1", "Unknown calibration mode")
+            plan["calibration"] = state_inputs.calibration_plan()
         save(output / "setup/plan.json", plan)
         sources = source_hashes(SOURCE_FILES)
         runtime = dict(
@@ -221,7 +227,8 @@ def execute(args):
             dict(name="preparation", start=started, end=call_started, seconds=call_started - started)
         ]
         phase = command_runner.command(
-            command, Path(plan["engine_config"]["project"]), output / "setup/whole-state", env, 540
+            command, Path(plan["engine_config"]["project"]), output / "setup/whole-state", env,
+            915 if "calibration" in plan else 540,
         )
         call_finished = time.perf_counter()
         result["controller_intervals"].append(
@@ -393,10 +400,16 @@ def supervise(args):
         "--scratch-root",
         str(root),
     ]
+    if getattr(args, "calibration_mode", None) is not None:
+        state_inputs.require(args.calibration_mode == "native-observer-v1", "Unknown calibration mode")
+        argv += ["--calibration-mode", args.calibration_mode]
     env = identity.private_environment(attempt / "private-preparation")
     # 작업 소유 scratch 경계만 명시적으로 전달한다. 자식은 그 외 상속 값을 읽지 않는다.
     env["RUNNER_TEMP"] = str(root)
-    phase = command_runner.command(argv, ROOT, attempt / "process", env, 600)
+    phase = command_runner.command(
+        argv, ROOT, attempt / "process", env,
+        1200 if getattr(args, "calibration_mode", None) is not None else 600,
+    )
     receipt = attempt_receipts.envelope(phase, argv, sources, time.perf_counter() - started)
     try:
         receipt["source_inputs_unchanged"] = source_hashes() == sources
@@ -419,6 +432,7 @@ def main():
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--selected-launch-sha256")
     parser.add_argument("--startup-profile-sha256")
+    parser.add_argument("--calibration-mode", choices=["native-observer-v1"])
     args = parser.parse_args()
     try:
         if args.selected_launch_sha256 is not None and not args.execute:

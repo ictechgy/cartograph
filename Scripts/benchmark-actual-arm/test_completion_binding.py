@@ -4,6 +4,7 @@ import argparse
 import copy
 import hashlib
 import json
+import shutil
 from pathlib import Path
 import sys
 import tempfile
@@ -137,8 +138,8 @@ class CompletionBindingTests(unittest.TestCase):
         )
         self.rewrite()
 
-    def arm(self, name):
-        folder = self.raw / "runs/restored_rebuilt" / name
+    def arm(self, name, folder=None):
+        folder = folder or self.raw / "runs/restored_rebuilt" / name
         inputs = dict(self.plan["engine_config"], arm=name, output=str(folder))
         self.write(str(folder.relative_to(self.raw) / "input.json"), inputs)
         input_ref = state_inputs.reference(folder / "input.json")
@@ -151,7 +152,7 @@ class CompletionBindingTests(unittest.TestCase):
             ("observer", publication.controller.isolated_measure.HELPER, ["--worker"]),
         ):
             env = publication.controller.identity.private_environment(
-                self.raw / "private-readers" / name / role, self.raw
+                self.raw / "private-readers" / folder.name / role, self.raw
             )
             report = folder / (role + "-runtime/runtime-result.json")
             commands[role] = publication.controller.isolated_measure.bootstrap_command(
@@ -184,7 +185,8 @@ class CompletionBindingTests(unittest.TestCase):
             status="ok", returncode=0, root_returncode=0, failure=None, timed_out=False,
             helper_sha256=publication.controller.isolated_measure.HELPER_SHA256,
             measurement_mode="timing", sampling_during_timing=False, primary_timing_eligible=True,
-            containment=dict(read_errors=[]), cleanup=None,
+            containment=dict(read_errors=[]), cleanup=None, wall_seconds=1.0,
+            root_exit_observed_seconds=1.0, supervision_total_seconds=1.0,
             artifacts=dict(command=dict(name="whole-arm.command.json",
                 sha256=state_inputs.reference(folder / "whole-arm.command.json")["sha256"])),
         )
@@ -379,6 +381,269 @@ class CompletionBindingTests(unittest.TestCase):
         row = publication.completion_receipt(self.raw, dict(exit_code=9))
         self.assertEqual(row["outcome"], "retained-failed")
         self.assertNotIn("bound_file_sha256", row)
+
+
+class CalibrationCompletionTests(unittest.TestCase):
+    write = CompletionBindingTests.write
+    rewrite = CompletionBindingTests.rewrite
+    arm = CompletionBindingTests.arm
+
+    def setUp(self):
+        CompletionBindingTests.setUp(self)
+        shutil.rmtree(self.raw / "runs/restored_rebuilt")
+        shutil.rmtree(self.raw / "private-readers")
+        self.plan["calibration"] = state_inputs.calibration_plan()
+        self.sdk = dict(content_sha256="d" * 64, accepted=False, final_protocol_ready=False)
+        self.sdk_cost = dict(phases={"before-compilation": 1.0, "after-generation": 1.0})
+        self.plan.update(calibration_sdk=copy.deepcopy(self.sdk), prior_costs=dict(calibration_sdk=copy.deepcopy(self.sdk_cost)))
+        self.write("setup/calibration-oracle.json", dict(synthetic=True))
+        self.plan["inputs"] = dict(oracle=state_inputs.reference(self.raw / "setup/calibration-oracle.json"))
+        self.write("setup/plan.json", self.plan)
+        self.write("setup/calibration-plan.json", self.plan["calibration"])
+        self.full_rows = []
+        self.evaluation = dict(status="passed", scored=True)
+        for item in self.plan["calibration"]["invocations"]:
+            folder = self.raw / "runs/calibration" / item["folder"]
+            row = self.arm(item["engine"], folder)
+            row["worker"].update(graph={}, observation={})
+            self.write(str(folder.relative_to(self.raw) / "worker-result.json"), row["worker"])
+            self.write(str(folder.relative_to(self.raw) / "source-catalog.json"), [])
+            self.write(str(folder.relative_to(self.raw) / "normalized-graph.json"), row["worker"]["graph"])
+            self.write(str(folder.relative_to(self.raw) / "observation.json"), row["worker"]["observation"])
+            for suffix in ("stdout", "stderr", "observer.stdout", "observer.stderr"):
+                (folder / ("whole-arm." + suffix)).write_bytes(b"")
+            observer = row["observer"]
+            measured = observer["measurement"]
+            measured.update(schema_version=2, wall_seconds=1.0, measurement_mode=item["observer"],
+                            primary_timing_eligible=item["observer"] == "timing")
+            command_path = folder / "whole-arm.command.json"
+            request = json.loads(command_path.read_text())
+            if item["observer"] == "direct":
+                request = dict(command=request["command"], cwd=request["cwd"], timeout_seconds=240, mode="direct")
+                observer = dict(
+                    mode="direct", command=request["command"], status="passed", exit_code=0, workload_returncode=0,
+                    engine_runtime=observer["engine_runtime"], engine_wall_seconds=1.0, final_evidence=False,
+                    cleanup_signals=[], cleanup_errors=[], wait_method="blocking_Popen_wait_with_one_POSIX_ITIMER_REAL_deadline",
+                    measurement=dict(measurement_mode="direct", wall_seconds=1.0, root_returncode=0,
+                                     status="ok", failure=None, timed_out=False, primary_timing_eligible=False),
+                )
+                row["observer"] = observer
+                shutil.rmtree(folder / "observer-runtime")
+                shutil.rmtree(self.raw / "private-readers" / item["folder"] / "observer")
+                for name in ("whole-arm.json", "whole-arm.observer.json", "whole-arm.observer.stdout", "whole-arm.observer.stderr"):
+                    (folder / name).unlink()
+            else:
+                request["measurement_mode"] = item["observer"]
+                observer.update(mode=item["observer"], periodic_sampling=item["observer"] == "memory")
+                if item["observer"] == "memory":
+                    measured["rss"] = dict(sample_chunks=[])
+            command_path.write_text(json.dumps(request))
+            if item["observer"] != "direct":
+                for name in ("command", "stdout", "stderr"):
+                    path = folder / ("whole-arm." + ("command.json" if name == "command" else name))
+                    measured["artifacts"][name] = dict(name=path.name, sha256=state_inputs.reference(path)["sha256"])
+            row.update(invocation=item, evaluation=copy.deepcopy(self.evaluation))
+            self.full_rows.append(row)
+            self.write("setup/calibration-started/" + item["folder"] + ".json", item)
+        self.state = dict(
+            schema_version=1, role="actual-engine-observer-calibration", status="passed", exit_code=0,
+            final_evidence=False, plan=self.plan["calibration"], invocations=[], groups=[], skipped_invocations=[],
+            superiority_claim=None, wall_seconds_before_receipt=1.0,
+            initial_guard=dict(status="passed", generation=self.plan["accepted"]),
+            terminal_guard=dict(status="passed", generation=self.plan["accepted"]),
+        )
+        self.sync_calibration()
+        plan_ref = state_inputs.reference(self.raw / "setup/plan.json")
+        runtime_ref = state_inputs.reference(self.raw / "setup/runtime.json")
+        arguments = ["--plan", plan_ref["path"], "--plan-sha256", plan_ref["sha256"], "--runtime", runtime_ref["path"],
+                     "--runtime-sha256", runtime_ref["sha256"], "--output", str(self.raw)]
+        measure = publication.controller.isolated_measure
+        self.phase["command"] = measure.bootstrap_command(
+            self.raw / "setup/runtime.json", runtime_ref["sha256"], publication.ROOT / "state_worker.py",
+            self.raw / "setup/state-runtime/runtime-result.json", arguments,
+        )
+        self.receipt["arguments_sha256"] = hashlib.sha256(json.dumps(arguments, separators=(",", ":")).encode()).hexdigest()
+        environment = measure.STARTUP.existing_environment(self.raw / "private-state", str(self.raw))
+        launch = measure.STARTUP.launch_row(self.runtime, runtime_ref["sha256"], publication.ROOT / "state_worker.py",
+                                          arguments, environment)
+        self.write("setup/state-runtime/environment-request.json", launch)
+        self.receipt["environment_request_sha256"] = state_inputs.reference(self.raw / "setup/state-runtime/environment-request.json")["sha256"]
+        self.record.update(whole_state_process=copy.deepcopy(self.phase), state_runtime=copy.deepcopy(self.receipt))
+        self.sync_calibration()
+
+    def sync_calibration(self, groups=True):
+        self.state["invocations"] = []
+        for row in self.full_rows:
+            item = row["invocation"]
+            relative = "runs/calibration/" + item["folder"]
+            arm = {key: value for key, value in row.items() if key not in ("invocation", "evaluation")}
+            self.write(relative + "/arm-result.json", arm)
+            direct = item["observer"] == "direct"
+            self.write(relative + ("/whole-arm.direct.json" if direct else "/whole-arm.observer.json"), row["observer"])
+            if not direct:
+                self.write(relative + "/whole-arm.json", row["observer"]["measurement"])
+            self.write(relative + "/calibration-result.json", dict(
+                invocation=item, evaluation=row["evaluation"],
+                arm_result=state_inputs.reference(self.raw / relative / "arm-result.json"),
+            ))
+            self.state["invocations"].append(dict(
+                invocation=item, result=state_inputs.reference(self.raw / relative / "calibration-result.json"),
+                status=row["status"], exit_code=row["exit_code"],
+            ))
+        if groups:
+            self.state["groups"] = state_inputs.calibration_groups(self.full_rows)
+        self.record["state_result"] = copy.deepcopy(self.state)
+        self.rewrite()
+
+    def sdk_rebind(self, plan, scratch):
+        self.assertEqual(scratch, self.raw.parent)
+        plan["calibration_sdk"] = copy.deepcopy(self.sdk)
+        plan["prior_costs"]["calibration_sdk"] = copy.deepcopy(self.sdk_cost)
+
+    def result(self, **attempt):
+        with mock.patch.object(publication.state_inputs, "bind_calibration_sdk", side_effect=self.sdk_rebind), \
+                mock.patch.object(publication.controller.contract_prerequisites, "verify", return_value={}), \
+                mock.patch.object(publication, "completed_launch", return_value={}), \
+                mock.patch.object(publication.state_worker, "evaluate", return_value=self.evaluation), \
+                mock.patch.object(publication.controller.isolated_measure, "verify_memory"):
+            return publication.completion_receipt(
+                self.raw, {"exit_code": 0, "calibration_mode": "native-observer-v1", **attempt}
+            )
+
+    def test_all32_original_files_bind_with_independent_timing_groups(self):
+        result = self.result()
+        self.assertEqual(result["status"], "verified")
+        self.assertEqual(result["outcome"], "passed")
+        self.assertEqual(len([key for key in result["bound_file_sha256"] if key.endswith("/arm-result.json")]), 32)
+        self.assertEqual(len([key for key in result["bound_file_sha256"] if key.endswith("/calibration-result.json")]), 32)
+        self.assertEqual([row["timing_eligible"] for row in self.state["groups"]], [True, None, True, None])
+
+    def test_missing_extra_or_reordered_invocations_cannot_complete(self):
+        for relative in ("runs/calibration", "private-readers"):
+            path = self.raw / relative / "invocation-32"
+            backup = self.raw / "held-invocation"
+            path.rename(backup)
+            self.assertEqual(self.result()["status"], "unavailable")
+            backup.rename(path)
+            extra = self.raw / relative / "invocation-33"
+            extra.mkdir()
+            self.assertEqual(self.result()["status"], "unavailable")
+            extra.rmdir()
+        self.state["invocations"].reverse()
+        self.record["state_result"] = copy.deepcopy(self.state)
+        self.rewrite()
+        self.assertEqual(self.result()["status"], "unavailable")
+
+    def test_calibration_original_arm_reference_cannot_be_forged(self):
+        path = self.raw / "runs/calibration/invocation-01/arm-result.json"
+        value = json.loads(path.read_text())
+        value["exit_code"] = False
+        path.write_text(json.dumps(value))
+        self.assertEqual(self.result()["status"], "unavailable")
+
+    def test_calibration_typed_modes_exits_and_measurement_hashes_are_required(self):
+        for index, key, value in ((0, "exit_code", False), (1, "mode", "memory"), (1, "observed_helper_returncode", False)):
+            original = copy.deepcopy(self.full_rows[index])
+            self.full_rows[index]["observer"][key] = value
+            self.sync_calibration(groups=False)
+            self.assertEqual(self.result()["status"], "unavailable")
+            self.full_rows[index] = original
+        self.sync_calibration()
+        path = self.raw / "runs/calibration/invocation-02/whole-arm.command.json"
+        request = json.loads(path.read_text())
+        request["timeout_seconds"] = 241
+        path.write_text(json.dumps(request))
+        self.assertEqual(self.result()["status"], "unavailable")
+
+    def test_calibration_recomputes_all_oracle_evaluations(self):
+        self.evaluation = dict(status="failed", scored=True)
+        self.assertEqual(self.result()["status"], "unavailable")
+
+    def test_calibration_recomputes_each_engine_timing_eligibility(self):
+        for engine in ("baseline", "cartograph"):
+            for row in self.full_rows:
+                item = row["invocation"]
+                if item["engine"] == engine and item["observer"] == "timing":
+                    row["observer"]["measurement"].update(wall_seconds=1.2, root_exit_observed_seconds=1.2, supervision_total_seconds=1.2)
+            self.sync_calibration()
+            self.assertEqual(self.result()["status"], "unavailable")
+            for row in self.full_rows:
+                row["observer"]["measurement"].update(wall_seconds=1.0, root_exit_observed_seconds=1.0, supervision_total_seconds=1.0)
+        self.sync_calibration()
+        self.state["groups"][0]["median_ratio"] = 0.8
+        self.record["state_result"] = copy.deepcopy(self.state)
+        self.rewrite()
+        self.assertEqual(self.result()["status"], "unavailable")
+
+    def test_calibration_plan_or_started_invocation_tampering_is_refused(self):
+        for relative in ("setup/calibration-plan.json", "setup/calibration-started/invocation-01.json"):
+            path = self.raw / relative
+            original = path.read_bytes()
+            value = json.loads(original)
+            value["unbound"] = True
+            path.write_text(json.dumps(value))
+            self.assertEqual(self.result()["status"], "unavailable")
+            path.write_bytes(original)
+
+    def test_calibration_compact_copy_reference_must_match_original(self):
+        self.state["invocations"][0]["result"]["sha256"] = "0" * 64
+        self.record["state_result"] = copy.deepcopy(self.state)
+        self.rewrite()
+        self.assertEqual(self.result()["status"], "unavailable")
+
+    def test_failed_and_incomplete_calibration_histories_remain_nonpassing(self):
+        shutil.rmtree(self.raw / "runs/calibration")
+        for status, code in (("failed", 1), ("incomplete", 125)):
+            self.record.update(status=status, exit_code=code)
+            self.rewrite()
+            result = publication.completion_receipt(self.raw, dict(exit_code=code, calibration_mode="native-observer-v1"))
+            self.assertEqual(result["status"], "verified")
+            self.assertEqual(result["outcome"], "retained-" + status)
+            self.assertNotIn("bound_file_sha256", result)
+
+    def test_calibration_forged_pass_with_direct_cleanup_error_refuses(self):
+        observer = self.full_rows[0]["observer"]
+        for value in (None, {}, [dict(stage="poll", error_type="OSError")]):
+            observer["cleanup_errors"] = value
+            self.sync_calibration()
+            self.assertEqual(self.result()["status"], "unavailable")
+
+    def test_calibration_rehashed_direct_overbudget_interval_cannot_pass(self):
+        row = self.full_rows[0]
+        self.assertEqual(row["invocation"]["observer"], "direct")
+        row["observer"]["engine_wall_seconds"] = 241.0
+        row["observer"]["measurement"]["wall_seconds"] = 241.0
+        self.sync_calibration()
+        self.assertEqual(self.result()["status"], "unavailable")
+
+    def test_calibration_graph_and_observation_originals_bind_exact_typed_values(self):
+        for name in ("normalized-graph.json", "observation.json"):
+            path = self.raw / "runs/calibration/invocation-01" / name
+            original = path.read_bytes()
+            for data in (None, b'{"unexpected": true}'):
+                if data is None:
+                    path.unlink()
+                else:
+                    path.write_bytes(data)
+                self.assertEqual(self.result()["status"], "unavailable")
+                path.write_bytes(original)
+
+    def test_calibration_sdk_success_must_recompute_same_original_relation_and_costs(self):
+        original = copy.deepcopy(self.sdk)
+        self.sdk["content_sha256"] = "e" * 64
+        self.assertEqual(self.result()["status"], "unavailable")
+        self.sdk = original
+        self.sdk_cost["phases"]["before-compilation"] = 0.0
+        self.assertEqual(self.result()["status"], "unavailable")
+        with mock.patch.object(self, "sdk_rebind", side_effect=ValueError("missing SDK original")):
+            self.assertEqual(self.result()["status"], "unavailable")
+
+    def test_calibration_manifest_requires_all_bound_original_hashes(self):
+        completion = self.result()
+        self.assertEqual(completion["status"], "verified")
+        manifest = dict(files=[dict(path="setup/controller-result.json", original_raw_sha256=completion["sha256"])])
+        with self.assertRaises(ValueError):
+            publication.verify_completion_manifest(completion, manifest)
 
 
 class ActualArmCompletionTests(unittest.TestCase):

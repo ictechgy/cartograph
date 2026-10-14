@@ -1,0 +1,264 @@
+name: Native observer and SDK admission
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact reviewed commit containing this workflow
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-observer-sdk-admission
+  cancel-in-progress: false
+
+jobs:
+  calibration:
+    if: github.repository == 'ictechgy/cartograph'
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Require exact dispatch source and native image
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          value = os.environ['SOURCE_SHA']
+          assert re.fullmatch(r'[0-9a-f]{40}', value)
+          assert value == os.environ['DISPATCH_SHA']
+          assert os.environ.get('ImageOS') == 'macos26'
+          assert os.environ.get('ImageVersion') == '20260907.0351.1'
+          PY
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - name: Verify exact checkout and local contracts
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test -z "$(git status --porcelain)"
+          python3 Scripts/verify-native-calibration-contract.py
+          python3 -m unittest discover -s Scripts/benchmark-inputs -p 'test_native_calibration*.py' -v
+
+      # 설치는 기존 한 번의 공식 psutil --target 경로만 쓴다. 합성 진단은 실제 엔진 교정을 대신하지 않는다.
+      - name: Prepare the existing isolated measurement installation
+        id: measurement
+        timeout-minutes: 8
+        run: |
+          python3 Scripts/validate-native-measurement.py \
+            --output "$RUNNER_TEMP/measurement-helper-raw" \
+            --dependencies "$RUNNER_TEMP/measurement-helper-dependencies"
+
+      - name: Capture SDK and toolchain before covered compilation
+        id: before
+        timeout-minutes: 10
+        run: |
+          python3 -I -S -B Scripts/validate-native-calibration-inputs.py \
+            --stage before-compilation --scratch-root "$RUNNER_TEMP"
+
+      # 호스트 macOS SDK 전체는 이 iPhoneSimulator+toolchain 봉인의 범위 밖이다.
+      - name: Build the existing source-pinned tools and validation fixture
+        id: tools
+        timeout-minutes: 26
+        run: |
+          python3 Scripts/benchmark-indexstore-cli.py \
+            --cartograph-package "$GITHUB_WORKSPACE" \
+            --output "$RUNNER_TEMP/indexstore-cli-benchmark" \
+            --repetitions 5 --jobs 3 --setup-timeout 1500
+
+      - name: Compile the existing mixed validation generations
+        id: mixed
+        timeout-minutes: 8
+        run: |
+          python3 Scripts/benchmark-indexstore-mixed.py \
+            --setup-results "$RUNNER_TEMP/indexstore-cli-benchmark/results.json" \
+            --compiler-index-policy fresh-shared-v2 \
+            --output "$RUNNER_TEMP/indexstore-mixed-validation"
+
+      - name: Bind actual compiler search paths
+        id: discovery
+        timeout-minutes: 4
+        run: |
+          python3 Scripts/validate-native-sdk-discovery.py \
+            --lifecycle-results "$RUNNER_TEMP/indexstore-mixed-validation/validation/results.json" \
+            --output "$RUNNER_TEMP/sdk-discovery-raw" \
+            --attempt-output "$RUNNER_TEMP/sdk-discovery-attempt"
+
+      - name: Verify precompilation content and discovery relation
+        id: after_generation
+        timeout-minutes: 10
+        run: |
+          python3 -I -S -B Scripts/validate-native-calibration-inputs.py \
+            --stage after-generation --scratch-root "$RUNNER_TEMP"
+
+      - name: Execute the fixed 32 actual-engine calibration invocations
+        id: engines
+        timeout-minutes: 21
+        run: |
+          python3 -I -S -B Scripts/benchmark-actual-arm/correctness_controller.py \
+            --repository "$GITHUB_WORKSPACE" \
+            --lifecycle "$RUNNER_TEMP/indexstore-mixed-validation/validation/results.json" \
+            --setup "$RUNNER_TEMP/indexstore-cli-benchmark/results.json" \
+            --measurement "$RUNNER_TEMP/measurement-helper-raw/results.json" \
+            --scratch-root "$RUNNER_TEMP" --calibration-mode native-observer-v1
+
+      - name: Verify content after the completed calibration attempt
+        id: after_calibration
+        if: always() && !cancelled() && steps.after_generation.outcome == 'success' && steps.engines.outcome != 'skipped'
+        timeout-minutes: 10
+        run: |
+          python3 -I -S -B Scripts/validate-native-calibration-inputs.py \
+            --stage after-calibration --scratch-root "$RUNNER_TEMP"
+
+      - name: Prepare safe original calibration evidence
+        id: engines_public
+        if: always() && !cancelled() && steps.engines.outcome != 'skipped'
+        timeout-minutes: 4
+        run: |
+          python3 -I -S -B Scripts/benchmark-actual-arm/publish_correctness.py \
+            --repository "$GITHUB_WORKSPACE" \
+            --lifecycle "$RUNNER_TEMP/indexstore-mixed-validation/validation/results.json" \
+            --setup "$RUNNER_TEMP/indexstore-cli-benchmark/results.json" \
+            --measurement "$RUNNER_TEMP/measurement-helper-raw/results.json" \
+            --scratch-root "$RUNNER_TEMP" --calibration-mode native-observer-v1
+
+      - name: Retain normalized calibration evidence
+        if: always() && steps.engines_public.outputs.ready == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: actual-engine-observer-calibration
+          path: ${{ runner.temp }}/actual-arm-correctness-public/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Prepare safe SDK candidate evidence
+        id: sdk_public
+        if: always() && !cancelled() && steps.before.outcome != 'skipped'
+        timeout-minutes: 4
+        run: |
+          python3 -I -S -B Scripts/validate-native-calibration-inputs.py \
+            --stage publish --scratch-root "$RUNNER_TEMP"
+
+      - name: Retain normalized SDK candidate evidence
+        if: always() && steps.sdk_public.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: native-sdk-content-candidate
+          path: ${{ runner.temp }}/native-calibration-sdk-public/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Prepare normalized measurement evidence
+        if: always() && !cancelled() && steps.measurement.outcome != 'skipped'
+        id: measurement_normalize
+        timeout-minutes: 4
+        run: |
+          python3 Scripts/normalize-indexstore-evidence.py \
+            --input "$RUNNER_TEMP/measurement-helper-raw" \
+            --output "$RUNNER_TEMP/measurement-helper-public" \
+            --prefix "WORKSPACE=$GITHUB_WORKSPACE" \
+            --prefix "RUNNER_TEMP=$RUNNER_TEMP" \
+            --prefix "RUNNER_HOME=$HOME" \
+            --prefix "DEVELOPER=$DEVELOPER_DIR" \
+            --prefix "PRIVATE=/private" --prefix "USR=/usr" --prefix "OPT=/opt" \
+            --prefix "BIN=/bin" --prefix "DEV=/dev" --prefix "TEMP=/var"
+
+      - name: Preserve normalized measurement evidence
+        if: always() && steps.measurement_normalize.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: measurement-helper-validation
+          path: ${{ runner.temp }}/measurement-helper-public/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+
+      - name: Prepare safe SDK discovery evidence
+        id: sdk_normalize
+        if: always() && !cancelled() && steps.discovery.outcome != 'skipped'
+        timeout-minutes: 4
+        run: |
+          python3 Scripts/normalize-sdk-discovery-evidence.py \
+            --lifecycle-results "$RUNNER_TEMP/indexstore-mixed-validation/validation/results.json" \
+            --scratch-root "$RUNNER_TEMP" \
+            --input "$RUNNER_TEMP/sdk-discovery-raw" \
+            --attempt "$RUNNER_TEMP/sdk-discovery-attempt" \
+            --ready-output "$GITHUB_OUTPUT" \
+            --output "$RUNNER_TEMP/sdk-discovery-public" \
+            --prefix "WORKSPACE=$GITHUB_WORKSPACE" \
+            --prefix "RUNNER_TEMP=$RUNNER_TEMP" \
+            --prefix "RUNNER_HOME=$HOME" \
+            --prefix "DEVELOPER=$DEVELOPER_DIR" \
+            --prefix "APPLICATIONS=/Applications" --prefix "LIBRARY=/Library" \
+            --prefix "SYSTEM=/System" --prefix "PRIVATE=/private" \
+            --prefix "USR=/usr" --prefix "OPT=/opt" --prefix "BIN=/bin" \
+            --prefix "DEV=/dev" --prefix "TEMP=/var"
+
+      - name: Preserve normalized SDK discovery evidence
+        if: always() && steps.sdk_normalize.outputs.ready == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: sdk-input-discovery
+          path: ${{ runner.temp }}/sdk-discovery-public/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+
+      - name: Prepare portable public evidence
+        id: normalize
+        if: always() && !cancelled() && steps.tools.outcome != 'skipped'
+        timeout-minutes: 4
+        run: |
+          toolchain="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain"
+          prefixes=(
+            --prefix "WORKSPACE=$GITHUB_WORKSPACE"
+            --prefix "RUNNER_TEMP=$RUNNER_TEMP"
+            --prefix "HOME=$HOME"
+            --prefix "TOOLCHAIN=$toolchain"
+            --prefix "DEVELOPER=$DEVELOPER_DIR"
+            --prefix "TEMP_FILES=$TMPDIR"
+            --prefix "APPLICATIONS=/Applications"
+            --prefix "LIBRARY=/Library"
+            --prefix "SYSTEM=/System"
+            --prefix "USR=/usr"
+            --prefix "OPT=/opt"
+            --prefix "BIN=/bin"
+            --prefix "DEV=/dev"
+            --prefix "TEMP=/var"
+            --prefix "ARGUMENT_PARSER_BUILD=/swift-argument-parser.build"
+            --prefix "CARTOGRAPH_BUILD=/cartograph.build"
+            --prefix "INDEXSTORE_BUILD=/indexstore-db.build"
+          )
+          python3 Scripts/normalize-indexstore-bundles.py \
+            --synthetic "$RUNNER_TEMP/indexstore-cli-benchmark" \
+            --mixed-setup "$RUNNER_TEMP/indexstore-mixed-validation" \
+            --mixed-ios "$RUNNER_TEMP/indexstore-mixed-validation/validation" \
+            --output "$RUNNER_TEMP/indexstore-cli-public" \
+            --github-output "$GITHUB_OUTPUT" "${prefixes[@]}"
+
+      # 원본은 러너 안에만 둔다. 바이너리 인덱스에는 절대 경로가 남으므로
+      # 공개 업로드는 검증된 정규화 텍스트와 원본/정규화 해시 목록으로 제한한다.
+      - name: Preserve normalized comparison evidence
+        if: always() && steps.normalize.outputs.ready == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: indexstore-cli-comparison
+          path: ${{ runner.temp }}/indexstore-cli-public/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14

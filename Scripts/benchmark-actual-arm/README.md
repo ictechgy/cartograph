@@ -9,7 +9,7 @@ See [the execution and failure contract](INTEGRATION-BOUNDARIES.md),
 [exact copied-source provenance](COPIED-PROVENANCE.json). Historical original/successor scripts are
 explicit test fixtures; production selects the reviewed files named by the controller.
 
-The controller first runs all 346 integration and 60 runtime controls through the reviewed isolated
+The controller first runs all 394 integration and 90 runtime controls through the reviewed isolated
 bootstrap, using a separately sealed test-source manifest and the existing single private `--target`
 installation. Both full suite counts, module inventories, runtime receipts and normal exits are required;
 skips, missing imports, incomplete execution or failures stop before the AB pair. Their complete costs
@@ -222,3 +222,54 @@ Native startup behavior, current SDK content acceptance and performance proof re
 The controller and publisher also compile their bounded initial local imports directly from the fixed source inventory. The policy file itself is read without following links or consulting bytecode caches. Unknown local source/bytecode and lexical aliases escaping that inventory refuse before their bodies execute. Standard-library/loader closure remains outside this bounded claim.
 
 Local native-extension loader create/exec paths are also rejected before native code can run, using both lexical and resolved origins. This applies only to the declared controller source tree; the separately sealed private psutil installation remains outside that tree. Regression controls mock the native loader and never compile or load a new binary.
+
+## Manual actual-engine observer and SDK admission diagnostic
+
+The optional `--calibration-mode native-observer-v1` path is prospective diagnostic source. The ordinary
+restored-state AB path remains the default. `.github/workflows/native-calibration.yml` requires a full
+source SHA equal to the dispatch SHA, a read-only checkout and the exact reviewed image/toolchain
+expectation in `Scripts/benchmark-inputs/native_calibration_expectation.json`. An unavailable or changed
+image, machine, compiler, SDK, alias or declared absence refuses; the workflow does not select a newer
+replacement. Its 45-minute overall cap can interrupt the sum of individual stage budgets. An interrupted
+run is incomplete, and the declared maximum durations do not promise every stage will execute.
+
+Before covered compilation, the existing SDK content helper captures the complete iPhoneSimulator SDK
+and Xcode toolchain roots. It checks them after the existing mixed validation generations and after the
+calibration attempt. The later compiler-search proposal is bound to those same roots, compiler hashes,
+ordered six object/module commands, aliases and absence witnesses. These candidate receipts retain
+`accepted=false` and `final_protocol_ready=false`; success is input evidence for review. The host macOS SDK
+used to build the tools, OS/dynamic-loader closure, target linking/JIT/execution, atomic snapshotting and
+continuous descendant containment are outside this two-root policy. Tool binaries and generation inputs
+retain their separate existing identities. No reviewed final adapter or untouched holdout is introduced.
+
+`state_inputs.calibration_plan()` is the literal 32-invocation schedule: baseline and Cartograph, each with
+four direct/observed timing pairs and four independent direct/observed memory pairs. Every call has a fresh
+engine directory; every observed call also has a fresh observer directory. AB/BA orders are fixed before
+execution, with no replacement or reseeding. Each actual isolated engine executes the existing restored
+mixed fixture and authored oracle. Complete same-engine graph/observation documents must also agree as
+typed JSON, preserving array order, multiplicity and limitations. The 900-second shared phase requires
+its full 240-second child budget before admitting each invocation and stops at the first failed or
+incomplete operation. Failed histories are retained without successful certification.
+
+Timing pairs compare the same engine-process boundary: after stream files are opened, immediately before
+Popen through blocking root wait. For each engine separately, the median of its four observed/direct wall
+ratios must be at most 1.05 and every ratio at most 1.10. This is a predeclared empirical eligibility screen,
+not a population confidence bound or a product-speed comparison. Memory sessions separately verify every
+rotated chunk, process identity, sample order/count, enclosing wall and summary. Their overhead is
+reported separately, without primary timing eligibility; 10 ms sampling can miss short-lived descendants.
+
+Original build, installation, SDK discovery and generation costs remain available through existing
+normalizers. Each SDK seal-phase child interval includes that child's receipt serialization and teardown
+and is charged fully to both engines, without halving. The supervisor records its broader wall before its
+own receipt; its final serialization/teardown is still outside that interval. Observer bootstrap and
+verification, state/controller/outer caller costs are separate retained boundaries, not subtractions from
+engine time. These diagnostic clocks do not establish a fully composed final-protocol endpoint.
+
+Large SDK seals use an explicit reversible entry-chunk projection. Every original entry, order,
+multiplicity, field and raw hash is retained; equal postcheck entry sets may reference the candidate only
+after equality verification. The inverse and all original source identities are checked again after
+publication. Paths in the public derivative are normalized, so it is not byte-identical to the raw seal.
+The unchanged scanner still limits each file to 8 MiB and each bundle to 64 MiB; overflow or a privacy
+refusal has no raw fallback. Projection, normalization and recheck costs remain separate. Actual native
+calibration, reviewed SDK admission and the final protocol's later frozen holdouts/paired sessions remain
+pending until their own original outcomes exist.
