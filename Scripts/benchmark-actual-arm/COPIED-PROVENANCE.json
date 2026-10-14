@@ -418,6 +418,29 @@
   },
   "schema_version": 1,
   "scope": "Byte identity only; runtime and native integration execution remain separately verified",
+  "standard_native_resource_overrides": {
+    "base_commit": "5a9ee5e4da14c9bcd36941ae004e949f94ba2c98",
+    "failed_run_url": "https://github.com/ictechgy/cartograph/actions/runs/38556206718",
+    "files": [
+      {
+        "bytes": 24786,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "e301dda2b7fde5340f0d0faf9b97679f6437f0921bc46f28ea1bc5e0e2d83260"
+      },
+      {
+        "bytes": 5873,
+        "path": "Scripts/benchmark-inputs/native_calibration_expectation.json",
+        "sha256": "4dfaa59503786926e79da5dec764122cd670cb36309a2fc0107b1fe28f621abc"
+      },
+      {
+        "bytes": 25024,
+        "path": "Scripts/benchmark-inputs/test_native_calibration_inputs.py",
+        "sha256": "39566e469f8a85c13889aff1425d3775c087debc7e1c6d90c5a0fe261ddda996"
+      }
+    ],
+    "prior_expectation_sha256": "484080a6ea231795c81349da13ab55bb8f6670942d353ef74838db6956d11cde",
+    "scope": "Prospective documented standard M1 resource regime; original M2 expectation and first admission refusal are preserved, with no successful native calibration inferred"
+  },
   "startup_primitive_origin": {
     "manifest_sha256": "93eedd056e48e81f2e2542e1ed8f628ebbd28b9e4d3666bab39c6b5567d41886",
     "production_profile_sha256": "d00cc5a64355c4b1bc45852fd6bbd2f611f48f12415a2765014dd9cf51ff98d7",

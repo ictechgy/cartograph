@@ -233,6 +233,19 @@ image, machine, compiler, SDK, alias or declared absence refuses; the workflow d
 replacement. Its 45-minute overall cap can interrupt the sum of individual stage budgets. An interrupted
 run is incomplete, and the declared maximum durations do not promise every stage will execute.
 
+The resource regime `github-hosted-macos-26-standard-m1-3core-7gib-v1` prospectively requires the
+[documented standard runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners):
+Apple M1 (Virtual), three logical/physical cores and 7,516,192,768 bytes of RAM. It does not accept either
+hardware profile interchangeably. [The first manual attempt](https://github.com/ictechgy/cartograph/actions/runs/38556206718)
+failed `native-machine-mismatch` before SDK sealing or any engine invocation: its former expectation
+required M2 Pro, five cores and 14 GiB, while the standard label supplied M1, three cores and 7 GiB.
+The original M2 expectation remains preserved at commit `5a9ee5e4da14c9bcd36941ae004e949f94ba2c98`
+with SHA256 `484080a6ea231795c81349da13ab55bb8f6670942d353ef74838db6956d11cde`; the successor names
+that immutable source and failed run explicitly. A prior moving-`macos-latest` M2 observation was discovery
+evidence, not a standard-label guarantee. This separate regime leaves exact software/tool hashes, SDK
+roots, invocation schedule, overhead thresholds and bounds unchanged. Matching the documented profile
+is a prerequisite for a new attempt, not validation of the failed attempt or acceptance of its SDK.
+
 Before covered compilation, the existing SDK content helper captures the complete iPhoneSimulator SDK
 and Xcode toolchain roots. It checks them after the existing mixed validation generations and after the
 calibration attempt. The later compiler-search proposal is bound to those same roots, compiler hashes,

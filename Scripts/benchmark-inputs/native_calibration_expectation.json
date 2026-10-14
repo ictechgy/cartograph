@@ -14,15 +14,26 @@
   },
   "machine": {
     "architecture": "arm64",
-    "cpu_model": "Apple M2 Pro (Virtual)",
+    "cpu_model": "Apple M1 (Virtual)",
     "kernel_release": "25.6.0",
-    "logical_core_count": 5,
+    "logical_core_count": 3,
     "os": "macOS",
     "os_version": "26.6.2",
-    "physical_core_count": 5,
-    "ram_bytes": 15032385536
+    "physical_core_count": 3,
+    "ram_bytes": 7516192768
   },
   "path_contract_status": "Prospective exact contract from the pinned official image manifest; aliases must resolve to that physical path at admission",
+  "preserved_prior_expectation": {
+    "commit": "5a9ee5e4da14c9bcd36941ae004e949f94ba2c98",
+    "failed_run_url": "https://github.com/ictechgy/cartograph/actions/runs/38556206718",
+    "path": "Scripts/benchmark-inputs/native_calibration_expectation.json",
+    "sha256": "484080a6ea231795c81349da13ab55bb8f6670942d353ef74838db6956d11cde"
+  },
+  "resource_regime": {
+    "class": "standard",
+    "id": "github-hosted-macos-26-standard-m1-3core-7gib-v1",
+    "status": "Prospective exact regime; admission, SDK seals and actual-engine calibration remain pending"
+  },
   "role": "Proposed exact native calibration contract; not an accepted final pin",
   "roots": {
     "SDK": "/Applications/Xcode_26.6.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
@@ -41,12 +52,13 @@
     "/Applications/Xcode_26.6.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
     "/Applications/Xcode_26.6.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk"
   ],
-  "source_commit": "5ae3a1c96d1cc918281d87ec4ccb691355875066",
+  "source_commit": "5a9ee5e4da14c9bcd36941ae004e949f94ba2c98",
   "source_urls": [
     "https://github.com/actions/runner-images/blob/macos-26-arm64/20260907.0351/images/macos/macos-26-arm64-Readme.md",
     "https://github.com/actions/runner-images/blob/macos-26-arm64/20260907.0351/images/macos/templates/macOS-26.arm64.anka.pkr.hcl",
     "https://github.com/actions/runner-images/blob/macos-26-arm64/20260907.0351/images/macos/scripts/build/configure-preimagedata.sh",
-    "https://github.com/actions/runner-images/blob/macos-26-arm64/20260907.0351/README.md"
+    "https://github.com/actions/runner-images/blob/macos-26-arm64/20260907.0351/README.md",
+    "https://docs.github.com/en/actions/reference/runners/github-hosted-runners"
   ],
   "target": "arm64-apple-ios16.0-simulator",
   "tools": {
