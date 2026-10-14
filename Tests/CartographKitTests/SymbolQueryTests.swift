@@ -696,7 +696,7 @@ struct SymbolQueryTests {
             Issue.record("1 MiB 를 넘는 입력이 통과했다")
         } catch let error as CartographError {
             #expect(
-                error.errorDescription?.contains("1048577 bytes") == true,
+                error.errorDescription?.contains("the file exceeds 1048576 bytes") == true,
                 "파싱이 먼저 돌면 이유가 크기가 아니라 형식이 된다: \(error.errorDescription ?? "")"
             )
         }

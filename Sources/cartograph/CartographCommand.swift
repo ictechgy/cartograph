@@ -431,7 +431,9 @@ struct QueryCommand: ParsableCommand {
     /// 파이프라인이 인덱스를 의심하게 만들지 않는다.
     private static func readRequests(at path: String) throws -> [String] {
         do {
-            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            let data = try LocalFileSystem().readData(
+                at: path, maximumBytes: SymbolQueryBatchRequests.maximumByteCount
+            )
             return try SymbolQueryBatchRequests.parse(data, path: path)
         } catch let error as CartographError {
             throw ValidationError(error.errorDescription ?? "\(error)")
