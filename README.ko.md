@@ -65,10 +65,11 @@ Cartograph의 문장은 *"의존성 그래프를 내놓는다"*이며, 미사용
 
 ## 설치
 
-현재 발행된 최신 CLI는 **0.25.0**이며, 아래 버전 고정 설치 예시는 이 릴리스를 사용합니다.
-개발 브랜치는 **0.26.0**을 준비 중이며, 아직 릴리스 태그나 내려받을 바이너리가 없습니다.
-0.25.1은 소스에서 준비됐지만 발행되지 않았고, 그 변경은
-[Unreleased](CHANGELOG.md#unreleased)에 포함돼 있습니다.
+발행된 CLI 버전과 내려받을 바이너리는
+[GitHub Releases](https://github.com/ictechgy/cartograph/releases)에서 확인하세요.
+아래 버전 고정 설치 예시는 재현성을 위해 **0.25.0**을 사용하며, 발행 여부를 확인한 버전으로만 바꾸세요.
+소스 체크아웃의 `--version`은 소스 버전을 나타내며 배포 파일의 존재를 보장하지 않습니다.
+0.25.1은 소스에서 준비됐지만 발행되지 않았습니다. 포함된 변경은 [CHANGELOG.md](CHANGELOG.md)를 보세요.
 
 macOS 14 이상과 Swift 툴체인(Xcode 또는 Command Line Tools)이 필요합니다 — Cartograph가
 실행 시 `libIndexStore`를 그 툴체인에서 불러오기 때문입니다. 개발은 Swift 6.4로 하며, CI는
