@@ -8,6 +8,15 @@ on:
       tag:
         description: "Tag to build and release"
         required: true
+        type: string
+      source_sha:
+        description: "Full reviewed source commit SHA (must equal the dispatch ref)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -17,9 +26,20 @@ jobs:
     name: Build and publish the release binary
     runs-on: macos-latest
     steps:
+      - name: Validate manual source input
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          REQUESTED_SHA: ${{ github.event.inputs.source_sha }}
+        run: |
+          if [[ ! "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || [ "$REQUESTED_SHA" != "$GITHUB_SHA" ]; then
+            echo "Manual source SHA must be the full reviewed dispatch-ref commit." >&2
+            exit 1
+          fi
+
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.inputs.source_sha || github.sha }}
+          persist-credentials: false
 
       - name: Select the newest Xcode
         run: |
@@ -30,6 +50,7 @@ jobs:
       - name: Resolve version
         env:
           REQUESTED_TAG: ${{ github.event.inputs.tag }}
+          REQUESTED_SHA: ${{ github.event.inputs.source_sha }}
         run: |
           version="$REQUESTED_TAG"
           if [ -z "$version" ]; then version="${GITHUB_REF_NAME}"; fi
@@ -37,7 +58,20 @@ jobs:
             echo "Invalid release tag: expected MAJOR.MINOR.PATCH." >&2
             exit 1
           fi
+          source_sha="$(git rev-parse HEAD)"
+          expected_sha="$GITHUB_SHA"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            expected_sha="$REQUESTED_SHA"
+          elif [ "$GITHUB_EVENT_NAME" != push ] || [ "$GITHUB_REF" != "refs/tags/$version" ]; then
+            echo "Release requires an explicit manual source or a version-tag push." >&2
+            exit 1
+          fi
+          if [[ ! "$expected_sha" =~ ^[0-9a-f]{40}$ ]] || [ "$source_sha" != "$expected_sha" ]; then
+            echo "Checked-out source does not match the requested commit." >&2
+            exit 1
+          fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=$source_sha" >> "$GITHUB_ENV"
           # 소스의 버전 상수와 태그가 어긋나면 사용자가 --version 으로 잘못된 값을 본다.
           declared="$(grep -oE 'version = "[^"]+"' Sources/CartographCore/Cartograph.swift | head -1 | cut -d'"' -f2)"
           if [ "$declared" != "$version" ]; then
@@ -86,6 +120,27 @@ jobs:
           python3 Scripts/verify-runtime-collection.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-window.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-mcp.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
+
+      # 기존 태그는 이동하지 않는다. GITHUB_TOKEN으로 만든 태그는 새 push 실행을 만들지 않는다.
+      - name: Ensure the exact release tag after verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          existing="$(git ls-remote --refs origin "refs/tags/$VERSION")"
+          if [ -z "$existing" ]; then
+            if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
+              echo "The pushed release tag disappeared; refusing to recreate it." >&2
+              exit 1
+            fi
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$VERSION" -f "sha=$SOURCE_SHA" >/dev/null
+          fi
+          git fetch --no-tags --depth=1 origin "refs/tags/$VERSION"
+          if [ "$(git rev-parse 'FETCH_HEAD^{commit}')" != "$SOURCE_SHA" ]; then
+            echo "Release tag points to a different commit; it will not be moved." >&2
+            exit 1
+          fi
 
       - name: Create the GitHub release
         env:
