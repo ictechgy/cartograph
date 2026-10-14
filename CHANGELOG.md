@@ -22,6 +22,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Bound `query --batch` request-file reads to the advertised 1 MiB limit and reject
+  nonregular inputs before opening the index; ordinary files and symlinks to them remain supported.
 - Read all observed, scoped project-header record contexts in the Clang-enabled graph pipeline,
   including inline call bodies. Record header admission separately from dependency timestamps;
   missing, excluded, unindexed and legacy/unknown header coverage remains conservative.

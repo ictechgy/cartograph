@@ -5,6 +5,8 @@
 # 사용법:
 #   Scripts/verify-cli-contract.sh [바이너리 경로]
 #
+# 필요 도구: 빌드된 cartograph, python3, jq (README 배치 예제 검증).
+#
 # 종료 코드 표는 README 와 --help 에 적혀 있고, 상수로도 정의되어 있다. 그런데
 # 상수를 단언하는 테스트는 상수가 실제 동작과 맞는지는 말해 주지 않는다.
 # 실제로 --help 가 종료 코드 2 로 실패한 적이 있고, 단위 테스트는 전부 통과했다.
@@ -263,6 +265,68 @@ expect_status 64 "배치 검사가 색인보다 먼저" query --batch "$MISSING/
 expect_status 64 "배치 질의와 since 동시" query --batch "$MISSING/batch.json" --since HEAD
 expect_status 2 "배치도 인덱스는 필요"  query --batch "$MISSING/batch.json" --project "$MISSING"
 
+# FIFO를 부모 셸에서 직접 열면 회귀가 전체 검사를 멈춘다. 제한 시간은 바이너리 자식에만 건다.
+python3 - "$BINARY" "$MISSING" <<'PY'
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+binary = str(Path(sys.argv[1]).resolve())
+limit = 1024 * 1024
+prefix = '["한글"]'.encode()
+failures = 0
+with tempfile.TemporaryDirectory(prefix="batch-read-", dir=sys.argv[2]) as temporary:
+    root = Path(temporary)
+    missing_index = root / "missing-index"
+    cases = []
+    for name, size, status in [
+        ("ordinary", len(prefix), 2),
+        ("exact-limit", limit, 2),
+        ("limit-plus-one", limit + 1, 64),
+        ("larger-file", limit * 4, 64),
+    ]:
+        path = root / f"{name}.json"
+        path.write_bytes(prefix + b" " * (size - len(prefix)))
+        reason = str(missing_index) if status == 2 else f"the file exceeds {limit} bytes"
+        cases.append((name, path, status, reason))
+        link = root / f"{name}-link.json"
+        link.symlink_to(path)
+        cases.append((f"{name}-symlink", link, status, reason))
+
+    fifo = root / "requests.fifo"
+    os.mkfifo(fifo)
+    for name, path in [("directory", root), ("device", Path("/dev/null")), ("fifo", fifo)]:
+        cases.append((name, path, 64, "Cannot read the batch requests at"))
+        link = root / f"{name}-link"
+        link.symlink_to(path)
+        cases.append((f"{name}-symlink", link, 64, "Cannot read the batch requests at"))
+
+    for name, path, expected_status, reason in cases:
+        try:
+            result = subprocess.run(
+                [binary, "query", "--batch", str(path), "--project", str(root),
+                 "--index-store", str(missing_index)],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10,
+            )
+        except subprocess.TimeoutExpired:
+            print(f"  FAIL      배치 {name}: 10초 안에 종료하지 않았다")
+            failures += 1
+            continue
+        if (result.returncode == expected_status and not result.stdout
+                and reason in result.stderr and "not a JSON array" not in result.stderr
+                and f"the file is {limit + 1} bytes" not in result.stderr):
+            print(f"  ok    {result.returncode:<3} 배치 {name}")
+        else:
+            print(f"  FAIL  {result.returncode:<3} 배치 {name} (기대 {expected_status}): {result.stderr}")
+            failures += 1
+sys.exit(bool(failures))
+PY
+if [[ "$?" -ne 0 ]]; then
+    FAILURES=$((FAILURES + 1))
+fi
+
 # 인덱스가 열리기는 하는데 이 프로젝트를 하나도 모르는 상태. 스토어가 없는 것과 다르다.
 # 이 경우가 조용히 0 으로 끝나면 --strict 가 0 줄을 분석하고 통과한다.
 # 빌드 없이 만든다. 빈 스토어 디렉터리만 있으면 탐색은 성공하고 심볼은 0 개다.
@@ -355,6 +419,84 @@ if grep -q -- "NoSuchDeclaration" <<< "$BATCH_ERR"; then
     printf '  ok        오류 메시지가 없는 이름을 지목한다\n'
 else
     printf '  FAIL      오류 메시지가 없는 이름을 지목한다\n'
+    FAILURES=$((FAILURES + 1))
+fi
+
+echo "README — dead 리포트에서 배치 요청 추출"
+# 문서의 셸 코드를 그대로 실행한다. CLI 만 대역으로 바꾸고 jq 필터와 분기는 실제로 돈다.
+# JSONDiagnosticReporter 의 문서 모양과 AnalysisDiagnostics 의 합성 subject 를 함께 고정한다.
+if python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import tempfile
+
+
+assert shutil.which("jq"), "README sweep regression requires jq"
+
+
+def diagnostic(rule, subject):
+    return {
+        "ruleIdentifier": rule, "severity": "warning", "message": "Fixture finding",
+        "subject": subject, "details": [],
+        "location": {"path": "Sources/App.swift", "line": 1, "column": 1},
+    }
+
+
+unused = [diagnostic("unused-symbol", f"s:3App{len(f'Type{i}')}Type{i}V") for i in range(1001)]
+non_symbols = [
+    diagnostic("unused-import", "import:Sources/App.swift:Foundation"),
+    diagnostic("superfluous-ignore", "s:3App4LiveV|ignore"),
+    diagnostic("superfluous-ignore", "ignore:file:Sources/App.swift"),
+]
+cases = [
+    ("mixed", non_symbols[:1] + unused[:1] + non_symbols[1:] + unused[1:2], unused[:2]),
+    ("clean", [], []),
+    ("non-symbol-only", non_symbols, []),
+    ("1000", unused[:1000], unused[:1000]),
+    ("1001", unused, unused),
+]
+stub = '''cartograph() {
+    if [[ "$*" == "dead --report-format json" ]]; then
+        cat "$SWEEP_REPORT"
+    elif [[ "$*" == "query --batch requests.json" ]]; then
+        cat requests.json >> "$SWEEP_QUERY"
+    else
+        return 97
+    fi
+}
+'''
+for readme in ("README.md", "README.ko.md"):
+    match = re.search(r"<!-- dead-to-batch-example -->\n```bash\n(.*?)\n```", Path(readme).read_text(), re.S)
+    assert match is not None, f"{readme}: documented sweep is missing"
+    for name, diagnostics, selected in cases:
+        expected = [item["subject"] for item in selected]
+        with tempfile.TemporaryDirectory(prefix="cartograph-sweep-") as temp:
+            work = Path(temp)
+            report = work / "report.json"
+            query = work / "query.json"
+            report.write_text(json.dumps({
+                "tool": "cartograph", "version": "fixture", "command": "dead",
+                "subject": "symbol graph", "suppressedCount": 0, "diagnostics": diagnostics,
+            }))
+            result = subprocess.run(
+                ["bash", "-c", stub + match[1]], cwd=work, capture_output=True, text=True, timeout=10,
+                env={**os.environ, "SWEEP_REPORT": str(report), "SWEEP_QUERY": str(query)},
+            )
+            assert result.returncode == (64 if len(expected) > 1000 else 0), (readme, name, result.stderr)
+            assert json.loads((work / "requests.json").read_text()) == expected, (readme, name)
+            if 0 < len(expected) <= 1000:
+                assert json.loads(query.read_text()) == expected, (readme, name, "query requests")
+            else:
+                assert not query.exists(), (readme, name, "unexpected query")
+            print(f"  ok        {readme}: {name}")
+PY
+then
+    :
+else
     FAILURES=$((FAILURES + 1))
 fi
 

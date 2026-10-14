@@ -550,9 +550,29 @@ cartograph query --batch requests.json
 비쌉니다. 7,466개 심볼의 앱에서 발견 43건을 전부 물었을 때, 하나씩은 19.6초, 배치는
 0.47초였고 답은 같았습니다.
 
+<!-- dead-to-batch-example -->
+```bash
+cartograph dead --report-format json > dead.json &&
+jq '[.diagnostics[] | select(.ruleIdentifier == "unused-symbol") | .subject]' dead.json > requests.json &&
+if jq -e 'length == 0' requests.json >/dev/null; then
+    echo "No unused-symbol findings to query."
+elif jq -e 'length <= 1000' requests.json >/dev/null; then
+    cartograph query --batch requests.json
+else
+    echo "Split requests.json into batches of at most 1000 requests before querying." >&2
+    exit 64
+fi
+```
+
+`unused-symbol` 진단만 고릅니다. `unused-import`와 `superfluous-ignore`의 subject는
+`query`로 찾을 선언이 아니라 import나 무시 주석을 식별합니다. 빈 요청 배열은 유효하지
+않으므로 발견이 없는 리포트에서는 질의를 건너뜁니다. 1000건을 넘으면 전체 배열을 각각
+1~1000개, 1 MiB 이하의 JSON 배열로 나누고 파일마다 질의하세요. 발견을 잘라 버리지
+마세요. 각 배치는 자기 스냅샷을 읽습니다.
+
+발견이 있는 리포트의 배치 응답은 다음과 같습니다.
+
 ```console
-$ cartograph dead --report-format json | jq '[.diagnostics[].subject]' > requests.json
-$ cartograph query --batch requests.json
 {
   "format" : "symbol-query-batch",
   "results" : [ { "level" : "symbol", "requested" : "s:3App4FooV", "status" : "found", ... } ],

@@ -561,9 +561,29 @@ one name at a time costs a process and an index read per name; the answers are c
 preparation is not. On a 7,466-symbol app, asking about all 43 findings took 19.6 s one at a time
 and 0.47 s in one batch, with identical answers.
 
+<!-- dead-to-batch-example -->
+```bash
+cartograph dead --report-format json > dead.json &&
+jq '[.diagnostics[] | select(.ruleIdentifier == "unused-symbol") | .subject]' dead.json > requests.json &&
+if jq -e 'length == 0' requests.json >/dev/null; then
+    echo "No unused-symbol findings to query."
+elif jq -e 'length <= 1000' requests.json >/dev/null; then
+    cartograph query --batch requests.json
+else
+    echo "Split requests.json into batches of at most 1000 requests before querying." >&2
+    exit 64
+fi
+```
+
+Select only `unused-symbol` diagnostics: `unused-import` and `superfluous-ignore` subjects
+identify imports or ignore comments, not declarations that `query` can resolve. A clean report
+skips the query because an empty request array is invalid. Above 1000 findings, split the full
+array into nonempty JSON arrays of at most 1000 requests and 1 MiB each, then query each file;
+do not truncate the findings. Each batch reads its own snapshot.
+
+For a nonempty report, the batch response looks like this:
+
 ```console
-$ cartograph dead --report-format json | jq '[.diagnostics[].subject]' > requests.json
-$ cartograph query --batch requests.json
 {
   "format" : "symbol-query-batch",
   "results" : [ { "level" : "symbol", "requested" : "s:3App4FooV", "status" : "found", ... } ],

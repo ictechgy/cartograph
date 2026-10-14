@@ -254,7 +254,7 @@ public enum SymbolQueryBatchRequests {
     public static func parse(_ data: Data, path: String) throws -> [String] {
         guard data.count <= maximumByteCount else {
             throw CartographError.invalidBatchRequests(
-                path: path, reason: "the file is \(data.count) bytes"
+                path: path, reason: "the file exceeds \(maximumByteCount) bytes"
             )
         }
         let decoded: [String]
