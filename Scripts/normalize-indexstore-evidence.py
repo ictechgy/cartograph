@@ -411,12 +411,16 @@ class Normalizer:
                 if reference not in self.selected:
                     block("log-reference-not-in-public-bundle", relative, value)
                 return reference
-        for prefix, token in self.mappings:
+        # 원문에서 금지된 NUL 표식은 실제로 치환한 접두사만 구별한다.
+        # 공개 문자열에는 기존 토큰을 복원하고 검사용 문자열에서만 경로를 가린다.
+        for index, (prefix, _) in enumerate(self.mappings):
             pattern = re.compile(
-                r"(?:(?<![A-Za-z0-9_$/])|(?<=-[ILF])|(?<=file://))" + re.escape(prefix) + r"""(?=$|[/\s"'`:,;)\]}])"""
+                r"(?:(?<![A-Za-z0-9_$/\x00])|(?<=-[ILF])|(?<=file://))" + re.escape(prefix) + r"""(?=$|[/\s"'`:,;)\]}])"""
             )
-            value = pattern.sub(lambda _: token, value)
-        path_text = URL.sub("PUBLIC_URL", value).replace("file://", "")
+            value = pattern.sub(lambda _, index=index: f"\x00{index}\x00", value)
+        marked_value = value
+        value = re.sub(r"\x00([0-9]+)\x00", lambda match: self.mappings[int(match[1])][1], value)
+        path_text = URL.sub("PUBLIC_URL", marked_value).replace("file://", "")
         # index-dump가 출력한 나눗셈 연산자 이름은 파일 경로가 아니다.
         path_text = re.sub(r"(?m)^((?:\d+:\d+ \| )?)/(?=\([^\n|]*\) \| )", r"\1SWIFT_DIVISION_OPERATOR", path_text)
         # Clang 도움말의 고정 옵션 표기는 경로가 아니다. 해당 토큰만 가리고
@@ -445,6 +449,34 @@ class Normalizer:
         windows_path = re.search(r"(?:[A-Za-z]:[\\/]|\\\\[A-Za-z0-9])", path_text)
         if windows_path:
             block("unmapped-windows-absolute-path", relative, windows_path.group())
+        def mapped_path(match: re.Match[str]) -> str:
+            # '..'는 선언된 루트 안에서만 허용한다. 뒤따르는 별도 경로나
+            # 모호한 문장부호는 가리지 않아 아래의 기존 검사를 계속 받는다.
+            prefix = self.mappings[int(match["mapping"])][0]
+            spelling = prefix + match["suffix"]
+            # 더 구체적인 별칭의 형제 이름에 넓은 조상 루트의 신뢰를 주지 않는다.
+            for narrower, _ in self.mappings:
+                if (len(narrower) > len(prefix) and spelling.startswith(narrower)
+                        and len(spelling) > len(narrower) and spelling[len(narrower)] != "/"):
+                    block("unmapped-absolute-path", relative, spelling)
+            depth = 0
+            for component in match["suffix"].split("/"):
+                if component == "..":
+                    depth -= 1
+                    if depth < 0:
+                        block("unmapped-absolute-path", relative, value)
+                elif component not in ("", "."):
+                    depth += 1
+            return "MAPPED_PATH"
+
+        path_text = re.sub(
+            r"\x00(?P<mapping>[0-9]+)\x00(?P<suffix>(?:/[A-Za-z0-9_.+-]+)*/?)"
+            r"(?=$|[\s\"'`<>|,;)}\]:=])",
+            mapped_path,
+            path_text,
+        )
+        # 지원하지 않는 접미사는 새 신뢰를 얻지 않고 기존 토큰의 경로 검사를 받는다.
+        path_text = re.sub(r"\x00([0-9]+)\x00", lambda match: self.mappings[int(match[1])][1], path_text)
         match = ABSOLUTE_PATH.search(path_text)
         if match:
             block("unmapped-absolute-path", relative, match.group("path"))

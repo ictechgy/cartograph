@@ -305,3 +305,23 @@ normalization failed. The original failure category was not retained publicly an
 recovered by this diagnostic change. The after-calibration phase also requires controller success, so its
 nonzero exit alone does not establish SDK content drift. Full SDK final-seal readback and observer timing
 eligibility remain unaccepted; no replacement samples, final holdout or final paired benchmark are implied.
+
+[The separate SDK-publication-only attempt](https://github.com/ictechgy/cartograph/actions/runs/38581186386)
+completed its before-compilation capture with zero engine calls, then refused publication. Its safe
+`unmapped-absolute-path` diagnostic identifies the before-compilation results artifact and the value
+`/v1` by SHA256. The source reproduces a lexical scanner failure on the declared `include/c++/v1`
+absence witness after an approved root replacement. The failed raw JSON is unavailable, so this does
+not identify its exact original field or explain the earlier run's failure. The successor scanner
+recognizes a complete lexical path only when its root was actually replaced; public output retains
+the same logical-root text, while above-root traversal and unmapped suffixes still refuse. Credentials,
+Windows paths, artifact scope and byte caps remain screened. This source correction does not establish
+SDK admission or final-seal acceptance, or reverse the retained observer timing refusal.
+
+[The first mapped-path native CI attempt](https://github.com/ictechgy/cartograph/actions/runs/38585899731)
+passed its executable validation but refused measurement, SDK-discovery and comparison publication.
+The safe value hashes match the already-retained Homebrew `python@3.14` path suffixes. Those unsupported
+suffix characters left an internal marker visible to the path scanner. The successor restores any
+unconsumed marker to its prior logical-root text before the existing absolute-path scan; it does not
+expand the trusted component alphabet. The specific-alias and above-root checks still govern paths
+granted new masking. The original native refusal remains retained, and this correction has no manual
+SDK or observer execution result.
