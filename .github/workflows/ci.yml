@@ -393,6 +393,7 @@ jobs:
         run: |
           Scripts/verify-cli-contract.sh "$CARTOGRAPH"
           python3 Scripts/verify-action.py
+          python3 Scripts/verify-release-workflow.py
           python3 Scripts/verify-index-cache.py
           python3 Scripts/verify-recursive-calls.py --cartograph "$CARTOGRAPH"
           python3 Scripts/verify-index-freshness-contract.py
