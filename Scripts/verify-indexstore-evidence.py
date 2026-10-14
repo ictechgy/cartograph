@@ -656,6 +656,56 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual((self.public / "runs/mapped.stdout").read_text(), expected)
         self.assertEqual(self.snapshot(), before)
 
+    def test_unsupported_python_paths_preserve_prior_public_tokens(self):
+        self.args.prefix.append("OPT=/opt")
+        suffixes = [
+            "/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/bin/python3.14",
+            "/homebrew/opt/python@3.14/bin/python3.14",
+        ]
+        self.assertEqual([MODULE.digest(s.encode()) for s in suffixes], [
+            "f8240862f65b6fd9a3e9fec3656680528b49a33325a8cb109452e0950292db9c",
+            "c76bd4634343cc0aa8bcba770ac21fd3a4c1004651d9767583f81e7237d64647",
+        ])
+        self.write("results.json", json.dumps({"interpreters": ["/opt" + suffix for suffix in suffixes]}))
+        before = self.snapshot()
+        MODULE.package(self.args)
+        self.assertEqual(json.loads((self.public / "results.json").read_text()), {
+            "interpreters": ["$OPT" + suffix for suffix in suffixes],
+        })
+        self.assertEqual(self.snapshot(), before)
+
+    def test_unsupported_mapped_suffixes_preserve_legacy_output(self):
+        normalizer = MODULE.Normalizer(self.args, self.raw, [], [])
+        for suffix in (
+            "/Python@3.14/bin/python", "/Application Support/data", "/name%2Fvalue/item",
+            "/name=value/item", "/name:revision/item", "/caf\u00e9-name/item", "/name~value/item",
+            "/name#value/item", "/name?value/item",
+        ):
+            with self.subTest(suffix=suffix):
+                value = str(self.toolchain) + suffix
+                self.assertEqual(normalizer.string(value, "runs/mapped.stdout"), "$TOOLCHAIN" + suffix)
+                for separator in (" ", "=", ":", "'", '"', ",", ";", "]"):
+                    with self.subTest(separator=separator):
+                        category = "unmapped-windows-absolute-path" if separator == ":" else "unmapped-absolute-path"
+                        with self.assertRaisesRegex(MODULE.PublicationBlocked, category):
+                            normalizer.string(value + separator + "/unknown/private", "runs/mapped.stdout")
+
+        # 기존 ASCII 경계 검사에서 거부하던 비 ASCII 문자 뒤의 '/'는 유지한다.
+        with self.assertRaisesRegex(MODULE.PublicationBlocked, "unmapped-absolute-path"):
+            normalizer.string(str(self.toolchain) + "/caf\u00e9/item", "runs/mapped.stdout")
+
+    def test_unsupported_mapped_suffixes_keep_sensitive_and_windows_guards(self):
+        for suffix in ("/Python@3.14/bin/python", "/Application Support/data", "/name%2Fvalue/item"):
+            for tail, category in (
+                (" password=synthetic-only", "secret-assignment"),
+                (r" C:\Users\private\file", "unmapped-windows-absolute-path"),
+                ("\x000\x00", "unexpected-control-or-binary-content"),
+                (" https://example.invalid/?to%6ben=synthetic", "token-bearing-or-signed-url"),
+            ):
+                with self.subTest(suffix=suffix, category=category):
+                    self.write("runs/mapped.stdout", str(self.toolchain) + suffix + tail)
+                    self.assert_blocked_without_output(category)
+
     def test_mapped_path_trust_requires_actual_prefix_replacement(self):
         for value in (
             "/unknown/include/c++/v1", "$TOOLCHAIN/usr/include/c++/v1", "$UNKNOWN/usr/include/c++/v1",

@@ -316,3 +316,12 @@ recognizes a complete lexical path only when its root was actually replaced; pub
 the same logical-root text, while above-root traversal and unmapped suffixes still refuse. Credentials,
 Windows paths, artifact scope and byte caps remain screened. This source correction does not establish
 SDK admission or final-seal acceptance, or reverse the retained observer timing refusal.
+
+[The first mapped-path native CI attempt](https://github.com/ictechgy/cartograph/actions/runs/38585899731)
+passed its executable validation but refused measurement, SDK-discovery and comparison publication.
+The safe value hashes match the already-retained Homebrew `python@3.14` path suffixes. Those unsupported
+suffix characters left an internal marker visible to the path scanner. The successor restores any
+unconsumed marker to its prior logical-root text before the existing absolute-path scan; it does not
+expand the trusted component alphabet. The specific-alias and above-root checks still govern paths
+granted new masking. The original native refusal remains retained, and this correction has no manual
+SDK or observer execution result.

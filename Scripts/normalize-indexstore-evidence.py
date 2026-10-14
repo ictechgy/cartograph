@@ -475,6 +475,8 @@ class Normalizer:
             mapped_path,
             path_text,
         )
+        # 지원하지 않는 접미사는 새 신뢰를 얻지 않고 기존 토큰의 경로 검사를 받는다.
+        path_text = re.sub(r"\x00([0-9]+)\x00", lambda match: self.mappings[int(match[1])][1], path_text)
         match = ABSOLUTE_PATH.search(path_text)
         if match:
             block("unmapped-absolute-path", relative, match.group("path"))
