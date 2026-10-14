@@ -34,6 +34,7 @@ jobs:
           python3 Scripts/verify-indexstore-benchmark.py
           python3 Scripts/verify-indexstore-project.py
           python3 Scripts/verify-prepared-indexstore-sessions.py
+          python3 Scripts/verify-query-phases.py
           python3 Scripts/verify-indexstore-evidence.py
           python3 Scripts/verify-indexstore-bundles.py
           python3 Scripts/verify-indexstore-mixed.py
@@ -83,6 +84,12 @@ jobs:
         timeout-minutes: 10
         run: |
           python3 Scripts/benchmark-prepared-indexstore-sessions.py \
+            --project-results "$RUNNER_TEMP/indexstore-project-validation/results.json"
+
+      - name: Diagnose fresh-query phase parity and overhead
+        timeout-minutes: 6
+        run: |
+          python3 Scripts/diagnose-query-phases.py \
             --project-results "$RUNNER_TEMP/indexstore-project-validation/results.json"
 
       - name: Diagnose compiler module re-indexing
