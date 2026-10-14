@@ -74,37 +74,31 @@ struct RawIndexStoreReader {
             let module = unit.moduleName.string
             let workingDirectory = unit.workingDirectory.string
             let timestamp = unit.modificationDate
-            let dependencies = unit.dependencies.map { dependency in
-                (
-                    kind: dependency.kind,
-                    path: dependency.filePath.string,
-                    module: dependency.moduleName.string,
-                    name: dependency.name.string,
-                    isSystem: dependency.isSystem
-                )
-            }
             var unitProvider: DBSymbolProviderKind?
-            for dependency in dependencies where dependency.kind == .record || dependency.kind == .file {
-                let path = canonicalDependencyPath(dependency.path, relativeTo: workingDirectory)
+            try unit.dependencies.forEach { dependency in
+                let kind = dependency.kind
+                guard kind == .record || kind == .file else { return .continue }
+                let path = canonicalDependencyPath(dependency.filePath.string, relativeTo: workingDirectory)
                 let directlyAllowed = allowedPaths.contains(path)
                 let tracked = !directlyAllowed && trackedSourcePath?(path) == true
                 // 헤더 admission은 신선도 추적과 별개다. 삭제·외부 경로를 선언으로 되살리지 않는다.
                 let readsHeader = includeProjectHeaderRecords && tracked && path.hasSuffix(".h")
                     && fileSystem.fileExists(at: path) && !fileSystem.directoryExists(at: path)
                 let readsOccurrences = directlyAllowed || readsHeader
-                guard readsOccurrences || tracked else { continue }
+                guard readsOccurrences || tracked else { return .continue }
+                let isSystem = dependency.isSystem
                 // Foundation 정규화는 /private/var를 /var로 바꾼다. 선언 위치는
                 // 다른 인덱스 소비자와 같이 실제 경로를 써야 정확히 결합된다.
                 let locationPath = Self.sourceLocationPath(path, fileSystem: fileSystem)
                 if path.hasSuffix(".h") {
-                    if unit.isSystemUnit || dependency.isSystem { systemHeaderPaths.insert(locationPath) }
-                    if dependency.kind == .file {
+                    if unit.isSystemUnit || isSystem { systemHeaderPaths.insert(locationPath) }
+                    if kind == .file {
                         fileOnlyHeaderUnits[locationPath, default: []].insert(unitName)
                     }
                 }
                 indexedFileDates[locationPath] = max(indexedFileDates[locationPath] ?? timestamp, timestamp)
                 oldestIndexedFileDates[locationPath] = min(oldestIndexedFileDates[locationPath] ?? timestamp, timestamp)
-                guard readsOccurrences, dependency.kind == .record else { continue }
+                guard readsOccurrences, kind == .record else { return .continue }
                 let provider: DBSymbolProviderKind
                 if let unitProvider {
                     provider = unitProvider
@@ -113,17 +107,18 @@ struct RawIndexStoreReader {
                     unitProvider = parsed
                     provider = parsed
                 }
-                let dependencyModule = dependency.module
+                let dependencyModule = dependency.moduleName.string
                 let recordModule = dependencyModule.isEmpty && path.hasSuffix(".swift") ? module : dependencyModule
                 records.append(Record(
                     unit: unitName,
-                    record: dependency.name,
+                    record: dependency.name.string,
                     path: locationPath,
                     module: recordModule,
                     timestamp: timestamp,
-                    isSystem: unit.isSystemUnit || dependency.isSystem,
+                    isSystem: unit.isSystemUnit || isSystem,
                     provider: provider
                 ))
+                return .continue
             }
         }
 
