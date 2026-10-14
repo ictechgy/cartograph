@@ -381,6 +381,44 @@
     "role": "prospective-native-observer-sdk-admission",
     "scope": "Additive source identity only. Optional fixed32 actual-engine diagnostic with timing-only empirical eligibility, exact same-engine typed outputs, independent memory observation and two-root SDK pre/post candidate evidence. Existing ordinary AB path, frozen vendor helpers, source cap and normalizer limits remain. Original execution outcomes and all earlier provenance entries remain historical. Native execution, reviewed SDK acceptance and final-protocol comparison remain separate; no final holdout or superiority is established."
   },
+  "native_waitid_capability_preparation_v1": {
+    "base_commit": "d19ead28e3ff8645de171dfeffe91c16f6fa42f4",
+    "base_tree": "4f7879cb6c71c25620f9932bca7d686b605409b1",
+    "files": [
+      {
+        "bytes": 3137,
+        "path": ".github/workflows/waitid-capability.yml",
+        "sha256": "b533311576f5811d743cc21635fc36fbca59c1c8b22034d9aba9a9da16c2781a"
+      },
+      {
+        "bytes": 20810,
+        "path": "Scripts/benchmark-inputs/waitid_capability.py",
+        "sha256": "df94ddcfd851dd0399118acdfe895b092c8c5f707ae90f6d0f6d0fa0c41eb315"
+      },
+      {
+        "bytes": 15230,
+        "path": "Scripts/benchmark-inputs/test_waitid_capability.py",
+        "sha256": "71378c0fce62e43d4213a85bcee80c3393e8c7c1280b66ed6b76215feabe8fa9"
+      },
+      {
+        "bytes": 28046,
+        "path": "Scripts/validate-native-waitid-capability.py",
+        "sha256": "56884ee3364a76697b613ee14efa72e40233e5b10079b6caf4c90537d12c8beb"
+      },
+      {
+        "bytes": 28802,
+        "path": "Scripts/test-native-waitid-capability.py",
+        "sha256": "474dac9081db572053027ea6b4f9c42499af6dafc5e6dae4f95ae8411bb74420"
+      },
+      {
+        "bytes": 39749,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "49977d4cffd5fc871be7cbf0904fda9a3d846d42e8f13893cb29bbafa4cf118c"
+      }
+    ],
+    "role": "prospective-synthetic-native-primitive-capability-only",
+    "scope": "No native actors or engines have run. Local mock/file/AST controls only; actual native API availability and bounded capability completion remain prospective. Original observer rejection and all historical provenance are retained. The generic normalizer, existing measurement helper, source allowlist and scanner caps are unchanged. Existing broad SDK test discovery includes the new 17-method mocked inner suite; the 27 outer methods are local/manual-route controls."
+  },
   "reconstruction_overrides": {
     "base_repository_commit": "1246bd07aa1ae7768e26a385b59b49d285e8f492",
     "files": [

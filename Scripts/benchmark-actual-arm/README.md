@@ -419,5 +419,46 @@ trailing separators and `..` as inert observed link metadata. The unsplit target
 sensitive-value and Windows-path checks both before encoding and after inverse reconstruction. The
 entire reconstructed alias chain and physical executable identity must match fresh filesystem evidence;
 a matching rehash alone cannot admit changed metadata. Other fields, order, generic scanner rules and
-publication caps remain unchanged. This correction is source preparation pending its own native CI;
-it does not establish generation-bracket or direct-timing eligibility.
+publication caps remain unchanged. This correction passed ordinary CI507 and post-merge CI508;
+manual generation validation remains pending and no direct-timing eligibility is established.
+
+### Prospective native waitid capability only
+
+The separate manual `waitid-capability.yml` route prepares one fixed synthetic capability check,
+not a replacement timing result. It requires an explicit full source SHA equal to the dispatch source,
+the reviewed macos-26 image and the selected/physical Python 3.14.7 executable identity. Two fixed Git
+metadata children bind the exact five runtime source paths/modes/blobs before and after one capability
+child. The executable pin does not close Python framework/stdlib or dynamic-loader inputs.
+
+Twelve fixed cases allow at most thirteen directly owned actors and two live/unreaped actors at once.
+Native `os.waitid(WEXITED | WNOWAIT)` is required; unsupported primitives refuse without a fallback.
+Each actor has its own five-second watchdog. The ten-second case and 120-second suite bounds retain
+actual terminal observations, individual cleanup and later reap agreement. The cases cover normal and
+signal exits, timeout/TERM resistance, sequential/joint release, a live member and an explicitly owned
+session escape. These observations cover the enumerated actors, not arbitrary descendants. The live,
+escape and cleanup-needed observations retain their incomplete/scope-violation meanings even when the
+expected capability case passes.
+
+The outer child allowance is 150 seconds, followed when needed by seven-second TERM and three-second
+KILL-wait cleanup. Short waits share one absolute deadline; cancellation is deferred through reap and
+anchor assignment. No numeric PID/group signalling follows a reap or uncertain wait failure. If a
+child may still write, its stream digests, inventory and publication are withheld. A failed actual
+workflow process exit cannot be overridden by an already-flushed complete JSON receipt. Complete
+publication binds all 38 original files, exact ledgers, source/interpreter identities and empty actor
+streams before and after the unchanged scanner. Its existing 8 MiB/file and 64 MiB total caps remain.
+The five-minute job makes timeout-time artifact retention best effort. Nested process, caller and
+publication costs remain separate; the caller receipt excludes its own serialization and teardown.
+
+All results retain `capability_only=true`, `descendant_closure_eligible=false`, `timing_eligible=false`,
+`final_protocol_ready=false` and zero engine calls. Real-engine completion/no-detach admission remains
+separate, and run2's rejected timing-observer sample is unchanged. No native capability result is
+credited by this source preparation. The local mocked controls passed 17 inner methods and 27 outer
+methods across two attempts; the first attempt retained a zero-test discovery exit5 for the hyphenated
+outer filename. Direct-file invocation and a workflow regression assertion corrected that route.
+Test-scoped placeholders fill only absent native names for pure mocks and restore absence afterward;
+they never enter the capability child. Actionlint and four shell syntax checks passed; no shellcheck
+result is claimed.
+
+Existing ordinary CI workflow bytes are unchanged, but its broad SDK test discovery also includes the
+new 17-method inner mock suite. The 27 outer methods remain local/manual-route checks. Neither suite
+starts capability actors or establishes native primitive availability.
