@@ -220,7 +220,7 @@ struct ImpactSelectionExpansionTests {
     }
 
     // 구현 자체의 자기 보고가 아니라 전달한 그래프의 실제 접근을 관측한다.
-    private final class CountingGraph: ImpactSelectionGraph {
+    private final class CountingGraph: FullEdgeSelectionGraph {
         private let graph: CodeGraph
         var wholeEdgeListReads = 0
         var wholeEdgeEntries = 0
@@ -259,6 +259,27 @@ struct ImpactSelectionExpansionTests {
         }
     }
 
+    // 기준선에만 필요한 전수 간선 목록은 테스트 타깃 안의 무계측 뷰에 둔다.
+    // 프로덕션 어댑터와 똑같이 CodeGraph에 위임하며 시간 측정 중에는 세지 않는다.
+    private struct BaselineGraph: FullEdgeSelectionGraph {
+        private let graph: CodeGraph
+
+        init(_ graph: CodeGraph) { self.graph = graph }
+
+        var edges: [GraphEdge] { graph.edges }
+        func node(_ id: NodeID) -> GraphNode? { graph.node(id) }
+        func outgoingEdges(from id: NodeID) -> [GraphEdge] { graph.outgoingEdges(from: id) }
+        func incomingEdges(to id: NodeID) -> [GraphEdge] { graph.incomingEdges(to: id) }
+        func semanticParent(of id: NodeID) -> NodeID? { graph.semanticParent(of: id) }
+    }
+
+    // 시간 측정은 계측 어댑터를 거치지 않는다.
+    private static func fullEdgeScanExpandingContainers(
+        _ selected: Set<NodeID>, graph: CodeGraph
+    ) -> Set<NodeID> {
+        fullEdgeScanExpandingContainers(selected, graph: BaselineGraph(graph))
+    }
+
     /// 옮기기 전 CartographKit 구현. 결과 동등성과 비용 차이의 기준선으로 남긴다.
     ///
     /// 간선 배열을 두 번 훑어 자식 사전을 전부 만든 뒤 BFS로 확장한다.
@@ -266,7 +287,7 @@ struct ImpactSelectionExpansionTests {
     /// 거둔다. 두 구현이 같은 `graph.semanticParent`를 부르므로, 그 함수의
     /// 의미가 바뀌는 회귀는 이 비교로는 잡히지 않는다.
     private static func fullEdgeScanExpandingContainers(
-        _ selected: Set<NodeID>, graph: some ImpactSelectionGraph
+        _ selected: Set<NodeID>, graph: some FullEdgeSelectionGraph
     ) -> Set<NodeID> {
         let roots = selected.filter {
             graph.node($0)?.kind.isTypeDeclaration == true || graph.node($0)?.kind == .extensionDeclaration
@@ -366,4 +387,10 @@ struct ImpactSelectionExpansionTests {
             }
         }
     }
+}
+
+// 원 구현과 계측기의 양성 대조에만 필요한 전수 간선 인터페이스다.
+// 프로덕션 확장의 읽기 경계에는 이 요구사항을 추가하지 않는다.
+private protocol FullEdgeSelectionGraph: ImpactSelectionGraph {
+    var edges: [GraphEdge] { get }
 }

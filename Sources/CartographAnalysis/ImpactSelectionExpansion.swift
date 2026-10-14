@@ -27,11 +27,11 @@ public enum ImpactSelectionExpansion {
     /// - Returns: 시드와 확장된 정점을 합친 집합. 시드가 컨테이너가 아니면
     ///   입력을 그대로 돌려준다.
     public static func expandingContainers(_ selected: Set<NodeID>, graph: CodeGraph) -> Set<NodeID> {
-        expandContainers(selected, graph: graph)
+        expandContainers(selected, graph: ImpactSelectionGraphView(graph))
     }
 
     // 공개 경로와 비용 검사가 같은 구현을 탄다. 구체 타입의 제네릭으로 받아
-    // 프로덕션에서는 CodeGraph로 특수화하며 existential 래퍼를 만들지 않는다.
+    // 프로덕션에서는 값 어댑터로 특수화하며 existential 래퍼를 만들지 않는다.
     static func expandContainers<Graph: ImpactSelectionGraph>(
         _ selected: Set<NodeID>, graph: Graph
     ) -> Set<NodeID> {
@@ -117,15 +117,25 @@ private struct Expander<Graph: ImpactSelectionGraph> {
     }
 }
 
-/// 확장 구현의 그래프 읽기 경계. 테스트 어댑터는 실제 CodeGraph에 위임하며
-/// 인접 목록 조회와 전수 간선 읽기를 센다. edges도 노출해야 예전 전수 스캔으로
-/// 되돌리는 회귀가 컴파일된 뒤 비용 검사에서 실패한다.
+/// 확장 구현은 도달한 정점의 인접 목록만 읽는다. 전수 간선 목록은 이 경계에
+/// 노출하지 않아 전수 스캔으로 되돌리는 회귀를 컴파일 단계에서 막는다.
+/// 테스트 어댑터는 같은 읽기를 실제 CodeGraph에 위임하며 조회 비용을 센다.
 protocol ImpactSelectionGraph {
-    var edges: [GraphEdge] { get }
     func node(_ id: NodeID) -> GraphNode?
     func outgoingEdges(from id: NodeID) -> [GraphEdge]
     func incomingEdges(to id: NodeID) -> [GraphEdge]
     func semanticParent(of id: NodeID) -> NodeID?
 }
 
-extension CodeGraph: ImpactSelectionGraph {}
+/// Analysis가 소유한 값 어댑터로 Core → Analysis의 프로토콜 witness 역참조를
+/// 만들지 않는다. 계측 없이 CodeGraph에 그대로 위임하며 공개 API는 바꾸지 않는다.
+struct ImpactSelectionGraphView: ImpactSelectionGraph {
+    private let graph: CodeGraph
+
+    init(_ graph: CodeGraph) { self.graph = graph }
+
+    func node(_ id: NodeID) -> GraphNode? { graph.node(id) }
+    func outgoingEdges(from id: NodeID) -> [GraphEdge] { graph.outgoingEdges(from: id) }
+    func incomingEdges(to id: NodeID) -> [GraphEdge] { graph.incomingEdges(to: id) }
+    func semanticParent(of id: NodeID) -> NodeID? { graph.semanticParent(of: id) }
+}
