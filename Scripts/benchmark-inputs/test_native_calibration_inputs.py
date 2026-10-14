@@ -87,6 +87,52 @@ class NativeInputTests(unittest.TestCase):
         with self.assertRaisesRegex(admission.AdmissionError, "native-machine-mismatch"):
             admission.assert_native(observed, self.expected)
 
+    def test_source_declares_standard_profile_and_preserves_prior_expectation(self):
+        expected = json.loads((HERE / "native_calibration_expectation.json").read_text())
+        regime = expected.get("resource_regime", {})
+        self.assertEqual(regime.get("id"), "github-hosted-macos-26-standard-m1-3core-7gib-v1")
+        self.assertEqual(regime.get("class"), "standard")
+        self.assertEqual(expected["runner_label"], "macos-26")
+        self.assertIn("https://docs.github.com/en/actions/reference/runners/github-hosted-runners",
+                      expected["source_urls"])
+        workflow = (HERE.parents[1] / ".github/workflows/native-calibration.yml").read_text()
+        self.assertEqual([line.strip() for line in workflow.splitlines() if line.strip().startswith("runs-on:")],
+                         [f"runs-on: {expected['runner_label']}"])
+        self.assertEqual(expected["machine"], dict(
+            architecture="arm64", cpu_model="Apple M1 (Virtual)", kernel_release="25.6.0",
+            logical_core_count=3, os="macOS", os_version="26.6.2", physical_core_count=3, ram_bytes=7516192768))
+        self.assertEqual(expected.get("preserved_prior_expectation"), dict(
+            commit="5a9ee5e4da14c9bcd36941ae004e949f94ba2c98",
+            path="Scripts/benchmark-inputs/native_calibration_expectation.json",
+            sha256="484080a6ea231795c81349da13ab55bb8f6670942d353ef74838db6956d11cde",
+            failed_run_url="https://github.com/ictechgy/cartograph/actions/runs/38556206718"))
+
+    def test_standard_profile_refuses_prior_or_changed_or_missing_resources(self):
+        expected = json.loads((HERE / "native_calibration_expectation.json").read_text())
+        observed = dict(platform="darwin", runner=copy.deepcopy(expected["runner"]),
+                        machine=dict(architecture="arm64", cpu_model="Apple M1 (Virtual)", kernel_release="25.6.0",
+                                     logical_core_count=3, os="macOS", os_version="26.6.2",
+                                     physical_core_count=3, ram_bytes=7516192768),
+                        versions=copy.deepcopy(expected["versions"]))
+        admission.assert_native(observed, expected)
+        prior_resources = dict(cpu_model="Apple M2 Pro (Virtual)", logical_core_count=5,
+                               physical_core_count=5, ram_bytes=15032385536)
+        prior = copy.deepcopy(observed)
+        prior["machine"].update(prior_resources)
+        with self.assertRaisesRegex(admission.AdmissionError, "native-machine-mismatch"):
+            admission.assert_native(prior, expected)
+        for key, value in prior_resources.items():
+            changed = copy.deepcopy(observed)
+            changed["machine"][key] = value
+            with self.subTest(key=key, mutation="changed"), self.assertRaisesRegex(
+                    admission.AdmissionError, "native-machine-mismatch"):
+                admission.assert_native(changed, expected)
+            missing = copy.deepcopy(observed)
+            del missing["machine"][key]
+            with self.subTest(key=key, mutation="missing"), self.assertRaisesRegex(
+                    admission.AdmissionError, "native-machine-mismatch"):
+                admission.assert_native(missing, expected)
+
     def test_environment_is_explicit_and_override_free(self):
         environment = {key: "untrusted" for key in admission.SELECTOR.OVERRIDES}
         environment.update(DEVELOPER_DIR=str(self.developer), KEEP="value")
