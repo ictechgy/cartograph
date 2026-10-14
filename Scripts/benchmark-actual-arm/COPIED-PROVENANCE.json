@@ -381,6 +381,66 @@
     "role": "prospective-native-observer-sdk-admission",
     "scope": "Additive source identity only. Optional fixed32 actual-engine diagnostic with timing-only empirical eligibility, exact same-engine typed outputs, independent memory observation and two-root SDK pre/post candidate evidence. Existing ordinary AB path, frozen vendor helpers, source cap and normalizer limits remain. Original execution outcomes and all earlier provenance entries remain historical. Native execution, reviewed SDK acceptance and final-protocol comparison remain separate; no final holdout or superiority is established."
   },
+  "native_waitid_capability_failure_diagnostic_v1": {
+    "base_commit": "d1821b20ca865ac43b014f48699cdc19f22c4bc8",
+    "base_tree": "c036fb6d2249b664c25ea7bb70335f0985b6ddef",
+    "failed_run": {
+      "actual_actor_launches": null,
+      "actual_capability_children": null,
+      "actual_metadata_children": null,
+      "artifacts": 0,
+      "inner_mock_methods_passed": 17,
+      "job_log_sha256": "14c52427447d44c2bd4d32db60f61042c6a7fd769a048ae494ee667dea8a3826",
+      "observation_exit_code": 1,
+      "outer_mock_methods_passed": 27,
+      "primary_admission_reason": null,
+      "publication_error_type": "KeyError",
+      "publication_exit_code": 125,
+      "publication_message_sha256": "a81f2c5cf82730e8069e59c7f74129cbb564a42322c2b549692843c76e348dcc",
+      "publication_message_sha256_matches": "str(KeyError('source_before'))",
+      "url": "https://github.com/ictechgy/cartograph/actions/runs/38646168312"
+    },
+    "files": [
+      {
+        "bytes": 38817,
+        "path": "Scripts/validate-native-waitid-capability.py",
+        "sha256": "3ec23c9cb80b2991902d545ae2febf6d8772ae2d5dc08f166f3d37c8622e2f13"
+      },
+      {
+        "bytes": 52891,
+        "path": "Scripts/test-native-waitid-capability.py",
+        "sha256": "3297656951b9e3d70fcb3cce2b3f0dd5396565232d75c4730d52d16fb135221e"
+      },
+      {
+        "bytes": 42461,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "6294a1a694e860d85dfd3f3f8351a5155547a032a89106c38813e7de60974136"
+      }
+    ],
+    "local_controls_at_source_preparation": {
+      "baseline_compatible_first_red": "not-executed",
+      "inner_mock_methods": 17,
+      "outer_mock_methods": 43,
+      "successor_mock_execution": "not-executed"
+    },
+    "local_validation": {
+      "actual_outer_exit": 0,
+      "child_timeout_seconds": 30,
+      "first_red": "expected KeyError(source_before)",
+      "first_red_exit": 1,
+      "inner_methods": 17,
+      "native_actor_launches": 0,
+      "outer_kill_grace_seconds": 10,
+      "outer_methods": 43,
+      "outer_timeout_seconds": 120,
+      "result_sha256": "84917275d68927041c38bb21657a79536ed97c0d95bc6a7fedf68f3b11a136f5",
+      "retained_input_brackets": 5,
+      "scope": "Local mock/file-only controls with real temporary-file observations and unchanged scanner; no native actor entrypoint.",
+      "source_brackets": 9
+    },
+    "role": "prospective-strict-early-admission-failure-retention",
+    "scope": "Additive successor identity only; every prior provenance entry remains historical. The literal pre-child admission checkpoint may retain only incomplete evidence with empty original membership, no source/command/capability records, typed shell exit 1 through 255, finite nonnegative non-boolean caller cost and exact scope strings. Fixed admission reasons and bounded typed observations or hashes retain the primary failure without a secondary missing-source lookup. Physical identity requires six exact nonnegative integers, regular-file mode and matching executable byte count. Python/image/executable/source pins, ownership gates, child budgets, scanner and publication caps stay unchanged; there is no fallback or fabricated actor count. Publication success is retention only and preserves the original failed execute status. Capability-only remains true; descendant-closure, timing and final-protocol eligibility remain false. The original run's primary admission reason and actual child/actor counts remain unavailable; no native retry or successful capability observation is claimed."
+  },
   "native_waitid_capability_preparation_v1": {
     "base_commit": "d19ead28e3ff8645de171dfeffe91c16f6fa42f4",
     "base_tree": "4f7879cb6c71c25620f9932bca7d686b605409b1",
