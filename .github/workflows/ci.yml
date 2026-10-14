@@ -41,6 +41,8 @@ jobs:
           python3 Scripts/verify-indexstore-pilot-evidence.py
           python3 Scripts/verify-module-refresh-diagnostic.py
           python3 Scripts/verify-native-measurement-contract.py
+          python3 Scripts/verify-native-calibration-contract.py
+          python3 Scripts/verify-native-generation-contract.py
           python3 -m unittest discover -s Scripts/benchmark-inputs -v
           python3 Scripts/verify-sdk-discovery-contract.py
 

@@ -548,5 +548,300 @@ class ProjectionTests(unittest.TestCase):
             projection.verify_sources(self.raw, self.stage)
 
 
+    def test_explicit_default_profile_preserves_legacy_manifest_and_chunk_bytes(self):
+        explicit = self.root / "explicit-default"
+        with mock.patch.object(projection.time, "perf_counter", return_value=10.0):
+            self.prepare()
+            projection.prepare_projection(self.raw, explicit, profile="calibration")
+        self.assertEqual(projection.projection_files(self.stage / projection.PROJECTION),
+                         projection.projection_files(explicit / projection.PROJECTION))
+        _, manifest = self.manifest()
+        self.assertNotIn("record_order", manifest)
+        self.assertEqual(set(manifest), {"schema_version", "kind", "accepted", "final_protocol_ready", "records",
+                                         "serialization", "normalization", "projection_creation_wall_seconds"})
+        self.assertEqual(set(manifest["records"]), set(projection.SOURCES))
+        self.assertEqual(manifest["kind"], "native-calibration-sdk-entry-chunks-v2")
+
+
+class GenerationProjectionTests(unittest.TestCase):
+    write_raw = ProjectionTests.write_raw
+    manifest = ProjectionTests.manifest
+    first_chunk = ProjectionTests.first_chunk
+    rewrite_first_chunk = ProjectionTests.rewrite_first_chunk
+    stages = ("initial", "header_edit_rebuilt", "header_rename_rebuilt", "header_delete_build_failed",
+              "header_restored_rebuilt", "swift_rename_rebuilt", "swift_delete_rebuilt", "restored_rebuilt")
+
+    def setUp(self):
+        ProjectionTests.setUp(self)
+        (self.raw / projection.SOURCES["after-calibration"]).unlink()
+        self.order = (["before-compilation"]
+                      + [f"generations/{stage}/{side}" for stage in self.stages for side in ("before", "after")]
+                      + ["after-generation", "after-calibration"])
+        self.documents = {"before-compilation": self.seal}
+        for ordinal, label in enumerate(self.order[1:-1], 1):
+            document = copy.deepcopy(self.verification)
+            document["wall_seconds"] = ordinal + 0.125
+            document["actual"]["wall_seconds"] = ordinal + 0.25
+            document["actual"]["manifest_sha256"] = projection.SEAL.manifest_identity(document["actual"])
+            self.documents[label] = document
+            self.write_generation_raw(label, document)
+
+    def write_generation_raw(self, label, document, *, raw=None):
+        path = (raw or self.raw) / projection.GENERATION_SOURCES[label]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(projection.SEAL.canonical_bytes(document))
+
+    def prepare(self):
+        return projection.prepare_projection(self.raw, self.stage, profile="sdk-generation-brackets")
+
+    def restore(self, *, normalized=False):
+        return projection.restore_documents(self.stage / projection.PROJECTION, normalized=normalized,
+                                             profile="sdk-generation-brackets")
+
+    def test_fixed_eighteen_present_one_missing_schedule_is_lossless(self):
+        originals = copy.deepcopy(self.documents)
+        result = self.prepare()
+        restored, manifest = self.restore()
+        self.assertEqual(list(projection.GENERATION_SOURCES), self.order)
+        self.assertEqual(manifest["record_order"], self.order)
+        self.assertEqual(manifest["kind"], "native-generation-sdk-entry-chunks-v2")
+        self.assertEqual(result["records"], self.order[:-1])
+        self.assertEqual(restored, originals)
+        self.assertEqual(list(restored), self.order[:-1])
+        self.assertFalse(result["accepted"])
+        self.assertFalse(result["final_protocol_ready"])
+        self.assertFalse(result["original_raw_bytes_reproduced"])
+        self.assertEqual(manifest["records"]["after-calibration"],
+                         dict(state="missing", source_relative_path="after-calibration/seal-verification.json"))
+        for label, document in originals.items():
+            row = manifest["records"][label]
+            data = (self.raw / projection.GENERATION_SOURCES[label]).read_bytes()
+            self.assertEqual(row["raw_identity"], dict(bytes=len(data), sha256=projection.digest(data)))
+            self.assertEqual(row["original_value_sha256"], projection.digest(projection.SEAL.canonical_bytes(document)))
+            self.assertEqual(row["entry_count"], len(self.seal["entries"]))
+            if label != "before-compilation":
+                self.assertEqual(row["entries_reference"], "before-compilation")
+                self.assertEqual(restored[label]["wall_seconds"], document["wall_seconds"])
+                self.assertEqual(restored[label]["actual"]["wall_seconds"], document["actual"]["wall_seconds"])
+        self.assertEqual(projection.verify_sources(self.raw, self.stage, profile="sdk-generation-brackets")["status"],
+                         "source-identities-unchanged")
+
+    def test_every_stopped_prefix_retains_all_missing_slots(self):
+        for count in range(19):
+            with self.subTest(present=count):
+                raw, stage = self.root / f"prefix-raw-{count}", self.root / f"prefix-stage-{count}"
+                raw.mkdir()
+                for label in self.order[:count]:
+                    self.write_generation_raw(label, self.documents[label], raw=raw)
+                projection.prepare_projection(raw, stage, profile="sdk-generation-brackets")
+                restored, manifest = projection.restore_documents(stage / projection.PROJECTION,
+                                                                  profile="sdk-generation-brackets")
+                self.assertEqual(list(restored), self.order[:count])
+                self.assertEqual(manifest["record_order"], self.order)
+                self.assertEqual([manifest["records"][label]["state"] for label in self.order],
+                                 ["present"] * count + ["missing"] * (19 - count))
+                projection.verify_sources(raw, stage, profile="sdk-generation-brackets")
+
+    def test_holes_extra_sources_and_calibration_sources_refuse(self):
+        missing = self.raw / projection.GENERATION_SOURCES[self.order[2]]
+        original = missing.read_bytes()
+        missing.unlink()
+        with self.assertRaisesRegex(projection.ProjectionError, "generation-source-membership-mismatch"):
+            self.prepare()
+        missing.write_bytes(original)
+        for relative in ("generations/extra/before/seal-verification.json", "other/seal.json",
+                         "after-calibration/seal-verification.json"):
+            with self.subTest(relative=relative):
+                extra = self.raw / relative
+                extra.parent.mkdir(parents=True, exist_ok=True)
+                extra.write_bytes(original)
+                with self.assertRaisesRegex(projection.ProjectionError, "generation-source-membership-mismatch"):
+                    self.prepare()
+                extra.unlink()
+        self.assertFalse((self.stage / projection.PROJECTION).exists())
+
+    def test_missing_reordered_extra_and_mixed_manifest_records_refuse(self):
+        self.prepare()
+        path, original = self.manifest()
+        cases = []
+        missing = copy.deepcopy(original)
+        del missing["records"][self.order[2]]
+        cases.append(missing)
+        reordered = copy.deepcopy(original)
+        reordered["record_order"][1:3] = list(reversed(reordered["record_order"][1:3]))
+        cases.append(reordered)
+        extra = copy.deepcopy(original)
+        extra["records"]["generations/extra/before"] = copy.deepcopy(extra["records"][self.order[1]])
+        cases.append(extra)
+        hole = copy.deepcopy(original)
+        hole["records"][self.order[1]] = dict(
+            state="missing", source_relative_path=projection.GENERATION_SOURCES[self.order[1]])
+        cases.append(hole)
+        forged = copy.deepcopy(original)
+        forged["records"][self.order[1]]["source_relative_path"] = projection.SOURCES["after-generation"]
+        cases.append(forged)
+        mixed = copy.deepcopy(original)
+        mixed["kind"] = "native-calibration-sdk-entry-chunks-v2"
+        cases.append(mixed)
+        mixed = copy.deepcopy(original)
+        del mixed["record_order"]
+        cases.append(mixed)
+        mixed = copy.deepcopy(original)
+        mixed["records"] = {label: original["records"][label] for label in projection.SOURCES}
+        cases.append(mixed)
+        for number, manifest in enumerate(cases):
+            with self.subTest(number=number):
+                path.write_bytes(projection.encoded(manifest))
+                for normalized in (False, True):
+                    with self.assertRaises(projection.ProjectionError):
+                        self.restore(normalized=normalized)
+        path.write_bytes(projection.encoded(original))
+        with self.assertRaises(projection.ProjectionError):
+            projection.verify_projection(self.stage)
+
+    def test_unknown_profiles_and_default_manifest_cannot_opt_in_implicitly(self):
+        for profile in ("generation", "", None, {"extra": "seal.json"}):
+            with self.subTest(profile=profile):
+                with self.assertRaisesRegex(projection.ProjectionError, "invalid-projection-profile"):
+                    projection.prepare_projection(self.raw, self.stage, profile=profile)
+        projection.prepare_projection(self.raw, self.stage)
+        with self.assertRaises(projection.ProjectionError):
+            self.restore()
+
+    def test_mismatched_actual_uses_own_chunks_and_retains_false_status(self):
+        label = self.order[4]
+        (self.sdk / "header-00.h").write_text("changed SDK contents")
+        actual = projection.SEAL.capture({"SDK": self.sdk, "TOOLCHAIN": self.chain})
+        changed = dict(matches=False, expected_sha256=self.seal["content_sha256"],
+                       actual_sha256=actual["content_sha256"], actual=actual, wall_seconds=3.625)
+        self.write_generation_raw(label, changed)
+        self.documents[label] = changed
+        self.prepare()
+        restored, manifest = self.restore()
+        self.assertEqual(restored, self.documents)
+        self.assertIn("chunks", manifest["records"][label])
+        self.assertNotIn("entries_reference", manifest["records"][label])
+        self.assertFalse(restored[label]["matches"])
+        row = manifest["records"][label]
+        for chunk in row.pop("chunks"):
+            (self.stage / projection.PROJECTION / chunk["path"]).unlink()
+        row["entries_reference"] = "before-compilation"
+        self.manifest()[0].write_bytes(projection.encoded(manifest))
+        with self.assertRaisesRegex(projection.ProjectionError, "inverse-value-mismatch"):
+            self.restore()
+        with self.assertRaisesRegex(projection.ProjectionError, "content-identity-mismatch"):
+            self.restore(normalized=True)
+
+    def test_each_verification_requires_the_initial_expected_identity(self):
+        self.prepare()
+        path, original = self.manifest()
+        for label in self.order[1:-1]:
+            with self.subTest(label=label):
+                manifest = copy.deepcopy(original)
+                row = manifest["records"][label]
+                row["document_without_entries"].update(matches=False, expected_sha256="f" * 64)
+                changed = copy.deepcopy(self.documents[label])
+                changed.update(matches=False, expected_sha256="f" * 64)
+                row["original_value_sha256"] = projection.digest(projection.SEAL.canonical_bytes(changed))
+                path.write_bytes(projection.encoded(manifest))
+                for normalized in (False, True):
+                    with self.assertRaisesRegex(projection.ProjectionError, "verification-candidate-mismatch"):
+                        self.restore(normalized=normalized)
+
+    def test_generation_reference_cannot_alias_another_generation(self):
+        self.prepare()
+        path, manifest = self.manifest()
+        manifest["records"][self.order[3]]["entries_reference"] = self.order[1]
+        path.write_bytes(projection.encoded(manifest))
+        with self.assertRaisesRegex(projection.ProjectionError, "invalid-entry-reference"):
+            self.restore()
+
+    def test_rehashed_entry_tampering_and_cost_changes_refuse(self):
+        self.prepare()
+        path, original = self.manifest()
+        entries = projection.strict_array(self.first_chunk().read_bytes())
+        entries[0], entries[1] = entries[1], entries[0]
+        self.rewrite_first_chunk(entries)
+        with self.assertRaisesRegex(projection.ProjectionError, "inverse-value-mismatch"):
+            self.restore()
+        entries[0], entries[1] = entries[1], entries[0]
+        self.rewrite_first_chunk(entries)
+        for rehash in (False, True):
+            with self.subTest(rehash=rehash):
+                manifest = copy.deepcopy(original)
+                label = self.order[7]
+                row = manifest["records"][label]
+                row["document_without_entries"]["wall_seconds"] = 0.0
+                if rehash:
+                    changed = copy.deepcopy(self.documents[label])
+                    changed["wall_seconds"] = 0.0
+                    row["original_value_sha256"] = projection.digest(projection.SEAL.canonical_bytes(changed))
+                path.write_bytes(projection.encoded(manifest))
+                with self.assertRaisesRegex(projection.ProjectionError,
+                                            "source-changed" if rehash else "inverse-value-mismatch"):
+                    projection.verify_sources(self.raw, self.stage, profile="sdk-generation-brackets")
+
+    def test_generation_profile_shares_existing_caps_and_whole_bundle_limit(self):
+        self.assertEqual((projection.CHUNK_BYTES, projection.MAX_FILE_BYTES, projection.MAX_TOTAL_BYTES),
+                         (4 * 1024**2, 8 * 1024**2, 64 * 1024**2))
+        with mock.patch.object(projection.time, "perf_counter", return_value=10.0):
+            self.prepare()
+        files = projection.projection_files(self.stage / projection.PROJECTION)
+        total = sum(map(len, files.values()))
+        self.assertGreater(total, max(map(len, files.values())))
+        with mock.patch.object(projection, "MAX_TOTAL_BYTES", total - 1), \
+                mock.patch.object(projection.time, "perf_counter", return_value=10.0):
+            with self.assertRaisesRegex(projection.ProjectionError, "projection-size-limit"):
+                self.restore()
+            with self.assertRaisesRegex(projection.ProjectionError, "projection-size-limit"):
+                projection.prepare_projection(self.raw, self.root / "overflow", profile="sdk-generation-brackets")
+        self.assertFalse((self.root / "overflow" / projection.PROJECTION).exists())
+        with mock.patch.object(projection, "MAX_FILE_BYTES", len(files["projection.json"]) - 1):
+            with self.assertRaisesRegex(projection.ProjectionError, "projection-size-limit"):
+                self.restore()
+
+    def test_generation_source_changes_and_new_tail_are_detected(self):
+        self.prepare()
+        label = self.order[5]
+        changed = copy.deepcopy(self.documents[label])
+        changed["wall_seconds"] += 1
+        self.write_generation_raw(label, changed)
+        with self.assertRaisesRegex(projection.ProjectionError, "source-changed"):
+            projection.verify_sources(self.raw, self.stage, profile="sdk-generation-brackets")
+        self.write_generation_raw(label, self.documents[label])
+        self.write_generation_raw("after-calibration", self.verification)
+        with self.assertRaisesRegex(projection.ProjectionError, "generation-source-membership-mismatch"):
+            projection.verify_sources(self.raw, self.stage, profile="sdk-generation-brackets")
+
+    def test_nested_generation_source_symlink_is_refused(self):
+        directory = self.raw / "generations" / "initial"
+        target = self.root / "initial-copy"
+        directory.rename(target)
+        directory.symlink_to(target, target_is_directory=True)
+        with self.assertRaisesRegex(projection.ProjectionError, "source-directory-symlink"):
+            self.prepare()
+
+    def test_generation_profile_uses_unchanged_normalizer_and_source_binding(self):
+        self.prepare()
+        (self.stage / "results.json").write_text('{"status":"candidate-only","accepted":false,"final_protocol_ready":false}\n')
+        public = self.root / "public"
+        manifest = projection.NORMALIZER.package(argparse.Namespace(input=self.stage, output=public,
+                                                                    prefix=["WORKSPACE=" + str(self.root)]))
+        result = projection.verify_publication(self.stage, public, manifest, profile="sdk-generation-brackets")
+        self.assertEqual(result["records"], self.order[:-1])
+        self.assertFalse(result["accepted"])
+        self.assertFalse(result["final_protocol_ready"])
+        restored, _ = projection.restore_documents(public / projection.PROJECTION, normalized=True,
+                                                   profile="sdk-generation-brackets")
+        for label, document in restored.items():
+            seal = document if label == "before-compilation" else document["actual"]
+            self.assertEqual(seal["entries"], self.seal["entries"])
+            self.assertEqual(seal["content_sha256"], self.seal["content_sha256"])
+            if label != "before-compilation":
+                self.assertEqual(document["wall_seconds"], self.documents[label]["wall_seconds"])
+        with self.assertRaises(projection.ProjectionError):
+            projection.verify_publication(self.stage, public, manifest)
+
+
 if __name__ == "__main__":
     unittest.main()

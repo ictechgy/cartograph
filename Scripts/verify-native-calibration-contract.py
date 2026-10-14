@@ -883,12 +883,16 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
         self.assertEqual(re.findall(r"^        (required|type|default): (.*)$", mode.group(1), re.MULTILINE),
                          [("required", "true"), ("type", "choice"), ("default", "calibration")])
         self.assertEqual(re.findall(r"^          - (.*)$", mode.group(1), re.MULTILINE),
-                         ["calibration", "sdk-publication-only"])
+                         ["calibration", "sdk-publication-only", "sdk-generation-only"])
         guard = workflow_step("Require exact dispatch source and native image")
         self.assertEqual(re.findall(r"^          RUN_MODE: (.*)$", guard, re.MULTILINE), ["${{ inputs.mode }}"])
 
     def test_sdk_only_mode_leaves_all_original_workflow_bytes_unchanged(self):
-        original = WORKFLOW.read_bytes()
+        generation_spec = importlib.util.spec_from_file_location("generation_workflow_inverse",
+            ROOT / "Scripts/verify-native-generation-contract.py")
+        generation = importlib.util.module_from_spec(generation_spec)
+        generation_spec.loader.exec_module(generation)
+        original = generation.legacy_workflow(WORKFLOW.read_bytes())
         additions = [
             (b"      mode:\n"
              b"        description: Full calibration or one SDK capture and safe publication only\n"
@@ -922,7 +926,7 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
             exec(compile(match.group(1), str(WORKFLOW) + ":dispatch-guard", "exec"), {})
 
     def test_dispatch_guard_accepts_only_exact_sha_and_image(self):
-        for mode in ("calibration", "sdk-publication-only"):
+        for mode in ("calibration", "sdk-publication-only", "sdk-generation-only"):
             self.guard({"RUN_MODE": mode})
             for changes in (
                 {"SOURCE_SHA": "main"}, {"SOURCE_SHA": "a" * 39}, {"SOURCE_SHA": "A" * 40},
@@ -974,7 +978,7 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
         ]
         positions = [workflow.index("name: " + name) for name in names]
         self.assertEqual(positions, sorted(positions))
-        for name in names[:3]:
+        for name in names[:2]:
             self.assertNotIn("        if:", workflow_step(name))
 
     def test_complete_mode_and_followon_conditions_keep_sdk_only_producers_skipped(self):
@@ -984,7 +988,8 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
             ("Require exact dispatch source and native image", None, None),
             ("Verify exact checkout and local contracts", None, None),
             ("Prepare the existing isolated measurement installation", "measurement", None),
-            ("Capture SDK and toolchain before covered compilation", "before", None),
+            ("Capture SDK and toolchain before covered compilation", "before", "inputs.mode != 'sdk-generation-only'"),
+            ("Validate the fixed compiler-only SDK generation brackets", "generations", "inputs.mode == 'sdk-generation-only'"),
             ("Build the existing source-pinned tools and validation fixture", "tools", calibration),
             ("Compile the existing mixed validation generations", "mixed", calibration),
             ("Bind actual compiler search paths", "discovery", calibration),
@@ -996,7 +1001,8 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
              always + "steps.engines.outcome != 'skipped'"),
             ("Retain normalized calibration evidence", None,
              "always() && steps.engines_public.outputs.ready == 'true'"),
-            ("Prepare safe SDK candidate evidence", "sdk_public", always + "steps.before.outcome != 'skipped'"),
+            ("Prepare safe SDK candidate evidence", "sdk_public",
+             always + "(steps.before.outcome != 'skipped' || steps.generations.outcome != 'skipped')"),
             ("Retain normalized SDK candidate evidence", None, "always() && steps.sdk_public.outcome == 'success'"),
             ("Prepare normalized measurement evidence", "measurement_normalize",
              always + "steps.measurement.outcome != 'skipped'"),
