@@ -40,7 +40,7 @@ SUITES = {
         ],
         394,
     ),
-    "runtime": (["test_runtime_bootstrap", "test_runtime_identity", "test_startup_runtime", "test_interpreter_runtime"], 90),
+    "runtime": (["test_runtime_bootstrap", "test_runtime_identity", "test_startup_runtime", "test_interpreter_runtime"], 99),
 }
 
 

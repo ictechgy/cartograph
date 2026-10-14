@@ -419,8 +419,31 @@ trailing separators and `..` as inert observed link metadata. The unsplit target
 sensitive-value and Windows-path checks both before encoding and after inverse reconstruction. The
 entire reconstructed alias chain and physical executable identity must match fresh filesystem evidence;
 a matching rehash alone cannot admit changed metadata. Other fields, order, generic scanner rules and
-publication caps remain unchanged. This correction passed ordinary CI507 and post-merge CI508;
-manual generation validation remains pending and no direct-timing eligibility is established.
+publication caps remain unchanged. The corrected ordinary CI507 and post-main508 passed, including the alias controls and
+ordinary publication. These results do not establish generation-bracket or direct-timing eligibility.
+
+
+### Safe generation supervisor failure summary
+
+Generation-only run6 (`38638885985`, source `d19ead28`) retained an early supervisor
+`incomplete`/125 outcome and a generic SDK-publication refusal. Its sole published artifact was
+measurement setup evidence. No generation phase originals were published, so its exact cause,
+completed compiler commands and SDK-read counts remain unknown. The earlier observer timing
+refusal and missing SDK seals remain separate retained results.
+
+The supervisor now projects a future completed child's final stdout JSON, or its existing early
+refusal stderr JSON, into fixed phase/type enums and strict lowercase SHA-256 identifiers. The
+summary includes only the actual typed returned/observed exit and finite child wall, plus hashes
+under three fixed original-stream labels. It prints no raw path, arbitrary exception text, command,
+environment value or stream contents. Missing, malformed, changed, nonregular or oversized originals
+produce a fixed unavailable summary; unproved child cleanup prevents further stream reads. A zero
+child with unavailable originals remains incomplete. A success JSON can never override actual125.
+
+Diagnostic read cost lies inside the existing full supervisor caller interval; the actual child's
+status and wall remain unchanged. Publication independently recomputes the typed summary from the
+verified originals. The execution schedule, 1800/1815-second bounds, strict scanner, source admission
+and publication caps are unchanged. This is prospective diagnostic coverage, not a reconstruction of
+run6's missing receipts or a completed native generation validation.
 
 ### Prospective native waitid capability only
 
@@ -462,6 +485,44 @@ result is claimed.
 Existing ordinary CI workflow bytes are unchanged, but its broad SDK test discovery also includes the
 new 17-method inner mock suite. The 27 outer methods remain local/manual-route checks. Neither suite
 starts capability actors or establishes native primitive availability.
+
+### Prospective runtime cache metadata compatibility
+
+[CI510](https://github.com/ictechgy/cartograph/actions/runs/38641649265), on source
+`c0ab7d1b74f17b4ff930a5607478ab69f40a7100`, remains a retained failure. Its Python 3.15.0 runtime
+suite ran 90 tests with one `KeyError: bytecode_cache` in
+`test_captured_stale_package_bytecode_is_never_loaded`; integration passed all 394 tests. The error
+followed the fixture's successful child-exit and psutil 7.2.2 assertions. Its exact nested receipt was
+not separately retained, so the original module metadata cannot be reconstructed from that assertion
+failure alone. Whole-state execution did not start, and CI510 has not been replayed or regraded green.
+
+Python documents that [3.15 no longer sets module `__cached__`](https://docs.python.org/3/reference/datamodel.html#module.__file__)
+and exposes the cache path through [`ModuleSpec.cached`](https://docs.python.org/3/library/importlib.html#importlib.machinery.ModuleSpec.cached).
+This successor reads that modern field first, with explicit legacy fallback when it is absent or
+`None`. Both present paths must resolve identically; empty, non-string, invalid or conflicting metadata
+refuses with `ValueError`. Missing metadata does not claim a verified absent cache. A declared path
+still records `exists=false` when no file is present, or the observed file's complete byte/hash identity
+when it exists. Existing origin/private-cache confinement, file hashing and byte caps remain unchanged.
+
+The malicious timestamp-valid stale-bytecode fixture, child exit-zero assertion, psutil version check
+and required absent-cache assertion are byte-preserved. Nine additional local source-backed controls
+cover spec-only metadata, legacy agreement/fallback, absent versus missing metadata, malformed/conflicting
+values, direct/symlink escapes, the explicit private cache root and byte caps. The retained spec-only
+first-red used real source/cache files and a real `ModuleSpec` without `__cached__`; unchanged source
+failed the required cache-row assertion. The successor passed all 23 focused identity methods and one
+full isolated schema3 replay of 394 integration plus 99 runtime methods, with zero skips or failures.
+The focused 23 are also included in those 493 unique suite methods. The malicious stale-code fixture
+remained byte-identical throughout.
+
+That local Linux replay copied the existing psutil 7.2.2 dependency and used explicitly synthetic
+installation provenance. Its declared allowance was 300 seconds per suite, 630 seconds for the caller,
+and 660 seconds overall with 20 seconds of cleanup grace. Actual integration/runtime child walls were
+201.315739/45.892718 seconds. The integration wall exceeds the unchanged native 180-second allowance;
+local success does not establish native budget eligibility. All 204 current-source and five retained-input
+brackets matched. Corrected ordinary CI512 passed all 394 integration and 99 runtime methods within
+the unchanged 180-second native allowance on its bound Python 3.14.7 interpreter. That result does not
+claim a native Python 3.15 successor run. This change supplies no native benchmark, compiler-generation,
+observer-eligibility or final-protocol result.
 
 ### Prospective early-admission failure retention
 

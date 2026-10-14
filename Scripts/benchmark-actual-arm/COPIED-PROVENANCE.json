@@ -1,4 +1,16 @@
 {
+  "capability_diagnostic_merge_main_integration_v1": {
+    "files": [
+      {
+        "bytes": 47347,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "94b89db330464b506558b0dc72ae5a88738c625d7cbf1dcbcecd23f28cc1d3df"
+      }
+    ],
+    "first_parent": "3efb2d89686fa852be25d8afaa52c0a187eb12d0",
+    "scope": "Additive merge-main integration preserves all diagnostic, capability and cache executable bodies from their accepted parents. README is the complete second-parent text plus the byte-identical first-parent early-admission diagnostic section; all prior provenance values remain historical and unchanged. Combined-source CI is required.",
+    "second_parent": "07016e7bea6f50ffc38a497f88f9ce183161088b"
+  },
   "catalog_publication_overrides": {
     "base_commit": "66f7ea607d1cd5b274a309ab891ab6f4964a9a73",
     "files": [
@@ -181,6 +193,40 @@
     ],
     "role": "current-include-only-file-dependency-coverage",
     "scope": "Additive successor identity only. Frozen primitive/vendor and historical copied/source hashes are unchanged. The selected baseline engine scopes the current discovery override with restoration. Accepted declaration-free quoted-include headers require an independently reachable user Clang module File dependency and sealed included-header Records in the same unit for every active root. No Record, graph or query fact is fabricated. Original input/root guards, graph/batch parsers, oracle and failure outcomes remain unchanged. Focused and retained-unit coverage replays are not native execution or performance evidence. The current helper and controls are consolidated into the existing engine/test modules to retain the original 64 admitted contract-source paths. The earlier 66-source layout failed the unchanged source-count guard and remains diagnostic evidence; new coverage-control qualified IDs move to test_engine_worker."
+  },
+  "generation_cache_merge_main_integration_v1": {
+    "files": [
+      {
+        "bytes": 44635,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "8450791e3124b1f5f35f8d94c30fba267776ffbf7fd886eb0da62c795fdac048"
+      }
+    ],
+    "first_parent": "c0ab7d1b74f17b4ff930a5607478ab69f40a7100",
+    "scope": "Additive merge-main integration preserving generation diagnostic and capability/cache source bodies and every prior provenance value. README combines accepted sections and records ordinary CI512 on Python 3.14.7; combined-source CI and native diagnostics remain separate gates.",
+    "second_parent": "1d090d086f0058437bd1ca9ab76c6c4134997835"
+  },
+  "generation_failure_diagnostic_overrides": {
+    "base_commit": "d19ead28e3ff8645de171dfeffe91c16f6fa42f4",
+    "base_tree": "4f7879cb6c71c25620f9932bca7d686b605409b1",
+    "files": [
+      {
+        "bytes": 30593,
+        "path": "Scripts/validate-native-sdk-generations.py",
+        "sha256": "64b2f01373bfaa4545cc489b92fc984f4c1ea0387a1c2b70d5d10dcbf0fcf73c"
+      },
+      {
+        "bytes": 40470,
+        "path": "Scripts/verify-native-generation-contract.py",
+        "sha256": "15f000818e2f09fddb78681c3a413068efdd30b93fa40688bb5bc7f6ebf1e865"
+      },
+      {
+        "bytes": 38128,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "fe40ac28bf8a622dab9e9553fbae636d6cab7880697e488a8d95ca1f9f99d027"
+      }
+    ],
+    "scope": "Safe bounded projection of future generation supervisor failures only. Original run6 early incomplete125 and missing phase originals remain unclassified. Execution, source admission, scanner and budgets remain unchanged; no native retry or completion credit."
   },
   "generation_interpreter_alias_overrides": {
     "base_commit": "1af4c46579eb538f53516560fe191ee0b8d8196e",
@@ -585,6 +631,62 @@
     ],
     "role": "selected-probe-interpreter-relation-and-original-arm-completion",
     "scope": "Reconstructed from the published PR head after the previous cloud workspace became unavailable. These current Python overrides add runtime version 3, the exact original selected-probe requested/reported interpreter relation, required original evidence for both successful arms, and focused controls. Prior copied and successor hashes remain historical. Installation binding, frozen vendor helpers, product sources, workflows and historical evidence archives are unchanged. Fresh Linux correctness validation does not establish macOS launcher behavior or a native performance comparison."
+  },
+  "runtime_cache_metadata_compatibility_v1": {
+    "base_commit": "d1821b20ca865ac43b014f48699cdc19f22c4bc8",
+    "base_tree": "c036fb6d2249b664c25ea7bb70335f0985b6ddef",
+    "failed_run_url": "https://github.com/ictechgy/cartograph/actions/runs/38641649265",
+    "failed_source_commit": "c0ab7d1b74f17b4ff930a5607478ab69f40a7100",
+    "files": [
+      {
+        "bytes": 42778,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "f5c377d3a98d0595363854cc4b8fe8ce567d062c3b2b4ef8913846805233d3f4"
+      },
+      {
+        "bytes": 3873,
+        "path": "Scripts/benchmark-actual-arm/contract_suite.py",
+        "sha256": "e04928b3945935f45c5b3ef13018f65975e0fd21f8707bb7c04705f5ca561c59"
+      },
+      {
+        "bytes": 12269,
+        "path": "Scripts/benchmark-actual-arm/runtime/runtime_identity.py",
+        "sha256": "dbdf72d3445e451cd1cabc675803100002b7a7d3c2326d93213468259b0cc359"
+      },
+      {
+        "bytes": 13897,
+        "path": "Scripts/benchmark-actual-arm/runtime/test_runtime_identity.py",
+        "sha256": "d9f2ff289b7a95cb33d51ab9ab8442f943df0c4d6f0e873aeab8645cf4e6897d"
+      }
+    ],
+    "local_base_commit": "af0bb4e38bcb4a5f1e80dea74d88e4ecc9bf4a6e",
+    "local_validation": {
+      "dependency_scope": "Existing installed Linux psutil7.2.2 copied with synthetic installation provenance; not native package admission.",
+      "first_red_exit": 1,
+      "focused_tests": 23,
+      "integration_tests": 394,
+      "local_suite_timeout_seconds": 300,
+      "native_180s_eligibility": false,
+      "native_suite_timeout_seconds": 180,
+      "outer_kill_grace_seconds": 20,
+      "outer_timeout_seconds": 660,
+      "result_sha256": "a3a68bd172630839f3b3695ebcea620dd490ed031fbb280a1d46591397a06b7b",
+      "retained_input_brackets": 5,
+      "runtime_tests": 99,
+      "source_brackets": 204,
+      "unique_successor_methods": 493
+    },
+    "original_result": {
+      "integration_tests": 394,
+      "interpreter_version": "3.15.0",
+      "runtime_error": "KeyError: bytecode_cache",
+      "runtime_test": "test_runtime_bootstrap.BootstrapTests.test_captured_stale_package_bytecode_is_never_loaded",
+      "runtime_tests": 90,
+      "status": "retained-failed",
+      "whole_state_started": false
+    },
+    "role": "modern-and-legacy-runtime-cache-metadata-binding",
+    "scope": "Additive successor source identity only. Modern spec.cached is preferred with explicit legacy fallback for absent/None metadata; all present values are validated and dual paths must resolve identically. Missing metadata is distinct from a declared cache path whose file is absent. Cache confinement, file identities and byte caps remain unchanged. The original malicious stale-bytecode fixture and its child exit-zero, psutil 7.2.2 and absent-cache assertions are byte-preserved. CI510 remains red: its exact nested receipt was not separately retained, so this change does not reconstruct the original metadata or establish interpreter-version causation. Nine new source-backed controls raise runtime inventory from 90 to 99; integration remains 394. The original spec-only first-red failed as expected, then 23 focused identity methods and the full schema3 394+99 suites passed locally. These are 493 unique suite methods with the 23 identity methods repeated. The local-only 300-second suite allowance and 660-second outer/20-second grace do not establish native180 eligibility: integration child wall201.315739 seconds exceeds it; runtime wall45.892718 seconds. Corrected native CI remains pending. No frozen vendor, scanner, source allowlist, controller budget, native benchmark or final-protocol change. Every earlier provenance entry and execution result remains historical."
   },
   "schema_version": 1,
   "scope": "Byte identity only; runtime and native integration execution remain separately verified",
