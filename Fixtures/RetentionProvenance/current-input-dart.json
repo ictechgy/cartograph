@@ -1,0 +1,42 @@
+{
+  "format": "bridge-facts",
+  "version": 1,
+  "project": "/fixture",
+  "platform": "dart",
+  "target": "flutter",
+  "generatedAt": "2026-09-14T00:00:00Z",
+  "tool": {
+    "name": "fixture-dart",
+    "version": "1"
+  },
+  "limitations": [],
+  "facts": [
+    {
+      "kind": "channel-create",
+      "channel": "camera",
+      "dynamic": false,
+      "location": {
+        "path": "lib/bridge.dart",
+        "line": 3,
+        "column": 1
+      },
+      "symbol": {
+        "qualifiedName": "Bridge.photo"
+      }
+    },
+    {
+      "kind": "method-invoke",
+      "channel": "camera",
+      "method": "photo",
+      "dynamic": false,
+      "location": {
+        "path": "lib/bridge.dart",
+        "line": 4,
+        "column": 1
+      },
+      "symbol": {
+        "qualifiedName": "Bridge.photo"
+      }
+    }
+  ]
+}

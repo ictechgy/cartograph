@@ -1,0 +1,44 @@
+{
+  "format": "bridge-facts",
+  "version": 1,
+  "project": "/fixture",
+  "platform": "swift",
+  "target": "flutter",
+  "generatedAt": "2026-09-14T00:00:00Z",
+  "tool": {
+    "name": "fixture-swift",
+    "version": "1"
+  },
+  "limitations": [],
+  "facts": [
+    {
+      "kind": "channel-register",
+      "channel": "camera",
+      "dynamic": false,
+      "location": {
+        "path": "ios/Handler.swift",
+        "line": 3,
+        "column": 1
+      },
+      "symbol": {
+        "qualifiedName": "Handler.handle",
+        "usr": "s:handler"
+      }
+    },
+    {
+      "kind": "method-handle",
+      "channel": "camera",
+      "method": "photo",
+      "dynamic": false,
+      "location": {
+        "path": "ios/Handler.swift",
+        "line": 4,
+        "column": 1
+      },
+      "symbol": {
+        "qualifiedName": "Handler.handle",
+        "usr": "s:handler"
+      }
+    }
+  ]
+}
