@@ -462,6 +462,28 @@
   },
   "schema_version": 1,
   "scope": "Byte identity only; runtime and native integration execution remain separately verified",
+  "sdk_path_component_projection_overrides": {
+    "base_commit": "aefa12b17a32c7edf2e6485342ffc92609c29182",
+    "failed_run_url": "https://github.com/ictechgy/cartograph/actions/runs/38601748380",
+    "files": [
+      {
+        "bytes": 23633,
+        "path": "Scripts/benchmark-inputs/native_calibration_publication.py",
+        "sha256": "9493832235c1f72511213926d7fca1e81249cd10aaa965f3907b93e41697589f"
+      },
+      {
+        "bytes": 32180,
+        "path": "Scripts/benchmark-inputs/test_native_calibration_publication.py",
+        "sha256": "fddbf32baafd8351c4b6d3481509ebc7a437d2b2c002dae46df4469765add20a"
+      },
+      {
+        "bytes": 30164,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "ab41bf08f433ce3b8546755eaf94f65b2674c06d7ae224ff8e829df458893e42"
+      }
+    ],
+    "scope": "Internal SDK projection v2 encodes only full-seal-validated entry and symlink-target paths as strict component arrays, with unsplit sensitive/Windows screening and exact inverse/original/content identity checks. The generic normalizer, original seal schema, source guards, resource expectation, workflow, observer schedule/thresholds, byte caps and historical evidence remain unchanged. Rehashed malformed inputs remain refused. The first-red uses an actual temporary SDK tree and contained symlink; the unavailable run4 raw chunk prevents attribution to its exact original entry or field. Native v2 publication and final-seal acceptance remain pending; no native retry or observer eligibility is implied."
+  },
   "sdk_publication_diagnostic_overrides": {
     "base_commit": "7ddbabc2cdd544dd8787842f0f58fb00150783a1",
     "failed_run_url": "https://github.com/ictechgy/cartograph/actions/runs/38564258706",

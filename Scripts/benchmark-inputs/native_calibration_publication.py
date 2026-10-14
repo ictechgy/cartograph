@@ -8,6 +8,7 @@ import importlib.util
 import json
 import math
 from pathlib import Path
+import re
 import stat
 import time
 
@@ -15,11 +16,18 @@ HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("calibration_publication_seal", HERE / "sdk_content_seal.py")
 SEAL = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(SEAL)
+spec = importlib.util.spec_from_file_location("calibration_publication_normalizer",
+                                             HERE.parent / "normalize-indexstore-evidence.py")
+NORMALIZER = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(NORMALIZER)
+# 일반 정규화기의 Windows 검사식과 같게 유지하며, 분리 전 전체 문자열에 적용한다.
+WINDOWS_PATH = re.compile(r"(?:[A-Za-z]:[\\/]|\\\\[A-Za-z0-9])")
 MAX_FILE_BYTES = 8 * 1024**2
 MAX_TOTAL_BYTES = 64 * 1024**2
 CHUNK_BYTES = 4 * 1024**2
 PROJECTION = Path("setup/sdk-content-projection")
-SERIALIZATION = "All JSON fields and entry order preserved; original raw bytes are separately hashed."
+SERIALIZATION = ("Entry and symlink-target paths use reversible path_components; all original JSON fields and "
+                 "entry order are recovered; original raw bytes are separately hashed.")
 NORMALIZATION = "Root paths and other non-entry text may be normalized; public bytes are derivatives."
 SOURCES = {
     "before-compilation": "before-compilation/seal.json",
@@ -79,6 +87,62 @@ def seal_from_record(label: str, document: dict) -> dict:
     return seal
 
 
+def checked_path(value: str, relative: str) -> str:
+    """구성 요소 경계로 비밀이나 Windows 경로가 숨지 않도록 원문 전체를 먼저 검사한다."""
+    NORMALIZER.check_sensitive(value, relative)
+    match = WINDOWS_PATH.search(value)
+    if match:
+        NORMALIZER.block("unmapped-windows-absolute-path", relative, match.group())
+    require(SEAL.valid_relative(value), "invalid-sdk-relative-path")
+    return value
+
+
+def project_entry(entry: dict, relative: str) -> dict:
+    """전체 봉인 검증 뒤 알려진 두 경로 필드만 복사하여 가역적으로 분리한다."""
+    result = {key: value for key, value in entry.items() if key != "path"}
+    result["path_components"] = checked_path(entry["path"], relative).split("/")
+    if entry["type"] == "symlink":
+        target = entry["target"]
+        result["target"] = dict(root=target["root"],
+                                path_components=checked_path(target["path"], relative).split("/"))
+    return result
+
+
+def restore_path(components: object, relative: str) -> str:
+    """한 표기만 받아 빈 요소·구분자·부모 이동과 비정규 루트 표기를 거부한다."""
+    require(isinstance(components, list) and bool(components)
+            and all(isinstance(part, str) and part and "/" not in part and part != ".." for part in components)
+            and (components == ["."] or "." not in components), "invalid-path-components")
+    return checked_path("/".join(components), relative)
+
+
+def restore_entry(entry: object, relative: str) -> dict:
+    """일반 JSON에 신뢰를 주지 않고 v2 봉인 항목의 정확한 형식만 역변환한다."""
+    require(isinstance(entry, dict) and isinstance(entry.get("root"), str)
+            and type(entry.get("mode")) is int and 0 <= entry["mode"] <= 0o7777,
+            "invalid-projected-entry")
+    common = {"root", "path_components", "mode", "type"}
+    kind = entry.get("type")
+    if kind == "file":
+        require(set(entry) == common | {"bytes", "sha256"} and type(entry["bytes"]) is int
+                and entry["bytes"] >= 0 and SEAL.valid_sha(entry["sha256"]), "invalid-projected-entry")
+    elif kind == "directory":
+        require(set(entry) == common, "invalid-projected-entry")
+    elif kind == "symlink":
+        require(set(entry) == common | {"target", "link_text_sha256"}
+                and SEAL.valid_sha(entry["link_text_sha256"]), "invalid-projected-entry")
+        target = entry["target"]
+        require(isinstance(target, dict) and set(target) == {"root", "path_components"}
+                and isinstance(target["root"], str), "invalid-projected-target")
+    else:
+        raise ProjectionError("invalid-projected-entry")
+    result = {key: value for key, value in entry.items() if key != "path_components"}
+    result["path"] = restore_path(entry["path_components"], relative)
+    if kind == "symlink":
+        result["target"] = dict(root=target["root"], path=restore_path(target["path_components"], relative))
+    return result
+
+
 def entry_chunks(entries: list) -> list[bytes]:
     """항목 순서와 모든 필드를 그대로 두고 고정된 4 MiB 경계에서만 나눈다."""
     chunks, parts, count = [], [], 5
@@ -129,7 +193,7 @@ def record_projection(base: Path, label: str, document: dict, raw_identity: dict
     if label != "before-compilation" and entries == candidate_entries:
         row["entries_reference"] = "before-compilation"
     else:
-        row["chunks"] = write_chunks(base, label, entries)
+        row["chunks"] = write_chunks(base, label, [project_entry(entry, SOURCES[label]) for entry in entries])
     return row
 
 
@@ -158,8 +222,8 @@ def restore_documents(base: Path, *, normalized: bool = False) -> tuple[dict, di
     require(set(manifest) == {"schema_version", "kind", "accepted", "final_protocol_ready", "records",
                               "serialization", "normalization", "projection_creation_wall_seconds"},
             "invalid-projection-schema")
-    require(type(manifest["schema_version"]) is int and manifest["schema_version"] == 1
-            and manifest["kind"] == "native-calibration-sdk-entry-chunks-v1"
+    require(type(manifest["schema_version"]) is int and manifest["schema_version"] == 2
+            and manifest["kind"] == "native-calibration-sdk-entry-chunks-v2"
             and manifest["accepted"] is False and manifest["final_protocol_ready"] is False
             and set(manifest["records"]) == set(SOURCES), "invalid-projection-status")
     elapsed = manifest["projection_creation_wall_seconds"]
@@ -203,11 +267,18 @@ def restore_documents(base: Path, *, normalized: bool = False) -> tuple[dict, di
                 require(len(data) == chunk["bytes"] and digest(data) == chunk["sha256"], "chunk-identity-mismatch")
                 values = strict_array(data)
                 require(len(values) == chunk["entry_count"], "chunk-entry-count-mismatch")
-                entries.extend(values)
+                entries.extend(restore_entry(value, (PROJECTION / name).as_posix()) for value in values)
                 require(len(entries) <= SEAL.MAX_ENTRIES, "entry-count-limit")
                 expected_files.add(name)
         require(len(entries) == row["entry_count"], "total-entry-count-mismatch")
         remainder = row["document_without_entries"]
+        require(isinstance(remainder, dict), "invalid-record-remainder")
+        seal_remainder = remainder if label == "before-compilation" else remainder.get("actual")
+        require(isinstance(seal_remainder, dict) and isinstance(seal_remainder.get("roots"), dict)
+                and bool(seal_remainder["roots"]), "invalid-record-roots")
+        roots = seal_remainder["roots"]
+        require(all(entry["root"] in roots and (entry["type"] != "symlink" or entry["target"]["root"] in roots)
+                    for entry in entries), "entry-root-mismatch")
         document = ({**remainder, "entries": entries} if label == "before-compilation"
                     else {**remainder, "actual": {**remainder["actual"], "entries": entries}})
         if normalized:
@@ -287,7 +358,7 @@ def prepare_projection(raw_dir: Path, staging_dir: Path) -> dict:
             require(candidate_entries is not None, "verification-without-candidate")
         records[label] = record_projection(pending, label, document, raw_identity, candidate_entries)
         originals[label] = document
-    manifest = dict(schema_version=1, kind="native-calibration-sdk-entry-chunks-v1", accepted=False,
+    manifest = dict(schema_version=2, kind="native-calibration-sdk-entry-chunks-v2", accepted=False,
                     final_protocol_ready=False, records=records,
                     serialization=SERIALIZATION, normalization=NORMALIZATION,
                     projection_creation_wall_seconds=time.perf_counter() - started)
