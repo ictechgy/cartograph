@@ -39,9 +39,9 @@ struct RetentionProvenanceCompositionTests {
     }
 
     @Test("실제 생산자의 오래된 경고와 미지원 출처는 원래 루트·호출 근거를 바꾸지 않는다",
-          arguments: ["stale-matched", "unknown-version"])
+          arguments: ["stale-matched", "unknown-version", "current-stale-matched"])
     func matchedRootsAndEvidence(_ name: String) throws {
-        let baseline = try load("baseline")
+        let baseline = try load(name.hasPrefix("current-") ? "current-baseline" : "baseline")
         let document = try load(name)
         #expect(document.retentions == baseline.retentions)
         #expect(document.retentions.map(\.symbol.usr) == ["s:handler"])
@@ -63,14 +63,14 @@ struct RetentionProvenanceCompositionTests {
         #expect(query.limitations.contains { $0.contains(caveat) })
         #expect(explain.notes.contains { $0.contains(caveat) })
         #expect(try service.queryDocument(symbol: "missing").limitations.contains { $0.contains(caveat) })
-        if name == "stale-matched" {
+        if name.hasSuffix("stale-matched") {
             #expect(document.provenance?.sources?.count == 2)
             #expect(query.limitations.filter { $0.hasPrefix("external-retentions-source:") }.count == 2)
         }
     }
 
     @Test("실제 생산자 루트가 전혀 매치되지 않아도 문서 출처 경고는 사라지지 않는다",
-          arguments: ["stale-matched", "unknown-version"])
+          arguments: ["stale-matched", "unknown-version", "current-stale-matched"])
     func unmatchedRootsKeepContext(_ name: String) throws {
         let query = try service(name, includeHandler: false).queryDocument(symbol: "missing")
         let caveat = name == "unknown-version" ? "external-retentions-provenance-unsupported" : staleWarning
@@ -78,12 +78,13 @@ struct RetentionProvenanceCompositionTests {
         #expect(query.limitations.contains { $0.hasPrefix("external-retentions-unmatched: 1 of 1") })
     }
 
-    @Test("실제 생산자의 빈 보존 결과에도 두 캡처와 오래된 경고를 서비스가 전한다")
-    func zeroRetentionsKeepContext() throws {
-        let document = try load("zero-retentions")
+    @Test("실제 생산자의 빈 보존 결과에도 두 캡처와 오래된 경고를 서비스가 전한다",
+          arguments: ["zero-retentions", "current-zero-retentions"])
+    func zeroRetentionsKeepContext(_ name: String) throws {
+        let document = try load(name)
         #expect(document.retentions.isEmpty)
         #expect(document.provenance?.sources?.count == 2)
-        let service = try service("zero-retentions")
+        let service = try service(name)
         #expect(try service.queryDocument(symbol: "s:handler").result?.reachability.state == "unreachable")
         let missing = try service.queryDocument(symbol: "missing")
         #expect(missing.limitations.contains { $0.contains(staleWarning) })
@@ -93,7 +94,8 @@ struct RetentionProvenanceCompositionTests {
     }
 
     @Test("실제 서비스 캡처·복원·rebase는 빈 문서와 미지원 Unicode 출처까지 보존한다",
-          arguments: ["stale-matched", "zero-retentions", "unknown-version"])
+          arguments: ["stale-matched", "zero-retentions", "unknown-version",
+                      "current-baseline", "current-stale-matched", "current-zero-retentions"])
     func captureRestoreAndRebase(_ name: String) throws {
         let original = try load(name)
         let captured = try service(name).captureSnapshot()

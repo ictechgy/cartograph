@@ -1,0 +1,74 @@
+{
+  "scope": "Actual Isthmus built-CLI outputs from authored synthetic bridge inputs; native consumer validation remains required. No compiler completeness or release claim.",
+  "source_repository": "https://github.com/ictechgy/isthmus",
+  "published_source_commit": "eb9f0d94c4dea02c3f60a2949273a094965650e8",
+  "executed_local_source_commit": "bdbdd589a8159b13d25dc23e11e1586bc0125ffb",
+  "source_tree": "f6c67f495864395b7c75ecfe76b3d2f5628f5e5c",
+  "node": "v24.19.0",
+  "source_hashes": {
+    "package.json": "563cc85abbb7a67c76067567b90ecd4114e0f3df383fc0cf3703543ec2908794",
+    "package-lock.json": "d1299513d976af6d0a80a0498ec85be42d9b75ccea53d125adf71855a949949e",
+    "src/report/retentions.ts": "b3872ad8518d48f473ff188d540c5610776265793e450fd4833fd220393b8f45",
+    "src/cli/retentions-command.ts": "d6c579a5e33b48e616a663e92b4ed2ccb131836997e63e6daebb048dcf6e817b",
+    "fixtures/bridge/dart.json": "850383b01e53dba72028b85e0610bd8586718eeef0f8563898f670e40761c5c0",
+    "fixtures/bridge/swift.json": "e6b9c5170c583de3ffbd30b4cea799c6a69ee09e2ba16d8ba3b700552fde7d75"
+  },
+  "runtime_entry_sha256": "6a5c8cdc14d33789783ea431ed919151ac83b996ab6ea170e946b88b2bd97d65",
+  "runtime_retention_sha256": "da9f9657e3e7bbcfe80b74875a12347697f0510a2f534c58ec417341169b932e",
+  "cases": [
+    {
+      "case": "baseline",
+      "output": "cartograph-current-baseline.json",
+      "output_sha256": "c57bb39a19dc6f763e8e7de621b0d8b39443b1e8d0c8a1cd239cd00e836651c6",
+      "actual_exit": 0,
+      "wall_ns": 162510300,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "inputs": [
+        {
+          "path": "current-input-dart.json",
+          "sha256": "850383b01e53dba72028b85e0610bd8586718eeef0f8563898f670e40761c5c0"
+        },
+        {
+          "path": "current-input-swift.json",
+          "sha256": "e6b9c5170c583de3ffbd30b4cea799c6a69ee09e2ba16d8ba3b700552fde7d75"
+        }
+      ]
+    },
+    {
+      "case": "stale",
+      "output": "cartograph-current-stale-matched.json",
+      "output_sha256": "822236c5a2414278ed69c0a73c08d00f4d521cf11089209ee954562584238ed0",
+      "actual_exit": 0,
+      "wall_ns": 156714513,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "inputs": [
+        {
+          "path": "current-input-dart.json",
+          "sha256": "850383b01e53dba72028b85e0610bd8586718eeef0f8563898f670e40761c5c0"
+        },
+        {
+          "path": "current-input-swift-stale.json",
+          "sha256": "0d27e52bd72651d6facf667d52fbac4953cf23a13f456222221de5d753d4193a"
+        }
+      ]
+    },
+    {
+      "case": "zero",
+      "output": "cartograph-current-zero-retentions.json",
+      "output_sha256": "353b571525fcf597351d5f701100a5f6542bbd595b6378874629173aee651439",
+      "actual_exit": 0,
+      "wall_ns": 197124850,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "inputs": [
+        {
+          "path": "current-input-dart-zero.json",
+          "sha256": "b75dad72e9004141388347b183f5d5b8729a7d3a0e1296d9ef12a4355ece5b9e"
+        },
+        {
+          "path": "current-input-swift-stale.json",
+          "sha256": "0d27e52bd72651d6facf667d52fbac4953cf23a13f456222221de5d753d4193a"
+        }
+      ]
+    }
+  ]
+}
