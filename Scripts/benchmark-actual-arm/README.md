@@ -233,6 +233,15 @@ image, machine, compiler, SDK, alias or declared absence refuses; the workflow d
 replacement. Its 45-minute overall cap can interrupt the sum of individual stage budgets. An interrupted
 run is incomplete, and the declared maximum durations do not promise every stage will execute.
 
+The manual workflow defaults to `mode=calibration`. Its separate `sdk-publication-only` mode retains
+the same exact source/native checks, controls and measurement installation, then captures the two roots
+once and invokes the existing safe SDK publisher. Tool/fixture builds, mixed generations, compiler-path
+discovery, later seal checks and all 32 engine invocations are skipped. The projection explicitly records
+the absent later seals and keeps `accepted=false` and `final_protocol_ready=false`. This smaller diagnostic
+can expose a fresh publication failure category; it cannot recover the missing category from an earlier
+run or establish observer eligibility. Unknown, empty or missing execution-mode fields refuse before
+checkout; neither mode changes the scanner, caps, expectations or calibration thresholds.
+
 The resource regime `github-hosted-macos-26-standard-m1-3core-7gib-v1` prospectively requires the
 [documented standard runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners):
 Apple M1 (Virtual), three logical/physical cores and 7,516,192,768 bytes of RAM. It does not accept either

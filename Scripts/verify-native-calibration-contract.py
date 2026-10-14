@@ -875,27 +875,73 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
         for forbidden in ("continue-on-error:", "strategy:", "matrix:", "environment:", "secrets:"):
             self.assertNotIn(forbidden, workflow)
 
-    def guard(self, changes=None):
+    def test_dispatch_mode_is_required_exact_choice_with_calibration_default(self):
+        trigger = WORKFLOW.read_text().split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+        self.assertEqual(re.findall(r"^      ([a-z_]+):", trigger, re.MULTILINE), ["source_sha", "mode"])
+        mode = re.search(r"^      mode:\n(.*?)(?=^      \w+:|\Z)", trigger, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(mode)
+        self.assertEqual(re.findall(r"^        (required|type|default): (.*)$", mode.group(1), re.MULTILINE),
+                         [("required", "true"), ("type", "choice"), ("default", "calibration")])
+        self.assertEqual(re.findall(r"^          - (.*)$", mode.group(1), re.MULTILINE),
+                         ["calibration", "sdk-publication-only"])
+        guard = workflow_step("Require exact dispatch source and native image")
+        self.assertEqual(re.findall(r"^          RUN_MODE: (.*)$", guard, re.MULTILINE), ["${{ inputs.mode }}"])
+
+    def test_sdk_only_mode_leaves_all_original_workflow_bytes_unchanged(self):
+        original = WORKFLOW.read_bytes()
+        additions = [
+            (b"      mode:\n"
+             b"        description: Full calibration or one SDK capture and safe publication only\n"
+             b"        required: true\n"
+             b"        type: choice\n"
+             b"        default: calibration\n"
+             b"        options:\n"
+             b"          - calibration\n"
+             b"          - sdk-publication-only\n", 1),
+            (b"          RUN_MODE: ${{ inputs.mode }}\n", 1),
+            (b"          assert os.environ['RUN_MODE'] in ('calibration', 'sdk-publication-only')\n", 1),
+            (b"        if: inputs.mode == 'calibration'\n", 5),
+        ]
+        for addition, count in additions:
+            self.assertEqual(original.count(addition), count)
+            original = original.replace(addition, b"")
+        self.assertEqual(hashlib.sha256(original).hexdigest(),
+                         "15eefb6a1891aa42e847d83fac766b3833998a675a4a1bcc61e8057a53b45a27")
+
+    def guard(self, changes=None, missing=()):
         body = workflow_step("Require exact dispatch source and native image")
         shell = textwrap.dedent(body.split("        run: |\n", 1)[1])
         match = re.fullmatch(r"python3 - <<'PY'\n(.*?)\nPY\s*", shell, re.DOTALL)
         self.assertIsNotNone(match)
-        env = dict(SOURCE_SHA="a" * 40, DISPATCH_SHA="a" * 40,
+        env = dict(SOURCE_SHA="a" * 40, DISPATCH_SHA="a" * 40, RUN_MODE="calibration",
                    ImageOS="macos26", ImageVersion="20260907.0351.1")
         env.update(changes or {})
+        for name in missing:
+            env.pop(name)
         with mock.patch.dict(os.environ, env, clear=True):
             exec(compile(match.group(1), str(WORKFLOW) + ":dispatch-guard", "exec"), {})
 
     def test_dispatch_guard_accepts_only_exact_sha_and_image(self):
-        self.guard()
-        for changes in (
-            {"SOURCE_SHA": "main"}, {"SOURCE_SHA": "a" * 39}, {"SOURCE_SHA": "A" * 40},
-            {"SOURCE_SHA": "a" * 40 + "\n"}, {"DISPATCH_SHA": "b" * 40},
-            {"ImageOS": "macos15"}, {"ImageVersion": "20260908.1"},
-            {"ImageVersion": ""},
-        ):
-            with self.subTest(changes=changes), self.assertRaises(AssertionError):
-                self.guard(changes)
+        for mode in ("calibration", "sdk-publication-only"):
+            self.guard({"RUN_MODE": mode})
+            for changes in (
+                {"SOURCE_SHA": "main"}, {"SOURCE_SHA": "a" * 39}, {"SOURCE_SHA": "A" * 40},
+                {"SOURCE_SHA": "a" * 40 + "\n"}, {"DISPATCH_SHA": "b" * 40},
+                {"ImageOS": "macos15"}, {"ImageVersion": "20260908.1"}, {"ImageVersion": ""},
+            ):
+                with self.subTest(mode=mode, changes=changes), self.assertRaises(AssertionError):
+                    self.guard({"RUN_MODE": mode, **changes})
+            for name in ("SOURCE_SHA", "DISPATCH_SHA", "ImageOS", "ImageVersion"):
+                with self.subTest(mode=mode, missing=name), self.assertRaises((AssertionError, KeyError)):
+                    self.guard({"RUN_MODE": mode}, missing=(name,))
+
+    def test_dispatch_guard_refuses_unknown_empty_or_missing_mode(self):
+        for mode in ("", "unknown", "sdk", "CALIBRATION", "SDK-PUBLICATION-ONLY", "false",
+                     " calibration", "calibration\n", "sdk-publication-only ", "sdk-publication-only\n"):
+            with self.subTest(mode=mode), self.assertRaises(AssertionError):
+                self.guard({"RUN_MODE": mode})
+        with self.assertRaises((AssertionError, KeyError)):
+            self.guard(missing=("RUN_MODE",))
 
     def test_checkout_actions_and_artifact_actions_are_exact_pins(self):
         workflow = WORKFLOW.read_text()
@@ -904,6 +950,7 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
         checkout = workflow.split("- uses: " + CHECKOUT, 1)[1].split("\n      - ", 1)[0]
         self.assertIn("ref: ${{ inputs.source_sha }}", checkout)
         self.assertIn("persist-credentials: false", checkout)
+        self.assertNotIn("        if:", checkout)
         self.assertLess(workflow.index("name: Require exact dispatch source and native image"),
                         workflow.index("- uses: " + CHECKOUT))
 
@@ -927,8 +974,50 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
         ]
         positions = [workflow.index("name: " + name) for name in names]
         self.assertEqual(positions, sorted(positions))
-        for name in names[:-1]:
+        for name in names[:3]:
             self.assertNotIn("        if:", workflow_step(name))
+
+    def test_complete_mode_and_followon_conditions_keep_sdk_only_producers_skipped(self):
+        calibration = "inputs.mode == 'calibration'"
+        always = "always() && !cancelled() && "
+        expected = [
+            ("Require exact dispatch source and native image", None, None),
+            ("Verify exact checkout and local contracts", None, None),
+            ("Prepare the existing isolated measurement installation", "measurement", None),
+            ("Capture SDK and toolchain before covered compilation", "before", None),
+            ("Build the existing source-pinned tools and validation fixture", "tools", calibration),
+            ("Compile the existing mixed validation generations", "mixed", calibration),
+            ("Bind actual compiler search paths", "discovery", calibration),
+            ("Verify precompilation content and discovery relation", "after_generation", calibration),
+            ("Execute the fixed 32 actual-engine calibration invocations", "engines", calibration),
+            ("Verify content after the completed calibration attempt", "after_calibration",
+             always + "steps.after_generation.outcome == 'success' && steps.engines.outcome != 'skipped'"),
+            ("Prepare safe original calibration evidence", "engines_public",
+             always + "steps.engines.outcome != 'skipped'"),
+            ("Retain normalized calibration evidence", None,
+             "always() && steps.engines_public.outputs.ready == 'true'"),
+            ("Prepare safe SDK candidate evidence", "sdk_public", always + "steps.before.outcome != 'skipped'"),
+            ("Retain normalized SDK candidate evidence", None, "always() && steps.sdk_public.outcome == 'success'"),
+            ("Prepare normalized measurement evidence", "measurement_normalize",
+             always + "steps.measurement.outcome != 'skipped'"),
+            ("Preserve normalized measurement evidence", None,
+             "always() && steps.measurement_normalize.outcome == 'success'"),
+            ("Prepare safe SDK discovery evidence", "sdk_normalize", always + "steps.discovery.outcome != 'skipped'"),
+            ("Preserve normalized SDK discovery evidence", None,
+             "always() && steps.sdk_normalize.outputs.ready == 'true'"),
+            ("Prepare portable public evidence", "normalize", always + "steps.tools.outcome != 'skipped'"),
+            ("Preserve normalized comparison evidence", None, "always() && steps.normalize.outputs.ready == 'true'"),
+        ]
+        steps = ["name: " + name for name, _, _ in expected]
+        steps.insert(1, "uses: " + CHECKOUT)
+        self.assertEqual(re.findall(r"^      - (.*)$", WORKFLOW.read_text(), re.MULTILINE), steps)
+        for name, step_id, condition in expected:
+            with self.subTest(step=name):
+                body = workflow_step(name)
+                self.assertEqual(re.findall(r"^        id: (.*)$", body, re.MULTILINE),
+                                 [] if step_id is None else [step_id])
+                self.assertEqual(re.findall(r"^        if: (.*)$", body, re.MULTILINE),
+                                 [] if condition is None else [condition])
 
     def test_workflow_uses_supervision_and_retains_only_gated_public_artifacts(self):
         names = {
@@ -953,9 +1042,12 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
         sdk = workflow_step("Retain normalized SDK candidate evidence")
         self.assertIn("steps.engines_public.outputs.ready == 'true'", actual)
         self.assertIn("steps.sdk_public.outcome == 'success'", sdk)
+        self.assertIn("name: actual-engine-observer-calibration", actual)
+        self.assertIn("name: native-sdk-content-candidate", sdk)
         self.assertIn("path: ${{ runner.temp }}/actual-arm-correctness-public/", actual)
         self.assertIn("path: ${{ runner.temp }}/native-calibration-sdk-public/", sdk)
         for body in (actual, sdk):
+            self.assertIn("include-hidden-files: true", body)
             self.assertIn("if-no-files-found: error", body)
             self.assertIn("retention-days: 14", body)
             self.assertNotRegex(body, r"path:.*(?:-raw|staging|runner\.temp\s*}}/\s*$)")
@@ -965,15 +1057,15 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
         groups = [
             ("Prepare normalized measurement evidence", "Preserve normalized measurement evidence",
              "Scripts/normalize-indexstore-evidence.py", "measurement_normalize.outcome == 'success'",
-             "measurement-helper-public"),
+             "measurement-helper-public", "measurement-helper-validation"),
             ("Prepare safe SDK discovery evidence", "Preserve normalized SDK discovery evidence",
              "Scripts/normalize-sdk-discovery-evidence.py", "sdk_normalize.outputs.ready == 'true'",
-             "sdk-discovery-public"),
+             "sdk-discovery-public", "sdk-input-discovery"),
             ("Prepare portable public evidence", "Preserve normalized comparison evidence",
              "Scripts/normalize-indexstore-bundles.py", "normalize.outputs.ready == 'true'",
-             "indexstore-cli-public"),
+             "indexstore-cli-public", "indexstore-cli-comparison"),
         ]
-        for prepare_name, upload_name, script, gate, output in groups:
+        for prepare_name, upload_name, script, gate, output, artifact in groups:
             with self.subTest(output=output):
                 prepare, upload = workflow_step(prepare_name), workflow_step(upload_name)
                 self.assertIn("python3 " + script, prepare)
@@ -982,7 +1074,9 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
                 self.assertIn('"$RUNNER_TEMP/' + output + '"', prepare)
                 self.assertIn("if: always() && steps." + gate, upload)
                 self.assertIn("uses: " + UPLOAD, upload)
+                self.assertIn("name: " + artifact, upload)
                 self.assertIn("path: ${{ runner.temp }}/" + output + "/", upload)
+                self.assertIn("include-hidden-files: true", upload)
                 self.assertIn("if-no-files-found: error", upload)
                 self.assertIn("retention-days: 14", upload)
                 self.assertNotRegex(upload, r"path:.*(?:-raw|staging)")
