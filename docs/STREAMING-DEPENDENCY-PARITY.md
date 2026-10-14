@@ -6,6 +6,10 @@ Only `record`/`file` dependencies materialize a path; only admitted record conte
 materialize a module and record name. `kind` is read once per dependency and
 `isSystem` once per admitted occurrence/date context. Every borrowed dependency
 stays in the callback. Only owned strings and `Record` values are retained.
+Unit provider text and the system-unit flag are copied before entering the
+dependency callback, so that callback borrows no unit properties. Provider-kind
+validation remains lazy after the admitted-record guard; an unadmitted unit's
+provider identifier is not parsed or rejected.
 
 The baseline is commit `7a638355dee84ef01a2b6d7e4e60eea850554abf`, tree
 `4241cb3c800b45a50f3d79db7511ce87374b2a72`. Its reader SHA-256 is
@@ -129,6 +133,13 @@ has already copied that unit's dependencies; the success-only count formula does
 not claim equal partial enumeration on failure. Error and tracked/cache-trace
 parity remain required.
 
+The lifetime correction also eagerly owns one provider-identifier string per
+unit, outside those dependency counters. Previously this conversion happened
+only for a unit with an admitted record. Units without admitted records therefore
+add a provider-string conversion; admitted units materialize it earlier. The
+dependency-only `3D` versus `F + 2A` counts are not evidence of an overall
+allocation or memory reduction.
+
 Each successful pair emits one test-only `cartograph-streaming-dependency-parity-v1`
 line with sorted-key JSON: both integer counter records and both cache-open event
 counts. It contains no paths, symbol names, or pass flag. Preserve the ordinary
@@ -138,14 +149,23 @@ from the actual native test result, never from the presence of a count record.
 ## Verification status
 
 Source-only preparation passed `git diff --check`, exact unchanged-prefix/suffix
-checks outside dependency admission, and 15 focused Python generator controls.
+checks outside dependency admission, and 16 focused Python generator controls.
 The current run includes the count-record schema and macOS temporary-path
 normalization checks. Ten separate pilot controls also passed. Both final control
 groups ran under the shared nonblocking local lock; neither invoked Swift.
 Two earlier 14-control runs were reported from tool output only and are retained
-separately rather than relabeled as the final run. Swift
-compilation, native fixture parity, coverage, CLI/fixture/self-analysis gates and
-the separately reviewed fixed native pilot have not run in this environment.
+separately rather than relabeled as the final run.
+
+The first native attempt, CI run 476 on Swift 6.3.3, failed while compiling the
+candidate, before any query capture. The retained build diagnostic at
+`synthetic/setup/cartograph-build.stdout` reports that the original callback's
+`unit.providerIdentifier.string` at reader line 106 lets a lifetime-dependent
+value escape its scope. That failed attempt provides no runtime parity or
+performance evidence. The correction materializes the provider string and
+system-unit boolean before the callback, preserving lazy provider-kind parsing.
+Its new focused source-transform control passed in the fresh 16-control run;
+native compilation is still pending. Native fixture parity, coverage,
+CLI/fixture/self-analysis gates and the fixed native pilot remain unverified.
 The largest `raw_snapshot` phase does not identify an allocation hotspot. No
 speed, memory or allocation improvement is claimed before the native evidence.
 

@@ -50,6 +50,10 @@ def replace_once(text, old, new):
 
 def candidate_from_baseline(baseline):
     text = replace_once(baseline, EAGER_MAP, "")
+    text = replace_once(text, "            let timestamp = unit.modificationDate\n",
+        "            let timestamp = unit.modificationDate\n"
+        "            let providerIdentifier = unit.providerIdentifier.string\n"
+        "            let isSystemUnit = unit.isSystemUnit\n")
     text = replace_once(text,
         "            for dependency in dependencies where dependency.kind == .record || dependency.kind == .file {\n",
         "            try unit.dependencies.forEach { dependency in\n"
@@ -65,7 +69,9 @@ def candidate_from_baseline(baseline):
     text = replace_once(text, "record: dependency.name,", "record: dependency.name.string,")
     if text.count("unit.isSystemUnit || dependency.isSystem") != 2:
         raise ValueError("Unexpected system-context expression count")
-    text = text.replace("unit.isSystemUnit || dependency.isSystem", "unit.isSystemUnit || isSystem")
+    text = text.replace("unit.isSystemUnit || dependency.isSystem", "isSystemUnit || isSystem")
+    text = replace_once(text, "try providerKind(unit.providerIdentifier.string, unit: unitName)",
+        "try providerKind(providerIdentifier, unit: unitName)")
     text = replace_once(text, "                    provider: provider\n                ))\n",
         "                    provider: provider\n                ))\n                return .continue\n")
     return text

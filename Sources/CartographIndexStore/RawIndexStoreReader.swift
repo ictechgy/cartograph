@@ -74,6 +74,8 @@ struct RawIndexStoreReader {
             let module = unit.moduleName.string
             let workingDirectory = unit.workingDirectory.string
             let timestamp = unit.modificationDate
+            let providerIdentifier = unit.providerIdentifier.string
+            let isSystemUnit = unit.isSystemUnit
             var unitProvider: DBSymbolProviderKind?
             try unit.dependencies.forEach { dependency in
                 let kind = dependency.kind
@@ -91,7 +93,7 @@ struct RawIndexStoreReader {
                 // 다른 인덱스 소비자와 같이 실제 경로를 써야 정확히 결합된다.
                 let locationPath = Self.sourceLocationPath(path, fileSystem: fileSystem)
                 if path.hasSuffix(".h") {
-                    if unit.isSystemUnit || isSystem { systemHeaderPaths.insert(locationPath) }
+                    if isSystemUnit || isSystem { systemHeaderPaths.insert(locationPath) }
                     if kind == .file {
                         fileOnlyHeaderUnits[locationPath, default: []].insert(unitName)
                     }
@@ -103,7 +105,7 @@ struct RawIndexStoreReader {
                 if let unitProvider {
                     provider = unitProvider
                 } else {
-                    let parsed = try providerKind(unit.providerIdentifier.string, unit: unitName)
+                    let parsed = try providerKind(providerIdentifier, unit: unitName)
                     unitProvider = parsed
                     provider = parsed
                 }
@@ -115,7 +117,7 @@ struct RawIndexStoreReader {
                     path: locationPath,
                     module: recordModule,
                     timestamp: timestamp,
-                    isSystem: unit.isSystemUnit || isSystem,
+                    isSystem: isSystemUnit || isSystem,
                     provider: provider
                 ))
                 return .continue

@@ -105,6 +105,24 @@ class PreparationContracts(unittest.TestCase):
             self.assertIn("var loadedRecords = RecordCache(capacity: 64)", generated)
             self.assertIn("let relationSymbol = rawRelation.symbol", generated)
 
+    def test_unit_metadata_is_owned_before_callback_but_provider_validation_remains_lazy(self):
+        candidate = P.candidate_from_baseline(BASELINE)
+        prefix, callback = candidate.split("try unit.dependencies.forEach { dependency in", 1)
+        callback = callback.split("\n        records.sort", 1)[0]
+        self.assertIn("let providerIdentifier = unit.providerIdentifier.string", prefix)
+        self.assertIn("let isSystemUnit = unit.isSystemUnit", prefix)
+        self.assertEqual(candidate.count("unit.providerIdentifier.string"), 1)
+        self.assertEqual(candidate.count("unit.isSystemUnit"), 1)
+        self.assertNotRegex(callback, r"\bunit\s*\.")
+        self.assertNotIn("try providerKind(", prefix)
+        guard = "guard readsOccurrences, kind == .record else { return .continue }"
+        parse = "let parsed = try providerKind(providerIdentifier, unit: unitName)"
+        self.assertEqual(callback.count(parse), 1)
+        self.assertLess(callback.index(guard), callback.index("if let unitProvider"))
+        self.assertLess(callback.index("if let unitProvider"), callback.index(parse))
+        self.assertIn("unitProvider = parsed", callback)
+        self.assertEqual(callback.count("isSystemUnit || isSystem"), 2)
+
     def test_native_evidence_schema_contains_counts_and_no_identity_fields(self):
         template = (self.repository / "Scripts/streaming-dependency-parity/Assertions.swift").read_text()
         evidence = re.search(r"struct DependencyParityEvidence: Encodable \{(.*?)\n\}", template, re.S).group(1)
