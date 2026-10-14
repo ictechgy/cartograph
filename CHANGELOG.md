@@ -12,8 +12,13 @@ in source but never published. Its pending fixes are consolidated below.
 
 - Preserve optional external-retentions upstream provenance and limitations through analysis,
   explain notes and lossless snapshots. Bound raw input and display independently; stale, unknown,
-  legacy and zero-entry context stays explicit without changing retention matching. Coordinated
-  Isthmus/Cartograph/Kartograph provenance support remains unreleased pending integration gates.
+  legacy and zero-entry context stays explicit without changing retention matching. Source-built
+  macOS roundtrip, public-plugin and limitation-scope integration gates passed. Composition using
+  compiler-backed Kotlin identities, actual Dartograph/Isthmus producers and the candidate Kartograph
+  consumer also passed with authored Flutter API stubs; no Dart/Flutter application build or runtime
+  is established. At validation time, published Isthmus and Kartograph versions did not yet include
+  the coordinated provenance feature. Companion merge and publication gates remain independent
+  of this validated Cartograph support.
 
 ### Added
 
