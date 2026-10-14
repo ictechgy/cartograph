@@ -59,10 +59,11 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 
 ## Install
 
-The latest published CLI is **0.25.0**; the versioned install examples below use that release.
-The development branch is preparing **0.26.0**, which has no release tag or downloadable binary yet.
-Version 0.25.1 was prepared in source but never published; its pending changes are included in
-[Unreleased](CHANGELOG.md#unreleased).
+Check [GitHub Releases](https://github.com/ictechgy/cartograph/releases) for published CLI versions
+and available binary assets. The versioned install examples below pin **0.25.0** for reproducibility;
+change the pin only to a published version you have verified. A source checkout's `--version` reports
+its source version and does not establish release availability. Version 0.25.1 was prepared in source
+but never published; see [CHANGELOG.md](CHANGELOG.md) for the incorporated changes.
 
 Requires macOS 14+ and a Swift toolchain (Xcode or the Command Line Tools) at run time —
 Cartograph loads `libIndexStore` from it. Development uses Swift 6.4; CI selects the newest Xcode
