@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import importlib.util
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -203,7 +205,9 @@ class ControllerTests(unittest.TestCase):
         value = dict(profile=M.PROFILE, accepted=False, final_protocol_ready=False, actual_engine_calls=0,
                      command=row, helper_sha256=M.source_hashes(),
                      python=M.GENERATIONS.interpreter_identity(sys.executable), source_inputs_unchanged=True,
-                     child_timeout_seconds=1815, originals=originals, exit_code=0 if actual_code == 0 else 125,
+                     child_timeout_seconds=1815, originals=originals,
+                     child_diagnostic=M.child_diagnostic(output, row, originals),
+                     exit_code=0 if actual_code == 0 else 125,
                      full_call_wall_seconds_before_receipt=0.5,
                      charged_wall_seconds_by_arm={arm: 0.5 for arm in M.GENERATIONS.ARMS})
         (output / "results.json").write_text(json.dumps(value))
@@ -338,6 +342,24 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "generation-command-original-changed"):
             M.verify_controller(self.root)
 
+    def test_publication_recomputes_typed_diagnostic_from_original_streams(self):
+        self.execute()
+        path = self.root / "native-generation-supervisor/results.json"
+        original = M.read(path)
+        for mutate in (lambda value: value["child_diagnostic"].update(observed_returncode=False),
+                       lambda value: value["child_diagnostic"].update(status="decoded"),
+                       lambda value: value["child_diagnostic"].update(wall_seconds=0),
+                       lambda value: value["child_diagnostic"]["original_sha256"].update(stdout="a" * 64),
+                       lambda value: value.pop("child_diagnostic")):
+            value = copy.deepcopy(original)
+            mutate(value)
+            path.write_text(json.dumps(value))
+            with self.subTest(mutate=mutate), self.assertRaisesRegex(ValueError, "generation-diagnostic-changed"):
+                M.verify_controller(self.root)
+        path.write_text(json.dumps(original))
+        self.assertEqual(M.verify_controller(self.root), M.reference(
+            self.root / "native-calibration-sdk-calls/generation-controller.json"))
+
     def test_complete_inner_cannot_hide_controller_close_failure_or_outer_lateness(self):
         result = self.execute()
         self.supervisor_fixture(result, code=125)
@@ -424,6 +446,223 @@ class GenerationPublicationTests(unittest.TestCase):
                                                          profile=M.PROFILE)
         self.assertEqual(set(costs), {"prepare_projection", "normalizer", "verify_publication", "verify_sources"})
         self.assertTrue(all(row["full_wall_seconds"] >= 0 for row in costs.values()))
+
+
+
+class DiagnosticTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.output = self.root / "native-generation-supervisor"
+        self.failure = dict(phase="before-compilation", failure_type="GenerationError", failure_sha256="c" * 64)
+        self.inner = dict(status="incomplete", exit_code=125, actual_engine_calls=0, accepted=False,
+                          final_protocol_ready=False, first_failure=self.failure)
+        self.row = dict(completed=True, passed=False, returncode=125, observed_returncode=125, failure=None,
+                        cleanup_signals=[], cleanup_root_unfinished=False, wall_seconds=0.25)
+
+    def files(self, stdout=None, stderr=""):
+        self.output.mkdir(exist_ok=True)
+        data = json.dumps(self.inner) if stdout is None else stdout
+        values = {".json": json.dumps(self.row), ".stdout": data, ".stderr": stderr}
+        for suffix, text in values.items():
+            (self.output / ("command" + suffix)).write_text(text)
+        return {suffix: M.reference(self.output / ("command" + suffix)) for suffix in values}
+
+    def diagnostic(self, stdout=None, stderr=""):
+        return M.child_diagnostic(self.output, self.row, self.files(stdout, stderr))
+
+    def supervised(self, stdout=None, stderr="", *, clock=None, mutate=None):
+        wrapper = mock.Mock()
+        def command(argv, cwd, stem, environment, timeout):
+            self.assertEqual(argv, M.controller_argv(self.root))
+            self.assertEqual(timeout, 1815)
+            values = {".json": json.dumps(self.row), ".stdout": json.dumps(self.inner) if stdout is None else stdout,
+                      ".stderr": stderr}
+            for suffix, text in values.items():
+                (self.output / ("command" + suffix)).write_text(text)
+            if mutate is not None:
+                mutate(self.output)
+            return self.row
+        wrapper.COMMAND.command.side_effect = command
+        with contextlib.ExitStack() as stack:
+            for owner, name, value in ((M, "load_wrapper", wrapper), (M, "source_hashes", {"fixed": "a" * 64}),
+                                      (M.GENERATIONS, "interpreter_identity", {"fixed": "b" * 64}),
+                                      (M.GENERATIONS, "verify_interpreter_identity", True)):
+                stack.enter_context(mock.patch.object(owner, name, return_value=value))
+            if clock is not None:
+                stack.enter_context(mock.patch.object(M.time, "monotonic", side_effect=clock))
+            result = M.supervise(self.root)
+        wrapper.COMMAND.command.assert_called_once()
+        return result
+
+    def test_supervisor_emits_safe_failure_and_actual_child_status(self):
+        result = self.supervised(clock=[1.0, 2.0])
+        self.assertIn("child_diagnostic", result)
+        summary = result["child_diagnostic"]
+        self.assertEqual(summary["status"], "decoded")
+        self.assertEqual(summary["failures"], {"first_failure": self.failure})
+        self.assertEqual((summary["returncode"], summary["observed_returncode"], summary["wall_seconds"]),
+                         (125, 125, 0.25))
+        self.assertEqual(set(summary["original_sha256"]), {"command", "stdout", "stderr"})
+        self.assertEqual(result["exit_code"], 125)
+        self.assertEqual(result["full_call_wall_seconds_before_receipt"], 1.0)
+        self.assertEqual(result["charged_wall_seconds_by_arm"], {arm: 1.0 for arm in M.GENERATIONS.ARMS})
+        with mock.patch.object(M, "load_wrapper") as wrapper, mock.patch.object(M, "supervise", return_value=result), \
+             mock.patch.object(sys, "argv", ["controller", "--scratch-root", str(self.root)]), \
+             contextlib.redirect_stdout(io.StringIO()) as stdout:
+            wrapper.return_value.fixed_root.return_value = self.root
+            self.assertEqual(M.main(), 125)
+        public = json.loads(stdout.getvalue())
+        self.assertEqual(public["child_diagnostic"], summary)
+        self.assertNotIn(str(self.root), stdout.getvalue())
+        self.assertIs(public["accepted"], False)
+
+    def test_early_refusal_and_close_recovery_fields_are_safe_projections(self):
+        refusal = dict(status="refused", failure_type="PermissionError", failure_sha256="d" * 64)
+        value = self.diagnostic("", json.dumps(refusal))
+        self.assertEqual(value["source"], "stderr")
+        self.assertEqual(value["failures"]["first_failure"]["phase"], None)
+        self.inner["receipt_failure"] = dict(self.failure, phase="final-receipt")
+        self.inner["receipt_recovery_failure"] = dict(failure_type="OSError", failure_sha256="e" * 64)
+        value = self.diagnostic()
+        self.assertEqual(set(value["failures"]), {"first_failure", "receipt_failure", "receipt_recovery_failure"})
+        self.assertEqual(value["failures"]["first_failure"], self.failure)
+
+    def test_arbitrary_paths_secrets_fields_types_and_hashes_never_escape(self):
+        secret = "/private/customer/token=secret-value"
+        variants = []
+        for key in ("phase", "failure_type", "failure_sha256", "extra"):
+            value = copy.deepcopy(self.inner)
+            value["first_failure"][key] = secret
+            variants.append(value)
+        for key, entry in (("phase", ["before-compilation"]), ("failure_sha256", "A" * 64),
+                           ("failure_sha256", "c" * 63), ("failure_type", True)):
+            value = copy.deepcopy(self.inner)
+            value["first_failure"][key] = entry
+            variants.append(value)
+        variants.extend(({**self.inner, "unexpected": secret}, {**self.inner, "accepted": 0},
+                         {**self.inner, "actual_engine_calls": False}, {**self.inner, "exit_code": False}))
+        for inner in variants:
+            with self.subTest(inner=inner):
+                value = self.diagnostic(json.dumps(inner), secret)
+                self.assertEqual(value["status"], "unavailable")
+                self.assertEqual(value["failures"], {})
+                self.assertNotIn(secret, json.dumps(value))
+        with tempfile.TemporaryDirectory() as directory:
+            self.root = Path(directory).resolve()
+            self.output = self.root / "native-generation-supervisor"
+            result = self.supervised(json.dumps(variants[0]), secret)
+        self.assertEqual(result["exit_code"], 125)
+        self.assertNotIn(secret, json.dumps(result["child_diagnostic"]))
+
+    def test_missing_malformed_duplicate_and_nonregular_receipts_are_unavailable(self):
+        for text in ("", "not json /private/secret", "[]", "null", '{"status":1,"status":2}',
+                     '{"status":NaN}', '{"status":Infinity}', json.dumps({"status": "refused"})):
+            with self.subTest(text=text):
+                self.assertEqual(self.diagnostic(text)["status"], "unavailable")
+        originals = self.files()
+        target = self.output / "command.stdout"
+        target.unlink()
+        self.assertEqual(M.child_diagnostic(self.output, self.row, originals)["status"], "unavailable")
+        target.symlink_to(self.output / "command.stderr")
+        self.assertEqual(M.child_diagnostic(self.output, self.row, originals)["status"], "unavailable")
+        target.unlink()
+        target.mkdir()
+        self.assertEqual(M.child_diagnostic(self.output, self.row, originals)["status"], "unavailable")
+
+    def test_changed_oversize_or_unreadable_receipt_preserves_failure(self):
+        originals = self.files()
+        path = self.output / "command.stdout"
+        path.write_text(json.dumps({**self.inner, "first_failure": dict(self.failure, phase="after-generation")}))
+        self.assertEqual(M.child_diagnostic(self.output, self.row, originals)["status"], "unavailable")
+        with path.open("w") as stream:
+            stream.truncate(8 * 1024**2 + 1)
+        self.assertEqual(M.child_diagnostic(self.output, self.row, originals)["status"], "unavailable")
+        with mock.patch.object(M.GENERATIONS.SELECTOR, "file_identity", side_effect=PermissionError("secret-path")):
+            value = M.child_diagnostic(self.output, self.row, originals)
+        self.assertEqual(value["status"], "unavailable")
+        self.assertNotIn("secret-path", json.dumps(value))
+
+    def test_typed_child_values_refuse_booleans_nonfinite_and_missing(self):
+        for field, value in (("returncode", True), ("observed_returncode", False), ("returncode", "125"),
+                             ("returncode", 256), ("wall_seconds", True), ("wall_seconds", float("inf")),
+                             ("wall_seconds", float("nan")), ("wall_seconds", -1), ("wall_seconds", 10**400)):
+            with self.subTest(field=field, value=value):
+                row = {**self.row, field: value}
+                result = M.child_diagnostic(self.output, row, {})
+                self.assertIsNone(result[field])
+                json.dumps(result, allow_nan=False)
+        self.assertEqual(M.child_diagnostic(self.output, {}, {})["status"], "unavailable")
+
+    def test_unfinished_or_unknown_cleanup_never_reads_originals(self):
+        for change in ({"cleanup_root_unfinished": True}, {"cleanup_root_unfinished": None},
+                       {"observed_returncode": None}, {"observed_returncode": False}):
+            with self.subTest(change=change), mock.patch.object(M.GENERATIONS.SELECTOR, "file_identity") as identity:
+                result = M.child_diagnostic(self.output, {**self.row, **change}, {})
+                self.assertEqual(result["status"], "unavailable")
+                identity.assert_not_called()
+        self.row["cleanup_root_unfinished"] = True
+        with mock.patch.object(M, "reference") as reference:
+            result = self.supervised()
+        reference.assert_not_called()
+        self.assertEqual(result["originals"], {})
+        self.assertEqual(result["exit_code"], 125)
+
+    def test_success_json_does_not_override_actual_125_and_success_has_no_failure(self):
+        self.inner.pop("first_failure")
+        self.inner.update(status="validation-candidate-complete", exit_code=0)
+        result = self.supervised()
+        self.assertEqual(result["exit_code"], 125)
+        self.assertEqual(result["child_diagnostic"]["failures"], {})
+        self.assertEqual(result["child_diagnostic"]["observed_returncode"], 125)
+        with tempfile.TemporaryDirectory() as directory:
+            self.root = Path(directory).resolve()
+            self.output = self.root / "native-generation-supervisor"
+            self.row.update(returncode=0, observed_returncode=0, passed=True)
+            result = self.supervised()
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["child_diagnostic"]["failures"], {})
+        self.assertIs(result["accepted"], False)
+
+    def test_supervisor_unavailable_originals_preserve_actual_failure_and_refuse_success(self):
+        def corrupt(output, kind):
+            target = output / "command.stdout"
+            target.unlink()
+            if kind == "symlink":
+                target.symlink_to(output / "command.stderr")
+            elif kind == "oversize":
+                with target.open("w") as stream:
+                    stream.truncate(8 * 1024**2 + 1)
+        for code in (0, 125):
+            self.row.update(returncode=code, observed_returncode=code, passed=code == 0)
+            for kind in ("missing", "symlink", "oversize", "unreadable"):
+                with self.subTest(code=code, kind=kind), tempfile.TemporaryDirectory() as directory:
+                    self.root = Path(directory).resolve()
+                    self.output = self.root / "native-generation-supervisor"
+                    with contextlib.ExitStack() as stack:
+                        if kind == "unreadable":
+                            stack.enter_context(mock.patch.object(M, "reference", side_effect=PermissionError("secret")))
+                        result = self.supervised(mutate=lambda output: corrupt(output, kind))
+                    self.assertEqual(result["exit_code"], 125)
+                    self.assertEqual(result["command"]["observed_returncode"], code)
+                    self.assertEqual(result["child_diagnostic"]["observed_returncode"], code)
+                    self.assertEqual(result["child_diagnostic"]["status"], "unavailable")
+                    self.assertEqual(result["originals"], {})
+                    self.assertNotIn("secret", json.dumps(result))
+
+    def test_diagnostic_reads_are_inside_existing_full_caller_cost(self):
+        now = [1.0]
+        original = M.child_diagnostic
+        def slow(*args):
+            value = original(*args)
+            now[0] += 0.75
+            return value
+        with mock.patch.object(M, "child_diagnostic", side_effect=slow):
+            result = self.supervised(clock=lambda: now[0])
+        self.assertEqual(result["full_call_wall_seconds_before_receipt"], 0.75)
+        self.assertEqual(result["command"]["wall_seconds"], 0.25)
+        self.assertEqual(result["charged_wall_seconds_by_arm"], {arm: 0.75 for arm in M.GENERATIONS.ARMS})
 
 
 class WorkflowTests(unittest.TestCase):

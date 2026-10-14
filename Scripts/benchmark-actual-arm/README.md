@@ -419,8 +419,31 @@ trailing separators and `..` as inert observed link metadata. The unsplit target
 sensitive-value and Windows-path checks both before encoding and after inverse reconstruction. The
 entire reconstructed alias chain and physical executable identity must match fresh filesystem evidence;
 a matching rehash alone cannot admit changed metadata. Other fields, order, generic scanner rules and
-publication caps remain unchanged. This correction passed ordinary CI507 and post-merge CI508;
-manual generation validation remains pending and no direct-timing eligibility is established.
+publication caps remain unchanged. The corrected ordinary CI507 and post-main508 passed, including the alias controls and
+ordinary publication. These results do not establish generation-bracket or direct-timing eligibility.
+
+
+### Safe generation supervisor failure summary
+
+Generation-only run6 (`38638885985`, source `d19ead28`) retained an early supervisor
+`incomplete`/125 outcome and a generic SDK-publication refusal. Its sole published artifact was
+measurement setup evidence. No generation phase originals were published, so its exact cause,
+completed compiler commands and SDK-read counts remain unknown. The earlier observer timing
+refusal and missing SDK seals remain separate retained results.
+
+The supervisor now projects a future completed child's final stdout JSON, or its existing early
+refusal stderr JSON, into fixed phase/type enums and strict lowercase SHA-256 identifiers. The
+summary includes only the actual typed returned/observed exit and finite child wall, plus hashes
+under three fixed original-stream labels. It prints no raw path, arbitrary exception text, command,
+environment value or stream contents. Missing, malformed, changed, nonregular or oversized originals
+produce a fixed unavailable summary; unproved child cleanup prevents further stream reads. A zero
+child with unavailable originals remains incomplete. A success JSON can never override actual125.
+
+Diagnostic read cost lies inside the existing full supervisor caller interval; the actual child's
+status and wall remain unchanged. Publication independently recomputes the typed summary from the
+verified originals. The execution schedule, 1800/1815-second bounds, strict scanner, source admission
+and publication caps are unchanged. This is prospective diagnostic coverage, not a reconstruction of
+run6's missing receipts or a completed native generation validation.
 
 ### Prospective native waitid capability only
 
@@ -496,5 +519,7 @@ installation provenance. Its declared allowance was 300 seconds per suite, 630 s
 and 660 seconds overall with 20 seconds of cleanup grace. Actual integration/runtime child walls were
 201.315739/45.892718 seconds. The integration wall exceeds the unchanged native 180-second allowance;
 local success does not establish native budget eligibility. All 204 current-source and five retained-input
-brackets matched. Corrected native CI remains pending, and this change supplies no native benchmark,
-compiler-generation, observer-eligibility or final-protocol result.
+brackets matched. Corrected ordinary CI512 passed all 394 integration and 99 runtime methods within
+the unchanged 180-second native allowance on its bound Python 3.14.7 interpreter. That result does not
+claim a native Python 3.15 successor run. This change supplies no native benchmark, compiler-generation,
+observer-eligibility or final-protocol result.

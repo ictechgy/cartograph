@@ -343,6 +343,85 @@ def controller_argv(root):
             "--scratch-root", str(root), "--execute-controller"]
 
 
+
+DIAGNOSTIC_TYPES = frozenset({
+    "OSError", "FileNotFoundError", "FileExistsError", "PermissionError", "IsADirectoryError",
+    "NotADirectoryError", "ValueError", "RuntimeError", "KeyError", "TypeError", "KeyboardInterrupt",
+    "GenerationError", "AdmissionError", "IncompleteAdmission", "DiscoveryError", "SealError",
+})
+DIAGNOSTIC_PHASES = frozenset(name for name, _ in PHASES) | {None, "final-receipt", "receipt-close"}
+
+
+def diagnostic_hash(value):
+    return type(value) is str and len(value) == 64 and all(char in "0123456789abcdef" for char in value)
+
+
+def diagnostic_failure(value, *, recovery=False):
+    fields = {"phase", "failure_type", "failure_sha256"}
+    require(type(value) is dict and (set(value) == fields or recovery and set(value) == fields - {"phase"}),
+            "diagnostic-failure-shape")
+    phase, kind, digest = value.get("phase"), value["failure_type"], value["failure_sha256"]
+    require((phase is None or type(phase) is str) and phase in DIAGNOSTIC_PHASES
+            and type(kind) is str and kind in DIAGNOSTIC_TYPES and diagnostic_hash(digest),
+            "diagnostic-failure-fields")
+    return dict(phase=phase, failure_type=kind, failure_sha256=digest)
+
+
+def diagnostic_wall(value):
+    try:
+        return value if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
+    except OverflowError:
+        return None
+
+
+def child_diagnostic(output, row, originals):
+    """완료된 자식의 제한된 영수증만 투영하며 원문이나 예외 문자열을 공개하지 않는다."""
+    number = lambda value: value if type(value) is int and -255 <= value <= 255 else None
+    wall = row.get("wall_seconds")
+    result = dict(status="unavailable", source=None, failures={}, original_sha256={},
+                  returncode=number(row.get("returncode")), observed_returncode=number(row.get("observed_returncode")),
+                  wall_seconds=diagnostic_wall(wall))
+    if row.get("cleanup_root_unfinished") is not False or type(row.get("observed_returncode")) is not int:
+        return result
+    for suffix, label in ((".json", "command"), (".stdout", "stdout"), (".stderr", "stderr")):
+        ref = originals.get(suffix)
+        if type(ref) is dict and diagnostic_hash(ref.get("sha256")):
+            result["original_sha256"][label] = ref["sha256"]
+    try:
+        for suffix, label in ((".stdout", "stdout"), (".stderr", "stderr")):
+            original = originals[suffix]
+            identity = GENERATIONS.SELECTOR.file_identity(output / ("command" + suffix), 8 * 1024**2, True)
+            require(diagnostic_hash(original["sha256"]) and identity["sha256"] == original["sha256"]
+                    and type(original["bytes"]) is int and identity["bytes"] == original["bytes"],
+                    "diagnostic-original-changed")
+            if not identity["text"].strip():
+                continue
+            value = GENERATIONS.SELECTOR.strict_json(identity["text"])
+            require(type(value) is dict, "diagnostic-receipt-shape")
+            if label == "stderr":
+                require(set(value) == {"status", "failure_type", "failure_sha256"}
+                        and value["status"] == "refused", "diagnostic-refusal-shape")
+                failures = {"first_failure": diagnostic_failure({"phase": None,
+                    "failure_type": value["failure_type"], "failure_sha256": value["failure_sha256"]})}
+            else:
+                keys = {"status", "exit_code", "actual_engine_calls", "accepted", "final_protocol_ready"}
+                allowed = {"first_failure", "receipt_failure", "receipt_recovery_failure"}
+                require(keys <= set(value) <= keys | allowed and type(value["status"]) is str
+                        and value["status"] in ("incomplete", "validation-candidate-complete")
+                        and type(value["exit_code"]) is int and value["exit_code"] in (0, 125)
+                        and type(value["actual_engine_calls"]) is int and value["actual_engine_calls"] == 0
+                        and value["accepted"] is False and value["final_protocol_ready"] is False,
+                        "diagnostic-controller-shape")
+                failures = {key: diagnostic_failure(value[key], recovery=key == "receipt_recovery_failure")
+                            for key in sorted(allowed & set(value))}
+            result.update(status="decoded", source=label, failures=failures)
+            break
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError, OverflowError):
+        # 원래 상태/비용을 바꾸지 않으며 누락·변조·해석 실패는 같은 고정 분류로 남긴다.
+        result.update(status="unavailable", source=None, failures={})
+    return result
+
+
 def supervise(root):
     """동일 실행기 한 번만 감싸 자식 영수증 종료 뒤 실제 상태와 전체 비용을 남긴다."""
     started = time.monotonic()
@@ -353,12 +432,21 @@ def supervise(root):
     python = GENERATIONS.interpreter_identity(sys.executable)
     row = wrapper.COMMAND.command(controller_argv(root), ROOT, output / "command", dict(os.environ), 1815)
     unchanged = source_hashes() == hashes and GENERATIONS.verify_interpreter_identity(python, sys.executable)
+    stable = row.get("cleanup_root_unfinished") is False and type(row.get("observed_returncode")) is int
+    originals = {}
+    if stable:
+        try:
+            originals = {suffix: reference(output / ("command" + suffix))
+                         for suffix in (".json", ".stdout", ".stderr")}
+        except (OSError, ValueError, RuntimeError):
+            # 원본을 읽을 수 없어도 실제 실패를 보존하되 성공으로 승격하지 않는다.
+            originals = {}
+    diagnostic = child_diagnostic(output, row, originals)
     result = dict(schema_version=1, profile=PROFILE, accepted=False, final_protocol_ready=False,
                   actual_engine_calls=0, command=row, helper_sha256=hashes, python=python,
                   source_inputs_unchanged=unchanged, child_timeout_seconds=1815,
-                  originals={suffix: reference(output / ("command" + suffix))
-                             for suffix in (".json", ".stdout", ".stderr")},
-                  exit_code=0 if unchanged and complete_command(row, 1815) else 125,
+                  originals=originals, child_diagnostic=diagnostic,
+                  exit_code=0 if unchanged and len(originals) == 3 and complete_command(row, 1815) else 125,
                   full_call_wall_seconds_before_receipt=time.monotonic() - started,
                   cost_scope="Controller child includes its receipt/teardown; inner details overlap this interval; "
                              "supervisor final receipt/teardown excluded, no composed endpoint")
@@ -397,6 +485,8 @@ def verify_supervisor(root, inner):
     require(type(wall) in (int, float) and math.isfinite(wall) and wall >= row["wall_seconds"]
             and value["charged_wall_seconds_by_arm"] == {arm: wall for arm in GENERATIONS.ARMS},
             "generation-supervisor-cost")
+    require(GENERATIONS.identity(value.get("child_diagnostic")) == GENERATIONS.identity(
+        child_diagnostic(output, row, value["originals"])), "generation-diagnostic-changed")
     return reference(output / "results.json")
 
 def main():
@@ -414,7 +504,8 @@ def main():
                               failure_sha256=hashlib.sha256(str(error).encode()).hexdigest())), file=sys.stderr)
         return 1
     print(json.dumps({key: result[key] for key in ("status", "exit_code", "actual_engine_calls",
-        "accepted", "final_protocol_ready", "first_failure", "receipt_failure", "receipt_recovery_failure") if key in result}))
+        "accepted", "final_protocol_ready", "first_failure", "receipt_failure", "receipt_recovery_failure",
+        "child_diagnostic") if key in result}))
     return result["exit_code"]
 
 
