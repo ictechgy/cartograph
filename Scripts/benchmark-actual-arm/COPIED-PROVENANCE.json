@@ -182,6 +182,28 @@
     "role": "current-include-only-file-dependency-coverage",
     "scope": "Additive successor identity only. Frozen primitive/vendor and historical copied/source hashes are unchanged. The selected baseline engine scopes the current discovery override with restoration. Accepted declaration-free quoted-include headers require an independently reachable user Clang module File dependency and sealed included-header Records in the same unit for every active root. No Record, graph or query fact is fabricated. Original input/root guards, graph/batch parsers, oracle and failure outcomes remain unchanged. Focused and retained-unit coverage replays are not native execution or performance evidence. The current helper and controls are consolidated into the existing engine/test modules to retain the original 64 admitted contract-source paths. The earlier 66-source layout failed the unchanged source-count guard and remains diagnostic evidence; new coverage-control qualified IDs move to test_engine_worker."
   },
+  "generation_failure_diagnostic_overrides": {
+    "base_commit": "d19ead28e3ff8645de171dfeffe91c16f6fa42f4",
+    "base_tree": "4f7879cb6c71c25620f9932bca7d686b605409b1",
+    "files": [
+      {
+        "bytes": 30593,
+        "path": "Scripts/validate-native-sdk-generations.py",
+        "sha256": "64b2f01373bfaa4545cc489b92fc984f4c1ea0387a1c2b70d5d10dcbf0fcf73c"
+      },
+      {
+        "bytes": 40470,
+        "path": "Scripts/verify-native-generation-contract.py",
+        "sha256": "15f000818e2f09fddb78681c3a413068efdd30b93fa40688bb5bc7f6ebf1e865"
+      },
+      {
+        "bytes": 38128,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "fe40ac28bf8a622dab9e9553fbae636d6cab7880697e488a8d95ca1f9f99d027"
+      }
+    ],
+    "scope": "Safe bounded projection of future generation supervisor failures only. Original run6 early incomplete125 and missing phase originals remain unclassified. Execution, source admission, scanner and budgets remain unchanged; no native retry or completion credit."
+  },
   "generation_interpreter_alias_overrides": {
     "base_commit": "1af4c46579eb538f53516560fe191ee0b8d8196e",
     "base_tree": "3fd5d06968381b83cf64c6bdf4a9b8677fa6d611",
