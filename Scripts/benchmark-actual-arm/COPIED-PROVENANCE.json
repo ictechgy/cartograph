@@ -526,6 +526,62 @@
     "role": "selected-probe-interpreter-relation-and-original-arm-completion",
     "scope": "Reconstructed from the published PR head after the previous cloud workspace became unavailable. These current Python overrides add runtime version 3, the exact original selected-probe requested/reported interpreter relation, required original evidence for both successful arms, and focused controls. Prior copied and successor hashes remain historical. Installation binding, frozen vendor helpers, product sources, workflows and historical evidence archives are unchanged. Fresh Linux correctness validation does not establish macOS launcher behavior or a native performance comparison."
   },
+  "runtime_cache_metadata_compatibility_v1": {
+    "base_commit": "d1821b20ca865ac43b014f48699cdc19f22c4bc8",
+    "base_tree": "c036fb6d2249b664c25ea7bb70335f0985b6ddef",
+    "failed_run_url": "https://github.com/ictechgy/cartograph/actions/runs/38641649265",
+    "failed_source_commit": "c0ab7d1b74f17b4ff930a5607478ab69f40a7100",
+    "files": [
+      {
+        "bytes": 42778,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "f5c377d3a98d0595363854cc4b8fe8ce567d062c3b2b4ef8913846805233d3f4"
+      },
+      {
+        "bytes": 3873,
+        "path": "Scripts/benchmark-actual-arm/contract_suite.py",
+        "sha256": "e04928b3945935f45c5b3ef13018f65975e0fd21f8707bb7c04705f5ca561c59"
+      },
+      {
+        "bytes": 12269,
+        "path": "Scripts/benchmark-actual-arm/runtime/runtime_identity.py",
+        "sha256": "dbdf72d3445e451cd1cabc675803100002b7a7d3c2326d93213468259b0cc359"
+      },
+      {
+        "bytes": 13897,
+        "path": "Scripts/benchmark-actual-arm/runtime/test_runtime_identity.py",
+        "sha256": "d9f2ff289b7a95cb33d51ab9ab8442f943df0c4d6f0e873aeab8645cf4e6897d"
+      }
+    ],
+    "local_base_commit": "af0bb4e38bcb4a5f1e80dea74d88e4ecc9bf4a6e",
+    "local_validation": {
+      "dependency_scope": "Existing installed Linux psutil7.2.2 copied with synthetic installation provenance; not native package admission.",
+      "first_red_exit": 1,
+      "focused_tests": 23,
+      "integration_tests": 394,
+      "local_suite_timeout_seconds": 300,
+      "native_180s_eligibility": false,
+      "native_suite_timeout_seconds": 180,
+      "outer_kill_grace_seconds": 20,
+      "outer_timeout_seconds": 660,
+      "result_sha256": "a3a68bd172630839f3b3695ebcea620dd490ed031fbb280a1d46591397a06b7b",
+      "retained_input_brackets": 5,
+      "runtime_tests": 99,
+      "source_brackets": 204,
+      "unique_successor_methods": 493
+    },
+    "original_result": {
+      "integration_tests": 394,
+      "interpreter_version": "3.15.0",
+      "runtime_error": "KeyError: bytecode_cache",
+      "runtime_test": "test_runtime_bootstrap.BootstrapTests.test_captured_stale_package_bytecode_is_never_loaded",
+      "runtime_tests": 90,
+      "status": "retained-failed",
+      "whole_state_started": false
+    },
+    "role": "modern-and-legacy-runtime-cache-metadata-binding",
+    "scope": "Additive successor source identity only. Modern spec.cached is preferred with explicit legacy fallback for absent/None metadata; all present values are validated and dual paths must resolve identically. Missing metadata is distinct from a declared cache path whose file is absent. Cache confinement, file identities and byte caps remain unchanged. The original malicious stale-bytecode fixture and its child exit-zero, psutil 7.2.2 and absent-cache assertions are byte-preserved. CI510 remains red: its exact nested receipt was not separately retained, so this change does not reconstruct the original metadata or establish interpreter-version causation. Nine new source-backed controls raise runtime inventory from 90 to 99; integration remains 394. The original spec-only first-red failed as expected, then 23 focused identity methods and the full schema3 394+99 suites passed locally. These are 493 unique suite methods with the 23 identity methods repeated. The local-only 300-second suite allowance and 660-second outer/20-second grace do not establish native180 eligibility: integration child wall201.315739 seconds exceeds it; runtime wall45.892718 seconds. Corrected native CI remains pending. No frozen vendor, scanner, source allowlist, controller budget, native benchmark or final-protocol change. Every earlier provenance entry and execution result remains historical."
+  },
   "schema_version": 1,
   "scope": "Byte identity only; runtime and native integration execution remain separately verified",
   "sdk_generation_brackets_overrides": {

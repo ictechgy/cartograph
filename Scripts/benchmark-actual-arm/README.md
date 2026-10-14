@@ -462,3 +462,39 @@ result is claimed.
 Existing ordinary CI workflow bytes are unchanged, but its broad SDK test discovery also includes the
 new 17-method inner mock suite. The 27 outer methods remain local/manual-route checks. Neither suite
 starts capability actors or establishes native primitive availability.
+
+### Prospective runtime cache metadata compatibility
+
+[CI510](https://github.com/ictechgy/cartograph/actions/runs/38641649265), on source
+`c0ab7d1b74f17b4ff930a5607478ab69f40a7100`, remains a retained failure. Its Python 3.15.0 runtime
+suite ran 90 tests with one `KeyError: bytecode_cache` in
+`test_captured_stale_package_bytecode_is_never_loaded`; integration passed all 394 tests. The error
+followed the fixture's successful child-exit and psutil 7.2.2 assertions. Its exact nested receipt was
+not separately retained, so the original module metadata cannot be reconstructed from that assertion
+failure alone. Whole-state execution did not start, and CI510 has not been replayed or regraded green.
+
+Python documents that [3.15 no longer sets module `__cached__`](https://docs.python.org/3/reference/datamodel.html#module.__file__)
+and exposes the cache path through [`ModuleSpec.cached`](https://docs.python.org/3/library/importlib.html#importlib.machinery.ModuleSpec.cached).
+This successor reads that modern field first, with explicit legacy fallback when it is absent or
+`None`. Both present paths must resolve identically; empty, non-string, invalid or conflicting metadata
+refuses with `ValueError`. Missing metadata does not claim a verified absent cache. A declared path
+still records `exists=false` when no file is present, or the observed file's complete byte/hash identity
+when it exists. Existing origin/private-cache confinement, file hashing and byte caps remain unchanged.
+
+The malicious timestamp-valid stale-bytecode fixture, child exit-zero assertion, psutil version check
+and required absent-cache assertion are byte-preserved. Nine additional local source-backed controls
+cover spec-only metadata, legacy agreement/fallback, absent versus missing metadata, malformed/conflicting
+values, direct/symlink escapes, the explicit private cache root and byte caps. The retained spec-only
+first-red used real source/cache files and a real `ModuleSpec` without `__cached__`; unchanged source
+failed the required cache-row assertion. The successor passed all 23 focused identity methods and one
+full isolated schema3 replay of 394 integration plus 99 runtime methods, with zero skips or failures.
+The focused 23 are also included in those 493 unique suite methods. The malicious stale-code fixture
+remained byte-identical throughout.
+
+That local Linux replay copied the existing psutil 7.2.2 dependency and used explicitly synthetic
+installation provenance. Its declared allowance was 300 seconds per suite, 630 seconds for the caller,
+and 660 seconds overall with 20 seconds of cleanup grace. Actual integration/runtime child walls were
+201.315739/45.892718 seconds. The integration wall exceeds the unchanged native 180-second allowance;
+local success does not establish native budget eligibility. All 204 current-source and five retained-input
+brackets matched. Corrected native CI remains pending, and this change supplies no native benchmark,
+compiler-generation, observer-eligibility or final-protocol result.
