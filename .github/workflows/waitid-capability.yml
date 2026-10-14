@@ -1,0 +1,86 @@
+name: Native waitid capability only
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact reviewed commit containing this capability-only workflow
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-waitid-capability
+  cancel-in-progress: false
+
+jobs:
+  capability:
+    if: github.repository == 'ictechgy/cartograph'
+    runs-on: macos-26
+    timeout-minutes: 5
+    steps:
+      - name: Require exact source and native image
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          assert re.fullmatch(r'[0-9a-f]{40}', os.environ['SOURCE_SHA'])
+          assert os.environ['SOURCE_SHA'] == os.environ['DISPATCH_SHA']
+          assert os.environ.get('ImageOS') == 'macos26'
+          assert os.environ.get('ImageVersion') == '20260907.0351.1'
+          PY
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - name: Verify source and mock-only contracts
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test -z "$(git status --porcelain)"
+          python3 -m unittest discover -s Scripts/benchmark-inputs -p 'test_waitid_capability.py' -v
+          python3 Scripts/test-native-waitid-capability.py -v
+
+      - name: Observe the fixed synthetic native capability cases
+        id: observe
+        timeout-minutes: 4
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set +e
+          /opt/homebrew/opt/python@3.14/bin/python3.14 -I -S -B \
+            Scripts/validate-native-waitid-capability.py \
+            --source-sha "$SOURCE_SHA" --raw "$RUNNER_TEMP/waitid-capability-raw"
+          status=$?
+          if [[ -d "$RUNNER_TEMP/waitid-capability-raw/setup" ]]; then
+            (set -o noclobber; printf '{"exit_code":%d}\n' "$status" > "$RUNNER_TEMP/waitid-capability-raw/setup/execute-status.json") || exit 125
+          fi
+          exit "$status"
+
+      # Five-minute job expiry can prevent these best-effort retention steps.
+      - name: Verify originals and prepare scanned evidence
+        id: publish
+        if: always() && !cancelled() && steps.observe.outcome != 'skipped'
+        timeout-minutes: 1
+        run: |
+          /opt/homebrew/opt/python@3.14/bin/python3.14 -I -S -B \
+            Scripts/validate-native-waitid-capability.py \
+            --raw "$RUNNER_TEMP/waitid-capability-raw" \
+            --public "$RUNNER_TEMP/waitid-capability-public"
+
+      - name: Retain scanned capability-only evidence
+        if: always() && steps.publish.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: native-waitid-capability-only
+          path: ${{ runner.temp }}/waitid-capability-public/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14

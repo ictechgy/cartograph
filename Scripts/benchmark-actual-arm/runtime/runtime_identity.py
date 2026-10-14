@@ -159,6 +159,23 @@ def verify_package(target: Path, expected: dict) -> dict:
     return actual
 
 
+def _module_cache_path(module, spec) -> Path | None:
+    """새 spec 캐시를 우선하되 남아 있는 구형 메타데이터와의 모순도 거부한다."""
+    paths = []
+    for value in (getattr(spec, "cached", None), getattr(module, "__cached__", None)):
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value or "\x00" in value:
+            raise ValueError("Invalid module bytecode cache metadata")
+        try:
+            paths.append(Path(value).resolve())
+        except (OSError, RuntimeError, ValueError) as error:
+            raise ValueError("Invalid module bytecode cache path") from error
+    if len(paths) == 2 and paths[0] != paths[1]:
+        raise ValueError("Conflicting module bytecode cache metadata")
+    return paths[0] if paths else None
+
+
 def module_snapshot(
     modules: dict, target: Path, code_files: dict[str, str], bytecode_cache_root: Path | None = None
 ) -> dict:
@@ -215,9 +232,8 @@ def module_snapshot(
         if kind == "selected-script" and identity["sha256"] != selected[str(path)]:
             raise ValueError("Selected module bytes changed")
         row = dict(kind=kind, path=str(path), **identity)
-        cached = getattr(module, "__cached__", None)
-        if cached:
-            cache = Path(cached).resolve()
+        cache = _module_cache_path(module, spec)
+        if cache is not None:
             if not cache.is_relative_to(path.parent) and not (
                 bytecode_cache_root is not None and cache.is_relative_to(bytecode_cache_root.resolve())
             ):
