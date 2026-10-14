@@ -182,6 +182,28 @@
     "role": "current-include-only-file-dependency-coverage",
     "scope": "Additive successor identity only. Frozen primitive/vendor and historical copied/source hashes are unchanged. The selected baseline engine scopes the current discovery override with restoration. Accepted declaration-free quoted-include headers require an independently reachable user Clang module File dependency and sealed included-header Records in the same unit for every active root. No Record, graph or query fact is fabricated. Original input/root guards, graph/batch parsers, oracle and failure outcomes remain unchanged. Focused and retained-unit coverage replays are not native execution or performance evidence. The current helper and controls are consolidated into the existing engine/test modules to retain the original 64 admitted contract-source paths. The earlier 66-source layout failed the unchanged source-count guard and remains diagnostic evidence; new coverage-control qualified IDs move to test_engine_worker."
   },
+  "mapped_path_token_boundary_overrides": {
+    "base_commit": "576b6ca3731af8c091fc0d166ab1f25693c51560",
+    "failed_run_url": "https://github.com/ictechgy/cartograph/actions/runs/38581186386",
+    "files": [
+      {
+        "bytes": 36586,
+        "path": "Scripts/normalize-indexstore-evidence.py",
+        "sha256": "9b202db88f57a1c2c42b0984ee947e4786ba45d1038d1725481d94dd0a30adc0"
+      },
+      {
+        "bytes": 43426,
+        "path": "Scripts/verify-indexstore-evidence.py",
+        "sha256": "921734968a3947c32ce97fd8c73a8ccd539027df3837aa5edab409c102233c37"
+      },
+      {
+        "bytes": 27573,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "605771b98f8c44acc69acb92cc312f63254bcfcabab4f3e06db61d58bcd610e0"
+      }
+    ],
+    "scope": "Only the current root evidence normalizer recognizes provenance-bound mapped lexical paths during validation; its emitted mapping text is unchanged. The frozen actual-arm vendor normalizer, credential rules, byte caps, native expectations and observer thresholds remain unchanged. First-red reproduction uses the known c++/v1 absence witness; unavailable failed raw JSON prevents attribution to an exact original field or the earlier run. No native retry, SDK acceptance or observer eligibility is implied."
+  },
   "native_calibration_overrides": {
     "base_commit": "5ae3a1c96d1cc918281d87ec4ccb691355875066",
     "files": [

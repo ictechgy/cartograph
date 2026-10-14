@@ -620,6 +620,108 @@ class EvidenceTests(unittest.TestCase):
         )
         self.assert_blocked_without_output("credential-json-field")
 
+    def test_mapped_compiler_libcxx_absence_witness_preserves_paths(self):
+        developer = "/Applications/Xcode_26.6.app/Contents/Developer"
+        self.args.prefix.append("DEVELOPER=" + developer)
+        suffixes = [
+            "/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1",
+            "/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1",
+        ]
+        relative = "setup/original/raw/before-compilation/results.json"
+        witness = {"canonical_path": developer + suffixes[0], "lexical_path": developer + suffixes[1], "exists": False}
+        raw = json.dumps(witness)
+        self.write(relative, raw)
+        before = self.snapshot()
+        manifest = MODULE.package(self.args)
+        expected = {"canonical_path": "$DEVELOPER" + suffixes[0], "lexical_path": "$DEVELOPER" + suffixes[1], "exists": False}
+        self.assertEqual(json.loads((self.public / relative).read_text()), expected)
+        self.assertEqual(self.snapshot(), before)
+        entry = next(item for item in manifest["files"] if item["path"] == relative)
+        self.assertEqual(entry["original_raw_sha256"], MODULE.digest(raw.encode()))
+        self.assertEqual(entry["normalized_sha256"], MODULE.digest((self.public / relative).read_bytes()))
+        self.assertEqual(MODULE.digest(b"/v1"), "2d234c97703ce824eaa4d98fbd2701668ef5e63e46f1574f2ea72e7927b1f57e")
+
+    def test_mapped_path_validation_preserves_exact_public_text(self):
+        paths = [
+            str(self.toolchain) + suffix for suffix in (
+                "/usr/include/c++/v1", "/usr/bin/../include/c++/v1", "/a/.././b+/v1/",
+            )
+        ]
+        paths.extend(["/usr/include/c++/v1", "file://" + str(self.toolchain) + "/usr/include/c++/v1"])
+        text = "\n".join(paths + ["-I" + paths[0], "[" + paths[0] + ", '" + paths[1] + "']"]) + "\n"
+        self.write("runs/mapped.stdout", text)
+        before = self.snapshot()
+        MODULE.package(self.args)
+        expected = text.replace(str(self.toolchain), "$TOOLCHAIN").replace("\n/usr/include", "\n$SYSTEM_INCLUDE")
+        self.assertEqual((self.public / "runs/mapped.stdout").read_text(), expected)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_mapped_path_trust_requires_actual_prefix_replacement(self):
+        for value in (
+            "/unknown/include/c++/v1", "$TOOLCHAIN/usr/include/c++/v1", "$UNKNOWN/usr/include/c++/v1",
+            str(self.toolchain) + "-sibling/include/c++/v1", str(self.toolchain) + "_sibling/include/c++/v1",
+            str(self.toolchain) + "X/include/c++/v1", str(self.toolchain) + "/unsafe%2fcomponent/c++/v1",
+        ):
+            with self.subTest(value=value):
+                self.write("runs/mapped.stdout", value)
+                self.assert_blocked_without_output("unmapped-absolute-path")
+
+    def test_broad_root_cannot_mask_specific_alias_siblings(self):
+        alias = str(self.toolchain) + "/usr/include/c++/v1"
+        self.args.prefix.append("CXX_HEADERS=" + alias)
+        normalizer = MODULE.Normalizer(self.args, self.raw, [], [])
+        self.assertEqual(normalizer.string(alias, "runs/mapped.stdout"), "$CXX_HEADERS")
+        self.assertEqual(normalizer.string(alias + "/vector", "runs/mapped.stdout"), "$CXX_HEADERS/vector")
+        for suffix in ("-unreviewed", "_unreviewed", "X", "+private"):
+            with self.subTest(suffix=suffix):
+                self.write("runs/mapped.stdout", alias + suffix)
+                self.assert_blocked_without_output("unmapped-absolute-path")
+
+    def test_mapped_path_above_root_traversal_is_refused(self):
+        for suffix in ("/../outside", "/a/../../outside", "/./../outside", "/a/../..", "/../../include/c++/v1"):
+            with self.subTest(suffix=suffix):
+                self.write("runs/mapped.stdout", str(self.toolchain) + suffix)
+                self.assert_blocked_without_output("unmapped-absolute-path")
+
+    def test_mapped_path_does_not_hide_appended_unmapped_paths(self):
+        mapped = str(self.toolchain) + "/usr/include/c++/v1"
+        for separator in (":", "=", " ", "\t", "\n", "'", '"', "`", ",", ";", ")", "]", "}", "|", ">"):
+            with self.subTest(separator=separator):
+                self.write("runs/mapped.stdout", mapped + separator + "/unknown/private/file")
+                self.assert_blocked_without_output("unmapped-absolute-path")
+
+    def test_mapped_path_keeps_windows_secret_and_control_screening(self):
+        mapped = str(self.toolchain) + "/usr/include/c++/v1"
+        cases = [
+            (mapped + r" C:\Users\private\file", "unmapped-windows-absolute-path"),
+            (mapped + r"/C:\Users\private\file", "unmapped-windows-absolute-path"),
+            (mapped + r" \\server\private", "unmapped-windows-absolute-path"),
+            (mapped + "/ghp_" + "a" * 24, "github-token"),
+            (mapped + " password=synthetic-only", "secret-assignment"),
+            (mapped + " https://example.invalid/?to%6ben=synthetic", "token-bearing-or-signed-url"),
+            ("\x000\x00/usr/include/c++/v1", "unexpected-control-or-binary-content"),
+            (mapped + "\x00", "unexpected-control-or-binary-content"),
+        ]
+        for value, category in cases:
+            with self.subTest(category=category):
+                self.write("runs/mapped.stdout", value)
+                self.assert_blocked_without_output(category)
+        self.write("runs/mapped.stdout", "safe")
+        self.write("runs/mapped.json", json.dumps({"path": mapped + "\x001\x00"}))
+        self.assert_blocked_without_output("unexpected-control-or-binary-content")
+
+    def test_mapped_path_cannot_bypass_existing_bundle_caps(self):
+        from unittest.mock import patch
+        self.assertEqual((MODULE.MAX_FILES, MODULE.MAX_FILE_BYTES, MODULE.MAX_TOTAL_BYTES), (10_000, 8 * 1024 * 1024, 64 * 1024 * 1024))
+        self.write("runs/mapped.stdout", str(self.toolchain) + "/usr/include/c++/v1")
+        for name, cap, category in (
+            ("MAX_FILES", 1, "file-count-limit"),
+            ("MAX_FILE_BYTES", 1, "per-file-size-limit"),
+            ("MAX_TOTAL_BYTES", 1, "total-size-limit"),
+        ):
+            with self.subTest(name=name), patch.object(MODULE, name, cap):
+                self.assert_blocked_without_output(category)
+
     def test_unmapped_absolute_path_blocks(self):
         self.write("setup/build.stderr", "Failure: /Users/unknown-person/private/file.swift\n")
         self.assert_blocked_without_output("unmapped-absolute-path")
