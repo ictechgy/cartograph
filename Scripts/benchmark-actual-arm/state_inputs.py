@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
+import statistics
 from pathlib import Path
 import sys
 
@@ -20,9 +22,98 @@ STATES = [row[0] for row in generation.common.STAGES]
 FIXTURE = Path("Fixtures/IndexStoreCLIBenchmark/mixed-ios-validation")
 
 
+def calibration_plan():
+    """결과를 보기 전에 고정한 네 비교별 순서와 정확한 32개 호출을 반환한다."""
+    groups = [
+        ("baseline", "timing", "AB", "BA", "BA", "AB"),
+        ("cartograph", "memory", "BA", "AB", "AB", "BA"),
+        ("cartograph", "timing", "BA", "AB", "BA", "AB"),
+        ("baseline", "memory", "AB", "BA", "AB", "BA"),
+    ]
+    jobs = []
+    for pair in range(1, 5):
+        for engine, mode, *orders in groups:
+            for side in orders[pair - 1]:
+                jobs.append(dict(
+                    number=len(jobs) + 1, engine=engine, mode=mode, pair=pair,
+                    order=orders[pair - 1], side=side,
+                    folder=f"invocation-{len(jobs) + 1:02d}",
+                    observer="direct" if side == "A" else mode,
+                ))
+    return dict(
+        version="native-observer-v1", invocations=jobs, engine_invocation_count=32,
+        pairs_per_engine_mode=4, interval_seconds=0.01, calibration_timeout_seconds=900,
+        engine_timeout_seconds=240, timing_median_ratio_max=1.05, timing_any_ratio_max=1.10,
+        statistic="median and maximum of four within-pair observed/direct engine-wall ratios",
+        eligibility_scope="timing mode only; empirical diagnostic screen, not a population confidence bound",
+        memory_scope="separate verified sampled observation; no primary timing or continuous-peak claim",
+        order_policy="literal balanced schedule frozen before execution; no replacement or reseeding",
+        final_evidence=False,
+    )
+
+
 def require(value, reason):
     if not value:
         raise ValueError(reason)
+
+
+
+def calibration_groups(rows):
+    """같은 엔진·모드의 네 쌍만 해석하며 메모리 구간을 주 시간으로 바꾸지 않는다."""
+    expected = calibration_plan()["invocations"]
+    require(
+        len(rows) == len(expected) and [row["invocation"] for row in rows] == expected,
+        "Calibration invocation inventory differs",
+    )
+    groups = []
+    for engine in ("baseline", "cartograph"):
+        reference = None
+        for mode in ("timing", "memory"):
+            ratios, pairs = [], []
+            for pair in range(1, 5):
+                selected = [row for row in rows if all(
+                    row["invocation"][key] == value for key, value in
+                    [("engine", engine), ("mode", mode), ("pair", pair)]
+                )]
+                require(len(selected) == 2, "Calibration pair differs")
+                values = {row["invocation"]["side"]: row for row in selected}
+                require(set(values) == {"A", "B"}, "Calibration pair sides differ")
+                walls = {}
+                for side, row in values.items():
+                    require(
+                        row["status"] == "passed" and type(row["exit_code"]) is int and row["exit_code"] == 0
+                        and row["evaluation"]["status"] == "passed"
+                        and row["arm"] == row["worker"]["arm"] == engine
+                        and row["observer"]["mode"] == row["observer"]["measurement"]["measurement_mode"]
+                        == row["invocation"]["observer"],
+                        "Calibration invocation did not pass",
+                    )
+                    observed = json.dumps(
+                        {key: row["worker"][key] for key in ("graph", "observation")},
+                        sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False,
+                    ).encode()
+                    if reference is None:
+                        reference = observed
+                    require(observed == reference, "Same-engine calibration output differs")
+                    wall = row["observer"]["measurement"]["wall_seconds"]
+                    require(
+                        type(wall) in (int, float) and math.isfinite(wall) and wall > 0,
+                        "Invalid calibration wall",
+                    )
+                    walls[side] = wall
+                ratio = walls["B"] / walls["A"]
+                require(math.isfinite(ratio) and ratio > 0, "Invalid calibration ratio")
+                ratios.append(ratio)
+                pairs.append(dict(pair=pair, order=selected[0]["invocation"]["order"],
+                                  direct_wall_seconds=walls["A"], observed_wall_seconds=walls["B"], ratio=ratio))
+            median, maximum = statistics.median(ratios), max(ratios)
+            groups.append(dict(
+                engine=engine, mode=mode, pairs=pairs, median_ratio=median, maximum_ratio=maximum,
+                timing_eligible=(median <= 1.05 and maximum <= 1.10) if mode == "timing" else None,
+                scope=("matched Popen through root wait" if mode == "timing" else
+                       "memory setup/polling/descendant interval; descriptive, excluded from primary timing"),
+            ))
+    return groups
 
 
 def reference(path):
@@ -224,3 +315,79 @@ def bind_sdk_discovery(plan, sdk_path):
     plan["prior_costs"]["sdk_discovery"] = dict(
         reference=sdk_ref, full_wall_seconds=sdk_cost, charged_wall_seconds_by_arm=sdk["charged_wall_seconds_by_arm"]
     )
+
+
+CALIBRATION_INPUT_HELPERS = (
+    "Scripts/validate-native-calibration-inputs.py",
+    "Scripts/benchmark-inputs/native_calibration_inputs.py",
+    "Scripts/benchmark-inputs/native_calibration_expectation.json",
+    "Scripts/benchmark-inputs/native_calibration_publication.py",
+    "Scripts/benchmark-inputs/sdk_content_seal.py",
+    "Scripts/benchmark-inputs/select_sdk_roots.py",
+    "Scripts/normalize-indexstore-evidence.py",
+    ".github/workflows/native-calibration.yml",
+)
+
+
+def bind_calibration_sdk(plan, scratch):
+    """불변 사전·세대 후 영수증과 실제 단계 호출 비용만 엔진 계획에 연결한다."""
+    repository, scratch = Path(plan["repository"]), Path(scratch)
+    source_refs = {name: reference(repository / name) for name in CALIBRATION_INPUT_HELPERS}
+    hashes = {name: ref["sha256"] for name, ref in source_refs.items()}
+    refs, phases, costs = {}, {}, {}
+    for name, status in (("before-compilation", "captured-candidate"), ("after-generation", "verified-candidate")):
+        ref = reference(scratch / "native-calibration-sdk-raw/setup/phases" / (name + ".json"))
+        call_ref = reference(scratch / "native-calibration-sdk-calls" / name / "results.json")
+        phase, call = document(ref), document(call_ref)
+        observation, command = phase["observation"], call["command"]
+        require(phase["stage"] == call["stage"] == name
+                and phase["status"] == call["status"] == "passed"
+                and type(phase["exit_code"]) is int and phase["exit_code"] == 0
+                and type(call["exit_code"]) is int and call["exit_code"] == 0
+                and phase["helper_sha256"] == call["helper_sha256"] == hashes
+                and call["original_phase"] == ref
+                and observation["status"] == status and observation["boundary"] == name
+                and observation["accepted"] is False and observation["final_protocol_ready"] is False
+                and phase["accepted"] is False and call["accepted"] is False
+                and phase["final_protocol_ready"] is False and call["final_protocol_ready"] is False,
+                "Calibration SDK phase relation differs")
+        argv = command["command"]
+        require(isinstance(argv, list) and len(argv) == 10
+                and Path(argv[0]).resolve(strict=True) == Path(sys.executable).resolve(strict=True)
+                and argv[1:] == ["-I", "-S", "-B", str(repository / CALIBRATION_INPUT_HELPERS[0]),
+                                "--stage", name, "--scratch-root", str(scratch), "--execute-stage"]
+                and command["cwd"] == str(repository)
+                and command["completed"] is True and command["passed"] is True
+                and type(command["returncode"]) is int and command["returncode"] == 0
+                and type(command["observed_returncode"]) is int and command["observed_returncode"] == 0
+                and command["failure"] is None and command["cleanup_signals"] == []
+                and command["cleanup_root_unfinished"] is False,
+                "Calibration SDK actual caller differs")
+        wall, outer = command["wall_seconds"], call["full_call_wall_seconds_before_receipt"]
+        require(type(wall) in (int, float) and math.isfinite(wall) and wall >= 0
+                and type(outer) in (int, float) and math.isfinite(outer) and outer >= wall,
+                "Invalid calibration SDK cost")
+        refs[name], refs[name + "-caller"] = ref, call_ref
+        phases[name] = phase
+        costs[name] = dict(reference=call_ref, child_process_wall_seconds=wall,
+                           supervisor_wall_seconds_before_receipt=outer,
+                           charged_child_wall_seconds_by_arm=dict(baseline=wall, cartograph=wall))
+    before, after = phases["before-compilation"]["observation"], phases["after-generation"]["observation"]
+    content = before["content_sha256"]
+    require(isinstance(content, str) and len(content) == 64 and all(c in "0123456789abcdef" for c in content)
+            and before["expectation_sha256"] == hashes[CALIBRATION_INPUT_HELPERS[2]]
+            and all(after["native"][key] == before["native"][key]
+                    for key in ("platform", "runner", "machine", "versions", "selected", "layout"))
+            and after["verification"]["matches"] is True
+            and after["verification"]["expected_sha256"] == after["verification"]["actual_sha256"] == content
+            and phases["after-generation"]["discovery_binding"]["status"] == "bound-candidate"
+            and phases["after-generation"]["discovery_binding"]["precompilation_content_sha256"] == content,
+            "Calibration SDK content relation differs")
+    for label, ref in {**refs, **source_refs}.items():
+        plan["inputs"]["calibration-sdk:" + label] = ref
+    plan["calibration_sdk"] = dict(content_sha256=content, phases=refs, source_sha256=hashes,
+                                    accepted=False, final_protocol_ready=False)
+    plan["prior_costs"]["calibration_sdk"] = dict(
+        phases=costs, scope="Each child interval includes phase serialization and child teardown; charged fully to each engine. "
+        "Supervisor final receipt and interpreter teardown remain outside these intervals; no composed endpoint claim.")
+    return plan["calibration_sdk"]

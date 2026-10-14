@@ -1,0 +1,105 @@
+{
+  "accepted": false,
+  "developer_lexical": "/Applications/Xcode_26.6.app/Contents/Developer",
+  "developer_physical": "/Applications/Xcode_26.6.app/Contents/Developer",
+  "final_protocol_ready": false,
+  "helper_sha256": {
+    "sdk_content_seal.py": "cc289e5e44062b0c41ed998e3ea7ce9c357b4ead4be1fbae778ee5247e7b2195",
+    "select_sdk_roots.py": "808664f9670799a4db10b280cde85d11c6dd99f6122ae6bf067f35166aebc160"
+  },
+  "limits": {
+    "max_bytes": 68719476736,
+    "max_entries": 500000,
+    "max_path_bytes": 67108864
+  },
+  "machine": {
+    "architecture": "arm64",
+    "cpu_model": "Apple M2 Pro (Virtual)",
+    "kernel_release": "25.6.0",
+    "logical_core_count": 5,
+    "os": "macOS",
+    "os_version": "26.6.2",
+    "physical_core_count": 5,
+    "ram_bytes": 15032385536
+  },
+  "path_contract_status": "Prospective exact contract from the pinned official image manifest; aliases must resolve to that physical path at admission",
+  "role": "Proposed exact native calibration contract; not an accepted final pin",
+  "roots": {
+    "SDK": "/Applications/Xcode_26.6.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+    "TOOLCHAIN": "/Applications/Xcode_26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain"
+  },
+  "runner": {
+    "ImageOS": "macos26",
+    "ImageVersion": "20260907.0351.1"
+  },
+  "runner_image": "macos-26-arm64",
+  "runner_label": "macos-26",
+  "schema_version": 1,
+  "sdk_aliases": [
+    "/Applications/Xcode_26.6.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+    "/Applications/Xcode_26.6.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk",
+    "/Applications/Xcode_26.6.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk",
+    "/Applications/Xcode_26.6.0.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk"
+  ],
+  "source_commit": "5ae3a1c96d1cc918281d87ec4ccb691355875066",
+  "source_urls": [
+    "https://github.com/actions/runner-images/blob/macos-26-arm64/20260907.0351/images/macos/macos-26-arm64-Readme.md",
+    "https://github.com/actions/runner-images/blob/macos-26-arm64/20260907.0351/images/macos/templates/macOS-26.arm64.anka.pkr.hcl",
+    "https://github.com/actions/runner-images/blob/macos-26-arm64/20260907.0351/images/macos/scripts/build/configure-preimagedata.sh",
+    "https://github.com/actions/runner-images/blob/macos-26-arm64/20260907.0351/README.md"
+  ],
+  "target": "arm64-apple-ios16.0-simulator",
+  "tools": {
+    "clang": {
+      "allowed_paths": [
+        "/Applications/Xcode_26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+        "/Applications/Xcode_26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+      ],
+      "bytes": 290664032,
+      "physical_path": "/Applications/Xcode_26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+      "sha256": "d2e4bf622758eee1bf7267c060497fb2c41e098d37b0fca8be73898dc7e14eda"
+    },
+    "index_library": {
+      "allowed_paths": [
+        "/Applications/Xcode_26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libIndexStore.dylib",
+        "/Applications/Xcode_26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libIndexStore.dylib"
+      ],
+      "bytes": 2016080,
+      "physical_path": "/Applications/Xcode_26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libIndexStore.dylib",
+      "sha256": "5a4f2f914b23dbe41d4a2ddcd4f38ec9c332c48cb2d5ad83bce152fd25e1fd22"
+    },
+    "swift": {
+      "allowed_paths": [
+        "/Applications/Xcode_26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+        "/Applications/Xcode_26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+      ],
+      "bytes": 357109680,
+      "physical_path": "/Applications/Xcode_26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend",
+      "sha256": "8a63cc031d970b57f03741ae83becbfb26f2b913565ac212b81b80bdcb35600f"
+    },
+    "swift_frontend": {
+      "allowed_paths": [
+        "/Applications/Xcode_26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend",
+        "/Applications/Xcode_26.6.0.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend"
+      ],
+      "bytes": 357109680,
+      "physical_path": "/Applications/Xcode_26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend",
+      "sha256": "8a63cc031d970b57f03741ae83becbfb26f2b913565ac212b81b80bdcb35600f"
+    },
+    "xcrun": {
+      "allowed_paths": [
+        "/usr/bin/xcrun"
+      ],
+      "bytes": 117104,
+      "physical_path": "/usr/bin/xcrun",
+      "sha256": "178e19cfe796ce33815195c42d34562c20ec4d5131534fb7e6a55b91f14371d5"
+    }
+  },
+  "versions": {
+    "os_build": "25G83",
+    "sdk_build": "23F81a",
+    "sdk_version": "26.5",
+    "swift": "Apple Swift version 6.3.3 (swiftlang-6.3.3.1.3 clang-2100.1.1.101)\nTarget: arm64-apple-macosx26.0",
+    "xcode": "Xcode 26.6\nBuild version 17F113"
+  }
+}

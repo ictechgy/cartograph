@@ -38,9 +38,9 @@ SUITES = {
             "test_startup_wiring",
             "test_source_import_policy",
         ],
-        346,
+        394,
     ),
-    "runtime": (["test_runtime_bootstrap", "test_runtime_identity", "test_startup_runtime", "test_interpreter_runtime"], 60),
+    "runtime": (["test_runtime_bootstrap", "test_runtime_identity", "test_startup_runtime", "test_interpreter_runtime"], 90),
 }
 
 

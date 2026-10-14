@@ -18,7 +18,6 @@ sys.path.insert(0, str(ROOT / "primitive/vendor/mixed"))
 import runtime_bootstrap as bootstrap
 import runtime_identity as identity
 import isolated_measure
-import arm_sessions as primitive
 import score_calls
 import state_inputs
 
@@ -34,7 +33,7 @@ def save(path, value):
 guard = state_inputs.guard
 
 
-def run_arm(plan, arm, output, runtime_path, runtime_sha256):
+def run_arm(plan, arm, output, runtime_path, runtime_sha256, *, observer_mode="timing", private_key=None):
     """측정 감독기와 실제 엔진 양쪽 모두 검증한 격리 진입점으로만 실행한다."""
     started = time.perf_counter()
     config = dict(plan["engine_config"], arm=arm, output=str(output))
@@ -61,9 +60,8 @@ def run_arm(plan, arm, output, runtime_path, runtime_sha256):
             save(output / "input.json", config)
             config_ref = state_inputs.reference(output / "input.json")
             developer = Path(config["developer_directory"])
-            private = Path(plan["raw_output"]) / "private-readers" / arm
+            private = Path(plan["raw_output"]) / "private-readers" / (private_key or arm)
             environment = identity.private_environment(private / "engine", developer)
-            observer_environment = identity.private_environment(private / "observer", developer)
             command = isolated_measure.bootstrap_command(
                 runtime_path,
                 runtime_sha256,
@@ -72,16 +70,19 @@ def run_arm(plan, arm, output, runtime_path, runtime_sha256):
                 ["--input", config_ref["path"], "--sha256", config_ref["sha256"]],
                 runtime=runtime,
             )
-            measurement = isolated_measure.run(
-                command,
-                Path(config["project"]),
-                output / "whole-arm",
-                runtime_path,
-                runtime_sha256,
-                environment,
-                observer_environment,
-                timeout=240,
-            )
+            if observer_mode == "direct":
+                measurement = isolated_measure.run_direct(
+                    command, Path(config["project"]), output / "whole-arm", runtime_path,
+                    runtime_sha256, environment, timeout=240,
+                )
+            else:
+                state_inputs.require(observer_mode in ("timing", "memory"), "Unknown observer mode")
+                observer_environment = identity.private_environment(private / "observer", developer)
+                options = {} if observer_mode == "timing" else {"mode": "memory"}
+                measurement = isolated_measure.run(
+                    command, Path(config["project"]), output / "whole-arm", runtime_path,
+                    runtime_sha256, environment, observer_environment, timeout=240, **options,
+                )
             row["observer"] = measurement
             incomplete = measurement["status"] == "incomplete" or measurement["exit_code"] == 125
             if incomplete:
@@ -159,6 +160,8 @@ def evaluate(row, oracle):
 
 
 def execute(plan, runtime_path, runtime_sha256, output):
+    if "calibration" in plan:
+        return execute_calibration(plan, runtime_path, runtime_sha256, output)
     started = time.perf_counter_ns()
     result = dict(
         schema_version=1,
@@ -220,6 +223,94 @@ def execute(plan, runtime_path, runtime_sha256, output):
         prior_costs=plan["prior_costs"],
     )
     phase("state-finalization-or-failed-work")
+    save(output / "results.json", result)
+    return result
+
+
+
+def execute_calibration(plan, runtime_path, runtime_sha256, output):
+    """승인된 고정 32개 실제 엔진 호출을 한 번만 관찰하고 최초 실패에서 멈춘다."""
+    started = time.perf_counter()
+    deadline = started + 900
+    result = dict(
+        schema_version=1, role="actual-engine-observer-calibration", status="failed", exit_code=1,
+        final_evidence=False, plan=state_inputs.calibration_plan(), invocations=[], groups=[],
+        superiority_claim=None, phases=[],
+        limitations=[
+            "Four-pair timing screen is empirical validation, not population confidence.",
+            "Memory sampling can miss short-lived/reparented macOS descendants; continuous peak is unproved.",
+            "OS caches, host scheduling and dynamic-loader closure remain uncontrolled.",
+        ],
+    )
+    previous = started
+    completed_rows, output_references = [], {}
+
+    def phase(name):
+        nonlocal previous
+        now = time.perf_counter()
+        result["phases"].append(dict(name=name, start=previous, end=now, seconds=now - previous))
+        previous = now
+
+    try:
+        state_inputs.require(plan["calibration"] == result["plan"], "Calibration plan changed")
+        save(output / "setup/calibration-plan.json", result["plan"])
+        result["initial_guard"] = guard(plan)
+        state_inputs.require(result["initial_guard"]["status"] == "passed", "Calibration initial guard failed")
+        oracle = state_inputs.document(plan["inputs"]["oracle"])
+        phase("calibration-admission")
+        for item in result["plan"]["invocations"]:
+            state_inputs.require(deadline - time.perf_counter() >= 240, "Calibration full child budget unavailable")
+            folder = output / "runs/calibration" / item["folder"]
+            save(output / "setup/calibration-started" / (item["folder"] + ".json"), item)
+            row = run_arm(
+                plan, item["engine"], folder, runtime_path, runtime_sha256,
+                observer_mode=item["observer"], private_key=item["folder"],
+            )
+            row["invocation"] = item
+            row["evaluation"] = evaluate(row, oracle)
+            completed_rows.append(row)
+            save(folder / "calibration-result.json", dict(
+                invocation=item, evaluation=row["evaluation"],
+                arm_result=state_inputs.reference(folder / "arm-result.json"),
+            ))
+            result["invocations"].append(dict(
+                invocation=item, result=state_inputs.reference(folder / "calibration-result.json"),
+                status=row["status"], exit_code=row["exit_code"],
+            ))
+            phase(item["folder"])
+            if row["status"] != "passed" or row["evaluation"]["status"] != "passed":
+                result.update(status=row["status"] if row["status"] != "passed" else "failed",
+                              exit_code=row["exit_code"] or 1, first_failure=item["number"])
+                break
+            observed = json.dumps({key: row["worker"][key] for key in ("graph", "observation")},
+                                  sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode()
+            reference = output_references.setdefault(item["engine"], observed)
+            if observed != reference:
+                result["first_failure"] = item["number"]
+                raise ValueError("Same-engine calibration output differs")
+            state_inputs.require(time.perf_counter() < deadline, "Calibration shared deadline expired")
+        else:
+            result["groups"] = state_inputs.calibration_groups(completed_rows)
+            result["terminal_guard"] = guard(plan)
+            state_inputs.require(result["terminal_guard"]["status"] == "passed", "Calibration terminal guard failed")
+            state_inputs.require(time.perf_counter() < deadline, "Calibration shared deadline expired")
+            passed = all(group["timing_eligible"] is not False for group in result["groups"])
+            result.update(status="passed" if passed else "ineligible", exit_code=0 if passed else 1)
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError, KeyboardInterrupt) as error:
+        result.update(status="incomplete" if isinstance(error, KeyboardInterrupt) else "failed",
+                      exit_code=125 if isinstance(error, KeyboardInterrupt) else 1, failure=type(error).__name__)
+        result["failure_reason"] = str(error)
+    phase("calibration-finalization-or-failed-work")
+    result["skipped_invocations"] = [item["number"] for item in result["plan"]["invocations"]
+                                     if item["number"] > len(result["invocations"])]
+    result["wall_seconds_before_receipt"] = time.perf_counter() - started
+    if result["wall_seconds_before_receipt"] >= 900 and result["exit_code"] == 0:
+        result.update(status="incomplete", exit_code=125, failure="SharedDeadlineExpired")
+    result["cost_accounting"] = dict(
+        prior_costs=plan["prior_costs"],
+        nested_timings="explanatory; never added twice or subtracted from composed costs",
+        enclosing_process="Includes final serialization and interpreter teardown outside this inner clock",
+    )
     save(output / "results.json", result)
     return result
 

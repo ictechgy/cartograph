@@ -157,6 +157,27 @@ def project_catalog(value):
     return result
 
 
+def calibration_inventory(raw, plan, complete=False):
+    """선언한 호출만 변환하고 완료 판정에는 정확한 전체 디렉터리 집합을 요구한다."""
+    expected = state_inputs.calibration_plan()
+    state_inputs.require(encoded(plan.get("calibration")) == encoded(expected), "Calibration plan differs")
+    jobs = expected["invocations"]
+    names = {item["folder"] for item in jobs}
+    for relative in ("runs/calibration", "private-readers"):
+        root = Path(raw) / relative
+        entries = list(root.iterdir()) if root.exists() else []
+        state_inputs.require(
+            not root.is_symlink()
+            and all(path.is_dir() and not path.is_symlink() and path.name in names for path in entries)
+            and (not complete or {path.name for path in entries} == names),
+            "Calibration invocation folders differ",
+        )
+    state_inputs.require(
+        not (Path(raw) / "runs/restored_rebuilt").exists(), "Calibration contains ordinary arm folders"
+    )
+    return jobs
+
+
 class Projection:
     def __init__(self, raw):
         self.raw = Path(raw)
@@ -231,8 +252,8 @@ class Projection:
         plan, _ = self.read(self.raw / "setup/plan.json")
         return self.environment(self.raw / "private-readers" / arm / role, plan["engine_config"]["developer_directory"])
 
-    def bind_catalog(self, arm):
-        folder = self.raw / "runs/restored_rebuilt" / arm
+    def bind_catalog(self, arm, folder=None):
+        folder = folder or self.raw / "runs/restored_rebuilt" / arm
         path = folder / "source-catalog.json"
         if not path.exists():
             return
@@ -321,6 +342,12 @@ class Projection:
                 phase["command"],
                 self.environment(self.raw / "private-state", plan["engine_config"]["developer_directory"]),
             )
+        plan_path = self.raw / "setup/plan.json"
+        plan, _ = self.read(plan_path) if plan_path.exists() else ({}, None)
+        if "calibration" in plan:
+            for item in calibration_inventory(self.raw, plan):
+                self.collect_calibration(item, config_path, plan)
+            return self
         for arm in ["baseline", "cartograph"]:
             folder = self.raw / "runs/restored_rebuilt" / arm
             observer_report = folder / "observer-runtime/runtime-result.json"
@@ -360,6 +387,76 @@ class Projection:
                 )
             self.bind_catalog(arm)
         return self
+
+    def collect_calibration(self, item, config_path, plan):
+        """각 호출의 원래 요청과 모드에 묶인 영수증만 기존 변환기로 전달한다."""
+        folder = self.raw / "runs/calibration" / item["folder"]
+        if not folder.exists():
+            return
+        config, _ = self.read(config_path)
+        observer_path = folder / (
+            "whole-arm.direct.json" if item["observer"] == "direct" else "whole-arm.observer.json"
+        )
+        observer = self.read(observer_path)[0] if observer_path.exists() else None
+        arm_path, row_path = folder / "arm-result.json", folder / "calibration-result.json"
+        arm, arm_ref = self.read(arm_path) if arm_path.exists() else (None, None)
+        if arm is not None and observer is not None:
+            state_inputs.require(encoded(arm.get("observer")) == encoded(observer), "Calibration observer copy differs")
+        if row_path.exists():
+            row, _ = self.read(row_path)
+            state_inputs.require(
+                set(row) == {"invocation", "evaluation", "arm_result"}
+                and encoded(row.get("invocation")) == encoded(item)
+                and encoded(row.get("arm_result")) == encoded(arm_ref), "Calibration arm reference differs",
+            )
+        environment = lambda role: self.arm_environment(item["folder"], role)
+        observer_report = folder / "observer-runtime/runtime-result.json"
+        if item["observer"] == "direct":
+            state_inputs.require(not observer_report.exists(), "Direct invocation contains observer runtime")
+        elif observer_report.exists():
+            state_inputs.require(
+                observer is not None and observer.get("mode") == item["observer"]
+                and isinstance(observer.get("command"), list)
+                and observer.get("periodic_sampling") is (item["observer"] == "memory"),
+                "Calibration observer mode differs",
+            )
+            self.bind(config_path, observer_report, isolated_measure.HELPER, ["--worker"],
+                      observer["observed_helper_returncode"], observer.get("command"), environment("observer"))
+        engine_report = folder / "engine-runtime/runtime-result.json"
+        if engine_report.exists():
+            state_inputs.require(observer is not None, "Calibration measurement receipt is missing")
+            request, _ = self.read(folder / "whole-arm.command.json")
+            inputs, input_ref = self.read(folder / "input.json")
+            state_inputs.require(
+                encoded(inputs) == encoded(dict(plan["engine_config"], arm=item["engine"], output=str(folder))),
+                "Calibration engine input differs",
+            )
+            measured = observer["measurement"]
+            if item["observer"] == "direct":
+                state_inputs.require(
+                    observer.get("mode") == "direct" and request.get("mode") == "direct"
+                    and measured.get("measurement_mode") == "direct"
+                    and encoded(observer.get("command")) == encoded(request.get("command"))
+                    and encoded(observer.get("workload_returncode")) == encoded(measured.get("root_returncode")),
+                    "Direct calibration measurement binding differs",
+                )
+            else:
+                original, _ = self.read(folder / "whole-arm.json")
+                state_inputs.require(encoded(measured) == encoded(original), "Calibration measurement copy differs")
+                isolated_measure.verify_measurement(folder / "whole-arm", measured, item["observer"], request)
+            self.bind(config_path, engine_report, ROOT / "engine_worker.py",
+                      ["--input", input_ref["path"], "--sha256", input_ref["sha256"]],
+                      measured["root_returncode"], request["command"], environment("engine"))
+            original, _ = self.read(engine_report)
+            state_inputs.require(
+                encoded(observer.get("engine_runtime")) == encoded(original), "Calibration engine runtime copy differs"
+            )
+        if observer_report.exists():
+            original, _ = self.read(observer_report)
+            state_inputs.require(
+                encoded(observer.get("runtime")) == encoded(original), "Calibration runtime copy differs"
+            )
+        self.bind_catalog(item["engine"], folder)
 
     def unchanged(self):
         for project, snapshot in self.catalog_sources:
