@@ -59,6 +59,11 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 
 ## Install
 
+The latest published CLI is **0.25.0**; the versioned install examples below use that release.
+The development branch is preparing **0.26.0**, which has no release tag or downloadable binary yet.
+Version 0.25.1 was prepared in source but never published; its pending changes are included in
+[Unreleased](CHANGELOG.md#unreleased).
+
 Requires macOS 14+ and a Swift toolchain (Xcode or the Command Line Tools) at run time —
 Cartograph loads `libIndexStore` from it. Development uses Swift 6.4; CI selects the newest Xcode
 installed on its runner and verifies the compiler-backed fixtures for that toolchain.
@@ -76,7 +81,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.25.1
+mint install ictechgy/cartograph@0.25.0
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -84,7 +89,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.25.1"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.25.0"),
 ```
 
 ```bash
@@ -1173,7 +1178,7 @@ $ cartograph bridges
   "platform" : "swift",
   "project" : "/app/ios",
   "target" : "flutter",
-  "tool" : { "name" : "cartograph", "version" : "0.25.1" },
+  "tool" : { "name" : "cartograph", "version" : "0.25.0" },
   "version" : 1
 }
 ```
@@ -1219,8 +1224,9 @@ or oversized input fails instead of yielding an empty success. Display is capped
 8,192 escaped UTF-8 bytes with exact omitted counts; snapshots retain the full admitted context in a
 separate compact JSON field. This preserves byte-distinct Unicode keys that Foundation keyed Codable
 would otherwise coalesce. Raw snapshot context is revalidated on restore, and conflicting duplicate
-representations fail. Embedders must load new snapshots through `AnalysisSnapshotDocument.decode(from:)`;
-plain `JSONDecoder` remains supported for legacy snapshots without provenance. Capture timestamps use
+representations fail. Embedders must load provenance-bearing retention documents through
+`ExternalRetentionStore.load(from:)` and snapshots through `AnalysisSnapshotDocument.decode(from:)`;
+plain `JSONDecoder` remains supported for legacy documents and snapshots without provenance. Capture timestamps use
 an explicit portable profile: real Gregorian dates, lower/upper-case t/z, hour/offset-hour 00–23,
 minute/offset-minute 00–59 and seconds 00–59, with arbitrary fraction digits preserved. Leap seconds
 (:60) are unsupported, rather than normalized. None of this establishes deletion safety or cancels a matched retention.
@@ -1719,11 +1725,11 @@ jobs:
       - uses: ictechgy/cartograph@action-v1.0.0
         with:
           command: check
-          version: 0.25.1
+          version: 0.25.0
           args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-The `action-v1.0.0` tag is the action release; `version: 0.25.1` selects the CLI binary.
+The `action-v1.0.0` tag is the action release; `version: 0.25.0` selects the CLI binary.
 Pin both for a repeatable setup (`@main` tracks the development branch). Marketplace's default
 "Use latest version" currently follows the repository's latest CLI release; select
 `action-v1.0.0` or use the version-specific link above for the action release. Inputs:
