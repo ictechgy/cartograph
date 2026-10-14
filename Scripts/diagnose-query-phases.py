@@ -91,9 +91,9 @@ def check_answer(raw, names, statuses, config, graph, request):
 def run(path, out, report, deadline=None):
     config, graph = PREP.admit(path, out, COMMAND_SECONDS)
     setup = PROJECT.read_json(Path(PROJECT.read_json(path)["reused_tools"]["setup_results"]))
-    require(setup["cartograph"]["mode"] == "fresh-release-package-build", "Existing release package build required")
+    require(setup["cartograph"]["setup"]["mode"] == "fresh-release-package-build", "Existing release package build required")
     config["hashes"][str(Path(__file__).resolve())] = BASE.sha256(Path(__file__))
-    report.update(source=setup["cartograph"]["source"], toolchain=setup["toolchain"],
+    report.update(source=setup["cartograph"]["setup"]["source"], toolchain=setup["toolchain"],
                   runner_sha256=BASE.sha256(Path(__file__)), runs=[], byte_checks=[])
     request = max(config["requests"], key=lambda item: item["max_depth"])
     found, ambiguous, missing = graph["bindings"][request["seed"]], "fullMessage", "CartographPhaseMissing_7c460af8"

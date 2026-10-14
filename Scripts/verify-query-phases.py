@@ -101,8 +101,19 @@ class PhaseContracts(unittest.TestCase):
                        "store": str(self.root / "index"), "cg_config": str(self.root / "config.yml")}
         self.path = self.root / "raw" / "results.json"
         self.out = self.root / "raw" / "runs" / "query-phases"
-        D.BASE.save(self.root / "setup.json", {"cartograph": {"mode": "fresh-release-package-build",
-                     "source": {"revision": "fixture"}}, "toolchain": {"version": "fixture"}})
+        package, binary_dir = self.root / "package", self.root / "release"
+        package.mkdir(exist_ok=True)
+        binary_dir.mkdir(exist_ok=True)
+        (package / "Package.swift").write_text("// controlled fixture\n")
+        (package / "Package.resolved").write_text("{}\n")
+        (binary_dir / "cartograph").write_bytes(b"fixture binary; never executed")
+        args = argparse.Namespace(cartograph_package=package, setup_timeout=1, jobs=1)
+        # 실제 생산자의 반환 구조를 쓴다. 컴파일러·git·실행 파일 호출만 모의한다.
+        with mock.patch.object(D.BASE, "capture", side_effect=[
+                ("fixture", {}), ("", {}), (str(binary_dir), {}), ("fixture version", {})]), \
+                mock.patch.object(D.BASE, "run", return_value={}):
+            cartograph = D.BASE.prepare_cartograph(args, self.root / "swiftc", self.root)
+        D.BASE.save(self.root / "setup.json", {"cartograph": cartograph, "toolchain": {"version": "fixture"}})
         D.BASE.save(self.path, {"reused_tools": {"setup_results": str(self.root / "setup.json")}})
         return self.config, self.graph
 
@@ -166,6 +177,29 @@ class PhaseContracts(unittest.TestCase):
                 self.run_fixture(invalid_wall)
         with self.assertRaisesRegex(ValueError, "deadline"):
             self.run_fixture(deadline=0)
+
+    def test_actual_producer_setup_is_required_before_query_capture(self):
+        report, _ = self.run_fixture()
+        produced = D.PROJECT.read_json(self.root / "setup.json")["cartograph"]
+        self.assertNotIn("mode", produced)
+        self.assertNotIn("source", produced)
+        self.assertEqual(report["source"], produced["setup"]["source"])
+        self.assertEqual(report["source"]["revision"], "fixture")
+        for missing_setup in (False, True):
+            admitted = self.fixture()
+            setup = D.PROJECT.read_json(self.root / "setup.json")
+            # 바깥에 옛 모의 필드를 넣어도 실제 setup 계약을 대신할 수 없다.
+            setup["cartograph"].update(mode="fresh-release-package-build", source={"revision": "spoof"})
+            if missing_setup:
+                del setup["cartograph"]["setup"]
+            else:
+                setup["cartograph"]["setup"]["mode"] = "supplied-binary"
+            D.BASE.save(self.root / "setup.json", setup)
+            with self.subTest(missing_setup=missing_setup), \
+                    mock.patch.object(D.PREP, "admit", return_value=admitted), \
+                    mock.patch.object(D, "capture") as capture, self.assertRaises((ValueError, KeyError)):
+                D.run(self.path, self.out, {})
+            capture.assert_not_called()
 
     def test_stdout_exit_stderr_mutations_prevent_timing_interpretation(self):
         for field in (0, 1, 2):
