@@ -462,6 +462,72 @@
   },
   "schema_version": 1,
   "scope": "Byte identity only; runtime and native integration execution remain separately verified",
+  "sdk_generation_brackets_overrides": {
+    "base_commit": "1b06789a1b3d29dfca94978d4464e3d5c79805bb",
+    "files": [
+      {
+        "bytes": 22790,
+        "path": ".github/workflows/ci.yml",
+        "sha256": "acded643f2d7902fd3ee1ee4ca97f432b27456c8e057dadd837b872a020bf52f"
+      },
+      {
+        "bytes": 13060,
+        "path": ".github/workflows/native-calibration.yml",
+        "sha256": "5c2fee5cb87ed947b5bb5ee62c79dea86862e937f3e1ae031cc5172235c41d39"
+      },
+      {
+        "bytes": 29859,
+        "path": "Fixtures/IndexStoreCLIBenchmark/mixed-ios-validation/run_ios_validation.py",
+        "sha256": "3d13082d1e0657dd7945df6e878a74ce86cdf62bd1f9b39f483e9f18470b4ef1"
+      },
+      {
+        "bytes": 35065,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "85e6daa93cb7dc4240fd3a9b5f0aa8549ab00b64027d3c374ddead32d05a69ff"
+      },
+      {
+        "bytes": 28833,
+        "path": "Scripts/benchmark-inputs/native_calibration_publication.py",
+        "sha256": "d185041ed8acf6e0a6774b1f3477726ff97a99d04a36398589f7be0b805ce817"
+      },
+      {
+        "bytes": 62365,
+        "path": "Scripts/benchmark-inputs/native_generation_inputs.py",
+        "sha256": "b2938fcf8047cba9ef926093e22694f9340b5b7dccab9a6767f3ea0b78b5626e"
+      },
+      {
+        "bytes": 49733,
+        "path": "Scripts/benchmark-inputs/test_native_calibration_publication.py",
+        "sha256": "f4152dbf6ffa48f79d080e4c14a43dfc69d1ad5c1fddfc134013ca4cf919d050"
+      },
+      {
+        "bytes": 23492,
+        "path": "Scripts/benchmark-inputs/test_native_generation_inputs.py",
+        "sha256": "42188e01869377110a0ba633e0e44ffdb6e07afef30fa05879fc0cdda8e4c0ad"
+      },
+      {
+        "bytes": 25120,
+        "path": "Scripts/validate-native-calibration-inputs.py",
+        "sha256": "e1d66dfce2357902a5b848d8ddaa1a9d04c0f330fdb558c7de5177be4fea9fea"
+      },
+      {
+        "bytes": 25140,
+        "path": "Scripts/validate-native-sdk-generations.py",
+        "sha256": "0aea019adfaa05dbeaab771c4f731f75033cd9f088276a47cc4b3ed6be1beafd"
+      },
+      {
+        "bytes": 62793,
+        "path": "Scripts/verify-native-calibration-contract.py",
+        "sha256": "06803d58fad20fcdd9e3823f376b3be2f908c842ec597f3638d1deee51a3a7e4"
+      },
+      {
+        "bytes": 26063,
+        "path": "Scripts/verify-native-generation-contract.py",
+        "sha256": "4902f943268c0157cc6a4657399478301bc514f5bf02580aaf4d3787bf5bedab"
+      }
+    ],
+    "scope": "Prospective validation-only compiler-generation SDK brackets: eight build attempts, five source-only states, 48 planned and 43 expected executed top-level compiler commands, 18 complete identity reads, one exact eight-key compiler/admission environment and a fixed 19-record v2 projection. Retained originals independently bind historical argv/source/output identities, present-state prefixes and full costs. One 1800-second controller with full-phase admission is supervised once at 1815 seconds; incomplete prefixes remain incomplete. No Swift product, ordinary default-AB semantics, generic normalizer, frozen observer, resource expectation, SDK seal, selector, source allowlist or publication cap change. Host SDK, atomic/ABA and detached-descendant limits remain explicit. Existing native refusals and the ineligible observer screen remain historical; source controls do not authorize native execution or final admission."
+  },
   "sdk_path_component_projection_overrides": {
     "base_commit": "aefa12b17a32c7edf2e6485342ffc92609c29182",
     "failed_run_url": "https://github.com/ictechgy/cartograph/actions/runs/38601748380",

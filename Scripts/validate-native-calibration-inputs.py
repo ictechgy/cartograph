@@ -82,6 +82,17 @@ def helper_hashes():
     return {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 
+
+def generation_controller():
+    return load("sdk_generation_controller", ROOT / "Scripts/validate-native-sdk-generations.py")
+
+
+def profile_hashes(profile):
+    admission.require(profile in ("calibration", "sdk-generation-brackets"), "invalid-publication-profile")
+    return helper_hashes() if profile == "calibration" else generation_controller().source_hashes()
+
+
+
 def bound_machine_fields(root):
     # 기존 설치 영수증을 검증한 뒤에만 같은 psutil 트리를 관측 함수 import에 사용한다.
     measurement = root / "measurement-helper-raw/results.json"
@@ -95,7 +106,9 @@ def bound_machine_fields(root):
     return machine.macos_fields, binding
 
 
-def stage(name, root):
+def stage(name, root, *, profile="calibration"):
+    admission.require(profile == "calibration" or name in ("before-compilation", "after-generation"),
+                      "invalid-generation-stage")
     started = time.perf_counter()
     raw = root / "native-calibration-sdk-raw"
     phases = raw / "setup/phases"
@@ -104,11 +117,13 @@ def stage(name, root):
         raw.mkdir(exist_ok=False)
         save(raw / "results.json", dict(
             schema_version=1, role="native-calibration-sdk-candidate", accepted=False,
-            final_protocol_ready=False, status="started", stages={}, helper_sha256=helper_hashes(),
+            final_protocol_ready=False, status="started", stages={}, helper_sha256=profile_hashes(profile),
         ))
     summary = document(raw / "results.json")
+    if profile != "calibration":
+        summary["profile"] = profile
     admission.require(not phase_path.exists(), "preserve-existing-stage")
-    admission.require(summary["helper_sha256"] == helper_hashes(), "calibration-input-source-changed")
+    admission.require(summary["helper_sha256"] == profile_hashes(profile), "calibration-input-source-changed")
     save(phases / (name + ".started.json"), dict(stage=name, status="started", final_protocol_ready=False))
     phase = dict(stage=name, status="failed", exit_code=1, accepted=False, final_protocol_ready=False,
                  helper_sha256=summary["helper_sha256"])
@@ -132,6 +147,10 @@ def stage(name, root):
                               and prior_phases[previous]["accepted"] is False
                               and prior_phases[previous]["final_protocol_ready"] is False,
                               "prior-phase-binding-changed")
+        if profile != "calibration" and name == "after-generation":
+            generation = document(raw / "generation-results.json")
+            admission.require(generation["status"] == "verified-candidate", "generation-lifecycle-incomplete")
+            phase["generation_originals"] = generation_controller().GENERATIONS.verify_originals(generation)
         if required:
             admission.require(json.dumps(document(raw / "before-compilation/results.json"), sort_keys=True, allow_nan=False) ==
                               json.dumps(prior_phases["before-compilation"]["observation"], sort_keys=True, allow_nan=False),
@@ -167,7 +186,7 @@ def stage(name, root):
         phase["observation"] = observed
         phase.update(status="passed" if passed else "incomplete" if observed["status"] == "incomplete" else "failed", exit_code=0 if passed else 125
                      if observed["status"] == "incomplete" else 1)
-        admission.require(helper_hashes() == summary["helper_sha256"], "calibration-input-source-changed")
+        admission.require(profile_hashes(profile) == summary["helper_sha256"], "calibration-input-source-changed")
     except (KeyboardInterrupt, OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
         phase.update(status="incomplete" if isinstance(error, KeyboardInterrupt) else "failed",
                      exit_code=125 if isinstance(error, KeyboardInterrupt) else 1,
@@ -221,12 +240,19 @@ def supervise(name, root):
     return result["exit_code"]
 
 
-def original_small_files(raw, calls):
+def original_small_files(raw, calls, *, profile="calibration"):
     """대형 봉인을 제외한 모든 원본의 집합과 바이트를 경계마다 같은 방식으로 읽는다."""
     excluded = {"before-compilation/seal.json", "after-generation/seal-verification.json",
                 "after-calibration/seal-verification.json"}
+    if profile != "calibration":
+        projection = load("generation_seal_paths", INPUTS / "native_calibration_publication.py")
+        excluded = set(projection.profile_sources(profile).values())
     rows = {}
-    for label, base in (("raw", raw), ("calls", calls)):
+    bases = [("raw", raw), ("calls", calls)]
+    if profile != "calibration":
+        bases.extend((("discovery", raw.parent / "sdk-discovery-raw"),
+                      ("supervisor", raw.parent / "native-generation-supervisor")))
+    for label, base in bases:
         try:
             base.lstat()
         except FileNotFoundError:
@@ -259,14 +285,15 @@ def publication_failure(error):
     return result
 
 
-def publish(root):
+def publish(root, *, profile="calibration"):
     started = time.perf_counter()
     path = root / "native-calibration-sdk-publication.json"
     admission.require(not path.exists(), "preserve-publication-receipt")
     result = dict(status="failed", exit_code=1, accepted=False, final_protocol_ready=False, costs={},
                   publication_failure=None)
     try:
-        result["public_manifest"] = publish_bundle(root, result["costs"])
+        result["public_manifest"] = (publish_bundle(root, result["costs"]) if profile == "calibration" else
+                                     publish_bundle(root, result["costs"], profile=profile))
         result.update(status="passed", exit_code=0)
     except (KeyboardInterrupt, OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
         result.update(status="incomplete" if isinstance(error, KeyboardInterrupt) else "failed",
@@ -282,11 +309,22 @@ def publish(root):
     return result["exit_code"]
 
 
-def publish_bundle(root, costs):
+def publish_bundle(root, costs, *, profile="calibration"):
     # 큰 봉인 원본은 정확한 가역 분할 표현으로만 옮기고 동일한 일반 스캐너를 통과시킨다.
     raw = root / "native-calibration-sdk-raw"
     summary = document(raw / "results.json")
-    admission.require(summary["helper_sha256"] == helper_hashes(), "calibration-input-source-changed")
+    admission.require(summary["helper_sha256"] == profile_hashes(profile), "calibration-input-source-changed")
+    generation = None
+    if profile != "calibration":
+        controller = generation_controller()
+        context_path = root / controller.CONTEXT
+        controller.verify_context(context_path, controller.reference(context_path)["sha256"], root,
+                                  current_environment=False)
+        admission.require(summary.get("profile") == profile, "generation-summary-profile")
+        controller.verify_controller(root)
+        generation = document(raw / "generation-results.json") if (raw / "generation-results.json").exists() else None
+        if generation is not None:
+            controller.GENERATIONS.verify_originals(generation)
     projection = load("calibration_seal_projection", INPUTS / "native_calibration_publication.py")
     staging = root / "native-calibration-sdk-staging"
     public = root / "native-calibration-sdk-public"
@@ -294,22 +332,24 @@ def publish_bundle(root, costs):
     staging.mkdir()
     save(staging / "results.json", summary)
     calls = root / "native-calibration-sdk-calls"
-    originals = original_small_files(raw, calls)
+    originals = (original_small_files(raw, calls) if profile == "calibration" else
+                 original_small_files(raw, calls, profile=profile))
     for relative, data in originals.items():
         target = staging / "setup/original" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("xb") as stream:
             stream.write(data)
-    def measured(name, function, *args):
+    def measured(name, function, *args, **kwargs):
         at = time.perf_counter()
         try:
-            value = function(*args)
+            value = function(*args, **kwargs)
             costs[name] = dict(status="passed", result=value)
             return value
         finally:
             costs.setdefault(name, dict(status="failed"))["full_wall_seconds"] = time.perf_counter() - at
 
-    measured("prepare_projection", projection.prepare_projection, raw, staging)
+    options = {} if profile == "calibration" else dict(profile=profile)
+    measured("prepare_projection", projection.prepare_projection, raw, staging, **options)
     save(staging / "setup/original-copy-manifest.json", dict(files=[
         dict(path=name, sha256=hashlib.sha256(data).hexdigest(), bytes=len(data))
         for name, data in sorted(originals.items())
@@ -320,16 +360,24 @@ def publish_bundle(root, costs):
         "APPLICATIONS=/Applications", "LIBRARY=/Library", "SYSTEM=/System", "PRIVATE=/private",
         "USR=/usr", "OPT=/opt", "BIN=/bin", "DEV=/dev", "TEMP=/var",
     ]
+    if profile != "calibration":
+        prefixes.append("SBIN=/sbin")
     at = time.perf_counter()
     try:
         manifest = NORMALIZER.package(argparse.Namespace(input=staging, output=public, prefix=prefixes))
         costs["normalizer"] = dict(status="passed")
     finally:
         costs.setdefault("normalizer", dict(status="failed"))["full_wall_seconds"] = time.perf_counter() - at
-    measured("verify_publication", projection.verify_publication, staging, public, manifest)
-    measured("verify_sources", projection.verify_sources, raw, staging)
-    admission.require(original_small_files(raw, calls) == originals, "original-publication-input-changed")
-    admission.require(summary["helper_sha256"] == helper_hashes(), "calibration-input-source-changed")
+    measured("verify_publication", projection.verify_publication, staging, public, manifest, **options)
+    measured("verify_sources", projection.verify_sources, raw, staging, **options)
+    endpoint = (original_small_files(raw, calls) if profile == "calibration" else
+                original_small_files(raw, calls, profile=profile))
+    admission.require(endpoint == originals, "original-publication-input-changed")
+    if profile != "calibration":
+        controller.verify_controller(root)
+    if generation is not None:
+        controller.GENERATIONS.verify_originals(generation)
+    admission.require(summary["helper_sha256"] == profile_hashes(profile), "calibration-input-source-changed")
     return state_inputs.reference(public / "manifest.json")
 
 
@@ -338,12 +386,30 @@ def main():
     parser.add_argument("--stage", choices=["before-compilation", "after-generation", "after-calibration", "publish"], required=True)
     parser.add_argument("--scratch-root", type=Path, required=True)
     parser.add_argument("--execute-stage", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--generation-context-sha256", help=argparse.SUPPRESS)
+    parser.add_argument("--generation-publication", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
-        root = fixed_root(args.scratch_root)
+        profile = "sdk-generation-brackets" if args.generation_context_sha256 or args.generation_publication else "calibration"
+        if args.generation_context_sha256:
+            admission.require(args.execute_stage and not args.generation_publication
+                              and args.stage in ("before-compilation", "after-generation"), "invalid-generation-mode")
+            root = args.scratch_root
+            admission.require(root.is_absolute() and root.resolve(strict=True) == root, "generation-scratch-alias")
+            admission.evidence_boundary(root / "native-calibration-sdk-raw", admission.expectation()[0])
+            admission.require(not root.is_relative_to(ROOT) and not ROOT.is_relative_to(root), "repository-scratch-overlap")
+            controller = generation_controller()
+            controller.verify_context(root / controller.CONTEXT, args.generation_context_sha256, root)
+        else:
+            root = fixed_root(args.scratch_root)
+        admission.require(not args.generation_publication or (args.stage == "publish" and not args.execute_stage),
+                          "invalid-generation-mode")
         admission.require(not (args.execute_stage and args.stage == "publish"), "invalid-internal-stage")
-        code = publish(root) if args.stage == "publish" else (
-            stage(args.stage, root) if args.execute_stage else supervise(args.stage, root))
+        if profile != "calibration":
+            code = publish(root, profile=profile) if args.stage == "publish" else stage(args.stage, root, profile=profile)
+        else:
+            code = publish(root) if args.stage == "publish" else (
+                stage(args.stage, root) if args.execute_stage else supervise(args.stage, root))
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
         print(json.dumps(dict(status="refused", failure_type=type(error).__name__,
                               failure_sha256=hashlib.sha256(str(error).encode()).hexdigest())), file=sys.stderr)

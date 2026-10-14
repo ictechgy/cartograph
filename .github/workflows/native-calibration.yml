@@ -15,6 +15,7 @@ on:
         options:
           - calibration
           - sdk-publication-only
+          - sdk-generation-only
 
 permissions:
   contents: read
@@ -42,7 +43,7 @@ jobs:
           value = os.environ['SOURCE_SHA']
           assert re.fullmatch(r'[0-9a-f]{40}', value)
           assert value == os.environ['DISPATCH_SHA']
-          assert os.environ['RUN_MODE'] in ('calibration', 'sdk-publication-only')
+          assert os.environ['RUN_MODE'] in ('calibration', 'sdk-publication-only', 'sdk-generation-only')
           assert os.environ.get('ImageOS') == 'macos26'
           assert os.environ.get('ImageVersion') == '20260907.0351.1'
           PY
@@ -60,6 +61,8 @@ jobs:
           test -z "$(git status --porcelain)"
           python3 Scripts/verify-native-calibration-contract.py
           python3 -m unittest discover -s Scripts/benchmark-inputs -p 'test_native_calibration*.py' -v
+          python3 Scripts/verify-native-generation-contract.py
+          python3 -m unittest discover -s Scripts/benchmark-inputs -p 'test_native_generation_inputs.py' -v
 
       # 설치는 기존 한 번의 공식 psutil --target 경로만 쓴다. 합성 진단은 실제 엔진 교정을 대신하지 않는다.
       - name: Prepare the existing isolated measurement installation
@@ -72,10 +75,21 @@ jobs:
 
       - name: Capture SDK and toolchain before covered compilation
         id: before
+        if: inputs.mode != 'sdk-generation-only'
         timeout-minutes: 10
         run: |
           python3 -I -S -B Scripts/validate-native-calibration-inputs.py \
             --stage before-compilation --scratch-root "$RUNNER_TEMP"
+
+      # 이 모드는 원본 도구/질의 없이 고정된 컴파일 세대만 실행한다.
+      # 45분 전체 제한에서 중단되면 뒤의 공개 업로드는 보장되지 않는다.
+      - name: Validate the fixed compiler-only SDK generation brackets
+        id: generations
+        if: inputs.mode == 'sdk-generation-only'
+        timeout-minutes: 31
+        run: |
+          python3 -I -S -B Scripts/validate-native-sdk-generations.py \
+            --scratch-root "$RUNNER_TEMP"
 
       # 호스트 macOS SDK 전체는 이 iPhoneSimulator+toolchain 봉인의 범위 밖이다.
       - name: Build the existing source-pinned tools and validation fixture
@@ -160,11 +174,15 @@ jobs:
 
       - name: Prepare safe SDK candidate evidence
         id: sdk_public
-        if: always() && !cancelled() && steps.before.outcome != 'skipped'
+        env:
+          RUN_MODE: ${{ inputs.mode }}
+        if: always() && !cancelled() && (steps.before.outcome != 'skipped' || steps.generations.outcome != 'skipped')
         timeout-minutes: 4
         run: |
+          generation=()
+          if [[ "$RUN_MODE" == 'sdk-generation-only' ]]; then generation=(--generation-publication); fi
           python3 -I -S -B Scripts/validate-native-calibration-inputs.py \
-            --stage publish --scratch-root "$RUNNER_TEMP"
+            --stage publish --scratch-root "$RUNNER_TEMP" "${generation[@]}"
 
       - name: Retain normalized SDK candidate evidence
         if: always() && steps.sdk_public.outcome == 'success'

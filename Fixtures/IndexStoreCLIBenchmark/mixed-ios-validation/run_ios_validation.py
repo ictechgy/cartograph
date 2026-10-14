@@ -8,6 +8,7 @@ raw outputs and report native versus externally supplied capabilities separately
 from __future__ import annotations
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -30,11 +31,16 @@ from validation_common import (
 )
 
 
-def run(args: list[str], cwd: Path, stem: Path, timeout: int = 300) -> dict:
+def run(args: list[str], cwd: Path, stem: Path, timeout: int = 300, *, deadline=None) -> dict:
     stem.parent.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
-    failure, interrupted = None, None
+    failure, interrupted, budget = None, None, None
     try:
+        if deadline:
+            timeout = deadline.remaining(timeout)
+            budget = dict(requested_timeout_seconds=timeout,
+                          lifecycle_remaining_at_launch_seconds=deadline.expires - deadline.launch_monotonic,
+                          lifecycle_elapsed_at_launch_seconds=deadline.launch_monotonic - (deadline.expires - 1200.0))
         process = subprocess.run(args, cwd=cwd, capture_output=True, timeout=timeout)
         stdout, stderr, code = process.stdout, process.stderr, process.returncode
     except subprocess.TimeoutExpired as error:
@@ -42,7 +48,7 @@ def run(args: list[str], cwd: Path, stem: Path, timeout: int = 300) -> dict:
     except OSError as error:
         failure = f"{type(error).__name__}: {error}"
         stdout, stderr, code = b"", (failure + "\n").encode(), "launch-error"
-    except KeyboardInterrupt as error:
+    except (KeyboardInterrupt, generations.IncompleteProcess) as error:
         interrupted = error
         stdout, stderr, code = b"", b"Command interrupted; partial subprocess output unavailable.\n", "interrupted"
     elapsed = time.perf_counter() - started
@@ -58,14 +64,21 @@ def run(args: list[str], cwd: Path, stem: Path, timeout: int = 300) -> dict:
     )
     if failure:
         result["error"] = failure
+    if deadline:
+        result.update(budget or dict(requested_timeout_seconds=None, lifecycle_remaining_at_launch_seconds=None,
+                                    lifecycle_elapsed_at_launch_seconds=None))
     save(stem.with_suffix(".json"), result)
     if interrupted is not None:
         raise interrupted
+    if deadline:
+        if elapsed > timeout:
+            raise generations.IncompleteProcess("Compiler/setup receipt exceeded its declared timeout")
+        deadline.check()
     return result
 
 
-def setup_capture(args: list[str], root: Path, name: str) -> str:
-    record = run(args, root, root / "setup" / name)
+def setup_capture(args: list[str], root: Path, name: str, *, deadline=None) -> str:
+    record = run(args, root, root / "setup" / name, deadline=deadline)
     if record["exit_code"] != 0:
         error = generations.IncompleteProcess if generations.incomplete_exit(record["exit_code"]) else RuntimeError
         raise error(f'Setup failed: {name}; see {record["stderr"]}')
@@ -75,6 +88,7 @@ def setup_capture(args: list[str], root: Path, name: str) -> str:
 def selected_setup(args: argparse.Namespace, output: Path) -> dict:
     """Keep partial toolchain selection visible when discovery cannot finish."""
     setup = dict(status="selecting", requested_sdk=args.sdk)
+    deadline = getattr(args, "_sdk_deadline", None)
     target = output / "setup/setup.json"
     save(target, setup)
     try:
@@ -84,15 +98,15 @@ def selected_setup(args: argparse.Namespace, output: Path) -> dict:
             ("swiftc", "swiftc-path", ["xcrun", "--find", "swiftc"]),
             ("clang", "clang-path", ["xcrun", "--find", "clang"]),
         ]:
-            setup[key] = setup_capture(command, output, name)
+            setup[key] = setup_capture(command, output, name, deadline=deadline)
             save(target, setup)
         library = Path(setup["swiftc"]).resolve().parent.parent / "lib/libIndexStore.dylib"
         if not library.is_file():
             raise RuntimeError("Matching libIndexStore.dylib missing beside selected Swift compiler")
         setup.update(library=str(library), library_sha256=digest(library))
         save(target, setup)
-        setup_capture([setup["swiftc"], "-help"], output, "swift-help")
-        setup_capture([setup["clang"], "-cc1", "--help"], output, "clang-frontend-help")
+        setup_capture([setup["swiftc"], "-help"], output, "swift-help", deadline=deadline)
+        setup_capture([setup["clang"], "-cc1", "--help"], output, "clang-frontend-help", deadline=deadline)
         for key, name, command in [
             ("sdk_version", "sdk-version", ["xcrun", "--sdk", args.sdk, "--show-sdk-version"]),
             ("sdk_build", "sdk-build", ["xcrun", "--sdk", args.sdk, "--show-sdk-build-version"]),
@@ -100,7 +114,7 @@ def selected_setup(args: argparse.Namespace, output: Path) -> dict:
             ("swift_version", "swift-version", [setup["swiftc"], "--version"]),
             ("clang_version", "clang-version", [setup["clang"], "--version"]),
         ]:
-            setup[key] = setup_capture(command, output, name)
+            setup[key] = setup_capture(command, output, name, deadline=deadline)
             save(target, setup)
         setup.update(status="selected", developer_dir=os.environ.get("DEVELOPER_DIR"), host=platform.platform())
     except (Exception, KeyboardInterrupt) as error:
@@ -171,6 +185,9 @@ def main() -> int:
     parser.add_argument("--deployment-target", default="16.0")
     parser.add_argument("--with-tests", action="store_true", help="Compile optional XCTest module; never runs tests")
     parser.add_argument("--plan", action="store_true", help="Plan only, works on Linux; no compiler execution")
+    parser.add_argument("--sdk-generation-request", type=Path,
+                        help="Explicit frozen SDK generation-only candidate request")
+    parser.add_argument("--sdk-generation-request-sha256", help="Exact SHA256 of that request's original bytes")
     parser.add_argument(
         "--compiler-index-policy", choices=generations.POLICIES, default=generations.POLICIES[0],
         help="Versioned shared compiler input policy; original incremental diagnostic remains the default",
@@ -184,6 +201,13 @@ def main() -> int:
         "--hook-json", type=Path, help="JSON argv list; called with --state <state.json> after every stage"
     )
     args = parser.parse_args()
+    if bool(args.sdk_generation_request) != bool(args.sdk_generation_request_sha256):
+        parser.error("SDK generation request and its exact SHA256 must be supplied together")
+    if args.sdk_generation_request and (
+        args.plan or args.sdk != "iphonesimulator" or args.deployment_target != "16.0" or args.with_tests
+        or args.hook_json or args.continue_observation_failures or args.compiler_index_policy != "fresh-shared-v2"
+    ):
+        parser.error("SDK generation request requires compiler-only fresh-shared-v2 iPhoneSimulator 16.0")
     if not args.plan and platform.system() != "Darwin":
         parser.error("Real iOS SDK execution requires an existing Xcode on macOS; use --plan for offline inspection")
     output = args.output.resolve()
@@ -220,12 +244,31 @@ def main() -> int:
                 superiority_claim=None,
             ),
         )
+        if getattr(args, "_sdk_session", None):
+            try:
+                args._sdk_session.finalize_originals()
+            except Exception as retention_error:
+                save(output / "sdk-generation-retention-failure.json",
+                     dict(error=f"{type(retention_error).__name__}: {retention_error}"))
         print(f"Validation failed: {type(error).__name__}: {error}", file=sys.stderr)
         return (generations.INCOMPLETE_PROCESS_EXIT
                 if isinstance(error, (generations.IncompleteProcess, KeyboardInterrupt)) else 2)
+    finally:
+        if getattr(args, "_sdk_deadline", None):
+            args._sdk_deadline.close()
 
 
 def execute(args: argparse.Namespace, output: Path) -> int:
+    sdk_session, sdk_inputs = None, None
+    if getattr(args, "sdk_generation_request", None):
+        lifecycle_started = time.monotonic()
+        helper = ROOT.parents[2] / "Scripts/benchmark-inputs/native_generation_inputs.py"
+        spec = importlib.util.spec_from_file_location("native_generation_inputs", helper)
+        sdk_inputs = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sdk_inputs)
+        args._sdk_deadline = sdk_inputs.Deadline(lifecycle_started, generations.IncompleteProcess)
+        sdk_inputs.validate_request(args.sdk_generation_request, args.sdk_generation_request_sha256)
+        args._sdk_deadline.check()
     if source_manifest(ROOT / "fixture") != json.loads((ROOT / "source-manifest.json").read_text()):
         raise ValueError("Fixture source hashes changed; review and refreeze validation artifacts")
     copy_started = time.perf_counter()
@@ -268,6 +311,10 @@ def execute(args: argparse.Namespace, output: Path) -> int:
         limitation="SDK header/module contents and their immutability across generations are not established",
     )
     save(output / "setup" / "setup.json", setup)
+    if sdk_inputs:
+        sdk_session = sdk_inputs.prepare(args.sdk_generation_request, args.sdk_generation_request_sha256, output,
+                                         setup, deadline=args._sdk_deadline)
+        args._sdk_session = sdk_session
     hook = json.loads(args.hook_json.read_text()) if args.hook_json else None
     if hook is not None and (not isinstance(hook, list) or not hook or not all(isinstance(v, str) for v in hook)):
         raise ValueError("Hook must be a nonempty JSON argv array; shell commands are not accepted")
@@ -339,6 +386,9 @@ def execute(args: argparse.Namespace, output: Path) -> int:
                     project, compile_store, compile_build, sdk, triple, swiftc, clang, platform_path, args.with_tests
                 )
                 save(state_dir / "commands.json", commands)
+                if sdk_session:
+                    sdk_session.before(stage, commands, state)
+                    save(state_dir / "state.json", state)
                 if not args.plan:
                     for command in commands:
                         for path in command["outputs"]:
@@ -347,13 +397,17 @@ def execute(args: argparse.Namespace, output: Path) -> int:
                             save(Path(command["output_map_path"]), command["output_file_map"])
                         state["command_record"] = str((state_dir / command["name"]).with_suffix(".json"))
                         save(state_dir / "state.json", state)
-                        record = run(command["args"], project, state_dir / command["name"])
+                        record = run(command["args"], project, state_dir / command["name"],
+                                     deadline=getattr(args, "_sdk_deadline", None))
                         builds.append(record)
                         save(state_dir / "state.json", state)
                         if record["exit_code"] != 0:
                             if generations.incomplete_exit(record["exit_code"]):
                                 raise generations.IncompleteProcess(f"Incomplete compiler process: {stage}")
                             break
+                    if sdk_session:
+                        sdk_session.after(stage, commands, state)
+                        save(state_dir / "state.json", state)
                     success = len(builds) == len(commands) and all(b["exit_code"] == 0 for b in builds)
                     if (expected_build == "success") != success:
                         save(state_dir / "unexpected-build.json", builds)
@@ -384,6 +438,8 @@ def execute(args: argparse.Namespace, output: Path) -> int:
                                     raise RuntimeError(
                                         f'Expected header absent from compile dependencies: {command["name"]}'
                                     )
+            if sdk_session and not expected_build:
+                sdk_session.source_only(stage, state)
             sources = source_manifest(project)
             next_modules = accepted_modules
             if expected_build == "success" and not args.plan:
@@ -473,8 +529,14 @@ def execute(args: argparse.Namespace, output: Path) -> int:
         except (Exception, KeyboardInterrupt) as error:
             if not preparation_complete:
                 state["shared_input_cost"] = generations.cost(preparation_started, builds, planned=args.plan)
+            if sdk_session:
+                try:
+                    sdk_session.fail(stage, state, error)
+                except Exception as retention_error:
+                    state["sdk_generation_retention_error"] = f"{type(retention_error).__name__}: {retention_error}"
             retain_failed_state(output, state, error, index_archives)
             raise
+    sdk_summary = sdk_session.finish(stages) if sdk_session else None
     save(
         output / "results.json",
         dict(
@@ -490,8 +552,11 @@ def execute(args: argparse.Namespace, output: Path) -> int:
             framework_selection="not-scored",
             runtime_execution="not-run",
             superiority_claim=None,
+            **({"sdk_generation": sdk_summary} if sdk_summary else {}),
         ),
     )
+    if sdk_session:
+        sdk_session.finalize_originals()
     print(f'{"Planned" if args.plan else "Compiled"} {len(stages)} validation states; no superiority claim')
     return 1 if observation_failures else 0
 

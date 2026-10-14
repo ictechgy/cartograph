@@ -240,7 +240,7 @@ discovery, later seal checks and all 32 engine invocations are skipped. The proj
 the absent later seals and keeps `accepted=false` and `final_protocol_ready=false`. This smaller diagnostic
 can expose a fresh publication failure category; it cannot recover the missing category from an earlier
 run or establish observer eligibility. Unknown, empty or missing execution-mode fields refuse before
-checkout; neither mode changes the scanner, caps, expectations or calibration thresholds.
+checkout; none of these modes changes the scanner, caps, expectations or calibration thresholds.
 
 The resource regime `github-hosted-macos-26-standard-m1-3core-7gib-v1` prospectively requires the
 [documented standard runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners):
@@ -344,5 +344,63 @@ noncanonical components refuse, even when enclosing checksums are recomputed. Ve
 remain preserved with their original source; the version 2 reader does not silently reinterpret them.
 Early privacy refusals from the projection retain the wrapper's generic safe failure diagnostic;
 ordinary normalizer refusals keep their existing category/hash diagnostic.
-This source correction has no native SDK publication result yet. Candidate-only flags, missing later
-seals and the retained observer timing refusal remain unchanged.
+[The v2 SDK-only attempt](https://github.com/ictechgy/cartograph/actions/runs/38615315223) passed capture
+and safe publication on exact source `1b06789a1b3d29dfca94978d4464e3d5c79805bb`. Independent readback
+reconstructed all 17,142 entries (13,831 files and 171 symlinks), both content/canonical identities and
+264 published manifest rows. Its content identity is
+`50fcaf77a96f5701e55ff5d16812d0d8ec2fdb2d250a826e58447dac4371613c`. This establishes that attempt's
+before-compilation candidate only. It does not supply earlier missing seals or prove compiler-generation
+closure. Candidate-only flags, absent later seals and the retained observer timing refusal remain.
+
+
+### Prospective compiler-only generation brackets
+
+The explicit `sdk-generation-only` mode is a validation-only route. It uses the existing mixed-iOS
+compiler fixture with `fresh-shared-v2`, iPhoneSimulator and deployment target 16.0; no product hook,
+Cartograph/index-dump build, query, engine invocation or final holdout is selected. The eight fixed
+build-generation attempts retain 48 planned top-level compiler commands and expect 43 actual commands:
+seven complete six-command builds plus the first Clang command's expected positive header-delete
+failure. Five intervening source-only states execute no compiler. A timeout, cancellation, signal or
+incomplete cleanup cannot stand in for that expected compiler failure and stops further phases.
+The existing 11 setup probes and ten restored-state discovery probes remain explicit, in addition to
+the unchanged native admission probes. Every actual compiler argv, source state and generated-output
+identity must match its stage-specific recipe; later restored discovery does not excuse an earlier
+command difference.
+
+The initial full two-root capture is followed by a full content read before and after each of the eight
+attempts and one final read after restored-state discovery: 18 full SDK/toolchain reads. All must bind
+the independently reconstructed candidate content identity above. The generation projection has a
+separate fixed 19-record map: initial, 16 generation boundaries, final post-discovery and an explicitly
+missing after-calibration record. Stopped prefixes preserve missing later records; a hole or an extra
+record refuses. Entry references require verified equality and preserve every original field, cost and
+hash. The same v2 inverse and unchanged 4 MiB chunk, 8 MiB/file and 64 MiB/bundle limits apply.
+
+Admission, setup, compiler and selector children use exactly eight environment keys: fixed system PATH,
+C locales, the reviewed DEVELOPER_DIR/ImageOS/ImageVersion and fresh owned HOME/TMPDIR. The exact
+values and directory identities are bound before admission. PATH alone is represented as its four fixed
+ordered components in public receipts and reconstructed exactly for execution; no inherited language,
+plugin, dynamic-loader or Python overrides are admitted. Expected cache content changes in the owned
+directories are allowed, while replacement of those directories refuses.
+
+One 1,800-second monotonic controller budget includes admission and receipt work. A phase starts only
+if its entire declared child allowance remains: 570 seconds for initial/final admission, 1,200 seconds
+for the complete lifecycle, and 180 seconds for discovery. These maxima sum to 2,520 seconds, exceeding
+the controller budget deliberately: an unstartable next phase remains not-started and the attempt is
+incomplete; allowances are never silently shortened and complete execution is not guaranteed.
+The lifecycle uses its own single deadline,
+including setup, hashing, compiler work and receipt work; nested command limits cannot extend it.
+One fixed outer invocation observes the controller's actual exit with an 1,815-second allowance inside
+the 31-minute workflow step. Publication binds its exact command, interpreter/source hashes, original
+streams, typed exit and elapsed wall; a complete inner JSON cannot override a failed outer result.
+The enclosing child intervals include child receipt serialization and teardown. Boundary/compiler
+subintervals are retained for attribution and must not be added again to the enclosing shared cost.
+Full shared costs are assigned identically to each arm; final controller receipt/teardown and publication
+costs remain separately scoped, so no composed comparison endpoint is reported by this diagnostic.
+The existing 45-minute job cap can interrupt later publication. Upload of an incomplete attempt is
+best effort, never guaranteed by the sum of individual step limits.
+
+These brackets observe endpoints on a mutable filesystem. They do not prove atomic reads, exclude an
+intervening change-and-restoration, or close host macOS SDK, OS/loader, link/JIT or target runtime inputs.
+A compiler driver exit does not establish detached-descendant containment. Successful output remains
+`accepted=false`, `final_protocol_ready=false` and validation-only. The rejected observer screen is
+unchanged, and this source preparation has no native generation-bracket execution result yet.

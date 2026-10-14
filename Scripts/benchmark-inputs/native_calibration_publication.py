@@ -34,6 +34,31 @@ SOURCES = {
     "after-generation": "after-generation/seal-verification.json",
     "after-calibration": "after-calibration/seal-verification.json",
 }
+DEFAULT_PROFILE = "calibration"
+GENERATION_PROFILE = "sdk-generation-brackets"
+GENERATION_SOURCES = {
+    "before-compilation": "before-compilation/seal.json",
+    "generations/initial/before": "generations/initial/before/seal-verification.json",
+    "generations/initial/after": "generations/initial/after/seal-verification.json",
+    "generations/header_edit_rebuilt/before": "generations/header_edit_rebuilt/before/seal-verification.json",
+    "generations/header_edit_rebuilt/after": "generations/header_edit_rebuilt/after/seal-verification.json",
+    "generations/header_rename_rebuilt/before": "generations/header_rename_rebuilt/before/seal-verification.json",
+    "generations/header_rename_rebuilt/after": "generations/header_rename_rebuilt/after/seal-verification.json",
+    "generations/header_delete_build_failed/before":
+        "generations/header_delete_build_failed/before/seal-verification.json",
+    "generations/header_delete_build_failed/after":
+        "generations/header_delete_build_failed/after/seal-verification.json",
+    "generations/header_restored_rebuilt/before": "generations/header_restored_rebuilt/before/seal-verification.json",
+    "generations/header_restored_rebuilt/after": "generations/header_restored_rebuilt/after/seal-verification.json",
+    "generations/swift_rename_rebuilt/before": "generations/swift_rename_rebuilt/before/seal-verification.json",
+    "generations/swift_rename_rebuilt/after": "generations/swift_rename_rebuilt/after/seal-verification.json",
+    "generations/swift_delete_rebuilt/before": "generations/swift_delete_rebuilt/before/seal-verification.json",
+    "generations/swift_delete_rebuilt/after": "generations/swift_delete_rebuilt/after/seal-verification.json",
+    "generations/restored_rebuilt/before": "generations/restored_rebuilt/before/seal-verification.json",
+    "generations/restored_rebuilt/after": "generations/restored_rebuilt/after/seal-verification.json",
+    "after-generation": "after-generation/seal-verification.json",
+    "after-calibration": "after-calibration/seal-verification.json",
+}
 
 
 class ProjectionError(ValueError):
@@ -43,6 +68,41 @@ class ProjectionError(ValueError):
 def require(condition: bool, reason: str) -> None:
     if not condition:
         raise ProjectionError(reason)
+
+
+def profile_sources(profile: str) -> dict[str, str]:
+    """임의 경로 등록 없이 기존 세 원본과 고정 세대 괄호 중 하나만 선택한다."""
+    require(profile in (DEFAULT_PROFILE, GENERATION_PROFILE), "invalid-projection-profile")
+    return GENERATION_SOURCES if profile == GENERATION_PROFILE else SOURCES
+
+
+def profile_kind(profile: str) -> str:
+    """기존 매니페스트 바이트를 유지하면서 명시적으로 선택한 세대 형식을 구분한다."""
+    profile_sources(profile)
+    return ("native-generation-sdk-entry-chunks-v2" if profile == GENERATION_PROFILE
+            else "native-calibration-sdk-entry-chunks-v2")
+
+
+def generation_source_membership(raw_dir: Path) -> None:
+    """중단된 실행의 앞부분만 허용하고 별도 세대 묶음으로 누락을 숨기지 않는다."""
+    expected = list(GENERATION_SOURCES.values())[:-1]
+    for relative in GENERATION_SOURCES.values():
+        path = raw_dir / relative
+        require(not raw_dir.is_symlink()
+                and all(not parent.is_symlink() for parent in path.parents if parent.is_relative_to(raw_dir)),
+                "source-directory-symlink")
+    found = {path.relative_to(raw_dir).as_posix() for path in raw_dir.rglob("*")
+             if path.name in ("seal.json", "seal-verification.json")}
+    require(found == set(expected[:len(found)]), "generation-source-membership-mismatch")
+
+
+def generation_record_schedule(records: dict) -> None:
+    """실패한 시도의 부재를 보존하되 건너뛴 괄호나 교정 단계 추가를 거부한다."""
+    states = [records[label].get("state") if isinstance(records[label], dict) else None
+              for label in GENERATION_SOURCES]
+    count = states.count("present")
+    require(count <= 18 and states == ["present"] * count + ["missing"] * (19 - count),
+            "invalid-generation-record-schedule")
 
 
 def digest(data: bytes) -> str:
@@ -181,19 +241,21 @@ def write_chunks(base: Path, label: str, entries: list) -> list[dict]:
     return rows
 
 
-def record_projection(base: Path, label: str, document: dict, raw_identity: dict, candidate_entries: list | None) -> dict:
+def record_projection(base: Path, label: str, document: dict, raw_identity: dict, candidate_entries: list | None,
+                      *, profile: str = DEFAULT_PROFILE) -> dict:
     """후검증 항목은 후보와 완전히 같을 때만 후보 항목을 참조한다."""
     seal = seal_from_record(label, document)
     entries = seal["entries"]
+    source = profile_sources(profile)[label]
     non_entries = {key: value for key, value in seal.items() if key != "entries"}
     remainder = non_entries if label == "before-compilation" else {**document, "actual": non_entries}
-    row = dict(state="present", source_relative_path=SOURCES[label], raw_identity=raw_identity,
+    row = dict(state="present", source_relative_path=source, raw_identity=raw_identity,
                original_value_sha256=digest(SEAL.canonical_bytes(document)), document_without_entries=remainder,
                entry_count=len(entries))
     if label != "before-compilation" and entries == candidate_entries:
         row["entries_reference"] = "before-compilation"
     else:
-        row["chunks"] = write_chunks(base, label, [project_entry(entry, SOURCES[label]) for entry in entries])
+        row["chunks"] = write_chunks(base, label, [project_entry(entry, source) for entry in entries])
     return row
 
 
@@ -214,31 +276,38 @@ def projection_files(base: Path) -> dict[str, bytes]:
     return files
 
 
-def restore_documents(base: Path, *, normalized: bool = False) -> tuple[dict, dict]:
+def restore_documents(base: Path, *, normalized: bool = False, profile: str = DEFAULT_PROFILE) -> tuple[dict, dict]:
     """조각을 역변환하며 이름·순서·중복·해시·개수와 전체 내용 정체성을 검사한다."""
+    sources = profile_sources(profile)
     files = projection_files(base)
     require("projection.json" in files, "missing-projection-manifest")
     manifest = SEAL.strict_expected_json(files["projection.json"])
-    require(set(manifest) == {"schema_version", "kind", "accepted", "final_protocol_ready", "records",
-                              "serialization", "normalization", "projection_creation_wall_seconds"},
-            "invalid-projection-schema")
+    fields = {"schema_version", "kind", "accepted", "final_protocol_ready", "records",
+              "serialization", "normalization", "projection_creation_wall_seconds"}
+    if profile == GENERATION_PROFILE:
+        fields.add("record_order")
+    require(set(manifest) == fields, "invalid-projection-schema")
     require(type(manifest["schema_version"]) is int and manifest["schema_version"] == 2
-            and manifest["kind"] == "native-calibration-sdk-entry-chunks-v2"
+            and manifest["kind"] == profile_kind(profile)
             and manifest["accepted"] is False and manifest["final_protocol_ready"] is False
-            and set(manifest["records"]) == set(SOURCES), "invalid-projection-status")
+            and isinstance(manifest["records"], dict)
+            and set(manifest["records"]) == set(sources), "invalid-projection-status")
+    if profile == GENERATION_PROFILE:
+        require(manifest["record_order"] == list(sources), "invalid-generation-record-order")
+        generation_record_schedule(manifest["records"])
     elapsed = manifest["projection_creation_wall_seconds"]
     require(type(elapsed) in (int, float) and math.isfinite(elapsed) and elapsed >= 0
             and manifest["serialization"] == SERIALIZATION and manifest["normalization"] == NORMALIZATION,
             "invalid-projection-metadata")
     expected_files, documents, all_entries = {"projection.json"}, {}, {}
-    for label in SOURCES:
+    for label in sources:
         row = manifest["records"][label]
         if row.get("state") == "missing":
-            require(row == dict(state="missing", source_relative_path=SOURCES[label]), "invalid-missing-record")
+            require(row == dict(state="missing", source_relative_path=sources[label]), "invalid-missing-record")
             continue
         common = {"state", "source_relative_path", "raw_identity", "original_value_sha256",
                   "document_without_entries", "entry_count"}
-        require(row.get("state") == "present" and row.get("source_relative_path") == SOURCES[label]
+        require(row.get("state") == "present" and row.get("source_relative_path") == sources[label]
                 and set(row) in (common | {"chunks"}, common | {"entries_reference"}), "invalid-record-schema")
         require(set(row["raw_identity"]) == {"bytes", "sha256"}
                 and type(row["raw_identity"]["bytes"]) is int
@@ -299,10 +368,10 @@ def restore_documents(base: Path, *, normalized: bool = False) -> tuple[dict, di
     return documents, manifest
 
 
-def verify_projection(staging_dir: Path) -> dict:
+def verify_projection(staging_dir: Path, *, profile: str = DEFAULT_PROFILE) -> dict:
     """정규화 전 원본 JSON 값의 가역성을 검증하고 원본 바이트 동일성은 주장하지 않는다."""
     started = time.perf_counter()
-    documents, manifest = restore_documents(staging_dir / PROJECTION)
+    documents, manifest = restore_documents(staging_dir / PROJECTION, profile=profile)
     files = projection_files(staging_dir / PROJECTION)
     return dict(status="verified-reversible-projection", accepted=False, final_protocol_ready=False,
                 records=list(documents), projection_manifest_sha256=digest(files["projection.json"]),
@@ -310,11 +379,14 @@ def verify_projection(staging_dir: Path) -> dict:
                 original_raw_bytes_reproduced=False, wall_seconds=time.perf_counter() - started)
 
 
-def verify_sources(raw_dir: Path, staging_dir: Path) -> dict:
-    """공개 준비가 끝날 때까지 큰 원본 세 개와 명시한 부재 상태를 다시 확인한다."""
+def verify_sources(raw_dir: Path, staging_dir: Path, *, profile: str = DEFAULT_PROFILE) -> dict:
+    """공개 준비가 끝날 때까지 선택한 고정 원본과 명시한 부재 상태를 다시 확인한다."""
     started = time.perf_counter()
-    documents, manifest = restore_documents(staging_dir / PROJECTION)
-    for label, relative in SOURCES.items():
+    sources = profile_sources(profile)
+    documents, manifest = restore_documents(staging_dir / PROJECTION, profile=profile)
+    if profile == GENERATION_PROFILE:
+        generation_source_membership(raw_dir)
+    for label, relative in sources.items():
         path = raw_dir / relative
         require(not raw_dir.is_symlink() and not path.parent.is_symlink(), "source-directory-symlink")
         if label in documents:
@@ -330,11 +402,14 @@ def verify_sources(raw_dir: Path, staging_dir: Path) -> dict:
     return dict(status="source-identities-unchanged", wall_seconds=time.perf_counter() - started)
 
 
-def prepare_projection(raw_dir: Path, staging_dir: Path) -> dict:
-    """세 개의 고정 원본만 변환하고 성공적인 역검사 뒤 부모의 정규화 입력에 넣는다."""
+def prepare_projection(raw_dir: Path, staging_dir: Path, *, profile: str = DEFAULT_PROFILE) -> dict:
+    """명시적으로 선택한 고정 원본만 변환하고 역검사 뒤 부모의 정규화 입력에 넣는다."""
     started = time.perf_counter()
+    sources = profile_sources(profile)
     raw_dir, staging_dir = raw_dir.absolute(), staging_dir.absolute()
     require(not raw_dir.is_symlink() and raw_dir.is_dir(), "invalid-raw-directory")
+    if profile == GENERATION_PROFILE:
+        generation_source_membership(raw_dir)
     raw, stage = raw_dir.resolve(), staging_dir.resolve()
     require(not stage.is_relative_to(raw) and not raw.is_relative_to(stage), "projection-input-overlap")
     final = staging_dir / PROJECTION
@@ -342,7 +417,7 @@ def prepare_projection(raw_dir: Path, staging_dir: Path) -> dict:
     require(not final.exists() and not final.is_symlink(), "existing-projection")
     pending.mkdir(parents=True, exist_ok=False)
     records, originals, candidate_entries = {}, {}, None
-    for label, relative in SOURCES.items():
+    for label, relative in sources.items():
         path = raw_dir / relative
         require(not path.parent.is_symlink(), "source-directory-symlink")
         try:
@@ -356,40 +431,46 @@ def prepare_projection(raw_dir: Path, staging_dir: Path) -> dict:
             candidate_entries = seal["entries"]
         else:
             require(candidate_entries is not None, "verification-without-candidate")
-        records[label] = record_projection(pending, label, document, raw_identity, candidate_entries)
+        records[label] = record_projection(pending, label, document, raw_identity, candidate_entries, profile=profile)
         originals[label] = document
-    manifest = dict(schema_version=2, kind="native-calibration-sdk-entry-chunks-v2", accepted=False,
+    manifest = dict(schema_version=2, kind=profile_kind(profile), accepted=False,
                     final_protocol_ready=False, records=records,
                     serialization=SERIALIZATION, normalization=NORMALIZATION,
                     projection_creation_wall_seconds=time.perf_counter() - started)
+    if profile == GENERATION_PROFILE:
+        manifest["record_order"] = list(sources)
+        generation_record_schedule(records)
     data = encoded(manifest)
     used = sum(item.stat().st_size for item in pending.rglob("*") if item.is_file())
     require(len(data) <= MAX_FILE_BYTES and used + len(data) <= MAX_TOTAL_BYTES, "projection-size-limit")
     with (pending / "projection.json").open("xb") as stream:
         stream.write(data)
-    restored, _ = restore_documents(pending)
+    restored, _ = restore_documents(pending, profile=profile)
     require(restored == originals, "inverse-document-mismatch")
     for label in originals:
-        document, identity = read_document(raw_dir / SOURCES[label], limit=SEAL.MAX_MANIFEST_BYTES)
+        document, identity = read_document(raw_dir / sources[label], limit=SEAL.MAX_MANIFEST_BYTES)
         require(document == originals[label] and identity == records[label]["raw_identity"], "source-changed")
-    for label in set(SOURCES) - set(originals):
-        path = raw_dir / SOURCES[label]
+    for label in set(sources) - set(originals):
+        path = raw_dir / sources[label]
         try:
             path.lstat()
         except FileNotFoundError:
             continue
         raise ProjectionError("missing-source-appeared")
+    if profile == GENERATION_PROFILE:
+        generation_source_membership(raw_dir)
     final.parent.mkdir(parents=True, exist_ok=True)
     pending.rename(final)
-    verified = verify_projection(staging_dir)
+    verified = verify_projection(staging_dir, profile=profile)
     verified["prepare_wall_seconds"] = time.perf_counter() - started
     return verified
 
 
-def verify_normalized_projection(public_dir: Path, expected_projection_manifest_sha256: str) -> dict:
+def verify_normalized_projection(public_dir: Path, expected_projection_manifest_sha256: str,
+                                 *, profile: str = DEFAULT_PROFILE) -> dict:
     """정규화 뒤 항목 내용과 원본→공개 해시 연결을 확인하고 가려진 원본 경로를 복원하지 않는다."""
     started = time.perf_counter()
-    documents, _ = restore_documents(public_dir / PROJECTION, normalized=True)
+    documents, _ = restore_documents(public_dir / PROJECTION, normalized=True, profile=profile)
     outer, _ = read_document(public_dir / "manifest.json")
     require(outer.get("status") == "normalized_for_review" and outer.get("source_raw_unchanged") is True,
             "normalization-not-verified")
@@ -414,9 +495,9 @@ def verify_normalized_projection(public_dir: Path, expected_projection_manifest_
                 wall_seconds=time.perf_counter() - started)
 
 
-def verify_publication(staging_dir: Path, public_dir: Path, manifest: dict) -> dict:
+def verify_publication(staging_dir: Path, public_dir: Path, manifest: dict, *, profile: str = DEFAULT_PROFILE) -> dict:
     """부모가 받은 기존 정규화 영수증을 실제 출력 및 원본 투영과 함께 연결한다."""
-    source = verify_projection(staging_dir)
+    source = verify_projection(staging_dir, profile=profile)
     retained, _ = read_document(public_dir / "manifest.json")
     require(retained == manifest, "normalization-receipt-changed")
-    return verify_normalized_projection(public_dir, source["projection_manifest_sha256"])
+    return verify_normalized_projection(public_dir, source["projection_manifest_sha256"], profile=profile)
