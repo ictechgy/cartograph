@@ -399,14 +399,28 @@ struct QueryCommand: ParsableCommand {
     }
 
     func run() throws {
-        // 요청 파일은 인덱스를 열기 전에 읽는다. 색인을 다 만든 뒤에 "배열이 비었다" 를
-        // 말하면 사용자는 몇 초를 기다린 대가로 오타 하나를 받는다.
-        let requests = try batch.map { try Self.readRequests(at: $0) }
-        let context = try CommandSupport.makeContext(options)
-        let outcome = try requests.map {
-            try context.service.queryBatch(symbols: $0, depth: depth, limit: limit)
-        } ?? context.service.query(symbol: symbol ?? "", depth: depth, limit: limit)
-        try CommandSupport.emit(outcome, options: options, context: context)
+        try run(diagnosticEnvironment: ProcessInfo.processInfo.environment, diagnosticSink: .standardError)
+    }
+
+    /// 프로세스 환경을 바꾸지 않고 opt-in과 진단 쓰기 실패를 검증할 수 있게 한다.
+    func run(diagnosticEnvironment: [String: String], diagnosticSink: FileHandle) throws {
+        try QueryPhaseDiagnostics.withDiagnostics(
+            environment: diagnosticEnvironment, sink: diagnosticSink
+        ) { observer in
+            let (requests, context) = try measureQueryPhase(.cliSetup, observer: observer) {
+                // 요청 파일은 인덱스를 열기 전에 읽는다. 색인을 다 만든 뒤에 "배열이 비었다" 를
+                // 말하면 사용자는 몇 초를 기다린 대가로 오타 하나를 받는다.
+                let requests = try batch.map { try Self.readRequests(at: $0) }
+                let context = try CommandSupport.makeContext(options, queryPhaseObserver: observer)
+                return (requests, context)
+            }
+            let outcome = try requests.map {
+                try context.service.queryBatch(symbols: $0, depth: depth, limit: limit)
+            } ?? context.service.query(symbol: symbol ?? "", depth: depth, limit: limit)
+            try measureQueryPhase(.cliOutput, observer: observer) {
+                try CommandSupport.emit(outcome, options: options, context: context)
+            }
+        }
     }
 
     /// 요청 파일을 읽어 이름 목록으로 만든다.

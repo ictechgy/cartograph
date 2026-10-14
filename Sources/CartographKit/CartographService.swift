@@ -94,33 +94,43 @@ public struct CartographService: Sendable {
 
     /// 그래프 표현과 원시 참조 수집을 분리해 재귀 호출을 명시적으로 보존할 수 있게 한다.
     public func loadContext(includeSelfReferences: Bool) throws -> AnalysisContext {
-        // 근거 파일을 인덱스보다 먼저 읽는다. 파일이 깨졌을 때 인덱스 없는 프로젝트에서도
-        // 그 오류가 보여야 CLI 계약 검증이 이 경로를 실제로 증명한다.
-        let externalPath = configuration.externalRetentionsPath.map(resolveProjectRelativePath)
-        let externalRetentions = try ExternalRetentionStore(fileSystem: environment.fileSystem)
-            .loadIfConfigured(at: externalPath)
-        let inventory = projectFileInventory()
-        let source = try makeIndexSource(
-            includeObjectiveCSources: true, includeSelfReferences: includeSelfReferences,
-            sourceRoots: inventory.sourceFiles, inventory: inventory
-        )
-        let enriched = try enrich(source.provider.loadSnapshot(), inventory: inventory)
-        let snapshot = enriched.snapshot
-        try requireNonEmptyIndex(snapshot, from: source)
-        let context = AnalysisContext(
-            snapshot: snapshot,
-            pathFilter: configuration.pathFilter,
-            edgeKinds: configuration.edgeKinds,
-            externalRetentions: externalRetentions,
-            missingSourcePaths: enriched.missingSourcePaths,
-            unreadableSourcePaths: enriched.unreadableSourcePaths,
-            unresolvedLocalFunctionsByPath: enriched.unresolvedLocalFunctionsByPath,
-            localFunctionDiagnostics: enriched.localFunctionDiagnostics,
-            runtimeFiles: enriched.runtimeFiles + runtimeResourceFacts(paths: inventory.runtimeFiles),
-            runtimeFreshness: runtimeSourceFreshness(snapshot: snapshot,
-                missing: enriched.missingSourcePaths, unreadable: enriched.unreadableSourcePaths)
-        )
-        return context.bindingProjectFileInventory(inventory)
+        let (externalRetentions, inventory, source) = try measureQueryPhase(
+            .inputPreparation, observer: environment.queryPhaseObserver
+        ) {
+            // 근거 파일을 인덱스보다 먼저 읽는다. 파일이 깨졌을 때 인덱스 없는 프로젝트에서도
+            // 그 오류가 보여야 CLI 계약 검증이 이 경로를 실제로 증명한다.
+            let externalPath = configuration.externalRetentionsPath.map(resolveProjectRelativePath)
+            let externalRetentions = try ExternalRetentionStore(fileSystem: environment.fileSystem)
+                .loadIfConfigured(at: externalPath)
+            let inventory = projectFileInventory()
+            let source = try makeIndexSource(
+                includeObjectiveCSources: true, includeSelfReferences: includeSelfReferences,
+                sourceRoots: inventory.sourceFiles, inventory: inventory
+            )
+            return (externalRetentions, inventory, source)
+        }
+        let raw = try measureQueryPhase(.rawSnapshot, observer: environment.queryPhaseObserver) {
+            try source.provider.loadSnapshot()
+        }
+        return try measureQueryPhase(.syntaxContext, observer: environment.queryPhaseObserver) {
+            let enriched = enrich(raw, inventory: inventory)
+            let snapshot = enriched.snapshot
+            try requireNonEmptyIndex(snapshot, from: source)
+            let context = AnalysisContext(
+                snapshot: snapshot,
+                pathFilter: configuration.pathFilter,
+                edgeKinds: configuration.edgeKinds,
+                externalRetentions: externalRetentions,
+                missingSourcePaths: enriched.missingSourcePaths,
+                unreadableSourcePaths: enriched.unreadableSourcePaths,
+                unresolvedLocalFunctionsByPath: enriched.unresolvedLocalFunctionsByPath,
+                localFunctionDiagnostics: enriched.localFunctionDiagnostics,
+                runtimeFiles: enriched.runtimeFiles + runtimeResourceFacts(paths: inventory.runtimeFiles),
+                runtimeFreshness: runtimeSourceFreshness(snapshot: snapshot,
+                    missing: enriched.missingSourcePaths, unreadable: enriched.unreadableSourcePaths)
+            )
+            return context.bindingProjectFileInventory(inventory)
+        }
     }
 
     /// 탈출구를 켜고 아무것도 분석하지 않은 실행이면, 요약 줄에 붙일 단서.
@@ -526,7 +536,9 @@ public struct CartographService: Sendable {
     /// 채널을 같이 준다. 판단은 부르는 쪽의 몫이다.
     public func query(symbol subject: String, depth: Int = 1, limit: Int = 50) throws -> CommandOutcome {
         let document = try queryDocument(symbol: subject, depth: depth, limit: limit)
-        let text = try Self.encodeQuery(document)
+        let text = try measureQueryPhase(.serialization, observer: environment.queryPhaseObserver) {
+            try Self.encodeQuery(document)
+        }
         guard document.status == "notFound" else {
             return CommandOutcome(output: text)
         }
@@ -577,7 +589,9 @@ public struct CartographService: Sendable {
         let results = try symbols.map {
             try queryDocument(symbol: $0, depth: depth, limit: limit, in: session)
         }
-        let text = try Self.encodeSortedJSON(SymbolQueryBatchDocument(results: results))
+        let text = try measureQueryPhase(.serialization, observer: environment.queryPhaseObserver) {
+            try Self.encodeSortedJSON(SymbolQueryBatchDocument(results: results))
+        }
         let missing = results.filter { $0.status == "notFound" }.map(\.requested)
         return CommandOutcome(
             output: text,
@@ -629,21 +643,23 @@ public struct CartographService: Sendable {
     /// 베이스라인도 한 번만 읽는다. 없으면 요청마다 파일을 다시 읽는다. 답은 같지만,
     /// 1000건 배치에서 33 밀리초를 파일 시스템에 쓰고 그 값은 베이스라인이 커질수록 커진다.
     func makeQuerySession(in context: AnalysisContext, subjects: [String]? = nil) throws -> QuerySession {
-        let graph = context.buildGraph(level: .symbol).graph
-        let baseline = try loadBaseline()
-        var session = QuerySession(
-            graph: graph,
-            lookup: GraphQueryIndex(graph: graph),
-            foundFacts: nil,
-            limitations: analysisLimitations(context: context, symbolGraph: graph),
-            localFunctionDiagnostics: LocalFunctionDiagnostics.presenting(
-                context.localFunctionDiagnostics.filter { configuration.pathFilter.allows($0.location.path) }
-            ),
-            baselineFingerprints: baseline.map { Set($0.fingerprints) } ?? [],
-            foundFactsBuildCount: 0
-        )
+        var session = try measureQueryPhase(.graphQuerySetup, observer: environment.queryPhaseObserver) {
+            let graph = context.buildGraph(level: .symbol).graph
+            let baseline = try loadBaseline()
+            return QuerySession(
+                graph: graph,
+                lookup: GraphQueryIndex(graph: graph),
+                foundFacts: nil,
+                limitations: analysisLimitations(context: context, symbolGraph: graph),
+                localFunctionDiagnostics: LocalFunctionDiagnostics.presenting(
+                    context.localFunctionDiagnostics.filter { configuration.pathFilter.allows($0.location.path) }
+                ),
+                baselineFingerprints: baseline.map { Set($0.fingerprints) } ?? [],
+                foundFactsBuildCount: 0
+            )
+        }
         if subjects.map({ $0.contains(where: { Self.isFound(session.lookup.resolve($0)) }) }) ?? true {
-            session.installFoundFacts(makeFoundQueryFacts(in: context, graph: graph))
+            session.installFoundFacts(makeFoundQueryFacts(in: context, graph: session.graph))
         }
         return session
     }
@@ -658,10 +674,12 @@ public struct CartographService: Sendable {
     }
 
     private func makeFoundQueryFacts(in context: AnalysisContext, graph: CodeGraph) -> FoundQueryFacts {
-        let report = analyzeUnusedCode(in: context, graph: graph)
-        return FoundQueryFacts(
-            report: report, referenceEvidence: ReferenceEvidenceIndex(snapshot: context.snapshot, graph: graph)
-        )
+        measureQueryPhase(.foundFacts, observer: environment.queryPhaseObserver) {
+            let report = analyzeUnusedCode(in: context, graph: graph)
+            return FoundQueryFacts(
+                report: report, referenceEvidence: ReferenceEvidenceIndex(snapshot: context.snapshot, graph: graph)
+            )
+        }
     }
 
     private static func isFound(_ lookup: GraphNodeLookup) -> Bool {
@@ -675,58 +693,60 @@ public struct CartographService: Sendable {
         limit: Int,
         in session: QuerySession
     ) throws -> SymbolQueryDocument {
-        let graph = session.graph
-        // `unusedCode` 는 설정과 무관하게 항상 심볼 레벨로 만든다. 여기서 설정값을
-        // 실어 보내면 심볼 레벨 답을 모듈 레벨 답이라고 말하게 된다.
-        let level = GraphLevel.symbol.rawValue
+        try measureQueryPhase(.answer, observer: environment.queryPhaseObserver) {
+            let graph = session.graph
+            // `unusedCode` 는 설정과 무관하게 항상 심볼 레벨로 만든다. 여기서 설정값을
+            // 실어 보내면 심볼 레벨 답을 모듈 레벨 답이라고 말하게 된다.
+            let level = GraphLevel.symbol.rawValue
 
-        let limitations = session.limitations
+            let limitations = session.limitations
 
-        switch session.lookup.resolve(subject) {
-        case .notFound:
-            // 오타가 오타라고 말만 하지 않는다. 그래프에 비슷한 이름이 있으면
-            // 다시 물을 수 있는 모양(위치·USR 포함)으로 같이 보낸다.
-            // 비슷한 이름이 없으면 키 자체를 만들지 않는다 — 빈 배열은
-            // "추천이 비었다"는 매번 붙는 말이 된다.
-            let similar = Self.candidates(
-                session.lookup.similarCandidates(to: subject),
-                in: graph
-            )
-            return SymbolQueryDocument(
-                status: "notFound",
-                requested: subject,
-                level: level,
-                limitations: limitations,
-                candidates: similar.isEmpty ? nil : similar,
-                localFunctionDiagnostics: session.localFunctionDiagnostics
-            )
-        case let .ambiguous(candidates):
-            return SymbolQueryDocument(
-                status: "ambiguous",
-                requested: subject,
-                level: level,
-                limitations: limitations,
-                candidates: Self.candidates(candidates, in: graph),
-                localFunctionDiagnostics: session.localFunctionDiagnostics
-            )
-        case let .found(node):
-            guard let foundFacts = session.foundFacts else {
-                throw CartographError.invalidConfiguration(
-                    path: projectPath, reason: "The query session has no prepared found-symbol facts."
+            switch session.lookup.resolve(subject) {
+            case .notFound:
+                // 오타가 오타라고 말만 하지 않는다. 그래프에 비슷한 이름이 있으면
+                // 다시 물을 수 있는 모양(위치·USR 포함)으로 같이 보낸다.
+                // 비슷한 이름이 없으면 키 자체를 만들지 않는다 — 빈 배열은
+                // "추천이 비었다"는 매번 붙는 말이 된다.
+                let similar = Self.candidates(
+                    session.lookup.similarCandidates(to: subject),
+                    in: graph
+                )
+                return SymbolQueryDocument(
+                    status: "notFound",
+                    requested: subject,
+                    level: level,
+                    limitations: limitations,
+                    candidates: similar.isEmpty ? nil : similar,
+                    localFunctionDiagnostics: session.localFunctionDiagnostics
+                )
+            case let .ambiguous(candidates):
+                return SymbolQueryDocument(
+                    status: "ambiguous",
+                    requested: subject,
+                    level: level,
+                    limitations: limitations,
+                    candidates: Self.candidates(candidates, in: graph),
+                    localFunctionDiagnostics: session.localFunctionDiagnostics
+                )
+            case let .found(node):
+                guard let foundFacts = session.foundFacts else {
+                    throw CartographError.invalidConfiguration(
+                        path: projectPath, reason: "The query session has no prepared found-symbol facts."
+                    )
+                }
+                return SymbolQueryDocument(
+                    status: "found",
+                    requested: subject,
+                    level: level,
+                    limitations: limitations,
+                    result: try describeQuery(
+                        of: node, report: foundFacts.report, in: graph,
+                        depth: depth, limit: limit, baselineFingerprints: session.baselineFingerprints,
+                        referenceEvidence: foundFacts.referenceEvidence
+                    ),
+                    localFunctionDiagnostics: session.localFunctionDiagnostics
                 )
             }
-            return SymbolQueryDocument(
-                status: "found",
-                requested: subject,
-                level: level,
-                limitations: limitations,
-                result: try describeQuery(
-                    of: node, report: foundFacts.report, in: graph,
-                    depth: depth, limit: limit, baselineFingerprints: session.baselineFingerprints,
-                    referenceEvidence: foundFacts.referenceEvidence
-                ),
-                localFunctionDiagnostics: session.localFunctionDiagnostics
-            )
         }
     }
 

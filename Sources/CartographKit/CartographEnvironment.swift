@@ -19,6 +19,8 @@ public struct CartographEnvironment: Sendable {
     /// 캐시 키가 파일 내용이라 켜 두어도 결과가 달라지지 않지만, 결과를 의심할
     /// 때 변수를 하나 줄일 수 있어야 한다.
     public var usesSyntaxCache: Bool
+    /// 패키지 내부 진단 전용이다. 기본 실행은 시계를 읽거나 관측값을 만들지 않는다.
+    package var queryPhaseObserver: QueryPhaseObserver? = nil
 
     public init(
         fileSystem: any FileSystem = LocalFileSystem(),

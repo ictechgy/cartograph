@@ -1,4 +1,4 @@
-import CartographAnalysis
+@testable import CartographAnalysis
 import CartographCore
 import CartographTestSupport
 import Foundation
@@ -124,7 +124,35 @@ struct ImpactSelectionExpansionTests {
     @Test("큰 그래프의 좁은 선택은 도달 범위의 차수 합만큼만 든다")
     func narrowSelectionSkipsFullEdgeScan() {
         let memberCount = 500
-        let noiseCount = 140_000
+        for noiseCount in [0, 140_000] {
+            let graph = Self.narrowSelectionGraph(memberCount: memberCount, noiseCount: noiseCount)
+            let reads = CountingGraph(graph)
+            let expanded = ImpactSelectionExpansion.expandContainers(["Root"], graph: reads)
+            let baselineReads = CountingGraph(graph)
+            let baseline = Self.fullEdgeScanExpandingContainers(["Root"], graph: baselineReads)
+
+            #expect(expanded == baseline)
+            #expect(expanded == ImpactSelectionExpansion.expandingContainers(["Root"], graph: graph))
+            #expect(expanded.count == memberCount + 1)
+            #expect(expanded.contains("Root"))
+            // 노이즈 유무와 무관하게 도달한 501개 정점만 양방향으로 읽는다.
+            #expect(reads.wholeEdgeListReads == 0)
+            #expect(reads.outgoingLookups == 501)
+            #expect(reads.incomingLookups == 501)
+            #expect(reads.adjacencyEntries == 1_000)
+            #expect(reads.semanticParentLookups == 0)
+            // 계측기가 원 구현의 전수 스캔을 실제로 구별하는지도 고정한다.
+            #expect(baselineReads.wholeEdgeListReads == 2)
+            #expect(baselineReads.wholeEdgeEntries == 2 * (memberCount + noiseCount))
+
+            if noiseCount == 140_000,
+               ProcessInfo.processInfo.environment["CARTOGRAPH_IMPACT_EXPANSION_TIMING"] == "1" {
+                Self.checkNarrowSelectionTiming(graph: graph, expected: baseline)
+            }
+        }
+    }
+
+    private static func narrowSelectionGraph(memberCount: Int, noiseCount: Int) -> CodeGraph {
         var nodes = [GraphNode(id: "Root", name: "Root", kind: .classType)]
         let edges = (0..<memberCount).map { index in
             GraphEdge(source: "Root", target: NodeID("Member\(index)"), kind: .member)
@@ -135,23 +163,121 @@ struct ImpactSelectionExpansionTests {
         }
         nodes += (0..<memberCount).map { GraphNode(id: NodeID("Member\($0)"), name: "Member\($0)", kind: .method) }
         nodes += (0..<noiseCount).map { GraphNode(id: NodeID("Noise\($0)"), name: "Noise\($0)", kind: .function) }
-        let graph = CodeGraph(level: .symbol, nodes: nodes, edges: edges)
+        return CodeGraph(level: .symbol, nodes: nodes, edges: edges)
+    }
 
+    // CI에서 이 테스트 하나만 골라 별도 실행한다. 병렬 전체 스위트는 구조적 비용을
+    // 검사하고, 여기서는 기존 4배 기준을 그대로 다섯 쌍의 중앙값으로 검사한다.
+    // 쌍 수와 순서를 미리 고정하며 실패 표본을 버리거나 통과할 때까지 재시도하지 않는다.
+    private static func checkNarrowSelectionTiming(graph: CodeGraph, expected: Set<NodeID>) {
+        let warmupBaseline = timedExpansion(expected: expected) {
+            fullEdgeScanExpandingContainers(["Root"], graph: graph)
+        }
+        let warmupOptimized = timedExpansion(expected: expected) {
+            ImpactSelectionExpansion.expandingContainers(["Root"], graph: graph)
+        }
+        print("ImpactExpansionTiming warmup=1 baselineFirst=true "
+            + "baselineSeconds=\(seconds(warmupBaseline)) optimizedSeconds=\(seconds(warmupOptimized))")
+        var ratios: [Double] = []
+        for pair in 0..<5 {
+            let baseline: Duration
+            let optimized: Duration
+            if pair.isMultiple(of: 2) {
+                baseline = timedExpansion(expected: expected) { fullEdgeScanExpandingContainers(["Root"], graph: graph) }
+                optimized = timedExpansion(expected: expected) {
+                    ImpactSelectionExpansion.expandingContainers(["Root"], graph: graph)
+                }
+            } else {
+                optimized = timedExpansion(expected: expected) {
+                    ImpactSelectionExpansion.expandingContainers(["Root"], graph: graph)
+                }
+                baseline = timedExpansion(expected: expected) { fullEdgeScanExpandingContainers(["Root"], graph: graph) }
+            }
+            let baselineSeconds = seconds(baseline)
+            let optimizedSeconds = seconds(optimized)
+            let ratio = baselineSeconds / optimizedSeconds
+            ratios.append(ratio)
+            print("ImpactExpansionTiming pair=\(pair + 1) baselineFirst=\(pair.isMultiple(of: 2)) "
+                + "baselineSeconds=\(baselineSeconds) optimizedSeconds=\(optimizedSeconds) ratio=\(ratio)")
+            #expect(baselineSeconds > 0 && optimizedSeconds > 0 && ratio.isFinite)
+        }
+        let medianRatio = ratios.sorted()[2]
+        print("ImpactExpansionTiming pairs=5 medianBaselineOverOptimized=\(medianRatio) requiredGreaterThan=4")
+        #expect(medianRatio > 4)
+    }
+
+    private static func timedExpansion(expected: Set<NodeID>, _ body: () -> Set<NodeID>) -> Duration {
         let clock = ContinuousClock()
-        let baselineStart = clock.now
-        let baselineExpanded = Self.fullEdgeScanExpandingContainers(["Root"], graph: graph)
-        let baselineElapsed = clock.now - baselineStart
         let start = clock.now
-        let expanded = ImpactSelectionExpansion.expandingContainers(["Root"], graph: graph)
+        let result = body()
         let elapsed = clock.now - start
+        #expect(result == expected)
+        return elapsed
+    }
 
-        #expect(expanded == baselineExpanded)
-        #expect(expanded.count == memberCount + 1)
-        #expect(expanded.contains("Root"))
-        // 절대 시각은 기계·CI 부하에 따라 흔들리므로, 같은 입력 위에서 전수 스캔
-        // 기준과 견준다 — 도달 범위만 읽는 구현이 4배 이상 빨라야 한다
-        // (디버그 계측으로는 약 400배 차이가 났다).
-        #expect(elapsed * 4 < baselineElapsed)
+    private static func seconds(_ duration: Duration) -> Double {
+        Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+    }
+
+    // 구현 자체의 자기 보고가 아니라 전달한 그래프의 실제 접근을 관측한다.
+    private final class CountingGraph: FullEdgeSelectionGraph {
+        private let graph: CodeGraph
+        var wholeEdgeListReads = 0
+        var wholeEdgeEntries = 0
+        var outgoingLookups = 0
+        var incomingLookups = 0
+        var adjacencyEntries = 0
+        var semanticParentLookups = 0
+
+        init(_ graph: CodeGraph) { self.graph = graph }
+
+        var edges: [GraphEdge] {
+            wholeEdgeListReads += 1
+            wholeEdgeEntries += graph.edges.count
+            return graph.edges
+        }
+
+        func node(_ id: NodeID) -> GraphNode? { graph.node(id) }
+
+        func outgoingEdges(from id: NodeID) -> [GraphEdge] {
+            outgoingLookups += 1
+            let edges = graph.outgoingEdges(from: id)
+            adjacencyEntries += edges.count
+            return edges
+        }
+
+        func incomingEdges(to id: NodeID) -> [GraphEdge] {
+            incomingLookups += 1
+            let edges = graph.incomingEdges(to: id)
+            adjacencyEntries += edges.count
+            return edges
+        }
+
+        func semanticParent(of id: NodeID) -> NodeID? {
+            semanticParentLookups += 1
+            return graph.semanticParent(of: id)
+        }
+    }
+
+    // 기준선에만 필요한 전수 간선 목록은 테스트 타깃 안의 무계측 뷰에 둔다.
+    // 프로덕션 어댑터와 똑같이 CodeGraph에 위임하며 시간 측정 중에는 세지 않는다.
+    private struct BaselineGraph: FullEdgeSelectionGraph {
+        private let graph: CodeGraph
+
+        init(_ graph: CodeGraph) { self.graph = graph }
+
+        var edges: [GraphEdge] { graph.edges }
+        func node(_ id: NodeID) -> GraphNode? { graph.node(id) }
+        func outgoingEdges(from id: NodeID) -> [GraphEdge] { graph.outgoingEdges(from: id) }
+        func incomingEdges(to id: NodeID) -> [GraphEdge] { graph.incomingEdges(to: id) }
+        func semanticParent(of id: NodeID) -> NodeID? { graph.semanticParent(of: id) }
+    }
+
+    // 시간 측정은 계측 어댑터를 거치지 않는다.
+    private static func fullEdgeScanExpandingContainers(
+        _ selected: Set<NodeID>, graph: CodeGraph
+    ) -> Set<NodeID> {
+        fullEdgeScanExpandingContainers(selected, graph: BaselineGraph(graph))
     }
 
     /// 옮기기 전 CartographKit 구현. 결과 동등성과 비용 차이의 기준선으로 남긴다.
@@ -161,7 +287,7 @@ struct ImpactSelectionExpansionTests {
     /// 거둔다. 두 구현이 같은 `graph.semanticParent`를 부르므로, 그 함수의
     /// 의미가 바뀌는 회귀는 이 비교로는 잡히지 않는다.
     private static func fullEdgeScanExpandingContainers(
-        _ selected: Set<NodeID>, graph: CodeGraph
+        _ selected: Set<NodeID>, graph: some FullEdgeSelectionGraph
     ) -> Set<NodeID> {
         let roots = selected.filter {
             graph.node($0)?.kind.isTypeDeclaration == true || graph.node($0)?.kind == .extensionDeclaration
@@ -261,4 +387,10 @@ struct ImpactSelectionExpansionTests {
             }
         }
     }
+}
+
+// 원 구현과 계측기의 양성 대조에만 필요한 전수 간선 인터페이스다.
+// 프로덕션 확장의 읽기 경계에는 이 요구사항을 추가하지 않는다.
+private protocol FullEdgeSelectionGraph: ImpactSelectionGraph {
+    var edges: [GraphEdge] { get }
 }

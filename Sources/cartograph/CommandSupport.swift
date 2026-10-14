@@ -18,7 +18,9 @@ enum CommandSupport {
     static let findingsExitCode: Int32 = 1
     static let failureExitCode: Int32 = 2
 
-    static func makeContext(_ options: GlobalOptions) throws -> CommandContext {
+    static func makeContext(
+        _ options: GlobalOptions, queryPhaseObserver: QueryPhaseObserver? = nil
+    ) throws -> CommandContext {
         let fileSystem = LocalFileSystem()
         let resolved = try options.resolveConfiguration(fileSystem: fileSystem)
 
@@ -41,10 +43,13 @@ enum CommandSupport {
             )
         }
 
+        var environment = CartographEnvironment.live()
+        environment.queryPhaseObserver = queryPhaseObserver
+
         return CommandContext(
             service: CartographService(
                 configuration: resolved.configuration,
-                environment: .live(),
+                environment: environment,
                 reportScope: scope,
                 allowsEmptyIndex: options.allowEmptyIndex
             ),
