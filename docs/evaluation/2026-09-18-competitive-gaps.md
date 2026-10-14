@@ -85,6 +85,22 @@ github-actions formats, MCP serve, snapshot diffs.
     used-type reports as external retention evidence. Large; the `runtime`
     evidence pipeline is the natural seam. Research only.
 
+## Correction — disconnected Interface Builder members (2026-10-14)
+
+The earlier "not a gap" classification of unused `@IBOutlet`/`@IBAction`
+members conflated per-member runtime connection discovery with dead-code
+reporting. `RuntimeDiscoveryResolver` can describe individual connections, but
+[`RetentionPolicy`](../../Sources/CartographAnalysis/RetentionPolicy.swift)
+retains every Interface Builder-related member when `retain_interface_builder`
+is enabled, even without a matching connection. Disconnected outlets and actions
+therefore remain a conservative reporting gap, as the
+[README limitations](../../README.md#known-limitations) explain.
+
+This corrects the capability description only. Narrowing retention would require
+the paired retained/reported corpus and three-real-project checks in
+[CONTRIBUTING](../../CONTRIBUTING.md#narrowing-one); it is not established by
+connection discovery alone.
+
 ## Explicitly not gaps
 
 - **Bazel mode** — Periphery has it; niche, no demand signal.
@@ -92,7 +108,5 @@ github-actions formats, MCP serve, snapshot diffs.
   read-only analysis by design.
 - **`unused_declaration` per-file** — `dead` is strictly more capable
   (retention rules + `--explain`).
-- **Unused `@IBOutlet`/`@IBAction`** — already per-member via
-  RuntimeDiscoveryResolver.
 - **Assign-only on wrapped properties** — already excluded via
   `accessHidingOwners`/`isAccessVisible`.
