@@ -310,6 +310,39 @@ jobs:
           python3 Scripts/verify-coverage-inputs.py
           Scripts/coverage.sh
 
+      - name: Verify isolated impact expansion cost
+        timeout-minutes: 3
+        run: |
+          set -o pipefail
+          : "${CARTOGRAPH_COVERAGE_DIR:?coverage diagnostics directory missing}"
+          log="$CARTOGRAPH_COVERAGE_DIR/impact-expansion-timing.log"
+          CARTOGRAPH_IMPACT_EXPANSION_TIMING=1 swift test --skip-build --enable-code-coverage \
+            --filter '^CartographAnalysisTests\.ImpactSelectionExpansionTests/narrowSelectionSkipsFullEdgeScan\(\)(/|$)' \
+            2>&1 | tee "$log"
+          python3 - "$log" <<'PY'
+          import math, pathlib, statistics, sys
+          rows = [dict(field.split("=", 1) for field in line.split()[1:])
+                  for line in pathlib.Path(sys.argv[1]).read_text().splitlines()
+                  if line.startswith("ImpactExpansionTiming ")]
+          assert len(rows) == 7, "Expected one warm-up, five measured pairs and one summary"
+          def positive(row, field):
+              value = float(row[field])
+              assert math.isfinite(value) and value > 0, "Invalid timing value"
+              return value
+          assert rows[0]["warmup"] == "1" and rows[0]["baselineFirst"] == "true"
+          positive(rows[0], "baselineSeconds"); positive(rows[0], "optimizedSeconds")
+          ratios = []
+          for number, row in enumerate(rows[1:6], 1):
+              assert row["pair"] == str(number) and row["baselineFirst"] == str(number % 2 == 1).lower()
+              ratio = positive(row, "baselineSeconds") / positive(row, "optimizedSeconds")
+              assert math.isclose(ratio, positive(row, "ratio"), rel_tol=1e-12)
+              ratios.append(ratio)
+          assert rows[6]["pairs"] == "5" and rows[6]["requiredGreaterThan"] == "4"
+          median = statistics.median(ratios)
+          assert math.isclose(median, positive(rows[6], "medianBaselineOverOptimized"), rel_tol=1e-12)
+          assert median > 4, "The original strict 4x impact-expansion requirement failed"
+          PY
+
       - name: Preserve integration diagnostics
         if: always() && env.CARTOGRAPH_COVERAGE_DIR != ''
         uses: actions/upload-artifact@v7
