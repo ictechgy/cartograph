@@ -440,6 +440,27 @@
     ],
     "scope": "Only safe publication-failure categories and validated existing SHA identifiers are logged. The original exception outcome, costs, scanner rules and byte caps remain unchanged. The first standard-regime timing refusal and unavailable final SDK originals remain historical; this change does not recover the missing category or authorize another native attempt."
   },
+  "sdk_publication_only_overrides": {
+    "base_commit": "0d88d6278f4ce9ad965723a8ec21a7c9bc3cc656",
+    "files": [
+      {
+        "bytes": 12048,
+        "path": ".github/workflows/native-calibration.yml",
+        "sha256": "152c26e6e9e67631e2c15ccfbd29a0b9160ac0cda44781cb6d757ee929bfbac2"
+      },
+      {
+        "bytes": 26570,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "0bfaa8cb61a30e7098a573572fef7b3ccc6ba8929978722aebabdcd66a06215e"
+      },
+      {
+        "bytes": 62211,
+        "path": "Scripts/verify-native-calibration-contract.py",
+        "sha256": "0f98b12e7a001a81872419f7157fb40146cf7357a9c869f16b42996c638c28cb"
+      }
+    ],
+    "scope": "Explicit SDK-publication-only workflow mode retains exact admission, the existing measurement installation, one before-compilation two-root capture and the unchanged safe publisher. Later producers and seals are skipped and remain missing, not accepted. Default calibration commands, bounds, scanner and thresholds are byte-preserved. This is source preparation only; it does not recover run2 evidence or authorize a native dispatch."
+  },
   "standard_native_resource_overrides": {
     "base_commit": "5a9ee5e4da14c9bcd36941ae004e949f94ba2c98",
     "failed_run_url": "https://github.com/ictechgy/cartograph/actions/runs/38556206718",

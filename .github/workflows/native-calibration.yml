@@ -7,6 +7,14 @@ on:
         description: Exact reviewed commit containing this workflow
         required: true
         type: string
+      mode:
+        description: Full calibration or one SDK capture and safe publication only
+        required: true
+        type: choice
+        default: calibration
+        options:
+          - calibration
+          - sdk-publication-only
 
 permissions:
   contents: read
@@ -27,12 +35,14 @@ jobs:
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
           DISPATCH_SHA: ${{ github.sha }}
+          RUN_MODE: ${{ inputs.mode }}
         run: |
           python3 - <<'PY'
           import os, re
           value = os.environ['SOURCE_SHA']
           assert re.fullmatch(r'[0-9a-f]{40}', value)
           assert value == os.environ['DISPATCH_SHA']
+          assert os.environ['RUN_MODE'] in ('calibration', 'sdk-publication-only')
           assert os.environ.get('ImageOS') == 'macos26'
           assert os.environ.get('ImageVersion') == '20260907.0351.1'
           PY
@@ -70,6 +80,7 @@ jobs:
       # 호스트 macOS SDK 전체는 이 iPhoneSimulator+toolchain 봉인의 범위 밖이다.
       - name: Build the existing source-pinned tools and validation fixture
         id: tools
+        if: inputs.mode == 'calibration'
         timeout-minutes: 26
         run: |
           python3 Scripts/benchmark-indexstore-cli.py \
@@ -79,6 +90,7 @@ jobs:
 
       - name: Compile the existing mixed validation generations
         id: mixed
+        if: inputs.mode == 'calibration'
         timeout-minutes: 8
         run: |
           python3 Scripts/benchmark-indexstore-mixed.py \
@@ -88,6 +100,7 @@ jobs:
 
       - name: Bind actual compiler search paths
         id: discovery
+        if: inputs.mode == 'calibration'
         timeout-minutes: 4
         run: |
           python3 Scripts/validate-native-sdk-discovery.py \
@@ -97,6 +110,7 @@ jobs:
 
       - name: Verify precompilation content and discovery relation
         id: after_generation
+        if: inputs.mode == 'calibration'
         timeout-minutes: 10
         run: |
           python3 -I -S -B Scripts/validate-native-calibration-inputs.py \
@@ -104,6 +118,7 @@ jobs:
 
       - name: Execute the fixed 32 actual-engine calibration invocations
         id: engines
+        if: inputs.mode == 'calibration'
         timeout-minutes: 21
         run: |
           python3 -I -S -B Scripts/benchmark-actual-arm/correctness_controller.py \
