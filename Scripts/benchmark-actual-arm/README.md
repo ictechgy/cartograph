@@ -225,7 +225,7 @@ Local native-extension loader create/exec paths are also rejected before native 
 
 ## Manual actual-engine observer and SDK admission diagnostic
 
-The optional `--calibration-mode native-observer-v1` path is prospective diagnostic source. The ordinary
+The optional `--calibration-mode native-observer-v1` path is diagnostic source. The ordinary
 restored-state AB path remains the default. `.github/workflows/native-calibration.yml` requires a full
 source SHA equal to the dispatch SHA, a read-only checkout and the exact reviewed image/toolchain
 expectation in `Scripts/benchmark-inputs/native_calibration_expectation.json`. An unavailable or changed
@@ -283,6 +283,16 @@ multiplicity, field and raw hash is retained; equal postcheck entry sets may ref
 after equality verification. The inverse and all original source identities are checked again after
 publication. Paths in the public derivative are normalized, so it is not byte-identical to the raw seal.
 The unchanged scanner still limits each file to 8 MiB and each bundle to 64 MiB; overflow or a privacy
-refusal has no raw fallback. Projection, normalization and recheck costs remain separate. Actual native
-calibration, reviewed SDK admission and the final protocol's later frozen holdouts/paired sessions remain
-pending until their own original outcomes exist.
+refusal has no raw fallback. Projection, normalization and recheck costs remain separate. Publication
+failures log only a fixed scanner category and validated artifact/value SHA256 identifiers; arbitrary
+exception text, paths and values are not logged. These diagnostics preserve the original failure and costs.
+
+[The standard-regime attempt](https://github.com/ictechgy/cartograph/actions/runs/38564258706) completed all
+32 calls with matching same-engine outputs, but was ineligible: Cartograph's first timing ratio was
+1.1506344551, above the unchanged 1.10 per-pair bound (median 1.0045964348). Baseline timing passed
+(median 0.9816959952, maximum 1.0298539215). Memory remains a separate descriptive observation. The failed
+calibration bundle was retained; the SDK candidate's reversible projection passed but ordinary
+normalization failed. The original failure category was not retained publicly and cannot be
+recovered by this diagnostic change. The after-calibration phase also requires controller success, so its
+nonzero exit alone does not establish SDK content drift. Full SDK final-seal readback and observer timing
+eligibility remain unaccepted; no replacement samples, final holdout or final paired benchmark are implied.

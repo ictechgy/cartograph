@@ -32,6 +32,20 @@ def load(name, path):
 
 COMMAND = load("calibration_command", ROOT / "Scripts/validate-native-measurement.py")
 NORMALIZER = load("calibration_normalizer", ROOT / "Scripts/normalize-indexstore-evidence.py")
+# 정규화기의 고정 분류만 공개하며 알 수 없는 예외 속성을 로그 문자열로 쓰지 않는다.
+PUBLICATION_FAILURE_CATEGORIES = frozenset({
+    "api-token", "aws-key", "bearer-token", "credential-field-or-assignment", "credential-json-field",
+    "credential-url", "email-address", "environment-dump", "file-count-limit", "github-token",
+    "helper-process-identity-cleanup", "helper-process-identity-not-injective", "helper-process-identity-reassigned",
+    "helper-process-identity-rss-sum", "helper-process-identity-schema", "helper-process-identity-unbound",
+    "invalid-or-ambiguous-json", "invalid-or-ambiguous-jsonl", "invalid-url", "log-reference-not-in-public-bundle",
+    "missing-nonregular-or-symlink-artifact", "non-utf8-or-binary-content", "normalized-json-key-collision",
+    "normalized-size-limit", "per-file-size-limit", "possible-environment-dump", "possible-json-environment-dump",
+    "private-key", "raw-evidence-changed-during-normalization", "sample-chunk-integrity",
+    "sample-chunk-integrity-changed", "secret-argument", "secret-assignment", "slack-token", "symlink-directory",
+    "token-bearing-or-signed-url", "total-size-limit", "unexpected-control-or-binary-content",
+    "unmapped-absolute-path", "unmapped-windows-absolute-path",
+})
 
 
 def save(path, value, *, exclusive=True):
@@ -231,22 +245,39 @@ def original_small_files(raw, calls):
     return rows
 
 
+def publication_failure(error):
+    """실패 원문 대신 고정 분류와 이미 계산된 SHA 식별자만 공개한다."""
+    result = dict(category="publication-failure", artifact_sha256=None, value_sha256=None)
+    if type(error) is NORMALIZER.PublicationBlocked:
+        reason = error.reason
+        result["category"] = (reason if type(reason) is str and reason in PUBLICATION_FAILURE_CATEGORIES
+                              else "normalizer-publication-blocked")
+        for key in ("artifact_sha256", "value_sha256"):
+            value = getattr(error, key, None)
+            if type(value) is str and len(value) == 64 and all(char in "0123456789abcdef" for char in value):
+                result[key] = value
+    return result
+
+
 def publish(root):
     started = time.perf_counter()
     path = root / "native-calibration-sdk-publication.json"
     admission.require(not path.exists(), "preserve-publication-receipt")
-    result = dict(status="failed", exit_code=1, accepted=False, final_protocol_ready=False, costs={})
+    result = dict(status="failed", exit_code=1, accepted=False, final_protocol_ready=False, costs={},
+                  publication_failure=None)
     try:
         result["public_manifest"] = publish_bundle(root, result["costs"])
         result.update(status="passed", exit_code=0)
     except (KeyboardInterrupt, OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
         result.update(status="incomplete" if isinstance(error, KeyboardInterrupt) else "failed",
                       exit_code=125 if isinstance(error, KeyboardInterrupt) else 1,
-                      failure_type=type(error).__name__, failure_sha256=hashlib.sha256(str(error).encode()).hexdigest())
+                      failure_type=type(error).__name__, failure_sha256=hashlib.sha256(str(error).encode()).hexdigest(),
+                      publication_failure=publication_failure(error))
     result["full_wall_seconds_before_receipt"] = time.perf_counter() - started
     save(path, result)
-    # 고정 비용·상태만 로그에 남긴다. 공개 원본은 일반 스캐너가 통과한 번들뿐이다.
-    print(json.dumps({key: result[key] for key in ("status", "exit_code", "costs", "full_wall_seconds_before_receipt")},
+    # 실패 분류·SHA와 기존 비용·상태만 남기고 원문은 일반 스캐너가 통과한 번들에만 싣는다.
+    print(json.dumps({key: result[key] for key in ("status", "exit_code", "costs", "publication_failure",
+                                                 "full_wall_seconds_before_receipt")},
                      sort_keys=True, allow_nan=False))
     return result["exit_code"]
 

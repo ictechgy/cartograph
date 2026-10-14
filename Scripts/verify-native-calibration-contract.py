@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import copy
 import hashlib
@@ -406,6 +407,7 @@ class NativeCalibrationPublicationTests(ScratchTests):
         self.loader = self.patch(M, "load", return_value=self.projection)
         self.patch(M.admission, "expectation", return_value=(dict(developer_physical="/Applications/Xcode.app"),
                                                              "a" * 64))
+        self.real_package = M.NORMALIZER.package
         self.package = self.patch(M.NORMALIZER, "package", side_effect=self.normalize)
         self.summary = dict(status="retained-failure", accepted=False, final_protocol_ready=False,
                             first_failure=dict(stage="after-generation", exit_code=125),
@@ -472,6 +474,7 @@ class NativeCalibrationPublicationTests(ScratchTests):
         self.assertIn("calls/before-compilation/results.json", self.originals)
         receipt = self.read(self.receipt)
         self.assertEqual(receipt["status"], "passed")
+        self.assertIsNone(receipt["publication_failure"])
         self.assertIs(receipt["accepted"], False)
         self.assertIs(receipt["final_protocol_ready"], False)
         for name, expected in (("prepare_projection", self.prepare_cost),
@@ -484,7 +487,9 @@ class NativeCalibrationPublicationTests(ScratchTests):
         self.assertGreaterEqual(receipt["full_wall_seconds_before_receipt"], 0)
         self.assertEqual(receipt["public_manifest"], M.state_inputs.reference(self.public / "manifest.json"))
         self.assertEqual(self.read(self.staging / "setup/original/raw/results.json"), self.summary)
-        self.assertEqual(set(self.logged), {"status", "exit_code", "costs", "full_wall_seconds_before_receipt"})
+        self.assertEqual(set(self.logged), {"status", "exit_code", "costs", "publication_failure",
+                                           "full_wall_seconds_before_receipt"})
+        self.assertIsNone(self.logged["publication_failure"])
         self.assertNotIn(str(self.root), json.dumps(self.logged))
 
     def assert_changed_original_refuses(self):
@@ -541,17 +546,114 @@ class NativeCalibrationPublicationTests(ScratchTests):
         self.assertEqual(receipt["costs"]["prepare_projection"]["result"], self.prepare_cost)
         self.assertEqual(receipt["costs"]["verify_publication"]["result"], self.verify_cost)
 
-    def test_normalizer_rejection_cannot_fall_back_to_raw_publication(self):
-        self.package.side_effect = ValueError("synthetic publication refusal")
-        self.assertEqual(self.publish(), 1)
+    def assert_normalizer_failure(self, failure, diagnostic, *, interrupted=False):
+        errors = []
+
+        def reject(args):
+            try:
+                return failure(args)
+            except BaseException as error:
+                errors.append(error)
+                raise
+
+        self.package.side_effect = reject
+        with mock.patch.object(M.time, "perf_counter", side_effect=[10, 11, 12.25, 13, 14.5, 15]):
+            self.assertEqual(self.publish(), 125 if interrupted else 1)
+        self.assertEqual(len(errors), 1)
+        error = errors[0]
+        self.package.assert_called_once()
         self.projection.verify_publication.assert_not_called()
         self.projection.verify_sources.assert_not_called()
         self.assertFalse(self.public.exists())
         self.assertEqual(M.original_small_files(self.raw, self.calls), self.originals)
+        self.assertEqual(self.read(self.raw / "results.json"), self.summary)
         receipt = self.read(self.receipt)
-        self.assertEqual(receipt["costs"]["prepare_projection"]["result"], self.prepare_cost)
-        self.assertEqual(receipt["costs"]["normalizer"]["status"], "failed")
-        self.assertGreaterEqual(receipt["costs"]["normalizer"]["full_wall_seconds"], 0)
+        self.assertEqual(receipt["status"], "incomplete" if interrupted else "failed")
+        self.assertEqual(receipt["exit_code"], 125 if interrupted else 1)
+        self.assertEqual(receipt["failure_type"], type(error).__name__)
+        self.assertEqual(receipt["failure_sha256"], hashlib.sha256(str(error).encode()).hexdigest())
+        self.assertEqual(receipt["publication_failure"], diagnostic)
+        self.assertEqual(receipt["costs"], dict(
+            prepare_projection=dict(status="passed", result=self.prepare_cost, full_wall_seconds=1.25),
+            normalizer=dict(status="failed", full_wall_seconds=1.5)))
+        self.assertEqual(receipt["full_wall_seconds_before_receipt"], 5)
+        self.assertNotIn("public_manifest", receipt)
+        self.assertEqual(self.logged, {key: receipt[key] for key in (
+            "status", "exit_code", "costs", "publication_failure", "full_wall_seconds_before_receipt")})
+        self.assertNotIn(str(self.root), json.dumps(self.logged))
+        if str(error):
+            self.assertNotIn(str(error), self.receipt.read_text())
+            self.assertNotIn(str(error), json.dumps(self.logged))
+
+    def test_normalizer_block_retains_only_category_and_full_hashes(self):
+        artifact = "/private/reviewer/secret-case/password=synthetic-test-only.json"
+        value = "password=synthetic-fixture-value-not-a-real-secret"
+        self.assert_normalizer_failure(
+            lambda args: M.NORMALIZER.block("per-file-size-limit", artifact, value),
+            dict(category="per-file-size-limit", artifact_sha256=hashlib.sha256(artifact.encode()).hexdigest(),
+                 value_sha256=hashlib.sha256(value.encode()).hexdigest()))
+        for raw in (artifact, value):
+            self.assertNotIn(raw, self.receipt.read_text())
+            self.assertNotIn(raw, json.dumps(self.logged))
+
+    def test_normalizer_unknown_or_sensitive_reason_is_not_a_public_category(self):
+        for index, reason in enumerate(("future-scanner-reason", "password=synthetic-category /private/reviewer")):
+            if index:
+                self.setUp()
+            with self.subTest(reason=reason):
+                self.assert_normalizer_failure(
+                    lambda args: M.NORMALIZER.block(reason, "setup/private-case.json"),
+                    dict(category="normalizer-publication-blocked",
+                         artifact_sha256=hashlib.sha256(b"setup/private-case.json").hexdigest(), value_sha256=None))
+                self.assertNotIn(reason, self.receipt.read_text())
+                self.assertNotIn(reason, json.dumps(self.logged))
+
+    def test_normalizer_invalid_digest_fields_do_not_replace_the_primary_failure(self):
+        def reject(args):
+            try:
+                M.NORMALIZER.block("credential-json-field", "/private/raw-artifact", "unpublished-value")
+            except M.NORMALIZER.PublicationBlocked as error:
+                error.artifact_sha256 = "/private/untrusted-digest"
+                error.value_sha256 = {"password": "untrusted-value"}
+                raise
+
+        self.assert_normalizer_failure(reject, dict(
+            category="credential-json-field", artifact_sha256=None, value_sha256=None))
+        for raw in ("/private/untrusted-digest", "untrusted-value", "/private/raw-artifact", "unpublished-value"):
+            self.assertNotIn(raw, self.receipt.read_text())
+            self.assertNotIn(raw, json.dumps(self.logged))
+
+    def test_generic_errors_and_interrupts_cannot_spoof_normalizer_diagnostics(self):
+        class DerivedBlock(M.NORMALIZER.PublicationBlocked):
+            pass
+
+        for index, kind in enumerate((ValueError, OSError, RuntimeError, KeyError, TypeError,
+                                      DerivedBlock, KeyboardInterrupt)):
+            if index:
+                self.setUp()
+            with self.subTest(error=kind.__name__):
+                error = kind("password=synthetic-unpublished-error /private/reviewer/case.json")
+                error.reason = "per-file-size-limit"
+                error.artifact_sha256 = "a" * 64
+                error.value_sha256 = "b" * 64
+
+                def reject(args):
+                    raise error
+
+                self.assert_normalizer_failure(reject, dict(
+                    category="publication-failure", artifact_sha256=None, value_sha256=None),
+                    interrupted=kind is KeyboardInterrupt)
+
+    def test_actual_scanner_rejects_hostile_original_without_public_fallback(self):
+        value = "password=synthetic-value-not-a-real-secret"
+        (self.raw / "setup/hostile.stderr").write_text(value + "\n")
+        self.originals = M.original_small_files(self.raw, self.calls)
+        self.assert_normalizer_failure(self.real_package, dict(
+            category="secret-assignment",
+            artifact_sha256=hashlib.sha256(b"setup/original/raw/setup/hostile.stderr").hexdigest(),
+            value_sha256=hashlib.sha256(value.encode()).hexdigest()))
+        self.assertNotIn(value, self.receipt.read_text())
+        self.assertNotIn(value, json.dumps(self.logged))
 
     def test_projection_failure_retains_its_elapsed_cost_and_stops_normalization(self):
         self.projection.prepare_projection.side_effect = ValueError("synthetic projection refusal")
@@ -615,6 +717,49 @@ class NativeCalibrationPublicationTests(ScratchTests):
         dangling.symlink_to(self.root / "missing-target", target_is_directory=True)
         with self.assertRaisesRegex(ValueError, "publication-source-type"):
             M.original_small_files(self.raw, dangling)
+
+
+class NativeCalibrationPublicationDiagnosticTests(unittest.TestCase):
+    def test_public_categories_match_only_existing_scanner_reasons(self):
+        tree = ast.parse(Path(M.NORMALIZER.__file__).read_text())
+        reasons = {node.args[0].value for node in ast.walk(tree)
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "block"
+                   and node.args and isinstance(node.args[0], ast.Constant) and type(node.args[0].value) is str}
+        reasons.update(reason for reason, _ in M.NORMALIZER.SENSITIVE_PATTERNS)
+        self.assertEqual(M.PUBLICATION_FAILURE_CATEGORIES, reasons)
+        for reason in reasons:
+            with self.subTest(reason=reason):
+                error = M.NORMALIZER.PublicationBlocked("untrusted message", reason=reason)
+                self.assertEqual(M.publication_failure(error), dict(
+                    category=reason, artifact_sha256=None, value_sha256=None))
+
+    def test_only_exact_lowercase_sha256_strings_are_retained_independently(self):
+        class DerivedString(str):
+            pass
+
+        invalid = (None, "", "a" * 63, "a" * 65, "A" * 64, "g" * 64, "a" * 64 + "\n",
+                   b"a" * 64, False, 64, ["a" * 64], {"sha256": "a" * 64}, DerivedString("a" * 64))
+        for field in ("artifact_sha256", "value_sha256"):
+            for value in invalid:
+                with self.subTest(field=field, value=value):
+                    error = M.NORMALIZER.PublicationBlocked(
+                        "untrusted message", reason="per-file-size-limit", artifact_sha256="a" * 64,
+                        value_sha256="b" * 64)
+                    setattr(error, field, value)
+                    expected = dict(category="per-file-size-limit", artifact_sha256="a" * 64, value_sha256="b" * 64)
+                    expected[field] = None
+                    self.assertEqual(M.publication_failure(error), expected)
+
+    def test_non_string_and_derived_reasons_cannot_escape_fallback(self):
+        class DerivedString(str):
+            pass
+
+        for reason in (None, ["per-file-size-limit"], {"category": "per-file-size-limit"},
+                       DerivedString("per-file-size-limit")):
+            with self.subTest(reason=reason):
+                error = M.NORMALIZER.PublicationBlocked("untrusted message", reason=reason)
+                self.assertEqual(M.publication_failure(error), dict(
+                    category="normalizer-publication-blocked", artifact_sha256=None, value_sha256=None))
 
 
 class NativeCalibrationEntryTests(ScratchTests):

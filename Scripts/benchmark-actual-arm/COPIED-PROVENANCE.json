@@ -418,6 +418,28 @@
   },
   "schema_version": 1,
   "scope": "Byte identity only; runtime and native integration execution remain separately verified",
+  "sdk_publication_diagnostic_overrides": {
+    "base_commit": "7ddbabc2cdd544dd8787842f0f58fb00150783a1",
+    "failed_run_url": "https://github.com/ictechgy/cartograph/actions/runs/38564258706",
+    "files": [
+      {
+        "bytes": 25751,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "711b2d44ed518d3abd6442c02b7f3e3ed4b1612f2ecbcbc2f37956c07ac5f053"
+      },
+      {
+        "bytes": 20791,
+        "path": "Scripts/validate-native-calibration-inputs.py",
+        "sha256": "e2a2ac224d76c76d689fd7db32a560812d326f9c6d277aedcf5b312002bcba17"
+      },
+      {
+        "bytes": 55535,
+        "path": "Scripts/verify-native-calibration-contract.py",
+        "sha256": "d1b12331e59c6a88dc50121d774176f0c480bf18dfcbbf1a3b967663735ae513"
+      }
+    ],
+    "scope": "Only safe publication-failure categories and validated existing SHA identifiers are logged. The original exception outcome, costs, scanner rules and byte caps remain unchanged. The first standard-regime timing refusal and unavailable final SDK originals remain historical; this change does not recover the missing category or authorize another native attempt."
+  },
   "standard_native_resource_overrides": {
     "base_commit": "5a9ee5e4da14c9bcd36941ae004e949f94ba2c98",
     "failed_run_url": "https://github.com/ictechgy/cartograph/actions/runs/38556206718",
