@@ -22,9 +22,15 @@ SOURCE_PATHS=('Scripts/validate-native-waitid-capability.py','Scripts/benchmark-
               '.github/workflows/waitid-capability.yml')
 SOURCE_MODES={name:('100755' if name=='Scripts/normalize-indexstore-evidence.py' else '100644') for name in SOURCE_PATHS}
 PYTHON=dict(selected_path='/opt/homebrew/opt/python@3.14/bin/python3.14',
+            runtime_path='/opt/homebrew/Cellar/python@3.14/3.14.7/bin/python3.14',
             resolved_path='/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/bin/python3.14',
             bytes=34640,sha256='87d4df53fd91304be5bac391fb204643c36b7df2023c04a0953bcbc7d4fdf634')
 IMAGE=dict(ImageOS='macos26',ImageVersion='20260907.0351.1')
+ALIAS_COMPONENT_LIMIT=128
+ALIAS_LINK_LIMIT=32
+ALIAS_TARGET_LIMIT=16384
+INTERPRETER_SCOPE=('Observed executable only; alias endpoints cannot exclude intervening ABA mutation; '
+                   'Python framework/stdlib and dynamic-loader closure unproved')
 ADMISSION_REASONS=('native-python-version-mismatch','native-os-mismatch','native-image-mismatch',
                    'selected-python-mismatch','physical-python-mismatch')
 ADMISSION_TEXT=dict(platform=r'darwin|linux|win32',machine=r'arm64|aarch64|x86_64|amd64',
@@ -186,34 +192,171 @@ def admission_text_hash(value):
     return hashlib.sha256(value.encode('utf-8',errors='surrogatepass')).hexdigest() if type(value) is str else None
 
 
+def regular_identity(value,size):
+    return (type(value) is list and len(value)==6 and
+            all(type(part) is int and 0<=part<2**128 for part in value) and
+            value[2]<=0o177777 and stat.S_ISREG(value[2]) and value[3]==size)
+
+
+def stat_identity(info):
+    return [info.st_dev,info.st_ino,info.st_mode,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+
+
+def interpreter_alias(selected):
+    """두 고정 별칭의 실제 링크 확장을 제한하며 원문 경로 조각은 해시로만 남긴다."""
+    row=dict(status='unavailable',selected_path_sha256=admission_text_hash(selected))
+    try:
+        path=Path(selected)
+        require(path.is_absolute() and len(path.parts)<=ALIAS_COMPONENT_LIMIT,'interpreter-alias-path')
+        pending=list(path.parts[1:]);current=Path(path.anchor);components=[];links=0
+        def append(component,kind,info,**extra):
+            require(len(components)<ALIAS_COMPONENT_LIMIT,'interpreter-alias-component-limit')
+            identity=stat_identity(info)
+            if kind=='directory':identity=identity[:3]
+            components.append(dict(component_sha256=admission_text_hash(component),entry_type=kind,
+                                   identity=identity,**extra))
+        def root():
+            info=current.lstat();require(stat.S_ISDIR(info.st_mode),'interpreter-alias-root')
+            append('', 'directory',info)
+        root()
+        while pending:
+            component=pending.pop(0)
+            if component in ('','.'):
+                continue
+            if component=='..':
+                current=current.parent;info=current.lstat()
+                require(stat.S_ISDIR(info.st_mode),'interpreter-alias-parent')
+                append(component,'directory',info);continue
+            candidate=current/component;info=candidate.lstat()
+            if stat.S_ISLNK(info.st_mode):
+                links+=1;require(links<=ALIAS_LINK_LIMIT,'interpreter-alias-link-limit')
+                target=os.readlink(candidate);encoded=os.fsencode(target)
+                require(0<len(encoded)<=ALIAS_TARGET_LIMIT,'interpreter-alias-target-limit')
+                require(stat_identity(candidate.lstat())==stat_identity(info),'interpreter-alias-link-changed')
+                append(component,'symlink',info,link_target_bytes=len(encoded),
+                       link_target_sha256=hashlib.sha256(encoded).hexdigest())
+                target_path=Path(target)
+                pending=list(target_path.parts[1:] if target_path.is_absolute() else target_path.parts)+pending
+                require(len(pending)<=ALIAS_COMPONENT_LIMIT,'interpreter-alias-component-limit')
+                if target_path.is_absolute():current=Path(target_path.anchor);root()
+            else:
+                kind='directory' if stat.S_ISDIR(info.st_mode) else 'file'
+                require(kind=='directory' if pending else stat.S_ISREG(info.st_mode),'interpreter-alias-entry')
+                append(component,kind,info);current=candidate
+        require(components[-1]['entry_type']=='file','interpreter-alias-not-file')
+        row.update(status='available',resolved_path_sha256=admission_text_hash(str(current)),components=components)
+    except (OSError,ValueError,RuntimeError) as error:
+        row['failure_sha256']=admission_text_hash(str(error))
+    return row
+
+
 def admission_expected():
-    return dict(platform='darwin',python_version=[3,14,7],machine='arm64',os_release='25.6.0',
-                image_os=IMAGE['ImageOS'],image_version=IMAGE['ImageVersion'],
-                selected_path_sha256=admission_text_hash(PYTHON['selected_path']),physical_status='available',
-                physical_selected_path_sha256=admission_text_hash(PYTHON['selected_path']),
-                resolved_path_sha256=admission_text_hash(PYTHON['resolved_path']),bytes=PYTHON['bytes'],sha256=PYTHON['sha256'])
+    expected=dict(platform='darwin',python_version=[3,14,7],machine='arm64',os_release='25.6.0',
+                  image_os=IMAGE['ImageOS'],image_version=IMAGE['ImageVersion'],
+                  selected_path_sha256=admission_text_hash(PYTHON['runtime_path']))
+    for prefix,path in (('',PYTHON['runtime_path']),('configured_',PYTHON['selected_path'])):
+        expected.update({prefix+'physical_status':'available',prefix+'physical_selected_path_sha256':admission_text_hash(path),
+                         prefix+'resolved_path_sha256':admission_text_hash(PYTHON['resolved_path']),
+                         prefix+'bytes':PYTHON['bytes'],prefix+'sha256':PYTHON['sha256']})
+    return expected
+
+
+def admission_observed_keys():
+    return set(admission_expected())|{
+        prefix+key for prefix in ('','configured_') for key in ('file_identity_sha256','physical_failure_sha256')
+    }|{role+'_alias_'+key for role in ('configured','runtime') for key in ('before_sha256','after_sha256','failure_sha256')}
 
 
 def admission_checks(observed):
     expected=admission_expected()
     groups=(('platform','python_version'),('machine','os_release'),('image_os','image_version'),
-            ('selected_path_sha256',),('physical_status','physical_selected_path_sha256','resolved_path_sha256','bytes','sha256'))
+            ('selected_path_sha256',),tuple(key for key in expected if key not in
+                ('platform','python_version','machine','os_release','image_os','image_version','selected_path_sha256')))
     checks={reason:all(observed.get(key)==expected[key] for key in keys)
             for reason,keys in zip(ADMISSION_REASONS,groups)}
-    checks['physical-python-mismatch'] &= observed.get('file_identity_sha256') is not None
+    checks['physical-python-mismatch'] &= (observed.get('file_identity_sha256') is not None and
+        observed.get('file_identity_sha256')==observed.get('configured_file_identity_sha256') and
+        all(observed.get(role+'_alias_before_sha256') is not None and
+            observed.get(role+'_alias_before_sha256')==observed.get(role+'_alias_after_sha256') and
+            observed.get(role+'_alias_failure_sha256') is None for role in ('configured','runtime')))
     return checks
+
+
+def safe_physical(safe,prefix,observed):
+    if type(observed) is not dict:
+        safe[prefix+'physical_status']='invalid';return
+    status=observed.get('status')
+    safe[prefix+'physical_status']=status if status in ('available','unavailable','incomplete') else 'invalid'
+    safe[prefix+'physical_selected_path_sha256']=admission_text_hash(observed.get('selected_path'))
+    safe[prefix+'resolved_path_sha256']=admission_text_hash(observed.get('resolved_path'))
+    size=observed.get('bytes');sha=observed.get('sha256');identity=observed.get('file_identity')
+    safe[prefix+'bytes']=size if type(size) is int and 0<size<=256*1024**2 else None
+    safe[prefix+'sha256']=sha if type(sha) is str and re.fullmatch(r'[0-9a-f]{64}',sha) else None
+    safe[prefix+'file_identity_sha256']=digest(identity) if regular_identity(identity,safe[prefix+'bytes']) else None
+    safe[prefix+'physical_failure_sha256']=admission_text_hash(observed.get('failure'))
+
+
+def physical_receipt_valid(observed,path):
+    return (type(observed) is dict and set(observed)=={
+        'status','selected_path','resolved_path','bytes','sha256','file_identity','wall_seconds'} and
+        observed['status']=='available' and observed['selected_path']==path and
+        observed['resolved_path']==PYTHON['resolved_path'] and type(observed['bytes']) is int and
+        observed['bytes']==PYTHON['bytes'] and observed['sha256']==PYTHON['sha256'] and
+        regular_identity(observed['file_identity'],observed['bytes']) and measured_cost(observed['wall_seconds']))
+
+
+def measured_cost(value):
+    return type(value) in (int,float) and math.isfinite(value) and value>=0
+
+
+def alias_receipt_valid(alias,path,identity):
+    if (type(alias) is not dict or set(alias)!={'status','selected_path_sha256','resolved_path_sha256','components'} or
+            alias['status']!='available' or alias['selected_path_sha256']!=admission_text_hash(path) or
+            alias['resolved_path_sha256']!=admission_text_hash(PYTHON['resolved_path'])):return False
+    components=alias['components']
+    if type(components) is not list or not 1<=len(components)<=ALIAS_COMPONENT_LIMIT:return False
+    links=0
+    for row in components:
+        if type(row) is not dict:return False
+        kind=row.get('entry_type');link=kind=='symlink'
+        if kind not in ('directory','file','symlink'):return False
+        if set(row)!={'component_sha256','entry_type','identity'}|({'link_target_bytes','link_target_sha256'} if link else set()):return False
+        part=row['identity']
+        if (type(part) is not list or len(part)!=(3 if kind=='directory' else 6) or
+                not all(type(item) is int and 0<=item<2**128 for item in part) or part[2]>0o177777 or
+                not {'directory':stat.S_ISDIR,'file':stat.S_ISREG,'symlink':stat.S_ISLNK}[kind](part[2])):return False
+        for key in ('component_sha256','link_target_sha256') if link else ('component_sha256',):
+            if type(row[key]) is not str or re.fullmatch(r'[0-9a-f]{64}',row[key]) is None:return False
+        if link:
+            links+=1
+            if type(row['link_target_bytes']) is not int or not 1<=row['link_target_bytes']<=ALIAS_TARGET_LIMIT:return False
+    return (links<=ALIAS_LINK_LIMIT and components[0]['entry_type']=='directory' and
+            components[-1]['entry_type']=='file' and digest(components[-1]['identity'])==digest(identity))
+
+
+def interpreter_receipt_valid(value):
+    if (type(value) is not dict or set(value)!={'status','configured','runtime','aliases_before','aliases_after','wall_seconds'} or
+            value['status']!='available' or not measured_cost(value['wall_seconds'])):return False
+    for role,path in (('configured',PYTHON['selected_path']),('runtime',PYTHON['runtime_path'])):
+        if not physical_receipt_valid(value[role],path):return False
+    if digest(value['configured']['file_identity'])!=digest(value['runtime']['file_identity']):return False
+    for key in ('aliases_before','aliases_after'):
+        aliases=value[key]
+        if type(aliases) is not dict or set(aliases)!={'configured','runtime'}:return False
+        for role,path in (('configured',PYTHON['selected_path']),('runtime',PYTHON['runtime_path'])):
+            if not alias_receipt_valid(aliases[role],path,value[role]['file_identity']):return False
+    return digest(value['aliases_before'])==digest(value['aliases_after'])
 
 
 def bind_interpreter():
     # 실패 직전까지 관찰한 형식 제한 값만 보존하고 경로와 예외 원문은 해시로만 남긴다.
-    safe={key:None for key in admission_expected()}
-    safe.update(file_identity_sha256=None,physical_failure_sha256=None)
+    started=time.perf_counter();safe={key:None for key in admission_observed_keys()}
     receipt=dict(status='incomplete',expected=admission_expected(),observed=safe,checks={})
     stage=ADMISSION_REASONS[0]
     def text_field(key,value):
         safe[key]=value if type(value) is str and re.fullmatch(ADMISSION_TEXT[key],value) else None
-    def check(reason):
-        matched=admission_checks(safe)[reason];receipt['checks'][reason]=matched
+    def check(reason,exact=True):
+        matched=admission_checks(safe)[reason] and exact;receipt['checks'][reason]=matched
         if not matched:
             receipt['reason']=reason
             raise InterpreterAdmissionFailure(receipt,dict(type='ValueError',reason=reason))
@@ -227,23 +370,32 @@ def bind_interpreter():
         text_field('machine',uname.machine);text_field('os_release',uname.release);check(stage)
         stage=ADMISSION_REASONS[2]
         text_field('image_os',os.environ.get('ImageOS'));text_field('image_version',os.environ.get('ImageVersion'));check(stage)
-        stage=ADMISSION_REASONS[3];safe['selected_path_sha256']=admission_text_hash(sys.executable);check(stage)
-        stage=ADMISSION_REASONS[4];observed=OBS.interpreter_observation(sys.executable)
-        if type(observed) is dict:
-            status=observed.get('status')
-            safe['physical_status']=status if status in ('available','unavailable','incomplete') else 'invalid'
-            safe['physical_selected_path_sha256']=admission_text_hash(observed.get('selected_path'))
-            safe['resolved_path_sha256']=admission_text_hash(observed.get('resolved_path'))
-            size=observed.get('bytes');sha=observed.get('sha256');identity=observed.get('file_identity')
-            safe['bytes']=size if type(size) is int and 0<size<=256*1024**2 else None
-            safe['sha256']=sha if type(sha) is str and re.fullmatch(r'[0-9a-f]{64}',sha) else None
-            safe['file_identity_sha256']=digest(identity) if (type(identity) is list and len(identity)==6 and
-                all(type(part) is int and 0<=part<2**128 for part in identity) and
-                identity[2]<=0o177777 and stat.S_ISREG(identity[2]) and identity[3]==safe['bytes']) else None
-            safe['physical_failure_sha256']=admission_text_hash(observed.get('failure'))
-        else:safe['physical_status']='invalid'
+        stage=ADMISSION_REASONS[3];selected=sys.executable
+        safe['selected_path_sha256']=admission_text_hash(selected)
+        check(stage,type(selected) is str and selected==PYTHON['runtime_path'])
+        stage=ADMISSION_REASONS[4]
+        paths=dict(configured=PYTHON['selected_path'],runtime=PYTHON['runtime_path']);aliases_before={};aliases_after={}
+        observed={}
+        for role,path in paths.items():
+            alias=interpreter_alias(path);aliases_before[role]=alias
+            if alias['status']=='available':safe[role+'_alias_before_sha256']=digest(alias)
+            else:safe[role+'_alias_failure_sha256']=alias['failure_sha256']
+        for role,path in paths.items():
+            prefix='configured_' if role=='configured' else ''
+            observed[role]=(OBS.interpreter_observation(path) if aliases_before[role]['status']=='available' else
+                            dict(status='unavailable',selected_path=path))
+            safe_physical(safe,prefix,observed[role])
+        for role,path in paths.items():
+            alias=interpreter_alias(path);aliases_after[role]=alias
+            if alias['status']=='available':safe[role+'_alias_after_sha256']=digest(alias)
+            else:safe[role+'_alias_failure_sha256']=alias['failure_sha256']
+        binding=dict(status='available',**observed,aliases_before=aliases_before,aliases_after=aliases_after,
+                     wall_seconds=time.perf_counter()-started)
+        # 잘못된 도우미 스키마나 사슬 끝 정체성도 성공으로 승격하지 않는다.
+        if admission_checks(safe)[stage] and not interpreter_receipt_valid(binding):
+            safe['physical_status']='invalid'
         check(stage)
-        return observed
+        return binding
     except InterpreterAdmissionFailure:raise
     except BaseException as error:
         receipt.update(reason='interpreter-admission-observation-failed',observation_stage=stage,
@@ -255,7 +407,14 @@ def bind_interpreter():
 
 
 def same_interpreter(before,after):
-    return all(before[k]==after[k] for k in ('selected_path','resolved_path','bytes','sha256','file_identity'))
+    """측정 비용만 제외하고 두 물리 관찰과 모든 별칭 끝점 정체성을 엄격하게 비교한다."""
+    if not interpreter_receipt_valid(before) or not interpreter_receipt_valid(after):return False
+    def identities(value):
+        result={key:item for key,item in value.items() if key!='wall_seconds'}
+        for role in ('configured','runtime'):
+            result[role]={key:item for key,item in value[role].items() if key!='wall_seconds'}
+        return result
+    return digest(identities(before))==digest(identities(after))
 
 
 def regrade(value,outer,source,version):
@@ -294,7 +453,7 @@ def regrade(value,outer,source,version):
                 observed=actor['terminal'];require(observed.get('pid')==pids[i] and observed.get('signo')==signal.SIGCHLD,'terminal-identity-mismatch')
                 expected=-signal.SIGTERM if (i==0 and name in ('signal-exit','timeout-then-term')) or (i==1 and name in ('root-exit-member-live','owned-member-escape')) else -signal.SIGKILL if name=='term-ignore-then-kill' else 7 if name=='normal-seven' else 0
                 require(actor['wait_returncode']==expected,'unexpected-final-exit')
-                argv=actor.get('argv');require(type(argv) is list and len(argv)==9 and argv[:5]==[PYTHON['selected_path'],'-I','-S','-B',str(HELPER)]
+                argv=actor.get('argv');require(type(argv) is list and len(argv)==9 and argv[:5]==[PYTHON['runtime_path'],'-I','-S','-B',str(HELPER)]
                     and argv[5]=='--actor' and all(type(arg) is str and re.fullmatch(r'[1-9][0-9]*',arg) for arg in argv[6:8])
                     and argv[6]!=argv[7] and argv[8]==('1' if name=='term-ignore-then-kill' else '0'),'actor-argv-mismatch')
                 elapsed=actor.get('popen_start_to_exit_observed_seconds');require(type(elapsed) in (int,float) and math.isfinite(elapsed) and 0<=elapsed<=wall,'invalid-terminal-wall')
@@ -320,7 +479,7 @@ def execute(raw,source_sha):
     result=dict(schema_version=1,profile='native-waitid-capability-outer-v1',source_sha=source_sha,status='incomplete',
                 capability_only=True,descendant_closure_eligible=False,timing_eligible=False,final_protocol_ready=False,
                 checkpoint='interpreter-admission-before',
-                actual_engine_calls=0,interpreter_scope='Observed executable only; Python framework/stdlib and dynamic-loader closure unproved',
+                actual_engine_calls=0,interpreter_scope=INTERPRETER_SCOPE,
                 command_schedule='two source-query metadata children and one capability child; at most13 actor children inside that child')
     material_safe=True
     try:
@@ -445,7 +604,7 @@ def verify_admission_failure(value):
     require(set(receipt)==keys and receipt.get('status')=='incomplete'
             and digest(receipt.get('expected'))==digest(admission_expected()),'admission-failure-schema')
     observed=receipt.get('observed');expected=admission_expected()
-    require(type(observed) is dict and set(observed)==set(expected)|{'file_identity_sha256','physical_failure_sha256'},
+    require(type(observed) is dict and set(observed)==admission_observed_keys(),
             'admission-observation-schema')
     for key,pattern in ADMISSION_TEXT.items():
         item=observed[key]
@@ -453,11 +612,13 @@ def verify_admission_failure(value):
     version=observed['python_version']
     require(version is None or type(version) is list and len(version)==3 and
             all(type(part) is int and 0<=part<=999 for part in version),'admission-observation-version')
-    size=observed['bytes']
-    require(size is None or type(size) is int and 0<size<=256*1024**2,'admission-observation-bytes')
-    require(observed['physical_status'] in (None,'available','unavailable','incomplete','invalid'),'admission-observation-status')
-    for key in ('selected_path_sha256','physical_selected_path_sha256','resolved_path_sha256','sha256',
-                'file_identity_sha256','physical_failure_sha256'):
+    for prefix in ('','configured_'):
+        size=observed[prefix+'bytes']
+        require(size is None or type(size) is int and 0<size<=256*1024**2,'admission-observation-bytes')
+        require(observed[prefix+'physical_status'] in (None,'available','unavailable','incomplete','invalid'),
+                'admission-observation-status')
+    for key in admission_observed_keys():
+        if not key.endswith('sha256'):continue
         item=observed[key]
         require(item is None or type(item) is str and re.fullmatch(r'[0-9a-f]{64}',item),'admission-observation-hash')
     stage=receipt.get('observation_stage') if unexpected else reason
@@ -505,7 +666,7 @@ def verify_originals(raw):
         wall=value.get('full_caller_wall_seconds_before_receipt')
         require(type(wall) in (int,float) and wall>=0 and (type(wall) is int or math.isfinite(wall)),
                 'early-admission-caller-wall')
-        require(value.get('interpreter_scope')=='Observed executable only; Python framework/stdlib and dynamic-loader closure unproved'
+        require(value.get('interpreter_scope')==INTERPRETER_SCOPE
                 and value.get('command_schedule')=='two source-query metadata children and one capability child; at most13 actor children inside that child'
                 and value.get('cost_scope')=='Caller includes admission and actual child/cleanup; nested intervals overlap; final receipt/teardown and publication excluded',
                 'early-admission-scope-text')
@@ -527,7 +688,7 @@ def verify_originals(raw):
         verify_source_record(value['source_after'],source_sha,raw,'after')
         require(digest(value['source_before']['files'])==digest(value['source_after']['files'])
                 and same_interpreter(current,value['interpreter_after']),'post-identity-mismatch')
-        argv=[PYTHON['selected_path'],'-I','-S','-B',str(HELPER),'--output',str(raw/'runs/capability')]
+        argv=[PYTHON['runtime_path'],'-I','-S','-B',str(HELPER),'--output',str(raw/'runs/capability')]
         verify_command(value['command'],raw,'capability-command',argv,150)
         data=source_bytes(raw/'runs/capability/results.json');inner=NORMALIZER.strict_json(data.decode())
         require(value.get('capability_result')==dict(bytes=len(data),sha256=hashlib.sha256(data).hexdigest()),'capability-original-changed')
