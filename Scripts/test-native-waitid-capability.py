@@ -40,7 +40,17 @@ class OuterControls(unittest.TestCase):
         self.root=Path(self.temporary.name).resolve();self.raw=self.root/'raw';self.public=self.root/'public'
         self.sha='a'*40
         self.env=mock.patch.dict(os.environ,{'GITHUB_SHA':self.sha});self.env.start();self.addCleanup(self.env.stop)
-        self.interpreter=dict(M.PYTHON,status='available',file_identity=[1,2,3,34640,5,6],wall_seconds=.001)
+        identity=[1,2,0o100755,M.PYTHON['bytes'],5,6]
+        aliases={};observations={}
+        for role,path in (('configured',M.PYTHON['selected_path']),('runtime',M.PYTHON['runtime_path'])):
+            observations[role]=dict(status='available',selected_path=path,resolved_path=M.PYTHON['resolved_path'],
+                                    bytes=M.PYTHON['bytes'],sha256=M.PYTHON['sha256'],file_identity=list(identity),wall_seconds=.001)
+            aliases[role]=dict(status='available',selected_path_sha256=M.admission_text_hash(path),
+                               resolved_path_sha256=M.admission_text_hash(M.PYTHON['resolved_path']),components=[
+                dict(component_sha256=M.admission_text_hash(''),entry_type='directory',identity=[1,1,0o40755]),
+                dict(component_sha256=M.admission_text_hash('python3.14'),entry_type='file',identity=list(identity))])
+        self.interpreter=dict(status='available',**observations,aliases_before=copy.deepcopy(aliases),
+                              aliases_after=copy.deepcopy(aliases),wall_seconds=.003)
 
     def write(self,path,value):
         path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(value,sort_keys=True,indent=2)+'\n')
@@ -207,7 +217,7 @@ class OuterControls(unittest.TestCase):
                     exit_code=-signal.SIGTERM if (i==0 and name in ('signal-exit','timeout-then-term')) or (i==1 and name in ('root-exit-member-live','owned-member-escape')) else -signal.SIGKILL if name=='term-ignore-then-kill' else 7 if name=='normal-seven' else 0
                     actor=dict(pid=pid,terminal=dict(pid=pid,code=os.CLD_EXITED if exit_code>=0 else os.CLD_KILLED,status=abs(exit_code),signo=signal.SIGCHLD,expected_wait_returncode=exit_code),
                                wait_returncode=exit_code,audit_finished_before_reap=True,signal_after_reap=False,reap_count=1,popen_start_to_exit_observed_seconds=.05,
-                               argv=[M.PYTHON['selected_path'],'-I','-S','-B',str(M.HELPER),'--actor','11','14','1' if name=='term-ignore-then-kill' else '0'])
+                               argv=[M.PYTHON['runtime_path'],'-I','-S','-B',str(M.HELPER),'--actor','11','14','1' if name=='term-ignore-then-kill' else '0'])
                     row['actors'].append(actor)
             elif name=='native-api-admission':
                 row['admission']=dict(platform='darwin',python=sys.version,waitid='native-os.waitid',supported=True,constants={n:getattr(os,n) for n in ('P_PID','WEXITED','WNOWAIT','WNOHANG','CLD_EXITED','CLD_KILLED','CLD_DUMPED')})
@@ -222,7 +232,7 @@ class OuterControls(unittest.TestCase):
             for i in range(count):
                 for suffix in ('.stdout','.stderr'):(self.raw/'runs/capability'/f'{name}-{i}{suffix}').write_bytes(b'')
         before=self.source_record('before');after=self.source_record('after')
-        command=self.command_record('capability-command',[M.PYTHON['selected_path'],'-I','-S','-B',str(M.HELPER),'--output',str(self.raw/'runs/capability')],150)
+        command=self.command_record('capability-command',[M.PYTHON['runtime_path'],'-I','-S','-B',str(M.HELPER),'--output',str(self.raw/'runs/capability')],150)
         inner=self.inner();self.write(self.raw/'runs/capability/results.json',inner)
         data=(self.raw/'runs/capability/results.json').read_bytes()
         value=dict(schema_version=1,profile='native-waitid-capability-outer-v1',source_sha=self.sha,status='capability-only-complete',
@@ -310,7 +320,7 @@ class OuterControls(unittest.TestCase):
         with mock.patch.object(M,'source_bytes',side_effect=changed),self.assertRaisesRegex(ValueError,'source-commit'):M.verify_originals(self.raw)
 
     def test_current_interpreter_identity_drift_refuses(self):
-        self.complete_fixture();changed=copy.deepcopy(self.interpreter);changed['file_identity'][1]+=1
+        self.complete_fixture();changed=copy.deepcopy(self.interpreter);changed['runtime']['file_identity'][1]+=1
         with mock.patch.object(M,'bind_interpreter',return_value=changed),self.assertRaisesRegex(ValueError,'interpreter-changed'):M.verify_originals(self.raw)
 
     def test_raw_result_or_member_mutation_during_publication_refuses(self):
@@ -323,11 +333,11 @@ class OuterControls(unittest.TestCase):
                     if mode=='result':
                         value['full_caller_wall_seconds_before_receipt']+=1;self.write(self.raw/'results.json',value)
                     elif mode=='member':(self.raw/'setup/source-after.stderr').write_bytes(b'changed')
-                    else: self.interpreter['file_identity'][1]+=1
+                    else: self.interpreter['runtime']['file_identity'][1]+=1
                     return manifest
                 with mock.patch.object(M,'bind_interpreter',side_effect=lambda:copy.deepcopy(self.interpreter)),mock.patch.object(M.NORMALIZER,'package',side_effect=publish):
                     with self.assertRaises(ValueError):M.publish(self.raw,self.public)
-                if mode=='source':self.interpreter['file_identity'][1]-=1
+                if mode=='source':self.interpreter['runtime']['file_identity'][1]-=1
 
     def test_partial_originals_remain_incomplete_without_completed_membership(self):
         value,inner=self.complete_fixture();value.update(status='incomplete',failure=dict(type='ValueError',reason='owned refusal'))
@@ -350,15 +360,266 @@ class OuterControls(unittest.TestCase):
     @contextlib.contextmanager
     def native_file_identity(self):
         # 실행 가능한 자식 대신 실제 임시 정규 파일과 심볼릭 링크의 정체성을 관찰한다.
-        physical=self.root/'physical-python';selected=self.root/'selected-python'
-        body=b'owned interpreter identity fixture';physical.write_bytes(body);selected.symlink_to(physical)
-        pins=dict(selected_path=str(selected),resolved_path=str(physical),bytes=len(body),sha256=hashlib.sha256(body).hexdigest())
+        fixture=tempfile.TemporaryDirectory(prefix='waitid-alias-fixture-',dir=M.ROOT);self.addCleanup(fixture.cleanup)
+        homebrew=Path(fixture.name)/'homebrew';cellar=homebrew/'Cellar/python@3.14/3.14.7'
+        physical=cellar/'Frameworks/Python.framework/Versions/3.14/bin/python3.14'
+        physical.parent.mkdir(parents=True);body=b'owned interpreter identity fixture';physical.write_bytes(body)
+        runtime=cellar/'bin/python3.14';runtime.parent.mkdir()
+        runtime.symlink_to('../Frameworks/Python.framework/Versions/3.14/bin/python3.14')
+        opt=homebrew/'opt';opt.mkdir();(opt/'python@3.14').symlink_to('../Cellar/python@3.14/3.14.7')
+        selected=opt/'python@3.14/bin/python3.14'
+        pins=dict(selected_path=str(selected),runtime_path=str(runtime),resolved_path=str(physical),
+                  bytes=len(body),sha256=hashlib.sha256(body).hexdigest())
         with mock.patch.object(M,'PYTHON',pins),mock.patch.object(M.sys,'platform','darwin'), \
              mock.patch.object(M.sys,'version_info',(3,14,7,'final',0)), \
-             mock.patch.object(M.sys,'executable',str(selected)), \
+             mock.patch.object(M.sys,'executable',str(runtime)), \
              mock.patch.object(M.os,'uname',return_value=SimpleNamespace(machine='arm64',release='25.6.0')), \
              mock.patch.dict(os.environ,M.IMAGE):
             yield selected,physical,pins
+
+    def replace_alias(self,path,target=None):
+        replacement=path.with_name(path.name+'-replacement')
+        replacement.symlink_to(os.readlink(path) if target is None else target)
+        replacement.replace(path)
+
+    def mock_capability_command(self,argv,cwd,stem,environment,bound):
+        self.assertEqual(argv[0],M.PYTHON['runtime_path'])
+        self.assertNotEqual(argv[0],M.PYTHON['selected_path'])
+        (self.raw/'runs/capability').mkdir()
+        for name,count in M.CAP.CASES:
+            for i in range(count):
+                for suffix in ('.stdout','.stderr'):
+                    (self.raw/'runs/capability'/f'{name}-{i}{suffix}').write_bytes(b'')
+        self.write(self.raw/'runs/capability/results.json',self.inner())
+        return self.command_record('capability-command',argv,bound)
+
+    def test_real_launch_shaped_aliases_pass_execute_main_and_both_publication_endpoints(self):
+        with self.native_file_identity() as (selected,physical,pins), \
+             mock.patch.object(M,'bind_sources',side_effect=lambda sha,raw,env,phase:self.source_record(phase)), \
+             mock.patch.object(M,'command',side_effect=self.mock_capability_command) as command, \
+             mock.patch.object(M.subprocess,'Popen') as launched, \
+             mock.patch.object(M.sys,'argv',['outer','--source-sha',self.sha,'--raw',str(self.raw)]):
+            with mock.patch.object(M.time,'monotonic',side_effect=(0,10)):
+                self.assertEqual(M.main(),0)
+            value=M.read_json(self.raw/'results.json');binding=value['interpreter_before']
+            self.assertTrue(M.same_interpreter(binding,value['interpreter_after']))
+            self.assertEqual(binding['configured']['selected_path'],str(selected))
+            self.assertEqual(binding['runtime']['selected_path'],pins['runtime_path'])
+            self.assertEqual(binding['configured']['file_identity'],binding['runtime']['file_identity'])
+            self.assertEqual(binding['runtime']['resolved_path'],str(physical))
+            self.assertEqual(binding['aliases_before'],binding['aliases_after'])
+            self.assertNotEqual(binding['aliases_before']['configured'],binding['aliases_before']['runtime'])
+            self.assertNotIn('link_target"',json.dumps(binding))
+            self.assertEqual(command.call_count,1);launched.assert_not_called()
+            self.write(self.raw/'setup/execute-status.json',dict(exit_code=0))
+            original=(self.raw/'results.json').read_bytes();output=io.StringIO()
+            with mock.patch.object(M.sys,'argv',['outer','--raw',str(self.raw),'--public',str(self.public)]), \
+                 contextlib.redirect_stdout(output):
+                self.assertEqual(M.main(),0)
+            published=json.loads(output.getvalue())
+            self.assertEqual(published['status'],'scanned');self.assertEqual(published['files'],38)
+            self.assertEqual(published['capability_status'],'capability-only-complete')
+            self.assertEqual((self.raw/'results.json').read_bytes(),original)
+            self.assertEqual(M.read_json(self.public/'setup/execute-status.json'),dict(exit_code=0))
+            self.assertEqual(published['actual_engine_calls'],0)
+            for key in ('descendant_closure_eligible','timing_eligible','final_protocol_ready'):
+                self.assertFalse(published[key])
+            launched.assert_not_called()
+
+    def test_configured_launch_spelling_cannot_substitute_for_runtime_spelling(self):
+        with self.native_file_identity() as (selected,physical,pins), \
+             mock.patch.object(M.sys,'executable',str(selected)), \
+             mock.patch.object(M,'interpreter_alias') as aliases, \
+             mock.patch.object(M.OBS,'interpreter_observation') as observation:
+            value,output=self.early_execute('selected-python-mismatch')
+            aliases.assert_not_called();observation.assert_not_called()
+            safe=value['interpreter_admission_failure']['observed']
+            self.assertIsNone(safe['physical_status']);self.assertIsNone(safe['configured_physical_status'])
+            self.early_publish(value)
+
+    def test_each_role_retarget_same_bytes_different_physical_file_refuses_and_scans(self):
+        with self.native_file_identity() as (selected,physical,pins):
+            configured=selected.parents[1];runtime=Path(pins['runtime_path'])
+            for index,role in enumerate(('configured','runtime')):
+                self.raw=self.root/f'raw-retarget-{index}';self.public=self.root/f'public-retarget-{index}'
+                target=(configured if role=='configured' else runtime);original=os.readlink(target)
+                alternate=self.root/f'alternate-{role}'
+                if role=='configured':
+                    alternate.mkdir();(alternate/'bin').mkdir()
+                    (alternate/'bin/python3.14').write_bytes(physical.read_bytes())
+                else:alternate.write_bytes(physical.read_bytes())
+                self.replace_alias(target,str(alternate))
+                value,output=self.early_execute('physical-python-mismatch')
+                safe=value['interpreter_admission_failure']['observed']
+                prefix='configured_' if role=='configured' else ''
+                self.assertEqual(safe[prefix+'sha256'],pins['sha256'])
+                self.assertNotEqual(safe[prefix+'resolved_path_sha256'],M.admission_text_hash(str(physical)))
+                self.early_publish(value);self.replace_alias(target,original)
+
+    def test_each_alias_replacement_with_same_final_target_refuses_between_physical_reads(self):
+        with self.native_file_identity() as (selected,physical,pins):
+            real=M.OBS.interpreter_observation
+            for index,target in enumerate((selected.parents[1],Path(pins['runtime_path']))):
+                self.raw=self.root/f'raw-replace-{index}';self.public=self.root/f'public-replace-{index}';calls=[]
+                def observe(path):
+                    row=real(path);calls.append(path)
+                    if len(calls)==1:self.replace_alias(target)
+                    return row
+                with mock.patch.object(M.OBS,'interpreter_observation',side_effect=observe):
+                    value,output=self.early_execute('physical-python-mismatch')
+                safe=value['interpreter_admission_failure']['observed']
+                self.assertEqual(safe['file_identity_sha256'],safe['configured_file_identity_sha256'])
+                role='configured' if index==0 else 'runtime'
+                self.assertNotEqual(safe[role+'_alias_before_sha256'],safe[role+'_alias_after_sha256'])
+                self.early_publish(value)
+
+    def test_alias_missing_broken_directory_and_loop_are_bounded_refusals(self):
+        with self.native_file_identity() as (selected,physical,pins):
+            runtime=Path(pins['runtime_path']);original=os.readlink(runtime)
+            for index,kind in enumerate(('missing','broken','directory','loop')):
+                self.raw=self.root/f'raw-alias-{index}';self.public=self.root/f'public-alias-{index}'
+                runtime.unlink()
+                if kind=='broken':runtime.symlink_to('missing-executable')
+                elif kind=='directory':runtime.symlink_to(str(physical.parent))
+                elif kind=='loop':runtime.symlink_to(runtime.name)
+                with mock.patch.object(M.OBS,'interpreter_observation') as observation:
+                    value,output=self.early_execute('physical-python-mismatch')
+                observation.assert_not_called()
+                self.assertIsNone(value['interpreter_admission_failure']['observed']['file_identity_sha256'])
+                self.early_publish(value)
+                if kind!='missing':runtime.unlink()
+                runtime.symlink_to(original)
+
+    def test_real_symlink_file_targets_with_directory_suffixes_refuse_full_admission(self):
+        with self.native_file_identity() as (selected,physical,pins):
+            runtime=Path(pins['runtime_path']);original=os.readlink(runtime)
+            real=M.OBS.interpreter_observation
+            for index,suffix in enumerate(('/.','/')):
+                self.raw=self.root/f'raw-directory-suffix-{index}'
+                self.public=self.root/f'public-directory-suffix-{index}'
+                target=original+suffix;self.replace_alias(runtime,target)
+                self.assertEqual(os.readlink(runtime),target)
+                with self.subTest(suffix=suffix), \
+                     mock.patch.object(M.OBS,'interpreter_observation',wraps=real) as observation:
+                    value,output=self.early_execute('physical-python-mismatch')
+                self.assertEqual(observation.call_args_list,[mock.call(str(selected)),mock.call(str(runtime))])
+                safe=value['interpreter_admission_failure']['observed']
+                # 별칭 워커의 경로 정규화만으로 물리 파일 관찰 실패를 대체할 수 없다.
+                for role,prefix in (('configured','configured_'),('runtime','')):
+                    self.assertIsNotNone(safe[role+'_alias_before_sha256'])
+                    self.assertEqual(safe[prefix+'physical_status'],'unavailable')
+                    self.assertIsNone(safe[prefix+'file_identity_sha256'])
+                    self.assertIsNone(safe[prefix+'sha256'])
+                self.early_publish(value);self.replace_alias(runtime,original)
+
+    def test_alias_expansion_limits_and_unreadable_edge_refuse_without_physical_observer(self):
+        with self.native_file_identity():
+            cases=(mock.patch.object(M,'ALIAS_COMPONENT_LIMIT',2),mock.patch.object(M,'ALIAS_LINK_LIMIT',0),
+                   mock.patch.object(M,'ALIAS_TARGET_LIMIT',2),
+                   mock.patch.object(M.os,'readlink',side_effect=OSError('token=private-sensitive-value')))
+            for index,patch in enumerate(cases):
+                self.raw=self.root/f'raw-bound-{index}';self.public=self.root/f'public-bound-{index}'
+                with patch,mock.patch.object(M.OBS,'interpreter_observation') as observation:
+                    value,output=self.early_execute('physical-python-mismatch')
+                observation.assert_not_called();self.assertNotIn('private-sensitive-value',output)
+                self.early_publish(value,private=('private-sensitive-value',))
+
+    def test_same_size_hash_change_and_between_role_physical_identity_change_refuse(self):
+        with self.native_file_identity() as (selected,physical,pins):
+            body=physical.read_bytes();physical.write_bytes(b'x'*len(body))
+            value,output=self.early_execute('physical-python-mismatch')
+            safe=value['interpreter_admission_failure']['observed']
+            self.assertEqual(safe['bytes'],pins['bytes']);self.assertNotEqual(safe['sha256'],pins['sha256'])
+            self.early_publish(value);physical.write_bytes(body)
+            self.raw=self.root/'raw-identity';self.public=self.root/'public-identity'
+            real=M.OBS.interpreter_observation;calls=[]
+            def observe(path):
+                row=real(path);calls.append(path)
+                if len(calls)==1:
+                    replacement=physical.with_name('replacement');replacement.write_bytes(body);replacement.replace(physical)
+                return row
+            with mock.patch.object(M.OBS,'interpreter_observation',side_effect=observe):
+                value,output=self.early_execute('physical-python-mismatch')
+            safe=value['interpreter_admission_failure']['observed']
+            self.assertEqual(safe['sha256'],safe['configured_sha256'])
+            self.assertNotEqual(safe['file_identity_sha256'],safe['configured_file_identity_sha256'])
+            self.early_publish(value)
+
+    def test_each_role_malformed_identity_refuses_and_scans(self):
+        with self.native_file_identity() as (selected,physical,pins):
+            real=M.OBS.interpreter_observation
+            for index,role in enumerate(('configured','runtime')):
+                self.raw=self.root/f'raw-identity-{index}';self.public=self.root/f'public-identity-{index}'
+                target=pins['selected_path' if role=='configured' else 'runtime_path']
+                def observe(path):
+                    row=real(path)
+                    if path==target:row['file_identity'][0]=True
+                    return row
+                with mock.patch.object(M.OBS,'interpreter_observation',side_effect=observe):
+                    value,output=self.early_execute('physical-python-mismatch')
+                safe=value['interpreter_admission_failure']['observed']
+                self.assertIsNone(safe[('configured_' if role=='configured' else '')+'file_identity_sha256'])
+                self.early_publish(value)
+
+    def test_same_interpreter_compares_every_role_alias_and_only_excludes_costs(self):
+        with self.native_file_identity():
+            before=M.bind_interpreter();after=copy.deepcopy(before)
+            after['wall_seconds']+=1
+            for role in ('configured','runtime'):after[role]['wall_seconds']+=.1
+            self.assertTrue(M.same_interpreter(before,after))
+            for role in ('configured','runtime'):
+                for endpoint in ('aliases_before','aliases_after'):
+                    changed=copy.deepcopy(after);changed[endpoint][role]['components'][0]['identity'][1]+=1
+                    with self.subTest(role=role,endpoint=endpoint):self.assertFalse(M.same_interpreter(before,changed))
+                changed=copy.deepcopy(after);changed[role]['file_identity'][0]=True
+                self.assertFalse(M.same_interpreter(before,changed))
+            for changed in (dict(after,extra=True),dict(after,wall_seconds=True)):
+                self.assertFalse(M.same_interpreter(before,changed))
+
+    def test_observed_alias_replacement_between_execute_endpoints_preserves_refusal(self):
+        with self.native_file_identity() as (selected,physical,pins), \
+             mock.patch.object(M,'bind_sources',side_effect=lambda sha,raw,env,phase:self.source_record(phase)), \
+             mock.patch.object(M.subprocess,'Popen') as launched:
+            def command(*args):
+                row=self.mock_capability_command(*args);self.replace_alias(selected.parents[1]);return row
+            with mock.patch.object(M,'command',side_effect=command):value=M.execute(self.raw,self.sha)
+            self.assertEqual(value['status'],'incomplete');self.assertEqual(value['failure']['reason'],'input-identity-changed')
+            self.assertFalse(M.same_interpreter(value['interpreter_before'],value['interpreter_after']))
+            self.write(self.raw/'setup/execute-status.json',dict(exit_code=1))
+            with mock.patch.object(M.NORMALIZER,'package') as package,self.assertRaisesRegex(ValueError,'interpreter-changed'):
+                M.publish(self.raw,self.public)
+            package.assert_not_called();launched.assert_not_called()
+
+    def test_rehashed_alias_receipt_and_live_alias_change_during_publication_refuse(self):
+        with self.native_file_identity() as (selected,physical,pins):
+            self.interpreter=M.bind_interpreter();value,inner=self.complete_fixture();original=copy.deepcopy(value)
+            for role in ('configured','runtime'):
+                value=copy.deepcopy(original)
+                for endpoint in ('aliases_before','aliases_after'):
+                    value['interpreter_before'][endpoint][role]['components'][0]['identity'][1]+=1
+                self.write(self.raw/'results.json',value)
+                with self.subTest(role=role),mock.patch.object(M.NORMALIZER,'package') as package, \
+                     self.assertRaisesRegex(ValueError,'interpreter-changed'):M.publish(self.raw,self.public)
+                package.assert_not_called()
+            self.write(self.raw/'results.json',original);real=M.NORMALIZER.package
+            def package(args):
+                manifest=real(args);self.replace_alias(Path(pins['runtime_path']));return manifest
+            with mock.patch.object(M.NORMALIZER,'package',side_effect=package), \
+                 self.assertRaisesRegex(ValueError,'interpreter-changed'):M.publish(self.raw,self.public)
+
+    def test_runtime_argv_is_required_for_both_outer_and_actors_with_fixed_opt_workflow(self):
+        value,inner=self.complete_fixture()
+        changed=copy.deepcopy(inner);changed['cases'][1]['actors'][0]['argv'][0]=M.PYTHON['selected_path']
+        with self.assertRaisesRegex(ValueError,'actor-argv-mismatch'):
+            M.regrade(changed,value['command'],value['source_before'],sys.version)
+        value['command']['argv'][0]=M.PYTHON['selected_path']
+        self.write(self.raw/'setup/capability-command.json',value['command'])
+        value['original_files']=M.inventory(self.raw);self.write(self.raw/'results.json',value)
+        with mock.patch.object(M,'bind_interpreter',return_value=self.interpreter), \
+             self.assertRaisesRegex(ValueError,'command-contract-mismatch'):M.verify_originals(self.raw)
+        workflow=(M.ROOT/'.github/workflows/waitid-capability.yml').read_text()
+        self.assertEqual(workflow.count(M.PYTHON['selected_path']+' -I -S -B'),2)
+        self.assertNotIn(M.PYTHON['runtime_path'],workflow)
 
     def early_execute(self,reason):
         output=io.StringIO()
@@ -449,11 +710,11 @@ class OuterControls(unittest.TestCase):
 
     def test_changed_real_executable_bytes_keep_helper_identity_in_full_failure_chain(self):
         with self.native_file_identity() as (selected,physical,pins):
-            admitted=M.bind_interpreter();self.assertEqual(admitted['sha256'],pins['sha256'])
+            admitted=M.bind_interpreter();self.assertEqual(admitted['runtime']['sha256'],pins['sha256'])
             changed=b'token=private-sensitive-value';physical.write_bytes(changed)
             with mock.patch.object(M.OBS,'interpreter_observation',wraps=M.OBS.interpreter_observation) as observation:
                 value,output=self.early_execute('physical-python-mismatch')
-            observation.assert_called_once_with(str(selected))
+            self.assertEqual(observation.call_args_list,[mock.call(str(selected)),mock.call(pins['runtime_path'])])
             info=physical.stat();identity=[info.st_dev,info.st_ino,info.st_mode,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
             observed=value['interpreter_admission_failure']['observed']
             self.assertEqual(observed['bytes'],len(changed));self.assertEqual(observed['sha256'],hashlib.sha256(changed).hexdigest())
@@ -542,6 +803,7 @@ class OuterControls(unittest.TestCase):
             value,output=self.early_execute('physical-python-mismatch')
             self.assertEqual(value['interpreter_admission_failure']['observed']['physical_status'],'unavailable')
             self.early_publish(value)
+            physical.write_bytes(b'owned interpreter identity fixture')
             self.raw=self.root/'error-raw';self.public=self.root/'error-public'
             message='token=private-sensitive-value /unknown/private/path'
             with mock.patch.object(M.OBS,'interpreter_observation',side_effect=OSError(message)):

@@ -558,3 +558,55 @@ publication, while command and actor launches are blocked. The declared local li
 per child, 120 seconds overall and 10 seconds cleanup grace; actual successful child and outer exits
 were zero. No native retry or capability, descendant-closure, timing or final-protocol acceptance is
 established by this correction.
+
+### Interpreter launch, runtime and physical identity roles
+
+Capability run2 `38659730547`, on source `ae98aa8604cdf7a73698a72464757126237deab9`, retained
+`selected-python-mismatch` at the pre-child interpreter checkpoint. Its observed selected-path hash
+matches the Cellar/bin spelling below, while the original contract required the opt spelling. Physical
+inspection was not reached: its observed physical path, identity, size and SHA-256 remain unavailable.
+The expected 34640-byte executable pin is not an observation of run2's bytes. The first run's primary
+admission reason remains unknown, and neither historical run is regraded by this correction.
+
+The [interpreter contract](../../docs/evaluation/waitid-capability-interpreter-spelling.md) separates
+three exact roles. The configured workflow command remains `/opt/homebrew/opt/python@3.14/bin/python3.14`;
+the prospective runtime `sys.executable`, capability-child argv and actor argv use
+`/opt/homebrew/Cellar/python@3.14/3.14.7/bin/python3.14`. Both must reach the fixed Framework executable
+under that Cellar version, still exactly 34640 bytes with SHA-256
+`87d4df53fd91304be5bac391fb204643c36b7df2023c04a0953bcbc7d4fdf634`. Fresh observations through both
+aliases must share one well-typed six-field regular-file identity. Bounded alias-chain records bracket
+both observations and remain equal across execute and publication endpoints. Both argv graders use the
+runtime role. There is no alternate interpreter search, installation or fallback; physical-byte pins,
+the workflow, native helper, scanner, eligibility flags and existing native budgets remain unchanged.
+
+One separately authorized local Python 3.13 run on 2026-10-15 retained an independent baseline refusal
+against the clean same-tree original, then passed the actual 56 outer and 17 inner control methods.
+The baseline's sole intentional assertion failure followed exact `selected-python-mismatch`, unvisited
+physical inspection and unchanged-scanner publication of two incomplete receipts; its child exit was 1.
+Its saved status came directly from `main`'s observed return, without a shell child. Successor suite
+exits were both 0 with no skips or unexpected failures. Real temporary Homebrew-shaped relative symlinks
+and regular fixture bytes exercised both aliases, physical identity/hash/size changes, alias replacement,
+malformed observations, bounds, and directory-required targets ending in `/python3.14/.` or `/python3.14/`.
+The launch-shaped positive retained all 38 raw and 39 scanned files, including the scanner manifest,
+plus its 34-byte fixture and capture record before cleanup. Its environment/version, source queries,
+capability commands, actor receipts and ten-second caller interval were synthetic; the temporary fixture
+was inspected, never executed. Those synthetic costs are not the local run's measured costs.
+
+The measured baseline/outer/inner child walls were 0.265236193 / 3.589777030 / 0.301783133 seconds against
+30/60/30-second bounds. The complete control caller measured 4.220784668 seconds and exited 0 inside the
+180-second outer allowance with a 10-second kill grace. The lane receipt spans
+01:58:04.782687402 to 01:58:09.072031616 UTC, ending at supervisor descriptor closure. All three owned
+control roots were reaped with no timeout, cleanup error or uncertain ownership. All 44 pinned input
+brackets and retained-original brackets matched. Child guards recorded no forbidden operation; no native
+actor/helper, metadata, compiler or engine child was launched. The launcher used ordinary external
+supervision utilities. The baseline, successful synthetic originals and historical run2 files remain
+separate retained evidence, with their identities in the additive provenance entry.
+
+The external runner qualification limits bounded regular no-follow guarantees to the inspected support
+reader's operations: bootstrap `Path.read_bytes` and `importlib` loading do not provide that universal
+guarantee. Assurance is limited to exact inspected frozen inputs on the cooperating validation lane,
+not resistance to an independently hostile concurrent filesystem writer. The executable pin also leaves
+framework, standard-library and dynamic-loader closure unproved; endpoint checks cannot exclude ABA
+changes between reads. This local result establishes neither native macOS launcher behavior nor native
+capability, arbitrary-descendant containment, timing eligibility or final-protocol acceptance. No native
+replay or publication is supplied by this documentation update.
