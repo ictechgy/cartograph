@@ -864,3 +864,160 @@ remain unchanged. Diagnostic work stays inside the caller/child's existing
 elapsed interval; the pre-receipt subtotal is not relabeled a full finalization
 cost. All timing, descendant-closure and final-protocol eligibility flags remain
 false. Combined-source CI and any future native attempt require separate gates.
+
+
+### Isolated Python environment observation preparation
+
+The generation-only run 8, `38680821159`, stopped on exact `ec8b6562` before
+compilation. Its first phase returned observed/actual exit 1 after 0.119562584
+seconds, and the outer generation invocation returned 125. Successful failure
+publication retained an incomplete capsule. The safe reason hash matches two
+`generation-environment-changed` predicates: owned-directory identity and the
+current Python environment mapping. The capsule cannot distinguish those two
+branches. Compiler, SDK-seal and content-read counts remain unavailable. Runs 6
+and 7 retain their earlier unknown failures. The separate run-8 measurement
+archive contains no observed startup-key record that resolves either predicate.
+
+A separately retained Linux Python 3.12.14 probe produced two genuine local
+snapshots with the exact eight requested keys before and after its reporting
+imports, no `__CF_USER_TEXT_ENCODING` key, and unchanged owned-directory
+identities. Its six synthetic predicate cases were separate. That Linux result
+does not establish macOS startup behavior or the cause of generation run 8.
+
+This additive source prepares a separate manual observation workflow with at
+most two stdlib observer children. It asks the same bounded question about the
+Python environment mapping, using exactly PATH, LANG, LC_ALL, DEVELOPER_DIR,
+ImageOS, ImageVersion, HOME and TMPDIR. HOME and TMPDIR are distinct task-owned
+directories; their path hashes, device/inode/type/owner identities are compared
+with the original request, without treating unrelated directory timestamps as
+identity. Each observer retains an early mapping and a post-reporting-import
+mapping. Entries, UTF-8 names, values and total bytes are capped before sorting
+or hashing; unknown names and all values are represented by bounded counts,
+booleans and hashes. The known CF key has its own presence/value-hash fields,
+not a new allowed environment entry. A mismatch stops the second sample.
+Six fixed in-memory predicates remain explicitly synthetic.
+
+Configured launch alias, runtime spelling and resolved physical interpreter
+remain independently bound to the existing Python 3.14.7 bytes. The old image
+`20260907.0351.1`, Darwin, OS/plist, source and Git-output checks stay strict.
+Capability run 4, `38690491487`, subsequently reported image
+`20261013.0424.1` and failed its old image assertion before checkout, with no
+artifact or physical interpreter observation. This new workflow deliberately
+retains the old regime and cannot presently admit that observed newer image.
+No image-only pin replacement, alternative interpreter or installation is
+introduced. A separately reviewed platform inventory is still needed before
+choosing any future physical expectation.
+
+The supervisor, fixed command runner, caller, observer receipt producer and
+publisher preserve raw terminal wait status, actual-exit precedence, typed
+source/run/attempt bindings and writer-specific read gates. A stopped observer
+or caller does not establish arbitrary descendant closure. Only the fixed
+cooperating writer's admitted, finished output may be read. Parent-owned
+metadata can be retained after a target image/kernel/plist refusal only if the
+publisher's exact runtime/source bootstrap is independently admitted; a failed
+interpreter bootstrap withholds the artifact. Lower output remains unavailable
+when its writer status is unsafe or missing. Late zero, inconsistent final
+status, bool/int substitutions, source drift, stale receipts and contradictory
+admission failures refuse success. A later stream-read error retains the first
+primary failure and its actual observed status.
+
+Publication uses the unchanged normalizer and privacy scanner. Nine fixed JSON
+projections and the original normalization manifest are the entire public
+membership. Original request-directory baselines, parent Git-bound source and
+endpoint records, current interpreter observations and each projected input
+hash must reconcile. The publisher reconstructs the complete typed manifest,
+including its two explicit-root mapping rows and nine fixed-system rows. Only
+a fully proved mapping block is replaced by its digest in the scanner view;
+the uploaded manifest remains byte-identical. All nine actual evidence files
+and every other manifest field are scanned unchanged. This qualification is
+necessary because the normalizer's own fixed token keys otherwise trigger the
+scanner. Malformed, reordered, extra or secret-bearing mapping material is
+refused before that digest projection. Normalized membership, per-file hashes
+and inverse projections must also match exactly.
+
+The native schedule remains prospective: observer children have five seconds
+each, the fixed pair has twenty seconds, and the supervisor has ninety seconds.
+Observer cleanup allows two seconds for TERM and three for reaping after KILL;
+the supervisor gives the nested caller seven seconds before KILL and three
+more for reaping. The five-minute workflow contains a one-minute mock-only
+prerequisite, two-minute supervisor step and one-minute publication step. Its
+nine planned direct roots include that prerequisite, the supervisor, three
+fixed read-only Git queries, the pair caller, at most two observers and the
+publisher. These are source schedule ceilings, not observed native counts or
+a claim about every library-created descendant. Git disables configured
+fsmonitor, but compatibility of the selected installed Git remains a native
+precondition. The installed subprocess source is observed with a bounded body hash and
+the cited immutable upstream identity; this does not enforce or establish their
+equality. Installed/native equivalence remains a separate pre-execution
+qualification, and loader/ABI closure remains unproved. Popen construction and synchronous
+kernel/library operations prevent an unconditional hard-deadline guarantee.
+All actor, descendant-closure, timing and final-protocol eligibility flags,
+including historical-run-8-cause-established, remain false.
+
+#### Local source controls and retained timeout history
+
+The unchanged source04 product and test bodies have 52 methods: six primitive
+contracts and T01–T46. The declared fixture matrix has 200 explicit subtests,
+62 complete producer routes, 107 in-process calls to the actual observer
+emitter, and 346 simulated process attempts (336 route and ten primitive).
+Real supervisor/caller/request/status/source validators and the actual
+normalizer/scanner execute over temporary files. Native, compiler, process,
+clock and selected bootstrap observations are simulated; no observer,
+compiler, SDK inventory, actor or product child is launched by these controls.
+T43 contains one complete publication positive, 55 fixed manifest tamper
+negatives and a further complete-publisher manifest refusal. Exact copied
+source bytes and loaded origins are checked while each copy exists. Partition
+closure verifies their retained origin/lifetime records and removal.
+
+Two earlier whole-suite attempts remain failed. Source04's local caller
+terminated and raw-reaped its suite with SIGTERM after 120.033068226 seconds;
+28 method OK lines preceded incomplete T23, and the remaining 23 methods and
+six static commands did not start. Source05 cached the fixed profile target
+and ignored unused C-profile events without changing product/tests or budgets.
+It then reached 48 independently reconciled method-completion diagnostics,
+but timed out after 120.034018271 seconds during T43. T44–T46 and all six static
+commands were unstarted. Both external exits were 143. Neither attempt proved
+whole-suite origin/cache closure or cleanup of its interrupted fixture, and
+neither contributes successful-method credit to the fresh result below. These
+observations do not establish either timeout's cause.
+
+The prospectively reviewed successor uses two fresh, disjoint partitions:
+A selects P01–P06 and T01–T42 (48 methods), and B selects intact T43–T46
+(four methods). Each has the same 120-second child allowance. Each requires
+complete selected-method success, exact route/subtest/copy counts, current
+loaded origins, restored module/profile state, completed registered cleanup
+and an empty owned fixture root. The parent requires both typed final receipts,
+all eight actual zero exits, equal source/caller endpoints and exact ordered
+coverage of all 52 methods. No historical prefix is carried forward.
+
+The single authorized source06 invocation on 2026-10-15 passed that full fresh
+aggregate: A took 95.551877151 seconds and B took 25.673439632 seconds. Counts
+reconciled to 52 methods, 200 subtests, 62 routes, 107 emitters and 346 simulated
+attempts, with no failures, errors or skips. The remaining six children passed
+unchanged actionlint, four fixed workflow Bash syntax blocks and whitespace.
+All eight raw terminal waits and actual exits were zero. The complete caller
+wall was 122.329756450 seconds; the actual external launcher exit was zero.
+The supervisor descriptor closed at 09:22:03.387916147 UTC. All 50 frozen input
+brackets, caller brackets, 16 stream hashes and 58 fixed output files matched;
+there was no cancellation, timeout, cleanup error or ownership uncertainty.
+The bounded per-method completion lines remain diagnostics; acceptance comes
+from both complete partition receipts and the full aggregate gate.
+
+This local caller's prospective envelope is 365 seconds plus ten seconds of
+outer kill grace: eight child allowances total 295 seconds, with forty seconds
+of child cleanup, ten seconds of finalization and twenty seconds of residual
+allowance. Its declared 58-file wrapper allowance is 464 MiB, plus one sequential
+64 MiB fixture allowance (528 MiB total), not a kernel-enforced aggregate disk
+quota. The inherited per-process file limit is 8 MiB; the suite has narrower
+memory/CPU limits than the static tooling. The fixture estimate and local
+control walls are correctness-resource observations, not native timing
+eligibility. These local partitions do not prove that the native workflow's
+single 60-second prerequisite will fit.
+
+The ordinary CI workflow bytes are unchanged. Its existing benchmark-inputs
+unittest discovery now selects 302 methods by source inventory, including these
+52; exact-head native CI remains required. The six new source/test/workflow
+bodies are bound in additive provenance. The entire published README prefix
+and all 28 previous top-level provenance entries remain unchanged. No native
+observation, new platform admission or historical failure-cause claim follows
+from this source and local-control result.
