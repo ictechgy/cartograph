@@ -46,6 +46,92 @@ OBS=load('waitid_interpreter_observation',ROOT/'Scripts/validate-native-measurem
 NORMALIZER=load('waitid_unchanged_normalizer',ROOT/'Scripts/normalize-indexstore-evidence.py')
 
 
+CHECKPOINTS = ('interpreter-admission-before', 'source-before', 'capability-command', 'source-after',
+               'interpreter-admission-after', 'complete', 'unavailable')
+PHASES = (*CHECKPOINTS, 'outer-setup', 'final-inventory', 'result-finalization', 'original-admission',
+          'terminal-bindings', 'normalization', 'member-check', 'original-recheck', 'terminal-recheck')
+COMMAND_ROLES = {'source-before': 'source-before', 'capability-command': 'capability', 'source-after': 'source-after'}
+_DIAGNOSTIC = None
+
+
+def command_projection(row, *, returned=False, finalized=False):
+    """명령 원본과 별도로 이미 관찰한 스칼라만 남기며 행 반환을 추측하지 않는다."""
+    row = row if type(row) is dict else {}
+    code = CAP.safe_int(row.get('observed_returncode'), -255, 255)
+    uncertain = row.get('ownership_uncertain')
+    unfinished = row.get('cleanup_root_unfinished')
+    admitted = code is not None and uncertain is False and unfinished is False
+    streams = {}
+    if admitted and row.get('streams_status') == 'retained-after-root-reap':
+        for name in ('stdout', 'stderr'):
+            stream = row.get(name)
+            if type(stream) is dict:
+                size, sha = CAP.safe_int(stream.get('bytes'), 0, 8 * 1024**2), CAP.safe_hash(stream.get('sha256'))
+                if size is not None and sha is not None: streams[name] = dict(bytes=size, sha256=sha)
+    failure = row.get('failure')
+    return dict(row_returned=returned is True, receipt_finalized=finalized is True,
+        observed_returncode=code, wall_seconds=CAP.safe_wall(row.get('wall_seconds')),
+        status=row.get('status') if (code is not None and CAP.safe_wall(row.get('wall_seconds')) is not None
+            and row.get('status') in ('incomplete', 'completed-zero')) else 'unavailable',
+        timed_out=(failure.get('type') == 'TimeoutExpired') if type(failure) is dict else False,
+        cleanup_root_unfinished=unfinished if type(unfinished) is bool else None,
+        root_reaped=(code is not None) if code is not None or unfinished is True else None,
+        ownership_certain=not uncertain if type(uncertain) is bool else None,
+        cleanup_succeeded=(row.get('cleanup_errors') == []) if type(row.get('cleanup_errors')) is list else None,
+        failure=CAP.safe_error(failure) if type(failure) is dict else None, streams=streams)
+
+
+class OuterDiagnostic(CAP.FailureLog):
+    """원본 읽기 권한을 늘리지 않는 호출당 메모리 전용 진단이다."""
+    def __init__(self):
+        super().__init__()
+        self.mode = 'execute'; self.checkpoint = 'unavailable'; self.phase = 'outer-setup'
+        self.source_sha = None; self.helper_sha256 = None; self.status = 'incomplete'
+        self.stable_originals = None; self.commands = {}; self.inner = None
+        self.failure_checkpoint = 'unavailable'; self.failure_phase = 'unavailable'
+
+    def record(self, value):
+        if self.primary is None:
+            self.failure_checkpoint = self.checkpoint if self.checkpoint in CHECKPOINTS else 'unavailable'
+            self.failure_phase = self.phase if self.phase in PHASES else 'unavailable'
+        super().record(value)
+
+    def stage(self, *, checkpoint=None, phase=None):
+        if checkpoint is not None:
+            self.checkpoint = checkpoint if checkpoint in CHECKPOINTS else 'unavailable'
+            self.phase = self.checkpoint
+        if phase is not None: self.phase = phase if phase in PHASES else 'unavailable'
+
+    def command(self, role, row, *, returned=False, finalized=False):
+        if role in COMMAND_ROLES.values():
+            self.commands[role] = command_projection(row, returned=returned, finalized=finalized)
+
+    def value(self, intended):
+        command = self.commands.get('capability', {})
+        return dict(schema_version=1, role='waitid-capability-outer-diagnostic', diagnostic_only=True,
+            mode=self.mode if self.mode in ('execute', 'publish') else 'execute',
+            source_sha=self.source_sha if type(self.source_sha) is str and re.fullmatch(r'[0-9a-f]{40}', self.source_sha) else None,
+            checkpoint=self.checkpoint if self.checkpoint in CHECKPOINTS else 'unavailable',
+            phase=self.phase if self.phase in PHASES else 'unavailable',
+            status=self.status if self.status in ('incomplete', 'capability-only-complete', 'scanned') else 'incomplete',
+            failure_checkpoint=self.failure_checkpoint, failure_phase=self.failure_phase,
+            intended_returncode=CAP.safe_int(intended, 0, 255), failure=self.primary, secondary=self.secondary,
+            secondary_overflow=self.overflow,
+            stable_originals=self.stable_originals if type(self.stable_originals) is bool else None,
+            root_reaped=command.get('root_reaped'), ownership_certain=command.get('ownership_certain'),
+            commands=self.commands, inner=self.inner, timing_eligible=False, descendant_closure_eligible=False,
+            final_protocol_ready=False)
+
+
+def diagnostic_stage(**values):
+    if _DIAGNOSTIC is not None: _DIAGNOSTIC.stage(**values)
+
+
+def diagnostic_failure(error=None, *, retained=None):
+    if _DIAGNOSTIC is not None:
+        _DIAGNOSTIC.record(retained if retained is not None else CAP.retained_error(error))
+
+
 def require(value,reason):
     if not value:raise ValueError(reason)
 
@@ -95,6 +181,14 @@ def command(argv,cwd,stem,environment,bound):
     row=dict(argv=argv,cwd=str(cwd),environment_sha256=digest(environment),timeout_seconds=bound,
              observed_returncode=None,status='incomplete',cleanup_errors=[],cleanup_root_unfinished=False)
     process=None;code=None;critical=False;pending=None;primary=None;anchor=False;uncertain=False
+    diagnostic = _DIAGNOSTIC; role = COMMAND_ROLES.get(stem.name)
+    def observe(*, returned=False, finalized=False, partial=False):
+        if diagnostic is not None and role is not None:
+            snapshot = dict(row)
+            if partial:
+                snapshot.update(observed_returncode=code, failure=primary, wall_seconds=time.monotonic()-started,
+                    ownership_uncertain=uncertain, cleanup_root_unfinished=process is not None and code is None)
+            diagnostic.command(role, snapshot, returned=returned, finalized=finalized)
     def cancel(signum,_frame):
         nonlocal pending
         if critical:pending=signum
@@ -133,23 +227,33 @@ def command(argv,cwd,stem,environment,bound):
                 row['pid']=process.pid
                 check_cancel();wait_until(expires)
             except BaseException as error:
-                primary=dict(type=type(error).__name__,reason=str(error))
+                primary=CAP.retained_error(error)
+                diagnostic_failure(retained=primary)
             finally:
-                for sig in previous:signal.signal(sig,signal.SIG_IGN)
-                if process is not None and code is None:
-                    for signum,grace,label in ((signal.SIGTERM,7.0,'term'),(signal.SIGKILL,3.0,'kill')):
-                        if not anchor:break
-                        try:os.killpg(process.pid,signum)
-                        except ProcessLookupError:pass
-                        except BaseException as error:row['cleanup_errors'].append(dict(step=label,type=type(error).__name__))
-                        try:wait_until(time.monotonic()+grace,False)
-                        except subprocess.TimeoutExpired:pass
-                        except BaseException as error:row['cleanup_errors'].append(dict(step=label+'-wait',type=type(error).__name__))
-                        if code is not None:break
-                    if uncertain and code is None:
-                        # A later wait can establish an exit; uncertain ownership never permits a signal.
-                        try:wait_until(time.monotonic()+3.0,False)
-                        except BaseException as error:row['cleanup_errors'].append(dict(step='uncertain-wait',type=type(error).__name__))
+                try:
+                    for sig in previous:signal.signal(sig,signal.SIG_IGN)
+                    if process is not None and code is None:
+                        for signum,grace,label in ((signal.SIGTERM,7.0,'term'),(signal.SIGKILL,3.0,'kill')):
+                            if not anchor:break
+                            try:os.killpg(process.pid,signum)
+                            except ProcessLookupError:pass
+                            except BaseException as error:
+                                row['cleanup_errors'].append(dict(step=label,type=type(error).__name__))
+                                diagnostic_failure(error)
+                            try:wait_until(time.monotonic()+grace,False)
+                            except subprocess.TimeoutExpired:pass
+                            except BaseException as error:
+                                row['cleanup_errors'].append(dict(step=label+'-wait',type=type(error).__name__))
+                                diagnostic_failure(error)
+                            if code is not None:break
+                        if uncertain and code is None:
+                            # A later wait can establish an exit; uncertain ownership never permits a signal.
+                            try:wait_until(time.monotonic()+3.0,False)
+                            except BaseException as error:
+                                row['cleanup_errors'].append(dict(step='uncertain-wait',type=type(error).__name__))
+                                diagnostic_failure(error)
+                finally:
+                    observe(partial=True)
         wall=time.monotonic()-started
         row.update(observed_returncode=code,failure=primary,wall_seconds=wall,ownership_uncertain=uncertain,
                    cleanup_root_unfinished=process is not None and code is None)
@@ -163,10 +267,17 @@ def command(argv,cwd,stem,environment,bound):
             for suffix in ('.stdout','.stderr'):
                 data=source_bytes(stem.with_suffix(suffix))
                 row[suffix[1:]]=dict(path=str(stem.with_suffix(suffix)),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+                if diagnostic is not None and role == 'capability' and suffix == '.stdout' and code != 0:
+                    diagnostic.inner = CAP.parse_inner_diagnostic(data, row['stdout'], diagnostic.helper_sha256)
+                observe()
+        observe()
         save(stem.with_suffix('.json'),row)
-        return row
+        observe(finalized=True)
+        # 마지막 신호 복원 뒤에만 실제 반환된 행으로 표시한다.
     finally:
         for sig,handler in previous.items():signal.signal(sig,handler)
+    observe(returned=True, finalized=True)
+    return row
 
 
 def bind_sources(source_sha,raw,environment,phase):
@@ -206,9 +317,10 @@ def interpreter_alias(selected):
     """두 고정 별칭의 실제 링크 확장을 제한하며 원문 경로 조각은 해시로만 남긴다."""
     row=dict(status='unavailable',selected_path_sha256=admission_text_hash(selected))
     try:
+        require(type(selected) is str,'interpreter-alias-path')
         path=Path(selected)
-        require(path.is_absolute() and len(path.parts)<=ALIAS_COMPONENT_LIMIT,'interpreter-alias-path')
-        pending=list(path.parts[1:]);current=Path(path.anchor);components=[];links=0
+        require(path.is_absolute() and len(selected.split('/'))<=ALIAS_COMPONENT_LIMIT,'interpreter-alias-path')
+        pending=selected.split('/')[1:];current=Path(path.anchor);components=[];links=0
         def append(component,kind,info,**extra):
             require(len(components)<ALIAS_COMPONENT_LIMIT,'interpreter-alias-component-limit')
             identity=stat_identity(info)
@@ -221,8 +333,11 @@ def interpreter_alias(selected):
         root()
         while pending:
             component=pending.pop(0)
+            # 빈 조각과 점도 디렉터리 탐색이며, '..' 전에 현재 파일을 지워서는 안 된다.
+            current_info=current.lstat()
+            require(stat.S_ISDIR(current_info.st_mode),'interpreter-alias-traversal')
             if component in ('','.'):
-                continue
+                append(component,'directory',current_info);continue
             if component=='..':
                 current=current.parent;info=current.lstat()
                 require(stat.S_ISDIR(info.st_mode),'interpreter-alias-parent')
@@ -236,7 +351,8 @@ def interpreter_alias(selected):
                 append(component,'symlink',info,link_target_bytes=len(encoded),
                        link_target_sha256=hashlib.sha256(encoded).hexdigest())
                 target_path=Path(target)
-                pending=list(target_path.parts[1:] if target_path.is_absolute() else target_path.parts)+pending
+                # Path.parts는 끝 '/.'와 '/'를 지우므로 원문 조각을 제한 안에서 그대로 센다.
+                pending=(target.split('/')[1:] if target_path.is_absolute() else target.split('/'))+pending
                 require(len(pending)<=ALIAS_COMPONENT_LIMIT,'interpreter-alias-component-limit')
                 if target_path.is_absolute():current=Path(target_path.anchor);root()
             else:
@@ -472,6 +588,7 @@ def regrade(value,outer,source,version):
 
 
 def execute(raw,source_sha):
+    diagnostic_stage(phase='outer-setup')
     require(re.fullmatch(r'[0-9a-f]{40}',source_sha) and os.environ.get('GITHUB_SHA')==source_sha,'dispatch-source-mismatch')
     raw.mkdir(exist_ok=False);started=time.monotonic()
     home,temporary=raw/'setup/owned-home',raw/'setup/owned-tmp';home.mkdir(parents=True);temporary.mkdir()
@@ -482,13 +599,19 @@ def execute(raw,source_sha):
                 actual_engine_calls=0,interpreter_scope=INTERPRETER_SCOPE,
                 command_schedule='two source-query metadata children and one capability child; at most13 actor children inside that child')
     material_safe=True
+    diagnostic_stage(checkpoint=result['checkpoint'])
     try:
         before=bind_interpreter();result['interpreter_before']=before
         result['checkpoint']='source-before'
+        diagnostic_stage(checkpoint=result['checkpoint'])
         material_safe=False
         source=bind_sources(source_sha,raw,environment,'before');result['source_before']=source
+        if _DIAGNOSTIC is not None:
+            _DIAGNOSTIC.source_sha = source_sha
+            _DIAGNOSTIC.helper_sha256 = source['files']['Scripts/benchmark-inputs/waitid_capability.py']['sha256']
         material_safe=True
         result['checkpoint']='capability-command'
+        diagnostic_stage(checkpoint=result['checkpoint'])
         argv=[sys.executable,'-I','-S','-B',str(HELPER),'--output',str(raw/'runs/capability')]
         (raw/'runs').mkdir()
         material_safe=False
@@ -499,9 +622,11 @@ def execute(raw,source_sha):
             raise UnfinishedChild('capability-actor-cleanup-not-proved')
         material_safe=False
         result['checkpoint']='source-after'
+        diagnostic_stage(checkpoint=result['checkpoint'])
         result['source_after']=bind_sources(source_sha,raw,environment,'after')
         material_safe=True
         result['checkpoint']='interpreter-admission-after'
+        diagnostic_stage(checkpoint=result['checkpoint'])
         result['interpreter_after']=bind_interpreter()
         require(source['files']==result['source_after']['files'] and same_interpreter(before,result['interpreter_after']),'input-identity-changed')
         require(outer['status']=='completed-zero','capability-command-incomplete')
@@ -510,19 +635,27 @@ def execute(raw,source_sha):
         result['verification']=regrade(value,outer,source,sys.version)
         result['status']='capability-only-complete'
         result['checkpoint']='complete'
+        diagnostic_stage(checkpoint=result['checkpoint'])
     except BaseException as error:
         if isinstance(error,InterpreterAdmissionFailure):
             result['failure']=error.primary;result['interpreter_admission_failure']=error.receipt
-        else:result['failure']=dict(type=type(error).__name__,reason=str(error))
+        else:result['failure']=CAP.retained_error(error)
+        diagnostic_failure(retained=result['failure'])
         if isinstance(error,UnfinishedChild):material_safe=False
     result['stable_originals']=material_safe
+    if _DIAGNOSTIC is not None: _DIAGNOSTIC.stable_originals = material_safe
     if material_safe:
+        diagnostic_stage(phase='final-inventory')
         try:result['original_files']=inventory(raw)
         except BaseException as error:
             result['status']='incomplete';result['stable_originals']=False
-            result.setdefault('failure',dict(type=type(error).__name__,reason=str(error)))
+            result.setdefault('failure',CAP.retained_error(error))
+            diagnostic_failure(error)
+    if _DIAGNOSTIC is not None:
+        _DIAGNOSTIC.status = result['status']; _DIAGNOSTIC.stable_originals = result['stable_originals']
     result['full_caller_wall_seconds_before_receipt']=time.monotonic()-started
     result['cost_scope']='Caller includes admission and actual child/cleanup; nested intervals overlap; final receipt/teardown and publication excluded'
+    diagnostic_stage(phase='result-finalization')
     save(raw/'results.json',result)
     return result
 
@@ -650,6 +783,8 @@ def verify_originals(raw):
     source_sha=value.get('source_sha')
     require(type(source_sha) is str and re.fullmatch(r'[0-9a-f]{40}',source_sha)
             and os.environ.get('GITHUB_SHA')==source_sha,'publication-source-mismatch')
+    if _DIAGNOSTIC is not None and value.get('stable_originals') is False:
+        _DIAGNOSTIC.stable_originals = False
     require(value.get('stable_originals') is True,'original-writer-not-proved-finished')
     if 'command' in value:
         require_stable_child(value['command'])
@@ -705,16 +840,26 @@ def verify_originals(raw):
 
 
 def publish(raw,public):
+    diagnostic_stage(phase='original-admission')
     started=time.monotonic();value=verify_originals(raw)
+    if _DIAGNOSTIC is not None:
+        _DIAGNOSTIC.source_sha = value['source_sha'] if 'source_before' in value else None
+        _DIAGNOSTIC.stable_originals = value['stable_originals']
+        _DIAGNOSTIC.checkpoint = value.get('checkpoint', 'unavailable')
+    diagnostic_stage(phase='terminal-bindings')
     bindings={name:hashlib.sha256(source_bytes(raw/name)).hexdigest() for name in ('results.json','setup/execute-status.json')}
     execute_exit_code=read_json(raw/'setup/execute-status.json')['exit_code']
+    diagnostic_stage(phase='normalization')
     manifest=NORMALIZER.package(argparse.Namespace(input=raw,output=public,prefix=[
         'WORKSPACE='+str(ROOT),'OPT=/opt','USR=/usr','BIN=/bin','SBIN=/sbin','SYSTEM=/System','PRIVATE=/private']))
+    diagnostic_stage(phase='member-check')
     require(set(row['path'] for row in manifest['files'])==set(value['original_files'])|set(bindings),'published-member-set')
     for row in manifest['files']:
         original=source_bytes(raw/row['path'])
         require(row['original_raw_sha256']==hashlib.sha256(original).hexdigest(),'manifest-original-mismatch')
+    diagnostic_stage(phase='original-recheck')
     require(digest(verify_originals(raw))==digest(value),'publication-original-changed')
+    diagnostic_stage(phase='terminal-recheck')
     require(all(hashlib.sha256(source_bytes(raw/name)).hexdigest()==sha for name,sha in bindings.items()),'publication-terminal-changed')
     result=dict(status='scanned',capability_status=value['status'],files=len(manifest['files']),
                 wall_seconds=time.monotonic()-started,capability_only=True,descendant_closure_eligible=False,
@@ -727,21 +872,33 @@ def publish(raw,public):
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--source-sha');parser.add_argument('--raw',type=Path,required=True)
-    parser.add_argument('--public',type=Path);args=parser.parse_args()
-    if args.public:
-        result=publish(args.raw,args.public);print(json.dumps(result));return 0
-    result=execute(args.raw,args.source_sha)
-    if result.get('checkpoint')=='interpreter-admission-before' and 'interpreter_admission_failure' in result:
-        print(json.dumps(dict(status=result['status'],checkpoint=result['checkpoint'],failure=result['failure'],
-                              interpreter_admission_failure=result['interpreter_admission_failure'])))
-    return 0 if result['status']=='capability-only-complete' else 1
+    global _DIAGNOSTIC
+    previous = _DIAGNOSTIC; diagnostic = OuterDiagnostic(); _DIAGNOSTIC = diagnostic; code = 125
+    try:
+        parser=argparse.ArgumentParser();parser.add_argument('--source-sha');parser.add_argument('--raw',type=Path,required=True)
+        parser.add_argument('--public',type=Path);args=parser.parse_args()
+        if args.public:
+            diagnostic.mode = 'publish'
+            result=publish(args.raw,args.public);print(json.dumps(result));code=0
+            diagnostic.status = 'scanned'
+        else:
+            result=execute(args.raw,args.source_sha)
+            if result.get('checkpoint')=='interpreter-admission-before' and 'interpreter_admission_failure' in result:
+                print(json.dumps(dict(status=result['status'],checkpoint=result['checkpoint'],failure=result['failure'],
+                                      interpreter_admission_failure=result['interpreter_admission_failure'])))
+            code = 0 if result['status']=='capability-only-complete' else 1
+    except BaseException as error:
+        diagnostic_failure(error)
+        diagnostic.status = 'incomplete'
+    finally:
+        _DIAGNOSTIC = previous
+    try:
+        sys.stderr.write(CAP.diagnostic_line(diagnostic.value(code)));sys.stderr.flush()
+    except BaseException:
+        # 이미 실패한 호출은 첫 상태를 지키며 진단 출력 실패로 성공할 수 없다.
+        code = code or 125
+    return code
 
 
 if __name__=='__main__':
-    try:code=main()
-    except BaseException as error:
-        print(json.dumps(dict(status='incomplete',category='capability-wrapper-failed',
-            error_type=type(error).__name__,message_sha256=hashlib.sha256(str(error).encode()).hexdigest())))
-        code=125
-    raise SystemExit(code)
+    raise SystemExit(main())

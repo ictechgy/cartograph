@@ -741,3 +741,126 @@ framework, standard-library and dynamic-loader closure unproved; endpoint checks
 changes between reads. This local result establishes neither native macOS launcher behavior nor native
 capability, arbitrary-descendant containment, timing eligibility or final-protocol acceptance. No native
 replay or publication is supplied by this documentation update.
+
+
+### Complete capability failure observations (source preparation)
+
+The corrected-role capability-only run 3, `38675402354`, ran on exact
+`19c4d8e26b3382de1377be6ed7d6a61528cb4b4d`: the 17 inner and 56 outer mocked
+prerequisites passed, observation returned 1, publication returned 125, and no
+artifact was uploaded. Its safe publisher hash identifies only the
+`original-writer-not-proved-finished` admission gate. The primary failure,
+physical interpreter observations and actual metadata/helper/actor counts are
+unavailable. Runs 1 and 2 remain separate failed evidence. The new source below
+does not recover those missing observations or establish an ECHILD cause.
+
+The reviewed diagnostic design adds one bounded canonical ASCII JSON line on
+outer stderr for each execution/publication invocation and one failure-only
+helper stdout line. Exact phase/checkpoint and exception-category enums, typed
+observed return codes/walls, first-primary plus at most three secondary failure
+projections, and already available stream sizes/hashes carry the failure chain.
+No paths, argv, environment, raw exception text or process/actor counts are added
+to those diagnostics. Intended return codes are labeled as intended; the actual
+shell and retained workflow status remain authoritative. A late nominal zero
+or a disk success marker cannot override a failed/incomplete observation.
+
+The helper line binds the exact helper SHA admitted by the before-source query,
+not the Git SHA. It is decoded only inside the existing admitted root-stdout
+read, with exact whole-stream size/hash, duplicate-key/line/schema and source
+checks. Missing source, malformed content or a conflicting helper identity
+remains unavailable. The fixed helper gives actors separate stdout/stderr and
+only two control-pipe descriptors. That supports the narrow root-stream writer
+argument after the existing root ownership gate; it does not prove arbitrary
+descendant completion. Uncertain ownership still forbids stream/material reads
+and publication. No new file read, artifact fallback or weaker scanner gate is
+introduced for diagnostics.
+
+Command observation is distinct from command-row return and receipt
+finalization. An already observed wait outcome can survive a later stream or
+receipt close failure in memory without fabricating a returned row or hashes.
+The first primary survives later cleanup/finalization errors. Reasons are
+hashed only from an existing exact string of at most 65,536 code points that
+strictly encodes to at most 65,536 UTF-8 bytes; no truncation or arbitrary
+exception `__str__` enrichment is used. Raw failure receipt reasons for
+exceptions without one exact-string argument therefore become unavailable
+(`null`), while their type can remain available. Receipt schemas and successful
+admission predicates are unchanged. Each diagnostic stays within 16 KiB.
+
+The product's new `root_reaped` and ownership fields project its existing
+Popen.wait return and anchor state. They do not independently retain raw waitpid
+status. Any strict wait seam in the local test caller protects that caller
+only; native product supervision has not acquired that guarantee. Its possible
+ECHILD-to-zero behavior is an inherited limitation, not a diagnosed historical
+failure or a change made by this slice.
+
+Source01 and its rejected draft caller are preserved. The accepted source02
+refinement adds direct Path/os/normalizer forbidden-read instrumentation and
+known exception-category/type-hash correspondence. The fixed prospective
+controls have 29 producer-route methods plus one method with 16 named codec
+subcases, using the real producer/status/receipt/verifier/scanner paths and
+only synthetic OS/process/native observations. The source02 invocation reproduced
+the exact expected baseline native-API refusal and missing-diagnostic assertion,
+then passed all 30 new methods and the unchanged 17 inner methods. The outer
+suite stopped after 38 methods: one real file-target `/.` admission negative
+reached its mocked command, and 18 later methods were unstarted. All four actual
+child exits (1, 0, 0, 1), eight streams and 1,036 input brackets are retained.
+The actual caller/outer exit was 1; all owned roots were raw-reaped without
+cleanup uncertainty, timeout or forbidden operation. Supervisor descriptor
+closure was 2026-10-15 04:29:22.471653674 UTC. This red is not a successful full
+control result.
+
+The local Python 3.12 strict resolver and the original alias walker's Path.parts
+both discarded terminal empty/dot traversal. The retained `/.` result therefore
+establishes a local admission gap; its fail-fast sibling `/` was unobserved in
+that invocation. No historical native failure is attributed to this mechanism.
+The narrow successor preserves raw slash components for selected paths and
+link targets, requires directories before further traversal (including `..`),
+and charges empty/dot components against the unchanged 128-component cap.
+Absolute/relative rebasing, the 32-link and 16,384-byte target limits, raw target
+hash/stat binding, configured/runtime/physical roles, executable bytes and the
+independent physical observer remain unchanged. The existing full-binding
+suffix refusal is strengthened to require early alias refusal before physical
+observation or any command.
+
+The corrected outer inventory retains all 56 earlier method names and adds
+three methods. Its fixed matrix covers eight valid directory traversals, ten
+full-route non-file/directory-target refusals, sixteen exact component-budget
+subcases, one empty-target seam and two raw-spelling replacement cases. The
+source03 continuation passed all 30 diagnostic methods and all 59 outer methods,
+with zero failures, errors or skips. The original expected baseline refusal and
+inner 17 passes were admitted from their exact loaded sources, actual exits,
+streams, cleanup and input brackets; neither was rerun. Both fresh children
+returned actual zero, with retained raw terminal waits. Child walls were
+3.035528564 and 4.411062607 seconds; full caller wall was 9.091878126 seconds.
+All four original streams, 1,126 input endpoint brackets and caller brackets
+matched. There was no timeout, cancellation, cleanup uncertainty or forbidden
+operation. Actual outer exit was zero and supervisor descriptor closure was
+2026-10-15 04:57:31.801128869 UTC. The independent result regrade accepted these
+local mock/file observations; the earlier outer failure remains retained.
+
+The three source02 bodies were initially copied exactly onto the reviewed
+current-main tree `55241d3e2c28e434155024088089c0bfe5a93672`, with local
+same-tree parent `f90abc5052662f91dd17a343474577273b342c80` mapped to remote
+merged `ec8b656262777bd345e12abe1097651ed7ccea08`. The subsequent reviewed
+raw-component correction changes only the outer wrapper's interpreter_alias
+function and its outer control file; the other two source02 bodies remain
+exact. The previously published README prefix and all 27 historical provenance
+entries are retained. The current observability entry binds the corrected source, original red and
+accepted continuation receipts. The ordinary CI workflow bytes are unchanged;
+its default SDK discovery prospectively selects 250 methods, including the new
+30. The unchanged native workflow directly runs the entire outer test file,
+whose prerequisite inventory becomes 17+59 after this source correction. The
+accepted two-child continuation has 30+59=89 freshly executed methods and 16
+codec subcases inside the 30-method suite. The separately retained inner 17
+yields 106 distinct successor methods across the two attempts; the rechecked
+30 methods are not counted twice. It used the reviewed 180/60-second child
+bounds and 360+10-second outer envelope, full-budget launch admission,
+inherited lane descriptor and strict raw-wait/material-read guards. These
+local correctness results do not establish native actor behavior.
+
+Strict interpreter/image/source pins, the 12-case/at-most-13-actor schedule,
+five-key child environment, all native deadlines/caps and publication scanner
+remain unchanged. Diagnostic work stays inside the caller/child's existing
+elapsed interval; the pre-receipt subtotal is not relabeled a full finalization
+cost. All timing, descendant-closure and final-protocol eligibility flags remain
+false. Combined-source CI and any future native attempt require separate gates.

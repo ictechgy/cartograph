@@ -493,24 +493,136 @@ class OuterControls(unittest.TestCase):
     def test_real_symlink_file_targets_with_directory_suffixes_refuse_full_admission(self):
         with self.native_file_identity() as (selected,physical,pins):
             runtime=Path(pins['runtime_path']);original=os.readlink(runtime)
+            cases=(('relative-dot',original+'/.','interpreter-alias-entry'),
+                   ('relative-slash',original+'/','interpreter-alias-entry'),
+                   ('relative-parent',original+'/..','interpreter-alias-entry'),
+                   ('relative-parent-file',original+'/../'+physical.name,'interpreter-alias-entry'),
+                   ('absolute-dot',str(physical)+'/.','interpreter-alias-entry'),
+                   ('absolute-slash',str(physical)+'/','interpreter-alias-entry'),
+                   ('absolute-parent',str(physical)+'/..','interpreter-alias-entry'),
+                   ('absolute-parent-file',str(physical)+'/../'+physical.name,'interpreter-alias-entry'),
+                   ('directory-dot',str(physical.parent)+'/.','interpreter-alias-not-file'),
+                   ('directory-slash',str(physical.parent)+'/','interpreter-alias-not-file'))
+            for name,target,reason in cases:
+                with self.subTest(case=name):
+                    self.raw=self.root/f'raw-directory-suffix-{name}'
+                    self.public=self.root/f'public-directory-suffix-{name}'
+                    if name.startswith('absolute'):
+                        alias=M.interpreter_alias(target)
+                        self.assertEqual(alias['status'],'unavailable')
+                        self.assertEqual(alias['failure_sha256'],M.admission_text_hash(reason))
+                    self.replace_alias(runtime,target)
+                    self.assertEqual(os.readlink(runtime),target)
+                    with mock.patch.object(M.OBS,'interpreter_observation') as observation:
+                        value,output=self.early_execute('physical-python-mismatch')
+                    observation.assert_not_called()
+                    safe=value['interpreter_admission_failure']['observed']
+                    # 파일 뒤의 점·빈 조각·부모 탐색은 물리 관찰과 명령보다 먼저 거부한다.
+                    for role,prefix in (('configured','configured_'),('runtime','')):
+                        self.assertIsNone(safe[role+'_alias_before_sha256'])
+                        self.assertIsNone(safe[role+'_alias_after_sha256'])
+                        self.assertEqual(safe[role+'_alias_failure_sha256'],M.admission_text_hash(reason))
+                        self.assertEqual(safe[prefix+'physical_status'],'unavailable')
+                        self.assertIsNone(safe[prefix+'file_identity_sha256'])
+                        self.assertIsNone(safe[prefix+'sha256'])
+                    self.early_publish(value);self.replace_alias(runtime,original)
+
+    def test_real_directory_dot_slash_and_parent_aliases_preserve_full_binding(self):
+        with self.native_file_identity() as (selected,physical,pins):
+            configured=selected.parents[1];runtime=Path(pins['runtime_path'])
+            configured_target=os.readlink(configured);real=M.OBS.interpreter_observation
+            cases=(('runtime-relative-dot-slash',runtime,
+                    '.././Frameworks//Python.framework/Versions/3.14/bin/./python3.14'),
+                   ('runtime-relative-parent',runtime,
+                    '../Frameworks/Python.framework/Versions/3.14/bin/../bin/python3.14'),
+                   ('runtime-absolute-dot-slash',runtime,str(physical.parent)+'//./'+physical.name),
+                   ('runtime-absolute-parent',runtime,str(physical.parent)+'/../bin/'+physical.name),
+                   ('configured-relative-dot',configured,configured_target+'/.'),
+                   ('configured-relative-slash',configured,configured_target+'/'),
+                   ('configured-absolute-dot-slash',configured,str(runtime.parents[1])+'//./'),
+                   ('configured-absolute-parent',configured,str(runtime.parents[1])+'/../3.14.7/'))
+            for name,alias,target in cases:
+                with self.subTest(case=name):
+                    original=os.readlink(alias);self.replace_alias(alias,target)
+                    self.assertEqual(os.readlink(alias),target)
+                    with mock.patch.object(M.OBS,'interpreter_observation',wraps=real) as observation, \
+                         mock.patch.object(M,'command') as command,mock.patch.object(M.subprocess,'Popen') as launched:
+                        binding=M.bind_interpreter()
+                    command.assert_not_called();launched.assert_not_called()
+                    self.assertEqual(observation.call_args_list,[mock.call(str(selected)),mock.call(str(runtime))])
+                    self.assertTrue(M.interpreter_receipt_valid(binding))
+                    self.assertEqual(binding['aliases_before'],binding['aliases_after'])
+                    for role in ('configured','runtime'):
+                        self.assertEqual(binding[role]['resolved_path'],str(physical))
+                        self.assertEqual(binding[role]['sha256'],pins['sha256'])
+                    role='configured' if alias==configured else 'runtime'
+                    links=[row for row in binding['aliases_before'][role]['components']
+                           if row['entry_type']=='symlink' and row['identity']==M.stat_identity(alias.lstat())]
+                    self.assertEqual(len(links),1)
+                    self.assertEqual(links[0]['link_target_bytes'],len(os.fsencode(target)))
+                    self.assertEqual(links[0]['link_target_sha256'],hashlib.sha256(os.fsencode(target)).hexdigest())
+                    self.replace_alias(alias,original)
+
+    def test_raw_empty_and_dot_components_consume_exact_selected_and_link_budgets(self):
+        with self.native_file_identity() as (selected,physical,pins), \
+             mock.patch.object(M.OBS,'interpreter_observation') as observation, \
+             mock.patch.object(M,'command') as command,mock.patch.object(M.subprocess,'Popen') as launched:
+            self.assertEqual((M.ALIAS_COMPONENT_LIMIT,M.ALIAS_LINK_LIMIT,M.ALIAS_TARGET_LIMIT),(128,32,16384))
+            runtime=Path(pins['runtime_path']);original=os.readlink(runtime)
+            cases=(('selected-empty',None,'/',False),('selected-dot',None,'./',False),
+                   ('relative-link-empty',original,'/',False),('relative-link-dot',original,'./',False),
+                   ('absolute-link-empty',str(physical),'/',False),('absolute-link-dot',str(physical),'./',False),
+                   ('selected-leading-empty',None,'/',True),('absolute-link-leading-empty',str(physical),'/',True))
+            for name,base,token,leading in cases:
+                if base is not None:self.replace_alias(runtime,base)
+                path=str(physical) if base is None else str(runtime)
+                baseline=M.interpreter_alias(path)
+                self.assertEqual(baseline['status'],'available')
+                padding=M.ALIAS_COMPONENT_LIMIT-len(baseline['components'])
+                self.assertGreater(padding,0)
+                prefix,leaf=(str(physical) if base is None else base).rsplit('/',1)
+                for extra,status in ((0,'available'),(1,'unavailable')):
+                    target=('/'+'/'*(padding+extra)+(str(physical) if base is None else base)[1:] if leading
+                            else prefix+'/'+token*(padding+extra)+leaf)
+                    if base is None:path=target
+                    else:self.replace_alias(runtime,target)
+                    with self.subTest(case=name,extra=extra):
+                        row=M.interpreter_alias(path)
+                        self.assertEqual(row['status'],status)
+                        if status=='available':
+                            self.assertEqual(len(row['components']),M.ALIAS_COMPONENT_LIMIT)
+                            self.assertEqual(row['resolved_path_sha256'],M.admission_text_hash(str(physical)))
+                            self.assertEqual(row['components'][-1]['identity'],M.stat_identity(physical.lstat()))
+                        else:
+                            reason='interpreter-alias-path' if base is None else 'interpreter-alias-component-limit'
+                            self.assertEqual(row['failure_sha256'],M.admission_text_hash(reason))
+                self.replace_alias(runtime,original)
+            with mock.patch.object(M.os,'readlink',return_value=''):
+                row=M.interpreter_alias(str(runtime))
+            self.assertEqual(row['status'],'unavailable')
+            self.assertEqual(row['failure_sha256'],M.admission_text_hash('interpreter-alias-target-limit'))
+            observation.assert_not_called();command.assert_not_called();launched.assert_not_called()
+
+    def test_raw_directory_alias_replacement_refuses_between_physical_reads(self):
+        with self.native_file_identity() as (selected,physical,pins):
             real=M.OBS.interpreter_observation
-            for index,suffix in enumerate(('/.','/')):
-                self.raw=self.root/f'raw-directory-suffix-{index}'
-                self.public=self.root/f'public-directory-suffix-{index}'
-                target=original+suffix;self.replace_alias(runtime,target)
-                self.assertEqual(os.readlink(runtime),target)
-                with self.subTest(suffix=suffix), \
-                     mock.patch.object(M.OBS,'interpreter_observation',wraps=real) as observation:
-                    value,output=self.early_execute('physical-python-mismatch')
-                self.assertEqual(observation.call_args_list,[mock.call(str(selected)),mock.call(str(runtime))])
-                safe=value['interpreter_admission_failure']['observed']
-                # 별칭 워커의 경로 정규화만으로 물리 파일 관찰 실패를 대체할 수 없다.
-                for role,prefix in (('configured','configured_'),('runtime','')):
-                    self.assertIsNotNone(safe[role+'_alias_before_sha256'])
-                    self.assertEqual(safe[prefix+'physical_status'],'unavailable')
-                    self.assertIsNone(safe[prefix+'file_identity_sha256'])
-                    self.assertIsNone(safe[prefix+'sha256'])
-                self.early_publish(value);self.replace_alias(runtime,original)
+            for role,target in (('configured',selected.parents[1]),('runtime',Path(pins['runtime_path']))):
+                with self.subTest(role=role):
+                    self.raw=self.root/f'raw-dot-replace-{role}';self.public=self.root/f'public-dot-replace-{role}'
+                    original=os.readlink(target);prefix,leaf=original.rsplit('/',1);changed=prefix+'/./'+leaf;calls=[]
+                    def observe(path):
+                        row=real(path);calls.append(path)
+                        if len(calls)==1:self.replace_alias(target,changed)
+                        return row
+                    with mock.patch.object(M.OBS,'interpreter_observation',side_effect=observe):
+                        value,output=self.early_execute('physical-python-mismatch')
+                    self.assertEqual(calls,[str(selected),pins['runtime_path']])
+                    safe=value['interpreter_admission_failure']['observed']
+                    self.assertEqual(safe['file_identity_sha256'],safe['configured_file_identity_sha256'])
+                    self.assertEqual(safe['sha256'],pins['sha256']);self.assertEqual(safe['configured_sha256'],pins['sha256'])
+                    self.assertIsNone(safe[role+'_alias_failure_sha256'])
+                    self.assertNotEqual(safe[role+'_alias_before_sha256'],safe[role+'_alias_after_sha256'])
+                    self.early_publish(value);self.replace_alias(target,original)
 
     def test_alias_expansion_limits_and_unreadable_edge_refuse_without_physical_observer(self):
         with self.native_file_identity():
