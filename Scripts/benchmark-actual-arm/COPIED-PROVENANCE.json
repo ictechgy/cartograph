@@ -487,6 +487,252 @@
     "role": "prospective-strict-early-admission-failure-retention",
     "scope": "Additive successor identity only; every prior provenance entry remains historical. The literal pre-child admission checkpoint may retain only incomplete evidence with empty original membership, no source/command/capability records, typed shell exit 1 through 255, finite nonnegative non-boolean caller cost and exact scope strings. Fixed admission reasons and bounded typed observations or hashes retain the primary failure without a secondary missing-source lookup. Physical identity requires six exact nonnegative integers, regular-file mode and matching executable byte count. Python/image/executable/source pins, ownership gates, child budgets, scanner and publication caps stay unchanged; there is no fallback or fabricated actor count. Publication success is retention only and preserves the original failed execute status. Capability-only remains true; descendant-closure, timing and final-protocol eligibility remain false. The original run's primary admission reason and actual child/actor counts remain unavailable; no native retry or successful capability observation is claimed."
   },
+  "native_waitid_capability_interpreter_roles_v1": {
+    "base_commit": "4ef6032d0fcb5bffce72d8ea25d86e367d7160c1",
+    "base_tree": "9a8069f0089e8b88cc47100c65b5a63b6a5ec87b",
+    "files": [
+      {
+        "bytes": 48433,
+        "path": "Scripts/validate-native-waitid-capability.py",
+        "sha256": "144dba984c66528f4fb1f1ce062ea5a312164d1a989f012d1201dbcccf5dd281"
+      },
+      {
+        "bytes": 71798,
+        "path": "Scripts/test-native-waitid-capability.py",
+        "sha256": "6ff45c468805c1160afcdcf728bb1e7a4ff95913f0c34ce622a349ced405ad4c"
+      },
+      {
+        "bytes": 51878,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "8ea8b20067d4716e76a04f5056a912bc1bfe126110e63956f80360135bc1abcd"
+      },
+      {
+        "bytes": 4468,
+        "path": "docs/evaluation/waitid-capability-interpreter-spelling.md",
+        "sha256": "7564b1972124d33dfaea2aa842053c7faa3fe775aca175325cc8c21057ff4195"
+      }
+    ],
+    "historical_run2": {
+      "checkpoint": "interpreter-admission-before",
+      "observed_physical_bytes": null,
+      "observed_physical_sha256": null,
+      "observed_selected_path_sha256": "8e4121d16bb4a19e1a36abf8fbddea67e6a2b88c1b0d5ea116149bd7baaa261c",
+      "original_expected_selected_path_sha256": "b943d5b04b6c1a38452fd18788100affdbce154455f0be7a933dfcdffca5f0db",
+      "physical_inspection_reached": false,
+      "primary_admission_reason": "selected-python-mismatch",
+      "retained_files": [
+        {
+          "bytes": 362,
+          "path": "artifact-owner-readback.json",
+          "sha256": "4a0d7417661d7f85c974e7628b0fc85c0bfe9646211f6a9be43cf5beb79c23f8"
+        },
+        {
+          "bytes": 725,
+          "path": "artifacts-terminal.json",
+          "sha256": "8c194c43a43d5a69aa86c32a0346bfd4e076e980f593657d7af12b02c180610b"
+        },
+        {
+          "bytes": 3078,
+          "path": "capability.zip",
+          "sha256": "09173919a8d626f3f0c5701f37247aca5ff8a29cdeb99b16b1e0d49ea0b50b85"
+        },
+        {
+          "bytes": 12369,
+          "path": "run-terminal.json",
+          "sha256": "45ca0b7dc1067f87addce10a68ed2b8f61473f4ec84ac1b39b2fba4e3c5ec571"
+        },
+        {
+          "bytes": 5868,
+          "path": "unpacked/manifest.json",
+          "sha256": "2ee6f28be12f7953e6f74b6e9a65b884abc743eae872ee38d2abfd2431bc2e09"
+        },
+        {
+          "bytes": 2519,
+          "path": "unpacked/results.json",
+          "sha256": "bcee53677f4ea824eb1cfebc00d0c9785759e156dcdefc7d10d1a5f005b2d94f"
+        },
+        {
+          "bytes": 21,
+          "path": "unpacked/setup/execute-status.json",
+          "sha256": "56296949d3a02e635b050fd6b4762f0f0b52c23d05b925203095f7daf8e19027"
+        }
+      ],
+      "run_id": 38659730547,
+      "scope": "Original run2 physical bytes and macOS launcher mechanism remain unverified; expected pins are not observations. Run1 primary admission reason remains unknown.",
+      "source_sha": "ae98aa8604cdf7a73698a72464757126237deab9",
+      "status": "incomplete"
+    },
+    "local_validation": {
+      "actual_child_wall_seconds": {
+        "baseline": 0.26523619299405254,
+        "inner": 0.3017831329925684,
+        "outer": 3.589777029992547
+      },
+      "actual_engine_calls": 0,
+      "actual_full_caller_wall_seconds": 4.22078466801031,
+      "actual_outer_exit": 0,
+      "all_owned_control_roots_reaped": true,
+      "attempts": 1,
+      "baseline_actual_exit": 1,
+      "baseline_expected_exit": 1,
+      "baseline_methods": 1,
+      "baseline_refusal": "selected-python-mismatch; physical inspection unreached; two scanned incomplete receipts",
+      "baseline_retained_files": 8,
+      "baseline_saved_exit_origin": "direct main return code; no shell child",
+      "bootstrap_qualification": "Bounded regular no-follow guarantees apply to inspected support-reader operations. Bootstrap Path.read_bytes calls and importlib loading do not provide that universal descriptor/no-follow guarantee; assurance is limited to exact inspected frozen inputs on the cooperating local validation lane, without resistance to an independently hostile concurrent filesystem writer.",
+      "caller_file_brackets": 3,
+      "caller_terminal": "2026-10-15T01:58:09.069031311Z",
+      "child_kill_reap_seconds": 3,
+      "child_term_grace_seconds": 2,
+      "child_timeout_seconds": {
+        "baseline": 30,
+        "inner": 30,
+        "outer": 60
+      },
+      "cleanup_errors": [],
+      "compiler_calls": 0,
+      "date_utc": "2026-10-15",
+      "evidence_location": "External retained packet cartograph-capability-interpreter-spelling-controls; independent review retained separately.",
+      "forbidden_guard_attempts": [],
+      "inner_methods": 17,
+      "lane_acquired": "2026-10-15T01:58:04.782687402Z",
+      "local_python": "/usr/bin/python3.13",
+      "local_python_sha256": "889c603f0d17cb54060951bcf4c4f9b8c9ebd9e52b392c70209bbb9755d797d9",
+      "lock_release_scope": "Supervisor descriptor closed only; surviving inherited holders retain the lane",
+      "metadata_subprocesses": 0,
+      "native_actor_launches": 0,
+      "outer_kill_grace_seconds": 10,
+      "outer_methods": 56,
+      "outer_timeout_seconds": 180,
+      "ownership_uncertain": false,
+      "pinned_input_brackets": 44,
+      "positive_caller_interval_is_synthetic": true,
+      "positive_fixture": {
+        "bytes": 34,
+        "sha256": "e947e27b46a3363f9063408e80625509f6bbd719800132877520bfdcfaf68d37"
+      },
+      "positive_public_files_including_manifest": 39,
+      "positive_raw_files": 38,
+      "positive_synthetic_caller_seconds": 10,
+      "retained_artifacts": [
+        {
+          "bytes": 17216,
+          "path": "source-manifest.json",
+          "sha256": "19ab5e02ad2c181fa36948a98d7ae737cda3905339448c5003b3801fb9dfcf6b"
+        },
+        {
+          "bytes": 13675,
+          "path": "run-controls.py",
+          "sha256": "5243355c5692c4426b19ae83f17e088c6c41f8ce4d48a5f53ec64b0affcc16f8"
+        },
+        {
+          "bytes": 2144,
+          "path": "launch-attempt01.sh",
+          "sha256": "736b60699b97e1b2233b8bf5b74d37600eb45531c940a89bfcaa55b81d4b675d"
+        },
+        {
+          "bytes": 5541,
+          "path": "control_support.py",
+          "sha256": "7c7aa3e6f33e1eb127136bab3ca7bd3717a2488b945858d2f2f8564a8b05c309"
+        },
+        {
+          "bytes": 8530,
+          "path": "baseline-refusal.py",
+          "sha256": "425fbb114063054636b1c7cc571378a445a7b3a2a919b749eaa5b9b9109d67a0"
+        },
+        {
+          "bytes": 4730,
+          "path": "suite-driver.py",
+          "sha256": "d850c67af8f7735d78217c2f83e524015b9e0596943d81693f68dc275ac16237"
+        },
+        {
+          "bytes": 961,
+          "path": "REVIEW-QUALIFICATION.md",
+          "sha256": "5f663e010f6028a755d5632810b192458aba87510148d9dd6ef50a3b87d7f14b"
+        },
+        {
+          "bytes": 325,
+          "path": "outer-attempt01.json",
+          "sha256": "d7a3db2e4069cb534df7fd401977b32f4031f0b0af8f8a3095bfd89cd40b9f8f"
+        },
+        {
+          "bytes": 4436,
+          "path": "attempt01/results.json",
+          "sha256": "319e7546014c0c1dd64bae6e33c0704533ede5b96a15f39e9d5b84b9d7c5792c"
+        },
+        {
+          "bytes": 9128,
+          "path": "attempt01/source-before.json",
+          "sha256": "0aa075b6cf37e238044a97e83bf721fd80bd1e995beb726b7f423c7a355cbb26"
+        },
+        {
+          "bytes": 9128,
+          "path": "attempt01/source-after.json",
+          "sha256": "0aa075b6cf37e238044a97e83bf721fd80bd1e995beb726b7f423c7a355cbb26"
+        },
+        {
+          "bytes": 398,
+          "path": "attempt01/caller-before.json",
+          "sha256": "20c04b2efc775809055f96608869d9a1411fbc14e1b53e387ae6de764a7c95b1"
+        },
+        {
+          "bytes": 398,
+          "path": "attempt01/caller-after.json",
+          "sha256": "20c04b2efc775809055f96608869d9a1411fbc14e1b53e387ae6de764a7c95b1"
+        },
+        {
+          "bytes": 13899,
+          "path": "attempt01/retained-originals-after.json",
+          "sha256": "de2f30509ba2f98167f87a25826b24a0252ffd25cc897a0b152dbe046426e6c2"
+        },
+        {
+          "bytes": 1579,
+          "path": "attempt01/baseline-child.json",
+          "sha256": "e250fbe534eeabe81513ac8427890f782b1b1a55327cfcf9dc3792b58f815a05"
+        },
+        {
+          "bytes": 17552,
+          "path": "attempt01/outer-child.json",
+          "sha256": "018bc75066daacbe7cefdf9997f10ca9ba112dd1c51b810b104c3e0c1fb81324"
+        },
+        {
+          "bytes": 1599,
+          "path": "attempt01/inner-child.json",
+          "sha256": "939caaacda90f90e707773cddf42d80566439058c05712ae8ffd4912b1ee21ab"
+        },
+        {
+          "bytes": 1350,
+          "path": "attempt01/baseline-originals/baseline-proof.json",
+          "sha256": "590f6587edf23a81a86282fe27674d56fc02c6c2ad3bb09b1866e82606c8fe6d"
+        },
+        {
+          "bytes": 12654,
+          "path": "attempt01/source-positive/capture.json",
+          "sha256": "9f0f02457f236dce9ff169316e5e3fc60578ca1a98203b713d2c1b2e6c8ee797"
+        },
+        {
+          "bytes": 1560,
+          "path": "cart-interpreter-attempt01-independent.json",
+          "sha256": "c3737055fd4bed504427eda44ec317e2fe148bf5518817e4c399a2ed8dd0c5a8"
+        }
+      ],
+      "retained_original_brackets_equal": true,
+      "scope": "One local guarded mock/file-only run. Real temporary aliases and regular fixture bytes were inspected, never executed. Platform/version, metadata queries, capability commands, actor receipts and positive caller interval were synthetic. External launcher supervision utilities remain distinct from guarded target child operations. Independent retained-only review accepted the 1/56/17 results.",
+      "source_brackets_equal": true,
+      "source_positive_retained_files": 79,
+      "successor_actual_exits": [
+        0,
+        0
+      ],
+      "successor_methods": 73,
+      "successor_skips": 0,
+      "successor_unexpected_failures": 0,
+      "supervisor_descriptor_closed": "2026-10-15T01:58:09.072031616Z"
+    },
+    "role": "exact-configured-runtime-physical-interpreter-role-binding",
+    "same_tree_remote_main": "ae98aa8604cdf7a73698a72464757126237deab9",
+    "scope": "Additive successor identity only; every earlier provenance entry remains historical. Configured opt launch, exact prospective Cellar/bin runtime argv and fixed Framework physical executable roles remain distinct. Both aliases and observation endpoints bind equal fresh six-field regular identities, unchanged physical size/SHA and bounded alias chains, without fallback. Workflow, native helper, scanner, native budgets and eligibility flags are unchanged. The linked interpreter contract was pinned during local controls; this README/provenance update follows that run. No native macOS alias behavior, capability support, arbitrary-descendant containment, engine timing or final-protocol acceptance is established. Framework/stdlib/loader closure and intervening ABA mutations remain unproved; no native replay or publication is performed."
+  },
   "native_waitid_capability_preparation_v1": {
     "base_commit": "d19ead28e3ff8645de171dfeffe91c16f6fa42f4",
     "base_tree": "4f7879cb6c71c25620f9932bca7d686b605409b1",
