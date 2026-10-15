@@ -1002,7 +1002,7 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
             ("Retain normalized calibration evidence", None,
              "always() && steps.engines_public.outputs.ready == 'true'"),
             ("Prepare safe SDK candidate evidence", "sdk_public",
-             always + "(steps.before.outcome != 'skipped' || steps.generations.outcome != 'skipped')"),
+             always + "(steps.before.outcome != 'skipped' || (steps.generations.outcome != 'skipped' && steps.generations.outputs.status_finalized == 'true'))"),
             ("Retain normalized SDK candidate evidence", None, "always() && steps.sdk_public.outcome == 'success'"),
             ("Prepare normalized measurement evidence", "measurement_normalize",
              always + "steps.measurement.outcome != 'skipped'"),
@@ -1049,7 +1049,7 @@ class NativeCalibrationWorkflowTests(unittest.TestCase):
         self.assertIn("steps.engines_public.outputs.ready == 'true'", actual)
         self.assertIn("steps.sdk_public.outcome == 'success'", sdk)
         self.assertIn("name: actual-engine-observer-calibration", actual)
-        self.assertIn("name: native-sdk-content-candidate", sdk)
+        self.assertIn("'native-sdk-generation-failure-capsule' || 'native-sdk-content-candidate'", sdk)
         self.assertIn("path: ${{ runner.temp }}/actual-arm-correctness-public/", actual)
         self.assertIn("path: ${{ runner.temp }}/native-calibration-sdk-public/", sdk)
         for body in (actual, sdk):

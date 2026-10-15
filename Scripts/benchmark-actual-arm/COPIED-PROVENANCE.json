@@ -206,6 +206,57 @@
     "scope": "Additive merge-main integration preserving generation diagnostic and capability/cache source bodies and every prior provenance value. README combines accepted sections and records ordinary CI512 on Python 3.14.7; combined-source CI and native diagnostics remain separate gates.",
     "second_parent": "1d090d086f0058437bd1ca9ab76c6c4134997835"
   },
+  "generation_failure_capsule_v1": {
+    "base_commit": "ae98aa8604cdf7a73698a72464757126237deab9",
+    "files": [
+      {
+        "bytes": 14644,
+        "path": ".github/workflows/native-calibration.yml",
+        "sha256": "7c3474d1535da1ca5124e2e0b47e6e8ebe37e5cb70339d07718ef0649c8ad68d"
+      },
+      {
+        "bytes": 53825,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "f0d67c8931ff85758ebeb2cc4a8c563e2b1d6ad538c8633dcd0cd0ed90a05ece"
+      },
+      {
+        "bytes": 31298,
+        "path": "Scripts/benchmark-inputs/native_calibration_inputs.py",
+        "sha256": "2f11f597fb8c7b2265f789467f9dc6009af6afd7f2c09d1fc7a3b386f9373381"
+      },
+      {
+        "bytes": 66269,
+        "path": "Scripts/benchmark-inputs/native_generation_inputs.py",
+        "sha256": "b53303c2baca05e2f21df55e62f898d67d4fe3757106e013c65b101ba3da4d74"
+      },
+      {
+        "bytes": 29663,
+        "path": "Scripts/benchmark-inputs/test_native_calibration_inputs.py",
+        "sha256": "8f12af59b2e945b911e4c995db5fdb61c8250ea6aa78079c02bcd3eb8ce33cfd"
+      },
+      {
+        "bytes": 29865,
+        "path": "Scripts/validate-native-calibration-inputs.py",
+        "sha256": "5c80d0ad597e37cd4391bc4ca0f1012738729aae00daca471c4b2fa743a60787"
+      },
+      {
+        "bytes": 84472,
+        "path": "Scripts/validate-native-sdk-generations.py",
+        "sha256": "43d94c13db7657dee7428bfbeebcbc8bdba398f1fa376a7fb635712f73796130"
+      },
+      {
+        "bytes": 62890,
+        "path": "Scripts/verify-native-calibration-contract.py",
+        "sha256": "7db72a147abe5a84f57c22f72799017e53ccfcf60e5811a1597447e963265e6a"
+      },
+      {
+        "bytes": 123713,
+        "path": "Scripts/verify-native-generation-contract.py",
+        "sha256": "d7150d430bd6b11d88ae2aac19d75034d3ed30324ca917221db45d2f25c1a0f9"
+      }
+    ],
+    "scope": "Prospective fixed-slot failure-chain retention only. Actual shell status and writer stability gate each selected original; the full candidate path remains strict. Safe bounded JSON projection uses the unchanged scanner/caps and endpoint rechecks. All prior failures/provenance remain historical. Compiler/SDK/engine schedules and native budgets are unchanged; full producer controls use synthetic native/process/compiler seams, and native outcome remains unproved."
+  },
   "generation_failure_diagnostic_overrides": {
     "base_commit": "d19ead28e3ff8645de171dfeffe91c16f6fa42f4",
     "base_tree": "4f7879cb6c71c25620f9932bca7d686b605409b1",

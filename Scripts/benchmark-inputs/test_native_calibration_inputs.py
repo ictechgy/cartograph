@@ -411,5 +411,74 @@ class NativeInputTests(unittest.TestCase):
             admission.bind_discovery(candidate, request, result)
 
 
+
+class GenerationDiagnosticProbeTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name).resolve()
+        self.expected=json.loads((HERE/'native_calibration_expectation.json').read_text())
+        self.tool=self.root/'xcrun';self.tool.write_bytes(b'fixed fake native tool')
+        identity=admission.SELECTOR.file_identity(self.tool)
+        self.expected['tools']['xcrun'].update(physical_path=str(self.tool),bytes=identity['bytes'],sha256=identity['sha256'])
+        self.environment={**self.expected['runner'],'DEVELOPER_DIR':self.expected['developer_lexical']}
+        self.patch=mock.patch.object(admission,'expectation',return_value=(self.expected,'a'*64));self.patch.start();self.addCleanup(self.patch.stop)
+        self.platform=mock.patch.object(admission.sys,'platform','darwin');self.platform.start();self.addCleanup(self.platform.stop)
+
+    def probe_result(self, row_change=None, *, raise_error=False):
+        diagnostics={};self.calls=[]
+        def command(argv,cwd,stem,environment,timeout):
+            self.calls.append(argv)
+            if raise_error:raise OSError('private probe failure')
+            row=dict(command=argv,cwd=str(cwd),completed=True,passed=False,returncode=1,observed_returncode=1,
+                     cleanup_signals=[],cleanup_root_unfinished=False,wall_seconds=0.1,failure=None,
+                     stdout=str(stem)+'.stdout',stderr=str(stem)+'.stderr')
+            if row_change:row.update(row_change)
+            admission.SELECTOR.save(Path(str(stem)+'.json'),row)
+            Path(row['stdout']).write_text('private probe output')
+            Path(row['stderr']).write_text('private probe reason')
+            return row
+        def machine(run):
+            run(['/usr/sbin/sysctl','-n','hw.machine'])
+            return {},[]
+        result=admission.begin(self.root/('candidate-'+str(len(list(self.root.iterdir())))),machine_fields=machine,
+                               command=command,environment=self.environment,diagnostic=diagnostics)
+        return result,diagnostics
+
+    def test_nonzero_probe_retains_fixed_prefix_and_actual_status(self):
+        result,diagnostic=self.probe_result()
+        self.assertEqual(result['status'],'failed');self.assertTrue(diagnostic['nested_material_safe'])
+        self.assertEqual(diagnostic['probe_order'],['machine-hw_machine'])
+        self.assertEqual(diagnostic['probes']['machine-hw_machine']['observed_returncode'],1)
+        self.assertEqual(diagnostic['checkpoint'],'native-admission')
+        self.assertIn('failure_sha256',diagnostic)
+        self.assertEqual(len(self.calls),1)
+
+    def test_pre_receipt_exception_retains_uncertainty_and_no_invented_probe(self):
+        result,diagnostic=self.probe_result(raise_error=True)
+        self.assertFalse(diagnostic['nested_material_safe']);self.assertEqual(diagnostic['probes'],{})
+        self.assertEqual(diagnostic['probe_order'],[]);self.assertEqual(diagnostic['active_probe'],'machine-hw_machine')
+        self.assertEqual(result['status'],'failed')
+
+    def test_uncertain_boolean_and_late_zero_never_read_probe_stdout(self):
+        for change in ({'observed_returncode':True}, {'completed':True,'passed':True,'returncode':0,'observed_returncode':1},
+                       {'completed':True,'passed':True,'returncode':0,'observed_returncode':125},
+                       {'ownership_uncertain':True}, {'wait_ownership_uncertain':True},{'cleanup_root_unfinished':True,'observed_returncode':None},
+                       {'cleanup_signals':['term-sent']},{'completed':True,'passed':True,'returncode':0,
+                         'observed_returncode':0,'wall_seconds':30.001}):
+            original=admission.SELECTOR.file_identity
+            def identity(path,*args,**kwargs):
+                self.assertFalse(str(path).endswith('.stdout'),'unsafe probe output read')
+                return original(path,*args,**kwargs)
+            with self.subTest(change=change),mock.patch.object(admission.SELECTOR,'file_identity',side_effect=identity):
+                result,diagnostic=self.probe_result(change)
+            self.assertNotEqual(result['status'],'captured-candidate')
+            self.assertEqual(len(diagnostic['probe_order']),1)
+
+    def test_default_call_does_not_add_generation_diagnostic_fields(self):
+        with mock.patch.object(admission,'collect_native',side_effect=ValueError('private refusal')):
+            result=admission.begin(self.root/'legacy',machine_fields=None,command=None,environment={})
+        self.assertNotIn('diagnostic',result)
+
+
 if __name__ == "__main__":
     unittest.main()

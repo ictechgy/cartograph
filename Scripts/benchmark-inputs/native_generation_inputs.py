@@ -25,7 +25,7 @@ FROZEN_HELPERS = {
     "Scripts/normalize-indexstore-evidence.py":
         "17c705fac8670a77f9cbd7305c8f658807e2f6045a0ccb00172c79bccd1f7c17",
     "Scripts/benchmark-inputs/native_calibration_inputs.py":
-        "f15166e468db51e4443cb77dcdf2d75eedbc972103057482e59c780f1753c79a",
+        "2f11f597fb8c7b2265f789467f9dc6009af6afd7f2c09d1fc7a3b386f9373381",
     "Fixtures/IndexStoreCLIBenchmark/mixed-ios-validation/validation_common.py":
         "1abf5f434ea0616bc671d5b017945e66c584f515883fa4c6e2086ea5f71b58d1",
     "Fixtures/IndexStoreCLIBenchmark/mixed-ios-validation/compiler_generations.py":

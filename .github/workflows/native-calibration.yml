@@ -87,9 +87,29 @@ jobs:
         id: generations
         if: inputs.mode == 'sdk-generation-only'
         timeout-minutes: 31
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
+          fresh=true
+          for subtree in native-generation-supervisor native-calibration-sdk-calls native-calibration-sdk-raw native-sdk-generations-lifecycle sdk-discovery-raw native-generation-home native-generation-tmp; do
+            if [[ -e "$RUNNER_TEMP/$subtree" || -L "$RUNNER_TEMP/$subtree" ]]; then fresh=false; fi
+          done
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ && "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          set +e
           python3 -I -S -B Scripts/validate-native-sdk-generations.py \
             --scratch-root "$RUNNER_TEMP"
+          actual=$?
+          set -e
+          if [[ -e "$RUNNER_TEMP/generation-invocation-status.json" || -L "$RUNNER_TEMP/generation-invocation-status.json" ]]; then
+            if [[ "$actual" == 0 ]]; then exit 125; fi
+            exit "$actual"
+          fi
+          if (set -o noclobber; printf '{"schema_version":1,"mode":"sdk-generation-only","source_sha":"%s","run_id":%s,"run_attempt":%s,"actual_shell_exit":%d,"checkpoint":"invocation-returned","prelaunch_outputs_absent":%s}\n' "$SOURCE_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$actual" "$fresh" > "$RUNNER_TEMP/generation-invocation-status.json"); then
+            printf 'status_finalized=true\n' >> "$GITHUB_OUTPUT"
+          elif [[ "$actual" == 0 ]]; then
+            exit 125
+          fi
+          exit "$actual"
 
       # 호스트 macOS SDK 전체는 이 iPhoneSimulator+toolchain 봉인의 범위 밖이다.
       - name: Build the existing source-pinned tools and validation fixture
@@ -176,7 +196,8 @@ jobs:
         id: sdk_public
         env:
           RUN_MODE: ${{ inputs.mode }}
-        if: always() && !cancelled() && (steps.before.outcome != 'skipped' || steps.generations.outcome != 'skipped')
+          GENERATION_STATUS_FINALIZED: ${{ steps.generations.outputs.status_finalized }}
+        if: always() && !cancelled() && (steps.before.outcome != 'skipped' || (steps.generations.outcome != 'skipped' && steps.generations.outputs.status_finalized == 'true'))
         timeout-minutes: 4
         run: |
           generation=()
@@ -188,7 +209,7 @@ jobs:
         if: always() && steps.sdk_public.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: native-sdk-content-candidate
+          name: ${{ inputs.mode == 'sdk-generation-only' && steps.generations.outcome != 'success' && 'native-sdk-generation-failure-capsule' || 'native-sdk-content-candidate' }}
           path: ${{ runner.temp }}/native-calibration-sdk-public/
           include-hidden-files: true
           if-no-files-found: error
