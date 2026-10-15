@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import math
 import os
@@ -143,7 +144,30 @@ def assert_native(observed: dict, expected: dict) -> None:
     require(observed["versions"] == expected["versions"], "native-version-mismatch")
 
 
-def collect_native(output: Path, *, machine_fields, command, environment: dict, expected: dict) -> dict:
+
+def diagnostic_checkpoint(diagnostic, checkpoint):
+    """새 세대 모드만 고정 경계를 기록하고 기존 입장 판정은 그대로 유지한다."""
+    if diagnostic is not None:
+        diagnostic["checkpoint"] = checkpoint
+
+
+def diagnostic_failure(diagnostic, error):
+    if diagnostic is not None:
+        diagnostic.update(failure_type=type(error).__name__,
+                          failure_sha256=hashlib.sha256(str(error).encode()).hexdigest())
+
+
+def stable_probe(row):
+    """고정 읽기 프로브의 실제 종료가 증명된 경우에만 원문을 읽는다."""
+    return (type(row) is dict and type(row.get("observed_returncode")) is int
+            and row.get("cleanup_root_unfinished") is False and row.get("cleanup_signals") == []
+            and row.get("ownership_uncertain", False) is False and row.get("wait_ownership_uncertain", False) is False
+            and row.get("failure") in (None, "nested-incomplete", "signal")
+            and type(row.get("wall_seconds")) in (int, float)
+            and math.isfinite(row["wall_seconds"]) and row["wall_seconds"] >= 0)
+
+
+def collect_native(output: Path, *, machine_fields, command, environment: dict, expected: dict, diagnostic=None) -> dict:
     """기존 macOS 필드 관측기를 주입받고 모든 추가 읽기 명령의 원본·비용을 보존한다."""
     output.mkdir(parents=True, exist_ok=False)
     env = clean_environment(environment, expected)
@@ -155,8 +179,22 @@ def collect_native(output: Path, *, machine_fields, command, environment: dict, 
     require(all(before_xcrun[k] == xcrun[k] for k in ("bytes", "sha256")), "native-tool-mismatch")
 
     def probe(name, argv):
+        if diagnostic is not None:
+            diagnostic["nested_material_safe"] = False
+            diagnostic["active_probe"] = name
         row = command(argv, output, output / name, env, 30.0)
         observed["probes"][name] = row
+        if diagnostic is not None:
+            diagnostic["probes"][name] = row
+            diagnostic["probe_order"].append(name)
+            diagnostic["nested_material_safe"] = stable_probe(row)
+            if not diagnostic["nested_material_safe"]:
+                raise IncompleteAdmission("native-probe-ownership-unproved")
+            if row["wall_seconds"] > 30.0:
+                raise IncompleteAdmission("native-probe-late-completion")
+            if row["observed_returncode"] == 125:
+                raise IncompleteAdmission("native-probe-actual-incomplete")
+            require(row["observed_returncode"] == 0, "native-probe-actual-nonzero")
         if isinstance(row, dict) and (row.get("completed") is not True or row.get("returncode") == 125
                                      or row.get("cleanup_root_unfinished") is True):
             raise IncompleteAdmission("native-probe-incomplete")
@@ -219,10 +257,13 @@ def candidate_receipt(boundary: str) -> dict:
                              "No OS, dynamic-loader, link, JIT or target-execution closure is proved."])
 
 
-def begin(output: Path, *, machine_fields, command, environment: dict) -> dict:
+def begin(output: Path, *, machine_fields, command, environment: dict, diagnostic=None) -> dict:
     """호출자가 어떤 커버된 컴파일도 시작하기 전에 이 성공 영수증을 요구해야 한다."""
     started, result, created = time.perf_counter(), candidate_receipt("before-compilation"), False
     output = output.absolute()
+    if diagnostic is not None:
+        diagnostic.update(checkpoint="native-admission", nested_material_safe=True, probes={}, probe_order=[], active_probe=None)
+        result["diagnostic"] = diagnostic
     try:
         expected, digest = expectation()
         evidence_boundary(output, expected)
@@ -232,24 +273,28 @@ def begin(output: Path, *, machine_fields, command, environment: dict) -> dict:
         at = time.perf_counter()
         try:
             observed = collect_native(output / "native", machine_fields=machine_fields, command=command,
-                                      environment=environment, expected=expected)
+                                      environment=environment, expected=expected, **({"diagnostic": diagnostic} if diagnostic is not None else {}))
             result["native"] = observed
         finally:
             result["native_admission_wall_seconds"] = time.perf_counter() - at
         roots = {key: Path(value) for key, value in observed["layout"]["roots"].items()}
         at = time.perf_counter()
         try:
+            diagnostic_checkpoint(diagnostic, "sdk-capture")
             seal = SEAL.capture(roots, **expected["limits"])
             write_manifest(output / "seal.json", seal)
             result.update(seal_path=str(output / "seal.json"), seal_manifest_sha256=seal["manifest_sha256"],
                           content_sha256=seal["content_sha256"])
         finally:
             result["seal_capture_wall_seconds"] = time.perf_counter() - at
+        diagnostic_checkpoint(diagnostic, "sdk-postcheck")
         require(selected_layout(expected, observed["selected"]) == observed["layout"], "native-inputs-changed")
         result["status"] = "captured-candidate"
     except (KeyboardInterrupt, IncompleteAdmission) as error:
+        diagnostic_failure(diagnostic, error)
         result.update(status="incomplete", failure="interrupt" if isinstance(error, KeyboardInterrupt) else str(error))
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
+        diagnostic_failure(diagnostic, error)
         result.update(failure=str(error) if isinstance(error, (AdmissionError, SEAL.SealError))
                       else "admission-unavailable",
                       failure_type=type(error).__name__)
@@ -261,10 +306,13 @@ def begin(output: Path, *, machine_fields, command, environment: dict) -> dict:
 
 
 def verify_boundary(candidate: dict, output: Path, *, machine_fields, command,
-                    environment: dict, boundary: str) -> dict:
+                    environment: dict, boundary: str, diagnostic=None) -> dict:
     """세대 생성 후와 측정 종료 후에 전체 본문과 별칭·부재를 다시 읽는다."""
     started, result, created = time.perf_counter(), candidate_receipt(boundary), False
     output = output.absolute()
+    if diagnostic is not None:
+        diagnostic.update(checkpoint="native-admission", nested_material_safe=True, probes={}, probe_order=[], active_probe=None)
+        result["diagnostic"] = diagnostic
     try:
         require(boundary in {"after-generation", "after-calibration"}, "invalid-boundary")
         require(candidate.get("status") == "captured-candidate" and candidate.get("boundary") == "before-compilation"
@@ -278,7 +326,7 @@ def verify_boundary(candidate: dict, output: Path, *, machine_fields, command,
         at = time.perf_counter()
         try:
             observed = collect_native(output / "native", machine_fields=machine_fields, command=command,
-                                      environment=environment, expected=expected)
+                                      environment=environment, expected=expected, **({"diagnostic": diagnostic} if diagnostic is not None else {}))
             result["native"] = observed
             require(observed["selected"] == candidate["native"]["selected"]
                     and observed["layout"] == candidate["native"]["layout"], "native-inputs-changed")
@@ -286,6 +334,7 @@ def verify_boundary(candidate: dict, output: Path, *, machine_fields, command,
             result["native_admission_wall_seconds"] = time.perf_counter() - at
         at = time.perf_counter()
         try:
+            diagnostic_checkpoint(diagnostic, "sdk-postcheck")
             seal = SEAL.strict_expected_json(SEAL.expected_bytes(Path(candidate["seal_path"])))
             require(seal["manifest_sha256"] == candidate["seal_manifest_sha256"]
                     and seal["content_sha256"] == candidate["content_sha256"], "candidate-seal-changed")
@@ -296,11 +345,14 @@ def verify_boundary(candidate: dict, output: Path, *, machine_fields, command,
             require(verification["matches"] is True, "sdk-content-changed")
         finally:
             result["seal_verification_wall_seconds"] = time.perf_counter() - at
+        diagnostic_checkpoint(diagnostic, "sdk-postcheck")
         require(selected_layout(expected, observed["selected"]) == observed["layout"], "native-inputs-changed")
         result["status"] = "verified-candidate"
     except (KeyboardInterrupt, IncompleteAdmission) as error:
+        diagnostic_failure(diagnostic, error)
         result.update(status="incomplete", failure="interrupt" if isinstance(error, KeyboardInterrupt) else str(error))
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
+        diagnostic_failure(diagnostic, error)
         result.update(failure=str(error) if isinstance(error, (AdmissionError, SEAL.SealError))
                       else "verification-unavailable",
                       failure_type=type(error).__name__)

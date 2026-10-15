@@ -5,6 +5,12 @@ from __future__ import annotations
 import copy
 import hashlib
 import importlib.util
+import importlib.machinery
+import platform
+import signal
+import subprocess
+import time
+import types
 import contextlib
 import io
 import json
@@ -33,6 +39,13 @@ W = M.load_wrapper()
 
 def legacy_workflow(data):
     """명시한 추가 부분만 역변환하여 이전 두 모드의 전체 원본 바이트와 비교한다."""
+    for before, after in ((b'        timeout-minutes: 31\n        env:\n          SOURCE_SHA: ${{ inputs.source_sha }}\n        run: |\n          fresh=true\n          for subtree in native-generation-supervisor native-calibration-sdk-calls native-calibration-sdk-raw native-sdk-generations-lifecycle sdk-discovery-raw native-generation-home native-generation-tmp; do\n            if [[ -e "$RUNNER_TEMP/$subtree" || -L "$RUNNER_TEMP/$subtree" ]]; then fresh=false; fi\n          done\n          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ && "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]\n          set +e\n          python3 -I -S -B Scripts/validate-native-sdk-generations.py \\\n            --scratch-root "$RUNNER_TEMP"\n          actual=$?\n          set -e\n          if [[ -e "$RUNNER_TEMP/generation-invocation-status.json" || -L "$RUNNER_TEMP/generation-invocation-status.json" ]]; then\n            if [[ "$actual" == 0 ]]; then exit 125; fi\n            exit "$actual"\n          fi\n          if (set -o noclobber; printf \'{"schema_version":1,"mode":"sdk-generation-only","source_sha":"%s","run_id":%s,"run_attempt":%s,"actual_shell_exit":%d,"checkpoint":"invocation-returned","prelaunch_outputs_absent":%s}\\n\' "$SOURCE_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$actual" "$fresh" > "$RUNNER_TEMP/generation-invocation-status.json"); then\n            printf \'status_finalized=true\\n\' >> "$GITHUB_OUTPUT"\n          elif [[ "$actual" == 0 ]]; then\n            exit 125\n          fi\n          exit "$actual"\n', b'        timeout-minutes: 31\n        run: |\n          python3 -I -S -B Scripts/validate-native-sdk-generations.py \\\n            --scratch-root "$RUNNER_TEMP"\n'),
+        (b'          GENERATION_STATUS_FINALIZED: ${{ steps.generations.outputs.status_finalized }}\n', b''),
+        (b"(steps.before.outcome != 'skipped' || (steps.generations.outcome != 'skipped' && steps.generations.outputs.status_finalized == 'true'))", b"(steps.before.outcome != 'skipped' || steps.generations.outcome != 'skipped')"),
+        (b"          name: ${{ inputs.mode == 'sdk-generation-only' && steps.generations.outcome != 'success' && 'native-sdk-generation-failure-capsule' || 'native-sdk-content-candidate' }}\n", b'          name: native-sdk-content-candidate\n')):
+        if data.count(before) != 1:
+            raise AssertionError("Failure capsule workflow inverse must match once")
+        data = data.replace(before, after)
     changes = [
         (b"          - sdk-generation-only\n", b""),
         (b"('calibration', 'sdk-publication-only', 'sdk-generation-only')",
@@ -399,6 +412,94 @@ class GenerationPublicationTests(unittest.TestCase):
         self.calls = self.root / "native-calibration-sdk-calls"
         self.projection = W.load("generation_projection_controls", W.INPUTS / "native_calibration_publication.py")
 
+    def probe_projection_fixture(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        staging, public = root / "staging", root / "public"
+        originals = {W.EMPTY_PROBE_ORIGINAL: b""}
+        W.save(staging / "results.json", dict(accepted=False, final_protocol_ready=False))
+        W.save(staging / W.EMPTY_PROBE_PROJECTED, W.empty_probe_descriptor())
+        W.save(staging / "setup/original-copy-manifest.json", dict(files=W.original_copy_rows(originals, M.PROFILE)))
+        manifest = W.NORMALIZER.package(W.argparse.Namespace(input=staging, output=public, prefix=[]))
+        return staging, public, manifest, originals
+
+    def test_empty_probe_real_normalization_preserves_exact_inverse_and_copy_binding(self):
+        staging, public, manifest, originals = self.probe_projection_fixture()
+        W.verify_empty_probe_projection(staging, public, manifest, originals, M.PROFILE)
+        self.assertEqual(W.document(public / W.EMPTY_PROBE_PROJECTED), W.empty_probe_descriptor())
+        self.assertEqual(W.document(public / W.EMPTY_PROBE_PROJECTED)["content"].encode(), b"")
+        row = W.document(public / "setup/original-copy-manifest.json")["files"][0]
+        self.assertEqual(row["path"], W.EMPTY_PROBE_ORIGINAL)
+        self.assertEqual(row["projection"]["path"], W.EMPTY_PROBE_PROJECTED)
+
+    def test_empty_probe_admission_is_fixed_profile_path_regular_and_empty(self):
+        target = self.root / "sdk-discovery-raw/setup/discovery/probe-input"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"")
+        self.assertEqual(W.original_small_files(self.raw, self.calls, profile=M.PROFILE), {W.EMPTY_PROBE_ORIGINAL: b""})
+        with self.assertRaisesRegex(ValueError, "invalid-empty-probe-original"):
+            W.original_copy_rows({W.EMPTY_PROBE_ORIGINAL: b""}, "calibration")
+        for kind in ("nonempty", "symlink", "sibling", "collision"):
+            with self.subTest(kind=kind):
+                target.unlink()
+                target.write_bytes(b"changed" if kind == "nonempty" else b"")
+                extra = None
+                if kind == "symlink":
+                    target.unlink(); target.symlink_to(self.root / "missing")
+                elif kind in ("sibling", "collision"):
+                    extra = target.with_name("probe-input-other" if kind == "sibling" else "probe-input.json")
+                    extra.write_bytes(b"{}")
+                with self.assertRaises((OSError, ValueError)):
+                    W.original_small_files(self.raw, self.calls, profile=M.PROFILE)
+                if extra is not None: extra.unlink()
+        raw_probe = self.raw / "probe-input"
+        self.raw.mkdir(); raw_probe.write_bytes(b"")
+        with self.assertRaisesRegex(ValueError, "unexpected-publication-file"):
+            W.original_small_files(self.raw, self.calls)
+
+    def test_empty_probe_rehashed_descriptor_and_manifest_mutations_refuse(self):
+        for kind in ("schema", "bytes", "role", "encoding", "content", "hash", "path", "extra", "missing", "copy", "manifest"):
+            with self.subTest(kind=kind):
+                staging, public, manifest, originals = self.probe_projection_fixture()
+                relative = W.EMPTY_PROBE_PROJECTED
+                value = W.document(public / relative)
+                if kind == "schema": value["schema_version"] = True
+                elif kind == "bytes": value["bytes"] = False
+                elif kind == "role": value["role"] = "other"
+                elif kind == "encoding": value["encoding"] = "other"
+                elif kind == "content": value["content"] = "x"
+                elif kind == "hash": value["sha256"] = "f" * 64
+                elif kind == "path": value["original_path"] += "-other"
+                elif kind == "extra": value["extra"] = False
+                elif kind == "copy":
+                    relative = "setup/original-copy-manifest.json"
+                    value = W.document(public / relative)
+                    value["files"][0]["projection"]["path"] += ".other"
+                if kind == "missing":
+                    (public / relative).unlink()
+                elif kind == "manifest":
+                    row = next(row for row in manifest["files"] if row["path"] == relative)
+                    row["normalized_bytes"] = float(row["normalized_bytes"])
+                else:
+                    data = W.json_bytes(value)
+                    for base in (staging, public): (base / relative).write_bytes(data)
+                    row = next(row for row in manifest["files"] if row["path"] == relative)
+                    row.update(original_raw_sha256=hashlib.sha256(data).hexdigest(), normalized_sha256=hashlib.sha256(data).hexdigest(),
+                               original_bytes=len(data), normalized_bytes=len(data))
+                with self.assertRaises((OSError, ValueError)):
+                    W.verify_empty_probe_projection(staging, public, manifest, originals, M.PROFILE)
+
+    def test_empty_probe_original_endpoint_remains_in_membership(self):
+        target = self.root / "sdk-discovery-raw/setup/discovery/probe-input"
+        target.parent.mkdir(parents=True); target.write_bytes(b"")
+        before = W.original_small_files(self.raw, self.calls, profile=M.PROFILE)
+        target.unlink()
+        self.assertNotEqual(W.original_small_files(self.raw, self.calls, profile=M.PROFILE), before)
+        target.write_bytes(b"changed")
+        with self.assertRaisesRegex(ValueError, "nonempty-discovery-probe-input"):
+            W.original_small_files(self.raw, self.calls, profile=M.PROFILE)
+
     def test_fixed_large_seals_only_are_excluded_and_discovery_is_included(self):
         for relative in self.projection.GENERATION_SOURCES.values():
             target = self.raw / relative
@@ -422,6 +523,7 @@ class GenerationPublicationTests(unittest.TestCase):
         M.save(self.raw / "generation-results.json", dict(status="verified-candidate"))
         controller = mock.Mock(CONTEXT=M.CONTEXT)
         controller.reference.return_value = dict(sha256="b" * 64)
+        controller.invocation_status.return_value = dict(actual_shell_exit=0)
         projection = mock.Mock()
         projection.prepare_projection.return_value = {"projection": "fixed"}
         projection.verify_publication.return_value = {"status": "verified"}
@@ -665,6 +767,1126 @@ class DiagnosticTests(unittest.TestCase):
         self.assertEqual(result["charged_wall_seconds_by_arm"], {arm: 0.75 for arm in M.GENERATIONS.ARMS})
 
 
+class FailureCapsuleTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        expected, _ = M.GENERATIONS.NATIVE.expectation()
+        self.env = mock.patch.dict(os.environ, {**expected["runner"], "DEVELOPER_DIR": expected["developer_lexical"],
+                                               "GITHUB_SHA": "a" * 40, "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1",
+                                               "GENERATION_STATUS_FINALIZED": "true"})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.mode = "installation"
+        self.mutate = None
+        self.calls = []
+        for owner, name, kwargs in ((M, "load_wrapper", dict(return_value=W)),
+                                   (W, "generation_controller", dict(return_value=M)),
+                                   (W, "fixed_root", dict(return_value=self.root)),
+                                   (W.COMMAND, "command", dict(side_effect=self.command))):
+            patch = mock.patch.object(owner, name, **kwargs)
+            patch.start()
+            self.addCleanup(patch.stop)
+        # 소유한 명령 seam 밖에서는 합성 제어도 프로세스를 시작하지 못한다.
+        patch = mock.patch.object(W.COMMAND.subprocess, "Popen", side_effect=AssertionError("unplanned subprocess"))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def command(self, argv, cwd, stem, environment, bound):
+        self.calls.append((argv, bound))
+        out, err = io.StringIO(), io.StringIO()
+        stem.parent.mkdir(parents=True, exist_ok=True)
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), \
+             mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(sys, "argv", argv[4:]):
+            if "--execute-controller" in argv:
+                code = M.main()
+            elif "--execute-stage" in argv:
+                code = W.main()
+            else:
+                raise AssertionError("Unplanned command")
+        row = dict(command=argv, cwd=str(cwd), returncode=code, observed_returncode=code,
+                   completed=code != 125, passed=code == 0, failure="nested-incomplete" if code == 125 else None,
+                   wall_seconds=0.01, cleanup_signals=[], cleanup_root_unfinished=False,
+                   stdout=str(stem) + ".stdout", stderr=str(stem) + ".stderr")
+        if self.mutate is not None:
+            self.mutate(stem, row)
+        M.save(Path(str(stem) + ".json"), row)
+        Path(row["stdout"]).write_text(out.getvalue())
+        Path(row["stderr"]).write_text(err.getvalue())
+        return row
+
+    def execute(self, *, before_context=False, pre_receipt=False, capture_error=False):
+        with contextlib.ExitStack() as stack:
+            if before_context:
+                stack.enter_context(mock.patch.object(M, "create_context", side_effect=ValueError("private /context")))
+            if pre_receipt:
+                stack.enter_context(mock.patch.object(W, "stage", side_effect=ValueError("private /pre-receipt")))
+            elif capture_error:
+                stack.enter_context(mock.patch.object(W, "bound_machine_fields", return_value=(None, {})))
+                def native(output, **options):
+                    options["diagnostic"].update(checkpoint="native-admission", nested_material_safe=True,
+                                                 probes={}, probe_order=[], active_probe=None)
+                    return dict(layout=dict(roots={"SDK": str(self.root / "sdk")}), selected={})
+                stack.enter_context(mock.patch.object(W.admission, "collect_native", side_effect=native))
+                stack.enter_context(mock.patch.object(W.admission.SEAL, "capture", side_effect=OSError("private capture secret")))
+            else:
+                stack.enter_context(mock.patch.object(W, "bound_machine_fields", side_effect=ValueError("private installation token")))
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), \
+                 mock.patch.object(sys, "argv", ["controller", "--scratch-root", str(self.root)]):
+                code = M.main()
+        M.save(self.root / "generation-invocation-status.json", dict(schema_version=1, mode="sdk-generation-only",
+               source_sha="a" * 40, actual_shell_exit=code, checkpoint="invocation-returned",
+               run_id=123, run_attempt=1, prelaunch_outputs_absent=True))
+        self.assertNotEqual(code, 0)
+        return code
+
+    def publish(self, expected=0):
+        with contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr, \
+             mock.patch.object(sys, "argv", ["wrapper", "--stage", "publish", "--scratch-root", str(self.root),
+                                             "--generation-publication"]):
+            code = W.main()
+        self.assertEqual(code, expected, stderr.getvalue())
+        emitted = stdout.getvalue() + stderr.getvalue()
+        self.assertNotIn(str(self.root), emitted)
+        self.assertNotIn("private", emitted)
+        if code == 0:
+            value = M.read(self.root / "native-calibration-sdk-public/results.json")
+            self.assertEqual(value["role"], "sdk-generation-failure-capsule-v1")
+            self.assertFalse(value["accepted"])
+            self.assertFalse(value["final_protocol_ready"])
+            self.assertIsNone(value["actual_compiler_commands"])
+            self.assertIsNone(value["actual_full_sdk_reads"])
+            self.assertEqual(value["actual_engine_calls"], 0)
+            self.assertEqual(len(value["slots"]), 78)
+            self.assertNotIn(str(self.root), json.dumps(value))
+            return value
+        return None
+
+    def test_precontext_failure_publishes_without_any_sdk_results(self):
+        code = self.execute(before_context=True)
+        self.assertFalse((self.root / "native-calibration-sdk-raw").exists())
+        value = self.publish()
+        self.assertEqual(value["execution_exit"], code)
+        slots = {x["slot"]: x for x in value["slots"]}
+        self.assertEqual(slots["context"]["status"], "unavailable")
+        self.assertEqual(slots["phase-command:before-compilation"]["status"], "withheld-unstable")
+
+    def test_exact_run7_shaped_safe_stderr_survives_missing_phase_parent(self):
+        self.execute(pre_receipt=True)
+        self.assertFalse((self.root / "native-calibration-sdk-raw").exists())
+        value = self.publish()
+        slots = {x["slot"]: x for x in value["slots"]}
+        observed = slots["phase-command:before-compilation"]["observation"]
+        self.assertEqual(observed["reported_observed_returncode"], 1)
+        self.assertEqual(observed["streams"]["stderr"]["safe_json"]["schema"], "early-refusal")
+        self.assertEqual(slots["phase-result:before-compilation"]["status"], "unavailable")
+        self.assertEqual(observed["streams"]["stderr"]["safe_json"]["failure"]["failure_sha256"],
+                         hashlib.sha256(b"private /pre-receipt").hexdigest())
+
+    def test_real_stage_installation_failure_publishes_safe_chain(self):
+        self.execute()
+        value = self.publish()
+        slots = {x["slot"]: x for x in value["slots"]}
+        chain = slots["phase-result:before-compilation"]["observation"]["failure_chain"]
+        self.assertEqual(chain[0]["checkpoint"], "installation-binding")
+        self.assertEqual(chain[0]["failure_type"], "ValueError")
+        self.assertFalse((self.root / "native-calibration-sdk-raw/before-compilation/seal.json").exists())
+
+    def test_real_admission_capture_failure_retains_original_reason_hash(self):
+        self.execute(capture_error=True)
+        value = self.publish()
+        slots = {x["slot"]: x for x in value["slots"]}
+        observed = slots["sdk-admission:before-compilation"]["observation"]
+        self.assertEqual(observed["checkpoint"], "sdk-capture")
+        self.assertEqual(observed["failure_chain"][-1]["failure_sha256"],
+                         hashlib.sha256(b"private capture secret").hexdigest())
+
+    def test_unfinished_phase_blocks_its_streams_and_lower_writer_reads(self):
+        def change(stem, row):
+            if stem.parent.name == "before-compilation":
+                row.update(cleanup_root_unfinished=True, observed_returncode=None)
+        self.mutate = change
+        self.execute()
+        value = self.publish()
+        slots = {x["slot"]: x for x in value["slots"]}
+        self.assertEqual(slots["phase-command:before-compilation"]["observation"]["streams"]["stderr"]["status"],
+                         "withheld-unstable")
+        self.assertEqual(slots["sdk-admission:before-compilation"]["status"], "withheld-unstable")
+
+    def test_unfinished_supervisor_blocks_all_lower_reads(self):
+        def change(stem, row):
+            if stem.parent.name == "native-generation-supervisor":
+                row.update(cleanup_root_unfinished=True, observed_returncode=None)
+        self.mutate = change
+        self.execute()
+        value = self.publish()
+        slots = {x["slot"]: x for x in value["slots"]}
+        self.assertEqual(slots["controller"]["status"], "withheld-unstable")
+        self.assertEqual(slots["context"]["status"], "withheld-unstable")
+
+    def test_disk_success_never_replaces_actual_nonzero_invocation(self):
+        self.execute(before_context=True)
+        path = self.root / "native-calibration-sdk-calls/generation-controller.json"
+        value = M.read(path);value.update(status="validation-candidate-complete",exit_code=0)
+        path.write_text(json.dumps(value))
+        capsule = self.publish()
+        self.assertEqual(capsule["execution_exit"],125)
+        self.assertEqual(capsule["status"],"incomplete")
+
+    def test_actual_zero_never_downgrades_failed_candidate_verification(self):
+        self.execute(before_context=True)
+        path=self.root/'generation-invocation-status.json';value=M.read(path);value['actual_shell_exit']=0
+        path.write_text(json.dumps(value))
+        with mock.patch.object(M, "publish_failure_capsule", side_effect=AssertionError("forbidden downgrade")) as capsule:
+            self.publish(expected=1)
+        capsule.assert_not_called()
+        self.assertFalse((self.root/'native-calibration-sdk-public').exists())
+
+    def test_missing_shell_receipt_cannot_certify_or_publish(self):
+        self.execute(before_context=True)
+        (self.root/'generation-invocation-status.json').unlink()
+        self.publish(expected=1)
+
+    def test_rehashed_shell_status_fields_refuse(self):
+        self.execute(before_context=True)
+        path=self.root/'generation-invocation-status.json';original=M.read(path)
+        for key,value in (('actual_shell_exit',True),('actual_shell_exit',256),('source_sha','b'*40),
+                          ('checkpoint','secret /path'),('mode','calibration'),('extra','value')):
+            changed=dict(original);changed[key]=value;path.write_text(json.dumps(changed))
+            with self.subTest(key=key,value=value), self.assertRaises(ValueError):M.failure_capsule(self.root)
+        path.write_text(json.dumps(original))
+
+    def test_safe_stream_projection_rejects_unknown_duplicate_nonfinite_and_secrets(self):
+        good=dict(status='refused',failure_type='ValueError',failure_sha256='f'*64)
+        self.assertEqual(M.safe_stream(json.dumps(good))['status'],'decoded')
+        bad=[json.dumps(dict(good,extra='private /path')),json.dumps(dict(good,failure_type='token=secret')),
+             json.dumps(dict(good,failure_sha256='F'*64)),json.dumps(good)+'\n'+json.dumps(good),
+             '{"status":"refused","status":"refused"}', '{"value":NaN}', 'x'*65537,
+             '/private/unstructured', json.dumps(dict(good,failure_type=['ValueError']))]
+        for value in bad:
+            with self.subTest(value=value[:40]):self.assertEqual(M.safe_stream(value),dict(status='unavailable'))
+
+    def test_original_stream_mutation_refuses_even_with_safe_replacement(self):
+        self.execute(pre_receipt=True)
+        path=self.root/'native-calibration-sdk-calls/before-compilation/command.stderr'
+        path.write_text(json.dumps(dict(status='refused',failure_type='ValueError',failure_sha256='f'*64)))
+        self.publish(expected=1)
+
+    def test_endpoint_mutation_and_missing_file_refuse(self):
+        self.execute(pre_receipt=True)
+        original=W.NORMALIZER.package
+        def package(args):
+            value=original(args)
+            (self.root/'native-calibration-sdk-calls/before-compilation/command.stderr').unlink()
+            return value
+        with mock.patch.object(W.NORMALIZER,'package',side_effect=package):self.publish(expected=1)
+
+    def test_scanner_refusal_stays_refusal_and_never_uploads_raw(self):
+        self.execute(pre_receipt=True)
+        with mock.patch.object(W.NORMALIZER,'package',side_effect=W.NORMALIZER.PublicationBlocked('private refusal')):
+            self.publish(expected=1)
+        self.assertFalse((self.root/'native-calibration-sdk-public').exists())
+        self.assertEqual(sorted(p.name for p in (self.root/'native-calibration-sdk-staging').iterdir()),['results.json'])
+
+    def test_fixed_slots_caps_and_symlink_oversize_are_not_bypassed(self):
+        self.assertEqual(len(M.CAPSULE_SLOTS),78)
+        self.assertEqual(len(M.CAPSULE_PATHS),150)
+        self.assertEqual((M.CAPSULE_MAX_FILE,M.CAPSULE_MAX_TOTAL),(8*1024**2,64*1024**2))
+        path=self.root/'generation-invocation-status.json';path.symlink_to('/dev/null')
+        with self.assertRaises(ValueError):M.CapsuleReader(self.root).original('generation-invocation-status.json')
+        path.unlink()
+        with path.open('wb') as stream:stream.truncate(M.CAPSULE_MAX_FILE+1)
+        with self.assertRaises(ValueError):M.CapsuleReader(self.root).original('generation-invocation-status.json')
+        with self.assertRaises(ValueError):M.CapsuleReader(self.root).original('unknown.json')
+
+    def test_existing_shell_receipt_and_publication_are_never_overwritten(self):
+        self.execute(before_context=True)
+        path=self.root/'generation-invocation-status.json';before=path.read_bytes()
+        with self.assertRaises(FileExistsError):M.save(path,dict(actual_shell_exit=0))
+        self.assertEqual(path.read_bytes(),before)
+        self.publish()
+        before=(self.root/'native-calibration-sdk-public/results.json').read_bytes()
+        with self.assertRaises(FileExistsError):M.publish_failure_capsule(self.root,{},W.NORMALIZER)
+        self.assertEqual((self.root/'native-calibration-sdk-public/results.json').read_bytes(),before)
+
+
+class CapsuleProducerFixture:
+    """네이티브 관측만 합성하고 모든 생산자·검증·정규화 함수를 실제로 호출한다."""
+    def __init__(self, case, name="route", fault=None):
+        self.case, self.fault = case, fault
+        self.stack = contextlib.ExitStack()
+        case.addCleanup(self.stack.close)
+        self.base = Path(self.stack.enter_context(tempfile.TemporaryDirectory())).resolve()
+        self.root = self.base / name
+        self.root.mkdir()
+        self.developer = self.base / "inputs/Xcode.app/Contents/Developer"
+        self.chain = self.developer / "Toolchains/XcodeDefault.xctoolchain"
+        self.sdk = self.developer / "Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+        self.expected = copy.deepcopy(M.GENERATIONS.NATIVE.expectation()[0])
+        self.expected.update(developer_lexical=str(self.developer), developer_physical=str(self.developer),
+                             roots=dict(SDK=str(self.sdk), TOOLCHAIN=str(self.chain)), sdk_aliases=[str(self.sdk)])
+        for path in (self.sdk / "usr/include/c++/v1", self.sdk / "usr/lib/swift", self.sdk / "Library",
+                     self.sdk / "System/Library/Frameworks", self.sdk / "System/Library/SubFrameworks",
+                     self.chain / "usr/include", self.chain / "usr/lib/clang/21/include",
+                     self.chain / "usr/lib/swift/iphonesimulator", self.developer / "host-runtime"):
+            path.mkdir(parents=True, exist_ok=True)
+        (self.sdk / "usr/include/input.h").write_text("synthetic SDK bytes\n")
+        self.tools = {name: self.chain / suffix for name, suffix in dict(
+            swift="usr/bin/swiftc", swift_frontend="usr/bin/swift-frontend", clang="usr/bin/clang",
+            index_library="usr/lib/libIndexStore.dylib").items()}
+        self.tools["xcrun"] = self.developer / "usr/bin/xcrun"
+        for name, path in self.tools.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if name == "swift": path.symlink_to("swift-frontend")
+            else: path.write_text("synthetic native tool " + name + "\n")
+        self.expected["tools"] = {name: dict(allowed_paths=["/usr/bin/xcrun" if name == "xcrun" else str(path)],
+            physical_path=str(path.resolve()), **{k: v for k, v in M.GENERATIONS.SELECTOR.file_identity(path.resolve()).items()
+                                                    if k in ("sha256", "bytes")}) for name, path in self.tools.items()}
+        self.expected_path = self.base / "fixture-expectation.json"
+        self.expected_path.write_text(json.dumps(self.expected, sort_keys=True))
+        self.expected_sha = hashlib.sha256(self.expected_path.read_bytes()).hexdigest()
+        self.baseline = M.GENERATIONS.SEAL.capture({k: Path(v) for k, v in self.expected["roots"].items()})["content_sha256"]
+        self.calls, self.compiler_calls, self.sleeps = [], [], []
+        self.timer_stack = [dict(timer=(0.0, 0.0), handler=signal.SIG_DFL)]
+        self.processes, self.next_pid = {}, 1000
+        self.changed = False
+        self.inventory_fault_hits = 0
+        self.lstat_remap_hits = {"/usr/bin/xcrun": 0, "/usr/lib/swift": 0}
+        self.old_spec = importlib.util.spec_from_file_location
+        self.old_exec = importlib.machinery.SourceFileLoader.exec_module
+        self.old_resolve, self.old_stat, self.old_open, self.old_mkdir = Path.resolve, Path.stat, Path.open, Path.mkdir
+        self.old_lstat = Path.lstat
+        self.original_command_save = W.COMMAND.save
+        self.configure(M.GENERATIONS)
+        self.configure(W.admission)
+        self.patch(M, "load_wrapper", lambda: W)
+        self.patch(W, "generation_controller", lambda: M)
+        self.patch(importlib.machinery.SourceFileLoader, "exec_module", lambda loader, module: self.exec_module(loader, module))
+        self.patch(Path, "resolve", lambda path, strict=False: self.resolve(path, strict))
+        self.patch(Path, "stat", lambda path, **kwargs: self.stat(path, **kwargs))
+        self.patch(Path, "lstat", lambda path: self.lstat(path))
+        self.patch(Path, "open", lambda path, *args, **kwargs: self.open(path, *args, **kwargs))
+        self.patch(Path, "mkdir", lambda path, *args, **kwargs: self.mkdir(path, *args, **kwargs))
+        self.patch(W.COMMAND, "save", self.command_save)
+        self.patch(sys, "platform", "darwin")
+        self.patch(platform, "system", lambda: "Darwin")
+        self.patch(platform, "machine", lambda: "arm64")
+        self.patch(platform, "platform", lambda: "synthetic-darwin-observation")
+        self.patch(signal, "getitimer", self.getitimer)
+        self.patch(signal, "setitimer", self.setitimer)
+        self.patch(signal, "signal", self.signal)
+        self.patch(time, "sleep", self.sleep)
+        self.patch(subprocess, "Popen", self.popen)
+        self.patch(subprocess, "run", self.compiler_run)
+        self.patch(os, "killpg", self.killpg)
+        self.stack.enter_context(mock.patch.dict(os.environ, {**self.expected["runner"],
+            "DEVELOPER_DIR": str(self.developer), "RUNNER_TEMP": str(self.root), "GITHUB_SHA": "a" * 40,
+            "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1", "GENERATION_STATUS_FINALIZED": "true"}, clear=True))
+        self.stack.enter_context(mock.patch.dict(sys.modules, {"psutil": types.SimpleNamespace(__version__="7.2.2")}))
+        self.original_sys_path = list(sys.path)
+        self.stack.callback(lambda: sys.path.__setitem__(slice(None), self.original_sys_path))
+        self.installation()
+        if self.fault == "installation":
+            target = self.root / "measurement-helper-raw/setup/install.json"
+            value = M.read(target); value["observed_returncode"] = 1
+            target.write_text(json.dumps(value))
+        elif self.fault == "installation-python":
+            target = self.root / "measurement-helper-raw/setup/install-interpreter.json"
+            value = M.read(target); value["after"]["sha256"] = "f" * 64
+            target.write_text(json.dumps(value))
+
+    def patch(self, owner, name, value):
+        return self.stack.enter_context(mock.patch.object(owner, name, value))
+
+    def configure(self, module):
+        name = Path(module.__file__).name
+        if name == "native_generation_inputs.py":
+            self.patch(module, "BASELINE_SHA256", self.baseline)
+            self.patch(module, "EXPECTATION_SHA256", self.expected_sha)
+            self.configure(module.NATIVE)
+            self.configure(module.SELECTOR)
+        elif name == "native_calibration_inputs.py":
+            self.patch(module, "EXPECTATION", self.expected_path)
+            self.configure(module.SELECTOR)
+        elif name == "select_sdk_roots.py":
+            self.patch(module, "REVIEWED_COMPILER_SHA256", {
+                key: self.expected["tools"][key]["sha256"] for key in module.REVIEWED_COMPILER_SHA256})
+        elif name == "validate-native-sdk-discovery.py":
+            self.configure(module.SELECTOR)
+
+    def exec_module(self, loader, module):
+        self.old_exec(loader, module)
+        if Path(module.__file__).name in ("native_generation_inputs.py", "native_calibration_inputs.py",
+                                          "select_sdk_roots.py", "validate-native-sdk-discovery.py"):
+            self.configure(module)
+
+    def resolve(self, path, strict=False):
+        if str(path) == "/usr/bin/xcrun": return self.old_resolve(self.tools["xcrun"], strict=strict)
+        if str(path) == "/usr/lib/swift": return path
+        return self.old_resolve(path, strict=strict)
+
+    def stat(self, path, **kwargs):
+        mapped = self.tools["xcrun"] if str(path) == "/usr/bin/xcrun" else (
+            self.developer / "host-runtime" if str(path) == "/usr/lib/swift" else path)
+        return self.old_stat(mapped, **kwargs)
+
+    def lstat(self, path):
+        if self.fault == "capture-inventory" and path == self.sdk / "usr/include/input.h" and len(self.calls) >= 17:
+            self.inventory_fault_hits += 1
+            raise PermissionError("private inventory failure")
+        key = str(path)
+        mapped = self.tools["xcrun"] if key == "/usr/bin/xcrun" else (
+            self.developer / "host-runtime" if key == "/usr/lib/swift" else path)
+        if key in self.lstat_remap_hits:
+            self.lstat_remap_hits[key] += 1
+        return self.old_lstat(mapped)
+
+    def mkdir(self, path, *args, **kwargs):
+        if self.fault == "pre-context" and path == self.root / "native-generation-home":
+            raise PermissionError("private pre-context")
+        return self.old_mkdir(path, *args, **kwargs)
+
+    def open(self, path, *args, **kwargs):
+        mode = args[0] if args else kwargs.get("mode", "r")
+        writing = any(flag in mode for flag in ("w", "a", "x", "+"))
+        relative = str(path.relative_to(self.root)) if path.is_relative_to(self.root) else ""
+        targets = {
+            "pre-phase-receipt": "native-calibration-sdk-raw/results.json",
+            "capture-write": "native-calibration-sdk-raw/before-compilation/seal.json",
+        }
+        if writing and relative == targets.get(self.fault):
+            raise PermissionError("private receipt write")
+        stream = self.old_open(self.tools["xcrun"] if str(path) == "/usr/bin/xcrun" else path, *args, **kwargs)
+        close_targets = {
+            "capture-close": "native-calibration-sdk-raw/before-compilation/seal.json",
+            "admission-close": "native-calibration-sdk-raw/before-compilation/results.json",
+            "phase-close": "native-calibration-sdk-raw/setup/phases/before-compilation.json",
+            "controller-close": "native-calibration-sdk-calls/generation-controller.json",
+            "post-capture-alias": "native-calibration-sdk-raw/before-compilation/seal.json",
+            "context-admission": "native-calibration-sdk-calls/generation-context.json",
+        }
+        if writing and relative == close_targets.get(self.fault) and not self.changed:
+            fixture = self
+            class CloseBoundary:
+                def __getattr__(self, key): return getattr(stream, key)
+                def __enter__(self): return self
+                def __exit__(self, *ignored): self.close()
+                def close(self):
+                    stream.close()
+                    if fixture.changed: return
+                    fixture.changed = True
+                    if fixture.fault == "post-capture-alias":
+                        (fixture.chain / "usr/include/c++/v1").mkdir(parents=True)
+                    elif fixture.fault == "context-admission":
+                        value = json.loads(path.read_text()); value["helper_sha256"] = {}
+                        path.write_text(json.dumps(value))
+                    else: raise OSError("private close failure")
+            return CloseBoundary()
+        return stream
+
+    def command_save(self, path, value):
+        # 재해시된 모순 영수증도 안전 판정을 통과하지 못하는지 실제 호출 경로에서 검사한다.
+        if path.name == "machine-hw_machine.json" and self.fault in (
+                "probe-contradiction", "probe-bool", "probe-late", "probe-ownership", "probe-wait-ownership"):
+            if self.fault == "probe-contradiction": value.update(observed_returncode=1, returncode=0, completed=True, passed=True)
+            elif self.fault == "probe-bool": value["observed_returncode"] = False
+            elif self.fault == "probe-late": value["wall_seconds"] = 30.001
+            elif self.fault == "probe-ownership": value["ownership_uncertain"] = True
+            else: value["wait_ownership_uncertain"] = True
+        if path.parent.name == "before-compilation" and path.name == "command.json" and self.fault == "phase-late":
+            value["wall_seconds"] = 570.001
+        if path.parent.name == "before-compilation" and path.name == "command.json" and self.fault in (
+                "phase-ownership", "phase-wait-ownership"):
+            value["ownership_uncertain" if self.fault == "phase-ownership" else "wait_ownership_uncertain"] = True
+        self.original_command_save(path, value)
+
+    def getitimer(self, kind):
+        self.case.assertEqual(kind, signal.ITIMER_REAL)
+        return self.timer_stack[-1]["timer"]
+
+    def setitimer(self, kind, seconds, interval=0.0):
+        self.case.assertEqual(kind, signal.ITIMER_REAL)
+        old = self.timer_stack[-1]["timer"]
+        self.timer_stack[-1]["timer"] = (float(seconds), float(interval))
+        return old
+
+    def signal(self, kind, handler):
+        self.case.assertEqual(kind, signal.SIGALRM)
+        old = self.timer_stack[-1]["handler"]
+        self.timer_stack[-1]["handler"] = handler
+        return old
+
+    def sleep(self, seconds):
+        self.case.assertEqual(seconds, 1.1)
+        self.sleeps.append(seconds)
+
+    def installation(self):
+        # 공식 설치를 가장하지 않는 작은 파일 fixture를 기존 설치 검증기로 다시 읽는다.
+        binding = W.installation_binding
+        output = self.root / "measurement-helper-raw"
+        target = self.root / "measurement-helper-dependencies"
+        (target / "psutil").mkdir(parents=True)
+        (target / "psutil/__init__.py").write_text('__version__ = "7.2.2"\n')
+        dist = target / "psutil-7.2.2.dist-info"; dist.mkdir()
+        (dist / "METADATA").write_text("Metadata-Version: 2.4\nName: psutil\nVersion: 7.2.2\n")
+        (dist / "RECORD").write_text("synthetic fixture only\n")
+        raw = b'{"fixture":"synthetic-installation-observation"}'
+        report = output / "private-setup/install-report.json"
+        report.parent.mkdir(parents=True); report.write_bytes(raw)
+        provenance = dict(schema_version=1, source_format="pip-install-report-v1", report_version="1", pip_version="26.2.1",
+            raw_report=dict(bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest(),
+                private_relative_path="private-setup/install-report.json", publication="Original kept private"),
+            distributions=[dict(name="psutil", version="7.2.2", requested=True, is_direct=False, is_yanked=False,
+                sha256="a" * 64, url="https://files.pythonhosted.org/packages/aa/bb/" + "c" * 60 +
+                "/psutil-7.2.2-cp36-abi3-macosx_11_0_arm64.whl")], omitted_metadata=binding.OMISSIONS)
+        argv = [sys.executable, "-m", "pip", "install", "--index-url", "https://pypi.org/simple", "--no-input",
+                "--disable-pip-version-check", "--no-cache-dir", "--only-binary=:all:", "--target", str(target),
+                "--report", str(report), "-r", str(ROOT / "Scripts/benchmark-measurement/requirements.txt")]
+        install = dict(command=argv, cwd=str(ROOT), completed=True, passed=True, returncode=0, observed_returncode=0,
+                       failure=None, cleanup_root_unfinished=False, cleanup_signals=[], wall_seconds=0.001)
+        python = W.COMMAND.interpreter_observation(sys.executable)
+        interpreter = dict(schema_version=1, status="matched", before=python, after=copy.deepcopy(python),
+            cost_accounting="Capture costs are nested in diagnostic wall, outside command-only install wall",
+            scope="Prospective selected interpreter identity only; no dynamic-loader or wheel equivalence proof")
+        results = dict(status="completed-synthetic-native-validation", final_comparison=False,
+            phases={key: copy.deepcopy(install) for key in ("install", "tests", "machine", "calibration")},
+            helper_hashes={p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in binding.HELPER_PATHS},
+            install_provenance=provenance, install_interpreter=interpreter,
+            install_provenance_wall_seconds=0.001, diagnostic_wall_seconds=0.01)
+        for relative, value in (("results.json", results), ("setup/install.json", install),
+                                ("setup/install-provenance.json", provenance), ("setup/install-interpreter.json", interpreter)):
+            M.save(output / relative, value)
+
+    def native_output(self, argv):
+        if argv[0] == "/usr/sbin/sysctl":
+            if self.fault == "machine-mismatch" and argv[-1] == "hw.memsize": return "1", ""
+            if self.fault == "malformed-native" and argv[-1] == "hw.physicalcpu": return "private-invalid-int", ""
+            fields = dict(zip(("hw.machine", "hw.physicalcpu", "hw.logicalcpu", "hw.memsize", "machdep.cpu.brand_string",
+                               "kern.osrelease", "kern.osproductversion"),
+                              ("architecture", "physical_core_count", "logical_core_count", "ram_bytes", "cpu_model",
+                               "kernel_release", "os_version")))
+            return str(self.expected["machine"][fields[argv[-1]]]), ""
+        if "--show-sdk-path" in argv: return str(self.sdk), ""
+        if "--show-sdk-platform-path" in argv: return str(self.sdk.parents[2]), ""
+        if "--find" in argv: return str(self.tools["swift" if argv[-1] == "swiftc" else "clang"]), ""
+        if "-buildVersion" in argv: return self.expected["versions"]["os_build"], ""
+        if Path(argv[0]).name == "xcodebuild": return self.expected["versions"]["xcode"], ""
+        if "--show-sdk-version" in argv:
+            return "0.0" if self.fault == "version-mismatch" else self.expected["versions"]["sdk_version"], ""
+        if "--show-sdk-build-version" in argv: return self.expected["versions"]["sdk_build"], ""
+        if "--version" in argv: return self.expected["versions"]["swift"] if Path(argv[0]).name == "swiftc" else "synthetic clang", ""
+        if "-help" in argv or "--help" in argv: return "synthetic help", ""
+        if "-print-resource-dir" in argv: return str(self.chain / "usr/lib/clang/21"), ""
+        if "-print-target-info" in argv:
+            return json.dumps(dict(compilerVersion=M.GENERATIONS.SELECTOR.REVIEWED_SWIFT_VERSION,
+                swiftCompilerTag="swiftlang-6.3.3.1.3", target=dict(triple=self.expected["target"], platform="iphonesimulator"),
+                paths=dict(runtimeResourcePath=str(self.chain / "usr/lib/swift"),
+                    runtimeLibraryPaths=[str(self.chain / "usr/lib/swift/iphonesimulator"), "/usr/lib/swift"],
+                    runtimeLibraryImportPaths=[str(self.chain / "usr/lib/swift/iphonesimulator"), str(self.sdk / "usr/lib/swift")],
+                    sdkPath=str(self.sdk)))), ""
+        if "-E" in argv:
+            language = argv[argv.index("-x") + 1]
+            paths = [(argv[argv.index("-I") + 1], False)]
+            absent = []
+            if language in ("c++", "objective-c++"):
+                paths.append((str(self.sdk / "usr/include/c++/v1"), False))
+                absent.append(str(self.tools["clang"].parent / "../include/c++/v1"))
+            absent += [str(self.sdk / p) for p in ("usr/local/include", "Library/Frameworks")]
+            paths += [(str(p), framework) for p, framework in (
+                (self.chain / "usr/lib/clang/21/include", False), (self.sdk / "usr/include", False),
+                (self.chain / "usr/include", False), (self.sdk / "System/Library/Frameworks", True),
+                (self.sdk / "System/Library/SubFrameworks", True))]
+            text = "".join(f'ignoring nonexistent directory "{p}"\n' for p in absent)
+            text += '#include "..." search starts here:\n#include <...> search starts here:\n'
+            text += "".join(" " + p + (" (framework directory)" if framework else "") + "\n" for p, framework in paths)
+            return "", text + "End of search list.\n"
+        raise AssertionError("Unplanned native observation: " + repr(argv))
+
+    def compiler_run(self, argv, *, cwd, capture_output, timeout):
+        self.case.assertTrue(capture_output); self.case.assertGreater(timeout, 0)
+        if "-index-store-path" not in argv:
+            out, err = self.native_output(argv)
+            return subprocess.CompletedProcess(argv, 0, out.encode(), err.encode())
+        self.compiler_calls.append(list(argv))
+        store = Path(argv[argv.index("-index-store-path") + 1])
+        stage = store.parent.name
+        if self.fault == "lifecycle-nonzero" and stage == "header_edit_rebuilt":
+            return subprocess.CompletedProcess(argv, 3, b"", b"synthetic compiler refusal")
+        if self.fault == "lifecycle-timeout" and stage == "header_edit_rebuilt":
+            raise subprocess.TimeoutExpired(argv, timeout, output=b"synthetic partial compiler output")
+        if stage == "header_delete_build_failed":
+            return subprocess.CompletedProcess(argv, 1, b"", b"RenamedCore.h: file not found\n")
+        outputs = []
+        for flag in ("-o", "-emit-module-path", "-MF"):
+            if flag in argv: outputs.append(Path(argv[argv.index(flag) + 1]))
+        if "-output-file-map" in argv:
+            mapping = json.loads(Path(argv[argv.index("-output-file-map") + 1]).read_text())
+            outputs += [Path(row["object"]) for row in mapping.values()]
+        for path in outputs:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            text = "RenamedCore.h\n" if (Path(cwd) / "Sources/BridgeKit/include/RenamedCore.h").exists() else "CGCore.h\n"
+            path.write_text(text if path.suffix == ".d" else "synthetic compiler output " + path.name)
+        unit = store / "v5/units" / str(len(self.compiler_calls)); unit.parent.mkdir(parents=True, exist_ok=True)
+        unit.write_text("synthetic completed unit")
+        return subprocess.CompletedProcess(argv, 0, b"", b"")
+
+    def popen(self, argv, *, cwd, env, stdout, stderr, start_new_session):
+        self.case.assertTrue(start_new_session)
+        if self.fault == "phase-launch" and "--execute-stage" in argv:
+            raise OSError("private launch failure")
+        if self.fault == "discovery-launch" and any(x.endswith("select_sdk_roots.py") for x in argv):
+            raise OSError("private selector launch")
+        self.next_pid += 1
+        process = types.SimpleNamespace(pid=self.next_pid, returncode=None, invoked=False, argv=list(argv),
+                                        cwd=Path(cwd), environment=dict(env), stdout=stdout, stderr=stderr)
+        self.processes[process.pid] = process
+        self.calls.append(list(argv))
+        def wait(timeout):
+            self.case.assertGreater(timeout, 0)
+            if not process.invoked:
+                process.invoked = True
+                if argv[0] == "/usr/sbin/sysctl" and argv[-1] == "hw.physicalcpu" and self.fault in ("probe-timeout", "probe-cancel"):
+                    if self.fault == "probe-timeout": raise subprocess.TimeoutExpired(argv, timeout)
+                    raise KeyboardInterrupt("synthetic cancellation")
+                process.returncode = self.dispatch(process)
+            if process.returncode is None:
+                raise subprocess.TimeoutExpired(argv, timeout)
+            return process.returncode
+        process.wait, process.poll = wait, lambda: process.returncode
+        return process
+
+    def killpg(self, pid, kind):
+        self.case.assertIn(pid, self.processes)
+        self.case.assertIn(kind, (signal.SIGTERM, signal.SIGKILL))
+        self.processes[pid].returncode = -int(kind)
+
+    def dispatch(self, process):
+        argv = process.argv
+        out, err = io.StringIO(), io.StringIO()
+        self.timer_stack.append(dict(timer=(0.0, 0.0), handler=signal.SIG_DFL))
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), \
+                 mock.patch.dict(os.environ, process.environment, clear=True):
+                script = next((Path(x) for x in argv if x.endswith(".py")), None)
+                if script is None:
+                    stdout, stderr = self.native_output(argv)
+                    out.write(stdout); err.write(stderr); code = 0
+                    if argv[0] == "/usr/sbin/sysctl" and argv[-1] == "hw.physicalcpu":
+                        if self.fault == "probe-nonzero": code = 7
+                        elif self.fault == "probe-125": code = 125
+                        elif self.fault == "post-generation" and "/after-generation/" in str(process.cwd) + "/": code = 7
+                else:
+                    index = argv.index(str(script))
+                    with mock.patch.object(sys, "argv", argv[index:]):
+                        if script.name == "validate-native-sdk-generations.py": code = M.main()
+                        elif script.name == "validate-native-calibration-inputs.py": code = W.main()
+                        elif script.name == "run_ios_validation.py":
+                            # 실제 별도 Python처럼 이 두 이름의 부모 vendor 모듈 캐시를 상속하지 않는다.
+                            with mock.patch.dict(sys.modules), mock.patch.object(sys, "path", [str(script.parent), *sys.path]):
+                                for name in ("compiler_generations", "validation_common"):
+                                    sys.modules.pop(name, None)
+                                module = load("capsule_real_lifecycle", script)
+                                self.case.assertEqual(module.ROOT, script.parent)
+                                self.case.assertEqual(Path(module.generations.__file__), script.parent / "compiler_generations.py")
+                                code = module.main()
+                        elif script.name == "validate-native-sdk-discovery.py":
+                            with mock.patch.dict(sys.modules), mock.patch.object(sys, "path", list(sys.path)):
+                                for name in ("compiler_generations", "validation_common"):
+                                    sys.modules.pop(name, None)
+                                module = load("capsule_real_discovery", script)
+                                self.case.assertEqual(Path(module.GENERATIONS.__file__), module.FIXTURE / "compiler_generations.py")
+                                self.case.assertEqual(Path(module.COMMON.__file__), module.FIXTURE / "validation_common.py")
+                                try: module.main()
+                                except SystemExit as error: code = error.code
+                        elif script.name == "select_sdk_roots.py":
+                            module = load("capsule_real_selector", script)
+                            try: module.main()
+                            except SystemExit as error: code = error.code
+                        else: raise AssertionError("Unplanned helper: " + str(script))
+        finally:
+            self.timer_stack.pop()
+        process.stdout.write(out.getvalue().encode()); process.stderr.write(err.getvalue().encode())
+        return code
+
+    def execute(self):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), \
+             mock.patch.object(sys, "argv", ["controller", "--scratch-root", str(self.root)]):
+            code = M.main()
+        M.save(self.root / "generation-invocation-status.json", dict(schema_version=1, mode="sdk-generation-only",
+            source_sha="a" * 40, actual_shell_exit=code, checkpoint="invocation-returned", run_id=123, run_attempt=1,
+            prelaunch_outputs_absent=True))
+        return code
+
+    def publish(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err, \
+             mock.patch.object(sys, "argv", ["wrapper", "--stage", "publish", "--scratch-root", str(self.root), "--generation-publication"]):
+            code = W.main()
+        return code, out.getvalue() + err.getvalue()
+
+    def diagnostics(self):
+        # 실패 단정에도 고정된 합성 영수증의 안전한 관측/해시를 남겨 임시 파일 삭제 뒤 원인을 잃지 않는다.
+        result = {}
+        paths = {"controller": "native-calibration-sdk-calls/generation-controller.json",
+                 "phase": "native-calibration-sdk-raw/setup/phases/before-compilation.json",
+                 "lifecycle": "native-sdk-generations-lifecycle/results.json",
+                 "setup": "native-sdk-generations-lifecycle/setup/setup.json",
+                 "publication": "native-calibration-sdk-publication.json"}
+        for role, relative in paths.items():
+            try:
+                value = M.read(self.root / relative)
+                row = dict(observation=M.safe_record(value), sha256=M.reference(self.root / relative)["sha256"])
+                if type(value.get("error")) is str:
+                    row["error_sha256"] = hashlib.sha256(value["error"].encode()).hexdigest()
+                result[role] = row
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+                result[role] = dict(status="unavailable")
+        return json.dumps(result, sort_keys=True, allow_nan=False)
+
+    def finish(self):
+        code = self.execute()
+        self.case.assertEqual(code, 0, self.diagnostics())
+        controller = M.read(self.root / "native-calibration-sdk-calls/generation-controller.json")
+        self.case.assertEqual(controller["status"], "validation-candidate-complete")
+        self.case.assertEqual(len(self.compiler_calls), 43)
+        summary = M.read(self.root / "native-calibration-sdk-raw/generation-results.json")
+        self.case.assertEqual(summary["full_generation_reads"], 16)
+        self.case.assertEqual(len(summary["stages"]), 13)
+        code, text = self.publish()
+        self.case.assertEqual(code, 0, text + self.diagnostics())
+        return controller
+
+
+class CapsuleProducerRouteTests(unittest.TestCase):
+    def failed(self, fault):
+        fixture = CapsuleProducerFixture(self, fault=fault)
+        code = fixture.execute()
+        if fault == "capture-inventory":
+            self.assertGreater(fixture.lstat_remap_hits["/usr/bin/xcrun"], 0,
+                               "synthetic xcrun alias remap must be reached before inventory: " + fixture.diagnostics())
+            self.assertEqual(fixture.inventory_fault_hits, 1,
+                             "inventory lstat fault must be reached exactly once: " + fixture.diagnostics())
+        self.assertNotEqual(code, 0, fixture.diagnostics())
+        code, text = fixture.publish()
+        self.assertEqual(code, 0, text + fixture.diagnostics())
+        value = M.read(fixture.root / "native-calibration-sdk-public/results.json")
+        self.assertEqual(value["role"], M.CAPSULE_ROLE)
+        self.assertIsNone(value["actual_compiler_commands"])
+        self.assertIsNone(value["actual_full_sdk_reads"])
+        self.assertIs(value["accepted"], False)
+        self.assertIs(value["final_protocol_ready"], False)
+        self.assertNotIn(str(fixture.base), json.dumps(value))
+        self.assertNotIn("private", json.dumps(value))
+        return fixture, value, {row["slot"]: row for row in value["slots"]}
+
+    def test_complete_actual_producer_candidate_publication_with_synthetic_native_inputs(self):
+        fixture = CapsuleProducerFixture(self)
+        controller = fixture.finish()
+        self.assertTrue(all(count > 0 for count in fixture.lstat_remap_hits.values()))
+        probe = fixture.root / "sdk-discovery-raw/setup/discovery/probe-input"
+        self.assertEqual(probe.read_bytes(), b"")
+        self.assertEqual(W.document(fixture.root / "native-calibration-sdk-public" / W.EMPTY_PROBE_PROJECTED),
+                         W.empty_probe_descriptor())
+        self.assertEqual([row for row in controller["phase_order"]], [name for name, _ in M.PHASES])
+        self.assertEqual(fixture.sleeps, [1.1] * 7)
+        lifecycle = M.read(fixture.root / "native-sdk-generations-lifecycle/results.json")
+        self.assertEqual(len(lifecycle["states"]), 13)
+        self.assertEqual(lifecycle["ios_execution"], "compiler-only")
+        self.assertEqual(lifecycle["runtime_execution"], "not-run")
+        self.assertTrue(all(row["product_checks"] == "not-run" for row in lifecycle["states"]))
+        self.assertEqual(len([argv for argv in fixture.calls if argv[0] == "/usr/sbin/sysctl"]), 14)
+        public = M.read(fixture.root / "native-calibration-sdk-public/results.json")
+        self.assertNotEqual(public.get("role"), M.CAPSULE_ROLE)
+        self.assertIs(public["accepted"], False)
+        self.assertEqual(set(fixture.timer_stack[0]), {"timer", "handler"})
+        self.assertEqual(fixture.timer_stack[0]["timer"], (0.0, 0.0))
+
+    def test_real_early_context_launch_and_pre_receipt_failures(self):
+        for fault in ("pre-context", "context-admission", "phase-launch", "pre-phase-receipt", "installation"):
+            with self.subTest(fault=fault):
+                fixture, value, slots = self.failed(fault)
+                try:
+                    self.assertEqual(fixture.compiler_calls, [])
+                    self.assertEqual(value["execution_exit"], 125)
+                    if fault == "context-admission":
+                        self.assertEqual(slots["context"]["observation"]["admission_status"], "refused-before-any-phase")
+                        self.assertEqual(len(fixture.calls), 1)
+                    if fault == "pre-phase-receipt":
+                        self.assertEqual(slots["phase-command:before-compilation"]["observation"]["streams"]["stderr"]
+                                         ["safe_json"]["schema"], "early-refusal")
+                        self.assertEqual(slots["phase-result:before-compilation"]["status"], "unavailable")
+                finally: fixture.stack.close()
+
+    def test_real_probe_prefix_nonzero_125_timeout_and_cancellation(self):
+        for fault in ("probe-nonzero", "probe-125", "probe-timeout", "probe-cancel"):
+            with self.subTest(fault=fault):
+                fixture, _value, slots = self.failed(fault)
+                try:
+                    first = slots["native-probe:before-compilation:machine-hw_machine"]
+                    failed = slots["native-probe:before-compilation:machine-hw_physicalcpu"]
+                    self.assertEqual(first["observation"]["completion_class"], "completed-zero-within-bound")
+                    self.assertEqual(failed["observation"]["completion_class"], "incomplete-or-nonzero")
+                    if fault in ("probe-timeout", "probe-cancel"):
+                        self.assertEqual(failed["observation"]["streams"]["stdout"]["status"], "withheld-unstable")
+                    self.assertEqual(fixture.compiler_calls, [])
+                finally: fixture.stack.close()
+
+    def test_actual_installation_and_native_admission_refusals_keep_strict_pins(self):
+        for fault in ("installation-python", "machine-mismatch", "version-mismatch", "malformed-native"):
+            with self.subTest(fault=fault):
+                fixture, _value, slots = self.failed(fault)
+                try:
+                    self.assertEqual(fixture.compiler_calls, [])
+                    self.assertEqual(slots["phase-result:before-compilation"]["observation"]["reported_status"], "failed")
+                    if fault != "installation-python":
+                        self.assertEqual(slots["sdk-admission:before-compilation"]["observation"]["checkpoint"], "native-admission")
+                    self.assertFalse((fixture.root / "native-calibration-sdk-raw/before-compilation/seal.json").exists())
+                finally: fixture.stack.close()
+
+    def test_rehashed_native_actual_exit_and_ownership_conflicts_do_not_read_stdout(self):
+        for fault in ("probe-contradiction", "probe-bool", "probe-late", "probe-ownership", "probe-wait-ownership"):
+            with self.subTest(fault=fault):
+                fixture = CapsuleProducerFixture(self, fault=fault)
+                try:
+                    self.assertNotEqual(fixture.execute(), 0)
+                    result = M.read(fixture.root / "native-calibration-sdk-raw/before-compilation/results.json")
+                    self.assertNotEqual(result["status"], "captured-candidate")
+                    ledger = result["diagnostic"]["probes"]["machine-hw_machine"]
+                    self.assertNotIn("stdout_identity", ledger)
+                    # 명백하게 잘못된 exit 타입은 안전한 슬롯 문서로도 인정하지 않는다.
+                    self.assertEqual(fixture.publish()[0], 1 if fault == "probe-bool" else 0)
+                    self.assertEqual(fixture.compiler_calls, [])
+                finally: fixture.stack.close()
+
+    def test_real_capture_inventory_write_close_and_postseal_alias_failures(self):
+        for fault in ("capture-inventory", "capture-write", "capture-close", "post-capture-alias"):
+            with self.subTest(fault=fault):
+                fixture, _value, slots = self.failed(fault)
+                try:
+                    self.assertEqual(fixture.inventory_fault_hits, 1 if fault == "capture-inventory" else 0)
+                    observed = slots["sdk-admission:before-compilation"]["observation"]
+                    self.assertEqual(observed["reported_status"], "failed")
+                    self.assertEqual(observed["checkpoint"], "sdk-postcheck" if fault == "post-capture-alias" else "sdk-capture")
+                    self.assertEqual(fixture.compiler_calls, [])
+                finally: fixture.stack.close()
+
+    def test_capture_inventory_fault_reached_when_lstat_bypasses_stat(self):
+        # CPython's direct lstat implementation must not bypass the injected inventory fault.
+        self.enterContext(mock.patch.object(Path, "lstat", lambda path: os.lstat(path)))
+        fixture, _value, slots = self.failed("capture-inventory")
+        try:
+            self.assertEqual(fixture.inventory_fault_hits, 1)
+            self.assertGreater(fixture.lstat_remap_hits["/usr/bin/xcrun"], 0)
+            before = fixture.lstat_remap_hits["/usr/lib/swift"]
+            self.assertEqual(Path("/usr/lib/swift").lstat(),
+                             fixture.old_lstat(fixture.developer / "host-runtime"))
+            self.assertEqual(fixture.lstat_remap_hits["/usr/lib/swift"], before + 1)
+            observed = slots["sdk-admission:before-compilation"]["observation"]
+            self.assertEqual(observed["reported_status"], "failed")
+            self.assertEqual(observed["checkpoint"], "sdk-capture")
+            self.assertEqual(fixture.compiler_calls, [])
+        finally:
+            fixture.stack.close()
+
+    def test_admission_close_missing_result_keeps_independently_bound_probe_prefix(self):
+        fixture = CapsuleProducerFixture(self, fault="admission-close")
+        self.assertNotEqual(fixture.execute(), 0)
+        (fixture.root / "native-calibration-sdk-raw/before-compilation/results.json").unlink()
+        self.assertEqual(fixture.publish()[0], 0)
+        capsule = M.read(fixture.root / "native-calibration-sdk-public/results.json")
+        slots = {row["slot"]: row for row in capsule["slots"]}
+        self.assertEqual(slots["sdk-admission:before-compilation"]["status"], "unavailable")
+        self.assertEqual(slots["native-probe:before-compilation:sdk-build"]["status"], "available")
+
+    def test_phase_close_preserves_its_actual_nonzero_with_complete_disk_observation(self):
+        fixture, _value, slots = self.failed("phase-close")
+        self.assertEqual(slots["phase-result:before-compilation"]["observation"]["reported_exit_code"], 0)
+        self.assertIs(slots["phase-result:before-compilation"]["observation"]["actual_exit_conflict"], True)
+        self.assertEqual(fixture.compiler_calls, [])
+        self.assertEqual(slots["sdk-summary"]["observation"]["summary_checkpoint"], "initial")
+        self.assertEqual(slots["sdk-summary"]["observation"]["reported_status"], "started")
+
+    def test_initial_and_progressed_summary_schema_mutations_refuse(self):
+        cases = [("phase-close", kind) for kind in ("status", "stages", "helper", "extra", "profile", "schema", "role")]
+        cases += [("installation", kind) for kind in ("schema", "role")]
+        for fault, kind in cases:
+            with self.subTest(fault=fault, kind=kind):
+                fixture = CapsuleProducerFixture(self, fault=fault)
+                try:
+                    self.assertEqual(fixture.execute(), 125)
+                    target = fixture.root / "native-calibration-sdk-raw/results.json"
+                    value = M.read(target)
+                    if kind == "status": value["status"] = "candidate-in-progress"
+                    elif kind == "stages": value["stages"] = {"before-compilation": {}}
+                    elif kind == "helper": value["helper_sha256"] = {"changed": "f" * 64}
+                    elif kind == "extra": value["extra"] = False
+                    elif kind == "profile": value["profile"] = M.PROFILE
+                    elif kind == "schema": value["schema_version"] = True
+                    else: value["role"] = "other"
+                    target.write_text(json.dumps(value))
+                    code, text = fixture.publish()
+                    self.assertEqual(code, 1, text + fixture.diagnostics())
+                    receipt = M.read(fixture.root / "native-calibration-sdk-publication.json")
+                    self.assertEqual(receipt["failure_sha256"], hashlib.sha256(b"capsule-summary-source").hexdigest())
+                    self.assertFalse((fixture.root / "native-calibration-sdk-public").exists())
+                finally: fixture.stack.close()
+
+    def test_real_lifecycle_stops_preserve_source_states_and_uncertified_after_boundary(self):
+        for fault in ("lifecycle-nonzero", "lifecycle-timeout"):
+            with self.subTest(fault=fault):
+                fixture, _value, slots = self.failed(fault)
+                try:
+                    self.assertEqual(len(fixture.compiler_calls), 7)
+                    self.assertEqual(slots["lifecycle-state:initial"]["observation"]["reported_status"], "passed")
+                    self.assertEqual(slots["lifecycle-state:header_edit_rebuilt"]["observation"]["reported_status"], "failed")
+                    self.assertEqual(slots["lifecycle-state:header_rename_unbuilt"]["status"], "unavailable")
+                    controller = M.read(fixture.root / "native-calibration-sdk-calls/generation-controller.json")
+                    self.assertEqual(controller["first_failure"]["phase"], "compiler-lifecycle")
+                    self.assertEqual(controller["phases"]["sdk-discovery"]["status"], "not-started")
+                finally: fixture.stack.close()
+
+    def test_real_discovery_and_final_native_stops_retain_complete_prior_generations(self):
+        for fault, phase in (("discovery-launch", "sdk-discovery"), ("post-generation", "after-generation")):
+            with self.subTest(fault=fault):
+                fixture, _value, slots = self.failed(fault)
+                try:
+                    self.assertEqual(len(fixture.compiler_calls), 43)
+                    self.assertEqual(slots["lifecycle-state:restored_rebuilt"]["observation"]["reported_status"], "passed")
+                    controller = M.read(fixture.root / "native-calibration-sdk-calls/generation-controller.json")
+                    self.assertEqual(controller["first_failure"]["phase"], phase)
+                finally: fixture.stack.close()
+
+    def test_phase_late_zero_is_explicitly_incomplete_without_rewriting_exit(self):
+        fixture, _value, slots = self.failed("phase-late")
+        observed = slots["phase-command:before-compilation"]["observation"]
+        self.assertEqual(observed["reported_observed_returncode"], 0)
+        self.assertEqual(observed["completion_class"], "late-zero")
+        self.assertEqual(fixture.compiler_calls, [])
+
+    def test_uncertain_phase_prefix_retains_incomplete_and_refuses_forged_completion(self):
+        for fault in ("phase-ownership", "phase-wait-ownership"):
+            for forged in (False, True):
+                with self.subTest(fault=fault, forged=forged):
+                    fixture = CapsuleProducerFixture(self, fault=fault)
+                    try:
+                        self.assertEqual(fixture.execute(), 125)
+                        path = fixture.root / "native-calibration-sdk-calls/generation-controller.json"
+                        controller = M.read(path)
+                        phase = controller["phases"]["before-compilation"]
+                        self.assertEqual(phase["status"], "incomplete")
+                        self.assertEqual(phase["command_result"]["observed_returncode"], 0)
+                        if forged:
+                            phase["status"] = "completed"
+                            path.write_text(json.dumps(controller))
+                        later = "native-calibration-sdk-calls/sdk-discovery/command.json"
+                        M.save(fixture.root / later, dict(status="untrusted later file"))
+                        original, reads = M.CapsuleReader.original, []
+                        def observed(reader, relative, **options):
+                            reads.append(relative)
+                            return original(reader, relative, **options)
+                        with mock.patch.object(M.CapsuleReader, "original", observed):
+                            self.assertEqual(fixture.publish()[0], 1 if forged else 0)
+                        self.assertNotIn(later, reads)
+                        self.assertNotIn("native-calibration-sdk-calls/before-compilation/command.stdout", reads)
+                        if not forged:
+                            capsule = M.read(fixture.root / "native-calibration-sdk-public/results.json")
+                            slots = {row["slot"]: row for row in capsule["slots"]}
+                            self.assertEqual(slots["phase-result:before-compilation"]["status"], "withheld-unstable")
+                        self.assertEqual(fixture.compiler_calls, [])
+                    finally: fixture.stack.close()
+
+    def test_complete_controller_disk_json_close_failure_does_not_override_actual_125(self):
+        fixture, value, slots = self.failed("controller-close")
+        self.assertEqual(len(fixture.compiler_calls), 43)
+        self.assertTrue(value["disk_completion_conflict"])
+        self.assertEqual(slots["supervisor-command"]["observation"]["reported_observed_returncode"], 125)
+        self.assertEqual(slots["controller"]["observation"]["reported_exit_code"], 0)
+
+    def test_actual_zero_candidate_verification_failure_is_never_downgraded(self):
+        fixture = CapsuleProducerFixture(self)
+        self.assertEqual(fixture.execute(), 0)
+        target = fixture.root / "native-calibration-sdk-raw/generation-results.json"
+        row = M.read(target); row["executed_commands"] = 42; target.write_text(json.dumps(row))
+        with mock.patch.object(M, "publish_failure_capsule", side_effect=AssertionError("forbidden downgrade")) as capsule:
+            self.assertEqual(fixture.publish()[0], 1)
+        capsule.assert_not_called()
+
+    def test_rehashed_phase_prefix_context_reference_and_cross_source_records_refuse(self):
+        fixture = CapsuleProducerFixture(self, fault="installation")
+        self.assertNotEqual(fixture.execute(), 0)
+        controller_path = fixture.root / "native-calibration-sdk-calls/generation-controller.json"
+        original = controller_path.read_bytes()
+        controller = M.read(controller_path)
+        variants = []
+        row = copy.deepcopy(controller); row["phase_order"].reverse(); variants.append(row)
+        row = copy.deepcopy(controller); row["context"]["sha256"] = "f" * 64; variants.append(row)
+        row = copy.deepcopy(controller); row["context"]["bytes"] += 1; variants.append(row)
+        row = copy.deepcopy(controller); row["phases"]["sdk-discovery"] = copy.deepcopy(row["phases"]["before-compilation"]); variants.append(row)
+        for row in variants:
+            controller_path.write_text(json.dumps(row))
+            with self.subTest(row=row["context"]), self.assertRaises(ValueError): M.failure_capsule(fixture.root)
+        controller_path.write_bytes(original)
+        phase_path = fixture.root / "native-calibration-sdk-raw/setup/phases/before-compilation.json"
+        phase = M.read(phase_path)
+        for mutation in (dict(stage="after-generation"), dict(helper_sha256={}), dict(accepted=True)):
+            phase_path.write_text(json.dumps({**phase, **mutation}))
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): M.failure_capsule(fixture.root)
+        phase_path.write_text(json.dumps(phase))
+
+    def test_stale_lower_tree_withholds_all_lstat_reads_and_stale_status_is_not_finalized(self):
+        fixture = CapsuleProducerFixture(self, fault="pre-context")
+        self.assertNotEqual(fixture.execute(), 0)
+        status = fixture.root / "generation-invocation-status.json"
+        row = M.read(status); row["prelaunch_outputs_absent"] = False; status.write_text(json.dumps(row))
+        old = M.CapsuleReader.original
+        seen = []
+        def read(reader, relative, **kwargs):
+            seen.append(relative)
+            self.assertEqual(relative, "generation-invocation-status.json")
+            return old(reader, relative, **kwargs)
+        # 남아 있는 파일과 dangling 링크 모두 하위 읽기 권한을 주지 않는다.
+        (fixture.root / "sdk-discovery-raw").symlink_to(fixture.root / "missing")
+        with mock.patch.object(M.CapsuleReader, "original", read):
+            self.assertEqual(fixture.publish()[0], 0)
+        self.assertEqual(seen, ["generation-invocation-status.json"] * 2)
+        with mock.patch.dict(os.environ, {"GENERATION_STATUS_FINALIZED": ""}), mock.patch.object(M, "read") as read:
+            with self.assertRaises(ValueError): M.invocation_status(fixture.root)
+            read.assert_not_called()
+
+    def test_full_route_unknown_private_streams_and_malformed_phase_are_unavailable(self):
+        for text in ('{"status":"refused","failure_type":"token=private-value","failure_sha256":"' + 'f' * 64 + '"}',
+                     '{"status":"refused","status":"refused"}', '{"wall_seconds":NaN}',
+                     '/private/unstructured?token=secret', 'x' * 65537):
+            with self.subTest(text=text[:40]):
+                fixture = CapsuleProducerFixture(self, fault="pre-phase-receipt")
+                try:
+                    self.assertNotEqual(fixture.execute(), 0)
+                    stderr = fixture.root / "native-calibration-sdk-calls/before-compilation/command.stderr"
+                    stderr.write_text(text)
+                    controller_path = fixture.root / "native-calibration-sdk-calls/generation-controller.json"
+                    controller = M.read(controller_path)
+                    controller["phases"]["before-compilation"]["originals"][".stderr"] = M.reference(stderr)
+                    controller_path.write_text(json.dumps(controller))
+                    phase = fixture.root / "native-calibration-sdk-raw/setup/phases/before-compilation.json"
+                    phase.parent.mkdir(parents=True, exist_ok=True)
+                    phase.write_text('{"status":"failed","status":"private-secret"}')
+                    code, emitted = fixture.publish()
+                    self.assertEqual(code, 0, emitted)
+                    value = M.read(fixture.root / "native-calibration-sdk-public/results.json")
+                    slots = {row["slot"]: row for row in value["slots"]}
+                    self.assertEqual(slots["phase-result:before-compilation"]["status"], "malformed")
+                    self.assertEqual(slots["phase-command:before-compilation"]["observation"]["streams"]["stderr"]
+                                     ["safe_json"], dict(status="unavailable"))
+                    self.assertNotIn("private", json.dumps(value) + emitted)
+                    self.assertNotIn("secret", json.dumps(value) + emitted)
+                finally: fixture.stack.close()
+
+    def test_existing_two_field_phase_reference_keeps_strict_path_hash_and_shape(self):
+        for mutation in ("path", "sha256", "bytes"):
+            with self.subTest(mutation=mutation):
+                fixture = CapsuleProducerFixture(self, fault="installation")
+                try:
+                    self.assertEqual(fixture.execute(), 125)
+                    target = fixture.root / "native-calibration-sdk-raw/results.json"
+                    summary = M.read(target)
+                    reference = summary["stages"]["before-compilation"]["original"]
+                    self.assertEqual(set(reference), {"path", "sha256"})
+                    if mutation == "path": reference["path"] += ".other"
+                    elif mutation == "sha256": reference["sha256"] = "f" * 64
+                    else: reference["bytes"] = 1
+                    target.write_text(json.dumps(summary))
+                    self.assertEqual(fixture.publish()[0], 1)
+                    receipt = M.read(fixture.root / "native-calibration-sdk-publication.json")
+                    self.assertEqual(receipt["failure_sha256"], hashlib.sha256(b"capsule-summary-phase-changed").hexdigest())
+                finally: fixture.stack.close()
+
+    def test_full_route_rehashed_lifecycle_plan_boundary_and_source_records_refuse(self):
+        reasons = {"plan": "capsule-generation-command-plan", "request": "capsule-generation-boundary-role",
+                   "stage": "capsule-generation-boundary-role", "output": "capsule-generation-output-path",
+                   "orphan": "capsule-boundary-without-state"}
+        for kind, reason in reasons.items():
+            with self.subTest(kind=kind):
+                fixture = CapsuleProducerFixture(self, fault="post-generation")
+                try:
+                    self.assertNotEqual(fixture.execute(), 0)
+                    state_path = fixture.root / "native-sdk-generations-lifecycle/runs/initial/state.json"
+                    boundary_path = fixture.root / "native-calibration-sdk-raw/generations/initial/before/results.json"
+                    self.assertTrue(state_path.is_file() and boundary_path.is_file(), fixture.diagnostics())
+                    state, boundary = M.read(state_path), M.read(boundary_path)
+                    if kind == "plan":
+                        boundary["command_plan"][0]["args"].append("-unreviewed")
+                        boundary["commands_sha256"] = M.GENERATIONS.identity(boundary["command_plan"])
+                    elif kind == "request": boundary["request_sha256"] = "f" * 64
+                    elif kind == "stage": boundary["stage"] = "restored_rebuilt"
+                    elif kind == "output": state["generation_attempt"]["build"] += "-other"
+                    state["sdk_generation"]["before"] = boundary
+                    state_path.write_text(json.dumps(state))
+                    boundary_path.write_text(json.dumps(boundary))
+                    if kind == "orphan": state_path.unlink()
+                    # 매 변형의 첫 발행만 실행하여 이전 실패 영수증이 검증 경로를 가리지 않게 한다.
+                    self.assertFalse((fixture.root / "native-calibration-sdk-publication.json").exists())
+                    self.assertEqual(fixture.publish()[0], 1)
+                    receipt = M.read(fixture.root / "native-calibration-sdk-publication.json")
+                    self.assertEqual(receipt["failure_sha256"], hashlib.sha256(reason.encode()).hexdigest())
+                finally: fixture.stack.close()
+
+    def test_missing_or_malformed_controller_does_not_prove_prephase_context_refusal(self):
+        for kind in ("missing", "malformed"):
+            with self.subTest(kind=kind):
+                fixture = CapsuleProducerFixture(self, fault="context-admission")
+                try:
+                    self.assertEqual(fixture.execute(), 125)
+                    path = fixture.root / "native-calibration-sdk-calls/generation-controller.json"
+                    if kind == "missing": path.unlink()
+                    else: path.write_text('{"phases":{},"phases":{}}')
+                    old, seen = M.CapsuleReader.original, []
+                    def original(reader, relative, **kwargs):
+                        seen.append(relative)
+                        return old(reader, relative, **kwargs)
+                    with mock.patch.object(M.CapsuleReader, "original", original):
+                        code, emitted = fixture.publish()
+                    self.assertEqual(code, 0, emitted)
+                    value = M.read(fixture.root / "native-calibration-sdk-public/results.json")
+                    slots = {row["slot"]: row for row in value["slots"]}
+                    self.assertEqual(slots["controller"]["status"], "unavailable" if kind == "missing" else "malformed")
+                    self.assertEqual(slots["context"]["observation"], dict(admission_status="unavailable"))
+                    self.assertTrue(all(row["status"] == "withheld-unstable" for role, row in slots.items()
+                                        if role.startswith(("phase-", "sdk-admission:", "native-probe:", "generation-"))))
+                    self.assertFalse(any("/before-compilation/" in path for path in seen))
+                    self.assertIsNone(value["actual_compiler_commands"])
+                    self.assertEqual(fixture.compiler_calls, [])
+                finally: fixture.stack.close()
+
+    def test_endpoint_new_missing_source_and_aggregate_refusals_use_real_publisher(self):
+        for mutation in ("new-slot", "missing", "source", "aggregate"):
+            with self.subTest(mutation=mutation):
+                fixture = CapsuleProducerFixture(self, fault="pre-phase-receipt")
+                try:
+                    self.assertNotEqual(fixture.execute(), 0)
+                    normalizer = W.NORMALIZER.package
+                    hashes = M.source_hashes
+                    changed = [False]
+                    def package(args):
+                        result = normalizer(args)
+                        if mutation == "new-slot":
+                            M.save(fixture.root / "native-calibration-sdk-raw/setup/phases/before-compilation.json", {})
+                        elif mutation == "missing":
+                            (fixture.root / "native-calibration-sdk-calls/before-compilation/command.stderr").unlink()
+                        changed[0] = True
+                        return result
+                    with contextlib.ExitStack() as stack:
+                        stack.enter_context(mock.patch.object(W.NORMALIZER, "package", side_effect=package))
+                        if mutation == "source":
+                            stack.enter_context(mock.patch.object(M, "source_hashes", side_effect=lambda:
+                                {**hashes(), "source-drift": "f" * 64} if changed[0] else hashes()))
+                        if mutation == "aggregate":
+                            original = M.CapsuleReader.__init__
+                            def init(reader, root): original(reader, root); reader.total = M.CAPSULE_MAX_TOTAL - 1
+                            stack.enter_context(mock.patch.object(M.CapsuleReader, "__init__", init))
+                        self.assertEqual(fixture.publish()[0], 1)
+                finally: fixture.stack.close()
+
+
 class WorkflowTests(unittest.TestCase):
     def test_exact_inverse_preserves_previous_full_workflow(self):
         self.assertEqual(hashlib.sha256(legacy_workflow(WORKFLOW.read_bytes())).hexdigest(),
@@ -680,10 +1902,56 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(text.count("Scripts/validate-native-sdk-generations.py"), 1)
         self.assertIn("if: inputs.mode != 'sdk-generation-only'", text)
         self.assertIn("if: inputs.mode == 'sdk-generation-only'", text)
-        self.assertIn("steps.before.outcome != 'skipped' || steps.generations.outcome != 'skipped'", text)
+        self.assertIn("steps.generations.outputs.status_finalized == 'true'", text)
+        self.assertIn('[[ -e "$RUNNER_TEMP/$subtree" || -L "$RUNNER_TEMP/$subtree" ]]', text)
+        self.assertIn("set -o noclobber", text)
+        self.assertIn('[[ -e "$RUNNER_TEMP/generation-invocation-status.json" || -L "$RUNNER_TEMP/generation-invocation-status.json" ]]', text)
+        self.assertIn("GENERATION_STATUS_FINALIZED: ${{ steps.generations.outputs.status_finalized }}", text)
         self.assertEqual(text.count("uses: actions/upload-artifact@"), 5)
         self.assertNotIn("continue-on-error", text)
         self.assertNotIn("secrets.", text)
+
+
+    def test_status_writer_refuses_existing_regular_symlink_fifo_and_directory_without_opening(self):
+        text = WORKFLOW.read_text().split("        id: generations\n", 1)[1].split("\n      #", 1)[0]
+        tail = text.split("          set -e\n", 1)[1]
+        fragment = "set -e\n" + "\n".join(line[10:] for line in tail.splitlines() if line.strip())
+        self.assertEqual(fragment.count("set -o noclobber"), 1)
+        def stable_identity(path):
+            info = path.lstat()
+            return (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+                    os.readlink(path) if path.is_symlink() else None)
+        # 고정된 shell 내장 명령만 14회 실행한다. FIFO를 열면 3초 제한 안에서 실패한다.
+        for kind in ("absent", "regular", "symlink", "fifo", "fifo-symlink", "dangling", "directory"):
+            for actual in (0, 125):
+                with self.subTest(kind=kind, actual=actual), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    path, output = root / "generation-invocation-status.json", root / "github-output"
+                    target = root / "target"
+                    if kind == "regular": path.write_bytes(b"keep-original")
+                    elif kind == "symlink": target.write_bytes(b"keep-target"); path.symlink_to(target)
+                    elif kind == "fifo": os.mkfifo(path)
+                    elif kind == "fifo-symlink": os.mkfifo(target); path.symlink_to(target)
+                    elif kind == "dangling": path.symlink_to(target)
+                    elif kind == "directory": path.mkdir()
+                    before = stable_identity(path) if kind != "absent" else None
+                    target_before = stable_identity(target) if target.exists() else None
+                    environment = dict(PATH="/usr/bin:/bin", RUNNER_TEMP=str(root), GITHUB_OUTPUT=str(output),
+                                       SOURCE_SHA="a" * 40, GITHUB_RUN_ID="7", GITHUB_RUN_ATTEMPT="1",
+                                       actual=str(actual), fresh="true")
+                    result = subprocess.run(["/bin/bash", "--noprofile", "--norc", "-c", fragment],
+                                            env=environment, capture_output=True, text=True, timeout=3)
+                    self.assertEqual(result.returncode, actual if kind == "absent" or actual else 125)
+                    self.assertEqual(result.stdout + result.stderr, "")
+                    if kind == "absent":
+                        self.assertEqual(json.loads(path.read_text())["actual_shell_exit"], actual)
+                        self.assertEqual(output.read_text(), "status_finalized=true\n")
+                    else:
+                        self.assertEqual(stable_identity(path), before)
+                        self.assertFalse(output.exists())
+                        if target_before is not None: self.assertEqual(stable_identity(target), target_before)
+                        if kind == "regular": self.assertEqual(path.read_bytes(), b"keep-original")
+                        if kind == "symlink": self.assertEqual(target.read_bytes(), b"keep-target")
 
 
 if __name__ == "__main__":

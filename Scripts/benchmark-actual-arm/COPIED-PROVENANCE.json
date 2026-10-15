@@ -206,6 +206,141 @@
     "scope": "Additive merge-main integration preserving generation diagnostic and capability/cache source bodies and every prior provenance value. README combines accepted sections and records ordinary CI512 on Python 3.14.7; combined-source CI and native diagnostics remain separate gates.",
     "second_parent": "1d090d086f0058437bd1ca9ab76c6c4134997835"
   },
+  "generation_capsule_interpreter_merge_main_integration_v1": {
+    "combined_source_ci_pending": true,
+    "files": [
+      {
+        "bytes": 61890,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "55aa80c2424fff1546e4d8012399cca1755c838691de002dbc22e47e2ec14b1d"
+      }
+    ],
+    "first_parent": "8c8a776720936d97d8267b7975b36bfa2b1603d0",
+    "local_parent_mapping": [
+      {
+        "local_commit": "f3307df2654e4a5c1456cea0edd39ed12d17bf0e",
+        "position": 1,
+        "remote_commit": "8c8a776720936d97d8267b7975b36bfa2b1603d0",
+        "tree": "6aa55bb1316db8688ab8dd7b2debebc0168f3646"
+      },
+      {
+        "local_commit": "682dda0b6e823f6f6bc153ae2fa9d169368cc02c",
+        "position": 2,
+        "remote_commit": "19c4d8e26b3382de1377be6ed7d6a61528cb4b4d",
+        "tree": "baa3d7567d25f980cf7a48c9ecad7a63b6ff5f6f"
+      }
+    ],
+    "native_execution_authorized": false,
+    "original_ci520_and_targeted_recovery": {
+      "independent_recovery_report_sha256": "7164ded8b336002e7ca0b12ffadfe13980e34481b8a4021bbb058a2701a4879f",
+      "original_attempt_one_transport_failure_retained": true,
+      "run_id": 38669444939,
+      "scope": "Accepted source-specific ordinary CI recovery; not combined-source CI or native capability credit.",
+      "targeted_coverage_recovery_attempt": 2
+    },
+    "original_ci521": {
+      "all_three_jobs_success": true,
+      "attempt": 1,
+      "generation_methods": 72,
+      "head": "8c8a776720936d97d8267b7975b36bfa2b1603d0",
+      "retained_owner_terminal_readback_sha256": "787a065b17de6d6bc0b7b8f2445e7695169cb4221fffc43dc03ae3135f5cdb00",
+      "run_id": 38672493510,
+      "scope": "Original PR193 successor source only; not combined-source CI or native manual evidence.",
+      "sdk_helpers": 220,
+      "test_count": 2054,
+      "tree": "6aa55bb1316db8688ab8dd7b2debebc0168f3646"
+    },
+    "readme_composition": {
+      "first_parent_full_text_preserved_except_final_pending_ci_sentence": true,
+      "original_ci519_and_local_premise_failure_preserved": true,
+      "second_parent_interpreter_section_byte_identical": true,
+      "second_parent_interpreter_section_bytes": 4531,
+      "second_parent_interpreter_section_sha256": "dffec911dc073c7e77ece3768f58ca13c6734a2bb9a9f7d619af8d959299a49b"
+    },
+    "scope": "Additive ordered merge-main integration. Every prior provenance entry/value is preserved unchanged. Runtime, test, workflow and other source files retain exact bytes and modes from their respective parents; only this provenance union and the composed README are newly resolved. README uses complete first-parent text with its final pending-CI sentence updated only for retained original CI521, followed by the byte-identical second-parent interpreter-role section. Combined-source CI remains pending. No target imports, control execution, native work or publication is established by source preparation.",
+    "second_parent": "19c4d8e26b3382de1377be6ed7d6a61528cb4b4d",
+    "shared_source_base": {
+      "local_commit": "4ef6032d0fcb5bffce72d8ea25d86e367d7160c1",
+      "remote_commit": "ae98aa8604cdf7a73698a72464757126237deab9",
+      "tree": "9a8069f0089e8b88cc47100c65b5a63b6a5ec87b"
+    }
+  },
+  "generation_capsule_lstat_fixture_override": {
+    "base_commit": "8888e0a6cb51f2ccc51ee09af91afad8270236b8",
+    "files": [
+      {
+        "bytes": 57185,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "3d10225c345413dc058e86db483c7bd0d5a7cce862078b60973f7054df57f75d"
+      },
+      {
+        "bytes": 126046,
+        "path": "Scripts/verify-native-generation-contract.py",
+        "sha256": "1937e5216b1017b6edcac47074207c6e0cbe04a5db42afe6e56cc92fccba60e0"
+      }
+    ],
+    "local_control_result_sha256": "c354a896a3e9cb1892afd9e2253cb3cb2f9502e73d8063695913491809be60e8",
+    "local_premise_failure_sha256": "8d281359ec87d43c32567b1e466fd30df626f4fe19a70d575b2e559c6cf7ee8d",
+    "scope": "Test-only explicit lstat fault interception, two existing synthetic native alias remaps and stage-appropriate reached-hit assertions. Original CI519 with unknown interpreter version and local baseline native-admission premise failure remain historical; production and scanner are unchanged. One reviewed continuation reproduced the exact original 0 == 0/frame1450 baseline and passed all 72 synthetic generation methods plus whitespace. Corrected exact-head native CI remains pending.",
+    "scope_limits": {
+      "native_execution": false,
+      "production_changed": false,
+      "python_version": "local 3.13",
+      "scanner_changed": false,
+      "shared_lane_descriptor_closed": "2026-10-15T02:37:07.192198970Z"
+    }
+  },
+  "generation_failure_capsule_v1": {
+    "base_commit": "ae98aa8604cdf7a73698a72464757126237deab9",
+    "files": [
+      {
+        "bytes": 14644,
+        "path": ".github/workflows/native-calibration.yml",
+        "sha256": "7c3474d1535da1ca5124e2e0b47e6e8ebe37e5cb70339d07718ef0649c8ad68d"
+      },
+      {
+        "bytes": 53825,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "f0d67c8931ff85758ebeb2cc4a8c563e2b1d6ad538c8633dcd0cd0ed90a05ece"
+      },
+      {
+        "bytes": 31298,
+        "path": "Scripts/benchmark-inputs/native_calibration_inputs.py",
+        "sha256": "2f11f597fb8c7b2265f789467f9dc6009af6afd7f2c09d1fc7a3b386f9373381"
+      },
+      {
+        "bytes": 66269,
+        "path": "Scripts/benchmark-inputs/native_generation_inputs.py",
+        "sha256": "b53303c2baca05e2f21df55e62f898d67d4fe3757106e013c65b101ba3da4d74"
+      },
+      {
+        "bytes": 29663,
+        "path": "Scripts/benchmark-inputs/test_native_calibration_inputs.py",
+        "sha256": "8f12af59b2e945b911e4c995db5fdb61c8250ea6aa78079c02bcd3eb8ce33cfd"
+      },
+      {
+        "bytes": 29865,
+        "path": "Scripts/validate-native-calibration-inputs.py",
+        "sha256": "5c80d0ad597e37cd4391bc4ca0f1012738729aae00daca471c4b2fa743a60787"
+      },
+      {
+        "bytes": 84472,
+        "path": "Scripts/validate-native-sdk-generations.py",
+        "sha256": "43d94c13db7657dee7428bfbeebcbc8bdba398f1fa376a7fb635712f73796130"
+      },
+      {
+        "bytes": 62890,
+        "path": "Scripts/verify-native-calibration-contract.py",
+        "sha256": "7db72a147abe5a84f57c22f72799017e53ccfcf60e5811a1597447e963265e6a"
+      },
+      {
+        "bytes": 123713,
+        "path": "Scripts/verify-native-generation-contract.py",
+        "sha256": "d7150d430bd6b11d88ae2aac19d75034d3ed30324ca917221db45d2f25c1a0f9"
+      }
+    ],
+    "scope": "Prospective fixed-slot failure-chain retention only. Actual shell status and writer stability gate each selected original; the full candidate path remains strict. Safe bounded JSON projection uses the unchanged scanner/caps and endpoint rechecks. All prior failures/provenance remain historical. Compiler/SDK/engine schedules and native budgets are unchanged; full producer controls use synthetic native/process/compiler seams, and native outcome remains unproved."
+  },
   "generation_failure_diagnostic_overrides": {
     "base_commit": "d19ead28e3ff8645de171dfeffe91c16f6fa42f4",
     "base_tree": "4f7879cb6c71c25620f9932bca7d686b605409b1",

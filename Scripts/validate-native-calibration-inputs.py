@@ -106,7 +106,7 @@ def bound_machine_fields(root):
     return machine.macos_fields, binding
 
 
-def stage(name, root, *, profile="calibration"):
+def stage(name, root, *, profile="calibration", diagnostic_output=None):
     admission.require(profile == "calibration" or name in ("before-compilation", "after-generation"),
                       "invalid-generation-stage")
     started = time.perf_counter()
@@ -127,6 +127,10 @@ def stage(name, root, *, profile="calibration"):
     save(phases / (name + ".started.json"), dict(stage=name, status="started", final_protocol_ready=False))
     phase = dict(stage=name, status="failed", exit_code=1, accepted=False, final_protocol_ready=False,
                  helper_sha256=summary["helper_sha256"])
+    diagnostic = None
+    if profile != "calibration":
+        diagnostic = dict(checkpoint="context-admission", nested_material_safe=True, admission={})
+        phase["diagnostic"] = diagnostic
     try:
         required = {"before-compilation": set(), "after-generation": {"before-compilation"},
                     "after-calibration": {"before-compilation", "after-generation"}}[name]
@@ -155,9 +159,14 @@ def stage(name, root, *, profile="calibration"):
             admission.require(json.dumps(document(raw / "before-compilation/results.json"), sort_keys=True, allow_nan=False) ==
                               json.dumps(prior_phases["before-compilation"]["observation"], sort_keys=True, allow_nan=False),
                               "candidate-result-changed")
+        if diagnostic is not None:
+            diagnostic["checkpoint"] = "installation-binding"
         machine_fields, binding = bound_machine_fields(root)
         phase["installation_binding"] = binding
         options = dict(machine_fields=machine_fields, command=COMMAND.command, environment=dict(os.environ))
+        if diagnostic is not None:
+            diagnostic.update(checkpoint="native-admission", nested_material_safe=False)
+            options["diagnostic"] = diagnostic["admission"]
         if name == "before-compilation":
             observed = admission.begin(raw / name, **options)
             passed = observed["status"] == "captured-candidate"
@@ -183,6 +192,9 @@ def stage(name, root, *, profile="calibration"):
                 controller = document(original)
                 phase["calibration_status"] = dict(status=controller["status"], exit_code=controller["exit_code"])
                 passed = passed and controller["status"] == "passed" and type(controller["exit_code"]) is int and controller["exit_code"] == 0
+        if diagnostic is not None:
+            diagnostic["nested_material_safe"] = diagnostic["admission"].get("nested_material_safe") is True
+            diagnostic["checkpoint"] = diagnostic["admission"].get("checkpoint", "native-admission")
         phase["observation"] = observed
         phase.update(status="passed" if passed else "incomplete" if observed["status"] == "incomplete" else "failed", exit_code=0 if passed else 125
                      if observed["status"] == "incomplete" else 1)
@@ -191,6 +203,11 @@ def stage(name, root, *, profile="calibration"):
         phase.update(status="incomplete" if isinstance(error, KeyboardInterrupt) else "failed",
                      exit_code=125 if isinstance(error, KeyboardInterrupt) else 1,
                      failure_type=type(error).__name__, failure_sha256=hashlib.sha256(str(error).encode()).hexdigest())
+    if diagnostic is not None:
+        if diagnostic["admission"]:
+            diagnostic["nested_material_safe"] = diagnostic["admission"].get("nested_material_safe") is True
+        if diagnostic_output is not None:
+            diagnostic_output["failure_chain"] = generation_controller().safe_phase_chain(phase)
     phase["wall_seconds_before_receipt"] = time.perf_counter() - started
     save(phase_path, phase)
     summary["stages"][name] = dict(status=phase["status"], exit_code=phase["exit_code"],
@@ -240,6 +257,52 @@ def supervise(name, root):
     return result["exit_code"]
 
 
+EMPTY_PROBE_ORIGINAL = "discovery/setup/discovery/probe-input"
+EMPTY_PROBE_PROJECTED = "setup/original/" + EMPTY_PROBE_ORIGINAL + ".json"
+
+
+def empty_probe_descriptor():
+    return dict(schema_version=1, role="fixed-sdk-discovery-empty-probe", encoding="empty-file-v1",
+                original_path=EMPTY_PROBE_ORIGINAL, bytes=0, sha256=hashlib.sha256(b"").hexdigest(), content="")
+
+
+def json_bytes(value):
+    return (json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
+
+
+def original_copy_rows(originals, profile):
+    rows = []
+    for name, data in sorted(originals.items()):
+        row = dict(path=name, sha256=hashlib.sha256(data).hexdigest(), bytes=len(data))
+        if name == EMPTY_PROBE_ORIGINAL:
+            admission.require(profile == "sdk-generation-brackets" and data == b""
+                              and name + ".json" not in originals, "invalid-empty-probe-original")
+            encoded = json_bytes(empty_probe_descriptor())
+            row["projection"] = dict(path=EMPTY_PROBE_PROJECTED, encoding="empty-file-v1",
+                                     sha256=hashlib.sha256(encoded).hexdigest(), bytes=len(encoded))
+        rows.append(row)
+    return rows
+
+
+def verify_empty_probe_projection(staging, public, manifest, originals, profile):
+    if EMPTY_PROBE_ORIGINAL not in originals:
+        return
+    expected = dict(files=original_copy_rows(originals, profile))
+    encoded = json_bytes(empty_probe_descriptor())
+    # 유일한 빈 원본만 정확한 JSON과 역변환 b''로 보존하며 정규화기의 선택 규칙은 바꾸지 않는다.
+    for relative, data in ((EMPTY_PROBE_PROJECTED, encoded),
+                           ("setup/original-copy-manifest.json", json_bytes(expected))):
+        admission.require(runtime_bootstrap.read_regular(staging / relative) == data
+                          and runtime_bootstrap.read_regular(public / relative) == data,
+                          "empty-probe-projection-changed")
+        rows = [row for row in manifest["files"] if row.get("path") == relative]
+        admission.require(len(rows) == 1 and json_bytes(rows[0]) == json_bytes(dict(path=relative,
+            original_raw_sha256=hashlib.sha256(data).hexdigest(), normalized_sha256=hashlib.sha256(data).hexdigest(),
+            original_bytes=len(data), normalized_bytes=len(data))), "empty-probe-manifest-changed")
+    admission.require(empty_probe_descriptor()["content"].encode() == originals[EMPTY_PROBE_ORIGINAL],
+                      "empty-probe-inverse-changed")
+
+
 def original_small_files(raw, calls, *, profile="calibration"):
     """대형 봉인을 제외한 모든 원본의 집합과 바이트를 경계마다 같은 방식으로 읽는다."""
     excluded = {"before-compilation/seal.json", "after-generation/seal-verification.json",
@@ -265,9 +328,17 @@ def original_small_files(raw, calls, *, profile="calibration"):
                 relative = path.relative_to(base).as_posix()
                 if label == "raw" and relative in excluded:
                     continue
+                logical = label + "/" + relative
+                if profile == "sdk-generation-brackets" and logical == EMPTY_PROBE_ORIGINAL:
+                    data = runtime_bootstrap.read_regular(path)
+                    admission.require(data == b"", "nonempty-discovery-probe-input")
+                    rows[logical] = data
+                    continue
+                admission.require(profile != "sdk-generation-brackets" or logical != EMPTY_PROBE_ORIGINAL + ".json",
+                                  "empty-probe-projection-collision")
                 admission.require(path.suffix in {".json", ".stdout", ".stderr"} and not path.is_symlink(),
                                   "unexpected-publication-file")
-                rows[label + "/" + relative] = runtime_bootstrap.read_regular(path)
+                rows[logical] = runtime_bootstrap.read_regular(path)
     return rows
 
 
@@ -310,6 +381,12 @@ def publish(root, *, profile="calibration"):
 
 
 def publish_bundle(root, costs, *, profile="calibration"):
+    # 실패는 실제 shell 종료로만 선택하며 완료 후보 검증 실패를 다른 역할로 바꾸지 않는다.
+    if profile != "calibration":
+        controller = generation_controller()
+        invocation = controller.invocation_status(root)
+        if invocation["actual_shell_exit"] != 0:
+            return controller.publish_failure_capsule(root, costs, NORMALIZER)
     # 큰 봉인 원본은 정확한 가역 분할 표현으로만 옮기고 동일한 일반 스캐너를 통과시킨다.
     raw = root / "native-calibration-sdk-raw"
     summary = document(raw / "results.json")
@@ -334,8 +411,12 @@ def publish_bundle(root, costs, *, profile="calibration"):
     calls = root / "native-calibration-sdk-calls"
     originals = (original_small_files(raw, calls) if profile == "calibration" else
                  original_small_files(raw, calls, profile=profile))
+    copy_rows = original_copy_rows(originals, profile)
     for relative, data in originals.items():
-        target = staging / "setup/original" / relative
+        if relative == EMPTY_PROBE_ORIGINAL:
+            target, data = staging / EMPTY_PROBE_PROJECTED, json_bytes(empty_probe_descriptor())
+        else:
+            target = staging / "setup/original" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("xb") as stream:
             stream.write(data)
@@ -350,10 +431,7 @@ def publish_bundle(root, costs, *, profile="calibration"):
 
     options = {} if profile == "calibration" else dict(profile=profile)
     measured("prepare_projection", projection.prepare_projection, raw, staging, **options)
-    save(staging / "setup/original-copy-manifest.json", dict(files=[
-        dict(path=name, sha256=hashlib.sha256(data).hexdigest(), bytes=len(data))
-        for name, data in sorted(originals.items())
-    ]))
+    save(staging / "setup/original-copy-manifest.json", dict(files=copy_rows))
     prefixes = [
         "WORKSPACE=" + str(ROOT), "RUNNER_TEMP=" + str(root),
         "RUNNER_HOME=" + str(Path.home()), "DEVELOPER=" + admission.expectation()[0]["developer_physical"],
@@ -369,6 +447,7 @@ def publish_bundle(root, costs, *, profile="calibration"):
     finally:
         costs.setdefault("normalizer", dict(status="failed"))["full_wall_seconds"] = time.perf_counter() - at
     measured("verify_publication", projection.verify_publication, staging, public, manifest, **options)
+    verify_empty_probe_projection(staging, public, manifest, originals, profile)
     measured("verify_sources", projection.verify_sources, raw, staging, **options)
     endpoint = (original_small_files(raw, calls) if profile == "calibration" else
                 original_small_files(raw, calls, profile=profile))
@@ -389,6 +468,7 @@ def main():
     parser.add_argument("--generation-context-sha256", help=argparse.SUPPRESS)
     parser.add_argument("--generation-publication", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    terminal = {}
     try:
         profile = "sdk-generation-brackets" if args.generation_context_sha256 or args.generation_publication else "calibration"
         if args.generation_context_sha256:
@@ -406,7 +486,7 @@ def main():
                           "invalid-generation-mode")
         admission.require(not (args.execute_stage and args.stage == "publish"), "invalid-internal-stage")
         if profile != "calibration":
-            code = publish(root, profile=profile) if args.stage == "publish" else stage(args.stage, root, profile=profile)
+            code = publish(root, profile=profile) if args.stage == "publish" else stage(args.stage, root, profile=profile, diagnostic_output=terminal)
         else:
             code = publish(root) if args.stage == "publish" else (
                 stage(args.stage, root) if args.execute_stage else supervise(args.stage, root))
@@ -414,7 +494,7 @@ def main():
         print(json.dumps(dict(status="refused", failure_type=type(error).__name__,
                               failure_sha256=hashlib.sha256(str(error).encode()).hexdigest())), file=sys.stderr)
         return 1
-    print(json.dumps(dict(stage=args.stage, exit_code=code, accepted=False, final_protocol_ready=False)))
+    print(json.dumps(dict(stage=args.stage, exit_code=code, accepted=False, final_protocol_ready=False, **terminal)))
     return code
 
 

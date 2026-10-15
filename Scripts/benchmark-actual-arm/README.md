@@ -559,6 +559,137 @@ per child, 120 seconds overall and 10 seconds cleanup grace; actual successful c
 were zero. No native retry or capability, descendant-closure, timing or final-protocol acceptance is
 established by this correction.
 
+
+### Bounded generation failure-chain capsule
+
+Generation-only run7 (`38656571458`, source `07016e7b`) retained actual controller exit125
+and the fixed first-phase completeness refusal. Its safe hash identifies that predicate, not the
+underlying phase-child reason. Only measurement setup was published; phase, compiler and SDK-read
+counts remain unavailable. Run6's earlier unknown failure remains unchanged.
+
+A failed generation invocation now has a separate `sdk-generation-failure-capsule-v1` publication
+role. The pinned sole-writer workflow finalizes its actual shell exit, source and run/attempt identity
+after the same single invocation. It refuses an existing or symlinked status path before redirection
+and retains Bash noclobber; this is not a general atomic O_EXCL guarantee against other writers.
+A current-step finalization output and absence of every child-output
+subtree before launch gate lower evidence reads. A stale or unfinished status receipt cannot be
+reused. Actual shell zero still requires the original full candidate verification; its failure never
+falls back to a capsule. Nonzero/125 plus a complete disk JSON remains incomplete.
+
+The capsule reads at most 78 fixed JSON slots and the 72 fixed adjacent streams belonging to 36
+command slots. Every selected input is bounded by the unchanged 8 MiB/file and 64 MiB aggregate
+limits. Each record is bound to its fixed role, command/source/parent reference and stopped prefix.
+Only a proven-finished writer permits a read; uncertain command ownership withholds its streams.
+Fixed producer-owned JSON can describe a stopped lifecycle without certifying compiler cleanup or
+counting completed work. Missing or malformed records remain unavailable. A stable phase command's
+safe early stderr can be retained even when its phase/admission result and all seals are absent.
+
+Projection emits typed actual exits, finite costs, fixed categories/booleans and hashes. Strict JSON
+stream decoding is limited to 64 KiB and literal reviewed schemas; raw paths, arbitrary exception
+text, environments and streams are never copied. The unchanged privacy scanner processes the safe
+capsule, and source plus selected original membership/hashes are rechecked after normalization.
+Scanner refusal remains refusal. Failure-capsule actual compiler/read counts are null and all
+acceptance/final flags remain false, independently of any reported disk completion.
+
+The first local invocation retained the expected original-source refusal, then stopped after the
+65-method generation suite reported 29 failed subcases and five errors; later suites did not start.
+Source inspection identified an incompatible extra byte-count field in the new phase-reference
+check and inherited vendor modules in the in-process lifecycle fixture. The successor binds the
+producer's exact path/SHA reference and isolates the two lifecycle module names as a separate
+Python process would. The original red is retained. The source05 continuation then ran 66 generation methods and
+stopped with ten failed subcases and no errors; later suites again remained unstarted. Its safe
+diagnostics identified a rejected exact initial empty summary and a separately inherited discovery
+module cache. The next source revision admits only the producer's exact initial seven-field object
+as an initial observation, keeping progressed schema/role/profile checks strict, and isolates the
+two discovery module names with exact origin assertions. The complete-candidate publication
+failure had no retained reason; its next assertion added the same safe diagnostics. Neither source
+inspection nor these synthetic failures identifies the missing native run6/run7 child cause. That
+checkpoint did not establish a corrected or native result.
+
+The source06 fail-fast continuation stopped after three passing methods and one candidate
+publication failure. Its safe reason identifies the copier's unexpected-file predicate. Source
+inspection shows that the unchanged selector necessarily writes one empty extensionless
+`discovery/setup/discovery/probe-input`, which both the original copier and generic scanner omit
+from their admitted text suffixes. The tested successor retains only that exact regular empty input
+through a fixed lossless JSON descriptor, with explicit source path/bytes/hash and copy-manifest
+binding. Normalized readback must reconstruct exactly the empty bytes; rehashed malformed records,
+collisions, symlinks, nonempty contents and changed endpoint membership refuse. Scanner selection
+and caps stay unchanged. This is a source-backed incompatibility, not recovery of the failed
+fixture's unretained filename or either historical native failure cause.
+
+The local controls exercise real main/controller/phase, installation binding, tiny two-root
+seals, all 13 lifecycle states, selector, candidate verification and publication with explicitly
+synthetic process/compiler/native observations. They retain real file/receipt writers and timing
+checks; they do not execute native tools or engines. Native schedules, source admission, image/tool
+expectations, compiler plans, 1800/1815-second bounds and final protocol remain unchanged. Capsule
+read/publication costs are separate from the original caller costs; no composed endpoint is claimed.
+
+The final source07 continuation passed all 473 methods: 71 generation, 62 wrapper, 220 SDK helper,
+63 normalizer and 57 discovery controls. Actionlint, all 44 shell syntax blocks and whitespace also
+passed. This was one successful invocation, following the three separately retained red attempts.
+The fixed local bounds were 300 seconds for generation, 120 for SDK helpers, 30 for other children,
+and 840 seconds plus 10 seconds kill grace overall. Actual generation/SDK child walls were
+106.299278/22.468836 seconds; all eight command exits and the outer exit were zero, with no skipped
+methods or cleanup uncertainty. All 201 current and 286 retained input brackets matched. The shared
+lock released at 2026-10-15T01:48:42.202938445Z. Fourteen bounded status-shell children used only
+reviewed Bash builtins; native probes, compiler commands and actor processes were synthetic.
+
+The empty-probe descriptor readback is charged inside the full publication caller wall, outside its
+named subphase costs, and is not added again to a composed total. No native generation or final
+protocol result is credited by these controls; exact-head CI and any later changed-source native
+validation remain separate gates.
+
+
+### Explicit inventory-fault seam for native CI
+
+PR193's original CI519 (`38668177511`, head `8888e0a6`) retained one failed
+`capture-inventory` subcase among 71 generation controls: the synthetic route
+returned zero instead of the intended failure. The exact original log does not
+identify its Python version. Source inspection found that the fixture intercepted
+`Path.stat`, while the unchanged real seal inventory calls `Path.lstat`.
+[CPython 3.13.7](https://github.com/python/cpython/blob/v3.13.7/Lib/pathlib/_abc.py#L395-L400)
+delegates that method through `self.stat`, whereas
+[CPython 3.14.0](https://github.com/python/cpython/blob/v3.14.0/Lib/pathlib/__init__.py#L606-L611)
+calls `os.lstat` directly. This establishes a source-backed injection mechanism,
+not the unretained native interpreter version or a production inventory defect.
+
+The test-only successor hooks `Path.lstat` explicitly and requires exactly one
+fault hit before claiming the intended failed execution. It preserves the real
+inventory and failure-capsule path, failed/sdk-capture observations and zero
+compiler calls. A full-route control installs direct `os.lstat` semantics and
+registers patch restoration before fixture cleanup, preventing either interpreter
+delegation or a failing assertion from silently bypassing or leaking the seam.
+Production, scanner, workflow, native schedules and resource bounds are unchanged.
+The first local caller stopped at its baseline with child exit 2 and outer exit 1:
+the original method reached `native-admission != sdk-capture`, rather than the
+required original `0 == 0` assertion. Its 506 input brackets matched and cleanup
+completed; the 72-method successor suite and whitespace check did not start.
+The direct-lstat harness had bypassed the existing synthetic `/usr/bin/xcrun`
+and `/usr/lib/swift` remaps. Source shows the xcrun alias is observed before
+capture, while the host-runtime reference is checked later; the exact underlying
+admission reason was not retained. The corrected test seam applies precisely
+those two existing mappings, requires the stage-appropriate remap hits, and keeps
+direct `os.lstat` for real paths. The unchanged original fixture and exact
+`0 == 0` baseline predicate remain required. The separately reviewed continuation
+reproduced exactly that original assertion at `failed()` line 1450, with xcrun
+remap coverage, and then passed all 72 generation methods and whitespace. Actual
+child exits were 1 (expected baseline), 0 and 0; outer exit was 0. Baseline and
+generation walls were 8.849921 and 111.584060 seconds within their 30/300-second
+limits; the overall caller took 120.625512 seconds within 360 seconds plus a
+10-second kill grace. All 536 input and caller brackets matched, all 14 direct
+Bash roots completed, and cleanup had no uncertainty. The two fixed synchronous
+foreground-subshell paths share the inherited lock; the count is of direct
+launches, not arbitrary descendants. The supervisor descriptor closed at
+2026-10-15T02:37:07.192198970Z with lane stability proved.
+
+These local Python 3.13 controls use synthetic native/compiler observations and
+real tiny-file producer/publication paths. They do not establish the unobserved
+native Python version or a native generation result. Original CI519 and the local
+premise failure remain separate evidence; original CI521 (`38672493510`) on
+`8c8a776720936d97d8267b7975b36bfa2b1603d0` passed all three jobs, including
+72 generation controls, 220 SDK helper controls and 2054 tests. Combined-source
+CI remains pending.
+
 ### Interpreter launch, runtime and physical identity roles
 
 Capability run2 `38659730547`, on source `ae98aa8604cdf7a73698a72464757126237deab9`, retained
