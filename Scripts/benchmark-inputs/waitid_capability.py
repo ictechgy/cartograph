@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
+import re
 import inspect
 import os
 from pathlib import Path
@@ -26,6 +28,170 @@ LEDGER_NEGATIVES = ("missing-terminal", "boolean-exit", "normal-killed-mismatch"
                     "status-mismatch", "early-reap", "signal-after-reap", "duplicate-reap")
 WATCHDOG_SECONDS, CASE_SECONDS, SUITE_SECONDS, OUTER_SECONDS = 5, 10, 120, 150
 MAX_LAUNCHES = 13
+
+
+DIAGNOSTIC_LIMIT = 16 * 1024
+DIAGNOSTIC_ERRORS = ("ValueError", "OSError", "FileNotFoundError", "FileExistsError", "PermissionError",
+    "ChildProcessError", "ProcessLookupError", "RuntimeError", "TypeError", "KeyError", "UnicodeError",
+    "UnicodeDecodeError", "UnicodeEncodeError", "TimeoutError", "TimeoutExpired", "Cancelled",
+    "CapabilityFailure", "ObservationTimeout", "UnfinishedChild", "InterpreterAdmissionFailure",
+    "InterpreterObservationError", "PublicationBlocked", "BrokenPipeError")
+INNER_PHASES = ("helper-setup", "case", "cleanup", "result-finalization", "complete", "unavailable")
+
+
+def bounded_text_hash(value):
+    """기존 문자열 전체만 엄격한 UTF-8 한도 안에서 해시하며 접두사는 대신 쓰지 않는다."""
+    if type(value) is not str or len(value) > 65536:
+        return None
+    try:
+        data = value.encode("utf-8", errors="strict")
+    except UnicodeEncodeError:
+        return None
+    return hashlib.sha256(data).hexdigest() if len(data) <= 65536 else None
+
+
+def safe_hash(value):
+    return value if type(value) is str and re.fullmatch(r"[0-9a-f]{64}", value) else None
+
+
+def safe_int(value, lower, upper):
+    return value if type(value) is int and lower <= value <= upper else None
+
+
+def safe_wall(value):
+    if type(value) not in (int, float):
+        return None
+    try:
+        return value if math.isfinite(value) and value >= 0 else None
+    except OverflowError:
+        return None
+
+
+def retained_error(error):
+    # 새 진단을 위해 임의 __str__을 호출하지 않고 단일 문자열 인자만 보존한다.
+    args = BaseException.args.__get__(error)
+    reason = args[0] if type(args) is tuple and len(args) == 1 and type(args[0]) is str else None
+    return dict(type=type(error).__name__, reason=reason)
+
+
+def safe_error(value):
+    value = value if type(value) is dict else {}
+    name, reason = value.get("type"), value.get("reason")
+    reason_hash = bounded_text_hash(reason)
+    return dict(category=name if type(name) is str and name in DIAGNOSTIC_ERRORS else "unknown-exception",
+        type_sha256=bounded_text_hash(name), reason_sha256=reason_hash,
+        reason_status="available" if reason_hash is not None else "unavailable")
+
+
+class FailureLog:
+    """첫 실패를 고정하고 세 개를 넘는 부수 실패는 개수 대신 초과 여부만 남긴다."""
+    def __init__(self):
+        self.primary = None
+        self.secondary = []
+        self.overflow = False
+
+    def record(self, value):
+        projected = safe_error(value)
+        if self.primary is None:
+            self.primary = projected
+        elif len(self.secondary) < 3:
+            self.secondary.append(projected)
+        else:
+            self.overflow = True
+
+
+class InnerDiagnostic(FailureLog):
+    """파일을 다시 읽지 않는 고정 도우미 실패 투영이다."""
+    def __init__(self):
+        super().__init__()
+        self.source_sha256 = None
+        self.case = None
+        self.phase = "helper-setup"
+        self.failure_phase = "unavailable"; self.failure_case = None
+
+    def record(self, value):
+        if self.primary is None:
+            self.failure_phase = self.phase if self.phase in INNER_PHASES else "unavailable"
+            self.failure_case = self.case if self.case in dict(CASES) else None
+        super().record(value)
+
+    def value(self, intended):
+        return dict(schema_version=1, role="waitid-capability-helper-diagnostic", diagnostic_only=True,
+            source_sha256=safe_hash(self.source_sha256), case=self.case if self.case in dict(CASES) else None,
+            phase=self.phase if self.phase in INNER_PHASES else "unavailable", status="incomplete",
+            failure_phase=self.failure_phase, failure_case=self.failure_case,
+            intended_returncode=safe_int(intended, 0, 255), failure=self.primary, secondary=self.secondary,
+            secondary_overflow=self.overflow, timing_eligible=False, descendant_closure_eligible=False,
+            final_protocol_ready=False)
+
+
+def diagnostic_line(value):
+    data = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False) + "\n"
+    if len(data) > DIAGNOSTIC_LIMIT:
+        raise ValueError("diagnostic-size-limit")
+    return data
+
+
+def valid_safe_error(value):
+    if type(value) is not dict or set(value) != {"category", "type_sha256", "reason_sha256", "reason_status"}:
+        return False
+    if value["category"] not in (*DIAGNOSTIC_ERRORS, "unknown-exception"):
+        return False
+    if (value["category"] in DIAGNOSTIC_ERRORS
+            and value["type_sha256"] != bounded_text_hash(value["category"])):
+        return False
+    return (safe_hash(value["type_sha256"]) is not None
+        and ((value["reason_status"] == "available" and safe_hash(value["reason_sha256"]) is not None)
+             or (value["reason_status"] == "unavailable" and value["reason_sha256"] is None)))
+
+
+def parse_inner_diagnostic(data, stream, admitted_helper):
+    """이미 읽은 전체 루트 stdout에만 결속하며 실패하면 내용 없이 고정 거부를 남긴다."""
+    unavailable = dict(status="unavailable", reason="invalid-helper-diagnostic")
+    if safe_hash(admitted_helper) is None:
+        return dict(status="unavailable", reason="helper-source-not-admitted")
+    if (type(data) is not bytes or not 0 < len(data) <= DIAGNOSTIC_LIMIT or type(stream) is not dict
+            or safe_int(stream.get("bytes"), 0, 8 * 1024**2) != len(data)
+            or safe_hash(stream.get("sha256")) != hashlib.sha256(data).hexdigest()):
+        return unavailable
+    def pairs(rows):
+        value = {}
+        for key, item in rows:
+            if key in value:
+                raise ValueError("duplicate-diagnostic-key")
+            value[key] = item
+        return value
+    try:
+        text = data.decode("ascii")
+        if text.count("\n") != 1 or not text.endswith("\n"):
+            return unavailable
+        value = json.loads(text, object_pairs_hook=pairs,
+                           parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite-diagnostic")))
+        keys = {"schema_version", "role", "diagnostic_only", "source_sha256", "case", "phase", "status",
+                "intended_returncode", "failure", "secondary", "secondary_overflow", "timing_eligible",
+                "descendant_closure_eligible", "final_protocol_ready", "failure_phase", "failure_case"}
+        if (type(value) is not dict or set(value) != keys or type(value["schema_version"]) is not int
+                or value["schema_version"] != 1 or value["role"] != "waitid-capability-helper-diagnostic"
+                or value["diagnostic_only"] is not True or value["status"] != "incomplete"
+                or value["phase"] not in INNER_PHASES or value["case"] not in (None, *dict(CASES))
+                or value["failure_phase"] not in INNER_PHASES or value["failure_case"] not in (None, *dict(CASES))
+                or safe_int(value["intended_returncode"], 1, 255) is None
+                or not valid_safe_error(value["failure"]) or type(value["secondary"]) is not list
+                or len(value["secondary"]) > 3 or not all(valid_safe_error(e) for e in value["secondary"])
+                or type(value["secondary_overflow"]) is not bool
+                or any(value[key] is not False for key in
+                       ("timing_eligible", "descendant_closure_eligible", "final_protocol_ready"))):
+            return unavailable
+        for phase, case in ((value["phase"], value["case"]), (value["failure_phase"], value["failure_case"])):
+            if ((phase in ("case", "cleanup") and case is None) or (phase == "helper-setup" and case is not None)):
+                return unavailable
+        if value["source_sha256"] is None:
+            return dict(status="unavailable", reason="helper-source-unbound")
+        if safe_hash(value["source_sha256"]) != admitted_helper:
+            return dict(status="unavailable", reason="helper-source-conflict")
+        return dict(status="source-bound", stream_bytes=len(data), stream_sha256=stream["sha256"], value=value)
+    except (ValueError, TypeError, UnicodeError, RecursionError):
+        return unavailable
 
 
 class CapabilityFailure(ValueError):
@@ -120,6 +286,7 @@ class OwnedCase:
         self.creating = False
         self.pending = None
         self.cleanup_errors = []
+        self.diagnostic = None
 
     def remaining(self, limit):
         remaining = self.deadline - time.monotonic()
@@ -223,6 +390,7 @@ class OwnedCase:
                         pass
                     except BaseException as error:
                         self.cleanup_errors.append(dict(step="individual-kill", type=type(error).__name__))
+                        if self.diagnostic is not None: self.diagnostic.record(retained_error(error))
             for row in self.actors:
                 try:
                     row["audit_finished_before_reap"] = self.audit_finished
@@ -230,6 +398,7 @@ class OwnedCase:
                     row["reap_count"] += 1
                 except BaseException as error:
                     self.cleanup_errors.append(dict(step="individual-reap", type=type(error).__name__))
+                    if self.diagnostic is not None: self.diagnostic.record(retained_error(error))
                 finally:
                     for key in ("control", "ready"):
                         try: os.close(row[key])
@@ -352,43 +521,69 @@ def execute_case(case):
     return outcome
 
 
-def run(output):
+def run(output, diagnostic=None):
+    diagnostic = diagnostic if diagnostic is not None else InnerDiagnostic()
     output.mkdir(exist_ok=False)
     started = time.monotonic(); deadline = started + SUITE_SECONDS
     source = Path(__file__).read_bytes()
+    diagnostic.source_sha256 = hashlib.sha256(source).hexdigest()
     result = dict(schema_version=1, profile="native-waitid-capability-v1", capability_only=True,
         descendant_closure_eligible=False, timing_eligible=False, final_protocol_ready=False, actual_engine_calls=0,
-        source_sha256=hashlib.sha256(source).hexdigest(), schedule=[dict(name=n, max_launches=c) for n,c in CASES],
+        source_sha256=diagnostic.source_sha256, schedule=[dict(name=n, max_launches=c) for n,c in CASES],
         bounds=dict(watchdog=5, case=10, suite=120, outer=150), cases=[], status="incomplete")
     counter = [0]; failed = False
     for name, maximum in CASES:
         if failed or time.monotonic() >= deadline:
-            result["cases"].append(dict(name=name, status="not-started", reason="prior-failure-or-suite-deadline"));failed=True;continue
+            if not failed:
+                diagnostic.case = name; diagnostic.phase = "case"
+                diagnostic.record(dict(type="CapabilityFailure", reason="suite-deadline-expired"))
+            result["cases"].append(dict(name=name, status="not-started", reason="prior-failure-or-suite-deadline"))
+            failed=True;continue
+        diagnostic.case = name; diagnostic.phase = "case"
         case = OwnedCase(output, name, deadline, counter); primary = None; row = dict(name=name, status="incomplete")
+        case.diagnostic = diagnostic
         previous = {sig: signal.signal(sig, case.cancel) for sig in (signal.SIGTERM, signal.SIGINT)}
+        cleanup = None
         try:
             row.update(execute_case(case))
         except BaseException as error:
-            primary = dict(type=type(error).__name__, reason=str(error)); row["failure"] = primary
+            primary = retained_error(error); row["failure"] = primary; diagnostic.record(primary)
         finally:
-            cleanup = case.finish()
-            for sig, handler in previous.items(): signal.signal(sig, handler)
+            diagnostic.phase = "cleanup"
+            try:
+                cleanup = case.finish()
+            except BaseException as error:
+                failure = retained_error(error); diagnostic.record(failure)
+                if primary is None: primary = failure; row["failure"] = primary
+            finally:
+                for sig, handler in previous.items():
+                    try: signal.signal(sig, handler)
+                    except BaseException as error:
+                        failure = retained_error(error); diagnostic.record(failure)
+                        if primary is None: primary = failure; row["failure"] = primary
         row.update(actors=case.receipts(), cleanup=cleanup, full_case_wall_seconds=time.monotonic()-case.start)
+        diagnostic.phase = "case"
         try:
-            require(primary is None and not cleanup["errors"] and not cleanup["unfinished"], "case-incomplete")
+            require(primary is None and cleanup is not None and not cleanup["errors"] and not cleanup["unfinished"],
+                    "case-incomplete")
             require(len(case.actors) == maximum and row["full_case_wall_seconds"] <= CASE_SECONDS, "case-schedule-or-budget")
             for actor in row["actors"]: verify_ledger(actor)
             row["status"] = "capability-case-passed"
         except BaseException as error:
-            row.setdefault("failure", dict(type=type(error).__name__, reason=str(error)));failed=True
-        result["cases"].append(row)
-        if cleanup["unfinished"]:
+            if primary is None:
+                primary = retained_error(error); row["failure"] = primary; diagnostic.record(primary)
             failed=True
+        result["cases"].append(row)
+        if cleanup is None or cleanup["unfinished"]: failed=True
     result.update(status="incomplete" if failed else "capability-only-complete", actual_launches=counter[0],
                   full_suite_wall_seconds_before_receipt=time.monotonic()-started)
     if result["full_suite_wall_seconds_before_receipt"] > SUITE_SECONDS or counter[0] > MAX_LAUNCHES:
         result["status"] = "incomplete"
-    with (output/"results.json").open("x") as stream: json.dump(result, stream, sort_keys=True, indent=2);stream.write("\n")
+        diagnostic.record(dict(type="CapabilityFailure", reason="suite-schedule-or-budget"))
+    diagnostic.phase = "result-finalization"
+    with (output/"results.json").open("x") as stream:
+        json.dump(result, stream, sort_keys=True, indent=2);stream.write("\n")
+    if result["status"] == "capability-only-complete": diagnostic.phase = "complete"
     return result
 
 
@@ -396,9 +591,20 @@ def main():
     if len(sys.argv) == 5 and sys.argv[1] == "--actor":
         actor_main(int(sys.argv[2]), int(sys.argv[3]), sys.argv[4] == "1")
         return 91
-    parser = argparse.ArgumentParser();parser.add_argument("--output",type=Path,required=True);args=parser.parse_args()
-    result=run(args.output)
-    return 0 if result["status"] == "capability-only-complete" else 1
+    diagnostic = InnerDiagnostic(); code = 125
+    try:
+        parser = argparse.ArgumentParser();parser.add_argument("--output",type=Path,required=True);args=parser.parse_args()
+        result=run(args.output, diagnostic)
+        code = 0 if result["status"] == "capability-only-complete" else 1
+    except BaseException as error:
+        diagnostic.record(retained_error(error))
+    if code != 0:
+        try:
+            sys.stdout.write(diagnostic_line(diagnostic.value(code)));sys.stdout.flush()
+        except BaseException:
+            # 출력 실패는 앞선 실패의 반환값을 성공으로 바꾸지 않는다.
+            code = code or 125
+    return code
 
 
 if __name__ == "__main__":

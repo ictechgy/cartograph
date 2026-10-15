@@ -906,6 +906,61 @@
     "role": "prospective-synthetic-native-primitive-capability-only",
     "scope": "No native actors or engines have run. Local mock/file/AST controls only; actual native API availability and bounded capability completion remain prospective. Original observer rejection and all historical provenance are retained. The generic normalizer, existing measurement helper, source allowlist and scanner caps are unchanged. Existing broad SDK test discovery includes the new 17-method mocked inner suite; the 27 outer methods are local/manual-route controls."
   },
+  "native_waitid_complete_failure_observability_v1": {
+    "design_sha256": "6b851170a8935b4a79600161b5c162edddaf6ee2562aed0ccc0033cd1b73a2f2",
+    "files": [
+      {
+        "bytes": 57652,
+        "path": "Scripts/validate-native-waitid-capability.py",
+        "sha256": "af13616d32ce7ce6b8f69f5a1ebffb824d52c46d8de9553d076e5c19a9cf487c"
+      },
+      {
+        "bytes": 31100,
+        "path": "Scripts/benchmark-inputs/waitid_capability.py",
+        "sha256": "fbf128b659bd30fd82247b82d81fd86ceddb10b4babf2a4a477c654131215045"
+      },
+      {
+        "bytes": 39885,
+        "path": "Scripts/benchmark-inputs/test_waitid_capability_failures.py",
+        "sha256": "3500ead0f13c49a1c35519e7947b98e72dd5d9d0b04c00317a084948d4398baf"
+      },
+      {
+        "bytes": 80605,
+        "path": "Scripts/test-native-waitid-capability.py",
+        "sha256": "2769441afe5f7f7cbb39a13124ea68cf37613172b6e29a3cfed6cd2980cba972"
+      },
+      {
+        "bytes": 70251,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "091ce81f940b92fbb33c277dcebfe6490aba41de1ca4d2fad267ff66734f7ce2"
+      }
+    ],
+    "local_continuation": {
+      "actual_outer_exit": 0,
+      "baseline_and_inner_reexecuted": false,
+      "caller_wall_seconds": 9.09187812601158,
+      "distinct_successor_methods": 106,
+      "fresh_methods": 89,
+      "independent_sha256": "8faefebb030c7a9ad312dea50c6d70c68c036bd5691fbdb072e37c8ab4df06c6",
+      "result_sha256": "c514aaf8820c6e598bacd5720a62590b544214a993fc615117b113fc458baca8",
+      "retained_inner_methods": 17,
+      "source_input_count": 1126,
+      "supervisor_descriptor_closed": "2026-10-15T04:57:31.801128869Z"
+    },
+    "local_same_tree_parent": "f90abc5052662f91dd17a343474577273b342c80",
+    "original_local_attempt": {
+      "actual_outer_exit": 1,
+      "independent_sha256": "d7e7697b1c980a274da84962ba5a38ad4bdfcea72b0db013fcd702685d0804e5",
+      "result_sha256": "2233f9ce58d06b1fd05da7e74d082785ff3d79933921dabb6a39181546e7d51c",
+      "source_snapshot_sha256": "8d63084b51c93516dc7ad8d585a39e1bc6f800d7bb9a443ab0db1022efe3824a"
+    },
+    "parent_tree": "55241d3e2c28e434155024088089c0bfe5a93672",
+    "remote_parent": "ec8b656262777bd345e12abe1097651ed7ccea08",
+    "role": "bounded-log-only-capability-failure-observability",
+    "scope": "Source02 observability union with a narrow raw-component interpreter alias admission correction. Original baseline expected refusal and17 inner passes are retained without rerun; original outer38 stopped at one suffix /. failure with18 methods unstarted. Source03 continuation passed30 diagnostic and59 corrected outer methods, yielding106 distinct successor methods across attempts. Strict executable/image/source pins, native actor schedule, deadlines and scanner remain unchanged; native failures remain separately unrecovered. Product wait/anchor limitation remains explicit.",
+    "source02_manifest_sha256": "240beb8739686f56fb91d6740c86eb40efd2ec57bd2d4c2050e53ef7bb03ce54",
+    "status": "local-controls-accepted-original-red-retained-native-unproved"
+  },
   "reconstruction_overrides": {
     "base_repository_commit": "1246bd07aa1ae7768e26a385b59b49d285e8f492",
     "files": [
