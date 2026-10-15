@@ -562,6 +562,126 @@
     "role": "prospective-native-observer-sdk-admission",
     "scope": "Additive source identity only. Optional fixed32 actual-engine diagnostic with timing-only empirical eligibility, exact same-engine typed outputs, independent memory observation and two-root SDK pre/post candidate evidence. Existing ordinary AB path, frozen vendor helpers, source cap and normalizer limits remain. Original execution outcomes and all earlier provenance entries remain historical. Native execution, reviewed SDK acceptance and final-protocol comparison remain separate; no final holdout or superiority is established."
   },
+  "native_environment_observation_preparation_v1": {
+    "base_commit": "709b776d59c780cdd5ac7fd3a6d943cc361170b1",
+    "base_tree": "e749b74b772e05c82507412217209f5124f48113",
+    "files": [
+      {
+        "bytes": 97350,
+        "path": "Scripts/validate-native-environment-observation.py",
+        "sha256": "7086c31463bd8dce11541bd909e3ce88ab1552346480097c568ca9b09ea2f4f1"
+      },
+      {
+        "bytes": 6284,
+        "path": "Scripts/benchmark-inputs/native_environment_observer.py",
+        "sha256": "8b619bb7cd751be1e8eebe7a922843d2e1a68a60b4e098a63d1620ad1e228b5e"
+      },
+      {
+        "bytes": 23481,
+        "path": "Scripts/benchmark-inputs/native_environment_probe_support.py",
+        "sha256": "2a21433cf7321df5d2a88d4976f32d160f996c1ac94fbc762a5d3e1d20705fa4"
+      },
+      {
+        "bytes": 3938,
+        "path": "Scripts/benchmark-inputs/native_environment_probe_manifest.json",
+        "sha256": "cff07afd1afb794261128c744be31bcbcfe00ec905d90f65c15a1c261e5fd1b3"
+      },
+      {
+        "bytes": 90811,
+        "path": "Scripts/benchmark-inputs/test_native_environment_observation.py",
+        "sha256": "be7142ca650cc956b4c3e16c56f65902472b61521da44cdff3a6ca2cd61132ba"
+      },
+      {
+        "bytes": 5411,
+        "path": ".github/workflows/native-environment-observation.yml",
+        "sha256": "b579bbf6f77223e2ae25e3a55f3a7e7dcb3ea127ef5800b2797805297af24fba"
+      },
+      {
+        "bytes": 80836,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "8cf990993c11815611938ff5685af10a68bfb912fa8eb3ea5e96ac62ebed1251"
+      }
+    ],
+    "fresh_local_controls": {
+      "actual_external_exit": 0,
+      "caller": "source06",
+      "caller_review_sha256": "248d948d0d55300e440f140ffbcd278743deb612a6af3394b94a534132e2791c",
+      "caller_seconds": 122.32975645000988,
+      "descriptor_closed_utc": "2026-10-15T09:22:03.387916147Z",
+      "direct_children": 8,
+      "emitter_calls": 107,
+      "independent_result_sha256": "235bc6405fba304b077ff0b414d37877c22108091cc2c986834debfb8f333a99",
+      "methods": 52,
+      "old_prefix_credit": false,
+      "outer_bound_seconds": 365,
+      "outer_kill_grace_seconds": 10,
+      "owner_terminal_report_sha256": "837250e3435e692169dd516734c25093416bb0763f3c553336343791905c4167",
+      "partition_methods": [
+        48,
+        4
+      ],
+      "partition_seconds": [
+        95.551877150996,
+        25.67343963199528
+      ],
+      "producer_routes": 62,
+      "qualification": "Fresh synthetic producer/publication and static local controls; separate complete partition closures and aggregate52 gate. Neither failed whole-suite attempt contributes pass credit. Native single60-second prerequisite fit, installed equivalence and constructor hard-bound remain unproved.",
+      "result_sha256": "ecf3a5c0bd9d7269be9e8d8aecf0cd6be59deb5dcc492b5ef0459ce8a84c04df",
+      "simulated_process_attempts": 346,
+      "source_inputs": 50,
+      "subtests": 200,
+      "suite_bound_seconds": 120
+    },
+    "historical_native_failures": {
+      "capability_runs": [
+        38646168312,
+        38659730547,
+        38675402354,
+        38690491487
+      ],
+      "generation_run6": 38638885985,
+      "generation_run7": 38656571458,
+      "generation_run8": 38680821159
+    },
+    "native_eligibility": false,
+    "preserved_timeouts": [
+      {
+        "caller": "source04",
+        "diagnostic_completed_methods": 28,
+        "external_exit": 143,
+        "incomplete_method": "T23",
+        "independent_report_sha256": "362a7be610427367efb50b4ef0a04ee9fc3d809d70019a7b3dd57643e95c044e",
+        "raw_suite_exit": -15,
+        "result_sha256": "b723f94b8f05aea15969625820d877f5d514f6d025f8795874723ad1f17f984e",
+        "suite_seconds": 120.03306822601007
+      },
+      {
+        "caller": "source05",
+        "diagnostic_completed_methods": 48,
+        "external_exit": 143,
+        "incomplete_method": "T43",
+        "independent_report_sha256": "b2062fa9a724882597e610605040c89c14668f4a85638264f453c1f7c4872f29",
+        "raw_suite_exit": -15,
+        "result_sha256": "a218bb5052dc5260c7c76c9d361dbeb6fc78d78ba35bc5cc3724e884e78d8ab4",
+        "suite_seconds": 120.03401827100606
+      }
+    ],
+    "role": "bounded-isolated-python-environment-observation-preparation",
+    "scope": "Two prospective fixed stdlib environment observations under the existing strict old platform regime. Actual native startup behavior and run8 cause remain unproved; newer image admission is not supplied. Parent and nested writer gates, actual raw exit precedence, exact original/current source and request baselines, nine projections and unchanged normalizer/scanner are bound. Entire prior README and all28 previous provenance values are historical and unchanged.",
+    "source_review_sha256": "d1bc019e70bc98bbdc3dde04d32e41357b8359b960072b4831cc19f9bf8e08f5",
+    "unchanged_dependencies": [
+      {
+        "bytes": 36808,
+        "path": "Scripts/normalize-indexstore-evidence.py",
+        "sha256": "17c705fac8670a77f9cbd7305c8f658807e2f6045a0ccb00172c79bccd1f7c17"
+      },
+      {
+        "bytes": 22790,
+        "path": ".github/workflows/ci.yml",
+        "sha256": "acded643f2d7902fd3ee1ee4ca97f432b27456c8e057dadd837b872a020bf52f"
+      }
+    ]
+  },
   "native_waitid_capability_failure_diagnostic_v1": {
     "base_commit": "d1821b20ca865ac43b014f48699cdc19f22c4bc8",
     "base_tree": "c036fb6d2249b664c25ea7bb70335f0985b6ddef",

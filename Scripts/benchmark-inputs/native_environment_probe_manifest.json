@@ -1,0 +1,108 @@
+{
+  "endpoint_membership": [
+    "Scripts/validate-native-environment-observation.py",
+    "Scripts/benchmark-inputs/native_environment_probe_manifest.json",
+    ".github/workflows/native-environment-observation.yml"
+  ],
+  "false_flags": [
+    "accepted",
+    "native_actor_eligible",
+    "descendant_closure_eligible",
+    "runtime_closure_proved",
+    "timing_eligible",
+    "final_protocol_ready",
+    "historical_run8_cause_established"
+  ],
+  "native_pins": {
+    "configured_python": "/opt/homebrew/opt/python@3.14/bin/python3.14",
+    "developer_dir": "/Applications/Xcode_26.6.app/Contents/Developer",
+    "image_os": "macos26",
+    "image_version": "20260907.0351.1",
+    "machine": "arm64",
+    "os_release": "25.6.0",
+    "physical_bytes": 34640,
+    "physical_python": "/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/bin/python3.14",
+    "physical_sha256": "87d4df53fd91304be5bac391fb204643c36b7df2023c04a0953bcbc7d4fdf634",
+    "platform": "darwin",
+    "product_build": "25G83",
+    "product_version": "26.6.2",
+    "python_version": [
+      3,
+      14,
+      7
+    ],
+    "runtime_python": "/opt/homebrew/Cellar/python@3.14/3.14.7/bin/python3.14"
+  },
+  "qualification": {
+    "hard_wall_proved": false,
+    "installed_native_equivalence": false,
+    "pinned_git_boolean_fsmonitor_qualified": false,
+    "separate_native_grant_required": true,
+    "upstream_commit": "823f0323ee6ec1402088b73bce1a38473cac36dc",
+    "upstream_source_sha256": "6628ffdd65c093a6c08cae01ffe82877d3ced515aac9e7be0cff16512c30a7d9"
+  },
+  "schedule": {
+    "admission_seconds": 15,
+    "caller_kill": 3,
+    "caller_seconds": 20,
+    "caller_term": 7,
+    "direct_launch_maximum": 9,
+    "job_seconds": 300,
+    "metadata_count": 3,
+    "metadata_slot_seconds": 10,
+    "mock_step_seconds": 60,
+    "observer_count": 2,
+    "observer_kill": 3,
+    "observer_seconds": 5,
+    "observer_term": 2,
+    "publisher_seconds": 30,
+    "publisher_step_seconds": 60,
+    "supervisor_seconds": 90,
+    "supervisor_step_seconds": 120,
+    "terminal_seconds": 15
+  },
+  "schema_version": 1,
+  "scope": "native-environment-observation-only",
+  "source_membership": [
+    "Scripts/validate-native-environment-observation.py",
+    "Scripts/benchmark-inputs/native_environment_observer.py",
+    "Scripts/benchmark-inputs/native_environment_probe_support.py",
+    "Scripts/benchmark-inputs/native_environment_probe_manifest.json",
+    "Scripts/benchmark-inputs/test_native_environment_observation.py",
+    ".github/workflows/native-environment-observation.yml",
+    "Scripts/normalize-indexstore-evidence.py",
+    ".github/workflows/ci.yml"
+  ],
+  "sources": {
+    ".github/workflows/ci.yml": {
+      "blob": "2a49c0e9516ea6fee603faf19c322dac78ad9763",
+      "bytes": 22790,
+      "mode": "100644",
+      "sha256": "acded643f2d7902fd3ee1ee4ca97f432b27456c8e057dadd837b872a020bf52f"
+    },
+    "Scripts/benchmark-inputs/native_environment_observer.py": {
+      "blob": "c45400bf9adde7334f6ffba355474c33590f3a65",
+      "bytes": 6284,
+      "mode": "100644",
+      "sha256": "8b619bb7cd751be1e8eebe7a922843d2e1a68a60b4e098a63d1620ad1e228b5e"
+    },
+    "Scripts/benchmark-inputs/native_environment_probe_support.py": {
+      "blob": "a44845b27911b57f100411c39053cc5e3183872e",
+      "bytes": 23481,
+      "mode": "100644",
+      "sha256": "2a21433cf7321df5d2a88d4976f32d160f996c1ac94fbc762a5d3e1d20705fa4"
+    },
+    "Scripts/benchmark-inputs/test_native_environment_observation.py": {
+      "blob": "ead5c4054fdeddca405d91a2020d73ded7f0d292",
+      "bytes": 90811,
+      "mode": "100644",
+      "sha256": "be7142ca650cc956b4c3e16c56f65902472b61521da44cdff3a6ca2cd61132ba"
+    },
+    "Scripts/normalize-indexstore-evidence.py": {
+      "blob": "806373a57e19ef5dbdd4f81a86dcca3d3fd294a7",
+      "bytes": 36808,
+      "mode": "100755",
+      "sha256": "17c705fac8670a77f9cbd7305c8f658807e2f6045a0ccb00172c79bccd1f7c17"
+    }
+  }
+}
