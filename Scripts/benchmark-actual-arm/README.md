@@ -638,3 +638,51 @@ The empty-probe descriptor readback is charged inside the full publication calle
 named subphase costs, and is not added again to a composed total. No native generation or final
 protocol result is credited by these controls; exact-head CI and any later changed-source native
 validation remain separate gates.
+
+
+### Explicit inventory-fault seam for native CI
+
+PR193's original CI519 (`38668177511`, head `8888e0a6`) retained one failed
+`capture-inventory` subcase among 71 generation controls: the synthetic route
+returned zero instead of the intended failure. The exact original log does not
+identify its Python version. Source inspection found that the fixture intercepted
+`Path.stat`, while the unchanged real seal inventory calls `Path.lstat`.
+[CPython 3.13.7](https://github.com/python/cpython/blob/v3.13.7/Lib/pathlib/_abc.py#L395-L400)
+delegates that method through `self.stat`, whereas
+[CPython 3.14.0](https://github.com/python/cpython/blob/v3.14.0/Lib/pathlib/__init__.py#L606-L611)
+calls `os.lstat` directly. This establishes a source-backed injection mechanism,
+not the unretained native interpreter version or a production inventory defect.
+
+The test-only successor hooks `Path.lstat` explicitly and requires exactly one
+fault hit before claiming the intended failed execution. It preserves the real
+inventory and failure-capsule path, failed/sdk-capture observations and zero
+compiler calls. A full-route control installs direct `os.lstat` semantics and
+registers patch restoration before fixture cleanup, preventing either interpreter
+delegation or a failing assertion from silently bypassing or leaking the seam.
+Production, scanner, workflow, native schedules and resource bounds are unchanged.
+The first local caller stopped at its baseline with child exit 2 and outer exit 1:
+the original method reached `native-admission != sdk-capture`, rather than the
+required original `0 == 0` assertion. Its 506 input brackets matched and cleanup
+completed; the 72-method successor suite and whitespace check did not start.
+The direct-lstat harness had bypassed the existing synthetic `/usr/bin/xcrun`
+and `/usr/lib/swift` remaps. Source shows the xcrun alias is observed before
+capture, while the host-runtime reference is checked later; the exact underlying
+admission reason was not retained. The corrected test seam applies precisely
+those two existing mappings, requires the stage-appropriate remap hits, and keeps
+direct `os.lstat` for real paths. The unchanged original fixture and exact
+`0 == 0` baseline predicate remain required. The separately reviewed continuation
+reproduced exactly that original assertion at `failed()` line 1450, with xcrun
+remap coverage, and then passed all 72 generation methods and whitespace. Actual
+child exits were 1 (expected baseline), 0 and 0; outer exit was 0. Baseline and
+generation walls were 8.849921 and 111.584060 seconds within their 30/300-second
+limits; the overall caller took 120.625512 seconds within 360 seconds plus a
+10-second kill grace. All 536 input and caller brackets matched, all 14 direct
+Bash roots completed, and cleanup had no uncertainty. The two fixed synchronous
+foreground-subshell paths share the inherited lock; the count is of direct
+launches, not arbitrary descendants. The supervisor descriptor closed at
+2026-10-15T02:37:07.192198970Z with lane stability proved.
+
+These local Python 3.13 controls use synthetic native/compiler observations and
+real tiny-file producer/publication paths. They do not establish the unobserved
+native Python version or a native generation result. Original CI519 and the local
+premise failure remain separate evidence; corrected exact-head CI is pending.

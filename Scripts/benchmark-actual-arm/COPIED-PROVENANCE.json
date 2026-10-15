@@ -206,6 +206,31 @@
     "scope": "Additive merge-main integration preserving generation diagnostic and capability/cache source bodies and every prior provenance value. README combines accepted sections and records ordinary CI512 on Python 3.14.7; combined-source CI and native diagnostics remain separate gates.",
     "second_parent": "1d090d086f0058437bd1ca9ab76c6c4134997835"
   },
+  "generation_capsule_lstat_fixture_override": {
+    "base_commit": "8888e0a6cb51f2ccc51ee09af91afad8270236b8",
+    "files": [
+      {
+        "bytes": 57185,
+        "path": "Scripts/benchmark-actual-arm/README.md",
+        "sha256": "3d10225c345413dc058e86db483c7bd0d5a7cce862078b60973f7054df57f75d"
+      },
+      {
+        "bytes": 126046,
+        "path": "Scripts/verify-native-generation-contract.py",
+        "sha256": "1937e5216b1017b6edcac47074207c6e0cbe04a5db42afe6e56cc92fccba60e0"
+      }
+    ],
+    "local_control_result_sha256": "c354a896a3e9cb1892afd9e2253cb3cb2f9502e73d8063695913491809be60e8",
+    "local_premise_failure_sha256": "8d281359ec87d43c32567b1e466fd30df626f4fe19a70d575b2e559c6cf7ee8d",
+    "scope": "Test-only explicit lstat fault interception, two existing synthetic native alias remaps and stage-appropriate reached-hit assertions. Original CI519 with unknown interpreter version and local baseline native-admission premise failure remain historical; production and scanner are unchanged. One reviewed continuation reproduced the exact original 0 == 0/frame1450 baseline and passed all 72 synthetic generation methods plus whitespace. Corrected exact-head native CI remains pending.",
+    "scope_limits": {
+      "native_execution": false,
+      "production_changed": false,
+      "python_version": "local 3.13",
+      "scanner_changed": false,
+      "shared_lane_descriptor_closed": "2026-10-15T02:37:07.192198970Z"
+    }
+  },
   "generation_failure_capsule_v1": {
     "base_commit": "ae98aa8604cdf7a73698a72464757126237deab9",
     "files": [

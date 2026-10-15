@@ -1051,9 +1051,12 @@ class CapsuleProducerFixture:
         self.timer_stack = [dict(timer=(0.0, 0.0), handler=signal.SIG_DFL)]
         self.processes, self.next_pid = {}, 1000
         self.changed = False
+        self.inventory_fault_hits = 0
+        self.lstat_remap_hits = {"/usr/bin/xcrun": 0, "/usr/lib/swift": 0}
         self.old_spec = importlib.util.spec_from_file_location
         self.old_exec = importlib.machinery.SourceFileLoader.exec_module
         self.old_resolve, self.old_stat, self.old_open, self.old_mkdir = Path.resolve, Path.stat, Path.open, Path.mkdir
+        self.old_lstat = Path.lstat
         self.original_command_save = W.COMMAND.save
         self.configure(M.GENERATIONS)
         self.configure(W.admission)
@@ -1062,6 +1065,7 @@ class CapsuleProducerFixture:
         self.patch(importlib.machinery.SourceFileLoader, "exec_module", lambda loader, module: self.exec_module(loader, module))
         self.patch(Path, "resolve", lambda path, strict=False: self.resolve(path, strict))
         self.patch(Path, "stat", lambda path, **kwargs: self.stat(path, **kwargs))
+        self.patch(Path, "lstat", lambda path: self.lstat(path))
         self.patch(Path, "open", lambda path, *args, **kwargs: self.open(path, *args, **kwargs))
         self.patch(Path, "mkdir", lambda path, *args, **kwargs: self.mkdir(path, *args, **kwargs))
         self.patch(W.COMMAND, "save", self.command_save)
@@ -1123,11 +1127,20 @@ class CapsuleProducerFixture:
         return self.old_resolve(path, strict=strict)
 
     def stat(self, path, **kwargs):
-        if self.fault == "capture-inventory" and path == self.sdk / "usr/include/input.h" and len(self.calls) >= 17:
-            raise PermissionError("private inventory failure")
         mapped = self.tools["xcrun"] if str(path) == "/usr/bin/xcrun" else (
             self.developer / "host-runtime" if str(path) == "/usr/lib/swift" else path)
         return self.old_stat(mapped, **kwargs)
+
+    def lstat(self, path):
+        if self.fault == "capture-inventory" and path == self.sdk / "usr/include/input.h" and len(self.calls) >= 17:
+            self.inventory_fault_hits += 1
+            raise PermissionError("private inventory failure")
+        key = str(path)
+        mapped = self.tools["xcrun"] if key == "/usr/bin/xcrun" else (
+            self.developer / "host-runtime" if key == "/usr/lib/swift" else path)
+        if key in self.lstat_remap_hits:
+            self.lstat_remap_hits[key] += 1
+        return self.old_lstat(mapped)
 
     def mkdir(self, path, *args, **kwargs):
         if self.fault == "pre-context" and path == self.root / "native-generation-home":
@@ -1447,7 +1460,13 @@ class CapsuleProducerFixture:
 class CapsuleProducerRouteTests(unittest.TestCase):
     def failed(self, fault):
         fixture = CapsuleProducerFixture(self, fault=fault)
-        self.assertNotEqual(fixture.execute(), 0)
+        code = fixture.execute()
+        if fault == "capture-inventory":
+            self.assertGreater(fixture.lstat_remap_hits["/usr/bin/xcrun"], 0,
+                               "synthetic xcrun alias remap must be reached before inventory: " + fixture.diagnostics())
+            self.assertEqual(fixture.inventory_fault_hits, 1,
+                             "inventory lstat fault must be reached exactly once: " + fixture.diagnostics())
+        self.assertNotEqual(code, 0, fixture.diagnostics())
         code, text = fixture.publish()
         self.assertEqual(code, 0, text + fixture.diagnostics())
         value = M.read(fixture.root / "native-calibration-sdk-public/results.json")
@@ -1463,6 +1482,7 @@ class CapsuleProducerRouteTests(unittest.TestCase):
     def test_complete_actual_producer_candidate_publication_with_synthetic_native_inputs(self):
         fixture = CapsuleProducerFixture(self)
         controller = fixture.finish()
+        self.assertTrue(all(count > 0 for count in fixture.lstat_remap_hits.values()))
         probe = fixture.root / "sdk-discovery-raw/setup/discovery/probe-input"
         self.assertEqual(probe.read_bytes(), b"")
         self.assertEqual(W.document(fixture.root / "native-calibration-sdk-public" / W.EMPTY_PROBE_PROJECTED),
@@ -1543,11 +1563,30 @@ class CapsuleProducerRouteTests(unittest.TestCase):
             with self.subTest(fault=fault):
                 fixture, _value, slots = self.failed(fault)
                 try:
+                    self.assertEqual(fixture.inventory_fault_hits, 1 if fault == "capture-inventory" else 0)
                     observed = slots["sdk-admission:before-compilation"]["observation"]
                     self.assertEqual(observed["reported_status"], "failed")
                     self.assertEqual(observed["checkpoint"], "sdk-postcheck" if fault == "post-capture-alias" else "sdk-capture")
                     self.assertEqual(fixture.compiler_calls, [])
                 finally: fixture.stack.close()
+
+    def test_capture_inventory_fault_reached_when_lstat_bypasses_stat(self):
+        # CPython's direct lstat implementation must not bypass the injected inventory fault.
+        self.enterContext(mock.patch.object(Path, "lstat", lambda path: os.lstat(path)))
+        fixture, _value, slots = self.failed("capture-inventory")
+        try:
+            self.assertEqual(fixture.inventory_fault_hits, 1)
+            self.assertGreater(fixture.lstat_remap_hits["/usr/bin/xcrun"], 0)
+            before = fixture.lstat_remap_hits["/usr/lib/swift"]
+            self.assertEqual(Path("/usr/lib/swift").lstat(),
+                             fixture.old_lstat(fixture.developer / "host-runtime"))
+            self.assertEqual(fixture.lstat_remap_hits["/usr/lib/swift"], before + 1)
+            observed = slots["sdk-admission:before-compilation"]["observation"]
+            self.assertEqual(observed["reported_status"], "failed")
+            self.assertEqual(observed["checkpoint"], "sdk-capture")
+            self.assertEqual(fixture.compiler_calls, [])
+        finally:
+            fixture.stack.close()
 
     def test_admission_close_missing_result_keeps_independently_bound_probe_prefix(self):
         fixture = CapsuleProducerFixture(self, fault="admission-close")
