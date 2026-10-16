@@ -259,6 +259,9 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 imports: imports, fileModuleUsages: moduleUsages,
                 admittedHeaderPaths: snapshot.admittedHeaderPaths.map { paths in
                     paths.map { Self.rebase($0, from: projectRoot, to: currentProjectRoot) }.sorted()
+                },
+                enumImpactFiles: snapshot.enumImpactFiles?.map { facts in
+                    facts.rebased { Self.rebase($0, from: projectRoot, to: currentProjectRoot) }
                 }),
             edgeKinds: Set(edgeKinds),
             limitations: limitations,
@@ -535,7 +538,10 @@ extension CartographService {
             propertyAccesses: capturedAccesses,
             imports: capturedImports,
             fileModuleUsages: capturedUsages,
-            admittedHeaderPaths: capturedHeaders
+            admittedHeaderPaths: capturedHeaders,
+            enumImpactFiles: context.snapshot.enumImpactFiles?.filter {
+                includedSourcePaths.contains($0.path)
+            }
         )
         let supplementalPaths = context.supplementalRuntimeSourcePaths
         let capturedRuntimeFiles = context.runtimeFiles?.filter { facts in

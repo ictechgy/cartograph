@@ -62,6 +62,9 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
     /// 인덱스에 발생이 없는 파일은 키가 없다 — 그 파일의 import는 판정할 수 없다.
     public var fileModuleUsages: [String: FileModuleUsage]
 
+    /// Located enum-decision capability. nil is an older or unscanned snapshot, never complete-empty.
+    public var enumImpactFiles: [EnumImpactFileFacts]?
+
     public init(
         symbols: [IndexedSymbol] = [],
         references: [IndexedReference] = [],
@@ -71,7 +74,8 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         propertyAccesses: [String: PropertyAccessFacts] = [:],
         imports: [IndexedImport] = [],
         fileModuleUsages: [String: FileModuleUsage] = [:],
-        admittedHeaderPaths: [String]? = nil
+        admittedHeaderPaths: [String]? = nil,
+        enumImpactFiles: [EnumImpactFileFacts]? = nil
     ) {
         self.symbols = symbols
         self.references = references
@@ -82,11 +86,12 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         self.imports = imports
         self.fileModuleUsages = fileModuleUsages
         self.admittedHeaderPaths = admittedHeaderPaths.map { Set($0).sorted() }
+        self.enumImpactFiles = enumImpactFiles?.sorted { $0.path < $1.path }
     }
 
     private enum CodingKeys: String, CodingKey {
         case symbols, references, indexedFileDates, parameters, propertyAccesses, imports, fileModuleUsages
-        case oldestIndexedFileDates, admittedHeaderPaths
+        case oldestIndexedFileDates, admittedHeaderPaths, enumImpactFiles
     }
 
     /// 파라미터 목록과 접근 합산·import 근거는 뒤늦게 추가된 필드라, 그것이 없는 예전 스냅샷 문서도 읽는다.
@@ -97,6 +102,7 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         indexedFileDates = try container.decodeIfPresent([String: Date].self, forKey: .indexedFileDates)
         oldestIndexedFileDates = try container.decodeIfPresent([String: Date].self, forKey: .oldestIndexedFileDates)
         admittedHeaderPaths = try container.decodeIfPresent([String].self, forKey: .admittedHeaderPaths)
+        enumImpactFiles = try container.decodeIfPresent([EnumImpactFileFacts].self, forKey: .enumImpactFiles)
         parameters = try container.decodeIfPresent([IndexedParameter].self, forKey: .parameters) ?? []
         propertyAccesses = try container.decodeIfPresent(
             [String: PropertyAccessFacts].self, forKey: .propertyAccesses) ?? [:]
@@ -153,7 +159,8 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
                         || extra.hasUnattributedReferences
                 )
             },
-            admittedHeaderPaths: headers
+            admittedHeaderPaths: headers,
+            enumImpactFiles: EnumImpactFileFacts.merging(enumImpactFiles, other.enumImpactFiles)
         )
     }
 }
