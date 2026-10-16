@@ -22,7 +22,8 @@ struct EnumDecisionBinderTests {
         #expect(file.status == "fresh")
         #expect(file.inventories.first?.complete == true)
         #expect(file.decisions.count == 2)
-        #expect(file.decisions.allSatisfy { $0.status == "resolved" && $0.enumUSR == "Status" })
+        #expect(file.decisions.allSatisfy { $0.status == "resolved" && $0.enumUSR == "Status" },
+            "\(file.decisions.map(\.limitations))")
         let raw = try #require(facts.enumDecisionFacts?.decisions.first { $0.kind == .switchDefault })
         let bound = try #require(file.decisions.first { $0.kind == .switchDefault })
         #expect(raw.fallbackLocations.allSatisfy { bound.evidenceLocations.contains($0) })
@@ -31,15 +32,15 @@ struct EnumDecisionBinderTests {
     @Test("잘못된 열이나 추론 참조로는 enum case를 결합하지 않는다")
     func exactCompilerOccurrencesRequired() throws {
         let (facts, snapshot) = try fixture()
-        for inferred in [false, true] {
+        for origin in [ReferenceOrigin.compiler, .inferred, .unknown] {
             var changed = snapshot
             changed.references = snapshot.references.map { reference in
                 guard reference.targetUSR.hasPrefix("Status.") else { return reference }
                 let location = reference.location.map {
-                    CartographCore.SourceLocation(path: $0.path, line: $0.line, column: $0.column + (inferred ? 0 : 1))
+                    CartographCore.SourceLocation(path: $0.path, line: $0.line, column: $0.column + (origin == .compiler ? 1 : 0))
                 }
                 return .init(sourceUSR: reference.sourceUSR, targetUSR: reference.targetUSR,
-                    kind: reference.kind, location: location, origin: inferred ? .inferred : .compiler)
+                    kind: reference.kind, location: location, origin: origin)
             }
             let result = try bind(facts, changed)
             #expect(result.decisions.allSatisfy { $0.status == "unresolved" })
@@ -60,7 +61,7 @@ struct EnumDecisionBinderTests {
             location: .init(path: path, line: 20, column: 1)))
         mismatch.references = mismatch.references.map { ref in
             guard ref.targetUSR == "Status" else { return ref }
-            return .init(sourceUSR: ref.sourceUSR, targetUSR: "Other", kind: ref.kind, location: ref.location)
+            return .init(sourceUSR: ref.sourceUSR, targetUSR: "Other", kind: ref.kind, location: ref.location, origin: ref.origin)
         }
         #expect(try bind(facts, mismatch).decisions.allSatisfy {
             $0.status == "unresolved" && $0.enumUSR == nil
@@ -74,7 +75,7 @@ struct EnumDecisionBinderTests {
         custom.references = snapshot.references.map { reference in
             guard reference.kind == .call else { return reference }
             return .init(sourceUSR: reference.sourceUSR, targetUSR: "custom.contains",
-                kind: .call, location: reference.location)
+                kind: .call, location: reference.location, origin: reference.origin)
         }
         let decision = try #require(bind(facts, custom).decisions.first { $0.kind == .literalMembership })
         #expect(decision.status == "unresolved")
@@ -118,21 +119,25 @@ struct EnumDecisionBinderTests {
                 location: $0.location, parentUSR: "Status")
         }
         var references: [IndexedReference] = [
-            .init(sourceUSR: "f", targetUSR: "Status", kind: .reference, location: parameter.typeNameLocation),
+            .init(sourceUSR: "f", targetUSR: "Status", kind: .reference, location: parameter.typeNameLocation, origin: .compiler),
         ]
         for decision in scan.decisions {
             references += (decision.explicitCases + decision.guardedCases).map {
-                .init(sourceUSR: "f", targetUSR: "Status.\($0.name)", kind: .reference, location: $0.location)
+                .init(sourceUSR: "f", targetUSR: "Status.\($0.name)", kind: .reference, location: $0.location, origin: .compiler)
             }
             if let operation = decision.operationLocation {
                 references.append(.init(sourceUSR: "f", targetUSR: "s:STsSQ7ElementRpzrlE8containsySbABF",
-                    kind: .call, location: operation))
+                    kind: .call, location: operation, origin: .compiler))
             }
         }
         let snapshot = IndexSnapshot(symbols: symbols, references: references, parameters: [
             .init(usr: "parameter", name: parameter.parameterName, module: "App",
                 location: parameter.parameterNameLocation, functionUSR: "f"),
         ])
+        let verified = try bind(facts, snapshot)
+        try #require(verified.decisions.count == 2 && verified.decisions.allSatisfy {
+            $0.status == "resolved" && $0.enumUSR == "Status"
+        }, "\(verified.decisions.map(\.limitations))")
         return (facts, snapshot)
     }
 }

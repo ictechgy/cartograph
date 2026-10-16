@@ -2,11 +2,6 @@ import CartographCore
 
 /// Exact occurrence joins for the deliberately small enum-decision syntax model.
 enum EnumDecisionBinder {
-    // Exact standard-library identities. The compiler-index integration fixture must
-    // validate these on supported CI toolchains; unknown identities are unresolved.
-    static let containsTargets: Set<String> = ["s:STsSQ7ElementRpzrlE8containsySbABF"]
-    static let negationTargets: Set<String> = ["s:Sb1nopyS2bFZ"]
-
     static func bind(snapshot: IndexSnapshot, files: [String: SourceFileFacts],
                      freshPaths: Set<String>) -> [EnumImpactFileFacts]? {
         guard files.values.contains(where: { $0.enumDecisionFacts != nil }) else { return nil }
@@ -26,6 +21,11 @@ enum EnumDecisionBinder {
     }
 
     private struct BindingContext {
+        // Exact standard-library identities. The compiler-index integration fixture must
+        // validate these on supported CI toolchains; unknown identities are unresolved.
+        static let containsTargets: Set<String> = ["s:STsSQ7ElementRpzrlE8containsySbABF"]
+        static let negationTargets: Set<String> = ["s:Sb1nopyS2bFZ"]
+
         let caseUSRsByEnum: [String: Set<String>]
         let symbols: [String: IndexedSymbol]
         let declarations: [SourceLocation: [IndexedSymbol]]
@@ -143,13 +143,13 @@ enum EnumDecisionBinder {
             if parents.count != 1 { limitations.append("unresolved-or-mixed-enum-identity") }
             var operationTargets = callTargets(at: raw.operationLocation)
             if membership {
-                if operationTargets.count != 1 || !operationTargets.isSubset(of: EnumDecisionBinder.containsTargets) {
+                if operationTargets.count != 1 || !operationTargets.isSubset(of: Self.containsTargets) {
                     limitations.append("unsupported-or-unresolved-membership-target")
                 }
                 if kind == .negatedLiteralMembership {
                     let negation = callTargets(at: raw.negationLocation)
                     operationTargets.formUnion(negation)
-                    if negation.count != 1 || !negation.isSubset(of: EnumDecisionBinder.negationTargets) {
+                    if negation.count != 1 || !negation.isSubset(of: Self.negationTargets) {
                         limitations.append("unsupported-or-unresolved-negation-target")
                     }
                 }

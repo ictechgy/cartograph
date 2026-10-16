@@ -73,9 +73,10 @@ struct EnumDecisionCompilerTests {
             [Status.a].contains(status)
         }
         public func ~= (pattern: Status, value: Int) -> Bool { true }
+        public let customPattern: Status = .a
         public func unrelated(_ number: Int) -> Bool {
             switch number {
-            case Status.a: return true
+            case customPattern: return true
             default: return false
             }
         }
@@ -93,6 +94,7 @@ struct EnumDecisionCompilerTests {
         let pattern = try #require(enriched.enumImpactFiles?.flatMap(\.decisions).first { $0.kind == .switchDefault })
         #expect(pattern.status == "unresolved")
         #expect(pattern.limitations.contains("unverified-switch-subject-type"))
+        #expect(pattern.limitations.contains("enum-decision-unsupported-switch-pattern"))
     }
 
     /// Paired real compiler captures exercise identity, persistence, relocation and public output.
@@ -175,14 +177,19 @@ struct EnumDecisionCompilerTests {
                 inputNames.append(extra.lastPathComponent)
                 sources[try LocalFileSystem().realPath(at: extra.path)] = extraSource
             }
+            let outputMap = Dictionary(uniqueKeysWithValues: inputNames.map {
+                ($0, ["object": "\($0).o"])
+            })
+            let outputMapPath = root.appendingPathComponent("output-map.json")
+            try JSONSerialization.data(withJSONObject: outputMap, options: [.sortedKeys]).write(to: outputMapPath)
             let store = root.appendingPathComponent("IndexStore").path
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
             process.currentDirectoryURL = root
             process.arguments = [
                 "swiftc", "-module-name", "EnumDecisions", "-parse-as-library",
-                "-whole-module-optimization", "-emit-object",
-            ] + inputNames + ["-o", "Decisions.o", "-index-store-path", store]
+                "-emit-object", "-output-file-map", outputMapPath.lastPathComponent,
+            ] + inputNames + ["-index-store-path", store]
             let output = Pipe()
             process.standardOutput = output
             process.standardError = output
