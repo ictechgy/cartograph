@@ -243,6 +243,10 @@ struct ChangedFilesTests {
         let root = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }
         try run(["config", "diff.renames", "true"], in: root)
+        // 삭제된 잎 경로에는 파일시스템 별칭 해석을 적용하지 않는다.
+        // git 이 확인한 저장소 루트와 기대하는 상대 경로를 그대로 이어 비교한다.
+        let repositoryRoot = try run(["rev-parse", "--show-toplevel"], in: root)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let prefixes = ["", "pkg/Sources/"]
         for prefix in prefixes {
             for name in ["CommittedOriginal", "StagedOriginal", "CommittedGone", "StagedGone", "UnstagedGone"] {
@@ -264,18 +268,22 @@ struct ChangedFilesTests {
         }
         let surviving = Set(prefixes.flatMap { prefix in
             ["CommittedRenamed", "StagedRenamed"].map { prefix + $0 + ".swift" }
-        }.map { normalized(root.appendingPathComponent($0).path) })
+        }.map { (repositoryRoot as NSString).appendingPathComponent($0) })
         let removed = Set(prefixes.flatMap { prefix in
             ["CommittedOriginal", "StagedOriginal", "CommittedGone", "StagedGone", "UnstagedGone"]
                 .map { prefix + $0 + ".swift" }
-        }.map { normalized(root.appendingPathComponent($0).path) })
+        }.map { (repositoryRoot as NSString).appendingPathComponent($0) })
         for relative in ["false", "true"] {
             try run(["config", "diff.relative", relative], in: root)
             for directory in [root, root.appendingPathComponent("pkg")] {
-                #expect(Set(try ChangedFiles.since(base, workingDirectory: directory.path)
-                    .map(normalized)) == surviving)
-                #expect(Set(try ChangedFiles.since(base, workingDirectory: directory.path, includingDeleted: true)
-                    .map(normalized)) == surviving.union(removed))
+                let withoutDeleted = try ChangedFiles.since(base, workingDirectory: directory.path)
+                let withDeleted = try ChangedFiles.since(
+                    base, workingDirectory: directory.path, includingDeleted: true)
+                let expectedWithDeleted = surviving.union(removed)
+                #expect(withoutDeleted == surviving,
+                    "diff.relative=\(relative), cwd=\(directory.path): actual=\(withoutDeleted.sorted()), expected=\(surviving.sorted())")
+                #expect(withDeleted == expectedWithDeleted,
+                    "diff.relative=\(relative), cwd=\(directory.path): actual=\(withDeleted.sorted()), expected=\(expectedWithDeleted.sorted())")
             }
         }
     }
