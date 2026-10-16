@@ -17,14 +17,14 @@ public struct EnumCaseTokenFacts: Codable, Sendable, Equatable {
 public struct EnumInventorySyntaxFacts: Codable, Sendable, Equatable {
     public let name: String
     public let nameLocation: CartographCore.SourceLocation
-    public let range: CartographCore.SourceRange
+    public let range: SourceRange
     public let cases: [EnumCaseTokenFacts]
     public let isComplete: Bool
     public let limitations: [String]
 
     /// 조건부 컴파일·매크로·파싱 오류가 있는 목록을 완전한 목록으로 쓰지 않게 한다.
     public init(
-        name: String, nameLocation: CartographCore.SourceLocation, range: CartographCore.SourceRange,
+        name: String, nameLocation: CartographCore.SourceLocation, range: SourceRange,
         cases: [EnumCaseTokenFacts], isComplete: Bool, limitations: [String]
     ) {
         self.name = name
@@ -50,13 +50,13 @@ public struct EnumSubjectParameterSyntaxFacts: Codable, Sendable, Equatable {
     public let subjectLocation: CartographCore.SourceLocation
     public let parameterNameLocation: CartographCore.SourceLocation
     public let typeNameLocation: CartographCore.SourceLocation
-    public let functionRange: CartographCore.SourceRange
+    public let functionRange: SourceRange
 
     /// 타입 이름의 컴파일러 참조와 파라미터의 소유 함수를 함께 검증하게 한다.
     public init(
         parameterName: String, subjectLocation: CartographCore.SourceLocation,
         parameterNameLocation: CartographCore.SourceLocation,
-        typeNameLocation: CartographCore.SourceLocation, functionRange: CartographCore.SourceRange
+        typeNameLocation: CartographCore.SourceLocation, functionRange: SourceRange
     ) {
         self.parameterName = parameterName
         self.subjectLocation = subjectLocation
@@ -69,8 +69,8 @@ public struct EnumSubjectParameterSyntaxFacts: Codable, Sendable, Equatable {
 /// 분기 본문의 참조와 패턴의 참조를 섞지 않고 정확한 바인딩 지점을 넘긴다.
 public struct EnumDecisionSyntaxFacts: Codable, Sendable, Equatable {
     public let kind: EnumDecisionSyntaxKind
-    public let range: CartographCore.SourceRange
-    public let subjectRange: CartographCore.SourceRange?
+    public let range: SourceRange
+    public let subjectRange: SourceRange?
     public let subjectParameter: EnumSubjectParameterSyntaxFacts?
     public let explicitCases: [EnumCaseTokenFacts]
     public let guardedCases: [EnumCaseTokenFacts]
@@ -81,7 +81,7 @@ public struct EnumDecisionSyntaxFacts: Codable, Sendable, Equatable {
 
     /// 제한이 없어도 구문 후보일 뿐이며 컴파일러 심볼·신선도 검증이 필요하다.
     public init(
-        kind: EnumDecisionSyntaxKind, range: CartographCore.SourceRange, subjectRange: CartographCore.SourceRange?,
+        kind: EnumDecisionSyntaxKind, range: SourceRange, subjectRange: SourceRange?,
         explicitCases: [EnumCaseTokenFacts], guardedCases: [EnumCaseTokenFacts],
         fallbackLocations: [CartographCore.SourceLocation],
         operationLocation: CartographCore.SourceLocation? = nil,
@@ -397,9 +397,9 @@ private final class EnumDecisionCollector: SyntaxVisitor {
         return CartographCore.SourceLocation(path: path, line: point.line, column: point.column)
     }
 
-    private func range(_ node: some SyntaxProtocol) -> CartographCore.SourceRange {
+    private func range(_ node: some SyntaxProtocol) -> SourceRange {
         let end = converter.location(for: node.endPositionBeforeTrailingTrivia)
-        return CartographCore.SourceRange(
+        return SourceRange(
             start: location(node),
             end: CartographCore.SourceLocation(path: path, line: end.line, column: end.column)
         )
