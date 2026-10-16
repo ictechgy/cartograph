@@ -70,6 +70,23 @@ struct EnumChangeImpactAnalyzerTests {
         #expect(result.unresolvedDecisions.first?.operationTargetUSRs == ["custom.contains"])
     }
 
+    @Test("partial 파일의 결정은 후보로 올리지 않고 위치와 제한을 보존한다")
+    func partialConsumerKeepsLocatedReasons() {
+        var current = snapshot(cases: ["a", "b"])
+        let site = SourceLocation(path: "/p/Consumer.swift", line: 10, column: 3)
+        current.symbols.append(.init(usr: "f", name: "f()", kind: .function, module: "App", location: site))
+        current.enumImpactFiles?.append(.init(path: site.path, status: "partial",
+            decisions: [.init(kind: .literalMembership, location: site, endLocation: site,
+                enumUSR: "E", explicitCaseUSRs: ["E.a"], evidenceLocations: [site], status: "resolved")],
+            limitations: ["enum-decision-unexpanded-macro"]))
+        let result = analyze(snapshot(cases: ["a"]), current)
+        #expect(result.candidateCount == 0)
+        #expect(result.unresolvedDecisionCount == 1)
+        #expect(result.unresolvedDecisions.first?.location == site)
+        #expect(result.unresolvedDecisions.first?.evidenceLocations == [site])
+        #expect(result.unresolvedDecisions.first?.limitations.contains("enum-decision-unexpanded-macro") == true)
+    }
+
     @Test("선택하지 않은 enum 확장은 섞지 않고 JSON과 한도 순서는 결정적이다")
     func selectionAndDeterminism() throws {
         let before = snapshot(cases: ["a"]).merging(snapshot(cases: ["a"], id: "Other"))

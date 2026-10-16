@@ -17,14 +17,14 @@ public struct EnumCaseTokenFacts: Codable, Sendable, Equatable {
 public struct EnumInventorySyntaxFacts: Codable, Sendable, Equatable {
     public let name: String
     public let nameLocation: CartographCore.SourceLocation
-    public let range: SourceRange
+    public let range: CartographCore.SourceRange
     public let cases: [EnumCaseTokenFacts]
     public let isComplete: Bool
     public let limitations: [String]
 
     /// 조건부 컴파일·매크로·파싱 오류가 있는 목록을 완전한 목록으로 쓰지 않게 한다.
     public init(
-        name: String, nameLocation: CartographCore.SourceLocation, range: SourceRange,
+        name: String, nameLocation: CartographCore.SourceLocation, range: CartographCore.SourceRange,
         cases: [EnumCaseTokenFacts], isComplete: Bool, limitations: [String]
     ) {
         self.name = name
@@ -50,13 +50,13 @@ public struct EnumSubjectParameterSyntaxFacts: Codable, Sendable, Equatable {
     public let subjectLocation: CartographCore.SourceLocation
     public let parameterNameLocation: CartographCore.SourceLocation
     public let typeNameLocation: CartographCore.SourceLocation
-    public let functionRange: SourceRange
+    public let functionRange: CartographCore.SourceRange
 
     /// 타입 이름의 컴파일러 참조와 파라미터의 소유 함수를 함께 검증하게 한다.
     public init(
         parameterName: String, subjectLocation: CartographCore.SourceLocation,
         parameterNameLocation: CartographCore.SourceLocation,
-        typeNameLocation: CartographCore.SourceLocation, functionRange: SourceRange
+        typeNameLocation: CartographCore.SourceLocation, functionRange: CartographCore.SourceRange
     ) {
         self.parameterName = parameterName
         self.subjectLocation = subjectLocation
@@ -69,8 +69,8 @@ public struct EnumSubjectParameterSyntaxFacts: Codable, Sendable, Equatable {
 /// 분기 본문의 참조와 패턴의 참조를 섞지 않고 정확한 바인딩 지점을 넘긴다.
 public struct EnumDecisionSyntaxFacts: Codable, Sendable, Equatable {
     public let kind: EnumDecisionSyntaxKind
-    public let range: SourceRange
-    public let subjectRange: SourceRange?
+    public let range: CartographCore.SourceRange
+    public let subjectRange: CartographCore.SourceRange?
     public let subjectParameter: EnumSubjectParameterSyntaxFacts?
     public let explicitCases: [EnumCaseTokenFacts]
     public let guardedCases: [EnumCaseTokenFacts]
@@ -81,7 +81,7 @@ public struct EnumDecisionSyntaxFacts: Codable, Sendable, Equatable {
 
     /// 제한이 없어도 구문 후보일 뿐이며 컴파일러 심볼·신선도 검증이 필요하다.
     public init(
-        kind: EnumDecisionSyntaxKind, range: SourceRange, subjectRange: SourceRange?,
+        kind: EnumDecisionSyntaxKind, range: CartographCore.SourceRange, subjectRange: CartographCore.SourceRange?,
         explicitCases: [EnumCaseTokenFacts], guardedCases: [EnumCaseTokenFacts],
         fallbackLocations: [CartographCore.SourceLocation],
         operationLocation: CartographCore.SourceLocation? = nil,
@@ -125,9 +125,12 @@ public struct EnumDecisionScanFacts: Codable, Sendable, Equatable {
 /// 동적 컬렉션과 allCases/filter 기반 contains는 제한이 있는 후보로 남긴다.
 struct EnumDecisionScanner {
     func scan(
-        tree: SourceFileSyntax, path: String, converter: SourceLocationConverter
+        tree: SourceFileSyntax, path: String, converter: SourceLocationConverter,
+        onShadowSummaryWalk: (() -> Void)? = nil
     ) -> EnumDecisionScanFacts {
-        let collector = EnumDecisionCollector(path: path, converter: converter)
+        let collector = EnumDecisionCollector(
+            path: path, converter: converter, onShadowSummaryWalk: onShadowSummaryWalk
+        )
         collector.walk(tree)
         return EnumDecisionScanFacts(
             inventories: collector.inventories,
@@ -141,13 +144,18 @@ struct EnumDecisionScanner {
 private final class EnumDecisionCollector: SyntaxVisitor {
     private let path: String
     private let converter: SourceLocationConverter
+    private let onShadowSummaryWalk: (() -> Void)?
+    private var shadowSummaries: [Int: EnumSubjectShadowSummary] = [:]
     private(set) var inventories: [EnumInventorySyntaxFacts] = []
     private(set) var decisions: [EnumDecisionSyntaxFacts] = []
     private(set) var fileLimitations: Set<String> = []
 
-    init(path: String, converter: SourceLocationConverter) {
+    init(
+        path: String, converter: SourceLocationConverter, onShadowSummaryWalk: (() -> Void)?
+    ) {
         self.path = path
         self.converter = converter
+        self.onShadowSummaryWalk = onShadowSummaryWalk
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -339,14 +347,28 @@ private final class EnumDecisionCollector: SyntaxVisitor {
         guard parameters.count == 1, let parameter = parameters.first, parameter.ellipsis == nil,
               parameter.attributes.isEmpty, parameter.modifiers.isEmpty,
               let typeName = EnumDecisionShape.simpleTypeName(parameter.type) else { return nil }
-        let shadow = EnumSubjectShadowFinder(name: name, before: reference.positionAfterSkippingLeadingTrivia)
-        shadow.walk(body)
-        guard !shadow.found else { return nil }
+        let shadow = shadowSummary(for: function, body: body)
+        guard !shadow.blocks(
+            name: name, before: reference.positionAfterSkippingLeadingTrivia.utf8Offset
+        ) else { return nil }
         return EnumSubjectParameterSyntaxFacts(
             parameterName: name, subjectLocation: location(reference.baseName),
             parameterNameLocation: location(parameter.secondName ?? parameter.firstName),
             typeNameLocation: location(typeName), functionRange: range(function)
         )
+    }
+
+    /// 같은 함수 안에 결정이 많아도 본문은 한 번만 훑는다.
+    private func shadowSummary(
+        for function: FunctionDeclSyntax, body: CodeBlockSyntax
+    ) -> EnumSubjectShadowSummary {
+        let key = function.positionAfterSkippingLeadingTrivia.utf8Offset
+        if let cached = shadowSummaries[key] { return cached }
+        let collector = EnumSubjectShadowCollector()
+        collector.walk(body)
+        onShadowSummaryWalk?()
+        shadowSummaries[key] = collector.summary
+        return collector.summary
     }
 
     private func contextLimitations(_ node: some SyntaxProtocol) -> Set<String> {
@@ -375,9 +397,9 @@ private final class EnumDecisionCollector: SyntaxVisitor {
         return CartographCore.SourceLocation(path: path, line: point.line, column: point.column)
     }
 
-    private func range(_ node: some SyntaxProtocol) -> SourceRange {
+    private func range(_ node: some SyntaxProtocol) -> CartographCore.SourceRange {
         let end = converter.location(for: node.endPositionBeforeTrailingTrivia)
-        return SourceRange(
+        return CartographCore.SourceRange(
             start: location(node),
             end: CartographCore.SourceLocation(path: path, line: end.line, column: end.column)
         )
@@ -529,75 +551,94 @@ private enum EnumDecisionShape {
 }
 
 
-/// 여러 분기의 같은 이름도 보수적으로 거절하며 데이터 흐름을 복원하지 않는다.
-private final class EnumSubjectShadowFinder: SyntaxVisitor {
-    private let name: String
-    private let before: AbsolutePosition
-    private(set) var found = false
+/// 이름별 최초 위치만 있어도 기존의 엄격한 사용 전 비교를 그대로 적용할 수 있다.
+private struct EnumSubjectShadowSummary {
+    var firstBindingOffsets: [String: Int] = [:]
+    var hoistedNames: Set<String> = []
+    var firstUnknownExpansionOffset: Int?
 
-    init(name: String, before: AbsolutePosition) {
-        self.name = name
-        self.before = before
+    func blocks(name: String, before offset: Int) -> Bool {
+        hoistedNames.contains(name)
+            || firstBindingOffsets[name].map { $0 < offset } == true
+            || firstUnknownExpansionOffset.map { $0 < offset } == true
+    }
+}
+
+/// 여러 분기·중첩 스코프의 가림도 보수적으로 모으되 함수마다 한 번만 방문한다.
+private final class EnumSubjectShadowCollector: SyntaxVisitor {
+    private(set) var summary = EnumSubjectShadowSummary()
+
+    init() {
         super.init(viewMode: .sourceAccurate)
     }
 
-    private func matches(_ token: TokenSyntax) -> Bool {
-        token.positionAfterSkippingLeadingTrivia < before
-            && SyntaxIdentifiers.unescaped(token.text) == name
+    private func recordBinding(_ token: TokenSyntax) {
+        recordBinding(
+            name: SyntaxIdentifiers.unescaped(token.text),
+            offset: token.positionAfterSkippingLeadingTrivia.utf8Offset
+        )
+    }
+
+    private func recordBinding(name: String, offset: Int) {
+        summary.firstBindingOffsets[name] = min(summary.firstBindingOffsets[name] ?? offset, offset)
+    }
+
+    private func recordUnknownExpansion(_ node: some SyntaxProtocol) {
+        let offset = node.positionAfterSkippingLeadingTrivia.utf8Offset
+        summary.firstUnknownExpansionOffset = min(summary.firstUnknownExpansionOffset ?? offset, offset)
     }
 
     override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
-        if matches(node.identifier) { found = true }
+        recordBinding(node.identifier)
         return .visitChildren
     }
 
     override func visit(_ node: ValueBindingPatternSyntax) -> SyntaxVisitorContinueKind {
-        if node.tokens(viewMode: .sourceAccurate).contains(where: matches) { found = true }
+        for token in node.tokens(viewMode: .sourceAccurate) { recordBinding(token) }
         return .visitChildren
     }
 
     override func visit(_ node: FunctionParameterSyntax) -> SyntaxVisitorContinueKind {
-        if matches(node.secondName ?? node.firstName) { found = true }
+        recordBinding(node.secondName ?? node.firstName)
         return .visitChildren
     }
 
     override func visit(_ node: ClosureParameterSyntax) -> SyntaxVisitorContinueKind {
-        if matches(node.secondName ?? node.firstName) { found = true }
+        recordBinding(node.secondName ?? node.firstName)
         return .visitChildren
     }
 
     override func visit(_ node: ClosureShorthandParameterSyntax) -> SyntaxVisitorContinueKind {
-        if matches(node.name) { found = true }
+        recordBinding(node.name)
         return .visitChildren
     }
 
     override func visit(_ node: CatchClauseSyntax) -> SyntaxVisitorContinueKind {
-        if name == "error", node.catchItems.isEmpty, node.positionAfterSkippingLeadingTrivia < before {
-            found = true
+        if node.catchItems.isEmpty {
+            recordBinding(name: "error", offset: node.positionAfterSkippingLeadingTrivia.utf8Offset)
         }
         return .visitChildren
     }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
-        // 함수 이름은 선언 전에도 보일 수 있으므로 위치로 거르지 않는다.
-        if SyntaxIdentifiers.unescaped(node.name.text) == name { found = true }
+        // 함수 이름은 선언 전에도 보일 수 있으므로 위치와 무관하게 남긴다.
+        summary.hoistedNames.insert(SyntaxIdentifiers.unescaped(node.name.text))
         return .visitChildren
     }
 
     override func visit(_ node: MacroExpansionDeclSyntax) -> SyntaxVisitorContinueKind {
-        if node.positionAfterSkippingLeadingTrivia < before { found = true }
+        recordUnknownExpansion(node)
         return .visitChildren
     }
 
     override func visit(_ node: MacroExpansionExprSyntax) -> SyntaxVisitorContinueKind {
-        if node.positionAfterSkippingLeadingTrivia < before { found = true }
+        recordUnknownExpansion(node)
         return .visitChildren
     }
 
     override func visit(_ node: AttributeSyntax) -> SyntaxVisitorContinueKind {
-        if node.positionAfterSkippingLeadingTrivia < before,
-           !EnumDecisionShape.knownAttributes.contains(node.attributeName.trimmedDescription) {
-            found = true
+        if !EnumDecisionShape.knownAttributes.contains(node.attributeName.trimmedDescription) {
+            recordUnknownExpansion(node)
         }
         return .visitChildren
     }

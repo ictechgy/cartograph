@@ -26,14 +26,18 @@ enum EnumDecisionBinder {
     }
 
     private struct BindingContext {
-        let snapshot: IndexSnapshot
+        let caseUSRsByEnum: [String: Set<String>]
         let symbols: [String: IndexedSymbol]
         let declarations: [SourceLocation: [IndexedSymbol]]
         let references: [SourceLocation: [IndexedReference]]
         let parameters: [SourceLocation: [IndexedParameter]]
 
         init(snapshot: IndexSnapshot) {
-            self.snapshot = snapshot
+            var cases: [String: Set<String>] = [:]
+            for symbol in snapshot.symbols where symbol.kind == .enumCase {
+                if let parent = symbol.parentUSR { cases[parent, default: []].insert(symbol.usr) }
+            }
+            caseUSRsByEnum = cases
             symbols = snapshot.symbolsByUSR()
             declarations = Dictionary(grouping: snapshot.symbols, by: \.location)
             references = Dictionary(grouping: snapshot.references.filter {
@@ -63,9 +67,7 @@ enum EnumDecisionBinder {
                 }
                 cases.append(value.usr)
             }
-            let observed = Set(snapshot.symbols.filter {
-                $0.kind == .enumCase && $0.parentUSR == owner.usr
-            }.map(\.usr))
+            let observed = caseUSRsByEnum[owner.usr] ?? []
             if observed != Set(cases) { limitations.append("incomplete-indexed-enum-inventory") }
             return .init(enumUSR: owner.usr, caseUSRs: cases, location: raw.nameLocation,
                 complete: fresh && raw.isComplete && cases.count == raw.cases.count && limitations.isEmpty,
@@ -113,7 +115,8 @@ enum EnumDecisionBinder {
             var guarded: [String] = []
             var parents: Set<String> = []
             var owners: Set<String> = []
-            var evidence: [SourceLocation] = []
+            var evidence: [SourceLocation] = raw.fallbackLocations
+                + [raw.operationLocation, raw.negationLocation].compactMap { $0 }
             var limitations = raw.limitations
             for (tokens, isGuarded) in [(raw.explicitCases, false), (raw.guardedCases, true)] {
                 for token in tokens {

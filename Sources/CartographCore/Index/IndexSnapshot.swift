@@ -139,6 +139,20 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         let headers: [String]? = admittedHeaderPaths.flatMap { first in
             other.admittedHeaderPaths.map { Set(first).intersection($0).sorted() }
         }
+        // A legacy or missing per-file capture cannot borrow another capture's completeness.
+        func unscannedEnumPaths(_ snapshot: IndexSnapshot) -> Set<String> {
+            let observed = Set(snapshot.symbols.filter { !$0.isExternal }.map(\.location.path))
+                .union(snapshot.sourceFreshnessDates?.keys.map { $0 } ?? [])
+                .filter { $0.hasSuffix(".swift") }
+            return Set(observed).subtracting(snapshot.enumImpactFiles?.map(\.path) ?? [])
+        }
+        let unscanned = unscannedEnumPaths(self).union(unscannedEnumPaths(other))
+        let enumFiles = EnumImpactFileFacts.merging(enumImpactFiles, other.enumImpactFiles)?.map { file in
+            guard unscanned.contains(file.path) else { return file }
+            return EnumImpactFileFacts(path: file.path, status: file.status == "fresh" ? "partial" : file.status,
+                inventories: file.inventories, decisions: file.decisions,
+                limitations: file.limitations + ["overlapping-unscanned-file-capture"])
+        }
         return IndexSnapshot(
             symbols: symbols + other.symbols,
             references: references + other.references,
@@ -160,7 +174,7 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
                 )
             },
             admittedHeaderPaths: headers,
-            enumImpactFiles: EnumImpactFileFacts.merging(enumImpactFiles, other.enumImpactFiles)
+            enumImpactFiles: enumFiles
         )
     }
 }

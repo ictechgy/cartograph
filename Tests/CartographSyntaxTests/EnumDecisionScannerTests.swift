@@ -1,6 +1,8 @@
 import CartographCore
 @testable import CartographSyntax
 import Foundation
+import SwiftParser
+import SwiftSyntax
 import Testing
 
 @Suite("열거형 결정 구문의 정확한 근거")
@@ -16,7 +18,7 @@ struct EnumDecisionScannerTests {
     ) throws -> CartographCore.SourceLocation {
         let row = String(source.split(separator: "\n", omittingEmptySubsequences: false)[line - 1])
         let match = try #require(row.range(of: text))
-        return SourceLocation(
+        return CartographCore.SourceLocation(
             path: path, line: line,
             column: row[..<match.lowerBound].utf8.count + offset + 1
         )
@@ -34,11 +36,11 @@ struct EnumDecisionScannerTests {
         #expect(result.inventories.map(\.name) == ["상태", "Nested"])
         let outer = try #require(result.inventories.first)
         #expect(outer.isComplete)
-        #expect(outer.nameLocation == SourceLocation(path: path, line: 1, column: 6))
+        #expect(outer.nameLocation == CartographCore.SourceLocation(path: path, line: 1, column: 6))
         #expect(outer.cases.map(\.name) == ["값", "default"])
         #expect(outer.cases.map(\.location) == [
-            SourceLocation(path: path, line: 2, column: 10),
-            SourceLocation(path: path, line: 2, column: 15),
+            CartographCore.SourceLocation(path: path, line: 2, column: 10),
+            CartographCore.SourceLocation(path: path, line: 2, column: 15),
         ])
         #expect(result.inventories[1].cases.map(\.name) == ["child"])
         #expect(result.limitations.isEmpty)
@@ -212,7 +214,7 @@ struct EnumDecisionScannerTests {
         #expect(try typed.parameterNameLocation == location(in: source, line: 1, matching: "status:"))
         #expect(try typed.typeNameLocation == location(in: source, line: 1, matching: "Status"))
         #expect(typed.subjectLocation == positive.subjectRange?.start)
-        #expect(typed.functionRange.start == SourceLocation(path: path, line: 1, column: 1))
+        #expect(typed.functionRange.start == CartographCore.SourceLocation(path: path, line: 1, column: 1))
         let negative = result.decisions[1]
         #expect(negative.kind == .negatedLiteralMembership)
         #expect(try negative.negationLocation == location(in: source, line: 3, matching: "!"))
@@ -352,6 +354,78 @@ struct EnumDecisionScannerTests {
         #expect(try typed.typeNameLocation == location(in: source, line: 2, matching: "Other"))
         // Other와 Status의 불일치는 정확한 타입 참조를 받은 컴파일러 바인더가 거절한다.
         #expect(result.decisions[0].explicitCases.map(\.name) == ["a"])
+        #expect(result.decisions[1].subjectParameter == nil)
+        #expect(result.decisions[1].limitations.contains("enum-decision-unverified-subject-type"))
+    }
+
+    @Test("같은 함수의 결정 수가 늘어도 가림 요약은 함수마다 한 번만 순회한다")
+    func cachesOneShadowWalkPerFunction() {
+        let sites = Array(repeating: """
+            _ = [.a].contains(status)
+            switch status { case .a: break; default: break }
+            """, count: 128).joined(separator: "\n")
+        let source = """
+        enum Status { case a, b }
+        func first(_ status: Status) {
+        \(sites)
+        }
+        func second(_ status: Status) {
+        \(sites)
+        }
+        """
+        let tree = Parser.parse(source: source)
+        let converter = SourceLocationConverter(fileName: path, tree: tree)
+        var walkCount = 0
+        let result = EnumDecisionScanner().scan(
+            tree: tree, path: path, converter: converter,
+            onShadowSummaryWalk: { walkCount += 1 }
+        )
+        #expect(result.decisions.count == 512)
+        #expect(walkCount == 2)
+        #expect(result.decisions.allSatisfy { $0.subjectParameter != nil && $0.limitations.isEmpty })
+    }
+
+    @Test("캐시된 최초 바인딩은 사용 이전에 있을 때만 가림으로 판정한다")
+    func cachedSummaryPreservesBindingBoundary() throws {
+        let result = try scan("""
+        func f(_ status: Status) {
+            _ = [.a].contains(status)
+            let status = other
+            _ = [.a].contains(status)
+        }
+        """)
+        #expect(result.decisions.count == 2)
+        #expect(result.decisions[0].subjectParameter != nil)
+        #expect(result.decisions[1].subjectParameter == nil)
+        #expect(result.decisions[1].limitations.contains("enum-decision-unverified-subject-type"))
+    }
+
+    @Test("중첩 함수 이름은 사용 뒤에 선언되어도 가림으로 남는다")
+    func cachedSummaryPreservesHoistedNames() throws {
+        let result = try scan("""
+        func f(_ status: Status) {
+            _ = [.a].contains(status)
+            func status() {}
+        }
+        """)
+        #expect(result.decisions.first?.subjectParameter == nil)
+        #expect(result.decisions.first?.limitations.contains("enum-decision-unverified-subject-type") == true)
+    }
+
+    @Test("캐시된 매크로와 미해결 속성 위치는 그 뒤의 모든 이름을 차단한다", arguments: [
+        "#makeBindings()",
+        "@Wrapper var unrelated = 0",
+    ])
+    func cachedSummaryPreservesUnknownExpansionBoundary(expansion: String) throws {
+        let result = try scan("""
+        func f(_ first: Status, _ second: Status) {
+            _ = [.a].contains(first)
+            \(expansion)
+            _ = [.a].contains(second)
+        }
+        """)
+        #expect(result.decisions.count == 2)
+        #expect(result.decisions[0].subjectParameter?.parameterName == "first")
         #expect(result.decisions[1].subjectParameter == nil)
         #expect(result.decisions[1].limitations.contains("enum-decision-unverified-subject-type"))
     }

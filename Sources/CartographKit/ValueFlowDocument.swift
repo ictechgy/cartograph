@@ -113,6 +113,7 @@ struct ValueFlowSourceLoader {
         }
         return IndexSnapshot(symbols: symbols, references: references, indexedFileDates: dates,
             oldestIndexedFileDates: oldestDates,
-            admittedHeaderPaths: raw.admittedHeaderPaths.map { $0.map(Self.canonicalPath).sorted() })
+            admittedHeaderPaths: raw.admittedHeaderPaths.map { $0.map(Self.canonicalPath).sorted() },
+            enumImpactFiles: raw.enumImpactFiles?.map { $0.rebased(Self.canonicalPath) })
     }
 }

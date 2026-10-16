@@ -41,6 +41,39 @@ struct EnumImpactSnapshotTests {
         let captured = try service.captureSnapshot(in: context)
         #expect(captured.snapshot.enumImpactFiles?.map(\.path) == ["/p/Included.swift"])
         #expect(captured.snapshot.enumImpactFiles?.first == input.enumImpactFiles?.first)
+        let supplemental = try service.supplementalSnapshot(sourcePaths: ["/p/Included.swift"])
+        #expect(supplemental.enumImpactFiles?.map(\.path) == ["/p/Included.swift"])
+        #expect(supplemental.enumImpactFiles?.first == input.enumImpactFiles?.first)
+    }
+
+    @Test("Core Data 보충 문맥은 기존 enum 근거와 미수집 겹침을 구분한다")
+    func augmentationPreservesCoverage() throws {
+        let base = snapshot(root: "/p")
+        let path = "/p/Included.swift"
+        let generated = IndexedSymbol(usr: "Generated", name: "Generated", kind: .classType,
+            module: "App", location: .init(path: "/p/Generated.swift", line: 1, column: 1))
+        let disjoint = CartographService.augmentedEnumImpactFiles(
+            base: base, supplemental: .init(symbols: [generated]), includedBasePaths: [path])
+        #expect(disjoint == base.enumImpactFiles)
+        let overlapping = CartographService.augmentedEnumImpactFiles(
+            base: base, supplemental: .init(symbols: base.symbols), includedBasePaths: [path])
+        #expect(overlapping?.first?.status == "partial")
+        #expect(overlapping?.first?.limitations.contains("overlapping-unscanned-file-capture") == true)
+        #expect(CartographService.augmentedEnumImpactFiles(
+            base: base, supplemental: .init(), includedBasePaths: [])?.isEmpty == true)
+    }
+
+    @Test("값 흐름 경로 정규화도 enum 위치와 근거를 함께 보존한다")
+    func valueFlowNormalizationPreservesFacts() throws {
+        let raw = snapshot(root: "/p/Folder/..")
+        let loader = ValueFlowSourceLoader(fileSystem: InMemoryFileSystem(),
+            projectPath: "/p", pathFilter: .passthrough)
+        let result = loader.load(snapshot: raw, sourceSnapshot: [:]).snapshot
+        let file = try #require(result.enumImpactFiles?.first)
+        #expect(file.path == "/p/Included.swift")
+        #expect(file.inventories.first?.location.path == "/p/Included.swift")
+        #expect(file.decisions.first?.evidenceLocations.first?.path == "/p/Included.swift")
+        #expect(file.decisions.first?.enumUSR == "E")
     }
 
     private func snapshot(root: String) -> IndexSnapshot {

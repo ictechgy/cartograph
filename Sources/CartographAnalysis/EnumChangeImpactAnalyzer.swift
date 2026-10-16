@@ -39,6 +39,9 @@ public struct EnumChangeReview: Codable, Sendable, Equatable {
     public struct UnresolvedDecision: Codable, Sendable, Equatable {
         public let enumUSR: String?
         public let location: SourceLocation
+        public let endLocation: SourceLocation
+        public let evidenceLocations: [SourceLocation]
+        public let evidenceCount: Int
         public let kind: EnumDecisionFact.Kind
         public let explicitCaseUSRs: [String]
         public let explicitCaseCount: Int
@@ -70,7 +73,7 @@ public struct EnumChangeImpactAnalyzer: Sendable {
     public init() {}
 
     public func analyze(before: IndexSnapshot, current: IndexSnapshot,
-                        selected: Set<NodeID>, limit: Int) -> EnumChangeReview {
+                        selected: Set<NodeID>, limit: Int, admittedConsumerPaths: Set<String>? = nil) -> EnumChangeReview {
         let cap = max(0, limit)
         let oldSymbols = before.symbolsByUSR()
         let newSymbols = current.symbolsByUSR()
@@ -86,7 +89,7 @@ public struct EnumChangeImpactAnalyzer: Sendable {
         var changes: [EnumChangeReview.Change] = []
         var additions: [String: [String]] = [:]
         var truncated = false
-        let limitations = [
+        let limitations: [String] = relevant.isEmpty ? [] : [
             "Candidates identify source decisions to review if an added case reaches them; they do not prove a bug or runtime path.",
             "Case additions are between these indexed snapshots. Build configuration, conditional compilation and indexing scope may differ.",
             "Supported patterns: switch default/@unknown default and direct finite array-literal contains, including direct negation.",
@@ -101,6 +104,8 @@ public struct EnumChangeImpactAnalyzer: Sendable {
         }
         let oldInventories = inventories(before.enumImpactFiles)
         let newInventories = inventories(current.enumImpactFiles)
+        let oldCasesByEnum = casesByEnum(oldSymbols)
+        let newCasesByEnum = casesByEnum(newSymbols)
         for usr in relevant.sorted() {
             guard let old = oldSymbols[usr], let new = newSymbols[usr],
                   old.kind == .enumType, new.kind == .enumType,
@@ -110,8 +115,8 @@ public struct EnumChangeImpactAnalyzer: Sendable {
             }
             guard let oldRows = oldInventories[usr], oldRows.count == 1,
                   let newRows = newInventories[usr], newRows.count == 1,
-                  valid(oldRows[0], symbols: oldSymbols),
-                  valid(newRows[0], symbols: newSymbols) else {
+                  valid(oldRows[0], symbols: oldSymbols, observed: oldCasesByEnum),
+                  valid(newRows[0], symbols: newSymbols, observed: newCasesByEnum) else {
                 issues.append(.init(kind: "incomplete-enum-inventory", enumUSR: usr, path: new.location.path))
                 continue
             }
@@ -137,38 +142,51 @@ public struct EnumChangeImpactAnalyzer: Sendable {
             let fileGroups = Dictionary(grouping: current.enumImpactFiles ?? [], by: \.path)
             let indexedPaths = Set(current.symbols.filter {
                 !$0.isExternal && $0.location.path.hasSuffix(".swift")
+                    && (admittedConsumerPaths?.contains($0.location.path) ?? true)
             }.map { $0.location.path })
             for path in indexedPaths.sorted() {
-                guard let rows = fileGroups[path], rows.count == 1, rows[0].status == "fresh" else {
+                guard let rows = fileGroups[path], rows.count == 1 else {
                     issues.append(.init(kind: "current-consumer-coverage-incomplete", enumUSR: nil, path: path))
                     continue
                 }
-                for decision in rows[0].decisions {
+                let file = rows[0]
+                let fileLimits = file.status == "fresh" ? [] : file.limitations + ["file-coverage-\(file.status)"]
+                if file.status != "fresh" {
+                    issues.append(.init(kind: "current-consumer-coverage-incomplete", enumUSR: nil, path: path))
+                }
+                for decision in file.decisions {
                     guard let enumUSR = decision.enumUSR else {
                         unattributed += 1
-                        unresolved.append(.init(enumUSR: nil, location: decision.location, kind: decision.kind,
+                        unresolved.append(.init(enumUSR: nil, location: decision.location,
+                            endLocation: decision.endLocation,
+                            evidenceLocations: Array(decision.evidenceLocations.prefix(cap)),
+                            evidenceCount: decision.evidenceLocations.count, kind: decision.kind,
                             explicitCaseUSRs: Array(decision.explicitCaseUSRs.prefix(cap)),
                             explicitCaseCount: decision.explicitCaseUSRs.count,
                             operationTargetUSRs: Array(decision.operationTargetUSRs.prefix(cap)),
                             operationTargetCount: decision.operationTargetUSRs.count,
-                            limitations: decision.limitations + ["not-attributed-to-selected-enum"]))
+                            limitations: decision.limitations + fileLimits + ["not-attributed-to-selected-enum"]))
                         truncated = truncated || decision.explicitCaseUSRs.count > cap
-                            || decision.operationTargetUSRs.count > cap
+                            || decision.operationTargetUSRs.count > cap || decision.evidenceLocations.count > cap
                         continue
                     }
                     guard let added = additions[enumUSR] else { continue }
-                    guard decision.status == "resolved" else {
-                        unresolved.append(.init(enumUSR: enumUSR, location: decision.location, kind: decision.kind,
+                    guard decision.status == "resolved", file.status == "fresh" else {
+                        unresolved.append(.init(enumUSR: enumUSR, location: decision.location,
+                            endLocation: decision.endLocation,
+                            evidenceLocations: Array(decision.evidenceLocations.prefix(cap)),
+                            evidenceCount: decision.evidenceLocations.count, kind: decision.kind,
                             explicitCaseUSRs: Array(decision.explicitCaseUSRs.prefix(cap)),
                             explicitCaseCount: decision.explicitCaseUSRs.count,
                             operationTargetUSRs: Array(decision.operationTargetUSRs.prefix(cap)),
-                            operationTargetCount: decision.operationTargetUSRs.count, limitations: decision.limitations))
+                            operationTargetCount: decision.operationTargetUSRs.count, limitations: decision.limitations + fileLimits))
                         truncated = truncated || decision.explicitCaseUSRs.count > cap
-                            || decision.operationTargetUSRs.count > cap
+                            || decision.operationTargetUSRs.count > cap || decision.evidenceLocations.count > cap
                         continue
                     }
                     // Guarded cases deliberately do not establish unconditional handling.
-                    let unhandled = added.filter { !decision.explicitCaseUSRs.contains($0) }
+                    let explicit = Set(decision.explicitCaseUSRs)
+                    let unhandled = added.filter { !explicit.contains($0) }
                     guard !unhandled.isEmpty else { continue }
                     let membership = decision.kind == .literalMembership || decision.kind == .negatedLiteralMembership
                     let evidence = decision.evidenceLocations
@@ -202,7 +220,9 @@ public struct EnumChangeImpactAnalyzer: Sendable {
         issues.sort { ($0.kind, $0.enumUSR ?? "", $0.path ?? "") < ($1.kind, $1.enumUSR ?? "", $1.path ?? "") }
         truncated = truncated || changes.count > cap || candidates.count > cap || issues.count > cap || unresolved.count > cap
         return EnumChangeReview(
-            status: !issues.isEmpty || !unresolved.isEmpty || unattributed > 0 ? "partial" : (candidates.isEmpty ? "noCandidates" : "review"),
+            status: relevant.isEmpty ? "notApplicable"
+                : (!issues.isEmpty || !unresolved.isEmpty || unattributed > 0 ? "partial"
+                    : (candidates.isEmpty ? "noCandidates" : "review")),
             changes: Array(changes.prefix(cap)), changeCount: changes.count,
             candidates: Array(candidates.prefix(cap)), candidateCount: candidates.count,
             issues: Array(issues.prefix(cap)), issueCount: issues.count,
@@ -215,13 +235,20 @@ public struct EnumChangeImpactAnalyzer: Sendable {
         Dictionary(grouping: (files ?? []).filter { $0.status == "fresh" }.flatMap(\.inventories), by: \.enumUSR)
     }
 
-    private func valid(_ inventory: EnumCaseInventory, symbols: [String: IndexedSymbol]) -> Bool {
-        guard inventory.complete, let owner = symbols[inventory.enumUSR], owner.kind == .enumType else { return false }
-        let observed = Set(symbols.values.filter {
-            $0.kind == .enumCase && $0.parentUSR == inventory.enumUSR
-        }.map(\.usr))
-        return observed == Set(inventory.caseUSRs) && inventory.caseUSRs.allSatisfy {
-            symbols[$0]?.kind == .enumCase && symbols[$0]?.parentUSR == inventory.enumUSR
+    private func casesByEnum(_ symbols: [String: IndexedSymbol]) -> [String: Set<String>] {
+        var result: [String: Set<String>] = [:]
+        for symbol in symbols.values where symbol.kind == .enumCase {
+            if let parent = symbol.parentUSR { result[parent, default: []].insert(symbol.usr) }
         }
+        return result
+    }
+
+    private func valid(_ inventory: EnumCaseInventory, symbols: [String: IndexedSymbol],
+                       observed: [String: Set<String>]) -> Bool {
+        guard inventory.complete, let owner = symbols[inventory.enumUSR], owner.kind == .enumType else { return false }
+        return (observed[inventory.enumUSR] ?? []) == Set(inventory.caseUSRs)
+            && inventory.caseUSRs.allSatisfy {
+                symbols[$0]?.kind == .enumCase && symbols[$0]?.parentUSR == inventory.enumUSR
+            }
     }
 }

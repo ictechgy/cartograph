@@ -27,6 +27,25 @@ struct EnumImpactFactsTests {
         #expect(merged.enumImpactFiles?.first?.limitations == ["conflicting-file-captures"])
     }
 
+    @Test("같은 파일의 미수집 문맥은 병합 양방향에서 partial이고 다른 파일은 보존한다")
+    func overlappingLegacyCaptureDoesNotBorrowCoverage() {
+        let known = IndexSnapshot(enumImpactFiles: [facts(cases: ["E.a"])])
+        let legacy = IndexSnapshot(symbols: [
+            .init(usr: "E", name: "E", kind: .enumType, module: "App",
+                location: .init(path: "/old/E.swift", line: 1, column: 1)),
+        ])
+        for merged in [known.merging(legacy), legacy.merging(known)] {
+            #expect(merged.enumImpactFiles?.first?.status == "partial")
+            #expect(merged.enumImpactFiles?.first?.limitations.contains("overlapping-unscanned-file-capture") == true)
+        }
+        let disjoint = IndexSnapshot(symbols: [
+            .init(usr: "Other", name: "Other", kind: .enumType, module: "App",
+                location: .init(path: "/old/Other.swift", line: 1, column: 1)),
+        ])
+        #expect(known.merging(disjoint).enumImpactFiles == known.enumImpactFiles)
+        #expect(disjoint.merging(known).enumImpactFiles == known.enumImpactFiles)
+    }
+
     @Test("왕복과 루트 이동은 모든 위치를 옮기고 USR은 보존한다")
     func roundTripAndRebase() throws {
         let snapshot = IndexSnapshot(enumImpactFiles: [facts(cases: ["E.a"])])
