@@ -26,7 +26,7 @@ struct EnumImpactSnapshotTests {
     @Test("snapshot 내보내기는 제외된 파일의 enum 사실을 다시 끼워 넣지 않는다")
     func exportFiltersIncludedFiles() throws {
         var input = snapshot(root: "/p")
-        let excluded = SourceLocation(path: "/p/Excluded.swift", line: 1, column: 1)
+        let excluded = CartographCore.SourceLocation(path: "/p/Excluded.swift", line: 1, column: 1)
         input.symbols.append(.init(usr: "Other", name: "Other", kind: .enumType,
             module: "App", location: excluded))
         input.enumImpactFiles?.append(.init(path: excluded.path, status: "fresh",
@@ -77,7 +77,7 @@ struct EnumImpactSnapshotTests {
     }
 
     private func snapshot(root: String) -> IndexSnapshot {
-        let location = SourceLocation(path: "\(root)/Included.swift", line: 1, column: 1)
+        let location = CartographCore.SourceLocation(path: "\(root)/Included.swift", line: 1, column: 1)
         let owner = IndexedSymbol(usr: "E", name: "E", kind: .enumType, module: "App", location: location)
         let member = IndexedSymbol(usr: "E.a", name: "a", kind: .enumCase, module: "App",
             location: .init(path: location.path, line: 2, column: 6), parentUSR: "E")

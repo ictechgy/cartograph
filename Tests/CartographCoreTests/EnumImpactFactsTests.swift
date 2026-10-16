@@ -64,7 +64,7 @@ struct EnumImpactFactsTests {
     }
 
     private func facts(cases: [String]) -> EnumImpactFileFacts {
-        let location = SourceLocation(path: "/old/E.swift", line: 1, column: 1)
+        let location = CartographCore.SourceLocation(path: "/old/E.swift", line: 1, column: 1)
         return .init(path: location.path, status: "fresh",
             inventories: [.init(enumUSR: "E", caseUSRs: cases, location: location, complete: true)],
             decisions: [.init(kind: .literalMembership, location: location, endLocation: location,

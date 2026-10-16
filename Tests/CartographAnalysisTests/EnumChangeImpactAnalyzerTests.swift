@@ -73,7 +73,7 @@ struct EnumChangeImpactAnalyzerTests {
     @Test("partial 파일의 결정은 후보로 올리지 않고 위치와 제한을 보존한다")
     func partialConsumerKeepsLocatedReasons() {
         var current = snapshot(cases: ["a", "b"])
-        let site = SourceLocation(path: "/p/Consumer.swift", line: 10, column: 3)
+        let site = CartographCore.SourceLocation(path: "/p/Consumer.swift", line: 10, column: 3)
         current.symbols.append(.init(usr: "f", name: "f()", kind: .function, module: "App", location: site))
         current.enumImpactFiles?.append(.init(path: site.path, status: "partial",
             decisions: [.init(kind: .literalMembership, location: site, endLocation: site,
@@ -121,7 +121,7 @@ struct EnumChangeImpactAnalyzerTests {
             selected: [NodeID("E")], limit: limit)
     }
 
-    private func location(_ line: Int, column: Int = 1, id: String = "E") -> SourceLocation {
+    private func location(_ line: Int, column: Int = 1, id: String = "E") -> CartographCore.SourceLocation {
         .init(path: "/p/\(id).swift", line: line, column: column)
     }
 

@@ -36,7 +36,7 @@ struct EnumDecisionBinderTests {
             changed.references = snapshot.references.map { reference in
                 guard reference.targetUSR.hasPrefix("Status.") else { return reference }
                 let location = reference.location.map {
-                    SourceLocation(path: $0.path, line: $0.line, column: $0.column + (inferred ? 0 : 1))
+                    CartographCore.SourceLocation(path: $0.path, line: $0.line, column: $0.column + (inferred ? 0 : 1))
                 }
                 return .init(sourceUSR: reference.sourceUSR, targetUSR: reference.targetUSR,
                     kind: reference.kind, location: location, origin: inferred ? .inferred : .compiler)

@@ -187,7 +187,7 @@ extension CartographService {
             enumChangeReview: EnumChangeImpactAnalyzer().analyze(
                 before: historical.snapshot, current: currentContext.snapshot,
                 selected: current.scope.union(previous.scope), limit: limit,
-                admittedConsumerPaths: Set(currentGraph.nodes.filter { !$0.isExternal }.compactMap { $0.location?.path })),
+                admittedConsumerPaths: Set(currentGraph.nodes.values.filter { !$0.isExternal }.compactMap { $0.location?.path })),
             limit: limit
         )
         guard format == "json" || format == "text" else {
