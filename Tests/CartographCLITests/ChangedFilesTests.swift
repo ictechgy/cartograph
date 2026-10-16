@@ -35,10 +35,15 @@ struct ChangedFilesTests {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("cartograph-git-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try run(["init", "-q", "."], in: root)
-        try run(["config", "user.email", "t@example.com"], in: root)
-        try run(["config", "user.name", "t"], in: root)
-        return root
+        do {
+            try run(["init", "-q", "."], in: root)
+            try run(["config", "user.email", "t@example.com"], in: root)
+            try run(["config", "user.name", "t"], in: root)
+            return root
+        } catch {
+            try? FileManager.default.removeItem(at: root)
+            throw error
+        }
     }
 
     @discardableResult
@@ -48,11 +53,17 @@ struct ChangedFilesTests {
         process.arguments = ["-C", directory.path] + arguments
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        process.standardError = pipe
         try process.run()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        return String(decoding: data, as: UTF8.self)
+        let output = String(decoding: data, as: UTF8.self)
+        guard process.terminationReason == .exit, process.terminationStatus == 0 else {
+            throw NSError(domain: "ChangedFilesTests.Git", code: Int(process.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey:
+                    "git \(arguments.joined(separator: " ")) failed in \(directory.path): \(output)"])
+        }
+        return output
     }
 
     private func write(_ contents: String, to path: String, in root: URL) throws {
@@ -166,6 +177,107 @@ struct ChangedFilesTests {
         #expect(names.contains("Gone.swift"))
         #expect(names.contains("Original.swift"))
         #expect(names.contains("Renamed.swift"))
+    }
+
+    @Test("git 준비 명령의 실패를 성공한 빈 출력으로 삼지 않는다")
+    func rejectsFailedGitSetup() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        do {
+            _ = try run(["rev-parse", "--verify", "missing-reference"], in: root)
+            Issue.record("The deliberately invalid Git command unexpectedly succeeded")
+        } catch {
+            let reported = error as NSError
+            #expect(reported.domain == "ChangedFilesTests.Git")
+            #expect(reported.code != 0)
+            #expect(reported.localizedDescription.contains("git rev-parse --verify missing-reference"))
+        }
+    }
+
+    @Test("diff.relative 설정과 하위 실행 위치가 추적 파일의 변경 범위를 좁히지 않는다")
+    func trackedChangesIgnoreRelativeConfiguration() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let prefixes = ["", "pkg/Sources/"]
+        let phases = ["Committed", "Staged", "Unstaged"]
+        for prefix in prefixes {
+            for phase in phases {
+                try write("let \(phase.lowercased()) = 1", to: prefix + phase + ".swift", in: root)
+            }
+        }
+        try write("let unchanged = 1", to: "pkg/Sources/Unchanged.swift", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        let base = try run(["rev-parse", "HEAD"], in: root).trimmingCharacters(in: .whitespacesAndNewlines)
+        for prefix in prefixes {
+            try write("let committed = 2", to: prefix + "Committed.swift", in: root)
+        }
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "tracked-committed"], in: root)
+        for prefix in prefixes {
+            try write("let staged = 2", to: prefix + "Staged.swift", in: root)
+        }
+        try run(["add", "-A"], in: root)
+        for prefix in prefixes {
+            try write("let unstaged = 2", to: prefix + "Unstaged.swift", in: root)
+        }
+        let all = Set(prefixes.flatMap { prefix in phases.map { prefix + $0 + ".swift" } }
+            .map { normalized(root.appendingPathComponent($0).path) })
+        let pending = Set(prefixes.flatMap { prefix in ["Staged", "Unstaged"].map { prefix + $0 + ".swift" } }
+            .map { normalized(root.appendingPathComponent($0).path) })
+        for relative in ["false", "true"] {
+            try run(["config", "diff.relative", relative], in: root)
+            for directory in [root, root.appendingPathComponent("pkg")] {
+                for includingDeleted in [false, true] {
+                    #expect(Set(try ChangedFiles.since(base, workingDirectory: directory.path,
+                        includingDeleted: includingDeleted).map(normalized)) == all)
+                    #expect(Set(try ChangedFiles.since("HEAD", workingDirectory: directory.path,
+                        includingDeleted: includingDeleted).map(normalized)) == pending)
+                }
+            }
+        }
+    }
+
+    @Test("하위 실행 위치에서도 이름 변경과 삭제의 두 모드가 설정에 독립적이다")
+    func renameAndDeletionModesIgnoreRelativeConfiguration() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try run(["config", "diff.renames", "true"], in: root)
+        let prefixes = ["", "pkg/Sources/"]
+        for prefix in prefixes {
+            for name in ["CommittedOriginal", "StagedOriginal", "CommittedGone", "StagedGone", "UnstagedGone"] {
+                try write("// \(prefix)\(name)\nlet value = 1", to: prefix + name + ".swift", in: root)
+            }
+        }
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        let base = try run(["rev-parse", "HEAD"], in: root).trimmingCharacters(in: .whitespacesAndNewlines)
+        for prefix in prefixes {
+            try run(["mv", prefix + "CommittedOriginal.swift", prefix + "CommittedRenamed.swift"], in: root)
+            try run(["rm", prefix + "CommittedGone.swift"], in: root)
+        }
+        try run(["commit", "-qm", "committed-delete-and-rename"], in: root)
+        for prefix in prefixes {
+            try run(["mv", prefix + "StagedOriginal.swift", prefix + "StagedRenamed.swift"], in: root)
+            try run(["rm", prefix + "StagedGone.swift"], in: root)
+            try FileManager.default.removeItem(at: root.appendingPathComponent(prefix + "UnstagedGone.swift"))
+        }
+        let surviving = Set(prefixes.flatMap { prefix in
+            ["CommittedRenamed", "StagedRenamed"].map { prefix + $0 + ".swift" }
+        }.map { normalized(root.appendingPathComponent($0).path) })
+        let removed = Set(prefixes.flatMap { prefix in
+            ["CommittedOriginal", "StagedOriginal", "CommittedGone", "StagedGone", "UnstagedGone"]
+                .map { prefix + $0 + ".swift" }
+        }.map { normalized(root.appendingPathComponent($0).path) })
+        for relative in ["false", "true"] {
+            try run(["config", "diff.relative", relative], in: root)
+            for directory in [root, root.appendingPathComponent("pkg")] {
+                #expect(Set(try ChangedFiles.since(base, workingDirectory: directory.path)
+                    .map(normalized)) == surviving)
+                #expect(Set(try ChangedFiles.since(base, workingDirectory: directory.path, includingDeleted: true)
+                    .map(normalized)) == surviving.union(removed))
+            }
+        }
     }
 
     @Test("없는 기준점은 git 이 말한 이유를 그대로 전한다")

@@ -74,13 +74,14 @@ enum ChangedFiles {
     }
 
     /// 변경 파일을 조회할 때 삭제와 이름 변경을 보존할지에 따라 git 옵션을 고른다.
+    /// diff.relative 설정과 무관하게 저장소 전체의 루트 기준 경로를 받는다.
     private static func diffArguments(comparedTo revision: String, includingDeleted: Bool) -> [String] {
         if includingDeleted {
             // 이름 변경을 감지하면 옛 경로가 새 경로로 접혀 사라진다. 영향 분석은
             // 현재 인덱스에 없는 옛 선언도 시드로 삼아야 하므로 양쪽 경로를 받는다.
-            return ["diff", "--name-only", "--no-renames", "-z", revision]
+            return ["diff", "--no-relative", "--name-only", "--no-renames", "-z", revision]
         }
-        return ["diff", "--name-only", "--diff-filter=d", "-z", revision]
+        return ["diff", "--no-relative", "--name-only", "--diff-filter=d", "-z", revision]
     }
 
     /// git 을 한 번 실행하고 출력을 경로 목록으로 나눈다.
