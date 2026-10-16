@@ -76,6 +76,75 @@ struct EnumImpactSnapshotTests {
         #expect(file.decisions.first?.enumUSR == "E")
     }
 
+    @Test("POSIX private 루트는 캡처와 왕복 및 이동에서 철자를 보존한다")
+    func privateRootsRemainLexical() throws {
+        for prefix in ["/private/var", "/private/tmp"] {
+            let oldRoot = prefix + "/cartograph-before"
+            let newRoot = prefix + "/cartograph-current"
+            var input = snapshot(root: oldRoot)
+            input.references = [.init(sourceUSR: "E", targetUSR: "E.a", kind: .reference,
+                location: .init(path: oldRoot + "/Included.swift", line: 3, column: 2), origin: .compiler)]
+            var configuration = CartographConfiguration.default
+            configuration.projectPath = oldRoot
+            let service = CartographService(configuration: configuration,
+                environment: .init(fileSystem: InMemoryFileSystem(), indexProviderOverride: StaticIndexProvider(input)),
+                allowsEmptyIndex: true)
+            let captured = try service.captureSnapshot(in: AnalysisContext(snapshot: input, pathFilter: .passthrough))
+            try captured.validate()
+            #expect(captured.projectRoot == oldRoot)
+            let decoded = try AnalysisSnapshotDocument.decode(from: JSONEncoder.cartographDefault().encode(captured))
+            #expect(decoded.projectRoot == oldRoot)
+            #expect(decoded.snapshot.symbols.first?.location.path == oldRoot + "/Included.swift")
+            let moved = decoded.rebased(to: newRoot)
+            try moved.validate()
+            #expect(moved.projectRoot == newRoot)
+            #expect(moved.snapshot.symbols.allSatisfy { $0.location.path == newRoot + "/Included.swift" })
+            #expect(moved.snapshot.references.first?.location?.path == newRoot + "/Included.swift")
+            let file = try #require(moved.snapshot.enumImpactFiles?.first)
+            #expect(file.path == newRoot + "/Included.swift")
+            #expect(file.inventories.first?.location.path == file.path)
+            #expect(file.decisions.first?.location.path == file.path)
+            #expect(file.decisions.first?.endLocation.path == file.path)
+            #expect(file.decisions.first?.evidenceLocations.first?.path == file.path)
+        }
+    }
+
+    @Test("과거 루트는 별칭이나 형제 경로 및 외부 심볼을 추정해서 옮기지 않는다")
+    func historicalRootBoundaries() {
+        let root = "/private/var/project"
+        var input = snapshot(root: root)
+        for (usr, path, external) in [
+            ("Sibling", root + "-other/Other.swift", false),
+            ("Alias", "/var/project/Alias.swift", false),
+            ("External", root + "/External.swift", true),
+        ] {
+            input.symbols.append(.init(usr: usr, name: usr, kind: .classType, module: "Other",
+                location: .init(path: path, line: 1, column: 1), isExternal: external))
+        }
+        let document = AnalysisSnapshotDocument(projectRoot: root, snapshot: input)
+        let moved = document.rebased(to: "/private/tmp/current").snapshot
+        for usr in ["Sibling", "Alias", "External"] {
+            #expect(moved.symbols.first { $0.usr == usr } == input.symbols.first { $0.usr == usr })
+        }
+        #expect(document.rebased(to: "relative").snapshot == input)
+        #expect(AnalysisSnapshotDocument(projectRoot: "relative", snapshot: input)
+            .rebased(to: "/new").snapshot == input)
+    }
+
+    @Test("정규 절대 루트만 허용하고 파일시스템 루트 이동은 중복 슬래시가 없다")
+    func validatesLexicalRoots() throws {
+        for root in ["relative", "/p/.", "/p/..", "/p//q", "/p/", "//p", "/p\u{0}q"] {
+            let document = AnalysisSnapshotDocument(projectRoot: root, snapshot: .init())
+            #expect(throws: (any Error).self) { try document.validate() }
+        }
+        let rootDocument = AnalysisSnapshotDocument(projectRoot: "/", snapshot: snapshot(root: ""))
+        try rootDocument.validate()
+        #expect(rootDocument.rebased(to: "/new").snapshot.symbols.first?.location.path == "/new/Included.swift")
+        #expect(rootDocument.rebased(to: "/").snapshot.symbols.first?.location.path == "/Included.swift")
+        let ordinary = AnalysisSnapshotDocument(projectRoot: "/old", snapshot: snapshot(root: "/old"))
+        #expect(ordinary.rebased(to: "/").snapshot.symbols.first?.location.path == "/Included.swift")
+    }
+
     private func snapshot(root: String) -> IndexSnapshot {
         let location = CartographCore.SourceLocation(path: "\(root)/Included.swift", line: 1, column: 1)
         let owner = IndexedSymbol(usr: "E", name: "E", kind: .enumType, module: "App", location: location)
