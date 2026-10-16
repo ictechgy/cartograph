@@ -1767,6 +1767,9 @@ public struct CartographService: Sendable {
             oldestIndexedFileDates: oldestDates,
             admittedHeaderPaths: loaded.admittedHeaderPaths.map { paths in
                 paths.filter { allowed.contains(LocalFileSystem.canonicalPath($0)) }.sorted()
+            },
+            enumImpactFiles: loaded.enumImpactFiles?.filter {
+                allowed.contains(LocalFileSystem.canonicalPath($0.path))
             })
     }
 

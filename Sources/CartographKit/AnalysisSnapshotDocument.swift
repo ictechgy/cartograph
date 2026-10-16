@@ -155,8 +155,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         guard !projectRoot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw CartographError.invalidConfiguration(path: projectRoot, reason: "Snapshot projectRoot is empty.")
         }
-        guard projectRoot.hasPrefix("/"),
-              URL(fileURLWithPath: projectRoot).standardizedFileURL.path == projectRoot else {
+        guard Self.lexicalAbsolutePath(projectRoot) == projectRoot else {
             throw CartographError.invalidConfiguration(
                 path: projectRoot,
                 reason: "Snapshot projectRoot must be a normalized absolute path."
@@ -259,6 +258,9 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 imports: imports, fileModuleUsages: moduleUsages,
                 admittedHeaderPaths: snapshot.admittedHeaderPaths.map { paths in
                     paths.map { Self.rebase($0, from: projectRoot, to: currentProjectRoot) }.sorted()
+                },
+                enumImpactFiles: snapshot.enumImpactFiles?.map { facts in
+                    facts.rebased { Self.rebase($0, from: projectRoot, to: currentProjectRoot) }
                 }),
             edgeKinds: Set(edgeKinds),
             limitations: limitations,
@@ -279,12 +281,30 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         )
     }
 
+    /// Historical paths are text, not paths to resolve against this machine.
+    /// Foundation standardization can rewrite POSIX /private paths on macOS.
+    private static func lexicalAbsolutePath(_ path: String) -> String? {
+        guard path.hasPrefix("/"), !path.utf8.contains(0) else { return nil }
+        var components: [Substring] = []
+        for component in path.split(separator: "/") {
+            switch component {
+            case ".": continue
+            case "..":
+                if !components.isEmpty { components.removeLast() }
+            default: components.append(component)
+            }
+        }
+        return "/" + components.joined(separator: "/")
+    }
+
     private static func rebase(_ path: String, from recordedRoot: String, to currentRoot: String) -> String {
-        let old = URL(fileURLWithPath: recordedRoot).standardizedFileURL.path
-        let new = URL(fileURLWithPath: currentRoot).standardizedFileURL.path
-        guard path == old || path.hasPrefix(old + "/") else { return path }
-        let suffix = String(path.dropFirst(old.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        return suffix.isEmpty ? new : (new as NSString).appendingPathComponent(suffix)
+        guard let old = lexicalAbsolutePath(recordedRoot),
+              let new = lexicalAbsolutePath(currentRoot) else { return path }
+        if path == old { return new }
+        let prefix = old == "/" ? "/" : old + "/"
+        guard path.hasPrefix(prefix) else { return path }
+        let suffix = String(path.dropFirst(prefix.count))
+        return (new == "/" ? "/" : new + "/") + suffix
     }
 
     private static func withoutExpectedValues(_ document: RuntimeContractsDocument) -> RuntimeContractsDocument {
@@ -535,7 +555,10 @@ extension CartographService {
             propertyAccesses: capturedAccesses,
             imports: capturedImports,
             fileModuleUsages: capturedUsages,
-            admittedHeaderPaths: capturedHeaders
+            admittedHeaderPaths: capturedHeaders,
+            enumImpactFiles: context.snapshot.enumImpactFiles?.filter {
+                includedSourcePaths.contains($0.path)
+            }
         )
         let supplementalPaths = context.supplementalRuntimeSourcePaths
         let capturedRuntimeFiles = context.runtimeFiles?.filter { facts in

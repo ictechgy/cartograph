@@ -89,6 +89,8 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
     /// 함수·접근자 본문의 구간. 이 안의 참조는 그 선언의 인터페이스를 바꾸지 않는다.
     /// nil은 아직 수집하지 않은 캐시다 — 위치를 모르는 참조와 같이 보수적으로 다룬다.
     public let bodyRanges: [SourceRange]?
+    /// nil means this capture predates enum-decision syntax coverage.
+    public let enumDecisionFacts: EnumDecisionScanFacts?
 
     public init(
         path: String,
@@ -98,7 +100,8 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
         localFunctionScopes: [LocalFunctionScopeFacts]? = nil,
         parameterUsages: [ParameterUsageFacts]? = nil,
         imports: [IndexedImport]? = nil,
-        bodyRanges: [SourceRange]? = nil
+        bodyRanges: [SourceRange]? = nil,
+        enumDecisionFacts: EnumDecisionScanFacts? = nil
     ) {
         self.path = path
         self.declarations = declarations
@@ -108,6 +111,7 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
         self.parameterUsages = parameterUsages
         self.imports = imports
         self.bodyRanges = bodyRanges
+        self.enumDecisionFacts = enumDecisionFacts
     }
 
     /// 줄 번호로 선언을 찾는다.

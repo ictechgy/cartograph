@@ -62,6 +62,9 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
     /// 인덱스에 발생이 없는 파일은 키가 없다 — 그 파일의 import는 판정할 수 없다.
     public var fileModuleUsages: [String: FileModuleUsage]
 
+    /// Located enum-decision capability. nil is an older or unscanned snapshot, never complete-empty.
+    public var enumImpactFiles: [EnumImpactFileFacts]?
+
     public init(
         symbols: [IndexedSymbol] = [],
         references: [IndexedReference] = [],
@@ -71,7 +74,8 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         propertyAccesses: [String: PropertyAccessFacts] = [:],
         imports: [IndexedImport] = [],
         fileModuleUsages: [String: FileModuleUsage] = [:],
-        admittedHeaderPaths: [String]? = nil
+        admittedHeaderPaths: [String]? = nil,
+        enumImpactFiles: [EnumImpactFileFacts]? = nil
     ) {
         self.symbols = symbols
         self.references = references
@@ -82,11 +86,12 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         self.imports = imports
         self.fileModuleUsages = fileModuleUsages
         self.admittedHeaderPaths = admittedHeaderPaths.map { Set($0).sorted() }
+        self.enumImpactFiles = enumImpactFiles?.sorted { $0.path < $1.path }
     }
 
     private enum CodingKeys: String, CodingKey {
         case symbols, references, indexedFileDates, parameters, propertyAccesses, imports, fileModuleUsages
-        case oldestIndexedFileDates, admittedHeaderPaths
+        case oldestIndexedFileDates, admittedHeaderPaths, enumImpactFiles
     }
 
     /// 파라미터 목록과 접근 합산·import 근거는 뒤늦게 추가된 필드라, 그것이 없는 예전 스냅샷 문서도 읽는다.
@@ -97,6 +102,7 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         indexedFileDates = try container.decodeIfPresent([String: Date].self, forKey: .indexedFileDates)
         oldestIndexedFileDates = try container.decodeIfPresent([String: Date].self, forKey: .oldestIndexedFileDates)
         admittedHeaderPaths = try container.decodeIfPresent([String].self, forKey: .admittedHeaderPaths)
+        enumImpactFiles = try container.decodeIfPresent([EnumImpactFileFacts].self, forKey: .enumImpactFiles)
         parameters = try container.decodeIfPresent([IndexedParameter].self, forKey: .parameters) ?? []
         propertyAccesses = try container.decodeIfPresent(
             [String: PropertyAccessFacts].self, forKey: .propertyAccesses) ?? [:]
@@ -133,6 +139,20 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         let headers: [String]? = admittedHeaderPaths.flatMap { first in
             other.admittedHeaderPaths.map { Set(first).intersection($0).sorted() }
         }
+        // A legacy or missing per-file capture cannot borrow another capture's completeness.
+        func unscannedEnumPaths(_ snapshot: IndexSnapshot) -> Set<String> {
+            let observed = Set(snapshot.symbols.filter { !$0.isExternal }.map(\.location.path))
+                .union(snapshot.sourceFreshnessDates?.keys.map { $0 } ?? [])
+                .filter { $0.hasSuffix(".swift") }
+            return Set(observed).subtracting(snapshot.enumImpactFiles?.map(\.path) ?? [])
+        }
+        let unscanned = unscannedEnumPaths(self).union(unscannedEnumPaths(other))
+        let enumFiles = EnumImpactFileFacts.merging(enumImpactFiles, other.enumImpactFiles)?.map { file in
+            guard unscanned.contains(file.path) else { return file }
+            return EnumImpactFileFacts(path: file.path, status: file.status == "fresh" ? "partial" : file.status,
+                inventories: file.inventories, decisions: file.decisions,
+                limitations: file.limitations + ["overlapping-unscanned-file-capture"])
+        }
         return IndexSnapshot(
             symbols: symbols + other.symbols,
             references: references + other.references,
@@ -153,7 +173,8 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
                         || extra.hasUnattributedReferences
                 )
             },
-            admittedHeaderPaths: headers
+            admittedHeaderPaths: headers,
+            enumImpactFiles: enumFiles
         )
     }
 }

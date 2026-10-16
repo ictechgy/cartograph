@@ -310,7 +310,9 @@ extension CartographService {
                 supplemental.admittedHeaderPaths.map {
                     Set(paths.filter(configuration.pathFilter.allows)).intersection($0).sorted()
                 }
-            }
+            },
+            enumImpactFiles: Self.augmentedEnumImpactFiles(
+                base: base.snapshot, supplemental: supplemental, includedBasePaths: basePaths)
         )
         let generatedFacts = try evidence.declaredGeneratedMappings.map {
             RuntimeFactScanner().scan(source: try generatedSource(at: $0.source.path), path: $0.source.path)
@@ -341,6 +343,16 @@ extension CartographService {
             runtimeFreshness: freshness,
             supplementalRuntimeSourcePaths: supplementalPaths
         )
+    }
+
+    /// 이미 수집한 enum 근거를 보존하되 같은 파일의 미수집 보충 인덱스는 완전성으로 합치지 않는다.
+    static func augmentedEnumImpactFiles(
+        base: IndexSnapshot, supplemental: IndexSnapshot, includedBasePaths: Set<String>
+    ) -> [EnumImpactFileFacts]? {
+        let admitted = IndexSnapshot(
+            symbols: base.symbols.filter { !$0.isExternal && includedBasePaths.contains($0.location.path) },
+            enumImpactFiles: base.enumImpactFiles?.filter { includedBasePaths.contains($0.path) })
+        return admitted.merging(supplemental).enumImpactFiles
     }
 
     private func augmentedRuntimeFiles(

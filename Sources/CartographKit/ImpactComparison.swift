@@ -12,6 +12,9 @@ public struct ImpactComparisonDocument: Sendable, Equatable, Codable {
     /// 변경 범위 안에서 두 그래프가 달라진 정점과 간선. 계산하지 않은 경우가 아니라
     /// 차이가 없으면 빈 목록 넷과 0 개수로 나온다.
     public let scopeDiff: ScopeDiff
+    /// Located decision candidates for enum cases added between these indexed snapshots.
+    /// nil on comparison documents produced before this capability.
+    public let enumChangeReview: EnumChangeReview?
     public let unresolvedInputs: [ImpactDocument.SelectionIssue]
     public let unresolvedCount: Int
     public let truncated: Bool
@@ -61,6 +64,7 @@ public struct ImpactComparisonDocument: Sendable, Equatable, Codable {
         unresolvedInputs: [ImpactDocument.SelectionIssue],
         limitations: [String],
         scopeDiff: ScopeDiff,
+        enumChangeReview: EnumChangeReview? = nil,
         limit: Int
     ) {
         format = "change-impact-comparison"
@@ -69,6 +73,7 @@ public struct ImpactComparisonDocument: Sendable, Equatable, Codable {
         self.current = current
         self.before = before
         self.scopeDiff = scopeDiff
+        self.enumChangeReview = enumChangeReview
         unresolvedCount = unresolvedInputs.count
         var budget = limit
         var omittedCandidates = false
@@ -83,7 +88,7 @@ public struct ImpactComparisonDocument: Sendable, Equatable, Codable {
         truncated = current.truncated.depth || current.truncated.output
             || before.truncated.depth || before.truncated.output
             || unresolvedCount > self.unresolvedInputs.count || omittedCandidates
-            || scopeDiff.truncated
+            || scopeDiff.truncated || (enumChangeReview?.truncated ?? false)
         self.limitations = limitations
     }
 }
@@ -179,6 +184,10 @@ extension CartographService {
             unresolvedInputs: unresolved,
             limitations: limitations,
             scopeDiff: scopeDiff,
+            enumChangeReview: EnumChangeImpactAnalyzer().analyze(
+                before: historical.snapshot, current: currentContext.snapshot,
+                selected: current.scope.union(previous.scope), limit: limit,
+                admittedConsumerPaths: Set(currentGraph.nodes.values.filter { !$0.isExternal }.compactMap { $0.location?.path })),
             limit: limit
         )
         guard format == "json" || format == "text" else {
@@ -360,6 +369,27 @@ extension CartographService {
         lines += diff.addedEdges.map { "  + edge \($0.source.qualifiedName) -[\($0.kind)]-> \($0.target.qualifiedName)" }
         if diff.truncated {
             lines.append("  scope diff truncated: counts are uncapped; increase --limit")
+        }
+        if let review = document.enumChangeReview {
+            lines.append("enum change review: \(review.status), \(review.changeCount) expanded enums, \(review.candidateCount) candidates")
+            for change in review.changes {
+                lines.append("  enum \(change.module).\(change.name): \(change.addedCaseCount) cases added between snapshots")
+            }
+            for candidate in review.candidates {
+                let site = "\(candidate.location.path):\(candidate.location.line):\(candidate.location.column)"
+                lines.append("  review \(candidate.kind.rawValue) at \(site): \(candidate.reason)")
+                lines.append("    added cases: " + candidate.addedCaseUSRs.joined(separator: ", "))
+            }
+            for unresolved in review.unresolvedDecisions {
+                let site = "\(unresolved.location.path):\(unresolved.location.line):\(unresolved.location.column)"
+                lines.append("  unresolved \(unresolved.kind.rawValue) at \(site): " + unresolved.limitations.joined(separator: ", "))
+            }
+            lines += review.issues.map { "  enum coverage: \($0.kind) \($0.enumUSR ?? $0.path ?? "")" }
+            if review.unattributedDecisionCount > 0 {
+                lines.append("  \(review.unattributedDecisionCount) decisions could not be assigned an enum identity")
+            }
+            if review.truncated { lines.append("  enum review truncated: counts are uncapped; increase --limit") }
+            lines += review.limitations.map { "  Enum review limitation: \($0)" }
         }
         lines += document.unresolvedInputs.map { "Unresolved \($0.kind): \($0.requested) (\($0.status))" }
         lines += document.limitations.map { "Limitation: \($0)" }

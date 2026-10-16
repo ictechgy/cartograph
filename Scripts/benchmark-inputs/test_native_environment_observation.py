@@ -1274,7 +1274,7 @@ class NativeEnvironmentObservationTests(unittest.TestCase):
         body = (ROOT / self.D.CI_NAME).read_bytes()
         self.assertEqual(self.S.record(body), self.D.CI_PIN)
         manifest = json.loads((ROOT / self.D.MANIFEST_NAME).read_text())
-        self.assertEqual(manifest['sources'][self.D.CI_NAME]['blob'], '2a49c0e9516ea6fee603faf19c322dac78ad9763')
+        self.assertEqual(manifest['sources'][self.D.CI_NAME]['blob'], '622de642ab41685a788b0af2c10ef08e509c6ddb')
         self.assertIn('python3 -m unittest discover -s Scripts/benchmark-inputs -v', body.decode())
         self.assertIn('/opt/homebrew/opt/python@3.14/bin/python3.14 -I -S -B -m unittest discover -s Scripts/benchmark-inputs -p test_native_environment_observation.py -v', WORKFLOW.read_text())
         tree = ast.parse(Path(__file__).read_text())
