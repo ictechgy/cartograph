@@ -5,12 +5,13 @@ import CartographSyntax
 import CartographTestSupport
 @testable import CartographKit
 import Foundation
+import Dispatch
 import Testing
 
 @Suite("실제 컴파일러의 enum 결정 근거", .serialized)
-struct EnumDecisionCompilerTests {
+struct EnumDecisionCompilerTests: Sendable {
     @Test("일반 Array contains와 부정 및 default를 정확한 enum에 결합한다")
-    func standardMembershipAndFallback() throws {
+    func standardMembershipAndFallback() async throws {
         let source = """
         public enum Status: Equatable { case a, b, c }
         public func allows(_ status: Status) -> Bool {
@@ -30,10 +31,12 @@ struct EnumDecisionCompilerTests {
         let excludedSource = """
         public func excluded(_ status: Status) -> Bool { [Status.a, .b].contains(status) }
         """
-        let fixture = try compile(source, extraSource: excludedSource)
+        let fixture = try await blocking("current.compile") { try self.compile(source, extraSource: excludedSource) }
         defer { try? FileManager.default.removeItem(at: fixture.root) }
-        let snapshot = try load(fixture)
-        let enriched = SnapshotEnricher(fileSystem: LocalFileSystem()).enrichWithDiagnostics(snapshot).snapshot
+        let snapshot = try await blocking("current.raw-load") { try self.load(fixture) }
+        let enriched = phase("current.enrich") {
+            SnapshotEnricher(fileSystem: LocalFileSystem()).enrichWithDiagnostics(snapshot).snapshot
+        }
         let facts = try #require(enriched.enumImpactFiles?.first { $0.path == fixture.path })
         #expect(facts.status == "fresh", "\(facts.limitations)")
         let inventory = try #require(facts.inventories.first)
@@ -53,18 +56,25 @@ struct EnumDecisionCompilerTests {
         #expect(Set(negative.operationTargetUSRs) == [
             "s:STsSQ7ElementRpzrlE8containsySbABF", "s:Sb1nopyS2bFZ",
         ])
-        let baseline = try compile(source.replacingOccurrences(of: "case a, b, c", with: "case a, b"),
-            extraSource: excludedSource)
+        let baseline = try await blocking("baseline.compile") {
+            try self.compile(source.replacingOccurrences(of: "case a, b, c", with: "case a, b"),
+                extraSource: excludedSource)
+        }
         defer { try? FileManager.default.removeItem(at: baseline.root) }
-        let before = SnapshotEnricher(fileSystem: LocalFileSystem()).enrichWithDiagnostics(try load(baseline)).snapshot
-        try verifyComparison(fixture: fixture, source: source, snapshot: snapshot, before: before,
-            baselineRoot: (baseline.path as NSString).deletingLastPathComponent, inventory: inventory)
+        let baselineSnapshot = try await blocking("baseline.raw-load") { try self.load(baseline) }
+        let before = phase("baseline.enrich") {
+            SnapshotEnricher(fileSystem: LocalFileSystem()).enrichWithDiagnostics(baselineSnapshot).snapshot
+        }
+        try phase("paired.comparison") {
+            try verifyComparison(fixture: fixture, source: source, snapshot: snapshot, before: before,
+                baselineRoot: (baseline.path as NSString).deletingLastPathComponent, inventory: inventory)
+        }
 
     }
 
     @Test("사용자 contains와 다른 타입의 패턴 매칭을 표준 enum 결정으로 가장하지 않는다")
-    func customMembershipIsUnresolved() throws {
-        let fixture = try compile("""
+    func customMembershipIsUnresolved() async throws {
+        let fixture = try await blocking("custom.compile") { try self.compile("""
         public enum Status: Equatable { case a, b }
         extension Array where Element == Status {
             public func contains(_ status: Status) -> Bool { true }
@@ -80,10 +90,12 @@ struct EnumDecisionCompilerTests {
             default: return false
             }
         }
-        """)
+        """) }
         defer { try? FileManager.default.removeItem(at: fixture.root) }
-        let snapshot = try load(fixture)
-        let enriched = SnapshotEnricher(fileSystem: LocalFileSystem()).enrichWithDiagnostics(snapshot).snapshot
+        let snapshot = try await blocking("custom.raw-load") { try self.load(fixture) }
+        let enriched = phase("custom.enrich") {
+            SnapshotEnricher(fileSystem: LocalFileSystem()).enrichWithDiagnostics(snapshot).snapshot
+        }
         let decision = try #require(enriched.enumImpactFiles?.flatMap(\.decisions).first {
             $0.kind == .literalMembership
         })
@@ -154,7 +166,38 @@ struct EnumDecisionCompilerTests {
         #expect(try compare("text").output == text)
     }
 
-    private struct Fixture {
+    /// Blocking Process and raw IndexStore bridges must not occupy Swift's cooperative executor.
+    /// Assertions stay in the original async test task so Swift Testing retains issue attribution.
+    private func blocking<T: Sendable>(
+        _ name: String, _ body: @escaping @Sendable () throws -> T
+    ) async throws -> T {
+        Self.mark("\(name).begin")
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let value = try body()
+                    Self.mark("\(name).end")
+                    continuation.resume(returning: value)
+                } catch {
+                    Self.mark("\(name).failed")
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func phase<T>(_ name: String, _ body: () throws -> T) rethrows -> T {
+        Self.mark("\(name).begin")
+        defer { Self.mark("\(name).end") }
+        return try body()
+    }
+
+    private static func mark(_ phase: String) {
+        // A direct write is visible even if the next synchronous phase never returns.
+        FileHandle.standardError.write(Data("EnumCompilerPhase \(phase)\n".utf8))
+    }
+
+    private struct Fixture: Sendable {
         let root: URL
         let path: String
         let store: String

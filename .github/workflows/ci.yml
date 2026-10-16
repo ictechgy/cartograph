@@ -308,6 +308,7 @@ jobs:
         run: swift build --build-tests --enable-code-coverage
 
       - name: Test with coverage gate
+        timeout-minutes: 15
         run: |
           python3 Scripts/verify-coverage-inputs.py
           Scripts/coverage.sh
