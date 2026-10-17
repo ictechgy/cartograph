@@ -45,12 +45,29 @@ def check_planted_module(gate, environment, root):
     assert artifact_uris(Path(environment["INPUT_SARIF"])) == converted_uris(root)
 
 
+def check_literal_globs(gate, environment, root):
+    # args는 단어로만 나뉜다. 글롭을 펼치면 --exclude 패턴이 실제 디렉터리 이름으로 바뀌어 그 아래 파일을 못 거른다.
+    for directory in ("Tests/UI", "Tests/Unit"):
+        (root / directory).mkdir(parents=True)
+    argv = root / "argv"
+    result = execute(gate, {**environment, "INPUT_ARGS": "--exclude Tests/*", "INPUT_FAIL_ON_FINDINGS": "false",
+                            "STUB_ARGV": str(argv)}, cwd=root)
+    assert result.returncode == 0, result.stderr
+    received = argv.read_text().split("\0")[:-1]
+    assert received == ["check", "--project", environment["INPUT_PROJECT"], "--report-format", "sarif",
+                        "--output", environment["INPUT_SARIF"], "--quiet", "--exclude", "Tests/*"], received
+
+
 def main():
     gate, report = script("Run the gate"), script("Report the result")
     with tempfile.TemporaryDirectory(prefix="cartograph-action-test-") as directory:
         root = Path(directory).resolve()
         binary = root / "cartograph"
-        binary.write_text('#!/bin/bash\nif [ "$WRITE_REPORT" = true ]; then printf \'%s\\n\' "$STUB_REPORT" > "$INPUT_SARIF"; fi\nexit "$STUB_CODE"\n')
+        # STUB_ARGV가 있으면 스텁이 받은 인자를 NUL로 구분해 남긴다.
+        binary.write_text('#!/bin/bash\n'
+                          '[ -z "$STUB_ARGV" ] || printf \'%s\\0\' "$@" > "$STUB_ARGV"\n'
+                          'if [ "$WRITE_REPORT" = true ]; then printf \'%s\\n\' "$STUB_REPORT" > "$INPUT_SARIF"; fi\n'
+                          'exit "$STUB_CODE"\n')
         binary.chmod(0o700)
         count = 0
         for code, writes, strict, expected in [
@@ -88,7 +105,8 @@ def main():
         result = execute(gate, {**env, "INPUT_COMMAND": "unsupported"})
         assert result.returncode == 2
         check_planted_module(gate, env, root)
-    print(f"PASS: {count} action outcomes plus unsupported-command and planted-module checks")
+        check_literal_globs(gate, env, root)
+    print(f"PASS: {count} action outcomes plus unsupported-command, planted-module and literal-glob checks")
 
 
 if __name__ == "__main__":
