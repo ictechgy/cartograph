@@ -44,7 +44,7 @@ public struct SwiftSyntaxAnalyzer: Sendable {
             declarations: collector.declarations,
             ignoresEntireFile: Self.fileIsIgnored(tree),
             runtimeFacts: RuntimeFactScanner().scan(tree: tree, path: path),
-            localFunctionScopes: LocalFunctionScanner().scan(tree: tree, path: path),
+            localFunctionScopes: LocalFunctionScanner().scan(tree: tree, path: path, converter: converter),
             parameterUsages: ParameterUsageScanner().scan(tree: tree, path: path, converter: converter),
             imports: ImportScanner().scan(tree: tree, path: path, converter: converter),
             bodyRanges: ReferenceBodyScanner().scan(tree: tree, path: path, converter: converter),

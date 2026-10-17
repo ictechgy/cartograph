@@ -7,10 +7,15 @@ struct LocalFunctionScanner {
     init() {}
 
     /// 소스 트리에서 local function facts를 만든다.
-    func scan(tree: SourceFileSyntax, path: String) -> [LocalFunctionScopeFacts] {
-        let collector = LocalFunctionRoots(path: path,
-            converter: SourceLocationConverter(fileName: path, tree: tree),
-            remapsLocations: tree.tokens(viewMode: .sourceAccurate).contains { $0.text == "#sourceLocation" })
+    ///
+    /// - Parameters:
+    ///   - converter: 분석기가 만든 변환기를 그대로 쓴다. 파일마다 줄 표를 다시 만들지 않는다.
+    ///   - onBodyWalk: 바깥 함수 본문을 끝까지 훑을 때마다 불린다. 테스트가 지역 함수 후보가 있는 본문만 훑는지 센다.
+    func scan(
+        tree: SourceFileSyntax, path: String, converter: SourceLocationConverter,
+        onBodyWalk: (() -> Void)? = nil
+    ) -> [LocalFunctionScopeFacts] {
+        let collector = LocalFunctionRoots(tree: tree, path: path, converter: converter, onBodyWalk: onBodyWalk)
         collector.walk(tree)
         return collector.scopes.sorted { $0.ownerLocation < $1.ownerLocation }
     }
@@ -19,13 +24,17 @@ struct LocalFunctionScanner {
 private final class LocalFunctionRoots: SyntaxVisitor {
     let path: String
     let converter: SourceLocationConverter
-    let remapsLocations: Bool
+    private let tree: SourceFileSyntax
+    private let onBodyWalk: (() -> Void)?
+    /// 파일의 모든 토큰을 훑는 검사라 범위가 하나라도 생길 때만 본다.
+    private lazy var remapsLocations = tree.tokens(viewMode: .sourceAccurate).contains { $0.text == "#sourceLocation" }
     var scopes: [LocalFunctionScopeFacts] = []
 
-    init(path: String, converter: SourceLocationConverter, remapsLocations: Bool) {
+    init(tree: SourceFileSyntax, path: String, converter: SourceLocationConverter, onBodyWalk: (() -> Void)?) {
+        self.tree = tree
         self.path = path
         self.converter = converter
-        self.remapsLocations = remapsLocations
+        self.onBodyWalk = onBodyWalk
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -44,27 +53,28 @@ private final class LocalFunctionRoots: SyntaxVisitor {
     private func collect(
         _ node: some SyntaxProtocol, name: String, token: TokenSyntax, body: CodeBlockSyntax?
     ) -> SyntaxVisitorContinueKind {
-        guard body != nil, token.presence == .present, !DeclarationCollector.isInsideBody(node) else {
-            return .skipChildren
-        }
+        // 함수 선언 자손이 없으면 본문을 끝까지 훑어도 지역 함수가 하나도 모이지 않는다. 바깥 함수의 99% 가
+        // 그렇고, 그 본문마다 참조 위치를 전부 모았다가 버리면 콜드 실행 구문 단계의 약 1/4 을 썼다.
+        guard body != nil, token.presence == .present, !DeclarationCollector.isInsideBody(node),
+              NestedFunctionProbe.contains(node)
+        else { return .skipChildren }
+        onBodyWalk?()
         let collector = LocalFunctionBody(root: Syntax(node), path: path, converter: converter)
         collector.walk(node)
-        let contextReason = unsupportedReason(node)
+        guard !collector.functions.isEmpty else { return .skipChildren }
         let reason = LocalFunctionBody.preferred([
             remapsLocations ? .sourceLocationRemapping : nil,
             collector.reason,
-            contextReason,
+            unsupportedReason(node),
             collector.hasUnsupportedSyntax ? .unsupportedSyntax : nil
         ].compactMap { $0 })
-        if !collector.functions.isEmpty {
-            scopes.append(LocalFunctionScopeFacts(ownerName: DeclarationCollector.unescaped(name),
-                ownerLocation: collector.location(token.positionAfterSkippingLeadingTrivia),
-                functions: collector.functions,
-                references: collector.references.values.sorted { $0.location < $1.location },
-                blockedNames: collector.blockedNames,
-                hasUnsupportedSyntax: reason != nil,
-                reason: reason))
-        }
+        scopes.append(LocalFunctionScopeFacts(ownerName: DeclarationCollector.unescaped(name),
+            ownerLocation: collector.location(token.positionAfterSkippingLeadingTrivia),
+            functions: collector.functions,
+            references: collector.references.values.sorted { $0.location < $1.location },
+            blockedNames: collector.blockedNames,
+            hasUnsupportedSyntax: reason != nil,
+            reason: reason))
         return .skipChildren
     }
 
@@ -79,6 +89,30 @@ private final class LocalFunctionRoots: SyntaxVisitor {
             current = syntax.parent
         }
         return node.hasError ? .parseError : nil
+    }
+}
+
+/// 바깥 함수 안에 함수 선언이 하나라도 있는지만 본다. 지역 타입·매크로 안의 func 까지 세는 과대 근사지만,
+/// 없다고 답하면 같은 보기 방식으로 훑는 LocalFunctionBody 도 지역 함수를 하나도 모으지 못하므로 결과가 같다.
+/// `func` 키워드 토큰으로 보면 파싱 복구로 키워드가 빠진 선언을 놓친다.
+private final class NestedFunctionProbe: SyntaxVisitor {
+    private let root: SyntaxIdentifier
+    private var found = false
+
+    private init(root: SyntaxIdentifier) {
+        self.root = root
+        super.init(viewMode: .sourceAccurate)
+    }
+
+    static func contains(_ node: some SyntaxProtocol) -> Bool {
+        let probe = NestedFunctionProbe(root: node.id)
+        probe.walk(node)
+        return probe.found
+    }
+
+    override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+        if node.id != root { found = true }
+        return found ? .skipChildren : .visitChildren
     }
 }
 
