@@ -29,7 +29,10 @@ Expected behavior:
   report exactly three current decision candidates: `switch default`, literal `Array.contains`,
   and direct negated membership. Exact enum/case identities, compiler target identities and source
   locations are checked in JSON; text must expose all three kinds. Comparing the baseline against
-  itself must report no additions or candidates. This is a synthetic regression for the requested
+  itself must report no additions or candidates. The existing RenderTests/RuntimeTests Swift Testing
+  macros remain explicitly unexpanded: their two exact located coverage issues and overall partial
+  status must survive JSON/text, while the enum inventory and all three decision attributions are
+  complete. No issue is silently filtered out. This is a synthetic regression for the requested
   implicit enum-expansion review, not evidence that any candidate is a runtime bug. The release
   workflow runs this same check with the unpacked universal executable.
 - A depth or output limit is explicit. Unknown/deleted source selections are incomplete.

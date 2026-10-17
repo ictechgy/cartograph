@@ -130,16 +130,15 @@ def verify_selection_safety(binary: Path, project: Path, store: Path, output: Pa
         raise RuntimeError(f"modeled-only lifecycle selectors differ: {selectors!r}")
 
 
-def enum_review(document: dict, *, label: str) -> dict:
+def enum_review(document: dict, *, label: str, expected_issues: list[dict] | None = None) -> dict:
     review = document.get("enumChangeReview")
     if document.get("status") != "found" or document.get("unresolvedInputs") or not isinstance(review, dict):
         raise RuntimeError(f"{label}: public comparison omitted the selected enum or its review")
-    for count, rows in [
-        ("issueCount", "issues"),
-        ("unresolvedDecisionCount", "unresolvedDecisions"),
-    ]:
-        if review.get(count) != 0 or review.get(rows) != []:
-            raise RuntimeError(f"{label}: unresolved enum evidence: {review}")
+    issues = expected_issues if expected_issues is not None else []
+    if review.get("issueCount") != len(issues) or review.get("issues") != issues:
+        raise RuntimeError(f"{label}: unexpected enum coverage issues: {review}")
+    if review.get("unresolvedDecisionCount") != 0 or review.get("unresolvedDecisions") != []:
+        raise RuntimeError(f"{label}: unresolved enum decision evidence: {review}")
     if review.get("unattributedDecisionCount") != 0 or review.get("truncated") is not False:
         raise RuntimeError(f"{label}: incomplete or truncated enum evidence: {review}")
     return review
@@ -159,8 +158,13 @@ def verify_enum_expansion(binary: Path, project: Path, store: Path, output: Path
                           before_document: dict) -> dict:
     document = json_document(binary, project, store, output,
         ["impact", "ReleaseStatus", "--before", str(before), "--format", "json"], "enum-expansion-json")
-    review = enum_review(document, label="enum-expansion")
-    if review.get("status") != "review" or review.get("changeCount") != 1 or len(review.get("changes", [])) != 1:
+    # Swift Testing 매크로는 구문 스캐너가 확장하지 않는다.
+    # 위치가 있는 범위 한계를 보존하고 코퍼스 전체를 완전하다고 가장하지 않는다.
+    macro_paths = [str((project / "Tests/ImpactChecks" / name).resolve())
+                   for name in ("RenderTests.swift", "RuntimeTests.swift")]
+    expected_issues = [{"kind": "current-consumer-coverage-incomplete", "path": path} for path in macro_paths]
+    review = enum_review(document, label="enum-expansion", expected_issues=expected_issues)
+    if review.get("status") != "partial" or review.get("changeCount") != 1 or len(review.get("changes", [])) != 1:
         raise RuntimeError(f"paired compiler snapshots did not identify exactly one enum expansion: {review}")
     change = review["changes"][0]
     added = change.get("addedCases", [])
@@ -172,6 +176,11 @@ def verify_enum_expansion(binary: Path, project: Path, store: Path, output: Path
     added_usr = added[0]["usr"]
     source_path = str((project / ENUM_RELATIVE_PATH).resolve())
     before_files = before_document.get("snapshot", {}).get("enumImpactFiles", [])
+    for path in macro_paths:
+        rows = [row for row in before_files if row.get("path") == path]
+        if (len(rows) != 1 or rows[0].get("status") != "partial"
+                or "enum-decision-unexpanded-macro" not in rows[0].get("limitations", [])):
+            raise RuntimeError(f"saved baseline lost its explicit Swift Testing macro coverage gap: {path}")
     before_rows = [row for row in before_files if row.get("path") == source_path]
     inventories = [row for file in before_rows for row in file.get("inventories", [])
                    if row.get("enumUSR") == enum_usr]
@@ -221,11 +230,13 @@ def verify_enum_expansion(binary: Path, project: Path, store: Path, output: Path
     text = run([str(binary), "impact", "ReleaseStatus", "--before", str(before), "--format", "text",
                 "--project", str(project), "--index-store", str(store)],
                cwd=project, output=output, name="enum-expansion-text")
-    if ("enum change review: review, 1 expanded enums, 3 candidates" not in text
-            or any(kind not in text for kind in expected_lines)):
+    if ("enum change review: partial, 1 expanded enums, 3 candidates" not in text
+            or any(kind not in text for kind in expected_lines)
+            or any(f"enum coverage: {issue['kind']} {issue['path']}" not in text for issue in expected_issues)):
         raise RuntimeError("public text output omitted the enum review or a decision kind")
     return {"enumUSR": enum_usr, "addedCaseUSR": added_usr, "candidateKinds": sorted(expected_lines),
-            "candidateCount": 3, "noAdditionControl": "passed", "sourcePath": source_path}
+            "candidateCount": 3, "noAdditionControl": "passed", "sourcePath": source_path,
+            "coverageStatus": "partial", "coverageIssues": expected_issues}
 
 
 def main() -> int:

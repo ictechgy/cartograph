@@ -98,7 +98,9 @@ baseline or make stale source fresh.
 
 The existing change-impact verification script uses paired real compiler builds, persists the
 baseline with the supplied CLI, and checks JSON/text enum expansion results plus a no-addition
-control. Release verification runs that same script against the executable extracted from the
+control. The larger corpus also preserves explicit partial coverage for its two Swift Testing
+macro files; the gate verifies those exact issues instead of presenting partial coverage as clean.
+Release verification runs that same script against the executable extracted from the
 universal archive and compares this packaged guide with its source copy.
 
 CI uses the newest Xcode available on its macOS runner. The exact compiler-bound `contains` and
