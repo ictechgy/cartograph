@@ -678,6 +678,22 @@ Codable, preview와 기타 런타임 관리 경로를 수동 또는 런타임 �
 생략은 생산자의 기존 `callersOmitted`에 더하며, `truncated.sections`에 `runtimeEvidence`나
 `runtimeContracts`를 표시합니다.
 
+#### Enum case 확장 검토 (0.27.0 소스)
+
+`impact --before`는 선택한 enum 확장에 대해 JSON과 text에 `enumChangeReview`를 추가합니다.
+컴파일러로 귀속한 `default`/`@unknown default` switch와 유한 배열 리터럴의 `contains`,
+직접 부정을 찾아 새 case가 도달할 때 검토할 위치를 보여 줍니다. case 식별자, 소스 위치,
+미해결 범위를 함께 보고하며 실제 동작 버그를 확정하지 않습니다. 사용자 정의 동등성도
+membership 결과에 영향을 줄 수 있습니다.
+
+enum 근거를 지원하는 Cartograph로 변경 전 기준 스냅샷을 먼저 캡처하고, 비교 가능한 타깃과
+설정으로 현재 인덱스를 다시 빌드하세요. 옛 스냅샷은 읽을 수 있지만 누락된 enum 목록을
+복원하지는 못합니다. 구문 캐시 형식 15는 옛 캐시를 자동으로 갱신하지만 저장한 기준
+스냅샷을 업그레이드하지 않습니다. equality/inequality, if/guard case, filter와 동적 컬렉션은
+첫 범위에 포함되지 않습니다. [Enum 확장 검토와 마이그레이션](docs/ENUM-CHANGE-REVIEW.md)을
+참고하세요. 새 strict 실패 조건은 추가하지 않으며, 위 설치 예제의 발행 버전 고정값은
+0.27.0이 실제로 발행될 때까지 유지합니다.
+
 #### isthmus 용 다중 root 순회 (`--format language-traversal`)
 
 ```bash

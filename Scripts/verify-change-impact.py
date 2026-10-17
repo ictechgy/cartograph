@@ -48,7 +48,26 @@ def json_document(binary: Path, project: Path, store: Path, output: Path, comman
         raise RuntimeError(f"{name}: command did not return JSON") from error
 
 
+ENUM_RELATIVE_PATH = "Sources/ImpactData/EnumDecisions.swift"
+ENUM_BEFORE_SOURCE = """public enum ReleaseStatus: Equatable { case a, b }
+public func releaseAllows(_ status: ReleaseStatus) -> Bool {
+    [ReleaseStatus.a, .b].contains(status)
+}
+public func releaseDenies(_ status: ReleaseStatus) -> Bool {
+    ![ReleaseStatus.a, .b].contains(status)
+}
+public func releaseFallback(_ status: ReleaseStatus) -> Bool {
+    switch status {
+    case .a: return true
+    case .b: return true
+    default: return false
+    }
+}
+"""
+
+
 def patch_before_sources(project: Path) -> None:
+    (project / ENUM_RELATIVE_PATH).write_text(ENUM_BEFORE_SOURCE)
     live = project / "Sources/ImpactData/LiveStore.swift"
     live.write_text(live.read_text() + '\nextension LiveStore { public func legacy() -> String { "live" } }\n')
     render = project / "Sources/ImpactFeatures/Render.swift"
@@ -56,6 +75,10 @@ def patch_before_sources(project: Path) -> None:
 
 
 def patch_after_sources(project: Path) -> None:
+    enum_source = project / ENUM_RELATIVE_PATH
+    if enum_source.read_text() != ENUM_BEFORE_SOURCE:
+        raise RuntimeError("enum before source changed before the paired compiler build")
+    enum_source.write_text(ENUM_BEFORE_SOURCE.replace("case a, b", "case a, b, c", 1))
     live = project / "Sources/ImpactData/LiveStore.swift"
     text = live.read_text().replace('\nextension LiveStore { public func legacy() -> String { "live" } }\n', "\n")
     live.write_text(text)
@@ -105,6 +128,115 @@ def verify_selection_safety(binary: Path, project: Path, store: Path, output: Pa
                           "-only-testing:ImpactChecks/LifecycleSetupTests\n")
     if selectors != expected_selectors:
         raise RuntimeError(f"modeled-only lifecycle selectors differ: {selectors!r}")
+
+
+def enum_review(document: dict, *, label: str, expected_issues: list[dict] | None = None) -> dict:
+    review = document.get("enumChangeReview")
+    if document.get("status") != "found" or document.get("unresolvedInputs") or not isinstance(review, dict):
+        raise RuntimeError(f"{label}: public comparison omitted the selected enum or its review")
+    issues = expected_issues if expected_issues is not None else []
+    if review.get("issueCount") != len(issues) or review.get("issues") != issues:
+        raise RuntimeError(f"{label}: unexpected enum coverage issues: {review}")
+    if review.get("unresolvedDecisionCount") != 0 or review.get("unresolvedDecisions") != []:
+        raise RuntimeError(f"{label}: unresolved enum decision evidence: {review}")
+    if review.get("unattributedDecisionCount") != 0 or review.get("truncated") is not False:
+        raise RuntimeError(f"{label}: incomplete or truncated enum evidence: {review}")
+    return review
+
+
+def verify_enum_no_addition(binary: Path, project: Path, store: Path, output: Path, before: Path) -> None:
+    document = json_document(binary, project, store, output,
+        ["impact", "ReleaseStatus", "--before", str(before), "--format", "json"], "enum-no-addition")
+    review = enum_review(document, label="enum-no-addition")
+    if (review.get("status") != "noCandidates" or review.get("changes") != []
+            or review.get("changeCount") != 0 or review.get("candidates") != []
+            or review.get("candidateCount") != 0):
+        raise RuntimeError(f"identical capable enum snapshots produced a change candidate: {review}")
+
+
+def verify_enum_expansion(binary: Path, project: Path, store: Path, output: Path, before: Path,
+                          before_document: dict) -> dict:
+    document = json_document(binary, project, store, output,
+        ["impact", "ReleaseStatus", "--before", str(before), "--format", "json"], "enum-expansion-json")
+    # Swift Testing 매크로는 구문 스캐너가 확장하지 않는다.
+    # 위치가 있는 범위 한계를 보존하고 코퍼스 전체를 완전하다고 가장하지 않는다.
+    macro_paths = [str((project / "Tests/ImpactChecks" / name).resolve())
+                   for name in ("RenderTests.swift", "RuntimeTests.swift")]
+    expected_issues = [{"kind": "current-consumer-coverage-incomplete", "path": path} for path in macro_paths]
+    review = enum_review(document, label="enum-expansion", expected_issues=expected_issues)
+    if review.get("status") != "partial" or review.get("changeCount") != 1 or len(review.get("changes", [])) != 1:
+        raise RuntimeError(f"paired compiler snapshots did not identify exactly one enum expansion: {review}")
+    change = review["changes"][0]
+    added = change.get("addedCases", [])
+    if (change.get("name") != "ReleaseStatus" or change.get("beforeCaseCount") != 2
+            or change.get("currentCaseCount") != 3 or change.get("addedCaseCount") != 1
+            or len(added) != 1 or added[0].get("name") != "c"):
+        raise RuntimeError(f"enum case inventory did not retain a,b -> a,b,c: {change}")
+    enum_usr = change["enumUSR"]
+    added_usr = added[0]["usr"]
+    source_path = str((project / ENUM_RELATIVE_PATH).resolve())
+    before_files = before_document.get("snapshot", {}).get("enumImpactFiles", [])
+    for path in macro_paths:
+        rows = [row for row in before_files if row.get("path") == path]
+        if (len(rows) != 1 or rows[0].get("status") != "partial"
+                or "enum-decision-unexpanded-macro" not in rows[0].get("limitations", [])):
+            raise RuntimeError(f"saved baseline lost its explicit Swift Testing macro coverage gap: {path}")
+    before_rows = [row for row in before_files if row.get("path") == source_path]
+    inventories = [row for file in before_rows for row in file.get("inventories", [])
+                   if row.get("enumUSR") == enum_usr]
+    if (len(before_rows) != 1 or before_rows[0].get("status") != "fresh"
+            or len(inventories) != 1 or inventories[0].get("complete") is not True):
+        raise RuntimeError("saved baseline omitted the complete compiler-bound enum inventory")
+    old_cases = set(inventories[0]["caseUSRs"])
+    if len(old_cases) != 2 or added_usr in old_cases:
+        raise RuntimeError("added enum case identity was already in the saved baseline")
+    if added[0]["location"]["path"] != source_path or added[0]["location"]["line"] != 1:
+        raise RuntimeError("added case lost its current declaration location")
+
+    expected_lines = {"literalMembership": 3, "negatedLiteralMembership": 6, "switchDefault": 9}
+    candidates = review.get("candidates", [])
+    if (review.get("candidateCount") != 3 or len(candidates) != 3
+            or {row["kind"] for row in candidates} != set(expected_lines)):
+        raise RuntimeError(f"packaged CLI omitted a distinct enum decision kind: {candidates}")
+    contains_usr = "s:STsSQ7ElementRpzrlE8containsySbABF"
+    negation_usr = "s:Sb1nopyS2bFZ"
+    for row in candidates:
+        kind = row["kind"]
+        location = row["location"]
+        if (row.get("enumUSR") != enum_usr or not row.get("ownerUSR")
+                or row.get("addedCaseUSRs") != [added_usr] or row.get("addedCaseCount") != 1
+                or set(row.get("explicitCaseUSRs", [])) != old_cases or row.get("explicitCaseCount") != 2
+                or row.get("guardedCaseUSRs") != [] or row.get("guardedCaseCount") != 0):
+            raise RuntimeError(f"{kind}: candidate identity or explicit case evidence differs: {row}")
+        if location != {"path": source_path, "line": expected_lines[kind], "column": 5}:
+            raise RuntimeError(f"{kind}: decision has the wrong current source location: {location}")
+        evidence = row.get("evidenceLocations", [])
+        if (not evidence or row.get("evidenceCount") != len(evidence)
+                or any(point["path"] != source_path or point["line"] <= 0 or point["column"] <= 0
+                       for point in evidence)):
+            raise RuntimeError(f"{kind}: missing or misplaced compiler/syntax evidence: {evidence}")
+        targets = [] if kind == "switchDefault" else [contains_usr]
+        if kind == "negatedLiteralMembership":
+            targets.append(negation_usr)
+        if set(row.get("operationTargetUSRs", [])) != set(targets) or row.get("operationTargetCount") != len(targets):
+            raise RuntimeError(f"{kind}: standard-library target attribution was not preserved: {row}")
+        reason = ("added-case-not-unconditionally-handled-before-fallback" if kind == "switchDefault"
+                  else "added-case-outside-explicit-literal-set")
+        if row.get("reason") != reason:
+            raise RuntimeError(f"{kind}: candidate reason overstates or omits the source evidence")
+        if kind == "switchDefault" and {"path": source_path, "line": 12, "column": 5} not in evidence:
+            raise RuntimeError("default candidate omitted its fallback token location")
+
+    text = run([str(binary), "impact", "ReleaseStatus", "--before", str(before), "--format", "text",
+                "--project", str(project), "--index-store", str(store)],
+               cwd=project, output=output, name="enum-expansion-text")
+    if ("enum change review: partial, 1 expanded enums, 3 candidates" not in text
+            or any(kind not in text for kind in expected_lines)
+            or any(f"enum coverage: {issue['kind']} {issue['path']}" not in text for issue in expected_issues)):
+        raise RuntimeError("public text output omitted the enum review or a decision kind")
+    return {"enumUSR": enum_usr, "addedCaseUSR": added_usr, "candidateKinds": sorted(expected_lines),
+            "candidateCount": 3, "noAdditionControl": "passed", "sourcePath": source_path,
+            "coverageStatus": "partial", "coverageIssues": expected_issues}
 
 
 def main() -> int:
@@ -199,9 +331,11 @@ def main() -> int:
         before_doc = json.loads(before_snapshot.read_text())
         if before_doc.get("format") != "analysis-snapshot" or before_doc.get("revision") != "before-change":
             raise RuntimeError("before snapshot has the wrong format or revision label")
+        verify_enum_no_addition(binary, workspace, before_store, output, before_snapshot)
 
         patch_after_sources(workspace)
         after_bin, after_store = build_index(workspace, after_scratch, output, "after")
+        enum_expansion = verify_enum_expansion(binary, workspace, after_store, output, before_snapshot, before_doc)
         deleted = json_document(
             binary, workspace, after_store, output,
             ["impact", "LiveStore.legacy", "--before", str(before_snapshot), "--format", "json"],
@@ -239,6 +373,7 @@ def main() -> int:
         run(["swift", "test", "--package-path", str(workspace), "--scratch-path", str(after_scratch), "--skip-build"], cwd=workspace, output=output, name="tests")
         summary = {
             "status": "passed",
+            "enumChangeReview": enum_expansion,
             "witnessDependents": len(witness["affected"]),
             "containerDependents": len(container["affected"]),
             "runtimeAffectedTests": sorted(runtime_test_names),

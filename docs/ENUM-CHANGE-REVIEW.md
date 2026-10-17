@@ -5,8 +5,8 @@ The existing `impact --before <snapshot>` comparison includes an additive
 case, or its source file with the existing impact selectors. Ordinary graph
 impact and exit-status behavior are unchanged.
 
-Capture a baseline with this version before adding enum cases, then rebuild the
-current index and compare it with that baseline. Older snapshots still decode,
+Capture a baseline with enum-aware Cartograph (0.27.0 source or a later capable
+release) before adding enum cases, then rebuild the current index and compare it with that baseline. Older snapshots still decode,
 but their missing enum inventories are reported as unavailable, not as empty
 complete case sets.
 
@@ -46,8 +46,8 @@ their included files, and snapshot relocation rebases all evidence locations.
 
 The first slice does not evaluate if/guard case, equality/inequality, filters,
 aliased or dynamic collections, `allCases`, local-variable dataflow or arbitrary
-subject expressions. Unsupported decision evidence and missing coverage are
-shown explicitly. A default-only switch without sufficient arm evidence is
+subject expressions. Detected but unsupported decision evidence and missing
+coverage are shown explicitly; unsupported syntax is not an exhaustive census. A default-only switch without sufficient arm evidence is
 unresolved.
 
 Only selected enum expansions are reported. Lists are deterministically ordered,
@@ -63,3 +63,54 @@ fallbacks, guarded arms, selection isolation, deterministic JSON/text, legacy
 snapshots, conflicting merges, export filtering and historical path rebasing.
 The compiler fixture is also the compatibility check for the exact standard
 library USRs; an unknown identity must not silently fall back to matching a name.
+
+## Upgrade and baseline migration
+
+0.27.0 is prepared in source. Check the repository's Releases page before changing a published
+install pin; the source `--version` alone is not a publication receipt.
+
+1. At the pre-change revision, rebuild the relevant targets with the intended Swift toolchain,
+   build configuration and conditional flags. Use the actual compiler index store produced by that
+   build; changing a requested index path does not guarantee the build system used it.
+2. Capture with the new tool and save the snapshot outside any checkout/build directory that you
+   will replace. For example, `cartograph snapshot --project /path/to/before --index-store
+   /path/to/before-index --revision before-enum-change -o /path/to/evidence/before.json`.
+3. At the changed revision, rebuild the same target/configuration scope, then run
+   `cartograph impact Status --project /path/to/current --index-store /path/to/current-index
+   --before /path/to/evidence/before.json --format json`. An added case or source-file selector
+   can be used instead. Use `--format text` for a readable review.
+4. Read `enumChangeReview.status`, `changes`, `candidates`, `issues`,
+   `unresolvedDecisions`, uncapped counts and `truncated` together. An empty candidate array with
+   partial/unavailable coverage is not a clean bill of health.
+
+Analysis-snapshot version remains 2. Optional `snapshot.enumImpactFiles` carries inventories and
+decision facts; older snapshots remain readable. Recapture a legacy baseline from its original
+revision and compiler build if the inventory is missing. Do not substitute today's case list or
+edit an old snapshot to make it appear complete. Current use-site evidence can be used with a
+capable historical inventory; historical decision facts are not required for every current site.
+
+Syntax cache schema 15 discards older cache documents automatically; the analyzer identity also
+includes the tool version. No manual cache deletion is required for this migration. The first
+analysis may reparse unchanged Swift files. That refresh does not rebuild an index, recreate a
+baseline or make stale source fresh.
+
+## Packaged and toolchain verification
+
+The existing change-impact verification script uses paired real compiler builds, persists the
+baseline with the supplied CLI, and checks JSON/text enum expansion results plus a no-addition
+control. The larger corpus also preserves explicit partial coverage for its two Swift Testing
+macro files; the gate verifies those exact issues instead of presenting partial coverage as clean.
+Release verification runs that same script against the executable extracted from the
+universal archive and compares this packaged guide with its source copy.
+
+CI uses the newest Xcode available on its macOS runner. The exact compiler-bound `contains` and
+negation identities are tested on that toolchain; this is not a multi-toolchain compatibility
+matrix. Unknown identities remain unresolved rather than falling back to method spelling.
+A universal archive contains arm64 and x86_64 slices; the host verification does not imply that
+both slices were executed or that an incompatible `libIndexStore` can be loaded.
+
+Publication is a separate step: the Release workflow validates the reviewed source SHA and
+version, verifies the unpacked package, then creates/verifies the exact tag and publishes. Its
+manual `tag`/`source_sha` dispatch is a real release operation, not a dry run. Existing tags and
+historical benchmark records are not rewritten; `final_evidence: false` remains a limit on those
+comparison claims.
