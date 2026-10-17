@@ -94,4 +94,54 @@ struct HTTPRouteScanCostTests {
         #expect(rescan.calls.map(\.fact.location.path) == [canonical])
         #expect(scanner.collect(source: source, path: canonical, declaredPath: declared).surface == surface)
     }
+
+    /// 준수 이름 닫힘의 선형 정의. 상속 이름마다 마지막 구성 요소가 같은 프로젝트 프로토콜 사슬을 모두 훑는다.
+    private func naiveConformedNames(of chain: String, in surface: HTTPDeclarationSurface) -> Set<String> {
+        var seen: Set<String> = []
+        var queue = Array(surface.inheritedNames[chain] ?? [])
+        while let name = queue.popLast() {
+            guard seen.insert(name).inserted else { continue }
+            for protocolChain in surface.protocolChains
+            where protocolChain.split(separator: ".").last == Substring(name) {
+                queue.append(contentsOf: surface.inheritedNames[protocolChain] ?? [])
+            }
+        }
+        return seen
+    }
+
+    @Test("라우터 사슬과 준수 이름은 프로토콜 이름 색인으로 구해도 선형 정의와 같다")
+    func routerChainsMatchLinearDefinition() {
+        var surface = HTTPDeclarationSurface()
+        surface.merge(HTTPRouteCallScanner.declarations(source: """
+            import Moya
+            import Alamofire
+            protocol BaseTarget: TargetType {}
+            protocol AuthTarget: BaseTarget, Codable {}
+            enum Outer { protocol BaseTarget: Sendable {} }
+            enum Users: AuthTarget { case list }
+            struct Login: Outer.BaseTarget {}
+            enum Router: URLRequestConvertible { case home }
+            protocol Cycle: Loop {}
+            protocol Loop: Cycle {}
+            struct Looping: Loop {}
+            extension Login: BaseTarget {}
+            """, path: "/p/Targets.swift"))
+        surface.merge(HTTPRouteCallScanner.declarations(source: """
+            protocol URLRequestConvertible {}
+            enum Shadowed: URLRequestConvertible { case a }
+            struct Plain: Codable {}
+            """, path: "/p/Shadow.swift"))
+        let naive = surface.typeChains.filter { chain in
+            guard !surface.protocolChains.contains(chain) else { return false }
+            let names = naiveConformedNames(of: chain, in: surface)
+            return HTTPRouterKind.allCases.contains {
+                names.contains($0.rawValue) && !surface.declaresTypeNamed($0.rawValue)
+            }
+        }.sorted()
+        #expect(surface.routerChains == naive)
+        #expect(surface.routerChains == ["Login", "Users"])
+        for chain in surface.typeChains.sorted() {
+            #expect(surface.conformedNames(of: chain) == naiveConformedNames(of: chain, in: surface), "\(chain)")
+        }
+    }
 }
