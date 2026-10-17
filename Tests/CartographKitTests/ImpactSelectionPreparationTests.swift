@@ -115,10 +115,10 @@ struct ImpactSelectionPreparationTests {
         ]
         let nodes = rows.map { id, name, kind, path in
             GraphNode(id: NodeID(id), name: name, kind: kind, usr: id,
-                location: CartographCore.SourceLocation(path: path, line: 1))
+                location: CartographCore.SourceLocation(path: path, line: 1, column: 1))
         } + (0..<noiseCount).map {
             GraphNode(id: NodeID("noise-\($0)"), name: "Noise\($0)", kind: .function,
-                location: CartographCore.SourceLocation(path: "/p/Noise.swift", line: $0 + 1))
+                location: CartographCore.SourceLocation(path: "/p/Noise.swift", line: $0 + 1, column: 1))
         }
         return CodeGraph(level: .symbol, nodes: nodes, edges: [
             GraphEdge(source: "owner", target: "member", kind: .member),
