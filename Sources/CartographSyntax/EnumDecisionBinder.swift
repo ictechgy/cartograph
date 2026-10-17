@@ -2,10 +2,14 @@ import CartographCore
 
 /// Exact occurrence joins for the deliberately small enum-decision syntax model.
 enum EnumDecisionBinder {
+    /// - Parameter onIndexedRows: 위치 색인에 담은 심볼·참조·매개변수 행 수를 받는다. 테스트가 결정과 무관한
+    ///   행을 색인하지 않는지 센다.
     static func bind(snapshot: IndexSnapshot, files: [String: SourceFileFacts],
-                     freshPaths: Set<String>) -> [EnumImpactFileFacts]? {
+                     freshPaths: Set<String>, onIndexedRows: ((Int) -> Void)? = nil) -> [EnumImpactFileFacts]? {
         guard files.values.contains(where: { $0.enumDecisionFacts != nil }) else { return nil }
-        let context = BindingContext(snapshot: snapshot)
+        let context = BindingContext(snapshot: snapshot,
+            locations: lookupLocations(files.values.compactMap(\.enumDecisionFacts)))
+        onIndexedRows?(context.indexedRows)
         return files.keys.sorted().compactMap { path in
             guard let scan = files[path]?.enumDecisionFacts else { return nil }
             let fresh = freshPaths.contains(path)
@@ -20,6 +24,24 @@ enum EnumDecisionBinder {
         }
     }
 
+    /// 목록과 결정이 실제로 조회하는 위치. 이 밖의 행은 어떤 결합에도 쓰이지 않는다.
+    private static func lookupLocations(_ scans: [EnumDecisionScanFacts]) -> Set<SourceLocation> {
+        var locations: Set<SourceLocation> = []
+        for scan in scans {
+            for inventory in scan.inventories {
+                locations.formUnion([inventory.nameLocation] + inventory.cases.map(\.location))
+            }
+            for decision in scan.decisions { locations.formUnion(lookupLocations(of: decision)) }
+        }
+        return locations
+    }
+
+    private static func lookupLocations(of decision: EnumDecisionSyntaxFacts) -> [SourceLocation] {
+        let subject = decision.subjectParameter.map { [$0.parameterNameLocation, $0.typeNameLocation] } ?? []
+        return (decision.explicitCases + decision.guardedCases).map(\.location) + subject
+            + [decision.operationLocation, decision.negationLocation].compactMap { $0 }
+    }
+
     private struct BindingContext {
         // Exact standard-library identities. The compiler-index integration fixture must
         // validate these on supported CI toolchains; unknown identities are unresolved.
@@ -31,19 +53,47 @@ enum EnumDecisionBinder {
         let declarations: [SourceLocation: [IndexedSymbol]]
         let references: [SourceLocation: [IndexedReference]]
         let parameters: [SourceLocation: [IndexedParameter]]
+        let indexedRows: Int
 
-        init(snapshot: IndexSnapshot) {
+        /// 조회할 위치의 행만 묶는다. 결정은 토큰 몇 개만 묻는데 프로젝트 전체 참조를 위치마다 묶으면 참조
+        /// 100만 개에서 0.5초와 0.4GB 를 더 썼다. 묻는 위치가 없으면 어떤 조회도 없으므로 스냅샷을 훑지 않는다.
+        init(snapshot: IndexSnapshot, locations: Set<SourceLocation>) {
+            guard !locations.isEmpty else {
+                caseUSRsByEnum = [:]
+                symbols = [:]
+                declarations = [:]
+                references = [:]
+                parameters = [:]
+                indexedRows = 0
+                return
+            }
             var cases: [String: Set<String>] = [:]
-            for symbol in snapshot.symbols where symbol.kind == .enumCase {
-                if let parent = symbol.parentUSR { cases[parent, default: []].insert(symbol.usr) }
+            var declarations: [SourceLocation: [IndexedSymbol]] = [:]
+            for symbol in snapshot.symbols {
+                if symbol.kind == .enumCase, let parent = symbol.parentUSR {
+                    cases[parent, default: []].insert(symbol.usr)
+                }
+                if locations.contains(symbol.location) { declarations[symbol.location, default: []].append(symbol) }
             }
             caseUSRsByEnum = cases
             symbols = snapshot.symbolsByUSR()
-            declarations = Dictionary(grouping: snapshot.symbols, by: \.location)
-            references = Dictionary(grouping: snapshot.references.filter {
-                $0.location != nil && ($0.origin == .compiler || $0.origin == .compilerAndSyntax)
-            }, by: { $0.location! })
-            parameters = Dictionary(grouping: snapshot.parameters, by: \.location)
+            self.declarations = declarations
+            references = Self.compilerReferences(snapshot.references, at: locations)
+            parameters = Dictionary(grouping: snapshot.parameters.filter { locations.contains($0.location) },
+                by: \.location)
+            indexedRows = [declarations.values.map(\.count), references.values.map(\.count),
+                parameters.values.map(\.count)].joined().reduce(0, +)
+        }
+
+        private static func compilerReferences(
+            _ references: [IndexedReference], at locations: Set<SourceLocation>
+        ) -> [SourceLocation: [IndexedReference]] {
+            var result: [SourceLocation: [IndexedReference]] = [:]
+            for reference in references where reference.origin == .compiler || reference.origin == .compilerAndSyntax {
+                guard let location = reference.location, locations.contains(location) else { continue }
+                result[location, default: []].append(reference)
+            }
+            return result
         }
 
         func declaration(at location: SourceLocation, kind: SymbolKind) -> IndexedSymbol? {

@@ -100,6 +100,47 @@ struct EnumDecisionBinderTests {
         #expect(stale.decisions.allSatisfy { $0.status == "unresolved" })
     }
 
+    @Test("결정이 묻지 않는 자리의 심볼·참조·매개변수는 색인하지 않아 무관한 행이 늘어도 색인 크기가 같다")
+    func indexesOnlyQueriedLocations() throws {
+        // 프로젝트 전체 참조를 위치마다 묶으면 참조 100만 개에서 바인더 하나가 0.5초와 0.4GB 를 더 썼다.
+        let (facts, snapshot) = try fixture()
+        var plain = 0
+        var padded = 0
+        let expected = EnumDecisionBinder.bind(snapshot: snapshot, files: [path: facts], freshPaths: [path],
+            onIndexedRows: { plain = $0 })
+        let result = EnumDecisionBinder.bind(snapshot: noisy(snapshot), files: [path: facts], freshPaths: [path],
+            onIndexedRows: { padded = $0 })
+        #expect(result == expected)
+        #expect(plain > 0)
+        #expect(padded == plain)
+    }
+
+    @Test("결정과 목록이 하나도 없으면 스냅샷을 색인하지 않는다")
+    func skipsIndexWithoutDecisions() throws {
+        let (_, snapshot) = try fixture()
+        let facts = SwiftSyntaxAnalyzer().analyze(source: "func plain() -> Int { 1 }", path: path)
+        var indexed: Int?
+        let result = try #require(EnumDecisionBinder.bind(snapshot: noisy(snapshot), files: [path: facts],
+            freshPaths: [path], onIndexedRows: { indexed = $0 })?.first)
+        #expect(result.inventories.isEmpty && result.decisions.isEmpty)
+        #expect(indexed == 0)
+    }
+
+    /// 결정과 무관한 다른 파일의 심볼·컴파일러 참조·매개변수를 더한다.
+    private func noisy(_ snapshot: IndexSnapshot) -> IndexSnapshot {
+        var result = snapshot
+        for index in 0..<200 {
+            let location = CartographCore.SourceLocation(path: "/p/Other\(index % 7).swift", line: index + 1, column: 3)
+            result.symbols.append(IndexedSymbol(usr: "noise\(index)", name: "noise\(index)()", kind: .function,
+                module: "App", location: location))
+            result.references.append(IndexedReference(sourceUSR: "noise\(index)", targetUSR: "Status",
+                kind: .reference, location: location, origin: .compiler))
+            result.parameters.append(IndexedParameter(usr: "noise\(index).value", name: "value", module: "App",
+                location: location, functionUSR: "noise\(index)"))
+        }
+        return result
+    }
+
     private func bind(_ facts: SourceFileFacts, _ snapshot: IndexSnapshot) throws -> EnumImpactFileFacts {
         try #require(EnumDecisionBinder.bind(snapshot: snapshot, files: [path: facts], freshPaths: [path])?.first)
     }
