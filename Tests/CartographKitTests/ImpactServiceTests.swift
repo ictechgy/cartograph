@@ -101,6 +101,45 @@ struct ImpactServiceTests {
         #expect(document.summary.files == ["/p/App.swift", "/p/Service.swift", "/p/Test.swift"])
     }
 
+    @Test("파일 전용 선택은 같은 심볼 선택의 모든 소비자 근거와 제한·집계를 유지한다")
+    func fileOnlySelectionPreservesImpactEvidence() throws {
+        let (service, context) = fixture()
+        let depths: [Int?] = [nil, 1]
+        for depth in depths {
+            for limit in [1, 200] {
+                let file = try service.impactDocument(
+                    files: ["Storage.swift"], maxDepth: depth, limit: limit, in: context
+                )
+                let symbol = try service.impactDocument(
+                    symbols: ["Storage"], maxDepth: depth, limit: limit, in: context
+                )
+                #expect(file.status == symbol.status)
+                #expect(file.selected == symbol.selected)
+                #expect(file.changeScope == symbol.changeScope)
+                #expect(file.affected == symbol.affected)
+                #expect(file.tests == symbol.tests)
+                #expect(file.entryPoints == symbol.entryPoints)
+                #expect(file.runtimeReview == symbol.runtimeReview)
+                #expect(file.runtimeDependencies == symbol.runtimeDependencies)
+                #expect(file.selectionIssues == symbol.selectionIssues)
+                #expect(file.limitations == symbol.limitations)
+                #expect(file.truncated == symbol.truncated)
+                #expect(file.summary.affectedSymbols == symbol.summary.affectedSymbols)
+                #expect(file.summary.selectedSymbols == symbol.summary.selectedSymbols)
+                #expect(file.summary.changeScopeSymbols == symbol.summary.changeScopeSymbols)
+                #expect(file.summary.testSymbols == symbol.summary.testSymbols)
+                #expect(file.summary.files == symbol.summary.files)
+                #expect(file.summary.modules == symbol.summary.modules)
+                #expect(file.summary.requestedSymbols == 0 && file.summary.requestedFiles == 1)
+                #expect(file.requestedSymbols.isEmpty && file.requestedFiles == ["/p/Storage.swift"])
+                let repeated = try service.impactDocument(
+                    files: ["Storage.swift"], maxDepth: depth, limit: limit, in: context
+                )
+                #expect(file == repeated)
+            }
+        }
+    }
+
     @Test("표시 한도는 전체 집계를 줄이지 않고 깊이 절단과 구별된다")
     func distinguishesOutputAndDepthLimits() throws {
         let (service, context) = fixture()

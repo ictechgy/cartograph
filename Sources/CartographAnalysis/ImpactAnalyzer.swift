@@ -128,7 +128,9 @@ public struct ImpactAnalyzer: Sendable {
         let depthLimit = maxDepth.map { max(0, $0) }
 
         var visited = changedSet
-        var frontier = graph.nodeIDs.filter { changedSet.contains($0) }
+        // 두 frontier 생산자는 정렬된 changed의 필터와 아래 next의 정렬이다.
+        // 그래프 전체를 정렬하지 않아도 같은 시드 순서와 dispatch 동률을 보존한다.
+        var frontier = Self.initialFrontier(changed: changed, contains: graph.contains)
         var depth = 0
         var visits: [NodeID: ImpactVisit] = [:]
         var truncated = false
@@ -183,9 +185,14 @@ public struct ImpactAnalyzer: Sendable {
         )
     }
 
+    /// 이미 정렬된 입력 중 실제 정점만 시작점으로 삼는다. 없는 ID는 보고서에 따로 남는다.
+    static func initialFrontier(changed: [NodeID], contains: (NodeID) -> Bool) -> [NodeID] {
+        changed.filter(contains)
+    }
+
     // MARK: - 후보 생성
 
-    /// 한 BFS 층에서 일반 소비자와 dispatch 투영 후보를 만든다.
+    /// 한 BFS 층의 정렬된 frontier에서 일반 소비자와 dispatch 투영 후보를 만든다.
     private func frontierCandidates(
         from frontier: [NodeID],
         depth: Int,
@@ -195,7 +202,7 @@ public struct ImpactAnalyzer: Sendable {
         runtime: [NodeID: [ImpactDependency]]
     ) -> [Candidate] {
         var candidates: [Candidate] = []
-        for current in frontier.sorted() {
+        for current in frontier {
             candidates += incomingCandidates(
                 for: current,
                 depth: depth + 1,
