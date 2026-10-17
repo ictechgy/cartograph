@@ -21,9 +21,15 @@ public struct ReactNativeMacroScanner: Sendable {
 
     /// 구현 매크로의 정확한 선언 줄을 인덱스 결합에 제공한다. extern 쉼은 구현으로 바꾸지 않는다.
     public func scanDeclarations(source: String, path: String) -> [ScannedBridgeFact] {
+        scanDeclarations(source: source, path: path, patterns: Patterns())
+    }
+
+    /// 정규식 묶음을 받아 훑는다. 묶음은 스캔마다 한 번 만들어 모든 줄이 함께 쓴다(`Patterns`).
+    func scanDeclarations(source: String, path: String, patterns: Patterns) -> [ScannedBridgeFact] {
         var facts: [ScannedBridgeFact] = []
-        for block in Self.implementationBlocks(in: Self.blankingDisabledRegions(Self.blankingNoise(source))) {
-            facts += Self.facts(in: block, path: path).map { fact in
+        let visible = Self.blankingDisabledRegions(Self.blankingNoise(source))
+        for block in Self.implementationBlocks(in: visible, patterns: patterns) {
+            facts += Self.facts(in: block, path: path, patterns: patterns).map { fact in
                 let declaration = block.isImplementation ? EnclosingDeclaration(
                     name: block.className,
                     indexName: block.className,
@@ -110,7 +116,7 @@ public struct ReactNativeMacroScanner: Sendable {
         let lines: [(number: Int, text: String)]
     }
 
-    static func implementationBlocks(in source: String) -> [ImplementationBlock] {
+    static func implementationBlocks(in source: String, patterns: Patterns) -> [ImplementationBlock] {
         var blocks: [ImplementationBlock] = []
         var className: String?
         var declarationLine = 0
@@ -126,9 +132,11 @@ public struct ReactNativeMacroScanner: Sendable {
         for (offset, rawLine) in source.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
             let line = String(rawLine)
             let number = offset + 1
-            if let match = line.firstMatch(of: implementationPattern) {
+            if Self.mayMatch(line, literal: "@implementation"),
+               let match = patterns.firstMatch(of: patterns.implementation, in: line) {
                 flush(); className = String(match.output.1); declarationLine = number; isImplementation = true
-            } else if className == nil, let match = line.firstMatch(of: externModulePattern) {
+            } else if className == nil, Self.mayMatch(line, literal: "RCT_EXTERN_MODULE"),
+                      let match = patterns.firstMatch(of: patterns.externModule, in: line) {
                 // Swift 모듈은 `@interface RCT_EXTERN_MODULE(Name, NSObject) … @end` 로 잇는다.
                 // `@implementation` 이 없으므로 이 줄 자체가 블록의 시작이자 첫 사실이다.
                 className = String(match.output.1); declarationLine = number; isImplementation = false
@@ -147,13 +155,13 @@ public struct ReactNativeMacroScanner: Sendable {
     ///
     /// `RCT_EXPORT_METHOD` 가 `RCT_EXPORT_MODULE(Name)` 보다 위에 올 수 있다. 위에서
     /// 아래로 한 번에 읽으면 앞쪽 메서드가 클래스 이름에, 뒤쪽이 `Name` 에 붙는다.
-    static func facts(in block: ImplementationBlock, path: String) -> [BridgeFact] {
-        let moduleName = exportedModuleName(in: block)
+    static func facts(in block: ImplementationBlock, path: String, patterns: Patterns) -> [BridgeFact] {
+        let moduleName = exportedModuleName(in: block, patterns: patterns)
         var facts: [BridgeFact] = []
         var hasComponentExport = false
-        for (number, line) in block.lines where !isComment(line) {
-            for (pattern, kind) in macroPatterns {
-                guard let match = line.firstMatch(of: pattern) else { continue }
+        for (number, line) in block.lines where mayMatch(line, literal: "RCT_") && !isComment(line) {
+            for (pattern, kind) in patterns.macros {
+                guard let match = patterns.firstMatch(of: pattern, in: line) else { continue }
                 // 뷰 매니저는 프로퍼티마다 매크로가 있지만 내보내는 컴포넌트는 하나다.
                 // 프로퍼티 열 개를 같은 사실 열 건으로 내면 소비자가 열 개의 컴포넌트로 센다.
                 if kind == .viewProperty {
@@ -191,16 +199,33 @@ public struct ReactNativeMacroScanner: Sendable {
     }
 
     /// 블록이 내보내는 모듈 이름. 명시한 이름이 있으면 그것, 없으면 클래스 이름.
-    static func exportedModuleName(in block: ImplementationBlock) -> String {
-        for (_, line) in block.lines where !isComment(line) {
-            if let match = line.firstMatch(of: exportModulePattern), let name = match.output.1, !name.isEmpty {
+    static func exportedModuleName(in block: ImplementationBlock, patterns: Patterns) -> String {
+        for (_, line) in block.lines where mayMatch(line, literal: "RCT_") && !isComment(line) {
+            if let match = patterns.firstMatch(of: patterns.exportModule, in: line),
+               let name = match.output.1, !name.isEmpty {
                 return String(name)
             }
-            if let match = line.firstMatch(of: externModulePattern) {
+            if let match = patterns.firstMatch(of: patterns.externModule, in: line) {
                 return String(match.output.1)
             }
         }
         return block.className
+    }
+
+    /// 정규식 앞의 값싼 사전 검사. 정규식이 맞는 줄은 반드시 그 리터럴을 담으므로(상위집합) 걸러도 결과가 같다.
+    ///
+    /// 대부분의 ObjC 줄은 여기서 끝나므로 UTF-8 바이트를 직접 훑는다. 표준 라이브러리의 제네릭 부분열 검색
+    /// (`utf8.contains(_:)`)은 줄당 십수 µs, Foundation `contains` 는 1µs 남짓이라 정규식을 빼도 그만큼이 남는다.
+    static func mayMatch(_ line: String, literal: StaticString) -> Bool {
+        var line = line
+        return line.withUTF8 { haystack in
+            literal.withUTF8Buffer { needle in
+                guard let first = needle.first, needle.count <= haystack.count else { return needle.isEmpty }
+                return (0...(haystack.count - needle.count)).contains { start in
+                    haystack[start] == first && haystack[start..<(start + needle.count)].elementsEqual(needle)
+                }
+            }
+        }
     }
 
     /// 주석 줄은 건너뛴다. 지운 모듈을 주석으로 남겨 둔 파일이 실제로 있다.
@@ -211,27 +236,32 @@ public struct ReactNativeMacroScanner: Sendable {
 
     enum MacroKind { case module, method, viewProperty }
 
-    // `Regex` 는 Sendable 이 아니라 저장 프로퍼티로 두면 Swift 6 이 거부한다.
-    // 매번 만들어도 파일 몇 개에 매크로 몇 줄이라 비용은 없다.
-    static var implementationPattern: Regex<(Substring, Substring)> {
-        #/@implementation\s+([A-Za-z_][A-Za-z0-9_]*)/#
-    }
-    static var exportModulePattern: Regex<(Substring, Substring?)> {
-        #/RCT_EXPORT_MODULE\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?\s*\)/#
-    }
-    static var externModulePattern: Regex<(Substring, Substring)> {
-        #/RCT_EXTERN_MODULE\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)/#
-    }
-
-    /// 매크로 → 사실 종류. 첫 캡처가 메서드 이름(있으면)이다.
+    /// 한 번의 스캔이 함께 쓰는 정규식 묶음.
     ///
-    /// `RCT_EXPORT_METHOD(addEvent:(NSString *)name)` 의 JS 이름은 첫 셀렉터 조각 `addEvent`.
-    /// `RCT_REMAP_METHOD(jsName, selector:)` 는 첫 인자가 JS 이름이다.
-    static var macroPatterns: [(Regex<(Substring, Substring?)>, MacroKind)] { [
-        (#/RCT_EXPORT_MODULE\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?\s*\)/#, .module),
-        (#/RCT_EXTERN_MODULE\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?/#, .module),
-        (#/RCT_(?:EXPORT|EXTERN)_METHOD\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?/#, .method),
-        (#/RCT_(?:EXTERN_)?REMAP_METHOD\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?/#, .method),
-        (#/RCT_EXPORT_VIEW_PROPERTY\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?/#, .viewProperty),
-    ] }
+    /// `Regex` 는 Sendable 이 아니라 정적 저장 프로퍼티로 두면 Swift 6 이 거부한다. 그렇다고 계산 프로퍼티로 두면
+    /// 접근할 때마다 정규식을 새로 만들고 첫 매칭에서 다시 컴파일한다(줄당 수백 µs). `.m` 은 RN 매크로가 없는 파일도
+    /// 모든 줄이 이 경로를 지나므로, 묶음을 스캔마다 한 번 만들어 하위 함수에 넘긴다.
+    final class Patterns {
+        let implementation = #/@implementation\s+([A-Za-z_][A-Za-z0-9_]*)/#
+        let exportModule = #/RCT_EXPORT_MODULE\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?\s*\)/#
+        let externModule = #/RCT_EXTERN_MODULE\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)/#
+        /// 매크로 → 사실 종류. 첫 캡처가 메서드 이름(있으면)이다.
+        ///
+        /// `RCT_EXPORT_METHOD(addEvent:(NSString *)name)` 의 JS 이름은 첫 셀렉터 조각 `addEvent`.
+        /// `RCT_REMAP_METHOD(jsName, selector:)` 는 첫 인자가 JS 이름이다.
+        let macros: [(Regex<(Substring, Substring?)>, MacroKind)] = [
+            (#/RCT_EXPORT_MODULE\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?\s*\)/#, .module),
+            (#/RCT_EXTERN_MODULE\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?/#, .module),
+            (#/RCT_(?:EXPORT|EXTERN)_METHOD\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?/#, .method),
+            (#/RCT_(?:EXTERN_)?REMAP_METHOD\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?/#, .method),
+            (#/RCT_EXPORT_VIEW_PROPERTY\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)?/#, .viewProperty),
+        ]
+        /// 정규식을 실제로 댄 횟수. 정규식이 후보 줄에만 닿는지 테스트가 센다.
+        private(set) var evaluations = 0
+
+        func firstMatch<Output>(of regex: Regex<Output>, in line: String) -> Regex<Output>.Match? {
+            evaluations += 1
+            return line.firstMatch(of: regex)
+        }
+    }
 }
