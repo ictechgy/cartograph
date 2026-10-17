@@ -202,24 +202,28 @@ struct ImpactSelection {
     }
 
     init(symbols: [String], files: [String], projectPath: String, graph: CodeGraph,
-         extraIssues: [ImpactDocument.SelectionIssue] = [], artifactTargets: [String: Set<NodeID>] = [:]) {
-        let lookup = GraphQueryIndex(graph: graph)
+         extraIssues: [ImpactDocument.SelectionIssue] = [], artifactTargets: [String: Set<NodeID>] = [:],
+         makeQueryIndex: (CodeGraph) -> GraphQueryIndex = { GraphQueryIndex(graph: $0) }) {
         var nodes: Set<NodeID> = []
         var issues = extraIssues
-        for subject in symbols {
-            switch lookup.resolve(subject) {
-            case let .found(node): nodes.insert(node.id)
-            case let .ambiguous(candidates):
-                if let type = Self.sharedExtendedType(candidates, graph: graph) {
-                    nodes.insert(type.id)
-                } else {
-                    issues.append(.init(requested: subject, kind: "symbol", status: "ambiguous",
-                        candidates: SymbolQueryDocument.presenting(candidates, in: graph)))
+        // 파일·리소스 입력은 이름을 풀지 않는다. 전체 이름 색인은 실제 심볼 요청에만 만든다.
+        if !symbols.isEmpty {
+            let lookup = makeQueryIndex(graph)
+            for subject in symbols {
+                switch lookup.resolve(subject) {
+                case let .found(node): nodes.insert(node.id)
+                case let .ambiguous(candidates):
+                    if let type = Self.sharedExtendedType(candidates, graph: graph) {
+                        nodes.insert(type.id)
+                    } else {
+                        issues.append(.init(requested: subject, kind: "symbol", status: "ambiguous",
+                            candidates: SymbolQueryDocument.presenting(candidates, in: graph)))
+                    }
+                case .notFound:
+                    let candidates = SymbolQueryDocument.presenting(lookup.similarCandidates(to: subject), in: graph)
+                    issues.append(.init(requested: subject, kind: "symbol", status: "notFound",
+                        candidates: candidates.isEmpty ? nil : candidates))
                 }
-            case .notFound:
-                let candidates = SymbolQueryDocument.presenting(lookup.similarCandidates(to: subject), in: graph)
-                issues.append(.init(requested: subject, kind: "symbol", status: "notFound",
-                    candidates: candidates.isEmpty ? nil : candidates))
             }
         }
         let normalizedFiles = Set(files.map { file in
