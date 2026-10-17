@@ -36,7 +36,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: ${{ github.event.inputs.source_sha || github.sha }}
           persist-credentials: false
@@ -68,6 +68,12 @@ jobs:
           fi
           if [[ ! "$expected_sha" =~ ^[0-9a-f]{40}$ ]] || [ "$source_sha" != "$expected_sha" ]; then
             echo "Checked-out source does not match the requested commit." >&2
+            exit 1
+          fi
+          # HEAD가 같아도 체크아웃 뒤에 바뀐 트리는 리뷰한 소스가 아니다. git이 실패하면 대입에서 멈춘다.
+          changes="$(git status --porcelain)"
+          if [ -n "$changes" ]; then
+            echo "Checked-out source has local changes; release only the clean reviewed commit." >&2
             exit 1
           fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
