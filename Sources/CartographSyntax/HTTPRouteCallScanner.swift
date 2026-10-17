@@ -109,6 +109,8 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
     private var genericParametersByType: [String: Set<String>] = [:]
     /// 타입 사슬의 마지막 구성 요소들. "프로젝트가 이 이름의 타입을 선언했는가"를 사슬 전체를 훑지 않고 답한다.
     private(set) var typeLastNames: Set<String> = []
+    /// 마지막 구성 요소 → 그 이름으로 끝나는 타입 사슬. URL 식의 `Type.member` 를 찾을 때 사슬 전체를 훑지 않는다.
+    private(set) var typeChainsByLastName: [String: Set<String>] = [:]
     /// `타입 사슬\0함수 이름` → 오버로드별 외부 레이블(레이블 없음은 nil). 최상위 함수는 빈 사슬이다.
     public private(set) var functions: [String: [[String?]]] = [:]
     /// 타입 사슬 → 명시적 이니셜라이저의 외부 레이블들.
@@ -144,6 +146,7 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
         primaryInitializerOwners.formUnion(other.primaryInitializerOwners)
         genericParametersByType.merge(other.genericParametersByType) { $0.union($1) }
         typeLastNames.formUnion(other.typeLastNames)
+        typeChainsByLastName.merge(other.typeChainsByLastName) { $0.union($1) }
         functions.merge(other.functions) { $0 + $1 }
         initializers.merge(other.initializers) { $0 + $1 }
         initializerSignatures.merge(other.initializerSignatures) { $0 + $1 }
@@ -209,7 +212,10 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
     mutating func addType(_ chain: [String], isConditional: Bool, isExtension: Bool = false) {
         let key = chain.joined(separator: ".")
         typeChains.insert(key)
-        if let last = chain.last { typeLastNames.insert(last) }
+        if let last = chain.last {
+            typeLastNames.insert(last)
+            typeChainsByLastName[last, default: []].insert(key)
+        }
         if !isExtension || typeConditionality[key, default: []].isEmpty {
             typeConditionality[key, default: []].append(isConditional)
         }

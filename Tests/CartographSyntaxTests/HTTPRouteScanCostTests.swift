@@ -144,4 +144,26 @@ struct HTTPRouteScanCostTests {
             #expect(surface.conformedNames(of: chain) == naiveConformedNames(of: chain, in: surface), "\(chain)")
         }
     }
+
+    @Test("접미 표기로 찾는 타입 사슬은 마지막 이름 색인으로 구해도 선형 대조와 같다")
+    func suffixLookupMatchesLinearFilter() {
+        var surface = HTTPDeclarationSurface()
+        surface.merge(HTTPRouteCallScanner.declarations(source: """
+            enum Paths { enum V1 { static let users = "/v1" } }
+            enum V1 {}
+            struct PathsV2 {}
+            extension Outer.Paths { static let more = "/more" }
+            """, path: "/p/A.swift"))
+        surface.merge(HTTPRouteCallScanner.declarations(
+            source: "enum Outer { enum Paths { static let users = \"/outer\" } }", path: "/p/B.swift"))
+        surface.merge(HTTPRouteCallScanner.declarations(source: "enum Paths {}", path: "/p/C.swift"))
+        let types = [["Paths"], ["V1"], ["Paths", "V1"], ["Outer", "Paths"], ["Missing"], ["PathsV2"], ["Outer"], []]
+        for type in types {
+            let linear = surface.typeChains.filter { chain in
+                let components = chain.split(separator: ".").map(String.init)
+                return components.count >= type.count && Array(components.suffix(type.count)) == type
+            }.sorted()
+            #expect(surface.typeChains(endingWith: type) == linear, "\(type)")
+        }
+    }
 }

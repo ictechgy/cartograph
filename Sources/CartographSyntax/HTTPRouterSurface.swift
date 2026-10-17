@@ -184,7 +184,7 @@ extension HTTPDeclarationSurface {
     /// 닫힌 평가에서 거부한 정적 멤버를 이전 파일 단위 바인딩이 다시 상수로 만들지 않게 한다.
     /// 지원 식 밖의 String 보간만 이전 조각 확장에 맡겨 증명된 접두사를 보존한다.
     func allowsLegacyStaticExpansion(ofMember member: String, inTypeNamed type: [String]) -> Bool {
-        let owners = typeChains.filter { suffixMatches($0, type) }
+        let owners = typeChains(endingWith: type)
         guard owners.count == 1, let owner = owners.first,
               typeConditionality[owner]?.contains(true) != true else { return false }
         guard let declarations = staticStringMembers[owner + "\u{0}" + member] else { return true }
@@ -222,14 +222,20 @@ extension HTTPDeclarationSurface {
         ))
     }
 
-    private func suffixMatches(_ chain: String, _ type: [String]) -> Bool {
-        routeTypeSuffixMatches(chain, type)
+    /// 접미 표기(`B.C`)와 맞는 타입 사슬들. 결정적 순서다.
+    ///
+    /// URL 식의 `Type.member` 마다 묻는다. 사슬 전체를 쪼개며 대조하면 식 하나가 프로젝트 타입 수만큼 들어
+    /// 스캔이 파일 수의 제곱으로 늘므로, 마지막 구성 요소가 같은 사슬만 대조한다.
+    func typeChains(endingWith type: [String]) -> [String] {
+        guard let last = type.last else { return typeChains.sorted() }
+        return routeTypeChains(endingWith: type, among: typeChainsByLastName[last] ?? [])
     }
 
     /// 평가기에 필요한 값만 넘겨 표면 타입으로의 역방향 의존을 만들지 않는다.
     private func staticStringResolver() -> StaticStringResolver {
         StaticStringResolver(enumCases: enumCases, staticStringMembers: staticStringMembers,
-            typeAliases: typeAliases, typeChains: typeChains, typeConditionality: typeConditionality)
+            typeAliases: typeAliases, typeChainsByLastName: typeChainsByLastName,
+            typeConditionality: typeConditionality)
     }
 
     /// 정적 라우트 문자열을 한 문맥 안에서만 제한적으로 평가한다.
@@ -251,18 +257,18 @@ extension HTTPDeclarationSurface {
         let enumCases: [String: [HTTPEnumCaseDeclaration]]
         let staticStringMembers: [String: [HTTPStaticStringMember]]
         let typeAliases: [String: [HTTPTypeAliasDeclaration]]
-        let typeChains: Set<String>
+        let typeChainsByLastName: [String: Set<String>]
         let typeConditionality: [String: [Bool]]
         private var memberMemo: [MemberKey: Outcome] = [:]
         private var typeMemo: [TypeKey: Outcome] = [:]
 
         init(enumCases: [String: [HTTPEnumCaseDeclaration]], staticStringMembers: [String: [HTTPStaticStringMember]],
-             typeAliases: [String: [HTTPTypeAliasDeclaration]], typeChains: Set<String>,
+             typeAliases: [String: [HTTPTypeAliasDeclaration]], typeChainsByLastName: [String: Set<String>],
              typeConditionality: [String: [Bool]]) {
             self.enumCases = enumCases
             self.staticStringMembers = staticStringMembers
             self.typeAliases = typeAliases
-            self.typeChains = typeChains
+            self.typeChainsByLastName = typeChainsByLastName
             self.typeConditionality = typeConditionality
         }
 
@@ -352,7 +358,9 @@ extension HTTPDeclarationSurface {
             let key = TypeKey(components: type)
             if let cached = typeMemo[key] { return cached }
             guard !visiting.contains(key) else { return .unknown }
-            let direct = typeChains.filter { routeTypeSuffixMatches($0, type) }.sorted()
+            let direct = routeTypeChains(
+                endingWith: type, among: type.last.flatMap { typeChainsByLastName[$0] } ?? []
+            )
             let aliases = typeAliases.keys.filter { routeTypeSuffixMatches($0, type) }.sorted()
             let unconditionalDirect = direct.filter {
                 guard let states = typeConditionality[$0] else { return false }
@@ -380,6 +388,11 @@ extension HTTPDeclarationSurface {
             return result
         }
     }
+}
+
+/// 후보 사슬 가운데 접미 표기와 맞는 것들. 결정적 순서다. 표면과 평가기가 같은 규칙으로 고른다.
+private func routeTypeChains(endingWith type: [String], among candidates: Set<String>) -> [String] {
+    candidates.filter { routeTypeSuffixMatches($0, type) }.sorted()
 }
 
 /// 같은 접미 타입 표기를 표면과 평가기가 동일하게 대조한다.
