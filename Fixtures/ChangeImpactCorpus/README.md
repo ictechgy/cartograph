@@ -23,6 +23,15 @@ Expected behavior:
   reproduces the repository audit's mixed lifecycle/direct-caller omission.
 - Mixed indexed Swift and JSON fixture edits refuse partial `xcodebuild` selectors; JSON-only edits
   preserve the successful empty-selector (run every test) contract.
+- The verifier adds a tiny `ReleaseStatus: Equatable` source to its temporary copy, then builds
+  `a,b` and `a,b,c` with separate real compiler stores. It changes only the enum inventory between
+  those two generated source versions. The supplied CLI must persist the capable baseline and
+  report exactly three current decision candidates: `switch default`, literal `Array.contains`,
+  and direct negated membership. Exact enum/case identities, compiler target identities and source
+  locations are checked in JSON; text must expose all three kinds. Comparing the baseline against
+  itself must report no additions or candidates. This is a synthetic regression for the requested
+  implicit enum-expansion review, not evidence that any candidate is a runtime bug. The release
+  workflow runs this same check with the unpacked universal executable.
 - A depth or output limit is explicit. Unknown/deleted source selections are incomplete.
 - The executable prints `live` and `extension`; the tests exercise those actual results.
 

@@ -692,6 +692,22 @@ carry `externalEvidenceCount`/`externalEvidenceOmitted` or
 `runtimeContractsCount`/`runtimeContractsOmitted`; caller omissions add to the producer's existing
 `callersOmitted`. `truncated.sections` names `runtimeEvidence` or `runtimeContracts` when applicable.
 
+#### Enum expansion review (0.27.0 source)
+
+`impact --before` adds `enumChangeReview` to JSON and text for selected enum expansions.
+It locates compiler-attributed `default`/`@unknown default` switches and finite array-literal
+`contains` or direct negation that may deserve review when new cases reach them. Findings carry
+case identities, source locations and unresolved coverage; they are review candidates, not proof
+of a behavioral bug. Custom equality can affect membership outcomes.
+
+Capture a capable pre-change baseline with enum-aware Cartograph, then rebuild the current index
+with comparable targets and configuration. Legacy snapshots decode but cannot supply missing enum
+inventories. Syntax cache schema 15 refreshes old cached facts automatically; it cannot upgrade a
+saved baseline. Equality/inequality, if/guard case, filters and dynamic collections remain outside
+this first slice. See [Enum expansion review and migration](docs/ENUM-CHANGE-REVIEW.md).
+No new strict failure category is introduced. The published install pins above stay unchanged until
+0.27.0 is actually available.
+
 #### Multi-root traversal for isthmus (`--format language-traversal`)
 
 ```bash

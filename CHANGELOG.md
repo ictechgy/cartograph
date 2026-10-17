@@ -7,6 +7,45 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.27.0] - Unreleased
+
+This section prepares 0.27.0; a source version does not establish that a binary release is available.
+
+### Added
+
+- `impact --before` now includes `enumChangeReview` in JSON and text. Compiler-attributed
+  `default`/`@unknown default` switches and finite array-literal `contains`/direct negation
+  identify decisions to review when cases are added between indexed snapshots. Candidates carry
+  enum/case identities, current source locations and explicit coverage limitations; they are not
+  proven bugs or runtime paths.
+- The packaged-binary change-impact gate exercises paired real compiler snapshots for enum
+  expansion, positive/negated membership and fallback decisions through the public CLI.
+
+### Fixed
+
+- Preserve repository-wide tracked changes when `diff.relative=true` and Cartograph runs from a
+  subdirectory. Committed, staged and unstaged paths, including rename/deletion seeds, remain
+  repository-root relative.
+- Validate and relocate historical snapshot roots lexically, preserving `/private/var` and
+  `/private/tmp` spellings without resolving historical files or guessing filesystem aliases.
+
+### Compatibility and migration
+
+- Analysis snapshots remain v2. New enum inventory/use facts and comparison output are additive;
+  old snapshots still decode, but missing inventories are unavailable coverage, never an empty
+  complete case set. Rebuild and recapture the pre-change baseline with enum-aware Cartograph
+  before comparing an expansion. Upgrading the tool cannot reconstruct facts absent from an old
+  snapshot.
+- Syntax cache schema 15 invalidates older cached facts automatically. This cache refresh is
+  separate from rebuilding the compiler index and recapturing historical snapshots.
+- The first slice requires compiler-bound identities and supported typed-parameter decisions.
+  Equality/inequality, if/guard case, filters, dynamic/aliased collections and `allCases` remain
+  unsupported. Unknown/custom targets, incomplete inventories and differing build scope stay
+  explicit. Ordinary impact status/exit behavior is unchanged; enum candidates add no strict gate.
+- See [Enum expansion review](docs/ENUM-CHANGE-REVIEW.md) for migration steps, toolchain limits and
+  review guidance. Existing benchmark evidence, including `final_evidence: false`, is unchanged;
+  this release does not establish general superiority over IndexStoreDB.
+
 ## [0.26.0] - 2026-10-14
 
 Version 0.25.1 was prepared in source but never published. Those fixes are included in this release.

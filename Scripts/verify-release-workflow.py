@@ -297,6 +297,12 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('-verify_arch arm64', gate)
         self.assertIn('-verify_arch x86_64', gate)
         self.assertIn('cmp docs/QUERY-EVIDENCE.md', gate)
+        self.assertIn('cp docs/QUERY-EVIDENCE.md docs/ENUM-CHANGE-REVIEW.md dist/cartograph/docs/',
+                      script("Package"))
+        self.assertIn('test -s "$RUNNER_TEMP/cartograph/docs/ENUM-CHANGE-REVIEW.md"', gate)
+        self.assertIn('cmp docs/ENUM-CHANGE-REVIEW.md "$RUNNER_TEMP/cartograph/docs/ENUM-CHANGE-REVIEW.md"', gate)
+        self.assertIn('python3 Scripts/verify-change-impact.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"',
+                      gate)
 
 
 if __name__ == "__main__":

@@ -91,7 +91,7 @@ jobs:
           cp "$binary" dist/cartograph/
           cp LICENSE README.md dist/cartograph/
           mkdir -p dist/cartograph/docs
-          cp docs/QUERY-EVIDENCE.md dist/cartograph/docs/
+          cp docs/QUERY-EVIDENCE.md docs/ENUM-CHANGE-REVIEW.md dist/cartograph/docs/
           archive="cartograph-${VERSION}-macos-universal.tar.gz"
           tar -C dist -czf "$archive" cartograph
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
@@ -105,6 +105,8 @@ jobs:
           "$RUNNER_TEMP/cartograph/cartograph" --version
           test -s "$RUNNER_TEMP/cartograph/docs/QUERY-EVIDENCE.md"
           cmp docs/QUERY-EVIDENCE.md "$RUNNER_TEMP/cartograph/docs/QUERY-EVIDENCE.md"
+          test -s "$RUNNER_TEMP/cartograph/docs/ENUM-CHANGE-REVIEW.md"
+          cmp docs/ENUM-CHANGE-REVIEW.md "$RUNNER_TEMP/cartograph/docs/ENUM-CHANGE-REVIEW.md"
           lipo "$RUNNER_TEMP/cartograph/cartograph" -verify_arch arm64
           lipo "$RUNNER_TEMP/cartograph/cartograph" -verify_arch x86_64
           Scripts/verify-cli-contract.sh "$RUNNER_TEMP/cartograph/cartograph"
