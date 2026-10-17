@@ -133,7 +133,8 @@ runs:
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
         if { [ "$code" = "0" ] || [ "$code" = "1" ]; } && [ -s "$INPUT_SARIF" ]; then
           # CLI paths are project-relative; GitHub resolves paths from the checkout root.
-          python3 - "$INPUT_SARIF" "$INPUT_PROJECT" <<'PY'
+          # -I: this runs inside the analyzed checkout, whose modules must not shadow the standard library.
+          python3 -I - "$INPUT_SARIF" "$INPUT_PROJECT" <<'PY'
         import json, sys
         from pathlib import Path
         from urllib.parse import unquote, urlsplit

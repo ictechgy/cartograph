@@ -27,6 +27,13 @@ def runner_source():
     return textwrap.dedent(payload)
 
 
+def script_block():
+    # GitLab이 실행하는 script 항목 전체다. python3 호출 줄은 러너 표식 밖이라 runner_source()에 없다.
+    text = (ROOT / "templates/cartograph.yml").read_text()
+    block = text.split("  script:\n    - |\n", 1)[1].split("\n  artifacts:", 1)[0]
+    return textwrap.dedent(block) + "\n"
+
+
 def diagnostic(path="Sources/Unused.swift", severity="warning", line=7):
     return {
         "ruleIdentifier": "unused-symbol", "severity": severity,
@@ -88,6 +95,19 @@ class ComponentTests(unittest.TestCase):
             [sys.executable, "-c", prefix + self.source], cwd=self.root,
             env={**self.env, **environment}, capture_output=True, text=True,
         )
+
+    def test_template_invocation_ignores_modules_planted_in_the_checkout(self):
+        # 잡은 체크아웃에서 돈다. 루트의 hashlib.py가 표준 모듈을 가리면 체크섬 검증까지 바꿔치기된다.
+        marker = self.root / "planted-hashlib-imported"
+        (self.root / "hashlib.py").write_text(f"open({str(marker)!r}, 'w').close()\nraise SystemExit(3)\n")
+        script = script_block()
+        result = subprocess.run(["bash", "-eo", "pipefail", "-c", script], cwd=self.root,
+                                env={**self.env, "CARTOGRAPH_COMMAND": "shell"}, capture_output=True, text=True)
+        self.assertFalse(marker.exists(), "hashlib.py in the checkout replaced the standard library module")
+        # payload가 표준 모듈로 run()까지 왔다는 증거다. macOS는 명령 검사에서, 그 밖은 러너 검사에서 거부한다.
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("Cartograph component error:", result.stderr)
+        self.assertEqual(script.splitlines()[0], "python3 -I - <<'PY'")
 
     def test_nested_project_paths_and_limitations_are_preserved(self):
         payload = document()
