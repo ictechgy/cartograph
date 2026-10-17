@@ -44,6 +44,17 @@ struct RuntimeResolvedName {
         )
     }
 
+    /// 상한을 넘어 글자를 끝까지 만들지 않은 보간. 글자를 만들어 `resolved` 에 넘겼을 때와 같은 값이다.
+    static func oversized(apiReferences: [RuntimeNameAPIReference]) -> RuntimeResolvedName {
+        RuntimeResolvedName(
+            text: nil, origin: .dynamic,
+            referencedTargetLocation: nil, targetMemberName: nil,
+            receiverTypeName: nil, receiverTypeLocation: nil,
+            apiReferences: apiReferences,
+            reason: "runtime-name-exceeds-4096-bytes"
+        )
+    }
+
     func addingAPIReference(_ reference: RuntimeNameAPIReference) -> RuntimeResolvedName {
         return RuntimeResolvedName(
             text: text, origin: origin,
@@ -115,9 +126,28 @@ private struct RuntimeStoredReceiver {
 
 /// 두 번째 패스가 앞뒤 선언 순서와 무관하게 상수와 수신자 타입을 풀 수 있게 한다.
 final class RuntimeBindingCollector: SyntaxVisitor {
-    struct Context {
+    struct Context: Hashable {
         let scopes: [Int]
         let types: [String]
+    }
+
+    /// 해석 결과를 가르는 입력 전부. 바인딩은 첫 패스에서 다 모은 뒤 바뀌지 않으므로 식·문맥·남은 예산이
+    /// 같으면 답도 같다. 예산을 키에 넣어, 깊이 상한에 걸린 자리의 nil 이 더 얕은 자리의 답을 덮지 않게 한다.
+    private struct ResolutionKey: Hashable {
+        enum Step: Hashable { case name, interpolation, primitive }
+        let step: Step
+        let expression: SyntaxIdentifier
+        let context: Context
+        let remaining: Int
+    }
+
+    /// 펼친 보간. 글자가 이름 상한을 넘었으면 `text` 는 nil 이다(넘친 이름은 결국 동적 이름이 된다).
+    private typealias Interpolated = (text: String?, apiReferences: [RuntimeNameAPIReference])
+
+    /// 메모한 답(nil 포함). 상자에 담아 조회·저장이 재귀 한 단계의 스택에 큰 임시 값을 남기지 않게 한다.
+    private final class Memoized<Value> {
+        let value: Value?
+        init(_ value: Value?) { self.value = value }
     }
 
     private var values: [String: [RuntimeStoredValue]] = [:]
@@ -127,6 +157,12 @@ final class RuntimeBindingCollector: SyntaxVisitor {
     private var types: [String] = []
     private var conditionalCompilationDepth = 0
     private let converter: SourceLocationConverter
+    /// `x1 = x0 + x0` 처럼 앞 별칭을 두 번 쓰는 사슬은 메모가 없으면 단계마다 해석이 두 배가 된다.
+    /// 25줄짜리 파일 하나로 기본 분석 경로가 수십 GB 를 썼다.
+    private var resolvedNames: [ResolutionKey: Memoized<RuntimeResolvedName>] = [:]
+    private var interpolatedValues: [ResolutionKey: Memoized<Interpolated>] = [:]
+    /// 메모에 없어 실제로 계산한 해석 횟수. 테스트가 사슬 길이에 비례하는지 센다.
+    private(set) var resolutionCount = 0
 
     init(converter: SourceLocationConverter) {
         self.converter = converter
@@ -469,45 +505,93 @@ final class RuntimeBindingCollector: SyntaxVisitor {
         remaining: Int
     ) -> RuntimeResolvedName? {
         guard remaining > 0 else { return nil }
+        let key = ResolutionKey(step: .name, expression: expression.id, context: context, remaining: remaining)
+        if let memoized = resolvedNames[key] { return memoized.value }
+        resolutionCount += 1
+        let resolved = evaluateName(expression, in: context, remaining: remaining)
+        resolvedNames[key] = Memoized(resolved)
+        return resolved
+    }
+
+    /// 식 종류는 서로 겹치지 않고, 갈래가 실패하면 결국 nil 이므로 종류마다 한 갈래만 탄다. 갈래를 함수로 나눠
+    /// 재귀 한 단계의 스택에는 탄 갈래의 지역 값만 쌓이게 한다. 메모 단계를 더한 뒤 한 함수에 모든 갈래를 두면
+    /// 디버그 빌드에서 예산 64 단계 별칭 사슬이 테스트 스레드 스택을 넘었다.
+    private func evaluateName(
+        _ expression: ExprSyntax,
+        in context: Context,
+        remaining: Int
+    ) -> RuntimeResolvedName? {
         if let literal = expression.as(StringLiteralExprSyntax.self) {
-            if let value = literal.representedLiteralValue { return .resolved(value, origin: .literal) }
-            if let interpolated = resolveInterpolation(literal, in: context, remaining: remaining - 1) {
-                return .resolved(
-                    interpolated.text,
-                    origin: .constant,
-                    apiReferences: interpolated.apiReferences
-                )
-            }
+            return literalName(literal, in: context, remaining: remaining)
         }
-        if let selector = expression.as(MacroExpansionExprSyntax.self), selector.macroName.text == "selector" {
-            return selectorValue(selector, enclosingTypes: context.types)
+        if let macro = expression.as(MacroExpansionExprSyntax.self) {
+            return macro.macroName.text == "selector" ? selectorValue(macro, enclosingTypes: context.types) : nil
         }
-        if let infix = expression.as(InfixOperatorExprSyntax.self),
-           let plus = infix.operator.as(BinaryOperatorExprSyntax.self)?.operator,
-           plus.text == "+",
-           let lhs = resolveName(infix.leftOperand, in: context, remaining: remaining - 1),
-           let rhs = resolveName(infix.rightOperand, in: context, remaining: remaining - 1),
-           let lhsText = lhs.text, let rhsText = rhs.text,
-           lhs.referencedTargetLocation == nil, rhs.referencedTargetLocation == nil {
-            return .resolved(
-                lhsText + rhsText,
-                origin: .constant,
-                apiReferences: lhs.apiReferences + rhs.apiReferences + [
-                    RuntimeNameAPIReference(api: "String.+", location: location(plus))
-                ]
-            )
+        if let infix = expression.as(InfixOperatorExprSyntax.self) {
+            return concatenatedName(infix, in: context, remaining: remaining)
         }
-        if let call = expression.as(FunctionCallExprSyntax.self),
-           let constructor = RuntimeSyntaxNames.nameAPI(call.calledExpression),
-           let argument = call.arguments.first?.expression,
-           let resolved = resolveName(argument, in: context, remaining: remaining - 1) {
-            return resolved.addingAPIReference(RuntimeNameAPIReference(
-                api: constructor.api,
-                location: location(constructor.token)
-            ))
+        if let call = expression.as(FunctionCallExprSyntax.self) {
+            return constructedName(call, in: context, remaining: remaining)
         }
-        guard let bound = boundValue(for: expression, in: context) else { return nil }
-        guard case let .immutable(value, scopes, types) = bound,
+        return aliasedName(expression, in: context, remaining: remaining)
+    }
+
+    private func literalName(
+        _ literal: StringLiteralExprSyntax,
+        in context: Context,
+        remaining: Int
+    ) -> RuntimeResolvedName? {
+        if let value = literal.representedLiteralValue { return .resolved(value, origin: .literal) }
+        guard let interpolated = resolveInterpolation(literal, in: context, remaining: remaining - 1) else {
+            return nil
+        }
+        guard let text = interpolated.text else { return .oversized(apiReferences: interpolated.apiReferences) }
+        return .resolved(text, origin: .constant, apiReferences: interpolated.apiReferences)
+    }
+
+    private func concatenatedName(
+        _ infix: InfixOperatorExprSyntax,
+        in context: Context,
+        remaining: Int
+    ) -> RuntimeResolvedName? {
+        guard let plus = infix.operator.as(BinaryOperatorExprSyntax.self)?.operator,
+              plus.text == "+",
+              let lhs = resolveName(infix.leftOperand, in: context, remaining: remaining - 1),
+              let rhs = resolveName(infix.rightOperand, in: context, remaining: remaining - 1),
+              let lhsText = lhs.text, let rhsText = rhs.text,
+              lhs.referencedTargetLocation == nil, rhs.referencedTargetLocation == nil
+        else { return nil }
+        return .resolved(
+            lhsText + rhsText,
+            origin: .constant,
+            apiReferences: Self.distinct(lhs.apiReferences + rhs.apiReferences + [
+                RuntimeNameAPIReference(api: "String.+", location: location(plus))
+            ])
+        )
+    }
+
+    private func constructedName(
+        _ call: FunctionCallExprSyntax,
+        in context: Context,
+        remaining: Int
+    ) -> RuntimeResolvedName? {
+        guard let constructor = RuntimeSyntaxNames.nameAPI(call.calledExpression),
+              let argument = call.arguments.first?.expression,
+              let resolved = resolveName(argument, in: context, remaining: remaining - 1)
+        else { return nil }
+        return resolved.addingAPIReference(RuntimeNameAPIReference(
+            api: constructor.api,
+            location: location(constructor.token)
+        ))
+    }
+
+    private func aliasedName(
+        _ expression: ExprSyntax,
+        in context: Context,
+        remaining: Int
+    ) -> RuntimeResolvedName? {
+        guard let bound = boundValue(for: expression, in: context),
+              case let .immutable(value, scopes, types) = bound,
               let resolved = resolveName(value, in: Context(scopes: scopes, types: types), remaining: remaining - 1)
         else { return nil }
         return resolved.throughAlias()
@@ -517,16 +601,30 @@ final class RuntimeBindingCollector: SyntaxVisitor {
         _ literal: StringLiteralExprSyntax,
         in context: Context,
         remaining: Int
-    ) -> (text: String, apiReferences: [RuntimeNameAPIReference])? {
+    ) -> Interpolated? {
         guard remaining > 0 else { return nil }
-        var text = ""
+        let key = ResolutionKey(step: .interpolation, expression: literal.id, context: context, remaining: remaining)
+        if let memoized = interpolatedValues[key] { return memoized.value }
+        resolutionCount += 1
+        let value = evaluateInterpolation(literal, in: context, remaining: remaining)
+        interpolatedValues[key] = Memoized(value)
+        return value
+    }
+
+    /// 상한을 넘은 뒤에도 나머지 조각을 끝까지 풀어, 해석 가능 여부와 근거는 상한이 없을 때와 같게 둔다.
+    private func evaluateInterpolation(
+        _ literal: StringLiteralExprSyntax,
+        in context: Context,
+        remaining: Int
+    ) -> Interpolated? {
+        var text: String? = ""
         var references: [RuntimeNameAPIReference] = []
         for segment in literal.segments {
             switch segment {
             case let .stringSegment(value):
                 let content = value.content.text
                 guard !content.contains("\\"), !content.contains("\n"), !content.contains("\r") else { return nil }
-                text += content
+                text = Self.appending(content, to: text)
             case let .expressionSegment(value):
                 guard value.expressions.count == 1,
                       let expression = value.expressions.first?.expression,
@@ -536,19 +634,46 @@ final class RuntimeBindingCollector: SyntaxVisitor {
                         remaining: remaining - 1
                       )
                 else { return nil }
-                text += primitive.text
+                text = primitive.text.flatMap { Self.appending($0, to: text) }
                 references += primitive.apiReferences
             }
         }
-        return (text, references)
+        return (text, Self.distinct(references))
     }
 
     private func primitiveInterpolationValue(
         _ rawExpression: ExprSyntax,
         in context: Context,
         remaining: Int
-    ) -> (text: String, apiReferences: [RuntimeNameAPIReference])? {
+    ) -> Interpolated? {
         guard remaining > 0 else { return nil }
+        let key = ResolutionKey(step: .primitive, expression: rawExpression.id, context: context, remaining: remaining)
+        if let memoized = interpolatedValues[key] { return memoized.value }
+        resolutionCount += 1
+        let value = evaluatePrimitiveInterpolation(rawExpression, in: context, remaining: remaining)
+        interpolatedValues[key] = Memoized(value)
+        return value
+    }
+
+    /// 넘친 보간은 글자를 더 붙이지 않는다. 바깥 글자는 안쪽 글자를 그대로 품으므로 한 번 넘치면 끝까지 넘친다.
+    /// 셋으로 갈라지는 보간 사슬은 메모가 있어도 3ⁿ 바이트를 만들었다.
+    private static func appending(_ piece: String, to text: String?) -> String? {
+        guard let text, text.utf8.count + piece.utf8.count <= RuntimeResolvedName.maximumByteCount else { return nil }
+        return text + piece
+    }
+
+    /// 근거를 처음 나온 순서로 한 번씩만 남긴다. 같은 별칭을 양쪽에서 쓰는 결합이 단계마다 목록을 두 배로
+    /// 키우지 않게 한다. 근거는 모두 검증해야 하는 집합이라 중복을 빼도 판정은 같다.
+    private static func distinct(_ references: [RuntimeNameAPIReference]) -> [RuntimeNameAPIReference] {
+        var seen: Set<RuntimeNameAPIReference> = []
+        return references.filter { seen.insert($0).inserted }
+    }
+
+    private func evaluatePrimitiveInterpolation(
+        _ rawExpression: ExprSyntax,
+        in context: Context,
+        remaining: Int
+    ) -> Interpolated? {
         let expression = RuntimeSyntaxNames.unparenthesized(rawExpression)
         if let string = expression.as(StringLiteralExprSyntax.self) {
             if let value = string.representedLiteralValue { return (value, []) }
