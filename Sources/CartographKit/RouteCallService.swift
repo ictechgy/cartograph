@@ -138,12 +138,16 @@ extension CartographService {
         resolvedValues: [SourceLocation: String]
     ) -> RoutePass {
         var pass = RoutePass()
-        // 값 흐름 상수는 실제 경로로 기록된다. 재스캔은 같은 표기를 써야 위치가 맞는다.
+        // 값 흐름 상수는 실제 경로로 기록된다. 재스캔은 같은 표기를 써야 위치가 맞는다. 표면은 원래 표기로
+        // 합쳐 두었으므로 그 표기를 함께 넘겨, 이 파일의 선언을 다른 표기로 한 벌 더 합치지 않게 한다.
         let canonical = !resolvedValues.isEmpty
         for source in sources {
             guard let text = texts[source.path] else { continue }
             let path = canonical ? LocalFileSystem.canonicalPath(source.path) : source.path
-            let result = scanner.scan(source: text, path: path, isTestSource: source.isTest, resolvedValues: resolvedValues)
+            let result = scanner.scan(
+                source: text, path: path, isTestSource: source.isTest, resolvedValues: resolvedValues,
+                declaredPath: source.path
+            )
             pass.calls += result.calls
             pass.counts = pass.counts + result.counts
             pass.callsByWrapper.merge(result.callsByWrapper, uniquingKeysWith: +)

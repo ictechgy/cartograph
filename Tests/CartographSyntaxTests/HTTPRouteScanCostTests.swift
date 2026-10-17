@@ -71,4 +71,27 @@ struct HTTPRouteScanCostTests {
         #expect(reused == standalone.scan(source: source, path: path))
         #expect(reused.calls.map(\.fact.isDynamic) == [false, false])
     }
+
+    @Test("값 흐름 재스캔이 실제 경로 표기를 써도 같은 파일 상수·enum 원시값 경로는 1차 패스와 같다")
+    func rescanUnderCanonicalSpellingMatchesFirstPass() {
+        // 재스캔은 값 흐름 상수의 위치와 맞추려고 실제 경로를 쓴다. 표면은 1차 패스의 표기로 합쳐져 있어,
+        // 그 파일의 선언을 다시 합치면 같은 선언이 위치 표기만 다른 두 벌이 되고 유일성 검사가 경로를 거부한다.
+        let source = """
+            import Foundation
+            enum Route: String { case users = "/users" }
+            enum API { static let base = "https://api.example.com" }
+            func load() { _ = URLRequest(url: URL(string: API.base + Route.users.rawValue)!) }
+            """
+        let declared = "/link/App/Load.swift"
+        let canonical = "/real/App/Load.swift"
+        let surface = HTTPRouteCallScanner.declarations(source: source, path: declared)
+        let scanner = HTTPRouteCallScanner(wrappers: [], surface: surface)
+        let first = scanner.scan(source: source, path: declared)
+        let rescan = scanner.scan(source: source, path: canonical, declaredPath: declared)
+        #expect(first.calls.map(\.fact.isDynamic) == [false])
+        #expect(rescan.calls.map(\.fact.channel) == first.calls.map(\.fact.channel))
+        #expect(rescan.calls.map(\.fact.isDynamic) == [false])
+        #expect(rescan.calls.map(\.fact.location.path) == [canonical])
+        #expect(scanner.collect(source: source, path: canonical, declaredPath: declared).surface == surface)
+    }
 }

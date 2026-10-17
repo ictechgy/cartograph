@@ -500,12 +500,18 @@ public struct HTTPRouteCallScanner: Sendable {
 
     /// 파일 하나에서 route-call 을 찾는다.
     ///
-    /// - Parameter resolvedValues: 값 흐름 분석이 증명한 식 위치 → 문자열. 파일 밖 상수를 푼다.
+    /// - Parameters:
+    ///   - resolvedValues: 값 흐름 분석이 증명한 식 위치 → 문자열. 파일 밖 상수를 푼다.
+    ///   - declaredPath: `declarations(source:path:)` 로 이 소스의 표면을 합칠 때 쓴 경로. 값 흐름 재스캔처럼
+    ///     `path` 를 다른 표기(실제 경로)로 줄 때 넘긴다. 없으면 `path` 로 찾는다.
     public func scan(
         source: String, path: String, isTestSource: Bool = false,
-        resolvedValues: [CartographCore.SourceLocation: String] = [:]
+        resolvedValues: [CartographCore.SourceLocation: String] = [:], declaredPath: String? = nil
     ) -> RouteCallScanResult {
-        let collector = collect(source: source, path: path, isTestSource: isTestSource, resolvedValues: resolvedValues)
+        let collector = collect(
+            source: source, path: path, isTestSource: isTestSource, resolvedValues: resolvedValues,
+            declaredPath: declaredPath
+        )
         return RouteCallScanResult(
             calls: collector.calls, counts: collector.counts, callsByWrapper: collector.callsByWrapper,
             routerTables: collector.routerTables, routerRecipes: collector.routerRecipes
@@ -515,7 +521,7 @@ public struct HTTPRouteCallScanner: Sendable {
     /// 파일 하나를 훑은 방문자. `scan` 의 본체이고, 테스트는 이것으로 스캔 비용(쓴 표면·준수 조회 수)을 센다.
     func collect(
         source: String, path: String, isTestSource: Bool = false,
-        resolvedValues: [CartographCore.SourceLocation: String] = [:]
+        resolvedValues: [CartographCore.SourceLocation: String] = [:], declaredPath: String? = nil
     ) -> HTTPRouteCallCollector {
         let parsed = Parser.parse(source: source)
         // `a = b` 와 `a + b` 를 읽으려면 연산자를 접어야 한다. 접지 못한 식은 그 식만 못 읽는다.
@@ -527,7 +533,8 @@ public struct HTTPRouteCallScanner: Sendable {
         locals.walk(tree)
         let collector = HTTPRouteCallCollector(
             wrappers: wrappers, converter: converter, bindings: bindings, locals: locals,
-            surface: scanningSurface(tree, converter: converter, path: path), path: path, isTestSource: isTestSource
+            surface: scanningSurface(tree, converter: converter, path: path, declaredPath: declaredPath),
+            path: path, isTestSource: isTestSource
         )
         collector.walk(tree)
         return collector
@@ -538,11 +545,12 @@ public struct HTTPRouteCallScanner: Sendable {
     /// 위층(`routes`)은 모든 파일의 표면을 먼저 합쳐 넘기므로, 그렇게 합친 파일은 프로젝트 표면을 그대로 쓴다.
     /// 다시 합치면 사전 10여 개를 복사해 파일마다 프로젝트 표면 크기만큼 들고, 전체가 파일 수의 제곱으로 는다.
     /// 표면에 없는 파일(단독 파일을 넘긴 테스트·임베더)은 이 파일의 선언을 더한다. 이미 합친 파일을 다시 합쳐도
-    /// 시그니처 목록이 겹칠 뿐이라 판정은 같다.
+    /// 시그니처 목록이 겹칠 뿐이라 판정은 같다. 단, 다른 경로 표기로 합치면 위치가 든 선언(enum case·정적 멤버·
+    /// typealias)이 두 벌이 되어 유일성 검사가 같은 파일 경로를 거부한다. 재스캔은 그래서 합칠 때의 경로를 넘긴다.
     private func scanningSurface(
-        _ tree: SourceFileSyntax, converter: SourceLocationConverter, path: String
+        _ tree: SourceFileSyntax, converter: SourceLocationConverter, path: String, declaredPath: String?
     ) -> HTTPDeclarationSurface {
-        guard !surface.sourcePaths.contains(path) else { return surface }
+        guard !surface.sourcePaths.contains(declaredPath ?? path) else { return surface }
         let local = HTTPSurfaceCollector(recorder: HTTPRouterSurfaceRecorder(converter: converter, path: path))
         local.walk(tree)
         var merged = surface
