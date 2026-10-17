@@ -100,7 +100,14 @@ struct ImpactSelectionPreparationTests {
             #expect(selection.issues.map(\.requested) == ["duplicate", missing])
             #expect(selection.issues.map(\.kind) == ["symbol", "symbol"])
             #expect(selection.issues.map(\.status) == ["ambiguous", "notFound"])
-            #expect(selection.issues.first?.candidates?.compactMap(\.usr) == ["direct", "outside"])
+            // 기존 후보 표현의 경로·행·ID 순서와 모든 출력 필드를 고정한다.
+            let expectedCandidates: [SymbolQueryDocument.Candidate] = [
+                .init(qualifiedName: "duplicate", usr: "outside", kind: "function", module: nil,
+                    location: .init(path: "/p/Else.swift", line: 1, column: 1), container: nil),
+                .init(qualifiedName: "duplicate", usr: "direct", kind: "function", module: nil,
+                    location: .init(path: "/p/Selected.swift", line: 1, column: 1), container: nil),
+            ]
+            #expect(selection.issues.first?.candidates == expectedCandidates)
             #expect(selection.issues.last?.candidates == nil)
             #expect(selection.issues.allSatisfy { $0.candidatesOmitted == nil })
         }
