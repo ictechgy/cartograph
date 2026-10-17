@@ -7,9 +7,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.27.0] - Unreleased
+## [0.27.1] - Unreleased
 
-This section prepares 0.27.0; a source version does not establish that a binary release is available.
+This section prepares 0.27.1; a source version does not establish that a binary release is available.
+
+### Changed
+
+- Prepare the initial Impact traversal frontier from the already-sorted changed IDs instead of
+  sorting every graph ID. Preserve the sorted-frontier invariant without sorting it again at each
+  traversal layer, including the existing first-witness dispatch-parent ordering.
+- Build the symbol-name query index only when an Impact request includes symbols. File-only,
+  resource-only and empty selections avoid that unused preparation while retaining their existing
+  selection and issue reporting.
+
+### Compatibility and evidence
+
+- Traversal depth, output limits, complete summaries, runtime evidence and deterministic candidate
+  ordering are unchanged. No new snapshot format, cache migration or query mode is introduced.
+- Regression tests verify complete output equivalence and targeted preparation counts. They do not
+  establish an end-to-end Impact speedup or the cause of a particular user's slow request. Context
+  loading, file indexing, reachable graph traversal and complete result construction still have
+  their existing costs. Existing comparison evidence, including `final_evidence: false`, is unchanged.
+
+## [0.27.0] - 2026-10-17
 
 ### Added
 
@@ -1473,7 +1493,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.26.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.27.0...HEAD
+[0.27.0]: https://github.com/ictechgy/cartograph/compare/0.26.0...0.27.0
 [0.26.0]: https://github.com/ictechgy/cartograph/compare/0.25.0...0.26.0
 [0.25.0]: https://github.com/ictechgy/cartograph/compare/0.24.0...0.25.0
 [0.24.0]: https://github.com/ictechgy/cartograph/compare/0.23.1...0.24.0
