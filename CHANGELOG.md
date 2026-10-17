@@ -7,9 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.27.1] - Unreleased
+## [0.27.1] - 2026-10-17
 
-This section prepares 0.27.1; a source version does not establish that a binary release is available.
+[Published release](https://github.com/ictechgy/cartograph/releases/tag/0.27.1) from
+`41eb2df349eed5e5593d0edf948c86c3750150c7`, after the
+[universal-package verification](https://github.com/ictechgy/cartograph/actions/runs/39046187278) passed.
 
 ### Changed
 
@@ -1493,7 +1495,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.27.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.27.1...HEAD
+[0.27.1]: https://github.com/ictechgy/cartograph/compare/0.27.0...0.27.1
 [0.27.0]: https://github.com/ictechgy/cartograph/compare/0.26.0...0.27.0
 [0.26.0]: https://github.com/ictechgy/cartograph/compare/0.25.0...0.26.0
 [0.25.0]: https://github.com/ictechgy/cartograph/compare/0.24.0...0.25.0

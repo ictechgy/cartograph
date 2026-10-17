@@ -60,7 +60,8 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 ## Install
 
 Check [GitHub Releases](https://github.com/ictechgy/cartograph/releases) for published CLI versions
-and available binary assets. The versioned install examples below pin **0.26.0** for reproducibility;
+and available binary assets. The versioned install examples below pin published
+[**0.27.1**](https://github.com/ictechgy/cartograph/releases/tag/0.27.1) for reproducibility;
 change the pin only to a published version you have verified. A source checkout's `--version` reports
 its source version and does not establish release availability. Version 0.25.1 was prepared in source
 but never published; see [CHANGELOG.md](CHANGELOG.md) for the incorporated changes.
@@ -79,10 +80,15 @@ is a compiler option, and the index it writes is read the same way) and analyze 
 brew install ictechgy/tap/cartograph
 ```
 
+The [tap formula](https://github.com/ictechgy/homebrew-tap/blob/main/Formula/cartograph.rb) is updated
+separately from GitHub Releases. Its [0.27.1 update](https://github.com/ictechgy/homebrew-tap/pull/62)
+passed public archive installation and formula tests on macOS arm64. Verify `cartograph --version`
+after installing or upgrading; a published release and tap update do not upgrade your local binary.
+
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.26.0
+mint install ictechgy/cartograph@0.27.1
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -90,7 +96,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.26.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.27.1"),
 ```
 
 ```bash
@@ -692,7 +698,7 @@ carry `externalEvidenceCount`/`externalEvidenceOmitted` or
 `runtimeContractsCount`/`runtimeContractsOmitted`; caller omissions add to the producer's existing
 `callersOmitted`. `truncated.sections` names `runtimeEvidence` or `runtimeContracts` when applicable.
 
-#### Enum expansion review (0.27.0 source)
+#### Enum expansion review (since 0.27.0)
 
 `impact --before` adds `enumChangeReview` to JSON and text for selected enum expansions.
 It locates compiler-attributed `default`/`@unknown default` switches and finite array-literal
@@ -705,8 +711,7 @@ with comparable targets and configuration. Legacy snapshots decode but cannot su
 inventories. Syntax cache schema 15 refreshes old cached facts automatically; it cannot upgrade a
 saved baseline. Equality/inequality, if/guard case, filters and dynamic collections remain outside
 this first slice. See [Enum expansion review and migration](docs/ENUM-CHANGE-REVIEW.md).
-No new strict failure category is introduced. The published install pins above stay unchanged until
-0.27.0 is actually available.
+No new strict failure category is introduced.
 
 #### Multi-root traversal for isthmus (`--format language-traversal`)
 
@@ -1742,11 +1747,11 @@ jobs:
       - uses: ictechgy/cartograph@action-v1.0.0
         with:
           command: check
-          version: 0.26.0
+          version: 0.27.1
           args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-The `action-v1.0.0` tag is the action release; `version: 0.26.0` selects the CLI binary.
+The `action-v1.0.0` tag is the action release; `version: 0.27.1` selects the CLI binary.
 Pin both for a repeatable setup (`@main` tracks the development branch). Marketplace's default
 "Use latest version" currently follows the repository's latest CLI release; select
 `action-v1.0.0` or use the version-specific link above for the action release. Inputs:

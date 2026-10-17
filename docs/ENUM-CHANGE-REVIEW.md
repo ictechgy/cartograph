@@ -5,7 +5,7 @@ The existing `impact --before <snapshot>` comparison includes an additive
 case, or its source file with the existing impact selectors. Ordinary graph
 impact and exit-status behavior are unchanged.
 
-Capture a baseline with enum-aware Cartograph (0.27.0 source or a later capable
+Capture a baseline with enum-aware Cartograph (0.27.0 or a later capable
 release) before adding enum cases, then rebuild the current index and compare it with that baseline. Older snapshots still decode,
 but their missing enum inventories are reported as unavailable, not as empty
 complete case sets.
@@ -66,8 +66,19 @@ library USRs; an unknown identity must not silently fall back to matching a name
 
 ## Upgrade and baseline migration
 
-0.27.0 is prepared in source. Check the repository's Releases page before changing a published
-install pin; the source `--version` alone is not a publication receipt.
+Enum expansion review first shipped in [0.27.0](https://github.com/ictechgy/cartograph/releases/tag/0.27.0).
+The current installation examples pin published
+[0.27.1](https://github.com/ictechgy/cartograph/releases/tag/0.27.1), whose tag identifies
+`41eb2df349eed5e5593d0edf948c86c3750150c7`. Its
+[release workflow](https://github.com/ictechgy/cartograph/actions/runs/39046187278) verified the
+unpacked universal archive, including the public enum-change contract, before publication.
+The separate [Homebrew update](https://github.com/ictechgy/homebrew-tap/pull/62) and
+[post-merge install tests](https://github.com/ictechgy/homebrew-tap/actions/runs/39048130600) passed
+on macOS arm64. Check `cartograph --version` after your own install or upgrade.
+
+0.27.1 removes redundant Impact preparation work without changing the enum-review contract or
+snapshot format. The regression evidence does not establish an end-to-end latency improvement;
+the original baseline recapture and coverage limitations below still apply.
 
 1. At the pre-change revision, rebuild the relevant targets with the intended Swift toolchain,
    build configuration and conditional flags. Use the actual compiler index store produced by that
