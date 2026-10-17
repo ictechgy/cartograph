@@ -129,11 +129,15 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
     var typeAliases: [String: [HTTPTypeAliasDeclaration]] = [:]
     var associatedTypes: [String: [HTTPAssociatedTypeDeclaration]] = [:]
     var typeConditionality: [String: [Bool]] = [:]
+    /// `declarations(source:path:)` 로 표면을 만든 파일 경로. 스캔은 여기 있는 파일의 선언을 다시 합치지 않는다.
+    /// 경로 없이 만든 표면은 위치로 파일을 가를 수 없어 기록하지 않는다.
+    var sourcePaths: Set<String> = []
 
     public init() {}
 
     /// 여러 파일의 표면을 합친다. 순서와 무관하게 같은 값이 되도록 집합과 목록만 더한다.
     public mutating func merge(_ other: HTTPDeclarationSurface) {
+        sourcePaths.formUnion(other.sourcePaths)
         typeChains.formUnion(other.typeChains)
         primaryTypeKinds.merge(other.primaryTypeKinds) { $0.union($1) }
         classInheritanceClauses.merge(other.classInheritanceClauses) { $0.union($1) }
@@ -489,7 +493,9 @@ public struct HTTPRouteCallScanner: Sendable {
             converter: SourceLocationConverter(fileName: path, tree: tree), path: path
         ))
         collector.walk(tree)
-        return collector.surface
+        var surface = collector.surface
+        if !path.isEmpty { surface.sourcePaths.insert(path) }
+        return surface
     }
 
     /// 파일 하나에서 route-call 을 찾는다.
@@ -499,6 +505,18 @@ public struct HTTPRouteCallScanner: Sendable {
         source: String, path: String, isTestSource: Bool = false,
         resolvedValues: [CartographCore.SourceLocation: String] = [:]
     ) -> RouteCallScanResult {
+        let collector = collect(source: source, path: path, isTestSource: isTestSource, resolvedValues: resolvedValues)
+        return RouteCallScanResult(
+            calls: collector.calls, counts: collector.counts, callsByWrapper: collector.callsByWrapper,
+            routerTables: collector.routerTables, routerRecipes: collector.routerRecipes
+        )
+    }
+
+    /// 파일 하나를 훑은 방문자. `scan` 의 본체이고, 테스트는 이것으로 스캔 비용(쓴 표면·준수 조회 수)을 센다.
+    func collect(
+        source: String, path: String, isTestSource: Bool = false,
+        resolvedValues: [CartographCore.SourceLocation: String] = [:]
+    ) -> HTTPRouteCallCollector {
         let parsed = Parser.parse(source: source)
         // `a = b` 와 `a + b` 를 읽으려면 연산자를 접어야 한다. 접지 못한 식은 그 식만 못 읽는다.
         let tree = OperatorTable.standardOperators.foldAll(parsed) { _ in }.as(SourceFileSyntax.self) ?? parsed
@@ -507,21 +525,29 @@ public struct HTTPRouteCallScanner: Sendable {
         bindings.walk(tree)
         let locals = HTTPLocalCollector()
         locals.walk(tree)
-        // 이 파일의 선언은 위층이 모은 표면에 이미 있을 수 있다. 합쳐도 시그니처 목록이 겹칠 뿐이라
-        // 판정은 같고, 단독 파일을 넘긴 호출자(테스트·임베더)도 같은 답을 받는다.
-        let local = HTTPSurfaceCollector(recorder: HTTPRouterSurfaceRecorder(converter: converter, path: path))
-        local.walk(tree)
-        var surface = self.surface
-        surface.merge(local.surface)
         let collector = HTTPRouteCallCollector(
             wrappers: wrappers, converter: converter, bindings: bindings, locals: locals,
-            surface: surface, path: path, isTestSource: isTestSource
+            surface: scanningSurface(tree, converter: converter, path: path), path: path, isTestSource: isTestSource
         )
         collector.walk(tree)
-        return RouteCallScanResult(
-            calls: collector.calls, counts: collector.counts, callsByWrapper: collector.callsByWrapper,
-            routerTables: collector.routerTables, routerRecipes: collector.routerRecipes
-        )
+        return collector
+    }
+
+    /// 이 파일을 훑을 때 쓸 선언 표면.
+    ///
+    /// 위층(`routes`)은 모든 파일의 표면을 먼저 합쳐 넘기므로, 그렇게 합친 파일은 프로젝트 표면을 그대로 쓴다.
+    /// 다시 합치면 사전 10여 개를 복사해 파일마다 프로젝트 표면 크기만큼 들고, 전체가 파일 수의 제곱으로 는다.
+    /// 표면에 없는 파일(단독 파일을 넘긴 테스트·임베더)은 이 파일의 선언을 더한다. 이미 합친 파일을 다시 합쳐도
+    /// 시그니처 목록이 겹칠 뿐이라 판정은 같다.
+    private func scanningSurface(
+        _ tree: SourceFileSyntax, converter: SourceLocationConverter, path: String
+    ) -> HTTPDeclarationSurface {
+        guard !surface.sourcePaths.contains(path) else { return surface }
+        let local = HTTPSurfaceCollector(recorder: HTTPRouterSurfaceRecorder(converter: converter, path: path))
+        local.walk(tree)
+        var merged = surface
+        merged.merge(local.surface)
+        return merged
     }
 }
 
