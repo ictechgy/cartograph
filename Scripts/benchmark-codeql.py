@@ -223,25 +223,57 @@ def compare(
     }
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """명령행 옵션을 정의한다. 실행할 CodeQL은 기본값 없이 사용자가 지정한다."""
     parser = argparse.ArgumentParser(description=__doc__)
     default_corpus = Path(__file__).resolve().parents[1] / "Fixtures/ValueFlowBenchmark"
     parser.add_argument("--corpus", type=Path, default=default_corpus)
-    parser.add_argument("--codeql", type=Path, default=Path("/tmp/cartograph-codeql-path"))
+    parser.add_argument("--codeql", type=Path, required=True,
+                        help="CodeQL CLI executable, for example <bundle>/codeql/codeql")
     parser.add_argument("--build-method", choices=("swiftpm", "directswiftc"), default="swiftpm")
     parser.add_argument("--runs", type=int, default=3, help="query repetitions (minimum: 3)")
     parser.add_argument("--timeout", type=int, default=300, help="per-command timeout in seconds")
     parser.add_argument("--output-dir", type=Path, help="evidence directory; defaults below the corpus")
-    args = parser.parse_args()
+    return parser
+
+
+def executable_problem(path: Path) -> str | None:
+    """path를 실행 파일로 쓸 수 없는 이유를 돌려준다. 쓸 수 있으면 None이다."""
+    if not path.exists():
+        return "does not exist"
+    if not path.is_file():
+        return "is not a file"
+    if not os.access(path, os.X_OK):
+        return "is not executable"
+    return None
+
+
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    """옵션을 해석하고, 실행할 CodeQL을 사용자가 지정한 실행 파일 하나로 확정한다.
+
+    예전에는 --codeql을 생략하면 공유 /tmp의 고정 이름 포인터를 따라가 그 아래 codeql/codeql을 실행했다.
+    그 이름을 먼저 만든 다른 계정이 실행 파일을 고를 수 있었고, 문서대로 실행 파일을 넘기면 그 파일을
+    포인터로 읽어 실패했다. 그래서 기본값과 포인터 해석 없이 실행 파일 경로만 받는다. CodeQL 명령마다
+    cwd가 다르므로 상대 경로와 ~는 절대 경로로 바꾼다.
+    """
+    parser = build_parser()
+    args = parser.parse_args(argv)
     if args.runs < 3:
         parser.error("--runs must be at least 3")
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
+    args.codeql = args.codeql.expanduser().resolve()
+    problem = executable_problem(args.codeql)
+    if problem:
+        parser.error(f"--codeql {args.codeql} {problem}; pass the CodeQL CLI executable inside the "
+                     "extracted bundle, for example --codeql /path/to/codeql/codeql")
+    return args
 
+
+def main() -> int:
+    args = parse_arguments()
     corpus = args.corpus.resolve()
-    pointer = args.codeql.resolve()
-    codeql_root = Path(pointer.read_text().strip()) if pointer.is_file() else pointer
-    codeql = codeql_root / "codeql/codeql"
+    codeql = args.codeql
     output = args.output_dir.resolve() if args.output_dir else Path(tempfile.mkdtemp(prefix="cartograph-codeql-", dir=corpus / ".benchmark-results"))
     output.mkdir(parents=True, exist_ok=True)
     expected = load_expected(corpus / "expected.json")
