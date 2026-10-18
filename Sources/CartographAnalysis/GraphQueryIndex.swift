@@ -49,30 +49,44 @@ public struct GraphQueryIndex: Sendable {
     /// 거리 한도는 이름 길이에 비례한다. 고정 한도는 긴 한정 이름을 하나도 못
     /// 잡는다 — 조각 하나만 달라도 수십 자가 떨어져 있기 때문이다. 대소문자는
     /// 무시한다. 한 키에 정점이 여럿이면 첫 정점을 대표로 삼는다. 결과는 (거리,
-    /// 이름) 순으로 세워 실행마다 같은 순서를 보장한다.
+    /// 이름) 순으로 세운다. 한 정점에 여러 별칭이 맞으면 그중 가장 앞선 점수를 써서
+    /// 사전의 순회 순서와 무관하게 같은 추천을 보장한다.
     public func similarCandidates(
         to subject: String,
         limit: Int = Self.similarCandidateLimit
     ) -> [GraphNode] {
+        Self.similarCandidates(to: subject, limit: limit, graph: graph, names: nodesByName)
+    }
+
+    /// 사전과 같은 항목을 받아 추천 점수를 계산한다.
+    /// 공개 경로에서 별칭 배열을 복사하지 않고, 항목 방문 순서는 별도로 검증할 수 있다.
+    static func similarCandidates<Names: Sequence>(
+        to subject: String,
+        limit: Int,
+        graph: CodeGraph,
+        names: Names
+    ) -> [GraphNode] where Names.Element == (key: String, value: [NodeID]) {
         guard !subject.isEmpty else { return [] }
         let needle = subject.lowercased()
         let needleLength = needle.count
         // 매우 긴 USR은 정확 조회로만 찾는다. 추천용 편집 거리로 이차 비용을 만들지 않는다.
         guard needleLength <= 256 else { return [] }
         let threshold = max(2, needleLength / 3)
-        var scored: [(distance: Int, name: String, node: GraphNode)] = []
-        var seen: Set<NodeID> = []
-        for (name, ids) in nodesByName {
+        var bestByNode: [NodeID: (distance: Int, name: String, node: GraphNode)] = [:]
+        for (name, ids) in names {
             // 거리는 편집 횟수 이상일 수 없다. 길이 차가 한도를 넘으면 DP 를
             // 돌릴 필요도 없고, 그런 이름은 추천으로도 가치가 없다.
             guard abs(name.count - needleLength) <= threshold else { continue }
             let distance = Self.editDistance(needle, name.lowercased())
-            guard distance <= threshold, let node = ids.compactMap({ graph.node($0) }).first,
-                  seen.insert(node.id).inserted
+            guard distance <= threshold, let node = ids.compactMap({ graph.node($0) }).first
             else { continue }
-            scored.append((distance, name, node))
+            if let best = bestByNode[node.id] {
+                guard distance < best.distance || (distance == best.distance && name < best.name)
+                else { continue }
+            }
+            bestByNode[node.id] = (distance, name, node)
         }
-        return scored
+        return bestByNode.values
             .sorted { lhs, rhs in
                 if lhs.distance != rhs.distance { return lhs.distance < rhs.distance }
                 return lhs.name < rhs.name
