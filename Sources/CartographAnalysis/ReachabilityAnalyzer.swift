@@ -431,7 +431,9 @@ public struct ReachabilityAnalyzer: Sendable {
         }
 
         var productionRoots: Set<NodeID> = []
-        for (node, reason) in retentions where seedsProduction(reason) {
+        // 전체 탐색에서 테스트로 활성화된 증인도 생산 탐색에서는 소유자부터 다시 확인한다.
+        for (node, reason) in retentions
+        where seedsProduction(reason) && conditionalWitnesses[node] == nil {
             productionRoots.insert(node)
         }
         // 물려받은 보존도 근거를 따라간다. 테스트 메서드 때문에 살아남은 타입은
