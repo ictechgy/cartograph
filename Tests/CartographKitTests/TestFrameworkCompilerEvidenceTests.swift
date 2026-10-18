@@ -45,7 +45,9 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
             #expect(declaration.compilerUnitTest == false)
         }
         let identity = XCTestIdentityFacts(snapshot: snapshot)
-        let expectedClasses = Set(local.filter { ["BaseCase", "AsyncCase", "ShapeCase", "DuplicateCase"].contains($0.name) }.map(\.usr))
+        let expectedClasses = Set(local.filter {
+            ["BaseCase", "AsyncCase", "ShapeCase", "DuplicateCase"].contains($0.name)
+        }.map(\.usr))
         let expectedMethods = Set(local.filter { ["testAsync()", "testShared()"].contains($0.name) }.map(\.usr))
         #expect(expectedClasses.count == 5 && expectedMethods.count == 3)
         #expect(identity.classUSRs == expectedClasses)
