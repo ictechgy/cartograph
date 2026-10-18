@@ -88,19 +88,98 @@ def check_answer(raw, names, statuses, config, graph, request):
                     "Ambiguity omitted the two source-authored fullMessage overloads")
 
 
-def run(path, out, report, deadline=None):
+def admit_baseline(path, revision, setup, config, out):
+    require(re.fullmatch(r"[0-9a-f]{40}", revision or "") is not None, "Exact baseline revision required")
+    baseline = PROJECT.read_json(path)
+    require(baseline.get("status") == "passed", "Successful baseline release build required")
+    require(baseline["toolchain"] == setup["toolchain"], "Baseline toolchain differs")
+    hashes = {str(path): BASE.sha256(path)}
+    for label, evidence in (("baseline", baseline), ("candidate", setup)):
+        product = evidence["cartograph"]
+        build = product["setup"]
+        require(build["mode"] == "fresh-release-package-build", "Fresh release builds required")
+        source = build["source"]
+        require(source["working_tree_status"] == "", "Clean product source required")
+        if label == "baseline":
+            require(source["revision"] == revision, "Baseline revision differs")
+        require(build["build"]["returncode"] == 0 and not build["build"]["timed_out"],
+                "Product release build failed")
+        command = build["build"]["command"]
+        package = Path(command[command.index("--package-path") + 1]).resolve()
+        expected = source["input_sha256"]
+        actual = [package / "Package.swift", package / "Package.resolved",
+                  *sorted((package / "Sources").rglob("*.swift"))]
+        require({str(item.relative_to(package)) for item in actual} == set(expected),
+                "Product source membership changed")
+        hashes.update({str(package / name): digest for name, digest in expected.items()})
+        hashes[product["binary"]] = product["binary_sha256"]
+    config["hashes"].update(hashes)
+    PREP.verify_bytes(config)
+    BASE.save(out / "baseline-admission.json", baseline)
+    return baseline
+
+
+def paired_summary(report):
+    # 각 쌍의 비율과 각 팔의 절대 중앙값을 별도로 보존한다.
+    rows = []
+    for case in ("ambiguous", "missing", "mixed", "found"):
+        for enabled in (False, True):
+            arms = {arm: [row for row in report["runs"] if row["case"] == case
+                         and row["enabled"] == enabled and row["arm"] == arm]
+                    for arm in ("baseline", "candidate")}
+            for records in arms.values():
+                records.sort(key=lambda row: row["pair"])
+            slots = [row["pair"] for row in arms["baseline"]]
+            require(slots and len(slots) == len(set(slots))
+                    and slots == [row["pair"] for row in arms["candidate"]], "Incomplete query pairs")
+            result = {"case": case, "enabled": enabled, "pairs": len(arms["baseline"])}
+            for arm, records in arms.items():
+                values = {}
+                for key in ("wall_seconds", "wait4_maxrss_bytes"):
+                    samples = [row["measurement"][key] for row in records]
+                    require(all(type(value) in (int, float) and math.isfinite(value) and value > 0
+                                for value in samples), "Invalid paired wall or RSS")
+                    values[key] = statistics.median(samples)
+                if enabled:
+                    values["phases_seconds"] = {
+                        phase: (None if records[0]["phases"][phase] is None else
+                                statistics.median(row["phases"][phase] for row in records))
+                        for phase in PHASES}
+                result[arm] = values
+            result["median_paired_baseline_over_candidate_wall"] = statistics.median(
+                left["measurement"]["wall_seconds"] / right["measurement"]["wall_seconds"]
+                for left, right in zip(arms["baseline"], arms["candidate"]))
+            rows.append(result)
+    return {"cases": rows, "final_evidence": False,
+            "scope": "One frozen project, fresh processes, fixed paired order, no cold-cache claim",
+            "rss_scope": "wait4 process-lifetime high-water RSS, not process-tree or phase memory",
+            "phase_scope": "Instrumented wall estimates; observer overhead is not isolated"}
+
+
+def run(path, out, report, deadline=None, baseline_path=None, baseline_revision=None):
     config, graph = PREP.admit(path, out, COMMAND_SECONDS)
     setup = PROJECT.read_json(Path(PROJECT.read_json(path)["reused_tools"]["setup_results"]))
     require(setup["cartograph"]["setup"]["mode"] == "fresh-release-package-build", "Existing release package build required")
     config["hashes"][str(Path(__file__).resolve())] = BASE.sha256(Path(__file__))
     report.update(source=setup["cartograph"]["setup"]["source"], toolchain=setup["toolchain"],
                   runner_sha256=BASE.sha256(Path(__file__)), runs=[], byte_checks=[])
+    baseline = None
+    if baseline_path is not None:
+        baseline = admit_baseline(baseline_path, baseline_revision, setup, config, out)
+        report["baseline_source"] = baseline["cartograph"]["setup"]["source"]
+        report["baseline_binary_sha256"] = baseline["cartograph"]["binary_sha256"]
+        report["candidate_binary_sha256"] = setup["cartograph"]["binary_sha256"]
     request = max(config["requests"], key=lambda item: item["max_depth"])
     found, ambiguous, missing = graph["bindings"][request["seed"]], "fullMessage", "CartographPhaseMissing_7c460af8"
     cases = [("ambiguous", [ambiguous], ["ambiguous"], [False, True]),
              ("missing", [missing], ["notFound"], [False, True]),
              ("mixed", [found, ambiguous, missing, found], ["found", "ambiguous", "notFound", "found"], [False, True]),
              ("found", [found], ["found"], SCHEDULE)]
+    if baseline is not None:
+        report["paired_workload"] = {"project_revision": PROJECT.PROJECT_REVISION,
+                                     "depth": request["max_depth"], "limit": 100000,
+                                     "index_fingerprint": config["index_fingerprint"],
+                                     "frozen_input_sha256": PROJECT.FROZEN_HASHES}
     BASE.save(out / "plan.json", {"cases": cases, "depth": request["max_depth"], "limit": 100000,
                                 "command_timeout_seconds": COMMAND_SECONDS, "stream_cap_bytes": MAX_BYTES})
     for name, names, statuses, schedule in cases:
@@ -112,18 +191,23 @@ def run(path, out, report, deadline=None):
                                                             Path(config["cg_config"]))]
         expected = None
         for number, enabled in enumerate(schedule):
-            report["byte_checks"].append(PREP.verify_bytes(config))
-            measured, raw = capture(command, Path(config["project"]), out / f"{name}-{number}", enabled)
-            report["runs"].append({"case": name, **measured})
-            BASE.save(out / "results.json", report)
-            check_answer(raw, names, statuses, config, graph, request)
-            expected = raw if expected is None else expected
-            require(raw == expected, "stdout, exit, or stderr-with-only-phase-line-removed parity failed")
-            if enabled:
-                require(all(value is not None for key, value in measured["phases"].items() if key != "found_facts"),
-                        "A required query phase did not run")
-                require((measured["phases"]["found_facts"] is not None) == ("found" in statuses),
-                        "Found-only phase ran or was skipped incorrectly")
+            order = ["candidate"] if baseline is None else (
+                ["baseline", "candidate"] if number % 2 == 0 else ["candidate", "baseline"])
+            for arm in order:
+                arm_command = command if arm == "candidate" else [baseline["cartograph"]["binary"], *command[1:]]
+                stem = f"{name}-{number}" if baseline is None else f"{name}-{number}-{arm}"
+                report["byte_checks"].append(PREP.verify_bytes(config))
+                measured, raw = capture(arm_command, Path(config["project"]), out / stem, enabled)
+                report["runs"].append({"case": name, **({"arm": arm, "pair": number} if baseline else {}), **measured})
+                BASE.save(out / "results.json", report)
+                check_answer(raw, names, statuses, config, graph, request)
+                expected = raw if expected is None else expected
+                require(raw == expected, "stdout, exit, or stderr-with-only-phase-line-removed parity failed")
+                if enabled:
+                    require(all(value is not None for key, value in measured["phases"].items() if key != "found_facts"),
+                            "A required query phase did not run")
+                    require((measured["phases"]["found_facts"] is not None) == ("found" in statuses),
+                            "Found-only phase ran or was skipped incorrectly")
     report["byte_checks"].append(PREP.verify_bytes(config))
     require(deadline is None or time.monotonic() < deadline, "Shared driver deadline exceeded")
     # 동등성과 입력 검사를 모두 통과한 뒤에만 내부 시간을 해석한다.
@@ -141,8 +225,11 @@ def run(path, out, report, deadline=None):
             record["instrumented_phase_sum_seconds"] = total
             record["startup_residual_observer_seconds"] = max(0.0, record["measurement"]["wall_seconds"] - total)
     medians = {str(enabled): statistics.median(record["measurement"]["wall_seconds"] for record in report["runs"]
-               if record["case"] == "found" and record["enabled"] == enabled) for enabled in (False, True)}
+               if record["case"] == "found" and record["enabled"] == enabled
+               and record.get("arm", "candidate") == "candidate") for enabled in (False, True)}
     require(deadline is None or time.monotonic() < deadline, "Shared driver deadline exceeded")
+    if baseline is not None:
+        report["paired_summary"] = paired_summary(report)
     report.update(status="passed", output_parity_verified=True, found_wall_medians_seconds=medians,
                   enabled_minus_disabled_median_seconds=medians["True"] - medians["False"])
 
@@ -150,7 +237,12 @@ def run(path, out, report, deadline=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-results", type=Path, required=True)
-    path = parser.parse_args().project_results.resolve()
+    parser.add_argument("--baseline-setup-results", type=Path)
+    parser.add_argument("--baseline-revision")
+    args = parser.parse_args()
+    require((args.baseline_setup_results is None) == (args.baseline_revision is None),
+            "Baseline setup results and exact revision must be supplied together")
+    path = args.project_results.resolve()
     out = path.parent / "runs" / "query-phases"
     require(not out.exists(), "Diagnostic evidence already exists; never overwrite")
     out.mkdir(parents=True)
@@ -161,12 +253,16 @@ def main():
               "overhead": "Fixed AB/BA absent/1 found schedule; difference includes noise, not isolated observer cost",
               "phase_sum_rounding_tolerance_seconds": ROUNDING_SECONDS,
               "schedule": SCHEDULE, "shared_driver_deadline_seconds": DRIVER_SECONDS}
+    if args.baseline_setup_results:
+        report["role"] = "Exact-revision same-input paired diagnostic; no final superiority claim"
+        report["arm_schedule"] = "Baseline/candidate then candidate/baseline, repeated per case slot"
     previous = {sig: signal.signal(sig, PREP.terminate_driver) for sig in (signal.SIGTERM, signal.SIGALRM)}
     signal.alarm(DRIVER_SECONDS)
     started = time.perf_counter()
     deadline = time.monotonic() + DRIVER_SECONDS
     try:
-        run(path, out, report, deadline)
+        run(path, out, report, deadline,
+            args.baseline_setup_results.resolve() if args.baseline_setup_results else None, args.baseline_revision)
     except (Exception, KeyboardInterrupt) as error:
         report.update(status="failed", error=f"{type(error).__name__}: {error}")
     finally:
@@ -175,6 +271,15 @@ def main():
             signal.signal(sig, handler)
     report["diagnostic_elapsed_seconds"] = time.perf_counter() - started
     BASE.save(out / "results.json", report)
+    if report["status"] == "passed" and "paired_summary" in report:
+        print("QueryProjectionTiming " + json.dumps({
+            **report["paired_summary"], "workload": report["paired_workload"],
+            "baseline_revision": report["baseline_source"]["revision"],
+            "candidate_revision": report["source"]["revision"],
+            "baseline_binary_sha256": report["baseline_binary_sha256"],
+            "candidate_binary_sha256": report["candidate_binary_sha256"],
+            "clean_fresh_release_builds": True,
+            "output_and_input_identity_verified": report["output_parity_verified"]}, sort_keys=True))
     print(json.dumps({"status": report["status"], "results": str(out / "results.json")}, sort_keys=True))
     return 0 if report["status"] == "passed" else 1
 

@@ -247,6 +247,123 @@ class PhaseContracts(unittest.TestCase):
             NORMALIZE.package(args)
         self.assertFalse(args.output.exists())
 
+    def run_paired_fixture(self, capture=None):
+        admitted = self.fixture()
+        baseline = {"cartograph": {"binary": "baseline",
+                    "binary_sha256": "b" * 64, "setup": {"source": {"revision": "a" * 40}}}}
+        report = {"status": "running"}
+        setup = D.PROJECT.read_json(self.root / "setup.json")
+        self.config["index_fingerprint"] = {"fixture": True}
+        setup["cartograph"]["binary_sha256"] = "c" * 64
+        D.BASE.save(self.root / "setup.json", setup)
+        def measured(*args):
+            row, raw = (capture or self.fake_capture)(*args)
+            row["measurement"]["wait4_maxrss_bytes"] = 2048 if args[0][0] == "baseline" else 1024
+            return row, raw
+        with mock.patch.object(D.PREP, "admit", return_value=admitted), \
+                mock.patch.object(D.PREP, "verify_bytes", return_value={"unchanged": True}), \
+                mock.patch.object(D, "admit_baseline", return_value=baseline), \
+                mock.patch.object(D, "capture", side_effect=measured):
+            D.run(self.path, self.out, report, baseline_path=self.root / "baseline.json", baseline_revision="a" * 40)
+        return report
+
+    def test_optional_pairs_keep_all_cases_and_balanced_found_order(self):
+        report = self.run_paired_fixture()
+        self.assertEqual(len(report["runs"]), 28)
+        self.assertTrue(report["output_parity_verified"])
+        found = [row for row in report["runs"] if row["case"] == "found"]
+        self.assertEqual([row["arm"] for row in found],
+                         ["baseline", "candidate", "candidate", "baseline"] * 4)
+        summary = report["paired_summary"]
+        self.assertFalse(summary["final_evidence"])
+        self.assertEqual(len(summary["cases"]), 8)
+        for row in summary["cases"]:
+            self.assertEqual(row["pairs"], 4 if row["case"] == "found" else 1)
+            self.assertEqual(row["median_paired_baseline_over_candidate_wall"], 1)
+            self.assertEqual(row["baseline"]["wait4_maxrss_bytes"], 2048)
+            self.assertEqual(row["candidate"]["wait4_maxrss_bytes"], 1024)
+            self.assertEqual("phases_seconds" in row["baseline"], row["enabled"])
+
+    def test_optional_summary_rejects_mismatched_slots_and_invalid_rss(self):
+        report = self.run_paired_fixture()
+        report["runs"][0]["pair"] = 100
+        with self.assertRaisesRegex(ValueError, "pairs"):
+            D.paired_summary(report)
+        report["runs"][0]["pair"] = 0
+        for value in (0, -1, float("inf"), float("nan"), True):
+            report["runs"][0]["measurement"]["wait4_maxrss_bytes"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "RSS"):
+                D.paired_summary(report)
+
+    def test_optional_summary_uses_paired_ratios_not_ratio_of_medians(self):
+        report = self.run_paired_fixture()
+        for arm, values in (("baseline", [1, 100, 100, 100]), ("candidate", [1, 1, 100, 100])):
+            records = [row for row in report["runs"] if row["case"] == "found"
+                       and not row["enabled"] and row["arm"] == arm]
+            for row, value in zip(records, values):
+                row["measurement"]["wall_seconds"] = value
+        summary = next(row for row in D.paired_summary(report)["cases"]
+                       if row["case"] == "found" and not row["enabled"])
+        self.assertEqual(summary["baseline"]["wall_seconds"], 100)
+        self.assertEqual(summary["candidate"]["wall_seconds"], 50.5)
+        self.assertEqual(summary["median_paired_baseline_over_candidate_wall"], 1)
+        report["runs"].append(dict(report["runs"][0]))
+        with self.assertRaisesRegex(ValueError, "pairs"):
+            D.paired_summary(report)
+
+    def test_optional_baseline_output_mutation_blocks_summary(self):
+        for field in (0, 1, 2):
+            def changed(*args):
+                row, raw = self.fake_capture(*args)
+                if args[0][0] == "baseline":
+                    raw = list(raw)
+                    raw[field] = 1 if field == 0 else raw[field] + b"changed"
+                return row, tuple(raw)
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.run_paired_fixture(changed)
+            partial = D.PROJECT.read_json(self.out / "results.json")
+            self.assertNotIn("paired_summary", partial)
+
+    def test_optional_admission_pins_release_source_binary_and_toolchain(self):
+        self.fixture()
+        package = self.root / "package"
+        baseline = D.PROJECT.read_json(self.root / "setup.json")
+        product = baseline["cartograph"]
+        product["setup"]["source"]["revision"] = "a" * 40
+        product["setup"]["build"] = {"command": ["swift", "build", "--package-path", str(package)],
+                                     "returncode": 0, "timed_out": False}
+        baseline["status"] = "passed"
+        path = self.root / "baseline.json"
+        D.BASE.save(path, baseline)
+        with mock.patch.object(D.PREP, "verify_bytes") as verify:
+            self.assertEqual(D.admit_baseline(path, "a" * 40, baseline, self.config, self.out), baseline)
+            verify.assert_called_once()
+        self.assertEqual(self.config["hashes"][product["binary"]], product["binary_sha256"])
+        self.assertEqual(self.config["hashes"][str(path)], D.BASE.sha256(path))
+        for key in ("revision", "working_tree_status"):
+            changed = json.loads(json.dumps(baseline))
+            changed["cartograph"]["setup"]["source"][key] = "changed"
+            D.BASE.save(path, changed)
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                D.admit_baseline(path, "a" * 40, baseline, self.config, self.out)
+        D.BASE.save(path, baseline)
+        with self.assertRaises(ValueError):
+            D.admit_baseline(path, "main", baseline, self.config, self.out)
+        changed = {**baseline, "toolchain": {"version": "different"}}
+        with self.assertRaises(ValueError):
+            D.admit_baseline(path, "a" * 40, changed, self.config, self.out)
+        def verify_hashes(config):
+            for filename, digest in config["hashes"].items():
+                D.require(D.BASE.sha256(Path(filename)) == digest, "Admitted file changed")
+        Path(product["binary"]).write_bytes(b"mutated binary")
+        with mock.patch.object(D.PREP, "verify_bytes", side_effect=verify_hashes), \
+                self.assertRaisesRegex(ValueError, "Admitted file changed"):
+            D.admit_baseline(path, "a" * 40, baseline, self.config, self.out)
+        (package / "Sources").mkdir()
+        (package / "Sources" / "added.swift").write_text("// 추가된 입력\n")
+        with self.assertRaises(ValueError):
+            D.admit_baseline(path, "a" * 40, baseline, self.config, self.out)
+
 
 if __name__ == "__main__":
     unittest.main()
