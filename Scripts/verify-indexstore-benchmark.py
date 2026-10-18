@@ -70,6 +70,38 @@ class OracleTests(unittest.TestCase):
         self.assertEqual(BENCH.components(edges), [["a", "b"], ["lonely"]])
 
 
+class PerformanceSummaryTests(unittest.TestCase):
+    def test_ratio_uses_normalized_workflow_on_both_arms_not_subprocess_wall(self):
+        samples = [
+            {"baseline": {"measurement": {"workflow_seconds": 10, "wall_seconds": 100, "wait4_maxrss_bytes": 40}},
+             "cartograph": {"measurement": {"workflow_seconds": 20, "wall_seconds": 1, "wait4_maxrss_bytes": 50}}},
+            {"baseline": {"measurement": {"workflow_seconds": 14, "wall_seconds": 200, "wait4_maxrss_bytes": 60}},
+             "cartograph": {"measurement": {"workflow_seconds": 28, "wall_seconds": 3, "wait4_maxrss_bytes": 70}}},
+        ]
+        report = BENCH.performance_summary(samples, ["baseline", "cartograph"])
+        self.assertEqual(report["ratio_clock"], "workflow_seconds")
+        self.assertEqual(report["observed_baseline_to_cartograph_median_ratio"], 0.5)
+        self.assertEqual(report["baseline"]["workflow_seconds"]["median"], 12)
+        self.assertEqual(report["cartograph"]["workflow_seconds"]["median"], 24)
+        self.assertEqual(report["baseline"]["wall_seconds"]["median"], 150)
+        self.assertEqual(report["cartograph"]["wall_seconds"]["median"], 2)
+        self.assertEqual(report["baseline"]["wait4_maxrss_bytes"]["median"], 50)
+        self.assertIn("answer normalization", report["interpretation"])
+        self.assertIn("Not a universal", report["interpretation"])
+
+    def test_missing_workflow_clock_cannot_fall_back_to_subprocess_wall(self):
+        samples = [{"baseline": {"measurement": {"wall_seconds": 1, "wait4_maxrss_bytes": 2}}}]
+        with self.assertRaises(KeyError):
+            BENCH.performance_summary(samples, ["baseline"])
+
+    def test_baseline_only_diagnostic_has_no_invented_comparison(self):
+        samples = [{"baseline": {"measurement": {"workflow_seconds": 2, "wall_seconds": 1, "wait4_maxrss_bytes": 3}}}]
+        report = BENCH.performance_summary(samples, ["baseline"])
+        self.assertEqual(report["baseline"]["workflow_seconds"]["n"], 1)
+        self.assertNotIn("cartograph", report)
+        self.assertNotIn("observed_baseline_to_cartograph_median_ratio", report)
+
+
 class ParsingTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

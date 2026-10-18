@@ -38,7 +38,7 @@ extension CartographService {
         let context = try existingContext ?? loadContext()
         let graph = context.buildGraph(level: .symbol).graph
         let automatic = context.runtimeDiscovery()
-        let lifecycle = XCTestLifecycleImpact(in: graph)
+        let lifecycle = context.impactLifecycle()
         let automaticDependencies = Self.automaticImpactDependencies(automatic) + lifecycle.dependencies
         let observedDependencies = runtimeTrace?.evidenceCurrent == true
             ? (runtimeTrace?.connections ?? []).map { connection in
@@ -50,7 +50,9 @@ extension CartographService {
         let artifactTargets = ImpactSelection.artifactTargets(in: automatic,
             resourcePaths: context.runtimeFiles?.map(\.path) ?? [])
         let selection = ImpactSelection(symbols: symbols, files: files, projectPath: projectPath,
-            graph: graph, extraIssues: runtime.issues, artifactTargets: artifactTargets)
+            graph: graph, extraIssues: runtime.issues, artifactTargets: artifactTargets,
+            makeQueryIndex: { _ in context.impactQueryIndex() },
+            makeRawFileIndex: { _ in context.impactRawNodesByFile() })
         let report = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth,
             additionalDependencies: runtime.dependencies + automaticDependencies + observedDependencies)
         let reasons = context.impactReviewReasons()
@@ -203,7 +205,8 @@ struct ImpactSelection {
 
     init(symbols: [String], files: [String], projectPath: String, graph: CodeGraph,
          extraIssues: [ImpactDocument.SelectionIssue] = [], artifactTargets: [String: Set<NodeID>] = [:],
-         makeQueryIndex: (CodeGraph) -> GraphQueryIndex = { GraphQueryIndex(graph: $0) }) {
+         makeQueryIndex: (CodeGraph) -> GraphQueryIndex = { GraphQueryIndex(graph: $0) },
+         makeRawFileIndex: (CodeGraph) -> [String: [NodeID]] = { ImpactSelection.rawNodesByFile(in: $0) }) {
         var nodes: Set<NodeID> = []
         var issues = extraIssues
         // 파일·리소스 입력은 이름을 풀지 않는다. 전체 이름 색인은 실제 심볼 요청에만 만든다.
@@ -229,14 +232,8 @@ struct ImpactSelection {
         let normalizedFiles = Set(files.map { file in
             ReportScope.normalized(file.hasPrefix("/") ? file : (projectPath as NSString).appendingPathComponent(file))
         })
-        var nodesByFile: [String: [NodeID]] = [:]
-        if !normalizedFiles.isEmpty {
-            var rawPaths: [String: [NodeID]] = [:]
-            for node in graph.sortedNodes {
-                if let path = node.location?.path { rawPaths[path, default: []].append(node.id) }
-            }
-            for (path, ids) in rawPaths { nodesByFile[ReportScope.normalized(path), default: []] += ids }
-        }
+        let nodesByFile = normalizedFiles.isEmpty ? [:]
+            : Self.nodesBySelectedFile(makeRawFileIndex(graph), selecting: normalizedFiles)
         for file in normalizedFiles.sorted() {
             let matches = (nodesByFile[file] ?? []) + Array(artifactTargets[file] ?? [])
             guard !matches.isEmpty else {
@@ -251,6 +248,28 @@ struct ImpactSelection {
         self.files = normalizedFiles.sorted()
         self.issues = issues
         status = !issues.isEmpty ? "incomplete" : (symbols.isEmpty && files.isEmpty ? "noChanges" : "found")
+    }
+
+    /// 이름 조회와 별개로 준비하여 파일 전용 요청의 전체 정점 분류를 재사용한다.
+    static func rawNodesByFile(in graph: CodeGraph) -> [String: [NodeID]] {
+        var rawPaths: [String: [NodeID]] = [:]
+        for node in graph.sortedNodes {
+            if let path = node.location?.path { rawPaths[path, default: []].append(node.id) }
+        }
+        return rawPaths
+    }
+
+    /// 링크 대상은 요청마다 다시 해석하되, 선택하지 않은 파일의 정점 배열은 복사하지 않는다.
+    static func nodesBySelectedFile(
+        _ rawPaths: [String: [NodeID]], selecting files: Set<String>
+    ) -> [String: [NodeID]] {
+        var selected: [String: [NodeID]] = [:]
+        for (path, ids) in rawPaths {
+            let normalized = ReportScope.normalized(path)
+            guard files.contains(normalized) else { continue }
+            selected[normalized, default: []] += ids
+        }
+        return selected
     }
 
     /// 타입과 그 타입의 익스텐션만 동명이면 의미상 같은 타입 선택이다. 다른 선언이 섞이면 추측하지 않는다.

@@ -135,7 +135,11 @@ can add ordinary scheduling/poll jitter. All subprocesses have deadlines and pro
 Precision and recall use exact TP/FP/FN against source expectations. Undefined empty-set precision/recall are JSON
 `null`; empty negative controls are judged by exact set agreement. Missing, ambiguous, malformed, reordered or
 truncated native query output fails closed. Performance distributions report sample count, min, median, nearest-rank
-p95 and max. No timing threshold is used as a correctness gate on a shared CI host.
+p95 and max. The synthetic comparison's median ratio uses `workflow_seconds` for both arms: request
+preparation, process execution, complete answer parsing/normalization and its evidence write. Raw subprocess
+`wall_seconds` stays a separate diagnostic; it is not the ratio denominator because baseline assembly runs
+inside its subprocess while native output normalization runs in the controller. Existing historical receipts
+keep their original values and clock definitions. No timing threshold is used as a correctness gate on a shared CI host.
 
 “First observed” means a new-process observation, **not** a filesystem-cold measurement. Fixture compilation,
 selector discovery and preceding reads may have warmed caches. Repetitions also launch new processes; OS caches and
@@ -186,6 +190,25 @@ edges versus 13/13 in the assembled CLI graph. The two filtered recursive edges 
 (calls at lines 56/70) and `UsageGenerator.makeErrorMessage` (line 229). All depth-1/3/5 caller sets matched.
 The failure and oracle remain unchanged. This documents an intentional default projection difference and motivates
 an equivalent explicit complete-call comparison; it does not establish a performance or accuracy advantage.
+
+## Prepared-session diagnostic
+
+`Scripts/benchmark-prepared-indexstore-sessions.py` reuses a successful public-project result and compares
+one fixed depth-five caller request over resident sessions. The baseline assembles the actual `index-dump`
+graph and reverse adjacency once per generation, then reuses that adjacency for warm requests. Forced refresh
+rebuilds both; it is a same-input invalidation, not a semantic source edit/rebuild measurement.
+
+Both request timers cover IPC send through complete response parsing. Shared byte validation and baseline
+graph-oracle grading run in the controller after the measured ready/refresh response. The emitted graph is still
+graded before any result is accepted; failures stop the run. Validation durations are retained outside arm
+timers and added equally to the explicitly inclusive totals. Discovery, graph serialization, metadata freshness
+checks and answer work remain measured. There is no subtraction of measured subprocess work.
+
+This diagnostic retains one first request, four warm pairs and one refresh/first-response pair. It reuses prior
+build/discovery state and ambient reader caches; neither preparation nor first response is called cold.
+OS caches remain uncontrolled. Native evidence/limitations responses are retained in full, while the baseline
+answers only the common caller task. Neither these few samples nor process high-water RSS establish a general
+speed or memory advantage. The independent final protocol and its thresholds are unchanged.
 
 ## Public evidence bundle
 

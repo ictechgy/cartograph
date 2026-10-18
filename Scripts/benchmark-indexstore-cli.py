@@ -434,6 +434,27 @@ def distribution(values: list[float | int]) -> dict:
     }
 
 
+def performance_summary(samples: list[dict[str, Any]], arms: list[str]) -> dict:
+    """양쪽 모두 응답 정규화까지 끝난 같은 작업 경계로 비율을 계산한다."""
+    result = {
+        arm: {
+            key: distribution([sample[arm]["measurement"][key] for sample in samples])
+            for key in ("workflow_seconds", "wall_seconds", "wait4_maxrss_bytes")
+        }
+        for arm in arms
+    }
+    result["ratio_clock"] = "workflow_seconds"
+    if "cartograph" in arms:
+        baseline_median = result["baseline"]["workflow_seconds"]["median"]
+        cg_median = result["cartograph"]["workflow_seconds"]["median"]
+        result["observed_baseline_to_cartograph_median_ratio"] = baseline_median / cg_median
+        result["interpretation"] = (
+            "Descriptive synthetic end-to-answer workflow result, including each arm's answer normalization; "
+            "subprocess wall is secondary. Not a universal or statistically established advantage."
+        )
+    return result
+
+
 def toolchain(swiftc_option: str | None, library_option: str | None, root: Path) -> tuple[Path, Path, dict]:
     if swiftc_option:
         swiftc = Path(swiftc_option).absolute()
@@ -920,21 +941,9 @@ def fixture_run(args: argparse.Namespace, source: Path, cli: Path, library: Path
         samples.append(pair)
     report["repeated_samples"] = samples
     report["unchanged_shared_index"] = original_index
-    report["performance"] = {}
-    for arm in (["baseline", "cartograph"] if args.cartograph else ["baseline"]):
-        report["performance"][arm] = {
-            "wall_seconds": distribution([sample[arm]["measurement"]["wall_seconds"] for sample in samples]),
-            "wait4_maxrss_bytes": distribution(
-                [sample[arm]["measurement"]["wait4_maxrss_bytes"] for sample in samples]
-            ),
-        }
-    if args.cartograph:
-        baseline_median = report["performance"]["baseline"]["wall_seconds"]["median"]
-        cg_median = report["performance"]["cartograph"]["wall_seconds"]["median"]
-        report["performance"]["observed_baseline_to_cartograph_median_ratio"] = baseline_median / cg_median
-        report["performance"][
-            "interpretation"
-        ] = "Descriptive synthetic batch-query result, not a universal or statistically established advantage."
+    report["performance"] = performance_summary(
+        samples, ["baseline", "cartograph"] if args.cartograph else ["baseline"]
+    )
 
     edited_oracle = copy.deepcopy(oracle)
     edited_oracle["edges"] = [edge for edge in oracle["edges"] if edge not in oracle["edit"]["remove_edges"]]
