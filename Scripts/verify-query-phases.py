@@ -68,13 +68,25 @@ class PhaseContracts(unittest.TestCase):
         self.assertEqual(resource.getrlimit(resource.RLIMIT_FSIZE), limits)
 
     def test_timeout_and_output_cap_refuse_with_original_measurements(self):
-        with mock.patch.object(D, "COMMAND_SECONDS", 0.1), self.assertRaisesRegex(ValueError, "timed out"):
+        with mock.patch.object(D, "COMMAND_SECONDS", 0.1), self.assertRaises(ValueError) as failure:
             D.capture([sys.executable, "-c", "import time; time.sleep(10)"], self.root, self.root / "timeout", False)
-        self.assertTrue(D.PROJECT.read_json(self.root / "timeout.json")["timed_out"])
+        row = D.PROJECT.read_json(self.root / "timeout.json")
+        self.assertTrue(row["timed_out"])
+        self.assertTrue(row["owned_root_reaped"])
+        self.assertFalse(row["ownership_lost"])
+        if row["cleanup_errors"]:
+            self.assertEqual(row["cleanup_errors"], [f"signal-{signal.SIGKILL}:PermissionError"])
+            self.assertEqual(str(failure.exception), "Query cleanup or root ownership unresolved")
+        else:
+            self.assertEqual(str(failure.exception), "Query timed out")
+        code = ("import os,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+                "try: os.write(1,b'x'*(2*1024*1024))\n"
+                "except BrokenPipeError: pass\n"
+                "time.sleep(10)\n")
         with self.assertRaisesRegex(ValueError, "output cap"):
-            D.capture([sys.executable, "-c", "import os; os.write(1,b'x'*(2*1024*1024))"],
-                      self.root, self.root / "oversized", False)
+            D.capture([sys.executable, "-c", code], self.root, self.root / "oversized", False)
         self.assertLessEqual((self.root / "oversized.stdout").stat().st_size, D.MAX_BYTES)
+        self.assertEqual(D.PROJECT.read_json(self.root / "oversized.json")["raw_returncode"], -signal.SIGKILL)
 
     def test_shared_alarm_reaps_actual_child_and_records_interruption(self):
         pidfile = self.root / "child.pid"
@@ -459,7 +471,7 @@ class PhaseContracts(unittest.TestCase):
 
     def test_stream_cap_allows_large_unrelated_file_without_changing_rlimit(self):
         original = resource.getrlimit(resource.RLIMIT_FSIZE)
-        target = self.root / "cache.json"
+        target = self.root / "unrelated-cache-payload.bin"
         row = self.capped_command(
             f"from pathlib import Path; Path({str(target)!r}).write_bytes(b'x'*2097152); print('ok')", "cache")
         self.assertEqual(target.stat().st_size, 2097152)
@@ -472,7 +484,10 @@ class PhaseContracts(unittest.TestCase):
         for name, descriptor in (("stdout", 1), ("stderr", 2)):
             for extra in (0, 1):
                 stem = f"{name}-{extra}"
-                code = f"import os; os.write({descriptor}, b'x'*(1048576+{extra}))"
+                code = ("import os,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+                        f"try: os.write({descriptor}, b'x'*(1048576+{extra}))\n"
+                        "except BrokenPipeError: pass\n"
+                        + ("time.sleep(10)\n" if extra else ""))
                 if extra:
                     with self.assertRaises(RuntimeError):
                         self.capped_command(code, stem)
@@ -481,6 +496,7 @@ class PhaseContracts(unittest.TestCase):
                 else:
                     row = self.capped_command(code, stem)
                     self.assertIsNone(row["output_limit_exceeded"])
+                self.assertEqual(row["raw_returncode"], -signal.SIGKILL if extra else 0)
                 self.assertEqual(Path(row[name]).stat().st_size, 1048576)
                 self.assertTrue(row["owned_root_reaped"])
                 self.assertFalse(row["cleanup_errors"])
@@ -496,13 +512,17 @@ class PhaseContracts(unittest.TestCase):
         self.assertEqual(Path(row["stdout"]).stat().st_size, D.MAX_BYTES)
 
     def test_dual_stream_flood_terminates_with_capped_prefixes(self):
-        code = ("import os,threading\n"
+        code = ("import os,signal,threading,time\n"
+                "signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
                 "def flood(fd):\n"
-                " while True: os.write(fd,b'x'*65536)\n"
+                " try:\n"
+                "  while True: os.write(fd,b'x'*65536)\n"
+                " except BrokenPipeError: time.sleep(10)\n"
                 "t=threading.Thread(target=flood,args=(2,)); t.start(); flood(1)\n")
         with self.assertRaises(RuntimeError):
             self.capped_command(code, "flood", limit=4096)
         row = D.PROJECT.read_json(self.root / "flood.json")
+        self.assertEqual(row["raw_returncode"], -signal.SIGKILL)
         self.assertIn(row["output_limit_exceeded"], ("stdout", "stderr"))
         self.assertTrue(row["owned_root_reaped"])
         self.assertFalse(row["cleanup_errors"])
@@ -510,9 +530,10 @@ class PhaseContracts(unittest.TestCase):
 
     def test_eof_does_not_waive_leader_deadline(self):
         with self.assertRaises(RuntimeError):
-            self.capped_command("import os,time; os.close(1); os.close(2); time.sleep(10)",
-                                "closed-pipes", timeout=0.1)
+            self.capped_command("import os,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+                                "os.close(1); os.close(2); time.sleep(10)", "closed-pipes", timeout=1)
         row = D.PROJECT.read_json(self.root / "closed-pipes.json")
+        self.assertEqual(row["raw_returncode"], -signal.SIGKILL)
         self.assertTrue(row["timed_out"])
         self.assertTrue(row["owned_root_reaped"])
         self.assertFalse(row["cleanup_errors"])
@@ -552,20 +573,30 @@ class PhaseContracts(unittest.TestCase):
 
 
     def test_pipe_setup_failure_closes_both_descriptors_and_reaps_root(self):
-        processes = []
+        processes, ready = [], self.root / "pipe-setup.ready"
         real_popen = D.BASE.subprocess.Popen
         def spawned(*args, **kwargs):
             process = real_popen(*args, **kwargs)
             processes.append(process)
             return process
+        def configure(*_args):
+            deadline = time.monotonic() + 2
+            while not ready.exists() and time.monotonic() < deadline:
+                time.sleep(0.001)
+            self.assertTrue(ready.exists())
+            raise PermissionError("controlled setup refusal")
+        code = ("import signal,time; from pathlib import Path; "
+                "signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+                f"Path({str(ready)!r}).write_text('ready'); time.sleep(10)")
         with mock.patch.object(D.BASE.subprocess, "Popen", side_effect=spawned), \
-                mock.patch.object(D.BASE.os, "set_blocking", side_effect=PermissionError("controlled setup refusal")), \
+                mock.patch.object(D.BASE.os, "set_blocking", side_effect=configure), \
                 self.assertRaises(PermissionError):
-            self.capped_command("import time; time.sleep(10)", "pipe-setup")
+            self.capped_command(code, "pipe-setup")
         self.assertEqual(len(processes), 1)
         self.assertTrue(processes[0].stdout.closed)
         self.assertTrue(processes[0].stderr.closed)
         row = D.PROJECT.read_json(self.root / "pipe-setup.json")
+        self.assertEqual(row["raw_returncode"], -signal.SIGKILL)
         self.assertTrue(row["owned_root_reaped"])
         self.assertFalse(row["cleanup_errors"])
         self.assertEqual(row["exception_type"], "PermissionError")
@@ -581,6 +612,40 @@ class PhaseContracts(unittest.TestCase):
         row = D.PROJECT.read_json(self.root / "signal-error.json")
         self.assertTrue(row["owned_root_reaped"])
         self.assertIn(f"signal-{signal.SIGTERM}:PermissionError", row["cleanup_errors"])
+
+
+    def test_final_kill_denial_stays_uncertain_after_root_reap(self):
+        events = []
+        real_kill, real_wait = os.killpg, os.wait4
+        def killed(pid, signum):
+            events.append(("signal", signum))
+            if signum == signal.SIGKILL:
+                raise PermissionError("controlled final denial")
+            return real_kill(pid, signum)
+        def waited(pid, flags):
+            result = real_wait(pid, flags)
+            if result[0]:
+                events.append(("reap", result[0]))
+            return result
+        with mock.patch.object(D.BASE.os, "killpg", side_effect=killed), \
+                mock.patch.object(D.BASE.os, "wait4", side_effect=waited), \
+                mock.patch.object(D, "COMMAND_SECONDS", 0.1), \
+                mock.patch.object(D.BASE, "STREAM_TERM_SECONDS", 0.05), \
+                mock.patch.object(D.BASE, "STREAM_KILL_SECONDS", 1), \
+                mock.patch.object(D, "split_stderr") as parsed, \
+                self.assertRaisesRegex(ValueError, "ownership unresolved"):
+            D.capture([sys.executable, "-c", "import time; time.sleep(10)"],
+                      self.root, self.root / "final-denial", False)
+        parsed.assert_not_called()
+        row = D.PROJECT.read_json(self.root / "final-denial.json")
+        self.assertEqual(row["raw_returncode"], -signal.SIGTERM)
+        self.assertTrue(row["timed_out"])
+        self.assertTrue(row["owned_root_reaped"])
+        self.assertFalse(row["ownership_lost"])
+        self.assertEqual(row["cleanup_errors"], [f"signal-{signal.SIGKILL}:PermissionError"])
+        self.assertEqual([kind for kind, _ in events], ["signal", "signal", "reap"])
+        self.assertEqual([value for kind, value in events if kind == "signal"],
+                         [signal.SIGTERM, signal.SIGKILL])
 
     def test_lost_wait_ownership_never_signals_numeric_group(self):
         real_wait, real_popen, processes = os.waitpid, D.BASE.subprocess.Popen, []
