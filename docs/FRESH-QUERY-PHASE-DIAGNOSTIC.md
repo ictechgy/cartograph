@@ -30,14 +30,14 @@ failed diagnostic sink must not replace a successful result or the original quer
 Argument-parser failures before `run` do not produce a record. An explicit diagnostic is
 not suppressed by `--quiet`.
 
-## Fixed native capture
+## Default fixed native capture
 
 The existing macOS comparison job runs `Scripts/diagnose-query-phases.py` after its public
 ArgumentParser and prepared-session checks. It reuses the successful frozen project,
 source-authored oracle, compiler index, configuration, release binary and admission checks.
 It changes neither benchmark arm nor the existing publication scanner.
 
-There are exactly 14 fresh query processes. The real `fullMessage` overload ambiguity,
+Without baseline arguments, there are exactly 14 fresh query processes. The real `fullMessage` overload ambiguity,
 one deliberately absent name, and a mixed batch with a duplicate found request each run
 off/on. The existing depth-5 `editDistance` request runs four AB/BA pairs, where A has the
 variable absent and B sets it to `1`: `[A, B, B, A, A, B, B, A]`. No adaptive repetition,
@@ -66,19 +66,53 @@ enters the existing process-group cleanup; the CI step has a six-minute cap. Raw
 are retained under `runs/query-phases` in the existing normalized project artifact. Existing
 output directories are refused. Failed attempts remain failed; there is no automatic rerun.
 
+## Optional exact-revision paired capture
+
+Supplying `--baseline-setup-results` and `--baseline-revision` together adds a second
+Cartograph arm. The baseline is the exact accepted pre-projection main revision, including
+the preceding detection fixes; it is not the older Impact-cache baseline. Both arms must
+come from clean, successful release builds with the same captured toolchain. The baseline
+revision, captured Swift/package input membership and hashes, and both binary hashes are
+checked before queries run.
+
+The same frozen public project, compiler index, configuration and requests are used by both
+binaries. Each of the default 14 slots runs once per arm, for 28 fresh processes total.
+Baseline/candidate order alternates by slot. Full stdout bytes, exit status and ordinary
+stderr after removing the phase record must match across both arms and all repetitions.
+The existing per-process and shared driver caps are unchanged; no adaptive repeats or
+cache flushes are added.
+
+After all gates pass, `QueryProjectionTiming` prints a bounded numeric summary containing
+the exact source revisions and binary identities. Each arm retains its absolute wall,
+instrumented phase and process-lifetime wait4 RSS medians. The median of per-pair wall-time
+ratios is reported separately; it is not the ratio of the two absolute medians. Found
+requests have four pairs per instrumentation state; other shapes have one pair per state.
+RSS is neither process-tree nor per-phase memory, and fresh-process execution does not
+establish cold-cache behavior. Results cover this one workload and do not prove general
+speedup or superiority over another tool.
+
+The comparison job rotates the previously recorded one-off Impact timing experiment to
+this query experiment within its existing budget. Historical Impact receipts remain
+available, and ordinary Impact correctness, cache and refresh tests remain required.
+This rotation does not represent a persistent Impact performance regression gate.
+
 ## Verification status and scope
 
-The proposal was freshly reconstructed after a cloud workspace reset. The earlier local
-payload and test logs were unavailable; their byte identities and results are not reused.
+At the original reconstruction after a cloud workspace reset, the earlier local payload and
+test logs were unavailable; their byte identities and results were not reused.
 `python3 Scripts/verify-query-phases.py` checks finite parsing, exact record removal, bounded
 real Python children, cancellation, schedule, output mutations, oracle checks and the
-unchanged publication boundary. Its synthetic timing values are not native measurements.
+unchanged publication boundary. Optional-mode tests also check exact baseline admission,
+paired ordering and ratios, and rejection of mutated outputs. Synthetic test timings are
+not native measurements.
 
 Swift tests cover no-clock disabled execution, exact opt-in, timing/error propagation,
 found/ambiguous/missing/batch output parity, lazy found-only work and failed diagnostic sinks.
 Native compilation, these Swift tests, the full coverage/CLI/fixture/self-analysis gates,
 and actual CLI parity/capture must pass on the proposed commit before drawing conclusions.
-No such native phase capture had run when this reconstruction was prepared.
+The original reconstruction had no native phase capture; this historical note does not
+summarize later CI runs. Optional paired mode requires its own exact-head hosted result
+before any timing conclusion.
 
 The fixed capture covers the four batch shapes above. Broader output-file and malformed-input
 behavior should continue to be checked through the existing CLI contract suite. These timings

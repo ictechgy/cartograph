@@ -175,7 +175,7 @@ public struct CartographService: Sendable {
         return (graph, analyzeUnusedCode(in: context, graph: graph, findingTestOnlyCode: findingTestOnlyCode))
     }
 
-    /// dead와 found query가 같은 보존 정책·옵션으로 같은 심볼 그래프를 판정한다.
+    /// dead는 질의와 같은 도달 근거 위에서 전체 발견 목록을 계산한다.
     private func analyzeUnusedCode(
         in context: AnalysisContext, graph: CodeGraph, findingTestOnlyCode: Bool = false
     ) -> UnusedCodeReport {
@@ -611,7 +611,7 @@ public struct CartographService: Sendable {
     ///
     /// 값으로 묶어 두지 않으면 배치 경로가 요청마다 인덱스를 다시 읽는다.
     struct FoundQueryFacts {
-        let report: UnusedCodeReport
+        let report: ReachabilityReport
         let referenceEvidence: ReferenceEvidenceIndex
     }
 
@@ -675,7 +675,9 @@ public struct CartographService: Sendable {
 
     private func makeFoundQueryFacts(in context: AnalysisContext, graph: CodeGraph) -> FoundQueryFacts {
         measureQueryPhase(.foundFacts, observer: environment.queryPhaseObserver) {
-            let report = analyzeUnusedCode(in: context, graph: graph)
+            let report = ReachabilityAnalyzer(
+                policy: makeRetentionPolicy(externalRetentions: context.externalRetentionIndex)
+            ).analyzeReachability(graph: graph, snapshot: context.snapshot)
             return FoundQueryFacts(
                 report: report, referenceEvidence: ReferenceEvidenceIndex(snapshot: context.snapshot, graph: graph)
             )
@@ -814,7 +816,7 @@ public struct CartographService: Sendable {
 
     private func describeQuery(
         of node: GraphNode,
-        report: UnusedCodeReport,
+        report: ReachabilityReport,
         in graph: CodeGraph,
         depth: Int,
         limit: Int,
