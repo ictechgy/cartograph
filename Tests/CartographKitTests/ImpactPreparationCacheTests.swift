@@ -240,6 +240,57 @@ struct ImpactPreparationCacheTests {
         #expect(augmented.impactQueryIndex().resolve("Generated") != .notFound)
     }
 
+
+    @Test("준비된 이름 색인도 다른 모듈의 동명 타입·멤버를 합치지 않는다")
+    func cachedSelectionsPreserveModuleIdentity() throws {
+        var builder = SnapshotBuilder(path: "/p/Types.swift")
+        for module in ["First", "Second"] {
+            builder.symbol(module + "Type", name: "Shared", module: module)
+            builder.symbol(module + "Member", name: "work()", kind: .method,
+                           module: module, parent: module + "Type")
+            builder.symbol(module + "Caller", name: "caller()", kind: .function, module: module)
+            builder.reference(from: module + "Caller", to: module + "Member", kind: .call)
+        }
+        let snapshot = builder.build()
+        let service = service(snapshot: snapshot)
+        let warm = AnalysisContext(snapshot: snapshot)
+        let graph = warm.buildGraph(level: .symbol).graph
+        let subjects = ["Shared", "work()", "Shared.work", "FirstType", "SecondType",
+                        "FirstMember", "SecondMember", "First.Shared.work", "Second.Shared.work"]
+        for _ in 0..<3 {
+            for subject in subjects {
+                let actual = try service.impactDocument(symbols: [subject], in: warm)
+                let expected = try service.impactDocument(
+                    symbols: [subject], in: AnalysisContext(snapshot: snapshot))
+                #expect(actual == expected)
+                #expect(try JSONEncoder.cartographDefault().encode(actual)
+                    == JSONEncoder.cartographDefault().encode(expected))
+                if ["Shared", "work()", "Shared.work"].contains(subject) {
+                    #expect(actual.status == "incomplete" && actual.selected.isEmpty && actual.changeScope.isEmpty)
+                    #expect(actual.selectionIssues.count == 1)
+                    let issue = try #require(actual.selectionIssues.first)
+                    #expect(issue.status == "ambiguous")
+                    let candidates = try #require(issue.candidates)
+                    #expect(candidates.count == 2)
+                    #expect(Set(candidates.compactMap(\.module)) == ["First", "Second"])
+                    #expect(Set(candidates.compactMap(\.usr)) == (subject == "Shared"
+                        ? ["FirstType", "SecondType"] : ["FirstMember", "SecondMember"]))
+                } else {
+                    let module = subject.hasPrefix("First") ? "First" : "Second"
+                    let id = subject.contains(".") ? module + "Member" : subject
+                    #expect(actual.status == "found" && actual.selectionIssues.isEmpty)
+                    #expect(actual.selected.compactMap(\.usr) == [id])
+                    #expect(actual.selected.compactMap(\.module) == [module])
+                    #expect(actual.changeScope.allSatisfy { $0.module == module })
+                    #expect(Set(actual.changeScope.compactMap(\.usr)) == (id.hasSuffix("Type")
+                        ? [module + "Type", module + "Member"] : [module + "Member"]))
+                    #expect(actual.affected.map { $0.symbol.usr } == [module + "Caller"])
+                    #expect(graph.node(NodeID(id))?.module == module)
+                }
+            }
+        }
+    }
+
     private func snapshot() -> IndexSnapshot {
         var builder = SnapshotBuilder(module: "App", path: "/p/Tests.swift")
         builder.symbol("Storage", kind: .function, path: "/p/Storage.swift")

@@ -133,19 +133,14 @@ public struct UnusedCodeReport: Sendable, Equatable {
     /// Periphery 를 쓰면서 가장 답답했던 질문 — "이건 왜 안 지워도 된다는 거지?" —
     /// 에 답하기 위한 기능이다.
     public func explain(_ node: NodeID, in graph: CodeGraph) -> ReachabilityExplanation {
-        guard graph.contains(node) else { return .unknown }
-        if let reason = retentions[node] { return .retained(reason) }
-        if let inherited = inheritedRetentions[node] { return .retainedByMember(inherited) }
-        guard predecessors[node] != nil else { return .unreachable }
+        reachability.explain(node, in: graph)
+    }
 
-        var path: [NodeID] = [node]
-        var current = node
-        var visited: Set<NodeID> = [node]
-        while let previous = predecessors[current], visited.insert(previous).inserted {
-            path.append(previous)
-            current = previous
-        }
-        return .reachable(path: path.reversed())
+    /// 전체 보고서의 근거를 그대로 투영한다. 발견 목록이나 공개 저장 계약은 바꾸지 않는다.
+    package var reachability: ReachabilityReport {
+        ReachabilityReport(
+            retentions: retentions, inheritedRetentions: inheritedRetentions, predecessors: predecessors
+        )
     }
 }
 
@@ -196,22 +191,13 @@ public struct ReachabilityAnalyzer: Sendable {
     }
 
     public func analyze(graph: CodeGraph, snapshot: IndexSnapshot) -> UnusedCodeReport {
-        let declared = policy.retainedNodes(in: graph, snapshot: snapshot)
-        let protocolRequirementOwners = protocolRequirementOwners(in: graph)
-        // 증인 보존은 소유 타입이 살아 있을 때만 성립한다. 프레임워크가 `body` 를 부르는 것은
-        // 그 타입을 누군가 만들 때뿐이라, 아무도 만들지 않는 타입의 `body` 를 무조건 뿌리로
-        // 두면 답이 스스로 모순된다 — 타입은 "미사용", 그 멤버는 "보존됨".
-        let (unconditional, conditional) = partitionWitnesses(declared, graph: graph)
-        let inherited = inheritedRetentions(retentions: unconditional, graph: graph)
-        let traversal = traverse(
-            from: Set(unconditional.keys).union(inherited.keys),
-            conditionalWitnesses: conditional,
-            protocolRequirementOwners: protocolRequirementOwners,
-            in: graph
-        )
-        // 살아나지 못한 증인의 근거는 남기지 않는다. 근거 목록은 언제나 도달 가능한 정점의
-        // 부분집합이어야 하고, 그렇지 않으면 `explain` 이 보고서와 다른 답을 한다.
-        let retentions = declared.filter { traversal.reachable.contains($0.key) }
+        let preparation = prepareReachability(graph: graph, snapshot: snapshot)
+        let declared = preparation.declared
+        let protocolRequirementOwners = preparation.protocolRequirementOwners
+        let conditional = preparation.conditional
+        let inherited = preparation.inherited
+        let traversal = preparation.traversal
+        let retentions = preparation.retentions
 
         let unreachable = graph.sortedNodes.filter { !traversal.reachable.contains($0.id) }
         let reported = filterReportable(unreachable, unreachableIDs: Set(unreachable.map(\.id)), graph: graph)
@@ -264,6 +250,50 @@ public struct ReachabilityAnalyzer: Sendable {
                 snapshot: snapshot
             ),
             redundantPublic: redundantPublicAnalyzer.findings(reachable: traversal.reachable)
+        )
+    }
+
+    /// 질의가 쓰지 않는 데드코드 발견·반사실 계산은 실행하지 않는다.
+    package func analyzeReachability(graph: CodeGraph, snapshot: IndexSnapshot) -> ReachabilityReport {
+        prepareReachability(graph: graph, snapshot: snapshot).report
+    }
+
+    /// 전체 분석과 질의는 뿌리 선택·조건부 증인·경로 선택을 한 번의 같은 탐색으로 계산한다.
+    private struct ReachabilityPreparation {
+        let declared: [NodeID: RetentionReason]
+        let protocolRequirementOwners: [NodeID: NodeID]
+        let conditional: [NodeID: NodeID]
+        let inherited: [NodeID: InheritedRetention]
+        let traversal: Traversal
+        let retentions: [NodeID: RetentionReason]
+
+        var report: ReachabilityReport {
+            ReachabilityReport(
+                retentions: retentions, inheritedRetentions: inherited, predecessors: traversal.predecessors
+            )
+        }
+    }
+
+    private func prepareReachability(graph: CodeGraph, snapshot: IndexSnapshot) -> ReachabilityPreparation {
+        let declared = policy.retainedNodes(in: graph, snapshot: snapshot)
+        let protocolRequirementOwners = protocolRequirementOwners(in: graph)
+        // 증인 보존은 소유 타입이 살아 있을 때만 성립한다. 프레임워크가 `body` 를 부르는 것은
+        // 그 타입을 누군가 만들 때뿐이라, 아무도 만들지 않는 타입의 `body` 를 무조건 뿌리로
+        // 두면 답이 스스로 모순된다 — 타입은 "미사용", 그 멤버는 "보존됨".
+        let (unconditional, conditional) = partitionWitnesses(declared, graph: graph)
+        let inherited = inheritedRetentions(retentions: unconditional, graph: graph)
+        let traversal = traverse(
+            from: Set(unconditional.keys).union(inherited.keys),
+            conditionalWitnesses: conditional,
+            protocolRequirementOwners: protocolRequirementOwners,
+            in: graph
+        )
+        // 살아나지 못한 증인의 근거는 남기지 않는다. 근거 목록은 언제나 도달 가능한 정점의
+        // 부분집합이어야 하고, 그렇지 않으면 `explain` 이 보고서와 다른 답을 한다.
+        let retentions = declared.filter { traversal.reachable.contains($0.key) }
+        return ReachabilityPreparation(
+            declared: declared, protocolRequirementOwners: protocolRequirementOwners, conditional: conditional,
+            inherited: inherited, traversal: traversal, retentions: retentions
         )
     }
 
