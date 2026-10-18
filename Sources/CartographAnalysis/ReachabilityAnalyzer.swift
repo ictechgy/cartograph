@@ -312,6 +312,9 @@ public struct ReachabilityAnalyzer: Sendable {
     ) -> [GraphNode] {
         guard !snapshot.propertyAccesses.isEmpty else { return [] }
         let hiddenOwners = accessHidingOwners(in: snapshot, graph: graph)
+        // 그래프는 범위 밖·필터된 요구사항으로 향하는 관계를 버리므로 원본 증인도 확인한다.
+        let overrideSources = Set(snapshot.references.lazy.filter { $0.kind == .overrides }
+            .map { NodeID($0.sourceUSR) })
         return graph.sortedNodes.filter { node in
             guard node.kind == .property || node.kind == .variable,
                   reachable.contains(node.id),
@@ -320,6 +323,7 @@ public struct ReachabilityAnalyzer: Sendable {
                   isAccessVisible(node, honoringIgnoreComments: honoringIgnoreComments),
                   protocolRequirementOwners[node.id] == nil,
                   // 오버라이드·준수 증인의 읽기는 요구사항 심볼에 기록된다.
+                  !overrideSources.contains(node.id),
                   !graph.outgoingEdges(from: node.id).contains(where: { $0.kind == .overrides }),
                   !isAccessHidden(node, hiddenOwners: hiddenOwners, in: graph)
             else { return false }
@@ -336,6 +340,7 @@ public struct ReachabilityAnalyzer: Sendable {
     /// 그 주석은 불필요가 아니다.
     private func isAccessVisible(_ node: GraphNode, honoringIgnoreComments: Bool = true) -> Bool {
         !node.attributes.contains(.implicit)
+            && !node.attributes.contains(.sourceUnavailable)
             && !(honoringIgnoreComments && node.attributes.contains(.ignoreComment))
             && !node.attributes.contains(.runtimeManaged)
             && !node.attributes.contains(.dynamicDispatch)
