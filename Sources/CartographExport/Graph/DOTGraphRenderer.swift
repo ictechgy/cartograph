@@ -64,7 +64,14 @@ public struct DOTGraphRenderer: GraphRendering {
     }
 
     /// DOT 문자열 리터럴로 감싼다. 큰따옴표와 역슬래시만 이스케이프하면 된다.
+    ///
+    /// 식별자와 라벨은 파일 경로·선언 이름 그대로라 개행·ESC·양방향 재정의가 들어올 수 있다.
+    /// 문법 탈출은 이스케이프가 막지만 그 문자들은 터미널과 뷰어로 그대로 가므로, 이스케이프 전에
+    /// Core 의 필터로 뺀다. 남은 문자만 이스케이프해야 걸러 낸 자리가 이스케이프를 깨지 않는다.
     private func quote(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
+        let escaped = PrintableText.printable(value)
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
     }
 }

@@ -78,13 +78,15 @@ public struct MermaidGraphRenderer: GraphRendering {
     }
 
     /// Mermaid 라벨에서 문제를 일으키는 문자를 정리한다.
+    ///
+    /// 개행은 지금처럼 공백으로 접고, 남은 제어·형식 문자(복귀·ESC·양방향 재정의)는 Core 의 필터로
+    /// 뺀다. 접기가 먼저다 — 필터가 개행까지 지우면 앞뒤 낱말이 붙는다.
     private func escape(_ value: String) -> String {
-        value
+        PrintableText.printable(value.replacingOccurrences(of: "\n", with: " "))
             // `#` 이 먼저다. 뒤 치환들이 스스로 `#` 을 만들어 내기 때문이다.
             .replacingOccurrences(of: "#", with: "#35;")
             .replacingOccurrences(of: "\"", with: "#quot;")
             .replacingOccurrences(of: "<", with: "#lt;")
             .replacingOccurrences(of: ">", with: "#gt;")
-            .replacingOccurrences(of: "\n", with: " ")
     }
 }
