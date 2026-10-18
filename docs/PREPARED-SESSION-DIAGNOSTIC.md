@@ -8,7 +8,8 @@ edit, or replace that benchmark. Results and raw evidence live under that run's
 Both processes operate on the same frozen ArgumentParser sources and compiler index:
 
 - The persistent Python baseline runs the pinned real `index-dump` discovery and source-identity
-  graph assembly, then retains that graph in memory. After full byte admission, every tool
+  graph assembly, then retains that graph and its reverse adjacency in memory. Adjacency is rebuilt
+  only when discovery creates a new generation. After full shared byte admission, every tool
   request enumerates and stats the current source/config/index inputs and refuses drift.
 - Native `cartograph serve --session-freshness-interval 0` retains its analysis session while
   preserving actual per-request freshness checks and its richer evidence and limitations output.
@@ -27,12 +28,16 @@ Generation checks require reuse for unchanged queries and exactly one increment 
 
 `totals` sums per-arm preparation, first query, four warm queries, completed refresh and first
 refreshed answer. `totals_including_common_verification_seconds` additionally includes the
-shared initial admission and all common byte checks, charged equally to each arm for accounting;
+shared initial admission, all common byte checks and graph-oracle checks, charged equally to each arm for accounting;
 it is not a simultaneous wall-clock measurement. `diagnostic_elapsed_seconds` is the actual
 whole-driver duration including both arms, logging and cleanup. Prior tool builds, project
 compilation and native identity discovery are reused; their costs remain in the original results.
-Full source/index/config byte checks surround every pair and the refresh pair; their common cost
-is reported separately. A shared nine-minute deadline bounds requests and is rechecked after final byte verification,
+Full source/index/config byte checks surround preparation, every query pair and the refresh pair; their common cost
+is reported separately. The controller grades the actual saved baseline graph after each ready/refresh response,
+while the corresponding arm timer is stopped. An invalid graph still fails before a query is accepted.
+The separately retained graph-check durations enter the shared inclusive total for both arms, not either IPC timer.
+Actual discovery, graph serialization, metadata checks and traversal remain measured.
+A shared nine-minute deadline bounds requests and is rechecked after final byte verification,
 leaving cleanup time below the ten-minute CI step cap.
 SIGTERM enters bounded cleanup, and a cleanup error in one arm does not skip the other.
 Successful runs require normal zero process exits. Raw commands,

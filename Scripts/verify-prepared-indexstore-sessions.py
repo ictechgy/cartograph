@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import io
 import json
@@ -61,15 +62,19 @@ class PreparedSessionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Symlink"):
             BENCH.metadata(self.config)
 
-    def worker(self, requests: list[tuple[str | None, dict]], fingerprints=None):
+    def worker(self, requests: list[tuple[str | None, dict]], fingerprints=None, graphs=None):
         raw = b"".join(BENCH.MCP.request(number, "tools/call" if name else "server/discover",
                             BENCH.MCP.modern_params(name=name, arguments=arguments))
                        for number, (name, arguments) in enumerate(requests))
         output = io.StringIO()
         with mock.patch.object(BENCH.sys, "stdin", io.TextIOWrapper(io.BytesIO(raw))), \
                 mock.patch.object(BENCH.sys, "stdout", output), mock.patch.object(BENCH.signal, "signal"), \
-                mock.patch.object(BENCH, "verify_bytes") as admission, \
-                mock.patch.object(BENCH.PROJECT, "baseline_discovery", return_value=self.graph) as discover:
+                mock.patch.object(BENCH, "verify_bytes",
+                                  side_effect=AssertionError("Byte grading inside IPC")) as admission, \
+                mock.patch.object(BENCH.PROJECT, "graph_grade",
+                                  side_effect=AssertionError("Oracle grading inside IPC")), \
+                mock.patch.object(BENCH.PROJECT, "baseline_discovery", return_value=self.graph,
+                                  side_effect=graphs) as discover:
             if fingerprints:
                 with mock.patch.object(BENCH, "metadata", side_effect=fingerprints):
                     BENCH.baseline_worker(self.config)
@@ -80,10 +85,12 @@ class PreparedSessionTests(unittest.TestCase):
     def test_ready_and_refresh_really_discover_but_warm_queries_reuse(self):
         request = max(self.config["requests"], key=lambda item: item["max_depth"])
         query = ("cartograph_query", {"symbols": [request["seed"]], "depth": request["max_depth"], "limit": 1000})
-        replies, discover, admission = self.worker([(None, {}), ("cartograph_status", {}), query, query,
-                                                   ("cartograph_status", {"refresh": True}), query])
+        with mock.patch.object(BENCH.BASE, "reverse_adjacency", wraps=BENCH.BASE.reverse_adjacency) as adjacency:
+            replies, discover, admission = self.worker([(None, {}), ("cartograph_status", {}), query, query,
+                                                       ("cartograph_status", {"refresh": True}), query])
         self.assertEqual(discover.call_count, 2)
-        self.assertEqual(admission.call_count, 2)
+        self.assertEqual(adjacency.call_count, 2)
+        admission.assert_not_called()
         payloads = [reply["structuredContent"] for reply in replies[1:]]
         self.assertEqual([payload.get("generation", payload.get("session", {}).get("generation"))
                           for payload in payloads], [1, 1, 1, 2, 2])
@@ -92,6 +99,31 @@ class PreparedSessionTests(unittest.TestCase):
             self.assertTrue(grade["passed"])
         self.assertEqual([call.args[0]["out"] for call in discover.call_args_list],
                          [str(self.root / "baseline" / f"generation-{number}") for number in (1, 2)])
+
+    def test_refresh_replaces_adjacency_and_controller_still_rejects_bad_graph(self):
+        request = max(self.config["requests"], key=lambda item: item["max_depth"])
+        query = ("cartograph_query", {"symbols": [request["seed"]], "depth": request["max_depth"], "limit": 1000})
+        changed = copy.deepcopy(self.graph)
+        changed["edges"] = []
+        replies, _, _ = self.worker([("cartograph_status", {}), query,
+                                     ("cartograph_status", {"refresh": True}), query],
+                                    graphs=[self.graph, changed])
+        self.assertNotEqual(replies[1]["structuredContent"]["answers"], replies[3]["structuredContent"]["answers"])
+        first = BENCH.verify_baseline_generation(self.config, 1)
+        self.assertEqual(first["generation"], 1)
+        self.assertTrue(first["grade"]["exact_match"])
+        self.assertEqual(first["graph_sha256"],
+                         BENCH.BASE.sha256(Path(self.config["out"]) / "generation-1" / "graph.json"))
+        with self.assertRaisesRegex(ValueError, "Baseline graph failed oracle"):
+            BENCH.verify_baseline_generation(self.config, 2)
+
+    def test_prepared_traversal_preserves_minimum_depth_cycles_and_seed_exclusion(self):
+        edges = [["a", "seed"], ["b", "a"], ["c", "b"], ["c", "a"], ["a", "a"], ["seed", "b"], ["outside", "c"]]
+        reverse = BENCH.BASE.reverse_adjacency(edges)
+        for maximum, expected in ((0, {}), (1, {"a": 1}), (3, {"a": 1, "b": 2, "c": 2, "outside": 3})):
+            with self.subTest(maximum=maximum):
+                self.assertEqual(BENCH.PROJECT.depths_from_reverse(reverse, "seed", maximum), expected)
+                self.assertEqual(BENCH.PROJECT.reverse_depths(edges, "seed", maximum), expected)
 
     def test_worker_rejects_drift_before_any_repair(self):
         with self.assertRaisesRegex(ValueError, "refuses input metadata drift"):
@@ -159,8 +191,12 @@ class PreparedSessionTests(unittest.TestCase):
             def close(self):
                 return {"returncode": 0, "forced_cleanup": False}
         report = {"admission_seconds": 5.0}
+        def graph_check(config, generation):
+            self.assertEqual(report["preparation"]["baseline"]["spawn_to_graph_ready_seconds"], 2.0)
+            return {"generation": generation, "seconds": 4.0}
         with mock.patch.object(BENCH, "Client", FakeClient), \
                 mock.patch.object(BENCH, "verify_bytes", return_value={"seconds": 3.0}), \
+                mock.patch.object(BENCH, "verify_baseline_generation", side_effect=graph_check) as graph_check, \
                 mock.patch.object(BENCH, "query", side_effect=lambda c, arm, cfg, g, generation:
                                   {"ipc_seconds": 11.0, "generation": generation}) as query:
             BENCH.run(self.config, self.graph, self.root / "run", report)
@@ -169,14 +205,31 @@ class PreparedSessionTests(unittest.TestCase):
         self.assertEqual(report["refresh"]["baseline"]["first_answer"]["generation"], 2)
         self.assertEqual(query.call_count, 12)
         self.assertEqual(report["totals"], {arm: 75.0 for arm in BENCH.ARMS})
-        self.assertEqual(report["common_byte_verification_seconds"], 39.0)
-        self.assertEqual(report["totals_including_common_verification_seconds"], {arm: 119.0 for arm in BENCH.ARMS})
+        self.assertEqual(graph_check.call_args_list, [mock.call(self.config, 1), mock.call(self.config, 2)])
+        self.assertEqual(report["common_byte_verification_seconds"], 42.0)
+        self.assertEqual(report["common_graph_verification_seconds"], 8.0)
+        self.assertEqual(report["totals_including_common_verification_seconds"], {arm: 130.0 for arm in BENCH.ARMS})
         self.assertEqual(report["status"], "passed")
         with mock.patch.object(BENCH, "Client", FakeClient), \
                 mock.patch.object(BENCH, "verify_bytes", return_value={"seconds": 0}), \
+                mock.patch.object(BENCH, "verify_baseline_generation", return_value={"seconds": 0}), \
                 mock.patch.object(BENCH, "query", return_value={"ipc_seconds": 0}):
             with self.assertRaisesRegex(ValueError, "Shared driver deadline"):
                 BENCH.run(self.config, self.graph, self.root / "expired", {"admission_seconds": 0}, deadline=0)
+
+    def test_controller_oracle_failure_stops_before_queries_and_cleans_up(self):
+        client = mock.Mock(started=1.0, completed=3.0)
+        client.call.return_value = ({"generation": 1}, {"ipc_seconds": 1})
+        client.close.return_value = {"returncode": 0, "forced_cleanup": False}
+        with mock.patch.object(BENCH, "Client", return_value=client), \
+                mock.patch.object(BENCH, "verify_bytes", return_value={"seconds": 0}), \
+                mock.patch.object(BENCH, "verify_baseline_generation",
+                                  side_effect=ValueError("Baseline graph failed oracle")), \
+                mock.patch.object(BENCH, "query") as query:
+            with self.assertRaisesRegex(ValueError, "Baseline graph failed oracle"):
+                BENCH.run(self.config, self.graph, self.root / "failed", {"admission_seconds": 0})
+        query.assert_not_called()
+        client.close.assert_called_once()
 
     def test_shared_deadline_prevents_another_request_and_sigterm_enters_cleanup(self):
         client = self.client("import sys\nfor line in sys.stdin: pass")
@@ -215,6 +268,7 @@ class PreparedSessionTests(unittest.TestCase):
         report = {"admission_seconds": 0}
         with mock.patch.object(BENCH, "Client", side_effect=clients), \
                 mock.patch.object(BENCH, "verify_bytes", return_value={"seconds": 0}), \
+                mock.patch.object(BENCH, "verify_baseline_generation", return_value={"seconds": 0}), \
                 mock.patch.object(BENCH, "query", side_effect=RuntimeError("query failed")):
             with self.assertRaisesRegex(RuntimeError, "query failed"):
                 BENCH.run(self.config, self.graph, self.root / "run", report)
@@ -254,6 +308,82 @@ class PreparedSessionTests(unittest.TestCase):
         BENCH.BASE.save(report, {"status": "baseline_only", "validation_passed": True})
         with self.assertRaisesRegex(ValueError, "successful full"):
             BENCH.admit(report, self.root / "out", 1)
+
+    def summary_fixture(self):
+        config = copy.deepcopy(self.config)
+        config["summary_identity"] = {key: "a" * 64 for key in (
+            "project_revision", "comparator_revision", "cartograph_revision",
+            "comparator_binary_sha256", "cartograph_binary_sha256", "swiftc_sha256",
+            "lib_indexstore_sha256", "index_sha256", "source_manifest_sha256",
+        )}
+        for key in ("project_revision", "comparator_revision", "cartograph_revision"):
+            config["summary_identity"][key] = "b" * 40
+        config["summary_identity"]["private_path"] = "/private/secret"
+        report = {
+            "status": "passed", "query_clock": "symmetric IPC through complete payload parsing",
+            "total_contract": "ready + first + four warm + refresh + first refreshed",
+            "validation_clock": "common checks outside both arms", "freshness": "interval zero",
+            "admission_seconds": 4.0, "common_byte_verification_seconds": 6.0,
+            "common_graph_verification_seconds": 8.0,
+            "preparation": {}, "first": {}, "warm_pairs": [{"order": order} for order in BENCH.ORDERS],
+            "refresh": {}, "totals": {}, "totals_including_common_verification_seconds": {},
+            "private_path": "/private/secret", "raw_output": "private raw output",
+        }
+        for arm, scale in zip(BENCH.ARMS, (1, 2)):
+            report["preparation"][arm] = {"spawn_to_graph_ready_seconds": 2.0 * scale}
+            report["first"][arm] = {"ipc_seconds": 3.0 * scale}
+            for pair, duration in zip(report["warm_pairs"], (5.0, 7.0, 9.0, 11.0)):
+                pair[arm] = {"ipc_seconds": duration * scale}
+            report["refresh"][arm] = {"completed_refresh": {"ipc_seconds": 13.0 * scale},
+                                      "first_answer": {"ipc_seconds": 17.0 * scale}}
+            report["totals"][arm] = 67.0 * scale
+            report["totals_including_common_verification_seconds"][arm] = 67.0 * scale + 18.0
+        return report, config
+
+    def test_log_summary_retains_absolute_clocks_inventory_and_only_declared_identities(self):
+        report, config = self.summary_fixture()
+        original = copy.deepcopy(report)
+        summary = BENCH.log_summary(report, config)
+        self.assertEqual(original, report)
+        self.assertFalse(summary["final_evidence"])
+        self.assertIsNone(summary["superiority_claim"])
+        self.assertEqual(summary["clock"], report["query_clock"])
+        self.assertEqual(summary["common_seconds"], {"admission": 4.0, "byte_verification": 6.0,
+                                                     "graph_verification": 8.0})
+        self.assertEqual(summary["workload"]["warm_queries_per_arm"], 4)
+        self.assertEqual(summary["workload"]["same_input_refreshes_per_arm"], 1)
+        self.assertEqual(summary["workload"]["depth"], 5)
+        for arm, scale in zip(BENCH.ARMS, (1, 2)):
+            self.assertEqual(summary["arms"][arm], {
+                "spawn_to_graph_ready_seconds": 2.0 * scale, "first_query_seconds": 3.0 * scale,
+                "warm_query_seconds": [value * scale for value in (5.0, 7.0, 9.0, 11.0)],
+                "warm_query_median_seconds": 8.0 * scale,
+                "completed_same_input_refresh_seconds": 13.0 * scale,
+                "first_refreshed_query_seconds": 17.0 * scale,
+                "arm_total_seconds": 67.0 * scale,
+                "total_including_common_verification_seconds": 67.0 * scale + 18.0,
+            })
+        self.assertEqual(len(summary["identity"]), 9)
+        self.assertEqual(summary["identity"]["index_sha256"], "a" * 64)
+        self.assertNotIn("private", json.dumps(summary))
+        self.assertNotIn("raw_output", summary)
+
+    def test_log_summary_refuses_failure_changed_inventory_and_invalid_timings(self):
+        for mutation in ("failed", "count", "order", "nan", "negative", "boolean"):
+            with self.subTest(mutation=mutation):
+                report, config = self.summary_fixture()
+                if mutation == "failed":
+                    report["status"] = "failed"
+                elif mutation == "count":
+                    report["warm_pairs"].pop()
+                elif mutation == "order":
+                    report["warm_pairs"][0]["order"] = list(reversed(BENCH.ARMS))
+                else:
+                    report["first"]["baseline"]["ipc_seconds"] = {
+                        "nan": float("nan"), "negative": -1.0, "boolean": True,
+                    }[mutation]
+                with self.assertRaises(ValueError):
+                    BENCH.log_summary(report, config)
 
     def test_oracle_and_generation_mismatches_fail(self):
         for payload, message in [({"session": {"generation": 2}, "answers": {}}, "generation"),
