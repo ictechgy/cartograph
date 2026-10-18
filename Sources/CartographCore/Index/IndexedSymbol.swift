@@ -15,6 +15,10 @@ public struct IndexedSymbol: Hashable, Sendable, Codable {
     public let isExternal: Bool
     public var accessibility: Accessibility
     public var attributes: Set<SymbolAttribute>
+    /// 선언 발생에서 컴파일러의 unitTest 비트를 관찰했는지. 구문 보존 표식과 구분한다.
+    /// nil은 옛 스냅샷·합성 선언 등 미수집 상태이며, false도 테스트가 아니라는 증명은 아니다.
+    /// 구문 보강이나 이름 추정으로 이 값을 만들지 않는다.
+    public var compilerUnitTest: Bool?
 
     public init(
         usr: String,
@@ -25,7 +29,8 @@ public struct IndexedSymbol: Hashable, Sendable, Codable {
         parentUSR: String? = nil,
         isExternal: Bool = false,
         accessibility: Accessibility = .internalLevel,
-        attributes: Set<SymbolAttribute> = []
+        attributes: Set<SymbolAttribute> = [],
+        compilerUnitTest: Bool? = nil
     ) {
         self.usr = usr
         self.name = name
@@ -36,6 +41,7 @@ public struct IndexedSymbol: Hashable, Sendable, Codable {
         self.isExternal = isExternal
         self.accessibility = accessibility
         self.attributes = attributes
+        self.compilerUnitTest = compilerUnitTest
     }
 
     /// Objective-C 런타임에서 접근 가능한 심볼인지 여부.

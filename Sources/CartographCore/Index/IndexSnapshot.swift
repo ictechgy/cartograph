@@ -7,7 +7,8 @@ import Foundation
 /// 인덱스 스토어 없이 스냅샷을 직접 만들어 넣을 수 있다.
 public struct IndexSnapshot: Sendable, Codable, Equatable {
     /// 선언 목록. **순서에 의미가 있다.** `symbolsByUSR()` 이 사전으로 접을 때 같은 USR 이
-    /// 겹치면 앞의 것이 이기고, `merging` 은 두 배열을 잇기만 하므로 인덱스에서 온 것이
+    /// 겹치면 앞의 것이 이긴다. compilerUnitTest 관찰만 합치며 `merging`은 두 배열을 잇는다.
+    /// 따라서 이름·위치·보존 표식은 인덱스에서 온 것이
     /// 구문에서 온 것을 이긴다. 인덱스 스토어를 읽는 경로는 USR 순으로 정렬해 넘긴다.
     public var symbols: [IndexedSymbol]
 
@@ -113,7 +114,13 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
 
     /// USR 로 심볼을 찾기 위한 사전. 반복 조회가 많아 미리 만들어 쓴다.
     public func symbolsByUSR() -> [String: IndexedSymbol] {
-        Dictionary(symbols.map { ($0.usr, $0) }, uniquingKeysWith: { first, _ in first })
+        Dictionary(symbols.map { ($0.usr, $0) }, uniquingKeysWith: { first, next in
+            var result = first
+            // 같은 USR의 양성 관찰은 순서와 무관하게 보존한다. 다른 대표 정보는 바꾸지 않는다.
+            result.compilerUnitTest = first.compilerUnitTest == true || next.compilerUnitTest == true
+                ? true : (first.compilerUnitTest ?? next.compilerUnitTest)
+            return result
+        })
     }
 
     /// 등장하는 모듈 이름 목록(정렬됨).

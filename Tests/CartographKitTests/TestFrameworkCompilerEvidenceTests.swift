@@ -32,6 +32,16 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
             let matches = local.filter { $0.name.split(separator: "(").first.map(String.init) == name }
             #expect(Set(matches.map(\.usr)).count == 1, "Missing or ambiguous compiler declaration: \(name)")
         }
+        // Swift 6.3.3의 실제 수집에서 확인한 두 프레임워크의 차이를 별도 필드로 보존한다.
+        for name in ["BaseCase", "AsyncCase", "testAsync()"] {
+            let declaration = try #require(local.first { !$0.isExternal && $0.name == name })
+            #expect(declaration.compilerUnitTest == true)
+        }
+        for name in ["ProductionProbe", "testConnection()", "ModernSuite", "QualifiedSuite",
+                     "asyncCase()", "parameterized(_:)", "qualifiedCase()"] {
+            let declaration = try #require(local.first { !$0.isExternal && $0.name == name })
+            #expect(declaration.compilerUnitTest == false)
+        }
         for (caller, callee) in [
             ("testConnection", "productionHelper"), ("setUp", "lifecycleHelper"),
             ("testAsync", "xctestHelper"), ("asyncCase", "modernHelper"),
