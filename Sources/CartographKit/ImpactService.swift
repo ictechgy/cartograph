@@ -38,7 +38,7 @@ extension CartographService {
         let context = try existingContext ?? loadContext()
         let graph = context.buildGraph(level: .symbol).graph
         let automatic = context.runtimeDiscovery()
-        let lifecycle = XCTestLifecycleImpact(in: graph)
+        let lifecycle = context.impactLifecycle()
         let automaticDependencies = Self.automaticImpactDependencies(automatic) + lifecycle.dependencies
         let observedDependencies = runtimeTrace?.evidenceCurrent == true
             ? (runtimeTrace?.connections ?? []).map { connection in
@@ -50,7 +50,9 @@ extension CartographService {
         let artifactTargets = ImpactSelection.artifactTargets(in: automatic,
             resourcePaths: context.runtimeFiles?.map(\.path) ?? [])
         let selection = ImpactSelection(symbols: symbols, files: files, projectPath: projectPath,
-            graph: graph, extraIssues: runtime.issues, artifactTargets: artifactTargets)
+            graph: graph, extraIssues: runtime.issues, artifactTargets: artifactTargets,
+            makeQueryIndex: { _ in context.impactQueryIndex() },
+            makeRawFileIndex: { _ in context.impactRawNodesByFile() })
         let report = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth,
             additionalDependencies: runtime.dependencies + automaticDependencies + observedDependencies)
         let reasons = context.impactReviewReasons()
@@ -203,7 +205,8 @@ struct ImpactSelection {
 
     init(symbols: [String], files: [String], projectPath: String, graph: CodeGraph,
          extraIssues: [ImpactDocument.SelectionIssue] = [], artifactTargets: [String: Set<NodeID>] = [:],
-         makeQueryIndex: (CodeGraph) -> GraphQueryIndex = { GraphQueryIndex(graph: $0) }) {
+         makeQueryIndex: (CodeGraph) -> GraphQueryIndex = { GraphQueryIndex(graph: $0) },
+         makeRawFileIndex: (CodeGraph) -> [String: [NodeID]] = { ImpactSelection.rawNodesByFile(in: $0) }) {
         var nodes: Set<NodeID> = []
         var issues = extraIssues
         // 파일·리소스 입력은 이름을 풀지 않는다. 전체 이름 색인은 실제 심볼 요청에만 만든다.
@@ -231,11 +234,10 @@ struct ImpactSelection {
         })
         var nodesByFile: [String: [NodeID]] = [:]
         if !normalizedFiles.isEmpty {
-            var rawPaths: [String: [NodeID]] = [:]
-            for node in graph.sortedNodes {
-                if let path = node.location?.path { rawPaths[path, default: []].append(node.id) }
+            // 링크 대상은 같은 문맥에서도 바뀔 수 있어 경로 해석만 요청마다 다시 한다.
+            for (path, ids) in makeRawFileIndex(graph) {
+                nodesByFile[ReportScope.normalized(path), default: []] += ids
             }
-            for (path, ids) in rawPaths { nodesByFile[ReportScope.normalized(path), default: []] += ids }
         }
         for file in normalizedFiles.sorted() {
             let matches = (nodesByFile[file] ?? []) + Array(artifactTargets[file] ?? [])
@@ -251,6 +253,15 @@ struct ImpactSelection {
         self.files = normalizedFiles.sorted()
         self.issues = issues
         status = !issues.isEmpty ? "incomplete" : (symbols.isEmpty && files.isEmpty ? "noChanges" : "found")
+    }
+
+    /// 이름 조회와 별개로 준비하여 파일 전용 요청의 전체 정점 분류를 재사용한다.
+    static func rawNodesByFile(in graph: CodeGraph) -> [String: [NodeID]] {
+        var rawPaths: [String: [NodeID]] = [:]
+        for node in graph.sortedNodes {
+            if let path = node.location?.path { rawPaths[path, default: []].append(node.id) }
+        }
+        return rawPaths
     }
 
     /// 타입과 그 타입의 익스텐션만 동명이면 의미상 같은 타입 선택이다. 다른 선언이 섞이면 추측하지 않는다.
