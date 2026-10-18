@@ -232,13 +232,8 @@ struct ImpactSelection {
         let normalizedFiles = Set(files.map { file in
             ReportScope.normalized(file.hasPrefix("/") ? file : (projectPath as NSString).appendingPathComponent(file))
         })
-        var nodesByFile: [String: [NodeID]] = [:]
-        if !normalizedFiles.isEmpty {
-            // 링크 대상은 같은 문맥에서도 바뀔 수 있어 경로 해석만 요청마다 다시 한다.
-            for (path, ids) in makeRawFileIndex(graph) {
-                nodesByFile[ReportScope.normalized(path), default: []] += ids
-            }
-        }
+        let nodesByFile = normalizedFiles.isEmpty ? [:]
+            : Self.nodesBySelectedFile(makeRawFileIndex(graph), selecting: normalizedFiles)
         for file in normalizedFiles.sorted() {
             let matches = (nodesByFile[file] ?? []) + Array(artifactTargets[file] ?? [])
             guard !matches.isEmpty else {
@@ -262,6 +257,19 @@ struct ImpactSelection {
             if let path = node.location?.path { rawPaths[path, default: []].append(node.id) }
         }
         return rawPaths
+    }
+
+    /// 링크 대상은 요청마다 다시 해석하되, 선택하지 않은 파일의 정점 배열은 복사하지 않는다.
+    static func nodesBySelectedFile(
+        _ rawPaths: [String: [NodeID]], selecting files: Set<String>
+    ) -> [String: [NodeID]] {
+        var selected: [String: [NodeID]] = [:]
+        for (path, ids) in rawPaths {
+            let normalized = ReportScope.normalized(path)
+            guard files.contains(normalized) else { continue }
+            selected[normalized, default: []] += ids
+        }
+        return selected
     }
 
     /// 타입과 그 타입의 익스텐션만 동명이면 의미상 같은 타입 선택이다. 다른 선언이 섞이면 추측하지 않는다.

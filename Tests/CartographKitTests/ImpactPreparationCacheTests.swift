@@ -173,6 +173,22 @@ struct ImpactPreparationCacheTests {
         }
     }
 
+    @Test("파일 조회는 모든 원래 경로를 해석하지만 관련 없는 정점 배열은 결과에 복사하지 않는다")
+    func materializesOnlySelectedFileIDs() {
+        let noise = (0..<20_000).map { NodeID("noise-\($0)") }
+        let raw: [String: [NodeID]] = [
+            "/p/Folder/../Same.swift": ["left"],
+            "/p/Same.swift": ["right"],
+            "/p/Other.swift": noise,
+        ]
+        let selected = ImpactSelection.nodesBySelectedFile(raw, selecting: ["/p/Same.swift"])
+        #expect(Set(selected.keys) == ["/p/Same.swift"])
+        #expect(Set(selected["/p/Same.swift"] ?? []) == ["left", "right"])
+        #expect(selected.values.reduce(0) { $0 + $1.count } == 2)
+        #expect(ImpactSelection.nodesBySelectedFile(raw, selecting: ["/p/Missing.swift"]).isEmpty)
+        #expect(ImpactSelection.nodesBySelectedFile(raw, selecting: ["/p/Other.swift"])["/p/Other.swift"] == noise)
+    }
+
     @Test("같은 직접 문맥을 재사용해도 링크 재지정 뒤 파일 선택은 현재 링크 대상을 따른다")
     func symlinkRetargetIsNotFrozenByRawGrouping() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
