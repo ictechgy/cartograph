@@ -154,6 +154,32 @@ struct SwiftPMTargetEvidenceStoreTests {
         #expect(throws: (any Error).self) { try store.inputs(description: description, root: root) }
     }
 
+
+    @Test("POSIX private 루트의 철자를 Foundation 별칭으로 바꾸지 않는다",
+          arguments: ["/private/var/tmp/probe", "/private/tmp/probe"])
+    func preservesPrivateRoot(root: String) throws {
+        let description = try JSONSerialization.data(withJSONObject: [
+            "path": root, "targets": [
+                ["name": "Probe", "type": "library", "c99name": "Probe",
+                 "module_type": "SwiftTarget", "path": "Sources", "sources": ["Probe.swift"]]
+            ]
+        ])
+        let fileSystem = InMemoryFileSystem(files: [
+            root + "/Package.swift": "", root + "/Sources/Probe.swift": "",
+            root + "/description.json": String(decoding: description, as: UTF8.self)
+        ])
+        let store = SwiftPMTargetEvidenceStore(fileSystem: fileSystem)
+        let snapshot = IndexSnapshot(symbols: [])
+        let inputs = try store.inputs(description: description, root: root)
+        let receipt = try boundReceipt(root: root, inputs: inputs, snapshot: snapshot)
+        #expect(try store.verify(receipt, snapshot: snapshot).first?.packageRoot == root)
+        for suffix in ["/.", "/..", "//child"] {
+            #expect(throws: (any Error).self) {
+                try store.inputs(description: description, root: root + suffix)
+            }
+        }
+    }
+
     private func boundReceipt(
         root: String, inputs: SwiftPMTargetEvidenceDocument.Inputs, snapshot: IndexSnapshot
     ) throws -> SwiftPMTargetEvidenceDocument {
