@@ -150,6 +150,10 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
             try Data(manifest.utf8).write(to: root.appendingPathComponent("Package.swift"))
             try Data(Self.production.utf8).write(to: production)
             try Data(Self.tests.utf8).write(to: tests)
+            // 권한 불명확 상태는 실패로 남기고 실제 ESRCH 관찰만 종료로 인정한다.
+            let probeChecks = try run(["/usr/bin/env", "python3", "-I", "-S", "-c",
+                Self.supervisor, "--probe-tests"], in: root, timeout: 5, usesXcrun: false)
+            FileHandle.standardError.write(Data(probeChecks.utf8))
             // 같은 감독 코드로 자식이 남는 시간 초과도 실제 확인한다.
             _ = try run(["/usr/bin/env", "python3", "-I", "-S", "-c", Self.timeoutProbe],
                 in: root, timeout: 1, expected: 124, usesXcrun: false)
@@ -189,6 +193,7 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
         let groupGone: Bool
         let python: String
         let group: Int
+        let groupObservations: [String]
     }
 
     private func run(
@@ -217,10 +222,11 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
             throw CommandError.cleanupUnverified("Supervisor did not finish; preserved \(root.path)")
         }
         let message = try String(contentsOf: log, encoding: .utf8)
+        let receiptText = (try? String(contentsOf: receiptPath, encoding: .utf8)) ?? "<missing>"
         guard let data = try? Data(contentsOf: receiptPath),
               let receipt = try? JSONDecoder().decode(CommandReceipt.self, from: data),
               receipt.reaped, receipt.groupGone else {
-            throw CommandError.cleanupUnverified("Missing cleanup receipt; preserved \(root.path)\n\(message)")
+            throw CommandError.cleanupUnverified("Cleanup not verified; preserved \(root.path)\nReceipt: \(receiptText)\n\(message)")
         }
         if expected == 124 {
             let proof = message.split(separator: "\n").first { $0.hasPrefix("TimeoutProbe ") }
@@ -232,7 +238,7 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
             }
         }
         FileHandle.standardError.write(Data(
-            "TestFrameworkCommand python=\(receipt.python) exit=\(receipt.returncode) timeout=\(receipt.timedOut) reaped=true groupGone=true\n".utf8
+            "TestFrameworkCommand python=\(receipt.python) exit=\(receipt.returncode) timeout=\(receipt.timedOut) reaped=true groupGone=true observations=\(receipt.groupObservations)\n".utf8
         ))
         guard process.terminationStatus == 0, receipt.returncode == expected,
               receipt.timedOut == (expected == 124) else {
@@ -244,45 +250,88 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
     // 별도 세션으로 만든 그룹만 종료한다. 테스트 실행기나 다른 작업의 그룹에는 신호를 보내지 않는다.
     private static let supervisor = """
     import json, os, signal, subprocess, sys, time
+    def probe_group(group, send=os.killpg):
+        try:
+            send(group, 0)
+            return "alive"
+        except ProcessLookupError:
+            return "gone"
+        except PermissionError:
+            return "unknown"
+    def wait_gone(probe, deadline, now=time.monotonic, pause=time.sleep):
+        while True:
+            state = probe()
+            if state == "gone":
+                return True
+            if now() >= deadline:
+                return False
+            pause(min(0.02, max(0, deadline - now())))
+    def signal_owned(process, group, value, probe=probe_group, send=os.killpg, get_group=os.getpgid):
+        if process.poll() is not None or probe(group) != "alive":
+            return False
+        try:
+            if get_group(process.pid) != group:
+                return False
+            send(group, value)
+            return True
+        except (ProcessLookupError, PermissionError):
+            return False
+    if sys.argv[1] == "--probe-tests":
+        def denied(group, value):
+            raise PermissionError()
+        def missing(group, value):
+            raise ProcessLookupError()
+        assert probe_group(1, denied) == "unknown"
+        assert probe_group(1, missing) == "gone"
+        clock = [0.0]
+        def pause(delta):
+            clock[0] += delta
+        assert not wait_gone(lambda: "unknown", 0.05, lambda: clock[0], pause)
+        assert clock[0] == 0.05
+        clock[0] = 0.0
+        states = iter(["unknown", "unknown", "gone"])
+        assert wait_gone(lambda: next(states), 0.05, lambda: clock[0], pause)
+        assert clock[0] <= 0.05
+        class Leader:
+            pid = 1
+            def poll(self):
+                return None
+        sent = []
+        assert not signal_owned(Leader(), 1, signal.SIGKILL,
+            probe=lambda _: "unknown", send=lambda *args: sent.append(args))
+        assert not signal_owned(Leader(), 1, signal.SIGKILL,
+            probe=lambda _: "alive", send=lambda *args: sent.append(args), get_group=lambda _: 2)
+        assert not sent
+        print("SupervisorProbeTests persistentUnknown=failed transientUnknownThenESRCH=passed unknownSignal=blocked")
+        sys.exit(0)
     receipt, timeout = sys.argv[1], int(sys.argv[2])
     process = subprocess.Popen(sys.argv[3:], start_new_session=True)
     group = process.pid
-    def alive():
-        try:
-            os.killpg(group, 0)
-            return True
-        except ProcessLookupError:
-            return False
-    def signal_group(value):
-        try:
-            os.killpg(group, value)
-        except ProcessLookupError:
-            pass
+    observations = set()
+    def observe():
+        state = probe_group(group)
+        observations.add(state)
+        return state
     timed_out = False
     try:
         code = process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         timed_out, code = True, 124
-    if alive():
-        signal_group(signal.SIGTERM)
-        deadline = time.monotonic() + 1
-        while alive() and time.monotonic() < deadline:
-            process.poll()
-            time.sleep(0.02)
-        if alive():
-            signal_group(signal.SIGKILL)
+    if observe() != "gone":
+        signal_owned(process, group, signal.SIGTERM)
+        gone = wait_gone(observe, time.monotonic() + 1)
+        if not gone:
+            signal_owned(process, group, signal.SIGKILL)
     reaped = True
     try:
         process.wait(timeout=3)
     except subprocess.TimeoutExpired:
         reaped = False
-    deadline = time.monotonic() + 3
-    while alive() and time.monotonic() < deadline:
-        time.sleep(0.02)
-    gone = not alive()
+    gone = wait_gone(observe, time.monotonic() + 3)
     with open(receipt, "w") as stream:
         json.dump(dict(returncode=code, timedOut=timed_out, reaped=reaped,
-                       groupGone=gone, python=sys.version.split()[0], group=group), stream)
+                       groupGone=gone, groupObservations=sorted(observations),
+                       python=sys.version.split()[0], group=group), stream)
     sys.exit(0 if reaped and gone else 125)
     """
 
