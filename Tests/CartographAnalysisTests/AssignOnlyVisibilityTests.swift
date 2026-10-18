@@ -79,6 +79,51 @@ struct AssignOnlyVisibilityTests {
         #expect(report.unused.isEmpty)
     }
 
+
+    @Test("동명 타입의 다른 모듈 프로퍼티까지 외부 증인이나 불완전 소스로 묶지 않는다",
+          arguments: [false, true])
+    func preservesSameNamedPropertyInAnotherModule(sourceUnavailable: Bool) throws {
+        let left = "s:4Left3BoxV5valueSSvp"
+        let right = "s:5Right3BoxV5valueSSvp"
+        var builder = SnapshotBuilder(module: "Main")
+        builder.symbol("Entry", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Left.Box", name: "Box", kind: .structType, module: "Left",
+                       path: "/project/Left/Box.swift")
+        builder.symbol("Right.Box", name: "Box", kind: .structType, module: "Right",
+                       path: "/project/Right/Box.swift")
+        builder.symbol(left, name: "value", kind: .property, module: "Left",
+                       path: "/project/Left/Box.swift", parent: "Left.Box",
+                       attributes: sourceUnavailable ? [.sourceUnavailable] : [])
+        builder.symbol(right, name: "value", kind: .property, module: "Right",
+                       path: "/project/Right/Box.swift", parent: "Right.Box")
+        for target in ["Left.Box", "Right.Box", left, right] {
+            builder.reference(from: "Entry", to: target)
+        }
+        if !sourceUnavailable {
+            builder.reference(from: left, to: "external.requirement.value", kind: .overrides)
+        }
+        builder.propertyAccess(left, write: true)
+        builder.propertyAccess(right, write: true)
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        let leftNode = try #require(graph.node(NodeID(left)))
+        let rightNode = try #require(graph.node(NodeID(right)))
+        #expect(leftNode.name == rightNode.name)
+        #expect(leftNode.module == "Left")
+        #expect(rightNode.module == "Right")
+        #expect(leftNode.id != rightNode.id)
+        #expect(snapshot.references.allSatisfy {
+            $0.kind != .overrides || $0.sourceUSR == left
+        })
+
+        let report = ReachabilityAnalyzer().analyze(graph: graph, snapshot: snapshot)
+        #expect(report.retentions[NodeID(left)] == (
+            sourceUnavailable ? .sourceUnavailable : .externalConformance
+        ))
+        #expect(report.assignOnly == [rightNode])
+        #expect(report.unused.isEmpty)
+    }
+
     private func liveProperties(attributes: Set<SymbolAttribute> = []) -> SnapshotBuilder {
         var builder = SnapshotBuilder()
         builder.symbol("Entry", kind: .structType, attributes: [.entryPoint])
