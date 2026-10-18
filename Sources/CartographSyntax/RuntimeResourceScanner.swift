@@ -72,6 +72,7 @@ private final class RuntimeResourceCollector: NSObject, XMLParserDelegate {
         }
 
         let kind: Kind
+        let api: String
         let memberName: String?
         let destinationID: String?
         let ownerID: String?
@@ -124,9 +125,10 @@ private final class RuntimeResourceCollector: NSObject, XMLParserDelegate {
             ))
         }
 
-        if elementName == "action" || elementName == "outlet" {
+        if elementName == "action" || elementName == "outlet" || elementName == "outletCollection" {
             connections.append(Connection(
                 kind: elementName == "action" ? .action : .outlet,
+                api: elementName,
                 memberName: nonempty(attributeDict[elementName == "action" ? "selector" : "property"]),
                 destinationID: nonempty(attributeDict["destination"]),
                 ownerID: frames.reversed().compactMap(\.objectID).first,
@@ -215,13 +217,13 @@ private final class RuntimeResourceCollector: NSObject, XMLParserDelegate {
         case .action:
             missingMemberReason = connection.memberName == nil ? "action has no selector" : nil
         case .outlet:
-            missingMemberReason = connection.memberName == nil ? "outlet has no property" : nil
+            missingMemberReason = connection.memberName == nil ? "\(connection.api) has no property" : nil
         }
         let reason = missingMemberReason ?? resolution.reason
 
         return RuntimeBoundary(
             kind: connection.kind == .action ? .interfaceBuilderAction : .interfaceBuilderOutlet,
-            api: connection.kind == .action ? "action" : "outlet",
+            api: connection.api,
             location: connection.location,
             name: connection.memberName,
             nameOrigin: .resource,
