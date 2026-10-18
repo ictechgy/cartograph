@@ -22,6 +22,52 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
                 sourceRoots: [fixture.root.path], includeExternalSymbols: true, readerMode: .raw
             )).loadSnapshot()
         }
+        let confirmation = try await blocking {
+            try IndexStoreProvider(configuration: .init(
+                storePath: fixture.store,
+                databasePath: fixture.root.appendingPathComponent("UnusedDB").path,
+                libraryPath: fixture.library,
+                sourceRoots: [fixture.root.path], includeExternalSymbols: true, readerMode: .raw
+            )).loadSnapshot()
+        }
+        let rootPath = try LocalFileSystem().realPath(at: fixture.root.path)
+        let receipt = SwiftPMTargetEvidenceDocument(
+            packageRoot: rootPath, descriptionPath: rootPath + "/description.json",
+            toolchain: fixture.toolchain, configuration: "debug",
+            describeArguments: ["swift", "package", "describe", "--type", "json"],
+            buildArguments: ["swift", "build", "--package-path", rootPath,
+                "--scratch-path", rootPath + "/.build", "--configuration", "debug",
+                "--build-tests", "--enable-index-store", "--jobs", "2"],
+            before: fixture.targetInputsBefore, after: fixture.targetInputsAfter,
+            snapshotBefore: try SwiftPMTargetEvidenceStore.snapshotIdentity(snapshot),
+            snapshotAfter: try SwiftPMTargetEvidenceStore.snapshotIdentity(confirmation)
+        )
+        let receiptEncoder = JSONEncoder()
+        receiptEncoder.outputFormatting = [.sortedKeys]
+        FileHandle.standardError.write(Data("SwiftPMTargetEvidence ".utf8)
+            + (try receiptEncoder.encode(receipt)) + Data("\n".utf8))
+
+        if receipt.snapshotBefore != receipt.snapshotAfter {
+            let first = try #require(JSONSerialization.jsonObject(
+                with: receiptEncoder.encode(snapshot)) as? [String: NSObject])
+            let second = try #require(JSONSerialization.jsonObject(
+                with: receiptEncoder.encode(confirmation)) as? [String: NSObject])
+            let changedFields = Set(first.keys).union(second.keys).filter { first[$0] != second[$0] }.sorted()
+            let diagnostic: [String: Any] = [
+                "fieldsWithDifferentEncodedOrderOrValue": changedFields,
+                "firstRepresentativeIdentityEqual": snapshot.symbolsByUSR() == confirmation.symbolsByUSR(),
+                "symbolCountBefore": snapshot.symbols.count, "symbolCountAfter": confirmation.symbols.count,
+                "referenceCountBefore": snapshot.references.count,
+                "referenceCountAfter": confirmation.references.count
+            ]
+            FileHandle.standardError.write(Data("SwiftPMTargetSnapshotDifference ".utf8)
+                + (try JSONSerialization.data(withJSONObject: diagnostic, options: [.sortedKeys]))
+                + Data("\n".utf8))
+        }
+        let targets = try SwiftPMTargetEvidenceStore().verify(receipt, snapshot: snapshot)
+        let membership = TestTargetMembershipFacts(snapshot: snapshot, targets: targets)
+        // 실제 빌드에서 나온 두 describe와 소스/인덱스 관찰만 묶는다. 일반 생산자 CLI는 아니다.
+        #expect(receipt.before == receipt.after && receipt.snapshotBefore == receipt.snapshotAfter)
         let local = snapshot.symbols.filter {
             $0.location.path == fixture.productionPath || $0.location.path == fixture.testPath
         }
@@ -91,6 +137,13 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
             #expect(method.parentUSR == owner.usr && property.parentUSR == owner.usr)
             #expect(method.compilerUnitTest == true)
             #expect(identity.methodUSRs.contains(method.usr))
+            if module == "ProbeTests" {
+                #expect(membership.testUSRs.contains(method.usr))
+                #expect(!membership.ordinaryUSRs.contains(method.usr))
+            } else {
+                #expect(membership.ordinaryUSRs.contains(method.usr))
+                #expect(!membership.testUSRs.contains(method.usr))
+            }
             #expect(snapshot.references.contains {
                 $0.sourceUSR == method.usr && $0.targetUSR == property.usr && $0.origin == .compiler
             })
@@ -167,6 +220,8 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
         let store: String
         let library: String
         let toolchain: String
+        let targetInputsBefore: SwiftPMTargetEvidenceDocument.Inputs
+        let targetInputsAfter: SwiftPMTargetEvidenceDocument.Inputs
 
         func label(_ path: String) -> String {
             if path == productionPath { return "Sources/Probe/Probe.swift" }
@@ -207,16 +262,29 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let library = URL(fileURLWithPath: compiler).deletingLastPathComponent()
                 .deletingLastPathComponent().appendingPathComponent("lib/libIndexStore.dylib").path
-            let common = ["swift", "build", "--package-path", root.path,
-                          "--scratch-path", root.appendingPathComponent(".build").path]
+            let canonicalRoot = try LocalFileSystem().realPath(at: root.path)
+            let evidenceStore = SwiftPMTargetEvidenceStore()
+            let descriptionBefore = Data(try run(
+                ["swift", "package", "describe", "--type", "json"], in: root).utf8)
+            let inputsBefore = try evidenceStore.inputs(description: descriptionBefore, root: canonicalRoot)
+            let common = ["swift", "build", "--package-path", canonicalRoot,
+                          "--scratch-path", canonicalRoot + "/.build", "--configuration", "debug"]
             _ = try run(common + ["--build-tests", "--enable-index-store", "--jobs", "2"], in: root)
+            let descriptionAfter = Data(try run(
+                ["swift", "package", "describe", "--type", "json"], in: root).utf8)
+            let inputsAfter = try evidenceStore.inputs(description: descriptionAfter, root: canonicalRoot)
+            guard inputsBefore == inputsAfter else {
+                throw CommandError.failed("SwiftPM description or producer inputs changed during the build.")
+            }
+            try descriptionAfter.write(to: root.appendingPathComponent("description.json"))
             let fileSystem = LocalFileSystem()
             let locator = IndexStoreLocator(fileSystem: fileSystem)
             let store = try locator.locate(explicitPath: nil, projectPath: root.path)
             let checkedLibrary = try locator.locateLibrary(explicitPath: library, developerDirectory: nil)
             return Fixture(root: root, productionPath: try fileSystem.realPath(at: production.path),
                 testPath: try fileSystem.realPath(at: tests.path), store: store, library: checkedLibrary,
-                toolchain: toolchain.trimmingCharacters(in: .whitespacesAndNewlines))
+                toolchain: toolchain.trimmingCharacters(in: .whitespacesAndNewlines),
+                targetInputsBefore: inputsBefore, targetInputsAfter: inputsAfter)
         } catch {
             // 종료 소유권이 확인되지 않았다면 실행 중일 수 있는 파일을 지우지 않는다.
             if case CommandError.cleanupUnverified = error {} else {
