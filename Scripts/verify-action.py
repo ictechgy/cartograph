@@ -46,16 +46,17 @@ def check_planted_module(gate, environment, root):
 
 
 def check_literal_globs(gate, environment, root):
-    # args는 단어로만 나뉜다. 글롭을 펼치면 --exclude 패턴이 실제 디렉터리 이름으로 바뀌어 그 아래 파일을 못 거른다.
+    # args는 단어로만 나뉜다. globstar가 꺼진 bash는 `Tests/**`를 `*`처럼 펼쳐 `Tests/UI Tests/Unit`으로 바꾸고,
+    # 그러면 그 아래 파일을 못 거른다. CLI의 `*`도 `/`를 넘지 않아 `Tests/*`는 펼치든 말든 하위 디렉터리의 파일을 거르지 않는다.
     for directory in ("Tests/UI", "Tests/Unit"):
         (root / directory).mkdir(parents=True)
     argv = root / "argv"
-    result = execute(gate, {**environment, "INPUT_ARGS": "--exclude Tests/*", "INPUT_FAIL_ON_FINDINGS": "false",
+    result = execute(gate, {**environment, "INPUT_ARGS": "--exclude Tests/**", "INPUT_FAIL_ON_FINDINGS": "false",
                             "STUB_ARGV": str(argv)}, cwd=root)
     assert result.returncode == 0, result.stderr
     received = argv.read_text().split("\0")[:-1]
     assert received == ["check", "--project", environment["INPUT_PROJECT"], "--report-format", "sarif",
-                        "--output", environment["INPUT_SARIF"], "--quiet", "--exclude", "Tests/*"], received
+                        "--output", environment["INPUT_SARIF"], "--quiet", "--exclude", "Tests/**"], received
 
 
 def main():
