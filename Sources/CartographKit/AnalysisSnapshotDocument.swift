@@ -196,7 +196,8 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 parentUSR: symbol.parentUSR,
                 isExternal: symbol.isExternal,
                 accessibility: symbol.accessibility,
-                attributes: symbol.attributes
+                attributes: symbol.attributes,
+                compilerUnitTest: symbol.compilerUnitTest
             )
         }
         let externalUSRs = Set(snapshot.symbols.filter(\.isExternal).map(\.usr))

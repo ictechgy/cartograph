@@ -98,7 +98,8 @@ struct ValueFlowSourceLoader {
         let symbols = raw.symbols.map {
             IndexedSymbol(usr: $0.usr, name: $0.name, kind: $0.kind, module: $0.module,
                 location: location($0.location), parentUSR: $0.parentUSR, isExternal: $0.isExternal,
-                accessibility: $0.accessibility, attributes: $0.attributes)
+                accessibility: $0.accessibility, attributes: $0.attributes,
+                compilerUnitTest: $0.compilerUnitTest)
         }
         let references = raw.references.map {
             IndexedReference(sourceUSR: $0.sourceUSR, targetUSR: $0.targetUSR, kind: $0.kind,
