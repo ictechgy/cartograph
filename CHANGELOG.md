@@ -7,17 +7,100 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Planned release: **0.28.0**. This section describes source changes; it is not a publication or
+installation claim. The latest verified published CLI remains
+[0.27.1](https://github.com/ictechgy/cartograph/releases/tag/0.27.1).
+
+### Added
+
+- Preserve optional `IndexedSymbol.compilerUnitTest` declaration provenance independently of
+  syntax-based retention: `true` records an observed compiler test bit, `false` records its absence,
+  and `nil` means it was not captured. Neither `false` nor `nil` proves a declaration is not a test.
+  Exact-USR merging and snapshot/value-flow copies retain the observation.
+- Expose `XCTestIdentityFacts` for exact compiler XCTest ancestry and supported method identities.
+  Same-named declarations in different modules retain separate USRs, owners and ambiguity results.
+- Add the public SwiftPM target-evidence data model, `SwiftPMDeclaredTarget` and pure
+  `TestTargetMembershipFacts`. These describe explicitly captured source membership, not current
+  package completeness or executable tests. Receipt acquisition and validation remain controlled
+  test-support code: there is no production producer command or receipt-input option, and this
+  data is not used to authorize CLI test selectors.
+
+### Fixed
+
+- Keep conditional framework witnesses conditional when calculating `dead --report-test-only`.
+  A witness reached only from tests or previews no longer becomes an unconditional production
+  seed. Production paths still activate the same witness; ordinary dead-code reachability is unchanged.
+- Avoid assign-only property findings when a raw compiler override refers to a requirement outside
+  the admitted graph, or when source evidence is unavailable. Ordinary write-only controls remain
+  reportable; matching is by exact USR rather than a property's name.
+- Rank suggestions using each exact node's best alias before applying the existing deterministic
+  ordering and limit. Alias dictionary visitation order no longer fixes a worse score prematurely.
+- Include Interface Builder `outletCollection` property connections in the existing owner-scoped
+  XIB/storyboard resolver and retain the XML connection kind in its evidence. Explicit
+  `customModule` disambiguates same-named owners; missing or unknown module evidence does not select
+  an arbitrary owner. These are resource-to-code dependencies, not proof of a UI action, navigation
+  path or cross-process UI/E2E execution.
+
 ### Changed
 
+- Narrow `affected` XCTest class/method selectors only with exact framework ancestry, compiler
+  method provenance and the existing hierarchy/runtime-name checks. A selected class must own or
+  inherit a verified method. Legacy/name-only candidates remain included, but select their module
+  rather than an unproved class or method. Swift Testing and other unsupported narrow forms also
+  retain module-wide selection.
+- Report uncertain framework identity and the explicit assumption that indexed module names match
+  test-target names in the chosen scheme. Framework identity alone is not target membership,
+  executable-test discovery or permission to skip other tests.
 - Reuse graph-bound XCTest lifecycle preparation, raw file-to-node grouping and symbol-name lookup
-  within one immutable analysis context. File-only requests still skip name lookup; source refresh
-  and supplemental Core Data contexts prepare independent values. Request-specific runtime contracts
-  and traces remain separate.
-- Resolve file-path aliases on every request, including after a symlink retarget. This removes
-  repeated whole-graph grouping but retains per-request path normalization and result construction.
-- Add an optional release-binary Impact comparison using the existing real-compiler corpus, with
-  complete result equivalence and separate new-process CLI, first-request and warm MCP timings.
-  Construction counts alone are not an end-to-end speedup or IndexStoreDB superiority claim.
+  within one immutable analysis context. File-only requests skip name lookup; source refresh and
+  supplemental Core Data contexts prepare independent values. Runtime contracts and traces remain
+  request-specific. Every file request still resolves current path aliases, including symlink
+  retargets, and constructs its selected results.
+- Found-symbol queries share the existing reachability kernel without computing dead-code-only
+  findings and counterfactuals. Full dead-code analysis, public `UnusedCodeReport` storage/equality,
+  retention explanations and query documents keep their existing contracts.
+- Correct benchmark accounting to compare end-to-answer clocks, prepare reverse adjacency once
+  per generation and keep baseline-only oracle validation outside timed preparation. Rotate the
+  completed one-off Impact timing experiment to the bounded paired query diagnostic; historical
+  Impact receipts and ordinary Impact correctness/cache/refresh checks remain.
+
+### Compatibility and migration
+
+- This minor version includes additive public metadata and analysis APIs as well as correctness
+  fixes. Existing ordinary `IndexedSymbol` initializer calls retain their defaulted arguments.
+  Captured initializer function references may need their types updated. Swift binary ABI
+  compatibility is not promised: rebuild embedding clients against the new library.
+- Analysis snapshots remain v2. Older snapshots decode with unavailable compiler-test provenance;
+  older readers can ignore and lose the new optional field on round-trip. Rebuild/reindex as needed
+  and recapture with a capable version to obtain facts absent from an old snapshot. Syntax-cache
+  facts are not a substitute for compiler provenance.
+- The original graph-only `XCTestIdentifier.identifier` signature remains callable but returns
+  `nil` because a graph alone cannot prove the raw framework identity. Embedders that need a narrow
+  identifier must supply `XCTestIdentityFacts` from the same snapshot and retain the documented
+  module-to-target assumption. Handle `nil` conservatively rather than treating it as no affected tests.
+- Test lifecycle dependencies, inherited hooks, async XCTest declarations and indexed Swift Testing
+  declarations remain covered by regression fixtures. Parameterized cases and UI/integration/E2E
+  runtime relationships are not inferred solely from names or framework ancestry. Module-collision
+  tests combine actual compiler evidence with separately labelled synthetic graph/resource controls.
+
+### Performance evidence
+
+- The [isolated query run](https://github.com/ictechgy/cartograph/actions/runs/39160819347) compared
+  pre-split `54b1b41c` with the reviewed query candidate on one frozen project. All 28 fresh-process
+  calls passed complete output/exit/ordinary-stderr and input-identity checks. Instrumented found-facts
+  medians were **29.584 -> 15.727 ms**; uninstrumented whole-command medians were
+  **439.263 -> 440.911 ms**. The median of paired baseline/candidate wall ratios was 1.041, a different
+  statistic from the ratio of those absolute medians.
+- The separate [combined-main run](https://github.com/ictechgy/cartograph/actions/runs/39163522638)
+  at `3f418d41` passed the same 28-call checks: found-facts medians **30.357 -> 17.749 ms**,
+  uninstrumented whole-command medians **513.476 -> 410.261 ms**, and instrumented whole-command
+  medians **488.747 -> 502.183 ms**. Four pairs per instrumentation state cover the found case;
+  each other request shape has only one pair per state.
+- These receipts support reduced preparation work on the measured workload, not a general latency
+  or IndexStoreDB-superiority claim. Impact and whole-command measurements remain mixed.
+  Timing uses fresh processes rather than a proven cold cache; RSS is process-lifetime high-water,
+  not phase or process-tree memory. Instrumentation overhead is not isolated and
+  `final_evidence: false` remains unchanged.
 
 ## [0.27.1] - 2026-10-17
 

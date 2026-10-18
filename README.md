@@ -1870,6 +1870,25 @@ let (_, metrics, _) = service.metrics(in: context)
 Baselines, thresholds and output formatting are CI policy and live in the separate command API
 (`detectCycles()`, `detectUnusedCode()`, …), so a programmatic caller never has to parse a table.
 
+### 0.28 source migration
+
+Source version 0.28.0 is being prepared; the published installation pins above remain 0.27.1
+until the new release is verified. See the [unreleased notes](CHANGELOG.md#unreleased) for the
+complete scope and measured limits.
+
+Embedding clients should rebuild against the new library. The optional
+`IndexedSymbol.compilerUnitTest` field distinguishes a compiler observation from syntax-based
+retention; old snapshots leave it unavailable, and `false` is not proof of a non-test.
+Ordinary initializer calls retain defaults, but captured initializer function references may need
+updating. Analysis snapshots stay v2; older readers may drop the new optional provenance.
+
+`XCTestIdentityFacts` describes framework identity, not test-target membership. The public
+SwiftPM membership model and pure facts are available for explicit captured inputs, while receipt
+acquisition/validation is still test-support code, with no production command or input option.
+The graph-only `XCTestIdentifier.identifier` overload now conservatively returns `nil`; pass identity
+facts from the same snapshot to use the new overload, and preserve the documented module-to-target
+assumption. Neither form establishes safe test skipping or arbitrary UI/E2E execution.
+
 ## Project language
 
 Documentation and user-facing output are in English. Source comments are in Korean, which is the
