@@ -70,10 +70,14 @@ jobs:
             echo "Checked-out source does not match the requested commit." >&2
             exit 1
           fi
-          # HEAD가 같아도 체크아웃 뒤에 바뀐 트리는 리뷰한 소스가 아니다. git이 실패하면 대입에서 멈춘다.
-          changes="$(git status --porcelain)"
+          # HEAD가 같아도 체크아웃 뒤에 바뀐 트리는 리뷰한 소스가 아니다. swift build는 .build/·.swiftpm/ 같은 무시 경로도
+          # 읽으므로 무시 파일까지 본다. --untracked-files=all은 git 설정이 추적 안 된 파일을 숨기지 못하게 한다.
+          # git이 실패하면 대입에서 멈춘다.
+          changes="$(git status --porcelain --ignored --untracked-files=all)"
           if [ -n "$changes" ]; then
             echo "Checked-out source has local changes; release only the clean reviewed commit." >&2
+            # 어떤 경로가 걸렸는지 로그에서 바로 보이게 앞부분만 출력한다.
+            head -n 20 <<< "$changes" >&2
             exit 1
           fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
