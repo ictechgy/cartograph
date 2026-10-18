@@ -104,6 +104,16 @@ macOS, also set a compatible `image` on the `cartograph-corpus` job. Shell runne
 It also runs the behavioral tests on Linux. A release cannot skip the macOS integration job.
 Configure an eligible runner before creating a version tag; no runner is installed or registered by this project.
 
+The pipeline's Linux job images are pinned by digest, so a moved tag cannot change the code that gates
+or publishes a release. To update one, inspect its tag and copy the top-level `Digest` (the multi-platform
+index, not an entry under `Manifests`) into `.gitlab-ci.yml`, then refresh the date in the comment above it.
+The behavioral tests reject a Linux job image without a digest.
+
+```sh
+docker buildx imagetools inspect python:3.12-slim
+docker buildx imagetools inspect registry.gitlab.com/gitlab-org/cli:latest
+```
+
 To exercise the full upstream compiler corpus locally on a Mac:
 
 ```sh

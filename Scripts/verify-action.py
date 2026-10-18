@@ -19,9 +19,44 @@ def script(name):
     return textwrap.dedent(step.split("      run: |\n", 1)[1])
 
 
-def execute(source, environment):
+def execute(source, environment, cwd=None):
+    # Actions는 단계를 분석 대상 체크아웃에서 실행한다. cwd를 생략하면 이 스크립트의 작업 디렉터리를 물려받는다.
     return subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", source],
-                          env={**os.environ, **environment}, capture_output=True, text=True)
+                          env={**os.environ, **environment}, cwd=cwd, capture_output=True, text=True)
+
+
+def artifact_uris(sarif):
+    locations = json.loads(sarif.read_text())["runs"][0]["results"][0]["locations"]
+    return [item["physicalLocation"]["artifactLocation"]["uri"] for item in locations]
+
+
+def converted_uris(root):
+    # 상대 경로만 프로젝트 기준 file URI가 되고, 스킴이나 uriBaseId가 있는 위치는 그대로 남는다.
+    return [(root / "Sources/Space #Thing.swift").as_uri(), "file:///already/absolute.swift", "Other.swift"]
+
+
+def check_planted_module(gate, environment, root):
+    # 체크아웃 루트의 json.py가 SARIF 경로 변환의 표준 모듈을 가리면 그 코드가 샌드박스 밖에서 실행된다.
+    marker = root / "planted-json-imported"
+    (root / "json.py").write_text(f"open({str(marker)!r}, 'w').close()\nraise SystemExit(3)\n")
+    result = execute(gate, {**environment, "STUB_CODE": "0", "WRITE_REPORT": "true"}, cwd=root)
+    assert not marker.exists(), "json.py in the analyzed checkout replaced the standard library module"
+    assert result.returncode == 0, result.stderr
+    assert artifact_uris(Path(environment["INPUT_SARIF"])) == converted_uris(root)
+
+
+def check_literal_globs(gate, environment, root):
+    # args는 단어로만 나뉜다. globstar가 꺼진 bash는 `Tests/**`를 `*`처럼 펼쳐 `Tests/UI Tests/Unit`으로 바꾸고,
+    # 그러면 그 아래 파일을 못 거른다. CLI의 `*`도 `/`를 넘지 않아 `Tests/*`는 펼치든 말든 하위 디렉터리의 파일을 거르지 않는다.
+    for directory in ("Tests/UI", "Tests/Unit"):
+        (root / directory).mkdir(parents=True)
+    argv = root / "argv"
+    result = execute(gate, {**environment, "INPUT_ARGS": "--exclude Tests/**", "INPUT_FAIL_ON_FINDINGS": "false",
+                            "STUB_ARGV": str(argv)}, cwd=root)
+    assert result.returncode == 0, result.stderr
+    received = argv.read_text().split("\0")[:-1]
+    assert received == ["check", "--project", environment["INPUT_PROJECT"], "--report-format", "sarif",
+                        "--output", environment["INPUT_SARIF"], "--quiet", "--exclude", "Tests/**"], received
 
 
 def main():
@@ -29,7 +64,11 @@ def main():
     with tempfile.TemporaryDirectory(prefix="cartograph-action-test-") as directory:
         root = Path(directory).resolve()
         binary = root / "cartograph"
-        binary.write_text('#!/bin/bash\nif [ "$WRITE_REPORT" = true ]; then printf \'%s\\n\' "$STUB_REPORT" > "$INPUT_SARIF"; fi\nexit "$STUB_CODE"\n')
+        # STUB_ARGV가 있으면 스텁이 받은 인자를 NUL로 구분해 남긴다.
+        binary.write_text('#!/bin/bash\n'
+                          '[ -z "$STUB_ARGV" ] || printf \'%s\\0\' "$@" > "$STUB_ARGV"\n'
+                          'if [ "$WRITE_REPORT" = true ]; then printf \'%s\\n\' "$STUB_REPORT" > "$INPUT_SARIF"; fi\n'
+                          'exit "$STUB_CODE"\n')
         binary.chmod(0o700)
         count = 0
         for code, writes, strict, expected in [
@@ -55,10 +94,8 @@ def main():
             assert values["exit-code"] == str(code)
             assert bool(values.get("sarif-file")) == (writes and code in (0, 1)), values
             if values.get("sarif-file"):
-                locations = json.loads(sarif.read_text())["runs"][0]["results"][0]["locations"]
-                uris = [item["physicalLocation"]["artifactLocation"]["uri"] for item in locations]
-                assert uris == [(root / "Sources/Space #Thing.swift").as_uri(),
-                                "file:///already/absolute.swift", "Other.swift"], uris
+                uris = artifact_uris(sarif)
+                assert uris == converted_uris(root), uris
             if not writes:
                 assert not sarif.exists(), "stale SARIF survived a failed invocation"
             result = execute(report, {"EXIT_CODE": values["exit-code"],
@@ -68,7 +105,9 @@ def main():
             count += 1
         result = execute(gate, {**env, "INPUT_COMMAND": "unsupported"})
         assert result.returncode == 2
-    print(f"PASS: {count} action outcomes plus unsupported-command rejection")
+        check_planted_module(gate, env, root)
+        check_literal_globs(gate, env, root)
+    print(f"PASS: {count} action outcomes plus unsupported-command, planted-module and literal-glob checks")
 
 
 if __name__ == "__main__":

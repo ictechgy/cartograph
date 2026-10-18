@@ -13,7 +13,7 @@ inputs:
     required: false
     default: check
   args:
-    description: "Extra arguments for the command, for example --since origin/main --limit 500."
+    description: "Extra arguments for the command, for example --since origin/main --limit 500. Globs are not expanded."
     required: false
     default: ""
   version:
@@ -125,15 +125,19 @@ runs:
         rm -f -- "$INPUT_SARIF"
         # Findings are expected to exit 1; the final step decides whether that fails the job.
         set +e
-        # shellcheck disable=SC2086 — args is a workflow-author controlled argument list.
+        # Split args into words but never glob them, so --include/--exclude patterns reach the CLI as written.
+        set -f
+        # shellcheck disable=SC2086 — word splitting of the workflow-author controlled args is intended.
         "$CARTOGRAPH_BINARY" "$INPUT_COMMAND" --project "$INPUT_PROJECT" \
           "${strict[@]}" --report-format sarif --output "$INPUT_SARIF" --quiet $INPUT_ARGS
         code=$?
+        set +f
         set -e
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
         if { [ "$code" = "0" ] || [ "$code" = "1" ]; } && [ -s "$INPUT_SARIF" ]; then
           # CLI paths are project-relative; GitHub resolves paths from the checkout root.
-          python3 - "$INPUT_SARIF" "$INPUT_PROJECT" <<'PY'
+          # -I: this runs inside the analyzed checkout, whose modules must not shadow the standard library.
+          python3 -I - "$INPUT_SARIF" "$INPUT_PROJECT" <<'PY'
         import json, sys
         from pathlib import Path
         from urllib.parse import unquote, urlsplit

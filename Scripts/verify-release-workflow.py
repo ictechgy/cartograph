@@ -19,6 +19,9 @@ OTHER_SHA = "b" * 40
 TAG_OBJECT = "c" * 40
 VERSION = "0.26.0"
 TAG_STEP = "Ensure the exact release tag after verification"
+# uses: 줄에서 참조만 뽑는다. 사람이 읽는 '# v7.0.1' 같은 버전 주석은 허용한다.
+USES = re.compile(r"^[ \t]+(?:- )?uses:[ \t]*(\S+)[ \t]*(?:#.*)?$", re.MULTILINE)
+PINNED_ACTION = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[0-9a-f]{40}")
 
 
 def step(name):
@@ -81,6 +84,10 @@ if command == "git":
         if state["kind"] == "blob":
             fail("mock tag does not peel to a commit")
         print(state["fetched"])
+    elif args == ["status", "--porcelain", "--ignored", "--untracked-files=all"]:
+        if state.get("status_fail"):
+            fail("mock status failed")
+        print(state.get("porcelain", ""), end="")
     else:
         fail("Unrecognized git call: " + repr(args))
 elif command == "gh":
@@ -179,6 +186,16 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertLess(workflow.index("Validate manual source input"), workflow.index("uses: actions/checkout"))
         self.assertIn("if: github.event_name == 'workflow_dispatch'", step("Validate manual source input"))
 
+    def test_every_action_is_pinned_to_a_full_commit_sha(self):
+        # 이 잡은 contents: write 토큰으로 게시한다. 태그가 옮겨져도 실행되는 액션 코드는 바뀌면 안 된다.
+        workflow = WORKFLOW.read_text()
+        references = USES.findall(workflow)
+        self.assertTrue(references)
+        self.assertEqual(len(references), len(re.findall(r"\buses\s*:", workflow)))
+        for reference in references:
+            with self.subTest(reference=reference):
+                self.assertIsNotNone(PINNED_ACTION.fullmatch(reference), reference)
+
     def test_manual_input_accepts_only_exact_full_dispatch_sha(self):
         self.assert_passes(self.execute("Validate manual source input"))
         for value in ("", SHA[:12], "main", "g" * 40, SHA.upper(), SHA + "\n", OTHER_SHA):
@@ -212,6 +229,31 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.source_path.write_text("// missing declaration\n")
         self.assert_refuses(self.execute("Resolve version"))
         self.assertTrue(all(call["command"] == "git" for call in self.calls()))
+
+    def test_resolve_refuses_a_changed_or_unreadable_checkout(self):
+        # HEAD가 같아도 체크아웃 뒤에 바뀐 트리는 리뷰한 소스가 아니다. swift build가 읽는 무시 경로의 파일도
+        # 거부하고, 걸린 경로를 로그에 남긴다. git이 실패해도 통과시키지 않는다.
+        self.assert_passes(self.execute("Resolve version"))
+        self.assertEqual([call["args"] for call in self.calls()],
+                         [["rev-parse", "HEAD"], ["status", "--porcelain", "--ignored", "--untracked-files=all"]])
+        for changes, message in (({"porcelain": " M Sources/CartographCore/Cartograph.swift\n"}, "local changes"),
+                                 ({"porcelain": "?? Sources/Planted.swift\n"}, "local changes"),
+                                 ({"porcelain": "!! .build/checkouts/swift-syntax/Sources/Planted.swift\n"
+                                                "!! .swiftpm/configuration/mirrors.json\n"}, "local changes"),
+                                 ({"status_fail": True}, "mock status failed")):
+            with self.subTest(changes=changes):
+                self.reset_state(**changes)
+                self.env_path.write_text("")
+                result = self.execute("Resolve version")
+                self.assert_refuses(result, message)
+                for line in changes.get("porcelain", "").splitlines():
+                    self.assertIn(line, result.stderr)
+                self.assertEqual(self.env_path.read_text(), "")
+        # 걸린 경로는 앞 20줄만 보여 준다. 무시 디렉터리 하나가 로그를 덮지 않게 한다.
+        self.reset_state(porcelain="".join(f"!! .build/File{index}.swift\n" for index in range(25)))
+        result = self.execute("Resolve version")
+        self.assert_refuses(result, "!! .build/File19.swift")
+        self.assertNotIn("File20.swift", result.stderr)
 
     def test_absent_manual_tag_is_created_at_exact_sha_before_release(self):
         self.reset_state(kind="absent")

@@ -58,9 +58,10 @@ spec:
     CARTOGRAPH_BINARY:
       value: $[[ inputs.binary ]]
       expand: false
+  # -I: the job runs inside the checkout, whose modules must not shadow the standard library.
   script:
     - |
-      python3 - <<'PY'
+      python3 -I - <<'PY'
       # CARTOGRAPH_RUNNER_BEGIN
       import hashlib
       import json
