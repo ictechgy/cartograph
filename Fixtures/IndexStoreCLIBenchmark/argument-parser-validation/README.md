@@ -41,7 +41,8 @@ python3 Scripts/benchmark-indexstore-cli.py \
   --cartograph-package "$PWD" --output /tmp/cartograph-cli-setup
 python3 Scripts/benchmark-indexstore-project.py \
   --setup-results /tmp/cartograph-cli-setup/results.json \
-  --output /tmp/cartograph-project-validation --repetitions 4
+  --output /tmp/cartograph-project-validation --repetitions 4 \
+  --cartograph-graph-mode include-self-loops
 ```
 
 Use an absent or empty output directory. The runner reuses the exact recorded

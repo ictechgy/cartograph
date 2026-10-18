@@ -146,4 +146,71 @@ struct RuntimeResourceScannerTests {
                 == ["title&subtitle"])
         #expect(!boundaries.compactMap(\.name).contains("LegacyController"))
     }
+
+    @Test("outlet collection은 목적지 뷰 대신 소유 컨트롤러의 프로퍼티로 연결한다")
+    func preservesOutletCollectionOwners() {
+        let source = """
+            <objects>
+              <viewController id="first" customClass="Screen" customModule="App">
+                <connections>
+                  <outletCollection property="labels" destination="first-label" id="first-connection"/>
+                  <outletCollection property="labels" destination="second-label"/>
+                </connections>
+              </viewController>
+              <viewController id="second" customClass="Screen" customModule="Other">
+                <connections><outletCollection property="labels" destination="first-label"/></connections>
+              </viewController>
+              <label id="first-label" customClass="Label" customModule="Views"/>
+              <label id="second-label"/>
+              <!-- <outletCollection property="ignored" destination="first-label"/> -->
+            </objects>
+            """
+        let facts = RuntimeResourceScanner.scan(source: source, path: "/p/Main.storyboard")
+        let collections = facts.boundaries.filter { $0.kind == .interfaceBuilderOutlet }
+        #expect(collections.count == 3)
+        #expect(collections.map(\.api) == ["outletCollection", "outletCollection", "outletCollection"])
+        #expect(collections.map(\.receiverTypeName) == ["App.Screen", "App.Screen", "Other.Screen"])
+        #expect(collections.map(\.resourceObjectID) == ["first", "first", "second"])
+        #expect(collections.allSatisfy {
+            $0.targetMemberName == "labels" && $0.receiverOrigin == .enclosingType && $0.reason == nil
+        })
+        #expect(Set(collections.map(\.id)).count == collections.count)
+        #expect(RuntimeResourceScanner.scan(source: source, path: "/p/Main.storyboard") == facts)
+    }
+
+    @Test("outlet collection의 누락과 중복 소유자는 확정 연결이 되지 않는다")
+    func preservesUnresolvedOutletCollections() {
+        let source = """
+            <objects>
+              <viewController id="duplicate" customClass="First">
+                <connections><outletCollection property="labels" destination="label"/></connections>
+              </viewController>
+              <viewController id="duplicate" customClass="Second"/>
+              <viewController id="plain">
+                <connections><outletCollection property="labels" destination="label"/></connections>
+              </viewController>
+              <viewController id="screen" customClass="Screen">
+                <connections>
+                  <outletCollection destination="label"/>
+                  <outletCollection property="title&amp;subtitle" destination="label"/>
+                </connections>
+              </viewController>
+              <connections><outletCollection property="orphan" destination="label"/></connections>
+            </objects>
+            """
+        let collections = RuntimeResourceScanner.scan(source: source, path: "/p/View.xib").boundaries
+            .filter { $0.kind == .interfaceBuilderOutlet }
+        #expect(collections.count == 5)
+        let reasons = Set(collections.compactMap(\.reason))
+        #expect(reasons == [
+            "duplicate resource object id 'duplicate'",
+            "owning object 'plain' has no custom class",
+            "outletCollection has no property",
+            "connection has no owning object",
+        ])
+        #expect(collections.filter { $0.reason != nil }.allSatisfy { $0.receiverTypeName == nil })
+        #expect(collections.first { $0.reason == nil }?.targetMemberName == "title&subtitle")
+        #expect(collections.first { $0.reason == nil }?.receiverTypeName == "Screen")
+    }
+
 }

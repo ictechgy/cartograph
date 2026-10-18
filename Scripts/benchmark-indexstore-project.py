@@ -161,9 +161,11 @@ def unique_bindings(candidates: dict[str, set[str]], oracle: dict) -> dict[str, 
 
 
 def reverse_depths(edges: list[list[str]], seed: str, maximum: int) -> dict[str, int]:
-    reverse: dict[str, set[str]] = {}
-    for caller, callee in edges:
-        reverse.setdefault(callee, set()).add(caller)
+    return depths_from_reverse(BASE.reverse_adjacency(edges), seed, maximum)
+
+
+def depths_from_reverse(reverse: dict[str, set[str]], seed: str, maximum: int) -> dict[str, int]:
+    """준비된 세대의 역방향 인접 목록을 재사용하되 최소 깊이 계약은 유지한다."""
     distances, pending = {seed: 0}, deque([seed])
     while pending:
         current = pending.popleft()

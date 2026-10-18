@@ -13,7 +13,7 @@ public struct RetentionOptions: Sendable, Codable, Equatable {
     public var retainObjectiveCAccessible: Bool
     /// Interface Builder 연결 가능성이 있는 선언을 보존한다.
     ///
-    /// xib/storyboard 를 아직 파싱하지 않으므로, 연결 여부를 확인하는 대신
+    /// xib/storyboard에서 찾은 참조와 별개로, 입력 밖 연결을 놓치지 않도록
     /// `@IBOutlet`/`@IBAction` 계열을 보수적으로 모두 보존한다.
     public var retainInterfaceBuilder: Bool
     /// 테스트 선언을 보존한다.
