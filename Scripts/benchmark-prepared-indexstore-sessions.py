@@ -116,7 +116,7 @@ def baseline_worker(config: dict) -> None:
     def terminate(_signal, _frame):
         raise SystemExit(143)  # 실행 중인 실제 index-dump 도 BASE.run 의 finally 로 정리한다.
     signal.signal(signal.SIGTERM, terminate)
-    graph, admitted, generation = None, None, 0
+    graph, reverse, admitted, generation = None, None, None, 0
     for raw in sys.stdin.buffer:
         require(len(raw) <= MCP.MAX_LINE, "Oversized request")
         request = json.loads(raw)
@@ -129,11 +129,10 @@ def baseline_worker(config: dict) -> None:
             current = metadata(config)
             require(admitted is None or current == admitted, "Baseline refuses input metadata drift")
             if graph is None or arguments.get("refresh"):
-                verify_bytes(config)
                 directory = Path(config["out"]) / f"generation-{generation + 1}"
                 graph = PROJECT.baseline_discovery({**config, "out": str(directory)})
                 require(metadata(config) == current, "Input changed during baseline discovery")
-                require(PROJECT.graph_grade(graph, config["oracle"])["exact_match"], "Baseline graph failed oracle")
+                reverse = BASE.reverse_adjacency(graph["edges"])
                 admitted, generation = current, generation + 1
                 BASE.save(Path(config["out"]) / f"generation-{generation}" / "graph.json", graph)
             payload = {"generation": generation, "ready": True, "fingerprint": admitted}
@@ -142,7 +141,7 @@ def baseline_worker(config: dict) -> None:
                 require(arguments == {"symbols": [deepest["seed"]], "depth": deepest["max_depth"], "limit": 1000},
                         "Unexpected baseline workload")
                 payload = {"session": payload, "answers": PROJECT.combined_answers(
-                    PROJECT.reverse_depths(graph["edges"], deepest["seed"], deepest["max_depth"]), config["requests"])}
+                    PROJECT.depths_from_reverse(reverse, deepest["seed"], deepest["max_depth"]), config["requests"])}
             result = {"resultType": "complete", "isError": False, "structuredContent": payload}
         print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": result}, sort_keys=True), flush=True)
 
@@ -261,9 +260,20 @@ def query(client: Client, arm: str, config: dict, graph: dict, generation: int) 
     return {**measurement, "generation": generation, "grade": grade, "answers": answers}
 
 
+def verify_baseline_generation(config: dict, generation: int) -> dict:
+    """실제 방출 그래프의 오라클 검증은 준비·새로고침 IPC 시계가 멈춘 뒤 수행한다."""
+    started = time.perf_counter()
+    path = Path(config["out"]) / f"generation-{generation}" / "graph.json"
+    graph = PROJECT.read_json(path)
+    grade = PROJECT.graph_grade(graph, config["oracle"])
+    require(grade["exact_match"], "Baseline graph failed oracle")
+    return {"generation": generation, "grade": grade, "graph_sha256": BASE.sha256(path),
+            "seconds": time.perf_counter() - started}
+
+
 def run(config: dict, graph: dict, out: Path, report: dict, deadline: float | None = None) -> None:
     clients, generations = {}, {}
-    report.update(preparation={}, first={}, warm_pairs=[], refresh={}, processes={}, byte_checks=[])
+    report.update(preparation={}, first={}, warm_pairs=[], refresh={}, processes={}, byte_checks=[], graph_checks=[])
     BASE.save(out / "baseline-config.json", config)
     try:
         report["byte_checks"].append({"phase": "before-preparation", **verify_bytes(config)})
@@ -279,6 +289,10 @@ def run(config: dict, graph: dict, out: Path, report: dict, deadline: float | No
             generations[arm] = status["generation"]
             report["preparation"][arm] = {"spawn_to_graph_ready_seconds": client.completed - client.started,
                                           "generation": status["generation"], "discover": discover, "status": ready}
+            if arm == "baseline":
+                report["graph_checks"].append({"phase": "preparation",
+                                                **verify_baseline_generation(config, status["generation"])})
+        report["byte_checks"].append({"phase": "after-preparation", **verify_bytes(config)})
         phases = [("first", ARMS), *[(f"warm-{number}", order) for number, order in enumerate(ORDERS)]]
         for phase, order in phases:
             report["byte_checks"].append({"phase": f"before-{phase}", **verify_bytes(config)})
@@ -296,6 +310,9 @@ def run(config: dict, graph: dict, out: Path, report: dict, deadline: float | No
             status, measurement = clients[arm].call("cartograph_status", {"refresh": True})
             require(status["generation"] == generations[arm] + 1,
                     "Forced refresh did not advance exactly one generation")
+            if arm == "baseline":
+                report["graph_checks"].append({"phase": "refresh",
+                                                **verify_baseline_generation(config, status["generation"])})
             answer = query(clients[arm], arm, config, graph, status["generation"])
             report["refresh"][arm] = {"completed_refresh": measurement, "first_answer": answer,
                 "refresh_plus_first_answer_seconds": measurement["ipc_seconds"] + answer["ipc_seconds"]}
@@ -305,7 +322,9 @@ def run(config: dict, graph: dict, out: Path, report: dict, deadline: float | No
                             + sum(pair[arm]["ipc_seconds"] for pair in report["warm_pairs"])
                             + report["refresh"][arm]["refresh_plus_first_answer_seconds"] for arm in ARMS}
         report["common_byte_verification_seconds"] = sum(check["seconds"] for check in report["byte_checks"])
-        common = report["admission_seconds"] + report["common_byte_verification_seconds"]
+        report["common_graph_verification_seconds"] = sum(check["seconds"] for check in report["graph_checks"])
+        common = (report["admission_seconds"] + report["common_byte_verification_seconds"]
+                  + report["common_graph_verification_seconds"])
         report["totals_including_common_verification_seconds"] = {
             arm: total + common for arm, total in report["totals"].items()}
         require(deadline is None or time.monotonic() < deadline, "Shared driver deadline exceeded")
@@ -349,6 +368,10 @@ def main(argv: list[str] | None = None) -> int:
                                    "then first answer; no source edit or rebuild"),
               "total_contract": ("Per-arm spawn-to-ready + first + four warm queries + completed refresh "
                                  "+ first refreshed answer; shared checks separate"),
+              "validation_clock": ("Shared byte checks and baseline graph-oracle grading run in the controller "
+                                   "outside both arm clocks; their recorded cost is added equally to both "
+                                   "totals_including_common_verification_seconds"),
+              "baseline_reuse": "Reverse adjacency is built once per discovered generation and reused by warm queries",
               "prior_setup": ("Reuses existing binaries/project compilation/native identity discovery; "
                               "their measured costs remain in project results"),
               "warm_orders": ORDERS, "refresh_order": ARMS,
