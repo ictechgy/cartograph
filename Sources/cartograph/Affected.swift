@@ -17,8 +17,9 @@ struct AffectedCommand: ParsableCommand {
             tests cover the change. `impact` remains the wider report of every affected declaration.
 
             --format xcodebuild prints one -only-testing: argument per line. Only top-level XCTest
-            classes without subclasses, and their test methods, are narrowed; every other test
-            selects its whole test module. A truncated or unresolved answer prints no arguments.
+            classes with verified compiler ancestry/method facts and no subclasses are narrowed;
+            uncertain candidates select their whole module. Module names are assumed to match
+            test targets in the chosen scheme. A truncated or unresolved answer prints no arguments.
             """
     )
 

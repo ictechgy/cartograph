@@ -18,7 +18,9 @@
   "level": "symbol",
   "limitations": [
     "objective-c-sources: 1 file(s); the graph uses available Clang index evidence, while runtime dispatch and unindexed source paths may be absent",
-    "local-function-projection: 1 source local function(s) could not be bound through a fresh, unambiguous call/reference chain; their indexed references remain attributed to enclosing declarations. Inspect source for exact local ownership."
+    "local-function-projection: 1 source local function(s) could not be bound through a fresh, unambiguous call/reference chain; their indexed references remain attributed to enclosing declarations. Inspect source for exact local ownership.",
+    "test-target-assumption: xcodebuild selection assumes each indexed module name matches a test target in the chosen scheme; framework identity does not prove target membership",
+    "uncertain-test-identity: reached candidates without a proved XCTest selector are retained and widened to their module; syntax/legacy test markers are not runnable-test proof"
   ],
   "requestedFiles": [],
   "requestedSymbols": [
