@@ -1,6 +1,6 @@
 /// 코드 의존성 그래프.
 ///
-/// 생성 시점에 인접 리스트를 한 번만 만들어 두고 이후에는 읽기만 한다.
+/// 생성 시점에 인접 리스트와 정렬된 정점 목록을 한 번만 만들어 두고 이후에는 읽기만 한다.
 /// 분석 알고리즘들이 `successors(of:)` 를 반복 호출하므로,
 /// 매번 간선 배열을 훑으면 O(V*E) 가 되는 것을 막기 위함이다.
 public struct CodeGraph: Sendable {
@@ -12,6 +12,12 @@ public struct CodeGraph: Sendable {
 
     private let outgoing: [NodeID: [GraphEdge]]
     private let incoming: [NodeID: [GraphEdge]]
+    /// 식별자 순으로 정렬한 정점 식별자와 정점. `nodes` 에서 파생된 값이라 `==`·`Codable` 은 보지 않는다.
+    ///
+    /// 분석 한 번이 정렬된 목록을 십여 차례 읽는다. 접근마다 USR 전체를 다시 정렬하면 정점 수가 큰
+    /// 프로젝트에서 도달성 분석 시간의 절반 이상이 같은 정렬의 반복이 된다. 그래프는 불변이라 한 번이면 된다.
+    private let orderedIDs: [NodeID]
+    private let orderedNodes: [GraphNode]
 
     /// 정점과 간선으로 그래프를 만든다.
     ///
@@ -20,7 +26,11 @@ public struct CodeGraph: Sendable {
     ///   흘리지 않기 위해서다.
     public init(level: GraphLevel, nodes: [GraphNode], edges: [GraphEdge]) {
         self.level = level
-        self.nodes = Dictionary(nodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let nodesByID = Dictionary(nodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        self.nodes = nodesByID
+        let orderedIDs = nodesByID.keys.sorted()
+        self.orderedIDs = orderedIDs
+        orderedNodes = orderedIDs.compactMap { nodesByID[$0] }
 
         var merged: [EdgeSignature: Int] = [:]
         for edge in edges {
@@ -49,14 +59,14 @@ public struct CodeGraph: Sendable {
         let kind: EdgeKind
     }
 
-    /// 결정적인 순서로 정렬된 정점 식별자 목록.
+    /// 결정적인 순서로 정렬된 정점 식별자 목록. 생성 때 정렬해 둔 것을 돌려준다.
     public var nodeIDs: [NodeID] {
-        nodes.keys.sorted()
+        orderedIDs
     }
 
-    /// 정렬된 정점 목록.
+    /// 식별자 순으로 정렬된 정점 목록. 생성 때 정렬해 둔 것을 돌려준다.
     public var sortedNodes: [GraphNode] {
-        nodeIDs.compactMap { nodes[$0] }
+        orderedNodes
     }
 
     public var nodeCount: Int { nodes.count }
@@ -109,10 +119,11 @@ public struct CodeGraph: Sendable {
             outgoing[edge.source, default: []].insert(edge.target)
             incoming[edge.target, default: []].insert(edge.source)
         }
+        // 결과가 사전이라 순서가 남지 않는다. 정렬 목록 대신 키를 그대로 훑는다.
         var result: [NodeID: Int] = [:]
-        result.reserveCapacity(sortedNodes.count)
-        for node in sortedNodes {
-            result[node.id] = (outgoing[node.id]?.count ?? 0) + (incoming[node.id]?.count ?? 0)
+        result.reserveCapacity(nodes.count)
+        for id in nodes.keys {
+            result[id] = (outgoing[id]?.count ?? 0) + (incoming[id]?.count ?? 0)
         }
         return result
     }
