@@ -61,8 +61,12 @@ small gaps, observation/diagnostic writes, teardown and process-recorder overhea
 not isolate those costs. Enabled-minus-disabled medians also include noise and order/cache
 effects. This is an instrumentation diagnostic, not a comparative speed or superiority claim.
 
-Each process is capped at 45 seconds and 1 MiB per output stream. A 300-second shared alarm
-enters the existing process-group cleanup; the CI step has a six-minute cap. Raw records
+Each process is capped at 45 seconds. Nonblocking pipes retain at most 1 MiB per output
+stream, with a rejecting one-byte probe; phase capture keeps its stricter requirement that
+each complete stream is smaller than 1 MiB. This bounds stdout/stderr without imposing a
+file-size limit on unrelated child cache or index writes. A 300-second shared alarm enters
+owned process-group cleanup; the CI step has a six-minute cap. Cleanup signals the group
+before reaping its retained leader, and unresolved ownership or cleanup errors fail capture. Raw records
 are retained under `runs/query-phases` in the existing normalized project artifact. Existing
 output directories are refused. Failed attempts remain failed; there is no automatic rerun.
 
@@ -81,6 +85,17 @@ Baseline/candidate order alternates by slot. Full stdout bytes, exit status and 
 stderr after removing the phase record must match across both arms and all repetitions.
 The existing per-process and shared driver caps are unchanged; no adaptive repeats or
 cache flushes are added.
+
+Paired cache protocol version 2 gives each arm its own newly created, initially empty
+`TMPDIR`, reused only by that arm across the fixed schedule. The first ambiguous query
+initializes application caches; later requests may reuse them. Every capture restores the
+parent's prior `TMPDIR`, including on failure. These owned directories sit outside the
+artifact's selected `setup`, `runs` and `fixtures` trees, so cache bodies are not publication
+inputs. Ordinary single-arm mode retains the inherited temporary-directory setting.
+This is symmetric initial application-cache state, not proof of cold OS caches. Earlier
+shared-`TMPDIR` timing receipts remain historical evidence under their prior protocol and
+must not be pooled with version-2 results. Complete query output equality and frozen
+source/index/configuration checks remain required.
 
 After all gates pass, `QueryProjectionTiming` prints a bounded numeric summary containing
 the exact source revisions and binary identities. Each arm retains its absolute wall,
@@ -103,7 +118,9 @@ test logs were unavailable; their byte identities and results were not reused.
 `python3 Scripts/verify-query-phases.py` checks finite parsing, exact record removal, bounded
 real Python children, cancellation, schedule, output mutations, oracle checks and the
 unchanged publication boundary. Optional-mode tests also check exact baseline admission,
-paired ordering and ratios, and rejection of mutated outputs. Synthetic test timings are
+paired ordering and ratios, rejection of mutated outputs, arm cache isolation/restoration,
+and real stream overflow/timeout/cleanup cases. An unrelated file larger than the stream cap
+must succeed, while oversized streams and unresolved root ownership fail. Synthetic test timings are
 not native measurements.
 
 Swift tests cover no-clock disabled execution, exact opt-in, timing/error propagation,

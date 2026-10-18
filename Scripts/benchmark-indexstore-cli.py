@@ -16,6 +16,7 @@ import platform
 import random
 import re
 import resource
+import selectors as stream_selectors
 import shutil
 import signal
 import statistics
@@ -48,12 +49,161 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def run(command: list[str], cwd: Path, stem: Path, timeout: float = 300) -> dict[str, Any]:
+
+STREAM_TERM_SECONDS, STREAM_KILL_SECONDS = 5, 5
+
+
+def _run_stream_capped(command: list[str], cwd: Path, stem: Path, timeout: float,
+                       stream_limit: int) -> dict[str, Any]:
+    """파이프 출력만 제한하며 다른 자식 파일 쓰기에는 새 제한을 걸지 않는다."""
+    if type(stream_limit) is not int or stream_limit <= 0:
+        raise ValueError("Positive integer stream limit required")
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("Positive finite command timeout required")
+    stem.parent.mkdir(parents=True, exist_ok=True)
+    paths = {name: Path(str(stem) + "." + name) for name in ("stdout", "stderr")}
+    files, pipes, counts = {}, {}, dict.fromkeys(paths, 0)
+    selector = stream_selectors.DefaultSelector()
+    process, usage, returncode, primary = None, None, None, None
+    timed_out, overflow, reaped = False, None, False
+    cleanup_errors, ownership_lost = [], False
+    started = time.perf_counter()
+    deadline = time.monotonic() + timeout
+
+    def close_pipe(pipe):
+        try:
+            selector.unregister(pipe)
+        except KeyError:
+            pass
+        pipe.close()
+
+    def reap_nonblocking():
+        nonlocal usage, returncode, reaped, ownership_lost
+        try:
+            pid, status, observed = os.wait4(process.pid, os.WNOHANG)
+            if pid:
+                if pid != process.pid:
+                    raise RuntimeError("Unexpected reaped PID")
+                usage, returncode, reaped = observed, os.waitstatus_to_exitcode(status), True
+                process.returncode = returncode
+        except BaseException:
+            # wait4가 상태를 소비했는지 알 수 없으면 이후 숫자 PID에 신호를 보내지 않는다.
+            ownership_lost = True
+            raise
+
+    def stop_group(signum):
+        try:
+            os.killpg(process.pid, signum)
+        except ProcessLookupError:
+            pass
+        except BaseException as error:
+            cleanup_errors.append(f"signal-{signum}:{type(error).__name__}")
+
+    try:
+        for name, path in paths.items():
+            files[name] = path.open("wb")
+        process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   start_new_session=True)
+        pipes = {name: getattr(process, name) for name in paths}
+        for name, pipe in pipes.items():
+            os.set_blocking(pipe.fileno(), False)
+            selector.register(pipe, stream_selectors.EVENT_READ, name)
+        while True:
+            # 파이프를 쥔 후손이 남아 있을 때는 루트를 reap하지 않는다.
+            if not selector.get_map():
+                reap_nonblocking()
+                if reaped:
+                    break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            events = selector.select(min(0.001, remaining))
+            for key, _ in events:
+                name, pipe = key.data, key.fileobj
+                try:
+                    chunk = os.read(pipe.fileno(), min(65536, stream_limit - counts[name] + 1))
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    close_pipe(pipe)
+                    continue
+                kept = chunk[:stream_limit - counts[name]]
+                files[name].write(kept)
+                counts[name] += len(kept)
+                if len(chunk) > len(kept):
+                    overflow = name
+                    break
+            if overflow:
+                break
+    except BaseException as error:
+        primary = error
+    finally:
+        # 출력 초과 때 더 읽거나 기다리다 막히지 않도록 읽기 끝을 먼저 닫는다.
+        for pipe in pipes.values():
+            if not pipe.closed:
+                try:
+                    close_pipe(pipe)
+                except BaseException as error:
+                    cleanup_errors.append(f"pipe-close:{type(error).__name__}")
+        if process is not None and not reaped and not ownership_lost:
+            # 아직 reap하지 않은 루트 PID가 그룹 신호의 식별자 재사용을 막는다.
+            stop_group(signal.SIGTERM)
+            try:
+                time.sleep(STREAM_TERM_SECONDS)
+            except BaseException as error:
+                cleanup_errors.append(f"term-grace:{type(error).__name__}")
+            stop_group(signal.SIGKILL)
+            reap_deadline = time.monotonic() + STREAM_KILL_SECONDS
+            while time.monotonic() < reap_deadline:
+                try:
+                    reap_nonblocking()
+                    if reaped:
+                        break
+                    time.sleep(0.001)
+                except BaseException as error:
+                    cleanup_errors.append(f"reap:{type(error).__name__}")
+                    break
+            if not reaped:
+                cleanup_errors.append("root-reap-unresolved")
+        for resource_to_close in [selector, *files.values()]:
+            try:
+                resource_to_close.close()
+            except BaseException as error:
+                cleanup_errors.append(f"resource-close:{type(error).__name__}")
+    result = {
+        "command": command, "cwd": str(cwd), "pid": None if process is None else process.pid,
+        "returncode": 124 if timed_out else returncode, "raw_returncode": returncode,
+        "timed_out": timed_out, "output_limit_exceeded": overflow,
+        "stream_limit_bytes": stream_limit, "retained_stream_bytes": counts,
+        "owned_root_reaped": reaped, "ownership_lost": ownership_lost,
+        "cleanup_errors": cleanup_errors,
+        "wall_seconds": time.perf_counter() - started,
+        "wait4_maxrss_bytes": None if usage is None else
+            int(usage.ru_maxrss * (1 if sys.platform == "darwin" else 1024)),
+        "user_seconds": None if usage is None else usage.ru_utime,
+        "system_seconds": None if usage is None else usage.ru_stime,
+        **{name: str(path) for name, path in paths.items()},
+    }
+    if primary is not None:
+        result["exception_type"] = type(primary).__name__
+    save(Path(str(stem) + ".json"), result)
+    if primary is not None:
+        raise primary
+    if not reaped or cleanup_errors or overflow or result["returncode"]:
+        raise RuntimeError(f"Command failed ({result['returncode']}): {command}; see {paths['stderr']}")
+    return result
+
+
+def run(command: list[str], cwd: Path, stem: Path, timeout: float = 300,
+        *, stream_limit: int | None = None) -> dict[str, Any]:
     """명령과 원문 출력을 남기고 명령별 wait4 자원 사용량을 기록한다.
 
     RSS는 운영체제가 반환한 프로세스 최대치이며 동시 프로세스 트리 합계가 아니다.
     1 ms 종료 확인 주기는 일반적인 스케줄러 지연과 함께 실행 시간에 포함된다.
     """
+    if stream_limit is not None:
+        return _run_stream_capped(command, cwd, stem, timeout, stream_limit)
     stem.parent.mkdir(parents=True, exist_ok=True)
     stdout, stderr = Path(str(stem) + ".stdout"), Path(str(stem) + ".stderr")
     started = time.perf_counter()

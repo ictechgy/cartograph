@@ -3,6 +3,7 @@
 
 import argparse
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ import shutil
 import signal
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -66,13 +68,25 @@ class PhaseContracts(unittest.TestCase):
         self.assertEqual(resource.getrlimit(resource.RLIMIT_FSIZE), limits)
 
     def test_timeout_and_output_cap_refuse_with_original_measurements(self):
-        with mock.patch.object(D, "COMMAND_SECONDS", 0.1), self.assertRaisesRegex(ValueError, "timed out"):
+        with mock.patch.object(D, "COMMAND_SECONDS", 0.1), self.assertRaises(ValueError) as failure:
             D.capture([sys.executable, "-c", "import time; time.sleep(10)"], self.root, self.root / "timeout", False)
-        self.assertTrue(D.PROJECT.read_json(self.root / "timeout.json")["timed_out"])
+        row = D.PROJECT.read_json(self.root / "timeout.json")
+        self.assertTrue(row["timed_out"])
+        self.assertTrue(row["owned_root_reaped"])
+        self.assertFalse(row["ownership_lost"])
+        if row["cleanup_errors"]:
+            self.assertEqual(row["cleanup_errors"], [f"signal-{signal.SIGKILL}:PermissionError"])
+            self.assertEqual(str(failure.exception), "Query cleanup or root ownership unresolved")
+        else:
+            self.assertEqual(str(failure.exception), "Query timed out")
+        code = ("import os,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+                "try: os.write(1,b'x'*(2*1024*1024))\n"
+                "except BrokenPipeError: pass\n"
+                "time.sleep(10)\n")
         with self.assertRaisesRegex(ValueError, "output cap"):
-            D.capture([sys.executable, "-c", "import os; os.write(1,b'x'*(2*1024*1024))"],
-                      self.root, self.root / "oversized", False)
+            D.capture([sys.executable, "-c", code], self.root, self.root / "oversized", False)
         self.assertLessEqual((self.root / "oversized.stdout").stat().st_size, D.MAX_BYTES)
+        self.assertEqual(D.PROJECT.read_json(self.root / "oversized.json")["raw_returncode"], -signal.SIGKILL)
 
     def test_shared_alarm_reaps_actual_child_and_records_interruption(self):
         pidfile = self.root / "child.pid"
@@ -247,7 +261,9 @@ class PhaseContracts(unittest.TestCase):
             NORMALIZE.package(args)
         self.assertFalse(args.output.exists())
 
-    def run_paired_fixture(self, capture=None):
+    def run_paired_fixture(self, capture=None, clear_temporary=True):
+        if clear_temporary:
+            shutil.rmtree(self.root / "raw" / "query-projection-temporary", ignore_errors=True)
         admitted = self.fixture()
         baseline = {"cartograph": {"binary": "baseline",
                     "binary_sha256": "b" * 64, "setup": {"source": {"revision": "a" * 40}}}}
@@ -363,6 +379,331 @@ class PhaseContracts(unittest.TestCase):
         (package / "Sources" / "added.swift").write_text("// 추가된 입력\n")
         with self.assertRaises(ValueError):
             D.admit_baseline(path, "a" * 40, baseline, self.config, self.out)
+
+
+    def test_failure_diagnostic_is_bounded_and_omits_unknown_error_content(self):
+        message = "/private/fixture/source.swift Bearer secret-value " + "x" * 100000
+        report = {"diagnostic_stage": "baseline_admission", "runs": []}
+        row = D.failure_diagnostic(report, ValueError(message))
+        encoded = json.dumps(row, sort_keys=True)
+        self.assertLess(len(encoded.encode()), 4096)
+        self.assertNotIn("/private", encoded)
+        self.assertNotIn("secret-value", encoded)
+        self.assertEqual(row["stage"], "baseline_admission")
+        self.assertEqual(row["category"], "input")
+        self.assertEqual(row["error_code"], "unknown")
+        self.assertEqual(row["error_text_bytes"], len(message.encode()))
+        self.assertEqual(row["error_sha256"], D.hashlib.sha256(message.encode()).hexdigest())
+        class PrivateError(Exception):
+            pass
+        report["diagnostic_stage"] = "/private/not-a-stage"
+        row = D.failure_diagnostic(report, PrivateError(message))
+        self.assertEqual((row["stage"], row["error_type"]), ("unknown", "Other"))
+
+    def test_failure_diagnostic_distinguishes_timeout_execution_and_parity(self):
+        report = {"diagnostic_stage": "capture", "runs": []}
+        timed = D.failure_diagnostic(report, ValueError("Query timed out"))
+        self.assertEqual((timed["category"], timed["error_code"]), ("timeout", "query_timeout"))
+        self.assertEqual(D.failure_diagnostic(report, OSError("/private/failure"))["category"], "execution")
+        def changed(*args):
+            measured, raw = self.fake_capture(*args)
+            return measured, (raw[0], raw[1], b"changed" if args[-1] else raw[2])
+        admitted = self.fixture()
+        report = {"status": "running"}
+        with mock.patch.object(D.PREP, "admit", return_value=admitted), \
+                mock.patch.object(D.PREP, "verify_bytes", return_value={}), \
+                mock.patch.object(D, "capture", side_effect=changed), \
+                self.assertRaisesRegex(ValueError, "parity") as failure:
+            D.run(self.path, self.out, report)
+        # run()이 호출자에게 그대로 전달한 오류의 문맥과 기존 측정을 보존한다.
+        partial = D.PROJECT.read_json(self.out / "results.json")
+        self.assertEqual(partial["runs"][-1]["answer_identity"]["clean_stderr_bytes"], 7)
+        self.assertNotIn("paired_summary", partial)
+        row = D.failure_diagnostic(report, failure.exception)
+        self.assertEqual((row["stage"], row["category"]), ("parity", "parity"))
+        self.assertEqual(row["workload"],
+                         {"case": "ambiguous", "arm": "candidate", "pair": 1, "enabled": True})
+        self.assertEqual(row["parity_components"],
+                         {"exitEqual": True, "stdoutEqual": True, "cleanStderrEqual": False})
+        self.assertEqual(row["last_capture"], partial["runs"][-1]["answer_identity"])
+        self.assertEqual(row["last_capture"]["clean_stderr_sha256"], D.hashlib.sha256(b"changed").hexdigest())
+
+    def test_main_failure_keeps_original_receipt_exit_and_no_timing_summary(self):
+        path = self.root / "project" / "results.json"
+        original = "/private/fixture/source.swift denied"
+        def failed(_path, _out, report, *_args):
+            report.update(diagnostic_stage="baseline_admission", runs=[])
+            raise PermissionError(original)
+        with mock.patch.object(sys, "argv",
+                               ["diagnose-query-phases.py", "--project-results", str(path)]), \
+                mock.patch.object(D, "run", side_effect=failed), \
+                mock.patch("sys.stdout", new_callable=io.StringIO) as output:
+            self.assertEqual(D.main(), 1)
+        lines = output.getvalue().splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(lines[0].startswith("QueryProjectionFailure "))
+        row = json.loads(lines[0].split(" ", 1)[1])
+        self.assertEqual((row["category"], row["error_type"]), ("input", "PermissionError"))
+        self.assertNotIn(original, lines[0])
+        self.assertNotIn("QueryProjectionTiming", output.getvalue())
+        receipt = D.PROJECT.read_json(path.parent / "runs" / "query-phases" / "results.json")
+        self.assertEqual(receipt["error"], "PermissionError: " + original)
+        self.assertEqual(receipt["status"], "failed")
+        self.assertEqual(receipt["failure_diagnostic"], row)
+
+    def test_main_success_does_not_emit_failure_diagnostic(self):
+        path = self.root / "success" / "results.json"
+        def passed(_path, _out, report, *_args):
+            report.update(status="passed")
+        with mock.patch.object(sys, "argv", ["diagnose-query-phases.py", "--project-results", str(path)]), \
+                mock.patch.object(D, "run", side_effect=passed), \
+                mock.patch("sys.stdout", new_callable=io.StringIO) as output:
+            self.assertEqual(D.main(), 0)
+        self.assertNotIn("QueryProjectionFailure", output.getvalue())
+        self.assertEqual(json.loads(output.getvalue())["status"], "passed")
+
+
+    def capped_command(self, code, name, limit=1048576, timeout=2):
+        with mock.patch.object(D.BASE, "STREAM_TERM_SECONDS", 0.05), \
+                mock.patch.object(D.BASE, "STREAM_KILL_SECONDS", 1):
+            return D.BASE.run([sys.executable, "-c", code], self.root, self.root / name,
+                              timeout, stream_limit=limit)
+
+    def test_stream_cap_allows_large_unrelated_file_without_changing_rlimit(self):
+        original = resource.getrlimit(resource.RLIMIT_FSIZE)
+        target = self.root / "unrelated-cache-payload.bin"
+        row = self.capped_command(
+            f"from pathlib import Path; Path({str(target)!r}).write_bytes(b'x'*2097152); print('ok')", "cache")
+        self.assertEqual(target.stat().st_size, 2097152)
+        self.assertEqual(Path(row["stdout"]).read_bytes(), b"ok\n")
+        self.assertTrue(row["owned_root_reaped"])
+        self.assertFalse(row["cleanup_errors"])
+        self.assertEqual(resource.getrlimit(resource.RLIMIT_FSIZE), original)
+
+    def test_each_stream_exact_limit_and_rejecting_probe_are_bounded(self):
+        for name, descriptor in (("stdout", 1), ("stderr", 2)):
+            for extra in (0, 1):
+                stem = f"{name}-{extra}"
+                code = ("import os,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+                        f"try: os.write({descriptor}, b'x'*(1048576+{extra}))\n"
+                        "except BrokenPipeError: pass\n"
+                        + ("time.sleep(10)\n" if extra else ""))
+                if extra:
+                    with self.assertRaises(RuntimeError):
+                        self.capped_command(code, stem)
+                    row = D.PROJECT.read_json(self.root / f"{stem}.json")
+                    self.assertEqual(row["output_limit_exceeded"], name)
+                else:
+                    row = self.capped_command(code, stem)
+                    self.assertIsNone(row["output_limit_exceeded"])
+                self.assertEqual(row["raw_returncode"], -signal.SIGKILL if extra else 0)
+                self.assertEqual(Path(row[name]).stat().st_size, 1048576)
+                self.assertTrue(row["owned_root_reaped"])
+                self.assertFalse(row["cleanup_errors"])
+
+
+    def test_phase_capture_preserves_strict_exact_cap_refusal(self):
+        with self.assertRaisesRegex(ValueError, "output cap"):
+            D.capture([sys.executable, "-c", "import os; os.write(1,b'x'*1048576)"],
+                      self.root, self.root / "exact-phase-cap", False)
+        row = D.PROJECT.read_json(self.root / "exact-phase-cap.json")
+        self.assertTrue(row["owned_root_reaped"])
+        self.assertIsNone(row["output_limit_exceeded"])
+        self.assertEqual(Path(row["stdout"]).stat().st_size, D.MAX_BYTES)
+
+    def test_dual_stream_flood_terminates_with_capped_prefixes(self):
+        code = ("import os,signal,threading,time\n"
+                "signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+                "def flood(fd):\n"
+                " try:\n"
+                "  while True: os.write(fd,b'x'*65536)\n"
+                " except BrokenPipeError: time.sleep(10)\n"
+                "t=threading.Thread(target=flood,args=(2,)); t.start(); flood(1)\n")
+        with self.assertRaises(RuntimeError):
+            self.capped_command(code, "flood", limit=4096)
+        row = D.PROJECT.read_json(self.root / "flood.json")
+        self.assertEqual(row["raw_returncode"], -signal.SIGKILL)
+        self.assertIn(row["output_limit_exceeded"], ("stdout", "stderr"))
+        self.assertTrue(row["owned_root_reaped"])
+        self.assertFalse(row["cleanup_errors"])
+        self.assertTrue(all(Path(row[name]).stat().st_size <= 4096 for name in ("stdout", "stderr")))
+
+    def test_eof_does_not_waive_leader_deadline(self):
+        with self.assertRaises(RuntimeError):
+            self.capped_command("import os,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+                                "os.close(1); os.close(2); time.sleep(10)", "closed-pipes", timeout=1)
+        row = D.PROJECT.read_json(self.root / "closed-pipes.json")
+        self.assertEqual(row["raw_returncode"], -signal.SIGKILL)
+        self.assertTrue(row["timed_out"])
+        self.assertTrue(row["owned_root_reaped"])
+        self.assertFalse(row["cleanup_errors"])
+
+    def test_descendant_held_pipe_is_terminated_before_leader_reap(self):
+        heartbeat = self.root / "heartbeat"
+        child = ("import os,signal,time; from pathlib import Path; "
+                 "signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+                 f"p=Path({str(heartbeat)!r})\n"
+                 "while True:\n p.write_text(str(time.monotonic())); time.sleep(0.01)\n")
+        code = ("import os,subprocess,sys,time; "
+                f"subprocess.Popen([sys.executable,'-c',{child!r}]); "
+                f"\nwhile not __import__('pathlib').Path({str(heartbeat)!r}).exists(): time.sleep(0.01)\nos._exit(0)")
+        events = []
+        real_kill, real_wait = os.killpg, os.wait4
+        def killed(pid, signum):
+            events.append(("signal", signum))
+            return real_kill(pid, signum)
+        def waited(pid, flags):
+            result = real_wait(pid, flags)
+            if result[0]:
+                events.append(("reap", result[0]))
+            return result
+        with mock.patch.object(D.BASE.os, "killpg", side_effect=killed), \
+                mock.patch.object(D.BASE.os, "wait4", side_effect=waited), \
+                self.assertRaises(RuntimeError):
+            self.capped_command(code, "held-pipes", timeout=2)
+        row = D.PROJECT.read_json(self.root / "held-pipes.json")
+        self.assertTrue(row["timed_out"])
+        self.assertTrue(row["owned_root_reaped"])
+        self.assertFalse(row["cleanup_errors"])
+        self.assertEqual([kind for kind, _ in events], ["signal", "signal", "reap"])
+        self.assertEqual([value for kind, value in events if kind == "signal"], [signal.SIGTERM, signal.SIGKILL])
+        before = heartbeat.read_text()
+        time.sleep(0.1)
+        self.assertEqual(heartbeat.read_text(), before)
+
+
+    def test_pipe_setup_failure_closes_both_descriptors_and_reaps_root(self):
+        processes, ready = [], self.root / "pipe-setup.ready"
+        real_popen = D.BASE.subprocess.Popen
+        def spawned(*args, **kwargs):
+            process = real_popen(*args, **kwargs)
+            processes.append(process)
+            return process
+        def configure(*_args):
+            deadline = time.monotonic() + 2
+            while not ready.exists() and time.monotonic() < deadline:
+                time.sleep(0.001)
+            self.assertTrue(ready.exists())
+            raise PermissionError("controlled setup refusal")
+        code = ("import signal,time; from pathlib import Path; "
+                "signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+                f"Path({str(ready)!r}).write_text('ready'); time.sleep(10)")
+        with mock.patch.object(D.BASE.subprocess, "Popen", side_effect=spawned), \
+                mock.patch.object(D.BASE.os, "set_blocking", side_effect=configure), \
+                self.assertRaises(PermissionError):
+            self.capped_command(code, "pipe-setup")
+        self.assertEqual(len(processes), 1)
+        self.assertTrue(processes[0].stdout.closed)
+        self.assertTrue(processes[0].stderr.closed)
+        row = D.PROJECT.read_json(self.root / "pipe-setup.json")
+        self.assertEqual(row["raw_returncode"], -signal.SIGKILL)
+        self.assertTrue(row["owned_root_reaped"])
+        self.assertFalse(row["cleanup_errors"])
+        self.assertEqual(row["exception_type"], "PermissionError")
+
+    def test_cleanup_signal_error_refuses_success_and_still_reaps(self):
+        real_kill = os.killpg
+        def killed(pid, signum):
+            if signum == signal.SIGTERM:
+                raise PermissionError("controlled cleanup refusal")
+            return real_kill(pid, signum)
+        with mock.patch.object(D.BASE.os, "killpg", side_effect=killed), self.assertRaises(RuntimeError):
+            self.capped_command("import time; time.sleep(10)", "signal-error", timeout=0.1)
+        row = D.PROJECT.read_json(self.root / "signal-error.json")
+        self.assertTrue(row["owned_root_reaped"])
+        self.assertIn(f"signal-{signal.SIGTERM}:PermissionError", row["cleanup_errors"])
+
+
+    def test_final_kill_denial_stays_uncertain_after_root_reap(self):
+        events = []
+        real_kill, real_wait = os.killpg, os.wait4
+        def killed(pid, signum):
+            events.append(("signal", signum))
+            if signum == signal.SIGKILL:
+                raise PermissionError("controlled final denial")
+            return real_kill(pid, signum)
+        def waited(pid, flags):
+            result = real_wait(pid, flags)
+            if result[0]:
+                events.append(("reap", result[0]))
+            return result
+        with mock.patch.object(D.BASE.os, "killpg", side_effect=killed), \
+                mock.patch.object(D.BASE.os, "wait4", side_effect=waited), \
+                mock.patch.object(D, "COMMAND_SECONDS", 0.1), \
+                mock.patch.object(D.BASE, "STREAM_TERM_SECONDS", 0.05), \
+                mock.patch.object(D.BASE, "STREAM_KILL_SECONDS", 1), \
+                mock.patch.object(D, "split_stderr") as parsed, \
+                self.assertRaisesRegex(ValueError, "ownership unresolved"):
+            D.capture([sys.executable, "-c", "import time; time.sleep(10)"],
+                      self.root, self.root / "final-denial", False)
+        parsed.assert_not_called()
+        row = D.PROJECT.read_json(self.root / "final-denial.json")
+        self.assertEqual(row["raw_returncode"], -signal.SIGTERM)
+        self.assertTrue(row["timed_out"])
+        self.assertTrue(row["owned_root_reaped"])
+        self.assertFalse(row["ownership_lost"])
+        self.assertEqual(row["cleanup_errors"], [f"signal-{signal.SIGKILL}:PermissionError"])
+        self.assertEqual([kind for kind, _ in events], ["signal", "signal", "reap"])
+        self.assertEqual([value for kind, value in events if kind == "signal"],
+                         [signal.SIGTERM, signal.SIGKILL])
+
+    def test_lost_wait_ownership_never_signals_numeric_group(self):
+        real_wait, real_popen, processes = os.waitpid, D.BASE.subprocess.Popen, []
+        def spawned(*args, **kwargs):
+            process = real_popen(*args, **kwargs)
+            processes.append(process)
+            return process
+        try:
+            with mock.patch.object(D.BASE.subprocess, "Popen", side_effect=spawned), \
+                    mock.patch.object(D.BASE.os, "wait4", side_effect=ChildProcessError("controlled wait refusal")), \
+                    mock.patch.object(D.BASE.os, "killpg") as kill, self.assertRaises(ChildProcessError):
+                self.capped_command("pass", "lost-wait")
+            kill.assert_not_called()
+            row = D.PROJECT.read_json(self.root / "lost-wait.json")
+            self.assertTrue(row["ownership_lost"])
+            self.assertFalse(row["owned_root_reaped"])
+        finally:
+            # 주입한 wait4 오류 뒤의 실제 자식은 테스트가 직접 소유하고 정리한다.
+            for process in processes:
+                pid, status = real_wait(process.pid, 0)
+                self.assertEqual(pid, process.pid)
+                process.returncode = os.waitstatus_to_exitcode(status)
+
+    def test_paired_cache_directories_are_separate_fresh_and_reused(self):
+        seen = {"baseline": [], "candidate": []}
+        with mock.patch.dict(os.environ, {"TMPDIR": "original-temporary"}):
+            def captured(*args):
+                arm = "baseline" if args[0][0] == "baseline" else "candidate"
+                directory = Path(os.environ["TMPDIR"])
+                seen[arm].append(directory)
+                marker = directory / "cache-marker"
+                if len(seen[arm]) == 1:
+                    self.assertEqual(list(directory.iterdir()), [])
+                    marker.write_text(arm)
+                else:
+                    self.assertEqual(marker.read_text(), arm)
+                return self.fake_capture(*args)
+            report = self.run_paired_fixture(captured)
+            self.assertEqual(os.environ["TMPDIR"], "original-temporary")
+        self.assertEqual(len(set(seen["baseline"])), 1)
+        self.assertEqual(len(set(seen["candidate"])), 1)
+        self.assertNotEqual(seen["baseline"][0], seen["candidate"][0])
+        self.assertEqual(report["cache_protocol"]["version"], 2)
+        self.assertNotIn("runs", seen["baseline"][0].relative_to(self.path.parent).parts)
+        with self.assertRaises(FileExistsError):
+            self.run_paired_fixture(clear_temporary=False)
+
+    def test_paired_cache_environment_restores_after_capture_failure(self):
+        for prior in (None, "original-temporary"):
+            def failed(*_args):
+                raise RuntimeError("controlled capture failure")
+            with mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("TMPDIR", None)
+                if prior is not None:
+                    os.environ["TMPDIR"] = prior
+                with self.assertRaisesRegex(RuntimeError, "controlled"):
+                    self.run_paired_fixture(failed)
+                self.assertEqual(os.environ.get("TMPDIR"), prior)
 
 
 if __name__ == "__main__":
