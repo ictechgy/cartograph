@@ -391,7 +391,8 @@ public struct CartographService: Sendable {
             let described = Self.describeExplanation(
                 explanation, for: node, in: graph, externalRetentions: context.externalRetentionIndex
             )
-            let outcome = CommandOutcome(output: described.output, findingCount: described.findingCount,
+            let outcome = CommandOutcome(output: Self.printableLines(described.output),
+                                         findingCount: described.findingCount,
                                          suppressedCount: described.suppressedCount, notes: notes)
             guard outcome.hasFindings, let baseline = try loadBaseline() else { return outcome }
             // 베이스라인이 억제한 문제를 --explain 만 다시 살려 내면, 같은 저장소·같은
@@ -443,12 +444,14 @@ public struct CartographService: Sendable {
             // 사용자가 그 설명을 믿고 코드를 건드리기 때문이다.
             let involved = found.filter { $0.component.contains(node.id) }
             guard !involved.isEmpty else {
-                return CommandOutcome(output: "\(node.qualifiedName) is not part of any cycle.\n")
+                return CommandOutcome(output: Self.printableLines("\(node.qualifiedName) is not part of any cycle.\n"))
             }
             let lines = involved.map { Self.describeCycle($0, for: node.id, in: graph) }
             return CommandOutcome(
-                output: "\(node.qualifiedName) is part of \(involved.count) cycle(s):\n"
-                    + lines.joined(separator: "\n") + "\n",
+                output: Self.printableLines(
+                    "\(node.qualifiedName) is part of \(involved.count) cycle(s):\n"
+                        + lines.joined(separator: "\n") + "\n"
+                ),
                 findingCount: involved.count
             )
         }
@@ -473,14 +476,31 @@ public struct CartographService: Sendable {
             return CommandOutcome(output: Self.describeAmbiguity(subject, candidates: candidates))
         case let .found(node):
             let evaluator = LayerRuleEvaluator(layers: configuration.layers, rules: configuration.rules)
-            return CommandOutcome(output: Self.describeLayer(of: node, using: evaluator))
+            return CommandOutcome(output: Self.printableLines(Self.describeLayer(of: node, using: evaluator)))
         }
+    }
+
+    /// 사람이 읽는 설명을 줄마다 Core 의 필터에 통과시킨다.
+    ///
+    /// `--explain` 계열과 찾지 못한 이름 문구는 정점 이름·경로·레이어와 규칙의 이름·이유·안내처럼
+    /// 저장소가 통제하는 값을 터미널과 표준 오류로 그대로 보낸다. ESC·OSC 52·U+202E 가 화면과
+    /// 클립보드를 바꾸지 못하게 거르되, 합친 문자열 전체를 거르면 문장을 나누는 개행까지 사라지므로
+    /// 줄 단위로 거른다. 값 속 개행은 줄바꿈으로 남는다 — 줄 수가 계약인 진단 형식이 아니라 설명 문장이다.
+    ///
+    /// 글자(Character)가 아니라 스칼라로 나눈다. 값 끝의 복귀는 뒤따르는 개행과 한 글자(`"\r\n"`)로
+    /// 묶이므로, 글자로 나누면 그 개행을 놓쳐 두 줄이 합쳐진다.
+    private static func printableLines(_ text: String) -> String {
+        text.unicodeScalars.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { PrintableText.printable(String(String.UnicodeScalarView($0))) }
+            .joined(separator: "\n")
     }
 
     private static func describeAmbiguity(_ subject: String, candidates: [GraphNode]) -> String {
         let list = candidates.map { "  \($0.qualifiedName)  \($0.usr ?? $0.id.rawValue)" }
-        return "'\(subject)' matches \(candidates.count) declarations. "
-            + "Pass one of these USRs instead:\n" + list.joined(separator: "\n") + "\n"
+        return printableLines(
+            "'\(subject)' matches \(candidates.count) declarations. "
+                + "Pass one of these USRs instead:\n" + list.joined(separator: "\n") + "\n"
+        )
     }
 
     private static func describeCycle(
@@ -561,7 +581,8 @@ public struct CartographService: Sendable {
             message += ". Similar names: " + names.joined(separator: ", ")
                 + " — the JSON above lists each with its location and USR"
         }
-        return message
+        // 표준 출력의 JSON 은 이름을 그대로 둔다(되물을 때 맞아야 한다). 이 문구는 표준 오류로 간다.
+        return printableLines(message)
     }
 
     /// `--explain` 계열이 notFound 로 답할 때 쓰는 문장.
@@ -572,9 +593,11 @@ public struct CartographService: Sendable {
         _ subject: String, similar: [GraphNode], noun: String
     ) -> String {
         let names = similar.map(\.qualifiedName)
-        guard !names.isEmpty else { return "No \(noun) matches '\(subject)'.\n" }
-        return "No \(noun) matches '\(subject)'. Similar names: "
-            + names.joined(separator: ", ") + ".\n"
+        guard !names.isEmpty else { return printableLines("No \(noun) matches '\(subject)'.\n") }
+        return printableLines(
+            "No \(noun) matches '\(subject)'. Similar names: "
+                + names.joined(separator: ", ") + ".\n"
+        )
     }
 
     /// 여러 선언을 한 번에 묻는다.
@@ -809,9 +832,11 @@ public struct CartographService: Sendable {
             ? "\n  … and \(omitted) more. Run `cartograph query \(subject)` "
                 + "for the full list as JSON.\n"
             : "\n"
-        return "'\(subject)' matches \(candidates.count) declarations. "
-            + "Ask again with one of the names or USRs below:\n"
-            + shown.joined(separator: "\n") + tail
+        return printableLines(
+            "'\(subject)' matches \(candidates.count) declarations. "
+                + "Ask again with one of the names or USRs below:\n"
+                + shown.joined(separator: "\n") + tail
+        )
     }
 
     private func describeQuery(
