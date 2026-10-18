@@ -1,3 +1,4 @@
+import CartographAnalysis
 import CartographCore
 import CartographIndexStore
 import CartographTestSupport
@@ -26,6 +27,7 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
         }
         // 빈 입력으로 통과하지 않으며 이름 추정으로 컴파일러 근거를 만들지 않는다.
         for name in ["ProductionProbe", "testConnection", "BaseCase", "AsyncCase", "testAsync",
+                     "ShapeCase", "testStatic", "testClass", "testReturnsValue", "testArgument",
                      "ModernSuite", "asyncCase", "parameterized", "QualifiedSuite", "qualifiedCase",
                      "argumentProvider", "suiteInitHelper", "providerHelper", "lifecycleHelper",
                      "xctestHelper", "modernHelper", "qualifiedHelper", "productionHelper"] {
@@ -42,6 +44,17 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
             let declaration = try #require(local.first { !$0.isExternal && $0.name == name })
             #expect(declaration.compilerUnitTest == false)
         }
+        let identity = XCTestIdentityFacts(snapshot: snapshot)
+        let expectedClasses = Set(local.filter { ["BaseCase", "AsyncCase", "ShapeCase"].contains($0.name) }.map(\.usr))
+        let expectedMethods = Set(local.filter { $0.name == "testAsync()" }.map(\.usr))
+        #expect(expectedClasses.count == 3 && expectedMethods.count == 1)
+        #expect(identity.classUSRs == expectedClasses)
+        #expect(identity.methodUSRs == expectedMethods)
+        let negativeMethods = Set(local.filter {
+            ["testStatic()", "testClass()", "testReturnsValue()", "testArgument(_:)"].contains($0.name)
+        }.map(\.usr))
+        #expect(negativeMethods.count == 4)
+        #expect(identity.uncertainUSRs.isSubset(of: negativeMethods))
         for (caller, callee) in [
             ("testConnection", "productionHelper"), ("setUp", "lifecycleHelper"),
             ("testAsync", "xctestHelper"), ("asyncCase", "modernHelper"),
@@ -66,7 +79,7 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
         let inheritance = snapshot.references.filter { $0.sourceUSR == base.usr && $0.kind == .inheritance }
         #expect(!inheritance.isEmpty, "XCTest ancestry must come from compiler relations")
         // 명시한 소스에서 읽힌 관계와 SDK 대상의 정확한 신원을 남긴다.
-        // Build 아래 생성 파일은 공급자에서 제외되므로 runner 전체를 포괄한다고 주장하지 않는다.
+        // 빌드 산출물 아래 생성 파일은 공급자에서 제외되므로 runner 전체를 포괄한다고 주장하지 않는다.
         // unitTest 속성과 생성된 provider/init 소유 관계는 관찰 전에 추측하여 단언하지 않는다.
         let localUSRs = Set(local.map(\.usr))
         let references = snapshot.references.filter {
@@ -86,7 +99,7 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
              "line": $0.location?.line ?? 0]
         }
         let evidence: [String: Any] = [
-            "schema": 1, "scope": "macOS active SwiftPM toolchain; admitted source records before enrichment; generated build files excluded",
+            "schema": 1, "scope": "macOS active SwiftPM toolchain; admitted source records before enrichment; generated build files excluded; negative XCTest shapes indexed in ordinary library target",
             "toolchain": fixture.toolchain, "symbols": sortedRows(symbolRows),
             "references": sortedRows(referenceRows),
         ]
@@ -294,11 +307,20 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
         }
     }
 
+    // 잘못된 실행 형태는 일반 타깃에서 인덱싱해 SwiftPM 테스트 발견 코드의 컴파일과 분리한다.
     private static let production = """
+    import XCTest
+
     public func productionHelper() {}
     public final class ProductionProbe {
         public init() {}
         public func testConnection() { productionHelper() }
+    }
+    class ShapeCase: XCTestCase {
+        static func testStatic() {}
+        class func testClass() {}
+        func testReturnsValue() -> Int { 1 }
+        func testArgument(_ value: Int) {}
     }
     """
 
