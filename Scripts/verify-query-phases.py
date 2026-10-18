@@ -3,6 +3,7 @@
 
 import argparse
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -363,6 +364,88 @@ class PhaseContracts(unittest.TestCase):
         (package / "Sources" / "added.swift").write_text("// 추가된 입력\n")
         with self.assertRaises(ValueError):
             D.admit_baseline(path, "a" * 40, baseline, self.config, self.out)
+
+
+    def test_failure_diagnostic_is_bounded_and_omits_unknown_error_content(self):
+        message = "/private/fixture/source.swift Bearer secret-value " + "x" * 100000
+        report = {"diagnostic_stage": "baseline_admission", "runs": []}
+        row = D.failure_diagnostic(report, ValueError(message))
+        encoded = json.dumps(row, sort_keys=True)
+        self.assertLess(len(encoded.encode()), 4096)
+        self.assertNotIn("/private", encoded)
+        self.assertNotIn("secret-value", encoded)
+        self.assertEqual(row["stage"], "baseline_admission")
+        self.assertEqual(row["category"], "input")
+        self.assertEqual(row["error_code"], "unknown")
+        self.assertEqual(row["error_text_bytes"], len(message.encode()))
+        self.assertEqual(row["error_sha256"], D.hashlib.sha256(message.encode()).hexdigest())
+        class PrivateError(Exception):
+            pass
+        report["diagnostic_stage"] = "/private/not-a-stage"
+        row = D.failure_diagnostic(report, PrivateError(message))
+        self.assertEqual((row["stage"], row["error_type"]), ("unknown", "Other"))
+
+    def test_failure_diagnostic_distinguishes_timeout_execution_and_parity(self):
+        report = {"diagnostic_stage": "capture", "runs": []}
+        timed = D.failure_diagnostic(report, ValueError("Query timed out"))
+        self.assertEqual((timed["category"], timed["error_code"]), ("timeout", "query_timeout"))
+        self.assertEqual(D.failure_diagnostic(report, OSError("/private/failure"))["category"], "execution")
+        def changed(*args):
+            measured, raw = self.fake_capture(*args)
+            return measured, (raw[0], raw[1], b"changed" if args[-1] else raw[2])
+        admitted = self.fixture()
+        report = {"status": "running"}
+        with mock.patch.object(D.PREP, "admit", return_value=admitted), \
+                mock.patch.object(D.PREP, "verify_bytes", return_value={}), \
+                mock.patch.object(D, "capture", side_effect=changed), \
+                self.assertRaisesRegex(ValueError, "parity") as failure:
+            D.run(self.path, self.out, report)
+        # run()이 호출자에게 그대로 전달한 오류의 문맥과 기존 측정을 보존한다.
+        partial = D.PROJECT.read_json(self.out / "results.json")
+        self.assertEqual(partial["runs"][-1]["answer_identity"]["clean_stderr_bytes"], 7)
+        self.assertNotIn("paired_summary", partial)
+        row = D.failure_diagnostic(report, failure.exception)
+        self.assertEqual((row["stage"], row["category"]), ("parity", "parity"))
+        self.assertEqual(row["workload"],
+                         {"case": "ambiguous", "arm": "candidate", "pair": 1, "enabled": True})
+        self.assertEqual(row["parity_components"],
+                         {"exitEqual": True, "stdoutEqual": True, "cleanStderrEqual": False})
+        self.assertEqual(row["last_capture"], partial["runs"][-1]["answer_identity"])
+        self.assertEqual(row["last_capture"]["clean_stderr_sha256"], D.hashlib.sha256(b"changed").hexdigest())
+
+    def test_main_failure_keeps_original_receipt_exit_and_no_timing_summary(self):
+        path = self.root / "project" / "results.json"
+        original = "/private/fixture/source.swift denied"
+        def failed(_path, _out, report, *_args):
+            report.update(diagnostic_stage="baseline_admission", runs=[])
+            raise PermissionError(original)
+        with mock.patch.object(sys, "argv",
+                               ["diagnose-query-phases.py", "--project-results", str(path)]), \
+                mock.patch.object(D, "run", side_effect=failed), \
+                mock.patch("sys.stdout", new_callable=io.StringIO) as output:
+            self.assertEqual(D.main(), 1)
+        lines = output.getvalue().splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(lines[0].startswith("QueryProjectionFailure "))
+        row = json.loads(lines[0].split(" ", 1)[1])
+        self.assertEqual((row["category"], row["error_type"]), ("input", "PermissionError"))
+        self.assertNotIn(original, lines[0])
+        self.assertNotIn("QueryProjectionTiming", output.getvalue())
+        receipt = D.PROJECT.read_json(path.parent / "runs" / "query-phases" / "results.json")
+        self.assertEqual(receipt["error"], "PermissionError: " + original)
+        self.assertEqual(receipt["status"], "failed")
+        self.assertEqual(receipt["failure_diagnostic"], row)
+
+    def test_main_success_does_not_emit_failure_diagnostic(self):
+        path = self.root / "success" / "results.json"
+        def passed(_path, _out, report, *_args):
+            report.update(status="passed")
+        with mock.patch.object(sys, "argv", ["diagnose-query-phases.py", "--project-results", str(path)]), \
+                mock.patch.object(D, "run", side_effect=passed), \
+                mock.patch("sys.stdout", new_callable=io.StringIO) as output:
+            self.assertEqual(D.main(), 0)
+        self.assertNotIn("QueryProjectionFailure", output.getvalue())
+        self.assertEqual(json.loads(output.getvalue())["status"], "passed")
 
 
 if __name__ == "__main__":

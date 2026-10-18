@@ -3,6 +3,7 @@
 
 import argparse
 import importlib.util
+import hashlib
 import json
 import math
 import os
@@ -24,6 +25,99 @@ PHASES = ("cli_setup input_preparation raw_snapshot syntax_context graph_query_s
 SCHEDULE = [False, True, True, False] * 2
 MAX_BYTES, DRIVER_SECONDS, COMMAND_SECONDS = 1024 * 1024, 300, 45
 ROUNDING_SECONDS = 0.000001
+
+
+FAILURE_STAGES = {
+    "input_admission", "candidate_setup", "baseline_admission", "plan",
+    "input_identity", "capture", "answer_contract", "parity", "phase_contract",
+    "final_input_identity", "timing_contract", "summary",
+}
+FAILURE_GUARDS = {
+    "Baseline toolchain differs": "baseline_toolchain_differs",
+    "Exact baseline revision required": "baseline_revision_shape",
+    "Baseline revision differs": "baseline_revision_differs",
+    "Successful baseline release build required": "baseline_build_status",
+    "Fresh release builds required": "release_build_mode",
+    "Clean product source required": "product_source_dirty",
+    "Product release build failed": "product_build_failed",
+    "Product source membership changed": "product_source_membership",
+    "Existing release package build required": "candidate_build_mode",
+    "A successful full raw project validation is required": "project_validation",
+    "Project revision changed": "project_revision",
+    "Tool setup evidence changed": "tool_setup_identity",
+    "Successful pinned comparator setup is required": "comparator_setup",
+    "Project registration changed": "project_registration",
+    "Index bytes changed": "index_identity",
+    "Native discovery failed": "native_discovery",
+    "Native graph no longer matches source oracle": "graph_oracle",
+    "Query timed out": "query_timeout",
+    "Shared driver deadline exceeded": "driver_timeout",
+    "Query reached the output cap": "query_output_cap",
+    "Expected one enabled diagnostic and none when disabled": "phase_record_count",
+    "Malformed phase record": "phase_record_shape",
+    "Non-finite or negative phase duration": "phase_record_value",
+    "Query exit contract changed": "query_exit",
+    "Invalid batch envelope": "batch_envelope",
+    "Request order or duplicates changed": "request_order",
+    "Unexpected found/ambiguous/missing result": "result_status",
+    "Found answer failed frozen oracle": "found_oracle",
+    "Ambiguity omitted the two source-authored fullMessage overloads": "ambiguity_oracle",
+    "stdout, exit, or stderr-with-only-phase-line-removed parity failed": "answer_parity",
+    "A required query phase did not run": "phase_missing",
+    "Found-only phase ran or was skipped incorrectly": "found_phase",
+    "Invalid process wall duration": "process_wall",
+    "Phase sum exceeds process wall": "phase_sum",
+    "Incomplete query pairs": "pair_membership",
+    "Invalid paired wall or RSS": "paired_measurement",
+}
+
+
+def answer_identity(raw):
+    return {
+        "exit": raw[0],
+        "stdout_bytes": len(raw[1]), "stdout_sha256": hashlib.sha256(raw[1]).hexdigest(),
+        "clean_stderr_bytes": len(raw[2]), "clean_stderr_sha256": hashlib.sha256(raw[2]).hexdigest(),
+    }
+
+
+def failure_diagnostic(report, error):
+    # 원문과 경로는 기존 결과 파일에만 남기고 공개 로그에는 고정 분류와 해시만 낸다.
+    message = str(error)
+    encoded = message.encode("utf-8", errors="replace")
+    stage = report.get("diagnostic_stage")
+    stage = stage if stage in FAILURE_STAGES else "unknown"
+    code = FAILURE_GUARDS.get(message, "unknown")
+    if message.startswith("Admitted file changed: "):
+        code = "admitted_file_identity"
+    category = ("timeout" if isinstance(error, TimeoutError) or code in {"query_timeout", "driver_timeout"}
+                else "interrupted" if isinstance(error, KeyboardInterrupt)
+                else "parity" if code == "answer_parity"
+                else "execution" if stage == "capture"
+                else "input" if stage in {"input_admission", "candidate_setup", "baseline_admission",
+                                         "input_identity", "final_input_identity"}
+                else "contract")
+    kind = type(error).__name__
+    result = {
+        "schema_version": 1, "status": "failed", "stage": stage, "category": category,
+        "error_type": kind if kind in {"ValueError", "KeyError", "TypeError", "RuntimeError",
+            "TimeoutError", "FileNotFoundError", "PermissionError", "OSError",
+            "JSONDecodeError", "KeyboardInterrupt"} else "Other",
+        "error_code": code, "error_text_bytes": len(encoded),
+        "error_sha256": hashlib.sha256(encoded).hexdigest(),
+        "completed_runs": len(report.get("runs", [])),
+    }
+    workload = report.get("active_workload", {})
+    if (workload.get("case") in {"ambiguous", "missing", "mixed", "found"}
+            and workload.get("arm") in {"baseline", "candidate"}
+            and type(workload.get("pair")) is int and 0 <= workload["pair"] < 8
+            and type(workload.get("enabled")) is bool):
+        result["workload"] = {key: workload[key] for key in ("case", "arm", "pair", "enabled")}
+    runs = report.get("runs", [])
+    if runs and "answer_identity" in runs[-1]:
+        result["last_capture"] = runs[-1]["answer_identity"]
+    if code == "answer_parity" and "parity_components" in report:
+        result["parity_components"] = report["parity_components"]
+    return result
 
 
 def split_stderr(raw, enabled):
@@ -157,7 +251,9 @@ def paired_summary(report):
 
 
 def run(path, out, report, deadline=None, baseline_path=None, baseline_revision=None):
+    report["diagnostic_stage"] = "input_admission"
     config, graph = PREP.admit(path, out, COMMAND_SECONDS)
+    report["diagnostic_stage"] = "candidate_setup"
     setup = PROJECT.read_json(Path(PROJECT.read_json(path)["reused_tools"]["setup_results"]))
     require(setup["cartograph"]["setup"]["mode"] == "fresh-release-package-build", "Existing release package build required")
     config["hashes"][str(Path(__file__).resolve())] = BASE.sha256(Path(__file__))
@@ -165,10 +261,12 @@ def run(path, out, report, deadline=None, baseline_path=None, baseline_revision=
                   runner_sha256=BASE.sha256(Path(__file__)), runs=[], byte_checks=[])
     baseline = None
     if baseline_path is not None:
+        report["diagnostic_stage"] = "baseline_admission"
         baseline = admit_baseline(baseline_path, baseline_revision, setup, config, out)
         report["baseline_source"] = baseline["cartograph"]["setup"]["source"]
         report["baseline_binary_sha256"] = baseline["cartograph"]["binary_sha256"]
         report["candidate_binary_sha256"] = setup["cartograph"]["binary_sha256"]
+    report["diagnostic_stage"] = "plan"
     request = max(config["requests"], key=lambda item: item["max_depth"])
     found, ambiguous, missing = graph["bindings"][request["seed"]], "fullMessage", "CartographPhaseMissing_7c460af8"
     cases = [("ambiguous", [ambiguous], ["ambiguous"], [False, True]),
@@ -196,19 +294,32 @@ def run(path, out, report, deadline=None, baseline_path=None, baseline_revision=
             for arm in order:
                 arm_command = command if arm == "candidate" else [baseline["cartograph"]["binary"], *command[1:]]
                 stem = f"{name}-{number}" if baseline is None else f"{name}-{number}-{arm}"
+                report["active_workload"] = {"case": name, "arm": arm, "pair": number, "enabled": enabled}
+                report["diagnostic_stage"] = "input_identity"
                 report["byte_checks"].append(PREP.verify_bytes(config))
+                report["diagnostic_stage"] = "capture"
                 measured, raw = capture(arm_command, Path(config["project"]), out / stem, enabled)
-                report["runs"].append({"case": name, **({"arm": arm, "pair": number} if baseline else {}), **measured})
+                report["runs"].append({"case": name, **({"arm": arm, "pair": number} if baseline else {}),
+                                       **measured, "answer_identity": answer_identity(raw)})
                 BASE.save(out / "results.json", report)
+                report["diagnostic_stage"] = "answer_contract"
                 check_answer(raw, names, statuses, config, graph, request)
                 expected = raw if expected is None else expected
+                report["diagnostic_stage"] = "parity"
+                if raw != expected:
+                    report["parity_components"] = {
+                        "exitEqual": raw[0] == expected[0], "stdoutEqual": raw[1] == expected[1],
+                        "cleanStderrEqual": raw[2] == expected[2]}
                 require(raw == expected, "stdout, exit, or stderr-with-only-phase-line-removed parity failed")
+                report["diagnostic_stage"] = "phase_contract"
                 if enabled:
                     require(all(value is not None for key, value in measured["phases"].items() if key != "found_facts"),
                             "A required query phase did not run")
                     require((measured["phases"]["found_facts"] is not None) == ("found" in statuses),
                             "Found-only phase ran or was skipped incorrectly")
+    report["diagnostic_stage"] = "final_input_identity"
     report["byte_checks"].append(PREP.verify_bytes(config))
+    report["diagnostic_stage"] = "timing_contract"
     require(deadline is None or time.monotonic() < deadline, "Shared driver deadline exceeded")
     # 동등성과 입력 검사를 모두 통과한 뒤에만 내부 시간을 해석한다.
     totals = []
@@ -229,6 +340,7 @@ def run(path, out, report, deadline=None, baseline_path=None, baseline_revision=
                and record.get("arm", "candidate") == "candidate") for enabled in (False, True)}
     require(deadline is None or time.monotonic() < deadline, "Shared driver deadline exceeded")
     if baseline is not None:
+        report["diagnostic_stage"] = "summary"
         report["paired_summary"] = paired_summary(report)
     report.update(status="passed", output_parity_verified=True, found_wall_medians_seconds=medians,
                   enabled_minus_disabled_median_seconds=medians["True"] - medians["False"])
@@ -265,6 +377,7 @@ def main():
             args.baseline_setup_results.resolve() if args.baseline_setup_results else None, args.baseline_revision)
     except (Exception, KeyboardInterrupt) as error:
         report.update(status="failed", error=f"{type(error).__name__}: {error}")
+        report["failure_diagnostic"] = failure_diagnostic(report, error)
     finally:
         signal.alarm(0)
         for sig, handler in previous.items():
@@ -280,6 +393,8 @@ def main():
             "candidate_binary_sha256": report["candidate_binary_sha256"],
             "clean_fresh_release_builds": True,
             "output_and_input_identity_verified": report["output_parity_verified"]}, sort_keys=True))
+    if report["status"] == "failed":
+        print("QueryProjectionFailure " + json.dumps(report["failure_diagnostic"], sort_keys=True))
     print(json.dumps({"status": report["status"], "results": str(out / "results.json")}, sort_keys=True))
     return 0 if report["status"] == "passed" else 1
 
