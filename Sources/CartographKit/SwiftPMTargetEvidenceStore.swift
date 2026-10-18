@@ -93,7 +93,7 @@ struct SwiftPMTargetEvidenceStore {
         guard data.count <= Self.documentLimit else { throw invalid("The description exceeds its limit.") }
         let description = try JSONDecoder().decode(Description.self, from: data)
         guard root.hasPrefix("/"), root != "/",
-              URL(fileURLWithPath: root).standardizedFileURL.path == root,
+              relativePath(String(root.dropFirst())),
               try fileSystem.realPath(at: root) == root,
               (try fileSystem.realPath(at: description.path)) == root,
               !description.targets.isEmpty, description.targets.count <= 1_000,
