@@ -1,6 +1,6 @@
 import CartographCore
 
-/// 선언된 소스 타깃 소속이다. 프레임워크 신원이나 실행 가능한 테스트 판정과 구분한다.
+/// 기록된 생성 시점의 선언 소스 소속이다. 현재 패키지 전체나 실행 가능한 테스트의 증명이 아니다.
 public struct TestTargetMembershipFacts: Sendable, Equatable {
     public let testUSRs: Set<String>
     public let ordinaryUSRs: Set<String>
@@ -25,6 +25,12 @@ public struct TestTargetMembershipFacts: Sendable, Equatable {
         let conflictingRoots = Set(roots.filter { root in
             roots.contains { $0 != root && (root.hasPrefix($0 + "/") || $0.hasPrefix(root + "/")) }
         })
+        struct Owner: Hashable {
+            let root: String
+            let module: String
+            let target: String
+        }
+        var ownersByUSR: [String: Set<Owner>] = [:]
         var test: Set<String> = []
         var ordinary: Set<String> = []
         var unknown: Set<String> = []
@@ -40,8 +46,12 @@ public struct TestTargetMembershipFacts: Sendable, Equatable {
                 unknown.insert(symbol.usr)
                 continue
             }
+            ownersByUSR[symbol.usr, default: []].insert(
+                Owner(root: owner.packageRoot, module: owner.module, target: owner.name)
+            )
             if owner.isTest { test.insert(symbol.usr) } else { ordinary.insert(symbol.usr) }
         }
+        unknown.formUnion(ownersByUSR.filter { $0.value.count > 1 }.map(\.key))
         unknown.formUnion(test.intersection(ordinary))
         testUSRs = test.subtracting(unknown)
         ordinaryUSRs = ordinary.subtracting(unknown)

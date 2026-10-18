@@ -2,10 +2,12 @@ import CartographCore
 import CryptoKit
 import Foundation
 
-/// 전달받은 생산자 주장을 현재 바이트와 인덱스에 대조한다. 명령이나 매니페스트를 실행하지 않는다.
+/// 저장된 생성 시점의 소속 주장을 현재의 명시 입력 바이트와 주어진 인덱스에 대조한다.
+/// 목록에 없는 새 소스나 현재 패키지 전체의 완전성을 증명하지 않으며 명령을 실행하지 않는다.
 struct SwiftPMTargetEvidenceStore {
     private let fileSystem: any FileSystem
     private static let documentLimit = 4 * 1_024 * 1_024
+    private static let maximumSources = 10_000
     private static let sourceLimit = 4 * 1_024 * 1_024
 
     init(fileSystem: any FileSystem = LocalFileSystem()) {
@@ -31,7 +33,7 @@ struct SwiftPMTargetEvidenceStore {
                   "--scratch-path", receipt.packageRoot + "/.build", "--configuration", "debug",
                   "--build-tests", "--enable-index-store", "--jobs", "2"
               ],
-              receipt.before.files.count <= 10_000,
+              receipt.before.files.count <= Self.maximumSources + 2,
               try fileSystem.realPath(at: receipt.packageRoot) == receipt.packageRoot
         else { throw invalid("The producer receipt is incomplete, unsupported or belongs to another snapshot.") }
         let descriptionPath = try containedPath(receipt.descriptionPath, root: receipt.packageRoot)
@@ -95,7 +97,7 @@ struct SwiftPMTargetEvidenceStore {
               try fileSystem.realPath(at: root) == root,
               (try fileSystem.realPath(at: description.path)) == root,
               !description.targets.isEmpty, description.targets.count <= 1_000,
-              description.targets.reduce(0, { $0 + $1.sources.count }) <= 10_000 else {
+              description.targets.reduce(0, { $0 + $1.sources.count }) <= Self.maximumSources else {
             throw invalid("The description has another package root or exceeds its target/source limit.")
         }
         return try description.targets.map { target in
@@ -127,7 +129,11 @@ struct SwiftPMTargetEvidenceStore {
             throw invalid("A declared path escapes the package root.")
         }
         if !fileSystem.fileExists(at: path) {
-            guard path == root + "/Package.resolved" else { throw invalid("A declared source is absent.") }
+            guard path == root + "/Package.resolved",
+                  !fileSystem.directoryExists(at: path),
+                  !(try fileSystem.contentsOfDirectory(at: root)).contains(path) else {
+                throw invalid("A declared source is absent or Package.resolved is a nonregular entry.")
+            }
             return path
         }
         let resolved = try fileSystem.realPath(at: path)
@@ -148,17 +154,20 @@ struct SwiftPMTargetEvidenceStore {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// 배열 순서는 생산자 판정에 쓰지 않는다. 모든 중복 관찰도 포함한 스냅샷 내용 지문이다.
+    /// symbols 등 순서가 의미 있는 배열은 보존한다. 참조와 속성 집합만 정규화한다.
     static func snapshotIdentity(_ snapshot: IndexSnapshot) throws -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let object = try JSONSerialization.jsonObject(with: encoder.encode(snapshot))
-        func canonical(_ value: Any) throws -> Any {
+        func canonical(_ value: Any, key: String? = nil) throws -> Any {
             if let dictionary = value as? [String: Any] {
-                return try dictionary.mapValues(canonical)
+                return try Dictionary(uniqueKeysWithValues: dictionary.map {
+                    ($0.key, try canonical($0.value, key: $0.key))
+                })
             }
             if let array = value as? [Any] {
-                let values = try array.map(canonical)
+                let values = try array.map { try canonical($0) }
+                guard key == "attributes" || key == "references" else { return values }
                 return try values.map { value in
                     (value, try JSONSerialization.data(withJSONObject: value,
                         options: [.sortedKeys, .fragmentsAllowed]))

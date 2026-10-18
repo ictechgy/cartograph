@@ -20,7 +20,8 @@ struct TestTargetMembershipFactsTests {
     }
 
     @Test("충돌하거나 목록 밖인 소속은 미확인으로 남긴다", arguments: [
-        "module", "name", "shared", "unlisted", "nested-root", "duplicate-usr"
+        "module", "name", "shared", "unlisted", "nested-root", "duplicate-usr",
+        "duplicate-test", "duplicate-ordinary"
     ])
     func conflictsRemainUnknown(mode: String) {
         var owners = targets()
@@ -41,6 +42,12 @@ struct TestTargetMembershipFactsTests {
             owners.append(.init(packageRoot: "/p/Nested", name: "Other", module: "Other",
                                 isTest: true, sourcePaths: ["/p/Nested/File.swift"]))
         } else {
+            if mode != "duplicate-usr" {
+                owners = owners.map {
+                    .init(packageRoot: $0.packageRoot, name: $0.name, module: $0.module,
+                          isTest: mode == "duplicate-test", sourcePaths: $0.sourcePaths)
+                }
+            }
             input.symbols.append(.init(usr: "ordinary", name: "testShared()", kind: .method, module: "ProbeTests",
                 location: .init(path: "/p/Tests/Probe.swift", line: 1, column: 1)))
         }
@@ -54,6 +61,7 @@ struct TestTargetMembershipFactsTests {
         let original = snapshot()
         var reversed = original
         reversed.symbols.reverse()
+        reversed.symbols.append(original.symbols[0])
         let before = TestTargetMembershipFacts(snapshot: original, targets: targets())
         #expect(before == TestTargetMembershipFacts(snapshot: reversed, targets: Array(targets().reversed())))
         #expect(original.symbols.allSatisfy { $0.attributes == [.unitTest] && $0.compilerUnitTest == true })

@@ -27,7 +27,8 @@ struct SwiftPMTargetEvidenceStoreTests {
     }
 
     @Test("생산 뒤 소스·매니페스트·설명·인덱스가 바뀌면 거부한다", arguments: [
-        "source", "manifest", "resolved", "description", "snapshot", "missing", "version", "producer-drift"
+        "source", "manifest", "resolved", "resolved-directory", "description", "snapshot", "missing",
+        "version", "producer-drift"
     ])
     func rejectsChangedInputs(mode: String) throws {
         let (fileSystem, original, receipt) = try fixture()
@@ -37,6 +38,7 @@ struct SwiftPMTargetEvidenceStoreTests {
         case "source": try fileSystem.write(text: "changed", to: "/p/Sources/Probe.swift")
         case "manifest": try fileSystem.write(text: "changed", to: "/p/Package.swift")
         case "resolved": try fileSystem.write(text: "new resolution", to: "/p/Package.resolved")
+        case "resolved-directory": try fileSystem.write(text: "entry", to: "/p/Package.resolved/file")
         case "description": try fileSystem.write(text: "{}", to: "/p/description.json")
         case "snapshot": snapshot.symbols.removeLast()
         case "missing": try fileSystem.removeItem(at: "/p/Sources/Probe.swift")
@@ -66,16 +68,103 @@ struct SwiftPMTargetEvidenceStoreTests {
         }
     }
 
-    @Test("스냅샷 배열 순서는 지문을 바꾸지 않되 모듈 관찰 변경은 바꾼다")
+    @Test("대표 선택에 쓰는 심볼 순서는 보존하고 참조 순서만 정규화한다")
     func snapshotFingerprintTracksContent() throws {
         let (_, snapshot, _) = try fixture()
         var reordered = snapshot
         reordered.symbols.reverse()
         #expect(try SwiftPMTargetEvidenceStore.snapshotIdentity(snapshot)
-            == SwiftPMTargetEvidenceStore.snapshotIdentity(reordered))
-        reordered.symbols.removeLast()
-        #expect(try SwiftPMTargetEvidenceStore.snapshotIdentity(snapshot)
             != SwiftPMTargetEvidenceStore.snapshotIdentity(reordered))
+        var conflicting = snapshot
+        conflicting.symbols.append(.init(usr: "ordinary", name: "different()", kind: .method, module: "Other",
+            location: .init(path: "/p/Other.swift", line: 1, column: 1)))
+        var reversed = conflicting
+        reversed.symbols.reverse()
+        #expect(conflicting.symbolsByUSR()["ordinary"] != reversed.symbolsByUSR()["ordinary"])
+        #expect(try SwiftPMTargetEvidenceStore.snapshotIdentity(conflicting)
+            != SwiftPMTargetEvidenceStore.snapshotIdentity(reversed))
+        var references = snapshot
+        references.references = [
+            .init(sourceUSR: "test", targetUSR: "ordinary", kind: .call),
+            .init(sourceUSR: "ordinary", targetUSR: "test", kind: .reference),
+        ]
+        var reversedReferences = references
+        reversedReferences.references.reverse()
+        #expect(try SwiftPMTargetEvidenceStore.snapshotIdentity(references)
+            == SwiftPMTargetEvidenceStore.snapshotIdentity(reversedReferences))
+    }
+
+
+    @Test("소스 상한에는 고정 매니페스트 두 항목을 별도로 더한다", arguments: [10_000, 10_001])
+    func sourceCountBoundary(count: Int) throws {
+        let names = (0..<count).map { "Source\($0).swift" }
+        var files = Dictionary(uniqueKeysWithValues: names.map { ("/p/Sources/" + $0, "") })
+        files["/p/Package.swift"] = ""
+        let description = try JSONSerialization.data(withJSONObject: [
+            "path": "/p", "targets": [
+                ["name": "Probe", "type": "library", "c99name": "Probe",
+                 "module_type": "SwiftTarget", "path": "Sources", "sources": names]
+            ]
+        ])
+        files["/p/description.json"] = String(decoding: description, as: UTF8.self)
+        let fileSystem = InMemoryFileSystem(files: files)
+        let store = SwiftPMTargetEvidenceStore(fileSystem: fileSystem)
+        if count > 10_000 {
+            #expect(throws: (any Error).self) { try store.inputs(description: description, root: "/p") }
+            return
+        }
+        let snapshot = IndexSnapshot(symbols: [])
+        let inputs = try store.inputs(description: description, root: "/p")
+        #expect(inputs.files.count == count + 2)
+        let receipt = try boundReceipt(root: "/p", inputs: inputs, snapshot: snapshot)
+        #expect(try store.verify(receipt, snapshot: snapshot).first?.sourcePaths.count == count)
+    }
+
+    @Test("실제 파일 시스템의 디렉터리와 끊어진 링크를 해결 파일의 부재로 오인하지 않는다",
+          arguments: ["directory", "dangling-link"])
+    func rejectsNonregularResolutionState(mode: String) throws {
+        let manager = FileManager.default
+        let temporary = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try manager.createDirectory(at: temporary, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: temporary) }
+        let fileSystem = LocalFileSystem()
+        let root = try fileSystem.realPath(at: temporary.path)
+        let description = try JSONSerialization.data(withJSONObject: [
+            "path": root, "targets": [
+                ["name": "Probe", "type": "library", "c99name": "Probe",
+                 "module_type": "SwiftTarget", "path": "Sources", "sources": ["Probe.swift"]]
+            ]
+        ])
+        try fileSystem.write(text: "", to: root + "/Package.swift")
+        try fileSystem.write(text: "", to: root + "/Sources/Probe.swift")
+        try fileSystem.write(description, to: root + "/description.json")
+        let store = SwiftPMTargetEvidenceStore(fileSystem: fileSystem)
+        let snapshot = IndexSnapshot(symbols: [])
+        let inputs = try store.inputs(description: description, root: root)
+        let receipt = try boundReceipt(root: root, inputs: inputs, snapshot: snapshot)
+        #expect(try store.verify(receipt, snapshot: snapshot).count == 1)
+        let path = root + "/Package.resolved"
+        if mode == "directory" {
+            try manager.createDirectory(atPath: path, withIntermediateDirectories: false)
+        } else {
+            try manager.createSymbolicLink(atPath: path, withDestinationPath: root + "/absent")
+        }
+        #expect(try fileSystem.contentsOfDirectory(at: root).contains(path))
+        #expect(throws: (any Error).self) { try store.verify(receipt, snapshot: snapshot) }
+        #expect(throws: (any Error).self) { try store.inputs(description: description, root: root) }
+    }
+
+    private func boundReceipt(
+        root: String, inputs: SwiftPMTargetEvidenceDocument.Inputs, snapshot: IndexSnapshot
+    ) throws -> SwiftPMTargetEvidenceDocument {
+        let identity = try SwiftPMTargetEvidenceStore.snapshotIdentity(snapshot)
+        return .init(
+            packageRoot: root, descriptionPath: root + "/description.json", toolchain: "controlled fixture",
+            configuration: "debug", describeArguments: ["swift", "package", "describe", "--type", "json"],
+            buildArguments: ["swift", "build", "--package-path", root, "--scratch-path", root + "/.build",
+                "--configuration", "debug", "--build-tests", "--enable-index-store", "--jobs", "2"],
+            before: inputs, after: inputs, snapshotBefore: identity, snapshotAfter: identity
+        )
     }
 
     private func fixture() throws -> (InMemoryFileSystem, IndexSnapshot, SwiftPMTargetEvidenceDocument) {

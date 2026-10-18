@@ -1,5 +1,6 @@
 /// 빌드 생산자가 실제 describe 실행과 인덱스 관찰을 묶어 남긴 주장이다.
 /// 서명이나 실행 가능한 테스트 제품의 증명은 아니다.
+/// 기록된 생성 시점의 명시 소스 소속이며 목록 밖의 새 파일을 포함한 현재 패키지 완전성을 뜻하지 않는다.
 public struct SwiftPMTargetEvidenceDocument: Sendable, Equatable, Codable {
     public let format: String
     public let version: Int
