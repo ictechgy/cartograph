@@ -1,3 +1,4 @@
+import CartographAnalysis
 import CartographCore
 import CartographIndexStore
 import CartographTestSupport
@@ -26,6 +27,7 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
         }
         // 빈 입력으로 통과하지 않으며 이름 추정으로 컴파일러 근거를 만들지 않는다.
         for name in ["ProductionProbe", "testConnection", "BaseCase", "AsyncCase", "testAsync",
+                     "ShapeCase", "testStatic", "testClass", "testReturnsValue", "testArgument",
                      "ModernSuite", "asyncCase", "parameterized", "QualifiedSuite", "qualifiedCase",
                      "argumentProvider", "suiteInitHelper", "providerHelper", "lifecycleHelper",
                      "xctestHelper", "modernHelper", "qualifiedHelper", "productionHelper"] {
@@ -42,6 +44,62 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
             let declaration = try #require(local.first { !$0.isExternal && $0.name == name })
             #expect(declaration.compilerUnitTest == false)
         }
+        let identity = XCTestIdentityFacts(snapshot: snapshot)
+        let expectedClasses = Set(local.filter {
+            ["BaseCase", "AsyncCase", "ShapeCase", "DuplicateCase"].contains($0.name)
+        }.map(\.usr))
+        let expectedMethods = Set(local.filter { ["testAsync()", "testShared()"].contains($0.name) }.map(\.usr))
+        #expect(expectedClasses.count == 5 && expectedMethods.count == 3)
+        #expect(identity.classUSRs == expectedClasses)
+        #expect(identity.methodUSRs == expectedMethods)
+        let negativeMethods = Set(local.filter {
+            ["testStatic()", "testClass()", "testReturnsValue()", "testArgument(_:)"].contains($0.name)
+        }.map(\.usr))
+        #expect(negativeMethods.count == 4)
+        #expect(identity.uncertainUSRs.isSubset(of: negativeMethods))
+        // 표시 이름이 같아도 컴파일러 USR·모듈·소유자 신원은 합치지 않는다.
+        let graph = GraphBuilder(options: .init(level: .symbol, includeExternal: false)).build(from: snapshot)
+        let query = GraphQueryIndex(graph: graph)
+        for (name, kind) in [("DuplicateCase", SymbolKind.classType),
+                             ("testShared()", .method), ("value", .property)] {
+            let declarations = local.filter { !$0.isExternal && $0.name == name && $0.kind == kind }
+            #expect(declarations.count == 2)
+            #expect(Set(declarations.map(\.usr)).count == 2)
+            #expect(Set(declarations.map(\.module)) == ["Probe", "ProbeTests"])
+            guard case let .ambiguous(candidates) = query.resolve(name) else {
+                Issue.record("동명 선언은 임의 선택하지 않고 두 후보를 반환해야 한다: \(name)")
+                continue
+            }
+            #expect(Set(candidates.map(\.id)) == Set(declarations.map { NodeID($0.usr) }))
+            for declaration in declarations {
+                let subject = kind == .classType
+                    ? "\(declaration.module).DuplicateCase"
+                    : "\(declaration.module).DuplicateCase.\(name)"
+                guard case let .found(selected) = query.resolve(subject) else {
+                    Issue.record("모듈 한정 이름으로 원래 선언을 찾아야 한다: \(subject)")
+                    continue
+                }
+                #expect(selected.usr == declaration.usr)
+                #expect(selected.module == declaration.module)
+                #expect(query.resolve(declaration.usr) == .found(selected))
+            }
+        }
+        for module in ["Probe", "ProbeTests"] {
+            let owner = try #require(local.first { $0.module == module && $0.name == "DuplicateCase" })
+            let method = try #require(local.first { $0.module == module && $0.name == "testShared()" })
+            let property = try #require(local.first { $0.module == module && $0.name == "value" })
+            #expect(method.parentUSR == owner.usr && property.parentUSR == owner.usr)
+            #expect(method.compilerUnitTest == true)
+            #expect(identity.methodUSRs.contains(method.usr))
+            #expect(snapshot.references.contains {
+                $0.sourceUSR == method.usr && $0.targetUSR == property.usr && $0.origin == .compiler
+            })
+            let otherProperties = Set(local.filter { $0.module != module && $0.name == "value" }.map(\.usr))
+            #expect(!snapshot.references.contains {
+                $0.sourceUSR == method.usr && otherProperties.contains($0.targetUSR)
+            })
+        }
+        // Probe는 일반 라이브러리다. 그 메서드의 프레임워크 신원은 테스트 타깃 소속 증명이 아니다.
         for (caller, callee) in [
             ("testConnection", "productionHelper"), ("setUp", "lifecycleHelper"),
             ("testAsync", "xctestHelper"), ("asyncCase", "modernHelper"),
@@ -66,7 +124,7 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
         let inheritance = snapshot.references.filter { $0.sourceUSR == base.usr && $0.kind == .inheritance }
         #expect(!inheritance.isEmpty, "XCTest ancestry must come from compiler relations")
         // 명시한 소스에서 읽힌 관계와 SDK 대상의 정확한 신원을 남긴다.
-        // Build 아래 생성 파일은 공급자에서 제외되므로 runner 전체를 포괄한다고 주장하지 않는다.
+        // 빌드 산출물 아래 생성 파일은 공급자에서 제외되므로 runner 전체를 포괄한다고 주장하지 않는다.
         // unitTest 속성과 생성된 provider/init 소유 관계는 관찰 전에 추측하여 단언하지 않는다.
         let localUSRs = Set(local.map(\.usr))
         let references = snapshot.references.filter {
@@ -86,7 +144,7 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
              "line": $0.location?.line ?? 0]
         }
         let evidence: [String: Any] = [
-            "schema": 1, "scope": "macOS active SwiftPM toolchain; admitted source records before enrichment; generated build files excluded",
+            "schema": 1, "scope": "macOS active SwiftPM toolchain; admitted source records before enrichment; generated build files excluded; negative XCTest shapes indexed in ordinary library target",
             "toolchain": fixture.toolchain, "symbols": sortedRows(symbolRows),
             "references": sortedRows(referenceRows),
         ]
@@ -343,11 +401,24 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
         }
     }
 
+    // 잘못된 실행 형태는 일반 타깃에서 인덱싱해 SwiftPM 테스트 발견 코드의 컴파일과 분리한다.
     private static let production = """
+    import XCTest
+
     public func productionHelper() {}
     public final class ProductionProbe {
         public init() {}
         public func testConnection() { productionHelper() }
+    }
+    class DuplicateCase: XCTestCase {
+        var value: Int { 1 }
+        func testShared() { _ = value }
+    }
+    class ShapeCase: XCTestCase {
+        static func testStatic() {}
+        class func testClass() {}
+        func testReturnsValue() -> Int { 1 }
+        func testArgument(_ value: Int) {}
     }
     """
 
@@ -366,6 +437,10 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
 
     class BaseCase: XCTestCase {
         override func setUp() { lifecycleHelper() }
+    }
+    class DuplicateCase: XCTestCase {
+        var value: Int { 2 }
+        func testShared() { _ = value }
     }
     final class AsyncCase: BaseCase {
         func testAsync() async throws { xctestHelper() }
