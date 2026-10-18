@@ -9,7 +9,6 @@ import math
 import os
 from pathlib import Path
 import re
-import resource
 import signal
 import statistics
 import time
@@ -39,6 +38,7 @@ FAILURE_GUARDS = {
     "Successful baseline release build required": "baseline_build_status",
     "Fresh release builds required": "release_build_mode",
     "Clean product source required": "product_source_dirty",
+    "Fresh arm cache directory required": "arm_cache_directory",
     "Product release build failed": "product_build_failed",
     "Product source membership changed": "product_source_membership",
     "Existing release package build required": "candidate_build_mode",
@@ -50,6 +50,7 @@ FAILURE_GUARDS = {
     "Index bytes changed": "index_identity",
     "Native discovery failed": "native_discovery",
     "Native graph no longer matches source oracle": "graph_oracle",
+    "Query cleanup or root ownership unresolved": "query_cleanup",
     "Query timed out": "query_timeout",
     "Shared driver deadline exceeded": "driver_timeout",
     "Query reached the output cap": "query_output_cap",
@@ -136,31 +137,48 @@ def split_stderr(raw, enabled):
 
 
 def capture(command, project, stem, enabled):
-    previous, limits = os.environ.pop(FLAG, None), resource.getrlimit(resource.RLIMIT_FSIZE)
+    previous = os.environ.pop(FLAG, None)
     try:
         if enabled:
             os.environ[FLAG] = "1"
-        soft = min(MAX_BYTES, limits[0]) if limits[0] >= 0 else MAX_BYTES
-        resource.setrlimit(resource.RLIMIT_FSIZE, (soft, limits[1]))
         try:
-            measurement = BASE.run(command, project, stem, COMMAND_SECONDS)
+            measurement = BASE.run(command, project, stem, COMMAND_SECONDS, stream_limit=MAX_BYTES)
         except KeyboardInterrupt:
-            BASE.save(Path(str(stem) + ".json"), {"command": command, "cwd": str(project), "interrupted": True,
-                      "stdout": str(stem) + ".stdout", "stderr": str(stem) + ".stderr"})
+            path = Path(str(stem) + ".json")
+            measurement = PROJECT.read_json(path) if path.exists() else {
+                "command": command, "cwd": str(project),
+                "stdout": str(stem) + ".stdout", "stderr": str(stem) + ".stderr"}
+            BASE.save(path, {**measurement, "interrupted": True})
             raise
         except RuntimeError:
             measurement = PROJECT.read_json(Path(str(stem) + ".json"))
+        require(measurement.get("owned_root_reaped") is True
+                and not measurement.get("ownership_lost") and not measurement.get("cleanup_errors"),
+                "Query cleanup or root ownership unresolved")
         require(not measurement["timed_out"], "Query timed out")
+        require(not measurement["output_limit_exceeded"], "Query reached the output cap")
         stdout, stderr = (Path(measurement[name]).read_bytes() for name in ("stdout", "stderr"))
-        require(max(len(stdout), len(stderr)) < soft, "Query reached the output cap")
+        require(max(len(stdout), len(stderr)) < MAX_BYTES, "Query reached the output cap")
         clean, phases = split_stderr(stderr, enabled)
         return {"measurement": measurement, "enabled": enabled, "phases": phases}, (measurement["returncode"], stdout, clean)
     finally:
-        resource.setrlimit(resource.RLIMIT_FSIZE, limits)
         os.environ.pop(FLAG, None)
         if previous is not None:
             os.environ[FLAG] = previous
 
+
+def capture_in_temporary(command, project, stem, enabled, temporary):
+    if temporary is None:
+        return capture(command, project, stem, enabled)
+    previous = os.environ.get("TMPDIR")
+    try:
+        os.environ["TMPDIR"] = str(temporary)
+        return capture(command, project, stem, enabled)
+    finally:
+        if previous is None:
+            os.environ.pop("TMPDIR", None)
+        else:
+            os.environ["TMPDIR"] = previous
 
 def check_answer(raw, names, statuses, config, graph, request):
     code, stdout, _ = raw
@@ -259,13 +277,26 @@ def run(path, out, report, deadline=None, baseline_path=None, baseline_revision=
     config["hashes"][str(Path(__file__).resolve())] = BASE.sha256(Path(__file__))
     report.update(source=setup["cartograph"]["setup"]["source"], toolchain=setup["toolchain"],
                   runner_sha256=BASE.sha256(Path(__file__)), runs=[], byte_checks=[])
-    baseline = None
+    baseline, temporary_roots = None, {}
     if baseline_path is not None:
         report["diagnostic_stage"] = "baseline_admission"
         baseline = admit_baseline(baseline_path, baseline_revision, setup, config, out)
         report["baseline_source"] = baseline["cartograph"]["setup"]["source"]
         report["baseline_binary_sha256"] = baseline["cartograph"]["binary_sha256"]
         report["candidate_binary_sha256"] = setup["cartograph"]["binary_sha256"]
+        # 캐시는 공개 번들의 setup/runs/fixtures 밖에 두고 팔 사이에 공유하지 않는다.
+        temporary_parent = path.parent / "query-projection-temporary"
+        temporary_parent.mkdir()
+        for arm in ("baseline", "candidate"):
+            temporary_roots[arm] = temporary_parent / arm
+            temporary_roots[arm].mkdir()
+            require(not any(temporary_roots[arm].iterdir()), "Fresh arm cache directory required")
+        report["cache_protocol"] = {
+            "version": 2, "arm_tmpdir": {arm: str(root) for arm, root in temporary_roots.items()},
+            "initial_state": "Both owned directories absent then empty; first call initializes application caches",
+            "reuse": "Each arm retains only its own cache across the fixed request schedule",
+            "scope": "OS caches are not flushed; prior shared-TMPDIR timings use a different protocol",
+        }
     report["diagnostic_stage"] = "plan"
     request = max(config["requests"], key=lambda item: item["max_depth"])
     found, ambiguous, missing = graph["bindings"][request["seed"]], "fullMessage", "CartographPhaseMissing_7c460af8"
@@ -298,7 +329,8 @@ def run(path, out, report, deadline=None, baseline_path=None, baseline_revision=
                 report["diagnostic_stage"] = "input_identity"
                 report["byte_checks"].append(PREP.verify_bytes(config))
                 report["diagnostic_stage"] = "capture"
-                measured, raw = capture(arm_command, Path(config["project"]), out / stem, enabled)
+                measured, raw = capture_in_temporary(arm_command, Path(config["project"]), out / stem, enabled,
+                                                     temporary_roots.get(arm))
                 report["runs"].append({"case": name, **({"arm": arm, "pair": number} if baseline else {}),
                                        **measured, "answer_identity": answer_identity(raw)})
                 BASE.save(out / "results.json", report)
@@ -387,6 +419,7 @@ def main():
     if report["status"] == "passed" and "paired_summary" in report:
         print("QueryProjectionTiming " + json.dumps({
             **report["paired_summary"], "workload": report["paired_workload"],
+            "cache_protocol": {key: value for key, value in report["cache_protocol"].items() if key != "arm_tmpdir"},
             "baseline_revision": report["baseline_source"]["revision"],
             "candidate_revision": report["source"]["revision"],
             "baseline_binary_sha256": report["baseline_binary_sha256"],
