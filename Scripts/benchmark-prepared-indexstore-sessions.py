@@ -7,6 +7,8 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import math
+import statistics
 import os
 from pathlib import Path
 import selectors
@@ -97,7 +99,18 @@ def admit(path: Path, out: Path, timeout: float) -> tuple[dict, dict]:
               "allowed": sorted(PROJECT.source_files(manifest)), "requests": PROJECT.query_requests(oracle),
               "index_fingerprint": report["project"]["index_fingerprint"], "hashes": hashes,
               "cli": prior["cli"], "library": prior["library"], "cartograph": prior["cartograph"],
-              "out": str(out / "baseline"), "timeout": timeout}
+              "out": str(out / "baseline"), "timeout": timeout,
+              "summary_identity": {
+                  "project_revision": PROJECT.PROJECT_REVISION,
+                  "comparator_revision": BASE.REVISION,
+                  "cartograph_revision": setup["cartograph"]["setup"].get("source", {}).get("revision"),
+                  "comparator_binary_sha256": setup["comparator_setup"]["binary_sha256"],
+                  "cartograph_binary_sha256": setup["cartograph"]["binary_sha256"],
+                  "swiftc_sha256": prior["swiftc_sha256"],
+                  "lib_indexstore_sha256": setup["toolchain"]["library_sha256"],
+                  "index_sha256": report["project"]["index_fingerprint"]["sha256"],
+                  "source_manifest_sha256": PROJECT.FROZEN_HASHES["source-manifest.json"],
+              }}
     verify_bytes(config)
     measurement = report["discovery"]["cartograph"]["measurement"]
     require(measurement["returncode"] == 0 and not measurement["timed_out"], "Native discovery failed")
@@ -340,6 +353,64 @@ def run(config: dict, graph: dict, out: Path, report: dict, deadline: float | No
             report["status"] = "failed"
 
 
+def log_summary(report: dict, config: dict) -> dict:
+    """검증을 마친 고정 표본의 숫자와 공개 입력 지문만 로그에 남긴다."""
+    require(report["status"] == "passed", "Only successful prepared diagnostics may be summarized")
+    require(len(report["warm_pairs"]) == len(ORDERS)
+            and [pair["order"] for pair in report["warm_pairs"]] == ORDERS,
+            "Prepared sample inventory changed")
+    request = max(config["requests"], key=lambda item: item["max_depth"])
+
+    def seconds(value):
+        require(isinstance(value, (int, float)) and not isinstance(value, bool)
+                and math.isfinite(value) and value >= 0, "Invalid prepared timing")
+        return value
+
+    arms = {}
+    for arm in ARMS:
+        warm = [seconds(pair[arm]["ipc_seconds"]) for pair in report["warm_pairs"]]
+        arms[arm] = {
+            "spawn_to_graph_ready_seconds": seconds(report["preparation"][arm]["spawn_to_graph_ready_seconds"]),
+            "first_query_seconds": seconds(report["first"][arm]["ipc_seconds"]),
+            "warm_query_seconds": warm,
+            "warm_query_median_seconds": statistics.median(warm),
+            "completed_same_input_refresh_seconds": seconds(report["refresh"][arm]["completed_refresh"]["ipc_seconds"]),
+            "first_refreshed_query_seconds": seconds(report["refresh"][arm]["first_answer"]["ipc_seconds"]),
+            "arm_total_seconds": seconds(report["totals"][arm]),
+            "total_including_common_verification_seconds":
+                seconds(report["totals_including_common_verification_seconds"][arm]),
+        }
+    identity_fields = (
+        "project_revision", "comparator_revision", "cartograph_revision",
+        "comparator_binary_sha256", "cartograph_binary_sha256", "swiftc_sha256",
+        "lib_indexstore_sha256", "index_sha256", "source_manifest_sha256",
+    )
+    return {
+        "status": "passed", "final_evidence": False, "superiority_claim": None,
+        "identity": {key: config["summary_identity"][key] for key in identity_fields},
+        "workload": {"seed": request["seed"], "depth": request["max_depth"], "limit": 1000,
+                     "first_queries_per_arm": 1, "warm_queries_per_arm": len(ORDERS),
+                     "same_input_refreshes_per_arm": 1, "refreshed_queries_per_arm": 1},
+        "clock": report["query_clock"], "total_contract": report["total_contract"],
+        "validation_clock": report["validation_clock"], "freshness": report["freshness"],
+        "common_seconds": {
+            "admission": seconds(report["admission_seconds"]),
+            "byte_verification": seconds(report["common_byte_verification_seconds"]),
+            "graph_verification": seconds(report["common_graph_verification_seconds"]),
+        },
+        "arms": arms,
+        "limits": [
+            "One prepared session per arm and one fixed caller workload; not the full paired-session protocol.",
+            "Forced same-input refresh only; no semantic edit or rebuild in this diagnostic.",
+            "Build/acquisition/prior discovery costs remain in the separate project setup receipt.",
+            "OS and compiler caches are not flushed; this is not a cold-start measurement.",
+            "Native full evidence is timed; baseline returns the common call answer only.",
+            "No prepared-session process-tree RSS measurement; this summary makes no memory claim.",
+            "Raw responses, all samples, oracle grades and full results remain in the existing evidence artifact.",
+        ],
+    }
+
+
 def terminate_driver(_signal, _frame):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     raise KeyboardInterrupt("Termination requested; cleaning up session processes")
@@ -360,7 +431,7 @@ def main(argv: list[str] | None = None) -> int:
     out = path.parent / "runs" / "prepared-sessions"
     require(not out.exists(), "Prepared-session evidence already exists; never overwrite a run")
     out.mkdir(parents=True)
-    report = {"schema_version": 1, "status": "running", "superiority_claim": None,
+    report = {"schema_version": 1, "status": "running", "final_evidence": False, "superiority_claim": None,
               "role": "Separate prepared-session diagnostic; not a fresh-CLI or generic engine comparison",
               "query_clock": ("Client IPC send through complete response JSON/structured payload parsing; "
                               "oracle grading and raw log writes excluded"),
@@ -387,12 +458,16 @@ def main(argv: list[str] | None = None) -> int:
         config, graph = admit(path, out, args.timeout)
         report["admission_seconds"] = time.perf_counter() - started
         run(config, graph, out, report, deadline)
+        if report["status"] == "passed":
+            report["log_summary"] = log_summary(report, config)
     except (Exception, KeyboardInterrupt) as error:
         report.update(status="failed", error=f"{type(error).__name__}: {error}")
     finally:
         signal.signal(signal.SIGTERM, previous_handler)
     report["diagnostic_elapsed_seconds"] = time.perf_counter() - started
     BASE.save(out / "results.json", report)
+    if report["status"] == "passed":
+        print("PreparedSessionTiming " + json.dumps(report["log_summary"], sort_keys=True))
     print(json.dumps({"status": report["status"], "results": str(out / "results.json")}, sort_keys=True))
     return 0 if report["status"] == "passed" else 1
 

@@ -309,6 +309,82 @@ class PreparedSessionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "successful full"):
             BENCH.admit(report, self.root / "out", 1)
 
+    def summary_fixture(self):
+        config = copy.deepcopy(self.config)
+        config["summary_identity"] = {key: "a" * 64 for key in (
+            "project_revision", "comparator_revision", "cartograph_revision",
+            "comparator_binary_sha256", "cartograph_binary_sha256", "swiftc_sha256",
+            "lib_indexstore_sha256", "index_sha256", "source_manifest_sha256",
+        )}
+        for key in ("project_revision", "comparator_revision", "cartograph_revision"):
+            config["summary_identity"][key] = "b" * 40
+        config["summary_identity"]["private_path"] = "/private/secret"
+        report = {
+            "status": "passed", "query_clock": "symmetric IPC through complete payload parsing",
+            "total_contract": "ready + first + four warm + refresh + first refreshed",
+            "validation_clock": "common checks outside both arms", "freshness": "interval zero",
+            "admission_seconds": 4.0, "common_byte_verification_seconds": 6.0,
+            "common_graph_verification_seconds": 8.0,
+            "preparation": {}, "first": {}, "warm_pairs": [{"order": order} for order in BENCH.ORDERS],
+            "refresh": {}, "totals": {}, "totals_including_common_verification_seconds": {},
+            "private_path": "/private/secret", "raw_output": "private raw output",
+        }
+        for arm, scale in zip(BENCH.ARMS, (1, 2)):
+            report["preparation"][arm] = {"spawn_to_graph_ready_seconds": 2.0 * scale}
+            report["first"][arm] = {"ipc_seconds": 3.0 * scale}
+            for pair, duration in zip(report["warm_pairs"], (5.0, 7.0, 9.0, 11.0)):
+                pair[arm] = {"ipc_seconds": duration * scale}
+            report["refresh"][arm] = {"completed_refresh": {"ipc_seconds": 13.0 * scale},
+                                      "first_answer": {"ipc_seconds": 17.0 * scale}}
+            report["totals"][arm] = 67.0 * scale
+            report["totals_including_common_verification_seconds"][arm] = 67.0 * scale + 18.0
+        return report, config
+
+    def test_log_summary_retains_absolute_clocks_inventory_and_only_declared_identities(self):
+        report, config = self.summary_fixture()
+        original = copy.deepcopy(report)
+        summary = BENCH.log_summary(report, config)
+        self.assertEqual(original, report)
+        self.assertFalse(summary["final_evidence"])
+        self.assertIsNone(summary["superiority_claim"])
+        self.assertEqual(summary["clock"], report["query_clock"])
+        self.assertEqual(summary["common_seconds"], {"admission": 4.0, "byte_verification": 6.0,
+                                                     "graph_verification": 8.0})
+        self.assertEqual(summary["workload"]["warm_queries_per_arm"], 4)
+        self.assertEqual(summary["workload"]["same_input_refreshes_per_arm"], 1)
+        self.assertEqual(summary["workload"]["depth"], 5)
+        for arm, scale in zip(BENCH.ARMS, (1, 2)):
+            self.assertEqual(summary["arms"][arm], {
+                "spawn_to_graph_ready_seconds": 2.0 * scale, "first_query_seconds": 3.0 * scale,
+                "warm_query_seconds": [value * scale for value in (5.0, 7.0, 9.0, 11.0)],
+                "warm_query_median_seconds": 8.0 * scale,
+                "completed_same_input_refresh_seconds": 13.0 * scale,
+                "first_refreshed_query_seconds": 17.0 * scale,
+                "arm_total_seconds": 67.0 * scale,
+                "total_including_common_verification_seconds": 67.0 * scale + 18.0,
+            })
+        self.assertEqual(len(summary["identity"]), 9)
+        self.assertEqual(summary["identity"]["index_sha256"], "a" * 64)
+        self.assertNotIn("private", json.dumps(summary))
+        self.assertNotIn("raw_output", summary)
+
+    def test_log_summary_refuses_failure_changed_inventory_and_invalid_timings(self):
+        for mutation in ("failed", "count", "order", "nan", "negative", "boolean"):
+            with self.subTest(mutation=mutation):
+                report, config = self.summary_fixture()
+                if mutation == "failed":
+                    report["status"] = "failed"
+                elif mutation == "count":
+                    report["warm_pairs"].pop()
+                elif mutation == "order":
+                    report["warm_pairs"][0]["order"] = list(reversed(BENCH.ARMS))
+                else:
+                    report["first"]["baseline"]["ipc_seconds"] = {
+                        "nan": float("nan"), "negative": -1.0, "boolean": True,
+                    }[mutation]
+                with self.assertRaises(ValueError):
+                    BENCH.log_summary(report, config)
+
     def test_oracle_and_generation_mismatches_fail(self):
         for payload, message in [({"session": {"generation": 2}, "answers": {}}, "generation"),
                                  ({"session": {"generation": 1}, "answers": {}}, "oracle")]:
