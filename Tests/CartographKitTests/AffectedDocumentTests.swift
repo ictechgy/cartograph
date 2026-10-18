@@ -229,7 +229,11 @@ struct AffectedDocumentTests {
             attributes: [.unitTest])
         builder.reference(from: "C.test", to: "P", kind: .call, path: "/p/Tests/A.swift")
         builder.reference(from: "F", to: "P", kind: .call, path: "/p/Tests/B.swift")
-        let outcome = try service(builder.build()).affected(symbols: ["P"], format: "xcodebuild")
+        let service = service(provedSnapshot(builder, classes: ["C"], methods: ["C.test"]))
+        let document = try service.affectedDocument(symbols: ["P"])
+        #expect(document.tests.first { $0.symbol.usr == "C.test" }?.xcodebuildIdentifier
+            == "App/ProcessTests/testProcess")
+        let outcome = try service.affected(symbols: ["P"], format: "xcodebuild")
         #expect(outcome.output == "-only-testing:App\n")
     }
 
