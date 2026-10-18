@@ -45,9 +45,9 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
             #expect(declaration.compilerUnitTest == false)
         }
         let identity = XCTestIdentityFacts(snapshot: snapshot)
-        let expectedClasses = Set(local.filter { ["BaseCase", "AsyncCase", "ShapeCase"].contains($0.name) }.map(\.usr))
-        let expectedMethods = Set(local.filter { $0.name == "testAsync()" }.map(\.usr))
-        #expect(expectedClasses.count == 3 && expectedMethods.count == 1)
+        let expectedClasses = Set(local.filter { ["BaseCase", "AsyncCase", "ShapeCase", "DuplicateCase"].contains($0.name) }.map(\.usr))
+        let expectedMethods = Set(local.filter { ["testAsync()", "testShared()"].contains($0.name) }.map(\.usr))
+        #expect(expectedClasses.count == 5 && expectedMethods.count == 3)
         #expect(identity.classUSRs == expectedClasses)
         #expect(identity.methodUSRs == expectedMethods)
         let negativeMethods = Set(local.filter {
@@ -55,6 +55,49 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
         }.map(\.usr))
         #expect(negativeMethods.count == 4)
         #expect(identity.uncertainUSRs.isSubset(of: negativeMethods))
+        // 표시 이름이 같아도 컴파일러 USR·모듈·소유자 신원은 합치지 않는다.
+        let graph = GraphBuilder(options: .init(level: .symbol, includeExternal: false)).build(from: snapshot)
+        let query = GraphQueryIndex(graph: graph)
+        for (name, kind) in [("DuplicateCase", SymbolKind.classType),
+                             ("testShared()", .method), ("value", .property)] {
+            let declarations = local.filter { !$0.isExternal && $0.name == name && $0.kind == kind }
+            #expect(declarations.count == 2)
+            #expect(Set(declarations.map(\.usr)).count == 2)
+            #expect(Set(declarations.map(\.module)) == ["Probe", "ProbeTests"])
+            guard case let .ambiguous(candidates) = query.resolve(name) else {
+                Issue.record("동명 선언은 임의 선택하지 않고 두 후보를 반환해야 한다: \(name)")
+                continue
+            }
+            #expect(Set(candidates.map(\.id)) == Set(declarations.map { NodeID($0.usr) }))
+            for declaration in declarations {
+                let subject = kind == .classType
+                    ? "\(declaration.module).DuplicateCase"
+                    : "\(declaration.module).DuplicateCase.\(name)"
+                guard case let .found(selected) = query.resolve(subject) else {
+                    Issue.record("모듈 한정 이름으로 원래 선언을 찾아야 한다: \(subject)")
+                    continue
+                }
+                #expect(selected.usr == declaration.usr)
+                #expect(selected.module == declaration.module)
+                #expect(query.resolve(declaration.usr) == .found(selected))
+            }
+        }
+        for module in ["Probe", "ProbeTests"] {
+            let owner = try #require(local.first { $0.module == module && $0.name == "DuplicateCase" })
+            let method = try #require(local.first { $0.module == module && $0.name == "testShared()" })
+            let property = try #require(local.first { $0.module == module && $0.name == "value" })
+            #expect(method.parentUSR == owner.usr && property.parentUSR == owner.usr)
+            #expect(method.compilerUnitTest == true)
+            #expect(identity.methodUSRs.contains(method.usr))
+            #expect(snapshot.references.contains {
+                $0.sourceUSR == method.usr && $0.targetUSR == property.usr && $0.origin == .compiler
+            })
+            let otherProperties = Set(local.filter { $0.module != module && $0.name == "value" }.map(\.usr))
+            #expect(!snapshot.references.contains {
+                $0.sourceUSR == method.usr && otherProperties.contains($0.targetUSR)
+            })
+        }
+        // Probe는 일반 라이브러리다. 그 메서드의 프레임워크 신원은 테스트 타깃 소속 증명이 아니다.
         for (caller, callee) in [
             ("testConnection", "productionHelper"), ("setUp", "lifecycleHelper"),
             ("testAsync", "xctestHelper"), ("asyncCase", "modernHelper"),
@@ -365,6 +408,10 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
         public init() {}
         public func testConnection() { productionHelper() }
     }
+    class DuplicateCase: XCTestCase {
+        var value: Int { 1 }
+        func testShared() { _ = value }
+    }
     class ShapeCase: XCTestCase {
         static func testStatic() {}
         class func testClass() {}
@@ -388,6 +435,10 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
 
     class BaseCase: XCTestCase {
         override func setUp() { lifecycleHelper() }
+    }
+    class DuplicateCase: XCTestCase {
+        var value: Int { 2 }
+        func testShared() { _ = value }
     }
     final class AsyncCase: BaseCase {
         func testAsync() async throws { xctestHelper() }
