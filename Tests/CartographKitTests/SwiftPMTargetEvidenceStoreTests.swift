@@ -82,6 +82,18 @@ struct SwiftPMTargetEvidenceStoreTests {
         #expect(conflicting.symbolsByUSR()["ordinary"] != reversed.symbolsByUSR()["ordinary"])
         #expect(try SwiftPMTargetEvidenceStore.snapshotIdentity(conflicting)
             != SwiftPMTargetEvidenceStore.snapshotIdentity(reversed))
+
+        var modules = snapshot
+        modules.fileModuleUsages = ["/p/Sources/Probe.swift": .init(
+            owningModule: "Probe", referencedModules: Set(["Foundation", "XCTest", "Swift"]))]
+        var reversedModules = modules
+        reversedModules.fileModuleUsages["/p/Sources/Probe.swift"] = .init(
+            owningModule: "Probe", referencedModules: Set(["Swift", "XCTest", "Foundation"]))
+        #expect(try SwiftPMTargetEvidenceStore.snapshotIdentity(modules)
+            == SwiftPMTargetEvidenceStore.snapshotIdentity(reversedModules))
+        reversedModules.fileModuleUsages["/p/Sources/Probe.swift"]?.referencedModules.insert("Different")
+        #expect(try SwiftPMTargetEvidenceStore.snapshotIdentity(modules)
+            != SwiftPMTargetEvidenceStore.snapshotIdentity(reversedModules))
         var references = snapshot
         references.references = [
             .init(sourceUSR: "test", targetUSR: "ordinary", kind: .call),

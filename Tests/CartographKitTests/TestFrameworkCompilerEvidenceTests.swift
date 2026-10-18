@@ -46,6 +46,24 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
         receiptEncoder.outputFormatting = [.sortedKeys]
         FileHandle.standardError.write(Data("SwiftPMTargetEvidence ".utf8)
             + (try receiptEncoder.encode(receipt)) + Data("\n".utf8))
+
+        if receipt.snapshotBefore != receipt.snapshotAfter {
+            let first = try #require(JSONSerialization.jsonObject(
+                with: receiptEncoder.encode(snapshot)) as? [String: NSObject])
+            let second = try #require(JSONSerialization.jsonObject(
+                with: receiptEncoder.encode(confirmation)) as? [String: NSObject])
+            let changedFields = Set(first.keys).union(second.keys).filter { first[$0] != second[$0] }.sorted()
+            let diagnostic: [String: Any] = [
+                "fieldsWithDifferentEncodedOrderOrValue": changedFields,
+                "firstRepresentativeIdentityEqual": snapshot.symbolsByUSR() == confirmation.symbolsByUSR(),
+                "symbolCountBefore": snapshot.symbols.count, "symbolCountAfter": confirmation.symbols.count,
+                "referenceCountBefore": snapshot.references.count,
+                "referenceCountAfter": confirmation.references.count
+            ]
+            FileHandle.standardError.write(Data("SwiftPMTargetSnapshotDifference ".utf8)
+                + (try JSONSerialization.data(withJSONObject: diagnostic, options: [.sortedKeys]))
+                + Data("\n".utf8))
+        }
         let targets = try SwiftPMTargetEvidenceStore().verify(receipt, snapshot: snapshot)
         let membership = TestTargetMembershipFacts(snapshot: snapshot, targets: targets)
         // 실제 빌드에서 나온 두 describe와 소스/인덱스 관찰만 묶는다. 일반 생산자 CLI는 아니다.

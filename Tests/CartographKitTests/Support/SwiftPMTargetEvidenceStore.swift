@@ -155,7 +155,7 @@ struct SwiftPMTargetEvidenceStore {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// symbols 등 순서가 의미 있는 배열은 보존한다. 참조와 속성 집합만 정규화한다.
+    /// symbols 등 순서가 의미 있는 배열은 보존한다. 참조와 실제 속성·참조 모듈 집합만 정규화한다.
     static func snapshotIdentity(_ snapshot: IndexSnapshot) throws -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -168,7 +168,7 @@ struct SwiftPMTargetEvidenceStore {
             }
             if let array = value as? [Any] {
                 let values = try array.map { try canonical($0) }
-                guard key == "attributes" || key == "references" else { return values }
+                guard key == "attributes" || key == "references" || key == "referencedModules" else { return values }
                 return try values.map { value in
                     (value, try JSONSerialization.data(withJSONObject: value,
                         options: [.sortedKeys, .fragmentsAllowed]))
