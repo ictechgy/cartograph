@@ -235,6 +235,75 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+
+      - name: Measure release impact before and after preparation caching
+        id: impact_performance
+        if: steps.tools.outcome == 'success'
+        run: |
+          python3 - <<'PY'
+          import argparse, importlib.util, json, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "impact-preparation-measurement"
+          root.mkdir(parents=True, exist_ok=True)
+          spec = importlib.util.spec_from_file_location("base", "Scripts/benchmark-indexstore-cli.py")
+          base = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(base)
+          setup = json.loads((Path(os.environ["RUNNER_TEMP"]) / "indexstore-cli-benchmark/results.json").read_text())
+          candidate = setup["cartograph"]
+          assert candidate["setup"]["mode"] == "fresh-release-package-build"
+          assert base.sha256(Path(candidate["binary"])) == candidate["binary_sha256"]
+          revision = "e00c50cede006cc684a8c8ec658cb9931a0411d6"
+          checkout = root / "original-source"
+          checkout.mkdir()
+          for label, command in [
+              ("init", ["git", "init", "-q"]),
+              ("remote", ["git", "remote", "add", "origin", "https://github.com/ictechgy/cartograph.git"]),
+              ("fetch", ["git", "fetch", "--depth", "1", "origin", revision]),
+              ("checkout", ["git", "checkout", "--detach", "FETCH_HEAD"]),
+          ]:
+              base.run(command, checkout, root / "acquisition" / label, 180)
+          head, _ = base.capture(["git", "rev-parse", "HEAD"], checkout, root / "acquisition/head")
+          assert head.strip() == revision
+          original = base.prepare_cartograph(
+              argparse.Namespace(cartograph_package=checkout, cartograph=None, jobs=3, setup_timeout=1500),
+              Path(setup["toolchain"]["swiftc"]), root / "original-build")
+          evidence = root / "verification" / "impact-performance"
+          evidence.mkdir(parents=True)
+          base.save(evidence / "setup" / "provenance.json", {
+              "baseline": original, "candidate": candidate, "toolchain": setup["toolchain"],
+              "baseline_revision": revision,
+              "purpose": "Cartograph impact cache before/after; no IndexStoreDB superiority claim",
+          })
+          command = ["python3", "Scripts/verify-change-impact.py",
+                     "--cartograph", candidate["binary"], "--baseline-cartograph", original["binary"],
+                     "--output-dir", str(root / "verification")]
+          import subprocess
+          subprocess.run(command, check=True)
+          PY
+
+      - name: Normalize impact preparation evidence
+        id: impact_normalize
+        if: always() && !cancelled() && steps.impact_performance.outcome != 'skipped'
+        run: |
+          python3 Scripts/normalize-indexstore-evidence.py \
+            --input "$RUNNER_TEMP/impact-preparation-measurement/verification/impact-performance" \
+            --output "$RUNNER_TEMP/impact-preparation-public" \
+            --prefix "WORKSPACE=$GITHUB_WORKSPACE" --prefix "RUNNER_TEMP=$RUNNER_TEMP" \
+            --prefix "HOME=$HOME" --prefix "DEVELOPER=$(xcode-select -p)" \
+            --prefix "APPLICATIONS=/Applications" --prefix "LIBRARY=/Library" \
+            --prefix "SYSTEM=/System" --prefix "PRIVATE=/private" --prefix "USR=/usr" \
+            --prefix "OPT=/opt" --prefix "BIN=/bin" --prefix "DEV=/dev" --prefix "TEMP=/var"
+
+      - name: Preserve normalized impact preparation evidence
+        if: always() && steps.impact_normalize.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: impact-preparation-comparison
+          path: ${{ runner.temp }}/impact-preparation-public/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Prepare portable public evidence
         id: normalize
         if: always()

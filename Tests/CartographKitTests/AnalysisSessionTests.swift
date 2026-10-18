@@ -95,6 +95,66 @@ struct AnalysisSessionTests {
         #expect(promotedSession.querySession?.foundFactsBuildCount == 1)
     }
 
+    @Test("영향 준비는 입력 세대와 명시적 refresh 뒤 새 파일·이름·상속 테스트를 따른다")
+    func impactPreparationRefreshesWithContextGeneration() throws {
+        func snapshot(_ label: String) -> IndexSnapshot {
+            var builder = SnapshotBuilder(path: "/p/\(label).swift")
+            builder.symbol("Storage", kind: .function, path: "/p/\(label)Storage.swift")
+            builder.symbol(label, kind: .classType, attributes: [.unitTest])
+            builder.symbol("\(label)Hook", name: "setUp()", kind: .method, parent: label)
+            builder.reference(from: "\(label)Hook", to: "Storage", kind: .call)
+            builder.symbol("\(label)Child", kind: .classType)
+            builder.reference(from: "\(label)Child", to: label, kind: .inheritance)
+            return builder.build()
+        }
+        let state = SessionState(snapshot: snapshot("Old"))
+        let session = try makeSession(state)
+        let before = try session.impact(symbols: ["Storage"], files: ["OldStorage.swift"])
+        #expect(before.tests.contains { $0.usr == "OldChild" })
+        #expect(try session.impact(symbols: ["Old"]).status == "found")
+        #expect(try session.impact(files: ["OldStorage.swift"]).status == "found")
+
+        state.snapshot = snapshot("New")
+        state.fingerprint = "new"
+        let after = try session.impact(symbols: ["Storage"], files: ["NewStorage.swift"])
+        #expect(session.metadata?.generation == 2)
+        #expect(state.indexLoadCount == 2)
+        #expect(after.tests.contains { $0.usr == "NewChild" })
+        #expect(!after.tests.contains { ($0.usr ?? "").hasPrefix("Old") })
+        #expect(try session.impact(symbols: ["Old"]).status == "incomplete")
+        #expect(try session.impact(symbols: ["New"]).status == "found")
+        #expect(try session.impact(files: ["OldStorage.swift"]).status == "incomplete")
+        #expect(try session.impact(files: ["NewStorage.swift"]).status == "found")
+
+        let metadata = try session.refresh()
+        #expect(metadata.generation == 3)
+        #expect(state.indexLoadCount == 3)
+        #expect(try session.impact(symbols: ["Storage"], files: ["NewStorage.swift"]) == after)
+        let fresh = try makeSession(state)
+        #expect(try fresh.impact(symbols: ["Storage"], files: ["NewStorage.swift"]) == after)
+        #expect(try session.affected(symbols: ["Storage"]) == fresh.affected(symbols: ["Storage"]))
+    }
+
+    @Test("영향 준비가 채워진 뒤 새로고침에 실패하면 이전 결과를 돌려주지 않는다")
+    func failedImpactRefreshDiscardsPreparedValues() throws {
+        let state = SessionState(snapshot: makeSnapshot())
+        let session = try makeSession(state)
+        _ = try session.impact(symbols: ["Service"], files: ["Service.swift"])
+        state.fingerprint = "changed"
+        state.factoryShouldFail = true
+        #expect(throws: SessionFactoryError.self) {
+            _ = try session.impact(symbols: ["Service"], files: ["Service.swift"])
+        }
+        #expect(session.metadata == nil)
+
+        state.factoryShouldFail = false
+        state.snapshot = makeSnapshot(extra: "Reloaded")
+        let after = try session.impact(symbols: ["Reloaded"], files: ["Extra.swift"])
+        #expect(after.status == "found")
+        #expect(after.selected.contains { $0.usr == "Reloaded" })
+        #expect(session.metadata?.generation == 2)
+    }
+
     @Test("지문이 바뀌면 새 서비스와 문맥으로 교체한다")
     func reloadsWhenFingerprintChanges() throws {
         let state = SessionState(snapshot: makeSnapshot())
