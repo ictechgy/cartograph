@@ -1,6 +1,6 @@
 import CartographCore
 
-/// `xcodebuild -only-testing:` 에 넘길 XCTest 식별자를 그래프 사실만으로 만든다.
+/// `xcodebuild -only-testing:` 에 넘길 XCTest 식별자를 원시 프레임워크 근거와 그래프에서 만든다.
 ///
 /// 틀린 식별자는 오류가 아니라 "테스트 0개 실행, 통과"라는 조용한 누락이 된다.
 /// 그래서 증명할 수 있는 형태만 답하고 나머지는 nil 이다. 호출부는 nil 을 그
@@ -15,21 +15,56 @@ public enum XCTestIdentifier {
     ///   - canProveClassHierarchy: 그래프가 포함·상속 간선과 모든 경로를 담고 있는지.
     ///     간선 종류나 경로를 좁힌 그래프에서는 하위 클래스가 보이지 않을 수 있어
     ///     "하위 클래스 없음"을 증명할 수 없다.
-    /// - Returns: 증명한 식별자. 증명하지 못하면 nil.
-    public static func identifier(for id: NodeID, in graph: CodeGraph, canProveClassHierarchy: Bool) -> String? {
-        guard canProveClassHierarchy, let node = graph.node(id), node.attributes.contains(.unitTest),
+    ///   - identity: 같은 스냅샷의 프레임워크 근거. 없으면 좁히지 않는다.
+    /// - Returns: 모듈 이름이 테스트 타깃 이름이라는 호출부 계약 아래의 식별자. 근거가 없으면 nil.
+    public static func identifier(
+        for id: NodeID, in graph: CodeGraph, canProveClassHierarchy: Bool,
+        identity: XCTestIdentityFacts
+    ) -> String? {
+        guard canProveClassHierarchy, let node = graph.node(id),
               let module = node.module, !module.isEmpty else { return nil }
         switch node.kind {
         case .classType:
+            guard identity.classUSRs.contains(node.usr ?? ""),
+                  hasVerifiedMethod(id, in: graph, identity: identity) else { return nil }
             return testCaseClassName(id, in: graph).map { "\(module)/\($0)" }
         case .method:
-            guard let method = testMethodName(node), let owner = graph.semanticParent(of: id),
+            guard identity.methodUSRs.contains(node.usr ?? ""),
+                  let method = testMethodName(node), let owner = graph.semanticParent(of: id),
+                  identity.classUSRs.contains(graph.node(owner)?.usr ?? ""),
                   graph.node(owner)?.module == module,
                   let className = testCaseClassName(owner, in: graph) else { return nil }
             return "\(module)/\(className)/\(method)"
         default:
             return nil
         }
+    }
+
+    /// 그래프 전용 시그니처를 유지한다. 원시 신원이 없으므로 모듈 확대가 필요하다.
+    public static func identifier(
+        for _: NodeID, in _: CodeGraph, canProveClassHierarchy _: Bool
+    ) -> String? {
+        nil
+    }
+
+    /// 클래스 선택에는 직접 또는 상속한 확인된 메서드가 적어도 하나 있어야 한다.
+    private static func hasVerifiedMethod(
+        _ owner: NodeID, in graph: CodeGraph, identity: XCTestIdentityFacts
+    ) -> Bool {
+        var pending = [owner]
+        var seen: Set<NodeID> = []
+        while let current = pending.popLast() {
+            guard seen.insert(current).inserted else { continue }
+            for edge in graph.outgoingEdges(from: current) {
+                if edge.kind == .member,
+                   identity.methodUSRs.contains(graph.node(edge.target)?.usr ?? "") { return true }
+                if edge.kind == .inheritance,
+                   identity.classUSRs.contains(graph.node(edge.target)?.usr ?? "") {
+                    pending.append(edge.target)
+                }
+            }
+        }
+        return false
     }
 
     /// 그래프 구성이 클래스 계층을 빠짐없이 담는지.

@@ -824,11 +824,12 @@ $ cartograph affected negate --format xcodebuild
 ```
 
 A wrong class or method is worse than none — given an unknown class, xcodebuild runs zero tests and
-reports success (measured with Xcode 27.0) — so only identifiers the graph proves are narrowed. A
+reports success (measured with Xcode 27.0) — so narrowing requires exact compiler XCTest ancestry and method provenance as well as graph checks. A
 test class is narrowed to `Module/Class`, and a test method to `Module/Class/method`, only when the
 class is a top-level XCTest class with no subclass (a subclass runs the inherited test under its own
 name, which the base-class identifier skips) whose Objective-C runtime name is its source name, and
-the method is a parameterless `test…` method the index marks as an XCTest. Every other reached test
+the method is a parameterless `test…` method with the compiler test bit. A class must own or inherit at least
+one such verified method. Syntax-only and legacy markers retain candidates but do not prove selectors. Every other reached test
 selects its whole test module: swift-testing functions, whose identifier format has varied between
 Xcode releases, nested classes, and classes renamed with `@objc(…)`. Standard error says how many
 tests were widened this way, followed by the analysis limitations. A graph narrowed by `edge_kinds`
@@ -840,7 +841,9 @@ links carry `automaticRuntime` evidence with `xctest-lifecycle:` or `xctest-inhe
 they are static execution contracts, not observed calls. Ordinary unused helpers do not promote
 their owning class, and membership edges remain distinct from usage.
 
-The module name stands in for the xcodebuild test target name. They match for SwiftPM test targets
+The `uncertain-test-identity` limitation explains widened candidates. `test-target-assumption` makes
+explicit that framework identity does not establish test-target membership: ordinary libraries can
+also contain XCTest subclasses. The module name stands in for the xcodebuild test target name. They match for SwiftPM test targets
 and for Xcode targets whose names are valid identifiers; a target named `My App Tests` has the
 module `My_App_Tests`. Unlike an unknown class, an unknown target is a loud failure — xcodebuild
 stops with "isn't a member of the specified test plan or scheme" — so such a project sees the

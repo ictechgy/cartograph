@@ -40,7 +40,7 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
         public let runtimeEvidence: [RuntimeEvidenceReference]?
         /// 출력 예산 때문에 생략한 근거 수. 없으면 키를 싣지 않는다.
         public let runtimeEvidenceOmitted: Int?
-        /// `xcodebuild -only-testing:` 에 그대로 넘길 수 있다고 증명한 XCTest 식별자.
+        /// 모듈 이름과 테스트 타깃 이름이 같다는 계약 아래의 XCTest 식별자.
         ///
         /// 증명하지 못하면 키가 빠진다. 그때 이 테스트를 고르는 안전한 방법은 모듈 전체다.
         public let xcodebuildIdentifier: String?
@@ -122,8 +122,10 @@ extension CartographService {
         let canProveHierarchy = XCTestIdentifier.canProveClassHierarchy(
             edgeKinds: configuration.edgeKinds, narrowsPaths: configuration.narrowsPathsBeyondDefaults
         )
+        let identity = XCTestIdentityFacts(snapshot: context.snapshot)
         func identifier(_ id: NodeID) -> String? {
-            XCTestIdentifier.identifier(for: id, in: graph, canProveClassHierarchy: canProveHierarchy)
+            XCTestIdentifier.identifier(for: id, in: graph, canProveClassHierarchy: canProveHierarchy,
+                identity: identity)
         }
         var tests: [AffectedDocument.Test] = []
         for id in report.changed where isTest(id) {
@@ -164,6 +166,14 @@ extension CartographService {
         let modules = Set(tests.compactMap(\.symbol.module)).sorted()
         var limitations = analysisLimitations(context: context, symbolGraph: graph) + selectionLimitations
             + Self.automaticRuntimeLimitations(automatic)
+        if !tests.isEmpty {
+            limitations.append("test-target-assumption: xcodebuild selection assumes each indexed module name "
+                + "matches a test target in the chosen scheme; framework identity does not prove target membership")
+        }
+        if tests.contains(where: { $0.xcodebuildIdentifier == nil }) {
+            limitations.append("uncertain-test-identity: reached candidates without a proved XCTest selector "
+                + "are retained and widened to their module; syntax/legacy test markers are not runnable-test proof")
+        }
         if let automatic, !automatic.limitations.isEmpty {
             limitations.append("incomplete-runtime-analysis: runtime discovery reported \(automatic.limitations.count) "
                 + "limitation(s); unmodeled runtime paths may reach additional tests")

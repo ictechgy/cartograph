@@ -59,6 +59,17 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
         #expect(identity.uncertainUSRs.isSubset(of: negativeMethods))
         // 표시 이름이 같아도 컴파일러 USR·모듈·소유자 신원은 합치지 않는다.
         let graph = GraphBuilder(options: .init(level: .symbol, includeExternal: false)).build(from: snapshot)
+
+        // 선택자는 프레임워크 근거가 있을 때만 좁힌다. 타깃 이름 일치는 별도 호출부 계약이다.
+        let asyncMethod = try #require(local.first { $0.name == "testAsync()" })
+        #expect(XCTestIdentifier.identifier(for: NodeID(asyncMethod.usr), in: graph,
+            canProveClassHierarchy: true, identity: identity) == "ProbeTests/AsyncCase/testAsync")
+        for name in ["ProductionProbe", "testConnection()", "ShapeCase",
+                     "testStatic()", "testClass()", "testReturnsValue()", "testArgument(_:)"] {
+            let declaration = try #require(local.first { $0.name == name })
+            #expect(XCTestIdentifier.identifier(for: NodeID(declaration.usr), in: graph,
+                canProveClassHierarchy: true, identity: identity) == nil)
+        }
         let query = GraphQueryIndex(graph: graph)
         for (name, kind) in [("DuplicateCase", SymbolKind.classType),
                              ("testShared()", .method), ("value", .property)] {
@@ -91,6 +102,9 @@ struct TestFrameworkCompilerEvidenceTests: Sendable {
             #expect(method.parentUSR == owner.usr && property.parentUSR == owner.usr)
             #expect(method.compilerUnitTest == true)
             #expect(identity.methodUSRs.contains(method.usr))
+            // 일반 라이브러리도 같은 프레임워크 형태다. 이 문자열은 타깃 소속 증명이 아니다.
+            #expect(XCTestIdentifier.identifier(for: NodeID(method.usr), in: graph,
+                canProveClassHierarchy: true, identity: identity) == "\(module)/DuplicateCase/testShared")
             #expect(snapshot.references.contains {
                 $0.sourceUSR == method.usr && $0.targetUSR == property.usr && $0.origin == .compiler
             })

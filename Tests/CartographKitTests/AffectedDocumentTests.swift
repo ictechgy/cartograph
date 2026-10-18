@@ -154,6 +154,21 @@ struct AffectedDocumentTests {
     }
 
     /// P를 XCTest 메서드 두 개가 부른다: 최상위 클래스 안의 것과 클래스 밖의 것.
+
+    /// 실행 형태가 알려진 양성 픽스처에만 원시 상속과 컴파일러 표식을 명시한다.
+    private func provedSnapshot(
+        _ builder: SnapshotBuilder, classes: Set<String>, methods: Set<String>
+    ) -> IndexSnapshot {
+        var snapshot = builder.build()
+        snapshot.references += classes.map {
+            .init(sourceUSR: $0, targetUSR: "c:objc(cs)XCTestCase", kind: .inheritance, origin: .compiler)
+        }
+        for index in snapshot.symbols.indices where methods.contains(snapshot.symbols[index].usr) {
+            snapshot.symbols[index].compilerUnitTest = true
+        }
+        return snapshot
+    }
+
     private func xctestSnapshot() -> IndexSnapshot {
         var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
         builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift", line: 1)
@@ -165,7 +180,7 @@ struct AffectedDocumentTests {
         builder.symbol("S", name: "processes()", kind: .function, module: "SuiteTests",
             path: "/p/Tests/Suite.swift", line: 1, attributes: [.unitTest])
         builder.reference(from: "S", to: "P", kind: .call, path: "/p/Tests/Suite.swift")
-        return builder.build()
+        return provedSnapshot(builder, classes: ["C"], methods: ["C.test"])
     }
 
     @Test("xcodebuild 형식은 증명한 식별자만 좁히고 나머지는 모듈 전체로 넓힌다")
@@ -178,6 +193,28 @@ struct AffectedDocumentTests {
         #expect(document.tests.first { $0.symbol.usr == "C.test" }?.xcodebuildIdentifier
             == "AppTests/ProcessTests/testProcess")
         #expect(document.tests.first { $0.symbol.usr == "S" }?.xcodebuildIdentifier == nil)
+    }
+
+
+    @Test("프로덕션 이름과 옛 표식은 후보를 유지하되 가짜 클래스 선택자를 만들지 않는다",
+          arguments: [false, true])
+    func preservesUnverifiedCandidates(compilerObserved: Bool) throws {
+        var builder = SnapshotBuilder(module: "Production", path: "/p/Sources/Runner.swift")
+        builder.symbol("P", kind: .function)
+        builder.symbol("Runner", kind: .classType, attributes: [.unitTest])
+        builder.symbol("Runner.test", name: "testConnection()", kind: .method,
+            parent: "Runner", attributes: [.unitTest])
+        builder.reference(from: "Runner.test", to: "P", kind: .call)
+        var snapshot = builder.build()
+        if compilerObserved {
+            for index in snapshot.symbols.indices { snapshot.symbols[index].compilerUnitTest = false }
+        }
+        let document = try service(snapshot).affectedDocument(symbols: ["P"])
+        #expect(document.tests.map(\.symbol.usr) == ["Runner.test"])
+        #expect(document.tests.allSatisfy { $0.xcodebuildIdentifier == nil })
+        #expect(document.xcodebuildSelection().output == "-only-testing:Production\n")
+        #expect(document.limitations.contains { $0.hasPrefix("uncertain-test-identity:") })
+        #expect(document.limitations.contains { $0.hasPrefix("test-target-assumption:") })
     }
 
     @Test("같은 모듈을 통째로 고르면 그 모듈의 개별 식별자는 싣지 않는다")
@@ -450,7 +487,9 @@ struct AffectedDocumentTests {
             parent: "B", attributes: [.unitTest])
         builder.reference(from: "A.hook", to: "P", kind: .call)
         builder.reference(from: "B.test", to: "P", kind: .call)
-        let service = service(builder.build())
+        builder.symbol("A.test", name: "testOwned()", kind: .method, line: 5,
+            parent: "A", attributes: [.unitTest])
+        let service = service(provedSnapshot(builder, classes: ["A", "B"], methods: ["A.test", "B.test"]))
         let document = try service.affectedDocument(symbols: ["P"])
         #expect(Set(document.tests.compactMap(\.symbol.usr)) == ["A", "B.test"])
         let owner = try #require(document.tests.first { $0.symbol.usr == "A" })
