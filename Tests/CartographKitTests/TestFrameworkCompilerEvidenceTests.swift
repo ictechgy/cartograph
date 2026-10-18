@@ -1,7 +1,6 @@
 import CartographAnalysis
 import CartographCore
 import CartographIndexStore
-@testable import CartographKit
 import CartographTestSupport
 import Dispatch
 import Foundation

@@ -2,7 +2,8 @@ import CartographCore
 import CryptoKit
 import Foundation
 
-/// 저장된 생성 시점의 소속 주장을 현재의 명시 입력 바이트와 주어진 인덱스에 대조한다.
+/// 통제된 테스트 생산자가 저장한 소속 주장을 명시 입력 바이트와 인덱스에 대조한다.
+/// 실제 수집 경로가 검토되기 전까지 테스트 전용이며 공개 근거 입력 API가 아니다.
 /// 목록에 없는 새 소스나 현재 패키지 전체의 완전성을 증명하지 않으며 명령을 실행하지 않는다.
 struct SwiftPMTargetEvidenceStore {
     private let fileSystem: any FileSystem
