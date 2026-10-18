@@ -31,7 +31,7 @@ ENDPOINTS = (VALIDATOR_NAME, MANIFEST_NAME, WORKFLOW_NAME)
 SOURCE_INPUTS = (OBSERVER_NAME, SUPPORT_NAME, TEST_NAME, NORMALIZER_NAME, CI_NAME)
 SUPPORT_SHA = '2a21433cf7321df5d2a88d4976f32d160f996c1ac94fbc762a5d3e1d20705fa4'
 NORMALIZER_PIN = dict(bytes=36808, sha256='17c705fac8670a77f9cbd7305c8f658807e2f6045a0ccb00172c79bccd1f7c17')
-CI_PIN = dict(bytes=22818, sha256='92a20f908150cafe77b315d0a6187b0d8354495e71197c58a59ad2d3a442a78d')
+CI_PIN = dict(bytes=26664, sha256='6991762b968fd21cf02e798047f22615bf0eef372e04b5e7e08e52c2b2c68346')
 JOB_ID = 'native-environment-observation'
 TAG = 'fixed-native-environment-observation-v1'
 SAMPLE_NAMES = ('sample01', 'sample02')
@@ -180,7 +180,7 @@ def manifest_read(expected_sha):
         'manifest-qualification')
     require(value['sources'][NORMALIZER_NAME] == dict(**NORMALIZER_PIN, mode='100755',
         blob='806373a57e19ef5dbdd4f81a86dcca3d3fd294a7') and
-        value['sources'][CI_NAME] == dict(**CI_PIN, mode='100644', blob='622de642ab41685a788b0af2c10ef08e509c6ddb'),
+        value['sources'][CI_NAME] == dict(**CI_PIN, mode='100644', blob='007ed0835a5e2358817bdb019fe2853d2393b194'),
         'unchanged-dependencies')
     return value, S.record(body)
 

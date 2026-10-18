@@ -7,6 +7,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Reuse graph-bound XCTest lifecycle preparation, raw file-to-node grouping and symbol-name lookup
+  within one immutable analysis context. File-only requests still skip name lookup; source refresh
+  and supplemental Core Data contexts prepare independent values. Request-specific runtime contracts
+  and traces remain separate.
+- Resolve file-path aliases on every request, including after a symlink retarget. This removes
+  repeated whole-graph grouping but retains per-request path normalization and result construction.
+- Add an optional release-binary Impact comparison using the existing real-compiler corpus, with
+  complete result equivalence and separate new-process CLI, first-request and warm MCP timings.
+  Construction counts alone are not an end-to-end speedup or IndexStoreDB superiority claim.
+
 ## [0.27.1] - 2026-10-17
 
 [Published release](https://github.com/ictechgy/cartograph/releases/tag/0.27.1) from

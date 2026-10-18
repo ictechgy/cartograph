@@ -109,6 +109,7 @@ public struct AnalysisContext: Sendable {
     private let graphCache: GraphBuildCache
     private let reviewCache = ReviewCache()
     private let runtimeCache = RuntimeCache()
+    private let impactPreparationCache = ImpactPreparationCache()
 
     func bindingRuntimeInputFingerprint(_ fingerprint: String) -> AnalysisContext {
         var copy = self
@@ -157,6 +158,62 @@ public struct AnalysisContext: Sendable {
             if let value { return value }
             let made = make()
             value = made
+            return made
+        }
+    }
+
+    /// 스냅샷에만 의존하는 준비 값은 같은 문맥에서 한 번 만들고, 요청별 계약·실행 근거는 넣지 않는다.
+    /// 값 복사는 같은 그래프를 공유하지만 refresh나 Core Data 보강의 새 문맥은 별도 캐시를 갖는다.
+    func impactLifecycle(
+        make: (CodeGraph) -> XCTestLifecycleImpact = { XCTestLifecycleImpact(in: $0) }
+    ) -> XCTestLifecycleImpact {
+        impactPreparationCache.lifecycle { make(buildGraph(level: .symbol).graph) }
+    }
+
+    /// 파일 선택이 있을 때만 원래 경로별 정점을 준비한다. 링크 해석은 요청마다 다시 한다.
+    func impactRawNodesByFile(
+        make: (CodeGraph) -> [String: [NodeID]] = { ImpactSelection.rawNodesByFile(in: $0) }
+    ) -> [String: [NodeID]] {
+        impactPreparationCache.files { make(buildGraph(level: .symbol).graph) }
+    }
+
+    /// 파일·리소스 선택만 하는 요청은 이름 색인을 만들지 않는다.
+    func impactQueryIndex(
+        make: (CodeGraph) -> GraphQueryIndex = { GraphQueryIndex(graph: $0) }
+    ) -> GraphQueryIndex {
+        impactPreparationCache.names { make(buildGraph(level: .symbol).graph) }
+    }
+
+    private final class ImpactPreparationCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var lifecycleValue: XCTestLifecycleImpact?
+        private var fileValue: [String: [NodeID]]?
+        private var nameValue: GraphQueryIndex?
+
+        func lifecycle(make: () -> XCTestLifecycleImpact) -> XCTestLifecycleImpact {
+            lock.lock()
+            defer { lock.unlock() }
+            if let lifecycleValue { return lifecycleValue }
+            let made = make()
+            lifecycleValue = made
+            return made
+        }
+
+        func files(make: () -> [String: [NodeID]]) -> [String: [NodeID]] {
+            lock.lock()
+            defer { lock.unlock() }
+            if let fileValue { return fileValue }
+            let made = make()
+            fileValue = made
+            return made
+        }
+
+        func names(make: () -> GraphQueryIndex) -> GraphQueryIndex {
+            lock.lock()
+            defer { lock.unlock() }
+            if let nameValue { return nameValue }
+            let made = make()
+            nameValue = made
             return made
         }
     }
