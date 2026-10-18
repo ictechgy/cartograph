@@ -80,7 +80,8 @@ public enum IndexStoreMapping {
             parentUSR: parentUSR(of: occurrence),
             isExternal: occurrence.location.isSystem,
             accessibility: .internalLevel,
-            attributes: attributes(properties: occurrence.symbol.properties, roles: occurrence.roles)
+            attributes: attributes(properties: occurrence.symbol.properties, roles: occurrence.roles),
+            compilerUnitTest: occurrence.symbol.properties.contains(.unitTest)
         )
     }
 

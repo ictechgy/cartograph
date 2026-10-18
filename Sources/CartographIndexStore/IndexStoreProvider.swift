@@ -236,7 +236,9 @@ public struct IndexStoreProvider: IndexProviding {
                         parentUSR: existing.parentUSR ?? symbol.parentUSR,
                         isExternal: base.isExternal,
                         accessibility: base.accessibility,
-                        attributes: existing.attributes.union(symbol.attributes)
+                        attributes: existing.attributes.union(symbol.attributes),
+                        compilerUnitTest: existing.compilerUnitTest == true || symbol.compilerUnitTest == true
+                            ? true : (existing.compilerUnitTest ?? symbol.compilerUnitTest)
                     )
                 } else {
                     symbolsByUSR[symbol.usr] = symbol
