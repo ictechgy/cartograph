@@ -239,10 +239,270 @@ def verify_enum_expansion(binary: Path, project: Path, store: Path, output: Path
             "coverageStatus": "partial", "coverageIssues": expected_issues}
 
 
+def load_measurement_module(name: str, filename: str):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(filename))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def measure_impact(binary: Path, baseline: Path, project: Path, store: Path,
+                   before: Path, output: Path) -> dict:
+    """기존 정확성 검증을 유지하면서 release 전후 성능과 전체 출력 동등성을 별도로 잰다."""
+    import hashlib
+    import os
+    import signal
+    import statistics
+    import sys
+    import time
+
+    base = load_measurement_module("impact_benchmark_base", "benchmark-indexstore-cli.py")
+    mcp = load_measurement_module("impact_mcp_contract", "verify-mcp.py")
+    root = output / "impact-performance"
+    root.mkdir(parents=True, exist_ok=True)
+    arms = {"baseline": baseline, "candidate": binary}
+    cases = [
+        ("lifecycle-file", ["--file", "Sources/ImpactData/LifecycleValue.swift"],
+         {"files": ["Sources/ImpactData/LifecycleValue.swift"]}),
+        ("lifecycle-symbol", ["lifecycleValue"], {"symbols": ["lifecycleValue"]}),
+        ("container", ["LiveStore"], {"symbols": ["LiveStore"]}),
+        ("depth-one", ["LiveStore", "--depth", "1"], {"symbols": ["LiveStore"], "depth": 1}),
+        ("historical-file", ["--file", "Sources/ImpactData/LiveStore.swift", "--before", str(before)], None),
+    ]
+    report = {
+        "status": "running",
+        "scope": "same-corpus Cartograph baseline/candidate diagnostic, not an IndexStoreDB comparison",
+        "depth": "unlimited unless the named depth-one control specifies 1",
+        "limit": 200,
+        "rss": "wait4 process lifetime peak bytes, not process-tree RSS or per-request RSS",
+        "cache": "CLI fresh process; OS/SwiftPM caches not flushed; MCP freshness interval zero",
+        "mcp_clock": "Send through complete document parsing; process launch and legacy negotiation excluded. "
+                     "Only first lifecycle-file creates the context; other first-selector rows reuse it.",
+        "binaries": {arm: {"path": str(path), "sha256": base.sha256(path)} for arm, path in arms.items()},
+        "cli": [], "mcp": [],
+    }
+    base.save(root / "results.json", report)
+
+    def digest(value: dict) -> str:
+        return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    def input_identity():
+        return {
+            "binaries": {arm: base.sha256(path) for arm, path in arms.items()},
+            "sources": base.fingerprint(project / "Sources"),
+            "tests": base.fingerprint(project / "Tests"),
+            "package": {name: base.sha256(project / name) if (project / name).is_file() else None
+                        for name in ("Package.swift", "Package.resolved")},
+            "index": base.fingerprint(store),
+            "before_snapshot": base.sha256(before),
+        }
+
+    report["input_identity_before"] = input_identity()
+    base.save(root / "results.json", report)
+    expected = {}
+    try:
+        for label, selectors, _ in cases:
+            pairs = []
+            for pair in range(6):
+                order = ["baseline", "candidate"] if pair % 2 == 0 else ["candidate", "baseline"]
+                rows = {}
+                for arm in order:
+                    command = [str(arms[arm]), "impact"] + selectors + [
+                        "--format", "json", "--project", str(project), "--index-store", str(store)]
+                    measurement = base.run(command, project, root / "runs" / "cli" / f"{label}-{pair}-{arm}", 120)
+                    document = json.loads(Path(measurement["stdout"]).read_text())
+                    if label in expected and document != expected[label]:
+                        raise RuntimeError(f"{label}: complete impact document changed across arms/repetitions")
+                    expected[label] = document
+                    rows[arm] = {**measurement, "document_sha256": digest(document)}
+                pairs.append({"warmup": pair == 0, "order": order, "arms": rows})
+            ratios = [row["arms"]["baseline"]["wall_seconds"] / row["arms"]["candidate"]["wall_seconds"]
+                      for row in pairs[1:]]
+            report["cli"].append({"case": label, "pairs": pairs,
+                                  "median_baseline_over_candidate": statistics.median(ratios)})
+            base.save(root / "results.json", report)
+
+        def close_session(client) -> dict:
+            close_error = None
+            try:
+                client.process.stdin.close()
+            except Exception as error:
+                close_error = str(error)
+            usage = None
+            forced = False
+            for signum in (None, signal.SIGTERM, signal.SIGKILL):
+                if signum is not None:
+                    forced = True
+                    try:
+                        os.killpg(client.process.pid, signum)
+                    except ProcessLookupError:
+                        pass
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    pid, status, observed = os.wait4(client.process.pid, os.WNOHANG)
+                    if pid:
+                        usage = observed
+                        client.process.returncode = os.waitstatus_to_exitcode(status)
+                        break
+                    time.sleep(0.01)
+                if usage is not None:
+                    break
+            client.selector.close()
+            client.process.stdout.close()
+            if usage is None:
+                raise RuntimeError("MCP process did not exit after SIGKILL")
+            result = {"returncode": client.process.returncode, "forced_cleanup": forced,
+                      "wait4_maxrss_bytes": int(usage.ru_maxrss * (1 if sys.platform == "darwin" else 1024))}
+            if close_error is not None:
+                result["stdin_close_error"] = close_error
+            if forced or client.process.returncode or close_error is not None:
+                raise RuntimeError(f"MCP process cleanup failed: {result}")
+            return result
+
+        for protocol in ("modern", "legacy"):
+            clients = {}
+            session_rows = {}
+            try:
+                for arm in (("baseline", "candidate") if protocol == "modern" else ("candidate", "baseline")):
+                    folder = root / "runs" / "mcp" / protocol / arm
+                    folder.mkdir(parents=True, exist_ok=True)
+                    client = mcp.MCPProcess(arms[arm], project, folder / "process.stderr",
+                        ["--index-store", str(store), "--session-freshness-interval", "0"])
+                    clients[arm] = client
+                    session_rows[arm] = {"requests": []}
+                    if protocol == "legacy":
+                        response = client.request(1, "initialize", {
+                            "protocolVersion": "2025-11-25",
+                            "capabilities": {}, "clientInfo": {"name": "impact-performance", "version": "1"}})
+                        if response.get("result", {}).get("protocolVersion") != "2025-11-25":
+                            raise RuntimeError("Legacy protocol negotiation failed")
+                        client.send(mcp.request(None, "notifications/initialized"))
+
+                sequence = 1
+                def call(arm, tool, arguments, label):
+                    nonlocal sequence
+                    sequence += 1
+                    params = {"name": tool, "arguments": arguments}
+                    if protocol == "modern":
+                        params = mcp.modern_params(**params)
+                    raw = mcp.request(sequence, "tools/call", params)
+                    started = time.perf_counter()
+                    clients[arm].send(raw)
+                    response = clients[arm].receive(timeout=120)
+                    if response.get("id") != sequence or response.get("error"):
+                        raise RuntimeError("Mismatched/error MCP response")
+                    envelope = response.get("result", {})
+                    if envelope.get("isError"):
+                        raise RuntimeError("MCP impact returned an error")
+                    if protocol == "modern" and envelope.get("resultType") != "complete":
+                        raise RuntimeError("Modern MCP response was not complete")
+                    payload = (envelope.get("structuredContent") if protocol == "modern"
+                               else mcp.legacy_payload(response))
+                    if not isinstance(payload, dict):
+                        raise RuntimeError("Missing MCP payload")
+                    elapsed = time.perf_counter() - started
+                    stem = root / "runs" / "mcp" / protocol / arm / f"{sequence:03d}-{label}"
+                    Path(str(stem) + ".request.json").write_bytes(raw)
+                    base.save(Path(str(stem) + ".response.json"), response)
+                    session_rows[arm]["requests"].append(
+                        {"case": label, "ipc_seconds": elapsed, "payload_sha256": digest(payload),
+                         "response": str(stem) + ".response.json"})
+                    return payload
+
+                metadata = {}
+                for iteration in range(5):
+                    for label, _, arguments in cases:
+                        if arguments is None:
+                            continue
+                        order = ["baseline", "candidate"] if iteration % 2 == 0 else ["candidate", "baseline"]
+                        payloads = {}
+                        for arm in order:
+                            payload = call(arm, "cartograph_impact", arguments,
+                                           f"{label}-{'first' if iteration == 0 else 'warm'}-{iteration}")
+                            if payload.get("result") != expected[label]:
+                                raise RuntimeError(f"{protocol}/{arm}/{label}: MCP and CLI documents differ")
+                            session = payload.get("session", {})
+                            if session.get("generation") != 1:
+                                raise RuntimeError("Unchanged MCP inputs unexpectedly changed generation")
+                            if arm in metadata and metadata[arm] != session:
+                                raise RuntimeError("Unchanged MCP session metadata changed")
+                            metadata[arm] = session
+                            payloads[arm] = payload
+                        if payloads["baseline"] != payloads["candidate"]:
+                            raise RuntimeError("MCP complete payload differs between baseline and candidate")
+                for arm in arms:
+                    refreshed = call(arm, "cartograph_status", {"refresh": True}, "forced-same-input-refresh")
+                    if refreshed.get("generation") != 2 or refreshed.get("fingerprint") != metadata[arm]["fingerprint"]:
+                        raise RuntimeError("Explicit refresh failed to rebuild the same input generation")
+                for label, _, arguments in cases:
+                    if arguments is None:
+                        continue
+                    payloads = {}
+                    for arm in arms:
+                        payloads[arm] = call(arm, "cartograph_impact", arguments, f"{label}-after-refresh")
+                        if payloads[arm].get("session", {}).get("generation") != 2:
+                            raise RuntimeError("Post-refresh query did not use the new generation")
+                        if payloads[arm].get("result") != expected[label]:
+                            raise RuntimeError("Refresh changed complete impact output")
+                    if payloads["baseline"] != payloads["candidate"]:
+                        raise RuntimeError("Post-refresh MCP payload differs between arms")
+            finally:
+                active_failure = sys.exc_info()[1]
+                errors = []
+                for arm, client in clients.items():
+                    try:
+                        session_rows[arm]["process"] = close_session(client)
+                    except Exception as error:
+                        errors.append(str(error))
+                report["mcp"].append({"protocol": protocol, "arms": session_rows})
+                base.save(root / "results.json", report)
+                if errors:
+                    report["cleanup_errors"] = errors
+                    base.save(root / "results.json", report)
+                    if active_failure is None:
+                        raise RuntimeError("; ".join(errors))
+        report["input_identity_after"] = input_identity()
+        if report["input_identity_after"] != report["input_identity_before"]:
+            raise RuntimeError("Benchmark inputs or binaries changed during the experiment")
+        report["status"] = "passed"
+        base.save(root / "results.json", report)
+        print("ImpactPerformance " + json.dumps({
+            "status": report["status"],
+            "cli_absolute_medians": {
+                row["case"]: {arm: {key: statistics.median(
+                    pair["arms"][arm][key] for pair in row["pairs"][1:])
+                    for key in ("wall_seconds", "wait4_maxrss_bytes")}
+                    for arm in arms} for row in report["cli"]},
+            "cli_median_baseline_over_candidate": {
+                row["case"]: row["median_baseline_over_candidate"] for row in report["cli"]},
+            "mcp_warm_median_seconds": {
+                row["protocol"]: {arm: {label: statistics.median(
+                    item["ipc_seconds"] for item in data["requests"]
+                    if item["case"].startswith(label + "-warm-"))
+                    for label, _, arguments in cases if arguments is not None}
+                    for arm, data in row["arms"].items()} for row in report["mcp"]},
+            "mcp_first_and_refresh_seconds": {
+                row["protocol"]: {arm: {item["case"]: item["ipc_seconds"]
+                    for item in data["requests"] if "-warm-" not in item["case"]}
+                    for arm, data in row["arms"].items()} for row in report["mcp"]},
+            "mcp_lifetime_peak_rss_bytes": {
+                row["protocol"]: {arm: data["process"]["wait4_maxrss_bytes"]
+                    for arm, data in row["arms"].items()} for row in report["mcp"]},
+        }, sort_keys=True))
+        return report
+    except Exception as error:
+        report.update(status="failed", error=str(error))
+        base.save(root / "results.json", report)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cartograph", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--baseline-cartograph", type=Path,
+                        help="Optional original release binary for paired CLI/MCP diagnostics.")
     args = parser.parse_args()
     binary = args.cartograph.resolve()
     if binary.is_file() and binary.suffix == ".txt":
@@ -251,6 +511,9 @@ def main() -> int:
         binary = binary / "cartograph"
     if not binary.is_file():
         parser.error(f"Cartograph binary not found: {binary}")
+    baseline = args.baseline_cartograph.resolve() if args.baseline_cartograph else None
+    if baseline is not None and not baseline.is_file():
+        parser.error(f"Baseline Cartograph binary not found: {baseline}")
     corpus = Path(__file__).resolve().parents[1] / "Fixtures/ChangeImpactCorpus"
     output = (args.output_dir or Path(tempfile.mkdtemp(prefix="cartograph-impact-"))).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -384,6 +647,10 @@ def main() -> int:
             "renamedBeforeAffected": sorted(renamed_before),
             "afterStore": str(after_store),
         }
+        if baseline is not None:
+            measured = measure_impact(binary, baseline, workspace, after_store, before_snapshot, output)
+            summary["impactPerformance"] = {"status": measured["status"],
+                                          "results": str(output / "impact-performance/results.json")}
         (output / "result.json").write_text(json.dumps(summary, indent=2) + "\n")
         print(json.dumps(summary, indent=2))
         print(f"Evidence: {output}")
