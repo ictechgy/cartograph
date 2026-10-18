@@ -91,6 +91,14 @@ struct ResourceModuleImpactTests {
             #expect(affected.selectionIssues.isEmpty)
             #expect(findings?.first?.targets == [NodeID("\(module)-labels")])
         } else {
+            #expect(impact.status == "incomplete")
+            #expect(affected.status == "incomplete")
+            for issues in [impact.selectionIssues, affected.selectionIssues] {
+                #expect(issues.count == 1)
+                #expect(issues.first?.requested == resourcePath)
+                #expect(issues.first?.kind == "file")
+                #expect(issues.first?.status == "unindexed")
+            }
             #expect(impact.selected.isEmpty)
             #expect(impact.affected.isEmpty)
             #expect(impact.tests.isEmpty)
