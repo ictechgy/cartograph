@@ -4,6 +4,9 @@
 /// 같은 이름을 두 번 내지 않는 dedup 키의 일부다. kartograph `SqlRelations.kt`의
 /// 포트라 알고리즘·게이트·계수 규칙을 같이 유지한다 — 두 생산자가 같은 SQL을
 /// 다르게 읽으면 isthmus 조인 결과가 생산자 언어에 따라 달라진다.
+/// 함수 인자 안의 FROM(R1)·CTE 이름(R2)·`IS [NOT] DISTINCT FROM`(R3)은 persistence
+/// 생산자 7곳 공통 규칙이라 isthmus 공유 사례(`conformance/sql-relations.json`)를 따른다
+/// (`SqlRelationContext`).
 struct SqlToken: Hashable {
     let text: String
     let quoted: Bool
@@ -88,8 +91,11 @@ func looksLikeSql(_ text: String, strict: Bool = false) -> Bool {
 /// 식별자("a.b")는 한 세그먼트로 읽는다 — escape는 기록 시에 한다.
 /// 두 번째 반환은 관계 자리의 피연산자를 읽지 못한 횟수다 —
 /// `FROM {}` 같은 플레이스홀더를 사실 없이 조용히 넘기지 않기 위해서다.
+/// 같은 문장의 CTE 이름, 함수 인자 안의 FROM, `IS [NOT] DISTINCT FROM`의 피연산자는
+/// 관계가 아니다(계열 공통 규칙, `SqlRelationContext`).
 func sqlRelations(_ text: String, strict: Bool = false) -> (relations: [SqlRelation], unresolved: Int) {
     let tokens = lexSql(text)
+    let context = SqlRelationContext(tokens)
     var out: [SqlRelation] = []
     // 같은 키워드의 피연산자 목록 안에서만 중복을 막는다(`FROM a, a`).
     // 다른 위치의 같은 이름은 별개의 사용 근거다 — `SELECT .. FROM t`와
@@ -185,9 +191,10 @@ func sqlRelations(_ text: String, strict: Bool = false) -> (relations: [SqlRelat
             }
             fires = grantOn || createOn
         // grant·revoke의 FROM은 권한 주체 자리다 — 관계가 아니므로
-        // from·join을 그 문장에서는 열지 않는다.
+        // from·join을 그 문장에서는 열지 않는다. 함수 인자 안의 FROM(R1)과
+        // `IS [NOT] DISTINCT FROM`(R3)도 관계 자리가 아니라 미해석으로도 세지 않는다.
         case "from", "join":
-            fires = !grantStmt
+            fires = !grantStmt && !(word == "from" && context.suppressesFrom(at: i))
         default:
             fires = true
         }
@@ -292,10 +299,13 @@ func sqlRelations(_ text: String, strict: Bool = false) -> (relations: [SqlRelat
                     guard let end = skipParens(tokens, next) else { break }
                     operandEnd = end
                 } else {
-                    if bufferedGrant {
-                        buf.append(name)
-                    } else if seen.insert("\(tok.offset) \(name)").inserted {
-                        out.append(SqlRelation(name: name, keyword: tok.offset))
+                    // 같은 문장의 CTE 이름은 관계가 아니다(R2) — 소비 표시만 남기고 내지 않는다.
+                    if !context.isCteReference(from: j, to: next) {
+                        if bufferedGrant {
+                            buf.append(name)
+                        } else if seen.insert("\(tok.offset) \(name)").inserted {
+                            out.append(SqlRelation(name: name, keyword: tok.offset))
+                        }
                     }
                     operandEnd = next
                 }
@@ -336,6 +346,160 @@ func sqlRelations(_ text: String, strict: Bool = false) -> (relations: [SqlRelat
         }
     }
     return (out, unresolved)
+}
+
+/// 계열 공통 규칙 세 가지가 관계 키워드마다 묻는 문장·괄호 문맥이다.
+///
+/// - R1: `(` 바로 앞이 함수 이름이고 그룹이 SELECT·WITH·VALUES로 시작하지 않으면 그 깊이의 FROM은
+///   관계를 열지 않는다(`EXTRACT(YEAR FROM created_at)`·`TRIM(BOTH ' ' FROM name)`). 안쪽 하위 질의는 연다.
+/// - R2: 문장마다 `WITH [RECURSIVE] name [(cols)] AS [NOT] [MATERIALIZED] (`와 `, name …`의 이름을 모아,
+///   같은 문장의 한정자 없는 피연산자가 그 이름이면 관계로 내지 않는다. 다른 문장에는 영향이 없다.
+/// - R3: FROM 바로 앞이 비인용 `distinct`이고 그 앞이 `is` 또는 `is not`이면 비교 연산자의 일부다.
+///
+/// persistence 생산자 7곳이 같은 SQL을 같게 읽어야 isthmus 조인이 생산자 언어에 따라 갈리지 않는다.
+/// 규칙은 isthmus GRAPH-EXCHANGE의 "SQL 텍스트의 관계 이름" 절이 정본이다. 키워드마다 토큰을
+/// 되감지 않도록 문장 번호·괄호 짝·CTE 이름·함수 인자 문맥을 토큰 열을 몇 번 훑어 미리 계산한다.
+struct SqlRelationContext {
+    private let tokens: [SqlToken]
+    /// 토큰마다 속한 문장(`;`로 갈리는 구간) 번호다.
+    private let statements: [Int]
+    /// 문장마다 모은 CTE 이름의 비교 키다(R2).
+    private let cteNames: [Set<String>]
+    /// 토큰을 감싼 가장 안쪽 괄호가 함수 인자 그룹인지다(R1).
+    private let insideFunctionArguments: [Bool]
+
+    init(_ tokens: [SqlToken]) {
+        let (statements, closing) = sqlStatementsAndParens(tokens)
+        let definitions = sqlCteDefinitions(tokens, statements: statements, closing: closing)
+        self.tokens = tokens
+        self.statements = statements
+        cteNames = definitions.names
+        insideFunctionArguments = sqlFunctionArgumentScopes(tokens, cteParens: definitions.parens)
+    }
+
+    /// `index`의 FROM이 관계를 열지 않는지 본다 — 함수 인자 안(R1)이거나 `IS [NOT] DISTINCT FROM`(R3)이다.
+    /// 세 규칙은 발화를 막는 쪽이라 strict 모드에서도 키워드 대소문자를 따지지 않는다.
+    func suppressesFrom(at index: Int) -> Bool {
+        insideFunctionArguments[index] || isDistinctFromOperator(tokens, index)
+    }
+
+    /// `start..<next`에서 읽은 피연산자가 같은 문장의 CTE 이름인지 본다(R2) — 한정 이름은 CTE가 아니다.
+    func isCteReference(from start: Int, to next: Int) -> Bool {
+        next == start + 1 && cteNames[statements[start]].contains(cteKey(tokens[start]))
+    }
+}
+
+/// 토큰마다 문장 번호를, 여는 괄호마다 같은 문장 안의 짝 닫는 괄호 위치를 한 번에 센다.
+/// `;`는 열린 괄호를 모두 버린다 — 앞 문장의 닫히지 않은 괄호가 다음 문장의 문맥이 되지 않게 한다.
+private func sqlStatementsAndParens(_ tokens: [SqlToken]) -> (statements: [Int], closing: [Int?]) {
+    var statements = [Int](repeating: 0, count: tokens.count)
+    var closing = [Int?](repeating: nil, count: tokens.count)
+    var statement = 0
+    var openParens: [Int] = []
+    for index in tokens.indices {
+        statements[index] = statement
+        if isSqlSymbol(tokens, index, ";") {
+            statement += 1
+            openParens.removeAll()
+        } else if isSqlSymbol(tokens, index, "(") {
+            openParens.append(index)
+        } else if isSqlSymbol(tokens, index, ")"), let open = openParens.popLast() {
+            closing[open] = index
+        }
+    }
+    return (statements, closing)
+}
+
+/// R2의 CTE 이름을 문장마다 모은다. 그 정의의 열 목록·본문 `(`도 돌려준다 — 그 괄호는 함수 인자
+/// 그룹이 아니다(`WITH d AS MATERIALIZED (DELETE FROM t …)`의 t를 R1이 막지 않게 한다).
+private func sqlCteDefinitions(_ tokens: [SqlToken], statements: [Int], closing: [Int?])
+    -> (names: [Set<String>], parens: Set<Int>) {
+    var names = [Set<String>](repeating: [], count: (statements.last ?? 0) + 1)
+    var parens = Set<Int>()
+    for index in tokens.indices where isSqlWord(tokens, index, "with") || isSqlSymbol(tokens, index, ",") {
+        let recursive = isSqlWord(tokens, index, "with") && isSqlWord(tokens, index + 1, "recursive")
+        let nameIndex = index + (recursive ? 2 : 1)
+        guard let definition = cteDefinitionParens(tokens, nameIndex: nameIndex, closing: closing) else { continue }
+        names[statements[index]].insert(cteKey(tokens[nameIndex]))
+        parens.formUnion(definition)
+    }
+    return (names, parens)
+}
+
+/// `nameIndex`에서 `name [(cols)] AS [NOT] [MATERIALIZED] (`가 시작하면 열 목록과 본문의 `(` 위치를
+/// 돌려준다. 모양이 다르면(`WITH GRANT OPTION`·`WITH (NOLOCK)`·`, col AS alias`) CTE 정의가 아니다.
+private func cteDefinitionParens(_ tokens: [SqlToken], nameIndex: Int, closing: [Int?]) -> [Int]? {
+    guard tokens.indices.contains(nameIndex), isCteName(tokens[nameIndex]) else { return nil }
+    var parens: [Int] = []
+    var cursor = nameIndex + 1
+    if isSqlSymbol(tokens, cursor, "(") {
+        guard let close = closing[cursor] else { return nil }
+        parens.append(cursor)
+        cursor = close + 1
+    }
+    guard isSqlWord(tokens, cursor, "as") else { return nil }
+    cursor += 1
+    if isSqlWord(tokens, cursor, "not") { cursor += 1 }
+    if isSqlWord(tokens, cursor, "materialized") { cursor += 1 }
+    guard isSqlSymbol(tokens, cursor, "(") else { return nil }
+    return parens + [cursor]
+}
+
+/// CTE 이름이 될 수 있는 토큰인지 본다 — 비인용 이름이거나 비어 있지 않은 인용 식별자다.
+private func isCteName(_ token: SqlToken) -> Bool {
+    token.quoted ? !token.text.isEmpty : isNameToken(token)
+}
+
+/// CTE 이름과 한정자 없는 피연산자의 비교 키다. 비인용 이름은 SQL 식별자 규칙대로 소문자로 접고
+/// 인용 이름은 그대로 둔다(isthmus 참조 구현과 같은 선택이다).
+private func cteKey(_ token: SqlToken) -> String {
+    token.quoted ? token.text : token.text.lowercased()
+}
+
+/// R1: 토큰마다 감싼 가장 안쪽 괄호가 함수 인자 그룹인지 센다. `;`는 열린 괄호 문맥을 모두 버린다.
+private func sqlFunctionArgumentScopes(_ tokens: [SqlToken], cteParens: Set<Int>) -> [Bool] {
+    var inside = [Bool](repeating: false, count: tokens.count)
+    var groups: [Bool] = []
+    for index in tokens.indices {
+        if isSqlSymbol(tokens, index, ";") {
+            groups.removeAll()
+        } else if isSqlSymbol(tokens, index, "(") {
+            groups.append(!cteParens.contains(index) && opensFunctionArguments(tokens, index))
+        } else if isSqlSymbol(tokens, index, ")") {
+            _ = groups.popLast()
+        } else {
+            inside[index] = groups.last ?? false
+        }
+    }
+    return inside
+}
+
+/// `(`가 함수 인자 그룹을 여는지 본다 — 바로 앞이 함수 이름이고 그룹이 SELECT·WITH·VALUES로 시작하지 않는다.
+/// 함수 이름은 절 키워드·관계 키워드가 아닌 비인용 이름이다 — 공통 규칙의 "식별자"를 이렇게 좁혀야
+/// `FROM ((SELECT …) UNION SELECT … FROM b)`·`AS (DELETE FROM t …)` 같은 하위 질의·CTE 본문 괄호를
+/// 함수 인자로 읽지 않는다.
+private func opensFunctionArguments(_ tokens: [SqlToken], _ open: Int) -> Bool {
+    guard open > 0 else { return false }
+    let name = tokens[open - 1]
+    guard isNameToken(name), !isClauseWord(name.text), !isRelationKeyword(name.text) else { return false }
+    return !["select", "with", "values"].contains { isSqlWord(tokens, open + 1, $0) }
+}
+
+/// R3: FROM 바로 앞이 비인용 `distinct`이고 그 앞이 `is` 또는 `is not`이면 비교 연산자의 일부다.
+private func isDistinctFromOperator(_ tokens: [SqlToken], _ index: Int) -> Bool {
+    guard isSqlWord(tokens, index - 1, "distinct") else { return false }
+    return isSqlWord(tokens, index - 2, "is")
+        || (isSqlWord(tokens, index - 2, "not") && isSqlWord(tokens, index - 3, "is"))
+}
+
+/// `index`의 토큰이 비인용 키워드 `word`(소문자)인지 대소문자 없이 본다 — 범위 밖이면 거짓이다.
+private func isSqlWord(_ tokens: [SqlToken], _ index: Int, _ word: String) -> Bool {
+    tokens.indices.contains(index) && !tokens[index].quoted && tokens[index].text.lowercased() == word
+}
+
+/// `index`의 토큰이 비인용 기호 `symbol`인지 본다 — 범위 밖이면 거짓이다.
+private func isSqlSymbol(_ tokens: [SqlToken], _ index: Int, _ symbol: String) -> Bool {
+    tokens.indices.contains(index) && !tokens[index].quoted && tokens[index].text == symbol
 }
 
 /// 뒤따르는 식별자가 관계 이름인 키워드다. `on`은 GRANT/REVOKE 문 안에서만 관계 키워드로 발화한다.

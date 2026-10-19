@@ -1309,6 +1309,16 @@ diagnostics for declarations that were never supposed to exist. SQL arguments th
 literals, and relation names that cannot be resolved statically, stay in the document marked
 `dynamic` so the join can count what it could not see.
 
+SQL text is read by a token scanner that follows the relation-name rules every persistence
+producer shares through the isthmus contract. A `FROM` inside function arguments
+(`EXTRACT(YEAR FROM created_at)`, `TRIM(BOTH ' ' FROM name)`, `SUBSTRING(name FROM 2)`; a subquery
+inside them still counts), an unqualified name that is a CTE of the same `;`-separated statement
+(unquoted names compare case-insensitively, quoted names as written), and the operand of
+`IS [NOT] DISTINCT FROM` are not relations: none of them becomes a `relation-use` fact or is
+counted under `unjoined-dynamic-relations`. The CTE rule covers the whole statement, so a CTE
+named after a table hides that table too — `WITH users AS (SELECT * FROM users …)` drops the real
+`users` its body reads.
+
 Like `bridges`, the command attaches the index's USR to the enclosing declaration when it can,
 so isthmus retentions can name the function that touches a table. Facts at file scope carry no
 symbol. The command refuses `--since`, `--level`, `--report-format` and `--strict` for the same

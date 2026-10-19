@@ -1259,6 +1259,15 @@ Core Data·SwiftData·Realm과 나머지 DB 프레임워크는 읽지 않고 `li
 찾는 진단이 됩니다. 리터럴이 아닌 SQL 인자와 정적으로 풀 수 없는 관계 이름은 문서에 `dynamic`
 표식으로 남겨, 조인이 보지 못한 것을 셀 수 있게 합니다.
 
+SQL 텍스트는 persistence 생산자들이 isthmus 계약으로 공유하는 관계 이름 규칙을 따르는 토큰
+스캐너로 읽습니다. 함수 인자 안의 `FROM`(`EXTRACT(YEAR FROM created_at)`·
+`TRIM(BOTH ' ' FROM name)`·`SUBSTRING(name FROM 2)`. 그 안의 하위 질의는 그대로 셉니다),
+`;`로 나뉜 같은 문장의 CTE 이름인 한정자 없는 이름(비인용 이름은 대소문자 없이, 인용 이름은 쓴
+그대로 비교합니다), `IS [NOT] DISTINCT FROM`의 피연산자는 관계가 아닙니다 — `relation-use`
+사실이 되지 않고 `unjoined-dynamic-relations`에도 세지 않습니다. CTE 규칙은 문장 단위라 테이블과
+이름이 같은 CTE는 그 테이블도 가립니다 — `WITH users AS (SELECT * FROM users …)`는 본문이 읽는
+실제 `users`도 내지 않습니다.
+
 `bridges`처럼 인덱스의 USR을 감싸는 선언에 붙일 수 있으면 붙입니다 — isthmus 보존 근거가
 테이블을 건드는 함수를 가리킬 수 있게. 파일 최상위의 사실은 심볼을 싣지 않습니다.
 `--since`, `--level`, `--report-format`, `--strict`를 거부하는 이유도 `bridges`와 같습니다:
