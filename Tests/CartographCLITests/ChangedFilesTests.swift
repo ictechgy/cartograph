@@ -300,4 +300,140 @@ struct ChangedFilesTests {
             try ChangedFiles.since("nosuchrevision", workingDirectory: root.path)
         }
     }
+
+    // MARK: - 분석 대상 저장소가 고른 .git 설정의 명령 실행 차단 (D1)
+
+    /// 분석 대상 저장소가 정의한 콘텐츠 필터는 실행하면 안 되는 명령이다. 표식을
+    /// 남기는 무해한 필터를 꾸민다. 필터가 돌면 표식 파일이 생기므로, 표식 디렉터리가
+    /// 비어 있으면 명령이 실행되지 않은 것이다. 표식은 작업 트리 밖에 둔다.
+    private func makeMarkerDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cartograph-marker-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private func markerCount(in directory: URL) -> Int {
+        (try? FileManager.default.contentsOfDirectory(atPath: directory.path).count) ?? -1
+    }
+
+    /// git 은 작업 트리 파일의 stat 이 인덱스와 어긋날 때만 내용을 다시 읽어 필터를 돌린다.
+    /// 같은 내용을 새 inode 로 다시 써서(atomically) 체크아웃·압축 해제처럼 stat 을 어긋나게 한다.
+    private func restat(_ path: String, contents: String, in root: URL) throws {
+        try write(contents, to: path, in: root)
+    }
+
+    @Test("분석 대상 저장소의 clean 필터(점 든 이름 포함)를 실행하지 않는다")
+    func doesNotRunContentFilters() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = try makeMarkerDirectory()
+        defer { try? FileManager.default.removeItem(at: markers) }
+        // 속성은 base 커밋에 넣고 필터 값은 커밋 뒤에 정의한다. 그래야 add·commit 단계가
+        // 아니라 분석 단계에서만 필터가 돌 수 있다(커밋 직후 같은 초라 추적 파일이 racy 하면
+        // git 이 커밋 중에도 내용을 다시 읽어 필터를 실행해 설정 단계의 표식이 섞인다).
+        try write("*.swift filter=evil\n", to: ".gitattributes", in: root)
+        try write("let a = 1", to: "Sources/A.swift", in: root)
+        try write("text", to: "Docs/N.md", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+
+        try run(["config", "filter.evil.clean", "touch '\(markers.path)/clean'; cat"], in: root)
+        try run(["config", "filter.deep.name.clean", "touch '\(markers.path)/dotted'; cat"], in: root)
+        try run(["config", "filter.evil.smudge", "touch '\(markers.path)/smudge'; cat"], in: root)
+        // .git/info/attributes 는 커밋되지 않지만 git 이 읽는다. --attr-source 로는 막지 못한다.
+        try "*.md filter=deep.name\n".write(
+            to: root.appendingPathComponent(".git/info/attributes"), atomically: true, encoding: .utf8)
+
+        try restat("Sources/A.swift", contents: "let a = 1", in: root)
+        try restat("Docs/N.md", contents: "text", in: root)
+        _ = try ChangedFiles.since("HEAD", workingDirectory: root.path)
+        try restat("Sources/A.swift", contents: "let a = 1", in: root)
+        try restat("Docs/N.md", contents: "text", in: root)
+        _ = try ChangedFiles.since("HEAD", workingDirectory: root.path, includingDeleted: true)
+        #expect(markerCount(in: markers) == 0)
+    }
+
+    @Test("required=true 인 process 필터도 실행하지 않고 실패시키지 않는다")
+    func disablesRequiredProcessFilters() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = try makeMarkerDirectory()
+        defer { try? FileManager.default.removeItem(at: markers) }
+        try write("*.swift filter=proc\n", to: ".gitattributes", in: root)
+        try write("let a = 1", to: "Sources/A.swift", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        try run(["config", "filter.proc.process", "touch '\(markers.path)/proc'; cat"], in: root)
+        try run(["config", "filter.proc.required", "true"], in: root)
+
+        try restat("Sources/A.swift", contents: "let a = 1", in: root)
+        // required=true 를 끄지 않으면 git 이 128 로 죽는다. 무력화하면 그냥 성공해야 한다.
+        _ = try ChangedFiles.since("HEAD", workingDirectory: root.path)
+        #expect(markerCount(in: markers) == 0)
+    }
+
+    @Test("`-c` 로 끌 수 없는 `=` 든 필터 이름은 fail-closed 로 거부한다")
+    func failsClosedOnUndisableableFilterName() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = try makeMarkerDirectory()
+        defer { try? FileManager.default.removeItem(at: markers) }
+        try write("*.swift filter=ev=il\n", to: ".gitattributes", in: root)
+        try write("let a = 1", to: "Sources/A.swift", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        // 이름에 `=` 가 들어가면 `-c filter.<이름>.clean=` 의 키가 첫 `=` 에서 잘려 무력화되지 않는다.
+        try run(["config", "filter.ev=il.clean", "touch '\(markers.path)/eq'; cat"], in: root)
+
+        try restat("Sources/A.swift", contents: "let a = 1", in: root)
+        #expect(throws: CartographError.self) {
+            try ChangedFiles.since("HEAD", workingDirectory: root.path)
+        }
+        #expect(markerCount(in: markers) == 0)
+    }
+
+    @Test("서브모듈 로컬 저장소가 정의한 필터도 실행하지 않는다")
+    func doesNotRunSubmoduleLocalFilters() throws {
+        let library = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: library) }
+        try write("let l = 1", to: "L.swift", in: library)
+        try run(["add", "-A"], in: library)
+        try run(["commit", "-qm", "lib"], in: library)
+
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = try makeMarkerDirectory()
+        defer { try? FileManager.default.removeItem(at: markers) }
+        try write("let a = 1", to: "Sources/A.swift", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        try run(["-c", "protocol.file.allow=always", "submodule", "add", "-q", library.path, "sub"], in: root)
+        try run(["commit", "-qm", "sub"], in: root)
+        // 서브모듈 저장소에만 있는 드라이버는 상위 저장소 설정에 없어 이름으로 무력화하지 못한다.
+        // --ignore-submodules 로 서브모듈 안에서 git 을 다시 띄우지 않아야 막힌다.
+        try run(["-C", "sub", "config", "filter.subevil.clean", "touch '\(markers.path)/sub'; cat"], in: root)
+        try "* filter=subevil\n".write(
+            to: root.appendingPathComponent(".git/modules/sub/info/attributes"), atomically: true, encoding: .utf8)
+
+        try restat("sub/L.swift", contents: "let l = 1", in: root)
+        _ = try ChangedFiles.since("HEAD", workingDirectory: root.path, includingDeleted: true)
+        #expect(markerCount(in: markers) == 0)
+    }
+
+    @Test("정규화 필터로 내용이 바뀌던 파일은 stat 이 어긋나면 변경으로 포함한다")
+    func normalizingFilterStaleFileCountsAsChanged() throws {
+        // git-lfs 처럼 clean 이 내용을 바꾸던 파일은, 필터를 끈 채 stat 이 어긋나면
+        // 변경으로 보인다. 발견을 숨기지 않는 보수적(상위집합) 방향이다.
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try run(["config", "filter.upper.clean", "tr a-z A-Z"], in: root)
+        try write("*.txt filter=upper\n", to: ".gitattributes", in: root)
+        try write("hello", to: "Sources/N.txt", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+
+        let changed = try ChangedFiles.since("HEAD", workingDirectory: root.path)
+        #expect(changed.contains { $0.hasSuffix("Sources/N.txt") })
+    }
 }

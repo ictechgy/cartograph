@@ -761,8 +761,11 @@ program has no caller, and no caller is invented. Roots are not expanded to thei
 `--limit` defaults to 100000 (the contract maximum) and `--generated-at` fixes the timestamp for
 byte-identical output. `revision` is `--revision <rev>` when given; otherwise it is the git `HEAD`
 commit only when the project directory has no uncommitted or untracked changes, and it is omitted
-when the tree is dirty or not a repository — a `HEAD` recorded over edited sources would make isthmus
-treat a stale analysis as current. `graphRevision` is `sha256:` over the symbol graph's node ids and
+when the tree is dirty, contains a submodule, or is not a repository — a `HEAD` recorded over edited
+sources would make isthmus treat a stale analysis as current. These lookups disable the repository's
+git filters (see Known limitations), so a file a filter normalized, such as Git LFS, reads as dirty
+and omits the revision too; pass `--revision` explicitly in those cases.
+`graphRevision` is `sha256:` over the symbol graph's node ids and
 kinds, its edges, the automatic runtime connections and the closed-world decision (locations
 excluded), so dependents and dependencies documents over the same graph agree. `project` is the
 project's real path, as in `routes` and `bridges`. Roots and `--revision` containing control
@@ -1574,6 +1577,12 @@ that keeps today's debt from growing, `--since` is the pull-request lens. In CI,
 history (`fetch-depth: 0`), or the revision will not resolve. A `noChanges` impact result means no
 modeled source path was selected; it is not evidence that all changed files are safe.
 
+These git lookups run inside the repository under analysis with its content filters, external diff
+and textconv drivers, fsmonitor and submodule configuration disabled (see Known limitations), so a
+tracked file whose content is unchanged but whose stat differs — for example after a fresh checkout
+— is reported as changed. A repository that configures a filter driver whose name cannot be safely
+disabled makes `--since` stop with an error (exit 2) rather than risk running it.
+
 ## Configuration
 
 `.cartograph.yml` in the project root. Run `cartograph init` for a commented template.
@@ -1723,6 +1732,19 @@ override the extension's default access.
   edge. Read the warning together with those answers rather than expecting them to agree.
 - **`#if` branches that did not compile do not exist.** The index store only knows the
   configuration you built.
+- **Reading an untrusted repository's `.git`.** `--since` (on every command that accepts it) and the
+  default `language-traversal` revision run `git` inside the repository under analysis. A repository
+  distributed with its `.git` directory can point git at commands of its own choosing, so these
+  read-only lookups disable repository-configured content filters (`clean`/`smudge`/`process`),
+  external `diff`/`textconv` drivers, `fsmonitor`, commit-signature display and submodule
+  configuration, and never re-read the working tree through a filter. As a result a tracked file that
+  is byte-identical but stat-changed (for example after a fresh checkout) is reported as changed; a
+  file a filter normalized, such as Git LFS, looks changed and makes the traversal omit its `HEAD`
+  revision; and a submodule, or a filter driver whose name cannot be disabled, makes `--since` fail
+  and the traversal omit the revision. If a submodule holds sources you need analyzed, pass
+  `--revision` yourself. git still runs — its own SECURITY notes warn that no git command is safe on
+  a fully attacker-controlled `.git`, so analyze a `git clone --no-local` copy when in doubt — and
+  your user-global git configuration is otherwise trusted.
 
 ## CI
 

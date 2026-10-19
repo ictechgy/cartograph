@@ -47,6 +47,63 @@ struct GitRevisionTests {
         #expect(!GitRevision.isObjectID("HEAD"))
     }
 
+    @Test("분석 대상 저장소가 정의한 clean 필터를 깨끗함 판정 중에 실행하지 않는다")
+    func cleanCheckDoesNotRunContentFilters() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cartograph-rev-marker-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: markers, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: markers) }
+        try write("let a = 1", to: "App/Sources/A.swift", in: root)
+        try git(["add", "-A"], in: root)
+        try git(["commit", "-qm", "base"], in: root)
+        // 커밋 뒤에 필터를 꾸민다. 같은 내용을 새 inode 로 다시 써 stat 을 어긋나게 한다.
+        try git(["config", "filter.evil.clean", "touch '\(markers.path)/clean'; cat"], in: root)
+        try "*.swift filter=evil\n".write(
+            to: root.appendingPathComponent(".git/info/attributes"), atomically: true, encoding: .utf8)
+        try write("let a = 1", to: "App/Sources/A.swift", in: root)
+
+        _ = GitRevision.cleanHead(projectPath: root.appendingPathComponent("App").path)
+        #expect((try? FileManager.default.contentsOfDirectory(atPath: markers.path).count) == 0)
+    }
+
+    @Test("정규화 필터로 내용이 바뀌던 파일이 있으면 깨끗하다고 주장하지 않는다")
+    func normalizingFilterMakesHeadUnavailable() throws {
+        // clean 이 내용을 바꾸던 파일은 필터를 끈 채 비교하면 저장된 blob 과 달라 보인다.
+        // 깨끗함을 증명할 수 없으므로 revision 을 싣지 않는다(fail-safe).
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try git(["config", "filter.upper.clean", "tr a-z A-Z"], in: root)
+        try write("*.txt filter=upper\n", to: ".gitattributes", in: root)
+        try write("hello", to: "App/Sources/N.txt", in: root)
+        try git(["add", "-A"], in: root)
+        try git(["commit", "-qm", "base"], in: root)
+        #expect(GitRevision.cleanHead(projectPath: root.appendingPathComponent("App").path) == nil)
+    }
+
+    @Test("서브모듈이 있으면 깨끗해도 revision 을 싣지 않는다")
+    func submodulePresenceMakesHeadUnavailable() throws {
+        let library = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: library) }
+        try write("let l = 1", to: "L.swift", in: library)
+        try git(["add", "-A"], in: library)
+        try git(["commit", "-qm", "lib"], in: library)
+
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write("let a = 1", to: "A.swift", in: root)
+        try git(["add", "-A"], in: root)
+        try git(["commit", "-qm", "base"], in: root)
+        let clean = try git(["rev-parse", "HEAD"], in: root).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(GitRevision.cleanHead(projectPath: root.path) == clean)
+
+        try git(["-c", "protocol.file.allow=always", "submodule", "add", "-q", library.path, "sub"], in: root)
+        try git(["commit", "-qm", "sub"], in: root)
+        // 서브모듈 안 소스도 분석 대상이라 서브모듈 상태를 안전하게 확인할 수 없다. 깨끗해도 nil.
+        #expect(GitRevision.cleanHead(projectPath: root.path) == nil)
+    }
+
     private func makeRepository() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("cartograph-rev-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
