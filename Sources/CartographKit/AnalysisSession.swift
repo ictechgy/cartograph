@@ -193,8 +193,12 @@ public final class AnalysisSession {
         }
         guard let querySession else { throw AnalysisSessionError.unavailable }
         var remaining = evidenceBudget
+        // 같은 이름의 notFound 추천은 이 요청 안에서만 한 번 계산한다. 세션에 두면 요청마다 쌓인다.
+        var suggestions: [String: [GraphNode]] = [:]
         let results = try symbols.map { symbol in
-            let document = try service.queryDocument(symbol: symbol, depth: depth, limit: limit, in: querySession)
+            let document = try service.queryDocument(
+                symbol: symbol, depth: depth, limit: limit, in: querySession, suggestions: &suggestions
+            )
             guard var budget = remaining else { return document }
             let limited = budget.apply(to: document)
             remaining = budget

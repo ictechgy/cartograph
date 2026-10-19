@@ -607,8 +607,10 @@ public struct CartographService: Sendable {
     /// 이름 하나가 틀렸다고 마흔둘의 답을 버리게 하지 않는다.
     public func queryBatch(symbols: [String], depth: Int = 1, limit: Int = 50) throws -> CommandOutcome {
         let session = try makeQuerySession(subjects: symbols)
+        // 같은 이름의 notFound 추천은 이 배치 안에서 한 번만 계산한다. 답의 순서와 중복은 그대로다.
+        var suggestions: [String: [GraphNode]] = [:]
         let results = try symbols.map {
-            try queryDocument(symbol: $0, depth: depth, limit: limit, in: session)
+            try queryDocument(symbol: $0, depth: depth, limit: limit, in: session, suggestions: &suggestions)
         }
         let text = try measureQueryPhase(.serialization, observer: environment.queryPhaseObserver) {
             try Self.encodeSortedJSON(SymbolQueryBatchDocument(results: results))
@@ -716,6 +718,18 @@ public struct CartographService: Sendable {
         limit: Int,
         in session: QuerySession
     ) throws -> SymbolQueryDocument {
+        var suggestions: [String: [GraphNode]] = [:]
+        return try queryDocument(symbol: subject, depth: depth, limit: limit, in: session, suggestions: &suggestions)
+    }
+
+    /// 배치가 나눠 쓰는 notFound 추천 메모와 함께 답한다. 같은 이름을 다시 물으면 추천을 다시 계산하지 않는다.
+    func queryDocument(
+        symbol subject: String,
+        depth: Int,
+        limit: Int,
+        in session: QuerySession,
+        suggestions: inout [String: [GraphNode]]
+    ) throws -> SymbolQueryDocument {
         try measureQueryPhase(.answer, observer: environment.queryPhaseObserver) {
             let graph = session.graph
             // `unusedCode` 는 설정과 무관하게 항상 심볼 레벨로 만든다. 여기서 설정값을
@@ -731,7 +745,7 @@ public struct CartographService: Sendable {
                 // 비슷한 이름이 없으면 키 자체를 만들지 않는다 — 빈 배열은
                 // "추천이 비었다"는 매번 붙는 말이 된다.
                 let similar = Self.candidates(
-                    session.lookup.similarCandidates(to: subject),
+                    session.lookup.similarCandidates(to: subject, memo: &suggestions),
                     in: graph
                 )
                 return SymbolQueryDocument(

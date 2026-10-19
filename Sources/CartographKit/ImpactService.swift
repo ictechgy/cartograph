@@ -212,6 +212,8 @@ struct ImpactSelection {
         // 파일·리소스 입력은 이름을 풀지 않는다. 전체 이름 색인은 실제 심볼 요청에만 만든다.
         if !symbols.isEmpty {
             let lookup = makeQueryIndex(graph)
+            // 같은 이름을 여러 번 넘겨도 notFound 추천은 한 번만 계산한다.
+            var suggestions: [String: [GraphNode]] = [:]
             for subject in symbols {
                 switch lookup.resolve(subject) {
                 case let .found(node): nodes.insert(node.id)
@@ -223,7 +225,9 @@ struct ImpactSelection {
                             candidates: SymbolQueryDocument.presenting(candidates, in: graph)))
                     }
                 case .notFound:
-                    let candidates = SymbolQueryDocument.presenting(lookup.similarCandidates(to: subject), in: graph)
+                    let candidates = SymbolQueryDocument.presenting(
+                        lookup.similarCandidates(to: subject, memo: &suggestions), in: graph
+                    )
                     issues.append(.init(requested: subject, kind: "symbol", status: "notFound",
                         candidates: candidates.isEmpty ? nil : candidates))
                 }

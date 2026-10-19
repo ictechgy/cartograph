@@ -600,6 +600,28 @@ struct SymbolQueryTests {
         #expect(document.results[0] == document.results[2])
     }
 
+    @Test("배치 안에서 같은 notFound 이름의 추천은 메모에서 다시 쓰고, 찾은 이름은 메모에 넣지 않는다")
+    func batchReusesSuggestionsForRepeatedMissingNames() throws {
+        let service = makeService()
+        let session = try service.makeQuerySession(subjects: ["UserRepsitory", "UserService"])
+        var suggestions: [String: [GraphNode]] = [:]
+        let first = try service.queryDocument(
+            symbol: "UserRepsitory", depth: 1, limit: 50, in: session, suggestions: &suggestions
+        )
+        _ = try service.queryDocument(
+            symbol: "UserService", depth: 1, limit: 50, in: session, suggestions: &suggestions
+        )
+        #expect(Array(suggestions.keys) == ["UserRepsitory"])
+        #expect(first.candidates?.map(\.qualifiedName) == ["Data.UserRepository"])
+        // 메모에 든 값을 그대로 쓴다. 비워 두면 같은 이름의 다음 답에는 추천이 없다.
+        suggestions["UserRepsitory"] = []
+        let repeated = try service.queryDocument(
+            symbol: "UserRepsitory", depth: 1, limit: 50, in: session, suggestions: &suggestions
+        )
+        #expect(repeated.status == "notFound")
+        #expect(repeated.candidates == nil)
+    }
+
     @Test("배치의 답은 하나씩 물었을 때와 같다")
     func batchAgreesWithSingleQueries() throws {
         let service = makeService()
