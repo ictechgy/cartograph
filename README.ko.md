@@ -68,7 +68,7 @@ Cartograph의 문장은 *"의존성 그래프를 내놓는다"*이며, 미사용
 발행된 CLI 버전과 내려받을 바이너리는
 [GitHub Releases](https://github.com/ictechgy/cartograph/releases)에서 확인하세요.
 아래 버전 고정 설치 예시는 재현성을 위해 발행된
-[**0.27.1**](https://github.com/ictechgy/cartograph/releases/tag/0.27.1)을 사용하며,
+[**0.28.0**](https://github.com/ictechgy/cartograph/releases/tag/0.28.0)을 사용하며,
 발행 여부를 확인한 버전으로만 바꾸세요.
 소스 체크아웃의 `--version`은 소스 버전을 나타내며 배포 파일의 존재를 보장하지 않습니다.
 0.25.1은 소스에서 준비됐지만 발행되지 않았습니다. 포함된 변경은 [CHANGELOG.md](CHANGELOG.md)를 보세요.
@@ -89,14 +89,14 @@ brew install ictechgy/tap/cartograph
 ```
 
 [tap formula](https://github.com/ictechgy/homebrew-tap/blob/main/Formula/cartograph.rb)는 GitHub Releases와
-별도로 갱신됩니다. [0.27.1 갱신](https://github.com/ictechgy/homebrew-tap/pull/62)은 macOS arm64에서
+별도로 갱신됩니다. [0.28.0 갱신](https://github.com/ictechgy/homebrew-tap/pull/63)은 macOS arm64에서
 공개 archive 설치와 formula 테스트를 통과했습니다. 설치하거나 업그레이드한 뒤 `cartograph --version`을
 확인하세요. 릴리스와 tap 갱신만으로 로컬 바이너리가 업그레이드되지는 않습니다.
 
 **Mint** — 소스에서 빌드되며, tap을 추가할 필요가 없습니다.
 
 ```bash
-mint install ictechgy/cartograph@0.27.1
+mint install ictechgy/cartograph@0.28.0
 ```
 
 **아예 설치하지 않기** — Swift 패키지라면 의존성으로 추가해 커맨드 플러그인을 씁니다.
@@ -104,7 +104,7 @@ mint install ictechgy/cartograph@0.27.1
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.27.1"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.28.0"),
 ```
 
 ```bash
@@ -1693,11 +1693,11 @@ jobs:
       - uses: ictechgy/cartograph@action-v1.0.0
         with:
           command: check
-          version: 0.27.1
+          version: 0.28.0
           args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-`action-v1.0.0`은 액션 릴리스 태그이고, `version: 0.27.1`은 CLI 바이너리를 선택합니다.
+`action-v1.0.0`은 액션 릴리스 태그이고, `version: 0.28.0`은 CLI 바이너리를 선택합니다.
 재현 가능한 실행을 위해 둘을 함께 고정하세요(`@main`은 개발 브랜치를 따릅니다).
 Marketplace의 기본 "Use latest version"은 저장소의 최신 CLI 릴리스를 따릅니다.
 액션 릴리스를 쓰려면 `action-v1.0.0`을 선택하거나 위의 버전별 링크를 이용하세요. 입력:
@@ -1813,8 +1813,10 @@ let (_, metrics, _) = service.metrics(in: context)
 
 ### 0.28 소스 마이그레이션
 
-소스 버전 0.28.0은 준비 중입니다. 새 릴리스가 검증될 때까지 위 설치 예시는 발행된 0.27.1을
-유지합니다. 전체 범위와 측정 한계는 [미발행 변경 기록](CHANGELOG.md#unreleased)을 보세요.
+[0.28.0은 발행됐습니다](https://github.com/ictechgy/cartograph/releases/tag/0.28.0).
+[릴리스 워크플로](https://github.com/ictechgy/cartograph/actions/runs/39179128842)는 발행 전에 압축을 푼
+universal archive를 검증했으며, [tap 갱신](https://github.com/ictechgy/homebrew-tap/pull/63)도 macOS arm64에서
+공개 archive 설치와 formula 테스트를 통과했습니다. 전체 범위와 측정 한계는 [변경 기록](CHANGELOG.md)을 보세요.
 
 임베딩 클라이언트는 새 라이브러리로 다시 빌드하세요. 선택 필드
 `IndexedSymbol.compilerUnitTest`는 컴파일러 관찰과 구문 기반 보존 표식을 구분합니다.

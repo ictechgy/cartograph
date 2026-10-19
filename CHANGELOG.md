@@ -7,9 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Planned release: **0.28.0**. This section describes source changes; it is not a publication or
-installation claim. The latest verified published CLI remains
-[0.27.1](https://github.com/ictechgy/cartograph/releases/tag/0.27.1).
+## [0.28.0] - 2026-10-19
+
+[Published release](https://github.com/ictechgy/cartograph/releases/tag/0.28.0), from reviewed source
+`a7f3f6b0d4e133bc9fe70ea8218261f8157555d1`. The
+[release workflow](https://github.com/ictechgy/cartograph/actions/runs/39179128842) passed the universal
+build and extracted-package verification gates before publication. The
+[Homebrew update](https://github.com/ictechgy/homebrew-tap/pull/63) passed public archive installation
+and formula tests on macOS arm64, including
+[post-merge validation](https://github.com/ictechgy/homebrew-tap/actions/runs/39181570778).
+The release archive SHA256 is `df5a9a8fea14769e7904e0c315421c527c29907969d4fce00e0e28c013cc3b17`.
 
 ### Added
 
