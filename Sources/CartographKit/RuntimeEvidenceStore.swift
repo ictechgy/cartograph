@@ -61,7 +61,8 @@ public struct RuntimeEvidenceStore: Sendable {
 
     private func read<T: Decodable>(at path: String) throws -> T {
         let data: Data
-        do { data = try fileSystem.readData(at: path) }
+        // 상한+1 바이트에서 읽기를 멈춰 아래 크기 검사가 메모리 상한 역할도 하게 한다.
+        do { data = try fileSystem.readData(at: path, maximumBytes: Self.maximumByteCount) }
         catch {
             throw Self.invalid(path, "Could not read the runtime evidence file. Check the path and read permissions.")
         }

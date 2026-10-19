@@ -682,6 +682,41 @@ fileprivate struct CachedListingFileSystem: FileSystem {
     var currentDirectoryPath: String { base.currentDirectoryPath }
 }
 
+/// 입력 내용을 고정 크기 조각으로 차례로 넘기는 읽기.
+///
+/// 세션 지문은 탐색한 모든 입력의 내용을 해시한다. 탐색은 링크 대상이 정규 파일이면 포함하므로
+/// 저장소 밖의 수백 MB 파일도 들어올 수 있고, `readData(at:)` 는 그것을 통째로 메모리에 올린다.
+/// 해시에는 전체가 한꺼번에 필요 없으므로 조각으로 읽어 메모리를 조각 크기로 묶는다.
+protocol ChunkedFileReading {
+    /// 정규 파일을 `chunkSize` 바이트 이하 조각으로 순서대로 넘긴다. 정규 파일이 아니거나 읽지 못하면 던진다.
+    func readChunks(at path: String, chunkSize: Int, _ consume: (Data) throws -> Void) throws
+}
+
+extension LocalFileSystem: ChunkedFileReading {
+    /// 탐색 뒤 이름이 FIFO 로 바뀌어도 열기에서 멈추지 않게 O_NONBLOCK 으로 열고, 정규 파일만 읽는다.
+    func readChunks(at path: String, chunkSize: Int, _ consume: (Data) throws -> Void) throws {
+        let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK)
+        guard descriptor >= 0 else { throw CocoaError(.fileReadNoPermission) }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0, metadata.st_mode & S_IFMT == S_IFREG else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        while let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty {
+            try consume(chunk)
+        }
+    }
+}
+
+extension CachedListingFileSystem: ChunkedFileReading {
+    /// 세션 지문은 이 래퍼로 읽으므로 기반의 조각 읽기를 그대로 넘긴다. 지원하지 않으면 한 조각으로 넘긴다.
+    func readChunks(at path: String, chunkSize: Int, _ consume: (Data) throws -> Void) throws {
+        guard let chunked = base as? any ChunkedFileReading else { return try consume(base.readData(at: path)) }
+        try chunked.readChunks(at: path, chunkSize: chunkSize, consume)
+    }
+}
+
 private struct AnalysisInputFingerprinter {
     let configuration: CartographConfiguration
     let environment: CartographEnvironment
@@ -944,21 +979,27 @@ private struct AnalysisInputFingerprinter {
                 modified.map { "modified:\($0.timeIntervalSinceReferenceDate)" } ?? "modified:unknown"
             )
         }
-        guard let data = try? fileSystem.readData(at: path) else {
+        guard let digest = try? contentDigest(at: path) else {
             contribution.addText("unreadable")
             accumulator.appendEncoded(contribution.data)
             cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
             return
         }
-        if let cache {
-            let digest = Data(SHA256.hash(data: data))
-            contribution.addData(label: "content-digest", data: digest)
-            accumulator.appendEncoded(contribution.data)
-            cache.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
-        } else {
-            contribution.addData(label: "content", data: data)
-            accumulator.appendEncoded(contribution.data)
+        // 캐시가 없는 경로도 원문 대신 digest 를 싣는다. 원문을 실으려면 파일 전체를 메모리에 올려야 한다.
+        contribution.addData(label: "content-digest", data: digest)
+        accumulator.appendEncoded(contribution.data)
+        cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
+    }
+
+    /// 입력 내용의 SHA-256. 조각 읽기를 지원하는 파일 시스템은 1 MiB 씩 해시해 메모리를 조각 크기로 묶는다.
+    private func contentDigest(at path: String) throws -> Data {
+        let fileSystem = environment.fileSystem
+        guard let chunked = fileSystem as? any ChunkedFileReading else {
+            return Data(SHA256.hash(data: try fileSystem.readData(at: path)))
         }
+        var hasher = SHA256()
+        try chunked.readChunks(at: path, chunkSize: 1_048_576) { hasher.update(data: $0) }
+        return Data(hasher.finalize())
     }
 
     fileprivate static func isSensitive(_ path: String) -> Bool {

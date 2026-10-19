@@ -235,11 +235,15 @@ extension CartographService {
         )
     }
 
-    private func generatedSource(at path: String) throws -> String {
+    /// 생성 소스를 4 MiB 상한 안에서 읽는다.
+    ///
+    /// 상한+1 바이트에서 읽기를 멈추므로 생성 소스 자리에 놓인 큰 파일도 크기 검사 전에 통째로 올리지 않는다.
+    func generatedSource(at path: String) throws -> String {
+        let limit = 4 * 1_024 * 1_024
         let data: Data
-        do { data = try environment.fileSystem.readData(at: path) }
+        do { data = try environment.fileSystem.readData(at: path, maximumBytes: limit) }
         catch { throw coreDataError(path, "The generated source could not be read: \(error)") }
-        guard data.count <= 4 * 1_024 * 1_024, let source = String(data: data, encoding: .utf8) else {
+        guard data.count <= limit, let source = String(data: data, encoding: .utf8) else {
             throw coreDataError(path, "Generated source must be UTF-8 and no larger than 4 MiB.")
         }
         return source

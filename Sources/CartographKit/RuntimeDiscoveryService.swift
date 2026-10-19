@@ -59,8 +59,10 @@ extension CartographService {
                 return .init(path: path, limitations: selections[container]?.reason.map { [$0] } ?? [])
             }
             do {
-                let data = try fs.readData(at: path)
-                guard data.count <= 8 * 1024 * 1024, let source = String(data: data, encoding: .utf8) else {
+                // 상한+1 바이트에서 읽기를 멈춘다. 링크로 끌어온 큰 파일도 크기 검사 전에 통째로 올리지 않는다.
+                let limit = 8 * 1024 * 1024
+                let data = try fs.readData(at: path, maximumBytes: limit)
+                guard data.count <= limit, let source = String(data: data, encoding: .utf8) else {
                     return .init(path: path, limitations: ["runtime-resource-unreadable: invalid or oversized XML at \(path)"])
                 }
                 if RuntimeResourcePath.isCoreDataModelContents(path) {
