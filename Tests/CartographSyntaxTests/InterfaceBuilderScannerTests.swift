@@ -1,5 +1,5 @@
 import CartographCore
-import CartographSyntax
+@testable import CartographSyntax
 import CartographTestSupport
 import Testing
 
@@ -101,6 +101,26 @@ struct InterfaceBuilderScannerTests {
         #expect(InterfaceBuilderScanner.references(in: "customClass=\"\"").isEmpty)
     }
 
+    /// 이름 전용 스캔과 `references(in:)` 를 맞대 볼 문서들. 위 테스트들이 다루는 형태를 모았다.
+    static let nameScanDocuments = [
+        "<view customClass=\"A\"/><outlet property=\"b\"/><action selector=\"c:\"/>",
+        "<button customClass = 'Themed'/>\n<label customClass\t=\t\"Title\"/>",
+        "<!-- <view customClass=\"Legacy\"/> -->\n<view customClass=\"Live\"/>",
+        "<view customClass=\"Live\"/>\n<!-- <view customClass=\"Legacy\"/>",
+        "<view mycustomClass=\"Ghost\" customClass=\"Real\"/>",
+        "<view customClass=\"Unclosed",
+        "customClass=\"\"",
+        "",
+    ]
+
+    @Test("customClass 이름 전용 스캔은 references(in:) 의 이름과 같다", arguments: nameScanDocuments)
+    func customClassNameScanMatchesReferences(document: String) {
+        // 보강 경로는 outlet·action 을 훑지 않으려고 이름 전용 스캔을 쓴다. 두 스캔이 갈라지면
+        // 임베더가 받는 참조와 보존 표식이 서로 다른 타입을 가리킨다.
+        #expect(InterfaceBuilderScanner.customClassNames(in: document)
+            == InterfaceBuilderScanner.references(in: document).customClassNames)
+    }
+
     @Test("여러 문서를 합쳐 수집한다")
     func scansMultipleDocuments() {
         let fileSystem = InMemoryFileSystem(files: [
@@ -113,6 +133,31 @@ struct InterfaceBuilderScannerTests {
         #expect(references.customClassNames == ["HomeViewController", "ShadowView", "BadgeView"])
         #expect(!references.customClassNames.contains("NotADocument"))
         #expect(!references.customClassNames.contains("Vendor"))
+    }
+
+    /// 스캐너가 공용 목록을 쓰기 전에 스스로 건너뛰던 디렉터리 이름과, 이 변경이 맞춘 `node_modules`.
+    ///
+    /// 아래 테스트가 인수를 공용 목록에서만 뽑으면 그 목록이 줄어도 통과한다. 이 이름들은 글자로 고정해
+    /// 두어, 공용 목록에서 하나가 빠져 스캐너가 그 아래 의존성·파생 문서를 다시 읽게 되면 실패하게 한다.
+    static let formerlyPrunedDirectoryNames: Set<String> = [
+        ".build", ".git", "DerivedData", "Pods", "Carthage", "checkouts", ".swiftpm", "node_modules",
+    ]
+
+    @Test(
+        "공용 빌드 산출물 목록과 예전 스캐너 목록이 거르는 디렉터리 아래 문서는 읽지 않는다",
+        arguments: BuildArtifactDirectories.prunedNames.union(formerlyPrunedDirectoryNames).sorted()
+            + [".build-fresh"]
+    )
+    func skipsSharedBuildArtifactDirectories(directory: String) {
+        // 가지치기 목록은 하나뿐이다. 스캐너가 따로 목록을 두면 한쪽에만 있는 이름
+        // (`node_modules`, `.build-` 접두 재인덱스 디렉터리) 아래 서드파티 문서가
+        // 같은 이름의 앱 타입을 살려 CLI 와 다른 판정이 나온다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/App/Main.storyboard": "<view customClass=\"Kept\"/>",
+            "/p/\(directory)/x/Vendor.xib": "<view customClass=\"Vendor\"/>",
+        ])
+        let references = InterfaceBuilderScanner(fileSystem: fileSystem).scan(roots: ["/p"])
+        #expect(references.customClassNames == ["Kept"])
     }
 
     @Test("경로 필터가 적용된다")
@@ -165,6 +210,56 @@ struct InterfaceBuilderScannerTests {
         let enriched = SnapshotEnricher(fileSystem: fileSystem)
             .enrich(builder.build(), interfaceBuilderRoots: ["/p"])
         #expect(enriched.symbols[0].attributes.contains(.interfaceBuilderAnnotated))
+    }
+
+    @Test("루트로 보강해도 빌드 산출물 아래 문서의 이름으로 앱 타입을 살리지 않는다")
+    func rootEnrichmentIgnoresBuildArtifactDocuments() {
+        // 임베더가 루트만 넘기는 공개 경로다. CLI 는 공용 목록으로 거른 인벤토리를 넘기므로
+        // 여기서 `node_modules` 를 걸으면 같은 프로젝트의 판정이 호출 방식에 따라 갈린다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/App.swift": "final class Foo {}\nfinal class Bar {}\nfinal class Kept {}",
+            "/p/App/Main.storyboard": "<view customClass=\"Kept\"/>",
+            "/p/node_modules/x/Foo.xib": "<view customClass=\"Foo\"/>",
+            "/p/.build-fresh/Bar.storyboard": "<view customClass=\"Bar\"/>",
+        ])
+        var builder = SnapshotBuilder()
+        builder.symbol("Foo", kind: .classType, path: "/p/App.swift", line: 1)
+        builder.symbol("Bar", kind: .classType, path: "/p/App.swift", line: 2)
+        builder.symbol("Kept", kind: .classType, path: "/p/App.swift", line: 3)
+
+        let enriched = SnapshotEnricher(fileSystem: fileSystem)
+            .enrich(builder.build(), interfaceBuilderRoots: ["/p"])
+        let marked = enriched.symbols.filter { $0.attributes.contains(.interfaceBuilderAnnotated) }.map(\.name)
+        #expect(marked == ["Kept"])
+    }
+
+    @Test("인벤토리 문서로 보강해도 customClass 로 지목된 타입에만 표식을 붙인다")
+    func inventoryEnrichmentMarksOnlyCustomClassTypes() {
+        // CLI 가 타는 경로다. 표식은 customClass 만 본다. outlet·action 이름이나 주석 속 이름이
+        // 타입 이름과 같아도 살리지 않고, 루트로 보강한 결과와 같아야 한다. 빈 목록이 오면
+        // (retain_interface_builder: false) 루트가 있어도 표식을 붙이지 않는다.
+        let names = ["HomeViewController", "ShadowView", "TitleView", "Done", "LegacyView"]
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/App.swift": names.map { "final class \($0) {}" }.joined(separator: "\n"),
+            "/p/Main.storyboard": storyboard + """
+                <outlet property="TitleView"/><action selector="Done"/>
+                <!-- <view customClass="LegacyView"/> -->
+                """,
+        ])
+        var builder = SnapshotBuilder()
+        for (index, name) in names.enumerated() {
+            builder.symbol(name, kind: .classType, path: "/p/App.swift", line: index + 1)
+        }
+        let snapshot = builder.build()
+        let enricher = SnapshotEnricher(fileSystem: fileSystem)
+        func marked(_ enriched: IndexSnapshot) -> [String] {
+            enriched.symbols.filter { $0.attributes.contains(.interfaceBuilderAnnotated) }.map(\.name)
+        }
+
+        let fromFiles = enricher.enrich(snapshot, interfaceBuilderFiles: ["/p/Main.storyboard"])
+        #expect(marked(fromFiles) == ["HomeViewController", "ShadowView"])
+        #expect(marked(enricher.enrich(snapshot, interfaceBuilderRoots: ["/p"])) == marked(fromFiles))
+        #expect(marked(enricher.enrich(snapshot, interfaceBuilderRoots: ["/p"], interfaceBuilderFiles: [])).isEmpty)
     }
 
     @Test("루트를 주지 않으면 스토리보드를 읽지 않는다")

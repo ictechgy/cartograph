@@ -7,6 +7,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Filter control (Cc) and format (Cf) characters, such as line feeds, carriage returns, ESC and
+  U+202E, from human-readable output with the same `PrintableText` rule the machine reporters
+  use: the default text reporter, the `metrics` table, DOT and Mermaid graphs, `routes`, `bridges`
+  and `schema` text, `dead`, `cycles` and `rules --explain`, and the not-found and ambiguous-name
+  messages of `--explain` and single-name `query`, including the one written to standard error.
+  In these outputs file paths, declaration names and `.cartograph.yml` text can no longer add
+  lines, clear the screen, set the clipboard (OSC 52) or reverse displayed text. DOT node IDs and
+  cluster names spell such characters as visible escapes like `\u{200B}` instead of dropping them,
+  so files whose names differ only by them stay separate nodes with their own edges. Unicode line
+  and paragraph separators (U+2028, U+2029) are neither control nor format characters and still
+  pass through. Output changes only when such characters are present; JSON, SARIF and the other
+  machine formats are unchanged.
+- `InterfaceBuilderScanner.scan(roots:)` and `SnapshotEnricher` given `interfaceBuilderRoots` now
+  skip the shared build-artifact directories, including `node_modules`, `.build-*`, `.swift-build`,
+  `.benchmark-results` and `.omc`, so embedders that pass roots no longer retain app types named by
+  third-party or rebuild-scratch documents. The CLI already filtered its inventory this way; its
+  output is unchanged.
+
+### Changed
+
+- Interface Builder enrichment collects only the `customClass` names that retention marking reads
+  instead of also scanning outlets and actions in every document. Retention marks are unchanged,
+  and the Interface Builder phase takes about half as long on large storyboards.
+
 ## [0.28.0] - 2026-10-19
 
 [Published release](https://github.com/ictechgy/cartograph/releases/tag/0.28.0), from reviewed source
