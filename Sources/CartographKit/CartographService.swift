@@ -467,12 +467,27 @@ public struct CartographService: Sendable {
                 return CommandOutcome(output: "\(node.qualifiedName) is not part of any cycle.\n")
             }
             let lines = involved.map { Self.describeCycle($0, for: node.id, in: graph) }
+            let judgment = try baselineJudgment(of: involved, in: graph)
             return CommandOutcome(
                 output: "\(node.qualifiedName) is part of \(involved.count) cycle(s):\n"
                     + lines.joined(separator: "\n") + "\n",
-                findingCount: involved.count
+                findingCount: judgment.findingCount,
+                suppressedCount: judgment.suppressedCount
             )
         }
+    }
+
+    /// 설명할 순환 가운데 베이스라인이 억제하지 않은 수와 억제한 수.
+    ///
+    /// 베이스라인이 억제한 순환을 `--explain` 만 다시 살려 내면, 같은 베이스라인인데 `cycles --strict` 는
+    /// 0 으로, `cycles --explain --strict` 는 1 로 끝난다. `explainRetention` 처럼 설명은 그대로 두고
+    /// 판정만 맞춘다. 지문이 같아야 하므로 진단은 `detectCycles` 와 같은 변환으로 만든다.
+    private func baselineJudgment(
+        of cycles: [DependencyCycle], in graph: CodeGraph
+    ) throws -> (findingCount: Int, suppressedCount: Int) {
+        let diagnostics = AnalysisDiagnostics.diagnostics(for: cycles, in: graph)
+        let reported = try loadBaseline()?.filtering(diagnostics) ?? diagnostics
+        return (reported.count, diagnostics.count - reported.count)
     }
 
     /// 특정 정점이 왜 그 레이어에 속하는지, 어떤 규칙이 걸리는지 설명한다.

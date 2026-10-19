@@ -403,9 +403,12 @@ if xcrun swiftc -c -parse-as-library -module-name Debt -sdk "$(xcrun --sdk macos
     # 기록 전에는 실패해야 아래의 0 이 아무것도 검사하지 않은 0 이 아니다.
     expect_status 1 "기록 전: 타입 순환"   cycles --level type --strict --project "$DEBT"
     expect_status 1 "기록 전: 통합 검사"   check --strict --project "$DEBT"
+    expect_status 1 "기록 전: 순환 설명"   cycles --explain Left --level type --strict --project "$DEBT"
     expect_status 0 "기존 부채 기록"       baseline --project "$DEBT" --write "$DEBT/.cartograph-baseline.json"
     expect_status 0 "기록 뒤: 통합 검사"   check --strict --project "$DEBT"
     expect_status 0 "기록 뒤: 타입 순환"   cycles --level type --strict --project "$DEBT"
+    # 목록과 설명이 같은 베이스라인에 반대 판정을 내면 "아직 게이트에 걸리는가"를 묻는 스크립트가 속는다.
+    expect_status 0 "기록 뒤: 순환 설명"   cycles --explain Left --level type --strict --project "$DEBT"
 else
     printf '  FAIL      베이스라인 계약에 쓸 인덱스를 만들지 못했다 (xcrun swiftc):\n'
     sed 's/^/            /' "$DEBT/swiftc.log"
