@@ -163,6 +163,9 @@ final class RuntimeBindingCollector: SyntaxVisitor {
     private var interpolatedValues: [ResolutionKey: Memoized<Interpolated>] = [:]
     /// 메모에 없어 실제로 계산한 해석 횟수. 테스트가 사슬 길이에 비례하는지 센다.
     private(set) var resolutionCount = 0
+    /// 보간을 펼쳐 실제로 만든 가장 긴 글자의 바이트 수. 보간 상한이 빠져도 답(동적 이름·이유)은 같고
+    /// 붙잡는 글자만 3ⁿ 바이트로 커지므로, 테스트가 작은 사슬에서 이 값으로 상한을 확인한다.
+    private(set) var largestInterpolatedByteCount = 0
 
     init(converter: SourceLocationConverter) {
         self.converter = converter
@@ -638,6 +641,7 @@ final class RuntimeBindingCollector: SyntaxVisitor {
                 references += primitive.apiReferences
             }
         }
+        largestInterpolatedByteCount = max(largestInterpolatedByteCount, text?.utf8.count ?? 0)
         return (text, Self.distinct(references))
     }
 

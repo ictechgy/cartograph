@@ -24,8 +24,11 @@ struct RuntimeNameResolutionCostTests {
         ["let x0 = \"\(seed)\""] + (1...count).map { "let x\($0) = \(step($0, "x\($0 - 1)"))" }
     }
 
-    /// 사슬 끝 별칭을 파일 범위 클래스 조회 인자로 풀고, 실제로 계산한 해석 횟수를 함께 돌려준다.
-    private func resolve(_ lines: [String]) throws -> (name: RuntimeResolvedName?, evaluations: Int) {
+    /// 사슬 끝 별칭을 파일 범위 클래스 조회 인자로 풀고, 실제로 계산한 해석 횟수와 보간이 만든 가장 긴 글자의
+    /// 바이트 수를 함께 돌려준다.
+    private func resolve(
+        _ lines: [String]
+    ) throws -> (name: RuntimeResolvedName?, evaluations: Int, largestInterpolation: Int) {
         let source = (lines + ["_ = NSClassFromString(x\(lines.count - 1))"]).joined(separator: "\n")
         let parsed = Parser.parse(source: source)
         let tree = OperatorTable.standardOperators.foldAll(parsed) { _ in }.as(SourceFileSyntax.self) ?? parsed
@@ -35,7 +38,7 @@ struct RuntimeNameResolutionCostTests {
         finder.walk(tree)
         let argument = try #require(finder.argument)
         let name = bindings.resolveName(argument, in: .init(scopes: [], types: []))
-        return (name, bindings.resolutionCount)
+        return (name, bindings.resolutionCount, bindings.largestInterpolatedByteCount)
     }
 
     private func lookup(_ lines: [String]) -> RuntimeBoundary? {
@@ -70,18 +73,23 @@ struct RuntimeNameResolutionCostTests {
 
     @Test("한 번에 셋으로 갈라지는 보간 사슬도 4096바이트를 넘으면 더 붙이지 않고 동적 이름으로 남긴다")
     func wideInterpolationStopsAtByteLimit() throws {
-        // 3²⁰ 바이트(약 3.5 GB)까지 붙이지 않고, 넘친 결과를 지금처럼 이유와 함께 동적으로 둔다.
-        let wide = chain(20, seed: "a") { _, previous in "\"\\(\(previous))\\(\(previous))\\(\(previous))\"" }
+        // 상한이 빠져도 답(동적 이름·이유)은 같고 붙잡는 글자만 커진다. 그래서 만든 글자의 최대 바이트 수를
+        // 직접 본다. 상한이 없어도 수십 KB 로 끝나는 10단계(3¹⁰ = 59,049바이트)라 실패도 단언으로 드러난다.
+        let wide = chain(10, seed: "a") { _, previous in "\"\\(\(previous))\\(\(previous))\\(\(previous))\"" }
         let result = try resolve(wide)
+        #expect(result.largestInterpolation <= RuntimeResolvedName.maximumByteCount, "\(result.largestInterpolation)")
         #expect(result.name?.text == nil)
         #expect(result.name?.origin == .dynamic)
         #expect(result.name?.reason == "runtime-name-exceeds-4096-bytes")
-        let boundary = lookup(wide + ["_ = NSClassFromString(x20)"])
+        let boundary = lookup(wide + ["_ = NSClassFromString(x10)"])
         #expect(boundary?.name == nil)
         #expect(boundary?.reason == "runtime-name-exceeds-4096-bytes")
-        // 상한 바로 아래(3⁷ = 2187 바이트)는 지금처럼 그대로 풀린다.
-        let narrow = chain(7, seed: "a") { _, previous in "\"\\(\(previous))\\(\(previous))\\(\(previous))\"" }
-        #expect(try resolve(narrow).name?.text == String(repeating: "a", count: 2_187))
+        // 상한 바로 아래(3⁷ = 2187 바이트)는 지금처럼 그대로 풀리고, 관찰 지점도 그 길이를 센다.
+        let narrow = try resolve(
+            chain(7, seed: "a") { _, previous in "\"\\(\(previous))\\(\(previous))\\(\(previous))\"" }
+        )
+        #expect(narrow.name?.text == String(repeating: "a", count: 2_187))
+        #expect(narrow.largestInterpolation == 2_187)
     }
 
     @Test("메모가 있어도 별칭 깊이 예산은 호출 자리마다 그대로 적용된다")
