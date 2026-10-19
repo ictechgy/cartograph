@@ -115,7 +115,10 @@ depends on an unstable-version package 'indexstore-db'.
 
 `revision:` takes the tag name, so the pin still reads as a version and still has to be raised by
 hand at each release. The plugin declares no write permission, so it never prompts; redirect stdout
-to save output.
+to save output. Commands that write files themselves — `--output`/`-o`, `baseline`, `fix --apply`,
+`skill` and `init` — cannot write inside the package directory unless that run allows it:
+`swift package --allow-writing-to-package-directory cartograph baseline`. SwiftPM also reports every
+plugin failure as exit code 1, so this path tells success from failure only; see [CI](#ci).
 
 **From source:**
 
@@ -1729,6 +1732,10 @@ Exit codes let a script tell "your code has problems" from "the tool did not run
 | `1` | Findings with `--strict`, or a configured threshold exceeded |
 | `2` | Tool failure — no index store, an index that knows nothing about this project, unreadable index, invalid configuration |
 | `64` | Usage error — unknown option, unknown subcommand, invalid value, or a flag combination the command cannot honor |
+
+The SwiftPM command plugin keeps only `0` versus non-zero: SwiftPM exits 1 for any plugin failure,
+and the original code survives only in its `error: cartograph exited with status N` line. Run the
+binary or the official action where a script must tell these codes apart.
 
 ### The official action
 

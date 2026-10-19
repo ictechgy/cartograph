@@ -10,6 +10,8 @@ import PackagePlugin
 /// 쓰기 권한은 선언하지 않는다. 분석은 읽기만 하면 되고, 권한을 선언하면
 /// 실행할 때마다 사용자가 승인 플래그를 붙여야 한다. 파일로 남기려면
 /// 리다이렉션을 쓰면 된다: `swift package plugin cartograph graph > graph.dot`
+/// 파일을 직접 쓰는 명령(`--output`, `baseline`, `fix --apply`, `skill`, `init`)은 샌드박스가
+/// 패키지 디렉터리 쓰기를 막아 실패하므로, 그 실행에만 `--allow-writing-to-package-directory` 로 허락한다.
 @main
 struct CartographCommandPlugin: CommandPlugin {
     func performCommand(context: PluginContext, arguments: [String]) throws {
@@ -34,7 +36,11 @@ struct CartographCommandPlugin: CommandPlugin {
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
-            // 종료 코드를 그대로 전달해야 CI 에서 --strict 가 의미를 갖는다.
+            // 종료 코드를 그대로 전달할 길은 없다. SwiftPM 은 플러그인 실패를 모두 종료 코드 1 로
+            // 바꾸고, 플러그인이 `exit(status)` 로 끝내도 "Plugin ended with exit code N" 과 함께 1 이다.
+            // 1·2·64 의 구분은 이 오류의 설명 "cartograph exited with status N" 에만 남는다. README 가
+            // 원래 상태를 읽을 자리로 이 문구를 안내하므로 바꾸지 않는다. 구분이 필요한 CI 는
+            // 바이너리나 공식 액션을 쓴다(README 의 CI 절).
             throw CartographPluginError.toolFailed(status: process.terminationStatus)
         }
     }
