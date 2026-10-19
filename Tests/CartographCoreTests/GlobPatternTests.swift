@@ -128,6 +128,105 @@ struct GlobPatternTests {
         #expect(decoded == pattern)
         #expect(decoded.pattern == "Sources/**")
     }
+
+    @Test("미리 나눠 둔 세그먼트로 판정해도 문자열을 매번 나누던 판정과 결과가 같다")
+    func precomputedSegmentsMatchReference() {
+        // 빈 요소·겹친 구분자·절대 경로·연속 `**`·마지막 요소 패턴·결합 문자를 모두 섞는다.
+        let atoms = ["", "*", "**", "?", "a", "a*", "*b", "a?c", "Sources", "*.swift", ".build", "e\u{301}"]
+        var patterns: Set<String> = []
+        for first in atoms {
+            patterns.insert(first)
+            for second in atoms {
+                patterns.insert(first + "/" + second)
+                patterns.insert("/" + first + "/" + second)
+                patterns.insert(first + "/" + second + "/**")
+            }
+        }
+        let parts = ["", "a", "b", "abc", "aXc", "Sources", "x.swift", ".build", "e\u{301}", "\u{e9}"]
+        var values: Set<String> = ["", "/", "//"]
+        for first in parts {
+            values.insert(first)
+            for second in parts {
+                values.insert(first + "/" + second)
+                values.insert("/" + first + "/" + second + "/")
+                values.insert(first + "//" + second + "/a/b/x.swift")
+            }
+        }
+        var mismatches: [String] = []
+        for pattern in patterns.sorted() {
+            let glob = GlobPattern(pattern)
+            for value in values.sorted() where glob.matches(value) != ReferenceGlob.matches(pattern, value) {
+                mismatches.append("\(pattern) ~ \(value)")
+            }
+        }
+        #expect(patterns.count > 400 && values.count > 200)
+        #expect(Array(mismatches.prefix(10)) == [])
+    }
+
+    @Test("같음과 해시는 원문 패턴만으로 정한다")
+    func equalityFollowsPatternText() {
+        // 매칭용으로 접은 세그먼트는 원문에서 유도한 값이다. 같은 원문이면 같고, 접힌 모양이 같아도
+        // 원문이 다르면 다르다(설정 비교·베이스라인 판정이 원문을 기준으로 한다).
+        #expect(GlobPattern("**/**/a") == GlobPattern("**/**/a"))
+        #expect(GlobPattern("**/**/a") != GlobPattern("**/a"))
+        #expect(Set([GlobPattern("Sources/**"), GlobPattern("Sources/**"), GlobPattern("Tests/**")]).count == 2)
+    }
+}
+
+/// 세그먼트를 미리 계산하기 전의 매칭 규칙을 그대로 옮긴 참조 구현. 판정 결과가 바뀌지 않았는지 대조한다.
+private enum ReferenceGlob {
+    static func matches(_ pattern: String, _ value: String) -> Bool {
+        let raw = pattern.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        var segments: [String] = []
+        for segment in raw where segment != "**" || segments.last != "**" { segments.append(segment) }
+        if !pattern.contains("/") {
+            let component = Array(segments[0])
+            return value.split(separator: "/").contains { matchSegment(component, Array($0)) }
+        }
+        let components = value.split(separator: "/", omittingEmptySubsequences: false).map(Array.init)
+        var previous = [Bool](repeating: false, count: components.count + 1)
+        previous[0] = true
+        for segment in segments {
+            var current = [Bool](repeating: false, count: previous.count)
+            if segment == "**" {
+                current[0] = previous[0]
+                for index in components.indices { current[index + 1] = previous[index + 1] || current[index] }
+            } else {
+                for index in components.indices where previous[index] {
+                    current[index + 1] = matchSegment(Array(segment), components[index])
+                }
+            }
+            if !current.contains(true) { return false }
+            previous = current
+        }
+        return previous[components.count]
+    }
+
+    private static func matchSegment(_ pattern: [Character], _ value: [Character]) -> Bool {
+        var patternIndex = 0
+        var valueIndex = 0
+        var starPatternIndex: Int?
+        var starValueIndex = 0
+        while valueIndex < value.count {
+            if patternIndex < pattern.count, pattern[patternIndex] == "*" {
+                starPatternIndex = patternIndex
+                starValueIndex = valueIndex
+                patternIndex += 1
+            } else if patternIndex < pattern.count,
+                      pattern[patternIndex] == "?" || pattern[patternIndex] == value[valueIndex] {
+                patternIndex += 1
+                valueIndex += 1
+            } else if let starIndex = starPatternIndex {
+                patternIndex = starIndex + 1
+                starValueIndex += 1
+                valueIndex = starValueIndex
+            } else {
+                return false
+            }
+        }
+        while patternIndex < pattern.count, pattern[patternIndex] == "*" { patternIndex += 1 }
+        return patternIndex == pattern.count
+    }
 }
 
 @Suite("PathFilter")

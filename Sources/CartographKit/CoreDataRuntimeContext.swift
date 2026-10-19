@@ -294,6 +294,8 @@ extension CartographService {
         evidence: CoreDataBuildEvidenceDocument
     ) throws -> AnalysisContext {
         let includedBaseUSRs = Set(base.buildGraph(level: .symbol).nodeIDByUSR.keys)
+        // 필터는 만들 때마다 기준 경로 표기를 파일 시스템에 묻는다. 항목마다 만들지 않는다.
+        let pathFilter = configuration.pathFilter
         let baseSymbols = base.snapshot.symbols.filter { includedBaseUSRs.contains($0.usr) }
         let baseReferences = base.snapshot.references.filter { includedBaseUSRs.contains($0.sourceUSR) }
         let basePaths = Set(baseSymbols.filter { !$0.isExternal }.map(\.location.path))
@@ -306,7 +308,7 @@ extension CartographService {
         )
         let oldestDates: [String: Date]? = base.snapshot.oldestIndexedFileDates == nil
             && supplemental.oldestIndexedFileDates == nil ? nil
-            : (base.snapshot.sourceFreshnessDates ?? [:]).filter { configuration.pathFilter.allows($0.key) }
+            : (base.snapshot.sourceFreshnessDates ?? [:]).filter { pathFilter.allows($0.key) }
                 .merging(supplemental.sourceFreshnessDates ?? [:], uniquingKeysWith: min)
         let snapshot = IndexSnapshot(
             symbols: baseSymbols + additions,
@@ -315,7 +317,7 @@ extension CartographService {
             oldestIndexedFileDates: oldestDates,
             admittedHeaderPaths: base.snapshot.admittedHeaderPaths.flatMap { paths in
                 supplemental.admittedHeaderPaths.map {
-                    Set(paths.filter(configuration.pathFilter.allows)).intersection($0).sorted()
+                    Set(paths.filter(pathFilter.allows)).intersection($0).sorted()
                 }
             },
             enumImpactFiles: Self.augmentedEnumImpactFiles(

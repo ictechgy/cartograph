@@ -684,13 +684,15 @@ public struct CartographService: Sendable {
         var session = try measureQueryPhase(.graphQuerySetup, observer: environment.queryPhaseObserver) {
             let graph = context.buildGraph(level: .symbol).graph
             let baseline = try loadBaseline()
+            // 필터는 만들 때마다 기준 경로 표기를 파일 시스템에 묻는다. 진단마다 만들지 않는다.
+            let pathFilter = configuration.pathFilter
             return QuerySession(
                 graph: graph,
                 lookup: GraphQueryIndex(graph: graph),
                 foundFacts: nil,
                 limitations: analysisLimitations(context: context, symbolGraph: graph),
                 localFunctionDiagnostics: LocalFunctionDiagnostics.presenting(
-                    context.localFunctionDiagnostics.filter { configuration.pathFilter.allows($0.location.path) }
+                    context.localFunctionDiagnostics.filter { pathFilter.allows($0.location.path) }
                 ),
                 baselineFingerprints: baseline.map { Set($0.fingerprints) } ?? [],
                 foundFactsBuildCount: 0
@@ -1524,7 +1526,8 @@ public struct CartographService: Sendable {
         // sarif/checkstyle/xcode/github-actions 는 진단을 담는 형식이지 지표표를 담는 형식이
         // 아니다. 예전에는 이 형식들이 지표 JSON 을 그대로 받아, 확장자만 `.sarif` 인
         // 코드 스캐닝이 거부하는 문서가 나왔다.
-        let relativeReported = reported.map { $0.relative(toBaseVariants: PathFilter.variants(of: projectPath)) }
+        let baseVariants = PathFilter.variants(of: projectPath)
+        let relativeReported = reported.map { $0.relative(toBaseVariants: baseVariants) }
         let output: String = switch configuration.reportFormat {
         case .json:
             try renderer.renderJSON(
