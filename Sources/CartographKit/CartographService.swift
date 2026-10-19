@@ -1583,17 +1583,31 @@ public struct CartographService: Sendable {
     ///
     /// 지표 임계값 위반도 함께 담는다. `metrics` 는 베이스라인을 적용하는데
     /// `baseline` 이 그것을 기록하지 못하면 영원히 억제할 수 없는 진단이 생긴다.
+    /// 순환도 같은 이유로 베이스라인을 적용하는 레벨마다 거둔다(`baselineCycleDiagnostics(in:)`).
     public func collectAllDiagnostics() throws -> [Diagnostic] {
         let context = try loadContext()
-        let (moduleGraph, foundCycles) = cycles(in: context)
         let (_, unused) = unusedCode(in: context, computingSuperfluousIgnores: false)
         let (_, metricValues, _) = metrics(in: context)
         let (_, violations, _) = try layerViolations(in: context)
 
-        return AnalysisDiagnostics.diagnostics(for: foundCycles, in: moduleGraph)
+        return baselineCycleDiagnostics(in: context)
             + AnalysisDiagnostics.diagnostics(for: unused)
             + AnalysisDiagnostics.diagnostics(for: violations)
             + AnalysisDiagnostics.diagnostics(for: metricValues, thresholds: configuration.thresholds)
+    }
+
+    /// `check` 의 모듈·타입 순환과 `cycles` 의 설정 레벨 순환. 같은 지문은 한 번만 담는다.
+    ///
+    /// 순환 지문은 정점 ID 라 레벨마다 다르다. 모듈 이름 기록은 타입 USR 진단과 절대 맞지 않는다.
+    /// Swift 는 모듈 순환을 막으므로 설정 레벨(기본 module)만 거두면 실제 순환인 타입 순환이 하나도
+    /// 기록되지 않고, `check --strict` 는 baseline 뒤에도 기존 순환으로 계속 실패한다.
+    /// 심볼 레벨 순환은 같은 두 타입 사이라면 타입 순환과 지문이 같아 중복을 거른다.
+    private func baselineCycleDiagnostics(in context: AnalysisContext) -> [Diagnostic] {
+        var fingerprints = Set<String>()
+        return Set([GraphLevel.module, .type, configuration.level]).sorted().flatMap { level in
+            let (graph, found) = cycles(in: context, level: level)
+            return AnalysisDiagnostics.diagnostics(for: found, in: graph)
+        }.filter { fingerprints.insert($0.fingerprint).inserted }
     }
 
     /// 현재 진단 상태를 베이스라인 파일로 기록한다.

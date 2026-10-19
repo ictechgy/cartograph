@@ -5,7 +5,8 @@
 # 사용법:
 #   Scripts/verify-cli-contract.sh [바이너리 경로]
 #
-# 필요 도구: 빌드된 cartograph, python3, jq (README 배치 예제 검증).
+# 필요 도구: 빌드된 cartograph, python3, jq (README 배치 예제 검증),
+# xcrun swiftc (베이스라인 계약에 쓸 실제 인덱스).
 #
 # 종료 코드 표는 README 와 --help 에 적혀 있고, 상수로도 정의되어 있다. 그런데
 # 상수를 단언하는 테스트는 상수가 실제 동작과 맞는지는 말해 주지 않는다.
@@ -370,7 +371,9 @@ expect_status 2 "출력 파일 쓰기 실패"  graph --project "$EMPTY" --allow-
 # 설정 파일의 baseline_path 는 읽기 위치일 뿐, 쓰기 목적지가 아니다. 분석 대상
 # 저장소의 설정에 절대 경로를 심어 두고 baseline 을 돌리면 그 파일이 덮여써졌다.
 CFG="$(mktemp -d "${TMPDIR:-/tmp}/contract.XXXXXX")"
-trap 'rm -rf "$MISSING" "$EMPTY" "$CFG"' EXIT
+# 아래 "베이스라인" 절의 픽스처. swiftc 가 인덱스에 남기는 경로와 표기가 같도록 링크를 푼 경로를 쓴다.
+DEBT="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/contract.XXXXXX")" && pwd -P)"
+trap 'rm -rf "$MISSING" "$EMPTY" "$CFG" "$DEBT"' EXIT
 printf 'baseline_path: /tmp/cartograph-hostile-baseline.json\n' > "$CFG/.cartograph.yml"
 expect_status 64 "설정의 baseline_path 로는 쓰지 않는다" \
     baseline --project "$CFG" --index-store "$EMPTY/.build/index/store" --allow-empty-index
@@ -379,6 +382,35 @@ expect_status 0 "쓰기 목적지를 명시하면 기록한다" \
 
 echo "종료 코드 0 — 빈 인덱스 탈출구"
 expect_status 0 "빈 인덱스 허용"       dead --strict --project "$EMPTY" --allow-empty-index
+
+echo "종료 코드 0 — 베이스라인이 기록한 기존 부채"
+# README 는 baseline 을 "새 문제만 빌드를 실패시키는" 도입 경로로 약속한다. check 는 모듈·타입 두 레벨
+# 순환에 베이스라인을 적용하는데, baseline 이 설정 레벨(module)만 기록하면 Swift 에서 실제로 생기는 타입
+# 순환이 baseline 뒤에도 check --strict 를 계속 세운다. 실제 인덱스가 필요해 swiftc 로 한 파일을 색인한다.
+mkdir -p "$DEBT/Sources"
+cat > "$DEBT/Sources/Debt.swift" <<'SWIFT'
+struct Left {
+    func next() -> Right { Right() }
+}
+
+struct Right {
+    func next() -> Left { Left() }
+}
+SWIFT
+if xcrun swiftc -c -parse-as-library -module-name Debt -sdk "$(xcrun --sdk macosx --show-sdk-path)" \
+    -module-cache-path "$DEBT/ModuleCache" -index-store-path "$DEBT/.build/index/store" \
+    "$DEBT/Sources/Debt.swift" -o "$DEBT/Debt.o" > "$DEBT/swiftc.log" 2>&1; then
+    # 기록 전에는 실패해야 아래의 0 이 아무것도 검사하지 않은 0 이 아니다.
+    expect_status 1 "기록 전: 타입 순환"   cycles --level type --strict --project "$DEBT"
+    expect_status 1 "기록 전: 통합 검사"   check --strict --project "$DEBT"
+    expect_status 0 "기존 부채 기록"       baseline --project "$DEBT" --write "$DEBT/.cartograph-baseline.json"
+    expect_status 0 "기록 뒤: 통합 검사"   check --strict --project "$DEBT"
+    expect_status 0 "기록 뒤: 타입 순환"   cycles --level type --strict --project "$DEBT"
+else
+    printf '  FAIL      베이스라인 계약에 쓸 인덱스를 만들지 못했다 (xcrun swiftc):\n'
+    sed 's/^/            /' "$DEBT/swiftc.log"
+    FAILURES=$((FAILURES + 1))
+fi
 
 echo "종료 코드 64 — 배치는 답을 다 내고 나서 실패한다"
 # 이 스크립트는 인덱스가 없는 체크아웃에서도 돈다. 릴리스 워크플로가 압축을 푼 바이너리로
