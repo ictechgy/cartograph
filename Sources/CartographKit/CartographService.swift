@@ -938,9 +938,9 @@ public struct CartographService: Sendable {
         // 스토어를 품고 있는 상위 디렉터리를 가리키는 경우, 루트는 처음 만들어진
         // 날짜 그대로이고 실제 레코드는 `v5/units` 아래에 쌓인다. 실제로 이 저장소에서
         // 루트는 이틀 전, `v5/units` 는 방금이었다. 루트만 보면 매번 "인덱스가
-        // 낡았다"고 알리게 되고, 매번 붙는 경보는 읽히지 않는다.
-        let markers = [storePath, storePath + "/v5/units", storePath + "/units"]
-        return markers.compactMap { environment.fileSystem.modificationDate(at: $0) }.max()
+        // 낡았다"고 알리게 되고, 매번 붙는 경보는 읽히지 않는다. 스토어를 고를 때와
+        // 같은 정의를 써야 고른 스토어와 신선도의 기준 시각이 어긋나지 않는다.
+        return locator.storeRecency(at: storePath)
     }
 
     private static func describe(
