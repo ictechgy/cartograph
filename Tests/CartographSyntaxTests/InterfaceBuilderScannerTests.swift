@@ -135,9 +135,18 @@ struct InterfaceBuilderScannerTests {
         #expect(!references.customClassNames.contains("Vendor"))
     }
 
+    /// 스캐너가 공용 목록을 쓰기 전에 스스로 건너뛰던 디렉터리 이름과, 이 변경이 맞춘 `node_modules`.
+    ///
+    /// 아래 테스트가 인수를 공용 목록에서만 뽑으면 그 목록이 줄어도 통과한다. 이 이름들은 글자로 고정해
+    /// 두어, 공용 목록에서 하나가 빠져 스캐너가 그 아래 의존성·파생 문서를 다시 읽게 되면 실패하게 한다.
+    static let formerlyPrunedDirectoryNames: Set<String> = [
+        ".build", ".git", "DerivedData", "Pods", "Carthage", "checkouts", ".swiftpm", "node_modules",
+    ]
+
     @Test(
-        "공용 빌드 산출물 목록이 거르는 디렉터리 아래 문서는 읽지 않는다",
-        arguments: BuildArtifactDirectories.prunedNames.sorted() + [".build-fresh"]
+        "공용 빌드 산출물 목록과 예전 스캐너 목록이 거르는 디렉터리 아래 문서는 읽지 않는다",
+        arguments: BuildArtifactDirectories.prunedNames.union(formerlyPrunedDirectoryNames).sorted()
+            + [".build-fresh"]
     )
     func skipsSharedBuildArtifactDirectories(directory: String) {
         // 가지치기 목록은 하나뿐이다. 스캐너가 따로 목록을 두면 한쪽에만 있는 이름
