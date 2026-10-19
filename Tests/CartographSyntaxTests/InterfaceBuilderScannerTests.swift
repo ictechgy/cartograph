@@ -1,5 +1,5 @@
 import CartographCore
-import CartographSyntax
+@testable import CartographSyntax
 import CartographTestSupport
 import Testing
 
@@ -99,6 +99,26 @@ struct InterfaceBuilderScannerTests {
         let malformed = "<view customClass=\"Unclosed"
         #expect(InterfaceBuilderScanner.references(in: malformed).isEmpty)
         #expect(InterfaceBuilderScanner.references(in: "customClass=\"\"").isEmpty)
+    }
+
+    /// 이름 전용 스캔과 `references(in:)` 를 맞대 볼 문서들. 위 테스트들이 다루는 형태를 모았다.
+    static let nameScanDocuments = [
+        "<view customClass=\"A\"/><outlet property=\"b\"/><action selector=\"c:\"/>",
+        "<button customClass = 'Themed'/>\n<label customClass\t=\t\"Title\"/>",
+        "<!-- <view customClass=\"Legacy\"/> -->\n<view customClass=\"Live\"/>",
+        "<view customClass=\"Live\"/>\n<!-- <view customClass=\"Legacy\"/>",
+        "<view mycustomClass=\"Ghost\" customClass=\"Real\"/>",
+        "<view customClass=\"Unclosed",
+        "customClass=\"\"",
+        "",
+    ]
+
+    @Test("customClass 이름 전용 스캔은 references(in:) 의 이름과 같다", arguments: nameScanDocuments)
+    func customClassNameScanMatchesReferences(document: String) {
+        // 보강 경로는 outlet·action 을 훑지 않으려고 이름 전용 스캔을 쓴다. 두 스캔이 갈라지면
+        // 임베더가 받는 참조와 보존 표식이 서로 다른 타입을 가리킨다.
+        #expect(InterfaceBuilderScanner.customClassNames(in: document)
+            == InterfaceBuilderScanner.references(in: document).customClassNames)
     }
 
     @Test("여러 문서를 합쳐 수집한다")
@@ -202,6 +222,35 @@ struct InterfaceBuilderScannerTests {
             .enrich(builder.build(), interfaceBuilderRoots: ["/p"])
         let marked = enriched.symbols.filter { $0.attributes.contains(.interfaceBuilderAnnotated) }.map(\.name)
         #expect(marked == ["Kept"])
+    }
+
+    @Test("인벤토리 문서로 보강해도 customClass 로 지목된 타입에만 표식을 붙인다")
+    func inventoryEnrichmentMarksOnlyCustomClassTypes() {
+        // CLI 가 타는 경로다. 표식은 customClass 만 본다. outlet·action 이름이나 주석 속 이름이
+        // 타입 이름과 같아도 살리지 않고, 루트로 보강한 결과와 같아야 한다. 빈 목록이 오면
+        // (retain_interface_builder: false) 루트가 있어도 표식을 붙이지 않는다.
+        let names = ["HomeViewController", "ShadowView", "TitleView", "Done", "LegacyView"]
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/App.swift": names.map { "final class \($0) {}" }.joined(separator: "\n"),
+            "/p/Main.storyboard": storyboard + """
+                <outlet property="TitleView"/><action selector="Done"/>
+                <!-- <view customClass="LegacyView"/> -->
+                """,
+        ])
+        var builder = SnapshotBuilder()
+        for (index, name) in names.enumerated() {
+            builder.symbol(name, kind: .classType, path: "/p/App.swift", line: index + 1)
+        }
+        let snapshot = builder.build()
+        let enricher = SnapshotEnricher(fileSystem: fileSystem)
+        func marked(_ enriched: IndexSnapshot) -> [String] {
+            enriched.symbols.filter { $0.attributes.contains(.interfaceBuilderAnnotated) }.map(\.name)
+        }
+
+        let fromFiles = enricher.enrich(snapshot, interfaceBuilderFiles: ["/p/Main.storyboard"])
+        #expect(marked(fromFiles) == ["HomeViewController", "ShadowView"])
+        #expect(marked(enricher.enrich(snapshot, interfaceBuilderRoots: ["/p"])) == marked(fromFiles))
+        #expect(marked(enricher.enrich(snapshot, interfaceBuilderRoots: ["/p"], interfaceBuilderFiles: [])).isEmpty)
     }
 
     @Test("루트를 주지 않으면 스토리보드를 읽지 않는다")
