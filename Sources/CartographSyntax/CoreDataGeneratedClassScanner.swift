@@ -39,8 +39,7 @@ public enum CoreDataGeneratedClassScanner {
         expectedSuperclassName: String = "NSManagedObject"
     ) -> CoreDataGeneratedClassInspection {
         let tree = Parser.parse(source: source)
-        let classes = tree.statements.compactMap { $0.item.as(ClassDeclSyntax.self) }
-        guard classes.count == 1, let declaration = classes.first else {
+        guard let declaration = soleTopLevelClass(in: tree) else {
             return rejected("Expected exactly one top-level generated class.")
         }
         let converter = SourceLocationConverter(fileName: path, tree: tree)
@@ -85,6 +84,19 @@ public enum CoreDataGeneratedClassScanner {
             location: location,
             isGeneratorCompatible: true
         )
+    }
+
+    /// 파일의 유일한 최상위 클래스 이름. 최상위 클래스가 정확히 하나가 아니면 nil 이다.
+    ///
+    /// 생성 소스 여러 개를 엔티티 여러 개와 짝지을 때 짝마다 `inspect` 로 다시 파싱하지 않고 이름이 같은
+    /// 엔티티만 검사하게 한다. `inspect` 는 이 이름이 기대 이름과 다르면 늘 거부하므로 고르는 짝은 같다.
+    public static func topLevelClassName(source: String) -> String? {
+        soleTopLevelClass(in: Parser.parse(source: source)).map { SyntaxIdentifiers.unescaped($0.name.text) }
+    }
+
+    private static func soleTopLevelClass(in tree: SourceFileSyntax) -> ClassDeclSyntax? {
+        let classes = tree.statements.compactMap { $0.item.as(ClassDeclSyntax.self) }
+        return classes.count == 1 ? classes.first : nil
     }
 
     private static func onlyGeneratedTopLevelDeclarations(_ tree: SourceFileSyntax, className: String) -> Bool {
