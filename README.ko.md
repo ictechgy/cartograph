@@ -569,14 +569,16 @@ cartograph query --batch requests.json
 
 <!-- dead-to-batch-example -->
 ```bash
-cartograph dead --report-format json > dead.json &&
-jq '[.diagnostics[] | select(.ruleIdentifier == "unused-symbol") | .subject]' dead.json > requests.json &&
-if jq -e 'length == 0' requests.json >/dev/null; then
+sweep_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-sweep.XXXXXX")" &&
+cartograph dead --report-format json > "$sweep_dir/dead.json" &&
+jq '[.diagnostics[] | select(.ruleIdentifier == "unused-symbol") | .subject]' \
+  "$sweep_dir/dead.json" > "$sweep_dir/requests.json" &&
+if jq -e 'length == 0' "$sweep_dir/requests.json" >/dev/null; then
     echo "No unused-symbol findings to query."
-elif jq -e 'length <= 1000' requests.json >/dev/null; then
-    cartograph query --batch requests.json
+elif jq -e 'length <= 1000' "$sweep_dir/requests.json" >/dev/null; then
+    cartograph query --batch "$sweep_dir/requests.json"
 else
-    echo "Split requests.json into batches of at most 1000 requests before querying." >&2
+    echo "Split $sweep_dir/requests.json into batches of at most 1000 requests before querying." >&2
     exit 64
 fi
 ```

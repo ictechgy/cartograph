@@ -346,22 +346,24 @@ public enum AgentSkillTemplate {
         43 findings one at a time took 19.6 s and one batch took 0.47 s, with identical answers.
 
         ```bash
-        cartograph dead --report-format json > dead.json &&
-        jq '[.diagnostics[] | select(.ruleIdentifier == "unused-symbol") | .subject]' dead.json > requests.json &&
-        if jq -e 'length == 0' requests.json >/dev/null; then
+        sweep_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-sweep.XXXXXX")" &&
+        cartograph dead --report-format json > "$sweep_dir/dead.json" &&
+        jq '[.diagnostics[] | select(.ruleIdentifier == "unused-symbol") | .subject]' \\
+          "$sweep_dir/dead.json" > "$sweep_dir/requests.json" &&
+        if jq -e 'length == 0' "$sweep_dir/requests.json" >/dev/null; then
             echo "No unused-symbol findings to query."
-        elif jq -e 'length <= 1000' requests.json >/dev/null; then
-            cartograph query --batch requests.json
+        elif jq -e 'length <= 1000' "$sweep_dir/requests.json" >/dev/null; then
+            cartograph query --batch "$sweep_dir/requests.json"
         else
-            echo "Split requests.json into batches of at most 1000 requests before querying." >&2
+            echo "Split $sweep_dir/requests.json into batches of at most 1000 requests before querying." >&2
             exit 64
         fi
         ```
 
         Select only `unused-symbol` diagnostics: `unused-import` and `superfluous-ignore` subjects
         identify imports and ignore comments, not declarations that `query` can resolve. Above 1000
-        findings, split the whole array into files of at most 1000 requests and query each one. Do not
-        drop findings to fit; each of those batches reads its own snapshot.
+        findings, split the whole array into files of at most 1000 requests and 1 MiB each, and query
+        each one. Do not drop findings to fit; each of those batches reads its own snapshot.
 
         The file is a JSON array of 1 to 1000 names or USRs. Results come back in request order
         with duplicates kept, so you can pair the two arrays by index, and each element is exactly
