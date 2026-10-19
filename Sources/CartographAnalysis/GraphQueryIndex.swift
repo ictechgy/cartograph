@@ -12,6 +12,8 @@ public enum GraphNodeLookup: Sendable, Equatable {
 public struct GraphQueryIndex: Sendable {
     private let graph: CodeGraph
     private let nodesByName: [String: [NodeID]]
+    /// 추천용 길이별 색인. 이름 조회만 하는 경로가 값을 치르지 않도록 첫 추천 때 만든다.
+    private let similarNames = SimilarNameIndex.Cache()
 
     /// 추천 후보의 기본 개수. 후보 목록은 고르는 도구이지 읽는 도구가 아니다.
     public static let similarCandidateLimit = 5
@@ -51,70 +53,28 @@ public struct GraphQueryIndex: Sendable {
     /// 무시한다. 한 키에 정점이 여럿이면 첫 정점을 대표로 삼는다. 결과는 (거리,
     /// 이름) 순으로 세운다. 한 정점에 여러 별칭이 맞으면 그중 가장 앞선 점수를 써서
     /// 사전의 순회 순서와 무관하게 같은 추천을 보장한다.
+    ///
+    /// 키마다 글자 수·소문자 형태는 처음 추천할 때 한 번만 만들고, 질의는 길이 차가 한도
+    /// 안인 키만 본다. 질의 1000건짜리 배치가 같은 준비를 1000번 하지 않는다.
     public func similarCandidates(
         to subject: String,
         limit: Int = Self.similarCandidateLimit
     ) -> [GraphNode] {
-        Self.similarCandidates(to: subject, limit: limit, graph: graph, names: nodesByName)
+        similarCandidates(to: subject, limit: limit, onWork: nil)
     }
 
-    /// 사전과 같은 항목을 받아 추천 점수를 계산한다.
-    /// 공개 경로에서 별칭 배열을 복사하지 않고, 항목 방문 순서는 별도로 검증할 수 있다.
-    static func similarCandidates<Names: Sequence>(
-        to subject: String,
-        limit: Int,
-        graph: CodeGraph,
-        names: Names
-    ) -> [GraphNode] where Names.Element == (key: String, value: [NodeID]) {
-        guard !subject.isEmpty else { return [] }
-        let needle = subject.lowercased()
-        let needleLength = needle.count
-        // 매우 긴 USR은 정확 조회로만 찾는다. 추천용 편집 거리로 이차 비용을 만들지 않는다.
-        guard needleLength <= 256 else { return [] }
-        let threshold = max(2, needleLength / 3)
-        var bestByNode: [NodeID: (distance: Int, name: String, node: GraphNode)] = [:]
-        for (name, ids) in names {
-            // 거리는 편집 횟수 이상일 수 없다. 길이 차가 한도를 넘으면 DP 를
-            // 돌릴 필요도 없고, 그런 이름은 추천으로도 가치가 없다.
-            guard abs(name.count - needleLength) <= threshold else { continue }
-            let distance = Self.editDistance(needle, name.lowercased())
-            guard distance <= threshold, let node = ids.compactMap({ graph.node($0) }).first
-            else { continue }
-            if let best = bestByNode[node.id] {
-                guard distance < best.distance || (distance == best.distance && name < best.name)
-                else { continue }
-            }
-            bestByNode[node.id] = (distance, name, node)
-        }
-        return bestByNode.values
-            .sorted { lhs, rhs in
-                if lhs.distance != rhs.distance { return lhs.distance < rhs.distance }
-                return lhs.name < rhs.name
-            }
-            .prefix(limit)
-            .map(\.node)
-    }
-
-    /// 두 문자열의 편집 거리(Levenshtein). 후보 추천 전용이라 두 행 DP 로 충분하다.
-    private static func editDistance(_ lhs: [Unicode.Scalar], _ rhs: [Unicode.Scalar]) -> Int {
-        guard !lhs.isEmpty else { return rhs.count }
-        guard !rhs.isEmpty else { return lhs.count }
-        var previous = Array(0...rhs.count)
-        var current = [Int](repeating: 0, count: rhs.count + 1)
-        for i in 1...lhs.count {
-            current[0] = i
-            for j in 1...rhs.count {
-                let substitution = previous[j - 1] + (lhs[i - 1] == rhs[j - 1] ? 0 : 1)
-                current[j] = min(previous[j] + 1, current[j - 1] + 1, substitution)
-            }
-            swap(&previous, &current)
-        }
-        return previous[rhs.count]
-    }
-
-    /// 두 문자열의 편집 거리(Levenshtein).
-    static func editDistance(_ lhs: String, _ rhs: String) -> Int {
-        editDistance(Array(lhs.unicodeScalars), Array(rhs.unicodeScalars))
+    /// 추천이 한 일을 `onWork` 로 알린다 — 테스트가 비용을 시간이 아니라 작업량으로 센다.
+    func similarCandidates(
+        to subject: String, limit: Int, onWork: ((SimilarNameWork) -> Void)?
+    ) -> [GraphNode] {
+        guard let query = SimilarNameQuery(subject) else { return [] }
+        var work = SimilarNameWork()
+        let index = similarNames.index(work: &work) { SimilarNameIndex(names: nodesByName) }
+        let candidates = query.candidates(
+            in: index.buckets(lengths: query.lengths), limit: limit, graph: graph, work: &work
+        )
+        onWork?(work)
+        return candidates
     }
 
     /// `Type.member` · `Outer.Inner.member` · `Module.Type.member` 표기를 받는다.
