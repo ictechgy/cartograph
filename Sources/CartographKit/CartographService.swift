@@ -388,8 +388,9 @@ public struct CartographService: Sendable {
         case let .ambiguous(candidates):
             return CommandOutcome(output: Self.describeCandidates(candidates, for: subject, in: graph), notes: notes)
         case let .found(node):
-            let described = Self.describeExplanation(
-                explanation, for: node, in: graph, externalRetentions: context.externalRetentionIndex
+            let described = try Self.describeExplanation(
+                explanation, for: node, in: graph, externalRetentions: context.externalRetentionIndex,
+                projectPath: projectPath
             )
             let outcome = CommandOutcome(output: described.output, findingCount: described.findingCount,
                                          suppressedCount: described.suppressedCount, notes: notes)
@@ -1640,21 +1641,22 @@ public struct CartographService: Sendable {
         _ explanation: ReachabilityExplanation?,
         for node: GraphNode,
         in graph: CodeGraph,
-        externalRetentions: ExternalRetentionIndex
-    ) -> CommandOutcome {
+        externalRetentions: ExternalRetentionIndex,
+        projectPath: String
+    ) throws -> CommandOutcome {
         let name = node.qualifiedName
         switch explanation {
         case let .retained(reason):
-            return CommandOutcome(
-                output: "\(name) is retained because it is \(reason.explanation)."
-                    + evidenceSentence(for: node, reason: reason, in: graph, externalRetentions: externalRetentions)
-                    + "\n"
+            let evidence = try evidenceSentence(
+                for: node, reason: reason, in: graph, externalRetentions: externalRetentions, projectPath: projectPath
             )
+            return CommandOutcome(output: "\(name) is retained because it is \(reason.explanation)." + evidence + "\n")
         case let .retainedByMember(inherited):
             let memberNode = graph.node(inherited.member)
             let member = memberNode?.qualifiedName ?? inherited.member.rawValue
-            let evidence = memberNode.map {
-                evidenceSentence(for: $0, reason: inherited.reason, in: graph, externalRetentions: externalRetentions)
+            let evidence = try memberNode.map {
+                try evidenceSentence(for: $0, reason: inherited.reason, in: graph,
+                                     externalRetentions: externalRetentions, projectPath: projectPath)
             } ?? ""
             return CommandOutcome(
                 output: "\(name) is retained because its member \(member) is \(inherited.reason.explanation)."
@@ -1678,18 +1680,21 @@ public struct CartographService: Sendable {
     /// 외부 보존 근거가 살린 선언이면 누가 어디서 불렀는지를 문장으로 덧붙인다.
     ///
     /// "외부 파일이 그렇다고 했다"로 끝나면 사용자는 그 파일을 열어 USR 을 찾아야 한다.
-    /// 근거는 답의 일부다.
+    /// 근거는 답의 일부다. 나열하지 못한 호출 수가 Int 범위를 넘으면 `impact` 와 같은 오류로 거부한다.
+    /// 포화한 수는 정확한 수처럼 읽히고, 같은 근거 파일에 두 명령이 다른 답을 내게 된다.
     private static func evidenceSentence(
         for node: GraphNode,
         reason: RetentionReason,
         in graph: CodeGraph,
-        externalRetentions: ExternalRetentionIndex
-    ) -> String {
+        externalRetentions: ExternalRetentionIndex,
+        projectPath: String
+    ) throws -> String {
         guard reason == .externalBridge,
               let retention = externalRetentions.retention(
                   for: node, names: [ExternalRetentionIndex.syntaxQualifiedName(of: node, in: graph)]
               )
         else { return "" }
+        guard retention.unlistedCallerCount != nil else { throw CallerOmissionOverflow.error(projectPath: projectPath) }
         // 이름으로 맞은 근거는 그렇다고 말한다. 동명 선언이 여럿이면 이 선언이 그 호출의
         // 진짜 대상이 아닐 수 있다. USR 로 맞은 것처럼 인용하면 지문 수준의 거짓말이다.
         let basis = retention.symbol.usr == nil

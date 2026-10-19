@@ -177,6 +177,20 @@ extension CartographService {
     }
 }
 
+/// 생산자의 호출자 생략 수에 표시하지 못한 호출 수를 더하다 Int 범위를 넘었을 때의 오류.
+///
+/// 넘친 수를 Int.max 로 포화해 적으면 정확한 수처럼 읽힌다. `impact` 와 `dead --explain` 은 같은 근거
+/// 파일에 같은 답을 하도록 이 하나의 오류로 거부한다. `CartographService` 의 정적 함수로 두면
+/// `ImpactSummaries` 가 서비스를 거꾸로 불러 타입 순환이 생기므로 따로 둔다.
+enum CallerOmissionOverflow {
+    /// 영향 경로가 써 온 위치(`projectPath`)와 문장 그대로다. 두 명령의 오류 출력이 바이트까지 같다.
+    static func error(projectPath: String) -> CartographError {
+        .invalidConfiguration(
+            path: projectPath, reason: "Runtime evidence caller omission count exceeds the supported range."
+        )
+    }
+}
+
 /// 파일은 입력 시드만 고른다. 그 파일 밖의 소비자는 전체 심볼 그래프에서 계속 따라간다.
 struct ImpactSelection {
     let requestedSymbolCount: Int
@@ -385,12 +399,7 @@ private struct ImpactSummaries {
         }
         guard let callers = evidence.callers, callers.count > limit else { return evidence }
         let (omitted, overflow) = producerOmitted.addingReportingOverflow(callers.count - limit)
-        guard !overflow else {
-            throw CartographError.invalidConfiguration(
-                path: projectPath,
-                reason: "Runtime evidence caller omission count exceeds the supported range."
-            )
-        }
+        guard !overflow else { throw CallerOmissionOverflow.error(projectPath: projectPath) }
         return .init(
             channel: evidence.channel,
             method: evidence.method,
