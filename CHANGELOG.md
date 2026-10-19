@@ -42,11 +42,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   version report changed inputs and must be collected again.
 - A discovered source or resource whose path or symlink target looks sensitive, such as
   `Config/.env.swift` or a link to `cert.pem`, no longer fails session fingerprinting with
-  `sensitiveInput`. The failure repeated on every `serve` tool call and on `runtime collect`, `plan`
-  and `check`, `impact --trace` and `--coredata-build-evidence`. Such inputs now contribute their
-  path and file status (including change time, so edits still change the fingerprint) without
-  being read. Configured inputs (configuration file, baseline, external retentions), index inputs
-  and build-evidence paths are still rejected.
+  `sensitiveInput`. Neither does the index unit that a per-file (non-whole-module) build names after
+  such a source's object file (`.env.o-<hash>`). The failure repeated on every `serve` tool call and
+  on `runtime collect`, `plan` and `check`, `impact --trace` and `--coredata-build-evidence`. Such
+  inputs now contribute their path and file status (including change time, so edits still change
+  the fingerprint) without being read. Configured inputs (configuration file, baseline, external
+  retentions), the index-store library and build-evidence paths are still rejected.
 - `routes` keeps same-file static path facts such as `API.base + Route.users.rawValue` when the
   value-flow rescan spells a file path differently from the first pass, as macOS does for projects
   under `/tmp` or `/private` or reached through a symlink. The duplicated declarations made those

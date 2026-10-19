@@ -727,6 +727,25 @@ struct AnalysisSessionTests {
         #expect(fileSystem.readPaths.allSatisfy { $0 != link && $0 != target })
     }
 
+    @Test("비밀 이름 소스에서 컴파일러가 지은 인덱스 유닛도 지문을 막지 않고 내용 대신 파일 상태로 편집을 잡는다")
+    func sensitiveNamedIndexUnitIsFingerprintedByStamp() throws {
+        let root = try LocalFileSystem().realPath(at: makeTemporaryProject())
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        let fileSystem = ReadPathRecordingFileSystem()
+        let source = root + "/App.swift"
+        // 파일별(non-WMO) 컴파일은 `Config/.env.swift` 의 유닛 이름을 출력 오브젝트 `.env.o` 에서 짓는다.
+        let unit = root + "/index-store/v5/units/.env.o-1LETMVWRBK6GM"
+        try fileSystem.write(text: "struct App {}", to: source)
+        try fileSystem.write(text: "unit-one", to: unit)
+        let service = makeLocalService(fileSystem: fileSystem, project: root, source: source)
+
+        let first = try service.sessionInputFingerprint()
+        try fileSystem.write(text: "unit-two", to: unit)
+
+        #expect(try service.sessionInputFingerprint() != first)
+        #expect(!fileSystem.readPaths.contains(unit))
+    }
+
     @Test("비밀 이름 탐색 소스가 있어도 세션을 만들고 그 파일을 고치면 새 세대를 준비한다")
     func sessionStartsWithDiscoveredSensitiveSource() throws {
         let root = try LocalFileSystem().realPath(at: makeTemporaryProject())

@@ -8,8 +8,8 @@ import Foundation
 public enum AnalysisSessionError: Error, Sendable, Equatable, LocalizedError {
     /// 인덱스·소스·설정이 읽는 도중 계속 바뀌어 일관된 문맥을 만들지 못했다.
     case inputChangedDuringRefresh(attempts: Int)
-    /// 설정·인덱스 위치나 빌드 근거로 지정한 분석 입력이 비밀 자료로 보이는 파일을 가리킨다.
-    /// 탐색으로 모은 소스는 이 오류 대신 내용 없이 파일 상태만 지문에 들어간다.
+    /// 설정·인덱스 라이브러리 위치나 빌드 근거로 지정한 분석 입력이 비밀 자료로 보이는 파일을 가리킨다.
+    /// 탐색으로 모은 소스와 인덱스 유닛은 이 오류 대신 내용 없이 파일 상태만 지문에 들어간다.
     case sensitiveInput
     /// 세션 문맥이 준비되지 않은 내부 상태다.
     case unavailable
@@ -409,7 +409,7 @@ extension CartographService {
     ///
     /// 세션이 파일 수정 시각만 믿고 이전 문맥을 재사용하지 않도록, 알려진 소스·설정·
     /// 근거 파일과 인덱스 unit의 내용을 해시한다. 비밀 자료처럼 보이는 파일의 내용은 읽지 않는다.
-    /// 설정으로 지정한 입력이면 거부하고, 탐색으로 모은 소스면 파일 상태만 싣는다.
+    /// 설정으로 지정한 입력이면 거부하고, 탐색으로 모은 소스·인덱스 유닛이면 파일 상태만 싣는다.
     func sessionInputFingerprint() throws -> String {
         try AnalysisInputFingerprinter(
             configuration: configuration,
@@ -888,9 +888,11 @@ private struct AnalysisInputFingerprinter {
                 }
                 accumulator.addText("index-unit-count:\(paths.count)")
                 for path in paths {
+                    // 유닛 이름은 컴파일러가 출력 오브젝트 이름으로 짓는다. 파일별 컴파일에서
+                    // `Config/.env.swift` 의 유닛은 `.env.o-<hash>` 가 되므로 탐색 입력처럼 다룬다.
                     try addFile(
-                        path, label: "index-unit", includeModificationDate: true, cache: cache,
-                        observedKeys: &observedKeys, to: &accumulator
+                        path, label: "index-unit", includeModificationDate: true, isDiscoveredInput: true,
+                        cache: cache, observedKeys: &observedKeys, to: &accumulator
                     )
                 }
             }
@@ -936,8 +938,9 @@ private struct AnalysisInputFingerprinter {
 
     /// 입력 하나의 기여를 싣는다.
     ///
-    /// `isDiscoveredInput` 은 탐색으로 모은 소스·리소스다. 설정으로 지정한 입력이 비밀 자료처럼 보이면
-    /// 조용히 빠지지 않게 거부하지만, 탐색 입력은 파일 이름 하나로 세션 전체가 막히지 않게 내용만 읽지 않는다.
+    /// `isDiscoveredInput` 은 탐색으로 모은 소스·리소스와 인덱스 유닛이다. 설정으로 지정한 입력이 비밀 자료처럼
+    /// 보이면 조용히 빠지지 않게 거부하지만, 탐색 입력은 파일 이름 하나로 세션 전체가 막히지 않게 내용만 읽지
+    /// 않는다. 유닛 이름은 사용자가 고를 수 없으므로 "비밀이 아닌 경로를 설정하라"는 안내를 따를 수 없다.
     private func addFile(
         _ path: String,
         label: String,
