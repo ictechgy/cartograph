@@ -30,18 +30,50 @@ struct IndexStoreLocatorTests {
         #expect(candidates.contains("/p/.index-store"))
     }
 
-    @Test("존재하는 후보 중 가장 최근 것을 고른다")
+    @Test("존재하는 후보 중 유닛이 가장 최근에 쓰인 것을 고른다")
     func picksMostRecentCandidate() throws {
-        // 오래된 인덱스로 분석하면 결과가 조용히 틀린다.
+        // 오래된 인덱스로 분석하면 결과가 조용히 틀린다. 스토어 루트의 시각은 처음 만들어진 날에 머물고
+        // 레코드는 `v5/units` 에 쌓이므로, 루트만 보면 나중에 만들어진 낡은 스토어가 계속 이긴다.
         let fileSystem = InMemoryFileSystem(files: [
             "/p/.build/index/store/units/a": "",
-            "/p/.build/out/units/a": "",
+            "/p/.build/out/v5/units/a": "",
         ])
-        fileSystem.setModificationDate(Date(timeIntervalSince1970: 100), for: "/p/.build/index/store")
-        fileSystem.setModificationDate(Date(timeIntervalSince1970: 900), for: "/p/.build/out")
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 500), for: "/p/.build/index/store")
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 100), for: "/p/.build/index/store/units")
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 100), for: "/p/.build/out")
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 900), for: "/p/.build/out/v5/units")
 
         let located = try IndexStoreLocator(fileSystem: fileSystem).locate(explicitPath: nil, projectPath: "/p")
         #expect(located == "/p/.build/out")
+    }
+
+    @Test("스토어 시각은 루트와 유닛 디렉터리 중 가장 늦은 것이고 모르면 nil 이다")
+    func storeRecencyTakesTheLatestMarker() {
+        let fileSystem = InMemoryFileSystem(files: ["/s/v5/units/a": "", "/t/units/a": ""])
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 100), for: "/s")
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 700), for: "/s/v5/units")
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 300), for: "/t")
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 200), for: "/t/units")
+        let locator = IndexStoreLocator(fileSystem: fileSystem)
+
+        #expect(locator.storeRecency(at: "/s") == Date(timeIntervalSince1970: 700))
+        #expect(locator.storeRecency(at: "/t") == Date(timeIntervalSince1970: 300))
+        #expect(locator.storeRecency(at: "/unknown") == nil)
+    }
+
+    @Test("유닛 시각이 같으면 경로 순서로 정해 실행마다 같은 스토어를 고른다")
+    func equalRecencyBreaksTiesByPath() throws {
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/.build/index/store/v5/units/a": "",
+            "/p/.build/out/v5/units/a": "",
+        ])
+        for store in ["/p/.build/index/store", "/p/.build/out"] {
+            fileSystem.setModificationDate(Date(timeIntervalSince1970: 100), for: store)
+            fileSystem.setModificationDate(Date(timeIntervalSince1970: 400), for: store + "/v5/units")
+        }
+
+        let located = try IndexStoreLocator(fileSystem: fileSystem).locate(explicitPath: nil, projectPath: "/p")
+        #expect(located == "/p/.build/index/store")
     }
 
     @Test("어디에도 없으면 찾아본 경로를 모두 알려 준다")
@@ -380,6 +412,32 @@ struct DerivedDataMatchingTests {
         let located = try IndexStoreLocator(fileSystem: fileSystem)
             .locate(explicitPath: nil, projectPath: "/p/ios", derivedDataPath: "/dd")
         #expect(located == "/dd/Runner-aaaaaa/Index.noindex/DataStore")
+    }
+
+    @Test("소유가 증명된 DerivedData 스토어와 .build/out 도 유닛이 쓰인 시각으로 가른다")
+    func ownedDerivedDataCompetesOnUnitRecency() throws {
+        // Xcode 로 한 번 연 Swift 패키지는 소유가 증명된 DerivedData 스토어와 `.build/out` 을 함께 가진다.
+        // 어제 처음 만든 DerivedData 루트가 9월에 만든 `.build/out` 루트보다 늘 새로우므로, 루트만 비교하면
+        // 오늘 `swift build` 로 쓴 인덱스를 몇 번 다시 빌드해도 고르지 않는다.
+        let derivedData = "/dd/Pkg-abcdef/Index.noindex/DataStore"
+        let fileSystem = InMemoryFileSystem(files: [
+            "/src/Pkg/Package.swift": "// package",
+            "/dd/Pkg-abcdef/info.plist": Self.infoPlist(workspacePath: "/src/Pkg"),
+            derivedData + "/v5/units/a": "",
+            "/src/Pkg/.build/out/v5/units/a": "",
+        ])
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 800), for: derivedData)
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 800), for: derivedData + "/v5/units")
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 100), for: "/src/Pkg/.build/out")
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 900), for: "/src/Pkg/.build/out/v5/units")
+        let locator = IndexStoreLocator(fileSystem: fileSystem)
+
+        let located = try locator.locate(explicitPath: nil, projectPath: "/src/Pkg", derivedDataPath: "/dd")
+        #expect(located == "/src/Pkg/.build/out")
+
+        // 반대로 Xcode 가 더 최근에 빌드했으면 DerivedData 를 고른다.
+        fileSystem.setModificationDate(Date(timeIntervalSince1970: 950), for: derivedData + "/v5/units")
+        #expect(try locator.locate(explicitPath: nil, projectPath: "/src/Pkg", derivedDataPath: "/dd") == derivedData)
     }
 
     @Test("평평한 -derivedDataPath 배치도 후보로 본다")

@@ -298,12 +298,14 @@ extension HTTPRouteCallCollector {
     /// Alamofire `RequestAdapter.adapt(_:for:completion:)` 가 요청의 `url` 을 바꾸는지 센다.
     ///
     /// 감싸는 타입이 `RequestAdapter`·`RequestInterceptor` 를 준수할 때만 어댑터다. 같은 이름의 무관한 함수를
-    /// 세면 모든 미호출 진단이 근거 없이 `-unverified` 로 내려간다.
+    /// 세면 모든 미호출 진단이 근거 없이 `-unverified` 로 내려간다. 준수 이름은 프로젝트 프로토콜 전체를 훑어
+    /// 구하므로 모든 함수 선언에서 계산하면 스캔이 파일 수의 제곱으로 는다. 이름과 첫 매개변수부터 본다.
     func recordURLRewritingAdapter(_ node: FunctionDeclSyntax, name: String) {
-        let conformances = chain.isEmpty ? [] : surface.conformedNames(of: chain.joined(separator: "."))
-        guard name == "adapt", conformances.contains("RequestAdapter") || conformances.contains("RequestInterceptor"),
-              let first = node.signature.parameterClause.parameters.first,
+        guard name == "adapt", !chain.isEmpty, let first = node.signature.parameterClause.parameters.first,
               HTTPSyntax.typeBaseName(first.type) == "URLRequest", let body = node.body else { return }
+        conformanceQueries += 1
+        let conformances = surface.conformedNames(of: chain.joined(separator: "."))
+        guard conformances.contains("RequestAdapter") || conformances.contains("RequestInterceptor") else { return }
         let finder = HTTPURLAssignmentFinder()
         finder.walk(body)
         if finder.found { counts.urlRewriters += 1 }

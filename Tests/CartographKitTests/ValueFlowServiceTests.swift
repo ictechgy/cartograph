@@ -118,4 +118,50 @@ struct ValueFlowServiceTests {
         #expect(!loaded.program.limitations.contains { $0.contains("unreadable") })
     }
 
+    @Test("인덱스 위치와 디스크 소스 경로는 발생마다가 아니라 경로마다 한 번만 정규화한다")
+    func canonicalizesEachPathOnce() {
+        // 정규화는 경로 구성 요소마다 파일 시스템을 거친다. 참조 발생마다 부르면 같은 파일을 발생 수만큼 묻는다.
+        let first = "/p/Sources/A.swift"
+        let second = "/p/Sources/B.swift"
+        let files = InMemoryFileSystem(currentDirectoryPath: "/p", files: [
+            first: "func a0() {}\nfunc a1() {}\nfunc a2() {}\n", second: "func b() {}\n",
+        ])
+        files.setModificationDate(Date(timeIntervalSince1970: 1), for: first)
+        files.setModificationDate(Date(timeIntervalSince1970: 1), for: second)
+        let symbols = (0..<3).map {
+            IndexedSymbol(usr: "s:a\($0)", name: "a\($0)()", kind: .function, module: "P",
+                location: .init(path: first, line: $0 + 1, column: 6))
+        } + [IndexedSymbol(usr: "s:b", name: "b()", kind: .function, module: "P",
+            location: .init(path: second, line: 1, column: 6))]
+        let references = (0..<40).map {
+            IndexedReference(sourceUSR: "s:a\($0 % 3)", targetUSR: "s:b", kind: .call,
+                location: .init(path: first, line: $0 % 3 + 1, column: 20 + $0))
+        }
+        let dates = [first: Date(timeIntervalSince1970: 2), second: Date(timeIntervalSince1970: 2)]
+        let snapshot = IndexSnapshot(symbols: symbols, references: references, indexedFileDates: dates,
+            oldestIndexedFileDates: dates, admittedHeaderPaths: [first],
+            enumImpactFiles: [EnumImpactFileFacts(path: first, status: "complete")])
+        var calls: [String: Int] = [:]
+        var loader = ValueFlowSourceLoader(fileSystem: files, projectPath: "/p", pathFilter: .passthrough)
+        loader.canonicalize = { path in
+            calls[path, default: 0] += 1
+            return "/resolved" + path
+        }
+
+        let loaded = loader.load(snapshot: snapshot)
+
+        #expect(calls == [first: 1, second: 1])
+        // 모든 자리가 같은 정규화를 거쳤는지도 본다. 한 자리라도 우회하면 원래 표기가 남는다.
+        let resolved: Set = ["/resolved" + first, "/resolved" + second]
+        #expect(Set(loaded.snapshot.symbols.map(\.location.path)) == resolved)
+        #expect(Set(loaded.snapshot.references.compactMap(\.location?.path)) == ["/resolved" + first])
+        #expect(Set(loaded.snapshot.indexedFileDates?.keys.map { $0 } ?? []) == resolved)
+        #expect(Set(loaded.snapshot.oldestIndexedFileDates?.keys.map { $0 } ?? []) == resolved)
+        #expect(loaded.snapshot.admittedHeaderPaths == ["/resolved" + first])
+        #expect(loaded.snapshot.enumImpactFiles?.map(\.path) == ["/resolved" + first])
+        // 디스크에서 찾은 경로도 같은 사전으로 맞춰져 신선도 판정이 인덱스 키와 그대로 맞물린다.
+        #expect(!loaded.program.limitations.contains { $0.hasPrefix("unindexed-value-flow-sources") })
+        #expect(!loaded.program.limitations.contains { $0.hasPrefix("stale-value-flow-sources") })
+    }
+
 }

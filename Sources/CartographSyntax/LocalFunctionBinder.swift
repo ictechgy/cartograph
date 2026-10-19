@@ -14,18 +14,62 @@ enum LocalFunctionBinder {
         let diagnostics: [LocalFunctionDiagnostic]
     }
 
+    /// 범위가 실제로 묻는 행만 담은 색인: 소유자·지역 함수 자리의 심볼, 유일한 소유자들의 참조, 이미 있는
+    /// 소스 보완 선언의 USR. 프로젝트 전체를 위치·소스 USR 마다 묶으면 참조 100만 개에서 0.3초와 0.4GB 를 더 썼다.
+    private struct BindingIndex {
+        let byLocation: [SourceLocation: [IndexedSymbol]]
+        let references: [String: [IndexedReference]]
+        /// 지역 함수 키는 항상 소스 보완 이름 공간이라, 이미 있는 선언인지는 그 이름 공간의 USR 만 보면 된다.
+        let localUSRs: Set<String>
+
+        var indexedRows: Int {
+            byLocation.values.map(\.count).reduce(0, +) + references.values.map(\.count).reduce(0, +)
+                + localUSRs.count
+        }
+    }
+
+    /// 색인은 바깥 타입이 만든다. 중첩 타입이 `owners` 를 부르면 타입 순환이 된다.
+    private static func bindingIndex(_ snapshot: IndexSnapshot, scopes: [LocalFunctionScopeFacts]) -> BindingIndex {
+        let locations = Set(scopes.flatMap { [$0.ownerLocation] + $0.functions.map(\.location) })
+        var byLocation: [SourceLocation: [IndexedSymbol]] = [:]
+        var localUSRs: Set<String> = []
+        for symbol in snapshot.symbols {
+            if locations.contains(symbol.location) { byLocation[symbol.location, default: []].append(symbol) }
+            if SourceLocalSymbol.contains(symbol.usr) { localUSRs.insert(symbol.usr) }
+        }
+        let ownerUSRs = Set(scopes.compactMap { scope -> String? in
+            let candidates = owners(for: scope, byLocation: byLocation)
+            return candidates.count == 1 ? candidates.first?.usr : nil
+        })
+        var references: [String: [IndexedReference]] = [:]
+        for reference in snapshot.references where ownerUSRs.contains(reference.sourceUSR) {
+            references[reference.sourceUSR, default: []].append(reference)
+        }
+        return BindingIndex(byLocation: byLocation, references: references, localUSRs: localUSRs)
+    }
+
     /// 컴파일러 투영을 정규화하고, 실제로 세분하지 못한 지역 함수를 설명한다.
+    ///
+    /// - Parameter onIndexedRows: 색인에 담은 행 수를 받는다. 테스트가 범위와 무관한 행을 색인하지 않는지 센다.
     static func enrichWithDiagnostics(
         _ input: IndexSnapshot,
         scopes: [LocalFunctionScopeFacts],
         freshPaths: Set<String>,
         edgeKinds: Set<EdgeKind>,
-        freshnessFailures: [String: LocalFunctionSkipReason] = [:]
+        freshnessFailures: [String: LocalFunctionSkipReason] = [:],
+        onIndexedRows: ((Int) -> Void)? = nil
     ) -> Result {
         let snapshot = compilerProjection(input)
-        let byLocation = Dictionary(grouping: snapshot.symbols, by: \.location)
-        let byUSR = snapshot.symbolsByUSR()
-        let references = Dictionary(grouping: snapshot.references, by: \.sourceUSR)
+        let scopes = scopes.filter { !$0.functions.isEmpty }
+        // 지역 함수가 하나도 없으면 아래 반복이 아무것도 바꾸지 않으므로 색인 없이 투영만 돌려준다.
+        guard !scopes.isEmpty else {
+            onIndexedRows?(0)
+            return Result(snapshot: snapshot, diagnostics: [])
+        }
+        let index = bindingIndex(snapshot, scopes: scopes)
+        onIndexedRows?(index.indexedRows)
+        let byLocation = index.byLocation
+        let references = index.references
         let filtered = edgeKinds.isEmpty || edgeKinds.isSuperset(of: [.call, .reference, .member])
             ? nil : LocalFunctionSkipReason.filteredEdgeKinds
         var additions: [IndexedSymbol] = []
@@ -85,7 +129,7 @@ enum LocalFunctionBinder {
                 owner: owner,
                 references: references[owner.usr, default: []],
                 byLocation: byLocation,
-                byUSR: byUSR
+                localUSRs: index.localUSRs
             )
             additions += binding.symbols
             localUses += binding.uses
@@ -136,7 +180,7 @@ enum LocalFunctionBinder {
         owner: IndexedSymbol,
         references: [IndexedReference],
         byLocation: [CartographCore.SourceLocation: [IndexedSymbol]],
-        byUSR: [String: IndexedSymbol]
+        localUSRs: Set<String>
     ) -> Binding {
         let named = Dictionary(grouping: scope.functions, by: \.name)
         let candidates = scope.functions.filter {
@@ -195,7 +239,7 @@ enum LocalFunctionBinder {
         var emitted: Set<SourceLocation> = []
         for local in candidates where selected.contains(local.location) {
             guard let usr = identifiers[local.location] else { continue }
-            guard byUSR[usr] == nil else {
+            guard !localUSRs.contains(usr) else {
                 result.diagnose(local, .existingDeclaration)
                 continue
             }

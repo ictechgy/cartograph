@@ -676,6 +676,95 @@ struct AnalysisSessionTests {
         }
     }
 
+    @Test("이름이 .env. 로 시작하는 탐색 소스는 지문을 막지 않고 내용 대신 파일 상태로 편집을 잡는다")
+    func discoveredSensitiveSourceIsFingerprintedByStamp() throws {
+        let root = try LocalFileSystem().realPath(at: makeTemporaryProject())
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        let fileSystem = ReadPathRecordingFileSystem()
+        let source = root + "/App.swift"
+        let secret = root + "/Config/.env.swift"
+        try fileSystem.write(text: "struct App {}", to: source)
+        try fileSystem.write(text: "let token = \"one\"", to: secret)
+        let service = makeLocalService(fileSystem: fileSystem, project: root, source: source)
+
+        let first = try service.sessionInputFingerprint()
+        #expect(!fileSystem.readPaths.contains(secret))
+
+        // 같은 inode·크기에 수정 시각을 나노초까지 되돌린 제자리 편집도 ctime 으로 드러나야 한다.
+        var original = stat()
+        #expect(stat(secret, &original) == 0)
+        let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: secret))
+        try handle.write(contentsOf: Data("let token = \"two\"".utf8))
+        try handle.close()
+        let times = [original.st_atimespec, original.st_mtimespec]
+        #expect(times.withUnsafeBufferPointer { utimensat(AT_FDCWD, secret, $0.baseAddress, 0) } == 0)
+        #expect(try service.sessionInputFingerprint() != first)
+        #expect(!fileSystem.readPaths.contains(secret))
+    }
+
+    @Test("비밀 이름 파일을 가리키는 소스 링크도 지문을 막지 않고 대상 편집을 잡는다")
+    func linkedSensitiveSourceIsFingerprintedByStamp() throws {
+        let root = try LocalFileSystem().realPath(at: makeTemporaryProject())
+        let outside = try LocalFileSystem().realPath(at: makeTemporaryProject())
+        defer {
+            try? FileManager.default.removeItem(atPath: root)
+            try? FileManager.default.removeItem(atPath: outside)
+        }
+        let fileSystem = ReadPathRecordingFileSystem()
+        let source = root + "/App.swift"
+        let link = root + "/Pinned.swift"
+        let target = outside + "/secret.pem"
+        try fileSystem.write(text: "struct App {}", to: source)
+        try fileSystem.write(text: "-----BEGIN PRIVATE KEY-----", to: target)
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: target)
+        let service = makeLocalService(fileSystem: fileSystem, project: root, source: source)
+
+        let first = try service.sessionInputFingerprint()
+        #expect(fileSystem.readPaths.allSatisfy { $0 != link && $0 != target })
+
+        try fileSystem.write(text: "-----BEGIN PRIVATE KEY----- changed", to: target)
+        #expect(try service.sessionInputFingerprint() != first)
+        #expect(fileSystem.readPaths.allSatisfy { $0 != link && $0 != target })
+    }
+
+    @Test("비밀 이름 소스에서 컴파일러가 지은 인덱스 유닛도 지문을 막지 않고 내용 대신 파일 상태로 편집을 잡는다")
+    func sensitiveNamedIndexUnitIsFingerprintedByStamp() throws {
+        let root = try LocalFileSystem().realPath(at: makeTemporaryProject())
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        let fileSystem = ReadPathRecordingFileSystem()
+        let source = root + "/App.swift"
+        // 파일별(non-WMO) 컴파일은 `Config/.env.swift` 의 유닛 이름을 출력 오브젝트 `.env.o` 에서 짓는다.
+        let unit = root + "/index-store/v5/units/.env.o-1LETMVWRBK6GM"
+        try fileSystem.write(text: "struct App {}", to: source)
+        try fileSystem.write(text: "unit-one", to: unit)
+        let service = makeLocalService(fileSystem: fileSystem, project: root, source: source)
+
+        let first = try service.sessionInputFingerprint()
+        try fileSystem.write(text: "unit-two", to: unit)
+
+        #expect(try service.sessionInputFingerprint() != first)
+        #expect(!fileSystem.readPaths.contains(unit))
+    }
+
+    @Test("비밀 이름 탐색 소스가 있어도 세션을 만들고 그 파일을 고치면 새 세대를 준비한다")
+    func sessionStartsWithDiscoveredSensitiveSource() throws {
+        let root = try LocalFileSystem().realPath(at: makeTemporaryProject())
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        let fileSystem = ReadPathRecordingFileSystem()
+        let source = root + "/App.swift"
+        let secret = root + "/Config/.env.swift"
+        try fileSystem.write(text: "struct App {}", to: source)
+        try fileSystem.write(text: "let token = \"one\"", to: secret)
+
+        let session = try AnalysisSession(
+            service: makeLocalService(fileSystem: fileSystem, project: root, source: source)
+        )
+        let generation = try session.status().generation
+        try fileSystem.write(text: "let token = \"two\"", to: secret)
+
+        #expect(try session.status().generation == generation + 1)
+    }
+
     @Test("실제 파일 읽기 계측은 모든 Clang 확장자를 기록한다", arguments: ["m", "mm", "h"])
     func contentReadCounterCoversClangSources(extensionName: String) throws {
         let root = try makeTemporaryProject()
@@ -1246,6 +1335,42 @@ private final class CountingLocalFileSystem: FileSystem, @unchecked Sendable {
             contentReadPaths = []
         }
     }
+}
+
+/// 실제 디스크를 그대로 쓰면서 내용을 읽은 경로를 통째 읽기·조각 읽기 구분 없이 기록한다.
+private final class ReadPathRecordingFileSystem: FileSystem, ChunkedFileReading, @unchecked Sendable {
+    private let base = LocalFileSystem()
+    private let lock = NSLock()
+    private var paths: [String] = []
+
+    var readPaths: [String] { lock.withLock { paths } }
+
+    func readData(at path: String) throws -> Data {
+        lock.withLock { paths.append(path) }
+        return try base.readData(at: path)
+    }
+
+    func readData(at path: String, maximumBytes: Int) throws -> Data {
+        lock.withLock { paths.append(path) }
+        return try base.readData(at: path, maximumBytes: maximumBytes)
+    }
+
+    func readChunks(at path: String, chunkSize: Int, _ consume: (Data) throws -> Void) throws {
+        lock.withLock { paths.append(path) }
+        try base.readChunks(at: path, chunkSize: chunkSize, consume)
+    }
+
+    func realPath(at path: String) throws -> String { try base.realPath(at: path) }
+    func fileExists(at path: String) -> Bool { base.fileExists(at: path) }
+    func directoryExists(at path: String) -> Bool { base.directoryExists(at: path) }
+    func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
+    func removeItem(at path: String) throws { try base.removeItem(at: path) }
+    func contentsOfDirectory(at path: String) throws -> [String] { try base.contentsOfDirectory(at: path) }
+    func directoryEntries(at path: String) throws -> [DirectoryEntry] { try base.directoryEntries(at: path) }
+    func modificationDate(at path: String) -> Date? { base.modificationDate(at: path) }
+    func fingerprintStamp(at path: String) -> FileFingerprintStamp? { base.fingerprintStamp(at: path) }
+    func directoryListingStamp(at path: String) -> DirectoryListingStamp? { base.directoryListingStamp(at: path) }
+    var currentDirectoryPath: String { base.currentDirectoryPath }
 }
 
 /// 지정한 마지막 경로 성분의 디렉터리 열거를 `unblock` 전까지 실패시키는 래퍼.

@@ -190,4 +190,36 @@ struct ReactNativeMacroScannerTests {
     func emptyWithoutMacros() {
         #expect(scan("@implementation Foo\n- (void)bar {}\n@end").isEmpty)
     }
+
+    /// 넘긴 정규식 묶음으로 훑고, 정규식을 실제로 댄 횟수를 함께 돌려준다.
+    private func countingScan(_ lines: [String]) -> (facts: [ScannedBridgeFact], evaluations: Int) {
+        let patterns = ReactNativeMacroScanner.Patterns()
+        let facts = ReactNativeMacroScanner().scanDeclarations(
+            source: lines.joined(separator: "\n"), path: "/p/Module.m", patterns: patterns
+        )
+        return (facts, patterns.evaluations)
+    }
+
+    @Test("RN 매크로가 없는 줄에는 정규식을 대지 않아 줄이 늘어도 평가 횟수가 같다")
+    func evaluatesPatternsOnlyOnCandidateLines() {
+        // 매크로 없는 ObjC 줄마다 정규식을 새로 만들어 대면 bridges 가 줄당 수백 µs 를 쓴다.
+        let plain = (0..<200).map { "- (int)method\($0):(int)value { return value + \($0); } // note \($0)" }
+        let macros = ["RCT_EXPORT_MODULE(Calendar)", "RCT_EXPORT_METHOD(addEvent:(NSString *)name) {}"]
+        let compact = countingScan(["@implementation RNCalendar"] + macros + ["@end"])
+        let padded = countingScan(["#import \"RNCalendar.h\"", "@implementation RNCalendar"] + plain + macros + plain
+            + ["@end"] + plain)
+        #expect(compact.evaluations > 0)
+        #expect(padded.evaluations == compact.evaluations)
+        #expect(padded.facts.map(\.fact.channel) == ["Calendar", "Calendar"])
+        #expect(padded.facts.map(\.fact.method) == compact.facts.map(\.fact.method))
+        #expect(padded.facts.map(\.fact.location.line) == [203, 204])
+    }
+
+    @Test("RN 매크로가 하나도 없는 ObjC 파일은 블록을 여는 줄에만 정규식을 댄다")
+    func evaluatesOnlyImplementationLineWithoutMacros() {
+        let plain = (0..<500).map { "    [self send:@\"value \($0)\"]; // RCT note without the macro prefix" }
+        let scanned = countingScan(["@implementation Plain"] + plain + ["@end"])
+        #expect(scanned.facts.isEmpty)
+        #expect(scanned.evaluations == 1)
+    }
 }

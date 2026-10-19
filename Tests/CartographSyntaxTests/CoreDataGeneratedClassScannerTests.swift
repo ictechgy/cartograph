@@ -99,6 +99,27 @@ struct CoreDataGeneratedClassScannerTests {
         }
     }
 
+    @Test("최상위 클래스 이름은 inspect 가 대조하는 이름과 같고, 최상위 클래스가 하나가 아니면 없다")
+    func topLevelClassNameMatchesInspectedName() {
+        let prefix = """
+            import Foundation
+            import CoreData
+            public typealias RecordCoreDataClassSet = NSSet
+            """
+        let escaped = prefix + "\npublic class `Record`: NSObject {}"
+        let inspected = CoreDataGeneratedClassScanner.inspect(
+            source: escaped, path: "/generated/Record.swift",
+            expectedClassName: "Other", expectedRuntimeName: "App.Other", module: "App"
+        )
+
+        #expect(CoreDataGeneratedClassScanner.topLevelClassName(source: escaped) == "Record")
+        #expect(inspected.className == "Record")
+        #expect(CoreDataGeneratedClassScanner.topLevelClassName(source: prefix) == nil)
+        #expect(CoreDataGeneratedClassScanner.topLevelClassName(
+            source: prefix + "\npublic class Record: NSManagedObject {}\npublic class Other: NSManagedObject {}"
+        ) == nil)
+    }
+
     @Test("동명 클래스가 둘이거나 런타임 별칭이 모델과 다르면 거부한다")
     func rejectsAmbiguousOrWrongRuntimeNames() {
         let prefix = """

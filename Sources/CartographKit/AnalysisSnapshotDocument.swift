@@ -518,10 +518,13 @@ extension CartographService {
         let capturedDates = context.snapshot.indexedFileDates.map { dates in
             dates.filter { includedSourcePaths.contains($0.key) }
         }
+        // 필터와 기준 경로 표기는 만들 때마다 파일 시스템에 묻는다. 경로마다 다시 만들지 않는다.
+        let pathFilter = configuration.pathFilter
+        let baseVariants = PathFilter.variants(of: projectPath)
         // 선언 없는 헤더와 삭제된 소스도 신선도 근거다. 프로젝트 밖·제외된 경로만 제거한다.
         func capturesDependencyPath(_ path: String) -> Bool {
-            guard configuration.pathFilter.allows(path) else { return false }
-            let relative = SourceLocation(path: path, line: 1, column: 1).relative(to: projectPath).path
+            guard pathFilter.allows(path) else { return false }
+            let relative = SourceLocation(path: path, line: 1, column: 1).relative(toBaseVariants: baseVariants).path
             return !relative.hasPrefix("/") && !relative.split(separator: "/").contains("..")
         }
         let capturedOldestDates = context.snapshot.oldestIndexedFileDates.map { dates in
@@ -563,7 +566,7 @@ extension CartographService {
         )
         let supplementalPaths = context.supplementalRuntimeSourcePaths
         let capturedRuntimeFiles = context.runtimeFiles?.filter { facts in
-            guard configuration.pathFilter.allows(facts.path) || supplementalPaths.contains(facts.path) else {
+            guard pathFilter.allows(facts.path) || supplementalPaths.contains(facts.path) else {
                 return false
             }
             return includedSourcePaths.contains(facts.path)
@@ -571,7 +574,7 @@ extension CartographService {
         }
         let capturedFreshness = context.runtimeFreshness.filter {
             includedSourcePaths.contains($0.key)
-                && (configuration.pathFilter.allows($0.key) || supplementalPaths.contains($0.key))
+                && (pathFilter.allows($0.key) || supplementalPaths.contains($0.key))
         }
         return AnalysisSnapshotDocument(
             projectRoot: projectPath,
@@ -584,7 +587,7 @@ extension CartographService {
             runtimeFiles: capturedRuntimeFiles,
             runtimeFreshness: capturedFreshness,
             localFunctionDiagnostics: context.localFunctionDiagnostics.filter {
-                configuration.pathFilter.allows($0.location.path) || supplementalPaths.contains($0.location.path)
+                pathFilter.allows($0.location.path) || supplementalPaths.contains($0.location.path)
             }
         )
     }

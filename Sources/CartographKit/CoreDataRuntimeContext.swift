@@ -144,7 +144,12 @@ extension CartographService {
         return resolved.sorted()
     }
 
-    private func verifiedGeneratedMappings(
+    /// 생성 소스와 class 생성 엔티티를 일대일로 짝짓고 현재 인덱스로 각 짝을 확인한다.
+    ///
+    /// 생성 소스는 경로마다 한 번 읽고 파싱해 클래스 이름이 같은 엔티티만 검사한다. 이름이 다른 짝은
+    /// `inspect` 가 늘 거부하므로, 고르는 짝과 던지는 오류의 순서는 모든 짝을 검사할 때와 같다.
+    /// 기본 문맥 색인은 짝마다가 아니라 호출마다 한 번 만든다.
+    func verifiedGeneratedMappings(
         requirements: [CoreDataBuildEntityEvidence],
         allEntities: [CoreDataBuildEntityEvidence],
         sourcePaths: [String],
@@ -163,19 +168,19 @@ extension CartographService {
         guard let module else {
             throw coreDataError(projectPath, "Class-generated entities require one exact Swift module.")
         }
+        let verification = GeneratedClassVerification(module: module, snapshot: snapshot, base: baseContext)
+        let entitiesByClassName = Dictionary(grouping: requirements, by: Self.generatedClassName)
         let matches = try sourcePaths.flatMap { path in
-            try requirements.compactMap { entity in
-                let superclass = entity.superentityName.flatMap { parent in
-                    allEntities.first { $0.name == parent }?.managedObjectClassName
-                        .split(separator: ".").last.map(String.init)
-                } ?? "NSManagedObject"
-                return try generatedMapping(
+            let source = try generatedSource(at: path)
+            let entities = CoreDataGeneratedClassScanner.topLevelClassName(source: source)
+                .flatMap { entitiesByClassName[$0] } ?? []
+            return try entities.compactMap { entity in
+                try generatedMapping(
+                    source: source,
                     sourcePath: path,
                     entity: entity,
-                    expectedSuperclassName: superclass,
-                    module: module,
-                    snapshot: snapshot,
-                    baseContext: baseContext
+                    expectedSuperclassName: Self.superclassName(of: entity, in: allEntities),
+                    verification: verification
                 )
             }
         }
@@ -188,15 +193,14 @@ extension CartographService {
     }
 
     private func generatedMapping(
+        source: String,
         sourcePath: String,
         entity: CoreDataBuildEntityEvidence,
         expectedSuperclassName: String,
-        module: String,
-        snapshot: IndexSnapshot,
-        baseContext: AnalysisContext
+        verification: GeneratedClassVerification
     ) throws -> CoreDataDeclaredGeneratedMappingInput? {
-        let source = try generatedSource(at: sourcePath)
-        let className = entity.managedObjectClassName.split(separator: ".").last.map(String.init) ?? ""
+        let module = verification.module
+        let className = Self.generatedClassName(entity)
         let inspection = CoreDataGeneratedClassScanner.inspect(
             source: source,
             path: sourcePath,
@@ -206,7 +210,7 @@ extension CartographService {
             expectedSuperclassName: expectedSuperclassName
         )
         guard inspection.isGeneratorCompatible, let location = inspection.location else { return nil }
-        let candidates = snapshot.symbols.filter {
+        let candidates = verification.snapshot.symbols.filter {
             !$0.isExternal && $0.kind == .classType && $0.module == module
                 && $0.name == className && $0.location == location
         }
@@ -216,16 +220,16 @@ extension CartographService {
                 classUSRs: usrs,
                 expectedName: expectedSuperclassName,
                 module: module,
-                snapshot: snapshot
+                snapshot: verification.snapshot
               ) else {
             throw coreDataError(sourcePath, "The compiler index did not confirm the generated model superclass.")
         }
-        try requireFreshIndex(path: sourcePath, snapshot: snapshot)
+        try requireFreshIndex(path: sourcePath, indexedDates: verification.indexedDates)
         try rejectIdentityCollision(
             usrs: usrs,
             runtimeName: entity.managedObjectClassName,
             sourcePath: sourcePath,
-            baseContext: baseContext
+            verification: verification
         )
         return CoreDataDeclaredGeneratedMappingInput(
             entityName: entity.name,
@@ -235,21 +239,23 @@ extension CartographService {
         )
     }
 
-    private func generatedSource(at path: String) throws -> String {
+    /// 생성 소스를 4 MiB 상한 안에서 읽는다.
+    ///
+    /// 상한+1 바이트에서 읽기를 멈추므로 생성 소스 자리에 놓인 큰 파일도 크기 검사 전에 통째로 올리지 않는다.
+    func generatedSource(at path: String) throws -> String {
+        let limit = 4 * 1_024 * 1_024
         let data: Data
-        do { data = try environment.fileSystem.readData(at: path) }
+        do { data = try environment.fileSystem.readData(at: path, maximumBytes: limit) }
         catch { throw coreDataError(path, "The generated source could not be read: \(error)") }
-        guard data.count <= 4 * 1_024 * 1_024, let source = String(data: data, encoding: .utf8) else {
+        guard data.count <= limit, let source = String(data: data, encoding: .utf8) else {
             throw coreDataError(path, "Generated source must be UTF-8 and no larger than 4 MiB.")
         }
         return source
     }
 
-    private func requireFreshIndex(path: String, snapshot: IndexSnapshot) throws {
-        let indexed = snapshot.sourceFreshnessDates?.first {
-            LocalFileSystem.canonicalPath($0.key) == LocalFileSystem.canonicalPath(path)
-        }?.value
-        guard let indexed, let modified = environment.fileSystem.modificationDate(at: path),
+    private func requireFreshIndex(path: String, indexedDates: [String: Date]) throws {
+        guard let indexed = indexedDates[LocalFileSystem.canonicalPath(path)],
+              let modified = environment.fileSystem.modificationDate(at: path),
               modified <= indexed else {
             throw coreDataError(path, "The generated source needs a current compiler index unit.")
         }
@@ -259,26 +265,27 @@ extension CartographService {
         usrs: Set<String>,
         runtimeName: String,
         sourcePath: String,
-        baseContext: AnalysisContext
+        verification: GeneratedClassVerification
     ) throws {
         let canonicalSource = LocalFileSystem.canonicalPath(sourcePath)
-        let usrCollision = baseContext.snapshot.symbols.contains {
-            usrs.contains($0.usr) && LocalFileSystem.canonicalPath($0.location.path) != canonicalSource
-        }
-        let declarations = baseContext.runtimeFiles?.flatMap(\.declarations) ?? []
-        let byLocation = Dictionary(grouping: baseContext.snapshot.symbols, by: \.location)
-        let aliasCollision = declarations.contains { declaration in
-            guard declaration.kind == .classType,
-                  LocalFileSystem.canonicalPath(declaration.location.path) != canonicalSource else { return false }
-            if declaration.objectiveCName == runtimeName { return true }
-            guard declaration.objectiveCName == nil else { return false }
-            return (byLocation[declaration.location] ?? []).contains {
-                !$0.isExternal && "\($0.module).\(declaration.name)" == runtimeName
-            }
-        }
-        guard !usrCollision, !aliasCollision else {
+        guard !verification.declaresIdentity(usrs: usrs, runtimeName: runtimeName, outside: canonicalSource) else {
             throw coreDataError(sourcePath, "A different indexed declaration has the same USR or runtime class name.")
         }
+    }
+
+    /// momc 가 만드는 Swift 클래스 이름. 모델의 클래스 이름이 모듈로 한정돼 있으면 마지막 요소다.
+    private static func generatedClassName(_ entity: CoreDataBuildEntityEvidence) -> String {
+        entity.managedObjectClassName.split(separator: ".").last.map(String.init) ?? ""
+    }
+
+    /// 부모 엔티티의 생성 클래스 이름. 부모가 없거나 모델에서 찾지 못하면 NSManagedObject 다.
+    private static func superclassName(
+        of entity: CoreDataBuildEntityEvidence, in allEntities: [CoreDataBuildEntityEvidence]
+    ) -> String {
+        entity.superentityName.flatMap { parent in
+            allEntities.first { $0.name == parent }?.managedObjectClassName
+                .split(separator: ".").last.map(String.init)
+        } ?? "NSManagedObject"
     }
 
     private func augmentedCoreDataContext(
@@ -287,6 +294,8 @@ extension CartographService {
         evidence: CoreDataBuildEvidenceDocument
     ) throws -> AnalysisContext {
         let includedBaseUSRs = Set(base.buildGraph(level: .symbol).nodeIDByUSR.keys)
+        // 필터는 만들 때마다 기준 경로 표기를 파일 시스템에 묻는다. 항목마다 만들지 않는다.
+        let pathFilter = configuration.pathFilter
         let baseSymbols = base.snapshot.symbols.filter { includedBaseUSRs.contains($0.usr) }
         let baseReferences = base.snapshot.references.filter { includedBaseUSRs.contains($0.sourceUSR) }
         let basePaths = Set(baseSymbols.filter { !$0.isExternal }.map(\.location.path))
@@ -299,7 +308,7 @@ extension CartographService {
         )
         let oldestDates: [String: Date]? = base.snapshot.oldestIndexedFileDates == nil
             && supplemental.oldestIndexedFileDates == nil ? nil
-            : (base.snapshot.sourceFreshnessDates ?? [:]).filter { configuration.pathFilter.allows($0.key) }
+            : (base.snapshot.sourceFreshnessDates ?? [:]).filter { pathFilter.allows($0.key) }
                 .merging(supplemental.sourceFreshnessDates ?? [:], uniquingKeysWith: min)
         let snapshot = IndexSnapshot(
             symbols: baseSymbols + additions,
@@ -308,7 +317,7 @@ extension CartographService {
             oldestIndexedFileDates: oldestDates,
             admittedHeaderPaths: base.snapshot.admittedHeaderPaths.flatMap { paths in
                 supplemental.admittedHeaderPaths.map {
-                    Set(paths.filter(configuration.pathFilter.allows)).intersection($0).sorted()
+                    Set(paths.filter(pathFilter.allows)).intersection($0).sorted()
                 }
             },
             enumImpactFiles: Self.augmentedEnumImpactFiles(
@@ -467,5 +476,76 @@ extension CartographService {
 
     private func coreDataError(_ path: String, _ reason: String) -> CartographError {
         .invalidConfiguration(path: path, reason: reason)
+    }
+}
+
+/// 생성 클래스 검증 한 번의 입력과, 짝마다 다시 쓰는 색인.
+///
+/// 예전에는 짝이 맞을 때마다 기본 스냅샷 전체를 USR 로 훑고 위치별로 다시 묶고 class 선언마다 경로를
+/// 정규화했으며, 신선도 확인도 보충 인덱스 시각을 양쪽 정규화로 선형 탐색했다. 모두 검증 입력에만
+/// 의존하므로 호출마다 한 번 만든다. 경로 정규화는 파일 시스템을 거치므로 경로당 한 번만 한다.
+private struct GeneratedClassVerification {
+    let module: String
+    /// 생성 소스만 읽은 보충 인덱스.
+    let snapshot: IndexSnapshot
+    /// 보충 인덱스 신선도 시각의 정규 경로 사전. 같은 정규 경로가 여럿이면 먼저 본 시각을 쓴다.
+    let indexedDates: [String: Date]
+    /// 생성 클래스 후보 USR 마다, 기본 스냅샷에서 그 USR 을 가진 선언의 정규 경로.
+    private let pathsByUSR: [String: Set<String>]
+    /// 기본 문맥의 class 선언이 드러내는 런타임 클래스 이름마다, 그 선언의 정규 경로.
+    private let pathsByRuntimeName: [String: Set<String>]
+
+    init(module: String, snapshot: IndexSnapshot, base: AnalysisContext) {
+        var canonical = CanonicalPathMemo()
+        let candidates = Set(snapshot.symbols.lazy
+            .filter { !$0.isExternal && $0.kind == .classType && $0.module == module }.map(\.usr))
+        self.module = module
+        self.snapshot = snapshot
+        indexedDates = Dictionary(
+            (snapshot.sourceFreshnessDates ?? [:]).map { (canonical.path($0.key), $0.value) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        pathsByUSR = Self.pathsByUSR(base.snapshot.symbols, candidates: candidates, canonical: &canonical)
+        pathsByRuntimeName = Self.pathsByRuntimeName(base, canonical: &canonical)
+    }
+
+    /// 다른 파일의 기본 선언이 같은 USR 이나 같은 런타임 클래스 이름을 쓰는지.
+    func declaresIdentity(usrs: Set<String>, runtimeName: String, outside canonicalSource: String) -> Bool {
+        let elsewhere = { (paths: Set<String>?) in paths?.contains { $0 != canonicalSource } ?? false }
+        return usrs.contains { elsewhere(pathsByUSR[$0]) } || elsewhere(pathsByRuntimeName[runtimeName])
+    }
+
+    private static func pathsByUSR(
+        _ symbols: [IndexedSymbol], candidates: Set<String>, canonical: inout CanonicalPathMemo
+    ) -> [String: Set<String>] {
+        var paths: [String: Set<String>] = [:]
+        for symbol in symbols where candidates.contains(symbol.usr) {
+            paths[symbol.usr, default: []].insert(canonical.path(symbol.location.path))
+        }
+        return paths
+    }
+
+    /// @objc 이름이 있으면 그 이름이, 없으면 같은 위치의 프로젝트 인덱스 선언 모듈로 한정한 이름이
+    /// 런타임 클래스 이름이다. 위치별 묶음은 @objc 이름 없는 class 선언의 위치만 만든다.
+    private static func pathsByRuntimeName(
+        _ base: AnalysisContext, canonical: inout CanonicalPathMemo
+    ) -> [String: Set<String>] {
+        let declarations = (base.runtimeFiles ?? []).flatMap(\.declarations).filter { $0.kind == .classType }
+        let unnamed = Set(declarations.lazy.filter { $0.objectiveCName == nil }.map(\.location))
+        var modules: [CartographCore.SourceLocation: Set<String>] = [:]
+        if !unnamed.isEmpty {
+            for symbol in base.snapshot.symbols where !symbol.isExternal && unnamed.contains(symbol.location) {
+                modules[symbol.location, default: []].insert(symbol.module)
+            }
+        }
+        var paths: [String: Set<String>] = [:]
+        for declaration in declarations {
+            let names = declaration.objectiveCName.map { [$0] }
+                ?? (modules[declaration.location] ?? []).map { "\($0).\(declaration.name)" }
+            for name in names {
+                paths[name, default: []].insert(canonical.path(declaration.location.path))
+            }
+        }
+        return paths
     }
 }

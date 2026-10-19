@@ -341,11 +341,11 @@ public struct IndexStoreLocator: Sendable {
                 projectShape: projectShape(at: projectPath)
             )
         }
-        let selected = existing.max { lhs, rhs in
-            let lhsDate = fileSystem.modificationDate(at: lhs) ?? .distantPast
-            let rhsDate = fileSystem.modificationDate(at: rhs) ?? .distantPast
-            return lhsDate == rhsDate ? lhs > rhs : lhsDate < rhsDate
-        } ?? existing[0]
+        // 최근성은 루트가 아니라 유닛이 쓰인 시각까지 본다(`storeRecency`). 비교마다 다시 stat 하지 않게 먼저 구한다.
+        let dated = existing.map { (path: $0, date: storeRecency(at: $0) ?? .distantPast) }
+        let selected = dated.max { lhs, rhs in
+            lhs.date == rhs.date ? lhs.path > rhs.path : lhs.date < rhs.date
+        }?.path ?? existing[0]
 
         // 이름만으로 맞은 디렉터리가 둘 이상이면 최근성으로 고르지 않는다. 그중 어느
         // 것도 이 프로젝트의 것이라고 밝히지 않았으므로, 고르는 순간 남의 인덱스로
@@ -359,6 +359,18 @@ public struct IndexStoreLocator: Sendable {
             )
         }
         return selected
+    }
+
+    /// 스토어가 마지막으로 쓰인 시각. 루트와 유닛 디렉터리(`v5/units`, `units`) 중 가장 늦은 시각이다.
+    ///
+    /// 루트의 수정 시각은 믿을 수 없다. SwiftPM 의 `.build/out` 처럼 스토어를 품은 디렉터리는 처음 만들어진
+    /// 날짜에 머물고 레코드는 `v5/units` 아래에 쌓인다. 후보 선택과 신선도 계산이 이 정의 하나를 쓴다. 둘이
+    /// 갈라지면 신선도는 오늘 쓴 유닛을 보는데 선택은 루트가 더 늦게 만들어진 낡은 스토어를 고른다.
+    /// 어느 것도 읽지 못하면 nil 이다.
+    public func storeRecency(at storePath: String) -> Date? {
+        [storePath, storePath + "/v5/units", storePath + "/units"]
+            .compactMap { fileSystem.modificationDate(at: $0) }
+            .max()
     }
 
     /// 프로젝트 루트가 어떤 빌드 진입점을 제공하는지.

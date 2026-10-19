@@ -226,28 +226,40 @@ extension CartographService {
         )
         let missing = Set(context.missingSourcePaths.map(fileSystem.canonicalPath))
         let unreadable = Set(context.unreadableSourcePaths.map(fileSystem.canonicalPath))
+        // 판정은 파일의 성질인데 한 파일에 정점이 수십 개다. 경로마다 한 번만 디스크에 묻고 정점은 조회만 한다.
+        var byPath: [String: RuntimeFreshness] = [:]
         return graph.sortedNodes.reduce(into: [:]) { result, node in
             guard let path = node.location?.path else {
                 result[node.id] = .unknownIndexDate
                 return
             }
-            let canonical = fileSystem.canonicalPath(path)
-            if missing.contains(canonical) || !fileSystem.fileExists(at: path) {
-                result[node.id] = .missingFile
+            if let known = byPath[path] {
+                result[node.id] = known
                 return
             }
-            if unreadable.contains(canonical) {
-                result[node.id] = .unreadableFile
-                return
-            }
-            guard let indexed = indexedDates[canonical],
-                  let modified = fileSystem.modificationDate(at: path)
-            else {
-                result[node.id] = .unknownIndexDate
-                return
-            }
-            result[node.id] = modified > indexed ? .sourceNewerThanIndex : .fresh
+            let freshness = runtimeFreshness(
+                ofFile: path, indexedDates: indexedDates, missing: missing, unreadable: unreadable
+            )
+            byPath[path] = freshness
+            result[node.id] = freshness
         }
+    }
+
+    /// 파일 하나의 런타임 신선도. 없는 파일 → 읽기 실패 → 인덱스 시각 비교 순서로 판정한다.
+    private func runtimeFreshness(
+        ofFile path: String,
+        indexedDates: [String: Date],
+        missing: Set<String>,
+        unreadable: Set<String>
+    ) -> RuntimeFreshness {
+        let fileSystem = environment.fileSystem
+        let canonical = fileSystem.canonicalPath(path)
+        if missing.contains(canonical) || !fileSystem.fileExists(at: path) { return .missingFile }
+        if unreadable.contains(canonical) { return .unreadableFile }
+        guard let indexed = indexedDates[canonical], let modified = fileSystem.modificationDate(at: path) else {
+            return .unknownIndexDate
+        }
+        return modified > indexed ? .sourceNewerThanIndex : .fresh
     }
 
     private static func encodedData<T: Encodable>(_ value: T) throws -> Data {

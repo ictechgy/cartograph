@@ -40,9 +40,14 @@ struct RuntimeDiscoveryIndex {
     let managedObjectClasses: Set<NodeID>
     let nsObjectClasses: Set<NodeID>
     let graphNodesByLocation: [SourceLocation: [GraphNode]]
+    /// 이름·정점별 선언 위치. 경계가 처음 이름으로 찾을 때 만들어, 이름 조회가 없는 해석은 값을 치르지 않는다.
+    private let names: DeclarationNameCache
+    /// 경계 해석이 술어를 적용한 선언 수를 알린다 — 테스트가 비용을 시간이 아니라 작업량으로 센다.
+    private let onExamine: ((Int) -> Void)?
 
     init(files: [RuntimeFileFacts], snapshot: IndexSnapshot, graph: CodeGraph,
-         freshness: [String: RuntimeFreshness]) {
+         freshness: [String: RuntimeFreshness], onExamine: ((Int) -> Void)? = nil) {
+        self.onExamine = onExamine
         self.graph = graph
         self.freshness = freshness
         graphNodesByLocation = Dictionary(grouping: graph.sortedNodes.filter { $0.location != nil }) { $0.location! }
@@ -60,6 +65,7 @@ struct RuntimeDiscoveryIndex {
         }
         declarationByID = Dictionary(declarations.map { ($0.node.id, $0) },
             uniquingKeysWith: { first, _ in first })
+        names = DeclarationNameCache(declarations)
         var managed = Set(snapshot.references.compactMap { reference -> NodeID? in
             guard reference.kind == .inheritance,
                   Self.isManagedObjectUSR(reference.targetUSR),
@@ -171,8 +177,7 @@ struct RuntimeDiscoveryIndex {
         guard let name = boundary.name else { return finding(boundary, .dynamic, source: source) }
         let kind: SymbolKind = boundary.kind == .protocolLookup ? .protocolType : .classType
         let targets = boundary.kind == .interfaceBuilderClass
-            ? declarations.filter { $0.node.kind == kind && matchesType(boundary.receiverTypeName ?? name, $0) }
-                .map(\.node.id)
+            ? typeDeclarations(named: boundary.receiverTypeName ?? name, kind: kind).map(\.node.id)
             : runtimeTypes(named: name, kind: kind)
         guard Set(targets).count == 1 else {
             return finding(boundary, targets.isEmpty ? .unresolved : .ambiguous, source: source,
@@ -245,9 +250,7 @@ struct RuntimeDiscoveryIndex {
         guard let name = boundary.receiverTypeName ?? boundary.name else {
             return finding(boundary, .unresolved, reason: "The Core Data entity has no represented class.")
         }
-        let matching = declarations.filter {
-            $0.node.kind == .classType && matchesType(name, $0)
-        }
+        let matching = typeDeclarations(named: name, kind: .classType)
         guard matching.count <= 1 else {
             return finding(boundary, .ambiguous, candidates: matching.map(\.node.id),
                 reason: "The represented class is ambiguous across indexed modules.")
@@ -298,15 +301,7 @@ struct RuntimeDiscoveryIndex {
             return finding(boundary, .unresolved, source: source,
                 reason: "A KVC override or higher-priority accessor changes key dispatch.")
         }
-        let properties = declarations.filter { declaration in
-            guard declaration.node.kind == .property,
-                  declaration.fact.attributes.contains(.objc),
-                  declaration.fact.objectiveCName == key,
-                  !declaration.fact.isStatic,
-                  let owner = graph.semanticParent(of: declaration.node.id), ancestors.contains(owner)
-            else { return false }
-            return true
-        }
+        let properties = kvcProperties(key: key, owners: ancestors)
         guard properties.count == 1, let property = properties.first else {
             return finding(boundary, properties.count > 1 ? .ambiguous : .unresolved, source: source,
                 candidates: properties.map(\.node.id),
@@ -386,7 +381,7 @@ struct RuntimeDiscoveryIndex {
     }
 
     private func kvcProperties(key: String, owners: Set<NodeID>) -> [Declaration] {
-        declarations.filter { declaration in
+        filtered(names.objectiveC(key)) { declaration in
             guard declaration.node.kind == .property,
                   declaration.fact.attributes.contains(.objc),
                   declaration.fact.objectiveCName == key,
@@ -424,7 +419,8 @@ struct RuntimeDiscoveryIndex {
             indexNames = ["value(forKeyPath:)"]
             objectiveCSelectors = ["valueForKeyPath:"]
         }
-        return declarations.contains { declaration in
+        let positions = names.members(indexNames: indexNames, objectiveCNames: objectiveCSelectors)
+        return containsDeclaration(at: positions) { declaration in
             guard declaration.node.kind == .method, !declaration.fact.isStatic,
                   let owner = graph.semanticParent(of: declaration.node.id), owners.contains(owner)
             else { return false }
@@ -450,7 +446,8 @@ struct RuntimeDiscoveryIndex {
             indexNames = ["set\(capitalized)(_:)", "setValue(_:forKey:)"]
             objectiveCSelectors = ["set\(capitalized):", "setValue:forKey:"]
         }
-        return declarations.contains { declaration in
+        let positions = names.members(indexNames: indexNames, objectiveCNames: objectiveCSelectors)
+        return containsDeclaration(at: positions) { declaration in
             guard !declaration.fact.isStatic,
                   let owner = graph.semanticParent(of: declaration.node.id)
             else { return false }
@@ -489,14 +486,7 @@ struct RuntimeDiscoveryIndex {
         }
         let name = selector ?? boundary.name
         guard direct != nil || name != nil else { return finding(boundary, .dynamic, source: source) }
-        let candidates = declarations.filter { declaration in
-            if boundary.kind == .interfaceBuilderOutlet {
-                return declaration.node.kind == .property && declaration.fact.objectiveCName == name
-            }
-            guard [.method, .initializer].contains(declaration.node.kind) else { return false }
-            if let direct { return declaration.node.id == direct.node.id }
-            return declaration.fact.objectiveCName != nil && declaration.fact.objectiveCName == name
-        }
+        let candidates = memberCandidates(boundary, name: name, direct: direct)
         let receivers = receiverTypes(boundary)
         guard receivers.count == 1, let receiver = receivers.first else {
             return finding(boundary, receivers.count > 1 ? .ambiguous : .unresolved, source: source,
@@ -543,7 +533,47 @@ struct RuntimeDiscoveryIndex {
             // 틀린 타입 힌트를 이름으로 덮어 쓰지 않는다.
             if !refs.isEmpty { return Array(ids).sorted() }
         }
-        return declarations.filter { $0.node.kind == .classType && matchesType(hint, $0) }.map(\.node.id)
+        return typeDeclarations(named: hint, kind: .classType).map(\.node.id)
+    }
+
+    /// member 의 후보: outlet 은 같은 ObjC 이름의 프로퍼티, 나머지는 정확한 참조 대상이나 같은 ObjC 이름의
+    /// 메서드·이니셜라이저다. 이름 없는 outlet 은 ObjC 이름 없는 프로퍼티 전부라 색인 없이 훑는다.
+    private func memberCandidates(_ boundary: RuntimeBoundary, name: String?, direct: Declaration?) -> [Declaration] {
+        let callable: (Declaration) -> Bool = { [.method, .initializer].contains($0.node.kind) }
+        if boundary.kind == .interfaceBuilderOutlet {
+            guard let name else {
+                return filtered(Array(declarations.indices)) {
+                    $0.node.kind == .property && $0.fact.objectiveCName == nil
+                }
+            }
+            return filtered(names.objectiveC(name)) {
+                $0.node.kind == .property && $0.fact.objectiveCName == name
+            }
+        }
+        if let direct {
+            return filtered(names.node(direct.node.id)) { callable($0) && $0.node.id == direct.node.id }
+        }
+        guard let name else { return [] }
+        return filtered(names.objectiveC(name)) { callable($0) && $0.fact.objectiveCName == name }
+    }
+
+    /// 이름이 qualifiedName·모듈 한정 이름·ObjC 이름 가운데 하나와 같은 `kind` 선언.
+    private func typeDeclarations(named name: String, kind: SymbolKind) -> [Declaration] {
+        filtered(names.type(name)) { $0.node.kind == kind && matchesType(name, $0) }
+    }
+
+    /// 후보 위치의 선언 가운데 술어를 만족하는 것. 위치가 오름차순이라 선언 전체를 거른 결과와 순서가 같다.
+    private func filtered(_ positions: [Int], where isIncluded: (Declaration) -> Bool) -> [Declaration] {
+        onExamine?(positions.count)
+        return positions.compactMap { position in
+            let declaration = declarations[position]
+            return isIncluded(declaration) ? declaration : nil
+        }
+    }
+
+    private func containsDeclaration(at positions: [Int], where predicate: (Declaration) -> Bool) -> Bool {
+        onExamine?(positions.count)
+        return positions.contains { predicate(declarations[$0]) }
     }
 
     private func matchesType(_ name: String, _ declaration: Declaration) -> Bool {
@@ -607,7 +637,7 @@ struct RuntimeDiscoveryIndex {
 
     /// 실행 수집도 동일한 선언 신원 색인으로 런타임 이름을 대조한다.
     func runtimeTypes(named name: String, kind: SymbolKind = .classType) -> [NodeID] {
-        declarations.filter { declaration in
+        filtered(names.type(name)) { declaration in
             guard declaration.node.kind == kind else { return false }
             if kind == .protocolType, declaration.fact.objectiveCName == nil,
                !declaration.node.attributes.contains(.objc),
@@ -620,7 +650,7 @@ struct RuntimeDiscoveryIndex {
     /// 실제 수신자 클래스가 알려진 selector는 클래스/인스턴스 메서드를 섞지 않는다.
     func runtimeMethods(named selector: String, receiver: NodeID, isClass: Bool) -> [NodeID] {
         let distances = ancestorDistances(of: receiver)
-        let matches = declarations.filter { declaration in
+        let matches = filtered(names.objectiveC(selector)) { declaration in
             guard [.method, .initializer].contains(declaration.node.kind),
                   declaration.fact.objectiveCName == selector, declaration.fact.isStatic == isClass,
                   let owner = graph.semanticParent(of: declaration.node.id) else { return false }
@@ -831,6 +861,64 @@ struct RuntimeDiscoveryIndex {
             return graph.node(owner)?.kind == .classType
         }
         return isClassConstruction ? location : nil
+    }
+}
+
+extension RuntimeDiscoveryIndex {
+    /// 런타임 이름 조회가 쓰는 선언 위치 색인. 값은 `declarations` 의 위치를 오름차순으로 담는다.
+    ///
+    /// 경계마다 선언 전체를 훑고 원소를 복사하던 조회가 같은 이름의 후보 몇 개만 본다. 후보에는 원래 술어를
+    /// 그대로 다시 적용하므로 결과와 순서는 선언 전체를 거른 것과 같다. 색인은 처음 쓸 때 하나씩 따로 만든다 —
+    /// 경계가 몇 개뿐이거나 이름 조회가 없는 해석이 쓰지 않는 색인의 값을 치르지 않는다. 해석 한 번 안에서만
+    /// 쓰는 값이다.
+    final class DeclarationNameCache {
+        private let declarations: [Declaration]
+        private lazy var byObjectiveCName = Self.positions(declarations) { $0.fact.objectiveCName }
+        private lazy var byQualifiedName = Self.positions(declarations) { $0.fact.qualifiedName }
+        private lazy var byIndexName = Self.positions(declarations) { $0.fact.indexName }
+        private lazy var byNode = Self.positions(declarations) { $0.node.id }
+
+        init(_ declarations: [Declaration]) {
+            self.declarations = declarations
+        }
+
+        /// ObjC 이름이 `name` 인 선언.
+        func objectiveC(_ name: String) -> [Int] { byObjectiveCName[name] ?? [] }
+
+        /// 같은 정점의 선언.
+        func node(_ id: NodeID) -> [Int] { byNode[id] ?? [] }
+
+        /// qualifiedName·`모듈.qualifiedName`·ObjC 이름 가운데 하나가 `name` 인 선언.
+        ///
+        /// 모듈 한정 이름은 선언마다 이어 붙여 두지 않고, 점 뒤의 꼬리마다 qualifiedName 으로 찾는다. 앞쪽이 모듈
+        /// 이름과 맞는지는 부르는 쪽의 술어가 다시 본다.
+        func type(_ name: String) -> [Int] {
+            var lists = [byQualifiedName[name] ?? [], byObjectiveCName[name] ?? []]
+            for dot in name.indices where name[dot] == "." {
+                lists.append(byQualifiedName[String(name[name.index(after: dot)...])] ?? [])
+            }
+            return Self.union(lists)
+        }
+
+        /// 인덱스 이름이나 ObjC 이름이 주어진 이름 가운데 하나인 선언.
+        func members(indexNames: Set<String>, objectiveCNames: Set<String>) -> [Int] {
+            Self.union(indexNames.map { byIndexName[$0] ?? [] } + objectiveCNames.map { byObjectiveCName[$0] ?? [] })
+        }
+
+        private static func union(_ lists: [[Int]]) -> [Int] {
+            Array(Set(lists.joined())).sorted()
+        }
+
+        private static func positions<Key: Hashable>(
+            _ declarations: [Declaration], key: (Declaration) -> Key?
+        ) -> [Key: [Int]] {
+            var positions: [Key: [Int]] = [:]
+            for position in declarations.indices {
+                guard let value = key(declarations[position]) else { continue }
+                positions[value, default: []].append(position)
+            }
+            return positions
+        }
     }
 }
 

@@ -109,6 +109,8 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
     private var genericParametersByType: [String: Set<String>] = [:]
     /// 타입 사슬의 마지막 구성 요소들. "프로젝트가 이 이름의 타입을 선언했는가"를 사슬 전체를 훑지 않고 답한다.
     private(set) var typeLastNames: Set<String> = []
+    /// 마지막 구성 요소 → 그 이름으로 끝나는 타입 사슬. URL 식의 `Type.member` 를 찾을 때 사슬 전체를 훑지 않는다.
+    private(set) var typeChainsByLastName: [String: Set<String>] = [:]
     /// `타입 사슬\0함수 이름` → 오버로드별 외부 레이블(레이블 없음은 nil). 최상위 함수는 빈 사슬이다.
     public private(set) var functions: [String: [[String?]]] = [:]
     /// 타입 사슬 → 명시적 이니셜라이저의 외부 레이블들.
@@ -129,17 +131,22 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
     var typeAliases: [String: [HTTPTypeAliasDeclaration]] = [:]
     var associatedTypes: [String: [HTTPAssociatedTypeDeclaration]] = [:]
     var typeConditionality: [String: [Bool]] = [:]
+    /// `declarations(source:path:)` 로 표면을 만든 파일 경로. 스캔은 여기 있는 파일의 선언을 다시 합치지 않는다.
+    /// 경로 없이 만든 표면은 위치로 파일을 가를 수 없어 기록하지 않는다.
+    var sourcePaths: Set<String> = []
 
     public init() {}
 
     /// 여러 파일의 표면을 합친다. 순서와 무관하게 같은 값이 되도록 집합과 목록만 더한다.
     public mutating func merge(_ other: HTTPDeclarationSurface) {
+        sourcePaths.formUnion(other.sourcePaths)
         typeChains.formUnion(other.typeChains)
         primaryTypeKinds.merge(other.primaryTypeKinds) { $0.union($1) }
         classInheritanceClauses.merge(other.classInheritanceClauses) { $0.union($1) }
         primaryInitializerOwners.formUnion(other.primaryInitializerOwners)
         genericParametersByType.merge(other.genericParametersByType) { $0.union($1) }
         typeLastNames.formUnion(other.typeLastNames)
+        typeChainsByLastName.merge(other.typeChainsByLastName) { $0.union($1) }
         functions.merge(other.functions) { $0 + $1 }
         initializers.merge(other.initializers) { $0 + $1 }
         initializerSignatures.merge(other.initializerSignatures) { $0 + $1 }
@@ -205,7 +212,10 @@ public struct HTTPDeclarationSurface: Hashable, Sendable {
     mutating func addType(_ chain: [String], isConditional: Bool, isExtension: Bool = false) {
         let key = chain.joined(separator: ".")
         typeChains.insert(key)
-        if let last = chain.last { typeLastNames.insert(last) }
+        if let last = chain.last {
+            typeLastNames.insert(last)
+            typeChainsByLastName[last, default: []].insert(key)
+        }
         if !isExtension || typeConditionality[key, default: []].isEmpty {
             typeConditionality[key, default: []].append(isConditional)
         }
@@ -489,16 +499,36 @@ public struct HTTPRouteCallScanner: Sendable {
             converter: SourceLocationConverter(fileName: path, tree: tree), path: path
         ))
         collector.walk(tree)
-        return collector.surface
+        var surface = collector.surface
+        if !path.isEmpty { surface.sourcePaths.insert(path) }
+        return surface
     }
 
     /// 파일 하나에서 route-call 을 찾는다.
     ///
-    /// - Parameter resolvedValues: 값 흐름 분석이 증명한 식 위치 → 문자열. 파일 밖 상수를 푼다.
+    /// - Parameters:
+    ///   - resolvedValues: 값 흐름 분석이 증명한 식 위치 → 문자열. 파일 밖 상수를 푼다.
+    ///   - declaredPath: `declarations(source:path:)` 로 이 소스의 표면을 합칠 때 쓴 경로. 값 흐름 재스캔처럼
+    ///     `path` 를 다른 표기(실제 경로)로 줄 때 넘긴다. 없으면 `path` 로 찾는다.
     public func scan(
         source: String, path: String, isTestSource: Bool = false,
-        resolvedValues: [CartographCore.SourceLocation: String] = [:]
+        resolvedValues: [CartographCore.SourceLocation: String] = [:], declaredPath: String? = nil
     ) -> RouteCallScanResult {
+        let collector = collect(
+            source: source, path: path, isTestSource: isTestSource, resolvedValues: resolvedValues,
+            declaredPath: declaredPath
+        )
+        return RouteCallScanResult(
+            calls: collector.calls, counts: collector.counts, callsByWrapper: collector.callsByWrapper,
+            routerTables: collector.routerTables, routerRecipes: collector.routerRecipes
+        )
+    }
+
+    /// 파일 하나를 훑은 방문자. `scan` 의 본체이고, 테스트는 이것으로 스캔 비용(쓴 표면·준수 조회 수)을 센다.
+    func collect(
+        source: String, path: String, isTestSource: Bool = false,
+        resolvedValues: [CartographCore.SourceLocation: String] = [:], declaredPath: String? = nil
+    ) -> HTTPRouteCallCollector {
         let parsed = Parser.parse(source: source)
         // `a = b` 와 `a + b` 를 읽으려면 연산자를 접어야 한다. 접지 못한 식은 그 식만 못 읽는다.
         let tree = OperatorTable.standardOperators.foldAll(parsed) { _ in }.as(SourceFileSyntax.self) ?? parsed
@@ -507,21 +537,31 @@ public struct HTTPRouteCallScanner: Sendable {
         bindings.walk(tree)
         let locals = HTTPLocalCollector()
         locals.walk(tree)
-        // 이 파일의 선언은 위층이 모은 표면에 이미 있을 수 있다. 합쳐도 시그니처 목록이 겹칠 뿐이라
-        // 판정은 같고, 단독 파일을 넘긴 호출자(테스트·임베더)도 같은 답을 받는다.
-        let local = HTTPSurfaceCollector(recorder: HTTPRouterSurfaceRecorder(converter: converter, path: path))
-        local.walk(tree)
-        var surface = self.surface
-        surface.merge(local.surface)
         let collector = HTTPRouteCallCollector(
             wrappers: wrappers, converter: converter, bindings: bindings, locals: locals,
-            surface: surface, path: path, isTestSource: isTestSource
+            surface: scanningSurface(tree, converter: converter, path: path, declaredPath: declaredPath),
+            path: path, isTestSource: isTestSource
         )
         collector.walk(tree)
-        return RouteCallScanResult(
-            calls: collector.calls, counts: collector.counts, callsByWrapper: collector.callsByWrapper,
-            routerTables: collector.routerTables, routerRecipes: collector.routerRecipes
-        )
+        return collector
+    }
+
+    /// 이 파일을 훑을 때 쓸 선언 표면.
+    ///
+    /// 위층(`routes`)은 모든 파일의 표면을 먼저 합쳐 넘기므로, 그렇게 합친 파일은 프로젝트 표면을 그대로 쓴다.
+    /// 다시 합치면 사전 10여 개를 복사해 파일마다 프로젝트 표면 크기만큼 들고, 전체가 파일 수의 제곱으로 는다.
+    /// 표면에 없는 파일(단독 파일을 넘긴 테스트·임베더)은 이 파일의 선언을 더한다. 이미 합친 파일을 다시 합쳐도
+    /// 시그니처 목록이 겹칠 뿐이라 판정은 같다. 단, 다른 경로 표기로 합치면 위치가 든 선언(enum case·정적 멤버·
+    /// typealias)이 두 벌이 되어 유일성 검사가 같은 파일 경로를 거부한다. 재스캔은 그래서 합칠 때의 경로를 넘긴다.
+    private func scanningSurface(
+        _ tree: SourceFileSyntax, converter: SourceLocationConverter, path: String, declaredPath: String?
+    ) -> HTTPDeclarationSurface {
+        guard !surface.sourcePaths.contains(declaredPath ?? path) else { return surface }
+        let local = HTTPSurfaceCollector(recorder: HTTPRouterSurfaceRecorder(converter: converter, path: path))
+        local.walk(tree)
+        var merged = surface
+        merged.merge(local.surface)
+        return merged
     }
 }
 

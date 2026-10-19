@@ -170,6 +170,52 @@ struct RuntimeServiceTests {
         #expect(oldChecked.limitations.contains { $0.hasPrefix("stale-runtime-observations:") && $0.contains("executable") })
     }
 
+    @Test("한 파일에 선언이 많아도 런타임 신선도는 파일마다 한 번만 디스크에 묻는다")
+    func freshnessQueriesEachFileOnce() throws {
+        // 판정은 파일의 성질이다. 정점마다 물으면 선언 수만큼 같은 존재 확인·시각 조회를 되풀이한다.
+        let few = try freshnessQueries(extraDeclarations: 0)
+        let many = try freshnessQueries(extraDeclarations: 30)
+        #expect(many.existenceChecks == few.existenceChecks)
+        #expect(many.dateQueries == few.dateQueries)
+        // 같은 파일의 정점은 모두 같은 판정을 받는다. 계약의 양 끝이 같은 파일에 있다.
+        #expect(many.binding?.sourceFreshness == .sourceNewerThanIndex)
+        #expect(many.binding?.targetFreshness == .sourceNewerThanIndex)
+        #expect(few.binding?.targetFreshness == .sourceNewerThanIndex)
+    }
+
+    private func freshnessQueries(extraDeclarations: Int) throws
+        -> (existenceChecks: Int, dateQueries: Int, binding: RuntimeBinding?) {
+        let base = InMemoryFileSystem(files: [
+            "/p/Runtime.swift": "func caller() {}\nfunc target() {}\n", "/p/RuntimeProbe": "binary",
+        ])
+        base.setModificationDate(Date(timeIntervalSinceReferenceDate: 101), for: "/p/Runtime.swift")
+        base.setModificationDate(Date(timeIntervalSinceReferenceDate: 100), for: "/p/RuntimeProbe")
+        let fileSystem = QueryCountingRuntimeFileSystem(base: base)
+        var builder = SnapshotBuilder(path: "/p/Runtime.swift")
+        builder.symbol("caller", name: "caller()", kind: .function, line: 1)
+        builder.symbol("TargetType", kind: .classType, line: 2)
+        builder.symbol(
+            "target", name: "target()", kind: .method, line: 3, parent: "TargetType", attributes: [.objc]
+        )
+        for index in 0..<extraDeclarations {
+            builder.symbol("helper\(index)", name: "helper\(index)()", kind: .function, line: 4 + index)
+        }
+        var snapshot = builder.build()
+        snapshot.indexedFileDates = ["/p/Runtime.swift": Date(timeIntervalSinceReferenceDate: 100)]
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        let service = CartographService(configuration: configuration, environment: .init(
+            fileSystem: fileSystem, indexProviderOverride: StaticIndexProvider(snapshot)
+        ))
+        let contracts = RuntimeContractsDocument(contracts: [
+            .init(id: "open", source: "caller", target: "target", mechanism: .selector,
+                  requiredScenarios: ["launch"], expectedValue: "opened"),
+        ])
+        let plan = try service.runtimePlan(contracts: contracts, executablePath: "/p/RuntimeProbe")
+        let counts = fileSystem.queries(of: "/p/Runtime.swift")
+        return (counts.existenceChecks, counts.dateQueries, plan.bindings.first)
+    }
+
     @Test("결과 평가 중 입력이 바뀌면 계획을 검증된 것으로 반환하지 않는다")
     func rejectsInputChangedDuringFinalVerification() throws {
         let base = InMemoryFileSystem(files: [
@@ -357,5 +403,39 @@ private final class MutatingRuntimeFileSystem: FileSystem, @unchecked Sendable {
         try base.contentsOfDirectory(at: path)
     }
     func modificationDate(at path: String) -> Date? { base.modificationDate(at: path) }
+    var currentDirectoryPath: String { base.currentDirectoryPath }
+}
+
+/// 경로별 존재 확인과 수정 시각 조회를 세는 파일 시스템. 판정이 정점마다 디스크를 묻는지 드러낸다.
+private final class QueryCountingRuntimeFileSystem: FileSystem, @unchecked Sendable {
+    private let base: InMemoryFileSystem
+    private let lock = NSLock()
+    private var existenceChecks: [String: Int] = [:]
+    private var dateQueries: [String: Int] = [:]
+
+    init(base: InMemoryFileSystem) {
+        self.base = base
+    }
+
+    func queries(of path: String) -> (existenceChecks: Int, dateQueries: Int) {
+        lock.withLock { (existenceChecks[path, default: 0], dateQueries[path, default: 0]) }
+    }
+
+    func realPath(at path: String) throws -> String { try base.realPath(at: path) }
+    func fileExists(at path: String) -> Bool {
+        lock.withLock { existenceChecks[path, default: 0] += 1 }
+        return base.fileExists(at: path)
+    }
+    func directoryExists(at path: String) -> Bool { base.directoryExists(at: path) }
+    func readData(at path: String) throws -> Data { try base.readData(at: path) }
+    func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
+    func removeItem(at path: String) throws { try base.removeItem(at: path) }
+    func contentsOfDirectory(at path: String) throws -> [String] {
+        try base.contentsOfDirectory(at: path)
+    }
+    func modificationDate(at path: String) -> Date? {
+        lock.withLock { dateQueries[path, default: 0] += 1 }
+        return base.modificationDate(at: path)
+    }
     var currentDirectoryPath: String { base.currentDirectoryPath }
 }

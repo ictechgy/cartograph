@@ -971,6 +971,20 @@ struct ModuleUsageMappingTests {
         #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:99A") == .deferred)
     }
 
+    @Test("ASCII 가 아닌 숫자나 모듈 이름이 든 USR 도 죽지 않고 바이트 단위로 판정한다")
+    func nonASCIIUSRsAreJudgedByBytesWithoutCrashing() {
+        // `Character.isNumber` 는 `½`·`٣` 에도 참인데 `Int(String(_:))` 는 nil 이라 강제 언래핑이 죽었다.
+        // 컴파일러가 만드는 Swift USR 은 길이·모듈 이름 모두 ASCII 다. 조작된 스토어 하나로 분석이 죽으면 안 된다.
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:½x") == .implicit)
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:٣Foo") == .implicit)
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:1٣abc") == .deferred)
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:1\u{301}2Foo") == .deferred)
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:4Café3FooV") == .deferred)
+        // 길이 숫자가 Int 를 넘칠 만큼 길어도 남은 길이를 넘는 순간 귀속을 보류한다.
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:" + String(repeating: "9", count: 40) + "A") == .deferred)
+        #expect(IndexStoreMapping.moduleEvidence(ofUSR: "s:0V") == .module(""))
+    }
+
     @Test("참조 발생의 모듈을 파일별로 모으고 발생 위치의 타깃을 소유 모듈로 둔다")
     func collectsReferencedModulesPerFile() {
         let occurrences = [
@@ -994,6 +1008,38 @@ struct ModuleUsageMappingTests {
         // 파일별로 갈라 모은다 — B의 참조가 A에 섞이면 안 된다.
         // B에는 관계 대상이 없으므로 참조한 Foundation만 올라간다.
         #expect(snapshot.fileModuleUsages["/p/B.swift"]?.referencedModules == ["Foundation"])
+    }
+
+    @Test("떨어져 나타난 같은 파일의 근거도 합치고 소유 모듈은 그 파일의 컴파일 모듈 전체로 정한다")
+    func usageAccumulatesAcrossInterleavedRuns() {
+        // 발생은 레코드 단위로 이어서 오지만 공유 소스는 다른 모듈의 레코드로 떨어져 다시 나온다.
+        // 모듈 이름이 비어 모듈이 박힌 참조로만 생긴 항목과, 귀속 보류뿐인 파일의 항목 없음도 그대로여야 한다.
+        let occurrences = [
+            occurrence(symbol("s:10Foundation4DateV", name: "Date"), roles: .reference,
+                       location: location("/p/Shared.swift", module: "Alpha")),
+            occurrence(symbol("s:5Alpha1AV", name: "A"), roles: .definition,
+                       location: location("/p/Only.swift", module: "Alpha")),
+            occurrence(symbol("s:7Network7SessionC", name: "Session"), roles: .reference,
+                       location: location("/p/Only.swift", module: "Alpha")),
+            occurrence(symbol("s:7Combine9PublisherP", name: "Publisher"), roles: .reference,
+                       location: location("/p/Shared.swift", module: "Beta"),
+                       relations: [SymbolRelation(symbol: symbol("c:objc(cs)Missing", kind: .class),
+                                                  roles: .containedBy)]),
+            occurrence(symbol("s:3Kit3BoxV", name: "Box"), roles: .reference,
+                       location: location("/p/Moduleless.swift", module: "")),
+            occurrence(symbol("c:objc(cs)Unknown", name: "Unknown", kind: .class), roles: .reference,
+                       location: location("/p/DeferredOnly.swift", module: "")),
+        ]
+        let usages = IndexStoreProvider.snapshot(from: occurrences, includeExternalSymbols: false).fileModuleUsages
+
+        #expect(usages["/p/Shared.swift"] == FileModuleUsage(
+            owningModule: nil, referencedModules: ["Combine", "Foundation"], hasUnattributedReferences: true))
+        #expect(usages["/p/Only.swift"] == FileModuleUsage(
+            owningModule: "Alpha", referencedModules: ["Network"], hasUnattributedReferences: false))
+        #expect(usages["/p/Moduleless.swift"] == FileModuleUsage(
+            owningModule: nil, referencedModules: ["Kit"], hasUnattributedReferences: false))
+        #expect(usages["/p/DeferredOnly.swift"] == nil)
+        #expect(usages.count == 3)
     }
 
     @Test("선언 발생 자체는 사용으로 세지 않는다")

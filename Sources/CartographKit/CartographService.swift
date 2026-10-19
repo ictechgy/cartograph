@@ -171,17 +171,36 @@ public struct CartographService: Sendable {
         in context: AnalysisContext,
         findingTestOnlyCode: Bool = false
     ) -> (graph: CodeGraph, report: UnusedCodeReport) {
+        unusedCode(in: context, findingTestOnlyCode: findingTestOnlyCode, computingSuperfluousIgnores: true)
+    }
+
+    /// `unusedCode(in:findingTestOnlyCode:)` 와 같되, 불필요한 무시 주석 판정을 할지 고른다.
+    ///
+    /// 그 판정은 무시 단위마다 도달성 탐색을 다시 도는 분석에서 가장 비싼 단계이고, 결과를 읽는 곳은
+    /// `dead` 뿐이다. check·baseline·fix·explain 은 끈다. 다른 보고는 켜고 끄는 것과 무관하게 같다.
+    func unusedCode(
+        in context: AnalysisContext,
+        findingTestOnlyCode: Bool = false,
+        computingSuperfluousIgnores: Bool
+    ) -> (graph: CodeGraph, report: UnusedCodeReport) {
         let graph = context.buildGraph(level: .symbol).graph
-        return (graph, analyzeUnusedCode(in: context, graph: graph, findingTestOnlyCode: findingTestOnlyCode))
+        let report = analyzeUnusedCode(
+            in: context, graph: graph, findingTestOnlyCode: findingTestOnlyCode,
+            computingSuperfluousIgnores: computingSuperfluousIgnores
+        )
+        return (graph, report)
     }
 
     /// dead는 질의와 같은 도달 근거 위에서 전체 발견 목록을 계산한다.
     private func analyzeUnusedCode(
-        in context: AnalysisContext, graph: CodeGraph, findingTestOnlyCode: Bool = false
+        in context: AnalysisContext, graph: CodeGraph, findingTestOnlyCode: Bool = false,
+        computingSuperfluousIgnores: Bool
     ) -> UnusedCodeReport {
         ReachabilityAnalyzer(
             policy: makeRetentionPolicy(externalRetentions: context.externalRetentionIndex),
-            options: .init(findsTestOnlyCode: findingTestOnlyCode)
+            options: .init(
+                findsTestOnlyCode: findingTestOnlyCode, computesSuperfluousIgnores: computingSuperfluousIgnores
+            )
         ).analyze(graph: graph, snapshot: context.snapshot)
     }
 
@@ -213,7 +232,7 @@ public struct CartographService: Sendable {
         of subject: String,
         in context: AnalysisContext
     ) -> (graph: CodeGraph, lookup: NodeLookup, explanation: ReachabilityExplanation?) {
-        let (graph, report) = unusedCode(in: context)
+        let (graph, report) = unusedCode(in: context, computingSuperfluousIgnores: false)
         let lookup = GraphQueryIndex(graph: graph).resolve(subject)
         guard case let .found(node) = lookup else { return (graph, lookup, nil) }
         return (graph, lookup, report.explain(node.id, in: graph))
@@ -343,7 +362,9 @@ public struct CartographService: Sendable {
     ///   않는다.
     public func detectUnusedCode(reportingTestOnlyCode: Bool = false) throws -> CommandOutcome {
         let context = try loadContext()
-        let (graph, report) = unusedCode(in: context, findingTestOnlyCode: reportingTestOnlyCode)
+        let (graph, report) = unusedCode(
+            in: context, findingTestOnlyCode: reportingTestOnlyCode, computingSuperfluousIgnores: true
+        )
         let limitations = analysisLimitations(context: context, symbolGraph: graph)
         return try finish(
             AnalysisDiagnostics.diagnostics(for: report)
@@ -447,11 +468,26 @@ public struct CartographService: Sendable {
                 return CommandOutcome(output: Self.printableLines(["\(node.qualifiedName) is not part of any cycle."]))
             }
             let lines = involved.flatMap { Self.describeCycle($0, for: node.id, in: graph) }
+            let judgment = try baselineJudgment(of: involved, in: graph)
             return CommandOutcome(
                 output: Self.printableLines(["\(node.qualifiedName) is part of \(involved.count) cycle(s):"] + lines),
-                findingCount: involved.count
+                findingCount: judgment.findingCount,
+                suppressedCount: judgment.suppressedCount
             )
         }
+    }
+
+    /// 설명할 순환 가운데 베이스라인이 억제하지 않은 수와 억제한 수.
+    ///
+    /// 베이스라인이 억제한 순환을 `--explain` 만 다시 살려 내면, 같은 베이스라인인데 `cycles --strict` 는
+    /// 0 으로, `cycles --explain --strict` 는 1 로 끝난다. `explainRetention` 처럼 설명은 그대로 두고
+    /// 판정만 맞춘다. 지문이 같아야 하므로 진단은 `detectCycles` 와 같은 변환으로 만든다.
+    private func baselineJudgment(
+        of cycles: [DependencyCycle], in graph: CodeGraph
+    ) throws -> (findingCount: Int, suppressedCount: Int) {
+        let diagnostics = AnalysisDiagnostics.diagnostics(for: cycles, in: graph)
+        let reported = try loadBaseline()?.filtering(diagnostics) ?? diagnostics
+        return (reported.count, diagnostics.count - reported.count)
     }
 
     /// 특정 정점이 왜 그 레이어에 속하는지, 어떤 규칙이 걸리는지 설명한다.
@@ -600,8 +636,10 @@ public struct CartographService: Sendable {
     /// 이름 하나가 틀렸다고 마흔둘의 답을 버리게 하지 않는다.
     public func queryBatch(symbols: [String], depth: Int = 1, limit: Int = 50) throws -> CommandOutcome {
         let session = try makeQuerySession(subjects: symbols)
+        // 같은 이름의 notFound 추천은 이 배치 안에서 한 번만 계산한다. 답의 순서와 중복은 그대로다.
+        var suggestions: [String: [GraphNode]] = [:]
         let results = try symbols.map {
-            try queryDocument(symbol: $0, depth: depth, limit: limit, in: session)
+            try queryDocument(symbol: $0, depth: depth, limit: limit, in: session, suggestions: &suggestions)
         }
         let text = try measureQueryPhase(.serialization, observer: environment.queryPhaseObserver) {
             try Self.encodeSortedJSON(SymbolQueryBatchDocument(results: results))
@@ -660,13 +698,15 @@ public struct CartographService: Sendable {
         var session = try measureQueryPhase(.graphQuerySetup, observer: environment.queryPhaseObserver) {
             let graph = context.buildGraph(level: .symbol).graph
             let baseline = try loadBaseline()
+            // 필터는 만들 때마다 기준 경로 표기를 파일 시스템에 묻는다. 진단마다 만들지 않는다.
+            let pathFilter = configuration.pathFilter
             return QuerySession(
                 graph: graph,
                 lookup: GraphQueryIndex(graph: graph),
                 foundFacts: nil,
                 limitations: analysisLimitations(context: context, symbolGraph: graph),
                 localFunctionDiagnostics: LocalFunctionDiagnostics.presenting(
-                    context.localFunctionDiagnostics.filter { configuration.pathFilter.allows($0.location.path) }
+                    context.localFunctionDiagnostics.filter { pathFilter.allows($0.location.path) }
                 ),
                 baselineFingerprints: baseline.map { Set($0.fingerprints) } ?? [],
                 foundFactsBuildCount: 0
@@ -709,6 +749,18 @@ public struct CartographService: Sendable {
         limit: Int,
         in session: QuerySession
     ) throws -> SymbolQueryDocument {
+        var suggestions: [String: [GraphNode]] = [:]
+        return try queryDocument(symbol: subject, depth: depth, limit: limit, in: session, suggestions: &suggestions)
+    }
+
+    /// 배치가 나눠 쓰는 notFound 추천 메모와 함께 답한다. 같은 이름을 다시 물으면 추천을 다시 계산하지 않는다.
+    func queryDocument(
+        symbol subject: String,
+        depth: Int,
+        limit: Int,
+        in session: QuerySession,
+        suggestions: inout [String: [GraphNode]]
+    ) throws -> SymbolQueryDocument {
         try measureQueryPhase(.answer, observer: environment.queryPhaseObserver) {
             let graph = session.graph
             // `unusedCode` 는 설정과 무관하게 항상 심볼 레벨로 만든다. 여기서 설정값을
@@ -724,7 +776,7 @@ public struct CartographService: Sendable {
                 // 비슷한 이름이 없으면 키 자체를 만들지 않는다 — 빈 배열은
                 // "추천이 비었다"는 매번 붙는 말이 된다.
                 let similar = Self.candidates(
-                    session.lookup.similarCandidates(to: subject),
+                    session.lookup.similarCandidates(to: subject, memo: &suggestions),
                     in: graph
                 )
                 return SymbolQueryDocument(
@@ -919,9 +971,9 @@ public struct CartographService: Sendable {
         // 스토어를 품고 있는 상위 디렉터리를 가리키는 경우, 루트는 처음 만들어진
         // 날짜 그대로이고 실제 레코드는 `v5/units` 아래에 쌓인다. 실제로 이 저장소에서
         // 루트는 이틀 전, `v5/units` 는 방금이었다. 루트만 보면 매번 "인덱스가
-        // 낡았다"고 알리게 되고, 매번 붙는 경보는 읽히지 않는다.
-        let markers = [storePath, storePath + "/v5/units", storePath + "/units"]
-        return markers.compactMap { environment.fileSystem.modificationDate(at: $0) }.max()
+        // 낡았다"고 알리게 되고, 매번 붙는 경보는 읽히지 않는다. 스토어를 고를 때와
+        // 같은 정의를 써야 고른 스토어와 신선도의 기준 시각이 어긋나지 않는다.
+        return locator.storeRecency(at: storePath)
     }
 
     private static func describe(
@@ -1490,7 +1542,8 @@ public struct CartographService: Sendable {
         // sarif/checkstyle/xcode/github-actions 는 진단을 담는 형식이지 지표표를 담는 형식이
         // 아니다. 예전에는 이 형식들이 지표 JSON 을 그대로 받아, 확장자만 `.sarif` 인
         // 코드 스캐닝이 거부하는 문서가 나왔다.
-        let relativeReported = reported.map { $0.relative(toBaseVariants: PathFilter.variants(of: projectPath)) }
+        let baseVariants = PathFilter.variants(of: projectPath)
+        let relativeReported = reported.map { $0.relative(toBaseVariants: baseVariants) }
         let output: String = switch configuration.reportFormat {
         case .json:
             try renderer.renderJSON(
@@ -1564,17 +1617,31 @@ public struct CartographService: Sendable {
     ///
     /// 지표 임계값 위반도 함께 담는다. `metrics` 는 베이스라인을 적용하는데
     /// `baseline` 이 그것을 기록하지 못하면 영원히 억제할 수 없는 진단이 생긴다.
+    /// 순환도 같은 이유로 베이스라인을 적용하는 레벨마다 거둔다(`baselineCycleDiagnostics(in:)`).
     public func collectAllDiagnostics() throws -> [Diagnostic] {
         let context = try loadContext()
-        let (moduleGraph, foundCycles) = cycles(in: context)
-        let (_, unused) = unusedCode(in: context)
+        let (_, unused) = unusedCode(in: context, computingSuperfluousIgnores: false)
         let (_, metricValues, _) = metrics(in: context)
         let (_, violations, _) = try layerViolations(in: context)
 
-        return AnalysisDiagnostics.diagnostics(for: foundCycles, in: moduleGraph)
+        return baselineCycleDiagnostics(in: context)
             + AnalysisDiagnostics.diagnostics(for: unused)
             + AnalysisDiagnostics.diagnostics(for: violations)
             + AnalysisDiagnostics.diagnostics(for: metricValues, thresholds: configuration.thresholds)
+    }
+
+    /// `check` 의 모듈·타입 순환과 `cycles` 의 설정 레벨 순환. 같은 지문은 한 번만 담는다.
+    ///
+    /// 순환 지문은 정점 ID 라 레벨마다 다르다. 모듈 이름 기록은 타입 USR 진단과 절대 맞지 않는다.
+    /// Swift 는 모듈 순환을 막으므로 설정 레벨(기본 module)만 거두면 실제 순환인 타입 순환이 하나도
+    /// 기록되지 않고, `check --strict` 는 baseline 뒤에도 기존 순환으로 계속 실패한다.
+    /// 심볼 레벨 순환은 같은 두 타입 사이라면 타입 순환과 지문이 같아 중복을 거른다.
+    private func baselineCycleDiagnostics(in context: AnalysisContext) -> [Diagnostic] {
+        var fingerprints = Set<String>()
+        return Set([GraphLevel.module, .type, configuration.level]).sorted().flatMap { level in
+            let (graph, found) = cycles(in: context, level: level)
+            return AnalysisDiagnostics.diagnostics(for: found, in: graph)
+        }.filter { fingerprints.insert($0.fingerprint).inserted }
     }
 
     /// 현재 진단 상태를 베이스라인 파일로 기록한다.

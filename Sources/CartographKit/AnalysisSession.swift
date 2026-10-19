@@ -8,7 +8,8 @@ import Foundation
 public enum AnalysisSessionError: Error, Sendable, Equatable, LocalizedError {
     /// 인덱스·소스·설정이 읽는 도중 계속 바뀌어 일관된 문맥을 만들지 못했다.
     case inputChangedDuringRefresh(attempts: Int)
-    /// 분석 입력 위치가 비밀 자료로 보이는 파일을 가리킨다.
+    /// 설정·인덱스 라이브러리 위치나 빌드 근거로 지정한 분석 입력이 비밀 자료로 보이는 파일을 가리킨다.
+    /// 탐색으로 모은 소스와 인덱스 유닛은 이 오류 대신 내용 없이 파일 상태만 지문에 들어간다.
     case sensitiveInput
     /// 세션 문맥이 준비되지 않은 내부 상태다.
     case unavailable
@@ -193,8 +194,12 @@ public final class AnalysisSession {
         }
         guard let querySession else { throw AnalysisSessionError.unavailable }
         var remaining = evidenceBudget
+        // 같은 이름의 notFound 추천은 이 요청 안에서만 한 번 계산한다. 세션에 두면 요청마다 쌓인다.
+        var suggestions: [String: [GraphNode]] = [:]
         let results = try symbols.map { symbol in
-            let document = try service.queryDocument(symbol: symbol, depth: depth, limit: limit, in: querySession)
+            let document = try service.queryDocument(
+                symbol: symbol, depth: depth, limit: limit, in: querySession, suggestions: &suggestions
+            )
             guard var budget = remaining else { return document }
             let limited = budget.apply(to: document)
             remaining = budget
@@ -403,7 +408,8 @@ extension CartographService {
     /// 현재 서비스가 읽을 수 있는 분석 입력의 내용 지문.
     ///
     /// 세션이 파일 수정 시각만 믿고 이전 문맥을 재사용하지 않도록, 알려진 소스·설정·
-    /// 근거 파일과 인덱스 unit의 내용을 해시한다. 비밀 파일은 입력 목록에 넣지 않는다.
+    /// 근거 파일과 인덱스 unit의 내용을 해시한다. 비밀 자료처럼 보이는 파일의 내용은 읽지 않는다.
+    /// 설정으로 지정한 입력이면 거부하고, 탐색으로 모은 소스·인덱스 유닛이면 파일 상태만 싣는다.
     func sessionInputFingerprint() throws -> String {
         try AnalysisInputFingerprinter(
             configuration: configuration,
@@ -678,6 +684,41 @@ fileprivate struct CachedListingFileSystem: FileSystem {
     var currentDirectoryPath: String { base.currentDirectoryPath }
 }
 
+/// 입력 내용을 고정 크기 조각으로 차례로 넘기는 읽기.
+///
+/// 세션 지문은 탐색한 모든 입력의 내용을 해시한다. 탐색은 링크 대상이 정규 파일이면 포함하므로
+/// 저장소 밖의 수백 MB 파일도 들어올 수 있고, `readData(at:)` 는 그것을 통째로 메모리에 올린다.
+/// 해시에는 전체가 한꺼번에 필요 없으므로 조각으로 읽어 메모리를 조각 크기로 묶는다.
+protocol ChunkedFileReading {
+    /// 정규 파일을 `chunkSize` 바이트 이하 조각으로 순서대로 넘긴다. 정규 파일이 아니거나 읽지 못하면 던진다.
+    func readChunks(at path: String, chunkSize: Int, _ consume: (Data) throws -> Void) throws
+}
+
+extension LocalFileSystem: ChunkedFileReading {
+    /// 탐색 뒤 이름이 FIFO 로 바뀌어도 열기에서 멈추지 않게 O_NONBLOCK 으로 열고, 정규 파일만 읽는다.
+    func readChunks(at path: String, chunkSize: Int, _ consume: (Data) throws -> Void) throws {
+        let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK)
+        guard descriptor >= 0 else { throw CocoaError(.fileReadNoPermission) }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0, metadata.st_mode & S_IFMT == S_IFREG else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        while let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty {
+            try consume(chunk)
+        }
+    }
+}
+
+extension CachedListingFileSystem: ChunkedFileReading {
+    /// 세션 지문은 이 래퍼로 읽으므로 기반의 조각 읽기를 그대로 넘긴다. 지원하지 않으면 한 조각으로 넘긴다.
+    func readChunks(at path: String, chunkSize: Int, _ consume: (Data) throws -> Void) throws {
+        guard let chunked = base as? any ChunkedFileReading else { return try consume(base.readData(at: path)) }
+        try chunked.readChunks(at: path, chunkSize: chunkSize, consume)
+    }
+}
+
 private struct AnalysisInputFingerprinter {
     let configuration: CartographConfiguration
     let environment: CartographEnvironment
@@ -761,7 +802,7 @@ private struct AnalysisInputFingerprinter {
         accumulator.addText("source-count:\(paths.count)")
         for path in paths {
             // 내용이 같아도 소스 시각은 인덱스 신선도 결과에 영향을 준다.
-            try addFile(path, label: "source-file", includeModificationDate: true,
+            try addFile(path, label: "source-file", includeModificationDate: true, isDiscoveredInput: true,
                 cache: cache, observedKeys: &observedKeys, to: &accumulator)
         }
     }
@@ -847,9 +888,11 @@ private struct AnalysisInputFingerprinter {
                 }
                 accumulator.addText("index-unit-count:\(paths.count)")
                 for path in paths {
+                    // 유닛 이름은 컴파일러가 출력 오브젝트 이름으로 짓는다. 파일별 컴파일에서
+                    // `Config/.env.swift` 의 유닛은 `.env.o-<hash>` 가 되므로 탐색 입력처럼 다룬다.
                     try addFile(
-                        path, label: "index-unit", includeModificationDate: true, cache: cache,
-                        observedKeys: &observedKeys, to: &accumulator
+                        path, label: "index-unit", includeModificationDate: true, isDiscoveredInput: true,
+                        cache: cache, observedKeys: &observedKeys, to: &accumulator
                     )
                 }
             }
@@ -893,10 +936,16 @@ private struct AnalysisInputFingerprinter {
         return (projectPath as NSString).appendingPathComponent(path)
     }
 
+    /// 입력 하나의 기여를 싣는다.
+    ///
+    /// `isDiscoveredInput` 은 탐색으로 모은 소스·리소스와 인덱스 유닛이다. 설정으로 지정한 입력이 비밀 자료처럼
+    /// 보이면 조용히 빠지지 않게 거부하지만, 탐색 입력은 파일 이름 하나로 세션 전체가 막히지 않게 내용만 읽지
+    /// 않는다. 유닛 이름은 사용자가 고를 수 없으므로 "비밀이 아닌 경로를 설정하라"는 안내를 따를 수 없다.
     private func addFile(
         _ path: String,
         label: String,
         includeModificationDate: Bool = false,
+        isDiscoveredInput: Bool = false,
         cache: AnalysisInputFingerprintCache?,
         observedKeys: inout Set<AnalysisInputFingerprintCache.Key>,
         to accumulator: inout FingerprintAccumulator
@@ -918,9 +967,8 @@ private struct AnalysisInputFingerprinter {
         var contribution = FingerprintContribution()
         contribution.addText("\(label):\(path)")
         let resolvedPath = stamp?.resolvedPath ?? (try? fileSystem.realPath(at: path)) ?? path
-        guard !Self.isSensitive(path), !Self.isSensitive(resolvedPath) else {
-            throw AnalysisSessionError.sensitiveInput
-        }
+        let isSensitive = Self.isSensitive(path) || Self.isSensitive(resolvedPath)
+        guard !isSensitive || isDiscoveredInput else { throw AnalysisSessionError.sensitiveInput }
         let missing = stamp.map { !$0.isRegularFile } ?? !fileSystem.fileExists(at: path)
         // 디렉터리·끊어진 링크·FIFO 같은 비정규 입력은 읽지 않는다. stamp 를 주지
         // 않는 구현은 예전처럼 존재 여부로만 판정한다.
@@ -940,21 +988,52 @@ private struct AnalysisInputFingerprinter {
                 modified.map { "modified:\($0.timeIntervalSinceReferenceDate)" } ?? "modified:unknown"
             )
         }
-        guard let data = try? fileSystem.readData(at: path) else {
+        if isSensitive {
+            Self.addSensitiveStamp(stamp, to: &contribution)
+            accumulator.appendEncoded(contribution.data)
+            cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
+            return
+        }
+        guard let digest = try? contentDigest(at: path) else {
             contribution.addText("unreadable")
             accumulator.appendEncoded(contribution.data)
             cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
             return
         }
-        if let cache {
-            let digest = Data(SHA256.hash(data: data))
-            contribution.addData(label: "content-digest", data: digest)
-            accumulator.appendEncoded(contribution.data)
-            cache.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
-        } else {
-            contribution.addData(label: "content", data: data)
-            accumulator.appendEncoded(contribution.data)
+        // 캐시가 없는 경로도 원문 대신 digest 를 싣는다. 원문을 실으려면 파일 전체를 메모리에 올려야 한다.
+        contribution.addData(label: "content-digest", data: digest)
+        accumulator.appendEncoded(contribution.data)
+        cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
+    }
+
+    /// 입력 내용의 SHA-256. 조각 읽기를 지원하는 파일 시스템은 1 MiB 씩 해시해 메모리를 조각 크기로 묶는다.
+    private func contentDigest(at path: String) throws -> Data {
+        let fileSystem = environment.fileSystem
+        guard let chunked = fileSystem as? any ChunkedFileReading else {
+            return Data(SHA256.hash(data: try fileSystem.readData(at: path)))
         }
+        var hasher = SHA256()
+        try chunked.readChunks(at: path, chunkSize: 1_048_576) { hasher.update(data: $0) }
+        return Data(hasher.finalize())
+    }
+
+    /// 내용을 읽지 않은 비밀 이름 탐색 입력의 기여.
+    ///
+    /// 내용을 쓰면 ctime 이 늘 바뀌므로 stat 상태만으로도 편집이 지문에 드러난다. 링크 재지정은
+    /// 장치·inode 로 드러난다. 스탬프를 주지 않는 파일 시스템에서는 앞에 실은 수정 시각만 남는다.
+    private static func addSensitiveStamp(
+        _ stamp: FileFingerprintStamp?, to contribution: inout FingerprintContribution
+    ) {
+        contribution.addText("sensitive-skipped")
+        guard let stamp else {
+            contribution.addText("stamp:unknown")
+            return
+        }
+        contribution.addText(
+            "stamp:\(stamp.device):\(stamp.inode):\(stamp.size)"
+                + ":\(stamp.modificationSeconds).\(stamp.modificationNanoseconds)"
+                + ":\(stamp.changeSeconds).\(stamp.changeNanoseconds)"
+        )
     }
 
     fileprivate static func isSensitive(_ path: String) -> Bool {

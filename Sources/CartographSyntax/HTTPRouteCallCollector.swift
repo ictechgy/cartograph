@@ -73,6 +73,9 @@ final class HTTPRouteCallCollector: SyntaxVisitor {
     var routerTables: [HTTPTargetMemberTable] = []
     /// Alamofire 라우터 `asURLRequest()` 에서 읽은 요청 조립 방식.
     var routerRecipes: [HTTPRouterRecipe] = []
+    /// 프로젝트 프로토콜을 훑어 준수 이름을 계산한 횟수. 함수마다 계산하면 스캔이 파일 수의 제곱으로 늘어
+    /// 테스트가 어댑터 후보에서만 계산하는지 센다.
+    var conformanceQueries = 0
 
     private let wrappers: [HTTPWrapperDeclaration]
     let surface: HTTPDeclarationSurface

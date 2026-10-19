@@ -70,7 +70,9 @@ public struct PathFilter: Sendable, Equatable {
     public func allows(_ path: String) -> Bool {
         if excludes(path) { return false }
         if include.isEmpty { return true }
-        return matchCandidates(for: path).contains { include.matchesAny($0) }
+        return matchCandidates(for: path).contains {
+            Self.matchesAny(include, components: GlobPattern.components(of: $0))
+        }
     }
 
     /// 제외 판정. 프로젝트 안의 경로는 프로젝트 기준 상대 경로로만 본다.
@@ -100,8 +102,18 @@ public struct PathFilter: Sendable, Equatable {
     /// 비어 있는데, 이 조기 종료가 없으면 정점마다 상대 경로 후보 배열이 만들어진다.
     public func removes(_ patterns: [GlobPattern], _ path: String) -> Bool {
         guard !patterns.isEmpty else { return false }
-        if patterns.contains(where: { $0.isAbsolute && $0.matches(path) }) { return true }
-        return relativeCandidates(for: path).contains { patterns.matchesAny($0) }
+        if patterns.contains(where: \.isAbsolute) {
+            let components = GlobPattern.components(of: path)
+            if patterns.contains(where: { $0.isAbsolute && $0.matches(components: components) }) { return true }
+        }
+        return relativeCandidates(for: path).contains {
+            Self.matchesAny(patterns, components: GlobPattern.components(of: $0))
+        }
+    }
+
+    /// 후보 경로 하나를 한 번만 나눠 모든 패턴에 대 본다. 패턴마다 같은 경로를 다시 나누지 않는다.
+    private static func matchesAny(_ patterns: [GlobPattern], components: [[Character]]) -> Bool {
+        patterns.contains { $0.matches(components: components) }
     }
 
     /// 기준 디렉터리에 대한 상대 경로들. 기준이 없거나 기준 밖의 경로면 절대 경로 하나뿐이다.

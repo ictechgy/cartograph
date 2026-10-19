@@ -110,15 +110,30 @@ extension HTTPDeclarationSurface {
     /// 프로젝트 프로토콜이 다시 상속하는 이름을 더한다. `protocol BaseTarget: TargetType` 을 거친 준수가
     /// 흔한 모양이다.
     func conformedNames(of chain: String) -> Set<String> {
+        conformedNames(of: chain, protocolsByLastName: protocolChainsByLastName())
+    }
+
+    /// 여러 사슬을 물을 때 쓰는 형태. 색인을 한 번 만들어 넘기면 이름마다 프로토콜 전체를 훑지 않는다.
+    private func conformedNames(of chain: String, protocolsByLastName: [String: [String]]) -> Set<String> {
         var seen: Set<String> = []
         var queue = Array(inheritedNames[chain] ?? [])
         while let name = queue.popLast() {
             guard seen.insert(name).inserted else { continue }
-            for protocolChain in protocolChains where protocolChain.split(separator: ".").last.map(String.init) == name {
+            for protocolChain in protocolsByLastName[name] ?? [] {
                 queue.append(contentsOf: inheritedNames[protocolChain] ?? [])
             }
         }
         return seen
+    }
+
+    /// 마지막 구성 요소 → 그 이름으로 끝나는 프로젝트 프로토콜 사슬. 상속 절의 이름을 프로토콜로 잇는 색인이다.
+    private func protocolChainsByLastName() -> [String: [String]] {
+        var index: [String: [String]] = [:]
+        for protocolChain in protocolChains {
+            guard let last = protocolChain.split(separator: ".").last else { continue }
+            index[String(last), default: []].append(protocolChain)
+        }
+        return index
     }
 
     /// 프로젝트가 같은 이름의 타입을 선언했는지. 그렇다면 라이브러리 프로토콜이라고 증명할 수 없다.
@@ -128,8 +143,12 @@ extension HTTPDeclarationSurface {
 
     /// 사슬이 라이브러리 라우터 프로토콜을 준수하는 구체 타입이면 그 종류. 프로토콜 자신은 아니다.
     public func routerKind(of chain: String) -> HTTPRouterKind? {
+        routerKind(of: chain, protocolsByLastName: protocolChainsByLastName())
+    }
+
+    private func routerKind(of chain: String, protocolsByLastName: [String: [String]]) -> HTTPRouterKind? {
         guard !protocolChains.contains(chain) else { return nil }
-        let names = conformedNames(of: chain)
+        let names = conformedNames(of: chain, protocolsByLastName: protocolsByLastName)
         return HTTPRouterKind.allCases.first { names.contains($0.rawValue) && !declaresTypeNamed($0.rawValue) }
     }
 
@@ -142,8 +161,12 @@ extension HTTPDeclarationSurface {
     }
 
     /// 구체 라우터 타입 사슬들. 결정적 순서다.
+    ///
+    /// 모든 타입 사슬을 묻는다. 사슬마다 프로토콜 전체를 훑으면 타입 수 × 프로토콜 수가 되어 routes 패스의
+    /// 가장 큰 이차 항이 되므로, 프로토콜 이름 색인을 한 번만 만든다.
     public var routerChains: [String] {
-        typeChains.filter { routerKind(of: $0) != nil }.sorted()
+        let protocolsByLastName = protocolChainsByLastName()
+        return typeChains.filter { routerKind(of: $0, protocolsByLastName: protocolsByLastName) != nil }.sorted()
     }
 
     /// `A.B.rawValue` 의 원시값. 원시 타입이 `String` 인 enum 의 case 일 때만.
@@ -161,7 +184,7 @@ extension HTTPDeclarationSurface {
     /// 닫힌 평가에서 거부한 정적 멤버를 이전 파일 단위 바인딩이 다시 상수로 만들지 않게 한다.
     /// 지원 식 밖의 String 보간만 이전 조각 확장에 맡겨 증명된 접두사를 보존한다.
     func allowsLegacyStaticExpansion(ofMember member: String, inTypeNamed type: [String]) -> Bool {
-        let owners = typeChains.filter { suffixMatches($0, type) }
+        let owners = typeChains(endingWith: type)
         guard owners.count == 1, let owner = owners.first,
               typeConditionality[owner]?.contains(true) != true else { return false }
         guard let declarations = staticStringMembers[owner + "\u{0}" + member] else { return true }
@@ -199,14 +222,20 @@ extension HTTPDeclarationSurface {
         ))
     }
 
-    private func suffixMatches(_ chain: String, _ type: [String]) -> Bool {
-        routeTypeSuffixMatches(chain, type)
+    /// 접미 표기(`B.C`)와 맞는 타입 사슬들. 결정적 순서다.
+    ///
+    /// URL 식의 `Type.member` 마다 묻는다. 사슬 전체를 쪼개며 대조하면 식 하나가 프로젝트 타입 수만큼 들어
+    /// 스캔이 파일 수의 제곱으로 늘므로, 마지막 구성 요소가 같은 사슬만 대조한다.
+    func typeChains(endingWith type: [String]) -> [String] {
+        guard let last = type.last else { return typeChains.sorted() }
+        return routeTypeChains(endingWith: type, among: typeChainsByLastName[last] ?? [])
     }
 
     /// 평가기에 필요한 값만 넘겨 표면 타입으로의 역방향 의존을 만들지 않는다.
     private func staticStringResolver() -> StaticStringResolver {
         StaticStringResolver(enumCases: enumCases, staticStringMembers: staticStringMembers,
-            typeAliases: typeAliases, typeChains: typeChains, typeConditionality: typeConditionality)
+            typeAliases: typeAliases, typeChainsByLastName: typeChainsByLastName,
+            typeConditionality: typeConditionality)
     }
 
     /// 정적 라우트 문자열을 한 문맥 안에서만 제한적으로 평가한다.
@@ -228,18 +257,18 @@ extension HTTPDeclarationSurface {
         let enumCases: [String: [HTTPEnumCaseDeclaration]]
         let staticStringMembers: [String: [HTTPStaticStringMember]]
         let typeAliases: [String: [HTTPTypeAliasDeclaration]]
-        let typeChains: Set<String>
+        let typeChainsByLastName: [String: Set<String>]
         let typeConditionality: [String: [Bool]]
         private var memberMemo: [MemberKey: Outcome] = [:]
         private var typeMemo: [TypeKey: Outcome] = [:]
 
         init(enumCases: [String: [HTTPEnumCaseDeclaration]], staticStringMembers: [String: [HTTPStaticStringMember]],
-             typeAliases: [String: [HTTPTypeAliasDeclaration]], typeChains: Set<String>,
+             typeAliases: [String: [HTTPTypeAliasDeclaration]], typeChainsByLastName: [String: Set<String>],
              typeConditionality: [String: [Bool]]) {
             self.enumCases = enumCases
             self.staticStringMembers = staticStringMembers
             self.typeAliases = typeAliases
-            self.typeChains = typeChains
+            self.typeChainsByLastName = typeChainsByLastName
             self.typeConditionality = typeConditionality
         }
 
@@ -329,7 +358,9 @@ extension HTTPDeclarationSurface {
             let key = TypeKey(components: type)
             if let cached = typeMemo[key] { return cached }
             guard !visiting.contains(key) else { return .unknown }
-            let direct = typeChains.filter { routeTypeSuffixMatches($0, type) }.sorted()
+            let direct = routeTypeChains(
+                endingWith: type, among: type.last.flatMap { typeChainsByLastName[$0] } ?? []
+            )
             let aliases = typeAliases.keys.filter { routeTypeSuffixMatches($0, type) }.sorted()
             let unconditionalDirect = direct.filter {
                 guard let states = typeConditionality[$0] else { return false }
@@ -357,6 +388,11 @@ extension HTTPDeclarationSurface {
             return result
         }
     }
+}
+
+/// 후보 사슬 가운데 접미 표기와 맞는 것들. 결정적 순서다. 표면과 평가기가 같은 규칙으로 고른다.
+private func routeTypeChains(endingWith type: [String], among candidates: Set<String>) -> [String] {
+    candidates.filter { routeTypeSuffixMatches($0, type) }.sorted()
 }
 
 /// 같은 접미 타입 표기를 표면과 평가기가 동일하게 대조한다.

@@ -94,6 +94,65 @@ struct CheckServiceTests {
         #expect(document.diagnostics.map(\.location?.path) == ["Feature/A.swift"])
     }
 
+    @Test("baseline 이 기록한 기존 타입 순환은 통합 점검과 타입 순환 검사를 다시 실패시키지 않는다")
+    func baselineRecordsTheTypeCyclesThatCheckSuppresses() throws {
+        // 순환 지문은 정점 ID 라 모듈 이름 기록은 타입 USR 진단과 절대 맞지 않는다. 기본 설정(module)
+        // 레벨만 거두면 Swift 에서 실제로 생기는 타입 순환이 baseline 뒤에도 check --strict 를 계속 세운다.
+        let fileSystem = InMemoryFileSystem()
+        let recorder = service(fileSystem: fileSystem)
+        _ = try recorder.writeBaseline(diagnostics: try recorder.collectAllDiagnostics(), to: "/p/baseline.json")
+
+        let baselined = service(configure: { $0.baselinePath = "/p/baseline.json" }, fileSystem: fileSystem)
+        let document = try baselined.checkDocument()
+        #expect(document.findingCount == 0)
+        #expect(document.checks.first { $0.name == "cycles" && $0.level == "type" }?.suppressedCount == 1)
+        #expect(try baselined.detectCycles(level: .type).findingCount == 0)
+    }
+
+    @Test("설정 레벨이 file·symbol 이면 그 레벨 순환도 기록하고 같은 지문은 한 번만 담는다",
+          arguments: [GraphLevel.file, .symbol])
+    func baselineRecordsTheConfiguredCycleLevelOnce(level: GraphLevel) throws {
+        let fileSystem = InMemoryFileSystem()
+        let recorder = service(configure: { $0.level = level }, fileSystem: fileSystem)
+        let diagnostics = try recorder.collectAllDiagnostics()
+        // 심볼 레벨 순환은 같은 두 타입 사이라면 타입 순환과 지문이 같다.
+        let cycles = diagnostics.filter { $0.ruleIdentifier == AnalysisDiagnostics.Rule.cycle }
+        #expect(Set(cycles.map(\.fingerprint)).count == cycles.count)
+        _ = try recorder.writeBaseline(diagnostics: diagnostics, to: "/p/baseline.json")
+
+        let baselined = service(
+            configure: {
+                $0.level = level
+                $0.baselinePath = "/p/baseline.json"
+            },
+            fileSystem: fileSystem
+        )
+        #expect(try baselined.detectCycles().findingCount == 0)
+        #expect(try baselined.checkDocument().findingCount == 0)
+    }
+
+    @Test("순환 설명도 베이스라인이 억제한 순환을 발견으로 세지 않는다")
+    func explainCyclesFollowsTheBaseline() throws {
+        // 같은 베이스라인인데 cycles --strict 는 0, cycles --explain --strict 는 1 로 끝나면
+        // "이 정점이 아직 게이트에 걸리는가"를 묻는 스크립트가 반대 판정을 받는다.
+        let fileSystem = InMemoryFileSystem()
+        let recorder = service(fileSystem: fileSystem)
+        let unbaselined = try recorder.explainCycles(of: "FeatureA", level: .type)
+        #expect(unbaselined.findingCount == 1)
+        let (graph, found) = recorder.cycles(in: try recorder.loadContext(), level: .type)
+        try BaselineStore(fileSystem: fileSystem).write(
+            Baseline.capturing(AnalysisDiagnostics.diagnostics(for: found, in: graph)), to: "/p/baseline.json"
+        )
+
+        let baselined = service(configure: { $0.baselinePath = "/p/baseline.json" }, fileSystem: fileSystem)
+        let explained = try baselined.explainCycles(of: "FeatureA", level: .type)
+        #expect(explained.findingCount == 0)
+        #expect(explained.suppressedCount == 1)
+        #expect(try baselined.detectCycles(level: .type).findingCount == explained.findingCount)
+        // 판정만 맞춘다. 억제된 순환도 어디를 끊을지 알려 주는 설명은 그대로다.
+        #expect(explained.output == unbaselined.output)
+    }
+
     @Test("임계값 초과를 문서와 명령 결과에 함께 남긴다")
     func reportsThresholdFailure() throws {
         let service = service { $0.thresholds.maxCycles = 0 }

@@ -85,7 +85,7 @@ extension CartographService {
             )
         }
         let context = try loadContext()
-        let (graph, report) = unusedCode(in: context)
+        let (graph, report) = unusedCode(in: context, computingSuperfluousIgnores: false)
         // 베이스라인이 이미 받아들인 발견과 `--since` 범위 밖은 건드리지 않는다.
         let diagnostics = AnalysisDiagnostics.unusedImportDiagnostics(for: report)
             + AnalysisDiagnostics.unusedParameterDiagnostics(for: report, in: graph)

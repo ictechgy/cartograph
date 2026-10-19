@@ -134,6 +134,33 @@ struct CartographServiceTests {
         #expect(outcome.output.contains("reachable"))
     }
 
+    @Test("불필요한 무시 주석은 dead 와 공개 unusedCode 가 계속 판정하고 check 의 dead 판정은 그대로다")
+    func superfluousIgnoresStayOnTheDeadPath() throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, module: "App", path: "/p/App.swift", attributes: [.entryPoint])
+        builder.symbol("Used", kind: .structType, module: "App", path: "/p/Used.swift", attributes: [.ignoreComment])
+        builder.symbol("Dead", kind: .structType, module: "App", path: "/p/Dead.swift")
+        builder.reference(from: "App", to: "Used", kind: .reference)
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        let service = CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(
+                fileSystem: InMemoryFileSystem(), indexProviderOverride: StaticIndexProvider(builder.build())
+            )
+        )
+
+        // check·baseline·fix·explain 만 판정을 끈다(found query 는 도달 근거만 계산한다). dead 와 공개 API 의
+        // 보고서는 예전 그대로다.
+        #expect(try service.detectUnusedCode().output.contains("ignore comment on 'App.Used'"))
+        let context = try service.loadContext()
+        #expect(service.unusedCode(in: context).report.superfluousIgnores.map(\.node.name) == ["Used"])
+        #expect(service.unusedCode(in: context, computingSuperfluousIgnores: false).report.superfluousIgnores.isEmpty)
+        let check = try service.checkDocument(in: context)
+        #expect(check.checks.first { $0.name == "dead" }?.findingCount == 1)
+        #expect(!check.diagnostics.contains { $0.ruleIdentifier == "superfluous-ignore" })
+    }
+
     @Test("데드코드 결과는 프로젝트 상대 경로로 보고된다")
     func reportsRelativePaths() throws {
         let outcome = try makeService().detectUnusedCode()

@@ -119,6 +119,113 @@ struct LocalFunctionDiagnosticsTests {
         })
     }
 
+    @Test("지역 함수 범위가 없으면 스냅샷 심볼과 참조를 색인하지 않는다")
+    func skipsIndexWithoutScopes() {
+        let input = noisy(IndexSnapshot(symbols: [owner()]))
+        var indexed: Int?
+        let result = LocalFunctionBinder.enrichWithDiagnostics(
+            input, scopes: [], freshPaths: [path], edgeKinds: [], onIndexedRows: { indexed = $0 }
+        )
+
+        #expect(result.snapshot == input)
+        #expect(result.diagnostics.isEmpty)
+        #expect(indexed == 0)
+    }
+
+    @Test("범위가 있어도 소유자·지역 함수 자리의 심볼과 그 소유자의 참조만 색인한다")
+    func indexesOnlyScopeOwners() {
+        // 프로젝트 전체를 위치·소스 USR 마다 묶으면 참조 100만 개에서 0.3초와 0.4GB 를 더 썼다.
+        let owner = owner()
+        let target = IndexedSymbol(
+            usr: "target", name: "target()", kind: .function, module: "App",
+            location: location(line: 1, column: 6)
+        )
+        let local = local(name: "local", line: 3)
+        let ownerCall = LocalFunctionReferenceFacts(
+            name: "local", location: location(line: 5, column: 9), localOwner: nil,
+            isCall: true, isUnqualified: true
+        )
+        let nestedCall = LocalFunctionReferenceFacts(
+            name: "target", location: location(line: 4, column: 9), localOwner: local.location,
+            isCall: true, isUnqualified: true
+        )
+        let input = IndexSnapshot(symbols: [owner, target], references: [IndexedReference(
+            sourceUSR: owner.usr, targetUSR: target.usr, kind: .call,
+            location: nestedCall.location, origin: .compiler
+        )])
+        let scope = scope(functions: [local], references: [ownerCall, nestedCall])
+        var plain = 0
+        var padded = 0
+        let expected = LocalFunctionBinder.enrichWithDiagnostics(
+            input, scopes: [scope], freshPaths: [path], edgeKinds: [], onIndexedRows: { plain = $0 }
+        )
+        let result = LocalFunctionBinder.enrichWithDiagnostics(
+            noisy(input), scopes: [scope], freshPaths: [path], edgeKinds: [], onIndexedRows: { padded = $0 }
+        )
+
+        #expect(expected.snapshot.symbols.contains { $0.name == "local()" })
+        #expect(result.snapshot.symbols.filter { !$0.usr.hasPrefix("noise") } == expected.snapshot.symbols)
+        #expect(result.snapshot.references.filter { !$0.sourceUSR.hasPrefix("noise") }
+            == expected.snapshot.references)
+        #expect(result.diagnostics == expected.diagnostics)
+        #expect(plain > 0)
+        #expect(padded == plain)
+    }
+
+    @Test("인덱스가 같은 자리에 선언을 이미 가진 지역 함수는 새로 만들지 않고 그 이유를 남긴다")
+    func keepsIndexedLocalDeclaration() {
+        let local = local(name: "local", line: 3)
+        let indexed = IndexedSymbol(
+            usr: "s:local", name: "local()", kind: .function, module: "App", location: local.location
+        )
+        let input = IndexSnapshot(symbols: [owner(), indexed])
+        let result = LocalFunctionBinder.enrichWithDiagnostics(
+            input, scopes: [scope(functions: [local], references: [ownerCall()])], freshPaths: [path], edgeKinds: []
+        )
+
+        #expect(result.snapshot == input)
+        #expect(result.diagnostics.map(\.reason) == [.existingDeclaration])
+    }
+
+    @Test("투영으로 되돌리지 못한 예전 지역 키와 같은 키는 다시 만들지 않는다")
+    func keepsUnprojectedLocalIdentifier() {
+        let owner = owner()
+        let local = local(name: "local", line: 3)
+        // 부모를 잃은 예전 보완 선언은 투영이 되돌리지 못해 그대로 남는다. 같은 키를 또 만들면 USR 이 겹친다.
+        let stale = IndexedSymbol(
+            usr: SourceLocalSymbol.identifier(ownerUSR: owner.usr, location: local.location, name: local.indexName),
+            name: "local()", kind: .function, module: "App", location: location(line: 30, column: 1),
+            parentUSR: "missing"
+        )
+        let input = IndexSnapshot(symbols: [owner, stale])
+        let result = LocalFunctionBinder.enrichWithDiagnostics(
+            input, scopes: [scope(functions: [local], references: [ownerCall()])], freshPaths: [path], edgeKinds: []
+        )
+
+        #expect(result.snapshot == input)
+        #expect(result.diagnostics.map(\.reason) == [.existingDeclaration])
+    }
+
+    private func ownerCall() -> LocalFunctionReferenceFacts {
+        LocalFunctionReferenceFacts(
+            name: "local", location: location(line: 5, column: 9), localOwner: nil,
+            isCall: true, isUnqualified: true
+        )
+    }
+
+    /// 범위와 무관한 다른 파일의 심볼과 다른 소유자의 컴파일러 참조를 더한다.
+    private func noisy(_ snapshot: IndexSnapshot) -> IndexSnapshot {
+        var result = snapshot
+        for index in 0..<200 {
+            let location = SourceLocation(path: "/p/Other\(index % 7).swift", line: index + 1, column: 3)
+            result.symbols.append(IndexedSymbol(usr: "noise\(index)", name: "noise\(index)()", kind: .function,
+                module: "App", location: location))
+            result.references.append(IndexedReference(sourceUSR: "noise\(index)", targetUSR: "target", kind: .call,
+                location: location, origin: .compiler))
+        }
+        return result
+    }
+
     private func location(line: Int, column: Int) -> CartographCore.SourceLocation {
         SourceLocation(path: path, line: line, column: column)
     }
