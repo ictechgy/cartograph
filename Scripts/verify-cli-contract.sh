@@ -460,12 +460,15 @@ fi
 echo "README — dead 리포트에서 배치 요청 추출"
 # 문서의 셸 코드를 그대로 실행한다. CLI 만 대역으로 바꾸고 jq 필터와 분기는 실제로 돈다.
 # JSONDiagnosticReporter 의 문서 모양과 AnalysisDiagnostics 의 합성 subject 를 함께 고정한다.
+# 에이전트는 이 예시를 프로젝트 루트에서 그대로 돌린다. 중간 파일은 실행마다 mktemp -d 가 만든
+# 비공개 디렉터리에만 쓰고 작업 트리에는 아무것도 남기지 않는지도 함께 본다.
 if python3 - <<'PY'
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 
@@ -497,8 +500,9 @@ cases = [
 stub = '''cartograph() {
     if [[ "$*" == "dead --report-format json" ]]; then
         cat "$SWEEP_REPORT"
-    elif [[ "$*" == "query --batch requests.json" ]]; then
-        cat requests.json >> "$SWEEP_QUERY"
+    elif [[ $# -eq 3 && "$1" == "query" && "$2" == "--batch" ]]; then
+        printf '%s\\n' "$3" > "$SWEEP_QUERY_PATH"
+        cat "$3" >> "$SWEEP_QUERY"
     else
         return 97
     fi
@@ -511,22 +515,40 @@ for readme in ("README.md", "README.ko.md"):
         expected = [item["subject"] for item in selected]
         with tempfile.TemporaryDirectory(prefix="cartograph-sweep-") as temp:
             work = Path(temp)
+            # 스윕을 돌리는 체크아웃 대역과 mktemp 가 쓸 임시 디렉터리를 나눈다.
+            checkout = work / "checkout"
+            private_tmp = work / "tmp"
+            checkout.mkdir()
+            private_tmp.mkdir()
             report = work / "report.json"
             query = work / "query.json"
+            query_path = work / "query-path.txt"
             report.write_text(json.dumps({
                 "tool": "cartograph", "version": "fixture", "command": "dead",
                 "subject": "symbol graph", "suppressedCount": 0, "diagnostics": diagnostics,
             }))
             result = subprocess.run(
-                ["bash", "-c", stub + match[1]], cwd=work, capture_output=True, text=True, timeout=10,
-                env={**os.environ, "SWEEP_REPORT": str(report), "SWEEP_QUERY": str(query)},
+                ["bash", "-c", stub + match[1]], cwd=checkout, capture_output=True, text=True, timeout=10,
+                env={**os.environ, "TMPDIR": str(private_tmp), "SWEEP_REPORT": str(report),
+                     "SWEEP_QUERY": str(query), "SWEEP_QUERY_PATH": str(query_path)},
             )
             assert result.returncode == (64 if len(expected) > 1000 else 0), (readme, name, result.stderr)
-            assert json.loads((work / "requests.json").read_text()) == expected, (readme, name)
+            # 작업 트리의 고정 이름은 같은 이름의 파일을 덮어쓰고, 커밋될 파일을 남기고,
+            # 같은 체크아웃의 병렬 세션끼리 서로의 요청을 덮어쓴다.
+            assert not any(checkout.iterdir()), (readme, name, "sweep wrote into the working directory")
+            sweeps = list(private_tmp.glob("cartograph-sweep.*"))
+            assert len(sweeps) == 1, (readme, name, "expected one mktemp directory", sweeps)
+            assert stat.S_IMODE(sweeps[0].stat().st_mode) == 0o700, (readme, name, "sweep directory is not private")
+            requests = sweeps[0] / "requests.json"
+            assert json.loads(requests.read_text()) == expected, (readme, name)
             if 0 < len(expected) <= 1000:
+                assert query_path.read_text() == f"{requests}\n", (readme, name, "query read another file")
                 assert json.loads(query.read_text()) == expected, (readme, name, "query requests")
             else:
                 assert not query.exists(), (readme, name, "unexpected query")
+            if len(expected) > 1000:
+                # 셸 변수는 다음 명령까지 남지 않는다. 나눌 파일의 위치는 안내 문장이 알려야 한다.
+                assert str(requests) in result.stderr, (readme, name, "split message must name the file")
             print(f"  ok        {readme}: {name}")
 PY
 then

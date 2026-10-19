@@ -418,6 +418,9 @@ public struct BridgeFactsDocument: Sendable, Equatable, Codable {
 
 extension BridgeFactsDocument {
     /// 사람이 훑어볼 한 줄 요약. 디버깅용이고 계약의 일부가 아니다.
+    ///
+    /// `bridges` 와 `schema` 가 함께 쓴다. 경로·채널·메서드·심볼 이름은 저장소가 통제하는 값이고 이
+    /// 텍스트는 터미널로 바로 가므로, 줄마다 Core 의 필터를 지나 사실 하나가 한 줄로 남게 한다.
     public func renderText() -> String {
         var lines = facts.map { fact in
             var line = "\(fact.location)  \(fact.kind)"
@@ -430,7 +433,7 @@ extension BridgeFactsDocument {
         lines.append("")
         lines.append("\(facts.count) bridge fact(s) · target \(target ?? "none")")
         lines += limitations.map { "  limitation: " + $0 }
-        return lines.joined(separator: "\n") + "\n"
+        return lines.map { PrintableText.printable($0) }.joined(separator: "\n") + "\n"
     }
 }
 

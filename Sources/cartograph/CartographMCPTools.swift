@@ -205,7 +205,8 @@ final class CartographMCPTools {
 
     private func structured<T: Encodable>(_ value: T, isError: Bool = false) throws -> MCPToolResult {
         let data = try JSONEncoder.cartographDefault().encode(value)
-        let object = try JSONDecoder().decode(MCPJSONValue.self, from: data)
+        // Codable 해독은 값마다 실패할 해독부터 시도해 결과 1 MB에 50 ms 남짓을 쓴다. 판독기는 같은 값을 1/5에 읽는다.
+        let object = try MCPJSONReader.parse(data)
         guard object.isObject else { throw MCPToolFailure(message: "tool result must be a JSON object") }
         return MCPToolResult(structuredContent: object, isError: isError)
     }

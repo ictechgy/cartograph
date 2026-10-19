@@ -118,6 +118,9 @@ public struct RouteCallsDocument: Sendable, Equatable, Encodable {
     }
 
     /// 사람이 훑어볼 한 줄 요약. 디버깅용이고 계약의 일부가 아니다.
+    ///
+    /// 경로·채널·심볼 이름은 저장소가 통제하는 값이고 이 텍스트는 터미널로 바로 간다. 줄마다 Core 의
+    /// 필터를 지나야 파일 이름의 ESC·OSC 52 나 이름의 U+202E 가 화면을 바꾸지 못하고 사실 하나가 한 줄로 남는다.
     public func renderText() -> String {
         var lines = facts.map { fact in
             var line = "\(fact.location)  \(fact.method ?? "?") \(fact.channel ?? "-")  (\(fact.pathAnchor.rawValue))"
@@ -128,6 +131,6 @@ public struct RouteCallsDocument: Sendable, Equatable, Encodable {
         lines.append("")
         lines.append("\(facts.count) route call(s) · target http")
         lines += limitations.map { "  limitation: " + $0 }
-        return lines.joined(separator: "\n") + "\n"
+        return lines.map { PrintableText.printable($0) }.joined(separator: "\n") + "\n"
     }
 }

@@ -146,9 +146,11 @@ and rejects changed artifacts, foreign symlinks, ambiguous models and missing ge
 ## Automatic execution collection
 
 ```bash
-cartograph runtime collect --executable <macOS-debug-executable> --output /tmp/runtime-trace.json -- <arguments>
-cartograph runtime discover --trace /tmp/runtime-trace.json --executable <macOS-debug-executable>
-cartograph impact <name-or-USR> --trace /tmp/runtime-trace.json --executable <macOS-debug-executable> --format json
+trace_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-trace.XXXXXX")"
+cartograph runtime collect --executable <macOS-debug-executable> --output "$trace_dir/runtime-trace.json" -- <arguments>
+cartograph runtime discover --trace "$trace_dir/runtime-trace.json" --executable <macOS-debug-executable>
+cartograph impact <name-or-USR> --trace "$trace_dir/runtime-trace.json" --executable <macOS-debug-executable> \
+  --format json
 ```
 
 Collection compiles the embedded native collector with local Clang, launches the specified executable,

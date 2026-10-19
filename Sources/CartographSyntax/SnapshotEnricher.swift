@@ -144,12 +144,12 @@ public struct SnapshotEnricher: Sendable {
             enriched.symbols[index].attributes.insert(.sourceUnavailable)
         }
         if let interfaceBuilderFiles {
-            let references = interfaceBuilderReferences(files: interfaceBuilderFiles)
-            enriched = Self.marking(enriched, interfaceBuilderReferences: references)
+            let names = interfaceBuilderCustomClassNames(files: interfaceBuilderFiles)
+            enriched = Self.marking(enriched, interfaceBuilderReferences: .init(customClassNames: names))
         } else if !interfaceBuilderRoots.isEmpty {
-            let references = InterfaceBuilderScanner(fileSystem: fileSystem)
-                .scan(roots: interfaceBuilderRoots, pathFilter: pathFilter)
-            enriched = Self.marking(enriched, interfaceBuilderReferences: references)
+            let names = InterfaceBuilderScanner(fileSystem: fileSystem)
+                .scanCustomClassNames(roots: interfaceBuilderRoots, pathFilter: pathFilter)
+            enriched = Self.marking(enriched, interfaceBuilderReferences: .init(customClassNames: names))
         }
         let unresolved = Dictionary(grouping: refinement.diagnostics, by: { $0.location.path }).mapValues(\.count)
         return Result(snapshot: enriched, missingSourcePaths: missing, unreadableSourcePaths: unreadable,
@@ -164,10 +164,14 @@ public struct SnapshotEnricher: Sendable {
             || (error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT))
     }
 
-    private func interfaceBuilderReferences(files: [String]) -> InterfaceBuilderReferences {
-        files.reduce(into: InterfaceBuilderReferences()) { result, path in
+    /// 인벤토리가 넘긴 문서에서 보존 표식에 쓰는 `customClass` 이름만 모은다.
+    ///
+    /// 표식은 이 이름만 본다. outlet·action 까지 뽑으면 문서마다 쓰이지 않는 전체 스캔이 두 번 더 돈다.
+    /// 문서마다 새 집합을 만들지 않도록 한 집합에 제자리에서 합친다.
+    private func interfaceBuilderCustomClassNames(files: [String]) -> Set<String> {
+        files.reduce(into: Set<String>()) { names, path in
             guard let contents = try? fileSystem.readText(at: path) else { return }
-            result = result.merging(InterfaceBuilderScanner.references(in: contents))
+            names.formUnion(InterfaceBuilderScanner.customClassNames(in: contents))
         }
     }
 

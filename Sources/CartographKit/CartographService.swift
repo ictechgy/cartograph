@@ -409,8 +409,9 @@ public struct CartographService: Sendable {
         case let .ambiguous(candidates):
             return CommandOutcome(output: Self.describeCandidates(candidates, for: subject, in: graph), notes: notes)
         case let .found(node):
-            let described = Self.describeExplanation(
-                explanation, for: node, in: graph, externalRetentions: context.externalRetentionIndex
+            let described = try Self.describeExplanation(
+                explanation, for: node, in: graph, externalRetentions: context.externalRetentionIndex,
+                projectPath: projectPath
             )
             let outcome = CommandOutcome(output: described.output, findingCount: described.findingCount,
                                          suppressedCount: described.suppressedCount, notes: notes)
@@ -464,13 +465,12 @@ public struct CartographService: Sendable {
             // 사용자가 그 설명을 믿고 코드를 건드리기 때문이다.
             let involved = found.filter { $0.component.contains(node.id) }
             guard !involved.isEmpty else {
-                return CommandOutcome(output: "\(node.qualifiedName) is not part of any cycle.\n")
+                return CommandOutcome(output: Self.printableLines(["\(node.qualifiedName) is not part of any cycle."]))
             }
-            let lines = involved.map { Self.describeCycle($0, for: node.id, in: graph) }
+            let lines = involved.flatMap { Self.describeCycle($0, for: node.id, in: graph) }
             let judgment = try baselineJudgment(of: involved, in: graph)
             return CommandOutcome(
-                output: "\(node.qualifiedName) is part of \(involved.count) cycle(s):\n"
-                    + lines.joined(separator: "\n") + "\n",
+                output: Self.printableLines(["\(node.qualifiedName) is part of \(involved.count) cycle(s):"] + lines),
                 findingCount: judgment.findingCount,
                 suppressedCount: judgment.suppressedCount
             )
@@ -509,57 +509,68 @@ public struct CartographService: Sendable {
             return CommandOutcome(output: Self.describeAmbiguity(subject, candidates: candidates))
         case let .found(node):
             let evaluator = LayerRuleEvaluator(layers: configuration.layers, rules: configuration.rules)
-            return CommandOutcome(output: Self.describeLayer(of: node, using: evaluator))
+            return CommandOutcome(output: Self.printableLines(Self.describeLayer(of: node, using: evaluator)))
         }
+    }
+
+    /// 사람이 읽는 설명의 줄들을 Core 의 필터에 하나씩 통과시킨 뒤 개행으로 잇는다.
+    ///
+    /// `--explain` 계열과 찾지 못한 이름 문구는 정점 이름·경로·레이어와 규칙의 이름처럼 저장소가 통제하는
+    /// 값을 터미널과 표준 오류로 그대로 보낸다. 원소 하나가 출력의 한 줄이고, 구조용 개행은 여기서만
+    /// 넣는다. 줄마다 거르므로 ESC·OSC 52·U+202E 와 함께 값 속 개행·복귀도 그 줄 안에서 빠진다.
+    /// 그래야 파일 경로나 레이어 이름이 가짜 후보 줄·가짜 USR 줄을 끼워 넣지 못한다 — 사용자는 후보
+    /// 목록의 USR 을 복사해 다시 묻는다. 줄 수는 값이 아니라 문장 틀이 정한다.
+    private static func printableLines(_ lines: [String]) -> String {
+        lines.map { PrintableText.printable($0) }.joined(separator: "\n") + "\n"
     }
 
     private static func describeAmbiguity(_ subject: String, candidates: [GraphNode]) -> String {
         let list = candidates.map { "  \($0.qualifiedName)  \($0.usr ?? $0.id.rawValue)" }
-        return "'\(subject)' matches \(candidates.count) declarations. "
-            + "Pass one of these USRs instead:\n" + list.joined(separator: "\n") + "\n"
+        return printableLines(
+            ["'\(subject)' matches \(candidates.count) declarations. Pass one of these USRs instead:"] + list
+        )
     }
 
+    /// 순환 하나를 설명하는 줄들. 대표 경로, 필요하면 그 앞의 묶음 안내, 끊을 후보 순이다.
     private static func describeCycle(
         _ cycle: DependencyCycle,
         for node: NodeID,
         in graph: CodeGraph
-    ) -> String {
+    ) -> [String] {
         let trail = cycle.path.map { graph.node($0)?.qualifiedName ?? $0.rawValue }
-        var line = "  " + (trail + [trail[0]]).joined(separator: " → ")
+        let path = "  " + (trail + [trail[0]]).joined(separator: " → ")
         // 대표 경로에 없는 정점에게 이 경로를 그대로 보여 주면 자기 이름을 못 찾는다.
         // 같은 묶음에 있다는 사실과 대표 경로를 구분해서 말한다.
-        if !cycle.path.contains(node) {
-            line = "  in the same tangle, whose representative cycle is:\n  " + line.dropFirst(2)
-        }
+        var lines = cycle.path.contains(node) ? [path] : ["  in the same tangle, whose representative cycle is:", path]
         if let edge = cycle.suggestedEdgeToBreak {
             let source = graph.node(edge.source)?.qualifiedName ?? edge.source.rawValue
             let target = graph.node(edge.target)?.qualifiedName ?? edge.target.rawValue
-            line += "\n      weakest link: \(source) → \(target)"
-                + " (\(edge.kind.rawValue), \(edge.weight) references)"
+            lines.append("      weakest link: \(source) → \(target)"
+                + " (\(edge.kind.rawValue), \(edge.weight) references)")
         }
-        return line
+        return lines
     }
 
-    private static func describeLayer(of node: GraphNode, using evaluator: LayerRuleEvaluator) -> String {
+    /// 정점의 레이어 배정과 그 레이어에서 출발하는 규칙을 설명하는 줄들.
+    private static func describeLayer(of node: GraphNode, using evaluator: LayerRuleEvaluator) -> [String] {
         let assignment = evaluator.assignment(of: node)
         guard let match = assignment.match else {
-            return "\(node.qualifiedName) belongs to no layer.\n"
-                + "  checked: " + assignment.candidates.joined(separator: ", ") + "\n"
+            return ["\(node.qualifiedName) belongs to no layer.",
+                    "  checked: " + assignment.candidates.joined(separator: ", ")]
         }
-        var output = "\(node.qualifiedName) is in layer '\(match.layer)'.\n"
-            + "  matched: \(match.candidate) against '\(match.pattern)'\n"
+        var lines = ["\(node.qualifiedName) is in layer '\(match.layer)'.",
+                     "  matched: \(match.candidate) against '\(match.pattern)'"]
         let rules = evaluator.rules(from: match.layer)
         guard !rules.isEmpty else {
-            output += "  no rule starts from '\(match.layer)', so nothing is enforced here.\n"
-            return output
+            return lines + ["  no rule starts from '\(match.layer)', so nothing is enforced here."]
         }
-        output += "  rules from '\(match.layer)':\n"
+        lines.append("  rules from '\(match.layer)':")
         for rule in rules {
-            output += "    \(rule.displayName)\n"
-            if let rationale = rule.rationale { output += "      rationale: \(rationale)\n" }
-            if let hint = rule.hint { output += "      hint: \(hint)\n" }
+            lines.append("    \(rule.displayName)")
+            if let rationale = rule.rationale { lines.append("      rationale: \(rationale)") }
+            if let hint = rule.hint { lines.append("      hint: \(hint)") }
         }
-        return output
+        return lines
     }
 
     /// 정점 하나에 대한 사실을 작게 답한다.
@@ -597,7 +608,9 @@ public struct CartographService: Sendable {
             message += ". Similar names: " + names.joined(separator: ", ")
                 + " — the JSON above lists each with its location and USR"
         }
-        return message
+        // 표준 출력의 JSON 은 이름을 그대로 둔다(되물을 때 맞아야 한다). 이 문구는 표준 오류로 가는
+        // 한 줄이라 값 속 개행까지 함께 뺀다.
+        return PrintableText.printable(message)
     }
 
     /// `--explain` 계열이 notFound 로 답할 때 쓰는 문장.
@@ -608,9 +621,10 @@ public struct CartographService: Sendable {
         _ subject: String, similar: [GraphNode], noun: String
     ) -> String {
         let names = similar.map(\.qualifiedName)
-        guard !names.isEmpty else { return "No \(noun) matches '\(subject)'.\n" }
-        return "No \(noun) matches '\(subject)'. Similar names: "
-            + names.joined(separator: ", ") + ".\n"
+        guard !names.isEmpty else { return printableLines(["No \(noun) matches '\(subject)'."]) }
+        return printableLines(
+            ["No \(noun) matches '\(subject)'. Similar names: " + names.joined(separator: ", ") + "."]
+        )
     }
 
     /// 여러 선언을 한 번에 묻는다.
@@ -849,21 +863,23 @@ public struct CartographService: Sendable {
         _ candidates: [GraphNode], for subject: String, in graph: CodeGraph
     ) -> String {
         let ordered = orderedCandidates(candidates, in: graph)
-        let shown = ordered.prefix(shownCandidateLimit).map { candidate -> String in
+        let listed = ordered.prefix(shownCandidateLimit)
+        // 후보 하나는 위치 줄과 USR 줄 두 줄이다. 경로 속 개행이 이 짝을 늘리지 못하게 줄로 나눠 둔다.
+        let shown = listed.flatMap { candidate -> [String] in
             let site = candidate.node.location.map { "\($0.path):\($0.line)" } ?? "unknown location"
             let name = candidate.container.map { "\($0).\(candidate.node.name)" }
                 ?? candidate.node.qualifiedName
-            return "  \(site)  \(candidate.node.kind.rawValue) \(name)\n"
-                + "    \(candidate.node.usr ?? candidate.node.id.rawValue)"
+            return ["  \(site)  \(candidate.node.kind.rawValue) \(name)",
+                    "    \(candidate.node.usr ?? candidate.node.id.rawValue)"]
         }
-        let omitted = ordered.count - shown.count
+        let omitted = ordered.count - listed.count
         let tail = omitted > 0
-            ? "\n  … and \(omitted) more. Run `cartograph query \(subject)` "
-                + "for the full list as JSON.\n"
-            : "\n"
-        return "'\(subject)' matches \(candidates.count) declarations. "
-            + "Ask again with one of the names or USRs below:\n"
-            + shown.joined(separator: "\n") + tail
+            ? ["  … and \(omitted) more. Run `cartograph query \(subject)` for the full list as JSON."]
+            : []
+        return printableLines(
+            ["'\(subject)' matches \(candidates.count) declarations. Ask again with one of the names or USRs below:"]
+                + shown + tail
+        )
     }
 
     private func describeQuery(
@@ -1707,62 +1723,69 @@ public struct CartographService: Sendable {
         _ explanation: ReachabilityExplanation?,
         for node: GraphNode,
         in graph: CodeGraph,
-        externalRetentions: ExternalRetentionIndex
-    ) -> CommandOutcome {
+        externalRetentions: ExternalRetentionIndex,
+        projectPath: String
+    ) throws -> CommandOutcome {
         let name = node.qualifiedName
         switch explanation {
         case let .retained(reason):
-            return CommandOutcome(
-                output: "\(name) is retained because it is \(reason.explanation)."
-                    + evidenceSentence(for: node, reason: reason, in: graph, externalRetentions: externalRetentions)
-                    + "\n"
+            let evidence = try evidenceLines(
+                for: node, reason: reason, in: graph, externalRetentions: externalRetentions, projectPath: projectPath
             )
+            return CommandOutcome(output: printableLines(
+                ["\(name) is retained because it is \(reason.explanation)."] + evidence
+            ))
         case let .retainedByMember(inherited):
             let memberNode = graph.node(inherited.member)
             let member = memberNode?.qualifiedName ?? inherited.member.rawValue
-            let evidence = memberNode.map {
-                evidenceSentence(for: $0, reason: inherited.reason, in: graph, externalRetentions: externalRetentions)
-            } ?? ""
-            return CommandOutcome(
-                output: "\(name) is retained because its member \(member) is \(inherited.reason.explanation)."
-                    + evidence + "\n"
-            )
+            let evidence = try memberNode.map {
+                try evidenceLines(for: $0, reason: inherited.reason, in: graph,
+                                  externalRetentions: externalRetentions, projectPath: projectPath)
+            } ?? []
+            return CommandOutcome(output: printableLines(
+                ["\(name) is retained because its member \(member) is \(inherited.reason.explanation)."] + evidence
+            ))
         case let .reachable(path):
             let trail = path.map { graph.node($0)?.qualifiedName ?? $0.rawValue }.joined(separator: " → ")
-            return CommandOutcome(output: "\(name) is reachable:\n  \(trail)\n")
+            return CommandOutcome(output: printableLines(["\(name) is reachable:", "  \(trail)"]))
         case .unreachable:
-            return CommandOutcome(output: "\(name) is not reachable from any retained root.\n", findingCount: 1)
+            return CommandOutcome(
+                output: printableLines(["\(name) is not reachable from any retained root."]), findingCount: 1
+            )
         case .unknown, nil:
             // 이 분기는 정점을 찾은 뒤에만 도달한다. "찾지 못했다"고 말하면
             // 사용자는 자기가 친 이름이 틀렸다고 오해한다.
             return CommandOutcome(
-                output: "Could not determine reachability for \(name).\n",
+                output: printableLines(["Could not determine reachability for \(name)."]),
                 findingCount: 1
             )
         }
     }
 
-    /// 외부 보존 근거가 살린 선언이면 누가 어디서 불렀는지를 문장으로 덧붙인다.
+    /// 외부 보존 근거가 살린 선언이면 누가 어디서 불렀는지를 설명 줄로 덧붙인다.
     ///
     /// "외부 파일이 그렇다고 했다"로 끝나면 사용자는 그 파일을 열어 USR 을 찾아야 한다.
-    /// 근거는 답의 일부다.
-    private static func evidenceSentence(
+    /// 근거는 답의 일부다. 나열하지 못한 호출 수가 Int 범위를 넘으면 `impact` 와 같은 오류로 거부한다.
+    /// 포화한 수는 정확한 수처럼 읽히고, 같은 근거 파일에 두 명령이 다른 답을 내게 된다.
+    private static func evidenceLines(
         for node: GraphNode,
         reason: RetentionReason,
         in graph: CodeGraph,
-        externalRetentions: ExternalRetentionIndex
-    ) -> String {
+        externalRetentions: ExternalRetentionIndex,
+        projectPath: String
+    ) throws -> [String] {
         guard reason == .externalBridge,
               let retention = externalRetentions.retention(
                   for: node, names: [ExternalRetentionIndex.syntaxQualifiedName(of: node, in: graph)]
               )
-        else { return "" }
+        else { return [] }
+        guard retention.unlistedCallerCount != nil else { throw CallerOmissionOverflow.error(projectPath: projectPath) }
         // 이름으로 맞은 근거는 그렇다고 말한다. 동명 선언이 여럿이면 이 선언이 그 호출의
         // 진짜 대상이 아닐 수 있다. USR 로 맞은 것처럼 인용하면 지문 수준의 거짓말이다.
         let basis = retention.symbol.usr == nil
-            ? "\n  matched by qualified name, not by USR; every declaration with this name is kept"
-            : ""
-        return "\n  evidence: \(retention.evidenceDescription)" + basis
+            ? ["  matched by qualified name, not by USR; every declaration with this name is kept"]
+            : []
+        return ["  evidence: \(retention.evidenceDescription)"] + basis
     }
 
     /// 설정과 프로젝트 경로를 반영한 보존 규칙.
