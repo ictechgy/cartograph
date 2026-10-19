@@ -1022,9 +1022,10 @@ reference. Unknown names and receivers remain limitations rather than invented e
 For a **macOS debug executable**, collect actual events without manually authoring contracts:
 
 ```bash
-cartograph runtime collect --executable .build/debug/MyApp --output /tmp/runtime-trace.json -- app-arguments
-cartograph runtime discover --trace /tmp/runtime-trace.json --executable .build/debug/MyApp
-cartograph impact ScreenController --trace /tmp/runtime-trace.json --executable .build/debug/MyApp --format json
+trace_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-trace.XXXXXX")"
+cartograph runtime collect --executable .build/debug/MyApp --output "$trace_dir/runtime-trace.json" -- app-arguments
+cartograph runtime discover --trace "$trace_dir/runtime-trace.json" --executable .build/debug/MyApp
+cartograph impact ScreenController --trace "$trace_dir/runtime-trace.json" --executable .build/debug/MyApp --format json
 ```
 
 `collect` builds a local native collector with the installed Clang toolchain and launches the supplied
@@ -1040,8 +1041,9 @@ The collector does not re-sign an app or change entitlements. Hardened apps may 
 An installed **iOS 15+ Simulator debug test app** can also be collected:
 
 ```bash
+trace_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-trace.XXXXXX")"
 cartograph runtime collect --simulator <booted-device-UUID> --bundle-id <app-bundle-id> \
-  --executable <matching-build/MyApp.app/MyApp> --output /tmp/simulator-trace.json -- test-arguments
+  --executable <matching-build/MyApp.app/MyApp> --output "$trace_dir/simulator-trace.json" -- test-arguments
 ```
 
 The device UUID is explicit; the command does not boot devices or install apps. It refuses an already

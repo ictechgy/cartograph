@@ -997,9 +997,10 @@ subentity에 연결합니다. request/entity/context를 바꾸거나 흘려내�
 **macOS 디버그 실행 파일**에서는 수동 계약 없이 실제 사건을 수집할 수 있습니다.
 
 ```bash
-cartograph runtime collect --executable .build/debug/MyApp --output /tmp/runtime-trace.json -- app-arguments
-cartograph runtime discover --trace /tmp/runtime-trace.json --executable .build/debug/MyApp
-cartograph impact ScreenController --trace /tmp/runtime-trace.json --executable .build/debug/MyApp --format json
+trace_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-trace.XXXXXX")"
+cartograph runtime collect --executable .build/debug/MyApp --output "$trace_dir/runtime-trace.json" -- app-arguments
+cartograph runtime discover --trace "$trace_dir/runtime-trace.json" --executable .build/debug/MyApp
+cartograph impact ScreenController --trace "$trace_dir/runtime-trace.json" --executable .build/debug/MyApp --format json
 ```
 
 `collect`는 설치된 Clang으로 로컬 수집기를 빌드한 뒤 지정한 실행 파일을 실행합니다.
@@ -1015,8 +1016,9 @@ Foundation 클래스·프로토콜·selector 조회, `performSelector` 세 형�
 설치된 **iOS 15 이상 시뮬레이터 디버그 테스트 앱**에서도 수집할 수 있습니다.
 
 ```bash
+trace_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-trace.XXXXXX")"
 cartograph runtime collect --simulator <booted-device-UUID> --bundle-id <app-bundle-id> \
-  --executable <matching-build/MyApp.app/MyApp> --output /tmp/simulator-trace.json -- test-arguments
+  --executable <matching-build/MyApp.app/MyApp> --output "$trace_dir/simulator-trace.json" -- test-arguments
 ```
 
 기기 UUID를 명시하며 기기 부팅이나 앱 설치는 하지 않습니다. 이미 실행 중인 앱은 거부하고,

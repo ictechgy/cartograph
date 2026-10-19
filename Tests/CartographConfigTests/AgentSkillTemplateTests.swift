@@ -117,4 +117,53 @@ struct AgentSkillTemplateTests {
         #expect(AgentSkillTemplate.directory == ".claude/skills/cartograph")
         #expect(AgentSkillTemplate.fileName == "SKILL.md")
     }
+
+    /// 펜스 코드 블록 안의 줄. 에이전트가 그대로 실행하는 것은 이 줄들이다.
+    private var commandLines: [Substring] {
+        var isInsideFence = false
+        var lines: [Substring] = []
+        for line in AgentSkillTemplate.markdown.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.hasPrefix("```") {
+                isInsideFence.toggle()
+            } else if isInsideFence {
+                lines.append(line)
+            }
+        }
+        return lines
+    }
+
+    @Test("명령 예시의 임시 경로는 실행마다 mktemp 가 새로 만든다")
+    func commandExamplesCreateTemporaryPathsWithMktemp() {
+        // `/tmp/requests.json` 같은 고정 이름은 다른 계정이 미리 만든 파일이나 링크에 그대로
+        // 쓰고 읽는다. 같은 머신의 병렬 에이전트 세션끼리도 서로의 요청·trace 를 덮어쓴다.
+        // 에이전트는 이 명령을 그대로 실행하므로, 임시 경로는 mktemp 줄에서만 나와야 한다.
+        let temporaryPathLines = commandLines.filter { $0.contains("/tmp") || $0.contains("TMPDIR") }
+        for line in temporaryPathLines {
+            #expect(line.contains("mktemp"), "공유 임시 디렉터리의 고정 경로: \(line)")
+        }
+    }
+
+    /// 저장소 루트의 README. 스윕 예시의 정본이 있고 `Scripts/verify-cli-contract.sh` 가 실행해 본다.
+    private var readme: String {
+        get throws {
+            let root = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+            return try String(contentsOf: root.appendingPathComponent("README.md"), encoding: .utf8)
+        }
+    }
+
+    @Test("여러 선언을 묻는 예시가 README 에서 실행으로 검증하는 스윕과 같다")
+    func batchSweepMatchesTheVerifiedReadmeExample() throws {
+        // README 예시는 계약 스크립트가 진단 종류·빈 리포트·1000건 경계에서 실제로 돌려 본다.
+        // 스킬만 다른 형태로 남으면 검증받지 않은 스윕이 에이전트에게 간다. 실제로 README 를
+        // 고친 뒤에도 스킬은 모든 진단의 subject 를 /tmp 의 고정 파일로 넘기고 있었다.
+        let text = try readme
+        let start = try #require(text.range(of: "<!-- dead-to-batch-example -->\n")).upperBound
+        let end = try #require(text.range(of: "\n```\n", range: start..<text.endIndex)).upperBound
+        let example = text[start..<end]
+        #expect(example.hasPrefix("```bash\n"))
+        #expect(AgentSkillTemplate.markdown.contains(example), "스킬의 일괄 질의 예시가 README 와 다르다")
+    }
 }
