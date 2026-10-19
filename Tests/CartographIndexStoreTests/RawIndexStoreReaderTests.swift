@@ -360,6 +360,28 @@ struct RawIndexStoreReaderTests {
         }
     }
 
+    @Test("발생 중복 제거는 읽기 전체가 아니라 레코드 하나만큼의 키만 붙잡는다")
+    func occurrenceKeysStayWithinOneRecord() throws {
+        // 전체 집합은 발생마다 키를 읽기가 끝날 때까지 붙잡아, 큰 인덱스에서 읽기 단계 메모리를 두 배로 만들었다.
+        let fixture = try makeManySharedRecordsFixture(count: 6)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let reader = RawIndexStoreReader(
+            storePath: fixture.store.path, libraryPath: fixture.library, fileSystem: LocalFileSystem()
+        )
+        var peakKeys = 0
+
+        let result = try reader.read(in: Set(fixture.sources), occurrenceKeyPeak: { keys in
+            peakKeys = max(peakKeys, keys)
+        })
+        let perRecord = Dictionary(grouping: result.occurrences) {
+            $0.location.moduleName + "\u{0}" + $0.location.path
+        }
+
+        #expect(perRecord.count == fixture.sources.count * 2)
+        #expect(peakKeys > 0)
+        #expect(peakKeys <= perRecord.values.map(\.count).max() ?? 0)
+    }
+
     private struct Fixture {
         let root: URL
         let source: URL

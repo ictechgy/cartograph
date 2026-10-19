@@ -51,10 +51,15 @@ struct RawIndexStoreReader {
     let libraryPath: String
     let fileSystem: any FileSystem
 
+    /// 요청한 파일의 레코드를 모든 컴파일 문맥에서 읽는다.
+    ///
+    /// `recordCachePeak` 와 `occurrenceKeyPeak` 는 테스트용 관측 지점이다. 레코드 캐시와 발생 중복 제거가
+    /// 인덱스 크기가 아니라 레코드 하나 크기로 묶이는지 확인한다.
     func read(
         in paths: Set<String>, trackedSourcePath: ((String) -> Bool)? = nil,
         includeProjectHeaderRecords: Bool = false,
-        recordCachePeak: ((Int, Int) -> Void)? = nil
+        recordCachePeak: ((Int, Int) -> Void)? = nil,
+        occurrenceKeyPeak: ((Int) -> Void)? = nil
     ) throws -> RawReadResult {
         let session = try Session(storePath: storePath, libraryPath: libraryPath)
         let allowedPaths = Set(paths.map(fileSystem.canonicalPath))
@@ -129,24 +134,25 @@ struct RawIndexStoreReader {
 
         records.sort { $0.sortKey < $1.sortKey }
         var result: [DBSymbolOccurrence] = []
-        var seen: Set<OccurrenceKey> = []
+        var deduplicator = OccurrenceDeduplicator()
         var loadedRecords = RecordCache(capacity: 64)
         var remainingUses = Dictionary(records.map { ($0.record, 1) }, uniquingKeysWith: +)
         for record in records {
-            let rawRecord: RawStoreRecord
-            do {
-                rawRecord = try loadedRecords.record(
-                    named: record.record, from: session.store, onPeak: recordCachePeak
-                )
-            } catch {
-                throw RawIndexStoreReaderError.record(record.unit, record.record, underlying: error)
-            }
-            try rawRecord.occurrences.forEach { rawOccurrence in
-                let occurrence = try convert(rawOccurrence, record: record)
-                let key = OccurrenceKey(occurrence: occurrence, unit: record.unit, record: record.record)
-                guard seen.insert(key).inserted else { return .continue }
-                result.append(occurrence)
-                return .continue
+            if deduplicator.begin(unit: record.unit, record: record.record) {
+                let rawRecord: RawStoreRecord
+                do {
+                    rawRecord = try loadedRecords.record(
+                        named: record.record, from: session.store, onPeak: recordCachePeak
+                    )
+                } catch {
+                    throw RawIndexStoreReaderError.record(record.unit, record.record, underlying: error)
+                }
+                try rawRecord.occurrences.forEach { rawOccurrence in
+                    let occurrence = try convert(rawOccurrence, record: record)
+                    if deduplicator.admit(occurrence) { result.append(occurrence) }
+                    return .continue
+                }
+                occurrenceKeyPeak?(deduplicator.retainedKeyCount)
             }
             remainingUses[record.record, default: 1] -= 1
             if remainingUses[record.record] == 0 {
@@ -348,26 +354,67 @@ struct RawIndexStoreReader {
         }
     }
 
-    private struct OccurrenceKey: Hashable {
-        let unit: String
-        let record: String
-        let usr: String
-        let line: Int
-        let column: Int
-        let roles: UInt64
-        let relationSignature: String
+    /// 레코드 항목마다 같은 발생을 한 번만 남긴다.
+    ///
+    /// 서로 다른 (유닛, 레코드) 쌍의 발생은 원래 키가 겹치지 않았다. 그래서 읽기 전체에 걸친 집합 대신 처리한 쌍만
+    /// 기억해 다시 나온 항목을 통째로 건너뛰고, 키 집합은 레코드 하나 안의 중복만 거른다. 다시 나온 항목은 경로·모듈
+    /// 표기만 다른 같은 레코드라 예전에도 발생이 전부 버려졌다. 전체 집합은 발생마다 수백 바이트의 키를 읽기가 끝날
+    /// 때까지 붙잡아, 큰 인덱스에서 읽기 단계의 최대 메모리를 두 배 가까이 늘렸다.
+    struct OccurrenceDeduplicator {
+        private var readContexts: Set<RecordContext> = []
+        private var seen: Set<OccurrenceKey> = []
 
-        init(occurrence: DBSymbolOccurrence, unit: String, record: String) {
-            self.unit = unit
-            self.record = record
-            self.usr = occurrence.symbol.usr
-            self.line = occurrence.location.line
-            self.column = occurrence.location.utf8Column
-            self.roles = occurrence.roles.rawValue
-            self.relationSignature = occurrence.relations
-                .map { "\($0.symbol.usr):\($0.roles.rawValue)" }
-                .sorted()
-                .joined(separator: ",")
+        /// 처음 보는 (유닛, 레코드) 쌍이면 참을 돌려주고 레코드 안 중복 집합을 비운다.
+        mutating func begin(unit: String, record: String) -> Bool {
+            guard readContexts.insert(RecordContext(unit: unit, record: record)).inserted else { return false }
+            seen.removeAll(keepingCapacity: true)
+            return true
+        }
+
+        /// 지금 레코드에서 처음 보는 발생이면 참.
+        mutating func admit(_ occurrence: SymbolOccurrence) -> Bool {
+            seen.insert(OccurrenceKey(occurrence)).inserted
+        }
+
+        /// 지금 붙잡고 있는 발생 키 수. 레코드 하나의 발생 수를 넘지 않는다.
+        var retainedKeyCount: Int { seen.count }
+
+        private struct RecordContext: Hashable {
+            let unit: String
+            let record: String
+        }
+
+        /// 레코드 하나 안에서 같은 발생인지 가르는 키.
+        ///
+        /// 관계는 순서와 무관하게 (USR, 역할) 쌍의 정렬된 배열로 비교한다. 예전 서명은 발생마다 관계를 문자열로
+        /// 보간·정렬·연결해 새로 할당했고, 구분자가 든 USR 이면 서로 다른 관계 집합이 같은 서명이 될 수 있었다.
+        private struct OccurrenceKey: Hashable {
+            let usr: String
+            let line: Int
+            let column: Int
+            let roles: UInt64
+            let relations: [RelationKey]
+
+            init(_ occurrence: SymbolOccurrence) {
+                usr = occurrence.symbol.usr
+                line = occurrence.location.line
+                column = occurrence.location.utf8Column
+                roles = occurrence.roles.rawValue
+                var relations = occurrence.relations.map {
+                    RelationKey(usr: $0.symbol.usr, roles: $0.roles.rawValue)
+                }
+                if relations.count > 1 { relations.sort() }
+                self.relations = relations
+            }
+        }
+
+        private struct RelationKey: Hashable, Comparable {
+            let usr: String
+            let roles: UInt64
+
+            static func < (lhs: Self, rhs: Self) -> Bool {
+                (lhs.usr, lhs.roles) < (rhs.usr, rhs.roles)
+            }
         }
     }
 
