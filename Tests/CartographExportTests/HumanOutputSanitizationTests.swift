@@ -68,10 +68,11 @@ struct HumanOutputSanitizationTests {
             """)
     }
 
-    @Test("DOT 은 식별자·라벨·클러스터 이름의 제어·형식 문자를 빼서 정점 하나를 한 줄에 둔다")
+    @Test("DOT 은 라벨의 제어·형식 문자는 빼고 식별자·클러스터 이름의 것은 보이는 글자로 바꿔 한 줄을 지킨다")
     func dotStripsHiddenScalars() {
         // 따옴표·역슬래시 탈출은 이미 막혀 있다. 남은 구멍은 파일 레벨 정점의 식별자와 이름이 그대로
-        // 옮겨 오는 파일 경로의 개행·복귀·ESC·양방향 재정의다.
+        // 옮겨 오는 파일 경로의 개행·복귀·ESC·양방향 재정의다. 식별자는 지우면 다른 정점과 겹치므로
+        // `\u{1B}` 같은 글자로 바꾼다.
         let path = NodeID("Sources/a\r\n\u{1B}[2J.swift")
         let module = "App\(Self.clipboard)"
         let graph = CodeGraph(
@@ -86,11 +87,45 @@ struct HumanOutputSanitizationTests {
         let output = DOTGraphRenderer().render(graph)
 
         #expect(!Self.hasHiddenScalars(output))
-        #expect(output.contains("\n  subgraph \"cluster_App]52;c;ZWNobyBwd25lZA==\" {\n"))
+        #expect(output.contains("\n  subgraph \"cluster_App\\u{1B}]52;c;ZWNobyBwd25lZA==\\u{7}\" {\n"))
         #expect(output.contains("\n    label=\"App]52;c;ZWNobyBwd25lZA==\";\n"))
-        #expect(output.contains("\n    \"Sources/a[2J.swift\" [label=\"a[2J.swift\", shape=note];\n"))
+        #expect(output.contains(
+            "\n    \"Sources/a\\u{D}\\u{A}\\u{1B}[2J.swift\" [label=\"a[2J.swift\", shape=note];\n"
+        ))
         #expect(output.contains("\n    \"Sources/b.swift\" [label=\"btxt.swift\", shape=note];\n"))
-        #expect(output.contains("\n  \"Sources/a[2J.swift\" -> \"Sources/b.swift\" ["))
+        #expect(output.contains("\n  \"Sources/a\\u{D}\\u{A}\\u{1B}[2J.swift\" -> \"Sources/b.swift\" ["))
+    }
+
+    @Test("DOT 은 제어·형식 문자 하나만 다른 파일들을 다른 정점과 다른 간선으로 남긴다")
+    func dotKeepsNodesApartWhenOnlyHiddenScalarsDiffer() {
+        // 식별자에서 U+200B(Cf)를 지우면 두 경로가 같은 ID 가 된다. DOT 에서 같은 ID 의 문장은 한 정점이라
+        // Graphviz 가 둘을 합치고 숨은 파일의 의존을 정상 파일에 붙인다. 원래 `\u{200B}` 라고 적힌
+        // 이름(역슬래시 글자)과도 겹치지 않아야 이스케이프가 단사다.
+        let plain = NodeID("Sources/A.swift")
+        let hidden = NodeID("Sources/A\u{200B}.swift")
+        let spelled = NodeID("Sources/A\\u{200B}.swift")
+        let target = NodeID("Sources/B.swift")
+        let graph = CodeGraph(
+            level: .file,
+            nodes: [plain, hidden, spelled, target].map { id in
+                GraphNode(id: id, name: String(id.rawValue.dropFirst("Sources/".count)), kind: .file)
+            },
+            edges: [GraphEdge(source: hidden, target: target, kind: .reference)]
+        )
+
+        let output = DOTGraphRenderer().render(graph)
+
+        #expect(!Self.hasHiddenScalars(output))
+        let identifiers = output.split(separator: "\n")
+            .filter { $0.contains("shape=note") }
+            .map { $0.prefix { $0 != "[" } }
+        #expect(identifiers.count == 4)
+        #expect(Set(identifiers).count == 4)
+        #expect(output.contains("\n    \"Sources/A\\u{200B}.swift\" [label=\"A.swift\", shape=note];\n"))
+        #expect(output.contains("\n    \"Sources/A\\\\u{200B}.swift\" [label=\"A\\\\u{200B}.swift\", shape=note];\n"))
+        // 숨은 파일의 의존은 숨은 파일에 남는다. 정상 파일에 붙으면 그래프가 거짓말을 한다.
+        #expect(output.contains("\n  \"Sources/A\\u{200B}.swift\" -> \"Sources/B.swift\" ["))
+        #expect(!output.contains("\"Sources/A.swift\" ->"))
     }
 
     @Test("Mermaid 는 라벨의 개행을 공백으로 접고 나머지 제어·형식 문자는 뺀다")
