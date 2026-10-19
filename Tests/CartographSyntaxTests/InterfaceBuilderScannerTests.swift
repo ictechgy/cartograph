@@ -115,6 +115,22 @@ struct InterfaceBuilderScannerTests {
         #expect(!references.customClassNames.contains("Vendor"))
     }
 
+    @Test(
+        "공용 빌드 산출물 목록이 거르는 디렉터리 아래 문서는 읽지 않는다",
+        arguments: BuildArtifactDirectories.prunedNames.sorted() + [".build-fresh"]
+    )
+    func skipsSharedBuildArtifactDirectories(directory: String) {
+        // 가지치기 목록은 하나뿐이다. 스캐너가 따로 목록을 두면 한쪽에만 있는 이름
+        // (`node_modules`, `.build-` 접두 재인덱스 디렉터리) 아래 서드파티 문서가
+        // 같은 이름의 앱 타입을 살려 CLI 와 다른 판정이 나온다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/App/Main.storyboard": "<view customClass=\"Kept\"/>",
+            "/p/\(directory)/x/Vendor.xib": "<view customClass=\"Vendor\"/>",
+        ])
+        let references = InterfaceBuilderScanner(fileSystem: fileSystem).scan(roots: ["/p"])
+        #expect(references.customClassNames == ["Kept"])
+    }
+
     @Test("경로 필터가 적용된다")
     func respectsPathFilter() {
         let fileSystem = InMemoryFileSystem(files: [
@@ -165,6 +181,27 @@ struct InterfaceBuilderScannerTests {
         let enriched = SnapshotEnricher(fileSystem: fileSystem)
             .enrich(builder.build(), interfaceBuilderRoots: ["/p"])
         #expect(enriched.symbols[0].attributes.contains(.interfaceBuilderAnnotated))
+    }
+
+    @Test("루트로 보강해도 빌드 산출물 아래 문서의 이름으로 앱 타입을 살리지 않는다")
+    func rootEnrichmentIgnoresBuildArtifactDocuments() {
+        // 임베더가 루트만 넘기는 공개 경로다. CLI 는 공용 목록으로 거른 인벤토리를 넘기므로
+        // 여기서 `node_modules` 를 걸으면 같은 프로젝트의 판정이 호출 방식에 따라 갈린다.
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/App.swift": "final class Foo {}\nfinal class Bar {}\nfinal class Kept {}",
+            "/p/App/Main.storyboard": "<view customClass=\"Kept\"/>",
+            "/p/node_modules/x/Foo.xib": "<view customClass=\"Foo\"/>",
+            "/p/.build-fresh/Bar.storyboard": "<view customClass=\"Bar\"/>",
+        ])
+        var builder = SnapshotBuilder()
+        builder.symbol("Foo", kind: .classType, path: "/p/App.swift", line: 1)
+        builder.symbol("Bar", kind: .classType, path: "/p/App.swift", line: 2)
+        builder.symbol("Kept", kind: .classType, path: "/p/App.swift", line: 3)
+
+        let enriched = SnapshotEnricher(fileSystem: fileSystem)
+            .enrich(builder.build(), interfaceBuilderRoots: ["/p"])
+        let marked = enriched.symbols.filter { $0.attributes.contains(.interfaceBuilderAnnotated) }.map(\.name)
+        #expect(marked == ["Kept"])
     }
 
     @Test("루트를 주지 않으면 스토리보드를 읽지 않는다")

@@ -51,6 +51,9 @@ public struct InterfaceBuilderScanner: Sendable {
     }
 
     /// 주어진 경로들 아래의 모든 Interface Builder 문서를 훑는다.
+    ///
+    /// 빌드 산출물 디렉터리는 공용 목록(`BuildArtifactDirectories`)으로 건너뛴다. CLI 의
+    /// 파일 인벤토리와 같은 목록이어야 루트만 넘기는 임베더도 같은 문서를 본다.
     public func scan(roots: [String], pathFilter: PathFilter = .passthrough) -> InterfaceBuilderReferences {
         var result = InterfaceBuilderReferences()
         var seen: Set<String> = []
@@ -59,7 +62,7 @@ public struct InterfaceBuilderScanner: Sendable {
             let documents = fileSystem.recursiveFiles(
                 under: root,
                 isIncluded: { Self.isDocument($0) && pathFilter.allows($0) },
-                shouldDescend: { !Self.prunedDirectoryNames.contains(Self.lastComponent(of: $0)) }
+                shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
             )
             for document in documents where seen.insert(document).inserted {
                 guard let contents = try? fileSystem.readText(at: document) else { continue }
@@ -154,13 +157,4 @@ public struct InterfaceBuilderScanner: Sendable {
         let lowercased = path.lowercased()
         return documentExtensions.contains { lowercased.hasSuffix(".\($0)") }
     }
-
-    static func lastComponent(of path: String) -> String {
-        path.split(separator: "/").last.map(String.init) ?? path
-    }
-
-    /// 들어가 봐야 소용없는 디렉터리 이름.
-    static let prunedDirectoryNames: Set<String> = [
-        ".build", ".git", "DerivedData", "Pods", "Carthage", "checkouts", ".swiftpm",
-    ]
 }
