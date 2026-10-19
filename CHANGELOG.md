@@ -34,12 +34,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   accumulate in `v5/units`, so a DerivedData store created yesterday could win over a long-lived
   `.build/out` store whose units were written today. Index freshness uses the same definition. A
   single candidate or an explicit `--index-store` path selects the same store as before.
-- Read Interface Builder and Core Data model resources (8 MiB), runtime evidence (2 MiB) and Core
-  Data generated sources (4 MiB) only up to their documented limits instead of loading the whole
-  file before the size check. Session input fingerprints hash files in 1 MiB chunks, so a link to a
-  very large file is no longer loaded whole into memory. Limitation and error messages are
+- Read the Interface Builder and Core Data model resources that runtime discovery scans (8 MiB),
+  runtime evidence (2 MiB) and Core Data generated sources (4 MiB) only up to their documented
+  limits instead of loading the whole file before the size check. Session input fingerprints hash
+  files in 1 MiB chunks instead of loading each input whole. Limitation and error messages are
   unchanged. Fingerprint values change, so runtime traces and runtime plans recorded by an earlier
-  version report changed inputs and must be collected again.
+  version report changed inputs and must be collected again. Other reads still have no size limit:
+  syntax enrichment reads each source and Interface Builder document whole, and so do `routes`,
+  `bridges`, `schema`, `fix` and `dataflow` for the sources they scan.
 - A discovered source or resource whose path or symlink target looks sensitive, such as
   `Config/.env.swift` or a link to `cert.pem`, no longer fails session fingerprinting with
   `sensitiveInput`. Neither does the index unit that a per-file (non-whole-module) build names after
