@@ -51,22 +51,43 @@ public struct InterfaceBuilderScanner: Sendable {
     }
 
     /// 주어진 경로들 아래의 모든 Interface Builder 문서를 훑는다.
+    ///
+    /// 빌드 산출물 디렉터리는 공용 목록(`BuildArtifactDirectories`)으로 건너뛴다. CLI 의
+    /// 파일 인벤토리와 같은 목록이어야 루트만 넘기는 임베더도 같은 문서를 본다.
     public func scan(roots: [String], pathFilter: PathFilter = .passthrough) -> InterfaceBuilderReferences {
         var result = InterfaceBuilderReferences()
-        var seen: Set<String> = []
+        forEachDocument(under: roots, pathFilter: pathFilter) { contents in
+            result = result.merging(Self.references(in: contents))
+        }
+        return result
+    }
 
+    /// `scan(roots:pathFilter:)` 와 같은 문서에서 `customClass` 이름만 모은다.
+    ///
+    /// 보강 경로의 보존 표식은 이 이름만 본다. 공개 `scan` 은 문서마다 outlet·action 까지
+    /// 훑으므로, 보강은 이쪽을 써서 결과에 쓰이지 않는 스캔을 건너뛴다.
+    func scanCustomClassNames(roots: [String], pathFilter: PathFilter) -> Set<String> {
+        var names: Set<String> = []
+        forEachDocument(under: roots, pathFilter: pathFilter) { names.formUnion(Self.customClassNames(in: $0)) }
+        return names
+    }
+
+    /// 루트들 아래 문서를 경로마다 한 번만 읽어 내용을 넘긴다.
+    ///
+    /// 두 수집 함수가 같은 가지치기·경로 필터·중복 제거를 거치도록 순회를 한 곳에만 둔다.
+    private func forEachDocument(under roots: [String], pathFilter: PathFilter, _ body: (String) -> Void) {
+        var seen: Set<String> = []
         for root in roots {
             let documents = fileSystem.recursiveFiles(
                 under: root,
                 isIncluded: { Self.isDocument($0) && pathFilter.allows($0) },
-                shouldDescend: { !Self.prunedDirectoryNames.contains(Self.lastComponent(of: $0)) }
+                shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
             )
             for document in documents where seen.insert(document).inserted {
                 guard let contents = try? fileSystem.readText(at: document) else { continue }
-                result = result.merging(Self.references(in: contents))
+                body(contents)
             }
         }
-        return result
     }
 
     /// 문서 내용에서 참조를 뽑아낸다.
@@ -77,6 +98,14 @@ public struct InterfaceBuilderScanner: Sendable {
             outletNames: attributeValues(named: "property", in: body),
             actionSelectors: attributeValues(named: "selector", in: body)
         )
+    }
+
+    /// 문서 내용에서 `customClass` 이름만 뽑는다. `references(in:)` 의 `customClassNames` 와 같다.
+    ///
+    /// 보존 판정이 쓰는 것은 이 이름뿐이다. `references(in:)` 는 outlet·selector 를 찾느라 문서
+    /// 전체를 두 번 더 훑는다. 큰 스토리보드에서는 그 두 번이 보강의 IB 단계 시간의 절반쯤 된다.
+    static func customClassNames(in contents: String) -> Set<String> {
+        attributeValues(named: "customClass", in: removingComments(contents))
     }
 
     /// `name="value"` 형태의 속성 값을 모두 모은다.
@@ -154,13 +183,4 @@ public struct InterfaceBuilderScanner: Sendable {
         let lowercased = path.lowercased()
         return documentExtensions.contains { lowercased.hasSuffix(".\($0)") }
     }
-
-    static func lastComponent(of path: String) -> String {
-        path.split(separator: "/").last.map(String.init) ?? path
-    }
-
-    /// 들어가 봐야 소용없는 디렉터리 이름.
-    static let prunedDirectoryNames: Set<String> = [
-        ".build", ".git", "DerivedData", "Pods", "Carthage", "checkouts", ".swiftpm",
-    ]
 }

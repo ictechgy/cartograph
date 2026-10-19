@@ -18,7 +18,10 @@ public struct TextDiagnosticReporter: DiagnosticReporting {
         lines.append("")
         lines.append(summaryLine(diagnostics, summary: summary))
         lines += limitationLines(summary.limitations ?? [])
-        return lines.joined(separator: "\n") + "\n"
+        // 경로·메시지·세부 정보·요약은 분석 대상 저장소가 통제하는 값이다. 기계 형식과 같은 Core 의
+        // 필터를 줄마다 지나야 파일 이름의 개행이 위조 진단 줄을 만들지 못하고 ESC·양방향 재정의가
+        // 터미널에 닿지 않는다. 합친 뒤 거르면 줄을 나누는 개행까지 사라지므로 합치기 전에 거른다.
+        return lines.map { PrintableText.printable($0) }.joined(separator: "\n") + "\n"
     }
 
     /// 요약 줄 뒤에 붙이는 한계 블록.
