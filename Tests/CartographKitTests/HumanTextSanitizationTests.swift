@@ -263,4 +263,110 @@ struct HumanTextSanitizationTests {
         // 에이전트가 읽는 JSON 은 이름을 바꾸지 않는다. 되물을 때 그 이름이 그대로 맞아야 한다.
         #expect(queried.output.contains("Home\u{202E}View"))
     }
+
+    // MARK: 값 속 개행
+
+    @Test("dead --explain 의 모호 후보 목록은 경로 속 개행으로 가짜 후보·USR 줄을 만들지 못한다")
+    func candidateListLinesFollowCandidateCount() throws {
+        // 파일 이름에는 개행이 들어갈 수 있다. 사용자는 이 목록의 USR 을 복사해 다시 묻는다.
+        let forged = "/p/A.swift\n  /p/Trusted.swift:1  class Data.Repository\n    s:trusted\n  /p/X"
+        var builder = SnapshotBuilder()
+        builder.symbol("s:A", name: "Repository", kind: .classType, module: "Data", path: forged)
+        builder.symbol("s:B", name: "Repository", kind: .classType, module: "Domain", path: "/p/B.swift")
+
+        let output = try makeService(builder.build()).explainRetention(of: "Repository").output
+
+        let lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        // 머리 줄 + 후보마다 위치·USR 두 줄 + 끝 개행 뒤의 빈 조각
+        #expect(lines.count == 1 + 2 * 2 + 1)
+        #expect(!lines.contains("    s:trusted"))
+        let site: String = "  /p/A.swift  /p/Trusted.swift:1  class Data.Repository    s:trusted  /p/X:1"
+            + "  class Data.Repository"
+        #expect(lines[1] == site)
+        #expect(lines[2] == "    s:A")
+    }
+
+    @Test("cycles·rules --explain 의 파일 레벨 설명은 경로 속 개행으로 후보·검사 줄을 늘리지 못한다")
+    func fileLevelExplanationLinesFollowStructure() throws {
+        // 파일 레벨 정점의 식별자와 위치는 경로다. 이름이 같은 두 파일을 물으면 후보 줄에, 레이어가 없는
+        // 파일을 물으면 검사한 후보 줄에 경로가 실린다.
+        let forged = "/p/X\n  App.A.swift  /p/Trusted.swift\n/A.swift"
+        var builder = SnapshotBuilder()
+        builder.symbol("s:First", name: "First", kind: .structType, module: "App", path: forged)
+        builder.symbol("s:Second", name: "Second", kind: .structType, module: "App", path: "/p/Y/A.swift")
+        let service = makeService(builder.build())
+
+        for output in [
+            try service.explainCycles(of: "A.swift", level: .file).output,
+            try service.explainRules(of: "A.swift", level: .file).output,
+        ] {
+            let lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            // 머리 줄 + 후보 두 줄 + 끝 개행 뒤의 빈 조각
+            #expect(lines.count == 1 + 2 + 1)
+            #expect(lines.contains("  App.A.swift  /p/X  App.A.swift  /p/Trusted.swift/A.swift"))
+            #expect(!lines.contains("  App.A.swift  /p/Trusted.swift"))
+        }
+
+        let orphan = try service.explainRules(of: forged, level: .file).output
+        #expect(orphan == "App.A.swift belongs to no layer.\n"
+            + "  checked: A.swift, App.A.swift, App, /p/X  App.A.swift  /p/Trusted.swift/A.swift\n")
+    }
+
+    @Test("rules --explain 은 설정의 레이어·규칙 이름 속 개행으로 설명 줄을 늘리지 못한다")
+    func layerExplanationLinesFollowStructure() throws {
+        // rationale·hint 는 LayerRule 이 한 줄로 접지만 레이어 이름과 규칙의 name·from 은 그대로 온다.
+        let layer = "UI\n  matched: Data against 'Data'"
+        var builder = SnapshotBuilder()
+        builder.symbol("HomeView", kind: .structType, module: "Presentation", path: "/p/HomeView.swift")
+        let service = makeService(builder.build()) {
+            $0.layers = [LayerDefinition(name: layer, patterns: ["Presentation"])]
+            $0.rules = [LayerRule(name: "no data\n      hint: run the fix script", from: layer, deny: ["Data"])]
+        }
+
+        let explained = try service.explainRules(of: "Presentation", level: .module)
+
+        #expect(explained.output == """
+            Presentation is in layer 'UI  matched: Data against 'Data''.
+              matched: Presentation against 'Presentation'
+              rules from 'UI  matched: Data against 'Data'':
+                no data      hint: run the fix script
+
+            """)
+    }
+
+    @Test("--explain 의 설명 문장과 찾지 못한 이름 문구도 이름 속 개행으로 줄을 늘리지 못한다")
+    func explanationSentencesKeepTheirLines() throws {
+        // 줄 구조는 값이 아니라 문장 틀이 정해야 한다. 이름 속 개행은 그 줄 안에서 빠진다.
+        var builder = SnapshotBuilder()
+        builder.symbol(
+            "s:Root", name: "Root", kind: .structType, module: "App", path: "/p/Root.swift", attributes: [.entryPoint]
+        )
+        builder.symbol("s:Mid", name: "Mid\n  App.Forged", kind: .structType, module: "App", path: "/p/Mid.swift")
+        builder.symbol("s:Leaf", name: "Leaf", kind: .structType, module: "App", path: "/p/Leaf.swift")
+        builder.symbol("s:Dead", name: "Dead\nHelper", module: "App", path: "/p/Dead.swift")
+        builder.symbol("s:Home", name: "Home\nView", kind: .structType, module: "App", path: "/p/Home.swift")
+        builder.reference(from: "s:Root", to: "s:Mid", kind: .call)
+        builder.reference(from: "s:Mid", to: "s:Leaf", kind: .call)
+        builder.reference(from: "s:Leaf", to: "s:Mid", kind: .call)
+        let service = makeService(builder.build())
+
+        #expect(try service.explainRetention(of: "s:Leaf").output
+            == "App.Leaf is reachable:\n  App.Root → App.Mid  App.Forged → App.Leaf\n")
+        #expect(try service.explainRetention(of: "s:Dead").output
+            == "App.DeadHelper is not reachable from any retained root.\n")
+
+        let cycle = try service.explainCycles(of: "s:Leaf", level: .symbol).output
+        let lines = cycle.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        #expect(lines.first == "App.Leaf is part of 1 cycle(s):")
+        // 머리 줄 + 순환 경로 한 줄 + (있으면) 끊을 후보 한 줄 + 끝 개행 뒤의 빈 조각
+        #expect(lines.count == (cycle.contains("weakest link") ? 4 : 3))
+        #expect(!lines.contains { $0.hasPrefix("  App.Forged") })
+
+        let similar = [GraphNode(id: "s:Home", name: "Home\nView", kind: .structType, module: "App")]
+        #expect(CartographService.describeNotFound("HomeView", similar: similar, noun: "node")
+            == "No node matches 'HomeView'. Similar names: App.HomeView.\n")
+        let message = try #require(try service.query(symbol: "HomeView").notFoundMessage)
+        #expect(message.hasPrefix("no declaration matches 'HomeView'. Similar names: App.HomeView"))
+        #expect(!message.contains("\n"))
+    }
 }
