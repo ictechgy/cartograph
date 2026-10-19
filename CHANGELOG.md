@@ -7,6 +7,89 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Expose `IndexStoreLocator.storeRecency(at:)`, the store recency that candidate selection and
+  index freshness now share; `CoreDataGeneratedClassScanner.topLevelClassName(source:)`, the
+  "exactly one top-level class" rule that `inspect` applies; and
+  `ReachabilityAnalyzer.Options.computesSuperfluousIgnores` (default `true`) for callers that do
+  not read superfluous-ignore findings.
+
+### Fixed
+
+- `baseline` now records module- and type-level cycles, the two levels `check` gates, plus the
+  configured level when it is `file` or `symbol`, deduplicated by fingerprint. It previously
+  recorded only the configured level (module by default), so existing type cycles kept
+  `check --strict` and `cycles --level type --strict` failing after a baseline was adopted.
+  Existing baseline files stay valid; rewrite them to add type-cycle fingerprints, which raises the
+  "Wrote N findings" count. `unused-import` and `unused-parameter` findings are still not recorded,
+  so a `fix --strict` dry-run gate can still fail on existing imports.
+- `cycles --explain` applies the baseline as `dead --explain` does. Cycles the baseline suppresses
+  no longer count as findings, so `--strict` exits 0 for them, and
+  `CommandOutcome.suppressedCount` reports how many were suppressed. The explanation text is
+  unchanged, and `max_cycles` is still not applied.
+- When several index stores remain candidates, choose the one whose units were written most
+  recently (the latest of the store root, `v5/units` and `units`), as the README describes, instead
+  of comparing store-root modification times. Roots keep their creation time while records
+  accumulate in `v5/units`, so a DerivedData store created yesterday could win over a long-lived
+  `.build/out` store whose units were written today. Index freshness uses the same definition. A
+  single candidate or an explicit `--index-store` path selects the same store as before.
+- Read Interface Builder and Core Data model resources (8 MiB), runtime evidence (2 MiB) and Core
+  Data generated sources (4 MiB) only up to their documented limits instead of loading the whole
+  file before the size check. Session input fingerprints hash files in 1 MiB chunks, so a link to a
+  very large file is no longer loaded whole into memory. Limitation and error messages are
+  unchanged. Fingerprint values change, so runtime traces and runtime plans recorded by an earlier
+  version report changed inputs and must be collected again.
+- A discovered source or resource whose path or symlink target looks sensitive, such as
+  `Config/.env.swift` or a link to `cert.pem`, no longer fails session fingerprinting with
+  `sensitiveInput`. The failure repeated on every `serve` tool call and on `runtime collect`, `plan`
+  and `check`, `impact --trace` and `--coredata-build-evidence`. Such inputs now contribute their
+  path and file status (including change time, so edits still change the fingerprint) without
+  being read. Configured inputs (configuration file, baseline, external retentions), index inputs
+  and build-evidence paths are still rejected.
+- `routes` keeps same-file static path facts such as `API.base + Route.users.rawValue` when the
+  value-flow rescan spells a file path differently from the first pass, as macOS does for projects
+  under `/tmp` or `/private` or reached through a symlink. The duplicated declarations made those
+  values ambiguous, so the call was counted only as an unreadable request sink.
+- Runtime-name resolution in the default syntax enrichment, which `dead`, `cycles`, `rules`,
+  `query` and MCP all run, no longer grows exponentially on alias chains that reuse an earlier alias
+  (`x1 = x0 + x0`) or on interpolations that branch at every step; a 25-line file could use tens of
+  gigabytes. Exported `nameAPIReferences` drop exact duplicates, and
+  `SwiftSyntaxAnalyzer.analysisRevision` moves to 23 so syntax caches from earlier versions are
+  rebuilt.
+- Reading a crafted index whose USR has a non-ASCII digit where a module-name length is expected no
+  longer crashes. Compiler-generated USRs are ASCII, so results for real indexes are unchanged.
+
+### Changed
+
+- Syntax scanning repeats less work. `bridges` builds the React Native macro patterns once per file
+  and skips lines without a macro marker; Objective-C files without macros went from about 650 µs
+  to under 4 µs per line. Per-file `routes` scanning no longer copies the project surface, computes
+  conformances only for adapter candidates and looks up type and router protocol chains by last
+  name, so its cost no longer grows with project size. The enum-decision and local-function binders
+  index only the positions they look up, and the local-function scanner skips bodies without a
+  nested function declaration.
+- Reachability and queries repeat less work. `CodeGraph` sorts its node list once when created.
+  Superfluous-ignore counterfactuals no longer copy the closed reachable set for every ignore unit,
+  and `check`, `baseline`, `fix` and `dead --explain`, which never report them, skip them. notFound
+  suggestions use a lazily built name index with bit-parallel edit distance and are computed once
+  per distinct name within `query --batch`, an MCP query batch or an Impact symbol selection.
+  Runtime discovery looks declarations up by name instead of scanning all of them per boundary.
+- Index reading keeps occurrence-deduplication keys only for the current record and compares
+  relations as sorted (USR, role) pairs, lowering peak RSS by about 13% at 3.5 million occurrences.
+  Snapshot conversion no longer builds discarded strings or rehashes path keys for each occurrence.
+  Crafted USRs containing `,` or `:` no longer merge occurrences whose relation sets differ.
+- Kit resolves each path once per operation instead of once per occurrence, node or diagnostic in
+  value-flow loading, limitation collection and runtime plan/check freshness. Core Data
+  generated-class verification reads each generated source once and builds its lookup tables once
+  per call. Path-filter glob matching pre-splits pattern segments, and Kit no longer rebuilds the
+  path filter for each item.
+- Except where a Fixed entry says otherwise, output and exit codes are unchanged. The measurements
+  behind these changes used synthetic release-build harnesses and show reduced work on those
+  shapes, not a general end-to-end speedup. `CodeGraph`'s stored sorted arrays add about 6% peak RSS
+  on large graphs without ignore comments, and the suggestion index adds memory after the first
+  notFound suggestion (about 9% peak RSS on a 420,000-node synthetic graph).
+
 ## [0.28.0] - 2026-10-19
 
 [Published release](https://github.com/ictechgy/cartograph/releases/tag/0.28.0), from reviewed source
