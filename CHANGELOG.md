@@ -7,6 +7,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Filter terminal control and format characters from human-readable output with the same
+  `PrintableText` rule the machine reporters use: the default text reporter, DOT and Mermaid
+  graphs, `routes`, `bridges` and `schema` text, `dead`, `cycles` and `rules --explain`, and the
+  not-found and ambiguous-name messages, including those written to standard error. File paths,
+  declaration names and `.cartograph.yml` text can no longer forge text-report lines, clear the
+  screen, set the clipboard (OSC 52) or reverse displayed text (U+202E). Output changes only when
+  such characters are present; JSON, SARIF and the other machine formats are unchanged.
+- `InterfaceBuilderScanner.scan(roots:)` and `SnapshotEnricher` given `interfaceBuilderRoots` now
+  skip the shared build-artifact directories, including `node_modules`, `.build-*`, `.swift-build`,
+  `.benchmark-results` and `.omc`, so embedders that pass roots no longer retain app types named by
+  third-party or rebuild-scratch documents. The CLI already filtered its inventory this way; its
+  output is unchanged.
+
+### Changed
+
+- Interface Builder enrichment collects only the `customClass` names that retention marking reads
+  instead of also scanning outlets and actions in every document. Retention marks are unchanged,
+  and the Interface Builder phase takes about half as long on large storyboards.
+
 ## [0.28.0] - 2026-10-19
 
 [Published release](https://github.com/ictechgy/cartograph/releases/tag/0.28.0), from reviewed source
