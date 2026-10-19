@@ -16,13 +16,17 @@ public struct MetricsRenderer: Sendable {
     /// 고정폭 표. 열 너비를 내용에 맞춰 계산해 정렬이 흐트러지지 않게 한다.
     ///
     /// 한계 목록은 알릴 것이 있을 때만 표 아래에 붙는다. 매번 붙는 경보는 읽히지 않는다.
+    ///
+    /// 이름 열은 파일 이름·선언 이름이라 저장소가 통제한다. 다른 사람용 출력처럼 Core 의 필터로
+    /// 제어·형식 문자를 빼야 ESC·OSC 52·U+202E 가 터미널에 닿지 않는다. 너비를 세기 전에 걸러야
+    /// 걸러 낸 줄만 짧아져 숫자 열이 어긋나는 일이 없다.
     public func renderTable(_ metrics: [NodeMetrics], limitations: [String] = []) -> String {
         guard !metrics.isEmpty else { return "No nodes to measure.\n" }
 
         let headers = ["NODE", "Ca", "Ce", "I", "A", "D", "ZONE"]
         let rows = metrics.map { entry in
             [
-                entry.name,
+                PrintableText.printable(entry.name),
                 String(entry.afferentCoupling),
                 String(entry.efferentCoupling),
                 Self.format(entry.instability),
@@ -53,7 +57,7 @@ public struct MetricsRenderer: Sendable {
         output.append(legend)
         if !limitations.isEmpty {
             output.append("")
-            output.append(contentsOf: limitations.map { "Limitation: \($0)" })
+            output.append(contentsOf: limitations.map { "Limitation: \(PrintableText.printable($0))" })
         }
         return output.joined(separator: "\n") + "\n"
     }

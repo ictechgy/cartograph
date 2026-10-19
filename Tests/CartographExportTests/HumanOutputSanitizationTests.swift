@@ -1,8 +1,9 @@
+import CartographAnalysis
 import CartographCore
 @testable import CartographExport
 import Testing
 
-/// 사람과 터미널이 읽는 형식(text 리포터, DOT, Mermaid)도 기계 형식과 같은 필터를 지나는지.
+/// 사람과 터미널이 읽는 형식(text 리포터, DOT, Mermaid, metrics 표)도 기계 형식과 같은 필터를 지나는지.
 ///
 /// 경로·이름·메시지·규칙 설명은 분석 대상 저장소가 통제하는 값이다. 파일 이름의 개행 하나면
 /// 위조 진단 줄이 붙고, ESC 는 터미널 화면을, OSC 52 는 클립보드를, U+202E 는 표시 순서를 바꾼다.
@@ -141,5 +142,28 @@ struct HumanOutputSanitizationTests {
 
         #expect(!Self.hasHiddenScalars(output))
         #expect(output == "flowchart LR\n    n0[/\"a b[2Kc]52;c;ZWNobyBwd25lZA==.swift\"/]\n")
+    }
+
+    @Test("metrics 표는 이름과 한계 줄의 제어·형식 문자를 빼고 걸러 낸 이름으로 열 너비를 센다")
+    func metricsTableStripsHiddenScalars() {
+        // 파일 레벨 이름은 파일 이름이고 타입 레벨은 선언 이름이다. 둘 다 저장소가 통제한다.
+        let metrics = [
+            NodeMetrics(node: "a", name: "App.\(Self.clipboard)Api\u{1B}[2J.swift", afferentCoupling: 1,
+                        efferentCoupling: 0, composition: TypeComposition(total: 1, abstract: 0)),
+            NodeMetrics(node: "b", name: "App.\u{202E}txt.swift", afferentCoupling: 0,
+                        efferentCoupling: 1, composition: TypeComposition(total: 1, abstract: 0)),
+        ]
+
+        let output = MetricsRenderer().renderTable(
+            metrics, limitations: ["objective-c-sources: \u{1B}[2K2 file(s) are not analysed"]
+        )
+
+        #expect(!Self.hasHiddenScalars(output))
+        let table = output.split(separator: "\n", omittingEmptySubsequences: false).prefix(4).map(String.init)
+        #expect(table[2].hasPrefix("App.]52;c;ZWNobyBwd25lZA==Api[2J.swift  "))
+        #expect(table[3].hasPrefix("App.txt.swift  "))
+        // 숨은 글자까지 센 너비로 채운 뒤 걸러 내면 그 줄만 짧아져 숫자 열이 어긋난다.
+        #expect(Set(table.map(\.count)).count == 1)
+        #expect(output.contains("\nLimitation: objective-c-sources: [2K2 file(s) are not analysed\n"))
     }
 }
