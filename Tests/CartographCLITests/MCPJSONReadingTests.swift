@@ -193,6 +193,40 @@ struct MCPJSONReadingTests {
         #expect(agrees(data))
     }
 
+    @Test("판독기는 도구 결과처럼 들여 쓴 JSONEncoder 출력도 기존 디코더와 같은 값으로 되읽는다")
+    func prettyPrintedToolResultsMatchCodableDecoder() throws {
+        // 도구 결과 변환(structured)은 cartographDefault()의 들여 쓴 출력을 다시 읽는다. 다른 판독기 테스트는
+        // 압축 출력이나 손으로 쓴 문서를 쓰므로, 실제 입력 형식(줄바꿈·들여쓰기·" : ")을 여기서 고정한다.
+        var generator = SeededGenerator(state: 7)
+        // 위 두 비트를 지우면 2 미만의 유한한 양수(비정규수 포함)만 나온다. NaN·무한대는 인코더가 거절한다.
+        let rows = (0..<300).map { index in
+            Self.toolResultRow(index, ratio: Double(bitPattern: generator.next() >> 2))
+        }
+        let limits: [MCPJSONValue] = [.integer(.min), .integer(.max), .number(0.1), .number(1e300), .array([])]
+        let document = MCPJSONValue.object([
+            "format": .string("symbol-query-batch"), "limits": .array(limits), "results": .array(rows),
+        ])
+        #expect(agrees(try JSONEncoder.cartographDefault().encode(document)))
+    }
+
+    /// 질의 결과 한 항목을 닮은 객체. 맨 앞 U+FEFF·이스케이프·정수·실수·불리언·null·빈 컨테이너를 섞는다.
+    private static func toolResultRow(_ index: Int, ratio: Double) -> MCPJSONValue {
+        let name = index % 5 == 0 ? "\u{FEFF}이름 \(index) 😀" : "method\(index)()"
+        let note: MCPJSONValue = index % 3 == 0 ? .null : .string("a\"b\\c\n\t")
+        let fields: [String: MCPJSONValue] = [
+            "usr": .string("s:7Example5OwnerC6method\(index)yyF"),
+            "path": .string("/p/Sources/App/Feature\(index % 7)/Owner.swift"),
+            "name": .string(name),
+            "line": .integer(Int64(index) * 1_000_003),
+            "ratio": .number(ratio),
+            "reachable": .boolean(index % 2 == 0),
+            "edges": .array([.string("call"), .string("overrides")]),
+            "note": note,
+            "members": .object([:]),
+        ]
+        return .object(fields)
+    }
+
     @Test("판독기는 문자열 맨 앞 U+FEFF와 이스케이프를 기존 디코더처럼 보존한다")
     func stringsMatchCodableDecoder() throws {
         let texts = [
