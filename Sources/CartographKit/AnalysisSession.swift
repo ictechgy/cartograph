@@ -8,7 +8,8 @@ import Foundation
 public enum AnalysisSessionError: Error, Sendable, Equatable, LocalizedError {
     /// 인덱스·소스·설정이 읽는 도중 계속 바뀌어 일관된 문맥을 만들지 못했다.
     case inputChangedDuringRefresh(attempts: Int)
-    /// 분석 입력 위치가 비밀 자료로 보이는 파일을 가리킨다.
+    /// 설정·인덱스 위치나 빌드 근거로 지정한 분석 입력이 비밀 자료로 보이는 파일을 가리킨다.
+    /// 탐색으로 모은 소스는 이 오류 대신 내용 없이 파일 상태만 지문에 들어간다.
     case sensitiveInput
     /// 세션 문맥이 준비되지 않은 내부 상태다.
     case unavailable
@@ -407,7 +408,8 @@ extension CartographService {
     /// 현재 서비스가 읽을 수 있는 분석 입력의 내용 지문.
     ///
     /// 세션이 파일 수정 시각만 믿고 이전 문맥을 재사용하지 않도록, 알려진 소스·설정·
-    /// 근거 파일과 인덱스 unit의 내용을 해시한다. 비밀 파일은 입력 목록에 넣지 않는다.
+    /// 근거 파일과 인덱스 unit의 내용을 해시한다. 비밀 자료처럼 보이는 파일의 내용은 읽지 않는다.
+    /// 설정으로 지정한 입력이면 거부하고, 탐색으로 모은 소스면 파일 상태만 싣는다.
     func sessionInputFingerprint() throws -> String {
         try AnalysisInputFingerprinter(
             configuration: configuration,
@@ -800,7 +802,7 @@ private struct AnalysisInputFingerprinter {
         accumulator.addText("source-count:\(paths.count)")
         for path in paths {
             // 내용이 같아도 소스 시각은 인덱스 신선도 결과에 영향을 준다.
-            try addFile(path, label: "source-file", includeModificationDate: true,
+            try addFile(path, label: "source-file", includeModificationDate: true, isDiscoveredInput: true,
                 cache: cache, observedKeys: &observedKeys, to: &accumulator)
         }
     }
@@ -932,10 +934,15 @@ private struct AnalysisInputFingerprinter {
         return (projectPath as NSString).appendingPathComponent(path)
     }
 
+    /// 입력 하나의 기여를 싣는다.
+    ///
+    /// `isDiscoveredInput` 은 탐색으로 모은 소스·리소스다. 설정으로 지정한 입력이 비밀 자료처럼 보이면
+    /// 조용히 빠지지 않게 거부하지만, 탐색 입력은 파일 이름 하나로 세션 전체가 막히지 않게 내용만 읽지 않는다.
     private func addFile(
         _ path: String,
         label: String,
         includeModificationDate: Bool = false,
+        isDiscoveredInput: Bool = false,
         cache: AnalysisInputFingerprintCache?,
         observedKeys: inout Set<AnalysisInputFingerprintCache.Key>,
         to accumulator: inout FingerprintAccumulator
@@ -957,9 +964,8 @@ private struct AnalysisInputFingerprinter {
         var contribution = FingerprintContribution()
         contribution.addText("\(label):\(path)")
         let resolvedPath = stamp?.resolvedPath ?? (try? fileSystem.realPath(at: path)) ?? path
-        guard !Self.isSensitive(path), !Self.isSensitive(resolvedPath) else {
-            throw AnalysisSessionError.sensitiveInput
-        }
+        let isSensitive = Self.isSensitive(path) || Self.isSensitive(resolvedPath)
+        guard !isSensitive || isDiscoveredInput else { throw AnalysisSessionError.sensitiveInput }
         let missing = stamp.map { !$0.isRegularFile } ?? !fileSystem.fileExists(at: path)
         // 디렉터리·끊어진 링크·FIFO 같은 비정규 입력은 읽지 않는다. stamp 를 주지
         // 않는 구현은 예전처럼 존재 여부로만 판정한다.
@@ -978,6 +984,12 @@ private struct AnalysisInputFingerprinter {
             contribution.addText(
                 modified.map { "modified:\($0.timeIntervalSinceReferenceDate)" } ?? "modified:unknown"
             )
+        }
+        if isSensitive {
+            Self.addSensitiveStamp(stamp, to: &contribution)
+            accumulator.appendEncoded(contribution.data)
+            cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
+            return
         }
         guard let digest = try? contentDigest(at: path) else {
             contribution.addText("unreadable")
@@ -1000,6 +1012,25 @@ private struct AnalysisInputFingerprinter {
         var hasher = SHA256()
         try chunked.readChunks(at: path, chunkSize: 1_048_576) { hasher.update(data: $0) }
         return Data(hasher.finalize())
+    }
+
+    /// 내용을 읽지 않은 비밀 이름 탐색 입력의 기여.
+    ///
+    /// 내용을 쓰면 ctime 이 늘 바뀌므로 stat 상태만으로도 편집이 지문에 드러난다. 링크 재지정은
+    /// 장치·inode 로 드러난다. 스탬프를 주지 않는 파일 시스템에서는 앞에 실은 수정 시각만 남는다.
+    private static func addSensitiveStamp(
+        _ stamp: FileFingerprintStamp?, to contribution: inout FingerprintContribution
+    ) {
+        contribution.addText("sensitive-skipped")
+        guard let stamp else {
+            contribution.addText("stamp:unknown")
+            return
+        }
+        contribution.addText(
+            "stamp:\(stamp.device):\(stamp.inode):\(stamp.size)"
+                + ":\(stamp.modificationSeconds).\(stamp.modificationNanoseconds)"
+                + ":\(stamp.changeSeconds).\(stamp.changeNanoseconds)"
+        )
     }
 
     fileprivate static func isSensitive(_ path: String) -> Bool {
