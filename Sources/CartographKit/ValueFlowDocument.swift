@@ -36,10 +36,15 @@ struct ValueFlowSourceLoader {
     let fileSystem: any FileSystem
     let projectPath: String
     let pathFilter: PathFilter
+    /// 경로 하나의 정규화. 파일 시스템을 거치므로 `load` 한 번 안에서는 경로마다 한 번만 부른다.
+    /// 테스트는 이 자리에 횟수를 세는 함수를 넣는다.
+    var canonicalize: (String) -> String = Self.canonicalPath
 
     /// sourceSnapshot은 첫 읽기 전체의 고정된 입력이다. 누락 파일을 뒤늦게 읽어 버전을 섞지 않는다.
     func load(snapshot raw: IndexSnapshot, sourceSnapshot: [String: String]? = nil) -> (program: ValueFlowProgram, snapshot: IndexSnapshot) {
-        let snapshot = normalized(raw)
+        // 인덱스 위치·신선도 키와 디스크에서 찾은 소스 경로가 한 사전을 나눠 쓴다.
+        var canonicalPaths = CanonicalPathMemo(resolve: canonicalize)
+        let snapshot = normalized(raw, canonicalPaths: &canonicalPaths)
         let inventory = fileSystem.recursiveFiles(under: projectPath,
             isIncluded: { $0.hasSuffix(".swift") || $0.hasSuffix(".m") || $0.hasSuffix(".mm") },
             shouldDescend: BuildArtifactDirectories.shouldDescend(into:)).sorted()
@@ -56,7 +61,7 @@ struct ValueFlowSourceLoader {
         var unindexed = 0
         var undated = 0
         for path in paths {
-            let canonical = Self.canonicalPath(path)
+            let canonical = canonicalPaths.path(path)
             guard seen.insert(canonical).inserted else { continue }
             let source: String?
             if let sourceSnapshot {
@@ -91,9 +96,12 @@ struct ValueFlowSourceLoader {
         LocalFileSystem.canonicalPath(path)
     }
 
-    private func normalized(_ raw: IndexSnapshot) -> IndexSnapshot {
+    /// 심볼·참조 위치와 신선도 키를 정규 경로로 맞춘다.
+    ///
+    /// 고유 경로는 파일 수만큼인데 위치는 발생 수만큼이다. 같은 경로는 `canonicalPaths` 가 한 번만 정규화한다.
+    private func normalized(_ raw: IndexSnapshot, canonicalPaths: inout CanonicalPathMemo) -> IndexSnapshot {
         func location(_ value: SourceLocation) -> SourceLocation {
-            SourceLocation(path: Self.canonicalPath(value.path), line: value.line, column: value.column)
+            SourceLocation(path: canonicalPaths.path(value.path), line: value.line, column: value.column)
         }
         let symbols = raw.symbols.map {
             IndexedSymbol(usr: $0.usr, name: $0.name, kind: $0.kind, module: $0.module,
@@ -107,14 +115,15 @@ struct ValueFlowSourceLoader {
                 origin: $0.origin, position: $0.position)
         }
         let dates = raw.indexedFileDates.map {
-            Dictionary($0.map { (Self.canonicalPath($0.key), $0.value) }, uniquingKeysWith: min)
+            Dictionary($0.map { (canonicalPaths.path($0.key), $0.value) }, uniquingKeysWith: min)
         }
         let oldestDates = raw.oldestIndexedFileDates.map {
-            Dictionary($0.map { (Self.canonicalPath($0.key), $0.value) }, uniquingKeysWith: min)
+            Dictionary($0.map { (canonicalPaths.path($0.key), $0.value) }, uniquingKeysWith: min)
         }
+        let headers = raw.admittedHeaderPaths.map { $0.map { canonicalPaths.path($0) }.sorted() }
+        let enumFiles = raw.enumImpactFiles?.map { $0.rebased { canonicalPaths.path($0) } }
         return IndexSnapshot(symbols: symbols, references: references, indexedFileDates: dates,
             oldestIndexedFileDates: oldestDates,
-            admittedHeaderPaths: raw.admittedHeaderPaths.map { $0.map(Self.canonicalPath).sorted() },
-            enumImpactFiles: raw.enumImpactFiles?.map { $0.rebased(Self.canonicalPath) })
+            admittedHeaderPaths: headers, enumImpactFiles: enumFiles)
     }
 }

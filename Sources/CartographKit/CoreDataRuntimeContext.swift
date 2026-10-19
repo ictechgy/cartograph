@@ -547,15 +547,3 @@ private struct GeneratedClassVerification {
         return paths
     }
 }
-
-/// `LocalFileSystem.canonicalPath` 는 경로마다 파일 시스템을 거치므로 같은 경로는 한 번만 정규화한다.
-private struct CanonicalPathMemo {
-    private var resolved: [String: String] = [:]
-
-    mutating func path(_ raw: String) -> String {
-        if let known = resolved[raw] { return known }
-        let path = LocalFileSystem.canonicalPath(raw)
-        resolved[raw] = path
-        return path
-    }
-}
