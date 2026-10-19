@@ -146,7 +146,8 @@ final class MCPMessageHandler {
         }
         let value: MCPJSONValue
         do {
-            value = try JSONDecoder().decode(MCPJSONValue.self, from: data)
+            // Codable 해독은 깊게 중첩된 요청에서 구조 검증 전에 수십 초를 쓴다. 같은 값을 입력 크기에 비례해 읽는다.
+            value = try MCPJSONReader.parse(data)
         } catch {
             return encode(error: .parseError, id: nil, message: "malformed JSON")
         }
