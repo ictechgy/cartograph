@@ -95,7 +95,10 @@ public struct ExternalRetention: Sendable, Equatable, Codable {
             let site = caller.line.map { "\(caller.path):\($0)" } ?? caller.path
             return "\(caller.platform) \(site)"
         }
-        let unlisted = callers.count - listed.count + max(evidence.callersOmitted ?? 0, 0)
+        // 생략 수는 다른 도구가 쓴 값이라 상한이 없다. 넘치면 트랩 대신 Int.max 로 포화해 하한으로 알린다.
+        let producerOmitted = max(evidence.callersOmitted ?? 0, 0)
+        let (sum, overflow) = (callers.count - listed.count).addingReportingOverflow(producerOmitted)
+        let unlisted = overflow ? Int.max : sum
         // 위치를 하나도 몰라도 세지 못한 호출 수는 지우지 않는다. 근거 문장은 있는 정보만 쓴다.
         guard unlisted > 0 else { return listed }
         return listed + ["+\(unlisted) more"]
