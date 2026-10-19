@@ -115,6 +115,45 @@ struct AnalysisLimitationCollectorTests {
         #expect(result.allSatisfy { !$0.contains("/private/") && !$0.contains("Excluded/") && !$0.contains("/p/") })
     }
 
+    @Test("한 번의 수집은 경로마다 정규화를 한 번만 하고 모든 판정과 진단 경로가 같은 정규 경로를 쓴다")
+    func canonicalizesEachPathOnce() {
+        // 정규화는 경로 구성 요소마다 파일 시스템을 거친다. 소스 하나가 신선도·색인 여부·헤더 판정·진단 경로에
+        // 거듭 쓰이므로, 자리마다 부르면 같은 경로를 여러 번 묻는다.
+        let old = Date(timeIntervalSince1970: 1_000)
+        let fileSystem = InMemoryFileSystem(files: [
+            "/p/Sources/Fresh.swift": "", "/p/Sources/Stale.swift": "", "/p/Sources/New.swift": "",
+            "/p/Sources/API.h": "",
+        ])
+        for path in ["/p/Sources/Fresh.swift", "/p/Sources/New.swift", "/p/Sources/API.h"] {
+            fileSystem.setModificationDate(old, for: path)
+        }
+        fileSystem.setModificationDate(old.addingTimeInterval(50), for: "/p/Sources/Stale.swift")
+        let snapshot = IndexSnapshot(indexedFileDates: [
+            "/p/Sources/Fresh.swift": old, "/p/Sources/Stale.swift": old, "/p/Sources/API.h": old,
+        ], admittedHeaderPaths: ["/p/Sources/Other.h"])
+        let context = AnalysisContext(snapshot: snapshot, missingSourcePaths: ["/p/Sources/Gone.swift"],
+            unreadableSourcePaths: ["/p/Sources/Locked.swift"])
+        var calls: [String: Int] = [:]
+        var collector = collector(fileSystem)
+        // 표기를 바꾸는 정규화다. 우회한 자리가 있으면 원래 표기가 진단에 남는다.
+        collector.canonicalize = { path in
+            calls[path, default: 0] += 1
+            return path.replacingOccurrences(of: "/Sources/", with: "/Real/")
+        }
+
+        let result = collector.collect(context: context, symbolGraph: nil, emptyIndexCounts: nil)
+
+        #expect(calls == Dictionary(uniqueKeysWithValues: [
+            "Fresh.swift", "Stale.swift", "New.swift", "API.h", "Other.h", "Gone.swift", "Locked.swift",
+        ].map { ("/p/Sources/" + $0, 1) }))
+        #expect(result.contains { $0.hasPrefix("index-staleness: 1 of 4") && $0.contains("[\"Real/Stale.swift\"]") })
+        #expect(result.contains { $0.hasPrefix("unindexed-sources: 1 of 4") && $0.contains("[\"Real/New.swift\"]") })
+        #expect(result.contains { $0.hasPrefix("header-projection: 1 ") && $0.contains("[\"Real/API.h\"]") })
+        #expect(result.contains { $0.hasPrefix("missing-sources: 1 ") && $0.contains("[\"Real/Gone.swift\"]") })
+        #expect(result.contains { $0.hasPrefix("unreadable-sources: 1 ") && $0.contains("[\"Real/Locked.swift\"]") })
+        #expect(result.allSatisfy { !$0.contains("Sources/") })
+    }
+
     @Test("다른 타깃의 새 유닛이 낡은 파일의 인덱스를 가리지 않는다")
     func partialBuildDoesNotHideStaleFile() {
         let old = Date(timeIntervalSince1970: 1_000)

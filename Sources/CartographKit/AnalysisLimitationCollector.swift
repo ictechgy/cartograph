@@ -9,6 +9,9 @@ struct AnalysisLimitationCollector {
     let projectPath: String
     let storeDate: Date?
     let inventory: ProjectFileInventory?
+    /// 경로 하나의 정규화. 파일 시스템을 거치므로 `collect` 한 번 안에서는 경로마다 한 번만 부른다.
+    /// 테스트는 이 자리에 횟수를 세는 함수를 넣는다.
+    var canonicalize: (String) -> String = LocalFileSystem.canonicalPath
 
     init(
         configuration: CartographConfiguration,
@@ -54,13 +57,16 @@ struct AnalysisLimitationCollector {
         let sourceFiles = files.filter { path in
             Self.sourceSuffixes.contains { path.hasSuffix($0) } && !Self.isPackageManifest(path, projectPath: projectPath)
         }
+        // 소스 하나가 신선도 키·색인 여부·헤더 판정·진단 경로에 거듭 쓰인다. 정규화와 상대화 기준 표기
+        // 펼치기는 파일 시스템을 거치므로 이번 수집 안에서는 경로마다 한 번만 한다.
+        var pathResolver = PathResolver(canonicalize: canonicalize, projectPath: projectPath)
         let indexedDates = context?.snapshot.sourceFreshnessDates.map { dates in
-            Dictionary(dates.map { (fileSystem.canonicalPath($0.key), $0.value) }, uniquingKeysWith: min)
+            Dictionary(dates.map { (pathResolver.canonical($0.key), $0.value) }, uniquingKeysWith: min)
         }
         let newerFiles = sourceFiles.filter { path in
             // 공급자가 파일별 시각을 줬다면 전체 스토어 시각으로 대체하지 않는다.
             // 다른 타깃만 빌드했어도 스토어 시각은 최신이기 때문이다.
-            let built = indexedDates == nil ? storeDate : indexedDates?[fileSystem.canonicalPath(path)]
+            let built = indexedDates == nil ? storeDate : indexedDates?[pathResolver.canonical(path)]
             guard let built, let modified = fileSystem.modificationDate(at: path) else { return false }
             return modified > built
         }
@@ -91,15 +97,15 @@ struct AnalysisLimitationCollector {
                     + "while runtime dispatch and unindexed source paths may be absent"
             )
         }
-        let admittedHeaders = Set(context?.snapshot.admittedHeaderPaths?.map(fileSystem.canonicalPath) ?? [])
+        let admittedHeaders = Set(context?.snapshot.admittedHeaderPaths?.map { pathResolver.canonical($0) } ?? [])
         let headers = sourceFiles.filter {
-            $0.hasSuffix(".h") && !admittedHeaders.contains(fileSystem.canonicalPath($0))
+            $0.hasSuffix(".h") && !admittedHeaders.contains(pathResolver.canonical($0))
         }
         if !headers.isEmpty {
             result.append(
                 "header-projection: \(headers.count) project header file(s) are tracked for dependency freshness; "
                     + "coverage dates do not establish that their declarations and calls are present in the graph"
-                    + diagnosticPaths(headers)
+                    + diagnosticPaths(headers, resolver: &pathResolver)
             )
         }
         if interfaceBuilderCount > 0 {
@@ -113,26 +119,26 @@ struct AnalysisLimitationCollector {
                 "index-staleness: \(newerFiles.count) of \(sourceFiles.count) source file(s) changed after the "
                     + (indexedDates == nil ? "index store was written" : "file's index unit was written")
                     + ", so a call added since the last build is not here yet"
-                    + diagnosticPaths(newerFiles)
+                    + diagnosticPaths(newerFiles, resolver: &pathResolver)
             )
         }
         if let indexedDates, emptyIndexCounts == nil {
-            let unindexed = sourceFiles.filter { indexedDates[fileSystem.canonicalPath($0)] == nil }
+            let unindexed = sourceFiles.filter { indexedDates[pathResolver.canonical($0)] == nil }
             if !unindexed.isEmpty {
                 result.append(
                     "unindexed-sources: \(unindexed.count) of \(sourceFiles.count) source file(s) "
                         + "have no known index unit; "
                         + "build their targets, or exclude files that are not target sources, "
                         + "before relying on absent callers"
-                        + diagnosticPaths(unindexed)
+                        + diagnosticPaths(unindexed, resolver: &pathResolver)
                 )
             }
         }
         let missing = context?.missingSourcePaths.filter {
-            filter.allows($0) && relativeDiagnosticPath($0) != nil
+            filter.allows($0) && pathResolver.relativeDiagnosticPath($0) != nil
         } ?? []
         let unreadable = context?.unreadableSourcePaths.filter {
-            filter.allows($0) && relativeDiagnosticPath($0) != nil
+            filter.allows($0) && pathResolver.relativeDiagnosticPath($0) != nil
         } ?? []
         let localFunctions = context?.unresolvedLocalFunctionsByPath.reduce(0) { count, entry in
             count + (filter.allows(entry.key) ? entry.value : 0)
@@ -148,14 +154,14 @@ struct AnalysisLimitationCollector {
             result.append(
                 "missing-sources: \(missing.count) indexed source file(s) no longer exist; rebuild with a fresh index "
                     + "to remove obsolete declarations"
-                    + diagnosticPaths(missing)
+                    + diagnosticPaths(missing, resolver: &pathResolver)
             )
         }
         if !unreadable.isEmpty {
             result.append(
                 "unreadable-sources: \(unreadable.count) source file(s) could not be read; their declarations are kept "
                     + "with reason 'sourceUnavailable' because retention annotations are unknown. Restore access and rebuild"
-                    + diagnosticPaths(unreadable)
+                    + diagnosticPaths(unreadable, resolver: &pathResolver)
             )
         }
         if configuration.narrowsPathsBeyondDefaults {
@@ -184,8 +190,8 @@ struct AnalysisLimitationCollector {
     static let maximumDiagnosticPathBytes = 8_192
 
     /// 경고마다 최대 64개·JSON 배열 8 KiB만 내보낸다. 남은 경로 수는 숨기지 않는다.
-    private func diagnosticPaths(_ paths: [String]) -> String {
-        let relative = Set(paths.compactMap(relativeDiagnosticPath)).sorted()
+    private func diagnosticPaths(_ paths: [String], resolver: inout PathResolver) -> String {
+        let relative = Set(paths.compactMap { resolver.relativeDiagnosticPath($0) }).sorted()
         guard !relative.isEmpty else { return "" }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -213,12 +219,30 @@ struct AnalysisLimitationCollector {
         }.joined()
     }
 
-    private func relativeDiagnosticPath(_ path: String) -> String? {
-        let canonical = fileSystem.canonicalPath(path)
-        let relative = SourceLocation(path: canonical, line: 1, column: 1)
-            .relative(to: projectPath).path
-        guard !relative.hasPrefix("/"), !relative.split(separator: "/").contains("..") else { return nil }
-        return relative
+    /// 한 번의 수집 안에서 경로 정규화와 프로젝트 기준 상대화를 경로마다 한 번만 한다.
+    ///
+    /// 진단 경로마다 `relative(to:)` 를 부르면 기준 경로 표기 펼치기(URL 정규화·링크 해석)까지
+    /// 경로 수만큼 되풀이된다. 기준 표기는 수집을 시작할 때 한 번만 펼친다.
+    private struct PathResolver {
+        private var canonicalPaths: CanonicalPathMemo
+        private let baseVariants: [String]
+
+        init(canonicalize: @escaping (String) -> String, projectPath: String) {
+            canonicalPaths = CanonicalPathMemo(resolve: canonicalize)
+            baseVariants = PathFilter.variants(of: projectPath)
+        }
+
+        mutating func canonical(_ path: String) -> String {
+            canonicalPaths.path(path)
+        }
+
+        /// 프로젝트 안의 상대 경로. 프로젝트 밖이거나 `..` 로 벗어나면 nil 이다.
+        mutating func relativeDiagnosticPath(_ path: String) -> String? {
+            let relative = SourceLocation(path: canonical(path), line: 1, column: 1)
+                .relative(toBaseVariants: baseVariants).path
+            guard !relative.hasPrefix("/"), !relative.split(separator: "/").contains("..") else { return nil }
+            return relative
+        }
     }
 
     /// 외부 보존 근거가 걸려 있으면 그 사실과 신선도를 알린다.
