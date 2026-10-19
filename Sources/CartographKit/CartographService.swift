@@ -171,17 +171,36 @@ public struct CartographService: Sendable {
         in context: AnalysisContext,
         findingTestOnlyCode: Bool = false
     ) -> (graph: CodeGraph, report: UnusedCodeReport) {
+        unusedCode(in: context, findingTestOnlyCode: findingTestOnlyCode, computingSuperfluousIgnores: true)
+    }
+
+    /// `unusedCode(in:findingTestOnlyCode:)` 와 같되, 불필요한 무시 주석 판정을 할지 고른다.
+    ///
+    /// 그 판정은 무시 단위마다 도달성 탐색을 다시 도는 분석에서 가장 비싼 단계이고, 결과를 읽는 곳은
+    /// `dead` 뿐이다. check·baseline·fix·explain 은 끈다. 다른 보고는 켜고 끄는 것과 무관하게 같다.
+    func unusedCode(
+        in context: AnalysisContext,
+        findingTestOnlyCode: Bool = false,
+        computingSuperfluousIgnores: Bool
+    ) -> (graph: CodeGraph, report: UnusedCodeReport) {
         let graph = context.buildGraph(level: .symbol).graph
-        return (graph, analyzeUnusedCode(in: context, graph: graph, findingTestOnlyCode: findingTestOnlyCode))
+        let report = analyzeUnusedCode(
+            in: context, graph: graph, findingTestOnlyCode: findingTestOnlyCode,
+            computingSuperfluousIgnores: computingSuperfluousIgnores
+        )
+        return (graph, report)
     }
 
     /// dead는 질의와 같은 도달 근거 위에서 전체 발견 목록을 계산한다.
     private func analyzeUnusedCode(
-        in context: AnalysisContext, graph: CodeGraph, findingTestOnlyCode: Bool = false
+        in context: AnalysisContext, graph: CodeGraph, findingTestOnlyCode: Bool = false,
+        computingSuperfluousIgnores: Bool
     ) -> UnusedCodeReport {
         ReachabilityAnalyzer(
             policy: makeRetentionPolicy(externalRetentions: context.externalRetentionIndex),
-            options: .init(findsTestOnlyCode: findingTestOnlyCode)
+            options: .init(
+                findsTestOnlyCode: findingTestOnlyCode, computesSuperfluousIgnores: computingSuperfluousIgnores
+            )
         ).analyze(graph: graph, snapshot: context.snapshot)
     }
 
@@ -213,7 +232,7 @@ public struct CartographService: Sendable {
         of subject: String,
         in context: AnalysisContext
     ) -> (graph: CodeGraph, lookup: NodeLookup, explanation: ReachabilityExplanation?) {
-        let (graph, report) = unusedCode(in: context)
+        let (graph, report) = unusedCode(in: context, computingSuperfluousIgnores: false)
         let lookup = GraphQueryIndex(graph: graph).resolve(subject)
         guard case let .found(node) = lookup else { return (graph, lookup, nil) }
         return (graph, lookup, report.explain(node.id, in: graph))
@@ -343,7 +362,9 @@ public struct CartographService: Sendable {
     ///   않는다.
     public func detectUnusedCode(reportingTestOnlyCode: Bool = false) throws -> CommandOutcome {
         let context = try loadContext()
-        let (graph, report) = unusedCode(in: context, findingTestOnlyCode: reportingTestOnlyCode)
+        let (graph, report) = unusedCode(
+            in: context, findingTestOnlyCode: reportingTestOnlyCode, computingSuperfluousIgnores: true
+        )
         let limitations = analysisLimitations(context: context, symbolGraph: graph)
         return try finish(
             AnalysisDiagnostics.diagnostics(for: report)
@@ -1551,7 +1572,7 @@ public struct CartographService: Sendable {
     public func collectAllDiagnostics() throws -> [Diagnostic] {
         let context = try loadContext()
         let (moduleGraph, foundCycles) = cycles(in: context)
-        let (_, unused) = unusedCode(in: context)
+        let (_, unused) = unusedCode(in: context, computingSuperfluousIgnores: false)
         let (_, metricValues, _) = metrics(in: context)
         let (_, violations, _) = try layerViolations(in: context)
 

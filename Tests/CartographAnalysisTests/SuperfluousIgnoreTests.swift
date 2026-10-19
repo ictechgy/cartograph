@@ -1,4 +1,4 @@
-import CartographAnalysis
+@testable import CartographAnalysis
 import CartographCore
 import CartographTestSupport
 import Testing
@@ -392,6 +392,29 @@ struct SuperfluousIgnoreTests {
         #expect(report.superfluousIgnores.isEmpty)
     }
 
+    @Test("다른 주석 덕에만 사는 프로퍼티도 자기 주석이 assign-only 보고를 억제하면 그 주석은 필요하다")
+    func ignoreSuppressingAssignOnlyOfDeclarationKeptByAnotherIgnoreIsNeeded() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Keeper", kind: .structType, line: 5, attributes: [.ignoreComment])
+        builder.symbol("Box", kind: .structType, line: 10)
+        builder.symbol(
+            "Box.state", name: "state", kind: .property, line: 11,
+            parent: "Box", attributes: [.ignoreComment]
+        )
+        builder.reference(from: "Keeper", to: "Box", kind: .reference)
+        builder.reference(from: "Keeper", to: "Box.state", kind: .reference)
+        builder.propertyAccess("Box.state", write: true)
+
+        // 주석이 하나도 없으면 셋 다 죽으므로 state 의 주석은 빠른 경로가 아니라 반사실 탐색으로 판정한다.
+        // state 의 주석만 떼면 Keeper 의 주석이 state 를 살려 죽는 정점은 없지만 assign-only 발견이 드러난다.
+        // 그 판정은 닫힌 집합이 아니라 이 세계에서 새로 닿은 정점까지 합친 도달 집합으로 해야 한다.
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(report.assignOnly.isEmpty)
+        #expect(report.superfluousIgnores.isEmpty)
+    }
+
     @Test("ignore:all 이 미사용 import 를 억제하면 파일 주석은 필요하다")
     func fileIgnoreSuppressingUnusedImportIsNeeded() {
         var builder = SnapshotBuilder()
@@ -534,6 +557,26 @@ struct SuperfluousIgnoreTests {
         #expect(superfluousNames(report) == ["Dead"])
     }
 
+    @Test("다른 주석이 살려 둔 조상은 반사실 세계에서 멤버 보고를 가리지 않는다")
+    func ancestorKeptByAnotherCommentDoesNotHideMember() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        // 확장 대상을 멤버 부모로 기록하는 형태라 두 주석이 다른 파일에 있고, 멤버 쪽을 먼저 판정한다.
+        builder.symbol("Shell", kind: .structType, path: "/project/Sources/App/B.swift", attributes: [.ignoreComment])
+        builder.symbol(
+            "Shell.extMember", name: "extMember", kind: .method,
+            path: "/project/Sources/App/A.swift", parent: "Shell", attributes: [.ignoreComment]
+        )
+
+        // extMember 의 주석을 떼면 extMember 가 죽는다. Shell 은 무시 없이는 죽지만 이 세계에서는 자기 주석으로
+        // 살아 있어 extMember 를 덮어 숨기지 않는다 — 보고가 생기므로 그 주석은 필요하다. Shell 의 주석은
+        // extMember 의 주석이 물려준 보존이 Shell 을 살리므로 불필요다. 반사실 세계에서 새로 산 조상을
+        // 도달 불가로 보면 두 판정이 뒤바뀐다.
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        #expect(superfluousNames(report) == ["Shell"])
+    }
+
     @Test("삼단 자기 주석 중첩은 누적 판정으로 위쪽 둘만 불필요다")
     func threeLevelNestedOwnCommentsJudgeCumulatively() {
         var builder = SnapshotBuilder()
@@ -584,6 +627,160 @@ struct SuperfluousIgnoreTests {
 
         let report = analyze(builder.build())
         #expect(report.superfluousIgnores.map(\.node.name) == ["Zulu", "Alpha"])
+    }
+
+    @Test("반사실 판정의 갈래가 한 그래프에 섞여도 단위마다 같은 답을 같은 순서로 낸다", arguments: [false, true])
+    func combinedCounterfactualsKeepTheirAnswers(findsTestOnlyCode: Bool) {
+        let report = analyze(combinedSnapshot(), options: .init(findsTestOnlyCode: findsTestOnlyCode))
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: combinedSnapshot())
+        // 테스트 전용 보고를 켜면 Helper·Glue 의 주석은 그 보고를 억제하므로 필요해진다.
+        let expected: [(name: String, covered: Int, wholeFile: Bool)] = findsTestOnlyCode
+            ? [("Covered", 1, false), ("First", 1, false), ("T", 2, false), ("WholeA", 2, true)]
+            : [("Covered", 1, false), ("First", 1, false), ("T", 2, false), ("Helper", 1, false),
+               ("Glue", 1, false), ("WholeA", 2, true)]
+        #expect(report.superfluousIgnores.map(\.node.name) == expected.map(\.name))
+        #expect(report.superfluousIgnores.map(\.coveredCount) == expected.map(\.covered))
+        #expect(report.superfluousIgnores.map(\.coversWholeFile) == expected.map(\.wholeFile))
+        #expect(unusedNames(report) == ["Orphan"])
+        #expect(report.testOnly.isEmpty)
+        #expect(report.explain("Impl.req", in: graph) == .reachable(path: ["App", "P.req", "Impl.req"]))
+        #expect(report.explain("Shared", in: graph) == .reachable(path: ["Glue", "Shared"]))
+        #expect(report.explain("T.m", in: graph) == .retained(.ignoreComment))
+    }
+
+    @Test("불필요 무시 판정을 끄면 반사실 탐색을 돌지 않고 다른 보고와 설명은 그대로다", arguments: [false, true])
+    func disablingSuperfluousIgnoresKeepsEveryOtherAnswer(findsTestOnlyCode: Bool) {
+        let snapshot = combinedSnapshot()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        let full = ReachabilityAnalyzer(options: .init(findsTestOnlyCode: findsTestOnlyCode))
+            .analyze(graph: graph, snapshot: snapshot)
+        var counterfactuals = 0
+        let skipped = ReachabilityAnalyzer(
+            options: .init(findsTestOnlyCode: findsTestOnlyCode, computesSuperfluousIgnores: false)
+        ).analyze(graph: graph, snapshot: snapshot, onCounterfactualTraversal: { _ in counterfactuals += 1 })
+
+        // check·baseline·fix·query 는 superfluous 결과를 읽지 않는다. 그 비용만 빠지고 나머지는 같아야 한다.
+        #expect(counterfactuals == 0)
+        #expect(!full.superfluousIgnores.isEmpty)
+        #expect(skipped.superfluousIgnores.isEmpty)
+        #expect(skipped.unused == full.unused)
+        #expect(skipped.retentions == full.retentions)
+        #expect(skipped.inheritedRetentions == full.inheritedRetentions)
+        #expect(skipped.testOnly == full.testOnly)
+        #expect(skipped.assignOnly == full.assignOnly)
+        #expect(skipped.unusedParameters == full.unusedParameters)
+        #expect(skipped.unusedImports == full.unusedImports)
+        #expect(skipped.redundantPublic == full.redundantPublic)
+        #expect(skipped.reachableCount == full.reachableCount)
+        #expect(skipped.totalCount == full.totalCount)
+        #expect(graph.nodeIDs.allSatisfy { skipped.explain($0, in: graph) == full.explain($0, in: graph) })
+    }
+
+    @Test("단위별 반사실 탐색은 닫힌 도달 집합이 커져도 바깥 증인의 시드만 보고 닫힌 정점은 펼치지 않는다")
+    func counterfactualWorkDoesNotGrowWithClosedReach() {
+        // 살아 있는 선언이 늘어도 무시 단위 하나의 반사실 탐색이 하는 일은 같아야 한다. 단위마다 닫힌 집합
+        // 전체를 정렬해 오버라이드를 다시 보거나 닫힌 정점을 다시 펼치면 작업이 그 크기만큼 늘어 단위 수와 곱해진다.
+        let small = counterfactualWork(liveTypes: 5)
+        let large = counterfactualWork(liveTypes: 200)
+        // 두 단위 모두 요구사항 P.req 하나만 다시 본다 — 그 증인만 닫힌 집합 밖에 있다. 펼치는 정점은 남은
+        // 무시 타입과 그 구현 둘이다. 그 타입이 참조하는 Registry 는 이미 닫혀 있어 다시 걷지 않는다.
+        #expect(small.map(\.reexaminedSeeds) == [1, 1])
+        #expect(small.map(\.expandedNodes) == [2, 2])
+        #expect(large == small)
+    }
+
+    /// 무시 단위마다 반사실 탐색이 한 일. 살아 있는 타입 수로 닫힌 도달 집합의 크기만 바꾼다.
+    private func counterfactualWork(liveTypes: Int) -> [ReachabilityAnalyzer.CounterfactualWork] {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("P", kind: .protocolType, line: 2)
+        builder.symbol("P.req", name: "req", kind: .method, line: 3, parent: "P")
+        builder.reference(from: "App", to: "P", kind: .reference)
+        builder.reference(from: "App", to: "P.req", kind: .call)
+        // 살아 있는 선언은 모두 Registry 를 거쳐 닿는다. 무시 타입도 Registry 를 참조하므로, 단위별 탐색이
+        // 닫힌 정점을 다시 펼치면 그 아래를 통째로 다시 걷는다.
+        builder.symbol("Registry", kind: .structType, line: 4)
+        builder.reference(from: "App", to: "Registry", kind: .reference)
+        for index in 0..<liveTypes {
+            builder.symbol("Live\(index)", kind: .structType, line: 100 + index)
+            builder.symbol("Live\(index).run", name: "run", kind: .method, line: 100 + index, parent: "Live\(index)")
+            builder.reference(from: "Registry", to: "Live\(index)", kind: .reference)
+            builder.reference(from: "Registry", to: "Live\(index).run", kind: .call)
+        }
+        // 주석으로만 사는 두 타입. 요구사항 구현은 역방향 디스패치로만 산다.
+        for (name, line) in [("First", 10), ("Second", 20)] {
+            builder.symbol(name, kind: .structType, line: line, attributes: [.ignoreComment])
+            builder.symbol(
+                "\(name).req", name: "req", kind: .method, line: line + 1,
+                parent: name, attributes: [.ignoreComment, .ignoreInherited]
+            )
+            builder.reference(from: "\(name).req", to: "P.req", kind: .overrides)
+            builder.reference(from: name, to: "Registry", kind: .reference)
+        }
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        var work: [ReachabilityAnalyzer.CounterfactualWork] = []
+        let report = ReachabilityAnalyzer().analyze(
+            graph: graph, snapshot: snapshot, onCounterfactualTraversal: { work.append($0) }
+        )
+        // 두 주석 모두 자기 타입을 살리고 있다.
+        #expect(report.superfluousIgnores.isEmpty)
+        return work
+    }
+
+    /// 반사실 판정의 갈래를 한 그래프에 모은 스냅샷.
+    ///
+    /// 다른 무시가 살리는 선언(Covered), 역방향 오버라이드로만 사는 증인(Impl.req), 서로만 참조하는 무시
+    /// 덩어리(First·Second), 두 주석이 함께 덮는 멤버(T.m), 파일 범위 주석(Whole.swift), 테스트만 붙잡는
+    /// 선언(Helper·Shared)이 섞여 있다. 앞 단위의 확정이 뒤 단위의 답을 바꾸는 경우들이라, 반사실 탐색을
+    /// 고칠 때 단위별 답과 순서가 그대로인지 한 번에 고정한다.
+    private func combinedSnapshot() -> IndexSnapshot {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("P", kind: .protocolType, line: 2)
+        builder.symbol("P.req", name: "req", kind: .method, line: 3, parent: "P")
+        builder.reference(from: "App", to: "P", kind: .reference)
+        builder.reference(from: "App", to: "P.req", kind: .call)
+        builder.symbol("Keeper", kind: .structType, line: 5, attributes: [.ignoreComment])
+        builder.symbol("Covered", kind: .structType, line: 6, attributes: [.ignoreComment])
+        builder.reference(from: "Keeper", to: "Covered", kind: .reference)
+        builder.symbol("Impl", kind: .structType, line: 10, attributes: [.ignoreComment])
+        builder.symbol("Impl.req", name: "req", kind: .method, line: 11, parent: "Impl")
+        builder.reference(from: "Impl.req", to: "P.req", kind: .overrides)
+        builder.symbol("First", kind: .structType, line: 20, attributes: [.ignoreComment])
+        builder.symbol("Second", kind: .structType, line: 21, attributes: [.ignoreComment])
+        builder.reference(from: "First", to: "Second", kind: .reference)
+        builder.reference(from: "Second", to: "First", kind: .reference)
+        // T.m 은 T 와 Ext 의 두 주석이 함께 덮는다. 위치가 앞선 T 를 먼저 판정한다.
+        builder.symbol("T", kind: .structType, line: 30, attributes: [.ignoreComment])
+        builder.symbol(
+            "T.m", name: "m", kind: .method, line: 31,
+            parent: "T", attributes: [.ignoreComment, .ignoreInherited]
+        )
+        builder.symbol("Ext", kind: .extensionDeclaration, line: 40, attributes: [.ignoreComment])
+        builder.reference(from: "App", to: "T", kind: .reference)
+        builder.reference(from: "Ext", to: "T", kind: .extends)
+        builder.reference(from: "Ext", to: "T.m", kind: .member)
+        // Glue 는 보고되지 않는 종류라 떼어도 죽음 보고가 없고, Shared 가 테스트 전용이 될 뿐이다.
+        builder.symbol("Helper", kind: .structType, line: 45, attributes: [.ignoreComment])
+        builder.symbol("Glue", kind: .extensionDeclaration, line: 50, attributes: [.ignoreComment])
+        builder.symbol("Shared", kind: .structType, line: 51)
+        builder.reference(from: "Glue", to: "Shared", kind: .reference)
+        builder.symbol(
+            "TestRoot", kind: .classType, module: "AppTests",
+            path: "/project/Tests/AppTests/RootTests.swift", attributes: [.unitTest]
+        )
+        builder.reference(from: "TestRoot", to: "Helper", kind: .call)
+        builder.reference(from: "TestRoot", to: "Shared", kind: .call)
+        builder.symbol("Orphan", kind: .structType, line: 60)
+        for (name, line) in [("WholeA", 1), ("WholeB", 2)] {
+            builder.symbol(
+                name, kind: .structType, path: "/project/Sources/App/Whole.swift",
+                line: line, attributes: [.ignoreComment, .ignoreAllComment]
+            )
+            builder.reference(from: "App", to: name, kind: .reference)
+        }
+        return builder.build()
     }
 
     private func unusedNames(_ report: UnusedCodeReport) -> [String] {

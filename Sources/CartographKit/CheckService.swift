@@ -10,7 +10,7 @@ extension CartographService {
     public func checkDocument(in existingContext: AnalysisContext? = nil) throws -> CheckDocument {
         let context = try existingContext ?? loadContext()
         let baseline = try loadBaseline()
-        let dead = unusedCode(in: context)
+        let dead = unusedCode(in: context, computingSuperfluousIgnores: false)
         let moduleCycles = cycles(in: context, level: .module)
         let typeCycles = cycles(in: context, level: .type)
         let rules = try layerViolations(in: context, level: configuration.level)
