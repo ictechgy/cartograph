@@ -61,7 +61,7 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 
 Check [GitHub Releases](https://github.com/ictechgy/cartograph/releases) for published CLI versions
 and available binary assets. The versioned install examples below pin published
-[**0.27.1**](https://github.com/ictechgy/cartograph/releases/tag/0.27.1) for reproducibility;
+[**0.28.0**](https://github.com/ictechgy/cartograph/releases/tag/0.28.0) for reproducibility;
 change the pin only to a published version you have verified. A source checkout's `--version` reports
 its source version and does not establish release availability. Version 0.25.1 was prepared in source
 but never published; see [CHANGELOG.md](CHANGELOG.md) for the incorporated changes.
@@ -81,14 +81,14 @@ brew install ictechgy/tap/cartograph
 ```
 
 The [tap formula](https://github.com/ictechgy/homebrew-tap/blob/main/Formula/cartograph.rb) is updated
-separately from GitHub Releases. Its [0.27.1 update](https://github.com/ictechgy/homebrew-tap/pull/62)
+separately from GitHub Releases. Its [0.28.0 update](https://github.com/ictechgy/homebrew-tap/pull/63)
 passed public archive installation and formula tests on macOS arm64. Verify `cartograph --version`
 after installing or upgrading; a published release and tap update do not upgrade your local binary.
 
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.27.1
+mint install ictechgy/cartograph@0.28.0
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -96,7 +96,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.27.1"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.28.0"),
 ```
 
 ```bash
@@ -1750,11 +1750,11 @@ jobs:
       - uses: ictechgy/cartograph@action-v1.0.0
         with:
           command: check
-          version: 0.27.1
+          version: 0.28.0
           args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-The `action-v1.0.0` tag is the action release; `version: 0.27.1` selects the CLI binary.
+The `action-v1.0.0` tag is the action release; `version: 0.28.0` selects the CLI binary.
 Pin both for a repeatable setup (`@main` tracks the development branch). Marketplace's default
 "Use latest version" currently follows the repository's latest CLI release; select
 `action-v1.0.0` or use the version-specific link above for the action release. Inputs:
@@ -1872,9 +1872,11 @@ Baselines, thresholds and output formatting are CI policy and live in the separa
 
 ### 0.28 source migration
 
-Source version 0.28.0 is being prepared; the published installation pins above remain 0.27.1
-until the new release is verified. See the [unreleased notes](CHANGELOG.md#unreleased) for the
-complete scope and measured limits.
+[0.28.0 is published](https://github.com/ictechgy/cartograph/releases/tag/0.28.0).
+The [release workflow](https://github.com/ictechgy/cartograph/actions/runs/39179128842) verified the
+extracted universal archive before publication; the [tap update](https://github.com/ictechgy/homebrew-tap/pull/63)
+also passed public archive installation and formula tests on macOS arm64. See [CHANGELOG.md](CHANGELOG.md)
+for the complete scope and measured limits.
 
 Embedding clients should rebuild against the new library. The optional
 `IndexedSymbol.compilerUnitTest` field distinguishes a compiler observation from syntax-based
