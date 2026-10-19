@@ -115,7 +115,10 @@ depends on an unstable-version package 'indexstore-db'.
 
 `revision:` takes the tag name, so the pin still reads as a version and still has to be raised by
 hand at each release. The plugin declares no write permission, so it never prompts; redirect stdout
-to save output.
+to save output. Commands that write files themselves — `--output`/`-o`, `baseline`, `fix --apply`,
+`skill` and `init` — cannot write inside the package directory unless that run allows it:
+`swift package --allow-writing-to-package-directory cartograph baseline`. SwiftPM also reports every
+plugin failure as exit code 1, so this path tells success from failure only; see [CI](#ci).
 
 **From source:**
 
@@ -575,14 +578,16 @@ and 0.47 s in one batch, with identical answers.
 
 <!-- dead-to-batch-example -->
 ```bash
-cartograph dead --report-format json > dead.json &&
-jq '[.diagnostics[] | select(.ruleIdentifier == "unused-symbol") | .subject]' dead.json > requests.json &&
-if jq -e 'length == 0' requests.json >/dev/null; then
+sweep_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-sweep.XXXXXX")" &&
+cartograph dead --report-format json > "$sweep_dir/dead.json" &&
+jq '[.diagnostics[] | select(.ruleIdentifier == "unused-symbol") | .subject]' \
+  "$sweep_dir/dead.json" > "$sweep_dir/requests.json" &&
+if jq -e 'length == 0' "$sweep_dir/requests.json" >/dev/null; then
     echo "No unused-symbol findings to query."
-elif jq -e 'length <= 1000' requests.json >/dev/null; then
-    cartograph query --batch requests.json
+elif jq -e 'length <= 1000' "$sweep_dir/requests.json" >/dev/null; then
+    cartograph query --batch "$sweep_dir/requests.json"
 else
-    echo "Split requests.json into batches of at most 1000 requests before querying." >&2
+    echo "Split $sweep_dir/requests.json into batches of at most 1000 requests before querying." >&2
     exit 64
 fi
 ```
@@ -1022,9 +1027,10 @@ reference. Unknown names and receivers remain limitations rather than invented e
 For a **macOS debug executable**, collect actual events without manually authoring contracts:
 
 ```bash
-cartograph runtime collect --executable .build/debug/MyApp --output /tmp/runtime-trace.json -- app-arguments
-cartograph runtime discover --trace /tmp/runtime-trace.json --executable .build/debug/MyApp
-cartograph impact ScreenController --trace /tmp/runtime-trace.json --executable .build/debug/MyApp --format json
+trace_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-trace.XXXXXX")"
+cartograph runtime collect --executable .build/debug/MyApp --output "$trace_dir/runtime-trace.json" -- app-arguments
+cartograph runtime discover --trace "$trace_dir/runtime-trace.json" --executable .build/debug/MyApp
+cartograph impact ScreenController --trace "$trace_dir/runtime-trace.json" --executable .build/debug/MyApp --format json
 ```
 
 `collect` builds a local native collector with the installed Clang toolchain and launches the supplied
@@ -1040,8 +1046,9 @@ The collector does not re-sign an app or change entitlements. Hardened apps may 
 An installed **iOS 15+ Simulator debug test app** can also be collected:
 
 ```bash
+trace_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-trace.XXXXXX")"
 cartograph runtime collect --simulator <booted-device-UUID> --bundle-id <app-bundle-id> \
-  --executable <matching-build/MyApp.app/MyApp> --output /tmp/simulator-trace.json -- test-arguments
+  --executable <matching-build/MyApp.app/MyApp> --output "$trace_dir/simulator-trace.json" -- test-arguments
 ```
 
 The device UUID is explicit; the command does not boot devices or install apps. It refuses an already
@@ -1727,6 +1734,10 @@ Exit codes let a script tell "your code has problems" from "the tool did not run
 | `1` | Findings with `--strict`, or a configured threshold exceeded |
 | `2` | Tool failure — no index store, an index that knows nothing about this project, unreadable index, invalid configuration |
 | `64` | Usage error — unknown option, unknown subcommand, invalid value, or a flag combination the command cannot honor |
+
+The SwiftPM command plugin keeps only `0` versus non-zero: SwiftPM exits 1 for any plugin failure,
+and the original code survives only in its `error: cartograph exited with status N` line. Run the
+binary or the official action where a script must tell these codes apart.
 
 ### The official action
 

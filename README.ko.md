@@ -123,7 +123,11 @@ depends on an unstable-version package 'indexstore-db'.
 
 `revision:`은 태그 이름을 받으므로 고정 값은 여전히 버전처럼 읽히고, 릴리스마다 손으로
 올려야 하는 점도 같습니다. 플러그인은 쓰기 권한을 선언하지 않으므로 권한 요청창이 뜨지
-않습니다. 출력을 남기려면 표준 출력을 파일로 리다이렉션하세요.
+않습니다. 출력을 남기려면 표준 출력을 파일로 리다이렉션하세요. 파일을 직접 쓰는 명령
+(`--output`/`-o`, `baseline`, `fix --apply`, `skill`, `init`)은 그 실행에서 허락하지 않으면 패키지
+디렉터리에 쓰지 못합니다: `swift package --allow-writing-to-package-directory cartograph baseline`.
+또 SwiftPM은 플러그인 실패를 모두 종료 코드 1로 알리므로, 이 경로에서는 성공과 실패만 구분됩니다.
+[CI](#ci)를 보세요.
 
 **소스에서 빌드:**
 
@@ -565,14 +569,16 @@ cartograph query --batch requests.json
 
 <!-- dead-to-batch-example -->
 ```bash
-cartograph dead --report-format json > dead.json &&
-jq '[.diagnostics[] | select(.ruleIdentifier == "unused-symbol") | .subject]' dead.json > requests.json &&
-if jq -e 'length == 0' requests.json >/dev/null; then
+sweep_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-sweep.XXXXXX")" &&
+cartograph dead --report-format json > "$sweep_dir/dead.json" &&
+jq '[.diagnostics[] | select(.ruleIdentifier == "unused-symbol") | .subject]' \
+  "$sweep_dir/dead.json" > "$sweep_dir/requests.json" &&
+if jq -e 'length == 0' "$sweep_dir/requests.json" >/dev/null; then
     echo "No unused-symbol findings to query."
-elif jq -e 'length <= 1000' requests.json >/dev/null; then
-    cartograph query --batch requests.json
+elif jq -e 'length <= 1000' "$sweep_dir/requests.json" >/dev/null; then
+    cartograph query --batch "$sweep_dir/requests.json"
 else
-    echo "Split requests.json into batches of at most 1000 requests before querying." >&2
+    echo "Split $sweep_dir/requests.json into batches of at most 1000 requests before querying." >&2
     exit 64
 fi
 ```
@@ -997,9 +1003,10 @@ subentity에 연결합니다. request/entity/context를 바꾸거나 흘려내�
 **macOS 디버그 실행 파일**에서는 수동 계약 없이 실제 사건을 수집할 수 있습니다.
 
 ```bash
-cartograph runtime collect --executable .build/debug/MyApp --output /tmp/runtime-trace.json -- app-arguments
-cartograph runtime discover --trace /tmp/runtime-trace.json --executable .build/debug/MyApp
-cartograph impact ScreenController --trace /tmp/runtime-trace.json --executable .build/debug/MyApp --format json
+trace_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-trace.XXXXXX")"
+cartograph runtime collect --executable .build/debug/MyApp --output "$trace_dir/runtime-trace.json" -- app-arguments
+cartograph runtime discover --trace "$trace_dir/runtime-trace.json" --executable .build/debug/MyApp
+cartograph impact ScreenController --trace "$trace_dir/runtime-trace.json" --executable .build/debug/MyApp --format json
 ```
 
 `collect`는 설치된 Clang으로 로컬 수집기를 빌드한 뒤 지정한 실행 파일을 실행합니다.
@@ -1015,8 +1022,9 @@ Foundation 클래스·프로토콜·selector 조회, `performSelector` 세 형�
 설치된 **iOS 15 이상 시뮬레이터 디버그 테스트 앱**에서도 수집할 수 있습니다.
 
 ```bash
+trace_dir="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-trace.XXXXXX")"
 cartograph runtime collect --simulator <booted-device-UUID> --bundle-id <app-bundle-id> \
-  --executable <matching-build/MyApp.app/MyApp> --output /tmp/simulator-trace.json -- test-arguments
+  --executable <matching-build/MyApp.app/MyApp> --output "$trace_dir/simulator-trace.json" -- test-arguments
 ```
 
 기기 UUID를 명시하며 기기 부팅이나 앱 설치는 하지 않습니다. 이미 실행 중인 앱은 거부하고,
@@ -1670,6 +1678,10 @@ Periphery는 둘 다 꺼져 있습니다. 합성된 `==`나 `hash(into:)`만 읽
 | `1` | `--strict` 상태에서 문제 발견, 또는 설정한 임계값 초과 |
 | `2` | 도구 실패 — 인덱스 스토어 없음, 인덱스가 이 프로젝트를 하나도 모름, 읽기 실패, 설정 오류 |
 | `64` | 사용 오류 — 알 수 없는 옵션·하위 명령·값, 명령이 받을 수 없는 플래그 조합 |
+
+SwiftPM 커맨드 플러그인을 거치면 `0`과 0이 아닌 값만 남습니다. SwiftPM은 플러그인이 실패하면
+모두 1로 끝내고, 원래 코드는 `error: cartograph exited with status N` 줄에만 남습니다. 스크립트가
+이 코드들을 구분해야 하면 바이너리나 공식 액션을 쓰세요.
 
 ### 공식 액션
 

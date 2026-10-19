@@ -73,9 +73,13 @@ public struct ExternalRetention: Sendable, Equatable, Codable {
     /// 어느 플랫폼의 어느 줄이 어느 채널로 무엇을 불렀는지가 답이다. 호출 위치가 여럿이면
     /// 전부가 답의 일부이므로 나열하고, 문장은 한 줄이어야 하므로 처음 몇 개만 적고
     /// 나머지는 수로만 알린다.
+    ///
+    /// 공개 속성이라 어떤 입력에도 트랩하지 않는다. `unlistedCallerCount` 가 nil 이면 "+N more" 의 N 은
+    /// Int.max 로 포화한 하한이다. 그 수를 정확한 값처럼 내보내지 않도록 `dead --explain` 은 이 문장을
+    /// 만들기 전에 nil 을 확인해 거부한다.
     public var evidenceDescription: String {
         var parts: [String] = []
-        let sites = Self.callSites(of: evidence)
+        let sites = callSites
         if !sites.isEmpty { parts.append(sites.joined(separator: ", ")) }
         if let method = evidence?.method { parts.append("invokes '\(method)'") }
         if let channel = evidence?.channel { parts.append("on channel '\(channel)'") }
@@ -83,19 +87,36 @@ public struct ExternalRetention: Sendable, Equatable, Codable {
         return Self.printable(text)
     }
 
+    /// 근거 문장이 위치 대신 "+N more" 로만 알리는 호출 수. 나열하지 못한 호출과 생산자의 생략 수의 합이다.
+    ///
+    /// 생략 수는 다른 도구가 쓴 값이라 상한이 없고, 로더는 음수만 거부한다. 합이 Int 범위를 넘으면 정확한
+    /// 수가 없으므로 nil 이다. 출력 정책은 부르는 쪽이 정한다. `impact` 와 `dead --explain` 은 넘친 수를
+    /// 출력에서 포화시키지 않고 같은 오류로 거부한다.
+    public var unlistedCallerCount: Int? {
+        guard let evidence else { return 0 }
+        let hidden = max(Self.callers(of: evidence).count - Self.listedCallersLimit, 0)
+        let (sum, overflow) = hidden.addingReportingOverflow(max(evidence.callersOmitted ?? 0, 0))
+        return overflow ? nil : sum
+    }
+
     /// 문장에 나열하는 호출 위치의 수. 호출당 한 줄을 넘기지 않기 위한 표시 상한이다.
     private static let listedCallersLimit = 3
 
-    /// `callers` 가 있으면 그 목록을, 없거나 비었으면 대표 `caller` 를 문장용 토큰으로 바꾼다.
-    private static func callSites(of evidence: Evidence?) -> [String] {
+    /// 문장에 쓸 호출 위치. `callers` 가 있으면 그 목록이고, 없거나 비었으면 대표 `caller` 하나다.
+    private static func callers(of evidence: Evidence) -> [Caller] {
+        let callers = evidence.callers ?? []
+        return callers.isEmpty ? [evidence.caller].compactMap { $0 } : callers
+    }
+
+    /// 호출 위치를 문장용 토큰으로 바꾸고, 나열하지 못한 수를 "+N more" 로 덧붙인다.
+    private var callSites: [String] {
         guard let evidence else { return [] }
-        var callers = evidence.callers ?? []
-        if callers.isEmpty { callers = [evidence.caller].compactMap { $0 } }
-        let listed = callers.prefix(listedCallersLimit).map { caller in
+        let listed = Self.callers(of: evidence).prefix(Self.listedCallersLimit).map { caller in
             let site = caller.line.map { "\(caller.path):\($0)" } ?? caller.path
             return "\(caller.platform) \(site)"
         }
-        let unlisted = callers.count - listed.count + max(evidence.callersOmitted ?? 0, 0)
+        // 넘친 수는 정확히 적을 수 없다. 트랩하지 않도록 포화한 하한을 쓴다(`evidenceDescription` 문서 참고).
+        let unlisted = unlistedCallerCount ?? .max
         // 위치를 하나도 몰라도 세지 못한 호출 수는 지우지 않는다. 근거 문장은 있는 정보만 쓴다.
         guard unlisted > 0 else { return listed }
         return listed + ["+\(unlisted) more"]

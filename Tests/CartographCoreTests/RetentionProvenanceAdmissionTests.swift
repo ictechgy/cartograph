@@ -132,4 +132,90 @@ struct RetentionProvenanceAdmissionTests {
         }
         #expect(try RetentionProvenanceAdmission.read(from: Data(#"{"externalRetentions":null}"#.utf8), snapshot: true) == nil)
     }
+
+    /// 출처 경로 밖 문자열 token이 놓이는 자리. 값·배열 원소·키·찾는 경로의 형제 키를 모두 지난다.
+    private static let unrelatedPlacements: [(template: String, snapshot: Bool)] = [
+        (#"{"junk":TOKEN,"provenance":{"version":2}}"#, false),
+        (#"{"junk":[1,{"k":TOKEN}],"provenance":{"version":2}}"#, false),
+        (#"{"junk":{TOKEN:1},"provenance":{"version":2}}"#, false),
+        (#"{TOKEN:1,"provenance":{"version":2}}"#, false),
+        (#"{"snapshot":[TOKEN],"externalRetentions":{"provenance":{"version":2}}}"#, true),
+        (#"{"externalRetentions":{"producedBy":TOKEN,"provenance":{"version":2}}}"#, true),
+        (#"{"externalRetentions":{TOKEN:1,"provenance":{"version":2}}}"#, true),
+        (#"{"externalRetentions":{"provenance":{"version":2}},"limitations":{TOKEN:TOKEN}}"#, true),
+        ("\n {\n  \"junk\" : [ TOKEN ] ,\n  \"provenance\" : { \"version\" : 2 }\n} \n", false),
+        ("\t{ \"snapshot\" : { \"k\" : TOKEN } ,\r\n"
+            + " \"externalRetentions\" : { \"provenance\" : { \"version\" : 2 } } }", true),
+    ]
+
+    /// 오류를 비교할 문구로 바꾼다. NSError의 userInfo 출력 순서는 인스턴스마다 달라 키를 정렬한다.
+    private static func fingerprint(_ error: any Error) -> String {
+        guard case let DecodingError.dataCorrupted(context) = error else { return String(describing: error) }
+        guard let underlying = context.underlyingError.map({ $0 as NSError }) else { return context.debugDescription }
+        let details = underlying.userInfo.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+        return "\(context.debugDescription) \(underlying.domain) \(underlying.code) \(details)"
+    }
+
+    private static func readError(_ raw: String, snapshot: Bool) -> String? {
+        do {
+            let provenance = try RetentionProvenanceAdmission.read(from: Data(raw.utf8), snapshot: snapshot)
+            return provenance?.version == 2 ? nil : "missing provenance"
+        } catch { return fingerprint(error) }
+    }
+
+    /// 사전 검사가 스스로 내는 형식 오류. 원시 제어 문자와 구조 오류가 이 문구로 끝난다.
+    private static let malformed = "External retention provenance is malformed or exceeds its bounds."
+
+    /// 사전 검사는 원시 제어 문자를 스스로 거부하고, 나머지 문자열은 JSONDecoder의 문자열 계약을 따른다.
+    private static func expectedError(_ token: String, rawControl: Bool) -> String? {
+        guard !rawControl else { return malformed }
+        do { _ = try JSONDecoder().decode(String.self, from: Data(token.utf8)); return nil }
+        catch { return fingerprint(error) }
+    }
+
+    @Test("출처 경로 밖 문자열도 잘못된 escape·짝 없는 surrogate·원시 제어 문자를 예전 오류 그대로 거부한다")
+    func validatesUnrelatedStringsLikeDecoder() {
+        let decoderJudged = [#""\x41""#, #""\ud800""#, #""\udc00""#, #""\ud800\u0041""#, #""\udbff\ud800""#,
+                             #""\u12""#, #""\u1\"x""#, #""\ud83d\ude0""#, "\"\\\n\"", #""\'""#,
+                             #""\ud83d\ude00""#, #""\uD83D\uDE00""#, #""\u0000""#, #""\uffff""#, #""\u004e""#,
+                             #""\/\b\f\n\r\t\"\\""#, #""한😀""#, #""""#]
+        let scannerRejected = ["\"a\u{01}b\"", "\"\u{1f}\"", "\"\\x\u{0}\""]
+        for (template, snapshot) in Self.unrelatedPlacements {
+            for (tokens, rawControl) in [(decoderJudged, false), (scannerRejected, true)] {
+                for token in tokens {
+                    let raw = template.replacingOccurrences(of: "TOKEN", with: token)
+                    let expected = Self.expectedError(token, rawControl: rawControl)
+                    #expect(Self.readError(raw, snapshot: snapshot) == expected, "\(raw)")
+                }
+            }
+        }
+    }
+
+    @Test("snapshot 한 번 순회에서도 compact 키 중복은 형제 값 검사와 inline 출처 검사 뒤에 거부한다")
+    func keepsSnapshotRejectionOrder() throws {
+        let stored = #""externalRetentionProvenanceJSON":"{\"version\":2}""#
+        let source = #"{"format":"bridge-facts","version":1,"tool":{"name":"p","version":"1"},"platform":"swift","#
+            + #""target":null,"project":"/p","generatedAt":"2024-02-30T00:00:00Z"}"#
+        let badTimestamp = #"{"version":1,"limitations":[],"sources":["# + source + "]}"
+        let timestampFirst = "{" + stored + "," + stored
+            + #","externalRetentions":{"provenance":"# + badTimestamp + "}}"
+        #expect(Self.readError(timestampFirst, snapshot: true)?.contains("outside the portable profile") == true)
+        let laterEscape = "{" + stored + ","
+            + stored.replacingOccurrences(of: #""{\"version\":2}""#, with: #""\x""#) + "}"
+        #expect(Self.readError(laterEscape, snapshot: true) == Self.expectedError(#""\x""#, rawControl: false))
+        let duplicate = "{" + stored + #","externalRetentions":{"provenance":{"version":2}},"# + stored + "}"
+        #expect(Self.readError(duplicate, snapshot: true) == Self.malformed)
+        let aliasedInline = #"{"externalRetentions":{},"externalRetention\u0073":{}}"#
+        #expect(Self.readError(aliasedInline, snapshot: true) == Self.malformed)
+    }
+
+    @Test("따옴표를 품은 잘못된 스칼라 뒤에서는 compact 키를 예전 두 번째 순회 그대로 판정한다")
+    func replaysStoredSearchAfterAmbiguousScalar() {
+        let stored = #""externalRetentionProvenanceJSON":"{\"version\":2}""#
+        // 멤버 순회는 x" 를 스칼라로 삼키지만, 예전 두 번째 순회의 건너뛰기는 " 를 문자열 시작으로 읽었다.
+        let unterminated = #"{"externalRetentions":{"a":x"},"# + "\n" + stored + "}"
+        #expect(Self.readError(unterminated, snapshot: true) == Self.malformed)
+        let rebalanced = #"{"externalRetentions":{"a":x"y"},"# + stored + "}"
+        #expect(Self.readError(rebalanced, snapshot: true) == nil)
+    }
 }
