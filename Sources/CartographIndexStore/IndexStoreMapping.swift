@@ -181,22 +181,33 @@ public enum IndexStoreMapping {
     /// 생성 심볼이다. `c:@M@` 는 `import M` 문과 `M.name` 한정자가 남기는
     /// 모듈 심볼 참조로, 사용 증거로 세면 자기 자신의 표식을 사용으로 읽게 되어
     /// 무시한다 — `M.name` 의 실제 사용은 멤버의 참조 발생이 따로 귀속한다.
+    ///
+    /// 발생과 관계마다 불리므로 UTF-8 바이트로 읽는다. 문자 단위 순회와 숫자마다의 문자열 할당이 큰
+    /// 인덱스에서 스냅샷 변환 시간의 큰 몫이었다. 컴파일러가 만드는 USR 은 ASCII 라 결과는 같다. 길이
+    /// 숫자는 ASCII 숫자만 센다 — 예전에는 `½` 같은 숫자 문자에서 강제 언래핑으로 죽었다. 모듈 이름
+    /// 바이트가 ASCII 가 아니면 길이를 믿을 수 없어 귀속을 보류한다.
     public static func moduleEvidence(ofUSR usr: String) -> ModuleEvidence {
-        guard usr.hasPrefix("s:") else {
-            return usr.hasPrefix("c:@M@") ? .implicit : .deferred
+        var usr = usr
+        return usr.withUTF8(moduleEvidence(ofUTF8:))
+    }
+
+    private static func moduleEvidence(ofUTF8 bytes: UnsafeBufferPointer<UInt8>) -> ModuleEvidence {
+        guard bytes.starts(with: "s:".utf8) else {
+            return bytes.starts(with: "c:@M@".utf8) ? .implicit : .deferred
         }
-        let rest = usr.dropFirst(2)
-        guard let first = rest.first, first.isNumber else { return .implicit }
+        var index = 2
         var length = 0
-        var index = rest.startIndex
-        while index < rest.endIndex, rest[index].isNumber {
-            length = length * 10 + Int(String(rest[index]))!
-            index = rest.index(after: index)
+        while index < bytes.count, (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(bytes[index]) {
+            length = length * 10 + Int(bytes[index] - UInt8(ascii: "0"))
+            // 남은 바이트보다 길면 끝까지 읽어도 잘린다. 긴 숫자열에서 Int 가 넘치기 전에 멈춘다.
+            guard length <= bytes.count else { return .deferred }
+            index += 1
         }
-        guard let end = rest.index(index, offsetBy: length, limitedBy: rest.endIndex) else {
-            return .deferred
-        }
-        return .module(String(rest[index..<end]))
+        guard index > 2 else { return .implicit }
+        guard length <= bytes.count - index else { return .deferred }
+        let module = UnsafeBufferPointer(rebasing: bytes[index..<(index + length)])
+        guard module.allSatisfy({ $0 < 0x80 }) else { return .deferred }
+        return .module(String(decoding: module, as: UTF8.self))
     }
 
     /// 발생에 붙은 관계를 "의존하는 쪽 → 의존되는 쪽" 방향의 참조로 정규화한다.

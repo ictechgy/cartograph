@@ -209,9 +209,7 @@ public struct IndexStoreProvider: IndexProviding {
         var references: [IndexedReference] = []
         // 미사용 import 질의의 재료 — 파일이 참조한 선언의 모듈 귀속.
         // `c:`/`e:` USR처럼 모듈을 담지 않는 대상은 선언 사전이 완성된 뒤에 푼다.
-        var fileModuleUsages: [String: FileModuleUsage] = [:]
-        var owningModulesByFile: [String: Set<String>] = [:]
-        var deferredUSRsByFile: [String: Set<String>] = [:]
+        var moduleUsages = FileModuleUsageCollector()
         // 관계 없이 기록된 참조와, 그것을 붙일 후보가 되는 정의 위치들.
         // 대상 종류는 발생이 직접 답게 싣는다 — 사전에 없는 그래프 밖 대상도 구분해야 한다.
         var unattributed: [UnattributedReference] = []
@@ -280,39 +278,25 @@ public struct IndexStoreProvider: IndexProviding {
                 }
             }
 
-            // 최상위 문장이 실제로 참조를 만들었을 때만 가상 심볼을 세운다.
-            let topLevelUSR = IndexStoreMapping.topLevelCodeUSR(forFile: occurrence.location.path)
-            if symbolsByUSR[topLevelUSR] == nil,
-               occurrenceReferences.contains(where: { $0.sourceUSR == topLevelUSR }) {
-                symbolsByUSR[topLevelUSR] = IndexStoreMapping.topLevelCodeSymbol(
-                    path: occurrence.location.path,
-                    module: occurrence.location.moduleName
-                )
+            // 최상위 문장이 실제로 참조를 만들었을 때만 가상 심볼을 세운다. 가상 USR 은 접두사로 시작하므로
+            // 그런 참조가 있을 때만 경로를 이어 붙여 조회한다. 발생마다 문자열을 만들던 비용을 없앤다.
+            if occurrenceReferences.contains(where: {
+                $0.sourceUSR.hasPrefix(IndexStoreMapping.topLevelCodeUSRPrefix)
+            }) {
+                let topLevelUSR = IndexStoreMapping.topLevelCodeUSR(forFile: occurrence.location.path)
+                if symbolsByUSR[topLevelUSR] == nil,
+                   occurrenceReferences.contains(where: { $0.sourceUSR == topLevelUSR }) {
+                    symbolsByUSR[topLevelUSR] = IndexStoreMapping.topLevelCodeSymbol(
+                        path: occurrence.location.path,
+                        module: occurrence.location.moduleName
+                    )
+                }
             }
 
-            // 파일의 모듈 사용 근거. 참조 발생의 대상과 선언의 관계 대상(상속·
-            // 준수·오버라이드 등)이 모두 "파일이 그 모듈을 썼다"는 증거다.
-            // 선언 발생 자체는 사용이 아니므로 심볼 USR은 참조 역할일 때만 센다.
-            let usagePath = occurrence.location.path
-            if !occurrence.location.moduleName.isEmpty {
-                owningModulesByFile[usagePath, default: []].insert(occurrence.location.moduleName)
-                let modules = owningModulesByFile[usagePath] ?? []
-                fileModuleUsages[usagePath, default: FileModuleUsage()].owningModule = modules.count == 1
-                    ? occurrence.location.moduleName : nil
-                // 공유 파일의 import는 특정 타깃 하나의 소유 모듈로 단정하지 않는다.
-                if modules.count > 1 { fileModuleUsages[usagePath]?.hasUnattributedReferences = true }
-            }
-            if occurrence.roles.contains(.reference) {
-                accumulateModuleEvidence(
-                    usr: occurrence.symbol.usr, path: usagePath,
-                    usages: &fileModuleUsages, deferred: &deferredUSRsByFile)
-            }
-            for relation in occurrence.relations {
-                accumulateModuleEvidence(
-                    usr: relation.symbol.usr, path: usagePath,
-                    usages: &fileModuleUsages, deferred: &deferredUSRsByFile)
-            }
+            moduleUsages.add(occurrence)
         }
+        let collectedUsages = moduleUsages.finish()
+        var fileModuleUsages = collectedUsages.usages
 
         var externalOnlyUSRs: Set<String> = []
         if includeExternalSymbols {
@@ -329,7 +313,7 @@ public struct IndexStoreProvider: IndexProviding {
         // clang 선언은 여기서 모듈이 드러나고, 끝내 못 찾은 것은 "어느
         // 모듈인지 모르는 참조가 있다"는 표식으로 남긴다 — 그 파일에서는
         // 어떤 import도 미사용으로 보고할 수 없다.
-        for (path, usrs) in deferredUSRsByFile {
+        for (path, usrs) in collectedUsages.deferredUSRs {
             for usr in usrs {
                 // 참조 발생만으로 심은 외부 심볼의 module 은 참조한 파일의
                 // 모듈이다 — 정의 모듈이 아니므로 귀속 근거로 쓰면 미귀속
@@ -389,20 +373,74 @@ public struct IndexStoreProvider: IndexProviding {
         )
     }
 
-    /// USR 하나의 모듈 귀속 단서를 파일의 사용 근거에 누적한다.
-    private static func accumulateModuleEvidence(
-        usr: String,
-        path: String,
-        usages: inout [String: FileModuleUsage],
-        deferred: inout [String: Set<String>]
-    ) {
-        switch IndexStoreMapping.moduleEvidence(ofUSR: usr) {
-        case .module(let module):
-            usages[path, default: FileModuleUsage()].referencedModules.insert(module)
-        case .implicit:
-            break
-        case .deferred:
-            deferred[path, default: []].insert(usr)
+    /// 파일별 모듈 사용 근거를 모은다.
+    ///
+    /// 참조 발생의 대상과 선언의 관계 대상(상속·준수·오버라이드 등)이 모두 "파일이 그 모듈을 썼다"는 증거다.
+    /// 선언 발생 자체는 사용이 아니므로 심볼 USR 은 참조 역할일 때만 센다. 발생은 레코드(파일·컴파일 모듈)
+    /// 단위로 이어서 오므로 같은 경로가 이어지는 동안은 지역 집합에 쌓고 경로가 바뀔 때 한 번에 합친다.
+    /// 발생마다 경로 키를 네댓 번 해시하던 비용이 큰 인덱스에서 스냅샷 변환 시간의 절반을 넘었다. 결과는
+    /// 경로별 집합의 합으로 정해지므로 쌓는 순서와 무관하다.
+    private struct FileModuleUsageCollector {
+        private var usages: [String: FileModuleUsage] = [:]
+        private var owningModules: [String: Set<String>] = [:]
+        private var deferredUSRs: [String: Set<String>] = [:]
+        private var run = PathRun(path: "")
+
+        /// 같은 경로가 이어지는 동안 쌓는 근거.
+        private struct PathRun {
+            let path: String
+            var owningModules: Set<String> = []
+            var referencedModules: Set<String> = []
+            var deferredUSRs: Set<String> = []
+            /// 사전 항목을 만들 근거(컴파일 모듈 또는 모듈이 박힌 참조)를 봤는지.
+            var hasEntry = false
+        }
+
+        mutating func add(_ occurrence: SymbolOccurrence) {
+            if occurrence.location.path != run.path {
+                flush()
+                run = PathRun(path: occurrence.location.path)
+            }
+            if !occurrence.location.moduleName.isEmpty {
+                run.owningModules.insert(occurrence.location.moduleName)
+                run.hasEntry = true
+            }
+            if occurrence.roles.contains(.reference) { note(occurrence.symbol.usr) }
+            for relation in occurrence.relations { note(relation.symbol.usr) }
+        }
+
+        /// 모은 근거와 선언 사전이 완성된 뒤 풀 USR 을 돌려준다.
+        ///
+        /// 공유 파일의 import 는 특정 타깃 하나의 소유 모듈로 단정하지 않는다. 컴파일 모듈이 둘 이상이면
+        /// 소유 모듈을 비우고 미귀속으로 표시한다.
+        mutating func finish() -> (usages: [String: FileModuleUsage], deferredUSRs: [String: Set<String>]) {
+            flush()
+            for (path, modules) in owningModules {
+                usages[path]?.owningModule = modules.count == 1 ? modules.first : nil
+                if modules.count > 1 { usages[path]?.hasUnattributedReferences = true }
+            }
+            return (usages, deferredUSRs)
+        }
+
+        /// USR 하나의 모듈 귀속 단서를 지금 경로의 근거에 쌓는다.
+        private mutating func note(_ usr: String) {
+            switch IndexStoreMapping.moduleEvidence(ofUSR: usr) {
+            case .module(let module):
+                run.referencedModules.insert(module)
+                run.hasEntry = true
+            case .implicit:
+                break
+            case .deferred:
+                run.deferredUSRs.insert(usr)
+            }
+        }
+
+        private mutating func flush() {
+            if run.hasEntry {
+                usages[run.path, default: FileModuleUsage()].referencedModules.formUnion(run.referencedModules)
+            }
+            if !run.owningModules.isEmpty { owningModules[run.path, default: []].formUnion(run.owningModules) }
+            if !run.deferredUSRs.isEmpty { deferredUSRs[run.path, default: []].formUnion(run.deferredUSRs) }
         }
     }
 
