@@ -70,6 +70,58 @@ struct GlobalOptionsTests {
         #expect(fromFlag.configuration.baselinePath == "/work/cli-baseline.json")
     }
 
+    @Test("설정 파일의 index_store_path·derived_data_path 상대 경로는 작업 디렉터리가 아니라 프로젝트 루트 기준이다")
+    func configuredIndexPathsResolveAgainstProjectRoot() throws {
+        // 모노레포 루트(/root)에서 하위 앱을 `--project ios` 로 분석하는 CI(공식 액션)가 템플릿 예시를 그대로 쓴 모양.
+        // 작업 디렉터리 기준으로 풀면 /root/DerivedData 를 찾아 "index store not found" 로 끝나거나, 그 자리에 있는
+        // 다른 앱의 평면 DerivedData 스토어를 연다.
+        let fileSystem = InMemoryFileSystem(
+            currentDirectoryPath: "/root",
+            files: ["/root/ios/.cartograph.yml": "index_store_path: Index/DataStore\nderived_data_path: DerivedData\n"]
+        )
+        let relative = try GlobalOptions.parse(["--project", "ios"]).resolveConfiguration(fileSystem: fileSystem)
+        #expect(relative.configuration.projectPath == "/root/ios")
+        #expect(relative.configuration.indexStorePath == "/root/ios/Index/DataStore")
+        #expect(relative.configuration.derivedDataPath == "/root/ios/DerivedData")
+
+        let absolute = try GlobalOptions.parse(["--project", "/p"]).resolveConfiguration(
+            fileSystem: InMemoryFileSystem(
+                currentDirectoryPath: "/work",
+                files: ["/p/.cartograph.yml": "index_store_path: /ci/store\nderived_data_path: /ci/DerivedData\n"]
+            )
+        )
+        #expect(absolute.configuration.indexStorePath == "/ci/store")
+        #expect(absolute.configuration.derivedDataPath == "/ci/DerivedData")
+    }
+
+    @Test("--config 로 다른 곳의 설정을 읽어도 인덱스 경로 키는 baseline_path 처럼 프로젝트 루트 기준이다")
+    func explicitConfigurationElsewhereStillResolvesAgainstProjectRoot() throws {
+        // 설정 파일 디렉터리와 프로젝트 루트가 갈리는 유일한 경우다. 다른 경로 키와 같은 기준을 써야 한 파일 안의
+        // 상대 경로들이 서로 다른 곳을 가리키지 않는다.
+        let fileSystem = InMemoryFileSystem(
+            currentDirectoryPath: "/work",
+            files: ["/shared/ci.yml": "derived_data_path: DerivedData\nbaseline_path: baseline.json\n"]
+        )
+        let resolved = try GlobalOptions.parse(["--project", "/p", "--config", "/shared/ci.yml"])
+            .resolveConfiguration(fileSystem: fileSystem)
+        #expect(resolved.configuration.derivedDataPath == "/p/DerivedData")
+        // baseline_path 는 서비스가 같은 루트 기준으로 푼다(`CartographService.loadBaseline`).
+        #expect(resolved.configuration.baselinePath == "baseline.json")
+    }
+
+    @Test("--index-store·--derived-data 상대 경로는 작업 디렉터리 기준 절대 경로가 되고 설정 파일 값을 덮어쓴다")
+    func commandLineIndexPathsResolveAgainstCurrentDirectory() throws {
+        let fileSystem = InMemoryFileSystem(
+            currentDirectoryPath: "/root",
+            files: ["/root/ios/.cartograph.yml": "index_store_path: Index/DataStore\nderived_data_path: DerivedData\n"]
+        )
+        let resolved = try GlobalOptions.parse([
+            "--project", "ios", "--index-store", ".build/out", "--derived-data", "build/../DD",
+        ]).resolveConfiguration(fileSystem: fileSystem)
+        #expect(resolved.configuration.indexStorePath == "/root/.build/out")
+        #expect(resolved.configuration.derivedDataPath == "/root/DD")
+    }
+
     @Test("여러 값을 받는 옵션을 파싱한다")
     func parsesRepeatedOptions() throws {
         let options = try GlobalOptions.parse([

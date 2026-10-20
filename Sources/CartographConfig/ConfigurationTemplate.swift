@@ -8,6 +8,7 @@ public enum ConfigurationTemplate {
     public static let yaml = """
         # Cartograph configuration
         # Docs: https://github.com/ictechgy/cartograph
+        # Relative paths in this file resolve against the project root, wherever you run cartograph.
 
         # Where the compiler wrote its index store.
         # Leave empty to auto-detect (.build/index/store, .build/out, DerivedData).

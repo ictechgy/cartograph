@@ -1653,6 +1653,12 @@ graph_format: dot                 # dot mermaid json html
 strict: false
 ```
 
+Relative paths in the file — `index_store_path`, `derived_data_path`, `baseline_path` and
+`external_retentions_path` — resolve against the project root wherever the command runs, so
+`cartograph check --project ios` from a monorepo root reads `derived_data_path: DerivedData` as
+`ios/DerivedData`. The same paths given on the command line (`--index-store`, `--derived-data`,
+`--baseline`, `--external-retentions`) resolve against the current directory.
+
 Unknown keys are reported as warnings, not errors. A typo should tell you what was ignored, not
 stop your build.
 

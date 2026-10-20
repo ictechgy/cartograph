@@ -1594,6 +1594,12 @@ graph_format: dot                 # dot mermaid json html
 strict: false
 ```
 
+파일에 적은 상대 경로(`index_store_path`, `derived_data_path`, `baseline_path`,
+`external_retentions_path`)는 명령을 어디서 실행하든 프로젝트 루트 기준입니다. 그래서 모노레포
+루트에서 `cartograph check --project ios`를 돌리면 `derived_data_path: DerivedData`는
+`ios/DerivedData`입니다. 같은 경로를 커맨드라인으로 주면(`--index-store`, `--derived-data`,
+`--baseline`, `--external-retentions`) 현재 디렉터리 기준입니다.
+
 모르는 키는 오류 대신 경고로 알립니다 — 오타 하나 때문에 빌드가 멈추는 대신 무엇이
 무시됐는지 알려 줘야 하기 때문입니다.
 

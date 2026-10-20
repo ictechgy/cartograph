@@ -372,10 +372,11 @@ expect_status 2 "출력 파일 쓰기 실패"  graph --project "$EMPTY" --allow-
 # 저장소의 설정에 절대 경로를 심어 두고 baseline 을 돌리면 그 파일이 덮여써졌다.
 CFG="$(mktemp -d "${TMPDIR:-/tmp}/contract.XXXXXX")"
 # 아래 "베이스라인" 절의 픽스처. swiftc 가 인덱스에 남기는 경로와 표기가 같도록 링크를 푼 경로를 쓴다.
-# MOVED 는 같은 프로젝트를 다른 경로에 체크아웃한 자리(CI)다.
+# MOVED 는 같은 프로젝트를 다른 경로에 체크아웃한 자리(CI)다. ROOTED 는 설정 파일 경로 절의 픽스처다.
 DEBT="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/contract.XXXXXX")" && pwd -P)"
 MOVED="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/contract.XXXXXX")" && pwd -P)"
-trap 'rm -rf "$MISSING" "$EMPTY" "$CFG" "$DEBT" "$MOVED"' EXIT
+ROOTED="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/contract.XXXXXX")" && pwd -P)"
+trap 'rm -rf "$MISSING" "$EMPTY" "$CFG" "$DEBT" "$MOVED" "$ROOTED"' EXIT
 printf 'baseline_path: /tmp/cartograph-hostile-baseline.json\n' > "$CFG/.cartograph.yml"
 expect_status 64 "설정의 baseline_path 로는 쓰지 않는다" \
     baseline --project "$CFG" --index-store "$EMPTY/.build/index/store" --allow-empty-index
@@ -404,10 +405,11 @@ struct Right {
     func next() -> Left { Left() }
 }
 SWIFT
-# 체크아웃 디렉터리 하나의 Sources/Debt.swift 를 색인한다. 모듈 캐시는 두 체크아웃이 함께 쓴다.
+# 체크아웃 디렉터리 하나의 Sources/Debt.swift 를 색인한다. 모듈 캐시는 모든 체크아웃이 함께 쓴다.
+# 둘째 인자를 주면 그 자리에 스토어를 둔다(기본은 자동 탐색이 찾는 .build/index/store).
 index_debt() {
     xcrun swiftc -c -parse-as-library -module-name Debt -sdk "$(xcrun --sdk macosx --show-sdk-path)" \
-        -module-cache-path "$DEBT/ModuleCache" -index-store-path "$1/.build/index/store" \
+        -module-cache-path "$DEBT/ModuleCache" -index-store-path "${2:-$1/.build/index/store}" \
         "$1/Sources/Debt.swift" -o "$1/Debt.o" > "$1/swiftc.log" 2>&1
 }
 cp "$DEBT/Sources/Debt.swift" "$MOVED/Sources/Debt.swift"
@@ -437,6 +439,24 @@ if index_debt "$DEBT" && index_debt "$MOVED"; then
 else
     printf '  FAIL      베이스라인 계약에 쓸 인덱스를 만들지 못했다 (xcrun swiftc):\n'
     cat "$DEBT/swiftc.log" "$MOVED/swiftc.log" 2>/dev/null | sed 's/^/            /'
+    FAILURES=$((FAILURES + 1))
+fi
+
+echo "설정 파일의 인덱스 경로 — 실행한 자리가 아니라 프로젝트 루트 기준"
+# 이 스크립트는 저장소 루트에서 --project 로 다른 디렉터리를 분석한다. 모노레포 루트에서 하위 앱을 분석하는
+# CI(공식 액션)와 같은 모양이다. 설정의 상대 경로를 작업 디렉터리 기준으로 풀면 스토어를 저장소 루트에서 찾아
+# 종료 코드 2 로 끝나고, 프로젝트 루트 기준이면 타입 순환을 찾아 1 로 끝난다. 스토어는 `xcodebuild
+# -derivedDataPath DerivedData` 가 남기는 평면 배치에 둔다.
+mkdir -p "$ROOTED/Sources"
+cp "$DEBT/Sources/Debt.swift" "$ROOTED/Sources/Debt.swift"
+if index_debt "$ROOTED" "$ROOTED/DerivedData/Index.noindex/DataStore"; then
+    printf 'derived_data_path: DerivedData\n' > "$ROOTED/.cartograph.yml"
+    expect_status 1 "derived_data_path 는 프로젝트 루트 기준" cycles --level type --strict --project "$ROOTED"
+    printf 'index_store_path: DerivedData/Index.noindex/DataStore\n' > "$ROOTED/.cartograph.yml"
+    expect_status 1 "index_store_path 는 프로젝트 루트 기준" cycles --level type --strict --project "$ROOTED"
+else
+    printf '  FAIL      설정 경로 계약에 쓸 인덱스를 만들지 못했다 (xcrun swiftc):\n'
+    sed 's/^/            /' "$ROOTED/swiftc.log" 2>/dev/null
     FAILURES=$((FAILURES + 1))
 fi
 
