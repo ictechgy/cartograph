@@ -129,11 +129,11 @@ extension CartographService {
         guard before == after else {
             throw runtimeInputsChanged()
         }
-        let graphData = try Self.encodedData(graph)
+        let graphChunks = try Self.encodedGraphChunks(graph)
         let indexedDateFingerprint = try Self.digest(context.snapshot.sourceFreshnessDates ?? [:])
-        let graphFingerprint = Self.digest(parts: [
-            graphData,
-            Data(indexedDateFingerprint.utf8),
+        let graphFingerprint = Self.digest(chunkedParts: [
+            graphChunks,
+            [Data(indexedDateFingerprint.utf8)],
         ])
         let contractData = try JSONEncoder.cartographDefault(prettyPrinted: false).encode(contracts)
         let fingerprint = Self.digest(parts: [
@@ -166,19 +166,32 @@ extension CartographService {
                 reason: "The executable does not exist. Build the application and pass --executable <path>."
             )
         }
-        let data: Data
+        // 계획 문서와 실행 producer가 같은 표준 SHA-256 바이트 지문을 교환해야
+        // 실행 파일을 바꿔치기한 관측을 정확히 구분할 수 있다. 계획·그래프 지문에
+        // 쓰는 길이 프레이밍 해시를 재사용하면 producer와 항상 다른 값이 된다.
         do {
-            data = try environment.fileSystem.readData(at: resolved)
+            return try executableSHA256(at: resolved)
         } catch {
             throw CartographError.invalidConfiguration(
                 path: resolved,
                 reason: "The executable could not be read. Check its path and permissions."
             )
         }
-        // 계획 문서와 실행 producer가 같은 표준 SHA-256 바이트 지문을 교환해야
-        // 실행 파일을 바꿔치기한 관측을 정확히 구분할 수 있다. 계획·그래프 지문에
-        // 쓰는 길이 프레이밍 해시를 재사용하면 producer와 항상 다른 값이 된다.
-        return Self.rawSHA256(data)
+    }
+
+    /// 실행 파일 내용의 표준 SHA-256(소문자 16진).
+    ///
+    /// 디버그 실행 파일은 수백 MB 가 되고 계획·검사마다 두 번 해시한다. 조각 읽기를 지원하는 파일 시스템은
+    /// 세션 입력 지문과 같은 조각 읽기로 1 MiB 씩 해시해 메모리를 조각 크기로 묶는다. 조각 읽기도
+    /// 통째 읽기(`Data(contentsOf:)`)처럼 정규 파일만 받으므로 장치·FIFO 경로는 예전과 같은 읽기 오류가 된다.
+    private func executableSHA256(at path: String) throws -> String {
+        let fileSystem = environment.fileSystem
+        guard let chunked = fileSystem as? any ChunkedFileReading else {
+            return Self.rawSHA256(try fileSystem.readData(at: path))
+        }
+        var hasher = SHA256()
+        try chunked.readChunks(at: path, chunkSize: 1_048_576) { hasher.update(data: $0) }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     private static func isSensitiveExecutablePath(_ path: String) -> Bool {
@@ -266,6 +279,36 @@ extension CartographService {
         try JSONEncoder.cartographDefault(prettyPrinted: false).encode(value)
     }
 
+    /// `encodedData(graph)` 와 같은 바이트를 조각 목록으로 만든다. 이어 붙이면 그래프 전체 인코딩이다.
+    ///
+    /// 그래프 전체를 한 번에 인코딩하면 인코더가 정점·간선마다 중간 값을 만들어 출력과 함께 들고 있어, 정점 10만·
+    /// 간선 53만에서 약 580 MB 를 더 쓴다(이 방식은 약 190 MB). 이 바이트의 해시는 저장된 관측의 계획 지문과
+    /// 비교되므로 값을 바꿀 수 없다. 비압축 JSON 은 배열 원소를 따로 인코딩해 쉼표로 이어도 같은 바이트이므로,
+    /// 간선·정점을 4096개씩 배열로 인코딩해 대괄호를 떼고 잇는다. 최상위 키는 `.sortedKeys` 가 쓰는 순서
+    /// (edges·level·nodes)로 둔다. 길이 접두사 해시에 전체 길이가 먼저 필요해 출력 바이트는 들고 있되, 인코더
+    /// 중간 값은 4096개 몫만 남는다.
+    static func encodedGraphChunks(_ graph: CodeGraph) throws -> [Data] {
+        let encoder = JSONEncoder.cartographDefault(prettyPrinted: false)
+        var chunks = [Data(#"{"edges":["#.utf8)]
+        try appendEncodedElements(graph.edges, encoder: encoder, to: &chunks)
+        chunks.append(Data(#"],"level":"#.utf8))
+        chunks.append(try encoder.encode(graph.level))
+        chunks.append(Data(#","nodes":["#.utf8))
+        try appendEncodedElements(graph.sortedNodes, encoder: encoder, to: &chunks)
+        chunks.append(Data("]}".utf8))
+        return chunks
+    }
+
+    private static func appendEncodedElements<Element: Encodable>(
+        _ elements: [Element], encoder: JSONEncoder, to chunks: inout [Data]
+    ) throws {
+        for start in stride(from: 0, to: elements.count, by: 4096) {
+            let encoded = try encoder.encode(Array(elements[start..<min(start + 4096, elements.count)]))
+            if start > 0 { chunks.append(Data(",".utf8)) }
+            chunks.append(encoded.dropFirst().dropLast())
+        }
+    }
+
     private static func digest<T: Encodable>(_ value: T) throws -> String {
         digest(try encodedData(value))
     }
@@ -279,12 +322,18 @@ extension CartographService {
     }
 
     private static func digest(parts: [Data]) -> String {
+        digest(chunkedParts: parts.map { [$0] })
+    }
+
+    /// 부분마다 전체 길이(big-endian UInt64)를 앞에 두고 내용을 잇는 SHA-256. 한 부분을 여러 조각으로 넘겨도
+    /// 조각을 이은 한 부분을 넘긴 것과 같은 값이다.
+    private static func digest(chunkedParts parts: [[Data]]) -> String {
         var hasher = SHA256()
-        for part in parts {
-            var length = UInt64(part.count).bigEndian
+        for chunks in parts {
+            var length = UInt64(chunks.reduce(0) { $0 + $1.count }).bigEndian
             let prefix = withUnsafeBytes(of: &length) { Data($0) }
             hasher.update(data: prefix)
-            hasher.update(data: part)
+            chunks.forEach { hasher.update(data: $0) }
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }

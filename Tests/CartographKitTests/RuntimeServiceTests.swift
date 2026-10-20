@@ -342,6 +342,59 @@ struct RuntimeServiceTests {
         #expect(stale.incompleteAnalysis != nil)
     }
 
+    @Test("계획의 그래프 지문은 예전 값 그대로라 저장된 관측이 낡은 것으로 바뀌지 않는다")
+    func keepsGraphFingerprintValue() throws {
+        let (service, _, contracts) = fixture()
+
+        let plan = try service.runtimePlan(contracts: contracts, executablePath: "/p/RuntimeProbe")
+
+        // 그래프 전체를 한 번에 JSON 으로 인코딩하던 구현이 이 픽스처에 낸 값. 바뀌면 관측이 모두 stale 이 된다.
+        #expect(plan.graphFingerprint == "93994066960ca152262e7264ec432374eeb598ea2f74bb26a8811b36f5e45b1b")
+    }
+
+    @Test("그래프 지문 조각을 이으면 그래프 전체 JSON 과 같은 바이트이고 원소 4096개 단위로 나뉜다")
+    func graphChunksMatchWholeEncoding() throws {
+        let encoder = JSONEncoder.cartographDefault(prettyPrinted: false)
+        // 간선 3만 개가 인코딩의 대부분이다. 배열을 한 조각으로 두면 그 조각이 전체의 절반을 넘는다.
+        let large = Self.richGraph(nodeCount: 3_000, edgesPerNode: 10)
+        let small = Self.richGraph(nodeCount: 3, edgesPerNode: 2)
+        for graph in [CodeGraph(level: .module, nodes: [], edges: []), small, large] {
+            let chunks = try CartographService.encodedGraphChunks(graph)
+            #expect(chunks.reduce(Data(), +) == (try encoder.encode(graph)))
+        }
+        let chunks = try CartographService.encodedGraphChunks(large)
+        let whole = try encoder.encode(large)
+        #expect(chunks.count > 10)
+        #expect(chunks.allSatisfy { $0.count < whole.count / 2 })
+    }
+
+    /// 정점의 선택 필드 조합과 이스케이프가 필요한 이름·경로를 담은 그래프. 겹치는 간선은 가중치 2가 된다.
+    private static func richGraph(nodeCount: Int, edgesPerNode: Int) -> CodeGraph {
+        // 따옴표·슬래시·역슬래시·탭·é. 소스에 이스케이프를 쓰지 않고 바이트로 만든다.
+        let awkward = String(decoding: [0x22, 0x2F, 0x5C, 0x09, 0xC3, 0xA9], as: UTF8.self)
+        let nodes = (0..<nodeCount).map { index in
+            GraphNode(
+                id: NodeID("s:App\(index)" + awkward), name: "run(\(index))" + awkward,
+                kind: SymbolKind.allCases[index % SymbolKind.allCases.count],
+                module: index % 4 == 0 ? nil : "App", usr: index % 5 == 0 ? nil : "s:App\(index)",
+                location: index % 6 == 0
+                    ? nil : SourceLocation(path: "/p/A b/F\(index).swift", line: index + 1, column: 3),
+                accessibility: Accessibility.allCases[index % Accessibility.allCases.count],
+                attributes: index % 3 == 0 ? [.objc, .implicit] : [], isExternal: index % 7 == 0
+            )
+        }
+        let kinds = EdgeKind.allCases
+        let edges = nodes.indices.flatMap { index in
+            (0...edgesPerNode).map { step in
+                // 마지막 걸음은 첫 걸음과 같은 간선이라 합쳐져 가중치 2가 된다.
+                let hop = step == edgesPerNode ? 0 : step
+                return GraphEdge(source: nodes[index].id, target: nodes[(index + hop * 7 + 1) % nodeCount].id,
+                    kind: kinds[hop % kinds.count])
+            }
+        }
+        return CodeGraph(level: .symbol, nodes: nodes, edges: edges)
+    }
+
     private func makeService(fileSystem: any FileSystem) -> (CartographService, RuntimeContractsDocument) {
         let indexedDate = Date(timeIntervalSinceReferenceDate: 100)
         var builder = SnapshotBuilder(path: "/p/Runtime.swift")

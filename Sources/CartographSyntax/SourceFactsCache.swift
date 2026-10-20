@@ -23,14 +23,63 @@ public struct SourceFactsCache: Sendable {
     }
 
     /// 디스크에 저장하는 문서.
+    ///
+    /// 항목 키가 곧 파일 경로다. 그래서 항목 안의 위치는 그 경로를 다시 쓰지 않는다
+    /// (`SourceLocationPathElision`). 위치마다 같은 절대 경로를 되풀이하던 형식 15 는 이
+    /// 저장소 Sources 실측에서 JSON 의 62% 가 경로였다. 문서는 지금도 실행마다 통째로 읽고,
+    /// 바뀐 항목이 있으면 통째로 다시 쓴다.
     struct Document: Codable {
         var version: Int
         var entries: [String: Entry]
+
+        private enum CodingKeys: String, CodingKey {
+            case version, entries
+        }
+
+        init(version: Int, entries: [String: Entry]) {
+            self.version = version
+            self.entries = entries
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            version = try container.decode(Int.self, forKey: .version)
+            let stored = try container.nestedContainer(keyedBy: EntryPath.self, forKey: .entries)
+            var entries: [String: Entry] = [:]
+            for key in stored.allKeys {
+                let path = key.stringValue
+                entries[path] = try SourceLocationPathElision.eliding(path, in: decoder.userInfo) {
+                    try stored.decode(Entry.self, forKey: key)
+                }
+            }
+            self.entries = entries
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(version, forKey: .version)
+            var stored = container.nestedContainer(keyedBy: EntryPath.self, forKey: .entries)
+            for (path, entry) in entries {
+                try SourceLocationPathElision.eliding(path, in: encoder.userInfo) {
+                    try stored.encode(entry, forKey: EntryPath(stringValue: path))
+                }
+            }
+        }
+    }
+
+    /// 항목 키. 사전을 그대로 부호화할 때와 같은 JSON 객체 키가 된다.
+    private struct EntryPath: CodingKey {
+        let stringValue: String
+        var intValue: Int? { nil }
+
+        init(stringValue: String) { self.stringValue = stringValue }
+        /// 항목 키는 늘 경로 문자열이라 정수 키는 없다.
+        init?(intValue _: Int) { nil }
     }
 
     /// 캐시 형식이나 분석기 동작이 바뀌면 예전 항목을 통째로 버려야 한다.
     /// 버전을 올리는 것을 잊으면 낡은 결과로 조용히 틀린 분석을 하게 된다.
-    static let schemaVersion = 15
+    static let schemaVersion = 16
 
     private let fileSystem: any FileSystem
     private let path: String
@@ -45,8 +94,10 @@ public struct SourceFactsCache: Sendable {
 
     /// 저장된 항목을 읽는다. 없거나 형식이 다르면 빈 값으로 시작한다.
     public func load() -> [String: Entry] {
+        let decoder = JSONDecoder()
+        decoder.userInfo[SourceLocationPathElision.userInfoKey] = SourceLocationPathElision()
         guard let data = try? fileSystem.readData(at: path),
-              let document = try? JSONDecoder().decode(Document.self, from: data),
+              let document = try? decoder.decode(Document.self, from: data),
               document.version == Self.schemaVersion
         else { return [:] }
         return document.entries
@@ -56,8 +107,12 @@ public struct SourceFactsCache: Sendable {
     ///
     /// 통째로 덮어쓰므로 지워진 파일의 항목이 남아 무한히 자라지 않는다.
     /// 저장에 실패해도 분석 결과에는 영향이 없으므로 조용히 넘어간다.
+    ///
+    /// 파일별로 나눠 바뀐 항목만 쓰지는 않는다. 원자적 쓰기·지워진 파일 정리·동시 실행을
+    /// 함께 설계해야 해서, 대신 항목 안의 중복 경로를 빼 문서를 줄였다.
     public func save(_ entries: [String: Entry]) {
         let encoder = JSONEncoder.cartographDefault(prettyPrinted: false)
+        encoder.userInfo[SourceLocationPathElision.userInfoKey] = SourceLocationPathElision()
         guard let data = try? encoder.encode(Document(version: Self.schemaVersion, entries: entries))
         else { return }
         try? fileSystem.write(data, to: path)

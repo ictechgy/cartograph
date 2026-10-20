@@ -258,6 +258,19 @@ expect_output '"channel" : "/v1/users/search%3Fdraft"' "호출: 선언 없는 Mo
 # 실제 쓰기 실패는 아래 "빈 인덱스" 픽스처 다음에서 검증한다 — 없는 부모
 # 디렉터리는 -o 가 만들어 주므로 경로만으로는 실패하지 않는다.
 expect_status 2 "깨진 베이스라인"      cycles --project "$MISSING" --baseline "$MISSING/broken.json"
+# 이름 붙인 베이스라인 파일이 없으면 인자의 문제다(64). 조용히 건너뛰면 억제가 전부 사라지고, 2 로 끝나면 CI 는
+# 인덱스를 의심한다. 인덱스를 열기 전에 확인하므로 인덱스가 없는 이 프로젝트에서도 64 다. 이름을 붙이지 않은 기본
+# 파일(.cartograph-baseline.json)은 없어도 된다 — 위의 "인덱스 스토어 없음" 이 그 경우다.
+for reader in dead cycles metrics rules fix check; do
+    expect_status 64 "없는 베이스라인: $reader" "$reader" --project "$MISSING" --baseline "$MISSING/none.json"
+done
+expect_status 64 "없는 베이스라인: query" query Foo --project "$MISSING" --baseline "$MISSING/none.json"
+mkdir -p "$MISSING/named"
+printf 'baseline_path: none.json\n' > "$MISSING/named/.cartograph.yml"
+expect_status 64 "설정의 baseline_path 가 가리키는 파일 없음" check --strict --project "$MISSING/named"
+expect_status 64 "서버: 없는 --baseline 은 시작 전에 거부" serve --baseline "$MISSING/none.json"
+# 세션은 첫 도구 호출 때 설정을 읽는다. 설정의 baseline_path 는 그때 도구 결과의 오류로 드러난다.
+expect_status 0 "서버: 설정의 baseline_path 는 시작을 막지 않는다" serve --project "$MISSING/named"
 # 외부 근거 파일은 지정했는데 없으면 조용히 넘어가지 않는다. 반영됐다고 믿고 지우면 앱이 깨진다.
 expect_status 2 "없는 외부 근거 파일"  dead --project "$MISSING" --external-retentions "$MISSING/none.json"
 expect_status 2 "깨진 외부 근거 파일"  dead --project "$MISSING" --external-retentions "$MISSING/broken.json"
@@ -372,13 +385,25 @@ expect_status 2 "출력 파일 쓰기 실패"  graph --project "$EMPTY" --allow-
 # 저장소의 설정에 절대 경로를 심어 두고 baseline 을 돌리면 그 파일이 덮여써졌다.
 CFG="$(mktemp -d "${TMPDIR:-/tmp}/contract.XXXXXX")"
 # 아래 "베이스라인" 절의 픽스처. swiftc 가 인덱스에 남기는 경로와 표기가 같도록 링크를 푼 경로를 쓴다.
+# MOVED 는 같은 프로젝트를 다른 경로에 체크아웃한 자리(CI)다. ROOTED 는 설정 파일 경로 절의 픽스처다.
 DEBT="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/contract.XXXXXX")" && pwd -P)"
-trap 'rm -rf "$MISSING" "$EMPTY" "$CFG" "$DEBT"' EXIT
+MOVED="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/contract.XXXXXX")" && pwd -P)"
+ROOTED="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/contract.XXXXXX")" && pwd -P)"
+trap 'rm -rf "$MISSING" "$EMPTY" "$CFG" "$DEBT" "$MOVED" "$ROOTED"' EXIT
 printf 'baseline_path: /tmp/cartograph-hostile-baseline.json\n' > "$CFG/.cartograph.yml"
 expect_status 64 "설정의 baseline_path 로는 쓰지 않는다" \
     baseline --project "$CFG" --index-store "$EMPTY/.build/index/store" --allow-empty-index
 expect_status 0 "쓰기 목적지를 명시하면 기록한다" \
     baseline --project "$EMPTY" --allow-empty-index --write "$EMPTY/baseline.json"
+# baseline_path 를 먼저 커밋하고 그 자리에 처음 기록하는 흐름. 기록과 베이스라인을 읽지 않는 명령은 파일이 아직
+# 없어도 돌고, 베이스라인을 읽는 명령은 기록이 생길 때까지 64 로 멈춘다.
+mkdir -p "$CFG/named"
+printf 'baseline_path: recorded.json\n' > "$CFG/named/.cartograph.yml"
+NAMED_ARGS=(--project "$CFG/named" --index-store "$EMPTY/.build/index/store" --allow-empty-index)
+expect_status 64 "기록 전: 베이스라인을 읽는 명령"     dead "${NAMED_ARGS[@]}"
+expect_status 0 "기록 전: 베이스라인을 읽지 않는 명령"  graph "${NAMED_ARGS[@]}"
+expect_status 0 "없는 baseline_path 자리에 처음 기록"  baseline "${NAMED_ARGS[@]}" --write "$CFG/named/recorded.json"
+expect_status 0 "기록 뒤: 베이스라인을 읽는 명령"      dead "${NAMED_ARGS[@]}"
 
 echo "종료 코드 0 — 빈 인덱스 탈출구"
 expect_status 0 "빈 인덱스 허용"       dead --strict --project "$EMPTY" --allow-empty-index
@@ -386,9 +411,14 @@ expect_status 0 "빈 인덱스 허용"       dead --strict --project "$EMPTY" --
 echo "종료 코드 0 — 베이스라인이 기록한 기존 부채"
 # README 는 baseline 을 "새 문제만 빌드를 실패시키는" 도입 경로로 약속한다. check 는 모듈·타입 두 레벨
 # 순환에 베이스라인을 적용하는데, baseline 이 설정 레벨(module)만 기록하면 Swift 에서 실제로 생기는 타입
-# 순환이 baseline 뒤에도 check --strict 를 계속 세운다. 실제 인덱스가 필요해 swiftc 로 한 파일을 색인한다.
-mkdir -p "$DEBT/Sources"
+# 순환이 baseline 뒤에도 check --strict 를 계속 세운다. fix 도 베이스라인이 받아들인 발견은 건드리지 않는다고
+# 약속하므로 baseline 이 쓰지 않는 import 를 기록해야 드라이런 fix --strict 가 기존 import 로 실패하지 않는다.
+# 실제 인덱스가 필요해 swiftc 로 한 파일을 색인한다. import 는 Foundation 보다 모듈 캐시를 짓는 시간이 짧은
+# Darwin 이다.
+mkdir -p "$DEBT/Sources" "$MOVED/Sources"
 cat > "$DEBT/Sources/Debt.swift" <<'SWIFT'
+import Darwin
+
 struct Left {
     func next() -> Right { Right() }
 }
@@ -397,21 +427,58 @@ struct Right {
     func next() -> Left { Left() }
 }
 SWIFT
-if xcrun swiftc -c -parse-as-library -module-name Debt -sdk "$(xcrun --sdk macosx --show-sdk-path)" \
-    -module-cache-path "$DEBT/ModuleCache" -index-store-path "$DEBT/.build/index/store" \
-    "$DEBT/Sources/Debt.swift" -o "$DEBT/Debt.o" > "$DEBT/swiftc.log" 2>&1; then
+# 체크아웃 디렉터리 하나의 Sources/Debt.swift 를 색인한다. 모듈 캐시는 모든 체크아웃이 함께 쓴다.
+# 둘째 인자를 주면 그 자리에 스토어를 둔다(기본은 자동 탐색이 찾는 .build/index/store).
+index_debt() {
+    xcrun swiftc -c -parse-as-library -module-name Debt -sdk "$(xcrun --sdk macosx --show-sdk-path)" \
+        -module-cache-path "$DEBT/ModuleCache" -index-store-path "${2:-$1/.build/index/store}" \
+        "$1/Sources/Debt.swift" -o "$1/Debt.o" > "$1/swiftc.log" 2>&1
+}
+cp "$DEBT/Sources/Debt.swift" "$MOVED/Sources/Debt.swift"
+if index_debt "$DEBT" && index_debt "$MOVED"; then
     # 기록 전에는 실패해야 아래의 0 이 아무것도 검사하지 않은 0 이 아니다.
     expect_status 1 "기록 전: 타입 순환"   cycles --level type --strict --project "$DEBT"
     expect_status 1 "기록 전: 통합 검사"   check --strict --project "$DEBT"
     expect_status 1 "기록 전: 순환 설명"   cycles --explain Left --level type --strict --project "$DEBT"
+    expect_status 1 "기록 전: 수정 계획"   fix --strict --project "$DEBT"
     expect_status 0 "기존 부채 기록"       baseline --project "$DEBT" --write "$DEBT/.cartograph-baseline.json"
     expect_status 0 "기록 뒤: 통합 검사"   check --strict --project "$DEBT"
     expect_status 0 "기록 뒤: 타입 순환"   cycles --level type --strict --project "$DEBT"
     # 목록과 설명이 같은 베이스라인에 반대 판정을 내면 "아직 게이트에 걸리는가"를 묻는 스크립트가 속는다.
     expect_status 0 "기록 뒤: 순환 설명"   cycles --explain Left --level type --strict --project "$DEBT"
+    expect_status 0 "기록 뒤: 수정 계획"   fix --strict --project "$DEBT"
+    # 커밋한 베이스라인은 다른 경로의 체크아웃(CI)에서도 맞아야 한다. import 지문이 기록한 기계의 절대
+    # 경로(사용자 홈 포함)를 품으면 그 경로가 커밋되고, 옮긴 자리에서는 하나도 맞지 않는다.
+    if grep -qF -- "$DEBT" "$DEBT/.cartograph-baseline.json"; then
+        printf '  FAIL      베이스라인에 기록한 체크아웃의 절대 경로가 남는다\n'
+        FAILURES=$((FAILURES + 1))
+    else
+        printf '  ok        베이스라인에 기록한 체크아웃의 절대 경로가 남지 않는다\n'
+    fi
+    cp "$DEBT/.cartograph-baseline.json" "$MOVED/.cartograph-baseline.json"
+    expect_status 0 "옮긴 체크아웃: 통합 검사" check --strict --project "$MOVED"
+    expect_status 0 "옮긴 체크아웃: 수정 계획" fix --strict --project "$MOVED"
 else
     printf '  FAIL      베이스라인 계약에 쓸 인덱스를 만들지 못했다 (xcrun swiftc):\n'
-    sed 's/^/            /' "$DEBT/swiftc.log"
+    cat "$DEBT/swiftc.log" "$MOVED/swiftc.log" 2>/dev/null | sed 's/^/            /'
+    FAILURES=$((FAILURES + 1))
+fi
+
+echo "설정 파일의 인덱스 경로 — 실행한 자리가 아니라 프로젝트 루트 기준"
+# 이 스크립트는 저장소 루트에서 --project 로 다른 디렉터리를 분석한다. 모노레포 루트에서 하위 앱을 분석하는
+# CI(공식 액션)와 같은 모양이다. 설정의 상대 경로를 작업 디렉터리 기준으로 풀면 스토어를 저장소 루트에서 찾아
+# 종료 코드 2 로 끝나고, 프로젝트 루트 기준이면 타입 순환을 찾아 1 로 끝난다. 스토어는 `xcodebuild
+# -derivedDataPath DerivedData` 가 남기는 평면 배치에 둔다.
+mkdir -p "$ROOTED/Sources"
+cp "$DEBT/Sources/Debt.swift" "$ROOTED/Sources/Debt.swift"
+if index_debt "$ROOTED" "$ROOTED/DerivedData/Index.noindex/DataStore"; then
+    printf 'derived_data_path: DerivedData\n' > "$ROOTED/.cartograph.yml"
+    expect_status 1 "derived_data_path 는 프로젝트 루트 기준" cycles --level type --strict --project "$ROOTED"
+    printf 'index_store_path: DerivedData/Index.noindex/DataStore\n' > "$ROOTED/.cartograph.yml"
+    expect_status 1 "index_store_path 는 프로젝트 루트 기준" cycles --level type --strict --project "$ROOTED"
+else
+    printf '  FAIL      설정 경로 계약에 쓸 인덱스를 만들지 못했다 (xcrun swiftc):\n'
+    sed 's/^/            /' "$ROOTED/swiftc.log" 2>/dev/null
     FAILURES=$((FAILURES + 1))
 fi
 

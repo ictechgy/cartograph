@@ -43,9 +43,11 @@ extension CartographService {
         let facts = pass.calls.map { call in
             call.fact.attaching(resolver.symbol(for: call.declaration, at: call.declaration?.start ?? call.fact.location))
         }
+        // 따라가지 않은 루트 밖 링크는 닫힌 목록 밖 접두사로 일부러 싣는다. 분석 대상 저장소가 심은 링크로
+        // `route-decl-without-call` 의 심각도를 낮추게 두지 않고, 읽지 않은 소스가 있다는 사실만 전한다.
         let limitations = routeLimitations(
             facts: facts, pass: pass, scanner: scanner, unreadable: unreadable, hasIndex: snapshot != nil
-        )
+        ) + externalDirectoryLinkLimitations(inventory)
         return RouteCallsDocument(
             tool: .init(name: Cartograph.toolName, version: Cartograph.version),
             generatedAt: Self.bridgeTimestamp(generatedAt), project: project, facts: facts,

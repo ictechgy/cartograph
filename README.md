@@ -105,8 +105,8 @@ swift package cartograph graph --format mermaid > graph.mmd
 ```
 
 It has to be `revision:`, not `from:`. Cartograph depends on `indexstore-db`, which publishes no
-semantic-version tags and is pinned to a release branch, and SwiftPM refuses to resolve a
-stable-version dependency whose own dependency is unstable:
+semantic-version tags and is pinned to a commit on its `release/6.4.1` branch, and SwiftPM refuses
+to resolve a stable-version dependency whose own dependency is unstable:
 
 ```
 error: … package 'cartograph' is required using a stable-version but 'cartograph'
@@ -119,6 +119,14 @@ to save output. Commands that write files themselves — `--output`/`-o`, `basel
 `skill` and `init` — cannot write inside the package directory unless that run allows it:
 `swift package --allow-writing-to-package-directory cartograph baseline`. SwiftPM also reports every
 plugin failure as exit code 1, so this path tells success from failure only; see [CI](#ci).
+
+Because the `indexstore-db` pin is a commit, not a branch, every project on the same Cartograph tag
+builds the `indexstore-db` that tag was tested with, with or without its own `Package.resolved`.
+`swift-lmdb`, which `indexstore-db` itself requires by its `release/6.4.x` branch, still resolves to
+that branch's head; commit your `Package.resolved` to hold it. SwiftPM cannot resolve one package
+required at two different revisions, so a graph in which another dependency asks for `indexstore-db`
+by a branch or by another commit fails with "indexstore-db is required using two different
+revision-based requirements".
 
 **From source:**
 
@@ -243,6 +251,11 @@ App.Alpha is part of 1 cycle(s):
   App.Beta → App.Gamma → App.Alpha → App.Beta
       weakest link: App.Gamma → App.Alpha (call, 1 references)
 ```
+
+With `--since`, a component's cycle is reported when any node of that strongly connected component
+has a declaration in a changed file — the rule `check` uses — even if the representative cycle
+passes only through files the change did not touch. A module cycle is therefore reported only when
+one of the component's modules has a changed file.
 
 ### `dead` — find unused declarations
 
@@ -392,9 +405,9 @@ The default is a dry run. Every edit is looked up in the current source rather t
 position: the declaration at the recorded location must still match, an import line must not carry
 other code, and the rewritten file must re-parse before anything is written. Anything that fails
 those checks is reported as skipped with a reason instead of guessed at. Writes are atomic per
-file, and findings already accepted in the baseline or outside `--since` are left alone. Without
-`--apply`, `--strict` fails while the plan is non-empty; with `--apply` it fails only when an edit
-had to be skipped.
+file, and findings already accepted in the baseline (`baseline` records both classes) or outside
+`--since` are left alone. Without `--apply`, `--strict` fails while the plan is non-empty; with
+`--apply` it fails only when an edit had to be skipped.
 
 ```console
 $ cartograph fix
@@ -462,9 +475,10 @@ Five things this output does deliberately:
   between absent and invisible. `limitations` is counted from *your* project, within the same
   include/exclude scope the graph uses, so it stays quiet when there is nothing to warn about. It
   reports Objective-C sources, Interface Builder documents, sources edited since their own index
-  unit was written, a package that exports library products while `retain_public` is off, a path
-  filter narrower than the defaults, or an edge-kind filter — any of which could be the reason
-  `usedBy` is empty. The default excludes alone do not count: they are a noise guard, not a
+  unit was written, a package that exports library products while `retain_public` is off, directory
+  symlinks that lead outside the project root and were not followed, a path filter narrower than the
+  defaults, or an edge-kind filter — any of which could be the reason `usedBy` is empty. The default
+  excludes alone do not count: they are a noise guard, not a
   narrowing you chose, and a warning that fires on every project is not read. File-level
   timestamps use the oldest observed covering unit, so rebuilding only one context of a shared
   source cannot hide another context's stale facts. Scoped project-header dependencies and deleted
@@ -748,8 +762,9 @@ Evidence tiers (`evidence`, on every reached declaration) are per-root lower bou
 
 `bound` needs a closed world, so any limitation that says the index does not cover the whole
 project (unindexed, stale, missing or unreadable sources, path or edge filters, Objective-C
-sources, an exported library) downgrades such hops to `candidate` and adds
-`dispatch-bound-unproven`. The document does not declare `dispatch` and never carries
+sources, an exported library, directory symlinks outside the root that were not followed)
+downgrades such hops to `candidate` and adds `dispatch-bound-unproven`. The document does not
+declare `dispatch` and never carries
 `unresolvedCalls`: the Swift index does not record calls through closures held in parameters or
 local variables, so cartograph cannot claim complete unresolved-call reporting, and isthmus reads the
 missing field as unknown. Declarations an external framework or the runtime invokes — SwiftUI
@@ -761,8 +776,12 @@ program has no caller, and no caller is invented. Roots are not expanded to thei
 `--limit` defaults to 100000 (the contract maximum) and `--generated-at` fixes the timestamp for
 byte-identical output. `revision` is `--revision <rev>` when given; otherwise it is the git `HEAD`
 commit only when the project directory has no uncommitted or untracked changes, and it is omitted
-when the tree is dirty or not a repository — a `HEAD` recorded over edited sources would make isthmus
-treat a stale analysis as current. `graphRevision` is `sha256:` over the symbol graph's node ids and
+when the tree is dirty, contains a submodule, or is not a repository — a `HEAD` recorded over edited
+sources would make isthmus treat a stale analysis as current. These lookups disable the repository's
+git filters and never fetch missing objects (see Known limitations), so a file a filter normalized,
+such as Git LFS, reads as dirty and omits the revision too, as does a partial clone missing an
+object the check needs; pass `--revision` explicitly in those cases.
+`graphRevision` is `sha256:` over the symbol graph's node ids and
 kinds, its edges, the automatic runtime connections and the closed-world decision (locations
 excluded), so dependents and dependencies documents over the same graph agree. `project` is the
 project's real path, as in `routes` and `bridges`. Roots and `--revision` containing control
@@ -855,7 +874,8 @@ stops with "isn't a member of the specified test plan or scheme" — so such a p
 mismatch rather than a silently empty run; use the JSON output there. When the list is truncated by `--limit` or
 `--depth`, or an input is unresolved, the command prints no arguments and exits 2 (unresolved named
 declarations still exit 64). Missing/unreadable sources, stale or absent index units, an empty index,
-and narrowing path/edge filters also print no selectors and exit 2. Freshness and readability
+narrowing path/edge filters, and directory symlinks outside the root that were not followed also
+print no selectors and exit 2. Freshness and readability
 checks cover Swift, Objective-C/Objective-C++ implementations, and project headers; an unindexed
 header is an uncertainty, not proof that its consumers are absent. Mixed modeled and unmodeled
 changes (for example a Swift edit plus a JSON fixture or build configuration) refuse partial
@@ -938,6 +958,16 @@ change times, permissions and resolved path. Filesystems without these stamps ar
 Sources and index-unit timestamps also participate in the input fingerprint so freshness reports
 are refreshed. File enumeration still occurs; this is cached preparation, not incremental graph
 analysis or an automatic compiler build.
+
+Within one generation the analysis limitations, the `cartograph_check` result and the test
+lifecycle and name/file indexes behind `cartograph_impact` and `cartograph_affected` are computed
+once and reused. Every response therefore carries the limitations counted for its generation, the
+same list as its `session` envelope, so an edit made inside the freshness window shows up as
+`index-staleness` once the session re-verifies, or right after `refresh: true`. The index store's
+own modification time is the exception: the input fingerprint does not cover it, so when it moves
+within a generation (an entry added at the store root, or a rebuild inside the freshness window),
+responses count their limitations again and can differ from the envelope, for example by an
+`index-staleness` or `external-retentions-stale` entry, until the next generation.
 
 ### `runtime` — discover connections and collect execution evidence
 
@@ -1306,6 +1336,16 @@ diagnostics for declarations that were never supposed to exist. SQL arguments th
 literals, and relation names that cannot be resolved statically, stay in the document marked
 `dynamic` so the join can count what it could not see.
 
+SQL text is read by a token scanner that follows the relation-name rules every persistence
+producer shares through the isthmus contract. A `FROM` inside function arguments
+(`EXTRACT(YEAR FROM created_at)`, `TRIM(BOTH ' ' FROM name)`, `SUBSTRING(name FROM 2)`; a subquery
+inside them still counts), an unqualified name that is a CTE of the same `;`-separated statement
+(unquoted names compare case-insensitively, quoted names as written), and the operand of
+`IS [NOT] DISTINCT FROM` are not relations: none of them becomes a `relation-use` fact or is
+counted under `unjoined-dynamic-relations`. The CTE rule covers the whole statement, so a CTE
+named after a table hides that table too — `WITH users AS (SELECT * FROM users …)` drops the real
+`users` its body reads.
+
 Like `bridges`, the command attaches the index's USR to the enclosing declaration when it can,
 so isthmus retentions can name the function that touches a table. Facts at file scope carry no
 symbol. The command refuses `--since`, `--level`, `--report-format` and `--strict` for the same
@@ -1536,7 +1576,12 @@ cartograph baseline --write .cartograph-baseline.json
 ```
 
 Records today's findings so only *new* ones fail the build. Fingerprints are USR-based, so moving
-code up and down a file does not resurrect a suppressed finding.
+code up and down a file does not resurrect a suppressed finding. The record includes the
+`unused-import` and `unused-parameter` warnings that `fix` acts on, so a `fix --strict` dry run
+fails only on new ones, and `dead` counts those warnings as suppressed. An import has no USR, so it
+is identified by its file and the imported name, with the file written relative to the project
+root: the committed baseline matches in a checkout at another path. A file outside the project
+root keeps its absolute path.
 
 Where the file is written is always an explicit decision: `--write`, or the project root default
 (`.cartograph-baseline.json`) when the configuration sets no `baseline_path`. The `baseline_path`
@@ -1544,6 +1589,16 @@ configuration key names where suppression findings are *read* from, never where 
 written — a key in the analyzed repository's config must not be able to point a write at an
 arbitrary path, and if `baseline_path` is set while `--write` is missing, `baseline` exits 64 and
 says so rather than guessing.
+
+A baseline you name — with `--baseline` or `baseline_path` — must exist. When it does not, every
+command that applies a baseline (`dead`, `cycles`, `metrics`, `rules`, `fix`, `query`, `check`)
+exits 64 before opening the index, because a mistyped path would otherwise drop every suppression
+and report the accepted findings as new ones. The default `.cartograph-baseline.json` stays
+optional: with no name given, it is read only if it exists. Writing never reads a baseline, so
+`baseline --write` can create the file a committed `baseline_path` names, and commands that do not
+apply one run meanwhile. `serve` exits 64 at start for a missing `--baseline`; a missing
+`baseline_path` makes `cartograph_query` and `cartograph_check` return an error result until the
+file exists. A named file that exists but cannot be read is still a tool failure (exit 2).
 
 ### `--since` — review only what a pull request touched
 
@@ -1555,7 +1610,10 @@ Reports only findings **located in** modeled source files changed since a git re
 Objective-C and Interface Builder suffixes — including committed changes, uncommitted changes to
 tracked files, and new files you have not added yet. Other changed paths are listed as limitations
 when they cannot be modeled. The graph is still built from the whole project, because reachability
-computed on a partial graph is simply wrong; only the report narrows.
+computed on a partial graph is simply wrong; only the report narrows. A cycle has no single
+location, so `cycles` and `check` report it when any node of its strongly connected component has
+a declaration in a changed file — a type's extensions count, and so does any file of a module —
+wherever its representative path runs.
 
 It answers "what did this change touch", not "what did this change cause". If your commit deletes
 the last call to a symbol declared in a file you did not touch, that symbol becomes dead but its
@@ -1573,6 +1631,18 @@ different operation from filtering diagnostic locations.
 that keeps today's debt from growing, `--since` is the pull-request lens. In CI, check out with full
 history (`fetch-depth: 0`), or the revision will not resolve. A `noChanges` impact result means no
 modeled source path was selected; it is not evidence that all changed files are safe.
+
+These git lookups run inside the repository under analysis with its content filters, external diff
+and textconv drivers, fsmonitor and submodule configuration disabled (see Known limitations), so a
+tracked file whose content is unchanged but whose stat differs — for example in a copied working
+tree or after a file is rewritten with the same bytes, until git refreshes its index (`git status`
+does) — is reported as changed. A repository that configures a filter driver whose name cannot be
+safely disabled makes `--since` stop with an error (exit 2) rather than risk running it.
+
+The lookups also never fetch missing objects from a partial clone's promisor remote. A blobless
+clone (`--filter=blob:none`) needs no fetch, because rename detection is off and the reported paths
+are the same without it; a comparison that needs a tree the clone does not hold, as in a treeless
+clone (`--filter=tree:0`), stops with an error (exit 2). Check out without a tree filter in CI.
 
 ## Configuration
 
@@ -1610,13 +1680,20 @@ thresholds:
 
 baseline_path: .cartograph-baseline.json    # where --baseline READS suppression findings;
                                             # `cartograph baseline` writes only via --write or the
-                                            # project-root default, never to this key
+                                            # project-root default, never to this key; once set,
+                                            # the file must exist (exit 64 otherwise)
 external_retentions_path: .isthmus/retentions.cartograph.json   # from isthmus, see `bridges`
 derived_data_path: DerivedData    # where CI put -derivedDataPath
 report_format: text               # text json xcode checkstyle github-actions sarif
 graph_format: dot                 # dot mermaid json html
 strict: false
 ```
+
+Relative paths in the file — `index_store_path`, `derived_data_path`, `baseline_path` and
+`external_retentions_path` — resolve against the project root wherever the command runs, so
+`cartograph check --project ios` from a monorepo root reads `derived_data_path: DerivedData` as
+`ios/DerivedData`. The same paths given on the command line (`--index-store`, `--derived-data`,
+`--baseline`, `--external-retentions`) resolve against the current directory.
 
 Unknown keys are reported as warnings, not errors. A typo should tell you what was ignored, not
 stop your build.
@@ -1723,6 +1800,39 @@ override the extension's default access.
   edge. Read the warning together with those answers rather than expecting them to agree.
 - **`#if` branches that did not compile do not exist.** The index store only knows the
   configuration you built.
+- **Reading an untrusted repository's `.git`.** `--since` (on every command that accepts it) and the
+  default `language-traversal` revision run `git` inside the repository under analysis. A repository
+  distributed with its `.git` directory can point git at commands of its own choosing, so these
+  read-only lookups disable repository-configured content filters (`clean`/`smudge`/`process`),
+  external `diff`/`textconv` drivers, `fsmonitor`, commit-signature display and submodule
+  configuration, and never re-read the working tree through a filter. They also never fetch a
+  missing object from a partial clone's promisor remote (`GIT_NO_LAZY_FETCH=1`), because that fetch
+  runs commands the repository's configuration chooses (`remote.<name>.uploadpack`,
+  `core.sshCommand`, an `ext::` URL). As a result a tracked file that is byte-identical but
+  stat-changed (for example in a copied working tree, until git refreshes its index) is reported as
+  changed; a file a filter normalized, such as Git LFS, looks changed and makes the traversal omit
+  its `HEAD` revision; a submodule makes the traversal omit the revision; and a filter driver whose
+  name cannot be disabled, or an object a lookup needs that the clone does not hold (an old tree in
+  a treeless `--filter=tree:0` clone, say), makes `--since` fail and the traversal omit the
+  revision. A blobless clone (`--filter=blob:none`) works as before. If a submodule holds sources
+  you need analyzed, pass `--revision` yourself. git still runs — its own SECURITY notes warn that
+  no git command is safe on a fully attacker-controlled `.git`, so analyze a `git clone --no-local`
+  copy when in doubt — and your user-global git configuration is otherwise trusted. Refusing the
+  fetch needs git 2.45 or a May 2024 security release of an older line (such as 2.39.4 or 2.44.1);
+  an older git ignores the setting and still fetches.
+- **Directory symlinks that leave the project root are not followed.** A directory symlink whose
+  target resolves outside the project root (`Sources/App/vendor -> ../shared`, `-> /`) is skipped by
+  every walk of the project, so the sources, headers and Interface Builder documents behind it are
+  never read: their facts are absent from `dead`, `query`, `impact`, `check`, `routes`, `bridges`,
+  `schema` and `dataflow`, and a declaration called only from there can be reported unreachable.
+  Each `limitations` list counts such links outside your excludes as
+  `symlinked-directories-outside-root`, with their project-relative paths. Cartograph treats it like a
+  missing source: `impact --format language-traversal` proves no `bound` dispatch and
+  `affected --format xcodebuild` prints no selectors. isthmus, by contrast, does not read that prefix
+  as a coverage gap, so a link planted in the repository cannot soften an isthmus check.
+  To analyze shared code reached this way, run with `--project` at a directory that contains both.
+  Symlinks that stay inside the root are followed as before, and file symlinks are still read
+  wherever they point.
 
 ## CI
 
@@ -1766,15 +1876,17 @@ jobs:
 ```
 
 The `action-v1.0.0` tag is the action release; `version: 0.28.0` selects the CLI binary.
-Pin both for a repeatable setup (`@main` tracks the development branch). Marketplace's default
+Pin both for a repeatable setup (`@main` tracks the development branch), and add `sha256` to pin
+the archive itself. Marketplace's default
 "Use latest version" currently follows the repository's latest CLI release; select
 `action-v1.0.0` or use the version-specific link above for the action release. Inputs:
 
 | Input | Default | Meaning |
 |---|---|---|
 | `command` | `check` | `check` (dead + cycles + rules together), `dead`, `cycles` or `rules` |
-| `args` | — | Extra arguments, for example `--limit 500` |
-| `version` | `latest` | Release tag to download, or `latest` for the newest release |
+| `args` | — | Extra arguments, for example `--limit 500`, split with shell-like quoting and never expanded |
+| `version` | `latest` | Release tag to download, or `latest` for the newest release (logged as a notice) |
+| `sha256` | — | SHA-256 of `cartograph-<version>-macos-universal.tar.gz`; any other archive fails the step |
 | `binary` | — | Path to an existing binary; skips the download |
 | `project` | `.` | Project root; the index store is discovered from it |
 | `build` | `swift` | `swift build` before analyzing, or `none` when you build yourself |
@@ -1787,6 +1899,23 @@ Outputs: `exit-code` (the raw CLI code, including `64` for usage errors), `sarif
 fails with a clear message on a non-macOS runner, because the tool loads `libIndexStore` from the
 Xcode toolchain. Building with `xcodebuild`? Set `build: none` and either pass your binary through
 `binary` or install Cartograph yourself and keep the manual commands below.
+
+Every download is checked against the SHA-256 digest GitHub recorded for the release asset, and
+only the `cartograph` executable is extracted; a missing or different digest, or an executable that
+is not a regular file, fails the step before anything runs. The recorded digest catches a corrupted
+or mismatched download, but GitHub computes it again when a release asset is replaced, so `sha256`
+is what pins the archive: copy the asset digest from the release page without its `sha256:` prefix.
+With `version: latest` the action logs a notice naming the release it used. The action gives
+`GH_TOKEN` only to the step that reads the release; the downloaded binary first runs, as
+`--version`, in a step without it.
+
+`args` is split into words with shell-like quoting (Python `shlex`, as in the GitLab component),
+but no shell evaluates it: `$`, backticks and glob characters stay literal, and
+`--exclude "UI Tests/**"` reaches the CLI as one pattern. An unclosed quote or a trailing backslash
+ends the step with `exit-code` `64` before the CLI runs.
+
+`action-v1.0.0` predates these checks: it runs the downloaded binary unverified, has no `sha256`
+input, and leaves `args` to the shell's word splitting and globbing.
 
 The `action-v1.0.0` action rejects unexpected exit codes and missing reports, and never uploads a
 report left by an earlier invocation. These fixes are not part of the existing `0.20.0` action tag.

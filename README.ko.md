@@ -113,8 +113,8 @@ swift package cartograph graph --format mermaid > graph.mmd
 ```
 
 `from:`이 아니라 `revision:`이어야 합니다. Cartograph는 `indexstore-db`에 의존하는데, 그쪽은
-semver 태그를 붙이지 않아 릴리스 브랜치로 고정돼 있습니다. SwiftPM은 안정 버전을 요구받은
-패키지가 불안정 버전 패키지에 의존하는 것을 거부합니다.
+semver 태그를 붙이지 않아 `release/6.4.1` 브랜치의 커밋 하나로 고정돼 있습니다. SwiftPM은
+안정 버전을 요구받은 패키지가 불안정 버전 패키지에 의존하는 것을 거부합니다.
 
 ```
 error: … package 'cartograph' is required using a stable-version but 'cartograph'
@@ -128,6 +128,13 @@ depends on an unstable-version package 'indexstore-db'.
 디렉터리에 쓰지 못합니다: `swift package --allow-writing-to-package-directory cartograph baseline`.
 또 SwiftPM은 플러그인 실패를 모두 종료 코드 1로 알리므로, 이 경로에서는 성공과 실패만 구분됩니다.
 [CI](#ci)를 보세요.
+
+`indexstore-db`를 브랜치가 아니라 커밋으로 고정하므로, 같은 Cartograph 태그를 쓰는 프로젝트는
+자기 `Package.resolved`가 있든 없든 그 태그가 검증한 `indexstore-db`로 빌드됩니다. `indexstore-db`가
+`release/6.4.x` 브랜치로 요구하는 `swift-lmdb`는 여전히 그 브랜치의 머리로 해석되므로, 고정하려면
+`Package.resolved`를 커밋하세요. SwiftPM은 한 패키지를 서로 다른 revision으로 요구하는 그래프를
+해석하지 못합니다. 다른 의존성이 `indexstore-db`를 브랜치나 다른 커밋으로 요구하면 "indexstore-db is
+required using two different revision-based requirements"로 해석이 실패합니다.
 
 **소스에서 빌드:**
 
@@ -247,6 +254,10 @@ App.Alpha is part of 1 cycle(s):
   App.Beta → App.Gamma → App.Alpha → App.Beta
       weakest link: App.Gamma → App.Alpha (call, 1 references)
 ```
+
+`--since`를 주면 강한 연결 요소의 정점 중 하나라도 바뀐 파일에 선언이 있을 때 그 요소의 순환을
+보고합니다 — `check`와 같은 규칙이며, 대표 순환이 이번 변경이 건드리지 않은 파일만 지나가도
+마찬가지입니다. 그래서 모듈 순환은 요소에 든 모듈 중 하나에 바뀐 파일이 있을 때만 보고합니다.
 
 ### `dead` — 미사용 선언 찾기
 
@@ -390,8 +401,9 @@ cartograph fix --since origin/main  # 바뀐 파일의 발견만
 기록된 자리의 선언이 요청과 일치해야 하고, import 줄에 다른 코드가 없어야 하며,
 고쳐 쓴 파일이 다시 파싱되어야 씁니다. 이 검사를 통과하지 못한 편집은 추측하지 않고
 이유와 함께 건너뜁니다. 쓰기는 파일 단위로 원자적이고, 베이스라인이 이미 받아들였거나
-`--since` 범위 밖인 발견은 건드리지 않습니다. `--apply` 없이 `--strict`를 주면 계획이
-남아 있는 동안 실패하고, `--apply`와 함께면 건너뛴 편집이 있을 때만 실패합니다.
+(`baseline`이 두 종류를 모두 기록합니다) `--since` 범위 밖인 발견은 건드리지 않습니다.
+`--apply` 없이 `--strict`를 주면 계획이 남아 있는 동안 실패하고, `--apply`와 함께면 건너뛴
+편집이 있을 때만 실패합니다.
 
 ```console
 $ cartograph fix
@@ -459,8 +471,9 @@ $ cartograph query UserService
   구분할 수 없습니다. `limitations`는 일반론을 나열하는 것이 아니라 *당신의 프로젝트*를
   그래프와 같은 include/exclude 범위 안에서 세어 만듭니다. 알릴 것이 없으면 조용합니다.
   알리는 것은 Objective-C 소스, Interface Builder 문서, 인덱스 유닛이 쓰인 뒤 편집된 소스,
-  `retain_public`이 꺼진 채 라이브러리 제품을 내보내는 패키지, 기본보다 좁힌 경로 필터,
-  간선 종류 필터입니다 — 어느 것이든 `usedBy`가 빈 이유일 수 있습니다. 기본 제외만으로는
+  `retain_public`이 꺼진 채 라이브러리 제품을 내보내는 패키지, 따라가지 않은 루트 밖 디렉터리
+  링크, 기본보다 좁힌 경로 필터, 간선 종류 필터입니다 — 어느 것이든 `usedBy`가 빈 이유일 수
+  있습니다. 기본 제외만으로는
   세지 않습니다 — 그것은 선택한 범위 축소가 아니라 잡음 제거 장치이고, 모든 프로젝트에서
   울리는 경보는 무시됩니다. 파일을 포함한 관측 유닛 중 가장 오래된 시각을 비교해 공유
   소스의 한 문맥만 재빌드해도 다른 문맥의 낡은 사실을 가리지 않게 합니다. 선언이 없어도
@@ -734,8 +747,9 @@ cartograph impact --format language-traversal --roots-from routes.json   # 파�
 | `candidate` | 여기에 더해, 다른 구현으로 갈 수 있는 오버라이드·프로토콜 dispatch나 자동 발견한 런타임 연결 |
 
 `bound`는 닫힌 세계가 필요합니다. 인덱스가 프로젝트 전체를 담지 않는다는 한계(인덱스 없는·낡은·
-사라진·읽지 못한 소스, 경로·간선 필터, Objective-C 소스, 라이브러리 내보내기)가 하나라도 있으면
-그런 걸음을 `candidate`로 낮추고 `dispatch-bound-unproven`을 싣습니다. 문서는 `dispatch`를 선언하지
+사라진·읽지 못한 소스, 경로·간선 필터, Objective-C 소스, 라이브러리 내보내기, 따라가지 않은 루트 밖
+디렉터리 링크)가 하나라도 있으면 그런 걸음을 `candidate`로 낮추고 `dispatch-bound-unproven`을 싣습니다.
+문서는 `dispatch`를 선언하지
 않고 `unresolvedCalls`도 싣지 않습니다. Swift 인덱스는 매개변수·지역 변수에 담긴 클로저 호출을
 기록하지 않아 잇지 못한 호출을 빠짐없이 신고한다고 주장할 수 없고, isthmus는 없는 필드를
 "알 수 없음"으로 읽습니다. 외부 프레임워크나 런타임이 부르는 선언 — SwiftUI `body`, `@main`,
@@ -746,8 +760,11 @@ cartograph impact --format language-traversal --roots-from routes.json   # 파�
 실리며 `root-not-found:`와 `truncated`를 더한 뒤 문서를 출력하고 64로 끝납니다. `--limit` 기본값은
 계약 상한인 100000이고, `--generated-at`으로 시각을 고정하면 같은 입력이 같은 바이트가 됩니다.
 `revision`은 `--revision <rev>`를 주면 그 값이고, 주지 않으면 프로젝트 디렉터리에 커밋하지 않은
-변경·추적되지 않는 파일이 없을 때만 git `HEAD` 커밋입니다. 작업 트리가 더럽거나 저장소가 아니면
-싣지 않습니다 — 고친 소스 위에서 `HEAD`를 실으면 isthmus가 낡은 분석을 최신으로 읽습니다.
+변경·추적되지 않는 파일이 없을 때만 git `HEAD` 커밋입니다. 작업 트리가 더럽거나, 서브모듈이
+있거나, 저장소가 아니면 싣지 않습니다 — 고친 소스 위에서 `HEAD`를 실으면 isthmus가 낡은 분석을
+최신으로 읽습니다. 이 조회는 저장소의 git 필터를 끄고 빠진 객체를 받아 오지 않으므로(알려진 한계
+참고), git-lfs처럼 필터로 정규화되던 파일은 더럽게 보여 revision을 싣지 않고, 확인에 필요한 객체가
+partial clone에 없을 때도 싣지 않습니다. 그런 경우 `--revision`을 직접 주세요.
 `graphRevision`은 심볼 그래프의 정점 id·종류, 간선, 자동 발견 런타임 연결, 닫힌 세계 판정(위치 제외)의
 `sha256:` 해시라서 같은 그래프 위의 정·역방향 문서가 같은 값을 냅니다. `project`는 `routes`·`bridges`와
 같은 실제 경로입니다. 제어 문자가 든 root와 `--revision`은 isthmus가 그런 id를 거부하므로 64로 거부합니다.
@@ -827,7 +844,8 @@ Xcode 타깃에서는 둘이 같습니다. `My App Tests` 타깃의 모듈은 `M
 scheme"으로 멈추므로, 그런 프로젝트는 조용히 빈 실행이 아니라 불일치를 봅니다. 그때는 JSON 출력을
 쓰세요. `--limit`·`--depth`로 목록이 잘렸거나 풀지 못한 입력이 있으면 인자를 하나도 출력하지 않고
 종료 코드 2로 끝납니다(이름을 찾지 못한 선언은 여전히 64). 소스 누락·읽기 실패, 낡거나 없는
-인덱스 유닛, 빈 인덱스, 경로·간선 필터로 좁힌 범위도 인자 없이 종료 코드 2로 끝납니다. 읽지 못한
+인덱스 유닛, 빈 인덱스, 경로·간선 필터로 좁힌 범위, 따라가지 않은 루트 밖 디렉터리 링크도 인자 없이
+종료 코드 2로 끝납니다. 읽지 못한
 소스가 런타임 사실을 하나도 만들지 못했어도 검사합니다. 자동 런타임 분석이 미해결·낡음·미지원
 상태일 때도 누락된 경로로 추가 테스트가 닿을 수 있으므로 선택을 거부합니다.
 `-only-testing:` 인자가 없으면 xcodebuild는 모든 테스트를 돌립니다. 실행 범위를 좁히기 전에
@@ -913,6 +931,14 @@ limit을 받으며 진단이 잘려도 전체 발견 수를 보고합니다.
 재사용합니다. 이 정보를 주지 못하는 파일 시스템은 내용을 다시 해시합니다. 소스와 인덱스
 유닛 시각도 입력 지문에 포함해 신선도 보고를 갱신합니다. 파일 목록 조회는 매번 수행하며,
 이는 준비 과정의 캐시이지 증분 그래프 분석이나 자동 빌드가 아닙니다.
+
+한 세대 안에서는 분석 한계, `cartograph_check` 결과, `cartograph_impact`·`cartograph_affected`가 쓰는
+테스트 생명주기와 이름·파일 색인을 한 번만 만들어 재사용합니다. 그래서 모든 응답은 그 세대에서 센
+한계를 `session` 봉투와 같은 목록으로 싣고, 재검증 창 안에서 한 편집은 세션이 다시 검증하면(또는
+`refresh: true` 직후) `index-staleness`로 나타납니다. 예외는 인덱스 스토어 자체의 수정 시각입니다.
+입력 지문은 이 시각을 보지 않으므로, 세대 안에서 이 시각이 바뀌면(스토어 루트에 항목이 생기거나
+재검증 창 안에서 다시 빌드한 경우) 응답이 한계를 다시 세어 다음 세대까지 봉투와 다를 수
+있습니다(예: `index-staleness`나 `external-retentions-stale` 항목).
 
 ### `runtime` — 연결 자동 발견과 실행 근거 수집
 
@@ -1257,6 +1283,15 @@ Core Data·SwiftData·Realm과 나머지 DB 프레임워크는 읽지 않고 `li
 찾는 진단이 됩니다. 리터럴이 아닌 SQL 인자와 정적으로 풀 수 없는 관계 이름은 문서에 `dynamic`
 표식으로 남겨, 조인이 보지 못한 것을 셀 수 있게 합니다.
 
+SQL 텍스트는 persistence 생산자들이 isthmus 계약으로 공유하는 관계 이름 규칙을 따르는 토큰
+스캐너로 읽습니다. 함수 인자 안의 `FROM`(`EXTRACT(YEAR FROM created_at)`·
+`TRIM(BOTH ' ' FROM name)`·`SUBSTRING(name FROM 2)`. 그 안의 하위 질의는 그대로 셉니다),
+`;`로 나뉜 같은 문장의 CTE 이름인 한정자 없는 이름(비인용 이름은 대소문자 없이, 인용 이름은 쓴
+그대로 비교합니다), `IS [NOT] DISTINCT FROM`의 피연산자는 관계가 아닙니다 — `relation-use`
+사실이 되지 않고 `unjoined-dynamic-relations`에도 세지 않습니다. CTE 규칙은 문장 단위라 테이블과
+이름이 같은 CTE는 그 테이블도 가립니다 — `WITH users AS (SELECT * FROM users …)`는 본문이 읽는
+실제 `users`도 내지 않습니다.
+
 `bridges`처럼 인덱스의 USR을 감싸는 선언에 붙일 수 있으면 붙입니다 — isthmus 보존 근거가
 테이블을 건드는 함수를 가리킬 수 있게. 파일 최상위의 사실은 심볼을 싣지 않습니다.
 `--since`, `--level`, `--report-format`, `--strict`를 거부하는 이유도 `bridges`와 같습니다:
@@ -1481,7 +1516,11 @@ cartograph baseline --write .cartograph-baseline.json
 ```
 
 지금 있는 발견을 기록해 두고 *새로 생긴* 것만 빌드를 실패시킵니다. 지문은 USR 기반이라
-코드를 파일 안에서 위아래로 옮겨도 억제한 발견이 되살아나지 않습니다.
+코드를 파일 안에서 위아래로 옮겨도 억제한 발견이 되살아나지 않습니다. `fix`가 다루는
+`unused-import`·`unused-parameter` 경고도 기록하므로 드라이런 `fix --strict`는 새로 생긴
+것으로만 실패하고, `dead`는 그 경고를 억제한 수로 셉니다. import에는 USR이 없어 파일과
+가져오는 이름으로 식별하며, 파일은 프로젝트 루트 기준 상대 경로로 적습니다 — 커밋한
+베이스라인이 다른 경로의 체크아웃에서도 맞습니다. 프로젝트 루트 밖 파일은 절대 경로 그대로입니다.
 
 파일을 쓰는 자리는 언제나 명시적입니다 — `--write`로 주거나, 설정이 `baseline_path`를 정하지
 않았다면 프로젝트 루트의 기본 이름(`.cartograph-baseline.json`)입니다. 설정의
@@ -1489,6 +1528,16 @@ cartograph baseline --write .cartograph-baseline.json
 못합니다 — 분석 대상 저장소의 설정이 임의의 경로에 쓰기를 지시할 수 있어서는 안 되기
 때문입니다. `baseline_path`가 설정된 채 `--write` 없이 `baseline`을 돌리면 64로 끝나고 그
 이유를 말합니다.
+
+`--baseline`이나 `baseline_path`로 이름을 붙인 베이스라인은 있어야 합니다. 없으면 베이스라인을
+적용하는 명령(`dead`, `cycles`, `metrics`, `rules`, `fix`, `query`, `check`)이 모두 인덱스를 열기
+전에 64로 끝납니다 — 경로 오타 하나에 억제가 전부 사라져 받아들인 발견이 새 발견으로 보고되는
+일을 막기 위해서입니다. 기본 이름 `.cartograph-baseline.json`은 그대로 선택 사항입니다 — 이름을
+붙이지 않으면 있을 때만 읽습니다. 기록은 베이스라인을 읽지 않으므로 커밋해 둔 `baseline_path`
+자리에 `baseline --write`로 처음 파일을 만들 수 있고, 그동안 베이스라인을 적용하지 않는 명령은
+그대로 돕니다. `serve`는 없는 `--baseline`이면 시작할 때 64로 끝나고, 없는 `baseline_path`면 파일이
+생길 때까지 `cartograph_query`와 `cartograph_check`가 오류 결과를 냅니다. 이름 붙인 파일이 있는데
+읽을 수 없으면 지금처럼 도구 실패(2)입니다.
 
 ### `--since` — 이번 PR이 건드린 자리만 보기
 
@@ -1500,7 +1549,9 @@ cartograph dead --since origin/main --strict
 Objective-C, Interface Builder 확장자를 대상으로 커밋된 변경, 추적 파일의 미커밋 변경,
 아직 추가하지 않은 새 파일을 모두 포함합니다. 모델링하지 않는 변경은 한계로 알립니다.
 그래프는 여전히 프로젝트 전체로 만듭니다 — 좁힌 그래프에서 나온 도달성 판정은 그냥 틀린
-값이기 때문입니다. 좁히는 것은 보고뿐입니다.
+값이기 때문입니다. 좁히는 것은 보고뿐입니다. 순환에는 위치가 하나만 있지 않으므로 `cycles`와
+`check`는 강한 연결 요소의 정점 중 하나라도 바뀐 파일에 선언이 있으면 대표 경로가 어디를 지나든
+그 순환을 보고합니다 — 타입은 익스텐션도, 모듈은 그 모듈의 어느 파일이든 셉니다.
 
 이것은 "이번 변경이 무엇을 건드렸나"에 답하지, "이번 변경이 무엇을 만들었나"에 답하지
 않습니다. 건드리지 않은 파일에 선언된 심볼의 마지막 호출을 이번 커밋이 지웠다면 그 심볼은
@@ -1518,6 +1569,17 @@ Objective-C, Interface Builder 확장자를 대상으로 커밋된 변경, 추�
 `baseline`과 `--since`는 다른 질문에 답하며 함께 쓸 수 있습니다 — 베이스라인은 오늘의 빚이
 늘지 않게 하는 CI 래칫이고, `--since`는 PR을 보는 렌즈입니다. CI에서는 전체 이력을
 받아야 합니다(`fetch-depth: 0`). 그러지 않으면 기준점을 찾지 못합니다.
+
+이 git 조회는 분석 대상 저장소 안에서 콘텐츠 필터·외부 diff·textconv·fsmonitor·서브모듈 설정을
+끈 채 실행하므로(알려진 한계 참고), 내용은 같고 stat만 바뀐 추적 파일도 — 복사한 작업 트리나
+같은 내용으로 다시 쓴 파일처럼, git이 인덱스를 갱신하기(`git status`가 갱신합니다) 전까지 —
+변경으로 보고합니다. `-c`로 안전하게 끌 수 없는 이름의 필터 드라이버를 설정한 저장소에서는
+`--since`가 그 명령을 실행하는 대신 오류(종료 2)로 멈춥니다.
+
+이 조회는 partial clone의 promisor 원격에서 빠진 객체를 받아 오지도 않습니다. 이름 변경 감지를
+끄므로 blobless 클론(`--filter=blob:none`)은 받아 올 것이 없고 보고하는 경로도 같습니다. 클론에
+없는 트리가 필요한 비교는 — treeless 클론(`--filter=tree:0`)처럼 — 오류(종료 2)로 멈춥니다.
+CI에서는 트리 필터 없이 받으세요.
 
 ## 설정
 
@@ -1556,13 +1618,20 @@ thresholds:
 
 baseline_path: .cartograph-baseline.json    # 억제 발견을 읽어 오는 위치.
                                             # `cartograph baseline`은 --write 또는
-                                            # 프로젝트 루트 기본값에만 씁니다
+                                            # 프로젝트 루트 기본값에만 씁니다. 정해 두면
+                                            # 파일이 있어야 합니다(없으면 64)
 external_retentions_path: .isthmus/retentions.cartograph.json   # isthmus 산출물. `bridges` 참조
 derived_data_path: DerivedData    # CI가 -derivedDataPath로 둔 위치
 report_format: text               # text json xcode checkstyle github-actions sarif
 graph_format: dot                 # dot mermaid json html
 strict: false
 ```
+
+파일에 적은 상대 경로(`index_store_path`, `derived_data_path`, `baseline_path`,
+`external_retentions_path`)는 명령을 어디서 실행하든 프로젝트 루트 기준입니다. 그래서 모노레포
+루트에서 `cartograph check --project ios`를 돌리면 `derived_data_path: DerivedData`는
+`ios/DerivedData`입니다. 같은 경로를 커맨드라인으로 주면(`--index-store`, `--derived-data`,
+`--baseline`, `--external-retentions`) 현재 디렉터리 기준입니다.
 
 모르는 키는 오류 대신 경고로 알립니다 — 오타 하나 때문에 빌드가 멈추는 대신 무엇이
 무시됐는지 알려 줘야 하기 때문입니다.
@@ -1667,6 +1736,34 @@ Periphery는 둘 다 꺼져 있습니다. 합성된 `==`나 `hash(into:)`만 읽
   보입니다. 경고와 이 답들이 일치하리라 기대하지 말고 함께 읽으세요.
 - **컴파일되지 않은 `#if` 분기는 존재하지 않습니다.** 인덱스 스토어는 실제로 빌드한 구성만
   압니다.
+- **신뢰할 수 없는 저장소의 `.git` 읽기.** `--since`(이 옵션을 받는 모든 명령)와
+  `language-traversal`의 기본 revision은 분석 대상 저장소 안에서 `git`을 실행합니다. `.git`이
+  통째로 배포된 저장소는 git이 실행할 명령을 공격자가 고를 수 있으므로, 이 읽기 전용 조회는
+  저장소가 설정한 콘텐츠 필터(`clean`·`smudge`·`process`), 외부 `diff`·`textconv` 드라이버,
+  `fsmonitor`, 커밋 서명 표시, 서브모듈 설정을 끄고, 작업 트리를 필터로 다시 읽지 않습니다.
+  partial clone의 promisor 원격에서 빠진 객체를 받아 오지도 않습니다(`GIT_NO_LAZY_FETCH=1`). 그
+  fetch는 저장소 설정이 고른 명령(`remote.<이름>.uploadpack`, `core.sshCommand`, `ext::` URL)을
+  실행하기 때문입니다. 그 결과 내용은 같고 stat만 바뀐 추적 파일(git이 인덱스를 갱신하기 전의 복사한
+  작업 트리 등)도 변경으로 보고되고, git-lfs처럼 필터로 정규화되던 파일은 변경으로 보여 순회가
+  `HEAD` revision을 싣지 않으며, 서브모듈이 있으면 순회가 revision을 생략하고, `-c`로 끌 수 없는
+  필터 이름이 있거나 조회에 필요한 객체가 클론에 없으면(treeless 클론 `--filter=tree:0`의 옛 트리
+  등) `--since`는 오류로 멈추고 순회는 revision을 생략합니다. blobless 클론(`--filter=blob:none`)은
+  그대로 동작합니다. 서브모듈 안 소스를 분석해야 하면 `--revision`을 직접 주세요. git 자체는 여전히
+  실행됩니다 — git의 SECURITY 문서도 완전히 공격자 통제 하의 `.git`에서는 어떤 git 명령도 안전하지
+  않다고 하므로, 의심스러우면 `git clone --no-local` 사본을 분석하세요 — 사용자 전역 git 설정은 그
+  밖에는 신뢰합니다. fetch 거부는 git 2.45 이상이나 이전 버전대의 2024년 5월 보안 릴리스(2.39.4,
+  2.44.1 등)가 지원합니다. 그보다 오래된 git은 이 설정을 무시하고 객체를 받아 옵니다.
+- **프로젝트 루트 밖을 가리키는 디렉터리 링크는 따라가지 않습니다.** 대상이 프로젝트 루트 밖으로
+  풀리는 디렉터리 심볼릭 링크(`Sources/App/vendor -> ../shared`, `-> /`)는 프로젝트를 걷는 모든
+  탐색이 건너뜁니다. 그 뒤의 소스·헤더·Interface Builder 문서는 읽지 않으므로 `dead`·`query`·
+  `impact`·`check`·`routes`·`bridges`·`schema`·`dataflow`에 그 사실이 없고, 거기서만 호출되는
+  선언은 도달할 수 없다고 보고될 수 있습니다. `limitations`를 싣는 답은 제외 범위 밖의 그런 링크
+  수와 프로젝트 상대 경로를 `symlinked-directories-outside-root`로 알립니다. cartograph는 이 한계를
+  사라진 소스처럼 다룹니다 — `impact --format language-traversal`은 `bound` dispatch를 증명하지 않고
+  `affected --format xcodebuild`는 선택자를 내지 않습니다. 반면 isthmus는 이 접두사를 분석 공백으로
+  읽지 않으므로 저장소에 심은 링크로 isthmus 검사의 심각도를 낮출 수 없습니다. 이렇게 연결한 공유
+  코드까지 분석하려면 둘을 모두 품은 디렉터리를 `--project`로 주세요. 루트 안에 머무는 링크는
+  지금처럼 따라가고, 파일 링크는 대상이 어디든 지금처럼 읽습니다.
 
 ## CI
 
@@ -1710,15 +1807,17 @@ jobs:
 ```
 
 `action-v1.0.0`은 액션 릴리스 태그이고, `version: 0.28.0`은 CLI 바이너리를 선택합니다.
-재현 가능한 실행을 위해 둘을 함께 고정하세요(`@main`은 개발 브랜치를 따릅니다).
+재현 가능한 실행을 위해 둘을 함께 고정하고(`@main`은 개발 브랜치를 따릅니다), 압축 파일까지
+고정하려면 `sha256`을 더하세요.
 Marketplace의 기본 "Use latest version"은 저장소의 최신 CLI 릴리스를 따릅니다.
 액션 릴리스를 쓰려면 `action-v1.0.0`을 선택하거나 위의 버전별 링크를 이용하세요. 입력:
 
 | 입력 | 기본값 | 의미 |
 |---|---|---|
 | `command` | `check` | `check`(dead·cycles·rules 한 번에), `dead`, `cycles`, `rules` |
-| `args` | — | 추가 인자, 예: `--limit 500` |
-| `version` | `latest` | 내려받을 릴리스 태그, `latest`면 최신 릴리스 |
+| `args` | — | 추가 인자, 예: `--limit 500`. 셸과 같은 따옴표 규칙으로 나누고 확장하지 않음 |
+| `version` | `latest` | 내려받을 릴리스 태그, `latest`면 최신 릴리스(notice로 알림) |
+| `sha256` | — | `cartograph-<version>-macos-universal.tar.gz`의 SHA-256. 다른 압축 파일이면 스텝이 실패 |
 | `binary` | — | 이미 있는 바이너리 경로. 지정하면 내려받지 않음 |
 | `project` | `.` | 분석할 프로젝트 루트. 인덱스 스토어는 여기서 자동 탐색 |
 | `build` | `swift` | 분석 전 `swift build`, 직접 빌드했다면 `none` |
@@ -1731,6 +1830,22 @@ Marketplace의 기본 "Use latest version"은 저장소의 최신 CLI 릴리스�
 `libIndexStore`를 읽으므로 macOS 러너가 아니면 명확한 메시지와 함께 실패합니다.
 `xcodebuild`로 빌드한다면 `build: none`으로 두고 만든 바이너리를 `binary`로 넘기거나,
 Cartograph를 직접 설치해 아래 수동 명령을 쓰세요.
+
+내려받은 압축 파일은 GitHub가 릴리스 자산에 기록한 SHA-256 digest와 대조하고, 그중 `cartograph`
+실행 파일 하나만 풉니다. digest가 없거나 다르거나 실행 파일이 정규 파일이 아니면 아무것도 실행하기
+전에 스텝이 실패합니다. 기록된 digest는 손상되거나 어긋난 다운로드를 잡지만, 릴리스 자산을 교체하면
+GitHub가 digest를 다시 계산합니다. 그래서 압축 파일을 고정하는 것은 `sha256`입니다. 값은 릴리스
+페이지의 자산 digest에서 `sha256:` 접두사를 뺀 것입니다. `version: latest`면 사용한 릴리스를
+notice로 알립니다. 액션은 `GH_TOKEN`을 릴리스를 읽는 스텝에만 주고, 내려받은 바이너리는 토큰이
+없는 스텝에서 `--version`으로 처음 실행됩니다.
+
+`args`는 셸과 같은 따옴표 규칙(GitLab 컴포넌트와 같은 Python `shlex`)으로 단어를 나누지만, 셸로
+평가하지는 않습니다. `$`, 백틱, 글롭 문자는 글자 그대로 남고, `--exclude "UI Tests/**"`는 패턴
+하나로 CLI에 전달됩니다. 닫히지 않은 따옴표나 끝의 백슬래시가 있으면 CLI를 실행하기 전에
+`exit-code` `64`로 스텝을 끝냅니다.
+
+`action-v1.0.0`에는 이 검사들이 없습니다. 내려받은 바이너리를 검증 없이 실행하고, `sha256` 입력이
+없으며, `args`를 셸의 단어 분할과 글롭 확장에 맡깁니다.
 
 `action-v1.0.0` 액션은 예상 밖 종료 코드와 리포트 누락을 실패로 처리하고, 이전 실행이 남긴 리포트를
 업로드하지 않습니다. 이 수정은 기존 `0.20.0` 액션 태그에 포함되지 않습니다.

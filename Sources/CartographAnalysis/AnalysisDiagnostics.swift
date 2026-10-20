@@ -130,6 +130,12 @@ public enum AnalysisDiagnostics {
         }
     }
 
+    /// `unused-import` 주체의 머리. 그 뒤에 파일 경로, `:`, import 표기가 온다.
+    ///
+    /// 베이스라인이 이 형식을 알고 파일 경로 부분만 프로젝트 기준 상대 경로로 바꿔 적는다
+    /// (`Baseline.capturing(_:relativeToBaseVariants:)`). 형식을 두 곳에 따로 적으면 한쪽만 바뀐다.
+    static let unusedImportSubjectPrefix = "import:"
+
     /// 참조 근거가 증명하지 못하는 import → 진단.
     ///
     /// 선언의 생사가 아니라 파일의 모듈 의존 표시에 대한 발견이므로 별도
@@ -142,7 +148,7 @@ public enum AnalysisDiagnostics {
                 severity: .warning,
                 message: "import '\(fact.spelling)' is never used",
                 location: fact.location,
-                subject: "import:\(fact.location.path):\(fact.spelling)"
+                subject: "\(unusedImportSubjectPrefix)\(fact.location.path):\(fact.spelling)"
             )
         }
     }

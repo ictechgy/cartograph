@@ -40,14 +40,8 @@ struct AnalysisLimitationCollector {
         // 파일까지 세지 않는다. 범위 밖의 파일을 한계로 알리면 매번 붙는 경보가
         // 되고, 매번 붙는 경보는 읽히지 않는다.
         let filter = configuration.pathFilter
-        let files = inventory?.limitationFiles ?? fileSystem.recursiveFiles(
-            under: projectPath,
-            isIncluded: { path in
-                filter.allows(path) && (Self.sourceSuffixes.contains { path.hasSuffix($0) }
-                    || RuntimeResourcePath.kind(of: path) == .interfaceBuilder)
-            },
-            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
-        )
+        let (files, externalLinks) = inventory.map { ($0.limitationFiles, $0.externalDirectoryLinks) }
+            ?? walkLimitationFiles(filter: filter)
 
         func count(_ suffixes: String...) -> Int {
             files.count { path in suffixes.contains { path.hasSuffix($0) } }
@@ -164,6 +158,9 @@ struct AnalysisLimitationCollector {
                     + diagnosticPaths(unreadable, resolver: &pathResolver)
             )
         }
+        if let linked = Self.externalDirectoryLinkLimitation(externalLinks, projectPath: projectPath) {
+            result.append(linked)
+        }
         if configuration.narrowsPathsBeyondDefaults {
             result.append(
                 "configured-path-filter: include/exclude patterns narrow the analysis beyond the "
@@ -186,12 +183,47 @@ struct AnalysisLimitationCollector {
         return result
     }
 
+    /// inventory 없이 만든 수집기의 탐색. 한계 목록이 세는 파일과 따라가지 않은 루트 밖 디렉터리 링크를 모은다.
+    private func walkLimitationFiles(filter: PathFilter) -> (files: [String], externalLinks: [String]) {
+        var externalLinks: [String] = []
+        let files = fileSystem.recursiveFiles(
+            under: projectPath,
+            isIncluded: { path in
+                filter.allows(path) && (Self.sourceSuffixes.contains { path.hasSuffix($0) }
+                    || RuntimeResourcePath.kind(of: path) == .interfaceBuilder)
+            },
+            shouldDescend: BuildArtifactDirectories.shouldDescend(into:),
+            onExternalDirectoryLink: { externalLinks.append($0) }
+        )
+        return (files, ProjectFileInventory.inScope(externalLinks, pathFilter: filter))
+    }
+
+    /// 루트 밖을 가리켜 따라가지 않은 디렉터리 링크를 알리는 한계. 링크가 없으면 nil 이다.
+    ///
+    /// 분석 응답·교환 문서(routes·bridges·schema)·값 흐름 문서가 같은 접두사와 문장을 쓰도록 한 벌만 둔다.
+    /// isthmus 의 닫힌 접두사 목록에 없는 접두사라 소비자는 이것으로 심각도를 낮추지 않는다 — 분석 대상
+    /// 저장소가 심은 링크가 조인 게이트를 느슨하게 만들지 못한다. 링크 경로는 끝 요소를 풀지 않고
+    /// 상대화한다. 풀면 링크 대상(루트 밖)이 되어 경로가 목록에서 사라진다.
+    static func externalDirectoryLinkLimitation(_ links: [String], projectPath: String) -> String? {
+        guard !links.isEmpty else { return nil }
+        var spelling = PathResolver(canonicalize: { $0 }, projectPath: projectPath)
+        return "symlinked-directories-outside-root: \(links.count) directory symlink(s) resolve outside the "
+            + "project root and were not followed, so the sources behind them are not analyzed; run with "
+            + "--project at a directory that contains them to include them"
+            + encodedDiagnosticPaths(links.compactMap { spelling.relativeDiagnosticPath($0) })
+    }
+
     static let maximumDiagnosticPaths = 64
     static let maximumDiagnosticPathBytes = 8_192
 
     /// 경고마다 최대 64개·JSON 배열 8 KiB만 내보낸다. 남은 경로 수는 숨기지 않는다.
     private func diagnosticPaths(_ paths: [String], resolver: inout PathResolver) -> String {
-        let relative = Set(paths.compactMap { resolver.relativeDiagnosticPath($0) }).sorted()
+        Self.encodedDiagnosticPaths(paths.compactMap { resolver.relativeDiagnosticPath($0) })
+    }
+
+    /// 프로젝트 상대 경로를 정렬·중복 제거해 경고 꼬리로 붙인다. 경로가 없으면 빈 문자열이다.
+    private static func encodedDiagnosticPaths(_ paths: [String]) -> String {
+        let relative = Set(paths).sorted()
         guard !relative.isEmpty else { return "" }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]

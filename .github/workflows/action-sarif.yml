@@ -36,6 +36,8 @@ jobs:
         uses: ./
         with:
           version: 0.20.0
+          # GitHub가 기록한 자산 digest와 같은 값이다. 액션의 sha256 입력 경로도 실제로 태운다.
+          sha256: 833eb3c86deffc8e7c845297df57d41e35bb644bd5a943b09843e52075c6f072
           project: Fixtures/FalsePositiveCorpus
           build: none
           command: dead

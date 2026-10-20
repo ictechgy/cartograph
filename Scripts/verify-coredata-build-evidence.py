@@ -103,14 +103,19 @@ def main():
         module_dir.mkdir()
         core_sources = sorted((repository / "Sources/CartographCore").rglob("*.swift"))
         core_library = module_dir / "libCartographCore.dylib"
+        # 소스에 `package` 접근 수준이 있으면 swiftc 가 패키지 이름을 요구한다. SwiftPM 이 같은 패키지의
+        # 모든 타깃에 같은 -package-name 을 주듯 Core·Kit 두 모듈을 한 패키지로 묶는다.
+        package_name = ["-package-name", "cartograph"]
         run([
             "xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", "-emit-library", "-emit-module",
+            *package_name,
             "-module-name", "CartographCore", "-emit-module-path", module_dir / "CartographCore.swiftmodule",
             *core_sources, "-o", core_library,
         ], "build-core-module")
         kit_library = module_dir / "libCartographKit.dylib"
         run([
             "xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", "-emit-library", "-emit-module",
+            *package_name,
             "-module-name", "CartographKit", "-emit-module-path", module_dir / "CartographKit.swiftmodule",
             "-I", module_dir, "-L", module_dir, "-lCartographCore", "-framework", "CoreData",
             repository / "Sources/CartographKit/CoreDataVersionSelection.swift",

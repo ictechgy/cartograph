@@ -41,7 +41,7 @@ struct FixCommand: ParsableCommand {
     }
 
     func run() throws {
-        let context = try CommandSupport.makeContext(options)
+        let context = try CommandSupport.makeContext(options, readsBaseline: true)
         try CommandSupport.emit(
             try context.service.mechanicalFixes(apply: apply, format: format.rawValue),
             options: options,

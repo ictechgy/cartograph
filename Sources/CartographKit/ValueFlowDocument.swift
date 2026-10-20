@@ -45,9 +45,11 @@ struct ValueFlowSourceLoader {
         // 인덱스 위치·신선도 키와 디스크에서 찾은 소스 경로가 한 사전을 나눠 쓴다.
         var canonicalPaths = CanonicalPathMemo(resolve: canonicalize)
         let snapshot = normalized(raw, canonicalPaths: &canonicalPaths)
+        var externalLinks: [String] = []
         let inventory = fileSystem.recursiveFiles(under: projectPath,
             isIncluded: { $0.hasSuffix(".swift") || $0.hasSuffix(".m") || $0.hasSuffix(".mm") },
-            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)).sorted()
+            shouldDescend: BuildArtifactDirectories.shouldDescend(into:),
+            onExternalDirectoryLink: { externalLinks.append($0) }).sorted()
         let swiftFiles = inventory.filter {
             $0.hasSuffix(".swift") && !AnalysisLimitationCollector.isPackageManifest($0, projectPath: projectPath)
         }
@@ -89,6 +91,11 @@ struct ValueFlowSourceLoader {
             ("filtered-value-flow-sources", swiftFiles.count - paths.count),
             ("objective-c-value-flow-unavailable", inventory.count { !$0.hasSuffix(".swift") })]
         program.limitations += counts.filter { $0.1 > 0 }.map { "\($0.0): \($0.1) file(s)" }
+        if let linked = AnalysisLimitationCollector.externalDirectoryLinkLimitation(
+            ProjectFileInventory.inScope(externalLinks, pathFilter: pathFilter), projectPath: projectPath
+        ) {
+            program.limitations.append(linked)
+        }
         return (ValueFlowIndexBinder().bind(program: program, snapshot: snapshot, freshPaths: fresh), snapshot)
     }
 

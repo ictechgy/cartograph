@@ -1,3 +1,4 @@
+import ArgumentParser
 import CartographCore
 import CartographKit
 import CartographTestSupport
@@ -8,6 +9,10 @@ import Testing
 @Suite("Cartograph MCP 도구")
 struct MCPToolsTests {
     private func makeSession() throws -> AnalysisSession {
+        try makeSession(configure: { _ in })
+    }
+
+    private func makeSession(configure: (inout CartographConfiguration) -> Void) throws -> AnalysisSession {
         var builder = SnapshotBuilder()
         builder.symbol("Home", kind: .structType, attributes: [.entryPoint])
         builder.symbol("Service", kind: .classType)
@@ -16,6 +21,7 @@ struct MCPToolsTests {
         builder.reference(from: "Home", to: "Service", kind: .call)
         var configuration = CartographConfiguration.default
         configuration.projectPath = "/p"
+        configure(&configuration)
         let service = CartographService(
             configuration: configuration,
             environment: CartographEnvironment(
@@ -73,6 +79,47 @@ struct MCPToolsTests {
         #expect(!result.isError)
         #expect(object(result)["coreDataBuildEvidence"] == nil)
         #expect(object(result)["session"]?.objectValue?["generation"] == .integer(1))
+    }
+
+    @Test("설정이 이름 붙인 베이스라인이 없으면 그것을 읽는 도구만 원인을 담은 오류를 내고 나머지 도구는 답한다")
+    func namedMissingBaselineFailsOnlyTheToolsThatReadIt() throws {
+        // 세션은 첫 호출 때 설정을 읽으므로 설정의 baseline_path 는 서버를 띄울 때가 아니라 도구 호출에서 드러난다.
+        let tools = CartographMCPTools(makeSession: {
+            try self.makeSession(configure: { $0.baselinePath = "configs/none.json" })
+        })
+        for (name, arguments) in [
+            ("cartograph_query", MCPJSONValue.object(["symbols": .array([.string("Service")])])),
+            ("cartograph_check", .object([:])),
+        ] {
+            do {
+                _ = try tools.call(name: name, arguments: arguments)
+                Issue.record("\(name) 가 없는 베이스라인을 건너뛰고 답했다")
+            } catch let error as MCPToolFailure {
+                #expect(error.message.contains("/p/configs/none.json"), "\(name)")
+                #expect(error.message.contains("cartograph baseline --write"), "\(name)")
+            }
+        }
+        let impact = try tools.call(name: "cartograph_impact", arguments: .object([
+            "symbols": .array([.string("Service")]),
+        ]))
+        #expect(!impact.isError)
+    }
+
+    @Test("serve 는 명령줄의 --baseline 이 가리키는 파일이 없으면 세션을 만들기 전에 사용 오류로 멈춘다")
+    func serveRequiresTheCommandLineBaselineBeforeStarting() throws {
+        // 세션은 지연 생성되므로 맡겨 두면 서버는 뜨고 베이스라인을 읽는 도구만 호출마다 실패한다.
+        let fileSystem = InMemoryFileSystem(currentDirectoryPath: "/work", files: ["/work/known.json": "{}"])
+        let missing = try ServeCommand.parse(["--project", "/p", "--baseline", "typo.json"])
+        do {
+            try missing.requireCommandLineBaseline(fileSystem: fileSystem)
+            Issue.record("없는 --baseline 으로 서버를 띄웠다")
+        } catch let error as ValidationError {
+            #expect(error.message.contains("/work/typo.json"))
+            #expect(error.message.contains("cartograph baseline --write"))
+        }
+        try ServeCommand.parse(["--baseline", "known.json"]).requireCommandLineBaseline(fileSystem: fileSystem)
+        // 설정의 baseline_path 는 세션이 처음 읽을 때 확인한다(위 도구 호출 테스트).
+        try ServeCommand.parse(["--project", "/p"]).requireCommandLineBaseline(fileSystem: fileSystem)
     }
 
     @Test("MCP 클라이언트는 서버의 고정 빌드 근거 경로를 바꿀 수 없다")

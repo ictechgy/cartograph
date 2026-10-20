@@ -72,6 +72,16 @@ public struct MechanicalFixDocument: Sendable, Equatable, Codable {
 }
 
 extension CartographService {
+    /// `fix` 가 고치는 두 경고 — `unused-import` 와 `unused-parameter` — 의 진단.
+    ///
+    /// `fix` 는 베이스라인이 받아들인 발견을 건드리지 않고, `baseline` 은 같은 목록을 기록한다
+    /// (`collectAllDiagnostics()`). 두 자리가 목록을 따로 들면 한쪽에만 규칙이 늘어, 베이스라인이 기록하지 못한
+    /// 발견이 `fix --strict` 드라이런을 영원히 실패시킨다.
+    static func mechanicallyFixableDiagnostics(for report: UnusedCodeReport, in graph: CodeGraph) -> [Diagnostic] {
+        AnalysisDiagnostics.unusedImportDiagnostics(for: report)
+            + AnalysisDiagnostics.unusedParameterDiagnostics(for: report, in: graph)
+    }
+
     /// 기계적 수정 계획을 세우고, `apply` 면 파일을 쓴다.
     ///
     /// 편집은 인덱스·구문 사실이 가리키는 자리에서 **지금 소스**를 다시 파싱해
@@ -87,8 +97,7 @@ extension CartographService {
         let context = try loadContext()
         let (graph, report) = unusedCode(in: context, computingSuperfluousIgnores: false)
         // 베이스라인이 이미 받아들인 발견과 `--since` 범위 밖은 건드리지 않는다.
-        let diagnostics = AnalysisDiagnostics.unusedImportDiagnostics(for: report)
-            + AnalysisDiagnostics.unusedParameterDiagnostics(for: report, in: graph)
+        let diagnostics = Self.mechanicallyFixableDiagnostics(for: report, in: graph)
         let (kept, suppressedCount) = try filterAndApplyBaseline(diagnostics)
 
         let importFacts = Dictionary(

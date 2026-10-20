@@ -341,19 +341,26 @@ public struct CartographService: Sendable {
         return value.dropFirst().allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
     }
 
+    /// 순환 목록에 범위·베이스라인·임계값과 출력 형식을 얹는다.
+    ///
+    /// `--since` 범위는 `check` 와 같은 구성원 기준이다(`scopedCycleDiagnostics`). 진단 위치는 대표 경로의
+    /// 첫 정점 하나라, 위치로 거르면 PR 이 다른 구성원 쪽 파일에서 만든 순환이 이 게이트에서만 사라지고
+    /// 위치가 없는 모듈 순환은 범위와 무관하게 전부 남는다.
     public func detectCycles(level: GraphLevel? = nil) throws -> CommandOutcome {
         let context = try loadContext()
-        let (graph, cycles) = cycles(in: context, level: level)
+        let selectedLevel = level ?? configuration.level
+        let (graph, cycles) = cycles(in: context, level: selectedLevel)
         // 순환 검사도 CI 게이트다. 인덱스가 낡은 채로 "순환 없음"이 나가면 그
         // 초록불은 아무것도 검사하지 않은 초록불이다. dead 와 같은 한계를 싣는다.
         return try finish(
-            AnalysisDiagnostics.diagnostics(for: cycles, in: graph),
+            scopedCycleDiagnostics(cycles, level: selectedLevel, context: context),
             command: "cycles",
             subject: describe(graph),
             thresholdLimit: configuration.thresholds.maxCycles,
             thresholdRule: AnalysisDiagnostics.Rule.cycle,
             limitations: limitations(context: context, graph: graph, requestedLevel: level),
-            caveat: emptyIndexCaveat(context)
+            caveat: emptyIndexCaveat(context),
+            alreadyScoped: true
         )
     }
 
@@ -933,10 +940,27 @@ public struct CartographService: Sendable {
     }
 
     /// 파일별 시각과 구문 읽기 실패를 같은 문맥에서 수집한다.
+    ///
+    /// 세션 세대 문맥이면 같은 스토어 시각의 결과를 세대 안에서 재사용한다(`generationLimitations`).
+    /// 수집은 소스마다 경로 정규화와 stat 을 하므로, 같은 세대의 영향·테스트·점검 요청이 그 비용을
+    /// 되풀이하지 않게 한다.
     func analysisLimitations(
         storeDate: Date? = nil,
         context: AnalysisContext? = nil,
         symbolGraph: CodeGraph? = nil
+    ) -> [String] {
+        // 외부 보존 파일의 기존 비교 기준은 유지한다. 소스 신선도는 수집기에서 파일별로 본다.
+        let storeDate = storeDate ?? indexStoreDate()
+        guard let context else {
+            return collectLimitations(storeDate: storeDate, context: nil, symbolGraph: symbolGraph)
+        }
+        return context.generationLimitations(storeDate: storeDate, hasSymbolGraph: symbolGraph != nil) {
+            collectLimitations(storeDate: storeDate, context: context, symbolGraph: symbolGraph)
+        }
+    }
+
+    private func collectLimitations(
+        storeDate: Date?, context: AnalysisContext?, symbolGraph: CodeGraph?
     ) -> [String] {
         var emptyIndexCounts: (total: Int, inScope: Int)?
         if allowsEmptyIndex, let context, context.snapshot.symbols.isEmpty {
@@ -947,8 +971,7 @@ public struct CartographService: Sendable {
             configuration: configuration,
             fileSystem: environment.fileSystem,
             projectPath: projectPath,
-            // 외부 보존 파일의 기존 비교 기준은 유지한다. 소스 신선도는 수집기에서 파일별로 본다.
-            storeDate: storeDate ?? indexStoreDate(),
+            storeDate: storeDate,
             inventory: context?.projectFileInventory ?? projectFileInventory()
         ).collect(context: context, symbolGraph: symbolGraph, emptyIndexCounts: emptyIndexCounts)
     }
@@ -1110,6 +1133,7 @@ public struct CartographService: Sendable {
                 }
             }
             if unreadable > 0 { limitations.append("unreadable-sources: \(unreadable) Swift source(s) could not be read; native emissions may be absent") }
+            limitations += externalDirectoryLinkLimitations(inventory)
             for reason in unsupportedScopes.keys.sorted() {
                 limitations.append("unattributed-event-emits: \(unsupportedScopes[reason]!) source scope(s) were not scanned (\(reason))")
             }
@@ -1170,6 +1194,7 @@ public struct CartographService: Sendable {
         if unreadable > 0 {
             extraLimitations.append("unreadable-sources: \(unreadable) file(s) could not be read and were skipped")
         }
+        extraLimitations += externalDirectoryLinkLimitations(inventory)
         if ffiInteropSources > 0 {
             extraLimitations.append(
                 "unscanned-ffi-interop: \(ffiInteropSources) native source file(s) contain FFI/Dart C API evidence outside channel join coverage"
@@ -1391,6 +1416,7 @@ public struct CartographService: Sendable {
         if unreadable > 0 {
             limitations.append("unreadable-sources: \(unreadable) file(s) could not be read and were skipped")
         }
+        limitations += externalDirectoryLinkLimitations(inventory)
         if unjoinedDynamic > 0 {
             limitations.append(
                 "unjoined-dynamic-relations: \(unjoinedDynamic) SQL argument(s) or relation operand(s) "
@@ -1618,14 +1644,16 @@ public struct CartographService: Sendable {
     /// 지표 임계값 위반도 함께 담는다. `metrics` 는 베이스라인을 적용하는데
     /// `baseline` 이 그것을 기록하지 못하면 영원히 억제할 수 없는 진단이 생긴다.
     /// 순환도 같은 이유로 베이스라인을 적용하는 레벨마다 거둔다(`baselineCycleDiagnostics(in:)`).
+    /// `fix` 가 베이스라인으로 거르는 두 경고도 같은 목록(`mechanicallyFixableDiagnostics`)으로 거둔다.
     public func collectAllDiagnostics() throws -> [Diagnostic] {
         let context = try loadContext()
-        let (_, unused) = unusedCode(in: context, computingSuperfluousIgnores: false)
+        let (symbolGraph, unused) = unusedCode(in: context, computingSuperfluousIgnores: false)
         let (_, metricValues, _) = metrics(in: context)
         let (_, violations, _) = try layerViolations(in: context)
 
         return baselineCycleDiagnostics(in: context)
             + AnalysisDiagnostics.diagnostics(for: unused)
+            + Self.mechanicallyFixableDiagnostics(for: unused, in: symbolGraph)
             + AnalysisDiagnostics.diagnostics(for: violations)
             + AnalysisDiagnostics.diagnostics(for: metricValues, thresholds: configuration.thresholds)
     }
@@ -1645,27 +1673,67 @@ public struct CartographService: Sendable {
     }
 
     /// 현재 진단 상태를 베이스라인 파일로 기록한다.
+    ///
+    /// 커밋해서 다른 체크아웃(CI)에서 읽는 파일이므로 `unused-import` 지문의 파일 경로는 프로젝트 기준 상대
+    /// 경로로 적는다. `loadBaseline()` 이 그 체크아웃의 루트 표기들로 되돌린다.
     public func writeBaseline(diagnostics: [Diagnostic], to path: String) throws -> CommandOutcome {
         let resolvedPath = resolveProjectRelativePath(path)
-        let baseline = Baseline.capturing(diagnostics)
+        let baseline = Baseline.capturing(diagnostics, relativeToBaseVariants: PathFilter.variants(of: projectPath))
         try BaselineStore(fileSystem: environment.fileSystem).write(baseline, to: resolvedPath)
         return CommandOutcome(output: "Wrote \(baseline.fingerprints.count) findings to \(resolvedPath)\n")
+    }
+
+    /// `--baseline`·`baseline_path` 로 이름 붙인 베이스라인 파일이 있는지 확인한다. 이름을 붙이지 않았으면 할 일이
+    /// 없다.
+    ///
+    /// 베이스라인을 읽는 명령이 인덱스를 열기 전에 부르는 사전 확인이다. 읽는 자리(`loadBaseline()`)도 같은 확인을
+    /// 하지만 인덱스를 다 읽은 뒤라, 경로 오타 하나를 알리려고 분석 시간을 다 쓰게 된다.
+    ///
+    /// - Throws: 파일이 없으면 `CartographError.missingBaseline(at:)` — 원인과 해결 방향을 담은 `invalidBaseline`.
+    public func requireConfiguredBaseline() throws {
+        _ = try configuredBaselinePath()
     }
 
     // MARK: - 내부 구현
 
     /// 진단에 리포트 스코프를 적용하고, 베이스라인을 읽어 보고 대상 진단과 억제 건수를 계산한다.
+    ///
+    /// - Parameter alreadyScoped: 호출자가 이미 범위를 적용했다. 순환은 구성원 기준으로 먼저 거르므로
+    ///   (`scopedCycleDiagnostics`) 위치 기준으로 한 번 더 거르면 대표 정점이 범위 밖인 순환이 다시 빠진다.
     func filterAndApplyBaseline(
-        _ diagnostics: [Diagnostic]
+        _ diagnostics: [Diagnostic], alreadyScoped: Bool = false
     ) throws -> (reported: [Diagnostic], suppressedCount: Int) {
-        let scoped = reportScope?.filtering(diagnostics) ?? diagnostics
+        let scoped = alreadyScoped ? diagnostics : (reportScope?.filtering(diagnostics) ?? diagnostics)
         let baseline = try loadBaseline()
         let reported = baseline?.filtering(scoped) ?? scoped
         let suppressed = scoped.count - reported.count
         return (reported, suppressed)
     }
 
+    /// 순환은 대표 선언 한 줄이 아니라 강결합 요소 구성원 전체의 파일로 범위를 판정한다. 익스텐션 멤버도
+    /// 포함한다.
+    ///
+    /// `check` 와 `cycles` 가 함께 쓴다. 두 명령이 범위를 따로 판정하면 같은 `--since` 가 명령마다
+    /// 다른 순환을 보여 준다. 범위가 없으면 모든 순환의 진단을 그대로 만든다.
+    func scopedCycleDiagnostics(
+        _ cycles: [DependencyCycle], level: GraphLevel, context: AnalysisContext
+    ) -> [Diagnostic] {
+        let built = context.buildGraph(level: level)
+        guard let reportScope else { return AnalysisDiagnostics.diagnostics(for: cycles, in: built.graph) }
+        let includedPaths = Set(context.snapshot.filePaths.filter {
+            reportScope.files.contains(ReportScope.normalized($0))
+        })
+        let touchedNodes = Set(context.snapshot.symbols.filter {
+            includedPaths.contains($0.location.path)
+        }.compactMap { built.nodeIDByUSR[$0.usr] })
+        return AnalysisDiagnostics.diagnostics(for: cycles.filter {
+            !$0.component.allSatisfy { !touchedNodes.contains($0) }
+        }, in: built.graph)
+    }
+
     /// 베이스라인 적용 → 임계값 검사 → 형식 적용.
+    ///
+    /// - Parameter alreadyScoped: `filterAndApplyBaseline` 과 같은 뜻이다.
     private func finish(
         _ diagnostics: [Diagnostic],
         command: String,
@@ -1674,11 +1742,12 @@ public struct CartographService: Sendable {
         thresholdRule: String,
         countedRules: Set<String>? = nil,
         limitations: [String]? = nil,
-        caveat: String? = nil
+        caveat: String? = nil,
+        alreadyScoped: Bool = false
     ) throws -> CommandOutcome {
         // 범위를 먼저 좁힌 뒤 베이스라인을 적용한다. 순서를 바꾸면 억제 건수가
         // 범위 밖의 것까지 세어, 사용자가 보는 숫자와 맞지 않는다.
-        let (reported, suppressed) = try filterAndApplyBaseline(diagnostics)
+        let (reported, suppressed) = try filterAndApplyBaseline(diagnostics, alreadyScoped: alreadyScoped)
 
         let counted = countedRules.map { rules in
             reported.filter { rules.contains($0.ruleIdentifier) }
@@ -1797,9 +1866,31 @@ public struct CartographService: Sendable {
         )
     }
 
+    /// 설정이 가리키는 베이스라인. 상대 경로로 적힌 `unused-import` 지문은 이 프로젝트 루트의 표기들로 펼친다.
+    ///
+    /// 이름 붙인 파일은 없으면 실패하고(`configuredBaselinePath()`), 이름을 붙이지 않았으면 기본 파일을 있을 때만
+    /// 읽는다.
+    /// 진단 지문을 대조하는 자리(명령 마무리·통합 점검·설명·질의)가 모두 이 함수로 읽으므로, 펼치기를 여기서 한 번만
+    /// 하면 다른 경로에 기록한 베이스라인도 어느 자리에서나 같은 발견을 거른다(`writeBaseline` 참고).
     func loadBaseline() throws -> Baseline? {
-        try BaselineStore(fileSystem: environment.fileSystem)
-            .loadIfPresent(at: configuration.baselinePath, basePath: projectPath)
+        let store = BaselineStore(fileSystem: environment.fileSystem)
+        let baseline = try configuredBaselinePath().map { try store.load(from: $0) }
+            ?? store.loadIfPresent(at: nil, basePath: projectPath)
+        return baseline.map { $0.resolvingRelativePaths(againstBaseVariants: PathFilter.variants(of: projectPath)) }
+    }
+
+    /// 이름 붙인 베이스라인의 절대 경로. 상대 경로는 프로젝트 루트 기준이다. 이름을 붙이지 않았으면 nil 이다.
+    ///
+    /// 이름 붙인 파일은 기본 파일(`.cartograph-baseline.json`)처럼 "있으면 쓴다" 로 다루지 않는다. 그러면 오타 하나에
+    /// 억제가 전부 사라져, 팀이 받아들인 발견이 새 발견으로 나와도 아무도 이유를 모른다. 기록(`writeBaseline`)은
+    /// 이 함수를 거치지 않으므로 아직 없는 `baseline_path` 자리에 처음 쓸 수 있다.
+    private func configuredBaselinePath() throws -> String? {
+        guard let path = configuration.baselinePath else { return nil }
+        let resolved = resolveProjectRelativePath(path)
+        guard environment.fileSystem.fileExists(at: resolved) else {
+            throw CartographError.missingBaseline(at: resolved)
+        }
+        return resolved
     }
 
     /// 상대 경로를 projectPath 기준으로 해결한다. 이미 절대 경로면 그대로 둔다.
@@ -1812,6 +1903,16 @@ public struct CartographService: Sendable {
         ProjectFileInventory(
             fileSystem: environment.fileSystem, projectPath: projectPath, pathFilter: configuration.pathFilter
         )
+    }
+
+    /// 교환 문서(routes·bridges·schema)에 싣는 루트 밖 디렉터리 링크 한계. 링크가 없으면 비어 있다.
+    ///
+    /// 이 문서들도 같은 inventory 로 소스를 읽으므로 링크 뒤의 사실이 빠진다. 분석 응답과 같은 문장으로
+    /// 알려야 소비자가 "사실 없음"과 "읽지 않음"을 가른다.
+    func externalDirectoryLinkLimitations(_ inventory: ProjectFileInventory) -> [String] {
+        AnalysisLimitationCollector.externalDirectoryLinkLimitation(
+            inventory.externalDirectoryLinks, projectPath: projectPath
+        ).map { [$0] } ?? []
     }
 
     private func describe(_ graph: CodeGraph) -> String {

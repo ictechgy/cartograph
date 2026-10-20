@@ -46,6 +46,8 @@ struct ServeCommand: ParsableCommand {
     }
 
     func run() throws {
+        try requireCommandLineBaseline(fileSystem: LocalFileSystem())
+
         // 입력 지문 검증은 소스·인덱스 파일 전부를 다시 stat 하므로 프로젝트에 비례해
         // 커지고, MCP 도구 호출은 연속으로 온다. 창 안의 반복 검증은 같은 세대를
         // 확인할 뿐이라 웜 지연만 키운다 — 1초는 어떤 재빌드보다 짧은 유보 상한이다.
@@ -73,5 +75,17 @@ struct ServeCommand: ParsableCommand {
             FileHandle.standardError.write(Data("error: Cartograph MCP server failed\n".utf8))
             throw ExitCode(CommandSupport.failureExitCode)
         }
+    }
+
+    /// 명령줄의 `--baseline` 이 가리키는 파일을 서버를 띄우기 전에 확인한다. 없으면 사용 오류(64)다.
+    ///
+    /// 세션은 첫 도구 호출 때 만들어진다. 확인을 세션에 맡기면 서버는 뜨고, 베이스라인을 읽는 도구만 호출마다
+    /// 실패한다. 이 값은 서버를 띄운 사람이 준 인자이므로 다른 명령처럼 시작할 때 거부한다. 설정의 `baseline_path` 는
+    /// 세션이 설정을 처음 읽을 때 같은 규칙으로 확인하고, 그 실패는 도구 결과의 오류로 돌아간다.
+    func requireCommandLineBaseline(fileSystem: any FileSystem) throws {
+        guard let path = options.commandLineBaselinePath(currentDirectory: fileSystem.currentDirectoryPath),
+              !fileSystem.fileExists(at: path)
+        else { return }
+        throw ValidationError(CommandSupport.describe(CartographError.missingBaseline(at: path)))
     }
 }

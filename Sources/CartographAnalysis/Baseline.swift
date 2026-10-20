@@ -37,8 +37,56 @@ public struct Baseline: Sendable, Codable, Equatable {
     ///
     /// 기존 베이스라인과 합치지 않고 대체한다. 합집합으로만 자라면 이미
     /// 고쳐진 문제가 영원히 남아, 나중에는 무엇이 실제로 남아 있는지 알 수 없게 된다.
-    public static func capturing(_ diagnostics: [Diagnostic]) -> Baseline {
-        Baseline(fingerprints: diagnostics.map(\.fingerprint))
+    ///
+    /// - Parameter baseVariants: 프로젝트 루트의 표기들(`PathFilter.variants(of:)`). 주면 루트 안 파일을
+    ///   가리키는 `unused-import` 지문을 루트 기준 상대 경로로 적는다. 그 주체는 파일 절대 경로를 품어서,
+    ///   그대로 적으면 커밋하는 파일에 기록한 기계의 경로(사용자 홈 포함)가 남고 체크아웃 경로가 다른 CI 에서는
+    ///   하나도 맞지 않는다. 읽는 쪽은 `resolvingRelativePaths(againstBaseVariants:)` 로 맞춘다. 루트 밖 파일은
+    ///   상대화할 수 없어 그대로 둔다. 비워 두면 예전과 같은 지문이다.
+    public static func capturing(
+        _ diagnostics: [Diagnostic], relativeToBaseVariants baseVariants: [String] = []
+    ) -> Baseline {
+        Baseline(fingerprints: diagnostics.map { portableFingerprint(of: $0, baseVariants: baseVariants) })
+    }
+
+    /// 상대 경로로 적힌 `unused-import` 지문마다, 이 체크아웃의 루트 표기로 펼친 절대 지문을 더한 사본.
+    ///
+    /// 진단 주체는 그대로 절대 경로를 품는다(리포트 출력이 바뀌지 않는다). 그래서 대조하는 자리마다 키를 바꾸는
+    /// 대신 읽은 베이스라인을 이 루트에 맞춰 펼친다 — 지문을 대조하는 모든 자리가 그대로 맞는다. 절대 경로로 적은
+    /// 예전 지문은 건드리지 않으므로 같은 자리에서는 계속 맞는다. 펼칠 지문이 없으면 그대로 돌려준다.
+    public func resolvingRelativePaths(againstBaseVariants baseVariants: [String]) -> Baseline {
+        let prefix = Self.importFingerprintPrefix
+        let resolved = fingerprints.flatMap { fingerprint -> [String] in
+            guard fingerprint.hasPrefix(prefix) else { return [] }
+            let path = fingerprint.dropFirst(prefix.count)
+            guard !path.hasPrefix("/") else { return [] }
+            return baseVariants.map { prefix + Self.directoryPrefix($0) + path }
+        }
+        guard !resolved.isEmpty else { return self }
+        return Baseline(fingerprints: fingerprints + resolved, generatedBy: generatedBy)
+    }
+
+    /// `unused-import` 지문의 머리. 그 뒤에 파일 경로, `:`, import 표기가 온다.
+    private static let importFingerprintPrefix =
+        AnalysisDiagnostics.Rule.unusedImport + "|" + AnalysisDiagnostics.unusedImportSubjectPrefix
+
+    /// 루트 안 파일을 가리키는 `unused-import` 지문의 경로를 루트 기준 상대 경로로 바꾼다. 다른 지문은 그대로다.
+    ///
+    /// 경로는 진단 위치에서 얻는다. 주체에서 경로를 잘라 내면 `:` 가 든 경로를 표기와 가를 수 없다. 루트 밖
+    /// 파일은 상대화가 경로를 그대로 돌려주므로 원래 지문과 같다.
+    private static func portableFingerprint(of diagnostic: Diagnostic, baseVariants: [String]) -> String {
+        guard diagnostic.ruleIdentifier == AnalysisDiagnostics.Rule.unusedImport,
+              let location = diagnostic.location, let subject = diagnostic.subject
+        else { return diagnostic.fingerprint }
+        let absoluteHead = AnalysisDiagnostics.unusedImportSubjectPrefix + location.path + ":"
+        guard subject.hasPrefix(absoluteHead) else { return diagnostic.fingerprint }
+        let relativePath = location.relative(toBaseVariants: baseVariants).path
+        return importFingerprintPrefix + relativePath + ":" + subject.dropFirst(absoluteHead.count)
+    }
+
+    /// 상대 경로를 이어 붙일 루트 표기. `SourceLocation.relative(toBaseVariants:)` 처럼 끝 `/` 를 하나로 맞춘다.
+    private static func directoryPrefix(_ base: String) -> String {
+        base.hasSuffix("/") ? base : base + "/"
     }
 }
 

@@ -31,10 +31,32 @@ struct CheckServiceTests {
         return builder.build()
     }
 
+    /// 모듈 순환과 타입 순환이 함께 있는 두 모듈 스냅샷.
+    ///
+    /// `Core.Store` 에서 나가는 간선은 다른 파일의 익스텐션 멤버(`Store.show`)에 있다. 구성원 기준 범위가
+    /// 익스텐션 파일만 바뀐 경우도 순환에 넣는지 보려는 것이다. `Util` 은 순환 밖의 같은 모듈 선언이고,
+    /// `Other.Tool` 은 순환 밖 모듈의 선언이다.
+    private func twoModuleSnapshot() -> IndexSnapshot {
+        var builder = SnapshotBuilder()
+        builder.symbol("Store", kind: .classType, module: "Core", path: "/p/Core/Store.swift")
+        builder.symbol("StoreScreen", kind: .extensionDeclaration, module: "Core", path: "/p/Core/Store+Screen.swift")
+        builder.reference(from: "StoreScreen", to: "Store", kind: .extends)
+        builder.symbol(
+            "Store.show", kind: .method, module: "Core", path: "/p/Core/Store+Screen.swift", parent: "StoreScreen"
+        )
+        builder.symbol("Util", kind: .structType, module: "Core", path: "/p/Core/Util.swift")
+        builder.symbol("Screen", kind: .structType, module: "Feature", path: "/p/Feature/Screen.swift")
+        builder.symbol("Tool", kind: .structType, module: "Other", path: "/p/Other/Tool.swift")
+        builder.reference(from: "Store.show", to: "Screen", kind: .call)
+        builder.reference(from: "Screen", to: "Store", kind: .call)
+        return builder.build()
+    }
+
     private func service(
         configure: (inout CartographConfiguration) -> Void = { _ in },
         provider: (any IndexProviding)? = nil,
-        fileSystem: InMemoryFileSystem = InMemoryFileSystem()
+        fileSystem: InMemoryFileSystem = InMemoryFileSystem(),
+        reportScope: ReportScope? = nil
     ) -> CartographService {
         var configuration = CartographConfiguration.default
         configuration.projectPath = "/p"
@@ -44,8 +66,110 @@ struct CheckServiceTests {
             environment: CartographEnvironment(
                 fileSystem: fileSystem,
                 indexProviderOverride: provider ?? StaticIndexProvider(snapshot())
-            )
+            ),
+            reportScope: reportScope
         )
+    }
+
+    @Test("cycles --since 도 대표 정점이 아닌 구성원만 바뀐 순환을 숨기지 않는다",
+          arguments: [GraphLevel.file, .type, .symbol])
+    func cyclesSinceIncludesCycleWhenAnyParticipantChanges(level: GraphLevel) throws {
+        // 대표 경로는 정렬상 앞선 정점에서 시작한다. 진단 위치 하나로 거르면 반대쪽 파일에서 순환을 닫은
+        // PR 이 `cycles --level type --since … --strict` 를 0 으로 통과하고, 같은 PR 의 check 만 실패했다.
+        for changed in ["/p/Feature/A.swift", "/p/Feature/B.swift"] {
+            let outcome = try service(reportScope: ReportScope(files: [changed])).detectCycles(level: level)
+            #expect(outcome.findingCount == 1, "changed \(changed)")
+        }
+        let untouched = try service(reportScope: ReportScope(files: ["/p/Feature/Dead.swift"]))
+            .detectCycles(level: level)
+        #expect(untouched.findingCount == 0)
+    }
+
+    @Test("cycles --since 는 대표 경로 밖의 강결합 요소 구성원만 바뀌어도 그 요소의 순환을 보고한다",
+          arguments: [GraphLevel.file, .type])
+    func cyclesSinceCountsTheWholeComponent(level: GraphLevel) throws {
+        // A ↔ B 가 가장 짧은 대표 순환이고 C 는 A → B → C → A 로만 같은 요소에 든다. check 와 같이
+        // 요소 전체를 보므로 C.swift 만 바꾼 PR 에도 그 요소의 순환이 남는다.
+        var builder = SnapshotBuilder()
+        for name in ["A", "B", "C"] {
+            builder.symbol(name, kind: .structType, module: "Feature", path: "/p/Feature/\(name).swift")
+        }
+        builder.reference(from: "A", to: "B", kind: .call)
+        builder.reference(from: "B", to: "A", kind: .call)
+        builder.reference(from: "B", to: "C", kind: .call)
+        builder.reference(from: "C", to: "A", kind: .call)
+        let scoped = service(
+            provider: StaticIndexProvider(builder.build()),
+            reportScope: ReportScope(files: ["/p/Feature/C.swift"])
+        )
+        let (_, found) = scoped.cycles(in: try scoped.loadContext(), level: level)
+        #expect(found.count == 1)
+        #expect(found.first?.path.count == 2)
+        #expect(found.first?.component.count == 3)
+        #expect(try scoped.detectCycles(level: level).findingCount == 1)
+    }
+
+    @Test("cycles --since 의 모듈 순환은 구성원 모듈에 바뀐 파일이 있을 때만 보고한다")
+    func cyclesSinceScopesModuleCyclesByMemberModules() throws {
+        // 모듈 정점에는 위치가 없어 예전에는 범위와 상관없이 모든 모듈 순환을 보고했다. 구성원 기준이면
+        // 순환 밖 모듈만 바꾼 PR 에는 들어오지 않고, 구성원 모듈의 어느 파일을 바꿔도 들어온다.
+        let provider = StaticIndexProvider(twoModuleSnapshot())
+        let counts = try [["/p/Other/Tool.swift"], ["/p/Core/Util.swift"], ["/p/Feature/Screen.swift"], []].map {
+            try service(provider: provider, reportScope: ReportScope(files: Set($0)))
+                .detectCycles(level: .module).findingCount
+        }
+        #expect(counts == [0, 1, 1, 0])
+        #expect(try service(provider: provider).detectCycles(level: .module).findingCount == 1)
+    }
+
+    @Test("같은 범위에서 cycles --since 와 check 가 같은 모듈·타입 순환 진단을 낸다", arguments: [
+        nil, [], ["/p/Core/Store.swift"], ["/p/Feature/Screen.swift"], ["/p/Core/Store+Screen.swift"],
+        ["/p/Core/Util.swift"], ["/p/Other/Tool.swift"], ["/p/Unknown.swift"],
+    ] as [[String]?])
+    func cyclesSinceMatchesCheck(changedFiles: [String]?) throws {
+        struct CycleReport: Decodable { let diagnostics: [Diagnostic] }
+        let service = service(
+            configure: { $0.reportFormat = .json },
+            provider: StaticIndexProvider(twoModuleSnapshot()),
+            reportScope: changedFiles.map { ReportScope(files: Set($0)) }
+        )
+        let document = try service.checkDocument()
+        var cycleDiagnostics: [Diagnostic] = []
+        for level in [GraphLevel.module, .type] {
+            let outcome = try service.detectCycles(level: level)
+            let summary = document.checks.first { $0.name == "cycles" && $0.level == level.rawValue }
+            #expect(summary?.findingCount == outcome.findingCount, "\(level)")
+            #expect(summary?.suppressedCount == outcome.suppressedCount, "\(level)")
+            cycleDiagnostics += try JSONDecoder().decode(CycleReport.self, from: Data(outcome.output.utf8)).diagnostics
+        }
+        #expect(cycleDiagnostics.sorted() == document.diagnostics.filter {
+            $0.ruleIdentifier == AnalysisDiagnostics.Rule.cycle
+        })
+    }
+
+    @Test("cycles --since 는 구성원 기준으로 범위를 좁힌 뒤 베이스라인과 임계값을 적용한다")
+    func cyclesSinceScopesBeforeBaselineAndThreshold() throws {
+        let fileSystem = InMemoryFileSystem()
+        let recorder = service(fileSystem: fileSystem)
+        let (graph, found) = recorder.cycles(in: try recorder.loadContext(), level: .type)
+        try BaselineStore(fileSystem: fileSystem).write(
+            Baseline.capturing(AnalysisDiagnostics.diagnostics(for: found, in: graph)), to: "/p/baseline.json"
+        )
+        func scoped(
+            _ changed: String, _ configure: (inout CartographConfiguration) -> Void
+        ) throws -> CommandOutcome {
+            try service(configure: configure, fileSystem: fileSystem, reportScope: ReportScope(files: [changed]))
+                .detectCycles(level: .type)
+        }
+        // 범위 안에 든 순환만 억제 건수에 들어간다. 범위 밖 순환까지 세면 사용자가 보는 숫자와 맞지 않는다.
+        for changed in ["/p/Feature/A.swift", "/p/Feature/B.swift"] {
+            let baselined = try scoped(changed) { $0.baselinePath = "/p/baseline.json" }
+            #expect(baselined.findingCount == 0, "changed \(changed)")
+            #expect(baselined.suppressedCount == 1, "changed \(changed)")
+            #expect(try scoped(changed) { $0.thresholds.maxCycles = 0 }.thresholdFailure != nil, "changed \(changed)")
+        }
+        #expect(try scoped("/p/Feature/Dead.swift") { $0.baselinePath = "/p/baseline.json" }.suppressedCount == 0)
+        #expect(try scoped("/p/Feature/Dead.swift") { $0.thresholds.maxCycles = 0 }.thresholdFailure == nil)
     }
 
     @Test("하나의 인덱스 문맥으로 타입 순환까지 점검한다")

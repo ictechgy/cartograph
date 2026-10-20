@@ -19,7 +19,7 @@ struct CheckCommand: ParsableCommand {
     }
 
     func run() throws {
-        let context = try CommandSupport.makeContext(options)
+        let context = try CommandSupport.makeContext(options, readsBaseline: true)
         try CommandSupport.emit(try context.service.check(), options: options, context: context)
     }
 }

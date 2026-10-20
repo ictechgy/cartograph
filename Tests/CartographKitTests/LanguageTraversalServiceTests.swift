@@ -188,6 +188,40 @@ struct LanguageTraversalServiceTests {
         #expect(CartographService.isClosedWorld(["external-retentions: 2 retention(s)"]))
     }
 
+    @Test("따라가지 않은 루트 밖 디렉터리 링크가 있으면 구현이 하나뿐이어도 bound 대신 candidate 로 낸다")
+    func externalDirectoryLinkBlocksBoundEvidence() throws {
+        // 링크 뒤 소스는 그래프에 없으므로 거기 있을 수 있는 다른 구현을 배제하지 못한다.
+        let fixture = try ExternalDirectoryLinkFixture(inside: [:], outside: ["Mock.swift": "struct Mock: P {}"])
+        defer { fixture.remove() }
+        var builder = SnapshotBuilder(module: "App", path: "/p/Sources/Live.swift")
+        builder.symbol("s:P", name: "P", kind: .protocolType)
+        builder.symbol("s:P.f", name: "f()", kind: .method, line: 2, parent: "s:P")
+        builder.symbol("s:Live", name: "Live", line: 5)
+        builder.symbol("s:Live.f", name: "f()", kind: .method, line: 6, parent: "s:Live")
+        builder.symbol("s:caller", name: "caller()", kind: .function, line: 9)
+        builder.reference(from: "s:Live", to: "s:P", kind: .conformance)
+        builder.reference(from: "s:Live.f", to: "s:P.f", kind: .overrides)
+        builder.reference(from: "s:caller", to: "s:P.f", kind: .call)
+        let snapshot = builder.build()
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = fixture.root
+        let service = CartographService(configuration: configuration, environment: .init(
+            fileSystem: LocalFileSystem(), indexProviderOverride: StaticIndexProvider(snapshot),
+            usesSyntaxCache: false))
+        func callerEvidence() throws -> (evidence: String?, limitations: [String]) {
+            let document = try service.languageTraversalDocument(
+                symbols: ["s:Live.f"], generatedAt: fixedDate, in: AnalysisContext(snapshot: snapshot))
+            return (document.reached.first { $0.symbol.usr == "s:caller" }?.evidence, document.limitations)
+        }
+
+        let linked = try callerEvidence()
+        #expect(linked.evidence == "candidate")
+        #expect(linked.limitations.contains { $0.hasPrefix("dispatch-bound-unproven: 1 ") })
+        // 링크를 지우면 같은 그래프가 bound 로 올라간다 — 위의 candidate 가 링크 때문임을 보인다.
+        try FileManager.default.removeItem(atPath: fixture.root + "/" + ExternalDirectoryLinkFixture.linkPath)
+        #expect(try callerEvidence().evidence == "bound")
+    }
+
     @Test("인자 목록을 떼면 비는 이름은 인덱스 이름으로 대신해 isthmus 가 문서를 거부하지 않게 한다")
     func fallsBackFromEmptySyntaxName() {
         let graph = CodeGraph(level: .symbol, nodes: [

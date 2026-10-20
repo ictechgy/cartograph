@@ -236,6 +236,18 @@ struct SchemaFactScannerTests {
         #expect(channels(source) == ["sessions"])
     }
 
+    @Test("SQL 리터럴의 CTE 이름은 게이트 경로와 게이트 없는 경로 모두에서 relation-use 사실이 되지 않는다")
+    func cteNamesAreNotRelations() {
+        let source = """
+            import GRDB
+            let recentOrders = "WITH recent AS (SELECT * FROM orders) SELECT * FROM recent"
+            func archive(db: Database) throws {
+                try db.execute(sql: "WITH s AS (SELECT * FROM imports) INSERT INTO audit SELECT * FROM s")
+            }
+            """
+        #expect(channels(source).sorted() == ["audit", "imports", "orders"])
+    }
+
     // MARK: 미지원 표면 계수
 
     @Test("Core Data·SwiftData·Realm 표면은 사실이 아니라 관측 개수다")

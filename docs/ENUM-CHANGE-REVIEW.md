@@ -121,7 +121,8 @@ A universal archive contains arm64 and x86_64 slices; the host verification does
 both slices were executed or that an incompatible `libIndexStore` can be loaded.
 
 Publication is a separate step: the Release workflow validates the reviewed source SHA and
-version, verifies the unpacked package, then creates/verifies the exact tag and publishes. Its
-manual `tag`/`source_sha` dispatch is a real release operation, not a dry run. Existing tags and
-historical benchmark records are not rewritten; `final_evidence: false` remains a limit on those
-comparison claims.
+version, verifies the unpacked package, then creates/verifies the exact tag and publishes. It
+refuses a source commit that is not on `main`, for a version-tag push and a manual dispatch
+alike, before building it. The manual `tag`/`source_sha` dispatch is a real release operation,
+not a dry run. Existing tags and historical benchmark records are not rewritten;
+`final_evidence: false` remains a limit on those comparison claims.

@@ -1,6 +1,7 @@
 import ArgumentParser
 @testable import cartograph
 import CartographCore
+import CartographKit
 import CartographTestSupport
 import Testing
 
@@ -68,6 +69,58 @@ struct GlobalOptionsTests {
         // CLI 인자로 준 상대 경로는 현재 작업 디렉터리(/work) 기준으로 절대 경로화된다.
         #expect(fromFlag.configuration.externalRetentionsPath == "/work/cli.json")
         #expect(fromFlag.configuration.baselinePath == "/work/cli-baseline.json")
+    }
+
+    @Test("설정 파일의 index_store_path·derived_data_path 상대 경로는 작업 디렉터리가 아니라 프로젝트 루트 기준이다")
+    func configuredIndexPathsResolveAgainstProjectRoot() throws {
+        // 모노레포 루트(/root)에서 하위 앱을 `--project ios` 로 분석하는 CI(공식 액션)가 템플릿 예시를 그대로 쓴 모양.
+        // 작업 디렉터리 기준으로 풀면 /root/DerivedData 를 찾아 "index store not found" 로 끝나거나, 그 자리에 있는
+        // 다른 앱의 평면 DerivedData 스토어를 연다.
+        let fileSystem = InMemoryFileSystem(
+            currentDirectoryPath: "/root",
+            files: ["/root/ios/.cartograph.yml": "index_store_path: Index/DataStore\nderived_data_path: DerivedData\n"]
+        )
+        let relative = try GlobalOptions.parse(["--project", "ios"]).resolveConfiguration(fileSystem: fileSystem)
+        #expect(relative.configuration.projectPath == "/root/ios")
+        #expect(relative.configuration.indexStorePath == "/root/ios/Index/DataStore")
+        #expect(relative.configuration.derivedDataPath == "/root/ios/DerivedData")
+
+        let absolute = try GlobalOptions.parse(["--project", "/p"]).resolveConfiguration(
+            fileSystem: InMemoryFileSystem(
+                currentDirectoryPath: "/work",
+                files: ["/p/.cartograph.yml": "index_store_path: /ci/store\nderived_data_path: /ci/DerivedData\n"]
+            )
+        )
+        #expect(absolute.configuration.indexStorePath == "/ci/store")
+        #expect(absolute.configuration.derivedDataPath == "/ci/DerivedData")
+    }
+
+    @Test("--config 로 다른 곳의 설정을 읽어도 인덱스 경로 키는 baseline_path 처럼 프로젝트 루트 기준이다")
+    func explicitConfigurationElsewhereStillResolvesAgainstProjectRoot() throws {
+        // 설정 파일 디렉터리와 프로젝트 루트가 갈리는 유일한 경우다. 다른 경로 키와 같은 기준을 써야 한 파일 안의
+        // 상대 경로들이 서로 다른 곳을 가리키지 않는다.
+        let fileSystem = InMemoryFileSystem(
+            currentDirectoryPath: "/work",
+            files: ["/shared/ci.yml": "derived_data_path: DerivedData\nbaseline_path: baseline.json\n"]
+        )
+        let resolved = try GlobalOptions.parse(["--project", "/p", "--config", "/shared/ci.yml"])
+            .resolveConfiguration(fileSystem: fileSystem)
+        #expect(resolved.configuration.derivedDataPath == "/p/DerivedData")
+        // baseline_path 는 서비스가 같은 루트 기준으로 푼다(`CartographService.loadBaseline`).
+        #expect(resolved.configuration.baselinePath == "baseline.json")
+    }
+
+    @Test("--index-store·--derived-data 상대 경로는 작업 디렉터리 기준 절대 경로가 되고 설정 파일 값을 덮어쓴다")
+    func commandLineIndexPathsResolveAgainstCurrentDirectory() throws {
+        let fileSystem = InMemoryFileSystem(
+            currentDirectoryPath: "/root",
+            files: ["/root/ios/.cartograph.yml": "index_store_path: Index/DataStore\nderived_data_path: DerivedData\n"]
+        )
+        let resolved = try GlobalOptions.parse([
+            "--project", "ios", "--index-store", ".build/out", "--derived-data", "build/../DD",
+        ]).resolveConfiguration(fileSystem: fileSystem)
+        #expect(resolved.configuration.indexStorePath == "/root/.build/out")
+        #expect(resolved.configuration.derivedDataPath == "/root/DD")
     }
 
     @Test("여러 값을 받는 옵션을 파싱한다")
@@ -158,6 +211,31 @@ struct CommandConfigurationTests {
         struct Boom: Error {}
         #expect(!CommandSupport.describe(Boom()).isEmpty)
     }
+
+    @Test("이름 붙인 베이스라인이 없으면 사전 확인이 도구 실패(2)가 아니라 사용 오류(64)로 바꿔 알린다")
+    func missingNamedBaselineBecomesUsageError() throws {
+        // 경로 오타는 인자의 문제다. 2 로 끝나면 CI 는 인덱스를 의심한다. 사전 확인은 인덱스를 열기 전에 돈다.
+        let fileSystem = InMemoryFileSystem(currentDirectoryPath: "/p", files: ["/p/known.json": "{}"])
+        func service(baselinePath: String?) -> CartographService {
+            var configuration = CartographConfiguration.default
+            configuration.projectPath = "/p"
+            configuration.baselinePath = baselinePath
+            return CartographService(
+                configuration: configuration, environment: CartographEnvironment(fileSystem: fileSystem)
+            )
+        }
+        do {
+            try CommandSupport.requireConfiguredBaseline(of: service(baselinePath: "none.json"))
+            Issue.record("없는 베이스라인을 통과시켰다")
+        } catch let error as ValidationError {
+            #expect(error.message.contains("/p/none.json"))
+            #expect(error.message.contains("cartograph baseline --write"))
+        }
+        try CommandSupport.requireConfiguredBaseline(of: service(baselinePath: "known.json"))
+        // 이름을 붙이지 않았으면 기본 파일(.cartograph-baseline.json)은 없어도 된다.
+        try CommandSupport.requireConfiguredBaseline(of: service(baselinePath: nil))
+    }
+
     @Test("프로젝트 경로를 절대 경로로 바꾼다")
     func makesProjectPathAbsolute() {
         // libIndexStore 는 상대 경로를 받으면 어서션으로 프로세스를 죽인다.

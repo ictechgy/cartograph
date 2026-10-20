@@ -562,6 +562,61 @@ struct CartographServiceTests {
         #expect(try customService.detectUnusedCode().findingCount == 0)
     }
 
+    @Test("이름 붙인 베이스라인 파일이 없으면 베이스라인을 읽는 모든 자리가 원인과 해결 방향을 담은 오류로 멈춘다")
+    func namedBaselineMustExist() {
+        // 조용히 건너뛰면 억제가 전부 사라져, 팀이 받아들인 발견이 새 발견으로 나오고 에이전트는 그것을 새 삭제
+        // 후보로 읽는다. 상대 경로는 프로젝트 루트 기준으로 푼 절대 경로로 알린다.
+        for (named, resolved) in [("/p/none.json", "/p/none.json"), ("configs/none.json", "/p/configs/none.json")] {
+            let service = makeService(configure: { $0.baselinePath = named })
+            let readers: [(String, () throws -> Void)] = [
+                ("dead", { _ = try service.detectUnusedCode() }),
+                ("dead --explain", { _ = try service.explainRetention(of: "DeadHelper") }),
+                ("cycles", { _ = try service.detectCycles() }),
+                ("cycles --explain", { _ = try service.explainCycles(of: "HomeView", level: .type) }),
+                ("metrics", { _ = try service.measureMetrics() }),
+                ("rules", { _ = try service.checkRules() }),
+                ("fix", { _ = try service.mechanicalFixes(apply: false, format: "json") }),
+                ("query", { _ = try service.query(symbol: "DeadHelper") }),
+                ("check", { _ = try service.check() }),
+                ("사전 확인", { try service.requireConfiguredBaseline() }),
+            ]
+            for (name, read) in readers {
+                #expect(Self.missingBaselinePath(thrownBy: read) == resolved, "\(name) ← \(named)")
+            }
+        }
+    }
+
+    @Test("기본 베이스라인은 없으면 건너뛰고, 이름 붙인 베이스라인이 없어도 읽지 않는 명령과 기록은 막지 않는다")
+    func missingBaselineDoesNotBlockWhatDoesNotReadIt() throws {
+        let fileSystem = InMemoryFileSystem()
+        let unnamed = makeService(fileSystem: fileSystem)
+        try unnamed.requireConfiguredBaseline()
+        #expect(try unnamed.detectUnusedCode().findingCount == 1)
+
+        // README 의 흐름: baseline_path 를 먼저 커밋하고 그 자리에 처음 기록한다. 기록은 베이스라인을 읽지 않는다.
+        let named = makeService(configure: { $0.baselinePath = "configs/baseline.json" }, fileSystem: fileSystem)
+        #expect(try named.renderGraph().output.hasPrefix("digraph Cartograph {"))
+        #expect(Self.missingBaselinePath(thrownBy: { _ = try named.detectUnusedCode() }) == "/p/configs/baseline.json")
+        _ = try named.writeBaseline(diagnostics: try named.collectAllDiagnostics(), to: "configs/baseline.json")
+        try named.requireConfiguredBaseline()
+        #expect(try named.detectUnusedCode().findingCount == 0)
+    }
+
+    /// 이름 붙인 베이스라인이 없다는 오류가 가리키는 경로. 오류가 없으면 nil, 다른 오류면 그 설명이다.
+    ///
+    /// 경로만 비교하면 같은 `invalidBaseline` 인 깨진 파일 오류와 가르지 못하므로 해결 방향 문구까지 확인한다.
+    private static func missingBaselinePath(thrownBy read: () throws -> Void) -> String? {
+        do {
+            try read()
+            return nil
+        } catch let CartographError.invalidBaseline(path, reason)
+            where reason.contains("does not exist") && reason.contains("cartograph baseline --write \(path)") {
+            return path
+        } catch {
+            return "unexpected error: \(error)"
+        }
+    }
+
     @Test("measureMetrics는 베이스라인을 적용하고 상대 경로로 보고한다")
     func measureMetricsAppliesBaselineAndRelativePaths() throws {
         let fileSystem = InMemoryFileSystem()

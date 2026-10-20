@@ -87,6 +87,7 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
     /// nil일 때는 그 파일의 import를 판정할 수 없으므로 보고하지 않는다.
     public let imports: [IndexedImport]?
     /// 함수·접근자 본문의 구간. 이 안의 참조는 그 선언의 인터페이스를 바꾸지 않는다.
+    /// 이미 실은 본문 안의 중첩 블록·접근자는 그 구간에 포함되므로 따로 싣지 않는다.
     /// nil은 아직 수집하지 않은 캐시다 — 위치를 모르는 참조와 같이 보수적으로 다룬다.
     public let bodyRanges: [SourceRange]?
     /// nil means this capture predates enum-decision syntax coverage.

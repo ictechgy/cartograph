@@ -125,6 +125,21 @@ public enum CartographError: Error, Equatable, LocalizedError {
         }
     }
 
+    /// `--baseline`·`baseline_path` 로 이름 붙인 베이스라인 파일이 없을 때의 오류.
+    ///
+    /// 기본 파일(`.cartograph-baseline.json`)과 달리 이름 붙인 파일은 없다고 건너뛰지 않는다. 오타 하나에 억제가
+    /// 전부 사라지면 팀이 받아들인 발견이 새 발견으로 보고되고, 에이전트는 그것을 새 삭제 후보로 읽는다. 경로가
+    /// 틀렸는지 아직 기록하지 않았는지는 사용자만 알므로 둘 다 안내한다.
+    ///
+    /// - Parameter path: 확인한 절대 경로. 상대 경로를 어느 기준으로 풀었는지가 이 값에 드러난다.
+    public static func missingBaseline(at path: String) -> CartographError {
+        .invalidBaseline(
+            path: path,
+            reason: "the file does not exist. A baseline named with --baseline or baseline_path must exist; "
+                + "check the path, or record it there first with `cartograph baseline --write \(path)`"
+        )
+    }
+
     /// 프로젝트 형태를 모를 때의 일반 안내. 명시 경로가 잘못된 경우처럼
     /// 루트와 무관한 실패에 쓴다.
     private static let genericIndexRemedy = """

@@ -64,6 +64,37 @@ struct ActionManifestTests {
         #expect(readme.contains("Fail-on-findings") || readme.contains("fail-on-findings"))
     }
 
+    @Test("중첩 액션은 전체 커밋 SHA로 고정하고 버전 태그를 주석으로 남긴다")
+    func nestedActionsArePinnedToCommits() throws {
+        // 태그는 옮겨질 수 있다. 소비자가 이 액션을 SHA로 고정해도 중첩 액션이 태그면 함께 고정되지 않는다.
+        let uses = try manifest.split(separator: "\n")
+            .map { $0.drop { $0 == " " || $0 == "-" } }
+            .filter { $0.hasPrefix("uses:") }
+        #expect(!uses.isEmpty)
+        for line in uses {
+            #expect(line.wholeMatch(of: #/uses: [^@\s]+@[0-9a-f]{40} # v\d+\.\d+\.\d+/#) != nil, "\(line)")
+        }
+    }
+
+    @Test("두 README의 액션 절이 선언한 입력을 모두 표로 안내한다")
+    func readmesListEveryInput() throws {
+        let declared = Self.declaredInputs(in: try manifest)
+        for (file, heading) in [("README.md", "### The official action"), ("README.ko.md", "### 공식 액션")] {
+            let readme = try String(contentsOf: repositoryRoot.appendingPathComponent(file), encoding: .utf8)
+            let section = Self.section(heading, in: readme)
+            #expect(section != nil, "\(file)에 \(heading) 절이 없다")
+            let missing = declared.filter { !(section ?? "").contains("\n| `\($0)` |") }
+            #expect(missing.isEmpty, "\(file) 입력 표에 없는 입력 \(missing.sorted())")
+        }
+    }
+
+    /// 제목 줄부터 다음 `### ` 제목 앞까지. 다른 표의 같은 이름이 빠진 행을 가리지 않게 절 안에서만 찾는다.
+    private static func section(_ heading: String, in text: String) -> Substring? {
+        guard let start = text.range(of: "\n\(heading)\n") else { return nil }
+        let rest = text[start.upperBound...]
+        return rest.range(of: "\n### ").map { rest[..<$0.lowerBound] } ?? rest
+    }
+
     /// `inputs:` 아래 두 칸 들여쓰기의 이름들.
     private static func declaredInputs(in text: String) -> Set<String> {
         var names: Set<String> = []

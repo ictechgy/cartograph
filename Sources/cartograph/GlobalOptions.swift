@@ -87,17 +87,23 @@ struct GlobalOptions: ParsableArguments {
         )
         // CLI 인자로 준 파일 경로는 터미널 작업 디렉터리 기준이고,
         // 설정 파일에 적힌 상대 경로는 프로젝트 루트 기준이다.
-        // 명시적 CLI 옵션만 여기서 작업 디렉터리 기준 절대 경로로 고정한다.
-        let resolvedBaselinePath = baselinePath.map {
-            Self.absolutePath($0, relativeTo: fileSystem.currentDirectoryPath)
-        }
+        // 베이스라인·외부 근거 파일은 명시적 CLI 옵션만 여기서 작업 디렉터리 기준 절대 경로로 고정하고,
+        // 설정 값은 서비스가 같은 루트 기준으로 푼다. 인덱스 경로 두 키는 출처마다 여기서 바로 푼다 —
+        // 인덱스 계층은 받은 경로를 그대로 열어 상대 경로를 프로세스 작업 디렉터리 기준으로 읽는다.
+        let resolvedBaselinePath = commandLineBaselinePath(currentDirectory: fileSystem.currentDirectoryPath)
         let resolvedExternalRetentionsPath = externalRetentionsPath.map {
             Self.absolutePath($0, relativeTo: fileSystem.currentDirectoryPath)
         }
         let overrides = ConfigurationOverrides(
-            indexStorePath: indexStorePath,
+            indexStorePath: Self.resolvedIndexPath(
+                indexStorePath, configured: loaded.configuration.indexStorePath,
+                currentDirectory: fileSystem.currentDirectoryPath, projectRoot: resolvedProjectPath
+            ),
             projectPath: resolvedProjectPath,
-            derivedDataPath: derivedDataPath,
+            derivedDataPath: Self.resolvedIndexPath(
+                derivedDataPath, configured: loaded.configuration.derivedDataPath,
+                currentDirectory: fileSystem.currentDirectoryPath, projectRoot: resolvedProjectPath
+            ),
             level: level,
             include: include.isEmpty ? nil : include.map { GlobPattern($0) },
             exclude: exclude.isEmpty ? nil : exclude.map { GlobPattern($0) },
@@ -109,6 +115,32 @@ struct GlobalOptions: ParsableArguments {
             retainPublic: retainPublic ? true : nil
         )
         return (loaded.configuration.applying(overrides), loaded.warnings)
+    }
+
+    /// `--baseline` 을 작업 디렉터리 기준 절대 경로로 푼 값. 주지 않았으면 nil 이다.
+    ///
+    /// 설정을 풀 때와 `serve` 가 시작 전에 파일을 확인할 때 같은 경로를 봐야 하므로 한 곳에서 푼다.
+    func commandLineBaselinePath(currentDirectory: String) -> String? {
+        baselinePath.map { Self.absolutePath($0, relativeTo: currentDirectory) }
+    }
+
+    /// 인덱스 스토어·DerivedData 경로 하나를 출처에 맞는 기준으로 절대 경로화한다. CLI 값이 설정 값보다 우선한다.
+    ///
+    /// CLI 값은 터미널에서 친 것이라 작업 디렉터리 기준이다. 설정 값은 저장소에 커밋되는 것이라 `baseline_path`·
+    /// `external_retentions_path` 처럼 프로젝트 루트 기준이다 — 작업 디렉터리 기준이면 모노레포 루트에서
+    /// `--project ios` 로 돌린 CI 가 `derived_data_path: DerivedData` 를 `ios/` 가 아닌 루트에서 찾는다. 설정을
+    /// `--config` 로 다른 곳에서 읽어도 기준은 프로젝트 루트다. 한 파일 안의 상대 경로들이 키마다 다른 곳을
+    /// 가리키지 않게 다른 경로 키와 같은 기준을 쓴다.
+    ///
+    /// - Returns: 둘 다 없으면 nil. 그때는 설정 값도 없으므로 덮어쓸 것이 없다.
+    static func resolvedIndexPath(
+        _ commandLineValue: String?,
+        configured configuredValue: String?,
+        currentDirectory: String,
+        projectRoot: String
+    ) -> String? {
+        if let commandLineValue { return absolutePath(commandLineValue, relativeTo: currentDirectory) }
+        return configuredValue.map { absolutePath($0, relativeTo: projectRoot) }
     }
 
     /// 사용자가 준 경로를 절대 경로로 바꾼다.
