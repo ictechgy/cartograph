@@ -1822,7 +1822,7 @@ Pin both for a repeatable setup (`@main` tracks the development branch). Marketp
 |---|---|---|
 | `command` | `check` | `check` (dead + cycles + rules together), `dead`, `cycles` or `rules` |
 | `args` | — | Extra arguments, for example `--limit 500` |
-| `version` | `latest` | Release tag to download, or `latest` for the newest release |
+| `version` | `latest` | Release tag to download, or `latest` for the newest release (logged as a notice) |
 | `binary` | — | Path to an existing binary; skips the download |
 | `project` | `.` | Project root; the index store is discovered from it |
 | `build` | `swift` | `swift build` before analyzing, or `none` when you build yourself |
@@ -1835,6 +1835,17 @@ Outputs: `exit-code` (the raw CLI code, including `64` for usage errors), `sarif
 fails with a clear message on a non-macOS runner, because the tool loads `libIndexStore` from the
 Xcode toolchain. Building with `xcodebuild`? Set `build: none` and either pass your binary through
 `binary` or install Cartograph yourself and keep the manual commands below.
+
+Every download is checked against the SHA-256 digest GitHub recorded for the release asset, and
+only the `cartograph` executable is extracted; a missing or different digest, or an executable that
+is not a regular file, fails the step before anything runs. The recorded digest catches a corrupted
+or mismatched download, but GitHub computes it again when a release asset is replaced, so it does
+not pin the archive.
+With `version: latest` the action logs a notice naming the release it used. The action gives
+`GH_TOKEN` only to the step that reads the release; the downloaded binary first runs, as
+`--version`, in a step without it.
+
+`action-v1.0.0` predates these checks: it runs the downloaded binary unverified.
 
 The `action-v1.0.0` action rejects unexpected exit codes and missing reports, and never uploads a
 report left by an earlier invocation. These fixes are not part of the existing `0.20.0` action tag.

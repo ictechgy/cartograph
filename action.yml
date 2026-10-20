@@ -65,6 +65,7 @@ runs:
       env:
         INPUT_BINARY: ${{ inputs.binary }}
         INPUT_VERSION: ${{ inputs.version }}
+        # gh needs the token to read the release; this step never runs the downloaded binary.
         GH_TOKEN: ${{ github.token }}
       run: |
         # Cartograph reads libIndexStore from the Xcode toolchain; other runners cannot load it.
@@ -80,19 +81,61 @@ runs:
           echo "binary=$INPUT_BINARY" >> "$GITHUB_OUTPUT"
           exit 0
         fi
+        # The version reaches gh's request path and jq filter, so only exact forms pass.
+        release_pattern='^[0-9]+\.[0-9]+\.[0-9]+$'
+        digest_pattern='^sha256:[0-9a-f]{64}$'
         version="$INPUT_VERSION"
         if [ -z "$version" ] || [ "$version" = "latest" ]; then
           version="$(gh api repos/ictechgy/cartograph/releases/latest --jq .tag_name)"
+          if ! [[ "$version" =~ $release_pattern ]]; then
+            echo "::error::The latest release ($version) is not a CLI release; set version to one such as 0.28.0."
+            exit 2
+          fi
+          echo "::notice title=cartograph::version is latest, so release $version is used." \
+            "Pin version (and the action commit SHA) for reproducible runs."
+        elif ! [[ "$version" =~ $release_pattern ]]; then
+          echo "::error::version must be latest or a CLI release tag such as 0.28.0."
+          exit 64
         fi
         archive="cartograph-${version}-macos-universal.tar.gz"
+        # GitHub records each asset's SHA-256 at upload; a download that differs is not that asset.
+        if ! digest="$(gh api "repos/ictechgy/cartograph/releases/tags/$version" \
+          --jq ".assets[] | select(.name == \"$archive\") | .digest")"; then
+          echo "::error::Could not read release $version of ictechgy/cartograph; check that this version exists."
+          exit 2
+        fi
+        if ! [[ "$digest" =~ $digest_pattern ]]; then
+          echo "::error::Release $version has no SHA-256 digest for $archive; check its assets or pin another version."
+          exit 2
+        fi
         directory="$(mktemp -d "${RUNNER_TEMP:-/tmp}/cartograph-action.XXXXXX")"
         gh release download "$version" --repo ictechgy/cartograph \
           --pattern "$archive" --dir "$directory" --clobber
-        tar -xzf "$directory/$archive" -C "$directory"
+        actual="$(shasum -a 256 < "$directory/$archive")"
+        actual="${actual%% *}"
+        if [ "$actual" != "${digest#sha256:}" ]; then
+          echo "::error::$archive does not match the SHA-256 that GitHub recorded for release $version;" \
+            "it was not extracted. Retry, and report the release if this persists."
+          exit 2
+        fi
+        # Extract only the executable, so no other member or link from the archive is written.
         binary="$directory/cartograph/cartograph"
+        if ! tar -xzf "$directory/$archive" -C "$directory" cartograph/cartograph \
+          || [ ! -f "$binary" ] || [ -L "$binary" ]; then
+          echo "::error::$archive has no regular file cartograph/cartograph; check the release archive."
+          exit 2
+        fi
         chmod +x "$binary"
-        "$binary" --version
         echo "binary=$binary" >> "$GITHUB_OUTPUT"
+
+    - name: Check the downloaded binary
+      if: ${{ inputs.binary == '' }}
+      shell: bash
+      env:
+        CARTOGRAPH_BINARY: ${{ steps.resolve.outputs.binary }}
+      run: |
+        # The first run of the downloaded binary happens here, in a step without the GitHub token.
+        "$CARTOGRAPH_BINARY" --version
 
     - name: Build the index
       if: ${{ inputs.build == 'swift' }}
@@ -166,7 +209,7 @@ runs:
     - name: Upload SARIF
       id: upload
       if: ${{ inputs.upload-sarif == 'true' && steps.run.outputs.sarif-file != '' }}
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
       with:
         sarif_file: ${{ steps.run.outputs.sarif-file }}
         category: cartograph

@@ -64,6 +64,18 @@ struct ActionManifestTests {
         #expect(readme.contains("Fail-on-findings") || readme.contains("fail-on-findings"))
     }
 
+    @Test("중첩 액션은 전체 커밋 SHA로 고정하고 버전 태그를 주석으로 남긴다")
+    func nestedActionsArePinnedToCommits() throws {
+        // 태그는 옮겨질 수 있다. 소비자가 이 액션을 SHA로 고정해도 중첩 액션이 태그면 함께 고정되지 않는다.
+        let uses = try manifest.split(separator: "\n")
+            .map { $0.drop { $0 == " " || $0 == "-" } }
+            .filter { $0.hasPrefix("uses:") }
+        #expect(!uses.isEmpty)
+        for line in uses {
+            #expect(line.wholeMatch(of: #/uses: [^@\s]+@[0-9a-f]{40} # v\d+\.\d+\.\d+/#) != nil, "\(line)")
+        }
+    }
+
     /// `inputs:` 아래 두 칸 들여쓰기의 이름들.
     private static func declaredInputs(in text: String) -> Set<String> {
         var names: Set<String> = []
