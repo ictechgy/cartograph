@@ -113,6 +113,41 @@ struct BoundedInputReadTests {
         #expect(chunks.reduce(0, +) == byteCount)
     }
 
+    @Test("조각 읽기는 넘긴 조각을 다음 조각 전에 놓아 큰 파일을 읽어도 메모리가 조각 크기 안팎으로 묶인다")
+    func chunkedReadReleasesEachChunk() throws {
+        let root = try makeProject()
+        defer { removeProject(root) }
+        let path = root + "/Large.bin"
+        let byteCount = 512 * Self.mebibyte
+        try makeSparseFile(at: path, byteCount: byteCount)
+        let start = try Self.physicalFootprint()
+        var peak = start
+        var total = 0
+
+        try LocalFileSystem().readChunks(at: path, chunkSize: Self.mebibyte) { chunk in
+            total += chunk.count
+            if total % (32 * Self.mebibyte) == 0 { peak = max(peak, try Self.physicalFootprint()) }
+        }
+
+        #expect(total == byteCount)
+        // 조각이 autorelease 로 루프 끝까지 남으면 읽은 만큼(512 MiB 가까이) 는다.
+        // 병렬로 도는 다른 테스트 몫은 넉넉히 둔다.
+        #expect(peak - start < UInt64(128 * Self.mebibyte))
+    }
+
+    /// 지금 프로세스의 물리 메모리 사용량(phys_footprint). 최고점(`ru_maxrss`)이 아니라 현재 값이라
+    /// 앞서 돈 테스트가 남긴 최고점에 가려지지 않는다.
+    private static func physicalFootprint() throws -> UInt64 {
+        var info = rusage_info_v4()
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                proc_pid_rusage(getpid(), RUSAGE_INFO_V4, $0)
+            }
+        }
+        guard result == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EINVAL) }
+        return info.ri_phys_footprint
+    }
+
     private func makeProject() throws -> String {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("cartograph-bounded-read-\(UUID().uuidString)").path
