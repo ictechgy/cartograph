@@ -13,7 +13,7 @@ inputs:
     required: false
     default: check
   args:
-    description: "Extra arguments for the command, for example --since origin/main --limit 500. Globs are not expanded."
+    description: "Extra arguments, for example --since origin/main --limit 500. Quotes group words; no expansion."
     required: false
     default: ""
   version:
@@ -184,15 +184,39 @@ runs:
         mkdir -p "$(dirname "$INPUT_SARIF")"
         # A failed invocation must not upload a report left by an earlier run.
         rm -f -- "$INPUT_SARIF"
+        # Split args with shell-like quoting (Python shlex, as the GitLab component does) but never run a shell:
+        # nothing is expanded or globbed, so --include/--exclude patterns and quoted values reach the CLI as written.
+        arguments_file="$(mktemp "${RUNNER_TEMP:-/tmp}/cartograph-args.XXXXXX")"
+        parsed=0
+        python3 -I - "$arguments_file" <<'PY' || parsed=$?
+        import os, shlex, sys
+        try:
+            arguments = shlex.split(os.environ.get("INPUT_ARGS", ""))
+        except ValueError as error:
+            print(f"::error::args cannot be split into words ({error}); close every quote, escape a final backslash.")
+            sys.exit(64)
+        with open(sys.argv[1], "wb") as output:
+            output.write(b"".join(os.fsencode(argument) + b"\0" for argument in arguments))
+        PY
+        arguments=()
+        while IFS= read -r -d '' argument; do arguments+=("$argument"); done < "$arguments_file"
+        rm -f -- "$arguments_file"
+        case "$parsed" in
+          0) ;;
+          64)
+            echo "exit-code=64" >> "$GITHUB_OUTPUT"
+            exit 64
+            ;;
+          *)
+            echo "::error::python3 could not split args (exit $parsed); the action needs python3 on the runner."
+            exit 2
+            ;;
+        esac
         # Findings are expected to exit 1; the final step decides whether that fails the job.
         set +e
-        # Split args into words but never glob them, so --include/--exclude patterns reach the CLI as written.
-        set -f
-        # shellcheck disable=SC2086 — word splitting of the workflow-author controlled args is intended.
         "$CARTOGRAPH_BINARY" "$INPUT_COMMAND" --project "$INPUT_PROJECT" \
-          "${strict[@]}" --report-format sarif --output "$INPUT_SARIF" --quiet $INPUT_ARGS
+          "${strict[@]}" --report-format sarif --output "$INPUT_SARIF" --quiet "${arguments[@]}"
         code=$?
-        set +f
         set -e
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
         if { [ "$code" = "0" ] || [ "$code" = "1" ]; } && [ -s "$INPUT_SARIF" ]; then

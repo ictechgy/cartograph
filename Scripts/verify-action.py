@@ -152,6 +152,48 @@ def check_literal_globs(gate, environment, root):
                         "--output", environment["INPUT_SARIF"], "--quiet", "--exclude", "Tests/**"], received
 
 
+def gate_arguments(gate, environment, root, arguments):
+    # args만 바꿔 게이트를 돌리고, 스텁이 받은 인자 중 액션이 붙인 앞부분을 뺀 나머지를 돌려준다.
+    argv, output = root / "argv", root / "outputs"
+    argv.unlink(missing_ok=True)
+    output.write_text("")
+    result = execute(gate, {**environment, "INPUT_ARGS": arguments, "INPUT_FAIL_ON_FINDINGS": "false",
+                            "STUB_ARGV": str(argv), "GITHUB_OUTPUT": str(output)}, cwd=root)
+    managed = ["check", "--project", environment["INPUT_PROJECT"], "--report-format", "sarif",
+               "--output", environment["INPUT_SARIF"], "--quiet"]
+    assert not list(root.glob("cartograph-args.*")), "the parsed args file was left behind"
+    if not argv.exists():
+        return result, None
+    received = argv.read_text().split("\0")[:-1]
+    assert received[:len(managed)] == managed, received
+    return result, received[len(managed):]
+
+
+def check_quoted_arguments(gate, environment, root):
+    # 따옴표는 공백 든 값을 한 인자로 묶고 빈 값도 남긴다. 셸은 돌지 않으므로 $·명령 치환·백틱은 글자 그대로 간다.
+    marker = root / "expanded"
+    arguments = (f'--exclude "Tests/UI Tests/**" --limit\n5 --since \'a b\' "" $HOME '
+                 f'$(touch {marker}) `touch {marker}` it\\\'s')
+    result, received = gate_arguments(gate, environment, root, arguments)
+    assert result.returncode == 0, result.stderr
+    assert received == ["--exclude", "Tests/UI Tests/**", "--limit", "5", "--since", "a b", "", "$HOME",
+                        "$(touch", f"{marker})", "`touch", f"{marker}`", "it's"], received
+    assert not marker.exists(), "args were evaluated by a shell"
+
+
+def check_unparsable_arguments(gate, environment, root):
+    # 닫히지 않은 인용이나 끝의 백슬래시는 어디서 끊을지 알 수 없다. 추측해 실행하지 않고 사용 오류 64로 끝낸다.
+    sarif = Path(environment["INPUT_SARIF"])
+    for arguments in ('--exclude "Tests', "--limit 5 \\", "--message it's"):
+        sarif.write_text("STALE REPORT")
+        result, received = gate_arguments(gate, environment, root, arguments)
+        assert result.returncode == 64, (arguments, result)
+        assert received is None, f"the CLI ran with unparsable args {received}"
+        assert "exit-code=64" in (root / "outputs").read_text().splitlines(), arguments
+        assert "::error::args" in result.stdout, result.stdout
+        assert not sarif.exists(), "stale SARIF survived unparsable args"
+
+
 def write_archive(path, members):
     # (이름, 링크 대상, 내용) 목록으로 릴리스 압축 파일을 만들고 SHA-256을 돌려준다.
     with tarfile.open(path, "w:gz") as archive:
@@ -309,7 +351,7 @@ def main():
             env = {"CARTOGRAPH_BINARY": str(binary), "INPUT_COMMAND": "check", "INPUT_ARGS": "",
                    "INPUT_PROJECT": str(root), "INPUT_SARIF": str(sarif),
                    "INPUT_FAIL_ON_FINDINGS": str(strict).lower(), "GITHUB_OUTPUT": str(output),
-                   "STUB_CODE": str(code), "WRITE_REPORT": str(writes).lower(),
+                   "RUNNER_TEMP": str(root), "STUB_CODE": str(code), "WRITE_REPORT": str(writes).lower(),
                    "STUB_REPORT": json.dumps({"version": "2.1.0", "runs": [{"results": [{"locations": [
                        {"physicalLocation": {"artifactLocation": {"uri": "Sources/Space%20%23Thing.swift"}}},
                        {"physicalLocation": {"artifactLocation": {"uri": "file:///already/absolute.swift"}}},
@@ -334,9 +376,11 @@ def main():
         assert result.returncode == 2
         check_planted_module(gate, env, root)
         check_literal_globs(gate, env, root)
+        check_quoted_arguments(gate, env, root)
+        check_unparsable_arguments(gate, env, root)
         downloads = check_downloads(root)
-    print(f"PASS: {count} action outcomes plus unsupported-command, planted-module and literal-glob checks, "
-          f"and {downloads} download and token-scope cases")
+    print(f"PASS: {count} action outcomes plus unsupported-command, planted-module, literal-glob, quoted-args and "
+          f"unparsable-args checks, and {downloads} download and token-scope cases")
 
 
 if __name__ == "__main__":

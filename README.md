@@ -1822,7 +1822,7 @@ the archive itself. Marketplace's default
 | Input | Default | Meaning |
 |---|---|---|
 | `command` | `check` | `check` (dead + cycles + rules together), `dead`, `cycles` or `rules` |
-| `args` | — | Extra arguments, for example `--limit 500` |
+| `args` | — | Extra arguments, for example `--limit 500`, split with shell-like quoting and never expanded |
 | `version` | `latest` | Release tag to download, or `latest` for the newest release (logged as a notice) |
 | `sha256` | — | SHA-256 of `cartograph-<version>-macos-universal.tar.gz`; any other archive fails the step |
 | `binary` | — | Path to an existing binary; skips the download |
@@ -1847,8 +1847,13 @@ With `version: latest` the action logs a notice naming the release it used. The 
 `GH_TOKEN` only to the step that reads the release; the downloaded binary first runs, as
 `--version`, in a step without it.
 
-`action-v1.0.0` predates these checks: it runs the downloaded binary unverified and has no `sha256`
-input.
+`args` is split into words with shell-like quoting (Python `shlex`, as in the GitLab component),
+but no shell evaluates it: `$`, backticks and glob characters stay literal, and
+`--exclude "UI Tests/**"` reaches the CLI as one pattern. An unclosed quote or a trailing backslash
+ends the step with `exit-code` `64` before the CLI runs.
+
+`action-v1.0.0` predates these checks: it runs the downloaded binary unverified, has no `sha256`
+input, and leaves `args` to the shell's word splitting and globbing.
 
 The `action-v1.0.0` action rejects unexpected exit codes and missing reports, and never uploads a
 report left by an earlier invocation. These fixes are not part of the existing `0.20.0` action tag.
