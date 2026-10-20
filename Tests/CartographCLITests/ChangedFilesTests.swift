@@ -373,6 +373,37 @@ struct ChangedFilesTests {
         #expect(markerCount(in: markers) == 0)
     }
 
+    @Test("이름이 빈 필터 드라이버([filter \"\"])도 racy 추적 파일에서 실행하지 않는다")
+    func doesNotRunEmptyNamedFilterOnRacyEntries() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = try makeMarkerDirectory()
+        defer { try? FileManager.default.removeItem(at: markers) }
+        try write("let a = 1", to: "Sources/A.swift", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        try makeRacy(["Sources/A.swift"], in: root)
+        // 키 `filter..clean` 은 `[filter ""]` 절이고, 값이 빈 속성 `filter=` 가 이 드라이버를 고른다.
+        try run(["config", "filter..clean", "touch '\(markers.path)/empty'; cat"], in: root)
+        try "* filter=\n".write(
+            to: root.appendingPathComponent(".git/info/attributes"), atomically: true, encoding: .utf8)
+
+        for includingDeleted in [false, true] {
+            _ = try ChangedFiles.since("HEAD", workingDirectory: root.path, includingDeleted: includingDeleted)
+        }
+        #expect(markerCount(in: markers) == 0)
+    }
+
+    @Test("설정 키에서 드라이버 이름을 떼어 낸다(빈 이름과 점 든 이름 포함)")
+    func extractsDriverNamesFromConfigKeys() {
+        #expect(ChangedFiles.driverName(fromConfigKey: "filter.evil.clean") == "evil")
+        #expect(ChangedFiles.driverName(fromConfigKey: "filter.deep.name.process") == "deep.name")
+        #expect(ChangedFiles.driverName(fromConfigKey: "filter..smudge") == "")
+        // 부분절이 없는 `[filter] clean = …` 은 git 이 드라이버로 쓰지 않는다.
+        #expect(ChangedFiles.driverName(fromConfigKey: "filter.clean") == nil)
+        #expect(ChangedFiles.driverName(fromConfigKey: "diff.evil.textconv") == nil)
+    }
+
     @Test("분석 대상 저장소의 clean 필터(점 든 이름 포함)를 실행하지 않는다")
     func doesNotRunContentFilters() throws {
         let root = try makeRepository()

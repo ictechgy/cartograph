@@ -90,6 +90,8 @@ enum ChangedFiles {
         // 미커밋 변경의 가장 흔한 형태인데 위 비교로는 잡히지 않는다.
         // stat 이 어긋난 추적 파일을 필터로 다시 읽지 않도록 자동 refresh 를 끈다.
         // 그 결과 내용은 같고 stat 만 바뀐 파일도 변경으로 센다(보수적 상위집합).
+        // stat 은 맞지만 인덱스 파일보다 새로운 racy 항목은 refresh 를 꺼도 내용을 다시 읽으므로
+        // 필터 무력화가 여전히 필요하다.
         let uncommitted = try lines(
             of: diffArguments(comparedTo: "HEAD", includingDeleted: includingDeleted, againstWorkingTree: true),
             in: workingDirectory,
@@ -176,11 +178,16 @@ enum ChangedFiles {
 
     /// `filter.<이름>.<clean|smudge|process>` 설정 키에서 드라이버 이름만 떼어 낸다.
     /// 이름에는 점이 들어갈 수 있으므로 `filter.` 접두와 마지막 `.` 사이 전체가 이름이다.
+    ///
+    /// 그 사이가 비어도(`filter..clean`, 설정 파일의 `[filter ""]`) 이름이 빈 드라이버다. 값이 빈 속성
+    /// `filter=` 가 이 드라이버를 고르고 git 은 그 명령을 실행하므로, 빈 이름도 돌려주어 무력화한다
+    /// (`-c filter..clean=` 이 그 드라이버를 덮는다). 부분절이 없는 `filter.clean` 은 git 이 드라이버로
+    /// 쓰지 않으므로 nil 이다.
     static func driverName(fromConfigKey key: String) -> String? {
         let prefix = "filter."
         guard key.hasPrefix(prefix), let lastDot = key.lastIndex(of: ".") else { return nil }
         let nameStart = key.index(key.startIndex, offsetBy: prefix.count)
-        guard nameStart < lastDot else { return nil }
+        guard nameStart <= lastDot else { return nil }
         return String(key[nameStart..<lastDot])
     }
 

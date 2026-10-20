@@ -68,6 +68,28 @@ struct GitRevisionTests {
         #expect((try? FileManager.default.contentsOfDirectory(atPath: markers.path).count) == 0)
     }
 
+    @Test("이름이 빈 필터 드라이버([filter \"\"])도 깨끗함 판정 중에 실행하지 않는다")
+    func cleanCheckDoesNotRunEmptyNamedFilter() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cartograph-rev-marker-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: markers, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: markers) }
+        try write("let a = 1", to: "App/Sources/A.swift", in: root)
+        try git(["add", "-A"], in: root)
+        try git(["commit", "-qm", "base"], in: root)
+        // 키 `filter..clean` 은 `[filter ""]` 절이고, 값이 빈 속성 `filter=` 가 이 드라이버를 고른다.
+        try git(["config", "filter..clean", "touch '\(markers.path)/empty'; cat"], in: root)
+        try "* filter=\n".write(
+            to: root.appendingPathComponent(".git/info/attributes"), atomically: true, encoding: .utf8)
+        // 같은 내용을 새 inode 로 다시 써 stat 을 어긋나게 한다. status 의 refresh 가 이 파일을 다시 읽는다.
+        try write("let a = 1", to: "App/Sources/A.swift", in: root)
+
+        _ = GitRevision.cleanHead(projectPath: root.appendingPathComponent("App").path)
+        #expect((try? FileManager.default.contentsOfDirectory(atPath: markers.path).count) == 0)
+    }
+
     @Test("정규화 필터로 내용이 바뀌던 파일이 있으면 깨끗하다고 주장하지 않는다")
     func normalizingFilterMakesHeadUnavailable() throws {
         // clean 이 내용을 바꾸던 파일은 필터를 끈 채 비교하면 저장된 blob 과 달라 보인다.
