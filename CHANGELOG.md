@@ -208,7 +208,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   project. Responses are unchanged. Each response in a generation carries the limitations counted
   for that generation, the same list as its `session` envelope, so an edit made inside the
   freshness window shows up as `index-staleness` once the session re-verifies or after
-  `refresh: true`.
+  `refresh: true`. The exception is the index store's own modification time, which the input
+  fingerprint does not cover: when it moves within a generation, responses count their
+  limitations again and can differ from the envelope until the next generation.
 - `impact --format language-traversal` hashes `graphRevision` by streaming the same bytes into
   SHA-256 instead of building the sorted rows and their JSON encoding in memory, and
   `runtime plan` and `runtime check` encode the graph for `graphFingerprint` 4,096 nodes or edges

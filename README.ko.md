@@ -935,7 +935,10 @@ limit을 받으며 진단이 잘려도 전체 발견 수를 보고합니다.
 한 세대 안에서는 분석 한계, `cartograph_check` 결과, `cartograph_impact`·`cartograph_affected`가 쓰는
 테스트 생명주기와 이름·파일 색인을 한 번만 만들어 재사용합니다. 그래서 모든 응답은 그 세대에서 센
 한계를 `session` 봉투와 같은 목록으로 싣고, 재검증 창 안에서 한 편집은 세션이 다시 검증하면(또는
-`refresh: true` 직후) `index-staleness`로 나타납니다.
+`refresh: true` 직후) `index-staleness`로 나타납니다. 예외는 인덱스 스토어 자체의 수정 시각입니다.
+입력 지문은 이 시각을 보지 않으므로, 세대 안에서 이 시각이 바뀌면(스토어 루트에 항목이 생기거나
+재검증 창 안에서 다시 빌드한 경우) 응답이 한계를 다시 세어 다음 세대까지 봉투와 다를 수
+있습니다(예: `index-staleness`나 `external-retentions-stale` 항목).
 
 ### `runtime` — 연결 자동 발견과 실행 근거 수집
 

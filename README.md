@@ -963,7 +963,11 @@ Within one generation the analysis limitations, the `cartograph_check` result an
 lifecycle and name/file indexes behind `cartograph_impact` and `cartograph_affected` are computed
 once and reused. Every response therefore carries the limitations counted for its generation, the
 same list as its `session` envelope, so an edit made inside the freshness window shows up as
-`index-staleness` once the session re-verifies, or right after `refresh: true`.
+`index-staleness` once the session re-verifies, or right after `refresh: true`. The index store's
+own modification time is the exception: the input fingerprint does not cover it, so when it moves
+within a generation (an entry added at the store root, or a rebuild inside the freshness window),
+responses count their limitations again and can differ from the envelope, for example by an
+`index-staleness` or `external-retentions-stale` entry, until the next generation.
 
 ### `runtime` — discover connections and collect execution evidence
 
