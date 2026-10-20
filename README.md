@@ -105,8 +105,8 @@ swift package cartograph graph --format mermaid > graph.mmd
 ```
 
 It has to be `revision:`, not `from:`. Cartograph depends on `indexstore-db`, which publishes no
-semantic-version tags and is pinned to a release branch, and SwiftPM refuses to resolve a
-stable-version dependency whose own dependency is unstable:
+semantic-version tags and is pinned to a commit on its `release/6.4.1` branch, and SwiftPM refuses
+to resolve a stable-version dependency whose own dependency is unstable:
 
 ```
 error: … package 'cartograph' is required using a stable-version but 'cartograph'
@@ -119,6 +119,14 @@ to save output. Commands that write files themselves — `--output`/`-o`, `basel
 `skill` and `init` — cannot write inside the package directory unless that run allows it:
 `swift package --allow-writing-to-package-directory cartograph baseline`. SwiftPM also reports every
 plugin failure as exit code 1, so this path tells success from failure only; see [CI](#ci).
+
+Because the `indexstore-db` pin is a commit, not a branch, every project on the same Cartograph tag
+builds the `indexstore-db` that tag was tested with, with or without its own `Package.resolved`.
+`swift-lmdb`, which `indexstore-db` itself requires by its `release/6.4.x` branch, still resolves to
+that branch's head; commit your `Package.resolved` to hold it. SwiftPM cannot resolve one package
+required at two different revisions, so a graph in which another dependency asks for `indexstore-db`
+by a branch or by another commit fails with "indexstore-db is required using two different
+revision-based requirements".
 
 **From source:**
 

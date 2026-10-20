@@ -32,8 +32,16 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.1.0"),
         // indexstore-db 는 semver 태그를 제공하지 않고 Swift 릴리스에 맞춰 브랜치를 관리한다.
-        // 로컬 툴체인(Swift 6.4)과 인덱스 스토어 포맷을 맞추기 위해 릴리스 브랜치를 고정한다.
-        .package(url: "https://github.com/swiftlang/indexstore-db.git", branch: "release/6.4.1"),
+        // 툴체인(Swift 6.4)과 인덱스 스토어 포맷을 맞추려고 release/6.4.1 의 커밋을 브랜치 대신 고정한다.
+        // 의존 패키지의 Package.resolved 는 소비자 해석에 쓰이지 않아, 브랜치로 두면 같은 Cartograph
+        // 태그를 쓰는 소비자도 해석 시점의 브랜치 머리로 빌드된다. 툴체인을 올릴 때 Package.resolved 와 함께
+        // 의도적으로 올린다(`swift package resolve`). 전이 의존 swift-lmdb 는 indexstore-db 매니페스트가
+        // 브랜치로 요구하므로 여기서 고정하지 않는다. 한 패키지를 서로 다른 revision 으로 요구하면
+        // SwiftPM 이 해석하지 못한다.
+        .package(
+            url: "https://github.com/swiftlang/indexstore-db.git",
+            revision: "64aa0b26913249c4e7c21d351a215fba02702003"
+        ),
         .package(url: "https://github.com/swiftlang/swift-syntax.git", "600.0.0" ..< "605.0.0"),
     ],
     targets: [

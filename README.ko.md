@@ -113,8 +113,8 @@ swift package cartograph graph --format mermaid > graph.mmd
 ```
 
 `from:`이 아니라 `revision:`이어야 합니다. Cartograph는 `indexstore-db`에 의존하는데, 그쪽은
-semver 태그를 붙이지 않아 릴리스 브랜치로 고정돼 있습니다. SwiftPM은 안정 버전을 요구받은
-패키지가 불안정 버전 패키지에 의존하는 것을 거부합니다.
+semver 태그를 붙이지 않아 `release/6.4.1` 브랜치의 커밋 하나로 고정돼 있습니다. SwiftPM은
+안정 버전을 요구받은 패키지가 불안정 버전 패키지에 의존하는 것을 거부합니다.
 
 ```
 error: … package 'cartograph' is required using a stable-version but 'cartograph'
@@ -128,6 +128,13 @@ depends on an unstable-version package 'indexstore-db'.
 디렉터리에 쓰지 못합니다: `swift package --allow-writing-to-package-directory cartograph baseline`.
 또 SwiftPM은 플러그인 실패를 모두 종료 코드 1로 알리므로, 이 경로에서는 성공과 실패만 구분됩니다.
 [CI](#ci)를 보세요.
+
+`indexstore-db`를 브랜치가 아니라 커밋으로 고정하므로, 같은 Cartograph 태그를 쓰는 프로젝트는
+자기 `Package.resolved`가 있든 없든 그 태그가 검증한 `indexstore-db`로 빌드됩니다. `indexstore-db`가
+`release/6.4.x` 브랜치로 요구하는 `swift-lmdb`는 여전히 그 브랜치의 머리로 해석되므로, 고정하려면
+`Package.resolved`를 커밋하세요. SwiftPM은 한 패키지를 서로 다른 revision으로 요구하는 그래프를
+해석하지 못합니다. 다른 의존성이 `indexstore-db`를 브랜치나 다른 커밋으로 요구하면 "indexstore-db is
+required using two different revision-based requirements"로 해석이 실패합니다.
 
 **소스에서 빌드:**
 

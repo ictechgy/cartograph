@@ -8,7 +8,12 @@ Thanks for taking the time. This document covers what you need to build, test an
 - A Swift toolchain compatible with the pinned dependencies (development uses Swift 6.4)
 
 `indexstore-db` has no semantic version tags — it tracks Swift releases on branches. `Package.swift`
-pins `release/6.4.1`. CI selects the newest Xcode installed on its runner and verifies the compiler
+pins one commit of `release/6.4.1` with `revision:`, not the branch: SwiftPM ignores a dependency's
+`Package.resolved`, so a branch would hand every consumer whatever the branch held the day they
+resolved. Move the commit on purpose, with the toolchain: change it in `Package.swift`, run
+`swift package resolve` (`swift package update` would move the other dependencies too), and commit
+`Package.resolved`, which must record the same commit (`PackageManifestTests` checks both files).
+CI selects the newest Xcode installed on its runner and verifies the compiler
 fixtures on that toolchain; it is not a fixed multi-version compatibility matrix. When you move the
 pin, delete any cached index database (`$TMPDIR/cartograph-index-db`): the
 index format is backward-compatible but never forward-compatible, so a newer store read with an

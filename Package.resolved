@@ -1,12 +1,11 @@
 {
-  "originHash" : "349dba6bb05a8bfb1a6d605e868e6d9e558786c2a4f57dd0d787cb81d60abf54",
+  "originHash" : "d6b4e8d88010836fc10ea7bf520963cc906b1bbb3d178ee8d1f7c54886c09d2a",
   "pins" : [
     {
       "identity" : "indexstore-db",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/indexstore-db.git",
       "state" : {
-        "branch" : "release/6.4.1",
         "revision" : "64aa0b26913249c4e7c21d351a215fba02702003"
       }
     },
