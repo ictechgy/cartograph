@@ -1110,6 +1110,7 @@ public struct CartographService: Sendable {
                 }
             }
             if unreadable > 0 { limitations.append("unreadable-sources: \(unreadable) Swift source(s) could not be read; native emissions may be absent") }
+            limitations += externalDirectoryLinkLimitations(inventory)
             for reason in unsupportedScopes.keys.sorted() {
                 limitations.append("unattributed-event-emits: \(unsupportedScopes[reason]!) source scope(s) were not scanned (\(reason))")
             }
@@ -1170,6 +1171,7 @@ public struct CartographService: Sendable {
         if unreadable > 0 {
             extraLimitations.append("unreadable-sources: \(unreadable) file(s) could not be read and were skipped")
         }
+        extraLimitations += externalDirectoryLinkLimitations(inventory)
         if ffiInteropSources > 0 {
             extraLimitations.append(
                 "unscanned-ffi-interop: \(ffiInteropSources) native source file(s) contain FFI/Dart C API evidence outside channel join coverage"
@@ -1391,6 +1393,7 @@ public struct CartographService: Sendable {
         if unreadable > 0 {
             limitations.append("unreadable-sources: \(unreadable) file(s) could not be read and were skipped")
         }
+        limitations += externalDirectoryLinkLimitations(inventory)
         if unjoinedDynamic > 0 {
             limitations.append(
                 "unjoined-dynamic-relations: \(unjoinedDynamic) SQL argument(s) or relation operand(s) "
@@ -1812,6 +1815,16 @@ public struct CartographService: Sendable {
         ProjectFileInventory(
             fileSystem: environment.fileSystem, projectPath: projectPath, pathFilter: configuration.pathFilter
         )
+    }
+
+    /// 교환 문서(routes·bridges·schema)에 싣는 루트 밖 디렉터리 링크 한계. 링크가 없으면 비어 있다.
+    ///
+    /// 이 문서들도 같은 inventory 로 소스를 읽으므로 링크 뒤의 사실이 빠진다. 분석 응답과 같은 문장으로
+    /// 알려야 소비자가 "사실 없음"과 "읽지 않음"을 가른다.
+    func externalDirectoryLinkLimitations(_ inventory: ProjectFileInventory) -> [String] {
+        AnalysisLimitationCollector.externalDirectoryLinkLimitation(
+            inventory.externalDirectoryLinks, projectPath: projectPath
+        ).map { [$0] } ?? []
     }
 
     private func describe(_ graph: CodeGraph) -> String {

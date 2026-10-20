@@ -253,12 +253,18 @@ extension FileSystem {
     ///   - onDiscardedLink: 같은 파일을 가리켜 버려진 심볼릭 링크 경로마다
     ///     부른다. 결과 목록에는 안 들어가지만, 링크가 재지정되면 목록이
     ///     달라지므로 캐시하는 호출자는 이 경로들도 검증 대상에 넣어야 한다.
+    ///   - onExternalDirectoryLink: 걷기 루트 밖을 가리켜 내려가지 않은 디렉터리
+    ///     심볼릭 링크 경로마다 부른다. 루트 밖 트리는 분석 대상이 아니다 — 링크
+    ///     하나로 파일 시스템 전체를 걷고 남의 소스를 결과에 섞는다. 링크가 루트
+    ///     안으로 재지정되면 목록이 달라지므로 캐시하는 호출자는 이 경로들도
+    ///     검증 대상에 넣어야 한다. 파일 링크는 지금처럼 결과에 담는다.
     public func recursiveFiles(
         under root: String,
         isIncluded: (String) -> Bool,
         shouldDescend: (String) -> Bool = { _ in true },
         onDirectory: (String) -> Void = { _ in },
-        onDiscardedLink: (String) -> Void = { _ in }
+        onDiscardedLink: (String) -> Void = { _ in },
+        onExternalDirectoryLink: (String) -> Void = { _ in }
     ) -> [String] {
         guard directoryExists(at: root) else {
             return fileExists(at: root) && isIncluded(root) ? [root] : []
@@ -299,7 +305,16 @@ extension FileSystem {
                         : directory.key + "/" + (entry.path as NSString).lastPathComponent
                 }
                 if entry.isDirectory {
-                    if shouldDescend(entry.path) { pending.append((entry.path, visitKey())) }
+                    guard shouldDescend(entry.path) else { continue }
+                    let key = visitKey()
+                    // 링크 대상이 루트 밖이면 내려가지 않는다. `vendor -> /` 하나가 디스크 전체를
+                    // 열거하게 만들고 그 소스의 경로·문자열이 분석 출력에 섞였다. 링크가 아닌
+                    // 항목은 부모가 루트 안이면 그대로 안이므로 링크만 판정한다.
+                    guard !entry.isSymbolicLink || isPath(key, within: resolvedRoot) else {
+                        onExternalDirectoryLink(entry.path)
+                        continue
+                    }
+                    pending.append((entry.path, key))
                 } else if entry.isRegularFile, isIncluded(entry.path) {
                     // 끊어진 심볼릭 링크는 일반 파일이 아니다. 그것을 소스 파일로 세면
                     // 읽는 쪽에서 실패하거나 유령 정점이 된다.
@@ -316,6 +331,14 @@ extension FileSystem {
         }
         return result.sorted()
     }
+}
+
+/// `path` 가 `root` 이거나 그 아래인지. 둘 다 같은 수준(realpath)으로 푼 철자라야 한다.
+///
+/// 접두사만 보면 `/p/App` 이 `/p/AppExtras` 를 품는 것으로 읽히므로 경계 `/` 까지 맞춘다. 루트가
+/// `/` 면 그 자체가 경계이고, 거기에 `/` 를 더한 `//` 로 비교하면 어떤 경로도 안이 아니게 된다.
+private func isPath(_ path: String, within root: String) -> Bool {
+    path == root || path.hasPrefix(root == "/" ? "/" : root + "/")
 }
 
 extension FileSystem {

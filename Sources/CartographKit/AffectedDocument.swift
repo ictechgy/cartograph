@@ -336,9 +336,11 @@ extension AffectedDocument {
         }
         // 읽지 못한 파일은 런타임 경계 자체를 만들지 못한다. 경계 경고만 확인하면
         // 그런 파일의 테스트를 빠뜨린 채 부분 선택자를 내보내므로 소스 범위도 확인한다.
+        // 따라가지 않은 루트 밖 디렉터리 링크 뒤의 테스트도 그래프에 없어 같은 방식으로 빠진다.
         let coverageGaps = [
             "empty-index:", "index-staleness:", "unindexed-sources:", "missing-sources:",
             "unreadable-sources:", "header-projection:", "configured-path-filter:", "configured-edge-kinds:",
+            "symlinked-directories-outside-root:",
         ]
         if limitations.contains(where: { limitation in coverageGaps.contains { limitation.hasPrefix($0) } }) {
             return "Source/index coverage is incomplete; additional tests may reach this change."

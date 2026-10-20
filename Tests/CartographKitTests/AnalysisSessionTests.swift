@@ -1006,6 +1006,44 @@ struct AnalysisSessionTests {
         #expect(second.generation == first.generation + 1)
     }
 
+    @Test("따라가지 않은 루트 밖 디렉터리 링크도 감시해 루트 안으로 재지정하면 새 세대와 한계를 만든다")
+    func externalDirectoryLinkRetargetInvalidatesWalk() throws {
+        let parent = try makeTemporaryProject()
+        defer {
+            do { try FileManager.default.removeItem(atPath: parent) } catch {
+                Issue.record("임시 디렉터리를 지우지 못했다: \(error)")
+            }
+        }
+        let root = parent + "/root"
+        let outside = parent + "/outside"
+        let mid = parent + "/mid"
+        let fileSystem = CountingLocalFileSystem()
+        try fileSystem.write(text: "struct App {}", to: root + "/F.m")
+        try fileSystem.write(text: "struct Inner {}", to: root + "/Inner/G.m")
+        try fileSystem.write(text: "unit", to: root + "/index-store/v5/units/App-unit")
+        try fileSystem.write(text: "struct Outside {}", to: outside + "/X.m")
+        // vendor 는 mid 를 거쳐 루트 밖을 가리킨다. mid 만 바꾸면 루트의 디렉터리 구성은 그대로다.
+        try FileManager.default.createSymbolicLink(atPath: mid, withDestinationPath: outside)
+        try FileManager.default.createSymbolicLink(atPath: root + "/vendor", withDestinationPath: mid)
+        let session = try AnalysisSession(
+            service: makeLocalService(fileSystem: fileSystem, project: root, source: root + "/F.m")
+        )
+        let first = try session.status()
+        #expect(first.limitations.contains { $0.hasPrefix("symlinked-directories-outside-root: 1 ") })
+        // 구조가 그대로면 링크 지문만 확인하고 탐색 결과를 재사용한다.
+        let settled = fileSystem.directoryEnumerations
+        #expect(try session.status().generation == first.generation)
+        #expect(fileSystem.directoryEnumerations == settled)
+
+        // mid 를 루트 안 Inner 로 옮기면 vendor 는 이미 본 디렉터리를 가리킨다. 탐색한 소스 목록은 같아도
+        // 따라가지 않은 링크가 사라졌으므로 세대가 바뀌어야 낡은 한계를 다시 싣지 않는다.
+        try FileManager.default.removeItem(atPath: mid)
+        try FileManager.default.createSymbolicLink(atPath: mid, withDestinationPath: root + "/Inner")
+        let second = try session.status()
+        #expect(second.generation == first.generation + 1)
+        #expect(!second.limitations.contains { $0.hasPrefix("symlinked-directories-outside-root:") })
+    }
+
     @Test("일시적으로 열거에 실패한 디렉터리가 낀 탐색 결과는 캐시하지 않는다")
     func transientEnumerationFailureIsNotCached() throws {
         let root = try makeTemporaryProject()

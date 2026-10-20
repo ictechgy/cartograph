@@ -319,6 +319,57 @@ struct AnalysisLimitationCollectorTests {
         #expect(!metricsOutput.contains("\"limitations\""))
     }
 
+    @Test("루트 밖 디렉터리 링크는 수와 프로젝트 상대 경로로 알리고 링크가 없으면 조용하다")
+    func externalDirectoryLinksAreReported() throws {
+        let fixture = try ExternalDirectoryLinkFixture(
+            inside: ["Sources/App/App.swift": "struct App {}"], outside: ["Vendor.swift": "struct Vendor {}"]
+        )
+        defer { fixture.remove() }
+        let fileSystem = LocalFileSystem()
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = fixture.root
+        let inventory = ProjectFileInventory(
+            fileSystem: fileSystem, projectPath: fixture.root, pathFilter: configuration.pathFilter
+        )
+        func collect(_ shared: ProjectFileInventory?) -> [String] {
+            AnalysisLimitationCollector(
+                configuration: configuration, fileSystem: fileSystem, projectPath: fixture.root,
+                storeDate: nil, inventory: shared
+            ).collect(context: nil, symbolGraph: nil, emptyIndexCounts: nil)
+        }
+
+        // inventory 를 넘긴 수집과 스스로 걷는 수집이 같은 답을 낸다.
+        for shared in [inventory, nil] {
+            let warning = try #require(collect(shared).first { $0.hasPrefix("symlinked-directories-outside-root:") })
+            #expect(warning.hasPrefix("symlinked-directories-outside-root: 1 directory symlink(s) "))
+            let encoded = try #require(warning.components(separatedBy: "; paths: ").last)
+            #expect(try JSONDecoder().decode([String].self, from: Data(encoded.utf8))
+                == [ExternalDirectoryLinkFixture.linkPath])
+        }
+        try FileManager.default.removeItem(atPath: fixture.root + "/" + ExternalDirectoryLinkFixture.linkPath)
+        #expect(!collect(nil).contains { $0.hasPrefix("symlinked-directories-outside-root:") })
+    }
+
+    @Test("query 답의 limitations 에도 따라가지 않은 루트 밖 디렉터리 링크가 실린다")
+    func queryCarriesExternalDirectoryLinks() throws {
+        let fixture = try ExternalDirectoryLinkFixture(
+            inside: ["Sources/App/App.swift": "struct App {}"], outside: ["Vendor.swift": "struct Vendor {}"]
+        )
+        defer { fixture.remove() }
+        var builder = SnapshotBuilder()
+        let app = try LocalFileSystem().realPath(at: fixture.root + "/Sources/App/App.swift")
+        builder.symbol("App", kind: .structType, path: app, attributes: [.entryPoint])
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = fixture.root
+        let service = CartographService(configuration: configuration, environment: CartographEnvironment(
+            indexProviderOverride: StaticIndexProvider(builder.build()), usesSyntaxCache: false
+        ))
+
+        let document = try service.queryDocument(symbol: "App")
+
+        #expect(document.limitations.contains { $0.hasPrefix("symlinked-directories-outside-root: 1 ") })
+    }
+
     private func collector(_ fileSystem: any FileSystem, storeDate: Date? = nil) -> AnalysisLimitationCollector {
         var config = CartographConfiguration.default
         config.projectPath = "/p"

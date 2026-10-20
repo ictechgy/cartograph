@@ -226,6 +226,110 @@ struct SymlinkTraversalTests {
         #expect(files == [expected])
     }
 
+    @Test("걷기 루트 밖을 가리키는 디렉터리 링크는 따라가지 않는다", .timeLimit(.minutes(1)))
+    func externalDirectoryLinkIsNotFollowed() throws {
+        // `Sources/App/vendor -> /Applications/Xcode.app` 링크 하나로 디렉터리 29,831개를 걷고 루트 밖
+        // 파일 65,505개를 돌려준 것을 실측했다. 그 소스의 사실이 routes·bridges·schema·dead 출력에 섞였다.
+        let base = try Self.makeDirectory("cartograph-symlink-external")
+        defer { Self.remove(base) }
+        let root = base + "/root"
+        try Self.write("struct A {}", to: root + "/Sources/A.swift")
+        try Self.write("struct Secret {}", to: base + "/outside/deep/Secret.swift")
+        let manager = FileManager.default
+        try manager.createSymbolicLink(atPath: root + "/Sources/vendor", withDestinationPath: base + "/outside")
+        // 루트의 조상을 가리키는 링크도 루트 밖이다 — 따라가면 형제 트리 전체를 걷는다.
+        try manager.createSymbolicLink(atPath: root + "/up", withDestinationPath: base)
+        // 이름 앞부분만 같은 형제(`root` 와 `rootExtras`)는 경계 `/` 까지 맞춰야 루트 밖으로 읽힌다.
+        try Self.write("struct Sibling {}", to: base + "/rootExtras/Sibling.swift")
+        try manager.createSymbolicLink(atPath: root + "/Sources/extras", withDestinationPath: base + "/rootExtras")
+
+        let fileSystem = LocalFileSystem()
+        var external: [String] = []
+        let files = fileSystem.recursiveFiles(
+            under: root, isIncluded: { $0.hasSuffix(".swift") }, onExternalDirectoryLink: { external.append($0) }
+        )
+
+        #expect(files == [try fileSystem.realPath(at: root + "/Sources/A.swift")])
+        // 링크 철자는 실제 경로로 푼 부모 아래 이름이다 — 끝 요소(링크 자신)는 풀지 않는다.
+        let resolvedRoot = try fileSystem.realPath(at: root)
+        #expect(external.sorted() == ["/Sources/extras", "/Sources/vendor", "/up"].map { resolvedRoot + $0 })
+    }
+
+    @Test("루트 안을 가리키는 디렉터리 링크는 링크로 지정한 루트에서도 지금처럼 따라간다")
+    func internalDirectoryLinkIsFollowed() throws {
+        // 포함 판정은 링크 철자가 아니라 해석한 루트와 비교해야 한다. 루트를 `link` 로 지정해도,
+        // 임시 경로의 조상 `/var` 가 `/private/var` 로 풀려도 루트 안의 링크는 루트 안이다.
+        let base = try Self.makeDirectory("cartograph-symlink-internal")
+        defer { Self.remove(base) }
+        try Self.write("struct Generated {}", to: base + "/real/.build/Gen/G.swift")
+        let manager = FileManager.default
+        try manager.createSymbolicLink(atPath: base + "/real/Alias", withDestinationPath: base + "/real/.build/Gen")
+        try manager.createSymbolicLink(atPath: base + "/link", withDestinationPath: base + "/real")
+
+        let fileSystem = LocalFileSystem()
+        var external: [String] = []
+        // 가지치기한 `.build` 아래라도 링크 이름으로는 내려간다. 따라갔는지가 결과로 드러나는 배치다.
+        let files = fileSystem.recursiveFiles(
+            under: base + "/link", isIncluded: { $0.hasSuffix(".swift") },
+            shouldDescend: BuildArtifactDirectories.shouldDescend(into:),
+            onExternalDirectoryLink: { external.append($0) }
+        )
+
+        #expect(files == [try fileSystem.realPath(at: base + "/real/.build/Gen/G.swift")])
+        #expect(external.isEmpty)
+    }
+
+    @Test("루트 밖을 가리키는 파일 링크는 지금처럼 링크 이름으로 담는다")
+    func externalFileLinkIsKept() throws {
+        // 결정 범위는 디렉터리 링크다. 파일 링크는 세션 지문 테스트가 고정한 동작을 그대로 둔다.
+        let base = try Self.makeDirectory("cartograph-symlink-file")
+        defer { Self.remove(base) }
+        try Self.write("struct External {}", to: base + "/outside/E.swift")
+        try FileManager.default.createDirectory(atPath: base + "/root", withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            atPath: base + "/root/E.swift", withDestinationPath: base + "/outside/E.swift"
+        )
+
+        let fileSystem = LocalFileSystem()
+        var external: [String] = []
+        let files = fileSystem.recursiveFiles(
+            under: base + "/root", isIncluded: { $0.hasSuffix(".swift") },
+            onExternalDirectoryLink: { external.append($0) }
+        )
+
+        #expect(files == [try fileSystem.realPath(at: base + "/root") + "/E.swift"])
+        #expect(external.isEmpty)
+    }
+
+    @Test("루트가 / 이면 모든 디렉터리 링크가 루트 안이다")
+    func rootSlashContainsEveryLink() {
+        let fileSystem = SlashRootLinkFileSystem()
+        var external: [String] = []
+
+        let files = fileSystem.recursiveFiles(
+            under: "/", isIncluded: { $0.hasSuffix(".swift") }, onExternalDirectoryLink: { external.append($0) }
+        )
+
+        #expect(files == ["/Target/T.swift"])
+        #expect(external.isEmpty)
+    }
+
+    @Test("루트 자신을 가리키는 링크는 루트 안이라 알리지 않고 같은 파일도 한 번만 담는다")
+    func linkToRootIsNotExternal() throws {
+        let base = try Self.makeDirectory("cartograph-symlink-self")
+        defer { Self.remove(base) }
+        try Self.write("struct A {}", to: base + "/sub/A.swift")
+        try FileManager.default.createSymbolicLink(atPath: base + "/sub/up", withDestinationPath: base)
+        var external: [String] = []
+
+        let files = LocalFileSystem().recursiveFiles(
+            under: base, isIncluded: { $0.hasSuffix(".swift") }, onExternalDirectoryLink: { external.append($0) }
+        )
+
+        #expect(files.count == 1)
+        #expect(external.isEmpty)
+    }
+
     @Test("끊어진 심볼릭 링크는 파일로 세지 않는다")
     func skipsDanglingSymlinks() throws {
         // "디렉터리가 아니다"만으로 파일이라고 보면 끊어진 링크가 소스 목록에 들어와
@@ -260,4 +364,53 @@ struct SymlinkTraversalTests {
         #expect(!canonical.contains("/../"))
         #expect(LocalFileSystem.canonicalPath("/tmp/../tmp") == canonical)
     }
+
+    /// 테스트마다 따로 쓰는 임시 디렉터리. 지울 때 실패를 삼키지 않는다.
+    private static func makeDirectory(_ prefix: String) throws -> String {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("\(prefix)-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        return path
+    }
+
+    private static func remove(_ path: String) {
+        do { try FileManager.default.removeItem(atPath: path) } catch {
+            Issue.record("임시 디렉터리를 지우지 못했다: \(error)")
+        }
+    }
+
+    /// 중간 디렉터리까지 만들어 텍스트를 쓴다.
+    private static func write(_ text: String, to path: String) throws {
+        try FileManager.default.createDirectory(
+            atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true
+        )
+        try Data(text.utf8).write(to: URL(fileURLWithPath: path))
+    }
+}
+
+/// `/` 아래 디렉터리 링크 하나(`/Linked` → `/Target`)만 흉내 내는 파일 시스템.
+///
+/// 실제 `/` 는 걸을 수 없으므로 포함 판정의 `/` 경계만 본다. `/` 에 `/` 를 덧붙인 `//` 접두사로 비교하면
+/// 어떤 링크도 루트 안이 아니게 된다.
+private struct SlashRootLinkFileSystem: FileSystem {
+    func realPath(at path: String) throws -> String {
+        path == "/Linked" || path.hasPrefix("/Linked/") ? "/Target" + path.dropFirst("/Linked".count) : path
+    }
+    func fileExists(at path: String) -> Bool { path == "/Target/T.swift" }
+    func directoryExists(at path: String) -> Bool { ["/", "/Linked", "/Target"].contains(path) }
+    func readData(at path: String) throws -> Data { throw CocoaError(.fileReadNoSuchFile) }
+    func write(_ data: Data, to path: String) throws { throw CocoaError(.featureUnsupported) }
+    func contentsOfDirectory(at path: String) throws -> [String] { try directoryEntries(at: path).map(\.path) }
+    func directoryEntries(at path: String) throws -> [DirectoryEntry] {
+        switch path {
+        case "/":
+            return [DirectoryEntry(path: "/Linked", isDirectory: true, isRegularFile: false, isSymbolicLink: true)]
+        case "/Linked", "/Target":
+            return [DirectoryEntry(
+                path: "/Target/T.swift", isDirectory: false, isRegularFile: true, isSymbolicLink: false
+            )]
+        default:
+            return []
+        }
+    }
+    var currentDirectoryPath: String { "/" }
 }

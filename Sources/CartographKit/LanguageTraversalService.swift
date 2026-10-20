@@ -144,11 +144,12 @@ extension CartographService {
     }
 
     /// 이 한계가 있으면 인덱스가 프로젝트 전체를 담는다고 볼 수 없다. 구현이 하나뿐이라는
-    /// 증명은 보이지 않는 구현이 없을 때만 성립하므로 `bound` 를 내지 않는다.
+    /// 증명은 보이지 않는 구현이 없을 때만 성립하므로 `bound` 를 내지 않는다. 따라가지 않은
+    /// 루트 밖 디렉터리 링크 뒤 소스는 색인됐어도 그래프에 없으므로 같은 공백이다.
     static let openWorldLimitationPrefixes = [
         "empty-index:", "index-staleness:", "unindexed-sources:", "missing-sources:", "unreadable-sources:",
         "header-projection:", "configured-path-filter:", "configured-edge-kinds:",
-        "objective-c-sources:", "public-api-not-retained:",
+        "objective-c-sources:", "public-api-not-retained:", "symlinked-directories-outside-root:",
     ]
 
     static func isClosedWorld(_ limitations: [String]) -> Bool {

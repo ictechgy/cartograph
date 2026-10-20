@@ -85,6 +85,23 @@ struct ValueFlowServiceTests {
         #expect(loaded.program.limitations.contains("objective-c-value-flow-unavailable: 1 file(s)"))
     }
 
+    @Test("루트 밖 디렉터리 링크 뒤 소스는 값 흐름에 넣지 않고 그 수를 한계로 싣는다")
+    func externalDirectoryLinkIsLeftOutOfValueFlow() throws {
+        let fixture = try ExternalDirectoryLinkFixture(
+            inside: ["Sources/App/App.swift": "func inside() {}"], outside: ["Vendor.swift": "func outside() {}"]
+        )
+        defer { fixture.remove() }
+
+        let loaded = ValueFlowSourceLoader(
+            fileSystem: LocalFileSystem(), projectPath: fixture.root, pathFilter: .passthrough
+        ).load(snapshot: IndexSnapshot())
+
+        #expect(loaded.program.functions.map(\.name) == ["inside"])
+        #expect(loaded.program.limitations.contains {
+            $0.hasPrefix("symlinked-directories-outside-root: 1 directory symlink(s) ")
+        })
+    }
+
     @Test("SDK의 같은 이름은 기존 조회처럼 로컬 대상의 모호성을 만들지 않는다")
     func ignoresExternalLookupCandidates() throws {
         let result = try service(foreignCollision: true).valueFlowDocument(symbol: "name")

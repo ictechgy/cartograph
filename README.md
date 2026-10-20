@@ -462,9 +462,10 @@ Five things this output does deliberately:
   between absent and invisible. `limitations` is counted from *your* project, within the same
   include/exclude scope the graph uses, so it stays quiet when there is nothing to warn about. It
   reports Objective-C sources, Interface Builder documents, sources edited since their own index
-  unit was written, a package that exports library products while `retain_public` is off, a path
-  filter narrower than the defaults, or an edge-kind filter — any of which could be the reason
-  `usedBy` is empty. The default excludes alone do not count: they are a noise guard, not a
+  unit was written, a package that exports library products while `retain_public` is off, directory
+  symlinks that lead outside the project root and were not followed, a path filter narrower than the
+  defaults, or an edge-kind filter — any of which could be the reason `usedBy` is empty. The default
+  excludes alone do not count: they are a noise guard, not a
   narrowing you chose, and a warning that fires on every project is not read. File-level
   timestamps use the oldest observed covering unit, so rebuilding only one context of a shared
   source cannot hide another context's stale facts. Scoped project-header dependencies and deleted
@@ -748,8 +749,9 @@ Evidence tiers (`evidence`, on every reached declaration) are per-root lower bou
 
 `bound` needs a closed world, so any limitation that says the index does not cover the whole
 project (unindexed, stale, missing or unreadable sources, path or edge filters, Objective-C
-sources, an exported library) downgrades such hops to `candidate` and adds
-`dispatch-bound-unproven`. The document does not declare `dispatch` and never carries
+sources, an exported library, directory symlinks outside the root that were not followed)
+downgrades such hops to `candidate` and adds `dispatch-bound-unproven`. The document does not
+declare `dispatch` and never carries
 `unresolvedCalls`: the Swift index does not record calls through closures held in parameters or
 local variables, so cartograph cannot claim complete unresolved-call reporting, and isthmus reads the
 missing field as unknown. Declarations an external framework or the runtime invokes — SwiftUI
@@ -858,7 +860,8 @@ stops with "isn't a member of the specified test plan or scheme" — so such a p
 mismatch rather than a silently empty run; use the JSON output there. When the list is truncated by `--limit` or
 `--depth`, or an input is unresolved, the command prints no arguments and exits 2 (unresolved named
 declarations still exit 64). Missing/unreadable sources, stale or absent index units, an empty index,
-and narrowing path/edge filters also print no selectors and exit 2. Freshness and readability
+narrowing path/edge filters, and directory symlinks outside the root that were not followed also
+print no selectors and exit 2. Freshness and readability
 checks cover Swift, Objective-C/Objective-C++ implementations, and project headers; an unindexed
 header is an uncertainty, not proof that its consumers are absent. Mixed modeled and unmodeled
 changes (for example a Swift edit plus a JSON fixture or build configuration) refuse partial
@@ -1755,6 +1758,19 @@ override the extension's default access.
   `--revision` yourself. git still runs — its own SECURITY notes warn that no git command is safe on
   a fully attacker-controlled `.git`, so analyze a `git clone --no-local` copy when in doubt — and
   your user-global git configuration is otherwise trusted.
+- **Directory symlinks that leave the project root are not followed.** A directory symlink whose
+  target resolves outside the project root (`Sources/App/vendor -> ../shared`, `-> /`) is skipped by
+  every walk of the project, so the sources, headers and Interface Builder documents behind it are
+  never read: their facts are absent from `dead`, `query`, `impact`, `check`, `routes`, `bridges`,
+  `schema` and `dataflow`, and a declaration called only from there can be reported unreachable.
+  Each `limitations` list counts such links outside your excludes as
+  `symlinked-directories-outside-root`, with their project-relative paths. Cartograph treats it like a
+  missing source: `impact --format language-traversal` proves no `bound` dispatch and
+  `affected --format xcodebuild` prints no selectors. isthmus, by contrast, does not read that prefix
+  as a coverage gap, so a link planted in the repository cannot soften an isthmus check.
+  To analyze shared code reached this way, run with `--project` at a directory that contains both.
+  Symlinks that stay inside the root are followed as before, and file symlinks are still read
+  wherever they point.
 
 ## CI
 

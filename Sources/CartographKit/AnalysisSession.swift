@@ -543,9 +543,12 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         observedDirectories.insert(path)
     }
 
-    /// 이전 탐색의 결과 목록. 기억된 디렉터리 전부의 지문이 그대로이고, 버려진
-    /// 링크 파일의 지문도 그대로이며, 같은 필터로 만든 결과일 때만 돌려준다.
-    fileprivate func walkedResult(root: String, filter: PathFilter?, fileSystem: any FileSystem) -> [String]? {
+    /// 이전 탐색의 결과 목록과 그때 따라가지 않은 루트 밖 디렉터리 링크. 기억된 디렉터리
+    /// 전부의 지문이 그대로이고, 버려진 링크 파일과 따라가지 않은 링크의 지문도 그대로이며,
+    /// 같은 필터로 만든 결과일 때만 돌려준다.
+    fileprivate func walkedResult(
+        root: String, filter: PathFilter?, fileSystem: any FileSystem
+    ) -> (paths: [String], externalLinks: [String])? {
         lock.lock()
         let record = walks[root]
         lock.unlock()
@@ -554,8 +557,8 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         for (directory, stamp) in record.dirStamps {
             guard fileSystem.directoryListingStamp(at: directory) == stamp else { return nil }
         }
-        // 같은 파일을 가리켜 버려진 링크는 부모 디렉터리 지문에 드러나지 않는다 —
-        // 다른 파일을 가리키게 재지정되면 결과 목록이 달라지므로 따로 검증한다.
+        // 같은 파일을 가리켜 버려진 링크와 루트 밖이라 따라가지 않은 링크는 부모 디렉터리
+        // 지문에 드러나지 않는다 — 다른 대상으로 재지정되면 결과 목록이 달라지므로 따로 검증한다.
         for (link, stamp) in record.linkStamps {
             guard fileSystem.fingerprintStamp(at: link) == stamp else { return nil }
         }
@@ -566,15 +569,16 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
             observedDirectories.insert(directory)
         }
         lock.unlock()
-        return record.result
+        return (record.result, record.externalLinks)
     }
 
     /// 탐색 결과를 루트와 필터에 묶어 둔다. 열거한 디렉터리 중 지문이 없거나
     /// 열거에 실패한 것이 있으면 검증할 수 없으므로 — 실패는 다음 지문에서 다시
-    /// 시도돼야 하므로 — 저장하지 않는다. 버려진 링크 파일의 지문도 함께 남긴다.
+    /// 시도돼야 하므로 — 저장하지 않는다. 버려진 링크 파일과 따라가지 않은 루트 밖
+    /// 디렉터리 링크의 지문도 함께 남긴다.
     fileprivate func storeWalk(
         root: String, filter: PathFilter?, directories walked: [String],
-        discardedLinks: [String], result: [String], fileSystem: any FileSystem
+        discardedLinks: [String], externalLinks: [String], result: [String], fileSystem: any FileSystem
     ) {
         guard let resolvedRoot = walked.first else { return }
         lock.lock()
@@ -592,7 +596,7 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
             dirStamps.append((directory, record.stamp))
         }
         var linkStamps: [(String, FileFingerprintStamp)] = []
-        for link in discardedLinks {
+        for link in discardedLinks + externalLinks {
             guard let stamp = fileSystem.fingerprintStamp(at: link) else { return }
             linkStamps.append((link, stamp))
         }
@@ -602,7 +606,9 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
             dirStamps.append((root, rootStamp))
         }
         lock.lock()
-        walks[root] = WalkRecord(filter: filter, dirStamps: dirStamps, linkStamps: linkStamps, result: result)
+        walks[root] = WalkRecord(
+            filter: filter, dirStamps: dirStamps, linkStamps: linkStamps, result: result, externalLinks: externalLinks
+        )
         lock.unlock()
     }
 
@@ -633,10 +639,12 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         /// 달라지므로 탐색 결과를 재사용할 수 없다.
         let filter: PathFilter?
         let dirStamps: [(String, DirectoryListingStamp)]
-        /// 같은 파일을 가리켜 버려진 심볼릭 링크의 지문. 부모 디렉터리 지문에는
-        /// 재지정이 드러나지 않으므로 따로 검증한다.
+        /// 같은 파일을 가리켜 버려진 심볼릭 링크와 루트 밖이라 따라가지 않은 디렉터리
+        /// 링크의 지문. 부모 디렉터리 지문에는 재지정이 드러나지 않으므로 따로 검증한다.
         let linkStamps: [(String, FileFingerprintStamp)]
         let result: [String]
+        /// 따라가지 않은 루트 밖 디렉터리 링크. 결과를 재사용할 때도 지문에 다시 싣는다.
+        let externalLinks: [String]
     }
 }
 
@@ -769,37 +777,21 @@ private struct AnalysisInputFingerprinter {
         cache: AnalysisInputFingerprintCache?,
         observedKeys: inout Set<AnalysisInputFingerprintCache.Key>
     ) throws {
-        let fileSystem = environment.fileSystem
         cache?.prepareInclusion(filter: configuration.pathFilter)
         // 탐색 결과를 열거 디렉터리 전체의 지문으로 묶어 둔다 — 구조가 그대로면
         // 다음 지문에서 글롭 대조·디렉터리 열거 없이 경로 목록을 재사용한다.
-        let paths: [String]
-        if let cached = cache?.walkedResult(
-            root: projectPath, filter: configuration.pathFilter, fileSystem: fileSystem
-        ) {
-            paths = cached
-        } else {
-            var walked: [String] = []
-            var discardedLinks: [String] = []
-            paths = fileSystem.recursiveFiles(
-                under: projectPath,
-                isIncluded: { path in
-                    if let cached = cache?.inclusion(for: path) { return cached }
-                    let included = Self.isSourceInput(path, filter: configuration.pathFilter)
-                    cache?.storeInclusion(included, for: path)
-                    return included
-                },
-                shouldDescend: BuildArtifactDirectories.shouldDescend(into:),
-                onDirectory: { walked.append($0) },
-                onDiscardedLink: { discardedLinks.append($0) }
-            )
-            cache?.storeWalk(
-                root: projectPath, filter: configuration.pathFilter,
-                directories: walked, discardedLinks: discardedLinks, result: paths,
-                fileSystem: fileSystem
-            )
-        }
+        let (paths, externalLinks) = walk(
+            root: projectPath, filter: configuration.pathFilter, cache: cache,
+            isIncluded: { path in
+                if let cached = cache?.inclusion(for: path) { return cached }
+                let included = Self.isSourceInput(path, filter: configuration.pathFilter)
+                cache?.storeInclusion(included, for: path)
+                return included
+            },
+            shouldDescend: BuildArtifactDirectories.shouldDescend(into:)
+        )
         accumulator.addText("source-count:\(paths.count)")
+        Self.addExternalLinks(externalLinks, to: &accumulator)
         for path in paths {
             // 내용이 같아도 소스 시각은 인덱스 신선도 결과에 영향을 준다.
             try addFile(path, label: "source-file", includeModificationDate: true, isDiscoveredInput: true,
@@ -827,6 +819,41 @@ private struct AnalysisInputFingerprinter {
         return resourceCandidate
             && RuntimeResourcePath.isSupported(path)
             && filter.allows(path)
+    }
+
+    /// 이전 탐색 결과를 재사용하거나 새로 걷고 저장한다. 따라가지 않은 루트 밖 디렉터리 링크도 돌려준다.
+    ///
+    /// 소스 루트와 인덱스 유닛 루트가 같은 규칙을 쓴다 — 버려진 링크와 따라가지 않은 링크까지 지문으로
+    /// 감시해야 재지정이 디렉터리 지문에 드러나지 않아도 다음 지문이 다시 걷는다.
+    private func walk(
+        root: String, filter: PathFilter?, cache: AnalysisInputFingerprintCache?,
+        isIncluded: (String) -> Bool, shouldDescend: (String) -> Bool
+    ) -> (paths: [String], externalLinks: [String]) {
+        let fileSystem = environment.fileSystem
+        if let cached = cache?.walkedResult(root: root, filter: filter, fileSystem: fileSystem) { return cached }
+        var walked: [String] = []
+        var discardedLinks: [String] = []
+        var externalLinks: [String] = []
+        let paths = fileSystem.recursiveFiles(
+            under: root, isIncluded: isIncluded, shouldDescend: shouldDescend,
+            onDirectory: { walked.append($0) }, onDiscardedLink: { discardedLinks.append($0) },
+            onExternalDirectoryLink: { externalLinks.append($0) }
+        )
+        cache?.storeWalk(
+            root: root, filter: filter, directories: walked, discardedLinks: discardedLinks,
+            externalLinks: externalLinks, result: paths, fileSystem: fileSystem
+        )
+        return (paths, externalLinks)
+    }
+
+    /// 따라가지 않은 루트 밖 디렉터리 링크를 지문에 싣는다. 링크가 없으면 아무것도 싣지 않아 지문이 그대로다.
+    ///
+    /// 링크가 이미 본 루트 안 디렉터리로 재지정되면 탐색한 파일 목록은 같아도 한계 목록은 달라진다. 세대가
+    /// 그 변화를 따라가야 세션이 사라진 링크의 한계를 계속 싣지 않는다.
+    private static func addExternalLinks(_ links: [String], to accumulator: inout FingerprintAccumulator) {
+        for link in links.sorted() {
+            accumulator.addText("external-directory-link:\(link)")
+        }
     }
 
     private func addOptionalConfigurationInputs(
@@ -868,25 +895,11 @@ private struct AnalysisInputFingerprinter {
                 } else {
                     accumulator.addText("index-unit-root-modified:unknown")
                 }
-                let paths: [String]
-                if let cached = cache?.walkedResult(root: root, filter: nil, fileSystem: fileSystem) {
-                    paths = cached
-                } else {
-                    var walked: [String] = []
-                    var discardedLinks: [String] = []
-                    paths = fileSystem.recursiveFiles(
-                        under: root,
-                        isIncluded: { _ in true },
-                        shouldDescend: { _ in true },
-                        onDirectory: { walked.append($0) },
-                        onDiscardedLink: { discardedLinks.append($0) }
-                    )
-                    cache?.storeWalk(
-                        root: root, filter: nil, directories: walked,
-                        discardedLinks: discardedLinks, result: paths, fileSystem: fileSystem
-                    )
-                }
+                let (paths, externalLinks) = walk(
+                    root: root, filter: nil, cache: cache, isIncluded: { _ in true }, shouldDescend: { _ in true }
+                )
                 accumulator.addText("index-unit-count:\(paths.count)")
+                Self.addExternalLinks(externalLinks, to: &accumulator)
                 for path in paths {
                     // 유닛 이름은 컴파일러가 출력 오브젝트 이름으로 짓는다. 파일별 컴파일에서
                     // `Config/.env.swift` 의 유닛은 `.env.o-<hash>` 가 되므로 탐색 입력처럼 다룬다.

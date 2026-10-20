@@ -458,6 +458,33 @@ struct AffectedDocumentTests {
         #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
     }
 
+    @Test("따라가지 않은 루트 밖 디렉터리 링크 뒤의 테스트를 빠뜨릴 수 있으므로 테스트 선택을 좁히지 않는다")
+    func externalDirectoryLinkRefusesSelection() throws {
+        // 링크 뒤 소스는 그래프에 없다. 거기 있는 테스트가 이 변경에 닿아도 목록에 없으므로
+        // 부분 선택자를 내면 그 테스트를 조용히 건너뛴다.
+        let fixture = try ExternalDirectoryLinkFixture(
+            inside: [:], outside: ["HiddenTests.swift": "final class HiddenTests {}"]
+        )
+        defer { fixture.remove() }
+        let snapshot = xctestSnapshot()
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = fixture.root
+        let service = CartographService(configuration: configuration, environment: .init(
+            fileSystem: LocalFileSystem(), indexProviderOverride: StaticIndexProvider(snapshot),
+            usesSyntaxCache: false))
+        func selection() throws -> AffectedDocument.XcodebuildSelection {
+            try service.affectedDocument(symbols: ["P"], in: AnalysisContext(snapshot: snapshot, runtimeFiles: []))
+                .xcodebuildSelection()
+        }
+
+        let linked = try selection()
+        #expect(linked.output.isEmpty)
+        #expect(linked.refusal?.contains("Source/index coverage is incomplete") == true)
+        // 링크를 지우면 같은 입력이 선택자를 낸다 — 위의 거부가 링크 때문임을 보인다.
+        try FileManager.default.removeItem(atPath: fixture.root + "/" + ExternalDirectoryLinkFixture.linkPath)
+        #expect(try selection().output.hasPrefix("-only-testing:"))
+    }
+
     @Test("모델 밖 변경과 Swift 변경이 섞이면 부분 테스트 선택을 거부한다")
     func mixedUnmodeledChangesRefuseSelection() throws {
         let outcome = try service(xctestSnapshot()).affected(
