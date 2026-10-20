@@ -9,6 +9,9 @@ import SwiftSyntax
 ///
 /// 클라이언트로 전개되는 본문(`@inlinable` 등)은 본문으로 기록하지 않는다.
 /// 그 안의 참조는 인터페이스와 같이 공개 노출을 요구할 수 있다.
+///
+/// 이미 기록한 본문 안의 중첩 블록·접근자는 따로 기록하지 않는다. 소비자
+/// (`SourceBodyRangeIndex`)가 겹친 구간을 합치므로 판정은 같고, 남기면 캐시만 커진다.
 struct ReferenceBodyScanner {
     init() {}
 
@@ -32,6 +35,8 @@ private final class ReferenceBodyCollector: SyntaxVisitor {
     private let path: String
     private let converter: SourceLocationConverter
     private(set) var ranges: [SourceRange] = []
+    /// 마지막으로 기록한 본문의 바이트 구간. 방문은 소스 순서라 중첩 블록은 이 구간 안에서 나온다.
+    private var lastRecorded: (start: AbsolutePosition, end: AbsolutePosition)?
 
     init(path: String, converter: SourceLocationConverter) {
         self.path = path
@@ -50,11 +55,14 @@ private final class ReferenceBodyCollector: SyntaxVisitor {
     }
 
     private func record(_ node: some SyntaxProtocol) {
+        let start = node.positionAfterSkippingLeadingTrivia
+        let end = node.endPositionBeforeTrailingTrivia
+        // 기록한 구간에 포함될 때만 건너뛴다. 빠진 토큰처럼 바깥 구간 밖에 자리 잡은 노드는
+        // 예전처럼 따로 판정하므로 기록한 구간의 합집합이 그대로다.
+        if let lastRecorded, lastRecorded.start <= start, end <= lastRecorded.end { return }
         guard !Self.isClientEmitted(node) else { return }
-        ranges.append(SourceRange(
-            start: location(node.positionAfterSkippingLeadingTrivia),
-            end: location(node.endPositionBeforeTrailingTrivia)
-        ))
+        ranges.append(SourceRange(start: location(start), end: location(end)))
+        lastRecorded = (start, end)
     }
 
     private func location(_ position: AbsolutePosition) -> CartographCore.SourceLocation {
