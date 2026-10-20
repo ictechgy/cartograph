@@ -244,6 +244,11 @@ App.Alpha is part of 1 cycle(s):
       weakest link: App.Gamma → App.Alpha (call, 1 references)
 ```
 
+With `--since`, a component's cycle is reported when any node of that strongly connected component
+has a declaration in a changed file — the rule `check` uses — even if the representative cycle
+passes only through files the change did not touch. A module cycle is therefore reported only when
+one of the component's modules has a changed file.
+
 ### `dead` — find unused declarations
 
 ```bash
@@ -1571,7 +1576,10 @@ Reports only findings **located in** modeled source files changed since a git re
 Objective-C and Interface Builder suffixes — including committed changes, uncommitted changes to
 tracked files, and new files you have not added yet. Other changed paths are listed as limitations
 when they cannot be modeled. The graph is still built from the whole project, because reachability
-computed on a partial graph is simply wrong; only the report narrows.
+computed on a partial graph is simply wrong; only the report narrows. A cycle has no single
+location, so `cycles` and `check` report it when any node of its strongly connected component has
+a declaration in a changed file — a type's extensions count, and so does any file of a module —
+wherever its representative path runs.
 
 It answers "what did this change touch", not "what did this change cause". If your commit deletes
 the last call to a symbol declared in a file you did not touch, that symbol becomes dead but its

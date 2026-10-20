@@ -6,7 +6,8 @@ extension CartographService {
     /// 하나의 분석 문맥에서 CI에 필요한 네 점검을 모두 실행한다.
     ///
     /// 모듈·타입 순환을 별도 그래프로 확인하고, 베이스라인은 전체 결과에 한 번만 적용한다.
-    /// `--since` 범위는 각 진단의 위치에만 적용되며 그래프 자체를 좁히지 않는다.
+    /// `--since` 범위는 각 진단의 위치에만 적용되며 그래프 자체를 좁히지 않는다. 순환만은 `cycles` 와
+    /// 같이 구성원 파일로 판정한다(`scopedCycleDiagnostics`).
     public func checkDocument(in existingContext: AnalysisContext? = nil) throws -> CheckDocument {
         let context = try existingContext ?? loadContext()
         let baseline = try loadBaseline()
@@ -133,23 +134,6 @@ extension CartographService {
             reported: reported,
             thresholdFailure: failure
         )
-    }
-
-    /// 순환은 대표 선언 한 줄이 아니라 구성원 전체의 파일로 범위를 판정한다. 익스텐션 멤버도 포함한다.
-    private func scopedCycleDiagnostics(
-        _ cycles: [DependencyCycle], level: GraphLevel, context: AnalysisContext
-    ) -> [Diagnostic] {
-        let built = context.buildGraph(level: level)
-        guard let reportScope else { return AnalysisDiagnostics.diagnostics(for: cycles, in: built.graph) }
-        let includedPaths = Set(context.snapshot.filePaths.filter {
-            reportScope.files.contains(ReportScope.normalized($0))
-        })
-        let touchedNodes = Set(context.snapshot.symbols.filter {
-            includedPaths.contains($0.location.path)
-        }.compactMap { built.nodeIDByUSR[$0.usr] })
-        return AnalysisDiagnostics.diagnostics(for: cycles.filter {
-            !$0.component.allSatisfy { !touchedNodes.contains($0) }
-        }, in: built.graph)
     }
 
     private func thresholdRule(name: String) -> String {

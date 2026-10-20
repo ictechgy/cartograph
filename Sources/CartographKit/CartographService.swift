@@ -341,19 +341,26 @@ public struct CartographService: Sendable {
         return value.dropFirst().allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
     }
 
+    /// 순환 목록에 범위·베이스라인·임계값과 출력 형식을 얹는다.
+    ///
+    /// `--since` 범위는 `check` 와 같은 구성원 기준이다(`scopedCycleDiagnostics`). 진단 위치는 대표 경로의
+    /// 첫 정점 하나라, 위치로 거르면 PR 이 다른 구성원 쪽 파일에서 만든 순환이 이 게이트에서만 사라지고
+    /// 위치가 없는 모듈 순환은 범위와 무관하게 전부 남는다.
     public func detectCycles(level: GraphLevel? = nil) throws -> CommandOutcome {
         let context = try loadContext()
-        let (graph, cycles) = cycles(in: context, level: level)
+        let selectedLevel = level ?? configuration.level
+        let (graph, cycles) = cycles(in: context, level: selectedLevel)
         // 순환 검사도 CI 게이트다. 인덱스가 낡은 채로 "순환 없음"이 나가면 그
         // 초록불은 아무것도 검사하지 않은 초록불이다. dead 와 같은 한계를 싣는다.
         return try finish(
-            AnalysisDiagnostics.diagnostics(for: cycles, in: graph),
+            scopedCycleDiagnostics(cycles, level: selectedLevel, context: context),
             command: "cycles",
             subject: describe(graph),
             thresholdLimit: configuration.thresholds.maxCycles,
             thresholdRule: AnalysisDiagnostics.Rule.cycle,
             limitations: limitations(context: context, graph: graph, requestedLevel: level),
-            caveat: emptyIndexCaveat(context)
+            caveat: emptyIndexCaveat(context),
+            alreadyScoped: true
         )
     }
 
@@ -1658,17 +1665,43 @@ public struct CartographService: Sendable {
     // MARK: - 내부 구현
 
     /// 진단에 리포트 스코프를 적용하고, 베이스라인을 읽어 보고 대상 진단과 억제 건수를 계산한다.
+    ///
+    /// - Parameter alreadyScoped: 호출자가 이미 범위를 적용했다. 순환은 구성원 기준으로 먼저 거르므로
+    ///   (`scopedCycleDiagnostics`) 위치 기준으로 한 번 더 거르면 대표 정점이 범위 밖인 순환이 다시 빠진다.
     func filterAndApplyBaseline(
-        _ diagnostics: [Diagnostic]
+        _ diagnostics: [Diagnostic], alreadyScoped: Bool = false
     ) throws -> (reported: [Diagnostic], suppressedCount: Int) {
-        let scoped = reportScope?.filtering(diagnostics) ?? diagnostics
+        let scoped = alreadyScoped ? diagnostics : (reportScope?.filtering(diagnostics) ?? diagnostics)
         let baseline = try loadBaseline()
         let reported = baseline?.filtering(scoped) ?? scoped
         let suppressed = scoped.count - reported.count
         return (reported, suppressed)
     }
 
+    /// 순환은 대표 선언 한 줄이 아니라 강결합 요소 구성원 전체의 파일로 범위를 판정한다. 익스텐션 멤버도
+    /// 포함한다.
+    ///
+    /// `check` 와 `cycles` 가 함께 쓴다. 두 명령이 범위를 따로 판정하면 같은 `--since` 가 명령마다
+    /// 다른 순환을 보여 준다. 범위가 없으면 모든 순환의 진단을 그대로 만든다.
+    func scopedCycleDiagnostics(
+        _ cycles: [DependencyCycle], level: GraphLevel, context: AnalysisContext
+    ) -> [Diagnostic] {
+        let built = context.buildGraph(level: level)
+        guard let reportScope else { return AnalysisDiagnostics.diagnostics(for: cycles, in: built.graph) }
+        let includedPaths = Set(context.snapshot.filePaths.filter {
+            reportScope.files.contains(ReportScope.normalized($0))
+        })
+        let touchedNodes = Set(context.snapshot.symbols.filter {
+            includedPaths.contains($0.location.path)
+        }.compactMap { built.nodeIDByUSR[$0.usr] })
+        return AnalysisDiagnostics.diagnostics(for: cycles.filter {
+            !$0.component.allSatisfy { !touchedNodes.contains($0) }
+        }, in: built.graph)
+    }
+
     /// 베이스라인 적용 → 임계값 검사 → 형식 적용.
+    ///
+    /// - Parameter alreadyScoped: `filterAndApplyBaseline` 과 같은 뜻이다.
     private func finish(
         _ diagnostics: [Diagnostic],
         command: String,
@@ -1677,11 +1710,12 @@ public struct CartographService: Sendable {
         thresholdRule: String,
         countedRules: Set<String>? = nil,
         limitations: [String]? = nil,
-        caveat: String? = nil
+        caveat: String? = nil,
+        alreadyScoped: Bool = false
     ) throws -> CommandOutcome {
         // 범위를 먼저 좁힌 뒤 베이스라인을 적용한다. 순서를 바꾸면 억제 건수가
         // 범위 밖의 것까지 세어, 사용자가 보는 숫자와 맞지 않는다.
-        let (reported, suppressed) = try filterAndApplyBaseline(diagnostics)
+        let (reported, suppressed) = try filterAndApplyBaseline(diagnostics, alreadyScoped: alreadyScoped)
 
         let counted = countedRules.map { rules in
             reported.filter { rules.contains($0.ruleIdentifier) }
