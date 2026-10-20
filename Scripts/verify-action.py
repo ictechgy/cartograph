@@ -56,13 +56,13 @@ FAKE_GH = textwrap.dedent('''\
         sys.exit(0)
     sys.exit(f"gh: unexpected call {arguments}")
 ''')
-BINARY = "<own binary>"
+ACTUAL, BINARY = "<archive sha256>", "<own binary>"
 # 입력·릴리스 기록·압축 파일 구성마다 종료 코드, gh 호출 순서, 오류 원인을 고정한다.
 # 형식이 틀린 입력은 gh를 부르기 전에 64로 끝난다.
 DOWNLOAD_CASES = [
     {"name": "latest", "inputs": {}, "exit": 0, "calls": ["latest", "tag", "download"]},
     {"name": "empty version", "inputs": {"version": ""}, "exit": 0, "calls": ["latest", "tag", "download"]},
-    {"name": "pinned", "inputs": {"version": RELEASE}, "exit": 0, "calls": ["tag", "download"]},
+    {"name": "pinned", "inputs": {"version": RELEASE, "sha256": ACTUAL}, "exit": 0, "calls": ["tag", "download"]},
     {"name": "digest differs", "inputs": {"version": RELEASE}, "recorded": "other", "exit": 2,
      "calls": ["tag", "download"], "error": "does not match the SHA-256 that GitHub recorded"},
     {"name": "no digest", "inputs": {"version": RELEASE}, "recorded": "none", "exit": 2, "calls": ["tag"],
@@ -73,13 +73,19 @@ DOWNLOAD_CASES = [
      "error": "has no SHA-256 digest"},
     {"name": "unknown release", "inputs": {"version": "0.27.0"}, "exit": 2, "calls": ["tag"],
      "error": "Could not read release 0.27.0"},
+    {"name": "sha256 differs", "inputs": {"version": RELEASE, "sha256": "0" * 64}, "exit": 2,
+     "calls": ["tag", "download"], "error": "does not match the sha256 input"},
     {"name": "linked executable", "inputs": {"version": RELEASE}, "members": LINK_MEMBERS, "exit": 2,
      "calls": ["tag", "download"], "error": "regular file cartograph/cartograph"},
     {"name": "latest is not a CLI release", "inputs": {}, "latest": "action-v1.0.0", "exit": 2, "calls": ["latest"],
      "error": "(action-v1.0.0) is not a CLI release"},
     *[{"name": f"version {value!r}", "inputs": {"version": value}, "exit": 64, "calls": [],
        "error": "version must be latest"} for value in ("v0.28.0", "0.28", '0.28.0" or "', "../0.28.0", "0.28.0\n")],
+    *[{"name": f"sha256 {value!r}", "inputs": {"sha256": value}, "exit": 64, "calls": [], "error": "sha256 must be"}
+      for value in ("A" * 64, "a" * 63, "sha256:" + "a" * 64)],
     {"name": "binary input", "inputs": {"binary": BINARY}, "exit": 0, "calls": []},
+    {"name": "binary with sha256", "inputs": {"binary": BINARY, "sha256": "a" * 64}, "exit": 64, "calls": [],
+     "error": "but binary skips the download"},
 ]
 
 
@@ -192,13 +198,12 @@ def extracted(runner):
 
 def resolve(case, fakebin, scenario):
     # GitHub처럼 단계가 선언한 env만 넘기고, PATH 맨 앞의 가짜 gh가 네트워크 대신 릴리스를 내준다.
-    write_release(case, scenario)
-    runner, own = case / "runner", case / "own-cartograph"
+    actual, runner, own = write_release(case, scenario), case / "runner", case / "own-cartograph"
     runner.mkdir()
     own.write_bytes(STUB_CLI)
     own.chmod(0o700)
-    inputs = {"binary": "", "version": "latest", **scenario["inputs"]}
-    inputs = {key: {BINARY: str(own)}.get(value, value) for key, value in inputs.items()}
+    inputs = {"binary": "", "version": "latest", "sha256": "", **scenario["inputs"]}
+    inputs = {key: {ACTUAL: actual, BINARY: str(own)}.get(value, value) for key, value in inputs.items()}
     context = {**{f"inputs.{key}": value for key, value in inputs.items()}, "github.token": "token-for-gh"}
     environment = {**step_environment("Resolve the binary", context), "RUNNER_TEMP": str(runner),
                    "PATH": f"{fakebin}{os.pathsep}{INHERITED['PATH']}", "GITHUB_OUTPUT": str(case / "outputs"),

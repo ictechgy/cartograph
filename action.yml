@@ -20,6 +20,10 @@ inputs:
     description: "Release tag to download (for example 0.20.0), or latest for the newest release."
     required: false
     default: latest
+  sha256:
+    description: "Expected SHA-256 of the release archive. The download must match it as well as GitHub's digest."
+    required: false
+    default: ""
   binary:
     description: "Path to an existing cartograph binary. When set, no release is downloaded."
     required: false
@@ -65,6 +69,7 @@ runs:
       env:
         INPUT_BINARY: ${{ inputs.binary }}
         INPUT_VERSION: ${{ inputs.version }}
+        INPUT_SHA256: ${{ inputs.sha256 }}
         # gh needs the token to read the release; this step never runs the downloaded binary.
         GH_TOKEN: ${{ github.token }}
       run: |
@@ -74,6 +79,10 @@ runs:
           exit 2
         fi
         if [ -n "$INPUT_BINARY" ]; then
+          if [ -n "$INPUT_SHA256" ]; then
+            echo "::error::sha256 checks a downloaded release archive, but binary skips the download; set only one."
+            exit 64
+          fi
           if [ ! -x "$INPUT_BINARY" ]; then
             echo "::error::binary input is not an executable: $INPUT_BINARY"
             exit 2
@@ -83,7 +92,12 @@ runs:
         fi
         # The version reaches gh's request path and jq filter, so only exact forms pass.
         release_pattern='^[0-9]+\.[0-9]+\.[0-9]+$'
+        sha256_pattern='^[0-9a-f]{64}$'
         digest_pattern='^sha256:[0-9a-f]{64}$'
+        if [ -n "$INPUT_SHA256" ] && ! [[ "$INPUT_SHA256" =~ $sha256_pattern ]]; then
+          echo "::error::sha256 must be 64 lowercase hex digits: the archive's SHA-256 without a sha256: prefix."
+          exit 64
+        fi
         version="$INPUT_VERSION"
         if [ -z "$version" ] || [ "$version" = "latest" ]; then
           version="$(gh api repos/ictechgy/cartograph/releases/latest --jq .tag_name)"
@@ -92,7 +106,7 @@ runs:
             exit 2
           fi
           echo "::notice title=cartograph::version is latest, so release $version is used." \
-            "Pin version (and the action commit SHA) for reproducible runs."
+            "Pin version and sha256 (and the action commit SHA) for reproducible runs."
         elif ! [[ "$version" =~ $release_pattern ]]; then
           echo "::error::version must be latest or a CLI release tag such as 0.28.0."
           exit 64
@@ -116,6 +130,10 @@ runs:
         if [ "$actual" != "${digest#sha256:}" ]; then
           echo "::error::$archive does not match the SHA-256 that GitHub recorded for release $version;" \
             "it was not extracted. Retry, and report the release if this persists."
+          exit 2
+        fi
+        if [ -n "$INPUT_SHA256" ] && [ "$actual" != "$INPUT_SHA256" ]; then
+          echo "::error::$archive does not match the sha256 input; set sha256 to the digest of release $version."
           exit 2
         fi
         # Extract only the executable, so no other member or link from the archive is written.

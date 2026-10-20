@@ -1814,7 +1814,8 @@ jobs:
 ```
 
 The `action-v1.0.0` tag is the action release; `version: 0.28.0` selects the CLI binary.
-Pin both for a repeatable setup (`@main` tracks the development branch). Marketplace's default
+Pin both for a repeatable setup (`@main` tracks the development branch), and add `sha256` to pin
+the archive itself. Marketplace's default
 "Use latest version" currently follows the repository's latest CLI release; select
 `action-v1.0.0` or use the version-specific link above for the action release. Inputs:
 
@@ -1823,6 +1824,7 @@ Pin both for a repeatable setup (`@main` tracks the development branch). Marketp
 | `command` | `check` | `check` (dead + cycles + rules together), `dead`, `cycles` or `rules` |
 | `args` | — | Extra arguments, for example `--limit 500` |
 | `version` | `latest` | Release tag to download, or `latest` for the newest release (logged as a notice) |
+| `sha256` | — | SHA-256 of `cartograph-<version>-macos-universal.tar.gz`; any other archive fails the step |
 | `binary` | — | Path to an existing binary; skips the download |
 | `project` | `.` | Project root; the index store is discovered from it |
 | `build` | `swift` | `swift build` before analyzing, or `none` when you build yourself |
@@ -1839,13 +1841,14 @@ Xcode toolchain. Building with `xcodebuild`? Set `build: none` and either pass y
 Every download is checked against the SHA-256 digest GitHub recorded for the release asset, and
 only the `cartograph` executable is extracted; a missing or different digest, or an executable that
 is not a regular file, fails the step before anything runs. The recorded digest catches a corrupted
-or mismatched download, but GitHub computes it again when a release asset is replaced, so it does
-not pin the archive.
+or mismatched download, but GitHub computes it again when a release asset is replaced, so `sha256`
+is what pins the archive: copy the asset digest from the release page without its `sha256:` prefix.
 With `version: latest` the action logs a notice naming the release it used. The action gives
 `GH_TOKEN` only to the step that reads the release; the downloaded binary first runs, as
 `--version`, in a step without it.
 
-`action-v1.0.0` predates these checks: it runs the downloaded binary unverified.
+`action-v1.0.0` predates these checks: it runs the downloaded binary unverified and has no `sha256`
+input.
 
 The `action-v1.0.0` action rejects unexpected exit codes and missing reports, and never uploads a
 report left by an earlier invocation. These fixes are not part of the existing `0.20.0` action tag.

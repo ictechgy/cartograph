@@ -76,6 +76,25 @@ struct ActionManifestTests {
         }
     }
 
+    @Test("두 README의 액션 절이 선언한 입력을 모두 표로 안내한다")
+    func readmesListEveryInput() throws {
+        let declared = Self.declaredInputs(in: try manifest)
+        for (file, heading) in [("README.md", "### The official action"), ("README.ko.md", "### 공식 액션")] {
+            let readme = try String(contentsOf: repositoryRoot.appendingPathComponent(file), encoding: .utf8)
+            let section = Self.section(heading, in: readme)
+            #expect(section != nil, "\(file)에 \(heading) 절이 없다")
+            let missing = declared.filter { !(section ?? "").contains("\n| `\($0)` |") }
+            #expect(missing.isEmpty, "\(file) 입력 표에 없는 입력 \(missing.sorted())")
+        }
+    }
+
+    /// 제목 줄부터 다음 `### ` 제목 앞까지. 다른 표의 같은 이름이 빠진 행을 가리지 않게 절 안에서만 찾는다.
+    private static func section(_ heading: String, in text: String) -> Substring? {
+        guard let start = text.range(of: "\n\(heading)\n") else { return nil }
+        let rest = text[start.upperBound...]
+        return rest.range(of: "\n### ").map { rest[..<$0.lowerBound] } ?? rest
+    }
+
     /// `inputs:` 아래 두 칸 들여쓰기의 이름들.
     private static func declaredInputs(in text: String) -> Set<String> {
         var names: Set<String> = []

@@ -1752,7 +1752,8 @@ jobs:
 ```
 
 `action-v1.0.0`은 액션 릴리스 태그이고, `version: 0.28.0`은 CLI 바이너리를 선택합니다.
-재현 가능한 실행을 위해 둘을 함께 고정하세요(`@main`은 개발 브랜치를 따릅니다).
+재현 가능한 실행을 위해 둘을 함께 고정하고(`@main`은 개발 브랜치를 따릅니다), 압축 파일까지
+고정하려면 `sha256`을 더하세요.
 Marketplace의 기본 "Use latest version"은 저장소의 최신 CLI 릴리스를 따릅니다.
 액션 릴리스를 쓰려면 `action-v1.0.0`을 선택하거나 위의 버전별 링크를 이용하세요. 입력:
 
@@ -1761,6 +1762,7 @@ Marketplace의 기본 "Use latest version"은 저장소의 최신 CLI 릴리스�
 | `command` | `check` | `check`(dead·cycles·rules 한 번에), `dead`, `cycles`, `rules` |
 | `args` | — | 추가 인자, 예: `--limit 500` |
 | `version` | `latest` | 내려받을 릴리스 태그, `latest`면 최신 릴리스(notice로 알림) |
+| `sha256` | — | `cartograph-<version>-macos-universal.tar.gz`의 SHA-256. 다른 압축 파일이면 스텝이 실패 |
 | `binary` | — | 이미 있는 바이너리 경로. 지정하면 내려받지 않음 |
 | `project` | `.` | 분석할 프로젝트 루트. 인덱스 스토어는 여기서 자동 탐색 |
 | `build` | `swift` | 분석 전 `swift build`, 직접 빌드했다면 `none` |
@@ -1777,11 +1779,13 @@ Cartograph를 직접 설치해 아래 수동 명령을 쓰세요.
 내려받은 압축 파일은 GitHub가 릴리스 자산에 기록한 SHA-256 digest와 대조하고, 그중 `cartograph`
 실행 파일 하나만 풉니다. digest가 없거나 다르거나 실행 파일이 정규 파일이 아니면 아무것도 실행하기
 전에 스텝이 실패합니다. 기록된 digest는 손상되거나 어긋난 다운로드를 잡지만, 릴리스 자산을 교체하면
-GitHub가 digest를 다시 계산하므로 압축 파일을 고정하지는 못합니다. `version: latest`면 사용한 릴리스를
+GitHub가 digest를 다시 계산합니다. 그래서 압축 파일을 고정하는 것은 `sha256`입니다. 값은 릴리스
+페이지의 자산 digest에서 `sha256:` 접두사를 뺀 것입니다. `version: latest`면 사용한 릴리스를
 notice로 알립니다. 액션은 `GH_TOKEN`을 릴리스를 읽는 스텝에만 주고, 내려받은 바이너리는 토큰이
 없는 스텝에서 `--version`으로 처음 실행됩니다.
 
-`action-v1.0.0`에는 이 검사들이 없습니다. 내려받은 바이너리를 검증 없이 실행합니다.
+`action-v1.0.0`에는 이 검사들이 없습니다. 내려받은 바이너리를 검증 없이 실행하고, `sha256` 입력이
+없습니다.
 
 `action-v1.0.0` 액션은 예상 밖 종료 코드와 리포트 누락을 실패로 처리하고, 이전 실행이 남긴 리포트를
 업로드하지 않습니다. 이 수정은 기존 `0.20.0` 액션 태그에 포함되지 않습니다.
