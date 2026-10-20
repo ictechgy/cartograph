@@ -502,6 +502,99 @@ struct ChangedFilesTests {
         #expect(markerCount(in: markers) == 0)
     }
 
+    // MARK: - partial clone 의 lazy fetch 차단
+
+    /// 객체가 저장소에 없는지. 확인하는 git 이 그 객체를 받아 오지 않게 lazy fetch 를 끄고 묻는다.
+    private func objectIsMissing(_ id: String, in root: URL) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-C", root.path, "cat-file", "-e", id]
+        process.environment = ProcessInfo.processInfo.environment.merging(["GIT_NO_LAZY_FETCH": "1"]) { $1 }
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            Issue.record("git cat-file could not start: \(error)")
+            return false
+        }
+        process.waitUntilExit()
+        return process.terminationStatus != 0
+    }
+
+    /// 느슨한 객체 파일 하나를 지운다. partial clone 이 받지 않은 객체처럼 저장소에서 빠진다.
+    private func removeLooseObject(_ id: String, in root: URL) throws {
+        let directory = root.appendingPathComponent(".git/objects").appendingPathComponent(String(id.prefix(2)))
+        try FileManager.default.removeItem(at: directory.appendingPathComponent(String(id.dropFirst(2))))
+    }
+
+    @Test("partial clone 의 빠진 객체를 promisor 원격에서 받아 오지 않고, blobless 클론의 변경은 그대로 찾는다")
+    func doesNotLazyFetchFromPromisorRemote() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cartograph-lazy-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let source = base.appendingPathComponent("source")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try run(["init", "-q", "."], in: source)
+        try run(["config", "user.email", "t@example.com"], in: source)
+        try run(["config", "user.name", "t"], in: source)
+        // 이름 변경 감지가 옛 blob 내용을 요구하도록, 줄이 많은 파일을 옮기고 한 줄만 고친다.
+        var lines = (1...300).map { "line number \($0)" }
+        try write(lines.joined(separator: "\n"), to: "big.txt", in: source)
+        try run(["add", "-A"], in: source)
+        try run(["commit", "-qm", "A"], in: source)
+        try run(["tag", "base"], in: source)
+        try run(["mv", "big.txt", "big2.txt"], in: source)
+        lines[149] = "changed line"
+        try write(lines.joined(separator: "\n"), to: "big2.txt", in: source)
+        try run(["commit", "-qam", "B"], in: source)
+        let server = base.appendingPathComponent("server.git")
+        try run(["clone", "-q", "--bare", source.path, server.path], in: base)
+        try run(["config", "uploadpack.allowFilter", "true"], in: server)
+        let clone = base.appendingPathComponent("clone")
+        try run(["clone", "-q", "--filter=blob:none", "file://" + server.path, clone.path], in: base)
+        let oldBlob = try run(["rev-parse", "base:big.txt"], in: clone)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(objectIsMissing(oldBlob, in: clone), "the blobless clone should not hold the old blob yet")
+        // lazy fetch 가 일어나면 git 은 원격의 upload-pack 명령을 셸로 실행한다. `.git` 이 고를 수 있는 설정이다.
+        let marker = base.appendingPathComponent("marker")
+        try run(["config", "remote.origin.uploadpack", "touch '\(marker.path)'; git-upload-pack"], in: clone)
+
+        let changed = try ChangedFiles.since("base", workingDirectory: clone.path)
+        let seeds = try ChangedFiles.since("base", workingDirectory: clone.path, includingDeleted: true)
+        #expect(Set(changed.map { ($0 as NSString).lastPathComponent }) == ["big2.txt"])
+        #expect(Set(seeds.map { ($0 as NSString).lastPathComponent }) == ["big.txt", "big2.txt"])
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+        #expect(objectIsMissing(oldBlob, in: clone))
+    }
+
+    @Test("비교에 필요한 트리가 빠져 있으면 promisor 원격에서 받아 오지 않고 fail-closed 로 멈춘다")
+    func failsClosedWhenComparisonNeedsAMissingTree() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = try makeMarkerDirectory()
+        defer { try? FileManager.default.removeItem(at: markers) }
+        try write("let a = 1", to: "Sources/A.swift", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        let base = try run(["rev-parse", "HEAD"], in: root).trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseTree = try run(["rev-parse", "HEAD^{tree}"], in: root).trimmingCharacters(in: .whitespacesAndNewlines)
+        try write("let b = 2", to: "Sources/B.swift", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "second"], in: root)
+        // 공격자가 배포한 `.git` 처럼 트리 하나를 빼고, promisor 원격의 upload-pack 을 표식 명령으로 둔다.
+        try removeLooseObject(baseTree, in: root)
+        try run(["config", "remote.origin.url", root.path], in: root)
+        try run(["config", "remote.origin.promisor", "true"], in: root)
+        try run(["config", "remote.origin.uploadpack", "touch '\(markers.path)/fetch'; git-upload-pack"], in: root)
+
+        #expect(throws: CartographError.self) {
+            try ChangedFiles.since(base, workingDirectory: root.path)
+        }
+        #expect(markerCount(in: markers) == 0)
+    }
+
     @Test("정규화 필터로 내용이 바뀌던 파일은 stat 이 어긋나면 변경으로 포함한다")
     func normalizingFilterStaleFileCountsAsChanged() throws {
         // git-lfs 처럼 clean 이 내용을 바꾸던 파일은, 필터를 끈 채 stat 이 어긋나면

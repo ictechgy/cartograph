@@ -114,21 +114,18 @@ enum ChangedFiles {
     /// diff.relative 설정과 무관하게 저장소 전체의 루트 기준 경로를 받는다.
     ///
     /// 작업 트리 비교(`againstWorkingTree`)는 저장소가 정의한 필터·외부 diff·textconv 를
-    /// 발동할 수 있으므로 끈다. 이름 변경 감지도 내용을 다시 읽으므로 끈다 —
-    /// `--diff-filter=d` 모드에서도 새 경로는 A 로 남아 출력이 같다. 서브모듈 안에서
-    /// git 을 다시 띄우지 않도록 dirty 서브모듈은 무시한다(gitlink 커밋 변경은 경로로 남는다).
+    /// 발동할 수 있으므로 끈다. 이름 변경 감지는 두 비교 모두 끈다. 작업 트리에서는 내용을
+    /// 다시 읽고, 커밋 범위에서는 옛 blob 을 읽는데 partial clone 에는 그 blob 이 없을 수 있으며
+    /// 받아 오는 lazy fetch 는 막혀 있다(`gitEnvironment`). `--diff-filter=d` 모드에서도 새 경로는
+    /// A 로 남아 출력이 같다. 서브모듈 안에서 git 을 다시 띄우지 않도록 dirty 서브모듈은
+    /// 무시한다(gitlink 커밋 변경은 경로로 남는다).
     private static func diffArguments(
         comparedTo revision: String, includingDeleted: Bool, againstWorkingTree: Bool
     ) -> [String] {
-        var arguments = ["diff", "--no-relative", "--name-only", "--no-ext-diff", "--no-textconv"]
-        if includingDeleted {
-            // 이름 변경을 감지하면 옛 경로가 새 경로로 접혀 사라진다. 영향 분석은
-            // 현재 인덱스에 없는 옛 선언도 시드로 삼아야 하므로 양쪽 경로를 받는다.
-            arguments.append("--no-renames")
-        } else {
-            arguments.append("--diff-filter=d")
-            if againstWorkingTree { arguments.append("--no-renames") }
-        }
+        var arguments = ["diff", "--no-relative", "--name-only", "--no-ext-diff", "--no-textconv", "--no-renames"]
+        // 이름 변경을 감지하지 않으면 옛 경로는 D, 새 경로는 A 로 갈린다. 영향 분석(includingDeleted)은
+        // 현재 인덱스에 없는 옛 선언도 시드로 삼아야 하므로 양쪽 경로를 받고, 그 밖에는 D 를 뺀다.
+        if !includingDeleted { arguments.append("--diff-filter=d") }
         if againstWorkingTree { arguments.append("--ignore-submodules=dirty") }
         arguments.append("-z")
         arguments.append(revision)
@@ -217,6 +214,21 @@ enum ChangedFiles {
             .filter { !$0.isEmpty }
     }
 
+    /// 분석용 git 의 환경. 이 프로세스의 환경에 lazy fetch 차단만 더한다.
+    ///
+    /// partial clone 은 빠진 객체를 promisor 원격에서 그때그때 받아 온다(lazy fetch). 그 fetch 는 분석 대상
+    /// 저장소 설정이 고른 원격 명령(`remote.<이름>.uploadpack`, `core.sshCommand`, `ext::` URL 등)을 실행하므로,
+    /// `.git` 이 통째로 배포된 저장소가 객체 하나를 빼 두면 읽기 전용 조회가 그 명령을 띄운다.
+    /// `GIT_NO_LAZY_FETCH=1` 은 git 2.45 와 2024년 5월 보안 릴리스(2.39.4 등)부터 그 fetch 를 거부한다.
+    /// 그보다 오래된 git 은 이 변수를 모른 채 무시할 뿐 실패하지 않는다. 전역 옵션 `--no-lazy-fetch` 는 옛
+    /// git 에서 사용 오류가 되므로 환경 변수로 준다. 빠진 객체가 꼭 필요한 조회는 실패하고, 호출자가
+    /// fail-closed 로 다룬다(`--since` 는 종료 2, revision 은 생략).
+    private static func gitEnvironment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        environment["GIT_NO_LAZY_FETCH"] = "1"
+        return environment
+    }
+
     /// git 프로세스 하나를 실행하고 종료 코드와 양쪽 출력을 그대로 돌려준다.
     /// 종료 코드 해석은 호출자가 한다(config 조회는 종료 1 을 빈 결과로 삼는다).
     private static func runGit(
@@ -225,6 +237,7 @@ enum ChangedFiles {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         process.arguments = safeGlobalArguments + globalOptions + ["-C", workingDirectory] + arguments
+        process.environment = gitEnvironment()
         let output = Pipe()
         let errors = Pipe()
         process.standardOutput = output
@@ -243,6 +256,8 @@ enum ChangedFiles {
 
     /// git 이 0 아닌 코드로 끝났을 때의 오류. git 이 말한 이유를 그대로 전한다.
     /// 하드코딩한 문장으로 덮으면 잠금 문제나 권한 문제까지 "없는 리비전"으로 오진하게 된다.
+    /// 덧붙이는 안내는 CI 의 흔한 두 원인(얕은 클론, 트리를 빼고 받은 partial clone)을 가리킨다.
+    /// lazy fetch 를 막으므로(`gitEnvironment`) 빠진 객체를 그때그때 받아 오지 않는다.
     private static func gitFailure(
         result: (status: Int32, standardOutput: Data, standardError: Data), reference: String
     ) -> CartographError {
@@ -251,7 +266,8 @@ enum ChangedFiles {
         let reason = reported.isEmpty ? "git exited with \(result.status)" : reported
         return CartographError.changedFilesUnavailable(
             reference: reference,
-            reason: reason + " — in CI, check out with full history (fetch-depth: 0)"
+            reason: reason + " — in CI, check out with full history (fetch-depth: 0) and no tree filter; "
+                + "missing objects are not fetched"
         )
     }
 }

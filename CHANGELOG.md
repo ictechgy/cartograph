@@ -100,6 +100,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   submodule; pass `--revision` to record one. A repository that configures a filter driver whose
   name cannot be disabled with `-c` (it contains `=`) makes `--since` fail (exit 2) and the
   revision be omitted; analyze a fresh checkout such as a `git clone --no-local` copy instead.
+- In a partial clone, `--since` and the language-traversal revision no longer let git fetch missing
+  objects, and the commit-range comparison of `--since` no longer detects renames, which read old
+  blob contents; the reported paths are the same. A blobless clone (`--filter=blob:none`) therefore
+  works without fetching, while a comparison that needs a tree the clone does not hold, as in a
+  treeless clone (`--filter=tree:0`), fails (exit 2), and a revision check that needs a missing
+  object omits the revision. The `--since` error now also suggests checking out without a tree
+  filter.
 - `schema` no longer emits `relation-use` facts for three SQL shapes that name no relation,
   following the rules every persistence producer shares through the isthmus contract: a CTE name
   used unqualified in the same statement, a `FROM` inside function arguments
@@ -227,8 +234,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `--since` (every command that accepts it) and the lookup of the default
   `impact --format language-traversal` revision no longer run content filter drivers
   (clean/smudge/process), external diff or textconv drivers, fsmonitor, commit-signature programs
-  or submodule configuration defined by the repository under analysis. This extends the 0.12.0
-  guarantee for a crafted `.git` directory, which covered fsmonitor only, to git's content filters.
+  or submodule configuration defined by the repository under analysis. They also set
+  `GIT_NO_LAZY_FETCH=1`, so git no longer fetches a missing object from a partial clone's promisor
+  remote, a fetch that runs commands the repository's configuration chooses
+  (`remote.<name>.uploadpack`, `core.sshCommand`, an `ext::` URL). This extends the 0.12.0
+  guarantee for a crafted `.git` directory, which covered fsmonitor only, to git's content filters
+  and lazy fetches. Refusing the fetch needs git 2.45 or a May 2024 security release of an older
+  line (such as 2.39.4 or 2.44.1); an older git ignores the setting and still fetches.
 - Project walks no longer follow a directory symlink whose target resolves outside the project
   root. One link such as `Sources/App/vendor -> /` made every command enumerate (and the MCP
   session hash) the whole target tree, and mixed facts from foreign sources, with absolute paths

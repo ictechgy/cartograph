@@ -762,8 +762,9 @@ cartograph impact --format language-traversal --roots-from routes.json   # 파�
 `revision`은 `--revision <rev>`를 주면 그 값이고, 주지 않으면 프로젝트 디렉터리에 커밋하지 않은
 변경·추적되지 않는 파일이 없을 때만 git `HEAD` 커밋입니다. 작업 트리가 더럽거나, 서브모듈이
 있거나, 저장소가 아니면 싣지 않습니다 — 고친 소스 위에서 `HEAD`를 실으면 isthmus가 낡은 분석을
-최신으로 읽습니다. 이 조회는 저장소의 git 필터를 끄므로(알려진 한계 참고), git-lfs처럼 필터로
-정규화되던 파일은 더럽게 보여 revision을 싣지 않습니다. 그런 경우 `--revision`을 직접 주세요.
+최신으로 읽습니다. 이 조회는 저장소의 git 필터를 끄고 빠진 객체를 받아 오지 않으므로(알려진 한계
+참고), git-lfs처럼 필터로 정규화되던 파일은 더럽게 보여 revision을 싣지 않고, 확인에 필요한 객체가
+partial clone에 없을 때도 싣지 않습니다. 그런 경우 `--revision`을 직접 주세요.
 `graphRevision`은 심볼 그래프의 정점 id·종류, 간선, 자동 발견 런타임 연결, 닫힌 세계 판정(위치 제외)의
 `sha256:` 해시라서 같은 그래프 위의 정·역방향 문서가 같은 값을 냅니다. `project`는 `routes`·`bridges`와
 같은 실제 경로입니다. 제어 문자가 든 root와 `--revision`은 isthmus가 그런 id를 거부하므로 64로 거부합니다.
@@ -1572,6 +1573,11 @@ Objective-C, Interface Builder 확장자를 대상으로 커밋된 변경, 추�
 변경으로 보고합니다. `-c`로 안전하게 끌 수 없는 이름의 필터 드라이버를 설정한 저장소에서는
 `--since`가 그 명령을 실행하는 대신 오류(종료 2)로 멈춥니다.
 
+이 조회는 partial clone의 promisor 원격에서 빠진 객체를 받아 오지도 않습니다. 이름 변경 감지를
+끄므로 blobless 클론(`--filter=blob:none`)은 받아 올 것이 없고 보고하는 경로도 같습니다. 클론에
+없는 트리가 필요한 비교는 — treeless 클론(`--filter=tree:0`)처럼 — 오류(종료 2)로 멈춥니다.
+CI에서는 트리 필터 없이 받으세요.
+
 ## 설정
 
 프로젝트 루트의 `.cartograph.yml`입니다. `cartograph init`으로 주석 달린 템플릿을 만드세요.
@@ -1732,14 +1738,18 @@ Periphery는 둘 다 꺼져 있습니다. 합성된 `==`나 `hash(into:)`만 읽
   통째로 배포된 저장소는 git이 실행할 명령을 공격자가 고를 수 있으므로, 이 읽기 전용 조회는
   저장소가 설정한 콘텐츠 필터(`clean`·`smudge`·`process`), 외부 `diff`·`textconv` 드라이버,
   `fsmonitor`, 커밋 서명 표시, 서브모듈 설정을 끄고, 작업 트리를 필터로 다시 읽지 않습니다.
-  그 결과 내용은 같고 stat만 바뀐 추적 파일(git이 인덱스를 갱신하기 전의 복사한 작업 트리 등)도
-  변경으로 보고되고, git-lfs처럼 필터로 정규화되던 파일은 변경으로 보여 순회가 `HEAD` revision을
-  싣지 않으며, 서브모듈이 있으면 순회가 revision을 생략하고, `-c`로 끌 수 없는 필터 이름이 있으면
-  `--since`는 오류로 멈추고 순회는 revision을 생략합니다.
-  서브모듈 안 소스를 분석해야 하면 `--revision`을 직접 주세요. git 자체는 여전히 실행됩니다 —
-  git의 SECURITY 문서도 완전히 공격자 통제 하의 `.git`에서는 어떤 git 명령도 안전하지 않다고
-  하므로, 의심스러우면 `git clone --no-local` 사본을 분석하세요 — 사용자 전역 git 설정은 그 밖에는
-  신뢰합니다.
+  partial clone의 promisor 원격에서 빠진 객체를 받아 오지도 않습니다(`GIT_NO_LAZY_FETCH=1`). 그
+  fetch는 저장소 설정이 고른 명령(`remote.<이름>.uploadpack`, `core.sshCommand`, `ext::` URL)을
+  실행하기 때문입니다. 그 결과 내용은 같고 stat만 바뀐 추적 파일(git이 인덱스를 갱신하기 전의 복사한
+  작업 트리 등)도 변경으로 보고되고, git-lfs처럼 필터로 정규화되던 파일은 변경으로 보여 순회가
+  `HEAD` revision을 싣지 않으며, 서브모듈이 있으면 순회가 revision을 생략하고, `-c`로 끌 수 없는
+  필터 이름이 있거나 조회에 필요한 객체가 클론에 없으면(treeless 클론 `--filter=tree:0`의 옛 트리
+  등) `--since`는 오류로 멈추고 순회는 revision을 생략합니다. blobless 클론(`--filter=blob:none`)은
+  그대로 동작합니다. 서브모듈 안 소스를 분석해야 하면 `--revision`을 직접 주세요. git 자체는 여전히
+  실행됩니다 — git의 SECURITY 문서도 완전히 공격자 통제 하의 `.git`에서는 어떤 git 명령도 안전하지
+  않다고 하므로, 의심스러우면 `git clone --no-local` 사본을 분석하세요 — 사용자 전역 git 설정은 그
+  밖에는 신뢰합니다. fetch 거부는 git 2.45 이상이나 이전 버전대의 2024년 5월 보안 릴리스(2.39.4,
+  2.44.1 등)가 지원합니다. 그보다 오래된 git은 이 설정을 무시하고 객체를 받아 옵니다.
 - **프로젝트 루트 밖을 가리키는 디렉터리 링크는 따라가지 않습니다.** 대상이 프로젝트 루트 밖으로
   풀리는 디렉터리 심볼릭 링크(`Sources/App/vendor -> ../shared`, `-> /`)는 프로젝트를 걷는 모든
   탐색이 건너뜁니다. 그 뒤의 소스·헤더·Interface Builder 문서는 읽지 않으므로 `dead`·`query`·

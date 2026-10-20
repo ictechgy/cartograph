@@ -26,8 +26,11 @@ enum GitRevision {
             if tracked.contains(where: { $0.hasPrefix("160000 ") }) { return nil }
             // 경로 명세 `.` 은 `-C` 로 옮긴 프로젝트 디렉터리다. 저장소의 다른 곳의 변경은 이 분석과 무관하다.
             // status 는 `--no-ext-diff` 를 거부하므로 붙이지 않는다. 서브모듈 상태는 위에서 다뤘으니 무시한다.
+            // 이름 변경 감지는 blob 을 읽는데 partial clone 에는 없을 수 있고 받아 오지도 않으므로 끈다.
+            // 빈 결과인지만 보므로 의미는 같다. HEAD 트리 같은 객체가 빠져 있으면 status 가 실패해 nil 이 된다.
             let dirty = try ChangedFiles.lines(
-                of: ["status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=all", "-z", "--", "."],
+                of: ["status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=all", "--no-renames",
+                     "-z", "--", "."],
                 in: projectPath, reference: "HEAD", globalOptions: neutralizing)
             return dirty.isEmpty ? commit : nil
         } catch {

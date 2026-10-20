@@ -90,6 +90,30 @@ struct GitRevisionTests {
         #expect((try? FileManager.default.contentsOfDirectory(atPath: markers.path).count) == 0)
     }
 
+    @Test("빠진 HEAD 트리를 promisor 원격에서 받아 오지 않고 revision 을 싣지 않는다")
+    func cleanCheckDoesNotLazyFetch() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cartograph-rev-marker-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: markers, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: markers) }
+        try write("let a = 1", to: "App/Sources/A.swift", in: root)
+        try git(["add", "-A"], in: root)
+        try git(["commit", "-qm", "base"], in: root)
+        let tree = try git(["rev-parse", "HEAD^{tree}"], in: root).trimmingCharacters(in: .whitespacesAndNewlines)
+        // 공격자가 배포한 `.git` 처럼 HEAD 트리를 빼고, promisor 원격의 upload-pack 을 표식 명령으로 둔다.
+        // status 가 HEAD 트리를 읽을 때 lazy fetch 가 일어나면 git 이 이 명령을 셸로 실행한다.
+        try FileManager.default.removeItem(at: root.appendingPathComponent(".git/objects")
+            .appendingPathComponent(String(tree.prefix(2))).appendingPathComponent(String(tree.dropFirst(2))))
+        try git(["config", "remote.origin.url", root.path], in: root)
+        try git(["config", "remote.origin.promisor", "true"], in: root)
+        try git(["config", "remote.origin.uploadpack", "touch '\(markers.path)/fetch'; git-upload-pack"], in: root)
+
+        #expect(GitRevision.cleanHead(projectPath: root.appendingPathComponent("App").path) == nil)
+        #expect((try? FileManager.default.contentsOfDirectory(atPath: markers.path).count) == 0)
+    }
+
     @Test("정규화 필터로 내용이 바뀌던 파일이 있으면 깨끗하다고 주장하지 않는다")
     func normalizingFilterMakesHeadUnavailable() throws {
         // clean 이 내용을 바꾸던 파일은 필터를 끈 채 비교하면 저장된 blob 과 달라 보인다.
