@@ -1629,9 +1629,10 @@ modeled source path was selected; it is not evidence that all changed files are 
 
 These git lookups run inside the repository under analysis with its content filters, external diff
 and textconv drivers, fsmonitor and submodule configuration disabled (see Known limitations), so a
-tracked file whose content is unchanged but whose stat differs — for example after a fresh checkout
-— is reported as changed. A repository that configures a filter driver whose name cannot be safely
-disabled makes `--since` stop with an error (exit 2) rather than risk running it.
+tracked file whose content is unchanged but whose stat differs — for example in a copied working
+tree or after a file is rewritten with the same bytes, until git refreshes its index (`git status`
+does) — is reported as changed. A repository that configures a filter driver whose name cannot be
+safely disabled makes `--since` stop with an error (exit 2) rather than risk running it.
 
 ## Configuration
 
@@ -1795,10 +1796,11 @@ override the extension's default access.
   read-only lookups disable repository-configured content filters (`clean`/`smudge`/`process`),
   external `diff`/`textconv` drivers, `fsmonitor`, commit-signature display and submodule
   configuration, and never re-read the working tree through a filter. As a result a tracked file that
-  is byte-identical but stat-changed (for example after a fresh checkout) is reported as changed; a
-  file a filter normalized, such as Git LFS, looks changed and makes the traversal omit its `HEAD`
-  revision; and a submodule, or a filter driver whose name cannot be disabled, makes `--since` fail
-  and the traversal omit the revision. If a submodule holds sources you need analyzed, pass
+  is byte-identical but stat-changed (for example in a copied working tree, until git refreshes its
+  index) is reported as changed; a file a filter normalized, such as Git LFS, looks changed and
+  makes the traversal omit its `HEAD` revision; a submodule makes the traversal omit the revision;
+  and a filter driver whose name cannot be disabled makes `--since` fail and the traversal omit the
+  revision. If a submodule holds sources you need analyzed, pass
   `--revision` yourself. git still runs — its own SECURITY notes warn that no git command is safe on
   a fully attacker-controlled `.git`, so analyze a `git clone --no-local` copy when in doubt — and
   your user-global git configuration is otherwise trusted.
