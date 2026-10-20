@@ -107,11 +107,15 @@ extension CartographService {
         let context = try existingContext ?? loadContext()
         let graph = context.buildGraph(level: .symbol).graph
         let automatic = context.runtimeDiscovery()
-        let lifecycle = XCTestLifecycleImpact(in: graph)
+        // 생명주기·이름 색인·파일별 정점은 `impact` 와 같은 문맥 준비 값을 쓴다. 스냅샷에만 기대는 값이라
+        // 편집마다 이어지는 요청이 그래프 전체 정렬과 색인 생성을 되풀이할 이유가 없다.
+        let lifecycle = context.impactLifecycle()
         let artifactTargets = ImpactSelection.artifactTargets(in: automatic,
             resourcePaths: context.runtimeFiles?.map(\.path) ?? [])
         let selection = ImpactSelection(symbols: symbols, files: files, projectPath: projectPath,
-            graph: graph, artifactTargets: artifactTargets)
+            graph: graph, artifactTargets: artifactTargets,
+            makeQueryIndex: { _ in context.impactQueryIndex() },
+            makeRawFileIndex: { _ in context.impactRawNodesByFile() })
         let report = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth,
             additionalDependencies: Self.automaticImpactDependencies(automatic) + lifecycle.dependencies)
         let reasons = context.impactReviewReasons()

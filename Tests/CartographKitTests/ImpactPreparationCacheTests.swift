@@ -72,6 +72,36 @@ struct ImpactPreparationCacheTests {
         }
     }
 
+    @Test("affected 도 영향과 같은 생명주기·파일·이름 준비를 채우고 다시 쓰며, 답은 차가운 문맥과 같다")
+    func affectedSharesImpactPreparation() throws {
+        let service = service()
+        for (symbols, files) in [
+            ([], ["Storage.swift"]), (["Storage"], []), (["Child"], []), (["Storage", "Missing"], ["Missing.swift"]),
+        ] as [([String], [String])] {
+            let context = AnalysisContext(snapshot: snapshot())
+            let first = try service.affectedDocument(symbols: symbols, files: files, in: context)
+            var lifecycleBuilds = 0
+            var fileBuilds = 0
+            var nameBuilds = 0
+            // affected 가 채운 값이면 팩토리를 부르지 않는다. 연결이 빠지면 여기서 1이 된다.
+            _ = context.impactLifecycle { lifecycleBuilds += 1; return XCTestLifecycleImpact(in: $0) }
+            _ = context.impactRawNodesByFile { fileBuilds += 1; return ImpactSelection.rawNodesByFile(in: $0) }
+            _ = context.impactQueryIndex { nameBuilds += 1; return GraphQueryIndex(graph: $0) }
+            #expect(lifecycleBuilds == 0)
+            #expect(fileBuilds == (files.isEmpty ? 1 : 0))
+            #expect(nameBuilds == (symbols.isEmpty ? 1 : 0))
+            let cold = try service.affectedDocument(
+                symbols: symbols, files: files, in: AnalysisContext(snapshot: snapshot())
+            )
+            #expect(first == cold)
+            #expect(try service.affectedDocument(symbols: symbols, files: files, in: context) == cold)
+            #expect(try JSONEncoder.cartographDefault().encode(first) == JSONEncoder.cartographDefault().encode(cold))
+        }
+        let inherited = try service.affectedDocument(symbols: ["Storage"], in: AnalysisContext(snapshot: snapshot()))
+        #expect(inherited.tests.contains { $0.symbol.usr == "parameterized" })
+        #expect(inherited.tests.contains { $0.symbol.usr == "asyncTest" })
+    }
+
     @Test("동시 요청도 각 준비를 한 번만 만들고 완성된 불변 값을 공유한다")
     func concurrentConstructionIsSingle() {
         let context = AnalysisContext(snapshot: snapshot())

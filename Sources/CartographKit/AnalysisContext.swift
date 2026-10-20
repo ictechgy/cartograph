@@ -110,6 +110,72 @@ public struct AnalysisContext: Sendable {
     private let reviewCache = ReviewCache()
     private let runtimeCache = RuntimeCache()
     private let impactPreparationCache = ImpactPreparationCache()
+    /// 세션이 세대 문맥에 붙이는 캐시. 직접 만든 문맥에는 없다(nil).
+    ///
+    /// 분석 한계와 통합 점검은 스냅샷만이 아니라 서비스 설정·베이스라인 파일·소스 수정 시각에도 기댄다.
+    /// 세션은 그 입력을 세대 지문으로 묶으므로 같은 세대에서는 답이 같지만, 직접 만든 문맥을 쥐고 파일을
+    /// 고쳐 가며 다시 쓰는 라이브러리 호출은 지금처럼 요청마다 현재 상태로 세어야 답이 바뀌지 않는다.
+    private var generationCache: GenerationCache?
+
+    /// 세션 세대용 캐시를 붙인 복사본. 값 복사는 같은 캐시를 공유한다.
+    ///
+    /// 새로 만든 문맥(다음 세대, Core Data 보강 문맥)은 붙이기 전까지 캐시가 없어 이 세대의 값을 보지 않는다.
+    func bindingGenerationCache() -> AnalysisContext {
+        var copy = self
+        copy.generationCache = GenerationCache()
+        return copy
+    }
+
+    /// 같은 세대·같은 스토어 시각의 분석 한계는 한 번만 센다. 세대 캐시가 없는 문맥은 부를 때마다 센다.
+    ///
+    /// 스토어 시각은 세대 지문 밖이라(지문은 유닛 디렉터리만 본다) 키에 넣는다. 심볼 그래프는 이 문맥의
+    /// 것만 넘기므로(호출자 전부 `buildGraph(level: .symbol)`) 넘겼는지만 키에 넣는다.
+    func generationLimitations(storeDate: Date?, hasSymbolGraph: Bool, make: () -> [String]) -> [String] {
+        guard let generationCache else { return make() }
+        return generationCache.limitations(for: .init(storeDate: storeDate, hasSymbolGraph: hasSymbolGraph), make: make)
+    }
+
+    /// 같은 세대의 통합 점검 결과(한계 제외)는 한 번만 만든다. 실패는 담지 않아 다음 요청이 다시 시도한다.
+    ///
+    /// 이름 붙인 베이스라인이 없어 실패한 결과를 담으면, 파일을 만든 뒤 다시 물어도 세대가 바뀔 때까지 지난
+    /// 오류가 돌아온다. 담지 않으면 다음 요청이 지금처럼 그때의 파일을 다시 읽는다.
+    func generationCheck(make: () throws -> CheckFindings) rethrows -> CheckFindings {
+        guard let generationCache else { return try make() }
+        return try generationCache.check(make: make)
+    }
+
+    private final class GenerationCache: @unchecked Sendable {
+        struct LimitationKey: Equatable {
+            let storeDate: Date?
+            let hasSymbolGraph: Bool
+        }
+
+        // 값마다 자물쇠를 따로 둔다. 만드는 동안 쥐고 있으므로, 한 값을 만들다 다른 값을 묻는 변경이 생겨도
+        // 같은 자물쇠를 다시 잡아 멈추지 않게 한다.
+        private let limitationLock = NSLock()
+        private let checkLock = NSLock()
+        /// 마지막 키의 한계 하나만 둔다. 세대 안에서 키가 바뀌는 것은 스토어 루트 시각이 바뀐 드문 경우뿐이다.
+        private var limitationEntry: (key: LimitationKey, value: [String])?
+        private var checkValue: CheckFindings?
+
+        func limitations(for key: LimitationKey, make: () -> [String]) -> [String] {
+            limitationLock.lock()
+            defer { limitationLock.unlock() }
+            if let limitationEntry, limitationEntry.key == key { return limitationEntry.value }
+            let made = make()
+            limitationEntry = (key, made)
+            return made
+        }
+
+        func check(make: () throws -> CheckFindings) rethrows -> CheckFindings {
+            checkLock.lock()
+            defer { checkLock.unlock() }
+            if let checkValue { return checkValue }
+            let made = try make()
+            checkValue = made
+            return made
+        }
+    }
 
     func bindingRuntimeInputFingerprint(_ fingerprint: String) -> AnalysisContext {
         var copy = self

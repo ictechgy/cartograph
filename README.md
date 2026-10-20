@@ -958,6 +958,12 @@ Sources and index-unit timestamps also participate in the input fingerprint so f
 are refreshed. File enumeration still occurs; this is cached preparation, not incremental graph
 analysis or an automatic compiler build.
 
+Within one generation the analysis limitations, the `cartograph_check` result and the test
+lifecycle and name/file indexes behind `cartograph_impact` and `cartograph_affected` are computed
+once and reused. Every response therefore carries the limitations counted for its generation, the
+same list as its `session` envelope, so an edit made inside the freshness window shows up as
+`index-staleness` once the session re-verifies, or right after `refresh: true`.
+
 ### `runtime` — discover connections and collect execution evidence
 
 ```bash

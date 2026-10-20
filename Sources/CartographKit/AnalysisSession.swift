@@ -346,7 +346,8 @@ public final class AnalysisSession {
 
         for _ in 1...Self.maximumRefreshAttempts {
             let candidateService = try serviceFactory()
-            let candidateContext = try candidateService.loadContext()
+            // 세대 캐시를 붙인다. 이 세대의 메타데이터·영향·테스트·점검 요청이 한계와 점검 결과를 한 번만 만든다.
+            let candidateContext = try candidateService.loadContext().bindingGenerationCache()
             // 관측 시작 시각을 찍는다 — 관측 자체의 소요도 창에 포함시켜
             // 유보가 정확히 창으로 상한을 갖게 한다.
             let checkedAt = now()

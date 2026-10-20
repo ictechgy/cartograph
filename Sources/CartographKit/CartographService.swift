@@ -940,10 +940,27 @@ public struct CartographService: Sendable {
     }
 
     /// 파일별 시각과 구문 읽기 실패를 같은 문맥에서 수집한다.
+    ///
+    /// 세션 세대 문맥이면 같은 스토어 시각의 결과를 세대 안에서 재사용한다(`generationLimitations`).
+    /// 수집은 소스마다 경로 정규화와 stat 을 하므로, 같은 세대의 영향·테스트·점검 요청이 그 비용을
+    /// 되풀이하지 않게 한다.
     func analysisLimitations(
         storeDate: Date? = nil,
         context: AnalysisContext? = nil,
         symbolGraph: CodeGraph? = nil
+    ) -> [String] {
+        // 외부 보존 파일의 기존 비교 기준은 유지한다. 소스 신선도는 수집기에서 파일별로 본다.
+        let storeDate = storeDate ?? indexStoreDate()
+        guard let context else {
+            return collectLimitations(storeDate: storeDate, context: nil, symbolGraph: symbolGraph)
+        }
+        return context.generationLimitations(storeDate: storeDate, hasSymbolGraph: symbolGraph != nil) {
+            collectLimitations(storeDate: storeDate, context: context, symbolGraph: symbolGraph)
+        }
+    }
+
+    private func collectLimitations(
+        storeDate: Date?, context: AnalysisContext?, symbolGraph: CodeGraph?
     ) -> [String] {
         var emptyIndexCounts: (total: Int, inScope: Int)?
         if allowsEmptyIndex, let context, context.snapshot.symbols.isEmpty {
@@ -954,8 +971,7 @@ public struct CartographService: Sendable {
             configuration: configuration,
             fileSystem: environment.fileSystem,
             projectPath: projectPath,
-            // 외부 보존 파일의 기존 비교 기준은 유지한다. 소스 신선도는 수집기에서 파일별로 본다.
-            storeDate: storeDate ?? indexStoreDate(),
+            storeDate: storeDate,
             inventory: context?.projectFileInventory ?? projectFileInventory()
         ).collect(context: context, symbolGraph: symbolGraph, emptyIndexCounts: emptyIndexCounts)
     }

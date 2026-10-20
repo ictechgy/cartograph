@@ -1101,6 +1101,187 @@ struct AnalysisSessionTests {
         #expect(third.generation == second.generation + 1)
     }
 
+    @Test("같은 세대의 영향·테스트·점검·런타임·질의 응답은 세대를 준비할 때 센 분석 한계를 다시 세지 않는다")
+    func sameGenerationReusesPreparedLimitations() throws {
+        // 한계 수집은 한 번에 루트 매니페스트를 한 번 읽는다(라이브러리 제품 수). 그 수로 몇 번 셌는지 본다.
+        let fileSystem = ReadCountingFileSystem(files: [
+            "/p/Package.swift": #"let package = Package(products: [.library(name: "Kit", targets: ["Kit"])])"#,
+        ])
+        var fingerprint = "first"
+        let service = readCountingService(fileSystem, snapshot: makeSnapshot())
+        let session = try AnalysisSession(serviceFactory: { service }, inputFingerprintProvider: { fingerprint })
+        let prepared = try #require(session.metadata?.limitations)
+        #expect(prepared.contains { $0.hasPrefix("public-api-not-retained:") })
+        let perGeneration = fileSystem.reads(of: "/p/Package.swift")
+        #expect(perGeneration >= 1)
+
+        let impact = try session.impact(symbols: ["Service"])
+        let affected = try session.affected(symbols: ["Service"])
+        let check = try session.check()
+        let runtime = try session.runtimeDiscovery()
+        let query = try session.query(symbols: ["App"])
+        #expect(fileSystem.reads(of: "/p/Package.swift") == perGeneration)
+        for limitations in [impact.limitations, affected.limitations, check.limitations, query.results[0].limitations] {
+            #expect(Array(limitations.prefix(prepared.count)) == prepared)
+        }
+        #expect(Set(prepared).isSubset(of: runtime.limitations))
+
+        // 같은 세대의 답은 캐시 전후로 같고, 세션 밖에서 새로 읽은 문맥의 답과도 같다.
+        let fresh = try service.loadContext()
+        #expect(try session.check() == service.checkDocument(in: fresh))
+        #expect(try session.impact(symbols: ["Service"]) == service.impactDocument(symbols: ["Service"], in: fresh))
+        #expect(try session.affected(symbols: ["Service"]) == service.affectedDocument(symbols: ["Service"], in: fresh))
+        let afterFresh = fileSystem.reads(of: "/p/Package.swift")
+
+        fingerprint = "second"
+        let reloaded = try session.impact(symbols: ["Service"])
+        #expect(session.metadata?.generation == 2)
+        #expect(reloaded == impact)
+        _ = try session.check()
+        _ = try session.affected(symbols: ["Service"])
+        #expect(fileSystem.reads(of: "/p/Package.swift") == afterFresh + perGeneration)
+    }
+
+    @Test("같은 세대의 답은 그 세대가 센 한계를 싣고, 소스를 고쳐 새 세대가 되면 index-staleness 를 다시 센다")
+    func newGenerationRecountsStaleness() throws {
+        let built = Date(timeIntervalSince1970: 1_000)
+        let fileSystem = ReadCountingFileSystem(files: ["/p/App.swift": "", "/p/Service.swift": ""])
+        fileSystem.base.setModificationDate(built.addingTimeInterval(-10), for: "/p/App.swift")
+        fileSystem.base.setModificationDate(built.addingTimeInterval(-10), for: "/p/Service.swift")
+        var snapshot = makeSnapshot()
+        snapshot.indexedFileDates = ["/p/App.swift": built, "/p/Service.swift": built]
+        var fingerprint = "built"
+        let service = readCountingService(fileSystem, snapshot: snapshot)
+        let session = try AnalysisSession(serviceFactory: { service }, inputFingerprintProvider: { fingerprint })
+        func isStale(_ limitations: [String]) -> Bool { limitations.contains { $0.hasPrefix("index-staleness:") } }
+        #expect(!isStale(try session.impact(symbols: ["Service"]).limitations))
+
+        // 편집했지만 세대 지문이 그대로인 동안(재검증 창 안)은 검증한 세대가 답한다. 응답과 세션 봉투가 같은
+        // 한계를 싣는다 — 응답만 현재 파일을 다시 세면 한 답 안에 두 세대가 섞인다.
+        fileSystem.base.setModificationDate(built.addingTimeInterval(10), for: "/p/Service.swift")
+        #expect(!isStale(try session.affected(symbols: ["Service"]).limitations))
+        #expect(!isStale(try session.check().limitations))
+        #expect(!isStale(try #require(session.metadata).limitations))
+
+        fingerprint = "edited"
+        #expect(isStale(try session.impact(symbols: ["Service"]).limitations))
+        #expect(session.metadata?.generation == 2)
+        #expect(isStale(try #require(session.metadata).limitations))
+        #expect(isStale(try session.affected(symbols: ["Service"]).limitations))
+        #expect(isStale(try session.check().limitations))
+        #expect(isStale(try session.query(symbols: ["App"]).results[0].limitations))
+    }
+
+    @Test("같은 세대의 점검은 베이스라인 적용까지 한 번만 하고, 이름 붙인 베이스라인이 없어 실패한 결과는 담지 않는다")
+    func sameGenerationCheckIsBuiltOnceWithoutCachingFailures() throws {
+        let baselinePath = "/p/team-baseline.json"
+        let fileSystem = ReadCountingFileSystem(files: [:])
+        let service = readCountingService(fileSystem, snapshot: makeSnapshot(), baselinePath: "team-baseline.json")
+        let session = try AnalysisSession(serviceFactory: { service }, inputFingerprintProvider: { "fixed" })
+        #expect(throws: CartographError.self) { _ = try session.check() }
+        #expect(throws: CartographError.self) { _ = try session.check() }
+
+        // 파일이 생기면 같은 세대에서도 지난 실패가 아니라 그 파일을 읽은 답이 돌아온다.
+        try fileSystem.write(text: Self.emptyBaseline, to: baselinePath)
+        let first = try session.check()
+        #expect(fileSystem.reads(of: baselinePath) == 1)
+        #expect(try session.check() == first)
+        #expect(try session.check() == first)
+        #expect(fileSystem.reads(of: baselinePath) == 1)
+        #expect(first == (try service.checkDocument(in: service.loadContext())))
+    }
+
+    @Test("세션 밖에서 직접 만든 문맥은 지금처럼 요청마다 현재 파일 상태로 한계와 점검을 센다")
+    func directContextKeepsCountingPerRequest() throws {
+        let built = Date(timeIntervalSince1970: 1_000)
+        let fileSystem = ReadCountingFileSystem(files: [
+            "/p/Package.swift": "", "/p/App.swift": "", "/p/Service.swift": "",
+            "/p/.cartograph-baseline.json": Self.emptyBaseline,
+        ])
+        fileSystem.base.setModificationDate(built.addingTimeInterval(-10), for: "/p/Service.swift")
+        var snapshot = makeSnapshot()
+        snapshot.indexedFileDates = ["/p/App.swift": built, "/p/Service.swift": built]
+        let service = readCountingService(fileSystem, snapshot: snapshot)
+        let context = try service.loadContext()
+        let manifestReads = fileSystem.reads(of: "/p/Package.swift")
+        _ = try service.impactDocument(symbols: ["Service"], in: context)
+        _ = try service.affectedDocument(symbols: ["Service"], in: context)
+        _ = try service.checkDocument(in: context)
+        _ = try service.checkDocument(in: context)
+        #expect(fileSystem.reads(of: "/p/Package.swift") == manifestReads + 4)
+        #expect(fileSystem.reads(of: "/p/.cartograph-baseline.json") == 2)
+
+        fileSystem.base.setModificationDate(built.addingTimeInterval(10), for: "/p/Service.swift")
+        #expect(try service.impactDocument(symbols: ["Service"], in: context).limitations
+            .contains { $0.hasPrefix("index-staleness:") })
+    }
+
+    @Test("세대 캐시는 값 복사만 공유하고, Core Data 보강처럼 새로 만든 문맥은 기본 세대의 한계를 쓰지 않는다")
+    func generationCacheStaysWithItsContext() throws {
+        let built = Date(timeIntervalSince1970: 1_000)
+        let fileSystem = ReadCountingFileSystem(files: ["/p/Package.swift": "", "/p/Service.swift": ""])
+        fileSystem.base.setModificationDate(built.addingTimeInterval(10), for: "/p/Service.swift")
+        var snapshot = makeSnapshot()
+        snapshot.indexedFileDates = ["/p/Service.swift": built]
+        let service = readCountingService(fileSystem, snapshot: snapshot)
+        let generation = try service.loadContext().bindingGenerationCache()
+        let before = fileSystem.reads(of: "/p/Package.swift")
+        let base = try service.impactDocument(symbols: ["Service"], in: generation)
+        _ = try service.impactDocument(symbols: ["Service"], in: generation.bindingRuntimeInputFingerprint("captured"))
+        #expect(fileSystem.reads(of: "/p/Package.swift") == before + 1)
+        #expect(base.limitations.contains { $0.hasPrefix("index-staleness:") })
+
+        // 보강 문맥은 기본 문맥의 값을 바탕으로 새로 만든다(`augmentedCoreDataContext`). 신선한 보충 파일의
+        // 시각을 싣게 해, 기본 세대 값을 빌려 쓰면 낡았다고 말하는 것으로 드러나게 한다.
+        var augmentedSnapshot = generation.snapshot
+        augmentedSnapshot.indexedFileDates = ["/p/Service.swift": built.addingTimeInterval(20)]
+        let augmented = AnalysisContext(snapshot: augmentedSnapshot, runtimeFiles: generation.runtimeFiles,
+            supplementalRuntimeSourcePaths: ["/p/Service.swift"])
+        let supplemented = try service.impactDocument(symbols: ["Service"], in: augmented)
+        _ = try service.impactDocument(symbols: ["Service"], in: augmented)
+        #expect(!supplemented.limitations.contains { $0.hasPrefix("index-staleness:") })
+        #expect(fileSystem.reads(of: "/p/Package.swift") == before + 3)
+        #expect(try service.impactDocument(symbols: ["Service"], in: generation) == base)
+    }
+
+    @Test("세대 한계는 스토어 시각과 그래프 전달 여부가 같을 때만 재사용하고, 세대 캐시가 없는 문맥은 매번 센다")
+    func generationLimitationsKeyOnStoreDateAndGraph() {
+        // 스토어 루트 시각은 세대 지문 밖이다. 세대 안에서 그것이 바뀌면 다시 세야 신선도 비교 기준이 맞는다.
+        let generation = AnalysisContext(snapshot: makeSnapshot()).bindingGenerationCache()
+        let direct = AnalysisContext(snapshot: makeSnapshot())
+        var made = 0
+        func limitations(_ context: AnalysisContext, _ seconds: Double?, graph: Bool = true) -> [String] {
+            context.generationLimitations(
+                storeDate: seconds.map(Date.init(timeIntervalSince1970:)), hasSymbolGraph: graph
+            ) {
+                made += 1
+                return ["made-\(made)"]
+            }
+        }
+        #expect(limitations(generation, 1) == ["made-1"])
+        #expect(limitations(generation, 1) == ["made-1"])
+        #expect(limitations(generation, 2) == ["made-2"])
+        #expect(limitations(generation, 2, graph: false) == ["made-3"])
+        #expect(limitations(generation, nil, graph: false) == ["made-4"])
+        #expect(limitations(generation, nil, graph: false) == ["made-4"])
+        #expect(limitations(direct, 1) == ["made-5"])
+        #expect(limitations(direct, 1) == ["made-6"])
+    }
+
+    private func readCountingService(
+        _ fileSystem: ReadCountingFileSystem, snapshot: IndexSnapshot, baselinePath: String? = nil
+    ) -> CartographService {
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = "/p"
+        configuration.baselinePath = baselinePath
+        return CartographService(
+            configuration: configuration,
+            environment: CartographEnvironment(
+                fileSystem: fileSystem, indexProviderOverride: StaticIndexProvider(snapshot)
+            )
+        )
+    }
+
     private func makeSession(_ state: SessionState) throws -> AnalysisSession {
         try AnalysisSession(
             serviceFactory: { try state.makeService() },
@@ -1450,6 +1631,37 @@ private final class BlockedEnumerationFileSystem: FileSystem, @unchecked Sendabl
     }
     func modificationDate(at path: String) -> Date? { base.modificationDate(at: path) }
     func fingerprintStamp(at path: String) -> FileFingerprintStamp? { base.fingerprintStamp(at: path) }
+    var currentDirectoryPath: String { base.currentDirectoryPath }
+}
+
+/// 메모리 파일 시스템을 감싸 경로별 내용 읽기 횟수를 센다.
+///
+/// 분석 한계 수집은 한 번에 루트 `Package.swift` 를 한 번 읽고(라이브러리 제품 수), 통합 점검은 한 번에
+/// 베이스라인을 한 번 읽는다. 그래서 이 수가 제품 코드에 관찰 지점을 두지 않고 계산 횟수를 드러낸다.
+private final class ReadCountingFileSystem: FileSystem, @unchecked Sendable {
+    let base: InMemoryFileSystem
+    private let lock = NSLock()
+    private var counts: [String: Int] = [:]
+
+    init(files: [String: String]) {
+        base = InMemoryFileSystem(currentDirectoryPath: "/p", files: files)
+    }
+
+    func reads(of path: String) -> Int { lock.withLock { counts[path] ?? 0 } }
+
+    func readData(at path: String) throws -> Data {
+        lock.withLock { counts[path, default: 0] += 1 }
+        return try base.readData(at: path)
+    }
+
+    func realPath(at path: String) throws -> String { try base.realPath(at: path) }
+    func fileExists(at path: String) -> Bool { base.fileExists(at: path) }
+    func directoryExists(at path: String) -> Bool { base.directoryExists(at: path) }
+    func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
+    func removeItem(at path: String) throws { try base.removeItem(at: path) }
+    func contentsOfDirectory(at path: String) throws -> [String] { try base.contentsOfDirectory(at: path) }
+    func directoryEntries(at path: String) throws -> [DirectoryEntry] { try base.directoryEntries(at: path) }
+    func modificationDate(at path: String) -> Date? { base.modificationDate(at: path) }
     var currentDirectoryPath: String { base.currentDirectoryPath }
 }
 
