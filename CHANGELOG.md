@@ -14,6 +14,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   "exactly one top-level class" rule that `inspect` applies; and
   `ReachabilityAnalyzer.Options.computesSuperfluousIgnores` (default `true`) for callers that do
   not read superfluous-ignore findings.
+- The GitHub Action accepts an optional `sha256` input, the SHA-256 of
+  `cartograph-<version>-macos-universal.tar.gz`. The download must then match it as well as the
+  digest GitHub recorded, so a replaced release asset fails the step. Combining it with `binary`,
+  which skips the download, is rejected (exit 64).
 
 ### Fixed
 
@@ -39,8 +43,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   recorded only the configured level (module by default), so existing type cycles kept
   `check --strict` and `cycles --level type --strict` failing after a baseline was adopted.
   Existing baseline files stay valid; rewrite them to add type-cycle fingerprints, which raises the
-  "Wrote N findings" count. `unused-import` and `unused-parameter` findings are still not recorded,
-  so a `fix --strict` dry-run gate can still fail on existing imports.
+  "Wrote N findings" count. It also records the `unused-import` and `unused-parameter` warnings
+  that `fix` leaves alone once the baseline accepts them, so `baseline` followed by a `fix --strict`
+  dry run exits 0 instead of failing on existing imports and parameters. Import entries name the
+  file relative to the project root (absolute only for a file outside it), so a committed baseline
+  also matches in a checkout at another path; an entry written with an absolute path still matches
+  at that path.
 - `cycles --explain` applies the baseline as `dead --explain` does. Cycles the baseline suppresses
   no longer count as findings, so `--strict` exits 0 for them, and
   `CommandOutcome.suppressedCount` reports how many were suppressed. The explanation text is
@@ -82,6 +90,75 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `--since` now reports a tracked file whose content is unchanged but whose stat differs (for
+  example in a copied working tree or after a file is rewritten with the same bytes, until git
+  refreshes its index) as changed, because the working-tree diff no longer refreshes the index. A
+  file a filter normalized (such as Git LFS) looks changed in that state too, because git now
+  compares it without the filter, so `--since` includes it and
+  `impact --format language-traversal` omits the `HEAD` revision.
+- `impact --format language-traversal` also omits the `HEAD` revision when the project contains a
+  submodule; pass `--revision` to record one. A repository that configures a filter driver whose
+  name cannot be disabled with `-c` (it contains `=`) makes `--since` fail (exit 2) and the
+  revision be omitted; analyze a fresh checkout such as a `git clone --no-local` copy instead.
+- `schema` no longer emits `relation-use` facts for three SQL shapes that name no relation,
+  following the rules every persistence producer shares through the isthmus contract: a CTE name
+  used unqualified in the same statement, a `FROM` inside function arguments
+  (`EXTRACT(YEAR FROM created_at)`, `TRIM(BOTH ' ' FROM name)`, `SUBSTRING(name FROM 2)`), and the
+  operand of `IS [NOT] DISTINCT FROM`. A placeholder in those positions is no longer counted under
+  `unjoined-dynamic-relations`. The CTE rule covers the whole statement, so a CTE named after a
+  table also hides that table's use there.
+- Sources behind a directory symlink that leaves the project root are no longer analyzed, so a
+  declaration used only from there can now be reported unreachable. Every response that carries
+  `limitations`, including the `routes`, `bridges`, `schema` and `dataflow` documents, then lists
+  `symlinked-directories-outside-root` with the links' project-relative paths; like a missing
+  source it downgrades `bound` dispatch to `candidate` in `impact --format language-traversal` and
+  makes `affected --format xcodebuild` print no selectors (exit 2). Run with `--project` at a
+  directory that contains the linked code to keep analyzing it.
+- The GitHub Action splits `args` with shell-like quoting (Python `shlex`, as the GitLab component
+  does) instead of plain word splitting: quotes group words and a backslash escapes the next
+  character, while `$`, command substitution and glob characters stay literal. Quote and backslash
+  characters therefore no longer reach the CLI verbatim, and `args` with an unclosed quote or a
+  trailing backslash now fail the step with `exit-code` `64` before the CLI runs.
+- With `version: latest` (the default) the action logs a notice naming the release it used and
+  recommending to pin `version` and `sha256`. A latest release that is not a CLI release (such as
+  `action-v1.0.0`) now fails with a clear error instead of a missing-asset download failure.
+- `cycles --since` now scopes cycles the way `check --since` does: a strongly connected
+  component's cycle is reported when any node of the component (a type's extension members and any
+  file of a module included) has a declaration in a changed file. It used to keep a cycle only when
+  its representative path started in a changed file, so a pull request that closed a cycle from
+  another member's file passed `cycles --level type --since … --strict` while `check --since`
+  failed. Module cycles, which have no location and were therefore always reported, now need a
+  changed file in one of the component's modules. Output without `--since` is unchanged.
+- After the baseline is written again, `dead` no longer prints the `unused-import` and
+  `unused-parameter` warnings it records and counts them as suppressed, and "Wrote N findings"
+  grows by their number. The `check` output, the diagnostics' JSON `subject` values and the
+  `dead --strict` exit code, which counts only `unused-symbol`, are unchanged. Earlier releases do
+  not match the new relative import entries and keep reporting those imports.
+- Relative `index_store_path` and `derived_data_path` in `.cartograph.yml` now resolve against the
+  project root, like `baseline_path` and `external_retentions_path`, instead of the directory the
+  command runs in. `cartograph check --project ios` from a monorepo root therefore finds
+  `derived_data_path: DerivedData` at `ios/DerivedData`, as the `init` template suggests; a
+  configuration that spelled the path from the working directory (`ios/DerivedData`) must drop
+  that prefix. `--index-store` and `--derived-data` still resolve against the current directory
+  and are passed on as absolute paths, so "Searched:" lists absolute paths.
+- A baseline named with `--baseline` or `baseline_path` that does not exist now stops `dead`,
+  `cycles`, `metrics`, `rules`, `fix`, `query` and `check` with a usage error (exit 64) before the
+  index is opened. It used to be skipped silently, so every accepted finding came back as new and
+  `query` lost its `suppressedByBaseline` marks. `serve` refuses a missing `--baseline` at start,
+  and a missing `baseline_path` makes `cartograph_query` and `cartograph_check` return an error
+  result. The default `.cartograph-baseline.json` is still read only if it exists,
+  `baseline --write` does not need the file, and a named file that cannot be read still exits 2.
+  For library users, `CartographService` methods that apply a baseline throw
+  `CartographError.invalidBaseline` for a missing named file
+  (`CartographError.missingBaseline(at:)`), and `requireConfiguredBaseline()` checks it up front.
+- `Package.swift` pins `indexstore-db` to commit `64aa0b26913249c4e7c21d351a215fba02702003`, the
+  `release/6.4.1` head this release was built and tested with, instead of following the branch.
+  SwiftPM ignores a dependency's `Package.resolved`, so a project that added Cartograph with
+  `revision: "<tag>"` for the command plugin got whatever the branch held when it resolved; it now
+  builds the tested commit. `swift-lmdb`, which `indexstore-db` requires by its `release/6.4.x`
+  branch, still follows that branch unless the project commits its `Package.resolved`. A graph in
+  which another package requires `indexstore-db` by a branch (even `release/6.4.1`) or by another
+  commit now fails to resolve ("required using two different revision-based requirements").
 - Interface Builder enrichment collects only the `customClass` names that retention marking reads
   instead of also scanning outlets and actions in every document. Retention marks are unchanged,
   and the Interface Builder phase takes about half as long on large storyboards.
@@ -107,11 +184,67 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   generated-class verification reads each generated source once and builds its lookup tables once
   per call. Path-filter glob matching pre-splits pattern segments, and Kit no longer rebuilds the
   path filter for each item.
-- Except where a Fixed entry says otherwise, output and exit codes are unchanged. The measurements
-  behind these changes used synthetic release-build harnesses and show reduced work on those
-  shapes, not a general end-to-end speedup. `CodeGraph`'s stored sorted arrays add about 6% peak RSS
-  on large graphs without ignore comments, and the suggestion index adds memory after the first
-  notFound suggestion (about 9% peak RSS on a 420,000-node synthetic graph).
+- The syntax cache in `$TMPDIR/cartograph-syntax-cache` now uses format 16. Locations inside a
+  file's entry no longer repeat that file's path, and blocks nested in a recorded function or
+  accessor body are no longer stored as separate body ranges (the covered positions are the same).
+  On this repository the cache shrank from 17.4 MB to 5.8 MB and warm runs used 13–22% less peak
+  memory; on synthetic projects of 250 to 2,000 files it shrank by 71% at every size. Analysis
+  output is unchanged. The first run after upgrading discards older caches and parses every Swift
+  file again. For library users, `SourceFileFacts.bodyRanges` no longer lists the nested blocks and
+  `SwiftSyntaxAnalyzer.analysisRevision` is 24.
+- In an MCP session the analysis limitations, the `cartograph_check` result and the test
+  lifecycle and name and file indexes that `cartograph_affected` now shares with
+  `cartograph_impact` are computed once per generation instead of on every call. Repeated calls in
+  one generation answered 49–61% faster for `cartograph_impact` and `cartograph_affected` on this
+  repository and 59–79% faster on synthetic projects of 1,000 to 4,000 files, and
+  `cartograph_check` answered in about 3–5 ms instead of 0.1–0.7 s, a cost that grew with the
+  project. Responses are unchanged. Each response in a generation carries the limitations counted
+  for that generation, the same list as its `session` envelope, so an edit made inside the
+  freshness window shows up as `index-staleness` once the session re-verifies or after
+  `refresh: true`.
+- `impact --format language-traversal` hashes `graphRevision` by streaming the same bytes into
+  SHA-256 instead of building the sorted rows and their JSON encoding in memory, and
+  `runtime plan` and `runtime check` encode the graph for `graphFingerprint` 4,096 nodes or edges
+  at a time. Both values are unchanged, so isthmus comparisons and stored runtime observations stay
+  valid. On a synthetic graph of 200,000 nodes and 1.96 million edges, `graphRevision` took 1.6 s
+  instead of 4.7 s and no longer added about 0.9 GB of memory, and encoding the runtime graph
+  fingerprint added 464 MB instead of 2.1 GB. On a 5,000-file synthetic project the
+  language-traversal command ran 6% faster, and `runtime plan` peaked 13% lower in the runs whose
+  peak was the graph fingerprint.
+- `runtime plan` and `runtime check` hash `--executable` in 1 MiB pieces instead of reading the
+  whole file, and the chunked reads behind the session input fingerprint no longer keep every
+  piece until the command ends. With a 512 MiB executable, `runtime plan` peaked at 51 MB instead
+  of 570 MB. Fingerprints are unchanged.
+- Except where a Fixed entry or a behavior change listed above says otherwise, output and exit
+  codes are unchanged. The measurements behind these changes used synthetic release-build
+  harnesses, apart from the figures an entry gives for this repository, and show reduced work on
+  those shapes, not a general end-to-end speedup. `CodeGraph`'s stored sorted arrays add about 6%
+  peak RSS on large graphs without ignore comments, and the suggestion index adds memory after the
+  first notFound suggestion (about 9% peak RSS on a 420,000-node synthetic graph).
+
+### Security
+
+- `--since` (every command that accepts it) and the lookup of the default
+  `impact --format language-traversal` revision no longer run content filter drivers
+  (clean/smudge/process), external diff or textconv drivers, fsmonitor, commit-signature programs
+  or submodule configuration defined by the repository under analysis. This extends the 0.12.0
+  guarantee for a crafted `.git` directory, which covered fsmonitor only, to git's content filters.
+- Project walks no longer follow a directory symlink whose target resolves outside the project
+  root. One link such as `Sources/App/vendor -> /` made every command enumerate (and the MCP
+  session hash) the whole target tree, and mixed facts from foreign sources, with absolute paths
+  outside the project, into `dead`, `routes`, `bridges` and `schema`. Symlinks that stay inside the
+  root and file symlinks are followed as before.
+- The GitHub Action checks each downloaded release archive against the SHA-256 digest GitHub
+  recorded for the asset before extracting it, extracts only the `cartograph` executable (a link
+  there is rejected), and runs the binary for the first time (`--version`) in a separate step that
+  does not receive `GH_TOKEN`. The nested `github/codeql-action/upload-sarif` is pinned to the
+  v4.39.0 commit. `version` must be `latest` or `MAJOR.MINOR.PATCH` (exit 64 otherwise), because it
+  reaches gh's request path and jq filter. These and the other action changes above reach
+  consumers with the next `action-v*` release; `action-v1.0.0` does not have them.
+- The release workflow publishes only commits that are already on `main`. Before building, it
+  fetches `main`'s history and stops when the source commit is not an ancestor, for a version-tag
+  push and a manual dispatch alike, so a tag pushed on an unmerged branch commit no longer builds
+  or publishes a release. A hotfix is merged to `main` before it is released.
 
 ## [0.28.0] - 2026-10-19
 
