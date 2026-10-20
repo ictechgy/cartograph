@@ -1628,14 +1628,16 @@ public struct CartographService: Sendable {
     /// 지표 임계값 위반도 함께 담는다. `metrics` 는 베이스라인을 적용하는데
     /// `baseline` 이 그것을 기록하지 못하면 영원히 억제할 수 없는 진단이 생긴다.
     /// 순환도 같은 이유로 베이스라인을 적용하는 레벨마다 거둔다(`baselineCycleDiagnostics(in:)`).
+    /// `fix` 가 베이스라인으로 거르는 두 경고도 같은 목록(`mechanicallyFixableDiagnostics`)으로 거둔다.
     public func collectAllDiagnostics() throws -> [Diagnostic] {
         let context = try loadContext()
-        let (_, unused) = unusedCode(in: context, computingSuperfluousIgnores: false)
+        let (symbolGraph, unused) = unusedCode(in: context, computingSuperfluousIgnores: false)
         let (_, metricValues, _) = metrics(in: context)
         let (_, violations, _) = try layerViolations(in: context)
 
         return baselineCycleDiagnostics(in: context)
             + AnalysisDiagnostics.diagnostics(for: unused)
+            + Self.mechanicallyFixableDiagnostics(for: unused, in: symbolGraph)
             + AnalysisDiagnostics.diagnostics(for: violations)
             + AnalysisDiagnostics.diagnostics(for: metricValues, thresholds: configuration.thresholds)
     }
@@ -1655,9 +1657,12 @@ public struct CartographService: Sendable {
     }
 
     /// 현재 진단 상태를 베이스라인 파일로 기록한다.
+    ///
+    /// 커밋해서 다른 체크아웃(CI)에서 읽는 파일이므로 `unused-import` 지문의 파일 경로는 프로젝트 기준 상대
+    /// 경로로 적는다. `loadBaseline()` 이 그 체크아웃의 루트 표기들로 되돌린다.
     public func writeBaseline(diagnostics: [Diagnostic], to path: String) throws -> CommandOutcome {
         let resolvedPath = resolveProjectRelativePath(path)
-        let baseline = Baseline.capturing(diagnostics)
+        let baseline = Baseline.capturing(diagnostics, relativeToBaseVariants: PathFilter.variants(of: projectPath))
         try BaselineStore(fileSystem: environment.fileSystem).write(baseline, to: resolvedPath)
         return CommandOutcome(output: "Wrote \(baseline.fingerprints.count) findings to \(resolvedPath)\n")
     }
@@ -1834,9 +1839,14 @@ public struct CartographService: Sendable {
         )
     }
 
+    /// 설정이 가리키는 베이스라인. 상대 경로로 적힌 `unused-import` 지문은 이 프로젝트 루트의 표기들로 펼친다.
+    ///
+    /// 진단 지문을 대조하는 자리(명령 마무리·통합 점검·설명·질의)가 모두 이 함수로 읽으므로, 펼치기를 여기서 한 번만
+    /// 하면 다른 경로에 기록한 베이스라인도 어느 자리에서나 같은 발견을 거른다(`writeBaseline` 참고).
     func loadBaseline() throws -> Baseline? {
         try BaselineStore(fileSystem: environment.fileSystem)
             .loadIfPresent(at: configuration.baselinePath, basePath: projectPath)
+            .map { $0.resolvingRelativePaths(againstBaseVariants: PathFilter.variants(of: projectPath)) }
     }
 
     /// 상대 경로를 projectPath 기준으로 해결한다. 이미 절대 경로면 그대로 둔다.

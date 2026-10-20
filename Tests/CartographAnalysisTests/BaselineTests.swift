@@ -80,6 +80,77 @@ struct BaselineTests {
         #expect(throws: CartographError.self) { try store.load(from: "/p/missing.json") }
         #expect(throws: CartographError.self) { try store.load(from: "/p/broken.json") }
     }
+
+    /// `path` 의 쓰이지 않는 `import Combine` 진단. 주체 형식을 손으로 쓰지 않고 실제 변환으로 만든다.
+    private func unusedImport(at path: String) throws -> Diagnostic {
+        var builder = SnapshotBuilder(path: path)
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.importDecl("Combine", path: path)
+        builder.fileModuleUsage(path: path, owningModule: "App", referencedModules: ["App"])
+        let snapshot = builder.build()
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        let report = ReachabilityAnalyzer().analyze(graph: graph, snapshot: snapshot)
+        return try #require(AnalysisDiagnostics.unusedImportDiagnostics(for: report).first)
+    }
+
+    @Test("프로젝트 안 import 지문은 루트 기준 상대 경로로 기록하고 다른 루트에서도 같은 import 를 거른다")
+    func recordsImportFingerprintsRelativeToTheRoot() throws {
+        // import 주체는 파일 절대 경로를 품는다. 그대로 적으면 커밋한 베이스라인이 기록한 기계의 경로를 담고,
+        // 체크아웃 경로가 다른 CI 에서는 하나도 맞지 않는다.
+        let recorded = Baseline.capturing(
+            [try unusedImport(at: "/p/Sources/A.swift")], relativeToBaseVariants: ["/p"]
+        )
+        #expect(recorded.fingerprints == ["unused-import|import:Sources/A.swift:Combine"])
+
+        let moved = recorded.resolvingRelativePaths(againstBaseVariants: ["/q"])
+        #expect(moved.filtering([try unusedImport(at: "/q/Sources/A.swift")]).isEmpty)
+        // 다른 파일의 같은 import 는 새 발견이다.
+        #expect(moved.filtering([try unusedImport(at: "/q/Sources/B.swift")]).count == 1)
+        // 루트가 `/` 여도 경로 구분자를 겹치지 않는다.
+        let root = Baseline.capturing([try unusedImport(at: "/A.swift")], relativeToBaseVariants: ["/"])
+        #expect(root.fingerprints == ["unused-import|import:A.swift:Combine"])
+        let resolvedAtRoot = root.resolvingRelativePaths(againstBaseVariants: ["/"])
+        #expect(resolvedAtRoot.filtering([try unusedImport(at: "/A.swift")]).isEmpty)
+    }
+
+    @Test("루트의 어느 표기로 적힌 인덱스 경로든 같은 상대 지문이 되고 다시 맞는다")
+    func importFingerprintsFollowEveryRootSpelling() throws {
+        // macOS 인덱스는 링크를 푼 `/private/tmp/...` 를, 사용자는 `/tmp/...` 를 쓴다.
+        let recorded = Baseline.capturing(
+            [try unusedImport(at: "/private/tmp/p/Sources/A.swift")],
+            relativeToBaseVariants: ["/tmp/p", "/private/tmp/p"]
+        )
+        #expect(recorded.fingerprints == ["unused-import|import:Sources/A.swift:Combine"])
+        let resolved = recorded.resolvingRelativePaths(againstBaseVariants: ["/tmp/q", "/private/tmp/q"])
+        #expect(resolved.filtering([try unusedImport(at: "/private/tmp/q/Sources/A.swift")]).isEmpty)
+        #expect(resolved.filtering([try unusedImport(at: "/tmp/q/Sources/A.swift")]).isEmpty)
+    }
+
+    @Test("루트 밖 import 와 경로를 품지 않는 지문은 그대로 기록한다")
+    func keepsFingerprintsThatCannotBeRelativized() throws {
+        let outside = try unusedImport(at: "/elsewhere/Sources/A.swift")
+        // 주체가 `import:<위치 경로>:` 로 시작하지 않으면 경로와 표기를 가를 수 없으니 손대지 않는다.
+        let unknownShape = Diagnostic(
+            ruleIdentifier: "unused-import", severity: .warning, message: "unused",
+            location: SourceLocation(path: "/p/Sources/A.swift", line: 1, column: 1), subject: "Combine"
+        )
+        let recorded = Baseline.capturing(
+            [outside, unknownShape, diagnostic("s:App")], relativeToBaseVariants: ["/p"]
+        )
+        #expect(recorded.fingerprints == [outside.fingerprint, "unused-import|Combine", "unused-symbol|s:App"].sorted())
+        // 기준 표기를 주지 않으면 예전과 같은 지문이다.
+        #expect(Baseline.capturing([outside]).fingerprints == [outside.fingerprint])
+    }
+
+    @Test("예전처럼 절대 경로로 적은 import 지문도 같은 루트에서는 계속 거른다")
+    func keepsMatchingAbsoluteImportFingerprints() throws {
+        let inside = try unusedImport(at: "/p/Sources/A.swift")
+        let legacy = Baseline(fingerprints: [inside.fingerprint, "unused-symbol|s:App"])
+        let resolved = legacy.resolvingRelativePaths(againstBaseVariants: ["/p"])
+        #expect(resolved.filtering([inside]).isEmpty)
+        // 펼칠 상대 지문이 없으면 그대로다.
+        #expect(resolved == legacy)
+    }
 }
 
 @Suite("분석 결과 → 진단 변환")

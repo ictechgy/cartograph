@@ -19,25 +19,28 @@ struct MechanicalFixTests {
         """
 
     /// 구문 위치와 일치하는 인덱스 스냅샷.
-    private func snapshot(parameterLine: Int = 3, parameterColumn: Int = 13) -> IndexSnapshot {
-        var builder = SnapshotBuilder(path: Self.sourcePath)
+    private func snapshot(
+        parameterLine: Int = 3, parameterColumn: Int = 13, sourcePath: String = Self.sourcePath
+    ) -> IndexSnapshot {
+        var builder = SnapshotBuilder(path: sourcePath)
         builder.symbol("App", kind: .structType, attributes: [.entryPoint])
-        builder.symbol("caller", name: "caller()", kind: .function, path: Self.sourcePath,
+        builder.symbol("caller", name: "caller()", kind: .function, path: sourcePath,
             line: 3, column: 6)
-        builder.reference(from: "App", to: "caller", kind: .call, path: Self.sourcePath)
-        builder.parameter("param", name: "retry", functionUSR: "caller", path: Self.sourcePath,
+        builder.reference(from: "App", to: "caller", kind: .call, path: sourcePath)
+        builder.parameter("param", name: "retry", functionUSR: "caller", path: sourcePath,
             line: parameterLine, column: parameterColumn, isReferenced: false)
-        builder.fileModuleUsage(path: Self.sourcePath, owningModule: "App")
+        builder.fileModuleUsage(path: sourcePath, owningModule: "App")
         return builder.build()
     }
 
     private func service(
         snapshot: IndexSnapshot,
         fileSystem: InMemoryFileSystem,
-        reportScope: ReportScope? = nil
+        reportScope: ReportScope? = nil,
+        projectPath: String = "/p"
     ) -> CartographService {
         var configuration = CartographConfiguration.default
-        configuration.projectPath = "/p"
+        configuration.projectPath = projectPath
         return CartographService(
             configuration: configuration,
             environment: .init(
@@ -161,6 +164,74 @@ struct MechanicalFixTests {
         let document = try document(outcome)
         #expect(document.edits.map(\.rule) == ["unused-parameter"])
         #expect(document.suppressedCount == 1)
+    }
+
+    /// `projectRoot` 에 체크아웃한 프로젝트에서 `baseline` 을 기록하고 그 파일 내용을 돌려준다.
+    ///
+    /// 인덱스는 macOS 처럼 루트의 다른 표기(`indexRoot`, 링크를 푼 `/private/tmp`)로 경로를 적을 수 있다.
+    private func recordBaseline(projectRoot: String, indexRoot: String) throws -> String {
+        let sourcePath = indexRoot + "/Sources/A.swift"
+        let fileSystem = InMemoryFileSystem(files: [sourcePath: Self.source])
+        let recorder = service(
+            snapshot: snapshot(sourcePath: sourcePath), fileSystem: fileSystem, projectPath: projectRoot
+        )
+        _ = try recorder.writeBaseline(
+            diagnostics: try recorder.collectAllDiagnostics(), to: Cartograph.defaultBaselineFileName
+        )
+        return try fileSystem.readText(at: projectRoot + "/" + Cartograph.defaultBaselineFileName)
+    }
+
+    @Test("baseline 이 기록한 기존 import·파라미터는 계획에서 빠지고 드라이런 --strict 를 통과시킨다")
+    func baselineRecordsTheFindingsFixLeavesAlone() throws {
+        // README 는 baseline 을 "새 발견만 빌드를 실패시키는" 도입 경로로, fix 는 베이스라인이 이미 받아들인
+        // 발견을 건드리지 않는다고 약속한다. baseline 이 두 경고를 기록하지 않으면 그 억제는 영원히 오지 않는다.
+        let fileSystem = fileSystem()
+        let service = service(snapshot: snapshot(), fileSystem: fileSystem)
+        _ = try service.writeBaseline(
+            diagnostics: try service.collectAllDiagnostics(), to: "/p/.cartograph-baseline.json"
+        )
+        let outcome = try service.mechanicalFixes(apply: false, format: "json")
+        let document = try document(outcome)
+        #expect(document.editCount == 0)
+        #expect(document.suppressedCount == 2)
+        #expect(outcome.findingCount == 0)
+        #expect(try contents(fileSystem) == Self.source)
+    }
+
+    @Test("다른 경로에 체크아웃해도 커밋한 베이스라인이 같은 import·파라미터를 거른다",
+          arguments: [("/q", "/q"), ("/tmp/q", "/private/tmp/q")])
+    func committedBaselineMatchesAnotherCheckout(projectRoot: String, indexRoot: String) throws {
+        // import 지문은 파일 경로를 품는다. 절대 경로로 기록하면 기록한 기계의 경로(사용자 홈 포함)가 커밋되고,
+        // 체크아웃 경로가 다른 CI 에서는 하나도 맞지 않아 억제가 되살아난다.
+        let recorded = try recordBaseline(projectRoot: "/tmp/p", indexRoot: "/private/tmp/p")
+        #expect(!recorded.contains("/tmp/p"))
+        let sourcePath = indexRoot + "/Sources/A.swift"
+        let fileSystem = InMemoryFileSystem(files: [
+            sourcePath: Self.source,
+            projectRoot + "/" + Cartograph.defaultBaselineFileName: recorded,
+        ])
+        let outcome = try service(
+            snapshot: snapshot(sourcePath: sourcePath), fileSystem: fileSystem, projectPath: projectRoot
+        ).mechanicalFixes(apply: false, format: "json")
+        #expect(try document(outcome).editCount == 0)
+        #expect(outcome.suppressedCount == 2)
+    }
+
+    @Test("baseline 을 기록하면 dead 도 그 import·파라미터 경고를 보고하지 않고 억제 수로 센다")
+    func deadCountsRecordedFixableWarningsAsSuppressed() throws {
+        let fileSystem = fileSystem()
+        let service = service(snapshot: snapshot(), fileSystem: fileSystem)
+        let before = try service.detectUnusedCode()
+        _ = try service.writeBaseline(
+            diagnostics: try service.collectAllDiagnostics(), to: "/p/.cartograph-baseline.json"
+        )
+        let after = try service.detectUnusedCode()
+        #expect(before.suppressedCount == 0)
+        #expect(before.output.contains("import 'Combine' is never used"))
+        #expect(after.suppressedCount == 2)
+        #expect(!after.output.contains("is never used"))
+        // 두 경고는 정보성이라 --strict 가 세는 발견 수는 그대로다.
+        #expect(after.findingCount == before.findingCount)
     }
 
     @Test("text 출력은 계획과 요약을 사람이 읽을 수 있게 적는다")
