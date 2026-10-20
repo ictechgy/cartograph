@@ -432,6 +432,8 @@ struct ChangedFilesTests {
         try write("hello", to: "Sources/N.txt", in: root)
         try run(["add", "-A"], in: root)
         try run(["commit", "-qm", "base"], in: root)
+        // stat 을 확실히 어긋나게 한다. 빠뜨리면 쓰기와 인덱스 기록이 같은 초일 때(racy)만 통과한다.
+        try restat("Sources/N.txt", contents: "hello", in: root)
 
         let changed = try ChangedFiles.since("HEAD", workingDirectory: root.path)
         #expect(changed.contains { $0.hasSuffix("Sources/N.txt") })

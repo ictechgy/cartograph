@@ -79,6 +79,9 @@ struct GitRevisionTests {
         try write("hello", to: "App/Sources/N.txt", in: root)
         try git(["add", "-A"], in: root)
         try git(["commit", "-qm", "base"], in: root)
+        // 같은 내용을 새 inode 로 다시 써 stat 을 어긋나게 한다. 빠뜨리면 쓰기와 인덱스 기록이 같은 초일
+        // 때만(racy 판정으로 git 이 내용을 다시 읽을 때만) 통과하고, 초 경계를 넘기면 git 이 stat 을 믿는다.
+        try write("hello", to: "App/Sources/N.txt", in: root)
         #expect(GitRevision.cleanHead(projectPath: root.appendingPathComponent("App").path) == nil)
     }
 
