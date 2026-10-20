@@ -1,6 +1,5 @@
 import CartographAnalysis
 import CartographCore
-import CryptoKit
 import Foundation
 
 extension CartographService {
@@ -49,7 +48,7 @@ extension CartographService {
         return LanguageTraversalDocument(
             tool: .init(name: Cartograph.toolName, version: Cartograph.version),
             generatedAt: Self.bridgeTimestamp(generatedAt), project: project, revision: revision,
-            graphRevision: try Self.graphRevision(graph: graph, runtime: runtime, closedWorld: closedWorld),
+            graphRevision: Self.graphRevision(graph: graph, runtime: runtime, closedWorld: closedWorld),
             direction: direction.rawValue,
             roots: presenter.roots(), reached: rows.values, rootsTruncated: rows.rootsTruncated,
             truncationReasons: (result.truncatedByDepth ? ["depth"] : []) + (rows.outputTruncated ? ["output"] : [])
@@ -107,14 +106,74 @@ extension CartographService {
     /// 정점(id·종류), 간선(양 끝·종류), 자동 발견 런타임 연결, 닫힌 세계 판정을 정렬해 담는다. 위치는
     /// 넣지 않는다 — 줄만 옮긴 편집은 순회 결과를 바꾸지 않는다. 닫힌 세계 판정은 dispatch 걸음의
     /// 근거 등급을 정하므로 넣는다. 그래서 같은 그래프 위의 정·역방향 문서가 같은 값을 낸다.
-    static func graphRevision(graph: CodeGraph, runtime: [ImpactDependency], closedWorld: Bool) throws -> String {
-        let nodes = graph.sortedNodes.map { [$0.id.rawValue, $0.kind.rawValue] }
-        let edges = graph.edges.map { [$0.source.rawValue, $0.target.rawValue, $0.kind.rawValue] }
-        let connections = Set(runtime.map { [$0.source.rawValue, $0.target.rawValue] })
-        let content: [[[String]]] = [nodes.sorted(by: Self.lexicographic), edges.sorted(by: Self.lexicographic),
-            connections.sorted(by: Self.lexicographic), [[closedWorld ? "closed-world" : "open-world"]]]
-        let data = try JSONEncoder.cartographDefault(prettyPrinted: false).encode(content)
-        return "sha256:" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    ///
+    /// 값은 행마다 UTF-8 바이트 사전순으로 정렬한 `[[[String]]]` 을 `JSONEncoder.cartographDefault(prettyPrinted:
+    /// false)` 로 인코딩한 바이트의 SHA-256 이다. isthmus 가 이 값을 불투명 문자열로 비교하므로 바이트는 그대로 두고,
+    /// 행 배열과 인코딩을 통째로 만드는 대신 정렬한 인덱스를 돌며 같은 바이트를 조각으로 흘린다.
+    /// `onHashedChunk` 는 해시에 넘긴 조각의 바이트 수를 받는 테스트용 관측 지점이다.
+    static func graphRevision(graph: CodeGraph, runtime: [ImpactDependency], closedWorld: Bool,
+                              onHashedChunk: ((Int) -> Void)? = nil) -> String {
+        var digest = JSONStringArrayDigest(onChunk: onHashedChunk)
+        digest.beginArray()
+        appendNodeRows(of: graph, to: &digest)
+        appendEdgeRows(of: graph, to: &digest)
+        // 런타임 연결은 작고 같은 연결이 여러 계약으로 겹친다. 문자열 동등성으로 합치던 그대로 둔다.
+        digest.appendRows(Set(runtime.map { [$0.source.rawValue, $0.target.rawValue] }).sorted(by: lexicographic))
+        digest.appendRows([[closedWorld ? "closed-world" : "open-world"]])
+        digest.endArray()
+        return digest.finalize()
+    }
+
+    /// 정점 행 `[id, 종류]`. `sortedNodes` 는 문자열 `<`(정규화 비교) 순이라 결합 문자가 든 id 에서 UTF-8 순서와
+    /// 갈리므로 인덱스만 다시 정렬한다. id 가 서로 달라 종류까지 갈 일은 없지만 행 비교 규칙을 그대로 따른다.
+    private static func appendNodeRows(of graph: CodeGraph, to digest: inout JSONStringArrayDigest) {
+        let nodes = graph.sortedNodes
+        let order = nodes.indices.sorted { lhs, rhs in
+            let byID = compareUTF8(nodes[lhs].id.rawValue, nodes[rhs].id.rawValue)
+            return byID != 0 ? byID < 0 : compareUTF8(nodes[lhs].kind.rawValue, nodes[rhs].kind.rawValue) < 0
+        }
+        digest.beginArray()
+        for index in order {
+            digest.beginArray()
+            digest.append(nodes[index].id.rawValue)
+            digest.append(nodes[index].kind.rawValue)
+            digest.endArray()
+        }
+        digest.endArray()
+    }
+
+    /// 간선 행 `[source, target, 종류]`. `graph.edges` 는 종류를 선언 순위로 정렬하므로 같은 두 정점 사이에서
+    /// rawValue 순서와 갈린다. 이미 거의 정렬된 순서라 안정 정렬이 대부분 한 번 훑기로 끝난다.
+    private static func appendEdgeRows(of graph: CodeGraph, to digest: inout JSONStringArrayDigest) {
+        let edges = graph.edges
+        let order = edges.indices.sorted { edgePrecedes(edges[$0], edges[$1]) }
+        digest.beginArray()
+        for index in order {
+            digest.beginArray()
+            digest.append(edges[index].source.rawValue)
+            digest.append(edges[index].target.rawValue)
+            digest.append(edges[index].kind.rawValue)
+            digest.endArray()
+        }
+        digest.endArray()
+    }
+
+    private static func edgePrecedes(_ lhs: GraphEdge, _ rhs: GraphEdge) -> Bool {
+        let bySource = compareUTF8(lhs.source.rawValue, rhs.source.rawValue)
+        if bySource != 0 { return bySource < 0 }
+        let byTarget = compareUTF8(lhs.target.rawValue, rhs.target.rawValue)
+        if byTarget != 0 { return byTarget < 0 }
+        return compareUTF8(lhs.kind.rawValue, rhs.kind.rawValue) < 0
+    }
+
+    /// 두 문자열의 UTF-8 바이트 사전순 비교. 음수면 `lhs` 가 앞이고 0 이면 바이트가 같다.
+    private static func compareUTF8(_ lhs: String, _ rhs: String) -> Int {
+        var right = rhs.utf8.makeIterator()
+        for left in lhs.utf8 {
+            guard let next = right.next() else { return 1 }
+            if left != next { return left < next ? -1 : 1 }
+        }
+        return right.next() == nil ? 0 : -1
     }
 
     private static func lexicographic(_ lhs: [String], _ rhs: [String]) -> Bool {
