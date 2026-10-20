@@ -111,13 +111,23 @@ struct GraphRevisionDigestTests {
     private static func largeGraph(nodeCount: Int) -> CodeGraph {
         let ids = (0..<nodeCount).map { "s:5Synth\($0)V3run4mode5labelSiAA4ModeO_SStF" + ($0 % 50 == 0 ? "\"q" : "") }
         let nodes = ids.map { GraphNode(id: NodeID($0), name: "run", kind: .method) }
-        let edges = ids.indices.flatMap { offset in
-            [(offset * 31 + 7, EdgeKind.call), (offset * 17 + 3, .reference), (offset * 13 + 1, .member),
-             (offset * 13 + 1, .reference)].map { target, kind in
-                GraphEdge(source: NodeID(ids[offset]), target: NodeID(ids[target % nodeCount]), kind: kind)
-            }
-        }
+        let edges = ids.indices.flatMap { offset in largeGraphEdges(from: offset, ids: ids) }
         return CodeGraph(level: .symbol, nodes: nodes, edges: edges)
+    }
+
+    /// `largeGraph` 의 정점 `offset` 에서 나가는 간선 넷. 대상은 `offset * 곱 + 더할 값` 번째 정점이고,
+    /// 같은 두 정점 사이의 `member`·`reference` 쌍도 만든다.
+    ///
+    /// 형태를 타입이 적힌 상수로 따로 둔다. 정수 리터럴 연산·암시적 멤버·튜플 분해를 `flatMap` 한 식에 넣으면
+    /// 타입 검사가 수 초 걸리고, CI 의 Swift 6.3 은 한도를 넘겨 테스트 빌드가 실패한다.
+    private static func largeGraphEdges(from offset: Int, ids: [String]) -> [GraphEdge] {
+        let shapes: [(multiplier: Int, increment: Int, kind: EdgeKind)] = [
+            (31, 7, .call), (17, 3, .reference), (13, 1, .member), (13, 1, .reference),
+        ]
+        return shapes.map { shape in
+            let target = ids[(offset * shape.multiplier + shape.increment) % ids.count]
+            return GraphEdge(source: NodeID(ids[offset]), target: NodeID(target), kind: shape.kind)
+        }
     }
 
     private static func runtime(_ graph: CodeGraph, pairs: [(Int, Int)]) -> [ImpactDependency] {
