@@ -317,10 +317,60 @@ struct ChangedFilesTests {
         (try? FileManager.default.contentsOfDirectory(atPath: directory.path).count) ?? -1
     }
 
-    /// git 은 작업 트리 파일의 stat 이 인덱스와 어긋날 때만 내용을 다시 읽어 필터를 돌린다.
     /// 같은 내용을 새 inode 로 다시 써서(atomically) 체크아웃·압축 해제처럼 stat 을 어긋나게 한다.
+    ///
+    /// `--since` 의 작업 트리 diff 는 `diff.autoRefreshIndex=false` 라 stat 이 어긋난 항목을 다시 읽지 않고 변경으로
+    /// 센다. 그래서 이 도우미를 쓰는 테스트는 refresh 를 끈 결과를 고정할 뿐, 필터 무력화는 시험하지 못한다
+    /// (무력화를 빼도 통과한다). 무력화는 내용을 다시 읽는 racy 항목(`makeRacy`)으로 시험한다.
     private func restat(_ path: String, contents: String, in root: URL) throws {
         try write(contents, to: path, in: root)
+    }
+
+    /// 추적 파일들을 racy 항목으로 만든다. 인덱스의 stat 은 작업 트리와 같지만 항목 mtime 이 인덱스 파일보다 새롭다.
+    ///
+    /// git 은 racy 항목을 stat 만으로 믿지 않고 내용을 다시 읽으며, 그때 필터가 돈다. refresh 를 끈 작업 트리 diff
+    /// 에서 필터가 불릴 수 있는 길은 이것뿐이다. mtime 을 미래로 옮기고 `update-index --refresh` 로 그 stat 을
+    /// 인덱스에 기록한다(인덱스 파일은 지금 시각에 쓰여 항목보다 오래된다). refresh 가 필터를 돌리지 않도록
+    /// 필터를 정의하기 전에 부른다.
+    private func makeRacy(_ paths: [String], in root: URL) throws {
+        let future = Date().addingTimeInterval(600)
+        for relative in paths {
+            try FileManager.default.setAttributes(
+                [.modificationDate: future], ofItemAtPath: root.appendingPathComponent(relative).path)
+        }
+        try run(["update-index", "--refresh"], in: root)
+    }
+
+    @Test("racy 추적 파일을 다시 읽을 때도 저장소의 필터(점 든 이름, required=true 인 process)를 실행하지 않는다")
+    func doesNotRunContentFiltersOnRacyEntries() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = try makeMarkerDirectory()
+        defer { try? FileManager.default.removeItem(at: markers) }
+        try write("*.swift filter=evil\n*.txt filter=proc\n", to: ".gitattributes", in: root)
+        try write("let a = 1", to: "Sources/A.swift", in: root)
+        try write("text", to: "Docs/N.md", in: root)
+        try write("plain", to: "Docs/P.txt", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        try makeRacy(["Sources/A.swift", "Docs/N.md", "Docs/P.txt"], in: root)
+
+        try run(["config", "filter.evil.clean", "touch '\(markers.path)/clean'; cat"], in: root)
+        try run(["config", "filter.deep.name.clean", "touch '\(markers.path)/dotted'; cat"], in: root)
+        // required=true 인 process 필터를 끄지 못하면 git 이 그 명령을 띄우고,
+        // 필터 프로토콜을 모르는 명령이라 128 로 죽는다.
+        try run(["config", "filter.proc.process", "touch '\(markers.path)/process'; cat"], in: root)
+        try run(["config", "filter.proc.required", "true"], in: root)
+        try "*.md filter=deep.name\n".write(
+            to: root.appendingPathComponent(".git/info/attributes"), atomically: true, encoding: .utf8)
+
+        for includingDeleted in [false, true] {
+            let changed = try ChangedFiles.since(
+                "HEAD", workingDirectory: root.path, includingDeleted: includingDeleted)
+            // 필터 없이 다시 읽은 내용이 기록과 같으므로 변경이 아니다.
+            #expect(changed.isEmpty, "includingDeleted=\(includingDeleted): \(changed.sorted())")
+        }
+        #expect(markerCount(in: markers) == 0)
     }
 
     @Test("분석 대상 저장소의 clean 필터(점 든 이름 포함)를 실행하지 않는다")
