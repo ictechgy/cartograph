@@ -18,8 +18,13 @@ enum CommandSupport {
     static let findingsExitCode: Int32 = 1
     static let failureExitCode: Int32 = 2
 
+    /// 설정을 읽고 CLI 옵션을 얹어 명령이 쓸 서비스를 만든다.
+    ///
+    /// - Parameter readsBaseline: 명령이 베이스라인을 읽는다. 참이면 이름 붙인 베이스라인 파일이 있는지 인덱스를 열기
+    ///   전에 확인한다(`requireConfiguredBaseline(of:)`). 읽지 않는 명령(`graph`, `baseline` 기록 등)은 아직 없는
+    ///   `baseline_path` 로도 돈다.
     static func makeContext(
-        _ options: GlobalOptions, queryPhaseObserver: QueryPhaseObserver? = nil
+        _ options: GlobalOptions, queryPhaseObserver: QueryPhaseObserver? = nil, readsBaseline: Bool = false
     ) throws -> CommandContext {
         let fileSystem = LocalFileSystem()
         let resolved = try options.resolveConfiguration(fileSystem: fileSystem)
@@ -46,16 +51,27 @@ enum CommandSupport {
         var environment = CartographEnvironment.live()
         environment.queryPhaseObserver = queryPhaseObserver
 
-        return CommandContext(
-            service: CartographService(
-                configuration: resolved.configuration,
-                environment: environment,
-                reportScope: scope,
-                allowsEmptyIndex: options.allowEmptyIndex
-            ),
+        let service = CartographService(
             configuration: resolved.configuration,
-            fileSystem: fileSystem
+            environment: environment,
+            reportScope: scope,
+            allowsEmptyIndex: options.allowEmptyIndex
         )
+        if readsBaseline { try requireConfiguredBaseline(of: service) }
+        return CommandContext(service: service, configuration: resolved.configuration, fileSystem: fileSystem)
+    }
+
+    /// 이름 붙인 베이스라인 파일이 없으면 사용 오류(64)로 끝낸다.
+    ///
+    /// 없는 파일을 가리킨 것은 인자나 설정 값의 문제다. 서비스가 던지는 `CartographError` 를 그대로 두면 최상위가
+    /// 도구 실패(2)로 끝내고, CI 는 그것을 "분석을 신뢰할 수 없음" 으로 읽어 인덱스를 의심한다. 분류는 최상위가 아니라
+    /// 오류가 나는 이 자리에서 한다(`CartographCommand.main()` 참고). 깨진 파일은 읽을 때 2 로 남는다.
+    static func requireConfiguredBaseline(of service: CartographService) throws {
+        do {
+            try service.requireConfiguredBaseline()
+        } catch let error as CartographError {
+            throw ValidationError(describe(error))
+        }
     }
 
     /// 결과를 내보내고 종료 코드를 결정한다.

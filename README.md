@@ -1571,6 +1571,16 @@ written — a key in the analyzed repository's config must not be able to point 
 arbitrary path, and if `baseline_path` is set while `--write` is missing, `baseline` exits 64 and
 says so rather than guessing.
 
+A baseline you name — with `--baseline` or `baseline_path` — must exist. When it does not, every
+command that applies a baseline (`dead`, `cycles`, `metrics`, `rules`, `fix`, `query`, `check`)
+exits 64 before opening the index, because a mistyped path would otherwise drop every suppression
+and report the accepted findings as new ones. The default `.cartograph-baseline.json` stays
+optional: with no name given, it is read only if it exists. Writing never reads a baseline, so
+`baseline --write` can create the file a committed `baseline_path` names, and commands that do not
+apply one run meanwhile. `serve` exits 64 at start for a missing `--baseline`; a missing
+`baseline_path` makes `cartograph_query` and `cartograph_check` return an error result until the
+file exists. A named file that exists but cannot be read is still a tool failure (exit 2).
+
 ### `--since` — review only what a pull request touched
 
 ```bash
@@ -1645,7 +1655,8 @@ thresholds:
 
 baseline_path: .cartograph-baseline.json    # where --baseline READS suppression findings;
                                             # `cartograph baseline` writes only via --write or the
-                                            # project-root default, never to this key
+                                            # project-root default, never to this key; once set,
+                                            # the file must exist (exit 64 otherwise)
 external_retentions_path: .isthmus/retentions.cartograph.json   # from isthmus, see `bridges`
 derived_data_path: DerivedData    # where CI put -derivedDataPath
 report_format: text               # text json xcode checkstyle github-actions sarif

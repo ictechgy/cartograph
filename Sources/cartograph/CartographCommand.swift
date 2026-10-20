@@ -230,7 +230,7 @@ struct CyclesCommand: ParsableCommand {
     }
 
     func run() throws {
-        let context = try CommandSupport.makeContext(options)
+        let context = try CommandSupport.makeContext(options, readsBaseline: true)
         let outcome = try explain.map { try context.service.explainCycles(of: $0, level: options.level) }
             ?? context.service.detectCycles(level: options.level)
         try CommandSupport.emit(outcome, options: options, context: context)
@@ -291,7 +291,7 @@ struct DeadCommand: ParsableCommand {
     }
 
     func run() throws {
-        let context = try CommandSupport.makeContext(options)
+        let context = try CommandSupport.makeContext(options, readsBaseline: true)
         let outcome = try explain.map { try context.service.explainRetention(of: $0) }
             ?? context.service.detectUnusedCode(reportingTestOnlyCode: reportTestOnly)
         try CommandSupport.emit(outcome, options: options, context: context)
@@ -411,7 +411,7 @@ struct QueryCommand: ParsableCommand {
                 // 요청 파일은 인덱스를 열기 전에 읽는다. 색인을 다 만든 뒤에 "배열이 비었다" 를
                 // 말하면 사용자는 몇 초를 기다린 대가로 오타 하나를 받는다.
                 let requests = try batch.map { try Self.readRequests(at: $0) }
-                let context = try CommandSupport.makeContext(options, queryPhaseObserver: observer)
+                let context = try CommandSupport.makeContext(options, queryPhaseObserver: observer, readsBaseline: true)
                 return (requests, context)
             }
             let outcome = try requests.map {
@@ -724,7 +724,7 @@ struct MetricsCommand: ParsableCommand {
     @OptionGroup var options: GlobalOptions
 
     func run() throws {
-        let context = try CommandSupport.makeContext(options)
+        let context = try CommandSupport.makeContext(options, readsBaseline: true)
         try CommandSupport.emit(
             try context.service.measureMetrics(level: options.level),
             options: options,
@@ -757,7 +757,7 @@ struct RulesCommand: ParsableCommand {
     }
 
     func run() throws {
-        let context = try CommandSupport.makeContext(options)
+        let context = try CommandSupport.makeContext(options, readsBaseline: true)
         let outcome = try explain.map { try context.service.explainRules(of: $0, level: options.level) }
             ?? context.service.checkRules(level: options.level)
         try CommandSupport.emit(outcome, options: options, context: context)

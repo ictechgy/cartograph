@@ -1,6 +1,7 @@
 import ArgumentParser
 @testable import cartograph
 import CartographCore
+import CartographKit
 import CartographTestSupport
 import Testing
 
@@ -210,6 +211,31 @@ struct CommandConfigurationTests {
         struct Boom: Error {}
         #expect(!CommandSupport.describe(Boom()).isEmpty)
     }
+
+    @Test("이름 붙인 베이스라인이 없으면 사전 확인이 도구 실패(2)가 아니라 사용 오류(64)로 바꿔 알린다")
+    func missingNamedBaselineBecomesUsageError() throws {
+        // 경로 오타는 인자의 문제다. 2 로 끝나면 CI 는 인덱스를 의심한다. 사전 확인은 인덱스를 열기 전에 돈다.
+        let fileSystem = InMemoryFileSystem(currentDirectoryPath: "/p", files: ["/p/known.json": "{}"])
+        func service(baselinePath: String?) -> CartographService {
+            var configuration = CartographConfiguration.default
+            configuration.projectPath = "/p"
+            configuration.baselinePath = baselinePath
+            return CartographService(
+                configuration: configuration, environment: CartographEnvironment(fileSystem: fileSystem)
+            )
+        }
+        do {
+            try CommandSupport.requireConfiguredBaseline(of: service(baselinePath: "none.json"))
+            Issue.record("없는 베이스라인을 통과시켰다")
+        } catch let error as ValidationError {
+            #expect(error.message.contains("/p/none.json"))
+            #expect(error.message.contains("cartograph baseline --write"))
+        }
+        try CommandSupport.requireConfiguredBaseline(of: service(baselinePath: "known.json"))
+        // 이름을 붙이지 않았으면 기본 파일(.cartograph-baseline.json)은 없어도 된다.
+        try CommandSupport.requireConfiguredBaseline(of: service(baselinePath: nil))
+    }
+
     @Test("프로젝트 경로를 절대 경로로 바꾼다")
     func makesProjectPathAbsolute() {
         // libIndexStore 는 상대 경로를 받으면 어서션으로 프로세스를 죽인다.

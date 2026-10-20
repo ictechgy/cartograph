@@ -258,6 +258,19 @@ expect_output '"channel" : "/v1/users/search%3Fdraft"' "호출: 선언 없는 Mo
 # 실제 쓰기 실패는 아래 "빈 인덱스" 픽스처 다음에서 검증한다 — 없는 부모
 # 디렉터리는 -o 가 만들어 주므로 경로만으로는 실패하지 않는다.
 expect_status 2 "깨진 베이스라인"      cycles --project "$MISSING" --baseline "$MISSING/broken.json"
+# 이름 붙인 베이스라인 파일이 없으면 인자의 문제다(64). 조용히 건너뛰면 억제가 전부 사라지고, 2 로 끝나면 CI 는
+# 인덱스를 의심한다. 인덱스를 열기 전에 확인하므로 인덱스가 없는 이 프로젝트에서도 64 다. 이름을 붙이지 않은 기본
+# 파일(.cartograph-baseline.json)은 없어도 된다 — 위의 "인덱스 스토어 없음" 이 그 경우다.
+for reader in dead cycles metrics rules fix check; do
+    expect_status 64 "없는 베이스라인: $reader" "$reader" --project "$MISSING" --baseline "$MISSING/none.json"
+done
+expect_status 64 "없는 베이스라인: query" query Foo --project "$MISSING" --baseline "$MISSING/none.json"
+mkdir -p "$MISSING/named"
+printf 'baseline_path: none.json\n' > "$MISSING/named/.cartograph.yml"
+expect_status 64 "설정의 baseline_path 가 가리키는 파일 없음" check --strict --project "$MISSING/named"
+expect_status 64 "서버: 없는 --baseline 은 시작 전에 거부" serve --baseline "$MISSING/none.json"
+# 세션은 첫 도구 호출 때 설정을 읽는다. 설정의 baseline_path 는 그때 도구 결과의 오류로 드러난다.
+expect_status 0 "서버: 설정의 baseline_path 는 시작을 막지 않는다" serve --project "$MISSING/named"
 # 외부 근거 파일은 지정했는데 없으면 조용히 넘어가지 않는다. 반영됐다고 믿고 지우면 앱이 깨진다.
 expect_status 2 "없는 외부 근거 파일"  dead --project "$MISSING" --external-retentions "$MISSING/none.json"
 expect_status 2 "깨진 외부 근거 파일"  dead --project "$MISSING" --external-retentions "$MISSING/broken.json"
@@ -382,6 +395,15 @@ expect_status 64 "설정의 baseline_path 로는 쓰지 않는다" \
     baseline --project "$CFG" --index-store "$EMPTY/.build/index/store" --allow-empty-index
 expect_status 0 "쓰기 목적지를 명시하면 기록한다" \
     baseline --project "$EMPTY" --allow-empty-index --write "$EMPTY/baseline.json"
+# baseline_path 를 먼저 커밋하고 그 자리에 처음 기록하는 흐름. 기록과 베이스라인을 읽지 않는 명령은 파일이 아직
+# 없어도 돌고, 베이스라인을 읽는 명령은 기록이 생길 때까지 64 로 멈춘다.
+mkdir -p "$CFG/named"
+printf 'baseline_path: recorded.json\n' > "$CFG/named/.cartograph.yml"
+NAMED_ARGS=(--project "$CFG/named" --index-store "$EMPTY/.build/index/store" --allow-empty-index)
+expect_status 64 "기록 전: 베이스라인을 읽는 명령"     dead "${NAMED_ARGS[@]}"
+expect_status 0 "기록 전: 베이스라인을 읽지 않는 명령"  graph "${NAMED_ARGS[@]}"
+expect_status 0 "없는 baseline_path 자리에 처음 기록"  baseline "${NAMED_ARGS[@]}" --write "$CFG/named/recorded.json"
+expect_status 0 "기록 뒤: 베이스라인을 읽는 명령"      dead "${NAMED_ARGS[@]}"
 
 echo "종료 코드 0 — 빈 인덱스 탈출구"
 expect_status 0 "빈 인덱스 허용"       dead --strict --project "$EMPTY" --allow-empty-index

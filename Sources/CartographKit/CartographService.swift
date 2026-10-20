@@ -1667,6 +1667,17 @@ public struct CartographService: Sendable {
         return CommandOutcome(output: "Wrote \(baseline.fingerprints.count) findings to \(resolvedPath)\n")
     }
 
+    /// `--baseline`·`baseline_path` 로 이름 붙인 베이스라인 파일이 있는지 확인한다. 이름을 붙이지 않았으면 할 일이
+    /// 없다.
+    ///
+    /// 베이스라인을 읽는 명령이 인덱스를 열기 전에 부르는 사전 확인이다. 읽는 자리(`loadBaseline()`)도 같은 확인을
+    /// 하지만 인덱스를 다 읽은 뒤라, 경로 오타 하나를 알리려고 분석 시간을 다 쓰게 된다.
+    ///
+    /// - Throws: 파일이 없으면 `CartographError.missingBaseline(at:)` — 원인과 해결 방향을 담은 `invalidBaseline`.
+    public func requireConfiguredBaseline() throws {
+        _ = try configuredBaselinePath()
+    }
+
     // MARK: - 내부 구현
 
     /// 진단에 리포트 스코프를 적용하고, 베이스라인을 읽어 보고 대상 진단과 억제 건수를 계산한다.
@@ -1841,12 +1852,29 @@ public struct CartographService: Sendable {
 
     /// 설정이 가리키는 베이스라인. 상대 경로로 적힌 `unused-import` 지문은 이 프로젝트 루트의 표기들로 펼친다.
     ///
+    /// 이름 붙인 파일은 없으면 실패하고(`configuredBaselinePath()`), 이름을 붙이지 않았으면 기본 파일을 있을 때만
+    /// 읽는다.
     /// 진단 지문을 대조하는 자리(명령 마무리·통합 점검·설명·질의)가 모두 이 함수로 읽으므로, 펼치기를 여기서 한 번만
     /// 하면 다른 경로에 기록한 베이스라인도 어느 자리에서나 같은 발견을 거른다(`writeBaseline` 참고).
     func loadBaseline() throws -> Baseline? {
-        try BaselineStore(fileSystem: environment.fileSystem)
-            .loadIfPresent(at: configuration.baselinePath, basePath: projectPath)
-            .map { $0.resolvingRelativePaths(againstBaseVariants: PathFilter.variants(of: projectPath)) }
+        let store = BaselineStore(fileSystem: environment.fileSystem)
+        let baseline = try configuredBaselinePath().map { try store.load(from: $0) }
+            ?? store.loadIfPresent(at: nil, basePath: projectPath)
+        return baseline.map { $0.resolvingRelativePaths(againstBaseVariants: PathFilter.variants(of: projectPath)) }
+    }
+
+    /// 이름 붙인 베이스라인의 절대 경로. 상대 경로는 프로젝트 루트 기준이다. 이름을 붙이지 않았으면 nil 이다.
+    ///
+    /// 이름 붙인 파일은 기본 파일(`.cartograph-baseline.json`)처럼 "있으면 쓴다" 로 다루지 않는다. 그러면 오타 하나에
+    /// 억제가 전부 사라져, 팀이 받아들인 발견이 새 발견으로 나와도 아무도 이유를 모른다. 기록(`writeBaseline`)은
+    /// 이 함수를 거치지 않으므로 아직 없는 `baseline_path` 자리에 처음 쓸 수 있다.
+    private func configuredBaselinePath() throws -> String? {
+        guard let path = configuration.baselinePath else { return nil }
+        let resolved = resolveProjectRelativePath(path)
+        guard environment.fileSystem.fileExists(at: resolved) else {
+            throw CartographError.missingBaseline(at: resolved)
+        }
+        return resolved
     }
 
     /// 상대 경로를 projectPath 기준으로 해결한다. 이미 절대 경로면 그대로 둔다.

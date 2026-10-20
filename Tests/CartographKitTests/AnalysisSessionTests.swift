@@ -569,7 +569,9 @@ struct AnalysisSessionTests {
 
     @Test("실제 서비스 세션도 같은 시각의 소스 변경을 다시 읽는다")
     func sessionReloadsAfterSourceContentChange() throws {
-        let fileSystem = fingerprintFileSystem(source: "struct App {}", indexUnit: "one")
+        let fileSystem = fingerprintFileSystem(
+            source: "struct App {}", indexUnit: "one", includeBaseline: true, baseline: Self.emptyBaseline
+        )
         let service = fingerprintService(fileSystem: fileSystem)
         let session = try AnalysisSession(service: service)
         let initialGeneration = try #require(session.metadata?.generation)
@@ -582,7 +584,9 @@ struct AnalysisSessionTests {
 
     @Test("실제 index unit 변경도 준비된 세대를 무효화한다")
     func sessionReloadsAfterIndexUnitChange() throws {
-        let fileSystem = fingerprintFileSystem(source: "struct App {}", indexUnit: "one")
+        let fileSystem = fingerprintFileSystem(
+            source: "struct App {}", indexUnit: "one", includeBaseline: true, baseline: Self.emptyBaseline
+        )
         let session = try AnalysisSession(service: fingerprintService(fileSystem: fileSystem))
         let initialGeneration = try #require(session.metadata?.generation)
         try fileSystem.write(text: "two", to: "/p/index-store/v5/units/unit-1")
@@ -1137,6 +1141,11 @@ struct AnalysisSessionTests {
         }
         return builder.build()
     }
+
+    /// 읽을 수 있는 빈 베이스라인. `fingerprintService` 는 베이스라인에 이름을 붙이므로 질의까지 하는 테스트는
+    /// 이 파일을 둔다 — 이름 붙인 베이스라인은 없으면 읽는 자리가 실패한다. `fingerprintFileSystem` 의 기본 내용은
+    /// 지문 바이트만 바꾸려는 값이라 베이스라인으로 읽히지 않는다.
+    private static let emptyBaseline = #"{"fingerprints":[],"generatedBy":"cartograph","version":1}"#
 
     private func fingerprintService(fileSystem: InMemoryFileSystem) -> CartographService {
         var configuration = CartographConfiguration.default

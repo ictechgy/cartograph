@@ -1513,6 +1513,16 @@ cartograph baseline --write .cartograph-baseline.json
 때문입니다. `baseline_path`가 설정된 채 `--write` 없이 `baseline`을 돌리면 64로 끝나고 그
 이유를 말합니다.
 
+`--baseline`이나 `baseline_path`로 이름을 붙인 베이스라인은 있어야 합니다. 없으면 베이스라인을
+적용하는 명령(`dead`, `cycles`, `metrics`, `rules`, `fix`, `query`, `check`)이 모두 인덱스를 열기
+전에 64로 끝납니다 — 경로 오타 하나에 억제가 전부 사라져 받아들인 발견이 새 발견으로 보고되는
+일을 막기 위해서입니다. 기본 이름 `.cartograph-baseline.json`은 그대로 선택 사항입니다 — 이름을
+붙이지 않으면 있을 때만 읽습니다. 기록은 베이스라인을 읽지 않으므로 커밋해 둔 `baseline_path`
+자리에 `baseline --write`로 처음 파일을 만들 수 있고, 그동안 베이스라인을 적용하지 않는 명령은
+그대로 돕니다. `serve`는 없는 `--baseline`이면 시작할 때 64로 끝나고, 없는 `baseline_path`면 파일이
+생길 때까지 `cartograph_query`와 `cartograph_check`가 오류 결과를 냅니다. 이름 붙인 파일이 있는데
+읽을 수 없으면 지금처럼 도구 실패(2)입니다.
+
 ### `--since` — 이번 PR이 건드린 자리만 보기
 
 ```bash
@@ -1586,7 +1596,8 @@ thresholds:
 
 baseline_path: .cartograph-baseline.json    # 억제 발견을 읽어 오는 위치.
                                             # `cartograph baseline`은 --write 또는
-                                            # 프로젝트 루트 기본값에만 씁니다
+                                            # 프로젝트 루트 기본값에만 씁니다. 정해 두면
+                                            # 파일이 있어야 합니다(없으면 64)
 external_retentions_path: .isthmus/retentions.cartograph.json   # isthmus 산출물. `bridges` 참조
 derived_data_path: DerivedData    # CI가 -derivedDataPath로 둔 위치
 report_format: text               # text json xcode checkstyle github-actions sarif

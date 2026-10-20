@@ -75,6 +75,7 @@ public enum ConfigurationTemplate {
         #  max_distance: 0.7
         #  max_efferent_coupling: 8      # distinct nodes one node may depend on (Ce)
 
+        # Once set, the baseline file must exist; record it with `cartograph baseline --write <path>`.
         # baseline_path: \(Cartograph.defaultBaselineFileName)
         # Retentions produced by `isthmus retentions --for cartograph`, for handlers that
         # only Dart or JavaScript calls across a platform channel.

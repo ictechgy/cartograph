@@ -90,9 +90,7 @@ struct GlobalOptions: ParsableArguments {
         // 베이스라인·외부 근거 파일은 명시적 CLI 옵션만 여기서 작업 디렉터리 기준 절대 경로로 고정하고,
         // 설정 값은 서비스가 같은 루트 기준으로 푼다. 인덱스 경로 두 키는 출처마다 여기서 바로 푼다 —
         // 인덱스 계층은 받은 경로를 그대로 열어 상대 경로를 프로세스 작업 디렉터리 기준으로 읽는다.
-        let resolvedBaselinePath = baselinePath.map {
-            Self.absolutePath($0, relativeTo: fileSystem.currentDirectoryPath)
-        }
+        let resolvedBaselinePath = commandLineBaselinePath(currentDirectory: fileSystem.currentDirectoryPath)
         let resolvedExternalRetentionsPath = externalRetentionsPath.map {
             Self.absolutePath($0, relativeTo: fileSystem.currentDirectoryPath)
         }
@@ -117,6 +115,13 @@ struct GlobalOptions: ParsableArguments {
             retainPublic: retainPublic ? true : nil
         )
         return (loaded.configuration.applying(overrides), loaded.warnings)
+    }
+
+    /// `--baseline` 을 작업 디렉터리 기준 절대 경로로 푼 값. 주지 않았으면 nil 이다.
+    ///
+    /// 설정을 풀 때와 `serve` 가 시작 전에 파일을 확인할 때 같은 경로를 봐야 하므로 한 곳에서 푼다.
+    func commandLineBaselinePath(currentDirectory: String) -> String? {
+        baselinePath.map { Self.absolutePath($0, relativeTo: currentDirectory) }
     }
 
     /// 인덱스 스토어·DerivedData 경로 하나를 출처에 맞는 기준으로 절대 경로화한다. CLI 값이 설정 값보다 우선한다.
