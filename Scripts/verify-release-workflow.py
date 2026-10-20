@@ -19,6 +19,10 @@ OTHER_SHA = "b" * 40
 TAG_OBJECT = "c" * 40
 VERSION = "0.26.0"
 TAG_STEP = "Ensure the exact release tag after verification"
+MAIN_STEP = "Require the release source on main"
+MAIN_REF = "refs/remotes/origin/main"
+# SHA로 고정한 checkout은 커밋 하나만 얕게 받아 origin/main이 없다. main까지 전체 이력을 받아 판정한다.
+MAIN_FETCH = ["fetch", "--no-tags", "--unshallow", "origin", "+refs/heads/main:" + MAIN_REF]
 # uses: 줄에서 참조만 뽑는다. 사람이 읽는 '# v7.0.1' 같은 버전 주석은 허용한다.
 USES = re.compile(r"^[ \t]+(?:- )?uses:[ \t]*(\S+)[ \t]*(?:#.*)?$", re.MULTILINE)
 PINNED_ACTION = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[0-9a-f]{40}")
@@ -63,6 +67,11 @@ def fail(message):
     print(message, file=sys.stderr)
     sys.exit(1)
 
+def error(message):
+    # 실제 git은 판정이나 원격 읽기를 못 하면 1이 아니라 128로 끝난다.
+    print(message, file=sys.stderr)
+    sys.exit(128)
+
 tag = "refs/tags/" + os.environ["VERSION"]
 sha = os.environ["SOURCE_SHA"]
 if command == "git":
@@ -88,6 +97,19 @@ if command == "git":
         if state.get("status_fail"):
             fail("mock status failed")
         print(state.get("porcelain", ""), end="")
+    elif args == ["fetch", "--no-tags", "--unshallow", "origin", "+refs/heads/main:refs/remotes/origin/main"]:
+        if state.get("main_fetch_fail"):
+            error("mock main fetch failed")
+        state["main_fetched"] = True
+        save()
+    elif args[:2] == ["merge-base", "--is-ancestor"] and len(args) == 4:
+        # 조상이면 0, 아니면 1, 판정할 수 없으면 128. origin/main은 받기 전에는 없다.
+        commit, ref = args[2:]
+        if state.get("merge_base_error") or ref != "refs/remotes/origin/main" or not state.get("main_fetched"):
+            error("mock cannot resolve " + ref)
+        if commit not in state["main"] + [state["head"]]:
+            error("mock unknown commit " + repr(commit))
+        sys.exit(0 if commit in state["main"] else 1)
     else:
         fail("Unrecognized git call: " + repr(args))
 elif command == "gh":
@@ -148,8 +170,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.reset_state()
 
     def reset_state(self, **changes):
-        self.state_path.write_text(json.dumps({"head": SHA, "kind": "lightweight",
-                                              "tag_sha": SHA, "tag_object": TAG_OBJECT, **changes}))
+        self.state_path.write_text(json.dumps({"head": SHA, "kind": "lightweight", "tag_sha": SHA,
+                                              "tag_object": TAG_OBJECT, "main": [SHA], **changes}))
         self.calls_path.write_text("")
 
     def state(self):
@@ -255,6 +277,49 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assert_refuses(result, "!! .build/File19.swift")
         self.assertNotIn("File20.swift", result.stderr)
 
+    def test_release_source_must_be_on_main_for_both_triggers(self):
+        # 리뷰를 거쳐 main에 머지된 커밋만 게시한다. 태그 push와 수동 실행 모두, 핫픽스 브랜치도 예외가 없다.
+        # main의 끝이 아니어도 main 이력에 있으면 받아들이고, 없으면 원인과 해결 방향을 남기고 멈춘다.
+        checks = [MAIN_FETCH, ["merge-base", "--is-ancestor", SHA, MAIN_REF]]
+        for event in ("workflow_dispatch", "push"):
+            for history, accepted in (([SHA], True), ([SHA, OTHER_SHA], True), ([OTHER_SHA], False)):
+                with self.subTest(event=event, history=history):
+                    self.reset_state(main=history)
+                    result = self.execute(MAIN_STEP, GITHUB_EVENT_NAME=event)
+                    if accepted:
+                        self.assert_passes(result)
+                    else:
+                        self.assert_refuses(result, f"Release source {SHA} is not on main; merge the reviewed pull")
+                    self.assertEqual([call["args"] for call in self.calls()], checks)
+
+    def test_main_fetch_or_ancestry_failure_is_not_reported_as_off_main(self):
+        # main을 받지 못하거나 git이 판정하지 못하면(128) '조상 아님'(1)과 다른 원인을 남기고 멈춘다.
+        self.reset_state(main_fetch_fail=True)
+        result = self.execute(MAIN_STEP)
+        self.assert_refuses(result, "Could not fetch main")
+        self.assertIn("mock main fetch failed", result.stderr)
+        self.assertEqual([call["args"] for call in self.calls()], [MAIN_FETCH])
+        for changes, environment in (({"merge_base_error": True}, {}), ({}, {"SOURCE_SHA": ""}),
+                                     ({}, {"SOURCE_SHA": "e" * 40})):
+            with self.subTest(changes=changes, environment=environment):
+                self.reset_state(**changes)
+                result = self.execute(MAIN_STEP, **environment)
+                self.assert_refuses(result, "Could not check whether release source")
+                self.assertIn("exited 128", result.stderr)
+                self.assertNotIn("is not on main", result.stderr)
+
+    def test_main_check_runs_for_every_trigger_before_any_build(self):
+        # 조건 없이 돌아 두 트리거 모두를 막고, swift build가 체크아웃을 읽기 전에 끝난다. 토큰 없이 공개 이력을 읽는다.
+        workflow = WORKFLOW.read_text()
+        body = step(MAIN_STEP)
+        self.assertNotRegex(body, r"(?m)^        (?:if|continue-on-error):")
+        self.assertNotIn("TOKEN", body)
+        before = workflow[:workflow.index("      - name: " + MAIN_STEP + "\n")].splitlines()
+        commands = [line for line in before if not line.lstrip().startswith("#")]
+        self.assertEqual([line for line in commands if re.search(r"\bswift\s+build\b", line)], [])
+        # --unshallow는 얕은 checkout을 전제한다. checkout이 전체 이력을 받으면 git이 128로 거부한다.
+        self.assertNotIn("fetch-depth", workflow)
+
     def test_absent_manual_tag_is_created_at_exact_sha_before_release(self):
         self.reset_state(kind="absent")
         self.assert_passes(self.tag_then_release())
@@ -315,7 +380,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
     def test_gate_order_tokens_and_no_force_are_preserved(self):
         workflow = WORKFLOW.read_text()
-        names = ["Resolve version", "Build universal binary", "Package", "Verify the packaged binary",
+        names = ["Resolve version", MAIN_STEP, "Build universal binary", "Package", "Verify the packaged binary",
                  TAG_STEP, "Create the GitHub release", "Update the Homebrew tap"]
         positions = [workflow.index("      - name: " + name + "\n") for name in names]
         self.assertEqual(positions, sorted(positions))
