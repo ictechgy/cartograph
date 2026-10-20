@@ -166,19 +166,32 @@ extension CartographService {
                 reason: "The executable does not exist. Build the application and pass --executable <path>."
             )
         }
-        let data: Data
+        // 계획 문서와 실행 producer가 같은 표준 SHA-256 바이트 지문을 교환해야
+        // 실행 파일을 바꿔치기한 관측을 정확히 구분할 수 있다. 계획·그래프 지문에
+        // 쓰는 길이 프레이밍 해시를 재사용하면 producer와 항상 다른 값이 된다.
         do {
-            data = try environment.fileSystem.readData(at: resolved)
+            return try executableSHA256(at: resolved)
         } catch {
             throw CartographError.invalidConfiguration(
                 path: resolved,
                 reason: "The executable could not be read. Check its path and permissions."
             )
         }
-        // 계획 문서와 실행 producer가 같은 표준 SHA-256 바이트 지문을 교환해야
-        // 실행 파일을 바꿔치기한 관측을 정확히 구분할 수 있다. 계획·그래프 지문에
-        // 쓰는 길이 프레이밍 해시를 재사용하면 producer와 항상 다른 값이 된다.
-        return Self.rawSHA256(data)
+    }
+
+    /// 실행 파일 내용의 표준 SHA-256(소문자 16진).
+    ///
+    /// 디버그 실행 파일은 수백 MB 가 되고 계획·검사마다 두 번 해시한다. 조각 읽기를 지원하는 파일 시스템은
+    /// 세션 입력 지문과 같은 조각 읽기로 1 MiB 씩 해시해 메모리를 조각 크기로 묶는다. 조각 읽기도
+    /// 통째 읽기(`Data(contentsOf:)`)처럼 정규 파일만 받으므로 장치·FIFO 경로는 예전과 같은 읽기 오류가 된다.
+    private func executableSHA256(at path: String) throws -> String {
+        let fileSystem = environment.fileSystem
+        guard let chunked = fileSystem as? any ChunkedFileReading else {
+            return Self.rawSHA256(try fileSystem.readData(at: path))
+        }
+        var hasher = SHA256()
+        try chunked.readChunks(at: path, chunkSize: 1_048_576) { hasher.update(data: $0) }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     private static func isSensitiveExecutablePath(_ path: String) -> Bool {

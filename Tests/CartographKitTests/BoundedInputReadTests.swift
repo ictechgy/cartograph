@@ -1,6 +1,7 @@
 import CartographCore
 @testable import CartographKit
 import CartographTestSupport
+import CryptoKit
 import Foundation
 import Testing
 
@@ -113,6 +114,41 @@ struct BoundedInputReadTests {
         #expect(chunks.reduce(0, +) == byteCount)
     }
 
+    @Test("런타임 계획은 실행 파일을 통째로 읽지 않고 1 MiB 조각으로 해시한 표준 SHA-256 을 싣는다")
+    func runtimePlanHashesExecutableInChunks() throws {
+        let root = try makeProject()
+        defer { removeProject(root) }
+        let executable = root + "/App"
+        // 조각 순서나 경계가 틀리면 값이 바뀌도록 바이트를 고르게 섞는다.
+        let contents = Data((0..<(5 * Self.mebibyte / 2)).map { UInt8(truncatingIfNeeded: $0 &* 31 &+ $0 >> 12) })
+        try contents.write(to: URL(fileURLWithPath: executable))
+        let fileSystem = ReadRecordingFileSystem()
+
+        let plan = try makeService(fileSystem: fileSystem, root: root)
+            .runtimePlan(contracts: Self.contracts, executablePath: executable)
+
+        #expect(plan.executableFingerprint == SHA256.hash(data: contents).map { String(format: "%02x", $0) }.joined())
+        #expect(!fileSystem.unboundedReads.contains(executable))
+        let chunks = fileSystem.chunkSizes(for: executable)
+        #expect(chunks.allSatisfy { $0 <= Self.mebibyte })
+        // 계획을 만들 때와 결과를 내기 전 재확인에서 한 번씩 해시한다.
+        #expect(chunks.reduce(0, +) == 2 * contents.count)
+    }
+
+    @Test("정규 파일이 아닌 실행 파일 경로는 조각으로 읽어도 예전과 같은 읽기 오류로 거부한다")
+    func runtimePlanRejectsNonRegularExecutablesAsBefore() throws {
+        let root = try makeProject()
+        defer { removeProject(root) }
+        let service = makeService(fileSystem: ReadRecordingFileSystem(), root: root)
+
+        // 통째 읽기(`Data(contentsOf:)`)도 정규 파일만 읽어 장치를 이 오류로 거부했다. 조각 읽기도 같은 입력만 받는다.
+        #expect(throws: CartographError.invalidConfiguration(
+            path: "/dev/null", reason: "The executable could not be read. Check its path and permissions."
+        )) {
+            try service.runtimePlan(contracts: Self.contracts, executablePath: "/dev/null")
+        }
+    }
+
     @Test("조각 읽기는 넘긴 조각을 다음 조각 전에 놓아 큰 파일을 읽어도 메모리가 조각 크기 안팎으로 묶인다")
     func chunkedReadReleasesEachChunk() throws {
         let root = try makeProject()
@@ -134,6 +170,10 @@ struct BoundedInputReadTests {
         // 병렬로 도는 다른 테스트 몫은 넉넉히 둔다.
         #expect(peak - start < UInt64(128 * Self.mebibyte))
     }
+
+    private static let contracts = RuntimeContractsDocument(contracts: [
+        .init(id: "open", target: "App", mechanism: .selector, requiredScenarios: ["launch"]),
+    ])
 
     /// 지금 프로세스의 물리 메모리 사용량(phys_footprint). 최고점(`ru_maxrss`)이 아니라 현재 값이라
     /// 앞서 돈 테스트가 남긴 최고점에 가려지지 않는다.
