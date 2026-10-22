@@ -105,12 +105,14 @@ extension CartographService {
         fileSelectionIsDerived: Bool = false,
         runtimeContractsPath: String? = nil,
         selectionLimitations: [String] = [],
-        coreDataBuildEvidencePath: String? = nil
+        coreDataBuildEvidencePath: String? = nil,
+        runtimeContracts: RuntimeContractsDocument? = nil,
+        in existingContext: AnalysisContext? = nil
     ) throws -> CommandOutcome {
         let before = try loadAnalysisSnapshot(at: beforePath)
         let currentContext = try coreDataBuildEvidencePath.map {
             try coreDataRuntimeContext(evidencePath: $0)
-        } ?? loadContext()
+        } ?? existingContext ?? loadContext()
         let historical = before.rebased(to: projectPath)
         let historicalContext = AnalysisContext(
             snapshot: historical.snapshot,
@@ -120,7 +122,7 @@ extension CartographService {
             runtimeFiles: historical.runtimeFiles,
             runtimeFreshness: historical.runtimeFreshness
         )
-        let currentContracts = try runtimeContractsPath.map {
+        let currentContracts = try runtimeContracts ?? runtimeContractsPath.map {
             try RuntimeEvidenceStore(fileSystem: environment.fileSystem).contracts(at: $0)
         }
         let current = try makeImpactDocument(
@@ -140,6 +142,8 @@ extension CartographService {
             runtimeContracts: historical.runtimeContracts,
             recordedLimitations: historical.limitations
                 + ["historical-snapshot: source and index freshness describe the captured project, not today's files"],
+            recordedRevision: historical.revision,
+            recordedFingerprint: historical.inputFingerprint,
             selectionLimitations: selectionLimitations,
             in: historicalContext
         )

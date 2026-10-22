@@ -10,6 +10,34 @@ struct ImpactComparisonTests {
     private static let missingRuntimeDiscovery =
         "historical-runtime-discovery: this snapshot has no captured automatic runtime discovery input"
 
+    @Test("과거 revision과 내용 지문은 재배치 뒤에도 보존하되 신선함으로 승격하지 않는다")
+    func preservesCapturedIdentityWithoutInventingFreshness() throws {
+        let current = snapshot(symbols: [("Root", "Root")])
+        let before = AnalysisSnapshotDocument(projectRoot: "/current", revision: "base-label",
+            inputFingerprint: "captured-input", snapshot: current)
+        #expect(before.rebased(to: "/elsewhere").inputFingerprint == "captured-input")
+        let (document, _) = try comparison(current: current, before: before)
+        #expect(document.before.input?.mode == "historical-snapshot")
+        #expect(document.before.input?.revision == "base-label")
+        #expect(document.before.input?.fingerprint == "captured-input")
+        #expect(document.before.input?.freshness == "unknown")
+        #expect(document.current.input?.mode == "current-index")
+        #expect(document.current.input?.revision == nil)
+        #expect(document.current.input?.outputLimit == 200)
+    }
+
+    @Test("토폴로지가 같은 본문 편집도 캡처 입력 지문을 바꾼다")
+    func bodyEditChangesCapturedFingerprint() throws {
+        let fs = InMemoryFileSystem(files: ["/current/Sources/App.swift": "struct Root { let value = 1 }"])
+        let service = service(snapshot: snapshot(symbols: [("Root", "Root")]), fileSystem: fs)
+        let before = try service.captureSnapshot(revision: "same-label")
+        try fs.write(Data("struct Root { let value = 2 }".utf8), to: "/current/Sources/App.swift")
+        let after = try service.captureSnapshot(revision: "same-label")
+        #expect(before.inputFingerprint != nil)
+        #expect(before.inputFingerprint != after.inputFingerprint)
+        #expect(before.revision == after.revision)
+    }
+
     @Test("비교도 하나의 타입과 그 익스텐션을 같은 의미의 선택으로 해석한다")
     func comparisonUsesSemanticTypeSelection() throws {
         var builder = SnapshotBuilder(path: "/current/Sources/App.swift")

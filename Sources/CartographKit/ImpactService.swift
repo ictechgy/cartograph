@@ -26,6 +26,8 @@ extension CartographService {
         limit: Int = 200,
         runtimeContracts: RuntimeContractsDocument? = nil,
         recordedLimitations: [String]? = nil,
+        recordedRevision: String? = nil,
+        recordedFingerprint: String? = nil,
         selectionLimitations: [String] = [],
         runtimeTrace: RuntimeTraceReport? = nil,
         in existingContext: AnalysisContext? = nil
@@ -103,7 +105,10 @@ extension CartographService {
                 selectionIssues: output.issues,
                 limitations: limitations,
                 truncated: .init(depth: report.truncatedByDepth, sections: truncatedSections),
-                automaticRuntime: automaticDocument, observedRuntime: observedDocument
+                automaticRuntime: automaticDocument, observedRuntime: observedDocument,
+                input: .init(historical: recordedLimitations != nil, revision: recordedRevision,
+                    fingerprint: recordedFingerprint, limitations: limitations, files: !files.isEmpty,
+                    maxDepth: maxDepth, limit: limit)
             ),
             selection.nodes
         )

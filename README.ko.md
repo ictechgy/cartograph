@@ -864,6 +864,29 @@ XCTest의 setUp/tearDown 의존성은 해당 클래스를 선택하며, 상속�
 
 ### `snapshot` — 분석 입력 캡처
 
+Git 루트에 있는 SwiftPM 패키지는 릴리스 archive와 소스 checkout에 포함된 helper로 두 개의
+새 worktree·인덱스를 만들어 실제 patch를 비교할 수 있습니다.
+
+```bash
+python3 /path/to/cartograph/Scripts/cartograph-git-impact.py --project . --base origin/main --head HEAD
+python3 /path/to/cartograph/Scripts/cartograph-git-impact.py --project . --base HEAD --working-tree
+```
+
+`--base`는 정확한 commit 비교이며 `--since`의 merge-base 선택과 다릅니다. 호출자의 checkout은
+전환하지 않고 새 외부 디렉터리에 worktree, snapshot, 로그, `impact.json`을 보존합니다.
+`--cartograph`로 실행 파일, `--output`으로 새 출력 디렉터리를 지정할 수 있습니다. 작업 트리 모드는
+staged·unstaged·untracked 파일을 포함합니다. ignored 파일, symlink, submodule, Xcode 프로젝트나
+저장소 하위 패키지는 수동 capture를 사용해야 합니다. 의존성 lockfile을 먼저 확정해야 하며,
+빌드 도중 소스 트리가 바뀌면 캡처를 거부합니다. 빌드는 패키지 도구를 실행하므로 신뢰하는 코드에 사용하세요.
+
+`changeInput`은 양쪽 commit·내용 SHA-256·빌드 중 소스 안정성·준비/분석 비용·모델 밖 변경을
+기록합니다. 파일 seed는 파일 전체 선언을 선택하므로 정밀도 한계를 남깁니다. 설정 변경과 빈 결과를
+안전 판정으로 바꾸지 않으며 연결된 테스트는 실패 예측이나 생략 허가가 아닙니다. 일반 `--since`는
+`--before`를 주지 않으면 현재 그래프만 탐색합니다. JSON의 선택 필드 `input`은 현재/과거 구분,
+`unknown`/`stale` 신선도, 선택 정밀도, 깊이·출력 한도를 보존합니다. 옛 snapshot도 계속 읽습니다.
+MCP `cartograph_impact`에도 `before: ".cartograph/before.json"`을 줄 수 있습니다. snapshot은
+설정한 프로젝트 안의 JSON이어야 하며 현재 세션 지문과 과거 캡처 출처가 구분됩니다.
+
 ```bash
 cartograph snapshot --revision before-change -o .cartograph/before.json
 cartograph snapshot --runtime-contracts runtime-contracts.json -o .cartograph/before.json
@@ -871,7 +894,10 @@ cartograph snapshot --runtime-contracts runtime-contracts.json -o .cartograph/be
 
 v2 스냅샷은 자동 런타임 사실과 캡처 시점의 신선도, 보강된 컴파일러 인덱스, 간선 선택, 측정한
 한계, 외부 보존 근거와 선택적 런타임 계약 선언을 저장합니다. `--revision`은 사용자가 주는
-라벨이며 Git이나 네트워크를 조회하지 않습니다. 과거 소스 파일은 다시 읽지 않습니다.
+라벨입니다. 생략하면 확인 가능한 깨끗한 Git HEAD를 기록하고, dirty이거나 알 수 없으면 revision을
+생략합니다. 선택 필드 `inputFingerprint`는 캡처한 소스·설정·인덱스의 내용 지문이며 캡처 전후
+일관성을 검사합니다. 라벨이나 지문만으로 컴파일러가 같은 소스 바이트를 읽었다고 보장하지 않으며
+인덱스 신선도 한계는 그대로 남습니다. 과거 소스 파일은 다시 읽지 않습니다.
 스냅샷은 심볼 그래프와 JSON으로 고정되므로 `--level`, `--report-format`, `--strict`,
 `--since`, `--baseline`을 거부합니다.
 

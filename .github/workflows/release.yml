@@ -122,6 +122,8 @@ jobs:
           cp LICENSE README.md dist/cartograph/
           mkdir -p dist/cartograph/docs
           cp docs/QUERY-EVIDENCE.md docs/ENUM-CHANGE-REVIEW.md dist/cartograph/docs/
+          mkdir -p dist/cartograph/Scripts
+          cp Scripts/cartograph-git-impact.py dist/cartograph/Scripts/
           archive="cartograph-${VERSION}-macos-universal.tar.gz"
           tar -C dist -czf "$archive" cartograph
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
@@ -143,6 +145,8 @@ jobs:
           Scripts/verify-fixtures.sh "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-analysis-blindspots.py "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-change-impact.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
+          cmp Scripts/cartograph-git-impact.py "$RUNNER_TEMP/cartograph/Scripts/cartograph-git-impact.py"
+          python3 Scripts/verify-git-impact.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-contracts.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-discovery.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-keypaths.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"

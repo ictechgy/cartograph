@@ -24,11 +24,13 @@ final class CartographMCPTools {
         ),
         MCPToolDefinition(
             name: "cartograph_impact",
-            description: "Find direct and transitive consumers before editing.",
+            description: "Find review candidates in the current index, or compare a captured before snapshot "
+                + "without mixing revision edges. Static tests are candidates, not failure predictions.",
             inputSchema: objectSchema(properties: [
                 "symbols": arraySchema(minimum: 1, maximum: 1000),
                 "files": arraySchema(minimum: 1, maximum: 1000),
                 "runtimeContracts": runtimeContractsSchema(),
+                "before": stringSchema(),
                 "depth": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(128)]),
                 "limit": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(10_000)]),
             ])
@@ -127,7 +129,7 @@ final class CartographMCPTools {
     }
 
     private func impact(_ arguments: [String: MCPJSONValue]) throws -> MCPToolResult {
-        try rejectUnknown(arguments, allowed: ["symbols", "files", "depth", "limit", "runtimeContracts"])
+        try rejectUnknown(arguments, allowed: ["symbols", "files", "depth", "limit", "runtimeContracts", "before"])
         let symbols = try optionalStrings(arguments["symbols"], name: "symbols", range: 1...1000) ?? []
         let files = try optionalStrings(arguments["files"], name: "files", range: 1...1000) ?? []
         let modeCount = [!symbols.isEmpty, !files.isEmpty].count { $0 }
@@ -138,6 +140,18 @@ final class CartographMCPTools {
         let limit = try optionalInt(arguments["limit"], name: "limit", range: 1...10_000) ?? 200
         let runtimeContracts = try runtimeContracts(arguments["runtimeContracts"])
         let session = try requireSession()
+        if let value = arguments["before"] {
+            guard case let .string(path) = value, !path.isEmpty, path.utf8.count <= 4096 else {
+                throw MCPToolFailure(message: "before must be a non-empty JSON path of at most 4096 bytes")
+            }
+            guard coreDataBuildEvidencePath == nil else {
+                throw MCPToolFailure(message: "historical comparison cannot reuse current-only Core Data build evidence")
+            }
+            let document = try session.compareImpact(beforePath: path, symbols: symbols, files: files,
+                maxDepth: depth, limit: limit, runtimeContracts: runtimeContracts)
+            return try structured(SessionResult(session: try preparedMetadata(session), result: document),
+                isError: document.status == "incomplete")
+        }
         let document = try session.impact(
             symbols: symbols, files: files, maxDepth: depth, limit: limit, runtimeContracts: runtimeContracts,
             coreDataBuildEvidencePath: coreDataBuildEvidencePath

@@ -703,6 +703,34 @@ ambiguous in either, the comparison stays unresolved. An unresolved explicit inp
 Git-derived selections and unresolved runtime evidence are incomplete analysis (exit 2). No path
 or consumer is synthesized by unioning the two graphs.
 
+For a SwiftPM package at a Git repository root, capture the actual patch with two fresh builds:
+
+```bash
+python3 /path/to/cartograph/Scripts/cartograph-git-impact.py --project . --base origin/main --head HEAD
+python3 /path/to/cartograph/Scripts/cartograph-git-impact.py --project . --base HEAD --working-tree
+```
+
+The helper is included in the release archive and source checkout. It uses the installed `cartograph`
+unless `--cartograph /path/to/binary` is supplied. `--base` is an exact commit comparison, unlike
+`--since`'s merge-base selection. It retains isolated worktrees, both snapshots, build logs and
+`impact.json` in a new external directory (`--output` can name one). It never switches the caller's
+checkout. Working-tree mode includes staged, unstaged and untracked files; ignored files, symlinks,
+submodules and non-root/Xcode packages need the manual capture workflow. Dependency lockfiles must
+already be resolved: a source-tree change during build fails capture instead of claiming freshness.
+Building executes package build tools; only use the helper on code you trust to build.
+
+`changeInput` reports exact revisions, all changed paths, unmodeled paths, source SHA-256 identities,
+source stability during each fresh build, and preparation/analysis seconds. File seeds select every
+declaration in the file, so candidate counts are conservative. Configuration-only changes remain
+incomplete; empty results and statically connected tests do not establish safety, predict failures,
+or authorize skipping tests. The general `impact --since` mode still uses only the current graph
+unless `--before` is supplied. JSON's additive `input` field identifies each side, `unknown`/`stale`
+freshness, selection precision and budgets; old snapshots without a fingerprint remain unknown.
+
+MCP `cartograph_impact` also accepts `before: ".cartograph/before.json"` with `symbols` or `files`.
+The snapshot must be a JSON file inside the configured project. Its historical identity is retained
+beside the session's current input fingerprint; the two graphs are never merged for traversal.
+
 Because impact only walks consumers of the changed set, an edge that disappeared between two
 changed files never shows up in `affected` — both endpoints sit inside the change scope. The
 `scopeDiff` section closes that gap by diffing the subgraph induced on the union of both change
@@ -894,8 +922,11 @@ cartograph snapshot --runtime-contracts runtime-contracts.json -o .cartograph/be
 ```
 
 The v2 snapshot stores automatic runtime facts and their captured freshness, plus the enriched compiler index, edge selection, measured limitations, external
-retentions and optional runtime contract declarations. `--revision` is a label supplied by you; it
-does not query Git or a network. Historical source files are never read again. A snapshot always
+retentions and optional runtime contract declarations. An explicit `--revision` remains a user label.
+When omitted, a clean Git HEAD is recorded when available; dirty or unknown state has no revision.
+The additive `inputFingerprint` identifies source/configuration/index content at capture time, with
+before/after stability checks. Neither the revision nor fingerprint proves that the compiler read
+those exact source bytes; index freshness limitations remain. Historical source files are never read again. A snapshot always
 uses the symbol graph and JSON output, so `--level`, `--report-format`, `--strict`, `--since` and
 `--baseline` are rejected.
 

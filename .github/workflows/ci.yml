@@ -469,7 +469,9 @@ jobs:
         run: python3 Scripts/verify-analysis-blindspots.py "$CARTOGRAPH"
 
       - name: Change impact and historical snapshots
-        run: python3 Scripts/verify-change-impact.py --cartograph "$CARTOGRAPH"
+        run: |
+          python3 Scripts/verify-change-impact.py --cartograph "$CARTOGRAPH"
+          python3 Scripts/verify-git-impact.py --cartograph "$CARTOGRAPH"
 
       - name: Runtime contract execution and stale evidence
         run: python3 Scripts/verify-runtime-contracts.py --cartograph "$CARTOGRAPH"

@@ -36,6 +36,36 @@ struct MCPToolsTests {
         result.structuredContent?.objectValue ?? [:]
     }
 
+    @Test("MCP는 과거 삭제 선언의 호출자를 분리해 보존하고 프로젝트 밖 snapshot을 거부한다")
+    func historicalImpactPreservesDeletedCaller() throws {
+        var old = SnapshotBuilder(path: "/p/Old.swift")
+        old.symbol("Deleted", kind: .function)
+        old.symbol("Caller", kind: .function)
+        old.reference(from: "Caller", to: "Deleted", kind: .call)
+        var current = SnapshotBuilder(path: "/p/New.swift")
+        current.symbol("Unrelated", kind: .function)
+        let fs = InMemoryFileSystem()
+        let before = AnalysisSnapshotDocument(projectRoot: "/p", revision: "base",
+            inputFingerprint: "old-input", snapshot: old.build())
+        try fs.write(JSONEncoder.cartographDefault().encode(before), to: "/p/before.json")
+        let service = CartographService(configuration: .init(projectPath: "/p"),
+            environment: .init(fileSystem: fs, indexProviderOverride: StaticIndexProvider(current.build())))
+        let tools = CartographMCPTools(makeSession: { try AnalysisSession(service: service) })
+        let result = try tools.call(name: "cartograph_impact", arguments: .object([
+            "symbols": .array([.string("Deleted")]), "before": .string("before.json"),
+        ]))
+        let document = object(result)["result"]?.objectValue
+        #expect(!result.isError)
+        #expect(document?["format"] == .string("change-impact-comparison"))
+        #expect(document?["before"]?.objectValue?["input"]?.objectValue?["revision"] == .string("base"))
+        #expect(document?["current"]?.objectValue?["affected"] == .array([]))
+        #expect(throws: MCPToolFailure.self) {
+            try tools.call(name: "cartograph_impact", arguments: .object([
+                "symbols": .array([.string("Deleted")]), "before": .string("../before.json"),
+            ]))
+        }
+    }
+
     @Test("serve는 MCP stdout을 오염시키는 전역 옵션을 거부한다")
     func serveRejectsConflictingOptions() {
         for arguments in [

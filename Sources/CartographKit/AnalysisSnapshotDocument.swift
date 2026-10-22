@@ -14,6 +14,8 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
     public let projectRoot: String
     public let toolVersion: String
     public let revision: String?
+    /// 캡처 때 읽은 소스·설정·인덱스 내용의 지문. revision 라벨이나 컴파일 일치 증명과는 다르다.
+    public let inputFingerprint: String?
     public let snapshot: IndexSnapshot
     public let edgeKinds: [EdgeKind]
     public let limitations: [String]
@@ -31,6 +33,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         projectRoot: String,
         toolVersion: String = Cartograph.version,
         revision: String? = nil,
+        inputFingerprint: String? = nil,
         snapshot: IndexSnapshot,
         edgeKinds: Set<EdgeKind> = [],
         limitations: [String] = [],
@@ -45,6 +48,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         self.projectRoot = projectRoot
         self.toolVersion = toolVersion
         self.revision = revision
+        self.inputFingerprint = inputFingerprint
         self.snapshot = snapshot
         self.edgeKinds = edgeKinds.sorted()
         self.runtimeFiles = runtimeFiles.map(Self.normalizedRuntimeFiles)
@@ -70,7 +74,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case format, version, projectRoot, toolVersion, revision, snapshot, edgeKinds, limitations
+        case format, version, projectRoot, toolVersion, revision, inputFingerprint, snapshot, edgeKinds, limitations
         case externalRetentions, externalRetentionProvenanceJSON, runtimeContracts, runtimeFiles, runtimeFreshness
         case localFunctionDiagnostics
     }
@@ -82,6 +86,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         projectRoot = try container.decode(String.self, forKey: .projectRoot)
         toolVersion = try container.decode(String.self, forKey: .toolVersion)
         revision = try container.decodeIfPresent(String.self, forKey: .revision)
+        inputFingerprint = try container.decodeIfPresent(String.self, forKey: .inputFingerprint)
         snapshot = try container.decode(IndexSnapshot.self, forKey: .snapshot)
         edgeKinds = try container.decode([EdgeKind].self, forKey: .edgeKinds)
         let decodedRetentions = try container.decodeIfPresent(
@@ -131,6 +136,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         try container.encode(projectRoot, forKey: .projectRoot)
         try container.encode(toolVersion, forKey: .toolVersion)
         try container.encodeIfPresent(revision, forKey: .revision)
+        try container.encodeIfPresent(inputFingerprint, forKey: .inputFingerprint)
         try container.encode(snapshot, forKey: .snapshot)
         try container.encode(edgeKinds, forKey: .edgeKinds)
         try container.encode(limitations, forKey: .limitations)
@@ -252,6 +258,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
             projectRoot: currentProjectRoot,
             toolVersion: toolVersion,
             revision: revision,
+            inputFingerprint: inputFingerprint,
             snapshot: .init(
                 symbols: symbols, references: references, indexedFileDates: dates,
                 oldestIndexedFileDates: oldestDates,
@@ -499,6 +506,7 @@ extension CartographService {
         if let runtimeContracts {
             try RuntimeEvidenceStore.validateContracts(runtimeContracts)
         }
+        let inputFingerprint = try sessionInputFingerprint()
         let context = try existingContext ?? loadContext()
         let built = context.buildGraph(level: .symbol)
         let graph = built.graph
@@ -576,9 +584,13 @@ extension CartographService {
             includedSourcePaths.contains($0.key)
                 && (pathFilter.allows($0.key) || supplementalPaths.contains($0.key))
         }
+        guard inputFingerprint == (try sessionInputFingerprint()) else {
+            throw AnalysisSessionError.inputChangedDuringRefresh(attempts: 1)
+        }
         return AnalysisSnapshotDocument(
             projectRoot: projectPath,
             revision: revision,
+            inputFingerprint: inputFingerprint,
             snapshot: capturedSnapshot,
             edgeKinds: configuration.edgeKinds,
             limitations: analysisLimitations(context: context, symbolGraph: graph),

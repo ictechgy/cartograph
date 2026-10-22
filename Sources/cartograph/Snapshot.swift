@@ -61,7 +61,7 @@ struct SnapshotCommand: ParsableCommand {
             )
         }
         let document = try context.service.captureSnapshot(
-            revision: revision,
+            revision: revision ?? GitRevision.cleanHead(projectPath: context.service.projectPath),
             runtimeContracts: contracts,
             in: coreDataContext
         )
