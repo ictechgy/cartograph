@@ -86,6 +86,35 @@ struct AutomaticRuntimeImpactTests {
         #expect(!text.contains("safe to delete"))
     }
 
+    @Test("파일 루트 별칭이 달라도 연결하지 못한 동적 경계를 보존한다")
+    func fileSelectionRetainsUnresolvedRuntimeAcrossRootAliases() throws {
+        let manager = FileManager.default
+        let temporary = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let current = temporary.appendingPathComponent("current")
+        let alias = temporary.appendingPathComponent("alias")
+        try manager.createDirectory(at: current, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: temporary) }
+        try manager.createSymbolicLink(at: alias, withDestinationURL: current)
+        let physicalRoot = try LocalFileSystem().realPath(at: current.path)
+        let boundaryPath = physicalRoot + "/Dynamic.swift"
+        let files: [RuntimeFileFacts] = [.init(path: boundaryPath, boundaries: [
+            .init(kind: .classLookup, api: "NSClassFromString",
+                location: .init(path: boundaryPath, line: 1, column: 1), nameOrigin: .dynamic),
+        ])]
+        let context = AnalysisContext(snapshot: .init(), runtimeFiles: files,
+            runtimeFreshness: [boundaryPath: .fresh])
+        for root in [physicalRoot, alias.path] {
+            var configuration = CartographConfiguration.default
+            configuration.projectPath = root
+            let service = CartographService(configuration: configuration)
+            let document = try service.impactDocument(files: ["Dynamic.swift"], in: context)
+            #expect(document.status == "incomplete")
+            #expect(document.automaticRuntime?.unresolvedCount == 1)
+            #expect(document.automaticRuntime?.findings.first?.api == "NSClassFromString")
+            #expect(document.automaticRuntime?.status == "needsReview")
+        }
+    }
+
     @Test("affected도 자동 런타임 연결 뒤의 전이 테스트를 impact와 동일하게 찾는다")
     func affectedFollowsAutomaticConnections() throws {
         let (service, context) = fixture()

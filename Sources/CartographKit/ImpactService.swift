@@ -65,12 +65,11 @@ extension CartographService {
         var limitations = (recordedLimitations ?? analysisLimitations(context: context, symbolGraph: graph))
             + selectionLimitations
         let reviewed = Set(report.changed + report.affected.map(\.node))
-        let selectedFiles = Set(selection.files)
         let relevantAutomatic = automatic.map { value in
             RuntimeDiscoveryReport(findings: value.findings.filter { finding in
                 finding.source.map { reviewed.contains($0) } == true
                     || !reviewed.isDisjoint(with: finding.targets + finding.candidates)
-                    || selectedFiles.contains(ReportScope.normalized(finding.boundary.location.path))
+                    || selection.containsFile(finding.boundary.location.path)
             }, limitations: value.limitations)
         }
         let automaticDocument = relevantAutomatic.map {
@@ -202,6 +201,7 @@ struct ImpactSelection {
     let selected: Set<NodeID>
     let nodes: Set<NodeID>
     let files: [String]
+    let containsFile: (String) -> Bool
     let issues: [ImpactDocument.SelectionIssue]
     let status: String
 
@@ -290,6 +290,7 @@ struct ImpactSelection {
         requestedSymbolCount = symbols.count
         self.nodes = ImpactSelectionExpansion.expandingContainers(nodes, graph: graph)
         self.files = normalizedFiles.sorted()
+        containsFile = { normalizedFiles.contains(normalizedSelectionPath($0)) }
         self.issues = issues
         status = !issues.isEmpty ? "incomplete" : (symbols.isEmpty && files.isEmpty ? "noChanges" : "found")
     }
