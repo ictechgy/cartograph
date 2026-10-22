@@ -186,6 +186,11 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
 
     /// 현재 프로젝트 루트로 로컬 인덱스 경로만 옮긴다.
     public func rebased(to currentProjectRoot: String) -> AnalysisSnapshotDocument {
+        rebased(from: projectRoot, to: currentProjectRoot)
+    }
+
+    /// 현재 캡처에서 확인한 루트 별칭도 같은 어휘적 재배치로 맞춘다.
+    fileprivate func rebased(from recordedRoot: String, to currentProjectRoot: String) -> AnalysisSnapshotDocument {
         let symbols = snapshot.symbols.map { symbol in
             IndexedSymbol(
                 usr: symbol.usr,
@@ -195,7 +200,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 location: .init(
                     path: symbol.isExternal
                         ? symbol.location.path
-                        : Self.rebase(symbol.location.path, from: projectRoot, to: currentProjectRoot),
+                        : Self.rebase(symbol.location.path, from: recordedRoot, to: currentProjectRoot),
                     line: symbol.location.line,
                     column: symbol.location.column
                 ),
@@ -214,7 +219,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 kind: reference.kind,
                 location: reference.location.map {
                     .init(path: externalUSRs.contains(reference.sourceUSR)
-                        ? $0.path : Self.rebase($0.path, from: projectRoot, to: currentProjectRoot),
+                        ? $0.path : Self.rebase($0.path, from: recordedRoot, to: currentProjectRoot),
                           line: $0.line, column: $0.column)
                 },
                 targetKind: reference.targetKind,
@@ -224,19 +229,19 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         }
         let dates = snapshot.indexedFileDates.map { values in
             Dictionary(values.sorted { $0.key < $1.key }.map { path, date in
-                (Self.rebase(path, from: projectRoot, to: currentProjectRoot), date)
+                (Self.rebase(path, from: recordedRoot, to: currentProjectRoot), date)
             }, uniquingKeysWith: { first, _ in first })
         }
         let oldestDates = snapshot.oldestIndexedFileDates.map { values in
             Dictionary(values.sorted { $0.key < $1.key }.map { path, date in
-                (Self.rebase(path, from: projectRoot, to: currentProjectRoot), date)
+                (Self.rebase(path, from: recordedRoot, to: currentProjectRoot), date)
             }, uniquingKeysWith: min)
         }
         let parameters = snapshot.parameters.map { parameter in
             IndexedParameter(
                 usr: parameter.usr, name: parameter.name, module: parameter.module,
                 location: .init(
-                    path: Self.rebase(parameter.location.path, from: projectRoot, to: currentProjectRoot),
+                    path: Self.rebase(parameter.location.path, from: recordedRoot, to: currentProjectRoot),
                     line: parameter.location.line, column: parameter.location.column),
                 functionUSR: parameter.functionUSR, isReferenced: parameter.isReferenced
             )
@@ -247,12 +252,12 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 isConditional: fact.isConditional, isReexported: fact.isReexported,
                 isIgnored: fact.isIgnored,
                 location: .init(
-                    path: Self.rebase(fact.location.path, from: projectRoot, to: currentProjectRoot),
+                    path: Self.rebase(fact.location.path, from: recordedRoot, to: currentProjectRoot),
                     line: fact.location.line, column: fact.location.column)
             )
         }
         let moduleUsages = Dictionary(snapshot.fileModuleUsages.map { path, usage in
-            (Self.rebase(path, from: projectRoot, to: currentProjectRoot), usage)
+            (Self.rebase(path, from: recordedRoot, to: currentProjectRoot), usage)
         }, uniquingKeysWith: { first, _ in first })
         return AnalysisSnapshotDocument(
             projectRoot: currentProjectRoot,
@@ -265,24 +270,24 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 parameters: parameters, propertyAccesses: snapshot.propertyAccesses,
                 imports: imports, fileModuleUsages: moduleUsages,
                 admittedHeaderPaths: snapshot.admittedHeaderPaths.map { paths in
-                    paths.map { Self.rebase($0, from: projectRoot, to: currentProjectRoot) }.sorted()
+                    paths.map { Self.rebase($0, from: recordedRoot, to: currentProjectRoot) }.sorted()
                 },
                 enumImpactFiles: snapshot.enumImpactFiles?.map { facts in
-                    facts.rebased { Self.rebase($0, from: projectRoot, to: currentProjectRoot) }
+                    facts.rebased { Self.rebase($0, from: recordedRoot, to: currentProjectRoot) }
                 }),
             edgeKinds: Set(edgeKinds),
             limitations: limitations,
             externalRetentions: externalRetentions,
             runtimeContracts: runtimeContracts,
             runtimeFiles: runtimeFiles?.map {
-                Self.rebase($0, from: projectRoot, to: currentProjectRoot)
+                Self.rebase($0, from: recordedRoot, to: currentProjectRoot)
             },
             runtimeFreshness: Dictionary(runtimeFreshness.sorted { $0.key < $1.key }.map { path, freshness in
-                (Self.rebase(path, from: projectRoot, to: currentProjectRoot), freshness)
+                (Self.rebase(path, from: recordedRoot, to: currentProjectRoot), freshness)
             }, uniquingKeysWith: { first, _ in first }),
             localFunctionDiagnostics: localFunctionDiagnostics?.map {
                 LocalFunctionDiagnostic(name: $0.name,
-                    location: .init(path: Self.rebase($0.location.path, from: projectRoot, to: currentProjectRoot),
+                    location: .init(path: Self.rebase($0.location.path, from: recordedRoot, to: currentProjectRoot),
                         line: $0.location.line, column: $0.location.column),
                     ownerName: $0.ownerName, ownerUSR: $0.ownerUSR, reason: $0.reason)
             }
@@ -595,6 +600,8 @@ extension CartographService {
         ]
         // 현재 캡처에서 실제 루트로 정규화한다. 인덱스의 물리 경로를 보존하며 과거 입력은 다시 읽지 않는다.
         let physicalRoot = (try? environment.fileSystem.realPath(at: projectPath)) ?? projectPath
+        // 구문 보강은 Foundation의 정규 경로를 쓰므로 물리 루트를 지정해도 /var 별칭이 섞일 수 있다.
+        let normalizedRoot = ReportScope.normalized(projectPath)
         return AnalysisSnapshotDocument(
             projectRoot: projectPath,
             revision: revision,
@@ -609,7 +616,8 @@ extension CartographService {
             localFunctionDiagnostics: context.localFunctionDiagnostics.filter {
                 pathFilter.allows($0.location.path) || supplementalPaths.contains($0.location.path)
             }
-        ).rebased(to: physicalRoot)
+        ).rebased(from: normalizedRoot, to: physicalRoot)
+            .rebased(from: projectPath, to: physicalRoot)
     }
 
     private static func referenceOrderKey(_ reference: IndexedReference)

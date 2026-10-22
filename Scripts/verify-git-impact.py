@@ -39,12 +39,31 @@ class GitCaptureTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
+    def changed_paths(self, base, head, working_tree):
+        endpoints = Path(tempfile.mkdtemp(dir=self.temporary.name, prefix="endpoints-"))
+        before, current = endpoints / "before", endpoints / "current"
+        capture.checkout(self.root, before, base)
+        capture.checkout(self.root, current, head)
+        if working_tree:
+            capture.copy_working_tree(self.root, current)
+        return capture.changed_paths(before, current)
+
     def test_deleted_and_renamed_paths_survive_exact_commit_selection(self):
         git(self.root, "mv", "Old.swift", "New.swift")
         git(self.root, "commit", "-qm", "rename")
         head = capture.revision(self.root, "HEAD")
-        self.assertEqual(capture.changed_paths(self.root, self.base, head, False), ["New.swift", "Old.swift"])
-        self.assertEqual(capture.changed_paths(self.root, head, head, False), [])
+        self.assertEqual(self.changed_paths(self.base, head, False), ["New.swift", "Old.swift"])
+        self.assertEqual(self.changed_paths(head, head, False), [])
+
+    def test_file_replaced_by_directory_preserves_both_endpoints(self):
+        source = self.root / "Old.swift"
+        source.unlink()
+        source.mkdir()
+        (source / "Nested.swift").write_text("func nested() {}\n")
+        git(self.root, "add", ".")
+        git(self.root, "commit", "-qm", "replace file with directory")
+        self.assertEqual(self.changed_paths(self.base, capture.revision(self.root, "HEAD"), False),
+                         ["Old.swift", "Old.swift/Nested.swift"])
 
     def test_working_tree_preserves_staged_unstaged_deleted_and_untracked(self):
         (self.root / "Old.swift").unlink()
@@ -57,7 +76,7 @@ class GitCaptureTests(unittest.TestCase):
         capture.copy_working_tree(self.root, destination)
         self.assertEqual(capture.source_fingerprint(self.root), capture.source_fingerprint(destination))
         self.assertFalse((destination / "Old.swift").exists())
-        self.assertEqual(capture.changed_paths(self.root, self.base, self.base, True),
+        self.assertEqual(self.changed_paths(self.base, self.base, True),
                          ["Old.swift", "Staged.swift", "Untracked.swift"])
 
     def test_body_edit_with_restored_mtime_changes_content_identity(self):
@@ -67,6 +86,14 @@ class GitCaptureTests(unittest.TestCase):
         source.write_text("func old() { print(2) }\n")
         os.utime(source, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
         self.assertNotEqual(capture.source_fingerprint(self.root), before)
+
+    @unittest.skipIf(os.name == "nt", "Windows does not preserve POSIX executable file modes")
+    def test_executable_mode_changes_remain_candidates_and_change_identity(self):
+        source = self.root / "Old.swift"
+        before = capture.source_fingerprint(self.root)
+        source.chmod(source.stat().st_mode | 0o100)
+        self.assertNotEqual(capture.source_fingerprint(self.root), before)
+        self.assertEqual(self.changed_paths(self.base, self.base, True), ["Old.swift"])
 
     def test_working_tree_restored_to_base_is_not_a_changed_seed(self):
         source = self.root / "Old.swift"
@@ -78,10 +105,10 @@ class GitCaptureTests(unittest.TestCase):
         source.write_bytes(original)
         index = self.root / ".git/index"
         index_before = index.read_bytes()
-        self.assertEqual(capture.changed_paths(self.root, self.base, head, True), [])
+        self.assertEqual(self.changed_paths(self.base, head, True), [])
         self.assertEqual(index.read_bytes(), index_before)
         git(self.root, "add", ".")
-        self.assertEqual(capture.changed_paths(self.root, self.base, head, True), [])
+        self.assertEqual(self.changed_paths(self.base, head, True), [])
 
     def test_head_addition_deleted_from_working_tree_is_not_a_changed_seed(self):
         source = self.root / "New.swift"
@@ -90,9 +117,21 @@ class GitCaptureTests(unittest.TestCase):
         git(self.root, "commit", "-qm", "head addition")
         head = capture.revision(self.root, "HEAD")
         source.unlink()
-        self.assertEqual(capture.changed_paths(self.root, self.base, head, True), [])
+        self.assertEqual(self.changed_paths(self.base, head, True), [])
         git(self.root, "add", ".")
-        self.assertEqual(capture.changed_paths(self.root, self.base, head, True), [])
+        self.assertEqual(self.changed_paths(self.base, head, True), [])
+
+    def test_head_deletion_restored_untracked_to_base_is_not_a_changed_seed(self):
+        source = self.root / "Old.swift"
+        original = source.read_bytes()
+        source.unlink()
+        git(self.root, "add", ".")
+        git(self.root, "commit", "-qm", "head deletion")
+        head = capture.revision(self.root, "HEAD")
+        source.write_bytes(original)
+        self.assertEqual(self.changed_paths(self.base, head, True), [])
+        source.write_text("func old() { print(4) }\n")
+        self.assertEqual(self.changed_paths(self.base, head, True), ["Old.swift"])
 
 
 def compiler_flow(binary: Path):
@@ -126,15 +165,24 @@ let package = Package(name: "ChangeFixture", products: [.library(name: "ChangeFi
     result = output / "evidence/impact.json"
     assert result.is_file(), invocation.stderr
     document = json.loads(result.read_text())
+    before_snapshot = json.loads((output / "evidence/before.json").read_text())
     expected_exit = 2 if document["status"] == "incomplete" or document["changeInput"]["analysisExitCode"] != 0 else 0
     assert invocation.returncode == expected_exit
     print(json.dumps({"evidence": str(result), "status": document["status"],
+        "beforeRoot": before_snapshot["projectRoot"],
+        "beforeSymbols": [s for s in before_snapshot["snapshot"]["symbols"] if s["module"] == "ChangeFixture"][:8],
         "beforeSelected": document["before"]["selected"], "currentSelected": document["current"]["selected"],
         "unresolvedInputs": document["unresolvedInputs"], "beforeTests": document["before"]["tests"]}, indent=2))
     assert document["before"]["input"]["mode"] == "historical-snapshot"
     assert document["before"]["input"]["fingerprint"]
     assert document["changeInput"]["before"]["sourceStableDuringBuild"]
     assert document["changeInput"]["current"]["freshIndex"]
+    assert document["changeInput"]["sourceScope"] == "tracked-and-nonignored-untracked-regular-files"
+    assert document["changeInput"]["totalSeconds"] >= (
+        document["changeInput"]["inputPreparationSeconds"]
+        + document["changeInput"]["before"]["preparationSeconds"]
+        + document["changeInput"]["current"]["preparationSeconds"]
+        + document["changeInput"]["analysisSeconds"])
     assert any(s["name"] == "removed()" for s in document["before"]["selected"])
     assert all(s["name"] != "removed()" for s in document["current"]["selected"])
     assert any(s["name"] == "usesCaller()" for s in document["before"]["tests"])

@@ -77,6 +77,29 @@ struct ImpactComparisonTests {
         #expect(captured.rebased(to: "/new").snapshot.symbols.first?.location.path == "/new/App.swift")
     }
 
+    @Test("물리 루트로 캡처해도 보강된 Foundation 별칭을 과거 재배치에 맞춘다")
+    func capturedNormalizedPathsRemainRelocatableFromPhysicalRoot() throws {
+        let manager = FileManager.default
+        let temporary = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try manager.createDirectory(at: temporary, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: temporary) }
+        let source = temporary.appendingPathComponent("App.swift")
+        try Data("struct Root {}".utf8).write(to: source)
+        let physicalRoot = try LocalFileSystem().realPath(at: temporary.path)
+        let normalizedPath = ReportScope.normalized(source.path)
+        var builder = SnapshotBuilder(path: normalizedPath)
+        builder.symbol("Root", name: "Root", kind: .structType)
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = physicalRoot
+        let service = CartographService(configuration: configuration,
+            environment: CartographEnvironment(indexProviderOverride: StaticIndexProvider(builder.build())),
+            allowsEmptyIndex: true)
+        let captured = try service.captureSnapshot()
+        #expect(captured.projectRoot == physicalRoot)
+        #expect(captured.snapshot.symbols.first?.location.path == physicalRoot + "/App.swift")
+        #expect(captured.rebased(to: "/new").snapshot.symbols.first?.location.path == "/new/App.swift")
+    }
+
     @Test("비교도 하나의 타입과 그 익스텐션을 같은 의미의 선택으로 해석한다")
     func comparisonUsesSemanticTypeSelection() throws {
         var builder = SnapshotBuilder(path: "/current/Sources/App.swift")

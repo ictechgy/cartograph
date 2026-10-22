@@ -719,8 +719,15 @@ submodules and non-root/Xcode packages need the manual capture workflow. Depende
 already be resolved: a source-tree change during build fails capture instead of claiming freshness.
 Building executes package build tools; only use the helper on code you trust to build.
 
+After the 0.29 Homebrew formula update, its helper is available at
+`$(brew --prefix cartograph)/libexec/cartograph-git-impact.py`; invoke it with Python 3.10+.
+Older formulas install only the binary; use the matching release archive/source helper in that case.
+
 `changeInput` reports exact revisions, all changed paths, unmodeled paths, source SHA-256 identities,
-source stability during each fresh build, and preparation/analysis seconds. File seeds select every
+source stability during each fresh build, and input preparation, build, analysis and total seconds.
+Changes compare the captured endpoints' bytes and executable mode, including untracked restorations.
+Identities cover tracked and nonignored untracked regular files; ignored inputs, external dependencies,
+the toolchain and environment are not content-bound by the helper. File seeds select every
 declaration in the file, so candidate counts are conservative. Configuration-only changes remain
 incomplete; empty results and statically connected tests do not establish safety, predict failures,
 or authorize skipping tests. The general `impact --since` mode still uses only the current graph

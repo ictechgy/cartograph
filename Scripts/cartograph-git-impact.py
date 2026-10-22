@@ -55,18 +55,25 @@ def source_paths(project: Path) -> list[str]:
     return paths
 
 
+def file_identity(path: Path) -> tuple[str, str] | None:
+    if not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    mode = "100755" if path.stat().st_mode & 0o100 else "100644"
+    return mode, digest.hexdigest()
+
+
 def source_fingerprint(project: Path) -> str:
     digest = hashlib.sha256()
     for name in source_paths(project):
-        path = project / name
-        if not path.exists():
+        identity = file_identity(project / name)
+        if identity is None:
             continue
         digest.update(os.fsencode(name) + b"\0")
-        digest.update(b"file\0")
-        with path.open("rb") as source:
-            while chunk := source.read(1024 * 1024):
-                digest.update(chunk)
-        digest.update(b"\0")
+        digest.update("\0".join(identity).encode("ascii") + b"\0")
     return digest.hexdigest()
 
 
@@ -102,18 +109,11 @@ def copy_working_tree(project: Path, destination: Path) -> None:
             target.unlink()
 
 
-def changed_paths(project: Path, base: str, head: str, working_tree: bool) -> list[str]:
-    # 작업 트리에서는 base의 최종 차이만 고른다. HEAD 편집을 되돌린 파일은 제외한다.
-    arguments = [*neutralized_filters(project), "diff", "--no-ext-diff", "--no-textconv",
-                 "--no-renames", "--name-only", "-z", base]
-    if not working_tree:
-        arguments.append(head)
-    arguments.append("--")
-    changed = set(os.fsdecode(x) for x in git(project, *arguments).split(b"\0") if x)
-    if working_tree:
-        # Git diff에 포함되지 않는 비추적 파일도 실제 변경 입력으로 남긴다.
-        changed.update(os.fsdecode(x) for x in git(project, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0") if x)
-    return sorted(changed)
+def changed_paths(before: Path, current: Path) -> list[str]:
+    # Git 인덱스 상태와 무관하게 실제 빌드할 두 끝점의 내용과 실행 비트를 비교한다.
+    # HEAD 삭제 뒤 비추적 파일로 원본을 복원한 경우도 빈 변경으로 남긴다.
+    paths = sorted(set(source_paths(before)) | set(source_paths(current)))
+    return [name for name in paths if file_identity(before / name) != file_identity(current / name)]
 
 
 def capture(binary: Path, project: Path, output: Path, label: str, timeout: int) -> tuple[Path, Path, dict]:
@@ -141,6 +141,7 @@ def capture(binary: Path, project: Path, output: Path, label: str, timeout: int)
 
 
 def analyze(args: argparse.Namespace) -> Path:
+    preparation_start = time.monotonic()
     if not 1 <= args.limit <= 10000 or (args.depth is not None and not 1 <= args.depth <= 128):
         raise CaptureError("Limits require 1...10000 results and an optional depth of 1...128")
     project = Path(args.project).resolve()
@@ -155,7 +156,6 @@ def analyze(args: argparse.Namespace) -> Path:
     binary = Path(shutil.which(args.cartograph) or args.cartograph).resolve()
     base, head = revision(project, args.base), revision(project, args.head or "HEAD")
     initial = source_fingerprint(project) if args.working_tree else None
-    paths = changed_paths(project, base, head, args.working_tree)
     before, current = output / "before-source", output / "current-source"
     checkout(project, before, base)
     checkout(project, current, head)
@@ -163,6 +163,8 @@ def analyze(args: argparse.Namespace) -> Path:
         copy_working_tree(project, current)
         if source_fingerprint(project) != initial or source_fingerprint(current) != initial:
             raise CaptureError("Working-tree sources changed during copy; retry when editing is idle")
+    paths = changed_paths(before, current)
+    input_preparation_seconds = time.monotonic() - preparation_start
     _, before_snapshot, before_evidence = capture(binary, before, output, "before", args.timeout)
     current_store, _, current_evidence = capture(binary, current, output, "current", args.timeout)
     command = [str(binary), "impact", "--before", str(before_snapshot), "--format", "json",
@@ -184,10 +186,15 @@ def analyze(args: argparse.Namespace) -> Path:
     document["changeInput"] = {"base": base, "head": head, "mode": "working-tree" if args.working_tree else "git-commits",
                                "changedFiles": paths, "unmodeledFiles": sorted(set(paths) - set(modeled)),
                                "before": before_evidence, "current": current_evidence,
+                               "inputPreparationSeconds": input_preparation_seconds,
                                "analysisSeconds": time.monotonic() - start,
+                               "totalSeconds": time.monotonic() - preparation_start,
                                "analysisExitCode": result.returncode,
+                               "sourceScope": "tracked-and-nonignored-untracked-regular-files",
                                "selectionPrecision": "file-wide-declarations", "graphPolicy": "separate-revisions"}
     document.setdefault("limitations", []).append("File-wide seeds are review candidates; static tests do not predict failures or authorize skipping tests.")
+    document["limitations"].append("Source identities cover tracked and nonignored untracked regular files; "
+                                   "ignored inputs, external build dependencies, toolchain and environment are not content-bound by this helper.")
     if set(paths) - set(modeled):
         document["status"] = "incomplete"
         document["limitations"].append("Unmodeled changed files require separate configuration/API/resource review.")
