@@ -729,6 +729,8 @@ freshness, selection precision and budgets; old snapshots without a fingerprint 
 The helper passes its exact file selection with `impact --files-from <json-array-file>`; an empty
 array preserves an empty patch. This additive selector accepts at most 10000 paths and 1 MiB,
 and is mutually exclusive with declaration arguments, `--file`, and `--since`.
+The helper prints the retained report path even when analysis is incomplete, then exits 2;
+`changeInput.analysisExitCode` preserves the native analyzer's status.
 
 MCP `cartograph_impact` also accepts `before: ".cartograph/before.json"` with `symbols` or `files`.
 The snapshot must be a JSON file inside the configured project. Its historical identity is retained

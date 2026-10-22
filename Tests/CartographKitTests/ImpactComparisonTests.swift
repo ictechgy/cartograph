@@ -72,7 +72,8 @@ struct ImpactComparisonTests {
             environment: CartographEnvironment(indexProviderOverride: StaticIndexProvider(builder.build())),
             allowsEmptyIndex: true)
         let captured = try service.captureSnapshot()
-        #expect(captured.snapshot.symbols.first?.location.path == alias.path + "/App.swift")
+        #expect(captured.projectRoot == (try LocalFileSystem().realPath(at: alias.path)))
+        #expect(captured.snapshot.symbols.first?.location.path == physicalPath)
         #expect(captured.rebased(to: "/new").snapshot.symbols.first?.location.path == "/new/App.swift")
     }
 

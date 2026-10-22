@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -82,6 +83,17 @@ class GitCaptureTests(unittest.TestCase):
         git(self.root, "add", ".")
         self.assertEqual(capture.changed_paths(self.root, self.base, head, True), [])
 
+    def test_head_addition_deleted_from_working_tree_is_not_a_changed_seed(self):
+        source = self.root / "New.swift"
+        source.write_text("func added() {}\n")
+        git(self.root, "add", ".")
+        git(self.root, "commit", "-qm", "head addition")
+        head = capture.revision(self.root, "HEAD")
+        source.unlink()
+        self.assertEqual(capture.changed_paths(self.root, self.base, head, True), [])
+        git(self.root, "add", ".")
+        self.assertEqual(capture.changed_paths(self.root, self.base, head, True), [])
+
 
 def compiler_flow(binary: Path):
     output = Path(tempfile.mkdtemp(prefix="cartograph-git-compiler-"))
@@ -107,9 +119,15 @@ let package = Package(name: "ChangeFixture", products: [.library(name: "ChangeFi
     old.unlink()
     (root / "Sources/ChangeFixture/New.swift").write_text("public func caller() -> Int { 1 }\n")
     before_status = git(root, "status", "--porcelain")
-    result = capture.analyze(argparse.Namespace(project=str(root), cartograph=str(binary), base=base, head=None,
-        working_tree=True, output=str(output / "evidence"), timeout=600, depth=None, limit=200))
+    invocation = subprocess.run([sys.executable, str(Path(__file__).with_name("cartograph-git-impact.py")),
+        "--project", str(root), "--cartograph", str(binary), "--base", base, "--working-tree",
+        "--output", str(output / "evidence")], capture_output=True, text=True, timeout=600)
+    assert invocation.returncode in (0, 2), invocation.stderr
+    result = output / "evidence/impact.json"
+    assert result.is_file(), invocation.stderr
     document = json.loads(result.read_text())
+    expected_exit = 2 if document["status"] == "incomplete" or document["changeInput"]["analysisExitCode"] != 0 else 0
+    assert invocation.returncode == expected_exit
     print(json.dumps({"evidence": str(result), "status": document["status"],
         "beforeSelected": document["before"]["selected"], "currentSelected": document["current"]["selected"],
         "unresolvedInputs": document["unresolvedInputs"], "beforeTests": document["before"]["tests"]}, indent=2))
@@ -134,6 +152,7 @@ let package = Package(name: "ChangeFixture", products: [.library(name: "ChangeFi
     empty = json.loads(empty_result.read_text())
     assert empty["changeInput"]["changedFiles"] == []
     assert empty["before"]["selected"] == [] and empty["current"]["selected"] == []
+    assert empty["unresolvedInputs"] == []
     assert empty["status"] == "noChanges"
     print(json.dumps({"status": "passed", "emptyPatchEvidence": str(empty_result)}, indent=2))
 

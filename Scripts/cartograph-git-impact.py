@@ -185,6 +185,7 @@ def analyze(args: argparse.Namespace) -> Path:
                                "changedFiles": paths, "unmodeledFiles": sorted(set(paths) - set(modeled)),
                                "before": before_evidence, "current": current_evidence,
                                "analysisSeconds": time.monotonic() - start,
+                               "analysisExitCode": result.returncode,
                                "selectionPrecision": "file-wide-declarations", "graphPolicy": "separate-revisions"}
     document.setdefault("limitations", []).append("File-wide seeds are review candidates; static tests do not predict failures or authorize skipping tests.")
     if set(paths) - set(modeled):
@@ -209,8 +210,10 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=600)
     args = parser.parse_args()
     try:
-        print(analyze(args))
-        return 0
+        result = analyze(args)
+        print(result)
+        document = json.loads(result.read_text(encoding="utf-8"))
+        return 2 if document["status"] == "incomplete" or document["changeInput"]["analysisExitCode"] != 0 else 0
     except (CaptureError, OSError, ValueError, subprocess.TimeoutExpired) as error:
         print(f"Capture incomplete: {error}", file=__import__("sys").stderr)
         return 2

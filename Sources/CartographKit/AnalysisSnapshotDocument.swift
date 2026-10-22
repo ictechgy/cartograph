@@ -593,10 +593,10 @@ extension CartographService {
         let captureLimitations = existingContext == nil ? [] : [
             "snapshot-input-identity: externally supplied context has no verified input generation fingerprint"
         ]
-        // 현재 캡처에서만 실제 루트 별칭을 정규화한다. 과거 스냅샷을 읽을 때는 파일 시스템을 묻지 않는다.
+        // 현재 캡처에서 실제 루트로 정규화한다. 인덱스의 물리 경로를 보존하며 과거 입력은 다시 읽지 않는다.
         let physicalRoot = (try? environment.fileSystem.realPath(at: projectPath)) ?? projectPath
         return AnalysisSnapshotDocument(
-            projectRoot: physicalRoot,
+            projectRoot: projectPath,
             revision: revision,
             inputFingerprint: inputFingerprint,
             snapshot: capturedSnapshot,
@@ -609,7 +609,7 @@ extension CartographService {
             localFunctionDiagnostics: context.localFunctionDiagnostics.filter {
                 pathFilter.allows($0.location.path) || supplementalPaths.contains($0.location.path)
             }
-        ).rebased(to: projectPath)
+        ).rebased(to: physicalRoot)
     }
 
     private static func referenceOrderKey(_ reference: IndexedReference)

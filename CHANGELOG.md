@@ -15,6 +15,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `cartograph_impact` accepts an optional project-local `before` snapshot. Impact results preserve
   side identity, capture fingerprint/revision when available, freshness uncertainty, selection
   precision, and depth/output budgets. Snapshot v2 remains compatible with older captures.
+- `impact --files-from` accepts a bounded JSON path array, including an empty actual patch.
+  Fresh snapshots use a physical project root so macOS path aliases remain relocatable without
+  rereading historical sources. Externally supplied contexts retain an unknown input fingerprint.
 
 - Expose `IndexStoreLocator.storeRecency(at:)`, the store recency that candidate selection and
   index freshness now share; `CoreDataGeneratedClassScanner.topLevelClassName(source:)`, the

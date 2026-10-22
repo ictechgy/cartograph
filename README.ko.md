@@ -903,6 +903,8 @@ v2 스냅샷은 자동 런타임 사실과 캡처 시점의 신선도, 보강된
 정확한 파일 선택은 `impact --files-from <JSON 배열 파일>`로 전달할 수도 있습니다. 빈 배열은
 빈 patch를 그대로 보존합니다. 최대 10000개 경로, 1 MiB이며 선언 인자·`--file`·`--since`와
 함께 사용할 수 없습니다.
+Git helper는 불완전한 결과도 보존한 보고서 경로를 출력한 뒤 종료 코드 2를 반환합니다.
+`changeInput.analysisExitCode`에는 실제 분석기의 종료 상태가 남습니다.
 스냅샷은 심볼 그래프와 JSON으로 고정되므로 `--level`, `--report-format`, `--strict`,
 `--since`, `--baseline`을 거부합니다.
 
