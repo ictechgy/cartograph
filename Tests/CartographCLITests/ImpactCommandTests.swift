@@ -1,9 +1,31 @@
 import ArgumentParser
 @testable import cartograph
+import Foundation
 import Testing
 
 @Suite("impact 인자 검증")
 struct ImpactCommandTests {
+    @Test("명시적 파일 배열은 빈 patch를 보존하고 크기와 선택 모드를 제한한다")
+    func exactFileListInput() throws {
+        let command = try ImpactCommand.parse(["--files-from", "changed.json", "--before", "before.json"])
+        try command.validate()
+        #expect(command.filesFrom == "changed.json")
+        #expect(try ImpactCommand.parseSelectedFiles(Data("[]".utf8)).isEmpty)
+        #expect(try ImpactCommand.parseSelectedFiles(Data(#"["Old.swift","New.swift","Old.swift"]"#.utf8))
+                == ["New.swift", "Old.swift"])
+        for data in [Data("{}".utf8), Data(#"[""]"#.utf8), Data(#"["\u0000"]"#.utf8),
+                     Data(repeating: 32, count: ImpactCommand.maximumFilesInputBytes + 1),
+                     try JSONEncoder().encode(Array(repeating: "A.swift", count: 10_001)),
+                     try JSONEncoder().encode([String(repeating: "a", count: 4097)])] {
+            #expect(throws: (any Error).self) { try ImpactCommand.parseSelectedFiles(data) }
+        }
+        for extra in [["--file", "A.swift"], ["A"], ["--since", "HEAD"], ["--format", "language-traversal"]] {
+            #expect(throws: (any Error).self) {
+                try ImpactCommand.parse(["--files-from", "changed.json"] + extra).validate()
+            }
+        }
+    }
+
     @Test("Core Data 내용과 버전 선택 변경도 since 영향 분석의 입력이다")
     func includesCoreDataChangesInImpactSeeds() {
         #expect(ChangedSelectionSupport.isModeledChange("Sources/Store.xcdatamodel/contents"))

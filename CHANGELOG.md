@@ -7,7 +7,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-22
+
 ### Added
+
+- Reproducible SwiftPM Git change capture (`Scripts/cartograph-git-impact.py`) builds independent
+  before/current worktrees with fresh indexes, preserves deleted/renamed file seeds, and reports
+  exact commits, source content stability, preparation cost, and unmodeled changes.
+- `cartograph_impact` accepts an optional project-local `before` snapshot. Impact results preserve
+  side identity, capture fingerprint/revision when available, freshness uncertainty, selection
+  precision, and depth/output budgets. Snapshot v2 remains compatible with older captures.
+- `impact --files-from` accepts a bounded JSON path array, including an empty actual patch.
+  Fresh snapshots use a physical project root so macOS path aliases remain relocatable without
+  rereading historical sources. Externally supplied contexts retain an unknown input fingerprint.
 
 - Expose `IndexStoreLocator.storeRecency(at:)`, the store recency that candidate selection and
   index freshness now share; `CoreDataGeneratedClassScanner.topLevelClassName(source:)`, the
@@ -1850,7 +1862,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.28.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.29.0...HEAD
+[0.29.0]: https://github.com/ictechgy/cartograph/compare/0.28.0...0.29.0
 [0.28.0]: https://github.com/ictechgy/cartograph/compare/0.27.1...0.28.0
 [0.27.1]: https://github.com/ictechgy/cartograph/compare/0.27.0...0.27.1
 [0.27.0]: https://github.com/ictechgy/cartograph/compare/0.26.0...0.27.0

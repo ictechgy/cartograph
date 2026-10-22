@@ -7,6 +7,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -19,6 +20,10 @@ def run(command: list[str], *, cwd: Path, output: Path, name: str, expected: int
     (output / f"{name}.stdout.log").write_text(result.stdout)
     (output / f"{name}.stderr.log").write_text(result.stderr)
     if result.returncode != expected:
+        if name == "git-capture":
+            # CI의 실패 단계에서도 실제 두 캡처의 선택/오류 근거를 바로 읽을 수 있게 남긴다.
+            print(result.stdout[-16_000:])
+            print(result.stderr[-8_000:])
         raise RuntimeError(f"{name}: expected exit {expected}, got {result.returncode}; see {output}")
     return result.stdout
 
@@ -651,6 +656,10 @@ def main() -> int:
             measured = measure_impact(binary, baseline, workspace, after_store, before_snapshot, output)
             summary["impactPerformance"] = {"status": measured["status"],
                                           "results": str(output / "impact-performance/results.json")}
+        run([sys.executable, str(Path(__file__).with_name("verify-git-impact.py")),
+                           "--cartograph", str(binary)], cwd=workspace, output=output,
+                          name="git-capture", timeout=600)
+        summary["gitCapture"] = {"status": "passed", "log": str(output / "git-capture.stdout.log")}
         (output / "result.json").write_text(json.dumps(summary, indent=2) + "\n")
         print(json.dumps(summary, indent=2))
         print(f"Evidence: {output}")

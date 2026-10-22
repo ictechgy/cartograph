@@ -26,6 +26,8 @@ extension CartographService {
         limit: Int = 200,
         runtimeContracts: RuntimeContractsDocument? = nil,
         recordedLimitations: [String]? = nil,
+        recordedRevision: String? = nil,
+        recordedFingerprint: String? = nil,
         selectionLimitations: [String] = [],
         runtimeTrace: RuntimeTraceReport? = nil,
         in existingContext: AnalysisContext? = nil
@@ -63,12 +65,11 @@ extension CartographService {
         var limitations = (recordedLimitations ?? analysisLimitations(context: context, symbolGraph: graph))
             + selectionLimitations
         let reviewed = Set(report.changed + report.affected.map(\.node))
-        let selectedFiles = Set(selection.files)
         let relevantAutomatic = automatic.map { value in
             RuntimeDiscoveryReport(findings: value.findings.filter { finding in
                 finding.source.map { reviewed.contains($0) } == true
                     || !reviewed.isDisjoint(with: finding.targets + finding.candidates)
-                    || selectedFiles.contains(ReportScope.normalized(finding.boundary.location.path))
+                    || selection.containsFile(finding.boundary.location.path)
             }, limitations: value.limitations)
         }
         let automaticDocument = relevantAutomatic.map {
@@ -103,7 +104,10 @@ extension CartographService {
                 selectionIssues: output.issues,
                 limitations: limitations,
                 truncated: .init(depth: report.truncatedByDepth, sections: truncatedSections),
-                automaticRuntime: automaticDocument, observedRuntime: observedDocument
+                automaticRuntime: automaticDocument, observedRuntime: observedDocument,
+                input: .init(historical: recordedLimitations != nil, revision: recordedRevision,
+                    fingerprint: recordedFingerprint, limitations: limitations, files: !files.isEmpty,
+                    maxDepth: maxDepth, limit: limit)
             ),
             selection.nodes
         )
@@ -197,6 +201,7 @@ struct ImpactSelection {
     let selected: Set<NodeID>
     let nodes: Set<NodeID>
     let files: [String]
+    let containsFile: (String) -> Bool
     let issues: [ImpactDocument.SelectionIssue]
     let status: String
 
@@ -247,13 +252,34 @@ struct ImpactSelection {
                 }
             }
         }
+        // 삭제 파일도 현재 루트의 논리/물리 표기를 같은 식별자로 맞춘다. 잎 파일의 존재에 기대지 않는다.
+        let physicalRoot = files.isEmpty ? projectPath
+            : ((try? LocalFileSystem().realPath(at: projectPath)) ?? projectPath)
+        let rootAliases = files.isEmpty ? []
+            : Set([projectPath, ReportScope.normalized(projectPath)]).sorted { $0.count > $1.count }
+        func normalizedSelectionPath(_ path: String) -> String {
+            let normalized = ReportScope.normalized(path)
+            for root in rootAliases {
+                if normalized == root { return physicalRoot }
+                let prefix = root == "/" ? "/" : root + "/"
+                if normalized.hasPrefix(prefix) {
+                    let suffix = String(normalized.dropFirst(prefix.count))
+                    return (physicalRoot == "/" ? "/" : physicalRoot + "/") + suffix
+                }
+            }
+            return normalized
+        }
         let normalizedFiles = Set(files.map { file in
-            ReportScope.normalized(file.hasPrefix("/") ? file : (projectPath as NSString).appendingPathComponent(file))
+            normalizedSelectionPath(file.hasPrefix("/") ? file : (projectPath as NSString).appendingPathComponent(file))
         })
         let nodesByFile = normalizedFiles.isEmpty ? [:]
-            : Self.nodesBySelectedFile(makeRawFileIndex(graph), selecting: normalizedFiles)
+            : Self.nodesBySelectedFile(makeRawFileIndex(graph), selecting: normalizedFiles,
+                normalizePath: normalizedSelectionPath)
+        let normalizedArtifacts = files.isEmpty ? [:]
+            : Dictionary(artifactTargets.map { (normalizedSelectionPath($0.key), $0.value) },
+                uniquingKeysWith: { $0.union($1) })
         for file in normalizedFiles.sorted() {
-            let matches = (nodesByFile[file] ?? []) + Array(artifactTargets[file] ?? [])
+            let matches = (nodesByFile[file] ?? []) + Array(normalizedArtifacts[file] ?? [])
             guard !matches.isEmpty else {
                 issues.append(.init(requested: file, kind: "file", status: "unindexed", candidates: nil))
                 continue
@@ -264,6 +290,7 @@ struct ImpactSelection {
         requestedSymbolCount = symbols.count
         self.nodes = ImpactSelectionExpansion.expandingContainers(nodes, graph: graph)
         self.files = normalizedFiles.sorted()
+        containsFile = { normalizedFiles.contains(normalizedSelectionPath($0)) }
         self.issues = issues
         status = !issues.isEmpty ? "incomplete" : (symbols.isEmpty && files.isEmpty ? "noChanges" : "found")
     }
@@ -279,11 +306,12 @@ struct ImpactSelection {
 
     /// 링크 대상은 요청마다 다시 해석하되, 선택하지 않은 파일의 정점 배열은 복사하지 않는다.
     static func nodesBySelectedFile(
-        _ rawPaths: [String: [NodeID]], selecting files: Set<String>
+        _ rawPaths: [String: [NodeID]], selecting files: Set<String>,
+        normalizePath: (String) -> String = ReportScope.normalized
     ) -> [String: [NodeID]] {
         var selected: [String: [NodeID]] = [:]
         for (path, ids) in rawPaths {
-            let normalized = ReportScope.normalized(path)
+            let normalized = normalizePath(path)
             guard files.contains(normalized) else { continue }
             selected[normalized, default: []] += ids
         }

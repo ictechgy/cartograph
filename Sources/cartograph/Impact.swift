@@ -44,6 +44,9 @@ struct ImpactCommand: ParsableCommand {
     @Option(name: .customLong("file"), help: "Source file to inspect; repeat for multiple files.")
     var files: [String] = []
 
+    @Option(name: .customLong("files-from"), help: "Exact selected files as a JSON string array (empty allowed, at most 1 MiB and 10000 paths).")
+    var filesFrom: String?
+
     @Option(name: .customLong("depth"), help: "Maximum consumer depth from 1 through 128.")
     var depth: Int?
 
@@ -101,15 +104,15 @@ struct ImpactCommand: ParsableCommand {
         let hasSymbols = !symbols.isEmpty || rootsFrom != nil
         let hasFiles = !files.isEmpty
         let hasSince = options.since != nil
-        let modeCount = [hasSymbols, hasFiles, hasSince].filter { $0 }.count
+        let modeCount = [hasSymbols, hasFiles, hasSince, filesFrom != nil].filter { $0 }.count
 
         guard modeCount == 1 else {
             throw ValidationError(
-                "give exactly one selector: a declaration, --file <path>, or --since <revision>"
+                "give exactly one selector: a declaration, --file <path>, --files-from <json>, or --since <revision>"
             )
         }
         guard symbols.allSatisfy(Self.isNonEmpty), files.allSatisfy(Self.isNonEmpty),
-              rootsFrom.map(Self.isNonEmpty) ?? true else {
+              rootsFrom.map(Self.isNonEmpty) ?? true, filesFrom.map(Self.isNonEmpty) ?? true else {
             throw ValidationError("impact selectors cannot be empty")
         }
         guard options.since.map(Self.isNonEmpty) ?? true else {
@@ -149,7 +152,7 @@ struct ImpactCommand: ParsableCommand {
     /// 순회 문서는 선언 root 만 받는다. 파일·스냅샷·실행 근거는 `change-impact` 의 입력이다.
     private func validateLanguageTraversal() throws {
         guard !symbols.isEmpty || rootsFrom != nil else {
-            throw ValidationError("--format language-traversal takes declaration roots; --file and --since are not supported")
+            throw ValidationError("--format language-traversal takes declaration roots; --file, --files-from and --since are not supported")
         }
         if let bad = (symbols + (revision.map { [$0] } ?? [])).first(where: ExchangeText.containsControlCharacter) {
             throw ValidationError("--format language-traversal roots and --revision cannot contain control characters "
@@ -206,6 +209,13 @@ struct ImpactCommand: ParsableCommand {
         var selectedFiles = files.map {
             GlobalOptions.absolutePath($0, relativeTo: context.fileSystem.currentDirectoryPath)
         }
+        if let filesFrom {
+            let path = GlobalOptions.absolutePath(filesFrom, relativeTo: context.fileSystem.currentDirectoryPath)
+            let data = try context.fileSystem.readData(at: path, maximumBytes: Self.maximumFilesInputBytes)
+            selectedFiles = try Self.parseSelectedFiles(data).map {
+                GlobalOptions.absolutePath($0, relativeTo: context.fileSystem.currentDirectoryPath)
+            }
+        }
         var selectionLimitations: [String] = []
         if let reference = options.since {
             let changed = try ChangedSelectionSupport.files(
@@ -224,7 +234,7 @@ struct ImpactCommand: ParsableCommand {
                 symbols: symbols, files: selectedFiles,
                 beforePath: GlobalOptions.absolutePath(before, relativeTo: context.fileSystem.currentDirectoryPath),
                 maxDepth: depth, limit: resolvedLimit, format: format.rawValue,
-                fileSelectionIsDerived: options.since != nil, runtimeContractsPath: runtimePath,
+                fileSelectionIsDerived: options.since != nil || filesFrom != nil, runtimeContractsPath: runtimePath,
                 selectionLimitations: selectionLimitations,
                 coreDataBuildEvidencePath: coreDataBuildEvidence.map {
                     GlobalOptions.absolutePath($0, relativeTo: context.fileSystem.currentDirectoryPath)
@@ -237,7 +247,7 @@ struct ImpactCommand: ParsableCommand {
                 maxDepth: depth,
                 limit: resolvedLimit,
                 format: format.rawValue,
-                fileSelectionIsDerived: options.since != nil,
+                fileSelectionIsDerived: options.since != nil || filesFrom != nil,
                 runtimeContractsPath: runtimePath,
                 selectionLimitations: selectionLimitations,
                 runtimeTracePath: trace.map { GlobalOptions.absolutePath($0, relativeTo: context.fileSystem.currentDirectoryPath) },
@@ -270,6 +280,19 @@ struct ImpactCommand: ParsableCommand {
 
     private static func isNonEmpty(_ value: String) -> Bool {
         !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    static let maximumFilesInputBytes = 1024 * 1024
+
+    /// 빈 실제 patch도 Git 기준점을 다시 해석하지 않고 그대로 전달한다.
+    static func parseSelectedFiles(_ data: Data) throws -> [String] {
+        guard data.count <= maximumFilesInputBytes,
+              let paths = try? JSONDecoder().decode([String].self, from: data),
+              paths.count <= 10_000,
+              paths.allSatisfy({ Self.isNonEmpty($0) && !$0.utf8.contains(0) && $0.utf8.count <= 4096 }) else {
+            throw ValidationError("--files-from requires a JSON array of at most 10000 nonempty paths (1 MiB total, 4096 bytes per path)")
+        }
+        return Array(Set(paths)).sorted()
     }
 
 }

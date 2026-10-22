@@ -11,6 +11,12 @@ extension ImpactDocument {
         let names = Dictionary((changeScope + affected.map(\.symbol)).compactMap { symbol in
             symbol.usr.map { ($0, symbol.qualifiedName) }
         }, uniquingKeysWith: { first, _ in first })
+        if let input {
+            lines.append("  Input: \(input.mode), freshness \(input.freshness), \(input.selectionPrecision), "
+                + "depth \(input.maxDepth.map(String.init) ?? "unbounded"), output limit \(input.outputLimit).")
+            if let revision = input.revision { lines.append("  Captured revision label: \(revision)") }
+            lines.append("  Freshness basis: \(input.freshnessBasis).")
+        }
         for affected in affected {
             let site = affected.symbol.location.map { "\($0.path):\($0.line) " } ?? ""
             let via = names[affected.via] ?? affected.via

@@ -23,6 +23,33 @@ public struct ImpactDocument: Sendable, Equatable, Codable {
     public let selectionIssues: [SelectionIssue]
     public let limitations: [String]
     public let truncated: Truncation
+    /// 출력이 선택한 인덱스와 예산을 잃지 않도록 현재/과거 입력을 명시한다.
+    public let input: Input?
+
+    /// 내용 지문은 입력 식별자이며 컴파일러가 그 내용을 읽었다는 증명이 아니다.
+    public struct Input: Sendable, Equatable, Codable {
+        public let mode: String
+        public let revision: String?
+        public let fingerprint: String?
+        public let freshness: String
+        public let freshnessBasis: String
+        public let selectionPrecision: String
+        public let maxDepth: Int?
+        public let outputLimit: Int
+
+        init(historical: Bool, revision: String?, fingerprint: String?, limitations: [String],
+             files: Bool, maxDepth: Int?, limit: Int) {
+            mode = historical ? "historical-snapshot" : "current-index"
+            self.revision = revision
+            self.fingerprint = fingerprint
+            freshness = limitations.contains { $0.hasPrefix("index-staleness:") || $0.hasPrefix("missing-sources:") }
+                ? "stale" : "unknown"
+            freshnessBasis = "source/index timestamps and captured input identity; compiler content equality is not proven"
+            selectionPrecision = files ? "file-wide-declarations" : "symbol-and-member-scope"
+            self.maxDepth = maxDepth
+            outputLimit = limit
+        }
+    }
 
     /// 경로 배열을 정점마다 복사하지 않고 변경 대상 쪽 선행 정점 한 개로 근거를 공유한다.
     public struct Affected: Sendable, Equatable, Codable {
@@ -133,7 +160,8 @@ public struct ImpactDocument: Sendable, Equatable, Codable {
         limitations: [String],
         truncated: Truncation,
         automaticRuntime: RuntimeDiscoveryDocument? = nil,
-        observedRuntime: RuntimeTraceReportDocument? = nil
+        observedRuntime: RuntimeTraceReportDocument? = nil,
+        input: Input? = nil
     ) {
         format = "change-impact"
         version = 1
@@ -154,5 +182,6 @@ public struct ImpactDocument: Sendable, Equatable, Codable {
         self.selectionIssues = selectionIssues
         self.limitations = limitations
         self.truncated = truncated
+        self.input = input
     }
 }

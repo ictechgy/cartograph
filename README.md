@@ -703,6 +703,46 @@ ambiguous in either, the comparison stays unresolved. An unresolved explicit inp
 Git-derived selections and unresolved runtime evidence are incomplete analysis (exit 2). No path
 or consumer is synthesized by unioning the two graphs.
 
+For a SwiftPM package at a Git repository root, capture the actual patch with two fresh builds:
+
+```bash
+python3 /path/to/cartograph/Scripts/cartograph-git-impact.py --project . --base origin/main --head HEAD
+python3 /path/to/cartograph/Scripts/cartograph-git-impact.py --project . --base HEAD --working-tree
+```
+
+The helper is included in the release archive and source checkout. It uses the installed `cartograph`
+unless `--cartograph /path/to/binary` is supplied. `--base` is an exact commit comparison, unlike
+`--since`'s merge-base selection. It retains isolated worktrees, both snapshots, build logs and
+`impact.json` in a new external directory (`--output` can name one). It never switches the caller's
+checkout. Working-tree mode includes staged, unstaged and untracked files; ignored files, symlinks,
+submodules and non-root/Xcode packages need the manual capture workflow. Dependency lockfiles must
+already be resolved: a source-tree change during build fails capture instead of claiming freshness.
+Building executes package build tools; only use the helper on code you trust to build.
+
+After the 0.29 Homebrew formula update, its helper is available at
+`$(brew --prefix cartograph)/libexec/cartograph-git-impact.py`; invoke it with Python 3.10+.
+Older formulas install only the binary; use the matching release archive/source helper in that case.
+
+`changeInput` reports exact revisions, all changed paths, unmodeled paths, source SHA-256 identities,
+source stability during each fresh build, and input preparation, build, analysis and total seconds.
+Changes compare the captured endpoints' bytes and executable mode, including untracked restorations.
+Identities cover tracked and nonignored untracked regular files; ignored inputs, external dependencies,
+the toolchain and environment are not content-bound by the helper. File seeds select every
+declaration in the file, so candidate counts are conservative. Configuration-only changes remain
+incomplete; empty results and statically connected tests do not establish safety, predict failures,
+or authorize skipping tests. The general `impact --since` mode still uses only the current graph
+unless `--before` is supplied. JSON's additive `input` field identifies each side, `unknown`/`stale`
+freshness, selection precision and budgets; old snapshots without a fingerprint remain unknown.
+The helper passes its exact file selection with `impact --files-from <json-array-file>`; an empty
+array preserves an empty patch. This additive selector accepts at most 10000 paths and 1 MiB,
+and is mutually exclusive with declaration arguments, `--file`, and `--since`.
+The helper prints the retained report path even when analysis is incomplete, then exits 2;
+`changeInput.analysisExitCode` preserves the native analyzer's status.
+
+MCP `cartograph_impact` also accepts `before: ".cartograph/before.json"` with `symbols` or `files`.
+The snapshot must be a JSON file inside the configured project. Its historical identity is retained
+beside the session's current input fingerprint; the two graphs are never merged for traversal.
+
 Because impact only walks consumers of the changed set, an edge that disappeared between two
 changed files never shows up in `affected` — both endpoints sit inside the change scope. The
 `scopeDiff` section closes that gap by diffing the subgraph induced on the union of both change
@@ -894,8 +934,13 @@ cartograph snapshot --runtime-contracts runtime-contracts.json -o .cartograph/be
 ```
 
 The v2 snapshot stores automatic runtime facts and their captured freshness, plus the enriched compiler index, edge selection, measured limitations, external
-retentions and optional runtime contract declarations. `--revision` is a label supplied by you; it
-does not query Git or a network. Historical source files are never read again. A snapshot always
+retentions and optional runtime contract declarations. An explicit `--revision` remains a user label.
+When omitted, a clean Git HEAD is recorded when available; dirty or unknown state has no revision.
+The additive `inputFingerprint` identifies source/configuration/index content at capture time, with
+before/after stability checks. Externally supplied Kit contexts (including Core Data evidence contexts)
+omit that fingerprint and record an input-identity limitation because their load generation is unknown.
+Neither the revision nor fingerprint proves that the compiler read
+those exact source bytes; index freshness limitations remain. Historical source files are never read again. A snapshot always
 uses the symbol graph and JSON output, so `--level`, `--report-format`, `--strict`, `--since` and
 `--baseline` are rejected.
 
@@ -2009,6 +2054,25 @@ let (_, metrics, _) = service.metrics(in: context)
 
 Baselines, thresholds and output formatting are CI policy and live in the separate command API
 (`detectCycles()`, `detectUnusedCode()`, …), so a programmatic caller never has to parse a table.
+
+### 0.29 source migration
+
+The source version is `0.29.0`; confirm its published asset on [GitHub Releases](https://github.com/ictechgy/cartograph/releases)
+before selecting its installation tag. The release archive includes `Scripts/cartograph-git-impact.py`.
+It requires Python 3.10+, Git, the Swift toolchain, and the matching Cartograph binary.
+
+Existing `impact`, `--since`, and snapshot v1/v2 inputs remain readable. `--since` retains its current-index
+selection semantics; use the Git helper for exact base/head or working-tree capture. The new
+`--files-from` selector preserves an exact JSON file list, including an empty patch.
+`cartograph_impact` adds optional `before` for a project-local snapshot. Preserve the entire comparison
+and its session metadata when adapting MCP responses; traversal stays separate for each revision.
+
+Embedding clients should rebuild. Snapshot v2 adds optional `inputFingerprint`; impact v1 adds optional
+`input`. Older captures leave fingerprints unknown, and older decoders may drop these new fields.
+New captures store a physical project root so relocated compiler paths remain consistent. An externally
+supplied `AnalysisContext` has no proven capture generation and leaves its input fingerprint absent.
+Ordinary API calls retain default arguments; captured initializer/function references may need their
+types updated. Static candidates, incomplete results and unknown freshness never authorize test skipping.
 
 ### 0.28 source migration
 

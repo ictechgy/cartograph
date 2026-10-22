@@ -864,6 +864,36 @@ XCTest의 setUp/tearDown 의존성은 해당 클래스를 선택하며, 상속�
 
 ### `snapshot` — 분석 입력 캡처
 
+Git 루트에 있는 SwiftPM 패키지는 릴리스 archive와 소스 checkout에 포함된 helper로 두 개의
+새 worktree·인덱스를 만들어 실제 patch를 비교할 수 있습니다.
+
+```bash
+python3 /path/to/cartograph/Scripts/cartograph-git-impact.py --project . --base origin/main --head HEAD
+python3 /path/to/cartograph/Scripts/cartograph-git-impact.py --project . --base HEAD --working-tree
+```
+
+`--base`는 정확한 commit 비교이며 `--since`의 merge-base 선택과 다릅니다. 호출자의 checkout은
+전환하지 않고 새 외부 디렉터리에 worktree, snapshot, 로그, `impact.json`을 보존합니다.
+`--cartograph`로 실행 파일, `--output`으로 새 출력 디렉터리를 지정할 수 있습니다. 작업 트리 모드는
+staged·unstaged·untracked 파일을 포함합니다. ignored 파일, symlink, submodule, Xcode 프로젝트나
+저장소 하위 패키지는 수동 capture를 사용해야 합니다. 의존성 lockfile을 먼저 확정해야 하며,
+빌드 도중 소스 트리가 바뀌면 캡처를 거부합니다. 빌드는 패키지 도구를 실행하므로 신뢰하는 코드에 사용하세요.
+
+0.29 Homebrew formula 갱신 뒤에는 `$(brew --prefix cartograph)/libexec/cartograph-git-impact.py`를
+Python 3.10+로 실행합니다. 이전 formula는 바이너리만 설치하므로 버전이 맞는 릴리스 archive나
+소스 checkout의 helper를 사용하세요.
+
+`changeInput`은 양쪽 commit·내용 SHA-256·빌드 중 소스 안정성·준비/분석 비용·모델 밖 변경을
+기록합니다. 전체 시간에는 파일 준비·빌드·분석이 포함되며, 변경 선택은 비추적 복원 파일까지
+포함한 양 끝점의 바이트와 실행 비트를 비교합니다. 내용 지문은 추적 파일과 무시되지 않은
+비추적 일반 파일만 다룹니다. 무시된 입력·외부 의존성·도구체인·환경은 이 지문에 묶이지 않습니다.
+파일 seed는 파일 전체 선언을 선택하므로 정밀도 한계를 남깁니다. 설정 변경과 빈 결과를
+안전 판정으로 바꾸지 않으며 연결된 테스트는 실패 예측이나 생략 허가가 아닙니다. 일반 `--since`는
+`--before`를 주지 않으면 현재 그래프만 탐색합니다. JSON의 선택 필드 `input`은 현재/과거 구분,
+`unknown`/`stale` 신선도, 선택 정밀도, 깊이·출력 한도를 보존합니다. 옛 snapshot도 계속 읽습니다.
+MCP `cartograph_impact`에도 `before: ".cartograph/before.json"`을 줄 수 있습니다. snapshot은
+설정한 프로젝트 안의 JSON이어야 하며 현재 세션 지문과 과거 캡처 출처가 구분됩니다.
+
 ```bash
 cartograph snapshot --revision before-change -o .cartograph/before.json
 cartograph snapshot --runtime-contracts runtime-contracts.json -o .cartograph/before.json
@@ -871,7 +901,17 @@ cartograph snapshot --runtime-contracts runtime-contracts.json -o .cartograph/be
 
 v2 스냅샷은 자동 런타임 사실과 캡처 시점의 신선도, 보강된 컴파일러 인덱스, 간선 선택, 측정한
 한계, 외부 보존 근거와 선택적 런타임 계약 선언을 저장합니다. `--revision`은 사용자가 주는
-라벨이며 Git이나 네트워크를 조회하지 않습니다. 과거 소스 파일은 다시 읽지 않습니다.
+라벨입니다. 생략하면 확인 가능한 깨끗한 Git HEAD를 기록하고, dirty이거나 알 수 없으면 revision을
+생략합니다. 선택 필드 `inputFingerprint`는 캡처한 소스·설정·인덱스의 내용 지문이며 캡처 전후
+일관성을 검사합니다. 외부에서 전달한 Kit 컨텍스트(Core Data 근거 컨텍스트 포함)는 로드 세대를
+확인할 수 없으므로 지문을 생략하고 입력 식별 한계를 남깁니다.
+라벨이나 지문만으로 컴파일러가 같은 소스 바이트를 읽었다고 보장하지 않으며
+인덱스 신선도 한계는 그대로 남습니다. 과거 소스 파일은 다시 읽지 않습니다.
+정확한 파일 선택은 `impact --files-from <JSON 배열 파일>`로 전달할 수도 있습니다. 빈 배열은
+빈 patch를 그대로 보존합니다. 최대 10000개 경로, 1 MiB이며 선언 인자·`--file`·`--since`와
+함께 사용할 수 없습니다.
+Git helper는 불완전한 결과도 보존한 보고서 경로를 출력한 뒤 종료 코드 2를 반환합니다.
+`changeInput.analysisExitCode`에는 실제 분석기의 종료 상태가 남습니다.
 스냅샷은 심볼 그래프와 JSON으로 고정되므로 `--level`, `--report-format`, `--strict`,
 `--since`, `--baseline`을 거부합니다.
 
@@ -1937,6 +1977,24 @@ let (_, metrics, _) = service.metrics(in: context)
 
 베이스라인·임계값·출력 형식은 CI 정책이라 별도의 명령 API(`detectCycles()`,
 `detectUnusedCode()` 등)에 있습니다. 프로그램에서 호출하는 쪽이 표를 파싱할 일은 없습니다.
+
+### 0.29 소스 마이그레이션
+
+소스 버전은 `0.29.0`이며, 설치 태그로 고르기 전에 [GitHub Releases](https://github.com/ictechgy/cartograph/releases)의
+게시된 asset을 확인하세요. 릴리스 archive에는 `Scripts/cartograph-git-impact.py`가 포함됩니다.
+Python 3.10 이상, Git, Swift 도구체인과 같은 버전의 Cartograph 바이너리가 필요합니다.
+
+기존 `impact`, `--since`, snapshot v1/v2 입력은 계속 지원합니다. `--since`의 현재 인덱스 선택 의미는
+유지하므로 정확한 base/head·작업 트리 캡처에는 Git helper를 사용하세요. 새 `--files-from` 선택자는
+빈 patch를 포함한 정확한 JSON 파일 목록을 보존합니다. `cartograph_impact`는 프로젝트 내부 snapshot을
+받는 선택적 `before`를 추가합니다. MCP 응답을 가공할 때 비교 전체와 세션 메타데이터를 보존하세요.
+각 revision의 그래프는 따로 순회합니다.
+
+임베딩 클라이언트는 다시 빌드하세요. snapshot v2의 `inputFingerprint`와 impact v1의 `input`은 선택 필드입니다.
+옛 캡처의 지문은 unknown이며 옛 decoder는 새 필드를 잃을 수 있습니다. 새 캡처는 실제 물리 루트를
+기록해 컴파일러 경로를 일관되게 재배치합니다. 외부 `AnalysisContext`는 캡처 세대를 증명할 수 없어
+지문을 생략합니다. 일반 API 호출은 기본 인자를 유지하지만 생성자·함수를 값으로 저장한 코드는 타입을
+수정해야 할 수 있습니다. 정적 후보, 불완전 결과, unknown 신선도는 테스트 생략 허가가 아닙니다.
 
 ### 0.28 소스 마이그레이션
 

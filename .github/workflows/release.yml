@@ -122,6 +122,8 @@ jobs:
           cp LICENSE README.md dist/cartograph/
           mkdir -p dist/cartograph/docs
           cp docs/QUERY-EVIDENCE.md docs/ENUM-CHANGE-REVIEW.md dist/cartograph/docs/
+          mkdir -p dist/cartograph/Scripts
+          cp Scripts/cartograph-git-impact.py dist/cartograph/Scripts/
           archive="cartograph-${VERSION}-macos-universal.tar.gz"
           tar -C dist -czf "$archive" cartograph
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
@@ -143,6 +145,7 @@ jobs:
           Scripts/verify-fixtures.sh "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-analysis-blindspots.py "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-change-impact.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
+          cmp Scripts/cartograph-git-impact.py "$RUNNER_TEMP/cartograph/Scripts/cartograph-git-impact.py"
           python3 Scripts/verify-runtime-contracts.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-discovery.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-keypaths.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
@@ -200,16 +203,18 @@ jobs:
           gh release create "$VERSION" "$ARCHIVE" --title "$VERSION" --notes-file notes.md --verify-tag
 
       # tap 저장소는 다른 저장소라 기본 GITHUB_TOKEN 으로는 쓸 수 없다.
-      # HOMEBREW_TAP_TOKEN 시크릿이 있을 때만 formula 를 갱신하고, 없으면 조용히 건너뛴다.
+      # HOMEBREW_TAP_TOKEN 시크릿이 있을 때만 formula 를 갱신하고, 없으면 배포 미완료 범위를 알린다.
       - name: Update the Homebrew tap
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "::warning::Homebrew tap update and installation verification skipped: HOMEBREW_TAP_TOKEN is not configured."
             echo "HOMEBREW_TAP_TOKEN is not configured; update the tap with these values:"
             echo "  url    https://github.com/ictechgy/cartograph/releases/download/${VERSION}/${ARCHIVE}"
             echo "  sha256 ${SHA256}"
             echo "  version ${VERSION}"
+            echo "Homebrew tap update and clean installation remain unverified for ${VERSION}; the release archive is available." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           git clone "https://github.com/ictechgy/homebrew-tap.git" tap
@@ -219,8 +224,37 @@ jobs:
             -e "s|sha256 \".*\"|sha256 \"${SHA256}\"|" \
             -e "s|version \".*\"|version \"${VERSION}\"|" \
             Formula/cartograph.rb
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("Formula/cartograph.rb")
+          text = path.read_text()
+          install = '    libexec.install "Scripts/cartograph-git-impact.py"\n'
+          anchor = '    bin.install "cartograph"\n'
+          if install not in text:
+              if text.count(anchor) != 1:
+                  raise SystemExit("Unrecognized Cartograph formula install block; update the tap manually")
+              text = text.replace(anchor, anchor + install)
+          assertion = '    assert_path_exists libexec/"cartograph-git-impact.py"\n'
+          anchor = '  test do\n'
+          if assertion not in text:
+              if text.count(anchor) != 1:
+                  raise SystemExit("Unrecognized Cartograph formula test block; update the tap manually")
+              text = text.replace(anchor, anchor + assertion)
+          path.write_text(text)
+          PY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "cartograph ${VERSION}"
           auth="$(printf 'x-access-token:%s' "$HOMEBREW_TAP_TOKEN" | base64 | tr -d '\n')"
           git -c "http.extraheader=Authorization: Basic ${auth}" push origin main
+          cd ..
+          brew install ictechgy/tap/cartograph
+          brew test ictechgy/tap/cartograph
+          installed="$(brew --prefix ictechgy/tap/cartograph)"
+          test "$("$installed/bin/cartograph" --version)" = "$VERSION"
+          brew cat ictechgy/tap/cartograph > "$RUNNER_TEMP/cartograph-installed-formula.rb"
+          grep -F "${SHA256}" "$RUNNER_TEMP/cartograph-installed-formula.rb"
+          cmp Scripts/cartograph-git-impact.py "$installed/libexec/cartograph-git-impact.py"
+          python3 "$installed/libexec/cartograph-git-impact.py" --help
+          python3 Scripts/verify-git-impact.py --cartograph "$installed/bin/cartograph"
+          echo "Homebrew ${VERSION}: formula hash, clean installation, helper bytes and compiler-backed change flow verified." >> "$GITHUB_STEP_SUMMARY"

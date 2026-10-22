@@ -235,6 +235,19 @@ public final class AnalysisSession {
         )
     }
 
+    /// 세션의 현재 그래프와 프로젝트 안에 캡처한 과거 그래프를 따로 분석한다.
+    public func compareImpact(
+        beforePath: String, symbols: [String] = [], files: [String] = [],
+        maxDepth: Int? = nil, limit: Int = 200, runtimeContracts: RuntimeContractsDocument? = nil
+    ) throws -> ImpactComparisonDocument {
+        try ensurePrepared()
+        guard let service, let context else { throw AnalysisSessionError.unavailable }
+        let path = try validatedBuildEvidencePath(beforePath, service: service, inputName: "historical snapshot")
+        let outcome = try service.compareImpact(symbols: symbols, files: files, beforePath: path,
+            maxDepth: maxDepth, limit: limit, format: "json", runtimeContracts: runtimeContracts, in: context)
+        return try JSONDecoder().decode(ImpactComparisonDocument.self, from: Data(outcome.output.utf8))
+    }
+
     /// 준비된 문맥에서 변경에 도달하는 테스트를 답한다.
     ///
     /// `impact` 와 같은 준비된 문맥을 쓴다. 에이전트가 편집 뒤 "어떤 테스트를 돌리나"를
@@ -281,7 +294,9 @@ public final class AnalysisSession {
         return augmented
     }
 
-    private func validatedBuildEvidencePath(_ requested: String, service: CartographService) throws -> String {
+    private func validatedBuildEvidencePath(
+        _ requested: String, service: CartographService, inputName: String = "Core Data build evidence"
+    ) throws -> String {
         let root = URL(fileURLWithPath: service.projectPath).standardizedFileURL.path
         let raw = requested.hasPrefix("/") ? requested : (root as NSString).appendingPathComponent(requested)
         let absolute = URL(fileURLWithPath: raw).standardizedFileURL.path
@@ -294,7 +309,7 @@ public final class AnalysisSession {
         guard canonical != canonicalRoot, canonical.hasPrefix(prefix),
               URL(fileURLWithPath: canonical).pathExtension.lowercased() == "json" else {
             throw CartographError.invalidConfiguration(path: root,
-                reason: "MCP Core Data build evidence must be a JSON file inside the configured project.")
+                reason: "MCP \(inputName) must be a JSON file inside the configured project.")
         }
         return canonical
     }

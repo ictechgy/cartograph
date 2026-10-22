@@ -105,13 +105,17 @@ extension CartographService {
         fileSelectionIsDerived: Bool = false,
         runtimeContractsPath: String? = nil,
         selectionLimitations: [String] = [],
-        coreDataBuildEvidencePath: String? = nil
+        coreDataBuildEvidencePath: String? = nil,
+        runtimeContracts: RuntimeContractsDocument? = nil,
+        in existingContext: AnalysisContext? = nil
     ) throws -> CommandOutcome {
         let before = try loadAnalysisSnapshot(at: beforePath)
         let currentContext = try coreDataBuildEvidencePath.map {
             try coreDataRuntimeContext(evidencePath: $0)
-        } ?? loadContext()
-        let historical = before.rebased(to: projectPath)
+        } ?? existingContext ?? loadContext()
+        // 삭제된 잎 경로는 Foundation이 별칭을 풀지 못할 수 있으므로 존재하는 현재 루트만 해석한다.
+        let comparisonRoot = (try? environment.fileSystem.realPath(at: projectPath)) ?? projectPath
+        let historical = before.rebased(to: comparisonRoot)
         let historicalContext = AnalysisContext(
             snapshot: historical.snapshot,
             edgeKinds: Set(historical.edgeKinds),
@@ -120,7 +124,7 @@ extension CartographService {
             runtimeFiles: historical.runtimeFiles,
             runtimeFreshness: historical.runtimeFreshness
         )
-        let currentContracts = try runtimeContractsPath.map {
+        let currentContracts = try runtimeContracts ?? runtimeContractsPath.map {
             try RuntimeEvidenceStore(fileSystem: environment.fileSystem).contracts(at: $0)
         }
         let current = try makeImpactDocument(
@@ -140,6 +144,8 @@ extension CartographService {
             runtimeContracts: historical.runtimeContracts,
             recordedLimitations: historical.limitations
                 + ["historical-snapshot: source and index freshness describe the captured project, not today's files"],
+            recordedRevision: historical.revision,
+            recordedFingerprint: historical.inputFingerprint,
             selectionLimitations: selectionLimitations,
             in: historicalContext
         )
