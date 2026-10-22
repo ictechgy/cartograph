@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-22
+
 ### Added
 
 - Reproducible SwiftPM Git change capture (`Scripts/cartograph-git-impact.py`) builds independent
@@ -1860,7 +1862,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.28.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.29.0...HEAD
+[0.29.0]: https://github.com/ictechgy/cartograph/compare/0.28.0...0.29.0
 [0.28.0]: https://github.com/ictechgy/cartograph/compare/0.27.1...0.28.0
 [0.27.1]: https://github.com/ictechgy/cartograph/compare/0.27.0...0.27.1
 [0.27.0]: https://github.com/ictechgy/cartograph/compare/0.26.0...0.27.0

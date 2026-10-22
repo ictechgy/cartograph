@@ -1971,6 +1971,24 @@ let (_, metrics, _) = service.metrics(in: context)
 베이스라인·임계값·출력 형식은 CI 정책이라 별도의 명령 API(`detectCycles()`,
 `detectUnusedCode()` 등)에 있습니다. 프로그램에서 호출하는 쪽이 표를 파싱할 일은 없습니다.
 
+### 0.29 소스 마이그레이션
+
+소스 버전은 `0.29.0`이며, 설치 태그로 고르기 전에 [GitHub Releases](https://github.com/ictechgy/cartograph/releases)의
+게시된 asset을 확인하세요. 릴리스 archive에는 `Scripts/cartograph-git-impact.py`가 포함됩니다.
+Python 3.10 이상, Git, Swift 도구체인과 같은 버전의 Cartograph 바이너리가 필요합니다.
+
+기존 `impact`, `--since`, snapshot v1/v2 입력은 계속 지원합니다. `--since`의 현재 인덱스 선택 의미는
+유지하므로 정확한 base/head·작업 트리 캡처에는 Git helper를 사용하세요. 새 `--files-from` 선택자는
+빈 patch를 포함한 정확한 JSON 파일 목록을 보존합니다. `cartograph_impact`는 프로젝트 내부 snapshot을
+받는 선택적 `before`를 추가합니다. MCP 응답을 가공할 때 비교 전체와 세션 메타데이터를 보존하세요.
+각 revision의 그래프는 따로 순회합니다.
+
+임베딩 클라이언트는 다시 빌드하세요. snapshot v2의 `inputFingerprint`와 impact v1의 `input`은 선택 필드입니다.
+옛 캡처의 지문은 unknown이며 옛 decoder는 새 필드를 잃을 수 있습니다. 새 캡처는 실제 물리 루트를
+기록해 컴파일러 경로를 일관되게 재배치합니다. 외부 `AnalysisContext`는 캡처 세대를 증명할 수 없어
+지문을 생략합니다. 일반 API 호출은 기본 인자를 유지하지만 생성자·함수를 값으로 저장한 코드는 타입을
+수정해야 할 수 있습니다. 정적 후보, 불완전 결과, unknown 신선도는 테스트 생략 허가가 아닙니다.
+
 ### 0.28 소스 마이그레이션
 
 [0.28.0은 발행됐습니다](https://github.com/ictechgy/cartograph/releases/tag/0.28.0).

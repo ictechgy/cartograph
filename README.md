@@ -2048,6 +2048,25 @@ let (_, metrics, _) = service.metrics(in: context)
 Baselines, thresholds and output formatting are CI policy and live in the separate command API
 (`detectCycles()`, `detectUnusedCode()`, …), so a programmatic caller never has to parse a table.
 
+### 0.29 source migration
+
+The source version is `0.29.0`; confirm its published asset on [GitHub Releases](https://github.com/ictechgy/cartograph/releases)
+before selecting its installation tag. The release archive includes `Scripts/cartograph-git-impact.py`.
+It requires Python 3.10+, Git, the Swift toolchain, and the matching Cartograph binary.
+
+Existing `impact`, `--since`, and snapshot v1/v2 inputs remain readable. `--since` retains its current-index
+selection semantics; use the Git helper for exact base/head or working-tree capture. The new
+`--files-from` selector preserves an exact JSON file list, including an empty patch.
+`cartograph_impact` adds optional `before` for a project-local snapshot. Preserve the entire comparison
+and its session metadata when adapting MCP responses; traversal stays separate for each revision.
+
+Embedding clients should rebuild. Snapshot v2 adds optional `inputFingerprint`; impact v1 adds optional
+`input`. Older captures leave fingerprints unknown, and older decoders may drop these new fields.
+New captures store a physical project root so relocated compiler paths remain consistent. An externally
+supplied `AnalysisContext` has no proven capture generation and leaves its input fingerprint absent.
+Ordinary API calls retain default arguments; captured initializer/function references may need their
+types updated. Static candidates, incomplete results and unknown freshness never authorize test skipping.
+
 ### 0.28 source migration
 
 [0.28.0 is published](https://github.com/ictechgy/cartograph/releases/tag/0.28.0).
