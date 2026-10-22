@@ -252,13 +252,34 @@ struct ImpactSelection {
                 }
             }
         }
+        // 삭제 파일도 현재 루트의 논리/물리 표기를 같은 식별자로 맞춘다. 잎 파일의 존재에 기대지 않는다.
+        let physicalRoot = files.isEmpty ? projectPath
+            : ((try? LocalFileSystem().realPath(at: projectPath)) ?? projectPath)
+        let rootAliases = files.isEmpty ? []
+            : Set([projectPath, ReportScope.normalized(projectPath)]).sorted { $0.count > $1.count }
+        func normalizedSelectionPath(_ path: String) -> String {
+            let normalized = ReportScope.normalized(path)
+            for root in rootAliases {
+                if normalized == root { return physicalRoot }
+                let prefix = root == "/" ? "/" : root + "/"
+                if normalized.hasPrefix(prefix) {
+                    let suffix = String(normalized.dropFirst(prefix.count))
+                    return (physicalRoot == "/" ? "/" : physicalRoot + "/") + suffix
+                }
+            }
+            return normalized
+        }
         let normalizedFiles = Set(files.map { file in
-            ReportScope.normalized(file.hasPrefix("/") ? file : (projectPath as NSString).appendingPathComponent(file))
+            normalizedSelectionPath(file.hasPrefix("/") ? file : (projectPath as NSString).appendingPathComponent(file))
         })
         let nodesByFile = normalizedFiles.isEmpty ? [:]
-            : Self.nodesBySelectedFile(makeRawFileIndex(graph), selecting: normalizedFiles)
+            : Self.nodesBySelectedFile(makeRawFileIndex(graph), selecting: normalizedFiles,
+                normalizePath: normalizedSelectionPath)
+        let normalizedArtifacts = files.isEmpty ? [:]
+            : Dictionary(artifactTargets.map { (normalizedSelectionPath($0.key), $0.value) },
+                uniquingKeysWith: { $0.union($1) })
         for file in normalizedFiles.sorted() {
-            let matches = (nodesByFile[file] ?? []) + Array(artifactTargets[file] ?? [])
+            let matches = (nodesByFile[file] ?? []) + Array(normalizedArtifacts[file] ?? [])
             guard !matches.isEmpty else {
                 issues.append(.init(requested: file, kind: "file", status: "unindexed", candidates: nil))
                 continue
@@ -284,11 +305,12 @@ struct ImpactSelection {
 
     /// 링크 대상은 요청마다 다시 해석하되, 선택하지 않은 파일의 정점 배열은 복사하지 않는다.
     static func nodesBySelectedFile(
-        _ rawPaths: [String: [NodeID]], selecting files: Set<String>
+        _ rawPaths: [String: [NodeID]], selecting files: Set<String>,
+        normalizePath: (String) -> String = ReportScope.normalized
     ) -> [String: [NodeID]] {
         var selected: [String: [NodeID]] = [:]
         for (path, ids) in rawPaths {
-            let normalized = ReportScope.normalized(path)
+            let normalized = normalizePath(path)
             guard files.contains(normalized) else { continue }
             selected[normalized, default: []] += ids
         }

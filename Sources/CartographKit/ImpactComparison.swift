@@ -113,7 +113,9 @@ extension CartographService {
         let currentContext = try coreDataBuildEvidencePath.map {
             try coreDataRuntimeContext(evidencePath: $0)
         } ?? existingContext ?? loadContext()
-        let historical = before.rebased(to: projectPath)
+        // 삭제된 잎 경로는 Foundation이 별칭을 풀지 못할 수 있으므로 존재하는 현재 루트만 해석한다.
+        let comparisonRoot = (try? environment.fileSystem.realPath(at: projectPath)) ?? projectPath
+        let historical = before.rebased(to: comparisonRoot)
         let historicalContext = AnalysisContext(
             snapshot: historical.snapshot,
             edgeKinds: Set(historical.edgeKinds),

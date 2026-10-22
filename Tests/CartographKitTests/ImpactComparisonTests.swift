@@ -100,6 +100,41 @@ struct ImpactComparisonTests {
         #expect(captured.rebased(to: "/new").snapshot.symbols.first?.location.path == "/new/App.swift")
     }
 
+    @Test("현재에 없는 과거 파일은 현재 루트의 별칭과 물리 경로 모두로 선택된다")
+    func deletedHistoricalFileMatchesCurrentRootAliases() throws {
+        let manager = FileManager.default
+        let temporary = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let current = temporary.appendingPathComponent("current")
+        let alias = temporary.appendingPathComponent("alias")
+        try manager.createDirectory(at: current, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: temporary) }
+        try manager.createSymbolicLink(at: alias, withDestinationURL: current)
+        let physicalRoot = try LocalFileSystem().realPath(at: current.path)
+        var previous = SnapshotBuilder(path: "/historical/Old.swift")
+        previous.symbol("gone", name: "gone()", kind: .function)
+        previous.symbol("caller", name: "caller()", kind: .function, path: "/historical/Caller.swift")
+        previous.reference(from: "caller", to: "gone", kind: .call)
+        let before = AnalysisSnapshotDocument(projectRoot: "/historical", snapshot: previous.build())
+        let beforePath = temporary.appendingPathComponent("before.json")
+        try JSONEncoder().encode(before).write(to: beforePath)
+        var now = SnapshotBuilder(path: physicalRoot + "/New.swift")
+        now.symbol("current", name: "current()", kind: .function)
+        let context = AnalysisContext(snapshot: now.build())
+        for root in [physicalRoot, ReportScope.normalized(current.path), alias.path] {
+            var configuration = CartographConfiguration.default
+            configuration.projectPath = root
+            let service = CartographService(configuration: configuration)
+            for file in ["Old.swift", root + "/Old.swift", physicalRoot + "/Old.swift"] {
+                let outcome = try service.compareImpact(symbols: [], files: [file], beforePath: beforePath.path,
+                    maxDepth: nil, limit: 200, format: "json", in: context)
+                let document = try JSONDecoder().decode(ImpactComparisonDocument.self, from: Data(outcome.output.utf8))
+                #expect(document.before.selected.map(\.usr) == ["gone"])
+                #expect(document.before.affected.map { $0.symbol.usr } == ["caller"])
+                #expect(document.unresolvedInputs.isEmpty)
+            }
+        }
+    }
+
     @Test("비교도 하나의 타입과 그 익스텐션을 같은 의미의 선택으로 해석한다")
     func comparisonUsesSemanticTypeSelection() throws {
         var builder = SnapshotBuilder(path: "/current/Sources/App.swift")

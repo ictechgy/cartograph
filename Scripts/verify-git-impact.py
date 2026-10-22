@@ -183,6 +183,14 @@ let package = Package(name: "ChangeFixture", products: [.library(name: "ChangeFi
         + document["changeInput"]["before"]["preparationSeconds"]
         + document["changeInput"]["current"]["preparationSeconds"]
         + document["changeInput"]["analysisSeconds"])
+    if not document["before"]["selected"]:
+        stores = [p.parent.parent for p in (output / "evidence/current-build").rglob("units")
+                  if p.parent.name == "v5"]
+        if stores:
+            diagnostic = subprocess.run([str(binary), "impact", "removed()", "--before", str(output / "evidence/before.json"),
+                "--project", str(output / "evidence/current-source"), "--index-store", str(stores[0]),
+                "--format", "json"], capture_output=True, text=True, timeout=60)
+            print("Historical symbol selection diagnostic:", diagnostic.stdout[-16000:], diagnostic.stderr[-2000:])
     assert any(s["name"] == "removed()" for s in document["before"]["selected"])
     assert all(s["name"] != "removed()" for s in document["current"]["selected"])
     assert any(s["name"] == "usesCaller()" for s in document["before"]["tests"])
