@@ -726,6 +726,9 @@ incomplete; empty results and statically connected tests do not establish safety
 or authorize skipping tests. The general `impact --since` mode still uses only the current graph
 unless `--before` is supplied. JSON's additive `input` field identifies each side, `unknown`/`stale`
 freshness, selection precision and budgets; old snapshots without a fingerprint remain unknown.
+The helper passes its exact file selection with `impact --files-from <json-array-file>`; an empty
+array preserves an empty patch. This additive selector accepts at most 10000 paths and 1 MiB,
+and is mutually exclusive with declaration arguments, `--file`, and `--since`.
 
 MCP `cartograph_impact` also accepts `before: ".cartograph/before.json"` with `symbols` or `files`.
 The snapshot must be a JSON file inside the configured project. Its historical identity is retained
@@ -925,7 +928,9 @@ The v2 snapshot stores automatic runtime facts and their captured freshness, plu
 retentions and optional runtime contract declarations. An explicit `--revision` remains a user label.
 When omitted, a clean Git HEAD is recorded when available; dirty or unknown state has no revision.
 The additive `inputFingerprint` identifies source/configuration/index content at capture time, with
-before/after stability checks. Neither the revision nor fingerprint proves that the compiler read
+before/after stability checks. Externally supplied Kit contexts (including Core Data evidence contexts)
+omit that fingerprint and record an input-identity limitation because their load generation is unknown.
+Neither the revision nor fingerprint proves that the compiler read
 those exact source bytes; index freshness limitations remain. Historical source files are never read again. A snapshot always
 uses the symbol graph and JSON output, so `--level`, `--report-format`, `--strict`, `--since` and
 `--baseline` are rejected.

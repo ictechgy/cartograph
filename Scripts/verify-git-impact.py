@@ -67,6 +67,21 @@ class GitCaptureTests(unittest.TestCase):
         os.utime(source, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
         self.assertNotEqual(capture.source_fingerprint(self.root), before)
 
+    def test_working_tree_restored_to_base_is_not_a_changed_seed(self):
+        source = self.root / "Old.swift"
+        original = source.read_bytes()
+        source.write_text("func old() { print(3) }\n")
+        git(self.root, "add", ".")
+        git(self.root, "commit", "-qm", "head edit")
+        head = capture.revision(self.root, "HEAD")
+        source.write_bytes(original)
+        index = self.root / ".git/index"
+        index_before = index.read_bytes()
+        self.assertEqual(capture.changed_paths(self.root, self.base, head, True), [])
+        self.assertEqual(index.read_bytes(), index_before)
+        git(self.root, "add", ".")
+        self.assertEqual(capture.changed_paths(self.root, self.base, head, True), [])
+
 
 def compiler_flow(binary: Path):
     output = Path(tempfile.mkdtemp(prefix="cartograph-git-compiler-"))
@@ -95,6 +110,9 @@ let package = Package(name: "ChangeFixture", products: [.library(name: "ChangeFi
     result = capture.analyze(argparse.Namespace(project=str(root), cartograph=str(binary), base=base, head=None,
         working_tree=True, output=str(output / "evidence"), timeout=600, depth=None, limit=200))
     document = json.loads(result.read_text())
+    print(json.dumps({"evidence": str(result), "status": document["status"],
+        "beforeSelected": document["before"]["selected"], "currentSelected": document["current"]["selected"],
+        "unresolvedInputs": document["unresolvedInputs"], "beforeTests": document["before"]["tests"]}, indent=2))
     assert document["before"]["input"]["mode"] == "historical-snapshot"
     assert document["before"]["input"]["fingerprint"]
     assert document["changeInput"]["before"]["sourceStableDuringBuild"]
@@ -104,6 +122,20 @@ let package = Package(name: "ChangeFixture", products: [.library(name: "ChangeFi
     assert any(s["name"] == "usesCaller()" for s in document["before"]["tests"])
     assert git(root, "status", "--porcelain") == before_status
     print(json.dumps({"status": "passed", "evidence": str(result), "changeInput": document["changeInput"]}, indent=2))
+    # HEAD의 편집을 작업 트리에서 base로 복원한 경우에는 CLI까지 빈 선택을 보존한다.
+    (root / "Sources/ChangeFixture/New.swift").unlink()
+    original = "public func removed() -> Int { 1 }\npublic func caller() -> Int { removed() }\n"
+    old.write_text(original.replace("{ 1 }", "{ 2 }"))
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "head body edit")
+    old.write_text(original)
+    empty_result = capture.analyze(argparse.Namespace(project=str(root), cartograph=str(binary), base=base, head=None,
+        working_tree=True, output=str(output / "empty-evidence"), timeout=600, depth=None, limit=200))
+    empty = json.loads(empty_result.read_text())
+    assert empty["changeInput"]["changedFiles"] == []
+    assert empty["before"]["selected"] == [] and empty["current"]["selected"] == []
+    assert empty["status"] == "noChanges"
+    print(json.dumps({"status": "passed", "emptyPatchEvidence": str(empty_result)}, indent=2))
 
 
 if __name__ == "__main__":

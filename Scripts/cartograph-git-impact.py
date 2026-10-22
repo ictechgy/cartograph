@@ -103,13 +103,15 @@ def copy_working_tree(project: Path, destination: Path) -> None:
 
 
 def changed_paths(project: Path, base: str, head: str, working_tree: bool) -> list[str]:
-    arguments = ["diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", base, head, "--"]
+    # 작업 트리에서는 base의 최종 차이만 고른다. HEAD 편집을 되돌린 파일은 제외한다.
+    arguments = [*neutralized_filters(project), "diff", "--no-ext-diff", "--no-textconv",
+                 "--no-renames", "--name-only", "-z", base]
+    if not working_tree:
+        arguments.append(head)
+    arguments.append("--")
     changed = set(os.fsdecode(x) for x in git(project, *arguments).split(b"\0") if x)
     if working_tree:
-        # 복사한 tree와 HEAD 비교는 diff의 콘텐츠 필터를 무력화한 채 수행한다.
-        dirty = git(project, *neutralized_filters(project), "-c", "diff.autoRefreshIndex=false",
-                    "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", head, "--")
-        changed.update(os.fsdecode(x) for x in dirty.split(b"\0") if x)
+        # Git diff에 포함되지 않는 비추적 파일도 실제 변경 입력으로 남긴다.
         changed.update(os.fsdecode(x) for x in git(project, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0") if x)
     return sorted(changed)
 
@@ -131,7 +133,9 @@ def capture(binary: Path, project: Path, output: Path, label: str, timeout: int)
                               "--index-store", str(store)], project, timeout=timeout))
     after = source_fingerprint(project)
     if before != after:
-        raise CaptureError(f"{label}: sources changed during build/capture; retry in an idle checkout")
+        raise CaptureError(f"{label}: sources changed during build/capture. Resolve and commit dependency lockfiles "
+                           "(including Package.resolved) before commit capture, or include them in working-tree "
+                           "capture. Inspect generated source changes in the retained worktree before retrying.")
     return store, snapshot, {"sourceSHA256": before, "preparationSeconds": time.monotonic() - start,
                              "freshIndex": True, "sourceStableDuringBuild": True}
 
@@ -167,11 +171,10 @@ def analyze(args: argparse.Namespace) -> Path:
         command += ["--depth", str(args.depth)]
     modeled = [p for p in paths if p.endswith((".swift", ".m", ".mm", ".h", ".xib", ".storyboard"))
                or p.endswith(".xccurrentversion") or (".xcdatamodel/" in p and p.endswith("/contents"))]
-    for path in modeled:
-        command += ["--file", str(current / path)]
+    selected_file = output / "selected-files.json"
+    selected_file.write_text(json.dumps([str(current / path) for path in modeled]), encoding="utf-8")
+    command += ["--files-from", str(selected_file)]
     start = time.monotonic()
-    if not modeled:
-        command += ["--since", "HEAD"]
     # 아직 빌드되지 않은 선언 등 incomplete(exit 2/64)도 JSON 근거를 보존한다.
     result = subprocess.run(command, cwd=current, capture_output=True, timeout=args.timeout)
     (output / "impact.stderr.log").write_bytes(result.stderr)

@@ -7,6 +7,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -651,6 +652,10 @@ def main() -> int:
             measured = measure_impact(binary, baseline, workspace, after_store, before_snapshot, output)
             summary["impactPerformance"] = {"status": measured["status"],
                                           "results": str(output / "impact-performance/results.json")}
+        run([sys.executable, str(Path(__file__).with_name("verify-git-impact.py")),
+                           "--cartograph", str(binary)], cwd=workspace, output=output,
+                          name="git-capture", timeout=600)
+        summary["gitCapture"] = {"status": "passed", "log": str(output / "git-capture.stdout.log")}
         (output / "result.json").write_text(json.dumps(summary, indent=2) + "\n")
         print(json.dumps(summary, indent=2))
         print(f"Evidence: {output}")

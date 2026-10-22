@@ -506,7 +506,8 @@ extension CartographService {
         if let runtimeContracts {
             try RuntimeEvidenceStore.validateContracts(runtimeContracts)
         }
-        let inputFingerprint = try sessionInputFingerprint()
+        // 외부 컨텍스트의 로드 시점을 증명할 수 없으므로 현재 입력 지문을 붙이지 않는다.
+        let inputFingerprint: String? = try existingContext == nil ? sessionInputFingerprint() : nil
         let context = try existingContext ?? loadContext()
         let built = context.buildGraph(level: .symbol)
         let graph = built.graph
@@ -584,16 +585,23 @@ extension CartographService {
             includedSourcePaths.contains($0.key)
                 && (pathFilter.allows($0.key) || supplementalPaths.contains($0.key))
         }
-        guard inputFingerprint == (try sessionInputFingerprint()) else {
-            throw AnalysisSessionError.inputChangedDuringRefresh(attempts: 1)
+        if let inputFingerprint {
+            guard inputFingerprint == (try sessionInputFingerprint()) else {
+                throw AnalysisSessionError.inputChangedDuringRefresh(attempts: 1)
+            }
         }
+        let captureLimitations = existingContext == nil ? [] : [
+            "snapshot-input-identity: externally supplied context has no verified input generation fingerprint"
+        ]
+        // 현재 캡처에서만 실제 루트 별칭을 정규화한다. 과거 스냅샷을 읽을 때는 파일 시스템을 묻지 않는다.
+        let physicalRoot = (try? environment.fileSystem.realPath(at: projectPath)) ?? projectPath
         return AnalysisSnapshotDocument(
-            projectRoot: projectPath,
+            projectRoot: physicalRoot,
             revision: revision,
             inputFingerprint: inputFingerprint,
             snapshot: capturedSnapshot,
             edgeKinds: configuration.edgeKinds,
-            limitations: analysisLimitations(context: context, symbolGraph: graph),
+            limitations: analysisLimitations(context: context, symbolGraph: graph) + captureLimitations,
             externalRetentions: context.externalRetentions,
             runtimeContracts: runtimeContracts,
             runtimeFiles: capturedRuntimeFiles,
@@ -601,7 +609,7 @@ extension CartographService {
             localFunctionDiagnostics: context.localFunctionDiagnostics.filter {
                 pathFilter.allows($0.location.path) || supplementalPaths.contains($0.location.path)
             }
-        )
+        ).rebased(to: projectPath)
     }
 
     private static func referenceOrderKey(_ reference: IndexedReference)

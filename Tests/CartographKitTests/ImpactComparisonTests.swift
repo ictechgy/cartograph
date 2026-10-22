@@ -38,6 +38,44 @@ struct ImpactComparisonTests {
         #expect(before.revision == after.revision)
     }
 
+    @Test("기존 컨텍스트에 새 인덱스와 소스의 지문을 붙이지 않는다")
+    func existingContextDoesNotClaimCurrentInputIdentity() throws {
+        let fs = InMemoryFileSystem(files: ["/current/Sources/App.swift": "struct Old {}"])
+        let oldService = service(snapshot: snapshot(symbols: [("Old", "Old")]), fileSystem: fs)
+        let context = try oldService.loadContext()
+        try fs.write(Data("struct New {}".utf8), to: "/current/Sources/App.swift")
+        let newService = service(snapshot: snapshot(symbols: [("New", "New")]), fileSystem: fs)
+        let captured = try newService.captureSnapshot(in: context)
+        #expect(captured.snapshot.symbols.map(\.usr) == ["Old"])
+        #expect(captured.inputFingerprint == nil)
+        #expect(captured.limitations.contains { $0.hasPrefix("snapshot-input-identity:") })
+        #expect(try newService.captureSnapshot().inputFingerprint != nil)
+    }
+
+    @Test("현재 캡처는 실제 인덱스 루트 별칭을 기록된 루트로 맞춘다")
+    func capturedPhysicalPathsRemainRelocatable() throws {
+        let manager = FileManager.default
+        let temporary = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let physical = temporary.appendingPathComponent("physical")
+        let alias = temporary.appendingPathComponent("alias")
+        try manager.createDirectory(at: physical, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: temporary) }
+        try manager.createSymbolicLink(at: alias, withDestinationURL: physical)
+        let source = physical.appendingPathComponent("App.swift")
+        try Data("struct Root {}".utf8).write(to: source)
+        let physicalPath = try LocalFileSystem().realPath(at: source.path)
+        var builder = SnapshotBuilder(path: physicalPath)
+        builder.symbol("Root", name: "Root", kind: .structType)
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = alias.path
+        let service = CartographService(configuration: configuration,
+            environment: CartographEnvironment(indexProviderOverride: StaticIndexProvider(builder.build())),
+            allowsEmptyIndex: true)
+        let captured = try service.captureSnapshot()
+        #expect(captured.snapshot.symbols.first?.location.path == alias.path + "/App.swift")
+        #expect(captured.rebased(to: "/new").snapshot.symbols.first?.location.path == "/new/App.swift")
+    }
+
     @Test("비교도 하나의 타입과 그 익스텐션을 같은 의미의 선택으로 해석한다")
     func comparisonUsesSemanticTypeSelection() throws {
         var builder = SnapshotBuilder(path: "/current/Sources/App.swift")

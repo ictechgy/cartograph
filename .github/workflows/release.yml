@@ -146,7 +146,6 @@ jobs:
           python3 Scripts/verify-analysis-blindspots.py "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-change-impact.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           cmp Scripts/cartograph-git-impact.py "$RUNNER_TEMP/cartograph/Scripts/cartograph-git-impact.py"
-          python3 Scripts/verify-git-impact.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-contracts.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-discovery.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-keypaths.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
