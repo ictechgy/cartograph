@@ -53,7 +53,8 @@ struct XcodeLocalPackageEvidenceTests {
         objects[consumer]?["packageProductDependencies"] = ["package-product"]
         let phases = objects[consumer]!["buildPhases"] as! [String]
         let frameworks = phases.first { objects[$0]?["isa"] as? String == "PBXFrameworksBuildPhase" }!
-        objects[frameworks]?["files"] = (objects[frameworks]?["files"] as? [String] ?? []) + ["package-file"]
+        let frameworkFiles = objects[frameworks]?["files"] as? [String] ?? []
+        objects[frameworks]?["files"] = frameworkFiles + ["package-file"]
         plist["objects"] = objects
         try fs.write(PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0), to: "/p/Scope.xcodeproj/project.pbxproj")
         try fs.write(text: """
@@ -156,9 +157,10 @@ struct XcodeLocalPackageEvidenceTests {
         arguments: ["missing", "module", "unit", "output", "triple", "old"])
     func admissionMismatch(kind: String) throws {
         var fixture = try fixture()
-        fixture.base.snapshot.sourceRecordAdmissions?.removeAll { $0.path == fixture.source }
+        let source = fixture.source
+        fixture.base.snapshot.sourceRecordAdmissions?.removeAll { $0.path == source }
         if kind != "missing" {
-            fixture.base.snapshot.sourceRecordAdmissions?.append(.init(path: fixture.source,
+            fixture.base.snapshot.sourceRecordAdmissions?.append(.init(path: source,
                 module: kind == "module" ? "Other" : "ArithmeticCore", unit: kind == "unit" ? "Other-unit" : "Math-unit",
                 record: "Math-record", timestamp: kind == "old" ? .distantPast : .distantFuture,
                 unitOutputIdentity: kind == "output" ? "/other" : "/virtual/Math.o",
@@ -236,10 +238,12 @@ struct XcodeLocalPackageEvidenceTests {
         objects["shared-source"] = ["isa": "PBXFileReference", "sourceTree": "SOURCE_ROOT",
             "path": "Packages/LocalMath/Sources/ArithmeticCore/Math.swift"]
         objects["shared-build-file"] = ["isa": "PBXBuildFile", "fileRef": "shared-source"]
-        objects[mainID]?["children"] = (objects[mainID]?["children"] as! [String]) + ["shared-source"]
+        let mainChildren = objects[mainID]?["children"] as! [String]
+        objects[mainID]?["children"] = mainChildren + ["shared-source"]
         let phases = objects[unbuiltID]!["buildPhases"] as! [String]
         let sourcePhase = phases.first { objects[$0]?["isa"] as? String == "PBXSourcesBuildPhase" }!
-        objects[sourcePhase]?["files"] = (objects[sourcePhase]?["files"] as! [String]) + ["shared-build-file"]
+        let sourceFiles = objects[sourcePhase]?["files"] as! [String]
+        objects[sourcePhase]?["files"] = sourceFiles + ["shared-build-file"]
         plist["objects"] = objects
         let project = try XcodeProjectMembership(data: PropertyListSerialization.data(fromPropertyList: plist,
             format: .xml, options: 0), root: "/p", localPackage: package.declaration)
