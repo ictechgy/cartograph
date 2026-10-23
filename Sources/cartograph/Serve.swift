@@ -53,14 +53,17 @@ struct ServeCommand: ParsableCommand {
         // 확인할 뿐이라 웜 지연만 키운다 — 1초는 어떤 재빌드보다 짧은 유보 상한이다.
         let tools = CartographMCPTools(makeSession: {
             try AnalysisSession(serviceFactory: {
-                try CommandSupport.makeContext(options).service
+                try CommandSupport.makeContext(options, supportsLimitationSummary: true).service
             }, freshnessCheckInterval: .seconds(sessionFreshnessInterval))
-        }, coreDataBuildEvidencePath: coreDataBuildEvidencePath)
+        }, coreDataBuildEvidencePath: coreDataBuildEvidencePath,
+            limitationPresentation: options.limitations.presentationMode)
+        defer { tools.shutdown() }
         let handler = MCPMessageHandler(
             tools: CartographMCPTools.definitions,
             serverName: Cartograph.toolName,
             serverVersion: Cartograph.version,
-            instructions: "Use cartograph_status before analysis tools when you need session metadata.",
+            instructions: "Use cartograph_prepare start/status for nonblocking preparation state. "
+                + "cartograph_status and analysis tools may block while preparing. No readiness state proves coverage.",
             callTool: { name, arguments in try tools.call(name: name, arguments: arguments) }
         )
         do {

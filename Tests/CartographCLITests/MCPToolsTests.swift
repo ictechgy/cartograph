@@ -120,8 +120,8 @@ struct MCPToolsTests {
     @Test("도구 정의는 여섯 도구를 읽기 전용 힌트와 함께 공개한다")
     func publishesToolDefinitions() {
         #expect(CartographMCPTools.definitions.map(\.name).sorted() == [
-            "cartograph_affected", "cartograph_check", "cartograph_impact", "cartograph_query",
-            "cartograph_runtime_discover", "cartograph_status",
+            "cartograph_affected", "cartograph_check", "cartograph_impact", "cartograph_prepare",
+            "cartograph_query", "cartograph_runtime_discover", "cartograph_status",
         ])
         #expect(CartographMCPTools.definitions.allSatisfy { $0.readOnly && !$0.destructive })
     }

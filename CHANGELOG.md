@@ -11,6 +11,16 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
 
 ### Added
 
+- Optional `affected --target-scope` verifies a bounded SwiftPM source-membership capture
+  against current inputs and separates blocker paths. Original coverage warnings and Xcode
+  scheme uncertainty remain; this does not authorize test omission.
+- `dead --file-summary` and `--generated-suggestions` add file/rule/severity counts and
+  bounded observed-header suggestions without suppressing findings or changing retention.
+- JSON `--limitations summary` aggregates exact codes with counts, bounded original examples
+  and omitted details; the default full output, status and safety signals remain unchanged.
+- MCP `cartograph_prepare` starts, polls and cancels one background preparation generation.
+  Deadlines and late-result discard are explicit; native reads are not forcibly interrupted.
+
 - Reproducible SwiftPM Git change capture (`Scripts/cartograph-git-impact.py`) builds independent
   before/current worktrees with fresh indexes, preserves deleted/renamed file seeds, and reports
   exact commits, source content stability, preparation cost, and unmodeled changes.

@@ -450,6 +450,63 @@ jobs:
           swift build
           echo "CARTOGRAPH=$(swift build --show-bin-path)/cartograph" >> "$GITHUB_ENV"
 
+      - name: Build frozen first-feedback baseline
+        timeout-minutes: 23
+        run: >-
+          python3 Scripts/followup-build-baseline.py
+          --output "$RUNNER_TEMP/followup-baseline" --github-env "$GITHUB_ENV"
+
+      - name: Verify capture-bound target membership
+        timeout-minutes: 15
+        run: >-
+          python3 Scripts/followup-verify-target-scope.py --candidate "$CARTOGRAPH"
+          --baseline "$FOLLOWUP_BASELINE" --output "$RUNNER_TEMP/followup-target-scope"
+
+      - name: Verify full and summary limitation presentation
+        timeout-minutes: 5
+        run: >-
+          python3 Scripts/followup-verify-limitations.py --candidate "$CARTOGRAPH"
+          --baseline "$FOLLOWUP_BASELINE" --project "$RUNNER_TEMP/followup-target-scope/package"
+          --output "$RUNNER_TEMP/followup-limitations"
+
+      - name: Verify background MCP preparation
+        timeout-minutes: 10
+        run: >-
+          python3 Scripts/followup-verify-mcp-preparation.py --cartograph "$CARTOGRAPH"
+          --output-dir "$RUNNER_TEMP/followup-mcp-preparation"
+
+      - name: Verify generated suggestions preserve every finding
+        timeout-minutes: 5
+        run: >-
+          python3 Scripts/followup-verify-generated.py --binary "$CARTOGRAPH"
+          --baseline "$FOLLOWUP_BASELINE" --output "$RUNNER_TEMP/followup-generated-review.json"
+
+      - name: Verify custom wrapper and builder owner controls
+        timeout-minutes: 10
+        run: >-
+          python3 Scripts/verify-wrapper-builder-feedback.py --cartograph "$CARTOGRAPH"
+          --baseline "$FOLLOWUP_BASELINE" --output "$RUNNER_TEMP/followup-wrapper-builder"
+
+      - name: Preserve follow-up compiler evidence
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: followup-feedback
+          path: |
+            ${{ runner.temp }}/followup-baseline/*.json
+            ${{ runner.temp }}/followup-baseline/*.stdout
+            ${{ runner.temp }}/followup-baseline/*.stderr
+            ${{ runner.temp }}/followup-target-scope/
+            ${{ runner.temp }}/followup-limitations/
+            ${{ runner.temp }}/followup-mcp-preparation/
+            ${{ runner.temp }}/followup-wrapper-builder/
+            ${{ runner.temp }}/followup-generated-review.json
+            !${{ runner.temp }}/followup-*/**/.build/**
+            !${{ runner.temp }}/followup-*/**/.git/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
       # CLI 껍데기와 인덱스 스토어 입출력은 단위 테스트로 덮기 어렵다.
       # 실제 빌드된 도구로 이 저장소를 분석해 그 경로를 끝까지 태운다.
       # 문서화한 종료 코드가 실제로 지켜지는지 확인한다. 상수를 단언하는 단위

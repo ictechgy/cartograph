@@ -1717,6 +1717,13 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 | 권한·I/O 오류로 소스를 읽지 못한 선언 | 보존 정보가 불완전함(`sourceUnavailable`). 접근을 복구하고 다시 분석 |
 | `--external-retentions`가 지목한 선언 | 다른 플랫폼이 브리지를 넘어 호출. `--explain`이 근거를 인용 |
 
+컴파일에 필요한 선언과 런타임 사용은 별개입니다. 컴파일러가 관측한 매크로 참조는 적용된
+소유 타입이 도달 불가능해도 매크로를 보존합니다. 마찬가지로 소스에 남은 annotation은
+프로퍼티 래퍼·결과 빌더와 규약 멤버를 컴파일에 요구할 수 있습니다. 이 선언의 보존이
+annotation을 쓴 소유자의 런타임 도달성을 뜻하지는 않습니다. 도달 불가능한 소유자를
+제거하는 것과 그 소스가 요구하는 선언만 제거하는 것은 다른 변경이며, `unreachable`은
+삭제 권고가 아닙니다.
+
 **`retain_objc_accessible`은 기본값으로 켜져 있습니다.** Periphery는 기본값이 꺼져 있었고,
 그것이 혼합 언어 UIKit 프로젝트에서 오탐의 가장 큰 원인이었습니다. 아무도 믿지 않는 미사용
 코드 탐지기는 없는 것만 못하므로, Cartograph는 살리는 쪽으로 기웁니다.
@@ -2098,3 +2105,12 @@ Cartograph는 독립 프로젝트이며 Periphery나 Apple과 관련이 없습�
 `sendEvent(withName:body:)`를 별도 v2 `react-native-event` 문서로 냅니다. isthmus 0.8.0 이상의
 `extract-js --events`와 조인합니다. 동적 이름은 그대로 남기며 ObjC 이벤트·Expo
 모듈별 이벤트·래퍼·간접 상속은 해석하지 않습니다. Swift/ObjC 기본 브리지 출력과 별도 실행합니다.
+
+### 선택적 후속 검토 출력
+
+미배포 0.29.0 후보는 캡처에 묶인 SwiftPM target 소속 검토,
+`dead --file-summary` / `--generated-suggestions`, JSON `--limitations summary`
+(기본 `full`), MCP `cartograph_prepare` 준비 상태를 추가합니다. 원래 finding과
+안전 신호를 유지합니다. Target 소속은 Xcode scheme을 증명하지 않으며 범위를
+모르면 좁은 선택자를 거부하므로 호출자가 전체 suite를 실행해야 합니다.
+[범위·예산·이행 예제](docs/FOLLOWUP-REVIEW.md)를 참고하세요.

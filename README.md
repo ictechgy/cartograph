@@ -1785,6 +1785,13 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | Declarations whose source cannot be read (permissions or I/O failure) | retention annotations are unknown (`sourceUnavailable`); restore access and rerun |
 | Declarations named in `--external-retentions` | another platform calls them across a bridge; `--explain` quotes the evidence |
 
+Compiler requirements and runtime use are separate. A compiler-observed macro reference keeps
+the macro even when its annotated owner is unreachable. Likewise, an annotation still present
+in source can require a property wrapper or result builder and its contract members to compile.
+Keeping those declarations does not establish runtime reachability of the owner that uses the
+annotation. Removing an unreachable owner and removing only its required declaration are different
+edits; `unreachable` is not a deletion recommendation.
+
 **`retain_objc_accessible` defaults to on.** Periphery defaulted it off, which made mixed-language
 UIKit projects its largest source of false positives. A dead-code tool nobody trusts is worse than
 no tool, so Cartograph errs toward keeping code.
@@ -2185,3 +2192,12 @@ Cartograph is an independent project. It is not affiliated with Periphery or App
 Join it with an isthmus 0.8.0+ `extract-js --events` document. Dynamic names remain
 unresolved; Objective-C events, Expo module events, wrappers and indirect inheritance are outside
 this scan. Run this separately from the default bridge export.
+
+### Optional follow-up review views
+
+The unpublished 0.29.0 candidate adds capture-bound SwiftPM target-scope review,
+`dead --file-summary` / `--generated-suggestions`, JSON `--limitations summary`
+(default `full`), and the MCP `cartograph_prepare` lifecycle tool. All original
+findings and safety signals remain. Target scope does not verify an Xcode scheme;
+narrow selectors remain refused when coverage is unknown and callers must run the
+whole suite. See [scope, budgets and migration examples](docs/FOLLOWUP-REVIEW.md).

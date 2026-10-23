@@ -214,7 +214,7 @@ struct ImpactCommand: ParsableCommand {
         // 결과 소비자까지 변경 파일로 잘려, 바뀐 파일 밖의 영향이 사라진다.
         var contextOptions = options
         contextOptions.since = nil
-        let context = try CommandSupport.makeContext(contextOptions)
+        let context = try CommandSupport.makeContext(contextOptions, supportsLimitationSummary: true)
         var selectedFiles = files.map {
             GlobalOptions.absolutePath($0, relativeTo: context.fileSystem.currentDirectoryPath)
         }
