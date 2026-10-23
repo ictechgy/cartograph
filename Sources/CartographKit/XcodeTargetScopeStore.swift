@@ -54,7 +54,6 @@ struct XcodeTargetScopeStore {
         let receipt: Receipt
         let closure: Set<String>
         let owners: [String: String]
-        let modules: [String: String]
         let selectorTargets: [String: String]
     }
 
@@ -162,7 +161,7 @@ struct XcodeTargetScopeStore {
         try validateFrameworks(receipt.frameworks, references: project.frameworks, settings: settings)
         guard receipt.after == (try inventory(root: root)), bytes == (try bounded(path, maximum: 8 * 1_024 * 1_024))
         else { throw invalid("Inputs changed while Xcode membership was being verified.") }
-        return .init(receipt: receipt, closure: closure, owners: owners, modules: modules, selectorTargets: selectorTargets)
+        return .init(receipt: receipt, closure: closure, owners: owners, selectorTargets: selectorTargets)
     }
 
     private struct Settings: Decodable { let target: String; let buildSettings: [String: String] }
@@ -383,7 +382,7 @@ struct XcodeTargetScopeStore {
     }
 
     private func bounded(_ path: String, maximum: Int) throws -> Data {
-        guard !CartographService.isSensitiveEvidencePath(path), try fileSystem.realPath(at: path) == path,
+        guard !isSensitiveAnalysisEvidencePath(path), try fileSystem.realPath(at: path) == path,
               fileSystem.fingerprintStamp(at: path)?.isRegularFile != false else {
             throw invalid("Sensitive, symlinked or noncanonical receipt input.")
         }

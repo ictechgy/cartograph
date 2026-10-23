@@ -313,7 +313,10 @@ def capture(args):
     if args.test_plan:
         common += ["-testPlan", Path(args.test_plan).stem]
     overrides = ["CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=YES", "ARCHS=" + arch]
-    settings_bytes = run(common + ["-showBuildSettings", "-json"] + overrides, root, output, "build-settings", args.timeout)
+    # A test-only scheme can have no build-for-running entries. Query the same test
+    # action that will produce the receipt, rather than the implicit build action.
+    settings_bytes = run(common + ["build-for-testing", "-showBuildSettings", "-json"] + overrides,
+                         root, output, "build-settings", args.timeout)
     settings = json.loads(settings_bytes)
     # Xcode may omit unbuilt targets from scheme settings. Query each only after safe preflight.
     for target in targets.values():

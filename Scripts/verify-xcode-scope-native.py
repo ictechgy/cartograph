@@ -41,8 +41,15 @@ def main():
     config = project / "scope.yml"
     config.write_text('exclude:\n  - "Unbuilt/Tool.swift"\n', encoding="utf-8")
     started = time.monotonic()
-    receipt_path = SCOPE.capture(argparse.Namespace(project=str(project), xcode_project="Scope.xcodeproj", scheme="Scope",
-        test_plan=None, cartograph=args.candidate, output=str(output / "capture"), config=str(config), timeout=600))
+    try:
+        receipt_path = SCOPE.capture(argparse.Namespace(project=str(project), xcode_project="Scope.xcodeproj", scheme="Scope",
+            test_plan=None, cartograph=args.candidate, output=str(output / "capture"), config=str(config), timeout=600))
+    except Exception:
+        # Public synthetic inputs only; keep failure diagnosis visible even if the
+        # artifact transport is unavailable. Bound output independently of logs.
+        for log in sorted((output / "capture").glob("*.stderr"), key=lambda p: p.stat().st_mtime)[-3:]:
+            print(log.name + ":\n" + log.read_bytes()[-4096:].decode(errors="replace"), flush=True)
+        raise
     receipt = json.loads(receipt_path.read_text())
     metadata = json.loads((output / "capture/capture.json").read_text())
     common = ["--project", str(project), "--index-store", metadata["indexStore"], "--config", str(config)]

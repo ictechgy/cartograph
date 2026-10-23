@@ -215,7 +215,7 @@ extension CartographService {
     func targetScope(path: String, fingerprint: String?, context: AnalysisContext, limit: Int) -> TargetScopeDocument {
         let probeFileSystem = environment.fileSystem
         let probeResolved = (try? probeFileSystem.realPath(at: path)) ?? path
-        if Self.isSensitiveEvidencePath(path) || Self.isSensitiveEvidencePath(probeResolved) {
+        if isSensitiveAnalysisEvidencePath(path) || isSensitiveAnalysisEvidencePath(probeResolved) {
             return .init(format: "target-scope-review", version: 1, evidenceStatus: "unknown", selectedTargets: [],
                 dependencyTargets: [], schemeIdentity: "unverified", paths: [], pathCount: 0, omittedPaths: 0,
                 limitations: ["target-scope-unknown: credential-like evidence path is refused; run the whole suite."])

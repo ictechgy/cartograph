@@ -18,7 +18,8 @@ run tests. Unsupported shell scripts, build rules, packages/plugins, external pr
 references, conditional membership, synchronized groups, source filters, resources,
 headers, shared sources, and custom compiler/linker input settings are refused by a
 metadata preflight before the build. Output relocation, app hosts/custom bundle loaders,
-external metadata paths, and nonstandard runpaths are also refused. Compiler module
+explicit metadata paths (including local `INFOPLIST_FILE`, entitlements, prefix-header,
+and module-map paths), and nonstandard runpaths are also refused. Compiler module
 names must be unique across every project target, including unselected targets.
 Explicit SDK/developer framework references must
 use a supported relative system-framework path, resolve inside the selected Xcode

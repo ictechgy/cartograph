@@ -461,10 +461,12 @@ public final class AnalysisSession {
     }
 }
 
-extension CartographService {
-    /// 캡처 소비자도 세션과 동일한 민감 경로 경계를 사용한다.
-    static func isSensitiveEvidencePath(_ path: String) -> Bool { AnalysisInputFingerprinter.isSensitive(path) }
+/// 캡처 판독기와 세션이 서비스 타입에 역의존하지 않고 같은 경로 경계를 공유한다.
+func isSensitiveAnalysisEvidencePath(_ path: String) -> Bool {
+    AnalysisInputFingerprinter.isSensitive(path)
+}
 
+extension CartographService {
     /// 현재 서비스가 읽을 수 있는 분석 입력의 내용 지문.
     ///
     /// 세션이 파일 수정 시각만 믿고 이전 문맥을 재사용하지 않도록, 알려진 소스·설정·
