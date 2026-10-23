@@ -101,7 +101,7 @@ def record_generated_metadata(project, output, phase):
     report = {"phase": phase, "scope": "public synthetic Packages/LocalMath/.swiftpm only",
               "limitation": "Diagnostic only; unsupported inputs still refuse product receipts",
               "processLogsPresent": {name: (output / "capture" / (name + ".stdout")).is_file()
-                                     for name in ("build-for-testing", "snapshot", "snapshot-proof")}}
+                                     for name in ("build-for-testing", "snapshot", "package-fresh-snapshot")}}
     try:
         report.update(generated_metadata(project / "Packages/LocalMath/.swiftpm"))
         report["status"] = "observed"
@@ -148,6 +148,8 @@ def mcp_worker(binary, output):
         before = content(first)
         require(not first["result"].get("isError") and before["result"]["targetScope"]["xcode"]["selectionStatus"] == "review-candidates",
                 "Native MCP did not consume current package proof")
+        require(before["result"]["targetScope"]["xcode"]["generatedMetadataOrigin"] == "capture-created",
+                "Native MCP lost the producer's metadata origin observation")
         # Updating only the current file hash must not bless the old cached graph.
         record.write_bytes(b"invalid changed raw index record\n")
         os.utime(record, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
@@ -204,6 +206,12 @@ def verify(binary, output):
     metadata = json.loads((output / "capture/capture.json").read_text())
     require(receipt["version"] == 2 and receipt["localPackage"]["product"] == "ArithmeticProduct"
             and receipt["localPackage"]["module"] == "ArithmeticCore", "Package/product identities were lost")
+    package = receipt["localPackage"]
+    require(package["generatedMetadataOrigin"] == "capture-created"
+            and {p: value for p, value in package["inventory"].items()
+                 if p == ".swiftpm" or p.startswith(".swiftpm/")} == {
+                     ".swiftpm": "directory", ".swiftpm/xcode": "directory"},
+            "Fresh fixture did not capture exactly the observed empty metadata directory pair")
     common = ["--project", str(project), "--index-store", metadata["indexStore"], "--target-scope", str(receipt_path)]
     supervisor = OBS.process_supervisor()
     def invoke(label, format="json", expected=0):
@@ -220,6 +228,8 @@ def verify(binary, output):
     scope = document["targetScope"]
     require(scope["evidenceStatus"] == "matched-capture" and scope["xcode"]["selectionStatus"] == "review-candidates",
             "Actual package record and linker proof did not produce review candidates")
+    require(scope["xcode"]["generatedMetadataOrigin"] == "capture-created",
+            "CLI scope lost the producer's metadata origin observation")
     require(scope["xcode"]["selectorTargetByModule"] == {"ChecksModule": "ChecksBlueprint"}
             and scope["xcode"]["testBundleByModule"] == {"ChecksModule": "RunnableChecks.xctest"},
             "Blueprint, compiler module and bundle identities were conflated")
@@ -230,7 +240,8 @@ def verify(binary, output):
         ("source-bytes", project / "Packages/LocalMath/Sources/ArithmeticCore/Math.swift", b"\n// changed\n"),
         ("manifest-bytes", project / "Packages/LocalMath/Package.swift", b"\n// changed\n"),
         ("unexpected-clang", project / "Packages/LocalMath/Sources/ArithmeticCore/Hidden.cpp", b"int hidden;\n"),
-        ("unexpected-resource", project / "Packages/LocalMath/blob.bin", b"resource")]:
+        ("unexpected-resource", project / "Packages/LocalMath/blob.bin", b"resource"),
+        ("metadata-file-added", project / "Packages/LocalMath/.swiftpm/xcode/hidden.json", b"{}")]:
         original = path.read_bytes() if path.exists() else None
         stamp = path.stat() if path.exists() else None
         path.write_bytes((original or b"") + append)
@@ -245,7 +256,13 @@ def verify(binary, output):
                 path.write_bytes(original)
                 os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
         controls.append(label)
-    package = receipt["localPackage"]
+    metadata_directory = project / "Packages/LocalMath/.swiftpm/xcode"
+    metadata_directory.rmdir()
+    try:
+        require(invoke("metadata-directory-removed", "xcodebuild", 2) == "", "Missing metadata directory emitted selectors")
+    finally:
+        metadata_directory.mkdir()
+    controls.append("metadata-directory-removed")
     proof_paths = {"record-bytes": package["records"][0]["path"], "object-bytes": package["compilations"][0]["object"],
                    "link-map-bytes": package["links"][0]["link"]["linkMap"],
                    "response-bytes": next(p for p in package["files"] if p.endswith(".resp"))}
@@ -284,6 +301,8 @@ def verify(binary, output):
             "limitation": "Other is built/indexed but is outside this TestAction; absence is not package completeness proof."})
     SCOPE.save(output / "results.json", {"status": "passed", "selectors": selectors, "selectionGranularity": "whole-target",
         **execution, "negativeControls": controls + ["same-session-record-rehash", "compiled-for-other-only"],
+        "generatedMetadataOrigin": package["generatedMetadataOrigin"],
+        "originLimitation": "Unsigned producer observation; not independently authenticated historical provenance.",
         "receiptSHA256": hashlib.sha256(receipt_path.read_bytes()).hexdigest(), "recordCount": len(package["records"]),
         "proofFileCount": len(package["files"]), "proofBytesByKind": {kind: sum(v["bytes"] for v in package["files"].values() if v["kind"] == kind)
             for kind in ("document", "object", "record")}, "captureSecondsIncludingPreparation": metadata["secondsIncludingPreparation"],

@@ -70,6 +70,27 @@ struct XcodeLocalPackageInputTests {
         #expect(throws: (any Error).self) { try XcodeLocalPackageInputs.manifest(Data(changed.utf8)) }
     }
 
+    @Test("공유 오류 생성기로 의존을 분리해도 manifest 단계별 거부 이유를 유지한다",
+        arguments: ["version", "comment", "trailing"])
+    func parserErrorContract(kind: String) throws {
+        let changed: String
+        let reason: String
+        switch kind {
+        case "version":
+            changed = text.replacingOccurrences(of: "5.9", with: "4.0")
+            reason = "Unsupported tools version, manifest encoding or byte budget."
+        case "comment":
+            changed = text + "\n/* unclosed"
+            reason = "Unterminated manifest comment."
+        default:
+            changed = text + "\nprint(1)"
+            reason = "Unsupported manifest syntax."
+        }
+        #expect(throws: CartographError.invalidConfiguration(path: "xcode-local-package", reason: reason)) {
+            try XcodeLocalPackageInputs.manifest(Data(changed.utf8))
+        }
+    }
+
     @Test("패키지 subtree 전체를 검사해 새 비 Swift 확장자와 resource 디렉터리를 놓치지 않는다",
         arguments: ["Sources/ArithmeticCore/Hidden.c", "Sources/ArithmeticCore/Hidden.cpp", "data.bin", ".config", "Resources/asset"])
     func allSubtreeEntries(path: String) throws {

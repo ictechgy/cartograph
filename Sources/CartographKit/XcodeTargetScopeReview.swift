@@ -86,7 +86,8 @@ extension CartographService {
                 selectorTargetByModule: evidence.selectorTargets,
                 selectedSourcePaths: Array(selectedSources.prefix(limit)).map { String($0.dropFirst(root.count + 1)) },
                 coveredBlockerCodes: blockers.isEmpty ? ["unindexed-sources", "configured-path-filter", "source-discovery-exclusions"] : [],
-                selectorIdentity: "xctestrun-blueprint-name", testBundleByModule: evidence.testBundles)
+                selectorIdentity: "xctestrun-blueprint-name", testBundleByModule: evidence.testBundles,
+                generatedMetadataOrigin: package?.generatedMetadataOrigin.rawValue)
             return document
         } catch {
             return .init(format: "target-scope-review", version: 1, evidenceStatus: "unknown", selectedTargets: [],

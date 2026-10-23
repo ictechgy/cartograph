@@ -18,38 +18,39 @@ struct XcodeLocalPackageInputs {
     /// 일반 프로젝트 확장자 필터를 쓰지 않는다. 새 C/resource/config 입력도 빠짐없이 거부한다.
     static func inventory(root: String, module: String, fileSystem: any FileSystem) throws -> [String: String] {
         guard try fileSystem.realPath(at: root) == root, fileSystem.directoryExists(at: root) else {
-            throw XcodeLocalPackageInputs.invalid("Package root must be a canonical local directory.")
+            throw XcodeLocalPackageIO.invalid("Package root must be a canonical local directory.")
         }
         var result: [String: String] = [:], pending = [(root, 0)], total = 0, entries = 0
         let prefix = "Sources/" + module + "/"
         while let (directory, depth) = pending.popLast() {
-            guard depth <= 128 else { throw Self.invalid("Package subtree depth exceeds budget.") }
+            guard depth <= 128 else { throw XcodeLocalPackageIO.invalid("Package subtree depth exceeds budget.") }
             for entry in try fileSystem.directoryEntries(at: directory, maximumEntries: 4_096 - entries) {
                 entries += 1
                 guard !entry.isSymbolicLink, entry.path.hasPrefix(directory + "/"),
                       !entry.path.dropFirst(directory.count + 1).contains("/") else {
-                    throw XcodeLocalPackageInputs.invalid("Package subtree budget or symlink boundary exceeded.")
+                    throw XcodeLocalPackageIO.invalid("Package subtree budget or symlink boundary exceeded.")
                 }
                 let relative = String(entry.path.dropFirst(root.count + 1))
                 guard result[relative] == nil, try fileSystem.realPath(at: entry.path) == entry.path else {
-                    throw XcodeLocalPackageInputs.invalid("Noncanonical package subtree entry.")
+                    throw XcodeLocalPackageIO.invalid("Noncanonical package subtree entry.")
                 }
                 if entry.isDirectory {
-                    guard ["Sources", "Sources/" + module].contains(relative) || relative.hasPrefix(prefix) else {
-                        throw XcodeLocalPackageInputs.invalid("Unexpected package directory.")
+                    guard ["Sources", "Sources/" + module, ".swiftpm", ".swiftpm/xcode"].contains(relative)
+                        || relative.hasPrefix(prefix) else {
+                        throw XcodeLocalPackageIO.invalid("Unexpected package directory.")
                     }
                     result[relative] = "directory"
                     pending.append((entry.path, depth + 1))
                 } else {
                     guard entry.isRegularFile, ["Package.swift", "README.md", "LICENSE"].contains(relative)
                         || relative.hasPrefix(prefix) && relative.hasSuffix(".swift") else {
-                        throw XcodeLocalPackageInputs.invalid("Unexpected package source/resource/configuration file.")
+                        throw XcodeLocalPackageIO.invalid("Unexpected package source/resource/configuration file.")
                     }
                     let maximum = relative == "Package.swift" ? 64 * 1_024 : 4 * 1_024 * 1_024
                     let bytes = try fileSystem.readData(at: entry.path, maximumBytes: maximum)
                     total += bytes.count
                     guard bytes.count <= maximum, total <= 64 * 1_024 * 1_024 else {
-                        throw XcodeLocalPackageInputs.invalid("Package subtree byte budget exceeded.")
+                        throw XcodeLocalPackageIO.invalid("Package subtree byte budget exceeded.")
                     }
                     result[relative] = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
                 }
@@ -57,9 +58,19 @@ struct XcodeLocalPackageInputs {
         }
         let sources = result.filter { $0.key.hasPrefix(prefix) && $0.value != "directory" }
         guard result["Package.swift"] != nil, (1...256).contains(sources.count) else {
-            throw XcodeLocalPackageInputs.invalid("Package requires 1...256 explicit Swift source files.")
+            throw XcodeLocalPackageIO.invalid("Package requires 1...256 explicit Swift source files.")
         }
+        _ = try generatedMetadataIsPresent(in: result)
         return result
+    }
+
+    /// 전체 탐색이 끝난 빈 디렉터리 쌍만 허용하며, 영수증과 최종 재검증에서도 그 존재를 유지한다.
+    static func generatedMetadataIsPresent(in inventory: [String: String]) throws -> Bool {
+        let metadata = inventory.filter { $0.key == ".swiftpm" || $0.key.hasPrefix(".swiftpm/") }
+        guard metadata.isEmpty || metadata == [".swiftpm": "directory", ".swiftpm/xcode": "directory"] else {
+            throw XcodeLocalPackageIO.invalid("Only the exact empty .swiftpm/xcode directory pair is supported.")
+        }
+        return !metadata.isEmpty
     }
 
     private struct Parser {
@@ -71,7 +82,7 @@ struct XcodeLocalPackageInputs {
                   String(decoding: data.prefix(while: { $0 != 10 && $0 != 13 }), as: UTF8.self)
                     .range(of: #"^//[ \t]*swift-tools-version:[ \t]*(?:5\.9|6\.[0-3])[ \t]*\z"#,
                                      options: .regularExpression) != nil else {
-                throw XcodeLocalPackageInputs.invalid("Unsupported tools version, manifest encoding or byte budget.")
+                throw XcodeLocalPackageIO.invalid("Unsupported tools version, manifest encoding or byte budget.")
             }
             tokens = try Self.lex(Array(data))
         }
@@ -91,7 +102,7 @@ struct XcodeLocalPackageInputs {
             comma(); try take(["]"])
             comma(); try take([")"])
             guard position == tokens.count, module == productTarget else {
-                throw XcodeLocalPackageInputs.invalid("Unconsumed manifest syntax or product target mismatch.")
+                throw XcodeLocalPackageIO.invalid("Unconsumed manifest syntax or product target mismatch.")
             }
             return .init(name: name, product: product, module: module)
         }
@@ -99,7 +110,7 @@ struct XcodeLocalPackageInputs {
         mutating func take(_ values: [String]) throws {
             for value in values {
                 guard position < tokens.count, tokens[position] == value else {
-                    throw XcodeLocalPackageInputs.invalid("Only one literal Package/library/Swift-target declaration is supported.")
+                    throw XcodeLocalPackageIO.invalid("Only one literal Package/library/Swift-target declaration is supported.")
                 }
                 position += 1
             }
@@ -111,12 +122,12 @@ struct XcodeLocalPackageInputs {
 
         mutating func literal(module: Bool = false) throws -> String {
             guard position < tokens.count, tokens[position].first == "\"", tokens[position].last == "\"" else {
-                throw XcodeLocalPackageInputs.invalid("Computed manifest names are unsupported.")
+                throw XcodeLocalPackageIO.invalid("Computed manifest names are unsupported.")
             }
             let value = String(tokens[position].dropFirst().dropLast())
             let pattern = module ? #"^[A-Za-z_][A-Za-z0-9_]{0,127}$"# : #"^[A-Za-z_][A-Za-z0-9_-]{0,127}$"#
             guard value.range(of: pattern, options: .regularExpression) != nil else {
-                throw XcodeLocalPackageInputs.invalid("Unsupported package/product/module identifier.")
+                throw XcodeLocalPackageIO.invalid("Unsupported package/product/module identifier.")
             }
             position += 1
             return value
@@ -140,19 +151,19 @@ struct XcodeLocalPackageInputs {
                         if starts(47, 42) { depth += 1; i += 2 }
                         else if starts(42, 47) { depth -= 1; i += 2 }
                         else { i += 1 }
-                        guard depth <= 16 else { throw XcodeLocalPackageInputs.invalid("Manifest comment nesting exceeds budget.") }
+                        guard depth <= 16 else { throw XcodeLocalPackageIO.invalid("Manifest comment nesting exceeds budget.") }
                     }
-                    guard depth == 0 else { throw XcodeLocalPackageInputs.invalid("Unterminated manifest comment.") }
+                    guard depth == 0 else { throw XcodeLocalPackageIO.invalid("Unterminated manifest comment.") }
                 } else if byte == 34 {
                     let start = i
                     i += 1
                     while i < bytes.count && bytes[i] != 34 {
                         guard identifierByte(bytes[i]) || bytes[i] == 45 else {
-                            throw XcodeLocalPackageInputs.invalid("Manifest string escapes, interpolation and non-identifier literals are unsupported.")
+                            throw XcodeLocalPackageIO.invalid("Manifest string escapes, interpolation and non-identifier literals are unsupported.")
                         }
                         i += 1
                     }
-                    guard i < bytes.count else { throw XcodeLocalPackageInputs.invalid("Unterminated manifest string.") }
+                    guard i < bytes.count else { throw XcodeLocalPackageIO.invalid("Unterminated manifest string.") }
                     i += 1
                     result.append(String(decoding: bytes[start..<i], as: UTF8.self))
                 } else if identifierByte(byte) && !(48...57).contains(byte) {
@@ -162,8 +173,8 @@ struct XcodeLocalPackageInputs {
                     result.append(String(decoding: bytes[start..<i], as: UTF8.self))
                 } else if Array("().,:[]=".utf8).contains(byte) {
                     result.append(String(decoding: [byte], as: UTF8.self)); i += 1
-                } else { throw XcodeLocalPackageInputs.invalid("Unsupported manifest syntax.") }
-                guard result.count <= 256 else { throw XcodeLocalPackageInputs.invalid("Manifest token budget exceeded.") }
+                } else { throw XcodeLocalPackageIO.invalid("Unsupported manifest syntax.") }
+                guard result.count <= 256 else { throw XcodeLocalPackageIO.invalid("Manifest token budget exceeded.") }
             }
             return result
         }
@@ -171,9 +182,5 @@ struct XcodeLocalPackageInputs {
         static func identifierByte(_ byte: UInt8) -> Bool {
             (65...90).contains(byte) || (97...122).contains(byte) || (48...57).contains(byte) || byte == 95
         }
-    }
-
-    private static func invalid(_ reason: String) -> CartographError {
-        .invalidConfiguration(path: "xcode-local-package", reason: reason)
     }
 }

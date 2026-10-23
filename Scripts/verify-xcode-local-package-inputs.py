@@ -4,6 +4,7 @@ import importlib.util
 import contextlib
 import copy
 import json
+import os
 import shutil
 from pathlib import Path
 import tempfile
@@ -173,6 +174,66 @@ class PackageInputTests(unittest.TestCase):
             source.write_bytes(b"func other() {}")
             self.assertNotEqual(original, INPUTS.inventory(root, "ArithmeticCore"))
             source.unlink()
+            with self.assertRaises(INPUTS.UnsupportedPackage):
+                INPUTS.inventory(root, "ArithmeticCore")
+
+    def test_only_the_complete_empty_metadata_pair_is_admitted_and_bound(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            (root / "Sources/ArithmeticCore").mkdir(parents=True)
+            (root / "Package.swift").write_bytes(MANIFEST)
+            source = root / "Sources/ArithmeticCore/Math.swift"
+            source.write_bytes(b"func value() {}")
+            before = {"module": "ArithmeticCore", "inventory": INPUTS.inventory(root, "ArithmeticCore")}
+            self.assertEqual(INPUTS.captured_spec(before, before)["generatedMetadataOrigin"], "absent")
+            metadata = root / ".swiftpm"
+            metadata.mkdir()
+            with self.assertRaises(INPUTS.UnsupportedPackage):
+                INPUTS.inventory(root, "ArithmeticCore")
+            (metadata / "xcode").mkdir()
+            after = {"module": "ArithmeticCore", "inventory": INPUTS.inventory(root, "ArithmeticCore")}
+            captured = INPUTS.captured_spec(before, after)
+            self.assertEqual(captured["generatedMetadataOrigin"], "capture-created")
+            self.assertEqual(captured["inventory"][".swiftpm/xcode"], "directory")
+            self.assertEqual(INPUTS.captured_spec(after, after)["generatedMetadataOrigin"], "preexisting")
+            with self.assertRaises(INPUTS.UnsupportedPackage):
+                INPUTS.captured_spec(after, before)
+            for path in (metadata / "settings.json", metadata / "xcode" / "hidden.swift"):
+                path.write_bytes(b"unexpected")
+                with self.assertRaises(INPUTS.UnsupportedPackage):
+                    INPUTS.inventory(root, "ArithmeticCore")
+                path.unlink()
+            (metadata / "xcode" / "nested").mkdir()
+            with self.assertRaises(INPUTS.UnsupportedPackage):
+                INPUTS.inventory(root, "ArithmeticCore")
+            (metadata / "xcode" / "nested").rmdir()
+            source.write_bytes(b"func changed() {}")
+            changed = {"module": "ArithmeticCore", "inventory": INPUTS.inventory(root, "ArithmeticCore")}
+            for baseline in (before, after):
+                with self.assertRaises(INPUTS.UnsupportedPackage):
+                    INPUTS.captured_spec(baseline, changed)
+            changed["inventory"] = after["inventory"]
+            changed["module"] = "Changed"
+            with self.assertRaises(INPUTS.UnsupportedPackage):
+                INPUTS.captured_spec(before, changed)
+
+    @unittest.skipUnless(os.name == "posix", "Native POSIX package metadata symlink control")
+    def test_metadata_directories_and_children_cannot_be_symlinks(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder).resolve()
+            root, outside = base / "package", base / "outside"
+            (root / "Sources/ArithmeticCore").mkdir(parents=True)
+            outside.mkdir()
+            (root / "Package.swift").write_bytes(MANIFEST)
+            (root / "Sources/ArithmeticCore/Math.swift").write_bytes(b"func value() {}")
+            (root / ".swiftpm").mkdir()
+            link = root / ".swiftpm/xcode"
+            link.symlink_to(outside, target_is_directory=True)
+            with self.assertRaises(INPUTS.UnsupportedPackage):
+                INPUTS.inventory(root, "ArithmeticCore")
+            link.unlink()
+            link.mkdir()
+            (link / "hidden").symlink_to(outside, target_is_directory=True)
             with self.assertRaises(INPUTS.UnsupportedPackage):
                 INPUTS.inventory(root, "ArithmeticCore")
 

@@ -124,6 +124,18 @@ Adding an unexpected resource or C/C++ file therefore invalidates the proof. The
 is configuration evidence, not a missing compiled Swift declaration; unrelated missing
 sources and global configuration blockers remain visible and continue to refuse selectors.
 
+The only admitted generated package metadata is the exact empty directory pair
+`.swiftpm` and `.swiftpm/xcode`. A lone directory, metadata files, deeper directories,
+and symlinks refuse capture. The producer records `generatedMetadataOrigin` as
+`absent`, `preexisting`, or `capture-created`, comparing the complete before/after
+inventories and allowing only creation of that empty pair. Every other declaration
+and entry must remain identical. The whole post-capture inventory, including these
+directories, is checked again during consumption; adding a metadata file or removing
+a directory invalidates it. Verified CLI/MCP `targetScope.xcode` carries this origin
+as an unsigned producer observation, not independently authenticated history. This
+exception does not hide source-discovery warnings or permit generic `.swiftpm` content.
+The field is required in the unreleased v2 format; missing or unknown values refuse.
+
 PBX package and product references must agree with explicit framework-phase consumers.
 The capture observes actual compiler source lists, output maps, target triples, and
 successfully read index records. A raw unit output identity can be virtual: it must

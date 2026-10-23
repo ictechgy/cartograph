@@ -132,6 +132,27 @@ def diagnostic_path(relative: str) -> str:
     return ascii(relative[:256]) + ("..." if len(relative) > 256 else "")
 
 
+EMPTY_XCODE_METADATA = {".swiftpm": "directory", ".swiftpm/xcode": "directory"}
+
+
+def metadata_present(entries: dict[str, str]) -> bool:
+    metadata = {p: value for p, value in entries.items() if p == ".swiftpm" or p.startswith(".swiftpm/")}
+    require(not metadata or metadata == EMPTY_XCODE_METADATA,
+            "Only the exact empty .swiftpm/xcode directory pair is supported")
+    return bool(metadata)
+
+
+def captured_spec(before: dict, after: dict) -> dict:
+    """Permit only the observed empty directory creation, binding the entire result."""
+    before_metadata, after_metadata = metadata_present(before["inventory"]), metadata_present(after["inventory"])
+    require(not before_metadata or after_metadata, "Preexisting package metadata disappeared during capture")
+    def inputs(spec):
+        return {**spec, "inventory": {p: value for p, value in spec["inventory"].items() if p not in EMPTY_XCODE_METADATA}}
+    require(inputs(before) == inputs(after), "Entire package source/configuration subtree changed during capture")
+    origin = "absent" if not after_metadata else "preexisting" if before_metadata else "capture-created"
+    return {**after, "generatedMetadataOrigin": origin}
+
+
 def inventory(package: Path, module: str) -> dict[str, str]:
     """Bind every subtree entry; never hide unsupported inputs by their extension."""
     require(package.is_dir() and not package.is_symlink() and package.resolve() == package,
@@ -152,7 +173,8 @@ def inventory(package: Path, module: str) -> dict[str, str]:
             require(not item.is_symlink() and item.resolve() == item and item.resolve().is_relative_to(package),
                     "Package subtree canonical path or symlink boundary exceeded")
             if item.is_dir():
-                require(relative in ("Sources", "Sources/" + module) or relative.startswith(source_prefix),
+                require(relative in ("Sources", "Sources/" + module) or relative.startswith(source_prefix)
+                        or relative in EMPTY_XCODE_METADATA,
                         "Unexpected package directory: " + diagnostic_path(relative))
                 result[relative] = "directory"
                 pending.append((item, depth + 1))
@@ -167,6 +189,7 @@ def inventory(package: Path, module: str) -> dict[str, str]:
                 require(len(data) <= 4 * 1024 * 1024 and total <= 64 * 1024 * 1024,
                         "Package subtree byte budget exceeded")
                 result[relative] = hashlib.sha256(data).hexdigest()
+    metadata_present(result)
     sources = [p for p, v in result.items() if p.startswith(source_prefix) and v != "directory"]
     require("Package.swift" in result and 0 < len(sources) <= 256, "Package requires 1...256 explicit Swift source files")
     return dict(sorted(result.items()))

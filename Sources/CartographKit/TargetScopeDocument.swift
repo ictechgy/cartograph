@@ -34,6 +34,8 @@ public struct TargetScopeDocument: Sendable, Equatable, Codable {
         public var selectorIdentity: String? = nil
         /// 선택 이름과 별개로 검증한 실제 test bundle 제품 파일명.
         public var testBundleByModule: [String: String]? = nil
+        /// 빈 package metadata 디렉터리의 capture 관측. 서명된 이력이나 생성 주체 증명은 아니다.
+        public var generatedMetadataOrigin: String? = nil
     }
 
     /// 제외된 경로도 원래 blocker 원인과 함께 남긴다. outside는 실행 생략 허가가 아니다.

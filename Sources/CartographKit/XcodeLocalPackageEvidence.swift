@@ -10,6 +10,7 @@ struct XcodeLocalPackageEvidence: Codable {
     let product: String
     let module: String
     let inventory: [String: String]
+    let generatedMetadataOrigin: GeneratedMetadataOrigin
     let consumers: [String]
     let indexStore: String
     let files: [String: XcodeLocalPackageProofFile]
@@ -17,6 +18,13 @@ struct XcodeLocalPackageEvidence: Codable {
     let records: [Record]
     let aggregate: Link
     let links: [ConsumerLink]
+
+    /// 서명되지 않은 capture 생산자의 관측이며, 과거 생성 주체의 독립 증명이 아니다.
+    enum GeneratedMetadataOrigin: String, Codable {
+        case absent
+        case preexisting
+        case captureCreated = "capture-created"
+    }
 
     struct Compilation: Codable {
         let source: String
@@ -86,6 +94,10 @@ struct XcodeLocalPackageEvidence: Codable {
         let manifest = try XcodeLocalPackageInputs.manifest(manifestBytes)
         guard manifest == .init(name: name, product: product, module: module), currentInventory == inventory else {
             throw XcodeLocalPackageIO.invalid("Package literal manifest or complete subtree bytes changed.")
+        }
+        let metadataPresent = try XcodeLocalPackageInputs.generatedMetadataIsPresent(in: inventory)
+        guard metadataPresent == (generatedMetadataOrigin != .absent) else {
+            throw XcodeLocalPackageIO.invalid("Package metadata origin differs from its complete captured inventory.")
         }
         let sources = sourcePaths(root: root)
         let nativeSources = Set(project.targets.values.flatMap { $0.sources.map { root + "/" + $0 } })

@@ -365,7 +365,7 @@ def capture(args):
         proof = package_helper("xcode-local-package-evidence")
         def package_proof(current_snapshot):
             current, _ = package_inputs.project(root, project_plist)
-            require(current == package_spec, "Entire package subtree changed during capture")
+            current = package_inputs.captured_spec(package_spec, current)
             return proof.assemble(current, root, derived, stores[0], build_log.decode("utf-8"),
                                   current_snapshot, targets, settings, selected, arch)
         package_evidence = package_proof(snapshot)

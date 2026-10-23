@@ -95,6 +95,7 @@ struct XcodeLocalPackageEvidenceTests {
         base.receipt["localPackage"] = ["path": "Packages/LocalMath", "referenceID": "package-ref",
             "productReferenceID": "package-product", "name": "LocalMath", "product": "ArithmeticProduct", "module": "ArithmeticCore",
             "inventory": try XcodeLocalPackageInputs.inventory(root: root, module: "ArithmeticCore", fileSystem: fs),
+            "generatedMetadataOrigin": "absent",
             "consumers": [consumer], "indexStore": store, "files": proofFiles, "compilations": [compilation],
             "records": [["source": source, "unit": "Math-unit", "record": "Math-record", "unitOutputIdentity": unitIdentity,
                 "targetTriple": triple, "path": record]],
