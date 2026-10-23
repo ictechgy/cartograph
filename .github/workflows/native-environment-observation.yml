@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 5
     env:
       SOURCE_SHA: ${{ inputs.source_sha }}
-      MANIFEST_SHA: 7de6bf63e6691f99ed31e11e7dd295841f422970a356b4ceb9cdf5be679e3a82
+      MANIFEST_SHA: c6b599f070aa11950559d7932a378426f0222a9db7f2fb6a24dacfd6d4c9ec65
     steps:
       - name: Require exact reviewed source and image
         env:

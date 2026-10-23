@@ -4,7 +4,7 @@ import Foundation
 /// 기존 그래프 JSON에 원본 reference occurrence와 별도 import·inventory 사실을 더하는
 /// opt-in 렌더러.
 ///
-/// occurrence를 graph edge로 다시 해석하지 않고 `GraphBuilder.BuildResult.nodeIDByUSR`와
+/// occurrence를 graph edge로 다시 해석하지 않고 `GraphBuilder.BuildResult`의 출처·대상 매핑과
 /// 최종 간선 집합을 대조한다. 따라서 level roll-up, 필터, 외부 심볼, self-loop 정책은
 /// 그래프 생성과 정확히 같다.
 public struct JSONGraphEvidenceRenderer: Sendable {
@@ -31,6 +31,7 @@ public struct JSONGraphEvidenceRenderer: Sendable {
         let evidence = assembler.evidence()
         let imports = assembler.moduleImports()
         let limitations = Self.limitations(graph: result.graph, importCount: imports.count)
+            + result.sourceAttributionLimitations
         let document = Document(
             graph: result.graph,
             evidence: evidence,
@@ -148,7 +149,7 @@ private extension JSONGraphEvidenceRenderer {
                 EdgeSignature(source: $0.source, target: $0.target, kind: $0.kind)
             })
             return snapshot.references.compactMap { reference in
-                guard let source = result.nodeIDByUSR[reference.sourceUSR],
+                guard let source = result.sourceNodeID(for: reference),
                       let target = result.nodeIDByUSR[reference.targetUSR],
                       visible.contains(EdgeSignature(source: source, target: target, kind: reference.kind))
                 else { return nil }

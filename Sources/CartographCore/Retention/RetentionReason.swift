@@ -88,10 +88,11 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     /// "프레임워크가 부른다" 는 주장은 그 타입을 누군가 만들 때만 참이다. 아무도 만들지
     /// 않는 뷰의 `body` 를 무조건 살리면 답이 스스로 모순된다 — 타입은 "미사용" 인데
     /// 그 멤버는 "보존됨" 이라고 답한다. 소유 타입이 없는 최상위 선언에는 조건이 붙을
-    /// 자리가 없으므로 그대로 무조건이다.
+    /// 자리가 없으므로 그대로 무조건이다. 합성 비교·해시가 읽는 저장 프로퍼티도
+    /// 소유 타입의 사용을 전제로 하며, 프로퍼티 자체가 타입 사용의 근거는 아니다.
     public var needsReachableOwner: Bool {
         switch self {
-        case .externalConformance, .externalOverride: true
+        case .externalConformance, .externalOverride, .equatableProperty, .hashableProperty: true
         default: false
         }
     }
@@ -99,7 +100,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     /// 이 근거로 살아남은 멤버가 자신을 감싸는 타입까지 함께 살리는지.
     ///
     /// 대부분의 근거는 "이 선언을 지우면 무언가 깨진다" 는 주장이고, 그 선언을 담은 타입도
-    /// 함께 필요하다는 뜻이다. 셋만 다르다. 합성 선언과 외부 준수·오버라이드는 *타입이
+    /// 함께 필요하다는 뜻이다. 합성 선언·매크로 참조·외부 준수·오버라이드와 합성 비교·해시의
+    /// 저장 프로퍼티는 다르다. 합성 선언과 외부 준수·오버라이드는 *타입이
     /// 존재하면 반드시 따라 생기는* 것이라, 그 타입을 누가 쓰는지와 무관하게 존재한다.
     /// 그것을 조상까지 전파하면 아무도 만들지 않는 구조체가 자기 memberwise init 때문에,
     /// 아무도 그리지 않는 뷰가 자기 `body` 때문에 영원히 살아남는다.
@@ -107,7 +109,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     /// 새 근거를 더하는 사람이 반드시 이 판단을 내리도록 값 옆에 둔다.
     public var retainsContainingType: Bool {
         switch self {
-        case .compilerSynthesized, .compileTimeReference, .externalConformance, .externalOverride: false
+        case .compilerSynthesized, .compileTimeReference, .externalConformance, .externalOverride,
+             .equatableProperty, .hashableProperty: false
         default: true
         }
     }

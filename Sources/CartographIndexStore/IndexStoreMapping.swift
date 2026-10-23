@@ -191,6 +191,35 @@ public enum IndexStoreMapping {
         return usr.withUTF8(moduleEvidence(ofUTF8:))
     }
 
+    /// 완전한 Swift demangler가 아니다. 식별자 바이트 바깥의 extension 문맥 토큰이 보이면
+    /// 첫 모듈/stdlib 표기만으로 선언 모듈을 확정하지 않도록 보수적으로 보류한다.
+    static func mayContainExtensionContext(_ usr: String) -> Bool {
+        guard usr.hasPrefix("s:") else { return false }
+        var value = usr
+        return value.withUTF8(extensionContext(in:))
+    }
+
+    private static func extensionContext(in bytes: UnsafeBufferPointer<UInt8>) -> Bool {
+        var index = 2
+        while index < bytes.count {
+            if (48...57).contains(bytes[index]) {
+                var length = 0
+                while index < bytes.count, (48...57).contains(bytes[index]) {
+                    let digit = Int(bytes[index] - 48)
+                    guard length <= (bytes.count - digit) / 10 else { return true }
+                    length = length * 10 + digit
+                    index += 1
+                }
+                guard length <= bytes.count - index else { return true }
+                index += length
+            } else {
+                if bytes[index] == 69 { return true }
+                index += 1
+            }
+        }
+        return false
+    }
+
     private static func moduleEvidence(ofUTF8 bytes: UnsafeBufferPointer<UInt8>) -> ModuleEvidence {
         guard bytes.starts(with: "s:".utf8) else {
             return bytes.starts(with: "c:@M@".utf8) ? .implicit : .deferred

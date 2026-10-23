@@ -11,6 +11,8 @@ struct IndexStoreLocatorTests {
         let fileSystem = InMemoryFileSystem(files: ["/store/units/a": ""])
         let locator = IndexStoreLocator(fileSystem: fileSystem)
         #expect(try locator.locate(explicitPath: "/store", projectPath: "/p") == "/store")
+        let selection = try locator.selection(explicitPath: "/store", projectPath: "/p")
+        #expect(selection.path == "/store" && selection.explicit && selection.candidateCount == 1)
     }
 
     @Test("명시 경로가 없으면 그 경로만 담은 오류가 난다")
@@ -45,6 +47,8 @@ struct IndexStoreLocatorTests {
 
         let located = try IndexStoreLocator(fileSystem: fileSystem).locate(explicitPath: nil, projectPath: "/p")
         #expect(located == "/p/.build/out")
+        let selection = try IndexStoreLocator(fileSystem: fileSystem).selection(explicitPath: nil, projectPath: "/p")
+        #expect(selection.path == located && !selection.explicit && selection.candidateCount == 2)
     }
 
     @Test("스토어 시각은 루트와 유닛 디렉터리 중 가장 늦은 것이고 모르면 nil 이다")

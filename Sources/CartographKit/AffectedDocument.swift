@@ -20,6 +20,8 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
     /// 선택한 타입의 멤버까지 포함한, 수정 대상이 되는 정점.
     public let changeScope: [SymbolQuery.Subject]
     public let tests: [Test]
+    /// 테스트처럼 보이는 표식만 있는 선언. 위치와 영향 경로를 남기되 확인한 테스트 수에 섞지 않는다.
+    public let uncertainTestCandidates: [Test]?
     public let summary: Summary
     public let selectionIssues: [ImpactDocument.SelectionIssue]
     public let limitations: [String]
@@ -68,6 +70,7 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
         selected: [SymbolQuery.Subject],
         changeScope: [SymbolQuery.Subject],
         tests: [Test],
+        uncertainTestCandidates: [Test]? = nil,
         summary: Summary,
         selectionIssues: [ImpactDocument.SelectionIssue],
         limitations: [String],
@@ -82,6 +85,7 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
         self.selected = selected
         self.changeScope = changeScope
         self.tests = tests
+        self.uncertainTestCandidates = uncertainTestCandidates
         self.summary = summary
         self.selectionIssues = selectionIssues
         self.limitations = limitations
@@ -118,21 +122,21 @@ extension CartographService {
             makeRawFileIndex: { _ in context.impactRawNodesByFile() })
         let report = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth,
             additionalDependencies: Self.automaticImpactDependencies(automatic) + lifecycle.dependencies)
-        let reasons = context.impactReviewReasons()
-
+        let testIdentity = context.impactTestIdentity()
         func isTest(_ id: NodeID) -> Bool {
-            lifecycle.testClasses.contains(id) || reasons[id]?.contains(where: \.isTestTargetRoot) == true
+            testIdentity.confirmed.contains(id)
         }
+        func isCandidate(_ id: NodeID) -> Bool { isTest(id) || testIdentity.uncertain.contains(id) }
         let canProveHierarchy = XCTestIdentifier.canProveClassHierarchy(
             edgeKinds: configuration.edgeKinds, narrowsPaths: configuration.narrowsPathsBeyondDefaults
         )
-        let identity = XCTestIdentityFacts(snapshot: context.snapshot)
+        let identity = testIdentity.xctest
         func identifier(_ id: NodeID) -> String? {
             XCTestIdentifier.identifier(for: id, in: graph, canProveClassHierarchy: canProveHierarchy,
                 identity: identity)
         }
         var tests: [AffectedDocument.Test] = []
-        for id in report.changed where isTest(id) {
+        for id in report.changed where isCandidate(id) {
             guard let node = graph.node(id) else { continue }
             tests.append(AffectedDocument.Test(
                 symbol: Self.describe(node), depth: 0, via: nil,
@@ -141,7 +145,7 @@ extension CartographService {
                 xcodebuildIdentifier: identifier(id)
             ))
         }
-        for visit in report.affected where isTest(visit.node) {
+        for visit in report.affected where isCandidate(visit.node) {
             guard let node = graph.node(visit.node) else { continue }
             tests.append(AffectedDocument.Test(
                 symbol: Self.describe(node), depth: visit.depth,
@@ -166,10 +170,13 @@ extension CartographService {
             }
             return (lhs.symbol.usr ?? "") < (rhs.symbol.usr ?? "")
         }
+        let uncertainTests = tests.filter { $0.symbol.usr.map { testIdentity.uncertain.contains(NodeID($0)) } == true }
+        tests.removeAll { $0.symbol.usr.map { testIdentity.uncertain.contains(NodeID($0)) } == true }
         let testFiles = Set(tests.compactMap(\.symbol.location?.path)).sorted()
         let modules = Set(tests.compactMap(\.symbol.module)).sorted()
         var limitations = analysisLimitations(context: context, symbolGraph: graph) + selectionLimitations
             + Self.automaticRuntimeLimitations(automatic)
+        limitations += testIdentity.limitations(for: report)
         if !tests.isEmpty {
             limitations.append("test-target-assumption: xcodebuild selection assumes each indexed module name "
                 + "matches a test target in the chosen scheme; framework identity does not prove target membership")
@@ -183,8 +190,10 @@ extension CartographService {
                 + "limitation(s); unmodeled runtime paths may reach additional tests")
         }
         let output = AffectedOutput(selection: selection, report: report, testCount: tests.count,
+            uncertainTestCount: uncertainTests.count,
             testFileCount: testFiles.count, moduleCount: modules.count,
-            runtimeEvidenceTruncated: tests.prefix(limit).contains { $0.runtimeEvidenceOmitted != nil }, limit: limit)
+            runtimeEvidenceTruncated: (Array(tests.prefix(limit)) + Array(uncertainTests.prefix(limit)))
+                .contains { $0.runtimeEvidenceOmitted != nil }, limit: limit)
         return AffectedDocument(
             status: selection.status,
             requestedSymbols: Array(symbols.prefix(limit)),
@@ -192,6 +201,7 @@ extension CartographService {
             selected: selection.selected.sorted().prefix(limit).compactMap { graph.node($0) }.map(Self.describe),
             changeScope: report.changed.prefix(limit).compactMap { graph.node($0) }.map(Self.describe),
             tests: Array(tests.prefix(limit)),
+            uncertainTestCandidates: uncertainTests.isEmpty ? nil : Array(uncertainTests.prefix(limit)),
             summary: AffectedDocument.Summary(
                 testCount: tests.count,
                 changedTestCount: report.changed.count(where: isTest),
@@ -270,6 +280,11 @@ extension AffectedDocument {
         if summary.testCount == 0 {
             lines.append("no test declaration reaches this change — review the affected declarations manually")
         }
+        for candidate in uncertainTestCandidates ?? [] {
+            let location = candidate.symbol.location.map { "\($0.path):\($0.line) " } ?? ""
+            lines.append("  uncertain test marker: \(location)\(candidate.symbol.qualifiedName) "
+                + "(depth \(candidate.depth), \(candidate.relationship)); framework identity not proven")
+        }
         if truncated.output {
             lines.append("Truncated sections: \(truncated.sections.joined(separator: ", ")); "
                 + "counts are uncapped; increase --limit")
@@ -334,6 +349,10 @@ extension AffectedDocument {
         if truncated.output || truncated.depth {
             return "The affected test list was truncated; increase --limit or --depth." + fallback
         }
+        if !(uncertainTestCandidates ?? []).isEmpty
+            || limitations.contains(where: { $0.hasPrefix("unverified-test-markers:") }) {
+            return "Some reached test-like declarations have no verified test framework identity." + fallback
+        }
         if !tests.isEmpty, limitations.contains(where: { $0.hasPrefix("unmodeled-changed-files:") }) {
             return "Some changed files are outside the dependency model; additional tests may depend on them."
                 + " Review build scripts, configuration and fixtures before narrowing the run." + fallback
@@ -370,7 +389,7 @@ private struct AffectedOutput {
     let issues: [ImpactDocument.SelectionIssue]
     let truncatedSections: [String]
 
-    init(selection: ImpactSelection, report: ImpactReport, testCount: Int,
+    init(selection: ImpactSelection, report: ImpactReport, testCount: Int, uncertainTestCount: Int,
          testFileCount: Int, moduleCount: Int, runtimeEvidenceTruncated: Bool, limit: Int) {
         var remainingCandidates = limit
         var candidatesTruncated = false
@@ -386,6 +405,7 @@ private struct AffectedOutput {
             "requestedSymbols": selection.requestedSymbolCount, "requestedFiles": selection.files.count,
             "selected": selection.selected.count, "changeScope": report.changed.count,
             "tests": testCount, "testFiles": testFileCount, "modules": moduleCount,
+            "uncertainTestCandidates": uncertainTestCount,
             "selectionIssues": selection.issues.count,
         ]
         truncatedSections = counts.filter { $0.value > limit }.map(\.key)

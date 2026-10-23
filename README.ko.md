@@ -1724,7 +1724,9 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 **`retain_equatable_properties`와 `retain_hashable_properties`도 기본값으로 켜져 있습니다.**
 Periphery는 둘 다 꺼져 있습니다. 합성된 `==`나 `hash(into:)`만 읽는 저장 프로퍼티는 인덱스에
 읽기 흔적을 남기지 않으므로, 살리는 쪽이 보수적입니다. 그런 프로퍼티를 보고받고 싶으면 둘을
-끄세요.
+끄세요. 이 두 보존 이유는 소유 타입이 도달 가능한 경우에만 적용됩니다. 생성되지 않는
+중첩 `Equatable`/`Hashable` 타입의 저장 프로퍼티가 미사용 바깥 타입을 보존하지 않습니다.
+`Codable`과 명시적 보존 규칙은 별도로 유지됩니다.
 
 프로토콜 요구사항은 오버라이드 관계를 역방향으로 따라가며 처리합니다. 요구사항이 호출되면
 그 구현이 전부 도달 가능해집니다 — 단, 구현을 소유한 타입 자체가 도달 가능할 때만이어서,
@@ -2037,6 +2039,26 @@ universal archive를 검증했으며, [tap 갱신](https://github.com/ictechgy/h
 
 [CONTRIBUTING.md](CONTRIBUTING.md)를 보세요. 이 저장소에서 작업하는 에이전트는
 [AGENTS.md](AGENTS.md)를 먼저 읽어야 합니다.
+
+## Workspace와 로컬 패키지의 인덱스 범위
+
+workspace scheme과 관련 로컬 패키지 target을 모두 빌드한 뒤 그 빌드의 인덱스를
+`--index-store`로 지정하세요. 자동 선택은 target 범위가 아닌 store/unit 디렉터리의 최근
+시각을 사용하며 후보가 여러 개면 선택 경로·후보 수·규칙을 결과에 남깁니다.
+`unindexed-sources`, 삭제·오래된 경로와 알고 있는 로컬 target을 확인한 뒤 호출자 부재를
+해석하세요. SDK·binary 의존성에 로컬 source unit이 없는 것은 정상일 수 있습니다.
+PBXSourcesBuildPhase와 SwiftPM target 소속 전체를 재구성하지 못하므로 불명확한 범위에서는
+좁힌 `xcodebuild` 선택을 계속 거부합니다. selector를 검증할 수 없다면 전체 suite를 실행하세요.
+
+Git ignored인 미추적 소스와 중첩 저장소는 탐색에서 제외하며 추적 파일은 ignore보다
+우선합니다. 제외 경고가 없어졌다고 빌드 범위가 완전해진 것은 아닙니다. 생성된 DI 파일은
+호출 관계를 연결하므로 역할을 검토한 뒤 `retention.retained_files: ["Sources/Generated/**"]`로
+선언을 보존하고 간선을 유지할 수 있습니다. 생성물처럼 보이는 이름이나 사람이 관리하는
+디자인 token 파일을 자동 숨기지 않습니다.
+
+파일·모듈 그래프는 고유한 근거가 있는 reference 발생 위치에 출처를 귀속하며 다른 모듈에서
+선언한 extension도 포함합니다. 심볼·타입 그래프는 의미상 소유자를 유지합니다. 발생 위치의
+모듈 근거가 없거나 충돌하면 출처 한계를 남깁니다.
 
 ## 라이선스
 

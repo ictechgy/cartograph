@@ -46,10 +46,39 @@ public struct GraphBuilder: Sendable {
         public let graph: CodeGraph
         /// 분석에 포함된 심볼의 USR → 정점 식별자.
         public let nodeIDByUSR: [String: NodeID]
+        /// 파일·모듈 렌즈가 발생 출처를 증명하지 못해 의미 소유자로 폴백한 관측.
+        ///
+        /// 간선을 삭제하지 않고 관측 수와 경로를 남긴다. 이 경고가 있는 순환·레이어 위반은
+        /// 발생 위치로 확정한 아키텍처 의존으로 읽으면 안 된다. 심볼·타입 렌즈에서는 비어 있다.
+        public let sourceAttributionLimitations: [String]
+        fileprivate let referenceSourcesByPath: [String: NodeID]
+        fileprivate let excludedReferencePaths: Set<String>
 
         public init(graph: CodeGraph, nodeIDByUSR: [String: NodeID]) {
+            self.init(graph: graph, nodeIDByUSR: nodeIDByUSR,
+                referenceSourcesByPath: [:], excludedReferencePaths: [], sourceAttributionLimitations: [])
+        }
+
+        fileprivate init(graph: CodeGraph, nodeIDByUSR: [String: NodeID],
+                         referenceSourcesByPath: [String: NodeID], excludedReferencePaths: Set<String>,
+                         sourceAttributionLimitations: [String]) {
             self.graph = graph
             self.nodeIDByUSR = nodeIDByUSR
+            self.referenceSourcesByPath = referenceSourcesByPath
+            self.excludedReferencePaths = excludedReferencePaths
+            self.sourceAttributionLimitations = sourceAttributionLimitations
+        }
+
+        /// 파일·모듈 렌즈의 발생 위치와 심볼·타입 렌즈의 의미 소유자를 같은 규칙으로 찾는다.
+        ///
+        /// USR 매핑만 쓰면 앱의 익스텐션에서 나온 참조가 원본 도메인 선언으로 되돌아간다.
+        /// 위치나 단일 모듈 근거가 없으면 기존 USR 소유자를 남기며, 제외된 발생은 되살리지 않는다.
+        public func sourceNodeID(for reference: IndexedReference) -> NodeID? {
+            if let path = reference.location?.path {
+                if excludedReferencePaths.contains(path) { return nil }
+                if let source = referenceSourcesByPath[path] { return source }
+            }
+            return nodeIDByUSR[reference.sourceUSR]
         }
 
         /// 정점 하나에 접힌 심볼들의 USR 목록.
@@ -89,11 +118,30 @@ public struct GraphBuilder: Sendable {
             }
         }
 
+        let sites = architecturalSources(in: snapshot, allowedPaths: allowedPaths)
+        let siteNodes = sites.nodes
+        let sourceMapping = BuildResult(
+            graph: CodeGraph(level: options.level, nodes: [], edges: []), nodeIDByUSR: nodeIDByUSR,
+            referenceSourcesByPath: siteNodes.mapValues(\.id),
+            excludedReferencePaths: excludedReferencePaths(in: snapshot), sourceAttributionLimitations: []
+        )
         var edges: [GraphEdge] = []
+        var unresolvedSources: [String: UnresolvedSources] = [:]
         for reference in snapshot.references {
-            guard let source = nodeIDByUSR[reference.sourceUSR],
+            guard let source = sourceMapping.sourceNodeID(for: reference),
                   let target = nodeIDByUSR[reference.targetUSR] else { continue }
             guard isIncluded(kind: reference.kind) else { continue }
+            if let path = reference.location?.path, let node = siteNodes[path] {
+                nodesByID[node.id] = node
+            }
+            if options.level == .module || options.level == .file,
+               reference.location.flatMap({ siteNodes[$0.path] }) == nil {
+                let path = reference.location?.path ?? "<unlocated>"
+                let reason = reference.location == nil ? "unlocated-reference"
+                    : sites.unresolved[path] ?? "unknown-file-ownership"
+                unresolvedSources[reason, default: UnresolvedSources()].count += 1
+                unresolvedSources[reason, default: UnresolvedSources()].paths.insert(path)
+            }
             if options.dropSelfLoops, source == target { continue }
             edges.append(GraphEdge(source: source, target: target, kind: reference.kind))
         }
@@ -111,7 +159,10 @@ public struct GraphBuilder: Sendable {
         }
 
         let graph = CodeGraph(level: options.level, nodes: Array(nodesByID.values), edges: edges)
-        return BuildResult(graph: graph, nodeIDByUSR: nodeIDByUSR)
+        return BuildResult(graph: graph, nodeIDByUSR: nodeIDByUSR,
+            referenceSourcesByPath: siteNodes.mapValues(\.id),
+            excludedReferencePaths: sourceMapping.excludedReferencePaths,
+            sourceAttributionLimitations: sourceAttributionLimitations(unresolvedSources))
     }
 
     // MARK: - 내부 구현
@@ -133,6 +184,62 @@ public struct GraphBuilder: Sendable {
 
     private func isIncluded(kind: EdgeKind) -> Bool {
         options.edgeKinds.isEmpty || options.edgeKinds.contains(kind)
+    }
+
+    /// 위치 기반 출처는 선언·컴파일 유닛의 파일 근거가 있는 아키텍처 렌즈에만 적용한다.
+    ///
+    /// 서로 다른 타깃이 공유하는 파일에서 모듈을 하나 임의로 고르면 새 가짜 간선이 생긴다.
+    /// 모듈 근거가 충돌하면 기존 의미 소유자를 유지한다. 파일 렌즈는 경로 자체가 근거지만
+    /// 모듈은 빈 값으로 남긴다. SDK 참조의 가상 선언 위치는 파일 소유권 근거가 아니다.
+    private func architecturalSources(in snapshot: IndexSnapshot, allowedPaths: Set<String>)
+        -> (nodes: [String: GraphNode], unresolved: [String: String]) {
+        guard options.level == .module || options.level == .file else { return ([:], [:]) }
+        var modulesByPath: [String: Set<String>] = [:]
+        for symbol in snapshot.symbols where !symbol.isExternal && allowedPaths.contains(symbol.location.path) {
+            modulesByPath[symbol.location.path, default: []].formUnion(symbol.module.isEmpty ? [] : [symbol.module])
+        }
+        for (path, usage) in snapshot.fileModuleUsages where options.pathFilter.allows(path) {
+            let module = usage.owningModule ?? ""
+            modulesByPath[path, default: []].formUnion(module.isEmpty ? [] : [module])
+        }
+        var nodes: [String: GraphNode] = [:]
+        var unresolved: [String: String] = [:]
+        for entry in modulesByPath {
+            let (path, modules) = entry
+            let module = modules.count == 1 ? modules.first! : ""
+            if options.level == .file {
+                nodes[path] = GraphNode(id: NodeID(path),
+                    name: path.split(separator: "/").last.map(String.init) ?? path, kind: .file, module: module,
+                    location: SourceLocation(path: path, line: 1, column: 1))
+            } else if !module.isEmpty {
+                nodes[path] = GraphNode(id: NodeID(module), name: module, kind: .module, module: module)
+            } else {
+                unresolved[path] = modules.isEmpty ? "missing-file-module" : "conflicting-file-modules"
+            }
+        }
+        return (nodes, unresolved)
+    }
+
+    private struct UnresolvedSources {
+        var count = 0
+        var paths: Set<String> = []
+    }
+
+    /// 경고는 사유마다 하나로 합치고 경로 표시는 10개로 제한하되 생략 개수는 남긴다.
+    private func sourceAttributionLimitations(_ unresolved: [String: UnresolvedSources]) -> [String] {
+        unresolved.keys.sorted().map { reason in
+            let item = unresolved[reason]!
+            let paths = item.paths.sorted()
+            let shown = paths.prefix(10).map { String(reflecting: $0) }.joined(separator: ", ")
+            return "source-attribution: \(item.count) \(options.level.rawValue) reference occurrence(s) used the "
+                + "legacy semantic source (\(reason)); paths: \(shown); omitted paths: \(max(0, paths.count - 10)). "
+                + "Architectural source and resulting cycle/rule findings remain uncertain."
+        }
+    }
+
+    private func excludedReferencePaths(in snapshot: IndexSnapshot) -> Set<String> {
+        guard options.level == .module || options.level == .file else { return [] }
+        return Set(snapshot.references.compactMap { $0.location?.path }).filter { !options.pathFilter.allows($0) }
     }
 
     /// 심볼 하나를 현재 레벨의 정점으로 환원한다.

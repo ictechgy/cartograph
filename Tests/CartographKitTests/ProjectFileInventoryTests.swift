@@ -178,6 +178,32 @@ struct ProjectFileInventoryTests {
         }
         """
     }
+
+    @Test("교환 문서가 중첩 저장소 제외를 모두 전달한다")
+    func exchangeDocumentsPreserveRepositoryBoundary() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("nested/.git"),
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(Self.exchangeSource(name: "visible").utf8).write(to: root.appendingPathComponent("Visible.swift"))
+        try Data(Self.exchangeSource(name: "hidden").utf8).write(to: root.appendingPathComponent("nested/Hidden.swift"))
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = root.path
+        let service = CartographService(configuration: configuration, environment: CartographEnvironment(
+            indexProviderOverride: StaticIndexProvider(IndexSnapshot()), usesSyntaxCache: false
+        ))
+        let date = Date(timeIntervalSince1970: 1_788_480_000)
+        let routes = try service.routeCalls(generatedAt: date)
+        let bridges = try service.bridgeFacts(generatedAt: date)
+        let events = try service.bridgeFacts(generatedAt: date, rnEvents: true)
+        let schema = try service.schemaFacts(generatedAt: date)
+        #expect(routes.facts.map(\.channel) == ["/api/visible"])
+        #expect(Set(bridges.facts.compactMap(\.channel)) == ["dev.example/visible"])
+        #expect(Set(schema.facts.compactMap(\.channel)) == ["visible_table"])
+        for limits in [routes.limitations, bridges.limitations, events.limitations, schema.limitations] {
+            #expect(limits.contains { $0.hasPrefix("source-discovery-exclusions: 1 ") && $0.contains("nested") })
+        }
+    }
 }
 
 /// 루트 안 디렉터리 링크(`Sources/App/vendor`)가 루트 밖 디렉터리를 가리키는 실제 임시 트리.

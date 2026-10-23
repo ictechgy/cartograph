@@ -52,7 +52,7 @@ struct ImpactCommand: ParsableCommand {
 
     @Option(
         name: .customLong("limit"),
-        help: "Maximum affected declarations to report (default: 200; language-traversal: 100000)."
+        help: "Maximum affected declarations: 1...10000 (default: 200); language-traversal: 1...100000 (default: 100000)."
     )
     var limit: Int?
 

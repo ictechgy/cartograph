@@ -1089,6 +1089,20 @@ struct ModuleUsageMappingTests {
         }
     }
 
+    @Test("범위 밖 확장 선언의 첫 모듈이나 stdlib 표기는 import 부재 증거가 아니다")
+    func externalExtensionModuleRemainsUnknown() {
+        for usr in ["s:Si3LibE5magicSivpZ", "s:6Domain4ItemV3LibE5magicSivpZ"] {
+            let snapshot = IndexStoreProvider.snapshot(from: [
+                occurrence(symbol(usr, name: "magic", kind: .staticProperty), roles: .reference,
+                    location: location("/p/Mid.swift", module: "Mid"))
+            ], includeExternalSymbols: true)
+            #expect(snapshot.fileModuleUsages["/p/Mid.swift"]?.hasUnattributedReferences == true)
+        }
+        #expect(!IndexStoreMapping.mayContainExtensionContext("s:Si"))
+        #expect(!IndexStoreMapping.mayContainExtensionContext("s:7Example4ItemV"))
+        #expect(IndexStoreMapping.mayContainExtensionContext("s:Si3LibE5magicSivpZ"))
+    }
+
     @Test("실제 매크로 참조는 소유 관계가 없어도 컴파일 시점 사용을 남기되 미참조 매크로는 남기지 않는다")
     func macroReferenceIsIndependentOfRuntimeOwner() {
         let macro = symbol("s:6Macros8AddHello", name: "AddHello", kind: .macro)

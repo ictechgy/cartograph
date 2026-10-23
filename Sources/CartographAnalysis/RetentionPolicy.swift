@@ -52,7 +52,9 @@ public struct RetentionPolicy: Sendable {
         snapshot: IndexSnapshot,
         honoringIgnoreComments: Bool
     ) -> [NodeID: RetentionReason] {
-        let externalBases = Set(outsideGraphRelations(in: snapshot, graph: graph).map(\.sourceUSR))
+        let externalRelations = outsideGraphRelations(in: snapshot, graph: graph)
+        let externalBases = Set(externalRelations.map(\.sourceUSR))
+        let typeWitnesses = Self.associatedTypeWitnesses(externalRelations, in: graph)
         var decisions: [NodeID: RetentionReason] = [:]
         // 같은 파일의 정점은 수백 개다. retained_files 판정은 파일의 성질이지
         // 정점의 성질이 아니므로 경로별로 한 번만 답한다.
@@ -60,7 +62,7 @@ public struct RetentionPolicy: Sendable {
 
         for node in graph.sortedNodes {
             if let reason = reason(
-                for: node, in: graph, symbolsWithExternalBase: externalBases,
+                for: node, in: graph, symbolsWithExternalBase: externalBases, typeWitnesses: typeWitnesses,
                 pathDecisions: &pathDecisions, honoringIgnoreComments: honoringIgnoreComments
             ) {
                 decisions[node.id] = reason
@@ -77,10 +79,13 @@ public struct RetentionPolicy: Sendable {
     /// 런타임 경로를 모두 수집한다. 사용자 설정·무시 주석·소스 접근 실패는 이 사실 목록에
     /// 포함하지 않는다.
     public func reviewReasons(in graph: CodeGraph, snapshot: IndexSnapshot) -> [NodeID: Set<RetentionReason>] {
-        let externalRelationFacts = Self.externalRelationFacts(outsideGraphRelations(in: snapshot, graph: graph))
+        let externalRelations = outsideGraphRelations(in: snapshot, graph: graph)
+        let externalRelationFacts = Self.externalRelationFacts(externalRelations)
+        let typeWitnesses = Self.associatedTypeWitnesses(externalRelations, in: graph)
         var results: [NodeID: Set<RetentionReason>] = [:]
         for node in graph.sortedNodes {
-            let reasons = reviewReasons(for: node, in: graph, externalRelationFacts: externalRelationFacts)
+            let reasons = reviewReasons(for: node, in: graph, externalRelationFacts: externalRelationFacts,
+                typeWitnesses: typeWitnesses)
             if !reasons.isEmpty { results[node.id] = reasons }
         }
         return results
@@ -114,6 +119,7 @@ public struct RetentionPolicy: Sendable {
         for node: GraphNode,
         in graph: CodeGraph,
         symbolsWithExternalBase: Set<String>,
+        typeWitnesses: Set<String>,
         pathDecisions: inout [String: Bool],
         honoringIgnoreComments: Bool = true
     ) -> RetentionReason? {
@@ -151,7 +157,8 @@ public struct RetentionPolicy: Sendable {
         if node.attributes.contains(.runtimeManaged) { return .runtimeManaged }
 
         if let reason = parentDrivenReason(for: node, in: graph) { return reason }
-        if let reason = externalRelationReason(for: node, symbolsWithExternalBase: symbolsWithExternalBase) {
+        if let reason = externalRelationReason(for: node, symbolsWithExternalBase: symbolsWithExternalBase,
+            typeWitnesses: typeWitnesses) {
             return reason
         }
         return nil
@@ -160,7 +167,8 @@ public struct RetentionPolicy: Sendable {
     private func reviewReasons(
         for node: GraphNode,
         in graph: CodeGraph,
-        externalRelationFacts: [String: Set<RetentionReason>]
+        externalRelationFacts: [String: Set<RetentionReason>],
+        typeWitnesses: Set<String>
     ) -> Set<RetentionReason> {
         var reasons: Set<RetentionReason> = []
         if node.attributes.contains(.entryPoint) || isTopLevelCode(node, in: graph) {
@@ -181,6 +189,7 @@ public struct RetentionPolicy: Sendable {
         if !node.kind.isTypeDeclaration, node.kind != .extensionDeclaration {
             reasons.formUnion(externalRelationFacts[node.usr ?? ""] ?? [])
         }
+        if typeWitnesses.contains(node.usr ?? "") { reasons.insert(.externalConformance) }
         if !externalRetentions.isEmpty,
            !externalRetentions.matchingRetentions(
                for: node,
@@ -315,9 +324,13 @@ public struct RetentionPolicy: Sendable {
     /// 호출되지 않지만 프레임워크가 호출한다.
     private func externalRelationReason(
         for node: GraphNode,
-        symbolsWithExternalBase: Set<String>
+        symbolsWithExternalBase: Set<String>,
+        typeWitnesses: Set<String>
     ) -> RetentionReason? {
         guard let usr = node.usr, symbolsWithExternalBase.contains(usr) else { return nil }
+        // 별칭도 type declaration이지만 associatedtype 증인은 준수 멤버다. 이름 추정 대신
+        // compiler overrideOf와 대상 kind를 확인하고, 기존 owner 조건부 보존을 그대로 쓴다.
+        if typeWitnesses.contains(usr) { return .externalConformance }
         // 증인 멤버만 보존한다. 타입 자신에게 이 규칙을 적용하면 "이 타입이 한 번이라도
         // 만들어지는가" 를 묻지 않고 살리게 된다. `struct NeverUsed: Equatable {}` 나 아무도
         // 그리지 않는 `View` 가 그래서 한 번도 보고되지 않았다. 준수를 만족시키는 멤버
@@ -328,6 +341,23 @@ public struct RetentionPolicy: Sendable {
         // 반대 답을 내면 판정이 코드가 아니라 작성 취향의 함수가 된다.
         guard !node.kind.isTypeDeclaration, node.kind != .extensionDeclaration else { return nil }
         return node.attributes.contains(.overrideDeclaration) ? .externalOverride : .externalConformance
+    }
+
+    /// 외부 associatedtype 요구사항을 구현하는 별칭만 고른다. 잘린 부모·알 수 없는
+    /// 관계·동명 별칭은 증인이라고 단정하지 않는다. 반환값은 무조건 뿌리가 아니다.
+    private static func associatedTypeWitnesses(
+        _ references: [IndexedReference], in graph: CodeGraph
+    ) -> Set<String> {
+        let owners: Set<SymbolKind> = [.classType, .structType, .enumType, .protocolType]
+        return Set(references.compactMap { reference in
+            guard reference.origin == .compiler, reference.kind == .overrides,
+                  reference.targetKind == .associatedType,
+                  let node = graph.node(NodeID(reference.sourceUSR)), node.kind == .typeAlias,
+                  let parent = graph.semanticParent(of: node.id), let owner = graph.node(parent),
+                  owners.contains(owner.kind), !owner.isExternal
+            else { return nil }
+            return reference.sourceUSR
+        })
     }
 
     /// 그래프 밖 기반 선언과 맺은 모든 관계를 수집한다.

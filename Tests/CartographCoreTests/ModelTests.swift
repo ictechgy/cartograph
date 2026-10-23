@@ -122,13 +122,14 @@ struct SymbolNameTests {
 
 @Suite("보존 근거의 전파 여부")
 struct RetentionReasonPropagationTests {
-    @Test("합성·매크로 컴파일 참조·외부 증인 근거는 컨테이너로 전파하지 않는다")
+    @Test("합성·매크로 참조·외부 증인·합성 비교와 해시 프로퍼티는 컨테이너로 전파하지 않는다")
     func reasonsThatDoNotKeepTheirContainer() {
         // 새 근거를 더하는 사람이 반드시 이 판단을 내리게 하려고 목록을 통째로 고정한다.
         // 기본값(전파함)으로 조용히 떨어지면, 아무도 쓰지 않는 타입이 자기 합성 멤버
         // 때문에 다시 영원히 살아남는다.
         let doNotPropagate = Set(RetentionReason.allCases.filter { !$0.retainsContainingType })
-        #expect(doNotPropagate == [.compilerSynthesized, .compileTimeReference, .externalConformance, .externalOverride])
+        #expect(doNotPropagate == [.compilerSynthesized, .compileTimeReference, .externalConformance,
+                                  .externalOverride, .equatableProperty, .hashableProperty])
     }
 }
 

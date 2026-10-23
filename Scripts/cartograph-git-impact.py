@@ -219,8 +219,9 @@ def main() -> int:
     mode.add_argument("--head", help="Exact after commit (default: HEAD)")
     mode.add_argument("--working-tree", action="store_true", help="Include staged, unstaged, and untracked files")
     parser.add_argument("--output", help="New directory outside the repository; retained with worktrees and evidence")
-    parser.add_argument("--depth", type=int)
-    parser.add_argument("--limit", type=int, default=200)
+    parser.add_argument("--depth", type=int, help="Maximum consumer depth (1...128; omitted: no depth cap)")
+    parser.add_argument("--limit", type=int, default=200,
+                        help="Maximum affected declarations to report (1...10000; default: 200)")
     parser.add_argument("--snapshot-max-mib", type=int, default=128,
                         help="Uncompressed snapshot bound for capture and comparison (1...1024 MiB; default: 128)")
     parser.add_argument("--timeout", type=int, default=600)

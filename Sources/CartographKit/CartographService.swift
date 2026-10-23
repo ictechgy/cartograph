@@ -143,6 +143,7 @@ public struct CartographService: Sendable {
                     missing: enriched.missingSourcePaths, unreadable: enriched.unreadableSourcePaths)
             )
             return context.bindingProjectFileInventory(inventory)
+                .bindingIndexSelectionLimitations(source.selectionLimitations)
         }
     }
 
@@ -255,9 +256,9 @@ public struct CartographService: Sendable {
 
     /// 그래프를 지정한 형식으로 내보낸다.
     public func renderGraph(level: GraphLevel? = nil, format: GraphFormat? = nil) throws -> CommandOutcome {
-        let graph = try loadContext().buildGraph(level: level ?? configuration.level).graph
+        let built = try loadContext().buildGraph(level: level ?? configuration.level)
         let renderer = GraphRendererFactory.make(format ?? configuration.graphFormat)
-        return CommandOutcome(output: try renderer.render(graph))
+        return CommandOutcome(output: try renderer.render(built.graph), notes: built.sourceAttributionLimitations)
     }
 
     /// 기존 그래프 API를 유지하면서 opt-in occurrence 근거 JSON을 내보낸다.
@@ -1646,7 +1647,7 @@ public struct CartographService: Sendable {
         let limitations = analysisLimitations(
             context: context,
             symbolGraph: effectiveLevel == .symbol ? graph : nil
-        )
+        ) + context.buildGraph(level: effectiveLevel).sourceAttributionLimitations
         return limitations.isEmpty ? nil : limitations
     }
 
@@ -1923,9 +1924,10 @@ public struct CartographService: Sendable {
     /// 이 문서들도 같은 inventory 로 소스를 읽으므로 링크 뒤의 사실이 빠진다. 분석 응답과 같은 문장으로
     /// 알려야 소비자가 "사실 없음"과 "읽지 않음"을 가른다.
     func externalDirectoryLinkLimitations(_ inventory: ProjectFileInventory) -> [String] {
-        AnalysisLimitationCollector.externalDirectoryLinkLimitation(
-            inventory.externalDirectoryLinks, projectPath: projectPath
-        ).map { [$0] } ?? []
+        [AnalysisLimitationCollector.externalDirectoryLinkLimitation(
+            inventory.externalDirectoryLinks, projectPath: projectPath),
+         AnalysisLimitationCollector.sourceDiscoveryLimitation(
+            inventory.discoveryExclusions, projectPath: projectPath)].compactMap { $0 }
     }
 
     private func describe(_ graph: CodeGraph) -> String {
@@ -1943,6 +1945,7 @@ public struct CartographService: Sendable {
         let libraryPath: String
         let origin: EmptyIndexFacts.StoreOrigin
         let inventory: ProjectFileInventory?
+        var selectionLimitations: [String] = []
     }
 
     /// 명시한 생성 소스만 기존 인덱스 스토어에서 읽어 기본 분석 범위와 분리한다.
@@ -1999,11 +2002,12 @@ public struct CartographService: Sendable {
         }
 
         let locator = IndexStoreLocator(fileSystem: environment.fileSystem)
-        let storePath = try locator.locate(
+        let selection = try locator.selection(
             explicitPath: configuration.indexStorePath,
             projectPath: projectPath,
             derivedDataPath: configuration.derivedDataPath ?? environment.derivedDataPath
         )
+        let storePath = selection.path
         let libraryPath = try locator.locateLibrary(
             explicitPath: nil,
             developerDirectory: environment.developerDirectory
@@ -2033,7 +2037,13 @@ public struct CartographService: Sendable {
             storePath: storePath,
             libraryPath: libraryPath,
             origin: storeOrigin(of: storePath),
-            inventory: inventory
+            inventory: inventory,
+            selectionLimitations: !selection.explicit && selection.candidateCount > 1 ? [
+                "index-selection: selected \(String(reflecting: storePath)) from \(selection.candidateCount) "
+                    + "existing candidates using newest store/unit-directory timestamp (lexical path tie-break). "
+                    + "Recency does not prove source, target, or local package coverage; compare coverage and "
+                    + "use --index-store to select the intended build explicitly."
+            ] : []
         )
     }
 

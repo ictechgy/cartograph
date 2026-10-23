@@ -1,0 +1,4 @@
+class 'FeedbackRetention.NeverMadeExtension' is never used
+class 'FeedbackRetention.NeverMadeHashable' is never used
+class 'FeedbackRetention.NeverMadePlain' is never used
+class 'FeedbackRetention.NeverMadeStore' is never used

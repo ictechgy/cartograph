@@ -105,7 +105,10 @@ struct AnalysisSessionTests {
             builder.reference(from: "\(label)Hook", to: "Storage", kind: .call)
             builder.symbol("\(label)Child", kind: .classType)
             builder.reference(from: "\(label)Child", to: label, kind: .inheritance)
-            return builder.build()
+            var snapshot = builder.build()
+            snapshot.references.append(IndexedReference(sourceUSR: label, targetUSR: "c:objc(cs)XCTestCase",
+                kind: .inheritance, targetKind: .classType, origin: .compiler))
+            return snapshot
         }
         let state = SessionState(snapshot: snapshot("Old"))
         let session = try makeSession(state)
@@ -927,6 +930,61 @@ struct AnalysisSessionTests {
         #expect(after.generation == before.generation + 1)
         #expect(after.fingerprint != before.fingerprint)
         #expect(fileSystem.contentReadBytes > 0)
+    }
+
+    @Test("중첩 저장소 경계만 바뀌어도 세대가 갱신되고 그대로인 warm 조회는 재열거하지 않는다")
+    func nestedRepositoryBoundaryInvalidatesCachedWalk() throws {
+        let root = try makeTemporaryProject()
+        defer {
+            do { try FileManager.default.removeItem(atPath: root) }
+            catch { Issue.record("임시 프로젝트 정리 실패: \(error)") }
+        }
+        let fs = CountingLocalFileSystem()
+        let source = root + "/App.m"
+        let nested = root + "/Nested/Other.m"
+        try fs.write(text: "struct App {}", to: source)
+        try fs.write(text: "struct Other {}", to: nested)
+        let service = makeLocalService(fileSystem: fs, project: root, source: source)
+        let session = try AnalysisSession(service: service)
+        let first = try session.status()
+        let firstSnapshot = try service.sessionInputFingerprint()
+        let stamp = fs.fingerprintStamp(at: nested)
+
+        try fs.write(text: "gitdir: /nonexistent", to: root + "/Nested/.git")
+        let nestedRepository = try session.status()
+        #expect(nestedRepository.generation == first.generation + 1)
+        #expect(nestedRepository.fingerprint != first.fingerprint)
+        #expect(try service.sessionInputFingerprint() != firstSnapshot)
+        #expect(fs.fingerprintStamp(at: nested) == stamp)
+        let enumerations = fs.directoryEnumerations
+        #expect(try session.status().generation == nestedRepository.generation)
+        #expect(fs.directoryEnumerations == enumerations)
+
+        try FileManager.default.removeItem(atPath: root + "/Nested/.git")
+        #expect(try session.status().generation == nestedRepository.generation + 1)
+    }
+
+    @Test("끊어진 중첩 .git 링크의 대상 생성도 부모 디렉터리 변경 없이 새 경계로 인식한다")
+    func brokenRepositoryMarkerLinkCannotHideNewBoundary() throws {
+        let parent = try makeTemporaryProject()
+        defer {
+            do { try FileManager.default.removeItem(atPath: parent) }
+            catch { Issue.record("임시 프로젝트 정리 실패: \(error)") }
+        }
+        let root = parent + "/project"
+        let fs = CountingLocalFileSystem()
+        try fs.write(text: "struct App {}", to: root + "/App.m")
+        try fs.write(text: "struct Other {}", to: root + "/Nested/Other.m")
+        let target = parent + "/git-marker"
+        try FileManager.default.createSymbolicLink(atPath: root + "/Nested/.git", withDestinationPath: target)
+        let service = makeLocalService(fileSystem: fs, project: root, source: root + "/App.m")
+        let session = try AnalysisSession(service: service)
+        let first = try session.status()
+        let directory = fs.directoryListingStamp(at: root + "/Nested")
+
+        try fs.write(text: "gitdir: /nonexistent", to: target)
+        #expect(fs.directoryListingStamp(at: root + "/Nested") == directory)
+        #expect(try session.status().generation == first.generation + 1)
     }
 
     @Test("디렉터리 구조가 그대로면 warm 갱신은 열거를 반복하지 않고 항목이 생기면 다시 훑는다")

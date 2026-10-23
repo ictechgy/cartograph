@@ -37,6 +37,8 @@ public struct AnalysisContext: Sendable {
     ///
     /// 외부에서 직접 만든 문맥은 nil일 수 있고, 그 경우 소비자가 기존 walk로 폴백한다.
     private(set) var projectFileInventory: ProjectFileInventory?
+    /// 실제 입력을 읽을 때의 선택 근거. 후속 재탐색으로 과거 그래프의 출처를 바꾸지 않는다.
+    private(set) var indexSelectionLimitations: [String] = []
 
     public init(
         snapshot: IndexSnapshot,
@@ -70,6 +72,12 @@ public struct AnalysisContext: Sendable {
     func bindingProjectFileInventory(_ inventory: ProjectFileInventory) -> AnalysisContext {
         var copy = self
         copy.projectFileInventory = inventory
+        return copy
+    }
+
+    func bindingIndexSelectionLimitations(_ limitations: [String]) -> AnalysisContext {
+        var copy = self
+        copy.indexSelectionLimitations = limitations
         return copy
     }
 
@@ -231,9 +239,19 @@ public struct AnalysisContext: Sendable {
     /// 스냅샷에만 의존하는 준비 값은 같은 문맥에서 한 번 만들고, 요청별 계약·실행 근거는 넣지 않는다.
     /// 값 복사는 같은 그래프를 공유하지만 refresh나 Core Data 보강의 새 문맥은 별도 캐시를 갖는다.
     func impactLifecycle(
-        make: (CodeGraph) -> XCTestLifecycleImpact = { XCTestLifecycleImpact(in: $0) }
+        make: ((CodeGraph) -> XCTestLifecycleImpact)? = nil
     ) -> XCTestLifecycleImpact {
-        impactPreparationCache.lifecycle { make(buildGraph(level: .symbol).graph) }
+        // 같은 캐시 잠금을 중첩하지 않도록 신원을 먼저 준비한다.
+        let identity = impactTestIdentity().xctest
+        return impactPreparationCache.lifecycle {
+            let graph = buildGraph(level: .symbol).graph
+            return make?(graph) ?? XCTestLifecycleImpact(in: graph, identity: identity)
+        }
+    }
+
+    /// 테스트 분류와 실행 계약이 같은 스냅샷 신원을 공유한다.
+    func impactTestIdentity() -> TestCandidateIdentity {
+        impactPreparationCache.identity { TestCandidateIdentity(snapshot: snapshot) }
     }
 
     /// 파일 선택이 있을 때만 원래 경로별 정점을 준비한다. 링크 해석은 요청마다 다시 한다.
@@ -255,6 +273,16 @@ public struct AnalysisContext: Sendable {
         private var lifecycleValue: XCTestLifecycleImpact?
         private var fileValue: [String: [NodeID]]?
         private var nameValue: GraphQueryIndex?
+        private var identityValue: TestCandidateIdentity?
+
+        func identity(make: () -> TestCandidateIdentity) -> TestCandidateIdentity {
+            lock.lock()
+            defer { lock.unlock() }
+            if let identityValue { return identityValue }
+            let made = make()
+            identityValue = made
+            return made
+        }
 
         func lifecycle(make: () -> XCTestLifecycleImpact) -> XCTestLifecycleImpact {
             lock.lock()

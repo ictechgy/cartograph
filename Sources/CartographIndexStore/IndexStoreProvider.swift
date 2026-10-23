@@ -444,6 +444,10 @@ public struct IndexStoreProvider: IndexProviding {
                 run.referencedModules.formUnion(modules)
                 run.hasEntry = true
             }
+            if declarationModules[usr] == nil, IndexStoreMapping.mayContainExtensionContext(usr) {
+                // 프로젝트 밖 확장 선언은 stdlib/원래 타입 모듈에 귀속하면 필요한 import를 잃는다.
+                run.deferredUSRs.insert(usr)
+            }
             switch IndexStoreMapping.moduleEvidence(ofUSR: usr) {
             case .module(let module):
                 run.referencedModules.insert(module)

@@ -370,6 +370,26 @@ struct AnalysisLimitationCollectorTests {
         #expect(document.limitations.contains { $0.hasPrefix("symlinked-directories-outside-root: 1 ") })
     }
 
+    @Test("Clang 모듈 근거가 없으면 로컬 선언의 소유자가 unknown임을 알린다")
+    func unknownClangModulesRemainUnknown() {
+        let fileSystem = InMemoryFileSystem(files: ["/p/Caller.m": "int sample(void);", "/p/Other.m": ""])
+        let symbols = [
+            IndexedSymbol(usr: "c:@F@sample", name: "sample", kind: .function, module: "",
+                          location: SourceLocation(path: "/p/Caller.m", line: 1, column: 1)),
+            IndexedSymbol(usr: "c:@F@known", name: "known", kind: .function, module: "LocalClang",
+                          location: SourceLocation(path: "/p/Other.m", line: 1, column: 1)),
+            IndexedSymbol(usr: "c:@F@sdk", name: "sdk", kind: .function, module: "",
+                          location: SourceLocation(path: "/sdk/Header.h", line: 1, column: 1), isExternal: true),
+        ]
+        let context = AnalysisContext(snapshot: IndexSnapshot(symbols: symbols))
+            .bindingIndexSelectionLimitations(["index-selection: captured choice"])
+        let result = collector(fileSystem).collect(context: context, symbolGraph: nil, emptyIndexCounts: nil)
+        #expect(result.contains("index-selection: captured choice"))
+        let warning = result.first { $0.hasPrefix("unknown-clang-module:") } ?? ""
+        #expect(warning.hasPrefix("unknown-clang-module: 1 ") && warning.contains("Caller.m"))
+        #expect(!warning.contains("Other.m") && !warning.contains("Header.h"))
+    }
+
     private func collector(_ fileSystem: any FileSystem, storeDate: Date? = nil) -> AnalysisLimitationCollector {
         var config = CartographConfiguration.default
         config.projectPath = "/p"

@@ -43,9 +43,9 @@ struct ResourceModuleImpactTests {
             .init(usr: "FeatureB-render", name: "render()", kind: .function,
                   module: "FeatureB", location: location("FeatureB", 20)),
             .init(usr: "FeatureA-test", name: "testRender()", kind: .function, module: "FeatureATests",
-                  location: .init(path: testPath("FeatureA"), line: 1, column: 1), attributes: [.unitTest]),
+                  location: .init(path: testPath("FeatureA"), line: 1, column: 1), attributes: [.testFunction]),
             .init(usr: "FeatureB-test", name: "testRender()", kind: .function, module: "FeatureBTests",
-                  location: .init(path: testPath("FeatureB"), line: 1, column: 1), attributes: [.unitTest]),
+                  location: .init(path: testPath("FeatureB"), line: 1, column: 1), attributes: [.testFunction]),
         ], references: [
             .init(sourceUSR: "FeatureA-render", targetUSR: "FeatureA-labels", kind: .reference),
             .init(sourceUSR: "FeatureB-render", targetUSR: "FeatureB-labels", kind: .reference),

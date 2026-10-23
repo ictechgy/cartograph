@@ -60,11 +60,12 @@ extension CartographService {
         let reasons = context.impactReviewReasons()
         let summaries = try ImpactSummaries(report: report, selection: selection, graph: graph,
             reasons: reasons, context: context, limit: limit, runtime: runtime, projectPath: projectPath,
-            additionalTestRoots: lifecycle.testClasses)
+            confirmedTestRoots: context.impactTestIdentity().confirmed)
         let output = ImpactOutput(report: report, selection: selection, summaries: summaries, limit: limit)
         var limitations = (recordedLimitations ?? analysisLimitations(context: context, symbolGraph: graph))
             + selectionLimitations
         let reviewed = Set(report.changed + report.affected.map(\.node))
+        limitations += context.impactTestIdentity().limitations(for: report)
         let relevantAutomatic = automatic.map { value in
             RuntimeDiscoveryReport(findings: value.findings.filter { finding in
                 finding.source.map { reviewed.contains($0) } == true
@@ -344,7 +345,7 @@ private struct ImpactSummaries {
 
     init(report: ImpactReport, selection: ImpactSelection, graph: CodeGraph,
          reasons: [NodeID: Set<RetentionReason>], context: AnalysisContext, limit: Int,
-         runtime: ImpactRuntimeInputs, projectPath: String, additionalTestRoots: Set<NodeID>) throws {
+         runtime: ImpactRuntimeInputs, projectPath: String, confirmedTestRoots: Set<NodeID>) throws {
         let affected = report.affected.compactMap { graph.node($0.node) }
         let reviewed = (report.changed + report.affected.map(\.node)).compactMap { graph.node($0) }
         let reviewedIDs = Set(reviewed.map(\.id))
@@ -353,7 +354,7 @@ private struct ImpactSummaries {
                 || $0.target?.usr.map { reviewedIDs.contains(NodeID($0)) } == true
         }
         tests = reviewed.filter {
-            additionalTestRoots.contains($0.id) || reasons[$0.id]?.contains(where: \.isTestTargetRoot) == true
+            confirmedTestRoots.contains($0.id)
         }
             .map(SymbolQuery.Subject.init(node:))
         entryPoints = reviewed.filter { reasons[$0.id]?.contains(.entryPoint) == true }.map(SymbolQuery.Subject.init(node:))

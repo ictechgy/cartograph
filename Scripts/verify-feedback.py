@@ -41,7 +41,7 @@ def analyze(binary, root, output, label, command):
     return run([binary, *command, "--project", root, "--index-store", index(root)], root, output, label)
 
 
-def import_case(binary, root, output, label, visibility, strict):
+def import_case(binary, root, output, label, visibility, strict, scope="complete"):
     root.mkdir(parents=True)
     write(root, "Package.swift", '''// swift-tools-version: 6.0
 import PackageDescription
@@ -56,19 +56,34 @@ let package = Package(name: "Feedback", products: [.executable(name: "App", targ
     write(root, "Sources/Mid/Mid.swift", "import Lib\nimport Unused\npublic func midValue() -> Int { .magic }\n")
     write(root, "Sources/Mid/Qualified.swift", "import Lib\npublic func qualifiedValue() -> Int { Int.magic }\n")
     write(root, "Sources/App/main.swift", "import Mid\nprint(midValue(), qualifiedValue())\n")
+    if scope == "git-ignored":
+        run(["git", "-c", "core.hooksPath=/dev/null", "init", "-q"], root, output, label + "-git")
+        write(root, ".gitignore", "Sources/Lib/Lib.swift\n.build/\n")
+    elif scope == "explicit-filter":
+        write(root, "scope.yml", 'exclude:\n  - "Sources/Lib/**"\n')
     build = ["swift", "build"] + (["-Xswiftc", "-enable-upcoming-feature", "-Xswiftc", "MemberImportVisibility"] if visibility else [])
     run(build, root, output, label + "-before")
-    dead = json.loads(analyze(binary, root, output, label + "-dead", ["dead", "--report-format", "json"]).stdout)
+    project = root / "Sources/Mid" if scope == "outside-capture" else root
+    def scoped(command, suffix):
+        config = ["--config", root / "scope.yml"] if scope == "explicit-filter" else []
+        return run([binary, *command, "--project", project, "--index-store", index(root), *config],
+                   root, output, label + suffix)
+    dead = json.loads(scoped(["dead", "--report-format", "json"], "-dead").stdout)
     imports = [d for d in dead["diagnostics"] if d["ruleIdentifier"] == "unused-import"]
-    fixes = json.loads(analyze(binary, root, output, label + "-fix", ["fix", "--apply", "--format", "json"]).stdout)
+    fixes = json.loads(scoped(["fix", "--apply", "--format", "json"], "-fix").stdout)
     after = run(build, root, output, label + "-after", expected=None)
     lib_present = all("import Lib" in (root / ("Sources/Mid/" + name)).read_text()
                       for name in ["Mid.swift", "Qualified.swift"])
     unused_removed = "import Unused" not in (root / "Sources/Mid/Mid.swift").read_text()
     if strict:
-        assert lib_present and unused_removed and after.returncode == 0, (imports, fixes, after.stderr)
+        assert lib_present and after.returncode == 0, (imports, fixes, after.stderr)
+        if scope == "complete":
+            assert unused_removed, (imports, fixes)
+        else:
+            assert not unused_removed, "Unknown external extension ownership must suppress removal in this file"
     return {"id": "C-P0-2", "label": label, "visibility": visibility, "libImportPreserved": lib_present,
-            "unusedControlRemoved": unused_removed, "postFixBuildExit": after.returncode,
+            "unusedControlRemoved": unused_removed, "scope": scope,
+            "postFixBuildExit": after.returncode,
             "reproduced": not lib_present and after.returncode != 0}
 
 
@@ -163,6 +178,10 @@ def main():
             for visibility in [False, True]:
                 label = name + ("-visibility" if visibility else "-ordinary")
                 result["cases"].append(import_case(binary, output / label, output / "logs", label, visibility, strict))
+                for scope in ["outside-capture", "git-ignored", "explicit-filter"]:
+                    external = label + "-" + scope
+                    result["cases"].append(import_case(binary, output / external, output / "logs", external,
+                                                       visibility, strict, scope=scope))
             syntax = Path(__file__).resolve().parents[1] / ".build/checkouts/swift-syntax"
             result["cases"].append(macro_case(binary, output / "macro", output / "logs", name + "-macro", syntax, strict))
     finally:

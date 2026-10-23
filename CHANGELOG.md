@@ -5,19 +5,9 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.29.0] - Unreleased
 
-### Fixed
-
-- Import usage includes extension members' observed declaration modules, including `Int` extensions.
-  Missing source index units suppress import-removal candidates; parse-only fixes explicitly require a rebuild.
-- Compiler-observed macro references retain the macro independently of the annotated type's runtime reachability.
-- Source inventory respects Git ignore rules, tracked-file precedence and nested repository boundaries,
-  retaining explicit coverage uncertainty for excluded inputs.
-- Snapshot capture and comparison share an explicit bounded `--snapshot-max-mib` budget (default 128,
-  maximum 1024), also available through MCP and the Git capture helper. Compression remains unsupported.
-
-## [0.29.0] - 2026-10-22
+This is the unpublished 0.29.0 candidate. The latest published release remains 0.28.0.
 
 ### Added
 
@@ -42,6 +32,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   which skips the download, is rejected (exit 64).
 
 ### Fixed
+
+- Import usage includes extension members' observed declaration modules, including `Int` extensions.
+  Missing source index units suppress import-removal candidates; parse-only fixes explicitly require a rebuild.
+- Compiler-observed macro references retain the macro independently of the annotated type's runtime reachability.
+- Source inventory respects Git ignore rules, tracked-file precedence and nested repository boundaries,
+  retaining explicit coverage uncertainty for excluded inputs.
+- Snapshot capture and comparison share an explicit bounded `--snapshot-max-mib` budget (default 128,
+  maximum 1024), also available through MCP and the Git capture helper. Compression remains unsupported.
+- Preserve compiler-associatedtype witnesses with reachable-owner evidence; retain synthesized
+  Equatable/Hashable members only when their owner is reachable.
+- Attribute file/module reference edges to evidenced declaration sites, preserving uncertainty when
+  occurrence ownership is unavailable; keep semantic symbol/type graph ownership.
+- Preserve known Clang implementation unit modules and report unknown local Clang ownership.
 
 - Filter control (Cc) and format (Cf) characters, such as line feeds, carriage returns, ESC and
   U+202E, from human-readable output with the same `PrintableText` rule the machine reporters
@@ -1872,8 +1875,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.29.0...HEAD
-[0.29.0]: https://github.com/ictechgy/cartograph/compare/0.28.0...0.29.0
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.28.0...HEAD
+[0.29.0]: https://github.com/ictechgy/cartograph/compare/0.28.0...HEAD
 [0.28.0]: https://github.com/ictechgy/cartograph/compare/0.27.1...0.28.0
 [0.27.1]: https://github.com/ictechgy/cartograph/compare/0.27.0...0.27.1
 [0.27.0]: https://github.com/ictechgy/cartograph/compare/0.26.0...0.27.0

@@ -119,7 +119,8 @@ struct RawIndexStoreReader {
                     provider = parsed
                 }
                 let dependencyModule = dependency.module
-                let recordModule = dependencyModule.isEmpty && path.hasSuffix(".swift") ? module : dependencyModule
+                let recordModule = Self.recordModule(dependencyModule: dependencyModule,
+                                                     unitModule: module, sourcePath: path)
                 records.append(Record(
                     unit: unitName,
                     record: dependency.name,
@@ -188,6 +189,13 @@ struct RawIndexStoreReader {
             ancestor = parent
         }
         return path
+    }
+
+    /// 구현 파일은 컴파일 unit의 모듈을 사용할 수 있다. 공유 헤더는 소비자 모듈에 귀속하지 않는다.
+    static func recordModule(dependencyModule: String, unitModule: String, sourcePath: String) -> String {
+        if !dependencyModule.isEmpty { return dependencyModule }
+        let ownedImplementation = [".swift", ".m", ".mm"].contains { sourcePath.hasSuffix($0) }
+        return ownedImplementation ? unitModule : ""
     }
 
     private func canonicalDependencyPath(_ path: String, relativeTo workingDirectory: String) -> String {

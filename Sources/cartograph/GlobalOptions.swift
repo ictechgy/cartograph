@@ -64,7 +64,7 @@ struct GlobalOptions: ParsableArguments {
     @Flag(help: "Exit with a non-zero status when findings remain.")
     var strict: Bool = false
 
-    @Flag(help: "Suppress warnings on stderr.")
+    @Flag(help: "Suppress warnings and summarize known limitation notes; safety errors remain.")
     var quiet: Bool = false
 
     /// 설정 파일을 읽고 CLI 옵션을 덮어쓴 최종 설정.

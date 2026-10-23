@@ -1792,7 +1792,9 @@ no tool, so Cartograph errs toward keeping code.
 **`retain_equatable_properties` and `retain_hashable_properties` also default to on.** Periphery
 defaults both off. A stored property whose only reader is the synthesized `==` or `hash(into:)`
 leaves no index evidence, so keeping it is the conservative side; turn them off when you want such
-properties reported.
+properties reported. These two reasons apply only when the containing type is reachable.
+A nested, never-created `Equatable` or `Hashable` type cannot retain an otherwise unused outer
+type through its stored properties. `Codable` and explicit retention rules remain separate.
 
 Protocol requirements are handled by walking override relations in reverse: if a requirement is
 called, every implementation of it is reachable — but only once the implementing type itself is
@@ -2122,6 +2124,26 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Agents working in this repository should
 For the actual pinned IndexStoreDB CLI comparator, independent expected answers, setup costs and
 measurement limits, see the [reproducible comparison protocol](docs/evaluation/indexstore-cli-benchmark.md).
 CI preserves raw evidence; a synthetic fixture pass is not a universal performance or accuracy claim.
+
+## Workspace and local package coverage
+
+Build the workspace scheme and all relevant local-package targets, then pass that build's index
+with `--index-store`. Automatic selection uses store/unit-directory recency, not target coverage;
+when several candidates exist, output records the selected path, candidate count, and rule.
+Compare `unindexed-sources`, stale/missing paths, and known local targets before relying on absent
+callers or import-removal candidates. SDK/binary dependencies can legitimately have no local source
+units. PBXSourcesBuildPhase/SwiftPM target membership is not fully reconstructed; unresolved coverage
+continues to block narrowed `xcodebuild` selection. Run the whole suite when selectors cannot be verified.
+
+Git-ignored untracked sources and nested repositories are excluded from discovery; tracked files
+take precedence over ignore rules. Exclusions are reported and do not prove build completeness.
+Generated DI files can connect real callers. After reviewing their role, use
+`retention.retained_files: ["Sources/Generated/**"]` to retain declarations without discarding edges.
+A generated-looking name or a human-maintained design-token file is not automatically hidden.
+
+File/module graphs use uniquely evidenced occurrence ownership, including extensions declared
+outside the original type's module. Symbol/type graphs retain semantic ownership. Missing or
+conflicting occurrence ownership remains an explicit attribution limitation.
 
 ## License
 

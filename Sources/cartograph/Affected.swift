@@ -34,7 +34,7 @@ struct AffectedCommand: ParsableCommand {
     @Option(name: .customLong("depth"), help: "Maximum consumer depth from 1 through 128.")
     var depth: Int?
 
-    @Option(name: .customLong("limit"), help: "Maximum test declarations to report (default: 200).")
+    @Option(name: .customLong("limit"), help: "Maximum test declarations to report: 1...10000 (default: 200).")
     var limit: Int = 200
 
     @Option(name: .customLong("format"), help: "text, json or xcodebuild (-only-testing arguments).")

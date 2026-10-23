@@ -37,7 +37,7 @@ struct AffectedDocumentTests {
         builder.reference(from: "M", to: "P", kind: .call, path: "/p/Sources/M.swift")
         if includeTest {
             builder.symbol("T", name: "testProcess()", kind: .method, path: "/p/Tests/ATests.swift",
-                line: 1, attributes: [.unitTest])
+                line: 1, attributes: [.testFunction])
             builder.reference(from: "T", to: "M", kind: .call, path: "/p/Tests/ATests.swift")
         }
         if includeType {
@@ -103,7 +103,7 @@ struct AffectedDocumentTests {
             line: 2, parent: "Impl")
         builder.symbol("M", name: "middle()", kind: .function, path: "/p/Sources/M.swift", line: 1)
         builder.symbol("T", name: "testReq()", kind: .method, path: "/p/Tests/ATests.swift",
-            line: 1, attributes: [.unitTest])
+            line: 1, attributes: [.testFunction])
         builder.reference(from: "Impl.req", to: "Proto.req", kind: .overrides,
             path: "/p/Sources/Impl.swift")
         builder.reference(from: "M", to: "Proto.req", kind: .call, path: "/p/Sources/M.swift")
@@ -134,7 +134,7 @@ struct AffectedDocumentTests {
         builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift", line: 1)
         for index in 1...3 {
             builder.symbol("T\(index)", name: "test\(index)()", kind: .method,
-                path: "/p/Tests/ATests.swift", line: index, attributes: [.unitTest])
+                path: "/p/Tests/ATests.swift", line: index, attributes: [.testFunction])
             builder.reference(from: "T\(index)", to: "P", kind: .call,
                 path: "/p/Tests/ATests.swift")
         }
@@ -186,7 +186,7 @@ struct AffectedDocumentTests {
             path: "/p/Tests/ProcessTests.swift", line: 2, parent: "C", attributes: [.unitTest])
         builder.reference(from: "C.test", to: "P", kind: .call, path: "/p/Tests/ProcessTests.swift")
         builder.symbol("S", name: "processes()", kind: .function, module: "SuiteTests",
-            path: "/p/Tests/Suite.swift", line: 1, attributes: [.unitTest])
+            path: "/p/Tests/Suite.swift", line: 1, attributes: [.testFunction])
         builder.reference(from: "S", to: "P", kind: .call, path: "/p/Tests/Suite.swift")
         return provedSnapshot(builder, classes: ["C"], methods: ["C.test"])
     }
@@ -218,11 +218,12 @@ struct AffectedDocumentTests {
             for index in snapshot.symbols.indices { snapshot.symbols[index].compilerUnitTest = false }
         }
         let document = try service(snapshot).affectedDocument(symbols: ["P"])
-        #expect(document.tests.map(\.symbol.usr) == ["Runner.test"])
-        #expect(document.tests.allSatisfy { $0.xcodebuildIdentifier == nil })
-        #expect(document.xcodebuildSelection().output == "-only-testing:Production\n")
-        #expect(document.limitations.contains { $0.hasPrefix("uncertain-test-identity:") })
-        #expect(document.limitations.contains { $0.hasPrefix("test-target-assumption:") })
+        #expect(document.tests.isEmpty)
+        #expect(document.summary.testCount == 0)
+        #expect(document.uncertainTestCandidates?.map(\.symbol.usr) == ["Runner.test"])
+        #expect(document.xcodebuildSelection().output.isEmpty)
+        #expect(document.xcodebuildSelection().refusal?.contains("no verified test framework identity") == true)
+        #expect(document.limitations.contains { $0.hasPrefix("unverified-test-markers:") })
     }
 
     @Test("같은 모듈을 통째로 고르면 그 모듈의 개별 식별자는 싣지 않는다")
@@ -234,7 +235,7 @@ struct AffectedDocumentTests {
         builder.symbol("C.test", name: "testProcess()", kind: .method, path: "/p/Tests/A.swift", line: 2,
             parent: "C", attributes: [.unitTest])
         builder.symbol("F", name: "free()", kind: .function, path: "/p/Tests/B.swift", line: 1,
-            attributes: [.unitTest])
+            attributes: [.testFunction])
         builder.reference(from: "C.test", to: "P", kind: .call, path: "/p/Tests/A.swift")
         builder.reference(from: "F", to: "P", kind: .call, path: "/p/Tests/B.swift")
         let service = service(provedSnapshot(builder, classes: ["C"], methods: ["C.test"]))
@@ -251,7 +252,7 @@ struct AffectedDocumentTests {
         builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift", line: 1)
         for index in 1...2 {
             builder.symbol("T\(index)", name: "test\(index)()", kind: .method,
-                path: "/p/Tests/ATests.swift", line: index, attributes: [.unitTest])
+                path: "/p/Tests/ATests.swift", line: index, attributes: [.testFunction])
             builder.reference(from: "T\(index)", to: "P", kind: .call, path: "/p/Tests/ATests.swift")
         }
         let outcome = try service(builder.build()).affected(symbols: ["P"], limit: 1, format: "xcodebuild")
@@ -264,7 +265,7 @@ struct AffectedDocumentTests {
         var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
         builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift", line: 1)
         builder.symbol("T", name: "checks()", kind: .function, module: "", path: "/p/Tests/T.swift", line: 1,
-            attributes: [.unitTest])
+            attributes: [.testFunction])
         builder.reference(from: "T", to: "P", kind: .call, path: "/p/Tests/T.swift")
         let outcome = try service(builder.build()).affected(symbols: ["P"], format: "xcodebuild")
         #expect(outcome.output.isEmpty)
@@ -323,7 +324,7 @@ struct AffectedDocumentTests {
         builder.symbol("P", kind: .function)
         for index in 1...3 {
             builder.symbol("T\(index)", name: "testProcess()", kind: .method,
-                module: "Tests\(index)", path: "/p/Tests/T\(index).swift", attributes: [.unitTest])
+                module: "Tests\(index)", path: "/p/Tests/T\(index).swift", attributes: [.testFunction])
             builder.reference(from: "T\(index)", to: "P", kind: .call)
         }
         let document = try document(service(builder.build()), symbols: ["P"], limit: 1)
@@ -341,7 +342,7 @@ struct AffectedDocumentTests {
         builder.symbol("P", kind: .function)
         for id in ["z", "a", "m"] {
             builder.symbol(id, name: "testProcess()", kind: .method,
-                path: "/p/Tests/T.swift", line: 1, attributes: [.unitTest])
+                path: "/p/Tests/T.swift", line: 1, attributes: [.testFunction])
             builder.reference(from: id, to: "P", kind: .call)
         }
         let document = try document(service(builder.build()), symbols: ["P"])
@@ -363,9 +364,9 @@ struct AffectedDocumentTests {
         var builder = SnapshotBuilder(path: "/p/Sources/Screen.swift")
         builder.symbol("Screen", kind: .classType)
         builder.symbol("A", name: "testScreen()", kind: .method,
-            path: "/p/Tests/A.swift", attributes: [.unitTest])
+            path: "/p/Tests/A.swift", attributes: [.testFunction])
         builder.symbol("B", name: "testLookup()", kind: .method,
-            path: "/p/Tests/B.\(suffix)", attributes: [.unitTest])
+            path: "/p/Tests/B.\(suffix)", attributes: [.testFunction])
         builder.reference(from: "A", to: "Screen", kind: .reference)
         builder.reference(from: "B", to: "c:@F@NSClassFromString", kind: .call, path: "/p/Tests/B.\(suffix)")
         return builder.build()
@@ -566,7 +567,7 @@ struct AffectedDocumentTests {
         builder.symbol("Child", kind: .classType, module: "ChildTests", path: "/p/Tests/Child.swift")
         builder.reference(from: "Child", to: "Base", kind: .inheritance)
         builder.reference(from: "Base.run", to: "P", kind: .call)
-        let service = service(builder.build())
+        let service = service(provedSnapshot(builder, classes: ["Base"], methods: testMethod ? ["Base.run"] : []))
         let document = try service.affectedDocument(symbols: ["P"])
         #expect(Set(document.tests.compactMap(\.symbol.usr)) == [testMethod ? "Base.run" : "Base", "Child"])
         #expect(document.xcodebuildSelection().output == "-only-testing:BaseTests\n-only-testing:ChildTests\n")

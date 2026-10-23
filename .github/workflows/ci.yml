@@ -359,6 +359,21 @@ jobs:
           python3 Scripts/verify-coverage-inputs.py
           Scripts/coverage.sh
 
+      - name: Capture associatedtype compiler evidence
+        if: always()
+        run: >-
+          CARTOGRAPH_ASSOCIATED_WITNESS_EVIDENCE="$RUNNER_TEMP/associated-witness/raw-occurrences.json"
+          swift test --skip-build --enable-code-coverage --filter AssociatedTypeWitnessCompilerTests
+
+      - name: Preserve associatedtype compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: associated-witness-compiler
+          path: ${{ runner.temp }}/associated-witness/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Verify isolated impact expansion cost
         timeout-minutes: 3
         run: |
@@ -451,6 +466,55 @@ jobs:
           path: |
             ${{ runner.temp }}/cartograph-feedback/results.json
             ${{ runner.temp }}/cartograph-feedback/logs/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Verify test candidate classification
+        run: >-
+          python3 Scripts/verify-test-classification-feedback.py --candidate "$CARTOGRAPH"
+          --baseline "$RUNNER_TEMP/cartograph-feedback/release-0.28.0/cartograph"
+          --output "$RUNNER_TEMP/test-classification-feedback"
+
+      - name: Preserve test classification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-classification-feedback
+          path: ${{ runner.temp }}/test-classification-feedback/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Verify extension architecture ownership
+        run: |
+          python3 Scripts/verify-extension-architecture-contract.py
+          python3 Scripts/verify-extension-architecture.py --candidate "$CARTOGRAPH" \
+            --public-binary "$RUNNER_TEMP/cartograph-feedback/release-0.28.0/cartograph" \
+            --output "$RUNNER_TEMP/cartograph-extension-architecture"
+
+      - name: Preserve extension architecture evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: extension-architecture-feedback
+          path: |
+            ${{ runner.temp }}/cartograph-extension-architecture/results.json
+            ${{ runner.temp }}/cartograph-extension-architecture/logs/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Diagnose associatedtype witness feedback
+        run: |
+          python3 Scripts/verify-associated-witness-contract.py
+          python3 Scripts/verify-associated-witness-feedback.py --cartograph "$CARTOGRAPH" \
+            --baseline "$RUNNER_TEMP/cartograph-feedback/release-0.28.0/cartograph" \
+            --output "$RUNNER_TEMP/associated-witness-flow" --diagnose
+
+      - name: Preserve associatedtype flow evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: associated-witness-flow
+          path: ${{ runner.temp }}/associated-witness-flow/
           if-no-files-found: error
           retention-days: 14
 
@@ -553,3 +617,31 @@ jobs:
         with:
           name: dependency-graph
           path: build/
+
+  retention-feedback:
+    name: Measure synthesized-property retention on public projects
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select the newest Xcode
+        run: |
+          latest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          swift --version
+      - name: Measure exact paired sources and require manual review
+        run: |
+          python3 Scripts/verify-retention-feedback-contract.py
+          python3 Scripts/verify-retention-feedback.py --output "$RUNNER_TEMP/retention-feedback"
+      - name: Preserve retention measurements and review gate
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: retention-feedback
+          path: |
+            ${{ runner.temp }}/retention-feedback/results.json
+            ${{ runner.temp }}/retention-feedback/summary.md
+            ${{ runner.temp }}/retention-feedback/manual-review-template.json
+            ${{ runner.temp }}/retention-feedback/logs/
+          if-no-files-found: error
+          retention-days: 14

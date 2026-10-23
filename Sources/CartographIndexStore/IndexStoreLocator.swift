@@ -311,11 +311,25 @@ public struct IndexStoreLocator: Sendable {
         projectPath: String,
         derivedDataPath: String? = nil
     ) throws -> String {
+        try selection(explicitPath: explicitPath, projectPath: projectPath, derivedDataPath: derivedDataPath).path
+    }
+
+    /// 선택 당시의 후보 수와 규칙을 경로와 함께 보존한다. 최신 시각은 내용 완전성의 증거가 아니다.
+    public struct Selection: Sendable, Equatable {
+        public let path: String
+        public let candidateCount: Int
+        public let explicit: Bool
+    }
+
+    /// 기존 locate와 같은 선택을 하며 소비자가 후보 간 선택 이유를 기록할 수 있게 한다.
+    public func selection(
+        explicitPath: String?, projectPath: String, derivedDataPath: String? = nil
+    ) throws -> Selection {
         if let explicitPath {
             guard fileSystem.directoryExists(at: explicitPath) else {
                 throw CartographError.indexStoreNotFound(searchedPaths: [explicitPath])
             }
-            return explicitPath
+            return Selection(path: explicitPath, candidateCount: 1, explicit: true)
         }
 
         var candidates = projectCandidates(projectPath: projectPath)
@@ -358,7 +372,7 @@ public struct IndexStoreLocator: Sendable {
                 names: scan.search.names
             )
         }
-        return selected
+        return Selection(path: selected, candidateCount: existing.count, explicit: false)
     }
 
     /// 스토어가 마지막으로 쓰인 시각. 루트와 유닛 디렉터리(`v5/units`, `units`) 중 가장 늦은 시각이다.

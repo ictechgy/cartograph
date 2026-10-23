@@ -15,10 +15,10 @@ struct AutomaticRuntimeImpactTests {
         let typeLocation = CartographCore.SourceLocation(path: path, line: 10, column: 7)
         let snapshot = IndexSnapshot(symbols: [
             .init(usr: "load", name: "load()", kind: .function, module: "App",
-                location: .init(path: path, line: 1, column: 6), attributes: sourceIsTest ? [.unitTest] : []),
+                location: .init(path: path, line: 1, column: 6), attributes: sourceIsTest ? [.testFunction] : []),
             .init(usr: "screen", name: "Screen", kind: .classType, module: "App", location: typeLocation),
             .init(usr: "test", name: "testLoad()", kind: .function, module: "Tests",
-                location: .init(path: "/p/Tests/Load.swift", line: 1, column: 6), attributes: [.unitTest]),
+                location: .init(path: "/p/Tests/Load.swift", line: 1, column: 6), attributes: [.testFunction]),
         ], references: [
             .init(sourceUSR: "load", targetUSR: "c:@F@NSClassFromString", kind: .call,
                 location: .init(path: path, line: 2, column: 5)),

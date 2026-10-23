@@ -36,7 +36,7 @@ extension CartographService {
             + Self.automaticRuntimeLimitations(automatic)
         let requests = TraversalRootRequests(symbols: symbols, graph: graph)
         let closedWorld = Self.isClosedWorld(limitations)
-        let runtime = Self.automaticImpactDependencies(automatic) + XCTestLifecycleImpact(in: graph).dependencies
+        let runtime = Self.automaticImpactDependencies(automatic) + context.impactLifecycle().dependencies
         let generator = TraversalHopGenerator(graph: graph, direction: direction, closedWorld: closedWorld,
             runtimeDependencies: runtime)
         let result = MultiRootTraversal(generator: generator)
