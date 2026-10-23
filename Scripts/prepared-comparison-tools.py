@@ -344,28 +344,186 @@ def toolchain_identity():
             "developer": str(developer), "sdk": str(sdk)}
 
 
-def macho_loads(path, tools):
-    text = capture([tools["paths"]["otool"], "-L", str(path)])
+MACHO_DEPENDENCY = re.compile(r"\s+(.+) \(compatibility version [^,]+, current version [^)]+\)")
+MACHO_DIAGNOSTIC_LIMIT = 32 * 1024
+MACHO_DYLIB_COMMANDS = {"LC_ID_DYLIB", "LC_LOAD_DYLIB", "LC_LOAD_WEAK_DYLIB", "LC_REEXPORT_DYLIB",
+                        "LC_LAZY_LOAD_DYLIB", "LC_LOAD_UPWARD_DYLIB"}
+MACHO_VERSION = r"(?:n/a|[0-9]+\.[0-9]+\.[0-9]+)"
+
+
+class MachOParseError(ValueError):
+    def __init__(self, message, line=None):
+        super().__init__(message)
+        self.line = line
+
+
+def macho_require(condition, message, line=None):
+    if not condition:
+        raise MachOParseError(message, line)
+
+
+def macho_lines(text, path, architecture):
+    # 단일 명시 slice의 실제 입력 이름만 허용한다. 다른 fat header를 건너뛰지 않는다.
+    macho_require(len(text.encode("utf-8")) <= 8 * 1024 * 1024, "Mach-O text budget exceeded")
+    lines = text.split("\n")
+    for line in lines:
+        macho_require(all(ord(char) >= 32 or char == "\t" for char in line),
+                      "Control character in Mach-O output", line)
+    macho_require(lines[0] in (str(path) + ":", f"{path} (architecture {architecture}):"),
+                  "Unexpected selected Mach-O header", lines[0])
+    return lines[1:]
+
+
+def parse_macho_dependencies(text, path, architecture):
     dependencies = []
-    for line in text.splitlines()[1:]:
-        match = re.fullmatch(r"\s+(.+) \(compatibility version [^,]+, current version [^)]+\)", line)
-        require(match is not None, "Unparsed Mach-O dependency")
+    for line in macho_lines(text, path, architecture):
+        match = MACHO_DEPENDENCY.fullmatch(line)
+        macho_require(match is not None, "Unparsed Mach-O dependency", line)
         dependencies.append(match[1])
-    commands = capture([tools["paths"]["otool"], "-l", str(path)]).splitlines()
+    macho_require(len(dependencies) <= 128, "Mach-O dependency budget exceeded")
+    return dependencies
+
+
+def parse_macho_commands(text, path, architecture):
+    commands = macho_lines(text, path, architecture)
+    blocks = []
+    for line in commands:
+        match = re.fullmatch(r"Load command (\d+)", line)
+        if match:
+            macho_require(int(match[1]) == len(blocks), "Unexpected load command sequence", line)
+            blocks.append([])
+        else:
+            command = blocks[-1][0].strip().removeprefix("cmd ") if blocks and blocks[-1] else None
+            # 이 두 필드는 Apple/LLVM이 들여쓰기 없이 출력한다. 명령과 위치까지 고정한다.
+            compatibility = (command in MACHO_DYLIB_COMMANDS and len(blocks[-1]) == 5
+                             and re.fullmatch("compatibility version " + MACHO_VERSION, line))
+            note_owner = (command == "LC_NOTE" and len(blocks[-1]) == 2 and line.startswith("data_owner ")
+                          and len(line[len("data_owner "):].encode("utf-8")) <= 16)
+            macho_require(blocks and (line.startswith((" ", "\t")) or line == "Section"
+                                     or compatibility or note_owner),
+                          "Unparsed Mach-O load command line", line)
+            blocks[-1].append(line)
+    macho_require(blocks, "Missing Mach-O load commands")
     rpaths, install_id = [], None
-    for index, line in enumerate(commands):
-        if line.strip() == "cmd LC_RPATH":
-            require(index + 2 < len(commands), "Truncated LC_RPATH")
-            match = re.fullmatch(r"\s*path (.+) \(offset \d+\)", commands[index + 2])
-            require(match is not None, "Unparsed LC_RPATH")
+    for block in blocks:
+        macho_require(len(block) >= 2 and re.fullmatch(r"\s+cmd (?:LC_[A-Z0-9_]+|0x[0-9a-fA-F]+)", block[0])
+                      and re.fullmatch(r"\s+cmdsize [1-9][0-9]*", block[1]),
+                      "Truncated or unparsed Mach-O load command", block[-1] if block else None)
+        if block[0].strip() == "cmd LC_RPATH":
+            macho_require(len(block) == 3, "Truncated or unparsed LC_RPATH", block[-1])
+            match = re.fullmatch(r"\s+path (.+) \(offset \d+\)", block[2])
+            macho_require(match is not None, "Unparsed LC_RPATH", block[2])
             rpaths.append(match[1])
-        elif line.strip() == "cmd LC_ID_DYLIB":
-            require(index + 2 < len(commands), "Truncated LC_ID_DYLIB")
-            match = re.fullmatch(r"\s*name (.+) \(offset \d+\)", commands[index + 2])
-            require(match is not None and install_id is None, "Unparsed or duplicate dylib identity")
-            install_id = match[1]
-    require(len(dependencies) <= 128 and len(rpaths) <= 64, "Mach-O dependency budget exceeded")
+        elif block[0].strip().removeprefix("cmd ") in MACHO_DYLIB_COMMANDS:
+            macho_require(len(block) == 6, "Truncated or unparsed Mach-O dylib command", block[-1])
+            match = re.fullmatch(r"\s+name (.+) \(offset \d+\)", block[2])
+            macho_require(match is not None, "Unparsed dylib name", block[2])
+            timestamp = re.fullmatch(r"\s+time stamp [0-9]+ (?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) "
+                                     r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [ 0-9][0-9] "
+                                     r"[0-9]{2}:[0-9]{2}:[0-9]{2} [0-9]{4}", block[3])
+            options = re.fullmatch(r"\s+options (?:weak )?(?:re-export )?(?:upward )?(?:delay-init )?", block[3])
+            macho_require(timestamp or options, "Unparsed dylib timestamp or use options", block[3])
+            macho_require(re.fullmatch(r"\s+current version " + MACHO_VERSION, block[4]),
+                          "Unparsed dylib current version", block[4])
+            macho_require(re.fullmatch("compatibility version " + MACHO_VERSION, block[5]),
+                          "Unparsed dylib compatibility version", block[5])
+            if block[0].strip() == "cmd LC_ID_DYLIB":
+                macho_require(install_id is None, "Duplicate dylib identity", block[2])
+                install_id = match[1]
+        elif block[0].strip() == "cmd LC_NOTE":
+            macho_require(len(block) == 5 and block[2].startswith("data_owner ")
+                          and len(block[2][len("data_owner "):].encode("utf-8")) <= 16,
+                          "Truncated or unparsed LC_NOTE", block[-1])
+            for line, field in zip(block[3:], ("offset", "size")):
+                macho_require(re.fullmatch(r"\s+" + field + r" [0-9]+", line), "Unparsed LC_NOTE " + field, line)
+    macho_require(len(blocks) <= 1024 and len(rpaths) <= 64, "Mach-O load command budget exceeded")
+    return rpaths, install_id
+
+
+def observed_text(text, limit=512):
+    data = text.encode("utf-8", errors="replace")
+    return {"prefix": data[:limit].decode("utf-8", errors="replace"), "bytes": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(), "truncated": len(data) > limit}
+
+
+def otool_version(tools):
+    # Apple classic은 --version을 stderr에 쓴다. 진단만 추가하며 실패를 admission으로 바꾸지 않는다.
+    with tempfile.TemporaryDirectory(prefix="prepared-otool-version-") as directory:
+        row = base_module()._run_stream_capped([tools["paths"]["otool"], "--version"], Path.cwd(),
+                                               Path(directory) / "version", 10, 32768)
+        require(row.get("returncode") == 0 and not row.get("timed_out") and not row.get("output_limit_exceeded")
+                and row.get("owned_root_reaped") is True and not row.get("ownership_lost")
+                and not row.get("cleanup_errors"), "otool version unavailable within diagnostic bounds")
+        value = {}
+        for stream in ("stdout", "stderr"):
+            with Path(row[stream]).open("rb") as source:
+                body = source.read(32769)
+            require(len(body) <= 32768, "otool version output budget exceeded")
+            value[stream] = observed_text(body.decode("utf-8", errors="replace"))
+        return value
+
+
+def emit_macho_observation(path, tools, option, text, error=None):
+    # 출력 실패가 원래 제품 거부를 덮지 않도록 독립적으로 닫는다. 전체 행도 byte cap을 포함한다.
+    try:
+        try:
+            version = {"status": "observed", **otool_version(tools)}
+        except Exception as version_error:
+            version = {"status": "unavailable", "error_type": type(version_error).__name__}
+        lines = text.splitlines()
+        headers = []
+        for observed in lines:
+            if observed and not observed[0].isspace():
+                headers.append(observed_text(observed, 256))
+                if len(headers) == 4:
+                    break
+        offending = getattr(error, "line", None)
+        if error is None:
+            offending = next((line for line in lines[1:] if MACHO_DEPENDENCY.fullmatch(line) is None), None)
+        row = {"scope": "parser-diagnostic-only-not-runtime-admission", "option": option,
+               "path": observed_text(str(path)), "architecture": observed_text(tools["identity"]["architecture"], 32),
+               "otool_sha256": tools["identity"].get("tools_sha256", {}).get("otool"), "otool_version": version,
+               "output": {"bytes": len(text.encode("utf-8")), "sha256": hashlib.sha256(text.encode()).hexdigest()},
+               "headers": headers, "first_unparsed_line": observed_text(offending) if offending is not None else None,
+               "error_type": type(error).__name__ if error else None,
+               "reason": observed_text(str(error)) if error else None}
+        line = "PREPARED_MACHO " + json.dumps(row, sort_keys=True, ensure_ascii=True, allow_nan=False) + "\n"
+        require(len(line.encode("ascii")) <= MACHO_DIAGNOSTIC_LIMIT, "Mach-O diagnostic budget exceeded")
+        print(line, end="", flush=True)
+    except Exception:
+        # 진단만 거부되었음을 고정 문자열로 남기고 호출자의 원래 오류는 그대로 재전파한다.
+        try:
+            print('PREPARED_MACHO {"status":"diagnostic-refused"}', flush=True)
+        except Exception:
+            pass
+
+
+def macho_loads(path, tools):
+    architecture = tools["identity"]["architecture"]
+    require(architecture in ("arm64", "x86_64"), "Unsupported selected Mach-O architecture")
+    text, option = "", "-L"
+    try:
+        text = capture([tools["paths"]["otool"], "-arch", architecture, option, str(path)])
+        dependencies = parse_macho_dependencies(text, path, architecture)
+        option = "-l"
+        text = ""
+        text = capture([tools["paths"]["otool"], "-arch", architecture, option, str(path)])
+        rpaths, install_id = parse_macho_commands(text, path, architecture)
+    except Exception as error:
+        emit_macho_observation(path, tools, option, text, error)
+        raise
     return [name for name in dependencies if name != install_id], rpaths
+
+
+def preflight_macho(tools):
+    path = Path(tools["paths"]["libIndexStore"])
+    try:
+        default = capture([tools["paths"]["otool"], "-L", str(path)])
+        emit_macho_observation(path, tools, "default-L", default)
+    except Exception as error:
+        emit_macho_observation(path, tools, "default-L", "", error)
+    # 기본 호출 관측은 성공 증거가 아니다. 명시 slice 파싱이 실패하면 빌드 전에 멈춘다.
+    macho_loads(path, tools)
 
 
 def runtime_closure(binary, tools):
@@ -504,6 +662,7 @@ def prepare(args):
     tools = toolchain_identity()
     require(args.setup_timeout == (600 if args.role == "baseline" else 1500) and args.jobs == 3,
             "Frozen preparation budget/jobs differ")
+    preflight_macho(tools)
     package = checkout
     revision = action["checkout_commit"]
     extra_lock = None

@@ -5,6 +5,7 @@ import argparse
 import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -243,15 +244,188 @@ class PreparedToolsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Actual producer"):
             P.verify_preparation(bad)
 
+    def dylib_block(self, command="LC_ID_DYLIB", number=0, version="1.0.0", use_options=None,
+                    name="@rpath/libIndexStore.dylib"):
+        marker = "   time stamp 1 Thu Jan  1 00:00:01 1970" if use_options is None else "      options " + use_options
+        offset = 24 if use_options is None else 28
+        return (f"Load command {number}\n          cmd {command}\n      cmdsize 56\n"
+                f"         name {name} (offset {offset})\n" + marker +
+                f"\n      current version {version}\ncompatibility version {version}")
+
     def test_dylib_install_identity_is_not_a_recursive_dependency(self):
         outputs = ["libIndexStore.dylib:\n\t@rpath/libIndexStore.dylib (compatibility version 0.0.0, current version 0.0.0)\n"
                    "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1345.0.0)",
-                   "Load command 1\n          cmd LC_ID_DYLIB\n      cmdsize 56\n         name @rpath/libIndexStore.dylib (offset 24)\n"
-                   "Load command 2\n          cmd LC_RPATH\n      cmdsize 32\n         path @loader_path (offset 12)"]
-        with patch.object(P, "capture", side_effect=outputs):
-            deps, paths = P.macho_loads(Path("libIndexStore.dylib"), {"paths": {"otool": "/tool/otool"}})
+                   "libIndexStore.dylib:\n" + self.dylib_block() + "\n" +
+                   "Load command 1\n          cmd LC_RPATH\n      cmdsize 32\n         path @loader_path (offset 12)"]
+        with patch.object(P, "capture", side_effect=outputs) as capture:
+            deps, paths = P.macho_loads(Path("libIndexStore.dylib"),
+                                      {"paths": {"otool": "/tool/otool"}, "identity": {"architecture": "arm64"}})
         self.assertEqual(deps, ["/usr/lib/libSystem.B.dylib"])
         self.assertEqual(paths, ["@loader_path"])
+        self.assertEqual([call.args[0][1:4] for call in capture.call_args_list],
+                         [["-arch", "arm64", "-L"], ["-arch", "arm64", "-l"]])
+
+    def test_complete_official_dylib_variants_accept_only_their_positioned_version_field(self):
+        # Apple ofile_print.c print_dylib_command와 LLVM PrintDylibCommand의 전체 필드를 쓴다.
+        for command in sorted(P.MACHO_DYLIB_COMMANDS):
+            for version in ("1.0.0", "n/a"):
+                for options in (None, "", "weak re-export upward delay-init "):
+                    text = "tool:\n" + self.dylib_block(command, version=version, use_options=options)
+                    with self.subTest(command=command, version=version, options=options):
+                        self.assertEqual(P.parse_macho_commands(text, Path("tool"), "arm64"),
+                                         ([], "@rpath/libIndexStore.dylib" if command == "LC_ID_DYLIB" else None))
+        full = "tool:\n" + self.dylib_block()
+        bad = [full.rsplit("\n", 1)[0], full.replace("compatibility version", "unexpected version"),
+               full.replace("compatibility version", " compatibility version"),
+               full.replace("compatibility version 1.0.0", "compatibility version unknown"),
+               full.replace("current version 1.0.0", "current version unknown"),
+               full.replace("time stamp 1 Thu Jan  1 00:00:01 1970", "time stamp 1 garbage"),
+               full + "\ncompatibility version 1.0.0", full + "\n arbitrary extra field",
+               "tool:\n" + self.dylib_block().replace("LC_ID_DYLIB", "LC_UUID"),
+               "tool:\n" + self.dylib_block(use_options="unknown ")]
+        for text in bad:
+            with self.subTest(text=text), self.assertRaises(P.MachOParseError):
+                P.parse_macho_commands(text, Path("tool"), "arm64")
+
+    def test_complete_official_note_accepts_only_its_positioned_bounded_owner(self):
+        # Apple/LLVM LC_NOTE는 data_owner를 들여쓰기 없이 최대 16바이트로 출력한다.
+        for owner in ("", "build metadata", "sixteen-byte-own", "\u00e9" * 8):
+            text = ("tool:\nLoad command 0\n       cmd LC_NOTE\n   cmdsize 40\ndata_owner " + owner +
+                    "\n    offset 256\n      size 48")
+            with self.subTest(owner=owner):
+                self.assertEqual(P.parse_macho_commands(text, Path("tool"), "arm64"), ([], None))
+        text = "tool:\nLoad command 0\n       cmd LC_NOTE\n   cmdsize 40\ndata_owner build\n    offset 256\n      size 48"
+        bad = [text.rsplit("\n", 1)[0], text.replace("data_owner build", "data_owner " + "x" * 17),
+               text.replace("data_owner build", "data_owner " + "\u00e9" * 9),
+               text.replace("data_owner build", "unknown_owner build"),
+               text.replace("data_owner build", " data_owner build"),
+               text.replace("LC_NOTE", "LC_UUID"), text.replace("offset 256", "offset 256 (past end of file)"),
+               text.replace("size 48", "size nope"), text + "\ndata_owner other", text + "\n unknown extra"]
+        for value in bad:
+            with self.subTest(text=value), self.assertRaises(P.MachOParseError):
+                P.parse_macho_commands(value, Path("tool"), "arm64")
+
+    def test_full_dylib_note_and_rpath_blocks_keep_loaded_dependency_and_exclude_only_self(self):
+        path = Path("libIndexStore.dylib")
+        system = "/usr/lib/libSystem.B.dylib"
+        listed = (f"{path}:\n\t@rpath/libIndexStore.dylib (compatibility version 1.0.0, current version 1.0.0)\n"
+                  f"\t{system} (compatibility version 1.0.0, current version 1.0.0)")
+        commands = (f"{path}:\n" + self.dylib_block() + "\n" +
+                    self.dylib_block("LC_LOAD_DYLIB", 1, name=system) +
+                    "\nLoad command 2\n       cmd LC_NOTE\n   cmdsize 40\ndata_owner build metadata\n"
+                    "    offset 256\n      size 48\nLoad command 3\n          cmd LC_RPATH\n      cmdsize 32\n"
+                    "         path @loader_path (offset 12)")
+        tools = {"paths": {"otool": "/tool/otool"}, "identity": {"architecture": "arm64"}}
+        with patch.object(P, "capture", side_effect=[listed, commands]):
+            self.assertEqual(P.macho_loads(path, tools), ([system], ["@loader_path"]))
+
+    def test_explicit_slice_handles_official_thin_and_fat_headers_without_accepting_all_slices(self):
+        # Apple main.c의 architecture header와 LLVM의 단일 -arch header를 각각 보존한다.
+        path = Path("libIndexStore.dylib")
+        dependency = "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1345.0.0)"
+        commands = "Load command 0\n          cmd LC_RPATH\n      cmdsize 32\n         path @loader_path (offset 12)"
+        tools = {"paths": {"otool": "/tool/otool"}, "identity": {"architecture": "arm64"}}
+        fat = f"{path} (architecture x86_64):\n{dependency}\n{path} (architecture arm64):\n{dependency}"
+        with self.assertRaisesRegex(P.MachOParseError, "selected Mach-O header"):
+            P.parse_macho_dependencies(fat, path, "arm64")
+        for selected_header in (f"{path}:", f"{path} (architecture arm64):"):
+            def output(argv):
+                if "-arch" not in argv:
+                    return fat
+                self.assertEqual(argv[1:3], ["-arch", "arm64"])
+                return selected_header + "\n" + (dependency if "-L" in argv else commands)
+            with self.subTest(header=selected_header), patch.object(P, "capture", side_effect=output):
+                self.assertEqual(P.macho_loads(path, tools), (["/usr/lib/libSystem.B.dylib"], ["@loader_path"]))
+
+    def test_dependency_parser_rejects_unknown_truncated_mismatched_and_repeated_headers(self):
+        path = Path("tool")
+        row = "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1.0.0)"
+        bad = ["", row, "other:\n" + row, "tool (architecture x86_64):\n" + row,
+               "tool: is a truncated object file", "tool:\n" + row + "\ntool:\n" + row,
+               "tool:\n\tunknown", "tool:\n" + row[:-1], "tool:\n" + row + "\n", "tool:\n\x1b[31m" + row]
+        for text in bad:
+            with self.subTest(text=text), self.assertRaises(P.MachOParseError):
+                P.parse_macho_dependencies(text, path, "arm64")
+        # 기존 정규식이 이미 허용한 LLVM suffix는 이번 실패 원인으로 간주하지 않는다.
+        for suffix in ("weak", "reexport", "upward", "lazy"):
+            self.assertEqual(P.parse_macho_dependencies("tool:\n" + row[:-1] + ", " + suffix + ")", path, "arm64"),
+                             ["/usr/lib/libSystem.B.dylib"])
+
+    def test_load_commands_require_selected_header_and_complete_rpath_identity(self):
+        path = Path("tool")
+        rpath = "Load command 0\n          cmd LC_RPATH\n      cmdsize 32\n         path @loader_path (offset 12)"
+        bad = [rpath, "other:\n" + rpath, "tool (architecture x86_64):\n" + rpath,
+               "tool:", "tool:\n" + rpath.rsplit("\n", 1)[0], "tool:\n" + rpath + "\nunknown",
+               "tool:\n" + rpath + "\ntool (architecture x86_64):",
+               "tool:\n" + rpath.replace("Load command 0", "Load command 1"),
+               "tool:\nLoad command 0\n          cmd LC_ID_DYLIB\n      cmdsize 24"]
+        for text in bad:
+            with self.subTest(text=text), self.assertRaises(P.MachOParseError):
+                P.parse_macho_commands(text, path, "arm64")
+        identity = self.dylib_block()
+        with self.assertRaisesRegex(P.MachOParseError, "Duplicate dylib identity"):
+            P.parse_macho_commands("tool:\n" + identity + "\n" + identity.replace("Load command 0", "Load command 1"), path, "arm64")
+
+    def test_macho_failure_diagnostic_is_bounded_control_safe_and_preserves_original_error(self):
+        tools = {"paths": {"otool": "/tool/otool"}, "identity": {"architecture": "arm64", "tools_sha256": {"otool": "a" * 64}}}
+        text = "tool:\n\tbad\x1b[31m\x00" + "\U0001f600" * 100000
+        stream = io.StringIO()
+        with patch.object(P, "otool_version", return_value={"stderr": P.observed_text("Apple version\x1b[31m")}), \
+             contextlib.redirect_stdout(stream):
+            P.emit_macho_observation(Path("tool\n::error::fake"), tools, "-L", text,
+                                     P.MachOParseError("Unparsed Mach-O dependency", text.split("\n")[1]))
+        body = stream.getvalue()
+        self.assertLessEqual(len(body.encode("ascii")), P.MACHO_DIAGNOSTIC_LIMIT)
+        self.assertEqual(len(body.splitlines()), 1)
+        self.assertNotIn("\x1b", body); self.assertNotIn("\x00", body)
+        value = json.loads(body.removeprefix("PREPARED_MACHO "))
+        self.assertEqual(value["otool_sha256"], "a" * 64)
+        self.assertTrue(value["first_unparsed_line"]["truncated"])
+        self.assertIn("\\n", body)
+        with patch.object(P, "capture", return_value="tool:\n\tbad"), \
+             patch.object(P, "otool_version", side_effect=OSError("version failed")), \
+             patch("builtins.print", side_effect=OSError("closed log pipe")), \
+             self.assertRaisesRegex(P.MachOParseError, "Unparsed Mach-O dependency"):
+            P.macho_loads(Path("tool"), tools)
+
+    def test_otool_version_keeps_stderr_and_uses_its_own_bounded_supervisor(self):
+        def run(argv, cwd, stem, timeout, cap):
+            self.assertEqual(argv, ["/tool/otool", "--version"])
+            self.assertEqual((timeout, cap), (10, 32768))
+            stdout, stderr = stem.with_suffix(".stdout"), stem.with_suffix(".stderr")
+            stdout.write_bytes(b""); stderr.write_bytes(b"otool(1): Apple Inc. version fixture\n")
+            return {"returncode": 0, "owned_root_reaped": True, "stdout": str(stdout), "stderr": str(stderr)}
+        with patch.object(P, "base_module", return_value=types.SimpleNamespace(_run_stream_capped=run)):
+            result = P.otool_version({"paths": {"otool": "/tool/otool"}})
+        self.assertIn("Apple Inc. version fixture", result["stderr"]["prefix"])
+        self.assertEqual(result["stdout"]["bytes"], 0)
+
+    def test_default_headers_are_diagnostic_only_and_selected_preflight_precedes_acquisition(self):
+        tools = {"paths": {"otool": "/tool/otool", "libIndexStore": "libIndexStore.dylib"},
+                 "identity": {"architecture": "arm64"}}
+        dep = "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1.0.0)"
+        fat = "libIndexStore.dylib (architecture x86_64):\n" + dep + "\nlibIndexStore.dylib (architecture arm64):\n" + dep
+        stream = io.StringIO()
+        with patch.object(P, "capture", return_value=fat), patch.object(P, "macho_loads") as selected, \
+             patch.object(P, "otool_version", return_value={}), contextlib.redirect_stdout(stream):
+            P.preflight_macho(tools)
+        selected.assert_called_once_with(Path("libIndexStore.dylib"), tools)
+        row = json.loads(stream.getvalue().removeprefix("PREPARED_MACHO "))
+        self.assertEqual(len(row["headers"]), 2)
+        self.assertEqual(row["first_unparsed_line"]["prefix"], "libIndexStore.dylib (architecture arm64):")
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            args = argparse.Namespace(checkout=root, output=root / "output", evidence=root / "evidence",
+                                      role="baseline", setup_timeout=600, jobs=3)
+            fake_base = types.SimpleNamespace(run=unittest.mock.Mock())
+            with patch.object(P, "base_module", return_value=fake_base), patch.object(P, "phase_progress"), \
+                 patch.object(P, "binding", return_value={"checkout_commit": "a" * 40}), \
+                 patch.object(P, "toolchain_identity", return_value=tools), patch.object(P, "acquire") as acquire, \
+                 patch.object(P, "preflight_macho", side_effect=P.MachOParseError("fixture preflight refusal")), \
+                 self.assertRaisesRegex(P.MachOParseError, "fixture preflight refusal"):
+                P.prepare(args)
+            acquire.assert_not_called(); fake_base.run.assert_not_called()
+            self.assertFalse((args.output / "manifest.json").exists())
 
     def test_runtime_closure_keeps_os_build_separate_and_rejects_unknown_libraries(self):
         with tempfile.TemporaryDirectory() as folder:

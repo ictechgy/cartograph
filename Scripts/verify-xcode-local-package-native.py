@@ -144,6 +144,37 @@ def record_scope_observation(document, receipt):
     return emit_bounded_observation("SCOPE_OBSERVATION", report)
 
 
+def record_selector_observation(document, selectors):
+    """Expose actual fixture selectors and test identities; never change their acceptance gate."""
+    report = {"status": "observed", "limitation": "Public fixture diagnostic only; selector expectations are unchanged."}
+    try:
+        require(isinstance(selectors, list) and len(selectors) <= 1000
+                and all(isinstance(value, str) and len(value) <= 4096 for value in selectors),
+                "Selector diagnostic argument budget/schema exceeded")
+        mapping = document.get("targetScope", {}).get("xcode", {}).get("selectorTargetByModule", {})
+        require(isinstance(mapping, dict) and all(isinstance(key, str) and isinstance(value, str)
+                for key, value in mapping.items()), "Selector diagnostic mapping is malformed")
+        report["arguments"] = selectors
+        for key in ("tests", "uncertainTestCandidates"):
+            rows = document.get(key) or []
+            require(isinstance(rows, list) and len(rows) <= 1000, "Selector diagnostic test budget exceeded")
+            observed = []
+            for row in rows:
+                require(isinstance(row, dict) and isinstance(row.get("symbol"), dict),
+                        "Selector diagnostic test identity is malformed")
+                symbol = {name: row["symbol"].get(name) for name in ("usr", "name", "qualifiedName", "module", "kind")}
+                identifier = row.get("xcodebuildIdentifier")
+                require(all(value is None or (isinstance(value, str) and len(value) <= 4096)
+                            for value in [*symbol.values(), identifier]), "Selector diagnostic identity field is malformed")
+                observed.append({"symbol": symbol, "blueprint": mapping.get(symbol["module"]),
+                                 "xcodebuildIdentifier": identifier})
+            report[key] = observed
+    except Exception as error:
+        report = {"status": "diagnostic-refused", "reason": type(error).__name__ + ": " + str(error),
+                  "limitation": "Original selector assertion remains authoritative."}
+    return emit_bounded_observation("SELECTOR_OBSERVATION", report)
+
+
 def test_run_targets(value):
     configurations = value.get("TestConfigurations")
     if configurations is not None:
@@ -309,6 +340,7 @@ def verify(binary, output):
             product_root + "/Debug/" + name for name in ("CoreKit.framework", "RunnableChecks.xctest", "OtherRunnable.xctest")},
         "Actual xctestrun does not match both selected native test targets and their closure products")
     selectors = invoke("candidate-selectors", "xcodebuild").splitlines()
+    record_selector_observation(document, selectors)
     require(selectors == ["-only-testing:ChecksBlueprint"], "Expected honest whole-target selector fallback")
     controls = []
     # Rehash the edited artifact in the receipt so product freshness alone cannot

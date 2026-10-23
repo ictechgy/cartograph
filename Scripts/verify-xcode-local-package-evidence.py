@@ -24,6 +24,40 @@ NATIVE_SPEC.loader.exec_module(NATIVE)
 
 
 class TestExecutionTests(unittest.TestCase):
+    def test_selector_observation_preserves_exact_arguments_and_compiler_identity(self):
+        document = {"tests": [{"symbol": {"usr": "s:test", "qualifiedName": "ChangedTests.testChanged()",
+                    "name": "testChanged()", "module": "ChecksModule", "kind": "method", "body": "not printed"},
+                    "xcodebuildIdentifier": "ChecksModule/ChangedTests/testChanged"}],
+                    "uncertainTestCandidates": [{"symbol": {"module": "OtherModule", "name": "testMaybe"}}],
+                    "targetScope": {"xcode": {"selectorTargetByModule": {
+                        "ChecksModule": "ChecksBlueprint", "OtherModule": "OtherBlueprint"}}}}
+        selectors = ["-only-testing:ChecksBlueprint/ChangedTests/testChanged", "unexpected\u001bargument"]
+        before = copy.deepcopy((document, selectors))
+        with mock.patch("builtins.print") as printer:
+            report = NATIVE.record_selector_observation(document, selectors)
+        self.assertEqual(report["arguments"], selectors)
+        self.assertEqual(report["tests"][0]["blueprint"], "ChecksBlueprint")
+        self.assertEqual(report["tests"][0]["symbol"]["qualifiedName"], "ChangedTests.testChanged()")
+        self.assertEqual(report["tests"][0]["xcodebuildIdentifier"], "ChecksModule/ChangedTests/testChanged")
+        self.assertIsNone(report["uncertainTestCandidates"][0]["xcodebuildIdentifier"])
+        self.assertEqual((document, selectors), before)
+        encoded = printer.call_args.args[0]
+        self.assertNotIn("\u001b", encoded)
+        self.assertNotIn("not printed", encoded)
+        self.assertEqual(json.loads(encoded.removeprefix("SELECTOR_OBSERVATION ")), report)
+        with self.assertRaisesRegex(RuntimeError, "original selector assertion"):
+            NATIVE.require(selectors == ["-only-testing:ChecksBlueprint"], "original selector assertion")
+
+    def test_selector_observation_refuses_schema_and_bounds_output_without_replacing_failure(self):
+        with mock.patch("builtins.print", side_effect=BrokenPipeError("closed")):
+            report = NATIVE.record_selector_observation({"tests": [{"symbol": {"module": b"invalid"}}]}, [])
+        self.assertEqual(report["status"], "diagnostic-refused")
+        with mock.patch("builtins.print") as printer:
+            report = NATIVE.record_selector_observation({"tests": []}, ["x" * 4096] * 30)
+        self.assertEqual(report["status"], "diagnostic-output-budget-exceeded")
+        self.assertLess(len(printer.call_args.args[0]), 64 * 1024)
+        self.assertEqual(len(report["sha256"]), 64)
+
     def test_test_run_observation_reads_actual_dependencies_and_limits_printed_fields(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "fixture.xctestrun"
