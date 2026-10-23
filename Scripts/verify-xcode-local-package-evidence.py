@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Portable byte/identity proof controls; synthetic files do not claim native compilation."""
 import copy
+import datetime
 import importlib.util
 import json
 import os
 import contextlib
+import hashlib
 from pathlib import Path
+import plistlib
 import shlex
 import tempfile
 import unittest
@@ -21,6 +24,59 @@ NATIVE_SPEC.loader.exec_module(NATIVE)
 
 
 class TestExecutionTests(unittest.TestCase):
+    def test_test_run_observation_reads_actual_dependencies_and_limits_printed_fields(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "fixture.xctestrun"
+            row = {"BlueprintName": "Checks", "TestBundlePath": "__TESTROOT__/Checks.xctest",
+                   "DependentProductPaths": ["__TESTROOT__/ArithmeticCore.o"], "OtherMetadata": "not printed"}
+            data = plistlib.dumps({"TestConfigurations": [{"TestTargets": [row]}]})
+            path.write_bytes(data)
+            receipt = {"testRunPath": str(path), "testRunSHA256": "old-hash",
+                       "localPackage": {"aggregate": {"output": "/actual/ArithmeticCore.o"}},
+                       "products": {"do-not-infer-this-path": "ignored"}}
+            with mock.patch("builtins.print") as printer:
+                report = NATIVE.record_test_run_observation(receipt)
+            self.assertEqual(report["status"], "observed")
+            self.assertEqual(report["testRunSHA256"], hashlib.sha256(data).hexdigest())
+            self.assertEqual(report["capturedTestRunSHA256"], "old-hash")
+            self.assertEqual(report["testTargets"][0]["DependentProductPaths"], row["DependentProductPaths"])
+            encoded = printer.call_args.args[0]
+            self.assertNotIn("not printed", encoded)
+            self.assertNotIn("do-not-infer-this-path", encoded)
+            self.assertEqual(json.loads(encoded.removeprefix("TEST_RUN_OBSERVATION ")), report)
+            del row["DependentProductPaths"]
+            path.write_bytes(plistlib.dumps({"TestConfigurations": [{"TestTargets": [row]}]}))
+            with mock.patch("builtins.print"):
+                missing = NATIVE.record_test_run_observation(receipt)
+            self.assertEqual(missing["status"], "observed")
+            self.assertIsNone(missing["testTargets"][0]["DependentProductPaths"])
+
+    def test_test_run_observation_keeps_malformed_budget_and_closed_pipe_diagnostic_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "fixture.xctestrun"
+            receipt = {"testRunPath": str(path), "testRunSHA256": "hash",
+                       "localPackage": {"aggregate": {"output": "/aggregate.o"}}}
+            malformed = [b"not a plist", plistlib.dumps({"TestConfigurations": []}), b"x" * (8 * 1024 * 1024 + 1)]
+            for invalid in (b"plist data", datetime.datetime(2026, 10, 23)):
+                for key in ("BlueprintName", "TestBundlePath", "DependentProductPaths"):
+                    row = {"BlueprintName": "Checks", "TestBundlePath": "__TESTROOT__/Checks.xctest",
+                           "DependentProductPaths": ["__TESTROOT__/ArithmeticCore.o"]}
+                    row[key] = [invalid] if key == "DependentProductPaths" else invalid
+                    malformed.append(plistlib.dumps({"TestConfigurations": [{"TestTargets": [row]}]}))
+            for data in malformed:
+                path.write_bytes(data)
+                with mock.patch("builtins.print", side_effect=BrokenPipeError("closed")):
+                    report = NATIVE.record_test_run_observation(receipt)
+                self.assertEqual(report["status"], "diagnostic-refused")
+            path.write_bytes(plistlib.dumps({"TestConfigurations": [{"TestTargets": [{
+                "BlueprintName": "Checks", "TestBundlePath": "__TESTROOT__/Checks.xctest",
+                "DependentProductPaths": ["x" * (64 * 1024)]}]}]}))
+            with mock.patch("builtins.print"):
+                report = NATIVE.record_test_run_observation(receipt)
+            self.assertEqual(report["status"], "diagnostic-output-budget-exceeded")
+            with self.assertRaisesRegex(RuntimeError, "original product gate"):
+                NATIVE.require(False, "original product gate")
+
     def test_scope_diagnostic_preserves_refusal_and_escapes_controls(self):
         document = {"targetScope": {"evidenceStatus": "unknown", "limitations": ["bad\u001b input"]},
                     "limitations": ["incomplete"], "unusedBody": "not printed"}

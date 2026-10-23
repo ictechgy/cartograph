@@ -25,6 +25,23 @@ struct XcodeLocalPackageEvidenceTests {
             var value = base.receipt["localPackage"] as! [String: Any]
             change(&value); base.receipt["localPackage"] = value; try base.write()
         }
+        mutating func testRunDependency(_ dependency: String) throws {
+            let path = base.receipt["testRunPath"] as! String
+            var value = try PropertyListSerialization.propertyList(from: base.fs.readData(at: path), format: nil) as! [String: Any]
+            var configurations = value["TestConfigurations"] as! [[String: Any]]
+            var rows = configurations[0]["TestTargets"] as! [[String: Any]]
+            for i in rows.indices {
+                rows[i]["DependentProductPaths"] = ["__TESTROOT__/Debug/CoreKit.framework", rows[i]["TestBundlePath"]!, dependency]
+            }
+            configurations[0]["TestTargets"] = rows; value["TestConfigurations"] = configurations
+            let bytes = try PropertyListSerialization.data(fromPropertyList: value, format: .xml, options: 0)
+            try base.fs.write(bytes, to: path)
+            let digest = TargetScopeStore.digest(bytes)
+            base.receipt["testRunSHA256"] = digest
+            var products = base.receipt["products"] as! [String: String]
+            products[path] = digest; base.receipt["products"] = products
+            try base.write()
+        }
     }
 
     func fixture() throws -> Fixture {
@@ -129,6 +146,59 @@ struct XcodeLocalPackageEvidenceTests {
         let document = try fixture.base.service.affectedDocument(files: [fixture.source], targetScopeEvidencePath: "/p/scope.json")
         #expect(document.targetScope?.evidenceStatus == "unknown")
         #expect(document.xcodebuildSelection().output.isEmpty)
+    }
+
+    @Test("xctestrun은 전체 proof가 검증한 package aggregate만 native closure와 함께 허용한다", arguments: [false, true])
+    func admitsVerifiedPackageTestDependency(useTestRootMacro: Bool) throws {
+        var fixture = try fixture()
+        let dependency = useTestRootMacro
+            ? fixture.aggregate.replacingOccurrences(of: "/capture/DerivedData/Build/Products", with: "__TESTROOT__")
+            : fixture.aggregate
+        try fixture.testRunDependency(dependency)
+        let scope = fixture.scope()
+        #expect(scope.evidenceStatus == "matched-capture")
+        #expect(scope.xcode?.selectionStatus == "review-candidates")
+        #expect(scope.xcode?.selectedSourcePaths.contains("Packages/LocalMath/Sources/ArithmeticCore/Math.swift") == true)
+    }
+
+    @Test("캡처된 무관 product와 경로 치환 및 stale 또는 중복 package proof는 dependency로 허용하지 않는다",
+        arguments: ["captured-unrelated", "outside", "path-substitution", "stale-aggregate", "duplicate-consumer"])
+    func rejectsUnprovedPackageTestDependency(kind: String) throws {
+        var fixture = try fixture()
+        var dependency = fixture.aggregate
+        if kind == "captured-unrelated" {
+            dependency = "/capture/DerivedData/Build/Products/Debug/Unrelated.o"
+            let bytes = Data("captured but no selected contribution".utf8)
+            try fixture.base.fs.write(bytes, to: dependency)
+            var products = fixture.base.receipt["products"] as! [String: String]
+            products[dependency] = TargetScopeStore.digest(bytes)
+            fixture.base.receipt["products"] = products
+        } else if kind == "outside" { dependency = "/outside/ArithmeticCore.o" }
+        else if kind == "path-substitution" { dependency = fixture.aggregate.replacingOccurrences(of: "/Debug/", with: "/Debug/../Debug/") }
+        else if kind == "stale-aggregate" { try fixture.base.fs.write(Data("changed bytes".utf8), to: fixture.aggregate) }
+        else {
+            try fixture.changePackage { package in
+                let consumers = package["consumers"] as! [String]
+                package["consumers"] = consumers + consumers
+            }
+        }
+        try fixture.testRunDependency(dependency)
+        #expect(fixture.scope().evidenceStatus == "unknown")
+    }
+
+    @Test("실제 aggregate 바이트가 있어도 선택되지 않은 native 소비자만으로 package를 허용하지 않는다")
+    func selectedConsumerIsRequiredForPackageDependency() throws {
+        let fixture = try fixture(), package = try fixture.package
+        let data = try fixture.base.fs.readData(at: "/p/Scope.xcodeproj/project.pbxproj")
+        let project = try XcodeProjectMembership(data: data, root: "/p", localPackage: package.declaration)
+        let other = fixture.base.targets.first { $0.value.name == "OtherBlueprint" }!.key
+        let nativeProducts = Dictionary(uniqueKeysWithValues: package.links.map { ($0.targetID, $0.link.output) })
+        #expect(throws: (any Error).self) {
+            try package.validate(root: "/p", buildRoot: "/capture/DerivedData/Build", architecture: "arm64",
+                project: project, closure: [other], products: fixture.base.receipt["products"] as! [String: String],
+                nativeProducts: nativeProducts, nativeModules: ["CoreKit", "ChecksModule", "OtherModule", "UnbuiltModule"],
+                fileSystem: fixture.base.fs)
+        }
     }
 
     @Test("기존 v1은 package가 없는 입력을 유지하고 v2 package 누락 및 v1 package 추가는 거부한다", arguments: [1, 2, 99])

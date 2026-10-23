@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import shutil
 import sys
@@ -119,23 +120,64 @@ def record_generated_metadata(project, output, phase):
     return report
 
 
+def emit_bounded_observation(prefix, report):
+    """Bound the ASCII JSON payload; the fixed prefix is additional diagnostic text."""
+    encoded = json.dumps(report, ensure_ascii=True, sort_keys=True)
+    if len(encoded) > 64 * 1024:
+        report = {"status": "diagnostic-output-budget-exceeded", "bytes": len(encoded),
+                  "sha256": hashlib.sha256(encoded.encode("ascii")).hexdigest(),
+                  "limitation": "Read the captured fixture artifacts; the product gate is unchanged."}
+        encoded = json.dumps(report, ensure_ascii=True, sort_keys=True)
+    try:
+        print(prefix + " " + encoded, flush=True)
+    except OSError:
+        pass  # The original product assertion must remain the failure.
+    return report
+
+
 def record_scope_observation(document, receipt):
     """Expose bounded public-fixture refusal reasons without changing any product gate."""
     report = {"status": "observed", "targetScope": document.get("targetScope"),
               "limitations": document.get("limitations"),
               "receipt": {key: receipt.get(key) for key in ("version", "inputFingerprint", "selectedTargetIDs")},
               "limitation": "Public synthetic fixture diagnostic only; capture success does not certify selector safety."}
-    encoded = json.dumps(report, ensure_ascii=True, sort_keys=True)
-    if len(encoded) > 64 * 1024:
-        report = {"status": "diagnostic-output-budget-exceeded", "bytes": len(encoded),
-                  "sha256": hashlib.sha256(encoded.encode("ascii")).hexdigest(),
-                  "limitation": "Read candidate-json.stdout in the artifact; the product gate is unchanged."}
-        encoded = json.dumps(report, ensure_ascii=True, sort_keys=True)
+    return emit_bounded_observation("SCOPE_OBSERVATION", report)
+
+
+def test_run_targets(value):
+    configurations = value.get("TestConfigurations")
+    if configurations is not None:
+        require(isinstance(configurations, list) and len(configurations) == 1,
+                "Fixture observation requires one test-run configuration")
+        rows = configurations[0].get("TestTargets")
+    else:
+        rows = [row for key, row in value.items() if not key.startswith("__") and isinstance(row, dict)]
+    require(isinstance(rows, list) and len(rows) <= 1000 and all(isinstance(row, dict) for row in rows),
+            "Fixture test-run target observation budget/schema exceeded")
+    return rows
+
+
+def record_test_run_observation(receipt):
+    """Show actual dependency identities, not receipt product membership as a substitute."""
+    report = {"status": "observed", "limitation": "Public fixture observation only; no dependency admission implied."}
     try:
-        print("SCOPE_OBSERVATION " + encoded, flush=True)
-    except OSError:
-        pass  # The original product assertion must remain the failure.
-    return report
+        data = SCOPE.bounded(Path(receipt["testRunPath"]), 8 * 1024 * 1024)
+        rows = test_run_targets(plistlib.loads(data))
+        for row in rows:
+            require(all(isinstance(row.get(key), str) for key in ("BlueprintName", "TestBundlePath")),
+                    "Fixture test-run identity fields are not strings")
+            paths = row.get("DependentProductPaths")
+            require(paths is None or (isinstance(paths, list) and len(paths) <= 1000
+                    and all(isinstance(path, str) for path in paths)),
+                    "Fixture test-run dependency fields are not bounded string paths")
+        report.update(testRunSHA256=hashlib.sha256(data).hexdigest(),
+                      capturedTestRunSHA256=receipt["testRunSHA256"],
+                      aggregateOutput=receipt["localPackage"]["aggregate"]["output"],
+                      testTargets=[{key: row.get(key) for key in
+                          ("BlueprintName", "TestBundlePath", "DependentProductPaths")} for row in rows])
+    except Exception as error:
+        report.update(status="diagnostic-refused", reason=type(error).__name__ + ": " + str(error))
+    return emit_bounded_observation("TEST_RUN_OBSERVATION", report)
 
 
 def mcp_worker(binary, output):
@@ -226,6 +268,11 @@ def verify(binary, output):
     require(receipt["version"] == 2 and receipt["localPackage"]["product"] == "ArithmeticProduct"
             and receipt["localPackage"]["module"] == "ArithmeticCore", "Package/product identities were lost")
     package = receipt["localPackage"]
+    dependencies = record_test_run_observation(receipt)
+    try:
+        SCOPE.save(output / "test-run-observation.json", dependencies)
+    except OSError:
+        pass  # Diagnostic persistence must not replace the original product assertion.
     require(package["generatedMetadataOrigin"] == "capture-created"
             and {p: value for p, value in package["inventory"].items()
                  if p == ".swiftpm" or p.startswith(".swiftpm/")} == {
@@ -253,9 +300,53 @@ def verify(binary, output):
     require(scope["xcode"]["selectorTargetByModule"] == {"ChecksModule": "ChecksBlueprint"}
             and scope["xcode"]["testBundleByModule"] == {"ChecksModule": "RunnableChecks.xctest"},
             "Blueprint, compiler module and bundle identities were conflated")
+    product_root = str(Path(receipt["testRunPath"]).parent)
+    require(dependencies["status"] == "observed" and package["aggregate"]["output"] in {
+        path.replace("__TESTROOT__", product_root) for row in dependencies["testTargets"]
+        for path in (row.get("DependentProductPaths") or [])},
+        "Actual xctestrun did not exercise the package aggregate dependency boundary")
     selectors = invoke("candidate-selectors", "xcodebuild").splitlines()
     require(selectors == ["-only-testing:ChecksBlueprint"], "Expected honest whole-target selector fallback")
     controls = []
+    # Rehash the edited artifact in the receipt so product freshness alone cannot
+    # explain rejection: only selected native/package dependency proof may admit it.
+    test_run_path = Path(receipt["testRunPath"])
+    test_run_bytes, test_run_stamp = test_run_path.read_bytes(), test_run_path.stat()
+    receipt_bytes = receipt_path.read_bytes()
+    unrelated = test_run_path.parent / "Debug/FixtureUnrelatedDependency.o"
+    require(not unrelated.exists(), "Negative-control product already exists")
+    for label in ("dependency-path-substitution", "dependency-captured-unrelated"):
+        changed = json.loads(receipt_bytes)
+        value = plistlib.loads(test_run_bytes)
+        target = test_run_targets(value)[0]
+        if label == "dependency-path-substitution":
+            dependency = package["aggregate"]["output"].replace("/Debug/", "/Debug/../Debug/")
+            require(dependency != package["aggregate"]["output"], "Expected Debug aggregate fixture path")
+        else:
+            dependency = str(unrelated)
+            unrelated.write_bytes(b"captured bytes without selected package contribution\n")
+            changed["products"][dependency] = hashlib.sha256(unrelated.read_bytes()).hexdigest()
+        try:
+            target["DependentProductPaths"] = target["DependentProductPaths"] + [dependency]
+            new_bytes = plistlib.dumps(value)
+            test_run_path.write_bytes(new_bytes)
+            os.utime(test_run_path, ns=(test_run_stamp.st_atime_ns, test_run_stamp.st_mtime_ns))
+            digest = hashlib.sha256(new_bytes).hexdigest()
+            changed["testRunSHA256"] = digest
+            changed["products"][str(test_run_path)] = digest
+            SCOPE.save(receipt_path, changed)
+            document = invoke(label + "-json")
+            require(document["targetScope"]["evidenceStatus"] == "unknown"
+                    and "Test-run dependency products are outside the verified target closure." in json.dumps(document),
+                    "Negative dependency failed for a different reason")
+            require(invoke(label, "xcodebuild", 2) == "", "Unproved dependency emitted selectors")
+        finally:
+            test_run_path.write_bytes(test_run_bytes)
+            os.utime(test_run_path, ns=(test_run_stamp.st_atime_ns, test_run_stamp.st_mtime_ns))
+            receipt_path.write_bytes(receipt_bytes)
+            if label == "dependency-captured-unrelated":
+                unrelated.unlink()
+        controls.append(label)
     for label, path, append in [
         ("source-bytes", project / "Packages/LocalMath/Sources/ArithmeticCore/Math.swift", b"\n// changed\n"),
         ("manifest-bytes", project / "Packages/LocalMath/Package.swift", b"\n// changed\n"),
