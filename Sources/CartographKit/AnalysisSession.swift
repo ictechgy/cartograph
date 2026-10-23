@@ -288,9 +288,15 @@ public final class AnalysisSession {
         guard let requested = coreDataBuildEvidencePath else { return base }
         let path = try validatedBuildEvidencePath(requested, service: service)
         let augmented = try service.coreDataRuntimeContext(evidencePath: path, in: base)
-        guard try inputFingerprintProvider() == preparedFingerprint else {
+        do {
+            guard try inputFingerprintProvider() == preparedFingerprint else {
+                throw AnalysisSessionError.inputChangedDuringRefresh(attempts: 1)
+            }
+        } catch {
+            // 관측 실패도 불일치와 같이 이전 세대의 신선도를 입증하지 못한다.
+            // 요청 실패 뒤 MCP 준비 상태가 오래된 metadata를 ready로 노출하지 않게 한다.
             invalidate()
-            throw AnalysisSessionError.inputChangedDuringRefresh(attempts: 1)
+            throw error
         }
         runtimeBuildEvidenceMetadata = .init(status: "verifiedCurrent",
             supplementalSources: augmented.supplementalRuntimeSourcePaths.count)
