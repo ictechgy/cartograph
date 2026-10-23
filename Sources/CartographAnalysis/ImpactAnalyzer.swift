@@ -210,7 +210,45 @@ public struct ImpactAnalyzer: Sendable {
 
     /// 한 BFS 층의 정렬된 frontier에서 일반 소비자와 dispatch 투영 후보를 만든다.
     func receiverCandidates(from node: NodeID, depth: Int, graph: CodeGraph,
-                            runtime: [NodeID: [ImpactDependency]]) -> [ImpactVisit] {
+                            runtime: [NodeID: [ImpactDependency]], workRemaining: inout Int) -> [ImpactVisit]? {
+        // Admit all graph work before materializing candidates. Counting only
+        // returned callers misses override-only fanout and large filtered inputs.
+        // This mirrors the walk's contract closure without suppressing any state.
+        func charge() -> Bool {
+            guard workRemaining > 0 else { return false }
+            workRemaining -= 1
+            return true
+        }
+        guard charge() else { return nil }
+        for _ in graph.incomingEdges(to: node) { guard charge() else { return nil } }
+        for _ in runtime[node] ?? [] { guard charge() else { return nil } }
+        var pending: [NodeID] = []
+        for edge in graph.outgoingEdges(from: node) {
+            guard charge() else { return nil }
+            if edge.kind == .overrides { pending.append(edge.target) }
+        }
+        var offset = 0
+        var contracts: Set<NodeID> = []
+        while offset < pending.count {
+            guard charge() else { return nil }
+            let contract = pending[offset]
+            offset += 1
+            guard contracts.insert(contract).inserted else { continue }
+            // Includes overrides that projectedCallers later discards, and the
+            // extension lookup used by its once-per-contract semantic parent.
+            var owner: NodeID?
+            for edge in graph.incomingEdges(to: contract) {
+                guard charge() else { return nil }
+                if owner == nil && edge.kind == .member { owner = edge.source }
+            }
+            if let owner, graph.node(owner)?.kind == .extensionDeclaration {
+                for _ in graph.outgoingEdges(from: owner) { guard charge() else { return nil } }
+            }
+            for edge in graph.outgoingEdges(from: contract) {
+                guard charge() else { return nil }
+                if edge.kind == .overrides { pending.append(edge.target) }
+            }
+        }
         var projected: [NodeID: Int] = [:]
         return frontierCandidates(from: [node], depth: depth, visited: [], graph: graph,
             projectedContracts: &projected, runtime: runtime).sorted { $0.precedes($1) }.map(\.visit)
@@ -349,13 +387,22 @@ public struct ImpactAnalyzer: Sendable {
         in graph: CodeGraph
     ) -> [Candidate] {
         var edgesBySource: [NodeID: [GraphEdge]] = [:]
-        for edge in graph.incomingEdges(to: contract)
+        let incoming = graph.incomingEdges(to: contract)
+        // Compute ownership once, not once per protocol caller. Otherwise P
+        // protocol references can repeatedly scan E incoming edges (and an
+        // extension's outgoing edges), even though only E candidates are emitted.
+        let owner = incoming.first { $0.kind == .member }?.source
+        let semanticParent = owner.map { owner in
+            guard graph.node(owner)?.kind == .extensionDeclaration else { return owner }
+            return graph.outgoingEdges(from: owner).first { $0.kind == .extends }?.target ?? owner
+        }
+        for edge in incoming
         where edge.kind.impliesUsage && edge.kind != .overrides {
             // 컴파일러는 프로토콜 선언에서 자기 요구사항으로 향하는 call도 남긴다.
             // 프로토콜에는 구현 본문이 없으므로 이것을 witness의 호출자로 투영하면
             // 프로토콜 타입을 거쳐 무관한 모든 준수 타입으로 영향이 퍼진다.
             if graph.node(edge.source)?.kind == .protocolType,
-               graph.semanticParent(of: contract) == edge.source { continue }
+               semanticParent == edge.source { continue }
             guard !visited.contains(edge.source) else { continue }
             edgesBySource[edge.source, default: []].append(edge)
         }

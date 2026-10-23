@@ -71,6 +71,7 @@ struct ImpactReceiverServiceTests {
                     #expect(report.receiverPrecision?.mode == "conservative-fallback")
                     #expect(report.receiverPrecision?.excludedTransitions == 0)
                     #expect(report.limitations.contains { $0.hasPrefix("receiver-source-changed-during-query:") })
+                    #expect(report.xcodebuildSelection().refusal != nil)
                 }
                 #expect(racing.didMutate)
             }

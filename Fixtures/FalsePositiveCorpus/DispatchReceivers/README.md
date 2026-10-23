@@ -39,14 +39,18 @@ positive refinement control; callable lowering is not refined.
 caller/callee, receiver types and call locations. Output follows the requested
 limit (maximum 128 exclusion witnesses), with omitted counts. Unproved paths
 remain candidates. A state budget of 50,000, a transition budget of four times
-that (200,000 by default), or conflicting receiver/unknown states
+that (200,000 by default), a graph work budget of 32 times that (1,600,000), or conflicting receiver/unknown states
 at one declaration reruns the **entire** legacy traversal and reports the fallback;
 it never reports those paths as excluded. The existing node-only `via` witnesses
 therefore do not splice paths from different receiver states.
-Every examined transition is charged, including revisits from multiple witnesses
-to one shared contract and unknown receivers. Counts and both budgets are output.
-The transition budget bounds repeated refinement work; it is not a hard wall-clock
-or allocation bound, and fallback still runs the existing conservative traversal.
+Before candidate materialization, every incoming/outgoing edge, contract visit
+and supplemental dependency in that expansion is admitted against graph work
+budget. This includes override edges later filtered out, so zero-caller fanout
+cannot evade the bound. Admitted expansions then use the existing candidate builder;
+the preflight adds a bounded extra scan without suppressing receiver states.
+Every examined candidate transition is also charged, including unknown revisits.
+Actual counters and all budgets are output. These are work-count limits, not hard
+wall-clock or allocation bounds; fallback still runs the existing conservative traversal.
 
 Source joins are ephemeral and are not serialized in snapshots. Historical
 before/after traversal remains conservative. Current queries recheck source SHA-256

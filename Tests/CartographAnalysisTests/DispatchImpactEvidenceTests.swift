@@ -124,6 +124,77 @@ struct DispatchImpactEvidenceTests {
         }
     }
 
+    @Test("일반 호출자가 없는 override fanout도 후보 생성 전에 작업 예산에 포함한다")
+    func filteredOverrideWorkBudget() {
+        var snapshot = fixture()
+        snapshot.references = []
+        snapshot.symbols = snapshot.symbols.filter { ["s:Base", "s:Base.send"].contains($0.usr) }
+        var seeds: Set<NodeID> = []
+        var owners: [String] = []
+        for index in 0..<100 {
+            let owner = "s:Final\(index)"
+            let method = owner + ".send"
+            seeds.insert(NodeID(method))
+            owners.append(owner)
+            snapshot.symbols += [
+                .init(usr: owner, name: "Final\(index)", kind: .classType, module: "Fixture",
+                    location: .init(path: path, line: 1, column: 1)),
+                .init(usr: method, name: "send()", kind: .method, module: "Fixture",
+                    location: .init(path: path, line: 1, column: 1), parentUSR: owner),
+            ]
+            snapshot.references.append(ref(method, "s:Base.send", .overrides))
+        }
+        snapshot.dispatchReceiverFiles = [.init(path: path, finalClassUSRs: owners, selfCalls: [])]
+        for reverse in [false, true] {
+            if reverse { snapshot.symbols.reverse(); snapshot.references.reverse() }
+            let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+            let legacy = ImpactAnalyzer().analyze(changing: seeds, in: graph)
+            let actual = ImpactAnalyzer().analyze(changing: seeds, in: graph,
+                receiverEvidence: evidence(snapshot), receiverStateBudget: 100)
+            #expect(actual.affected == legacy.affected)
+            #expect(actual.affected.isEmpty)
+            #expect(actual.receiverPrecision?.reason == "receiver-work-budget")
+            #expect(actual.receiverPrecision?.examinedTransitions == 0)
+            #expect(actual.receiverPrecision?.examinedWork == 3_200)
+            #expect(actual.receiverPrecision?.workBudget == 3_200)
+        }
+    }
+
+    @Test("계약의 extension 소유자 조회도 예산에 넣고 진짜 protocol caller를 보존한다")
+    func extensionOwnershipWorkBudget() {
+        var nodes = [
+            GraphNode(id: "P", name: "P", kind: .protocolType),
+            GraphNode(id: "Q", name: "Q", kind: .protocolType),
+            GraphNode(id: "Extension", name: "Extension", kind: .extensionDeclaration),
+            GraphNode(id: "contract", name: "send()", kind: .method),
+            GraphNode(id: "changed", name: "send()", kind: .method),
+        ]
+        var edges = [
+            GraphEdge(source: "Extension", target: "contract", kind: .member),
+            GraphEdge(source: "Extension", target: "P", kind: .extends),
+            GraphEdge(source: "changed", target: "contract", kind: .overrides),
+            GraphEdge(source: "P", target: "contract", kind: .call),
+            GraphEdge(source: "Q", target: "contract", kind: .call),
+        ]
+        for index in 0..<600 {
+            let id = NodeID("unrelated\(index)")
+            nodes.append(GraphNode(id: id, name: id.rawValue, kind: .method))
+            edges.append(GraphEdge(source: "Extension", target: id, kind: .call))
+        }
+        for reverse in [false, true] {
+            if reverse { nodes.reverse(); edges.reverse() }
+            let graph = CodeGraph(level: .symbol, nodes: nodes, edges: edges)
+            let legacy = ImpactAnalyzer().analyze(changing: ["changed"], in: graph)
+            let actual = ImpactAnalyzer().analyze(changing: ["changed"], in: graph,
+                receiverEvidence: evidence(IndexSnapshot(symbols: [], references: [])), receiverStateBudget: 4)
+            #expect(legacy.affected.map(\.node) == [NodeID("Q")])
+            #expect(actual.affected == legacy.affected)
+            #expect(actual.receiverPrecision?.reason == "receiver-work-budget")
+            #expect(actual.receiverPrecision?.examinedWork == 128)
+            #expect(actual.receiverPrecision?.examinedTransitions == 0)
+        }
+    }
+
     @Test("저장된 이전 snapshot은 현재 self 증명을 빌리지 않는다")
     func historicalCaptureDropsSourceProof() throws {
         let current = fixture()

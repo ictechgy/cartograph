@@ -436,6 +436,7 @@ extension AffectedDocument {
             "unreadable-sources:", "header-projection:", "configured-path-filter:", "configured-edge-kinds:",
             "symlinked-directories-outside-root:", "source-discovery-exclusions:",
             "build-module-coverage:", "build-module-coverage-unknown:",
+            "receiver-source-changed-during-query:",
         ]
         if limitations.contains(where: { limitation in coverageGaps.contains { limitation.hasPrefix($0) } }) {
             return "Source/index coverage is incomplete; additional tests may reach this change."

@@ -7,6 +7,11 @@ public struct ImpactReceiverPrecision: Sendable, Equatable, Codable {
     public let reason: String?
     public let stateBudget: Int
     public let transitionBudget: Int?
+    public let workBudget: Int?
+    /// Preflight graph items examined, including filtered edges. The admitted
+    /// expansion is then scanned again by the legacy builder; this is not an
+    /// instruction count and sorting cost is bounded by admitted input size.
+    public let examinedWork: Int?
     public let examinedTransitions: Int?
     public let visitedStates: Int?
     public let exclusions: [Exclusion]?
@@ -40,14 +45,16 @@ extension ImpactReceiverPrecision {
                 locationsOmitted: omitted(item.locations.count, item.locationsOmitted, cap))
         }
         return Self(mode: mode, excludedTransitions: excludedTransitions, reason: reason, stateBudget: stateBudget,
-            transitionBudget: transitionBudget, examinedTransitions: examinedTransitions, visitedStates: visitedStates,
+            transitionBudget: transitionBudget, workBudget: workBudget, examinedWork: examinedWork,
+            examinedTransitions: examinedTransitions, visitedStates: visitedStates,
             exclusions: shown.isEmpty ? nil : shown,
             exclusionsOmitted: excludedTransitions > shown.count ? excludedTransitions - shown.count : nil)
     }
 
     public func fallingBack(reason: String) -> Self {
         Self(mode: "conservative-fallback", excludedTransitions: 0, reason: reason, stateBudget: stateBudget,
-            transitionBudget: transitionBudget, examinedTransitions: examinedTransitions, visitedStates: visitedStates,
+            transitionBudget: transitionBudget, workBudget: workBudget, examinedWork: examinedWork,
+            examinedTransitions: examinedTransitions, visitedStates: visitedStates,
             exclusions: nil, exclusionsOmitted: nil)
     }
 
@@ -144,6 +151,8 @@ extension ImpactAnalyzer {
         // Distinct states do not bound repeated witness-to-contract projections.
         // Charge every candidate, including revisits and excluded transitions.
         let transitionBudget = stateBudget * 4
+        let workBudget = stateBudget * 32
+        var workRemaining = workBudget
         var examinedTransitions = 0
         var visitedStates = 0
         func fallback(_ reason: String) -> ImpactReport {
@@ -153,6 +162,7 @@ extension ImpactAnalyzer {
                 truncatedByDepth: original.truncatedByDepth,
                 receiverPrecision: .init(mode: "conservative-fallback", excludedTransitions: 0,
                     reason: reason, stateBudget: stateBudget, transitionBudget: transitionBudget,
+                    workBudget: workBudget, examinedWork: workBudget - workRemaining,
                     examinedTransitions: examinedTransitions, visitedStates: visitedStates,
                     exclusions: nil, exclusionsOmitted: nil))
         }
@@ -174,7 +184,11 @@ extension ImpactAnalyzer {
         while !frontier.isEmpty {
             var next: [State] = []
             for state in frontier {
-                for candidate in receiverCandidates(from: state.node, depth: depth, graph: graph, runtime: runtime) {
+                guard let candidates = receiverCandidates(from: state.node, depth: depth, graph: graph,
+                    runtime: runtime, workRemaining: &workRemaining) else {
+                    return fallback("receiver-work-budget")
+                }
+                for candidate in candidates {
                     guard examinedTransitions < transitionBudget else {
                         return fallback("receiver-transition-budget")
                     }
@@ -218,6 +232,7 @@ extension ImpactAnalyzer {
             receiverPrecision: .init(mode: excluded > 0 ? "bounded-final-self" : "conservative-no-exclusion", excludedTransitions: excluded,
                 reason: "Only fresh exact self calls and distinct final Swift receiver types are refined; aliases, nonfinal and runtime paths remain conservative.",
                 stateBudget: stateBudget, transitionBudget: transitionBudget,
+                workBudget: workBudget, examinedWork: workBudget - workRemaining,
                 examinedTransitions: examinedTransitions, visitedStates: visitedStates, exclusions: exclusions.isEmpty ? nil : exclusions,
                 exclusionsOmitted: excluded > exclusions.count ? excluded - exclusions.count : nil))
     }

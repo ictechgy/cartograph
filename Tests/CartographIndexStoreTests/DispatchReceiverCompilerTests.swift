@@ -78,11 +78,11 @@ struct DispatchReceiverCompilerTests {
         let evidence = DispatchImpactEvidence(snapshot: snapshot,
             verifiedSourcePaths: Set(files.map(\.path)))
         let refined = ImpactAnalyzer().analyze(changing: seed, in: graph, receiverEvidence: evidence)
-        func names(_ report: ImpactReport) -> Set<String> {
+        func affectedNames(_ report: ImpactReport) -> Set<String> {
             Set(report.affected.compactMap { graph.node($0.node)?.name })
         }
-        let before = names(original)
-        let after = names(refined)
+        let before = affectedNames(original)
+        let after = affectedNames(refined)
         let callableType = try #require(snapshot.symbols.first { $0.name == "CallableChanged" && $0.kind == .classType })
         let callable = try #require(snapshot.symbols.first {
             $0.name == "callAsFunction()" && $0.parentUSR == callableType.usr
@@ -100,8 +100,8 @@ struct DispatchReceiverCompilerTests {
                 "excludedTransitions": refined.receiverPrecision?.excludedTransitions ?? 0,
                 "boundSelfCalls": (snapshot.dispatchReceiverFiles ?? []).flatMap(\.selfCalls).count,
                 "finalClasses": (snapshot.dispatchReceiverFiles ?? []).flatMap(\.finalClassUSRs),
-                "callableBaseline": names(callableOriginal).sorted(),
-                "callableRefined": names(callableRefined).sorted(),
+                "callableBaseline": affectedNames(callableOriginal).sorted(),
+                "callableRefined": affectedNames(callableRefined).sorted(),
                 "callableCallOccurrences": callableOccurrences.count,
                 "callableReceivedByOccurrences": callableOccurrences.filter {
                     $0.relations.contains { $0.roles.contains(.receivedBy) }
@@ -121,12 +121,12 @@ struct DispatchReceiverCompilerTests {
         #expect(retained.isSubset(of: after), "\(after.sorted())")
         let callableRetained: Set<String> = ["callableSiblingLocal()", "callableSiblingProperty()",
             "callableSiblingNamedValue()", "callableChangedSelf()", "callableSiblingWrapper()"]
-        #expect(callableRetained.isSubset(of: names(callableOriginal)))
-        #expect(callableRetained.isSubset(of: names(callableRefined)))
-        #expect(names(callableOriginal).contains("callableSiblingSelf()"))
+        #expect(callableRetained.isSubset(of: affectedNames(callableOriginal)))
+        #expect(callableRetained.isSubset(of: affectedNames(callableRefined)))
+        #expect(affectedNames(callableOriginal).contains("callableSiblingSelf()"))
         // Even explicit self.callAsFunction() can name a callable property.
         // This first capability therefore leaves all callAsFunction paths intact.
-        #expect(names(callableRefined).contains("callableSiblingSelf()"))
+        #expect(affectedNames(callableRefined).contains("callableSiblingSelf()"))
         #expect(!callableOccurrences.isEmpty)
         // Same captured topology without ephemeral source joins remains conservative.
         let encoded = try JSONEncoder().encode(snapshot)

@@ -13,7 +13,7 @@ extension CartographService {
         guard !historical, let files = context.snapshot.dispatchReceiverFiles, !files.isEmpty else {
             return (nil, [], [])
         }
-        let finalOwners = Set(files.flatMap(\.finalClassUSRs).map(NodeID.init))
+        let finalOwners = Set(files.flatMap(\.finalClassUSRs).map { NodeID($0) })
         guard changing.contains(where: { id in
             graph.semanticParent(of: id).map { finalOwners.contains($0) } == true
                 && graph.outgoingEdges(from: id).contains { $0.kind == .overrides }
@@ -64,6 +64,7 @@ extension CartographService {
         guard let precision = report.receiverPrecision else { return [] }
         return ["receiver-precision: \(precision.mode); excluded \(precision.excludedTransitions) transition(s); "
             + "state budget \(precision.stateBudget); transition budget \(precision.transitionBudget ?? 0); "
-            + "examined transitions \(precision.examinedTransitions ?? 0); \(precision.reason ?? "unknown")"]
+            + "examined transitions \(precision.examinedTransitions ?? 0); work budget \(precision.workBudget ?? 0); "
+            + "examined work \(precision.examinedWork ?? 0); \(precision.reason ?? "unknown")"]
     }
 }
