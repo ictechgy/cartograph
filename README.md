@@ -2070,6 +2070,16 @@ let (_, metrics, _) = service.metrics(in: context)
 Baselines, thresholds and output formatting are CI policy and live in the separate command API
 (`detectCycles()`, `detectUnusedCode()`, …), so a programmatic caller never has to parse a table.
 
+Async embedders can use `try await IndexStoreProvider(configuration: indexConfiguration).loadSnapshotAsync()`
+to keep blocking disk/database work off the Swift cooperative executor. The existing synchronous
+`loadSnapshot()` API remains available. On macOS 15+, its upstream async library loader uses a dedicated
+task executor; on macOS 14, call the async entry from Swift tasks instead of blocking those tasks with
+the synchronous API. Library/store opening has a 30-second wait budget and fails without returning
+a partial snapshot. This is not a deadline for the entire record scan. Cancellation is cooperative;
+the async entry delivers cancellation after the blocking read returns, without claiming that C work
+was interrupted. The minimum supported deployment target remains macOS 14; newer-runner validation
+does not establish macOS 14 runtime coverage.
+
 ### 0.29 source migration
 
 The source version is `0.29.0`; confirm its published asset on [GitHub Releases](https://github.com/ictechgy/cartograph/releases)

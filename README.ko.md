@@ -1994,6 +1994,15 @@ let (_, metrics, _) = service.metrics(in: context)
 
 ### 0.29 소스 마이그레이션
 
+비동기 임베더는 `try await IndexStoreProvider(configuration: indexConfiguration).loadSnapshotAsync()`로
+디스크·DB 작업을 Swift cooperative executor 밖에서 실행할 수 있습니다. 기존 동기 `loadSnapshot()`은
+유지합니다. macOS 15 이상은 upstream 비동기 라이브러리 로더에 전용 task executor를 사용합니다.
+macOS 14의 Swift task에서는 동기 API로 task를 막지 말고 비동기 진입로를 사용하세요.
+라이브러리·store 열기는 30초 대기 예산을 넘으면 부분 snapshot 없이 실패하며 전체 record scan의
+시간 제한은 아닙니다. 취소는 협조적이며 비동기 진입로는 blocking read가 반환된 뒤 취소를 전달합니다.
+C 작업의 강제 중단을 보장하지 않습니다. 최소 deployment target은 macOS 14 그대로이며 최신 runner의
+통과가 macOS 14 runtime 검증을 뜻하지는 않습니다.
+
 소스 버전은 `0.29.0`이며, 설치 태그로 고르기 전에 [GitHub Releases](https://github.com/ictechgy/cartograph/releases)의
 게시된 asset을 확인하세요. 릴리스 archive에는 `Scripts/cartograph-git-impact.py`가 포함됩니다.
 Python 3.10 이상, Git, Swift 도구체인과 같은 버전의 Cartograph 바이너리가 필요합니다.

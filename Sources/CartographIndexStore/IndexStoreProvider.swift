@@ -70,6 +70,7 @@ public struct IndexStoreProvider: IndexProviding {
         self.fileSystem = fileSystem
     }
 
+    /// 동기 호출자를 위한 읽기. macOS 14의 async task에서는 `loadSnapshotAsync()`를 사용한다.
     public func loadSnapshot() throws -> IndexSnapshot {
         if configuration.readerMode == .raw {
             return try readRawSnapshot()
@@ -86,6 +87,21 @@ public struct IndexStoreProvider: IndexProviding {
                 underlying: "Could not lock the reader cache: \(error). Check cache directory permissions.")
         }
         return try withExtendedLifetime(lease) { try readSnapshot() }
+    }
+
+    /// 지원하는 모든 OS에서 cooperative executor를 막지 않고 같은 스냅샷을 읽는다.
+    ///
+    /// 디스크 읽기와 DB lease는 dispatch 작업이 소유한다. 취소는 읽기가 반환한 뒤 전달되며,
+    /// 진행 중인 C 인덱스 읽기를 강제 중단하거나 부분 스냅샷을 반환하지 않는다.
+    public func loadSnapshotAsync() async throws -> IndexSnapshot {
+        try Task.checkCancellation()
+        let snapshot: IndexSnapshot = try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(with: Result { try self.loadSnapshot() })
+            }
+        }
+        try Task.checkCancellation()
+        return snapshot
     }
 
     private func readRawSnapshot() throws -> IndexSnapshot {
