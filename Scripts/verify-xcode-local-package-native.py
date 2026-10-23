@@ -55,6 +55,70 @@ def executed_tests(text):
     return {"executedTestCount": int(match[1]), "executedTestIdentities": [expected], "aggregate": lines[index + 1]}
 
 
+def generated_metadata(directory):
+    """Read only the public fixture's generated metadata, never certify membership."""
+    require(not directory.is_symlink() and directory.resolve() == directory,
+            "Generated metadata root is not canonical")
+    if not directory.exists():
+        return {"exists": False, "entries": [], "totalBytes": 0}
+    require(directory.is_dir(), "Generated metadata root is not a directory")
+    result, pending, count, total = [], [(directory, 0)], 0, 0
+    while pending:
+        parent, depth = pending.pop()
+        require(depth <= 8, "Generated metadata depth budget exceeded")
+        children = []
+        with os.scandir(parent) as scan:
+            for entry in scan:
+                count += 1
+                require(count <= 128, "Generated metadata entry budget exceeded")
+                children.append(Path(entry.path))
+        for path in sorted(children):
+            relative = path.relative_to(directory).as_posix()
+            require(len(relative) <= 256 and not path.is_symlink() and path.resolve() == path
+                    and path.resolve().is_relative_to(directory), "Generated metadata path boundary exceeded")
+            if path.is_dir():
+                result.append({"path": relative, "type": "directory"})
+                pending.append((path, depth + 1))
+                continue
+            require(path.is_file(), "Generated metadata nonregular entry")
+            with path.open("rb") as stream:
+                data = stream.read(8 * 1024 + 1)
+            total += len(data)
+            require(len(data) <= 8 * 1024 and total <= 32 * 1024, "Generated metadata byte budget exceeded")
+            row = {"path": relative, "type": "file", "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+            if path.suffix in (".xcworkspacedata", ".xcsettings", ".plist", ".json", ".xcscheme"):
+                try:
+                    row["utf8Metadata"] = data.decode("utf-8")
+                except UnicodeDecodeError:
+                    row["contentStatus"] = "not-utf8; hash-only"
+            else:
+                row["contentStatus"] = "unrecognized metadata extension; hash-only"
+            result.append(row)
+    return {"exists": True, "entries": sorted(result, key=lambda x: x["path"]), "totalBytes": total}
+
+
+def record_generated_metadata(project, output, phase):
+    report = {"phase": phase, "scope": "public synthetic Packages/LocalMath/.swiftpm only",
+              "limitation": "Diagnostic only; unsupported inputs still refuse product receipts",
+              "processLogsPresent": {name: (output / "capture" / (name + ".stdout")).is_file()
+                                     for name in ("build-for-testing", "snapshot", "snapshot-proof")}}
+    try:
+        report.update(generated_metadata(project / "Packages/LocalMath/.swiftpm"))
+        report["status"] = "observed"
+    except Exception as error:
+        report.update(status="diagnostic-refused", reason=type(error).__name__ + ": " + str(error))
+    try:
+        SCOPE.save(output / ("generated-metadata-" + phase + ".json"), report)
+    except Exception as error:
+        report["persistenceError"] = type(error).__name__
+    # ASCII JSON keeps control characters inert; only bounded public fixture metadata.
+    try:
+        print("GENERATED_METADATA " + json.dumps(report, ensure_ascii=True, sort_keys=True), flush=True)
+    except OSError:
+        pass  # Diagnostic output must not replace the original capture failure.
+    return report
+
+
 def mcp_worker(binary, output):
     peer_module = load("preparation_peer", ROOT / "Scripts/followup-verify-mcp-preparation.py")
     metadata = json.loads((output / "capture/capture.json").read_text())
@@ -127,12 +191,15 @@ def verify(binary, output):
     except SCOPE.CaptureError as error:
         require(not (Path(default.output) / "build-for-testing.stdout").exists(), "Default refusal happened after build")
         SCOPE.save(output / "default-refusal.json", {"status": "refused-before-build", "reason": str(error)})
+    record_generated_metadata(project, output, "before-capture")
     try:
         receipt_path = SCOPE.capture(args)
     except Exception:
+        record_generated_metadata(project, output, "after-capture-failure")
         for path in sorted((output / "capture").glob("*.stderr"), key=lambda p: p.stat().st_mtime)[-3:]:
             print(path.name + ":\n" + path.read_bytes()[-4096:].decode(errors="replace"), flush=True)
         raise
+    record_generated_metadata(project, output, "after-capture-success")
     receipt = json.loads(receipt_path.read_text())
     metadata = json.loads((output / "capture/capture.json").read_text())
     require(receipt["version"] == 2 and receipt["localPackage"]["product"] == "ArithmeticProduct"

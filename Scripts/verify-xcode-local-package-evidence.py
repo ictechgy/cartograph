@@ -3,10 +3,13 @@
 import copy
 import importlib.util
 import json
+import os
+import contextlib
 from pathlib import Path
 import shlex
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 SPEC = importlib.util.spec_from_file_location("package_evidence", ROOT / "Scripts/xcode-local-package-evidence.py")
@@ -18,6 +21,67 @@ NATIVE_SPEC.loader.exec_module(NATIVE)
 
 
 class TestExecutionTests(unittest.TestCase):
+    def test_generated_metadata_observation_is_finite_and_not_source_discovery(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve() / ".swiftpm"
+            self.assertFalse(NATIVE.generated_metadata(root)["exists"])
+            root.mkdir()
+            document = root / "workspace.xcworkspacedata"
+            document.write_bytes(b"<Workspace/>\n")
+            (root / "unknown.swift").write_bytes(b"doNotPublishSource()")
+            result = NATIVE.generated_metadata(root)
+            self.assertEqual(result["totalBytes"], 33)
+            self.assertNotIn("utf8Metadata", result["entries"][0])
+            self.assertEqual(result["entries"][1]["utf8Metadata"], "<Workspace/>\n")
+            document.write_bytes(b"x" * (8 * 1024 + 1))
+            with self.assertRaisesRegex(RuntimeError, "byte budget"):
+                NATIVE.generated_metadata(root)
+            document.unlink()
+            path = root
+            for i in range(9):
+                path = path / str(i)
+                path.mkdir()
+            with self.assertRaisesRegex(RuntimeError, "depth budget"):
+                NATIVE.generated_metadata(root)
+
+    def test_generated_metadata_total_budget_and_diagnostic_errors_preserve_failure(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            for i in range(5):
+                (root / (str(i) + ".plist")).write_bytes(b"x" * (8 * 1024))
+            with self.assertRaisesRegex(RuntimeError, "byte budget"):
+                NATIVE.generated_metadata(root)
+            with mock.patch.object(NATIVE.SCOPE, "save", side_effect=OSError("disk error")), \
+                 mock.patch("builtins.print", side_effect=BrokenPipeError("closed")):
+                report = NATIVE.record_generated_metadata(root, root, "after-capture-failure")
+            self.assertEqual(report["persistenceError"], "OSError")
+            self.assertEqual(report["phase"], "after-capture-failure")
+
+    def test_generated_metadata_entries_are_bounded_before_sorting(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            seen = []
+            def entries():
+                for i in range(1000):
+                    seen.append(i)
+                    yield type("Entry", (), {"path": str(root / str(i))})()
+            with mock.patch.object(NATIVE.os, "scandir", return_value=contextlib.nullcontext(entries())), \
+                 self.assertRaisesRegex(RuntimeError, "entry budget"):
+                NATIVE.generated_metadata(root)
+            self.assertEqual(len(seen), 129)
+
+    @unittest.skipUnless(os.name == "posix", "Native POSIX symlink boundary control")
+    def test_generated_metadata_does_not_follow_external_symlinks(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder).resolve()
+            root = base / "metadata"
+            root.mkdir()
+            outside = base / "outside.plist"
+            outside.write_bytes(b"not admitted")
+            (root / "escape.plist").symlink_to(outside)
+            with self.assertRaisesRegex(RuntimeError, "path boundary"):
+                NATIVE.generated_metadata(root)
+
     def test_terminal_aggregate_and_actual_test_case_are_both_required(self):
         # Format from main4f native39982616827; this is a parser control, not a test run.
         log = """Test Suite 'All tests' started at 2026-10-23 16:09:35.991.
