@@ -17,6 +17,101 @@ SPEC.loader.exec_module(OBS)
 
 
 class ObservationParsing(unittest.TestCase):
+    def test_failed_process_reports_receipt_and_bounded_tails_without_replacing_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            original = RuntimeError("original build failure (124)")
+            receipt = {"returncode": 124, "raw_returncode": -15, "timed_out": True,
+                       "wall_seconds": 605.3, "owned_root_reaped": True, "ownership_lost": False,
+                       "cleanup_errors": [], "retained_stream_bytes": {"stdout": 12345, "stderr": 8},
+                       "command": ["not printed"], "cwd": "not printed",
+                       "stdout": str(root / "untrusted-path"), "environment": "not printed"}
+
+            def failed(argv, cwd, stem, timeout, *, stream_limit):
+                Path(str(stem) + ".json").write_text(json.dumps(receipt), encoding="utf-8")
+                Path(str(stem) + ".stdout").write_bytes(b"old output\n" * 1000 + b"last compiler line\x1b\n")
+                Path(str(stem) + ".stderr").write_bytes(b"warning\xff")
+                raise original
+
+            with patch.object(OBS, "process_supervisor", return_value=SimpleNamespace(run=failed)), \
+                 patch("builtins.print") as printer:
+                with self.assertRaises(RuntimeError) as caught:
+                    OBS.run(["synthetic"], root, root, "probe-build", 600, 32 * 1024 * 1024)
+            self.assertIs(caught.exception, original)
+            self.assertEqual(printer.call_count, 1)
+            encoded = printer.call_args.args[0]
+            self.assertLessEqual(len(encoded.encode("ascii")), 64 * 1024)
+            report = json.loads(encoded.removeprefix("PROCESS_FAILURE_OBSERVATION "))
+            self.assertTrue(report["receipt"]["timed_out"])
+            self.assertEqual(report["receipt"]["raw_returncode"], -15)
+            self.assertTrue(report["streams"]["stdout"]["tailTruncated"])
+            self.assertIn("last compiler line", report["streams"]["stdout"]["utf8Tail"])
+            self.assertEqual(report["streams"]["stderr"]["utf8Tail"], "warning\ufffd")
+            self.assertNotIn("\x1b", encoded)
+            self.assertNotIn("not printed", encoded)
+            self.assertNotIn("untrusted-path", encoded)
+
+    def test_failure_diagnostics_refuse_invalid_receipts_and_preserve_closed_pipe_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            original = RuntimeError("original failure")
+            malformed = (None, b"not json", b"[]", b"x" * (32 * 1024 + 1),
+                         b'{"timed_out":"yes"}', b'{"wall_seconds":NaN}',
+                         b'{"cleanup_errors":[17]}', b'{"retained_stream_bytes":{"stdout":true}}')
+            for index, data in enumerate(malformed):
+                def failed(argv, cwd, stem, timeout, *, stream_limit):
+                    if data is not None:
+                        Path(str(stem) + ".json").write_bytes(data)
+                    raise original
+                with patch.object(OBS, "process_supervisor", return_value=SimpleNamespace(run=failed)), \
+                     patch("builtins.print") as printer:
+                    with self.assertRaises(RuntimeError) as caught:
+                        OBS.run(["synthetic"], root, root, f"invalid-{index}", 5, 64)
+                self.assertIs(caught.exception, original)
+                report = json.loads(printer.call_args.args[0].removeprefix("PROCESS_FAILURE_OBSERVATION "))
+                self.assertEqual(report["receiptStatus"], "diagnostic-refused")
+            with patch.object(OBS, "process_supervisor", return_value=SimpleNamespace(run=failed)), \
+                 patch("builtins.print", side_effect=BrokenPipeError("closed")):
+                with self.assertRaises(RuntimeError) as caught:
+                    OBS.run(["synthetic"], root, root, "closed", 5, 64)
+            self.assertIs(caught.exception, original)
+
+    def test_failure_diagnostic_total_ascii_budget_includes_prefix(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stem = Path(directory).resolve() / "failure"
+            Path(str(stem) + ".json").write_text(json.dumps({"cleanup_errors": ["\x1b" * 256] * 16}))
+            for stream in ("stdout", "stderr"):
+                Path(str(stem) + "." + stream).write_bytes(b"\x1b" * 4096)
+            with patch("builtins.print") as printer:
+                OBS.record_process_failure(stem)
+            encoded = printer.call_args.args[0]
+            self.assertLessEqual(len(encoded.encode("ascii")), 64 * 1024)
+            report = json.loads(encoded.removeprefix("PROCESS_FAILURE_OBSERVATION "))
+            self.assertEqual(report["status"], "diagnostic-output-budget-exceeded")
+            self.assertGreater(report["bytes"], 64 * 1024)
+
+    @unittest.skipUnless(os.name == "posix", "Actual timeout and symlink controls require POSIX")
+    def test_actual_timeout_emits_receipt_and_cannot_follow_diagnostic_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            command = [sys.executable, "-c", "import os,time;os.write(2,b'last compiler warning');time.sleep(120)"]
+            try:
+                with patch("builtins.print") as printer, self.assertRaises(RuntimeError):
+                    OBS.run(command, root, root, "actual-timeout", 1, 2048)
+            finally:
+                self.preserve_native_process(root, "actual-timeout")
+            report = json.loads(printer.call_args.args[0].removeprefix("PROCESS_FAILURE_OBSERVATION "))
+            receipt = json.loads((root / "actual-timeout.json").read_text())
+            self.assertTrue(report["receipt"]["timed_out"])
+            self.assertEqual(report["receipt"]["raw_returncode"], receipt["raw_returncode"])
+            self.assertTrue(report["receipt"]["owned_root_reaped"])
+            self.assertEqual(report["streams"]["stderr"]["utf8Tail"], "last compiler warning")
+            (root / "linked.stderr").symlink_to(root / "actual-timeout.stderr")
+            with patch("builtins.print") as printer:
+                OBS.record_process_failure(root / "linked")
+            report = json.loads(printer.call_args.args[0].removeprefix("PROCESS_FAILURE_OBSERVATION "))
+            self.assertEqual(report["streams"]["stderr"]["status"], "diagnostic-refused")
+
     def preserve_native_process(self, root, name):
         destination = os.environ.get("CARTOGRAPH_OBSERVATION_PROCESS_EVIDENCE")
         if not destination:

@@ -10,12 +10,14 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import math
 import platform
 from pathlib import Path
 import plistlib
 import re
 import shlex
 import shutil
+import stat
 import time
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -33,6 +35,75 @@ def process_supervisor():
     return supervisor
 
 
+def failure_file(stem: Path, suffix: str) -> Path:
+    path = Path(str(stem) + suffix)
+    SCOPE.require(not path.is_symlink() and stat.S_ISREG(path.stat().st_mode)
+                  and path.resolve().parent == stem.parent.resolve(), "Invalid failure diagnostic file")
+    return path
+
+
+def failure_receipt(stem: Path) -> dict:
+    value = json.loads(SCOPE.bounded(failure_file(stem, ".json"), 32 * 1024))
+    SCOPE.require(type(value) is dict, "Invalid process receipt")
+    # argv, 환경, receipt 안의 출력 경로는 진단에서도 따라가거나 출력하지 않는다.
+    numeric = ("pid", "returncode", "raw_returncode", "stream_limit_bytes", "wall_seconds",
+               "wait4_maxrss_bytes", "user_seconds", "system_seconds")
+    flags = ("timed_out", "owned_root_reaped", "ownership_lost")
+    result = {}
+    for key in (*numeric, *flags, "output_limit_exceeded", "exception_type"):
+        if key not in value:
+            continue
+        item = value[key]
+        valid = (item is None or (type(item) in (int, float) if key in numeric else
+                 type(item) is bool if key in flags else type(item) is str and len(item) <= 256))
+        SCOPE.require(valid, "Invalid process receipt field")
+        SCOPE.require(type(item) is not float or math.isfinite(item), "Nonfinite process receipt field")
+        result[key] = item
+    errors = value.get("cleanup_errors", [])
+    counts = value.get("retained_stream_bytes", {})
+    SCOPE.require(type(errors) is list and len(errors) <= 32
+                  and all(type(item) is str and len(item) <= 256 for item in errors), "Invalid cleanup errors")
+    SCOPE.require(type(counts) is dict and all(type(counts.get(key, 0)) is int for key in ("stdout", "stderr")),
+                  "Invalid retained stream counts")
+    result["cleanup_errors"] = errors
+    result["retained_stream_bytes"] = {key: counts[key] for key in ("stdout", "stderr") if key in counts}
+    return result
+
+
+def failure_tail(stem: Path, stream: str) -> dict:
+    with failure_file(stem, "." + stream).open("rb") as source:
+        size = source.seek(0, 2)
+        source.seek(max(0, size - 4096))
+        tail = source.read(4096)
+    return {"fileBytes": size, "tailTruncated": size > len(tail), "tailBytes": len(tail),
+            "tailSHA256": hashlib.sha256(tail).hexdigest(), "utf8Tail": tail.decode("utf-8", errors="replace")}
+
+
+def record_process_failure(stem: Path) -> None:
+    """Expose bounded public-fixture failure evidence without replacing the original error."""
+    report = {"process": stem.name, "receiptStatus": "observed", "streams": {}}
+    try:
+        report["receipt"] = failure_receipt(stem)
+    except Exception as error:
+        report.update(receiptStatus="diagnostic-refused", receiptError=type(error).__name__)
+    for stream in ("stdout", "stderr"):
+        try:
+            report["streams"][stream] = failure_tail(stem, stream)
+        except Exception as error:
+            report["streams"][stream] = {"status": "diagnostic-refused", "error": type(error).__name__}
+    # 프로세스 실패가 원인이다. 닫힌 job log나 잘못된 진단 필드는 이를 대체하지 않는다.
+    try:
+        prefix = "PROCESS_FAILURE_OBSERVATION "
+        encoded = json.dumps(report, ensure_ascii=True, sort_keys=True, allow_nan=False)
+        if len(prefix) + len(encoded) > 64 * 1024:
+            encoded = json.dumps({"status": "diagnostic-output-budget-exceeded", "bytes": len(encoded),
+                                  "sha256": hashlib.sha256(encoded.encode("ascii")).hexdigest()}, sort_keys=True)
+        print(prefix + encoded, flush=True)
+    except Exception:
+        # 이 경로는 항상 원래 예외를 재전파하는 호출자 안에서만 실행된다.
+        return
+
+
 def run(argv, root: Path, output: Path, name: str, timeout: int, maximum=8 * 1024 * 1024) -> bytes:
     """Bound both live streams with the existing owned-process-group supervisor.
 
@@ -46,7 +117,11 @@ def run(argv, root: Path, output: Path, name: str, timeout: int, maximum=8 * 102
     SCOPE.require(not any(Path(str(stem) + suffix).exists() for suffix in (".json", ".stdout", ".stderr")),
                   "Process observation already exists")
     per_stream = maximum // 2
-    receipt = process_supervisor().run(argv, root, stem, timeout, stream_limit=per_stream)
+    try:
+        receipt = process_supervisor().run(argv, root, stem, timeout, stream_limit=per_stream)
+    except BaseException:
+        record_process_failure(stem)
+        raise
     SCOPE.require(receipt.get("returncode") == 0 and receipt.get("timed_out") is False
                   and receipt.get("owned_root_reaped") is True and receipt.get("ownership_lost") is False
                   and receipt.get("cleanup_errors") == [] and not receipt.get("output_limit_exceeded")

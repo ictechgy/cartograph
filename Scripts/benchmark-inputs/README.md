@@ -217,3 +217,50 @@ publication allowlist are unchanged, with adjacent private-path and credential n
 Repository consumer audit: the old coverage field was emitted only by `covered_path`; no selector,
 wrapper, normalizer or benchmark consumer read it. Native root discovery remains a review-only
 proposal. Existing archived scalar-form evidence stays byte-identical.
+
+### Same-run prepared comparison tools
+
+The named IndexStoreDB comparison gate keeps its 35-minute job limit. Contract checks and the
+candidate, pinned `index-dump`, and pre-query `54b1b41` release builds run in separate prerequisites.
+The original 1500/600-second build command budgets, baseline step limit, query repetitions and
+product/performance checks are unchanged. A failed, cancelled or skipped prerequisite explicitly
+fails the comparison gate. This addresses aggregate preparation time; it does not erase earlier
+timeouts or claim that the underlying product ran successfully.
+
+`prepared-comparison-tools.py` transfers only bounded regular executable/sidecar files, manifests,
+and original successful build measurements. It transfers no compiler index or project snapshot.
+Producer job outputs supply the manifest SHA256 and immutable artifact ID; the consumer downloads
+that ID from the same workflow run. Admission also binds the run/attempt, actual Actions merge
+commit/tree and PR head/base, clean source and dependency bytes before/after build, frozen pins,
+executable bytes, architecture and recursive Mach-O dependencies. Tracked source symlinks retain
+their committed Git link text separately from regular file bytes. They may resolve only to tracked
+files/directories in the same checkout; escaped, dangling, cyclic or ignored extra inputs are refused.
+Transferred artifacts still cannot contain symlinks. The consumer independently checks
+its selected Swift driver/frontend, Clang, linker, libIndexStore, OS build and SDK metadata.
+SDK metadata hashes are **not** a whole-SDK byte seal. System dyld-cache dependencies are recorded
+as OS-build/architecture identities, distinct from byte-verified artifact or Xcode libraries.
+Unresolved libraries, producer scratch absolute libraries and compiler/loader input overrides
+are refused. An explicit `DEVELOPER_DIR` must equal the selected Xcode; other driver/include-path
+and dynamic-loader overrides are unsupported. SDK discovery's object-only runtime exception does
+not apply here.
+
+Download does not preserve executable modes. Only the allowlisted `bin/tool` becomes executable,
+after all bytes and identities are checked. The comparator's two frozen dependency sources are
+also reacquired and checked on the consumer so existing mixed validation continues to inspect real
+source checkouts. Original producer argv, paths and measurements remain unchanged; consumer paths
+are a separate mapping. Total producer preparation includes acquisition/resolve/build, source and
+toolchain identities, runtime closure and artifact copying; original successful phase receipts stay
+in the bounded manifest. Raw full logs are not transferred. Build failure logs expose bounded
+receipts/tails without replacing errors.
+
+The `--prepared-tools` mode revalidates admission, builds new fixtures/indexes on the consumer and
+runs the real comparison. Only those completed checks can set `passed`. Preparation and baseline
+admission use `prepared-only` and `admitted-preparation-only`; they never count as passed comparisons.
+Paired queries share the same consumer input and keep the original order and byte checks. Producer
+build costs, artifact transfer and consumer admission/query costs remain separate, with no single-host
+end-to-end cost claim. Transfer artifacts are separate from normalized public comparison evidence.
+The isolated restored-state worker carries the original run/attempt attestation in its sealed plan;
+it does not receive a copied Actions environment or claim a new observation of that environment.
+Its adapter rechecks the actual checkout commit/tree/merge parents and admitted bytes against that
+retained attestation. Ordinary CI admission still requires the current Actions environment.
+This finite CI mode is not general executable distribution or a relocated index validation feature.

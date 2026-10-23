@@ -166,7 +166,19 @@ def guard(plan):
     try:
         for reference in plan["inputs"].values():
             reference_bytes(reference)
+        if plan.get("prepared_tools") is not None:
+            retained = plan["prepared_tools"]
+            prepared = prepared_module(plan["inputs"])
+            value = prepared.read_admission(Path(plan["inputs"]["prepared:admission"]["path"]),
+                                            retained_binding=retained["binding"])
+            require(value == document(plan["inputs"]["prepared:admission"]), "Retained admission changed")
+            row["prepared_tools"] = dict(status="revalidated", binding=retained["binding"],
+                                         scope="Original sealed Actions attestation; no new run/attempt observation")
         row["generation"] = generation.verify(plan["engine_config"])
+        if plan.get("prepared_tools") is not None:
+            for name, ref in plan["inputs"].items():
+                if name.startswith("prepared:"):
+                    reference_bytes(ref)
         row["status"] = "passed"
     except KeyboardInterrupt:
         row.update(status="incomplete", failure="KeyboardInterrupt")
@@ -185,6 +197,96 @@ def successful_setup(row):
         and type(row.get("wall_seconds")) in (int, float)
         and math.isfinite(row["wall_seconds"])
         and row["wall_seconds"] >= 0
+    )
+
+
+def original_setup_succeeded(native, baseline):
+    setup = native.get("setup", {})
+    return (
+        setup.get("build_cost_measured") is True
+        and successful_setup(setup.get("build"))
+        and isinstance(baseline.get("commands"), list)
+        and bool(baseline["commands"])
+        and all(successful_setup(row) for row in baseline["commands"])
+        and successful_setup(baseline.get("help"))
+        and baseline.get("untracked_build_inputs", {}).get("passed") is True
+    )
+
+
+def prepared_module(inputs):
+    # 원래 runtime 코드 목록 밖의 두 helper는 별도 봉인한 실제 소스에서만 실행한다.
+    # loader의 기존 pyc나 생산자 경로를 가져오지 않고 각 guard에서 다시 읽는다.
+    import types
+    modules = {}
+    for role in ("benchmark", "helper"):
+        ref = inputs["prepared:" + role]
+        path = Path(ref["path"])
+        require(path.is_absolute() and path.resolve(strict=True) == path, "Prepared helper path is aliased")
+        module = types.ModuleType("sealed_prepared_" + role)
+        module.__file__ = str(path)
+        exec(compile(reference_bytes(ref), str(path), "exec"), module.__dict__)
+        modules[role] = module
+    modules["helper"]._BASE = modules["benchmark"]
+    return modules["helper"]
+
+
+def bind_prepared_setup(repository, inputs, tools, lifecycle_setup):
+    native, baseline = tools["cartograph"], tools["comparator_setup"]
+    require(tools.get("status") == "passed"
+            and native["setup"].get("mode") == baseline.get("mode") == "verified-prepared-artifact",
+            "Prepared tools require a passed actual comparison and matching modes")
+    admission_path = Path(native["setup"]["admission_path"])
+    require(admission_path.is_absolute() and admission_path.resolve(strict=True) == admission_path
+            and baseline.get("admission_path") == str(admission_path), "Prepared admission path differs")
+    inputs["prepared:admission"] = reference(admission_path)
+    inputs["prepared:helper"] = reference(repository / "Scripts/prepared-comparison-tools.py")
+    inputs["prepared:benchmark"] = reference(repository / "Scripts/benchmark-indexstore-cli.py")
+    recorded = document(inputs["prepared:admission"])
+    for role in ("candidate", "comparator", "baseline"):
+        item = recorded["tools"][role]
+        ref = reference(item["manifest"])
+        require(ref["sha256"] == item["manifest_sha256"], "Retained manifest changed")
+        inputs["prepared:manifest:" + role] = ref
+    prepared = prepared_module(inputs)
+    value = prepared.read_admission(admission_path, retained_binding=recorded["binding"])
+    require(value == recorded, "Prepared admission changed during binding")
+    expected_native = prepared.prepared_product(value, "candidate")
+    expected_cli = prepared.prepared_product(value, "comparator")
+    require(all(native.get(key) == item for key, item in expected_native.items() if key != "setup")
+            and all(native["setup"].get(key) == item for key, item in expected_native["setup"].items()),
+            "Passed native result differs from retained producer/consumer identity")
+    cli_setup = expected_cli["setup"]
+    original_cli = cli_setup["producer_evidence"]
+    expected_baseline = dict(
+        binary=expected_cli["binary"], binary_sha256=expected_cli["binary_sha256"],
+        checkout=cli_setup["consumer_source"], source=cli_setup["source"],
+        build_evidence=original_cli, commands=original_cli["commands"],
+        producer=cli_setup["producer"], admission=cli_setup["admission"],
+        toolchain_identity=value["toolchain"]["identity"],
+    )
+    require(all(baseline.get(key) == item for key, item in expected_baseline.items()),
+            "Passed comparator result differs from retained producer/consumer identity")
+    require(original_setup_succeeded(expected_native["setup"]["producer_evidence"], original_cli),
+            "Original producer setup prerequisites failed")
+    identity, paths = value["toolchain"]["identity"], value["toolchain"]["paths"]
+    compiler = tools["toolchain"]
+    require(tools.get("toolchain_identity") == identity and compiler["version"] == identity["swift_version"]
+            and compiler["library_sha256"] == identity["tools_sha256"]["libIndexStore"],
+            "Original comparison toolchain differs from admission")
+    for key, name in (("swiftc", "swiftc"), ("clang", "clang"), ("library", "libIndexStore")):
+        path = Path(lifecycle_setup[key]).resolve(strict=True)
+        require(path == Path(paths[name]).resolve(strict=True)
+                and generation.digest(path) == identity["tools_sha256"][name],
+                "Restored generation toolchain differs from admission")
+        if key != "clang":
+            require(Path(compiler[key]).resolve(strict=True) == path, "Comparison compiler path differs")
+    return dict(
+        binding=value["binding"],
+        scope="Original sealed Actions attestation; current checkout/source/runtime revalidated without a new run claim",
+        roots=[str(admission_path.parent), *[str(Path(item["manifest"]).parent) for item in value["tools"].values()],
+               *[item["consumer_source"] for item in value["tools"].values()]],
+        producer_costs={role: item["producer"] for role, item in value["tools"].items()},
+        consumer_admission=value["consumer"],
     )
 
 
@@ -221,16 +323,14 @@ def prepare(repository, lifecycle_path, setup_path, measurement_path):
     require(
         tools.get("correctness_and_freshness_passed") is True
         and baseline.get("repository") == "https://github.com/swiftlang/indexstore-db.git"
-        and baseline.get("revision") == "64aa0b26913249c4e7c21d351a215fba02702003"
-        and native["setup"]["build_cost_measured"] is True
-        and successful_setup(native["setup"]["build"])
-        and isinstance(baseline.get("commands"), list)
-        and bool(baseline["commands"])
-        and all(successful_setup(row) for row in baseline["commands"])
-        and successful_setup(baseline.get("help"))
-        and baseline.get("untracked_build_inputs", {}).get("passed") is True,
+        and baseline.get("revision") == "64aa0b26913249c4e7c21d351a215fba02702003",
         "Original native/tool setup prerequisites failed",
     )
+    prepared = None
+    if native["setup"].get("mode") == "verified-prepared-artifact" or baseline.get("mode") == "verified-prepared-artifact":
+        prepared = bind_prepared_setup(repository, inputs, tools, lifecycle["setup"])
+    else:
+        require(original_setup_succeeded(native, baseline), "Original native/tool setup prerequisites failed")
     require(generation.digest(native["binary"]) == native["binary_sha256"], "Native binary changed")
     require(generation.digest(baseline["binary"]) == baseline["binary_sha256"], "Pinned CLI binary changed")
     setup = lifecycle["setup"]
@@ -261,7 +361,9 @@ def prepare(repository, lifecycle_path, setup_path, measurement_path):
     roots += [Path(setup["sdk_path"]), Path(developer["developer_directory"])]
     roots += [Path(v) for v in (native["binary"], baseline["binary"], setup["library"], sys.executable)]
     roots += [p for p in Path(setup["clang"]).resolve().parents if p.name.endswith(".xctoolchain")]
-    return dict(
+    if prepared is not None:
+        roots.extend(Path(value) for value in prepared["roots"])
+    plan = dict(
         schema_version=1,
         state_id="restored_rebuilt",
         final_evidence=False,
@@ -279,6 +381,13 @@ def prepare(repository, lifecycle_path, setup_path, measurement_path):
             scope="Retained shared/prior costs; no endpoint totals or zero-cost reuse claim",
         ),
     )
+    if prepared is not None:
+        plan["prepared_tools"] = prepared
+        plan["prior_costs"]["prepared_tools"] = dict(
+            producer=prepared["producer_costs"], consumer_admission=prepared["consumer_admission"],
+            scope="Separate retained producer and consumer costs; no local build or composed endpoint total",
+        )
+    return plan
 
 
 def bind_sdk_discovery(plan, sdk_path):
