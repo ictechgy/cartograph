@@ -119,6 +119,25 @@ def record_generated_metadata(project, output, phase):
     return report
 
 
+def record_scope_observation(document, receipt):
+    """Expose bounded public-fixture refusal reasons without changing any product gate."""
+    report = {"status": "observed", "targetScope": document.get("targetScope"),
+              "limitations": document.get("limitations"),
+              "receipt": {key: receipt.get(key) for key in ("version", "inputFingerprint", "selectedTargetIDs")},
+              "limitation": "Public synthetic fixture diagnostic only; capture success does not certify selector safety."}
+    encoded = json.dumps(report, ensure_ascii=True, sort_keys=True)
+    if len(encoded) > 64 * 1024:
+        report = {"status": "diagnostic-output-budget-exceeded", "bytes": len(encoded),
+                  "sha256": hashlib.sha256(encoded.encode("ascii")).hexdigest(),
+                  "limitation": "Read candidate-json.stdout in the artifact; the product gate is unchanged."}
+        encoded = json.dumps(report, ensure_ascii=True, sort_keys=True)
+    try:
+        print("SCOPE_OBSERVATION " + encoded, flush=True)
+    except OSError:
+        pass  # The original product assertion must remain the failure.
+    return report
+
+
 def mcp_worker(binary, output):
     peer_module = load("preparation_peer", ROOT / "Scripts/followup-verify-mcp-preparation.py")
     metadata = json.loads((output / "capture/capture.json").read_text())
@@ -226,6 +245,7 @@ def verify(binary, output):
         return json.loads(raw) if format == "json" and raw else raw.decode()
     document = invoke("candidate-json")
     scope = document["targetScope"]
+    record_scope_observation(document, receipt)
     require(scope["evidenceStatus"] == "matched-capture" and scope["xcode"]["selectionStatus"] == "review-candidates",
             "Actual package record and linker proof did not produce review candidates")
     require(scope["xcode"]["generatedMetadataOrigin"] == "capture-created",

@@ -21,6 +21,32 @@ NATIVE_SPEC.loader.exec_module(NATIVE)
 
 
 class TestExecutionTests(unittest.TestCase):
+    def test_scope_diagnostic_preserves_refusal_and_escapes_controls(self):
+        document = {"targetScope": {"evidenceStatus": "unknown", "limitations": ["bad\u001b input"]},
+                    "limitations": ["incomplete"], "unusedBody": "not printed"}
+        receipt = {"version": 2, "inputFingerprint": "a" * 64, "selectedTargetIDs": ["Checks"],
+                   "localPackage": {"files": {"private-looking": "not printed"}}}
+        before = copy.deepcopy((document, receipt))
+        with mock.patch("builtins.print") as printer:
+            report = NATIVE.record_scope_observation(document, receipt)
+        encoded = printer.call_args.args[0]
+        self.assertEqual(report["targetScope"], document["targetScope"])
+        self.assertEqual(report["limitations"], ["incomplete"])
+        self.assertEqual((document, receipt), before)
+        self.assertNotIn("\u001b", encoded)
+        self.assertNotIn("not printed", encoded)
+        self.assertEqual(json.loads(encoded.removeprefix("SCOPE_OBSERVATION ")), report)
+
+    def test_scope_diagnostic_budget_and_closed_pipe_do_not_replace_product_assertion(self):
+        document = {"targetScope": {"evidenceStatus": "unknown"}, "limitations": ["x" * (64 * 1024)]}
+        with mock.patch("builtins.print", side_effect=BrokenPipeError("closed")):
+            report = NATIVE.record_scope_observation(document, {})
+        self.assertEqual(report["status"], "diagnostic-output-budget-exceeded")
+        self.assertGreater(report["bytes"], 64 * 1024)
+        self.assertEqual(len(report["sha256"]), 64)
+        with self.assertRaisesRegex(RuntimeError, "original product gate"):
+            NATIVE.require(document["targetScope"]["evidenceStatus"] == "matched-capture", "original product gate")
+
     def test_generated_metadata_observation_is_finite_and_not_source_discovery(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder).resolve() / ".swiftpm"
