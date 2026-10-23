@@ -51,6 +51,12 @@ the preflight adds a bounded extra scan without suppressing receiver states.
 Every examined candidate transition is also charged, including unknown revisits.
 Actual counters and all budgets are output. These are work-count limits, not hard
 wall-clock or allocation bounds; fallback still runs the existing conservative traversal.
+Raw references are indexed once in linear input work. Repeated proof checks then
+have a separate occurrence admission budget (32 times the state budget, 1,600,000
+by default): the full observed caller/callee array is charged before any
+`allSatisfy` check or exclusion-witness set/sort, including repeated projections.
+The admitted count is an input-work bound, not a claim that early-exit checks
+examined every occurrence or that sorting has no logarithmic factor.
 
 Source joins are ephemeral and are not serialized in snapshots. Historical
 before/after traversal remains conservative. Current queries recheck source SHA-256

@@ -65,6 +65,7 @@ extension CartographService {
         return ["receiver-precision: \(precision.mode); excluded \(precision.excludedTransitions) transition(s); "
             + "state budget \(precision.stateBudget); transition budget \(precision.transitionBudget ?? 0); "
             + "examined transitions \(precision.examinedTransitions ?? 0); work budget \(precision.workBudget ?? 0); "
-            + "examined work \(precision.examinedWork ?? 0); \(precision.reason ?? "unknown")"]
+            + "examined work \(precision.examinedWork ?? 0); raw reference budget \(precision.referenceBudget ?? 0); "
+            + "admitted references \(precision.admittedReferences ?? 0); \(precision.reason ?? "unknown")"]
     }
 }

@@ -195,6 +195,51 @@ struct DispatchImpactEvidenceTests {
         }
     }
 
+    @Test("한 간선의 raw 발생도 반복 증명 전에 예산에 넣고 임계 양쪽을 보존한다")
+    func rawOccurrenceProofBudget() {
+        let cases: [(witnesses: Int, occurrences: Int, fallback: Bool, admitted: Int)] = [
+            (9, 35, false, 315), (9, 36, true, 288),
+            (1, 319, false, 319), (1, 320, false, 320), (1, 321, true, 0),
+        ]
+        for item in cases {
+            var snapshot = fixture()
+            snapshot.references = []
+            snapshot.symbols = snapshot.symbols.filter { ["s:Base", "s:Base.send"].contains($0.usr) }
+            var seeds: Set<NodeID> = []
+            var owners: [String] = []
+            for index in 0..<item.witnesses {
+                let owner = "s:Final\(index)"
+                let method = owner + ".send"
+                seeds.insert(NodeID(method)); owners.append(owner)
+                snapshot.symbols += [
+                    .init(usr: owner, name: "Final\(index)", kind: .classType, module: "Fixture",
+                        location: .init(path: path, line: 1, column: 1)),
+                    .init(usr: method, name: "send()", kind: .method, module: "Fixture",
+                        location: .init(path: path, line: 1, column: 1), parentUSR: owner),
+                ]
+                snapshot.references.append(ref(method, "s:Base.send", .overrides))
+            }
+            snapshot.symbols.append(.init(usr: "s:Unknown", name: "unknown", kind: .function, module: "Fixture",
+                location: .init(path: path, line: 1, column: 1)))
+            for line in 1...item.occurrences {
+                snapshot.references.append(ref("s:Unknown", "s:Base.send", .call, line: line, receiver: "s:Base"))
+            }
+            snapshot.dispatchReceiverFiles = [.init(path: path, finalClassUSRs: owners, selfCalls: [])]
+            for reverse in [false, true] {
+                if reverse { snapshot.symbols.reverse(); snapshot.references.reverse() }
+                let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+                let legacy = ImpactAnalyzer().analyze(changing: seeds, in: graph)
+                let actual = ImpactAnalyzer().analyze(changing: seeds, in: graph,
+                    receiverEvidence: evidence(snapshot), receiverStateBudget: 10)
+                #expect(actual.affected == legacy.affected)
+                #expect(actual.receiverPrecision?.admittedReferences == item.admitted)
+                #expect(actual.receiverPrecision?.referenceBudget == 320)
+                #expect((actual.receiverPrecision?.reason == "receiver-reference-budget") == item.fallback)
+                #expect(actual.receiverPrecision?.excludedTransitions == 0)
+            }
+        }
+    }
+
     @Test("저장된 이전 snapshot은 현재 self 증명을 빌리지 않는다")
     func historicalCaptureDropsSourceProof() throws {
         let current = fixture()

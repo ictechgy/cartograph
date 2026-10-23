@@ -8,6 +8,9 @@ public struct ImpactReceiverPrecision: Sendable, Equatable, Codable {
     public let stateBudget: Int
     public let transitionBudget: Int?
     public let workBudget: Int?
+    public let referenceBudget: Int?
+    /// Raw occurrences admitted for refinement, including repeated visits.
+    public let admittedReferences: Int?
     /// Preflight graph items examined, including filtered edges. The admitted
     /// expansion is then scanned again by the legacy builder; this is not an
     /// instruction count and sorting cost is bounded by admitted input size.
@@ -45,7 +48,8 @@ extension ImpactReceiverPrecision {
                 locationsOmitted: omitted(item.locations.count, item.locationsOmitted, cap))
         }
         return Self(mode: mode, excludedTransitions: excludedTransitions, reason: reason, stateBudget: stateBudget,
-            transitionBudget: transitionBudget, workBudget: workBudget, examinedWork: examinedWork,
+            transitionBudget: transitionBudget, workBudget: workBudget, referenceBudget: referenceBudget,
+            admittedReferences: admittedReferences, examinedWork: examinedWork,
             examinedTransitions: examinedTransitions, visitedStates: visitedStates,
             exclusions: shown.isEmpty ? nil : shown,
             exclusionsOmitted: excludedTransitions > shown.count ? excludedTransitions - shown.count : nil)
@@ -53,7 +57,8 @@ extension ImpactReceiverPrecision {
 
     public func fallingBack(reason: String) -> Self {
         Self(mode: "conservative-fallback", excludedTransitions: 0, reason: reason, stateBudget: stateBudget,
-            transitionBudget: transitionBudget, workBudget: workBudget, examinedWork: examinedWork,
+            transitionBudget: transitionBudget, workBudget: workBudget, referenceBudget: referenceBudget,
+            admittedReferences: admittedReferences, examinedWork: examinedWork,
             examinedTransitions: examinedTransitions, visitedStates: visitedStates,
             exclusions: nil, exclusionsOmitted: nil)
     }
@@ -99,6 +104,11 @@ public struct DispatchImpactEvidence: Sendable {
                 $0.isObjectiveCRelated || [.dynamicDispatch, .dynamicReplacement, .runtimeManaged,
                     .implicit, .sourceUnavailable].contains($0)
             })
+    }
+
+    func referenceCount(for visit: ImpactVisit) -> Int {
+        let target = visit.dispatchContract ?? visit.via
+        return calls[Pair(caller: visit.node.rawValue, callee: target.rawValue)]?.count ?? 0
     }
 
     func exclusion(_ visit: ImpactVisit, requiring receiver: NodeID) -> ImpactReceiverPrecision.Exclusion {
@@ -153,6 +163,8 @@ extension ImpactAnalyzer {
         let transitionBudget = stateBudget * 4
         let workBudget = stateBudget * 32
         var workRemaining = workBudget
+        let referenceBudget = stateBudget * 32
+        var admittedReferences = 0
         var examinedTransitions = 0
         var visitedStates = 0
         func fallback(_ reason: String) -> ImpactReport {
@@ -162,7 +174,8 @@ extension ImpactAnalyzer {
                 truncatedByDepth: original.truncatedByDepth,
                 receiverPrecision: .init(mode: "conservative-fallback", excludedTransitions: 0,
                     reason: reason, stateBudget: stateBudget, transitionBudget: transitionBudget,
-                    workBudget: workBudget, examinedWork: workBudget - workRemaining,
+                    workBudget: workBudget, referenceBudget: referenceBudget,
+                    admittedReferences: admittedReferences, examinedWork: workBudget - workRemaining,
                     examinedTransitions: examinedTransitions, visitedStates: visitedStates,
                     exclusions: nil, exclusionsOmitted: nil))
         }
@@ -197,6 +210,11 @@ extension ImpactAnalyzer {
                         ? evidence.finalOwner(of: state.node) : state.receiver
                     var propagated: NodeID?
                     if let required {
+                        let count = evidence.referenceCount(for: candidate)
+                        guard count <= referenceBudget - admittedReferences else {
+                            return fallback("receiver-reference-budget")
+                        }
+                        admittedReferences += count
                         switch evidence.transition(candidate, requiring: required) {
                         case .disjoint:
                             excluded += 1
@@ -232,7 +250,8 @@ extension ImpactAnalyzer {
             receiverPrecision: .init(mode: excluded > 0 ? "bounded-final-self" : "conservative-no-exclusion", excludedTransitions: excluded,
                 reason: "Only fresh exact self calls and distinct final Swift receiver types are refined; aliases, nonfinal and runtime paths remain conservative.",
                 stateBudget: stateBudget, transitionBudget: transitionBudget,
-                workBudget: workBudget, examinedWork: workBudget - workRemaining,
+                workBudget: workBudget, referenceBudget: referenceBudget,
+                admittedReferences: admittedReferences, examinedWork: workBudget - workRemaining,
                 examinedTransitions: examinedTransitions, visitedStates: visitedStates, exclusions: exclusions.isEmpty ? nil : exclusions,
                 exclusionsOmitted: excluded > exclusions.count ? excluded - exclusions.count : nil))
     }
