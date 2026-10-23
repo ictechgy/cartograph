@@ -119,7 +119,8 @@ struct RawIndexStoreReader {
                     provider = parsed
                 }
                 let dependencyModule = dependency.module
-                let recordModule = dependencyModule.isEmpty && path.hasSuffix(".swift") ? module : dependencyModule
+                let recordModule = Self.recordModule(dependencyModule: dependencyModule,
+                                                     unitModule: module, sourcePath: path)
                 records.append(Record(
                     unit: unitName,
                     record: dependency.name,
@@ -188,6 +189,13 @@ struct RawIndexStoreReader {
             ancestor = parent
         }
         return path
+    }
+
+    /// 구현 파일은 컴파일 unit의 모듈을 사용할 수 있다. 공유 헤더는 소비자 모듈에 귀속하지 않는다.
+    static func recordModule(dependencyModule: String, unitModule: String, sourcePath: String) -> String {
+        if !dependencyModule.isEmpty { return dependencyModule }
+        let ownedImplementation = [".swift", ".m", ".mm"].contains { sourcePath.hasSuffix($0) }
+        return ownedImplementation ? unitModule : ""
     }
 
     private func canonicalDependencyPath(_ path: String, relativeTo workingDirectory: String) -> String {
@@ -477,40 +485,22 @@ struct RawIndexStoreReader {
         let store: RawStore
 
         init(storePath: String, libraryPath: String) throws {
-            let box = StoreBox()
             let storeURL = URL(fileURLWithPath: storePath)
             let libraryURL = URL(fileURLWithPath: libraryPath)
-            Task.detached {
+            self.store = try IndexStoreTaskBridge.wait {
+                let library: RawStoreLibrary
                 do {
-                    let library = try await RawStoreLibrary.at(dylibPath: libraryURL)
-                    do {
-                        box.store = try library.indexStore(at: storeURL)
-                    } catch {
-                        box.error = error
-                    }
+                    library = try await RawStoreLibrary.at(dylibPath: libraryURL)
                 } catch {
-                    box.error = CartographError.indexStoreLibraryNotFound(searchedPaths: [libraryPath])
+                    throw CartographError.indexStoreLibraryNotFound(searchedPaths: [libraryPath])
                 }
-                box.semaphore.signal()
+                return try library.indexStore(at: storeURL)
             }
-            box.semaphore.wait()
-            if let error = box.error { throw error }
-            guard let store = box.store else {
-                throw RawIndexStoreReaderError.openStore("raw IndexStore returned no store")
-            }
-            self.store = store
         }
-    }
-
-    private final class StoreBox: @unchecked Sendable {
-        let semaphore = DispatchSemaphore(value: 0)
-        var store: RawStore?
-        var error: Error?
     }
 }
 
 private enum RawIndexStoreReaderError: Error, LocalizedError {
-    case openStore(String)
     case unit(String, underlying: Error)
     case record(String, String, underlying: Error)
     case provider(String, String)
@@ -518,7 +508,6 @@ private enum RawIndexStoreReaderError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .openStore(let message): return message
         case .unit(let unit, let error): return "Could not read index unit \(unit): \(error)"
         case .record(let unit, let record, let error):
             return "Could not read index record \(record) from unit \(unit): \(error)"

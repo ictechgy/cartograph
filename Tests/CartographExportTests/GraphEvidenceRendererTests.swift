@@ -67,7 +67,10 @@ struct GraphEvidenceRendererTests {
         let limitations = try #require(document["limitations"] as? [String])
         #expect(limitations == [
             "module-import-topology: 1 import declaration(s) are exported as separate facts; "
-                + "the graph has no importDeclaration edges, so imports are not represented as topology"
+                + "the graph has no importDeclaration edges, so imports are not represented as topology",
+            "source-attribution: 1 module reference occurrence(s) used the legacy semantic source "
+                + "(unknown-file-ownership); paths: \"/generated/A.swift\"; omitted paths: 0. "
+                + "Architectural source and resulting cycle/rule findings remain uncertain."
         ])
     }
 

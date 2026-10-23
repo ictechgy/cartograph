@@ -6,6 +6,8 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
     public static let format = "analysis-snapshot"
     public static let version = 2
     public static let maximumByteCount = 128 * 1024 * 1024
+    /// 명시적 선택도 유한한 입력 상한을 유지한다. 기본 128 MiB는 이전 API와 같다.
+    public static let maximumSupportedByteCount = 1024 * 1024 * 1024
     public static let missingRuntimeDiscoveryLimitation =
         "historical-runtime-discovery: this snapshot has no captured automatic runtime discovery input"
 
@@ -61,8 +63,19 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
 
     /// 신뢰할 수 없는 snapshot bytes는 이 경계에서 크기와 원본 출처 token을 먼저 검사한다.
     public static func decode(from data: Data) throws -> Self {
-        guard data.count <= maximumByteCount else {
-            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Analysis snapshot exceeds 128 MiB."))
+        try decode(from: data, maximumBytes: maximumByteCount)
+    }
+
+    /// 큰 프로젝트는 명시적으로 한도를 늘리되 읽기·쓰기에서 같은 원본 JSON 바이트 예산을 적용한다.
+    public static func decode(from data: Data, maximumBytes: Int) throws -> Self {
+        try validateMaximumBytes(maximumBytes)
+        guard data.count <= maximumBytes else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [],
+                debugDescription: "Analysis snapshot exceeds the configured limit of \(maximumBytes) bytes."))
+        }
+        guard !data.starts(with: [0x1f, 0x8b]), !data.starts(with: [0x50, 0x4b]) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [],
+                debugDescription: "Compressed snapshots are unsupported. Supply uncompressed analysis-snapshot JSON."))
         }
         let decoder = JSONDecoder()
         if let provenance = try RetentionProvenanceAdmission.read(from: data, snapshot: true) {
@@ -71,6 +84,28 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
         let document = try decoder.decode(Self.self, from: data)
         try document.validate()
         return document
+    }
+
+    /// CLI와 임베딩 코드가 같은 제한으로 줄바꿈을 포함한 전체 파일을 만든다.
+    /// JSONEncoder는 전체 문서를 메모리에 만들므로 이 값은 RSS 상한이 아니다.
+    public func encoded(maximumBytes: Int = Self.maximumByteCount) throws -> Data {
+        try Self.validateMaximumBytes(maximumBytes)
+        var data = try JSONEncoder.cartographDefault().encode(self)
+        data.append(10)
+        guard data.count <= maximumBytes else {
+            throw CartographError.invalidConfiguration(path: projectRoot,
+                reason: "Snapshot exceeds the configured limit of \(maximumBytes) bytes. "
+                    + "Use --snapshot-max-mib (1...1024; default 128) with sufficient memory for both capture and comparison.")
+        }
+        return data
+    }
+
+    /// 정수 곱셈이나 읽기를 시작하기 전에 불가능한 메모리 요청을 거부한다.
+    public static func validateMaximumBytes(_ maximumBytes: Int) throws {
+        guard (1...maximumSupportedByteCount).contains(maximumBytes) else {
+            throw CartographError.invalidConfiguration(path: "analysis snapshot",
+                reason: "Snapshot byte limit must be between 1 and \(maximumSupportedByteCount).")
+        }
     }
 
     private enum CodingKeys: String, CodingKey {

@@ -1,0 +1,10 @@
+layers:
+  - name: Presentation
+    match: [Presentation]
+  - name: Domain
+    match: [Domain]
+  - name: Data
+    match: [Data]
+rules:
+  - from: Presentation
+    deny: [Data]

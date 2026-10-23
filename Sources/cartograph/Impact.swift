@@ -52,7 +52,7 @@ struct ImpactCommand: ParsableCommand {
 
     @Option(
         name: .customLong("limit"),
-        help: "Maximum affected declarations to report (default: 200; language-traversal: 100000)."
+        help: "Maximum affected declarations: 1...10000 (default: 200); language-traversal: 1...100000 (default: 100000)."
     )
     var limit: Int?
 
@@ -91,6 +91,10 @@ struct ImpactCommand: ParsableCommand {
     @Option(name: .customLong("before"), help: "An analysis-snapshot v1 or v2 file captured before the change.")
     var before: String?
 
+    @Option(name: .customLong("snapshot-max-mib"),
+        help: "With --before: maximum uncompressed snapshot size in MiB, from 1 through 1024 (default: 128).")
+    var snapshotMaxMiB: Int?
+
     @Option(name: .customLong("format"), help: "text, json (change-impact v1) or language-traversal (isthmus v1).")
     var format: ImpactFormat = .text
 
@@ -100,6 +104,11 @@ struct ImpactCommand: ParsableCommand {
     }
 
     func validate() throws {
+        if let snapshotMaxMiB {
+            guard before != nil, (1...1024).contains(snapshotMaxMiB) else {
+                throw ValidationError("--snapshot-max-mib requires --before and must be between 1 and 1024")
+            }
+        }
         // `--roots-from` 도 선언 선택이다. 파일·since 와 섞으면 선택 모드 검사가 거부한다.
         let hasSymbols = !symbols.isEmpty || rootsFrom != nil
         let hasFiles = !files.isEmpty
@@ -238,7 +247,8 @@ struct ImpactCommand: ParsableCommand {
                 selectionLimitations: selectionLimitations,
                 coreDataBuildEvidencePath: coreDataBuildEvidence.map {
                     GlobalOptions.absolutePath($0, relativeTo: context.fileSystem.currentDirectoryPath)
-                }
+                },
+                snapshotMaximumBytes: (snapshotMaxMiB ?? 128) * 1024 * 1024
             )
         } else {
             outcome = try context.service.impact(

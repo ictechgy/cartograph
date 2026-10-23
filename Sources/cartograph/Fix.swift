@@ -5,7 +5,7 @@ import CartographKit
 struct FixCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "fix",
-        abstract: "Plan or apply the safe mechanical fixes for unused imports and unused parameters.",
+        abstract: "Plan or apply mechanical edits for unused imports and unused parameters; rebuild to verify.",
         discussion: """
             Only two warning classes are fixed: `unused-import` removes the import declaration, and
             `unused-parameter` drops the parameter's internal name while keeping its argument label.
@@ -15,6 +15,8 @@ struct FixCommand: ParsableCommand {
             is written. A declaration whose position no longer matches, a line carrying other code,
             and a result that does not parse are reported as skipped, never guessed at. Writes are
             atomic per file.
+            Parsing does not prove type correctness or build compatibility. Review the plan and
+            rebuild all relevant targets after applying it; no build verification or rollback is performed.
             """
     )
 

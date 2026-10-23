@@ -78,7 +78,8 @@ enum CommandSupport {
     static func emit(
         _ outcome: CommandOutcome,
         options: GlobalOptions,
-        context: CommandContext
+        context: CommandContext,
+        diagnosticSink: FileHandle = .standardError
     ) throws {
         if let path = options.outputPath {
             // 여기서 나는 파일 시스템 오류를 그대로 던지면 ArgumentParser 가 1 로
@@ -95,8 +96,8 @@ enum CommandSupport {
         } else {
             print(outcome.output, terminator: "")
         }
-        for note in outcome.notes {
-            FileHandle.standardError.write(Data(("note: " + note + "\n").utf8))
+        for note in notesForDisplay(outcome.notes, quiet: options.quiet) {
+            diagnosticSink.write(Data(("note: " + note + "\n").utf8))
         }
 
         // 없는 이름을 물어본 것은 코드의 문제가 아니라 인자의 문제다. 사용 오류로
@@ -120,20 +121,62 @@ enum CommandSupport {
         }
 
         if let reason = outcome.incompleteAnalysis {
-            FileHandle.standardError.write(Data(("error: " + reason + "\n").utf8))
+            diagnosticSink.write(Data(("error: " + reason + "\n").utf8))
             throw ExitCode(failureExitCode)
         }
 
         // 임계값 초과는 코드에 대한 판정이지 도구의 실패가 아니다.
         // 리포트를 다 보여 준 뒤에 사유를 알리고 "문제 발견" 코드로 끝낸다.
         if let failure = outcome.thresholdFailure {
-            FileHandle.standardError.write(Data(("error: " + describe(failure) + "\n").utf8))
+            diagnosticSink.write(Data(("error: " + describe(failure) + "\n").utf8))
             throw ExitCode(findingsExitCode)
         }
         if context.configuration.strict, outcome.hasFindings {
             throw ExitCode(findingsExitCode)
         }
     }
+
+    /// quiet는 알려진 한계 note의 화면 표현만 줄인다. 숫자·이름을 지워 내용을 합치지 않으며,
+    /// 새 코드와 일반 안내는 원문을 유지한다. 결과 JSON과 종료 판단은 건드리지 않는다.
+    static func notesForDisplay(_ notes: [String], quiet: Bool) -> [String] {
+        guard quiet else { return notes }
+        var counts: [String: Int] = [:]
+        var other: [String] = []
+        for note in notes {
+            guard let colon = note.firstIndex(of: ":") else {
+                other.append(note)
+                continue
+            }
+            let code = String(note[..<colon])
+            guard summarizedLimitationCodes.contains(code) else {
+                other.append(note)
+                continue
+            }
+            counts[code, default: 0] += 1
+        }
+        guard !counts.isEmpty else { return other }
+        let total = counts.values.reduce(0, +)
+        let codes = counts.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
+        let summary = "analysis-limitations: \(total) note(s) across \(counts.count) known code(s): \(codes). "
+            + "Results may be incomplete or stale; an empty result is not a safety guarantee. "
+            + "Full notes: rerun without --quiet. JSON limitation fields are unchanged."
+        return [summary] + other
+    }
+
+    // 명시적으로 알고 있는 한계만 요약한다. 임의의 `prefix:` 메시지를 한계라고 추정하지 않는다.
+    private static let summarizedLimitationCodes: Set<String> = [
+        "configured-edge-kinds", "configured-path-filter", "empty-index", "external-retentions",
+        "external-retentions-ambiguous", "external-retentions-objective-c", "external-retentions-provenance",
+        "external-retentions-provenance-display", "external-retentions-provenance-unavailable",
+        "external-retentions-provenance-unsupported", "external-retentions-source",
+        "external-retentions-source-context-unavailable", "external-retentions-stale",
+        "external-retentions-unmatched", "external-retentions-upstream", "header-projection",
+        "incomplete-runtime-analysis", "index-selection", "index-staleness", "interface-builder-documents",
+        "local-function-projection", "missing-sources", "objective-c-sources", "public-api-not-retained",
+        "source-attribution", "source-discovery-exclusions", "symlinked-directories-outside-root",
+        "test-target-assumption", "uncertain-test-identity", "unindexed-sources", "unknown-clang-module",
+        "unreadable-sources", "unresolved-impact-inputs", "dispatch-receiver-uncertainty", "unverified-test-markers",
+    ]
 
     /// 사용자에게 보여 줄 오류 메시지로 바꾼다.
     static func describe(_ error: any Error) -> String {

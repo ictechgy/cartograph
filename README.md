@@ -388,7 +388,11 @@ Data.UserRepository is reachable:
   Presentation.HomeView → Domain.UserService → Data.UserRepository
 ```
 
-### `fix` — apply the safe mechanical fixes
+### `fix` — plan and apply mechanical edits
+
+Parse checks do not prove type correctness or build compatibility. Review the diff and rebuild
+all relevant targets after `--apply`. Writes are atomic per file, not across the edit set;
+this command does not run a verification command or roll back failed builds.
 
 ```bash
 cartograph fix                      # print the plan; writes nothing
@@ -945,7 +949,16 @@ uses the symbol graph and JSON output, so `--level`, `--report-format`, `--stric
 `--baseline` are rejected.
 
 Older v1 snapshots remain readable and explicitly report missing automatic runtime evidence.
-Snapshots are limited to 128 MiB and omit runtime `expectedValue` fields. If a current runtime
+The default snapshot limit remains 128 MiB. For larger projects, set `--snapshot-max-mib 512`
+on both `snapshot` and `impact --before` (accepted range: 1–1024 MiB); the Git capture helper
+forwards the same option to both captures and the comparison. MCP `cartograph_impact` accepts
+`snapshotMaxMiB` with `before`, with the same range and default. The limit counts the entire
+uncompressed JSON file, including its trailing newline. Reads stop at limit + 1 bytes before
+decoding; oversized, truncated, corrupt and compressed inputs are rejected. There is no automatic
+decompression. Encoding and decoding still materialize the JSON and graph in memory, so this is
+a file-size budget, **not an RSS limit**; raising it can require several times the file size in RAM.
+The library keeps `decode(from:)` at the default and adds `decode(from:maximumBytes:)` and
+`encoded(maximumBytes:)` for the same bounded policy. Runtime `expectedValue` fields remain omitted. If a current runtime
 contract still requires a deleted target, historical callers do not cancel that broken contract.
 
 ### `check` — run the CI checks in one context
@@ -1779,7 +1792,9 @@ no tool, so Cartograph errs toward keeping code.
 **`retain_equatable_properties` and `retain_hashable_properties` also default to on.** Periphery
 defaults both off. A stored property whose only reader is the synthesized `==` or `hash(into:)`
 leaves no index evidence, so keeping it is the conservative side; turn them off when you want such
-properties reported.
+properties reported. These two reasons apply only when the containing type is reachable.
+A nested, never-created `Equatable` or `Hashable` type cannot retain an otherwise unused outer
+type through its stored properties. `Codable` and explicit retention rules remain separate.
 
 Protocol requirements are handled by walking override relations in reverse: if a requirement is
 called, every implementation of it is reachable — but only once the implementing type itself is
@@ -2055,6 +2070,19 @@ let (_, metrics, _) = service.metrics(in: context)
 Baselines, thresholds and output formatting are CI policy and live in the separate command API
 (`detectCycles()`, `detectUnusedCode()`, …), so a programmatic caller never has to parse a table.
 
+Async embedders can use `try await IndexStoreProvider(configuration: indexConfiguration).loadSnapshotAsync()`
+to keep blocking disk/database work off the Swift cooperative executor. The existing synchronous
+`loadSnapshot()` API remains available. On macOS 15+, its upstream async library loader uses a dedicated
+task executor; on macOS 14, call the async entry from Swift tasks instead of blocking those tasks with
+the synchronous API. The raw reader's async-to-sync library/store opening bridge has a 30-second wait
+budget and fails without returning a partial snapshot. The database-backed mode's preceding synchronous
+database initialization and the entire record scan are outside that budget. A C opening call that stalls
+on the shared serial loader queue can delay later requests until they time out; requests are not isolated
+from that stall and the queue is not forcibly reset. Cancellation is cooperative;
+the async entry delivers cancellation after the blocking read returns, without claiming that C work
+was interrupted. The minimum supported deployment target remains macOS 14; newer-runner validation
+does not establish macOS 14 runtime coverage.
+
 ### 0.29 source migration
 
 The source version is `0.29.0`; confirm its published asset on [GitHub Releases](https://github.com/ictechgy/cartograph/releases)
@@ -2109,6 +2137,40 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Agents working in this repository should
 For the actual pinned IndexStoreDB CLI comparator, independent expected answers, setup costs and
 measurement limits, see the [reproducible comparison protocol](docs/evaluation/indexstore-cli-benchmark.md).
 CI preserves raw evidence; a synthetic fixture pass is not a universal performance or accuracy claim.
+
+## Workspace and local package coverage
+
+Build the workspace scheme and all relevant local-package targets, then pass that build's index
+with `--index-store`. Automatic selection uses store/unit-directory recency, not target coverage;
+when several candidates exist, output records the selected path, candidate count, and rule.
+Compare `unindexed-sources`, stale/missing paths, and known local targets before relying on absent
+callers or import-removal candidates. SDK/binary dependencies can legitimately have no local source
+units. PBXSourcesBuildPhase/SwiftPM target membership is not fully reconstructed; unresolved coverage
+continues to block narrowed `xcodebuild` selection. Run the whole suite when selectors cannot be verified.
+
+For a standard local SwiftPM `.../index/store`, Cartograph reads only the adjacent configuration's
+`description.json` (8 MiB cap), without executing `Package.swift`. A command must explicitly name
+the selected index and existing local Swift sources before `build-module-coverage` can name a module
+whose expected sources lack captured unit timestamps. Excluded sources, conflicting command membership,
+stale metadata and unsupported input stay distinct. This is an observation against build metadata, not
+proof of current target membership, definition coverage or build freshness. SDK/binary modules without
+local sources are not marked missing. Xcode stores and compiler `out` overrides have no such mapping.
+The description also participates in session invalidation; absence of a warning is not a coverage pass.
+
+Git-ignored untracked sources and nested repositories are excluded from discovery; tracked files
+take precedence over ignore rules. Exclusions are reported and do not prove build completeness.
+Generated DI files can connect real callers. After reviewing their role, use
+`retention.retained_files: ["Sources/Generated/**"]` to retain declarations without discarding edges.
+A generated-looking name or a human-maintained design-token file is not automatically hidden.
+
+File/module graphs use uniquely evidenced occurrence ownership, including extensions declared
+outside the original type's module. Symbol/type graphs retain semantic ownership. Missing or
+conflicting occurrence ownership remains an explicit attribution limitation.
+
+`query.usedBy` contains reverse dependency neighbors, including implementation relationships.
+Read each neighbor's `edges`: `overrides`, `conformance`, and `extends` describe implementation or
+type relationships; they do not prove runtime invocation. `call`/`reference` and optional occurrence
+evidence distinguish those observations. Generated Provider implementations are not automatically callers.
 
 ## License
 

@@ -36,7 +36,7 @@ extension CartographService {
             + Self.automaticRuntimeLimitations(automatic)
         let requests = TraversalRootRequests(symbols: symbols, graph: graph)
         let closedWorld = Self.isClosedWorld(limitations)
-        let runtime = Self.automaticImpactDependencies(automatic) + XCTestLifecycleImpact(in: graph).dependencies
+        let runtime = Self.automaticImpactDependencies(automatic) + context.impactLifecycle().dependencies
         let generator = TraversalHopGenerator(graph: graph, direction: direction, closedWorld: closedWorld,
             runtimeDependencies: runtime)
         let result = MultiRootTraversal(generator: generator)
@@ -207,8 +207,9 @@ extension CartographService {
     /// 루트 밖 디렉터리 링크 뒤 소스는 색인됐어도 그래프에 없으므로 같은 공백이다.
     static let openWorldLimitationPrefixes = [
         "empty-index:", "index-staleness:", "unindexed-sources:", "missing-sources:", "unreadable-sources:",
-        "header-projection:", "configured-path-filter:", "configured-edge-kinds:",
+        "header-projection:", "configured-path-filter:", "configured-edge-kinds:", "source-discovery-exclusions:",
         "objective-c-sources:", "public-api-not-retained:", "symlinked-directories-outside-root:",
+        "build-module-coverage:", "build-module-coverage-unknown:",
     ]
 
     static func isClosedWorld(_ limitations: [String]) -> Bool {

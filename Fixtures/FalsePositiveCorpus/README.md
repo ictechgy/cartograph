@@ -159,3 +159,17 @@ header as `header-projection`. Fresh timestamps alone still do not clear that
 limitation: missing admission metadata, file-only dependencies and unindexed
 headers remain conservative. The unused-declaration lists remain independently
 checked; no expected source identity or caller oracle is derived from output.
+
+The separate [TestClassification](TestClassification/README.md) package generalizes
+the reported application `test_*` debug methods and sibling dispatch candidates.
+Its real compiler harness also records XCTest method ownership across a separate
+extension file and keeps an unrelated application extension as a negative control.
+
+The command goldens preserve index-selection, build-metadata, unknown Clang module,
+and unindexed-source diagnostics, including counts and the complete listed paths.
+The nested feedback packages are separate build inputs; this package's build does
+not establish their index coverage. Only the host architecture segment in this
+project's SwiftPM `.build` path is replaced with `<triple>` for comparison.
+Missing or additional limitations still fail the comparison. Each command's raw
+stdout, stderr, arguments and exit status is saved under `CARTOGRAPH_CORPUS_EVIDENCE`
+(CI: the runner temporary directory's `cartograph-corpus/corpus-commands`).

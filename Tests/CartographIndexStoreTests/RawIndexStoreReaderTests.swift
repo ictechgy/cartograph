@@ -115,6 +115,51 @@ struct RawIndexStoreReaderTests {
         #expect(datesMatch(raw.oldestIndexedFileDates, database.oldestIndexedFileDates))
     }
 
+    @Test("동시 snapshot 읽기는 기본 actor 라이브러리 로더에 막히지 않고 같은 컴파일 근거를 반환한다")
+    func concurrentSnapshotsPreserveCompilerEvidence() async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let provider = IndexStoreProvider(configuration: .init(storePath: fixture.store.path,
+            databasePath: fixture.root.appendingPathComponent("ReaderDB").path, libraryPath: fixture.library,
+            sourceRoots: [fixture.source.path], readerMode: .raw))
+        let baseline = try await provider.loadSnapshotAsync()
+        try #require(Set(baseline.symbols.map(\.module)) == ["SyntheticAlpha", "SyntheticBeta"])
+        let count = min(32, max(8, ProcessInfo.processInfo.activeProcessorCount * 2))
+        let snapshots = try await withThrowingTaskGroup(of: IndexSnapshot.self) { group in
+            for index in 0..<count {
+                group.addTask {
+                    if #available(macOS 15, *), index.isMultiple(of: 2) {
+                        return try provider.loadSnapshot()
+                    }
+                    return try await provider.loadSnapshotAsync()
+                }
+            }
+            var snapshots: [IndexSnapshot] = []
+            for try await snapshot in group { snapshots.append(snapshot) }
+            return snapshots
+        }
+        #expect(snapshots.count == count)
+        #expect(snapshots.allSatisfy { $0 == baseline })
+        let database = IndexStoreProvider(configuration: .init(storePath: fixture.store.path,
+            databasePath: fixture.root.appendingPathComponent("ReaderDB").path, libraryPath: fixture.library,
+            sourceRoots: [fixture.source.path]))
+        let asyncDatabase = try await database.loadSnapshotAsync()
+        #expect(asyncDatabase.symbols == baseline.symbols)
+        #expect(Set(asyncDatabase.references) == Set(baseline.references))
+        #expect(datesMatch(asyncDatabase.indexedFileDates, baseline.indexedFileDates))
+        #expect(datesMatch(asyncDatabase.oldestIndexedFileDates, baseline.oldestIndexedFileDates))
+    }
+
+    @Test("비동기 공급자도 라이브러리 실패를 부분 snapshot으로 바꾸지 않는다")
+    func asyncSnapshotPreservesLibraryFailure() async {
+        let library = "/missing-cartograph-library-\(UUID().uuidString).dylib"
+        let provider = IndexStoreProvider(configuration: .init(storePath: "/missing-store", databasePath: "/unused",
+            libraryPath: library, sourceRoots: [], readerMode: .raw))
+        await #expect(throws: CartographError.indexStoreLibraryNotFound(searchedPaths: [library])) {
+            try await provider.loadSnapshotAsync()
+        }
+    }
+
     @Test("같은 Swift 파일의 한 타깃만 다시 빌드하면 오래된 문맥 날짜를 보존한다")
     func partialSharedSourceRebuildPreservesOldCoverageDate() throws {
         let fixture = try makeFixture()

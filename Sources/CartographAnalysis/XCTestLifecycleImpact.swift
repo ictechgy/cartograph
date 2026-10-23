@@ -12,14 +12,25 @@ public struct XCTestLifecycleImpact: Sendable, Equatable {
 
     /// 테스트 판정은 영향 질의에만 적용하며 미사용 코드의 보존 정책을 바꾸지 않는다.
     public init(in graph: CodeGraph) {
+        self.init(in: graph, identity: nil)
+    }
+
+    /// 스냅샷 신원이 있으면 unitTest 비트만 있는 앱 메서드를 XCTest 실행 계약으로 만들지 않는다.
+    /// 신원 없는 기존 그래프 전용 API는 호환성을 위해 보수적인 옛 후보 집합을 유지한다.
+    public init(in graph: CodeGraph, identity: XCTestIdentityFacts?) {
         var classes: Set<NodeID> = []
         var methods: [NodeID: [GraphNode]] = [:]
         for node in graph.sortedNodes {
-            if node.kind == .classType, node.attributes.contains(.unitTest) { classes.insert(node.id) }
+            if node.kind == .classType,
+               identity.map({ $0.classUSRs.contains(node.id.rawValue) }) ?? node.attributes.contains(.unitTest) {
+                classes.insert(node.id)
+            }
             guard node.kind == .method, let owner = graph.semanticParent(of: node.id),
                   graph.node(owner)?.kind == .classType else { continue }
-            if node.attributes.contains(.unitTest) { classes.insert(owner) }
-            if Self.isLifecycle(node) || node.attributes.contains(.unitTest) {
+            let testMethod = identity.map { $0.methodUSRs.contains(node.id.rawValue) }
+                ?? node.attributes.contains(.unitTest)
+            if testMethod { classes.insert(owner) }
+            if Self.isLifecycle(node) || testMethod {
                 methods[owner, default: []].append(node)
             }
         }
@@ -30,13 +41,16 @@ public struct XCTestLifecycleImpact: Sendable, Equatable {
             index += 1
             for edge in graph.incomingEdges(to: current) where edge.kind == .inheritance {
                 guard graph.node(edge.source)?.kind == .classType,
+                      identity.map({ $0.classUSRs.contains(edge.source.rawValue) }) ?? true,
                       classes.insert(edge.source).inserted else { continue }
                 pending.append(edge.source)
             }
         }
         testClasses = classes
+        let provedOwners = identity.map { Set($0.classUSRs.map { NodeID($0) }) }
         dependencies = classes.sorted().flatMap { testClass in
-            Self.dependencies(for: testClass, methods: methods, graph: graph)
+            Self.dependencies(for: testClass, methods: methods, graph: graph,
+                provedOwners: provedOwners)
         }
     }
 
@@ -47,12 +61,13 @@ public struct XCTestLifecycleImpact: Sendable, Equatable {
     }
 
     private static func dependencies(
-        for testClass: NodeID, methods: [NodeID: [GraphNode]], graph: CodeGraph
+        for testClass: NodeID, methods: [NodeID: [GraphNode]], graph: CodeGraph, provedOwners: Set<NodeID>?
     ) -> [ImpactDependency] {
         var pending = [testClass]
         var seen: Set<NodeID> = []
         var result: [ImpactDependency] = []
         while let owner = pending.popLast() {
+            guard provedOwners?.contains(owner) ?? true else { continue }
             guard seen.insert(owner).inserted else { continue }
             for method in methods[owner] ?? [] {
                 let lifecycle = isLifecycle(method)

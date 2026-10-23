@@ -353,11 +353,28 @@ jobs:
       - name: Build
         run: swift build --build-tests --enable-code-coverage
 
+      - name: Capture associatedtype compiler evidence
+        timeout-minutes: 5
+        run: |
+          python3 Scripts/verify-feedback-native-gate.py
+          python3 Scripts/run-feedback-native-gate.py raw \
+            --output "$RUNNER_TEMP/associated-witness/raw"
+
       - name: Test with coverage gate
         timeout-minutes: 15
         run: |
           python3 Scripts/verify-coverage-inputs.py
-          Scripts/coverage.sh
+          python3 Scripts/run-feedback-native-gate.py coverage \
+            --output "$RUNNER_TEMP/associated-witness/coverage"
+
+      - name: Preserve associatedtype compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: associated-witness-compiler
+          path: ${{ runner.temp }}/associated-witness/
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Verify isolated impact expansion cost
         timeout-minutes: 3
@@ -438,6 +455,72 @@ jobs:
       # 문서화한 종료 코드가 실제로 지켜지는지 확인한다. 상수를 단언하는 단위
       # 테스트는 상수가 동작과 맞는지는 말해 주지 않는다. 실제로 --help 가 2 로
       # 실패한 적이 있고 단위 테스트는 전부 통과했다.
+      - name: Reproduce release feedback and verify compiler regressions
+        run: >-
+          python3 Scripts/verify-feedback.py --cartograph "$CARTOGRAPH"
+          --output "$RUNNER_TEMP/cartograph-feedback"
+
+      - name: Preserve generalized feedback evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cartograph-feedback
+          path: |
+            ${{ runner.temp }}/cartograph-feedback/results.json
+            ${{ runner.temp }}/cartograph-feedback/logs/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Verify test candidate classification
+        run: >-
+          python3 Scripts/verify-test-classification-feedback.py --candidate "$CARTOGRAPH"
+          --baseline "$RUNNER_TEMP/cartograph-feedback/release-0.28.0/cartograph"
+          --output "$RUNNER_TEMP/test-classification-feedback"
+
+      - name: Preserve test classification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-classification-feedback
+          path: ${{ runner.temp }}/test-classification-feedback/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Verify extension architecture ownership
+        run: |
+          python3 Scripts/verify-extension-architecture-contract.py
+          python3 Scripts/verify-extension-architecture.py --candidate "$CARTOGRAPH" \
+            --public-binary "$RUNNER_TEMP/cartograph-feedback/release-0.28.0/cartograph" \
+            --output "$RUNNER_TEMP/cartograph-extension-architecture"
+
+      - name: Preserve extension architecture evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: extension-architecture-feedback
+          path: |
+            ${{ runner.temp }}/cartograph-extension-architecture/results.json
+            ${{ runner.temp }}/cartograph-extension-architecture/logs/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Verify associatedtype witness feedback
+        if: ${{ !cancelled() && env.CARTOGRAPH != '' }}
+        run: |
+          python3 Scripts/verify-associated-witness-contract.py
+          python3 Scripts/verify-associated-witness-feedback.py --cartograph "$CARTOGRAPH" \
+            --baseline "$RUNNER_TEMP/cartograph-feedback/release-0.28.0/cartograph" \
+            --output "$RUNNER_TEMP/associated-witness-flow"
+
+      - name: Preserve associatedtype flow evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: associated-witness-flow
+          path: ${{ runner.temp }}/associated-witness-flow/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: CLI contract
         run: |
           Scripts/verify-cli-contract.sh "$CARTOGRAPH"
@@ -537,3 +620,40 @@ jobs:
         with:
           name: dependency-graph
           path: build/
+
+      - name: Preserve corpus command evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cartograph-corpus
+          path: ${{ runner.temp }}/cartograph-corpus/
+          if-no-files-found: warn
+          retention-days: 14
+
+  retention-feedback:
+    name: Measure synthesized-property retention on public projects
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select the newest Xcode
+        run: |
+          latest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          swift --version
+      - name: Measure exact paired sources and require manual review
+        run: |
+          python3 Scripts/verify-retention-feedback-contract.py
+          python3 Scripts/verify-retention-feedback.py --output "$RUNNER_TEMP/retention-feedback"
+      - name: Preserve retention measurements and review gate
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: retention-feedback
+          path: |
+            ${{ runner.temp }}/retention-feedback/results.json
+            ${{ runner.temp }}/retention-feedback/summary.md
+            ${{ runner.temp }}/retention-feedback/manual-review-template.json
+            ${{ runner.temp }}/retention-feedback/logs/
+          if-no-files-found: error
+          retention-days: 14

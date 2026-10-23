@@ -65,7 +65,10 @@ struct AnalysisLimitationCollector {
             return modified > built
         }
 
-        var result: [String] = []
+        var result: [String] = context?.indexSelectionLimitations ?? []
+        if let inventory, !inventory.discoveryExclusions.isEmpty {
+            result += Self.sourceDiscoveryLimitation(inventory.discoveryExclusions, projectPath: projectPath).map { [$0] } ?? []
+        }
         // 탈출구를 켠 채로 도는 실행은 아무것도 분석하지 않는다. 그 답을 받은 쪽이
         // "발견 없음"을 깨끗함으로 읽지 않도록, 답 자체에 그 사실을 싣는다.
         if let counts = emptyIndexCounts {
@@ -90,6 +93,15 @@ struct AnalysisLimitationCollector {
                 "objective-c-sources: \(objectiveCCount) file(s); the graph uses available Clang index evidence, "
                     + "while runtime dispatch and unindexed source paths may be absent"
             )
+        }
+        let unknownClang = context?.snapshot.symbols.filter {
+            $0.usr.hasPrefix("c:") && $0.module.isEmpty && !$0.isExternal
+        } ?? []
+        if !unknownClang.isEmpty {
+            result.append("unknown-clang-module: \(unknownClang.count) local Clang declaration(s) have no "
+                + "record/unit module evidence; their empty module is unknown, not a shared target. "
+                + "Module-level dependencies and cycles cannot distinguish these owners."
+                + diagnosticPaths(unknownClang.map(\.location.path), resolver: &pathResolver))
         }
         let admittedHeaders = Set(context?.snapshot.admittedHeaderPaths?.map { pathResolver.canonical($0) } ?? [])
         let headers = sourceFiles.filter {
@@ -122,8 +134,10 @@ struct AnalysisLimitationCollector {
                 result.append(
                     "unindexed-sources: \(unindexed.count) of \(sourceFiles.count) source file(s) "
                         + "have no known index unit; "
-                        + "build their targets, or exclude files that are not target sources, "
-                        + "before relying on absent callers"
+                        + "build their targets, or exclude files only after verifying they are not target sources, "
+                        + "before relying on absent callers. Local module/target membership is not established by "
+                        + "this file inventory, so missing-module-units cannot be classified from it; "
+                        + "SDK and binary modules are not required to have local source units"
                         + diagnosticPaths(unindexed, resolver: &pathResolver)
                 )
             }
@@ -215,6 +229,16 @@ struct AnalysisLimitationCollector {
 
     static let maximumDiagnosticPaths = 64
     static let maximumDiagnosticPathBytes = 8_192
+
+    /// 모든 분석/교환 경로가 동일한 누락 범위를 전달한다. 무시 규칙은 빌드 소속 근거가 아니다.
+    static func sourceDiscoveryLimitation(_ paths: [String], projectPath: String) -> String? {
+        guard !paths.isEmpty else { return nil }
+        var resolver = PathResolver(canonicalize: { $0 }, projectPath: projectPath)
+        return "source-discovery-exclusions: \(paths.count) source/resource path(s) or nested repositories "
+            + "excluded by Git ignore rules or repository boundaries; tracked files take precedence over ignore rules. "
+            + "This does not prove build-target coverage."
+            + encodedDiagnosticPaths(paths.compactMap { resolver.relativeDiagnosticPath($0) })
+    }
 
     /// 경고마다 최대 64개·JSON 배열 8 KiB만 내보낸다. 남은 경로 수는 숨기지 않는다.
     private func diagnosticPaths(_ paths: [String], resolver: inout PathResolver) -> String {

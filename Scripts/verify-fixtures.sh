@@ -27,11 +27,13 @@ fi
 SWIFTPM_FLAGS="${SWIFTPM_FLAGS:-}"
 
 echo "픽스처를 빌드합니다(인덱스 스토어가 필요합니다)."
+python3 "$REPO_ROOT/Scripts/test-corpus-commands.py"
 swift build --package-path "$FIXTURE" --build-tests $SWIFTPM_FLAGS >/dev/null
 
 # 다른 실행의 캐시를 지우지 않고 이 검증만 독립된 임시 캐시를 사용한다.
 # 실패 근거도 같은 경로에 남아 후속 조사에서 재사용할 수 있다.
 export TMPDIR="$(mktemp -d "${TMPDIR:-/tmp}/cartograph-fixtures.XXXXXX")/"
+export CARTOGRAPH_CORPUS_EVIDENCE="${CARTOGRAPH_CORPUS_EVIDENCE:-${RUNNER_TEMP:-${TMPDIR}}/cartograph-corpus}"
 
 actual_unused="$(
     "$CARTOGRAPH" dead --project "$FIXTURE" --report-format json 2>/dev/null |

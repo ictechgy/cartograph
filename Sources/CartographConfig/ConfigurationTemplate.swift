@@ -47,6 +47,8 @@ public enum ConfigurationTemplate {
           retain_hashable_properties: true
           retain_raw_representable_enum_cases: true
           retained_names: []
+          # Keep reviewed generated DI sources in the graph; do not hide human-maintained token files by name.
+          # Example: retained_files: ["Sources/Generated/**"]
           retained_files: []
 
         # Architecture layers, matched against node name, module name and file path.

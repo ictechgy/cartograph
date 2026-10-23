@@ -4,7 +4,9 @@
 import difflib
 import hashlib
 import json
+import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -14,6 +16,14 @@ def run(binary, fixture, *arguments):
     result = subprocess.run(
         [str(binary), *arguments, "--project", str(fixture)], capture_output=True, text=True
     )
+    # 골든 자리 표시자로 바꾸기 전의 출력과 실행 조건을 실패 때도 남긴다.
+    evidence = Path(os.environ.get("CARTOGRAPH_CORPUS_EVIDENCE", tempfile.gettempdir())) / "corpus-commands"
+    evidence.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json",
+                                     prefix="command-", dir=evidence, delete=False) as receipt:
+        json.dump({"arguments": result.args, "exit": result.returncode,
+                   "stdout": result.stdout, "stderr": result.stderr}, receipt, indent=2, ensure_ascii=False)
+        print(f"  evidence  {receipt.name}")
     if result.returncode:
         raise AssertionError(f"{arguments}: exit {result.returncode}\n{result.stderr}")
     return json.loads(result.stdout)
@@ -21,7 +31,10 @@ def run(binary, fixture, *arguments):
 
 def normalize(value, fixture):
     if isinstance(value, str):
-        return value.replace(str(fixture), "<project>")
+        normalized = value.replace(str(fixture), "<project>")
+        # 같은 SwiftPM 빌드의 호스트 아키텍처만 가린다. 진단·개수·다른 경로는 그대로 비교한다.
+        return re.sub(r"<project>/\.build/(?:arm64|x86_64)-apple-macosx/",
+                      "<project>/.build/<triple>/", normalized)
     if isinstance(value, list):
         return [normalize(item, fixture) for item in value]
     if isinstance(value, dict):
@@ -30,7 +43,7 @@ def normalize(value, fixture):
 
 
 def compare(fixture, name, actual):
-    expected = (fixture / name).read_text()
+    expected = (fixture / name).read_text(encoding="utf-8")
     actual = json.dumps(normalize(actual, fixture), indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     if actual != expected:
         difference = "".join(difflib.unified_diff(

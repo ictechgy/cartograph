@@ -107,9 +107,10 @@ extension CartographService {
         selectionLimitations: [String] = [],
         coreDataBuildEvidencePath: String? = nil,
         runtimeContracts: RuntimeContractsDocument? = nil,
+        snapshotMaximumBytes: Int = AnalysisSnapshotDocument.maximumByteCount,
         in existingContext: AnalysisContext? = nil
     ) throws -> CommandOutcome {
-        let before = try loadAnalysisSnapshot(at: beforePath)
+        let before = try loadAnalysisSnapshot(at: beforePath, maximumBytes: snapshotMaximumBytes)
         let currentContext = try coreDataBuildEvidencePath.map {
             try coreDataRuntimeContext(evidencePath: $0)
         } ?? existingContext ?? loadContext()
@@ -210,17 +211,20 @@ extension CartographService {
         )
     }
 
-    private func loadAnalysisSnapshot(at path: String) throws -> AnalysisSnapshotDocument {
+    private func loadAnalysisSnapshot(at path: String, maximumBytes: Int) throws -> AnalysisSnapshotDocument {
+        try AnalysisSnapshotDocument.validateMaximumBytes(maximumBytes)
         let data: Data
-        do { data = try environment.fileSystem.readData(at: path, maximumBytes: AnalysisSnapshotDocument.maximumByteCount) }
+        do { data = try environment.fileSystem.readData(at: path, maximumBytes: maximumBytes) }
         catch {
             throw CartographError.invalidConfiguration(path: path, reason: "Could not read the analysis snapshot.")
         }
-        guard data.count <= AnalysisSnapshotDocument.maximumByteCount else {
-            throw CartographError.invalidConfiguration(path: path, reason: "Analysis snapshot exceeds 128 MiB.")
+        guard data.count <= maximumBytes else {
+            throw CartographError.invalidConfiguration(path: path,
+                reason: "Analysis snapshot exceeds the configured limit of \(maximumBytes) bytes. "
+                    + "Use --snapshot-max-mib (1...1024; default 128) with sufficient memory.")
         }
         do {
-            return try AnalysisSnapshotDocument.decode(from: data)
+            return try AnalysisSnapshotDocument.decode(from: data, maximumBytes: maximumBytes)
         } catch let error as CartographError {
             throw error
         } catch {

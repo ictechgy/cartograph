@@ -8,6 +8,41 @@ import Testing
 
 @Suite("Cartograph MCP 도구")
 struct MCPToolsTests {
+    @Test("MCP 과거 스냅샷은 CLI와 같은 선택 예산을 지키고 잘못된 예산을 준비 전에 거부한다")
+    func historicalSnapshotSizeBudget() throws {
+        let fs = InMemoryFileSystem()
+        var builder = SnapshotBuilder(path: "/p/App.swift")
+        builder.symbol("App", kind: .structType)
+        let snapshot = AnalysisSnapshotDocument(projectRoot: "/p",
+            revision: String(repeating: "x", count: 1024 * 1024), snapshot: builder.build())
+        try fs.write(snapshot.encoded(), to: "/p/before.json")
+        let service = CartographService(configuration: .init(projectPath: "/p"),
+            environment: .init(fileSystem: fs, indexProviderOverride: StaticIndexProvider(builder.build())))
+        let tools = CartographMCPTools(makeSession: { try AnalysisSession(service: service) })
+        let base: [String: MCPJSONValue] = ["symbols": .array([.string("App")]), "before": .string("before.json")]
+        #expect(throws: MCPToolFailure.self) {
+            try tools.call(name: "cartograph_impact", arguments: .object(base.merging(["snapshotMaxMiB": .integer(1)]) { _, new in new }))
+        }
+        let result = try tools.call(name: "cartograph_impact",
+            arguments: .object(base.merging(["snapshotMaxMiB": .integer(2)]) { _, new in new }))
+        #expect(!result.isError)
+        let invalid = CartographMCPTools(makeSession: { throw AnalysisSessionError.unavailable })
+        for value in [MCPJSONValue.integer(0), .integer(1025), .string("512")] {
+            do {
+                _ = try invalid.call(name: "cartograph_impact",
+                    arguments: .object(base.merging(["snapshotMaxMiB": value]) { _, new in new }))
+                Issue.record("유효하지 않은 snapshotMaxMiB를 거부해야 한다")
+            } catch let error as MCPToolFailure {
+                #expect(error.message.contains("snapshotMaxMiB"))
+            }
+        }
+        #expect(throws: MCPToolFailure.self) {
+            try tools.call(name: "cartograph_impact", arguments: .object([
+                "symbols": .array([.string("App")]), "snapshotMaxMiB": .integer(2),
+            ]))
+        }
+    }
+
     private func makeSession() throws -> AnalysisSession {
         try makeSession(configure: { _ in })
     }
@@ -371,8 +406,10 @@ struct MCPToolsTests {
         let tools = CartographMCPTools(makeSession: {
             var builder = SnapshotBuilder()
             builder.symbol("Service", kind: .classType)
-            builder.symbol("ServiceTests", name: "testService()", kind: .method, attributes: [.unitTest])
+            builder.symbol("ServiceTests", name: "testService()", kind: .function, attributes: [.testFunction])
+            builder.symbol("LegacyMarker", name: "testDebug()", kind: .method, attributes: [.unitTest])
             builder.reference(from: "ServiceTests", to: "Service", kind: .call)
+            builder.reference(from: "LegacyMarker", to: "Service", kind: .call)
             var configuration = CartographConfiguration.default
             configuration.projectPath = "/p"
             return try AnalysisSession(service: CartographService(
@@ -393,6 +430,12 @@ struct MCPToolsTests {
         let tests = document?["tests"]?.arrayValue ?? []
         #expect(tests.count == 1)
         #expect(tests.first?.objectValue?["depth"] == .integer(1))
+        #expect(tests.first?.objectValue?["symbol"]?.objectValue?["usr"] == .string("ServiceTests"))
+        let uncertain = document?["uncertainTestCandidates"]?.arrayValue ?? []
+        #expect(uncertain.count == 1)
+        #expect(uncertain.first?.objectValue?["symbol"]?.objectValue?["usr"] == .string("LegacyMarker"))
+        let limitations = document?["limitations"]?.arrayValue ?? []
+        #expect(limitations.contains { $0.stringValue?.hasPrefix("unverified-test-markers:") == true })
 
         let missing = try tools.call(name: "cartograph_affected", arguments: .object([
             "symbols": .array([.string("NoSuchSymbol")]),

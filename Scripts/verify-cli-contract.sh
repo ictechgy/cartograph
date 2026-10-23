@@ -178,6 +178,10 @@ expect_status 64 "스냅샷과 베이스라인 동시" snapshot --baseline /dev/
 expect_status 64 "스냅샷과 리포트 형식 동시" snapshot --report-format json
 expect_status 64 "빈 스냅샷 리비전" snapshot --revision ""
 expect_status 64 "스냅샷 빈 모델 근거 경로" snapshot --coredata-build-evidence ""
+expect_status 64 "스냅샷 0 MiB 예산" snapshot --snapshot-max-mib 0
+expect_status 64 "스냅샷 상한 초과 예산" snapshot --snapshot-max-mib 1025
+expect_status 64 "비교 없는 스냅샷 예산" impact Foo --snapshot-max-mib 512
+expect_status 64 "과거 비교 상한 초과 예산" impact Foo --before /dev/null --snapshot-max-mib 1025
 expect_status 64 "런타임 계획 계약 누락" runtime plan --executable /dev/null
 expect_status 64 "런타임 계획 실행 파일 누락" runtime plan --contracts /dev/null
 expect_status 64 "런타임 검사 관측 누락" runtime check --contracts /dev/null --executable /dev/null

@@ -15,6 +15,8 @@ extension CartographService {
         let context = try existingContext ?? loadContext()
         let findings = try context.generationCheck { try checkFindings(in: context) }
         var limitations = analysisLimitations(context: context, symbolGraph: context.buildGraph(level: .symbol).graph)
+        limitations += Set([GraphLevel.module, configuration.level]).sorted { $0.rawValue < $1.rawValue }
+            .flatMap { context.buildGraph(level: $0).sourceAttributionLimitations }
         if reportScope != nil {
             limitations.append("scoped-diagnostics: this check reports a selected file scope, not every finding; "
                 + "run check without --since for a full CI gate")

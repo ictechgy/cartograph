@@ -162,7 +162,10 @@ extension CartographService {
             }
         }
 
-        let limitations = analysisLimitations(context: context, symbolGraph: graph)
+        let limitations = analysisLimitations(context: context, symbolGraph: graph) + [
+            "fix-build-not-verified: edits are parse-checked only, not type-checked or built; writes are atomic "
+                + "per file, not across the full edit set. Review the diff and rebuild all relevant targets."
+        ]
         let document = MechanicalFixDocument(
             project: projectPath,
             applied: apply,

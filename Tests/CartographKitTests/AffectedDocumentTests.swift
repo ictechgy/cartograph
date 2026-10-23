@@ -7,6 +7,14 @@ import Testing
 
 @Suite("테스트 영향 질의")
 struct AffectedDocumentTests {
+    @Test("Git 무시나 중첩 저장소 제외는 빌드 타깃 밖임을 입증하지 않아 테스트 축소를 막는다")
+    func discoveryExclusionsRefuseSelection() throws {
+        let result = try service(snapshot()).affected(symbols: ["P"], format: "xcodebuild",
+            selectionLimitations: ["source-discovery-exclusions: ignored caller; target membership unknown"])
+        #expect(result.output.isEmpty)
+        #expect(result.incompleteAnalysis?.contains("Source/index coverage is incomplete") == true)
+    }
+
     private func service(_ snapshot: IndexSnapshot) -> CartographService {
         var configuration = CartographConfiguration.default
         configuration.projectPath = "/p"
@@ -29,7 +37,7 @@ struct AffectedDocumentTests {
         builder.reference(from: "M", to: "P", kind: .call, path: "/p/Sources/M.swift")
         if includeTest {
             builder.symbol("T", name: "testProcess()", kind: .method, path: "/p/Tests/ATests.swift",
-                line: 1, attributes: [.unitTest])
+                line: 1, attributes: [.testFunction])
             builder.reference(from: "T", to: "M", kind: .call, path: "/p/Tests/ATests.swift")
         }
         if includeType {
@@ -95,7 +103,7 @@ struct AffectedDocumentTests {
             line: 2, parent: "Impl")
         builder.symbol("M", name: "middle()", kind: .function, path: "/p/Sources/M.swift", line: 1)
         builder.symbol("T", name: "testReq()", kind: .method, path: "/p/Tests/ATests.swift",
-            line: 1, attributes: [.unitTest])
+            line: 1, attributes: [.testFunction])
         builder.reference(from: "Impl.req", to: "Proto.req", kind: .overrides,
             path: "/p/Sources/Impl.swift")
         builder.reference(from: "M", to: "Proto.req", kind: .call, path: "/p/Sources/M.swift")
@@ -126,7 +134,7 @@ struct AffectedDocumentTests {
         builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift", line: 1)
         for index in 1...3 {
             builder.symbol("T\(index)", name: "test\(index)()", kind: .method,
-                path: "/p/Tests/ATests.swift", line: index, attributes: [.unitTest])
+                path: "/p/Tests/ATests.swift", line: index, attributes: [.testFunction])
             builder.reference(from: "T\(index)", to: "P", kind: .call,
                 path: "/p/Tests/ATests.swift")
         }
@@ -178,7 +186,7 @@ struct AffectedDocumentTests {
             path: "/p/Tests/ProcessTests.swift", line: 2, parent: "C", attributes: [.unitTest])
         builder.reference(from: "C.test", to: "P", kind: .call, path: "/p/Tests/ProcessTests.swift")
         builder.symbol("S", name: "processes()", kind: .function, module: "SuiteTests",
-            path: "/p/Tests/Suite.swift", line: 1, attributes: [.unitTest])
+            path: "/p/Tests/Suite.swift", line: 1, attributes: [.testFunction])
         builder.reference(from: "S", to: "P", kind: .call, path: "/p/Tests/Suite.swift")
         return provedSnapshot(builder, classes: ["C"], methods: ["C.test"])
     }
@@ -210,11 +218,12 @@ struct AffectedDocumentTests {
             for index in snapshot.symbols.indices { snapshot.symbols[index].compilerUnitTest = false }
         }
         let document = try service(snapshot).affectedDocument(symbols: ["P"])
-        #expect(document.tests.map(\.symbol.usr) == ["Runner.test"])
-        #expect(document.tests.allSatisfy { $0.xcodebuildIdentifier == nil })
-        #expect(document.xcodebuildSelection().output == "-only-testing:Production\n")
-        #expect(document.limitations.contains { $0.hasPrefix("uncertain-test-identity:") })
-        #expect(document.limitations.contains { $0.hasPrefix("test-target-assumption:") })
+        #expect(document.tests.isEmpty)
+        #expect(document.summary.testCount == 0)
+        #expect(document.uncertainTestCandidates?.map(\.symbol.usr) == ["Runner.test"])
+        #expect(document.xcodebuildSelection().output.isEmpty)
+        #expect(document.xcodebuildSelection().refusal?.contains("no verified test framework identity") == true)
+        #expect(document.limitations.contains { $0.hasPrefix("unverified-test-markers:") })
     }
 
     @Test("같은 모듈을 통째로 고르면 그 모듈의 개별 식별자는 싣지 않는다")
@@ -226,7 +235,7 @@ struct AffectedDocumentTests {
         builder.symbol("C.test", name: "testProcess()", kind: .method, path: "/p/Tests/A.swift", line: 2,
             parent: "C", attributes: [.unitTest])
         builder.symbol("F", name: "free()", kind: .function, path: "/p/Tests/B.swift", line: 1,
-            attributes: [.unitTest])
+            attributes: [.testFunction])
         builder.reference(from: "C.test", to: "P", kind: .call, path: "/p/Tests/A.swift")
         builder.reference(from: "F", to: "P", kind: .call, path: "/p/Tests/B.swift")
         let service = service(provedSnapshot(builder, classes: ["C"], methods: ["C.test"]))
@@ -243,7 +252,7 @@ struct AffectedDocumentTests {
         builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift", line: 1)
         for index in 1...2 {
             builder.symbol("T\(index)", name: "test\(index)()", kind: .method,
-                path: "/p/Tests/ATests.swift", line: index, attributes: [.unitTest])
+                path: "/p/Tests/ATests.swift", line: index, attributes: [.testFunction])
             builder.reference(from: "T\(index)", to: "P", kind: .call, path: "/p/Tests/ATests.swift")
         }
         let outcome = try service(builder.build()).affected(symbols: ["P"], limit: 1, format: "xcodebuild")
@@ -256,7 +265,7 @@ struct AffectedDocumentTests {
         var builder = SnapshotBuilder(path: "/p/Sources/P.swift")
         builder.symbol("P", name: "process()", kind: .function, path: "/p/Sources/P.swift", line: 1)
         builder.symbol("T", name: "checks()", kind: .function, module: "", path: "/p/Tests/T.swift", line: 1,
-            attributes: [.unitTest])
+            attributes: [.testFunction])
         builder.reference(from: "T", to: "P", kind: .call, path: "/p/Tests/T.swift")
         let outcome = try service(builder.build()).affected(symbols: ["P"], format: "xcodebuild")
         #expect(outcome.output.isEmpty)
@@ -315,7 +324,7 @@ struct AffectedDocumentTests {
         builder.symbol("P", kind: .function)
         for index in 1...3 {
             builder.symbol("T\(index)", name: "testProcess()", kind: .method,
-                module: "Tests\(index)", path: "/p/Tests/T\(index).swift", attributes: [.unitTest])
+                module: "Tests\(index)", path: "/p/Tests/T\(index).swift", attributes: [.testFunction])
             builder.reference(from: "T\(index)", to: "P", kind: .call)
         }
         let document = try document(service(builder.build()), symbols: ["P"], limit: 1)
@@ -333,7 +342,7 @@ struct AffectedDocumentTests {
         builder.symbol("P", kind: .function)
         for id in ["z", "a", "m"] {
             builder.symbol(id, name: "testProcess()", kind: .method,
-                path: "/p/Tests/T.swift", line: 1, attributes: [.unitTest])
+                path: "/p/Tests/T.swift", line: 1, attributes: [.testFunction])
             builder.reference(from: id, to: "P", kind: .call)
         }
         let document = try document(service(builder.build()), symbols: ["P"])
@@ -355,9 +364,9 @@ struct AffectedDocumentTests {
         var builder = SnapshotBuilder(path: "/p/Sources/Screen.swift")
         builder.symbol("Screen", kind: .classType)
         builder.symbol("A", name: "testScreen()", kind: .method,
-            path: "/p/Tests/A.swift", attributes: [.unitTest])
+            path: "/p/Tests/A.swift", attributes: [.testFunction])
         builder.symbol("B", name: "testLookup()", kind: .method,
-            path: "/p/Tests/B.\(suffix)", attributes: [.unitTest])
+            path: "/p/Tests/B.\(suffix)", attributes: [.testFunction])
         builder.reference(from: "A", to: "Screen", kind: .reference)
         builder.reference(from: "B", to: "c:@F@NSClassFromString", kind: .call, path: "/p/Tests/B.\(suffix)")
         return builder.build()
@@ -456,6 +465,22 @@ struct AffectedDocumentTests {
         #expect(document.limitations.contains { $0.hasPrefix(prefix) })
         #expect(document.xcodebuildSelection().output.isEmpty)
         #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
+    }
+
+    @Test("build metadata 누락이나 unknown은 부분 테스트 실행·닫힌 세계의 증명이 아니다", arguments: [
+        "build-module-coverage: Lib missing-observed-source-units",
+        "build-module-coverage-unknown: unsupported metadata"
+    ])
+    func moduleCoverageRefusesSelection(limitation: String) throws {
+        let original = try service(xctestSnapshot()).affectedDocument(symbols: ["P"])
+        #expect(!original.xcodebuildSelection().output.isEmpty)
+        let document = AffectedDocument(status: original.status, requestedSymbols: original.requestedSymbols,
+            requestedFiles: original.requestedFiles, selected: original.selected, changeScope: original.changeScope,
+            tests: original.tests, summary: original.summary, selectionIssues: original.selectionIssues,
+            limitations: original.limitations + [limitation], truncated: original.truncated)
+        #expect(document.xcodebuildSelection().output.isEmpty)
+        #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
+        #expect(!CartographService.isClosedWorld([limitation]))
     }
 
     @Test("따라가지 않은 루트 밖 디렉터리 링크 뒤의 테스트를 빠뜨릴 수 있으므로 테스트 선택을 좁히지 않는다")
@@ -558,10 +583,21 @@ struct AffectedDocumentTests {
         builder.symbol("Child", kind: .classType, module: "ChildTests", path: "/p/Tests/Child.swift")
         builder.reference(from: "Child", to: "Base", kind: .inheritance)
         builder.reference(from: "Base.run", to: "P", kind: .call)
-        let service = service(builder.build())
+        let service = service(provedSnapshot(builder, classes: ["Base"], methods: testMethod ? ["Base.run"] : []))
         let document = try service.affectedDocument(symbols: ["P"])
         #expect(Set(document.tests.compactMap(\.symbol.usr)) == [testMethod ? "Base.run" : "Base", "Child"])
-        #expect(document.xcodebuildSelection().output == "-only-testing:BaseTests\n-only-testing:ChildTests\n")
+        let child = try #require(document.tests.first { $0.symbol.usr == "Child" })
+        // 확인한 테스트를 상속한 leaf 클래스만 좁힌다. 생명주기만 알면 모듈 전체로 넓힌다.
+        #expect(child.xcodebuildIdentifier == (testMethod ? "ChildTests/Child" : nil))
+        #expect(child.via?.usr == "Base.run")
+        #expect(child.relationship == "automaticRuntime")
+        let contract = testMethod ? "xctest-inherited-test:" : "xctest-lifecycle:"
+        #expect(child.runtimeEvidence?.first?.id.hasPrefix(contract) == true)
+        #expect(document.tests.first { $0.symbol.module == "BaseTests" }?.xcodebuildIdentifier == nil)
+        #expect((document.uncertainTestCandidates ?? []).isEmpty)
+        let childSelection = testMethod ? "ChildTests/Child" : "ChildTests"
+        #expect(document.xcodebuildSelection().output
+            == "-only-testing:BaseTests\n-only-testing:\(childSelection)\n")
         #expect(Set(try service.impactDocument(symbols: ["P"]).tests.compactMap(\.usr))
             == Set(document.tests.compactMap(\.symbol.usr)))
     }

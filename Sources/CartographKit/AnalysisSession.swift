@@ -238,13 +238,16 @@ public final class AnalysisSession {
     /// 세션의 현재 그래프와 프로젝트 안에 캡처한 과거 그래프를 따로 분석한다.
     public func compareImpact(
         beforePath: String, symbols: [String] = [], files: [String] = [],
-        maxDepth: Int? = nil, limit: Int = 200, runtimeContracts: RuntimeContractsDocument? = nil
+        maxDepth: Int? = nil, limit: Int = 200, runtimeContracts: RuntimeContractsDocument? = nil,
+        snapshotMaximumBytes: Int = AnalysisSnapshotDocument.maximumByteCount
     ) throws -> ImpactComparisonDocument {
+        try AnalysisSnapshotDocument.validateMaximumBytes(snapshotMaximumBytes)
         try ensurePrepared()
         guard let service, let context else { throw AnalysisSessionError.unavailable }
         let path = try validatedBuildEvidencePath(beforePath, service: service, inputName: "historical snapshot")
         let outcome = try service.compareImpact(symbols: symbols, files: files, beforePath: path,
-            maxDepth: maxDepth, limit: limit, format: "json", runtimeContracts: runtimeContracts, in: context)
+            maxDepth: maxDepth, limit: limit, format: "json", runtimeContracts: runtimeContracts,
+            snapshotMaximumBytes: snapshotMaximumBytes, in: context)
         return try JSONDecoder().decode(ImpactComparisonDocument.self, from: Data(outcome.output.utf8))
     }
 
@@ -535,6 +538,13 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         return record.entries
     }
 
+    /// 방금 walk가 관측한 목록만 읽는다. 실패한 열거를 여기서 재시도해 불완전한 walk를 캐시하지 않는다.
+    fileprivate func observedEntries(at path: String) -> [DirectoryEntry]? {
+        lock.lock()
+        defer { lock.unlock() }
+        return directories[path]?.entries
+    }
+
     /// 열거 시도 전에 디렉터리 지문만 먼저 기록한다.
     ///
     /// 열거가 실패하는 디렉터리(읽기 권한 없음 등)도 지문을 남겨 두어야 탐색
@@ -564,7 +574,7 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
     /// 같은 필터로 만든 결과일 때만 돌려준다.
     fileprivate func walkedResult(
         root: String, filter: PathFilter?, fileSystem: any FileSystem
-    ) -> (paths: [String], externalLinks: [String])? {
+    ) -> (paths: [String], externalLinks: [String], repositoryBoundaries: [String])? {
         lock.lock()
         let record = walks[root]
         lock.unlock()
@@ -585,7 +595,7 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
             observedDirectories.insert(directory)
         }
         lock.unlock()
-        return (record.result, record.externalLinks)
+        return (record.result, record.externalLinks, record.repositoryBoundaries)
     }
 
     /// 탐색 결과를 루트와 필터에 묶어 둔다. 열거한 디렉터리 중 지문이 없거나
@@ -594,7 +604,8 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
     /// 디렉터리 링크의 지문도 함께 남긴다.
     fileprivate func storeWalk(
         root: String, filter: PathFilter?, directories walked: [String],
-        discardedLinks: [String], externalLinks: [String], result: [String], fileSystem: any FileSystem
+        discardedLinks: [String], externalLinks: [String], repositoryBoundaries: [String],
+        repositoryBoundaryLinks: [String], result: [String], fileSystem: any FileSystem
     ) {
         guard let resolvedRoot = walked.first else { return }
         lock.lock()
@@ -612,7 +623,7 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
             dirStamps.append((directory, record.stamp))
         }
         var linkStamps: [(String, FileFingerprintStamp)] = []
-        for link in discardedLinks + externalLinks {
+        for link in discardedLinks + externalLinks + repositoryBoundaryLinks {
             guard let stamp = fileSystem.fingerprintStamp(at: link) else { return }
             linkStamps.append((link, stamp))
         }
@@ -623,7 +634,8 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         }
         lock.lock()
         walks[root] = WalkRecord(
-            filter: filter, dirStamps: dirStamps, linkStamps: linkStamps, result: result, externalLinks: externalLinks
+            filter: filter, dirStamps: dirStamps, linkStamps: linkStamps, result: result,
+            externalLinks: externalLinks, repositoryBoundaries: repositoryBoundaries
         )
         lock.unlock()
     }
@@ -661,6 +673,8 @@ fileprivate final class AnalysisInputFingerprintCache: @unchecked Sendable {
         let result: [String]
         /// 따라가지 않은 루트 밖 디렉터리 링크. 결과를 재사용할 때도 지문에 다시 싣는다.
         let externalLinks: [String]
+        /// 중첩 .git 항목의 존재는 소스 내용이 같아도 분석 범위를 바꾼다.
+        let repositoryBoundaries: [String]
     }
 }
 
@@ -693,6 +707,9 @@ fileprivate struct CachedListingFileSystem: FileSystem {
     func fileExists(at path: String) -> Bool { base.fileExists(at: path) }
     func directoryExists(at path: String) -> Bool { base.directoryExists(at: path) }
     func readData(at path: String) throws -> Data { try base.readData(at: path) }
+    func readData(at path: String, maximumBytes: Int) throws -> Data {
+        try base.readData(at: path, maximumBytes: maximumBytes)
+    }
     func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
     func removeItem(at path: String) throws { try base.removeItem(at: path) }
     func contentsOfDirectory(at path: String) throws -> [String] {
@@ -795,10 +812,11 @@ private struct AnalysisInputFingerprinter {
         cache: AnalysisInputFingerprintCache?,
         observedKeys: inout Set<AnalysisInputFingerprintCache.Key>
     ) throws {
+        addGitSourceSelection(to: &accumulator)
         cache?.prepareInclusion(filter: configuration.pathFilter)
         // 탐색 결과를 열거 디렉터리 전체의 지문으로 묶어 둔다 — 구조가 그대로면
         // 다음 지문에서 글롭 대조·디렉터리 열거 없이 경로 목록을 재사용한다.
-        let (paths, externalLinks) = walk(
+        let (paths, externalLinks, repositoryBoundaries) = walk(
             root: projectPath, filter: configuration.pathFilter, cache: cache,
             isIncluded: { path in
                 if let cached = cache?.inclusion(for: path) { return cached }
@@ -810,10 +828,25 @@ private struct AnalysisInputFingerprinter {
         )
         accumulator.addText("source-count:\(paths.count)")
         Self.addExternalLinks(externalLinks, to: &accumulator)
+        for path in repositoryBoundaries { accumulator.addText("source-repository-boundary:\(path)") }
         for path in paths {
             // 내용이 같아도 소스 시각은 인덱스 신선도 결과에 영향을 준다.
             try addFile(path, label: "source-file", includeModificationDate: true, isDiscoveredInput: true,
                 cache: cache, observedKeys: &observedKeys, to: &accumulator)
+        }
+    }
+
+    /// Git 선택 결과를 묶어 ignore/info-exclude/tracked 상태 변화가 낡은 문맥을 재사용하지 못하게 한다.
+    /// 전체 소스 walk는 기존 캐시를 쓰고, Git의 유한한 경로 목록만 새로 읽는다.
+    private func addGitSourceSelection(to accumulator: inout FingerprintAccumulator) {
+        let fileSystem = (environment.fileSystem as? CachedListingFileSystem)?.base ?? environment.fileSystem
+        guard let inventory = GitSourceInventory.load(fileSystem: fileSystem, projectPath: projectPath) else {
+            accumulator.addText("git-source-selection:unavailable")
+            return
+        }
+        accumulator.addText("git-source-selection:available")
+        for path in inventory.paths.sorted() where Self.isSourceInput(path, filter: configuration.pathFilter) {
+            accumulator.addText("git-source-path:\(path)")
         }
     }
 
@@ -846,7 +879,7 @@ private struct AnalysisInputFingerprinter {
     private func walk(
         root: String, filter: PathFilter?, cache: AnalysisInputFingerprintCache?,
         isIncluded: (String) -> Bool, shouldDescend: (String) -> Bool
-    ) -> (paths: [String], externalLinks: [String]) {
+    ) -> (paths: [String], externalLinks: [String], repositoryBoundaries: [String]) {
         let fileSystem = environment.fileSystem
         if let cached = cache?.walkedResult(root: root, filter: filter, fileSystem: fileSystem) { return cached }
         var walked: [String] = []
@@ -857,11 +890,40 @@ private struct AnalysisInputFingerprinter {
             onDirectory: { walked.append($0) }, onDiscardedLink: { discardedLinks.append($0) },
             onExternalDirectoryLink: { externalLinks.append($0) }
         )
+        let markers = filter == nil ? (paths: [String](), links: [String]())
+            : repositoryMarkers(in: walked, cache: cache)
         cache?.storeWalk(
             root: root, filter: filter, directories: walked, discardedLinks: discardedLinks,
-            externalLinks: externalLinks, result: paths, fileSystem: fileSystem
+            externalLinks: externalLinks, repositoryBoundaries: markers.paths,
+            repositoryBoundaryLinks: markers.links, result: paths, fileSystem: fileSystem
         )
-        return (paths, externalLinks)
+        return (paths, externalLinks, markers.paths)
+    }
+
+    /// 캐시된 디렉터리 항목에서 경계를 얻는다. warm 조회는 walk 결과와 경계 목록을 함께 재사용한다.
+    private func repositoryMarkers(
+        in directories: [String], cache: AnalysisInputFingerprintCache?
+    ) -> (paths: [String], links: [String]) {
+        var paths: [String] = []
+        var links: [String] = []
+        for directory in directories {
+            if let entries = cache?.observedEntries(at: directory) {
+                for entry in entries where (entry.path as NSString).lastPathComponent == ".git" {
+                    // 끊어진 .git 링크도 감시해야 대상 생성이 부모 stamp 없이 경계를 만들지 못한다.
+                    if entry.isSymbolicLink {
+                        links.append(entry.path)
+                        if environment.fileSystem.fileExists(at: entry.path)
+                            || environment.fileSystem.directoryExists(at: entry.path) { paths.append(entry.path) }
+                    } else if entry.isRegularFile || entry.isDirectory { paths.append(entry.path) }
+                }
+            } else {
+                let path = directory + "/.git"
+                if environment.fileSystem.fileExists(at: path) || environment.fileSystem.directoryExists(at: path) {
+                    paths.append(path)
+                }
+            }
+        }
+        return (paths.sorted(), links.sorted())
     }
 
     /// 따라가지 않은 루트 밖 디렉터리 링크를 지문에 싣는다. 링크가 없으면 아무것도 싣지 않아 지문이 그대로다.
@@ -905,6 +967,12 @@ private struct AnalysisInputFingerprinter {
         }
         let fileSystem = environment.fileSystem
         for store in stores.sorted() {
+            if let metadata = SwiftPMModuleCoverage.descriptionPath(storePath: store, projectPath: projectPath,
+                                                                    fileSystem: fileSystem) {
+                try addFile(metadata, label: "swiftpm-build-description", includeModificationDate: true,
+                    isDiscoveredInput: true, maximumBytes: SwiftPMModuleCoverage.maximumBytes,
+                    cache: cache, observedKeys: &observedKeys, to: &accumulator)
+            }
             for suffix in ["/v5/units", "/units"] {
                 let root = store + suffix
                 accumulator.addText("index-unit-root:\(root):\(fileSystem.directoryExists(at: root))")
@@ -913,7 +981,7 @@ private struct AnalysisInputFingerprinter {
                 } else {
                     accumulator.addText("index-unit-root-modified:unknown")
                 }
-                let (paths, externalLinks) = walk(
+                let (paths, externalLinks, _) = walk(
                     root: root, filter: nil, cache: cache, isIncluded: { _ in true }, shouldDescend: { _ in true }
                 )
                 accumulator.addText("index-unit-count:\(paths.count)")
@@ -977,12 +1045,14 @@ private struct AnalysisInputFingerprinter {
         label: String,
         includeModificationDate: Bool = false,
         isDiscoveredInput: Bool = false,
+        maximumBytes: Int? = nil,
         cache: AnalysisInputFingerprintCache?,
         observedKeys: inout Set<AnalysisInputFingerprintCache.Key>,
         to accumulator: inout FingerprintAccumulator
     ) throws {
         let cacheKey = AnalysisInputFingerprintCache.Key(
-            label: label, path: path, stampsModificationDate: includeModificationDate
+            label: maximumBytes.map { label + ":bounded-\($0)" } ?? label,
+            path: path, stampsModificationDate: includeModificationDate
         )
         observedKeys.insert(cacheKey)
         let fileSystem = environment.fileSystem
@@ -1025,7 +1095,15 @@ private struct AnalysisInputFingerprinter {
             cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
             return
         }
-        guard let digest = try? contentDigest(at: path) else {
+        if let maximumBytes, let stamp, stamp.size > UInt64(maximumBytes) {
+            // parser가 읽지 않는 대형 metadata를 세션 준비가 전부 읽어서도 안 된다.
+            contribution.addText("oversize-skipped:\(maximumBytes):\(stamp.device):\(stamp.inode):\(stamp.size)"
+                + ":\(stamp.changeSeconds).\(stamp.changeNanoseconds):\(stamp.mode)")
+            accumulator.appendEncoded(contribution.data)
+            cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
+            return
+        }
+        guard let digest = try? contentDigest(at: path, maximumBytes: maximumBytes) else {
             contribution.addText("unreadable")
             accumulator.appendEncoded(contribution.data)
             cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
@@ -1038,8 +1116,12 @@ private struct AnalysisInputFingerprinter {
     }
 
     /// 입력 내용의 SHA-256. 조각 읽기를 지원하는 파일 시스템은 1 MiB 씩 해시해 메모리를 조각 크기로 묶는다.
-    private func contentDigest(at path: String) throws -> Data {
+    private func contentDigest(at path: String, maximumBytes: Int? = nil) throws -> Data {
         let fileSystem = environment.fileSystem
+        if let maximumBytes {
+            // stamp를 못 얻거나 읽기 사이 파일이 커져도 상한+1보다 더 읽지 않는다.
+            return Data(SHA256.hash(data: try fileSystem.readData(at: path, maximumBytes: maximumBytes)))
+        }
         guard let chunked = fileSystem as? any ChunkedFileReading else {
             return Data(SHA256.hash(data: try fileSystem.readData(at: path)))
         }

@@ -70,6 +70,7 @@ public struct IndexStoreProvider: IndexProviding {
         self.fileSystem = fileSystem
     }
 
+    /// 동기 호출자를 위한 읽기. macOS 14의 async task에서는 `loadSnapshotAsync()`를 사용한다.
     public func loadSnapshot() throws -> IndexSnapshot {
         if configuration.readerMode == .raw {
             return try readRawSnapshot()
@@ -86,6 +87,21 @@ public struct IndexStoreProvider: IndexProviding {
                 underlying: "Could not lock the reader cache: \(error). Check cache directory permissions.")
         }
         return try withExtendedLifetime(lease) { try readSnapshot() }
+    }
+
+    /// 지원하는 모든 OS에서 cooperative executor를 막지 않고 같은 스냅샷을 읽는다.
+    ///
+    /// 디스크 읽기와 DB lease는 dispatch 작업이 소유한다. 취소는 읽기가 반환한 뒤 전달되며,
+    /// 진행 중인 C 인덱스 읽기를 강제 중단하거나 부분 스냅샷을 반환하지 않는다.
+    public func loadSnapshotAsync() async throws -> IndexSnapshot {
+        try Task.checkCancellation()
+        let snapshot: IndexSnapshot = try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(with: Result { try self.loadSnapshot() })
+            }
+        }
+        try Task.checkCancellation()
+        return snapshot
     }
 
     private func readRawSnapshot() throws -> IndexSnapshot {
@@ -216,9 +232,22 @@ public struct IndexStoreProvider: IndexProviding {
         var definitionSites: [String: [DefinitionSite]] = [:]
         var conformanceAliases: [SymbolOccurrence] = []
         var implicitBaseOwners: [OccurrenceSite: Set<String>] = [:]
+        let referencedMacros = Set(occurrences.filter {
+            $0.symbol.kind == .macro && $0.roles.contains(.reference)
+        }.map { $0.symbol.usr })
+        // Swift USR의 첫 모듈은 확장 대상의 모듈일 수 있다. 선언 발생을 먼저 모아
+        // Int/외부 타입에 추가한 멤버의 실제 선언 모듈도 사용 근거로 남긴다.
+        var declarationModules: [String: Set<String>] = [:]
+        for occurrence in occurrences
+        where occurrence.roles.contains(.definition) || occurrence.roles.contains(.declaration) {
+            if !occurrence.location.moduleName.isEmpty {
+                declarationModules[occurrence.symbol.usr, default: []].insert(occurrence.location.moduleName)
+            }
+        }
 
         for occurrence in occurrences {
-            if let symbol = IndexStoreMapping.indexedSymbol(from: occurrence) {
+            if var symbol = IndexStoreMapping.indexedSymbol(from: occurrence) {
+                if referencedMacros.contains(symbol.usr) { symbol.attributes.insert(.compileTimeReference) }
                 let isDefinition = occurrence.roles.contains(.definition)
                 if let existing = symbolsByUSR[symbol.usr] {
                     // 정의의 위치를 우선한다. 선언만 있는 발생의 줄 번호로는
@@ -293,7 +322,7 @@ public struct IndexStoreProvider: IndexProviding {
                 }
             }
 
-            moduleUsages.add(occurrence)
+            moduleUsages.add(occurrence, declarationModules: declarationModules)
         }
         let collectedUsages = moduleUsages.finish()
         var fileModuleUsages = collectedUsages.usages
@@ -396,7 +425,7 @@ public struct IndexStoreProvider: IndexProviding {
             var hasEntry = false
         }
 
-        mutating func add(_ occurrence: SymbolOccurrence) {
+        mutating func add(_ occurrence: SymbolOccurrence, declarationModules: [String: Set<String>]) {
             if occurrence.location.path != run.path {
                 flush()
                 run = PathRun(path: occurrence.location.path)
@@ -405,8 +434,10 @@ public struct IndexStoreProvider: IndexProviding {
                 run.owningModules.insert(occurrence.location.moduleName)
                 run.hasEntry = true
             }
-            if occurrence.roles.contains(.reference) { note(occurrence.symbol.usr) }
-            for relation in occurrence.relations { note(relation.symbol.usr) }
+            if occurrence.roles.contains(.reference) {
+                note(occurrence.symbol.usr, declarationModules: declarationModules)
+            }
+            for relation in occurrence.relations { note(relation.symbol.usr, declarationModules: declarationModules) }
         }
 
         /// 모은 근거와 선언 사전이 완성된 뒤 풀 USR 을 돌려준다.
@@ -423,7 +454,16 @@ public struct IndexStoreProvider: IndexProviding {
         }
 
         /// USR 하나의 모듈 귀속 단서를 지금 경로의 근거에 쌓는다.
-        private mutating func note(_ usr: String) {
+        private mutating func note(_ usr: String, declarationModules: [String: Set<String>]) {
+            // import 문 자체의 모듈 표식은 사용이 아니다.
+            if !usr.hasPrefix("c:@M@"), let modules = declarationModules[usr] {
+                run.referencedModules.formUnion(modules)
+                run.hasEntry = true
+            }
+            if declarationModules[usr] == nil, IndexStoreMapping.mayContainExtensionContext(usr) {
+                // 프로젝트 밖 확장 선언은 stdlib/원래 타입 모듈에 귀속하면 필요한 import를 잃는다.
+                run.deferredUSRs.insert(usr)
+            }
             switch IndexStoreMapping.moduleEvidence(ofUSR: usr) {
             case .module(let module):
                 run.referencedModules.insert(module)

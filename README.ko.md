@@ -384,7 +384,11 @@ Data.UserRepository is reachable:
   Presentation.HomeView → Domain.UserService → Data.UserRepository
 ```
 
-### `fix` — 안전한 기계적 수정 적용
+### `fix` — 기계적 편집 계획과 적용
+
+파싱 성공은 타입 검사나 빌드 성공의 증명이 아닙니다. `--apply` 후 diff를 검토하고 관련 타깃을
+모두 다시 빌드하세요. 쓰기는 전체 편집 집합이 아닌 파일 단위로 원자적이며, 이 명령은 검증 명령
+실행이나 실패한 빌드의 자동 롤백을 수행하지 않습니다.
 
 ```bash
 cartograph fix                      # 계획만 출력; 파일을 쓰지 않음
@@ -916,7 +920,15 @@ Git helper는 불완전한 결과도 보존한 보고서 경로를 출력한 뒤
 `--since`, `--baseline`을 거부합니다.
 
 이전 v1 스냅샷도 읽을 수 있으며 자동 런타임 근거가 없다는 한계를 명시합니다. 스냅샷은
-128 MiB로 제한하고 런타임 `expectedValue`는 저장하지 않습니다. 현재 런타임 계약이 삭제한
+기본 제한은 계속 128 MiB입니다. 큰 프로젝트는 `snapshot`과 `impact --before` 양쪽에
+`--snapshot-max-mib 512`를 지정하세요(범위 1–1024 MiB). Git capture helper도 같은 옵션을
+두 캡처와 비교에 전달합니다. MCP `cartograph_impact`는 `before`와 함께 `snapshotMaxMiB`를
+받으며 범위와 기본값이 같습니다. 끝 줄바꿈을 포함한 압축하지 않은 JSON 파일 전체를 셉니다.
+읽기는 한도+1 바이트에서 멈추고 초과·잘림·손상·압축 입력을 거부하며 자동 압축 해제는 하지 않습니다.
+인코딩·디코딩은 여전히 JSON과 그래프를 메모리에 구성하므로 **RSS 제한이 아니라 파일 크기 예산**입니다.
+한도를 높이면 파일 크기의 몇 배에 이르는 메모리가 필요할 수 있습니다. 라이브러리의 `decode(from:)`는
+기본값을 유지하며 `decode(from:maximumBytes:)`와 `encoded(maximumBytes:)`로 같은 예산을 선택할 수 있습니다.
+런타임 `expectedValue`는 저장하지 않습니다. 현재 런타임 계약이 삭제한
 대상을 계속 요구한다면 과거 호출자가 확인되어도 그 계약 오류는 남습니다.
 
 ### `check` — 한 문맥에서 CI 점검
@@ -1712,7 +1724,9 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 **`retain_equatable_properties`와 `retain_hashable_properties`도 기본값으로 켜져 있습니다.**
 Periphery는 둘 다 꺼져 있습니다. 합성된 `==`나 `hash(into:)`만 읽는 저장 프로퍼티는 인덱스에
 읽기 흔적을 남기지 않으므로, 살리는 쪽이 보수적입니다. 그런 프로퍼티를 보고받고 싶으면 둘을
-끄세요.
+끄세요. 이 두 보존 이유는 소유 타입이 도달 가능한 경우에만 적용됩니다. 생성되지 않는
+중첩 `Equatable`/`Hashable` 타입의 저장 프로퍼티가 미사용 바깥 타입을 보존하지 않습니다.
+`Codable`과 명시적 보존 규칙은 별도로 유지됩니다.
 
 프로토콜 요구사항은 오버라이드 관계를 역방향으로 따라가며 처리합니다. 요구사항이 호출되면
 그 구현이 전부 도달 가능해집니다 — 단, 구현을 소유한 타입 자체가 도달 가능할 때만이어서,
@@ -1980,6 +1994,17 @@ let (_, metrics, _) = service.metrics(in: context)
 
 ### 0.29 소스 마이그레이션
 
+비동기 임베더는 `try await IndexStoreProvider(configuration: indexConfiguration).loadSnapshotAsync()`로
+디스크·DB 작업을 Swift cooperative executor 밖에서 실행할 수 있습니다. 기존 동기 `loadSnapshot()`은
+유지합니다. macOS 15 이상은 upstream 비동기 라이브러리 로더에 전용 task executor를 사용합니다.
+macOS 14의 Swift task에서는 동기 API로 task를 막지 말고 비동기 진입로를 사용하세요.
+raw reader의 async→sync 라이브러리·store 열기 bridge는 30초 대기 예산을 넘으면 부분 snapshot 없이
+실패합니다. database-backed 모드의 선행 동기 DB 초기화와 전체 record scan은 이 예산 밖입니다.
+공유 직렬 로더 queue에서 C 열기가 멈추면 후속 요청도 지연되거나 timeout될 수 있습니다. 요청별
+격리나 queue 강제 초기화를 보장하지 않습니다. 취소는 협조적이며 비동기 진입로는 blocking read가 반환된 뒤 전달합니다.
+C 작업의 강제 중단을 보장하지 않습니다. 최소 deployment target은 macOS 14 그대로이며 최신 runner의
+통과가 macOS 14 runtime 검증을 뜻하지는 않습니다.
+
 소스 버전은 `0.29.0`이며, 설치 태그로 고르기 전에 [GitHub Releases](https://github.com/ictechgy/cartograph/releases)의
 게시된 asset을 확인하세요. 릴리스 archive에는 `Scripts/cartograph-git-impact.py`가 포함됩니다.
 Python 3.10 이상, Git, Swift 도구체인과 같은 버전의 Cartograph 바이너리가 필요합니다.
@@ -2025,6 +2050,39 @@ universal archive를 검증했으며, [tap 갱신](https://github.com/ictechgy/h
 
 [CONTRIBUTING.md](CONTRIBUTING.md)를 보세요. 이 저장소에서 작업하는 에이전트는
 [AGENTS.md](AGENTS.md)를 먼저 읽어야 합니다.
+
+## Workspace와 로컬 패키지의 인덱스 범위
+
+workspace scheme과 관련 로컬 패키지 target을 모두 빌드한 뒤 그 빌드의 인덱스를
+`--index-store`로 지정하세요. 자동 선택은 target 범위가 아닌 store/unit 디렉터리의 최근
+시각을 사용하며 후보가 여러 개면 선택 경로·후보 수·규칙을 결과에 남깁니다.
+`unindexed-sources`, 삭제·오래된 경로와 알고 있는 로컬 target을 확인한 뒤 호출자 부재를
+해석하세요. SDK·binary 의존성에 로컬 source unit이 없는 것은 정상일 수 있습니다.
+PBXSourcesBuildPhase와 SwiftPM target 소속 전체를 재구성하지 못하므로 불명확한 범위에서는
+좁힌 `xcodebuild` 선택을 계속 거부합니다. selector를 검증할 수 없다면 전체 suite를 실행하세요.
+
+표준 로컬 SwiftPM `.../index/store`는 같은 configuration의 인접 `description.json`만 최대 8 MiB까지
+읽으며 `Package.swift`를 실행하지 않습니다. 명령이 선택한 인덱스와 실재 로컬 Swift 소스를 명시한
+경우에만 `build-module-coverage`가 기대 소스의 unit 시각을 관측하지 못한 모듈 이름을 표시합니다.
+제외 소스·상충한 명령 소속·오래된 metadata·지원하지 않는 입력은 구분합니다. 이는 build metadata와의
+관측 비교이며 현재 target 소속·정의 범위·빌드 신선도의 증명이 아닙니다. 로컬 소스가 없는 SDK·binary는
+missing으로 분류하지 않으며 Xcode store와 compiler `out` override에는 이 매핑이 없습니다.
+설명 파일도 세션 무효화 입력에 포함하지만 경고가 없다는 사실은 coverage 통과가 아닙니다.
+
+Git ignored인 미추적 소스와 중첩 저장소는 탐색에서 제외하며 추적 파일은 ignore보다
+우선합니다. 제외 경고가 없어졌다고 빌드 범위가 완전해진 것은 아닙니다. 생성된 DI 파일은
+호출 관계를 연결하므로 역할을 검토한 뒤 `retention.retained_files: ["Sources/Generated/**"]`로
+선언을 보존하고 간선을 유지할 수 있습니다. 생성물처럼 보이는 이름이나 사람이 관리하는
+디자인 token 파일을 자동 숨기지 않습니다.
+
+파일·모듈 그래프는 고유한 근거가 있는 reference 발생 위치에 출처를 귀속하며 다른 모듈에서
+선언한 extension도 포함합니다. 심볼·타입 그래프는 의미상 소유자를 유지합니다. 발생 위치의
+모듈 근거가 없거나 충돌하면 출처 한계를 남깁니다.
+
+`query.usedBy`는 구현 관계도 포함하는 역방향 의존 이웃입니다. 각 이웃의 `edges`를 확인하세요.
+`overrides`·`conformance`·`extends`는 구현이나 타입 관계이며 runtime 호출을 증명하지 않습니다.
+`call`·`reference`와 선택적인 발생 위치 근거를 함께 구분해 읽으세요. 생성된 Provider 구현을
+자동으로 호출자라고 해석하지 않습니다.
 
 ## 라이선스
 

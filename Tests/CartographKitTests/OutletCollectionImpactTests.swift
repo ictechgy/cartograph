@@ -33,7 +33,7 @@ struct OutletCollectionImpactTests {
                   location: location(21)),
             .init(usr: "test", name: "testRender()", kind: .function, module: "Tests",
                   location: .init(path: "/p/Tests/ScreenTests.swift", line: 1, column: 1),
-                  attributes: [.unitTest]),
+                  attributes: [.testFunction]),
         ], references: [
             .init(sourceUSR: "render", targetUSR: "labels", kind: .reference),
             .init(sourceUSR: "other-render", targetUSR: "other-labels", kind: .reference),

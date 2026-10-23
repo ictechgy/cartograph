@@ -257,7 +257,9 @@ struct ImpactPreparationCacheTests {
         let extra = builder.build()
         let augmented = AnalysisContext(
             snapshot: IndexSnapshot(
-                symbols: baseSnapshot.symbols + extra.symbols, references: baseSnapshot.references
+                symbols: baseSnapshot.symbols + extra.symbols, references: baseSnapshot.references + [
+                    .init(sourceUSR: "Generated", targetUSR: "c:objc(cs)XCTestCase", kind: .inheritance, origin: .compiler)
+                ]
             ),
             supplementalRuntimeSourcePaths: ["/p/Generated.swift"]
         )
@@ -340,7 +342,13 @@ struct ImpactPreparationCacheTests {
         builder.reference(from: "hook", to: "Storage", kind: .call)
         builder.reference(from: "asyncTest", to: "Storage", kind: .call)
         builder.reference(from: "parameterized", to: "Storage", kind: .call)
-        return builder.build()
+        var result = builder.build()
+        result.references.append(.init(sourceUSR: "Base", targetUSR: "c:objc(cs)XCTestCase",
+            kind: .inheritance, origin: .compiler))
+        for index in result.symbols.indices where result.symbols[index].usr == "asyncTest" {
+            result.symbols[index].compilerUnitTest = true
+        }
+        return result
     }
 
     private func service(snapshot: IndexSnapshot? = nil, projectPath: String = "/p") -> CartographService {

@@ -116,7 +116,8 @@ def changed_paths(before: Path, current: Path) -> list[str]:
     return [name for name in paths if file_identity(before / name) != file_identity(current / name)]
 
 
-def capture(binary: Path, project: Path, output: Path, label: str, timeout: int) -> tuple[Path, Path, dict]:
+def capture(binary: Path, project: Path, output: Path, label: str, timeout: int,
+            snapshot_max_mib: int = 128) -> tuple[Path, Path, dict]:
     start = time.monotonic()
     before = source_fingerprint(project)
     scratch = output / (label + "-build")
@@ -130,7 +131,8 @@ def capture(binary: Path, project: Path, output: Path, label: str, timeout: int)
         raise CaptureError(f"{label}: build did not create a compiler index")
     snapshot = output / (label + ".json")
     snapshot.write_bytes(run([str(binary), "snapshot", "--project", str(project),
-                              "--index-store", str(store)], project, timeout=timeout))
+                              "--index-store", str(store), "--snapshot-max-mib", str(snapshot_max_mib)],
+                             project, timeout=timeout))
     after = source_fingerprint(project)
     if before != after:
         raise CaptureError(f"{label}: sources changed during build/capture. Resolve and commit dependency lockfiles "
@@ -144,6 +146,9 @@ def analyze(args: argparse.Namespace) -> Path:
     preparation_start = time.monotonic()
     if not 1 <= args.limit <= 10000 or (args.depth is not None and not 1 <= args.depth <= 128):
         raise CaptureError("Limits require 1...10000 results and an optional depth of 1...128")
+    snapshot_max_mib = getattr(args, "snapshot_max_mib", 128)
+    if not 1 <= snapshot_max_mib <= 1024:
+        raise CaptureError("--snapshot-max-mib must be between 1 and 1024")
     project = Path(args.project).resolve()
     root = Path(os.fsdecode(git(project, "rev-parse", "--show-toplevel")).strip()).resolve()
     if project != root or not (project / "Package.swift").is_file():
@@ -165,10 +170,11 @@ def analyze(args: argparse.Namespace) -> Path:
             raise CaptureError("Working-tree sources changed during copy; retry when editing is idle")
     paths = changed_paths(before, current)
     input_preparation_seconds = time.monotonic() - preparation_start
-    _, before_snapshot, before_evidence = capture(binary, before, output, "before", args.timeout)
-    current_store, _, current_evidence = capture(binary, current, output, "current", args.timeout)
+    _, before_snapshot, before_evidence = capture(binary, before, output, "before", args.timeout, snapshot_max_mib)
+    current_store, _, current_evidence = capture(binary, current, output, "current", args.timeout, snapshot_max_mib)
     command = [str(binary), "impact", "--before", str(before_snapshot), "--format", "json",
-               "--project", str(current), "--index-store", str(current_store), "--limit", str(args.limit)]
+               "--project", str(current), "--index-store", str(current_store), "--limit", str(args.limit),
+               "--snapshot-max-mib", str(snapshot_max_mib)]
     if args.depth is not None:
         command += ["--depth", str(args.depth)]
     modeled = [p for p in paths if p.endswith((".swift", ".m", ".mm", ".h", ".xib", ".storyboard"))
@@ -190,6 +196,7 @@ def analyze(args: argparse.Namespace) -> Path:
                                "analysisSeconds": time.monotonic() - start,
                                "totalSeconds": time.monotonic() - preparation_start,
                                "analysisExitCode": result.returncode,
+                               "snapshotMaximumBytes": snapshot_max_mib * 1024 * 1024,
                                "sourceScope": "tracked-and-nonignored-untracked-regular-files",
                                "selectionPrecision": "file-wide-declarations", "graphPolicy": "separate-revisions"}
     document.setdefault("limitations", []).append("File-wide seeds are review candidates; static tests do not predict failures or authorize skipping tests.")
@@ -212,8 +219,11 @@ def main() -> int:
     mode.add_argument("--head", help="Exact after commit (default: HEAD)")
     mode.add_argument("--working-tree", action="store_true", help="Include staged, unstaged, and untracked files")
     parser.add_argument("--output", help="New directory outside the repository; retained with worktrees and evidence")
-    parser.add_argument("--depth", type=int)
-    parser.add_argument("--limit", type=int, default=200)
+    parser.add_argument("--depth", type=int, help="Maximum consumer depth (1...128; omitted: no depth cap)")
+    parser.add_argument("--limit", type=int, default=200,
+                        help="Maximum affected declarations to report (1...10000; default: 200)")
+    parser.add_argument("--snapshot-max-mib", type=int, default=128,
+                        help="Uncompressed snapshot bound for capture and comparison (1...1024 MiB; default: 128)")
     parser.add_argument("--timeout", type=int, default=600)
     args = parser.parse_args()
     try:
