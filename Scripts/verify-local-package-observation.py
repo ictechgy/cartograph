@@ -161,6 +161,29 @@ class ObservationParsing(unittest.TestCase):
         unknown = OBS.link_map("# Symbols:\n0x1000 0x10 [ 9] _unknown\n")
         self.assertEqual(unknown["unresolvedOwnerIndices"], ["9"])
 
+    def test_link_map_column_headers_do_not_end_symbol_sections(self):
+        # Apple ld64 OutputFile.cpp는 각 심볼 구역 뒤에 열 제목을 출력한다.
+        value = OBS.link_map('''# Object files:
+[ 0] linker synthesized
+[ 1] /build/Math.o
+# Sections:
+# Address\tSize\tSegment\tSection
+0x1000 0x10 __TEXT __text
+# Symbols:
+# Address\tSize    \tFile  Name
+0x1000 0x10 [ 1] _packageValue
+# Dead Stripped Symbols:
+# Address\tSize    \tFile  Name
+<<dead>> 0x10 [ 1] _unused
+''')
+        self.assertEqual(value["liveSymbolCountByOwner"], {"1": 1})
+        self.assertEqual(value["deadSymbolCountByOwner"], {"1": 1})
+        self.assertEqual(value["unparsedSymbolRows"], 0)
+        self.assertIn("# Address\tSize    \tFile  Name", value["headers"])
+        unknown = OBS.link_map("# Symbols:\n# Address Size File Name\nunrecognized row\n")
+        self.assertEqual(unknown["unparsedSymbolRows"], 1)
+        self.assertEqual(unknown["liveSymbolCountByOwner"], {})
+
     def test_outside_and_relative_observed_paths_refuse(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

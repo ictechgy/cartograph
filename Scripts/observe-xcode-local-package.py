@@ -98,9 +98,14 @@ def commands(log: str) -> list[list[str]]:
 
 
 def link_map(text: str) -> dict:
-    objects, live, dead, section = {}, {}, {}, ""
+    objects, live, dead, section, headers, unparsed = {}, {}, {}, "", [], 0
     for line in text.splitlines():
         if line.startswith("# "):
+            SCOPE.require(len(headers) < 128 and len(line.encode()) <= 1024, "Link-map header budget exceeded")
+            headers.append(line)
+            # ld64 emits this column header after '# Symbols:'; it is not a new section.
+            if re.fullmatch(r"#\s+Address\s+Size\s+(?:File\s+Name|Segment\s+Section)\s*", line):
+                continue
             section = line
             continue
         if section == "# Object files:":
@@ -113,8 +118,11 @@ def link_map(text: str) -> dict:
             if match:
                 counts = live if section == "# Symbols:" else dead
                 counts[match[1]] = counts.get(match[1], 0) + 1
+            elif line.strip():
+                unparsed += 1
     SCOPE.require(len(objects) <= 256 and len(live) <= 256 and len(dead) <= 256, "Link-map owner budget exceeded")
     return {"objectFiles": objects, "liveSymbolCountByOwner": live, "deadSymbolCountByOwner": dead,
+            "headers": headers, "unparsedSymbolRows": unparsed,
             "unresolvedOwnerIndices": sorted((set(live) | set(dead)) - set(objects)),
             "limitation": "Object-list presence alone is not contribution. Owner counts need actual compiler-object/link-step joins; no runtime or complete-membership proof."}
 
@@ -178,7 +186,12 @@ def inspect(log: str, project: Path, build: Path) -> dict:
             row["fileLists"].append({"path": path, "paths": paths})
         map_path = operand(argv, "-map")
         if map_path:
-            row["linkMap"] = {"path": map_path, **link_map(files.read(map_path).decode("utf-8"))}
+            data = files.read(map_path)
+            preview = data[:64 * 1024]
+            row["linkMap"] = {"path": map_path, **link_map(data.decode("utf-8")),
+                              "rawPreview": preview.decode("utf-8", errors="replace"),
+                              "rawBytes": len(data), "rawPreviewBytes": len(preview),
+                              "rawPreviewTruncated": len(preview) != len(data)}
         if row["output"]:
             path = checked(row["output"], [build])
             if path.is_file():

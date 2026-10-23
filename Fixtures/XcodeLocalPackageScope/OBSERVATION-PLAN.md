@@ -79,6 +79,10 @@ compiler/source/object joins, link-map excerpts with complete input hashes, reco
 admissions and test execution summary. Include omitted/truncated counts. Do not
 upload complete build caches, index stores, environment variables or secrets.
 Hashes and paths alone do not replace actual in-process byte/membership checks.
+Each observed link map includes at most 64 KiB of raw text alongside its full-file
+hash, original/retained byte counts, explicit preview truncation, section headers
+and unparsed symbol-row counts. An empty parsed symbol set or a truncated preview
+does not establish absence of contribution.
 
 ## Follow-up gates before product support
 
