@@ -15,7 +15,7 @@ struct AffectedDocumentTests {
         #expect(result.incompleteAnalysis?.contains("Source/index coverage is incomplete") == true)
     }
 
-    @Test("Xcode proof는 bundle로 변환하고 허용하지 않은 coverage 경고는 계속 거부한다")
+    @Test("Xcode proof의 target 선택과 bundle 바이트 근거를 구분하고 불명 신원은 거부한다")
     func scopedSelectorMappingAndUncoveredWarnings() throws {
         let document = try service(snapshot()).affectedDocument(symbols: ["P"])
         var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(document)) as? [String: Any])
@@ -24,8 +24,9 @@ struct AffectedDocumentTests {
             paths: [], pathCount: 0, omittedPaths: 0, limitations: [])
         scope.xcode = .init(project: "P.xcodeproj", scheme: "Suite", testPlan: nil, configuration: "Debug",
             destination: "platform=macOS,arch=arm64", architecture: "arm64", selectionStatus: "review-candidates",
-            blockers: [], selectorTargetByModule: ["App": "RunnableBundle"], selectedSourcePaths: ["Sources/P.swift"],
-            coveredBlockerCodes: ["unindexed-sources"])
+            blockers: [], selectorTargetByModule: ["App": "Blueprint"], selectedSourcePaths: ["Sources/P.swift"],
+            coveredBlockerCodes: ["unindexed-sources"], selectorIdentity: "xctestrun-blueprint-name",
+            testBundleByModule: ["App": "RunnableBundle.xctest"])
         object["targetScope"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(scope))
         object["limitations"] = ["unindexed-sources: proved outside this scheme"]
         func decode() throws -> AffectedDocument {
@@ -33,7 +34,8 @@ struct AffectedDocumentTests {
         }
         let selection = try decode().xcodebuildSelection()
         #expect(selection.refusal == nil)
-        #expect(selection.output == "-only-testing:RunnableBundle\n")
+        #expect(selection.output == "-only-testing:Blueprint\n")
+        #expect(selection.notes.first?.contains("whole verified Xcode test target") == true)
         object["limitations"] = ["configured-edge-kinds: missing calls"]
         #expect(try decode().xcodebuildSelection().output.isEmpty)
         object["limitations"] = ["index-staleness: stale relevant target"]
@@ -41,6 +43,14 @@ struct AffectedDocumentTests {
         object["limitations"] = []
         var scopeObject = try #require(object["targetScope"] as? [String: Any])
         var xcodeObject = try #require(scopeObject["xcode"] as? [String: Any])
+        for key in ["selectorIdentity", "testBundleByModule"] {
+            var legacy = xcodeObject
+            legacy.removeValue(forKey: key)
+            scopeObject["xcode"] = legacy
+            object["targetScope"] = scopeObject
+            #expect(try decode().xcodebuildSelection().output.isEmpty)
+            #expect(try decode().xcodebuildSelection().refusal?.contains("target identity") == true)
+        }
         xcodeObject["selectorTargetByModule"] = ["Other": "OtherBundle"]
         scopeObject["xcode"] = xcodeObject
         object["targetScope"] = scopeObject

@@ -49,8 +49,16 @@ plan configuration with no runtime options or partial selections.
 
 `targetScope.xcode` records the project, scheme, plan, configuration, destination,
 architecture, complete selected source universe, blockers, and compiler-module to
-built-test-bundle mapping. A test bundle's name can differ from both its blueprint
-and its Swift module. Selectors apply only to this captured build context. Use the
+verified Xcode target mapping (`selectorTargetByModule`). The `selectorIdentity` is
+`xctestrun-blueprint-name`: the `.xctestrun` BlueprintName must match the project and
+selected scheme target. `testBundleByModule` separately records the verified product
+filename. For example, module `ChecksModule` maps to selector `ChecksBlueprint` and
+product `RunnableChecks.xctest`; a product filename is not a selector target name.
+Documents without these identity fields still decode but cannot emit verified selectors.
+Without a validated class/method selector, the original widening reason remains in
+the output and selection covers the whole verified target. Running one test in a small
+target does not establish method-level selection precision.
+Selectors apply only to this captured build context. Use the
 captured `.xctestrun` with `xcodebuild test-without-building` and its recorded destination;
 applying the arguments to another scheme, destination, or build is not verified.
 Static candidates do not predict failure and do not authorize omitting other tests.

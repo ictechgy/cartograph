@@ -52,6 +52,21 @@ def main():
         raise
     receipt = json.loads(receipt_path.read_text())
     metadata = json.loads((output / "capture/capture.json").read_text())
+    test_run_bytes = SCOPE.bounded(Path(receipt["testRunPath"]), 8 * 1024 * 1024)
+    test_run = plistlib.loads(test_run_bytes)
+    observed_rows = test_run["TestConfigurations"][0]["TestTargets"] if "TestConfigurations" in test_run else [
+        v for k, v in test_run.items() if not k.startswith("__")]
+    observed_keys = ("BlueprintName", "TestBundlePath", "DependentProductPaths", "TestHostPath",
+                     "OnlyTestIdentifiers", "SkipTestIdentifiers")
+    SCOPE.save(output / "observed-test-run.json", {
+        "sha256": hashlib.sha256(test_run_bytes).hexdigest(),
+        "testTargets": [{k: row[k] for k in observed_keys if k in row} for row in observed_rows]})
+    SCOPE.save(output / "observed-capture.json", {
+        "receiptSHA256": hashlib.sha256(SCOPE.bounded(receipt_path, 8 * 1024 * 1024)).hexdigest(),
+        "testRunSHA256": receipt["testRunSHA256"], "inputFingerprint": receipt["inputFingerprint"],
+        "selectedTargetIDs": receipt["selectedTargetIDs"], "targets": receipt["targets"],
+        "destination": receipt["destination"], "productsCount": len(receipt["products"]),
+        "secondsIncludingPreparation": metadata["secondsIncludingPreparation"]})
     common = ["--project", str(project), "--index-store", metadata["indexStore"], "--config", str(config)]
     binary = str(Path(args.candidate).resolve())
 
@@ -71,12 +86,18 @@ def main():
     scope = result["targetScope"]
     assert scope["evidenceStatus"] == "matched-capture", scope
     assert scope["xcode"]["selectionStatus"] == "review-candidates", scope
-    assert scope["xcode"]["selectorTargetByModule"]["ChecksModule"] == "RunnableChecks", scope
+    assert scope["xcode"]["selectorTargetByModule"]["ChecksModule"] == "ChecksBlueprint", scope
+    assert scope["xcode"]["testBundleByModule"]["ChecksModule"] == "RunnableChecks.xctest", scope
+    assert scope["xcode"]["selectorIdentity"] == "xctestrun-blueprint-name", scope
     assert any(x["path"] == "Unbuilt/Tool.swift" and x["classification"] == "outside-selected-targets" for x in scope["paths"]), scope
     assert any(x.startswith("source-discovery-exclusions:") for x in result["limitations"])
+    assert result["summary"]["testCount"] == 1 and result["tests"][0].get("xcodebuildIdentifier") is None, result
+    assert any(x.startswith("uncertain-test-identity:") for x in result["limitations"]), result
     selectors = invoke("candidate-selectors", ["--format", "xcodebuild", "--target-scope", str(receipt_path)]).splitlines()
-    assert selectors and all(x.startswith("-only-testing:RunnableChecks") for x in selectors), selectors
-    assert not any("ChecksModule" in x or "ChecksBlueprint" in x or "OtherRunnable" in x for x in selectors), selectors
+    # The observed ObjC-style test USR has no validated parent/method selector.
+    # Retain the honest whole-target fallback; this target happens to contain one test.
+    assert selectors == ["-only-testing:ChecksBlueprint"], selectors
+    assert not any("ChecksModule" in x or "RunnableChecks" in x or "OtherBlueprint" in x for x in selectors), selectors
     # Unbound MCP input cannot use a fresh fingerprint as a stamp on a previous generation.
     local_receipt = project / "scope-receipt.json"
     local_receipt.write_bytes(receipt_path.read_bytes())
@@ -92,6 +113,8 @@ def main():
     if structured is None:
         structured = json.loads(next(x["text"] for x in answer["result"]["content"] if x.get("type") == "text"))
     assert structured["result"]["targetScope"]["xcode"]["selectionStatus"] == "review-candidates", structured
+    assert structured["result"]["targetScope"]["xcode"]["selectorTargetByModule"] == scope["xcode"]["selectorTargetByModule"], structured
+    assert structured["result"]["targetScope"]["xcode"]["testBundleByModule"] == scope["xcode"]["testBundleByModule"], structured
 
     controls = []
     for label, relative, replacement in [
@@ -149,12 +172,23 @@ def main():
     controls.append("changed-product")
     # Read current xcodebuild documentation and run precisely the emitted selectors against captured bundles.
     SCOPE.run(["xcodebuild", "-help"], project, output, "xcodebuild-help", 60)
-    run = SCOPE.run(["xcodebuild", "test-without-building", "-xctestrun", receipt["testRunPath"],
-                     "-destination", receipt["destination"], *selectors], project, output, "selected-test-run", 300, 16 * 1024 * 1024).decode(errors="replace")
+    try:
+        run = SCOPE.run(["xcodebuild", "test-without-building", "-xctestrun", receipt["testRunPath"],
+                         "-destination", receipt["destination"], *selectors], project, output, "selected-test-run", 300, 16 * 1024 * 1024).decode(errors="replace")
+    except Exception:
+        for suffix in ("stdout", "stderr"):
+            log = output / ("selected-test-run." + suffix)
+            if log.exists():
+                print(log.name + ":\n" + log.read_bytes()[-4096:].decode(errors="replace"), flush=True)
+        raise
     assert "testChanged" in run and "Executed 1 test" in run and "testOther'" not in run, run[-8000:]
     SCOPE.save(output / "results.json", {"status": "passed", "baselineCommit": "5dc4718812b81baf981741f9dd0931f24fde6004",
         "candidateCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "selectors": selectors, "negativeControls": controls, "secondsIncludingPreparation": time.monotonic() - started,
+        "selectionGranularity": "whole-target", "executedTestCount": 1,
+        "selectorIdentity": scope["xcode"]["selectorIdentity"],
+        "selectorTargetByModule": scope["xcode"]["selectorTargetByModule"],
+        "testBundleByModule": scope["xcode"]["testBundleByModule"],
         "baselineSHA256": hashlib.sha256(Path(args.baseline).read_bytes()).hexdigest(),
         "candidateSHA256": hashlib.sha256(Path(args.candidate).read_bytes()).hexdigest(),
         "limits": "Public synthetic single-project macOS Swift/XCTest fixture only; not the private 22-project workspace or an omission guarantee."})

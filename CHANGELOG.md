@@ -11,6 +11,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   consumed source-record module evidence, built bundle identity and whole-product byte validation.
   Matched scope can emit review selectors while retaining excluded-path warnings; unknown or
   truncated proof still refuses. CLI and MCP bind the same captured input generation.
+- Bind Xcode selectors to verified `.xctestrun` BlueprintName/project targets, while
+  preserving compiler-module and built-bundle identities separately. Missing selector
+  identity evidence refuses narrowing even when an older scope document still decodes.
 
 This is the unpublished 0.29.0 candidate. The latest published release remains 0.28.0.
 

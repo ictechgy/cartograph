@@ -55,6 +55,7 @@ struct XcodeTargetScopeStore {
         let closure: Set<String>
         let owners: [String: String]
         let selectorTargets: [String: String]
+        let testBundles: [String: String]
     }
 
     /// raw 프로젝트를 다시 해석하여 receipt의 파생 소속이 원문과 일치하는지 확인한다.
@@ -145,12 +146,14 @@ struct XcodeTargetScopeStore {
             receipt: receipt, productRoot: productRoot)
         let bundles = try validateTestRun(testRun, selected: selected.compactMap { byID[$0]?.name },
             settings: settings, productRoot: productRoot, closureProducts: closureProducts, testHosts: receipt.testHosts)
-        var selectorTargets: [String: String] = [:]
+        var selectorTargets: [String: String] = [:], testBundles: [String: String] = [:]
         for id in selected {
-            guard let target = byID[id], let bundle = bundles[target.name], validName(bundle) else {
+            guard let target = byID[id], let bundle = bundles[target.name], validName(bundle), validName(target.name) else {
                 throw invalid("A selected test bundle identity is unavailable.")
             }
-            selectorTargets[target.module] = bundle
+            // Xcode는 제품 파일명이 아니라 scheme/xctestrun의 target 이름으로 선택한다.
+            selectorTargets[target.module] = target.name
+            testBundles[target.module] = bundle
         }
         try validateProducts(receipt, root: productRoot)
         for (host, digest) in receipt.testHosts {
@@ -161,7 +164,8 @@ struct XcodeTargetScopeStore {
         try validateFrameworks(receipt.frameworks, references: project.frameworks, settings: settings)
         guard receipt.after == (try inventory(root: root)), bytes == (try bounded(path, maximum: 8 * 1_024 * 1_024))
         else { throw invalid("Inputs changed while Xcode membership was being verified.") }
-        return .init(receipt: receipt, closure: closure, owners: owners, selectorTargets: selectorTargets)
+        return .init(receipt: receipt, closure: closure, owners: owners,
+            selectorTargets: selectorTargets, testBundles: testBundles)
     }
 
     private struct Settings: Decodable { let target: String; let buildSettings: [String: String] }
@@ -264,7 +268,7 @@ struct XcodeTargetScopeStore {
                   try fileSystem.realPath(at: directory + "/" + executable) == directory + "/" + executable else {
                 throw invalid("The test-run bundle differs from its captured target product.")
             }
-            bundles[name] = (product as NSString).deletingPathExtension
+            bundles[name] = product
         }
         guard observedHosts == Set(testHosts.keys) else { throw invalid("Unexpected captured test host inputs.") }
         return bundles

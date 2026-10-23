@@ -26,9 +26,14 @@ public struct TargetScopeDocument: Sendable, Equatable, Codable {
         public let architecture: String
         public let selectionStatus: String
         public let blockers: [String]
+        /// xctestrun BlueprintName과 프로젝트 target 신원이 일치한 선택 이름.
         public let selectorTargetByModule: [String: String]
         public let selectedSourcePaths: [String]
         public let coveredBlockerCodes: [String]
+        /// 선택 이름의 근거를 제품 파일명과 구분한다. 이전 문서에는 없을 수 있다.
+        public var selectorIdentity: String? = nil
+        /// 선택 이름과 별개로 검증한 실제 test bundle 제품 파일명.
+        public var testBundleByModule: [String: String]? = nil
     }
 
     /// 제외된 경로도 원래 blocker 원인과 함께 남긴다. outside는 실행 생략 허가가 아니다.

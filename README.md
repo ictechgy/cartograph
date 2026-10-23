@@ -2211,5 +2211,7 @@ The unpublished 0.29.0 candidate adds capture-bound SwiftPM target-scope review,
 findings and safety signals remain. SwiftPM scope remains diagnostic only. An optional
 [bounded Xcode capture](docs/XCODE-AFFECTED-SCOPE.md) binds explicit scheme/test-plan
 membership, actual consumed source records and built bundle bytes to review selectors.
+Selector target names come from verified `.xctestrun` BlueprintName/project identities;
+the JSON/MCP output preserves bundle product names separately.
 Unknown coverage still refuses narrowing; static candidates never authorize test omission.
 See [scope, budgets and migration examples](docs/FOLLOWUP-REVIEW.md).

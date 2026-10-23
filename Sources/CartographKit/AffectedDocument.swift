@@ -414,14 +414,15 @@ extension AffectedDocument {
             }
             selectors = Set(rawSelectors.compactMap { identifier -> String? in
                 let parts = identifier.split(separator: "/", maxSplits: 1).map(String.init)
-                guard let module = parts.first, let bundle = mapping[module] else { return nil }
-                return bundle + (parts.count == 2 ? "/" + parts[1] : "")
+                guard let module = parts.first, let target = mapping[module] else { return nil }
+                return target + (parts.count == 2 ? "/" + parts[1] : "")
             }).sorted()
         } else { selectors = rawSelectors.sorted() }
         var notes = limitations
         if !widened.isEmpty {
+            let scope = targetScope?.xcode == nil ? "whole test module" : "whole verified Xcode test target"
             notes.insert(
-                "\(widened.count) test declaration(s) are selected by their whole test module: only top-level "
+                "\(widened.count) test declaration(s) are selected by their \(scope): only top-level "
                     + "XCTest classes without subclasses, and their test methods, have a provable -only-testing "
                     + "identifier.",
                 at: 0
@@ -440,7 +441,9 @@ extension AffectedDocument {
         if truncated.output || truncated.depth {
             return "The affected test list was truncated; increase --limit or --depth." + fallback
         }
-        if let targetScope, targetScope.xcode?.selectionStatus != "review-candidates" {
+        if let targetScope, targetScope.xcode?.selectionStatus != "review-candidates"
+            || targetScope.xcode?.selectorIdentity != "xctestrun-blueprint-name"
+            || targetScope.xcode?.testBundleByModule == nil {
             return "Target membership review does not establish the chosen Xcode scheme's test target identity."
                 + " Inspect targetScope paths and run the whole suite until scheme coverage is verified." + fallback
         }
