@@ -1,0 +1,99 @@
+name: Xcode local package observation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/xcode-local-package-observation.yml'
+      - 'Fixtures/XcodeLocalPackageScope/**'
+      - 'Scripts/observe-xcode-local-package.py'
+      - 'Scripts/verify-local-package-observation.py'
+      - 'Scripts/benchmark-indexstore-cli.py'
+      - 'Scripts/cartograph-xcode-scope.py'
+      - 'Scripts/cartograph-swiftpm-scope.py'
+      - 'Tests/CartographIndexStoreTests/LocalPackageUnitObservationTests.swift'
+      - 'Package.swift'
+      - 'Package.resolved'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/xcode-local-package-observation.yml'
+      - 'Fixtures/XcodeLocalPackageScope/**'
+      - 'Scripts/observe-xcode-local-package.py'
+      - 'Scripts/verify-local-package-observation.py'
+      - 'Scripts/benchmark-indexstore-cli.py'
+      - 'Scripts/cartograph-xcode-scope.py'
+      - 'Scripts/cartograph-swiftpm-scope.py'
+      - 'Tests/CartographIndexStoreTests/LocalPackageUnitObservationTests.swift'
+      - 'Package.swift'
+      - 'Package.resolved'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xcode-local-package-observation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    runs-on: macos-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Select the newest Xcode
+        run: |
+          latest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          swift --version
+          xcodebuild -version
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .build/checkouts
+            .build/repositories
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+      - name: Verify parsers and real POSIX stream overflow cleanup
+        run: python3 Scripts/verify-local-package-observation.py
+      - name: Observe compiled and linked local package variants
+        id: observation
+        run: >-
+          python3 Scripts/observe-xcode-local-package.py
+          --output "$RUNNER_TEMP/xcode-local-package-observation"
+      - name: Record diagnostic outcome without certifying product support
+        if: always()
+        env:
+          OBSERVATION_OUTCOME: ${{ steps.observation.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          output = Path(os.environ["RUNNER_TEMP"]) / "xcode-local-package-observation"
+          output.mkdir(exist_ok=True)
+          value = {
+              "stepOutcome": os.environ["OBSERVATION_OUTCOME"],
+              "observationsPresent": (output / "diagnostic-results.json").is_file(),
+              "limitation": "Diagnostic-only native evidence; no package membership receipt, selector, or runtime proof. Failed observations remain failures.",
+          }
+          with (output / "workflow-status.json").open("x") as stream:
+              json.dump(value, stream, indent=2, sort_keys=True)
+          PY
+      - name: Preserve bounded public synthetic observations and failures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcode-local-package-observation
+          path: |
+            ${{ runner.temp }}/xcode-local-package-observation/*.json
+            ${{ runner.temp }}/xcode-local-package-observation/*.stdout
+            ${{ runner.temp }}/xcode-local-package-observation/*.stderr
+            ${{ runner.temp }}/xcode-local-package-observation/core-consumes-package/*.json
+            ${{ runner.temp }}/xcode-local-package-observation/core-consumes-package/*.stdout
+            ${{ runner.temp }}/xcode-local-package-observation/core-consumes-package/*.stderr
+            ${{ runner.temp }}/xcode-local-package-observation/compiled-for-other-only/*.json
+            ${{ runner.temp }}/xcode-local-package-observation/compiled-for-other-only/*.stdout
+            ${{ runner.temp }}/xcode-local-package-observation/compiled-for-other-only/*.stderr
+          if-no-files-found: warn
+          retention-days: 14
