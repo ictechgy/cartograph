@@ -16,6 +16,10 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
 
 ### Added
 
+- Optional `receiverPrecision` evidence in current `impact` and `affected` results explains
+  bounded final-receiver/self-call refinement, exclusions and fallback budgets. Unknown,
+  nonfinal, polymorphic, callable-value and historical paths remain conservative; source
+  verification failure or conflicting states restore the whole prior candidate traversal.
 - Optional `affected --target-scope` verifies a bounded SwiftPM source-membership capture
   against current inputs and separates blocker paths. Original coverage warnings and Xcode
   scheme uncertainty remain; this does not authorize test omission.

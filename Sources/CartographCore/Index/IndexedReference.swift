@@ -14,11 +14,15 @@ public struct IndexedReference: Hashable, Sendable, Codable {
     public let origin: ReferenceOrigin
     /// 구문 보강이 채운 참조 자리. 보강하지 못한 공급자는 unknown으로 남긴다.
     public let position: ReferencePosition
+    /// A unique compiler `receivedBy` type, never a caller or runtime object identity.
+    /// Missing/ambiguous observations and older snapshots leave this unknown.
+    public let receiverTypeUSR: String?
 
     public init(
         sourceUSR: String, targetUSR: String, kind: EdgeKind,
         location: SourceLocation? = nil, targetKind: SymbolKind? = nil,
-        origin: ReferenceOrigin = .unknown, position: ReferencePosition = .unknown
+        origin: ReferenceOrigin = .unknown, position: ReferencePosition = .unknown,
+        receiverTypeUSR: String? = nil
     ) {
         self.sourceUSR = sourceUSR
         self.targetUSR = targetUSR
@@ -27,10 +31,11 @@ public struct IndexedReference: Hashable, Sendable, Codable {
         self.targetKind = targetKind
         self.origin = origin
         self.position = position
+        self.receiverTypeUSR = receiverTypeUSR
     }
 
     private enum CodingKeys: String, CodingKey {
-        case sourceUSR, targetUSR, kind, location, targetKind, origin, position
+        case sourceUSR, targetUSR, kind, location, targetKind, origin, position, receiverTypeUSR
     }
 
     /// 이전 교환 파일에 출처나 자리가 없으면 추정하지 않는다.
@@ -42,7 +47,8 @@ public struct IndexedReference: Hashable, Sendable, Codable {
             location: try values.decodeIfPresent(SourceLocation.self, forKey: .location),
             targetKind: try values.decodeIfPresent(SymbolKind.self, forKey: .targetKind),
             origin: try values.decodeIfPresent(ReferenceOrigin.self, forKey: .origin) ?? .unknown,
-            position: try values.decodeIfPresent(ReferencePosition.self, forKey: .position) ?? .unknown)
+            position: try values.decodeIfPresent(ReferencePosition.self, forKey: .position) ?? .unknown,
+            receiverTypeUSR: try values.decodeIfPresent(String.self, forKey: .receiverTypeUSR))
     }
 
     /// 모르는 출처·자리는 키를 생략해 기존 공급자의 출력 계약을 유지한다.
@@ -55,13 +61,14 @@ public struct IndexedReference: Hashable, Sendable, Codable {
         try values.encodeIfPresent(targetKind, forKey: .targetKind)
         if origin != .unknown { try values.encode(origin, forKey: .origin) }
         if position != .unknown { try values.encode(position, forKey: .position) }
+        try values.encodeIfPresent(receiverTypeUSR, forKey: .receiverTypeUSR)
     }
 
     /// 구문 보강이 채운 자리를 갈아 끼운 복사본.
     public func withPosition(_ position: ReferencePosition) -> IndexedReference {
         IndexedReference(
             sourceUSR: sourceUSR, targetUSR: targetUSR, kind: kind, location: location,
-            targetKind: targetKind, origin: origin, position: position
+            targetKind: targetKind, origin: origin, position: position, receiverTypeUSR: receiverTypeUSR
         )
     }
 }

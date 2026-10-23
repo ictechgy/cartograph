@@ -30,7 +30,8 @@ extension CartographService {
         recordedFingerprint: String? = nil,
         selectionLimitations: [String] = [],
         runtimeTrace: RuntimeTraceReport? = nil,
-        in existingContext: AnalysisContext? = nil
+        in existingContext: AnalysisContext? = nil,
+        receiverFallback: ImpactReceiverPrecision? = nil
     ) throws -> (document: ImpactDocument, scope: Set<NodeID>) {
         guard (1...10_000).contains(limit), maxDepth.map({ (1...128).contains($0) }) ?? true else {
             throw CartographError.invalidConfiguration(
@@ -55,15 +56,20 @@ extension CartographService {
             graph: graph, extraIssues: runtime.issues, artifactTargets: artifactTargets,
             makeQueryIndex: { _ in context.impactQueryIndex() },
             makeRawFileIndex: { _ in context.impactRawNodesByFile() })
-        let report = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth,
-            additionalDependencies: runtime.dependencies + automaticDependencies + observedDependencies)
+        let receiver = impactReceiverEvidence(context: context, historical: recordedLimitations != nil || receiverFallback != nil,
+            changing: selection.nodes, graph: graph)
+        let analyzed = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth,
+            additionalDependencies: runtime.dependencies + automaticDependencies + observedDependencies,
+            receiverEvidence: receiver.evidence)
+        let report = ImpactReport(changed: analyzed.changed, affected: analyzed.affected,
+            truncatedByDepth: analyzed.truncatedByDepth, receiverPrecision: receiverFallback ?? analyzed.receiverPrecision)
         let reasons = context.impactReviewReasons()
         let summaries = try ImpactSummaries(report: report, selection: selection, graph: graph,
             reasons: reasons, context: context, limit: limit, runtime: runtime, projectPath: projectPath,
             confirmedTestRoots: context.impactTestIdentity().confirmed)
         let output = ImpactOutput(report: report, selection: selection, summaries: summaries, limit: limit)
         var limitations = (recordedLimitations ?? analysisLimitations(context: context, symbolGraph: graph))
-            + selectionLimitations
+            + selectionLimitations + receiver.limitations + Self.receiverLimitations(report)
         let reviewed = Set(report.changed + report.affected.map(\.node))
         limitations += context.impactTestIdentity().limitations(for: report)
         let relevantAutomatic = automatic.map { value in
@@ -80,6 +86,7 @@ extension CartographService {
         limitations += Self.automaticRuntimeLimitations(automatic)
         limitations += runtimeTrace?.limitations ?? []
         var truncatedSections = output.truncatedSections
+        if report.receiverPrecision?.limited(to: limit).truncated == true { truncatedSections.append("receiverPrecision") }
         if automaticDocument?.truncated == true { truncatedSections.append("automaticRuntime") }
         if observedDocument?.truncated == true { truncatedSections.append("observedRuntime") }
         if report.affected.contains(where: { $0.runtimeEvidence.count > limit }) {
@@ -88,6 +95,15 @@ extension CartographService {
         if !selection.issues.isEmpty {
             limitations.append("unresolved-impact-inputs: \(selection.issues.count) input(s) could not be resolved; "
                 + "deleted, renamed, excluded or unbuilt declarations require the pre-change index or explicit review")
+        }
+        if let precision = report.receiverPrecision, precision.excludedTransitions > 0,
+           let failure = impactReceiverFinalFailure(receiver.files) {
+            return try makeImpactDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+                runtimeContracts: runtimeContracts, recordedLimitations: recordedLimitations,
+                recordedRevision: recordedRevision, recordedFingerprint: recordedFingerprint,
+                selectionLimitations: selectionLimitations + receiver.limitations + [failure],
+                runtimeTrace: runtimeTrace, in: context,
+                receiverFallback: precision.fallingBack(reason: "receiver-source-final-verification"))
         }
         return (
             ImpactDocument(
@@ -108,7 +124,7 @@ extension CartographService {
                 automaticRuntime: automaticDocument, observedRuntime: observedDocument,
                 input: .init(historical: recordedLimitations != nil, revision: recordedRevision,
                     fingerprint: recordedFingerprint, limitations: limitations, files: !files.isEmpty,
-                    maxDepth: maxDepth, limit: limit)
+                    maxDepth: maxDepth, limit: limit), receiverPrecision: report.receiverPrecision?.limited(to: limit)
             ),
             selection.nodes
         )

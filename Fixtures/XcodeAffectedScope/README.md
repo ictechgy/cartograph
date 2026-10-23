@@ -3,7 +3,8 @@
 This minimal public fixture exists because scheme identifiers, actual compiler modules,
 `.xctestrun` output and executable test bundle names cannot be validated by a mocked graph.
 `ChecksBlueprint`, Swift module `ChecksModule`, and bundle `RunnableChecks.xctest` are
-intentionally different. `UnbuiltBlueprint` owns a Swift file outside the selected scheme.
+intentionally different. The supporting framework uses the same `CoreKit` module and
+framework filename so that ordinary framework import resolution remains valid. `UnbuiltBlueprint` owns a Swift file outside the selected scheme.
 
 The native gate captures a fresh build, compares the immutable previous main binary with
 the candidate on the same input, verifies stale/membership/product refusals, then executes

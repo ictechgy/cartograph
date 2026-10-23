@@ -37,8 +37,9 @@ Upload the output's `results.json` and `logs/` even on failure. This compiles an
 executes the package once, then analyzes the same unchanged index with both tools.
 It compares the entire module/file dependency-pair sets, checks semantic type
 cycles, and requires every corrected edge to retain matching occurrence evidence.
-The public binary must reproduce the reverse Domain edge; the candidate must
-preserve the actual layer violation. Preparation and per-command timing/RSS
+The public comparison records whether the reverse Domain edge is reproduced;
+an absent reverse edge remains `not-reproduced`. The candidate must preserve the
+actual layer violation. Preparation and per-command timing/RSS
 receipts are retained; process RSS is not simultaneous process-tree RSS.
 
 An optional `--baseline /path/to/pre-fix-main-cartograph` adds another native
@@ -46,3 +47,8 @@ comparison. Its hash and version are recorded, but its source commit must come
 from an independent build receipt. Without that binary, `mainBaseline` explicitly
 remains unverified. A passing public/candidate comparison does not turn the prior
 source-only main review into native execution. No extra tool build is performed.
+
+The default run also builds and analyzes the independent `ExtensionVariants`
+corpus. Its additional inferred/conditional/default/alias and nested-member shapes
+have their own results, hashes and timings in `variants/`; passing those controls
+does not reproduce the private application's reported module SCC.

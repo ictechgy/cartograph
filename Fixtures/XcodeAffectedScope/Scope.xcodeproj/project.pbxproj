@@ -51,7 +51,7 @@
     };
     "000000000000000000000007" = {
       "isa" = "PBXFileReference";
-      "path" = "CoreProduct.framework";
+      "path" = "CoreKit.framework";
       "sourceTree" = "BUILT_PRODUCTS_DIR";
       "explicitFileType" = "wrapper.framework";
       "includeInIndex" = 0;
@@ -76,7 +76,7 @@
       "isa" = "XCBuildConfiguration";
       "name" = "Debug";
       "buildSettings" = {
-        "PRODUCT_NAME" = "CoreProduct";
+        "PRODUCT_NAME" = "CoreKit";
         "PRODUCT_MODULE_NAME" = "CoreKit";
         "GENERATE_INFOPLIST_FILE" = "YES";
         "PRODUCT_BUNDLE_IDENTIFIER" = "org.cartograph.fixture.CoreKit";
@@ -94,7 +94,7 @@
     "00000000000000000000000D" = {
       "isa" = "PBXNativeTarget";
       "name" = "CoreBlueprint";
-      "productName" = "CoreProduct";
+      "productName" = "CoreKit";
       "productReference" = "000000000000000000000007";
       "productType" = "com.apple.product-type.framework";
       "buildConfigurationList" = "00000000000000000000000C";

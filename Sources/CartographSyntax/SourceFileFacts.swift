@@ -92,6 +92,10 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
     public let bodyRanges: [SourceRange]?
     /// nil means this capture predates enum-decision syntax coverage.
     public let enumDecisionFacts: EnumDecisionScanFacts?
+    /// Exact source sites of implicit/explicit self calls, with their enclosing function token.
+    /// nil means an older cache or a source file that could not establish this capability.
+    public let dispatchReceiverSyntaxFacts: DispatchReceiverSyntaxFacts?
+    public let sourceDigest: String?
 
     public init(
         path: String,
@@ -102,7 +106,9 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
         parameterUsages: [ParameterUsageFacts]? = nil,
         imports: [IndexedImport]? = nil,
         bodyRanges: [SourceRange]? = nil,
-        enumDecisionFacts: EnumDecisionScanFacts? = nil
+        enumDecisionFacts: EnumDecisionScanFacts? = nil,
+        dispatchReceiverSyntaxFacts: DispatchReceiverSyntaxFacts? = nil,
+        sourceDigest: String? = nil
     ) {
         self.path = path
         self.declarations = declarations
@@ -113,6 +119,8 @@ public struct SourceFileFacts: Codable, Sendable, Equatable {
         self.imports = imports
         self.bodyRanges = bodyRanges
         self.enumDecisionFacts = enumDecisionFacts
+        self.dispatchReceiverSyntaxFacts = dispatchReceiverSyntaxFacts
+        self.sourceDigest = sourceDigest
     }
 
     /// 줄 번호로 선언을 찾는다.

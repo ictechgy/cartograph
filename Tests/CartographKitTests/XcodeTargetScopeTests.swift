@@ -33,7 +33,7 @@ struct XcodeTargetScopeTests {
         }
         try fs.write(Data(contentsOf: repository.appendingPathComponent("Fixtures/XcodeAffectedScope/Scope.xctestplan")), to: "/p/Scope.xctestplan")
         let modules = ["CoreBlueprint": "CoreKit", "ChecksBlueprint": "ChecksModule", "OtherBlueprint": "OtherModule", "UnbuiltBlueprint": "UnbuiltModule"]
-        let products = ["CoreBlueprint": "CoreProduct.framework", "ChecksBlueprint": "RunnableChecks.xctest", "OtherBlueprint": "OtherRunnable.xctest", "UnbuiltBlueprint": "libUnbuilt.a"]
+        let products = ["CoreBlueprint": "CoreKit.framework", "ChecksBlueprint": "RunnableChecks.xctest", "OtherBlueprint": "OtherRunnable.xctest", "UnbuiltBlueprint": "libUnbuilt.a"]
         let productRoot = "/capture/DerivedData/Build/Products"
         var settings: [[String: Any]] = [], targetRows: [[String: Any]] = [], testRows: [[String: Any]] = []
         var snapshot = IndexSnapshot(indexedFileDates: [:], sourceRecordAdmissions: [])
@@ -191,7 +191,7 @@ struct XcodeTargetScopeTests {
             try fixture.write()
         } else {
             try rewriteTestRun(&fixture) { rows in
-                if kind == "xctestrun-dependency" { rows[0]["DependentProductPaths"] = ["/outside/CoreProduct.framework"] }
+                if kind == "xctestrun-dependency" { rows[0]["DependentProductPaths"] = ["/outside/CoreKit.framework"] }
                 else if kind == "host" { rows[0]["TestHostPath"] = "/outside/Host.app/Contents/MacOS/Host" }
                 else { rows[0]["IsAppHostedTestBundle"] = true }
             }
@@ -216,7 +216,7 @@ struct XcodeTargetScopeTests {
         try rewriteTestRun(&fixture) { rows in
             for i in rows.indices {
                 rows[i]["TestHostPath"] = "__PLATFORMS__/MacOSX.platform/Developer/Library/Xcode/Agents/xctest"
-                rows[i]["DependentProductPaths"] = ["__TESTROOT__/Debug/CoreProduct.framework", rows[i]["TestBundlePath"]!]
+                rows[i]["DependentProductPaths"] = ["__TESTROOT__/Debug/CoreKit.framework", rows[i]["TestBundlePath"]!]
             }
         }
         #expect(fixture.scope().xcode?.selectionStatus == "review-candidates")
@@ -266,6 +266,51 @@ struct XcodeTargetScopeTests {
         }
         #expect(fixture.scope().xcode?.selectionStatus == "refused")
         #expect(fixture.scope().xcode?.coveredBlockerCodes.isEmpty == true)
+    }
+
+    @Test("검증된 scheme 범위도 질의 중 바뀐 수신자 소스의 거부를 덮지 않는다")
+    func receiverFreshnessStillBlocksVerifiedScope() throws {
+        let fixture = try fixture()
+        let scope = fixture.scope()
+        #expect(scope.xcode?.selectionStatus == "review-candidates")
+        let subject = SymbolQuery.Subject(name: "testCore", qualifiedName: "Checks.testCore",
+            kind: "method", module: "ChecksModule", usr: "s:testCore", accessibility: "internal",
+            location: .init(path: "Checks/Checks.swift", line: 1, column: 1))
+        func document(_ extra: [String]) -> AffectedDocument {
+            .init(status: "ok", requestedSymbols: [], requestedFiles: [], selected: [], changeScope: [],
+                tests: [.init(symbol: subject, depth: 1, via: nil, relationship: "dependent", edges: ["call"],
+                    dispatchContract: nil, runtimeEvidence: nil, runtimeEvidenceOmitted: nil,
+                    xcodebuildIdentifier: "ChecksModule/Checks/testCore")],
+                summary: .init(testCount: 1, changedTestCount: 0, changeScopeSymbols: 1, affectedSymbols: 1,
+                    testFileCount: 1, testFiles: ["Checks/Checks.swift"], moduleCount: 1,
+                    modules: ["ChecksModule"], unresolvedInputs: 0), selectionIssues: [],
+                limitations: ["unindexed-sources: outside selected targets"] + extra,
+                truncated: .init(depth: false, sections: []), targetScope: scope)
+        }
+        let current = document([]).xcodebuildSelection()
+        #expect(current.refusal == nil)
+        #expect(current.output == "-only-testing:RunnableChecks/Checks/testCore\n")
+        let changed = document(["receiver-source-changed-during-query: rebuild the source"])
+            .xcodebuildSelection()
+        #expect(changed.output.isEmpty)
+        #expect(changed.refusal?.contains("Source/index coverage is incomplete") == true)
+        #expect(changed.notes.contains { $0.hasPrefix("receiver-source-changed-during-query:") })
+    }
+
+    @Test("저장 snapshot은 record 근거를 남기고 현재 수신자 소스 증명은 버린다")
+    func sourceEvidenceLifetimesRemainDistinct() throws {
+        var fixture = try fixture()
+        fixture.snapshot.dispatchReceiverFiles = [.init(path: "/p/Core/Core.swift", finalClassUSRs: ["s:Core"],
+            selfCalls: [], sourceDigest: "current-only")]
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let restored = try JSONDecoder().decode(IndexSnapshot.self, from: encoder.encode(fixture.snapshot))
+        #expect(restored.sourceRecordAdmissions == fixture.snapshot.sourceRecordAdmissions)
+        #expect(restored.dispatchReceiverFiles == nil)
+        let merged = fixture.snapshot.merging(restored)
+        #expect(merged.sourceRecordAdmissions?.isEmpty == false)
+        #expect(merged.dispatchReceiverFiles == nil)
+        #expect(fixture.snapshot.merging(IndexSnapshot()).sourceRecordAdmissions == nil)
     }
 
     @Test("소스 구성 목적지 산출물 바이트와 bundle 경로 변조를 거부한다",

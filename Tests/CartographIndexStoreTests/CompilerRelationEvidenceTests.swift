@@ -16,7 +16,21 @@ struct CompilerRelationEvidenceTests {
         let result = IndexStoreMapping.references(from: occurrence)
         #expect(result.map(\.sourceUSR) == ["caller"])
         #expect(result.map(\.kind) == [.call])
+        #expect(result.map(\.receiverTypeUSR) == ["Receiver"])
         #expect(result.map(\.origin) == [.compiler])
+    }
+
+    @Test("ambiguous receiver types remain unknown without losing the caller")
+    func ambiguousReceiverIsUnknown() {
+        let occurrence = makeOccurrence("work", kind: .instanceMethod, roles: [.reference, .call, .dynamic],
+            relations: [
+                SymbolRelation(symbol: symbol("caller", kind: .instanceMethod), roles: [.calledBy, .containedBy]),
+                SymbolRelation(symbol: symbol("Receiver", kind: .class), roles: .receivedBy),
+                SymbolRelation(symbol: symbol("Other", kind: .class), roles: .receivedBy),
+            ])
+        let result = IndexStoreMapping.references(from: occurrence)
+        #expect(result.map(\.sourceUSR) == ["caller"])
+        #expect(result.first?.receiverTypeUSR == nil)
     }
 
     @Test("수신자 근거만 있으면 호출자를 만들어내지 않는다")

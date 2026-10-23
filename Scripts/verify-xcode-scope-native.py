@@ -27,7 +27,7 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     project = output / "project"
     shutil.copytree(ROOT / "Fixtures/XcodeAffectedScope", project)
-    # Exercise a real SDK framework input in addition to the locally built CoreProduct.
+    # Exercise a real SDK framework input in addition to the locally built CoreKit.
     pbx = project / "Scope.xcodeproj/project.pbxproj"
     plist = json.loads(SCOPE.run(["plutil", "-convert", "json", "-o", "-", str(pbx)], project, output, "fixture-project", 30))
     objects = plist["objects"]
@@ -130,7 +130,7 @@ def main():
             run = plistlib.loads(original)
             rows = run["TestConfigurations"][0]["TestTargets"] if "TestConfigurations" in run else [v for k,v in run.items() if not k.startswith("__")]
             if label == "wrong-bundle": rows[0]["TestBundlePath"] = "__TESTROOT__/Debug/Unrelated.xctest"
-            elif label == "dependency-path": rows[0]["DependentProductPaths"] = [str(output / "outside/CoreProduct.framework")]
+            elif label == "dependency-path": rows[0]["DependentProductPaths"] = [str(output / "outside/CoreKit.framework")]
             else: rows[0]["TestHostPath"] = str(output / "outside/Host.app/Contents/MacOS/Host")
             path.write_bytes(plistlib.dumps(run))
             digest = hashlib.sha256(path.read_bytes()).hexdigest()

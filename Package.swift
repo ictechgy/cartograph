@@ -138,7 +138,7 @@ let package = Package(
         ),
         .testTarget(
             name: "CartographIndexStoreTests",
-            dependencies: ["CartographIndexStore", "CartographTestSupport"]
+            dependencies: ["CartographIndexStore", "CartographSyntax", "CartographAnalysis", "CartographTestSupport"]
         ),
         .testTarget(
             name: "CartographKitTests",

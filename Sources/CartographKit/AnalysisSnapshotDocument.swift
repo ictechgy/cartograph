@@ -259,7 +259,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 },
                 targetKind: reference.targetKind,
                 origin: reference.origin,
-                position: reference.position
+                position: reference.position, receiverTypeUSR: reference.receiverTypeUSR
             )
         }
         let dates = snapshot.indexedFileDates.map { values in
