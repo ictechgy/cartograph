@@ -127,6 +127,11 @@ def read_manifest(path: Path) -> dict:
     return manifest(data)
 
 
+def diagnostic_path(relative: str) -> str:
+    """A bounded escaped relative path, never terminal control bytes or full roots."""
+    return ascii(relative[:256]) + ("..." if len(relative) > 256 else "")
+
+
 def inventory(package: Path, module: str) -> dict[str, str]:
     """Bind every subtree entry; never hide unsupported inputs by their extension."""
     require(package.is_dir() and not package.is_symlink() and package.resolve() == package,
@@ -148,14 +153,14 @@ def inventory(package: Path, module: str) -> dict[str, str]:
                     "Package subtree canonical path or symlink boundary exceeded")
             if item.is_dir():
                 require(relative in ("Sources", "Sources/" + module) or relative.startswith(source_prefix),
-                        "Unexpected package directory")
+                        "Unexpected package directory: " + diagnostic_path(relative))
                 result[relative] = "directory"
                 pending.append((item, depth + 1))
             else:
                 require(item.is_file(), "Package contains a nonregular entry")
                 allowed = relative in ("Package.swift", "README.md", "LICENSE") or (
                     relative.startswith(source_prefix) and item.suffix == ".swift")
-                require(allowed, "Unexpected package source/resource/configuration file")
+                require(allowed, "Unexpected package source/resource/configuration file: " + diagnostic_path(relative))
                 with item.open("rb") as stream:
                     data = stream.read(4 * 1024 * 1024 + 1)
                 total += len(data)

@@ -19,6 +19,16 @@ MANIFEST = (ROOT / "Fixtures/XcodeLocalPackageScope/Packages/LocalMath/Package.s
 
 
 class PackageInputTests(unittest.TestCase):
+    def test_relative_path_diagnostic_is_bounded_and_escapes_control_bytes(self):
+        self.assertEqual(INPUTS.diagnostic_path(".swiftpm"), "'.swiftpm'")
+        preview = INPUTS.diagnostic_path("folder\n\x1b[31m\u202e" + "\U0001f600" * 300)
+        self.assertTrue(preview.isascii())
+        self.assertNotIn("\n", preview)
+        self.assertNotIn("\x1b", preview)
+        self.assertIn("\\n\\x1b", preview)
+        self.assertTrue(preview.endswith("..."))
+        self.assertLessEqual(len(preview), 256 * 10 + 5)
+
     def test_installed_helpers_load_without_a_repository_or_diagnostic_scripts(self):
         with tempfile.TemporaryDirectory() as folder:
             target = Path(folder).resolve()
@@ -147,7 +157,7 @@ class PackageInputTests(unittest.TestCase):
                     INPUTS.inventory(root, "ArithmeticCore")
                 path.unlink()
             (root / "Resources").mkdir()
-            with self.assertRaises(INPUTS.UnsupportedPackage):
+            with self.assertRaisesRegex(INPUTS.UnsupportedPackage, "Unexpected package directory: 'Resources'"):
                 INPUTS.inventory(root, "ArithmeticCore")
             (root / "Resources").rmdir()
             self.assertEqual(original, INPUTS.inventory(root, "ArithmeticCore"))
