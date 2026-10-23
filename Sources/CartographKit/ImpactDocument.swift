@@ -1,4 +1,5 @@
 import CartographCore
+import CartographAnalysis
 
 /// 수정 전에 검토할 소비자와 근거를 담는다. 영향 가능성은 실행 결과나 삭제 허가가 아니다.
 public struct ImpactDocument: Sendable, Equatable, Codable {
@@ -25,6 +26,7 @@ public struct ImpactDocument: Sendable, Equatable, Codable {
     public let truncated: Truncation
     /// 출력이 선택한 인덱스와 예산을 잃지 않도록 현재/과거 입력을 명시한다.
     public let input: Input?
+    public let receiverPrecision: ImpactReceiverPrecision?
 
     /// 내용 지문은 입력 식별자이며 컴파일러가 그 내용을 읽었다는 증명이 아니다.
     public struct Input: Sendable, Equatable, Codable {
@@ -161,7 +163,7 @@ public struct ImpactDocument: Sendable, Equatable, Codable {
         truncated: Truncation,
         automaticRuntime: RuntimeDiscoveryDocument? = nil,
         observedRuntime: RuntimeTraceReportDocument? = nil,
-        input: Input? = nil
+        input: Input? = nil, receiverPrecision: ImpactReceiverPrecision? = nil
     ) {
         format = "change-impact"
         version = 1
@@ -183,5 +185,6 @@ public struct ImpactDocument: Sendable, Equatable, Codable {
         self.limitations = limitations
         self.truncated = truncated
         self.input = input
+        self.receiverPrecision = receiverPrecision
     }
 }

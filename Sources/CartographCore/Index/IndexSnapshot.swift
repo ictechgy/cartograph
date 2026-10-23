@@ -65,6 +65,8 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
 
     /// Located enum-decision capability. nil is an older or unscanned snapshot, never complete-empty.
     public var enumImpactFiles: [EnumImpactFileFacts]?
+    /// Fresh source/compiler joins for bounded receiver-sensitive impact. nil is unknown.
+    public var dispatchReceiverFiles: [DispatchReceiverFileFacts]?
 
     public init(
         symbols: [IndexedSymbol] = [],
@@ -76,7 +78,8 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         imports: [IndexedImport] = [],
         fileModuleUsages: [String: FileModuleUsage] = [:],
         admittedHeaderPaths: [String]? = nil,
-        enumImpactFiles: [EnumImpactFileFacts]? = nil
+        enumImpactFiles: [EnumImpactFileFacts]? = nil,
+        dispatchReceiverFiles: [DispatchReceiverFileFacts]? = nil
     ) {
         self.symbols = symbols
         self.references = references
@@ -88,6 +91,7 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         self.fileModuleUsages = fileModuleUsages
         self.admittedHeaderPaths = admittedHeaderPaths.map { Set($0).sorted() }
         self.enumImpactFiles = enumImpactFiles?.sorted { $0.path < $1.path }
+        self.dispatchReceiverFiles = dispatchReceiverFiles?.sorted { $0.path < $1.path }
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -104,6 +108,8 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         oldestIndexedFileDates = try container.decodeIfPresent([String: Date].self, forKey: .oldestIndexedFileDates)
         admittedHeaderPaths = try container.decodeIfPresent([String].self, forKey: .admittedHeaderPaths)
         enumImpactFiles = try container.decodeIfPresent([EnumImpactFileFacts].self, forKey: .enumImpactFiles)
+        // Source joins are deliberately ephemeral. Historical captures cannot borrow current bytes.
+        dispatchReceiverFiles = nil
         parameters = try container.decodeIfPresent([IndexedParameter].self, forKey: .parameters) ?? []
         propertyAccesses = try container.decodeIfPresent(
             [String: PropertyAccessFacts].self, forKey: .propertyAccesses) ?? [:]
@@ -181,7 +187,10 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
                 )
             },
             admittedHeaderPaths: headers,
-            enumImpactFiles: enumFiles
+            enumImpactFiles: enumFiles,
+            // Re-enrich the merged capture before applying receiver precision. A successful
+            // source join from one provider cannot certify another provider's context.
+            dispatchReceiverFiles: nil
         )
     }
 }

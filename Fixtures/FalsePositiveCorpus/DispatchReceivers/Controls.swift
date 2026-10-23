@@ -17,3 +17,12 @@ extension Sibling: Sender {}
 func existential(_ receiver: any Sender) -> Int { receiver.send() }
 func siblingExistential() -> Int { existential(Sibling()) }
 func changedExistential() -> Int { existential(Changed()) }
+
+func nonfinalSiblingShared() -> Int { NonfinalSibling().sharedSelf() }
+
+func callableSiblingSelf() -> Int { CallableSibling().callableSelf() }
+func callableChangedSelf() -> Int { CallableChanged().callableSelf() }
+func callableSiblingLocal() -> Int { CallableSibling().callableLocal() }
+func callableSiblingProperty() -> Int { CallableSibling().callableProperty() }
+func callableSiblingNamedValue() -> Int { CallableSibling().callableNamedValue() }
+func callableSiblingWrapper() -> Int { CallableSiblingWrapper().callPropertyExplicitly() }

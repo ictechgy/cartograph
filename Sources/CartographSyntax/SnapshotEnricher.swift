@@ -277,6 +277,8 @@ public struct SnapshotEnricher: Sendable {
         var snapshot = bound.snapshot
         snapshot.references = markingReferencePositions(snapshot.references, with: facts)
         snapshot.enumImpactFiles = EnumDecisionBinder.bind(snapshot: snapshot, files: facts, freshPaths: freshSourcePaths)
+        snapshot.dispatchReceiverFiles = DispatchReceiverBinder.bind(snapshot: snapshot, files: facts,
+            freshPaths: freshSourcePaths)
         return LocalFunctionBinder.Result(snapshot: snapshot, diagnostics: bound.diagnostics)
     }
 

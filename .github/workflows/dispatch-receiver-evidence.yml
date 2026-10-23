@@ -10,6 +10,10 @@ on:
       - 'Tests/CartographIndexStoreTests/**'
       - 'Sources/CartographIndexStore/**'
       - 'Sources/CartographCore/Index/**'
+      - 'Sources/CartographAnalysis/**'
+      - 'Sources/CartographSyntax/**'
+      - 'Sources/CartographKit/Impact*'
+      - 'Sources/CartographKit/AffectedDocument.swift'
       - 'Scripts/run-feedback-native-gate.py'
       - 'Scripts/verify-feedback-native-gate.py'
       - 'Scripts/benchmark-indexstore-cli.py'
@@ -49,7 +53,7 @@ jobs:
           (output / "source.json").write_text(json.dumps({
               "sourceHead": head, "sourceTree": git("rev-parse", "HEAD^{tree}"),
               "runId": os.environ["GITHUB_RUN_ID"], "runAttempt": os.environ["GITHUB_RUN_ATTEMPT"],
-              "scope": "synthetic compiler receiver observation; no product narrowing proof",
+              "scope": "synthetic compiler receiver observation and bounded impact comparison; no private application accuracy proof",
           }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           PY
 

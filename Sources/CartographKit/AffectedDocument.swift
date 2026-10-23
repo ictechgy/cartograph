@@ -27,6 +27,7 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
     public let limitations: [String]
     /// 명시 요청한 캡처 소속 진단. 없으면 기존 v1 출력과 같다.
     public let targetScope: TargetScopeDocument?
+    public let receiverPrecision: ImpactReceiverPrecision?
     public let truncated: ImpactDocument.Truncation
 
     /// 테스트 선언 하나와 변경에서의 거리.
@@ -77,7 +78,7 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
         selectionIssues: [ImpactDocument.SelectionIssue],
         limitations: [String],
         truncated: ImpactDocument.Truncation,
-        targetScope: TargetScopeDocument? = nil
+        targetScope: TargetScopeDocument? = nil, receiverPrecision: ImpactReceiverPrecision? = nil
     ) {
         format = Self.format
         version = Self.version
@@ -93,6 +94,7 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
         self.selectionIssues = selectionIssues
         self.limitations = limitations
         self.targetScope = targetScope
+        self.receiverPrecision = receiverPrecision
         self.truncated = truncated
     }
 }
@@ -117,6 +119,16 @@ extension CartographService {
         selectionLimitations: [String] = [], in existingContext: AnalysisContext? = nil,
         targetScopeEvidencePath: String?
     ) throws -> AffectedDocument {
+        try makeAffectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+            selectionLimitations: selectionLimitations, in: existingContext,
+            targetScopeEvidencePath: targetScopeEvidencePath)
+    }
+
+    private func makeAffectedDocument(
+        symbols: [String], files: [String], maxDepth: Int?, limit: Int,
+        selectionLimitations: [String], in existingContext: AnalysisContext?,
+        targetScopeEvidencePath: String?, receiverFallback: ImpactReceiverPrecision? = nil
+    ) throws -> AffectedDocument {
         guard (1...10_000).contains(limit), maxDepth.map({ (1...128).contains($0) }) ?? true else {
             throw CartographError.invalidConfiguration(
                 path: projectPath, reason: "Affected limits require 1...10000 results and an optional depth of 1...128."
@@ -137,8 +149,13 @@ extension CartographService {
             graph: graph, artifactTargets: artifactTargets,
             makeQueryIndex: { _ in context.impactQueryIndex() },
             makeRawFileIndex: { _ in context.impactRawNodesByFile() })
-        let report = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth,
-            additionalDependencies: Self.automaticImpactDependencies(automatic) + lifecycle.dependencies)
+        let receiver = impactReceiverEvidence(context: context, historical: receiverFallback != nil,
+            changing: selection.nodes, graph: graph)
+        let analyzed = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth,
+            additionalDependencies: Self.automaticImpactDependencies(automatic) + lifecycle.dependencies,
+            receiverEvidence: receiver.evidence)
+        let report = ImpactReport(changed: analyzed.changed, affected: analyzed.affected,
+            truncatedByDepth: analyzed.truncatedByDepth, receiverPrecision: receiverFallback ?? analyzed.receiverPrecision)
         let testIdentity = context.impactTestIdentity()
         func isTest(_ id: NodeID) -> Bool {
             testIdentity.confirmed.contains(id)
@@ -193,7 +210,7 @@ extension CartographService {
         let modules = Set(tests.compactMap(\.symbol.module)).sorted()
         var limitations = analysisLimitations(context: context, symbolGraph: graph) + selectionLimitations
             + Self.automaticRuntimeLimitations(automatic)
-        limitations += testIdentity.limitations(for: report)
+        limitations += testIdentity.limitations(for: report) + receiver.limitations + Self.receiverLimitations(report)
         if !tests.isEmpty {
             limitations.append("test-target-assumption: xcodebuild selection assumes each indexed module name "
                 + "matches a test target in the chosen scheme; framework identity does not prove target membership")
@@ -217,6 +234,13 @@ extension CartographService {
                                context: context, limit: limit)
         }
         limitations += scope?.limitations ?? []
+        if let precision = report.receiverPrecision, precision.excludedTransitions > 0,
+           let failure = impactReceiverFinalFailure(receiver.files) {
+            return try makeAffectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+                selectionLimitations: selectionLimitations + receiver.limitations + [failure], in: context,
+                targetScopeEvidencePath: targetScopeEvidencePath,
+                receiverFallback: precision.fallingBack(reason: "receiver-source-final-verification"))
+        }
         return AffectedDocument(
             status: selection.status,
             requestedSymbols: Array(symbols.prefix(limit)),
@@ -238,8 +262,9 @@ extension CartographService {
             ),
             selectionIssues: output.issues,
             limitations: limitations,
-            truncated: .init(depth: report.truncatedByDepth, sections: output.truncatedSections),
-            targetScope: scope
+            truncated: .init(depth: report.truncatedByDepth, sections: output.truncatedSections
+                + (report.receiverPrecision?.limited(to: limit).truncated == true ? ["receiverPrecision"] : [])),
+            targetScope: scope, receiverPrecision: report.receiverPrecision?.limited(to: limit)
         )
     }
 

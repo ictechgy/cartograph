@@ -1,4 +1,6 @@
 import CartographCore
+import CartographAnalysis
+import CartographSyntax
 @testable import CartographIndexStore
 import Foundation
 import IndexStoreDB
@@ -62,8 +64,77 @@ struct DispatchReceiverCompilerTests {
         try #require(result.occurrences.contains { occurrence in
             occurrence.symbol.name == "send()" && occurrence.relations.contains { $0.roles.contains(.overrideOf) }
         })
-        // No assertion invents a receiver relation the selected compiler did not produce.
-        // The records are evidence for a subsequent bounded implementation, not precision proof.
+        var mapped = IndexStoreProvider.snapshot(from: result.occurrences, includeExternalSymbols: false)
+        mapped.indexedFileDates = result.indexedFileDates
+        mapped.oldestIndexedFileDates = result.oldestIndexedFileDates
+        let snapshot = SnapshotEnricher().enrich(mapped)
+        let graph = GraphBuilder(options: .init(level: .symbol)).build(from: snapshot)
+        let changedType = try #require(snapshot.symbols.first { $0.name == "Changed" && $0.kind == .classType })
+        let changed = try #require(snapshot.symbols.first { $0.name == "send()" && $0.parentUSR == changedType.usr })
+        let seed: Set<NodeID> = [NodeID(changed.usr)]
+        let original = ImpactAnalyzer().analyze(changing: seed, in: graph)
+        // These files were just compiled from the repository checkout and read by
+        // SnapshotEnricher. Ordinary product queries additionally rehash their bytes.
+        let evidence = DispatchImpactEvidence(snapshot: snapshot,
+            verifiedSourcePaths: Set(files.map(\.path)))
+        let refined = ImpactAnalyzer().analyze(changing: seed, in: graph, receiverEvidence: evidence)
+        func names(_ report: ImpactReport) -> Set<String> {
+            Set(report.affected.compactMap { graph.node($0.node)?.name })
+        }
+        let before = names(original)
+        let after = names(refined)
+        let callableType = try #require(snapshot.symbols.first { $0.name == "CallableChanged" && $0.kind == .classType })
+        let callable = try #require(snapshot.symbols.first {
+            $0.name == "callAsFunction()" && $0.parentUSR == callableType.usr
+        })
+        let callableOriginal = ImpactAnalyzer().analyze(changing: [NodeID(callable.usr)], in: graph)
+        let callableRefined = ImpactAnalyzer().analyze(changing: [NodeID(callable.usr)], in: graph,
+            receiverEvidence: evidence)
+        let callableOccurrences = result.occurrences.filter {
+            $0.roles.contains(.call) && $0.symbol.name == "callAsFunction()"
+        }
+        if let evidenceParent {
+            let comparison: [String: Any] = [
+                "baseline": before.sorted(), "refined": after.sorted(),
+                "mode": refined.receiverPrecision?.mode ?? "unavailable",
+                "excludedTransitions": refined.receiverPrecision?.excludedTransitions ?? 0,
+                "boundSelfCalls": (snapshot.dispatchReceiverFiles ?? []).flatMap(\.selfCalls).count,
+                "finalClasses": (snapshot.dispatchReceiverFiles ?? []).flatMap(\.finalClassUSRs),
+                "callableBaseline": names(callableOriginal).sorted(),
+                "callableRefined": names(callableRefined).sorted(),
+                "callableCallOccurrences": callableOccurrences.count,
+                "callableReceivedByOccurrences": callableOccurrences.filter {
+                    $0.relations.contains { $0.roles.contains(.receivedBy) }
+                }.count,
+                "runtimeExecuted": false,
+            ]
+            try JSONSerialization.data(withJSONObject: comparison, options: [.prettyPrinted, .sortedKeys])
+                .write(to: evidenceParent.appendingPathComponent("receiver-comparison.json"))
+        }
+        let excluded: Set<String> = ["siblingShared()", "factorySiblingShared()", "explicitSiblingShared()",
+            "siblingConstructor()"]
+        try #require(excluded.isSubset(of: before), "Legacy graph did not reproduce the sibling candidates")
+        #expect(excluded.isDisjoint(with: after), "\(after.sorted())")
+        #expect(refined.receiverPrecision?.mode == "bounded-final-self")
+        let retained: Set<String> = ["changedShared()", "polymorphic(_:)", "aliasSiblingShared()",
+            "siblingOtherChanged()", "nonfinalSiblingShared()", "existential(_:)"]
+        #expect(retained.isSubset(of: after), "\(after.sorted())")
+        let callableRetained: Set<String> = ["callableSiblingLocal()", "callableSiblingProperty()",
+            "callableSiblingNamedValue()", "callableChangedSelf()", "callableSiblingWrapper()"]
+        #expect(callableRetained.isSubset(of: names(callableOriginal)))
+        #expect(callableRetained.isSubset(of: names(callableRefined)))
+        #expect(names(callableOriginal).contains("callableSiblingSelf()"))
+        // Even explicit self.callAsFunction() can name a callable property.
+        // This first capability therefore leaves all callAsFunction paths intact.
+        #expect(names(callableRefined).contains("callableSiblingSelf()"))
+        #expect(!callableOccurrences.isEmpty)
+        // Same captured topology without ephemeral source joins remains conservative.
+        let encoded = try JSONEncoder().encode(snapshot)
+        let historical = try JSONDecoder().decode(IndexSnapshot.self, from: encoded)
+        let historicalReport = ImpactAnalyzer().analyze(changing: seed, in: graph,
+            receiverEvidence: DispatchImpactEvidence(snapshot: historical,
+                verifiedSourcePaths: Set(files.map(\.path))))
+        #expect(historicalReport.affected == original.affected)
         try CompilerEvidenceSupport.phase("receiver-assertions-complete", logs: logs)
         completed = true
     }
