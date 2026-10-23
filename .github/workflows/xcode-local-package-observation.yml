@@ -136,5 +136,8 @@ jobs:
             ${{ runner.temp }}/xcode-local-package-native/other-only-capture/*.json
             ${{ runner.temp }}/xcode-local-package-native/other-only-capture/*.stdout
             ${{ runner.temp }}/xcode-local-package-native/other-only-capture/*.stderr
+            ${{ runner.temp }}/xcode-local-package-native/outside-test-action-capture/*.json
+            ${{ runner.temp }}/xcode-local-package-native/outside-test-action-capture/*.stdout
+            ${{ runner.temp }}/xcode-local-package-native/outside-test-action-capture/*.stderr
           if-no-files-found: warn
           retention-days: 14

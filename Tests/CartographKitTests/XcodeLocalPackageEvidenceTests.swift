@@ -34,6 +34,10 @@ struct XcodeLocalPackageEvidenceTests {
                 rows[i]["DependentProductPaths"] = ["__TESTROOT__/Debug/CoreKit.framework", rows[i]["TestBundlePath"]!, dependency]
             }
             configurations[0]["TestTargets"] = rows; value["TestConfigurations"] = configurations
+            try writeTestRun(value)
+        }
+        mutating func writeTestRun(_ value: [String: Any]) throws {
+            let path = base.receipt["testRunPath"] as! String
             let bytes = try PropertyListSerialization.data(fromPropertyList: value, format: .xml, options: 0)
             try base.fs.write(bytes, to: path)
             let digest = TargetScopeStore.digest(bytes)
@@ -148,17 +152,41 @@ struct XcodeLocalPackageEvidenceTests {
         #expect(document.xcodebuildSelection().output.isEmpty)
     }
 
-    @Test("xctestrun은 전체 proof가 검증한 package aggregate만 native closure와 함께 허용한다", arguments: [false, true])
-    func admitsVerifiedPackageTestDependency(useTestRootMacro: Bool) throws {
+    @Test("검증된 aggregate라도 관측된 native product closure 밖이면 xctestrun dependency로 허용하지 않는다", arguments: [false, true])
+    func rejectsAggregateOutsideNativeTestProducts(useTestRootMacro: Bool) throws {
         var fixture = try fixture()
         let dependency = useTestRootMacro
             ? fixture.aggregate.replacingOccurrences(of: "/capture/DerivedData/Build/Products", with: "__TESTROOT__")
             : fixture.aggregate
         try fixture.testRunDependency(dependency)
         let scope = fixture.scope()
-        #expect(scope.evidenceStatus == "matched-capture")
-        #expect(scope.xcode?.selectionStatus == "review-candidates")
-        #expect(scope.xcode?.selectedSourcePaths.contains("Packages/LocalMath/Sources/ArithmeticCore/Math.swift") == true)
+        #expect(scope.evidenceStatus == "unknown")
+        #expect(scope.limitations.contains { $0.contains("Test-run dependency products are outside the verified target closure.") })
+    }
+
+    @Test("실제 ChecksOnly xctestrun의 빌드 전용 Other bundle은 선택된 TestAction closure 밖이므로 거부한다")
+    func rejectsBuiltBundleOutsideTestAction() throws {
+        var fixture = try fixture()
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let scheme = "Scope.xcodeproj/xcshareddata/xcschemes/ChecksOnly.xcscheme"
+        try fixture.base.fs.write(Data(contentsOf: repository.appendingPathComponent("Fixtures/XcodeLocalPackageScope/" + scheme)), to: "/p/" + scheme)
+        let selected = fixture.base.targets.first { $0.value.name == "ChecksBlueprint" }!.key
+        fixture.base.receipt["scheme"] = "ChecksOnly"; fixture.base.receipt["schemePath"] = scheme
+        fixture.base.receipt["selectedTargetIDs"] = [selected]
+        let path = fixture.base.receipt["testRunPath"] as! String
+        var value = try PropertyListSerialization.propertyList(from: fixture.base.fs.readData(at: path), format: nil) as! [String: Any]
+        var configurations = value["TestConfigurations"] as! [[String: Any]]
+        let rows = (configurations[0]["TestTargets"] as! [[String: Any]]).filter { $0["BlueprintName"] as? String == "ChecksBlueprint" }
+        configurations[0]["TestTargets"] = rows; value["TestConfigurations"] = configurations
+        try fixture.writeTestRun(value)
+        try fixture.testRunDependency("__TESTROOT__/Debug/OtherRunnable.xctest")
+        let inventory = try XcodeTargetScopeStore(fileSystem: fixture.base.fs).inventory(root: "/p")
+        fixture.base.receipt["before"] = inventory; fixture.base.receipt["after"] = inventory
+        fixture.base.receipt["inputFingerprint"] = try fixture.base.service.sessionInputFingerprint()
+        try fixture.base.write()
+        let scope = fixture.scope()
+        #expect(scope.evidenceStatus == "unknown")
+        #expect(scope.limitations.contains { $0.contains("Test-run dependency products are outside the verified target closure.") })
     }
 
     @Test("캡처된 무관 product와 경로 치환 및 stale 또는 중복 package proof는 dependency로 허용하지 않는다",

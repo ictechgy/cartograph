@@ -147,6 +147,16 @@ separate. Every declared native consumer must have a positive object → relocat
 the selected native target closure. Compiled/indexed but unlinked, stripped, ambiguous,
 or missing contribution remains unknown; it never classifies a package outside scope.
 
+Every xctestrun `DependentProductPaths` entry must belong to a verified native product
+in the selected TestAction dependency closure. BuildAction membership alone does not
+establish this. In the public fixture, `ChecksOnly` builds Other but does not select it;
+Xcode still records `OtherRunnable.xctest` as a dependency, so that scope remains unknown
+and emits no selectors. The positive harness uses `Scope`, whose declared universe
+contains both test targets, and requires impact candidates to select only Checks.
+This is a bounded supported scheme shape, not support for arbitrary extra build-only
+products. A verified package aggregate is not itself admitted as an extra test-run
+dependency without a native product identity.
+
 Compiler/link response files, source/output maps, file lists, link maps, objects, and
 backing record bytes are hashed and read again. v2 capture discovers record identities,
 binds the complete proof, launches a fresh raw snapshot process, and compares the whole

@@ -21,6 +21,16 @@ macros, binary targets, resources, C/Objective-C sources or package tests.
 Checks, so the compiled-for-Other negative control cannot claim a CoreKit or selected
 universe contribution merely because a package unit exists.
 
+The product-flow positive uses `Scope`: both test targets belong to the declared
+TestAction universe, while impact from `packageValue()` must select only Checks.
+The actual `ChecksOnly` run at `82c8650` listed `OtherRunnable.xctest` in
+`DependentProductPaths`, despite omitting Other from TestAction. Its closure refusal
+is retained as a separate native negative control; building a product does not admit
+it to the selected test universe. The observed list did not contain `ArithmeticCore.o`.
+An earlier aggregate-admission hypothesis was therefore withdrawn. Positive execution
+and the two different negative controls must each pass before this package flow is
+considered validated; this does not reproduce the private workspace.
+
 The PBX local-package reference, selected target's product dependency and framework
 phase productRef are declared inputs, not proof that Xcode built or linked any file.
 The package library product's physical form is intentionally unspecified: observation

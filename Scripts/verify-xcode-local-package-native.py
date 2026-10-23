@@ -243,7 +243,7 @@ def verify(binary, output):
     project = output / "project"
     shutil.copytree(ROOT / "Fixtures/XcodeLocalPackageScope", project)
     started = time.monotonic()
-    args = argparse.Namespace(project=str(project), xcode_project="Scope.xcodeproj", scheme="ChecksOnly",
+    args = argparse.Namespace(project=str(project), xcode_project="Scope.xcodeproj", scheme="Scope",
         test_plan=None, cartograph=str(binary), output=str(output / "capture"), config=None, timeout=600, local_package=True)
     # Existing v1/default admission stays conservative, before any project command.
     default = argparse.Namespace(**vars(args))
@@ -278,11 +278,12 @@ def verify(binary, output):
                  if p == ".swiftpm" or p.startswith(".swiftpm/")} == {
                      ".swiftpm": "directory", ".swiftpm/xcode": "directory"},
             "Fresh fixture did not capture exactly the observed empty metadata directory pair")
-    common = ["--project", str(project), "--index-store", metadata["indexStore"], "--target-scope", str(receipt_path)]
     supervisor = OBS.process_supervisor()
-    def invoke(label, format="json", expected=0):
+    def invoke(label, format="json", expected=0, captured_receipt=receipt_path,
+               project_root=project, index_store=metadata["indexStore"]):
+        common = ["--project", str(project_root), "--index-store", index_store, "--target-scope", str(captured_receipt)]
         argv = [str(binary), "affected", "packageValue", *common, "--format", format]
-        process = supervisor.run(argv, project, output / label, 120, stream_limit=4 * 1024 * 1024)
+        process = supervisor.run(argv, project_root, output / label, 120, stream_limit=4 * 1024 * 1024)
         expected_code = process["returncode"] > 0 if expected is None else process["returncode"] == expected
         require(expected_code and not process["timed_out"] and process["owned_root_reaped"]
                 and not process["ownership_lost"] and not process["cleanup_errors"]
@@ -297,14 +298,16 @@ def verify(binary, output):
             "Actual package record and linker proof did not produce review candidates")
     require(scope["xcode"]["generatedMetadataOrigin"] == "capture-created",
             "CLI scope lost the producer's metadata origin observation")
-    require(scope["xcode"]["selectorTargetByModule"] == {"ChecksModule": "ChecksBlueprint"}
-            and scope["xcode"]["testBundleByModule"] == {"ChecksModule": "RunnableChecks.xctest"},
+    require(scope["xcode"]["selectorTargetByModule"] == {"ChecksModule": "ChecksBlueprint", "OtherModule": "OtherBlueprint"}
+            and scope["xcode"]["testBundleByModule"] == {"ChecksModule": "RunnableChecks.xctest", "OtherModule": "OtherRunnable.xctest"},
             "Blueprint, compiler module and bundle identities were conflated")
     product_root = str(Path(receipt["testRunPath"]).parent)
-    require(dependencies["status"] == "observed" and package["aggregate"]["output"] in {
+    require(dependencies["status"] == "observed" and {row["BlueprintName"] for row in dependencies["testTargets"]}
+            == {"ChecksBlueprint", "OtherBlueprint"} and {
         path.replace("__TESTROOT__", product_root) for row in dependencies["testTargets"]
-        for path in (row.get("DependentProductPaths") or [])},
-        "Actual xctestrun did not exercise the package aggregate dependency boundary")
+        for path in (row.get("DependentProductPaths") or [])} == {
+            product_root + "/Debug/" + name for name in ("CoreKit.framework", "RunnableChecks.xctest", "OtherRunnable.xctest")},
+        "Actual xctestrun does not match both selected native test targets and their closure products")
     selectors = invoke("candidate-selectors", "xcodebuild").splitlines()
     require(selectors == ["-only-testing:ChecksBlueprint"], "Expected honest whole-target selector fallback")
     controls = []
@@ -320,8 +323,7 @@ def verify(binary, output):
         value = plistlib.loads(test_run_bytes)
         target = test_run_targets(value)[0]
         if label == "dependency-path-substitution":
-            dependency = package["aggregate"]["output"].replace("/Debug/", "/Debug/../Debug/")
-            require(dependency != package["aggregate"]["output"], "Expected Debug aggregate fixture path")
+            dependency = product_root + "/Debug/../Debug/CoreKit.framework"
         else:
             dependency = str(unrelated)
             unrelated.write_bytes(b"captured bytes without selected package contribution\n")
@@ -394,6 +396,29 @@ def verify(binary, output):
                        "-destination", receipt["destination"], *selectors], project, output, "selected-test-run", 300,
                       16 * 1024 * 1024).decode(errors="replace")
     execution = executed_tests(executed)
+    # Real prior failure: ChecksOnly builds Other, so Xcode lists OtherRunnable in
+    # DependentProductPaths although it is outside TestAction. Keep this refusal.
+    outside_project = output / "outside-test-action-project"
+    shutil.copytree(ROOT / "Fixtures/XcodeLocalPackageScope", outside_project)
+    outside = argparse.Namespace(**vars(args))
+    outside.project, outside.output, outside.scheme = str(outside_project), str(output / "outside-test-action-capture"), "ChecksOnly"
+    outside_receipt_path = SCOPE.capture(outside)
+    outside_receipt = json.loads(outside_receipt_path.read_text())
+    outside_metadata = json.loads((Path(outside.output) / "capture.json").read_text())
+    outside_observation = record_test_run_observation(outside_receipt)
+    require(outside_observation["status"] == "observed"
+            and {row["BlueprintName"] for row in outside_observation["testTargets"]} == {"ChecksBlueprint"}
+            and any("__TESTROOT__/Debug/OtherRunnable.xctest" in (row.get("DependentProductPaths") or [])
+                    for row in outside_observation["testTargets"]), "Prior outside-TestAction dependency was not reproduced")
+    outside_arguments = {"captured_receipt": outside_receipt_path, "project_root": outside_project,
+                         "index_store": outside_metadata["indexStore"]}
+    outside_document = invoke("outside-test-action-json", **outside_arguments)
+    require(outside_document["targetScope"]["evidenceStatus"] == "unknown"
+            and "Test-run dependency products are outside the verified target closure." in json.dumps(outside_document),
+            "Outside-TestAction product did not retain the exact refusal")
+    require(invoke("outside-test-action-selectors", "xcodebuild", 2, **outside_arguments) == "",
+            "Outside-TestAction product emitted selectors")
+    controls.append("built-product-outside-test-action")
     # Build the package for Other while only Checks belongs to TestAction. Lack of a
     # CoreKit join must refuse the receipt; it must never turn the package into 'outside'.
     negative_project = output / "other-only-project"
@@ -402,7 +427,7 @@ def verify(binary, output):
     negative_logs.mkdir()
     OBS.prepare_variant(negative_project, negative_logs, negative=True)
     negative = argparse.Namespace(**vars(args))
-    negative.project, negative.output = str(negative_project), str(output / "other-only-capture")
+    negative.project, negative.output, negative.scheme = str(negative_project), str(output / "other-only-capture"), "ChecksOnly"
     try:
         SCOPE.capture(negative)
         raise RuntimeError("Compiled package without selected consumer was accepted")
@@ -412,6 +437,8 @@ def verify(binary, output):
             "limitation": "Other is built/indexed but is outside this TestAction; absence is not package completeness proof."})
     SCOPE.save(output / "results.json", {"status": "passed", "selectors": selectors, "selectionGranularity": "whole-target",
         **execution, "negativeControls": controls + ["same-session-record-rehash", "compiled-for-other-only"],
+        "scheme": args.scheme, "testUniverse": ["ChecksBlueprint", "OtherBlueprint"],
+        "observedTestRun": dependencies,
         "generatedMetadataOrigin": package["generatedMetadataOrigin"],
         "originLimitation": "Unsigned producer observation; not independently authenticated historical provenance.",
         "receiptSHA256": hashlib.sha256(receipt_path.read_bytes()).hexdigest(), "recordCount": len(package["records"]),

@@ -161,11 +161,8 @@ struct XcodeTargetScopeStore {
         }
         try validateLocalPackage()
         let testRun = try bounded(receipt.testRunPath, maximum: 8 * 1_024 * 1_024)
-        var closureProducts = try validateClosureProducts(closure.compactMap { byID[$0]?.name }, settings: settings,
+        let closureProducts = try validateClosureProducts(closure.compactMap { byID[$0]?.name }, settings: settings,
             receipt: receipt, productRoot: productRoot)
-        // 위의 package 검증이 실제 바이트와 선택된 native 소비자까지의 live link를 확인한
-        // 유일한 aggregate만 추가한다. 캡처된 나머지 산출물을 일괄 허용하지 않는다.
-        if let package = receipt.localPackage { closureProducts.insert(package.aggregate.output) }
         let bundles = try validateTestRun(testRun, selected: selected.compactMap { byID[$0]?.name },
             settings: settings, productRoot: productRoot, closureProducts: closureProducts, testHosts: receipt.testHosts)
         var selectorTargets: [String: String] = [:], testBundles: [String: String] = [:]
