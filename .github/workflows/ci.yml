@@ -360,6 +360,21 @@ jobs:
           python3 Scripts/run-feedback-native-gate.py raw \
             --output "$RUNNER_TEMP/associated-witness/raw"
 
+      - name: Capture dispatch receiver compiler evidence
+        timeout-minutes: 5
+        run: |
+          python3 Scripts/run-feedback-native-gate.py receiver \
+            --output "$RUNNER_TEMP/dispatch-receiver/raw"
+
+      - name: Preserve dispatch receiver compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dispatch-receiver-compiler
+          path: ${{ runner.temp }}/dispatch-receiver/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Test with coverage gate
         timeout-minutes: 15
         run: |
