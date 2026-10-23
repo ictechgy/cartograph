@@ -1,0 +1,87 @@
+name: Dispatch receiver compiler evidence
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - '.github/workflows/dispatch-receiver-evidence.yml'
+      - 'Fixtures/FalsePositiveCorpus/DispatchReceivers/**'
+      - 'Tests/CartographIndexStoreTests/**'
+      - 'Sources/CartographIndexStore/**'
+      - 'Sources/CartographCore/Index/**'
+      - 'Scripts/run-feedback-native-gate.py'
+      - 'Scripts/verify-feedback-native-gate.py'
+      - 'Scripts/benchmark-indexstore-cli.py'
+      - 'Package.swift'
+      - 'Package.resolved'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  receiver-evidence:
+    name: Capture bounded compiler receiver relations
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Record the exact diagnostic input
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          def git(*args):
+              return subprocess.check_output(["git", *args], text=True).strip()
+          head = git("rev-parse", "HEAD")
+          assert head == os.environ["EXPECTED_SOURCE_SHA"], "Checkout does not match the requested source head"
+          output = Path(os.environ["RUNNER_TEMP"]) / "dispatch-receiver"
+          output.mkdir(exist_ok=False)
+          (output / "source.json").write_text(json.dumps({
+              "sourceHead": head, "sourceTree": git("rev-parse", "HEAD^{tree}"),
+              "runId": os.environ["GITHUB_RUN_ID"], "runAttempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "scope": "synthetic compiler receiver observation; no product narrowing proof",
+          }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Select the newest Xcode
+        run: |
+          latest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          swift --version
+
+      - name: Cache resolved dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-swift-receiver-${{ hashFiles('Package.resolved') }}
+
+      - name: Build native evidence tests
+        run: swift build --build-tests --enable-code-coverage
+
+      - name: Capture compiler receiver evidence
+        timeout-minutes: 5
+        run: |
+          python3 Scripts/verify-feedback-native-gate.py
+          python3 Scripts/run-feedback-native-gate.py receiver \
+            --output "$RUNNER_TEMP/dispatch-receiver/raw"
+
+      - name: Preserve compiler receiver evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dispatch-receiver-compiler
+          path: ${{ runner.temp }}/dispatch-receiver/
+          if-no-files-found: error
+          retention-days: 14
