@@ -7,10 +7,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.29.0] - Unreleased
 
+- Add opt-in bounded Xcode affected-test captures with explicit scheme/test-plan target membership,
+  consumed source-record module evidence, built bundle identity and whole-product byte validation.
+  Matched scope can emit review selectors while retaining excluded-path warnings; unknown or
+  truncated proof still refuses. CLI and MCP bind the same captured input generation.
+- Bind Xcode selectors to verified `.xctestrun` BlueprintName/project targets, while
+  preserving compiler-module and built-bundle identities separately. Missing selector
+  identity evidence refuses narrowing even when an older scope document still decodes.
+
 This is the unpublished 0.29.0 candidate. The latest published release remains 0.28.0.
 
 ### Added
 
+- Optional `receiverPrecision` evidence in current `impact` and `affected` results explains
+  bounded final-receiver/self-call refinement, exclusions and fallback budgets. Unknown,
+  nonfinal, polymorphic, callable-value and historical paths remain conservative; source
+  verification failure or conflicting states restore the whole prior candidate traversal.
 - Optional `affected --target-scope` verifies a bounded SwiftPM source-membership capture
   against current inputs and separates blocker paths. Original coverage warnings and Xcode
   scheme uncertainty remain; this does not authorize test omission.

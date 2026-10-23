@@ -23,7 +23,41 @@ class NativeGateTests(unittest.TestCase):
         self.assertIn("--enable-code-coverage", raw)
         self.assertEqual(raw_time, 270)
         self.assertEqual(raw_limit, 8 * 1024 * 1024)
+        receiver, receiver_time, receiver_limit = GATE.gate_spec("receiver")
+        self.assertEqual(receiver[-1], "DispatchReceiverCompilerTests")
+        self.assertIn("--enable-code-coverage", receiver)
+        self.assertEqual((receiver_time, receiver_limit), (270, 8 * 1024 * 1024))
         self.assertEqual(GATE.gate_spec("coverage"), (["bash", "Scripts/coverage.sh"], 840, 64 * 1024 * 1024))
+
+    def test_receiver_gate_requires_its_own_executed_assertions(self):
+        good = {"returncode": 0, "timed_out": False, "owned_root_reaped": True, "ownership_lost": False,
+                "cleanup_errors": [], "output_limit_exceeded": None, "exception_type": None}
+        with tempfile.TemporaryDirectory(prefix="native-receiver-contract-") as temporary:
+            previous = os.environ.get("CARTOGRAPH_DISPATCH_RECEIVER_EVIDENCE")
+            for variant in ("missing", "wrong-suite", "completed", "timed-out"):
+                output = Path(temporary) / variant
+
+                def runner(command, cwd, stem, **kwargs):
+                    self.assertEqual(command[-1], "DispatchReceiverCompilerTests")
+                    self.assertEqual(os.environ["CARTOGRAPH_DISPATCH_RECEIVER_EVIDENCE"],
+                                     str(output / "raw-occurrences.json"))
+                    if variant != "missing":
+                        (output / "raw-occurrences.json").write_text("[{}]", encoding="utf-8")
+                        prefix = "cartograph-associated-witness" if variant == "wrong-suite" else "cartograph-dispatch-receiver"
+                        phases = output / (prefix + "-controlled")
+                        phases.mkdir()
+                        (phases / "phases.jsonl").write_text(
+                            '{"name":"receiver-assertions-complete"}\n', encoding="utf-8")
+                    return dict(good, timed_out=variant == "timed-out")
+
+                def save(path, value):
+                    path.write_text(json.dumps(value), encoding="utf-8")
+
+                with self.subTest(variant=variant), contextlib.redirect_stdout(io.StringIO()), \
+                        contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(GATE.run_gate("receiver", output, runner, save),
+                                     0 if variant == "completed" else 1)
+                self.assertEqual(os.environ.get("CARTOGRAPH_DISPATCH_RECEIVER_EVIDENCE"), previous)
 
     def test_failure_unknown_cleanup_and_exceptions_remain_failures(self):
         good = {"returncode": 0, "timed_out": False, "owned_root_reaped": True, "ownership_lost": False,

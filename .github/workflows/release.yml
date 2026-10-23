@@ -124,6 +124,7 @@ jobs:
           cp docs/QUERY-EVIDENCE.md docs/ENUM-CHANGE-REVIEW.md docs/FOLLOWUP-REVIEW.md dist/cartograph/docs/
           mkdir -p dist/cartograph/Scripts
           cp Scripts/cartograph-git-impact.py Scripts/cartograph-swiftpm-scope.py dist/cartograph/Scripts/
+          cp Scripts/cartograph-xcode-scope.py dist/cartograph/Scripts/
           archive="cartograph-${VERSION}-macos-universal.tar.gz"
           tar -C dist -czf "$archive" cartograph
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
@@ -150,6 +151,8 @@ jobs:
           cmp Scripts/cartograph-git-impact.py "$RUNNER_TEMP/cartograph/Scripts/cartograph-git-impact.py"
           cmp Scripts/cartograph-swiftpm-scope.py "$RUNNER_TEMP/cartograph/Scripts/cartograph-swiftpm-scope.py"
           python3 "$RUNNER_TEMP/cartograph/Scripts/cartograph-swiftpm-scope.py" --help
+          cmp Scripts/cartograph-xcode-scope.py "$RUNNER_TEMP/cartograph/Scripts/cartograph-xcode-scope.py"
+          python3 "$RUNNER_TEMP/cartograph/Scripts/cartograph-xcode-scope.py" --help
           python3 Scripts/verify-runtime-contracts.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-discovery.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-keypaths.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
@@ -232,7 +235,7 @@ jobs:
           from pathlib import Path
           path = Path("Formula/cartograph.rb")
           text = path.read_text()
-          for helper in ["cartograph-git-impact.py", "cartograph-swiftpm-scope.py"]:
+          for helper in ["cartograph-git-impact.py", "cartograph-swiftpm-scope.py", "cartograph-xcode-scope.py"]:
               install = f'    libexec.install "Scripts/{helper}"\n'
               anchor = '    bin.install "cartograph"\n'
               if install not in text:
@@ -263,5 +266,7 @@ jobs:
           python3 "$installed/libexec/cartograph-git-impact.py" --help
           cmp Scripts/cartograph-swiftpm-scope.py "$installed/libexec/cartograph-swiftpm-scope.py"
           python3 "$installed/libexec/cartograph-swiftpm-scope.py" --help
+          cmp Scripts/cartograph-xcode-scope.py "$installed/libexec/cartograph-xcode-scope.py"
+          python3 "$installed/libexec/cartograph-xcode-scope.py" --help
           python3 Scripts/verify-git-impact.py --cartograph "$installed/bin/cartograph"
           echo "Homebrew ${VERSION}: formula hash, clean installation, helper bytes and compiler-backed change flow verified." >> "$GITHUB_STEP_SUMMARY"

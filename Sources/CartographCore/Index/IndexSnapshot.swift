@@ -38,6 +38,9 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
     /// 관측하지 않은 빌드 구성이나 런타임 디스패치의 완전성을 뜻하지 않는다.
     public var admittedHeaderPaths: [String]?
 
+    /// nil은 판독기나 저장 snapshot이 실제 source record 읽기 근거를 보존하지 않았다는 뜻이다.
+    public var sourceRecordAdmissions: [SourceRecordAdmission]?
+
     /// 새 공급자의 모든 관측 문맥을 우선하고, 옛 스냅샷은 기존 최신 시각 계약으로 폴백한다.
     public var sourceFreshnessDates: [String: Date]? {
         oldestIndexedFileDates ?? indexedFileDates
@@ -65,6 +68,8 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
 
     /// Located enum-decision capability. nil is an older or unscanned snapshot, never complete-empty.
     public var enumImpactFiles: [EnumImpactFileFacts]?
+    /// Fresh source/compiler joins for bounded receiver-sensitive impact. nil is unknown.
+    public var dispatchReceiverFiles: [DispatchReceiverFileFacts]?
 
     public init(
         symbols: [IndexedSymbol] = [],
@@ -76,7 +81,9 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         imports: [IndexedImport] = [],
         fileModuleUsages: [String: FileModuleUsage] = [:],
         admittedHeaderPaths: [String]? = nil,
-        enumImpactFiles: [EnumImpactFileFacts]? = nil
+        enumImpactFiles: [EnumImpactFileFacts]? = nil,
+        dispatchReceiverFiles: [DispatchReceiverFileFacts]? = nil,
+        sourceRecordAdmissions: [SourceRecordAdmission]? = nil
     ) {
         self.symbols = symbols
         self.references = references
@@ -88,11 +95,13 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         self.fileModuleUsages = fileModuleUsages
         self.admittedHeaderPaths = admittedHeaderPaths.map { Set($0).sorted() }
         self.enumImpactFiles = enumImpactFiles?.sorted { $0.path < $1.path }
+        self.dispatchReceiverFiles = dispatchReceiverFiles?.sorted { $0.path < $1.path }
+        self.sourceRecordAdmissions = sourceRecordAdmissions.map(SourceRecordAdmission.sorted)
     }
 
     private enum CodingKeys: String, CodingKey {
         case symbols, references, indexedFileDates, parameters, propertyAccesses, imports, fileModuleUsages
-        case oldestIndexedFileDates, admittedHeaderPaths, enumImpactFiles
+        case oldestIndexedFileDates, admittedHeaderPaths, enumImpactFiles, sourceRecordAdmissions
     }
 
     /// 파라미터 목록과 접근 합산·import 근거는 뒤늦게 추가된 필드라, 그것이 없는 예전 스냅샷 문서도 읽는다.
@@ -104,6 +113,9 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
         oldestIndexedFileDates = try container.decodeIfPresent([String: Date].self, forKey: .oldestIndexedFileDates)
         admittedHeaderPaths = try container.decodeIfPresent([String].self, forKey: .admittedHeaderPaths)
         enumImpactFiles = try container.decodeIfPresent([EnumImpactFileFacts].self, forKey: .enumImpactFiles)
+        // Source joins are deliberately ephemeral. Historical captures cannot borrow current bytes.
+        dispatchReceiverFiles = nil
+        sourceRecordAdmissions = try container.decodeIfPresent([SourceRecordAdmission].self, forKey: .sourceRecordAdmissions)
         parameters = try container.decodeIfPresent([IndexedParameter].self, forKey: .parameters) ?? []
         propertyAccesses = try container.decodeIfPresent(
             [String: PropertyAccessFacts].self, forKey: .propertyAccesses) ?? [:]
@@ -181,7 +193,13 @@ public struct IndexSnapshot: Sendable, Codable, Equatable {
                 )
             },
             admittedHeaderPaths: headers,
-            enumImpactFiles: enumFiles
+            enumImpactFiles: enumFiles,
+            // Re-enrich the merged capture before applying receiver precision. A successful
+            // source join from one provider cannot certify another provider's context.
+            dispatchReceiverFiles: nil,
+            sourceRecordAdmissions: sourceRecordAdmissions.flatMap { first in
+                other.sourceRecordAdmissions.map { SourceRecordAdmission.sorted(first + $0) }
+            }
         )
     }
 }

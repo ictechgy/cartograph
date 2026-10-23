@@ -44,6 +44,7 @@ struct RawReadResult {
     let indexedFileDates: [String: Date]
     let oldestIndexedFileDates: [String: Date]
     let admittedHeaderPaths: [String]
+    let sourceRecordAdmissions: [SourceRecordAdmission]
 }
 
 struct RawIndexStoreReader {
@@ -135,6 +136,7 @@ struct RawIndexStoreReader {
 
         records.sort { $0.sortKey < $1.sortKey }
         var result: [DBSymbolOccurrence] = []
+        var admissions: [SourceRecordAdmission] = []
         var deduplicator = OccurrenceDeduplicator()
         var loadedRecords = RecordCache(capacity: 64)
         var remainingUses = Dictionary(records.map { ($0.record, 1) }, uniquingKeysWith: +)
@@ -154,6 +156,10 @@ struct RawIndexStoreReader {
                     return .continue
                 }
                 occurrenceKeyPeak?(deduplicator.retainedKeyCount)
+                if record.path.hasSuffix(".swift"), !record.isSystem, record.provider == .swift {
+                    admissions.append(.init(path: record.path, module: record.module, unit: record.unit,
+                        record: record.record, timestamp: record.timestamp))
+                }
             }
             remainingUses[record.record, default: 1] -= 1
             if remainingUses[record.record] == 0 {
@@ -172,7 +178,8 @@ struct RawIndexStoreReader {
                 && (fileOnlyHeaderUnits[path] ?? []).isSubset(of: recordUnits)
         }.keys.sorted()
         return RawReadResult(occurrences: result, indexedFileDates: indexedFileDates,
-            oldestIndexedFileDates: oldestIndexedFileDates, admittedHeaderPaths: headers)
+            oldestIndexedFileDates: oldestIndexedFileDates, admittedHeaderPaths: headers,
+            sourceRecordAdmissions: SourceRecordAdmission.sorted(admissions))
     }
 
     /// 삭제된 파일도 남아 있는 조상의 실제 경로를 사용해 /var와 /private/var의 식별자를 유지한다.

@@ -27,6 +27,7 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
     public let limitations: [String]
     /// 명시 요청한 캡처 소속 진단. 없으면 기존 v1 출력과 같다.
     public let targetScope: TargetScopeDocument?
+    public let receiverPrecision: ImpactReceiverPrecision?
     public let truncated: ImpactDocument.Truncation
 
     /// 테스트 선언 하나와 변경에서의 거리.
@@ -77,7 +78,7 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
         selectionIssues: [ImpactDocument.SelectionIssue],
         limitations: [String],
         truncated: ImpactDocument.Truncation,
-        targetScope: TargetScopeDocument? = nil
+        targetScope: TargetScopeDocument? = nil, receiverPrecision: ImpactReceiverPrecision? = nil
     ) {
         format = Self.format
         version = Self.version
@@ -93,6 +94,7 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
         self.selectionIssues = selectionIssues
         self.limitations = limitations
         self.targetScope = targetScope
+        self.receiverPrecision = receiverPrecision
         self.truncated = truncated
     }
 }
@@ -117,14 +119,36 @@ extension CartographService {
         selectionLimitations: [String] = [], in existingContext: AnalysisContext? = nil,
         targetScopeEvidencePath: String?
     ) throws -> AffectedDocument {
+        try affectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+            selectionLimitations: selectionLimitations, in: existingContext,
+            targetScopeEvidencePath: targetScopeEvidencePath, preparedScopeFingerprint: nil)
+    }
+
+    /// 세션은 이 준비 세대의 지문을 전달한다. 오래된 문맥에 현재 지문을 새로 붙이지 않는다.
+    func affectedDocument(
+        symbols: [String] = [], files: [String] = [], maxDepth: Int? = nil, limit: Int = 200,
+        selectionLimitations: [String] = [], in existingContext: AnalysisContext? = nil,
+        targetScopeEvidencePath: String?, preparedScopeFingerprint: String?
+    ) throws -> AffectedDocument {
+        try makeAffectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+            selectionLimitations: selectionLimitations, in: existingContext,
+            targetScopeEvidencePath: targetScopeEvidencePath, preparedScopeFingerprint: preparedScopeFingerprint)
+    }
+
+    private func makeAffectedDocument(
+        symbols: [String], files: [String], maxDepth: Int?, limit: Int,
+        selectionLimitations: [String], in existingContext: AnalysisContext?,
+        targetScopeEvidencePath: String?, preparedScopeFingerprint: String?,
+        receiverFallback: ImpactReceiverPrecision? = nil
+    ) throws -> AffectedDocument {
         guard (1...10_000).contains(limit), maxDepth.map({ (1...128).contains($0) }) ?? true else {
             throw CartographError.invalidConfiguration(
                 path: projectPath, reason: "Affected limits require 1...10000 results and an optional depth of 1...128."
             )
         }
         // 외부 문맥이 언제 읽혔는지 모르면 현재 지문을 과거 그래프에 붙이지 않는다.
-        let scopeFingerprint = targetScopeEvidencePath != nil && existingContext == nil
-            ? (try? sessionInputFingerprint()) : nil
+        let scopeFingerprint = existingContext != nil ? preparedScopeFingerprint
+            : (targetScopeEvidencePath != nil ? (try? sessionInputFingerprint()) : nil)
         let context = try existingContext ?? loadContext()
         let graph = context.buildGraph(level: .symbol).graph
         let automatic = context.runtimeDiscovery()
@@ -137,8 +161,13 @@ extension CartographService {
             graph: graph, artifactTargets: artifactTargets,
             makeQueryIndex: { _ in context.impactQueryIndex() },
             makeRawFileIndex: { _ in context.impactRawNodesByFile() })
-        let report = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth,
-            additionalDependencies: Self.automaticImpactDependencies(automatic) + lifecycle.dependencies)
+        let receiver = impactReceiverEvidence(context: context, historical: receiverFallback != nil,
+            changing: selection.nodes, graph: graph)
+        let analyzed = ImpactAnalyzer().analyze(changing: selection.nodes, in: graph, maxDepth: maxDepth,
+            additionalDependencies: Self.automaticImpactDependencies(automatic) + lifecycle.dependencies,
+            receiverEvidence: receiver.evidence)
+        let report = ImpactReport(changed: analyzed.changed, affected: analyzed.affected,
+            truncatedByDepth: analyzed.truncatedByDepth, receiverPrecision: receiverFallback ?? analyzed.receiverPrecision)
         let testIdentity = context.impactTestIdentity()
         func isTest(_ id: NodeID) -> Bool {
             testIdentity.confirmed.contains(id)
@@ -193,7 +222,7 @@ extension CartographService {
         let modules = Set(tests.compactMap(\.symbol.module)).sorted()
         var limitations = analysisLimitations(context: context, symbolGraph: graph) + selectionLimitations
             + Self.automaticRuntimeLimitations(automatic)
-        limitations += testIdentity.limitations(for: report)
+        limitations += testIdentity.limitations(for: report) + receiver.limitations + Self.receiverLimitations(report)
         if !tests.isEmpty {
             limitations.append("test-target-assumption: xcodebuild selection assumes each indexed module name "
                 + "matches a test target in the chosen scheme; framework identity does not prove target membership")
@@ -217,6 +246,13 @@ extension CartographService {
                                context: context, limit: limit)
         }
         limitations += scope?.limitations ?? []
+        if let precision = report.receiverPrecision, precision.excludedTransitions > 0,
+           let failure = impactReceiverFinalFailure(receiver.files) {
+            return try makeAffectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+                selectionLimitations: selectionLimitations + receiver.limitations + [failure], in: context,
+                targetScopeEvidencePath: targetScopeEvidencePath, preparedScopeFingerprint: scopeFingerprint,
+                receiverFallback: precision.fallingBack(reason: "receiver-source-final-verification"))
+        }
         return AffectedDocument(
             status: selection.status,
             requestedSymbols: Array(symbols.prefix(limit)),
@@ -238,8 +274,9 @@ extension CartographService {
             ),
             selectionIssues: output.issues,
             limitations: limitations,
-            truncated: .init(depth: report.truncatedByDepth, sections: output.truncatedSections),
-            targetScope: scope
+            truncated: .init(depth: report.truncatedByDepth, sections: output.truncatedSections
+                + (report.receiverPrecision?.limited(to: limit).truncated == true ? ["receiverPrecision"] : [])),
+            targetScope: scope, receiverPrecision: report.receiverPrecision?.limited(to: limit)
         )
     }
 
@@ -368,11 +405,24 @@ extension AffectedDocument {
         let narrowed = tests.compactMap(\.xcodebuildIdentifier).filter { identifier in
             !wholeModules.contains(String(identifier.prefix { $0 != "/" }))
         }
-        let selectors = Set(narrowed).union(wholeModules).sorted()
+        let rawSelectors = Set(narrowed).union(wholeModules)
+        let selectors: [String]
+        if let mapping = targetScope?.xcode?.selectorTargetByModule {
+            guard tests.allSatisfy({ mapping[$0.symbol.module ?? ""] != nil }) else {
+                return .init(output: "", notes: limitations,
+                    refusal: "A reached test is outside the captured scheme universe; run the whole suite.")
+            }
+            selectors = Set(rawSelectors.compactMap { identifier -> String? in
+                let parts = identifier.split(separator: "/", maxSplits: 1).map(String.init)
+                guard let module = parts.first, let target = mapping[module] else { return nil }
+                return target + (parts.count == 2 ? "/" + parts[1] : "")
+            }).sorted()
+        } else { selectors = rawSelectors.sorted() }
         var notes = limitations
         if !widened.isEmpty {
+            let scope = targetScope?.xcode == nil ? "whole test module" : "whole verified Xcode test target"
             notes.insert(
-                "\(widened.count) test declaration(s) are selected by their whole test module: only top-level "
+                "\(widened.count) test declaration(s) are selected by their \(scope): only top-level "
                     + "XCTest classes without subclasses, and their test methods, have a provable -only-testing "
                     + "identifier.",
                 at: 0
@@ -391,7 +441,9 @@ extension AffectedDocument {
         if truncated.output || truncated.depth {
             return "The affected test list was truncated; increase --limit or --depth." + fallback
         }
-        if targetScope != nil {
+        if let targetScope, targetScope.xcode?.selectionStatus != "review-candidates"
+            || targetScope.xcode?.selectorIdentity != "xctestrun-blueprint-name"
+            || targetScope.xcode?.testBundleByModule == nil {
             return "Target membership review does not establish the chosen Xcode scheme's test target identity."
                 + " Inspect targetScope paths and run the whole suite until scheme coverage is verified." + fallback
         }
@@ -411,8 +463,12 @@ extension AffectedDocument {
             "unreadable-sources:", "header-projection:", "configured-path-filter:", "configured-edge-kinds:",
             "symlinked-directories-outside-root:", "source-discovery-exclusions:",
             "build-module-coverage:", "build-module-coverage-unknown:",
+            "receiver-source-changed-during-query:",
         ]
-        if limitations.contains(where: { limitation in coverageGaps.contains { limitation.hasPrefix($0) } }) {
+        let covered = Set(targetScope?.xcode?.coveredBlockerCodes.map { $0 + ":" } ?? [])
+        if limitations.contains(where: { limitation in
+            coverageGaps.filter { !covered.contains($0) }.contains { limitation.hasPrefix($0) }
+        }) {
             return "Source/index coverage is incomplete; additional tests may reach this change."
                 + " Restore source access, rebuild relevant targets and remove analysis filters before narrowing the run."
                 + fallback

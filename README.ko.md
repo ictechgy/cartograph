@@ -667,6 +667,15 @@ cartograph impact UserService --before .cartograph/before.json --format json
 항목은 관련된 모든 간선을 싣습니다. 선택 필드 `dispatchContract`는 투영에 사용한 계약을
 표시할 뿐입니다 — 직접 호출이 아니며 그 런타임 호출이 일어났다는 증명도 아닙니다.
 
+현재 `impact`와 `affected`는 정확한 컴파일러 호출 위치와 신선한 `self` 구문이 서로 다른
+final Swift 수신자를 증명할 때 공유 base 디스패치 경로를 정밀화할 수 있습니다. 선택 필드
+`receiverPrecision`에 모드, 제외한 전이, 제한된 근거, 생략 수와 작업 예산을 남깁니다.
+nonfinal·base/프로토콜·별칭·다른 객체·callable 값·런타임 경로는 보수적으로 유지합니다.
+수신자 상태 충돌, 예산 초과 또는 최종 소스 검증 실패 시 기존 전체 후보를 이유와 함께
+복구합니다. 소스 결합 근거는 snapshot에 저장하지 않아 과거 질의는 보수적으로 남습니다.
+[수신자 근거의 한계](Fixtures/FalsePositiveCorpus/DispatchReceivers/README.md)를 함께 보세요.
+현재 소스의 지문은 과거 컴파일 입력의 증명이 아니며 후보는 테스트 생략을 허가하지 않습니다.
+
 JSON은 `change-impact` v1 문서입니다. `status`, `selected`, `changeScope`, `affected`, `tests`,
 `entryPoints`, `runtimeReview`, `summary`, `selectionIssues`, `limitations`, `truncated`를 함께
 읽으세요. `selected`는 직접 선택자와 맞은 선언이고, `changeScope`는 선택한 타입을 의미 있는
@@ -2114,3 +2123,7 @@ Cartograph는 독립 프로젝트이며 Periphery나 Apple과 관련이 없습�
 안전 신호를 유지합니다. Target 소속은 Xcode scheme을 증명하지 않으며 범위를
 모르면 좁은 선택자를 거부하므로 호출자가 전체 suite를 실행해야 합니다.
 [범위·예산·이행 예제](docs/FOLLOWUP-REVIEW.md)를 참고하세요.
+
+### Xcode 영향 테스트 범위 캡처
+
+선택적 [Xcode 캡처](docs/XCODE-AFFECTED-SCOPE.md)는 단일 로컬 Swift 프로젝트의 명시 scheme/test-plan, 실제 읽은 source record와 빌드된 테스트 bundle 바이트를 대조합니다. 선택 이름은 검증된 `.xctestrun` BlueprintName과 프로젝트 target 신원을 사용하고, JSON/MCP에는 bundle 제품명을 별도로 보존합니다. 확인된 범위 밖 target의 소스 경고는 근거와 함께 분리하여 검토용 선택자를 만들 수 있습니다. SwiftPM receipt는 기존처럼 진단 전용입니다. 범위 불명, 오래된 입력, 잘린 증거는 계속 거부하며 정적 후보는 테스트 생략 허가가 아닙니다.

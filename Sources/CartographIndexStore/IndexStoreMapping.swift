@@ -303,10 +303,13 @@ public enum IndexStoreMapping {
         if result.isEmpty, let topLevel = topLevelCodeReference(from: occurrence, location: location) {
             result.append(topLevel)
         }
+        let receiverTypes = Set(occurrence.relations.filter { $0.roles.contains(.receivedBy) }.map(\.symbol.usr))
+        let receiver = receiverTypes.count == 1 ? receiverTypes.first : nil
         return result.map {
             IndexedReference(sourceUSR: $0.sourceUSR, targetUSR: $0.targetUSR,
                 kind: $0.kind, location: $0.location, targetKind: $0.targetKind,
-                origin: $0.origin == .unknown ? .compiler : $0.origin)
+                origin: $0.origin == .unknown ? .compiler : $0.origin,
+                receiverTypeUSR: $0.kind == .call ? receiver : nil)
         }
     }
 
@@ -440,7 +443,7 @@ public enum IndexStoreMapping {
             return IndexedReference(
                 sourceUSR: source, targetUSR: target, kind: reference.kind,
                 location: reference.location, targetKind: reference.targetKind,
-                origin: reference.origin, position: reference.position
+                origin: reference.origin, position: reference.position, receiverTypeUSR: reference.receiverTypeUSR
             )
         }
     }

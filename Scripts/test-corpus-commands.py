@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path, PurePosixPath
+import re
 import tempfile
 import unittest
 
@@ -52,7 +53,11 @@ class CorpusComparisonTests(unittest.TestCase):
                 variants.append(missing)
                 if note.startswith(('unknown-clang-module:', 'unindexed-sources:')):
                     changed = copy.deepcopy(expected)
-                    changed['limitations'][i] = note.replace('19 ', '18 ').replace('21 of 38', '20 of 38')
+                    changed_note, replacements = re.subn(
+                        r'^([^:]+: )(\d+)',
+                        lambda match: match[1] + str(int(match[2]) + 1), note, count=1)
+                    self.assertEqual(replacements, 1)
+                    changed['limitations'][i] = changed_note
                     self.assertNotEqual(changed, expected)
                     variants.append(changed)
             extra = copy.deepcopy(expected)

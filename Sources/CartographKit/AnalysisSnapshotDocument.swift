@@ -259,7 +259,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 },
                 targetKind: reference.targetKind,
                 origin: reference.origin,
-                position: reference.position
+                position: reference.position, receiverTypeUSR: reference.receiverTypeUSR
             )
         }
         let dates = snapshot.indexedFileDates.map { values in
@@ -309,6 +309,8 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
                 },
                 enumImpactFiles: snapshot.enumImpactFiles?.map { facts in
                     facts.rebased { Self.rebase($0, from: recordedRoot, to: currentProjectRoot) }
+                }, sourceRecordAdmissions: snapshot.sourceRecordAdmissions?.map { admission in
+                    admission.rebased { Self.rebase($0, from: recordedRoot, to: currentProjectRoot) }
                 }),
             edgeKinds: Set(edgeKinds),
             limitations: limitations,
@@ -610,6 +612,8 @@ extension CartographService {
             fileModuleUsages: capturedUsages,
             admittedHeaderPaths: capturedHeaders,
             enumImpactFiles: context.snapshot.enumImpactFiles?.filter {
+                includedSourcePaths.contains($0.path)
+            }, sourceRecordAdmissions: context.snapshot.sourceRecordAdmissions?.filter {
                 includedSourcePaths.contains($0.path)
             }
         )

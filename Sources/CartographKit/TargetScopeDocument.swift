@@ -2,7 +2,7 @@ import CartographCore
 import CryptoKit
 import Foundation
 
-/// 명시 SwiftPM 캡처와 현재 입력을 대조한 경로별 소속. Xcode scheme 실행 신원의 증명은 아니다.
+/// 명시 캡처와 현재 입력을 대조한 경로별 소속. SwiftPM은 진단 전용이며 Xcode 근거는 별도 필드로 구분한다.
 public struct TargetScopeDocument: Sendable, Equatable, Codable {
     public let format: String
     public let version: Int
@@ -14,6 +14,27 @@ public struct TargetScopeDocument: Sendable, Equatable, Codable {
     public let pathCount: Int
     public let omittedPaths: Int
     public let limitations: [String]
+    /// Xcode 전용 캡처 범위. SwiftPM 진단에는 없으며 다른 실행 문맥에 재사용할 수 없다.
+    public var xcode: Xcode? = nil
+
+    public struct Xcode: Sendable, Equatable, Codable {
+        public let project: String
+        public let scheme: String
+        public let testPlan: String?
+        public let configuration: String
+        public let destination: String
+        public let architecture: String
+        public let selectionStatus: String
+        public let blockers: [String]
+        /// xctestrun BlueprintName과 프로젝트 target 신원이 일치한 선택 이름.
+        public let selectorTargetByModule: [String: String]
+        public let selectedSourcePaths: [String]
+        public let coveredBlockerCodes: [String]
+        /// 선택 이름의 근거를 제품 파일명과 구분한다. 이전 문서에는 없을 수 있다.
+        public var selectorIdentity: String? = nil
+        /// 선택 이름과 별개로 검증한 실제 test bundle 제품 파일명.
+        public var testBundleByModule: [String: String]? = nil
+    }
 
     /// 제외된 경로도 원래 blocker 원인과 함께 남긴다. outside는 실행 생략 허가가 아니다.
     public struct Path: Sendable, Equatable, Codable {
@@ -197,6 +218,20 @@ struct TargetScopeStore {
 extension CartographService {
     /// 필터 밖 경로도 분류하지만 기존 coverage 경고나 선택 실행 거부를 제거하지 않는다.
     func targetScope(path: String, fingerprint: String?, context: AnalysisContext, limit: Int) -> TargetScopeDocument {
+        let probeFileSystem = environment.fileSystem
+        let probeResolved = (try? probeFileSystem.realPath(at: path)) ?? path
+        if isSensitiveAnalysisEvidencePath(path) || isSensitiveAnalysisEvidencePath(probeResolved) {
+            return .init(format: "target-scope-review", version: 1, evidenceStatus: "unknown", selectedTargets: [],
+                dependencyTargets: [], schemeIdentity: "unverified", paths: [], pathCount: 0, omittedPaths: 0,
+                limitations: ["target-scope-unknown: credential-like evidence path is refused; run the whole suite."])
+        }
+        if probeFileSystem.fingerprintStamp(at: path)?.isRegularFile != false,
+           let data = try? probeFileSystem.readData(at: path, maximumBytes: TargetScopeStore.maximumBytes),
+           data.count <= TargetScopeStore.maximumBytes,
+           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           object["format"] as? String == "cartograph-xcode-target-scope" {
+            return xcodeTargetScope(path: path, fingerprint: fingerprint, context: context, limit: limit)
+        }
         let fileSystem = environment.fileSystem
         let root = (try? fileSystem.realPath(at: projectPath)) ?? projectPath
         var verified: TargetScopeStore.Verified?

@@ -44,7 +44,10 @@ struct RawIndexStoreReaderTests {
             storePath: fixture.store.path, libraryPath: fixture.library, fileSystem: fileSystem
         )
         for path in [fixture.source.path, link.path, fileSystem.canonicalPath(physicalPath)] {
-            let occurrences = try reader.read(in: [path]).occurrences
+            let read = try reader.read(in: [path])
+            let occurrences = read.occurrences
+            #expect(Set(read.sourceRecordAdmissions.map(\.module)) == ["SyntheticAlpha", "SyntheticBeta"])
+            #expect(read.sourceRecordAdmissions.allSatisfy { $0.path == physicalPath && !$0.unit.isEmpty && !$0.record.isEmpty })
             let definitions = occurrences.filter { $0.roles.contains(.definition) && $0.symbol.name == "Payload" }
             #expect(Set(definitions.map(\.location.moduleName)) == ["SyntheticAlpha", "SyntheticBeta"])
             #expect(definitions.count == 2)
@@ -63,6 +66,9 @@ struct RawIndexStoreReaderTests {
         }
         let unrequested = fixture.root.appendingPathComponent("Unrequested.swift").path
         #expect(try reader.read(in: [unrequested]).occurrences.isEmpty)
+        let trackedOnly = try reader.read(in: [], trackedSourcePath: { $0.hasSuffix(".swift") })
+        #expect(!trackedOnly.indexedFileDates.isEmpty)
+        #expect(trackedOnly.sourceRecordAdmissions.isEmpty)
         let provider = IndexStoreProvider(configuration: .init(
             storePath: fixture.store.path, databasePath: fixture.root.appendingPathComponent("ReaderDB").path,
             libraryPath: fixture.library, sourceRoots: [link.path]

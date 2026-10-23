@@ -1,0 +1,27 @@
+{
+  "configurations": [
+    {
+      "id": "1F33776B-5CCE-4A72-9E9D-47D9D901E105",
+      "name": "Default",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {},
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:Scope.xcodeproj",
+        "identifier": "000000000000000000000016",
+        "name": "ChecksBlueprint"
+      }
+    },
+    {
+      "target": {
+        "containerPath": "container:Scope.xcodeproj",
+        "identifier": "00000000000000000000001F",
+        "name": "OtherBlueprint"
+      }
+    }
+  ],
+  "version": 1
+}

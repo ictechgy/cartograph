@@ -266,6 +266,38 @@ public final class AnalysisSession {
         )
     }
 
+    /// 명시 Xcode 근거를 준비 세대와 결합하고 소비 후 지문을 다시 확인한다.
+    public func affected(
+        symbols: [String] = [], files: [String] = [], maxDepth: Int? = nil, limit: Int = 200,
+        targetScopeEvidencePath: String?
+    ) throws -> AffectedDocument {
+        guard let requested = targetScopeEvidencePath else {
+            return try affected(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit)
+        }
+        runtimeBuildEvidenceMetadata = nil
+        try ensurePrepared()
+        guard let service, let context else { throw AnalysisSessionError.unavailable }
+        let path = try validatedBuildEvidencePath(requested, service: service, inputName: "target scope evidence")
+        do {
+            // 캐시된 세션 지문(v3)과 공개 capture 지문(v2)은 인코딩 버전이 다르다.
+            // 현재 v2를 과거 문맥에 붙이지 않도록 양쪽 관측을 준비된 v3 세대와 먼저/마지막에 묶는다.
+            // 이 opt-in 경로는 일반 warm 질의의 재검증 창을 사용하지 않는다.
+            guard try inputFingerprintProvider() == preparedFingerprint else {
+                throw AnalysisSessionError.inputChangedDuringRefresh(attempts: 1)
+            }
+            let scopeFingerprint = try service.sessionInputFingerprint()
+            let document = try service.affectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+                in: context, targetScopeEvidencePath: path, preparedScopeFingerprint: scopeFingerprint)
+            guard try inputFingerprintProvider() == preparedFingerprint else {
+                throw AnalysisSessionError.inputChangedDuringRefresh(attempts: 1)
+            }
+            return document
+        } catch {
+            invalidate()
+            throw error
+        }
+    }
+
     /// 준비된 문맥에서 자동으로 발견한 런타임 경계와 미해결 항목을 반환한다.
     ///
     /// 같은 문맥의 구문·리소스 사실을 사용하므로 query나 impact 뒤에 호출해도
@@ -427,6 +459,11 @@ public final class AnalysisSession {
             limitations: service.analysisLimitations(context: context, symbolGraph: graph)
         )
     }
+}
+
+/// 캡처 판독기와 세션이 서비스 타입에 역의존하지 않고 같은 경로 경계를 공유한다.
+func isSensitiveAnalysisEvidencePath(_ path: String) -> Bool {
+    AnalysisInputFingerprinter.isSensitive(path)
 }
 
 extension CartographService {
