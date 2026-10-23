@@ -15,8 +15,10 @@ python3 Scripts/cartograph-swiftpm-scope.py \
   --project /path/to/package --cartograph /path/to/cartograph \
   --test-target AppTests --output /path/outside/package/new-scope
 
+INDEX_STORE="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["indexStore"])' \
+  /path/outside/package/new-scope/capture.json)"
 cartograph affected changedValue --project /path/to/package \
-  --index-store /path/from/new-scope/capture.json --format json \
+  --index-store "$INDEX_STORE" --format json \
   --target-scope /path/outside/package/new-scope/target-scope.json
 ```
 
