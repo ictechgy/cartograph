@@ -2074,8 +2074,11 @@ Async embedders can use `try await IndexStoreProvider(configuration: indexConfig
 to keep blocking disk/database work off the Swift cooperative executor. The existing synchronous
 `loadSnapshot()` API remains available. On macOS 15+, its upstream async library loader uses a dedicated
 task executor; on macOS 14, call the async entry from Swift tasks instead of blocking those tasks with
-the synchronous API. Library/store opening has a 30-second wait budget and fails without returning
-a partial snapshot. This is not a deadline for the entire record scan. Cancellation is cooperative;
+the synchronous API. The raw reader's async-to-sync library/store opening bridge has a 30-second wait
+budget and fails without returning a partial snapshot. The database-backed mode's preceding synchronous
+database initialization and the entire record scan are outside that budget. A C opening call that stalls
+on the shared serial loader queue can delay later requests until they time out; requests are not isolated
+from that stall and the queue is not forcibly reset. Cancellation is cooperative;
 the async entry delivers cancellation after the blocking read returns, without claiming that C work
 was interrupted. The minimum supported deployment target remains macOS 14; newer-runner validation
 does not establish macOS 14 runtime coverage.

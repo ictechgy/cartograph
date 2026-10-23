@@ -22,6 +22,35 @@ struct IndexStoreTaskBridgeTests {
         }
     }
 
+    @Test("취소를 무시하고 늦게 끝나는 로더도 timeout 이후 값을 보관하고 완료 뒤 해제한다")
+    func lateCompletionReleasesCapturedState() async throws {
+        let released = DispatchSemaphore(value: 0)
+        let finishAllowed = DispatchSemaphore(value: 0)
+        var probe: LifetimeProbe? = LifetimeProbe(released: released)
+        weak var weakProbe = probe
+        #expect(throws: IndexStoreTaskBridge.BridgeError.timedOut) {
+            try IndexStoreTaskBridge.wait(timeout: .milliseconds(1)) { [probe = probe!] in
+                await withCheckedContinuation { continuation in
+                    // C 로더처럼 task cancellation을 확인하지 않는 작업이다.
+                    DispatchQueue.global().async {
+                        _ = finishAllowed.wait(timeout: .now() + 5)
+                        continuation.resume(returning: probe.value)
+                    }
+                }
+            }
+        }
+        probe = nil
+        #expect(weakProbe != nil)
+        finishAllowed.signal()
+        let didRelease = await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                continuation.resume(returning: released.wait(timeout: .now() + 5) == .success)
+            }
+        }
+        #expect(didRelease)
+        #expect(weakProbe == nil)
+    }
+
     @Test("여러 동기 대기가 같은 기본 actor 로더의 실행기를 고갈시키지 않는다")
     func concurrentDefaultActorLoads() async throws {
         let registry = Registry()
@@ -55,6 +84,13 @@ struct IndexStoreTaskBridgeTests {
 
     private actor Registry {
         func load(_ value: Int) -> Int { value }
+    }
+
+    private final class LifetimeProbe: Sendable {
+        let released: DispatchSemaphore
+        let value = 42
+        init(released: DispatchSemaphore) { self.released = released }
+        deinit { released.signal() }
     }
 
     private enum Failure: Error, Equatable { case example }

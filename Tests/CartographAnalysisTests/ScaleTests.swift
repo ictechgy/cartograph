@@ -17,22 +17,24 @@ struct ScaleTests {
 
         for typeIndex in 0..<typeCount {
             let type = "T\(typeIndex)"
+            let path = "/p/M\(typeIndex % 20)/\(type).swift"
             builder.symbol(
                 type, kind: .classType, module: "M\(typeIndex % 20)",
-                path: "/p/M\(typeIndex % 20)/\(type).swift", line: 1
+                path: path, line: 1
             )
             for memberIndex in 0..<membersPerType {
                 let member = "\(type).m\(memberIndex)"
                 builder.symbol(
                     member, name: "m\(memberIndex)()", kind: .method,
-                    module: "M\(typeIndex % 20)", path: "/p/M\(typeIndex % 20)/\(type).swift",
+                    module: "M\(typeIndex % 20)", path: path,
                     line: memberIndex + 2, parent: type
                 )
                 // 첫 멤버가 다음 타입의 첫 멤버를 호출해 2,000 단계 사슬을 만든다.
                 // 포함 관계는 사용을 뜻하지 않으므로 사슬은 멤버를 통해서만 이어진다.
                 if memberIndex == 0, typeIndex + 1 < typeCount {
-                    builder.reference(from: member, to: "T\(typeIndex + 1)", kind: .reference)
-                    builder.reference(from: member, to: "T\(typeIndex + 1).m0", kind: .call)
+                    // 파일·모듈 렌즈도 실제 호출자 파일을 읽도록 builder의 App 기본 위치를 덮어쓴다.
+                    builder.reference(from: member, to: "T\(typeIndex + 1)", kind: .reference, path: path, line: 2)
+                    builder.reference(from: member, to: "T\(typeIndex + 1).m0", kind: .call, path: path, line: 2)
                 }
             }
             if typeIndex == 0 {
@@ -59,6 +61,7 @@ struct ScaleTests {
 
         let moduleGraph = GraphBuilder(options: .init(level: .module)).buildResult(from: snapshot)
         #expect(moduleGraph.graph.nodeCount == 21)
+        #expect(moduleGraph.sourceAttributionLimitations.isEmpty)
         #expect(CycleDetector().detectCycles(in: moduleGraph.graph).isEmpty == false)
 
         let metrics = ArchitectureMetricsCalculator()

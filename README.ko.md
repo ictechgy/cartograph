@@ -1998,8 +1998,10 @@ let (_, metrics, _) = service.metrics(in: context)
 디스크·DB 작업을 Swift cooperative executor 밖에서 실행할 수 있습니다. 기존 동기 `loadSnapshot()`은
 유지합니다. macOS 15 이상은 upstream 비동기 라이브러리 로더에 전용 task executor를 사용합니다.
 macOS 14의 Swift task에서는 동기 API로 task를 막지 말고 비동기 진입로를 사용하세요.
-라이브러리·store 열기는 30초 대기 예산을 넘으면 부분 snapshot 없이 실패하며 전체 record scan의
-시간 제한은 아닙니다. 취소는 협조적이며 비동기 진입로는 blocking read가 반환된 뒤 취소를 전달합니다.
+raw reader의 async→sync 라이브러리·store 열기 bridge는 30초 대기 예산을 넘으면 부분 snapshot 없이
+실패합니다. database-backed 모드의 선행 동기 DB 초기화와 전체 record scan은 이 예산 밖입니다.
+공유 직렬 로더 queue에서 C 열기가 멈추면 후속 요청도 지연되거나 timeout될 수 있습니다. 요청별
+격리나 queue 강제 초기화를 보장하지 않습니다. 취소는 협조적이며 비동기 진입로는 blocking read가 반환된 뒤 전달합니다.
 C 작업의 강제 중단을 보장하지 않습니다. 최소 deployment target은 macOS 14 그대로이며 최신 runner의
 통과가 macOS 14 runtime 검증을 뜻하지는 않습니다.
 

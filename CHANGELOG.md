@@ -36,7 +36,8 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
 - Keep concurrent synchronous index loads from starving the upstream async library registry on
   macOS 15+ by using a dedicated task executor. Preserve macOS 14 deployment compatibility, add
   `IndexStoreProvider.loadSnapshotAsync()` for blocking work outside Swift tasks, and bound library/store
-  opening waits to 30 seconds. This is not a whole-scan deadline or a guarantee of C-work cancellation.
+  opening bridge waits to 30 seconds. Preceding database-backed initialization and record scanning are
+  outside that budget. This is not per-request stall isolation or a guarantee of C-work cancellation.
 
 - Import usage includes extension members' observed declaration modules, including `Int` extensions.
   Missing source index units suppress import-removal candidates; parse-only fixes explicitly require a rebuild.

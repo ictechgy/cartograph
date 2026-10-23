@@ -586,7 +586,18 @@ struct AffectedDocumentTests {
         let service = service(provedSnapshot(builder, classes: ["Base"], methods: testMethod ? ["Base.run"] : []))
         let document = try service.affectedDocument(symbols: ["P"])
         #expect(Set(document.tests.compactMap(\.symbol.usr)) == [testMethod ? "Base.run" : "Base", "Child"])
-        #expect(document.xcodebuildSelection().output == "-only-testing:BaseTests\n-only-testing:ChildTests\n")
+        let child = try #require(document.tests.first { $0.symbol.usr == "Child" })
+        // 확인한 테스트를 상속한 leaf 클래스만 좁힌다. 생명주기만 알면 모듈 전체로 넓힌다.
+        #expect(child.xcodebuildIdentifier == (testMethod ? "ChildTests/Child" : nil))
+        #expect(child.via?.usr == "Base.run")
+        #expect(child.relationship == "automaticRuntime")
+        let contract = testMethod ? "xctest-inherited-test:" : "xctest-lifecycle:"
+        #expect(child.runtimeEvidence?.first?.id.hasPrefix(contract) == true)
+        #expect(document.tests.first { $0.symbol.module == "BaseTests" }?.xcodebuildIdentifier == nil)
+        #expect((document.uncertainTestCandidates ?? []).isEmpty)
+        let childSelection = testMethod ? "ChildTests/Child" : "ChildTests"
+        #expect(document.xcodebuildSelection().output
+            == "-only-testing:BaseTests\n-only-testing:\(childSelection)\n")
         #expect(Set(try service.impactDocument(symbols: ["P"]).tests.compactMap(\.usr))
             == Set(document.tests.compactMap(\.symbol.usr)))
     }
