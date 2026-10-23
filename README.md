@@ -679,6 +679,16 @@ collapse an override or protocol dispatch chain. Each entry carries every releva
 `dispatchContract` identifies the contract used for a dispatch projection; it is not an ordinary
 call and does not prove that the runtime call occurred.
 
+Current `impact` and `affected` queries can refine a shared-base dispatch path when exact
+compiler call sites and fresh `self` syntax prove distinct final Swift receivers. Optional
+`receiverPrecision` records the mode, excluded transitions, bounded witnesses, omitted counts
+and work budgets. Nonfinal, base/protocol, alias, other-object, callable-value and runtime paths
+remain conservative. Conflicting receiver states, exceeded budgets or a failed final source
+check restore the entire legacy candidate result with a reason. These source joins are not
+saved in snapshots; historical queries remain conservative. Read the
+[receiver evidence limits](Fixtures/FalsePositiveCorpus/DispatchReceivers/README.md): current
+source digests do not prove an earlier compiler's inputs, and candidates never authorize skipping tests.
+
 JSON output is a `change-impact` v1 document. Read `status`, `selected`, `changeScope`, `affected`,
 `tests`, `entryPoints`, `runtimeReview`, `summary`, `selectionIssues`, `limitations`, and `truncated`
 together. `selected` is the direct selector match; `changeScope` expands selected types to their

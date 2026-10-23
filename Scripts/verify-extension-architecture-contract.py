@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import signal
 import sys
 import tempfile
 import time
@@ -163,7 +164,8 @@ class ArchitectureOracleTests(unittest.TestCase):
     @unittest.skipUnless(hasattr(os, "killpg") and hasattr(os, "wait4"),
                          "native process-group regression requires POSIX wait4/killpg")
     def test_direct_supervisor_reaps_native_child_where_nested_wrapper_loses_it(self):
-        # 이전 구조만 짧게 재현한다. 새 session의 synthetic child는 3초 후 스스로 종료한다.
+        # 별도 session은 TERM을 무시하고 3초 뒤 스스로 끝난다. 직접 감독자는 KILL로 끝내야 한다.
+        # TERM으로 이미 끝난 zombie-only group의 Darwin EPERM을 정리 실패와 혼동하지 않는다.
         # 숫자 PID를 임의 kill하지 않고, 실제 공통 supervisor가 소유한 직접 자식만 정리한다.
         helper = Path(__file__).with_name("benchmark-indexstore-cli.py").resolve()
         spec = importlib.util.spec_from_file_location("extension_timeout_supervisor", helper)
@@ -174,8 +176,10 @@ class ArchitectureOracleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             child = root / "finite-child.py"
-            child.write_text("from pathlib import Path\nimport json, os, sys, time\n"
-                "Path(sys.argv[1]).write_text(json.dumps({'pid': os.getpid(), 'group': os.getpgrp()}))\n"
+            child.write_text("from pathlib import Path\nimport json, os, signal, sys, time\n"
+                "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+                "Path(sys.argv[1]).write_text(json.dumps({'pid': os.getpid(), 'group': os.getpgrp(), "
+                "'termHandling': 'ignored'}))\n"
                 "time.sleep(3)\nPath(sys.argv[2]).write_text('completed')\n", encoding="utf-8")
             wrapper = root / "legacy-wrapper.py"
             wrapper.write_text("import importlib.util, sys\nfrom pathlib import Path\n"
@@ -195,6 +199,7 @@ class ArchitectureOracleTests(unittest.TestCase):
             started = MODULE.load(root / "legacy-started.json")
             self.assertTrue(legacy["timed_out"] and legacy["owned_root_reaped"])
             self.assertNotEqual(started["group"], legacy["pid"])
+            self.assertEqual(started["termHandling"], "ignored")
             self.assertTrue((root / "legacy-finished").exists())
             self.assertFalse((root / "legacy-native.json").exists())
 
@@ -204,8 +209,12 @@ class ArchitectureOracleTests(unittest.TestCase):
                 runner([sys.executable, child, root / "direct-started.json", root / "direct-finished"],
                        root, "native")
             direct = MODULE.load(root / "direct/logs/native.json")
-            self.assertTrue((root / "direct-started.json").is_file())
+            direct_started = MODULE.load(root / "direct-started.json")
+            self.assertEqual(direct_started["pid"], direct["pid"])
+            self.assertEqual(direct_started["group"], direct["pid"])
+            self.assertEqual(direct_started["termHandling"], "ignored")
             self.assertTrue(direct["timed_out"] and direct["owned_root_reaped"])
+            self.assertEqual(direct["raw_returncode"], -signal.SIGKILL)
             self.assertFalse(direct["ownership_lost"])
             self.assertEqual(direct["cleanup_errors"], [])
             time.sleep(2.1)
@@ -214,6 +223,7 @@ class ArchitectureOracleTests(unittest.TestCase):
                 "legacyWrapperReaped": legacy["owned_root_reaped"], "legacyNativeSurvived": True,
                 "legacyNativeReceiptMissing": True, "directNativeReaped": direct["owned_root_reaped"],
                 "directNativeSurvived": False, "directTimeoutReceiptPreserved": direct["timed_out"],
+                "directRawReturnCode": direct["raw_returncode"], "syntheticTermHandling": "ignored",
             }, sort_keys=True))
 
     def test_variants_reject_missing_evidence_and_hidden_real_violation(self):
