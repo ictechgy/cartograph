@@ -233,8 +233,13 @@ Producer job outputs supply the manifest SHA256 and immutable artifact ID; the c
 that ID from the same workflow run. Admission also binds the run/attempt, actual Actions merge
 commit/tree and PR head/base, clean source and dependency bytes before/after build, frozen pins,
 executable bytes, architecture and recursive Mach-O dependencies. Tracked source symlinks retain
-their committed Git link text separately from regular file bytes. They may resolve only to tracked
-files/directories in the same checkout; escaped, dangling, cyclic or ignored extra inputs are refused.
+their committed Git link bytes separately from regular file bytes. New prepared receipts encode
+relative targets as `slash-components-v1`: joining `target_components` with `/` reconstructs the exact
+original bytes (including dot or empty components), checked against `target_sha256` and the Git blob.
+Admission and per-query source rechecks reject the older raw-target shape. This internal receipt
+change does not rewrite previously created evidence or relax arbitrary path normalization. Links may
+resolve only to tracked files/directories in the same checkout; escaped, dangling, cyclic or ignored
+extra inputs are refused.
 Transferred artifacts still cannot contain symlinks. The consumer independently checks
 its selected Swift driver/frontend, Clang, linker, libIndexStore, OS build and SDK metadata.
 SDK metadata hashes are **not** a whole-SDK byte seal. System dyld-cache dependencies are recorded
@@ -264,3 +269,8 @@ it does not receive a copied Actions environment or claim a new observation of t
 Its adapter rechecks the actual checkout commit/tree/merge parents and admitted bytes against that
 retained attestation. Ordinary CI admission still requires the current Actions environment.
 This finite CI mode is not general executable distribution or a relocated index validation feature.
+
+Public bundle normalization emits at most four fixed bundle names with status and validated reason/
+SHA256 diagnostic fields, bounded to 8 KiB including the newline. Raw paths, file inventories and
+exception text are not copied into this summary. Its diagnostic refusal does not alter normalization
+acceptance, atomic publication or the original exit code.

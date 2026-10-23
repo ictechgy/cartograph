@@ -187,7 +187,8 @@ def source_links(root, tracked, links):
             require(relative in tracked and tracked[relative][0] in ("100644", "100755"),
                     "Source link does not resolve to tracked regular input")
             referents = {relative}
-        result[name] = {"target": target, "target_sha256": hashlib.sha256(os.fsencode(target)).hexdigest(),
+        result[name] = {"target_encoding": "slash-components-v1", "target_components": target.split("/"),
+                        "target_sha256": hashlib.sha256(os.fsencode(target)).hexdigest(),
                         "resolved": relative, "referent_inputs": sorted(referents)}
         active.remove(name)
         return result[name]
@@ -270,8 +271,41 @@ def source_identity(root, expected, *, extra_lock=None):
             "symlinks": source_links(root, tracked, links), "extra_frozen_lock": extra_lock, "bytes": size}
 
 
+def verify_source_link_shape(source):
+    """링크 원문 바이트를 복원하면서 공개 정규화가 절대 경로 조각으로 오인하지 않게 한다."""
+    require(type(source) is dict and type(source.get("input_sha256")) is dict, "Invalid source link input identity")
+    links = source.get("symlinks", {})
+    require(type(links) is dict and len(links) <= 20000, "Invalid source link inventory")
+    fields = {"target_encoding", "target_components", "target_sha256", "resolved", "referent_inputs"}
+    for name, row in links.items():
+        checked_relative(name)
+        require(type(row) is dict and set(row) == fields and row["target_encoding"] == "slash-components-v1",
+                "Incompatible source link target encoding")
+        parts = row["target_components"]
+        require(type(parts) is list and 1 <= len(parts) <= 4096
+                and all(type(part) is str and not any(char in part for char in ("/", "\\", ":", "\0")) for part in parts),
+                "Invalid source link target components")
+        target = "/".join(parts)
+        require(parts[0] != "" and 0 < len(os.fsencode(target)) <= 4096,
+                "Absolute or oversized source link target")
+        require(row["target_sha256"] == hashlib.sha256(os.fsencode(target)).hexdigest(),
+                "Source link target bytes differ")
+        # ..의 의미는 중간 symlink를 확장한 뒤에만 알 수 있다. 경계 판정은
+        # 생산자/소비자의 실제 source_links 재검증에 맡기고 여기서는 인코딩만 확인한다.
+        checked_relative(row["resolved"])
+        referents = row["referent_inputs"]
+        require(type(referents) is list and 1 <= len(referents) <= 20000
+                and all(type(item) is str for item in referents)
+                and referents == sorted(set(referents)), "Invalid source link referent inventory")
+        for referent in referents:
+            checked_relative(referent)
+            require(referent in source["input_sha256"] or referent in links,
+                    "Source link referent lacks tracked identity")
+
+
 def verify_source_links(root, source):
     """Recheck link identity without treating link text as regular file bytes."""
+    verify_source_link_shape(source)
     links = source.get("symlinks", {})
     tracked = {name: ("100644", None) for name in source["input_sha256"]}
     for name in source["input_sha256"]:
@@ -626,11 +660,13 @@ def verify_preparation(value):
             and build["wall_seconds"] > 0, "Measured producer build cost absent")
     require(type(value.get("dependencies")) is dict and len(value["dependencies"]) <= 32,
             "Dependency identity absent")
+    verify_source_link_shape(value.get("source"))
     for dep in value["dependencies"].values():
         require(type(dep) is dict and re.fullmatch(r"[a-f0-9]{40}", dep.get("revision", ""))
                 and re.fullmatch(r"[a-f0-9]{40}", dep.get("tree", ""))
                 and dep.get("working_tree_status") == "" and type(dep.get("input_sha256")) is dict,
                 "Invalid dependency source identity")
+        verify_source_link_shape(dep)
 
 
 def verify_dependency_pins(package, manifest):

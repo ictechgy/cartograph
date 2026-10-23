@@ -24,6 +24,68 @@ NATIVE_SPEC.loader.exec_module(NATIVE)
 
 
 class TestExecutionTests(unittest.TestCase):
+    @staticmethod
+    def observed_method_selection():
+        # ca46313 native job120698648990의 실제 SELECTOR_OBSERVATION을 재생한다. 실행 성공 증거는 아니다.
+        return ({"targetScope": {"evidenceStatus": "matched-capture", "xcode": {
+                    "selectionStatus": "review-candidates", "selectorTargetByModule": {
+                        "ChecksModule": "ChecksBlueprint", "OtherModule": "OtherBlueprint"}}},
+                 "tests": [{"symbol": {"usr": "c:@M@ChecksModule@objc(cs)ChangedTests(im)testChanged",
+                     "name": "testChanged()", "qualifiedName": "ChecksModule.testChanged()",
+                     "module": "ChecksModule", "kind": "method"},
+                     "xcodebuildIdentifier": "ChecksModule/ChangedTests/testChanged"}], "uncertainTestCandidates": []},
+                ["-only-testing:ChecksBlueprint/ChangedTests/testChanged"])
+
+    def test_observed_compiler_method_passes_exact_selection_while_prior_target_assertion_fails(self):
+        document, selectors = self.observed_method_selection()
+        before = copy.deepcopy((document, selectors))
+        with self.assertRaisesRegex(RuntimeError, "Expected honest whole-target selector fallback"):
+            NATIVE.require(selectors == ["-only-testing:ChecksBlueprint"], "Expected honest whole-target selector fallback")
+        self.assertEqual(NATIVE.fixture_method_selection(document, selectors), "method")
+        self.assertEqual((document, selectors), before)
+        del document["uncertainTestCandidates"]
+        self.assertEqual(NATIVE.fixture_method_selection(document, selectors), "method")
+
+    def test_method_selection_refuses_missing_extra_other_uncertain_and_unknown_tests(self):
+        document, selectors = self.observed_method_selection()
+        invalid = [None, {}, {**document, "tests": []}, {**document, "tests": None},
+                   {**document, "tests": document["tests"] * 2}, {**document, "tests": [{}]}]
+        for value in (None, {}, "unknown", [document["tests"][0]]):
+            invalid.append({**document, "uncertainTestCandidates": value})
+        for key in ("usr", "name", "qualifiedName", "module", "kind"):
+            changed = copy.deepcopy(document)
+            changed["tests"][0]["symbol"][key] = "OtherModule" if key == "module" else "unknown"
+            invalid.append(changed)
+            changed = copy.deepcopy(document)
+            del changed["tests"][0]["symbol"][key]
+            invalid.append(changed)
+        for changed in invalid:
+            with self.subTest(document=changed), self.assertRaises(RuntimeError):
+                NATIVE.fixture_method_selection(changed, selectors)
+
+    def test_method_selection_refuses_unknown_scope_wrong_mapping_identifiers_and_target_fallback(self):
+        document, selectors = self.observed_method_selection()
+        invalid = []
+        for key in ("targetScope", "tests"):
+            changed = copy.deepcopy(document); del changed[key]; invalid.append(changed)
+        changed = copy.deepcopy(document); changed["targetScope"]["evidenceStatus"] = "unknown"; invalid.append(changed)
+        changed = copy.deepcopy(document); changed["targetScope"]["xcode"]["selectionStatus"] = "unknown"; invalid.append(changed)
+        for mapping in ({}, {"ChecksModule": "ChecksModule"}, {"ChecksModule": "OtherBlueprint", "OtherModule": "OtherBlueprint"}):
+            changed = copy.deepcopy(document)
+            changed["targetScope"]["xcode"]["selectorTargetByModule"] = mapping
+            invalid.append(changed)
+        for identifier in (None, "ChecksBlueprint/ChangedTests/testChanged", "OtherModule/OtherTests/testOther"):
+            changed = copy.deepcopy(document); changed["tests"][0]["xcodebuildIdentifier"] = identifier; invalid.append(changed)
+        for changed in invalid:
+            with self.subTest(document=changed), self.assertRaises(RuntimeError):
+                NATIVE.fixture_method_selection(changed, selectors)
+        for arguments in ([], selectors * 2, ["-only-testing:ChecksBlueprint"],
+                          ["-only-testing:ChecksModule/ChangedTests/testChanged"],
+                          ["-only-testing:OtherBlueprint/OtherTests/testOther"],
+                          selectors + ["-only-testing:OtherBlueprint"]):
+            with self.subTest(arguments=arguments), self.assertRaises(RuntimeError):
+                NATIVE.fixture_method_selection(document, arguments)
+
     def test_selector_observation_preserves_exact_arguments_and_compiler_identity(self):
         document = {"tests": [{"symbol": {"usr": "s:test", "qualifiedName": "ChangedTests.testChanged()",
                     "name": "testChanged()", "module": "ChecksModule", "kind": "method", "body": "not printed"},

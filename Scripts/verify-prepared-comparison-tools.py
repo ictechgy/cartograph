@@ -22,6 +22,116 @@ SPEC.loader.exec_module(P)
 
 
 class PreparedToolsTests(unittest.TestCase):
+    @staticmethod
+    def source_link_fixture(target="../../../IndexStoreCAPI/include/IndexStoreCAPI/indexstore_functions.h"):
+        name = "Sources/IndexStoreDB_CIndexStoreDB/include/IndexStoreDB_CIndexStoreDB/indexstore_functions.h"
+        resolved = "Sources/IndexStoreCAPI/include/IndexStoreCAPI/indexstore_functions.h"
+        row = {"target_encoding": "slash-components-v1", "target_components": target.split("/"),
+               "target_sha256": hashlib.sha256(os.fsencode(target)).hexdigest(), "resolved": resolved,
+               "referent_inputs": [resolved]}
+        return {"revision": P.COMPARATOR, "input_sha256": {resolved: "a" * 64}, "symlinks": {name: row}}, name
+
+    def test_source_link_components_round_trip_and_refuse_tamper_old_shape_and_absolute_targets(self):
+        for target in ("../../../IndexStoreCAPI/include/IndexStoreCAPI/indexstore_functions.h", ".././a//b", "../caf\u00e9.h"):
+            source, name = self.source_link_fixture(target)
+            original = copy.deepcopy(source)
+            P.verify_source_link_shape(source)
+            self.assertEqual(os.fsencode("/".join(source["symlinks"][name]["target_components"])), os.fsencode(target))
+            self.assertEqual(source, original)
+        source, name = self.source_link_fixture()
+        bad = copy.deepcopy(source); bad["symlinks"][name]["target_components"][-1] = "changed.h"
+        with self.assertRaisesRegex(ValueError, "target bytes differ"):
+            P.verify_source_link_shape(bad)
+        bad = copy.deepcopy(source); bad["symlinks"][name]["target_sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "target bytes differ"):
+            P.verify_source_link_shape(bad)
+        bad = copy.deepcopy(source); row = bad["symlinks"][name]
+        row["target"] = "/".join(row.pop("target_components")); del row["target_encoding"]
+        with self.assertRaisesRegex(ValueError, "Incompatible source link target encoding"):
+            P.verify_source_link_shape(bad)
+        for target in ("/absolute.h", "C:/outside.h", "../bad\\name.h"):
+            with self.subTest(target=target), self.assertRaises(ValueError):
+                P.verify_source_link_shape(self.source_link_fixture(target)[0])
+        for parts in (None, "../wrong.h", [], ["..", None], ["../hidden-component.h"], ["..", "bad\0name"]):
+            bad = copy.deepcopy(source); bad["symlinks"][name]["target_components"] = parts
+            with self.subTest(parts=parts), self.assertRaises(ValueError):
+                P.verify_source_link_shape(bad)
+
+    def test_chain_aware_link_resolution_preserves_safe_parent_traversal(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            (root / "a").mkdir(); (root / "b/c/d").mkdir(parents=True)
+            (root / "target.h").write_bytes(b"target")
+            (root / "b/c/d/payload.h").write_bytes(b"payload")
+            links = {"a/s": "../b/c/d", "a/link": "s/../../../target.h"}
+            tracked = {name: ("120000", "") for name in links}
+            regular = ("target.h", "b/c/d/payload.h")
+            tracked.update({name: ("100644", "") for name in regular})
+            original_is_symlink = Path.is_symlink
+            def is_link(path):
+                return path in {root / name for name in links} or original_is_symlink(path)
+            def read_link(path):
+                return links[Path(path).relative_to(root).as_posix()]
+            # Portable resolver replay uses real referent files and simulated link syscalls.
+            # The separate POSIX controls exercise actual filesystem symlinks in native CI.
+            with patch.object(Path, "is_symlink", is_link), patch.object(P.os, "readlink", side_effect=read_link):
+                inventory = P.source_links(root, tracked, links)
+                source = {"input_sha256": {name: P.digest(root / name) for name in regular}, "symlinks": inventory}
+                self.assertEqual(inventory["a/link"]["resolved"], "target.h")
+                P.verify_source_link_shape(source)
+                P.verify_source_links(root, source)
+                links["a/link"] = "s/../../../../outside.h"
+                with self.assertRaisesRegex(ValueError, "escapes checkout"):
+                    P.source_links(root, tracked, links)
+
+    @unittest.skipUnless(os.name == "posix", "Actual chained source links require native CI")
+    def test_actual_chained_source_link_preserves_safe_parent_traversal(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / "a").mkdir(); (root / "b/c/d").mkdir(parents=True)
+            (root / "target.h").write_bytes(b"target")
+            (root / "b/c/d/payload.h").write_bytes(b"payload")
+            (root / "a/s").symlink_to("../b/c/d", target_is_directory=True)
+            (root / "a/link").symlink_to("s/../../../target.h")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                            "commit", "-qm", "chained link fixture"], cwd=root, check=True)
+            source = P.source_identity(root, P.git(root, "rev-parse", "HEAD"))
+            self.assertEqual(source["symlinks"]["a/link"]["resolved"], "target.h")
+            P.verify_source_link_shape(source)
+            P.verify_source_links(root, source)
+            (root / "a/link").unlink()
+            (root / "a/link").symlink_to("s/../../../../outside.h")
+            with self.assertRaisesRegex(ValueError, "escapes checkout"):
+                P.verify_source_links(root, source)
+
+    def test_prepared_link_components_normalize_without_allowing_arbitrary_relative_targets(self):
+        spec = importlib.util.spec_from_file_location("link_bundle_normalizer", Path(__file__).with_name("normalize-indexstore-bundles.py"))
+        normalizer = importlib.util.module_from_spec(spec); spec.loader.exec_module(normalizer)
+        source, name = self.source_link_fixture()
+        old = copy.deepcopy(source); row = old["symlinks"][name]
+        row["target"] = "/".join(row.pop("target_components")); del row["target_encoding"]
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            for label, identity in (("old", old), ("new", source)):
+                raw = root / label; raw.mkdir()
+                document = {"mode": "verified-prepared-artifact", "source": identity}
+                (raw / "results.json").write_text(json.dumps(document), encoding="utf-8")
+                args = argparse.Namespace(input=raw, output=root / (label + "-public"), prefix=[])
+                if label == "old":
+                    with self.assertRaises(normalizer.EVIDENCE.PublicationBlocked) as error:
+                        normalizer.EVIDENCE.package(args)
+                    self.assertEqual(normalizer.diagnostic(error.exception)["reason"], "unmapped-absolute-path")
+                else:
+                    normalizer.EVIDENCE.package(args)
+                    published = json.loads((args.output / "results.json").read_text(encoding="utf-8"))
+                    self.assertEqual(published, document)
+                    P.verify_source_link_shape(published["source"])
+            (root / "new/results.json").write_text(json.dumps({"arbitrary_target": "../../private/file"}), encoding="utf-8")
+            with self.assertRaises(normalizer.EVIDENCE.PublicationBlocked):
+                normalizer.EVIDENCE.package(argparse.Namespace(input=root / "new", output=root / "still-refused", prefix=[]))
+
     def test_compiler_input_overrides_are_refused_before_executing_tools(self):
         for key in (*P.COMPILER_OVERRIDES, "DYLD_INSERT_LIBRARIES", "DYLD_FRAMEWORK_PATH"):
             with self.subTest(key=key), patch.object(P.platform, "system", return_value="Darwin"), \
@@ -49,6 +159,9 @@ class PreparedToolsTests(unittest.TestCase):
                             "commit", "-qm", "linked fixture"], cwd=root, check=True)
             revision = P.git(root, "rev-parse", "HEAD")
             value = P.source_identity(root, revision)
+            link = value["symlinks"]["Sources/CLMDB/include/lmdb.h"]
+            self.assertEqual(link["target_components"], ["..", "lmdb.h"])
+            self.assertEqual(link["target_sha256"], hashlib.sha256(b"../lmdb.h").hexdigest())
             self.assertEqual(value["symlinks"]["Plugin/Common"]["referent_inputs"], ["Common/a.swift"])
             self.assertNotIn("Sources/CLMDB/include/lmdb.h", value["input_sha256"])
             self.assertEqual(value["input_sha256"]["Sources/CLMDB/lmdb.h"], P.digest(root / "Sources/CLMDB/lmdb.h"))
@@ -222,6 +335,7 @@ class PreparedToolsTests(unittest.TestCase):
                              "-c", "release", "--product", "cartograph", "--force-resolved-versions", "-j", "3"]}
         value = {"role": "candidate", "source_verified_before_after": True, "dependencies_verified_before_after": True,
                  "limits": {"jobs": 3, "setup_timeout_seconds": 1500}, "dependencies": {},
+                  "source": {"input_sha256": {}, "symlinks": {}},
                  "build_evidence": {"setup": {"mode": "fresh-release-package-build", "build_cost_measured": True,
                                                 "build": build}}}
         original = copy.deepcopy(value)

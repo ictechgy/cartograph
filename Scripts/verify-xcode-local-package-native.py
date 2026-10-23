@@ -56,6 +56,34 @@ def executed_tests(text):
     return {"executedTestCount": int(match[1]), "executedTestIdentities": [expected], "aggregate": lines[index + 1]}
 
 
+def fixture_method_selection(document, selectors):
+    """Require the exact observed compiler method and its blueprint selector before executing it."""
+    require(isinstance(document, dict), "Fixture affected document is malformed")
+    scope = document.get("targetScope")
+    require(isinstance(scope, dict) and scope.get("evidenceStatus") == "matched-capture",
+            "Fixture method selection lacks matched capture evidence")
+    xcode = scope.get("xcode")
+    require(isinstance(xcode, dict) and xcode.get("selectionStatus") == "review-candidates"
+            and xcode.get("selectorTargetByModule") == {
+                "ChecksModule": "ChecksBlueprint", "OtherModule": "OtherBlueprint"},
+            "Fixture method selection has unknown or different module-to-blueprint mapping")
+    tests = document.get("tests")
+    require(isinstance(tests, list) and len(tests) == 1 and isinstance(tests[0], dict),
+            "Fixture method selection must contain exactly one test")
+    # AffectedDocument는 빈 uncertain 목록을 optional nil로 생략한다. null/다른 형식은 허용하지 않는다.
+    require(document.get("uncertainTestCandidates", []) == [], "Fixture method selection contains uncertain tests")
+    expected = {"usr": "c:@M@ChecksModule@objc(cs)ChangedTests(im)testChanged", "name": "testChanged()",
+                "qualifiedName": "ChecksModule.testChanged()", "module": "ChecksModule", "kind": "method"}
+    symbol = tests[0].get("symbol")
+    require(isinstance(symbol, dict) and all(symbol.get(key) == value for key, value in expected.items()),
+            "Fixture selected compiler method identity differs")
+    require(tests[0].get("xcodebuildIdentifier") == "ChecksModule/ChangedTests/testChanged",
+            "Fixture selected test identifier differs")
+    require(selectors == ["-only-testing:ChecksBlueprint/ChangedTests/testChanged"],
+            "Fixture selector is not the exact observed test method")
+    return "method"
+
+
 def generated_metadata(directory):
     """Read only the public fixture's generated metadata, never certify membership."""
     require(not directory.is_symlink() and directory.resolve() == directory,
@@ -341,7 +369,7 @@ def verify(binary, output):
         "Actual xctestrun does not match both selected native test targets and their closure products")
     selectors = invoke("candidate-selectors", "xcodebuild").splitlines()
     record_selector_observation(document, selectors)
-    require(selectors == ["-only-testing:ChecksBlueprint"], "Expected honest whole-target selector fallback")
+    selection_granularity = fixture_method_selection(document, selectors)
     controls = []
     # Rehash the edited artifact in the receipt so product freshness alone cannot
     # explain rejection: only selected native/package dependency proof may admit it.
@@ -467,7 +495,7 @@ def verify(binary, output):
         require("selected universe" in str(error), "Unexpected negative capture failure: " + str(error))
         SCOPE.save(output / "other-only-refusal.json", {"reason": str(error), "compiled": True,
             "limitation": "Other is built/indexed but is outside this TestAction; absence is not package completeness proof."})
-    SCOPE.save(output / "results.json", {"status": "passed", "selectors": selectors, "selectionGranularity": "whole-target",
+    SCOPE.save(output / "results.json", {"status": "passed", "selectors": selectors, "selectionGranularity": selection_granularity,
         **execution, "negativeControls": controls + ["same-session-record-rehash", "compiled-for-other-only"],
         "scheme": args.scheme, "testUniverse": ["ChecksBlueprint", "OtherBlueprint"],
         "observedTestRun": dependencies,
