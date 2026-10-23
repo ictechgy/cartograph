@@ -59,6 +59,7 @@ final class CartographMCPTools: @unchecked Sendable {
             inputSchema: objectSchema(properties: [
                 "symbols": arraySchema(minimum: 1, maximum: 1000),
                 "files": arraySchema(minimum: 1, maximum: 1000),
+                "targetScope": .object(["type": .string("string"), "description": .string("Opt-in captured Xcode target scope JSON inside the configured project; revalidated for this generation.")]),
                 "depth": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(128)]),
                 "limit": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(10_000)]),
             ])
@@ -224,7 +225,7 @@ final class CartographMCPTools: @unchecked Sendable {
     }
 
     private func affected(_ arguments: [String: MCPJSONValue]) throws -> MCPToolResult {
-        try rejectUnknown(arguments, allowed: ["symbols", "files", "depth", "limit"])
+        try rejectUnknown(arguments, allowed: ["symbols", "files", "depth", "limit", "targetScope"])
         let symbols = try optionalStrings(arguments["symbols"], name: "symbols", range: 1...1000) ?? []
         let files = try optionalStrings(arguments["files"], name: "files", range: 1...1000) ?? []
         guard [!symbols.isEmpty, !files.isEmpty].count(where: { $0 }) == 1 else {
@@ -232,8 +233,10 @@ final class CartographMCPTools: @unchecked Sendable {
         }
         let depth = try optionalInt(arguments["depth"], name: "depth", range: 1...128)
         let limit = try optionalInt(arguments["limit"], name: "limit", range: 1...10_000) ?? 200
+        let scope = try optionalString(arguments["targetScope"], name: "targetScope")
         let session = try requireSession()
-        let document = try session.affected(symbols: symbols, files: files, maxDepth: depth, limit: limit)
+        let document = try session.affected(symbols: symbols, files: files, maxDepth: depth, limit: limit,
+            targetScopeEvidencePath: scope)
         return try structured(
             SessionResult(session: try preparedMetadata(session), result: document),
             isError: !document.selectionIssues.isEmpty
@@ -304,6 +307,15 @@ final class CartographMCPTools: @unchecked Sendable {
             return string
         }
         return strings
+    }
+
+    private func optionalString(_ value: MCPJSONValue?, name: String) throws -> String? {
+        guard let value else { return nil }
+        guard case let .string(result) = value, !result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              result.utf8.count <= 4096 else {
+            throw MCPToolFailure(message: "\(name) must be a non-empty string of at most 4096 bytes")
+        }
+        return result
     }
 
     private func optionalStrings(

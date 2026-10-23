@@ -2198,6 +2198,8 @@ this scan. Run this separately from the default bridge export.
 The unpublished 0.29.0 candidate adds capture-bound SwiftPM target-scope review,
 `dead --file-summary` / `--generated-suggestions`, JSON `--limitations summary`
 (default `full`), and the MCP `cartograph_prepare` lifecycle tool. All original
-findings and safety signals remain. Target scope does not verify an Xcode scheme;
-narrow selectors remain refused when coverage is unknown and callers must run the
-whole suite. See [scope, budgets and migration examples](docs/FOLLOWUP-REVIEW.md).
+findings and safety signals remain. SwiftPM scope remains diagnostic only. An optional
+[bounded Xcode capture](docs/XCODE-AFFECTED-SCOPE.md) binds explicit scheme/test-plan
+membership, actual consumed source records and built bundle bytes to review selectors.
+Unknown coverage still refuses narrowing; static candidates never authorize test omission.
+See [scope, budgets and migration examples](docs/FOLLOWUP-REVIEW.md).

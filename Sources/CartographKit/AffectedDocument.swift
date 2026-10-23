@@ -117,14 +117,25 @@ extension CartographService {
         selectionLimitations: [String] = [], in existingContext: AnalysisContext? = nil,
         targetScopeEvidencePath: String?
     ) throws -> AffectedDocument {
+        try affectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+            selectionLimitations: selectionLimitations, in: existingContext,
+            targetScopeEvidencePath: targetScopeEvidencePath, preparedScopeFingerprint: nil)
+    }
+
+    /// 세션은 이 준비 세대의 지문을 전달한다. 오래된 문맥에 현재 지문을 새로 붙이지 않는다.
+    func affectedDocument(
+        symbols: [String] = [], files: [String] = [], maxDepth: Int? = nil, limit: Int = 200,
+        selectionLimitations: [String] = [], in existingContext: AnalysisContext? = nil,
+        targetScopeEvidencePath: String?, preparedScopeFingerprint: String?
+    ) throws -> AffectedDocument {
         guard (1...10_000).contains(limit), maxDepth.map({ (1...128).contains($0) }) ?? true else {
             throw CartographError.invalidConfiguration(
                 path: projectPath, reason: "Affected limits require 1...10000 results and an optional depth of 1...128."
             )
         }
         // 외부 문맥이 언제 읽혔는지 모르면 현재 지문을 과거 그래프에 붙이지 않는다.
-        let scopeFingerprint = targetScopeEvidencePath != nil && existingContext == nil
-            ? (try? sessionInputFingerprint()) : nil
+        let scopeFingerprint = existingContext != nil ? preparedScopeFingerprint
+            : (targetScopeEvidencePath != nil ? (try? sessionInputFingerprint()) : nil)
         let context = try existingContext ?? loadContext()
         let graph = context.buildGraph(level: .symbol).graph
         let automatic = context.runtimeDiscovery()
@@ -368,7 +379,19 @@ extension AffectedDocument {
         let narrowed = tests.compactMap(\.xcodebuildIdentifier).filter { identifier in
             !wholeModules.contains(String(identifier.prefix { $0 != "/" }))
         }
-        let selectors = Set(narrowed).union(wholeModules).sorted()
+        let rawSelectors = Set(narrowed).union(wholeModules)
+        let selectors: [String]
+        if let mapping = targetScope?.xcode?.selectorTargetByModule {
+            guard tests.allSatisfy({ mapping[$0.symbol.module ?? ""] != nil }) else {
+                return .init(output: "", notes: limitations,
+                    refusal: "A reached test is outside the captured scheme universe; run the whole suite.")
+            }
+            selectors = Set(rawSelectors.compactMap { identifier -> String? in
+                let parts = identifier.split(separator: "/", maxSplits: 1).map(String.init)
+                guard let module = parts.first, let bundle = mapping[module] else { return nil }
+                return bundle + (parts.count == 2 ? "/" + parts[1] : "")
+            }).sorted()
+        } else { selectors = rawSelectors.sorted() }
         var notes = limitations
         if !widened.isEmpty {
             notes.insert(
@@ -391,7 +414,7 @@ extension AffectedDocument {
         if truncated.output || truncated.depth {
             return "The affected test list was truncated; increase --limit or --depth." + fallback
         }
-        if targetScope != nil {
+        if let targetScope, targetScope.xcode?.selectionStatus != "review-candidates" {
             return "Target membership review does not establish the chosen Xcode scheme's test target identity."
                 + " Inspect targetScope paths and run the whole suite until scheme coverage is verified." + fallback
         }
@@ -412,7 +435,10 @@ extension AffectedDocument {
             "symlinked-directories-outside-root:", "source-discovery-exclusions:",
             "build-module-coverage:", "build-module-coverage-unknown:",
         ]
-        if limitations.contains(where: { limitation in coverageGaps.contains { limitation.hasPrefix($0) } }) {
+        let covered = Set(targetScope?.xcode?.coveredBlockerCodes.map { $0 + ":" } ?? [])
+        if limitations.contains(where: { limitation in
+            coverageGaps.filter { !covered.contains($0) }.contains { limitation.hasPrefix($0) }
+        }) {
             return "Source/index coverage is incomplete; additional tests may reach this change."
                 + " Restore source access, rebuild relevant targets and remove analysis filters before narrowing the run."
                 + fallback

@@ -456,6 +456,9 @@ struct MCPToolsTests {
             ["symbols": .array([.string("Service")]), "depth": .integer(129)],
             ["symbols": .array([.string("Service")]), "limit": .integer(0)],
             ["symbols": .array([.string("Service")]), "since": .string("HEAD")],
+            ["symbols": .array([.string("Service")]), "targetScope": .integer(1)],
+            ["symbols": .array([.string("Service")]), "targetScope": .string("")],
+            ["symbols": .array([.string("Service")]), "targetScope": .string(String(repeating: "x", count: 4097))],
         ] {
             #expect(throws: MCPToolFailure.self) {
                 try tools.call(name: "cartograph_affected", arguments: .object(arguments))

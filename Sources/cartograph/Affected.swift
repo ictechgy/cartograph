@@ -41,7 +41,7 @@ struct AffectedCommand: ParsableCommand {
     var format: AffectedFormat = .text
 
     @Option(name: .customLong("target-scope"),
-        help: "Optional capture-bound SwiftPM target scope receipt. Classifies blocker paths; does not authorize test omission.")
+        help: "Capture-bound SwiftPM review or Xcode scheme scope receipt. Verified Xcode scopes emit review selectors, not permission to omit tests.")
     var targetScope: String?
 
     func validate() throws {

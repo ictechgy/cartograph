@@ -128,6 +128,7 @@ public struct IndexStoreProvider: IndexProviding {
         snapshot.indexedFileDates = result.indexedFileDates
         snapshot.oldestIndexedFileDates = result.oldestIndexedFileDates
         snapshot.admittedHeaderPaths = result.admittedHeaderPaths
+        snapshot.sourceRecordAdmissions = result.sourceRecordAdmissions
         return snapshot
     }
 
@@ -160,6 +161,7 @@ public struct IndexStoreProvider: IndexProviding {
         }, uniquingKeysWith: max).merging(result.indexedFileDates, uniquingKeysWith: max)
         snapshot.oldestIndexedFileDates = result.oldestIndexedFileDates
         snapshot.admittedHeaderPaths = result.admittedHeaderPaths
+        snapshot.sourceRecordAdmissions = result.sourceRecordAdmissions
         return snapshot
     }
 

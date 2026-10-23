@@ -321,7 +321,11 @@ extension CartographService {
                 }
             },
             enumImpactFiles: Self.augmentedEnumImpactFiles(
-                base: base.snapshot, supplemental: supplemental, includedBasePaths: basePaths)
+                base: base.snapshot, supplemental: supplemental, includedBasePaths: basePaths),
+            sourceRecordAdmissions: base.snapshot.sourceRecordAdmissions.flatMap { first in
+                supplemental.sourceRecordAdmissions.map { SourceRecordAdmission.sorted(
+                    first.filter { pathFilter.allows($0.path) } + $0) }
+            }
         )
         let generatedFacts = try evidence.declaredGeneratedMappings.map {
             RuntimeFactScanner().scan(source: try generatedSource(at: $0.source.path), path: $0.source.path)
@@ -472,6 +476,7 @@ extension CartographService {
             && lhs.indexedFileDates == rhs.indexedFileDates
             && lhs.oldestIndexedFileDates == rhs.oldestIndexedFileDates
             && lhs.admittedHeaderPaths == rhs.admittedHeaderPaths
+            && lhs.sourceRecordAdmissions == rhs.sourceRecordAdmissions
     }
 
     private func coreDataError(_ path: String, _ reason: String) -> CartographError {

@@ -2114,3 +2114,7 @@ Cartograph는 독립 프로젝트이며 Periphery나 Apple과 관련이 없습�
 안전 신호를 유지합니다. Target 소속은 Xcode scheme을 증명하지 않으며 범위를
 모르면 좁은 선택자를 거부하므로 호출자가 전체 suite를 실행해야 합니다.
 [범위·예산·이행 예제](docs/FOLLOWUP-REVIEW.md)를 참고하세요.
+
+### Xcode 영향 테스트 범위 캡처
+
+선택적 [Xcode 캡처](docs/XCODE-AFFECTED-SCOPE.md)는 단일 로컬 Swift 프로젝트의 명시 scheme/test-plan, 실제 읽은 source record와 빌드된 테스트 bundle 바이트를 대조합니다. 확인된 범위 밖 target의 소스 경고는 근거와 함께 분리하여 검토용 선택자를 만들 수 있습니다. SwiftPM receipt는 기존처럼 진단 전용입니다. 범위 불명, 오래된 입력, 잘린 증거는 계속 거부하며 정적 후보는 테스트 생략 허가가 아닙니다.

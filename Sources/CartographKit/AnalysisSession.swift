@@ -266,6 +266,38 @@ public final class AnalysisSession {
         )
     }
 
+    /// 명시 Xcode 근거를 준비 세대와 결합하고 소비 후 지문을 다시 확인한다.
+    public func affected(
+        symbols: [String] = [], files: [String] = [], maxDepth: Int? = nil, limit: Int = 200,
+        targetScopeEvidencePath: String?
+    ) throws -> AffectedDocument {
+        guard let requested = targetScopeEvidencePath else {
+            return try affected(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit)
+        }
+        runtimeBuildEvidenceMetadata = nil
+        try ensurePrepared()
+        guard let service, let context else { throw AnalysisSessionError.unavailable }
+        let path = try validatedBuildEvidencePath(requested, service: service, inputName: "target scope evidence")
+        do {
+            // 캐시된 세션 지문(v3)과 공개 capture 지문(v2)은 인코딩 버전이 다르다.
+            // 현재 v2를 과거 문맥에 붙이지 않도록 양쪽 관측을 준비된 v3 세대와 먼저/마지막에 묶는다.
+            // 이 opt-in 경로는 일반 warm 질의의 재검증 창을 사용하지 않는다.
+            guard try inputFingerprintProvider() == preparedFingerprint else {
+                throw AnalysisSessionError.inputChangedDuringRefresh(attempts: 1)
+            }
+            let scopeFingerprint = try service.sessionInputFingerprint()
+            let document = try service.affectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+                in: context, targetScopeEvidencePath: path, preparedScopeFingerprint: scopeFingerprint)
+            guard try inputFingerprintProvider() == preparedFingerprint else {
+                throw AnalysisSessionError.inputChangedDuringRefresh(attempts: 1)
+            }
+            return document
+        } catch {
+            invalidate()
+            throw error
+        }
+    }
+
     /// 준비된 문맥에서 자동으로 발견한 런타임 경계와 미해결 항목을 반환한다.
     ///
     /// 같은 문맥의 구문·리소스 사실을 사용하므로 query나 impact 뒤에 호출해도
@@ -430,6 +462,9 @@ public final class AnalysisSession {
 }
 
 extension CartographService {
+    /// 캡처 소비자도 세션과 동일한 민감 경로 경계를 사용한다.
+    static func isSensitiveEvidencePath(_ path: String) -> Bool { AnalysisInputFingerprinter.isSensitive(path) }
+
     /// 현재 서비스가 읽을 수 있는 분석 입력의 내용 지문.
     ///
     /// 세션이 파일 수정 시각만 믿고 이전 문맥을 재사용하지 않도록, 알려진 소스·설정·

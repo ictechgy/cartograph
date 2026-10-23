@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.29.0] - Unreleased
 
+- Add opt-in bounded Xcode affected-test captures with explicit scheme/test-plan target membership,
+  consumed source-record module evidence, built bundle identity and whole-product byte validation.
+  Matched scope can emit review selectors while retaining excluded-path warnings; unknown or
+  truncated proof still refuses. CLI and MCP bind the same captured input generation.
+
 This is the unpublished 0.29.0 candidate. The latest published release remains 0.28.0.
 
 ### Added

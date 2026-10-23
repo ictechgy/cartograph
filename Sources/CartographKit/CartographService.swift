@@ -2002,6 +2002,8 @@ public struct CartographService: Sendable {
             },
             enumImpactFiles: loaded.enumImpactFiles?.filter {
                 allowed.contains(LocalFileSystem.canonicalPath($0.path))
+            }, sourceRecordAdmissions: loaded.sourceRecordAdmissions?.filter {
+                allowed.contains(LocalFileSystem.canonicalPath($0.path))
             })
     }
 

@@ -1,0 +1,99 @@
+# Captured Xcode affected-test review
+
+`affected --target-scope` also accepts an opt-in Xcode capture. A matching capture can
+emit useful `-only-testing:` review candidates even when an unbuilt source belongs
+to a target proved outside the selected test universe. The original coverage warnings
+remain in JSON and stderr, alongside the excluded paths and their ownership evidence.
+Empty output, unknown evidence, or a refusal is never permission to skip tests.
+
+The initial supported boundary is deliberately small: one `.xcodeproj` at the project
+root, explicit local Swift source phases, shared schemes, native macOS architecture,
+and non-app-hosted XCTest unit-test bundles. It does not establish accuracy on a multi-project
+workspace, iOS, generated resources, UI tests, or an unobserved private application.
+
+## Capture and consume
+
+Only build projects you trust. Capture runs `xcodebuild build-for-testing`; it does not
+run tests. Unsupported shell scripts, build rules, packages/plugins, external project
+references, conditional membership, synchronized groups, source filters, resources,
+headers, shared sources, and custom compiler/linker input settings are refused by a
+metadata preflight before the build. Output relocation, app hosts/custom bundle loaders,
+external metadata paths, and nonstandard runpaths are also refused. Compiler module
+names must be unique across every project target, including unselected targets.
+Explicit SDK/developer framework references must
+use a supported relative system-framework path, resolve inside the selected Xcode
+SDK/developer root, and have bounded captured file bytes and symlink identities.
+Absolute, escaping, macro, and external symlink paths are rejected before building.
+This is not a sandbox for untrusted build files, or a complete inventory of implicit
+compiler/SDK imports.
+
+```sh
+python3 Scripts/cartograph-xcode-scope.py \
+  --project "$PWD" --xcode-project Example.xcodeproj --scheme ExampleTests \
+  --cartograph /path/to/cartograph --output /tmp/example-scope-capture
+
+cartograph affected changedValue --project "$PWD" \
+  --index-store /tmp/example-scope-capture/DerivedData/Index.noindex/DataStore \
+  --target-scope /tmp/example-scope-capture/target-scope.json --format json
+
+cartograph affected changedValue --project "$PWD" \
+  --index-store /tmp/example-scope-capture/DerivedData/Index.noindex/DataStore \
+  --target-scope /tmp/example-scope-capture/target-scope.json --format xcodebuild
+```
+
+Use the actual `indexStore` path in `capture.json`, and the same optional `--config`
+for capture and consumption. For a scheme that uses test plans, supply the explicit
+relative plan path with `--test-plan Plans/Unit.xctestplan`. This version requires one
+plan configuration with no runtime options or partial selections.
+
+`targetScope.xcode` records the project, scheme, plan, configuration, destination,
+architecture, complete selected source universe, blockers, and compiler-module to
+built-test-bundle mapping. A test bundle's name can differ from both its blueprint
+and its Swift module. Selectors apply only to this captured build context. Use the
+captured `.xctestrun` with `xcodebuild test-without-building` and its recorded destination;
+applying the arguments to another scheme, destination, or build is not verified.
+Static candidates do not predict failure and do not authorize omitting other tests.
+
+For MCP, copy the receipt JSON into the configured project and pass `targetScope`
+to `cartograph_affected`. The server binds it to the prepared generation, verifies the
+current receipt and inputs, and checks the generation again before returning. The
+cached session fingerprint and public capture fingerprint have distinct encodings;
+fresh observations before and after scope consumption bind them to the same prepared
+generation without changing either existing fingerprint contract. An
+input-fingerprint read failure discards the ready context. The receipt itself must be
+inside the configured project; captured build products remain at their original paths.
+
+## Evidence and refusal
+
+The consumer rereads project and scheme/plan membership, source/configuration bytes,
+selected compiler modules, `.xctestrun` bundle paths, and the entire captured product
+tree's regular-file bytes and symlink destinations. Actual products for the entire
+selected target dependency closure must lie in that captured tree; `.xctestrun`
+dependency paths must name those products. The standard non-app XCTest runner is
+resolved from the selected developer root and its bytes are checked separately.
+App-hosted/UI test bundles remain unsupported. Every selected source must be in
+the analysis and have a successfully consumed non-system Swift `.record` in the expected
+module with a fresh unit timestamp. File-only dependencies, tracked-only/deferred
+sources, legacy snapshots, another module's record, and timestamps alone do not satisfy
+that requirement. The snapshot preserves `sourceRecordAdmissions` as an optional,
+additive field; older snapshots decode but cannot establish this proof.
+
+Only `unindexed-sources`, `configured-path-filter`, and `source-discovery-exclusions`
+whose relevant paths are all proved outside the selected dependency closure can be
+separated for selector review. Unknown ownership, stale inputs, missing/unreadable
+selected sources, edge filters, runtime gaps, incomplete test identity, output/depth
+truncation, and tests reached outside the captured universe still refuse selection.
+Source membership is not dynamic coverage. The receipt is an unsigned producer claim,
+not a proof that a trusted build system compiled arbitrary declared bytes correctly.
+
+Limits: 1,000 targets; 10,000 source/configuration files (4 MiB each, 64 MiB total);
+50,000 input entries; 8 MiB receipt; 10,000 product entries (128 MiB per regular file,
+512 MiB total); 64 explicit system frameworks (10,000 entries and 128 MiB total,
+16 MiB per regular file). Scope output is subject to the requested `--limit`: truncating a
+membership proof prevents selector emission. Capture has a bounded per-command timeout
+and keeps command output and preparation time for review. It uses a fresh output
+directory and never cleans another build or checkout.
+
+The prior SwiftPM receipt remains diagnostic only and continues to refuse Xcode
+selectors. Existing commands without `--target-scope` keep their compatibility behavior.
+No public release or native-platform validation is implied by this source document.

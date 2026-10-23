@@ -200,6 +200,13 @@ class ReleaseWorkflowTests(unittest.TestCase):
             result = self.execute("Create the GitHub release", **environment)
         return result
 
+    def test_xcode_capture_helper_is_packaged_with_its_shared_runner(self):
+        workflow = WORKFLOW.read_text()
+        self.assertIn('cp Scripts/cartograph-xcode-scope.py dist/cartograph/Scripts/', workflow)
+        self.assertIn('python3 "$RUNNER_TEMP/cartograph/Scripts/cartograph-xcode-scope.py" --help', workflow)
+        self.assertIn('python3 "$installed/libexec/cartograph-xcode-scope.py" --help', workflow)
+        self.assertIn('"cartograph-swiftpm-scope.py", "cartograph-xcode-scope.py"', workflow)
+
     def test_manual_source_does_not_require_tag_before_checkout(self):
         workflow = WORKFLOW.read_text()
         self.assertRegex(workflow, r"source_sha:\n\s+description:.*\n\s+required: true\n\s+type: string")

@@ -131,6 +131,7 @@ struct ValueFlowSourceLoader {
         let enumFiles = raw.enumImpactFiles?.map { $0.rebased { canonicalPaths.path($0) } }
         return IndexSnapshot(symbols: symbols, references: references, indexedFileDates: dates,
             oldestIndexedFileDates: oldestDates,
-            admittedHeaderPaths: headers, enumImpactFiles: enumFiles)
+            admittedHeaderPaths: headers, enumImpactFiles: enumFiles,
+            sourceRecordAdmissions: raw.sourceRecordAdmissions?.map { $0.rebased { canonicalPaths.path($0) } })
     }
 }

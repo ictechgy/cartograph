@@ -15,6 +15,38 @@ struct AffectedDocumentTests {
         #expect(result.incompleteAnalysis?.contains("Source/index coverage is incomplete") == true)
     }
 
+    @Test("Xcode proof는 bundle로 변환하고 허용하지 않은 coverage 경고는 계속 거부한다")
+    func scopedSelectorMappingAndUncoveredWarnings() throws {
+        let document = try service(snapshot()).affectedDocument(symbols: ["P"])
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(document)) as? [String: Any])
+        var scope = TargetScopeDocument(format: "target-scope-review", version: 1, evidenceStatus: "matched-capture",
+            selectedTargets: ["Blueprint"], dependencyTargets: ["Blueprint"], schemeIdentity: "matched-xcode-capture",
+            paths: [], pathCount: 0, omittedPaths: 0, limitations: [])
+        scope.xcode = .init(project: "P.xcodeproj", scheme: "Suite", testPlan: nil, configuration: "Debug",
+            destination: "platform=macOS,arch=arm64", architecture: "arm64", selectionStatus: "review-candidates",
+            blockers: [], selectorTargetByModule: ["App": "RunnableBundle"], selectedSourcePaths: ["Sources/P.swift"],
+            coveredBlockerCodes: ["unindexed-sources"])
+        object["targetScope"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(scope))
+        object["limitations"] = ["unindexed-sources: proved outside this scheme"]
+        func decode() throws -> AffectedDocument {
+            try JSONDecoder().decode(AffectedDocument.self, from: JSONSerialization.data(withJSONObject: object, options: .sortedKeys))
+        }
+        let selection = try decode().xcodebuildSelection()
+        #expect(selection.refusal == nil)
+        #expect(selection.output == "-only-testing:RunnableBundle\n")
+        object["limitations"] = ["configured-edge-kinds: missing calls"]
+        #expect(try decode().xcodebuildSelection().output.isEmpty)
+        object["limitations"] = ["index-staleness: stale relevant target"]
+        #expect(try decode().xcodebuildSelection().output.isEmpty)
+        object["limitations"] = []
+        var scopeObject = try #require(object["targetScope"] as? [String: Any])
+        var xcodeObject = try #require(scopeObject["xcode"] as? [String: Any])
+        xcodeObject["selectorTargetByModule"] = ["Other": "OtherBundle"]
+        scopeObject["xcode"] = xcodeObject
+        object["targetScope"] = scopeObject
+        #expect(try decode().xcodebuildSelection().refusal?.contains("outside") == true)
+    }
+
     private func service(_ snapshot: IndexSnapshot) -> CartographService {
         var configuration = CartographConfiguration.default
         configuration.projectPath = "/p"

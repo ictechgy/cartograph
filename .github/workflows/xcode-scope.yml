@@ -1,0 +1,89 @@
+name: Xcode affected scope
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xcode-scope-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select the newest Xcode
+        run: |
+          latest="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          swift --version
+          xcodebuild -version
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .build/checkouts
+            .build/repositories
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+      - name: Verify portable preflight
+        run: python3 Scripts/verify-xcode-scope.py
+      - name: Build candidate and run targeted regressions
+        run: |
+          swift build --build-tests --jobs 3
+          swift test --skip-build --filter 'XcodeTargetScopeTests|SourceRecordAdmissionTests|RawIndexStoreReaderTests'
+          echo "XCODE_SCOPE_CANDIDATE=$(swift build --show-bin-path)/cartograph" >> "$GITHUB_ENV"
+      - name: Build immutable current-main baseline in a separate checkout
+        timeout-minutes: 23
+        run: |
+          python3 - <<'PY'
+          import importlib.util, os
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location("scope", "Scripts/cartograph-swiftpm-scope.py")
+          scope = importlib.util.module_from_spec(spec); spec.loader.exec_module(scope)
+          output = Path(os.environ["RUNNER_TEMP"]) / "xcode-scope-baseline"
+          output.mkdir()
+          source = output / "source"; source.mkdir()
+          revision = "5dc4718812b81baf981741f9dd0931f24fde6004"
+          for name, argv in [
+              ("init", ["git", "init", "-q"]),
+              ("remote", ["git", "remote", "add", "origin", "https://github.com/ictechgy/cartograph.git"]),
+              ("fetch", ["git", "fetch", "--depth", "1", "origin", revision]),
+              ("checkout", ["git", "-c", "core.hooksPath=/dev/null", "checkout", "--detach", "FETCH_HEAD"]),
+          ]:
+              scope.run(argv, source, output, name, 120)
+          actual = scope.run(["git", "rev-parse", "HEAD"], source, output, "head", 30).decode().strip()
+          assert actual == revision
+          scope.run(["swift", "build", "--jobs", "3"], source, output, "build", 1200)
+          binary = scope.run(["swift", "build", "--show-bin-path"], source, output, "bin-path", 60).decode().strip() + "/cartograph"
+          with open(os.environ["GITHUB_ENV"], "a") as stream:
+              stream.write("XCODE_SCOPE_BASELINE=" + binary + "\n")
+          PY
+      - name: Verify emitted selectors on actual Xcode bundles and negative controls
+        timeout-minutes: 15
+        run: >-
+          python3 Scripts/verify-xcode-scope-native.py
+          --candidate "$XCODE_SCOPE_CANDIDATE" --baseline "$XCODE_SCOPE_BASELINE"
+          --output "$RUNNER_TEMP/xcode-scope-native"
+      - name: Preserve bounded public synthetic evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcode-affected-scope
+          path: |
+            ${{ runner.temp }}/xcode-scope-native/*.json
+            ${{ runner.temp }}/xcode-scope-native/*.stdout
+            ${{ runner.temp }}/xcode-scope-native/*.stderr
+            ${{ runner.temp }}/xcode-scope-native/capture/*.process.json
+            ${{ runner.temp }}/xcode-scope-native/capture/*.stdout
+            ${{ runner.temp }}/xcode-scope-native/capture/*.stderr
+            ${{ runner.temp }}/xcode-scope-baseline/*.stdout
+            ${{ runner.temp }}/xcode-scope-baseline/*.stderr
+            ${{ runner.temp }}/xcode-scope-baseline/*.process.json
+          if-no-files-found: warn
+          retention-days: 14

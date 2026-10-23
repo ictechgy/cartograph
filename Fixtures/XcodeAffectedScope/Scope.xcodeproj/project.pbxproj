@@ -1,0 +1,307 @@
+// !$*UTF8*$!
+{
+  "archiveVersion" = 1;
+  "classes" = {
+  };
+  "objectVersion" = 56;
+  "objects" = {
+    "000000000000000000000001" = {
+      "isa" = "XCBuildConfiguration";
+      "name" = "Debug";
+      "buildSettings" = {
+        "SDKROOT" = "macosx";
+        "MACOSX_DEPLOYMENT_TARGET" = "13.0";
+        "SWIFT_VERSION" = "5.0";
+        "SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+        "DEBUG_INFORMATION_FORMAT" = "dwarf";
+        "CLANG_ENABLE_MODULES" = "YES";
+        "CODE_SIGNING_ALLOWED" = "NO";
+        "COMPILER_INDEX_STORE_ENABLE" = "YES";
+      };
+    };
+    "000000000000000000000002" = {
+      "isa" = "XCConfigurationList";
+      "buildConfigurations" = ("000000000000000000000001");
+      "defaultConfigurationIsVisible" = 0;
+      "defaultConfigurationName" = "Debug";
+    };
+    "000000000000000000000003" = {
+      "isa" = "PBXFileReference";
+      "path" = "Core/Core.swift";
+      "sourceTree" = "SOURCE_ROOT";
+      "lastKnownFileType" = "sourcecode.swift";
+    };
+    "000000000000000000000004" = {
+      "isa" = "PBXFileReference";
+      "path" = "Checks/ChangedTests.swift";
+      "sourceTree" = "SOURCE_ROOT";
+      "lastKnownFileType" = "sourcecode.swift";
+    };
+    "000000000000000000000005" = {
+      "isa" = "PBXFileReference";
+      "path" = "Other/OtherTests.swift";
+      "sourceTree" = "SOURCE_ROOT";
+      "lastKnownFileType" = "sourcecode.swift";
+    };
+    "000000000000000000000006" = {
+      "isa" = "PBXFileReference";
+      "path" = "Unbuilt/Tool.swift";
+      "sourceTree" = "SOURCE_ROOT";
+      "lastKnownFileType" = "sourcecode.swift";
+    };
+    "000000000000000000000007" = {
+      "isa" = "PBXFileReference";
+      "path" = "CoreProduct.framework";
+      "sourceTree" = "BUILT_PRODUCTS_DIR";
+      "explicitFileType" = "wrapper.framework";
+      "includeInIndex" = 0;
+    };
+    "000000000000000000000008" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "000000000000000000000003";
+    };
+    "000000000000000000000009" = {
+      "isa" = "PBXSourcesBuildPhase";
+      "buildActionMask" = 2147483647;
+      "files" = ("000000000000000000000008");
+      "runOnlyForDeploymentPostprocessing" = 0;
+    };
+    "00000000000000000000000A" = {
+      "isa" = "PBXFrameworksBuildPhase";
+      "buildActionMask" = 2147483647;
+      "files" = ();
+      "runOnlyForDeploymentPostprocessing" = 0;
+    };
+    "00000000000000000000000B" = {
+      "isa" = "XCBuildConfiguration";
+      "name" = "Debug";
+      "buildSettings" = {
+        "PRODUCT_NAME" = "CoreProduct";
+        "PRODUCT_MODULE_NAME" = "CoreKit";
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "org.cartograph.fixture.CoreKit";
+        "SKIP_INSTALL" = "YES";
+        "ENABLE_TESTABILITY" = "YES";
+        "DEFINES_MODULE" = "YES";
+      };
+    };
+    "00000000000000000000000C" = {
+      "isa" = "XCConfigurationList";
+      "buildConfigurations" = ("00000000000000000000000B");
+      "defaultConfigurationIsVisible" = 0;
+      "defaultConfigurationName" = "Debug";
+    };
+    "00000000000000000000000D" = {
+      "isa" = "PBXNativeTarget";
+      "name" = "CoreBlueprint";
+      "productName" = "CoreProduct";
+      "productReference" = "000000000000000000000007";
+      "productType" = "com.apple.product-type.framework";
+      "buildConfigurationList" = "00000000000000000000000C";
+      "buildPhases" = ("000000000000000000000009", "00000000000000000000000A");
+      "buildRules" = ();
+      "dependencies" = ();
+    };
+    "00000000000000000000000E" = {
+      "isa" = "PBXFileReference";
+      "path" = "RunnableChecks.xctest";
+      "sourceTree" = "BUILT_PRODUCTS_DIR";
+      "explicitFileType" = "wrapper.cfbundle";
+      "includeInIndex" = 0;
+    };
+    "00000000000000000000000F" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "000000000000000000000004";
+    };
+    "000000000000000000000010" = {
+      "isa" = "PBXSourcesBuildPhase";
+      "buildActionMask" = 2147483647;
+      "files" = ("00000000000000000000000F");
+      "runOnlyForDeploymentPostprocessing" = 0;
+    };
+    "000000000000000000000011" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "000000000000000000000007";
+    };
+    "000000000000000000000012" = {
+      "isa" = "PBXTargetDependency";
+      "target" = "00000000000000000000000D";
+    };
+    "000000000000000000000013" = {
+      "isa" = "PBXFrameworksBuildPhase";
+      "buildActionMask" = 2147483647;
+      "files" = ("000000000000000000000011");
+      "runOnlyForDeploymentPostprocessing" = 0;
+    };
+    "000000000000000000000014" = {
+      "isa" = "XCBuildConfiguration";
+      "name" = "Debug";
+      "buildSettings" = {
+        "PRODUCT_NAME" = "RunnableChecks";
+        "PRODUCT_MODULE_NAME" = "ChecksModule";
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "org.cartograph.fixture.ChecksModule";
+        "SKIP_INSTALL" = "YES";
+        "ENABLE_TESTABILITY" = "YES";
+        "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @loader_path/../Frameworks @loader_path/../../../";
+      };
+    };
+    "000000000000000000000015" = {
+      "isa" = "XCConfigurationList";
+      "buildConfigurations" = ("000000000000000000000014");
+      "defaultConfigurationIsVisible" = 0;
+      "defaultConfigurationName" = "Debug";
+    };
+    "000000000000000000000016" = {
+      "isa" = "PBXNativeTarget";
+      "name" = "ChecksBlueprint";
+      "productName" = "RunnableChecks";
+      "productReference" = "00000000000000000000000E";
+      "productType" = "com.apple.product-type.bundle.unit-test";
+      "buildConfigurationList" = "000000000000000000000015";
+      "buildPhases" = ("000000000000000000000010", "000000000000000000000013");
+      "buildRules" = ();
+      "dependencies" = ("000000000000000000000012");
+    };
+    "000000000000000000000017" = {
+      "isa" = "PBXFileReference";
+      "path" = "OtherRunnable.xctest";
+      "sourceTree" = "BUILT_PRODUCTS_DIR";
+      "explicitFileType" = "wrapper.cfbundle";
+      "includeInIndex" = 0;
+    };
+    "000000000000000000000018" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "000000000000000000000005";
+    };
+    "000000000000000000000019" = {
+      "isa" = "PBXSourcesBuildPhase";
+      "buildActionMask" = 2147483647;
+      "files" = ("000000000000000000000018");
+      "runOnlyForDeploymentPostprocessing" = 0;
+    };
+    "00000000000000000000001A" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "000000000000000000000007";
+    };
+    "00000000000000000000001B" = {
+      "isa" = "PBXTargetDependency";
+      "target" = "00000000000000000000000D";
+    };
+    "00000000000000000000001C" = {
+      "isa" = "PBXFrameworksBuildPhase";
+      "buildActionMask" = 2147483647;
+      "files" = ("00000000000000000000001A");
+      "runOnlyForDeploymentPostprocessing" = 0;
+    };
+    "00000000000000000000001D" = {
+      "isa" = "XCBuildConfiguration";
+      "name" = "Debug";
+      "buildSettings" = {
+        "PRODUCT_NAME" = "OtherRunnable";
+        "PRODUCT_MODULE_NAME" = "OtherModule";
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "org.cartograph.fixture.OtherModule";
+        "SKIP_INSTALL" = "YES";
+        "ENABLE_TESTABILITY" = "YES";
+        "LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @loader_path/../Frameworks @loader_path/../../../";
+      };
+    };
+    "00000000000000000000001E" = {
+      "isa" = "XCConfigurationList";
+      "buildConfigurations" = ("00000000000000000000001D");
+      "defaultConfigurationIsVisible" = 0;
+      "defaultConfigurationName" = "Debug";
+    };
+    "00000000000000000000001F" = {
+      "isa" = "PBXNativeTarget";
+      "name" = "OtherBlueprint";
+      "productName" = "OtherRunnable";
+      "productReference" = "000000000000000000000017";
+      "productType" = "com.apple.product-type.bundle.unit-test";
+      "buildConfigurationList" = "00000000000000000000001E";
+      "buildPhases" = ("000000000000000000000019", "00000000000000000000001C");
+      "buildRules" = ();
+      "dependencies" = ("00000000000000000000001B");
+    };
+    "000000000000000000000020" = {
+      "isa" = "PBXFileReference";
+      "path" = "libUnbuilt.a";
+      "sourceTree" = "BUILT_PRODUCTS_DIR";
+      "explicitFileType" = "archive.ar";
+      "includeInIndex" = 0;
+    };
+    "000000000000000000000021" = {
+      "isa" = "PBXBuildFile";
+      "fileRef" = "000000000000000000000006";
+    };
+    "000000000000000000000022" = {
+      "isa" = "PBXSourcesBuildPhase";
+      "buildActionMask" = 2147483647;
+      "files" = ("000000000000000000000021");
+      "runOnlyForDeploymentPostprocessing" = 0;
+    };
+    "000000000000000000000023" = {
+      "isa" = "PBXFrameworksBuildPhase";
+      "buildActionMask" = 2147483647;
+      "files" = ();
+      "runOnlyForDeploymentPostprocessing" = 0;
+    };
+    "000000000000000000000024" = {
+      "isa" = "XCBuildConfiguration";
+      "name" = "Debug";
+      "buildSettings" = {
+        "PRODUCT_NAME" = "Unbuilt";
+        "PRODUCT_MODULE_NAME" = "UnbuiltModule";
+        "GENERATE_INFOPLIST_FILE" = "YES";
+        "PRODUCT_BUNDLE_IDENTIFIER" = "org.cartograph.fixture.UnbuiltModule";
+        "SKIP_INSTALL" = "YES";
+        "ENABLE_TESTABILITY" = "YES";
+      };
+    };
+    "000000000000000000000025" = {
+      "isa" = "XCConfigurationList";
+      "buildConfigurations" = ("000000000000000000000024");
+      "defaultConfigurationIsVisible" = 0;
+      "defaultConfigurationName" = "Debug";
+    };
+    "000000000000000000000026" = {
+      "isa" = "PBXNativeTarget";
+      "name" = "UnbuiltBlueprint";
+      "productName" = "Unbuilt";
+      "productReference" = "000000000000000000000020";
+      "productType" = "com.apple.product-type.library.static";
+      "buildConfigurationList" = "000000000000000000000025";
+      "buildPhases" = ("000000000000000000000022", "000000000000000000000023");
+      "buildRules" = ();
+      "dependencies" = ();
+    };
+    "000000000000000000000027" = {
+      "isa" = "PBXGroup";
+      "name" = "Products";
+      "children" = ("000000000000000000000007", "00000000000000000000000E", "000000000000000000000017", "000000000000000000000020");
+      "sourceTree" = "<group>";
+    };
+    "000000000000000000000028" = {
+      "isa" = "PBXGroup";
+      "children" = ("000000000000000000000003", "000000000000000000000004", "000000000000000000000005", "000000000000000000000006", "000000000000000000000027");
+      "sourceTree" = "<group>";
+    };
+    "000000000000000000000029" = {
+      "isa" = "PBXProject";
+      "attributes" = {
+        "LastUpgradeCheck" = "1600";
+      };
+      "buildConfigurationList" = "000000000000000000000002";
+      "compatibilityVersion" = "Xcode 14.0";
+      "developmentRegion" = "en";
+      "knownRegions" = ("en", "Base");
+      "mainGroup" = "000000000000000000000028";
+      "productRefGroup" = "000000000000000000000027";
+      "projectDirPath" = "";
+      "projectRoot" = "";
+      "targets" = ("00000000000000000000000D", "000000000000000000000016", "00000000000000000000001F", "000000000000000000000026");
+    };
+  };
+  "rootObject" = "000000000000000000000029";
+}
