@@ -2,8 +2,10 @@
 
 Prepared on an isolated branch from `0a1ca641618ee78730c7a52ea41f5b131d86ae66`,
 then carried unchanged onto main `4f5c5c591921c270192efead07c2dacf8fdfe9f3`.
-This fixture is not yet built on macOS and does not enable package support in the
-current Xcode scope producer or consumer. Those paths must still refuse packages.
+Native observation at `8cf46ee975110994baff32595a48b353f6c40322` built both variants
+and observed actual compiler-unit/output/object/live-link joins. The diagnostic's
+success is separate from the opt-in v2 receipt and consumer checks added afterward.
+Default v1 admission continues to refuse packages.
 
 The reported missing-local-package-index-unit problem motivates this generalized
 public fixture; it does not reproduce the private 22-project workspace.
@@ -15,6 +17,9 @@ its `CoreKit` function calls `packageValue()`. `ChecksBlueprint` / `ChecksModule
 `OtherBlueprint` reaches a separate CoreKit function, and `UnbuiltBlueprint` stays
 outside the scheme. The package has no external/transitive dependencies, plugins,
 macros, binary targets, resources, C/Objective-C sources or package tests.
+`Scope` selects both test targets. `ChecksOnly` still builds Other but selects only
+Checks, so the compiled-for-Other negative control cannot claim a CoreKit or selected
+universe contribution merely because a package unit exists.
 
 The PBX local-package reference, selected target's product dependency and framework
 phase productRef are declared inputs, not proof that Xcode built or linked any file.
@@ -26,8 +31,9 @@ See [OBSERVATION-PLAN.md](OBSERVATION-PLAN.md) for the bounded native evidence g
 No current-main coverage expectation or fixed workflow has been changed for this
 preparation. The separate `xcode-local-package-observation.yml` workflow executes
 the two native variants and POSIX live stream-overflow controls, retaining bounded
-observations or failures. Its success is an observation gate, not product support.
-Production membership still requires the joins and controls in the plan.
+observations or failures. A separate step exercises the v2 producer, CLI, same-session
+MCP record mutation refusal, and actual whole-target test execution. These product
+checks must pass independently of raw observation; neither proves private-app coverage.
 
 The unpublished diagnostic entry point is
 `python3 Scripts/observe-xcode-local-package.py --output /new/path/outside/checkout`.

@@ -286,10 +286,17 @@ public final class AnalysisSession {
                 throw AnalysisSessionError.inputChangedDuringRefresh(attempts: 1)
             }
             let scopeFingerprint = try service.sessionInputFingerprint()
+            let packageProof = try service.localPackageProof(path: path, fingerprint: scopeFingerprint)
             let document = try service.affectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
                 in: context, targetScopeEvidencePath: path, preparedScopeFingerprint: scopeFingerprint)
             guard try inputFingerprintProvider() == preparedFingerprint else {
                 throw AnalysisSessionError.inputChangedDuringRefresh(attempts: 1)
+            }
+            if let packageProof {
+                try packageProof.verify(fileSystem: service.environment.fileSystem)
+                guard document.targetScope?.evidenceStatus == "matched-capture" else {
+                    throw XcodeLocalPackageIO.invalid("Version 2 fresh analysis did not validate its package scope.")
+                }
             }
             return document
         } catch {

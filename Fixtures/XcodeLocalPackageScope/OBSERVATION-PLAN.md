@@ -1,9 +1,11 @@
 # Bounded native observation proposal
 
-Status: diagnostic preparation only, based on the verified PR228/main source tree.
-The standalone workflow must collect the runtime observations below before product
-implementation. It does not change the v1 receipt contract or its package refusal.
-Runtime observation below is not yet collected.
+Status: raw observation completed at `8cf46ee975110994baff32595a48b353f6c40322`
+([native run 39991523232](https://github.com/ictechgy/cartograph/actions/runs/39991523232)).
+The positive variant joined Math.o to the relocatable ArithmeticCore.o and its live
+owner contribution to CoreKit. The Other-only variant had no CoreKit join. These
+observations justified a separate finite v2 implementation; its consumer and actual
+selected-test validation are independent gates. The v1 package refusal remains.
 
 ## Capture inputs and process
 

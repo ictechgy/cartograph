@@ -6,6 +6,14 @@ import Testing
 
 @Suite("캡처에 묶인 target 소속")
 struct TargetScopeTests {
+    @Test("The legacy v1 SDK relative receipt path remains a matched capture")
+    func legacyRelativeReceiptPath() throws {
+        let (fs, service, _, _) = try fixture()
+        try fs.write(fs.readData(at: "/scope.json"), to: "scope.json")
+        let document = try service.affectedDocument(files: ["Sources/App/App.swift"], targetScopeEvidencePath: "scope.json")
+        #expect(document.targetScope?.evidenceStatus == "matched-capture")
+    }
+
     private let description = """
     {"path":"/p","dependencies":[],"targets":[
       {"name":"App","c99name":"App","module_type":"SwiftTarget","type":"library",

@@ -106,3 +106,46 @@ directory and never cleans another build or checkout.
 The prior SwiftPM receipt remains diagnostic only and continues to refuse Xcode
 selectors. Existing commands without `--target-scope` keep their compatibility behavior.
 No public release or native-platform validation is implied by this source document.
+
+## Finite local package opt-in (receipt v2)
+
+Add `--local-package` to the capture command to request one project-contained ordinary
+Swift library. Default capture and v1 receipts retain their package refusal. Existing
+readers that do not support v2 refuse it; recapture with a v2-capable producer and use
+a matching consumer. The separate SwiftPM diagnostic receipt has not become Xcode proof.
+
+The package manifest must be a fully consumed literal `Package` declaration: one name,
+one library product, and one matching Swift target, using tools version 5.9 or 6.0–6.3.
+Comments are tokenized without execution; computed expressions, string escapes,
+dependencies, plugins, macros, binary targets, resources, Clang sources, package tests,
+and configuration variants are unsupported. Every subtree entry is bound, including
+empty directories and extensions the normal Swift source inventory would not scan.
+Adding an unexpected resource or C/C++ file therefore invalidates the proof. The manifest
+is configuration evidence, not a missing compiled Swift declaration; unrelated missing
+sources and global configuration blockers remain visible and continue to refuse selectors.
+
+PBX package and product references must agree with explicit framework-phase consumers.
+The capture observes actual compiler source lists, output maps, target triples, and
+successfully read index records. A raw unit output identity can be virtual: it must
+match `index-unit-output-path`, while the distinct `object` entry names the real object.
+Repeated Xcode compiler wrappers are deduplicated only when their underlying invocation
+and source/output identities agree. Product, compiler-module, and selector names remain
+separate. Every declared native consumer must have a positive object → relocatable object
+→ native executable live-owner link-map chain, and at least one consumer must belong to
+the selected native target closure. Compiled/indexed but unlinked, stripped, ambiguous,
+or missing contribution remains unknown; it never classifies a package outside scope.
+
+Compiler/link response files, source/output maps, file lists, link maps, objects, and
+backing record bytes are hashed and read again. v2 capture discovers record identities,
+binds the complete proof, launches a fresh raw snapshot process, and compares the whole
+proof again before writing. v2 CLI/MCP consumption similarly binds proof around fresh
+raw analysis and checks it at return; cached MCP graphs cannot certify changed record
+bytes just because unit timestamps are unchanged. This opt-in costs extra analysis and
+I/O; v1 and ordinary warm-query costs remain separate. Failures invalidate MCP readiness.
+
+Additional v2 limits: 4,096 package entries, depth 128, 256 Swift sources/records, 64 KiB
+manifest, 1,024 proof files, 1,000 tokens per observed command. Documents are limited to
+8 MiB each / 32 MiB total, objects 64 MiB each / 256 MiB total, records 16 MiB each /
+64 MiB total. Nested response files and incomplete link-map parsing refuse proof.
+These are review candidates from the exact captured build, not runtime coverage or
+permission to skip the rest of a test suite.

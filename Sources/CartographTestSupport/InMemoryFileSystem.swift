@@ -96,4 +96,24 @@ public final class InMemoryFileSystem: FileSystem, @unchecked Sendable {
             return entries.sorted()
         }
     }
+
+    /// 제한 없는 배열 API를 경유하지 않아 소비자 상한 검사를 실제로 검증한다.
+    public func directoryEntries(at path: String, maximumEntries: Int) throws -> [DirectoryEntry] {
+        let prefix = path.hasSuffix("/") ? path : path + "/"
+        return try lock.withLock {
+            guard maximumEntries >= 0 else { throw CocoaError(.fileReadUnknown) }
+            var entries: [String: DirectoryEntry] = [:]
+            for filePath in files.keys where filePath.hasPrefix(prefix) {
+                let remainder = filePath.dropFirst(prefix.count)
+                guard let first = remainder.split(separator: "/").first else { continue }
+                let child = prefix + first
+                if entries[child] == nil {
+                    guard entries.count < maximumEntries else { throw CocoaError(.fileReadTooLarge) }
+                    entries[child] = .init(path: child, isDirectory: child != filePath,
+                        isRegularFile: child == filePath, isSymbolicLink: false)
+                }
+            }
+            return entries.values.sorted { $0.path < $1.path }
+        }
+    }
 }

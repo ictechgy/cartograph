@@ -10,26 +10,52 @@ struct XcodeProjectMembership {
         let dependencies: [String]
     }
     struct FrameworkReference: Hashable { let sourceTree: String; let path: String }
+    struct LocalPackage {
+        let path: String
+        let referenceID: String
+        let productReferenceID: String
+        let product: String
+    }
     let targets: [String: Target]
     let frameworks: Set<FrameworkReference>
+    let packageConsumers: Set<String>
 
-    init(data: Data, root: String) throws {
+    init(data: Data, root: String, localPackage: LocalPackage? = nil) throws {
         guard let plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
               let objects = plist["objects"] as? [String: [String: Any]], objects.count <= 50_000,
               let rootID = plist["rootObject"] as? String, let project = objects[rootID],
               project["isa"] as? String == "PBXProject", let main = project["mainGroup"] as? String,
               let targetIDs = project["targets"] as? [String], !targetIDs.isEmpty, targetIDs.count <= 1_000,
-              (project["packageReferences"] as? [String] ?? []).isEmpty,
+              (project["packageReferences"] as? [String] ?? []) == (localPackage.map({ [$0.referenceID] }) ?? []),
               (project["projectReferences"] as? [Any] ?? []).isEmpty,
               (project["projectDirPath"] as? String ?? "").isEmpty,
               (project["projectRoot"] as? String ?? "").isEmpty else {
             throw Self.invalid("Only bounded single-project target membership is supported.")
         }
+        if let package = localPackage {
+            guard Self.relative(package.path), package.referenceID != package.productReferenceID,
+                  let reference = objects[package.referenceID], reference["isa"] as? String == "XCLocalSwiftPackageReference",
+                  Set(reference.keys) == ["isa", "relativePath"],
+                  reference["relativePath"] as? String == package.path,
+                  let product = objects[package.productReferenceID], product["isa"] as? String == "XCSwiftPackageProductDependency",
+                  Set(product.keys) == ["isa", "package", "productName"],
+                  product["package"] as? String == package.referenceID,
+                  product["productName"] as? String == package.product else {
+                throw Self.invalid("The local package declaration differs from the captured literal product.")
+            }
+        }
         // 첫 build 이전에도 같은 unsupported 입력을 생산자가 거부한다. 소비자는 원문을 다시 확인한다.
-        for object in objects.values {
+        for (id, object) in objects {
             let isa = object["isa"] as? String ?? ""
+            if isa.contains("SwiftPackage") {
+                guard let package = localPackage,
+                      (id == package.referenceID && isa == "XCLocalSwiftPackageReference")
+                        || (id == package.productReferenceID && isa == "XCSwiftPackageProductDependency") else {
+                    throw Self.invalid("Additional, remote or unsupported package declarations are not allowed.")
+                }
+            }
             guard !["PBXShellScriptBuildPhase", "PBXBuildRule", "PBXAggregateTarget",
-                     "PBXFileSystemSynchronizedRootGroup", "XCSwiftPackageProductDependency"].contains(isa),
+                     "PBXFileSystemSynchronizedRootGroup"].contains(isa),
                   object["platformFilter"] == nil, object["platformFilters"] == nil else {
                 throw Self.invalid("Scripts, synchronized groups, packages or platform-filtered membership are unsupported.")
             }
@@ -71,15 +97,18 @@ struct XcodeProjectMembership {
         }, uniquingKeysWith: { _, _ in "" })
         var linkedTargets: [String: Set<String>] = [:]
         var frameworks: Set<FrameworkReference> = []
+        var packageConsumers: Set<String> = [], packageLinks: Set<String> = []
         for id in targetIDs {
             guard let target = objects[id], target["isa"] as? String == "PBXNativeTarget",
                   let name = target["name"] as? String, let type = target["productType"] as? String,
                   ["com.apple.product-type.framework", "com.apple.product-type.library.static",
                    "com.apple.product-type.application", "com.apple.product-type.bundle.unit-test"].contains(type),
                   (target["buildRules"] as? [String] ?? []).isEmpty,
-                  (target["packageProductDependencies"] as? [String] ?? []).isEmpty else {
+                  (target["packageProductDependencies"] as? [String] ?? []).isEmpty
+                    || (target["packageProductDependencies"] as? [String]) == localPackage.map({ [$0.productReferenceID] }) else {
                 throw Self.invalid("Unsupported native target or build rule.")
             }
+            if !(target["packageProductDependencies"] as? [String] ?? []).isEmpty { packageConsumers.insert(id) }
             var sources: [String] = []
             for phaseID in target["buildPhases"] as? [String] ?? [] {
                 guard let phase = objects[phaseID], let kind = phase["isa"] as? String,
@@ -90,6 +119,15 @@ struct XcodeProjectMembership {
                     throw Self.invalid("Resource and header build phases are not modeled by this Swift-only receipt.")
                 }
                 for file in files {
+                    if let product = objects[file]?["productRef"] as? String {
+                        guard kind == "PBXFrameworksBuildPhase", product == localPackage?.productReferenceID,
+                              let buildFile = objects[file], buildFile["isa"] as? String == "PBXBuildFile",
+                              Set(buildFile.keys) == ["isa", "productRef"],
+                              packageLinks.insert(id).inserted else {
+                            throw Self.invalid("Ambiguous or unsupported local package link declaration.")
+                        }
+                        continue
+                    }
                     guard let buildFile = objects[file], let ref = buildFile["fileRef"] as? String,
                           buildFile["settings"] == nil else { throw Self.invalid("Conditional or generated build inputs are unsupported.") }
                     if kind == "PBXSourcesBuildPhase" {
@@ -138,8 +176,12 @@ struct XcodeProjectMembership {
             guard links.isSubset(of: closure) else { throw Self.invalid("Implicit target dependencies must be declared explicitly.") }
         }
         guard frameworks.count <= 64 else { throw Self.invalid("System framework count budget exceeded.") }
+        guard packageLinks == packageConsumers, localPackage == nil || !packageConsumers.isEmpty else {
+            throw Self.invalid("Package product dependencies and framework product links disagree.")
+        }
         self.targets = targets
         self.frameworks = frameworks
+        self.packageConsumers = packageConsumers
     }
 
     static func validRunpaths(_ value: Any) -> Bool {

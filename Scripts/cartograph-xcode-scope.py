@@ -5,6 +5,7 @@ This runs build-for-testing (not tests). Review the project before invoking it.
 Unsupported scripts, packages, plugins, external/conditional membership and resources
 are rejected before xcodebuild. A receipt is an auditable producer claim, not a signature,
 test-coverage proof, or permission to skip tests. Use the exact captured test context.
+--local-package opts into one finite literal local Swift library and positive link evidence.
 """
 from __future__ import annotations
 
@@ -38,6 +39,13 @@ UNBOUND_SETTINGS = {"EXCLUDED_SOURCE_FILE_NAMES", "INCLUDED_SOURCE_FILE_NAMES", 
 def require(condition, message):
     if not condition:
         raise CaptureError(message)
+
+
+def package_helper(name):
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(name + ".py"))
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    return helper
 
 
 def relative(value):
@@ -299,11 +307,20 @@ def capture(args):
     project_bytes = run(["plutil", "-convert", "json", "-o", "-", str(root / args.xcode_project / "project.pbxproj")],
                         root, output, "project-plist", args.timeout)
     project_plist = json.loads(project_bytes)
-    targets = membership(project_plist)
+    package_spec = None
+    safe_plist = project_plist
+    if getattr(args, "local_package", False):
+        package_inputs = package_helper("xcode-local-package-inputs")
+        package_spec, safe_plist = package_inputs.project(root, project_plist)
+    targets = membership(safe_plist)
+    if package_spec:
+        prefix = package_spec["path"] + "/"
+        require(not any(path.startswith(prefix) for t in targets.values() for path in t["sources"]),
+                "Package sources cannot also belong to native targets")
     scheme_path, configuration, selected = scheme_membership(root, args.xcode_project, args.scheme, args.test_plan)
     require(all(x in targets and targets[x]["productType"] == "com.apple.product-type.bundle.unit-test" for x in selected),
             "Selected scheme entries must be local unit-test targets")
-    frameworks = capture_frameworks(project_plist, root, output, args.timeout)
+    frameworks = capture_frameworks(safe_plist, root, output, args.timeout)
     arch = platform.machine()
     require(arch in ("arm64", "x86_64"), "Unsupported native architecture")
     destination = "platform=macOS,arch=" + arch
@@ -313,6 +330,8 @@ def capture(args):
     if args.test_plan:
         common += ["-testPlan", Path(args.test_plan).stem]
     overrides = ["CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=YES", "ARCHS=" + arch]
+    if package_spec:
+        overrides += ["LD_GENERATE_MAP_FILE=YES"]
     # A test-only scheme can have no build-for-running entries. Query the same test
     # action that will produce the receipt, rather than the implicit build action.
     settings_bytes = run(common + ["build-for-testing", "-showBuildSettings", "-json"] + overrides,
@@ -331,7 +350,7 @@ def capture(args):
         target["module"] = rows[0]["buildSettings"]["PRODUCT_MODULE_NAME"]
     require(len({x["module"] for x in targets.values()}) == len(targets),
             "Compiler module names must be unique across every project target")
-    run(common + ["build-for-testing"] + overrides, root, output, "build-for-testing", args.timeout, 32 * 1024 * 1024)
+    build_log = run(common + ["build-for-testing"] + overrides, root, output, "build-for-testing", args.timeout, 32 * 1024 * 1024)
     products_root = derived / "Build/Products"
     test_runs = list(products_root.glob("*.xctestrun"))
     require(len(test_runs) == 1, "Expected one freshly built xctestrun")
@@ -341,6 +360,20 @@ def capture(args):
     if args.config:
         command += ["--config", str(Path(args.config).resolve())]
     snapshot = json.loads(run(command, root, output, "snapshot", args.timeout, 128 * 1024 * 1024))
+    package_evidence = None
+    if package_spec:
+        proof = package_helper("xcode-local-package-evidence")
+        def package_proof(current_snapshot):
+            current, _ = package_inputs.project(root, project_plist)
+            require(current == package_spec, "Entire package subtree changed during capture")
+            return proof.assemble(current, root, derived, stores[0], build_log.decode("utf-8"),
+                                  current_snapshot, targets, settings, selected, arch)
+        package_evidence = package_proof(snapshot)
+        # Record names discovered above do not certify that their bytes are what the
+        # graph read. A new process reads raw records between complete proof reads.
+        snapshot = json.loads(run(command, root, output, "package-fresh-snapshot", args.timeout, 128 * 1024 * 1024))
+        require(package_proof(snapshot) == package_evidence,
+                "Package compiler/link/record proof changed across fresh graph analysis")
     after = inventory(root)
     require(before == after, "Inputs changed during capture; inspect generated files and recapture")
     products, links = product_inventory(products_root)
@@ -364,6 +397,10 @@ def capture(args):
                "testRunSHA256": products[str(test_runs[0])], "products": products, "productLinks": links,
                "targets": sorted(targets.values(), key=lambda x: x["id"]), "selectedTargetIDs": selected,
                "frameworks": frameworks, "testHosts": test_hosts, "buildExitCode": 0}
+    if package_evidence:
+        require(package_proof(snapshot) == package_evidence, "Package proof changed before receipt publication")
+        require(before == inventory(root), "Project inputs changed before package receipt publication")
+        receipt.update({"version": 2, "localPackage": package_evidence})
     require(isinstance(receipt["inputFingerprint"], str) and len(receipt["inputFingerprint"]) == 64,
             "Snapshot has no bound input fingerprint")
     encoded = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode()
@@ -382,6 +419,8 @@ def main():
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--test-plan", help="Relative shared .xctestplan path; exactly one empty-options configuration")
     parser.add_argument("--config")
+    parser.add_argument("--local-package", action="store_true",
+                        help="Opt into v2: one literal local Swift library; fresh raw analysis and positive link proof required")
     parser.add_argument("--timeout", type=int, default=600)
     args = parser.parse_args()
     try:

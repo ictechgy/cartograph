@@ -129,7 +129,9 @@ struct RawIndexStoreReader {
                     module: recordModule,
                     timestamp: timestamp,
                     isSystem: unit.isSystemUnit || dependency.isSystem,
-                    provider: provider
+                    provider: provider,
+                    unitOutputIdentity: unit.outputFile.string,
+                    unitTargetTriple: unit.target.string
                 ))
             }
         }
@@ -158,7 +160,8 @@ struct RawIndexStoreReader {
                 occurrenceKeyPeak?(deduplicator.retainedKeyCount)
                 if record.path.hasSuffix(".swift"), !record.isSystem, record.provider == .swift {
                     admissions.append(.init(path: record.path, module: record.module, unit: record.unit,
-                        record: record.record, timestamp: record.timestamp))
+                        record: record.record, timestamp: record.timestamp,
+                        unitOutputIdentity: record.unitOutputIdentity, unitTargetTriple: record.unitTargetTriple))
                 }
             }
             remainingUses[record.record, default: 1] -= 1
@@ -363,6 +366,8 @@ struct RawIndexStoreReader {
         let timestamp: Date
         let isSystem: Bool
         let provider: DBSymbolProviderKind
+        let unitOutputIdentity: String
+        let unitTargetTriple: String
 
         var sortKey: (String, String, String, String) {
             (unit, record, path, module)

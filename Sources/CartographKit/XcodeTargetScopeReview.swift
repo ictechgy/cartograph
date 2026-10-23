@@ -11,7 +11,8 @@ extension CartographService {
                 + "Selectors are static review candidates for this exact project/scheme/plan/configuration/destination only; "
                 + "they do not authorize skipping other tests or predict failures.",
             "xcode-target-scope-boundary: single local Swift project with explicit source phases only. "
-                + "Other projects, destinations, scripts, packages, synchronized groups and conditional membership remain unsupported.",
+                + "Other projects, destinations, scripts, synchronized groups and conditional membership remain unsupported. "
+                + "Version 2 admits one ordinary local Swift library only with fresh raw records and observed object/link contribution.",
         ]
         do {
             guard let fingerprint else { throw AnalysisSessionError.unavailable }
@@ -24,7 +25,13 @@ extension CartographService {
             let admissions = Dictionary(grouping: context.snapshot.sourceRecordAdmissions ?? [],
                 by: { fileSystem.canonicalPath($0.path) })
             let targets = Dictionary(uniqueKeysWithValues: evidence.receipt.targets.map { ($0.id, $0) })
-            let selectedSources = evidence.owners.filter { evidence.closure.contains($0.value) }.keys.sorted()
+            let package = evidence.receipt.localPackage
+            let packageSources = package?.sourcePaths(root: root) ?? []
+            if let package {
+                try package.validateAdmissions(context.snapshot.sourceRecordAdmissions ?? [], root: root, fileSystem: fileSystem)
+            }
+            let selectedSources = Set(evidence.owners.filter { evidence.closure.contains($0.value) }.keys)
+                .union(packageSources).sorted()
             var blockers: [String] = []
             for source in selectedSources {
                 let relative = String(source.dropFirst(root.count + 1))
@@ -32,7 +39,8 @@ extension CartographService {
                 guard let date = indexed[source], let modified = fileSystem.modificationDate(at: source), date >= modified else {
                     blockers.append("missing-or-stale-selected-unit:" + relative); continue
                 }
-                guard let owner = evidence.owners[source], let module = targets[owner]?.module,
+                let module = packageSources.contains(source) ? package?.module : evidence.owners[source].flatMap { targets[$0]?.module }
+                guard let module,
                       let records = admissions[source], !records.isEmpty,
                       records.allSatisfy({ $0.module == module && !$0.unit.isEmpty && !$0.record.isEmpty
                           && $0.timestamp >= modified }) else {
@@ -44,8 +52,13 @@ extension CartographService {
             var rows: [TargetScopeDocument.Path] = []
             for candidate in candidates.sorted() {
                 let source = fileSystem.canonicalPath(candidate)
+                if let package, source == root + "/" + package.path + "/Package.swift" {
+                    rows.append(.init(path: package.path + "/Package.swift", classification: "configuration-input",
+                        targets: [], blockers: ["validated-literal-package-manifest"]))
+                    continue
+                }
                 let owner = evidence.owners[source]
-                let inside = owner.map(evidence.closure.contains)
+                let inside: Bool? = packageSources.contains(source) ? true : owner.map(evidence.closure.contains)
                 var reasons: [String] = []
                 if indexed[source] == nil { reasons.append("no-observed-index-unit") }
                 if !included.contains(source) { reasons.append("outside-analysis-source-filter") }

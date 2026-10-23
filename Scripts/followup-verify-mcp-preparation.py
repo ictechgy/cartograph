@@ -38,11 +38,12 @@ def require(condition: bool, message: str) -> None:
 
 
 class Peer:
-    def __init__(self, binary: Path, package: Path, output: Path, mode: str):
+    def __init__(self, binary: Path, package: Path, output: Path, mode: str, extra_arguments=None):
         self.output = output
         self.process = subprocess.Popen(
             [str(binary), "serve", "--project", str(package), "--session-freshness-interval", "0",
-             "--limitations", mode], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+             "--limitations", mode] + list(extra_arguments or []),
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         # 전체 실행은 외부 supervisor의 소유 프로세스 그룹 안에 머문다.
         self.selector = selectors.DefaultSelector()
         for name in ("stdout", "stderr"):
