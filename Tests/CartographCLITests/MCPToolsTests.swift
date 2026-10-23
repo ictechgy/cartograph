@@ -406,8 +406,10 @@ struct MCPToolsTests {
         let tools = CartographMCPTools(makeSession: {
             var builder = SnapshotBuilder()
             builder.symbol("Service", kind: .classType)
-            builder.symbol("ServiceTests", name: "testService()", kind: .method, attributes: [.unitTest])
+            builder.symbol("ServiceTests", name: "testService()", kind: .function, attributes: [.testFunction])
+            builder.symbol("LegacyMarker", name: "testDebug()", kind: .method, attributes: [.unitTest])
             builder.reference(from: "ServiceTests", to: "Service", kind: .call)
+            builder.reference(from: "LegacyMarker", to: "Service", kind: .call)
             var configuration = CartographConfiguration.default
             configuration.projectPath = "/p"
             return try AnalysisSession(service: CartographService(
@@ -428,6 +430,12 @@ struct MCPToolsTests {
         let tests = document?["tests"]?.arrayValue ?? []
         #expect(tests.count == 1)
         #expect(tests.first?.objectValue?["depth"] == .integer(1))
+        #expect(tests.first?.objectValue?["symbol"]?.objectValue?["usr"] == .string("ServiceTests"))
+        let uncertain = document?["uncertainTestCandidates"]?.arrayValue ?? []
+        #expect(uncertain.count == 1)
+        #expect(uncertain.first?.objectValue?["symbol"]?.objectValue?["usr"] == .string("LegacyMarker"))
+        let limitations = document?["limitations"]?.arrayValue ?? []
+        #expect(limitations.contains { $0.stringValue?.hasPrefix("unverified-test-markers:") == true })
 
         let missing = try tools.call(name: "cartograph_affected", arguments: .object([
             "symbols": .array([.string("NoSuchSymbol")]),

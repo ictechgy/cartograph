@@ -56,5 +56,26 @@ class EvidenceTests(unittest.TestCase):
             with self.subTest(field=field):
                 with self.assertRaises(ValueError):
                     subject.completed_exit({**receipt, field: value}, None)
+
+    def test_incomplete_public_or_candidate_cannot_satisfy_enforcing_gate(self):
+        candidate = subject.classify(self.report(), SOURCES)
+        candidate["limitations"] = []
+        public = {**candidate, "requiredAliasFalsePositives": [[name, line] for name in subject.LIVE
+                   for line in subject.alias_lines(SOURCES[name])]}
+        self.assertTrue(subject.behavior_satisfied(public, candidate))
+        for note in ["index-staleness: source newer", "unindexed-sources: 1", "unknown future limitation"]:
+            for side in ["public", "candidate"]:
+                with self.subTest(note=note, side=side):
+                    before, after = dict(public), dict(candidate)
+                    (before if side == "public" else after)["limitations"] = [note]
+                    self.assertFalse(subject.behavior_satisfied(before, after))
+        for field, value in [("unrelatedAliasesStillReported", False), ("deadOwnerStillReported", False),
+                             ("requiredAliasFalsePositives", [["TopLevelPublisher.swift", 4]])]:
+            self.assertFalse(subject.behavior_satisfied(public, {**candidate, field: value}))
+
+    def test_malformed_limitations_cannot_be_missing_evidence(self):
+        for limits in [None, "index-staleness", [None]]:
+            with self.subTest(limits=limits), self.assertRaises(ValueError):
+                subject.classify({**self.report(), "limitations": limits}, SOURCES)
 if __name__ == "__main__":
     unittest.main()

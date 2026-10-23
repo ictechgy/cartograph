@@ -32,13 +32,13 @@ struct AssociatedTypeWitnessCompilerTests {
             .filter { $0.pathExtension == "swift" }.sorted { $0.path < $1.path }
         try #require(files.count == 5)
         let store = root.appendingPathComponent("IndexStore")
-        let command = ["/usr/bin/xcrun", "swiftc", "-module-name", "WitnessApp", "-index-store-path", store.path]
+        let arguments = ["-module-name", "WitnessApp", "-index-store-path", store.path]
             + files.map(\.path) + ["-o", root.appendingPathComponent("WitnessApp").path]
-        try phase("compiler-start-deadline-240s", logs: logs)
-        try compile(command, in: root, repo: repo, logs: logs)
+        try phase("toolchain-lookup-and-compiler-start-deadline-240s", logs: logs)
+        let selectedLibrary = try compile(arguments, in: root, repo: repo, logs: logs)
         try phase("compiler-complete", logs: logs)
-        try phase("locate-index-library-start", logs: logs)
-        let library = try IndexStoreLocator().locateLibrary(explicitPath: nil, developerDirectory: nil)
+        try phase("validate-selected-index-library-start", logs: logs)
+        let library = try IndexStoreLocator().locateLibrary(explicitPath: selectedLibrary, developerDirectory: nil)
         try phase("raw-index-read-start", logs: logs)
         let result = try RawIndexStoreReader(storePath: store.path, libraryPath: library,
             fileSystem: LocalFileSystem()).read(in: Set(files.map(\.path)))
@@ -83,8 +83,8 @@ struct AssociatedTypeWitnessCompilerTests {
 
     /// 기존 계측 supervisor가 소유한 compiler 프로세스 그룹만 deadline/출력 예산으로 관리한다.
     /// Swift 쪽도 supervisor 완료를 유한하게 기다린다. 소유권이 불명확하면 임의 kill하지 않는다.
-    private func compile(_ command: [String], in root: URL, repo: URL, logs: URL) throws {
-        let request = CompileRequest(command: command, cwd: root.path,
+    private func compile(_ arguments: [String], in root: URL, repo: URL, logs: URL) throws -> String {
+        let request = CompileRequest(arguments: arguments, cwd: root.path,
             stem: logs.appendingPathComponent("compiler").path,
             helper: repo.appendingPathComponent("Scripts/benchmark-indexstore-cli.py").path)
         let requestPath = logs.appendingPathComponent("compiler-request.json")
@@ -115,17 +115,27 @@ struct AssociatedTypeWitnessCompilerTests {
             throw NSError(domain: "AssociatedTypeWitnessCompiler", code: 124,
                 userInfo: [NSLocalizedDescriptionKey: message])
         }
-        let receipt = try JSONDecoder().decode(CompileReceipt.self,
+        guard process.terminationReason == .exit, process.terminationStatus == 0 else {
+            try phase("toolchain-or-compiler-supervisor-failed", logs: logs)
+            let message = "Toolchain lookup or compiler failed. Evidence: " + logs.path
+            throw NSError(domain: "AssociatedTypeWitnessCompiler", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        let decoder = JSONDecoder()
+        let receipt = try decoder.decode(CompileReceipt.self,
             from: Data(contentsOf: logs.appendingPathComponent("compiler.json")))
-        guard process.terminationReason == .exit, process.terminationStatus == 0,
-              receipt.returncode == 0, !receipt.timed_out, receipt.owned_root_reaped,
+        let toolchain = try decoder.decode(ToolchainReceipt.self,
+            from: Data(contentsOf: logs.appendingPathComponent("toolchain.json")))
+        guard receipt.returncode == 0, !receipt.timed_out, receipt.owned_root_reaped,
               !receipt.ownership_lost, receipt.cleanup_errors.isEmpty,
-              receipt.output_limit_exceeded == nil, receipt.exception_type == nil else {
+              receipt.output_limit_exceeded == nil, receipt.exception_type == nil,
+              toolchain.status == "completed", receipt.command.first == toolchain.compilerPath else {
             try phase("compiler-failed-or-cleanup-unconfirmed", logs: logs)
             let message = "Compiler failed or cleanup is incomplete. Evidence: " + logs.path
             throw NSError(domain: "AssociatedTypeWitnessCompiler", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: message])
         }
+        return toolchain.libraryPath
     }
 
     private func phase(_ name: String, logs: URL) throws {
@@ -143,13 +153,14 @@ struct AssociatedTypeWitnessCompilerTests {
     }
 
     private struct CompileRequest: Encodable {
-        let command: [String]
+        let arguments: [String]
         let cwd: String
         let stem: String
         let helper: String
     }
 
     private struct CompileReceipt: Decodable {
+        let command: [String]
         let returncode: Int?
         let timed_out: Bool
         let owned_root_reaped: Bool
@@ -157,6 +168,12 @@ struct AssociatedTypeWitnessCompilerTests {
         let cleanup_errors: [String]
         let output_limit_exceeded: String?
         let exception_type: String?
+    }
+
+    private struct ToolchainReceipt: Decodable {
+        let status: String
+        let compilerPath: String
+        let libraryPath: String
     }
 
     private struct Phase: Encodable {
@@ -168,17 +185,68 @@ struct AssociatedTypeWitnessCompilerTests {
     private static let supervisor = #"""
     import importlib.util
     import json
+    import os
     from pathlib import Path
     import sys
+    import time
 
     request = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
     spec = importlib.util.spec_from_file_location("witness_compiler_base", request["helper"])
     base = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(base)
+    started = time.monotonic()
+    logs = Path(request["stem"]).parent
+    selection_path = logs / "toolchain.json"
+    selection = {"status": "incomplete", "totalBudgetSeconds": 240,
+                 "lookupTimeoutSeconds": 30, "lookupStreamLimitBytes": 4096}
+    base.save(selection_path, selection)
+
+    def phase(name):
+        record = {"name": name, "unixSeconds": time.time(), "uptimeSeconds": time.monotonic()}
+        with (logs / "phases.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(record, sort_keys=True) + "\n")
+        print(f"associated-witness phase: {name}; evidence: {logs}", file=sys.stderr, flush=True)
+
     try:
-        base.run(request["command"], Path(request["cwd"]), Path(request["stem"]),
-                 timeout=240, stream_limit=4 * 1024 * 1024)
+        phase("toolchain-lookup-start")
+        lookup = base.run(["/usr/bin/xcrun", "--find", "swiftc"], Path(request["cwd"]),
+                          logs / "toolchain-lookup", timeout=30, stream_limit=4096)
+        lines = Path(lookup["stdout"]).read_text(encoding="utf-8").splitlines()
+        if len(lines) != 1:
+            raise ValueError("Compiler lookup must return exactly one absolute path")
+        compiler = Path(lines[0])
+        selection["compilerPath"] = str(compiler)
+        if not compiler.is_absolute() or compiler.name != "swiftc":
+            raise ValueError("Compiler lookup did not select an absolute swiftc path")
+        if not compiler.is_file() or not os.access(compiler, os.X_OK):
+            raise ValueError("Selected Swift compiler does not exist or is not executable")
+        if compiler.parent.name != "bin" or compiler.parent.parent.name != "usr":
+            raise ValueError("Selected Swift compiler has no adjacent usr/lib toolchain layout")
+        usr = compiler.parent.parent.resolve(strict=True)
+        canonical_compiler = compiler.resolve(strict=True)
+        library = usr / "lib" / "libIndexStore.dylib"
+        selection.update(compilerCanonicalPath=str(canonical_compiler), libraryPath=str(library))
+        if not canonical_compiler.is_relative_to(usr) or not library.is_file():
+            raise ValueError("Selected toolchain has no matching IndexStore library")
+        canonical_library = library.resolve(strict=True)
+        selection["libraryCanonicalPath"] = str(canonical_library)
+        if not canonical_library.is_relative_to(usr):
+            raise ValueError("IndexStore library resolves outside the selected compiler toolchain")
+        phase("toolchain-bound")
+        remaining = 240 - (time.monotonic() - started)
+        if remaining <= 0:
+            raise TimeoutError("Toolchain lookup exhausted the total compiler budget")
+        selection.update(status="selected", compilerTimeoutSeconds=remaining)
+        base.save(selection_path, selection)
+        phase("compiler-start-with-selected-toolchain")
+        base.run([str(compiler), *request["arguments"]], Path(request["cwd"]), Path(request["stem"]),
+                 timeout=remaining, stream_limit=4 * 1024 * 1024)
+        selection["status"] = "completed"
+        base.save(selection_path, selection)
+        phase("compiler-complete-with-selected-toolchain")
     except BaseException as error:
+        selection.update(status="failed", exceptionType=type(error).__name__, error=str(error)[:2048])
+        base.save(selection_path, selection)
         print(f"compiler supervisor: {type(error).__name__}: {error}", file=sys.stderr, flush=True)
         sys.exit(1)
     """#

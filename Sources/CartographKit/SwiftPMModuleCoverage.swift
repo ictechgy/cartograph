@@ -99,7 +99,7 @@ struct SwiftPMModuleCoverage {
             }
             let staleManifest = metadataDate.flatMap { metadata in manifestDate.map { $0 > metadata } } ?? false
             let state = newerSource || staleManifest ? "stale-metadata-expectation"
-                : (inScope.isEmpty ? "outside-analysis" : "missing-observed-source-units")
+                : (missing.isEmpty ? "outside-analysis" : "missing-observed-source-units")
             let paths = missing.sorted().prefix(3).map { String(reflecting: String($0.prefix(512))) }
                 .joined(separator: ", ")
             rows.append("\(String(reflecting: module)): \(state), expected local sources \(sources.count), "

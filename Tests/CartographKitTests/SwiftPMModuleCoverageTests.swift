@@ -38,6 +38,17 @@ struct SwiftPMModuleCoverageTests {
         #expect(notes(fs, dates: nil).first?.contains("timestamps unavailable") == true)
     }
 
+    @Test("범위 안 소스가 모두 관측되면 일부 범위 밖 소스를 missing unit이라 부르지 않는다")
+    func partiallyExcludedModuleWithCompleteObservedSubset() throws {
+        let fs = try fixture(sources: ["/p/Lib.swift", "/p/Generated.swift"])
+        try fs.write(text: "struct Generated {}", to: "/p/Generated.swift")
+        let complete = notes(fs, dates: ["/p/Lib.swift": Date()])
+        #expect(complete.first?.contains("\"Lib\": outside-analysis") == true)
+        #expect(complete.first?.contains("outside analysis 1, without observed unit timestamp 0") == true)
+        #expect(complete.allSatisfy { !$0.contains("missing-observed-source-units") })
+        #expect(notes(fs, dates: [:]).first?.contains("missing-observed-source-units") == true)
+    }
+
     @Test("상충하는 동명 모듈의 source 집합은 임의로 합쳐 확정하지 않는다")
     func conflictingCommandsRemainUnknown() throws {
         let fs = try fixture()

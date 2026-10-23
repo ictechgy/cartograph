@@ -353,18 +353,19 @@ jobs:
       - name: Build
         run: swift build --build-tests --enable-code-coverage
 
+      - name: Capture associatedtype compiler evidence
+        timeout-minutes: 5
+        run: |
+          python3 Scripts/verify-feedback-native-gate.py
+          python3 Scripts/run-feedback-native-gate.py raw \
+            --output "$RUNNER_TEMP/associated-witness/raw"
+
       - name: Test with coverage gate
         timeout-minutes: 15
         run: |
           python3 Scripts/verify-coverage-inputs.py
-          Scripts/coverage.sh
-
-      - name: Capture associatedtype compiler evidence
-        if: always()
-        timeout-minutes: 5
-        run: >-
-          CARTOGRAPH_ASSOCIATED_WITNESS_EVIDENCE="$RUNNER_TEMP/associated-witness/raw-occurrences.json"
-          swift test --skip-build --enable-code-coverage --filter AssociatedTypeWitnessCompilerTests
+          python3 Scripts/run-feedback-native-gate.py coverage \
+            --output "$RUNNER_TEMP/associated-witness/coverage"
 
       - name: Preserve associatedtype compiler evidence
         if: always()
@@ -503,13 +504,13 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Diagnose associatedtype witness feedback
+      - name: Verify associatedtype witness feedback
         if: ${{ !cancelled() && env.CARTOGRAPH != '' }}
         run: |
           python3 Scripts/verify-associated-witness-contract.py
           python3 Scripts/verify-associated-witness-feedback.py --cartograph "$CARTOGRAPH" \
             --baseline "$RUNNER_TEMP/cartograph-feedback/release-0.28.0/cartograph" \
-            --output "$RUNNER_TEMP/associated-witness-flow" --diagnose
+            --output "$RUNNER_TEMP/associated-witness-flow"
 
       - name: Preserve associatedtype flow evidence
         if: always()
@@ -619,6 +620,15 @@ jobs:
         with:
           name: dependency-graph
           path: build/
+
+      - name: Preserve corpus command evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cartograph-corpus
+          path: ${{ runner.temp }}/cartograph-corpus/
+          if-no-files-found: warn
+          retention-days: 14
 
   retention-feedback:
     name: Measure synthesized-property retention on public projects

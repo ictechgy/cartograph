@@ -38,6 +38,8 @@ def classify(document, sources):
     if not isinstance(diagnostics, list) or document.get("suppressedCount") != 0:
         raise ValueError("Expected unsuppressed dead report")
     limitations = document.get("limitations", [])
+    if not isinstance(limitations, list) or any(not isinstance(value, str) for value in limitations):
+        raise ValueError("Expected explicit limitation strings")
     if any(str(value).startswith("empty-index:") for value in limitations):
         raise ValueError("Empty index cannot establish witness behavior")
     unused = {(Path(item["location"]["path"]).name, item["location"]["line"])
@@ -50,6 +52,14 @@ def classify(document, sources):
             "unrelatedAliasesStillReported": unrelated <= unused,
             "deadOwnerStillReported": ("DeadPublisher.swift", dead_line) in unused,
             "unusedLocations": [list(value) for value in sorted(unused)], "limitations": limitations}
+
+
+def behavior_satisfied(public, candidate):
+    """This complete controlled fixture cannot certify behavior from incomplete observations."""
+    return (len(public["requiredAliasFalsePositives"]) == 4
+            and not public["limitations"] and not candidate["limitations"]
+            and not candidate["requiredAliasFalsePositives"]
+            and candidate["unrelatedAliasesStillReported"] and candidate["deadOwnerStillReported"])
 
 
 def main():
@@ -142,8 +152,7 @@ def main():
         current = result["cases"]["candidate"]
         reproduced = len(result["cases"]["public028"]["requiredAliasFalsePositives"]) == 4
         result["publicReproduced"] = reproduced
-        passed = (reproduced and not current["requiredAliasFalsePositives"] and current["unrelatedAliasesStillReported"]
-                  and current["deadOwnerStillReported"])
+        passed = behavior_satisfied(result["cases"]["public028"], current)
         result["status"] = "diagnostic-only" if args.diagnose else ("passed" if passed else "failed")
         result["candidateBehaviorSatisfied"] = passed
         return 0 if args.diagnose or passed else 1
