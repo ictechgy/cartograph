@@ -2098,3 +2098,12 @@ Cartograph는 독립 프로젝트이며 Periphery나 Apple과 관련이 없습�
 `sendEvent(withName:body:)`를 별도 v2 `react-native-event` 문서로 냅니다. isthmus 0.8.0 이상의
 `extract-js --events`와 조인합니다. 동적 이름은 그대로 남기며 ObjC 이벤트·Expo
 모듈별 이벤트·래퍼·간접 상속은 해석하지 않습니다. Swift/ObjC 기본 브리지 출력과 별도 실행합니다.
+
+### 선택적 후속 검토 출력
+
+미배포 0.29.0 후보는 캡처에 묶인 SwiftPM target 소속 검토,
+`dead --file-summary` / `--generated-suggestions`, JSON `--limitations summary`
+(기본 `full`), MCP `cartograph_prepare` 준비 상태를 추가합니다. 원래 finding과
+안전 신호를 유지합니다. Target 소속은 Xcode scheme을 증명하지 않으며 범위를
+모르면 좁은 선택자를 거부하므로 호출자가 전체 suite를 실행해야 합니다.
+[범위·예산·이행 예제](docs/FOLLOWUP-REVIEW.md)를 참고하세요.

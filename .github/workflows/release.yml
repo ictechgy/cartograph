@@ -121,9 +121,9 @@ jobs:
           cp "$binary" dist/cartograph/
           cp LICENSE README.md dist/cartograph/
           mkdir -p dist/cartograph/docs
-          cp docs/QUERY-EVIDENCE.md docs/ENUM-CHANGE-REVIEW.md dist/cartograph/docs/
+          cp docs/QUERY-EVIDENCE.md docs/ENUM-CHANGE-REVIEW.md docs/FOLLOWUP-REVIEW.md dist/cartograph/docs/
           mkdir -p dist/cartograph/Scripts
-          cp Scripts/cartograph-git-impact.py dist/cartograph/Scripts/
+          cp Scripts/cartograph-git-impact.py Scripts/cartograph-swiftpm-scope.py dist/cartograph/Scripts/
           archive="cartograph-${VERSION}-macos-universal.tar.gz"
           tar -C dist -czf "$archive" cartograph
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
@@ -135,6 +135,8 @@ jobs:
         run: |
           tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP"
           "$RUNNER_TEMP/cartograph/cartograph" --version
+          test -s "$RUNNER_TEMP/cartograph/docs/FOLLOWUP-REVIEW.md"
+          cmp docs/FOLLOWUP-REVIEW.md "$RUNNER_TEMP/cartograph/docs/FOLLOWUP-REVIEW.md"
           test -s "$RUNNER_TEMP/cartograph/docs/QUERY-EVIDENCE.md"
           cmp docs/QUERY-EVIDENCE.md "$RUNNER_TEMP/cartograph/docs/QUERY-EVIDENCE.md"
           test -s "$RUNNER_TEMP/cartograph/docs/ENUM-CHANGE-REVIEW.md"
@@ -146,6 +148,8 @@ jobs:
           python3 Scripts/verify-analysis-blindspots.py "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-change-impact.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           cmp Scripts/cartograph-git-impact.py "$RUNNER_TEMP/cartograph/Scripts/cartograph-git-impact.py"
+          cmp Scripts/cartograph-swiftpm-scope.py "$RUNNER_TEMP/cartograph/Scripts/cartograph-swiftpm-scope.py"
+          python3 "$RUNNER_TEMP/cartograph/Scripts/cartograph-swiftpm-scope.py" --help
           python3 Scripts/verify-runtime-contracts.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-discovery.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-keypaths.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
@@ -228,18 +232,19 @@ jobs:
           from pathlib import Path
           path = Path("Formula/cartograph.rb")
           text = path.read_text()
-          install = '    libexec.install "Scripts/cartograph-git-impact.py"\n'
-          anchor = '    bin.install "cartograph"\n'
-          if install not in text:
-              if text.count(anchor) != 1:
-                  raise SystemExit("Unrecognized Cartograph formula install block; update the tap manually")
-              text = text.replace(anchor, anchor + install)
-          assertion = '    assert_path_exists libexec/"cartograph-git-impact.py"\n'
-          anchor = '  test do\n'
-          if assertion not in text:
-              if text.count(anchor) != 1:
-                  raise SystemExit("Unrecognized Cartograph formula test block; update the tap manually")
-              text = text.replace(anchor, anchor + assertion)
+          for helper in ["cartograph-git-impact.py", "cartograph-swiftpm-scope.py"]:
+              install = f'    libexec.install "Scripts/{helper}"\n'
+              anchor = '    bin.install "cartograph"\n'
+              if install not in text:
+                  if text.count(anchor) != 1:
+                      raise SystemExit("Unrecognized Cartograph formula install block; update the tap manually")
+                  text = text.replace(anchor, anchor + install)
+              assertion = f'    assert_path_exists libexec/"{helper}"\n'
+              anchor = '  test do\n'
+              if assertion not in text:
+                  if text.count(anchor) != 1:
+                      raise SystemExit("Unrecognized Cartograph formula test block; update the tap manually")
+                  text = text.replace(anchor, anchor + assertion)
           path.write_text(text)
           PY
           git config user.name "github-actions[bot]"
@@ -256,5 +261,7 @@ jobs:
           grep -F "${SHA256}" "$RUNNER_TEMP/cartograph-installed-formula.rb"
           cmp Scripts/cartograph-git-impact.py "$installed/libexec/cartograph-git-impact.py"
           python3 "$installed/libexec/cartograph-git-impact.py" --help
+          cmp Scripts/cartograph-swiftpm-scope.py "$installed/libexec/cartograph-swiftpm-scope.py"
+          python3 "$installed/libexec/cartograph-swiftpm-scope.py" --help
           python3 Scripts/verify-git-impact.py --cartograph "$installed/bin/cartograph"
           echo "Homebrew ${VERSION}: formula hash, clean installation, helper bytes and compiler-backed change flow verified." >> "$GITHUB_STEP_SUMMARY"

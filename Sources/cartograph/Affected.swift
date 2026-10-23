@@ -40,6 +40,10 @@ struct AffectedCommand: ParsableCommand {
     @Option(name: .customLong("format"), help: "text, json or xcodebuild (-only-testing arguments).")
     var format: AffectedFormat = .text
 
+    @Option(name: .customLong("target-scope"),
+        help: "Optional capture-bound SwiftPM target scope receipt. Classifies blocker paths; does not authorize test omission.")
+    var targetScope: String?
+
     func validate() throws {
         let hasSymbols = !symbols.isEmpty
         let hasFiles = !files.isEmpty
@@ -53,6 +57,9 @@ struct AffectedCommand: ParsableCommand {
         }
         guard symbols.allSatisfy(Self.isNonEmpty), files.allSatisfy(Self.isNonEmpty) else {
             throw ValidationError("affected selectors cannot be empty")
+        }
+        guard targetScope.map(Self.isNonEmpty) ?? true else {
+            throw ValidationError("--target-scope cannot be empty")
         }
         guard options.since.map(Self.isNonEmpty) ?? true else {
             throw ValidationError("--since revision cannot be empty")
@@ -79,7 +86,7 @@ struct AffectedCommand: ParsableCommand {
         // 소비자까지 변경 파일로 잘려, 바깥의 테스트가 사라진다.
         var contextOptions = options
         contextOptions.since = nil
-        let context = try CommandSupport.makeContext(contextOptions)
+        let context = try CommandSupport.makeContext(contextOptions, supportsLimitationSummary: true)
         var selectedFiles = files.map {
             GlobalOptions.absolutePath($0, relativeTo: context.fileSystem.currentDirectoryPath)
         }
@@ -98,7 +105,10 @@ struct AffectedCommand: ParsableCommand {
             limit: limit,
             format: format.rawValue,
             fileSelectionIsDerived: options.since != nil,
-            selectionLimitations: selectionLimitations
+            selectionLimitations: selectionLimitations,
+            targetScopeEvidencePath: targetScope.map {
+                GlobalOptions.absolutePath($0, relativeTo: context.fileSystem.currentDirectoryPath)
+            }
         )
         try CommandSupport.emit(outcome, options: contextOptions, context: context)
     }

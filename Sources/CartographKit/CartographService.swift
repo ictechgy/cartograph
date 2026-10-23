@@ -384,6 +384,20 @@ public struct CartographService: Sendable {
     ///   알린다. 죽은 코드가 아니므로 정보로만 보고하고 종료 코드에는 영향을 주지
     ///   않는다.
     public func detectUnusedCode(reportingTestOnlyCode: Bool = false) throws -> CommandOutcome {
+        try detectUnusedCode(reportingTestOnlyCode: reportingTestOnlyCode, findingReviewOptions: nil)
+    }
+
+    /// 전체 JSON 진단을 유지하면서 선택적 파일 요약과 생성 헤더 제안을 덧붙인다.
+    /// 기존 한 인자 함수 참조의 소스 호환성을 유지하려고 별도 오버로드로 제공한다.
+    public func detectUnusedCode(reportingTestOnlyCode: Bool = false,
+                                 findingReviewOptions: FindingReviewOptions?) throws -> CommandOutcome {
+        if let findingReviewOptions {
+            guard configuration.reportFormat == .json else {
+                throw CartographError.invalidConfiguration(path: projectPath,
+                    reason: "Finding file summaries and generated suggestions require JSON report format.")
+            }
+            try findingReviewOptions.validate()
+        }
         let context = try loadContext()
         let (graph, report) = unusedCode(
             in: context, findingTestOnlyCode: reportingTestOnlyCode, computingSuperfluousIgnores: true
@@ -406,7 +420,8 @@ public struct CartographService: Sendable {
             // 미사용 목록은 에이전트가 삭제의 출발점으로 삼는 답이다. `query` 처럼 한계를 싣는다.
             // 알릴 것이 없으면 키 자체를 만들지 않는다. 빈 배열이 매번 붙으면 그것도 경보다.
             limitations: limitations.isEmpty ? nil : limitations,
-            caveat: emptyIndexCaveat(context)
+            caveat: emptyIndexCaveat(context),
+            findingReviewOptions: findingReviewOptions
         )
     }
 
@@ -1759,7 +1774,8 @@ public struct CartographService: Sendable {
         countedRules: Set<String>? = nil,
         limitations: [String]? = nil,
         caveat: String? = nil,
-        alreadyScoped: Bool = false
+        alreadyScoped: Bool = false,
+        findingReviewOptions: FindingReviewOptions? = nil
     ) throws -> CommandOutcome {
         // 범위를 먼저 좁힌 뒤 베이스라인을 적용한다. 순서를 바꾸면 억제 건수가
         // 범위 밖의 것까지 세어, 사용자가 보는 숫자와 맞지 않는다.
@@ -1786,8 +1802,9 @@ public struct CartographService: Sendable {
         // 표기 펼치기는 기준 경로가 정해져 있으므로 실행당 한 번이면 충분하다.
         // 진단마다 하면 리포트마다 수천 번의 URL 연산이 붙는다.
         let baseVariants = PathFilter.variants(of: projectPath)
-        let output = try reporter.report(
-            reported.map { $0.relative(toBaseVariants: baseVariants) },
+        let displayed = reported.map { $0.relative(toBaseVariants: baseVariants) }
+        var output = try reporter.report(
+            displayed,
             summary: ReportSummary(
                 command: command,
                 subject: subject,
@@ -1796,6 +1813,10 @@ public struct CartographService: Sendable {
                 caveat: caveat
             )
         )
+        if let findingReviewOptions {
+            let review = try findingReviewDocument(diagnostics: displayed.sorted(), options: findingReviewOptions)
+            output = try appendingFindingReview(review, toJSON: output)
+        }
         return CommandOutcome(
             output: output,
             findingCount: counted.count,

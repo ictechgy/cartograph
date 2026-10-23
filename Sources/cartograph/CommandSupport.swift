@@ -1,5 +1,6 @@
 import ArgumentParser
 import CartographCore
+import CartographExport
 import CartographKit
 import Foundation
 
@@ -24,8 +25,14 @@ enum CommandSupport {
     ///   전에 확인한다(`requireConfiguredBaseline(of:)`). 읽지 않는 명령(`graph`, `baseline` 기록 등)은 아직 없는
     ///   `baseline_path` 로도 돈다.
     static func makeContext(
-        _ options: GlobalOptions, queryPhaseObserver: QueryPhaseObserver? = nil, readsBaseline: Bool = false
+        _ options: GlobalOptions, queryPhaseObserver: QueryPhaseObserver? = nil, readsBaseline: Bool = false,
+        supportsLimitationSummary: Bool = false
     ) throws -> CommandContext {
+        // 쓰기·교환 명령이 요약된 근거를 남기기 전에 거부한다. 새 명령은 명시적으로 허용해야 한다.
+        guard supportsLimitationSummary || options.limitations == .full else {
+            throw ValidationError("--limitations summary is supported only by JSON analysis reports; "
+                + "snapshot, exchange and write commands require --limitations full")
+        }
         let fileSystem = LocalFileSystem()
         let resolved = try options.resolveConfiguration(fileSystem: fileSystem)
 
@@ -81,12 +88,13 @@ enum CommandSupport {
         context: CommandContext,
         diagnosticSink: FileHandle = .standardError
     ) throws {
+        let output = try outputForDisplay(outcome.output, limitations: options.limitations)
         if let path = options.outputPath {
             // 여기서 나는 파일 시스템 오류를 그대로 던지면 ArgumentParser 가 1 로
             // 끝낸다. 그것은 "코드에 문제가 있음"에 예약된 코드다. 파일을 못 쓴 것과
             // 순환을 찾은 것이 CI 에서 같은 신호가 되어서는 안 된다.
             do {
-                try context.fileSystem.write(text: outcome.output, to: path)
+                try context.fileSystem.write(text: output, to: path)
             } catch {
                 throw CartographError.outputUnwritable(path: path, underlying: "\(error)")
             }
@@ -94,9 +102,9 @@ enum CommandSupport {
                 print("Wrote \(path)")
             }
         } else {
-            print(outcome.output, terminator: "")
+            print(output, terminator: "")
         }
-        for note in notesForDisplay(outcome.notes, quiet: options.quiet) {
+        for note in notesForDisplay(outcome.notes, quiet: options.quiet, limitationDetail: options.limitations) {
             diagnosticSink.write(Data(("note: " + note + "\n").utf8))
         }
 
@@ -136,9 +144,22 @@ enum CommandSupport {
         }
     }
 
+    /// 종료 코드와 사실 문서는 유지하고 최종 표시 문자열만 바꾼다.
+    static func outputForDisplay(_ output: String, limitations: LimitationDetail) throws -> String {
+        guard limitations == .summary else { return output }
+        do {
+            let rendered = try JSONLimitationPresentation.render(Data(output.utf8), mode: .summary)
+            return String(decoding: rendered, as: UTF8.self) + "\n"
+        } catch {
+            throw ValidationError(error.localizedDescription)
+        }
+    }
+
     /// quiet는 알려진 한계 note의 화면 표현만 줄인다. 숫자·이름을 지워 내용을 합치지 않으며,
     /// 새 코드와 일반 안내는 원문을 유지한다. 결과 JSON과 종료 판단은 건드리지 않는다.
-    static func notesForDisplay(_ notes: [String], quiet: Bool) -> [String] {
+    static func notesForDisplay(
+        _ notes: [String], quiet: Bool, limitationDetail: LimitationDetail = .full
+    ) -> [String] {
         guard quiet else { return notes }
         var counts: [String: Int] = [:]
         var other: [String] = []
@@ -159,7 +180,9 @@ enum CommandSupport {
         let codes = counts.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
         let summary = "analysis-limitations: \(total) note(s) across \(counts.count) known code(s): \(codes). "
             + "Results may be incomplete or stale; an empty result is not a safety guarantee. "
-            + "Full notes: rerun without --quiet. JSON limitation fields are unchanged."
+            + (limitationDetail == .full
+                ? "Full notes: rerun without --quiet. JSON limitation fields are unchanged."
+                : "Full notes: rerun without --quiet and with --limitations full. JSON uses summary detail.")
         return [summary] + other
     }
 

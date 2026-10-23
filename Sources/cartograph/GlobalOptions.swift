@@ -1,6 +1,7 @@
 import ArgumentParser
 import CartographConfig
 import CartographCore
+import CartographExport
 import Foundation
 
 /// 모든 분석 명령이 공유하는 옵션.
@@ -66,6 +67,10 @@ struct GlobalOptions: ParsableArguments {
 
     @Flag(help: "Suppress warnings and summarize known limitation notes; safety errors remain.")
     var quiet: Bool = false
+
+    @Option(name: .customLong("limitations"),
+        help: "JSON report limitation detail: full (default) or summary. Snapshot/exchange evidence requires full.")
+    var limitations: LimitationDetail = .full
 
     /// 설정 파일을 읽고 CLI 옵션을 덮어쓴 최종 설정.
     func resolveConfiguration(
@@ -155,5 +160,15 @@ struct GlobalOptions: ParsableArguments {
         // 버린다. "sub" 가 "/work/proj/sub" 가 아니라 "/work/sub" 가 된다.
         let base = URL(fileURLWithPath: currentDirectory, isDirectory: true)
         return URL(fileURLWithPath: expanded, relativeTo: base).standardizedFileURL.path
+    }
+}
+
+/// CLI 선택 값과 라이브러리 표시 정책을 분리해 ArgumentParser 의존을 Export로 보내지 않는다.
+enum LimitationDetail: String, ExpressibleByArgument, CaseIterable {
+    case full
+    case summary
+
+    var presentationMode: JSONLimitationPresentation.Mode {
+        self == .full ? .full : .summary
     }
 }

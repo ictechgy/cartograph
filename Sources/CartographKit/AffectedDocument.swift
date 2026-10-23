@@ -25,6 +25,8 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
     public let summary: Summary
     public let selectionIssues: [ImpactDocument.SelectionIssue]
     public let limitations: [String]
+    /// 명시 요청한 캡처 소속 진단. 없으면 기존 v1 출력과 같다.
+    public let targetScope: TargetScopeDocument?
     public let truncated: ImpactDocument.Truncation
 
     /// 테스트 선언 하나와 변경에서의 거리.
@@ -74,7 +76,8 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
         summary: Summary,
         selectionIssues: [ImpactDocument.SelectionIssue],
         limitations: [String],
-        truncated: ImpactDocument.Truncation
+        truncated: ImpactDocument.Truncation,
+        targetScope: TargetScopeDocument? = nil
     ) {
         format = Self.format
         version = Self.version
@@ -89,6 +92,7 @@ public struct AffectedDocument: Sendable, Equatable, Codable {
         self.summary = summary
         self.selectionIssues = selectionIssues
         self.limitations = limitations
+        self.targetScope = targetScope
         self.truncated = truncated
     }
 }
@@ -103,11 +107,24 @@ extension CartographService {
         symbols: [String] = [], files: [String] = [], maxDepth: Int? = nil, limit: Int = 200,
         selectionLimitations: [String] = [], in existingContext: AnalysisContext? = nil
     ) throws -> AffectedDocument {
+        try affectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+            selectionLimitations: selectionLimitations, in: existingContext, targetScopeEvidencePath: nil)
+    }
+
+    /// 명시된 소속 캡처 진단을 추가한다. 기존 호출 및 함수 참조의 서명은 위 overload에 남긴다.
+    public func affectedDocument(
+        symbols: [String] = [], files: [String] = [], maxDepth: Int? = nil, limit: Int = 200,
+        selectionLimitations: [String] = [], in existingContext: AnalysisContext? = nil,
+        targetScopeEvidencePath: String?
+    ) throws -> AffectedDocument {
         guard (1...10_000).contains(limit), maxDepth.map({ (1...128).contains($0) }) ?? true else {
             throw CartographError.invalidConfiguration(
                 path: projectPath, reason: "Affected limits require 1...10000 results and an optional depth of 1...128."
             )
         }
+        // 외부 문맥이 언제 읽혔는지 모르면 현재 지문을 과거 그래프에 붙이지 않는다.
+        let scopeFingerprint = targetScopeEvidencePath != nil && existingContext == nil
+            ? (try? sessionInputFingerprint()) : nil
         let context = try existingContext ?? loadContext()
         let graph = context.buildGraph(level: .symbol).graph
         let automatic = context.runtimeDiscovery()
@@ -194,6 +211,12 @@ extension CartographService {
             testFileCount: testFiles.count, moduleCount: modules.count,
             runtimeEvidenceTruncated: (Array(tests.prefix(limit)) + Array(uncertainTests.prefix(limit)))
                 .contains { $0.runtimeEvidenceOmitted != nil }, limit: limit)
+        let scope = targetScopeEvidencePath.map { path in
+            let current = try? sessionInputFingerprint()
+            return targetScope(path: path, fingerprint: current == scopeFingerprint ? scopeFingerprint : nil,
+                               context: context, limit: limit)
+        }
+        limitations += scope?.limitations ?? []
         return AffectedDocument(
             status: selection.status,
             requestedSymbols: Array(symbols.prefix(limit)),
@@ -215,7 +238,8 @@ extension CartographService {
             ),
             selectionIssues: output.issues,
             limitations: limitations,
-            truncated: .init(depth: report.truncatedByDepth, sections: output.truncatedSections)
+            truncated: .init(depth: report.truncatedByDepth, sections: output.truncatedSections),
+            targetScope: scope
         )
     }
 
@@ -225,6 +249,17 @@ extension CartographService {
         format: String = "text", fileSelectionIsDerived: Bool = false,
         selectionLimitations: [String] = []
     ) throws -> CommandOutcome {
+        try affected(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit, format: format,
+            fileSelectionIsDerived: fileSelectionIsDerived, selectionLimitations: selectionLimitations,
+            targetScopeEvidencePath: nil)
+    }
+
+    /// 소속 검토를 요청한 명령 경로. scheme 불명확성을 선택 실행 허가로 바꾸지 않는다.
+    public func affected(
+        symbols: [String] = [], files: [String] = [], maxDepth: Int? = nil, limit: Int = 200,
+        format: String = "text", fileSelectionIsDerived: Bool = false,
+        selectionLimitations: [String] = [], targetScopeEvidencePath: String?
+    ) throws -> CommandOutcome {
         guard ["text", "json", "xcodebuild"].contains(format) else {
             throw CartographError.invalidConfiguration(
                 path: projectPath, reason: "Affected format must be text, json or xcodebuild."
@@ -232,7 +267,7 @@ extension CartographService {
         }
         let document = try affectedDocument(
             symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
-            selectionLimitations: selectionLimitations
+            selectionLimitations: selectionLimitations, targetScopeEvidencePath: targetScopeEvidencePath
         )
         let incomplete = !document.selectionIssues.isEmpty
         let explanation = "Some affected inputs could not be resolved. Review selectionIssues and rebuild "
@@ -296,6 +331,13 @@ extension AffectedDocument {
             lines.append("Unresolved \(issue.kind): \(issue.requested) (\(issue.status))")
         }
         for limitation in limitations { lines.append("Limitation: \(limitation)") }
+        if let targetScope {
+            lines.append("Target scope: \(targetScope.evidenceStatus); Xcode scheme \(targetScope.schemeIdentity)")
+            for path in targetScope.paths {
+                lines.append("  \(path.path): \(path.classification) [\(path.blockers.joined(separator: ", "))]")
+            }
+            if targetScope.omittedPaths > 0 { lines.append("  omitted target scope paths: \(targetScope.omittedPaths)") }
+        }
         lines.append("Static reachability only: an empty list does not prove existing tests cover this change.")
         return lines.map { PrintableText.printable($0) }.joined(separator: "\n") + "\n"
     }
@@ -348,6 +390,10 @@ extension AffectedDocument {
         }
         if truncated.output || truncated.depth {
             return "The affected test list was truncated; increase --limit or --depth." + fallback
+        }
+        if targetScope != nil {
+            return "Target membership review does not establish the chosen Xcode scheme's test target identity."
+                + " Inspect targetScope paths and run the whole suite until scheme coverage is verified." + fallback
         }
         if !(uncertainTestCandidates ?? []).isEmpty
             || limitations.contains(where: { $0.hasPrefix("unverified-test-markers:") }) {

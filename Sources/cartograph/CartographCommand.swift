@@ -230,7 +230,7 @@ struct CyclesCommand: ParsableCommand {
     }
 
     func run() throws {
-        let context = try CommandSupport.makeContext(options, readsBaseline: true)
+        let context = try CommandSupport.makeContext(options, readsBaseline: true, supportsLimitationSummary: true)
         let outcome = try explain.map { try context.service.explainCycles(of: $0, level: options.level) }
             ?? context.service.detectCycles(level: options.level)
         try CommandSupport.emit(outcome, options: options, context: context)
@@ -264,6 +264,14 @@ struct DeadCommand: ParsableCommand {
     )
     var reportTestOnly: Bool = false
 
+    @Flag(name: .customLong("file-summary"),
+          help: "Add a bounded per-file finding summary to JSON output without suppressing findings.")
+    var fileSummary = false
+
+    @Flag(name: .customLong("generated-suggestions"),
+          help: "Inspect bounded leading headers for generated-marker review suggestions; implies --file-summary.")
+    var generatedSuggestions = false
+
     func validate() throws {
         // `dead --since` (목록)는 유효하고 `dead --explain` (단일 선언)만
         // 범위 렌즈와 겹친다. 겹치는 조합만 앞에서 거부한다.
@@ -288,12 +296,25 @@ struct DeadCommand: ParsableCommand {
                 "--level cannot be combined with dead; unused-code analysis is always at symbol level"
             )
         }
+        guard !(fileSummary || generatedSuggestions) || explain == nil else {
+            throw ValidationError("--file-summary and --generated-suggestions cannot be combined with --explain")
+        }
+        if fileSummary || generatedSuggestions, let format = options.reportFormat, format != .json {
+            throw ValidationError("--file-summary and --generated-suggestions require --report-format json")
+        }
     }
 
     func run() throws {
-        let context = try CommandSupport.makeContext(options, readsBaseline: true)
+        let context = try CommandSupport.makeContext(options, readsBaseline: true, supportsLimitationSummary: true)
+        let reviewRequested = fileSummary || generatedSuggestions
+        guard !reviewRequested || context.configuration.reportFormat == .json else {
+            throw ValidationError("--file-summary and --generated-suggestions require --report-format json")
+        }
+        let reviewOptions: FindingReviewOptions? = reviewRequested
+            ? .init(inspectGeneratedHeaders: generatedSuggestions) : nil
         let outcome = try explain.map { try context.service.explainRetention(of: $0) }
-            ?? context.service.detectUnusedCode(reportingTestOnlyCode: reportTestOnly)
+            ?? context.service.detectUnusedCode(reportingTestOnlyCode: reportTestOnly,
+                                               findingReviewOptions: reviewOptions)
         try CommandSupport.emit(outcome, options: options, context: context)
     }
 }
@@ -411,7 +432,8 @@ struct QueryCommand: ParsableCommand {
                 // 요청 파일은 인덱스를 열기 전에 읽는다. 색인을 다 만든 뒤에 "배열이 비었다" 를
                 // 말하면 사용자는 몇 초를 기다린 대가로 오타 하나를 받는다.
                 let requests = try batch.map { try Self.readRequests(at: $0) }
-                let context = try CommandSupport.makeContext(options, queryPhaseObserver: observer, readsBaseline: true)
+                let context = try CommandSupport.makeContext(options, queryPhaseObserver: observer, readsBaseline: true,
+                    supportsLimitationSummary: true)
                 return (requests, context)
             }
             let outcome = try requests.map {
@@ -724,7 +746,7 @@ struct MetricsCommand: ParsableCommand {
     @OptionGroup var options: GlobalOptions
 
     func run() throws {
-        let context = try CommandSupport.makeContext(options, readsBaseline: true)
+        let context = try CommandSupport.makeContext(options, readsBaseline: true, supportsLimitationSummary: true)
         try CommandSupport.emit(
             try context.service.measureMetrics(level: options.level),
             options: options,
@@ -757,7 +779,7 @@ struct RulesCommand: ParsableCommand {
     }
 
     func run() throws {
-        let context = try CommandSupport.makeContext(options, readsBaseline: true)
+        let context = try CommandSupport.makeContext(options, readsBaseline: true, supportsLimitationSummary: true)
         let outcome = try explain.map { try context.service.explainRules(of: $0, level: options.level) }
             ?? context.service.checkRules(level: options.level)
         try CommandSupport.emit(outcome, options: options, context: context)

@@ -2185,3 +2185,12 @@ Cartograph is an independent project. It is not affiliated with Periphery or App
 Join it with an isthmus 0.8.0+ `extract-js --events` document. Dynamic names remain
 unresolved; Objective-C events, Expo module events, wrappers and indirect inheritance are outside
 this scan. Run this separately from the default bridge export.
+
+### Optional follow-up review views
+
+The unpublished 0.29.0 candidate adds capture-bound SwiftPM target-scope review,
+`dead --file-summary` / `--generated-suggestions`, JSON `--limitations summary`
+(default `full`), and the MCP `cartograph_prepare` lifecycle tool. All original
+findings and safety signals remain. Target scope does not verify an Xcode scheme;
+narrow selectors remain refused when coverage is unknown and callers must run the
+whole suite. See [scope, budgets and migration examples](docs/FOLLOWUP-REVIEW.md).

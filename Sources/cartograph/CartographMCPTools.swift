@@ -1,12 +1,26 @@
 import CartographKit
 import CartographCore
+import CartographExport
 import Foundation
 
 /// Cartograph 세션을 MCP 도구 호출로 감싸는 직렬 어댑터.
-final class CartographMCPTools {
+final class CartographMCPTools: @unchecked Sendable {
     typealias SessionFactory = () throws -> AnalysisSession
 
     static let definitions: [MCPToolDefinition] = [
+        MCPToolDefinition(
+            name: "cartograph_prepare",
+            description: "Start background session preparation, poll cached readiness, or cancel a generation. "
+                + "Status never loads inputs. Cancellation discards late results; an active native read may continue.",
+            inputSchema: objectSchema(properties: [
+                "action": .object(["type": .string("string"),
+                    "enum": .array([.string("start"), .string("status"), .string("cancel")])]),
+                "refresh": .object(["type": .string("boolean")]),
+                "timeoutSeconds": .object(["type": .string("integer"), "minimum": .integer(1),
+                    "maximum": .integer(600), "default": .integer(300)]),
+                "generation": .object(["type": .string("integer"), "minimum": .integer(1)]),
+            ], required: ["action"])
+        ),
         MCPToolDefinition(
             name: "cartograph_status",
             description: "Return the prepared analysis session metadata.",
@@ -67,13 +81,15 @@ final class CartographMCPTools {
         ),
     ]
 
-    private let makeSession: SessionFactory
+    private let preparation: MCPPreparation
     private let coreDataBuildEvidencePath: String?
-    private var session: AnalysisSession?
+    private let limitationPresentation: JSONLimitationPresentation.Mode
 
-    init(makeSession: @escaping SessionFactory, coreDataBuildEvidencePath: String? = nil) {
-        self.makeSession = makeSession
+    init(makeSession: @escaping SessionFactory, coreDataBuildEvidencePath: String? = nil,
+         limitationPresentation: JSONLimitationPresentation.Mode = .full) {
+        self.preparation = MCPPreparation(factory: makeSession)
         self.coreDataBuildEvidencePath = coreDataBuildEvidencePath
+        self.limitationPresentation = limitationPresentation
     }
 
     /// MCP 요청 하나를 검증하고 도구 결과를 만든다.
@@ -82,14 +98,17 @@ final class CartographMCPTools {
             guard case let .object(object) = arguments else {
                 throw MCPToolFailure(message: "tool arguments must be an object")
             }
-            switch name {
-            case "cartograph_status": return try status(object)
-            case "cartograph_query": return try query(object)
-            case "cartograph_impact": return try impact(object)
-            case "cartograph_affected": return try affected(object)
-            case "cartograph_runtime_discover": return try runtimeDiscover(object)
-            case "cartograph_check": return try check(object)
-            default: throw MCPToolFailure(message: "unknown Cartograph tool")
+            if name == "cartograph_prepare" { return try prepare(object) }
+            return try preparation.perform {
+                switch name {
+                case "cartograph_status": return try status(object)
+                case "cartograph_query": return try query(object)
+                case "cartograph_impact": return try impact(object)
+                case "cartograph_affected": return try affected(object)
+                case "cartograph_runtime_discover": return try runtimeDiscover(object)
+                case "cartograph_check": return try check(object)
+                default: throw MCPToolFailure(message: "unknown Cartograph tool")
+                }
             }
         } catch let error as MCPToolFailure {
             throw error
@@ -97,9 +116,42 @@ final class CartographMCPTools {
             throw MCPToolFailure(message: error.errorDescription ?? "Cartograph analysis failed")
         } catch let error as AnalysisSessionError {
             throw MCPToolFailure(message: error.errorDescription ?? "analysis session failed")
+        } catch let error as JSONLimitationPresentation.PresentationError {
+            throw MCPToolFailure(message: error.errorDescription ?? "limitation presentation failed")
         } catch {
             throw MCPToolFailure(message: "Cartograph analysis failed")
         }
+    }
+
+    deinit { preparation.shutdown() }
+
+    func shutdown() { preparation.shutdown() }
+
+    private func prepare(_ arguments: [String: MCPJSONValue]) throws -> MCPToolResult {
+        guard case let .string(action) = arguments["action"] else {
+            throw MCPToolFailure(message: "action must be start, status, or cancel")
+        }
+        let status: MCPPreparation.Status
+        switch action {
+        case "start":
+            try rejectUnknown(arguments, allowed: ["action", "refresh", "timeoutSeconds"])
+            let refresh = try optionalBool(arguments["refresh"], name: "refresh") ?? false
+            let timeout = try optionalInt(arguments["timeoutSeconds"], name: "timeoutSeconds", range: 1...600) ?? 300
+            status = try preparation.start(refresh: refresh, timeout: timeout)
+        case "status":
+            try rejectUnknown(arguments, allowed: ["action"])
+            status = preparation.status()
+        case "cancel":
+            try rejectUnknown(arguments, allowed: ["action", "generation"])
+            guard let generation = try optionalInt(arguments["generation"], name: "generation", range: 1...Int.max)
+            else {
+                throw MCPToolFailure(message: "cancel requires the preparation generation returned by start or status")
+            }
+            status = try preparation.cancel(generation: generation)
+        default:
+            throw MCPToolFailure(message: "action must be start, status, or cancel")
+        }
+        return try structured(status, isError: [.failed, .expired, .closed].contains(status.state))
     }
 
     private func status(_ arguments: [String: MCPJSONValue]) throws -> MCPToolResult {
@@ -213,10 +265,7 @@ final class CartographMCPTools {
     }
 
     private func requireSession() throws -> AnalysisSession {
-        if let session { return session }
-        let created = try makeSession()
-        session = created
-        return created
+        try preparation.requireSession()
     }
 
     /// 결과를 만든 세대의 메타데이터를 쓴다. status를 다시 호출해 다른 세대를 붙이지 않는다.
@@ -226,7 +275,8 @@ final class CartographMCPTools {
     }
 
     private func structured<T: Encodable>(_ value: T, isError: Bool = false) throws -> MCPToolResult {
-        let data = try JSONEncoder.cartographDefault().encode(value)
+        let encoded = try JSONEncoder.cartographDefault().encode(value)
+        let data = try JSONLimitationPresentation.render(encoded, mode: limitationPresentation)
         // Codable 해독은 값마다 실패할 해독부터 시도해 결과 1 MB에 50 ms 남짓을 쓴다. 판독기는 같은 값을 1/5에 읽는다.
         let object = try MCPJSONReader.parse(data)
         guard object.isObject else { throw MCPToolFailure(message: "tool result must be a JSON object") }

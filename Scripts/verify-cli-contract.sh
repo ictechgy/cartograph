@@ -87,6 +87,10 @@ expect_status 64 "RN 이벤트와 Flutter 스트림 동시" bridges --rn-events 
 expect_status 64 "RN 이벤트에 Flutter target" bridges --rn-events --target flutter
 expect_status 64 "잘못된 열거형 값"    graph --level galaxy
 expect_status 64 "잘못된 형식 값"      dead --report-format yaml
+expect_status 64 "파일 요약은 JSON 전용" dead --file-summary --report-format text
+expect_status 64 "생성 제안은 JSON 전용" dead --generated-suggestions --report-format sarif
+expect_status 64 "파일 요약과 설명 동시" dead --file-summary --explain Foo
+expect_status 64 "생성 제안과 설명 동시" dead --generated-suggestions --explain Foo
 expect_status 64 "질의 대상 누락"      query
 expect_status 64 "영향 선택자 누락"    impact
 expect_status 64 "값 흐름 대상 누락"    dataflow
