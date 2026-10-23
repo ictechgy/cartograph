@@ -388,7 +388,11 @@ Data.UserRepository is reachable:
   Presentation.HomeView → Domain.UserService → Data.UserRepository
 ```
 
-### `fix` — apply the safe mechanical fixes
+### `fix` — plan and apply mechanical edits
+
+Parse checks do not prove type correctness or build compatibility. Review the diff and rebuild
+all relevant targets after `--apply`. Writes are atomic per file, not across the edit set;
+this command does not run a verification command or roll back failed builds.
 
 ```bash
 cartograph fix                      # print the plan; writes nothing
@@ -945,7 +949,16 @@ uses the symbol graph and JSON output, so `--level`, `--report-format`, `--stric
 `--baseline` are rejected.
 
 Older v1 snapshots remain readable and explicitly report missing automatic runtime evidence.
-Snapshots are limited to 128 MiB and omit runtime `expectedValue` fields. If a current runtime
+The default snapshot limit remains 128 MiB. For larger projects, set `--snapshot-max-mib 512`
+on both `snapshot` and `impact --before` (accepted range: 1–1024 MiB); the Git capture helper
+forwards the same option to both captures and the comparison. MCP `cartograph_impact` accepts
+`snapshotMaxMiB` with `before`, with the same range and default. The limit counts the entire
+uncompressed JSON file, including its trailing newline. Reads stop at limit + 1 bytes before
+decoding; oversized, truncated, corrupt and compressed inputs are rejected. There is no automatic
+decompression. Encoding and decoding still materialize the JSON and graph in memory, so this is
+a file-size budget, **not an RSS limit**; raising it can require several times the file size in RAM.
+The library keeps `decode(from:)` at the default and adds `decode(from:maximumBytes:)` and
+`encoded(maximumBytes:)` for the same bounded policy. Runtime `expectedValue` fields remain omitted. If a current runtime
 contract still requires a deleted target, historical callers do not cancel that broken contract.
 
 ### `check` — run the CI checks in one context

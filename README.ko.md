@@ -384,7 +384,11 @@ Data.UserRepository is reachable:
   Presentation.HomeView → Domain.UserService → Data.UserRepository
 ```
 
-### `fix` — 안전한 기계적 수정 적용
+### `fix` — 기계적 편집 계획과 적용
+
+파싱 성공은 타입 검사나 빌드 성공의 증명이 아닙니다. `--apply` 후 diff를 검토하고 관련 타깃을
+모두 다시 빌드하세요. 쓰기는 전체 편집 집합이 아닌 파일 단위로 원자적이며, 이 명령은 검증 명령
+실행이나 실패한 빌드의 자동 롤백을 수행하지 않습니다.
 
 ```bash
 cartograph fix                      # 계획만 출력; 파일을 쓰지 않음
@@ -916,7 +920,15 @@ Git helper는 불완전한 결과도 보존한 보고서 경로를 출력한 뒤
 `--since`, `--baseline`을 거부합니다.
 
 이전 v1 스냅샷도 읽을 수 있으며 자동 런타임 근거가 없다는 한계를 명시합니다. 스냅샷은
-128 MiB로 제한하고 런타임 `expectedValue`는 저장하지 않습니다. 현재 런타임 계약이 삭제한
+기본 제한은 계속 128 MiB입니다. 큰 프로젝트는 `snapshot`과 `impact --before` 양쪽에
+`--snapshot-max-mib 512`를 지정하세요(범위 1–1024 MiB). Git capture helper도 같은 옵션을
+두 캡처와 비교에 전달합니다. MCP `cartograph_impact`는 `before`와 함께 `snapshotMaxMiB`를
+받으며 범위와 기본값이 같습니다. 끝 줄바꿈을 포함한 압축하지 않은 JSON 파일 전체를 셉니다.
+읽기는 한도+1 바이트에서 멈추고 초과·잘림·손상·압축 입력을 거부하며 자동 압축 해제는 하지 않습니다.
+인코딩·디코딩은 여전히 JSON과 그래프를 메모리에 구성하므로 **RSS 제한이 아니라 파일 크기 예산**입니다.
+한도를 높이면 파일 크기의 몇 배에 이르는 메모리가 필요할 수 있습니다. 라이브러리의 `decode(from:)`는
+기본값을 유지하며 `decode(from:maximumBytes:)`와 `encoded(maximumBytes:)`로 같은 예산을 선택할 수 있습니다.
+런타임 `expectedValue`는 저장하지 않습니다. 현재 런타임 계약이 삭제한
 대상을 계속 요구한다면 과거 호출자가 확인되어도 그 계약 오류는 남습니다.
 
 ### `check` — 한 문맥에서 CI 점검

@@ -66,6 +66,12 @@ struct AnalysisLimitationCollector {
         }
 
         var result: [String] = []
+        if let inventory, !inventory.discoveryExclusions.isEmpty {
+            result.append("source-discovery-exclusions: \(inventory.discoveryExclusions.count) source/resource path(s) "
+                + "or nested repositories excluded by Git ignore rules or repository boundaries; tracked files "
+                + "take precedence over ignore rules. This does not prove build-target coverage."
+                + diagnosticPaths(inventory.discoveryExclusions, resolver: &pathResolver))
+        }
         // 탈출구를 켠 채로 도는 실행은 아무것도 분석하지 않는다. 그 답을 받은 쪽이
         // "발견 없음"을 깨끗함으로 읽지 않도록, 답 자체에 그 사실을 싣는다.
         if let counts = emptyIndexCounts {

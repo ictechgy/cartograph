@@ -68,6 +68,19 @@ public struct CartographService: Sendable {
         let interfaceBuilderFiles = inventory.map {
             configuration.retention.retainInterfaceBuilder ? $0.interfaceBuilderFiles : []
         }
+        var input = raw
+        if let inventory, let dates = raw.sourceFreshnessDates {
+            let indexed = Set(dates.keys.map(environment.fileSystem.canonicalPath))
+            let missing = inventory.sourceFiles.contains {
+                !$0.hasSuffix("/Package.swift") && !indexed.contains(environment.fileSystem.canonicalPath($0))
+            }
+            if missing {
+                // 파일 단위 참조가 사라진 인덱스에서 모듈 사용 부재를 import 제거 근거로 쓰지 않는다.
+                for path in input.fileModuleUsages.keys {
+                    input.fileModuleUsages[path]?.hasUnattributedReferences = true
+                }
+            }
+        }
         return SnapshotEnricher(
             fileSystem: environment.fileSystem,
             retention: configuration.retention,
@@ -76,7 +89,7 @@ public struct CartographService: Sendable {
                 : nil
         )
         .enrichWithDiagnostics(
-            raw,
+            input,
             interfaceBuilderRoots: inventory == nil && configuration.retention.retainInterfaceBuilder
                 ? [projectPath] : [],
             pathFilter: configuration.pathFilter,

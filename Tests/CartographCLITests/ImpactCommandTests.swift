@@ -5,6 +5,19 @@ import Testing
 
 @Suite("impact 인자 검증")
 struct ImpactCommandTests {
+    @Test("스냅샷 파일 예산은 과거 비교에만 쓰고 캡처와 같은 범위를 검증한다")
+    func boundedHistoricalSnapshotSizeOption() throws {
+        let command = try ImpactCommand.parse(["Thing", "--before", "before.json", "--snapshot-max-mib", "512"])
+        try command.validate()
+        #expect(command.snapshotMaxMiB == 512)
+        #expect(try ImpactCommand.parse(["Thing", "--before", "before.json"]).snapshotMaxMiB == nil)
+        for extra in [["--snapshot-max-mib", "1"], ["--before", "before.json", "--snapshot-max-mib", "0"],
+                      ["--before", "before.json", "--snapshot-max-mib", "1025"],
+                      ["--before", "before.json", "--snapshot-max-mib", String(Int.max)]] {
+            #expect(throws: (any Error).self) { try ImpactCommand.parse(["Thing"] + extra).validate() }
+        }
+    }
+
     @Test("명시적 파일 배열은 빈 patch를 보존하고 크기와 선택 모드를 제한한다")
     func exactFileListInput() throws {
         let command = try ImpactCommand.parse(["--files-from", "changed.json", "--before", "before.json"])

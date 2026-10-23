@@ -238,13 +238,16 @@ public final class AnalysisSession {
     /// 세션의 현재 그래프와 프로젝트 안에 캡처한 과거 그래프를 따로 분석한다.
     public func compareImpact(
         beforePath: String, symbols: [String] = [], files: [String] = [],
-        maxDepth: Int? = nil, limit: Int = 200, runtimeContracts: RuntimeContractsDocument? = nil
+        maxDepth: Int? = nil, limit: Int = 200, runtimeContracts: RuntimeContractsDocument? = nil,
+        snapshotMaximumBytes: Int = AnalysisSnapshotDocument.maximumByteCount
     ) throws -> ImpactComparisonDocument {
+        try AnalysisSnapshotDocument.validateMaximumBytes(snapshotMaximumBytes)
         try ensurePrepared()
         guard let service, let context else { throw AnalysisSessionError.unavailable }
         let path = try validatedBuildEvidencePath(beforePath, service: service, inputName: "historical snapshot")
         let outcome = try service.compareImpact(symbols: symbols, files: files, beforePath: path,
-            maxDepth: maxDepth, limit: limit, format: "json", runtimeContracts: runtimeContracts, in: context)
+            maxDepth: maxDepth, limit: limit, format: "json", runtimeContracts: runtimeContracts,
+            snapshotMaximumBytes: snapshotMaximumBytes, in: context)
         return try JSONDecoder().decode(ImpactComparisonDocument.self, from: Data(outcome.output.utf8))
     }
 

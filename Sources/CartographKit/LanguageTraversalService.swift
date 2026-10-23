@@ -207,7 +207,7 @@ extension CartographService {
     /// 루트 밖 디렉터리 링크 뒤 소스는 색인됐어도 그래프에 없으므로 같은 공백이다.
     static let openWorldLimitationPrefixes = [
         "empty-index:", "index-staleness:", "unindexed-sources:", "missing-sources:", "unreadable-sources:",
-        "header-projection:", "configured-path-filter:", "configured-edge-kinds:",
+        "header-projection:", "configured-path-filter:", "configured-edge-kinds:", "source-discovery-exclusions:",
         "objective-c-sources:", "public-api-not-retained:", "symlinked-directories-outside-root:",
     ]
 

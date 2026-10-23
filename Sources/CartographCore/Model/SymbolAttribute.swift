@@ -6,6 +6,8 @@
 public enum SymbolAttribute: String, Codable, Sendable, CaseIterable {
     /// 컴파일러가 합성한 선언. 사용자가 지울 수 없다.
     case implicit
+    /// 실제 컴파일러 참조가 있는 매크로. 적용 타입의 런타임 도달성과 별개인 컴파일 입력이다.
+    case compileTimeReference
     /// `@objc` 또는 `@objc(name)`.
     case objc
     /// `@objcMembers`. 멤버 전체가 Objective-C 로 노출된다.

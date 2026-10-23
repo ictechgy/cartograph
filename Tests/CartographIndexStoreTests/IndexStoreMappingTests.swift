@@ -1072,6 +1072,37 @@ struct ModuleUsageMappingTests {
         #expect(usage?.hasUnattributedReferences == false)
     }
 
+    @Test("표준 라이브러리와 외부 타입 확장 멤버는 실제 선언 모듈 사용을 보존한다")
+    func extensionMemberUsesDeclarationModule() {
+        for usr in ["s:Si3LibE5magicSivpZ", "s:6Domain4ItemV3LibE5magicSivpZ"] {
+            let member = symbol(usr, name: "magic", kind: .staticProperty)
+            let facts = [
+                occurrence(member, roles: .definition, location: location("/p/Lib.swift", module: "Lib")),
+                occurrence(member, roles: .reference, location: location("/p/Mid.swift", module: "Mid")),
+                occurrence(symbol("c:@M@Unused", kind: .module), roles: .reference,
+                           location: location("/p/Mid.swift", module: "Mid")),
+            ]
+            let snapshot = IndexStoreProvider.snapshot(from: facts, includeExternalSymbols: false)
+            #expect(snapshot.fileModuleUsages["/p/Mid.swift"]?.referencedModules.contains("Lib") == true)
+            #expect(snapshot.fileModuleUsages["/p/Mid.swift"]?.referencedModules.contains("Unused") == false)
+            #expect(snapshot.fileModuleUsages["/p/Lib.swift"]?.referencedModules.isEmpty == true)
+        }
+    }
+
+    @Test("실제 매크로 참조는 소유 관계가 없어도 컴파일 시점 사용을 남기되 미참조 매크로는 남기지 않는다")
+    func macroReferenceIsIndependentOfRuntimeOwner() {
+        let macro = symbol("s:6Macros8AddHello", name: "AddHello", kind: .macro)
+        let unused = symbol("s:6Macros6Unused", name: "Unused", kind: .macro)
+        let snapshot = IndexStoreProvider.snapshot(from: [
+            occurrence(macro, roles: .definition, location: location("/p/Macros.swift", module: "Macros")),
+            occurrence(unused, roles: .definition, location: location("/p/Macros.swift", module: "Macros")),
+            occurrence(macro, roles: .reference, location: location("/p/Greeter.swift", module: "App")),
+        ], includeExternalSymbols: false)
+        #expect(snapshot.symbolsByUSR()[macro.usr]?.attributes.contains(.compileTimeReference) == true)
+        #expect(snapshot.symbolsByUSR()[unused.usr]?.attributes.contains(.compileTimeReference) == false)
+        #expect(!snapshot.symbols.contains { $0.usr.hasPrefix("cartograph:top-level-code:") })
+    }
+
     @Test("clang 심볼은 인덱스 안 선언으로 모듈을 귀속한다")
     func resolvesDeferredUSRThroughProjectDeclarations() {
         // 프로젝트가 직접 인덱스한 clang 선언(소유 모듈에서 나온 헤더 등)은

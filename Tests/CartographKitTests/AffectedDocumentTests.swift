@@ -7,6 +7,14 @@ import Testing
 
 @Suite("테스트 영향 질의")
 struct AffectedDocumentTests {
+    @Test("Git 무시나 중첩 저장소 제외는 빌드 타깃 밖임을 입증하지 않아 테스트 축소를 막는다")
+    func discoveryExclusionsRefuseSelection() throws {
+        let result = try service(snapshot()).affected(symbols: ["P"], format: "xcodebuild",
+            selectionLimitations: ["source-discovery-exclusions: ignored caller; target membership unknown"])
+        #expect(result.output.isEmpty)
+        #expect(result.incompleteAnalysis?.contains("Source/index coverage is incomplete") == true)
+    }
+
     private func service(_ snapshot: IndexSnapshot) -> CartographService {
         var configuration = CartographConfiguration.default
         configuration.projectPath = "/p"

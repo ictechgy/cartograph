@@ -13,6 +13,25 @@ import Testing
 struct BoundedInputReadTests {
     private static let mebibyte = 1 << 20
 
+    @Test("과거 스냅샷은 사용자 예산+1에서 읽기를 멈추고 기본 무제한 읽기를 쓰지 않는다")
+    func historicalSnapshotReadStopsAtRequestedLimit() throws {
+        let root = try makeProject()
+        defer { removeProject(root) }
+        let path = root + "/before.json"
+        try makeSparseFile(at: path, byteCount: 512 * Self.mebibyte)
+        let fs = ReadRecordingFileSystem()
+        let service = makeService(fileSystem: fs, root: root)
+        #expect(throws: (any Error).self) {
+            try service.compareImpact(symbols: ["App"], files: [], beforePath: path,
+                maxDepth: nil, limit: 20, format: "json", snapshotMaximumBytes: Self.mebibyte)
+        }
+        #expect(fs.unboundedReads.isEmpty)
+        #expect(fs.boundedReads == [
+            .init(path: path, maximumBytes: Self.mebibyte, byteCount: Self.mebibyte + 1),
+        ])
+    }
+
+
     @Test("런타임 리소스는 8 MiB 상한을 넘는 파일을 통째로 읽지 않고 기존 한계 문구로 알린다")
     func runtimeResourceReadStopsAtLimit() throws {
         let root = try makeProject()

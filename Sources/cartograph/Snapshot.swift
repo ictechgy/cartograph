@@ -12,6 +12,10 @@ struct SnapshotCommand: ParsableCommand {
 
     @OptionGroup var options: GlobalOptions
 
+    @Option(name: .customLong("snapshot-max-mib"),
+        help: "Maximum uncompressed snapshot file size in MiB, from 1 through 1024 (default: 128). Larger values need more memory.")
+    var snapshotMaxMiB: Int = 128
+
     @Option(name: .customLong("revision"), help: "Optional user-supplied revision label.")
     var revision: String?
 
@@ -25,6 +29,9 @@ struct SnapshotCommand: ParsableCommand {
     var coreDataBuildEvidence: String?
 
     func validate() throws {
+        guard (1...1024).contains(snapshotMaxMiB) else {
+            throw ValidationError("--snapshot-max-mib must be between 1 and 1024")
+        }
         guard options.since == nil else {
             throw ValidationError("--since cannot be combined with snapshot; snapshot captures the whole index")
         }
@@ -66,7 +73,8 @@ struct SnapshotCommand: ParsableCommand {
             in: coreDataContext
         )
         try CommandSupport.emit(
-            CommandOutcome(output: try Self.encode(document)),
+            CommandOutcome(output: String(decoding: try document.encoded(maximumBytes: snapshotMaxMiB * 1024 * 1024),
+                as: UTF8.self)),
             options: options,
             context: context
         )
@@ -76,12 +84,4 @@ struct SnapshotCommand: ParsableCommand {
         !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private static func encode(_ document: AnalysisSnapshotDocument) throws -> String {
-        let data = try JSONEncoder.cartographDefault().encode(document)
-        guard data.count <= AnalysisSnapshotDocument.maximumByteCount else {
-            throw CartographError.invalidConfiguration(path: document.projectRoot,
-                reason: "Snapshot exceeds 128 MiB. Narrow the documented analysis scope before capture.")
-        }
-        return String(decoding: data, as: UTF8.self) + "\n"
-    }
 }

@@ -18,6 +18,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     case interfaceBuilder
     /// 컴파일러가 합성한 선언.
     case compilerSynthesized
+    /// 컴파일러가 관측한 매크로 적용은 런타임 도달성과 별개로 컴파일에 필요하다.
+    case compileTimeReference
     /// 원시값 열거형의 케이스. `init(rawValue:)` 로 동적 생성될 수 있다.
     case rawRepresentableEnumCase
     case caseIterableEnumCase
@@ -105,7 +107,7 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     /// 새 근거를 더하는 사람이 반드시 이 판단을 내리도록 값 옆에 둔다.
     public var retainsContainingType: Bool {
         switch self {
-        case .compilerSynthesized, .externalConformance, .externalOverride: false
+        case .compilerSynthesized, .compileTimeReference, .externalConformance, .externalOverride: false
         default: true
         }
     }
@@ -124,6 +126,7 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         case .objectiveCAccessible: "reachable from the Objective-C runtime"
         case .interfaceBuilder: "connectable from Interface Builder"
         case .compilerSynthesized: "synthesized by the compiler"
+        case .compileTimeReference: "a macro referenced by the compiler, independently of runtime reachability"
         case .rawRepresentableEnumCase: "a case of a raw-representable enum, constructible via init(rawValue:)"
         case .caseIterableEnumCase: "a case of a CaseIterable enum, enumerated by allCases"
         case .codingKey: "a CodingKey case used by synthesized Codable conformance"

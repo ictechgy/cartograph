@@ -438,6 +438,22 @@ jobs:
       # 문서화한 종료 코드가 실제로 지켜지는지 확인한다. 상수를 단언하는 단위
       # 테스트는 상수가 동작과 맞는지는 말해 주지 않는다. 실제로 --help 가 2 로
       # 실패한 적이 있고 단위 테스트는 전부 통과했다.
+      - name: Reproduce release feedback and verify compiler regressions
+        run: >-
+          python3 Scripts/verify-feedback.py --cartograph "$CARTOGRAPH"
+          --output "$RUNNER_TEMP/cartograph-feedback"
+
+      - name: Preserve generalized feedback evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cartograph-feedback
+          path: |
+            ${{ runner.temp }}/cartograph-feedback/results.json
+            ${{ runner.temp }}/cartograph-feedback/logs/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: CLI contract
         run: |
           Scripts/verify-cli-contract.sh "$CARTOGRAPH"

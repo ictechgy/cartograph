@@ -20,6 +20,21 @@ struct RetentionPolicyTests {
         #expect(reasons(builder.build())["App"] == .entryPoint)
     }
 
+    @Test("컴파일 시점 매크로 사용은 적용 타입이나 같은 이름의 다른 선언을 살리지 않는다")
+    func compilerMacroReferenceIsDistinct() {
+        var builder = SnapshotBuilder()
+        builder.symbol("AddHello", kind: .macro, attributes: [.compileTimeReference])
+        builder.symbol("UnusedMacro", kind: .macro)
+        builder.symbol("DeadOwner", kind: .structType)
+        builder.symbol("NotMacro", kind: .function, attributes: [.compileTimeReference])
+        let retained = reasons(builder.build())
+        #expect(retained["AddHello"] == .compileTimeReference)
+        #expect(retained["UnusedMacro"] == nil)
+        #expect(retained["DeadOwner"] == nil)
+        #expect(retained["NotMacro"] == nil)
+        #expect(!RetentionReason.compileTimeReference.retainsContainingType)
+    }
+
     @Test("소스를 못 읽은 선언은 불완전한 보존 정보로 미사용 판정을 내리지 않는다")
     func unreadableSourceIsConservativelyRetained() {
         var builder = SnapshotBuilder()

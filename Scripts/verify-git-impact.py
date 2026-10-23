@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("git_impact", Path(__file__).with_name("cartograph-git-impact.py"))
 capture = importlib.util.module_from_spec(spec)
@@ -23,6 +24,29 @@ def git(root, *args):
 
 
 class GitCaptureTests(unittest.TestCase):
+    def test_snapshot_budget_is_validated_before_source_or_git_reads(self):
+        for budget in (0, -1, 1025, 2**63):
+            with self.assertRaisesRegex(capture.CaptureError, "snapshot-max-mib"):
+                capture.analyze(argparse.Namespace(limit=200, depth=None, snapshot_max_mib=budget))
+
+    def test_capture_forwards_snapshot_budget_to_native_writer(self):
+        output = Path(self.temporary.name) / "capture-output"
+        (output / "before-build/out").mkdir(parents=True)
+        calls = []
+
+        def run(command, _cwd, **_kwargs):
+            calls.append(command)
+            if "--show-bin-path" in command:
+                return os.fsencode(output / "bin")
+            return b"{}\n"
+
+        with mock.patch.object(capture, "run", side_effect=run), \
+                mock.patch.object(capture, "source_fingerprint", return_value="same-input"):
+            _, path, _ = capture.capture(Path("cartograph"), self.root, output, "before", 60, 512)
+        snapshot_command = next(command for command in calls if command[1] == "snapshot")
+        self.assertEqual(snapshot_command[-2:], ["--snapshot-max-mib", "512"])
+        self.assertEqual(path.read_bytes(), b"{}\n")
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="cartograph-git-test-")
         self.root = Path(self.temporary.name) / "repo"
@@ -160,7 +184,8 @@ let package = Package(name: "ChangeFixture", products: [.library(name: "ChangeFi
     before_status = git(root, "status", "--porcelain")
     invocation = subprocess.run([sys.executable, str(Path(__file__).with_name("cartograph-git-impact.py")),
         "--project", str(root), "--cartograph", str(binary), "--base", base, "--working-tree",
-        "--output", str(output / "evidence")], capture_output=True, text=True, timeout=600)
+        "--output", str(output / "evidence"), "--snapshot-max-mib", "256"],
+        capture_output=True, text=True, timeout=600)
     assert invocation.returncode in (0, 2), invocation.stderr
     result = output / "evidence/impact.json"
     assert result.is_file(), invocation.stderr
@@ -178,6 +203,7 @@ let package = Package(name: "ChangeFixture", products: [.library(name: "ChangeFi
     assert document["changeInput"]["before"]["sourceStableDuringBuild"]
     assert document["changeInput"]["current"]["freshIndex"]
     assert document["changeInput"]["sourceScope"] == "tracked-and-nonignored-untracked-regular-files"
+    assert document["changeInput"]["snapshotMaximumBytes"] == 256 * 1024 * 1024
     assert document["changeInput"]["totalSeconds"] >= (
         document["changeInput"]["inputPreparationSeconds"]
         + document["changeInput"]["before"]["preparationSeconds"]

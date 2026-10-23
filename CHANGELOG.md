@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Import usage includes extension members' observed declaration modules, including `Int` extensions.
+  Missing source index units suppress import-removal candidates; parse-only fixes explicitly require a rebuild.
+- Compiler-observed macro references retain the macro independently of the annotated type's runtime reachability.
+- Source inventory respects Git ignore rules, tracked-file precedence and nested repository boundaries,
+  retaining explicit coverage uncertainty for excluded inputs.
+- Snapshot capture and comparison share an explicit bounded `--snapshot-max-mib` budget (default 128,
+  maximum 1024), also available through MCP and the Git capture helper. Compression remains unsupported.
+
 ## [0.29.0] - 2026-10-22
 
 ### Added

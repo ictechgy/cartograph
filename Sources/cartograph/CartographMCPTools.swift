@@ -31,6 +31,9 @@ final class CartographMCPTools {
                 "files": arraySchema(minimum: 1, maximum: 1000),
                 "runtimeContracts": runtimeContractsSchema(),
                 "before": stringSchema(),
+                "snapshotMaxMiB": .object(["type": .string("integer"), "minimum": .integer(1),
+                    "maximum": .integer(1024), "default": .integer(128),
+                    "description": .string("With before: maximum uncompressed snapshot size; larger values need more memory.")]),
                 "depth": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(128)]),
                 "limit": .object(["type": .string("integer"), "minimum": .integer(1), "maximum": .integer(10_000)]),
             ])
@@ -129,7 +132,11 @@ final class CartographMCPTools {
     }
 
     private func impact(_ arguments: [String: MCPJSONValue]) throws -> MCPToolResult {
-        try rejectUnknown(arguments, allowed: ["symbols", "files", "depth", "limit", "runtimeContracts", "before"])
+        try rejectUnknown(arguments, allowed: ["symbols", "files", "depth", "limit", "runtimeContracts", "before", "snapshotMaxMiB"])
+        let snapshotMaxMiB = try optionalInt(arguments["snapshotMaxMiB"], name: "snapshotMaxMiB", range: 1...1024)
+        guard snapshotMaxMiB == nil || arguments["before"] != nil else {
+            throw MCPToolFailure(message: "snapshotMaxMiB requires before")
+        }
         let symbols = try optionalStrings(arguments["symbols"], name: "symbols", range: 1...1000) ?? []
         let files = try optionalStrings(arguments["files"], name: "files", range: 1...1000) ?? []
         let modeCount = [!symbols.isEmpty, !files.isEmpty].count { $0 }
@@ -148,7 +155,8 @@ final class CartographMCPTools {
                 throw MCPToolFailure(message: "historical comparison cannot reuse current-only Core Data build evidence")
             }
             let document = try session.compareImpact(beforePath: path, symbols: symbols, files: files,
-                maxDepth: depth, limit: limit, runtimeContracts: runtimeContracts)
+                maxDepth: depth, limit: limit, runtimeContracts: runtimeContracts,
+                snapshotMaximumBytes: (snapshotMaxMiB ?? 128) * 1024 * 1024)
             return try structured(SessionResult(session: try preparedMetadata(session), result: document),
                 isError: document.status == "incomplete")
         }

@@ -5,6 +5,19 @@ import Testing
 
 @Suite("snapshot 인자 검증")
 struct SnapshotCommandTests {
+    @Test("스냅샷 파일 예산은 기본값을 유지하며 유한한 명시적 상한만 받는다")
+    func boundedSnapshotSizeOption() throws {
+        #expect(try SnapshotCommand.parse([]).snapshotMaxMiB == 128)
+        #expect(try SnapshotCommand.parse(["--snapshot-max-mib", "512"]).snapshotMaxMiB == 512)
+        for value in ["0", "-1", "1025", String(Int.max)] {
+            #expect(throws: (any Error).self) {
+                try SnapshotCommand.parse(["--snapshot-max-mib", value]).validate()
+            }
+        }
+        let command = try SnapshotCommand.parse(["--snapshot-max-mib", "1024"])
+        try command.validate()
+    }
+
     @Test("새 스냅샷 명령은 런타임 발견 근거를 담는 v2를 기록한다")
     func writesVersionTwo() {
         #expect(AnalysisSnapshotDocument.version == 2)

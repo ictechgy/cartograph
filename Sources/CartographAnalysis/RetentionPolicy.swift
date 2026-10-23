@@ -131,6 +131,7 @@ public struct RetentionPolicy: Sendable {
             return .externalBridge
         }
         if node.attributes.contains(.implicit) { return .compilerSynthesized }
+        if node.kind == .macro, node.attributes.contains(.compileTimeReference) { return .compileTimeReference }
         if node.attributes.contains(.entryPoint) { return .entryPoint }
         if isTopLevelCode(node, in: graph) { return .entryPoint }
 

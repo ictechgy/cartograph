@@ -17,15 +17,28 @@ struct ProjectFileInventory: Sendable, Equatable {
     /// 그 뒤의 소스는 어떤 명령도 읽지 않으므로 거기 사는 호출자도 없다. 한계로 알려야 빈 `usedBy` 를
     /// "못 봤다"로 읽는다. 제외한 위치의 링크까지 세면 범위 밖 파일을 알리는 매번 붙는 경보가 된다.
     let externalDirectoryLinks: [String]
+    /// Git 범위나 중첩 저장소 경계로 제외한 실제 파일/디렉터리. 타깃 소속의 증명은 아니다.
+    let discoveryExclusions: [String]
 
     init(fileSystem: any FileSystem, projectPath: String, pathFilter: PathFilter) {
         var externalLinks: [String] = []
+        var exclusions: Set<String> = []
+        let git = GitSourceInventory.load(fileSystem: fileSystem, projectPath: projectPath)
         let paths = fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { path in
-                Self.isSource(path) || path.hasSuffix(".h") || Self.isRuntimeResource(path)
+                guard Self.isSource(path) || path.hasSuffix(".h") || Self.isRuntimeResource(path) else { return false }
+                if let git, !git.paths.contains(path) { exclusions.insert(path); return false }
+                return true
             },
-            shouldDescend: BuildArtifactDirectories.shouldDescend(into:),
+            shouldDescend: { path in
+                guard BuildArtifactDirectories.shouldDescend(into: path) else { return false }
+                if fileSystem.fileExists(at: path + "/.git") || fileSystem.directoryExists(at: path + "/.git") {
+                    exclusions.insert(path)
+                    return false
+                }
+                return true
+            },
             onExternalDirectoryLink: { externalLinks.append($0) }
         )
         allSourceFiles = paths.filter(Self.isSource)
@@ -35,6 +48,7 @@ struct ProjectFileInventory: Sendable, Equatable {
         let headers = paths.filter { $0.hasSuffix(".h") && pathFilter.allows($0) }
         limitationFiles = Set(sourceFiles + headers + interfaceBuilderFiles).sorted()
         externalDirectoryLinks = Self.inScope(externalLinks, pathFilter: pathFilter)
+        discoveryExclusions = exclusions.sorted()
     }
 
     /// 제외 글롭에 걸리지 않는 위치의 링크만 남긴다.

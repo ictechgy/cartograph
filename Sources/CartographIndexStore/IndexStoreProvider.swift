@@ -216,9 +216,22 @@ public struct IndexStoreProvider: IndexProviding {
         var definitionSites: [String: [DefinitionSite]] = [:]
         var conformanceAliases: [SymbolOccurrence] = []
         var implicitBaseOwners: [OccurrenceSite: Set<String>] = [:]
+        let referencedMacros = Set(occurrences.filter {
+            $0.symbol.kind == .macro && $0.roles.contains(.reference)
+        }.map { $0.symbol.usr })
+        // Swift USR의 첫 모듈은 확장 대상의 모듈일 수 있다. 선언 발생을 먼저 모아
+        // Int/외부 타입에 추가한 멤버의 실제 선언 모듈도 사용 근거로 남긴다.
+        var declarationModules: [String: Set<String>] = [:]
+        for occurrence in occurrences
+        where occurrence.roles.contains(.definition) || occurrence.roles.contains(.declaration) {
+            if !occurrence.location.moduleName.isEmpty {
+                declarationModules[occurrence.symbol.usr, default: []].insert(occurrence.location.moduleName)
+            }
+        }
 
         for occurrence in occurrences {
-            if let symbol = IndexStoreMapping.indexedSymbol(from: occurrence) {
+            if var symbol = IndexStoreMapping.indexedSymbol(from: occurrence) {
+                if referencedMacros.contains(symbol.usr) { symbol.attributes.insert(.compileTimeReference) }
                 let isDefinition = occurrence.roles.contains(.definition)
                 if let existing = symbolsByUSR[symbol.usr] {
                     // 정의의 위치를 우선한다. 선언만 있는 발생의 줄 번호로는
@@ -293,7 +306,7 @@ public struct IndexStoreProvider: IndexProviding {
                 }
             }
 
-            moduleUsages.add(occurrence)
+            moduleUsages.add(occurrence, declarationModules: declarationModules)
         }
         let collectedUsages = moduleUsages.finish()
         var fileModuleUsages = collectedUsages.usages
@@ -396,7 +409,7 @@ public struct IndexStoreProvider: IndexProviding {
             var hasEntry = false
         }
 
-        mutating func add(_ occurrence: SymbolOccurrence) {
+        mutating func add(_ occurrence: SymbolOccurrence, declarationModules: [String: Set<String>]) {
             if occurrence.location.path != run.path {
                 flush()
                 run = PathRun(path: occurrence.location.path)
@@ -405,8 +418,10 @@ public struct IndexStoreProvider: IndexProviding {
                 run.owningModules.insert(occurrence.location.moduleName)
                 run.hasEntry = true
             }
-            if occurrence.roles.contains(.reference) { note(occurrence.symbol.usr) }
-            for relation in occurrence.relations { note(relation.symbol.usr) }
+            if occurrence.roles.contains(.reference) {
+                note(occurrence.symbol.usr, declarationModules: declarationModules)
+            }
+            for relation in occurrence.relations { note(relation.symbol.usr, declarationModules: declarationModules) }
         }
 
         /// 모은 근거와 선언 사전이 완성된 뒤 풀 USR 을 돌려준다.
@@ -423,7 +438,12 @@ public struct IndexStoreProvider: IndexProviding {
         }
 
         /// USR 하나의 모듈 귀속 단서를 지금 경로의 근거에 쌓는다.
-        private mutating func note(_ usr: String) {
+        private mutating func note(_ usr: String, declarationModules: [String: Set<String>]) {
+            // import 문 자체의 모듈 표식은 사용이 아니다.
+            if !usr.hasPrefix("c:@M@"), let modules = declarationModules[usr] {
+                run.referencedModules.formUnion(modules)
+                run.hasEntry = true
+            }
             switch IndexStoreMapping.moduleEvidence(ofUSR: usr) {
             case .module(let module):
                 run.referencedModules.insert(module)
