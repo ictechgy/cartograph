@@ -123,4 +123,24 @@ struct TargetScopeTests {
         try fs.write(Data(repeating: 65, count: TargetScopeStore.sourceBytes + 1), to: "/p/Sources/Tool/Tool.swift")
         #expect(throws: (any Error).self) { try TargetScopeStore(fileSystem: fs).inventory(root: "/p") }
     }
+
+    @Test("소속 검증 후 최종 지문 읽기가 실패하면 부분 분류를 게시하지 않는다")
+    func finalFingerprintFailureDiscardsMembership() throws {
+        let (fs, service, context, receipt) = try fixture()
+        // receipt 검증 자체는 성공한다. 마지막 지문 단계만 민감한 설정 경로 때문에 실패한다.
+        let verified = try TargetScopeStore(fileSystem: fs).read(path: "/scope.json", projectPath: "/p",
+                                                                 fingerprint: receipt.inputFingerprint)
+        #expect(verified.closure == ["App", "AppTests"])
+        var configuration = service.configuration
+        configuration.baselinePath = "auth.json"
+        let failing = CartographService(configuration: configuration, environment: service.environment)
+        #expect(throws: AnalysisSessionError.sensitiveInput) { try failing.sessionInputFingerprint() }
+        let scope = failing.targetScope(path: "/scope.json", fingerprint: receipt.inputFingerprint,
+                                         context: context, limit: 200)
+        #expect(scope.evidenceStatus == "unknown")
+        #expect(scope.selectedTargets.isEmpty && scope.dependencyTargets.isEmpty)
+        #expect(!scope.paths.isEmpty)
+        #expect(scope.paths.allSatisfy { $0.classification == "unknown" && $0.targets.isEmpty })
+        #expect(scope.limitations.contains { $0.hasPrefix("target-scope-unknown:") })
+    }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile wrapper/builder owner controls; keep all observations and preparation costs."""
+"""Separate compiler-required contracts from runtime owner use; keep build-removal controls."""
 import argparse
 import hashlib
 import json
@@ -57,10 +57,12 @@ public struct OrdinaryNames {
 // @LiveBox and @LiveBuilder in comments do not make this owner live.
 public struct CommentOnlyOwner {}
 '''
-LIVE = ["LiveBox", "LiveWrappedOwner", "LiveBuilder", "LiveBuilderOwner"]
-DEAD = ["DormantBox", "NeverMadeWrappedOwner", "DormantBuilder", "NeverMadeBuilderOwner",
+CONTRACTS = ["LiveBox", "DormantBox", "LiveBuilder", "DormantBuilder"]
+LIVE = ["LiveWrappedOwner", "LiveBuilderOwner"]
+DEAD = ["NeverMadeWrappedOwner", "NeverMadeBuilderOwner",
         "OrdinaryNames", "CommentOnlyOwner", "LiveBox.spareWrapperHelper", "LiveBuilder.spareBuilderHelper"]
-REQUIRED = ["LiveBox.wrappedValue", "LiveBox.projectedValue", "LiveBuilder.buildBlock"]
+REQUIRED = ["LiveBox.wrappedValue", "LiveBox.projectedValue", "LiveBuilder.buildBlock",
+            "DormantBox.wrappedValue", "DormantBox.projectedValue", "DormantBuilder.buildBlock"]
 
 
 def digest(path):
@@ -80,7 +82,7 @@ def run(command, root, logs, label, expected=(0,), env=None):
     write(logs / (label + ".stderr"), result.stderr)
     write(logs / (label + ".json"), json.dumps({"command": args, "exit": result.returncode,
           "seconds": time.monotonic() - started}, indent=2, sort_keys=True))
-    if result.returncode not in expected:
+    if expected is not None and result.returncode not in expected:
         raise AssertionError(f"{label}: exit {result.returncode}; {result.stderr[-5000:]}")
     return result
 
@@ -106,19 +108,79 @@ def observe(binary, root, logs, label, requests):
     assert document["format"] == "symbol-query-batch"
     assert [row["requested"] for row in document["results"]] == requests
     states = {}
+    compiler_references = {}
     for row in document["results"]:
         assert row["status"] == "found", row
         states[row["requested"]] = row["result"]["reachability"]
-    return states
+        if row["requested"] in CONTRACTS:
+            usr = row["result"]["subject"]["usr"]
+            compiler_references[row["requested"]] = [item
+                for caller in row["result"]["usedBy"]
+                for item in caller.get("referenceEvidence", {}).get("items", [])
+                if item.get("origin") == "compiler" and item.get("targetUSR") == usr]
+    return states, compiler_references
 
 
-def check(states, exercised):
+def check(states, compiler_references, exercised):
     reachable = {"reachable", "retained", "retainedByMember"}
-    for name in LIVE + REQUIRED:
-        if exercised:
-            assert states[name]["state"] in reachable, (name, states[name])
+    # 런타임에 만들지 않는 owner라도 annotation을 소스에 남겨 두면 규약 선언이
+    # 컴파일에 필요하다. required declaration과 runtime owner를 같은 dead oracle로 보지 않는다.
+    for name in CONTRACTS + REQUIRED + (LIVE if exercised else []):
+        assert states[name]["state"] in reachable, (name, states[name])
+    for name in CONTRACTS:
+        assert compiler_references[name], (name, "missing observed compiler annotation reference")
     for name in DEAD + ([] if exercised else LIVE):
         assert states[name]["state"] == "unreachable", (name, states[name])
+
+
+def declaration(source, marker, following):
+    """고정 fixture 선언만 고른다. 임의 Swift 소스를 재작성하는 기능은 아니다."""
+    assert source.count(marker) == 1 and source.count(following) == 1
+    start = source.index(marker)
+    end = source.index(following, start)
+    return source[start:end]
+
+
+def compiler_controls():
+    wrapper = declaration(FEATURES, "@propertyWrapper public struct DormantBox", "public struct LiveWrappedOwner")
+    builder = declaration(FEATURES, "@resultBuilder public enum DormantBuilder", "public struct LiveBuilderOwner")
+    wrapper_owner = declaration(FEATURES, "public struct NeverMadeWrappedOwner", "@resultBuilder public enum LiveBuilder")
+    builder_owner = declaration(FEATURES, "public struct NeverMadeBuilderOwner", "public struct OrdinaryNames")
+    # wrappedValue만의 규약을 검사하려고 부수적인 getter/initializer의 참조도 함께 지운다.
+    missing_value = ("@propertyWrapper public struct DormantBox {\n"
+                     "    public var projectedValue: Int { 0 }\n"
+                     "    public init(wrappedValue: Int) {}\n}\n")
+    missing_block = "@resultBuilder public enum DormantBuilder {}\n"
+    return [
+        ("remove-wrapper-declaration", FEATURES.replace(wrapper, ""), False, ["DormantBox"]),
+        ("remove-builder-declaration", FEATURES.replace(builder, ""), False, ["DormantBuilder"]),
+        ("remove-wrapped-value", FEATURES.replace(wrapper, missing_value), False, ["wrappedValue"]),
+        ("remove-build-block", FEATURES.replace(builder, missing_block), False, ["buildBlock"]),
+        ("remove-dead-owners-and-contracts", FEATURES.replace(wrapper, "").replace(builder, "")
+            .replace(wrapper_owner, "").replace(builder_owner, ""), True, []),
+    ]
+
+
+def verify_compiler_controls(output, result):
+    for label, features, expected_success, diagnostic_tokens in compiler_controls():
+        root = output / label
+        write(root / "Package.swift", PACKAGE)
+        write(root / "Sources/Features/Features.swift", features)
+        write(root / "Sources/App/main.swift",
+              "import Features\nprint(LiveWrappedOwner().read(), LiveBuilderOwner().value())\n")
+        case = {"label": label, "expectedSuccess": expected_success,
+                "sourceSHA256": {str(p.relative_to(root)): digest(p)
+                    for p in [root / "Package.swift", *sorted((root / "Sources").rglob("*.swift"))]}}
+        result["compilerControls"].append(case)
+        built = run(["swift", "build", "--jobs", "3"], root, output, label + "-build",
+                    expected=None)
+        case["exit"] = built.returncode
+        assert (built.returncode == 0) == expected_success, (label, built.returncode)
+        diagnostics = built.stdout + built.stderr
+        if not expected_success:
+            assert built.returncode > 0 and "error:" in diagnostics, (label, diagnostics[-5000:])
+        assert all(token in diagnostics for token in diagnostic_tokens), (label, diagnostics[-5000:])
+        case["assertionsPassed"] = True
 
 
 def main():
@@ -132,9 +194,10 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     binary = args.cartograph.resolve(strict=True)
     result = {"id": "C-P0-3", "complete": False, "candidateSHA256": digest(binary),
-              "scope": "Synthetic custom wrapper/builder owner controls, not SwiftUI projection or a private app",
+              "scope": "Synthetic compiler-contract and runtime-owner controls, not SwiftUI projection or a private app",
               "existingSwiftUICoverage": "FalsePositiveCorpus/PropertyWrappers.swift separately covers real @State projection",
-              "cases": []}
+              "oracle": "Compiler annotation references keep contracts necessary while source remains. Runtime-dead owners and ordinary helpers remain unreachable. Fresh declaration/member removal builds test this distinction; unreachable is not a deletion recommendation.",
+              "cases": [], "compilerControls": []}
     if args.baseline:
         result["baselineSHA256"] = digest(args.baseline.resolve(strict=True))
     try:
@@ -159,10 +222,11 @@ def main():
             for name, executable in [("candidate", binary), ("baseline", args.baseline)]:
                 if executable is None:
                     continue
-                case[name] = observe(executable.resolve(), root, output, label + "-" + name,
-                                     LIVE + DEAD + REQUIRED)
-            check(case["candidate"], exercised)
+                case[name], case[name + "CompilerReferences"] = observe(
+                    executable.resolve(), root, output, label + "-" + name, CONTRACTS + LIVE + DEAD + REQUIRED)
+            check(case["candidate"], case["candidateCompilerReferences"], exercised)
             case["candidateAssertionsPassed"] = True
+        verify_compiler_controls(output, result)
         result["complete"] = True
     finally:
         write(output / "results.json", json.dumps(result, indent=2, sort_keys=True))

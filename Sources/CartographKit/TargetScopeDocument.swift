@@ -207,13 +207,14 @@ extension CartographService {
                 + "resource targets, external dependencies and unsupported target kinds remain unknown."]
         do {
             guard let fingerprint else { throw AnalysisSessionError.unavailable }
-            verified = try TargetScopeStore(fileSystem: fileSystem).read(path: path, projectPath: root,
-                                                                        fingerprint: fingerprint)
+            let candidate = try TargetScopeStore(fileSystem: fileSystem).read(path: path, projectPath: root,
+                                                                             fingerprint: fingerprint)
             guard fingerprint == (try sessionInputFingerprint()) else {
-                verified = nil
                 throw AnalysisSessionError.inputChangedDuringRefresh(attempts: 1)
             }
+            verified = candidate
         } catch {
+            verified = nil
             notes.append("target-scope-unknown: \(error). Rebuild and recapture target scope; run the whole suite.")
         }
         let inventory = context.projectFileInventory ?? projectFileInventory()

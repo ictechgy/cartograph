@@ -65,7 +65,9 @@ struct MCPPreparationTests {
         let generations = LockedValues<Int>()
         for _ in 0..<12 {
             group.enter()
-            DispatchQueue.global().async {
+            // 전체 Swift Testing 실행의 공유 pool 예약 지연을 준비기 잠금 실패로 오인하지 않는다.
+            // 실제 별도 호출자 12개를 동시에 실행해 준비기의 잠금·세대 규칙을 검증한다.
+            Thread.detachNewThread {
                 defer { group.leave() }
                 do { generations.append(try preparation.start(refresh: false, timeout: 30).preparationGeneration) }
                 catch { generations.append(-1) }
@@ -187,7 +189,7 @@ struct MCPPreparationTests {
         let preparation = MCPPreparation(factory: { try gate.enter(); return try Self.session() })
         defer { gate.release.signal(); preparation.shutdown() }
         let finished = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
+        Thread.detachNewThread {
             defer { finished.signal() }
             _ = try? preparation.perform { try preparation.requireSession().status() }
         }

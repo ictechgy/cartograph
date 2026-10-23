@@ -1785,6 +1785,13 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | Declarations whose source cannot be read (permissions or I/O failure) | retention annotations are unknown (`sourceUnavailable`); restore access and rerun |
 | Declarations named in `--external-retentions` | another platform calls them across a bridge; `--explain` quotes the evidence |
 
+Compiler requirements and runtime use are separate. A compiler-observed macro reference keeps
+the macro even when its annotated owner is unreachable. Likewise, an annotation still present
+in source can require a property wrapper or result builder and its contract members to compile.
+Keeping those declarations does not establish runtime reachability of the owner that uses the
+annotation. Removing an unreachable owner and removing only its required declaration are different
+edits; `unreachable` is not a deletion recommendation.
+
 **`retain_objc_accessible` defaults to on.** Periphery defaulted it off, which made mixed-language
 UIKit projects its largest source of false positives. A dead-code tool nobody trusts is worse than
 no tool, so Cartograph errs toward keeping code.

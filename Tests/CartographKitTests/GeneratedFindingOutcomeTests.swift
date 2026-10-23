@@ -25,7 +25,8 @@ struct GeneratedFindingOutcomeTests {
         #expect(reviewed.thresholdFailure == plain.thresholdFailure && plain.thresholdFailure != nil)
         #expect(reviewed.incompleteAnalysis == plain.incompleteAnalysis)
         #expect(reviewed.notes == plain.notes)
-        #expect(root["limitations"] != nil)
+        let limitations = try #require(root["limitations"] as? [String])
+        #expect(limitations.contains { $0.hasPrefix("unindexed-sources:") && $0.contains("Unindexed.swift") })
     }
 
     @Test("기존 baseline 억제를 요약에서 되살리지 않는다")
@@ -60,9 +61,11 @@ struct GeneratedFindingOutcomeTests {
         var builder = SnapshotBuilder(module: "App")
         builder.symbol("generated", name: "generatedUnused()", kind: .function, path: "/p/Generated.swift", line: 2)
         builder.symbol("token", name: "manualToken()", kind: .function, path: "/p/Tokens.swift", line: 2)
+        var snapshot = builder.build()
+        snapshot.indexedFileDates = ["/p/Generated.swift": .distantFuture, "/p/Tokens.swift": .distantFuture]
         return .init(configuration: .init(projectPath: "/p", thresholds: .init(maxUnusedSymbols: 0),
             baselinePath: baseline, reportFormat: .json), environment: .init(fileSystem: fs ?? fileSystem(),
-            indexProviderOverride: StaticIndexProvider(builder.build()), usesSyntaxCache: false))
+            indexProviderOverride: StaticIndexProvider(snapshot), usesSyntaxCache: false))
     }
 
     private func fileSystem() -> InMemoryFileSystem {
