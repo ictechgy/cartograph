@@ -209,6 +209,7 @@ extension CartographService {
         "empty-index:", "index-staleness:", "unindexed-sources:", "missing-sources:", "unreadable-sources:",
         "header-projection:", "configured-path-filter:", "configured-edge-kinds:", "source-discovery-exclusions:",
         "objective-c-sources:", "public-api-not-retained:", "symlinked-directories-outside-root:",
+        "build-module-coverage:", "build-module-coverage-unknown:",
     ]
 
     static func isClosedWorld(_ limitations: [String]) -> Bool {

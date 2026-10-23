@@ -159,3 +159,8 @@ header as `header-projection`. Fresh timestamps alone still do not clear that
 limitation: missing admission metadata, file-only dependencies and unindexed
 headers remain conservative. The unused-declaration lists remain independently
 checked; no expected source identity or caller oracle is derived from output.
+
+The separate [TestClassification](TestClassification/README.md) package generalizes
+the reported application `test_*` debug methods and sibling dispatch candidates.
+Its real compiler harness also records XCTest method ownership across a separate
+extension file and keeps an unrelated application extension as a negative control.

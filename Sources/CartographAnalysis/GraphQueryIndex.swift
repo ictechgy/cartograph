@@ -30,14 +30,14 @@ public struct GraphQueryIndex: Sendable {
         nodesByName = names
     }
 
-    /// 정확한 USR 이 이름보다 우선하며, 동명 선언은 전부 후보로 돌려준다.
+    /// 정확한 USR 이 이름보다 우선한다. 한 원형 타입으로 증명된 익스텐션 외의 동명 선언은 후보로 남긴다.
     public func resolve(_ subject: String) -> GraphNodeLookup {
         if let exact = graph.node(NodeID(subject)) { return .found(exact) }
         let matches = (nodesByName[subject] ?? []).compactMap { graph.node($0) }
         switch matches.count {
         case 0: return resolveQualifiedMember(subject)
         case 1: return .found(matches[0])
-        default: return .ambiguous(matches)
+        default: return sharedExtendedType(matches).map(GraphNodeLookup.found) ?? .ambiguous(matches)
         }
     }
 
@@ -108,8 +108,28 @@ public struct GraphQueryIndex: Sendable {
         switch matches.count {
         case 0: return .notFound
         case 1: return .found(matches[0])
-        default: return .ambiguous(matches)
+        default: return sharedExtendedType(matches).map(GraphNodeLookup.found) ?? .ambiguous(matches)
         }
+    }
+
+    /// 같은 이름으로 걸린 원형 하나와 그 원형만 확장하는 선언들은 같은 타입 질문이다.
+    ///
+    /// 이름·파일·모듈의 유사성은 근거가 아니다. 인덱스의 extendedBy에서 온 .extends 관계가
+    /// 각 익스텐션마다 그 원형 하나만 가리켜야 한다. 수동 그래프도 이 간선 계약을 지켜야 한다.
+    /// 관계가 빠졌거나 여러 대상·다른 타입·익스텐션 사슬이 있으면 기존 ambiguous를 보존한다.
+    /// 명시 USR은 이 경로를 거치지 않아 특정 익스텐션을 계속 직접 조회할 수 있다.
+    private func sharedExtendedType(_ candidates: [GraphNode]) -> GraphNode? {
+        guard graph.level == .symbol else { return nil }
+        let types = candidates.filter { $0.kind.isTypeDeclaration }
+        guard types.count == 1, let type = types.first,
+              [.classType, .structType, .enumType, .protocolType].contains(type.kind) else { return nil }
+        let proven = candidates.allSatisfy { node in
+            if node.id == type.id { return true }
+            guard node.kind == .extensionDeclaration else { return false }
+            let targets = Set(graph.outgoingEdges(from: node.id).filter { $0.kind == .extends }.map(\.target))
+            return targets == Set([type.id])
+        }
+        return proven ? type : nil
     }
 
     /// 정점의 소유 사슬이 요구된 이름들을 바깥 순서대로 담고 있는지.

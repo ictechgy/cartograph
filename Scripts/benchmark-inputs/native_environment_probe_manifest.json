@@ -75,10 +75,10 @@
   ],
   "sources": {
     ".github/workflows/ci.yml": {
-      "blob": "e1a0def68ba5c76a171fe8134dd604f866605821",
-      "bytes": 29989,
+      "blob": "f41af3a9797f0485c92db13f56c0d1e861fede79",
+      "bytes": 30072,
       "mode": "100644",
-      "sha256": "0990a0d5fd3a7c97fde57554b0b4aadc8d70c7b47c6bfe88effd9c69290b6380"
+      "sha256": "e52373b6c7ace068d21e12293d886cb6aa88a704a227a9f61d30138cc4268d6e"
     },
     "Scripts/benchmark-inputs/native_environment_observer.py": {
       "blob": "c45400bf9adde7334f6ffba355474c33590f3a65",
@@ -93,10 +93,10 @@
       "sha256": "2a21433cf7321df5d2a88d4976f32d160f996c1ac94fbc762a5d3e1d20705fa4"
     },
     "Scripts/benchmark-inputs/test_native_environment_observation.py": {
-      "blob": "972521ca9c126b3033a902293cb4bfec532d758d",
+      "blob": "4eef376e60297638cbce970b47b4d096c188874f",
       "bytes": 90811,
       "mode": "100644",
-      "sha256": "d84b977004b6183a42aaf6e838c1606bed97b8e90777f4afe97bb97b2d69608d"
+      "sha256": "6bde6d61f5071550dd24892c05c07c21b6a5ca735868efafe1a2f2e2e0435ad1"
     },
     "Scripts/normalize-indexstore-evidence.py": {
       "blob": "806373a57e19ef5dbdd4f81a86dcca3d3fd294a7",

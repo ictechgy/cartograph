@@ -2135,6 +2135,15 @@ callers or import-removal candidates. SDK/binary dependencies can legitimately h
 units. PBXSourcesBuildPhase/SwiftPM target membership is not fully reconstructed; unresolved coverage
 continues to block narrowed `xcodebuild` selection. Run the whole suite when selectors cannot be verified.
 
+For a standard local SwiftPM `.../index/store`, Cartograph reads only the adjacent configuration's
+`description.json` (8 MiB cap), without executing `Package.swift`. A command must explicitly name
+the selected index and existing local Swift sources before `build-module-coverage` can name a module
+whose expected sources lack captured unit timestamps. Excluded sources, conflicting command membership,
+stale metadata and unsupported input stay distinct. This is an observation against build metadata, not
+proof of current target membership, definition coverage or build freshness. SDK/binary modules without
+local sources are not marked missing. Xcode stores and compiler `out` overrides have no such mapping.
+The description also participates in session invalidation; absence of a warning is not a coverage pass.
+
 Git-ignored untracked sources and nested repositories are excluded from discovery; tracked files
 take precedence over ignore rules. Exclusions are reported and do not prove build completeness.
 Generated DI files can connect real callers. After reviewing their role, use
@@ -2144,6 +2153,11 @@ A generated-looking name or a human-maintained design-token file is not automati
 File/module graphs use uniquely evidenced occurrence ownership, including extensions declared
 outside the original type's module. Symbol/type graphs retain semantic ownership. Missing or
 conflicting occurrence ownership remains an explicit attribution limitation.
+
+`query.usedBy` contains reverse dependency neighbors, including implementation relationships.
+Read each neighbor's `edges`: `overrides`, `conformance`, and `extends` describe implementation or
+type relationships; they do not prove runtime invocation. `call`/`reference` and optional occurrence
+evidence distinguish those observations. Generated Provider implementations are not automatically callers.
 
 ## License
 

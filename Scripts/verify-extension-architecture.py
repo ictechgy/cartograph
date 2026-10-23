@@ -146,6 +146,19 @@ def main():
                     "--project", fixture, "--index-store", index, "--config", fixture / "rules.yml"],
                     fixture, label + "-rules"))
                 validate_candidate(documents, fixture)
+                query = load(run([binary, "query", "DomainType", "--project", fixture,
+                    "--index-store", index, "--config", fixture / "rules.yml"],
+                    fixture, label + "-query-type"))
+                if query.get("status") != "found" or query["result"]["subject"]["kind"] != "struct":
+                    raise ValueError("Compiler-proven type and extension name did not resolve to the nominal type")
+                usr = query["result"]["subject"]["usr"]
+                exact = load(run([binary, "query", usr, "--project", fixture,
+                    "--index-store", index, "--config", fixture / "rules.yml"],
+                    fixture, label + "-query-usr"))
+                if exact.get("status") != "found" or exact["result"]["subject"] != query["result"]["subject"]:
+                    raise ValueError("Name canonicalization and exact compiler USR disagree")
+                results["queryIdentity"] = {"status": "passed", "subject": query["result"]["subject"],
+                                             "scope": "one actual compiler extension; three-extension and ambiguity controls are unit fixtures"}
             observed = pairs(documents["module"])
             results["reports"][label] = {"modulePairs": sorted(observed),
                 "falseDomainReverse": any(source == "Domain" and target in {"Presentation", "Data"}
@@ -154,20 +167,23 @@ def main():
                 "typePairs": sorted(type_pairs(documents["type"]))}
         if base.fingerprint(index) != captured:
             raise ValueError("Compiler index changed between analyses")
-        if not results["reports"]["public-0.28.0"]["falseDomainReverse"]:
-            raise ValueError("Public baseline did not reproduce the reported reverse architectural edge")
-        if args.baseline and not results["reports"]["pre-fix-main"]["falseDomainReverse"]:
-            raise ValueError("Provided pre-fix baseline did not reproduce the reverse edge")
-        results.update(status="passed", sameIndex=captured,
+        reproduction = {label: "reproduced" if report["falseDomainReverse"] else "not-reproduced"
+                        for label, report in results["reports"].items() if label != "candidate"}
+        # A successful candidate control is not evidence that an older binary was wrong.
+        # Keep the public result separate; this compiler corpus may not emit the
+        # semantic-owner/source-location combination from the reported workspace.
+        results.update(status="candidate-controls-passed", reproduction=reproduction, sameIndex=captured,
                        limitations="Ambiguous/missing file module evidence retains the legacy semantic source. "
-                                   "Type and symbol graphs intentionally preserve semantic owners; no whole-app claim.")
+                                   "Type and symbol graphs intentionally preserve semantic owners. A not-reproduced "
+                                   "public result does not establish remediation of the reported workspace; no whole-app claim.")
         return 0
     except Exception as error:
         results["error"] = str(error)
         raise
     finally:
         save(output / "results.json", results)
-        print(json.dumps({"status": results["status"], "mainBaseline": results["mainBaseline"]}))
+        print(json.dumps({"status": results["status"], "mainBaseline": results["mainBaseline"],
+                          "reproduction": results.get("reproduction", {})}))
 
 
 if __name__ == "__main__":

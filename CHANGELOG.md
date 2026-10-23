@@ -38,6 +38,10 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
 - Compiler-observed macro references retain the macro independently of the annotated type's runtime reachability.
 - Source inventory respects Git ignore rules, tracked-file precedence and nested repository boundaries,
   retaining explicit coverage uncertainty for excluded inputs.
+- Adjacent SwiftPM build metadata can identify expected local module sources absent from the selected
+  capture, with bounded input and explicit unverified membership/freshness. This is not Xcode coverage proof.
+- Same-type query names resolve compiler-proven extensions to their unique nominal type; genuinely
+  different types and uncertain extension identities remain ambiguous.
 - Snapshot capture and comparison share an explicit bounded `--snapshot-max-mib` budget (default 128,
   maximum 1024), also available through MCP and the Git capture helper. Compression remains unsupported.
 - Preserve compiler-associatedtype witnesses with reachable-owner evidence; retain synthesized

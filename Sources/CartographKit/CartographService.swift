@@ -143,7 +143,9 @@ public struct CartographService: Sendable {
                     missing: enriched.missingSourcePaths, unreadable: enriched.unreadableSourcePaths)
             )
             return context.bindingProjectFileInventory(inventory)
-                .bindingIndexSelectionLimitations(source.selectionLimitations)
+                .bindingIndexSelectionLimitations(source.selectionLimitations + SwiftPMModuleCoverage(
+                    fileSystem: environment.fileSystem).limitations(storePath: source.storePath,
+                        projectPath: projectPath, sourcePaths: inventory.sourceFiles, snapshot: raw))
         }
     }
 

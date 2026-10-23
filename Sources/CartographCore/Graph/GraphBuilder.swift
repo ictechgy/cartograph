@@ -195,18 +195,23 @@ public struct GraphBuilder: Sendable {
         -> (nodes: [String: GraphNode], unresolved: [String: String]) {
         guard options.level == .module || options.level == .file else { return ([:], [:]) }
         var modulesByPath: [String: Set<String>] = [:]
+        var unresolvedModulePaths: Set<String> = []
         for symbol in snapshot.symbols where !symbol.isExternal && allowedPaths.contains(symbol.location.path) {
             modulesByPath[symbol.location.path, default: []].formUnion(symbol.module.isEmpty ? [] : [symbol.module])
         }
         for (path, usage) in snapshot.fileModuleUsages where options.pathFilter.allows(path) {
             let module = usage.owningModule ?? ""
             modulesByPath[path, default: []].formUnion(module.isEmpty ? [] : [module])
+            // 동일 파일을 여러 compile unit이 공유하면 USR 병합 후 선언에는 첫 모듈만
+            // 남을 수 있다. 소유 모듈이 미확정인 usage를 그 단일 선언으로 덮어쓰지 않는다.
+            // 소유 모듈이 알려진 파일의 unattributed reference는 import 대상의 불확실성이다.
+            if module.isEmpty, usage.hasUnattributedReferences { unresolvedModulePaths.insert(path) }
         }
         var nodes: [String: GraphNode] = [:]
         var unresolved: [String: String] = [:]
         for entry in modulesByPath {
             let (path, modules) = entry
-            let module = modules.count == 1 ? modules.first! : ""
+            let module = modules.count == 1 && !unresolvedModulePaths.contains(path) ? modules.first! : ""
             if options.level == .file {
                 nodes[path] = GraphNode(id: NodeID(path),
                     name: path.split(separator: "/").last.map(String.init) ?? path, kind: .file, module: module,
@@ -214,7 +219,8 @@ public struct GraphBuilder: Sendable {
             } else if !module.isEmpty {
                 nodes[path] = GraphNode(id: NodeID(module), name: module, kind: .module, module: module)
             } else {
-                unresolved[path] = modules.isEmpty ? "missing-file-module" : "conflicting-file-modules"
+                unresolved[path] = unresolvedModulePaths.contains(path) ? "unresolved-file-module-evidence"
+                    : (modules.isEmpty ? "missing-file-module" : "conflicting-file-modules")
             }
         }
         return (nodes, unresolved)

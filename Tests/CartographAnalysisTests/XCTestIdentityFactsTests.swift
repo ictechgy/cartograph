@@ -126,6 +126,50 @@ struct XCTestIdentityFactsTests {
                       isExternal: external, attributes: attributes, compilerUnitTest: bit)
     }
 
+    @Test("확장 테스트는 단일 컴파일러 확장 대상이 확인된 XCTest 클래스일 때만 인정한다",
+          arguments: [ReferenceOrigin.compiler, .compilerAndSyntax, .syntax, .inferred, .graph, .unknown])
+    func extensionMethodOwner(origin: ReferenceOrigin) {
+        let snapshot = IndexSnapshot(symbols: [
+            symbol("Case", kind: .classType),
+            symbol("extension", name: "Case", kind: .extensionDeclaration),
+            symbol("test", owner: "extension", bit: true),
+        ], references: [inherits("Case", sdk),
+            .init(sourceUSR: "extension", targetUSR: "Case", kind: .extends, origin: origin)])
+        let facts = XCTestIdentityFacts(snapshot: snapshot)
+        let proved = [.compiler, .compilerAndSyntax].contains(origin)
+        #expect(facts.methodUSRs == (proved ? ["test"] : []))
+        #expect(facts.uncertainUSRs == (proved ? [] : ["test"]))
+    }
+
+    @Test("복수 확장 대상과 앱 클래스 확장 및 컴파일러 비트 없는 메서드는 확정하지 않는다")
+    func rejectsAmbiguousAndOrdinaryExtensionOwners() {
+        let symbols = [
+            symbol("Case", kind: .classType), symbol("App", kind: .classType),
+            symbol("extension", name: "Case", kind: .extensionDeclaration),
+            symbol("test", owner: "extension", bit: true),
+        ]
+        for targets in [["App"], ["Case", "App"], ["Missing"], []] as [[String]] {
+            let facts = XCTestIdentityFacts(snapshot: IndexSnapshot(symbols: symbols,
+                references: [inherits("Case", sdk)] + targets.map {
+                    .init(sourceUSR: "extension", targetUSR: $0, kind: .extends, origin: .compiler)
+                }))
+            #expect(facts.methodUSRs.isEmpty)
+            #expect(facts.uncertainUSRs == ["test"])
+        }
+        var input = IndexSnapshot(symbols: symbols, references: [inherits("Case", sdk),
+            .init(sourceUSR: "extension", targetUSR: "Case", kind: .extends, origin: .compiler),
+            .init(sourceUSR: "extension", targetUSR: "App", kind: .extends, origin: .syntax)])
+        #expect(XCTestIdentityFacts(snapshot: input).methodUSRs.isEmpty)
+        input.references.removeLast()
+        input.symbols.removeLast()
+        input.symbols.append(symbol("test", owner: "extension", bit: false, attributes: [.unitTest]))
+        #expect(XCTestIdentityFacts(snapshot: input).methodUSRs.isEmpty)
+        input.symbols.removeLast()
+        input.symbols.append(symbol("test", owner: "extension", bit: true))
+        input.references += input.references
+        #expect(XCTestIdentityFacts(snapshot: input).methodUSRs == ["test"])
+    }
+
     private func inherits(
         _ source: String, _ target: String, origin: ReferenceOrigin = .compiler
     ) -> IndexedReference {

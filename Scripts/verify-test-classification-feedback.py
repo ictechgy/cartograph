@@ -25,8 +25,8 @@ def symbol_names(rows):
 
 
 def assess(leaf, dispatch):
-    debug = {"test_debugOne", "test_debugTwo", "test_debugThree", "test_debugFour", "test_debugFive"}
-    actual = {"testActual", "modernActual"}
+    debug = {"test_debugOne", "test_debugTwo", "test_debugThree", "test_debugFour", "test_debugFive", "test_extensionDebug"}
+    actual = {"testActual", "testExtensionActual", "modernActual"}
     siblings = {"siblingOne", "siblingTwo", "siblingThree", "siblingFour", "siblingFive", "siblingSix", "siblingSeven"}
     tests = symbol_names(leaf["tests"])
     uncertain = symbol_names(leaf.get("uncertainTestCandidates") or [])
@@ -38,6 +38,36 @@ def assess(leaf, dispatch):
             "changedReceiverPreserved": "changedReceiverControl" in projected,
             "directSiblingExcluded": "directSiblingControl" not in projected,
             "receiverUnknownPreserved": any(x.startswith("dispatch-receiver-uncertainty:") for x in dispatch["limitations"])}
+
+
+def extension_identity(document):
+    """Preserve the actual compiler ownership shape; never infer it from a test name."""
+    snapshot = document["snapshot"]
+    symbols = {symbol["usr"]: symbol for symbol in snapshot["symbols"]}
+    matches = [symbol for symbol in symbols.values() if symbol["name"] == "testExtensionActual()"
+               and symbol["module"] == "AppTests" and not symbol.get("isExternal", False)]
+    if len(matches) != 1:
+        raise AssertionError("Expected one real extension test declaration")
+    method = matches[0]
+    parent = symbols.get(method.get("parentUSR"), {})
+    relations = [edge for edge in snapshot["references"] if edge["sourceUSR"] == method.get("parentUSR")
+                 and edge["kind"] == "extends"]
+    compiler = [edge for edge in relations if edge.get("origin") in ("compiler", "compilerAndSyntax")]
+    targets = {edge["targetUSR"] for edge in relations}
+    if parent.get("kind") == "extension":
+        if len(targets) != 1 or not compiler:
+            raise AssertionError("Extension test has no unique compiler owner")
+        owner = symbols.get(next(iter(targets)), {})
+        shape = "compiler-extension-parent"
+    else:
+        owner = parent
+        shape = "nominal-parent-observed; extension-parent failure not reproduced by this compiler"
+    if owner.get("name") != "ActualTests" or owner.get("kind") != "class" or method.get("compilerUnitTest") is not True:
+        raise AssertionError("Fixture lacks the observed XCTest method identity")
+    return {"methodUSR": method["usr"], "compilerUnitTest": method["compilerUnitTest"],
+            "parentUSR": method.get("parentUSR"), "parentKind": parent.get("kind"),
+            "ownerUSR": owner["usr"], "extends": relations, "observedShape": shape,
+            "extensionParentCaseExercised": parent.get("kind") == "extension"}
 
 
 def main():
@@ -94,11 +124,16 @@ def main():
             result["runs"][label] = {"version": version, "binarySHA256": hashlib.sha256(binary.read_bytes()).hexdigest(),
                                       "assessment": outcome}
             if label == "candidate":
+                captured = json.loads(run([binary, "snapshot", "--project", fixture, "--index-store", stores[0]],
+                                          label + "-extension-identity"))
+                result["extensionIdentity"] = extension_identity(captured)
                 assert not outcome["misclassifiedDebug"], outcome
                 assert outcome["actualTestsPreserved"] and outcome["ordinaryControlExcluded"], outcome
                 assert len(outcome["siblingCandidates"]) == 7 and outcome["changedReceiverPreserved"], outcome
                 assert outcome["directSiblingExcluded"] and outcome["receiverUnknownPreserved"], outcome
                 assert symbol_names(documents["leaf-impact"]["tests"]) == symbol_names(documents["leaf-affected"]["tests"])
+                assert "test_extensionDebug" in symbol_names(documents["leaf-impact"]["affected"]), \
+                    "Uncertain application extension caller must remain in the impact graph"
         result["status"] = "passed"
         result["publicReproduced"] = bool(result["runs"]["public028"]["assessment"]["misclassifiedDebug"])
         result["limitations"] = ["No receiver-sensitive specialization; seven sibling tests are retained review candidates.",

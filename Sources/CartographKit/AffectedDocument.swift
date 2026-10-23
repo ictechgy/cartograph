@@ -364,6 +364,7 @@ extension AffectedDocument {
             "empty-index:", "index-staleness:", "unindexed-sources:", "missing-sources:",
             "unreadable-sources:", "header-projection:", "configured-path-filter:", "configured-edge-kinds:",
             "symlinked-directories-outside-root:", "source-discovery-exclusions:",
+            "build-module-coverage:", "build-module-coverage-unknown:",
         ]
         if limitations.contains(where: { limitation in coverageGaps.contains { limitation.hasPrefix($0) } }) {
             return "Source/index coverage is incomplete; additional tests may reach this change."

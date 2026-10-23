@@ -2050,6 +2050,14 @@ workspace scheme과 관련 로컬 패키지 target을 모두 빌드한 뒤 그 �
 PBXSourcesBuildPhase와 SwiftPM target 소속 전체를 재구성하지 못하므로 불명확한 범위에서는
 좁힌 `xcodebuild` 선택을 계속 거부합니다. selector를 검증할 수 없다면 전체 suite를 실행하세요.
 
+표준 로컬 SwiftPM `.../index/store`는 같은 configuration의 인접 `description.json`만 최대 8 MiB까지
+읽으며 `Package.swift`를 실행하지 않습니다. 명령이 선택한 인덱스와 실재 로컬 Swift 소스를 명시한
+경우에만 `build-module-coverage`가 기대 소스의 unit 시각을 관측하지 못한 모듈 이름을 표시합니다.
+제외 소스·상충한 명령 소속·오래된 metadata·지원하지 않는 입력은 구분합니다. 이는 build metadata와의
+관측 비교이며 현재 target 소속·정의 범위·빌드 신선도의 증명이 아닙니다. 로컬 소스가 없는 SDK·binary는
+missing으로 분류하지 않으며 Xcode store와 compiler `out` override에는 이 매핑이 없습니다.
+설명 파일도 세션 무효화 입력에 포함하지만 경고가 없다는 사실은 coverage 통과가 아닙니다.
+
 Git ignored인 미추적 소스와 중첩 저장소는 탐색에서 제외하며 추적 파일은 ignore보다
 우선합니다. 제외 경고가 없어졌다고 빌드 범위가 완전해진 것은 아닙니다. 생성된 DI 파일은
 호출 관계를 연결하므로 역할을 검토한 뒤 `retention.retained_files: ["Sources/Generated/**"]`로
@@ -2059,6 +2067,11 @@ Git ignored인 미추적 소스와 중첩 저장소는 탐색에서 제외하며
 파일·모듈 그래프는 고유한 근거가 있는 reference 발생 위치에 출처를 귀속하며 다른 모듈에서
 선언한 extension도 포함합니다. 심볼·타입 그래프는 의미상 소유자를 유지합니다. 발생 위치의
 모듈 근거가 없거나 충돌하면 출처 한계를 남깁니다.
+
+`query.usedBy`는 구현 관계도 포함하는 역방향 의존 이웃입니다. 각 이웃의 `edges`를 확인하세요.
+`overrides`·`conformance`·`extends`는 구현이나 타입 관계이며 runtime 호출을 증명하지 않습니다.
+`call`·`reference`와 선택적인 발생 위치 근거를 함께 구분해 읽으세요. 생성된 Provider 구현을
+자동으로 호출자라고 해석하지 않습니다.
 
 ## 라이선스
 

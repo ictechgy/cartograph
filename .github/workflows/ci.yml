@@ -361,6 +361,7 @@ jobs:
 
       - name: Capture associatedtype compiler evidence
         if: always()
+        timeout-minutes: 5
         run: >-
           CARTOGRAPH_ASSOCIATED_WITNESS_EVIDENCE="$RUNNER_TEMP/associated-witness/raw-occurrences.json"
           swift test --skip-build --enable-code-coverage --filter AssociatedTypeWitnessCompilerTests
@@ -503,6 +504,7 @@ jobs:
           retention-days: 14
 
       - name: Diagnose associatedtype witness feedback
+        if: ${{ !cancelled() && env.CARTOGRAPH != '' }}
         run: |
           python3 Scripts/verify-associated-witness-contract.py
           python3 Scripts/verify-associated-witness-feedback.py --cartograph "$CARTOGRAPH" \

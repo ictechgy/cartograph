@@ -467,6 +467,22 @@ struct AffectedDocumentTests {
         #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
     }
 
+    @Test("build metadata 누락이나 unknown은 부분 테스트 실행·닫힌 세계의 증명이 아니다", arguments: [
+        "build-module-coverage: Lib missing-observed-source-units",
+        "build-module-coverage-unknown: unsupported metadata"
+    ])
+    func moduleCoverageRefusesSelection(limitation: String) throws {
+        let original = try service(xctestSnapshot()).affectedDocument(symbols: ["P"])
+        #expect(!original.xcodebuildSelection().output.isEmpty)
+        let document = AffectedDocument(status: original.status, requestedSymbols: original.requestedSymbols,
+            requestedFiles: original.requestedFiles, selected: original.selected, changeScope: original.changeScope,
+            tests: original.tests, summary: original.summary, selectionIssues: original.selectionIssues,
+            limitations: original.limitations + [limitation], truncated: original.truncated)
+        #expect(document.xcodebuildSelection().output.isEmpty)
+        #expect(document.xcodebuildSelection().refusal?.contains("Source/index coverage is incomplete") == true)
+        #expect(!CartographService.isClosedWorld([limitation]))
+    }
+
     @Test("따라가지 않은 루트 밖 디렉터리 링크 뒤의 테스트를 빠뜨릴 수 있으므로 테스트 선택을 좁히지 않는다")
     func externalDirectoryLinkRefusesSelection() throws {
         // 링크 뒤 소스는 그래프에 없다. 거기 있는 테스트가 이 변경에 닿아도 목록에 없으므로

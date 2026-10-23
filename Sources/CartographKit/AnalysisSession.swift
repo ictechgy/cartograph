@@ -707,6 +707,9 @@ fileprivate struct CachedListingFileSystem: FileSystem {
     func fileExists(at path: String) -> Bool { base.fileExists(at: path) }
     func directoryExists(at path: String) -> Bool { base.directoryExists(at: path) }
     func readData(at path: String) throws -> Data { try base.readData(at: path) }
+    func readData(at path: String, maximumBytes: Int) throws -> Data {
+        try base.readData(at: path, maximumBytes: maximumBytes)
+    }
     func write(_ data: Data, to path: String) throws { try base.write(data, to: path) }
     func removeItem(at path: String) throws { try base.removeItem(at: path) }
     func contentsOfDirectory(at path: String) throws -> [String] {
@@ -964,6 +967,12 @@ private struct AnalysisInputFingerprinter {
         }
         let fileSystem = environment.fileSystem
         for store in stores.sorted() {
+            if let metadata = SwiftPMModuleCoverage.descriptionPath(storePath: store, projectPath: projectPath,
+                                                                    fileSystem: fileSystem) {
+                try addFile(metadata, label: "swiftpm-build-description", includeModificationDate: true,
+                    isDiscoveredInput: true, maximumBytes: SwiftPMModuleCoverage.maximumBytes,
+                    cache: cache, observedKeys: &observedKeys, to: &accumulator)
+            }
             for suffix in ["/v5/units", "/units"] {
                 let root = store + suffix
                 accumulator.addText("index-unit-root:\(root):\(fileSystem.directoryExists(at: root))")
@@ -1036,12 +1045,14 @@ private struct AnalysisInputFingerprinter {
         label: String,
         includeModificationDate: Bool = false,
         isDiscoveredInput: Bool = false,
+        maximumBytes: Int? = nil,
         cache: AnalysisInputFingerprintCache?,
         observedKeys: inout Set<AnalysisInputFingerprintCache.Key>,
         to accumulator: inout FingerprintAccumulator
     ) throws {
         let cacheKey = AnalysisInputFingerprintCache.Key(
-            label: label, path: path, stampsModificationDate: includeModificationDate
+            label: maximumBytes.map { label + ":bounded-\($0)" } ?? label,
+            path: path, stampsModificationDate: includeModificationDate
         )
         observedKeys.insert(cacheKey)
         let fileSystem = environment.fileSystem
@@ -1084,7 +1095,15 @@ private struct AnalysisInputFingerprinter {
             cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
             return
         }
-        guard let digest = try? contentDigest(at: path) else {
+        if let maximumBytes, let stamp, stamp.size > UInt64(maximumBytes) {
+            // parser가 읽지 않는 대형 metadata를 세션 준비가 전부 읽어서도 안 된다.
+            contribution.addText("oversize-skipped:\(maximumBytes):\(stamp.device):\(stamp.inode):\(stamp.size)"
+                + ":\(stamp.changeSeconds).\(stamp.changeNanoseconds):\(stamp.mode)")
+            accumulator.appendEncoded(contribution.data)
+            cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
+            return
+        }
+        guard let digest = try? contentDigest(at: path, maximumBytes: maximumBytes) else {
             contribution.addText("unreadable")
             accumulator.appendEncoded(contribution.data)
             cache?.store(encoded: contribution.data, stamp: stamp, for: cacheKey)
@@ -1097,8 +1116,12 @@ private struct AnalysisInputFingerprinter {
     }
 
     /// 입력 내용의 SHA-256. 조각 읽기를 지원하는 파일 시스템은 1 MiB 씩 해시해 메모리를 조각 크기로 묶는다.
-    private func contentDigest(at path: String) throws -> Data {
+    private func contentDigest(at path: String, maximumBytes: Int? = nil) throws -> Data {
         let fileSystem = environment.fileSystem
+        if let maximumBytes {
+            // stamp를 못 얻거나 읽기 사이 파일이 커져도 상한+1보다 더 읽지 않는다.
+            return Data(SHA256.hash(data: try fileSystem.readData(at: path, maximumBytes: maximumBytes)))
+        }
         guard let chunked = fileSystem as? any ChunkedFileReading else {
             return Data(SHA256.hash(data: try fileSystem.readData(at: path)))
         }

@@ -152,6 +152,44 @@ print(Greeter().hello(), MainGreeter().hello())
     return {"id": "C-P0-3", "label": label, "states": states}
 
 
+def module_coverage_case(binary, baseline, root, output):
+    """Use the actual SwiftPM description and remove only owned fixture Lib units, then restore them."""
+    selected = index(root).resolve()
+    description_path = selected.parent.parent / "description.json"
+    with description_path.open("rb") as stream:
+        data = stream.read(8 * 1024 * 1024 + 1)
+    assert len(data) <= 8 * 1024 * 1024
+    description = json.loads(data)
+    commands = [c for c in description["swiftCommands"].values() if c["moduleName"] == "Lib"]
+    assert commands and all(str(selected) in c["otherArguments"] for c in commands), commands
+    stems = {Path(p).name for c in commands for p in c["objects"] + [c["moduleOutputPath"]]}
+    units = selected / "v5/units"
+    assert units.is_dir()
+    removed = [p for p in units.iterdir() if p.is_file() and any(p.name.startswith(stem + "-") for stem in stems)]
+    assert removed, (sorted(stems), sorted(p.name for p in units.iterdir()))
+    complete = json.loads(analyze(binary, root, output, "module-coverage-complete", ["dead", "--report-format", "json"]).stdout)
+    assert not any('"Lib": missing-observed-source-units' in x for x in complete.get("limitations", []))
+    backup = root / "unit-backup"
+    backup.mkdir()
+    try:
+        for p in removed:
+            p.rename(backup / p.name)
+        public = json.loads(analyze(baseline, root, output, "module-coverage-public", ["dead", "--report-format", "json"]).stdout)
+        candidate = json.loads(analyze(binary, root, output, "module-coverage-missing", ["dead", "--report-format", "json"]).stdout)
+        notes = [x for x in candidate.get("limitations", []) if x.startswith("build-module-coverage:")]
+        assert any('"Lib": missing-observed-source-units' in x and "freshness are unverified" in x for x in notes), candidate
+        assert not any(x.startswith("build-module-coverage:") for x in public.get("limitations", []))
+        return {"id": "C-P0-1", "label": "swiftpm-missing-local-module", "candidateControls": "passed",
+                "removedFixtureUnits": sorted(p.name for p in removed), "descriptionSHA256": hashlib.sha256(data).hexdigest(),
+                "candidateLimitations": notes, "publicLimitations": public.get("limitations", []),
+                "scope": "actual synthetic SwiftPM build metadata and omitted Lib units; no Xcode/private-workspace claim"}
+    finally:
+        for p in removed:
+            retained = backup / p.name
+            if retained.exists():
+                retained.rename(p)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cartograph", type=Path, required=True)
@@ -184,6 +222,8 @@ def main():
                                                        visibility, strict, scope=scope))
             syntax = Path(__file__).resolve().parents[1] / ".build/checkouts/swift-syntax"
             result["cases"].append(macro_case(binary, output / "macro", output / "logs", name + "-macro", syntax, strict))
+        result["cases"].append(module_coverage_case(args.cartograph.resolve(), baseline,
+                                                   output / "candidate-ordinary", output / "logs"))
     finally:
         write(output, "results.json", json.dumps(result, indent=2, sort_keys=True))
     print(json.dumps(result, indent=2, sort_keys=True))

@@ -33,12 +33,14 @@ public struct XCTestIdentityFacts: Sendable, Equatable {
             }
         }
 
+        let extensionOwners = Self.compilerExtensionOwners(snapshot: snapshot, symbols: symbols, classes: classes)
         var methods: Set<String> = []
         var uncertain: Set<String> = []
         for symbol in symbols.values where !symbol.isExternal {
             let marked = symbol.compilerUnitTest == true || symbol.attributes.contains(.unitTest)
             if symbol.kind == .method, symbol.compilerUnitTest == true,
-               let owner = symbol.parentUSR, classes.contains(owner),
+               let parent = symbol.parentUSR,
+               classes.contains(extensionOwners[parent] ?? parent),
                symbol.name.hasPrefix("test"), symbol.name.hasSuffix("()"),
                !symbol.name.dropLast(2).contains("("), !symbol.attributes.contains(.generic) {
                 methods.insert(symbol.usr)
@@ -49,5 +51,27 @@ public struct XCTestIdentityFacts: Sendable, Equatable {
         classUSRs = classes
         methodUSRs = methods
         uncertainUSRs = uncertain
+    }
+
+    /// 확장의 표시 이름이나 구문 관계를 소유자 증명으로 쓰지 않는다. 충돌한 대상은 임의 선택하지 않는다.
+    private static func compilerExtensionOwners(
+        snapshot: IndexSnapshot, symbols: [String: IndexedSymbol], classes: Set<String>
+    ) -> [String: String] {
+        var targets: [String: Set<String>] = [:]
+        var compilerSources: Set<String> = []
+        for reference in snapshot.references where reference.kind == .extends {
+            guard let source = symbols[reference.sourceUSR], !source.isExternal,
+                  source.kind == .extensionDeclaration else { continue }
+            targets[reference.sourceUSR, default: []].insert(reference.targetUSR)
+            if [.compiler, .compilerAndSyntax].contains(reference.origin) {
+                compilerSources.insert(reference.sourceUSR)
+            }
+        }
+        var owners: [String: String] = [:]
+        for (source, candidates) in targets where compilerSources.contains(source) && candidates.count == 1 {
+            guard let target = candidates.first, classes.contains(target) else { continue }
+            owners[source] = target
+        }
+        return owners
     }
 }
