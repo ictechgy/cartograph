@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import signal
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -16,6 +17,21 @@ SPEC.loader.exec_module(OBS)
 
 
 class ObservationParsing(unittest.TestCase):
+    def preserve_native_process(self, root, name):
+        destination = os.environ.get("CARTOGRAPH_OBSERVATION_PROCESS_EVIDENCE")
+        if not destination:
+            return
+        output = Path(destination)
+        self.assertTrue(output.is_absolute())
+        self.assertFalse(output.resolve().is_relative_to(OBS.ROOT.resolve()))
+        output.mkdir(exist_ok=True)
+        for suffix in (".json", ".stdout", ".stderr"):
+            source = root / (name + suffix)
+            if source.is_file():
+                data = OBS.SCOPE.bounded(source, 16 * 1024)
+                with (output / (name + suffix)).open("xb") as target:
+                    target.write(data)
+
     def test_combined_budget_and_cleanup_receipt_are_required(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -55,20 +71,60 @@ class ObservationParsing(unittest.TestCase):
             root = Path(directory).resolve()
             self.assertEqual(root.parent, Path(tempfile.gettempdir()).resolve())
             for stream, descriptor in (("stdout", 1), ("stderr", 2)):
-                command = [sys.executable, "-c", f"import os,time;os.write({descriptor}, b'x'*32768);time.sleep(120)"]
-                with self.assertRaises(RuntimeError):
-                    OBS.run(command, root, root, stream, 30, 2048)
-                receipt = json.loads((root / (stream + ".json")).read_text())
+                # 기존 supervisor 회귀와 같이 TERM을 무시해 실제 KILL 경로를 검사한다.
+                name = "kill-" + stream
+                code = ("import os,signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+                        f"try: os.write({descriptor}, b'x'*32768)\n"
+                        "except BrokenPipeError: pass\n"
+                        "time.sleep(120)\n")
+                try:
+                    with self.assertRaises(RuntimeError):
+                        OBS.run([sys.executable, "-c", code], root, root, name, 30, 2048)
+                finally:
+                    self.preserve_native_process(root, name)
+                receipt = json.loads((root / (name + ".json")).read_text())
                 self.assertEqual(receipt["output_limit_exceeded"], stream)
                 self.assertFalse(receipt["timed_out"])
+                self.assertEqual(receipt["raw_returncode"], -signal.SIGKILL)
                 self.assertTrue(receipt["owned_root_reaped"])
                 self.assertFalse(receipt["ownership_lost"])
                 self.assertEqual(receipt["cleanup_errors"], [])
                 self.assertLess(receipt["wall_seconds"], 20)
                 for channel in ("stdout", "stderr"):
-                    self.assertLessEqual((root / (stream + "." + channel)).stat().st_size, 1024)
+                    self.assertLessEqual((root / (name + "." + channel)).stat().st_size, 1024)
             normal = [sys.executable, "-c", "import os;os.write(1,b'out');os.write(2,b'err')"]
-            self.assertEqual(OBS.run(normal, root, root, "normal", 30, 2048), b"out")
+            try:
+                self.assertEqual(OBS.run(normal, root, root, "normal", 30, 2048), b"out")
+            finally:
+                self.preserve_native_process(root, "normal")
+
+    @unittest.skipUnless(os.name == "posix", "Owned process-group runtime checks require POSIX")
+    def test_cooperative_overflow_still_refuses_and_preserves_cleanup_uncertainty(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            self.assertEqual(root.parent, Path(tempfile.gettempdir()).resolve())
+            for stream, descriptor in (("stdout", 1), ("stderr", 2)):
+                name = "cooperative-" + stream
+                command = [sys.executable, "-c", f"import os,time;os.write({descriptor}, b'x'*32768);time.sleep(120)"]
+                try:
+                    with self.assertRaises(RuntimeError):
+                        OBS.run(command, root, root, name, 30, 2048)
+                finally:
+                    self.preserve_native_process(root, name)
+                receipt = json.loads((root / (name + ".json")).read_text())
+                self.assertEqual(receipt["output_limit_exceeded"], stream)
+                self.assertFalse(receipt["timed_out"])
+                self.assertTrue(receipt["owned_root_reaped"])
+                self.assertFalse(receipt["ownership_lost"])
+                # Darwin의 TERM 후 KILL 거부는 정리 성공으로 바꾸지 않는다.
+                # 이 경우도 run()은 실패해야 하며 원래 receipt를 보존한다.
+                errors = receipt["cleanup_errors"]
+                if errors:
+                    self.assertEqual(sys.platform, "darwin")
+                    self.assertEqual(errors, [f"signal-{signal.SIGKILL}:PermissionError"])
+                self.assertLess(receipt["wall_seconds"], 20)
+                for channel in ("stdout", "stderr"):
+                    self.assertLessEqual((root / (name + "." + channel)).stat().st_size, 1024)
 
     def test_compiler_and_linker_operands_are_observed_separately(self):
         log = '''    /tool/swiftc -module-name ArithmeticCore -output-file-map "/build/map.json" @/build/ArithmeticCore.SwiftFileList

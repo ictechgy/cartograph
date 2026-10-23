@@ -67,6 +67,13 @@ file-list/link-map document with an 8 MiB cap; cap aggregate observed documents 
 fingerprinted object/product bytes at 256 MiB. Oversize evidence is explicitly
 unsupported. These are experiment budgets, not a proposal to loosen current gates.
 
+The live overflow controls distinguish forced cleanup from cooperative termination.
+A TERM-ignoring finite child must reach SIGKILL with an empty cleanup-error list and
+a reaped root. The original cooperative child must also be rejected for overflow;
+on Darwin its later group KILL can record `PermissionError` after TERM. That receipt
+remains uncertain and rejected, never promoted to successful cleanup. Both streams'
+bounded prefixes and original receipts are retained even when a test fails.
+
 Publish only this synthetic run's small selected metadata, process receipts,
 compiler/source/object joins, link-map excerpts with complete input hashes, record
 admissions and test execution summary. Include omitted/truncated counts. Do not

@@ -56,6 +56,9 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
       - name: Verify parsers and real POSIX stream overflow cleanup
+        id: process-controls
+        env:
+          CARTOGRAPH_OBSERVATION_PROCESS_EVIDENCE: ${{ runner.temp }}/xcode-local-package-process-controls
         run: python3 Scripts/verify-local-package-observation.py
       - name: Observe compiled and linked local package variants
         id: observation
@@ -66,6 +69,7 @@ jobs:
         if: always()
         env:
           OBSERVATION_OUTCOME: ${{ steps.observation.outcome }}
+          PROCESS_CONTROLS_OUTCOME: ${{ steps.process-controls.outcome }}
         run: |
           python3 - <<'PY'
           import json, os
@@ -74,6 +78,7 @@ jobs:
           output.mkdir(exist_ok=True)
           value = {
               "stepOutcome": os.environ["OBSERVATION_OUTCOME"],
+              "processControlsOutcome": os.environ["PROCESS_CONTROLS_OUTCOME"],
               "observationsPresent": (output / "diagnostic-results.json").is_file(),
               "limitation": "Diagnostic-only native evidence; no package membership receipt, selector, or runtime proof. Failed observations remain failures.",
           }
@@ -95,5 +100,8 @@ jobs:
             ${{ runner.temp }}/xcode-local-package-observation/compiled-for-other-only/*.json
             ${{ runner.temp }}/xcode-local-package-observation/compiled-for-other-only/*.stdout
             ${{ runner.temp }}/xcode-local-package-observation/compiled-for-other-only/*.stderr
+            ${{ runner.temp }}/xcode-local-package-process-controls/*.json
+            ${{ runner.temp }}/xcode-local-package-process-controls/*.stdout
+            ${{ runner.temp }}/xcode-local-package-process-controls/*.stderr
           if-no-files-found: warn
           retention-days: 14
