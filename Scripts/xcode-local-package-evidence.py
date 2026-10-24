@@ -23,6 +23,11 @@ def require(condition, reason):
         raise EvidenceError(reason)
 
 
+def runtime_path(token, previous=None):
+    return token.startswith(("@loader_path/", "@executable_path/", "@rpath/")) or (
+        previous == "-rpath" and token in ("@loader_path", "@executable_path", "@rpath"))
+
+
 def operand(argv, option):
     require(argv.count(option) == 1, "Missing or ambiguous compiler/link option: " + option)
     tail = argv[argv.index(option) + 1:]
@@ -49,10 +54,18 @@ def command_rows(log):
 
 def canonical(value, root):
     require(isinstance(value, str) and 0 < len(value.encode()) <= 4096, "Invalid proof path")
-    path = Path(value)
+    path = Path(physical_temporary_alias(value))
     require(path.is_absolute() and not path.is_symlink() and path.resolve() == path
             and path.is_relative_to(root), "Proof path escapes its canonical capture root")
     return path
+
+
+def physical_temporary_alias(value):
+    if isinstance(value, str) and value.startswith(("/tmp/", "/var/folders/")):
+        path = Path(value)
+        if path.exists() and str(path.resolve()) == "/private" + value:
+            return str(path.resolve())
+    return value
 
 
 class Files:
@@ -80,12 +93,14 @@ class Files:
         return data
 
     def responses(self, argv):
-        for arg in argv:
-            if not arg.startswith("@") or arg.startswith(("@loader_path/", "@executable_path/", "@rpath/")):
+        argv = [x for x in argv if x != "-Xlinker"]
+        for index, arg in enumerate(argv):
+            if not arg.startswith("@") or runtime_path(arg, argv[index - 1] if index else None):
                 continue
             content = self.read(arg[1:]).decode("utf-8")
-            tokens = shlex.split(content)
-            require(len(tokens) <= 1000 and not any(x.startswith("@") for x in tokens),
+            tokens = [x for x in shlex.split(content) if x != "-Xlinker"]
+            require(len(tokens) <= 1000 and not any(x.startswith("@") and not runtime_path(x, tokens[i - 1] if i else None)
+                    for i, x in enumerate(tokens)),
                     "Nested or oversized compiler/link response is unsupported")
 
     def finish(self):
@@ -112,6 +127,8 @@ def live_owners(files, path, output, architecture):
     text = files.read(path).decode("utf-8")
     section, objects, live, headers = "", {}, set(), []
     for line in text.splitlines():
+        if line.startswith("# Path: "):
+            line = "# Path: " + physical_temporary_alias(line[len("# Path: "):])
         if line.startswith("# "):
             require(len(headers) < 128 and len(line.encode()) <= 1024, "Link-map header budget exceeded")
             headers.append(line)
@@ -122,7 +139,7 @@ def live_owners(files, path, output, architecture):
             match = re.fullmatch(r"\[\s*(\d+)\]\s+(.+)", line)
             require(match is not None and match[1] not in objects and len(objects) < 256,
                     "Unparsed, duplicate or excessive link-map owner")
-            objects[match[1]] = match[2]
+            objects[match[1]] = physical_temporary_alias(match[2])
         elif section in ("# Symbols:", "# Dead Stripped Symbols:") and line.strip():
             match = re.fullmatch(r"(?:0x[0-9A-Fa-f]+|<<dead>>)\s+0x[0-9A-Fa-f]+\s+\[\s*(\d+)\]\s+.+", line)
             require(match is not None and match[1] in objects, "Unparsed or unresolved link-map symbol owner")
@@ -138,8 +155,8 @@ def live_owners(files, path, output, architecture):
 
 def link(files, argv, architecture):
     files.responses(argv)
-    result = {"argv": argv, "fileList": operand(argv, "-filelist"),
-              "output": operand(argv, "-o"), "linkMap": operand(argv, "-map")}
+    result = {"argv": argv, "fileList": str(canonical(operand(argv, "-filelist"), files.build)),
+              "output": str(canonical(operand(argv, "-o"), files.build)), "linkMap": str(canonical(operand(argv, "-map"), files.build))}
     require(operand(argv, "-target").split("-", 1)[0] == architecture, "Link target architecture differs")
     inputs = file_list(files, result["fileList"], files.build)
     for path in inputs:
@@ -185,14 +202,18 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
         if "-output-file-map" not in argv or operand(argv, "-module-name") != spec["module"]:
             continue
         files.responses(argv)
-        output_map = operand(argv, "-output-file-map")
-        lists = [x[1:] for x in argv if x.startswith("@") and x.endswith(".SwiftFileList")]
+        output_map = str(canonical(operand(argv, "-output-file-map"), files.build))
+        lists = [str(canonical(x[1:], files.build)) for x in argv if x.startswith("@") and x.endswith(".SwiftFileList")]
         require(len(lists) == 1 and set(file_list(files, lists[0], package_root)) == sources,
                 "Compiler source list differs from finite package inventory")
         value = json.loads(files.read(output_map))
-        require(isinstance(value, dict) and set(value) - {""} == sources, "Compiler output map source set differs")
+        require(isinstance(value, dict), "Compiler output map is not an object")
+        pairs = [(physical_temporary_alias(k), v) for k, v in value.items()]
+        require(len({k for k, _ in pairs}) == len(pairs), "Compiler output map has duplicate physical source identities")
+        value = dict(pairs)
+        require(set(value) - {""} == sources, "Compiler output map source set differs")
         target = operand(argv, "-target")
-        require(target.split("-", 1)[0] == architecture and operand(argv, "-index-store-path") == str(store),
+        require(target.split("-", 1)[0] == architecture and str(canonical(operand(argv, "-index-store-path"), store)) == str(store),
                 "Compiler target or index store differs")
         for source in sorted(sources):
             output = value[source]
@@ -215,7 +236,8 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
     require(len({row["object"] for row in compilations.values()}) == len(sources),
             "Shared whole-module object mappings are unsupported")
     observed = snapshot.get("snapshot", {}).get("sourceRecordAdmissions", [])
-    admissions = [row for row in observed if row.get("path") in sources]
+    admissions = [{**row, "path": physical_temporary_alias(row.get("path"))} for row in observed
+                  if physical_temporary_alias(row.get("path")) in sources]
     require(0 < len(admissions) <= 256 and {r.get("path") for r in admissions} == sources,
             "Every package source needs a successful current record admission")
     names = {r.get("record") for r in admissions}
@@ -236,9 +258,20 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
     require(len(admissions) == len(sources) and len(records) == len(sources) and len(names) == len(sources),
             "Package source record contexts are shared or ambiguous")
     aggregate_candidates = [argv for argv in commands if "-r" in argv and "-filelist" in argv and "-map" in argv]
+    # 여러 package의 relocatable link 중 이 package의 완전한 object 집합만 고른다.
+    # 선택 전 읽기도 동일한 경로·바이트·토큰 경계를 적용하며 실행하지 않는다.
+    objects = {r["object"] for r in compilations.values()}
+    def aggregate_matches(argv):
+        path = canonical(operand(argv, "-filelist"), files.build)
+        with path.open("rb") as stream:
+            data = stream.read(8 * 1024 * 1024 + 1)
+        require(len(data) <= 8 * 1024 * 1024, "Aggregate file list exceeds proof byte budget")
+        tokens = shlex.split(data.decode("utf-8"))
+        require(len(tokens) <= 1000, "Aggregate file list exceeds proof token budget")
+        return {str(canonical(x, files.build)) for x in tokens} == objects
+    aggregate_candidates = [argv for argv in aggregate_candidates if aggregate_matches(argv)]
     require(len(aggregate_candidates) == 1, "Ambiguous or absent package relocatable link")
     aggregate, inputs, live = link(files, aggregate_candidates[0], architecture)
-    objects = {r["object"] for r in compilations.values()}
     require(inputs == objects and objects <= live, "Package objects lack complete positive aggregate contribution")
     require(operand(aggregate["argv"], "-target") in {c["targetTriple"] for c in compilations.values()}
             and len({c["targetTriple"] for c in compilations.values()}) == 1, "Aggregate target triple differs")
@@ -255,7 +288,7 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
         rows = [s["buildSettings"] for s in settings if s.get("target") == targets[ident]["name"]]
         require(len(rows) == 1, "Ambiguous package consumer settings")
         executable = str(canonical(str(Path(rows[0]["TARGET_BUILD_DIR"]) / rows[0]["EXECUTABLE_PATH"]), files.build))
-        argv_rows = [a for a in commands if "-map" in a and "-o" in a and operand(a, "-o") == executable]
+        argv_rows = [a for a in commands if "-map" in a and "-o" in a and str(canonical(operand(a, "-o"), files.build)) == executable]
         require(len(argv_rows) == 1, "Absent or ambiguous actual native package consumer link")
         native, inputs, live = link(files, argv_rows[0], architecture)
         require(aggregate["output"] in inputs and aggregate["output"] in live,

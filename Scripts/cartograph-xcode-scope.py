@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Build a trusted, bounded single-project Swift Xcode test universe and capture its inputs.
+"""Build a trusted, bounded Swift Xcode project/workspace test universe and capture its inputs.
 
 This runs build-for-testing (not tests). Review the project before invoking it.
 Unsupported scripts, packages, plugins, external/conditional membership and resources
 are rejected before xcodebuild. A receipt is an auditable producer claim, not a signature,
 test-coverage proof, or permission to skip tests. Use the exact captured test context.
---local-package opts into one finite literal local Swift library and positive link evidence.
+--local-package opts into finite literal local Swift libraries with positive link evidence:
+one in a project capture, or up to 16 (one per project) in a workspace capture.
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ _spec.loader.exec_module(_shared)
 CaptureError, run, save = _shared.CaptureError, _shared.run, _shared.save
 
 INPUT_SUFFIXES = {".swift", ".m", ".mm", ".h", ".xib", ".storyboard", ".pbxproj", ".xcscheme",
-                  ".xctestplan", ".xcconfig", ".plist", ".entitlements", ".resolved"}
+                  ".xctestplan", ".xcconfig", ".plist", ".entitlements", ".resolved", ".xcworkspacedata"}
 UNBOUND_SETTINGS = {"EXCLUDED_SOURCE_FILE_NAMES", "INCLUDED_SOURCE_FILE_NAMES", "SWIFT_OBJC_BRIDGING_HEADER",
                     "GCC_PREFIX_HEADER", "SWIFT_EXEC", "SWIFT_DRIVER_SWIFT_FRONTEND_EXEC", "CC", "CXX", "LD",
                     "OTHER_SWIFT_FLAGS", "OTHER_LDFLAGS", "SWIFT_INCLUDE_PATHS", "HEADER_SEARCH_PATHS",
@@ -62,7 +63,7 @@ def bounded(path, maximum):
     return data
 
 
-def inventory(root):
+def inventory(root, maximum_files=10000, maximum_bytes=64 * 1024 * 1024):
     result, pending, entries, total = {}, [root], 0, 0
     while pending:
         for path in sorted(pending.pop().iterdir()):
@@ -76,7 +77,7 @@ def inventory(root):
                 continue
             data = bounded(path, 4 * 1024 * 1024)
             total += len(data)
-            require(len(result) < 10000 and total <= 64 * 1024 * 1024, "Project input byte budget exceeded")
+            require(len(result) < maximum_files and total <= maximum_bytes, "Project input file/byte budget exceeded")
             result[path.relative_to(root).as_posix()] = hashlib.sha256(data).hexdigest()
     return result
 
@@ -295,6 +296,9 @@ def product_inventory(root):
 
 
 def capture(args):
+    if getattr(args, "workspace", None):
+        from types import SimpleNamespace
+        return package_helper("xcode-workspace-capture").capture(args, SimpleNamespace(**globals()))
     root, output, binary = Path(args.project).resolve(), Path(args.output).resolve(), Path(args.cartograph).resolve()
     require(relative(args.xcode_project) and "/" not in args.xcode_project and args.xcode_project.endswith(".xcodeproj") and relative(args.scheme),
             "Use a relative .xcodeproj path and shared scheme name")
@@ -415,8 +419,11 @@ def capture(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("project", "xcode-project", "scheme", "cartograph", "output"):
+    for name in ("project", "scheme", "cartograph", "output"):
         parser.add_argument("--" + name, required=True)
+    container = parser.add_mutually_exclusive_group(required=True)
+    container.add_argument("--xcode-project", help="One root .xcodeproj, producing v1/v2")
+    container.add_argument("--workspace", help="Explicit local .xcworkspace with at most 32 projects, producing v3")
     parser.add_argument("--test-plan", help="Relative shared .xctestplan path; exactly one empty-options configuration")
     parser.add_argument("--config")
     parser.add_argument("--local-package", action="store_true",

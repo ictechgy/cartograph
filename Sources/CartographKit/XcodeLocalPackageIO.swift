@@ -1,6 +1,15 @@
 import CartographCore
 import Foundation
 
+/// Foundation이 축약하는 macOS 임시 경로도 실제 filesystem 별칭인 경우에만 물리 신원으로 읽는다.
+enum XcodeEvidencePath {
+    static func physicalTemporaryAlias(_ path: String, fileSystem: any FileSystem) -> String {
+        guard path.hasPrefix("/tmp/") || path.hasPrefix("/var/folders/"),
+              let resolved = try? fileSystem.realPath(at: path), resolved == "/private" + path else { return path }
+        return resolved
+    }
+}
+
 /// 공유 값과 IO 경계를 분리해 consumer와 reader의 역방향 의존을 만들지 않는다.
 struct XcodeLocalPackageProofFile: Codable, Equatable {
     let sha256: String

@@ -15,7 +15,7 @@ struct XcodeLocalPackageProof {
             throw XcodeLocalPackageIO.invalid("Package receipt changed during fresh analysis.")
         }
         let verified = try XcodeTargetScopeStore(fileSystem: fileSystem).read(path: path, root: root, fingerprint: fingerprint)
-        guard verified.receipt.version == 2, verified.receipt.localPackage != nil,
+        guard [2, 3].contains(verified.receipt.version), !verified.receipt.packages.isEmpty,
               before == (try XcodeLocalPackageIO.bounded(path, maximum: 8 * 1_024 * 1_024, fileSystem: fileSystem)) else {
             throw XcodeLocalPackageIO.invalid("Package receipt or proof inputs changed during fresh analysis.")
         }
@@ -40,14 +40,18 @@ extension CartographService {
               let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw XcodeLocalPackageIO.invalid("Invalid or oversized target scope receipt.")
         }
-        guard object["format"] as? String == "cartograph-xcode-target-scope", object["version"] as? Int == 2 else { return nil }
+        guard object["format"] as? String == "cartograph-xcode-target-scope",
+              [2, 3].contains(object["version"] as? Int ?? 0) else { return nil }
+        let packages = (object["localPackages"] as? [[String: Any]]) ?? (object["localPackage"] as? [String: Any]).map { [$0] } ?? []
+        if object["version"] as? Int == 3 && packages.isEmpty { return nil }
         guard environment.indexProviderOverride == nil else {
             throw XcodeLocalPackageIO.invalid("Version 2 requires a fresh native raw index read; custom snapshot providers are unsupported.")
         }
-        guard let package = object["localPackage"] as? [String: Any], let indexStore = package["indexStore"] as? String else {
+        guard let indexStore = packages.first?["indexStore"] as? String,
+              packages.allSatisfy({ $0["indexStore"] as? String == indexStore }) else {
             throw XcodeLocalPackageIO.invalid("Version 2 requires an explicit captured package index store.")
         }
-        let proof = XcodeLocalPackageProof(path: path, root: try fileSystem.realPath(at: projectPath),
+        let proof = XcodeLocalPackageProof(path: XcodeEvidencePath.physicalTemporaryAlias(path, fileSystem: fileSystem), root: try fileSystem.realPath(at: projectPath),
             fingerprint: fingerprint, receiptDigest: TargetScopeStore.digest(data), indexStore: indexStore)
         try proof.verify(fileSystem: fileSystem)
         return proof

@@ -6,10 +6,11 @@ to a target proved outside the selected test universe. The original coverage war
 remain in JSON and stderr, alongside the excluded paths and their ownership evidence.
 Empty output, unknown evidence, or a refusal is never permission to skip tests.
 
-The initial supported boundary is deliberately small: one `.xcodeproj` at the project
-root, explicit local Swift source phases, shared schemes, native macOS architecture,
-and non-app-hosted XCTest unit-test bundles. It does not establish accuracy on a multi-project
-workspace, iOS, generated resources, UI tests, or an unobserved private application.
+Single-project v1/v2 captures support one root `.xcodeproj`. Workspace v3 captures support
+up to 32 explicit local `.xcodeproj` references, cross-project target/product proxies and
+shared workspace schemes. Both require explicit Swift source phases, native macOS and
+non-app-hosted XCTest bundles. This does not establish accuracy on iOS, generated resources,
+UI tests or an unobserved private application.
 
 ## Capture and consume
 
@@ -106,6 +107,65 @@ directory and never cleans another build or checkout.
 The prior SwiftPM receipt remains diagnostic only and continues to refuse Xcode
 selectors. Existing commands without `--target-scope` keep their compatibility behavior.
 No public release or native-platform validation is implied by this source document.
+
+## Explicit multi-project workspace (receipt v3)
+
+```sh
+python3 Scripts/cartograph-xcode-scope.py \
+  --project "$PWD" --workspace Example.xcworkspace --scheme WorkspaceTests \
+  --local-package --cartograph /path/to/cartograph --output /tmp/workspace-capture
+
+cartograph affected changedValue --project "$PWD" \
+  --index-store /tmp/workspace-capture/DerivedData/Index.noindex/DataStore \
+  --target-scope /tmp/workspace-capture/target-scope.json --format json
+```
+
+Use the exact `indexStore` in `capture.json`; append the same `--config` when capturing
+and consuming. A workspace uses its own shared scheme directory. Explicit shared test
+plans still use `--test-plan`. `.xcworkspacedata` group/container references are resolved
+inside the physical project root, with at most 32 projects, 256 entries and group depth 32.
+External/absolute paths, nested workspaces, missing projects and XML entities refuse before
+`xcodebuild`. Project PBX group depth remains 128; the combined object/target budgets are
+50,000/1,000. Project directory/source-root overrides and arbitrary build scripts remain unsupported.
+
+PBX IDs are namespaced by `project/path.xcodeproj::ID`. Explicit project references and
+target/product proxies must identify a listed project's actual native target and its
+declared product. A framework link must be inside the explicit dependency closure.
+Compiler modules and target selector names must be unique across the workspace: a duplicate
+selector name cannot be safely expressed by `-only-testing:`. Product filenames, compiler
+modules and `.xctestrun` BlueprintName identities remain separate. No name-only fallback is used.
+
+`--local-package` admits up to 16 finite local packages, at most one per project, with the
+literal manifest and full subtree/compiler/record/live-link proof described below. The
+package paths remain project-contained and the modules must be distinct. Every package
+needs a positive native consumer inside the selected TestAction closure. A compiled or
+merely built package outside that closure cannot silently become an excluded dependency.
+Multiple products/targets per package, remote dependencies, plugins, macros, binary targets,
+resources and computed manifests remain outside this proof contract.
+
+v3 inventories allow 20,000 input files / 128 MiB total (4 MiB per file), giving source
+and configuration headroom beyond 10,000 sources. The 50,000-entry walk and 8 MiB receipt
+limits still apply; unusually long paths or source arrays can reach the receipt limit first.
+There is no unlimited-input switch. `capture.json` reports the inventory count and declared
+versus observed compiler source-record counts by native module. These are observations,
+not definition recall, line coverage, dynamic coverage or proof of safe test omission.
+`targetScope.xcode` preserves the workspace/project list and each package's metadata origin.
+Original excluded-path warnings, unmodeled paths, stale records and output/depth truncation
+continue to block selection when they overlap or cannot be classified against the selected universe.
+
+Build-settings command stdout is retained verbatim. Receipt path operands use physical
+filesystem identities. The consumer only admits macOS `/tmp`/`/var/folders` aliases when
+realpath proves the exact `/private` form; arbitrary `/private/project` prefixes and
+individual file symlinks are not assumed equivalent. Rebuild and recapture when membership
+or artifacts change. v1/v2 decoding remains supported; older consumers refuse v3.
+Consumers must preserve the workspace identity and use the captured `.xctestrun`; inferring
+an execution context from the first project field alone is unsupported.
+
+The native regression constructs a public two-project framework dependency workspace, also
+with two local packages in different projects. It compares baseline refusal with verified
+selectors and executes the selected captured XCTest bundle, then checks malformed identities
+and changed workspace/project/scheme/product bytes. It is not a reproduction of the private
+22-project workspace, a platform matrix, or a general precision claim.
 
 ## Finite local package opt-in (receipt v2)
 

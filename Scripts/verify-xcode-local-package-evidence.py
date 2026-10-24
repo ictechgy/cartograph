@@ -558,6 +558,31 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(proof["links"][0]["targetID"], "CORE")
         self.assertEqual(proof["files"][str(self.response)]["kind"], "document")
 
+    def test_bare_runtime_loader_token_requires_rpath_operand(self):
+        self.native_argv += ["-Xlinker", "-rpath", "-Xlinker", "@loader_path"]
+        self.assertEqual(len(self.capture()["links"]), 1)
+        self.native_argv += ["@loader_path"]
+        with self.assertRaises(E.EvidenceError):
+            self.capture()
+
+    def test_real_temporary_aliases_preserve_raw_virtual_unit_identity(self):
+        physical = str(self.root)
+        if not physical.startswith(("/private/tmp/", "/private/var/folders/")):
+            self.skipTest("Host has no observed macOS temporary path alias")
+        alias = physical.removeprefix("/private")
+        for path in self.derived.rglob("*"):
+            if path.is_file():
+                path.write_bytes(path.read_bytes().replace(physical.encode(), alias.encode()))
+        self.compiler = [x.replace(physical, alias) for x in self.compiler]
+        self.aggregate_argv = [x.replace(physical, alias) for x in self.aggregate_argv]
+        self.native_argv = [x.replace(physical, alias) for x in self.native_argv]
+        self.snapshot["snapshot"]["sourceRecordAdmissions"][0]["path"] = str(self.source).replace(physical, alias)
+        proof = self.capture()
+        self.assertEqual(proof["compilations"][0]["source"], str(self.source))
+        self.assertEqual(proof["compilations"][0]["unitOutputIdentity"], self.virtual)
+        self.assertEqual(proof["aggregate"]["output"], str(self.aggregate))
+        self.assertEqual(E.physical_temporary_alias("/project/input"), "/project/input")
+
     def test_conflicting_compiler_wrapper_or_record_identity_refuses(self):
         conflicting = list(self.compiler)
         conflicting[conflicting.index("-target") + 1] = "arm64-apple-macos13.0"

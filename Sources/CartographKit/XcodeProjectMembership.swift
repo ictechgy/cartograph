@@ -20,6 +20,12 @@ struct XcodeProjectMembership {
     let frameworks: Set<FrameworkReference>
     let packageConsumers: Set<String>
 
+    init(targets: [String: Target], frameworks: Set<FrameworkReference>, packageConsumers: Set<String>) {
+        self.targets = targets
+        self.frameworks = frameworks
+        self.packageConsumers = packageConsumers
+    }
+
     init(data: Data, root: String, localPackage: LocalPackage? = nil) throws {
         guard let plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
               let objects = plist["objects"] as? [String: [String: Any]], objects.count <= 50_000,
@@ -220,14 +226,16 @@ final class XcodeSchemeMembership: NSObject, XMLParserDelegate {
     var hasUnsupportedActions = false
     private var inTestable = false
     private var project = ""
+    private var projects: Set<String>? = nil
 
-    static func read(_ data: Data, project: String) throws -> XcodeSchemeMembership {
+    static func read(_ data: Data, project: String, projects: [String]? = nil) throws -> XcodeSchemeMembership {
         let text = String(decoding: data, as: UTF8.self).uppercased()
         guard !text.contains("<!DOCTYPE"), !text.contains("<!ENTITY") else {
             throw XcodeProjectMembership.invalid("XML entities are unsupported.")
         }
         let collector = XcodeSchemeMembership()
         collector.project = project
+        collector.projects = projects.map(Set.init)
         let parser = XMLParser(data: data)
         parser.shouldResolveExternalEntities = false
         parser.delegate = collector
@@ -248,12 +256,13 @@ final class XcodeSchemeMembership: NSObject, XMLParserDelegate {
             inTestable = true
             if attributes["skipped"] != "NO" { hasUnsupportedActions = true }
         }
-        if name == "BuildableReference", attributes["ReferencedContainer"] != "container:" + project {
-            hasUnsupportedActions = true
-        }
+        let container = attributes["ReferencedContainer"] ?? ""
+        let path = container.hasPrefix("container:") ? String(container.dropFirst("container:".count)) : ""
+        let validContainer = projects?.contains(path) ?? (container == "container:" + project)
+        if name == "BuildableReference", !validContainer { hasUnsupportedActions = true }
         if name == "BuildableReference", inTestable {
-            guard attributes["ReferencedContainer"] == "container:" + project,
-                  let id = attributes["BlueprintIdentifier"], targets.insert(id).inserted else {
+            guard validContainer, let id = attributes["BlueprintIdentifier"],
+                  targets.insert(projects == nil ? id : path + "::" + id).inserted else {
                 hasUnsupportedActions = true
                 return
             }

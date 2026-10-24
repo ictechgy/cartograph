@@ -32,11 +32,13 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
       - name: Verify portable preflight
-        run: python3 Scripts/verify-xcode-scope.py
+        run: |
+          python3 Scripts/verify-xcode-scope.py
+          python3 Scripts/verify-xcode-workspace.py
       - name: Build candidate and run targeted regressions
         run: |
           swift build --build-tests --jobs 3
-          swift test --skip-build --filter 'XcodeTargetScopeTests|SourceRecordAdmissionTests|RawIndexStoreReaderTests'
+          swift test --skip-build --filter 'XcodeTargetScopeTests|XcodeWorkspaceScopeTests|XcodeLocalPackageReaderTests|SourceRecordAdmissionTests|RawIndexStoreReaderTests'
           echo "XCODE_SCOPE_CANDIDATE=$(swift build --show-bin-path)/cartograph" >> "$GITHUB_ENV"
       - name: Build immutable current-main baseline in a separate checkout
         timeout-minutes: 23
@@ -70,6 +72,18 @@ jobs:
           python3 Scripts/verify-xcode-scope-native.py
           --candidate "$XCODE_SCOPE_CANDIDATE" --baseline "$XCODE_SCOPE_BASELINE"
           --output "$RUNNER_TEMP/xcode-scope-native"
+      - name: Verify actual multi-project workspace selectors
+        timeout-minutes: 8
+        run: >-
+          python3 Scripts/verify-xcode-workspace-native.py
+          --candidate "$XCODE_SCOPE_CANDIDATE" --baseline "$XCODE_SCOPE_BASELINE"
+          --output "$RUNNER_TEMP/xcode-workspace-native"
+      - name: Verify two project-local package proofs in one workspace
+        timeout-minutes: 8
+        run: >-
+          python3 Scripts/verify-xcode-workspace-native.py
+          --candidate "$XCODE_SCOPE_CANDIDATE" --baseline "$XCODE_SCOPE_BASELINE"
+          --packages 2 --output "$RUNNER_TEMP/xcode-workspace-packages"
       - name: Preserve bounded public synthetic evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -82,6 +96,18 @@ jobs:
             ${{ runner.temp }}/xcode-scope-native/capture/*.process.json
             ${{ runner.temp }}/xcode-scope-native/capture/*.stdout
             ${{ runner.temp }}/xcode-scope-native/capture/*.stderr
+            ${{ runner.temp }}/xcode-workspace-native/*.json
+            ${{ runner.temp }}/xcode-workspace-native/*.stdout
+            ${{ runner.temp }}/xcode-workspace-native/*.stderr
+            ${{ runner.temp }}/xcode-workspace-native/capture/*.json
+            ${{ runner.temp }}/xcode-workspace-native/capture/*.stdout
+            ${{ runner.temp }}/xcode-workspace-native/capture/*.stderr
+            ${{ runner.temp }}/xcode-workspace-packages/*.json
+            ${{ runner.temp }}/xcode-workspace-packages/*.stdout
+            ${{ runner.temp }}/xcode-workspace-packages/*.stderr
+            ${{ runner.temp }}/xcode-workspace-packages/capture/*.json
+            ${{ runner.temp }}/xcode-workspace-packages/capture/*.stdout
+            ${{ runner.temp }}/xcode-workspace-packages/capture/*.stderr
             ${{ runner.temp }}/xcode-scope-baseline/*.stdout
             ${{ runner.temp }}/xcode-scope-baseline/*.stderr
             ${{ runner.temp }}/xcode-scope-baseline/*.process.json

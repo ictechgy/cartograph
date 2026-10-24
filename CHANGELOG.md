@@ -24,6 +24,10 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
   edits from private byte backups; conflicting changes remain intact with a recovery journal.
   The default dry run and unverified explicit apply behavior remain available.
 
+- Capture explicit multi-project macOS Swift workspaces in target-scope receipt v3, preserving
+  project-qualified PBX identities, cross-project product/dependency proofs and finite local
+  packages. Missing or ambiguous workspace evidence refuses selectors with the original warnings.
+
 - `dead --since <revision> --since-lines` optionally filters diagnostic locations to changed
   current lines, keeping the file-level default and whole-project analysis. Net merge-base-to-worktree
   hunks preserve final staged/unstaged coordinates; uncertain mappings retain whole files, and

@@ -36,6 +36,10 @@ public struct TargetScopeDocument: Sendable, Equatable, Codable {
         public var testBundleByModule: [String: String]? = nil
         /// 빈 package metadata 디렉터리의 capture 관측. 서명된 이력이나 생성 주체 증명은 아니다.
         public var generatedMetadataOrigin: String? = nil
+        /// v3에서 명시 workspace와 전체 프로젝트 신원을 유지한다.
+        public var workspace: String? = nil
+        public var projects: [String]? = nil
+        public var generatedMetadataOrigins: [String: String]? = nil
     }
 
     /// 제외된 경로도 원래 blocker 원인과 함께 남긴다. outside는 실행 생략 허가가 아니다.

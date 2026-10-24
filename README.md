@@ -2203,6 +2203,13 @@ CI preserves raw evidence; a synthetic fixture pass is not a universal performan
 
 ## Workspace and local package coverage
 
+For explicit native macOS Swift workspaces, [capture v3](docs/XCODE-AFFECTED-SCOPE.md#explicit-multi-project-workspace-receipt-v3)
+binds up to 32 projects and 16 finite local packages (one per project), cross-project target/product
+identities and actual compiler/record/link evidence. Use `--workspace Example.xcworkspace` with
+`Scripts/cartograph-xcode-scope.py`, then consume its exact `--target-scope` and index path.
+Unknown membership still refuses selectors and preserves the original excluded-path warnings;
+this does not establish support for an unobserved private workspace or iOS/UI tests.
+
 Build the workspace scheme and all relevant local-package targets, then pass that build's index
 with `--index-store`. Automatic selection uses store/unit-directory recency, not target coverage;
 when several candidates exist, output records the selected path, candidate count, and rule.

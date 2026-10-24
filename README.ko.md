@@ -2115,6 +2115,12 @@ universal archive를 검증했으며, [tap 갱신](https://github.com/ictechgy/h
 
 ## Workspace와 로컬 패키지의 인덱스 범위
 
+명시적 macOS Swift workspace는 [v3 캡처](docs/XCODE-AFFECTED-SCOPE.md#explicit-multi-project-workspace-receipt-v3)로
+최대 32개 프로젝트와 16개 유한 로컬 패키지(프로젝트당 하나), 프로젝트 간 target/product 신원과 실제
+compiler/record/link 증거를 대조합니다. `Scripts/cartograph-xcode-scope.py --workspace Example.xcworkspace`로
+캡처하고 같은 `--target-scope`와 index 경로를 사용하세요. 원래 제외 경로 경고와 불명확한 범위의
+선택 거부를 유지하며, 재현하지 않은 사내 workspace나 iOS/UI 테스트 전체 지원을 주장하지 않습니다.
+
 workspace scheme과 관련 로컬 패키지 target을 모두 빌드한 뒤 그 빌드의 인덱스를
 `--index-store`로 지정하세요. 자동 선택은 target 범위가 아닌 store/unit 디렉터리의 최근
 시각을 사용하며 후보가 여러 개면 선택 경로·후보 수·규칙을 결과에 남깁니다.
@@ -2172,4 +2178,4 @@ Cartograph는 독립 프로젝트이며 Periphery나 Apple과 관련이 없습�
 
 ### Xcode 영향 테스트 범위 캡처
 
-선택적 [Xcode 캡처](docs/XCODE-AFFECTED-SCOPE.md)는 단일 로컬 Swift 프로젝트의 명시 scheme/test-plan, 실제 읽은 source record와 빌드된 테스트 bundle 바이트를 대조합니다. 선택 이름은 검증된 `.xctestrun` BlueprintName과 프로젝트 target 신원을 사용하고, JSON/MCP에는 bundle 제품명을 별도로 보존합니다. 확인된 범위 밖 target의 소스 경고는 근거와 함께 분리하여 검토용 선택자를 만들 수 있습니다. SwiftPM receipt는 기존처럼 진단 전용입니다. 범위 불명, 오래된 입력, 잘린 증거는 계속 거부하며 정적 후보는 테스트 생략 허가가 아닙니다.
+선택적 [Xcode 캡처](docs/XCODE-AFFECTED-SCOPE.md)는 로컬 Swift 프로젝트 또는 명시 workspace의 scheme/test-plan, 실제 읽은 source record와 빌드된 테스트 bundle 바이트를 대조합니다. 선택 이름은 검증된 `.xctestrun` BlueprintName과 프로젝트 target 신원을 사용하고, JSON/MCP에는 bundle 제품명을 별도로 보존합니다. 확인된 범위 밖 target의 소스 경고는 근거와 함께 분리하여 검토용 선택자를 만들 수 있습니다. SwiftPM receipt는 기존처럼 진단 전용입니다. 범위 불명, 오래된 입력, 잘린 증거는 계속 거부하며 정적 후보는 테스트 생략 허가가 아닙니다.

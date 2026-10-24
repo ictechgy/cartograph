@@ -30,6 +30,11 @@ struct XcodeTargetScopeStore {
         let testHosts: [String: String]
         let buildExitCode: Int
         var localPackage: XcodeLocalPackageEvidence? = nil
+        var workspace: String? = nil
+        var projects: [String]? = nil
+        var localPackages: [XcodeLocalPackageEvidence]? = nil
+
+        var packages: [XcodeLocalPackageEvidence] { localPackages ?? localPackage.map { [$0] } ?? [] }
     }
 
     struct Target: Codable, Equatable {
@@ -61,23 +66,37 @@ struct XcodeTargetScopeStore {
 
     /// raw 프로젝트를 다시 해석하여 receipt의 파생 소속이 원문과 일치하는지 확인한다.
     func read(path: String, root: String, fingerprint: String) throws -> Verified {
+        let path = XcodeEvidencePath.physicalTemporaryAlias(path, fileSystem: fileSystem)
         let bytes = try bounded(path, maximum: 8 * 1_024 * 1_024)
         let receipt = try JSONDecoder().decode(Receipt.self, from: bytes)
         guard receipt.format == "cartograph-xcode-target-scope",
-              (receipt.version == 1 && receipt.localPackage == nil) || (receipt.version == 2 && receipt.localPackage != nil),
+              (receipt.version == 1 && receipt.localPackage == nil && receipt.workspace == nil && receipt.projects == nil && receipt.localPackages == nil)
+                || (receipt.version == 2 && receipt.localPackage != nil && receipt.workspace == nil && receipt.projects == nil && receipt.localPackages == nil && receipt.localPackage?.project == nil)
+                || (receipt.version == 3 && receipt.localPackage == nil && receipt.workspace != nil && receipt.projects != nil && receipt.localPackages != nil),
               receipt.projectRoot == root, receipt.inputFingerprint == fingerprint,
               receipt.buildExitCode == 0, receipt.before == receipt.after,
-              receipt.after == (try inventory(root: root)), receipt.targets.count <= 1_000,
+              receipt.after == (try inventory(root: root, workspace: receipt.version == 3)), receipt.targets.count <= 1_000,
               !receipt.targets.isEmpty, !receipt.selectedTargetIDs.isEmpty,
               Set(receipt.selectedTargetIDs).count == receipt.selectedTargetIDs.count,
               validName(receipt.scheme), validName(receipt.configuration),
               ["arm64", "x86_64"].contains(receipt.architecture),
               receipt.destination == "platform=macOS,arch=" + receipt.architecture,
-              relative(receipt.project), !receipt.project.contains("/"), receipt.project.hasSuffix(".xcodeproj"),
-              receipt.schemePath == receipt.project + "/xcshareddata/xcschemes/" + receipt.scheme + ".xcscheme"
+              relative(receipt.project), receipt.project.hasSuffix(".xcodeproj"),
+              receipt.version == 3 || !receipt.project.contains("/"),
+              receipt.schemePath == (receipt.workspace ?? receipt.project) + "/xcshareddata/xcschemes/" + receipt.scheme + ".xcscheme"
         else { throw invalid("Capture identity, inventory or supported destination does not match.") }
-        let projectData = try bounded(root + "/" + receipt.project + "/project.pbxproj", maximum: 4 * 1_024 * 1_024)
-        let project = try XcodeProjectMembership(data: projectData, root: root, localPackage: receipt.localPackage?.declaration)
+        let project: XcodeProjectMembership
+        if let workspace = receipt.workspace {
+            guard relative(workspace), workspace.hasSuffix(".xcworkspace"), let paths = receipt.projects,
+                  paths.first == receipt.project, paths.allSatisfy({ relative($0) && $0.hasSuffix(".xcodeproj") }) else {
+                throw invalid("Workspace or project identity is invalid.")
+            }
+            project = try XcodeWorkspaceMembership(workspace: workspace, projects: paths, root: root,
+                packages: receipt.packages, fileSystem: fileSystem).project
+        } else {
+            let projectData = try bounded(root + "/" + receipt.project + "/project.pbxproj", maximum: 4 * 1_024 * 1_024)
+            project = try XcodeProjectMembership(data: projectData, root: root, localPackage: receipt.localPackage?.declaration)
+        }
         let settings = try JSONDecoder().decode([Settings].self, from: Data(receipt.buildSettingsJSON.utf8))
         guard settings.count <= 1_000 else { throw invalid("Build settings exceed the target budget.") }
         let byID = Dictionary(receipt.targets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -95,7 +114,7 @@ struct XcodeTargetScopeStore {
             }
         }
         let schemeData = try bounded(root + "/" + receipt.schemePath, maximum: 1_024 * 1_024)
-        let scheme = try XcodeSchemeMembership.read(schemeData, project: receipt.project)
+        let scheme = try XcodeSchemeMembership.read(schemeData, project: receipt.project, projects: receipt.projects)
         guard scheme.configuration == receipt.configuration else { throw invalid("Scheme configuration changed.") }
         let selected = try selectedTargets(scheme: scheme, receipt: receipt, root: root)
         guard selected == Set(receipt.selectedTargetIDs), selected.allSatisfy({
@@ -121,7 +140,8 @@ struct XcodeTargetScopeStore {
             guard let setting = settings.first(where: { $0.target == target.name }),
                   settings.filter({ $0.target == target.name }).count == 1,
                   setting.buildSettings["PRODUCT_MODULE_NAME"] == target.module,
-                  setting.buildSettings["PROJECT_FILE_PATH"] == root + "/" + receipt.project,
+                  setting.buildSettings["PROJECT_FILE_PATH"] == root + "/" + (receipt.workspace == nil
+                    ? receipt.project : String(target.id.components(separatedBy: "::").first ?? "")),
                   setting.buildSettings["CONFIGURATION"] == receipt.configuration,
                   setting.buildSettings["ARCHS"] == receipt.architecture,
                   setting.buildSettings["EXCLUDED_SOURCE_FILE_NAMES", default: ""].isEmpty,
@@ -144,7 +164,11 @@ struct XcodeTargetScopeStore {
         let productRoot = String(receipt.testRunPath[..<productRootRange.upperBound].dropLast())
         try validateProducts(receipt, root: productRoot)
         func validateLocalPackage() throws {
-            guard let package = receipt.localPackage else { return }
+            guard Set(receipt.packages.map(\.module)).count == receipt.packages.count,
+                  Set(receipt.packages.map(\.path)).count == receipt.packages.count else {
+                throw invalid("Workspace package module/path identities are ambiguous.")
+            }
+            for package in receipt.packages {
             var nativeProducts: [String: String] = [:]
             let consumers = Set(package.consumers)
             for target in receipt.targets where consumers.contains(target.id) {
@@ -155,9 +179,12 @@ struct XcodeTargetScopeStore {
                 }
                 nativeProducts[target.id] = directory + "/" + executable
             }
+            let packageProject = XcodeProjectMembership(targets: project.targets, frameworks: project.frameworks,
+                packageConsumers: receipt.version == 3 ? Set(package.consumers) : project.packageConsumers)
             try package.validate(root: root, buildRoot: String(productRoot.dropLast("/Products".count)),
-                architecture: receipt.architecture, project: project, closure: closure, products: receipt.products,
+                architecture: receipt.architecture, project: packageProject, closure: closure, products: receipt.products,
                 nativeProducts: nativeProducts, nativeModules: Set(receipt.targets.map(\.module)), fileSystem: fileSystem)
+            }
         }
         try validateLocalPackage()
         let testRun = try bounded(receipt.testRunPath, maximum: 8 * 1_024 * 1_024)
@@ -182,7 +209,7 @@ struct XcodeTargetScopeStore {
         }
         try validateFrameworks(receipt.frameworks, references: project.frameworks, settings: settings)
         try validateLocalPackage()
-        guard receipt.after == (try inventory(root: root)), bytes == (try bounded(path, maximum: 8 * 1_024 * 1_024))
+        guard receipt.after == (try inventory(root: root, workspace: receipt.version == 3)), bytes == (try bounded(path, maximum: 8 * 1_024 * 1_024))
         else { throw invalid("Inputs changed while Xcode membership was being verified.") }
         return .init(receipt: receipt, closure: closure, owners: owners,
             selectorTargets: selectorTargets, testBundles: testBundles)
@@ -208,7 +235,9 @@ struct XcodeTargetScopeStore {
         for item in targets {
             guard item["enabled"] as? Bool != false, item["selectedTests"] == nil, item["skippedTests"] == nil,
                   let target = item["target"] as? [String: String], let id = target["identifier"],
-                  target["containerPath"] == "container:" + receipt.project, result.insert(id).inserted else {
+                  let container = target["containerPath"], container.hasPrefix("container:"),
+                  (receipt.projects ?? [receipt.project]).contains(String(container.dropFirst("container:".count))),
+                  result.insert(receipt.workspace == nil ? id : String(container.dropFirst("container:".count)) + "::" + id).inserted else {
                 throw invalid("Partial, disabled, duplicate or external plan targets are unsupported.")
             }
         }
@@ -260,7 +289,10 @@ struct XcodeTargetScopeStore {
             }
             if let rawDependencies = row["DependentProductPaths"] {
                 guard let dependencies = rawDependencies as? [String], dependencies.count <= 1_000,
-                      dependencies.allSatisfy({ closureProducts.contains($0.replacingOccurrences(of: "__TESTROOT__", with: productRoot)) }) else {
+                      dependencies.allSatisfy({ value in
+                          let path = value.replacingOccurrences(of: "__TESTROOT__", with: productRoot)
+                          return (try? fileSystem.realPath(at: path)).map(closureProducts.contains) == true
+                      }) else {
                     throw invalid("Test-run dependency products are outside the verified target closure.")
                 }
             }
@@ -282,7 +314,7 @@ struct XcodeTargetScopeStore {
                 observedHosts.insert(expected)
             }
             let declared = row["TestBundlePath"] as! String
-            let resolved = declared.replacingOccurrences(of: "__TESTROOT__", with: productRoot)
+            let resolved = try fileSystem.realPath(at: declared.replacingOccurrences(of: "__TESTROOT__", with: productRoot))
             guard resolved == directory + "/" + product,
                   fileSystem.fileExists(at: directory + "/" + executable),
                   try fileSystem.realPath(at: directory + "/" + executable) == directory + "/" + executable else {
@@ -380,11 +412,11 @@ struct XcodeTargetScopeStore {
     }
 
     /// 분석 filter/ignore를 적용하지 않는다. 새 소스와 설정도 이전 증명을 무효화한다.
-    func inventory(root: String) throws -> [String: String] {
+    func inventory(root: String, workspace: Bool = false) throws -> [String: String] {
         var pending = [root], result: [String: String] = [:]
         var entries = 0, total = 0
         let suffixes = ["swift", "m", "mm", "h", "xib", "storyboard", "pbxproj", "xcscheme", "xctestplan",
-                        "xcconfig", "plist", "entitlements", "resolved"]
+                        "xcconfig", "plist", "entitlements", "resolved", "xcworkspacedata"]
         while let directory = pending.popLast() {
             for entry in try fileSystem.directoryEntries(at: directory) {
                 entries += 1
@@ -398,7 +430,9 @@ struct XcodeTargetScopeStore {
                 guard entry.path.hasPrefix(root + "/"), entry.isRegularFile else { throw invalid("Nonregular project input.") }
                 let data = try bounded(entry.path, maximum: 4 * 1_024 * 1_024)
                 total += data.count
-                guard result.count < 10_000, total <= 64 * 1_024 * 1_024 else { throw invalid("Project input byte budget exceeded.") }
+                guard result.count < (workspace ? 20_000 : 10_000), total <= (workspace ? 128 : 64) * 1_024 * 1_024 else {
+                    throw invalid("Project input file/byte budget exceeded.")
+                }
                 result[String(entry.path.dropFirst(root.count + 1))] = TargetScopeStore.digest(data)
             }
         }
@@ -408,7 +442,7 @@ struct XcodeTargetScopeStore {
     private func bounded(_ path: String, maximum: Int) throws -> Data {
         guard !isSensitiveAnalysisEvidencePath(path), try fileSystem.realPath(at: path) == path,
               fileSystem.fingerprintStamp(at: path)?.isRegularFile != false else {
-            throw invalid("Sensitive, symlinked or noncanonical receipt input.")
+            throw invalid("Sensitive, symlinked or noncanonical receipt input: " + String(reflecting: path))
         }
         let data = try fileSystem.readData(at: path, maximumBytes: maximum)
         guard data.count <= maximum else { throw invalid("Receipt input exceeds its byte budget.") }

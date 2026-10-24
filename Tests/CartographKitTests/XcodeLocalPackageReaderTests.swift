@@ -6,6 +6,15 @@ import Testing
 
 @Suite("Xcode compiler 문서의 경계와 의미 검증")
 struct XcodeLocalPackageReaderTests {
+    @Test("bare loader path는 rpath 피연산자로만 허용하고 상대 response로 추측하지 않는다")
+    func bareLoaderPath() throws {
+        let fs = InMemoryFileSystem()
+        var reader = try XcodeLocalPackageReader(files: [:], buildRoot: "/capture/DerivedData/Build",
+            indexStore: "/capture/DerivedData/Index.noindex/DataStore", fileSystem: fs)
+        #expect(try reader.arguments(["/tool/clang", "-Xlinker", "-rpath", "-Xlinker", "@loader_path"]) == ["/tool/clang", "-rpath", "@loader_path"])
+        #expect(throws: (any Error).self) { try reader.arguments(["/tool/clang", "@loader_path"]) }
+    }
+
     @Test("quote와 escape를 실행하지 않고 실제 토큰을 읽으며 잘림과 중첩을 거부한다")
     func tokenGrammar() throws {
         #expect(try XcodeEvidenceTokens.read(#"'/path with spaces' "quoted" escaped\ space"#, maximum: 3)

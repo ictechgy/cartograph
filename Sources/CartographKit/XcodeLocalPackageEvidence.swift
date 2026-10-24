@@ -18,6 +18,7 @@ struct XcodeLocalPackageEvidence: Codable {
     let records: [Record]
     let aggregate: Link
     let links: [ConsumerLink]
+    var project: String? = nil
 
     /// 서명되지 않은 capture 생산자의 관측이며, 과거 생성 주체의 독립 증명이 아니다.
     enum GeneratedMetadataOrigin: String, Codable {
@@ -64,7 +65,8 @@ struct XcodeLocalPackageEvidence: Codable {
     func validateAdmissions(_ admissions: [SourceRecordAdmission], root: String,
                             fileSystem: any FileSystem) throws {
         let sources = sourcePaths(root: root)
-        let actual = admissions.filter { sources.contains($0.path) }
+        let actual = admissions.map { $0.rebased { XcodeEvidencePath.physicalTemporaryAlias($0, fileSystem: fileSystem) } }
+            .filter { sources.contains($0.path) }
         guard actual.count == records.count else { throw XcodeLocalPackageIO.invalid("Package source record contexts differ from the capture.") }
         for record in records {
             guard let modified = fileSystem.modificationDate(at: record.source), actual.contains(where: {
@@ -144,14 +146,18 @@ struct XcodeLocalPackageEvidence: Codable {
               try XcodeLocalPackageIO.argument("-target", in: argv) == compilation.targetTriple,
               compilation.targetTriple.range(of: "^" + architecture + #"-apple-macos[0-9]+(?:\.[0-9]+)*$"#,
                   options: .regularExpression) != nil,
-              compilation.argv.filter({ $0 == "@" + compilation.sourceFileList }).count == 1,
+              argv.filter({ $0 == "@" + compilation.sourceFileList }).count == 1,
               Set(try reader.fileList(compilation.sourceFileList)) == sources else {
             throw XcodeLocalPackageIO.invalid("Compiler module, target, source file list or output-map identity is inconsistent.")
         }
         let data = try reader.read(compilation.outputMap, kind: "document")
-        let map = try JSONDecoder().decode([String: [String: String]].self, from: data)
+        let rawMap = try JSONDecoder().decode([String: [String: String]].self, from: data)
+        let pairs = rawMap.map { (XcodeEvidencePath.physicalTemporaryAlias($0.key, fileSystem: reader.fileSystem), $0.value) }
+        guard Set(pairs.map(\.0)).count == pairs.count else { throw XcodeLocalPackageIO.invalid("Duplicate physical compiler source identity.") }
+        let map = Dictionary(uniqueKeysWithValues: pairs)
         guard Set(map.keys.filter { !$0.isEmpty }) == sources,
-              map[compilation.source]?["object"] == compilation.object,
+              let mapObject = map[compilation.source]?["object"],
+              XcodeEvidencePath.physicalTemporaryAlias(mapObject, fileSystem: reader.fileSystem) == compilation.object,
               map[compilation.source]?["index-unit-output-path"] == compilation.unitOutputIdentity,
               !compilation.unitOutputIdentity.isEmpty else {
             throw XcodeLocalPackageIO.invalid("Actual compiler output map differs from package source/unit/object identities.")
@@ -210,7 +216,7 @@ struct XcodeLocalPackageEvidence: Codable {
         for input in inputs { _ = try reader.read(input, kind: "object") }
         _ = try reader.read(link.output, kind: "object")
         try XcodeLinkMapEvidence.validate(try reader.read(link.linkMap, kind: "document"),
-            output: link.output, architecture: architecture, required: required)
+            output: link.output, architecture: architecture, required: required, fileSystem: reader.fileSystem)
         return inputs
     }
 
