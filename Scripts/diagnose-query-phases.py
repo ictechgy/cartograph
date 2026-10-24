@@ -200,9 +200,67 @@ def check_answer(raw, names, statuses, config, graph, request):
                     "Ambiguity omitted the two source-authored fullMessage overloads")
 
 
+def prepared_module():
+    spec = importlib.util.spec_from_file_location(
+        "query_prepared_tools", Path(__file__).with_name("prepared-comparison-tools.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def verify_query_inputs(config):
+    result = PREP.verify_bytes(config)
+    if config.get("prepared_sources"):
+        module = prepared_module()
+        for root, source in config["prepared_sources"]:
+            module.verify_source_links(Path(root), source)
+    return result
+
+
+def admit_prepared_baseline(path, revision, baseline, setup, config):
+    # 생산자 명령/시간을 고쳐 쓰지 않고 소비자 경로와 별도 admission을 대조한다.
+    require(setup.get("status") == "passed", "Successful actual candidate comparison required")
+    require(baseline.get("status") == "admitted-preparation-only", "Prepared baseline admission required")
+    admission_path = Path(baseline["admission"]).resolve()
+    require(str(admission_path) == setup["cartograph"]["setup"].get("admission_path"),
+            "Prepared consumer admission differs")
+    module = prepared_module()
+    admission = module.read_admission(admission_path)
+    require(baseline["toolchain_identity"] == admission["toolchain"]["identity"]
+            == setup["cartograph"]["setup"]["toolchain_identity"], "Baseline toolchain differs")
+    hashes = {str(path): BASE.sha256(path), str(admission_path): BASE.sha256(admission_path)}
+    for role, evidence in (("baseline", baseline), ("candidate", setup)):
+        expected = module.prepared_product(admission, role)
+        product = evidence["cartograph"]
+        # admission_path는 소비자 결과가 추가한 필드이며 원본 producer receipt에는 없다.
+        observed = {**product, "setup": {key: value for key, value in product["setup"].items()
+                                         if key != "admission_path"}}
+        require(observed == expected, "Prepared product mapping differs")
+        source = expected["setup"]["source"]
+        if role == "baseline":
+            require(source["revision"] == revision, "Baseline revision differs")
+        package = Path(expected["setup"]["consumer_source"])
+        config.setdefault("prepared_sources", []).append((str(package), source))
+        hashes.update({str(package / name): value for name, value in source["input_sha256"].items()})
+        item = admission["tools"][role]
+        manifest_path = Path(item["manifest"])
+        manifest = module.read_json(manifest_path)
+        hashes[str(manifest_path)] = item["manifest_sha256"]
+        hashes.update({str(manifest_path.parent / name): row["sha256"] for name, row in manifest["files"].items()})
+    # Swift/Clang과 dlopen 라이브러리는 실제 실행하는 같은 소비자에서 재검증한다.
+    hashes.update({admission["toolchain"]["paths"][name]: value
+                   for name, value in admission["toolchain"]["identity"]["tools_sha256"].items()})
+    config["hashes"].update(hashes)
+    verify_query_inputs(config)
+
+
 def admit_baseline(path, revision, setup, config, out):
     require(re.fullmatch(r"[0-9a-f]{40}", revision or "") is not None, "Exact baseline revision required")
     baseline = PROJECT.read_json(path)
+    if setup["cartograph"]["setup"].get("mode") == "verified-prepared-artifact":
+        admit_prepared_baseline(path, revision, baseline, setup, config)
+        BASE.save(out / "baseline-admission.json", baseline)
+        return baseline
     require(baseline.get("status") == "passed", "Successful baseline release build required")
     require(baseline["toolchain"] == setup["toolchain"], "Baseline toolchain differs")
     hashes = {str(path): BASE.sha256(path)}
@@ -273,7 +331,11 @@ def run(path, out, report, deadline=None, baseline_path=None, baseline_revision=
     config, graph = PREP.admit(path, out, COMMAND_SECONDS)
     report["diagnostic_stage"] = "candidate_setup"
     setup = PROJECT.read_json(Path(PROJECT.read_json(path)["reused_tools"]["setup_results"]))
-    require(setup["cartograph"]["setup"]["mode"] == "fresh-release-package-build", "Existing release package build required")
+    require(setup["cartograph"]["setup"]["mode"] in ("fresh-release-package-build", "verified-prepared-artifact"),
+            "Existing release package build required")
+    if setup["cartograph"]["setup"]["mode"] == "verified-prepared-artifact":
+        require(baseline_path is not None, "Prepared tools require paired baseline admission")
+        report["setup_cost_scope"] = "Separate producer builds and consumer admission; no single-host end-to-end setup cost"
     config["hashes"][str(Path(__file__).resolve())] = BASE.sha256(Path(__file__))
     report.update(source=setup["cartograph"]["setup"]["source"], toolchain=setup["toolchain"],
                   runner_sha256=BASE.sha256(Path(__file__)), runs=[], byte_checks=[])
@@ -327,7 +389,7 @@ def run(path, out, report, deadline=None, baseline_path=None, baseline_revision=
                 stem = f"{name}-{number}" if baseline is None else f"{name}-{number}-{arm}"
                 report["active_workload"] = {"case": name, "arm": arm, "pair": number, "enabled": enabled}
                 report["diagnostic_stage"] = "input_identity"
-                report["byte_checks"].append(PREP.verify_bytes(config))
+                report["byte_checks"].append(verify_query_inputs(config))
                 report["diagnostic_stage"] = "capture"
                 measured, raw = capture_in_temporary(arm_command, Path(config["project"]), out / stem, enabled,
                                                      temporary_roots.get(arm))
@@ -350,7 +412,7 @@ def run(path, out, report, deadline=None, baseline_path=None, baseline_revision=
                     require((measured["phases"]["found_facts"] is not None) == ("found" in statuses),
                             "Found-only phase ran or was skipped incorrectly")
     report["diagnostic_stage"] = "final_input_identity"
-    report["byte_checks"].append(PREP.verify_bytes(config))
+    report["byte_checks"].append(verify_query_inputs(config))
     report["diagnostic_stage"] = "timing_contract"
     require(deadline is None or time.monotonic() < deadline, "Shared driver deadline exceeded")
     # 동등성과 입력 검사를 모두 통과한 뒤에만 내부 시간을 해석한다.

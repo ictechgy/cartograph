@@ -21,6 +21,7 @@ EVIDENCE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(EVIDENCE)
 
 BUNDLES = ("synthetic", "argument-parser", "mixed-setup", "mixed-ios")
+SUMMARY_MAX_BYTES = 8192
 SAFE_REASONS = {
     "unexpected-control-or-binary-content",
     "private-key",
@@ -95,6 +96,74 @@ def diagnostic(error: Exception) -> dict[str, Any]:
         if isinstance(error.errno, int):
             result["errno"] = error.errno
     return result
+
+
+def summary_diagnostic(value: Any) -> dict[str, Any]:
+    """기존 안전 진단만 다시 검증하고 원문이나 추가 메타데이터는 로그로 옮기지 않는다."""
+    reasons = SAFE_REASONS | {
+        "unexpected-normalization-error", "normalization-blocked", "filesystem-error",
+        "input-missing", "input-not-requested",
+    }
+    if not isinstance(value, dict) or not isinstance(value.get("reason"), str) or value["reason"] not in reasons:
+        raise ValueError("summary-refused")
+    result = {"reason": value["reason"]}
+    for field in ("error_sha256", "artifact_identifier_sha256", "offending_value_sha256"):
+        if field in value:
+            digest = value[field]
+            if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+                raise ValueError("summary-refused")
+            result[field] = digest
+    if "errno" in value:
+        number = value["errno"]
+        if value["reason"] != "filesystem-error" or type(number) is not int or not -(2 ** 31) <= number < 2 ** 31:
+            raise ValueError("summary-refused")
+        result["errno"] = number
+    return result
+
+
+def publication_summary(manifest: dict[str, Any]) -> str:
+    """공개 판정과 무관한 제한된 진단을 만들며 잘못된 값은 원문 없이 거부한다."""
+    counts = {
+        "normalized_bundles": "normalized_for_review", "blocked_bundles": "blocked",
+        "unavailable_bundles": "unavailable", "skipped_bundles": "skipped",
+    }
+    result = {"complete_run_evidence": False, "manifest": "bundle-status.json"}
+    try:
+        status = manifest["status"]
+        if status not in ("publication_prepared", "publication_prepared_with_blocked_bundles"):
+            raise ValueError("summary-refused")
+        result["status"] = status
+        for field in counts:
+            count = manifest[field]
+            if type(count) is not int or not 0 <= count <= len(BUNDLES):
+                raise ValueError("summary-refused")
+            result[field] = count
+        entries = manifest["bundles"]
+        if not isinstance(entries, list) or len(entries) != len(BUNDLES):
+            raise ValueError("summary-refused")
+        rows = []
+        for name, entry in zip(BUNDLES, entries):
+            if not isinstance(entry, dict) or entry.get("name") != name or entry.get("status") not in counts.values():
+                raise ValueError("summary-refused")
+            row = {"name": name, "status": entry["status"]}
+            if "diagnostic" in entry:
+                row["diagnostic"] = summary_diagnostic(entry["diagnostic"])
+            elif entry["status"] != "normalized_for_review":
+                raise ValueError("summary-refused")
+            rows.append(row)
+        if any(result[field] != sum(row["status"] == state for row in rows) for field, state in counts.items()):
+            raise ValueError("summary-refused")
+        if (status == "publication_prepared_with_blocked_bundles") != bool(result["blocked_bundles"]):
+            raise ValueError("summary-refused")
+        result["bundles"] = rows
+    except (KeyError, TypeError, ValueError):
+        # 이 진단의 거부가 이미 완료된 공개 판정이나 원래 종료 코드를 바꾸지 않는다.
+        result.pop("bundles", None)
+        result["bundle_diagnostic"] = "summary-refused"
+    text = json.dumps(result, sort_keys=True, ensure_ascii=True, allow_nan=False)
+    if len(text.encode("ascii")) + 1 > SUMMARY_MAX_BYTES:
+        return '{"bundle_diagnostic":"summary-refused","complete_run_evidence":false}'
+    return text
 
 
 def raw_inventory(raw: Path) -> dict[str, Any]:
@@ -281,20 +350,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    print(
-        json.dumps(
-            {
-                "status": manifest["status"],
-                "normalized_bundles": manifest["normalized_bundles"],
-                "blocked_bundles": manifest["blocked_bundles"],
-                "unavailable_bundles": manifest["unavailable_bundles"],
-                "skipped_bundles": manifest["skipped_bundles"],
-                "complete_run_evidence": False,
-                "manifest": "bundle-status.json",
-            },
-            sort_keys=True,
-        )
-    )
+    print(publication_summary(manifest))
     return 2 if manifest["blocked_bundles"] else 0
 
 

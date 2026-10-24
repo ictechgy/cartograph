@@ -1,0 +1,12 @@
+Test Suite 'Selected tests' started at 2000-01-01 00:00:00.000.
+Test Suite 'RunnableChecks.xctest' started at 2000-01-01 00:00:00.001.
+Test Suite 'ChangedTests' started at 2000-01-01 00:00:00.001.
+Test Case '-[ChecksModule.ChangedTests testChanged]' started.
+Test Case '-[ChecksModule.ChangedTests testChanged]' passed (0.001 seconds).
+Test Suite 'ChangedTests' passed at 2000-01-01 00:00:00.002.
+Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'RunnableChecks.xctest' passed at 2000-01-01 00:00:00.002.
+Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.003) seconds
+Test Suite 'Selected tests' passed at 2000-01-01 00:00:00.003.
+Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.004) seconds
+** TEST EXECUTE SUCCEEDED **

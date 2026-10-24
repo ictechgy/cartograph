@@ -107,6 +107,11 @@ public struct CartographService: Sendable {
 
     /// 그래프 표현과 원시 참조 수집을 분리해 재귀 호출을 명시적으로 보존할 수 있게 한다.
     public func loadContext(includeSelfReferences: Bool) throws -> AnalysisContext {
+        try loadContext(includeSelfReferences: includeSelfReferences, expectedIndexStorePath: nil)
+    }
+
+    /// v2는 자동 선택된 다른 store에 같은 unit 이름이 있어도 캡처된 record 바이트와 혼합하지 않는다.
+    func loadContext(includeSelfReferences: Bool, expectedIndexStorePath: String?) throws -> AnalysisContext {
         let (externalRetentions, inventory, source) = try measureQueryPhase(
             .inputPreparation, observer: environment.queryPhaseObserver
         ) {
@@ -121,6 +126,12 @@ public struct CartographService: Sendable {
                 sourceRoots: inventory.sourceFiles, inventory: inventory
             )
             return (externalRetentions, inventory, source)
+        }
+        if let expectedIndexStorePath {
+            guard environment.indexProviderOverride == nil,
+                  try environment.fileSystem.realPath(at: source.storePath) == expectedIndexStorePath else {
+                throw XcodeLocalPackageIO.invalid("Fresh analysis selected a different index store; use the captured --index-store path.")
+            }
         }
         let raw = try measureQueryPhase(.rawSnapshot, observer: environment.queryPhaseObserver) {
             try source.provider.loadSnapshot()

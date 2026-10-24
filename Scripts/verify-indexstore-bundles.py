@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
+import copy
 import hashlib
 import importlib.util
 import io
@@ -69,6 +70,16 @@ class BundleTests(unittest.TestCase):
         self.assertEqual(states["argument-parser"]["status"], "blocked")
         self.assertEqual(states["argument-parser"]["diagnostic"]["reason"], "unmapped-absolute-path")
         self.assertEqual(manifest["blocked_bundles"], 1)
+        summary = json.loads(logs)
+        self.assertEqual(summary["status"], manifest["status"])
+        for field in ("normalized_bundles", "blocked_bundles", "unavailable_bundles", "skipped_bundles"):
+            self.assertEqual(summary[field], manifest[field])
+        self.assertEqual([row["name"] for row in summary["bundles"]], list(MODULE.BUNDLES))
+        self.assertEqual(summary["bundles"][1]["diagnostic"], states["argument-parser"]["diagnostic"])
+        self.assertEqual(summary["bundles"][0], {"name": "synthetic", "status": "normalized_for_review"})
+        for excluded in ("input_path_sha256", "raw_inventory", "original_raw_sha256", "privacy_note"):
+            self.assertNotIn(excluded, logs)
+        self.assertLessEqual(len(logs.encode("ascii")), MODULE.SUMMARY_MAX_BYTES)
         inventory = states["argument-parser"]["raw_inventory"]
         self.assertEqual(inventory["file_count"], 1)
         self.assertEqual(inventory["total_bytes"], len(raw_data))
@@ -108,6 +119,7 @@ class BundleTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(states["synthetic"]["diagnostic"]["reason"], "filesystem-error")
         self.assertEqual(states["synthetic"]["diagnostic"]["errno"], 28)
+        self.assertEqual(json.loads(logs)["bundles"][0]["diagnostic"], states["synthetic"]["diagnostic"])
         self.assertEqual(states["mixed-ios"]["status"], "normalized_for_review")
         self.assertFalse((self.public / "synthetic").exists())
         self.assertNotIn("PRIVATE", self.published_text() + logs)
@@ -197,7 +209,7 @@ class BundleTests(unittest.TestCase):
         self.assertNotIn(str(self.root), self.published_text() + logs)
 
     def test_missing_and_unrequested_inputs_have_explicit_status(self):
-        code, _ = self.run_main(self.argv(synthetic=self.root / "missing"))
+        code, logs = self.run_main(self.argv(synthetic=self.root / "missing"))
         manifest, states = self.statuses()
         self.assertEqual(code, 0)
         self.assertEqual(states["synthetic"]["status"], "unavailable")
@@ -210,6 +222,10 @@ class BundleTests(unittest.TestCase):
         self.assertEqual(manifest["skipped_bundles"], 3)
         self.assertEqual(manifest["status"], "publication_prepared")
         self.assertIs(manifest["complete_run_evidence"], False)
+        self.assertEqual(json.loads(logs)["bundles"], [
+            {"name": name, "status": states[name]["status"], "diagnostic": states[name]["diagnostic"]}
+            for name in MODULE.BUNDLES
+        ])
 
     def test_unresolvable_input_does_not_discard_independent_success(self):
         loop = self.root / "symlink-loop"
@@ -397,7 +413,122 @@ class BundleTests(unittest.TestCase):
         _, states = self.statuses()
         self.assertEqual(code, 2)
         self.assertEqual(states["synthetic"]["diagnostic"]["reason"], "unexpected-normalization-error")
+        self.assertEqual(json.loads(logs)["bundles"][0]["diagnostic"], states["synthetic"]["diagnostic"])
         self.assertNotIn("synthetic-PRIVATE", self.published_text() + logs)
+
+    def summary_manifest(self):
+        return {
+            "status": "publication_prepared_with_blocked_bundles",
+            "normalized_bundles": 0, "blocked_bundles": 4, "unavailable_bundles": 0, "skipped_bundles": 0,
+            "bundles": [
+                {"name": name, "status": "blocked", "diagnostic": {
+                    "reason": "unmapped-absolute-path", "error_sha256": "a" * 64,
+                    "artifact_identifier_sha256": "b" * 64, "offending_value_sha256": "c" * 64,
+                }} for name in MODULE.BUNDLES
+            ],
+        }
+
+    def test_stdout_summary_allowlist_does_not_copy_extra_metadata(self):
+        manifest = self.summary_manifest()
+        private = "/Users/private-person/source.swift\n::error::password=secret\x1b[2J"
+        manifest["source"] = private
+        for entry in manifest["bundles"]:
+            entry["raw_inventory"] = {"source": private}
+            entry["input_path"] = private
+            entry["diagnostic"]["raw_error"] = private
+        text = MODULE.publication_summary(manifest)
+        self.assertNotIn("private-person", text)
+        self.assertNotIn("password", text)
+        self.assertNotIn("raw_inventory", text)
+        self.assertTrue(text.isascii())
+        self.assertEqual(len(text.splitlines()), 1)
+        summary = json.loads(text)
+        self.assertEqual(len(summary["bundles"]), 4)
+        for row in summary["bundles"]:
+            self.assertEqual(set(row), {"name", "status", "diagnostic"})
+            self.assertEqual(set(row["diagnostic"]), {
+                "reason", "error_sha256", "artifact_identifier_sha256", "offending_value_sha256",
+            })
+        self.assertLessEqual(len(text.encode("ascii")) + 1, MODULE.SUMMARY_MAX_BYTES)
+        self.assertLessEqual(MODULE.SUMMARY_MAX_BYTES, 64 * 1024)
+
+    def test_stdout_identifies_two_blocked_bundles_without_changing_counts_or_exit(self):
+        good_one, good_two = self.raw("good-one"), self.raw("good-two")
+        bad_one = self.raw("bad-one", {"source": "/Users/private-person/source.swift"})
+        bad_two = self.raw("bad-two", {"password": "synthetic-secret"})
+        code, text = self.run_main(self.argv(
+            synthetic=good_one, argument_parser=bad_one, mixed_setup=good_two, mixed_ios=bad_two,
+        ))
+        manifest, states = self.statuses()
+        summary = json.loads(text)
+        self.assertEqual(code, 2)
+        self.assertEqual((summary["normalized_bundles"], summary["blocked_bundles"]), (2, 2))
+        self.assertEqual(summary["status"], manifest["status"])
+        for row in summary["bundles"]:
+            self.assertEqual(row["status"], states[row["name"]]["status"])
+            if row["status"] == "blocked":
+                self.assertEqual(row["diagnostic"], states[row["name"]]["diagnostic"])
+        self.assertNotIn("private-person", text)
+        self.assertNotIn("synthetic-secret", text)
+
+    def test_stdout_summary_rejects_untrusted_diagnostic_values_without_text(self):
+        mutations = [
+            ("reason", "/Users/private-person/secret\n::error::injected\x1b[2J"),
+            ("reason", {"secret": "private-person"}),
+            ("error_sha256", "a" * 63),
+            ("artifact_identifier_sha256", "a" * 64 + "\nprivate-person"),
+            ("offending_value_sha256", "private-person" * 100000),
+            ("errno", True), ("errno", "/Users/private-person"), ("errno", 2 ** 63),
+        ]
+        for field, value in mutations:
+            with self.subTest(field=field, value_type=type(value).__name__):
+                manifest = self.summary_manifest()
+                item = manifest["bundles"][0]["diagnostic"]
+                if field == "errno":
+                    item["reason"] = "filesystem-error"
+                item[field] = value
+                text = MODULE.publication_summary(manifest)
+                summary = json.loads(text)
+                self.assertEqual(summary["bundle_diagnostic"], "summary-refused")
+                self.assertEqual(summary["status"], manifest["status"])
+                self.assertEqual(summary["blocked_bundles"], 4)
+                self.assertNotIn("bundles", summary)
+                self.assertNotIn("private-person", text)
+                self.assertNotIn("::error::", text)
+                self.assertNotIn("\x1b", text)
+                self.assertLessEqual(len(text.encode("ascii")) + 1, MODULE.SUMMARY_MAX_BYTES)
+
+    def test_stdout_summary_requires_fixed_bundle_names_statuses_and_counts(self):
+        baseline = self.summary_manifest()
+        mutations = [
+            lambda m: m["bundles"].append(copy.deepcopy(m["bundles"][0])),
+            lambda m: m["bundles"].pop(),
+            lambda m: m["bundles"][0].update(name="/Users/private-person\nsecret"),
+            lambda m: m["bundles"][1].update(name="synthetic"),
+            lambda m: m["bundles"][0].update(status="private-person\n::error::unsafe"),
+            lambda m: m["bundles"][0].pop("diagnostic"),
+            lambda m: m.update(blocked_bundles=3),
+            lambda m: m.update(status="publication_prepared"),
+            lambda m: m.update(blocked_bundles=True),
+            lambda m: m.update(status="private-person\n::error::unsafe"),
+        ]
+        for index, mutate in enumerate(mutations):
+            with self.subTest(case=index):
+                manifest = copy.deepcopy(baseline)
+                mutate(manifest)
+                text = MODULE.publication_summary(manifest)
+                summary = json.loads(text)
+                self.assertEqual(summary["bundle_diagnostic"], "summary-refused")
+                self.assertNotIn("bundles", summary)
+                self.assertNotIn("private-person", text)
+                self.assertNotIn("::error::", text)
+
+    def test_stdout_summary_enforces_final_encoded_byte_budget(self):
+        manifest = self.summary_manifest()
+        with mock.patch.object(MODULE, "SUMMARY_MAX_BYTES", 512):
+            text = MODULE.publication_summary(manifest)
+        self.assertEqual(json.loads(text), {"bundle_diagnostic": "summary-refused", "complete_run_evidence": False})
+        self.assertLessEqual(len(text.encode("ascii")) + 1, 512)
 
     def test_input_changed_since_inventory_is_blocked(self):
         raw = self.raw("raw")

@@ -862,6 +862,46 @@ def prepare_cartograph(args: argparse.Namespace, swiftc: Path, root: Path) -> di
     }
 
 
+def prepared_tools_module():
+    # 기존 로컬 빌드/외부 바이너리 모드는 전달 자료 검증 모듈에 의존하지 않는다.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "prepared_comparison_tools", Path(__file__).with_name("prepared-comparison-tools.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def transferred_tools(value: dict, prepared, admission_path: Path,
+                      swiftc: Path, library: Path, compiler: dict) -> tuple[dict, dict]:
+    identity = value["toolchain"]["identity"]
+    if (compiler["version"] != identity["swift_version"]
+            or sha256(swiftc) != identity["tools_sha256"]["swiftc"]
+            or sha256(library) != identity["tools_sha256"]["libIndexStore"]):
+        raise ValueError("Comparison compiler/library differs from admitted consumer toolchain")
+    product = prepared.prepared_product(value, "candidate")
+    product["setup"]["admission_path"] = str(admission_path)
+    comparator = prepared.prepared_product(value, "comparator")
+    source = comparator["setup"]["source"]
+    if source["revision"] != REVISION:
+        raise ValueError("Prepared comparator revision differs from the frozen CLI pin")
+    original = copy.deepcopy(comparator["setup"]["producer_evidence"])
+    # 원래 생산자 argv/시간/경로는 그대로 보존하고 소비자 경로는 별도 신원으로 연결한다.
+    setup = {
+        "mode": "verified-prepared-artifact", "repository": UPSTREAM, "revision": REVISION,
+        "checkout": comparator["setup"]["consumer_source"],
+        "binary": comparator["binary"], "binary_sha256": comparator["binary_sha256"],
+        "source": source, "build_evidence": original,
+        "commands": copy.deepcopy(original["commands"]),
+        "command_scope": "Original producer commands; not executed on the consumer",
+        "producer": comparator["setup"]["producer"],
+        "admission_path": str(admission_path), "admission": comparator["setup"]["admission"],
+        "toolchain_identity": identity,
+        "cost_scope": "Producer acquisition/build, transfer and consumer admission are separate; no single-host total",
+    }
+    return product, setup
+
+
 def baseline_sample(
     args: argparse.Namespace,
     cli: Path,
@@ -1263,6 +1303,10 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="Build Cartograph release in fresh scratch and measure full resolve/build",
     )
+    parser.add_argument(
+        "--prepared-tools", type=Path,
+        help="Revalidate admitted prepared executables; producer build and consumer costs remain separate",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument(
         "--fixtures", type=Path, default=Path(__file__).resolve().parents[1] / "Fixtures" / "IndexStoreCLIBenchmark"
@@ -1298,8 +1342,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not args.output or not 1 <= args.repetitions <= 50 or args.jobs < 1:
         parser.error("--output, repetitions between 1 and 50, and positive --jobs are required")
-    if sum([args.baseline_only, bool(args.cartograph), bool(args.cartograph_package)]) != 1:
-        parser.error("Supply exactly one of --cartograph, --cartograph-package, or diagnostic --baseline-only")
+    if sum([args.baseline_only, bool(args.cartograph), bool(args.cartograph_package), bool(args.prepared_tools)]) != 1:
+        parser.error("Supply exactly one of --cartograph, --cartograph-package, --prepared-tools, or diagnostic --baseline-only")
+    if args.prepared_tools and (args.indexstore_checkout or args.swiftc or args.lib_index_store):
+        parser.error("--prepared-tools uses its admitted source/toolchain; explicit checkout/compiler/library overrides are unsupported")
     if args.cartograph:
         args.cartograph = args.cartograph.resolve()
         if not args.cartograph.is_file() or not os.access(args.cartograph, os.X_OK):
@@ -1351,11 +1397,28 @@ def main(argv: list[str] | None = None) -> int:
     try:
         swiftc, library, compiler = toolchain(args.swiftc, args.lib_index_store, root)
         result["toolchain"] = compiler
-        if args.cartograph or args.cartograph_package:
+        if args.prepared_tools:
+            admission_path = args.prepared_tools.resolve()
+            prepared = prepared_tools_module()
+            admission = prepared.read_admission(admission_path)
+            result["toolchain"]["cartograph_library_check"] = verify_cartograph_library(library, root)
+            product, setup = transferred_tools(admission, prepared, admission_path, swiftc, library, compiler)
+            args.cartograph = Path(product["binary"])
+            cli = Path(setup["binary"])
+            result["cartograph"] = product
+            result["toolchain_identity"] = admission["toolchain"]["identity"]
+            result["prepared_consumer"] = admission["consumer"]
+            result["measurement_contract"]["setup"] = (
+                "Original producer build argv/timings are retained, not rewritten as consumer builds. "
+                "Transfer is workflow evidence; admission and all fresh fixture/query measurements belong to this consumer. "
+                "No single-host end-to-end setup cost is claimed; compiler/global dependency caches are not flushed."
+            )
+        elif args.cartograph or args.cartograph_package:
             result["toolchain"]["cartograph_library_check"] = verify_cartograph_library(library, root)
             result["cartograph"] = prepare_cartograph(args, swiftc, root)
             save(root / "results.json", result)
-        cli, setup = prepare_cli(args, swiftc, root)
+        if not args.prepared_tools:
+            cli, setup = prepare_cli(args, swiftc, root)
         result["comparator_setup"] = setup
         cases = [args.fixtures / "basic", args.fixtures / "holdout"]
         for case in cases:
@@ -1363,6 +1426,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError(f"Required source oracle missing: {case}")
             result["fixtures"].append(fixture_run(args, case, cli, library, swiftc, root))
             save(root / "results.json", result)
+        if args.prepared_tools and prepared.read_admission(admission_path) != admission:
+            raise ValueError("Prepared admission changed during the comparison")
         passed = all(case["passed"] for case in result["fixtures"])
         result["status"] = ("baseline_only" if args.baseline_only else "passed") if passed else "failed"
         result["correctness_and_freshness_passed"] = passed

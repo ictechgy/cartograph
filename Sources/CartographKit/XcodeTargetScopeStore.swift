@@ -29,6 +29,7 @@ struct XcodeTargetScopeStore {
         let frameworks: [SystemFramework]
         let testHosts: [String: String]
         let buildExitCode: Int
+        var localPackage: XcodeLocalPackageEvidence? = nil
     }
 
     struct Target: Codable, Equatable {
@@ -62,7 +63,8 @@ struct XcodeTargetScopeStore {
     func read(path: String, root: String, fingerprint: String) throws -> Verified {
         let bytes = try bounded(path, maximum: 8 * 1_024 * 1_024)
         let receipt = try JSONDecoder().decode(Receipt.self, from: bytes)
-        guard receipt.format == "cartograph-xcode-target-scope", receipt.version == 1,
+        guard receipt.format == "cartograph-xcode-target-scope",
+              (receipt.version == 1 && receipt.localPackage == nil) || (receipt.version == 2 && receipt.localPackage != nil),
               receipt.projectRoot == root, receipt.inputFingerprint == fingerprint,
               receipt.buildExitCode == 0, receipt.before == receipt.after,
               receipt.after == (try inventory(root: root)), receipt.targets.count <= 1_000,
@@ -75,7 +77,7 @@ struct XcodeTargetScopeStore {
               receipt.schemePath == receipt.project + "/xcshareddata/xcschemes/" + receipt.scheme + ".xcscheme"
         else { throw invalid("Capture identity, inventory or supported destination does not match.") }
         let projectData = try bounded(root + "/" + receipt.project + "/project.pbxproj", maximum: 4 * 1_024 * 1_024)
-        let project = try XcodeProjectMembership(data: projectData, root: root)
+        let project = try XcodeProjectMembership(data: projectData, root: root, localPackage: receipt.localPackage?.declaration)
         let settings = try JSONDecoder().decode([Settings].self, from: Data(receipt.buildSettingsJSON.utf8))
         guard settings.count <= 1_000 else { throw invalid("Build settings exceed the target budget.") }
         let byID = Dictionary(receipt.targets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -141,6 +143,23 @@ struct XcodeTargetScopeStore {
               receipt.testRunPath.hasSuffix(".xctestrun") else { throw invalid("Unexpected test-run capture location.") }
         let productRoot = String(receipt.testRunPath[..<productRootRange.upperBound].dropLast())
         try validateProducts(receipt, root: productRoot)
+        func validateLocalPackage() throws {
+            guard let package = receipt.localPackage else { return }
+            var nativeProducts: [String: String] = [:]
+            let consumers = Set(package.consumers)
+            for target in receipt.targets where consumers.contains(target.id) {
+                guard let values = settings.first(where: { $0.target == target.name })?.buildSettings,
+                      let directory = values["TARGET_BUILD_DIR"], let executable = values["EXECUTABLE_PATH"],
+                      relative(executable), directory.hasPrefix(productRoot + "/") else {
+                    throw invalid("Missing native executable identity for package consumer validation.")
+                }
+                nativeProducts[target.id] = directory + "/" + executable
+            }
+            try package.validate(root: root, buildRoot: String(productRoot.dropLast("/Products".count)),
+                architecture: receipt.architecture, project: project, closure: closure, products: receipt.products,
+                nativeProducts: nativeProducts, nativeModules: Set(receipt.targets.map(\.module)), fileSystem: fileSystem)
+        }
+        try validateLocalPackage()
         let testRun = try bounded(receipt.testRunPath, maximum: 8 * 1_024 * 1_024)
         let closureProducts = try validateClosureProducts(closure.compactMap { byID[$0]?.name }, settings: settings,
             receipt: receipt, productRoot: productRoot)
@@ -162,6 +181,7 @@ struct XcodeTargetScopeStore {
             }
         }
         try validateFrameworks(receipt.frameworks, references: project.frameworks, settings: settings)
+        try validateLocalPackage()
         guard receipt.after == (try inventory(root: root)), bytes == (try bounded(path, maximum: 8 * 1_024 * 1_024))
         else { throw invalid("Inputs changed while Xcode membership was being verified.") }
         return .init(receipt: receipt, closure: closure, owners: owners,

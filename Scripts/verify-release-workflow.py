@@ -206,6 +206,12 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('python3 "$RUNNER_TEMP/cartograph/Scripts/cartograph-xcode-scope.py" --help', workflow)
         self.assertIn('python3 "$installed/libexec/cartograph-xcode-scope.py" --help', workflow)
         self.assertIn('"cartograph-swiftpm-scope.py", "cartograph-xcode-scope.py"', workflow)
+        self.assertIn('cp Scripts/xcode-local-package-inputs.py Scripts/xcode-local-package-evidence.py dist/cartograph/Scripts/', workflow)
+        for helper in ("xcode-local-package-inputs.py", "xcode-local-package-evidence.py"):
+            self.assertIn(f'cmp Scripts/{helper} "$RUNNER_TEMP/cartograph/Scripts/{helper}"', workflow)
+            self.assertIn(f'cmp Scripts/{helper} "$installed/libexec/{helper}"', workflow)
+        self.assertIn('Scripts/verify-xcode-scope-install.py --scripts-dir "$RUNNER_TEMP/cartograph/Scripts"', workflow)
+        self.assertIn('Scripts/verify-xcode-scope-install.py --scripts-dir "$installed/libexec"', workflow)
 
     def test_manual_source_does_not_require_tag_before_checkout(self):
         workflow = WORKFLOW.read_text()

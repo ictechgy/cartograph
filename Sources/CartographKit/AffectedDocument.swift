@@ -130,8 +130,28 @@ extension CartographService {
         selectionLimitations: [String] = [], in existingContext: AnalysisContext? = nil,
         targetScopeEvidencePath: String?, preparedScopeFingerprint: String?
     ) throws -> AffectedDocument {
-        try makeAffectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
-            selectionLimitations: selectionLimitations, in: existingContext,
+        var context = existingContext
+        do {
+            if let path = targetScopeEvidencePath,
+               let proof = try localPackageProof(path: path, fingerprint: preparedScopeFingerprint ?? sessionInputFingerprint()) {
+                // databaseBacked도 graph/admissions는 새 RawIndexStoreReader의 occurrence에서 만든다.
+                // DB 날짜 캐시나 MCP의 prepared context를 v2 record 바이트 증거와 혼합하지 않는다.
+                context = try loadContext(includeSelfReferences: false, expectedIndexStorePath: proof.indexStore)
+                try proof.verify(fileSystem: environment.fileSystem)
+                let document = try makeAffectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+                    selectionLimitations: selectionLimitations, in: context,
+                    targetScopeEvidencePath: path, preparedScopeFingerprint: proof.fingerprint)
+                try proof.verify(fileSystem: environment.fileSystem)
+                return document
+            }
+        } catch {
+            return try makeAffectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+                selectionLimitations: selectionLimitations, in: context,
+                targetScopeEvidencePath: targetScopeEvidencePath, preparedScopeFingerprint: nil,
+                scopeValidationFailure: "xcode-local-package-unknown: \(error). Rebuild and recapture; run the whole suite.")
+        }
+        return try makeAffectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
+            selectionLimitations: selectionLimitations, in: context,
             targetScopeEvidencePath: targetScopeEvidencePath, preparedScopeFingerprint: preparedScopeFingerprint)
     }
 
@@ -139,7 +159,7 @@ extension CartographService {
         symbols: [String], files: [String], maxDepth: Int?, limit: Int,
         selectionLimitations: [String], in existingContext: AnalysisContext?,
         targetScopeEvidencePath: String?, preparedScopeFingerprint: String?,
-        receiverFallback: ImpactReceiverPrecision? = nil
+        receiverFallback: ImpactReceiverPrecision? = nil, scopeValidationFailure: String? = nil
     ) throws -> AffectedDocument {
         guard (1...10_000).contains(limit), maxDepth.map({ (1...128).contains($0) }) ?? true else {
             throw CartographError.invalidConfiguration(
@@ -241,6 +261,11 @@ extension CartographService {
             runtimeEvidenceTruncated: (Array(tests.prefix(limit)) + Array(uncertainTests.prefix(limit)))
                 .contains { $0.runtimeEvidenceOmitted != nil }, limit: limit)
         let scope = targetScopeEvidencePath.map { path in
+            if let scopeValidationFailure {
+                return TargetScopeDocument(format: "target-scope-review", version: 1, evidenceStatus: "unknown",
+                    selectedTargets: [], dependencyTargets: [], schemeIdentity: "unverified", paths: [],
+                    pathCount: 0, omittedPaths: 0, limitations: [scopeValidationFailure])
+            }
             let current = try? sessionInputFingerprint()
             return targetScope(path: path, fingerprint: current == scopeFingerprint ? scopeFingerprint : nil,
                                context: context, limit: limit)
@@ -251,7 +276,8 @@ extension CartographService {
             return try makeAffectedDocument(symbols: symbols, files: files, maxDepth: maxDepth, limit: limit,
                 selectionLimitations: selectionLimitations + receiver.limitations + [failure], in: context,
                 targetScopeEvidencePath: targetScopeEvidencePath, preparedScopeFingerprint: scopeFingerprint,
-                receiverFallback: precision.fallingBack(reason: "receiver-source-final-verification"))
+                receiverFallback: precision.fallingBack(reason: "receiver-source-final-verification"),
+                scopeValidationFailure: scopeValidationFailure)
         }
         return AffectedDocument(
             status: selection.status,

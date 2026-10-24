@@ -30,6 +30,8 @@ public protocol FileSystem: Sendable {
     /// 33초였는데 프로파일러가 가리킨 곳은 전부 이 탐색이었다. 파일 시스템이 열거
     /// 과정에서 이미 아는 정보를 한 번에 받아 오면 항목당 시스템 호출이 사라진다.
     func directoryEntries(at path: String) throws -> [DirectoryEntry]
+    /// 항목을 모으기 전에 상한을 적용한다. 지원하지 않는 구현은 제한 없는 열거로 대체하지 않는다.
+    func directoryEntries(at path: String, maximumEntries: Int) throws -> [DirectoryEntry]
     /// 최종 수정 시각. 알 수 없으면 nil.
     ///
     /// 후보가 여러 개인 인덱스 스토어 중 가장 최근 것을 고르는 데 쓴다.
@@ -49,6 +51,9 @@ public protocol FileSystem: Sendable {
 }
 
 extension FileSystem {
+    public func directoryEntries(at _: String, maximumEntries _: Int) throws -> [DirectoryEntry] {
+        throw CocoaError(.featureUnsupported)
+    }
     /// 기존 채택 타입은 유지한다. 메모리 상한이 필요한 디스크 구현은 이 메서드를 구현한다.
     public func readData(at path: String, maximumBytes: Int) throws -> Data {
         guard maximumBytes >= 0, maximumBytes < Int.max else { throw CocoaError(.fileReadUnknown) }
@@ -445,6 +450,12 @@ public struct LocalFileSystem: FileSystem {
     /// 세션 입력 지문 계산은 이 순회가 지배적이라 Foundation 의 URL 기반 열거를
     /// 쓰지 않는다.
     public func directoryEntries(at path: String) throws -> [DirectoryEntry] {
+        try directoryEntries(at: path, maximumEntries: Int.max)
+    }
+
+    /// 전체 디렉터리를 할당한 뒤 검사하지 않고 readdir 도중 즉시 거부한다.
+    public func directoryEntries(at path: String, maximumEntries: Int) throws -> [DirectoryEntry] {
+        guard maximumEntries >= 0 else { throw CocoaError(.fileReadUnknown) }
         // opendir 는 심볼릭 링크를 따라가므로, 링크로 지정된 루트도 예외 없이 연다.
         guard let stream = path.withCString({ opendir($0) }) else {
             throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
@@ -463,12 +474,18 @@ public struct LocalFileSystem: FileSystem {
         // 이 목록의 경로는 세션 지문에서 항목마다 집합·맵 키로 해시된다.
         let separator = childBase.hasSuffix("/") ? "" : "/"
         var entries: [DirectoryEntry] = []
-        while let item = readdir(stream) {
+        while true {
+            errno = 0
+            guard let item = readdir(stream) else {
+                guard errno == 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+                break
+            }
             // d_name 은 고정 크기 튜플이라 전체를 복사하지 않고 길이만큼만 디코딩한다.
             let name = withUnsafeBytes(of: &item.pointee.d_name) { bytes in
                 String(decoding: bytes.prefix(Int(item.pointee.d_namlen)), as: UTF8.self)
             }
             guard name != ".", name != ".." else { continue }
+            guard entries.count < maximumEntries else { throw CocoaError(.fileReadTooLarge) }
             entries.append(classify(at: childBase + separator + name,
                                     type: Int32(item.pointee.d_type)))
         }

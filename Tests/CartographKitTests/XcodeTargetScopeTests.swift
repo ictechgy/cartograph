@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Xcode 캡처 범위와 실제 record 증거")
 struct XcodeTargetScopeTests {
-    private struct Fixture {
+    struct Fixture {
         let fs: InMemoryFileSystem
         let service: CartographService
         var snapshot: IndexSnapshot
@@ -20,7 +20,7 @@ struct XcodeTargetScopeTests {
         }
     }
 
-    private func fixture() throws -> Fixture {
+    func fixture() throws -> Fixture {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let project = try JSONSerialization.jsonObject(with: Data(contentsOf: repository.appendingPathComponent("Tests/Fixtures/xcode-scope-project.json")))
         let projectData = try PropertyListSerialization.data(fromPropertyList: project, format: .xml, options: 0)
