@@ -1672,6 +1672,7 @@ file exists. A named file that exists but cannot be read is still a tool failure
 
 ```bash
 cartograph dead --since origin/main --strict
+cartograph dead --since origin/main --since-lines --strict  # opt-in current-line lens
 ```
 
 Reports only findings **located in** modeled source files changed since a git revision — Swift,
@@ -1682,6 +1683,31 @@ computed on a partial graph is simply wrong; only the report narrows. A cycle ha
 location, so `cycles` and `check` report it when any node of its strongly connected component has
 a declaration in a changed file — a type's extensions count, and so does any file of a module —
 wherever its representative path runs.
+
+`dead --since <revision> --since-lines` optionally narrows the report to diagnostics whose
+**location line** was added or modified. It compares the unique merge-base with the current tracked
+working-tree content, so committed, staged and unstaged edits use final current-file coordinates.
+Intermediate edits reverted to the base have no selected lines. The default `--since` file lens is
+unchanged. This option belongs only to `dead`, requires a nonempty `--since`, and cannot accompany
+`--explain` (usage errors exit 64). Baseline suppression and `--strict` use the filtered findings.
+
+| Change or uncertainty | `--since-lines` selection |
+|---|---|
+| Textual addition or replacement | Added-side, 1-based hunk lines with zero context |
+| A body edit below an unchanged declaration location | The declaration finding is outside the lens; declaration ranges are not inferred |
+| Pure deletion | No current lines selected; deleted paths are omitted |
+| Rename | Rename detection is disabled: the old path is deleted and the new path is an added file |
+| Untracked file | The whole non-ignored file, without running content filters |
+| Binary, mode-only, symlink/gitlink or unparseable/no-hunk patch | Whole-file fallback with a `since-lines:` note on stderr |
+| Missing diagnostic location | Kept; an unknown/nonpositive line is also kept in a selected file |
+| Unmerged index, multiple merge-bases, invalid UTF-8 paths or Git failure | Stop with exit 2; do not emit a clean partial result |
+
+Paths come from NUL-delimited, repository-root-relative Git output; each patch uses a literal
+pathspec, including spaces, tabs, non-ASCII names and Git pathspec metacharacters. `--project` has
+its normal current-directory resolution, and symlink aliases are canonicalized before matching.
+Rebuild the index after edits: the lens compares diagnostic locations, not source identity, and
+does not repair stale compiler coordinates. A clean scoped result is not a complete CI gate.
+Line mode reads one patch per changed tracked path and can cost more than file mode on large changes.
 
 It answers "what did this change touch", not "what did this change cause". If your commit deletes
 the last call to a symbol declared in a file you did not touch, that symbol becomes dead but its
@@ -1701,16 +1727,19 @@ history (`fetch-depth: 0`), or the revision will not resolve. A `noChanges` impa
 modeled source path was selected; it is not evidence that all changed files are safe.
 
 These git lookups run inside the repository under analysis with its content filters, external diff
-and textconv drivers, fsmonitor and submodule configuration disabled (see Known limitations), so a
+and textconv drivers, hooks, fsmonitor and submodule configuration disabled (see Known limitations), so a
 tracked file whose content is unchanged but whose stat differs — for example in a copied working
 tree or after a file is rewritten with the same bytes, until git refreshes its index (`git status`
 does) — is reported as changed. A repository that configures a filter driver whose name cannot be
-safely disabled makes `--since` stop with an error (exit 2) rather than risk running it.
+safely disabled (including non-UTF-8, `=` or ASCII control bytes in a name) makes `--since` stop
+with an error (exit 2) rather than risk running it. Private temporary Git config includes preserve
+exact Unicode driver identities without modifying the analyzed repository.
 
-The lookups also never fetch missing objects from a partial clone's promisor remote. A blobless
-clone (`--filter=blob:none`) needs no fetch, because rename detection is off and the reported paths
+The lookups also never fetch missing objects from a partial clone's promisor remote. File-level
+lookups in a blobless clone (`--filter=blob:none`) need no fetch, because rename detection is off and the reported paths
 are the same without it; a comparison that needs a tree the clone does not hold, as in a treeless
 clone (`--filter=tree:0`), stops with an error (exit 2). Check out without a tree filter in CI.
+`--since-lines` also needs the compared blobs; if they are missing it exits 2 without fetching.
 
 ## Configuration
 

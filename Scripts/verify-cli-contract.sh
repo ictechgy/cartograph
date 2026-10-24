@@ -87,6 +87,10 @@ expect_status 64 "RN 이벤트와 Flutter 스트림 동시" bridges --rn-events 
 expect_status 64 "RN 이벤트에 Flutter target" bridges --rn-events --target flutter
 expect_status 64 "잘못된 열거형 값"    graph --level galaxy
 expect_status 64 "잘못된 형식 값"      dead --report-format yaml
+expect_status 64 "변경 줄에는 기준 필요" dead --since-lines
+expect_status 64 "변경 줄에는 빈 기준 거부" dead --since-lines --since ""
+expect_status 64 "변경 줄은 dead 전용" cycles --since HEAD --since-lines
+expect_status 64 "변경 줄과 설명 동시" dead --since HEAD --since-lines --explain Foo
 expect_status 64 "파일 요약은 JSON 전용" dead --file-summary --report-format text
 expect_status 64 "생성 제안은 JSON 전용" dead --generated-suggestions --report-format sarif
 expect_status 64 "파일 요약과 설명 동시" dead --file-summary --explain Foo
@@ -643,6 +647,12 @@ expect_output "in scope after"  "빈 인덱스 안내에 파일 수"     dead --
 # 깨끗한 실행과 바이트까지 같아진다.
 expect_output "::notice"        "탈출구 실행이 GitHub Actions 형식에도 남는다" \
     dead --project "$EMPTY" --allow-empty-index --report-format github-actions
+
+if python3 Scripts/verify-since-lines.py --cartograph "$BINARY"; then
+    echo "  ok    변경 줄 Git/컴파일러/CLI 회귀"
+else
+    FAILURES=$((FAILURES + 1))
+fi
 
 echo
 if [[ "$FAILURES" -eq 0 ]]; then

@@ -255,6 +255,13 @@ struct DeadCommand: ParsableCommand {
 
     @OptionGroup var options: GlobalOptions
 
+    @Flag(name: .customLong("since-lines"),
+          help: """
+            With --since, report only findings whose location is on an added or modified current line. \
+            Uncertain line mappings retain the whole file; this is a report filter, not incremental analysis.
+            """)
+    var sinceLines = false
+
     @Option(name: .customLong("explain"), help: "Explain why a declaration is retained, by name or USR.")
     var explain: String?
 
@@ -273,6 +280,9 @@ struct DeadCommand: ParsableCommand {
     var generatedSuggestions = false
 
     func validate() throws {
+        guard !sinceLines || options.since?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            throw ValidationError("--since-lines requires --since <revision>")
+        }
         // `dead --since` (목록)는 유효하고 `dead --explain` (단일 선언)만
         // 범위 렌즈와 겹친다. 겹치는 조합만 앞에서 거부한다.
         guard explain == nil || options.since == nil else {
@@ -305,7 +315,8 @@ struct DeadCommand: ParsableCommand {
     }
 
     func run() throws {
-        let context = try CommandSupport.makeContext(options, readsBaseline: true, supportsLimitationSummary: true)
+        let context = try CommandSupport.makeContext(options, readsBaseline: true, supportsLimitationSummary: true,
+                                                      sinceLines: sinceLines)
         let reviewRequested = fileSummary || generatedSuggestions
         guard !reviewRequested || context.configuration.reportFormat == .json else {
             throw ValidationError("--file-summary and --generated-suggestions require --report-format json")

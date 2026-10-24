@@ -830,6 +830,17 @@ private struct AnalysisInputFingerprinter {
             accumulator.addText("report-scope")
             for path in scope.files.sorted() {
                 accumulator.addText(path)
+                if let ranges = scope.changedLines[path] {
+                    accumulator.addText("changed-lines")
+                    for range in ranges.sorted(by: {
+                        ($0.lowerBound, $0.upperBound) < ($1.lowerBound, $1.upperBound)
+                    }) {
+                        accumulator.addText(String(range.lowerBound))
+                        accumulator.addText(String(range.upperBound))
+                    }
+                } else {
+                    accumulator.addText("whole-file")
+                }
             }
         } else {
             accumulator.addText("report-scope:none")
