@@ -122,6 +122,7 @@ jobs:
           cp LICENSE README.md dist/cartograph/
           mkdir -p dist/cartograph/docs
           cp docs/QUERY-EVIDENCE.md docs/ENUM-CHANGE-REVIEW.md docs/FOLLOWUP-REVIEW.md dist/cartograph/docs/
+          cp docs/FIX-VERIFICATION.md dist/cartograph/docs/
           mkdir -p dist/cartograph/Scripts
           cp Scripts/cartograph-git-impact.py Scripts/cartograph-swiftpm-scope.py dist/cartograph/Scripts/
           cp Scripts/cartograph-xcode-scope.py dist/cartograph/Scripts/
@@ -145,6 +146,8 @@ jobs:
           cmp docs/QUERY-EVIDENCE.md "$RUNNER_TEMP/cartograph/docs/QUERY-EVIDENCE.md"
           test -s "$RUNNER_TEMP/cartograph/docs/ENUM-CHANGE-REVIEW.md"
           cmp docs/ENUM-CHANGE-REVIEW.md "$RUNNER_TEMP/cartograph/docs/ENUM-CHANGE-REVIEW.md"
+          test -s "$RUNNER_TEMP/cartograph/docs/FIX-VERIFICATION.md"
+          cmp docs/FIX-VERIFICATION.md "$RUNNER_TEMP/cartograph/docs/FIX-VERIFICATION.md"
           lipo "$RUNNER_TEMP/cartograph/cartograph" -verify_arch arm64
           lipo "$RUNNER_TEMP/cartograph/cartograph" -verify_arch x86_64
           Scripts/verify-cli-contract.sh "$RUNNER_TEMP/cartograph/cartograph"
