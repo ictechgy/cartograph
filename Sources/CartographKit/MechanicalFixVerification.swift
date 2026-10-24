@@ -75,11 +75,13 @@ package final class MechanicalFixTransaction {
     private let project: String
     private let verification: MechanicalFixVerification
     private let directory: URL
+    private let identityReader: (String) -> FileFingerprintStamp?
     private var entries: [Entry] = []
 
     package init(
         edits: [PreparedMechanicalEdit], project: String, fileSystem: any FileSystem,
-        verification: MechanicalFixVerification
+        verification: MechanicalFixVerification,
+        identityReader: ((String) -> FileFingerprintStamp?)? = nil
     ) throws {
         try verification.validate()
         guard edits.count <= MechanicalFixVerification.maximumFiles,
@@ -97,6 +99,7 @@ package final class MechanicalFixTransaction {
         self.fileSystem = fileSystem
         self.project = try fileSystem.realPath(at: project)
         self.verification = verification
+        self.identityReader = identityReader ?? { fileSystem.fingerprintStamp(at: $0) }
         directory =
             verification.recoveryDirectory.map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.temporaryDirectory.appendingPathComponent("cartograph-fix-" + UUID().uuidString)
@@ -152,7 +155,12 @@ package final class MechanicalFixTransaction {
                 try FileManager.default.setAttributes(
                     [.posixPermissions: entry.stamp.mode & 0o7777],
                     ofItemAtPath: entry.edit.path)
-                entries[index].appliedStamp = fileSystem.fingerprintStamp(at: entry.edit.path)
+                guard let appliedStamp = identityReader(entry.edit.path) else {
+                    result = .init(status: "apply-failed",
+                        detail: "Could not establish the written file identity; retain backups for manual recovery.")
+                    throw TransactionStopped()
+                }
+                entries[index].appliedStamp = appliedStamp
                 try journal(status: "applying", detail: "Partial application; retain original backups.")
             }
             result = try FixVerificationExecution.run(verification, project: project, directory: directory)
@@ -197,8 +205,9 @@ package final class MechanicalFixTransaction {
                 if data == entry.edit.original { continue }
                 guard data == entry.edit.replacement,
                     try fileSystem.realPath(at: entry.edit.path) == entry.edit.path,
-                    let stamp = fileSystem.fingerprintStamp(at: entry.edit.path), stamp.isRegularFile,
-                    entry.appliedStamp == nil || stamp == entry.appliedStamp
+                    let ownedStamp = entry.appliedStamp,
+                    let stamp = identityReader(entry.edit.path), stamp.isRegularFile,
+                    stamp == ownedStamp
                 else {
                     conflicts = true
                     continue
@@ -231,6 +240,7 @@ package final class MechanicalFixTransaction {
                 "replacementSHA256": SHA256.hash(data: entry.edit.replacement).map { String(format: "%02x", $0) }
                     .joined(),
                 "writeAttempted": entry.written,
+                "ownedIdentityAvailable": entry.appliedStamp != nil,
             ]
         }
         let data = try JSONSerialization.data(

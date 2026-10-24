@@ -3,6 +3,7 @@ import Foundation
 
 /// 검증 자식만 별도 프로세스 그룹에 놓아 timeout/중단이 기존 프로세스에 닿지 않게 한다.
 struct FixVerificationExecution {
+    private static let outputMaximumBytes = 1024 * 1024
     let status: String
     var exitCode: Int32? = nil
     var signal: Int32? = nil
@@ -63,10 +64,17 @@ struct FixVerificationExecution {
         }
         var stdout = Data()
         var stderr = Data()
-        var waitStatus: Int32 = 0
+        let lease = FixVerificationChildLease(pid: child)
         var result: Self?
         let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(verification.timeoutSeconds * 1_000_000_000)
         while true {
+            do {
+                if try lease.terminalObserved() { break }
+            } catch {
+                result = .init(status: "wait-failed",
+                    detail: "Could not observe verification without reaping: \(error).")
+                break
+            }
             let oversized = drain(output[0], into: &stdout) || drain(errors[0], into: &stderr)
             if let signal = verification.interruption() {
                 result = .init(
@@ -77,25 +85,38 @@ struct FixVerificationExecution {
             } else if DispatchTime.now().uptimeNanoseconds >= deadline {
                 result = .init(status: "timed-out", detail: "Verification timed out; restoring owned edits.")
             }
-            let waited = waitpid(child, &waitStatus, WNOHANG)
-            if waited == child { break }
-            if waited < 0, errno != EINTR {
-                result = .init(status: "wait-failed", detail: "Could not wait for verification; restoring owned edits.")
-            }
-            if result != nil {
-                stopGroup(child)
-                while waitpid(child, &waitStatus, 0) < 0, errno == EINTR {}
-                break
-            }
+            if result != nil { break }
             Thread.sleep(forTimeInterval: 0.02)
         }
-        // 종료한 리더의 background 자식이 복구 뒤 소스를 다시 쓰지 못하게 한다.
-        if kill(-child, 0) == 0 {
-            stopGroup(child)
-            result = result ?? .init(status: "background-processes", detail: "Verifier left child processes running.")
+        // 리더를 회수하기 전까지만 같은 group에 신호를 보낼 권한을 유지한다.
+        do {
+            if result == nil, try lease.hasOtherGroupMembers() {
+                result = .init(status: "background-processes", detail: "Verifier left child processes running.")
+            }
+        } catch {
+            result = result ?? .init(status: "cleanup-failed", detail: "Owned group census failed: \(error).")
         }
-        _ = drain(output[0], into: &stdout)
-        _ = drain(errors[0], into: &stderr)
+        do {
+            try lease.stopGroup()
+        } catch {
+            result = result ?? .init(status: "cleanup-failed", detail: "Could not clean the owned group: \(error).")
+            do { try lease.stopLeader() } catch {
+                result = .init(status: "cleanup-failed",
+                    detail: "Owned leader cleanup could not be verified: \(error).")
+            }
+        }
+        var waitStatus: Int32 = 0
+        do { waitStatus = try lease.reap() } catch {
+            result = .init(status: "wait-failed", detail: "Verification could not be reaped safely: \(error).")
+        }
+        // 종료 직전 파이프 꼬리도 같은 예산으로 판정한다. 두 채널 모두 반드시 비운다.
+        let finalReads = outputMaximumBytes / (16 * 1024) + 1
+        let finalOutputOverflow = drain(output[0], into: &stdout, maximumReads: finalReads)
+        let finalErrorOverflow = drain(errors[0], into: &stderr, maximumReads: finalReads)
+        if finalOutputOverflow || finalErrorOverflow {
+            result = result ?? .init(status: "output-limit",
+                detail: "Verification exceeded the 1 MiB stdout/stderr budget.")
+        }
         try stdout.write(to: directory.appendingPathComponent("verification.stdout"), options: .atomic)
         try stderr.write(to: directory.appendingPathComponent("verification.stderr"), options: .atomic)
         for name in ["verification.stdout", "verification.stderr"] {
@@ -114,22 +135,16 @@ struct FixVerificationExecution {
             detail: code == 0 ? "Selected verification command passed." : "Verification exited \(code).")
     }
 
-    private static func stopGroup(_ child: pid_t) {
-        _ = kill(-child, SIGTERM)
-        Thread.sleep(forTimeInterval: 0.1)
-        _ = kill(-child, SIGKILL)
-    }
-
     private static func checked(_ result: Int32) throws {
         guard result == 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(result)) }
     }
 
-    private static func drain(_ descriptor: Int32, into data: inout Data) -> Bool {
+    private static func drain(_ descriptor: Int32, into data: inout Data, maximumReads: Int = 16) -> Bool {
         var buffer = [UInt8](repeating: 0, count: 16 * 1024)
-        for _ in 0..<16 {
+        for _ in 0..<maximumReads {
             let count = read(descriptor, &buffer, buffer.count)
             if count <= 0 { break }
-            guard data.count + count <= 1024 * 1024 else { return true }
+            guard data.count + count <= outputMaximumBytes else { return true }
             data.append(contentsOf: buffer.prefix(count))
         }
         return false

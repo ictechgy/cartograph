@@ -279,4 +279,80 @@ struct MechanicalFixVerificationTests {
             #expect(!FileManager.default.fileExists(atPath: recovery.path))
         }
     }
+
+    @Test("쓰기 뒤 소유 식별을 얻지 못하면 같은 바이트여도 자동 복구하지 않는다", arguments: [false, true])
+    func missingAppliedIdentityRequiresManualRecovery(replaceInode: Bool) throws {
+        try fixture { _, recovery, project in
+            let path = project + "/A.swift"
+            let original = Data("original user's bytes".utf8)
+            let replacement = Data("Cartograph replacement".utf8)
+            try original.write(to: URL(fileURLWithPath: path))
+            let fileSystem = LocalFileSystem()
+            var injected = false
+            var inodeReplaced = false
+            let transaction = try MechanicalFixTransaction(
+                edits: [.init(path: path, original: original, replacement: replacement)],
+                project: project, fileSystem: fileSystem,
+                verification: .init(arguments: ["/usr/bin/true"], recoveryDirectory: recovery.path),
+                identityReader: { candidate in
+                    if !injected, (try? Data(contentsOf: URL(fileURLWithPath: candidate))) == replacement {
+                        injected = true
+                        if replaceInode {
+                            let before = fileSystem.fingerprintStamp(at: candidate)
+                            do {
+                                try replacement.write(to: URL(fileURLWithPath: candidate), options: .atomic)
+                                inodeReplaced = before?.inode != fileSystem.fingerprintStamp(at: candidate)?.inode
+                            } catch { Issue.record(error) }
+                        }
+                        return nil
+                    }
+                    return fileSystem.fingerprintStamp(at: candidate)
+                })
+            let result = transaction.perform()
+            #expect(injected)
+            #expect(!replaceInode || inodeReplaced)
+            #expect(result.status == "apply-failed")
+            #expect(result.rollback == "conflict")
+            #expect(try Data(contentsOf: URL(fileURLWithPath: path)) == replacement)
+            #expect(try Data(contentsOf: recovery.appendingPathComponent("original-0")) == original)
+            #expect(!FileManager.default.fileExists(
+                atPath: recovery.appendingPathComponent("verification.stdout").path))
+            let journal = try JSONSerialization.jsonObject(
+                with: Data(contentsOf: recovery.appendingPathComponent("recovery.json"))) as? [String: Any]
+            let row = (journal?["files"] as? [[String: Any]])?.first
+            #expect(row?["writeAttempted"] as? Bool == true)
+            #expect(row?["ownedIdentityAvailable"] as? Bool == false)
+        }
+    }
+
+    @Test("즉시 종료 직전 꼬리 출력에도 stdout stderr 각각 정확한 바이트 예산을 적용한다",
+          arguments: [(1, -1), (1, 0), (1, 1), (2, -1), (2, 0), (2, 1)])
+    func immediateExitOutputBoundary(descriptor: Int, delta: Int) throws {
+        try fixture { _, recovery, project in
+            let maximum = 1024 * 1024
+            let command = ["/usr/bin/python3", "-c", """
+                import os,sys,time
+                fd=int(sys.argv[1]); tail=int(sys.argv[2])+1
+                data=memoryview(b'x' * (1024*1024-1))
+                while data:
+                    data=data[os.write(fd,data):]
+                time.sleep(0.15)
+                if tail: os.write(fd,b'y' * tail)
+                os._exit(0)
+                """, String(descriptor), String(delta)]
+            let result = try transaction(project, recovery, command: command).perform()
+            let log = recovery.appendingPathComponent(descriptor == 1 ? "verification.stdout" : "verification.stderr")
+            let count = try Data(contentsOf: log).count
+            #expect(count <= maximum)
+            if delta <= 0 {
+                #expect(result.status == "passed")
+                #expect(count == maximum + delta)
+            } else {
+                #expect(result.status == "output-limit")
+                #expect(result.rollback == "restored")
+                #expect(try String(contentsOfFile: project + "/A.swift", encoding: .utf8)
+                    == "// user's unstaged original\n")
+            }
+        }
+    }
 }

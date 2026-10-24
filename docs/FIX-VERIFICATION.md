@@ -35,6 +35,13 @@ not establish every target, platform or private application configuration.
   interruption or excessive output. Cartograph sends TERM, then KILL after 100 ms to that group.
   A verifier leaving background children is a verification failure. Existing processes in other
   groups are not targeted. A hostile command escaping the group is outside this contract.
+  The direct child's terminal state is observed with `waitid(..., WNOWAIT)`. Group cleanup
+  finishes while that child still holds its PID; group signalling closes permanently before
+  the final `waitpid` reap. A bounded census reads only that owned group to detect remaining
+  background members. This follows the repository's `waitid_capability.py` lease contract.
+  A terminated leader with no other group members needs no signal. Embedded callers must
+  leave this direct child for the supervisor to reap; external waiters or SIGCHLD auto-reaping
+  invalidate supervision and produce an incomplete result.
 
 ## Apply and recovery contract
 
@@ -55,8 +62,11 @@ Recovery compares the current bytes and file identity with the bytes and identit
 recorded immediately after writing. It restores only an unchanged Cartograph-owned edit.
 If a verifier or another editor changes, replaces, removes or redirects that file, Cartograph
 preserves the new state, retains the original backup, reports the conflict or restore failure,
-and exits 2. It never uses `git reset`, `git stash`, `git checkout` or rewrites the index. Preexisting
-staged, unstaged, untracked and ignored files therefore remain available; arbitrary Git changes
+and exits 2. It never uses `git reset`, `git stash`, `git checkout` or rewrites the index.
+If writing or metadata handling fails before Cartograph can establish the applied file's identity,
+it also refuses automatic restoration and retains the backup for manual recovery, even when the
+current bytes match the proposed replacement. The journal records `ownedIdentityAvailable: false`.
+Preexisting staged, unstaged, untracked and ignored files therefore remain available; arbitrary Git changes
 performed by the selected verifier are not undone.
 
 Multi-file writes are not an operating-system-wide atomic transaction. Keep other edits idle
