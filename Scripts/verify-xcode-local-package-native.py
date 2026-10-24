@@ -32,7 +32,7 @@ def require(condition, reason):
 
 
 def executed_tests(text):
-    """Require the terminal XCTest aggregate and the exact observed case identity."""
+    """Require the observed fixture hierarchy, one exact case and its terminal aggregate."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     expected = "-[ChecksModule.ChangedTests testChanged]"
     cases = []
@@ -43,17 +43,30 @@ def executed_tests(text):
             cases.append((match[1], "started" if match[2] == "started." else "passed"))
     require(cases == [(expected, "started"), (expected, "passed")],
             "Actual test-case identity/count differs from the one selected fixture case")
-    all_suites = [i for i, line in enumerate(lines) if line.startswith("Test Suite 'All tests' passed at ")]
-    require(len(all_suites) == 1, "Missing or multiple terminal All tests aggregates")
-    index = all_suites[0]
-    require(index + 1 < len(lines), "Missing terminal aggregate count")
-    match = re.fullmatch(r"Executed (\d+) tests?, with (\d+) failures \((\d+) unexpected\) in [0-9.]+ \([0-9.]+\) seconds",
-                         lines[index + 1])
-    require(match is not None and tuple(map(int, match.groups())) == (1, 0, 0),
-            "Terminal test aggregate is not exactly one passing test")
-    require(not any(line.startswith(("Test Case ", "Executed ", "Test Suite ")) for line in lines[index + 2:])
-            and "** TEST EXECUTE SUCCEEDED **" in lines, "Test execution continued after the claimed final aggregate")
-    return {"executedTestCount": int(match[1]), "executedTestIdentities": [expected], "aggregate": lines[index + 1]}
+    # 이 함수는 고정 fixture의 1개 메서드 실행 증거만 읽는다. 임의 suite를 마지막 집계로 추측하지 않는다.
+    events = [(i, line) for i, line in enumerate(lines)
+              if line.startswith(("Test Case", "Test Suite", "Executed", "** TEST"))]
+    require(len(events) == 12, "Missing or additional fixture test events")
+    timestamp = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+\."
+    root = re.fullmatch(r"Test Suite '(All tests|Selected tests)' started at " + timestamp, events[0][1])
+    require(root is not None, "Missing or malformed terminal root suite start")
+    number = r"[0-9]+(?:\.[0-9]+)?"
+    count = rf"Executed (\d+) tests?, with (\d+) failures \((\d+) unexpected\) in {number} \({number}\) seconds"
+    suites = [root[1], "RunnableChecks.xctest", "ChangedTests"]
+    suite = lambda name, state: "Test Suite '" + re.escape(name) + "' " + state + " at " + timestamp
+    patterns = [*(suite(name, "started") for name in suites),
+                "Test Case '" + re.escape(expected) + r"' started\.",
+                "Test Case '" + re.escape(expected) + rf"' passed \({number} seconds\)\.",
+                suite(suites[2], "passed"), count, suite(suites[1], "passed"), count,
+                suite(suites[0], "passed"), count, re.escape("** TEST EXECUTE SUCCEEDED **")]
+    for (_, line), pattern in zip(events, patterns):
+        require(re.fullmatch(pattern, line) is not None,
+                "Test suite ownership/order or success marker differs from the selected fixture")
+    for offset in (6, 8, 10):
+        match = re.fullmatch(count, events[offset][1])
+        require(tuple(map(int, match.groups())) == (1, 0, 0), "Test aggregate is not exactly one passing test")
+        require(events[offset][0] == events[offset - 1][0] + 1, "Missing adjacent suite aggregate count")
+    return {"executedTestCount": 1, "executedTestIdentities": [expected], "aggregate": events[10][1]}
 
 
 def verified_executed_tests(data, stem):

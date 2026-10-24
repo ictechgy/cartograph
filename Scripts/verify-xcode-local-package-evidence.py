@@ -110,6 +110,23 @@ class AffectedProcessTests(unittest.TestCase):
 
 class TestExecutionTests(unittest.TestCase):
     @staticmethod
+    def selected_event_fixture():
+        # 관측한 12개 이벤트의 문법만 재현한다. 명령/경로는 빼고 시각/소요 시간은 합성 값으로 바꿨다.
+        # 이 해시는 변환된 fixture의 신원이며 실제 실행 원문이나 새 native 실행의 증거가 아니다.
+        data = (ROOT / "Scripts/tests/xctest-selected-tests.events.txt").read_bytes()
+        assert len(data) == 778
+        assert hashlib.sha256(data).hexdigest() == "a94ed4206ffc47c771db9df5c3230eb58a5e3b00ecb0a00c6d1b094c5d308ddc"
+        return data
+
+    def test_transformed_selected_event_grammar_has_one_exact_successful_case(self):
+        data = self.selected_event_fixture()
+        result = NATIVE.executed_tests(data.decode())
+        self.assertEqual(result["executedTestCount"], 1)
+        self.assertEqual(result["executedTestIdentities"], ["-[ChecksModule.ChangedTests testChanged]"])
+        self.assertEqual(result["aggregate"],
+                         "Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.004) seconds")
+
+    @staticmethod
     def observed_method_selection():
         # ca46313 native job120698648990의 실제 SELECTOR_OBSERVATION을 재생한다. 실행 성공 증거는 아니다.
         return ({"targetScope": {"evidenceStatus": "matched-capture", "xcode": {
@@ -346,16 +363,8 @@ class TestExecutionTests(unittest.TestCase):
                 NATIVE.generated_metadata(root)
 
     def test_terminal_aggregate_and_actual_test_case_are_both_required(self):
-        # Format from main4f native39982616827; this is a parser control, not a test run.
-        log = """Test Suite 'All tests' started at 2026-10-23 16:09:35.991.
-Test Case '-[ChecksModule.ChangedTests testChanged]' started.
-Test Case '-[ChecksModule.ChangedTests testChanged]' passed (0.010 seconds).
-Test Suite 'ChangedTests' passed at 2026-10-23 16:09:36.011.
- Executed 1 test, with 0 failures (0 unexpected) in 0.010 (0.014) seconds
-Test Suite 'All tests' passed at 2026-10-23 16:09:36.011.
- Executed 1 test, with 0 failures (0 unexpected) in 0.010 (0.020) seconds
-** TEST EXECUTE SUCCEEDED **
-"""
+        # 기존 All tests 문법도 완전한 suite 계층으로 검사한다. 이 이름 변경본은 합성 대조군이다.
+        log = self.selected_event_fixture().decode().replace("Selected tests", "All tests")
         self.assertEqual(NATIVE.executed_tests(log)["executedTestCount"], 1)
         with mock.patch.object(NATIVE, "emit_bounded_observation") as emit, \
                 mock.patch.object(NATIVE.OBS, "record_process_failure") as process:
@@ -365,19 +374,78 @@ Test Suite 'All tests' passed at 2026-10-23 16:09:36.011.
             process.assert_not_called()
         other = "Test Case '-[OtherModule.OtherTests testOther]' started.\nTest Case '-[OtherModule.OtherTests testOther]' passed (0.010 seconds).\n"
         bad = log.replace("Test Suite 'All tests' passed", other + "Test Suite 'All tests' passed")
-        bad = bad.replace("in 0.010 (0.020) seconds", "in 0.020 (0.030) seconds").replace(
-            " Executed 1 test, with 0 failures (0 unexpected) in 0.020", " Executed 2 tests, with 0 failures (0 unexpected) in 0.020")
+        bad = bad.replace("in 0.001 (0.004) seconds", "in 0.020 (0.030) seconds").replace(
+            "Executed 1 test, with 0 failures (0 unexpected) in 0.020",
+            "Executed 2 tests, with 0 failures (0 unexpected) in 0.020")
         # The old expression incorrectly accepted a two-case log with one-test child suites.
         self.assertTrue("testChanged" in bad and "Executed 1 test" in bad and "testOther'" not in bad)
         head, _, tail = log.rpartition("Executed 1 test")
         for candidate in (bad, head + "Executed 2 tests" + tail,
-                log.replace("passed (0.010 seconds)", "failed (0.010 seconds)"),
+                log.replace("passed (0.001 seconds)", "failed (0.001 seconds)"),
                 log + "Test Case '-[OtherModule.OtherTests testOther]' started.\n"):
             with self.assertRaises(RuntimeError):
                 NATIVE.executed_tests(candidate)
 
+    def test_suite_grammar_refuses_unbalanced_mixed_unknown_and_reordered_owners(self):
+        observed = self.selected_event_fixture().decode()
+        for root in ("Selected tests", "All tests"):
+            log = observed.replace("Selected tests", root)
+            root_start = f"Test Suite '{root}' started at 2000-01-01 00:00:00.000.\n"
+            bundle_start = "Test Suite 'RunnableChecks.xctest' started at 2000-01-01 00:00:00.001.\n"
+            class_start = "Test Suite 'ChangedTests' started at 2000-01-01 00:00:00.001.\n"
+            invalid = [log.replace(root_start, ""), log.replace(bundle_start, ""), log.replace(class_start, ""),
+                       log.replace(root_start, root_start * 2), log + root_start,
+                       log + observed.replace("Selected tests", "All tests" if root == "Selected tests" else root),
+                       log.replace("Test Suite '" + root + "' passed",
+                                   "Test Suite '" + ("All tests" if root == "Selected tests" else "Selected tests") + "' passed"),
+                       log.replace("Test Suite '" + root + "' passed", "Test Suite 'Other root' passed"),
+                       log.replace("'" + root + "'", "'Unknown tests'"),
+                       log.replace(bundle_start + class_start, class_start + bundle_start),
+                       log.replace("'RunnableChecks.xctest' passed", "'ChangedTests' passed"),
+                       log.replace("'ChangedTests' passed", "'ChangedTests' failed"),
+                       log.replace("'ChangedTests' started", "'ChangedTests' skipped"),
+                       log.replace("2000-01-01 00:00:00.000.", "not a timestamp"),
+                       log + "Test Suitebroken\n"]
+            for value in invalid:
+                with self.subTest(root=root, log=value), self.assertRaises(RuntimeError):
+                    NATIVE.executed_tests(value)
+
+    def test_each_suite_aggregate_and_single_terminal_success_are_required(self):
+        log = self.selected_event_fixture().decode()
+        success = "** TEST EXECUTE SUCCEEDED **\n"
+        aggregates = [line for line in log.splitlines(keepends=True) if line.lstrip().startswith("Executed ")]
+        invalid = [log.replace(success, ""), log + success,
+                   success + log.replace(success, ""), log + "** TEST EXECUTE FAILED **\n",
+                   log.replace(success, "").replace("Test Suite 'Selected tests' passed",
+                                                    success + "Test Suite 'Selected tests' passed"),
+                   log + "Executed malformed\n"]
+        for aggregate in aggregates:
+            invalid.extend([log.replace(aggregate, ""), log.replace(aggregate, aggregate * 2),
+                            log.replace(aggregate, "unexpected text before aggregate\n" + aggregate),
+                            log.replace(aggregate, aggregate.replace("1 test", "2 tests")),
+                            log.replace(aggregate, aggregate.replace("0 failures", "1 failures")),
+                            log.replace(aggregate, aggregate.replace("0 unexpected", "1 unexpected")),
+                            log.replace(aggregate, aggregate.replace("0.001", "0..001"))])
+        for value in invalid:
+            with self.subTest(log=value), self.assertRaises(RuntimeError):
+                NATIVE.executed_tests(value)
+
+    def test_case_events_cannot_escape_the_owner_or_report_skips_and_retries(self):
+        log = self.selected_event_fixture().decode()
+        case_lines = [line for line in log.splitlines(keepends=True) if line.startswith("Test Case ")]
+        case = "".join(case_lines)
+        invalid = [case + log.replace(case, ""), log + case,
+                   log.replace(case, case * 2), log.replace(case, ""),
+                   log.replace("passed (0.001 seconds)", "skipped (0.001 seconds)"),
+                   log.replace("passed (0.001 seconds)", "passed (0..001 seconds)"),
+                   log.replace("ChecksModule.ChangedTests testChanged", "OtherModule.OtherTests testOther"),
+                   log.replace(case, case + "Test Casebroken\n")]
+        for value in invalid:
+            with self.subTest(log=value), self.assertRaises(RuntimeError):
+                NATIVE.executed_tests(value)
+
     def test_failed_execution_reports_bounded_events_without_changing_rejection(self):
-        # Selected tests는 현재 native 출력으로 확인되지 않았다. 진단만 남기고 기존 거부를 유지한다.
+        # 실제 root 이름이어도 suite start/소유 계층이 누락된 출력은 계속 거부하고 진단만 남긴다.
         data = ("unrelated build text\nTest Case '-[ChecksModule.ChangedTests testChanged]' started.\n"
                 "Test Case '-[ChecksModule.ChangedTests testChanged]' passed (0.010 seconds).\n"
                 "Test Suite 'Selected tests' passed at 2026-10-23 16:09:36.011.\n"
@@ -385,7 +453,7 @@ Test Suite 'All tests' passed at 2026-10-23 16:09:36.011.
                 "** TEST EXECUTE SUCCEEDED **\n").encode()
         output = io.StringIO()
         with contextlib.redirect_stdout(output), mock.patch.object(NATIVE.OBS, "record_process_failure") as process:
-            with self.assertRaisesRegex(RuntimeError, "Missing or multiple terminal All tests aggregates"):
+            with self.assertRaisesRegex(RuntimeError, "Missing or additional fixture test events"):
                 NATIVE.verified_executed_tests(data, Path("selected-test-run"))
             process.assert_called_once_with(Path("selected-test-run"))
         report = json.loads(output.getvalue().split(" ", 1)[1])
