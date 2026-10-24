@@ -240,8 +240,7 @@ def capture_frameworks(plist, root, output, timeout):
 def scheme_membership(root, project, scheme, test_plan):
     path = project + "/xcshareddata/xcschemes/" + scheme + ".xcscheme"
     data = bounded(root / path, 1024 * 1024)
-    require(b"<!DOCTYPE" not in data and b"<!ENTITY" not in data, "Scheme XML entities are unsupported")
-    xml = ET.fromstring(data)
+    xml = package_helper("xcode-workspace-inputs").xml(data)
     require(not any(list(xml.iter(name)) for name in (
         "ExecutionAction", "SkippedTests", "SelectedTests", "EnvironmentVariable", "CommandLineArgument")),
         "Scheme actions, runtime options or partial selections are unsupported")

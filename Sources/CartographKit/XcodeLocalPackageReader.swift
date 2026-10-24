@@ -74,14 +74,14 @@ struct XcodeLocalPackageReader {
         }
         for rawToken in argv {
             let token = result.last == "-index-unit-output-path" ? rawToken : physicalToken(rawToken)
-            if token == "-Xlinker" { continue }
+            if token == "-Xlinker" || token == "-Xclang-linker" { continue }
             if !token.hasPrefix("@") || token == sourceFileList.map({ "@" + $0 }) || Self.runtimePath(token, previous: result.last) {
                 result.append(token)
             } else {
                 guard token.hasPrefix("@/") else { throw XcodeLocalPackageIO.invalid("Relative response-file input is unsupported.") }
                 let data = try read(String(token.dropFirst()), kind: "document")
                 guard let text = String(data: data, encoding: .utf8) else { throw XcodeLocalPackageIO.invalid("Invalid response-file encoding.") }
-                let expanded = try XcodeEvidenceTokens.read(text, maximum: 1_000).filter { $0 != "-Xlinker" }.map(physicalToken)
+                let expanded = try XcodeEvidenceTokens.read(text, maximum: 1_000).filter { $0 != "-Xlinker" && $0 != "-Xclang-linker" }.map(physicalToken)
                 guard !expanded.enumerated().contains(where: { index, value in
                     value.hasPrefix("@") && !Self.runtimePath(value, previous: index == 0 ? nil : expanded[index - 1])
                 }) else {

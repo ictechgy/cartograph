@@ -19,6 +19,17 @@ struct XcodeLocalPackageEvidence: Codable {
     let aggregate: Link
     let links: [ConsumerLink]
     var project: String? = nil
+    var declarations: [ProjectDeclaration]? = nil
+    var aggregateCandidateFileLists: [String]? = nil
+    var dynamicProduct: DynamicProduct? = nil
+
+    /// 같은 물리 package를 소비하는 각 프로젝트의 원문 PBX 신원을 보존한다.
+    struct ProjectDeclaration: Codable {
+        let project: String
+        let referenceID: String
+        let productReferenceID: String
+        let consumers: [String]
+    }
 
     /// 서명되지 않은 capture 생산자의 관측이며, 과거 생성 주체의 독립 증명이 아니다.
     enum GeneratedMetadataOrigin: String, Codable {
@@ -49,8 +60,15 @@ struct XcodeLocalPackageEvidence: Codable {
         let fileList: String
         let output: String
         let linkMap: String
+        var fileListMode: String? = nil
     }
-    struct ConsumerLink: Codable { let targetID: String; let link: Link }
+    struct ConsumerLink: Codable { let targetID: String; let link: Link; var packageInput: String? = nil }
+    struct DynamicProduct: Codable {
+        let link: Link
+        let bundle: String
+        let infoPlist: String
+        let installName: String
+    }
 
     var declaration: XcodeProjectMembership.LocalPackage {
         .init(path: path, referenceID: referenceID, productReferenceID: productReferenceID, product: product)
@@ -121,20 +139,67 @@ struct XcodeLocalPackageEvidence: Codable {
         }
         try validateRecords(reader: &reader, fileSystem: fileSystem)
         let objects = Set(compilations.map(\.object))
+        let candidates = aggregateCandidateFileLists ?? [aggregate.fileList]
+        guard (1...256).contains(candidates.count), Set(candidates).count == candidates.count,
+              candidates.contains(aggregate.fileList) else { throw XcodeLocalPackageIO.invalid("Aggregate candidate file-list identities are invalid.") }
+        var matches: Set<String> = [], wrapperLists: Set<String> = []
+        for candidate in candidates {
+            let inputs = Set(try reader.fileList(candidate))
+            if inputs == objects { matches.insert(candidate) }
+            if inputs == [aggregate.output] { wrapperLists.insert(candidate) }
+        }
+        guard matches == [aggregate.fileList] else { throw XcodeLocalPackageIO.invalid("Package aggregate object membership is ambiguous.") }
         let aggregateInputs = try validateLink(aggregate, required: objects, architecture: architecture,
             relocatable: true, reader: &reader)
         guard aggregateInputs == objects, products[aggregate.output] == files[aggregate.output]?.sha256 else {
             throw XcodeLocalPackageIO.invalid("Package aggregate contains unbound objects or is absent from captured products.")
+        }
+        if let wrapper = dynamicProduct {
+            guard wrapperLists == [wrapper.link.fileList], wrapper.link.fileListMode == "response",
+                  links.contains(where: { $0.packageInput == wrapper.link.output }),
+                  Set(try validateLink(wrapper.link, required: [aggregate.output], architecture: architecture,
+                    relocatable: false, reader: &reader)) == [aggregate.output],
+                  products[wrapper.link.output] == files[wrapper.link.output]?.sha256 else {
+                throw XcodeLocalPackageIO.invalid("Dynamic package product lacks a unique positive aggregate link.")
+            }
+            try validateDynamicProduct(wrapper, buildRoot: buildRoot, products: products, reader: &reader)
+        } else if !wrapperLists.isEmpty {
+            throw XcodeLocalPackageIO.invalid("Unbound dynamic package product candidates remain.")
         }
         for consumer in links {
             guard nativeProducts[consumer.targetID] == consumer.link.output,
                   products[consumer.link.output] == files[consumer.link.output]?.sha256 else {
                 throw XcodeLocalPackageIO.invalid("Package consumer link does not target its actual native executable.")
             }
-            _ = try validateLink(consumer.link, required: [aggregate.output], architecture: architecture,
+            let input = consumer.packageInput ?? aggregate.output
+            guard input == aggregate.output || input == dynamicProduct?.link.output else {
+                throw XcodeLocalPackageIO.invalid("Native package input differs from its proved aggregate/product.")
+            }
+            _ = try validateLink(consumer.link, required: [input], architecture: architecture,
                 relocatable: false, reader: &reader)
         }
         guard reader.used == Set(files.keys) else { throw XcodeLocalPackageIO.invalid("Unexpected or unused package proof file identities.") }
+    }
+
+    private func validateDynamicProduct(_ wrapper: DynamicProduct, buildRoot: String, products: [String: String],
+                                        reader: inout XcodeLocalPackageReader) throws {
+        let name = ((wrapper.bundle as NSString).lastPathComponent as NSString).deletingPathExtension
+        let allowedOutputs = [wrapper.bundle + "/" + name, wrapper.bundle + "/Versions/A/" + name]
+        let allowedInfo = [wrapper.bundle + "/Info.plist", wrapper.bundle + "/Versions/A/Resources/Info.plist"]
+        guard wrapper.bundle.hasPrefix(buildRoot + "/Products/"), wrapper.bundle.hasSuffix(".framework"),
+              try reader.fileSystem.realPath(at: wrapper.bundle) == wrapper.bundle,
+              allowedOutputs.contains(wrapper.link.output), allowedInfo.contains(wrapper.infoPlist),
+              products[wrapper.infoPlist] == files[wrapper.infoPlist]?.sha256,
+              let info = try PropertyListSerialization.propertyList(from: reader.read(wrapper.infoPlist, kind: "document"), format: nil) as? [String: Any],
+              info["CFBundleExecutable"] as? String == name, info["CFBundlePackageType"] as? String == "FMWK" else {
+            throw XcodeLocalPackageIO.invalid("Dynamic package bundle/executable metadata identity is unsupported.")
+        }
+        let argv = try reader.arguments(wrapper.link.argv, sourceFileList: wrapper.link.fileList)
+        let parent = (wrapper.bundle as NSString).deletingLastPathComponent
+        guard wrapper.installName == "@rpath/" + String(wrapper.link.output.dropFirst(parent.count + 1)),
+              try XcodeLocalPackageIO.argument("-install_name", in: argv) == wrapper.installName else {
+            throw XcodeLocalPackageIO.invalid("Dynamic package product install identity differs from its actual link.")
+        }
     }
 
     private func validateCompilation(_ compilation: Compilation, sources: Set<String>, architecture: String,
@@ -202,17 +267,27 @@ struct XcodeLocalPackageEvidence: Codable {
 
     private func validateLink(_ link: Link, required: Set<String>, architecture: String,
                               relocatable: Bool, reader: inout XcodeLocalPackageReader) throws -> Set<String> {
-        let argv = try reader.arguments(link.argv)
-        guard try XcodeLocalPackageIO.argument("-filelist", in: argv) == link.fileList,
-              try XcodeLocalPackageIO.argument("-o", in: argv) == link.output,
+        let mode = link.fileListMode ?? "operand"
+        guard ["operand", "response"].contains(mode) else { throw XcodeLocalPackageIO.invalid("Unknown linker file-list mode.") }
+        let argv = try reader.arguments(link.argv, sourceFileList: mode == "response" ? link.fileList : nil)
+        if mode == "response" {
+            guard !relocatable, argv.contains("-emit-library"), !argv.contains("-filelist"),
+                  argv.filter({ $0 == "@" + link.fileList }).count == 1 else { throw XcodeLocalPackageIO.invalid("Ambiguous linker response file-list identity.") }
+        } else if try XcodeLocalPackageIO.argument("-filelist", in: argv) != link.fileList {
+            throw XcodeLocalPackageIO.invalid("Linker file-list operand differs.")
+        }
+        guard try XcodeLocalPackageIO.argument("-o", in: argv) == link.output,
               try XcodeLocalPackageIO.argument("-map", in: argv) == link.linkMap,
               argv.contains("-r") == relocatable,
               try XcodeLocalPackageIO.argument("-target", in: argv).range(
                 of: "^" + architecture + #"-apple-macos[0-9]+(?:\.[0-9]+)*$"#, options: .regularExpression) != nil else {
             throw XcodeLocalPackageIO.invalid("Actual linker operands differ from the recorded link step.")
         }
-        let inputs = Set(try reader.fileList(link.fileList))
-        guard required.isSubset(of: inputs) else { throw XcodeLocalPackageIO.invalid("Required package object is absent from the actual linker file list.") }
+        var inputs = Set(try reader.fileList(link.fileList))
+        for input in required.subtracting(inputs) {
+            guard !relocatable, argv.contains(input) else { throw XcodeLocalPackageIO.invalid("Required package input is absent from actual linker operands.") }
+            inputs.insert(input)
+        }
         for input in inputs { _ = try reader.read(input, kind: "object") }
         _ = try reader.read(link.output, kind: "object")
         try XcodeLinkMapEvidence.validate(try reader.read(link.linkMap, kind: "document"),

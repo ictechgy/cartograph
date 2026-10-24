@@ -79,22 +79,43 @@ def make(root, packages=0):
         text = other_source.read_text().replace('import XCTest', 'import XCTest\nimport OtherArithmeticCore')
         text = text.replace('XCTAssertEqual(otherValue(), 7)', 'XCTAssertEqual(otherValue(), 7); XCTAssertEqual(otherPackageValue(), 42)')
         other_source.write_text(text)
+        # Both projects consume LocalMath; OtherBlueprint also consumes OtherMath.
+        main["packageReferences"].append("shared-package")
+        objects["shared-package"] = {"isa": "XCLocalSwiftPackageReference", "relativePath": "Packages/LocalMath"}
+        objects["shared-product"] = {"isa": "XCSwiftPackageProductDependency", "package": "shared-package", "productName": "ArithmeticProduct"}
+        objects["shared-link"] = {"isa": "PBXBuildFile", "productRef": "shared-product"}
+        other["packageProductDependencies"].append("shared-product")
+        phase["files"].append("shared-link")
+        text = other_source.read_text().replace("import OtherArithmeticCore", "import OtherArithmeticCore\nimport ArithmeticCore")
+        other_source.write_text(text.replace("XCTAssertEqual(otherPackageValue(), 42)", "XCTAssertEqual(otherPackageValue(), 42); XCTAssertEqual(packageValue(), 42)"))
+        # Projects have their own source root, while Packages is shared at the workspace root.
+        (root / "Apps").mkdir()
+        for directory in ("Core", "Checks", "Other", "Unbuilt"):
+            shutil.move(str(root / directory), str(root / "Apps" / directory))
+        for plist in values.values():
+            for obj in plist["objects"].values():
+                if obj.get("isa") == "XCLocalSwiftPackageReference":
+                    obj["relativePath"] = "../" + obj["relativePath"]
+        values = {"Apps/" + path: value for path, value in values.items()}
+    prefix = "Apps/" if packages == 2 else ""
     for path, value in values.items():
-        (root / path).mkdir()
+        (root / path).mkdir(parents=True)
         value["archiveVersion"] = str(value.get("archiveVersion", "1"))
         value["objectVersion"] = str(value.get("objectVersion", "56"))
         (root / path / "project.pbxproj").write_bytes(plistlib.dumps(value))
     workspace = root / "Scope.xcworkspace"
     (workspace / "xcshareddata/xcschemes").mkdir(parents=True)
-    (workspace / "contents.xcworkspacedata").write_text('<Workspace version="1.0"><FileRef location="group:App.xcodeproj"/><FileRef location="group:Core.xcodeproj"/></Workspace>\n')
+    (workspace / "contents.xcworkspacedata").write_text('<Workspace version="1.0">' + ''.join('<FileRef location="group:' + path + '"/>' for path in sorted(values)) + '</Workspace>\n')
     for name in ("Scope", "PlannedScope"):
         scheme_source = source / "Scope.xcodeproj/xcshareddata/xcschemes" / (name + ".xcscheme")
         xml = ET.fromstring(scheme_source.read_bytes())
+        if packages == 2:
+            xml.find("BuildAction").set("parallelizeBuildables", "YES")
         for ref in xml.iter("BuildableReference"):
-            ref.set("ReferencedContainer", "container:" + ("Core.xcodeproj" if ref.get("BlueprintName") == "CoreBlueprint" else "App.xcodeproj"))
+            ref.set("ReferencedContainer", "container:" + prefix + ("Core.xcodeproj" if ref.get("BlueprintName") == "CoreBlueprint" else "App.xcodeproj"))
         (workspace / "xcshareddata/xcschemes" / (name + ".xcscheme")).write_bytes(ET.tostring(xml))
     plan = json.loads((root / "Scope.xctestplan").read_text())
     for row in plan["testTargets"]:
-        row["target"]["containerPath"] = "container:App.xcodeproj"
+        row["target"]["containerPath"] = "container:" + prefix + "App.xcodeproj"
     (root / "Scope.xctestplan").write_text(json.dumps(plan, sort_keys=True))
     return root

@@ -2,6 +2,7 @@
 """Portable workspace preflight/identity controls; native execution is a separate gate."""
 import copy
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -18,9 +19,69 @@ def load(name):
 
 WORKSPACE, FIXTURE, SCOPE = load("xcode-workspace-inputs"), load("xcode-workspace-fixture"), load("cartograph-xcode-scope")
 CAPTURE = load("xcode-workspace-capture")
+INPUTS = load("xcode-local-package-inputs")
 
 
 class WorkspaceTests(unittest.TestCase):
+    def shared(self, root):
+        values = json.loads((ROOT / "Tests/Fixtures/xcode-workspace-shared-projects.json").read_text())
+        for path, name, product, module in (("LocalMath", "LocalMath", "ArithmeticProduct", "ArithmeticCore"),
+                                            ("OtherMath", "OtherMath", "OtherArithmeticProduct", "OtherArithmeticCore")):
+            package = root / "Packages" / path
+            (package / "Sources" / module).mkdir(parents=True)
+            (package / "Package.swift").write_text('// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: "' + name + '", products: [.library(name: "' + product + '", targets: ["' + module + '"])], targets: [.target(name: "' + module + '")])\n')
+            (package / "Sources" / module / "Value.swift").write_text("public func value() -> Int { 42 }\n")
+        return values
+
+    def test_shared_workspace_package_and_multiple_products_in_one_project(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            values = self.shared(root)
+            specs, sanitized = [], {}
+            for path, value in values.items():
+                current, sanitized[path] = INPUTS.workspace_project(root, path, value)
+                specs += [(path, s) for s in current]
+            packages = CAPTURE.aggregate_packages(specs, SCOPE)
+            self.assertEqual(len(packages), 2)
+            shared = next(p for p in packages if p["module"] == "ArithmeticCore")
+            self.assertEqual(shared["path"], "Packages/LocalMath")
+            self.assertEqual({d["project"] for d in shared["declarations"]}, set(values))
+            self.assertEqual(len(shared["consumers"]), 2)
+            self.assertEqual(len(SCOPE.membership(WORKSPACE.merge(sanitized))), 4)
+            bad = copy.deepcopy(specs)
+            next(s for _, s in bad if s["module"] == "OtherArithmeticCore")["module"] = "ArithmeticCore"
+            with self.assertRaises(SCOPE.CaptureError): CAPTURE.aggregate_packages(bad, SCOPE)
+
+    def test_shared_package_external_duplicate_unknown_and_unlinked_refuse(self):
+        for kind in ("external", "absolute", "duplicate", "unlinked", "unknown"):
+            with tempfile.TemporaryDirectory() as directory, self.subTest(kind=kind):
+                root = Path(directory).resolve()
+                values = self.shared(root)
+                app = values["Apps/App.xcodeproj"]
+                objects = app["objects"]
+                if kind == "external": objects["shared-package"]["relativePath"] = "../../outside/LocalMath"
+                elif kind == "absolute": objects["shared-package"]["relativePath"] = str(root / "Packages/LocalMath")
+                elif kind == "duplicate":
+                    objects["second-package"]["relativePath"] = "../Packages/LocalMath"
+                    objects["second-product"]["productName"] = "ArithmeticProduct"
+                elif kind == "unlinked":
+                    phase = next(v for v in objects.values() if "shared-link" in v.get("files", []))
+                    phase["files"].remove("shared-link")
+                else:
+                    target = next(v for v in objects.values() if v.get("isa") == "PBXNativeTarget" and v.get("name") == "OtherBlueprint")
+                    target["packageProductDependencies"].append("unknown-product")
+                with self.assertRaises(ValueError): INPUTS.workspace_project(root, "Apps/App.xcodeproj", app)
+
+    def test_xml_encoding_and_dtd_policy_is_identical_for_workspace_and_scheme(self):
+        text = '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE Workspace [<!ENTITY p "App.xcodeproj">]><Workspace><FileRef location="group:&p;"/></Workspace>'
+        for encoding in ("utf-8", "utf-16", "utf-16-le", "utf-16-be", "utf-32"):
+            with self.subTest(encoding=encoding), self.assertRaises(WORKSPACE.WorkspaceError):
+                WORKSPACE.xml(text.encode(encoding))
+        for encoding in ("UTF-16", "ISO-8859-1"):
+            with self.assertRaises(WORKSPACE.WorkspaceError):
+                WORKSPACE.xml(('<?xml version="1.0" encoding="' + encoding + '"?><Workspace/>').encode())
+        self.assertEqual(WORKSPACE.xml(b'<?xml version="1.0" encoding="UTF-8"?><Workspace/>').tag, "Workspace")
+
     def test_cross_project_dependency_and_product_proxy_join(self):
         plists = FIXTURE.plists()
         targets = SCOPE.membership(WORKSPACE.merge(plists))

@@ -1,0 +1,822 @@
+{
+  "Apps/App.xcodeproj": {
+    "archiveVersion": "1",
+    "classes": {},
+    "objectVersion": "56",
+    "objects": {
+      "000000000000000000000001": {
+        "buildSettings": {
+          "CLANG_ENABLE_MODULES": "YES",
+          "CODE_SIGNING_ALLOWED": "NO",
+          "COMPILER_INDEX_STORE_ENABLE": "YES",
+          "DEBUG_INFORMATION_FORMAT": "dwarf",
+          "MACOSX_DEPLOYMENT_TARGET": "13.0",
+          "SDKROOT": "macosx",
+          "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+          "SWIFT_VERSION": "5.0"
+        },
+        "isa": "XCBuildConfiguration",
+        "name": "Debug"
+      },
+      "000000000000000000000002": {
+        "buildConfigurations": [
+          "000000000000000000000001"
+        ],
+        "defaultConfigurationIsVisible": "0",
+        "defaultConfigurationName": "Debug",
+        "isa": "XCConfigurationList"
+      },
+      "000000000000000000000003": {
+        "isa": "PBXFileReference",
+        "lastKnownFileType": "sourcecode.swift",
+        "path": "Core/Core.swift",
+        "sourceTree": "SOURCE_ROOT"
+      },
+      "000000000000000000000004": {
+        "isa": "PBXFileReference",
+        "lastKnownFileType": "sourcecode.swift",
+        "path": "Checks/ChangedTests.swift",
+        "sourceTree": "SOURCE_ROOT"
+      },
+      "000000000000000000000005": {
+        "isa": "PBXFileReference",
+        "lastKnownFileType": "sourcecode.swift",
+        "path": "Other/OtherTests.swift",
+        "sourceTree": "SOURCE_ROOT"
+      },
+      "000000000000000000000006": {
+        "isa": "PBXFileReference",
+        "lastKnownFileType": "sourcecode.swift",
+        "path": "Unbuilt/Tool.swift",
+        "sourceTree": "SOURCE_ROOT"
+      },
+      "000000000000000000000007": {
+        "explicitFileType": "wrapper.framework",
+        "includeInIndex": "0",
+        "isa": "PBXFileReference",
+        "path": "CoreKit.framework",
+        "sourceTree": "BUILT_PRODUCTS_DIR"
+      },
+      "000000000000000000000008": {
+        "fileRef": "000000000000000000000003",
+        "isa": "PBXBuildFile"
+      },
+      "000000000000000000000009": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "000000000000000000000008"
+        ],
+        "isa": "PBXSourcesBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "00000000000000000000000A": {
+        "buildActionMask": "2147483647",
+        "files": [],
+        "isa": "PBXFrameworksBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "00000000000000000000000B": {
+        "buildSettings": {
+          "DEFINES_MODULE": "YES",
+          "ENABLE_TESTABILITY": "YES",
+          "GENERATE_INFOPLIST_FILE": "YES",
+          "PRODUCT_BUNDLE_IDENTIFIER": "org.cartograph.fixture.CoreKit",
+          "PRODUCT_MODULE_NAME": "CoreKit",
+          "PRODUCT_NAME": "CoreKit",
+          "SKIP_INSTALL": "YES"
+        },
+        "isa": "XCBuildConfiguration",
+        "name": "Debug"
+      },
+      "00000000000000000000000C": {
+        "buildConfigurations": [
+          "00000000000000000000000B"
+        ],
+        "defaultConfigurationIsVisible": "0",
+        "defaultConfigurationName": "Debug",
+        "isa": "XCConfigurationList"
+      },
+      "00000000000000000000000D": {
+        "buildConfigurationList": "00000000000000000000000C",
+        "buildPhases": [
+          "000000000000000000000009",
+          "00000000000000000000000A"
+        ],
+        "buildRules": [],
+        "dependencies": [],
+        "isa": "PBXNativeTarget",
+        "name": "CoreBlueprint",
+        "packageProductDependencies": [],
+        "productName": "CoreKit",
+        "productReference": "000000000000000000000007",
+        "productType": "com.apple.product-type.framework"
+      },
+      "00000000000000000000000E": {
+        "explicitFileType": "wrapper.cfbundle",
+        "includeInIndex": "0",
+        "isa": "PBXFileReference",
+        "path": "RunnableChecks.xctest",
+        "sourceTree": "BUILT_PRODUCTS_DIR"
+      },
+      "00000000000000000000000F": {
+        "fileRef": "000000000000000000000004",
+        "isa": "PBXBuildFile"
+      },
+      "000000000000000000000010": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "00000000000000000000000F"
+        ],
+        "isa": "PBXSourcesBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "000000000000000000000011": {
+        "fileRef": "workspace-product-proxy",
+        "isa": "PBXBuildFile"
+      },
+      "000000000000000000000012": {
+        "isa": "PBXTargetDependency",
+        "targetProxy": "workspace-target-proxy"
+      },
+      "000000000000000000000013": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "000000000000000000000011"
+        ],
+        "isa": "PBXFrameworksBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "000000000000000000000014": {
+        "buildSettings": {
+          "ENABLE_TESTABILITY": "YES",
+          "GENERATE_INFOPLIST_FILE": "YES",
+          "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @loader_path/../Frameworks @loader_path/../../../",
+          "PRODUCT_BUNDLE_IDENTIFIER": "org.cartograph.fixture.ChecksModule",
+          "PRODUCT_MODULE_NAME": "ChecksModule",
+          "PRODUCT_NAME": "RunnableChecks",
+          "SKIP_INSTALL": "YES"
+        },
+        "isa": "XCBuildConfiguration",
+        "name": "Debug"
+      },
+      "000000000000000000000015": {
+        "buildConfigurations": [
+          "000000000000000000000014"
+        ],
+        "defaultConfigurationIsVisible": "0",
+        "defaultConfigurationName": "Debug",
+        "isa": "XCConfigurationList"
+      },
+      "000000000000000000000016": {
+        "buildConfigurationList": "000000000000000000000015",
+        "buildPhases": [
+          "000000000000000000000010",
+          "000000000000000000000013"
+        ],
+        "buildRules": [],
+        "dependencies": [
+          "000000000000000000000012"
+        ],
+        "isa": "PBXNativeTarget",
+        "name": "ChecksBlueprint",
+        "productName": "RunnableChecks",
+        "productReference": "00000000000000000000000E",
+        "productType": "com.apple.product-type.bundle.unit-test"
+      },
+      "000000000000000000000017": {
+        "explicitFileType": "wrapper.cfbundle",
+        "includeInIndex": "0",
+        "isa": "PBXFileReference",
+        "path": "OtherRunnable.xctest",
+        "sourceTree": "BUILT_PRODUCTS_DIR"
+      },
+      "000000000000000000000018": {
+        "fileRef": "000000000000000000000005",
+        "isa": "PBXBuildFile"
+      },
+      "000000000000000000000019": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "000000000000000000000018"
+        ],
+        "isa": "PBXSourcesBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "00000000000000000000001A": {
+        "fileRef": "workspace-product-proxy",
+        "isa": "PBXBuildFile"
+      },
+      "00000000000000000000001B": {
+        "isa": "PBXTargetDependency",
+        "targetProxy": "workspace-target-proxy"
+      },
+      "00000000000000000000001C": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "00000000000000000000001A",
+          "second-link",
+          "shared-link"
+        ],
+        "isa": "PBXFrameworksBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "00000000000000000000001D": {
+        "buildSettings": {
+          "ENABLE_TESTABILITY": "YES",
+          "GENERATE_INFOPLIST_FILE": "YES",
+          "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @loader_path/../Frameworks @loader_path/../../../",
+          "PRODUCT_BUNDLE_IDENTIFIER": "org.cartograph.fixture.OtherModule",
+          "PRODUCT_MODULE_NAME": "OtherModule",
+          "PRODUCT_NAME": "OtherRunnable",
+          "SKIP_INSTALL": "YES"
+        },
+        "isa": "XCBuildConfiguration",
+        "name": "Debug"
+      },
+      "00000000000000000000001E": {
+        "buildConfigurations": [
+          "00000000000000000000001D"
+        ],
+        "defaultConfigurationIsVisible": "0",
+        "defaultConfigurationName": "Debug",
+        "isa": "XCConfigurationList"
+      },
+      "00000000000000000000001F": {
+        "buildConfigurationList": "00000000000000000000001E",
+        "buildPhases": [
+          "000000000000000000000019",
+          "00000000000000000000001C"
+        ],
+        "buildRules": [],
+        "dependencies": [
+          "00000000000000000000001B"
+        ],
+        "isa": "PBXNativeTarget",
+        "name": "OtherBlueprint",
+        "packageProductDependencies": [
+          "second-product",
+          "shared-product"
+        ],
+        "productName": "OtherRunnable",
+        "productReference": "000000000000000000000017",
+        "productType": "com.apple.product-type.bundle.unit-test"
+      },
+      "000000000000000000000020": {
+        "explicitFileType": "archive.ar",
+        "includeInIndex": "0",
+        "isa": "PBXFileReference",
+        "path": "libUnbuilt.a",
+        "sourceTree": "BUILT_PRODUCTS_DIR"
+      },
+      "000000000000000000000021": {
+        "fileRef": "000000000000000000000006",
+        "isa": "PBXBuildFile"
+      },
+      "000000000000000000000022": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "000000000000000000000021"
+        ],
+        "isa": "PBXSourcesBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "000000000000000000000023": {
+        "buildActionMask": "2147483647",
+        "files": [],
+        "isa": "PBXFrameworksBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "000000000000000000000024": {
+        "buildSettings": {
+          "ENABLE_TESTABILITY": "YES",
+          "GENERATE_INFOPLIST_FILE": "YES",
+          "PRODUCT_BUNDLE_IDENTIFIER": "org.cartograph.fixture.UnbuiltModule",
+          "PRODUCT_MODULE_NAME": "UnbuiltModule",
+          "PRODUCT_NAME": "Unbuilt",
+          "SKIP_INSTALL": "YES"
+        },
+        "isa": "XCBuildConfiguration",
+        "name": "Debug"
+      },
+      "000000000000000000000025": {
+        "buildConfigurations": [
+          "000000000000000000000024"
+        ],
+        "defaultConfigurationIsVisible": "0",
+        "defaultConfigurationName": "Debug",
+        "isa": "XCConfigurationList"
+      },
+      "000000000000000000000026": {
+        "buildConfigurationList": "000000000000000000000025",
+        "buildPhases": [
+          "000000000000000000000022",
+          "000000000000000000000023"
+        ],
+        "buildRules": [],
+        "dependencies": [],
+        "isa": "PBXNativeTarget",
+        "name": "UnbuiltBlueprint",
+        "productName": "Unbuilt",
+        "productReference": "000000000000000000000020",
+        "productType": "com.apple.product-type.library.static"
+      },
+      "000000000000000000000027": {
+        "children": [
+          "000000000000000000000007",
+          "00000000000000000000000E",
+          "000000000000000000000017",
+          "000000000000000000000020"
+        ],
+        "isa": "PBXGroup",
+        "name": "Products",
+        "sourceTree": "<group>"
+      },
+      "000000000000000000000028": {
+        "children": [
+          "000000000000000000000003",
+          "000000000000000000000004",
+          "000000000000000000000005",
+          "000000000000000000000006",
+          "000000000000000000000027",
+          "workspace-project-ref"
+        ],
+        "isa": "PBXGroup",
+        "sourceTree": "<group>"
+      },
+      "000000000000000000000029": {
+        "attributes": {
+          "LastUpgradeCheck": "1600"
+        },
+        "buildConfigurationList": "000000000000000000000002",
+        "compatibilityVersion": "Xcode 14.0",
+        "developmentRegion": "en",
+        "isa": "PBXProject",
+        "knownRegions": [
+          "en",
+          "Base"
+        ],
+        "mainGroup": "000000000000000000000028",
+        "packageReferences": [
+          "second-package",
+          "shared-package"
+        ],
+        "productRefGroup": "000000000000000000000027",
+        "projectDirPath": "",
+        "projectReferences": [
+          {
+            "ProductGroup": "workspace-product-group",
+            "ProjectRef": "workspace-project-ref"
+          }
+        ],
+        "projectRoot": "",
+        "targets": [
+          "000000000000000000000016",
+          "00000000000000000000001F",
+          "000000000000000000000026"
+        ]
+      },
+      "second-link": {
+        "isa": "PBXBuildFile",
+        "productRef": "second-product"
+      },
+      "second-package": {
+        "isa": "XCLocalSwiftPackageReference",
+        "relativePath": "../Packages/OtherMath"
+      },
+      "second-product": {
+        "isa": "XCSwiftPackageProductDependency",
+        "package": "second-package",
+        "productName": "OtherArithmeticProduct"
+      },
+      "shared-link": {
+        "isa": "PBXBuildFile",
+        "productRef": "shared-product"
+      },
+      "shared-package": {
+        "isa": "XCLocalSwiftPackageReference",
+        "relativePath": "../Packages/LocalMath"
+      },
+      "shared-product": {
+        "isa": "XCSwiftPackageProductDependency",
+        "package": "shared-package",
+        "productName": "ArithmeticProduct"
+      },
+      "workspace-product-group": {
+        "children": [
+          "workspace-product-proxy"
+        ],
+        "isa": "PBXGroup",
+        "name": "Products",
+        "sourceTree": "<group>"
+      },
+      "workspace-product-proxy": {
+        "fileType": "wrapper.framework",
+        "isa": "PBXReferenceProxy",
+        "path": "CoreKit.framework",
+        "remoteRef": "workspace-product-proxy-container",
+        "sourceTree": "BUILT_PRODUCTS_DIR"
+      },
+      "workspace-product-proxy-container": {
+        "containerPortal": "workspace-project-ref",
+        "isa": "PBXContainerItemProxy",
+        "proxyType": "2",
+        "remoteGlobalIDString": "000000000000000000000007",
+        "remoteInfo": "CoreKit"
+      },
+      "workspace-project-ref": {
+        "isa": "PBXFileReference",
+        "lastKnownFileType": "wrapper.pb-project",
+        "path": "Core.xcodeproj",
+        "sourceTree": "SOURCE_ROOT"
+      },
+      "workspace-target-proxy": {
+        "containerPortal": "workspace-project-ref",
+        "isa": "PBXContainerItemProxy",
+        "proxyType": "1",
+        "remoteGlobalIDString": "00000000000000000000000D",
+        "remoteInfo": "CoreBlueprint"
+      }
+    },
+    "rootObject": "000000000000000000000029"
+  },
+  "Apps/Core.xcodeproj": {
+    "archiveVersion": "1",
+    "classes": {},
+    "objectVersion": "56",
+    "objects": {
+      "000000000000000000000001": {
+        "buildSettings": {
+          "CLANG_ENABLE_MODULES": "YES",
+          "CODE_SIGNING_ALLOWED": "NO",
+          "COMPILER_INDEX_STORE_ENABLE": "YES",
+          "DEBUG_INFORMATION_FORMAT": "dwarf",
+          "MACOSX_DEPLOYMENT_TARGET": "13.0",
+          "SDKROOT": "macosx",
+          "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+          "SWIFT_VERSION": "5.0"
+        },
+        "isa": "XCBuildConfiguration",
+        "name": "Debug"
+      },
+      "000000000000000000000002": {
+        "buildConfigurations": [
+          "000000000000000000000001"
+        ],
+        "defaultConfigurationIsVisible": "0",
+        "defaultConfigurationName": "Debug",
+        "isa": "XCConfigurationList"
+      },
+      "000000000000000000000003": {
+        "isa": "PBXFileReference",
+        "lastKnownFileType": "sourcecode.swift",
+        "path": "Core/Core.swift",
+        "sourceTree": "SOURCE_ROOT"
+      },
+      "000000000000000000000004": {
+        "isa": "PBXFileReference",
+        "lastKnownFileType": "sourcecode.swift",
+        "path": "Checks/ChangedTests.swift",
+        "sourceTree": "SOURCE_ROOT"
+      },
+      "000000000000000000000005": {
+        "isa": "PBXFileReference",
+        "lastKnownFileType": "sourcecode.swift",
+        "path": "Other/OtherTests.swift",
+        "sourceTree": "SOURCE_ROOT"
+      },
+      "000000000000000000000006": {
+        "isa": "PBXFileReference",
+        "lastKnownFileType": "sourcecode.swift",
+        "path": "Unbuilt/Tool.swift",
+        "sourceTree": "SOURCE_ROOT"
+      },
+      "000000000000000000000007": {
+        "explicitFileType": "wrapper.framework",
+        "includeInIndex": "0",
+        "isa": "PBXFileReference",
+        "path": "CoreKit.framework",
+        "sourceTree": "BUILT_PRODUCTS_DIR"
+      },
+      "000000000000000000000008": {
+        "fileRef": "000000000000000000000003",
+        "isa": "PBXBuildFile"
+      },
+      "000000000000000000000009": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "000000000000000000000008"
+        ],
+        "isa": "PBXSourcesBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "00000000000000000000000A": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "000000000000000000000102"
+        ],
+        "isa": "PBXFrameworksBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "00000000000000000000000B": {
+        "buildSettings": {
+          "DEFINES_MODULE": "YES",
+          "ENABLE_TESTABILITY": "YES",
+          "GENERATE_INFOPLIST_FILE": "YES",
+          "PRODUCT_BUNDLE_IDENTIFIER": "org.cartograph.fixture.CoreKit",
+          "PRODUCT_MODULE_NAME": "CoreKit",
+          "PRODUCT_NAME": "CoreKit",
+          "SKIP_INSTALL": "YES"
+        },
+        "isa": "XCBuildConfiguration",
+        "name": "Debug"
+      },
+      "00000000000000000000000C": {
+        "buildConfigurations": [
+          "00000000000000000000000B"
+        ],
+        "defaultConfigurationIsVisible": "0",
+        "defaultConfigurationName": "Debug",
+        "isa": "XCConfigurationList"
+      },
+      "00000000000000000000000D": {
+        "buildConfigurationList": "00000000000000000000000C",
+        "buildPhases": [
+          "000000000000000000000009",
+          "00000000000000000000000A"
+        ],
+        "buildRules": [],
+        "dependencies": [],
+        "isa": "PBXNativeTarget",
+        "name": "CoreBlueprint",
+        "packageProductDependencies": [
+          "000000000000000000000101"
+        ],
+        "productName": "CoreKit",
+        "productReference": "000000000000000000000007",
+        "productType": "com.apple.product-type.framework"
+      },
+      "00000000000000000000000E": {
+        "explicitFileType": "wrapper.cfbundle",
+        "includeInIndex": "0",
+        "isa": "PBXFileReference",
+        "path": "RunnableChecks.xctest",
+        "sourceTree": "BUILT_PRODUCTS_DIR"
+      },
+      "00000000000000000000000F": {
+        "fileRef": "000000000000000000000004",
+        "isa": "PBXBuildFile"
+      },
+      "000000000000000000000010": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "00000000000000000000000F"
+        ],
+        "isa": "PBXSourcesBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "000000000000000000000011": {
+        "fileRef": "000000000000000000000007",
+        "isa": "PBXBuildFile"
+      },
+      "000000000000000000000012": {
+        "isa": "PBXTargetDependency",
+        "target": "00000000000000000000000D"
+      },
+      "000000000000000000000013": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "000000000000000000000011"
+        ],
+        "isa": "PBXFrameworksBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "000000000000000000000014": {
+        "buildSettings": {
+          "ENABLE_TESTABILITY": "YES",
+          "GENERATE_INFOPLIST_FILE": "YES",
+          "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @loader_path/../Frameworks @loader_path/../../../",
+          "PRODUCT_BUNDLE_IDENTIFIER": "org.cartograph.fixture.ChecksModule",
+          "PRODUCT_MODULE_NAME": "ChecksModule",
+          "PRODUCT_NAME": "RunnableChecks",
+          "SKIP_INSTALL": "YES"
+        },
+        "isa": "XCBuildConfiguration",
+        "name": "Debug"
+      },
+      "000000000000000000000015": {
+        "buildConfigurations": [
+          "000000000000000000000014"
+        ],
+        "defaultConfigurationIsVisible": "0",
+        "defaultConfigurationName": "Debug",
+        "isa": "XCConfigurationList"
+      },
+      "000000000000000000000016": {
+        "buildConfigurationList": "000000000000000000000015",
+        "buildPhases": [
+          "000000000000000000000010",
+          "000000000000000000000013"
+        ],
+        "buildRules": [],
+        "dependencies": [
+          "000000000000000000000012"
+        ],
+        "isa": "PBXNativeTarget",
+        "name": "ChecksBlueprint",
+        "productName": "RunnableChecks",
+        "productReference": "00000000000000000000000E",
+        "productType": "com.apple.product-type.bundle.unit-test"
+      },
+      "000000000000000000000017": {
+        "explicitFileType": "wrapper.cfbundle",
+        "includeInIndex": "0",
+        "isa": "PBXFileReference",
+        "path": "OtherRunnable.xctest",
+        "sourceTree": "BUILT_PRODUCTS_DIR"
+      },
+      "000000000000000000000018": {
+        "fileRef": "000000000000000000000005",
+        "isa": "PBXBuildFile"
+      },
+      "000000000000000000000019": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "000000000000000000000018"
+        ],
+        "isa": "PBXSourcesBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "00000000000000000000001A": {
+        "fileRef": "000000000000000000000007",
+        "isa": "PBXBuildFile"
+      },
+      "00000000000000000000001B": {
+        "isa": "PBXTargetDependency",
+        "target": "00000000000000000000000D"
+      },
+      "00000000000000000000001C": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "00000000000000000000001A"
+        ],
+        "isa": "PBXFrameworksBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "00000000000000000000001D": {
+        "buildSettings": {
+          "ENABLE_TESTABILITY": "YES",
+          "GENERATE_INFOPLIST_FILE": "YES",
+          "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @loader_path/../Frameworks @loader_path/../../../",
+          "PRODUCT_BUNDLE_IDENTIFIER": "org.cartograph.fixture.OtherModule",
+          "PRODUCT_MODULE_NAME": "OtherModule",
+          "PRODUCT_NAME": "OtherRunnable",
+          "SKIP_INSTALL": "YES"
+        },
+        "isa": "XCBuildConfiguration",
+        "name": "Debug"
+      },
+      "00000000000000000000001E": {
+        "buildConfigurations": [
+          "00000000000000000000001D"
+        ],
+        "defaultConfigurationIsVisible": "0",
+        "defaultConfigurationName": "Debug",
+        "isa": "XCConfigurationList"
+      },
+      "00000000000000000000001F": {
+        "buildConfigurationList": "00000000000000000000001E",
+        "buildPhases": [
+          "000000000000000000000019",
+          "00000000000000000000001C"
+        ],
+        "buildRules": [],
+        "dependencies": [
+          "00000000000000000000001B"
+        ],
+        "isa": "PBXNativeTarget",
+        "name": "OtherBlueprint",
+        "productName": "OtherRunnable",
+        "productReference": "000000000000000000000017",
+        "productType": "com.apple.product-type.bundle.unit-test"
+      },
+      "000000000000000000000020": {
+        "explicitFileType": "archive.ar",
+        "includeInIndex": "0",
+        "isa": "PBXFileReference",
+        "path": "libUnbuilt.a",
+        "sourceTree": "BUILT_PRODUCTS_DIR"
+      },
+      "000000000000000000000021": {
+        "fileRef": "000000000000000000000006",
+        "isa": "PBXBuildFile"
+      },
+      "000000000000000000000022": {
+        "buildActionMask": "2147483647",
+        "files": [
+          "000000000000000000000021"
+        ],
+        "isa": "PBXSourcesBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "000000000000000000000023": {
+        "buildActionMask": "2147483647",
+        "files": [],
+        "isa": "PBXFrameworksBuildPhase",
+        "runOnlyForDeploymentPostprocessing": "0"
+      },
+      "000000000000000000000024": {
+        "buildSettings": {
+          "ENABLE_TESTABILITY": "YES",
+          "GENERATE_INFOPLIST_FILE": "YES",
+          "PRODUCT_BUNDLE_IDENTIFIER": "org.cartograph.fixture.UnbuiltModule",
+          "PRODUCT_MODULE_NAME": "UnbuiltModule",
+          "PRODUCT_NAME": "Unbuilt",
+          "SKIP_INSTALL": "YES"
+        },
+        "isa": "XCBuildConfiguration",
+        "name": "Debug"
+      },
+      "000000000000000000000025": {
+        "buildConfigurations": [
+          "000000000000000000000024"
+        ],
+        "defaultConfigurationIsVisible": "0",
+        "defaultConfigurationName": "Debug",
+        "isa": "XCConfigurationList"
+      },
+      "000000000000000000000026": {
+        "buildConfigurationList": "000000000000000000000025",
+        "buildPhases": [
+          "000000000000000000000022",
+          "000000000000000000000023"
+        ],
+        "buildRules": [],
+        "dependencies": [],
+        "isa": "PBXNativeTarget",
+        "name": "UnbuiltBlueprint",
+        "productName": "Unbuilt",
+        "productReference": "000000000000000000000020",
+        "productType": "com.apple.product-type.library.static"
+      },
+      "000000000000000000000027": {
+        "children": [
+          "000000000000000000000007",
+          "00000000000000000000000E",
+          "000000000000000000000017",
+          "000000000000000000000020"
+        ],
+        "isa": "PBXGroup",
+        "name": "Products",
+        "sourceTree": "<group>"
+      },
+      "000000000000000000000028": {
+        "children": [
+          "000000000000000000000003",
+          "000000000000000000000004",
+          "000000000000000000000005",
+          "000000000000000000000006",
+          "000000000000000000000027"
+        ],
+        "isa": "PBXGroup",
+        "sourceTree": "<group>"
+      },
+      "000000000000000000000029": {
+        "attributes": {
+          "LastUpgradeCheck": "1600"
+        },
+        "buildConfigurationList": "000000000000000000000002",
+        "compatibilityVersion": "Xcode 14.0",
+        "developmentRegion": "en",
+        "isa": "PBXProject",
+        "knownRegions": [
+          "en",
+          "Base"
+        ],
+        "mainGroup": "000000000000000000000028",
+        "packageReferences": [
+          "000000000000000000000100"
+        ],
+        "productRefGroup": "000000000000000000000027",
+        "projectDirPath": "",
+        "projectRoot": "",
+        "targets": [
+          "00000000000000000000000D"
+        ]
+      },
+      "000000000000000000000100": {
+        "isa": "XCLocalSwiftPackageReference",
+        "relativePath": "../Packages/LocalMath"
+      },
+      "000000000000000000000101": {
+        "isa": "XCSwiftPackageProductDependency",
+        "package": "000000000000000000000100",
+        "productName": "ArithmeticProduct"
+      },
+      "000000000000000000000102": {
+        "isa": "PBXBuildFile",
+        "productRef": "000000000000000000000101"
+      }
+    },
+    "rootObject": "000000000000000000000029"
+  }
+}

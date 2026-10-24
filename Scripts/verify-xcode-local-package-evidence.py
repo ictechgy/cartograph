@@ -11,6 +11,7 @@ import hashlib
 from pathlib import Path
 import plistlib
 import shlex
+import sys
 import tempfile
 import types
 import unittest
@@ -558,6 +559,43 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(proof["links"][0]["targetID"], "CORE")
         self.assertEqual(proof["files"][str(self.response)]["kind"], "document")
 
+    def dynamic_wrapper(self):
+        bundle = self.build / "Products/Debug/PackageFrameworks/ArithmeticProduct_ABC_PackageProduct.framework"
+        name = bundle.name.removesuffix(".framework")
+        binary = self.write(bundle / "Versions/A" / name, b"dynamic product bytes")
+        info = self.write(bundle / "Versions/A/Resources/Info.plist", plistlib.dumps({"CFBundleExecutable": name, "CFBundlePackageType": "FMWK"}))
+        inputs = self.write(self.build / "Intermediates/Product.LinkFileList", (shlex.quote(str(self.aggregate)) + "\n").encode())
+        link_map = self.write(self.build / "Intermediates/Product.map", self.map_bytes(binary, [self.aggregate]))
+        argv = ["/tool/swiftc", "-emit-library", "@" + str(inputs), "-target", "arm64-apple-macos12.0",
+                "-Xclang-linker", "-install_name", "-Xclang-linker", "@rpath/" + binary.relative_to(bundle.parent).as_posix(),
+                "-Xlinker", "-map", "-Xlinker", str(link_map), "-o", str(binary)]
+        self.native_list.write_text(shlex.quote(str(self.other)) + "\n")
+        self.native_argv.append(str(binary))
+        self.native_map.write_bytes(self.map_bytes(self.native, [self.other, binary]))
+        return argv, bundle, binary, info, link_map
+
+    def test_dynamic_package_product_requires_positive_intermediate_and_native_owners(self):
+        argv, bundle, binary, info, _ = self.dynamic_wrapper()
+        proof = self.capture([argv])
+        self.assertEqual(proof["dynamicProduct"]["bundle"], str(bundle))
+        self.assertEqual(proof["dynamicProduct"]["link"]["fileListMode"], "response")
+        self.assertEqual(proof["links"][0]["packageInput"], str(binary))
+        self.assertEqual(proof["files"][str(info)]["kind"], "document")
+        self.native_argv.remove(str(binary))
+        with self.assertRaisesRegex(E.EvidenceError, "absent from actual linker operands"):
+            self.capture([argv])
+
+    def test_dynamic_product_unproven_metadata_or_live_chain_refuses(self):
+        argv, _, binary, info, link_map = self.dynamic_wrapper()
+        original = info.read_bytes()
+        info.write_bytes(plistlib.dumps({"CFBundleExecutable": "Wrong", "CFBundlePackageType": "FMWK"}))
+        with self.assertRaisesRegex(E.EvidenceError, "identity differs"):
+            self.capture([argv])
+        info.write_bytes(original)
+        link_map.write_bytes(self.map_bytes(binary, []))
+        with self.assertRaisesRegex(E.EvidenceError, "positive aggregate"):
+            self.capture([argv])
+
     def test_bare_runtime_loader_token_requires_rpath_operand(self):
         self.native_argv += ["-Xlinker", "-rpath", "-Xlinker", "@loader_path"]
         self.assertEqual(len(self.capture()["links"]), 1)
@@ -582,6 +620,27 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(proof["compilations"][0]["unitOutputIdentity"], self.virtual)
         self.assertEqual(proof["aggregate"]["output"], str(self.aggregate))
         self.assertEqual(E.physical_temporary_alias("/project/input"), "/project/input")
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO controls require POSIX")
+    def test_aggregate_candidate_fifo_refuses_without_blocking(self):
+        code = 'import importlib.util, os, pathlib, sys\nfrom unittest.mock import patch\nspec = importlib.util.spec_from_file_location("proof_tests", sys.argv[1])\nmodule = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\ncase = module.EvidenceTests("runTest"); case.setUp()\nstatus = 1\ntry:\n    fifo = case.build / "Intermediates/nonselected.fifo"\n    os.mkfifo(fifo)\n    candidate = list(case.aggregate_argv)\n    candidate[candidate.index("-filelist") + 1] = str(fifo)\n    # Simulate replacement after a successful regular-file precheck.\n    with patch.object(pathlib.Path, "is_file", lambda self: True):\n        case.capture([candidate])\nexcept module.E.EvidenceError:\n    status = 0\nfinally:\n    case.doCleanups()\nsys.exit(status)\n'
+        import subprocess
+        result = subprocess.run([sys.executable, "-c", code, str(Path(__file__).resolve())], capture_output=True, timeout=2)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_nonselected_aggregate_candidates_share_document_budget(self):
+        from unittest.mock import patch
+        extra = []
+        for index in range(2):
+            path = self.build / ("Intermediates/Nonselected%d.LinkFileList" % index)
+            value = shlex.quote(str(self.other)) + "\n"
+            self.write(path, (" " * (1024 * 1024 - len(value.encode())) + value).encode())
+            candidate = list(self.aggregate_argv)
+            candidate[candidate.index("-filelist") + 1] = str(path)
+            extra.append(candidate)
+        with patch.object(E.Files, "CAPS", {**E.Files.CAPS, "document": (1, 2)}):
+            with self.assertRaisesRegex(E.EvidenceError, "Aggregate proof budget"):
+                self.capture(extra)
 
     def test_conflicting_compiler_wrapper_or_record_identity_refuses(self):
         conflicting = list(self.compiler)

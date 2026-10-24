@@ -10,8 +10,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import shlex
+import stat
 
 
 class EvidenceError(ValueError):
@@ -31,7 +33,7 @@ def runtime_path(token, previous=None):
 def operand(argv, option):
     require(argv.count(option) == 1, "Missing or ambiguous compiler/link option: " + option)
     tail = argv[argv.index(option) + 1:]
-    while tail and tail[0] == "-Xlinker":
+    while tail and tail[0] in ("-Xlinker", "-Xclang-linker"):
         tail = tail[1:]
     require(tail and not tail[0].startswith("-"), "Missing compiler/link operand: " + option)
     return tail[0]
@@ -79,7 +81,9 @@ class Files:
         path = canonical(value, self.store if kind == "record" else self.build)
         require(path.is_file(), "Missing regular proof file: " + str(path))
         maximum, total_maximum = (n * 1024 * 1024 for n in self.CAPS[kind])
-        with path.open("rb") as stream:
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+        with os.fdopen(os.open(path, flags), "rb") as stream:
+            require(stat.S_ISREG(os.fstat(stream.fileno()).st_mode), "Proof descriptor is not a regular file: " + str(path))
             data = stream.read(maximum + 1)
         require(len(data) <= maximum, "Proof file byte budget exceeded")
         identity = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "kind": kind}
@@ -93,12 +97,12 @@ class Files:
         return data
 
     def responses(self, argv):
-        argv = [x for x in argv if x != "-Xlinker"]
+        argv = [x for x in argv if x not in ("-Xlinker", "-Xclang-linker")]
         for index, arg in enumerate(argv):
             if not arg.startswith("@") or runtime_path(arg, argv[index - 1] if index else None):
                 continue
             content = self.read(arg[1:]).decode("utf-8")
-            tokens = [x for x in shlex.split(content) if x != "-Xlinker"]
+            tokens = [x for x in shlex.split(content) if x not in ("-Xlinker", "-Xclang-linker")]
             require(len(tokens) <= 1000 and not any(x.startswith("@") and not runtime_path(x, tokens[i - 1] if i else None)
                     for i, x in enumerate(tokens)),
                     "Nested or oversized compiler/link response is unsupported")
@@ -153,17 +157,52 @@ def live_owners(files, path, output, architecture):
     return {objects[key] for key in live}
 
 
-def link(files, argv, architecture):
+def link_list(argv):
+    if "-filelist" in argv:
+        return operand(argv, "-filelist"), "operand"
+    lists = [x[1:] for x in argv if x.startswith("@/") and x.endswith(".LinkFileList")]
+    require("-emit-library" in argv and len(lists) == 1, "Missing or ambiguous observed linker file list")
+    return lists[0], "response"
+
+
+def link(files, argv, architecture, required=()):
     files.responses(argv)
-    result = {"argv": argv, "fileList": str(canonical(operand(argv, "-filelist"), files.build)),
+    path, mode = link_list(argv)
+    result = {"argv": argv, "fileList": str(canonical(path, files.build)), "fileListMode": mode,
               "output": str(canonical(operand(argv, "-o"), files.build)), "linkMap": str(canonical(operand(argv, "-map"), files.build))}
     require(operand(argv, "-target").split("-", 1)[0] == architecture, "Link target architecture differs")
     inputs = file_list(files, result["fileList"], files.build)
+    for value in set(required) - set(inputs):
+        require("-r" not in argv and any(physical_temporary_alias(token) == value for token in argv),
+                "Required package contribution is absent from actual linker operands")
+        inputs.append(value)
     for path in inputs:
         files.read(path, "object")
     files.read(result["output"], "object")
     live = live_owners(files, result["linkMap"], result["output"], architecture)
     return result, set(inputs), live
+
+
+def dynamic_product(files, argv, aggregate, architecture):
+    observed, inputs, live = link(files, argv, architecture, required={aggregate["output"]})
+    require(inputs == {aggregate["output"]} and aggregate["output"] in live and "-emit-library" in argv,
+            "Dynamic package product lacks exact positive aggregate contribution")
+    output = Path(observed["output"])
+    bundles = [p for p in output.parents if p.name.endswith(".framework")]
+    require(len(bundles) == 1 and bundles[0].is_relative_to(files.build / "Products") and bundles[0].resolve() == bundles[0],
+            "Dynamic package product bundle is outside captured products")
+    bundle = bundles[0]
+    name = bundle.name.removesuffix(".framework")
+    require(output in (bundle / name, bundle / "Versions/A" / name), "Unsupported dynamic package executable layout")
+    info_paths = {p.resolve() for p in (bundle / "Info.plist", bundle / "Resources/Info.plist", bundle / "Versions/A/Resources/Info.plist") if p.is_file()}
+    require(len(info_paths) == 1, "Missing or ambiguous dynamic package product metadata")
+    info_path = info_paths.pop()
+    require(info_path in (bundle / "Info.plist", bundle / "Versions/A/Resources/Info.plist"), "Dynamic product metadata leaves its bundle")
+    info = plistlib.loads(files.read(str(info_path)))
+    install = operand(argv, "-install_name")
+    require(info.get("CFBundleExecutable") == name and info.get("CFBundlePackageType") == "FMWK"
+            and install == "@rpath/" + output.relative_to(bundle.parent).as_posix(), "Dynamic product bundle/executable/install identity differs")
+    return {"link": observed, "bundle": str(bundle), "infoPlist": str(info_path), "installName": install}
 
 
 def record_paths(store, names):
@@ -258,23 +297,24 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
     require(len(admissions) == len(sources) and len(records) == len(sources) and len(names) == len(sources),
             "Package source record contexts are shared or ambiguous")
     aggregate_candidates = [argv for argv in commands if "-r" in argv and "-filelist" in argv and "-map" in argv]
+    wrapper_candidates = [argv for argv in commands if "-emit-library" in argv and "-map" in argv]
     # 여러 package의 relocatable link 중 이 package의 완전한 object 집합만 고른다.
     # 선택 전 읽기도 동일한 경로·바이트·토큰 경계를 적용하며 실행하지 않는다.
     objects = {r["object"] for r in compilations.values()}
+    aggregate_lists = sorted({str(canonical(link_list(argv)[0], files.build)) for argv in aggregate_candidates + wrapper_candidates})
+    # Every candidate participates in the same bounded IO/accounting, including nonselected wrappers.
+    list_inputs = {path: set(file_list(files, path, files.build)) for path in aggregate_lists}
     def aggregate_matches(argv):
-        path = canonical(operand(argv, "-filelist"), files.build)
-        with path.open("rb") as stream:
-            data = stream.read(8 * 1024 * 1024 + 1)
-        require(len(data) <= 8 * 1024 * 1024, "Aggregate file list exceeds proof byte budget")
-        tokens = shlex.split(data.decode("utf-8"))
-        require(len(tokens) <= 1000, "Aggregate file list exceeds proof token budget")
-        return {str(canonical(x, files.build)) for x in tokens} == objects
+        return set(file_list(files, operand(argv, "-filelist"), files.build)) == objects
     aggregate_candidates = [argv for argv in aggregate_candidates if aggregate_matches(argv)]
     require(len(aggregate_candidates) == 1, "Ambiguous or absent package relocatable link")
     aggregate, inputs, live = link(files, aggregate_candidates[0], architecture)
     require(inputs == objects and objects <= live, "Package objects lack complete positive aggregate contribution")
     require(operand(aggregate["argv"], "-target") in {c["targetTriple"] for c in compilations.values()}
             and len({c["targetTriple"] for c in compilations.values()}) == 1, "Aggregate target triple differs")
+    wrappers = [argv for argv in wrapper_candidates if list_inputs[str(canonical(link_list(argv)[0], files.build))] == {aggregate["output"]}]
+    require(len(wrappers) <= 1, "Ambiguous dynamic package product wrapper")
+    wrapper = dynamic_product(files, wrappers[0], aggregate, architecture) if wrappers else None
     closure, pending = set(), list(selected)
     while pending:
         ident = pending.pop()
@@ -290,11 +330,15 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
         executable = str(canonical(str(Path(rows[0]["TARGET_BUILD_DIR"]) / rows[0]["EXECUTABLE_PATH"]), files.build))
         argv_rows = [a for a in commands if "-map" in a and "-o" in a and str(canonical(operand(a, "-o"), files.build)) == executable]
         require(len(argv_rows) == 1, "Absent or ambiguous actual native package consumer link")
-        native, inputs, live = link(files, argv_rows[0], architecture)
-        require(aggregate["output"] in inputs and aggregate["output"] in live,
+        required = wrapper["link"]["output"] if wrapper else aggregate["output"]
+        native, inputs, live = link(files, argv_rows[0], architecture, required={required})
+        require(required in inputs and required in live,
                 "Package aggregate has no positive selected native link contribution")
-        links.append({"targetID": ident, "link": native})
-    return {**spec, "indexStore": str(store), "files": files.finish(),
+        links.append({"targetID": ident, "link": native, "packageInput": required})
+    result = {**spec, "indexStore": str(store), "files": files.finish(), "aggregateCandidateFileLists": aggregate_lists,
             "compilations": [compilations[s] for s in sorted(compilations)],
             "records": sorted(records, key=lambda r: (r["source"], r["unit"], r["record"])),
             "aggregate": aggregate, "links": links}
+    if wrapper:
+        result["dynamicProduct"] = wrapper
+    return result

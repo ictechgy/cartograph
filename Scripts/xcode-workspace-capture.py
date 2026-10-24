@@ -21,11 +21,37 @@ def canonical_settings(rows):
     return result
 
 
+def aggregate_packages(project_specs, scope):
+    """Deduplicate physical packages while retaining every project-specific declaration and consumer."""
+    result = {}
+    declarations = 0
+    for project, spec in project_specs:
+        core = {k: v for k, v in spec.items() if k not in ("referenceID", "productReferenceID", "consumers")}
+        path = spec["path"]
+        if path not in result:
+            result[path] = {**core, "declarations": []}
+        scope.require({k: v for k, v in result[path].items() if k != "declarations"} == core,
+                      "Shared package declarations disagree on manifest, module or complete subtree")
+        declaration = {"project": project, "referenceID": spec["referenceID"], "productReferenceID": spec["productReferenceID"],
+                       "consumers": [project + "::" + x for x in spec["consumers"]]}
+        scope.require(not any(x["project"] == project for x in result[path]["declarations"]), "Duplicate package path in one project")
+        result[path]["declarations"].append(declaration)
+        declarations += 1
+    scope.require(len(result) <= 16 and declarations <= 256, "Workspace package/declaration budget exceeded")
+    for key in ("name", "product", "module"):
+        scope.require(len({spec[key] for spec in result.values()}) == len(result), "Distinct workspace packages have duplicate " + key + " identities")
+    for spec in result.values():
+        spec["declarations"].sort(key=lambda x: x["project"])
+        first = spec["declarations"][0]
+        spec.update({"referenceID": first["referenceID"], "productReferenceID": first["productReferenceID"],
+                     "consumers": sorted({c for d in spec["declarations"] for c in d["consumers"]})})
+    return [result[key] for key in sorted(result)]
+
+
 def scheme(root, workspace, projects, name, test_plan, scope):
     path = workspace + "/xcshareddata/xcschemes/" + name + ".xcscheme"
     data = scope.bounded(root / path, 1024 * 1024)
-    scope.require(b"<!DOCTYPE" not in data.upper() and b"<!ENTITY" not in data.upper(), "Scheme XML entities are unsupported")
-    xml = ET.fromstring(data)
+    xml = scope.package_helper("xcode-workspace-inputs").xml(data)
     scope.require(not any(list(xml.iter(n)) for n in (
         "ExecutionAction", "SkippedTests", "SelectedTests", "EnvironmentVariable", "CommandLineArgument")),
         "Scheme actions, runtime options or partial selections are unsupported")
@@ -77,7 +103,6 @@ def capture(args, scope):
     raw, sanitized, package_specs = {}, {}, []
     inputs = scope.package_helper("xcode-local-package-inputs")
     for index, path in enumerate(projects):
-        project_root = root / Path(path).parent
         scope.require((root / path).resolve() == root / path, "Workspace project path is symlinked or noncanonical")
         data = scope.run(["plutil", "-convert", "json", "-o", "-", str(root / path / "project.pbxproj")],
                          root, output, "project-" + str(index), args.timeout)
@@ -85,9 +110,9 @@ def capture(args, scope):
         sanitized[path] = raw[path]
         main = raw[path].get("objects", {}).get(raw[path].get("rootObject"), {})
         if main.get("packageReferences") and args.local_package:
-            spec, sanitized[path] = inputs.project(project_root, raw[path])
-            package_specs.append((path, spec))
-    scope.require(len(package_specs) <= 16, "Workspace local package count exceeds 16")
+            specs, sanitized[path] = inputs.workspace_project(root, path, raw[path])
+            package_specs += [(path, spec) for spec in specs]
+    initial_packages = aggregate_packages(package_specs, scope)
     merged = helper.merge(sanitized)
     targets = scope.membership(merged)
     # No duplicate target name can be represented unambiguously by Xcode's -only-testing syntax.
@@ -122,8 +147,11 @@ def capture(args, scope):
             settings += rows
         scope.require(len(rows) == 1 and rows[0]["buildSettings"].get("PRODUCT_MODULE_NAME"), "Ambiguous workspace compiler module")
         target["module"] = rows[0]["buildSettings"]["PRODUCT_MODULE_NAME"]
-    module_names = [t["module"] for t in targets.values()] + [s["module"] for _, s in package_specs]
+    module_names = [t["module"] for t in targets.values()] + [s["module"] for s in initial_packages]
     scope.require(len(set(module_names)) == len(module_names), "Workspace compiler module names must be unique")
+    scope.require(len({s["name"] for s in initial_packages}) == len(initial_packages)
+                  and len({s["product"] for s in initial_packages}) == len(initial_packages),
+                  "Distinct workspace packages require unique package/product identities")
     build_log = scope.run(common + ["build-for-testing"] + overrides, root, output, "build-for-testing", args.timeout, 32 * 1024 * 1024)
     products_root = derived / "Build/Products"
     runs = list(products_root.glob("*.xctestrun"))
@@ -136,18 +164,17 @@ def capture(args, scope):
     proof = scope.package_helper("xcode-local-package-evidence")
     def package_proofs(current_snapshot):
         result = []
-        for path, original in package_specs:
-            prefix = Path(path).parent.as_posix()
-            prefix = "" if prefix == "." else prefix
-            current, _ = inputs.project(root / Path(path).parent, raw[path])
-            current = inputs.captured_spec(original, current)
-            current["path"] = "/".join(x for x in (prefix, current["path"]) if x)
-            current["consumers"] = [path + "::" + x for x in current["consumers"]]
+        current_specs = []
+        for path in sorted({path for path, _ in package_specs}):
+            specs, _ = inputs.workspace_project(root, path, raw[path])
+            for current in specs:
+                original = next(s for p, s in package_specs if p == path and s["referenceID"] == current["referenceID"])
+                current_specs.append((path, inputs.captured_spec(original, current)))
+        for current in aggregate_packages(current_specs, scope):
             scope.require(not any(p.startswith(current["path"] + "/") for t in targets.values() for p in t["sources"]),
                           "Package sources cannot also belong to workspace native targets")
             item = proof.assemble(current, root, derived, stores[0], build_log.decode("utf-8"), current_snapshot,
                                   targets, settings, selected, arch)
-            item["project"] = path
             result.append(item)
         return result
     packages = package_proofs(snapshot)

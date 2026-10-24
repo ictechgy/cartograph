@@ -422,6 +422,27 @@ struct XcodeTargetScopeTests {
         #expect(result.limitations.first?.contains("credential-like") == true)
     }
 
+    @Test("제품 밖 alias나 dot 경로는 실제 제품을 가리켜도 xctestrun 신원으로 허용하지 않는다",
+          arguments: ["dependency-alias", "bundle-alias", "dependency-dot", "bundle-dot"])
+    func rejectsRawProductAliases(kind: String) throws {
+        var fixture = try fixture()
+        let productRoot = (fixture.receipt["testRunPath"] as! NSString).deletingLastPathComponent
+        var actual = productRoot + "/Debug/CoreKit.framework"
+        var alias = "/outside/product-alias"
+        try rewriteTestRun(&fixture) { rows in
+            if kind.hasPrefix("bundle") {
+                actual = (rows[0]["TestBundlePath"] as! String).replacingOccurrences(of: "__TESTROOT__", with: productRoot)
+            }
+            if kind.hasSuffix("dot") { alias = actual.replacingOccurrences(of: "/Debug/", with: "/Debug/../Debug/") }
+            if kind.hasPrefix("dependency") { rows[0]["DependentProductPaths"] = [alias] }
+            else { rows[0]["TestBundlePath"] = alias }
+        }
+        let fs = FrameworkRedirectFileSystem(base: fixture.fs, from: alias, to: actual)
+        #expect(throws: (any Error).self) {
+            try XcodeTargetScopeStore(fileSystem: fs).read(path: "/p/scope.json", root: "/p", fingerprint: fixture.fingerprint)
+        }
+    }
+
 }
 
 /// SDK link의 realpath 변화만 주입한다. 일반 파일 내용은 원래 fixture에서 읽는다.

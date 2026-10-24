@@ -218,6 +218,31 @@ struct XcodeProjectMembership {
     }
 }
 
+/// UTF-8만 해석하여 UTF-16/32에 숨은 DTD와 entity를 원문 검사에서 놓치지 않는다.
+enum XcodeXMLInput {
+    static func text(_ data: Data) throws -> String {
+        guard data.count <= 1_024 * 1_024, let text = String(data: data, encoding: .utf8), !text.contains("\0") else {
+            throw XcodeProjectMembership.invalid("Only bounded NUL-free UTF-8 XML is supported.")
+        }
+        let upper = text.uppercased()
+        guard !upper.contains("<!DOCTYPE"), !upper.contains("<!ENTITY") else {
+            throw XcodeProjectMembership.invalid("XML DTD/entities are unsupported.")
+        }
+        let body = text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("<?xml"), let end = trimmed.range(of: "?>") {
+            let header = String(trimmed[..<end.lowerBound])
+            let pattern = try NSRegularExpression(pattern: #"(?i)\bencoding\s*=\s*(['"])(.*?)\1"#)
+            for match in pattern.matches(in: header, range: NSRange(header.startIndex..., in: header)) {
+                guard let range = Range(match.range(at: 2), in: header), header[range].uppercased() == "UTF-8" else {
+                    throw XcodeProjectMembership.invalid("Only declared UTF-8 XML is supported.")
+                }
+            }
+        }
+        return text
+    }
+}
+
 /// 외부 XML entity와 부분 테스트 선택을 실행하지 않고 명시 scheme 신원만 읽는다.
 final class XcodeSchemeMembership: NSObject, XMLParserDelegate {
     var targets: Set<String> = []
@@ -229,10 +254,7 @@ final class XcodeSchemeMembership: NSObject, XMLParserDelegate {
     private var projects: Set<String>? = nil
 
     static func read(_ data: Data, project: String, projects: [String]? = nil) throws -> XcodeSchemeMembership {
-        let text = String(decoding: data, as: UTF8.self).uppercased()
-        guard !text.contains("<!DOCTYPE"), !text.contains("<!ENTITY") else {
-            throw XcodeProjectMembership.invalid("XML entities are unsupported.")
-        }
+        _ = try XcodeXMLInput.text(data)
         let collector = XcodeSchemeMembership()
         collector.project = project
         collector.projects = projects.map(Set.init)

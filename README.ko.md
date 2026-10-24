@@ -2116,8 +2116,9 @@ universal archive를 검증했으며, [tap 갱신](https://github.com/ictechgy/h
 ## Workspace와 로컬 패키지의 인덱스 범위
 
 명시적 macOS Swift workspace는 [v3 캡처](docs/XCODE-AFFECTED-SCOPE.md#explicit-multi-project-workspace-receipt-v3)로
-최대 32개 프로젝트와 16개 유한 로컬 패키지(프로젝트당 하나), 프로젝트 간 target/product 신원과 실제
-compiler/record/link 증거를 대조합니다. `Scripts/cartograph-xcode-scope.py --workspace Example.xcworkspace`로
+최대 32개 프로젝트와 16개 유한 로컬 패키지, 프로젝트 간 target/product 신원과 실제
+compiler/record/link 증거를 대조합니다. workspace 루트 안의 공유 패키지와 프로젝트당 여러 패키지
+의존성도 증거를 연결합니다. `Scripts/cartograph-xcode-scope.py --workspace Example.xcworkspace`로
 캡처하고 같은 `--target-scope`와 index 경로를 사용하세요. 원래 제외 경로 경고와 불명확한 범위의
 선택 거부를 유지하며, 재현하지 않은 사내 workspace나 iOS/UI 테스트 전체 지원을 주장하지 않습니다.
 

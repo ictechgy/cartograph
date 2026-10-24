@@ -71,7 +71,7 @@ struct XcodeTargetScopeStore {
         let receipt = try JSONDecoder().decode(Receipt.self, from: bytes)
         guard receipt.format == "cartograph-xcode-target-scope",
               (receipt.version == 1 && receipt.localPackage == nil && receipt.workspace == nil && receipt.projects == nil && receipt.localPackages == nil)
-                || (receipt.version == 2 && receipt.localPackage != nil && receipt.workspace == nil && receipt.projects == nil && receipt.localPackages == nil && receipt.localPackage?.project == nil)
+                || (receipt.version == 2 && receipt.localPackage != nil && receipt.workspace == nil && receipt.projects == nil && receipt.localPackages == nil && receipt.localPackage?.project == nil && receipt.localPackage?.declarations == nil)
                 || (receipt.version == 3 && receipt.localPackage == nil && receipt.workspace != nil && receipt.projects != nil && receipt.localPackages != nil),
               receipt.projectRoot == root, receipt.inputFingerprint == fingerprint,
               receipt.buildExitCode == 0, receipt.before == receipt.after,
@@ -165,7 +165,9 @@ struct XcodeTargetScopeStore {
         try validateProducts(receipt, root: productRoot)
         func validateLocalPackage() throws {
             guard Set(receipt.packages.map(\.module)).count == receipt.packages.count,
-                  Set(receipt.packages.map(\.path)).count == receipt.packages.count else {
+                  Set(receipt.packages.map(\.path)).count == receipt.packages.count,
+                  Set(receipt.packages.map(\.name)).count == receipt.packages.count,
+                  Set(receipt.packages.map(\.product)).count == receipt.packages.count else {
                 throw invalid("Workspace package module/path identities are ambiguous.")
             }
             for package in receipt.packages {
@@ -188,8 +190,13 @@ struct XcodeTargetScopeStore {
         }
         try validateLocalPackage()
         let testRun = try bounded(receipt.testRunPath, maximum: 8 * 1_024 * 1_024)
-        let closureProducts = try validateClosureProducts(closure.compactMap { byID[$0]?.name }, settings: settings,
+        var closureProducts = try validateClosureProducts(closure.compactMap { byID[$0]?.name }, settings: settings,
             receipt: receipt, productRoot: productRoot)
+        for package in receipt.packages {
+            if let wrapper = package.dynamicProduct, package.links.contains(where: {
+                closure.contains($0.targetID) && $0.packageInput == wrapper.link.output
+            }) { closureProducts.insert(wrapper.bundle) }
+        }
         let bundles = try validateTestRun(testRun, selected: selected.compactMap { byID[$0]?.name },
             settings: settings, productRoot: productRoot, closureProducts: closureProducts, testHosts: receipt.testHosts)
         var selectorTargets: [String: String] = [:], testBundles: [String: String] = [:]
@@ -290,8 +297,7 @@ struct XcodeTargetScopeStore {
             if let rawDependencies = row["DependentProductPaths"] {
                 guard let dependencies = rawDependencies as? [String], dependencies.count <= 1_000,
                       dependencies.allSatisfy({ value in
-                          let path = value.replacingOccurrences(of: "__TESTROOT__", with: productRoot)
-                          return (try? fileSystem.realPath(at: path)).map(closureProducts.contains) == true
+                          (try? capturedProductPath(value, root: productRoot)).map(closureProducts.contains) == true
                       }) else {
                     throw invalid("Test-run dependency products are outside the verified target closure.")
                 }
@@ -314,7 +320,7 @@ struct XcodeTargetScopeStore {
                 observedHosts.insert(expected)
             }
             let declared = row["TestBundlePath"] as! String
-            let resolved = try fileSystem.realPath(at: declared.replacingOccurrences(of: "__TESTROOT__", with: productRoot))
+            let resolved = try capturedProductPath(declared, root: productRoot)
             guard resolved == directory + "/" + product,
                   fileSystem.fileExists(at: directory + "/" + executable),
                   try fileSystem.realPath(at: directory + "/" + executable) == directory + "/" + executable else {
@@ -324,6 +330,18 @@ struct XcodeTargetScopeStore {
         }
         guard observedHosts == Set(testHosts.keys) else { throw invalid("Unexpected captured test host inputs.") }
         return bundles
+    }
+
+    /// capture 밖 alias나 dot 경로는 제품을 가리켜도 신원이 아니다. 실제 macOS 임시 별칭만 허용한다.
+    private func capturedProductPath(_ raw: String, root: String) throws -> String {
+        let expanded = raw.replacingOccurrences(of: "__TESTROOT__", with: root)
+        let path = XcodeEvidencePath.physicalTemporaryAlias(expanded, fileSystem: fileSystem)
+        guard path.hasPrefix(root + "/"), path.utf8.count <= 4_096,
+              !path.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains),
+              try fileSystem.realPath(at: path) == path else {
+            throw invalid("Test-run product path is not a canonical captured identity: " + String(reflecting: raw))
+        }
+        return path
     }
 
     /// SDKROOT 이름만으로 외부 파일을 신뢰하지 않는다. 선언·실제 경계·기여 바이트를 함께 대조한다.

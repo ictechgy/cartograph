@@ -100,9 +100,16 @@ struct XcodeWorkspaceScopeTests {
             try fixture.fs.write(PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0), to: path)
         case "wrong-settings-project", "duplicate-module":
             var settings = try JSONSerialization.jsonObject(with: Data((fixture.receipt["buildSettingsJSON"] as! String).utf8)) as! [[String: Any]]
-            var values = settings[0]["buildSettings"] as! [String: String]
+            let index = kind == "duplicate-module" ? settings.firstIndex { $0["target"] as? String == "CoreBlueprint" }! : 0
+            var values = settings[index]["buildSettings"] as! [String: String]
             values[kind == "duplicate-module" ? "PRODUCT_MODULE_NAME" : "PROJECT_FILE_PATH"] = kind == "duplicate-module" ? "ChecksModule" : "/p/Other.xcodeproj"
-            settings[0]["buildSettings"] = values
+            settings[index]["buildSettings"] = values
+            if kind == "duplicate-module" {
+                var targets = fixture.receipt["targets"] as! [[String: Any]]
+                let core = targets.firstIndex { $0["name"] as? String == "CoreBlueprint" }!
+                targets[core]["module"] = "ChecksModule"
+                fixture.receipt["targets"] = targets
+            }
             fixture.receipt["buildSettingsJSON"] = String(decoding: try JSONSerialization.data(withJSONObject: settings), as: UTF8.self)
         case "nested-file-ref":
             try fixture.fs.write(Data("<Workspace><FileRef location=\"group:App.xcodeproj\"><FileRef location=\"group:Core.xcodeproj\"/></FileRef></Workspace>".utf8), to: "/p/Scope.xcworkspace/contents.xcworkspacedata")

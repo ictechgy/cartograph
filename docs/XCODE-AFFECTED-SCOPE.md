@@ -127,6 +127,9 @@ inside the physical project root, with at most 32 projects, 256 entries and grou
 External/absolute paths, nested workspaces, missing projects and XML entities refuse before
 `xcodebuild`. Project PBX group depth remains 128; the combined object/target budgets are
 50,000/1,000. Project directory/source-root overrides and arbitrary build scripts remain unsupported.
+Workspace and scheme XML must be UTF-8 (an explicit UTF-8 declaration is allowed), without
+NUL bytes, DTDs or entity declarations. Other encodings, including UTF-16 XML, refuse
+before building instead of bypassing the same declaration policy.
 
 PBX IDs are namespaced by `project/path.xcodeproj::ID`. Explicit project references and
 target/product proxies must identify a listed project's actual native target and its
@@ -135,13 +138,38 @@ Compiler modules and target selector names must be unique across the workspace: 
 selector name cannot be safely expressed by `-only-testing:`. Product filenames, compiler
 modules and `.xctestrun` BlueprintName identities remain separate. No name-only fallback is used.
 
-`--local-package` admits up to 16 finite local packages, at most one per project, with the
-literal manifest and full subtree/compiler/record/live-link proof described below. The
-package paths remain project-contained and the modules must be distinct. Every package
+`--local-package` admits up to 16 unique finite local packages, up to 16 references in each
+project and 256 project/package declarations overall, with the literal manifest and full
+subtree/compiler/record/live-link proof described below. Several projects may consume the
+same physical package, and one target may consume several distinct packages. Relative PBX
+references such as `../Packages/Common` are allowed when resolved from the project's parent
+inside the workspace root. Every lexical `..` step must remain inside that root, and the
+final path must be canonical: external paths, symlinks, duplicate physical packages in one
+project, or duplicate package/product/module names refuse. The package may be outside the
+referencing project's directory; it must remain inside the captured workspace root. Every package
 needs a positive native consumer inside the selected TestAction closure. A compiled or
 merely built package outside that closure cannot silently become an excluded dependency.
 Multiple products/targets per package, remote dependencies, plugins, macros, binary targets,
 resources and computed manifests remain outside this proof contract.
+
+Each package's `declarations` binds its project-qualified PBX package/product references to
+the exact framework-phase consumers. The consumer rereads every declaration, verifies the
+complete per-project product sets, and compares their union with the package's consumer/link
+set. Shared sources, compiler records and aggregate proof are bound once per physical package.
+Older v3 receipts with one `project` field still decode; new shared/multiple declarations
+require the updated consumer. An older v3 consumer refuses the new declaration shape.
+
+For Xcode's synthesized dynamic package product, the verified chain may be source object →
+relocatable aggregate → package framework → native executable. The intermediate product must
+have exactly the aggregate as its explicit object input, positive live link-map ownership,
+captured executable/Info.plist bytes, matching `CFBundleExecutable`/`FMWK` metadata and the
+observed `@rpath` install name in its standard framework layout. Each native consumer must
+both name that product in its actual linker operands and have a positive live owner for it.
+The optional product bundle enters the `.xctestrun` dependency closure only through a
+proved native consumer in the selected closure. Merely finding a framework under Products
+does not admit it. Native/package deployment minimums need not match; the package compiler
+and aggregate target triples must agree. This supports that bounded macOS link shape;
+iOS app-host/debug-dylib chains remain unsupported by this implementation.
 
 v3 inventories allow 20,000 input files / 128 MiB total (4 MiB per file), giving source
 and configuration headroom beyond 10,000 sources. The 50,000-entry walk and 8 MiB receipt
@@ -156,15 +184,20 @@ continue to block selection when they overlap or cannot be classified against th
 Build-settings command stdout is retained verbatim. Receipt path operands use physical
 filesystem identities. The consumer only admits macOS `/tmp`/`/var/folders` aliases when
 realpath proves the exact `/private` form; arbitrary `/private/project` prefixes and
-individual file symlinks are not assumed equivalent. Rebuild and recapture when membership
+individual file symlinks are not assumed equivalent. The same rule applies to each raw
+`.xctestrun` bundle/dependency operand: an outside symlink to a valid product or a dot-segment
+alias refuses even when generic realpath would reach the product. Rebuild and recapture when membership
 or artifacts change. v1/v2 decoding remains supported; older consumers refuse v3.
 Consumers must preserve the workspace identity and use the captured `.xctestrun`; inferring
 an execution context from the first project field alone is unsupported.
 
-The native regression constructs a public two-project framework dependency workspace, also
-with two local packages in different projects. It compares baseline refusal with verified
-selectors and executes the selected captured XCTest bundle, then checks malformed identities
-and changed workspace/project/scheme/product bytes. It is not a reproduction of the private
+The native regression constructs a public two-project framework dependency workspace with
+two workspace-level packages: both projects consume one shared package and a target in one
+project consumes both packages. It checks both affected test targets for a shared-package
+change, compares baseline refusal with verified selectors and executes one selected captured
+XCTest. CLI/MCP, actual temporary aliases, outside aliases, encoded XML, malformed identities,
+intermediate product metadata and changed workspace/project/scheme/product bytes have
+positive or refusal controls. It is not a reproduction of the private
 22-project workspace, a platform matrix, or a general precision claim.
 
 ## Finite local package opt-in (receipt v2)
@@ -228,6 +261,10 @@ I/O; v1 and ordinary warm-query costs remain separate. Failures invalidate MCP r
 Additional v2 limits: 4,096 package entries, depth 128, 256 Swift sources/records, 64 KiB
 manifest, 1,024 proof files, 1,000 tokens per observed command. Documents are limited to
 8 MiB each / 32 MiB total, objects 64 MiB each / 256 MiB total, records 16 MiB each /
-64 MiB total. Nested response files and incomplete link-map parsing refuse proof.
+64 MiB total. All candidate aggregate/intermediate file lists, including nonselected
+candidates, share the same document/file accounting. They are read through a bounded
+nonblocking descriptor that must be a regular file; FIFOs and changed file roles refuse.
+There are at most 256 candidate file lists/build command rows and 256 inputs per file list.
+Nested response files and incomplete link-map parsing refuse proof.
 These are review candidates from the exact captured build, not runtime coverage or
 permission to skip the rest of a test suite.

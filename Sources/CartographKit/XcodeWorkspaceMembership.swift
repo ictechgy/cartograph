@@ -9,9 +9,12 @@ struct XcodeWorkspaceMembership {
          packages: [XcodeLocalPackageEvidence], fileSystem: any FileSystem) throws {
         let data = try Self.read(root + "/" + workspace + "/contents.xcworkspacedata", fileSystem: fileSystem)
         let paths = try WorkspaceXML.read(data)
-        guard paths == expected, paths.count <= 32, packages.count <= 16,
-              Set(packages.compactMap(\.project)).count == packages.count else {
-            throw Self.invalid("Workspace projects or local package project identities are duplicated or changed.")
+        let bindings = try Self.bindings(packages)
+        guard paths == expected, paths.count <= 32, packages.count <= 16, bindings.count <= 256,
+              Set(packages.map(\.path)).count == packages.count, Set(packages.map(\.module)).count == packages.count,
+              Set(packages.map(\.name)).count == packages.count, Set(packages.map(\.product)).count == packages.count,
+              bindings.allSatisfy({ paths.contains($0.declaration.project) }) else {
+            throw Self.invalid("Workspace projects or local package declaration identities are duplicated or changed.")
         }
         var plists: [String: [String: Any]] = [:]
         var consumers: Set<String> = []
@@ -20,15 +23,13 @@ struct XcodeWorkspaceMembership {
             guard var plist = try PropertyListSerialization.propertyList(from: bytes, format: nil) as? [String: Any] else {
                 throw Self.invalid("Invalid workspace project metadata.")
             }
-            if let package = packages.first(where: { $0.project == path }) {
-                let result = try Self.removePackage(package, plist: plist, project: path)
+            let own = bindings.filter { $0.declaration.project == path }
+            if !own.isEmpty {
+                let result = try Self.removePackages(own, plist: plist, project: path, root: root, fileSystem: fileSystem)
                 plist = result.0
                 consumers.formUnion(result.1)
             }
             plists[path] = plist
-        }
-        guard packages.allSatisfy({ $0.project.map(paths.contains) == true }) else {
-            throw Self.invalid("A local package belongs to a project outside this workspace.")
         }
         let merged = try Self.merge(plists)
         let bytes = try PropertyListSerialization.data(fromPropertyList: merged, format: .binary, options: 0)
@@ -41,62 +42,135 @@ struct XcodeWorkspaceMembership {
         return try XcodeLocalPackageIO.bounded(path, maximum: 4 * 1_024 * 1_024, fileSystem: fileSystem)
     }
 
-    private static func removePackage(_ package: XcodeLocalPackageEvidence, plist: [String: Any],
-                                      project path: String) throws -> ([String: Any], Set<String>) {
+    private struct Binding {
+        let package: XcodeLocalPackageEvidence
+        let declaration: XcodeLocalPackageEvidence.ProjectDeclaration
+    }
+
+    private static func bindings(_ packages: [XcodeLocalPackageEvidence]) throws -> [Binding] {
+        var result: [Binding] = []
+        for package in packages {
+            let declarations: [XcodeLocalPackageEvidence.ProjectDeclaration]
+            if let current = package.declarations {
+                guard package.project == nil else { throw invalid("Mixed workspace package declaration formats.") }
+                declarations = current
+            } else if let project = package.project {
+                // a214 v3 captures retain their single-project package identity.
+                declarations = [.init(project: project, referenceID: package.referenceID,
+                    productReferenceID: package.productReferenceID, consumers: package.consumers)]
+            } else { throw invalid("Missing workspace package declaration identities.") }
+            let consumers = declarations.flatMap(\.consumers)
+            guard (1...32).contains(declarations.count), Set(declarations.map(\.project)).count == declarations.count,
+                  declarations.first?.referenceID == package.referenceID,
+                  declarations.first?.productReferenceID == package.productReferenceID,
+                  !consumers.isEmpty, consumers.count <= 1_000, Set(consumers).count == consumers.count,
+                  consumers.count == package.consumers.count, Set(consumers) == Set(package.consumers),
+                  declarations.allSatisfy({ declaration in
+                      XcodeProjectMembership.relative(declaration.project) && declaration.project.hasSuffix(".xcodeproj")
+                          && declaration.referenceID != declaration.productReferenceID && !declaration.consumers.isEmpty
+                          && declaration.consumers.allSatisfy { $0.hasPrefix(declaration.project + "::") }
+                  }) else { throw invalid("Workspace package declarations and native consumers are not exact.") }
+            result += declarations.map { Binding(package: package, declaration: $0) }
+        }
+        return result
+    }
+
+    /// ..은 workspace 안에서만 정규화한다. 임의 외부 root나 filesystem 별칭을 같은 package로 추측하지 않는다.
+    private static func packagePath(project: String, reference: String) throws -> String {
+        guard !reference.isEmpty, reference.utf8.count <= 4_096, !reference.hasPrefix("/"),
+              !reference.contains("\\"), !reference.contains(":"), !reference.contains("$"),
+              reference.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else {
+            throw invalid("Workspace package path must be a literal relative path.")
+        }
+        var components = (project as NSString).deletingLastPathComponent.split(separator: "/").map(String.init)
+        for part in reference.split(separator: "/", omittingEmptySubsequences: false) {
+            guard !part.isEmpty else { throw invalid("Empty workspace package path component.") }
+            if part == ".." {
+                guard !components.isEmpty else { throw invalid("Package path escapes the workspace root.") }
+                components.removeLast()
+            } else if part != "." { components.append(String(part)) }
+            guard components.count <= 128 else { throw invalid("Workspace package path depth budget exceeded.") }
+        }
+        guard !components.isEmpty else { throw invalid("The workspace root is not a package subtree.") }
+        return components.joined(separator: "/")
+    }
+
+    private static func removePackages(_ bindings: [Binding], plist: [String: Any], project path: String,
+                                       root: String, fileSystem: any FileSystem) throws -> ([String: Any], Set<String>) {
         guard var objects = plist["objects"] as? [String: [String: Any]], let rootID = plist["rootObject"] as? String,
-              var main = objects[rootID], main["packageReferences"] as? [String] == [package.referenceID],
-              let reference = objects[package.referenceID], Set(reference.keys) == ["isa", "relativePath"],
-              reference["isa"] as? String == "XCLocalSwiftPackageReference",
-              let relative = reference["relativePath"] as? String, XcodeProjectMembership.relative(relative),
-              let product = objects[package.productReferenceID], Set(product.keys) == ["isa", "package", "productName"],
-              product["isa"] as? String == "XCSwiftPackageProductDependency",
-              product["package"] as? String == package.referenceID,
-              product["productName"] as? String == package.product else {
-            throw invalid("Workspace local package declaration differs from its captured product.")
+              var main = objects[rootID], let references = main["packageReferences"] as? [String],
+              references.count == bindings.count, Set(references).count == references.count,
+              Set(references) == Set(bindings.map { $0.declaration.referenceID }), bindings.count <= 16 else {
+            throw invalid("Workspace project package references differ from their captured declarations.")
         }
-        let parent = (path as NSString).deletingLastPathComponent
-        guard [parent, relative].filter({ !$0.isEmpty }).joined(separator: "/") == package.path else {
-            throw invalid("Workspace local package path differs from its project-relative declaration.")
+        var products: [String: Binding] = [:]
+        var allowed: Set<String> = []
+        for binding in bindings {
+            let package = binding.package, declaration = binding.declaration
+            guard allowed.insert(declaration.referenceID).inserted, allowed.insert(declaration.productReferenceID).inserted,
+                  let reference = objects[declaration.referenceID], Set(reference.keys) == ["isa", "relativePath"],
+                  reference["isa"] as? String == "XCLocalSwiftPackageReference",
+                  let relative = reference["relativePath"] as? String,
+                  try packagePath(project: path, reference: relative) == package.path,
+                  try fileSystem.realPath(at: root + "/" + package.path) == root + "/" + package.path,
+                  let product = objects[declaration.productReferenceID], Set(product.keys) == ["isa", "package", "productName"],
+                  product["isa"] as? String == "XCSwiftPackageProductDependency",
+                  product["package"] as? String == declaration.referenceID,
+                  product["productName"] as? String == package.product else {
+                throw invalid("Workspace package path/product differs from its original project declaration.")
+            }
+            products[declaration.productReferenceID] = binding
         }
-        var consumers: Set<String> = [], links: Set<String> = []
+        guard objects.allSatisfy({ id, value in
+            !(value["isa"] as? String ?? "").contains("Package") || allowed.contains(id)
+        }) else { throw invalid("Additional or remote package objects are unsupported.") }
+        var consumers: [String: Set<String>] = [:], links: Set<String> = []
         for id in main["targets"] as? [String] ?? [] {
-            guard var target = objects[id] else { throw invalid("Missing workspace native target.") }
+            guard let target = objects[id], target["packageProductDependencies"] == nil || target["packageProductDependencies"] is [String] else {
+                throw invalid("Missing workspace native target or malformed package dependencies.")
+            }
             let uses = target["packageProductDependencies"] as? [String] ?? []
-            guard uses.isEmpty || uses == [package.productReferenceID] else { throw invalid("Unsupported package dependency.") }
-            var targetLinks: [String] = []
+            guard Set(uses).count == uses.count, Set(uses).isSubset(of: Set(products.keys)) else {
+                throw invalid("Unknown or duplicate workspace package dependency.")
+            }
+            var targetProducts: Set<String> = []
             for phaseID in target["buildPhases"] as? [String] ?? [] {
-                guard var phase = objects[phaseID] else { throw invalid("Missing native build phase.") }
+                guard let phase = objects[phaseID], phase["files"] == nil || phase["files"] is [String] else {
+                    throw invalid("Missing native build phase or malformed file membership.")
+                }
                 let files = phase["files"] as? [String] ?? []
                 for fileID in files {
                     guard let file = objects[fileID] else { throw invalid("Missing native build file.") }
                     if file["productRef"] != nil {
                         guard phase["isa"] as? String == "PBXFrameworksBuildPhase", Set(file.keys) == ["isa", "productRef"],
-                              file["isa"] as? String == "PBXBuildFile", file["productRef"] as? String == package.productReferenceID,
-                              links.insert(fileID).inserted else { throw invalid("Ambiguous workspace package link.") }
-                        targetLinks.append(fileID)
+                              file["isa"] as? String == "PBXBuildFile", let product = file["productRef"] as? String,
+                              products[product] != nil, targetProducts.insert(product).inserted, links.insert(fileID).inserted else {
+                            throw invalid("Ambiguous, shared or unknown workspace package link.")
+                        }
                     }
                 }
-                phase["files"] = files.filter { !targetLinks.contains($0) }
-                objects[phaseID] = phase
             }
-            guard uses.isEmpty == targetLinks.isEmpty, targetLinks.count <= 1 else {
-                throw invalid("Workspace package declaration and native link disagree.")
-            }
-            if !uses.isEmpty { consumers.insert(path + "::" + id) }
-            target["packageProductDependencies"] = []
-            objects[id] = target
+            guard Set(uses) == targetProducts else { throw invalid("Workspace package dependencies and native framework links disagree.") }
+            for product in uses { consumers[product, default: []].insert(path + "::" + id) }
         }
-        guard !consumers.isEmpty, consumers == Set(package.consumers), package.consumers.count == consumers.count,
-              Set(objects.filter { $0.value["productRef"] != nil }.keys) == links,
-              objects.allSatisfy({ id, value in
-                  !(value["isa"] as? String ?? "").contains("SwiftPackage") || [package.referenceID, package.productReferenceID].contains(id)
-              }) else { throw invalid("Workspace package consumers or product objects are not exact.") }
-        for id in links.union([package.referenceID, package.productReferenceID]) { objects.removeValue(forKey: id) }
+        guard Set(objects.filter { $0.value["productRef"] != nil }.keys) == links,
+              products.allSatisfy({ id, binding in
+                  let actual = consumers[id] ?? []
+                  return !actual.isEmpty && actual == Set(binding.declaration.consumers)
+              }) else { throw invalid("Workspace package product files or consumer identities are not exact.") }
+        for id in main["targets"] as? [String] ?? [] {
+            objects[id]?["packageProductDependencies"] = []
+            for phaseID in objects[id]?["buildPhases"] as? [String] ?? [] {
+                let files = objects[phaseID]?["files"] as? [String] ?? []
+                objects[phaseID]?["files"] = files.filter { !links.contains($0) }
+            }
+        }
+        for id in allowed.union(links) { objects.removeValue(forKey: id) }
         main["packageReferences"] = []
         objects[rootID] = main
         var result = plist
         result["objects"] = objects
-        return (result, consumers)
+        return (result, Set(consumers.values.flatMap { $0 }))
     }
 
     private static let referenceKeys: Set<String> = ["children", "files", "buildPhases", "dependencies", "targets",
@@ -219,8 +293,7 @@ private final class WorkspaceXML: NSObject, XMLParserDelegate {
     var nodes: [String] = []
 
     static func read(_ data: Data) throws -> [String] {
-        let text = String(decoding: data, as: UTF8.self).uppercased()
-        guard data.count <= 1_024 * 1_024, !text.contains("<!DOCTYPE"), !text.contains("<!ENTITY") else { throw XcodeProjectMembership.invalid("Workspace XML byte/entity boundary exceeded.") }
+        _ = try XcodeXMLInput.text(data)
         let delegate = WorkspaceXML(), parser = XMLParser(data: data)
         parser.shouldResolveExternalEntities = false
         parser.delegate = delegate

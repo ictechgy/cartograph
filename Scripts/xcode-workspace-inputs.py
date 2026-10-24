@@ -2,6 +2,7 @@
 """Read finite workspace containers and namespace PBX identities without executing project code."""
 import copy
 from pathlib import PurePosixPath
+import re
 import xml.etree.ElementTree as ET
 
 
@@ -20,10 +21,23 @@ def relative(value):
         p not in ("", ".", "..") for p in value.split("/"))
 
 
+def xml(data):
+    require(len(data) <= 1024 * 1024, "XML byte budget exceeded")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise WorkspaceError("Only UTF-8 XML is supported") from error
+    require("\x00" not in text, "Only NUL-free UTF-8 XML is supported")
+    header = re.match(r"^\ufeff?\s*<\?xml\b(.*?)\?>", text, re.IGNORECASE | re.DOTALL)
+    if header:
+        encodings = re.findall(r'''\bencoding\s*=\s*(['"])(.*?)\1''', header[1], re.IGNORECASE)
+        require(all(value.upper() == "UTF-8" for _, value in encodings), "Only declared UTF-8 XML is supported")
+    require("<!DOCTYPE" not in text.upper() and "<!ENTITY" not in text.upper(), "XML DTD/entities are unsupported")
+    return ET.fromstring(text)
+
+
 def projects(data):
-    require(len(data) <= 1024 * 1024 and b"<!DOCTYPE" not in data.upper() and b"<!ENTITY" not in data.upper(),
-            "Workspace XML byte/entity boundary exceeded")
-    root = ET.fromstring(data)
+    root = xml(data)
     require(root.tag == "Workspace", "Expected explicit Workspace metadata")
     result, pending, count = [], [(root, "", 0)], 0
     while pending:

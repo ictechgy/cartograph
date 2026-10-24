@@ -27,6 +27,10 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
 - Capture explicit multi-project macOS Swift workspaces in target-scope receipt v3, preserving
   project-qualified PBX identities, cross-project product/dependency proofs and finite local
   packages. Missing or ambiguous workspace evidence refuses selectors with the original warnings.
+  Packages may be shared inside the workspace root and targets may consume several distinct
+  packages; actual source/record/object/aggregate/optional-framework/native link chains remain
+  required. Candidate proof documents share regular-file byte budgets, raw test product paths
+  reject outside aliases, and UTF-8-only workspace/scheme XML keeps DTD refusal encoding-safe.
 
 - `dead --since <revision> --since-lines` optionally filters diagnostic locations to changed
   current lines, keeping the file-level default and whole-project analysis. Net merge-base-to-worktree
