@@ -56,6 +56,28 @@ def executed_tests(text):
     return {"executedTestCount": int(match[1]), "executedTestIdentities": [expected], "aggregate": lines[index + 1]}
 
 
+def verified_executed_tests(data, stem):
+    """Keep the exact test gate; expose bounded fixture events only when it refuses."""
+    text = data.decode(errors="replace")
+    try:
+        return executed_tests(text)
+    except Exception:
+        # 집계 문법을 추측해 완화하지 않는다. 원문 바이트와 제한된 이벤트로 다음 진단을 가능하게 한다.
+        events = [(index + 1, line.strip()) for index, line in enumerate(text.splitlines())
+                  if line.strip().startswith(("Test Case ", "Test Suite ", "Executed ", "** TEST "))]
+        selected = events if len(events) <= 32 else events[:16] + events[-16:]
+        report = {"status": "test-execution-gate-refused", "stdoutBytes": len(data),
+                  "stdoutSHA256": hashlib.sha256(data).hexdigest(), "eventCount": len(events),
+                  "omittedEvents": len(events) - len(selected),
+                  "events": [{"line": number, "text": line[:128], "truncated": len(line) > 128,
+                              "lineSHA256": hashlib.sha256(line.encode()).hexdigest()}
+                             for number, line in selected],
+                  "limitation": "Public fixture diagnostic only; the original test acceptance gate is unchanged."}
+        emit_bounded_observation("TEST_EXECUTION_OBSERVATION", report)
+        OBS.record_process_failure(stem)
+        raise
+
+
 def fixture_method_selection(document, selectors):
     """Require the exact observed compiler method and its blueprint selector before executing it."""
     require(isinstance(document, dict), "Fixture affected document is malformed")
@@ -500,8 +522,8 @@ def verify(binary, output):
             ROOT, output, "mcp-worker", 360, 8 * 1024 * 1024)
     executed = OBS.run(["xcodebuild", "test-without-building", "-xctestrun", receipt["testRunPath"],
                        "-destination", receipt["destination"], *selectors], project, output, "selected-test-run", 300,
-                      16 * 1024 * 1024).decode(errors="replace")
-    execution = executed_tests(executed)
+                      16 * 1024 * 1024)
+    execution = verified_executed_tests(executed, output / "selected-test-run")
     # Real prior failure: ChecksOnly builds Other, so Xcode lists OtherRunnable in
     # DependentProductPaths although it is outside TestAction. Keep this refusal.
     outside_project = output / "outside-test-action-project"

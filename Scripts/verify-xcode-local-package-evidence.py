@@ -357,6 +357,12 @@ Test Suite 'All tests' passed at 2026-10-23 16:09:36.011.
 ** TEST EXECUTE SUCCEEDED **
 """
         self.assertEqual(NATIVE.executed_tests(log)["executedTestCount"], 1)
+        with mock.patch.object(NATIVE, "emit_bounded_observation") as emit, \
+                mock.patch.object(NATIVE.OBS, "record_process_failure") as process:
+            self.assertEqual(NATIVE.verified_executed_tests(log.encode(), Path("selected-test-run")),
+                             NATIVE.executed_tests(log))
+            emit.assert_not_called()
+            process.assert_not_called()
         other = "Test Case '-[OtherModule.OtherTests testOther]' started.\nTest Case '-[OtherModule.OtherTests testOther]' passed (0.010 seconds).\n"
         bad = log.replace("Test Suite 'All tests' passed", other + "Test Suite 'All tests' passed")
         bad = bad.replace("in 0.010 (0.020) seconds", "in 0.020 (0.030) seconds").replace(
@@ -369,6 +375,47 @@ Test Suite 'All tests' passed at 2026-10-23 16:09:36.011.
                 log + "Test Case '-[OtherModule.OtherTests testOther]' started.\n"):
             with self.assertRaises(RuntimeError):
                 NATIVE.executed_tests(candidate)
+
+    def test_failed_execution_reports_bounded_events_without_changing_rejection(self):
+        # Selected tests는 현재 native 출력으로 확인되지 않았다. 진단만 남기고 기존 거부를 유지한다.
+        data = ("unrelated build text\nTest Case '-[ChecksModule.ChangedTests testChanged]' started.\n"
+                "Test Case '-[ChecksModule.ChangedTests testChanged]' passed (0.010 seconds).\n"
+                "Test Suite 'Selected tests' passed at 2026-10-23 16:09:36.011.\n"
+                " Executed 1 test, with 0 failures (0 unexpected) in 0.010 (0.020) seconds\n"
+                "** TEST EXECUTE SUCCEEDED **\n").encode()
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), mock.patch.object(NATIVE.OBS, "record_process_failure") as process:
+            with self.assertRaisesRegex(RuntimeError, "Missing or multiple terminal All tests aggregates"):
+                NATIVE.verified_executed_tests(data, Path("selected-test-run"))
+            process.assert_called_once_with(Path("selected-test-run"))
+        report = json.loads(output.getvalue().split(" ", 1)[1])
+        self.assertEqual(report["stdoutSHA256"], hashlib.sha256(data).hexdigest())
+        self.assertEqual(report["stdoutBytes"], len(data))
+        self.assertEqual(report["eventCount"], 5)
+        self.assertEqual(report["omittedEvents"], 0)
+        self.assertNotIn("unrelated build text", output.getvalue())
+        self.assertIn("Selected tests", report["events"][2]["text"])
+        self.assertEqual(report["events"][0]["line"], 2)
+        # 큰 이벤트/비 ASCII/제어 문자는 제한·JSON escape되며 마지막 집계도 진단에서 보존한다.
+        data = (("Test Suite '\x1b" + "\U0001f600" * 1000 + "' started.\n") * 80
+                + "** TEST EXECUTE SUCCEEDED **\n").encode()
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), mock.patch.object(NATIVE.OBS, "record_process_failure"):
+            with self.assertRaisesRegex(RuntimeError, "Actual test-case identity/count differs"):
+                NATIVE.verified_executed_tests(data, Path("selected-test-run"))
+        self.assertEqual(len(output.getvalue().splitlines()), 1)
+        self.assertLessEqual(len(output.getvalue().encode("ascii")), 64 * 1024 + 28)
+        self.assertNotIn("\x1b", output.getvalue())
+        report = json.loads(output.getvalue().split(" ", 1)[1])
+        self.assertEqual(report["eventCount"], 81)
+        self.assertEqual(report["omittedEvents"], 49)
+        self.assertEqual(len(report["events"]), 32)
+        self.assertTrue(report["events"][0]["truncated"])
+        self.assertEqual(report["events"][-1]["text"], "** TEST EXECUTE SUCCEEDED **")
+        with mock.patch("builtins.print", side_effect=OSError("closed")), \
+                mock.patch.object(NATIVE.OBS, "record_process_failure"):
+            with self.assertRaisesRegex(RuntimeError, "Actual test-case identity/count differs"):
+                NATIVE.verified_executed_tests(data, Path("selected-test-run"))
 
 
 class EvidenceTests(unittest.TestCase):
