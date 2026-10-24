@@ -40,22 +40,28 @@ public struct LayerViolation: Sendable, Equatable, Codable {
 public struct LayerRuleEvaluator: Sendable {
     private let layers: [LayerDefinition]
     private let rules: [LayerRule]
-    private let projectPathVariants: [String]
+    private let projectPaths: [String]
 
     public init(layers: [LayerDefinition], rules: [LayerRule]) {
-        self.layers = layers
-        self.rules = rules
-        self.projectPathVariants = []
+        self.init(layers: layers, rules: rules, projectPaths: [])
     }
 
-    /// 인덱스의 절대 경로와 프로젝트 기준 패턴을 같은 판정에 사용한다.
+    /// 명시한 루트에 대한 상대 경로 패턴을 적용한다. 파일 시스템을 읽지 않는다.
     ///
-    /// 루트를 받지 않는 기존 초기화는 유지한다. 루트를 아는 호출자는 이 형태를 써야
-    /// `Features/**` 같은 경로 패턴이 실제 컴파일러 위치에도 적용된다.
+    /// 별칭을 해석하지 않는 순수 초기화다. 실제 동등성을 확인한 별칭이 있으면
+    /// `projectPaths` 형태로 함께 전달한다.
     public init(layers: [LayerDefinition], rules: [LayerRule], projectPath: String) {
+        self.init(layers: layers, rules: rules, projectPaths: [projectPath])
+    }
+
+    /// 호출자가 준비한 루트와 확인된 별칭으로만 상대 경로 후보를 만든다.
+    ///
+    /// 실제 경로 확인은 Kit 또는 임베더의 환경 경계가 담당한다. 판정 자체는
+    /// 전달받은 문자열에만 의존하므로 메모리 그래프와 실제 실행이 같은 규칙을 쓴다.
+    public init(layers: [LayerDefinition], rules: [LayerRule], projectPaths: [String]) {
         self.layers = layers
         self.rules = rules
-        self.projectPathVariants = PathFilter.confirmedVariants(of: projectPath)
+        self.projectPaths = projectPaths
     }
 
     /// 정점이 속한 레이어 이름. 어디에도 속하지 않으면 nil.
@@ -114,7 +120,7 @@ public struct LayerRuleEvaluator: Sendable {
         // 설명이 같은 말을 세 번 하는 꼴이 된다. 순서는 판정 순서 그대로 둔다.
         var seen: Set<String> = []
         let paths = node.location.map { location in
-            [location.path] + projectPathVariants.flatMap {
+            [location.path] + projectPaths.flatMap {
                 PathFilter.matchCandidates(for: location.path, relativeTo: $0)
             }
         } ?? []

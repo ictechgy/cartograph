@@ -1619,8 +1619,9 @@ as `info` — if you do not know what your rules fail to cover, a passing run me
 File patterns accept both absolute paths and paths relative to `--project` (the working directory
 by default), so `Features/**` matches compiler locations under that project root. The first matching
 layer wins. Module graphs have no source location; use module-name patterns at that level, or select
-`--level file` / `--level type` for directory rules. Embedders can pass `projectPath` to
-`LayerRuleEvaluator` for the same relative-path behavior.
+`--level file` / `--level type` for directory rules. The service confirms root aliases through its
+injected file system. Embedders can pass a literal `projectPath`, or prepared and verified
+`projectPaths`, to the pure `LayerRuleEvaluator`; its initializers do not resolve aliases or read files.
 
 `--explain <node>` shows which layer a node landed in, which pattern put it there, and which rules
 start from that layer — the questions you actually ask while debugging a configuration.

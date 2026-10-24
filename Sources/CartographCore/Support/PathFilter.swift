@@ -64,49 +64,6 @@ public struct PathFilter: Sendable, Equatable {
         return result.filter { seen.insert($0).inserted }
     }
 
-    /// 실제 디렉터리 동등성이 확인된 기준 경로만 남긴다.
-    ///
-    /// 포함 필터의 넓은 후보를 그대로 레이어 분류에 쓰면 임의 `/private` 경로까지
-    /// 프로젝트 안으로 들어온다. 기존 필터의 의미는 유지하고, 분류 호출자만 이 좁은 형태를 쓴다.
-    public static func confirmedVariants(of basePath: String) -> [String] {
-        let identity = directoryIdentity(of: basePath)
-        return variants(of: basePath).filter { candidate in
-            candidate == basePath || identity.map { $0 == directoryIdentity(of: candidate) } == true
-        }
-    }
-
-    private struct DirectoryIdentity: Equatable {
-        let fileSystem: UInt64
-        let file: UInt64
-        let missingComponents: [String]
-    }
-
-    /// 아직 없는 루트도 마지막 존재 디렉터리와 같은 나머지 성분으로 별칭을 입증한다.
-    ///
-    /// `/tmp/New`는 존재하지 않아도 `/tmp/.`와 `/private/tmp/.`의 실제 ID가 같다.
-    /// 끝의 `/.`는 디렉터리 심볼릭 링크 자체 대신 그 대상의 ID를 읽게 한다.
-    private static func directoryIdentity(of path: String) -> DirectoryIdentity? {
-        let manager = FileManager.default
-        let expanded = (path as NSString).expandingTildeInPath
-        var current = (expanded as NSString).isAbsolutePath ? expanded
-            : (manager.currentDirectoryPath as NSString).appendingPathComponent(expanded)
-        while current.count > 1, current.hasSuffix("/") { current.removeLast() }
-        var missing: [String] = []
-        while true {
-            if let attributes = try? manager.attributesOfItem(atPath: current + "/."),
-               let fileSystem = attributes[.systemNumber] as? NSNumber,
-               let file = attributes[.systemFileNumber] as? NSNumber {
-                return DirectoryIdentity(fileSystem: fileSystem.uint64Value, file: file.uint64Value,
-                    missingComponents: missing.reversed())
-            }
-            let parent = (current as NSString).deletingLastPathComponent
-            let name = (current as NSString).lastPathComponent
-            guard parent != current, !name.isEmpty, name != ".", name != ".." else { return nil }
-            missing.append(name)
-            current = parent
-        }
-    }
-
     /// 어떤 경로도 거르지 않는 필터.
     public static let passthrough = PathFilter()
 

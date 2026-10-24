@@ -1,7 +1,6 @@
 import CartographAnalysis
 import CartographCore
 import CartographTestSupport
-import Foundation
 import Testing
 
 @Suite("레이어 규칙 검증")
@@ -139,33 +138,25 @@ struct LayerRuleEvaluatorTests {
         #expect(!evaluator.assignment(of: outside).candidates.contains("Features/Home.swift"))
     }
 
-    @Test("루트 경로의 별칭과 끝 슬래시에도 상대 패턴이 맞는다")
-    func projectAliasAndTrailingSlash() {
+    @Test("준비된 루트 별칭과 끝 슬래시를 순수 문자열로 대조한다")
+    func preparedProjectAliasesAndTrailingSlash() {
         let evaluator = LayerRuleEvaluator(layers: [
             .init(name: "UI", patterns: ["Features/**"]),
-        ], rules: [], projectPath: "/tmp/LayerProject/")
+        ], rules: [], projectPaths: ["/tmp/LayerProject/", "/private/tmp/LayerProject/"])
         let node = GraphNode(id: "n", name: "Home", kind: .structType, module: "App",
             location: .init(path: "/private/tmp/LayerProject/Features/Home.swift", line: 1, column: 1))
         #expect(evaluator.layer(of: node) == "UI")
     }
 
-    @Test("실제 심볼릭 링크 루트는 같은 물리 프로젝트의 상대 경로와 맞는다")
-    func actualSymbolicLinkRoot() throws {
-        let manager = FileManager.default
-        let directory = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? manager.removeItem(at: directory) }
-        let physical = directory.appendingPathComponent("physical")
-        try manager.createDirectory(at: physical, withIntermediateDirectories: true)
-        let alias = directory.appendingPathComponent("alias")
-        try manager.createSymbolicLink(at: alias, withDestinationURL: physical)
+    @Test("리터럴 루트 초기화는 실제 파일 시스템 별칭도 임의로 추측하지 않는다")
+    func literalProjectPathDoesNotResolveAliases() {
         let evaluator = LayerRuleEvaluator(layers: [
             .init(name: "UI", patterns: ["Features/**"]),
-        ], rules: [], projectPath: alias.path)
+        ], rules: [], projectPath: "/tmp/LayerProject/")
         let node = GraphNode(id: "n", name: "Home", kind: .structType, module: "App",
-            location: .init(path: physical.appendingPathComponent("Features/Home.swift").path,
-                line: 1, column: 1))
-        #expect(evaluator.layer(of: node) == "UI")
-        #expect(evaluator.assignment(of: node).match?.candidate == "Features/Home.swift")
+            location: .init(path: "/private/tmp/LayerProject/Features/Home.swift", line: 1, column: 1))
+        #expect(evaluator.layer(of: node) == nil)
+        #expect(!evaluator.assignment(of: node).candidates.contains("Features/Home.swift"))
     }
 
     @Test("기존 초기화 함수 참조와 루트 없는 경로 판정을 유지한다")

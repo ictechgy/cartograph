@@ -249,7 +249,8 @@ public struct CartographService: Sendable {
         try configuration.validate()
         let graph = context.buildGraph(level: level ?? configuration.level).graph
         let evaluator = LayerRuleEvaluator(
-            layers: configuration.layers, rules: configuration.rules, projectPath: projectPath
+            layers: configuration.layers, rules: configuration.rules,
+            projectPaths: LayerRuleProjectPaths.confirmed(projectPath: projectPath, fileSystem: environment.fileSystem)
         )
         // 배정 맵(정점마다 글롭 대조)은 위반 판정과 미지정 수집이 함께 쓴다.
         let (violations, unassigned) = evaluator.assess(graph: graph)
@@ -560,7 +561,8 @@ public struct CartographService: Sendable {
             return CommandOutcome(output: Self.describeAmbiguity(subject, candidates: candidates))
         case let .found(node):
             let evaluator = LayerRuleEvaluator(
-                layers: configuration.layers, rules: configuration.rules, projectPath: projectPath
+                layers: configuration.layers, rules: configuration.rules,
+                projectPaths: LayerRuleProjectPaths.confirmed(projectPath: projectPath, fileSystem: environment.fileSystem)
             )
             return CommandOutcome(output: Self.printableLines(Self.describeLayer(of: node, using: evaluator)))
         }
