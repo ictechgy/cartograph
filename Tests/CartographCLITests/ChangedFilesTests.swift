@@ -522,7 +522,8 @@ struct ChangedFilesTests {
                   to: ".gitattributes", in: root)
         let configURL = root.appendingPathComponent(".git/config")
         var config = try Data(contentsOf: configURL)
-        for (name, marker) in [(nfc, "nfc"), (nfd, "nfd"), (leadingMark, "leading")] {
+        let configuredNames = [nfc, nfd, leadingMark, "preconfigured"]
+        for (name, marker) in zip(configuredNames, ["nfc", "nfd", "leading", "preconfigured"]) {
             config.append(Data("\n[filter \"\(name)\"]\nclean = \"touch '\(markers.path)/\(marker)'; cat\"\n".utf8))
         }
         try config.write(to: configURL)
@@ -533,7 +534,11 @@ struct ChangedFilesTests {
             workingDirectory: root.path, reference: "HEAD"))
         let keys = Set(arguments.filter { $0.utf8.starts(with: "filter.".utf8) }.map { Data($0.utf8) })
         let keyHex = keys.map { $0.map { String(format: "%02x", $0) }.joined() }.sorted()
-        #expect(keys.count == 12, "override keys: \(keyHex)")
+        // CI 의 Git LFS 같은 기존 드라이버도 함께 무력화되므로 전체 개수를 고정하지 않는다.
+        let expectedKeys = Set(configuredNames.flatMap { name in
+            ["clean=", "smudge=", "process=", "required=false"].map { Data("filter.\(name).\($0)".utf8) }
+        })
+        #expect(expectedKeys.isSubset(of: keys), "override keys: \(keyHex)")
         _ = try ChangedFiles.since("HEAD", workingDirectory: root.path)
         _ = try ChangedLines.since("HEAD", workingDirectory: root.path)
         let observedMarkers = try FileManager.default.contentsOfDirectory(atPath: markers.path)
