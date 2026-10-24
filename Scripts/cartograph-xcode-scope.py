@@ -6,7 +6,8 @@ Unsupported scripts, packages, plugins, external/conditional membership and reso
 are rejected before xcodebuild. A receipt is an auditable producer claim, not a signature,
 test-coverage proof, or permission to skip tests. Use the exact captured test context.
 --local-package opts into finite literal local Swift libraries with positive link evidence:
-one in a project capture, or up to 16 (one per project) in a workspace capture.
+one in a project capture, or up to 16 unique libraries in a workspace capture,
+with up to 16 references per project and shared workspace library declarations.
 """
 from __future__ import annotations
 
