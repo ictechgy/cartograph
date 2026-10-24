@@ -297,6 +297,57 @@ def mcp_worker(binary, output):
             SCOPE.save(output / "mcp-result.json", result)
 
 
+def affected_process(supervisor, argv, cwd, stem, expected):
+    """예상된 CLI 거부만 새 감독 receipt로 확인하고 감독 실패는 계속 거부한다."""
+    paths = {name: Path(str(stem) + "." + name) for name in ("json", "stdout", "stderr")}
+    require(all(not path.exists() and not path.is_symlink() for path in paths.values()),
+            "Affected process evidence already exists")
+    returned = None
+    try:
+        returned = supervisor.run(argv, cwd, stem, 120, stream_limit=4 * 1024 * 1024)
+    except RuntimeError:
+        # 공유 supervisor는 정상적으로 reap한 nonzero도 receipt 저장 후 throw한다.
+        # 성공 호출의 실패는 재분류하지 않고, 아래에서 예상 거부의 전체 신원을 확인한다.
+        if expected == 0:
+            raise
+    try:
+        require(all(path.is_file() and not path.is_symlink() for path in paths.values()),
+                "Affected process evidence is missing or redirected")
+        raw_receipt = SCOPE.bounded(paths["json"], 64 * 1024)
+        process = json.loads(raw_receipt)
+        require(isinstance(process, dict), "Affected process receipt is malformed")
+        code = process.get("returncode")
+        expected_code = type(code) is int and (code > 0 if expected is None else code == expected)
+        require(expected_code and type(process.get("raw_returncode")) is int and process["raw_returncode"] == code
+                and process.get("command") == argv and process.get("cwd") == str(cwd)
+                and type(process.get("pid")) is int and process["pid"] > 0
+                and process.get("timed_out") is False and process.get("owned_root_reaped") is True
+                and process.get("ownership_lost") is False and process.get("cleanup_errors") == []
+                and process.get("output_limit_exceeded") is None and "exception_type" not in process
+                and process.get("stream_limit_bytes") == 4 * 1024 * 1024,
+                "Unexpected affected process outcome: " + stem.name)
+        require(returned is None or returned == process, "Returned affected process receipt differs")
+        counts = process.get("retained_stream_bytes")
+        require(type(counts) is dict and set(counts) == {"stdout", "stderr"}, "Affected stream counts are missing")
+        streams = {}
+        for name in ("stdout", "stderr"):
+            require(process.get(name) == str(paths[name]) and type(counts[name]) is int
+                    and 0 <= counts[name] <= 4 * 1024 * 1024, "Affected stream identity differs")
+            data = SCOPE.bounded(paths[name], 4 * 1024 * 1024)
+            require(len(data) == counts[name], "Affected stream bytes differ")
+            streams[name] = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+        emit_bounded_observation("AFFECTED_PROCESS_OBSERVATION", {
+            "status": "validated-process-outcome", "process": stem.name, "returncode": code,
+            "receiptSHA256": hashlib.sha256(raw_receipt).hexdigest(), "streams": streams,
+            "argvSHA256": hashlib.sha256(json.dumps(argv, ensure_ascii=True).encode()).hexdigest(),
+            "cwdSHA256": hashlib.sha256(str(cwd).encode()).hexdigest(),
+            "limitation": "Process outcome only; each product assertion remains mandatory."})
+        return process
+    except Exception:
+        OBS.record_process_failure(stem)
+        raise
+
+
 def verify(binary, output):
     output.mkdir(parents=True, exist_ok=False)
     project = output / "project"
@@ -342,12 +393,7 @@ def verify(binary, output):
                project_root=project, index_store=metadata["indexStore"]):
         common = ["--project", str(project_root), "--index-store", index_store, "--target-scope", str(captured_receipt)]
         argv = [str(binary), "affected", "packageValue", *common, "--format", format]
-        process = supervisor.run(argv, project_root, output / label, 120, stream_limit=4 * 1024 * 1024)
-        expected_code = process["returncode"] > 0 if expected is None else process["returncode"] == expected
-        require(expected_code and not process["timed_out"] and process["owned_root_reaped"]
-                and not process["ownership_lost"] and not process["cleanup_errors"]
-                and not process.get("output_limit_exceeded") and not process.get("exception_type"),
-                "Unexpected affected process outcome: " + label)
+        affected_process(supervisor, argv, project_root, output / label, expected)
         raw = SCOPE.bounded(output / (label + ".stdout"), 4 * 1024 * 1024)
         return json.loads(raw) if format == "json" and raw else raw.decode()
     document = invoke("candidate-json")

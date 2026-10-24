@@ -3,6 +3,7 @@
 import copy
 import datetime
 import importlib.util
+import io
 import json
 import os
 import contextlib
@@ -11,6 +12,7 @@ from pathlib import Path
 import plistlib
 import shlex
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -21,6 +23,89 @@ SPEC.loader.exec_module(E)
 NATIVE_SPEC = importlib.util.spec_from_file_location("native_package_checks", ROOT / "Scripts/verify-xcode-local-package-native.py")
 NATIVE = importlib.util.module_from_spec(NATIVE_SPEC)
 NATIVE_SPEC.loader.exec_module(NATIVE)
+
+
+class AffectedProcessTests(unittest.TestCase):
+    @staticmethod
+    def supervisor(code=2, changes=None, missing=None, output=b"", error=RuntimeError):
+        def run(argv, cwd, stem, timeout, stream_limit):
+            value = {"command": argv, "cwd": str(cwd), "pid": 123, "returncode": code, "raw_returncode": code,
+                     "timed_out": False, "owned_root_reaped": True, "ownership_lost": False,
+                     "cleanup_errors": [], "output_limit_exceeded": None, "stream_limit_bytes": stream_limit,
+                     "retained_stream_bytes": {"stdout": len(output), "stderr": 7},
+                     "stdout": str(stem) + ".stdout", "stderr": str(stem) + ".stderr"}
+            value.update(changes or {})
+            files = {"json": json.dumps(value).encode(), "stdout": output, "stderr": b"refused"}
+            for name, data in files.items():
+                if name != missing:
+                    Path(str(stem) + "." + name).write_bytes(data)
+            if code or changes or missing:
+                raise error("supervisor refusal")
+            return value
+        return types.SimpleNamespace(run=mock.Mock(side_effect=run))
+
+    def test_expected_nonzero_receipt_passes_after_prior_uncaught_supervisor_failure(self):
+        with tempfile.TemporaryDirectory() as folder, contextlib.redirect_stdout(io.StringIO()):
+            root = Path(folder); argv = ["cartograph", "affected"]
+            before = self.supervisor()
+            with self.assertRaisesRegex(RuntimeError, "supervisor refusal"):
+                before.run(argv, root, root / "old", 120, 4 * 1024 * 1024)
+            after = self.supervisor()
+            result = NATIVE.affected_process(after, argv, root, root / "new", 2)
+            self.assertEqual(result["returncode"], 2)
+            after.run.assert_called_once_with(argv, root, root / "new", 120, stream_limit=4 * 1024 * 1024)
+            self.assertEqual(NATIVE.affected_process(self.supervisor(0), argv, root, root / "success", 0)["returncode"], 0)
+            self.assertEqual(NATIVE.affected_process(self.supervisor(1), argv, root, root / "positive", None)["returncode"], 1)
+
+    def test_expected_refusal_never_accepts_timeout_overflow_cleanup_ownership_or_tampering(self):
+        changes = [{"timed_out": True}, {"owned_root_reaped": False}, {"ownership_lost": True},
+                   {"cleanup_errors": ["unknown"]}, {"output_limit_exceeded": "stdout"},
+                   {"exception_type": "RuntimeError"}, {"raw_returncode": -9}, {"pid": None},
+                   {"command": ["different"]}, {"cwd": "different"}, {"stdout": "different"},
+                   {"stream_limit_bytes": 100}, {"retained_stream_bytes": {"stdout": 1, "stderr": 7}}]
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(NATIVE.OBS, "record_process_failure"):
+            root = Path(folder)
+            for i, changed in enumerate(changes):
+                with self.subTest(changed=changed), self.assertRaises(RuntimeError):
+                    NATIVE.affected_process(self.supervisor(changes=changed), ["cartograph"], root, root / str(i), 2)
+            for code, expected in ((0, 2), (1, 2), (-9, None), (124, 2)):
+                with self.subTest(code=code, expected=expected), self.assertRaises(RuntimeError):
+                    NATIVE.affected_process(self.supervisor(code), ["cartograph"], root, root / (str(code) + "code"), expected)
+            with self.assertRaises(RuntimeError):
+                NATIVE.affected_process(self.supervisor(1, {"raw_returncode": True}),
+                                        ["cartograph"], root, root / "boolean-code", None)
+
+    def test_stale_missing_receipts_and_startup_errors_remain_failures(self):
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(NATIVE.OBS, "record_process_failure"):
+            root = Path(folder); argv = ["cartograph"]
+            for name in ("json", "stdout", "stderr"):
+                stem = root / ("old-" + name); Path(str(stem) + "." + name).write_bytes(b"stale")
+                runner = self.supervisor()
+                with self.assertRaisesRegex(RuntimeError, "already exists"):
+                    NATIVE.affected_process(runner, argv, root, stem, 2)
+                runner.run.assert_not_called()
+                with self.assertRaisesRegex(RuntimeError, "missing or redirected"):
+                    NATIVE.affected_process(self.supervisor(missing=name), argv, root, root / ("missing-" + name), 2)
+            with self.assertRaisesRegex(RuntimeError, "supervisor refusal"):
+                NATIVE.affected_process(self.supervisor(), argv, root, root / "unexpected", 0)
+            with self.assertRaises(OSError):
+                NATIVE.affected_process(self.supervisor(error=OSError), argv, root, root / "startup", 2)
+            def malformed(argv, cwd, stem, timeout, stream_limit):
+                for name, data in (("json", b'{"returncode":'), ("stdout", b""), ("stderr", b"refusal")):
+                    Path(str(stem) + "." + name).write_bytes(data)
+                raise RuntimeError("supervisor refusal")
+            with self.assertRaises(ValueError):
+                NATIVE.affected_process(types.SimpleNamespace(run=malformed), argv, root, root / "malformed", 2)
+
+    @unittest.skipUnless(os.name == "posix", "Actual capped subprocess ownership requires native CI")
+    def test_real_supervised_nonzero_is_accepted_only_with_exact_clean_receipt(self):
+        with tempfile.TemporaryDirectory() as folder, contextlib.redirect_stdout(io.StringIO()):
+            root = Path(folder)
+            process = NATIVE.affected_process(NATIVE.OBS.process_supervisor(),
+                [NATIVE.sys.executable, "-c", "import sys; sys.stderr.write('expected fixture refusal'); sys.exit(2)"],
+                root, root / "actual-refused", 2)
+            self.assertEqual(process["returncode"], 2)
+            self.assertEqual(process["cleanup_errors"], [])
 
 
 class TestExecutionTests(unittest.TestCase):
