@@ -106,6 +106,11 @@ expect_status 64 "미사용과 level 동시"   dead --level module
 expect_status 64 "수정과 level 동시"     fix --level module
 expect_status 64 "수정과 형식 동시"      fix --report-format text
 expect_status 64 "수정 잘못된 형식"      fix --format yaml
+expect_status 64 "검증에는 적용 필요"    fix --verify-command '["swift","build"]'
+expect_status 64 "검증 명령은 argv 필요" fix --apply --verify-command 'swift build'
+expect_status 64 "빈 검증 명령 거부"     fix --apply --verify-command '[]'
+expect_status 64 "검증 예산에는 명령 필요" fix --apply --verify-timeout 5
+expect_status 64 "검증 시간 하한"         fix --apply --verify-command '["swift","build"]' --verify-timeout 0
 expect_status 64 "질의와 level 동시"     query Foo --level module
 expect_status 64 "값 흐름과 level 동시"  dataflow Foo --level module
 expect_status 64 "값 흐름과 since 동시"  dataflow Foo --since HEAD
@@ -650,6 +655,12 @@ expect_output "::notice"        "탈출구 실행이 GitHub Actions 형식에도
 
 if python3 Scripts/verify-since-lines.py --cartograph "$BINARY"; then
     echo "  ok    변경 줄 Git/컴파일러/CLI 회귀"
+else
+    FAILURES=$((FAILURES + 1))
+fi
+
+if python3 Scripts/verify-fix-verification.py --cartograph "$BINARY"; then
+    echo "  ok    선택 검증·복구 Git/컴파일러/CLI 회귀"
 else
     FAILURES=$((FAILURES + 1))
 fi

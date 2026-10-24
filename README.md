@@ -391,13 +391,15 @@ Data.UserRepository is reachable:
 ### `fix` — plan and apply mechanical edits
 
 Parse checks do not prove type correctness or build compatibility. Review the diff and rebuild
-all relevant targets after `--apply`. Writes are atomic per file, not across the edit set;
-this command does not run a verification command or roll back failed builds.
+all relevant targets after `--apply`. Writes are atomic per file, not across the edit set.
+Optionally select one verification command with `--apply`; failed verification restores this
+run's unchanged edits and preserves conflicting changes with private recovery evidence.
 
 ```bash
 cartograph fix                      # print the plan; writes nothing
 cartograph fix --apply              # write the fixes
 cartograph fix --since origin/main  # only findings in changed files
+cartograph fix --apply --verify-command '["swift","build","--build-tests"]'
 ```
 
 Two warning classes are mechanically fixable, and only those two: `unused-import` removes the
@@ -423,6 +425,15 @@ Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.Client.fetch(_:retry:)
 Run it on a fresh build: the plan comes from the same index `dead` reads, and a stale index makes
 edits get skipped rather than misplaced. `--format json` returns the `mechanical-fixes` document
 with each edit's file, position, rule and replacement text.
+
+`--verify-command` is a JSON argv array executed directly at the physical project root with
+the inherited environment; it is not interpreted as shell text. `--verify-timeout` defaults to
+600 seconds. A new `--recovery-directory` outside the project can retain original bytes, a
+journal and bounded logs. Failure, timeout or SIGINT/SIGTERM restores only files still matching
+Cartograph's applied bytes and identity; concurrent edits are preserved and require manual
+review. Verification failure exits 2. Verifier side effects, Git operations and build outputs
+are not undone, and SIGKILL or power loss cannot run automatic recovery. See the
+[execution, process-group and recovery contract](docs/FIX-VERIFICATION.md) before selecting a command.
 
 ### `query` — ask about one declaration
 

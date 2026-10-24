@@ -387,13 +387,15 @@ Data.UserRepository is reachable:
 ### `fix` — 기계적 편집 계획과 적용
 
 파싱 성공은 타입 검사나 빌드 성공의 증명이 아닙니다. `--apply` 후 diff를 검토하고 관련 타깃을
-모두 다시 빌드하세요. 쓰기는 전체 편집 집합이 아닌 파일 단위로 원자적이며, 이 명령은 검증 명령
-실행이나 실패한 빌드의 자동 롤백을 수행하지 않습니다.
+모두 다시 빌드하세요. 쓰기는 전체 편집 집합이 아닌 파일 단위로 원자적입니다.
+`--apply`와 함께 검증 명령 하나를 선택할 수 있습니다. 검증 실패 시 이 실행이 기록한 뒤
+바뀌지 않은 파일만 복원하며, 충돌한 변경은 비공개 복구 근거와 함께 보존합니다.
 
 ```bash
 cartograph fix                      # 계획만 출력; 파일을 쓰지 않음
 cartograph fix --apply              # 수정을 기록
 cartograph fix --since origin/main  # 바뀐 파일의 발견만
+cartograph fix --apply --verify-command '["swift","build","--build-tests"]'
 ```
 
 기계적으로 고칠 수 있는 경고는 딱 두 종류입니다. `unused-import`는 import 선언을 지우고,
@@ -419,6 +421,15 @@ Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.Client.fetch(_:retry:)
 새로 빌드한 인덱스에서 돌리세요. 계획은 `dead`가 읽는 같은 인덱스에서 나오고, 인덱스가
 낡으면 편집이 잘못된 자리에 가지 않고 건너뛰어집니다. `--format json`은 각 편집의 파일·위치·
 규칙·대체 텍스트를 담은 `mechanical-fixes` 문서를 돌려줍니다.
+
+`--verify-command`는 JSON argv 배열이며 실제 프로젝트 루트에서 상속한 환경으로 직접 실행합니다.
+셸 문자열로 해석하지 않습니다. `--verify-timeout` 기본값은 600초입니다. 프로젝트 밖의 새
+`--recovery-directory`에 원래 바이트·journal·크기가 제한된 로그를 남길 수 있습니다.
+실패·시간 초과·SIGINT/SIGTERM에서는 현재 바이트와 파일 식별이 Cartograph가 기록한 편집과
+일치할 때만 복원합니다. 동시 편집은 보존하고 수동 검토를 요구합니다. 검증 실패 종료 코드는 2입니다.
+검증기가 만든 별도 변경·Git 작업·빌드 산출물은 되돌리지 않으며, SIGKILL·전원 손실에서는
+자동 복구가 실행되지 않습니다. 명령을 선택하기 전에
+[실행·자식 프로세스 그룹·복구 계약](docs/FIX-VERIFICATION.md)을 확인하세요.
 
 ### `query` — 선언 하나에 대해 되묻기
 

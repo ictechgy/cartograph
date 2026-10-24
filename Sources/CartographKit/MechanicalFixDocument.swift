@@ -1,6 +1,7 @@
 import CartographAnalysis
 import CartographCore
 import CartographSyntax
+import Foundation
 
 /// 안전한 기계적 수정 계획과 그 적용 결과.
 ///
@@ -27,6 +28,8 @@ public struct MechanicalFixDocument: Sendable, Equatable, Codable {
     public let edits: [Edit]
     public let skipped: [Skip]
     public let limitations: [String]
+    /// 선택 검증의 결과. 기존 드라이런·명시 적용 문서에는 키가 없다.
+    public let verification: MechanicalFixVerificationReport?
 
     /// 실제로 만들어진 편집 하나.
     public struct Edit: Sendable, Equatable, Codable {
@@ -55,7 +58,8 @@ public struct MechanicalFixDocument: Sendable, Equatable, Codable {
         edits: [Edit],
         skipped: [Skip],
         suppressedCount: Int,
-        limitations: [String]
+        limitations: [String],
+        verification: MechanicalFixVerificationReport? = nil
     ) {
         format = Self.format
         version = Self.version
@@ -68,6 +72,7 @@ public struct MechanicalFixDocument: Sendable, Equatable, Codable {
         fileCount = Set(edits.map(\.file)).count
         self.suppressedCount = suppressedCount
         self.limitations = limitations
+        self.verification = verification
     }
 }
 
@@ -89,6 +94,19 @@ extension CartographService {
     /// 이유를 남긴다 — 확인되지 않은 텍스트는 쓰지 않는다. 쓰기는 파일 단위로
     /// 원자적이다(`FileSystem.write`).
     public func mechanicalFixes(apply: Bool, format: String) throws -> CommandOutcome {
+        try mechanicalFixes(apply: apply, format: format, verification: nil)
+    }
+
+    /// 검증을 선택하면 편집 전 바이트를 보관하고 실패 시 이 명령의 변경만 복구한다.
+    public func mechanicalFixes(apply: Bool, format: String,
+                                verification: MechanicalFixVerification?) throws -> CommandOutcome {
+        if let verification {
+            try verification.validate()
+            guard apply else {
+                throw CartographError.invalidConfiguration(path: projectPath,
+                    reason: "Verification requires explicit apply; no command was executed.")
+            }
+        }
         guard format == "text" || format == "json" else {
             throw CartographError.invalidConfiguration(
                 path: projectPath, reason: "Fix format must be text or json."
@@ -132,11 +150,18 @@ extension CartographService {
 
         var edits: [MechanicalFixDocument.Edit] = []
         var skipped: [MechanicalFixDocument.Skip] = []
+        var prepared: [PreparedMechanicalEdit] = []
+        var preparedBytes = 0
         let fixer = MechanicalFixer()
         for (path, fileEntries) in Dictionary(grouping: entries, by: \.path).sorted(by: { $0.key < $1.key }) {
             let source: String
+            let original: Data
             do {
-                source = try environment.fileSystem.readText(at: path)
+                original = try environment.fileSystem.readData(at: path)
+                guard let decoded = String(data: original, encoding: .utf8) else {
+                    throw CocoaError(.fileReadInapplicableStringEncoding)
+                }
+                source = decoded
             } catch {
                 skipped += fileEntries.map { $0.skipped(reason: MechanicalFixSkipReason.unreadable.rawValue) }
                 continue
@@ -154,6 +179,17 @@ extension CartographService {
                 }
             }
             if apply, application.changed {
+                if verification != nil {
+                    guard prepared.count < MechanicalFixVerification.maximumFiles,
+                          original.count <= MechanicalFixVerification.maximumSourceBytes - preparedBytes else {
+                        throw CartographError.invalidConfiguration(path: projectPath,
+                            reason: "Verified fixes exceed 10000 files or 64 MiB; narrow the scope. No files changed.")
+                    }
+                    preparedBytes += original.count
+                    prepared.append(.init(path: path, original: original,
+                                          replacement: Data(application.source.utf8)))
+                    continue
+                }
                 do {
                     try environment.fileSystem.write(text: application.source, to: path)
                 } catch {
@@ -162,17 +198,36 @@ extension CartographService {
             }
         }
 
-        let limitations = analysisLimitations(context: context, symbolGraph: graph) + [
+        let verificationReport = try verification.map { option in
+            do {
+                return try MechanicalFixTransaction(edits: prepared, project: projectPath,
+                    fileSystem: environment.fileSystem, verification: option).perform()
+            } catch let error as CartographError {
+                throw error
+            } catch {
+                throw CartographError.outputUnwritable(
+                    path: PrintableText.printable(option.recoveryDirectory ?? projectPath),
+                    underlying: "Could not prepare recovery evidence; no source files changed. "
+                        + PrintableText.printable(String(describing: error)))
+            }
+        }
+        let limitations = analysisLimitations(context: context, symbolGraph: graph) + (verificationReport == nil ? [
             "fix-build-not-verified: edits are parse-checked only, not type-checked or built; writes are atomic "
                 + "per file, not across the full edit set. Review the diff and rebuild all relevant targets."
-        ]
+        ] : [
+            "fix-verification-scope: only the selected argv command was checked. Original dirty source bytes "
+                + "are retained in the private recovery directory. Rollback restores only unchanged Cartograph-owned "
+                + "edits; verifier side effects, Git operations, build outputs and concurrent changes are not reverted. "
+                + "SIGKILL, power loss and hostile commands cannot be automatically recovered."
+        ])
         let document = MechanicalFixDocument(
             project: projectPath,
-            applied: apply,
+            applied: apply && (verificationReport.map { $0.passed || !$0.rollback.hasPrefix("restored") } ?? true),
             edits: edits,
             skipped: skipped,
             suppressedCount: suppressedCount,
-            limitations: limitations
+            limitations: limitations,
+            verification: verificationReport
         )
         return CommandOutcome(
             output: format == "json"
@@ -181,7 +236,10 @@ extension CartographService {
             // 드라이런에서는 남은 작업이, 적용 뒤에는 적용하지 못한 편집이
             // `--strict` 의 실패 사유다.
             findingCount: apply ? document.skippedCount : document.editCount,
-            suppressedCount: suppressedCount
+            suppressedCount: suppressedCount,
+            incompleteAnalysis: verificationReport.flatMap { $0.passed ? nil :
+                "Fix verification \($0.status); rollback \($0.rollback). Inspect "
+                    + PrintableText.printable($0.recoveryDirectory) + "." }
         )
     }
 
@@ -194,6 +252,9 @@ extension CartographService {
         }
         if document.edits.isEmpty, document.skipped.isEmpty {
             lines.append("no mechanical fixes found")
+        } else if let verification = document.verification, !verification.passed {
+            lines.append("\(document.editCount) planned fix(es) — verification \(verification.status); "
+                + "rollback \(verification.rollback)")
         } else if document.applied {
             lines.append(
                 "\(document.editCount) fix(es) in \(document.fileCount) file(s) — applied"
@@ -202,6 +263,9 @@ extension CartographService {
             lines.append(
                 "\(document.editCount) fix(es) in \(document.fileCount) file(s) — dry run; pass --apply to write"
             )
+        }
+        if let verification = document.verification {
+            lines.append("Verification: \(verification.status). Recovery evidence: \(verification.recoveryDirectory)")
         }
         if document.suppressedCount > 0 {
             lines.append(

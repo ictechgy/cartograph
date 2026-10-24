@@ -19,6 +19,11 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
 
 ### Added
 
+- `fix --apply --verify-command` optionally runs one explicit JSON argv verification command
+  at the project root. Failed or interrupted verification restores unchanged Cartograph-owned
+  edits from private byte backups; conflicting changes remain intact with a recovery journal.
+  The default dry run and unverified explicit apply behavior remain available.
+
 - `dead --since <revision> --since-lines` optionally filters diagnostic locations to changed
   current lines, keeping the file-level default and whole-project analysis. Net merge-base-to-worktree
   hunks preserve final staged/unstaged coordinates; uncertain mappings retain whole files, and
