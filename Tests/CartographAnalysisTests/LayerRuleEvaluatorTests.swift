@@ -1,6 +1,7 @@
 import CartographAnalysis
 import CartographCore
 import CartographTestSupport
+import Foundation
 import Testing
 
 @Suite("레이어 규칙 검증")
@@ -90,6 +91,90 @@ struct LayerRuleEvaluatorTests {
         ]
         let evaluator = LayerRuleEvaluator(layers: overlapping, rules: [])
         #expect(evaluator.layer(of: GraphNode(id: "n", name: "X", kind: .module)) == "First")
+    }
+
+    @Test("프로젝트 상대 패턴과 절대 패턴을 같은 컴파일러 경로에 적용한다")
+    func projectRelativeAndAbsolutePatterns() {
+        let node = GraphNode(id: "n", name: "Home", kind: .structType, module: "App",
+            location: .init(path: "/p/Features/Home.swift", line: 1, column: 1))
+        for pattern in ["Features/**", "/p/Features/**", "**/Features/**"] {
+            let evaluator = LayerRuleEvaluator(
+                layers: [.init(name: "UI", patterns: [GlobPattern(pattern)])], rules: [], projectPath: "/p"
+            )
+            #expect(evaluator.layer(of: node) == "UI")
+            #expect(evaluator.assignment(of: node).layer == "UI")
+        }
+        let evaluator = LayerRuleEvaluator(layers: [
+            .init(name: "UI", patterns: ["Features/**"]),
+            .init(name: "Fallback", patterns: ["App"]),
+        ], rules: [], projectPath: "/p")
+        #expect(evaluator.assignment(of: node).match?.candidate == "Features/Home.swift")
+        #expect(evaluator.layer(of: node) == "UI")
+    }
+
+    @Test("프로젝트 경계 밖 경로는 상대 패턴에 잘못 포함하지 않는다")
+    func projectBoundaryAndOutsideAbsolutePattern() {
+        let outside = GraphNode(id: "n", name: "Home", kind: .structType, module: "App",
+            location: .init(path: "/project-other/Features/Home.swift", line: 1, column: 1))
+        let evaluator = LayerRuleEvaluator(layers: [
+            .init(name: "UI", patterns: ["Features/**"]),
+        ], rules: [], projectPath: "/project")
+        #expect(evaluator.layer(of: outside) == nil)
+        let explicit = LayerRuleEvaluator(layers: [
+            .init(name: "External", patterns: ["/project-other/Features/**"]),
+        ], rules: [], projectPath: "/project")
+        #expect(explicit.layer(of: outside) == "External")
+    }
+
+    @Test("임의 private 접두사는 프로젝트 별칭으로 취급하지 않는다")
+    func unprovenPrivatePrefixIsOutsideProject() {
+        let outside = GraphNode(id: "n", name: "Home", kind: .structType, module: "App",
+            location: .init(path: "/private/project/Features/Home.swift", line: 1, column: 1))
+        let evaluator = LayerRuleEvaluator(layers: [
+            .init(name: "UI", patterns: ["Features/**"]),
+            .init(name: "External", patterns: ["/private/project/Features/**"]),
+        ], rules: [], projectPath: "/project")
+        #expect(evaluator.layer(of: outside) == "External")
+        #expect(evaluator.assignment(of: outside).match?.candidate == outside.location?.path)
+        #expect(!evaluator.assignment(of: outside).candidates.contains("Features/Home.swift"))
+    }
+
+    @Test("루트 경로의 별칭과 끝 슬래시에도 상대 패턴이 맞는다")
+    func projectAliasAndTrailingSlash() {
+        let evaluator = LayerRuleEvaluator(layers: [
+            .init(name: "UI", patterns: ["Features/**"]),
+        ], rules: [], projectPath: "/tmp/LayerProject/")
+        let node = GraphNode(id: "n", name: "Home", kind: .structType, module: "App",
+            location: .init(path: "/private/tmp/LayerProject/Features/Home.swift", line: 1, column: 1))
+        #expect(evaluator.layer(of: node) == "UI")
+    }
+
+    @Test("실제 심볼릭 링크 루트는 같은 물리 프로젝트의 상대 경로와 맞는다")
+    func actualSymbolicLinkRoot() throws {
+        let manager = FileManager.default
+        let directory = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? manager.removeItem(at: directory) }
+        let physical = directory.appendingPathComponent("physical")
+        try manager.createDirectory(at: physical, withIntermediateDirectories: true)
+        let alias = directory.appendingPathComponent("alias")
+        try manager.createSymbolicLink(at: alias, withDestinationURL: physical)
+        let evaluator = LayerRuleEvaluator(layers: [
+            .init(name: "UI", patterns: ["Features/**"]),
+        ], rules: [], projectPath: alias.path)
+        let node = GraphNode(id: "n", name: "Home", kind: .structType, module: "App",
+            location: .init(path: physical.appendingPathComponent("Features/Home.swift").path,
+                line: 1, column: 1))
+        #expect(evaluator.layer(of: node) == "UI")
+        #expect(evaluator.assignment(of: node).match?.candidate == "Features/Home.swift")
+    }
+
+    @Test("기존 초기화 함수 참조와 루트 없는 경로 판정을 유지한다")
+    func originalInitializerFunctionReference() {
+        let make: ([LayerDefinition], [LayerRule]) -> LayerRuleEvaluator = LayerRuleEvaluator.init
+        let evaluator = make([.init(name: "UI", patterns: ["Features/**"])], [])
+        let node = GraphNode(id: "n", name: "Home", kind: .structType, module: "App",
+            location: .init(path: "Features/Home.swift", line: 1, column: 1))
+        #expect(evaluator.layer(of: node) == "UI")
     }
 
     @Test("어느 레이어에도 속하지 않은 정점을 알려 준다")

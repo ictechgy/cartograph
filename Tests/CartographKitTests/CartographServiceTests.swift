@@ -226,6 +226,26 @@ struct CartographServiceTests {
         #expect(outcome.output.contains("must not depend on Presentation"))
     }
 
+    @Test("레이어 검사와 설명은 프로젝트 상대 경로를 같은 기준으로 사용한다")
+    func layerRulesUseProjectRelativePaths() throws {
+        let service = makeService {
+            $0.layers = [
+                .init(name: "UI", patterns: ["Features/**"]),
+                .init(name: "Data", patterns: ["Data/**"]),
+            ]
+            $0.rules = [.init(from: "Data", deny: ["UI"])]
+        }
+        let outcome = try service.checkRules(level: .type)
+        #expect(outcome.findingCount == 1)
+        #expect(outcome.output.contains("must not depend on UI"))
+        let context = try service.loadContext()
+        let assessed = try service.layerViolations(in: context, level: .type)
+        #expect(assessed.violations.count == 1)
+        let explained = try service.explainRules(of: "HomeView", level: .type)
+        #expect(explained.output.contains("is in layer 'UI'"))
+        #expect(explained.output.contains("matched: Features/HomeView.swift against 'Features/**'"))
+    }
+
     @Test("레이어 미지정은 정보로만 알리고 임계값에 세지 않는다")
     func unassignedLayersAreInformational() throws {
         let service = makeService {

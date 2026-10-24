@@ -40,10 +40,22 @@ public struct LayerViolation: Sendable, Equatable, Codable {
 public struct LayerRuleEvaluator: Sendable {
     private let layers: [LayerDefinition]
     private let rules: [LayerRule]
+    private let projectPathVariants: [String]
 
     public init(layers: [LayerDefinition], rules: [LayerRule]) {
         self.layers = layers
         self.rules = rules
+        self.projectPathVariants = []
+    }
+
+    /// 인덱스의 절대 경로와 프로젝트 기준 패턴을 같은 판정에 사용한다.
+    ///
+    /// 루트를 받지 않는 기존 초기화는 유지한다. 루트를 아는 호출자는 이 형태를 써야
+    /// `Features/**` 같은 경로 패턴이 실제 컴파일러 위치에도 적용된다.
+    public init(layers: [LayerDefinition], rules: [LayerRule], projectPath: String) {
+        self.layers = layers
+        self.rules = rules
+        self.projectPathVariants = PathFilter.confirmedVariants(of: projectPath)
     }
 
     /// 정점이 속한 레이어 이름. 어디에도 속하지 않으면 nil.
@@ -52,7 +64,7 @@ public struct LayerRuleEvaluator: Sendable {
     /// 때로는 디렉터리로, 때로는 타입 이름 규칙으로 정의하기 때문이다.
     /// 먼저 정의된 레이어가 이긴다.
     public func layer(of node: GraphNode) -> String? {
-        let candidates = Self.candidates(of: node)
+        let candidates = candidates(of: node)
         return layers.first { $0.matches(candidates: candidates) }?.name
     }
 
@@ -78,7 +90,7 @@ public struct LayerRuleEvaluator: Sendable {
 
     /// 정점의 레이어 판정 근거.
     public func assignment(of node: GraphNode) -> LayerAssignment {
-        let candidates = Self.candidates(of: node)
+        let candidates = candidates(of: node)
         for layer in layers {
             for pattern in layer.patterns {
                 if let candidate = candidates.first(where: { pattern.matches($0) }) {
@@ -97,12 +109,16 @@ public struct LayerRuleEvaluator: Sendable {
         rules.filter { $0.from == layer }
     }
 
-    static func candidates(of node: GraphNode) -> [String] {
+    private func candidates(of node: GraphNode) -> [String] {
         // 모듈 정점은 이름·정규화 이름·모듈이 모두 같다. 중복을 그대로 보여 주면
         // 설명이 같은 말을 세 번 하는 꼴이 된다. 순서는 판정 순서 그대로 둔다.
         var seen: Set<String> = []
-        return [node.name, node.qualifiedName, node.module, node.location?.path]
-            .compactMap { $0 }
+        let paths = node.location.map { location in
+            [location.path] + projectPathVariants.flatMap {
+                PathFilter.matchCandidates(for: location.path, relativeTo: $0)
+            }
+        } ?? []
+        return ([node.name, node.qualifiedName, node.module].compactMap { $0 } + paths)
             .filter { seen.insert($0).inserted }
     }
 

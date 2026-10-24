@@ -65,6 +65,10 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
 
 ### Fixed
 
+- Layer rules and `rules --explain` match compiler locations against project-relative paths as
+  well as absolute paths. Anchored directory patterns such as `Features/**` now enforce the same
+  rules as their absolute equivalents; existing first-layer precedence and module-name rules remain.
+
 - Git lookups reject non-UTF-8 filter-driver names before reading worktree contents, preserving
   exact Unicode driver identities through private temporary Git config includes. Analysis-session
   fingerprints include line-scope selections so a

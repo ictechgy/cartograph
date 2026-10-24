@@ -248,7 +248,9 @@ public struct CartographService: Sendable {
     ) throws -> (graph: CodeGraph, violations: [LayerViolation], unassigned: [NodeID]) {
         try configuration.validate()
         let graph = context.buildGraph(level: level ?? configuration.level).graph
-        let evaluator = LayerRuleEvaluator(layers: configuration.layers, rules: configuration.rules)
+        let evaluator = LayerRuleEvaluator(
+            layers: configuration.layers, rules: configuration.rules, projectPath: projectPath
+        )
         // 배정 맵(정점마다 글롭 대조)은 위반 판정과 미지정 수집이 함께 쓴다.
         let (violations, unassigned) = evaluator.assess(graph: graph)
         return (graph, violations, unassigned)
@@ -557,7 +559,9 @@ public struct CartographService: Sendable {
         case let .ambiguous(candidates):
             return CommandOutcome(output: Self.describeAmbiguity(subject, candidates: candidates))
         case let .found(node):
-            let evaluator = LayerRuleEvaluator(layers: configuration.layers, rules: configuration.rules)
+            let evaluator = LayerRuleEvaluator(
+                layers: configuration.layers, rules: configuration.rules, projectPath: projectPath
+            )
             return CommandOutcome(output: Self.printableLines(Self.describeLayer(of: node, using: evaluator)))
         }
     }

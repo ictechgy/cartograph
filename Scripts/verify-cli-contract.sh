@@ -665,6 +665,12 @@ else
     FAILURES=$((FAILURES + 1))
 fi
 
+if python3 Scripts/verify-architecture-paths.py --cartograph "$BINARY"; then
+    echo "  ok    레이어 경로와 실제 순환 대조군"
+else
+    FAILURES=$((FAILURES + 1))
+fi
+
 echo
 if [[ "$FAILURES" -eq 0 ]]; then
     echo "통과"
