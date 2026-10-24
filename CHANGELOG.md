@@ -19,6 +19,11 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
 
 ### Added
 
+- `dead --since <revision> --since-lines` optionally filters diagnostic locations to changed
+  current lines, keeping the file-level default and whole-project analysis. Net merge-base-to-worktree
+  hunks preserve final staged/unstaged coordinates; uncertain mappings retain whole files, and
+  unresolved conflicts or ambiguous merge-bases fail instead of silently narrowing the report.
+
 - Optional `receiverPrecision` evidence in current `impact` and `affected` results explains
   bounded final-receiver/self-call refinement, exclusions and fallback budgets. Unknown,
   nonfinal, polymorphic, callable-value and historical paths remain conservative; source
@@ -54,6 +59,11 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
   which skips the download, is rejected (exit 64).
 
 ### Fixed
+
+- Git lookups reject non-UTF-8 filter-driver names before reading worktree contents, preserving
+  exact Unicode driver identities through private temporary Git config includes. Analysis-session
+  fingerprints include line-scope selections so a
+  factory changing only selected lines cannot reuse a stale report scope.
 
 - Keep concurrent synchronous index loads from starving the upstream async library registry on
   macOS 15+ by using a dedicated task executor. Preserve macOS 14 deployment compatibility, add

@@ -10,6 +10,19 @@ import Testing
 /// 없는 증거가 된다(`query`의 같은 수정과 한 쌍).
 @Suite("--since 적용 범위")
 struct SinceValidationTests {
+    @Test("변경 줄 선택은 dead 의 비어 있지 않은 since 에만 허용한다")
+    func changedLinesRequireSince() throws {
+        for arguments in [["--since-lines"], ["--since-lines", "--since", ""],
+                          ["--since-lines", "--since", "   "],
+                          ["--since-lines", "--since", "HEAD", "--explain", "Foo"]] {
+            #expect(throws: (any Error).self) { _ = try DeadCommand.parse(arguments) }
+        }
+        let command = try DeadCommand.parse(["--since", "HEAD", "--since-lines"])
+        #expect(command.sinceLines)
+        #expect(!(try DeadCommand.parse(["--since", "HEAD"])).sinceLines)
+        #expect(throws: (any Error).self) { _ = try CyclesCommand.parse(["--since-lines", "--since", "HEAD"]) }
+    }
+
     @Test("graph는 --since를 받으면 사용 오류를 낸다")
     func graphRejectsSince() {
         do {

@@ -17,6 +17,7 @@ enum ChangedFiles {
     private static let safeGlobalArguments = [
         "--no-optional-locks",
         "-c", "core.fsmonitor=false",
+        "-c", "core.hooksPath=/dev/null",
         "-c", "log.showSignature=false",
     ]
 
@@ -134,35 +135,37 @@ enum ChangedFiles {
 
     /// 저장소가 정의한 콘텐츠 필터 드라이버(clean·smudge·process)를 무력화하는 `-c` 인자.
     ///
-    /// 읽기 전용 `git config --get-regexp` 로 드라이버 이름을 모은다. 이 조회는 명령을
-    /// 실행하지 않고 include 설정도 따라간다. 이름마다 네 키를 빈 값으로 덮고 required 를
+    /// 읽기 전용 `git config --name-only --list` 로 키만 모은다. 정규식 조회는 UTF-8 locale 에서
+    /// 잘못된 바이트가 든 이름을 아예 건너뛸 수 있다. 이 조회는 명령을 실행하지 않고 include 설정도
+    /// 따라간다. 이름마다 네 키를 빈 값으로 덮고 required 를
     /// 끈다 — required 를 끄지 않으면 clean 필터가 비어 실패할 때 git 이 128로 죽는다.
     ///
     /// 이름에 `=` 가 들어가면 `-c filter.<이름>.clean=` 의 키가 첫 `=` 에서 잘려 엉뚱한
     /// 키를 덮으므로 그 드라이버를 끄지 못한다. 그런 이름이 있으면 nil 을 돌려 호출자가
-    /// fail-closed 로 멈추게 한다(원칙 1). 설정을 읽지 못하면(무일치 종료 1 이 아닌 실패)
+    /// fail-closed 로 멈추게 한다(원칙 1). 설정을 읽지 못하면
     /// 던진다. 인자 순서를 결정적으로 유지하려고 이름을 정렬·중복 제거한다.
+    /// 반환한 인자는 runGit 이 바이트를 보존하는 비공개 임시 include 로 바꾼다.
+    /// Process 의 argv/환경 전달에 직접 넣으면 macOS 에서 Unicode 이름이 정규화된다.
     static func filterNeutralizationArguments(
         workingDirectory: String, reference: String
     ) throws -> [String]? {
         let result = try runGit(
-            arguments: ["config", "-z", "--name-only", "--get-regexp", "^filter\\..*\\.(clean|smudge|process)$"],
+            arguments: ["config", "-z", "--name-only", "--list"],
             globalOptions: [], in: workingDirectory, reference: reference
         )
-        // `--get-regexp` 는 일치가 없으면 종료 코드 1 이다(오류가 아니다). 그 밖의 0 아닌
-        // 종료는 설정을 읽을 수 없는 것이므로 막는 쪽으로 던진다.
-        switch result.status {
-        case 0: break
-        case 1: return []
-        default: throw gitFailure(result: result, reference: reference)
-        }
-        var names = Set<String>()
-        for key in String(decoding: result.standardOutput, as: UTF8.self).split(separator: "\0") {
-            if let name = driverName(fromConfigKey: String(key)) { names.insert(name) }
+        guard result.status == 0 else { throw gitFailure(result: result, reference: reference) }
+        // 손실 변환하면 다른 이름을 -c 로 덮고 원래 드라이버는 실행할 수 있다.
+        guard let configKeys = String(data: result.standardOutput, encoding: .utf8) else { return nil }
+        // Git 의 subsection 은 바이트로 구별한다. Swift String 의 정규화 동등성으로
+        // NFC/NFD 이름을 합치면 한 드라이버만 무력화하고 다른 드라이버는 남긴다.
+        var names = Set<Data>()
+        for key in configKeys.split(separator: "\0") {
+            if let name = driverName(fromConfigKey: String(key)) { names.insert(Data(name.utf8)) }
         }
         var arguments: [String] = []
-        for name in names.sorted() {
-            if name.contains("=") { return nil }
+        for bytes in names.sorted(by: { $0.lexicographicallyPrecedes($1) }) {
+            if bytes.contains(0x3D) || bytes.contains(where: { $0 < 0x20 || $0 == 0x7F }) { return nil }
+            let name = String(decoding: bytes, as: UTF8.self)
             for key in ["clean", "smudge", "process"] {
                 arguments.append("-c")
                 arguments.append("filter.\(name).\(key)=")
@@ -181,11 +184,7 @@ enum ChangedFiles {
     /// (`-c filter..clean=` 이 그 드라이버를 덮는다). 부분절이 없는 `filter.clean` 은 git 이 드라이버로
     /// 쓰지 않으므로 nil 이다.
     static func driverName(fromConfigKey key: String) -> String? {
-        let prefix = "filter."
-        guard key.hasPrefix(prefix), let lastDot = key.lastIndex(of: ".") else { return nil }
-        let nameStart = key.index(key.startIndex, offsetBy: prefix.count)
-        guard nameStart <= lastDot else { return nil }
-        return String(key[nameStart..<lastDot])
+        GitFilterOverrides.filterKeyComponents(Array(key.utf8)).map { String(decoding: $0.name, as: UTF8.self) }
     }
 
     /// git 을 한 번 실행하고 출력을 경로 목록으로 나눈다.
@@ -202,16 +201,24 @@ enum ChangedFiles {
         reference: String,
         globalOptions: [String] = []
     ) throws -> [String] {
+        let data = try output(of: arguments, in: workingDirectory, reference: reference, globalOptions: globalOptions)
+        let separator: Character = arguments.contains("-z") ? "\0" : "\n"
+        return String(decoding: data, as: UTF8.self)
+            .split(separator: separator)
+            .map(String.init)
+            .filter { !$0.isEmpty }
+    }
+
+    /// 경로와 patch 를 손실 없이 해석해야 하는 호출자도 같은 실행 방어를 거친다.
+    static func output(
+        of arguments: [String], in workingDirectory: String, reference: String, globalOptions: [String] = []
+    ) throws -> Data {
         let result = try runGit(
             arguments: arguments, globalOptions: globalOptions, in: workingDirectory, reference: reference)
         guard result.status == 0 else {
             throw gitFailure(result: result, reference: reference)
         }
-        let separator: Character = arguments.contains("-z") ? "\0" : "\n"
-        return String(decoding: result.standardOutput, as: UTF8.self)
-            .split(separator: separator)
-            .map(String.init)
-            .filter { !$0.isEmpty }
+        return result.standardOutput
     }
 
     /// 분석용 git 의 환경. 이 프로세스의 환경에 lazy fetch 차단만 더한다.
@@ -226,17 +233,21 @@ enum ChangedFiles {
     private static func gitEnvironment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         environment["GIT_NO_LAZY_FETCH"] = "1"
+        // GIT_DIFF_OPTS 는 명령행 -U0 보다 우선할 수 있다. 줄 필터에 문맥 줄이 섞이지 않게 한다.
+        environment.removeValue(forKey: "GIT_DIFF_OPTS")
         return environment
     }
 
     /// git 프로세스 하나를 실행하고 종료 코드와 양쪽 출력을 그대로 돌려준다.
-    /// 종료 코드 해석은 호출자가 한다(config 조회는 종료 1 을 빈 결과로 삼는다).
+    /// 종료 코드 해석은 호출자가 한다.
     private static func runGit(
         arguments: [String], globalOptions: [String], in workingDirectory: String, reference: String
     ) throws -> (status: Int32, standardOutput: Data, standardError: Data) {
+        let overrides = try GitFilterOverrides.prepare(globalOptions, reference: reference)
+        defer { overrides.cleanup() }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = safeGlobalArguments + globalOptions + ["-C", workingDirectory] + arguments
+        process.arguments = safeGlobalArguments + overrides.arguments + ["-C", workingDirectory] + arguments
         process.environment = gitEnvironment()
         let output = Pipe()
         let errors = Pipe()

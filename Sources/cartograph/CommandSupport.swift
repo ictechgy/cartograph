@@ -9,6 +9,7 @@ struct CommandContext {
     let service: CartographService
     let configuration: CartographConfiguration
     let fileSystem: any FileSystem
+    var scopeNotes: [String] = []
 }
 
 enum CommandSupport {
@@ -26,7 +27,7 @@ enum CommandSupport {
     ///   `baseline_path` 로도 돈다.
     static func makeContext(
         _ options: GlobalOptions, queryPhaseObserver: QueryPhaseObserver? = nil, readsBaseline: Bool = false,
-        supportsLimitationSummary: Bool = false
+        supportsLimitationSummary: Bool = false, sinceLines: Bool = false
     ) throws -> CommandContext {
         // 쓰기·교환 명령이 요약된 근거를 남기기 전에 거부한다. 새 명령은 명시적으로 허용해야 한다.
         guard supportsLimitationSummary || options.limitations == .full else {
@@ -45,10 +46,17 @@ enum CommandSupport {
         }
 
         // 변경 목록은 실행마다 달라지는 값이라 설정 파일이 아니라 여기서 구한다.
-        let scope = try options.since.map {
-            ReportScope(
+        var scopeNotes: [String] = []
+        let scope = try options.since.map { reference in
+            if sinceLines {
+                let selection = try ChangedLines.since(reference, workingDirectory:
+                    resolved.configuration.projectPath ?? fileSystem.currentDirectoryPath)
+                scopeNotes = selection.notes
+                return selection.scope
+            }
+            return ReportScope(
                 files: try ChangedFiles.since(
-                    $0,
+                    reference,
                     workingDirectory: resolved.configuration.projectPath
                         ?? fileSystem.currentDirectoryPath
                 )
@@ -65,7 +73,8 @@ enum CommandSupport {
             allowsEmptyIndex: options.allowEmptyIndex
         )
         if readsBaseline { try requireConfiguredBaseline(of: service) }
-        return CommandContext(service: service, configuration: resolved.configuration, fileSystem: fileSystem)
+        return CommandContext(service: service, configuration: resolved.configuration, fileSystem: fileSystem,
+                              scopeNotes: scopeNotes)
     }
 
     /// 이름 붙인 베이스라인 파일이 없으면 사용 오류(64)로 끝낸다.
@@ -104,7 +113,8 @@ enum CommandSupport {
         } else {
             print(output, terminator: "")
         }
-        for note in notesForDisplay(outcome.notes, quiet: options.quiet, limitationDetail: options.limitations) {
+        for note in notesForDisplay(outcome.notes + context.scopeNotes,
+                                    quiet: options.quiet, limitationDetail: options.limitations) {
             diagnosticSink.write(Data(("note: " + note + "\n").utf8))
         }
 

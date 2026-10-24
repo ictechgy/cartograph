@@ -454,24 +454,90 @@ struct ChangedFilesTests {
         #expect(markerCount(in: markers) == 0)
     }
 
-    @Test("`-c` 로 끌 수 없는 `=` 든 필터 이름은 fail-closed 로 거부한다")
-    func failsClosedOnUndisableableFilterName() throws {
+    @Test("`-c` 로 끌 수 없는 `=` 바이트는 결합 문자가 뒤따라도 fail-closed 로 거부한다",
+          arguments: ["ev=il", "ev=\u{0301}il"])
+    func failsClosedOnUndisableableFilterName(name: String) throws {
         let root = try makeRepository()
         defer { try? FileManager.default.removeItem(at: root) }
         let markers = try makeMarkerDirectory()
         defer { try? FileManager.default.removeItem(at: markers) }
-        try write("*.swift filter=ev=il\n", to: ".gitattributes", in: root)
+        try write("*.swift filter=\(name)\n", to: ".gitattributes", in: root)
         try write("let a = 1", to: "Sources/A.swift", in: root)
         try run(["add", "-A"], in: root)
         try run(["commit", "-qm", "base"], in: root)
         // 이름에 `=` 가 들어가면 `-c filter.<이름>.clean=` 의 키가 첫 `=` 에서 잘려 무력화되지 않는다.
-        try run(["config", "filter.ev=il.clean", "touch '\(markers.path)/eq'; cat"], in: root)
+        try run(["config", "filter.\(name).clean", "touch '\(markers.path)/eq'; cat"], in: root)
 
         try restat("Sources/A.swift", contents: "let a = 1", in: root)
         #expect(throws: CartographError.self) {
             try ChangedFiles.since("HEAD", workingDirectory: root.path)
         }
+        #expect(throws: CartographError.self) {
+            try ChangedLines.since("HEAD", workingDirectory: root.path)
+        }
         #expect(markerCount(in: markers) == 0)
+    }
+
+    @Test("UTF-8 이 아닌 필터 이름은 손실 변환 없이 두 조회 모두 실행 전에 거부한다")
+    func failsClosedOnNonUTF8FilterName() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = try makeMarkerDirectory()
+        defer { try? FileManager.default.removeItem(at: markers) }
+        try write("let a = 1\n", to: "A.swift", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        // 파일명은 정상 UTF-8 이고, Git 설정/속성 안의 드라이버 이름만 원시 바이트다.
+        var attributes = Data("*.swift filter=".utf8)
+        attributes.append(0xff)
+        attributes.append(Data("\n".utf8))
+        try attributes.write(to: root.appendingPathComponent(".gitattributes"))
+        let configURL = root.appendingPathComponent(".git/config")
+        var config = try Data(contentsOf: configURL)
+        config.append(Data("\n[filter \"".utf8))
+        config.append(0xff)
+        config.append(Data("\"]\nclean = \"touch '\(markers.path)/clean'; cat\"\nrequired = true\n".utf8))
+        try config.write(to: configURL)
+        try restat("A.swift", contents: "let a = 2\n", in: root)
+        #expect(throws: CartographError.self) { try ChangedFiles.since("HEAD", workingDirectory: root.path) }
+        #expect(throws: CartographError.self) { try ChangedLines.since("HEAD", workingDirectory: root.path) }
+        #expect(markerCount(in: markers) == 0)
+    }
+
+    @Test("정규화상 같은 이름과 선행 결합 문자도 Git 의 원시 바이트별로 모두 무력화한다")
+    func neutralizesCanonicallyEquivalentFilterNames() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = try makeMarkerDirectory()
+        defer { try? FileManager.default.removeItem(at: markers) }
+        try write("let a = 1\n", to: "A.swift", in: root)
+        try write("let b = 1\n", to: "B.swift", in: root)
+        try write("let c = 1\n", to: "C.swift", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        let nfc = "\u{00E9}"
+        let nfd = "e\u{0301}"
+        let leadingMark = "\u{0301}driver"
+        try write("A.swift filter=\(nfc)\nB.swift filter=\(nfd)\nC.swift filter=\(leadingMark)\n",
+                  to: ".gitattributes", in: root)
+        let configURL = root.appendingPathComponent(".git/config")
+        var config = try Data(contentsOf: configURL)
+        for (name, marker) in [(nfc, "nfc"), (nfd, "nfd"), (leadingMark, "leading")] {
+            config.append(Data("\n[filter \"\(name)\"]\nclean = \"touch '\(markers.path)/\(marker)'; cat\"\n".utf8))
+        }
+        try config.write(to: configURL)
+        try restat("A.swift", contents: "let a = 2\n", in: root)
+        try restat("B.swift", contents: "let b = 2\n", in: root)
+        try restat("C.swift", contents: "let c = 2\n", in: root)
+        let arguments = try #require(try ChangedFiles.filterNeutralizationArguments(
+            workingDirectory: root.path, reference: "HEAD"))
+        let keys = Set(arguments.filter { $0.utf8.starts(with: "filter.".utf8) }.map { Data($0.utf8) })
+        let keyHex = keys.map { $0.map { String(format: "%02x", $0) }.joined() }.sorted()
+        #expect(keys.count == 12, "override keys: \(keyHex)")
+        _ = try ChangedFiles.since("HEAD", workingDirectory: root.path)
+        _ = try ChangedLines.since("HEAD", workingDirectory: root.path)
+        let observedMarkers = try FileManager.default.contentsOfDirectory(atPath: markers.path)
+        #expect(observedMarkers.isEmpty, "drivers executed: \(observedMarkers)")
     }
 
     @Test("서브모듈 로컬 저장소가 정의한 필터도 실행하지 않는다")
@@ -567,6 +633,27 @@ struct ChangedFilesTests {
         #expect(Set(seeds.map { ($0 as NSString).lastPathComponent }) == ["big.txt", "big2.txt"])
         #expect(!FileManager.default.fileExists(atPath: marker.path))
         #expect(objectIsMissing(oldBlob, in: clone))
+    }
+
+    @Test("줄 비교에 필요한 blob 이 없으면 필터링 성공이나 lazy fetch 로 넘어가지 않는다")
+    func changedLinesDoNotFetchMissingBlobs() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let markers = try makeMarkerDirectory()
+        defer { try? FileManager.default.removeItem(at: markers) }
+        try write("let a = 1", to: "A.swift", in: root)
+        try run(["add", "-A"], in: root)
+        try run(["commit", "-qm", "base"], in: root)
+        let base = try run(["rev-parse", "HEAD"], in: root).trimmingCharacters(in: .whitespacesAndNewlines)
+        let blob = try run(["rev-parse", "HEAD:A.swift"], in: root).trimmingCharacters(in: .whitespacesAndNewlines)
+        try write("let a = 2", to: "A.swift", in: root)
+        try run(["commit", "-qam", "current"], in: root)
+        try removeLooseObject(blob, in: root)
+        try run(["config", "remote.origin.url", root.path], in: root)
+        try run(["config", "remote.origin.promisor", "true"], in: root)
+        try run(["config", "remote.origin.uploadpack", "touch '\(markers.path)/fetch'; git-upload-pack"], in: root)
+        #expect(throws: CartographError.self) { try ChangedLines.since(base, workingDirectory: root.path) }
+        #expect(markerCount(in: markers) == 0)
     }
 
     @Test("비교에 필요한 트리가 빠져 있으면 promisor 원격에서 받아 오지 않고 fail-closed 로 멈춘다")
