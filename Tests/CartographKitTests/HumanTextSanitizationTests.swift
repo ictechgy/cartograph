@@ -308,8 +308,10 @@ struct HumanTextSanitizationTests {
         }
 
         let orphan = try service.explainRules(of: forged, level: .file).output
+        // 프로젝트 상대 후보도 같은 한 줄 안에서 정화한다.
         #expect(orphan == "App.A.swift belongs to no layer.\n"
-            + "  checked: A.swift, App.A.swift, App, /p/X  App.A.swift  /p/Trusted.swift/A.swift\n")
+            + "  checked: A.swift, App.A.swift, App, /p/X  App.A.swift  /p/Trusted.swift/A.swift, "
+            + "X  App.A.swift  /p/Trusted.swift/A.swift\n")
     }
 
     @Test("rules --explain 은 설정의 레이어·규칙 이름 속 개행으로 설명 줄을 늘리지 못한다")
