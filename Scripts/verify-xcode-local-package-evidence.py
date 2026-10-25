@@ -24,6 +24,20 @@ SPEC.loader.exec_module(E)
 NATIVE_SPEC = importlib.util.spec_from_file_location("native_package_checks", ROOT / "Scripts/verify-xcode-local-package-native.py")
 NATIVE = importlib.util.module_from_spec(NATIVE_SPEC)
 NATIVE_SPEC.loader.exec_module(NATIVE)
+WORKSPACE_SPEC = importlib.util.spec_from_file_location("workspace_native_checks", ROOT / "Scripts/verify-xcode-workspace-native.py")
+WORKSPACE = importlib.util.module_from_spec(WORKSPACE_SPEC)
+WORKSPACE_SPEC.loader.exec_module(WORKSPACE)
+
+
+class WorkspaceTamperControlsTests(unittest.TestCase):
+    def test_wrong_wrapper_list_mode_changes_both_supported_forms_and_refuses_unknown(self):
+        for observed, changed in (("response", "operand"), ("operand", "response")):
+            with self.subTest(observed=observed):
+                self.assertEqual(WORKSPACE.wrong_wrapper_list_mode(observed), changed)
+                self.assertNotEqual(WORKSPACE.wrong_wrapper_list_mode(observed), observed)
+        for unknown in (None, "", "unknown"):
+            with self.subTest(unknown=unknown), self.assertRaises(ValueError):
+                WORKSPACE.wrong_wrapper_list_mode(unknown)
 
 
 class AffectedProcessTests(unittest.TestCase):

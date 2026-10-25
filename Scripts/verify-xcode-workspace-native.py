@@ -21,6 +21,13 @@ def load(name):
     return module
 
 
+def wrong_wrapper_list_mode(observed):
+    """실제 래퍼 형태를 변경하는 거부 대조군 값을 만든다."""
+    if observed not in ("response", "operand"):
+        raise ValueError("Unknown observed wrapper file-list mode")
+    return "response" if observed == "operand" else "operand"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("candidate", "baseline", "output"):
@@ -187,7 +194,9 @@ def main():
             if label == "missing-dynamic-product": del package["dynamicProduct"]
             elif label == "wrong-install-name": package["dynamicProduct"]["installName"] = "@rpath/Unproved.framework/Unproved"
             elif label == "wrong-native-package-input": package["links"][0]["packageInput"] = package["aggregate"]["output"]
-            else: package["dynamicProduct"]["link"]["fileListMode"] = "operand"
+            else:
+                link = package["dynamicProduct"]["link"]
+                link["fileListMode"] = wrong_wrapper_list_mode(link["fileListMode"])
             path = output / (label + ".json")
             scope.save(path, changed)
             assert invoke(label, ["--target-scope", str(path), "--format", "xcodebuild"], 2) == ""
