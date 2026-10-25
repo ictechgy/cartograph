@@ -280,14 +280,17 @@ permission to skip the rest of a test suite.
 
 ## iOS Simulator v4 development draft
 
-The v4 source changes remain an **unpublished development profile**. The corrected sources
-pass 2,671 Swift tests and instrumented CLI integration with source coverage above the 90% gate.
+The v4 source is a **bounded development profile**. The corrected Swift inputs pass
+2,673 tests and instrumented CLI integration with source coverage above the 90% gate.
 A controlled app-hosted XCTest fixture with a local package, resource and finite xcconfig
 include passes generic SDK capture, CLI/MCP consumption and 15 additional acceptance checks.
 The original fixture's two unbuilt source paths refuse narrowing with empty selector output.
 Updated checksums cannot admit a malformed image or dead required object, and same-mtime
 record corruption invalidates an already prepared MCP session even if the receipt hash changes.
-These checks do not execute a selected test or establish general iOS workspace support.
+A separate controlled Xcode 27/iOS 27 iPhone 17 run passes both tests in the public app-hosted
+fixture, then exactly the selected `ChecksBlueprint/ChangedTests/testChanged` test. The unrelated
+test is absent from the selected result. This establishes only that captured fixture and environment,
+not general iOS workspace support or runtime coverage.
 
 The intended opt-in profile is `--workspace Example.xcworkspace --ios-simulator`.
 It uses only `generic/platform=iOS Simulator` with `build-for-testing`, does not select or
@@ -322,7 +325,7 @@ effective-version SDK names. Arbitrary aliases do not qualify. Repeated linker o
 are accepted only for application images that also pass the complete native proof; required
 source objects and unbound images retain the duplicate-owner refusal.
 
-None of this establishes actual iOS Simulator execution, `-only-testing` acceptance,
+The controlled execution above does not establish other SDK/runtime combinations,
 UI-test support, native framework/static-library target support in this v4 profile,
 correctness on the private 22-project workspace, or safe omission of tests.
 The existing macOS v1/v2/v3 profile keeps its destination, non-app host and input restrictions.

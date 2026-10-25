@@ -15,17 +15,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   preserving compiler-module and built-bundle identities separately. Missing selector
   identity evidence refuses narrowing even when an older scope document still decodes.
 
-This is the unpublished 0.29.0 candidate. The latest published release remains 0.28.0.
+These are planned release notes for the unpublished 0.29.0 candidate. At the
+2026-10-25 preparation checkpoint, publication and independent channel installation
+were not yet verified. Check GitHub Releases and each installation channel for the
+subsequent results; source notes do not prove publication or successful consumption.
 
-### Development draft (not validation-complete)
+### iOS development profile and validation limits
 
-- Prepare the v4 iOS Simulator source/producer connection without operating devices.
+- Add the bounded v4 iOS Simulator source/producer connection. The generic capture command
+  uses build-for-testing without operating a device.
   Corrected sources compile and pass the Swift tests and coverage gate. Preserve workspace
   xcconfig identities through the Python producer as well as the Swift consumer, with
   merge-to-membership regressions. Generic SDK capture and actual CLI/MCP consumption pass
   for a controlled app-hosted XCTest/local-package fixture, including malformed proof and
-  same-mtime record rejection. Hosted execution and general/private workspace acceptance
-  remain pending; this source profile has not been published.
+  same-mtime record rejection. A separate controlled Xcode 27/iOS 27 app-hosted run passes
+  full two-test and selected one-test execution. General/private workspace acceptance and
+  other platform combinations remain unverified; static candidates do not authorize test omission.
 - Keep shared input syntax and the five-value iOS validation context independent of the
   membership and receipt store, removing the draft's two strict type cycles without
   changing the receipt format or refusal conditions.
@@ -1947,8 +1952,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.28.0...HEAD
-[0.29.0]: https://github.com/ictechgy/cartograph/compare/0.28.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.29.0...HEAD
+[0.29.0]: https://github.com/ictechgy/cartograph/compare/0.28.0...0.29.0
 [0.28.0]: https://github.com/ictechgy/cartograph/compare/0.27.1...0.28.0
 [0.27.1]: https://github.com/ictechgy/cartograph/compare/0.27.0...0.27.1
 [0.27.0]: https://github.com/ictechgy/cartograph/compare/0.26.0...0.27.0

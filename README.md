@@ -2259,7 +2259,7 @@ this scan. Run this separately from the default bridge export.
 
 ### Optional follow-up review views
 
-The unpublished 0.29.0 candidate adds capture-bound SwiftPM target-scope review,
+The 0.29.0 source adds capture-bound SwiftPM target-scope review,
 `dead --file-summary` / `--generated-suggestions`, JSON `--limitations summary`
 (default `full`), and the MCP `cartograph_prepare` lifecycle tool. All original
 findings and safety signals remain. SwiftPM scope remains diagnostic only. An optional
@@ -2271,6 +2271,8 @@ Unknown coverage still refuses narrowing; static candidates never authorize test
 See [scope, budgets and migration examples](docs/FOLLOWUP-REVIEW.md).
 
 
-Development note: iOS Simulator target-scope v4 is an uncompiled source draft.
-Its static input checks do not establish runtime or selector acceptance. See the
-[separate draft and validation gaps](docs/XCODE-AFFECTED-SCOPE.md#ios-simulator-v4-development-draft).
+Development note: iOS Simulator target-scope v4 is a bounded development profile.
+A public synthetic app host and local package pass full two-test and selected one-test
+execution on Xcode 27/iOS 27. This does not establish general/private workspace support,
+other platform combinations or safe test omission. See the
+[support boundaries and validation gaps](docs/XCODE-AFFECTED-SCOPE.md#ios-simulator-v4-development-draft).

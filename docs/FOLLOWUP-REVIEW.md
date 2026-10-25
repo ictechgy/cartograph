@@ -1,6 +1,6 @@
 # Scoped review, readable limits and preparation status
 
-These are additive options in the unpublished 0.29.0 candidate. Existing full
+These are additive options in the 0.29.0 source. Existing full
 reports and default analysis behavior remain unchanged. They do not prove that
 tests may be omitted or declarations deleted.
 
