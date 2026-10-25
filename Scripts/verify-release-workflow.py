@@ -208,9 +208,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('python3 "$installed/libexec/cartograph-xcode-scope.py" --help', workflow)
         self.assertIn('"cartograph-swiftpm-scope.py", "cartograph-xcode-scope.py"', workflow)
         self.assertIn('cp Scripts/xcode-local-package-inputs.py Scripts/xcode-local-package-evidence.py dist/cartograph/Scripts/', workflow)
-        self.assertIn('cp Scripts/xcode-workspace-inputs.py Scripts/xcode-workspace-capture.py dist/cartograph/Scripts/', workflow)
+        self.assertIn('cp Scripts/xcode-workspace-inputs.py Scripts/xcode-workspace-capture.py Scripts/xcode-ios-scope.py dist/cartograph/Scripts/', workflow)
         for helper in ("xcode-local-package-inputs.py", "xcode-local-package-evidence.py",
-                       "xcode-workspace-inputs.py", "xcode-workspace-capture.py"):
+                       "xcode-workspace-inputs.py", "xcode-workspace-capture.py", "xcode-ios-scope.py"):
             self.assertIn(f'cmp Scripts/{helper} "$RUNNER_TEMP/cartograph/Scripts/{helper}"', workflow)
             self.assertIn(f'cmp Scripts/{helper} "$installed/libexec/{helper}"', workflow)
         self.assertIn('Scripts/verify-xcode-scope-install.py --scripts-dir "$RUNNER_TEMP/cartograph/Scripts"', workflow)
@@ -224,7 +224,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
             "Scripts/cartograph-git-impact.py", "Scripts/cartograph-swiftpm-scope.py",
             "Scripts/cartograph-xcode-scope.py", "Scripts/xcode-local-package-inputs.py",
             "Scripts/xcode-local-package-evidence.py", "Scripts/xcode-workspace-inputs.py",
-            "Scripts/xcode-workspace-capture.py",
+            "Scripts/xcode-workspace-capture.py", "Scripts/xcode-ios-scope.py",
         )
         for relative in resources:
             target = self.root / relative
@@ -246,6 +246,10 @@ class ReleaseWorkflowTests(unittest.TestCase):
         with tarfile.open(archive, "r:gz") as packaged:
             self.assertEqual(packaged.extractfile(contract).read(), (ROOT / "docs/FIX-VERIFICATION.md").read_bytes())
             self.assertIn(b"docs/FIX-VERIFICATION.md", packaged.extractfile("cartograph/README.md").read())
+            for relative in resources:
+                if relative.startswith("Scripts/"):
+                    self.assertEqual(packaged.extractfile("cartograph/" + relative).read(),
+                                     (ROOT / relative).read_bytes(), relative)
         gate, separator, _ = script("Verify the packaged binary").partition("\nlipo ")
         self.assertTrue(separator, "Document checks must precede binary architecture verification")
         runner = self.root / "runner"
