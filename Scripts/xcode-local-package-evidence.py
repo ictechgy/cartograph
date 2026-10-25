@@ -96,16 +96,31 @@ class Files:
                 "Aggregate proof budget exceeded")
         return data
 
-    def responses(self, argv):
-        argv = [x for x in argv if x not in ("-Xlinker", "-Xclang-linker")]
-        for index, arg in enumerate(argv):
-            if not arg.startswith("@") or runtime_path(arg, argv[index - 1] if index else None):
+    def responses(self, argv, source_file_list=None):
+        def valid(tokens):
+            return len(tokens) <= 1000 and all(isinstance(x, str) and x and len(x.encode()) <= 4096
+                and not any(ord(c) < 32 or ord(c) == 127 for c in x) for x in tokens)
+        def physical(token):
+            return "@" + physical_temporary_alias(token[1:]) if token.startswith("@/") else physical_temporary_alias(token)
+        require(argv and valid(argv), "Invalid or oversized compiler/link command")
+        source_file_list = physical_temporary_alias(source_file_list) if source_file_list is not None else None
+        result = []
+        for raw in argv:
+            arg = physical(raw)
+            if arg in ("-Xlinker", "-Xclang-linker"):
                 continue
-            content = self.read(arg[1:]).decode("utf-8")
-            tokens = [x for x in shlex.split(content) if x not in ("-Xlinker", "-Xclang-linker")]
-            require(len(tokens) <= 1000 and not any(x.startswith("@") and not runtime_path(x, tokens[i - 1] if i else None)
-                    for i, x in enumerate(tokens)),
-                    "Nested or oversized compiler/link response is unsupported")
+            if not arg.startswith("@") or (source_file_list is not None and arg == "@" + source_file_list) or runtime_path(arg, result[-1] if result else None):
+                result.append(arg)
+            else:
+                require(arg.startswith("@/"), "Relative response-file input is unsupported")
+                content = self.read(arg[1:]).decode("utf-8")
+                tokens = [physical(x) for x in shlex.split(content) if x not in ("-Xlinker", "-Xclang-linker")]
+                require(valid(tokens) and not any(x.startswith("@") and not runtime_path(x, tokens[i - 1] if i else None)
+                        for i, x in enumerate(tokens)),
+                        "Nested or oversized compiler/link response is unsupported")
+                result.extend(tokens)
+            require(len(result) <= 1000, "Expanded compiler/link command exceeds token budget")
+        return result
 
     def finish(self):
         # Recheck every proof after all joins; callers also repeat around a fresh raw read.
@@ -170,14 +185,17 @@ def link_list(argv):
 
 
 def link(files, argv, architecture, required=()):
-    files.responses(argv)
     path, mode = link_list(argv)
+    effective = files.responses(argv, source_file_list=path if mode == "response" else None)
+    effective_path, effective_mode = link_list(effective)
+    require(effective_mode == mode and canonical(effective_path, files.build) == canonical(path, files.build),
+            "Expanded linker file-list identity differs")
     result = {"argv": argv, "fileList": str(canonical(path, files.build)), "fileListMode": mode,
-              "output": str(canonical(operand(argv, "-o"), files.build)), "linkMap": str(canonical(operand(argv, "-map"), files.build))}
-    require(operand(argv, "-target").split("-", 1)[0] == architecture, "Link target architecture differs")
+              "output": str(canonical(operand(effective, "-o"), files.build)), "linkMap": str(canonical(operand(effective, "-map"), files.build))}
+    require(operand(effective, "-target").split("-", 1)[0] == architecture, "Link target architecture differs")
     inputs = file_list(files, result["fileList"], files.build)
     for value in set(required) - set(inputs):
-        require("-r" not in argv and any(physical_temporary_alias(token) == value for token in argv),
+        require("-r" not in effective and value in effective,
                 "Required package contribution is absent from actual linker operands")
         inputs.append(value)
     for path in inputs:

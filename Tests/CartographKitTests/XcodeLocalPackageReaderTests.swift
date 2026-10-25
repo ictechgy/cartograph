@@ -6,6 +6,45 @@ import Testing
 
 @Suite("Xcode compiler 문서의 경계와 의미 검증")
 struct XcodeLocalPackageReaderTests {
+    @Test("response 안의 package 입력도 현재 바이트와 live owner가 모두 입증될 때만 허용한다",
+        arguments: ["valid", "missing", "nested", "duplicate-output", "dead", "tampered", "outside", "non-utf8"])
+    func responseOnlyPackageInput(kind: String) throws {
+        let root = "/capture/DerivedData/Build", object = root + "/Native.o"
+        let package = root + "/Package with space.o", output = root + "/Native"
+        let list = root + "/Native.LinkFileList", map = root + "/Native.map"
+        let response = kind == "outside" ? "/outside/link.resp" : root + "/link.resp"
+        var text = "\"\(package)\""
+        if kind == "missing" { text = "-lswiftCore" }
+        if kind == "nested" { text = "@" + root + "/nested.resp" }
+        if kind == "duplicate-output" { text += " -o " + root + "/Other" }
+        let data = kind == "non-utf8" ? Data([0xff]) : Data(text.utf8)
+        let fs = InMemoryFileSystem()
+        let rows: [String: Data] = [object: Data("native object".utf8), package: Data("package object".utf8),
+            output: Data("actual output".utf8), list: Data((object + "\n").utf8), response: data,
+            map: XcodeLocalPackageEvidenceTests.linkMap(output: output, owners: kind == "dead" ? [object] : [object, package])]
+        var files: [String: XcodeLocalPackageProofFile] = [:]
+        for (path, bytes) in rows {
+            try fs.write(bytes, to: path)
+            files[path] = .init(sha256: TargetScopeStore.digest(bytes), bytes: bytes.count,
+                               kind: [object, package, output].contains(path) ? "object" : "document")
+        }
+        if kind == "tampered" { try fs.write(text: text + " -changed", to: response) }
+        let link = XcodeLocalPackageEvidence.Link(argv: ["/tool/clang", "-target", "arm64-apple-macos14.0",
+            "-filelist", list, "-map", map, "@" + response, "-o", output],
+            fileList: list, output: output, linkMap: map, fileListMode: nil)
+        var reader = try XcodeLocalPackageReader(files: files, buildRoot: root, indexStore: "/index", fileSystem: fs)
+        if kind == "valid" {
+            #expect(try XcodeLocalPackageEvidence.validateLink(link, required: [package], architecture: "arm64",
+                relocatable: false, reader: &reader) == [object, package])
+            #expect(reader.used.contains(response))
+        } else {
+            #expect(throws: (any Error).self) {
+                try XcodeLocalPackageEvidence.validateLink(link, required: [package], architecture: "arm64",
+                    relocatable: false, reader: &reader)
+            }
+        }
+    }
+
     @Test("bare loader path는 rpath 피연산자로만 허용하고 상대 response로 추측하지 않는다")
     func bareLoaderPath() throws {
         let fs = InMemoryFileSystem()

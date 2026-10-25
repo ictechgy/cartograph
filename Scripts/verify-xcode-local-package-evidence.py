@@ -577,6 +577,49 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(proof["links"][0]["targetID"], "CORE")
         self.assertEqual(proof["files"][str(self.response)]["kind"], "document")
 
+    def response_only_native(self, content=None):
+        self.native_list.write_text(shlex.quote(str(self.other)) + "\n")
+        response = self.write(self.build / "Intermediates/Native linker.resp",
+                              (content if content is not None else shlex.quote(str(self.aggregate))).encode())
+        self.native_argv[self.native_argv.index("@" + str(self.response))] = "@" + str(response)
+        return response
+
+    def test_response_only_native_contribution_preserves_raw_argv_and_bound_bytes(self):
+        response = self.response_only_native()
+        proof = self.capture()
+        self.assertNotIn(str(self.aggregate), proof["links"][0]["link"]["argv"])
+        self.assertIn("@" + str(response), proof["links"][0]["link"]["argv"])
+        self.assertEqual(proof["files"][str(response)]["sha256"], hashlib.sha256(response.read_bytes()).hexdigest())
+        self.assertEqual(proof["links"][0]["packageInput"], str(self.aggregate))
+
+    def test_response_only_native_still_needs_live_contribution_and_original_bytes(self):
+        response = self.response_only_native()
+        self.native_map.write_bytes(self.map_bytes(self.native, [self.other]))
+        with self.assertRaises(E.EvidenceError):
+            self.capture()
+        files = E.Files(self.build, self.store)
+        files.responses(self.native_argv)
+        response.write_text("changed same timestamp irrelevant")
+        with self.assertRaisesRegex(E.EvidenceError, "bytes or role changed"):
+            files.finish()
+
+    def test_response_only_nested_outside_symlink_duplicate_options_and_budget_refuse(self):
+        response = self.response_only_native()
+        for text in ["@nested.resp", "@/outside/nested.resp", "-o /outside/forged", "x" * 4097,
+                     " ".join(["-lswiftCore"] * 1001), "bad\x00token", ""]:
+            with self.subTest(text=text[:70]):
+                response.write_text(text)
+                with self.assertRaises((E.EvidenceError, ValueError)):
+                    self.capture()
+        with self.assertRaises(E.EvidenceError):
+            E.Files(self.build, self.store).responses(["/tool/clang", "@None"])
+        outside = self.write(self.root / "outside.resp", shlex.quote(str(self.aggregate)).encode())
+        for path in [outside, self.build / "Intermediates/alias.resp"]:
+            if path != outside: path.symlink_to(outside)
+            self.native_argv[self.native_argv.index("@" + str(response))] = "@" + str(path)
+            with self.assertRaises(E.EvidenceError): self.capture()
+            self.native_argv[self.native_argv.index("@" + str(path))] = "@" + str(response)
+
     def dynamic_wrapper(self):
         bundle = self.build / "Products/Debug/PackageFrameworks/ArithmeticProduct_ABC_PackageProduct.framework"
         name = bundle.name.removesuffix(".framework")
@@ -621,7 +664,7 @@ class EvidenceTests(unittest.TestCase):
         with self.assertRaises(E.EvidenceError):
             self.capture()
 
-    def test_real_temporary_aliases_preserve_raw_virtual_unit_identity(self):
+    def real_temporary_aliases(self, extra=()):
         physical = str(self.root)
         if not physical.startswith(("/private/tmp/", "/private/var/folders/")):
             self.skipTest("Host has no observed macOS temporary path alias")
@@ -629,10 +672,20 @@ class EvidenceTests(unittest.TestCase):
         for path in self.derived.rglob("*"):
             if path.is_file():
                 path.write_bytes(path.read_bytes().replace(physical.encode(), alias.encode()))
-        self.compiler = [x.replace(physical, alias) for x in self.compiler]
-        self.aggregate_argv = [x.replace(physical, alias) for x in self.aggregate_argv]
-        self.native_argv = [x.replace(physical, alias) for x in self.native_argv]
+        for argv in [self.compiler, self.aggregate_argv, self.native_argv, *extra]:
+            argv[:] = [x.replace(physical, alias) for x in argv]
         self.snapshot["snapshot"]["sourceRecordAdmissions"][0]["path"] = str(self.source).replace(physical, alias)
+
+    def test_dynamic_wrapper_real_temporary_alias_keeps_file_list_identity(self):
+        wrapper, _, _, _, _ = self.dynamic_wrapper()
+        self.real_temporary_aliases([wrapper])
+        proof = self.capture([wrapper])
+        self.assertEqual(proof["dynamicProduct"]["link"]["fileListMode"], "response")
+        self.assertIn("@" + str(proof["dynamicProduct"]["link"]["fileList"]).removeprefix("/private"),
+                      proof["dynamicProduct"]["link"]["argv"])
+
+    def test_real_temporary_aliases_preserve_raw_virtual_unit_identity(self):
+        self.real_temporary_aliases()
         proof = self.capture()
         self.assertEqual(proof["compilations"][0]["source"], str(self.source))
         self.assertEqual(proof["compilations"][0]["unitOutputIdentity"], self.virtual)
