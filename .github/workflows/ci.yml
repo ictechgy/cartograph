@@ -161,13 +161,13 @@ jobs:
 
       - name: Prepare and bind exact source, toolchain and executable bytes
         id: prepare
-        timeout-minutes: 12
+        timeout-minutes: 35
         run: |
           python3 Scripts/prepared-comparison-tools.py prepare \
             --role baseline --checkout "$GITHUB_WORKSPACE" \
             --output "$RUNNER_TEMP/prepared-baseline" \
             --evidence "$RUNNER_TEMP/prepared-baseline-evidence" \
-            --jobs 3 --setup-timeout 600
+            --jobs 3 --setup-timeout 1500
 
       - name: Transfer only admitted executable inventory and preparation manifest
         id: upload

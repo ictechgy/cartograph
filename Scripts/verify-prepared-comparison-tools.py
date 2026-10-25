@@ -70,8 +70,14 @@ class PreparedToolsTests(unittest.TestCase):
             original_is_symlink = Path.is_symlink
             def is_link(path):
                 return path in {root / name for name in links} or original_is_symlink(path)
+            original_readlink = os.readlink
             def read_link(path):
-                return links[Path(path).relative_to(root).as_posix()]
+                # pathlib may resolve real platform ancestors before our simulated links.
+                try:
+                    key = Path(path).relative_to(root).as_posix()
+                except ValueError:
+                    return original_readlink(path)
+                return links[key] if key in links else original_readlink(path)
             # Portable resolver replay uses real referent files and simulated link syscalls.
             # The separate POSIX controls exercise actual filesystem symlinks in native CI.
             with patch.object(Path, "is_symlink", is_link), patch.object(P.os, "readlink", side_effect=read_link):
@@ -233,7 +239,7 @@ class PreparedToolsTests(unittest.TestCase):
                         "toolchain": tools, "runtime_closure": {"nodes": {}}, "source": source,
                         "dependencies": {}, "producer": {"runner": "producer"}, "build_evidence": evidence,
                         "source_verified_before_after": True, "dependencies_verified_before_after": True,
-                        "limits": {"jobs": 3, "setup_timeout_seconds": 600 if role == "baseline" else 1500},
+                        "limits": {"jobs": 3, "setup_timeout_seconds": 1500},
                         "files": {"bin/tool": {"sha256": P.digest(binary), "bytes": binary.stat().st_size, "executable": True}}}
             P.save(folder / "manifest.json", manifest)
             expected[role] = {"manifest_sha256": P.digest(folder / "manifest.json"), "artifact_id": str(len(expected) + 1)}
@@ -277,7 +283,10 @@ class PreparedToolsTests(unittest.TestCase):
         mutations = [lambda row: row.update(role="baseline"), lambda row: row["binding"].update(attempt="1"),
                      lambda row: row["binding"].update(checkout_commit="f" * 40),
                      lambda row: row["toolchain"]["identity"].update(os_build="other"),
-                     lambda row: row["build_evidence"].update(binary_sha256="0" * 64)]
+                     lambda row: row["build_evidence"].update(binary_sha256="0" * 64),
+                     lambda row: row["limits"].update(setup_timeout_seconds=600),
+                     lambda row: row["limits"].update(setup_timeout_seconds=1501),
+                     lambda row: row["limits"].update(jobs=4)]
         for mutate in mutations:
             with self.subTest(mutation=mutate), tempfile.TemporaryDirectory() as folder:
                 args, action, tools = self.admission_fixture(Path(folder))
@@ -530,7 +539,7 @@ class PreparedToolsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             args = argparse.Namespace(checkout=root, output=root / "output", evidence=root / "evidence",
-                                      role="baseline", setup_timeout=600, jobs=3)
+                                      role="baseline", setup_timeout=1500, jobs=3)
             fake_base = types.SimpleNamespace(run=unittest.mock.Mock())
             with patch.object(P, "base_module", return_value=fake_base), patch.object(P, "phase_progress"), \
                  patch.object(P, "binding", return_value={"checkout_commit": "a" * 40}), \

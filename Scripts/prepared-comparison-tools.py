@@ -635,7 +635,7 @@ def verify_preparation(value):
     role = value.get("role")
     require(role in ROLES and value.get("source_verified_before_after") is True
             and value.get("dependencies_verified_before_after") is True, "Pre/post build identities absent")
-    require(value.get("limits") == {"jobs": 3, "setup_timeout_seconds": 600 if role == "baseline" else 1500},
+    require(value.get("limits") == {"jobs": 3, "setup_timeout_seconds": 1500},
             "Frozen build limits differ")
     original = value.get("build_evidence", {})
     if role == "comparator":
@@ -696,7 +696,7 @@ def prepare(args):
     preparation_receipts = phase_progress(base, evidence)
     action = binding(checkout)
     tools = toolchain_identity()
-    require(args.setup_timeout == (600 if args.role == "baseline" else 1500) and args.jobs == 3,
+    require(args.setup_timeout == 1500 and args.jobs == 3,
             "Frozen preparation budget/jobs differ")
     preflight_macho(tools)
     package = checkout
