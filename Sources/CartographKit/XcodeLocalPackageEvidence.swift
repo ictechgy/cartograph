@@ -98,7 +98,8 @@ struct XcodeLocalPackageEvidence: Codable {
     /// 호출 전후 동일 receipt를 검증한다. 이 관측 사이의 원자적 filesystem snapshot을 주장하지 않는다.
     func validate(root: String, buildRoot: String, architecture: String, project: XcodeProjectMembership,
                   closure: Set<String>, products: [String: String], nativeProducts: [String: String],
-                  nativeModules: Set<String>, fileSystem: any FileSystem, iosSimulator: Bool = false) throws {
+                  nativeModules: Set<String>, fileSystem: any FileSystem, iosSimulator: Bool = false,
+                  nativeAppImages: Set<String> = []) throws {
         guard XcodeProjectMembership.relative(path), !nativeModules.contains(module),
               consumers.count <= 1_000, Set(consumers).count == consumers.count,
               Set(consumers) == project.packageConsumers, !Set(consumers).isDisjoint(with: closure),
@@ -176,7 +177,8 @@ struct XcodeLocalPackageEvidence: Codable {
                 throw XcodeLocalPackageIO.invalid("Native package input differs from its proved aggregate/product.")
             }
             _ = try Self.validateLink(consumer.link, required: [input], architecture: architecture,
-                relocatable: false, iosSimulator: iosSimulator, reader: &reader)
+                relocatable: false, iosSimulator: iosSimulator,
+                allowedRepeatedOwners: iosSimulator ? nativeAppImages : [], reader: &reader)
         }
         guard reader.used == Set(files.keys) else { throw XcodeLocalPackageIO.invalid("Unexpected or unused package proof file identities.") }
     }
@@ -265,7 +267,8 @@ struct XcodeLocalPackageEvidence: Codable {
     }
 
     static func validateLink(_ link: Link, required: Set<String>, architecture: String,
-                              relocatable: Bool, iosSimulator: Bool = false, reader: inout XcodeLocalPackageReader) throws -> Set<String> {
+                              relocatable: Bool, iosSimulator: Bool = false, allowedRepeatedOwners: Set<String> = [],
+                              reader: inout XcodeLocalPackageReader) throws -> Set<String> {
         let mode = link.fileListMode ?? "operand"
         guard ["operand", "response"].contains(mode) else { throw XcodeLocalPackageIO.invalid("Unknown linker file-list mode.") }
         let argv = try reader.arguments(link.argv, sourceFileList: mode == "response" ? link.fileList : nil)
@@ -289,7 +292,8 @@ struct XcodeLocalPackageEvidence: Codable {
         for input in inputs { _ = try reader.read(input, kind: "object") }
         _ = try reader.read(link.output, kind: "object")
         try XcodeLinkMapEvidence.validate(try reader.read(link.linkMap, kind: "document"),
-            output: link.output, architecture: architecture, required: required, fileSystem: reader.fileSystem)
+            output: link.output, architecture: architecture, required: required,
+            allowedRepeatedOwners: allowedRepeatedOwners, fileSystem: reader.fileSystem)
         return inputs
     }
 

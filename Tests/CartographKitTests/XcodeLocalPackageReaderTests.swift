@@ -105,6 +105,39 @@ struct XcodeLocalPackageReaderTests {
         }
     }
 
+    @Test("검증할 native host 이미지의 별칭 owner만 중복을 허용하고 source 기여에는 쓰지 않는다")
+    func repeatedNativeHostOwners() throws {
+        let text = """
+        # Path: /out
+        # Arch: arm64
+        # Object files:
+        [ 1] /source.o
+        [ 2] /Host.debug.dylib
+        [ 3] /Host.debug.dylib
+        # Sections:
+        # Address Size Segment Section
+        0x0 0x8 __TEXT __text
+        # Symbols:
+        # Address Size File Name
+        0x0 0x8 [ 1] source
+        0x8 0x8 [ 2] host
+        0x10 0x8 [ 3] hostAlias
+        """
+        let data = Data(text.utf8)
+        try XcodeLinkMapEvidence.validate(data, output: "/out", architecture: "arm64", required: ["/source.o"],
+            allowedRepeatedOwners: ["/Host.debug.dylib"])
+        for allowed: Set<String> in [[], ["/unbound.dylib"]] {
+            #expect(throws: (any Error).self) {
+                try XcodeLinkMapEvidence.validate(data, output: "/out", architecture: "arm64", required: ["/source.o"],
+                    allowedRepeatedOwners: allowed)
+            }
+        }
+        #expect(throws: (any Error).self) {
+            try XcodeLinkMapEvidence.validate(data, output: "/out", architecture: "arm64", required: ["/Host.debug.dylib"],
+                allowedRepeatedOwners: ["/Host.debug.dylib"])
+        }
+    }
+
     @Test("허용한 proof의 object를 뒤의 map 읽기 중 바꾸면 마지막 관측에서 거부한다")
     func finalReadFindsMidValidationMutation() throws {
         let fixture = try XcodeLocalPackageEvidenceTests().fixture()

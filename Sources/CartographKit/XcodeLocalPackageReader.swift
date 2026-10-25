@@ -133,6 +133,7 @@ enum XcodeEvidenceTokens {
 /// 완전한 map에서 양의 live owner만 사용한다. 목록의 부재나 dead-stripped 행은 범위 밖 증거가 아니다.
 enum XcodeLinkMapEvidence {
     static func validate(_ data: Data, output: String, architecture: String, required: Set<String>,
+                         allowedRepeatedOwners: Set<String> = [],
                          fileSystem: (any FileSystem)? = nil) throws {
         guard let text = String(data: data, encoding: .utf8) else { throw XcodeLocalPackageIO.invalid("Invalid linker map encoding.") }
         var objects: [Int: String] = [:], live: Set<Int> = [], referenced: Set<Int> = []
@@ -185,8 +186,11 @@ enum XcodeLinkMapEvidence {
                 }
             } else { throw XcodeLocalPackageIO.invalid("Unsupported linker map row or section.") }
         }
+        var ownerPaths: Set<String> = [], repeatedOwners: Set<String> = []
+        for path in objects.values where !ownerPaths.insert(path).inserted { repeatedOwners.insert(path) }
         guard ["path", "arch", "# Object files:", "# Sections:", "# Symbols:"].allSatisfy(headers.contains),
-              Set(objects.values).count == objects.count, referenced.isSubset(of: Set(objects.keys)),
+              repeatedOwners.isSubset(of: allowedRepeatedOwners), repeatedOwners.isDisjoint(with: required),
+              referenced.isSubset(of: Set(objects.keys)),
               required.isSubset(of: Set(live.compactMap { objects[$0] })) else {
             throw XcodeLocalPackageIO.invalid("Missing, unresolved or non-live package linker owners.")
         }

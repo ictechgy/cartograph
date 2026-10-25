@@ -50,15 +50,15 @@ struct XcodeIOSScopeEvidence: Codable {
         }
         var reader = try XcodeLocalPackageReader(files: files, buildRoot: buildRoot, indexStore: indexStore, fileSystem: fileSystem)
         var expectedResources: Set<Resource> = []
+        // test host 이미지의 OS 임시 경로 별칭은 서로 다른 linker owner 번호로 나타날 수 있다.
+        // 이 이미지들은 아래에서 전체 native proof로 검증하며 source object의 중복에는 쓰지 않는다.
+        let nativeAppImages = nativeAppImages(in: project)
         for native in targets {
             guard let target = project.targets[native.targetID], let values = settings[target.name],
                   let directory = values["TARGET_BUILD_DIR"], let executable = values["EXECUTABLE_PATH"],
                   let product = values["FULL_PRODUCT_NAME"], let sdk = values["SDK_VERSION"],
                   let minimum = values["IPHONEOS_DEPLOYMENT_TARGET"], let module = values["PRODUCT_MODULE_NAME"],
-                  let developer = values["DEVELOPER_DIR"], let sdkRoot = values["SDKROOT"],
                   values["PLATFORM_NAME"] == "iphonesimulator", values["SDK_NAME"] == "iphonesimulator" + sdk,
-                  sdkRoot.hasPrefix(developer + "/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator"),
-                  sdkRoot.hasSuffix(".sdk"), try fileSystem.realPath(at: sdkRoot) == sdkRoot,
                   native.executable == directory + "/" + executable,
                   native.infoPlist == directory + "/" + product + "/Info.plist",
                   Set(native.compilations.map(\.source)) == Set(target.sources.map { receipt.projectRoot + "/" + $0 }),
@@ -67,6 +67,7 @@ struct XcodeIOSScopeEvidence: Codable {
                   Set(native.compilations.map(\.object)).count == native.compilations.count else {
                 throw XcodeLocalPackageIO.invalid("iOS target compiler, SDK, source membership or executable binding differs.")
             }
+            let sdkIdentity = try XcodeIOSSDKIdentity(settings: values, fileSystem: fileSystem)
             let triple = receipt.architecture + "-apple-ios" + minimum + "-simulator"
             for compilation in native.compilations {
                 guard compilation.targetTriple == triple else { throw XcodeLocalPackageIO.invalid("iOS native compilation deployment target differs.") }
@@ -74,16 +75,17 @@ struct XcodeIOSScopeEvidence: Codable {
                     sources: Set(native.compilations.map(\.source)), module: module, architecture: receipt.architecture,
                     iosSimulator: true, reader: &reader)
                 let argv = try reader.arguments(compilation.argv, sourceFileList: compilation.sourceFileList)
-                guard try XcodeLocalPackageIO.argument("-sdk", in: argv) == sdkRoot else {
+                guard try sdkIdentity.matches(XcodeLocalPackageIO.argument("-sdk", in: argv), fileSystem: fileSystem) else {
                     throw XcodeLocalPackageIO.invalid("iOS compiler SDK differs from its effective settings.")
                 }
             }
             try XcodeLocalPackageEvidence.validateRecords(native.records, compilations: native.compilations, indexStore: indexStore, reader: &reader, fileSystem: fileSystem)
             _ = try XcodeLocalPackageEvidence.validateLink(native.link, required: Set(native.compilations.map(\.object)),
-                architecture: receipt.architecture, relocatable: false, iosSimulator: true, reader: &reader)
+                architecture: receipt.architecture, relocatable: false, iosSimulator: true,
+                allowedRepeatedOwners: nativeAppImages, reader: &reader)
             let linkArgs = try reader.arguments(native.link.argv, sourceFileList: native.link.fileList)
             guard try XcodeLocalPackageIO.argument("-target", in: linkArgs) == triple,
-                  try XcodeLocalPackageIO.argument("-isysroot", in: linkArgs) == sdkRoot else {
+                  try sdkIdentity.matches(XcodeLocalPackageIO.argument("-isysroot", in: linkArgs), fileSystem: fileSystem) else {
                 throw XcodeLocalPackageIO.invalid("iOS linker SDK or deployment minimum differs from its target compilation.")
             }
             let info = try PropertyListSerialization.propertyList(from: reader.read(native.infoPlist, kind: "document"), format: nil) as? [String: Any]
@@ -109,7 +111,7 @@ struct XcodeIOSScopeEvidence: Codable {
                 let argv = try reader.arguments(host.argv)
                 guard try XcodeLocalPackageIO.argument("-o", in: argv) == native.executable,
                       try XcodeLocalPackageIO.argument("-target", in: argv) == triple,
-                      try XcodeLocalPackageIO.argument("-isysroot", in: argv) == sdkRoot,
+                      try sdkIdentity.matches(XcodeLocalPackageIO.argument("-isysroot", in: argv), fileSystem: fileSystem),
                       try XcodeLocalPackageIO.argument("-map", in: argv) == host.linkMap,
                       try XcodeLocalPackageIO.argument("-filelist", in: argv) == host.fileList,
                       argv.filter({ $0 == native.link.output }).count == 1 else {
@@ -152,6 +154,13 @@ struct XcodeIOSScopeEvidence: Codable {
         }
     }
 
+    /// 이 경로들은 validate가 전체 앱 image proof를 확인한 뒤에만 최종 receipt로 인정된다.
+    func nativeAppImages(in project: XcodeProjectMembership) -> Set<String> {
+        Set(targets.filter {
+            project.targets[$0.targetID]?.productType == "com.apple.product-type.application"
+        }.map { $0.link.output })
+    }
+
     private func image(_ path: String, receipt: XcodeTargetScopeStore.Receipt, reader: inout XcodeLocalPackageReader) throws -> XcodeIOSMachO {
         _ = try reader.read(path, kind: "object")
         let data = try XcodeLocalPackageIO.bounded(path, maximum: 64 * 1_024 * 1_024, fileSystem: reader.fileSystem)
@@ -159,5 +168,34 @@ struct XcodeIOSScopeEvidence: Codable {
             throw XcodeLocalPackageIO.invalid("iOS image bytes differ from captured whole products and link proof.")
         }
         return try XcodeIOSMachO(data, architecture: receipt.architecture)
+    }
+}
+
+/// SDKROOT와 SDK_DIR의 두 Xcode SDK 이름만 같은 실제 SDK 디렉터리에 묶는다.
+struct XcodeIOSSDKIdentity {
+    let canonicalRoot: String
+    private let paths: Set<String>
+
+    init(settings: [String: String], fileSystem: any FileSystem) throws {
+        guard let developer = settings["DEVELOPER_DIR"], let version = settings["SDK_VERSION"],
+              let root = settings["SDKROOT"], let directory = settings["SDK_DIR"],
+              developer.hasPrefix("/"), XcodeIOSMachO.version(version) != nil else {
+            throw XcodeLocalPackageIO.invalid("Missing effective iOS SDK identity settings.")
+        }
+        let prefix = developer + "/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator"
+        let allowed: Set<String> = [prefix + ".sdk", prefix + version + ".sdk"]
+        let canonical = try fileSystem.realPath(at: root)
+        guard allowed.contains(root), directory == prefix + version + ".sdk", allowed.contains(canonical),
+              fileSystem.directoryExists(at: root), fileSystem.directoryExists(at: directory),
+              try fileSystem.realPath(at: directory) == canonical else {
+            throw XcodeLocalPackageIO.invalid("Effective iOS SDK aliases do not bind one versioned SDK directory.")
+        }
+        canonicalRoot = canonical
+        paths = allowed
+    }
+
+    func matches(_ path: String, fileSystem: any FileSystem) throws -> Bool {
+        guard paths.contains(path), fileSystem.directoryExists(at: path) else { return false }
+        return try fileSystem.realPath(at: path) == canonicalRoot
     }
 }

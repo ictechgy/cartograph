@@ -193,7 +193,8 @@ struct XcodeTargetScopeStore {
                 packageConsumers: receipt.workspace != nil ? Set(package.consumers) : project.packageConsumers)
             try package.validate(root: root, buildRoot: String(productRoot.dropLast("/Products".count)),
                 architecture: receipt.architecture, project: packageProject, closure: closure, products: receipt.products,
-                nativeProducts: nativeProducts, nativeModules: Set(receipt.targets.map(\.module)), fileSystem: fileSystem, iosSimulator: receipt.ios != nil)
+                nativeProducts: nativeProducts, nativeModules: Set(receipt.targets.map(\.module)), fileSystem: fileSystem,
+                iosSimulator: receipt.ios != nil, nativeAppImages: receipt.ios?.nativeAppImages(in: project) ?? [])
             }
         }
         try validateLocalPackage()
