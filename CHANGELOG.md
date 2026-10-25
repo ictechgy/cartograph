@@ -5,7 +5,9 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.29.0] - Unreleased
+## [Unreleased]
+
+## [0.29.0] - 2026-10-25
 
 - Add opt-in bounded Xcode affected-test captures with explicit scheme/test-plan target membership,
   consumed source-record module evidence, built bundle identity and whole-product byte validation.
@@ -15,10 +17,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   preserving compiler-module and built-bundle identities separately. Missing selector
   identity evidence refuses narrowing even when an older scope document still decodes.
 
-These are planned release notes for the unpublished 0.29.0 candidate. At the
-2026-10-25 preparation checkpoint, publication and independent channel installation
-were not yet verified. Check GitHub Releases and each installation channel for the
-subsequent results; source notes do not prove publication or successful consumption.
+0.29.0 was published on 2026-10-25. The universal archive and Homebrew formula
+are available. Fresh archive, Mint and SwiftPM CLI contracts passed, together with
+Homebrew installation and formula tests. See the [published release](https://github.com/ictechgy/cartograph/releases/tag/0.29.0)
+for the immutable source tag and archive.
 
 ### iOS development profile and validation limits
 
