@@ -84,6 +84,15 @@ def native_outputs(targets, settings, selected):
     return result
 
 
+def host_stub_link(commands, executable, code_output, proof):
+    """Bind exactly one observed code-image operand using only verified OS temporary aliases."""
+    rows = [a for a in commands if "-map" in a and "-o" in a
+            and proof.physical_temporary_alias(proof.operand(a, "-o")) == executable]
+    require(len(rows) == 1 and sum(proof.physical_temporary_alias(token) == code_output for token in rows[0]) == 1,
+            "Missing unique actual app-stub link")
+    return rows[0]
+
+
 def assemble(root, derived, store, log, snapshot, targets, settings, selected, architecture, proof):
     """Join native Swift records, actual code objects, image links, bundle metadata and resource copies."""
     files, commands = proof.Files(derived / "Build", store), proof.command_rows(log)
@@ -110,10 +119,7 @@ def assemble(root, derived, store, log, snapshot, targets, settings, selected, a
                 "records": sorted(records, key=lambda r: (r["source"], r["unit"], r["record"])),
                 "link": linked, "executable": executable, "infoPlist": info}
         if executable != code_output:
-            rows = [a for a in commands if "-map" in a and "-o" in a
-                    and proof.physical_temporary_alias(proof.operand(a, "-o")) == executable]
-            require(len(rows) == 1 and rows[0].count(code_output) == 1, "Missing unique actual app-stub link")
-            argv = rows[0]
+            argv = host_stub_link(commands, executable, code_output, proof)
             files.responses(argv)
             file_list = str(proof.canonical(proof.operand(argv, "-filelist"), files.build))
             files.read(file_list)

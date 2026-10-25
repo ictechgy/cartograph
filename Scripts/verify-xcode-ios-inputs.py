@@ -23,6 +23,7 @@ def load(name):
 
 SCOPE, IOS = load("cartograph-xcode-scope"), load("xcode-ios-scope")
 WORKSPACE = load("xcode-workspace-inputs")
+PROOF = load("xcode-local-package-evidence")
 
 
 class Inputs(unittest.TestCase):
@@ -128,6 +129,22 @@ class Inputs(unittest.TestCase):
                     {"target": "Checks", "buildSettings": {"TARGET_BUILD_DIR": "/capture/Products/App.app/PlugIns", "EXECUTABLE_PATH": "Checks.xctest/Checks"}}]
         self.assertEqual({"app": "/capture/Products/App.app/App.debug.dylib", "test": "/capture/Products/App.app/PlugIns/Checks.xctest/Checks"},
                          IOS.native_outputs(targets, settings, ["test"]))
+
+    def test_host_stub_link_matches_verified_temporary_path_alias_once(self):
+        executable = self.root / "App"
+        code = self.root / "App.debug.dylib"
+        executable.touch()
+        code.touch()
+        alias = str(self.root)
+        if alias.startswith(("/private/tmp/", "/private/var/folders/")):
+            alias = alias[len("/private"):]
+        argv = ["/tool/clang", "-map", str(self.root / "App.map"), alias + "/App.debug.dylib", "-o", alias + "/App"]
+        self.assertEqual(IOS.host_stub_link([argv], str(executable), str(code), PROOF), argv)
+        for commands in ([argv, argv], [argv[:-2] + [str(code)] + argv[-2:]],
+                         [[x.replace("App.debug.dylib", "Other.debug.dylib") for x in argv]]):
+            with self.subTest(commands=commands):
+                with self.assertRaises(ValueError):
+                    IOS.host_stub_link(commands, str(executable), str(code), PROOF)
 
 
 if __name__ == "__main__":
