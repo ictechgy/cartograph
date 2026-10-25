@@ -158,9 +158,13 @@ enum XcodeLinkMapEvidence {
             } else if ["# Object files:", "# Sections:", "# Symbols:", "# Dead Stripped Symbols:"].contains(line) {
                 guard headers.insert(line).inserted else { throw XcodeLocalPackageIO.invalid("Duplicate linker map section.") }
                 section = line
-            } else if line.hasPrefix("# Address") || line.hasPrefix("# Size") {
-                guard ["# Sections:", "# Symbols:", "# Dead Stripped Symbols:"].contains(section) else {
-                    throw XcodeLocalPackageIO.invalid("Link map column header is out of place.")
+            } else if line.hasPrefix("#") {
+                let columns = line.split(whereSeparator: \.isWhitespace).map(String.init)
+                guard (section == "# Sections:" && columns == ["#", "Address", "Size", "Segment", "Section"])
+                    || (["# Symbols:", "# Dead Stripped Symbols:"].contains(section)
+                        && columns == ["#", "Address", "Size", "File", "Name"])
+                    || (section == "# Dead Stripped Symbols:" && columns == ["#", "Size", "File", "Name"]) else {
+                    throw XcodeLocalPackageIO.invalid("Link map column header is unknown or out of place.")
                 }
             } else if section == "# Object files:" {
                 guard let match = objectPattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),

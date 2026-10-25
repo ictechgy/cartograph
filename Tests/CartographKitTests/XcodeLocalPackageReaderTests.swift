@@ -72,6 +72,39 @@ struct XcodeLocalPackageReaderTests {
         }
     }
 
+    @Test("dead-stripped 표의 빈 Address 열은 읽되 제거된 owner는 live 기여가 아니다",
+        arguments: ["# Address\tSize\tFile  Name", "#        \tSize    \tFile  Name"])
+    func deadStrippedColumnHeaders(header: String) throws {
+        let text = """
+        # Path: /out
+        # Arch: arm64
+        # Object files:
+        [ 1] /live.o
+        [ 2] /dead.o
+        # Sections:
+        # Address Size Segment Section
+        0x0 0x8 __TEXT __text
+        # Symbols:
+        # Address Size File Name
+        0x0 0x8 [ 1] live
+        # Dead Stripped Symbols:
+        \(header)
+        <<dead>> 0x8 [ 2] removed
+        """
+        try XcodeLinkMapEvidence.validate(Data(text.utf8), output: "/out", architecture: "arm64", required: ["/live.o"])
+        #expect(throws: (any Error).self) {
+            try XcodeLinkMapEvidence.validate(Data(text.utf8), output: "/out", architecture: "arm64", required: ["/dead.o"])
+        }
+        let malformed = text.replacingOccurrences(of: header, with: header + " Unknown")
+        #expect(throws: (any Error).self) {
+            try XcodeLinkMapEvidence.validate(Data(malformed.utf8), output: "/out", architecture: "arm64", required: ["/live.o"])
+        }
+        let misplaced = text.replacingOccurrences(of: "# Dead Stripped Symbols:\n\(header)", with: "#        \tSize    \tFile  Name")
+        #expect(throws: (any Error).self) {
+            try XcodeLinkMapEvidence.validate(Data(misplaced.utf8), output: "/out", architecture: "arm64", required: ["/live.o"])
+        }
+    }
+
     @Test("허용한 proof의 object를 뒤의 map 읽기 중 바꾸면 마지막 관측에서 거부한다")
     func finalReadFindsMidValidationMutation() throws {
         let fixture = try XcodeLocalPackageEvidenceTests().fixture()

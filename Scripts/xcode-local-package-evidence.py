@@ -136,7 +136,11 @@ def live_owners(files, path, output, architecture):
         if line.startswith("# "):
             require(len(headers) < 128 and len(line.encode()) <= 1024, "Link-map header budget exceeded")
             headers.append(line)
-            if re.fullmatch(r"#\s+Address\s+Size\s+(?:File\s+Name|Segment\s+Section)\s*", line):
+            columns = line.split()
+            if ((section == "# Sections:" and columns == ["#", "Address", "Size", "Segment", "Section"])
+                    or (section in ("# Symbols:", "# Dead Stripped Symbols:")
+                        and columns == ["#", "Address", "Size", "File", "Name"])
+                    or (section == "# Dead Stripped Symbols:" and columns == ["#", "Size", "File", "Name"])):
                 continue
             section = line
         elif section == "# Object files:" and line.strip():

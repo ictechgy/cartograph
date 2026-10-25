@@ -543,6 +543,24 @@ class EvidenceTests(unittest.TestCase):
                 "# Sections:\n# Address\tSize\tSegment\tSection\n0x1 0x1 __TEXT __text\n# Symbols:\n# Address\tSize\tFile  Name\n" +
                 "".join(f"0x{i:X} 0x1 [ {i}] _symbol{i}\n" for i in range(1, len(objects) + 1))).encode()
 
+    def test_dead_stripped_blank_address_header_preserves_only_live_owners(self):
+        for header in ("# Address\tSize\tFile  Name", "#        \tSize    \tFile  Name"):
+            text = self.map_bytes(self.aggregate, [self.obj, self.other]).decode().replace("0x2 0x1 [ 2] _symbol2\n", "")
+            text += "# Dead Stripped Symbols:\n" + header + "\n<<dead>> 0x1 [ 2] removed\n"
+            self.aggregate_map.write_text(text)
+            self.assertEqual(E.live_owners(E.Files(self.build, self.store), str(self.aggregate_map), str(self.aggregate), "arm64"),
+                             {str(self.obj)})
+
+    def test_dead_stripped_columns_do_not_hide_unknown_headers_or_owners(self):
+        text = self.map_bytes(self.aggregate, [self.obj]).decode()
+        for suffix in ("# Dead Stripped Symbols:\n#   Size File Name Unknown\n<<dead>> 0x1 [ 1] removed\n",
+                       "#   Size File Name\n0x2 0x1 [ 1] removed\n",
+                       "# Dead Stripped Symbols:\n#   Size File Name\n<<dead>> 0x1 [ 9] unknown\n"):
+            with self.subTest(suffix=suffix):
+                self.aggregate_map.write_text(text + suffix)
+                with self.assertRaises(E.EvidenceError):
+                    E.live_owners(E.Files(self.build, self.store), str(self.aggregate_map), str(self.aggregate), "arm64")
+
     def capture(self, extra=None):
         commands = [self.compiler, self.aggregate_argv, self.native_argv] + (extra or [])
         log = "\n".join(shlex.join(args) for args in commands)
