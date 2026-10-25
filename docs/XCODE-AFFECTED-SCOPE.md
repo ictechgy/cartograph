@@ -268,3 +268,33 @@ There are at most 256 candidate file lists/build command rows and 256 inputs per
 Nested response files and incomplete link-map parsing refuse proof.
 These are review candidates from the exact captured build, not runtime coverage or
 permission to skip the rest of a test suite.
+
+
+## iOS Simulator v4 development draft
+
+The v4 source changes are an **uncompiled development draft**, not established iOS support.
+The integration build ran and reported two compile errors; those source causes were edited,
+but a subsequent build was rejected before execution. Swift unit tests, a complete native v4
+capture, CLI/MCP consumption, coverage and independent review remain pending. Earlier generic
+SDK builds establish only that the public synthetic app can compile. They do not validate
+this consumer implementation or prove that a selected test executes.
+
+The intended opt-in profile is `--workspace Example.xcworkspace --ios-simulator`.
+It uses only `generic/platform=iOS Simulator` with `build-for-testing`, does not select or
+operate a device, and records no runnable execution context. Its receipt adds native
+source-to-current-record/object/link evidence, effective Simulator SDK/deployment targets,
+app bundle metadata and actual app-hosted XCTest identities. An Xcode debug-dylib build
+binds its code image and generated app stub separately, including their strong load edge.
+A lower observed local package deployment minimum is compatible with a higher app minimum;
+the receipt does not assume that every module has the same target triple.
+
+The draft models plain regular resource copies and headers as auxiliary inputs, not Swift
+definition units. Every declared byte is inventoried and resource-copy hashes must agree.
+Transformed resources (storyboards, asset catalogs), generated source membership and arbitrary
+xcconfig evaluation remain unsupported. A finite local include closure may contain only
+literal Swift/C compilation definitions; custom compiler commands, external includes,
+conditional settings, scripts and plugins still fail closed before a build.
+
+None of this establishes actual iOS Simulator execution, `-only-testing` acceptance,
+UI-test support, correctness on the private 22-project workspace, or safe omission of tests.
+The existing macOS v1/v2/v3 profile keeps its destination, non-app host and input restrictions.

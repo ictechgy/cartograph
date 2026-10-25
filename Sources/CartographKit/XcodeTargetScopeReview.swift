@@ -10,7 +10,7 @@ extension CartographService {
             "xcode-target-scope: matched producer capture, not a signed receipt or test-coverage proof. "
                 + "Selectors are static review candidates for this exact project/scheme/plan/configuration/destination only; "
                 + "they do not authorize skipping other tests or predict failures.",
-            "xcode-target-scope-boundary: explicit local Swift project/workspace source phases on native macOS. "
+            "xcode-target-scope-boundary: explicit local Swift source phases on native macOS or the v4 build-only iOS Simulator profile. "
                 + "Scripts, synchronized groups, conditional membership and other destinations remain unsupported. "
                 + "Local libraries require fresh raw records and observed object/link contribution.",
         ]
@@ -30,6 +30,7 @@ extension CartographService {
             let targets = Dictionary(uniqueKeysWithValues: evidence.receipt.targets.map { ($0.id, $0) })
             let packages = evidence.receipt.packages
             let packageSources = Set(packages.flatMap { $0.sourcePaths(root: root) })
+            try evidence.receipt.ios?.validateAdmissions(context.snapshot.sourceRecordAdmissions ?? [], root: root, fileSystem: fileSystem)
             for package in packages {
                 try package.validateAdmissions(context.snapshot.sourceRecordAdmissions ?? [], root: root, fileSystem: fileSystem)
             }
@@ -58,6 +59,11 @@ extension CartographService {
                 if let package = packages.first(where: { source == root + "/" + $0.path + "/Package.swift" }) {
                     rows.append(.init(path: package.path + "/Package.swift", classification: "configuration-input",
                         targets: [], blockers: ["validated-literal-package-manifest"]))
+                    continue
+                }
+                if let owners = evidence.auxiliaryOwners[source] {
+                    rows.append(.init(path: String(source.dropFirst(root.count + 1)), classification: "configuration-input",
+                        targets: owners.compactMap { targets[$0]?.name }.sorted(), blockers: ["validated-resource-or-header-input"]))
                     continue
                 }
                 let owner = evidence.owners[source]

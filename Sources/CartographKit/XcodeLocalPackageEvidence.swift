@@ -98,7 +98,7 @@ struct XcodeLocalPackageEvidence: Codable {
     /// 호출 전후 동일 receipt를 검증한다. 이 관측 사이의 원자적 filesystem snapshot을 주장하지 않는다.
     func validate(root: String, buildRoot: String, architecture: String, project: XcodeProjectMembership,
                   closure: Set<String>, products: [String: String], nativeProducts: [String: String],
-                  nativeModules: Set<String>, fileSystem: any FileSystem) throws {
+                  nativeModules: Set<String>, fileSystem: any FileSystem, iosSimulator: Bool = false) throws {
         guard XcodeProjectMembership.relative(path), !nativeModules.contains(module),
               consumers.count <= 1_000, Set(consumers).count == consumers.count,
               Set(consumers) == project.packageConsumers, !Set(consumers).isDisjoint(with: closure),
@@ -135,9 +135,9 @@ struct XcodeLocalPackageEvidence: Codable {
         }
         var reader = try XcodeLocalPackageReader(files: files, buildRoot: buildRoot, indexStore: indexStore, fileSystem: fileSystem)
         for compilation in compilations {
-            try validateCompilation(compilation, sources: sources, architecture: architecture, reader: &reader)
+            try Self.validateCompilation(compilation, sources: sources, module: module, architecture: architecture, iosSimulator: iosSimulator, reader: &reader)
         }
-        try validateRecords(reader: &reader, fileSystem: fileSystem)
+        try Self.validateRecords(records, compilations: compilations, indexStore: indexStore, reader: &reader, fileSystem: fileSystem)
         let objects = Set(compilations.map(\.object))
         let candidates = aggregateCandidateFileLists ?? [aggregate.fileList]
         guard (1...256).contains(candidates.count), Set(candidates).count == candidates.count,
@@ -149,16 +149,16 @@ struct XcodeLocalPackageEvidence: Codable {
             if inputs == [aggregate.output] { wrapperLists.insert(candidate) }
         }
         guard matches == [aggregate.fileList] else { throw XcodeLocalPackageIO.invalid("Package aggregate object membership is ambiguous.") }
-        let aggregateInputs = try validateLink(aggregate, required: objects, architecture: architecture,
-            relocatable: true, reader: &reader)
+        let aggregateInputs = try Self.validateLink(aggregate, required: objects, architecture: architecture,
+            relocatable: true, iosSimulator: iosSimulator, reader: &reader)
         guard aggregateInputs == objects, products[aggregate.output] == files[aggregate.output]?.sha256 else {
             throw XcodeLocalPackageIO.invalid("Package aggregate contains unbound objects or is absent from captured products.")
         }
         if let wrapper = dynamicProduct {
             guard wrapperLists == [wrapper.link.fileList], wrapper.link.fileListMode == "response",
                   links.contains(where: { $0.packageInput == wrapper.link.output }),
-                  Set(try validateLink(wrapper.link, required: [aggregate.output], architecture: architecture,
-                    relocatable: false, reader: &reader)) == [aggregate.output],
+                  Set(try Self.validateLink(wrapper.link, required: [aggregate.output], architecture: architecture,
+                    relocatable: false, iosSimulator: iosSimulator, reader: &reader)) == [aggregate.output],
                   products[wrapper.link.output] == files[wrapper.link.output]?.sha256 else {
                 throw XcodeLocalPackageIO.invalid("Dynamic package product lacks a unique positive aggregate link.")
             }
@@ -175,8 +175,8 @@ struct XcodeLocalPackageEvidence: Codable {
             guard input == aggregate.output || input == dynamicProduct?.link.output else {
                 throw XcodeLocalPackageIO.invalid("Native package input differs from its proved aggregate/product.")
             }
-            _ = try validateLink(consumer.link, required: [input], architecture: architecture,
-                relocatable: false, reader: &reader)
+            _ = try Self.validateLink(consumer.link, required: [input], architecture: architecture,
+                relocatable: false, iosSimulator: iosSimulator, reader: &reader)
         }
         guard reader.used == Set(files.keys) else { throw XcodeLocalPackageIO.invalid("Unexpected or unused package proof file identities.") }
     }
@@ -202,15 +202,14 @@ struct XcodeLocalPackageEvidence: Codable {
         }
     }
 
-    private func validateCompilation(_ compilation: Compilation, sources: Set<String>, architecture: String,
-                                     reader: inout XcodeLocalPackageReader) throws {
+    static func validateCompilation(_ compilation: Compilation, sources: Set<String>, module: String, architecture: String,
+                                     iosSimulator: Bool = false, reader: inout XcodeLocalPackageReader) throws {
         let argv = try reader.arguments(compilation.argv, sourceFileList: compilation.sourceFileList)
         guard try XcodeLocalPackageIO.argument("-module-name", in: argv) == module,
               try XcodeLocalPackageIO.argument("-output-file-map", in: argv) == compilation.outputMap,
-              try XcodeLocalPackageIO.argument("-index-store-path", in: argv) == indexStore,
+              try XcodeLocalPackageIO.argument("-index-store-path", in: argv) == reader.indexStore,
               try XcodeLocalPackageIO.argument("-target", in: argv) == compilation.targetTriple,
-              compilation.targetTriple.range(of: "^" + architecture + #"-apple-macos[0-9]+(?:\.[0-9]+)*$"#,
-                  options: .regularExpression) != nil,
+              XcodeIOSScopeEvidence.validTriple(compilation.targetTriple, architecture: architecture, iosSimulator: iosSimulator),
               argv.filter({ $0 == "@" + compilation.sourceFileList }).count == 1,
               Set(try reader.fileList(compilation.sourceFileList)) == sources else {
             throw XcodeLocalPackageIO.invalid("Compiler module, target, source file list or output-map identity is inconsistent.")
@@ -230,7 +229,7 @@ struct XcodeLocalPackageEvidence: Codable {
         _ = try reader.read(compilation.object, kind: "object")
     }
 
-    private func validateRecords(reader: inout XcodeLocalPackageReader, fileSystem: any FileSystem) throws {
+    static func validateRecords(_ records: [Record], compilations: [Compilation], indexStore: String, reader: inout XcodeLocalPackageReader, fileSystem: any FileSystem) throws {
         // record 이름으로 shard path를 추정하지 않는다. 전체 후보를 유한하게 열거해 유일성을 확인한다.
         let recordRoot = indexStore + "/v5/records"
         guard try fileSystem.realPath(at: recordRoot) == recordRoot,
@@ -265,8 +264,8 @@ struct XcodeLocalPackageEvidence: Codable {
         }
     }
 
-    private func validateLink(_ link: Link, required: Set<String>, architecture: String,
-                              relocatable: Bool, reader: inout XcodeLocalPackageReader) throws -> Set<String> {
+    static func validateLink(_ link: Link, required: Set<String>, architecture: String,
+                              relocatable: Bool, iosSimulator: Bool = false, reader: inout XcodeLocalPackageReader) throws -> Set<String> {
         let mode = link.fileListMode ?? "operand"
         guard ["operand", "response"].contains(mode) else { throw XcodeLocalPackageIO.invalid("Unknown linker file-list mode.") }
         let argv = try reader.arguments(link.argv, sourceFileList: mode == "response" ? link.fileList : nil)
@@ -279,8 +278,7 @@ struct XcodeLocalPackageEvidence: Codable {
         guard try XcodeLocalPackageIO.argument("-o", in: argv) == link.output,
               try XcodeLocalPackageIO.argument("-map", in: argv) == link.linkMap,
               argv.contains("-r") == relocatable,
-              try XcodeLocalPackageIO.argument("-target", in: argv).range(
-                of: "^" + architecture + #"-apple-macos[0-9]+(?:\.[0-9]+)*$"#, options: .regularExpression) != nil else {
+              XcodeIOSScopeEvidence.validTriple(try XcodeLocalPackageIO.argument("-target", in: argv), architecture: architecture, iosSimulator: iosSimulator) else {
             throw XcodeLocalPackageIO.invalid("Actual linker operands differ from the recorded link step.")
         }
         var inputs = Set(try reader.fileList(link.fileList))

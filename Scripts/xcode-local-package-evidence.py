@@ -228,22 +228,16 @@ def record_paths(store, names):
     return found
 
 
-def assemble(spec, root, derived, store, log, snapshot, targets, settings, selected, architecture):
-    """Join actual bytes and positive owners; this is never an absence classifier."""
-    files, commands = Files(derived / "Build", store), command_rows(log)
-    package_root = root / spec["path"]
-    sources = {str(package_root / path) for path, value in spec["inventory"].items()
-               if path.startswith("Sources/" + spec["module"] + "/") and value != "directory"}
-    require(sources and spec["module"] not in {t["module"] for t in targets.values()},
-            "Package and native compiler modules are ambiguous")
+def compiler_records(files, commands, sources, module, store, snapshot, source_root, architecture):
+    """Bind a finite explicit Swift source set to actual compiler objects and current raw records."""
     compilations = {}
     for argv in commands:
-        if "-output-file-map" not in argv or operand(argv, "-module-name") != spec["module"]:
+        if "-output-file-map" not in argv or operand(argv, "-module-name") != module:
             continue
         files.responses(argv)
         output_map = str(canonical(operand(argv, "-output-file-map"), files.build))
         lists = [str(canonical(x[1:], files.build)) for x in argv if x.startswith("@") and x.endswith(".SwiftFileList")]
-        require(len(lists) == 1 and set(file_list(files, lists[0], package_root)) == sources,
+        require(len(lists) == 1 and set(file_list(files, lists[0], source_root)) == sources,
                 "Compiler source list differs from finite package inventory")
         value = json.loads(files.read(output_map))
         require(isinstance(value, dict), "Compiler output map is not an object")
@@ -285,7 +279,7 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
     paths, records = record_paths(store, names), []
     for row in admissions:
         comp = compilations[row["path"]]
-        require(row.get("module") == spec["module"] and row.get("unitOutputIdentity") == comp["unitOutputIdentity"]
+        require(row.get("module") == module and row.get("unitOutputIdentity") == comp["unitOutputIdentity"]
                 and row.get("unitTargetTriple") == comp["targetTriple"] and isinstance(row.get("unit"), str)
                 and row["unit"], "Raw record source/module/unit-output/target join failed")
         path = paths[row["record"]]
@@ -296,6 +290,18 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
             records.append(record)
     require(len(admissions) == len(sources) and len(records) == len(sources) and len(names) == len(sources),
             "Package source record contexts are shared or ambiguous")
+    return compilations, records
+
+
+def assemble(spec, root, derived, store, log, snapshot, targets, settings, selected, architecture, native_outputs=None):
+    """Join actual bytes and positive owners; this is never an absence classifier."""
+    files, commands = Files(derived / "Build", store), command_rows(log)
+    package_root = root / spec["path"]
+    sources = {str(package_root / path) for path, value in spec["inventory"].items()
+               if path.startswith("Sources/" + spec["module"] + "/") and value != "directory"}
+    require(sources and spec["module"] not in {t["module"] for t in targets.values()},
+            "Package and native compiler modules are ambiguous")
+    compilations, records = compiler_records(files, commands, sources, spec["module"], store, snapshot, package_root, architecture)
     aggregate_candidates = [argv for argv in commands if "-r" in argv and "-filelist" in argv and "-map" in argv]
     wrapper_candidates = [argv for argv in commands if "-emit-library" in argv and "-map" in argv]
     # 여러 package의 relocatable link 중 이 package의 완전한 object 집합만 고른다.
@@ -327,7 +333,7 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
     for ident in spec["consumers"]:
         rows = [s["buildSettings"] for s in settings if s.get("target") == targets[ident]["name"]]
         require(len(rows) == 1, "Ambiguous package consumer settings")
-        executable = str(canonical(str(Path(rows[0]["TARGET_BUILD_DIR"]) / rows[0]["EXECUTABLE_PATH"]), files.build))
+        executable = str(canonical((native_outputs or {}).get(ident, str(Path(rows[0]["TARGET_BUILD_DIR"]) / rows[0]["EXECUTABLE_PATH"])), files.build))
         argv_rows = [a for a in commands if "-map" in a and "-o" in a and str(canonical(operand(a, "-o"), files.build)) == executable]
         require(len(argv_rows) == 1, "Absent or ambiguous actual native package consumer link")
         required = wrapper["link"]["output"] if wrapper else aggregate["output"]

@@ -2180,3 +2180,8 @@ Cartograph는 독립 프로젝트이며 Periphery나 Apple과 관련이 없습�
 ### Xcode 영향 테스트 범위 캡처
 
 선택적 [Xcode 캡처](docs/XCODE-AFFECTED-SCOPE.md)는 로컬 Swift 프로젝트 또는 명시 workspace의 scheme/test-plan, 실제 읽은 source record와 빌드된 테스트 bundle 바이트를 대조합니다. 선택 이름은 검증된 `.xctestrun` BlueprintName과 프로젝트 target 신원을 사용하고, JSON/MCP에는 bundle 제품명을 별도로 보존합니다. 확인된 범위 밖 target의 소스 경고는 근거와 함께 분리하여 검토용 선택자를 만들 수 있습니다. SwiftPM receipt는 기존처럼 진단 전용입니다. 범위 불명, 오래된 입력, 잘린 증거는 계속 거부하며 정적 후보는 테스트 생략 허가가 아닙니다.
+
+
+iOS Simulator target-scope v4는 현재 재빌드가 확인되지 않은 소스 초안입니다.
+정적 입력 검사가 실제 테스트 실행이나 선택자 적용을 증명하지는 않습니다.
+[초안의 별도 검증 공백](docs/XCODE-AFFECTED-SCOPE.md#ios-simulator-v4-development-draft)을 확인하세요.

@@ -6,7 +6,7 @@ struct XcodeWorkspaceMembership {
     let project: XcodeProjectMembership
 
     init(workspace: String, projects expected: [String], root: String,
-         packages: [XcodeLocalPackageEvidence], fileSystem: any FileSystem) throws {
+         packages: [XcodeLocalPackageEvidence], fileSystem: any FileSystem, iosSimulator: Bool = false) throws {
         let data = try Self.read(root + "/" + workspace + "/contents.xcworkspacedata", fileSystem: fileSystem)
         let paths = try WorkspaceXML.read(data)
         let bindings = try Self.bindings(packages)
@@ -33,7 +33,7 @@ struct XcodeWorkspaceMembership {
         }
         let merged = try Self.merge(plists)
         let bytes = try PropertyListSerialization.data(fromPropertyList: merged, format: .binary, options: 0)
-        let checked = try XcodeProjectMembership(data: bytes, root: root)
+        let checked = try XcodeProjectMembership(data: bytes, root: root, iosSimulator: iosSimulator, fileSystem: fileSystem)
         self.project = .init(targets: checked.targets, frameworks: checked.frameworks, packageConsumers: consumers)
     }
 
@@ -174,7 +174,7 @@ struct XcodeWorkspaceMembership {
     }
 
     private static let referenceKeys: Set<String> = ["children", "files", "buildPhases", "dependencies", "targets",
-        "buildConfigurationList", "buildConfigurations", "productReference", "mainGroup", "productRefGroup", "fileRef",
+        "buildConfigurationList", "buildConfigurations", "baseConfigurationReference", "productReference", "mainGroup", "productRefGroup", "fileRef",
         "productRef", "package", "containerPortal", "targetProxy", "target", "remoteRef"]
 
     private static func merge(_ plists: [String: [String: Any]]) throws -> [String: Any] {

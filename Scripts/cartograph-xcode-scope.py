@@ -64,7 +64,7 @@ def bounded(path, maximum):
     return data
 
 
-def inventory(root, maximum_files=10000, maximum_bytes=64 * 1024 * 1024):
+def inventory(root, maximum_files=10000, maximum_bytes=64 * 1024 * 1024, additional_paths=()):
     result, pending, entries, total = {}, [root], 0, 0
     while pending:
         for path in sorted(pending.pop().iterdir()):
@@ -74,7 +74,7 @@ def inventory(root, maximum_files=10000, maximum_bytes=64 * 1024 * 1024):
                 if path.name not in (".git", ".build"):
                     pending.append(path)
                 continue
-            if path.suffix not in INPUT_SUFFIXES:
+            if path.suffix not in INPUT_SUFFIXES and path.relative_to(root).as_posix() not in additional_paths:
                 continue
             data = bounded(path, 4 * 1024 * 1024)
             total += len(data)
@@ -90,7 +90,7 @@ def valid_runpaths(value):
     return values is not None and all(isinstance(x, str) and x in allowed for x in values)
 
 
-def membership(plist):
+def membership(plist, ios_simulator=False, root=None):
     """Pure preflight: no Xcode, compiler or project code is executed here."""
     objects = plist.get("objects", {})
     project = objects.get(plist.get("rootObject"), {})
@@ -104,10 +104,11 @@ def membership(plist):
                 "PBXFileSystemSynchronizedRootGroup", "XCSwiftPackageProductDependency"}
                 and "platformFilter" not in obj and "platformFilters" not in obj,
                 "Scripts, plugins, packages, synchronized groups or platform-filtered membership are unsupported")
-        require("baseConfigurationReference" not in obj, "External xcconfig is unsupported")
-        require(not any("[" in key or (key == "SDKROOT" and value != "macosx")
+        require(ios_simulator or "baseConfigurationReference" not in obj, "External xcconfig is unsupported")
+        require(not any("[" in key or (key == "SDKROOT" and value not in (("iphoneos", "iphonesimulator") if ios_simulator else ("macosx",)))
                         or (key == "LD_RUNPATH_SEARCH_PATHS" and not valid_runpaths(value))
-                        or (key in UNBOUND_SETTINGS and value not in ("", "$(inherited)"))
+                        or (key in UNBOUND_SETTINGS and value not in ("", "$(inherited)")
+                            and not (ios_simulator and key in ("TEST_HOST", "BUNDLE_LOADER", "TEST_TARGET_NAME")))
                         for key, value in obj.get("buildSettings", {}).items()),
                 "Conditional, custom compiler/linker or external input settings are unsupported")
     paths, seen, pending = {}, set(), [(project.get("mainGroup"), "", 0)]
@@ -125,6 +126,9 @@ def membership(plist):
             pending += [(child, combined, depth + 1) for child in obj.get("children", [])]
         elif obj.get("isa") == "PBXFileReference" and combined:
             paths[ident] = combined
+    if ios_simulator:
+        require(root is not None, "iOS input validation needs a canonical project root")
+        package_helper("xcode-ios-scope").validate_configurations(objects, paths, root)
     targets, owners, linked = {}, set(), {}
     product_owners = {}
     for ident in ids:
@@ -137,13 +141,13 @@ def membership(plist):
             "com.apple.product-type.framework", "com.apple.product-type.library.static",
             "com.apple.product-type.application", "com.apple.product-type.bundle.unit-test"}
             and not obj.get("buildRules") and not obj.get("packageProductDependencies"), "Unsupported target")
-        sources = []
+        sources, resources, headers = [], [], []
         for phase_id in obj.get("buildPhases", []):
             phase = objects[phase_id]
             kind, files = phase.get("isa"), phase.get("files", [])
             require(kind in {"PBXSourcesBuildPhase", "PBXFrameworksBuildPhase", "PBXResourcesBuildPhase",
                              "PBXHeadersBuildPhase"}, "Unsupported build phase")
-            require(kind not in {"PBXResourcesBuildPhase", "PBXHeadersBuildPhase"} or not files,
+            require(ios_simulator or kind not in {"PBXResourcesBuildPhase", "PBXHeadersBuildPhase"} or not files,
                     "Nonempty resource/header phases are unsupported")
             for file_id in files:
                 file = objects[file_id]
@@ -154,13 +158,19 @@ def membership(plist):
                     require(source.endswith(".swift") and source not in owners, "Non-Swift, missing or shared source")
                     owners.add(source)
                     sources.append(source)
+                elif kind in ("PBXResourcesBuildPhase", "PBXHeadersBuildPhase"):
+                    source = paths.get(ref, "")
+                    require(relative(source) and (root / source).resolve() == root / source
+                            and (root / source).is_file() and not (root / source).is_symlink(),
+                            "iOS auxiliary inputs must be canonical local regular files")
+                    (resources if kind == "PBXResourcesBuildPhase" else headers).append(source)
                 elif kind == "PBXFrameworksBuildPhase":
                     require(objects[ref].get("sourceTree") in {"SDKROOT", "DEVELOPER_DIR", "BUILT_PRODUCTS_DIR"},
                             "Unbound binary framework")
                     tree, path = objects[ref]["sourceTree"], objects[ref].get("path", "")
                     require(relative(path), "Absolute, escaping or macro framework path")
                     if tree != "BUILT_PRODUCTS_DIR":
-                        require(system_framework_path(tree, path), "Unsupported system framework path")
+                        require(system_framework_path(tree, path, ios_simulator=ios_simulator), "Unsupported system framework path")
                     if tree == "BUILT_PRODUCTS_DIR":
                         require(ref in product_owners, "Built framework has no local producer")
                         linked.setdefault(ident, set()).add(product_owners[ref])
@@ -168,6 +178,10 @@ def membership(plist):
         require(sources and all(x in ids for x in deps), "Empty target or external dependency")
         targets[ident] = {"id": ident, "name": obj["name"], "productType": obj["productType"],
                           "sources": sorted(sources), "dependencies": sorted(deps)}
+        if ios_simulator:
+            require(len(set(resources)) == len(resources) and len({Path(x).name for x in resources}) == len(resources)
+                    and len(set(headers)) == len(headers), "iOS resource/header memberships must be unique")
+            targets[ident].update(resources=sorted(resources), headers=sorted(headers))
     for ident, links in linked.items():
         closure, pending = set(), list(targets[ident]["dependencies"])
         while pending:
@@ -179,8 +193,8 @@ def membership(plist):
     return targets
 
 
-def system_framework_path(tree, path):
-    prefix = "System/Library/Frameworks/" if tree == "SDKROOT" else "Platforms/MacOSX.platform/Developer/Library/Frameworks/"
+def system_framework_path(tree, path, ios_simulator=False):
+    prefix = "System/Library/Frameworks/" if tree == "SDKROOT" else ("Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks/" if ios_simulator else "Platforms/MacOSX.platform/Developer/Library/Frameworks/")
     return relative(path) and path.startswith(prefix) and "/" not in path[len(prefix):] and path.endswith(".framework")
 
 
@@ -220,13 +234,13 @@ def framework_inventory(path, allowed_root, budget=None):
     return result, links
 
 
-def capture_frameworks(plist, root, output, timeout):
+def capture_frameworks(plist, root, output, timeout, ios_simulator=False):
     refs = framework_references(plist)
     if not refs:
         return []
     developer = Path(os.environ.get("DEVELOPER_DIR") or run(["xcode-select", "-p"], root, output, "developer-root", timeout).decode().strip()).resolve()
-    sdk = Path(run(["xcrun", "--sdk", "macosx", "--show-sdk-path"], root, output, "sdk-root", timeout).decode().strip()).resolve()
-    require(sdk.is_relative_to(developer / "Platforms/MacOSX.platform/Developer/SDKs") and sdk.name.endswith(".sdk"),
+    sdk = Path(run(["xcrun", "--sdk", "iphonesimulator" if ios_simulator else "macosx", "--show-sdk-path"], root, output, "sdk-root", timeout).decode().strip()).resolve()
+    require(sdk.is_relative_to(developer / ("Platforms/iPhoneSimulator.platform/Developer/SDKs" if ios_simulator else "Platforms/MacOSX.platform/Developer/SDKs")) and sdk.name.endswith(".sdk"),
             "SDK does not belong to the selected Xcode developer root")
     result, budget = [], [0, 0]
     for tree, path in refs:
@@ -296,6 +310,7 @@ def product_inventory(root):
 
 
 def capture(args):
+    require(not getattr(args, "ios_simulator", False) or getattr(args, "workspace", None), "--ios-simulator requires an explicit workspace")
     if getattr(args, "workspace", None):
         from types import SimpleNamespace
         return package_helper("xcode-workspace-capture").capture(args, SimpleNamespace(**globals()))
@@ -428,6 +443,7 @@ def main():
     parser.add_argument("--config")
     parser.add_argument("--local-package", action="store_true",
                         help="Opt into v2: one literal local Swift library; fresh raw analysis and positive link proof required")
+    parser.add_argument("--ios-simulator", action="store_true", help="v4 build-only app-hosted iOS Simulator proof; generic destination, no device or test execution")
     parser.add_argument("--timeout", type=int, default=600)
     args = parser.parse_args()
     try:

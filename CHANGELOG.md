@@ -17,6 +17,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 This is the unpublished 0.29.0 candidate. The latest published release remains 0.28.0.
 
+### Development draft (not validation-complete)
+
+- Prepare the v4 iOS Simulator source/producer connection without operating devices.
+  The integration build reported two compile errors; fixes are uncompiled after a subsequent
+  build rejection. Native receipt consumption, coverage and hosted test execution are pending.
+
 ### Added
 
 - `fix --apply --verify-command` optionally runs one explicit JSON argv verification command

@@ -33,6 +33,7 @@ struct XcodeTargetScopeStore {
         var workspace: String? = nil
         var projects: [String]? = nil
         var localPackages: [XcodeLocalPackageEvidence]? = nil
+        var ios: XcodeIOSScopeEvidence? = nil
 
         var packages: [XcodeLocalPackageEvidence] { localPackages ?? localPackage.map { [$0] } ?? [] }
     }
@@ -62,6 +63,7 @@ struct XcodeTargetScopeStore {
         let owners: [String: String]
         let selectorTargets: [String: String]
         let testBundles: [String: String]
+        let auxiliaryOwners: [String: [String]]
     }
 
     /// raw 프로젝트를 다시 해석하여 receipt의 파생 소속이 원문과 일치하는지 확인한다.
@@ -70,19 +72,20 @@ struct XcodeTargetScopeStore {
         let bytes = try bounded(path, maximum: 8 * 1_024 * 1_024)
         let receipt = try JSONDecoder().decode(Receipt.self, from: bytes)
         guard receipt.format == "cartograph-xcode-target-scope",
-              (receipt.version == 1 && receipt.localPackage == nil && receipt.workspace == nil && receipt.projects == nil && receipt.localPackages == nil)
-                || (receipt.version == 2 && receipt.localPackage != nil && receipt.workspace == nil && receipt.projects == nil && receipt.localPackages == nil && receipt.localPackage?.project == nil && receipt.localPackage?.declarations == nil)
-                || (receipt.version == 3 && receipt.localPackage == nil && receipt.workspace != nil && receipt.projects != nil && receipt.localPackages != nil),
+              (receipt.version == 1 && receipt.ios == nil && receipt.localPackage == nil && receipt.workspace == nil && receipt.projects == nil && receipt.localPackages == nil)
+                || (receipt.version == 2 && receipt.ios == nil && receipt.localPackage != nil && receipt.workspace == nil && receipt.projects == nil && receipt.localPackages == nil && receipt.localPackage?.project == nil && receipt.localPackage?.declarations == nil)
+                || (receipt.version == 3 && receipt.ios == nil && receipt.localPackage == nil && receipt.workspace != nil && receipt.projects != nil && receipt.localPackages != nil)
+                || (receipt.version == 4 && receipt.ios != nil && receipt.localPackage == nil && receipt.workspace != nil && receipt.projects != nil && receipt.localPackages != nil),
               receipt.projectRoot == root, receipt.inputFingerprint == fingerprint,
               receipt.buildExitCode == 0, receipt.before == receipt.after,
-              receipt.after == (try inventory(root: root, workspace: receipt.version == 3)), receipt.targets.count <= 1_000,
+              receipt.targets.count <= 1_000,
               !receipt.targets.isEmpty, !receipt.selectedTargetIDs.isEmpty,
               Set(receipt.selectedTargetIDs).count == receipt.selectedTargetIDs.count,
               validName(receipt.scheme), validName(receipt.configuration),
               ["arm64", "x86_64"].contains(receipt.architecture),
-              receipt.destination == "platform=macOS,arch=" + receipt.architecture,
+              receipt.destination == (receipt.ios == nil ? "platform=macOS,arch=" + receipt.architecture : "generic/platform=iOS Simulator"),
               relative(receipt.project), receipt.project.hasSuffix(".xcodeproj"),
-              receipt.version == 3 || !receipt.project.contains("/"),
+              receipt.workspace != nil || !receipt.project.contains("/"),
               receipt.schemePath == (receipt.workspace ?? receipt.project) + "/xcshareddata/xcschemes/" + receipt.scheme + ".xcscheme"
         else { throw invalid("Capture identity, inventory or supported destination does not match.") }
         let project: XcodeProjectMembership
@@ -92,11 +95,16 @@ struct XcodeTargetScopeStore {
                 throw invalid("Workspace or project identity is invalid.")
             }
             project = try XcodeWorkspaceMembership(workspace: workspace, projects: paths, root: root,
-                packages: receipt.packages, fileSystem: fileSystem).project
+                packages: receipt.packages, fileSystem: fileSystem, iosSimulator: receipt.ios != nil).project
         } else {
             let projectData = try bounded(root + "/" + receipt.project + "/project.pbxproj", maximum: 4 * 1_024 * 1_024)
             project = try XcodeProjectMembership(data: projectData, root: root, localPackage: receipt.localPackage?.declaration)
         }
+        let auxiliary = Set(project.targets.values.flatMap { $0.resources + $0.headers })
+        func currentInventory() throws -> [String: String] {
+            try inventory(root: root, workspace: receipt.workspace != nil, additionalPaths: auxiliary)
+        }
+        guard receipt.after == (try currentInventory()) else { throw invalid("Captured project input inventory differs.") }
         let settings = try JSONDecoder().decode([Settings].self, from: Data(receipt.buildSettingsJSON.utf8))
         guard settings.count <= 1_000 else { throw invalid("Build settings exceed the target budget.") }
         let byID = Dictionary(receipt.targets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -147,14 +155,14 @@ struct XcodeTargetScopeStore {
                   setting.buildSettings["EXCLUDED_SOURCE_FILE_NAMES", default: ""].isEmpty,
                   setting.buildSettings["INCLUDED_SOURCE_FILE_NAMES", default: ""].isEmpty,
                   setting.buildSettings["SWIFT_OBJC_BRIDGING_HEADER", default: ""].isEmpty,
-                  setting.buildSettings["TEST_HOST", default: ""].isEmpty,
-                  setting.buildSettings["BUNDLE_LOADER", default: ""].isEmpty,
+                  (receipt.ios != nil || setting.buildSettings["TEST_HOST", default: ""].isEmpty),
+                  (receipt.ios != nil || setting.buildSettings["BUNDLE_LOADER", default: ""].isEmpty),
                   XcodeProjectMembership.validRunpaths(setting.buildSettings["LD_RUNPATH_SEARCH_PATHS", default: ""]),
                   modules.updateValue(target.name, forKey: target.module) == nil else {
                 throw invalid("The captured compiler module/configuration/architecture is ambiguous or filtered.")
             }
         }
-        try validateFrameworks(receipt.frameworks, references: project.frameworks, settings: settings)
+        try validateFrameworks(receipt.frameworks, references: project.frameworks, settings: settings, iosSimulator: receipt.ios != nil)
         guard !receipt.products.isEmpty, receipt.products.count <= 10_000,
               receipt.products[receipt.testRunPath] == receipt.testRunSHA256 else {
             throw invalid("Build product and test-run identities are missing.")
@@ -179,16 +187,22 @@ struct XcodeTargetScopeStore {
                       relative(executable), directory.hasPrefix(productRoot + "/") else {
                     throw invalid("Missing native executable identity for package consumer validation.")
                 }
-                nativeProducts[target.id] = directory + "/" + executable
+                nativeProducts[target.id] = receipt.ios?.targets.first(where: { $0.targetID == target.id })?.link.output ?? directory + "/" + executable
             }
             let packageProject = XcodeProjectMembership(targets: project.targets, frameworks: project.frameworks,
-                packageConsumers: receipt.version == 3 ? Set(package.consumers) : project.packageConsumers)
+                packageConsumers: receipt.workspace != nil ? Set(package.consumers) : project.packageConsumers)
             try package.validate(root: root, buildRoot: String(productRoot.dropLast("/Products".count)),
                 architecture: receipt.architecture, project: packageProject, closure: closure, products: receipt.products,
-                nativeProducts: nativeProducts, nativeModules: Set(receipt.targets.map(\.module)), fileSystem: fileSystem)
+                nativeProducts: nativeProducts, nativeModules: Set(receipt.targets.map(\.module)), fileSystem: fileSystem, iosSimulator: receipt.ios != nil)
             }
         }
         try validateLocalPackage()
+        func validateIOS() throws {
+            try receipt.ios?.validate(receipt: receipt, project: project, closure: closure,
+                settings: Dictionary(settings.map { ($0.target, $0.buildSettings) }, uniquingKeysWith: { first, _ in first }),
+                buildRoot: String(productRoot.dropLast("/Products".count)), fileSystem: fileSystem)
+        }
+        try validateIOS()
         let testRun = try bounded(receipt.testRunPath, maximum: 8 * 1_024 * 1_024)
         var closureProducts = try validateClosureProducts(closure.compactMap { byID[$0]?.name }, settings: settings,
             receipt: receipt, productRoot: productRoot)
@@ -198,7 +212,8 @@ struct XcodeTargetScopeStore {
             }) { closureProducts.insert(wrapper.bundle) }
         }
         let bundles = try validateTestRun(testRun, selected: selected.compactMap { byID[$0]?.name },
-            settings: settings, productRoot: productRoot, closureProducts: closureProducts, testHosts: receipt.testHosts)
+            settings: settings, productRoot: productRoot, closureProducts: closureProducts, testHosts: receipt.testHosts,
+            iosReceipt: receipt.ios == nil ? nil : receipt)
         var selectorTargets: [String: String] = [:], testBundles: [String: String] = [:]
         for id in selected {
             guard let target = byID[id], let bundle = bundles[target.name], validName(bundle), validName(target.name) else {
@@ -214,12 +229,17 @@ struct XcodeTargetScopeStore {
                 throw invalid("XCTest system host bytes changed.")
             }
         }
-        try validateFrameworks(receipt.frameworks, references: project.frameworks, settings: settings)
+        try validateFrameworks(receipt.frameworks, references: project.frameworks, settings: settings, iosSimulator: receipt.ios != nil)
         try validateLocalPackage()
-        guard receipt.after == (try inventory(root: root, workspace: receipt.version == 3)), bytes == (try bounded(path, maximum: 8 * 1_024 * 1_024))
+        try validateIOS()
+        guard receipt.after == (try currentInventory()), bytes == (try bounded(path, maximum: 8 * 1_024 * 1_024))
         else { throw invalid("Inputs changed while Xcode membership was being verified.") }
+        var auxiliaryOwners: [String: [String]] = [:]
+        for (id, target) in project.targets {
+            for source in target.resources + target.headers { auxiliaryOwners[root + "/" + source, default: []].append(id) }
+        }
         return .init(receipt: receipt, closure: closure, owners: owners,
-            selectorTargets: selectorTargets, testBundles: testBundles)
+            selectorTargets: selectorTargets, testBundles: testBundles, auxiliaryOwners: auxiliaryOwners)
     }
 
     private struct Settings: Decodable { let target: String; let buildSettings: [String: String] }
@@ -273,7 +293,7 @@ struct XcodeTargetScopeStore {
     }
 
     private func validateTestRun(_ data: Data, selected: [String], settings: [Settings], productRoot: String,
-        closureProducts: Set<String>, testHosts: [String: String]) throws -> [String: String] {
+        closureProducts: Set<String>, testHosts: [String: String], iosReceipt: Receipt? = nil) throws -> [String: String] {
         guard let object = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else {
             throw invalid("Invalid Xcode test-run artifact.")
         }
@@ -291,8 +311,9 @@ struct XcodeTargetScopeStore {
         }
         var bundles: [String: String] = [:], observedHosts: Set<String> = []
         for row in rows {
-            guard row["IsAppHostedTestBundle"] as? Bool != true, row["IsUITestBundle"] as? Bool != true else {
-                throw invalid("App-hosted and UI test bundles are outside this capture boundary.")
+            guard row["IsUITestBundle"] as? Bool != true,
+                  (iosReceipt != nil ? row["IsAppHostedTestBundle"] as? Bool == true : row["IsAppHostedTestBundle"] as? Bool != true) else {
+                throw invalid("The captured test host profile is unsupported.")
             }
             if let rawDependencies = row["DependentProductPaths"] {
                 guard let dependencies = rawDependencies as? [String], dependencies.count <= 1_000,
@@ -307,7 +328,10 @@ struct XcodeTargetScopeStore {
                   let directory = settings["TARGET_BUILD_DIR"], let product = settings["FULL_PRODUCT_NAME"],
                   let executable = settings["EXECUTABLE_PATH"], relative(product), relative(executable),
                   directory.hasPrefix(productRoot + "/") else { throw invalid("Test bundle build paths are missing.") }
-            if let rawHost = row["TestHostPath"] {
+            var hostBundle: String?
+            if let iosReceipt {
+                hostBundle = try validateIOSHost(row, settings: settings, receipt: iosReceipt, productRoot: productRoot)
+            } else if let rawHost = row["TestHostPath"] {
                 guard let host = rawHost as? String, let developer = settings["DEVELOPER_DIR"] else {
                     throw invalid("Unknown test host identity.")
                 }
@@ -320,7 +344,7 @@ struct XcodeTargetScopeStore {
                 observedHosts.insert(expected)
             }
             let declared = row["TestBundlePath"] as! String
-            let resolved = try capturedProductPath(declared, root: productRoot)
+            let resolved = try capturedProductPath(declared.replacingOccurrences(of: "__TESTHOST__", with: hostBundle ?? "__TESTHOST__"), root: productRoot)
             guard resolved == directory + "/" + product,
                   fileSystem.fileExists(at: directory + "/" + executable),
                   try fileSystem.realPath(at: directory + "/" + executable) == directory + "/" + executable else {
@@ -330,6 +354,24 @@ struct XcodeTargetScopeStore {
         }
         guard observedHosts == Set(testHosts.keys) else { throw invalid("Unexpected captured test host inputs.") }
         return bundles
+    }
+
+    /// iOS app-hosted XCTest는 xctestrun bundle, 실제 host executable과 target dependency를 함께 묶는다.
+    private func validateIOSHost(_ row: [String: Any], settings: [String: String], receipt: Receipt,
+                                 productRoot: String) throws -> String {
+        guard let raw = row["TestHostPath"] as? String, let selected = receipt.targets.first(where: { $0.name == row["BlueprintName"] as? String }),
+              let name = settings["TEST_TARGET_NAME"],
+              let host = receipt.targets.first(where: { $0.name == name && $0.productType == "com.apple.product-type.application" }),
+              selected.dependencies.contains(host.id), let native = receipt.ios?.targets.first(where: { $0.targetID == host.id }),
+              let values = try JSONDecoder().decode([Settings].self, from: Data(receipt.buildSettingsJSON.utf8)).first(where: { $0.target == name })?.buildSettings,
+              let directory = values["TARGET_BUILD_DIR"], let product = values["FULL_PRODUCT_NAME"],
+              let identifier = values["PRODUCT_BUNDLE_IDENTIFIER"],
+              settings["TEST_HOST"] == native.executable, settings["BUNDLE_LOADER"] == native.executable,
+              row["TestHostBundleIdentifier"] as? String == identifier,
+              try capturedProductPath(raw, root: productRoot) == directory + "/" + product,
+              native.executable.hasPrefix(directory + "/" + product + "/"),
+              receipt.testHosts.isEmpty else { throw invalid("iOS test host is not the proved dependency app executable/bundle.") }
+        return directory + "/" + product
     }
 
     /// capture 밖 alias나 dot 경로는 제품을 가리켜도 신원이 아니다. 실제 macOS 임시 별칭만 허용한다.
@@ -346,19 +388,19 @@ struct XcodeTargetScopeStore {
 
     /// SDKROOT 이름만으로 외부 파일을 신뢰하지 않는다. 선언·실제 경계·기여 바이트를 함께 대조한다.
     private func validateFrameworks(_ frameworks: [SystemFramework],
-        references: Set<XcodeProjectMembership.FrameworkReference>, settings: [Settings]) throws {
+        references: Set<XcodeProjectMembership.FrameworkReference>, settings: [Settings], iosSimulator: Bool = false) throws {
         let declared = Set(frameworks.map { XcodeProjectMembership.FrameworkReference(sourceTree: $0.sourceTree, path: $0.path) })
         guard frameworks.count <= 64, frameworks.count == declared.count, declared == references else {
             throw invalid("System framework declarations differ from the captured project.")
         }
         var total = 0, entries = 0
         for framework in frameworks {
-            guard XcodeProjectMembership.systemFrameworkPath(tree: framework.sourceTree, path: framework.path),
+            guard XcodeProjectMembership.systemFrameworkPath(tree: framework.sourceTree, path: framework.path, iosSimulator: iosSimulator),
                   try fileSystem.realPath(at: framework.root) == framework.root,
                   try fileSystem.realPath(at: framework.developerRoot) == framework.developerRoot,
                   !framework.files.isEmpty, framework.files.count <= 10_000,
                   (framework.sourceTree == "SDKROOT"
-                    ? framework.root.hasPrefix(framework.developerRoot + "/Platforms/MacOSX.platform/Developer/SDKs/")
+                    ? framework.root.hasPrefix(framework.developerRoot + (iosSimulator ? "/Platforms/iPhoneSimulator.platform/Developer/SDKs/" : "/Platforms/MacOSX.platform/Developer/SDKs/"))
                         && framework.root.hasSuffix(".sdk")
                     : framework.root == framework.developerRoot) else {
                 throw invalid("SDK/developer framework roots are not a supported Xcode toolchain boundary.")
@@ -430,7 +472,7 @@ struct XcodeTargetScopeStore {
     }
 
     /// 분석 filter/ignore를 적용하지 않는다. 새 소스와 설정도 이전 증명을 무효화한다.
-    func inventory(root: String, workspace: Bool = false) throws -> [String: String] {
+    func inventory(root: String, workspace: Bool = false, additionalPaths: Set<String> = []) throws -> [String: String] {
         var pending = [root], result: [String: String] = [:]
         var entries = 0, total = 0
         let suffixes = ["swift", "m", "mm", "h", "xib", "storyboard", "pbxproj", "xcscheme", "xctestplan",
@@ -444,7 +486,7 @@ struct XcodeTargetScopeStore {
                     if ![".git", ".build"].contains(name) { pending.append(entry.path) }
                     continue
                 }
-                guard suffixes.contains((entry.path as NSString).pathExtension) else { continue }
+                guard suffixes.contains((entry.path as NSString).pathExtension) || additionalPaths.contains(String(entry.path.dropFirst(root.count + 1))) else { continue }
                 guard entry.path.hasPrefix(root + "/"), entry.isRegularFile else { throw invalid("Nonregular project input.") }
                 let data = try bounded(entry.path, maximum: 4 * 1_024 * 1_024)
                 total += data.count

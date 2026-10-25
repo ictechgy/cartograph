@@ -8,6 +8,8 @@ struct XcodeProjectMembership {
         let productType: String
         let sources: [String]
         let dependencies: [String]
+        var resources: [String] = []
+        var headers: [String] = []
     }
     struct FrameworkReference: Hashable { let sourceTree: String; let path: String }
     struct LocalPackage {
@@ -26,7 +28,7 @@ struct XcodeProjectMembership {
         self.packageConsumers = packageConsumers
     }
 
-    init(data: Data, root: String, localPackage: LocalPackage? = nil) throws {
+    init(data: Data, root: String, localPackage: LocalPackage? = nil, iosSimulator: Bool = false, fileSystem: (any FileSystem)? = nil) throws {
         guard let plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
               let objects = plist["objects"] as? [String: [String: Any]], objects.count <= 50_000,
               let rootID = plist["rootObject"] as? String, let project = objects[rootID],
@@ -67,17 +69,18 @@ struct XcodeProjectMembership {
             }
             if let settings = object["buildSettings"] as? [String: Any] {
                 guard !settings.keys.contains(where: { key in
-                    key.contains("[") || (key == "SDKROOT" && settings[key] as? String != "macosx")
+                    key.contains("[") || (key == "SDKROOT" && !(iosSimulator ? ["iphoneos", "iphonesimulator"] : ["macosx"]).contains(settings[key] as? String ?? ""))
                         || (key == "LD_RUNPATH_SEARCH_PATHS" && !Self.validRunpaths(settings[key]!))
                         || ["EXCLUDED_SOURCE_FILE_NAMES", "INCLUDED_SOURCE_FILE_NAMES",
                         "SWIFT_OBJC_BRIDGING_HEADER", "GCC_PREFIX_HEADER", "SWIFT_EXEC", "SWIFT_DRIVER_SWIFT_FRONTEND_EXEC",
                         "CC", "CXX", "LD", "OTHER_SWIFT_FLAGS", "OTHER_LDFLAGS", "SWIFT_INCLUDE_PATHS",
                         "HEADER_SEARCH_PATHS", "FRAMEWORK_SEARCH_PATHS", "LIBRARY_SEARCH_PATHS", "DEVELOPER_DIR",
                          "CONFIGURATION_BUILD_DIR", "CONFIGURATION_TEMP_DIR", "BUILD_DIR", "BUILD_ROOT", "BUILT_PRODUCTS_DIR", "OBJROOT", "SYMROOT", "DSTROOT", "TARGET_BUILD_DIR", "TARGET_TEMP_DIR", "TEMP_DIR", "DERIVED_FILE_DIR", "SHARED_PRECOMPS_DIR", "INDEX_DATA_STORE_DIR", "TEST_HOST", "BUNDLE_LOADER", "TEST_TARGET_NAME", "LD_DYLIB_INSTALL_NAME", "DYLIB_INSTALL_NAME_BASE", "INFOPLIST_FILE", "INFOPLIST_PREFIX_HEADER", "CODE_SIGN_ENTITLEMENTS", "MODULEMAP_FILE", "MODULEMAP_PRIVATE_FILE"].contains(key)
+                        && !(iosSimulator && ["TEST_HOST", "BUNDLE_LOADER", "TEST_TARGET_NAME"].contains(key))
                         && !["", "$(inherited)"].contains(String(describing: settings[key]!))
                 }) else { throw Self.invalid("Conditional build settings or source filters leave membership unknown.") }
             }
-            guard object["baseConfigurationReference"] == nil else {
+            guard iosSimulator || object["baseConfigurationReference"] == nil else {
                 throw Self.invalid("External xcconfig evaluation is unsupported in this receipt version.")
             }
         }
@@ -97,6 +100,10 @@ struct XcodeProjectMembership {
                 for child in object["children"] as? [String] ?? [] { pending.append((child, combined, depth + 1)) }
             } else if kind == "PBXFileReference", !combined.isEmpty { paths[id] = combined }
         }
+        if iosSimulator {
+            guard let fileSystem else { throw Self.invalid("iOS inputs require an injected filesystem.") }
+            try XcodeIOSInputs.validateConfigurations(objects: objects, paths: paths, root: root, fileSystem: fileSystem)
+        }
         var targets: [String: Target] = [:]
         let productOwners = Dictionary(targetIDs.compactMap { id in
             (objects[id]?["productReference"] as? String).map { ($0, id) }
@@ -115,13 +122,13 @@ struct XcodeProjectMembership {
                 throw Self.invalid("Unsupported native target or build rule.")
             }
             if !(target["packageProductDependencies"] as? [String] ?? []).isEmpty { packageConsumers.insert(id) }
-            var sources: [String] = []
+            var sources: [String] = [], resources: [String] = [], headers: [String] = []
             for phaseID in target["buildPhases"] as? [String] ?? [] {
                 guard let phase = objects[phaseID], let kind = phase["isa"] as? String,
                       ["PBXSourcesBuildPhase", "PBXFrameworksBuildPhase", "PBXResourcesBuildPhase", "PBXHeadersBuildPhase"].contains(kind)
                 else { throw Self.invalid("Unsupported build phase.") }
                 let files = phase["files"] as? [String] ?? []
-                if ["PBXResourcesBuildPhase", "PBXHeadersBuildPhase"].contains(kind), !files.isEmpty {
+                if !iosSimulator, ["PBXResourcesBuildPhase", "PBXHeadersBuildPhase"].contains(kind), !files.isEmpty {
                     throw Self.invalid("Resource and header build phases are not modeled by this Swift-only receipt.")
                 }
                 for file in files {
@@ -141,6 +148,13 @@ struct XcodeProjectMembership {
                             throw Self.invalid("Source phase contains an external, generated or non-Swift file.")
                         }
                         sources.append(path)
+                    } else if kind == "PBXResourcesBuildPhase" || kind == "PBXHeadersBuildPhase" {
+                        guard let path = paths[ref], Self.relative(path), let fileSystem,
+                              try fileSystem.realPath(at: root + "/" + path) == root + "/" + path,
+                              fileSystem.fingerprintStamp(at: root + "/" + path)?.isRegularFile == true else {
+                            throw Self.invalid("iOS auxiliary inputs must be finite canonical local regular files.")
+                        }
+                        if kind == "PBXResourcesBuildPhase" { resources.append(path) } else { headers.append(path) }
                     } else if kind == "PBXFrameworksBuildPhase" {
                         guard let tree = objects[ref]?["sourceTree"] as? String,
                               ["SDKROOT", "DEVELOPER_DIR", "BUILT_PRODUCTS_DIR"].contains(tree) else {
@@ -150,7 +164,7 @@ struct XcodeProjectMembership {
                             throw Self.invalid("Absolute, escaping or macro framework paths are unsupported.")
                         }
                         if tree != "BUILT_PRODUCTS_DIR" {
-                            guard Self.systemFrameworkPath(tree: tree, path: path) else {
+                            guard Self.systemFrameworkPath(tree: tree, path: path, iosSimulator: iosSimulator) else {
                                 throw Self.invalid("Unsupported SDK/developer framework path.")
                             }
                             frameworks.insert(.init(sourceTree: tree, path: path))
@@ -172,7 +186,7 @@ struct XcodeProjectMembership {
             guard !sources.isEmpty, Set(sources).count == sources.count else {
                 throw Self.invalid("Each target must have nonempty, unique explicit Swift sources.")
             }
-            targets[id] = .init(name: name, productType: type, sources: sources.sorted(), dependencies: dependencies.sorted())
+            targets[id] = .init(name: name, productType: type, sources: sources.sorted(), dependencies: dependencies.sorted(), resources: resources.sorted(), headers: headers.sorted())
         }
         for (id, links) in linkedTargets {
             var closure: Set<String> = [], pending = targets[id]?.dependencies ?? []
@@ -199,9 +213,9 @@ struct XcodeProjectMembership {
         return values.map { $0.allSatisfy(allowed.contains) } ?? false
     }
 
-    static func systemFrameworkPath(tree: String, path: String) -> Bool {
+    static func systemFrameworkPath(tree: String, path: String, iosSimulator: Bool = false) -> Bool {
         let prefix = tree == "SDKROOT" ? "System/Library/Frameworks/"
-            : "Platforms/MacOSX.platform/Developer/Library/Frameworks/"
+            : (iosSimulator ? "Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks/" : "Platforms/MacOSX.platform/Developer/Library/Frameworks/")
         return relative(path) && path.hasPrefix(prefix) && !path.dropFirst(prefix.count).contains("/")
             && path.hasSuffix(".framework")
     }

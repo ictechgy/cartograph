@@ -13,6 +13,8 @@ def verify(directory):
     evidence = scope.package_helper("xcode-local-package-evidence")
     workspace = scope.package_helper("xcode-workspace-inputs")
     capture = scope.package_helper("xcode-workspace-capture")
+    ios = scope.package_helper("xcode-ios-scope")
+    assert callable(ios.validate_configurations) and callable(ios.native_outputs)
     assert workspace.projects(b'<Workspace><FileRef location="group:Example.xcodeproj"/></Workspace>') == ["Example.xcodeproj"]
     assert callable(capture.capture)
     value = inputs.manifest(b'// swift-tools-version: 6.0\nimport PackageDescription\n'

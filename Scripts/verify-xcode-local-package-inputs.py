@@ -35,13 +35,13 @@ class PackageInputTests(unittest.TestCase):
             target = Path(folder).resolve()
             for name in ("cartograph-xcode-scope.py", "cartograph-swiftpm-scope.py",
                          "xcode-local-package-inputs.py", "xcode-local-package-evidence.py",
-                         "xcode-workspace-inputs.py", "xcode-workspace-capture.py"):
+                         "xcode-workspace-inputs.py", "xcode-workspace-capture.py", "xcode-ios-scope.py"):
                 shutil.copyfile(ROOT / "Scripts" / name, target / name)
             check = importlib.util.spec_from_file_location("installed_capture_check", ROOT / "Scripts/verify-xcode-scope-install.py")
             verifier = importlib.util.module_from_spec(check)
             check.loader.exec_module(verifier)
             verifier.verify(target)
-            for name in ("xcode-local-package-evidence.py", "xcode-workspace-inputs.py", "xcode-workspace-capture.py"):
+            for name in ("xcode-local-package-evidence.py", "xcode-workspace-inputs.py", "xcode-workspace-capture.py", "xcode-ios-scope.py"):
                 (target / name).unlink()
                 with self.assertRaises(FileNotFoundError):
                     verifier.verify(target)

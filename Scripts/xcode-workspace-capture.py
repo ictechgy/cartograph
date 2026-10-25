@@ -15,7 +15,7 @@ def canonical_settings(rows):
     result = copy.deepcopy(rows)
     for row in result:
         settings = row.get("buildSettings", {})
-        for key in ("PROJECT_FILE_PATH", "TARGET_BUILD_DIR", "DEVELOPER_DIR", "SDKROOT"):
+        for key in ("PROJECT_FILE_PATH", "TARGET_BUILD_DIR", "DEVELOPER_DIR", "SDKROOT", "TEST_HOST", "BUNDLE_LOADER"):
             if isinstance(settings.get(key), str) and settings[key].startswith("/"):
                 settings[key] = str(Path(settings[key]).resolve())
     return result
@@ -95,8 +95,10 @@ def capture(args, scope):
     scope.require(not output.is_relative_to(root) and not output.exists(), "Use a fresh output outside the project")
     scope.require(1 <= args.timeout <= 3600 and platform.system() == "Darwin", "Capture requires native macOS and timeout 1...3600")
     output.mkdir(parents=True)
+    ios = getattr(args, "ios_simulator", False)
+    auxiliary = set()
     def inventory():
-        return scope.inventory(root, maximum_files=20000, maximum_bytes=128 * 1024 * 1024)
+        return scope.inventory(root, maximum_files=20000, maximum_bytes=128 * 1024 * 1024, additional_paths=auxiliary)
     started, before = time.monotonic(), inventory()
     helper = scope.package_helper("xcode-workspace-inputs")
     projects = helper.projects(scope.bounded(root / args.workspace / "contents.xcworkspacedata", 1024 * 1024))
@@ -114,24 +116,32 @@ def capture(args, scope):
             package_specs += [(path, spec) for spec in specs]
     initial_packages = aggregate_packages(package_specs, scope)
     merged = helper.merge(sanitized)
-    targets = scope.membership(merged)
+    targets = scope.membership(merged, ios_simulator=ios, root=root)
+    if ios:
+        auxiliary = {p for target in targets.values() for p in target.get("resources", []) + target.get("headers", [])}
+        before = inventory()
     # No duplicate target name can be represented unambiguously by Xcode's -only-testing syntax.
     scope.require(len({t["name"] for t in targets.values()}) == len(targets), "Workspace target selector names must be unique")
     scheme_path, configuration, selected = scheme(root, args.workspace, projects, args.scheme, args.test_plan, scope)
     scope.require(all(x in targets and targets[x]["productType"] == "com.apple.product-type.bundle.unit-test" for x in selected),
                   "Selected workspace entries must be explicit native unit-test targets")
-    frameworks = scope.capture_frameworks(merged, root, output, args.timeout)
+    frameworks = scope.capture_frameworks(merged, root, output, args.timeout, ios_simulator=ios)
     arch = platform.machine()
     scope.require(arch in ("arm64", "x86_64"), "Unsupported native architecture")
-    destination = "platform=macOS,arch=" + arch
+    destination = "generic/platform=iOS Simulator" if ios else "platform=macOS,arch=" + arch
     derived = output / "DerivedData"
     common = ["xcodebuild", "-workspace", str(root / args.workspace), "-configuration", configuration,
               "-destination", destination, "-derivedDataPath", str(derived), "-scheme", args.scheme]
+    if ios:
+        common += ["-sdk", "iphonesimulator"]
     if args.test_plan:
         common += ["-testPlan", Path(args.test_plan).stem]
     overrides = ["CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=YES", "ARCHS=" + arch]
-    if package_specs:
+    if package_specs or ios:
         overrides += ["LD_GENERATE_MAP_FILE=YES"]
+    if ios:
+        # App stub/code image must not overwrite the same link-map output.
+        overrides += ["LD_MAP_FILE_PATH=$(TARGET_TEMP_DIR)/$(PRODUCT_NAME)-$(MACH_O_TYPE)-$(CURRENT_ARCH)-LinkMap.txt"]
     settings = canonical_settings(json.loads(scope.run(common + ["build-for-testing", "-showBuildSettings", "-json"] + overrides,
                                     root, output, "build-settings", args.timeout)))
     for target in targets.values():
@@ -141,7 +151,7 @@ def capture(args, scope):
         rows = [r for r in settings if matches(r)]
         if not rows:
             extra = canonical_settings(json.loads(scope.run(["xcodebuild", "-project", str(root / project), "-target", target["name"],
-                "-configuration", configuration, "-showBuildSettings", "-json"] + overrides,
+                "-configuration", configuration, "-showBuildSettings", "-json"] + (["-sdk", "iphonesimulator"] if ios else []) + overrides,
                 root, output, "settings-" + str(len(settings)), args.timeout)))
             rows = [r for r in extra if matches(r)]
             settings += rows
@@ -162,6 +172,12 @@ def capture(args, scope):
         command += ["--config", str(Path(args.config).resolve())]
     snapshot = json.loads(scope.run(command, root, output, "snapshot", args.timeout, 128 * 1024 * 1024))
     proof = scope.package_helper("xcode-local-package-evidence")
+    ios_helper = scope.package_helper("xcode-ios-scope") if ios else None
+    native_outputs = ios_helper.native_outputs(targets, settings, selected) if ios else None
+    def native_proof(current_snapshot):
+        return ios_helper.assemble(root, derived, stores[0], build_log.decode("utf-8"), current_snapshot,
+                                   targets, settings, selected, arch, proof) if ios else None
+    native_evidence = native_proof(snapshot)
     def package_proofs(current_snapshot):
         result = []
         current_specs = []
@@ -174,13 +190,14 @@ def capture(args, scope):
             scope.require(not any(p.startswith(current["path"] + "/") for t in targets.values() for p in t["sources"]),
                           "Package sources cannot also belong to workspace native targets")
             item = proof.assemble(current, root, derived, stores[0], build_log.decode("utf-8"), current_snapshot,
-                                  targets, settings, selected, arch)
+                                  targets, settings, selected, arch, **({"native_outputs": native_outputs} if ios else {}))
             result.append(item)
         return result
     packages = package_proofs(snapshot)
-    if packages:
+    if packages or ios:
         snapshot = json.loads(scope.run(command, root, output, "package-fresh-snapshot", args.timeout, 128 * 1024 * 1024))
-        scope.require(package_proofs(snapshot) == packages, "Workspace package proof changed across fresh graph analysis")
+        scope.require(package_proofs(snapshot) == packages and native_proof(snapshot) == native_evidence,
+                      "Workspace compiler/link/record proof changed across fresh graph analysis")
     after = inventory()
     scope.require(before == after, "Workspace inputs changed during capture")
     products, links = scope.product_inventory(products_root)
@@ -189,8 +206,8 @@ def capture(args, scope):
     hosts = {}
     developer = Path(settings[0]["buildSettings"]["DEVELOPER_DIR"]).resolve()
     for row in rows:
-        scope.require(not row.get("IsAppHostedTestBundle"), "App-hosted workspace tests are unsupported")
-        if "TestHostPath" in row:
+        scope.require(bool(row.get("IsAppHostedTestBundle")) == ios and not row.get("IsUITestBundle"), "Unexpected workspace XCTest host profile")
+        if not ios and "TestHostPath" in row:
             expected = developer / "Platforms/MacOSX.platform/Developer/Library/Xcode/Agents/xctest"
             declared = row["TestHostPath"].replace("__PLATFORMS__", str(developer / "Platforms"))
             scope.require(Path(declared) == expected and Path(declared).resolve() == expected, "Unknown workspace XCTest host")
@@ -202,13 +219,17 @@ def capture(args, scope):
         "buildSettingsJSON": json.dumps(settings, sort_keys=True), "testRunPath": str(runs[0]), "testRunSHA256": products[str(runs[0])],
         "products": products, "productLinks": links, "targets": sorted(targets.values(), key=lambda x: x["id"]),
         "selectedTargetIDs": selected, "frameworks": frameworks, "testHosts": hosts, "buildExitCode": 0, "localPackages": packages}
+    if ios:
+        receipt.update(version=4, ios=native_evidence)
     scope.require(isinstance(receipt["inputFingerprint"], str) and len(receipt["inputFingerprint"]) == 64, "Snapshot has no bound input fingerprint")
-    scope.require(package_proofs(snapshot) == packages and before == inventory(), "Workspace inputs/proof changed before receipt publication")
+    scope.require(package_proofs(snapshot) == packages and native_proof(snapshot) == native_evidence and before == inventory(), "Workspace inputs/proof changed before receipt publication")
     encoded = (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode()
     scope.require(len(encoded) <= 8 * 1024 * 1024, "Workspace receipt exceeds 8 MiB")
     (output / "target-scope.json").write_bytes(encoded)
     scope.save(output / "capture.json", {"receipt": str(output / "target-scope.json"), "indexStore": str(stores[0]),
-        "secondsIncludingPreparation": time.monotonic() - started, "context": common + ["test-without-building"],
+        "secondsIncludingPreparation": time.monotonic() - started,
+        "context": None if ios else common + ["test-without-building"], "buildContext": common + ["build-for-testing"],
+        "runtimeAcceptance": "not-run; no device operation" if ios else "not-run-by-capture",
         "inputFileCount": len(after), "declaredSourceCountByModule": {t["module"]: len(t["sources"]) for t in targets.values()},
         "observedSourceRecordCountByModule": {t["module"]: len({r.get("path") for r in snapshot.get("snapshot", {}).get("sourceRecordAdmissions", []) if r.get("module") == t["module"]}) for t in targets.values()},
         "coverageCountLimitation": "Observed compiler source-record counts, not line coverage, dynamic coverage or proof that omitted sources are harmless.",

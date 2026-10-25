@@ -2269,3 +2269,8 @@ Selector target names come from verified `.xctestrun` BlueprintName/project iden
 the JSON/MCP output preserves bundle product names separately.
 Unknown coverage still refuses narrowing; static candidates never authorize test omission.
 See [scope, budgets and migration examples](docs/FOLLOWUP-REVIEW.md).
+
+
+Development note: iOS Simulator target-scope v4 is an uncompiled source draft.
+Its static input checks do not establish runtime or selector acceptance. See the
+[separate draft and validation gaps](docs/XCODE-AFFECTED-SCOPE.md#ios-simulator-v4-development-draft).
