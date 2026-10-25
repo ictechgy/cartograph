@@ -298,6 +298,18 @@ binds its code image and generated app stub separately, including their strong l
 A lower observed local package deployment minimum is compatible with a higher app minimum;
 the receipt does not assume that every module has the same target triple.
 
+Xcode may also emit an empty Clang preview dylib that shares the debug image's install name
+and overwritten link-map path. It is separated from package-wrapper candidates only when
+the app target, enabled debug-dylib settings and mapped native output bind the standard
+`.app/<executable>.debug.dylib` image to one sibling `__preview.dylib` command. That command
+must match the unique actual debug link's driver, Simulator target, SDK, install name and
+link-map path, with only the observed empty-input options. File-list, response-file or object
+inputs, unknown/mixed/duplicate options, malformed forwarding and ambiguous commands are
+refused. The shared preview map supplies no positive ownership evidence and the preview is
+not added to the package receipt. The actual native image, app stub and package contribution
+retain their complete byte/owner proofs; aggregate-only native links still participate in
+package-wrapper ambiguity checks.
+
 The draft models plain regular resource copies and headers as auxiliary inputs, not Swift
 definition units. Every declared byte is inventoried and resource-copy hashes must agree.
 Transformed resources (storyboards, asset catalogs), generated source membership and arbitrary

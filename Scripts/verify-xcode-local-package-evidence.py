@@ -561,11 +561,144 @@ class EvidenceTests(unittest.TestCase):
                 with self.assertRaises(E.EvidenceError):
                     E.live_owners(E.Files(self.build, self.store), str(self.aggregate_map), str(self.aggregate), "arm64")
 
-    def capture(self, extra=None):
+    def capture(self, extra=None, native_outputs=None):
         commands = [self.compiler, self.aggregate_argv, self.native_argv] + (extra or [])
         log = "\n".join(shlex.join(args) for args in commands)
         return E.assemble(self.spec, self.project, self.derived, self.store, log, self.snapshot,
-                          self.targets, self.settings, ["CHECKS"], "arm64")
+                          self.targets, self.settings, ["CHECKS"], "arm64", native_outputs=native_outputs)
+
+    def ios_debug_preview(self):
+        # 실제 관측한 argv 관계만 재현한다. 이 합성 파일은 native 실행 증거가 아니다.
+        old_native = self.native
+        directory = self.build / "Products/Debug-iphonesimulator"
+        self.native = self.write(directory / "ProbeHost.app/ProbeHost.debug.dylib", b"native debug image")
+        preview = self.write(self.native.parent / "__preview.dylib", b"empty preview image")
+        triple, sdk = "arm64-apple-ios18.0-simulator", "/tool/iPhoneSimulator27.0.sdk"
+        install = "@rpath/ProbeHost.debug.dylib"
+        dependency = str(self.build / "Intermediates/ProbeHost_dependency_info.dat")
+        self.native_argv[self.native_argv.index("-o") + 1] = str(self.native)
+        self.native_argv[self.native_argv.index("-target") + 1] = triple
+        self.native_argv += ["-dynamiclib", "-isysroot", sdk, "-install_name", install,
+                             "-Xlinker", "-reproducible", "-Os", "-L" + str(directory), "-F" + str(directory),
+                             "-Xlinker", "-dead_strip", "-rdynamic", "-Xlinker", "-objc_abi_version", "-Xlinker", "2",
+                             "-Xlinker", "-debug_variant", "-Xlinker", "-dependency_info", "-Xlinker", dependency]
+        self.native_map.write_bytes(self.native_map.read_bytes().replace(
+            str(old_native).encode(), str(self.native).encode()))
+        self.targets["CORE"]["productType"] = "com.apple.product-type.application"
+        self.settings[0]["buildSettings"] = {"TARGET_BUILD_DIR": str(directory),
+            "EXECUTABLE_PATH": "ProbeHost.app/ProbeHost", "FULL_PRODUCT_NAME": "ProbeHost.app",
+            "ENABLE_DEBUG_DYLIB": "YES"}
+        argv = ["/tool/clang", "-Xlinker", "-reproducible", "-target", triple, "-dynamiclib", "-isysroot", sdk, "-Os",
+                "-L" + str(directory), "-F" + str(directory), "-install_name", install,
+                "-Xlinker", "-map", "-Xlinker", str(self.native_map), "-Xlinker", "-dead_strip", "-rdynamic",
+                "-Xlinker", "-objc_abi_version", "-Xlinker", "2", "-Xlinker", "-debug_variant",
+                "-Xlinker", "-dependency_info", "-Xlinker", dependency, "-o", str(preview)]
+        return argv, {"CORE": str(self.native)}
+
+    def test_ios_empty_preview_is_not_a_package_wrapper_or_positive_link_proof(self):
+        for driver in (None, "swiftc", "clang"):
+            with self.subTest(product_driver=driver):
+                case = EvidenceTests("runTest"); case.setUp()
+                try:
+                    wrapper = case.dynamic_wrapper(driver)[0] if driver else None
+                    preview, outputs = case.ios_debug_preview()
+                    proof = case.capture(([wrapper] if wrapper else []) + [preview], outputs)
+                    self.assertEqual(proof["links"][0]["link"]["output"], str(case.native))
+                    self.assertNotIn(E.operand(preview, "-o"), proof["files"])
+                    expected = E.operand(wrapper, "-o") if wrapper else str(case.aggregate)
+                    self.assertEqual(proof["links"][0]["packageInput"], expected)
+                    with self.assertRaisesRegex(E.EvidenceError, "identity mismatch"):
+                        E.live_owners(E.Files(case.build, case.store), str(case.native_map),
+                                      E.operand(preview, "-o"), "arm64")
+                finally:
+                    case.doCleanups()
+
+    def test_ios_preview_requires_native_app_settings_and_output_binding(self):
+        changes = ("no-mapping", "wrong-mapping", "non-app", "disabled", "bundle", "executable")
+        for change in changes:
+            with self.subTest(change=change):
+                case = EvidenceTests("runTest"); case.setUp()
+                try:
+                    preview, outputs = case.ios_debug_preview()
+                    values = case.settings[0]["buildSettings"]
+                    if change == "no-mapping": outputs = None
+                    elif change == "wrong-mapping": outputs["CORE"] += ".different"
+                    elif change == "non-app": case.targets["CORE"]["productType"] = "com.apple.product-type.framework"
+                    elif change == "disabled": values["ENABLE_DEBUG_DYLIB"] = "NO"
+                    elif change == "bundle": values["FULL_PRODUCT_NAME"] = "Other.app"
+                    elif change == "executable": values["EXECUTABLE_PATH"] = "Other.app/ProbeHost"
+                    with self.assertRaises(E.EvidenceError): case.capture([preview], outputs)
+                finally:
+                    case.doCleanups()
+
+    def test_ios_preview_refuses_inputs_responses_unknown_mixed_and_duplicate_flags(self):
+        changes = (["-filelist"], ["response"], ["object"], ["-unknown"], ["-lUnproved"], ["-emit-library"],
+                   ["-r"], ["-dynamiclib"], ["-Os"], ["-map"], ["-target"], ["-Xlinker"],
+                   ["-Xlinker", "-Xlinker", "-debug_variant"], ["-Xclang-linker", "-debug_variant"])
+        for change in changes:
+            with self.subTest(change=change):
+                case = EvidenceTests("runTest"); case.setUp()
+                try:
+                    preview, outputs = case.ios_debug_preview()
+                    suffix = change
+                    if change == ["-filelist"]: suffix = ["-filelist", str(case.native_list)]
+                    elif change == ["response"]: suffix = ["@" + str(case.response)]
+                    elif change == ["object"]: suffix = [str(case.aggregate)]
+                    elif change == ["-map"]: suffix = ["-map", str(case.native_map)]
+                    elif change == ["-target"]: suffix = ["-target", "arm64-apple-ios18.0-simulator"]
+                    with self.assertRaises(E.EvidenceError): case.capture([preview + suffix], outputs)
+                finally:
+                    case.doCleanups()
+
+    def test_ios_preview_refuses_wrong_native_identity_driver_and_path(self):
+        for option in ("driver", "-target", "-isysroot", "-install_name", "-map", "-o", "symlink"):
+            with self.subTest(option=option):
+                case = EvidenceTests("runTest"); case.setUp()
+                try:
+                    preview, outputs = case.ios_debug_preview()
+                    if option == "driver": preview[0] = "/other/clang"
+                    elif option == "symlink":
+                        path = Path(E.operand(preview, "-o")); path.unlink(); path.symlink_to(case.native)
+                    else:
+                        values = {"-target": "arm64-apple-ios19.0-simulator", "-isysroot": "/tool/Other.sdk",
+                                  "-install_name": "@rpath/Other.debug.dylib", "-map": str(case.aggregate_map),
+                                  "-o": str(case.build / "Products/PackageFrameworks/__preview.dylib")}
+                        preview[preview.index(option) + 1] = values[option]
+                    with self.assertRaises(E.EvidenceError): case.capture([preview], outputs)
+                finally:
+                    case.doCleanups()
+
+    def test_ios_preview_requires_unique_actual_native_and_preview_commands(self):
+        for duplicate in ("preview", "native", "mapping"):
+            with self.subTest(duplicate=duplicate):
+                case = EvidenceTests("runTest"); case.setUp()
+                try:
+                    preview, outputs = case.ios_debug_preview()
+                    extra = [preview, preview] if duplicate == "preview" else [preview]
+                    if duplicate == "native": extra.append(list(case.native_argv))
+                    elif duplicate == "mapping":
+                        case.targets["OTHER"] = copy.deepcopy(case.targets["CORE"])
+                        outputs["OTHER"] = outputs["CORE"]
+                    with self.assertRaises(E.EvidenceError): case.capture(extra, outputs)
+                finally:
+                    case.doCleanups()
+
+    def test_ios_preview_never_replaces_required_native_positive_ownership(self):
+        preview, outputs = self.ios_debug_preview()
+        self.native_map.write_bytes(self.map_bytes(self.native, [self.other]))
+        with self.assertRaisesRegex(E.EvidenceError, "no positive"):
+            self.capture([preview], outputs)
+        self.native_map.write_bytes(self.map_bytes(Path(E.operand(preview, "-o")), [self.other, self.aggregate]))
+        with self.assertRaisesRegex(E.EvidenceError, "identity mismatch"):
+            self.capture([preview], outputs)
+
+    def test_ios_preview_does_not_hide_aggregate_only_native_framework_ambiguity(self):
+        wrapper, _, _, _, _ = self.dynamic_wrapper("clang")
+        preview, outputs = self.ios_debug_preview()
+        native = list(wrapper)
+        native[native.index("-o") + 1] = str(self.build / "Products/Debug/Ordinary.framework/Ordinary")
+        with self.assertRaisesRegex(E.EvidenceError, "Ambiguous dynamic"):
+            self.capture([wrapper, native, preview], outputs)
 
     def test_positive_distinct_virtual_output_and_actual_live_chain(self):
         duplicate = list(self.compiler)

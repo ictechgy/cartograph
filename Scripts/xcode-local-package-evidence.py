@@ -216,6 +216,75 @@ def dynamic_form(argv, mode):
                 and "-emit-library" not in argv and argv.count("-filelist") == 1))
 
 
+def empty_preview_form(argv, native, architecture):
+    """관측한 빈 preview 문법만 분리하며 숨은 response/object 입력을 허용하지 않는다."""
+    require(argv[0] == native[0] and Path(argv[0]).name == "clang" and dynamic_form(native, "operand"),
+            "Preview and actual native debug link drivers differ")
+    require(all(x != "-Xclang-linker" and (x != "-Xlinker" or
+                (i + 1 < len(argv) and argv[i + 1] not in ("-Xlinker", "-Xclang-linker")))
+                for i, x in enumerate(argv)), "Malformed preview linker forwarding")
+    effective = [x for x in argv if x not in ("-Xlinker", "-Xclang-linker")]
+    require(all(x and len(x.encode()) <= 4096 and not any(ord(c) < 32 or ord(c) == 127 for c in x)
+                for x in effective), "Invalid preview link token")
+    flags = {"-reproducible", "-dynamiclib", "-Os", "-no_warn_duplicate_libraries", "-dead_strip",
+             "-rdynamic", "-debug_variant"}
+    options = {"-target", "-isysroot", "-install_name", "-map", "-objc_abi_version", "-dependency_info", "-o"}
+    seen, index = set(), 1
+    while index < len(effective):
+        token = effective[index]
+        require(token not in seen, "Duplicate preview link option")
+        seen.add(token)
+        if token in options:
+            value = operand(effective, token)
+            require(token == "-o" or value == operand(native, token), "Preview and native debug link identity differ")
+            index += 2
+        else:
+            require((token in flags or (token.startswith(("-L", "-F")) and len(token) > 2)) and token in native,
+                    "Unproved input or unsupported preview link option")
+            index += 1
+    require({"-dynamiclib", "-target", "-isysroot", "-install_name", "-map", "-o"} <= seen
+            and re.fullmatch(re.escape(architecture) + r"-apple-ios\d+(?:\.\d+){0,2}-simulator",
+                             operand(effective, "-target")) is not None,
+            "Preview lacks a complete observed iOS Simulator identity")
+
+
+def native_previews(commands, files, targets, settings, native_outputs, architecture):
+    """앱 설정과 실제 debug link에 연결된 빈 preview만 package 후보에서 분리한다."""
+    previews = []
+    for ident, output in sorted((native_outputs or {}).items()):
+        target = targets.get(ident, {})
+        if target.get("productType") != "com.apple.product-type.application":
+            continue
+        rows = [r["buildSettings"] for r in settings if r.get("target") == target["name"]]
+        require(len(rows) == 1, "Ambiguous preview native settings")
+        values = rows[0]
+        if values.get("ENABLE_DEBUG_DYLIB") != "YES":
+            continue
+        code = canonical(output, files.build / "Products")
+        expected = code.parent / "__preview.dylib"
+        observed = [a for a in commands if "-map" in a and "-o" in a
+                    and physical_temporary_alias(operand(a, "-o")) == str(expected)]
+        if not observed:
+            continue
+        directory = canonical(values["TARGET_BUILD_DIR"], files.build / "Products")
+        executable = canonical(str(directory / values["EXECUTABLE_PATH"]), files.build / "Products")
+        require(executable.parent == directory / values.get("FULL_PRODUCT_NAME", "")
+                and executable.parent.suffix == ".app" and code == Path(str(executable) + ".debug.dylib")
+                and canonical(str(expected), files.build) == expected,
+                "Preview is not bound to the declared app debug image")
+        native = [a for a in commands if "-map" in a and "-o" in a
+                  and physical_temporary_alias(operand(a, "-o")) == str(code)]
+        require(len(observed) == 1 and len(native) == 1 and observed[0] not in previews,
+                "Ambiguous actual native or preview link")
+        require(operand(native[0], "-install_name") == "@rpath/" + code.name,
+                "Native debug install name is not bound to its app image")
+        empty_preview_form(observed[0], native[0], architecture)
+        # preview의 공유/덮어쓴 map은 소유권 증거로 읽지 않는다. 실제 native link는 그대로 검증한다.
+        canonical(operand(observed[0], "-map"), files.build)
+        previews.append(observed[0])
+    return previews
+
+
 def dynamic_product(files, argv, aggregate, architecture, product):
     observed, inputs, live = link(files, argv, architecture, required={aggregate["output"]})
     response_list = observed["fileList"] if observed["fileListMode"] == "response" else None
@@ -343,8 +412,9 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
             "Package and native compiler modules are ambiguous")
     compilations, records = compiler_records(files, commands, sources, spec["module"], store, snapshot, package_root, architecture)
     aggregate_candidates = [argv for argv in commands if "-r" in argv and "-filelist" in argv and "-map" in argv]
+    previews = native_previews(commands, files, targets, settings, native_outputs, architecture)
     wrapper_candidates = [argv for argv in commands
-                          if ("-emit-library" in argv or "-dynamiclib" in argv) and "-map" in argv]
+                          if ("-emit-library" in argv or "-dynamiclib" in argv) and "-map" in argv and argv not in previews]
     # 여러 package의 relocatable link 중 이 package의 완전한 object 집합만 고른다.
     # 선택 전 읽기도 동일한 경로·바이트·토큰 경계를 적용하며 실행하지 않는다.
     objects = {r["object"] for r in compilations.values()}
