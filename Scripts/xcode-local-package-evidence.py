@@ -205,9 +205,23 @@ def link(files, argv, architecture, required=()):
     return result, set(inputs), live
 
 
-def dynamic_product(files, argv, aggregate, architecture):
+def dynamic_form(argv, mode):
+    """관측한 driver와 file-list 형태 한 벌만 허용하며 혼합/중복 플래그를 거부한다."""
+    if not argv or "-r" in argv:
+        return False
+    driver = Path(argv[0]).name
+    return ((driver == "swiftc" and mode == "response" and argv.count("-emit-library") == 1
+             and "-dynamiclib" not in argv and "-filelist" not in argv)
+            or (driver == "clang" and mode == "operand" and argv.count("-dynamiclib") == 1
+                and "-emit-library" not in argv and argv.count("-filelist") == 1))
+
+
+def dynamic_product(files, argv, aggregate, architecture, product):
     observed, inputs, live = link(files, argv, architecture, required={aggregate["output"]})
-    require(inputs == {aggregate["output"]} and aggregate["output"] in live and "-emit-library" in argv,
+    response_list = observed["fileList"] if observed["fileListMode"] == "response" else None
+    effective = files.responses(argv, source_file_list=response_list)
+    require(inputs == {aggregate["output"]} and aggregate["output"] in live
+            and dynamic_form(effective, observed["fileListMode"]),
             "Dynamic package product lacks exact positive aggregate contribution")
     output = Path(observed["output"])
     bundles = [p for p in output.parents if p.name.endswith(".framework")]
@@ -215,6 +229,10 @@ def dynamic_product(files, argv, aggregate, architecture):
             "Dynamic package product bundle is outside captured products")
     bundle = bundles[0]
     name = bundle.name.removesuffix(".framework")
+    if observed["fileListMode"] == "operand":
+        require(bundle.parent.name == "PackageFrameworks"
+                and re.fullmatch(re.escape(product) + r"_[0-9A-Fa-f]{16}_PackageProduct", name) is not None,
+                "Clang dynamic product is not the bound synthesized package framework")
     require(output in (bundle / name, bundle / "Versions/A" / name), "Unsupported dynamic package executable layout")
     info_paths = {p.resolve() for p in (bundle / "Info.plist", bundle / "Resources/Info.plist", bundle / "Versions/A/Resources/Info.plist") if p.is_file()}
     require(len(info_paths) == 1, "Missing or ambiguous dynamic package product metadata")
@@ -325,7 +343,8 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
             "Package and native compiler modules are ambiguous")
     compilations, records = compiler_records(files, commands, sources, spec["module"], store, snapshot, package_root, architecture)
     aggregate_candidates = [argv for argv in commands if "-r" in argv and "-filelist" in argv and "-map" in argv]
-    wrapper_candidates = [argv for argv in commands if "-emit-library" in argv and "-map" in argv]
+    wrapper_candidates = [argv for argv in commands
+                          if ("-emit-library" in argv or "-dynamiclib" in argv) and "-map" in argv]
     # 여러 package의 relocatable link 중 이 package의 완전한 object 집합만 고른다.
     # 선택 전 읽기도 동일한 경로·바이트·토큰 경계를 적용하며 실행하지 않는다.
     objects = {r["object"] for r in compilations.values()}
@@ -342,7 +361,7 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
             and len({c["targetTriple"] for c in compilations.values()}) == 1, "Aggregate target triple differs")
     wrappers = [argv for argv in wrapper_candidates if list_inputs[str(canonical(link_list(argv)[0], files.build))] == {aggregate["output"]}]
     require(len(wrappers) <= 1, "Ambiguous dynamic package product wrapper")
-    wrapper = dynamic_product(files, wrappers[0], aggregate, architecture) if wrappers else None
+    wrapper = dynamic_product(files, wrappers[0], aggregate, architecture, spec["product"]) if wrappers else None
     closure, pending = set(), list(selected)
     while pending:
         ident = pending.pop()

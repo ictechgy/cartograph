@@ -156,7 +156,7 @@ struct XcodeLocalPackageEvidence: Codable {
             throw XcodeLocalPackageIO.invalid("Package aggregate contains unbound objects or is absent from captured products.")
         }
         if let wrapper = dynamicProduct {
-            guard wrapperLists == [wrapper.link.fileList], wrapper.link.fileListMode == "response",
+            guard wrapperLists == [wrapper.link.fileList],
                   links.contains(where: { $0.packageInput == wrapper.link.output }),
                   Set(try Self.validateLink(wrapper.link, required: [aggregate.output], architecture: architecture,
                     relocatable: false, iosSimulator: iosSimulator, reader: &reader)) == [aggregate.output],
@@ -198,9 +198,20 @@ struct XcodeLocalPackageEvidence: Codable {
         }
         let argv = try reader.arguments(wrapper.link.argv, sourceFileList: wrapper.link.fileList)
         let parent = (wrapper.bundle as NSString).deletingLastPathComponent
-        guard wrapper.installName == "@rpath/" + String(wrapper.link.output.dropFirst(parent.count + 1)),
+        let driver = ((argv.first ?? "") as NSString).lastPathComponent
+        let swiftForm = driver == "swiftc" && wrapper.link.fileListMode == "response"
+            && argv.filter({ $0 == "-emit-library" }).count == 1
+            && !argv.contains("-dynamiclib") && !argv.contains("-filelist")
+        let productPattern = "^" + NSRegularExpression.escapedPattern(for: product) + "_[0-9A-Fa-f]{16}_PackageProduct$"
+        let clangBundle = (parent as NSString).lastPathComponent == "PackageFrameworks"
+            && name.range(of: productPattern, options: .regularExpression) != nil
+        let clangForm = driver == "clang" && wrapper.link.fileListMode == "operand"
+            && argv.filter({ $0 == "-dynamiclib" }).count == 1
+            && !argv.contains("-emit-library") && argv.filter({ $0 == "-filelist" }).count == 1 && clangBundle
+        guard !argv.contains("-r"), swiftForm || clangForm,
+              wrapper.installName == "@rpath/" + String(wrapper.link.output.dropFirst(parent.count + 1)),
               try XcodeLocalPackageIO.argument("-install_name", in: argv) == wrapper.installName else {
-            throw XcodeLocalPackageIO.invalid("Dynamic package product install identity differs from its actual link.")
+            throw XcodeLocalPackageIO.invalid("Dynamic package driver, product or install identity differs.")
         }
     }
 

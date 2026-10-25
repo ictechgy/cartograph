@@ -165,6 +165,14 @@ have exactly the aggregate as its explicit object input, positive live link-map 
 captured executable/Info.plist bytes, matching `CFBundleExecutable`/`FMWK` metadata and the
 observed `@rpath` install name in its standard framework layout. Each native consumer must
 both name that product in its actual linker operands and have a positive live owner for it.
+The intermediate link accepts the observed `swiftc -emit-library` with one response file list,
+or `clang -dynamiclib` with one explicit `-filelist` operand. Driver/flag/list-mode combinations
+must agree; mixed, duplicated or relocatable dynamic-wrapper forms are refused. Both forms
+retain the same complete aggregate input, file-byte, metadata and positive live-owner checks.
+The Clang form is limited to the observed synthesized
+`PackageFrameworks/<product>_<16 hexadecimal characters>_PackageProduct.framework` identity,
+bound to the literal package product. Ordinary native frameworks cannot be relabeled as a
+package wrapper, and multiple aggregate-only wrapper candidates remain an explicit refusal.
 The optional product bundle enters the `.xctestrun` dependency closure only through a
 proved native consumer in the selected closure. Merely finding a framework under Products
 does not admit it. Native/package deployment minimums need not match; the package compiler

@@ -620,8 +620,14 @@ class EvidenceTests(unittest.TestCase):
             with self.assertRaises(E.EvidenceError): self.capture()
             self.native_argv[self.native_argv.index("@" + str(path))] = "@" + str(response)
 
-    def dynamic_wrapper(self):
-        bundle = self.build / "Products/Debug/PackageFrameworks/ArithmeticProduct_ABC_PackageProduct.framework"
+    def dynamic_wrapper(self, driver="swiftc", layout="package"):
+        suffix = "ABC" if driver == "swiftc" else "0123456789ABCDEF"
+        name = "ArithmeticProduct_" + suffix + "_PackageProduct.framework"
+        bundle = self.build / "Products/Debug/PackageFrameworks" / name
+        if layout == "ordinary":
+            bundle = self.build / "Products/Debug/CoreKit.framework"
+        elif layout == "wrong-product":
+            bundle = self.build / "Products/Debug/PackageFrameworks/Foreign_0123456789ABCDEF_PackageProduct.framework"
         name = bundle.name.removesuffix(".framework")
         binary = self.write(bundle / "Versions/A" / name, b"dynamic product bytes")
         info = self.write(bundle / "Versions/A/Resources/Info.plist", plistlib.dumps({"CFBundleExecutable": name, "CFBundlePackageType": "FMWK"}))
@@ -630,10 +636,66 @@ class EvidenceTests(unittest.TestCase):
         argv = ["/tool/swiftc", "-emit-library", "@" + str(inputs), "-target", "arm64-apple-macos12.0",
                 "-Xclang-linker", "-install_name", "-Xclang-linker", "@rpath/" + binary.relative_to(bundle.parent).as_posix(),
                 "-Xlinker", "-map", "-Xlinker", str(link_map), "-o", str(binary)]
+        if driver == "clang":
+            argv[:3] = ["/tool/clang", "-dynamiclib", "-filelist", str(inputs)]
         self.native_list.write_text(shlex.quote(str(self.other)) + "\n")
         self.native_argv.append(str(binary))
         self.native_map.write_bytes(self.map_bytes(self.native, [self.other, binary]))
         return argv, bundle, binary, info, link_map
+
+    def test_observed_clang_dynamic_product_uses_the_same_complete_live_chain(self):
+        argv, bundle, binary, info, _ = self.dynamic_wrapper("clang")
+        proof = self.capture([argv])
+        self.assertEqual(proof["dynamicProduct"]["bundle"], str(bundle))
+        self.assertEqual(proof["dynamicProduct"]["link"]["fileListMode"], "operand")
+        self.assertEqual(proof["dynamicProduct"]["link"]["argv"], argv)
+        self.assertEqual(proof["links"][0]["packageInput"], str(binary))
+        self.assertEqual(proof["files"][str(info)]["kind"], "document")
+
+    def test_clang_dynamic_product_refuses_mixed_duplicate_driver_or_file_list_forms(self):
+        argv, _, _, _, _ = self.dynamic_wrapper("clang")
+        bad = []
+        for flag in ("-emit-library", "-dynamiclib", "-r"):
+            bad.append(argv + [flag])
+        bad.append(["/tool/swiftc", *argv[1:]])
+        bad.append(["/tool/unknown", *argv[1:]])
+        file_list = argv[argv.index("-filelist") + 1]
+        mixed = list(argv); mixed[mixed.index("-filelist"):mixed.index("-filelist") + 2] = ["@" + file_list]
+        bad.append(mixed)
+        for changed in bad:
+            with self.subTest(argv=changed), self.assertRaises(E.EvidenceError):
+                self.capture([changed])
+
+    def test_clang_dynamic_product_keeps_metadata_owner_and_tamper_refusals(self):
+        argv, _, binary, info, link_map = self.dynamic_wrapper("clang")
+        good_info, good_map = info.read_bytes(), link_map.read_bytes()
+        info.write_bytes(plistlib.dumps({"CFBundleExecutable": "Wrong", "CFBundlePackageType": "FMWK"}))
+        with self.assertRaises(E.EvidenceError): self.capture([argv])
+        info.write_bytes(good_info)
+        link_map.write_bytes(self.map_bytes(binary, []))
+        with self.assertRaises(E.EvidenceError): self.capture([argv])
+        link_map.write_bytes(good_map)
+        self.native_map.write_bytes(self.map_bytes(self.native, [self.other]))
+        with self.assertRaises(E.EvidenceError): self.capture([argv])
+
+    def test_clang_wrapper_cannot_relabel_an_ordinary_framework_or_another_package_product(self):
+        for layout in ("ordinary", "wrong-product"):
+            with self.subTest(layout=layout):
+                case = EvidenceTests("runTest")
+                case.setUp()
+                try:
+                    argv, _, _, _, _ = case.dynamic_wrapper("clang", layout)
+                    with self.assertRaises(E.EvidenceError): case.capture([argv])
+                finally:
+                    case.doCleanups()
+
+    def test_ordinary_native_aggregate_only_link_remains_an_ambiguous_wrapper_candidate(self):
+        argv, _, _, _, _ = self.dynamic_wrapper("clang")
+        other = list(argv)
+        other[other.index("-o") + 1] = str(self.native)
+        # 같은 aggregate-only 목록을 가진 native link도 후보에서 조용히 제거하지 않는다.
+        with self.assertRaisesRegex(E.EvidenceError, "Ambiguous dynamic"):
+            self.capture([argv, other])
 
     def test_dynamic_package_product_requires_positive_intermediate_and_native_owners(self):
         argv, bundle, binary, info, _ = self.dynamic_wrapper()

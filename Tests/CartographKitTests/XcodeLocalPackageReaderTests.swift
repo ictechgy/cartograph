@@ -6,6 +6,71 @@ import Testing
 
 @Suite("Xcode compiler 문서의 경계와 의미 검증")
 struct XcodeLocalPackageReaderTests {
+    @Test("관측한 Swift와 Clang wrapper만 같은 aggregate와 native live chain으로 허용한다",
+        arguments: ["swift", "clang", "mixed", "duplicate", "driver", "mode", "relocatable", "dead",
+                    "tampered", "missing", "install", "outside", "ordinary", "wrong-product"])
+    func dynamicProductDriverForms(kind: String) throws {
+        let fixture = try dynamicProductFixture(kind: kind)
+        let scope = fixture.scope()
+        #expect(scope.evidenceStatus == (["swift", "clang"].contains(kind) ? "matched-capture" : "unknown"))
+    }
+
+    private func dynamicProductFixture(kind: String) throws -> XcodeLocalPackageEvidenceTests.Fixture {
+        var fixture = try XcodeLocalPackageEvidenceTests().fixture()
+        let fs = fixture.base.fs, build = "/capture/DerivedData/Build", middle = build + "/Intermediates.noindex"
+        let name = kind == "swift" ? "ArithmeticProduct" : kind == "ordinary" ? "CoreKit"
+            : (kind == "wrong-product" ? "Foreign" : "ArithmeticProduct") + "_0123456789ABCDEF_PackageProduct"
+        let parent = kind == "outside" ? "/outside" : kind == "ordinary" ? build + "/Products/Debug"
+            : build + "/Products/Debug/PackageFrameworks"
+        let bundle = parent + "/" + name + ".framework"
+        let binary = bundle + "/Versions/A/" + name, info = bundle + "/Versions/A/Resources/Info.plist"
+        let list = middle + "/Product.LinkFileList", map = middle + "/Product.map"
+        var package = fixture.base.receipt["localPackage"] as! [String: Any]
+        var files = package["files"] as! [String: Any]
+        var products = fixture.base.receipt["products"] as! [String: String]
+        func put(_ path: String, _ data: Data, kind: String) throws {
+            try fs.write(data, to: path)
+            files[path] = ["sha256": TargetScopeStore.digest(data), "bytes": data.count, "kind": kind]
+        }
+        try put(binary, Data("synthetic dynamic framework".utf8), kind: "object")
+        try put(info, PropertyListSerialization.data(fromPropertyList: ["CFBundleExecutable": name,
+            "CFBundlePackageType": "FMWK"], format: .xml, options: 0), kind: "document")
+        let input = kind == "missing" ? middle + "/Core.o" : fixture.aggregate
+        try put(list, Data((input + "\n").utf8), kind: "document")
+        try put(map, XcodeLocalPackageEvidenceTests.linkMap(output: binary,
+            owners: kind == "dead" ? [] : [fixture.aggregate]), kind: "document")
+        products[binary] = TargetScopeStore.digest(try fs.readData(at: binary))
+        products[info] = TargetScopeStore.digest(try fs.readData(at: info))
+        let installName = "@rpath/" + name + ".framework/Versions/A/" + name
+        var argv = kind == "swift" ? ["/Xcode/swiftc", "-emit-library", "@" + list]
+            : ["/Xcode/clang", "-dynamiclib", "-filelist", list]
+        argv += ["-target", "arm64-apple-macos10.13", "-install_name", installName, "-map", map, "-o", binary]
+        if kind == "mixed" { argv.append("-emit-library") }
+        if kind == "duplicate" { argv.append("-dynamiclib") }
+        if kind == "driver" { argv[0] = "/Xcode/unknown" }
+        if kind == "relocatable" { argv.append("-r") }
+        if kind == "install" { argv[argv.firstIndex(of: "-install_name")! + 1] = "@rpath/Wrong.framework/Wrong" }
+        let mode = kind == "swift" || kind == "mode" ? "response" : "operand"
+        let wrapper: [String: Any] = ["argv": argv, "fileList": list, "fileListMode": mode,
+            "output": binary, "linkMap": map]
+        package["dynamicProduct"] = ["link": wrapper, "bundle": bundle, "infoPlist": info, "installName": installName]
+        package["aggregateCandidateFileLists"] = [middle + "/Package.LinkFileList", list]
+        var links = package["links"] as! [[String: Any]]
+        var native = links[0]["link"] as! [String: Any]
+        var nativeArguments = native["argv"] as! [String]
+        nativeArguments.append(binary); native["argv"] = nativeArguments
+        try put(native["fileList"] as! String, Data((middle + "/Core.o\n").utf8), kind: "document")
+        let nativeMap = XcodeLocalPackageEvidenceTests.linkMap(output: native["output"] as! String,
+            owners: [middle + "/Core.o", binary])
+        try put(native["linkMap"] as! String, nativeMap, kind: "document")
+        links[0]["link"] = native; links[0]["packageInput"] = binary
+        package["links"] = links; package["files"] = files
+        fixture.base.receipt["localPackage"] = package; fixture.base.receipt["products"] = products
+        if kind == "tampered" { try fs.write(text: "changed framework bytes", to: binary) }
+        try fixture.base.write()
+        return fixture
+    }
+
     @Test("response 안의 package 입력도 현재 바이트와 live owner가 모두 입증될 때만 허용한다",
         arguments: ["valid", "missing", "nested", "duplicate-output", "dead", "tampered", "outside", "non-utf8"])
     func responseOnlyPackageInput(kind: String) throws {
