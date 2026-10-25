@@ -40,10 +40,28 @@ public struct LayerViolation: Sendable, Equatable, Codable {
 public struct LayerRuleEvaluator: Sendable {
     private let layers: [LayerDefinition]
     private let rules: [LayerRule]
+    private let projectPaths: [String]
 
     public init(layers: [LayerDefinition], rules: [LayerRule]) {
+        self.init(layers: layers, rules: rules, projectPaths: [])
+    }
+
+    /// 명시한 루트에 대한 상대 경로 패턴을 적용한다. 파일 시스템을 읽지 않는다.
+    ///
+    /// 별칭을 해석하지 않는 순수 초기화다. 실제 동등성을 확인한 별칭이 있으면
+    /// `projectPaths` 형태로 함께 전달한다.
+    public init(layers: [LayerDefinition], rules: [LayerRule], projectPath: String) {
+        self.init(layers: layers, rules: rules, projectPaths: [projectPath])
+    }
+
+    /// 호출자가 준비한 루트와 확인된 별칭으로만 상대 경로 후보를 만든다.
+    ///
+    /// 실제 경로 확인은 Kit 또는 임베더의 환경 경계가 담당한다. 판정 자체는
+    /// 전달받은 문자열에만 의존하므로 메모리 그래프와 실제 실행이 같은 규칙을 쓴다.
+    public init(layers: [LayerDefinition], rules: [LayerRule], projectPaths: [String]) {
         self.layers = layers
         self.rules = rules
+        self.projectPaths = projectPaths
     }
 
     /// 정점이 속한 레이어 이름. 어디에도 속하지 않으면 nil.
@@ -52,7 +70,7 @@ public struct LayerRuleEvaluator: Sendable {
     /// 때로는 디렉터리로, 때로는 타입 이름 규칙으로 정의하기 때문이다.
     /// 먼저 정의된 레이어가 이긴다.
     public func layer(of node: GraphNode) -> String? {
-        let candidates = Self.candidates(of: node)
+        let candidates = candidates(of: node)
         return layers.first { $0.matches(candidates: candidates) }?.name
     }
 
@@ -78,7 +96,7 @@ public struct LayerRuleEvaluator: Sendable {
 
     /// 정점의 레이어 판정 근거.
     public func assignment(of node: GraphNode) -> LayerAssignment {
-        let candidates = Self.candidates(of: node)
+        let candidates = candidates(of: node)
         for layer in layers {
             for pattern in layer.patterns {
                 if let candidate = candidates.first(where: { pattern.matches($0) }) {
@@ -97,12 +115,16 @@ public struct LayerRuleEvaluator: Sendable {
         rules.filter { $0.from == layer }
     }
 
-    static func candidates(of node: GraphNode) -> [String] {
+    private func candidates(of node: GraphNode) -> [String] {
         // 모듈 정점은 이름·정규화 이름·모듈이 모두 같다. 중복을 그대로 보여 주면
         // 설명이 같은 말을 세 번 하는 꼴이 된다. 순서는 판정 순서 그대로 둔다.
         var seen: Set<String> = []
-        return [node.name, node.qualifiedName, node.module, node.location?.path]
-            .compactMap { $0 }
+        let paths = node.location.map { location in
+            [location.path] + projectPaths.flatMap {
+                PathFilter.matchCandidates(for: location.path, relativeTo: $0)
+            }
+        } ?? []
+        return ([node.name, node.qualifiedName, node.module].compactMap { $0 } + paths)
             .filter { seen.insert($0).inserted }
     }
 

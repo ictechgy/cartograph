@@ -10,24 +10,28 @@ extension CartographService {
             "xcode-target-scope: matched producer capture, not a signed receipt or test-coverage proof. "
                 + "Selectors are static review candidates for this exact project/scheme/plan/configuration/destination only; "
                 + "they do not authorize skipping other tests or predict failures.",
-            "xcode-target-scope-boundary: single local Swift project with explicit source phases only. "
-                + "Other projects, destinations, scripts, synchronized groups and conditional membership remain unsupported. "
-                + "Version 2 admits one ordinary local Swift library only with fresh raw records and observed object/link contribution.",
+            "xcode-target-scope-boundary: explicit local Swift source phases on native macOS or the v4 build-only iOS Simulator profile. "
+                + "Scripts, synchronized groups, conditional membership and other destinations remain unsupported. "
+                + "Local libraries require fresh raw records and observed object/link contribution.",
         ]
         do {
             guard let fingerprint else { throw AnalysisSessionError.unavailable }
             let evidence = try XcodeTargetScopeStore(fileSystem: fileSystem).read(path: path, root: root, fingerprint: fingerprint)
             let inventory = context.projectFileInventory ?? projectFileInventory()
-            let included = Set(inventory.sourceFiles.map(fileSystem.canonicalPath))
+            func physicalPath(_ path: String) -> String {
+                (try? fileSystem.realPath(at: path)) ?? fileSystem.canonicalPath(path)
+            }
+            let included = Set(inventory.sourceFiles.map(physicalPath))
             let indexed = Dictionary((context.snapshot.sourceFreshnessDates ?? [:]).map {
-                (fileSystem.canonicalPath($0.key), $0.value)
+                (physicalPath($0.key), $0.value)
             }, uniquingKeysWith: min)
             let admissions = Dictionary(grouping: context.snapshot.sourceRecordAdmissions ?? [],
-                by: { fileSystem.canonicalPath($0.path) })
+                by: { physicalPath($0.path) })
             let targets = Dictionary(uniqueKeysWithValues: evidence.receipt.targets.map { ($0.id, $0) })
-            let package = evidence.receipt.localPackage
-            let packageSources = package?.sourcePaths(root: root) ?? []
-            if let package {
+            let packages = evidence.receipt.packages
+            let packageSources = Set(packages.flatMap { $0.sourcePaths(root: root) })
+            try evidence.receipt.ios?.validateAdmissions(context.snapshot.sourceRecordAdmissions ?? [], root: root, fileSystem: fileSystem)
+            for package in packages {
                 try package.validateAdmissions(context.snapshot.sourceRecordAdmissions ?? [], root: root, fileSystem: fileSystem)
             }
             let selectedSources = Set(evidence.owners.filter { evidence.closure.contains($0.value) }.keys)
@@ -39,7 +43,7 @@ extension CartographService {
                 guard let date = indexed[source], let modified = fileSystem.modificationDate(at: source), date >= modified else {
                     blockers.append("missing-or-stale-selected-unit:" + relative); continue
                 }
-                let module = packageSources.contains(source) ? package?.module : evidence.owners[source].flatMap { targets[$0]?.module }
+                let module = packageSources.contains(source) ? packages.first(where: { $0.sourcePaths(root: root).contains(source) })?.module : evidence.owners[source].flatMap { targets[$0]?.module }
                 guard let module,
                       let records = admissions[source], !records.isEmpty,
                       records.allSatisfy({ $0.module == module && !$0.unit.isEmpty && !$0.record.isEmpty
@@ -51,10 +55,15 @@ extension CartographService {
                 + context.missingSourcePaths + context.unreadableSourcePaths)
             var rows: [TargetScopeDocument.Path] = []
             for candidate in candidates.sorted() {
-                let source = fileSystem.canonicalPath(candidate)
-                if let package, source == root + "/" + package.path + "/Package.swift" {
+                let source = physicalPath(candidate)
+                if let package = packages.first(where: { source == root + "/" + $0.path + "/Package.swift" }) {
                     rows.append(.init(path: package.path + "/Package.swift", classification: "configuration-input",
                         targets: [], blockers: ["validated-literal-package-manifest"]))
+                    continue
+                }
+                if let owners = evidence.auxiliaryOwners[source] {
+                    rows.append(.init(path: String(source.dropFirst(root.count + 1)), classification: "configuration-input",
+                        targets: owners.compactMap { targets[$0]?.name }.sorted(), blockers: ["validated-resource-or-header-input"]))
                     continue
                 }
                 let owner = evidence.owners[source]
@@ -87,7 +96,9 @@ extension CartographService {
                 selectedSourcePaths: Array(selectedSources.prefix(limit)).map { String($0.dropFirst(root.count + 1)) },
                 coveredBlockerCodes: blockers.isEmpty ? ["unindexed-sources", "configured-path-filter", "source-discovery-exclusions"] : [],
                 selectorIdentity: "xctestrun-blueprint-name", testBundleByModule: evidence.testBundles,
-                generatedMetadataOrigin: package?.generatedMetadataOrigin.rawValue)
+                generatedMetadataOrigin: evidence.receipt.localPackage?.generatedMetadataOrigin.rawValue,
+                workspace: evidence.receipt.workspace, projects: evidence.receipt.projects,
+                generatedMetadataOrigins: evidence.receipt.workspace == nil ? nil : Dictionary(uniqueKeysWithValues: packages.map { ($0.path, $0.generatedMetadataOrigin.rawValue) }))
             return document
         } catch {
             return .init(format: "target-scope-review", version: 1, evidenceStatus: "unknown", selectedTargets: [],

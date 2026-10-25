@@ -51,9 +51,9 @@ class PreparedComparisonWorkflowTests(unittest.TestCase):
         self.assertIn("runs-on: macos-latest", contract)
         self.assertIn("timeout-minutes: 35", contract)
 
-    def test_preparation_has_exact_roles_original_command_budgets_and_scoped_upload(self):
+    def test_preparation_has_exact_roles_bounded_cold_build_budgets_and_scoped_upload(self):
         self.assertNotIn("prepare-comparison-tools", self.jobs)
-        for role, command_budget, step_minutes in (("candidate", 1500, 35), ("comparator", 1500, 35), ("baseline", 600, 12)):
+        for role, command_budget, step_minutes in (("candidate", 1500, 35), ("comparator", 1500, 35), ("baseline", 1500, 35)):
             producer = self.jobs[f"prepare-comparison-{role}"]
             self.assertIn("    timeout-minutes: 35\n", producer)
             self.assertIn(f"        timeout-minutes: {step_minutes}\n", producer)

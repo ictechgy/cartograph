@@ -206,6 +206,7 @@ class SyntheticLifecycle(unittest.TestCase):
             self.assertEqual(value, M.retained_document(self.evidence / projection.GENERATION_SOURCES[label]))
         prefixes = ["WORKSPACE=" + str(M.ROOT), "RUNNER_TEMP=" + str(self.root),
                     "RUNNER_HOME=" + str(Path.home()),
+                    "PYTHON=" + str(Path(sys.executable).resolve()),
                     "DEVELOPER=" + M.NATIVE.expectation()[0]["developer_physical"],
                     "APPLICATIONS=/Applications", "LIBRARY=/Library", "SYSTEM=/System", "PRIVATE=/private",
                     "USR=/usr", "OPT=/opt", "BIN=/bin", "DEV=/dev", "TEMP=/var", "SBIN=/sbin"]

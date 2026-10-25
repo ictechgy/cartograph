@@ -6,10 +6,11 @@ to a target proved outside the selected test universe. The original coverage war
 remain in JSON and stderr, alongside the excluded paths and their ownership evidence.
 Empty output, unknown evidence, or a refusal is never permission to skip tests.
 
-The initial supported boundary is deliberately small: one `.xcodeproj` at the project
-root, explicit local Swift source phases, shared schemes, native macOS architecture,
-and non-app-hosted XCTest unit-test bundles. It does not establish accuracy on a multi-project
-workspace, iOS, generated resources, UI tests, or an unobserved private application.
+Single-project v1/v2 captures support one root `.xcodeproj`. Workspace v3 captures support
+up to 32 explicit local `.xcodeproj` references, cross-project target/product proxies and
+shared workspace schemes. Both require explicit Swift source phases, native macOS and
+non-app-hosted XCTest bundles. This does not establish accuracy on iOS, generated resources,
+UI tests or an unobserved private application.
 
 ## Capture and consume
 
@@ -107,6 +108,106 @@ The prior SwiftPM receipt remains diagnostic only and continues to refuse Xcode
 selectors. Existing commands without `--target-scope` keep their compatibility behavior.
 No public release or native-platform validation is implied by this source document.
 
+## Explicit multi-project workspace (receipt v3)
+
+```sh
+python3 Scripts/cartograph-xcode-scope.py \
+  --project "$PWD" --workspace Example.xcworkspace --scheme WorkspaceTests \
+  --local-package --cartograph /path/to/cartograph --output /tmp/workspace-capture
+
+cartograph affected changedValue --project "$PWD" \
+  --index-store /tmp/workspace-capture/DerivedData/Index.noindex/DataStore \
+  --target-scope /tmp/workspace-capture/target-scope.json --format json
+```
+
+Use the exact `indexStore` in `capture.json`; append the same `--config` when capturing
+and consuming. A workspace uses its own shared scheme directory. Explicit shared test
+plans still use `--test-plan`. `.xcworkspacedata` group/container references are resolved
+inside the physical project root, with at most 32 projects, 256 entries and group depth 32.
+External/absolute paths, nested workspaces, missing projects and XML entities refuse before
+`xcodebuild`. Project PBX group depth remains 128; the combined object/target budgets are
+50,000/1,000. Project directory/source-root overrides and arbitrary build scripts remain unsupported.
+Workspace and scheme XML must be UTF-8 (an explicit UTF-8 declaration is allowed), without
+NUL bytes, DTDs or entity declarations. Other encodings, including UTF-16 XML, refuse
+before building instead of bypassing the same declaration policy.
+
+PBX IDs are namespaced by `project/path.xcodeproj::ID`. Explicit project references and
+target/product proxies must identify a listed project's actual native target and its
+declared product. A framework link must be inside the explicit dependency closure.
+Compiler modules and target selector names must be unique across the workspace: a duplicate
+selector name cannot be safely expressed by `-only-testing:`. Product filenames, compiler
+modules and `.xctestrun` BlueprintName identities remain separate. No name-only fallback is used.
+
+`--local-package` admits up to 16 unique finite local packages, up to 16 references in each
+project and 256 project/package declarations overall, with the literal manifest and full
+subtree/compiler/record/live-link proof described below. Several projects may consume the
+same physical package, and one target may consume several distinct packages. Relative PBX
+references such as `../Packages/Common` are allowed when resolved from the project's parent
+inside the workspace root. Every lexical `..` step must remain inside that root, and the
+final path must be canonical: external paths, symlinks, duplicate physical packages in one
+project, or duplicate package/product/module names refuse. The package may be outside the
+referencing project's directory; it must remain inside the captured workspace root. Every package
+needs a positive native consumer inside the selected TestAction closure. A compiled or
+merely built package outside that closure cannot silently become an excluded dependency.
+Multiple products/targets per package, remote dependencies, plugins, macros, binary targets,
+resources and computed manifests remain outside this proof contract.
+
+Each package's `declarations` binds its project-qualified PBX package/product references to
+the exact framework-phase consumers. The consumer rereads every declaration, verifies the
+complete per-project product sets, and compares their union with the package's consumer/link
+set. Shared sources, compiler records and aggregate proof are bound once per physical package.
+Older v3 receipts with one `project` field still decode; new shared/multiple declarations
+require the updated consumer. An older v3 consumer refuses the new declaration shape.
+
+For Xcode's synthesized dynamic package product, the verified chain may be source object →
+relocatable aggregate → package framework → native executable. The intermediate product must
+have exactly the aggregate as its explicit object input, positive live link-map ownership,
+captured executable/Info.plist bytes, matching `CFBundleExecutable`/`FMWK` metadata and the
+observed `@rpath` install name in its standard framework layout. Each native consumer must
+both name that product in its actual linker operands and have a positive live owner for it.
+The intermediate link accepts the observed `swiftc -emit-library` with one response file list,
+or `clang -dynamiclib` with one explicit `-filelist` operand. Driver/flag/list-mode combinations
+must agree; mixed, duplicated or relocatable dynamic-wrapper forms are refused. Both forms
+retain the same complete aggregate input, file-byte, metadata and positive live-owner checks.
+The Clang form is limited to the observed synthesized
+`PackageFrameworks/<product>_<16 hexadecimal characters>_PackageProduct.framework` identity,
+bound to the literal package product. Ordinary native frameworks cannot be relabeled as a
+package wrapper, and multiple aggregate-only wrapper candidates remain an explicit refusal.
+The optional product bundle enters the `.xctestrun` dependency closure only through a
+proved native consumer in the selected closure. Merely finding a framework under Products
+does not admit it. Native/package deployment minimums need not match; the package compiler
+and aggregate target triples must agree. This supports that bounded macOS link shape;
+iOS app-host/debug-dylib chains remain unsupported by this implementation.
+
+v3 inventories allow 20,000 input files / 128 MiB total (4 MiB per file), giving source
+and configuration headroom beyond 10,000 sources. The 50,000-entry walk and 8 MiB receipt
+limits still apply; unusually long paths or source arrays can reach the receipt limit first.
+There is no unlimited-input switch. `capture.json` reports the inventory count and declared
+versus observed compiler source-record counts by native module. These are observations,
+not definition recall, line coverage, dynamic coverage or proof of safe test omission.
+`targetScope.xcode` preserves the workspace/project list and each package's metadata origin.
+Original excluded-path warnings, unmodeled paths, stale records and output/depth truncation
+continue to block selection when they overlap or cannot be classified against the selected universe.
+
+Build-settings command stdout is retained verbatim. Receipt path operands use physical
+filesystem identities. The consumer only admits macOS `/tmp`/`/var/folders` aliases when
+realpath proves the exact `/private` form; arbitrary `/private/project` prefixes and
+individual file symlinks are not assumed equivalent. The same rule applies to each raw
+`.xctestrun` bundle/dependency operand: an outside symlink to a valid product or a dot-segment
+alias refuses even when generic realpath would reach the product. Rebuild and recapture when membership
+or artifacts change. v1/v2 decoding remains supported; older consumers refuse v3.
+Consumers must preserve the workspace identity and use the captured `.xctestrun`; inferring
+an execution context from the first project field alone is unsupported.
+
+The native regression constructs a public two-project framework dependency workspace with
+two workspace-level packages: both projects consume one shared package and a target in one
+project consumes both packages. It checks both affected test targets for a shared-package
+change, compares baseline refusal with verified selectors and executes one selected captured
+XCTest. CLI/MCP, actual temporary aliases, outside aliases, encoded XML, malformed identities,
+intermediate product metadata and changed workspace/project/scheme/product bytes have
+positive or refusal controls. It is not a reproduction of the private
+22-project workspace, a platform matrix, or a general precision claim.
+
 ## Finite local package opt-in (receipt v2)
 
 Add `--local-package` to the capture command to request one project-contained ordinary
@@ -168,6 +269,63 @@ I/O; v1 and ordinary warm-query costs remain separate. Failures invalidate MCP r
 Additional v2 limits: 4,096 package entries, depth 128, 256 Swift sources/records, 64 KiB
 manifest, 1,024 proof files, 1,000 tokens per observed command. Documents are limited to
 8 MiB each / 32 MiB total, objects 64 MiB each / 256 MiB total, records 16 MiB each /
-64 MiB total. Nested response files and incomplete link-map parsing refuse proof.
+64 MiB total. All candidate aggregate/intermediate file lists, including nonselected
+candidates, share the same document/file accounting. They are read through a bounded
+nonblocking descriptor that must be a regular file; FIFOs and changed file roles refuse.
+There are at most 256 candidate file lists/build command rows and 256 inputs per file list.
+Nested response files and incomplete link-map parsing refuse proof.
 These are review candidates from the exact captured build, not runtime coverage or
 permission to skip the rest of a test suite.
+
+
+## iOS Simulator v4 development draft
+
+The v4 source is a **bounded development profile**. The corrected Swift inputs pass
+2,673 tests and instrumented CLI integration with source coverage above the 90% gate.
+A controlled app-hosted XCTest fixture with a local package, resource and finite xcconfig
+include passes generic SDK capture, CLI/MCP consumption and 15 additional acceptance checks.
+The original fixture's two unbuilt source paths refuse narrowing with empty selector output.
+Updated checksums cannot admit a malformed image or dead required object, and same-mtime
+record corruption invalidates an already prepared MCP session even if the receipt hash changes.
+A separate controlled Xcode 27/iOS 27 iPhone 17 run passes both tests in the public app-hosted
+fixture, then exactly the selected `ChecksBlueprint/ChangedTests/testChanged` test. The unrelated
+test is absent from the selected result. This establishes only that captured fixture and environment,
+not general iOS workspace support or runtime coverage.
+
+The intended opt-in profile is `--workspace Example.xcworkspace --ios-simulator`.
+It uses only `generic/platform=iOS Simulator` with `build-for-testing`, does not select or
+operate a device, and records no runnable execution context. Its receipt adds native
+source-to-current-record/object/link evidence, effective Simulator SDK/deployment targets,
+app bundle metadata and actual app-hosted XCTest identities. An Xcode debug-dylib build
+binds its code image and generated app stub separately, including their strong load edge.
+A lower observed local package deployment minimum is compatible with a higher app minimum;
+the receipt does not assume that every module has the same target triple.
+
+Xcode may also emit an empty Clang preview dylib that shares the debug image's install name
+and overwritten link-map path. It is separated from package-wrapper candidates only when
+the app target, enabled debug-dylib settings and mapped native output bind the standard
+`.app/<executable>.debug.dylib` image to one sibling `__preview.dylib` command. That command
+must match the unique actual debug link's driver, Simulator target, SDK, install name and
+link-map path, with only the observed empty-input options. File-list, response-file or object
+inputs, unknown/mixed/duplicate options, malformed forwarding and ambiguous commands are
+refused. The shared preview map supplies no positive ownership evidence and the preview is
+not added to the package receipt. The actual native image, app stub and package contribution
+retain their complete byte/owner proofs; aggregate-only native links still participate in
+package-wrapper ambiguity checks.
+
+The draft models plain regular resource copies and headers as auxiliary inputs, not Swift
+definition units. Every declared byte is inventoried and resource-copy hashes must agree.
+Transformed resources (storyboards, asset catalogs), generated source membership and arbitrary
+xcconfig evaluation remain unsupported. A finite local include closure may contain only
+literal Swift/C compilation definitions; custom compiler commands, external includes,
+conditional settings, scripts and plugins still fail closed before a build.
+
+SDKROOT and SDK_DIR must name the same actual SDK using only Xcode's unversioned and
+effective-version SDK names. Arbitrary aliases do not qualify. Repeated linker owner paths
+are accepted only for application images that also pass the complete native proof; required
+source objects and unbound images retain the duplicate-owner refusal.
+
+The controlled execution above does not establish other SDK/runtime combinations,
+UI-test support, native framework/static-library target support in this v4 profile,
+correctness on the private 22-project workspace, or safe omission of tests.
+The existing macOS v1/v2/v3 profile keeps its destination, non-app host and input restrictions.

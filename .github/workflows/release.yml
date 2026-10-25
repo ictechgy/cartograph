@@ -122,10 +122,12 @@ jobs:
           cp LICENSE README.md dist/cartograph/
           mkdir -p dist/cartograph/docs
           cp docs/QUERY-EVIDENCE.md docs/ENUM-CHANGE-REVIEW.md docs/FOLLOWUP-REVIEW.md dist/cartograph/docs/
+          cp docs/FIX-VERIFICATION.md dist/cartograph/docs/
           mkdir -p dist/cartograph/Scripts
           cp Scripts/cartograph-git-impact.py Scripts/cartograph-swiftpm-scope.py dist/cartograph/Scripts/
           cp Scripts/cartograph-xcode-scope.py dist/cartograph/Scripts/
           cp Scripts/xcode-local-package-inputs.py Scripts/xcode-local-package-evidence.py dist/cartograph/Scripts/
+          cp Scripts/xcode-workspace-inputs.py Scripts/xcode-workspace-capture.py Scripts/xcode-ios-scope.py dist/cartograph/Scripts/
           cp docs/XCODE-AFFECTED-SCOPE.md dist/cartograph/docs/
           archive="cartograph-${VERSION}-macos-universal.tar.gz"
           tar -C dist -czf "$archive" cartograph
@@ -144,6 +146,8 @@ jobs:
           cmp docs/QUERY-EVIDENCE.md "$RUNNER_TEMP/cartograph/docs/QUERY-EVIDENCE.md"
           test -s "$RUNNER_TEMP/cartograph/docs/ENUM-CHANGE-REVIEW.md"
           cmp docs/ENUM-CHANGE-REVIEW.md "$RUNNER_TEMP/cartograph/docs/ENUM-CHANGE-REVIEW.md"
+          test -s "$RUNNER_TEMP/cartograph/docs/FIX-VERIFICATION.md"
+          cmp docs/FIX-VERIFICATION.md "$RUNNER_TEMP/cartograph/docs/FIX-VERIFICATION.md"
           lipo "$RUNNER_TEMP/cartograph/cartograph" -verify_arch arm64
           lipo "$RUNNER_TEMP/cartograph/cartograph" -verify_arch x86_64
           Scripts/verify-cli-contract.sh "$RUNNER_TEMP/cartograph/cartograph"
@@ -157,6 +161,9 @@ jobs:
           python3 "$RUNNER_TEMP/cartograph/Scripts/cartograph-xcode-scope.py" --help
           cmp Scripts/xcode-local-package-inputs.py "$RUNNER_TEMP/cartograph/Scripts/xcode-local-package-inputs.py"
           cmp Scripts/xcode-local-package-evidence.py "$RUNNER_TEMP/cartograph/Scripts/xcode-local-package-evidence.py"
+          cmp Scripts/xcode-workspace-inputs.py "$RUNNER_TEMP/cartograph/Scripts/xcode-workspace-inputs.py"
+          cmp Scripts/xcode-workspace-capture.py "$RUNNER_TEMP/cartograph/Scripts/xcode-workspace-capture.py"
+          cmp Scripts/xcode-ios-scope.py "$RUNNER_TEMP/cartograph/Scripts/xcode-ios-scope.py"
           python3 Scripts/verify-xcode-scope-install.py --scripts-dir "$RUNNER_TEMP/cartograph/Scripts"
           python3 Scripts/verify-runtime-contracts.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
           python3 Scripts/verify-runtime-discovery.py --cartograph "$RUNNER_TEMP/cartograph/cartograph"
@@ -241,7 +248,8 @@ jobs:
           path = Path("Formula/cartograph.rb")
           text = path.read_text()
           for helper in ["cartograph-git-impact.py", "cartograph-swiftpm-scope.py", "cartograph-xcode-scope.py",
-                         "xcode-local-package-inputs.py", "xcode-local-package-evidence.py"]:
+                         "xcode-local-package-inputs.py", "xcode-local-package-evidence.py",
+                         "xcode-workspace-inputs.py", "xcode-workspace-capture.py", "xcode-ios-scope.py"]:
               install = f'    libexec.install "Scripts/{helper}"\n'
               anchor = '    bin.install "cartograph"\n'
               if install not in text:
@@ -276,6 +284,9 @@ jobs:
           python3 "$installed/libexec/cartograph-xcode-scope.py" --help
           cmp Scripts/xcode-local-package-inputs.py "$installed/libexec/xcode-local-package-inputs.py"
           cmp Scripts/xcode-local-package-evidence.py "$installed/libexec/xcode-local-package-evidence.py"
+          cmp Scripts/xcode-workspace-inputs.py "$installed/libexec/xcode-workspace-inputs.py"
+          cmp Scripts/xcode-workspace-capture.py "$installed/libexec/xcode-workspace-capture.py"
+          cmp Scripts/xcode-ios-scope.py "$installed/libexec/xcode-ios-scope.py"
           python3 Scripts/verify-xcode-scope-install.py --scripts-dir "$installed/libexec"
           python3 Scripts/verify-git-impact.py --cartograph "$installed/bin/cartograph"
           echo "Homebrew ${VERSION}: formula hash, clean installation, helper bytes and compiler-backed change flow verified." >> "$GITHUB_STEP_SUMMARY"

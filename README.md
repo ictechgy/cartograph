@@ -391,13 +391,15 @@ Data.UserRepository is reachable:
 ### `fix` — plan and apply mechanical edits
 
 Parse checks do not prove type correctness or build compatibility. Review the diff and rebuild
-all relevant targets after `--apply`. Writes are atomic per file, not across the edit set;
-this command does not run a verification command or roll back failed builds.
+all relevant targets after `--apply`. Writes are atomic per file, not across the edit set.
+Optionally select one verification command with `--apply`; failed verification restores this
+run's unchanged edits and preserves conflicting changes with private recovery evidence.
 
 ```bash
 cartograph fix                      # print the plan; writes nothing
 cartograph fix --apply              # write the fixes
 cartograph fix --since origin/main  # only findings in changed files
+cartograph fix --apply --verify-command '["swift","build","--build-tests"]'
 ```
 
 Two warning classes are mechanically fixable, and only those two: `unused-import` removes the
@@ -423,6 +425,15 @@ Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.Client.fetch(_:retry:)
 Run it on a fresh build: the plan comes from the same index `dead` reads, and a stale index makes
 edits get skipped rather than misplaced. `--format json` returns the `mechanical-fixes` document
 with each edit's file, position, rule and replacement text.
+
+`--verify-command` is a JSON argv array executed directly at the physical project root with
+the inherited environment; it is not interpreted as shell text. `--verify-timeout` defaults to
+600 seconds. A new `--recovery-directory` outside the project can retain original bytes, a
+journal and bounded logs. Failure, timeout or SIGINT/SIGTERM restores only files still matching
+Cartograph's applied bytes and identity; concurrent edits are preserved and require manual
+review. Verification failure exits 2. Verifier side effects, Git operations and build outputs
+are not undone, and SIGKILL or power loss cannot run automatic recovery. See the
+[execution, process-group and recovery contract](docs/FIX-VERIFICATION.md) before selecting a command.
 
 ### `query` — ask about one declaration
 
@@ -1605,6 +1616,12 @@ cartograph rules --strict
 Layers are matched against node name, module name **and** file path, because teams define layers
 sometimes by directory and sometimes by naming convention. Nodes that match no layer are reported
 as `info` — if you do not know what your rules fail to cover, a passing run means very little.
+File patterns accept both absolute paths and paths relative to `--project` (the working directory
+by default), so `Features/**` matches compiler locations under that project root. The first matching
+layer wins. Module graphs have no source location; use module-name patterns at that level, or select
+`--level file` / `--level type` for directory rules. The service confirms root aliases through its
+injected file system. Embedders can pass a literal `projectPath`, or prepared and verified
+`projectPaths`, to the pure `LayerRuleEvaluator`; its initializers do not resolve aliases or read files.
 
 `--explain <node>` shows which layer a node landed in, which pattern put it there, and which rules
 start from that layer — the questions you actually ask while debugging a configuration.
@@ -2186,6 +2203,14 @@ CI preserves raw evidence; a synthetic fixture pass is not a universal performan
 
 ## Workspace and local package coverage
 
+For explicit native macOS Swift workspaces, [capture v3](docs/XCODE-AFFECTED-SCOPE.md#explicit-multi-project-workspace-receipt-v3)
+binds up to 32 projects and 16 finite local packages, including shared workspace-level packages
+and multiple dependencies per project, cross-project target/product
+identities and actual compiler/record/link evidence. Use `--workspace Example.xcworkspace` with
+`Scripts/cartograph-xcode-scope.py`, then consume its exact `--target-scope` and index path.
+Unknown membership still refuses selectors and preserves the original excluded-path warnings;
+this does not establish support for an unobserved private workspace or iOS/UI tests.
+
 Build the workspace scheme and all relevant local-package targets, then pass that build's index
 with `--index-store`. Automatic selection uses store/unit-directory recency, not target coverage;
 when several candidates exist, output records the selected path, candidate count, and rule.
@@ -2234,7 +2259,7 @@ this scan. Run this separately from the default bridge export.
 
 ### Optional follow-up review views
 
-The unpublished 0.29.0 candidate adds capture-bound SwiftPM target-scope review,
+The 0.29.0 source adds capture-bound SwiftPM target-scope review,
 `dead --file-summary` / `--generated-suggestions`, JSON `--limitations summary`
 (default `full`), and the MCP `cartograph_prepare` lifecycle tool. All original
 findings and safety signals remain. SwiftPM scope remains diagnostic only. An optional
@@ -2244,3 +2269,10 @@ Selector target names come from verified `.xctestrun` BlueprintName/project iden
 the JSON/MCP output preserves bundle product names separately.
 Unknown coverage still refuses narrowing; static candidates never authorize test omission.
 See [scope, budgets and migration examples](docs/FOLLOWUP-REVIEW.md).
+
+
+Development note: iOS Simulator target-scope v4 is a bounded development profile.
+A public synthetic app host and local package pass full two-test and selected one-test
+execution on Xcode 27/iOS 27. This does not establish general/private workspace support,
+other platform combinations or safe test omission. See the
+[support boundaries and validation gaps](docs/XCODE-AFFECTED-SCOPE.md#ios-simulator-v4-development-draft).

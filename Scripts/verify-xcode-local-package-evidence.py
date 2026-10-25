@@ -11,6 +11,7 @@ import hashlib
 from pathlib import Path
 import plistlib
 import shlex
+import sys
 import tempfile
 import types
 import unittest
@@ -23,6 +24,20 @@ SPEC.loader.exec_module(E)
 NATIVE_SPEC = importlib.util.spec_from_file_location("native_package_checks", ROOT / "Scripts/verify-xcode-local-package-native.py")
 NATIVE = importlib.util.module_from_spec(NATIVE_SPEC)
 NATIVE_SPEC.loader.exec_module(NATIVE)
+WORKSPACE_SPEC = importlib.util.spec_from_file_location("workspace_native_checks", ROOT / "Scripts/verify-xcode-workspace-native.py")
+WORKSPACE = importlib.util.module_from_spec(WORKSPACE_SPEC)
+WORKSPACE_SPEC.loader.exec_module(WORKSPACE)
+
+
+class WorkspaceTamperControlsTests(unittest.TestCase):
+    def test_wrong_wrapper_list_mode_changes_both_supported_forms_and_refuses_unknown(self):
+        for observed, changed in (("response", "operand"), ("operand", "response")):
+            with self.subTest(observed=observed):
+                self.assertEqual(WORKSPACE.wrong_wrapper_list_mode(observed), changed)
+                self.assertNotEqual(WORKSPACE.wrong_wrapper_list_mode(observed), observed)
+        for unknown in (None, "", "unknown"):
+            with self.subTest(unknown=unknown), self.assertRaises(ValueError):
+                WORKSPACE.wrong_wrapper_list_mode(unknown)
 
 
 class AffectedProcessTests(unittest.TestCase):
@@ -542,11 +557,162 @@ class EvidenceTests(unittest.TestCase):
                 "# Sections:\n# Address\tSize\tSegment\tSection\n0x1 0x1 __TEXT __text\n# Symbols:\n# Address\tSize\tFile  Name\n" +
                 "".join(f"0x{i:X} 0x1 [ {i}] _symbol{i}\n" for i in range(1, len(objects) + 1))).encode()
 
-    def capture(self, extra=None):
+    def test_dead_stripped_blank_address_header_preserves_only_live_owners(self):
+        for header in ("# Address\tSize\tFile  Name", "#        \tSize    \tFile  Name"):
+            text = self.map_bytes(self.aggregate, [self.obj, self.other]).decode().replace("0x2 0x1 [ 2] _symbol2\n", "")
+            text += "# Dead Stripped Symbols:\n" + header + "\n<<dead>> 0x1 [ 2] removed\n"
+            self.aggregate_map.write_text(text)
+            self.assertEqual(E.live_owners(E.Files(self.build, self.store), str(self.aggregate_map), str(self.aggregate), "arm64"),
+                             {str(self.obj)})
+
+    def test_dead_stripped_columns_do_not_hide_unknown_headers_or_owners(self):
+        text = self.map_bytes(self.aggregate, [self.obj]).decode()
+        for suffix in ("# Dead Stripped Symbols:\n#   Size File Name Unknown\n<<dead>> 0x1 [ 1] removed\n",
+                       "#   Size File Name\n0x2 0x1 [ 1] removed\n",
+                       "# Dead Stripped Symbols:\n#   Size File Name\n<<dead>> 0x1 [ 9] unknown\n"):
+            with self.subTest(suffix=suffix):
+                self.aggregate_map.write_text(text + suffix)
+                with self.assertRaises(E.EvidenceError):
+                    E.live_owners(E.Files(self.build, self.store), str(self.aggregate_map), str(self.aggregate), "arm64")
+
+    def capture(self, extra=None, native_outputs=None):
         commands = [self.compiler, self.aggregate_argv, self.native_argv] + (extra or [])
         log = "\n".join(shlex.join(args) for args in commands)
         return E.assemble(self.spec, self.project, self.derived, self.store, log, self.snapshot,
-                          self.targets, self.settings, ["CHECKS"], "arm64")
+                          self.targets, self.settings, ["CHECKS"], "arm64", native_outputs=native_outputs)
+
+    def ios_debug_preview(self):
+        # 실제 관측한 argv 관계만 재현한다. 이 합성 파일은 native 실행 증거가 아니다.
+        old_native = self.native
+        directory = self.build / "Products/Debug-iphonesimulator"
+        self.native = self.write(directory / "ProbeHost.app/ProbeHost.debug.dylib", b"native debug image")
+        preview = self.write(self.native.parent / "__preview.dylib", b"empty preview image")
+        triple, sdk = "arm64-apple-ios18.0-simulator", "/tool/iPhoneSimulator27.0.sdk"
+        install = "@rpath/ProbeHost.debug.dylib"
+        dependency = str(self.build / "Intermediates/ProbeHost_dependency_info.dat")
+        self.native_argv[self.native_argv.index("-o") + 1] = str(self.native)
+        self.native_argv[self.native_argv.index("-target") + 1] = triple
+        self.native_argv += ["-dynamiclib", "-isysroot", sdk, "-install_name", install,
+                             "-Xlinker", "-reproducible", "-Os", "-L" + str(directory), "-F" + str(directory),
+                             "-Xlinker", "-dead_strip", "-rdynamic", "-Xlinker", "-objc_abi_version", "-Xlinker", "2",
+                             "-Xlinker", "-debug_variant", "-Xlinker", "-dependency_info", "-Xlinker", dependency]
+        self.native_map.write_bytes(self.native_map.read_bytes().replace(
+            str(old_native).encode(), str(self.native).encode()))
+        self.targets["CORE"]["productType"] = "com.apple.product-type.application"
+        self.settings[0]["buildSettings"] = {"TARGET_BUILD_DIR": str(directory),
+            "EXECUTABLE_PATH": "ProbeHost.app/ProbeHost", "FULL_PRODUCT_NAME": "ProbeHost.app",
+            "ENABLE_DEBUG_DYLIB": "YES"}
+        argv = ["/tool/clang", "-Xlinker", "-reproducible", "-target", triple, "-dynamiclib", "-isysroot", sdk, "-Os",
+                "-L" + str(directory), "-F" + str(directory), "-install_name", install,
+                "-Xlinker", "-map", "-Xlinker", str(self.native_map), "-Xlinker", "-dead_strip", "-rdynamic",
+                "-Xlinker", "-objc_abi_version", "-Xlinker", "2", "-Xlinker", "-debug_variant",
+                "-Xlinker", "-dependency_info", "-Xlinker", dependency, "-o", str(preview)]
+        return argv, {"CORE": str(self.native)}
+
+    def test_ios_empty_preview_is_not_a_package_wrapper_or_positive_link_proof(self):
+        for driver in (None, "swiftc", "clang"):
+            with self.subTest(product_driver=driver):
+                case = EvidenceTests("runTest"); case.setUp()
+                try:
+                    wrapper = case.dynamic_wrapper(driver)[0] if driver else None
+                    preview, outputs = case.ios_debug_preview()
+                    proof = case.capture(([wrapper] if wrapper else []) + [preview], outputs)
+                    self.assertEqual(proof["links"][0]["link"]["output"], str(case.native))
+                    self.assertNotIn(E.operand(preview, "-o"), proof["files"])
+                    expected = E.operand(wrapper, "-o") if wrapper else str(case.aggregate)
+                    self.assertEqual(proof["links"][0]["packageInput"], expected)
+                    with self.assertRaisesRegex(E.EvidenceError, "identity mismatch"):
+                        E.live_owners(E.Files(case.build, case.store), str(case.native_map),
+                                      E.operand(preview, "-o"), "arm64")
+                finally:
+                    case.doCleanups()
+
+    def test_ios_preview_requires_native_app_settings_and_output_binding(self):
+        changes = ("no-mapping", "wrong-mapping", "non-app", "disabled", "bundle", "executable")
+        for change in changes:
+            with self.subTest(change=change):
+                case = EvidenceTests("runTest"); case.setUp()
+                try:
+                    preview, outputs = case.ios_debug_preview()
+                    values = case.settings[0]["buildSettings"]
+                    if change == "no-mapping": outputs = None
+                    elif change == "wrong-mapping": outputs["CORE"] += ".different"
+                    elif change == "non-app": case.targets["CORE"]["productType"] = "com.apple.product-type.framework"
+                    elif change == "disabled": values["ENABLE_DEBUG_DYLIB"] = "NO"
+                    elif change == "bundle": values["FULL_PRODUCT_NAME"] = "Other.app"
+                    elif change == "executable": values["EXECUTABLE_PATH"] = "Other.app/ProbeHost"
+                    with self.assertRaises(E.EvidenceError): case.capture([preview], outputs)
+                finally:
+                    case.doCleanups()
+
+    def test_ios_preview_refuses_inputs_responses_unknown_mixed_and_duplicate_flags(self):
+        changes = (["-filelist"], ["response"], ["object"], ["-unknown"], ["-lUnproved"], ["-emit-library"],
+                   ["-r"], ["-dynamiclib"], ["-Os"], ["-map"], ["-target"], ["-Xlinker"],
+                   ["-Xlinker", "-Xlinker", "-debug_variant"], ["-Xclang-linker", "-debug_variant"])
+        for change in changes:
+            with self.subTest(change=change):
+                case = EvidenceTests("runTest"); case.setUp()
+                try:
+                    preview, outputs = case.ios_debug_preview()
+                    suffix = change
+                    if change == ["-filelist"]: suffix = ["-filelist", str(case.native_list)]
+                    elif change == ["response"]: suffix = ["@" + str(case.response)]
+                    elif change == ["object"]: suffix = [str(case.aggregate)]
+                    elif change == ["-map"]: suffix = ["-map", str(case.native_map)]
+                    elif change == ["-target"]: suffix = ["-target", "arm64-apple-ios18.0-simulator"]
+                    with self.assertRaises(E.EvidenceError): case.capture([preview + suffix], outputs)
+                finally:
+                    case.doCleanups()
+
+    def test_ios_preview_refuses_wrong_native_identity_driver_and_path(self):
+        for option in ("driver", "-target", "-isysroot", "-install_name", "-map", "-o", "symlink"):
+            with self.subTest(option=option):
+                case = EvidenceTests("runTest"); case.setUp()
+                try:
+                    preview, outputs = case.ios_debug_preview()
+                    if option == "driver": preview[0] = "/other/clang"
+                    elif option == "symlink":
+                        path = Path(E.operand(preview, "-o")); path.unlink(); path.symlink_to(case.native)
+                    else:
+                        values = {"-target": "arm64-apple-ios19.0-simulator", "-isysroot": "/tool/Other.sdk",
+                                  "-install_name": "@rpath/Other.debug.dylib", "-map": str(case.aggregate_map),
+                                  "-o": str(case.build / "Products/PackageFrameworks/__preview.dylib")}
+                        preview[preview.index(option) + 1] = values[option]
+                    with self.assertRaises(E.EvidenceError): case.capture([preview], outputs)
+                finally:
+                    case.doCleanups()
+
+    def test_ios_preview_requires_unique_actual_native_and_preview_commands(self):
+        for duplicate in ("preview", "native", "mapping"):
+            with self.subTest(duplicate=duplicate):
+                case = EvidenceTests("runTest"); case.setUp()
+                try:
+                    preview, outputs = case.ios_debug_preview()
+                    extra = [preview, preview] if duplicate == "preview" else [preview]
+                    if duplicate == "native": extra.append(list(case.native_argv))
+                    elif duplicate == "mapping":
+                        case.targets["OTHER"] = copy.deepcopy(case.targets["CORE"])
+                        outputs["OTHER"] = outputs["CORE"]
+                    with self.assertRaises(E.EvidenceError): case.capture(extra, outputs)
+                finally:
+                    case.doCleanups()
+
+    def test_ios_preview_never_replaces_required_native_positive_ownership(self):
+        preview, outputs = self.ios_debug_preview()
+        self.native_map.write_bytes(self.map_bytes(self.native, [self.other]))
+        with self.assertRaisesRegex(E.EvidenceError, "no positive"):
+            self.capture([preview], outputs)
+        self.native_map.write_bytes(self.map_bytes(Path(E.operand(preview, "-o")), [self.other, self.aggregate]))
+        with self.assertRaisesRegex(E.EvidenceError, "identity mismatch"):
+            self.capture([preview], outputs)
+
+    def test_ios_preview_does_not_hide_aggregate_only_native_framework_ambiguity(self):
+        wrapper, _, _, _, _ = self.dynamic_wrapper("clang")
+        preview, outputs = self.ios_debug_preview()
+        native = list(wrapper)
+        native[native.index("-o") + 1] = str(self.build / "Products/Debug/Ordinary.framework/Ordinary")
+        with self.assertRaisesRegex(E.EvidenceError, "Ambiguous dynamic"):
+            self.capture([wrapper, native, preview], outputs)
 
     def test_positive_distinct_virtual_output_and_actual_live_chain(self):
         duplicate = list(self.compiler)
@@ -557,6 +723,204 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(proof["compilations"][0]["object"], str(self.obj))
         self.assertEqual(proof["links"][0]["targetID"], "CORE")
         self.assertEqual(proof["files"][str(self.response)]["kind"], "document")
+
+    def response_only_native(self, content=None):
+        self.native_list.write_text(shlex.quote(str(self.other)) + "\n")
+        response = self.write(self.build / "Intermediates/Native linker.resp",
+                              (content if content is not None else shlex.quote(str(self.aggregate))).encode())
+        self.native_argv[self.native_argv.index("@" + str(self.response))] = "@" + str(response)
+        return response
+
+    def test_response_only_native_contribution_preserves_raw_argv_and_bound_bytes(self):
+        response = self.response_only_native()
+        proof = self.capture()
+        self.assertNotIn(str(self.aggregate), proof["links"][0]["link"]["argv"])
+        self.assertIn("@" + str(response), proof["links"][0]["link"]["argv"])
+        self.assertEqual(proof["files"][str(response)]["sha256"], hashlib.sha256(response.read_bytes()).hexdigest())
+        self.assertEqual(proof["links"][0]["packageInput"], str(self.aggregate))
+
+    def test_response_only_native_still_needs_live_contribution_and_original_bytes(self):
+        response = self.response_only_native()
+        self.native_map.write_bytes(self.map_bytes(self.native, [self.other]))
+        with self.assertRaises(E.EvidenceError):
+            self.capture()
+        files = E.Files(self.build, self.store)
+        files.responses(self.native_argv)
+        response.write_text("changed same timestamp irrelevant")
+        with self.assertRaisesRegex(E.EvidenceError, "bytes or role changed"):
+            files.finish()
+
+    def test_response_only_nested_outside_symlink_duplicate_options_and_budget_refuse(self):
+        response = self.response_only_native()
+        for text in ["@nested.resp", "@/outside/nested.resp", "-o /outside/forged", "x" * 4097,
+                     " ".join(["-lswiftCore"] * 1001), "bad\x00token", ""]:
+            with self.subTest(text=text[:70]):
+                response.write_text(text)
+                with self.assertRaises((E.EvidenceError, ValueError)):
+                    self.capture()
+        with self.assertRaises(E.EvidenceError):
+            E.Files(self.build, self.store).responses(["/tool/clang", "@None"])
+        outside = self.write(self.root / "outside.resp", shlex.quote(str(self.aggregate)).encode())
+        for path in [outside, self.build / "Intermediates/alias.resp"]:
+            if path != outside: path.symlink_to(outside)
+            self.native_argv[self.native_argv.index("@" + str(response))] = "@" + str(path)
+            with self.assertRaises(E.EvidenceError): self.capture()
+            self.native_argv[self.native_argv.index("@" + str(path))] = "@" + str(response)
+
+    def dynamic_wrapper(self, driver="swiftc", layout="package"):
+        suffix = "ABC" if driver == "swiftc" else "0123456789ABCDEF"
+        name = "ArithmeticProduct_" + suffix + "_PackageProduct.framework"
+        bundle = self.build / "Products/Debug/PackageFrameworks" / name
+        if layout == "ordinary":
+            bundle = self.build / "Products/Debug/CoreKit.framework"
+        elif layout == "wrong-product":
+            bundle = self.build / "Products/Debug/PackageFrameworks/Foreign_0123456789ABCDEF_PackageProduct.framework"
+        name = bundle.name.removesuffix(".framework")
+        binary = self.write(bundle / "Versions/A" / name, b"dynamic product bytes")
+        info = self.write(bundle / "Versions/A/Resources/Info.plist", plistlib.dumps({"CFBundleExecutable": name, "CFBundlePackageType": "FMWK"}))
+        inputs = self.write(self.build / "Intermediates/Product.LinkFileList", (shlex.quote(str(self.aggregate)) + "\n").encode())
+        link_map = self.write(self.build / "Intermediates/Product.map", self.map_bytes(binary, [self.aggregate]))
+        argv = ["/tool/swiftc", "-emit-library", "@" + str(inputs), "-target", "arm64-apple-macos12.0",
+                "-Xclang-linker", "-install_name", "-Xclang-linker", "@rpath/" + binary.relative_to(bundle.parent).as_posix(),
+                "-Xlinker", "-map", "-Xlinker", str(link_map), "-o", str(binary)]
+        if driver == "clang":
+            argv[:3] = ["/tool/clang", "-dynamiclib", "-filelist", str(inputs)]
+        self.native_list.write_text(shlex.quote(str(self.other)) + "\n")
+        self.native_argv.append(str(binary))
+        self.native_map.write_bytes(self.map_bytes(self.native, [self.other, binary]))
+        return argv, bundle, binary, info, link_map
+
+    def test_observed_clang_dynamic_product_uses_the_same_complete_live_chain(self):
+        argv, bundle, binary, info, _ = self.dynamic_wrapper("clang")
+        proof = self.capture([argv])
+        self.assertEqual(proof["dynamicProduct"]["bundle"], str(bundle))
+        self.assertEqual(proof["dynamicProduct"]["link"]["fileListMode"], "operand")
+        self.assertEqual(proof["dynamicProduct"]["link"]["argv"], argv)
+        self.assertEqual(proof["links"][0]["packageInput"], str(binary))
+        self.assertEqual(proof["files"][str(info)]["kind"], "document")
+
+    def test_clang_dynamic_product_refuses_mixed_duplicate_driver_or_file_list_forms(self):
+        argv, _, _, _, _ = self.dynamic_wrapper("clang")
+        bad = []
+        for flag in ("-emit-library", "-dynamiclib", "-r"):
+            bad.append(argv + [flag])
+        bad.append(["/tool/swiftc", *argv[1:]])
+        bad.append(["/tool/unknown", *argv[1:]])
+        file_list = argv[argv.index("-filelist") + 1]
+        mixed = list(argv); mixed[mixed.index("-filelist"):mixed.index("-filelist") + 2] = ["@" + file_list]
+        bad.append(mixed)
+        for changed in bad:
+            with self.subTest(argv=changed), self.assertRaises(E.EvidenceError):
+                self.capture([changed])
+
+    def test_clang_dynamic_product_keeps_metadata_owner_and_tamper_refusals(self):
+        argv, _, binary, info, link_map = self.dynamic_wrapper("clang")
+        good_info, good_map = info.read_bytes(), link_map.read_bytes()
+        info.write_bytes(plistlib.dumps({"CFBundleExecutable": "Wrong", "CFBundlePackageType": "FMWK"}))
+        with self.assertRaises(E.EvidenceError): self.capture([argv])
+        info.write_bytes(good_info)
+        link_map.write_bytes(self.map_bytes(binary, []))
+        with self.assertRaises(E.EvidenceError): self.capture([argv])
+        link_map.write_bytes(good_map)
+        self.native_map.write_bytes(self.map_bytes(self.native, [self.other]))
+        with self.assertRaises(E.EvidenceError): self.capture([argv])
+
+    def test_clang_wrapper_cannot_relabel_an_ordinary_framework_or_another_package_product(self):
+        for layout in ("ordinary", "wrong-product"):
+            with self.subTest(layout=layout):
+                case = EvidenceTests("runTest")
+                case.setUp()
+                try:
+                    argv, _, _, _, _ = case.dynamic_wrapper("clang", layout)
+                    with self.assertRaises(E.EvidenceError): case.capture([argv])
+                finally:
+                    case.doCleanups()
+
+    def test_ordinary_native_aggregate_only_link_remains_an_ambiguous_wrapper_candidate(self):
+        argv, _, _, _, _ = self.dynamic_wrapper("clang")
+        other = list(argv)
+        other[other.index("-o") + 1] = str(self.native)
+        # 같은 aggregate-only 목록을 가진 native link도 후보에서 조용히 제거하지 않는다.
+        with self.assertRaisesRegex(E.EvidenceError, "Ambiguous dynamic"):
+            self.capture([argv, other])
+
+    def test_dynamic_package_product_requires_positive_intermediate_and_native_owners(self):
+        argv, bundle, binary, info, _ = self.dynamic_wrapper()
+        proof = self.capture([argv])
+        self.assertEqual(proof["dynamicProduct"]["bundle"], str(bundle))
+        self.assertEqual(proof["dynamicProduct"]["link"]["fileListMode"], "response")
+        self.assertEqual(proof["links"][0]["packageInput"], str(binary))
+        self.assertEqual(proof["files"][str(info)]["kind"], "document")
+        self.native_argv.remove(str(binary))
+        with self.assertRaisesRegex(E.EvidenceError, "absent from actual linker operands"):
+            self.capture([argv])
+
+    def test_dynamic_product_unproven_metadata_or_live_chain_refuses(self):
+        argv, _, binary, info, link_map = self.dynamic_wrapper()
+        original = info.read_bytes()
+        info.write_bytes(plistlib.dumps({"CFBundleExecutable": "Wrong", "CFBundlePackageType": "FMWK"}))
+        with self.assertRaisesRegex(E.EvidenceError, "identity differs"):
+            self.capture([argv])
+        info.write_bytes(original)
+        link_map.write_bytes(self.map_bytes(binary, []))
+        with self.assertRaisesRegex(E.EvidenceError, "positive aggregate"):
+            self.capture([argv])
+
+    def test_bare_runtime_loader_token_requires_rpath_operand(self):
+        self.native_argv += ["-Xlinker", "-rpath", "-Xlinker", "@loader_path"]
+        self.assertEqual(len(self.capture()["links"]), 1)
+        self.native_argv += ["@loader_path"]
+        with self.assertRaises(E.EvidenceError):
+            self.capture()
+
+    def real_temporary_aliases(self, extra=()):
+        physical = str(self.root)
+        if not physical.startswith(("/private/tmp/", "/private/var/folders/")):
+            self.skipTest("Host has no observed macOS temporary path alias")
+        alias = physical.removeprefix("/private")
+        for path in self.derived.rglob("*"):
+            if path.is_file():
+                path.write_bytes(path.read_bytes().replace(physical.encode(), alias.encode()))
+        for argv in [self.compiler, self.aggregate_argv, self.native_argv, *extra]:
+            argv[:] = [x.replace(physical, alias) for x in argv]
+        self.snapshot["snapshot"]["sourceRecordAdmissions"][0]["path"] = str(self.source).replace(physical, alias)
+
+    def test_dynamic_wrapper_real_temporary_alias_keeps_file_list_identity(self):
+        wrapper, _, _, _, _ = self.dynamic_wrapper()
+        self.real_temporary_aliases([wrapper])
+        proof = self.capture([wrapper])
+        self.assertEqual(proof["dynamicProduct"]["link"]["fileListMode"], "response")
+        self.assertIn("@" + str(proof["dynamicProduct"]["link"]["fileList"]).removeprefix("/private"),
+                      proof["dynamicProduct"]["link"]["argv"])
+
+    def test_real_temporary_aliases_preserve_raw_virtual_unit_identity(self):
+        self.real_temporary_aliases()
+        proof = self.capture()
+        self.assertEqual(proof["compilations"][0]["source"], str(self.source))
+        self.assertEqual(proof["compilations"][0]["unitOutputIdentity"], self.virtual)
+        self.assertEqual(proof["aggregate"]["output"], str(self.aggregate))
+        self.assertEqual(E.physical_temporary_alias("/project/input"), "/project/input")
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO controls require POSIX")
+    def test_aggregate_candidate_fifo_refuses_without_blocking(self):
+        code = 'import importlib.util, os, pathlib, sys\nfrom unittest.mock import patch\nspec = importlib.util.spec_from_file_location("proof_tests", sys.argv[1])\nmodule = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\ncase = module.EvidenceTests("runTest"); case.setUp()\nstatus = 1\ntry:\n    fifo = case.build / "Intermediates/nonselected.fifo"\n    os.mkfifo(fifo)\n    candidate = list(case.aggregate_argv)\n    candidate[candidate.index("-filelist") + 1] = str(fifo)\n    # Simulate replacement after a successful regular-file precheck.\n    with patch.object(pathlib.Path, "is_file", lambda self: True):\n        case.capture([candidate])\nexcept module.E.EvidenceError:\n    status = 0\nfinally:\n    case.doCleanups()\nsys.exit(status)\n'
+        import subprocess
+        result = subprocess.run([sys.executable, "-c", code, str(Path(__file__).resolve())], capture_output=True, timeout=2)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_nonselected_aggregate_candidates_share_document_budget(self):
+        from unittest.mock import patch
+        extra = []
+        for index in range(2):
+            path = self.build / ("Intermediates/Nonselected%d.LinkFileList" % index)
+            value = shlex.quote(str(self.other)) + "\n"
+            self.write(path, (" " * (1024 * 1024 - len(value.encode())) + value).encode())
+            candidate = list(self.aggregate_argv)
+            candidate[candidate.index("-filelist") + 1] = str(path)
+            extra.append(candidate)
+        with patch.object(E.Files, "CAPS", {**E.Files.CAPS, "document": (1, 2)}):
+            with self.assertRaisesRegex(E.EvidenceError, "Aggregate proof budget"):
+                self.capture(extra)
 
     def test_conflicting_compiler_wrapper_or_record_identity_refuses(self):
         conflicting = list(self.compiler)

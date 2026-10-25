@@ -15,9 +15,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   preserving compiler-module and built-bundle identities separately. Missing selector
   identity evidence refuses narrowing even when an older scope document still decodes.
 
-This is the unpublished 0.29.0 candidate. The latest published release remains 0.28.0.
+These are planned release notes for the unpublished 0.29.0 candidate. At the
+2026-10-25 preparation checkpoint, publication and independent channel installation
+were not yet verified. Check GitHub Releases and each installation channel for the
+subsequent results; source notes do not prove publication or successful consumption.
+
+### iOS development profile and validation limits
+
+- Add the bounded v4 iOS Simulator source/producer connection. The generic capture command
+  uses build-for-testing without operating a device.
+  Corrected sources compile and pass the Swift tests and coverage gate. Preserve workspace
+  xcconfig identities through the Python producer as well as the Swift consumer, with
+  merge-to-membership regressions. Generic SDK capture and actual CLI/MCP consumption pass
+  for a controlled app-hosted XCTest/local-package fixture, including malformed proof and
+  same-mtime record rejection. A separate controlled Xcode 27/iOS 27 app-hosted run passes
+  full two-test and selected one-test execution. General/private workspace acceptance and
+  other platform combinations remain unverified; static candidates do not authorize test omission.
+- Keep shared input syntax and the five-value iOS validation context independent of the
+  membership and receipt store, removing the draft's two strict type cycles without
+  changing the receipt format or refusal conditions.
 
 ### Added
+
+- `fix --apply --verify-command` optionally runs one explicit JSON argv verification command
+  at the project root. Failed or interrupted verification restores unchanged Cartograph-owned
+  edits from private byte backups; conflicting changes remain intact with a recovery journal.
+  The default dry run and unverified explicit apply behavior remain available.
+
+- Capture explicit multi-project macOS Swift workspaces in target-scope receipt v3, preserving
+  project-qualified PBX identities, cross-project product/dependency proofs and finite local
+  packages. Missing or ambiguous workspace evidence refuses selectors with the original warnings.
+  Packages may be shared inside the workspace root and targets may consume several distinct
+  packages; actual source/record/object/aggregate/optional-framework/native link chains remain
+  required. Candidate proof documents share regular-file byte budgets, raw test product paths
+  reject outside aliases, and UTF-8-only workspace/scheme XML keeps DTD refusal encoding-safe.
 
 - `dead --since <revision> --since-lines` optionally filters diagnostic locations to changed
   current lines, keeping the file-level default and whole-project analysis. Net merge-base-to-worktree
@@ -59,6 +90,10 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
   which skips the download, is rejected (exit 64).
 
 ### Fixed
+
+- Layer rules and `rules --explain` match compiler locations against project-relative paths as
+  well as absolute paths. Anchored directory patterns such as `Features/**` now enforce the same
+  rules as their absolute equivalents; existing first-layer precedence and module-name rules remain.
 
 - Git lookups reject non-UTF-8 filter-driver names before reading worktree contents, preserving
   exact Unicode driver identities through private temporary Git config includes. Analysis-session
@@ -1917,8 +1952,8 @@ First release.
 - macOS only in practice: the index store format and `libIndexStore` discovery are Apple-toolchain
   specific.
 
-[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.28.0...HEAD
-[0.29.0]: https://github.com/ictechgy/cartograph/compare/0.28.0...HEAD
+[Unreleased]: https://github.com/ictechgy/cartograph/compare/0.29.0...HEAD
+[0.29.0]: https://github.com/ictechgy/cartograph/compare/0.28.0...0.29.0
 [0.28.0]: https://github.com/ictechgy/cartograph/compare/0.27.1...0.28.0
 [0.27.1]: https://github.com/ictechgy/cartograph/compare/0.27.0...0.27.1
 [0.27.0]: https://github.com/ictechgy/cartograph/compare/0.26.0...0.27.0

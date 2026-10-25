@@ -32,6 +32,7 @@ struct XcodeLocalPackageReader {
                                        "record": 64 * 1_024 * 1_024]
 
     mutating func read(_ path: String, kind: String) throws -> Data {
+        let path = XcodeEvidencePath.physicalTemporaryAlias(path, fileSystem: fileSystem)
         guard let file = files[path], file.kind == kind,
               path.hasPrefix((kind == "record" ? indexStore : buildRoot) + "/"),
               let maximum = Self.maximum[kind] else { throw XcodeLocalPackageIO.invalid("Unbound package proof input: " + path) }
@@ -55,7 +56,7 @@ struct XcodeLocalPackageReader {
             guard tokens.count == 1, let value = tokens.first, value.hasPrefix("/"), paths.count < 1_024 else {
                 throw XcodeLocalPackageIO.invalid("Unsupported or oversized linker/source file list.")
             }
-            paths.append(value)
+            paths.append(XcodeEvidencePath.physicalTemporaryAlias(value, fileSystem: fileSystem))
         }
         guard !paths.isEmpty, Set(paths).count == paths.count else { throw XcodeLocalPackageIO.invalid("Empty or duplicate linker/source file list.") }
         return paths
@@ -67,27 +68,35 @@ struct XcodeLocalPackageReader {
             throw XcodeLocalPackageIO.invalid("Invalid or oversized compiler/linker command.")
         }
         var result: [String] = []
-        for token in argv {
-            if token == "-Xlinker" { continue }
-            if !token.hasPrefix("@") || token == sourceFileList.map({ "@" + $0 }) || Self.runtimePath(token) {
+        func physicalToken(_ token: String) -> String {
+            if token.hasPrefix("@/") { return "@" + XcodeEvidencePath.physicalTemporaryAlias(String(token.dropFirst()), fileSystem: fileSystem) }
+            return XcodeEvidencePath.physicalTemporaryAlias(token, fileSystem: fileSystem)
+        }
+        for rawToken in argv {
+            let token = result.last == "-index-unit-output-path" ? rawToken : physicalToken(rawToken)
+            if token == "-Xlinker" || token == "-Xclang-linker" { continue }
+            if !token.hasPrefix("@") || token == sourceFileList.map({ "@" + $0 }) || Self.runtimePath(token, previous: result.last) {
                 result.append(token)
             } else {
                 guard token.hasPrefix("@/") else { throw XcodeLocalPackageIO.invalid("Relative response-file input is unsupported.") }
                 let data = try read(String(token.dropFirst()), kind: "document")
                 guard let text = String(data: data, encoding: .utf8) else { throw XcodeLocalPackageIO.invalid("Invalid response-file encoding.") }
-                let expanded = try XcodeEvidenceTokens.read(text, maximum: 1_000)
-                guard !expanded.contains(where: { $0.hasPrefix("@") && !Self.runtimePath($0) }) else {
+                let expanded = try XcodeEvidenceTokens.read(text, maximum: 1_000).filter { $0 != "-Xlinker" && $0 != "-Xclang-linker" }.map(physicalToken)
+                guard !expanded.enumerated().contains(where: { index, value in
+                    value.hasPrefix("@") && !Self.runtimePath(value, previous: index == 0 ? nil : expanded[index - 1])
+                }) else {
                     throw XcodeLocalPackageIO.invalid("Nested response files are unsupported.")
                 }
-                result += expanded.filter { $0 != "-Xlinker" }
+                result += expanded
             }
             guard result.count <= 1_000 else { throw XcodeLocalPackageIO.invalid("Expanded command exceeds token budget.") }
         }
         return result
     }
 
-    private static func runtimePath(_ token: String) -> Bool {
+    private static func runtimePath(_ token: String, previous: String? = nil) -> Bool {
         ["@loader_path/", "@executable_path/", "@rpath/"].contains(where: token.hasPrefix)
+            || (previous == "-rpath" && ["@loader_path", "@executable_path", "@rpath"].contains(token))
     }
 }
 
@@ -123,13 +132,18 @@ enum XcodeEvidenceTokens {
 
 /// 완전한 map에서 양의 live owner만 사용한다. 목록의 부재나 dead-stripped 행은 범위 밖 증거가 아니다.
 enum XcodeLinkMapEvidence {
-    static func validate(_ data: Data, output: String, architecture: String, required: Set<String>) throws {
+    static func validate(_ data: Data, output: String, architecture: String, required: Set<String>,
+                         allowedRepeatedOwners: Set<String> = [],
+                         fileSystem: (any FileSystem)? = nil) throws {
         guard let text = String(data: data, encoding: .utf8) else { throw XcodeLocalPackageIO.invalid("Invalid linker map encoding.") }
         var objects: [Int: String] = [:], live: Set<Int> = [], referenced: Set<Int> = []
         var section = "", headers: Set<String> = [], lineCount = 0
         let objectPattern = try NSRegularExpression(pattern: #"^\[\s*([0-9]+)\]\s+(.+)$"#)
         let symbolPattern = try NSRegularExpression(pattern: #"^(?:0x[0-9a-fA-F]+|<<dead>>)\s+0x[0-9a-fA-F]+\s+\[\s*([0-9]+)\]\s+.+$"#)
         let sectionPattern = try NSRegularExpression(pattern: #"^0x[0-9a-fA-F]+\s+0x[0-9a-fA-F]+\s+\S+\s+\S+$"#)
+        func physical(_ path: String) -> String {
+            fileSystem.map { XcodeEvidencePath.physicalTemporaryAlias(path, fileSystem: $0) } ?? path
+        }
         for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
             lineCount += 1
             let line = String(raw).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -138,20 +152,25 @@ enum XcodeLinkMapEvidence {
             if line.hasPrefix("# Path:") || line.hasPrefix("# Arch:") {
                 let key = line.hasPrefix("# Path:") ? "path" : "arch"
                 guard headers.insert(key).inserted,
-                      line == (key == "path" ? "# Path: " + output : "# Arch: " + architecture) else {
+                      (key == "path" ? "# Path: " + physical(String(line.dropFirst("# Path: ".count))) : line)
+                        == (key == "path" ? "# Path: " + output : "# Arch: " + architecture) else {
                     throw XcodeLocalPackageIO.invalid("Link map path or architecture differs from its actual link step.")
                 }
             } else if ["# Object files:", "# Sections:", "# Symbols:", "# Dead Stripped Symbols:"].contains(line) {
                 guard headers.insert(line).inserted else { throw XcodeLocalPackageIO.invalid("Duplicate linker map section.") }
                 section = line
-            } else if line.hasPrefix("# Address") || line.hasPrefix("# Size") {
-                guard ["# Sections:", "# Symbols:", "# Dead Stripped Symbols:"].contains(section) else {
-                    throw XcodeLocalPackageIO.invalid("Link map column header is out of place.")
+            } else if line.hasPrefix("#") {
+                let columns = line.split(whereSeparator: \.isWhitespace).map(String.init)
+                guard (section == "# Sections:" && columns == ["#", "Address", "Size", "Segment", "Section"])
+                    || (["# Symbols:", "# Dead Stripped Symbols:"].contains(section)
+                        && columns == ["#", "Address", "Size", "File", "Name"])
+                    || (section == "# Dead Stripped Symbols:" && columns == ["#", "Size", "File", "Name"]) else {
+                    throw XcodeLocalPackageIO.invalid("Link map column header is unknown or out of place.")
                 }
             } else if section == "# Object files:" {
                 guard let match = objectPattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
                       let number = Range(match.range(at: 1), in: line), let path = Range(match.range(at: 2), in: line),
-                      let id = Int(line[number]), objects.updateValue(String(line[path]), forKey: id) == nil else {
+                      let id = Int(line[number]), objects.updateValue(physical(String(line[path])), forKey: id) == nil else {
                     throw XcodeLocalPackageIO.invalid("Malformed or duplicate link map object owner.")
                 }
             } else if section == "# Symbols:" || section == "# Dead Stripped Symbols:" {
@@ -167,8 +186,11 @@ enum XcodeLinkMapEvidence {
                 }
             } else { throw XcodeLocalPackageIO.invalid("Unsupported linker map row or section.") }
         }
+        var ownerPaths: Set<String> = [], repeatedOwners: Set<String> = []
+        for path in objects.values where !ownerPaths.insert(path).inserted { repeatedOwners.insert(path) }
         guard ["path", "arch", "# Object files:", "# Sections:", "# Symbols:"].allSatisfy(headers.contains),
-              Set(objects.values).count == objects.count, referenced.isSubset(of: Set(objects.keys)),
+              repeatedOwners.isSubset(of: allowedRepeatedOwners), repeatedOwners.isDisjoint(with: required),
+              referenced.isSubset(of: Set(objects.keys)),
               required.isSubset(of: Set(live.compactMap { objects[$0] })) else {
             throw XcodeLocalPackageIO.invalid("Missing, unresolved or non-live package linker owners.")
         }

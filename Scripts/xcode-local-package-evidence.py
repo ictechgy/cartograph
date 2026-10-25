@@ -10,8 +10,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import shlex
+import stat
 
 
 class EvidenceError(ValueError):
@@ -23,10 +25,15 @@ def require(condition, reason):
         raise EvidenceError(reason)
 
 
+def runtime_path(token, previous=None):
+    return token.startswith(("@loader_path/", "@executable_path/", "@rpath/")) or (
+        previous == "-rpath" and token in ("@loader_path", "@executable_path", "@rpath"))
+
+
 def operand(argv, option):
     require(argv.count(option) == 1, "Missing or ambiguous compiler/link option: " + option)
     tail = argv[argv.index(option) + 1:]
-    while tail and tail[0] == "-Xlinker":
+    while tail and tail[0] in ("-Xlinker", "-Xclang-linker"):
         tail = tail[1:]
     require(tail and not tail[0].startswith("-"), "Missing compiler/link operand: " + option)
     return tail[0]
@@ -49,10 +56,18 @@ def command_rows(log):
 
 def canonical(value, root):
     require(isinstance(value, str) and 0 < len(value.encode()) <= 4096, "Invalid proof path")
-    path = Path(value)
+    path = Path(physical_temporary_alias(value))
     require(path.is_absolute() and not path.is_symlink() and path.resolve() == path
             and path.is_relative_to(root), "Proof path escapes its canonical capture root")
     return path
+
+
+def physical_temporary_alias(value):
+    if isinstance(value, str) and value.startswith(("/tmp/", "/var/folders/")):
+        path = Path(value)
+        if path.exists() and str(path.resolve()) == "/private" + value:
+            return str(path.resolve())
+    return value
 
 
 class Files:
@@ -66,7 +81,9 @@ class Files:
         path = canonical(value, self.store if kind == "record" else self.build)
         require(path.is_file(), "Missing regular proof file: " + str(path))
         maximum, total_maximum = (n * 1024 * 1024 for n in self.CAPS[kind])
-        with path.open("rb") as stream:
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+        with os.fdopen(os.open(path, flags), "rb") as stream:
+            require(stat.S_ISREG(os.fstat(stream.fileno()).st_mode), "Proof descriptor is not a regular file: " + str(path))
             data = stream.read(maximum + 1)
         require(len(data) <= maximum, "Proof file byte budget exceeded")
         identity = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "kind": kind}
@@ -79,14 +96,31 @@ class Files:
                 "Aggregate proof budget exceeded")
         return data
 
-    def responses(self, argv):
-        for arg in argv:
-            if not arg.startswith("@") or arg.startswith(("@loader_path/", "@executable_path/", "@rpath/")):
+    def responses(self, argv, source_file_list=None):
+        def valid(tokens):
+            return len(tokens) <= 1000 and all(isinstance(x, str) and x and len(x.encode()) <= 4096
+                and not any(ord(c) < 32 or ord(c) == 127 for c in x) for x in tokens)
+        def physical(token):
+            return "@" + physical_temporary_alias(token[1:]) if token.startswith("@/") else physical_temporary_alias(token)
+        require(argv and valid(argv), "Invalid or oversized compiler/link command")
+        source_file_list = physical_temporary_alias(source_file_list) if source_file_list is not None else None
+        result = []
+        for raw in argv:
+            arg = physical(raw)
+            if arg in ("-Xlinker", "-Xclang-linker"):
                 continue
-            content = self.read(arg[1:]).decode("utf-8")
-            tokens = shlex.split(content)
-            require(len(tokens) <= 1000 and not any(x.startswith("@") for x in tokens),
-                    "Nested or oversized compiler/link response is unsupported")
+            if not arg.startswith("@") or (source_file_list is not None and arg == "@" + source_file_list) or runtime_path(arg, result[-1] if result else None):
+                result.append(arg)
+            else:
+                require(arg.startswith("@/"), "Relative response-file input is unsupported")
+                content = self.read(arg[1:]).decode("utf-8")
+                tokens = [physical(x) for x in shlex.split(content) if x not in ("-Xlinker", "-Xclang-linker")]
+                require(valid(tokens) and not any(x.startswith("@") and not runtime_path(x, tokens[i - 1] if i else None)
+                        for i, x in enumerate(tokens)),
+                        "Nested or oversized compiler/link response is unsupported")
+                result.extend(tokens)
+            require(len(result) <= 1000, "Expanded compiler/link command exceeds token budget")
+        return result
 
     def finish(self):
         # Recheck every proof after all joins; callers also repeat around a fresh raw read.
@@ -112,17 +146,23 @@ def live_owners(files, path, output, architecture):
     text = files.read(path).decode("utf-8")
     section, objects, live, headers = "", {}, set(), []
     for line in text.splitlines():
+        if line.startswith("# Path: "):
+            line = "# Path: " + physical_temporary_alias(line[len("# Path: "):])
         if line.startswith("# "):
             require(len(headers) < 128 and len(line.encode()) <= 1024, "Link-map header budget exceeded")
             headers.append(line)
-            if re.fullmatch(r"#\s+Address\s+Size\s+(?:File\s+Name|Segment\s+Section)\s*", line):
+            columns = line.split()
+            if ((section == "# Sections:" and columns == ["#", "Address", "Size", "Segment", "Section"])
+                    or (section in ("# Symbols:", "# Dead Stripped Symbols:")
+                        and columns == ["#", "Address", "Size", "File", "Name"])
+                    or (section == "# Dead Stripped Symbols:" and columns == ["#", "Size", "File", "Name"])):
                 continue
             section = line
         elif section == "# Object files:" and line.strip():
             match = re.fullmatch(r"\[\s*(\d+)\]\s+(.+)", line)
             require(match is not None and match[1] not in objects and len(objects) < 256,
                     "Unparsed, duplicate or excessive link-map owner")
-            objects[match[1]] = match[2]
+            objects[match[1]] = physical_temporary_alias(match[2])
         elif section in ("# Symbols:", "# Dead Stripped Symbols:") and line.strip():
             match = re.fullmatch(r"(?:0x[0-9A-Fa-f]+|<<dead>>)\s+0x[0-9A-Fa-f]+\s+\[\s*(\d+)\]\s+.+", line)
             require(match is not None and match[1] in objects, "Unparsed or unresolved link-map symbol owner")
@@ -136,17 +176,142 @@ def live_owners(files, path, output, architecture):
     return {objects[key] for key in live}
 
 
-def link(files, argv, architecture):
-    files.responses(argv)
-    result = {"argv": argv, "fileList": operand(argv, "-filelist"),
-              "output": operand(argv, "-o"), "linkMap": operand(argv, "-map")}
-    require(operand(argv, "-target").split("-", 1)[0] == architecture, "Link target architecture differs")
+def link_list(argv):
+    if "-filelist" in argv:
+        return operand(argv, "-filelist"), "operand"
+    lists = [x[1:] for x in argv if x.startswith("@/") and x.endswith(".LinkFileList")]
+    require("-emit-library" in argv and len(lists) == 1, "Missing or ambiguous observed linker file list")
+    return lists[0], "response"
+
+
+def link(files, argv, architecture, required=()):
+    path, mode = link_list(argv)
+    effective = files.responses(argv, source_file_list=path if mode == "response" else None)
+    effective_path, effective_mode = link_list(effective)
+    require(effective_mode == mode and canonical(effective_path, files.build) == canonical(path, files.build),
+            "Expanded linker file-list identity differs")
+    result = {"argv": argv, "fileList": str(canonical(path, files.build)), "fileListMode": mode,
+              "output": str(canonical(operand(effective, "-o"), files.build)), "linkMap": str(canonical(operand(effective, "-map"), files.build))}
+    require(operand(effective, "-target").split("-", 1)[0] == architecture, "Link target architecture differs")
     inputs = file_list(files, result["fileList"], files.build)
+    for value in set(required) - set(inputs):
+        require("-r" not in effective and value in effective,
+                "Required package contribution is absent from actual linker operands")
+        inputs.append(value)
     for path in inputs:
         files.read(path, "object")
     files.read(result["output"], "object")
     live = live_owners(files, result["linkMap"], result["output"], architecture)
     return result, set(inputs), live
+
+
+def dynamic_form(argv, mode):
+    """관측한 driver와 file-list 형태 한 벌만 허용하며 혼합/중복 플래그를 거부한다."""
+    if not argv or "-r" in argv:
+        return False
+    driver = Path(argv[0]).name
+    return ((driver == "swiftc" and mode == "response" and argv.count("-emit-library") == 1
+             and "-dynamiclib" not in argv and "-filelist" not in argv)
+            or (driver == "clang" and mode == "operand" and argv.count("-dynamiclib") == 1
+                and "-emit-library" not in argv and argv.count("-filelist") == 1))
+
+
+def empty_preview_form(argv, native, architecture):
+    """관측한 빈 preview 문법만 분리하며 숨은 response/object 입력을 허용하지 않는다."""
+    require(argv[0] == native[0] and Path(argv[0]).name == "clang" and dynamic_form(native, "operand"),
+            "Preview and actual native debug link drivers differ")
+    require(all(x != "-Xclang-linker" and (x != "-Xlinker" or
+                (i + 1 < len(argv) and argv[i + 1] not in ("-Xlinker", "-Xclang-linker")))
+                for i, x in enumerate(argv)), "Malformed preview linker forwarding")
+    effective = [x for x in argv if x not in ("-Xlinker", "-Xclang-linker")]
+    require(all(x and len(x.encode()) <= 4096 and not any(ord(c) < 32 or ord(c) == 127 for c in x)
+                for x in effective), "Invalid preview link token")
+    flags = {"-reproducible", "-dynamiclib", "-Os", "-no_warn_duplicate_libraries", "-dead_strip",
+             "-rdynamic", "-debug_variant"}
+    options = {"-target", "-isysroot", "-install_name", "-map", "-objc_abi_version", "-dependency_info", "-o"}
+    seen, index = set(), 1
+    while index < len(effective):
+        token = effective[index]
+        require(token not in seen, "Duplicate preview link option")
+        seen.add(token)
+        if token in options:
+            value = operand(effective, token)
+            require(token == "-o" or value == operand(native, token), "Preview and native debug link identity differ")
+            index += 2
+        else:
+            require((token in flags or (token.startswith(("-L", "-F")) and len(token) > 2)) and token in native,
+                    "Unproved input or unsupported preview link option")
+            index += 1
+    require({"-dynamiclib", "-target", "-isysroot", "-install_name", "-map", "-o"} <= seen
+            and re.fullmatch(re.escape(architecture) + r"-apple-ios\d+(?:\.\d+){0,2}-simulator",
+                             operand(effective, "-target")) is not None,
+            "Preview lacks a complete observed iOS Simulator identity")
+
+
+def native_previews(commands, files, targets, settings, native_outputs, architecture):
+    """앱 설정과 실제 debug link에 연결된 빈 preview만 package 후보에서 분리한다."""
+    previews = []
+    for ident, output in sorted((native_outputs or {}).items()):
+        target = targets.get(ident, {})
+        if target.get("productType") != "com.apple.product-type.application":
+            continue
+        rows = [r["buildSettings"] for r in settings if r.get("target") == target["name"]]
+        require(len(rows) == 1, "Ambiguous preview native settings")
+        values = rows[0]
+        if values.get("ENABLE_DEBUG_DYLIB") != "YES":
+            continue
+        code = canonical(output, files.build / "Products")
+        expected = code.parent / "__preview.dylib"
+        observed = [a for a in commands if "-map" in a and "-o" in a
+                    and physical_temporary_alias(operand(a, "-o")) == str(expected)]
+        if not observed:
+            continue
+        directory = canonical(values["TARGET_BUILD_DIR"], files.build / "Products")
+        executable = canonical(str(directory / values["EXECUTABLE_PATH"]), files.build / "Products")
+        require(executable.parent == directory / values.get("FULL_PRODUCT_NAME", "")
+                and executable.parent.suffix == ".app" and code == Path(str(executable) + ".debug.dylib")
+                and canonical(str(expected), files.build) == expected,
+                "Preview is not bound to the declared app debug image")
+        native = [a for a in commands if "-map" in a and "-o" in a
+                  and physical_temporary_alias(operand(a, "-o")) == str(code)]
+        require(len(observed) == 1 and len(native) == 1 and observed[0] not in previews,
+                "Ambiguous actual native or preview link")
+        require(operand(native[0], "-install_name") == "@rpath/" + code.name,
+                "Native debug install name is not bound to its app image")
+        empty_preview_form(observed[0], native[0], architecture)
+        # preview의 공유/덮어쓴 map은 소유권 증거로 읽지 않는다. 실제 native link는 그대로 검증한다.
+        canonical(operand(observed[0], "-map"), files.build)
+        previews.append(observed[0])
+    return previews
+
+
+def dynamic_product(files, argv, aggregate, architecture, product):
+    observed, inputs, live = link(files, argv, architecture, required={aggregate["output"]})
+    response_list = observed["fileList"] if observed["fileListMode"] == "response" else None
+    effective = files.responses(argv, source_file_list=response_list)
+    require(inputs == {aggregate["output"]} and aggregate["output"] in live
+            and dynamic_form(effective, observed["fileListMode"]),
+            "Dynamic package product lacks exact positive aggregate contribution")
+    output = Path(observed["output"])
+    bundles = [p for p in output.parents if p.name.endswith(".framework")]
+    require(len(bundles) == 1 and bundles[0].is_relative_to(files.build / "Products") and bundles[0].resolve() == bundles[0],
+            "Dynamic package product bundle is outside captured products")
+    bundle = bundles[0]
+    name = bundle.name.removesuffix(".framework")
+    if observed["fileListMode"] == "operand":
+        require(bundle.parent.name == "PackageFrameworks"
+                and re.fullmatch(re.escape(product) + r"_[0-9A-Fa-f]{16}_PackageProduct", name) is not None,
+                "Clang dynamic product is not the bound synthesized package framework")
+    require(output in (bundle / name, bundle / "Versions/A" / name), "Unsupported dynamic package executable layout")
+    info_paths = {p.resolve() for p in (bundle / "Info.plist", bundle / "Resources/Info.plist", bundle / "Versions/A/Resources/Info.plist") if p.is_file()}
+    require(len(info_paths) == 1, "Missing or ambiguous dynamic package product metadata")
+    info_path = info_paths.pop()
+    require(info_path in (bundle / "Info.plist", bundle / "Versions/A/Resources/Info.plist"), "Dynamic product metadata leaves its bundle")
+    info = plistlib.loads(files.read(str(info_path)))
+    install = operand(argv, "-install_name")
+    require(info.get("CFBundleExecutable") == name and info.get("CFBundlePackageType") == "FMWK"
+            and install == "@rpath/" + output.relative_to(bundle.parent).as_posix(), "Dynamic product bundle/executable/install identity differs")
+    return {"link": observed, "bundle": str(bundle), "infoPlist": str(info_path), "installName": install}
 
 
 def record_paths(store, names):
@@ -172,27 +337,25 @@ def record_paths(store, names):
     return found
 
 
-def assemble(spec, root, derived, store, log, snapshot, targets, settings, selected, architecture):
-    """Join actual bytes and positive owners; this is never an absence classifier."""
-    files, commands = Files(derived / "Build", store), command_rows(log)
-    package_root = root / spec["path"]
-    sources = {str(package_root / path) for path, value in spec["inventory"].items()
-               if path.startswith("Sources/" + spec["module"] + "/") and value != "directory"}
-    require(sources and spec["module"] not in {t["module"] for t in targets.values()},
-            "Package and native compiler modules are ambiguous")
+def compiler_records(files, commands, sources, module, store, snapshot, source_root, architecture):
+    """Bind a finite explicit Swift source set to actual compiler objects and current raw records."""
     compilations = {}
     for argv in commands:
-        if "-output-file-map" not in argv or operand(argv, "-module-name") != spec["module"]:
+        if "-output-file-map" not in argv or operand(argv, "-module-name") != module:
             continue
         files.responses(argv)
-        output_map = operand(argv, "-output-file-map")
-        lists = [x[1:] for x in argv if x.startswith("@") and x.endswith(".SwiftFileList")]
-        require(len(lists) == 1 and set(file_list(files, lists[0], package_root)) == sources,
+        output_map = str(canonical(operand(argv, "-output-file-map"), files.build))
+        lists = [str(canonical(x[1:], files.build)) for x in argv if x.startswith("@") and x.endswith(".SwiftFileList")]
+        require(len(lists) == 1 and set(file_list(files, lists[0], source_root)) == sources,
                 "Compiler source list differs from finite package inventory")
         value = json.loads(files.read(output_map))
-        require(isinstance(value, dict) and set(value) - {""} == sources, "Compiler output map source set differs")
+        require(isinstance(value, dict), "Compiler output map is not an object")
+        pairs = [(physical_temporary_alias(k), v) for k, v in value.items()]
+        require(len({k for k, _ in pairs}) == len(pairs), "Compiler output map has duplicate physical source identities")
+        value = dict(pairs)
+        require(set(value) - {""} == sources, "Compiler output map source set differs")
         target = operand(argv, "-target")
-        require(target.split("-", 1)[0] == architecture and operand(argv, "-index-store-path") == str(store),
+        require(target.split("-", 1)[0] == architecture and str(canonical(operand(argv, "-index-store-path"), store)) == str(store),
                 "Compiler target or index store differs")
         for source in sorted(sources):
             output = value[source]
@@ -215,7 +378,8 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
     require(len({row["object"] for row in compilations.values()}) == len(sources),
             "Shared whole-module object mappings are unsupported")
     observed = snapshot.get("snapshot", {}).get("sourceRecordAdmissions", [])
-    admissions = [row for row in observed if row.get("path") in sources]
+    admissions = [{**row, "path": physical_temporary_alias(row.get("path"))} for row in observed
+                  if physical_temporary_alias(row.get("path")) in sources]
     require(0 < len(admissions) <= 256 and {r.get("path") for r in admissions} == sources,
             "Every package source needs a successful current record admission")
     names = {r.get("record") for r in admissions}
@@ -224,7 +388,7 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
     paths, records = record_paths(store, names), []
     for row in admissions:
         comp = compilations[row["path"]]
-        require(row.get("module") == spec["module"] and row.get("unitOutputIdentity") == comp["unitOutputIdentity"]
+        require(row.get("module") == module and row.get("unitOutputIdentity") == comp["unitOutputIdentity"]
                 and row.get("unitTargetTriple") == comp["targetTriple"] and isinstance(row.get("unit"), str)
                 and row["unit"], "Raw record source/module/unit-output/target join failed")
         path = paths[row["record"]]
@@ -235,13 +399,39 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
             records.append(record)
     require(len(admissions) == len(sources) and len(records) == len(sources) and len(names) == len(sources),
             "Package source record contexts are shared or ambiguous")
+    return compilations, records
+
+
+def assemble(spec, root, derived, store, log, snapshot, targets, settings, selected, architecture, native_outputs=None):
+    """Join actual bytes and positive owners; this is never an absence classifier."""
+    files, commands = Files(derived / "Build", store), command_rows(log)
+    package_root = root / spec["path"]
+    sources = {str(package_root / path) for path, value in spec["inventory"].items()
+               if path.startswith("Sources/" + spec["module"] + "/") and value != "directory"}
+    require(sources and spec["module"] not in {t["module"] for t in targets.values()},
+            "Package and native compiler modules are ambiguous")
+    compilations, records = compiler_records(files, commands, sources, spec["module"], store, snapshot, package_root, architecture)
     aggregate_candidates = [argv for argv in commands if "-r" in argv and "-filelist" in argv and "-map" in argv]
+    previews = native_previews(commands, files, targets, settings, native_outputs, architecture)
+    wrapper_candidates = [argv for argv in commands
+                          if ("-emit-library" in argv or "-dynamiclib" in argv) and "-map" in argv and argv not in previews]
+    # 여러 package의 relocatable link 중 이 package의 완전한 object 집합만 고른다.
+    # 선택 전 읽기도 동일한 경로·바이트·토큰 경계를 적용하며 실행하지 않는다.
+    objects = {r["object"] for r in compilations.values()}
+    aggregate_lists = sorted({str(canonical(link_list(argv)[0], files.build)) for argv in aggregate_candidates + wrapper_candidates})
+    # Every candidate participates in the same bounded IO/accounting, including nonselected wrappers.
+    list_inputs = {path: set(file_list(files, path, files.build)) for path in aggregate_lists}
+    def aggregate_matches(argv):
+        return set(file_list(files, operand(argv, "-filelist"), files.build)) == objects
+    aggregate_candidates = [argv for argv in aggregate_candidates if aggregate_matches(argv)]
     require(len(aggregate_candidates) == 1, "Ambiguous or absent package relocatable link")
     aggregate, inputs, live = link(files, aggregate_candidates[0], architecture)
-    objects = {r["object"] for r in compilations.values()}
     require(inputs == objects and objects <= live, "Package objects lack complete positive aggregate contribution")
     require(operand(aggregate["argv"], "-target") in {c["targetTriple"] for c in compilations.values()}
             and len({c["targetTriple"] for c in compilations.values()}) == 1, "Aggregate target triple differs")
+    wrappers = [argv for argv in wrapper_candidates if list_inputs[str(canonical(link_list(argv)[0], files.build))] == {aggregate["output"]}]
+    require(len(wrappers) <= 1, "Ambiguous dynamic package product wrapper")
+    wrapper = dynamic_product(files, wrappers[0], aggregate, architecture, spec["product"]) if wrappers else None
     closure, pending = set(), list(selected)
     while pending:
         ident = pending.pop()
@@ -254,14 +444,18 @@ def assemble(spec, root, derived, store, log, snapshot, targets, settings, selec
     for ident in spec["consumers"]:
         rows = [s["buildSettings"] for s in settings if s.get("target") == targets[ident]["name"]]
         require(len(rows) == 1, "Ambiguous package consumer settings")
-        executable = str(canonical(str(Path(rows[0]["TARGET_BUILD_DIR"]) / rows[0]["EXECUTABLE_PATH"]), files.build))
-        argv_rows = [a for a in commands if "-map" in a and "-o" in a and operand(a, "-o") == executable]
+        executable = str(canonical((native_outputs or {}).get(ident, str(Path(rows[0]["TARGET_BUILD_DIR"]) / rows[0]["EXECUTABLE_PATH"])), files.build))
+        argv_rows = [a for a in commands if "-map" in a and "-o" in a and str(canonical(operand(a, "-o"), files.build)) == executable]
         require(len(argv_rows) == 1, "Absent or ambiguous actual native package consumer link")
-        native, inputs, live = link(files, argv_rows[0], architecture)
-        require(aggregate["output"] in inputs and aggregate["output"] in live,
+        required = wrapper["link"]["output"] if wrapper else aggregate["output"]
+        native, inputs, live = link(files, argv_rows[0], architecture, required={required})
+        require(required in inputs and required in live,
                 "Package aggregate has no positive selected native link contribution")
-        links.append({"targetID": ident, "link": native})
-    return {**spec, "indexStore": str(store), "files": files.finish(),
+        links.append({"targetID": ident, "link": native, "packageInput": required})
+    result = {**spec, "indexStore": str(store), "files": files.finish(), "aggregateCandidateFileLists": aggregate_lists,
             "compilations": [compilations[s] for s in sorted(compilations)],
             "records": sorted(records, key=lambda r: (r["source"], r["unit"], r["record"])),
             "aggregate": aggregate, "links": links}
+    if wrapper:
+        result["dynamicProduct"] = wrapper
+    return result

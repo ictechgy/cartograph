@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import textwrap
 import unittest
@@ -207,11 +208,66 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('python3 "$installed/libexec/cartograph-xcode-scope.py" --help', workflow)
         self.assertIn('"cartograph-swiftpm-scope.py", "cartograph-xcode-scope.py"', workflow)
         self.assertIn('cp Scripts/xcode-local-package-inputs.py Scripts/xcode-local-package-evidence.py dist/cartograph/Scripts/', workflow)
-        for helper in ("xcode-local-package-inputs.py", "xcode-local-package-evidence.py"):
+        self.assertIn('cp Scripts/xcode-workspace-inputs.py Scripts/xcode-workspace-capture.py Scripts/xcode-ios-scope.py dist/cartograph/Scripts/', workflow)
+        for helper in ("xcode-local-package-inputs.py", "xcode-local-package-evidence.py",
+                       "xcode-workspace-inputs.py", "xcode-workspace-capture.py", "xcode-ios-scope.py"):
             self.assertIn(f'cmp Scripts/{helper} "$RUNNER_TEMP/cartograph/Scripts/{helper}"', workflow)
             self.assertIn(f'cmp Scripts/{helper} "$installed/libexec/{helper}"', workflow)
         self.assertIn('Scripts/verify-xcode-scope-install.py --scripts-dir "$RUNNER_TEMP/cartograph/Scripts"', workflow)
         self.assertIn('Scripts/verify-xcode-scope-install.py --scripts-dir "$installed/libexec"', workflow)
+
+    def test_fix_verification_contract_is_packaged_and_verified(self):
+        # 실제 Package 셸과 추출 검증으로 README의 복구 계약 링크를 확인한다.
+        resources = (
+            "LICENSE", "README.md", "docs/QUERY-EVIDENCE.md", "docs/ENUM-CHANGE-REVIEW.md",
+            "docs/FOLLOWUP-REVIEW.md", "docs/XCODE-AFFECTED-SCOPE.md", "docs/FIX-VERIFICATION.md",
+            "Scripts/cartograph-git-impact.py", "Scripts/cartograph-swiftpm-scope.py",
+            "Scripts/cartograph-xcode-scope.py", "Scripts/xcode-local-package-inputs.py",
+            "Scripts/xcode-local-package-evidence.py", "Scripts/xcode-workspace-inputs.py",
+            "Scripts/xcode-workspace-capture.py", "Scripts/xcode-ios-scope.py",
+        )
+        for relative in resources:
+            target = self.root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((ROOT / relative).read_bytes())
+        binary_dir = self.root / "binary"
+        binary_dir.mkdir()
+        binary = binary_dir / "cartograph"
+        binary.write_text("#!/bin/sh\nprintf '%s\\n' \"$VERSION\"\n")
+        binary.chmod(0o700)
+        # 바이너리 빌드·아키텍처는 제품 CI가 검증하며 이 테스트는 archive 계약만 실행한다.
+        for name, body in {"swift": 'printf "%s\\n" "$PACKAGE_BINARY_DIR"', "lipo": "exit 0"}.items():
+            tool = self.root / "bin" / name
+            tool.write_text("#!/bin/sh\n" + body + "\n")
+            tool.chmod(0o700)
+        self.assert_passes(self.execute("Package", PACKAGE_BINARY_DIR=str(binary_dir)))
+        archive = self.root / f"cartograph-{VERSION}-macos-universal.tar.gz"
+        contract = "cartograph/docs/FIX-VERIFICATION.md"
+        with tarfile.open(archive, "r:gz") as packaged:
+            self.assertEqual(packaged.extractfile(contract).read(), (ROOT / "docs/FIX-VERIFICATION.md").read_bytes())
+            self.assertIn(b"docs/FIX-VERIFICATION.md", packaged.extractfile("cartograph/README.md").read())
+            for relative in resources:
+                if relative.startswith("Scripts/"):
+                    self.assertEqual(packaged.extractfile("cartograph/" + relative).read(),
+                                     (ROOT / relative).read_bytes(), relative)
+        gate, separator, _ = script("Verify the packaged binary").partition("\nlipo ")
+        self.assertTrue(separator, "Document checks must precede binary architecture verification")
+        runner = self.root / "runner"
+        runner.mkdir()
+
+        def verify(body):
+            return subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", body],
+                                  cwd=self.root, env={**self.env, "ARCHIVE": str(archive), "RUNNER_TEMP": str(runner)},
+                                  capture_output=True, text=True)
+
+        self.assert_passes(verify(gate))
+        # 이미 추출한 파일이 사라지거나 바뀌면 같은 소비 단계가 거부해야 한다.
+        consume = gate.split("\n", 1)[1]
+        extracted = runner / contract
+        extracted.unlink()
+        self.assertNotEqual(verify(consume).returncode, 0)
+        extracted.write_text("different contract\n")
+        self.assertNotEqual(verify(consume).returncode, 0)
 
     def test_manual_source_does_not_require_tag_before_checkout(self):
         workflow = WORKFLOW.read_text()

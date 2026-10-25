@@ -387,13 +387,15 @@ Data.UserRepository is reachable:
 ### `fix` — 기계적 편집 계획과 적용
 
 파싱 성공은 타입 검사나 빌드 성공의 증명이 아닙니다. `--apply` 후 diff를 검토하고 관련 타깃을
-모두 다시 빌드하세요. 쓰기는 전체 편집 집합이 아닌 파일 단위로 원자적이며, 이 명령은 검증 명령
-실행이나 실패한 빌드의 자동 롤백을 수행하지 않습니다.
+모두 다시 빌드하세요. 쓰기는 전체 편집 집합이 아닌 파일 단위로 원자적입니다.
+`--apply`와 함께 검증 명령 하나를 선택할 수 있습니다. 검증 실패 시 이 실행이 기록한 뒤
+바뀌지 않은 파일만 복원하며, 충돌한 변경은 비공개 복구 근거와 함께 보존합니다.
 
 ```bash
 cartograph fix                      # 계획만 출력; 파일을 쓰지 않음
 cartograph fix --apply              # 수정을 기록
 cartograph fix --since origin/main  # 바뀐 파일의 발견만
+cartograph fix --apply --verify-command '["swift","build","--build-tests"]'
 ```
 
 기계적으로 고칠 수 있는 경고는 딱 두 종류입니다. `unused-import`는 import 선언을 지우고,
@@ -419,6 +421,15 @@ Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.Client.fetch(_:retry:)
 새로 빌드한 인덱스에서 돌리세요. 계획은 `dead`가 읽는 같은 인덱스에서 나오고, 인덱스가
 낡으면 편집이 잘못된 자리에 가지 않고 건너뛰어집니다. `--format json`은 각 편집의 파일·위치·
 규칙·대체 텍스트를 담은 `mechanical-fixes` 문서를 돌려줍니다.
+
+`--verify-command`는 JSON argv 배열이며 실제 프로젝트 루트에서 상속한 환경으로 직접 실행합니다.
+셸 문자열로 해석하지 않습니다. `--verify-timeout` 기본값은 600초입니다. 프로젝트 밖의 새
+`--recovery-directory`에 원래 바이트·journal·크기가 제한된 로그를 남길 수 있습니다.
+실패·시간 초과·SIGINT/SIGTERM에서는 현재 바이트와 파일 식별이 Cartograph가 기록한 편집과
+일치할 때만 복원합니다. 동시 편집은 보존하고 수동 검토를 요구합니다. 검증 실패 종료 코드는 2입니다.
+검증기가 만든 별도 변경·Git 작업·빌드 산출물은 되돌리지 않으며, SIGKILL·전원 손실에서는
+자동 복구가 실행되지 않습니다. 명령을 선택하기 전에
+[실행·자식 프로세스 그룹·복구 계약](docs/FIX-VERIFICATION.md)을 확인하세요.
 
 ### `query` — 선언 하나에 대해 되묻기
 
@@ -1539,6 +1550,13 @@ cartograph rules --strict
 않는 정점은 `info`로 보고합니다 — 규칙이 무엇을 덮지 못하는지 모르면 "통과"라는 결과를
 믿을 수 없습니다.
 
+파일 패턴은 절대 경로와 `--project` 기준 상대 경로(기본값은 현재 디렉터리)를 모두 받습니다.
+`Features/**`는 그 프로젝트 루트 아래의 컴파일러 위치와 맞고, 먼저 일치하는 레이어가 우선합니다.
+모듈 그래프에는 소스 위치가 없으므로 그 레벨에서는 모듈 이름 패턴을 쓰세요. 디렉터리 규칙에는
+`--level file` / `--level type`을 선택합니다. 서비스는 주입된 파일 시스템에서 루트 별칭을 확인합니다.
+임베더는 순수 `LayerRuleEvaluator`에 리터럴 `projectPath`나 직접 확인해 준비한 `projectPaths`를
+전달할 수 있습니다. 평가기 초기화는 별칭을 해석하거나 파일을 읽지 않습니다.
+
 `--explain <노드>`는 그 정점이 어느 레이어에 들어갔는지, 어느 패턴이 그렇게 만들었는지,
 그 레이어에서 출발하는 규칙이 무엇인지 보여 줍니다 — 설정을 디버깅할 때 실제로 던지는
 질문들입니다.
@@ -2097,6 +2115,13 @@ universal archive를 검증했으며, [tap 갱신](https://github.com/ictechgy/h
 
 ## Workspace와 로컬 패키지의 인덱스 범위
 
+명시적 macOS Swift workspace는 [v3 캡처](docs/XCODE-AFFECTED-SCOPE.md#explicit-multi-project-workspace-receipt-v3)로
+최대 32개 프로젝트와 16개 유한 로컬 패키지, 프로젝트 간 target/product 신원과 실제
+compiler/record/link 증거를 대조합니다. workspace 루트 안의 공유 패키지와 프로젝트당 여러 패키지
+의존성도 증거를 연결합니다. `Scripts/cartograph-xcode-scope.py --workspace Example.xcworkspace`로
+캡처하고 같은 `--target-scope`와 index 경로를 사용하세요. 원래 제외 경로 경고와 불명확한 범위의
+선택 거부를 유지하며, 재현하지 않은 사내 workspace나 iOS/UI 테스트 전체 지원을 주장하지 않습니다.
+
 workspace scheme과 관련 로컬 패키지 target을 모두 빌드한 뒤 그 빌드의 인덱스를
 `--index-store`로 지정하세요. 자동 선택은 target 범위가 아닌 store/unit 디렉터리의 최근
 시각을 사용하며 후보가 여러 개면 선택 경로·후보 수·규칙을 결과에 남깁니다.
@@ -2145,7 +2170,7 @@ Cartograph는 독립 프로젝트이며 Periphery나 Apple과 관련이 없습�
 
 ### 선택적 후속 검토 출력
 
-미배포 0.29.0 후보는 캡처에 묶인 SwiftPM target 소속 검토,
+0.29.0 소스는 캡처에 묶인 SwiftPM target 소속 검토,
 `dead --file-summary` / `--generated-suggestions`, JSON `--limitations summary`
 (기본 `full`), MCP `cartograph_prepare` 준비 상태를 추가합니다. 원래 finding과
 안전 신호를 유지합니다. Target 소속은 Xcode scheme을 증명하지 않으며 범위를
@@ -2154,4 +2179,10 @@ Cartograph는 독립 프로젝트이며 Periphery나 Apple과 관련이 없습�
 
 ### Xcode 영향 테스트 범위 캡처
 
-선택적 [Xcode 캡처](docs/XCODE-AFFECTED-SCOPE.md)는 단일 로컬 Swift 프로젝트의 명시 scheme/test-plan, 실제 읽은 source record와 빌드된 테스트 bundle 바이트를 대조합니다. 선택 이름은 검증된 `.xctestrun` BlueprintName과 프로젝트 target 신원을 사용하고, JSON/MCP에는 bundle 제품명을 별도로 보존합니다. 확인된 범위 밖 target의 소스 경고는 근거와 함께 분리하여 검토용 선택자를 만들 수 있습니다. SwiftPM receipt는 기존처럼 진단 전용입니다. 범위 불명, 오래된 입력, 잘린 증거는 계속 거부하며 정적 후보는 테스트 생략 허가가 아닙니다.
+선택적 [Xcode 캡처](docs/XCODE-AFFECTED-SCOPE.md)는 로컬 Swift 프로젝트 또는 명시 workspace의 scheme/test-plan, 실제 읽은 source record와 빌드된 테스트 bundle 바이트를 대조합니다. 선택 이름은 검증된 `.xctestrun` BlueprintName과 프로젝트 target 신원을 사용하고, JSON/MCP에는 bundle 제품명을 별도로 보존합니다. 확인된 범위 밖 target의 소스 경고는 근거와 함께 분리하여 검토용 선택자를 만들 수 있습니다. SwiftPM receipt는 기존처럼 진단 전용입니다. 범위 불명, 오래된 입력, 잘린 증거는 계속 거부하며 정적 후보는 테스트 생략 허가가 아닙니다.
+
+
+iOS Simulator target-scope v4는 범위가 제한된 개발 프로필입니다. 공개 합성 앱 호스트와
+로컬 패키지는 Xcode 27/iOS 27에서 전체 2개·선택 1개 테스트를 통과했습니다.
+일반·사내 workspace와 다른 플랫폼 검증, 안전한 테스트 생략을 뜻하지는 않습니다.
+[지원 범위와 남은 검증 공백](docs/XCODE-AFFECTED-SCOPE.md#ios-simulator-v4-development-draft)을 확인하세요.

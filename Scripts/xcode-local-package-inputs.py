@@ -255,3 +255,94 @@ def project(root: Path, plist: dict) -> tuple[dict, dict]:
         del safe[ident]
     spec.update({"productReferenceID": product_id, "consumers": sorted(consumers)})
     return spec, sanitized
+
+
+def workspace_package_path(project_path: str, reference: str) -> str:
+    """Normalize literal parent components without ever walking above the workspace root."""
+    require(isinstance(reference, str) and 0 < len(reference.encode()) <= 4096
+            and not reference.startswith("/") and not any(c in reference for c in ("\\", ":", "$"))
+            and all(ord(c) >= 32 for c in reference), "Workspace package path must be a literal relative path")
+    components = list(Path(project_path).parent.parts)
+    for component in reference.split("/"):
+        require(component, "Empty workspace package path component")
+        if component == "..":
+            require(components, "Package path escapes the workspace root")
+            components.pop()
+        elif component != ".":
+            components.append(component)
+        require(len(components) <= 128, "Package path depth budget exceeded")
+    require(components, "The workspace root cannot be a package subtree")
+    return "/".join(components)
+
+
+def workspace_project(root: Path, project_path: str, plist: dict) -> tuple[list[dict], dict]:
+    """Bind every local product/consumer once, allowing shared workspace-local package roots."""
+    objects = plist.get("objects", {})
+    main = objects.get(plist.get("rootObject"), {})
+    references = main.get("packageReferences", [])
+    require(isinstance(references, list) and 1 <= len(references) <= 16 and len(set(references)) == len(references),
+            "Workspace project requires 1...16 unique explicit local package references")
+    specs, by_product, paths = {}, {}, set()
+    for ident in references:
+        ref = objects.get(ident, {})
+        require(set(ref) == {"isa", "relativePath"} and ref.get("isa") == "XCLocalSwiftPackageReference",
+                "Only exact local workspace package references are supported")
+        path = workspace_package_path(project_path, ref.get("relativePath", ""))
+        package = root / path
+        require(package.resolve() == package and package.is_relative_to(root) and path not in paths,
+                "Package path is symlinked, duplicate or outside the workspace")
+        paths.add(path)
+        spec = read_manifest(package / "Package.swift")
+        products = [(key, value) for key, value in objects.items()
+                    if value.get("isa") == "XCSwiftPackageProductDependency" and value.get("package") == ident]
+        require(len(products) == 1, "Each local package requires its exact literal product dependency")
+        product_id, product = products[0]
+        require(set(product) == {"isa", "package", "productName"} and product.get("productName") == spec["product"],
+                "Workspace package product differs from its literal manifest")
+        require(product_id not in by_product, "Shared package product identity")
+        spec.update({"path": path, "referenceID": ident, "productReferenceID": product_id,
+                     "inventory": inventory(package, spec["module"]), "consumers": []})
+        specs[ident] = spec
+        by_product[product_id] = spec
+    allowed = set(references) | set(by_product)
+    require(all(key in allowed or "Package" not in value.get("isa", "") for key, value in objects.items()),
+            "Additional or remote package declarations are unsupported")
+    linked_files = set()
+    for target_id in main.get("targets", []):
+        target = objects[target_id]
+        uses = target.get("packageProductDependencies", [])
+        require(isinstance(uses, list) and len(set(uses)) == len(uses) and set(uses) <= set(by_product),
+                "Unexpected or duplicate native package product dependency")
+        linked = set()
+        for phase_id in target.get("buildPhases", []):
+            phase = objects[phase_id]
+            for file_id in phase.get("files", []):
+                file = objects[file_id]
+                if "productRef" not in file:
+                    continue
+                product_id = file["productRef"]
+                require(phase.get("isa") == "PBXFrameworksBuildPhase" and set(file) == {"isa", "productRef"}
+                        and file.get("isa") == "PBXBuildFile" and product_id in by_product
+                        and product_id not in linked and file_id not in linked_files,
+                        "Unknown, duplicate, shared or conditional workspace package link")
+                linked.add(product_id)
+                linked_files.add(file_id)
+        require(set(uses) == linked, "Workspace package declarations and actual framework product links disagree")
+        for product_id in linked:
+            by_product[product_id]["consumers"].append(target_id)
+    require({key for key, value in objects.items() if "productRef" in value} == linked_files,
+            "Unowned workspace package product build files")
+    require(all(0 < len(spec["consumers"]) <= 1000 for spec in specs.values()), "Missing native workspace package consumers")
+    sanitized = copy.deepcopy(plist)
+    safe = sanitized["objects"]
+    safe[sanitized["rootObject"]]["packageReferences"] = []
+    for target_id in main.get("targets", []):
+        safe[target_id]["packageProductDependencies"] = []
+        for phase_id in safe[target_id].get("buildPhases", []):
+            phase = safe[phase_id]
+            phase["files"] = [f for f in phase.get("files", []) if f not in linked_files]
+    for ident in allowed | linked_files:
+        del safe[ident]
+    for spec in specs.values():
+        spec["consumers"].sort()
+    return sorted(specs.values(), key=lambda s: s["path"]), sanitized

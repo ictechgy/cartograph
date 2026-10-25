@@ -1,6 +1,15 @@
 import CartographCore
 import Foundation
 
+/// Foundation이 축약하는 macOS 임시 경로도 실제 filesystem 별칭인 경우에만 물리 신원으로 읽는다.
+enum XcodeEvidencePath {
+    static func physicalTemporaryAlias(_ path: String, fileSystem: any FileSystem) -> String {
+        guard path.hasPrefix("/tmp/") || path.hasPrefix("/var/folders/"),
+              let resolved = try? fileSystem.realPath(at: path), resolved == "/private" + path else { return path }
+        return resolved
+    }
+}
+
 /// 공유 값과 IO 경계를 분리해 consumer와 reader의 역방향 의존을 만들지 않는다.
 struct XcodeLocalPackageProofFile: Codable, Equatable {
     let sha256: String
@@ -36,5 +45,24 @@ enum XcodeLocalPackageIO {
 
     static func invalid(_ reason: String) -> CartographError {
         .invalidConfiguration(path: "xcode-local-package", reason: reason)
+    }
+}
+
+/// 상위 membership과 proof 타입을 역참조하지 않는 공통 입력 문법과 오류 계약이다.
+enum XcodeScopeInputRules {
+    static func relative(_ path: String) -> Bool {
+        !path.isEmpty && path.utf8.count <= 4_096 && !path.hasPrefix("/") && !path.contains("\\") && !path.contains(":")
+            && !path.contains("$(") && !path.contains("${")
+            && path.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
+            && path.split(separator: "/", omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
+    }
+
+    static func invalid(_ reason: String) -> CartographError {
+        .invalidConfiguration(path: "xcode-target-scope", reason: reason)
+    }
+
+    static func validTriple(_ triple: String, architecture: String, iosSimulator: Bool) -> Bool {
+        let suffix = iosSimulator ? #"-apple-ios[0-9]+(?:\.[0-9]+)*-simulator$"# : #"-apple-macos[0-9]+(?:\.[0-9]+)*$"#
+        return triple.range(of: "^" + architecture + suffix, options: .regularExpression) != nil
     }
 }

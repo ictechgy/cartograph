@@ -8,6 +8,8 @@ struct XcodeProjectMembership {
         let productType: String
         let sources: [String]
         let dependencies: [String]
+        var resources: [String] = []
+        var headers: [String] = []
     }
     struct FrameworkReference: Hashable { let sourceTree: String; let path: String }
     struct LocalPackage {
@@ -20,7 +22,13 @@ struct XcodeProjectMembership {
     let frameworks: Set<FrameworkReference>
     let packageConsumers: Set<String>
 
-    init(data: Data, root: String, localPackage: LocalPackage? = nil) throws {
+    init(targets: [String: Target], frameworks: Set<FrameworkReference>, packageConsumers: Set<String>) {
+        self.targets = targets
+        self.frameworks = frameworks
+        self.packageConsumers = packageConsumers
+    }
+
+    init(data: Data, root: String, localPackage: LocalPackage? = nil, iosSimulator: Bool = false, fileSystem: (any FileSystem)? = nil) throws {
         guard let plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
               let objects = plist["objects"] as? [String: [String: Any]], objects.count <= 50_000,
               let rootID = plist["rootObject"] as? String, let project = objects[rootID],
@@ -61,17 +69,18 @@ struct XcodeProjectMembership {
             }
             if let settings = object["buildSettings"] as? [String: Any] {
                 guard !settings.keys.contains(where: { key in
-                    key.contains("[") || (key == "SDKROOT" && settings[key] as? String != "macosx")
+                    key.contains("[") || (key == "SDKROOT" && !(iosSimulator ? ["iphoneos", "iphonesimulator"] : ["macosx"]).contains(settings[key] as? String ?? ""))
                         || (key == "LD_RUNPATH_SEARCH_PATHS" && !Self.validRunpaths(settings[key]!))
                         || ["EXCLUDED_SOURCE_FILE_NAMES", "INCLUDED_SOURCE_FILE_NAMES",
                         "SWIFT_OBJC_BRIDGING_HEADER", "GCC_PREFIX_HEADER", "SWIFT_EXEC", "SWIFT_DRIVER_SWIFT_FRONTEND_EXEC",
                         "CC", "CXX", "LD", "OTHER_SWIFT_FLAGS", "OTHER_LDFLAGS", "SWIFT_INCLUDE_PATHS",
                         "HEADER_SEARCH_PATHS", "FRAMEWORK_SEARCH_PATHS", "LIBRARY_SEARCH_PATHS", "DEVELOPER_DIR",
                          "CONFIGURATION_BUILD_DIR", "CONFIGURATION_TEMP_DIR", "BUILD_DIR", "BUILD_ROOT", "BUILT_PRODUCTS_DIR", "OBJROOT", "SYMROOT", "DSTROOT", "TARGET_BUILD_DIR", "TARGET_TEMP_DIR", "TEMP_DIR", "DERIVED_FILE_DIR", "SHARED_PRECOMPS_DIR", "INDEX_DATA_STORE_DIR", "TEST_HOST", "BUNDLE_LOADER", "TEST_TARGET_NAME", "LD_DYLIB_INSTALL_NAME", "DYLIB_INSTALL_NAME_BASE", "INFOPLIST_FILE", "INFOPLIST_PREFIX_HEADER", "CODE_SIGN_ENTITLEMENTS", "MODULEMAP_FILE", "MODULEMAP_PRIVATE_FILE"].contains(key)
+                        && !(iosSimulator && ["TEST_HOST", "BUNDLE_LOADER", "TEST_TARGET_NAME"].contains(key))
                         && !["", "$(inherited)"].contains(String(describing: settings[key]!))
                 }) else { throw Self.invalid("Conditional build settings or source filters leave membership unknown.") }
             }
-            guard object["baseConfigurationReference"] == nil else {
+            guard iosSimulator || object["baseConfigurationReference"] == nil else {
                 throw Self.invalid("External xcconfig evaluation is unsupported in this receipt version.")
             }
         }
@@ -91,6 +100,10 @@ struct XcodeProjectMembership {
                 for child in object["children"] as? [String] ?? [] { pending.append((child, combined, depth + 1)) }
             } else if kind == "PBXFileReference", !combined.isEmpty { paths[id] = combined }
         }
+        if iosSimulator {
+            guard let fileSystem else { throw Self.invalid("iOS inputs require an injected filesystem.") }
+            try XcodeIOSInputs.validateConfigurations(objects: objects, paths: paths, root: root, fileSystem: fileSystem)
+        }
         var targets: [String: Target] = [:]
         let productOwners = Dictionary(targetIDs.compactMap { id in
             (objects[id]?["productReference"] as? String).map { ($0, id) }
@@ -109,13 +122,13 @@ struct XcodeProjectMembership {
                 throw Self.invalid("Unsupported native target or build rule.")
             }
             if !(target["packageProductDependencies"] as? [String] ?? []).isEmpty { packageConsumers.insert(id) }
-            var sources: [String] = []
+            var sources: [String] = [], resources: [String] = [], headers: [String] = []
             for phaseID in target["buildPhases"] as? [String] ?? [] {
                 guard let phase = objects[phaseID], let kind = phase["isa"] as? String,
                       ["PBXSourcesBuildPhase", "PBXFrameworksBuildPhase", "PBXResourcesBuildPhase", "PBXHeadersBuildPhase"].contains(kind)
                 else { throw Self.invalid("Unsupported build phase.") }
                 let files = phase["files"] as? [String] ?? []
-                if ["PBXResourcesBuildPhase", "PBXHeadersBuildPhase"].contains(kind), !files.isEmpty {
+                if !iosSimulator, ["PBXResourcesBuildPhase", "PBXHeadersBuildPhase"].contains(kind), !files.isEmpty {
                     throw Self.invalid("Resource and header build phases are not modeled by this Swift-only receipt.")
                 }
                 for file in files {
@@ -135,6 +148,13 @@ struct XcodeProjectMembership {
                             throw Self.invalid("Source phase contains an external, generated or non-Swift file.")
                         }
                         sources.append(path)
+                    } else if kind == "PBXResourcesBuildPhase" || kind == "PBXHeadersBuildPhase" {
+                        guard let path = paths[ref], Self.relative(path), let fileSystem,
+                              try fileSystem.realPath(at: root + "/" + path) == root + "/" + path,
+                              fileSystem.fingerprintStamp(at: root + "/" + path)?.isRegularFile == true else {
+                            throw Self.invalid("iOS auxiliary inputs must be finite canonical local regular files.")
+                        }
+                        if kind == "PBXResourcesBuildPhase" { resources.append(path) } else { headers.append(path) }
                     } else if kind == "PBXFrameworksBuildPhase" {
                         guard let tree = objects[ref]?["sourceTree"] as? String,
                               ["SDKROOT", "DEVELOPER_DIR", "BUILT_PRODUCTS_DIR"].contains(tree) else {
@@ -144,7 +164,7 @@ struct XcodeProjectMembership {
                             throw Self.invalid("Absolute, escaping or macro framework paths are unsupported.")
                         }
                         if tree != "BUILT_PRODUCTS_DIR" {
-                            guard Self.systemFrameworkPath(tree: tree, path: path) else {
+                            guard Self.systemFrameworkPath(tree: tree, path: path, iosSimulator: iosSimulator) else {
                                 throw Self.invalid("Unsupported SDK/developer framework path.")
                             }
                             frameworks.insert(.init(sourceTree: tree, path: path))
@@ -166,7 +186,7 @@ struct XcodeProjectMembership {
             guard !sources.isEmpty, Set(sources).count == sources.count else {
                 throw Self.invalid("Each target must have nonempty, unique explicit Swift sources.")
             }
-            targets[id] = .init(name: name, productType: type, sources: sources.sorted(), dependencies: dependencies.sorted())
+            targets[id] = .init(name: name, productType: type, sources: sources.sorted(), dependencies: dependencies.sorted(), resources: resources.sorted(), headers: headers.sorted())
         }
         for (id, links) in linkedTargets {
             var closure: Set<String> = [], pending = targets[id]?.dependencies ?? []
@@ -193,22 +213,44 @@ struct XcodeProjectMembership {
         return values.map { $0.allSatisfy(allowed.contains) } ?? false
     }
 
-    static func systemFrameworkPath(tree: String, path: String) -> Bool {
+    static func systemFrameworkPath(tree: String, path: String, iosSimulator: Bool = false) -> Bool {
         let prefix = tree == "SDKROOT" ? "System/Library/Frameworks/"
-            : "Platforms/MacOSX.platform/Developer/Library/Frameworks/"
+            : (iosSimulator ? "Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks/" : "Platforms/MacOSX.platform/Developer/Library/Frameworks/")
         return relative(path) && path.hasPrefix(prefix) && !path.dropFirst(prefix.count).contains("/")
             && path.hasSuffix(".framework")
     }
 
     static func relative(_ path: String) -> Bool {
-        !path.isEmpty && path.utf8.count <= 4_096 && !path.hasPrefix("/") && !path.contains("\\") && !path.contains(":")
-            && !path.contains("$(") && !path.contains("${")
-            && path.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
-            && path.split(separator: "/", omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
+        XcodeScopeInputRules.relative(path)
     }
 
     static func invalid(_ reason: String) -> CartographError {
-        .invalidConfiguration(path: "xcode-target-scope", reason: reason)
+        XcodeScopeInputRules.invalid(reason)
+    }
+}
+
+/// UTF-8만 해석하여 UTF-16/32에 숨은 DTD와 entity를 원문 검사에서 놓치지 않는다.
+enum XcodeXMLInput {
+    static func text(_ data: Data) throws -> String {
+        guard data.count <= 1_024 * 1_024, let text = String(data: data, encoding: .utf8), !text.contains("\0") else {
+            throw XcodeProjectMembership.invalid("Only bounded NUL-free UTF-8 XML is supported.")
+        }
+        let upper = text.uppercased()
+        guard !upper.contains("<!DOCTYPE"), !upper.contains("<!ENTITY") else {
+            throw XcodeProjectMembership.invalid("XML DTD/entities are unsupported.")
+        }
+        let body = text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("<?xml"), let end = trimmed.range(of: "?>") {
+            let header = String(trimmed[..<end.lowerBound])
+            let pattern = try NSRegularExpression(pattern: #"(?i)\bencoding\s*=\s*(['"])(.*?)\1"#)
+            for match in pattern.matches(in: header, range: NSRange(header.startIndex..., in: header)) {
+                guard let range = Range(match.range(at: 2), in: header), header[range].uppercased() == "UTF-8" else {
+                    throw XcodeProjectMembership.invalid("Only declared UTF-8 XML is supported.")
+                }
+            }
+        }
+        return text
     }
 }
 
@@ -220,14 +262,13 @@ final class XcodeSchemeMembership: NSObject, XMLParserDelegate {
     var hasUnsupportedActions = false
     private var inTestable = false
     private var project = ""
+    private var projects: Set<String>? = nil
 
-    static func read(_ data: Data, project: String) throws -> XcodeSchemeMembership {
-        let text = String(decoding: data, as: UTF8.self).uppercased()
-        guard !text.contains("<!DOCTYPE"), !text.contains("<!ENTITY") else {
-            throw XcodeProjectMembership.invalid("XML entities are unsupported.")
-        }
+    static func read(_ data: Data, project: String, projects: [String]? = nil) throws -> XcodeSchemeMembership {
+        _ = try XcodeXMLInput.text(data)
         let collector = XcodeSchemeMembership()
         collector.project = project
+        collector.projects = projects.map(Set.init)
         let parser = XMLParser(data: data)
         parser.shouldResolveExternalEntities = false
         parser.delegate = collector
@@ -248,12 +289,13 @@ final class XcodeSchemeMembership: NSObject, XMLParserDelegate {
             inTestable = true
             if attributes["skipped"] != "NO" { hasUnsupportedActions = true }
         }
-        if name == "BuildableReference", attributes["ReferencedContainer"] != "container:" + project {
-            hasUnsupportedActions = true
-        }
+        let container = attributes["ReferencedContainer"] ?? ""
+        let path = container.hasPrefix("container:") ? String(container.dropFirst("container:".count)) : ""
+        let validContainer = projects?.contains(path) ?? (container == "container:" + project)
+        if name == "BuildableReference", !validContainer { hasUnsupportedActions = true }
         if name == "BuildableReference", inTestable {
-            guard attributes["ReferencedContainer"] == "container:" + project,
-                  let id = attributes["BlueprintIdentifier"], targets.insert(id).inserted else {
+            guard validContainer, let id = attributes["BlueprintIdentifier"],
+                  targets.insert(projects == nil ? id : path + "::" + id).inserted else {
                 hasUnsupportedActions = true
                 return
             }

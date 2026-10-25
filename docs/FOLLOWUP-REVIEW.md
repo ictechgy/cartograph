@@ -1,6 +1,6 @@
 # Scoped review, readable limits and preparation status
 
-These are additive options in the unpublished 0.29.0 candidate. Existing full
+These are additive options in the 0.29.0 source. Existing full
 reports and default analysis behavior remain unchanged. They do not prove that
 tests may be omitted or declarations deleted.
 
@@ -99,3 +99,28 @@ The original `cartograph_status` and queries may still block during their own wo
 Native regressions use synthetic packages and the frozen first-feedback commit
 `fae3c24b1776af8d75151663821f8ff221d928f8`. They do not revalidate the reported private
 22-project workspace or establish macOS 14 runtime compatibility.
+
+
+## Local follow-up: bounded linker response evidence and cold baseline preparation
+
+A native Xcode 26.6 two-package capture refused a package contribution. Its recorded
+linker argv named a response document and had no direct aggregate operand. Actual
+response bytes were not archived; a controlled counterexample demonstrated the
+producer/consumer gap. Fresh native evidence is still required for that CI variant.
+The Python producer now expands only confined, bounded, hash-recorded response
+bytes for the operand join, matching the existing Swift consumer. It retains the
+original argv, rejects nested/relative/oversized/changed response documents and
+duplicate protected options, and still requires actual object bytes and positive
+live link-map owners. A response token alone is never sufficient contribution.
+No response file, manifest or loader is executed.
+
+The exact pre-query baseline's cold release build hit its 600-second setup limit
+while compiling SwiftSyntax/CartographSyntax. Its preparation budget is now the
+same bounded 1,500 seconds / three jobs as candidate and comparator preparation,
+with a 35-minute owning step/job bound. Producer and artifact-admission contracts
+must agree on that budget; older 600-second or changed budgets are refused.
+Build failures, timeout rc124, source/toolchain hashes and failure receipts remain
+required. Runtime query repetitions, performance thresholds and fail-closed
+preparation prerequisites are unchanged. This setup allowance does not establish
+performance improvement, and a successful cold build/native run is recorded
+separately from portable contract tests.
