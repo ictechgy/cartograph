@@ -211,7 +211,7 @@ struct XcodeLocalPackageEvidence: Codable {
               try XcodeLocalPackageIO.argument("-output-file-map", in: argv) == compilation.outputMap,
               try XcodeLocalPackageIO.argument("-index-store-path", in: argv) == reader.indexStore,
               try XcodeLocalPackageIO.argument("-target", in: argv) == compilation.targetTriple,
-              XcodeIOSScopeEvidence.validTriple(compilation.targetTriple, architecture: architecture, iosSimulator: iosSimulator),
+              XcodeScopeInputRules.validTriple(compilation.targetTriple, architecture: architecture, iosSimulator: iosSimulator),
               argv.filter({ $0 == "@" + compilation.sourceFileList }).count == 1,
               Set(try reader.fileList(compilation.sourceFileList)) == sources else {
             throw XcodeLocalPackageIO.invalid("Compiler module, target, source file list or output-map identity is inconsistent.")
@@ -281,7 +281,7 @@ struct XcodeLocalPackageEvidence: Codable {
         guard try XcodeLocalPackageIO.argument("-o", in: argv) == link.output,
               try XcodeLocalPackageIO.argument("-map", in: argv) == link.linkMap,
               argv.contains("-r") == relocatable,
-              XcodeIOSScopeEvidence.validTriple(try XcodeLocalPackageIO.argument("-target", in: argv), architecture: architecture, iosSimulator: iosSimulator) else {
+              XcodeScopeInputRules.validTriple(try XcodeLocalPackageIO.argument("-target", in: argv), architecture: architecture, iosSimulator: iosSimulator) else {
             throw XcodeLocalPackageIO.invalid("Actual linker operands differ from the recorded link step.")
         }
         var inputs = Set(try reader.fileList(link.fileList))

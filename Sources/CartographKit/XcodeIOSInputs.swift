@@ -7,15 +7,15 @@ enum XcodeIOSInputs {
                                        fileSystem: any FileSystem) throws {
         var visited: Set<String> = [], active: Set<String> = [], total = 0
         func read(_ path: String, depth: Int) throws {
-            guard depth <= 16, XcodeProjectMembership.relative(path), !active.contains(path) else {
-                throw XcodeProjectMembership.invalid("xcconfig include path, depth or cycle is unsupported.")
+            guard depth <= 16, XcodeScopeInputRules.relative(path), !active.contains(path) else {
+                throw XcodeScopeInputRules.invalid("xcconfig include path, depth or cycle is unsupported.")
             }
             if visited.contains(path) { return }
-            guard visited.count < 64 else { throw XcodeProjectMembership.invalid("xcconfig include budget exceeded.") }
+            guard visited.count < 64 else { throw XcodeScopeInputRules.invalid("xcconfig include budget exceeded.") }
             let data = try XcodeLocalPackageIO.bounded(root + "/" + path, maximum: 64 * 1_024, fileSystem: fileSystem)
             total += data.count
             guard total <= 1_024 * 1_024, let text = String(data: data, encoding: .utf8), !text.contains("\0") else {
-                throw XcodeProjectMembership.invalid("xcconfig byte budget or encoding is unsupported.")
+                throw XcodeScopeInputRules.invalid("xcconfig byte budget or encoding is unsupported.")
             }
             active.insert(path)
             for raw in text.components(separatedBy: .newlines) {
@@ -27,20 +27,20 @@ enum XcodeIOSInputs {
                     try read([parent, name].filter { !$0.isEmpty }.joined(separator: "/"), depth: depth + 1)
                     continue
                 }
-                guard let equal = line.firstIndex(of: "=") else { throw XcodeProjectMembership.invalid("Unsupported xcconfig directive.") }
+                guard let equal = line.firstIndex(of: "=") else { throw XcodeScopeInputRules.invalid("Unsupported xcconfig directive.") }
                 let key = line[..<equal].trimmingCharacters(in: .whitespaces)
                 let value = line[line.index(after: equal)...].trimmingCharacters(in: .whitespaces)
                 guard ["SWIFT_ACTIVE_COMPILATION_CONDITIONS", "GCC_PREPROCESSOR_DEFINITIONS"].contains(key),
                       !value.isEmpty, value.replacingOccurrences(of: "$(inherited)", with: "").unicodeScalars.allSatisfy({
                         CharacterSet.alphanumerics.contains($0) || "_ =\t".unicodeScalars.contains($0)
-                      }) else { throw XcodeProjectMembership.invalid("Only literal compilation definitions are supported in iOS xcconfig inputs.") }
+                      }) else { throw XcodeScopeInputRules.invalid("Only literal compilation definitions are supported in iOS xcconfig inputs.") }
             }
             active.remove(path); visited.insert(path)
         }
         for object in objects.values {
             if let reference = object["baseConfigurationReference"] {
                 guard let id = reference as? String, let path = paths[id], path.hasSuffix(".xcconfig") else {
-                    throw XcodeProjectMembership.invalid("xcconfig reference is not a canonical local group member.")
+                    throw XcodeScopeInputRules.invalid("xcconfig reference is not a canonical local group member.")
                 }
                 try read(path, depth: 0)
             }

@@ -221,14 +221,11 @@ struct XcodeProjectMembership {
     }
 
     static func relative(_ path: String) -> Bool {
-        !path.isEmpty && path.utf8.count <= 4_096 && !path.hasPrefix("/") && !path.contains("\\") && !path.contains(":")
-            && !path.contains("$(") && !path.contains("${")
-            && path.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
-            && path.split(separator: "/", omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
+        XcodeScopeInputRules.relative(path)
     }
 
     static func invalid(_ reason: String) -> CartographError {
-        .invalidConfiguration(path: "xcode-target-scope", reason: reason)
+        XcodeScopeInputRules.invalid(reason)
     }
 }
 

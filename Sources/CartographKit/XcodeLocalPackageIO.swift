@@ -47,3 +47,22 @@ enum XcodeLocalPackageIO {
         .invalidConfiguration(path: "xcode-local-package", reason: reason)
     }
 }
+
+/// 상위 membership과 proof 타입을 역참조하지 않는 공통 입력 문법과 오류 계약이다.
+enum XcodeScopeInputRules {
+    static func relative(_ path: String) -> Bool {
+        !path.isEmpty && path.utf8.count <= 4_096 && !path.hasPrefix("/") && !path.contains("\\") && !path.contains(":")
+            && !path.contains("$(") && !path.contains("${")
+            && path.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
+            && path.split(separator: "/", omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
+    }
+
+    static func invalid(_ reason: String) -> CartographError {
+        .invalidConfiguration(path: "xcode-target-scope", reason: reason)
+    }
+
+    static func validTriple(_ triple: String, architecture: String, iosSimulator: Bool) -> Bool {
+        let suffix = iosSimulator ? #"-apple-ios[0-9]+(?:\.[0-9]+)*-simulator$"# : #"-apple-macos[0-9]+(?:\.[0-9]+)*$"#
+        return triple.range(of: "^" + architecture + suffix, options: .regularExpression) != nil
+    }
+}

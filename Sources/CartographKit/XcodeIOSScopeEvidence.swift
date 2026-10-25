@@ -1,6 +1,15 @@
 import CartographCore
 import Foundation
 
+/// Store는 필요한 값만 전달하며, iOS proof는 Store의 receipt 타입을 다시 참조하지 않는다.
+struct XcodeIOSScopeContext {
+    let projectRoot: String
+    let architecture: String
+    let products: [String: String]
+    let after: [String: String]
+    let packages: [XcodeLocalPackageEvidence]
+}
+
 /// v4만 iOS Simulator를 허용한다. 앱 코드 이미지와 호스트 stub의 바이트·load edge를 별도로 묶는다.
 struct XcodeIOSScopeEvidence: Codable {
     let platform: String
@@ -20,11 +29,6 @@ struct XcodeIOSScopeEvidence: Codable {
     }
     struct Resource: Codable, Hashable { let targetID: String; let source: String; let output: String }
 
-    static func validTriple(_ triple: String, architecture: String, iosSimulator: Bool) -> Bool {
-        let suffix = iosSimulator ? #"-apple-ios[0-9]+(?:\.[0-9]+)*-simulator$"# : #"-apple-macos[0-9]+(?:\.[0-9]+)*$"#
-        return triple.range(of: "^" + architecture + suffix, options: .regularExpression) != nil
-    }
-
     func validateAdmissions(_ admissions: [SourceRecordAdmission], root: String, fileSystem: any FileSystem) throws {
         for target in targets {
             for record in target.records {
@@ -39,7 +43,7 @@ struct XcodeIOSScopeEvidence: Codable {
         }
     }
 
-    func validate(receipt: XcodeTargetScopeStore.Receipt, project: XcodeProjectMembership, closure: Set<String>,
+    func validate(context: XcodeIOSScopeContext, project: XcodeProjectMembership, closure: Set<String>,
                   settings: [String: [String: String]], buildRoot: String, fileSystem: any FileSystem) throws {
         guard platform == "ios-simulator", !targets.isEmpty, targets.count <= 1_000,
               Set(targets.map(\.targetID)) == closure, Set(targets.map(\.targetID)).count == targets.count,
@@ -61,18 +65,18 @@ struct XcodeIOSScopeEvidence: Codable {
                   values["PLATFORM_NAME"] == "iphonesimulator", values["SDK_NAME"] == "iphonesimulator" + sdk,
                   native.executable == directory + "/" + executable,
                   native.infoPlist == directory + "/" + product + "/Info.plist",
-                  Set(native.compilations.map(\.source)) == Set(target.sources.map { receipt.projectRoot + "/" + $0 }),
+                  Set(native.compilations.map(\.source)) == Set(target.sources.map { context.projectRoot + "/" + $0 }),
                   native.compilations.count == target.sources.count, native.records.count == target.sources.count,
                   Set(native.records.map(\.source)) == Set(native.compilations.map(\.source)),
                   Set(native.compilations.map(\.object)).count == native.compilations.count else {
                 throw XcodeLocalPackageIO.invalid("iOS target compiler, SDK, source membership or executable binding differs.")
             }
             let sdkIdentity = try XcodeIOSSDKIdentity(settings: values, fileSystem: fileSystem)
-            let triple = receipt.architecture + "-apple-ios" + minimum + "-simulator"
+            let triple = context.architecture + "-apple-ios" + minimum + "-simulator"
             for compilation in native.compilations {
                 guard compilation.targetTriple == triple else { throw XcodeLocalPackageIO.invalid("iOS native compilation deployment target differs.") }
                 try XcodeLocalPackageEvidence.validateCompilation(compilation,
-                    sources: Set(native.compilations.map(\.source)), module: module, architecture: receipt.architecture,
+                    sources: Set(native.compilations.map(\.source)), module: module, architecture: context.architecture,
                     iosSimulator: true, reader: &reader)
                 let argv = try reader.arguments(compilation.argv, sourceFileList: compilation.sourceFileList)
                 guard try sdkIdentity.matches(XcodeLocalPackageIO.argument("-sdk", in: argv), fileSystem: fileSystem) else {
@@ -81,7 +85,7 @@ struct XcodeIOSScopeEvidence: Codable {
             }
             try XcodeLocalPackageEvidence.validateRecords(native.records, compilations: native.compilations, indexStore: indexStore, reader: &reader, fileSystem: fileSystem)
             _ = try XcodeLocalPackageEvidence.validateLink(native.link, required: Set(native.compilations.map(\.object)),
-                architecture: receipt.architecture, relocatable: false, iosSimulator: true,
+                architecture: context.architecture, relocatable: false, iosSimulator: true,
                 allowedRepeatedOwners: nativeAppImages, reader: &reader)
             let linkArgs = try reader.arguments(native.link.argv, sourceFileList: native.link.fileList)
             guard try XcodeLocalPackageIO.argument("-target", in: linkArgs) == triple,
@@ -91,10 +95,10 @@ struct XcodeIOSScopeEvidence: Codable {
             let info = try PropertyListSerialization.propertyList(from: reader.read(native.infoPlist, kind: "document"), format: nil) as? [String: Any]
             guard info?["CFBundleExecutable"] as? String == (executable as NSString).lastPathComponent,
                   info?["CFBundleIdentifier"] as? String == values["PRODUCT_BUNDLE_IDENTIFIER"],
-                  receipt.products[native.infoPlist] == files[native.infoPlist]?.sha256 else {
+                  context.products[native.infoPlist] == files[native.infoPlist]?.sha256 else {
                 throw XcodeLocalPackageIO.invalid("iOS bundle metadata differs from its target executable identity.")
             }
-            let codeImage = try image(native.link.output, receipt: receipt, reader: &reader)
+            let codeImage = try image(native.link.output, context: context, reader: &reader)
             guard codeImage.minimum == XcodeIOSMachO.version(minimum), codeImage.sdk == XcodeIOSMachO.version(sdk) else {
                 throw XcodeLocalPackageIO.invalid("iOS image build version differs from effective SDK/deployment settings.")
             }
@@ -120,8 +124,8 @@ struct XcodeIOSScopeEvidence: Codable {
                 // executor archive는 source 범위 증거로 쓰지 않는다. filelist는 캡처 내부 문서로만 묶는다.
                 _ = try reader.read(host.fileList, kind: "document")
                 try XcodeLinkMapEvidence.validate(try reader.read(host.linkMap, kind: "document"), output: host.output,
-                    architecture: receipt.architecture, required: [], fileSystem: fileSystem)
-                let stub = try image(host.output, receipt: receipt, reader: &reader)
+                    architecture: context.architecture, required: [], fileSystem: fileSystem)
+                let stub = try image(host.output, context: context, reader: &reader)
                 guard stub.fileType == 2, stub.minimum == codeImage.minimum, stub.sdk == codeImage.sdk,
                       stub.loads.contains(identity), stub.runpaths.contains("@executable_path") || stub.runpaths.contains("@loader_path") else {
                     throw XcodeLocalPackageIO.invalid("iOS host stub lacks the bounded strong debug-dylib load edge.")
@@ -133,16 +137,16 @@ struct XcodeIOSScopeEvidence: Codable {
                 }
             }
             // 각 모듈의 배포 하한은 같을 필요가 없다. package 15 → host 18은 정상이며 반대는 거부한다.
-            for package in receipt.packages where package.consumers.contains(native.targetID) {
+            for package in context.packages where package.consumers.contains(native.targetID) {
                 guard let value = package.compilations.first?.targetTriple,
-                      Self.validTriple(value, architecture: receipt.architecture, iosSimulator: true),
-                      let packageMinimum = XcodeIOSMachO.version(String(value.dropFirst((receipt.architecture + "-apple-ios").count).dropLast("-simulator".count))),
+                      XcodeScopeInputRules.validTriple(value, architecture: context.architecture, iosSimulator: true),
+                      let packageMinimum = XcodeIOSMachO.version(String(value.dropFirst((context.architecture + "-apple-ios").count).dropLast("-simulator".count))),
                       packageMinimum <= codeImage.minimum else { throw XcodeLocalPackageIO.invalid("Package deployment minimum is incompatible with its native consumer.") }
             }
             for resource in target.resources {
                 let output = directory + "/" + product + "/" + (resource as NSString).lastPathComponent
                 let row = Resource(targetID: native.targetID, source: resource, output: output)
-                guard receipt.after[resource] == receipt.products[output], receipt.products[output] != nil else {
+                guard context.after[resource] == context.products[output], context.products[output] != nil else {
                     throw XcodeLocalPackageIO.invalid("A plain resource copy differs from its complete captured input/bundle bytes.")
                 }
                 expectedResources.insert(row)
@@ -161,13 +165,13 @@ struct XcodeIOSScopeEvidence: Codable {
         }.map { $0.link.output })
     }
 
-    private func image(_ path: String, receipt: XcodeTargetScopeStore.Receipt, reader: inout XcodeLocalPackageReader) throws -> XcodeIOSMachO {
+    private func image(_ path: String, context: XcodeIOSScopeContext, reader: inout XcodeLocalPackageReader) throws -> XcodeIOSMachO {
         _ = try reader.read(path, kind: "object")
         let data = try XcodeLocalPackageIO.bounded(path, maximum: 64 * 1_024 * 1_024, fileSystem: reader.fileSystem)
-        guard receipt.products[path] == files[path]?.sha256, TargetScopeStore.digest(data) == files[path]?.sha256 else {
+        guard context.products[path] == files[path]?.sha256, TargetScopeStore.digest(data) == files[path]?.sha256 else {
             throw XcodeLocalPackageIO.invalid("iOS image bytes differ from captured whole products and link proof.")
         }
-        return try XcodeIOSMachO(data, architecture: receipt.architecture)
+        return try XcodeIOSMachO(data, architecture: context.architecture)
     }
 }
 

@@ -22,8 +22,13 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
 - Prepare the v4 iOS Simulator source/producer connection without operating devices.
   Corrected sources compile and pass the Swift tests and coverage gate. Preserve workspace
   xcconfig identities through the Python producer as well as the Swift consumer, with
-  merge-to-membership regressions. Native receipt consumption and hosted test execution
-  remain pending.
+  merge-to-membership regressions. Generic SDK capture and actual CLI/MCP consumption pass
+  for a controlled app-hosted XCTest/local-package fixture, including malformed proof and
+  same-mtime record rejection. Hosted execution and general/private workspace acceptance
+  remain pending; this source profile has not been published.
+- Keep shared input syntax and the five-value iOS validation context independent of the
+  membership and receipt store, removing the draft's two strict type cycles without
+  changing the receipt format or refusal conditions.
 
 ### Added
 

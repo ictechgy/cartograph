@@ -272,14 +272,14 @@ permission to skip the rest of a test suite.
 
 ## iOS Simulator v4 development draft
 
-The v4 source changes remain a **development draft**, not established iOS support.
-The corrected sources compile and pass 2,668 Swift tests and instrumented CLI integration;
-source coverage is 93.17%. Independent review identified a workspace xcconfig identity
-mapping gap, now covered by merge-to-membership regressions with literal includes and
-execution/path/cycle rejection controls. A complete native v4 capture and CLI/MCP
-consumption remain pending. Earlier generic SDK builds establish only that the public
-synthetic app can compile. They do not validate this consumer implementation or prove
-that a selected test executes.
+The v4 source changes remain an **unpublished development profile**. The corrected sources
+pass 2,671 Swift tests and instrumented CLI integration with source coverage above the 90% gate.
+A controlled app-hosted XCTest fixture with a local package, resource and finite xcconfig
+include passes generic SDK capture, CLI/MCP consumption and 15 additional acceptance checks.
+The original fixture's two unbuilt source paths refuse narrowing with empty selector output.
+Updated checksums cannot admit a malformed image or dead required object, and same-mtime
+record corruption invalidates an already prepared MCP session even if the receipt hash changes.
+These checks do not execute a selected test or establish general iOS workspace support.
 
 The intended opt-in profile is `--workspace Example.xcworkspace --ios-simulator`.
 It uses only `generic/platform=iOS Simulator` with `build-for-testing`, does not select or
@@ -297,6 +297,12 @@ xcconfig evaluation remain unsupported. A finite local include closure may conta
 literal Swift/C compilation definitions; custom compiler commands, external includes,
 conditional settings, scripts and plugins still fail closed before a build.
 
+SDKROOT and SDK_DIR must name the same actual SDK using only Xcode's unversioned and
+effective-version SDK names. Arbitrary aliases do not qualify. Repeated linker owner paths
+are accepted only for application images that also pass the complete native proof; required
+source objects and unbound images retain the duplicate-owner refusal.
+
 None of this establishes actual iOS Simulator execution, `-only-testing` acceptance,
-UI-test support, correctness on the private 22-project workspace, or safe omission of tests.
+UI-test support, native framework/static-library target support in this v4 profile,
+correctness on the private 22-project workspace, or safe omission of tests.
 The existing macOS v1/v2/v3 profile keeps its destination, non-app host and input restrictions.

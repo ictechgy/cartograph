@@ -199,7 +199,9 @@ struct XcodeTargetScopeStore {
         }
         try validateLocalPackage()
         func validateIOS() throws {
-            try receipt.ios?.validate(receipt: receipt, project: project, closure: closure,
+            let context = XcodeIOSScopeContext(projectRoot: receipt.projectRoot, architecture: receipt.architecture,
+                products: receipt.products, after: receipt.after, packages: receipt.packages)
+            try receipt.ios?.validate(context: context, project: project, closure: closure,
                 settings: Dictionary(settings.map { ($0.target, $0.buildSettings) }, uniquingKeysWith: { first, _ in first }),
                 buildRoot: String(productRoot.dropLast("/Products".count)), fileSystem: fileSystem)
         }
