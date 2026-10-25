@@ -20,8 +20,10 @@ This is the unpublished 0.29.0 candidate. The latest published release remains 0
 ### Development draft (not validation-complete)
 
 - Prepare the v4 iOS Simulator source/producer connection without operating devices.
-  The integration build reported two compile errors; fixes are uncompiled after a subsequent
-  build rejection. Native receipt consumption, coverage and hosted test execution are pending.
+  Corrected sources compile and pass the Swift tests and coverage gate. Preserve workspace
+  xcconfig identities through the Python producer as well as the Swift consumer, with
+  merge-to-membership regressions. Native receipt consumption and hosted test execution
+  remain pending.
 
 ### Added
 

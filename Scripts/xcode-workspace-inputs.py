@@ -62,7 +62,8 @@ def projects(data):
 
 REFERENCE_KEYS = {"children", "files", "buildPhases", "dependencies", "targets", "buildConfigurationList",
                   "buildConfigurations", "productReference", "mainGroup", "productRefGroup", "fileRef",
-                  "productRef", "package", "containerPortal", "targetProxy", "target", "remoteRef"}
+                  "productRef", "package", "containerPortal", "targetProxy", "target", "remoteRef",
+                  "baseConfigurationReference"}
 
 
 def merge(plists):

@@ -272,12 +272,14 @@ permission to skip the rest of a test suite.
 
 ## iOS Simulator v4 development draft
 
-The v4 source changes are an **uncompiled development draft**, not established iOS support.
-The integration build ran and reported two compile errors; those source causes were edited,
-but a subsequent build was rejected before execution. Swift unit tests, a complete native v4
-capture, CLI/MCP consumption, coverage and independent review remain pending. Earlier generic
-SDK builds establish only that the public synthetic app can compile. They do not validate
-this consumer implementation or prove that a selected test executes.
+The v4 source changes remain a **development draft**, not established iOS support.
+The corrected sources compile and pass 2,668 Swift tests and instrumented CLI integration;
+source coverage is 93.17%. Independent review identified a workspace xcconfig identity
+mapping gap, now covered by merge-to-membership regressions with literal includes and
+execution/path/cycle rejection controls. A complete native v4 capture and CLI/MCP
+consumption remain pending. Earlier generic SDK builds establish only that the public
+synthetic app can compile. They do not validate this consumer implementation or prove
+that a selected test executes.
 
 The intended opt-in profile is `--workspace Example.xcworkspace --ios-simulator`.
 It uses only `generic/platform=iOS Simulator` with `build-for-testing`, does not select or

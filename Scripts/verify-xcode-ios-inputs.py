@@ -22,6 +22,7 @@ def load(name):
 
 
 SCOPE, IOS = load("cartograph-xcode-scope"), load("xcode-ios-scope")
+WORKSPACE = load("xcode-workspace-inputs")
 
 
 class Inputs(unittest.TestCase):
@@ -37,6 +38,10 @@ class Inputs(unittest.TestCase):
 
     def member(self):
         return SCOPE.membership(self.plist, ios_simulator=True, root=self.root)
+
+    def workspace_member(self):
+        merged = WORKSPACE.merge({"Fixture.xcodeproj": self.plist})
+        return SCOPE.membership(merged, ios_simulator=True, root=self.root)
 
     def auxiliary(self, suffix, phase):
         main = self.objects[self.plist["rootObject"]]
@@ -84,6 +89,26 @@ class Inputs(unittest.TestCase):
         self.configuration('#include "Definitions.xcconfig"\nSWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) IOS_SCOPE\n')
         (self.root / "Definitions.xcconfig").write_text("GCC_PREPROCESSOR_DEFINITIONS = $(inherited) PROBE=1\n")
         self.assertTrue(self.member())
+
+    def test_workspace_literal_configuration_include_is_accepted(self):
+        self.configuration('#include "Definitions.xcconfig"\nSWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) IOS_SCOPE\n')
+        (self.root / "Definitions.xcconfig").write_text("GCC_PREPROCESSOR_DEFINITIONS = $(inherited) PROBE=1\n")
+        self.assertTrue(self.workspace_member())
+
+    def test_workspace_configuration_rejects_execution_escape_and_cycle(self):
+        for text, reason in (("SWIFT_EXEC = /tmp/not-executed\n", "Only literal compilation definitions"),
+                             ('#include "../outside.xcconfig"\n', "Unsupported xcconfig include path"),
+                             ("SWIFT_ACTIVE_COMPILATION_CONDITIONS = ${COMPUTED}\n", "Only literal compilation definitions"),
+                             ('#include "Build.xcconfig"\n', "Unsupported xcconfig include path")):
+            with self.subTest(text=text):
+                objects = copy.deepcopy(self.objects)
+                self.configuration(text)
+                try:
+                    with self.assertRaisesRegex(ValueError, reason):
+                        self.workspace_member()
+                finally:
+                    self.objects.clear()
+                    self.objects.update(objects)
 
     def test_configuration_never_executes_program_or_expands_escape(self):
         for text in ("SWIFT_EXEC = /tmp/not-executed\n", '#include "../outside.xcconfig"\n',
