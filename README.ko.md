@@ -65,12 +65,12 @@ Cartograph의 문장은 *"의존성 그래프를 내놓는다"*이며, 미사용
 
 ## 설치
 
-2026-11-01 확인: GitHub [0.29.0](https://github.com/ictechgy/cartograph/releases/tag/0.29.0)이 발행됐다. Homebrew 배포 여부는 별도로 확인한다. 소스 검증은 [기여 안내](CONTRIBUTING.md)를 따른다.
+2026-11-01 확인: GitHub [0.29.0](https://github.com/ictechgy/cartograph/releases/tag/0.29.0)이 발행됐다. Homebrew 배포 여부는 별도로 확인한다. 소스 검증은 [기여 안내](https://github.com/ictechgy/cartograph/blob/main/CONTRIBUTING.md)를 따른다.
 
 발행된 CLI 버전과 내려받을 바이너리는
 [GitHub Releases](https://github.com/ictechgy/cartograph/releases)에서 확인하세요.
 아래 버전 고정 설치 예시는 재현성을 위해 발행된
-[**0.28.0**](https://github.com/ictechgy/cartograph/releases/tag/0.28.0)을 사용하며,
+[**0.29.0**](https://github.com/ictechgy/cartograph/releases/tag/0.29.0)을 사용하며,
 발행 여부를 확인한 버전으로만 바꾸세요.
 소스 체크아웃의 `--version`은 소스 버전을 나타내며 배포 파일의 존재를 보장하지 않습니다.
 0.25.1은 소스에서 준비됐지만 발행되지 않았습니다. 포함된 변경은 [CHANGELOG.md](CHANGELOG.md)를 보세요.
@@ -2112,7 +2112,7 @@ universal archive를 검증했으며, [tap 갱신](https://github.com/ictechgy/h
 
 ## 기여
 
-[CONTRIBUTING.md](CONTRIBUTING.md)를 보세요. 이 저장소에서 작업하는 에이전트는
+[CONTRIBUTING.md](https://github.com/ictechgy/cartograph/blob/main/CONTRIBUTING.md)를 보세요. 이 저장소에서 작업하는 에이전트는
 [AGENTS.md](AGENTS.md)를 먼저 읽어야 합니다.
 
 ## Workspace와 로컬 패키지의 인덱스 범위

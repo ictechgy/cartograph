@@ -59,7 +59,7 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 
 ## Install
 
-Verified on 2026-11-01: GitHub release [0.29.0](https://github.com/ictechgy/cartograph/releases/tag/0.29.0) is published. Homebrew availability is tracked separately. See [Contributing](CONTRIBUTING.md) for source validation.
+Verified on 2026-11-01: GitHub release [0.29.0](https://github.com/ictechgy/cartograph/releases/tag/0.29.0) is published. Homebrew availability is tracked separately. See [Contributing](https://github.com/ictechgy/cartograph/blob/main/CONTRIBUTING.md) for source validation.
 
 Check [GitHub Releases](https://github.com/ictechgy/cartograph/releases) for published CLI versions
 and available binary assets. The versioned install examples below pin published
@@ -2196,7 +2196,7 @@ either language.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Agents working in this repository should read
+See [CONTRIBUTING.md](https://github.com/ictechgy/cartograph/blob/main/CONTRIBUTING.md). Agents working in this repository should read
 [AGENTS.md](AGENTS.md) first.
 
 For the actual pinned IndexStoreDB CLI comparator, independent expected answers, setup costs and
