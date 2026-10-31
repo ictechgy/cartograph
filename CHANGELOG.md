@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- Keep value-flow value and origin budget states absorbing across later joins.
+- Count nominal types and protocols in Martin abstractness, excluding type aliases
+  and associated types without changing graph projection or retention semantics.
+- Locate layer violations at observed references rather than source declarations;
+  missing reference locations remain unknown.
+
 ## [0.29.0] - 2026-10-25
 
 - Add opt-in bounded Xcode affected-test captures with explicit scheme/test-plan target membership,

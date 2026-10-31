@@ -84,7 +84,7 @@ struct LayerRuleProjectPathsTests {
         var snapshot = SnapshotBuilder()
         snapshot.symbol("Screen", kind: .structType, module: "App", path: "/physical/Features/Screen.swift")
         snapshot.symbol("Store", kind: .structType, module: "App", path: "/physical/Data/Store.swift")
-        snapshot.reference(from: "Screen", to: "Store", kind: .call, path: "/physical/Features/Screen.swift")
+        snapshot.reference(from: "Screen", to: "Store", kind: .call, path: "/physical/Features/Screen.swift", line: 42)
         var configuration = CartographConfiguration.default
         configuration.projectPath = "/virtual/link"
         configuration.layers = [
@@ -96,6 +96,9 @@ struct LayerRuleProjectPathsTests {
         ))
         let outcome = try service.checkRules(level: .type)
         #expect(outcome.findingCount == 1)
+        let context = try service.loadContext()
+        let assessed = try service.layerViolations(in: context, level: .type)
+        #expect(assessed.violations.first?.location?.line == 42)
         let explained = try service.explainRules(of: "Screen", level: .type)
         #expect(explained.output.contains("is in layer 'UI'"))
         #expect(explained.output.contains("matched: Features/Screen.swift against 'Features/**'"))

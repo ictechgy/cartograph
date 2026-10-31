@@ -65,10 +65,12 @@ Cartograph의 문장은 *"의존성 그래프를 내놓는다"*이며, 미사용
 
 ## 설치
 
+2026-11-01 확인: GitHub [0.29.0](https://github.com/ictechgy/cartograph/releases/tag/0.29.0)이 발행됐다. Homebrew 배포 여부는 별도로 확인한다. 소스 검증은 [기여 안내](https://github.com/ictechgy/cartograph/blob/main/CONTRIBUTING.md)를 따른다.
+
 발행된 CLI 버전과 내려받을 바이너리는
 [GitHub Releases](https://github.com/ictechgy/cartograph/releases)에서 확인하세요.
 아래 버전 고정 설치 예시는 재현성을 위해 발행된
-[**0.28.0**](https://github.com/ictechgy/cartograph/releases/tag/0.28.0)을 사용하며,
+[**0.29.0**](https://github.com/ictechgy/cartograph/releases/tag/0.29.0)을 사용하며,
 발행 여부를 확인한 버전으로만 바꾸세요.
 소스 체크아웃의 `--version`은 소스 버전을 나타내며 배포 파일의 존재를 보장하지 않습니다.
 0.25.1은 소스에서 준비됐지만 발행되지 않았습니다. 포함된 변경은 [CHANGELOG.md](CHANGELOG.md)를 보세요.
@@ -96,7 +98,7 @@ brew install ictechgy/tap/cartograph
 **Mint** — 소스에서 빌드되며, tap을 추가할 필요가 없습니다.
 
 ```bash
-mint install ictechgy/cartograph@0.28.0
+mint install ictechgy/cartograph@0.29.0
 ```
 
 **아예 설치하지 않기** — Swift 패키지라면 의존성으로 추가해 커맨드 플러그인을 씁니다.
@@ -104,7 +106,7 @@ mint install ictechgy/cartograph@0.28.0
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.28.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.29.0"),
 ```
 
 ```bash
@@ -1918,11 +1920,11 @@ jobs:
       - uses: ictechgy/cartograph@action-v1.0.0
         with:
           command: check
-          version: 0.28.0
+          version: 0.29.0
           args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-`action-v1.0.0`은 액션 릴리스 태그이고, `version: 0.28.0`은 CLI 바이너리를 선택합니다.
+`action-v1.0.0`은 액션 릴리스 태그이고, `version: 0.29.0`은 CLI 바이너리를 선택합니다.
 재현 가능한 실행을 위해 둘을 함께 고정하고(`@main`은 개발 브랜치를 따릅니다), 압축 파일까지
 고정하려면 `sha256`을 더하세요.
 Marketplace의 기본 "Use latest version"은 저장소의 최신 CLI 릴리스를 따릅니다.
@@ -2110,7 +2112,7 @@ universal archive를 검증했으며, [tap 갱신](https://github.com/ictechgy/h
 
 ## 기여
 
-[CONTRIBUTING.md](CONTRIBUTING.md)를 보세요. 이 저장소에서 작업하는 에이전트는
+[CONTRIBUTING.md](https://github.com/ictechgy/cartograph/blob/main/CONTRIBUTING.md)를 보세요. 이 저장소에서 작업하는 에이전트는
 [AGENTS.md](AGENTS.md)를 먼저 읽어야 합니다.
 
 ## Workspace와 로컬 패키지의 인덱스 범위

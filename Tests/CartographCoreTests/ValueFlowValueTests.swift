@@ -4,6 +4,32 @@ import Testing
 
 @Suite("값 흐름 격자와 교환")
 struct ValueFlowValueTests {
+    @Test("값 예산을 넘긴 top은 이후 합류에서도 값을 다시 담지 않는다")
+    func valueBudgetIsAbsorbing() {
+        let values = (0..<4).map { ValueFlowValue(atoms: [.literal(.integer($0))]) }
+        let top = values[0].joining(values[1], limit: 2).joining(values[2], limit: 2)
+        #expect(top.unknownReasons.contains("value-budget"))
+        #expect(top.atoms.isEmpty)
+        #expect(top.joining(values[3], limit: 2).atoms.isEmpty)
+        #expect(values[3].joining(top, limit: 2).atoms.isEmpty)
+        #expect(top.joining(values[3], limit: 2).joining(top, limit: 2) == top)
+    }
+
+    @Test("출처 예산을 넘긴 top은 이후 합류에서도 출처를 다시 담지 않는다")
+    func originBudgetIsAbsorbing() {
+        let origins = Set((0..<5).map {
+            ValueFlowOrigin(id: "origin-\($0)", location: .init(path: "/p/F.swift", line: $0 + 1, column: 1))
+        })
+        let top = ValueFlowValue(origins: origins).joining(.init(), limit: 1)
+        let next = ValueFlowValue(origins: [
+            .init(id: "next", location: .init(path: "/p/F.swift", line: 9, column: 1))
+        ])
+        #expect(top.unknownReasons.contains("origin-budget"))
+        #expect(top.origins.isEmpty)
+        #expect(top.joining(next, limit: 1) == top)
+        #expect(next.joining(top, limit: 1) == top)
+    }
+
     @Test("큰 사용자 예산에서도 출처 상한 계산이 정수 오버플로를 내지 않는다")
     func largeLimit() {
         let value = ValueFlowValue(atoms: [.literal(.string("A"))])

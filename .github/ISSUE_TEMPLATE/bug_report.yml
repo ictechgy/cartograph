@@ -1,0 +1,24 @@
+name: Bug report
+description: Report reproducible behavior with synthetic input.
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Version and environment
+      description: Tool version, installation channel, OS, and language toolchain.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Exact command and a small synthetic input; remove secrets and private paths.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      description: Include exit code and observed limitations where relevant.
+    validations:
+      required: true

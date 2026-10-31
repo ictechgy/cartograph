@@ -125,6 +125,21 @@ struct ArchitectureMetricsTests {
         #expect(compositions[NodeID("Domain")] == TypeComposition(total: 1, abstract: 0))
     }
 
+    @Test("연관타입과 타입별칭은 Martin 추상도의 타입 수에 포함하지 않는다")
+    func aliasesAndAssociatedTypesDoNotChangeAbstractness() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Repo", kind: .protocolType, module: "Domain")
+        builder.symbol("User", kind: .structType, module: "Domain")
+        builder.symbol("Element", kind: .associatedType, module: "Domain")
+        builder.symbol("Alias", kind: .typeAlias, module: "Domain")
+        let snapshot = builder.build()
+        let result = GraphBuilder(options: .init(level: .module)).buildResult(from: snapshot)
+        let compositions = ArchitectureMetricsCalculator.typeCompositions(result: result, snapshot: snapshot)
+        #expect(compositions[NodeID("Domain")] == TypeComposition(total: 2, abstract: 1))
+        #expect(SymbolKind.associatedType.isTypeDeclaration)
+        #expect(SymbolKind.typeAlias.isTypeDeclaration)
+    }
+
     @Test("구성이 없는 정점은 추상도 0으로 다룬다")
     func missingCompositionDefaultsToZero() {
         let graph = TestGraph.make(["A": []])
