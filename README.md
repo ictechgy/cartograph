@@ -59,9 +59,11 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 
 ## Install
 
+Verified on 2026-11-01: GitHub release [0.29.0](https://github.com/ictechgy/cartograph/releases/tag/0.29.0) is published. Homebrew availability is tracked separately. See [Contributing](CONTRIBUTING.md) for source validation.
+
 Check [GitHub Releases](https://github.com/ictechgy/cartograph/releases) for published CLI versions
 and available binary assets. The versioned install examples below pin published
-[**0.28.0**](https://github.com/ictechgy/cartograph/releases/tag/0.28.0) for reproducibility;
+[**0.29.0**](https://github.com/ictechgy/cartograph/releases/tag/0.29.0) for reproducibility;
 change the pin only to a published version you have verified. A source checkout's `--version` reports
 its source version and does not establish release availability. Version 0.25.1 was prepared in source
 but never published; see [CHANGELOG.md](CHANGELOG.md) for the incorporated changes.
@@ -88,7 +90,7 @@ after installing or upgrading; a published release and tap update do not upgrade
 **Mint** — builds from source, no tap to add:
 
 ```bash
-mint install ictechgy/cartograph@0.28.0
+mint install ictechgy/cartograph@0.29.0
 ```
 
 **No install at all** — for a Swift package, add Cartograph as a dependency and use the command
@@ -96,7 +98,7 @@ plugin. Everyone on the team and CI then runs the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/ictechgy/cartograph", revision: "0.28.0"),
+.package(url: "https://github.com/ictechgy/cartograph", revision: "0.29.0"),
 ```
 
 ```bash
@@ -1994,11 +1996,11 @@ jobs:
       - uses: ictechgy/cartograph@action-v1.0.0
         with:
           command: check
-          version: 0.28.0
+          version: 0.29.0
           args: --since ${{ github.event.pull_request.base.sha || github.event.before }}
 ```
 
-The `action-v1.0.0` tag is the action release; `version: 0.28.0` selects the CLI binary.
+The `action-v1.0.0` tag is the action release; `version: 0.29.0` selects the CLI binary.
 Pin both for a repeatable setup (`@main` tracks the development branch), and add `sha256` to pin
 the archive itself. Marketplace's default
 "Use latest version" currently follows the repository's latest CLI release; select
