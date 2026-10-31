@@ -154,9 +154,10 @@ public struct ArchitectureMetricsCalculator: Sendable {
         var abstracts: [NodeID: Int] = [:]
 
         for symbol in snapshot.symbols {
-            guard symbol.kind.isTypeDeclaration, let node = result.nodeIDByUSR[symbol.usr] else { continue }
+            guard [.classType, .structType, .enumType, .protocolType].contains(symbol.kind),
+                  let node = result.nodeIDByUSR[symbol.usr] else { continue }
             totals[node, default: 0] += 1
-            if symbol.kind.isAbstract {
+            if symbol.kind == .protocolType {
                 abstracts[node, default: 0] += 1
             }
         }

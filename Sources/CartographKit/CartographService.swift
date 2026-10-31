@@ -247,10 +247,12 @@ public struct CartographService: Sendable {
         level: GraphLevel? = nil
     ) throws -> (graph: CodeGraph, violations: [LayerViolation], unassigned: [NodeID]) {
         try configuration.validate()
-        let graph = context.buildGraph(level: level ?? configuration.level).graph
+        let result = context.buildGraph(level: level ?? configuration.level)
+        let graph = result.graph
         let evaluator = LayerRuleEvaluator(
             layers: configuration.layers, rules: configuration.rules,
-            projectPaths: LayerRuleProjectPaths.confirmed(projectPath: projectPath, fileSystem: environment.fileSystem)
+            projectPaths: LayerRuleProjectPaths.confirmed(projectPath: projectPath, fileSystem: environment.fileSystem),
+            referenceLocations: result.referenceLocations(in: context.snapshot)
         )
         // 배정 맵(정점마다 글롭 대조)은 위반 판정과 미지정 수집이 함께 쓴다.
         let (violations, unassigned) = evaluator.assess(graph: graph)

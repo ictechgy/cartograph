@@ -199,14 +199,14 @@ struct LayerRuleEvaluatorTests {
         #expect(evaluator.evaluate(graph: graph).isEmpty)
     }
 
-    @Test("위반은 출발 정점의 위치를 함께 보고한다")
+    @Test("참조 근거가 없으면 선언 위치를 위반 발생 위치로 대신 쓰지 않는다")
     func violationCarriesLocation() {
         let evaluator = LayerRuleEvaluator(
             layers: layers,
             rules: [LayerRule(from: "Presentation", deny: ["Data"])]
         )
         let violation = evaluator.evaluate(graph: makeGraph()).first
-        #expect(violation?.location?.path == "Features/Home.swift")
+        #expect(violation?.location == nil)
     }
     @Test("레이어 판정의 근거를 남긴다")
     func explainsLayerAssignment() {

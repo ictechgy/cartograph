@@ -103,11 +103,11 @@ public struct ValueFlowValue: Hashable, Sendable, Codable {
             return group.dropFirst().contains { !first.utf8.elementsEqual($0.utf8) }
         }) { result.unknownReasons.insert("unicode-normalization") }
         let (originLimit, overflow) = limit.multipliedReportingOverflow(by: 4)
-        if !overflow && result.origins.count > originLimit {
+        if result.unknownReasons.contains("origin-budget") || (!overflow && result.origins.count > originLimit) {
             result.origins = []
             result.unknownReasons.insert("origin-budget")
         }
-        if result.atoms.count > limit {
+        if result.unknownReasons.contains("value-budget") || result.atoms.count > limit {
             result.atoms = []
             result.unknownReasons.insert("value-budget")
         }

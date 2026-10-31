@@ -81,6 +81,19 @@ public struct GraphBuilder: Sendable {
             return nodeIDByUSR[reference.sourceUSR]
         }
 
+        /// 가중치 1의 관계 키에 실제 참조 위치를 모은다. 여러 발생은 사전순 첫 근거를 쓴다.
+        public func referenceLocations(in snapshot: IndexSnapshot) -> [GraphEdge: SourceLocation] {
+            var locations: [GraphEdge: SourceLocation] = [:]
+            for reference in snapshot.references {
+                guard let location = reference.location,
+                      let source = sourceNodeID(for: reference),
+                      let target = nodeIDByUSR[reference.targetUSR] else { continue }
+                let key = GraphEdge(source: source, target: target, kind: reference.kind)
+                locations[key] = min(locations[key] ?? location, location)
+            }
+            return locations
+        }
+
         /// 정점 하나에 접힌 심볼들의 USR 목록.
         public func usrs(for node: NodeID) -> [String] {
             nodeIDByUSR.filter { $0.value == node }.keys.sorted()
