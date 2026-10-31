@@ -41,6 +41,7 @@ public struct LayerRuleEvaluator: Sendable {
     private let layers: [LayerDefinition]
     private let rules: [LayerRule]
     private let projectPaths: [String]
+    private let referenceLocations: [GraphEdge: SourceLocation]
 
     public init(layers: [LayerDefinition], rules: [LayerRule]) {
         self.init(layers: layers, rules: rules, projectPaths: [])
@@ -58,10 +59,12 @@ public struct LayerRuleEvaluator: Sendable {
     ///
     /// 실제 경로 확인은 Kit 또는 임베더의 환경 경계가 담당한다. 판정 자체는
     /// 전달받은 문자열에만 의존하므로 메모리 그래프와 실제 실행이 같은 규칙을 쓴다.
-    public init(layers: [LayerDefinition], rules: [LayerRule], projectPaths: [String]) {
+    public init(layers: [LayerDefinition], rules: [LayerRule], projectPaths: [String],
+                referenceLocations: [GraphEdge: SourceLocation] = [:]) {
         self.layers = layers
         self.rules = rules
         self.projectPaths = projectPaths
+        self.referenceLocations = referenceLocations
     }
 
     /// 정점이 속한 레이어 이름. 어디에도 속하지 않으면 nil.
@@ -179,7 +182,7 @@ public struct LayerRuleEvaluator: Sendable {
                         targetLayer: targetLayer,
                         sourceName: graph.node(edge.source)?.qualifiedName ?? edge.source.rawValue,
                         targetName: graph.node(edge.target)?.qualifiedName ?? edge.target.rawValue,
-                        location: graph.node(edge.source)?.location
+                        location: referenceLocations[edge.withWeight(1)]
                     )
                 )
             }
