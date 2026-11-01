@@ -107,8 +107,16 @@ public struct CartographConfiguration: Sendable, Codable, Equatable {
         layers.first { $0.name == name }
     }
 
-    /// 규칙이 참조하는 레이어가 모두 정의되어 있는지 검증한다.
+    /// 규칙이 참조하는 레이어가 모두 정의되어 있는지, 레이어마다 대조 대상이 하나 이상인지 검증한다.
     public func validate() throws {
+        // 설정 파일은 디코딩에서 막지만 코드로 만든 레이어는 디코더를 거치지 않는다. 대상이 빈 레이어는 어떤 정점에도
+        // 맞지 않아, 그 레이어를 쓰는 규칙이 아무것도 막지 않은 채 통과한다.
+        if let empty = layers.first(where: { $0.matchTargets?.isEmpty == true }) {
+            throw CartographError.invalidConfiguration(
+                path: "layer '\(empty.name)'",
+                reason: LayerDefinition.emptyMatchTargetsReason + "; an empty list matches no node"
+            )
+        }
         let defined = Set(layers.map(\.name))
         for rule in rules {
             for referenced in [rule.from] + (rule.allow ?? []) + (rule.deny ?? []) where !defined.contains(referenced) {

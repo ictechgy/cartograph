@@ -9,8 +9,12 @@ import Testing
 /// 레이어 패턴의 대조 대상(`match_on`)을 설정 파일에서 실행까지 확인한다.
 ///
 /// 패턴 하나는 기본적으로 이름·모듈·경로 어디에 맞아도 레이어를 배정한다. 파일 이름을 의도한
-/// `*Network*` 가 `Domain/` 아래의 `NetworkError` 타입 이름에도 걸려, 먼저 정의된 Network 레이어로
-/// 끌려가고 Domain 의 정당한 참조가 위반으로 보고된다.
+/// `*Network*` 가 `Domain/Errors.swift` 에 선언된 `NetworkError` 타입 이름에도 걸려, 먼저 정의된
+/// Network 레이어로 끌려가고 Domain 의 정당한 참조가 위반으로 보고된다.
+///
+/// 파일 이름이 타입 이름과 다를 때만 `match_on: path` 가 이 둘을 가른다. `/` 없는 경로 패턴은 파일
+/// 이름에 대조되므로 `NetworkError.swift` 에 선언됐다면 여전히 맞는다
+/// (`LayerRuleEvaluatorTests.matchTargetBoundaries`).
 @Suite("레이어 패턴의 대조 대상")
 struct LayerMatchTargetTests {
     private func yaml(matchOn: String?) -> String {

@@ -51,6 +51,13 @@ public struct LayerDefinition: Sendable, Codable, Equatable {
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        // 값을 비운 `match_on:` 은 YAML 에서 null 이다. 빈 목록처럼 거부한다 — null 을 "전부"로 받으면 지우다 만
+        // 줄 하나가 대상을 좁히려던 레이어를 조용히 예전 판정으로 되돌린다.
+        if container.contains(.matchTargets), try container.decodeNil(forKey: .matchTargets) {
+            throw DecodingError.dataCorruptedError(
+                forKey: .matchTargets, in: container, debugDescription: Self.emptyMatchTargetsReason
+            )
+        }
         let raw: [String]?
         // `match_on: path` 처럼 하나만 적는 경우가 가장 흔하다. 목록만 받으면 그 한 줄이 타입 오류가 된다.
         if let single = try? container.decodeIfPresent(String.self, forKey: .matchTargets) {
@@ -71,8 +78,7 @@ public struct LayerDefinition: Sendable, Codable, Equatable {
         // 빈 목록은 어떤 정점에도 맞지 않는 레이어가 된다. 규칙은 그 레이어를 조용히 비운 채 통과한다.
         if let targets, targets.isEmpty {
             throw DecodingError.dataCorruptedError(
-                forKey: .matchTargets, in: container,
-                debugDescription: "match_on must list at least one of name, module, path"
+                forKey: .matchTargets, in: container, debugDescription: Self.emptyMatchTargetsReason
             )
         }
         self.init(
@@ -81,6 +87,9 @@ public struct LayerDefinition: Sendable, Codable, Equatable {
             matchTargets: targets
         )
     }
+
+    /// 대상이 하나도 없는 레이어를 거부하는 이유. 디코딩과 설정 검증이 같은 문장을 쓴다.
+    public static let emptyMatchTargetsReason = "match_on must list at least one of name, module, path"
 
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)

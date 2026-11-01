@@ -56,9 +56,9 @@ public enum ConfigurationTemplate {
         layers: []
         #  - name: Presentation
         #    match: ["Features/**", "*ViewController", "*View"]
-        #  - name: Network
-        #    match: ["*Network*"]
-        #    match_on: path              # optional; omitted means name, module and path
+        #  - name: Networking
+        #    match: ["Networking"]
+        #    match_on: module            # optional; omitted means name, module and path
         #  - name: Domain
         #    match: ["Domain/**"]
         #  - name: Data

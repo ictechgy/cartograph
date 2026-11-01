@@ -1635,26 +1635,39 @@ layer wins. Module graphs have no source location; use module-name patterns at t
 injected file system. Embedders can pass a literal `projectPath`, or prepared and verified
 `projectPaths`, to the pure `LayerRuleEvaluator`; its initializers do not resolve aliases or read files.
 
-A pattern meant for one of those can catch another: `*Network*`, written for files such as
-`NetworkClient.swift`, also matches a type named `NetworkError` declared under `Domain/`, and since
-the first matching layer wins, that type lands in the network layer and the domain's legitimate use
-of it is reported as a violation. `match_on` restricts a layer's patterns to `name` (the node name and
-its qualified name), `module` or `path`, as one value or a list:
+A pattern meant for one of those can catch another: a layer defined by module name,
+`match: ["Networking"]`, also catches a namespace type `enum Networking` declared in the `App`
+module, and since the first matching layer wins, that type lands in the networking layer and its
+uses inside `App` are judged by the networking layer's rules. `match_on` restricts a layer's
+patterns to `name`, `module` or `path`, as one value or a list:
 
 ```yaml
 layers:
-  - name: Network
-    match: ["*Network*"]
-    match_on: path          # or [name, module]; omitted means all three
+  - name: Networking
+    match: ["Networking"]
+    match_on: module        # or [name, path]; omitted means all three
 ```
 
+Each target is exactly what the default already compares, so read the boundaries before relying on
+one:
+
+- `name` is the declaration name **and** its module-qualified name (`App.Networking`). A name
+  pattern such as `Network*` therefore still matches every declaration of a module named
+  `NetworkKit`; use `match_on: module` for module rules.
+- `path` is the absolute and the project-relative file path. A pattern without `/` is matched
+  against the last path component — the file name — so `match_on: path` does not separate a type
+  from a file that carries its name: `*Network*` with `match_on: path` still places a type declared
+  in `NetworkError.swift`. It does stop that pattern from matching a type such as `NetworkError`
+  declared in `Errors.swift`. A directory pattern (`**/Network/**`) never matches a name anyway.
+
 A layer without `match_on` matches exactly as before. A `path`-only layer never matches a module
-node, which has no source location. An unknown value or an empty list is a configuration error.
+node, which has no source location. An unknown value, an empty list or an empty `match_on:` is a
+configuration error.
 
 `--explain <node>` shows which layer a node landed in, which pattern put it there, and which rules
 start from that layer — the questions you actually ask while debugging a configuration. When the
 layer sets `match_on`, the matched line ends with it, for example
-`matched: /p/Network/NetworkClient.swift against '*Network*' (match_on: path)`.
+`matched: Networking against 'Networking' (match_on: module)`.
 
 ```console
 $ cartograph rules --explain CartographKit

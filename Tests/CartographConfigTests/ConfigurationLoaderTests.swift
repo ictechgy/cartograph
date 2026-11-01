@@ -157,6 +157,10 @@ struct ConfigurationLoaderTests {
         ("match_on: paths", "unknown match_on value 'paths'; use name, module or path"),
         ("match_on: [name, files]", "unknown match_on value 'files'; use name, module or path"),
         ("match_on: []", "match_on must list at least one of name, module, path"),
+        // 값을 비운 키는 YAML 에서 null 이다. 빈 목록은 거부하면서 null 을 "전부"로 받으면, 지우다 만 줄 하나가
+        // 대상을 좁히려던 레이어를 조용히 예전 판정으로 되돌린다.
+        ("match_on:", "match_on must list at least one of name, module, path"),
+        ("match_on: ~", "match_on must list at least one of name, module, path"),
     ])
     func rejectsInvalidLayerMatchTargets(line: String, reason: String) {
         let yaml = """

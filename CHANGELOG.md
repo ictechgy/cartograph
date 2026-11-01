@@ -22,10 +22,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   whose two-node cycle the bounded search already reached, report the same cycle as before; the
   READMEs now state when the representative cycle is guaranteed shortest.
 - Add an optional `match_on` to layer definitions (`name`, `module`, `path`, one value or a list)
-  so a pattern meant for file paths no longer pulls a same-named type into its layer. Layers
-  without it match name, module and path exactly as before and serialize unchanged; an unknown
-  value or an empty list is a configuration error. `rules --explain` appends the restriction to
-  the matched line only for layers that set it.
+  so a pattern meant for one kind of candidate stops matching the others — for example a module
+  rule `Networking` no longer catches an `App.Networking` namespace type with `match_on: module`.
+  `name` includes the module-qualified name, and a `path` pattern without `/` is matched against
+  the file name, so a type declared in a file of the same name still matches a `path`-only
+  file-name pattern. Layers without `match_on` match name, module and path exactly as before and
+  serialize unchanged; an unknown value, an empty list or an empty `match_on:` is a configuration
+  error, and `validate()` rejects an empty list built in code. `rules --explain` appends the
+  restriction to the matched line only for layers that set it.
 - Layer rules no longer count synthesized `retention` edges as dependencies, matching coupling
   metrics and cycle detection, which already excluded them. No analysis currently emits such
   edges; graphs built by embedders are affected. Reachability still follows them.

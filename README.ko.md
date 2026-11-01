@@ -1568,26 +1568,37 @@ cartograph rules --strict
 임베더는 순수 `LayerRuleEvaluator`에 리터럴 `projectPath`나 직접 확인해 준비한 `projectPaths`를
 전달할 수 있습니다. 평가기 초기화는 별칭을 해석하거나 파일을 읽지 않습니다.
 
-한쪽을 뜻한 패턴이 다른 쪽에 걸릴 수 있습니다. `NetworkClient.swift` 같은 파일을 뜻한
-`*Network*`는 `Domain/` 아래에 선언된 `NetworkError` 타입 이름에도 맞고, 먼저 일치하는 레이어가
-우선하므로 그 타입은 네트워크 레이어로 들어가 도메인의 정당한 사용이 위반으로 보고됩니다.
-`match_on`은 레이어의 패턴을 `name`(정점 이름과 정규화 이름), `module`, `path` 중 고른 대상에만
+한쪽을 뜻한 패턴이 다른 쪽에 걸릴 수 있습니다. 모듈 이름으로 정의한 레이어
+`match: ["Networking"]`는 `App` 모듈에 선언된 네임스페이스 타입 `enum Networking`에도 맞고, 먼저
+일치하는 레이어가 우선하므로 그 타입은 네트워킹 레이어로 들어가 `App` 안의 사용이 네트워킹 레이어의
+규칙으로 판정됩니다. `match_on`은 레이어의 패턴을 `name`, `module`, `path` 중 고른 대상에만
 대조합니다. 값 하나나 목록으로 씁니다.
 
 ```yaml
 layers:
-  - name: Network
-    match: ["*Network*"]
-    match_on: path          # 또는 [name, module]; 생략하면 셋 모두
+  - name: Networking
+    match: ["Networking"]
+    match_on: module        # 또는 [name, path]; 생략하면 셋 모두
 ```
 
+각 대상은 기본 판정이 이미 비교하던 것 그대로이므로, 기대기 전에 경계를 확인하세요.
+
+- `name`은 선언 이름**과** 모듈을 붙인 정규화 이름(`App.Networking`)입니다. 그래서 `Network*` 같은
+  이름 패턴은 `NetworkKit` 모듈의 모든 선언에도 여전히 맞습니다. 모듈 규칙에는 `match_on: module`을
+  쓰세요.
+- `path`는 절대 경로와 프로젝트 기준 상대 경로입니다. `/`가 없는 패턴은 경로의 마지막 요소, 즉 파일
+  이름에 대조되므로 `match_on: path`는 타입과 그 이름을 딴 파일을 구분하지 못합니다. `*Network*`에
+  `match_on: path`를 줘도 `NetworkError.swift`에 선언된 타입은 그대로 배정됩니다. 대신
+  `Errors.swift`에 선언된 `NetworkError` 같은 타입에는 더 이상 맞지 않습니다. 디렉터리 패턴
+  (`**/Network/**`)은 원래 이름에 맞지 않습니다.
+
 `match_on`이 없는 레이어는 예전과 똑같이 판정합니다. `path`만 보는 레이어는 소스 위치가 없는 모듈
-정점에는 맞지 않습니다. 알 수 없는 값이나 빈 목록은 설정 오류입니다.
+정점에는 맞지 않습니다. 알 수 없는 값, 빈 목록, 값을 비운 `match_on:`은 설정 오류입니다.
 
 `--explain <노드>`는 그 정점이 어느 레이어에 들어갔는지, 어느 패턴이 그렇게 만들었는지,
 그 레이어에서 출발하는 규칙이 무엇인지 보여 줍니다 — 설정을 디버깅할 때 실제로 던지는
 질문들입니다. 레이어가 `match_on`을 지정했으면 일치 줄 끝에 붙습니다. 예:
-`matched: /p/Network/NetworkClient.swift against '*Network*' (match_on: path)`.
+`matched: Networking against 'Networking' (match_on: module)`.
 
 ```console
 $ cartograph rules --explain CartographKit

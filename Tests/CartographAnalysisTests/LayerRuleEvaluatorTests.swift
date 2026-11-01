@@ -292,6 +292,31 @@ struct LayerRuleEvaluatorTests {
                                    projectPath: "/p").assignment(of: feature).match?.matchTargets == nil)
     }
 
+    /// 대상은 기본 판정이 비교하던 후보를 나눌 뿐이다. 문서에 적은 두 경계를 고정한다.
+    @Test("이름 대상은 정규화 이름을, 경로 대상은 파일 이름을 포함한다")
+    func matchTargetBoundaries() {
+        // `name` 은 모듈을 붙인 정규화 이름도 본다. `Network*` 는 NetworkKit 모듈의 선언에도 맞는다.
+        let byName = LayerRuleEvaluator(layers: [
+            LayerDefinition(name: "Net", patterns: ["Network*"], matchTargets: [.name]),
+        ], rules: [])
+        #expect(byName.layer(of: GraphNode(id: "c", name: "Client", kind: .classType, module: "NetworkKit")) == "Net")
+        #expect(byName.assignment(of: GraphNode(id: "c", name: "Client", kind: .classType, module: "NetworkKit"))
+            .match?.candidate == "NetworkKit.Client")
+
+        // `/` 없는 경로 패턴은 마지막 요소(파일 이름)에 대조된다. 타입과 이름이 같은 파일이면 그대로 맞고,
+        // 이름이 다른 파일에 선언된 타입에는 맞지 않는다.
+        let byPath = LayerRuleEvaluator(layers: [
+            LayerDefinition(name: "Net", patterns: ["*Network*"], matchTargets: [.path]),
+        ], rules: [], projectPath: "/p")
+        let sameFile = GraphNode(id: "e1", name: "NetworkError", kind: .structType, module: "App",
+            location: .init(path: "/p/Domain/NetworkError.swift", line: 1, column: 1))
+        let otherFile = GraphNode(id: "e2", name: "NetworkError", kind: .structType, module: "App",
+            location: .init(path: "/p/Domain/Errors.swift", line: 1, column: 1))
+        #expect(byPath.layer(of: sameFile) == "Net")
+        #expect(byPath.assignment(of: sameFile).match?.candidate == "/p/Domain/NetworkError.swift")
+        #expect(byPath.layer(of: otherFile) == nil)
+    }
+
     @Test("대조 대상은 정렬·중복 제거되어 같은 설정이 같은 값이 된다")
     func matchTargetsAreNormalized() {
         let layer = LayerDefinition(name: "L", patterns: ["*"], matchTargets: [.path, .name, .path])

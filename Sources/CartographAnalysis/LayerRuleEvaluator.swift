@@ -90,7 +90,7 @@ public struct LayerRuleEvaluator: Sendable {
             public let pattern: String
             public let candidate: String
             /// 맞은 레이어가 대조 대상을 좁혔으면 그 대상. 좁히지 않았으면 nil.
-            public var matchTargets: [LayerMatchTarget]? = nil
+            public let matchTargets: [LayerMatchTarget]?
         }
 
         /// 판정에 쓰인 후보 문자열들. 맞지 않았을 때 무엇을 봤는지 알려 준다.
