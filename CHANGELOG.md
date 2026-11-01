@@ -21,6 +21,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   first 32 search starts was represented by a longer cycle. Components of at most 32 nodes, or
   whose two-node cycle the bounded search already reached, report the same cycle as before; the
   READMEs now state when the representative cycle is guaranteed shortest.
+- Document that `superfluous-ignore` judges comments in source order: of comments that keep only
+  each other alive, the earlier one is reported. Behavior is unchanged and now pinned by tests for
+  both orders.
 
 ## [0.29.0] - 2026-10-25
 

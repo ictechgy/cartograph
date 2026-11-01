@@ -251,6 +251,25 @@ struct SuperfluousIgnoreTests {
         #expect(finding.node.name == "First")
     }
 
+    /// 서로 기대는 두 주석 중 어느 쪽이 보고되는지는 판정 순서(위치 순)가 정한다.
+    /// 앞 테스트와 위치만 맞바꿔, 이름 순이 아니라 위치 순이라는 것과 결과가 순서에
+    /// 따라 달라진다는 것을 함께 고정한다. 문서(README 의 superfluous-ignore 절)가 이 동작을 적는다.
+    @Test("서로만 참조하는 무시 덩어리에서 보고되는 쪽은 위치가 앞선 주석이다", arguments: [false, true])
+    func mutuallyDependentIgnoresFollowLocationOrder(secondFirst: Bool) throws {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("First", kind: .structType, line: secondFirst ? 10 : 5, attributes: [.ignoreComment])
+        builder.symbol("Second", kind: .structType, line: secondFirst ? 5 : 10, attributes: [.ignoreComment])
+        builder.reference(from: "First", to: "Second", kind: .reference)
+        builder.reference(from: "Second", to: "First", kind: .reference)
+
+        let report = analyze(builder.build())
+        #expect(report.unused.isEmpty)
+        let finding = try #require(report.superfluousIgnores.first)
+        #expect(report.superfluousIgnores.count == 1)
+        #expect(finding.node.name == (secondFirst ? "Second" : "First"))
+    }
+
     @Test("다른 파일의 무시된 부모가 이 파일의 주석을 삼키지 않는다")
     func crossFileIgnoredMemberFormsOwnUnit() throws {
         var builder = SnapshotBuilder()

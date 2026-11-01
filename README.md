@@ -343,8 +343,12 @@ its own comment is judged separately. Since a retained member keeps its containi
 an unreferenced type's own comment can be judged superfluous when a member's comment is doing
 the retaining. A file-level `cartograph:ignore:all` comment is judged as
 one file-scope unit and reported once; comments on individual declarations are judged
-independently, even when every declaration in a file carries one. Like the other warning rules,
-`superfluous-ignore` does not count toward `--strict`.
+independently, even when every declaration in a file carries one. Comments are judged one at a
+time in source order (path, line, column), and a comment found superfluous stays removed for the
+ones after it. Removing every reported comment together therefore exposes nothing — but when
+comments keep only each other alive, which of them is reported depends on that order: of two
+declarations that reference only each other, the earlier comment is reported and the later one is
+then needed. Like the other warning rules, `superfluous-ignore` does not count toward `--strict`.
 
 `dead` also reports public declarations whose references all come from their own module, as
 warnings under the `redundant-public` rule:
