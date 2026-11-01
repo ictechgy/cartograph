@@ -52,9 +52,13 @@ public enum ConfigurationTemplate {
           retained_files: []
 
         # Architecture layers, matched against node name, module name and file path.
+        # match_on narrows a layer's patterns to name, module or path (one value or a list).
         layers: []
         #  - name: Presentation
         #    match: ["Features/**", "*ViewController", "*View"]
+        #  - name: Networking
+        #    match: ["Networking"]
+        #    match_on: module            # optional; omitted means name, module and path
         #  - name: Domain
         #    match: ["Domain/**"]
         #  - name: Data

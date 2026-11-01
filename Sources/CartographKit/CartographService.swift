@@ -615,8 +615,10 @@ public struct CartographService: Sendable {
             return ["\(node.qualifiedName) belongs to no layer.",
                     "  checked: " + assignment.candidates.joined(separator: ", ")]
         }
+        // 대상을 좁힌 레이어만 그 사실을 붙인다. 적지 않은 설정의 설명은 예전 그대로다.
+        let targets = match.matchTargets.map { " (match_on: \($0.map(\.rawValue).joined(separator: ", ")))" } ?? ""
         var lines = ["\(node.qualifiedName) is in layer '\(match.layer)'.",
-                     "  matched: \(match.candidate) against '\(match.pattern)'"]
+                     "  matched: \(match.candidate) against '\(match.pattern)'\(targets)"]
         let rules = evaluator.rules(from: match.layer)
         guard !rules.isEmpty else {
             return lines + ["  no rule starts from '\(match.layer)', so nothing is enforced here."]
@@ -1858,7 +1860,7 @@ public struct CartographService: Sendable {
                 for: node, reason: reason, in: graph, externalRetentions: externalRetentions, projectPath: projectPath
             )
             return CommandOutcome(output: printableLines(
-                ["\(name) is retained because it is \(reason.explanation)."] + evidence
+                retentionLead(name: name, node: node, reason: reason, in: graph) + evidence
             ))
         case let .retainedByMember(inherited):
             let memberNode = graph.node(inherited.member)
@@ -1885,6 +1887,25 @@ public struct CartographService: Sendable {
                 findingCount: 1
             )
         }
+    }
+
+    /// 보존 설명의 첫 줄.
+    ///
+    /// `main.swift` 의 최상위 선언은 `@main` 과 같은 진입점 근거로 살아남지만, 그 근거의 문장은
+    /// "@main 으로 선언됐다"고 말한다. 최상위 문장이 쓰지 않는 도우미까지 그렇게 설명하면, 사용자는
+    /// 그 파일의 미사용 선언이 애초에 보고될 수 없다는 사실을 알 길이 없다. 근거 값(`entryPoint`)은
+    /// 그대로 두고 문장만 실제 이유를 말한다. 최상위 코드 가상 심볼은 그 자체가 진입점이므로 제외한다.
+    private static func retentionLead(
+        name: String, node: GraphNode, reason: RetentionReason, in graph: CodeGraph
+    ) -> [String] {
+        guard reason == .entryPoint, !node.attributes.contains(.entryPoint),
+              node.usr?.hasPrefix(IndexStoreMapping.topLevelCodeUSRPrefix) != true,
+              RetentionPolicy.isTopLevelCodeDeclaration(node, in: graph)
+        else { return ["\(name) is retained because it is \(reason.explanation)."] }
+        return [
+            "\(name) is retained because it is a top-level declaration in main.swift, the executable's entry point.",
+            "  every top-level declaration in main.swift is kept, whether or not top-level code uses it",
+        ]
     }
 
     /// 외부 보존 근거가 살린 선언이면 누가 어디서 불렀는지를 설명 줄로 덧붙인다.

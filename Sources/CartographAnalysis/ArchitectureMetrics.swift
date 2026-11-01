@@ -109,8 +109,7 @@ public struct ArchitectureMetricsCalculator: Sendable {
     /// 포함 관계(member)는 의존이 아니라 소유다. 이것을 세면 멤버가 많은 타입일수록
     /// 원심 결합도가 커져 심볼 레벨 지표가 통째로 뒤집힌다. 실제로 모든 멤버가
     /// 소유 타입으로부터 Ca=1 을 받아 "고통의 영역"에 몰려 있었다.
-    static let couplingEdgeKinds: Set<EdgeKind> = Set(EdgeKind.allCases.filter(\.impliesUsage))
-        .subtracting([.retention])
+    static let couplingEdgeKinds: Set<EdgeKind> = Set(EdgeKind.allCases.filter(\.isSourceDependency))
 
     public func calculate(graph: CodeGraph, compositions: [NodeID: TypeComposition]) -> [NodeMetrics] {
         graph.sortedNodes

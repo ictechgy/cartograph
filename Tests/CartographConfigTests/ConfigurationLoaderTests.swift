@@ -135,6 +135,48 @@ struct ConfigurationLoaderTests {
         #expect(!result.warnings.contains { $0.contains("'rules[0].from'") })
     }
 
+    @Test("레이어의 대조 대상은 값 하나나 목록으로 쓰고, 적지 않으면 전부다")
+    func loadsLayerMatchTargets() throws {
+        let yaml = """
+            layers:
+              - name: Network
+                match: ["*Network*"]
+                match_on: path
+              - name: Modules
+                match: ["Core"]
+                match_on: [module, name, module]
+              - name: Everything
+                match: ["*"]
+            """
+        let result = try ConfigurationLoader().load(yaml: yaml, path: "/p/.cartograph.yml")
+        #expect(result.warnings.isEmpty)
+        #expect(result.configuration.layers.map(\.matchTargets) == [[.path], [.name, .module], nil])
+    }
+
+    @Test("레이어 대조 대상의 오타와 빈 목록은 쓸 수 있는 값을 알려 주는 설정 오류가 된다", arguments: [
+        ("match_on: paths", "unknown match_on value 'paths'; use name, module or path"),
+        ("match_on: [name, files]", "unknown match_on value 'files'; use name, module or path"),
+        ("match_on: []", "match_on must list at least one of name, module, path"),
+        // 값을 비운 키는 YAML 에서 null 이다. 빈 목록은 거부하면서 null 을 "전부"로 받으면, 지우다 만 줄 하나가
+        // 대상을 좁히려던 레이어를 조용히 예전 판정으로 되돌린다.
+        ("match_on:", "match_on must list at least one of name, module, path"),
+        ("match_on: ~", "match_on must list at least one of name, module, path"),
+    ])
+    func rejectsInvalidLayerMatchTargets(line: String, reason: String) {
+        let yaml = """
+            layers:
+              - name: Network
+                match: ["*Network*"]
+                \(line)
+            """
+        #expect {
+            try ConfigurationLoader().load(yaml: yaml, path: "/p/.cartograph.yml")
+        } throws: { error in
+            let message = (error as? CartographError)?.errorDescription ?? ""
+            return message.contains("/p/.cartograph.yml") && message.contains(reason) && message.contains("match_on'")
+        }
+    }
+
     @Test("규칙의 이유와 수정 안내를 읽고 여러 줄은 한 줄로 접는다")
     func loadsRuleRationaleAndHint() throws {
         let yaml = """

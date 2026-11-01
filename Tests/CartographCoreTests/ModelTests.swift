@@ -66,6 +66,12 @@ struct ModelTests {
         #expect(EdgeKind.inheritance.participatesInCycles)
         #expect(!EdgeKind.member.participatesInCycles)
         #expect(!EdgeKind.retention.participatesInCycles)
+        // 보존 합성 간선은 도달성만 잇고 설계상의 의존은 아니다. 나머지는 사용과 의존이 같다.
+        #expect(EdgeKind.retention.impliesUsage)
+        #expect(!EdgeKind.retention.isSourceDependency)
+        #expect(EdgeKind.allCases.filter(\.isSourceDependency)
+            == EdgeKind.allCases.filter { $0.impliesUsage && $0 != .retention })
+        #expect(!EdgeKind.member.isSourceDependency)
     }
 
     @Test("GraphNode 는 모듈 접두사를 붙인 이름을 만든다")

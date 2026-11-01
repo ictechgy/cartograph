@@ -49,12 +49,19 @@ public struct CycleDetector: Sendable {
         /// 자기 자신을 가리키는 간선도 순환으로 볼지 여부.
         public var includeSelfLoops: Bool
         /// 보고할 최소 순환 길이.
+        ///
+        /// 요소마다 대표 순환 하나만 보므로 이 필터는 대표의 길이에 걸린다. 길이 2 순환이 있는 요소의 대표는
+        /// 언제나 길이 2 라서, 2 보다 크게 잡으면 그런 요소는 통째로 빠진다. 정점이 `maximumSearchStarts` 를
+        /// 넘는 요소도 이제 그렇다 — 전에는 뒤쪽 길이 2 순환을 못 찾아 더 긴 대표가 남을 수 있었다.
         public var minimumLength: Int
         /// 하나의 강결합 요소에서 대표 경로를 찾을 때 시도할 시작 정점 수의 상한.
         ///
         /// 모든 정점에서 너비 우선 탐색을 돌리면 큰 요소에서 O(V·(V+E)) 가 되어
         /// 심볼 레벨 그래프에서 사실상 멈춘다. 대표 경로는 하나면 충분하므로
         /// 시도 횟수를 제한해 최악 비용을 선형에 가깝게 유지한다.
+        ///
+        /// 길이 2 순환(서로를 곧바로 가리키는 두 정점)은 이 상한과 무관하게 요소 전체에서 찾는다.
+        /// 상한은 길이 3 이상 순환의 최단 보장만 포기한다.
         public var maximumSearchStarts: Int
 
         public init(
@@ -198,28 +205,100 @@ public struct CycleDetector: Sendable {
     ///
     /// SCC 는 "서로 오갈 수 있는 정점 집합"일 뿐이라 그대로 보여 주면
     /// 무엇을 고쳐야 할지 알기 어렵다. 대표 경로 하나를 뽑아 보여 준다.
+    ///
+    /// 최단이 보장되는 것은 요소에 길이 2 순환이 있거나 요소 크기가 `maximumSearchStarts`
+    /// 이하일 때다. 그보다 큰 요소에서는 식별자 순 앞쪽 시작점에서 찾은 것 중 가장 짧은
+    /// 순환이며, 그 밖의 정점만 지나는 더 짧은 순환이 있을 수 있다.
     private func shortestCycle(in component: [NodeID], graph: CodeGraph) -> DependencyCycle? {
-        let members = Set(component)
+        let adjacency = ComponentAdjacency(component: component) { successors(of: $0, in: graph) }
+        // 서로를 곧바로 가리키는 쌍은 여러 정점 요소에서 가능한 가장 짧은 순환이고, 간선을
+        // 한 번 훑으면 요소 전체에서 찾을 수 있다. 시작점 상한 뒤쪽에만 이 쌍이 있으면 너비
+        // 우선 탐색은 앞쪽의 긴 순환을 최단으로 내놓는다 — 가장 흔하고 가장 고치기 쉬운 상호
+        // 의존이 긴 경로에 가려진다. 상한 이하 요소에서는 시작점을 전부 도는 탐색과 같은 쌍이다.
+        if let pair = adjacency.firstMutualPair(), let cycleEdges = edges(along: pair, in: graph) {
+            return DependencyCycle(path: pair, edges: cycleEdges, component: component)
+        }
+        var search = BreadthFirstScratch(count: component.count)
         var best: [NodeID]?
 
-        for start in component.prefix(max(1, options.maximumSearchStarts)) {
-            guard let path = breadthFirstCycle(from: start, within: members, graph: graph) else { continue }
-            // 경로를 간선으로 되돌리지 못하면 이 후보는 버리고 다음 시작점을 본다.
-            // 여기서 요소 전체를 포기하면 실재하는 순환이 조용히 사라진다.
-            guard edges(along: path, in: graph) != nil else { continue }
+        for start in component.indices.prefix(max(1, options.maximumSearchStarts)) {
+            guard let path = breadthFirstCycle(from: start, in: adjacency, scratch: &search) else { continue }
             // 정점이 둘 이상인 요소에서 길이 1 은 자기 순환이며, 요소가 설명하는
             // 진짜 순환이 아니다. 이것을 최단으로 채택하면 요소 전체가 최소 길이
             // 필터에 걸려 사라진다.
-            guard path.count >= 2 else { continue }
-            if best == nil || path.count < best.unsafelyUnwrapped.count {
-                best = path
-            }
-            // 길이 2 는 이 알고리즘이 찾을 수 있는 최소이므로 더 볼 필요가 없다.
-            if best?.count == 2 { break }
+            guard path.count >= 2, best.map({ path.count < $0.count }) ?? true else { continue }
+            // 경로를 간선으로 되돌리지 못하면 이 후보는 버리고 다음 시작점을 본다.
+            // 여기서 요소 전체를 포기하면 실재하는 순환이 조용히 사라진다. 채택할 후보만
+            // 되돌려 본다 — 시작점마다 긴 경로의 간선을 다시 거르면 탐색만큼 비싸다.
+            guard edges(along: path, in: graph) != nil else { continue }
+            best = path
         }
 
         guard let path = best, let cycleEdges = self.edges(along: path, in: graph) else { return nil }
         return DependencyCycle(path: path, edges: cycleEdges, component: component)
+    }
+
+    /// 강결합 요소 하나를 정수 색인으로 옮긴 요소 안쪽 인접 리스트.
+    ///
+    /// 시작점마다 너비 우선 탐색이 같은 정점의 후속을 다시 묻는다. 그때마다 간선을 거르고
+    /// 정렬하고 문자열 식별자를 해시하면 시작점 수만큼 같은 할당과 해시가 반복된다.
+    /// 요소에 들어올 때 한 번만 만들어 모든 시작점이 함께 쓴다.
+    private struct ComponentAdjacency {
+        /// 색인 → 정점. 정렬된 `component` 순서 그대로다.
+        let nodes: [NodeID]
+        /// 색인별 요소 안쪽 후속 색인. 요소가 정렬되어 있으므로 색인 순서가 곧 식별자 순서다.
+        let successors: [[Int]]
+
+        init(component: [NodeID], successorsOf: (NodeID) -> [NodeID]) {
+            var indices: [NodeID: Int] = [:]
+            indices.reserveCapacity(component.count)
+            for (offset, node) in component.enumerated() {
+                indices[node] = offset
+            }
+            nodes = component
+            successors = component.map { node in successorsOf(node).compactMap { indices[$0] } }
+        }
+
+        /// 식별자 순으로 처음 나오는 상호 간선 쌍 `[source, target]`.
+        ///
+        /// 출발점은 상대가 있는 가장 앞선 정점, 도착점은 그 정점의 상대 중 가장 앞선 정점이다.
+        /// 정렬된 시작점을 차례로 너비 우선 탐색할 때 처음 길이 2 를 내는 시작점과 그 탐색이
+        /// 첫 단계에서 고르는 이웃이 정확히 이 쌍이라, 상한 이하 요소의 대표 경로가 바뀌지 않는다.
+        func firstMutualPair() -> [NodeID]? {
+            for source in successors.indices {
+                for target in successors[source] where target != source && contains(source, in: target) {
+                    return [nodes[source], nodes[target]]
+                }
+            }
+            return nil
+        }
+
+        /// 정렬된 후속 목록을 이진 탐색한다. 간선 하나마다 상대의 목록 전체를 훑지 않는다.
+        private func contains(_ node: Int, in owner: Int) -> Bool {
+            let list = successors[owner]
+            var low = 0
+            var high = list.count
+            while low < high {
+                let middle = (low + high) / 2
+                if list[middle] < node { low = middle + 1 } else { high = middle }
+            }
+            return low < list.count && list[low] == node
+        }
+    }
+
+    /// 시작점마다 다시 쓰는 너비 우선 탐색 상태.
+    ///
+    /// 방문 표시는 시작점 색인을 도장으로 남긴다. 시작점마다 배열 전체를 지우지 않아도
+    /// 이전 탐색의 표시가 이번 탐색의 방문으로 읽히지 않는다.
+    private struct BreadthFirstScratch {
+        var visitedBy: [Int]
+        var predecessors: [Int]
+        var queue: [Int] = []
+
+        init(count: Int) {
+            visitedBy = Array(repeating: -1, count: count)
+            predecessors = Array(repeating: -1, count: count)
+        }
     }
 
     /// 시작 정점으로 되돌아오는 최단 경로를 너비 우선으로 찾는다.
@@ -227,28 +306,30 @@ public struct CycleDetector: Sendable {
     /// 경로를 통째로 큐에 넣으면 배열 복사 때문에 O(V²) 가 된다.
     /// 선행 정점만 기록하고 마지막에 한 번 되짚어 O(V+E) 를 유지한다.
     private func breadthFirstCycle(
-        from start: NodeID,
-        within members: Set<NodeID>,
-        graph: CodeGraph
+        from start: Int,
+        in adjacency: ComponentAdjacency,
+        scratch: inout BreadthFirstScratch
     ) -> [NodeID]? {
-        var predecessors: [NodeID: NodeID] = [:]
-        var visited: Set<NodeID> = [start]
-        var queue: [NodeID] = [start]
+        scratch.visitedBy[start] = start
+        scratch.queue.removeAll(keepingCapacity: true)
+        scratch.queue.append(start)
         var head = 0
 
-        while head < queue.count {
-            let current = queue[head]
+        while head < scratch.queue.count {
+            let current = scratch.queue[head]
             head += 1
-            for successor in successors(of: current, in: graph) where members.contains(successor) {
+            for successor in adjacency.successors[current] {
                 // 시작 정점의 자기 순환은 여기서 답이 아니다. 정점 하나짜리 요소는
                 // 위쪽 분기가 따로 처리하고, 여러 정점 요소에서는 자기 순환이
                 // 요소를 설명하지 못한다.
                 if successor == start, current != start {
-                    return reconstructPath(to: current, from: start, predecessors: predecessors)
+                    return reconstructPath(to: current, from: start, predecessors: scratch.predecessors)
+                        .map { adjacency.nodes[$0] }
                 }
-                if visited.insert(successor).inserted {
-                    predecessors[successor] = current
-                    queue.append(successor)
+                if scratch.visitedBy[successor] != start {
+                    scratch.visitedBy[successor] = start
+                    scratch.predecessors[successor] = current
+                    scratch.queue.append(successor)
                 }
             }
         }
@@ -272,15 +353,18 @@ public struct CycleDetector: Sendable {
         return result
     }
 
-    /// 선행 정점 사전을 거슬러 올라가 start → ... → end 경로를 복원한다.
-    private func reconstructPath(
-        to end: NodeID,
-        from start: NodeID,
-        predecessors: [NodeID: NodeID]
-    ) -> [NodeID] {
-        var path: [NodeID] = [end]
+    /// 선행 정점 색인을 거슬러 올라가 start → ... → end 경로를 복원한다.
+    ///
+    /// 이번 탐색에서 방문한 정점만 거치므로 선행 정점은 모두 이번 탐색이 기록한 값이다.
+    /// 그 불변식이 깨져 선행 정점이 없으면(-1) 색인 -1 로 넘어가 멈추는 대신 거기서 끊는다. 끊긴 경로의 이웃
+    /// 쌍은 선행 정점 기록대로 실재하는 간선이다. 마지막 정점에서 첫 정점으로 돌아오는 간선이 없으면
+    /// `edges(along:)` 가 후보에서 거르고, 있으면 시작점을 지나지 않을 뿐 실재하는 순환이다.
+    private func reconstructPath(to end: Int, from start: Int, predecessors: [Int]) -> [Int] {
+        var path = [end]
         var current = end
-        while current != start, let previous = predecessors[current] {
+        while current != start {
+            let previous = predecessors[current]
+            guard previous >= 0 else { break }
             path.append(previous)
             current = previous
         }

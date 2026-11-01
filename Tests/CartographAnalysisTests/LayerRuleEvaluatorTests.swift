@@ -199,6 +199,26 @@ struct LayerRuleEvaluatorTests {
         #expect(evaluator.evaluate(graph: graph).isEmpty)
     }
 
+    /// 보존 합성 간선은 지표의 결합도에도, 순환에도 들어가지 않는다. 레이어 규칙만 이것을 의존으로
+    /// 세면 같은 간선 하나가 "결합은 없는데 금지된 의존은 있다"는 모순된 답을 낸다.
+    @Test("보존 합성 간선은 레이어 의존으로 세지 않는다")
+    func retentionEdgesAreNotLayerDependencies() {
+        let graph = CodeGraph(
+            level: .type,
+            nodes: [
+                GraphNode(id: "A", name: "HomeViewController", kind: .classType, module: "App"),
+                GraphNode(id: "B", name: "UserRepository", kind: .classType, module: "App"),
+            ],
+            edges: [GraphEdge(source: "A", target: "B", kind: .retention)]
+        )
+        let evaluator = LayerRuleEvaluator(
+            layers: layers,
+            rules: [LayerRule(from: "Presentation", deny: ["Data"])]
+        )
+        #expect(evaluator.evaluate(graph: graph).isEmpty)
+        #expect(evaluator.assess(graph: graph).violations.isEmpty)
+    }
+
     @Test("참조 근거가 없으면 선언 위치를 위반 발생 위치로 대신 쓰지 않는다")
     func violationCarriesLocation() {
         let evaluator = LayerRuleEvaluator(
@@ -237,4 +257,94 @@ struct LayerRuleEvaluatorTests {
         #expect(unmatched.candidates == ["Loose", "App.Loose", "App"])
     }
 
+    @Test("대조 대상을 좁힌 레이어는 그 대상의 후보만 본다")
+    func matchTargetsRestrictCandidates() {
+        // 모듈 이름을 뜻한 "Networking" 이 App 모듈의 같은 이름 네임스페이스 타입에 걸리면 안 된다.
+        let evaluator = LayerRuleEvaluator(layers: [
+            LayerDefinition(name: "Networking", patterns: ["Networking"], matchTargets: [.module]),
+            LayerDefinition(name: "Screens", patterns: ["Features/**"], matchTargets: [.path]),
+            LayerDefinition(name: "Named", patterns: ["*Screen*"], matchTargets: [.name]),
+        ], rules: [], projectPath: "/p")
+        let namespace = GraphNode(id: "a", name: "Networking", kind: .enumType, module: "App")
+        let client = GraphNode(id: "b", name: "Client", kind: .classType, module: "Networking")
+        #expect(evaluator.layer(of: namespace) == nil)
+        #expect(evaluator.layer(of: client) == "Networking")
+        // 모듈 정점은 이름과 모듈이 같은 문자열이다. 문자열의 첫 출처만 기억하면 모듈 대상 레이어가 놓친다.
+        #expect(evaluator.layer(of: GraphNode(id: "Networking", name: "Networking", kind: .module,
+                                              module: "Networking")) == "Networking")
+
+        // 이름 대상 레이어는 경로에 맞는 패턴을 보지 않고, 경로 대상 레이어는 이름을 보지 않는다.
+        let screen = GraphNode(id: "c", name: "HomeScreen", kind: .structType, module: "App",
+            location: .init(path: "/p/Sources/HomeScreen.swift", line: 1, column: 1))
+        let feature = GraphNode(id: "d", name: "Home", kind: .structType, module: "App",
+            location: .init(path: "/p/Features/Home.swift", line: 1, column: 1))
+        let login = GraphNode(id: "e", name: "Login", kind: .structType, module: "App",
+            location: .init(path: "/p/Sources/LoginScreen.swift", line: 1, column: 1))
+        #expect(evaluator.layer(of: screen) == "Named")
+        #expect(evaluator.layer(of: login) == nil)
+        #expect(evaluator.layer(of: feature) == "Screens")
+        let assignment = evaluator.assignment(of: feature)
+        #expect(assignment.match?.candidate == "Features/Home.swift")
+        #expect(assignment.match?.matchTargets == [.path])
+        // 설명의 후보 목록은 대상과 무관하게 전부다. 무엇을 봤는지 숨기지 않는다.
+        #expect(assignment.candidates == ["Home", "App.Home", "App", "/p/Features/Home.swift", "Features/Home.swift"])
+        #expect(LayerRuleEvaluator(layers: [.init(name: "UI", patterns: ["Features/**"])], rules: [],
+                                   projectPath: "/p").assignment(of: feature).match?.matchTargets == nil)
+    }
+
+    /// 대상은 기본 판정이 비교하던 후보를 나눌 뿐이다. 문서에 적은 두 경계를 고정한다.
+    @Test("이름 대상은 정규화 이름을, 경로 대상은 파일 이름을 포함한다")
+    func matchTargetBoundaries() {
+        // `name` 은 모듈을 붙인 정규화 이름도 본다. `Network*` 는 NetworkKit 모듈의 선언에도 맞는다.
+        let byName = LayerRuleEvaluator(layers: [
+            LayerDefinition(name: "Net", patterns: ["Network*"], matchTargets: [.name]),
+        ], rules: [])
+        #expect(byName.layer(of: GraphNode(id: "c", name: "Client", kind: .classType, module: "NetworkKit")) == "Net")
+        #expect(byName.assignment(of: GraphNode(id: "c", name: "Client", kind: .classType, module: "NetworkKit"))
+            .match?.candidate == "NetworkKit.Client")
+
+        // `/` 없는 경로 패턴은 절대·상대 경로의 각 요소(디렉터리와 파일 이름)에 대조된다(gitignore 방식).
+        // 타입과 이름이 같은 파일이면 그대로 맞고, 경로의 어느 요소에도 맞지 않는 파일의 타입에는 맞지 않는다.
+        let byPath = LayerRuleEvaluator(layers: [
+            LayerDefinition(name: "Net", patterns: ["*Network*"], matchTargets: [.path]),
+        ], rules: [], projectPath: "/p")
+        let sameFile = GraphNode(id: "e1", name: "NetworkError", kind: .structType, module: "App",
+            location: .init(path: "/p/Domain/NetworkError.swift", line: 1, column: 1))
+        let otherFile = GraphNode(id: "e2", name: "NetworkError", kind: .structType, module: "App",
+            location: .init(path: "/p/Domain/Errors.swift", line: 1, column: 1))
+        #expect(byPath.layer(of: sameFile) == "Net")
+        #expect(byPath.assignment(of: sameFile).match?.candidate == "/p/Domain/NetworkError.swift")
+        #expect(byPath.layer(of: otherFile) == nil)
+
+        // 디렉터리 요소도 맞는다. 프로젝트 안의 `Network/` 아래 파일은 이름과 무관하게 배정된다.
+        let underDirectory = GraphNode(id: "d1", name: "Client", kind: .classType, module: "App",
+            location: .init(path: "/p/Network/Client.swift", line: 1, column: 1))
+        #expect(byPath.layer(of: underDirectory) == "Net")
+        #expect(byPath.assignment(of: underDirectory).match?.candidate == "/p/Network/Client.swift")
+
+        // 절대 경로도 후보라 프로젝트 루트 위의 디렉터리 이름에도 맞는다. 바꾸지 않은 기존 동작을 고정한다 —
+        // 고치면(상대 경로만 보기 등) 이 기대가 바뀌어야 한다. 루트에 고정한 `Network/**` 는 걸리지 않는다.
+        let ancestorRoot = "/Users/me/NetworkApps/project"
+        let ancestor = GraphNode(id: "d2", name: "Validator", kind: .structType, module: "App",
+            location: .init(path: ancestorRoot + "/Domain/Validator.swift", line: 1, column: 1))
+        let underAncestor = LayerRuleEvaluator(layers: [
+            LayerDefinition(name: "Net", patterns: ["*Network*"], matchTargets: [.path]),
+        ], rules: [], projectPath: ancestorRoot)
+        #expect(underAncestor.layer(of: ancestor) == "Net")
+        let anchored = LayerRuleEvaluator(layers: [
+            LayerDefinition(name: "Net", patterns: ["Network/**"], matchTargets: [.path]),
+        ], rules: [], projectPath: ancestorRoot)
+        #expect(anchored.layer(of: ancestor) == nil)
+        let anchoredHit = GraphNode(id: "d3", name: "Client", kind: .classType, module: "App",
+            location: .init(path: ancestorRoot + "/Network/Client.swift", line: 1, column: 1))
+        #expect(anchored.layer(of: anchoredHit) == "Net")
+    }
+
+    @Test("대조 대상은 정렬·중복 제거되어 같은 설정이 같은 값이 된다")
+    func matchTargetsAreNormalized() {
+        let layer = LayerDefinition(name: "L", patterns: ["*"], matchTargets: [.path, .name, .path])
+        #expect(layer.matchTargets == [.name, .path])
+        #expect(layer == LayerDefinition(name: "L", patterns: ["*"], matchTargets: [.name, .path]))
+        #expect(LayerDefinition(name: "L", patterns: ["*"]).matchTargets == nil)
+    }
 }

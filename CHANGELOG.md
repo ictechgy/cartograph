@@ -12,6 +12,48 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and associated types without changing graph projection or retention semantics.
 - Locate layer violations at observed references rather than source declarations;
   missing reference locations remain unknown.
+- Build each strongly connected component's adjacency once when `cycles` looks for its
+  representative path, instead of re-filtering and re-sorting every vertex's edges for each of
+  up to 32 search starts. Reported cycles are byte-identical; a 5,000-vertex component searched
+  from all 32 starts goes from 78 ms to 6 ms.
+- `cycles` finds a two-node cycle anywhere in a strongly connected component before its bounded
+  breadth-first search. A component larger than 32 nodes whose only two-node cycle lay past the
+  first 32 search starts was represented by a longer cycle. Components of at most 32 nodes, or
+  whose two-node cycle the bounded search already reached, report the same cycle as before; the
+  READMEs now state when the representative cycle is guaranteed shortest.
+  **Upgrade note:** a cycle's baseline fingerprint is the sorted node list of its representative
+  path, so an affected component is re-keyed — `cycles`/`check` with a baseline report its
+  two-node cycle as new and the old entry stops matching, and its SARIF result carries a new
+  message and location, so a code-scanning alert for it closes and a new one opens. If a
+  suppressed component surfaces this way after upgrading, review it and rewrite the baseline with
+  `cartograph baseline --write`. Library callers that set `CycleDetector.Options.minimumLength`
+  above 2 (the CLI uses 2) now filter such components out, as they already did for components of
+  32 nodes or fewer, because the representative is the two-node cycle.
+- Add an optional `match_on` to layer definitions (`name`, `module`, `path`, one value or a list)
+  so a pattern meant for one kind of candidate stops matching the others — for example a module
+  rule `Networking` no longer catches an `App.Networking` namespace type with `match_on: module`.
+  `name` includes the module-qualified name, and a `path` pattern without `/` is matched against
+  every component of the absolute and relative path (each directory and the file name), so a
+  `path`-only `*Network*` still matches files under a `Network/` directory, a file named after its
+  type, and every file when a directory above the project root matches. Layers without
+  `match_on` match name, module and path exactly as before and
+  serialize unchanged; an unknown value, an empty list or an empty `match_on:` is a configuration
+  error, and `validate()` rejects an empty list built in code. `rules --explain` appends the
+  restriction to the matched line only for layers that set it.
+- Layer rules no longer count synthesized `retention` edges as dependencies, matching coupling
+  metrics and cycle detection, which already excluded them. No analysis currently emits such
+  edges; graphs built by embedders are affected. Reachability still follows them.
+- New public API in `CartographCore`/`CartographAnalysis`: `LayerMatchTarget`,
+  `LayerDefinition.matchTargets` (and the `matchTargets:` initializer parameter, default `nil`),
+  `LayerRuleEvaluator.LayerAssignment.Match.matchTargets` and `EdgeKind.isSourceDependency`.
+  All are additive; existing signatures keep working.
+- `dead --explain` says that a top-level declaration in `main.swift` is kept because it is
+  top-level there, instead of calling it an `@main` entry point, and that such declarations are
+  kept whether or not top-level code uses them. The retention reason value (`entryPoint`) and
+  the JSON outputs are unchanged; the READMEs' retention table now lists the rule.
+- Document that `superfluous-ignore` judges comments in source order: of comments that keep only
+  each other alive, the earlier one is reported. Behavior is unchanged and now pinned by tests for
+  both orders.
 
 ## [0.29.0] - 2026-10-25
 

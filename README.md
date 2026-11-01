@@ -244,6 +244,12 @@ Reports a representative shortest cycle for each strongly connected component, p
 the fewest references as the cheapest one to cut. A component of twenty mutually tangled types is
 technically accurate and practically useless; one concrete cycle you can act on is not.
 
+"Shortest" is guaranteed when the component contains a two-node cycle — two declarations that refer
+to each other directly, found across the whole component — or has at most 32 nodes. A larger
+component without a two-node cycle is searched breadth-first from its first 32 nodes in identifier
+order only, so its representative is the shortest cycle through one of those nodes, and a shorter
+cycle elsewhere in the component can exist. The component itself is always complete.
+
 `--explain <node>` answers the follow-up: which cycles this one node takes part in, and where to
 cut each of them.
 
@@ -337,8 +343,12 @@ its own comment is judged separately. Since a retained member keeps its containi
 an unreferenced type's own comment can be judged superfluous when a member's comment is doing
 the retaining. A file-level `cartograph:ignore:all` comment is judged as
 one file-scope unit and reported once; comments on individual declarations are judged
-independently, even when every declaration in a file carries one. Like the other warning rules,
-`superfluous-ignore` does not count toward `--strict`.
+independently, even when every declaration in a file carries one. Comments are judged one at a
+time in source order (path, line, column), and a comment found superfluous stays removed for the
+ones after it. Removing every reported comment together therefore exposes nothing — but when
+comments keep only each other alive, which of them is reported depends on that order: of two
+declarations that reference only each other, the earlier comment is reported and the later one is
+then needed. Like the other warning rules, `superfluous-ignore` does not count toward `--strict`.
 
 `dead` also reports public declarations whose references all come from their own module, as
 warnings under the `redundant-public` rule:
@@ -1625,8 +1635,44 @@ layer wins. Module graphs have no source location; use module-name patterns at t
 injected file system. Embedders can pass a literal `projectPath`, or prepared and verified
 `projectPaths`, to the pure `LayerRuleEvaluator`; its initializers do not resolve aliases or read files.
 
+A pattern meant for one of those can catch another: a layer defined by module name,
+`match: ["Networking"]`, also catches a namespace type `enum Networking` declared in the `App`
+module, and since the first matching layer wins, that type lands in the networking layer and its
+uses inside `App` are judged by the networking layer's rules. `match_on` restricts a layer's
+patterns to `name`, `module` or `path`, as one value or a list:
+
+```yaml
+layers:
+  - name: Networking
+    match: ["Networking"]
+    match_on: module        # or [name, path]; omitted means all three
+```
+
+Each target is exactly what the default already compares, so read the boundaries before relying on
+one:
+
+- `name` is the declaration name **and** its module-qualified name (`App.Networking`). A name
+  pattern such as `Network*` therefore still matches every declaration of a module named
+  `NetworkKit`; use `match_on: module` for module rules.
+- `path` is the absolute and the project-relative file path. A pattern without `/` is matched
+  gitignore-style against each component of those paths — every directory and the file name. So
+  `*Network*` with `match_on: path` still places anything under a `Network/` directory and a type
+  declared in a file that carries its name (`NetworkError.swift`), and because the absolute path
+  is a candidate, it places every node when a directory above the project root matches (a project
+  under `~/NetworkApps/`). What it stops is the pattern matching a declaration's name — a type
+  `NetworkError` declared in `Domain/Errors.swift` is no longer caught, as long as no directory on
+  that file's absolute path matches. For a directory rule, prefer a pattern anchored at the project
+  root such as `Network/**`: `**/Network/**` and slash-less patterns are also compared against the
+  absolute path, directories above the project root included.
+
+A layer without `match_on` matches exactly as before. A `path`-only layer never matches a module
+node, which has no source location. An unknown value, an empty list or an empty `match_on:` is a
+configuration error.
+
 `--explain <node>` shows which layer a node landed in, which pattern put it there, and which rules
-start from that layer — the questions you actually ask while debugging a configuration.
+start from that layer — the questions you actually ask while debugging a configuration. When the
+layer sets `match_on`, the matched line ends with it, for example
+`matched: Networking against 'Networking' (match_on: module)`.
 
 ```console
 $ cartograph rules --explain CartographKit
@@ -1668,7 +1714,10 @@ code up and down a file does not resurrect a suppressed finding. The record incl
 fails only on new ones, and `dead` counts those warnings as suppressed. An import has no USR, so it
 is identified by its file and the imported name, with the file written relative to the project
 root: the committed baseline matches in a checkout at another path. A file outside the project
-root keeps its absolute path.
+root keeps its absolute path. A cycle is identified by the nodes of its representative path, so a
+component whose representative changes — after an edit inside it, or when a release picks a
+different representative, which the changelog calls out — is reported as new and its old entry no
+longer matches; review it and rewrite the baseline.
 
 Where the file is written is always an explicit decision: `--write`, or the project root default
 (`.cartograph-baseline.json`) when the configuration sets no `baseline_path`. The `baseline_path`
@@ -1823,6 +1872,7 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | Kept | Reason |
 |---|---|
 | `@main`, `@UIApplicationMain`, `@NSApplicationMain` and the type's `main()` | entry point |
+| Every top-level declaration in `main.swift` — functions, types and variables alike | entry point: top-level code runs from that file, so an unused helper declared there is never reported; `dead --explain` says so |
 | `XCTestCase` subclasses and no-argument `test…()` methods | XCTest |
 | `@Test`, `@Suite` | swift-testing |
 | `public` / `open` when `retain_public` | public API |

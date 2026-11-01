@@ -27,6 +27,10 @@ public enum ReachabilityExplanation: Sendable, Equatable {
 }
 
 /// `cartograph:ignore` 를 떼어 내도 아무 보고도 생기지 않는, 아무 일도 하지 않는 무시 주석 하나.
+///
+/// 주석은 위치 순으로 하나씩 판정하고 불필요로 확정한 주석은 뒤 판정에서 뗀 채로 둔다. 그래서
+/// 보고된 주석을 한꺼번에 떼도 새 보고가 없다. 대신 서로만 살려 주는 주석들 중 어느 쪽이 보고되는지는
+/// 위치 순서에 달려 있다 — 판정이 "더 쓸모 있는 쪽"을 고르는 것이 아니다.
 public struct SuperfluousIgnore: Sendable, Equatable {
     /// 주석이 덮는 범위의 최상위 선언. 파일 단위면 그 파일의 첫 무시 선언이다.
     public let node: GraphNode
