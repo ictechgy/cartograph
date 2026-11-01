@@ -12,6 +12,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and associated types without changing graph projection or retention semantics.
 - Locate layer violations at observed references rather than source declarations;
   missing reference locations remain unknown.
+- Build each strongly connected component's adjacency once when `cycles` looks for its
+  representative path, instead of re-filtering and re-sorting every vertex's edges for each of
+  up to 32 search starts. Reported cycles are byte-identical; a 5,000-vertex component searched
+  from all 32 starts goes from 78 ms to 6 ms.
 
 ## [0.29.0] - 2026-10-25
 

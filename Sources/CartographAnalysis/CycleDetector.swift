@@ -199,21 +199,21 @@ public struct CycleDetector: Sendable {
     /// SCC 는 "서로 오갈 수 있는 정점 집합"일 뿐이라 그대로 보여 주면
     /// 무엇을 고쳐야 할지 알기 어렵다. 대표 경로 하나를 뽑아 보여 준다.
     private func shortestCycle(in component: [NodeID], graph: CodeGraph) -> DependencyCycle? {
-        let members = Set(component)
+        let adjacency = ComponentAdjacency(component: component) { successors(of: $0, in: graph) }
+        var search = BreadthFirstScratch(count: component.count)
         var best: [NodeID]?
 
-        for start in component.prefix(max(1, options.maximumSearchStarts)) {
-            guard let path = breadthFirstCycle(from: start, within: members, graph: graph) else { continue }
-            // 경로를 간선으로 되돌리지 못하면 이 후보는 버리고 다음 시작점을 본다.
-            // 여기서 요소 전체를 포기하면 실재하는 순환이 조용히 사라진다.
-            guard edges(along: path, in: graph) != nil else { continue }
+        for start in component.indices.prefix(max(1, options.maximumSearchStarts)) {
+            guard let path = breadthFirstCycle(from: start, in: adjacency, scratch: &search) else { continue }
             // 정점이 둘 이상인 요소에서 길이 1 은 자기 순환이며, 요소가 설명하는
             // 진짜 순환이 아니다. 이것을 최단으로 채택하면 요소 전체가 최소 길이
             // 필터에 걸려 사라진다.
-            guard path.count >= 2 else { continue }
-            if best == nil || path.count < best.unsafelyUnwrapped.count {
-                best = path
-            }
+            guard path.count >= 2, best.map({ path.count < $0.count }) ?? true else { continue }
+            // 경로를 간선으로 되돌리지 못하면 이 후보는 버리고 다음 시작점을 본다.
+            // 여기서 요소 전체를 포기하면 실재하는 순환이 조용히 사라진다. 채택할 후보만
+            // 되돌려 본다 — 시작점마다 긴 경로의 간선을 다시 거르면 탐색만큼 비싸다.
+            guard edges(along: path, in: graph) != nil else { continue }
+            best = path
             // 길이 2 는 이 알고리즘이 찾을 수 있는 최소이므로 더 볼 필요가 없다.
             if best?.count == 2 { break }
         }
@@ -222,33 +222,72 @@ public struct CycleDetector: Sendable {
         return DependencyCycle(path: path, edges: cycleEdges, component: component)
     }
 
+    /// 강결합 요소 하나를 정수 색인으로 옮긴 요소 안쪽 인접 리스트.
+    ///
+    /// 시작점마다 너비 우선 탐색이 같은 정점의 후속을 다시 묻는다. 그때마다 간선을 거르고
+    /// 정렬하고 문자열 식별자를 해시하면 시작점 수만큼 같은 할당과 해시가 반복된다.
+    /// 요소에 들어올 때 한 번만 만들어 모든 시작점이 함께 쓴다.
+    private struct ComponentAdjacency {
+        /// 색인 → 정점. 정렬된 `component` 순서 그대로다.
+        let nodes: [NodeID]
+        /// 색인별 요소 안쪽 후속 색인. 요소가 정렬되어 있으므로 색인 순서가 곧 식별자 순서다.
+        let successors: [[Int]]
+
+        init(component: [NodeID], successorsOf: (NodeID) -> [NodeID]) {
+            var indices: [NodeID: Int] = [:]
+            indices.reserveCapacity(component.count)
+            for (offset, node) in component.enumerated() {
+                indices[node] = offset
+            }
+            nodes = component
+            successors = component.map { node in successorsOf(node).compactMap { indices[$0] } }
+        }
+    }
+
+    /// 시작점마다 다시 쓰는 너비 우선 탐색 상태.
+    ///
+    /// 방문 표시는 시작점 색인을 도장으로 남긴다. 시작점마다 배열 전체를 지우지 않아도
+    /// 이전 탐색의 표시가 이번 탐색의 방문으로 읽히지 않는다.
+    private struct BreadthFirstScratch {
+        var visitedBy: [Int]
+        var predecessors: [Int]
+        var queue: [Int] = []
+
+        init(count: Int) {
+            visitedBy = Array(repeating: -1, count: count)
+            predecessors = Array(repeating: -1, count: count)
+        }
+    }
+
     /// 시작 정점으로 되돌아오는 최단 경로를 너비 우선으로 찾는다.
     ///
     /// 경로를 통째로 큐에 넣으면 배열 복사 때문에 O(V²) 가 된다.
     /// 선행 정점만 기록하고 마지막에 한 번 되짚어 O(V+E) 를 유지한다.
     private func breadthFirstCycle(
-        from start: NodeID,
-        within members: Set<NodeID>,
-        graph: CodeGraph
+        from start: Int,
+        in adjacency: ComponentAdjacency,
+        scratch: inout BreadthFirstScratch
     ) -> [NodeID]? {
-        var predecessors: [NodeID: NodeID] = [:]
-        var visited: Set<NodeID> = [start]
-        var queue: [NodeID] = [start]
+        scratch.visitedBy[start] = start
+        scratch.queue.removeAll(keepingCapacity: true)
+        scratch.queue.append(start)
         var head = 0
 
-        while head < queue.count {
-            let current = queue[head]
+        while head < scratch.queue.count {
+            let current = scratch.queue[head]
             head += 1
-            for successor in successors(of: current, in: graph) where members.contains(successor) {
+            for successor in adjacency.successors[current] {
                 // 시작 정점의 자기 순환은 여기서 답이 아니다. 정점 하나짜리 요소는
                 // 위쪽 분기가 따로 처리하고, 여러 정점 요소에서는 자기 순환이
                 // 요소를 설명하지 못한다.
                 if successor == start, current != start {
-                    return reconstructPath(to: current, from: start, predecessors: predecessors)
+                    return reconstructPath(to: current, from: start, predecessors: scratch.predecessors)
+                        .map { adjacency.nodes[$0] }
                 }
-                if visited.insert(successor).inserted {
-                    predecessors[successor] = current
-                    queue.append(successor)
+                if scratch.visitedBy[successor] != start {
+                    scratch.visitedBy[successor] = start
+                    scratch.predecessors[successor] = current
+                    scratch.queue.append(successor)
                 }
             }
         }
@@ -272,17 +311,15 @@ public struct CycleDetector: Sendable {
         return result
     }
 
-    /// 선행 정점 사전을 거슬러 올라가 start → ... → end 경로를 복원한다.
-    private func reconstructPath(
-        to end: NodeID,
-        from start: NodeID,
-        predecessors: [NodeID: NodeID]
-    ) -> [NodeID] {
-        var path: [NodeID] = [end]
+    /// 선행 정점 색인을 거슬러 올라가 start → ... → end 경로를 복원한다.
+    ///
+    /// 이번 탐색에서 방문한 정점만 거치므로 선행 정점은 모두 이번 탐색이 기록한 값이다.
+    private func reconstructPath(to end: Int, from start: Int, predecessors: [Int]) -> [Int] {
+        var path = [end]
         var current = end
-        while current != start, let previous = predecessors[current] {
-            path.append(previous)
-            current = previous
+        while current != start {
+            current = predecessors[current]
+            path.append(current)
         }
         return path.reversed()
     }

@@ -54,6 +54,19 @@ struct CycleDetectorTests {
         #expect(cycles[0].component.count == 4)
     }
 
+    /// 시작점마다 탐색 상태를 새로 만들지 않고 다시 쓴다. 앞 시작점의 방문 표시가 남으면
+    /// 뒤 시작점에서 이미 본 정점을 건너뛰어, 더 짧은 순환이 있는데도 앞의 긴 순환이 남는다.
+    @Test("앞 시작점의 탐색 흔적이 뒤 시작점의 더 짧은 순환을 가리지 않는다")
+    func laterStartFindsShorterCycleAfterEarlierSearches() {
+        let graph = TestGraph.make([
+            "A": ["B"], "B": ["C"], "C": ["D"], "D": ["E"], "E": ["A", "C"],
+        ])
+        let cycles = CycleDetector().detectCycles(in: graph)
+        #expect(cycles.count == 1)
+        #expect(cycles[0].path == [NodeID("C"), NodeID("D"), NodeID("E")])
+        #expect(cycles[0].component.count == 5)
+    }
+
     @Test("자기 순환은 기본적으로 무시하고 옵션으로 켤 수 있다")
     func selfLoopsAreOptional() {
         let graph = CodeGraph(
