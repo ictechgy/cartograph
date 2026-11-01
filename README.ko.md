@@ -1568,9 +1568,26 @@ cartograph rules --strict
 임베더는 순수 `LayerRuleEvaluator`에 리터럴 `projectPath`나 직접 확인해 준비한 `projectPaths`를
 전달할 수 있습니다. 평가기 초기화는 별칭을 해석하거나 파일을 읽지 않습니다.
 
+한쪽을 뜻한 패턴이 다른 쪽에 걸릴 수 있습니다. `NetworkClient.swift` 같은 파일을 뜻한
+`*Network*`는 `Domain/` 아래에 선언된 `NetworkError` 타입 이름에도 맞고, 먼저 일치하는 레이어가
+우선하므로 그 타입은 네트워크 레이어로 들어가 도메인의 정당한 사용이 위반으로 보고됩니다.
+`match_on`은 레이어의 패턴을 `name`(정점 이름과 정규화 이름), `module`, `path` 중 고른 대상에만
+대조합니다. 값 하나나 목록으로 씁니다.
+
+```yaml
+layers:
+  - name: Network
+    match: ["*Network*"]
+    match_on: path          # 또는 [name, module]; 생략하면 셋 모두
+```
+
+`match_on`이 없는 레이어는 예전과 똑같이 판정합니다. `path`만 보는 레이어는 소스 위치가 없는 모듈
+정점에는 맞지 않습니다. 알 수 없는 값이나 빈 목록은 설정 오류입니다.
+
 `--explain <노드>`는 그 정점이 어느 레이어에 들어갔는지, 어느 패턴이 그렇게 만들었는지,
 그 레이어에서 출발하는 규칙이 무엇인지 보여 줍니다 — 설정을 디버깅할 때 실제로 던지는
-질문들입니다.
+질문들입니다. 레이어가 `match_on`을 지정했으면 일치 줄 끝에 붙습니다. 예:
+`matched: /p/Network/NetworkClient.swift against '*Network*' (match_on: path)`.
 
 ```console
 $ cartograph rules --explain CartographKit

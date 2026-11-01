@@ -615,8 +615,10 @@ public struct CartographService: Sendable {
             return ["\(node.qualifiedName) belongs to no layer.",
                     "  checked: " + assignment.candidates.joined(separator: ", ")]
         }
+        // 대상을 좁힌 레이어만 그 사실을 붙인다. 적지 않은 설정의 설명은 예전 그대로다.
+        let targets = match.matchTargets.map { " (match_on: \($0.map(\.rawValue).joined(separator: ", ")))" } ?? ""
         var lines = ["\(node.qualifiedName) is in layer '\(match.layer)'.",
-                     "  matched: \(match.candidate) against '\(match.pattern)'"]
+                     "  matched: \(match.candidate) against '\(match.pattern)'\(targets)"]
         let rules = evaluator.rules(from: match.layer)
         guard !rules.isEmpty else {
             return lines + ["  no rule starts from '\(match.layer)', so nothing is enforced here."]

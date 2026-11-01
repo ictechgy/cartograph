@@ -21,6 +21,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   first 32 search starts was represented by a longer cycle. Components of at most 32 nodes, or
   whose two-node cycle the bounded search already reached, report the same cycle as before; the
   READMEs now state when the representative cycle is guaranteed shortest.
+- Add an optional `match_on` to layer definitions (`name`, `module`, `path`, one value or a list)
+  so a pattern meant for file paths no longer pulls a same-named type into its layer. Layers
+  without it match name, module and path exactly as before and serialize unchanged; an unknown
+  value or an empty list is a configuration error. `rules --explain` appends the restriction to
+  the matched line only for layers that set it.
 - Document that `superfluous-ignore` judges comments in source order: of comments that keep only
   each other alive, the earlier one is reported. Behavior is unchanged and now pinned by tests for
   both orders.

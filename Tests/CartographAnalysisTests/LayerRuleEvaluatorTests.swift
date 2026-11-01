@@ -237,4 +237,46 @@ struct LayerRuleEvaluatorTests {
         #expect(unmatched.candidates == ["Loose", "App.Loose", "App"])
     }
 
+    @Test("대조 대상을 좁힌 레이어는 그 대상의 후보만 본다")
+    func matchTargetsRestrictCandidates() {
+        // 모듈 이름을 뜻한 "Networking" 이 App 모듈의 같은 이름 네임스페이스 타입에 걸리면 안 된다.
+        let evaluator = LayerRuleEvaluator(layers: [
+            LayerDefinition(name: "Networking", patterns: ["Networking"], matchTargets: [.module]),
+            LayerDefinition(name: "Screens", patterns: ["Features/**"], matchTargets: [.path]),
+            LayerDefinition(name: "Named", patterns: ["*Screen*"], matchTargets: [.name]),
+        ], rules: [], projectPath: "/p")
+        let namespace = GraphNode(id: "a", name: "Networking", kind: .enumType, module: "App")
+        let client = GraphNode(id: "b", name: "Client", kind: .classType, module: "Networking")
+        #expect(evaluator.layer(of: namespace) == nil)
+        #expect(evaluator.layer(of: client) == "Networking")
+        // 모듈 정점은 이름과 모듈이 같은 문자열이다. 문자열의 첫 출처만 기억하면 모듈 대상 레이어가 놓친다.
+        #expect(evaluator.layer(of: GraphNode(id: "Networking", name: "Networking", kind: .module,
+                                              module: "Networking")) == "Networking")
+
+        // 이름 대상 레이어는 경로에 맞는 패턴을 보지 않고, 경로 대상 레이어는 이름을 보지 않는다.
+        let screen = GraphNode(id: "c", name: "HomeScreen", kind: .structType, module: "App",
+            location: .init(path: "/p/Sources/HomeScreen.swift", line: 1, column: 1))
+        let feature = GraphNode(id: "d", name: "Home", kind: .structType, module: "App",
+            location: .init(path: "/p/Features/Home.swift", line: 1, column: 1))
+        let login = GraphNode(id: "e", name: "Login", kind: .structType, module: "App",
+            location: .init(path: "/p/Sources/LoginScreen.swift", line: 1, column: 1))
+        #expect(evaluator.layer(of: screen) == "Named")
+        #expect(evaluator.layer(of: login) == nil)
+        #expect(evaluator.layer(of: feature) == "Screens")
+        let assignment = evaluator.assignment(of: feature)
+        #expect(assignment.match?.candidate == "Features/Home.swift")
+        #expect(assignment.match?.matchTargets == [.path])
+        // 설명의 후보 목록은 대상과 무관하게 전부다. 무엇을 봤는지 숨기지 않는다.
+        #expect(assignment.candidates == ["Home", "App.Home", "App", "/p/Features/Home.swift", "Features/Home.swift"])
+        #expect(LayerRuleEvaluator(layers: [.init(name: "UI", patterns: ["Features/**"])], rules: [],
+                                   projectPath: "/p").assignment(of: feature).match?.matchTargets == nil)
+    }
+
+    @Test("대조 대상은 정렬·중복 제거되어 같은 설정이 같은 값이 된다")
+    func matchTargetsAreNormalized() {
+        let layer = LayerDefinition(name: "L", patterns: ["*"], matchTargets: [.path, .name, .path])
+        #expect(layer.matchTargets == [.name, .path])
+        #expect(layer == LayerDefinition(name: "L", patterns: ["*"], matchTargets: [.name, .path]))
+        #expect(LayerDefinition(name: "L", patterns: ["*"]).matchTargets == nil)
+    }
 }

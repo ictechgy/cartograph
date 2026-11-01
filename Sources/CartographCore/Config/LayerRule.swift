@@ -1,19 +1,44 @@
 import Foundation
 
+/// 레이어 패턴을 정점의 어느 문자열에 대조할지.
+public enum LayerMatchTarget: String, Codable, Sendable, CaseIterable, Comparable {
+    /// 정점 이름과 정규화 이름(`Module.Type.member`).
+    case name
+    /// 정점이 속한 모듈 이름.
+    case module
+    /// 선언이 있는 파일 경로. 절대 경로와 프로젝트 기준 상대 경로를 모두 본다.
+    case path
+
+    public static func < (lhs: LayerMatchTarget, rhs: LayerMatchTarget) -> Bool {
+        (allCases.firstIndex(of: lhs) ?? 0) < (allCases.firstIndex(of: rhs) ?? 0)
+    }
+}
+
 /// 아키텍처 레이어 정의.
 ///
 /// 레이어는 모듈/타입/파일 이름에 대한 글롭 집합이다. 정점이 어느 레이어에
-/// 속하는지는 이름과 파일 경로 모두로 판단한다.
+/// 속하는지는 기본적으로 이름과 파일 경로 모두로 판단한다.
 public struct LayerDefinition: Sendable, Codable, Equatable {
     public let name: String
     public let patterns: [GlobPattern]
+    /// 패턴을 대조할 대상(`match_on`). nil 이면 이름·모듈·경로를 모두 본다.
+    ///
+    /// 디렉터리를 뜻한 패턴이 타입 이름에도 걸리면 그 타입이 엉뚱한 레이어로 끌려가고, 먼저 정의된
+    /// 레이어가 이기므로 원래 레이어의 정당한 의존이 위반으로 보고된다. 대상을 좁히면 패턴의 의도가
+    /// 설정에 남는다. 적지 않은 설정은 예전과 같은 답을 내야 하므로 기본은 전부다.
+    public let matchTargets: [LayerMatchTarget]?
 
-    public init(name: String, patterns: [GlobPattern]) {
+    public init(name: String, patterns: [GlobPattern], matchTargets: [LayerMatchTarget]? = nil) {
         self.name = name
         self.patterns = patterns
+        // 순서와 중복은 뜻이 없다. 같은 설정이 같은 값으로 비교·직렬화되도록 여기서 정규화한다.
+        self.matchTargets = matchTargets.map { Array(Set($0)).sorted() }
     }
 
     /// 주어진 후보 문자열들(정점 이름, 모듈명, 파일 경로) 중 하나라도 일치하면 참.
+    ///
+    /// 후보는 이미 `matchTargets` 로 고른 것이어야 한다. 문자열만으로는 그것이 이름인지 경로인지
+    /// 알 수 없다 — 대상별 후보를 고르는 일은 `LayerRuleEvaluator` 가 한다.
     public func matches(candidates: [String]) -> Bool {
         candidates.contains { patterns.matchesAny($0) }
     }
@@ -21,6 +46,48 @@ public struct LayerDefinition: Sendable, Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case name
         case patterns = "match"
+        case matchTargets = "match_on"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let raw: [String]?
+        // `match_on: path` 처럼 하나만 적는 경우가 가장 흔하다. 목록만 받으면 그 한 줄이 타입 오류가 된다.
+        if let single = try? container.decodeIfPresent(String.self, forKey: .matchTargets) {
+            raw = [single]
+        } else {
+            raw = try container.decodeIfPresent([String].self, forKey: .matchTargets)
+        }
+        // 열거형으로 바로 풀면 오타가 "올바르지 않은 값" 한 줄로 끝난다. 쓸 수 있는 값을 함께 알려 준다.
+        let targets = try raw?.map { value in
+            guard let target = LayerMatchTarget(rawValue: value) else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .matchTargets, in: container,
+                    debugDescription: "unknown match_on value '\(value)'; use name, module or path"
+                )
+            }
+            return target
+        }
+        // 빈 목록은 어떤 정점에도 맞지 않는 레이어가 된다. 규칙은 그 레이어를 조용히 비운 채 통과한다.
+        if let targets, targets.isEmpty {
+            throw DecodingError.dataCorruptedError(
+                forKey: .matchTargets, in: container,
+                debugDescription: "match_on must list at least one of name, module, path"
+            )
+        }
+        self.init(
+            name: try container.decode(String.self, forKey: .name),
+            patterns: try container.decode([GlobPattern].self, forKey: .patterns),
+            matchTargets: targets
+        )
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(patterns, forKey: .patterns)
+        // 지정하지 않은 레이어는 예전과 같은 바이트로 직렬화한다.
+        try container.encodeIfPresent(matchTargets, forKey: .matchTargets)
     }
 }
 

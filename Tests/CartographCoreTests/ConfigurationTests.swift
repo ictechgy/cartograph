@@ -49,6 +49,20 @@ struct ConfigurationTests {
         #expect(decoded == configuration)
     }
 
+    @Test("대조 대상을 적지 않은 레이어는 예전과 같은 바이트로 직렬화되고, 적은 레이어는 왕복한다")
+    func layerMatchTargetsEncodeOnlyWhenSet() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let plain = try encoder.encode(LayerDefinition(name: "Domain", patterns: ["Domain/**"]))
+        #expect(String(decoding: plain, as: UTF8.self) == #"{"match":["Domain\/**"],"name":"Domain"}"#)
+
+        let narrowed = LayerDefinition(name: "Net", patterns: ["*Network*"], matchTargets: [.path])
+        let data = try encoder.encode(narrowed)
+        #expect(String(decoding: data, as: UTF8.self) == #"{"match":["*Network*"],"match_on":["path"],"name":"Net"}"#)
+        #expect(try JSONDecoder().decode(LayerDefinition.self, from: data) == narrowed)
+        #expect(try JSONDecoder().decode(LayerDefinition.self, from: plain).matchTargets == nil)
+    }
+
     @Test("레이어 규칙은 금지 목록을 먼저 본다")
     func denyListTakesPrecedence() {
         let rule = LayerRule(from: "Presentation", allow: ["Domain", "Data"], deny: ["Data"])

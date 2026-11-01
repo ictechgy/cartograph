@@ -110,7 +110,7 @@ public struct ConfigurationLoader: Sendable {
         "max_cycles", "max_unused_symbols", "max_rule_violations", "max_instability", "max_distance",
         "max_efferent_coupling",
     ]
-    private static let knownLayerKeys: Set<String> = ["name", "match"]
+    private static let knownLayerKeys: Set<String> = ["name", "match", "match_on"]
     private static let knownRuleKeys: Set<String> = ["name", "from", "allow", "deny", "severity", "rationale", "hint"]
 
     static func unknownKeyWarnings(in yaml: String, path: String) throws -> [String] {

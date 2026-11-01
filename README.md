@@ -1635,8 +1635,26 @@ layer wins. Module graphs have no source location; use module-name patterns at t
 injected file system. Embedders can pass a literal `projectPath`, or prepared and verified
 `projectPaths`, to the pure `LayerRuleEvaluator`; its initializers do not resolve aliases or read files.
 
+A pattern meant for one of those can catch another: `*Network*`, written for files such as
+`NetworkClient.swift`, also matches a type named `NetworkError` declared under `Domain/`, and since
+the first matching layer wins, that type lands in the network layer and the domain's legitimate use
+of it is reported as a violation. `match_on` restricts a layer's patterns to `name` (the node name and
+its qualified name), `module` or `path`, as one value or a list:
+
+```yaml
+layers:
+  - name: Network
+    match: ["*Network*"]
+    match_on: path          # or [name, module]; omitted means all three
+```
+
+A layer without `match_on` matches exactly as before. A `path`-only layer never matches a module
+node, which has no source location. An unknown value or an empty list is a configuration error.
+
 `--explain <node>` shows which layer a node landed in, which pattern put it there, and which rules
-start from that layer — the questions you actually ask while debugging a configuration.
+start from that layer — the questions you actually ask while debugging a configuration. When the
+layer sets `match_on`, the matched line ends with it, for example
+`matched: /p/Network/NetworkClient.swift against '*Network*' (match_on: path)`.
 
 ```console
 $ cartograph rules --explain CartographKit
