@@ -244,6 +244,12 @@ Reports a representative shortest cycle for each strongly connected component, p
 the fewest references as the cheapest one to cut. A component of twenty mutually tangled types is
 technically accurate and practically useless; one concrete cycle you can act on is not.
 
+"Shortest" is guaranteed when the component contains a two-node cycle — two declarations that refer
+to each other directly, found across the whole component — or has at most 32 nodes. A larger
+component without a two-node cycle is searched breadth-first from its first 32 nodes in identifier
+order only, so its representative is the shortest cycle through one of those nodes, and a shorter
+cycle elsewhere in the component can exist. The component itself is always complete.
+
 `--explain <node>` answers the follow-up: which cycles this one node takes part in, and where to
 cut each of them.
 

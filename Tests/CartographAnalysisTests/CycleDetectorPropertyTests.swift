@@ -99,6 +99,31 @@ struct CycleDetectorPropertyTests {
         }
     }
 
+    /// 시작점 상한을 하나로 줄여 "앞쪽 시작점만 본다"는 조건을 작은 그래프에서 재현한다.
+    /// 요소 안에 서로를 곧바로 가리키는 쌍이 있으면, 상한과 무관하게 길이 2 가 대표여야 한다.
+    @Test("요소에 길이 2 순환이 있으면 시작점 상한과 무관하게 길이 2 를 보고한다")
+    func twoCycleIsReportedRegardlessOfSearchStarts() {
+        var generator = SeededRandomNumberGenerator(seed: 20_261_101)
+        let bounded = CycleDetector(options: .init(maximumSearchStarts: 1))
+        var componentsWithTwoCycle = 0
+
+        for _ in 0..<300 {
+            let graph = randomGraph(nodeCount: 7, edgeProbability: 0.25, using: &generator)
+            for cycle in bounded.detectCycles(in: graph) {
+                let members = Set(cycle.component)
+                let hasTwoCycle = graph.edges.contains { edge in
+                    edge.source != edge.target && members.contains(edge.source) && members.contains(edge.target)
+                        && graph.successors(of: edge.target).contains(edge.source)
+                }
+                guard hasTwoCycle else { continue }
+                componentsWithTwoCycle += 1
+                #expect(cycle.length == 2, "요소 \(cycle.component): \(cycle.path)")
+            }
+        }
+        // 무작위 입력이 우연히 이 경우를 하나도 만들지 않으면 테스트가 아무것도 확인하지 않는다.
+        #expect(componentsWithTwoCycle > 50)
+    }
+
     @Test("순환이 보고되지 않으면 위상 정렬이 가능하다")
     func absenceOfCyclesMeansGraphIsAcyclic() {
         var generator = SeededRandomNumberGenerator(seed: 99)

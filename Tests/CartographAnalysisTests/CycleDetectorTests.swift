@@ -67,6 +67,45 @@ struct CycleDetectorTests {
         #expect(cycles[0].component.count == 5)
     }
 
+    /// 시작점 상한(기본 32개)보다 큰 요소에서는 앞쪽 시작점만 너비 우선으로 탐색한다.
+    /// 길이 2 순환이 33번째 이후 정점에만 있으면, 앞쪽 시작점이 찾은 긴 순환이 "최단"으로 나갔다.
+    @Test("시작점 상한보다 큰 요소에서도 뒤쪽의 길이 2 순환을 보고한다")
+    func reportsTwoCycleBeyondSearchStarts() throws {
+        let names = (0..<40).map { "n" + ($0 < 10 ? "0" : "") + "\($0)" }
+        var adjacency = Dictionary(uniqueKeysWithValues: names.indices.map {
+            (names[$0], [names[($0 + 1) % names.count]])
+        })
+        adjacency["n36", default: []].append("n35")
+        let graph = TestGraph.make(adjacency)
+
+        let cycles = CycleDetector().detectCycles(in: graph)
+        let cycle = try #require(cycles.first)
+        #expect(cycles.count == 1)
+        #expect(cycle.component.count == 40)
+        #expect(cycle.path == [NodeID("n35"), NodeID("n36")])
+        #expect(cycle.edges.map(\.target) == [NodeID("n36"), NodeID("n35")])
+    }
+
+    @Test("길이 2 순환이 없는 큰 요소는 앞쪽 시작점에서 찾은 가장 짧은 순환을 낸다")
+    func largeComponentWithoutTwoCycleUsesBoundedStarts() throws {
+        // 41개 정점 링에 n37 → n35 를 더해 n35 → n36 → n37 → n35 삼각형을 만든다. 길이 3 순환은
+        // 33번째 이후 정점에만 있으므로, 시작점 32개로는 찾지 못하고 링 전체가 대표 경로가 된다.
+        // 이 테스트는 최단 보장이 길이 2 와 상한 이하 요소에만 있다는 문서의 문장을 고정한다.
+        let names = (0..<41).map { "n" + ($0 < 10 ? "0" : "") + "\($0)" }
+        var adjacency = Dictionary(uniqueKeysWithValues: names.indices.map {
+            (names[$0], [names[($0 + 1) % names.count]])
+        })
+        adjacency["n37", default: []].append("n35")
+        let graph = TestGraph.make(adjacency)
+
+        let bounded = try #require(CycleDetector().detectCycles(in: graph).first)
+        #expect(bounded.length == 41)
+        let exhaustive = try #require(
+            CycleDetector(options: .init(maximumSearchStarts: names.count)).detectCycles(in: graph).first
+        )
+        #expect(exhaustive.path == [NodeID("n35"), NodeID("n36"), NodeID("n37")])
+    }
+
     @Test("자기 순환은 기본적으로 무시하고 옵션으로 켤 수 있다")
     func selfLoopsAreOptional() {
         let graph = CodeGraph(

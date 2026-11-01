@@ -16,6 +16,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   representative path, instead of re-filtering and re-sorting every vertex's edges for each of
   up to 32 search starts. Reported cycles are byte-identical; a 5,000-vertex component searched
   from all 32 starts goes from 78 ms to 6 ms.
+- `cycles` finds a two-node cycle anywhere in a strongly connected component before its bounded
+  breadth-first search. A component larger than 32 nodes whose only two-node cycle lay past the
+  first 32 search starts was represented by a longer cycle. Components of at most 32 nodes, or
+  whose two-node cycle the bounded search already reached, report the same cycle as before; the
+  READMEs now state when the representative cycle is guaranteed shortest.
 
 ## [0.29.0] - 2026-10-25
 

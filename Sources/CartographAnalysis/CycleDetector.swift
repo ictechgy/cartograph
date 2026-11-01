@@ -55,6 +55,9 @@ public struct CycleDetector: Sendable {
         /// 모든 정점에서 너비 우선 탐색을 돌리면 큰 요소에서 O(V·(V+E)) 가 되어
         /// 심볼 레벨 그래프에서 사실상 멈춘다. 대표 경로는 하나면 충분하므로
         /// 시도 횟수를 제한해 최악 비용을 선형에 가깝게 유지한다.
+        ///
+        /// 길이 2 순환(서로를 곧바로 가리키는 두 정점)은 이 상한과 무관하게 요소 전체에서 찾는다.
+        /// 상한은 길이 3 이상 순환의 최단 보장만 포기한다.
         public var maximumSearchStarts: Int
 
         public init(
@@ -198,8 +201,19 @@ public struct CycleDetector: Sendable {
     ///
     /// SCC 는 "서로 오갈 수 있는 정점 집합"일 뿐이라 그대로 보여 주면
     /// 무엇을 고쳐야 할지 알기 어렵다. 대표 경로 하나를 뽑아 보여 준다.
+    ///
+    /// 최단이 보장되는 것은 요소에 길이 2 순환이 있거나 요소 크기가 `maximumSearchStarts`
+    /// 이하일 때다. 그보다 큰 요소에서는 식별자 순 앞쪽 시작점에서 찾은 것 중 가장 짧은
+    /// 순환이며, 그 밖의 정점만 지나는 더 짧은 순환이 있을 수 있다.
     private func shortestCycle(in component: [NodeID], graph: CodeGraph) -> DependencyCycle? {
         let adjacency = ComponentAdjacency(component: component) { successors(of: $0, in: graph) }
+        // 서로를 곧바로 가리키는 쌍은 여러 정점 요소에서 가능한 가장 짧은 순환이고, 간선을
+        // 한 번 훑으면 요소 전체에서 찾을 수 있다. 시작점 상한 뒤쪽에만 이 쌍이 있으면 너비
+        // 우선 탐색은 앞쪽의 긴 순환을 최단으로 내놓는다 — 가장 흔하고 가장 고치기 쉬운 상호
+        // 의존이 긴 경로에 가려진다. 상한 이하 요소에서는 시작점을 전부 도는 탐색과 같은 쌍이다.
+        if let pair = adjacency.firstMutualPair(), let cycleEdges = edges(along: pair, in: graph) {
+            return DependencyCycle(path: pair, edges: cycleEdges, component: component)
+        }
         var search = BreadthFirstScratch(count: component.count)
         var best: [NodeID]?
 
@@ -214,8 +228,6 @@ public struct CycleDetector: Sendable {
             // 되돌려 본다 — 시작점마다 긴 경로의 간선을 다시 거르면 탐색만큼 비싸다.
             guard edges(along: path, in: graph) != nil else { continue }
             best = path
-            // 길이 2 는 이 알고리즘이 찾을 수 있는 최소이므로 더 볼 필요가 없다.
-            if best?.count == 2 { break }
         }
 
         guard let path = best, let cycleEdges = self.edges(along: path, in: graph) else { return nil }
@@ -241,6 +253,32 @@ public struct CycleDetector: Sendable {
             }
             nodes = component
             successors = component.map { node in successorsOf(node).compactMap { indices[$0] } }
+        }
+
+        /// 식별자 순으로 처음 나오는 상호 간선 쌍 `[source, target]`.
+        ///
+        /// 출발점은 상대가 있는 가장 앞선 정점, 도착점은 그 정점의 상대 중 가장 앞선 정점이다.
+        /// 정렬된 시작점을 차례로 너비 우선 탐색할 때 처음 길이 2 를 내는 시작점과 그 탐색이
+        /// 첫 단계에서 고르는 이웃이 정확히 이 쌍이라, 상한 이하 요소의 대표 경로가 바뀌지 않는다.
+        func firstMutualPair() -> [NodeID]? {
+            for source in successors.indices {
+                for target in successors[source] where target != source && contains(source, in: target) {
+                    return [nodes[source], nodes[target]]
+                }
+            }
+            return nil
+        }
+
+        /// 정렬된 후속 목록을 이진 탐색한다. 간선 하나마다 상대의 목록 전체를 훑지 않는다.
+        private func contains(_ node: Int, in owner: Int) -> Bool {
+            let list = successors[owner]
+            var low = 0
+            var high = list.count
+            while low < high {
+                let middle = (low + high) / 2
+                if list[middle] < node { low = middle + 1 } else { high = middle }
+            }
+            return low < list.count && list[low] == node
         }
     }
 
