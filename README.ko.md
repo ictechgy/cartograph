@@ -1780,6 +1780,7 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 | 보존 대상 | 근거 |
 |---|---|
 | `@main`, `@UIApplicationMain`, `@NSApplicationMain`과 그 타입의 `main()` | 진입점 |
+| `main.swift`의 모든 최상위 선언 — 함수·타입·변수를 가리지 않음 | 진입점: 최상위 코드가 그 파일에서 실행되므로 거기 둔 안 쓰는 도우미는 보고되지 않습니다. `dead --explain`이 그렇게 말합니다 |
 | `XCTestCase` 하위 클래스와 인자 없는 `test…()` | XCTest |
 | `@Test`, `@Suite` | swift-testing |
 | `retain_public`일 때 `public`/`open` | 공개 API |

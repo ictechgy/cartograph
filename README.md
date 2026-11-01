@@ -1851,6 +1851,7 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | Kept | Reason |
 |---|---|
 | `@main`, `@UIApplicationMain`, `@NSApplicationMain` and the type's `main()` | entry point |
+| Every top-level declaration in `main.swift` — functions, types and variables alike | entry point: top-level code runs from that file, so an unused helper declared there is never reported; `dead --explain` says so |
 | `XCTestCase` subclasses and no-argument `test…()` methods | XCTest |
 | `@Test`, `@Suite` | swift-testing |
 | `public` / `open` when `retain_public` | public API |

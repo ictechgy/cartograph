@@ -139,7 +139,7 @@ public struct RetentionPolicy: Sendable {
         if node.attributes.contains(.implicit) { return .compilerSynthesized }
         if node.kind == .macro, node.attributes.contains(.compileTimeReference) { return .compileTimeReference }
         if node.attributes.contains(.entryPoint) { return .entryPoint }
-        if isTopLevelCode(node, in: graph) { return .entryPoint }
+        if Self.isTopLevelCodeDeclaration(node, in: graph) { return .entryPoint }
 
         if options.retainTests {
             if node.attributes.contains(.unitTest) { return .xcTest }
@@ -171,7 +171,7 @@ public struct RetentionPolicy: Sendable {
         typeWitnesses: Set<String>
     ) -> Set<RetentionReason> {
         var reasons: Set<RetentionReason> = []
-        if node.attributes.contains(.entryPoint) || isTopLevelCode(node, in: graph) {
+        if node.attributes.contains(.entryPoint) || Self.isTopLevelCodeDeclaration(node, in: graph) {
             reasons.insert(.entryPoint)
         }
         if node.attributes.contains(.unitTest) { reasons.insert(.xcTest) }
@@ -229,7 +229,10 @@ public struct RetentionPolicy: Sendable {
     ///
     /// 최상위 선언만 본다. `main.swift` 안에 정의한 타입의 멤버까지 살려 두면
     /// 그 파일에 무엇을 넣든 분석이 멎는다.
-    private func isTopLevelCode(_ node: GraphNode, in graph: CodeGraph) -> Bool {
+    ///
+    /// 함수·타입·변수를 가리지 않는다. 그래서 그 파일에 둔 안 쓰는 도우미는 보고되지 않는다.
+    /// 설명(`dead --explain`)이 이 사실을 `@main` 과 구분해 말할 수 있도록 공개한다.
+    public static func isTopLevelCodeDeclaration(_ node: GraphNode, in graph: CodeGraph) -> Bool {
         guard let path = node.location?.path,
               Self.lastComponent(of: path) == Self.topLevelCodeFileName
         else { return false }
