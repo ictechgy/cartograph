@@ -231,8 +231,9 @@ public struct RetentionPolicy: Sendable {
     /// 그 파일에 무엇을 넣든 분석이 멎는다.
     ///
     /// 함수·타입·변수를 가리지 않는다. 그래서 그 파일에 둔 안 쓰는 도우미는 보고되지 않는다.
-    /// 설명(`dead --explain`)이 이 사실을 `@main` 과 구분해 말할 수 있도록 공개한다.
-    public static func isTopLevelCodeDeclaration(_ node: GraphNode, in graph: CodeGraph) -> Bool {
+    /// 설명(`dead --explain`)이 이 사실을 `@main` 과 구분해 말할 수 있도록 패키지 안에만 연다.
+    /// 임베더용 계약이 아니라 같은 술어를 두 벌 두지 않기 위한 통로다.
+    package static func isTopLevelCodeDeclaration(_ node: GraphNode, in graph: CodeGraph) -> Bool {
         guard let path = node.location?.path,
               Self.lastComponent(of: path) == Self.topLevelCodeFileName
         else { return false }

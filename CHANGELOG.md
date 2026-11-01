@@ -41,6 +41,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Layer rules no longer count synthesized `retention` edges as dependencies, matching coupling
   metrics and cycle detection, which already excluded them. No analysis currently emits such
   edges; graphs built by embedders are affected. Reachability still follows them.
+- New public API in `CartographCore`/`CartographAnalysis`: `LayerMatchTarget`,
+  `LayerDefinition.matchTargets` (and the `matchTargets:` initializer parameter, default `nil`),
+  `LayerRuleEvaluator.LayerAssignment.Match.matchTargets` and `EdgeKind.isSourceDependency`.
+  All are additive; existing signatures keep working.
 - `dead --explain` says that a top-level declaration in `main.swift` is kept because it is
   top-level there, instead of calling it an `@main` entry point, and that such declarations are
   kept whether or not top-level code uses them. The retention reason value (`entryPoint`) and

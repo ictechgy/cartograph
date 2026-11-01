@@ -89,7 +89,7 @@ public struct LayerDefinition: Sendable, Codable, Equatable {
     }
 
     /// 대상이 하나도 없는 레이어를 거부하는 이유. 디코딩과 설정 검증이 같은 문장을 쓴다.
-    public static let emptyMatchTargetsReason = "match_on must list at least one of name, module, path"
+    static let emptyMatchTargetsReason = "match_on must list at least one of name, module, path"
 
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
