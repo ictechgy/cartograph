@@ -199,7 +199,7 @@ public struct LayerRuleEvaluator: Sendable {
         var violations: [LayerViolation] = []
 
         for edge in graph.edges {
-            guard edge.kind.impliesUsage,
+            guard edge.kind.isSourceDependency,
                   let sourceLayer = assignments[edge.source] ?? nil,
                   let targetLayer = assignments[edge.target] ?? nil
             else { continue }

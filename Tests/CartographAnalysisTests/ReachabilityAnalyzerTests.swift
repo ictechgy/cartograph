@@ -34,6 +34,20 @@ struct ReachabilityAnalyzerTests {
         #expect(report.totalCount == 3)
     }
 
+    /// 레이어 규칙과 지표는 보존 합성 간선을 의존으로 세지 않지만, 도달성은 그 간선을 따라간다.
+    /// 이름이 말하듯 도착점을 살려 두는 간선이다 — 끊으면 보존 규칙을 좁히는 것이 된다.
+    @Test("보존 합성 간선은 도착점을 살려 둔다")
+    func retentionEdgesKeepTargetsReachable() {
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("Kept", kind: .structType)
+        builder.symbol("Dead", kind: .structType)
+        builder.reference(from: "App", to: "Kept", kind: .retention)
+
+        let (report, _) = analyze(builder.build())
+        #expect(unusedNames(report) == ["Dead"])
+    }
+
     @Test("서로만 참조하는 죽은 덩어리도 찾아낸다")
     func findsIsolatedDeadCluster() {
         // 참조 개수만 세는 방식으로는 절대 못 찾는 경우다.

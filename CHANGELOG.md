@@ -26,6 +26,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   without it match name, module and path exactly as before and serialize unchanged; an unknown
   value or an empty list is a configuration error. `rules --explain` appends the restriction to
   the matched line only for layers that set it.
+- Layer rules no longer count synthesized `retention` edges as dependencies, matching coupling
+  metrics and cycle detection, which already excluded them. No analysis currently emits such
+  edges; graphs built by embedders are affected. Reachability still follows them.
 - Document that `superfluous-ignore` judges comments in source order: of comments that keep only
   each other alive, the earlier one is reported. Behavior is unchanged and now pinned by tests for
   both orders.

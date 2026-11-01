@@ -32,6 +32,15 @@ public enum EdgeKind: String, Codable, Sendable, CaseIterable, Comparable {
         self != .member
     }
 
+    /// 이 간선이 소스 코드에 적힌 설계상의 의존인지 여부.
+    ///
+    /// 레이어 규칙과 결합도 지표는 이 값이 참인 간선만 센다. 보존 합성 간선은 "도착점을 살려 둔다"는
+    /// 사실이라 도달성은 따라가지만(`impliesUsage`), 코드가 그 의존을 적은 것이 아니므로 금지된
+    /// 의존도, 결합도 아니다. 순환도 같은 이유로 제외한다(`participatesInCycles`).
+    public var isSourceDependency: Bool {
+        impliesUsage && self != .retention
+    }
+
     /// 순환 의존성 판정에 포함할 간선인지 여부.
     ///
     /// 포함 관계와 합성 보존 간선은 설계상의 순환이 아니므로 제외한다.

@@ -199,6 +199,26 @@ struct LayerRuleEvaluatorTests {
         #expect(evaluator.evaluate(graph: graph).isEmpty)
     }
 
+    /// 보존 합성 간선은 지표의 결합도에도, 순환에도 들어가지 않는다. 레이어 규칙만 이것을 의존으로
+    /// 세면 같은 간선 하나가 "결합은 없는데 금지된 의존은 있다"는 모순된 답을 낸다.
+    @Test("보존 합성 간선은 레이어 의존으로 세지 않는다")
+    func retentionEdgesAreNotLayerDependencies() {
+        let graph = CodeGraph(
+            level: .type,
+            nodes: [
+                GraphNode(id: "A", name: "HomeViewController", kind: .classType, module: "App"),
+                GraphNode(id: "B", name: "UserRepository", kind: .classType, module: "App"),
+            ],
+            edges: [GraphEdge(source: "A", target: "B", kind: .retention)]
+        )
+        let evaluator = LayerRuleEvaluator(
+            layers: layers,
+            rules: [LayerRule(from: "Presentation", deny: ["Data"])]
+        )
+        #expect(evaluator.evaluate(graph: graph).isEmpty)
+        #expect(evaluator.assess(graph: graph).violations.isEmpty)
+    }
+
     @Test("참조 근거가 없으면 선언 위치를 위반 발생 위치로 대신 쓰지 않는다")
     func violationCarriesLocation() {
         let evaluator = LayerRuleEvaluator(
