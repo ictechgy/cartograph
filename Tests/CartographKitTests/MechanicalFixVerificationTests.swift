@@ -37,20 +37,20 @@ struct MechanicalFixVerificationTests {
                 timeoutSeconds: timeout, recoveryDirectory: recovery.path, interruption: interruption))
     }
 
-    @Test("명령은 셸 없이 지정한 argv와 프로젝트 cwd 및 환경을 사용한다")
+    @Test("선택한 실행 파일은 지정한 argv와 프로젝트 cwd 및 환경을 사용한다")
     func argvCwdAndEnvironment() throws {
         try fixture { _, recovery, project in
             let result = try transaction(
                 project, recovery,
                 command: [
-                    "/usr/bin/python3", "-c",
+                    "/bin/sh", "-c",
                     """
-                    import os,sys
-                    assert os.path.realpath(os.getcwd()) == os.environ['CARTOGRAPH_FIX_PROJECT']
-                    assert os.environ['CARTOGRAPH_FIX_RECOVERY_DIRECTORY'] == sys.argv[2]
-                    assert sys.argv[1] == ';$(touch should-not-exist) 한글'
-                    print('verified')
-                    """, ";$(touch should-not-exist) 한글", recovery.path,
+                    [ "$(pwd -P)" = "$CARTOGRAPH_FIX_PROJECT" ] || exit 11
+                    [ "$CARTOGRAPH_FIX_RECOVERY_DIRECTORY" = "$2" ] || exit 12
+                    [ "$1" = ';$(touch should-not-exist) 한글' ] || exit 13
+                    [ "$0" = 'cartograph-verification-fixture' ] || exit 14
+                    printf '%s\\n' verified
+                    """, "cartograph-verification-fixture", ";$(touch should-not-exist) 한글", recovery.path,
                 ]
             ).perform()
             #expect(result.status == "passed")
@@ -106,8 +106,7 @@ struct MechanicalFixVerificationTests {
             let result = try transaction(
                 project, recovery,
                 command: [
-                    "/usr/bin/python3", "-c",
-                    "from pathlib import Path; Path('A.swift').write_text('// concurrent user edit\\n'); raise SystemExit(1)",
+                    "/bin/sh", "-c", "printf '%s\\n' '// concurrent user edit' > A.swift; exit 1",
                 ]
             ).perform()
             #expect(result.status == "failed")
@@ -125,8 +124,7 @@ struct MechanicalFixVerificationTests {
             let result = try transaction(
                 project, recovery,
                 command: [
-                    "/usr/bin/python3", "-c",
-                    "from pathlib import Path; Path('A.swift').unlink(); raise SystemExit(1)",
+                    "/bin/sh", "-c", "/bin/rm A.swift; exit 1",
                 ]
             ).perform()
             #expect(result.rollback == "restore-failed")
@@ -157,7 +155,7 @@ struct MechanicalFixVerificationTests {
     func boundedOutputRestores() throws {
         try fixture { _, recovery, project in
             let result = try transaction(
-                project, recovery, command: ["/usr/bin/python3", "-c", "print('x' * (2 * 1024 * 1024))"]
+                project, recovery, command: ["/usr/bin/yes", "x"]
             ).perform()
             #expect(result.status == "output-limit")
             #expect(result.rollback == "restored")

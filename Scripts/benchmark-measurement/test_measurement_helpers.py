@@ -10,6 +10,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import unittest
 
@@ -275,9 +276,8 @@ class ProcessTreeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="selftest-", dir=HERE)
         self.directory = Path(self.temp.name)
-
-    def tearDown(self):
-        self.temp.cleanup()
+        # 뒤에 등록한 fixture identity 정리가 임시 디렉터리 삭제보다 먼저 실행돼야 한다.
+        self.addCleanup(self.temp.cleanup)
 
     def measure(self, mode, *args, timeout=5):
         return memory.run([sys.executable, str(SYNTHETIC), mode, *map(str, args)], HERE,
@@ -322,11 +322,116 @@ class ProcessTreeTests(unittest.TestCase):
 
     def test_parent_exit_keeps_observed_grandchild_and_times_out(self):
         pid_file = self.directory / "grandchild.pid"
-        result = self.measure("orphan", pid_file, 0.2, 0.25, timeout=0.6)
+        identities = self.directory / "fixture-identities.jsonl"
+        released = self.directory / "release-middle"
+        samples_path = self.directory / "observed.samples.0001.jsonl"
+        fixture = self.directory / "observed-orphan.py"
+        # 생산자가 아직 내용을 쓰지 않은 유효한 시작 상태도 handshake가 기다려야 한다.
+        pid_file.touch()
+        fixture.write_text(textwrap.dedent('''\
+            import json, os, subprocess, sys, time
+            from pathlib import Path
+            import psutil
+            role, synthetic, pid_name, ids_name, release_name, samples_name = sys.argv[1:]
+            pid_file, identities, released, samples = map(Path, (pid_name, ids_name, release_name, samples_name))
+            empty_read = pid_file.with_suffix(".empty-observed")
+            deadline = time.monotonic() + 5
+            def remember(pid):
+                with identities.open("a") as sink:
+                    sink.write(json.dumps({"pid": pid, "create_time": psutil.Process(pid).create_time()}) + "\\n")
+            def wait_for(predicate):
+                while time.monotonic() < deadline:
+                    if predicate():
+                        return
+                    time.sleep(0.005)
+                raise TimeoutError("fixture handshake deadline")
+            remember(os.getpid())
+            if role == "middle":
+                # 빈 PID를 실제로 읽기 전에는 생산자가 덮어쓰지 않는 결정적 준비 대조군이다.
+                wait_for(empty_read.exists)
+                leaf = subprocess.Popen([sys.executable, synthetic, "stubborn", str(pid_file)], start_new_session=True)
+                remember(leaf.pid)
+                wait_for(released.exists)
+            else:
+                middle = subprocess.Popen([sys.executable, __file__, "middle", *sys.argv[2:]], start_new_session=True)
+                remember(middle.pid)
+                def observed():
+                    if not pid_file.exists() or not samples.exists():
+                        return False
+                    try:
+                        leaf_pid = int(pid_file.read_text())
+                    except ValueError:
+                        empty_read.touch()
+                        return False
+                    wanted = {(pid, psutil.Process(pid).create_time())
+                              for pid in (os.getpid(), middle.pid, leaf_pid)}
+                    for line in samples.read_text().splitlines():
+                        try:
+                            row = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if wanted <= {(member["pid"], member["create_time"]) for member in row["processes"]}:
+                            return True
+                    return False
+                wait_for(observed)
+                # 이전 0.5초 oracle이 거절했던 정상적인 늦은 루트 종료 대조군이다.
+                time.sleep(0.55)
+                released.touch()
+            '''))
+
+        # 첫 assertion이나 변이 대조군 실패 뒤에도 이번 fixture의 원래 identity만 정리한다.
+        def cleanup_fixture():
+            if not identities.exists():
+                return
+            errors = []
+            for line in identities.read_text().splitlines():
+                try:
+                    identity = json.loads(line)
+                    process = psutil.Process(identity["pid"])
+                    if process.create_time() == identity["create_time"] and process.status() != psutil.STATUS_ZOMBIE:
+                        process.kill()
+                        process.wait(timeout=3)
+                except psutil.NoSuchProcess:
+                    continue
+                except (ValueError, psutil.Error) as error:
+                    errors.append(type(error).__name__)
+            self.assertEqual(errors, [], "Owned fixture identity cleanup failed")
+
+        self.addCleanup(cleanup_fixture)
+        # 3초는 합성 handshake/timeout의 실행 한도이며 제품 성능 판정 기준이 아니다.
+        result = memory.run([sys.executable, str(fixture), "root", str(SYNTHETIC), str(pid_file),
+                             str(identities), str(released), str(samples_path)], HERE,
+                            self.directory / "observed", timeout=3, interval=0.005, grace=0.05, mode="memory")
         self.assertEqual(result["root_returncode"], 0)
-        self.assertLess(result["root_exit_observed_seconds"], 0.5)
         self.assertTrue(result["timed_out"])
+        self.assertEqual(result["returncode"], 124)
+        self.assertEqual(result["failure"], "timeout")
+        self.assertEqual(result["rss"]["read_errors"], [])
         self.assertGreaterEqual(result["rss"]["observed_process_count"], 3)
+        self.assertEqual(result["cleanup"]["remaining_observed_pids"], [])
+        rows = [json.loads(line) for line in samples_path.read_text().splitlines()]
+        # 루트가 자식 생성 전에 남긴 실제 identity로 sample→poll 관측 구간을 고정한다.
+        root_identity = json.loads(identities.read_text().splitlines()[0])
+        root_key = (root_identity["pid"], root_identity["create_time"])
+        root_rows = [index for index, row in enumerate(rows) if any(
+            (member["pid"], member["create_time"]) == root_key for member in row["processes"])]
+        self.assertTrue(root_rows)
+        last_root = root_rows[-1]
+        self.assertEqual(root_rows, list(range(root_rows[0], last_root + 1)))
+        exit_at = result["root_exit_observed_seconds"]
+        self.assertGreater(len(rows), last_root + 2)
+        self.assertLess(rows[last_root]["start_seconds"], exit_at)
+        self.assertLess(exit_at, rows[last_root + 2]["start_seconds"])
+        initial = next(row for row in rows if row["process_count"] == 3)
+        members = {member["process_id"]: member for member in initial["processes"]}
+        leaf = next(member for member in members.values() if member["pid"] == int(pid_file.read_text()))
+        # 관측 구간 밖의 이른/늦은 시각은 위에서 거절하며, 그 뒤에도 같은 고아를 보존해야 한다.
+        self.assertTrue(any(row["start_seconds"] > exit_at and
+                            len(row["processes"]) == 1 and
+                            row["processes"][0]["process_id"] == leaf["process_id"] and
+                            row["processes"][0]["pid"] == leaf["pid"] and
+                            row["processes"][0]["create_time"] == leaf["create_time"]
+                            for row in rows))
         self.assert_gone(int(pid_file.read_text()))
 
     @unittest.skipUnless(sys.platform == "linux", "Linux-only orphan adoption; macOS gap is explicit")
