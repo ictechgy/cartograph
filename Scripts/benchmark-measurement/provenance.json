@@ -26,7 +26,7 @@
     },
     "test_measurement_helpers.py": {
       "frozen_sha256": "645eb58a73e529833eb81c4fb2b137261097a462d3c75c569cc9d35b11c8f62d",
-      "reviewed_successor_sha256": "dea0e1eb37a026754d7d17e5d7a2a4de6d20c3c6f3b36f4fecfdc6218fdb4ef5"
+      "reviewed_successor_sha256": "d79c6d9908a67407d84a5c9629f6517696d80a897bbcdf1e8c1802fc01782d8f"
     },
     "verify-indexstore-evidence.py": {
       "identity_port_source_sha256": "17c4d4dd14360870827e491006573b5cd199ae028d01b6827b40ab3689715685",
