@@ -49,6 +49,10 @@ public struct CycleDetector: Sendable {
         /// 자기 자신을 가리키는 간선도 순환으로 볼지 여부.
         public var includeSelfLoops: Bool
         /// 보고할 최소 순환 길이.
+        ///
+        /// 요소마다 대표 순환 하나만 보므로 이 필터는 대표의 길이에 걸린다. 길이 2 순환이 있는 요소의 대표는
+        /// 언제나 길이 2 라서, 2 보다 크게 잡으면 그런 요소는 통째로 빠진다. 정점이 `maximumSearchStarts` 를
+        /// 넘는 요소도 이제 그렇다 — 전에는 뒤쪽 길이 2 순환을 못 찾아 더 긴 대표가 남을 수 있었다.
         public var minimumLength: Int
         /// 하나의 강결합 요소에서 대표 경로를 찾을 때 시도할 시작 정점 수의 상한.
         ///
@@ -352,12 +356,16 @@ public struct CycleDetector: Sendable {
     /// 선행 정점 색인을 거슬러 올라가 start → ... → end 경로를 복원한다.
     ///
     /// 이번 탐색에서 방문한 정점만 거치므로 선행 정점은 모두 이번 탐색이 기록한 값이다.
+    /// 그 불변식이 깨져 선행 정점이 없으면(-1) 색인 -1 로 넘어가 멈추는 대신 거기서 끊는다. 끊긴 경로는
+    /// 시작점에서 출발하지 않으므로 `edges(along:)` 가 후보에서 거른다.
     private func reconstructPath(to end: Int, from start: Int, predecessors: [Int]) -> [Int] {
         var path = [end]
         var current = end
         while current != start {
-            current = predecessors[current]
-            path.append(current)
+            let previous = predecessors[current]
+            guard previous >= 0 else { break }
+            path.append(previous)
+            current = previous
         }
         return path.reversed()
     }

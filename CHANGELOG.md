@@ -21,6 +21,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   first 32 search starts was represented by a longer cycle. Components of at most 32 nodes, or
   whose two-node cycle the bounded search already reached, report the same cycle as before; the
   READMEs now state when the representative cycle is guaranteed shortest.
+  **Upgrade note:** a cycle's baseline fingerprint is the sorted node list of its representative
+  path, so an affected component is re-keyed — `cycles`/`check` with a baseline report its
+  two-node cycle as new and the old entry stops matching, and its SARIF result carries a new
+  message and location, so a code-scanning alert for it closes and a new one opens. If a
+  suppressed component surfaces this way after upgrading, review it and rewrite the baseline with
+  `cartograph baseline --write`. Library callers that set `CycleDetector.Options.minimumLength`
+  above 2 (the CLI uses 2) now filter such components out, as they already did for components of
+  32 nodes or fewer, because the representative is the two-node cycle.
 - Add an optional `match_on` to layer definitions (`name`, `module`, `path`, one value or a list)
   so a pattern meant for one kind of candidate stops matching the others — for example a module
   rule `Networking` no longer catches an `App.Networking` namespace type with `match_on: module`.

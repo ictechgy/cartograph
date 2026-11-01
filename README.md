@@ -1709,7 +1709,10 @@ code up and down a file does not resurrect a suppressed finding. The record incl
 fails only on new ones, and `dead` counts those warnings as suppressed. An import has no USR, so it
 is identified by its file and the imported name, with the file written relative to the project
 root: the committed baseline matches in a checkout at another path. A file outside the project
-root keeps its absolute path.
+root keeps its absolute path. A cycle is identified by the nodes of its representative path, so a
+component whose representative changes — after an edit inside it, or when a release picks a
+different representative, which the changelog calls out — is reported as new and its old entry no
+longer matches; review it and rewrite the baseline.
 
 Where the file is written is always an explicit decision: `--write`, or the project root default
 (`.cartograph-baseline.json`) when the configuration sets no `baseline_path`. The `baseline_path`

@@ -84,6 +84,8 @@ struct CycleDetectorTests {
         #expect(cycle.component.count == 40)
         #expect(cycle.path == [NodeID("n35"), NodeID("n36")])
         #expect(cycle.edges.map(\.target) == [NodeID("n36"), NodeID("n35")])
+        // 최소 길이 필터는 대표에 걸린다. 대표가 길이 2 이므로 3 을 요구하면 요소가 통째로 빠진다(문서화한 동작).
+        #expect(CycleDetector(options: .init(minimumLength: 3)).detectCycles(in: graph).isEmpty)
     }
 
     @Test("길이 2 순환이 없는 큰 요소는 앞쪽 시작점에서 찾은 가장 짧은 순환을 낸다")
