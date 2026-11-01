@@ -303,8 +303,8 @@ struct LayerRuleEvaluatorTests {
         #expect(byName.assignment(of: GraphNode(id: "c", name: "Client", kind: .classType, module: "NetworkKit"))
             .match?.candidate == "NetworkKit.Client")
 
-        // `/` 없는 경로 패턴은 마지막 요소(파일 이름)에 대조된다. 타입과 이름이 같은 파일이면 그대로 맞고,
-        // 이름이 다른 파일에 선언된 타입에는 맞지 않는다.
+        // `/` 없는 경로 패턴은 절대·상대 경로의 각 요소(디렉터리와 파일 이름)에 대조된다(gitignore 방식).
+        // 타입과 이름이 같은 파일이면 그대로 맞고, 경로의 어느 요소에도 맞지 않는 파일의 타입에는 맞지 않는다.
         let byPath = LayerRuleEvaluator(layers: [
             LayerDefinition(name: "Net", patterns: ["*Network*"], matchTargets: [.path]),
         ], rules: [], projectPath: "/p")
@@ -315,6 +315,29 @@ struct LayerRuleEvaluatorTests {
         #expect(byPath.layer(of: sameFile) == "Net")
         #expect(byPath.assignment(of: sameFile).match?.candidate == "/p/Domain/NetworkError.swift")
         #expect(byPath.layer(of: otherFile) == nil)
+
+        // 디렉터리 요소도 맞는다. 프로젝트 안의 `Network/` 아래 파일은 이름과 무관하게 배정된다.
+        let underDirectory = GraphNode(id: "d1", name: "Client", kind: .classType, module: "App",
+            location: .init(path: "/p/Network/Client.swift", line: 1, column: 1))
+        #expect(byPath.layer(of: underDirectory) == "Net")
+        #expect(byPath.assignment(of: underDirectory).match?.candidate == "/p/Network/Client.swift")
+
+        // 절대 경로도 후보라 프로젝트 루트 위의 디렉터리 이름에도 맞는다. 바꾸지 않은 기존 동작을 고정한다 —
+        // 고치면(상대 경로만 보기 등) 이 기대가 바뀌어야 한다. 루트에 고정한 `Network/**` 는 걸리지 않는다.
+        let ancestorRoot = "/Users/me/NetworkApps/project"
+        let ancestor = GraphNode(id: "d2", name: "Validator", kind: .structType, module: "App",
+            location: .init(path: ancestorRoot + "/Domain/Validator.swift", line: 1, column: 1))
+        let underAncestor = LayerRuleEvaluator(layers: [
+            LayerDefinition(name: "Net", patterns: ["*Network*"], matchTargets: [.path]),
+        ], rules: [], projectPath: ancestorRoot)
+        #expect(underAncestor.layer(of: ancestor) == "Net")
+        let anchored = LayerRuleEvaluator(layers: [
+            LayerDefinition(name: "Net", patterns: ["Network/**"], matchTargets: [.path]),
+        ], rules: [], projectPath: ancestorRoot)
+        #expect(anchored.layer(of: ancestor) == nil)
+        let anchoredHit = GraphNode(id: "d3", name: "Client", kind: .classType, module: "App",
+            location: .init(path: ancestorRoot + "/Network/Client.swift", line: 1, column: 1))
+        #expect(anchored.layer(of: anchoredHit) == "Net")
     }
 
     @Test("대조 대상은 정렬·중복 제거되어 같은 설정이 같은 값이 된다")

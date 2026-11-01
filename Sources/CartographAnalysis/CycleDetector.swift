@@ -356,8 +356,9 @@ public struct CycleDetector: Sendable {
     /// 선행 정점 색인을 거슬러 올라가 start → ... → end 경로를 복원한다.
     ///
     /// 이번 탐색에서 방문한 정점만 거치므로 선행 정점은 모두 이번 탐색이 기록한 값이다.
-    /// 그 불변식이 깨져 선행 정점이 없으면(-1) 색인 -1 로 넘어가 멈추는 대신 거기서 끊는다. 끊긴 경로는
-    /// 시작점에서 출발하지 않으므로 `edges(along:)` 가 후보에서 거른다.
+    /// 그 불변식이 깨져 선행 정점이 없으면(-1) 색인 -1 로 넘어가 멈추는 대신 거기서 끊는다. 끊긴 경로의 이웃
+    /// 쌍은 선행 정점 기록대로 실재하는 간선이다. 마지막 정점에서 첫 정점으로 돌아오는 간선이 없으면
+    /// `edges(along:)` 가 후보에서 거르고, 있으면 시작점을 지나지 않을 뿐 실재하는 순환이다.
     private func reconstructPath(to end: Int, from start: Int, predecessors: [Int]) -> [Int] {
         var path = [end]
         var current = end

@@ -33,8 +33,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   so a pattern meant for one kind of candidate stops matching the others — for example a module
   rule `Networking` no longer catches an `App.Networking` namespace type with `match_on: module`.
   `name` includes the module-qualified name, and a `path` pattern without `/` is matched against
-  the file name, so a type declared in a file of the same name still matches a `path`-only
-  file-name pattern. Layers without `match_on` match name, module and path exactly as before and
+  every component of the absolute and relative path (each directory and the file name), so a
+  `path`-only `*Network*` still matches files under a `Network/` directory, a file named after its
+  type, and every file when a directory above the project root matches. Layers without
+  `match_on` match name, module and path exactly as before and
   serialize unchanged; an unknown value, an empty list or an empty `match_on:` is a configuration
   error, and `validate()` rejects an empty list built in code. `rules --explain` appends the
   restriction to the matched line only for layers that set it.

@@ -1655,10 +1655,15 @@ one:
   pattern such as `Network*` therefore still matches every declaration of a module named
   `NetworkKit`; use `match_on: module` for module rules.
 - `path` is the absolute and the project-relative file path. A pattern without `/` is matched
-  against the last path component — the file name — so `match_on: path` does not separate a type
-  from a file that carries its name: `*Network*` with `match_on: path` still places a type declared
-  in `NetworkError.swift`. It does stop that pattern from matching a type such as `NetworkError`
-  declared in `Errors.swift`. A directory pattern (`**/Network/**`) never matches a name anyway.
+  gitignore-style against each component of those paths — every directory and the file name. So
+  `*Network*` with `match_on: path` still places anything under a `Network/` directory and a type
+  declared in a file that carries its name (`NetworkError.swift`), and because the absolute path
+  is a candidate, it places every node when a directory above the project root matches (a project
+  under `~/NetworkApps/`). What it stops is the pattern matching a declaration's name — a type
+  `NetworkError` declared in `Domain/Errors.swift` is no longer caught, as long as no directory on
+  that file's absolute path matches. For a directory rule, prefer a pattern anchored at the project
+  root such as `Network/**`: `**/Network/**` and slash-less patterns are also compared against the
+  absolute path, directories above the project root included.
 
 A layer without `match_on` matches exactly as before. A `path`-only layer never matches a module
 node, which has no source location. An unknown value, an empty list or an empty `match_on:` is a

@@ -13,7 +13,9 @@ public struct GlobPattern: Hashable, Sendable, CustomStringConvertible {
     ///
     /// 원문에서 유도한 값이라 같음·해시·직렬화에는 쓰지 않는다(`pattern` 만 쓴다).
     private let segments: [[Character]]
-    /// 구분자가 없는 패턴은 경로의 마지막 요소에만 적용한다(gitignore 와 같은 직관).
+    /// 구분자가 없는 패턴인지. 이름과 달리 마지막 요소만 보지 않는다 — 경로의 각 요소(디렉터리와 파일
+    /// 이름)에 대 본다(gitignore 와 같은 직관, `matches(components:)`). 절대 경로를 넘기면 프로젝트 루트
+    /// 위의 디렉터리도 그 요소에 든다.
     private let matchesLastComponentOnly: Bool
     /// 사용자가 절대 경로로 쓴 패턴인지.
     ///
