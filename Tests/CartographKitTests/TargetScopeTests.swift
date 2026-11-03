@@ -118,6 +118,20 @@ struct TargetScopeTests {
         }
     }
 
+    @Test("스크래치 빌드 디렉터리는 .build 처럼 건너뛰고 Pods 같은 빌드 입력은 그대로 센다")
+    func inventorySkipsScratchBuildDirectoriesOnly() throws {
+        // --scratch-path .build-fresh 아래의 의존성 체크아웃이 증명 입력으로 섞이면 항목 예산을 넘겨 증명이
+        // 통째로 거부된다. 반대로 Pods 는 실제 빌드 입력일 수 있어 공용 가지치기 목록을 쓰면 안 된다.
+        let fs = InMemoryFileSystem(currentDirectoryPath: "/p", files: [
+            "/p/Package.swift": "// manifest", "/p/Sources/App/App.swift": "func leaf() {}",
+            "/p/.build/checkouts/Dep/Dep.swift": "func dep() {}",
+            "/p/.build-fresh/checkouts/Dep/Dep.swift": "func dep() {}",
+            "/p/Pods/Vendored/Vendored.swift": "func vendored() {}",
+        ])
+        let inputs = try TargetScopeStore(fileSystem: fs).inventory(root: "/p")
+        #expect(inputs.keys.sorted() == ["Package.swift", "Pods/Vendored/Vendored.swift", "Sources/App/App.swift"])
+    }
+
     @Test("읽기 실패와 source 상한 및 출력 행 제한을 숨기지 않는다")
     func boundedInputsAndRows() throws {
         let (fs, service, context, receipt) = try fixture()

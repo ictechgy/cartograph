@@ -621,6 +621,15 @@ public enum BuildArtifactDirectories {
     /// `recursiveFiles(under:isIncluded:shouldDescend:)` 에 그대로 넘길 수 있는 판정.
     public static func shouldDescend(into path: String) -> Bool {
         let name = (path as NSString).lastPathComponent
-        return !prunedNames.contains(name) && !name.hasPrefix(".build-")
+        return !prunedNames.contains(name) && !isBuildScratch(name)
+    }
+
+    /// SwiftPM 스크래치 디렉터리(`.build`, `--scratch-path .build-fresh` 같은 `.build-…`)인지.
+    ///
+    /// 입력을 해시해 증명을 묶는 인벤토리(target scope 캡처)는 `prunedNames` 전체를 쓰지 않는다.
+    /// `Pods/Pods.xcodeproj` 나 체크아웃된 소스는 실제 빌드 입력일 수 있어, 건너뛰면 그 변경을 못 보고 낡은
+    /// 증명을 받아들인다. 스크래치는 어느 쪽에서도 입력이 아니므로 이 판정만 공유한다.
+    public static func isBuildScratch(_ name: String) -> Bool {
+        name == ".build" || name.hasPrefix(".build-")
     }
 }

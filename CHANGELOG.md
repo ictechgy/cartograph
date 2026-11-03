@@ -9,6 +9,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Target-scope capture inventories (SwiftPM and Xcode) now skip SwiftPM scratch directories such as
+  `.build-fresh` the way they already skipped `.build`. Dependency checkouts under a leftover scratch
+  path were hashed as project inputs and could exceed the inventory budget, refusing the capture.
+  `Pods`, `Carthage` and checkouts outside scratch paths are still inventoried because they can be
+  real build inputs.
 - The agent skill now lists the MCP `cartograph_prepare` tool and how to use it. It shipped in 0.30.0
   without a mention in the skill, so agents could not discover background preparation. A test now
   fails when any published MCP tool is missing from the skill.
