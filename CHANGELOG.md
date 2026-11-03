@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- The agent skill now lists the MCP `cartograph_prepare` tool and how to use it. It shipped in 0.30.0
+  without a mention in the skill, so agents could not discover background preparation. A test now
+  fails when any published MCP tool is missing from the skill.
+
 ## [0.30.0] - 2026-11-03
 
 - Keep value-flow value and origin budget states absorbing across later joins.
