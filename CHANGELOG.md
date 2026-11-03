@@ -20,6 +20,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Declarations used only by Git-ignored sources that the compiler indexed (gitignored R.swift, SwiftGen
+  or Sourcery output) are no longer reported as unreachable. Source discovery excludes ignored files,
+  so their callers vanished and `retained_files` could not help because the files were never read. The
+  ignored files are now read from the index separately, and the declarations they use are retained as
+  `ignoredSourceReference`. The ignored files themselves still add no findings, cycles or layer edges,
+  and uncompiled ignored copies (such as agent worktrees) contribute nothing.
 - When Git source selection fails inside a repository (5-second limit, 16 MiB output budget, or a Git
   error such as a corrupt index), analysis responses now carry a `source-discovery-git-unavailable`
   limitation with the reason. The fallback walks every source, including Git-ignored files, so the same

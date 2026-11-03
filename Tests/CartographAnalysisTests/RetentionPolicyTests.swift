@@ -314,6 +314,16 @@ struct RetentionPolicyTests {
         #expect(reasons(snapshot, options: disabled)["Event.opened"] == nil)
     }
 
+    @Test("Git 이 무시한 컴파일 소스가 쓰는 선언은 그 근거로 보존한다")
+    func declarationsUsedByIgnoredCompiledSourcesAreRetained() {
+        var builder = SnapshotBuilder()
+        builder.symbol("helper", kind: .function, attributes: [.referencedFromIgnoredSource])
+        builder.symbol("unused", kind: .function)
+        let retained = reasons(builder.build())
+        #expect(retained["helper"] == .ignoredSourceReference)
+        #expect(retained["unused"] == nil)
+    }
+
     @Test("Equatable 타입의 저장 프로퍼티를 보존하고 끌 수 있다")
     func equatablePropertiesAreRetained() {
         var builder = SnapshotBuilder()

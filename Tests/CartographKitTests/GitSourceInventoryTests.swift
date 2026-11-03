@@ -39,6 +39,10 @@ struct GitSourceInventoryTests {
         #expect(Set(inventory.sourceFiles.map { URL(fileURLWithPath: $0).lastPathComponent }) == ["App.swift", "Tracked.swift"])
         #expect(!inventory.discoveryExclusions.isEmpty)
         #expect(inventory.discoveryExclusions.contains { $0.hasSuffix("/nested") })
+        // 무시된 소스 파일은 분석 범위 밖이지만, 색인됐다면 그 참조를 따라가도록 따로 기록한다. 중첩 저장소는 아니다.
+        let ignored = Set(inventory.ignoredSourceFiles.map { URL(fileURLWithPath: $0).lastPathComponent })
+        #expect(ignored == ["Ignored.swift", "Info.swift", "Noise.swift"])
+        #expect(!inventory.ignoredSourceFiles.contains { $0.contains("/nested/") })
     }
 
     @Test("저장소인데 Git 이 목록을 내지 못하면 전체 walk 로 폴백하고 그 사실을 한계로 남긴다")

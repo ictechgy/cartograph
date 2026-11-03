@@ -1819,6 +1819,7 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 | `retained_names`, `retained_files` 글롭 | 사용자가 지정 |
 | 권한·I/O 오류로 소스를 읽지 못한 선언 | 보존 정보가 불완전함(`sourceUnavailable`). 접근을 복구하고 다시 분석 |
 | `--external-retentions`가 지목한 선언 | 다른 플랫폼이 브리지를 넘어 호출. `--explain`이 근거를 인용 |
+| 컴파일러가 색인한 Git 무시 소스(gitignore 한 R.swift·SwiftGen·Sourcery 출력)가 쓰는 선언 | 호출자가 분석 범위 밖에 있음(`ignoredSourceReference`) |
 
 컴파일에 필요한 선언과 런타임 사용은 별개입니다. 컴파일러가 관측한 매크로 참조는 적용된
 소유 타입이 도달 불가능해도 매크로를 보존합니다. 마찬가지로 소스에 남은 annotation은
@@ -2195,7 +2196,9 @@ Git ignored인 미추적 소스와 중첩 저장소는 탐색에서 제외하며
 우선합니다. 제외 경고가 없어졌다고 빌드 범위가 완전해진 것은 아닙니다. Git이 저장소 목록을 내지
 못하면(5초 제한, 16 MiB 출력 예산, Git 오류) 루트 아래 소스를 전부 걷고
 `source-discovery-git-unavailable`이 이유를 알립니다. 그때는 무시 파일도 섞여 Git이 성공한 실행과
-답이 달라질 수 있기 때문입니다. 생성된 DI 파일은
+답이 달라질 수 있기 때문입니다. 컴파일러가 색인한 무시 소스(gitignore 한 생성 코드)가 쓰는 선언은
+`ignoredSourceReference`로 보존합니다. 무시 파일 자체는 여전히 발견·순환·레이어 간선을 더하지 않습니다.
+생성된 DI 파일은
 호출 관계를 연결하므로 역할을 검토한 뒤 `retention.retained_files: ["Sources/Generated/**"]`로
 선언을 보존하고 간선을 유지할 수 있습니다. 생성물처럼 보이는 이름이나 사람이 관리하는
 디자인 token 파일을 자동 숨기지 않습니다.

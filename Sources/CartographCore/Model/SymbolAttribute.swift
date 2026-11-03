@@ -89,6 +89,9 @@ public enum SymbolAttribute: String, Codable, Sendable, CaseIterable {
     case ignoreInherited
     /// 소스를 읽지 못해 보존에 필요한 주석·접근 수준을 확인하지 못했다.
     case sourceUnavailable
+    /// Git 이 무시하지만 컴파일러가 색인한 소스(생성 코드 등)가 이 선언을 쓴다. 그 소스는 분석 범위 밖이라
+    /// 그래프에 간선이 없다.
+    case referencedFromIgnoredSource
     /// 제네릭 파라미터를 가진 선언.
     case generic
 

@@ -140,6 +140,8 @@ public struct RetentionPolicy: Sendable {
            ) != nil {
             return .externalBridge
         }
+        // 무시됐지만 컴파일된 소스(생성 코드)가 부른다. 그 소스는 분석 범위 밖이라 그래프에 간선이 없다.
+        if node.attributes.contains(.referencedFromIgnoredSource) { return .ignoredSourceReference }
         if node.attributes.contains(.implicit) { return .compilerSynthesized }
         if node.kind == .macro, node.attributes.contains(.compileTimeReference) { return .compileTimeReference }
         if node.attributes.contains(.entryPoint) { return .entryPoint }

@@ -58,6 +58,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     /// 인덱스는 Dart 나 JavaScript 를 보지 못한다. 근거는 `--external-retentions` 파일에
     /// 있고 `dead --explain` 이 그것을 문장으로 만든다.
     case externalBridge
+    /// Git 이 무시하지만 컴파일러가 색인한 소스가 쓰는 선언. 생성 코드(R.swift·SwiftGen·Sourcery)가 흔한 출처다.
+    case ignoredSourceReference
 
     /// 생산 코드가 아니라 테스트나 프리뷰가 살려 둔 뿌리인지 여부.
     ///
@@ -150,6 +152,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         case .ignoreComment: "marked with a // cartograph:ignore comment"
         case .sourceUnavailable: "kept conservatively because its source could not be read; restore access and rebuild"
         case .externalBridge: "called from another platform across a bridge, per the external retentions file"
+        case .ignoredSourceReference:
+            "referenced from a Git-ignored source file the compiler indexed, such as generated code"
         }
     }
 }

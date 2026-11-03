@@ -133,11 +133,14 @@ public struct CartographService: Sendable {
                 throw XcodeLocalPackageIO.invalid("Fresh analysis selected a different index store; use the captured --index-store path.")
             }
         }
-        let raw = try measureQueryPhase(.rawSnapshot, observer: environment.queryPhaseObserver) {
-            try source.provider.loadSnapshot()
+        let (raw, ignoredSourceTargets) = try measureQueryPhase(
+            .rawSnapshot, observer: environment.queryPhaseObserver
+        ) {
+            (try source.provider.loadSnapshot(), try ignoredSourceReferenceTargets(inventory: inventory))
         }
         return try measureQueryPhase(.syntaxContext, observer: environment.queryPhaseObserver) {
-            let enriched = enrich(raw, inventory: inventory)
+            let marked = IgnoredSourceReferences.marking(raw, targets: ignoredSourceTargets)
+            let enriched = enrich(marked, inventory: inventory)
             let snapshot = enriched.snapshot
             try requireNonEmptyIndex(snapshot, from: source)
             let context = AnalysisContext(
@@ -158,6 +161,15 @@ public struct CartographService: Sendable {
                     fileSystem: environment.fileSystem).limitations(storePath: source.storePath,
                         projectPath: projectPath, sourcePaths: inventory.sourceFiles, snapshot: raw))
         }
+    }
+
+    /// Git 이 무시했지만 컴파일러가 색인했을 수 있는 소스가 쓰는 선언의 USR.
+    ///
+    /// 무시 소스가 없으면 인덱스를 다시 읽지 않는다. 있으면 그 파일만 따로 읽어(`supplementalSnapshot`) 본 분석의
+    /// 범위와 섞지 않는다.
+    private func ignoredSourceReferenceTargets(inventory: ProjectFileInventory) throws -> Set<String> {
+        guard !inventory.ignoredSourceFiles.isEmpty else { return [] }
+        return IgnoredSourceReferences.targets(in: try supplementalSnapshot(sourcePaths: inventory.ignoredSourceFiles))
     }
 
     /// 탈출구를 켜고 아무것도 분석하지 않은 실행이면, 요약 줄에 붙일 단서.

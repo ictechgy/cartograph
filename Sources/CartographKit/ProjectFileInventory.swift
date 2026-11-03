@@ -19,6 +19,11 @@ struct ProjectFileInventory: Sendable, Equatable {
     let externalDirectoryLinks: [String]
     /// Git 범위나 중첩 저장소 경계로 제외한 실제 파일/디렉터리. 타깃 소속의 증명은 아니다.
     let discoveryExclusions: [String]
+    /// Git 이 무시한 소스 확장자 파일(정렬, 분석 filter 적용). 분석 범위에는 넣지 않는다.
+    ///
+    /// 컴파일러가 이 중 일부를 색인했다면 그 파일이 쓰는 선언을 보존 근거로 삼는다(`IgnoredSourceReferences`).
+    /// 생성 파일을 무시 목록에 두는 팀이 흔해, 빼기만 하면 생성 코드만 부르는 앱 코드가 미사용으로 보고됐다.
+    let ignoredSourceFiles: [String]
     /// Git 저장소인데 선택을 끝내지 못해 전체 walk 로 폴백한 이유. nil 이면 선택했거나 시도할 필요가 없었다.
     ///
     /// 폴백하면 무시 파일까지 섞여, 같은 커밋에서도 선택이 성공한 실행과 답이 달라진다. 이 값이 그 사실을
@@ -28,6 +33,7 @@ struct ProjectFileInventory: Sendable, Equatable {
     init(fileSystem: any FileSystem, projectPath: String, pathFilter: PathFilter) {
         var externalLinks: [String] = []
         var exclusions: Set<String> = []
+        var ignoredSources: Set<String> = []
         let selection = GitSourceInventory.select(fileSystem: fileSystem, projectPath: projectPath)
         let git: GitSourceInventory?
         if case let .selected(inventory) = selection { git = inventory } else { git = nil }
@@ -40,7 +46,11 @@ struct ProjectFileInventory: Sendable, Equatable {
             under: projectPath,
             isIncluded: { path in
                 guard Self.isSource(path) || path.hasSuffix(".h") || Self.isRuntimeResource(path) else { return false }
-                if let git, !git.paths.contains(path) { exclusions.insert(path); return false }
+                if let git, !git.paths.contains(path) {
+                    exclusions.insert(path)
+                    if Self.isSource(path) { ignoredSources.insert(path) }
+                    return false
+                }
                 return true
             },
             shouldDescend: { path in
@@ -61,6 +71,7 @@ struct ProjectFileInventory: Sendable, Equatable {
         limitationFiles = Set(sourceFiles + headers + interfaceBuilderFiles).sorted()
         externalDirectoryLinks = Self.inScope(externalLinks, pathFilter: pathFilter)
         discoveryExclusions = exclusions.sorted()
+        ignoredSourceFiles = ignoredSources.filter(pathFilter.allows).sorted()
     }
 
     /// 제외 글롭에 걸리지 않는 위치의 링크만 남긴다.

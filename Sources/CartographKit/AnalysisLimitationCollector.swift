@@ -67,7 +67,8 @@ struct AnalysisLimitationCollector {
 
         var result: [String] = context?.indexSelectionLimitations ?? []
         if let inventory, !inventory.discoveryExclusions.isEmpty {
-            result += Self.sourceDiscoveryLimitation(inventory.discoveryExclusions, projectPath: projectPath).map { [$0] } ?? []
+            result += Self.sourceDiscoveryLimitation(inventory.discoveryExclusions, projectPath: projectPath,
+                followsIgnoredSourceReferences: !inventory.ignoredSourceFiles.isEmpty).map { [$0] } ?? []
         }
         if let inventory, let reason = inventory.gitSelectionUnavailableReason {
             result.append(Self.gitSelectionLimitation(reason))
@@ -234,12 +235,20 @@ struct AnalysisLimitationCollector {
     static let maximumDiagnosticPathBytes = 8_192
 
     /// 모든 분석/교환 경로가 동일한 누락 범위를 전달한다. 무시 규칙은 빌드 소속 근거가 아니다.
-    static func sourceDiscoveryLimitation(_ paths: [String], projectPath: String) -> String? {
+    ///
+    /// 분석 응답은 무시됐지만 색인된 소스의 참조를 따라간다는 문장을 덧붙인다. 교환 문서의 구문 스캔은 그 파일을
+    /// 읽지 않으므로 같은 문장을 쓰면 거짓이 된다 — 그래서 기본값은 꺼짐이다.
+    static func sourceDiscoveryLimitation(
+        _ paths: [String], projectPath: String, followsIgnoredSourceReferences: Bool = false
+    ) -> String? {
         guard !paths.isEmpty else { return nil }
         var resolver = PathResolver(canonicalize: { $0 }, projectPath: projectPath)
         return "source-discovery-exclusions: \(paths.count) source/resource path(s) or nested repositories "
             + "excluded by Git ignore rules or repository boundaries; tracked files take precedence over ignore rules. "
             + "This does not prove build-target coverage."
+            + (followsIgnoredSourceReferences
+                ? " Declarations used by ignored sources the compiler indexed are retained (ignoredSourceReference)."
+                : "")
             + encodedDiagnosticPaths(paths.compactMap { resolver.relativeDiagnosticPath($0) })
     }
 

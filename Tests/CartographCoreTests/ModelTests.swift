@@ -201,6 +201,8 @@ struct RetentionReasonSentenceTests {
             .sourceUnavailable:
                 "kept conservatively because its source could not be read; restore access and rebuild",
             .externalBridge: "called from another platform across a bridge, per the external retentions file",
+            .ignoredSourceReference:
+                "referenced from a Git-ignored source file the compiler indexed, such as generated code",
         ]
         #expect(expected.count == RetentionReason.allCases.count, "새 근거가 표에 없다")
         for reason in RetentionReason.allCases {

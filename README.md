@@ -1893,6 +1893,7 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | `retained_names`, `retained_files` globs | you said so |
 | Declarations whose source cannot be read (permissions or I/O failure) | retention annotations are unknown (`sourceUnavailable`); restore access and rerun |
 | Declarations named in `--external-retentions` | another platform calls them across a bridge; `--explain` quotes the evidence |
+| Declarations used by a Git-ignored source the compiler indexed (gitignored R.swift, SwiftGen or Sourcery output) | the caller is outside the analysis scope (`ignoredSourceReference`) |
 
 Compiler requirements and runtime use are separate. A compiler-observed macro reference keeps
 the macro even when its annotated owner is unreachable. Likewise, an annotation still present
@@ -2292,6 +2293,9 @@ take precedence over ignore rules. Exclusions are reported and do not prove buil
 When Git cannot list a repository (a 5-second limit, a 16 MiB output budget or a Git error), every
 source under the root is walked instead and `source-discovery-git-unavailable` reports why, because
 ignored files are then included and results can differ from a run where Git succeeded.
+When the compiler indexed an ignored source (gitignored generated code), the declarations it uses
+are retained as `ignoredSourceReference`; the ignored file itself still adds no findings, cycles or
+layer edges.
 Generated DI files can connect real callers. After reviewing their role, use
 `retention.retained_files: ["Sources/Generated/**"]` to retain declarations without discarding edges.
 A generated-looking name or a human-maintained design-token file is not automatically hidden.
