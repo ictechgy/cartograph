@@ -1810,7 +1810,8 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 | `@propertyWrapper`의 `wrappedValue`, `projectedValue` | 래퍼 규약 |
 | `@resultBuilder`의 `build*` | 빌더 규약 |
 | `Codable` 타입의 저장 프로퍼티 | 합성된 인코딩이 참조를 남기지 않음 |
-| `Equatable`/`Hashable` 타입의 저장 프로퍼티 | 합성된 `==`/`hash(into:)`가 참조를 남기지 않음 |
+| 원시값 없는 `Codable` 열거형의 케이스(`retain_codable_properties`) | 합성 디코딩이 케이스 이름으로 만듦 |
+| `Equatable`/`Hashable`(그리고 `Comparable`) 타입의 저장 프로퍼티 | 합성된 `==`/`hash(into:)`가 참조를 남기지 않음 |
 | 분석 범위 밖 선언을 오버라이드하거나 준수하는 **멤버** | 프레임워크가 호출. 이 규칙만으로 소유 타입까지 살리지는 않음 |
 | `subscript(dynamicMember:)`, `@_dynamicReplacement`, `dynamic` | 동적 디스패치 |
 | 컴파일러 합성 선언 | 지울 수 없음. 그것을 담은 타입까지 살리지도 않음 |
@@ -1836,6 +1837,11 @@ Periphery는 둘 다 꺼져 있습니다. 합성된 `==`나 `hash(into:)`만 읽
 끄세요. 이 두 보존 이유는 소유 타입이 도달 가능한 경우에만 적용됩니다. 생성되지 않는
 중첩 `Equatable`/`Hashable` 타입의 저장 프로퍼티가 미사용 바깥 타입을 보존하지 않습니다.
 `Codable`과 명시적 보존 규칙은 별도로 유지됩니다.
+
+이 준수들은 상속 절뿐 아니라 컴파일러 인덱스에서도 읽습니다. 그래서 `Swift.Codable`, 조합
+(`Codable & Hashable`), 타입 별칭(`typealias Model = Codable & Hashable`), 프로젝트 프로토콜 경유
+(`protocol APIRequest: Encodable` 뒤의 `struct Login: APIRequest`)로 써도 적용됩니다. 상위 클래스의
+준수는 하위 클래스가 더한 프로퍼티에 적용하지 않습니다. 합성 코딩이 그 프로퍼티를 읽지 않기 때문입니다.
 
 프로토콜 요구사항은 오버라이드 관계를 역방향으로 따라가며 처리합니다. 요구사항이 호출되면
 그 구현이 전부 도달 가능해집니다 — 단, 구현을 소유한 타입 자체가 도달 가능할 때만이어서,

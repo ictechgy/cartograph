@@ -237,6 +237,83 @@ struct RetentionPolicyTests {
         #expect(reasons(snapshot, options: disabled)["User.name"] == nil)
     }
 
+    @Test("프로젝트 프로토콜을 거쳐 물려받은 Codable 도 저장 프로퍼티를 보존한다")
+    func codableInheritedThroughProjectProtocol() {
+        // `protocol APIRequest: Encodable {}` 뒤의 `struct Login: APIRequest` 는 상속 절에 Encodable 이 없어도
+        // 합성 encode(to:) 가 password 를 읽는다. 지우면 전송 페이로드가 바뀐다.
+        var builder = SnapshotBuilder()
+        builder.symbol("APIRequest", kind: .protocolType)
+        builder.symbol("APIRequest.path", name: "path", kind: .property, parent: "APIRequest")
+        builder.symbol("SignedRequest", kind: .protocolType)
+        builder.symbol("Login", kind: .structType)
+        builder.symbol("Login.password", name: "password", kind: .property, parent: "Login")
+        builder.reference(from: "APIRequest", to: "s:SE", kind: .conformance)
+        builder.reference(from: "SignedRequest", to: "APIRequest", kind: .conformance)
+        builder.reference(from: "Login", to: "SignedRequest", kind: .conformance)
+
+        let retained = reasons(builder.build())
+        #expect(retained["Login.password"] == .codableProperty)
+        // 프로토콜 요구사항은 합성 코딩이 읽는 저장 프로퍼티가 아니다.
+        #expect(retained["APIRequest.path"] != .codableProperty)
+    }
+
+    @Test("인덱스가 익스텐션에 기록한 준수는 상속 절 글자 없이도 저장 프로퍼티를 보존한다")
+    func indexRecordedConformanceOnExtension() {
+        // `typealias Model = Codable & Hashable` 이나 `Swift.Codable` 은 글자 비교로는 보이지 않는다.
+        // 컴파일러는 별칭을 실제 프로토콜 준수로 풀어 기록한다(Codable 자체가 별칭이다).
+        var builder = SnapshotBuilder()
+        builder.symbol("Item", kind: .structType)
+        builder.symbol("Item.title", name: "title", kind: .property, parent: "Item")
+        builder.symbol("Item.ext", name: "Item", kind: .extensionDeclaration)
+        builder.reference(from: "Item.ext", to: "Item", kind: .extends)
+        builder.reference(from: "Item.ext", to: "s:Se", kind: .conformance)
+
+        #expect(reasons(builder.build())["Item.title"] == .codableProperty)
+    }
+
+    @Test("상위 클래스의 Codable 준수는 하위 클래스 프로퍼티로 옮기지 않는다")
+    func superclassCodableDoesNotReachSubclassProperties() {
+        // 합성 코딩은 하위 클래스가 더한 프로퍼티를 읽지 않는다. 상속은 conformance 가 아니라 inheritance 다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Base", kind: .classType)
+        builder.symbol("Child", kind: .classType)
+        builder.symbol("Child.extra", name: "extra", kind: .property, parent: "Child")
+        builder.reference(from: "Base", to: "s:SE", kind: .conformance)
+        builder.reference(from: "Child", to: "Base", kind: .inheritance)
+
+        #expect(reasons(builder.build())["Child.extra"] == nil)
+    }
+
+    @Test("프로젝트 프로토콜을 거친 Hashable 도 값 타입의 저장 프로퍼티를 보존한다")
+    func hashableInheritedThroughProjectProtocol() {
+        var builder = SnapshotBuilder()
+        builder.symbol("Model", kind: .protocolType)
+        builder.symbol("User", kind: .structType)
+        builder.symbol("User.id", name: "id", kind: .property, parent: "User")
+        builder.reference(from: "Model", to: "s:SH", kind: .conformance)
+        builder.reference(from: "User", to: "Model", kind: .conformance)
+
+        #expect(reasons(builder.build())["User.id"] == .hashableProperty)
+    }
+
+    @Test("원시값 없는 Codable 열거형의 케이스를 보존하고 Codable 설정으로 끌 수 있다")
+    func codableEnumCasesAreRetained() {
+        // 합성 디코딩은 케이스 이름으로 값을 만든다. 소스에서 한 번도 만들지 않는 케이스도 응답으로 들어온다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Event", kind: .enumType, attributes: [.codable])
+        builder.symbol("Event.opened", name: "opened", kind: .enumCase, parent: "Event")
+        builder.symbol("Plain", kind: .enumType)
+        builder.symbol("Plain.one", name: "one", kind: .enumCase, parent: "Plain")
+        let snapshot = builder.build()
+
+        #expect(reasons(snapshot)["Event.opened"] == .codableEnumCase)
+        #expect(reasons(snapshot)["Plain.one"] == nil)
+
+        var disabled = RetentionOptions.default
+        disabled.retainCodableProperties = false
+        #expect(reasons(snapshot, options: disabled)["Event.opened"] == nil)
+    }
+
     @Test("Equatable 타입의 저장 프로퍼티를 보존하고 끌 수 있다")
     func equatablePropertiesAreRetained() {
         var builder = SnapshotBuilder()

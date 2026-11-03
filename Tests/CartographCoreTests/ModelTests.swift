@@ -185,6 +185,7 @@ struct RetentionReasonSentenceTests {
             .caseIterableEnumCase: "a case of a CaseIterable enum, enumerated by allCases",
             .codingKey: "a CodingKey case used by synthesized Codable conformance",
             .codableProperty: "a stored property of a Codable type, read by synthesized coding",
+            .codableEnumCase: "a case of a Codable enum, created by name by synthesized decoding",
             .equatableProperty: "a stored property of an Equatable type, read by the synthesized ==",
             .hashableProperty:
                 "a stored property of a Hashable type, read by the synthesized hash(into:)",

@@ -1885,7 +1885,8 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | `wrappedValue`, `projectedValue` on `@propertyWrapper` types | wrapper contract |
 | `build*` on `@resultBuilder` types | builder contract |
 | Stored properties of `Codable` types | synthesized coding leaves no reference |
-| Stored properties of `Equatable`/`Hashable` types | synthesized `==`/`hash(into:)` leaves no reference |
+| Cases of `Codable` enums without raw values (`retain_codable_properties`) | synthesized decoding creates them by name |
+| Stored properties of `Equatable`/`Hashable` (and `Comparable`) types | synthesized `==`/`hash(into:)` leaves no reference |
 | Members that override or satisfy a declaration outside the analyzed code | the framework calls them — the owning type is not kept by this rule |
 | `subscript(dynamicMember:)`, `@_dynamicReplacement`, `dynamic` | dynamic dispatch |
 | Compiler-synthesized declarations | you cannot delete them — they do not keep their type alive either |
@@ -1911,6 +1912,12 @@ leaves no index evidence, so keeping it is the conservative side; turn them off 
 properties reported. These two reasons apply only when the containing type is reachable.
 A nested, never-created `Equatable` or `Hashable` type cannot retain an otherwise unused outer
 type through its stored properties. `Codable` and explicit retention rules remain separate.
+
+These conformances are read from the compiler index as well as the inheritance clause, so they also
+apply when written as `Swift.Codable`, as a composition (`Codable & Hashable`), through a type alias
+(`typealias Model = Codable & Hashable`), or through a project protocol (`protocol APIRequest:
+Encodable` followed by `struct Login: APIRequest`). A superclass's conformance does not reach
+properties a subclass adds, because synthesized coding does not read them.
 
 Protocol requirements are handled by walking override relations in reverse: if a requirement is
 called, every implementation of it is reachable — but only once the implementing type itself is

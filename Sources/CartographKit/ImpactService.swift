@@ -408,7 +408,8 @@ private struct ImpactSummaries {
 
     private static let runtimeReasons: Set<RetentionReason> = [
         .objectiveCAccessible, .interfaceBuilder, .dynamicDispatch, .externalConformance, .externalOverride,
-        .rawRepresentableEnumCase, .caseIterableEnumCase, .codingKey, .codableProperty, .runtimeManaged,
+        .rawRepresentableEnumCase, .caseIterableEnumCase, .codingKey, .codableProperty, .codableEnumCase,
+        .runtimeManaged,
         .propertyWrapperRequirement, .resultBuilderRequirement, .externalBridge, .preview,
     ]
 

@@ -27,6 +27,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     case codingKey
     /// Codable 타입의 저장 프로퍼티. 합성된 인코딩/디코딩이 참조를 남기지 않는다.
     case codableProperty
+    /// 원시값 없는 `Codable` 열거형의 케이스. 합성 디코딩이 케이스 이름으로 만든다.
+    case codableEnumCase
     /// Equatable 타입의 저장 프로퍼티. 합성된 `==` 가 읽지만 인덱스에 남지 않는다.
     case equatableProperty
     /// Hashable 타입의 저장 프로퍼티. 합성된 `hash(into:)` 가 읽지만 인덱스에 남지 않는다.
@@ -134,6 +136,7 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         case .caseIterableEnumCase: "a case of a CaseIterable enum, enumerated by allCases"
         case .codingKey: "a CodingKey case used by synthesized Codable conformance"
         case .codableProperty: "a stored property of a Codable type, read by synthesized coding"
+        case .codableEnumCase: "a case of a Codable enum, created by name by synthesized decoding"
         case .equatableProperty: "a stored property of an Equatable type, read by the synthesized =="
         case .hashableProperty: "a stored property of a Hashable type, read by the synthesized hash(into:)"
         case .runtimeManaged: "stored and read by a runtime (Core Data, SwiftData or Observation)"

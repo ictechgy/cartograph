@@ -51,6 +51,22 @@ struct SwiftSyntaxAnalyzerTests {
         #expect(facts.declaration(named: "C")?.attributes.contains(.equatable) == false)
     }
 
+    @Test("한정 이름·조합으로 쓴 준수와 Comparable 도 합성 표식으로 읽는다")
+    func readsQualifiedAndComposedConformances() {
+        // 글자 그대로만 비교하면 `Swift.Codable`·`Codable & Hashable` 을 쓴 타입의 저장 프로퍼티가
+        // 미사용으로 보고된다. Comparable 은 Equatable 을 상속해 `==` 가 합성된다.
+        let facts = analyze("""
+            struct Q: Swift.Codable {}
+            struct R: Codable & Hashable {}
+            struct S: Comparable {}
+            """)
+        #expect(facts.declaration(named: "Q")?.attributes.contains(.codable) == true)
+        #expect(facts.declaration(named: "R")?.attributes.contains(.codable) == true)
+        #expect(facts.declaration(named: "R")?.attributes.contains(.hashable) == true)
+        #expect(facts.declaration(named: "S")?.attributes.contains(.equatable) == true)
+        #expect(facts.declaration(named: "S")?.attributes.contains(.hashable) == false)
+    }
+
     @Test("선언 속성을 표식으로 옮긴다")
     func readsAttributes() {
         let facts = analyze("""
