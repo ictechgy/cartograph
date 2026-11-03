@@ -56,17 +56,38 @@ def main():
         tools = root / "tools"
         tools.mkdir()
         swift = tools / "swift"
-        swift.write_text('#!/bin/sh\n[ "$*" = "test --show-codecov-path" ] || exit 91\nprintf "%s\\n" "$TEST_CODECOV_PATH"\n')
+        swift.write_text('''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+arguments = sys.argv[1:]
+if arguments == ["test", "--show-codecov-path"]:
+    print(os.environ["TEST_CODECOV_PATH"])
+    raise SystemExit(0)
+with Path(os.environ["TEST_SWIFT_TRACE"]).open("a") as trace:
+    trace.write(json.dumps(arguments) + "\\n")
+if arguments != ["test", "--enable-code-coverage", "--no-parallel"]:
+    raise SystemExit(91)
+status = int(os.environ.get("TEST_SWIFT_EXIT", "0"))
+if status:
+    raise SystemExit(status)
+Path(os.environ["TEST_CODECOV_PATH"]).with_name("default.profdata").write_text("fresh unit stub")
+''')
         swift.chmod(0o755)
         xcrun = tools / "xcrun"
-        xcrun.write_text('#!/bin/sh\n[ "$1 $2" = "llvm-cov export" ] || exit 92\ncat "$TEST_EXPORT_PATH"\n')
+        xcrun.write_text('''#!/bin/sh
+[ "$1 $2" = "llvm-cov export" ] || exit 92
+printf 'export\\n' >> "$TEST_EXPORT_TRACE"
+cat "$TEST_EXPORT_PATH"
+''')
         xcrun.chmod(0o755)
         export = root / "export.json"
         export.write_text(json.dumps({"data": [{"files": [{
             "filename": str(source), "summary": {"lines": {"covered": 1, "count": 1, "percent": 100}},
         }]}]}))
         environment = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"],
-                           TEST_CODECOV_PATH=str(cov / "package.json"), TEST_EXPORT_PATH=str(export))
+                           TEST_CODECOV_PATH=str(cov / "package.json"), TEST_EXPORT_PATH=str(export),
+                           TEST_SWIFT_TRACE=str(root / "swift-test.jsonl"),
+                           TEST_EXPORT_TRACE=str(root / "exports.txt"))
         base = time.time() - 120
 
         def stamp(path, offset):
@@ -110,7 +131,25 @@ def main():
             if process.returncode != expected:
                 failures.append({"case": name, "expected": expected, "actual": process.returncode,
                                  "stderr": process.stderr})
-        print(json.dumps({"cases": len(cases), "failures": failures,
+        for name, expected in [("fresh complete serial run", 0), ("failed test cannot export old profiles", 73)]:
+            unit.write_text("old unit stub")
+            merged.write_text("old merged stub")
+            reset()
+            Path(environment["TEST_SWIFT_TRACE"]).write_text("")
+            Path(environment["TEST_EXPORT_TRACE"]).write_text("")
+            selected_environment = dict(environment, TEST_SWIFT_EXIT=str(expected))
+            if expected == 0:
+                unit.unlink()
+            process = subprocess.run(["bash", str(scripts / "coverage.sh"), "--unit-only"],
+                                     env=selected_environment, capture_output=True, text=True, timeout=30)
+            calls = [json.loads(line) for line in Path(environment["TEST_SWIFT_TRACE"]).read_text().splitlines()]
+            exports = Path(environment["TEST_EXPORT_TRACE"]).read_text().splitlines()
+            if (process.returncode != expected
+                    or calls != [["test", "--enable-code-coverage", "--no-parallel"]]
+                    or bool(exports) != (expected == 0)):
+                failures.append({"case": name, "expected": expected, "actual": process.returncode,
+                                 "testCalls": calls, "exports": exports, "stderr": process.stderr})
+        print(json.dumps({"cases": len(cases) + 2, "failures": failures,
                           "status": "failed" if failures else "passed"}, indent=2))
         return 1 if failures else 0
 
