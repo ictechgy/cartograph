@@ -53,6 +53,7 @@ jobs:
           python3 Scripts/verify-prepared-actual-arm.py
           python3 Scripts/verify-prepared-query-admission.py
           python3 Scripts/verify-prepared-comparison-workflow.py
+          python3 Scripts/verify-xcode-ios-inputs.py
 
       # 릴리스 태그에서야 드러나던 버전 드리프트를 PR에서 먼저 잡는다. 플러그인 매니페스트가 0.19.0에 머문 채
       # 0.30.0이 발행된 적이 있다.
