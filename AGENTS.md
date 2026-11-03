@@ -22,8 +22,13 @@
 **지금 어디까지 왔고 다음이 무엇인지는 [HANDOFF.md](HANDOFF.md)에 있습니다.** 세션을 이어받을 때 먼저 읽으세요.
 
 자매 프로젝트가 바탕화면에 있습니다: [kartograph](../kartograph)(Kotlin/Android) ·
-[dartograph](../dartograph)(Dart/Flutter) · [isthmus](../isthmus)(언어 경계 조인).
-이들의 `query` 출력 스키마와 스킬 문장은 이 저장소와 같아야 합니다. 여기서 바꾸면 그쪽에도 알리세요.
+[dartograph](../dartograph)(Dart/Flutter) · [gartograph](../gartograph)(Go) ·
+[rustograph](../rustograph)(Rust) · [pythograph](../pythograph)(Python) ·
+[tsograph](../tsograph)(TypeScript/JavaScript) · [schemagraph](../schemagraph)(DB 스키마) ·
+[isthmus](../isthmus)(언어 경계 조인, 교환 형식과 공유 적합성 벡터의 정본).
+kartograph·dartograph의 `query` 출력 스키마와 스킬 문장은 이 저장소와 같아야 합니다. 여기서 바꾸면 그쪽에도 알리세요.
+gartograph·rustograph의 `query`는 현재 키 구성이 다릅니다(`dependedBy`, `neighbors`). 통일은 공개 계약 변경이라
+별도 결정이 필요하니, 이 저장소의 스키마를 바꿀 때 그 차이를 넓히지 마세요.
 브리지 교환 형식은 `../isthmus/docs/GRAPH-EXCHANGE.md`가 정본입니다. 형식 변경은
 `BridgeFactsDocument`와 자매 저장소에 함께 반영합니다.
 

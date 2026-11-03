@@ -30,7 +30,7 @@ cartograph
 
 | 모듈 | 담는 것 | 담으면 안 되는 것 |
 |---|---|---|
-| `CartographCore` | 그래프 모델, 인덱스 추상화, 설정 값 타입, 글롭, 진단, 파일 시스템 프로토콜, 빌드 산출물 가지치기 목록(`BuildArtifactDirectories`) | **모든 외부 의존성.** 파일·프로세스·네트워크 접근 |
+| `CartographCore` | 그래프 모델, 인덱스 추상화, 설정 값 타입, 글롭, 진단, 파일 시스템 프로토콜과 그 로컬 구현(`LocalFileSystem`), 빌드 산출물 가지치기 목록(`BuildArtifactDirectories`) | **모든 외부 의존성.** 프로세스·네트워크 접근. `LocalFileSystem` 밖의 직접 파일 접근 |
 | `CartographConfig` | `.cartograph.yml` 로딩과 CLI 덮어쓰기, 설정 템플릿, 에이전트 스킬 템플릿(`AgentSkillTemplate`) | 분석 로직 |
 | `CartographSyntax` | SwiftSyntax로 접근 수준·속성·주석 지시어 읽기 | 인덱스 스토어 접근 |
 | `CartographAnalysis` | 순환, 도달 가능성, 보존, 지표, 레이어 규칙, 베이스라인, 외부 보존 근거 | 파일 읽기(베이스라인과 외부 근거 파일은 주입된 FileSystem 사용), 출력 형식 |
@@ -39,6 +39,11 @@ cartograph
 | `CartographKit` | 파이프라인 조립, 환경 주입, 에이전트용 응답 타입(`SymbolQuery`·`SymbolQueryDocument`) | 알고리즘 |
 | `cartograph` | 인자 파싱, 종료 코드, 표준 출력 | 그 외 모든 것 |
 | `CartographTestSupport` | 테스트용 빌더와 메모리 파일 시스템 | 프로덕션 코드가 이것을 참조하는 일 |
+
+> **Core의 파일 접근 예외**: `LocalFileSystem`(`Support/FileSystem.swift`)은 `FileSystem` 프로토콜의 유일한 로컬
+> 구현이라 Core에 있고 Darwin 시스템 호출을 씁니다. Analysis·Config·Syntax는 이 구현을 이니셜라이저의 **기본 인자로만**
+> 쓰고(`fileSystem: any FileSystem = LocalFileSystem()`), 실제 읽기는 주입받은 `FileSystem`으로 합니다. 그래야 분석 계층
+> 전체를 `InMemoryFileSystem`으로 테스트할 수 있습니다. 본문에서 `FileManager`나 `LocalFileSystem`을 직접 부르지 마세요.
 
 ## 새 코드를 어디에 둘지
 
