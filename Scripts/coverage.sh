@@ -37,8 +37,10 @@ done
 cd "$(dirname "$0")/.."
 
 if [[ "$SKIP_TEST" -eq 0 ]]; then
-    echo "==> swift test --enable-code-coverage"
-    swift test --enable-code-coverage
+    # Swift Testing은 기본적으로 테스트를 병렬 실행한다. 프로세스·출력 경계 검사의 기존
+    # 짧은 제한이 다른 컴파일러 테스트의 부하에 가려지지 않도록 전체를 빠짐없이 직렬 실행한다.
+    echo "==> swift test --enable-code-coverage --no-parallel"
+    swift test --enable-code-coverage --no-parallel
 fi
 
 # SwiftPM 이 만들어 주는 codecov JSON 은 테스트 번들 하나만 반영한다.
