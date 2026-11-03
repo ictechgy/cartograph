@@ -62,7 +62,7 @@ deleted — are absorbed wholesale. See [Retention rules](#retention-rules).
 The release target is **0.30.0**. Confirm the matching archive on [GitHub Releases](https://github.com/ictechgy/cartograph/releases); Homebrew is a separate publication channel. See [Contributing](https://github.com/ictechgy/cartograph/blob/main/CONTRIBUTING.md) for source validation.
 
 Check [GitHub Releases](https://github.com/ictechgy/cartograph/releases) for published CLI versions
-and available binary assets. The versioned install examples below pin published
+and available binary assets. The versioned install examples below target
 [**0.30.0**](https://github.com/ictechgy/cartograph/releases/tag/0.30.0) for reproducibility;
 change the pin only to a published version you have verified. A source checkout's `--version` reports
 its source version and does not establish release availability. Version 0.25.1 was prepared in source

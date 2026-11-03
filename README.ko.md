@@ -69,8 +69,8 @@ Cartograph의 문장은 *"의존성 그래프를 내놓는다"*이며, 미사용
 
 발행된 CLI 버전과 내려받을 바이너리는
 [GitHub Releases](https://github.com/ictechgy/cartograph/releases)에서 확인하세요.
-아래 버전 고정 설치 예시는 재현성을 위해 발행된
-[**0.30.0**](https://github.com/ictechgy/cartograph/releases/tag/0.30.0)을 사용하며,
+아래 버전 고정 설치 예시는 재현성을 위해
+[**0.30.0**](https://github.com/ictechgy/cartograph/releases/tag/0.30.0)을 대상으로 하며,
 발행 여부를 확인한 버전으로만 바꾸세요.
 소스 체크아웃의 `--version`은 소스 버전을 나타내며 배포 파일의 존재를 보장하지 않습니다.
 0.25.1은 소스에서 준비됐지만 발행되지 않았습니다. 포함된 변경은 [CHANGELOG.md](CHANGELOG.md)를 보세요.
