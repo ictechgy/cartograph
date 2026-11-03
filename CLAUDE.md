@@ -26,11 +26,10 @@ swift build --build-tests
 
 ## 완료를 주장하기 전에
 
-아래 두 가지를 **실제로 실행하고 출력을 확인한 뒤에만** 완료라고 말하세요.
-
-```bash
-Scripts/coverage.sh
-```
+완료 검증의 정본은 [AGENTS.md](AGENTS.md) 「명령」 절의 네 가지입니다: `Scripts/coverage.sh`,
+`Scripts/verify-cli-contract.sh`, `Scripts/verify-fixtures.sh`, 그리고 아래 자기 분석. 목록을 여기에 복제하지 않습니다 —
+한쪽만 고치면 이 파일만 읽은 세션이 검증을 빠뜨립니다(실제로 이 파일은 두 가지만 적고 있었습니다).
+모두 **실제로 실행하고 출력을 확인한 뒤에만** 완료라고 말하세요.
 
 ```bash
 swift build \
@@ -40,7 +39,7 @@ swift build \
   && swift run cartograph rules  --strict
 ```
 
-두 번째가 이 도구로 이 저장소를 분석하는 단계(도그푸딩)입니다. 이 도구가 실제로 발견한 결함은 전부 여기서만
+이것이 이 도구로 이 저장소를 분석하는 단계(도그푸딩)입니다. 이 도구가 실제로 발견한 결함은 전부 여기서만
 드러났고 단위 테스트는 하나도 잡지 못했습니다. 건너뛰지 마세요.
 
 `-Xswiftc -index-store-path`는 Swift 6.4 기본 빌드 시스템에서 무시됩니다. 요청한 디렉터리가
