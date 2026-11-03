@@ -1655,16 +1655,15 @@ one:
 - `name` is the declaration name **and** its module-qualified name (`App.Networking`). A name
   pattern such as `Network*` therefore still matches every declaration of a module named
   `NetworkKit`; use `match_on: module` for module rules.
-- `path` is the absolute and the project-relative file path. A pattern without `/` is matched
-  gitignore-style against each component of those paths — every directory and the file name. So
-  `*Network*` with `match_on: path` still places anything under a `Network/` directory and a type
-  declared in a file that carries its name (`NetworkError.swift`), and because the absolute path
-  is a candidate, it places every node when a directory above the project root matches (a project
-  under `~/NetworkApps/`). What it stops is the pattern matching a declaration's name — a type
-  `NetworkError` declared in `Domain/Errors.swift` is no longer caught, as long as no directory on
-  that file's absolute path matches. For a directory rule, prefer a pattern anchored at the project
-  root such as `Network/**`: `**/Network/**` and slash-less patterns are also compared against the
-  absolute path, directories above the project root included.
+- `path` is the project-relative file path; files outside the project are matched by their absolute
+  path. A pattern without `/` is matched gitignore-style against each component of that path — every
+  directory and the file name. So `*Network*` with `match_on: path` still places anything under a
+  `Network/` directory and a type declared in a file that carries its name (`NetworkError.swift`).
+  What it stops is the pattern matching a declaration's name — a type `NetworkError` declared in
+  `Domain/Errors.swift` is not caught. Directories above the project root are not candidates, so a
+  checkout under `~/NetworkApps/` does not place every node; write an absolute pattern
+  (`/Users/me/NetworkApps/**`) when you do mean the absolute path. For a directory rule, prefer a
+  pattern anchored at the project root such as `Network/**`.
 
 A layer without `match_on` matches exactly as before. A `path`-only layer never matches a module
 node, which has no source location. An unknown value, an empty list or an empty `match_on:` is a

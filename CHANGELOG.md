@@ -7,6 +7,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Upgrade note:** layer `path` matching now uses only the project-relative path for files inside the
+  project. Previously the absolute path was also a candidate for every pattern, so a directory name
+  above the project root (a checkout under `~/NetworkApps/` with `*Network*`) placed every node in that
+  layer and `rules --strict` could pass or fail depending on where the repository was cloned. Absolute
+  patterns (`/…`) still match absolute paths, and files outside the project are still matched by their
+  absolute path. `rules --explain` now reports the relative path as the matched candidate. A layer
+  that only matched through an ancestor directory name no longer matches; anchor it at the project root
+  (`Network/**`) or write the absolute path.
+
 ### Fixed
 
 - `unused-import` no longer reports imports in files that contain `#if`. The index sees one build
