@@ -55,6 +55,66 @@ class GeneratedOracleTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             module.verify_documents(*documents)
 
+    def test_review_still_requires_the_same_embedded_version(self):
+        documents = self.documents()
+        for document in documents:
+            document["version"] = "0.30.0"
+        documents[1]["version"] = "0.29.0"
+        with self.assertRaises(AssertionError):
+            module.verify_documents(*documents)
+
+    def baseline_documents(self):
+        baseline = {"tool": "cartograph", "version": "0.29.0", "command": "dead",
+                    "diagnostics": [{"message": "unused", "version": "fact-version"}],
+                    "limitations": ["unknown-scope"], "suppressedCount": 4}
+        candidate = copy.deepcopy(baseline)
+        candidate["version"] = "0.30.0"
+        return baseline, candidate
+
+    def test_accepts_only_observed_tool_version_difference(self):
+        baseline, candidate = self.baseline_documents()
+        module.verify_baseline(baseline, candidate, "0.29.0", "0.30.0")
+        self.assertEqual(baseline["version"], "0.29.0")
+        self.assertEqual(candidate["version"], "0.30.0")
+
+    def test_rejects_unobserved_or_missing_embedded_version(self):
+        for version in ["0.31.0", None]:
+            with self.subTest(version=version):
+                baseline, candidate = self.baseline_documents()
+                if version is None:
+                    candidate.pop("version")
+                else:
+                    candidate["version"] = version
+                with self.assertRaises(AssertionError):
+                    module.verify_baseline(baseline, candidate, "0.29.0", "0.30.0")
+
+    def test_rejects_any_non_version_baseline_difference(self):
+        for change in ["finding", "nested-version", "limitation", "suppression", "tool", "extra"]:
+            with self.subTest(change=change):
+                baseline, candidate = self.baseline_documents()
+                if change == "finding":
+                    candidate["diagnostics"] = []
+                elif change == "nested-version":
+                    candidate["diagnostics"][0]["version"] = "changed-fact"
+                elif change == "limitation":
+                    candidate["limitations"] = []
+                elif change == "suppression":
+                    candidate["suppressedCount"] = 0
+                elif change == "tool":
+                    candidate["tool"] = "other"
+                else:
+                    candidate["unknown"] = True
+                with self.assertRaises(AssertionError):
+                    module.verify_baseline(baseline, candidate, "0.29.0", "0.30.0")
+
+    def test_rejects_wrong_baseline_tool_identity_and_version(self):
+        for field, value in [("tool", "other"), ("version", "0.28.0")]:
+            with self.subTest(field=field):
+                baseline, candidate = self.baseline_documents()
+                baseline[field] = value
+                with self.assertRaises(AssertionError):
+                    module.verify_baseline(baseline, candidate, "0.29.0", "0.30.0")
+
 
 if __name__ == "__main__":
     unittest.main()

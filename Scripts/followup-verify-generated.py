@@ -12,6 +12,17 @@ import time
 from pathlib import Path
 
 
+def verify_baseline(baseline: dict, candidate: dict, baseline_version: str, candidate_version: str) -> None:
+    """각 실행 버전을 검증한 뒤 의도된 버전 필드 외의 모든 분석 사실을 대조한다."""
+    for document, observed in [(baseline, baseline_version), (candidate, candidate_version)]:
+        assert isinstance(observed, str) and observed, "missing observed tool version"
+        assert document.get("tool") == "cartograph", "unexpected report tool"
+        assert document.get("version") == observed, "report version differs from executed tool"
+    baseline_facts = {key: value for key, value in baseline.items() if key != "version"}
+    candidate_facts = {key: value for key, value in candidate.items() if key != "version"}
+    assert baseline_facts == candidate_facts, "candidate default JSON differs from frozen baseline on same capture"
+
+
 def verify_documents(plain: dict, summary: dict, generated: dict) -> None:
     """Compare all original fields; an absent finding or limitation is a regression."""
     for changed in (summary, generated):
@@ -97,7 +108,10 @@ def run(binary: Path, output: Path, baseline: Path | None = None) -> None:
                 baseline_started = time.perf_counter()
                 baseline_plain = json.loads(invoke([str(baseline), *dead[1:]], root, 1))
                 receipt["baseline_native_execution"] = True
-                assert baseline_plain == plain, "candidate default JSON differs from frozen baseline on same capture"
+                receipt["baseline_default_document"] = baseline_plain
+                receipt["candidate_default_document"] = plain
+                verify_baseline(baseline_plain, plain, receipt["baseline_tool_version"], receipt["tool_version"])
+                receipt["baseline_comparison"] = {"version_field": "version", "all_other_fields_identical": True}
                 for flag in ("--file-summary", "--generated-suggestions"):
                     invoke([str(baseline), *dead[1:], flag], root, 64)
                 receipt["baseline_execution_seconds"] = time.perf_counter() - baseline_started
