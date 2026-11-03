@@ -83,8 +83,8 @@ brew install ictechgy/tap/cartograph
 ```
 
 The [tap formula](https://github.com/ictechgy/homebrew-tap/blob/main/Formula/cartograph.rb) is updated
-separately from GitHub Releases. Its [0.28.0 update](https://github.com/ictechgy/homebrew-tap/pull/63)
-passed public archive installation and formula tests on macOS arm64. Verify `cartograph --version`
+separately from GitHub Releases, so it can lag the newest release. Each release's [CHANGELOG](CHANGELOG.md)
+entry records whether its Homebrew installation and formula tests passed. Verify `cartograph --version`
 after installing or upgrading; a published release and tap update do not upgrade your local binary.
 
 **Mint** — builds from source, no tap to add:

@@ -91,8 +91,8 @@ brew install ictechgy/tap/cartograph
 ```
 
 [tap formula](https://github.com/ictechgy/homebrew-tap/blob/main/Formula/cartograph.rb)는 GitHub Releases와
-별도로 갱신됩니다. [0.28.0 갱신](https://github.com/ictechgy/homebrew-tap/pull/63)은 macOS arm64에서
-공개 archive 설치와 formula 테스트를 통과했습니다. 설치하거나 업그레이드한 뒤 `cartograph --version`을
+별도로 갱신되므로 최신 릴리스보다 늦을 수 있습니다. 릴리스마다 Homebrew 설치·formula 테스트를 통과했는지는
+[변경 기록](CHANGELOG.md)의 해당 버전 항목에 적습니다. 설치하거나 업그레이드한 뒤 `cartograph --version`을
 확인하세요. 릴리스와 tap 갱신만으로 로컬 바이너리가 업그레이드되지는 않습니다.
 
 **Mint** — 소스에서 빌드되며, tap을 추가할 필요가 없습니다.
