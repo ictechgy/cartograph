@@ -20,6 +20,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- When Git source selection fails inside a repository (5-second limit, 16 MiB output budget, or a Git
+  error such as a corrupt index), analysis responses now carry a `source-discovery-git-unavailable`
+  limitation with the reason. The fallback walks every source, including Git-ignored files, so the same
+  commit could silently produce different findings. Projects outside a Git repository no longer start
+  `git` at all and report nothing, as before.
 - `unused-import` no longer reports imports in files that contain `#if`. The index sees one build
   configuration, so an unconditional `import Combine` used only inside `#if os(iOS)` looked unused
   in a macOS index, and `fix --apply` removed it and broke the other configuration. Import facts

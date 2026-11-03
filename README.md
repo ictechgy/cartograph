@@ -2289,6 +2289,9 @@ The description also participates in session invalidation; absence of a warning 
 
 Git-ignored untracked sources and nested repositories are excluded from discovery; tracked files
 take precedence over ignore rules. Exclusions are reported and do not prove build completeness.
+When Git cannot list a repository (a 5-second limit, a 16 MiB output budget or a Git error), every
+source under the root is walked instead and `source-discovery-git-unavailable` reports why, because
+ignored files are then included and results can differ from a run where Git succeeded.
 Generated DI files can connect real callers. After reviewing their role, use
 `retention.retained_files: ["Sources/Generated/**"]` to retain declarations without discarding edges.
 A generated-looking name or a human-maintained design-token file is not automatically hidden.

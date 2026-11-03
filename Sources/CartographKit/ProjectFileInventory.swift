@@ -19,11 +19,23 @@ struct ProjectFileInventory: Sendable, Equatable {
     let externalDirectoryLinks: [String]
     /// Git 범위나 중첩 저장소 경계로 제외한 실제 파일/디렉터리. 타깃 소속의 증명은 아니다.
     let discoveryExclusions: [String]
+    /// Git 저장소인데 선택을 끝내지 못해 전체 walk 로 폴백한 이유. nil 이면 선택했거나 시도할 필요가 없었다.
+    ///
+    /// 폴백하면 무시 파일까지 섞여, 같은 커밋에서도 선택이 성공한 실행과 답이 달라진다. 이 값이 그 사실을
+    /// 응답의 한계로 옮기는 유일한 통로다.
+    let gitSelectionUnavailableReason: String?
 
     init(fileSystem: any FileSystem, projectPath: String, pathFilter: PathFilter) {
         var externalLinks: [String] = []
         var exclusions: Set<String> = []
-        let git = GitSourceInventory.load(fileSystem: fileSystem, projectPath: projectPath)
+        let selection = GitSourceInventory.select(fileSystem: fileSystem, projectPath: projectPath)
+        let git: GitSourceInventory?
+        if case let .selected(inventory) = selection { git = inventory } else { git = nil }
+        if case let .unavailable(reason) = selection {
+            gitSelectionUnavailableReason = reason
+        } else {
+            gitSelectionUnavailableReason = nil
+        }
         let paths = fileSystem.recursiveFiles(
             under: projectPath,
             isIncluded: { path in
