@@ -43,10 +43,16 @@ struct HTTPConformanceTests {
     /// 소비자의 순서 기반 match·가림 판정(`dispatch.match`·`dispatch.shadow`)이다. cartograph `routes` 는 클라이언트
     /// `route-call` 만 내고 `route-decl`·`order` 를 내지 않으므로, 생산자 대상인 `dispatch.validate` 도 지킬 케이스가
     /// 없다. 서버 선언을 내기 시작하면 이 목록에서 빼고 `order` 검증 실행기를 붙인다.
+    ///
+    /// `scope.dynamic-applies`·`scope.dynamic-validate` 는 서버 dynamic `route-decl`·`route-contract` 의 `dynamicScope` 다.
+    /// cartograph 는 그 선언을 내지 않으므로 같은 이유로 실행을 미룬다.
     private static let deferredSuites: [String: Set<String>] = [
-        "http-limitation-scope": ["scope.applies", "scope.validate"],
+        "http-limitation-scope": ["scope.applies", "scope.validate", "scope.dynamic-applies", "scope.dynamic-validate"],
         "http-dispatch": ["dispatch.validate", "dispatch.match", "dispatch.shadow"],
     ]
+
+    /// 같은 잠금 파일로 벤더링하지만 다른 테스트가 실행하는 suite. `sql-relations` 는 `SqlRelationsConformanceTests` 가 돈다.
+    private static let otherVendoredSuites = ["sql-relations"]
 
     /// `producer` 또는 이 도구 이름을 지목한 케이스만 생산자가 통과해야 한다.
     private static func appliesToProducer(_ testCase: [String: Any]) -> Bool {
@@ -58,7 +64,7 @@ struct HTTPConformanceTests {
     func vendoredFilesMatchLock() throws {
         let lock = try #require(try JSONSerialization.jsonObject(with: Self.load("conformance.lock")) as? [String: Any])
         let files = try #require(lock["files"] as? [String: String])
-        let suites = Self.producerSuites + Self.deferredSuites.keys
+        let suites = Self.producerSuites + Self.deferredSuites.keys + Self.otherVendoredSuites
         #expect(Set(files.keys) == Set(suites.map { $0 + ".json" }))
         for (name, expected) in files {
             let digest = SHA256.hash(data: try Self.load(name)).map { String(format: "%02x", $0) }.joined()

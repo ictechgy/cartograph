@@ -1750,6 +1750,149 @@
         ],
         "pathShadowed": []
       }
+    },
+    {
+      "id": "validate/strict-slash-prefix",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "specificity",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/docs/api/files/{**}",
+              "trailingSlash": "strict",
+              "symbol": {
+                "qualifiedName": "files",
+                "usr": "files-handler"
+              }
+            },
+            {
+              "method": "GET",
+              "channel": "/docs/api/files/",
+              "trailingSlash": "strict",
+              "symbol": {
+                "qualifiedName": "files",
+                "usr": "files-handler"
+              },
+              "catchAllPrefix": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "validate/strict-slash-prefix-missing-original",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "specificity",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/docs/api/files/",
+              "trailingSlash": "strict",
+              "symbol": {
+                "qualifiedName": "files",
+                "usr": "files-handler"
+              },
+              "catchAllPrefix": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/non-strict-slash-prefix",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "specificity",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/docs/api/files/{**}",
+              "trailingSlash": "strict",
+              "symbol": {
+                "qualifiedName": "files",
+                "usr": "files-handler"
+              }
+            },
+            {
+              "method": "GET",
+              "channel": "/docs/api/files/",
+              "trailingSlash": "optional",
+              "symbol": {
+                "qualifiedName": "files",
+                "usr": "files-handler"
+              },
+              "catchAllPrefix": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "validate/strict-slash-prefix-legacy-empty-segment",
+      "ruleId": "dispatch.validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#디스패치-모델",
+      "appliesTo": [
+        "consumer"
+      ],
+      "input": {
+        "document": {
+          "dispatch": "specificity",
+          "facts": [
+            {
+              "method": "GET",
+              "channel": "/docs/api/files//{**}",
+              "trailingSlash": "strict",
+              "symbol": {
+                "qualifiedName": "files",
+                "usr": "files-handler"
+              }
+            },
+            {
+              "method": "GET",
+              "channel": "/docs/api/files/",
+              "trailingSlash": "strict",
+              "symbol": {
+                "qualifiedName": "files",
+                "usr": "files-handler"
+              },
+              "catchAllPrefix": true
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": true
+      }
     }
   ]
 }
