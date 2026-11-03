@@ -1199,6 +1199,7 @@ public struct ReachabilityAnalyzer: Sendable {
                 isReexported: fact.isReexported,
                 isIgnored: false,
                 isIgnoredOnlyByFileComment: false,
+                fileHasConditionalCompilation: fact.fileHasConditionalCompilation,
                 location: fact.location
             )
         }

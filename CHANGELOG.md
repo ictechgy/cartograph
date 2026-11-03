@@ -9,6 +9,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `unused-import` no longer reports imports in files that contain `#if`. The index sees one build
+  configuration, so an unconditional `import Combine` used only inside `#if os(iOS)` looked unused
+  in a macOS index, and `fix --apply` removed it and broke the other configuration. Import facts
+  carry an optional `fileHasConditionalCompilation` flag; older saved snapshots without it still load.
 - Synthesized `Codable`/`Equatable`/`Hashable` retention now follows the compiler index as well as the
   inheritance clause. Stored properties are kept when the conformance is written as `Swift.Codable`, a
   composition, a type alias, or inherited through a project protocol (`protocol APIRequest: Encodable`,

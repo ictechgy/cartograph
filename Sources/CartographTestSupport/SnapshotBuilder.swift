@@ -133,7 +133,8 @@ public struct SnapshotBuilder {
         isConditional: Bool = false,
         isReexported: Bool = false,
         isIgnored: Bool = false,
-        isIgnoredOnlyByFileComment: Bool = false
+        isIgnoredOnlyByFileComment: Bool = false,
+        fileHasConditionalCompilation: Bool? = nil
     ) -> Self {
         imports.append(
             IndexedImport(
@@ -143,6 +144,7 @@ public struct SnapshotBuilder {
                 isReexported: isReexported,
                 isIgnored: isIgnored,
                 isIgnoredOnlyByFileComment: isIgnoredOnlyByFileComment,
+                fileHasConditionalCompilation: fileHasConditionalCompilation,
                 location: SourceLocation(path: path ?? defaultPath, line: line, column: 1)
             )
         )
