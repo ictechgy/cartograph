@@ -107,7 +107,8 @@ swift build \
 에이전트는 판정을 곧바로 편집으로 옮기고, 산문보다 데이터를 믿습니다. 그래서 규칙이 다릅니다.
 
 - **삭제 판정을 내지 마세요.** `deletable: true` 같은 필드는 영원히 없습니다. `state`는 그래프
-  사실(`retained`·`retainedByMember`·`reachable`·`unreachable`)이고 `reason`은 값입니다.
+  사실(`retained`·`retainedByMember`·`reachable`·`unreachable`, 그래프에 정점이 없으면 `unknown`)이고
+  `reason`은 값입니다.
   CLI 산문이 "지워도 된다"가 아니라 "보존 루트에서 도달할 수 없다"고 말하듯, JSON도 그보다
   확신하면 안 됩니다.
 - **분석 한계를 모든 응답에 싣습니다.** `limitations`는 README를 복사하는 것이 아니라 **그 프로젝트에서

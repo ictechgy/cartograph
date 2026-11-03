@@ -494,8 +494,9 @@ $ cartograph query UserService
 Five things this output does deliberately:
 
 - **It never says a declaration is safe to delete.** `state` is a fact about the graph —
-  `retained`, `retainedByMember`, `reachable`, `unreachable`. Whether that means deletable is a
-  judgement, and the retention reason is given as a value (`"reason": "interfaceBuilder"`) so the
+  `retained`, `retainedByMember`, `reachable`, `unreachable`, or `unknown` when the declaration is
+  not in the symbol-level reachability graph (treat it like missing evidence, never as unused).
+  Whether that means deletable is a judgement, and the retention reason is given as a value (`"reason": "interfaceBuilder"`) so the
   caller can make it.
 - **Every answer carries what the analysis cannot see**, including `notFound` — asking about a name
   that is declared in Objective-C and being told only "no such thing" would hide the difference

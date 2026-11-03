@@ -489,7 +489,8 @@ $ cartograph query UserService
 이 출력이 일부러 지키는 다섯 가지가 있습니다.
 
 - **지워도 된다고 말하지 않습니다.** `state`는 그래프에 대한 사실입니다 — `retained`,
-  `retainedByMember`, `reachable`, `unreachable`. 그것이 삭제 가능을 뜻하는지는 판단의
+  `retainedByMember`, `reachable`, `unreachable`, 그리고 선언이 심볼 레벨 도달성 그래프에 없을 때의
+  `unknown`(근거가 없다는 뜻이지 미사용이 아닙니다). 그것이 삭제 가능을 뜻하는지는 판단의
   영역이며, 보존 근거는 값으로 줍니다(`"reason": "interfaceBuilder"`). 판단은 받는 쪽의
   몫입니다.
 - **모든 답에 이 분석이 보지 못한 것을 싣습니다** — `notFound`에도 싣습니다. Objective-C로
