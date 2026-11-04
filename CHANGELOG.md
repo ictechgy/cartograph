@@ -51,6 +51,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The agent skill now lists the MCP `cartograph_prepare` tool and how to use it. It shipped in 0.30.0
   without a mention in the skill, so agents could not discover background preparation. A test now
   fails when any published MCP tool is missing from the skill.
+- The Claude Code plugin manifest (`.claude-plugin/plugin.json`) declared version `0.19.0` through
+  0.30.0, so a plugin cache keyed on the manifest version could keep serving the old skill. It now
+  matches the CLI version, and both CI and the release workflow fail when the two differ.
+- The `query` contract now documents the fifth reachability `state`, `unknown`, returned when the
+  declaration is not in the symbol-level reachability graph. Consumers that only handled the four
+  documented values should treat it as missing evidence, never as `unreachable` or unused.
 
 ## [0.30.0] - 2026-11-03
 
