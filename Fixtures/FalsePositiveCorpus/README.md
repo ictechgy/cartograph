@@ -30,6 +30,8 @@ nothing. Building against SwiftUI measured at 7 seconds, so fidelity won.
 | `Bridges.swift` | a Flutter method-call handler that only Dart invokes | the handler's type, until `--external-retentions` supplies the caller |
 | `Bridges.swift` | the standard `FlutterPlugin` shape: `addMethodCallDelegate(instance, channel:)` plus `handle(_:result:)` | the handler method; the registration call names the channel without guessing, and the retention round-trips by the method's real USR |
 | `Bridges.swift` | a handler passed as a method reference, `setMethodCallHandler(handleCall)` (audioplayers) | the arms of that method had no channel |
+| `SynthesizedConformance.swift` | `Encodable` inherited through a project protocol (`protocol APIRequest: Encodable`), a `Codable & Hashable` type alias, and cases of a `Codable` enum without raw values; found in the 2026-11 family review of cartograph 0.30.0, where the inheritance-clause text check missed them | the stored properties read only by synthesized coding, and the cases created only by synthesized decoding |
+| `ConditionalImport.swift` | an unconditional `import Combine` used only inside `#if os(iOS)`; the macOS index sees no use (same review) | the import, which `fix --apply` would remove and break the iOS build |
 | `CorpusObjC/RNCalendar.m` | an Objective-C source with React Native export macros | Clang declarations enter the graph; bridge facts carry actual class/method USRs, while Objective-C runtime gaps remain in limitations |
 
 `expected-bridges.json` is the `bridges` output with the generation time, tool version and project
