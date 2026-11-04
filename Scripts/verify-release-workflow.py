@@ -158,6 +158,10 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.source_path = self.root / "Sources/CartographCore/Cartograph.swift"
         self.source_path.parent.mkdir(parents=True)
         self.source_path.write_text(f'public static let version = "{VERSION}"\n')
+        # 릴리스는 플러그인 매니페스트 버전도 태그와 대조한다. 실제 파일처럼 이름 다음 줄에 버전을 둔다.
+        self.plugin_path = self.root / ".claude-plugin/plugin.json"
+        self.plugin_path.parent.mkdir(parents=True)
+        self.plugin_path.write_text(f'{{\n  "name": "cartograph",\n  "version": "{VERSION}"\n}}\n')
         self.env = {
             **os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
             "MOCK_STATE": str(self.state_path), "MOCK_CALLS": str(self.calls_path),
@@ -320,6 +324,16 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.source_path.write_text("// missing declaration\n")
         self.assert_refuses(self.execute("Resolve version"))
         self.assertTrue(all(call["command"] == "git" for call in self.calls()))
+
+    def test_resolve_refuses_a_stale_or_missing_plugin_manifest_version(self):
+        # 낡은 매니페스트 버전은 플러그인 캐시가 새 스킬을 받지 못하게 할 수 있다. 소스 상수만 맞아도 통과시키지 않는다.
+        self.plugin_path.write_text('{\n  "name": "cartograph",\n  "version": "0.19.0"\n}\n')
+        self.assert_refuses(self.execute("Resolve version"), "plugin.json")
+        # 버전 키나 파일이 없으면 grep 이 실패해 단계가 멈춘다. Cartograph.version 선언 누락과 같은 방식이다.
+        self.plugin_path.write_text('{\n  "name": "cartograph"\n}\n')
+        self.assert_refuses(self.execute("Resolve version"))
+        self.plugin_path.unlink()
+        self.assert_refuses(self.execute("Resolve version"))
 
     def test_resolve_refuses_a_changed_or_unreadable_checkout(self):
         # HEAD가 같아도 체크아웃 뒤에 바뀐 트리는 리뷰한 소스가 아니다. swift build가 읽는 무시 경로의 파일도
