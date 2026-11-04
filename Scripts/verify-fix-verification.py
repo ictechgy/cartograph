@@ -56,12 +56,15 @@ let package = Package(name: "FixVerificationFixture", targets: [
     original = b'''import Lib
 import Unused
 public func midValue() -> Int { .magic }
-#if VERIFY_SHOULD_FAIL
+'''
+    # 검증 빌드만 실패시키는 스위치는 같은 모듈의 다른 파일에 둔다. `#if` 가 있는 파일의 import 는
+    # 다른 빌드 구성에서 쓰일 수 있어 unused-import 로 보고하지 않으므로, 편집 대상 파일에 두면
+    # 이 하네스가 검증할 수정 자체가 사라진다.
+    write(root, "Sources/Mid/VerifierFailure.swift", '''#if VERIFY_SHOULD_FAIL
 #error("Intentional verifier-only build failure")
 #endif
-'''
+''')
     source = root / "Sources/Mid/Mid.swift"
-    source.parent.mkdir(parents=True)
     source.write_bytes(original)
     write(root, "Sources/App/main.swift", "import Mid\nprint(midValue())\n")
     write(root, ".gitignore", ".build/\nignored.txt\n")
