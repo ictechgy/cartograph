@@ -285,7 +285,7 @@ public struct AnalysisSnapshotDocument: Sendable, Equatable, Codable {
             IndexedImport(
                 modulePath: fact.modulePath, scopedKind: fact.scopedKind,
                 isConditional: fact.isConditional, isReexported: fact.isReexported,
-                isIgnored: fact.isIgnored,
+                isIgnored: fact.isIgnored, fileHasConditionalCompilation: fact.fileHasConditionalCompilation,
                 location: .init(
                     path: Self.rebase(fact.location.path, from: recordedRoot, to: currentProjectRoot),
                     line: fact.location.line, column: fact.location.column)

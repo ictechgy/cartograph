@@ -204,14 +204,22 @@ if [[ "$UNIT_ONLY" -eq 0 ]]; then
     xcrun llvm-cov export "${BINARIES[0]}" ${UNIT_OBJECT_ARGS[@]+"${UNIT_OBJECT_ARGS[@]}"} \
         -instr-profile "$UNIT_PROFDATA" -ignore-filename-regex='/(Tests|checkouts|\.build)/' \
         "$(pwd)/Sources" > "$UNIT_JSON"
-    python3 - "$UNIT_JSON" <<'PYTHON'
-import json, sys
+    MINIMUM="$MINIMUM" python3 - "$UNIT_JSON" <<'PYTHON'
+import json, os, sys
 files = [f for f in json.load(open(sys.argv[1]))["data"][0]["files"]
          if "/Sources/" in f["filename"] and not any(x in f["filename"]
          for x in ["/Tests/", "/checkouts/", "/.build/", "/CartographTestSupport/"])]
 covered = sum(f["summary"]["lines"]["covered"] for f in files)
 total = sum(f["summary"]["lines"]["count"] for f in files)
-print(f"단위 테스트만: {covered / total * 100:.2f}% ({covered}/{total}); 아래 게이트는 실제 CLI 통합 실행 포함")
+unit_percent = covered / total * 100 if total else 100.0
+print(f"단위 테스트만: {unit_percent:.2f}% ({covered}/{total}); 아래 게이트는 실제 CLI 통합 실행 포함")
+# 게이트는 통합 수치에만 건다. 단위 비율이 기준 아래로 내려가면 통합 실행이 빠진 단위 경로를 가리고 있다는
+# 신호라(Tests/AGENTS.md) 실패 대신 눈에 띄는 경고로 남긴다. CI 에서는 주석으로 PR 에 보인다.
+minimum = float(os.environ["MINIMUM"])
+if unit_percent < minimum:
+    prefix = "::warning::" if os.environ.get("GITHUB_ACTIONS") == "true" else "경고: "
+    print(f"{prefix}단위 테스트만의 커버리지 {unit_percent:.2f}%가 기준 {minimum:.0f}%보다 낮습니다. "
+          "통합 실행이 빠진 단위 경로를 가릴 수 있습니다.", file=sys.stderr)
 PYTHON
     rm -f "$UNIT_JSON"
 fi

@@ -475,6 +475,9 @@ struct XcodeTargetScopeStore {
     }
 
     /// 분석 filter/ignore를 적용하지 않는다. 새 소스와 설정도 이전 증명을 무효화한다.
+    ///
+    /// `Pods/Pods.xcodeproj` 같은 프로젝트 파일이 빌드 입력이라 공용 가지치기 목록을 쓰지 않는다. `.git`과
+    /// SwiftPM 스크래치(`.build`, `.build-…`)만 건너뛴다. 캡처 자신의 DerivedData 는 출력 디렉터리에 있다.
     func inventory(root: String, workspace: Bool = false, additionalPaths: Set<String> = []) throws -> [String: String] {
         var pending = [root], result: [String: String] = [:]
         var entries = 0, total = 0
@@ -486,7 +489,7 @@ struct XcodeTargetScopeStore {
                 guard entries <= 50_000, !entry.isSymbolicLink else { throw invalid("Inventory budget or symlink boundary exceeded.") }
                 let name = (entry.path as NSString).lastPathComponent
                 if entry.isDirectory {
-                    if ![".git", ".build"].contains(name) { pending.append(entry.path) }
+                    if name != ".git" && !BuildArtifactDirectories.isBuildScratch(name) { pending.append(entry.path) }
                     continue
                 }
                 guard suffixes.contains((entry.path as NSString).pathExtension) || additionalPaths.contains(String(entry.path.dropFirst(root.count + 1))) else { continue }

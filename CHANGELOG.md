@@ -7,6 +7,63 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Upgrade note:** layer `path` matching now uses only the project-relative path for files inside the
+  project. Previously the absolute path was also a candidate for every pattern, so a directory name
+  above the project root (a checkout under `~/NetworkApps/` with `*Network*`) placed every node in that
+  layer and `rules --strict` could pass or fail depending on where the repository was cloned. Absolute
+  patterns (`/…`) still match absolute paths, and files outside the project are still matched by their
+  absolute path. `rules --explain` now reports the relative path as the matched candidate. A layer
+  that only matched through an ancestor directory name no longer matches; anchor it at the project root
+  (`Network/**`) or write the absolute path.
+
+### Fixed
+
+- Declarations used only by Git-ignored sources that the compiler indexed (gitignored R.swift, SwiftGen
+  or Sourcery output) are no longer reported as unreachable. Source discovery excludes ignored files,
+  so their callers vanished and `retained_files` could not help because the files were never read. The
+  ignored files are now read from the index separately, and the declarations they use are retained as
+  `ignoredSourceReference`. The ignored files themselves still add no findings, cycles or layer edges,
+  and uncompiled ignored copies (such as agent worktrees) contribute nothing. The reason is the last
+  fallback: a declaration that already had one (entry point, test, public API, synthesized) keeps it, so
+  `redundant-public` and test-root classification do not change; `impact` lists such declarations under
+  runtime review because their ignored callers never appear on an impact path. The supplemental read reuses the store the main analysis selected, so it obeys
+  `--index-store` and adds one restricted read of the ignored files' units only when such files exist.
+- When Git source selection fails inside a repository (5-second limit, 16 MiB output budget, or a Git
+  error such as a corrupt index), analysis responses now carry a `source-discovery-git-unavailable`
+  limitation with the reason. The fallback walks every source, including Git-ignored files, so the same
+  commit could silently produce different findings. Projects outside a Git repository no longer start
+  `git` at all and report nothing, as before.
+- `unused-import` no longer reports imports in files that contain `#if`. The index sees one build
+  configuration, so an unconditional `import Combine` used only inside `#if os(iOS)` looked unused
+  in a macOS index, and `fix --apply` removed it and broke the other configuration. Import facts
+  carry an optional `fileHasConditionalCompilation` flag; older saved snapshots without it still load.
+- Synthesized `Codable`/`Equatable`/`Hashable` retention now follows the compiler index as well as the
+  inheritance clause. Stored properties are kept when the conformance is written as `Swift.Codable`, a
+  composition, a type alias, or inherited through a project protocol (`protocol APIRequest: Encodable`,
+  `struct Login: APIRequest`); these were reported as unused although synthesized coding reads them.
+  `Comparable` now counts as `Equatable`. A superclass conformance still does not reach subclass
+  properties. Retention only widens, so findings can disappear but not appear.
+- Cases of `Codable` enums without raw values are retained while the enum itself is used
+  (`codableEnumCase`, governed by `retain_codable_properties`): synthesized decoding creates them by
+  name. Like the synthesized `Equatable`/`Hashable` properties, the cases do not keep their enum alive,
+  so a `Codable` enum nobody uses is still reported.
+- Target-scope capture inventories (SwiftPM and Xcode) now skip SwiftPM scratch directories such as
+  `.build-fresh` the way they already skipped `.build`. Dependency checkouts under a leftover scratch
+  path were hashed as project inputs and could exceed the inventory budget, refusing the capture.
+  `Pods`, `Carthage` and checkouts outside scratch paths are still inventoried because they can be
+  real build inputs.
+- The agent skill now lists the MCP `cartograph_prepare` tool and how to use it. It shipped in 0.30.0
+  without a mention in the skill, so agents could not discover background preparation. A test now
+  fails when any published MCP tool is missing from the skill.
+- The Claude Code plugin manifest (`.claude-plugin/plugin.json`) declared version `0.19.0` through
+  0.30.0, so a plugin cache keyed on the manifest version could keep serving the old skill. It now
+  matches the CLI version, and both CI and the release workflow fail when the two differ.
+- The `query` contract now documents the fifth reachability `state`, `unknown`, returned when the
+  declaration is not in the symbol-level reachability graph. Consumers that only handled the four
+  documented values should treat it as missing evidence, never as `unreachable` or unused.
+
 ## [0.30.0] - 2026-11-03
 
 - Keep value-flow value and origin budget states absorbing across later joins.

@@ -75,7 +75,12 @@ public struct LayerRuleEvaluator: Sendable {
     /// 먼저 정의된 레이어가 이긴다.
     public func layer(of node: GraphNode) -> String? {
         let candidates = candidates(of: node)
-        return layers.first { $0.matches(candidates: candidates.values(for: $0.matchTargets)) }?.name
+        return layers.first { layer in
+            let values = candidates.values(for: layer.matchTargets)
+            return layer.patterns.contains { pattern in
+                values.contains { candidates.admits($0, to: pattern) && pattern.matches($0) }
+            }
+        }?.name
     }
 
     /// 정점이 어느 레이어에 왜 속하는지.
@@ -106,7 +111,7 @@ public struct LayerRuleEvaluator: Sendable {
         for layer in layers {
             let values = candidates.values(for: layer.matchTargets)
             for pattern in layer.patterns {
-                if let candidate = values.first(where: { pattern.matches($0) }) {
+                if let candidate = values.first(where: { candidates.admits($0, to: pattern) && pattern.matches($0) }) {
                     return LayerAssignment(
                         candidates: candidates.all,
                         match: .init(
@@ -129,6 +134,17 @@ public struct LayerRuleEvaluator: Sendable {
         /// 판정 순서 그대로, 중복 없이. 대상을 지정하지 않은 레이어와 설명이 이 목록을 쓴다.
         let all: [String]
         let targets: [String: Set<LayerMatchTarget>]
+        /// 프로젝트 안 파일의 절대 경로. 절대 경로로 쓴 패턴에만 대조한다.
+        ///
+        /// 상대 패턴까지 대 보면 체크아웃 위치의 조상 디렉터리 이름(`~/NetworkApps/`)이 `*Network*` 에 걸려
+        /// 모든 정점이 첫 레이어로 들어가고, `rules --strict` 가 같은 커밋에서 로컬과 CI 의 답을 다르게 낸다.
+        /// 제외 글롭이 같은 이유로 상대 경로만 보게 고친 것과 같은 규칙이다(`PathFilter.removes`).
+        let absoluteOnly: Set<String>
+
+        /// 이 후보를 이 패턴에 대 봐도 되는지.
+        func admits(_ candidate: String, to pattern: GlobPattern) -> Bool {
+            pattern.isAbsolute || !absoluteOnly.contains(candidate)
+        }
 
         /// 지정한 대상에서 나온 후보만, 판정 순서 그대로.
         func values(for selected: [LayerMatchTarget]?) -> [String] {
@@ -145,11 +161,12 @@ public struct LayerRuleEvaluator: Sendable {
     private func candidates(of node: GraphNode) -> Candidates {
         // 모듈 정점은 이름·정규화 이름·모듈이 모두 같다. 중복을 그대로 보여 주면
         // 설명이 같은 말을 세 번 하는 꼴이 된다. 순서는 판정 순서 그대로 둔다.
-        let paths = node.location.map { location in
-            [location.path] + projectPaths.flatMap {
-                PathFilter.matchCandidates(for: location.path, relativeTo: $0)
-            }
+        let relativePaths = node.location.map { location in
+            projectPaths.flatMap { PathFilter.matchCandidates(for: location.path, relativeTo: $0).dropFirst() }
         } ?? []
+        // 프로젝트 밖 파일(상대 후보가 없는 경로)은 지금처럼 절대 경로를 모든 패턴에 댄다.
+        let paths = node.location.map { [$0.path] + relativePaths } ?? []
+        let absoluteOnly: Set<String> = relativePaths.isEmpty ? [] : Set(node.location.map { [$0.path] } ?? [])
         let sourced: [(String, LayerMatchTarget)] = [(node.name, .name), (node.qualifiedName, .name)]
             + (node.module.map { [($0, .module)] } ?? [])
             + paths.map { ($0, .path) }
@@ -159,7 +176,7 @@ public struct LayerRuleEvaluator: Sendable {
             if targets[value] == nil { all.append(value) }
             targets[value, default: []].insert(target)
         }
-        return Candidates(all: all, targets: targets)
+        return Candidates(all: all, targets: targets, absoluteOnly: absoluteOnly)
     }
 
     /// 정점 → 레이어 매핑 전체.

@@ -2,7 +2,7 @@
   "format": "isthmus-conformance",
   "version": 1,
   "suite": "http-limitation-scope",
-  "description": "Consumer reading of http limitationScopes (templates, templatePrefixes, templateSuffixes, methods): which calls (server/contract-side gaps) or declarations (client-side gaps) a scoped limitation applies to, and which scope entries are rejected. Comparisons are conservative over-approximations. Case ids are stable; producers vendor this file with its sha256 from SHA256SUMS.",
+  "description": "Consumer reading of http limitationScopes (templates, templatePrefixes, templateSuffixes, methods): which calls (server/contract-side gaps) or declarations (client-side gaps) a scoped limitation applies to, and which scope entries are rejected; plus the same reading for dynamic declarations that carry a proven dynamicScope (scope.dynamic-*). Comparisons are conservative over-approximations. Case ids are stable; producers vendor this file with its sha256 from SHA256SUMS.",
   "contract": "docs/GRAPH-EXCHANGE.md#http-limitation-스코프",
   "cases": [
     {
@@ -683,6 +683,860 @@
       },
       "expect": {
         "valid": true
+      }
+    },
+    {
+      "id": "dynamic-validate/prefix-on-any-with-methods",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "ANY",
+          "pathAnchor": "root",
+          "dynamic": true,
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/admin"
+            ],
+            "methods": [
+              "GET",
+              "HEAD"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "dynamic-validate/templates-on-get",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "GET",
+          "pathAnchor": "root",
+          "dynamic": true,
+          "dynamicScope": {
+            "templates": [
+              "/legacy/{}.php"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "dynamic-validate/contract-suffix",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-contract",
+          "method": "GET",
+          "pathAnchor": "base",
+          "dynamic": true,
+          "dynamicScope": {
+            "templateSuffixes": [
+              "/reports/{}"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": true
+      },
+      "note": "Unresolved server variables make a contract base-anchored; its known tail is a suffix."
+    },
+    {
+      "id": "dynamic-validate/base-root-prefix-with-methods",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "ANY",
+          "pathAnchor": "base",
+          "dynamic": true,
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/"
+            ],
+            "methods": [
+              "POST"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "dynamic-validate/static-declaration",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "GET",
+          "pathAnchor": "root",
+          "dynamic": false,
+          "channel": "/static",
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/static"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false
+      },
+      "note": "A static declaration is already bounded by its template."
+    },
+    {
+      "id": "dynamic-validate/route-call",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-call",
+          "method": "GET",
+          "pathAnchor": "root",
+          "dynamic": true,
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/a"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false
+      },
+      "note": "Dynamic calls keep channelPrefix; dynamicScope is declaration-side only."
+    },
+    {
+      "id": "dynamic-validate/methods-on-non-any",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "GET",
+          "pathAnchor": "root",
+          "dynamic": true,
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/a"
+            ],
+            "methods": [
+              "GET"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false
+      },
+      "note": "A non-ANY declaration is already bounded by its method; restating it is redundant and a different set is contradictory."
+    },
+    {
+      "id": "dynamic-validate/methods-on-contract",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-contract",
+          "method": "GET",
+          "pathAnchor": "root",
+          "dynamic": true,
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/a"
+            ],
+            "methods": [
+              "GET"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "dynamic-validate/methods-only",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "ANY",
+          "pathAnchor": "root",
+          "dynamic": true,
+          "dynamicScope": {
+            "methods": [
+              "GET"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "dynamic-validate/empty-object",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "ANY",
+          "pathAnchor": "root",
+          "dynamic": true,
+          "dynamicScope": {}
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "dynamic-validate/limitation-index-key",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "ANY",
+          "pathAnchor": "root",
+          "dynamic": true,
+          "dynamicScope": {
+            "limitationIndex": 0,
+            "templates": [
+              "/a"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "dynamic-validate/not-an-object",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "ANY",
+          "pathAnchor": "root",
+          "dynamic": true,
+          "dynamicScope": [
+            "/a"
+          ]
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "dynamic-validate/lowercase-percent",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "ANY",
+          "pathAnchor": "root",
+          "dynamic": true,
+          "dynamicScope": {
+            "templates": [
+              "/a%2fb"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "dynamic-validate/prefix-trailing-slash",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "ANY",
+          "pathAnchor": "root",
+          "dynamic": true,
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/admin/"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "dynamic-validate/prefix-catch-all",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "ANY",
+          "pathAnchor": "root",
+          "dynamic": true,
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/admin/{**}"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "dynamic-validate/base-templates",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "ANY",
+          "pathAnchor": "base",
+          "dynamic": true,
+          "dynamicScope": {
+            "templates": [
+              "/a"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false
+      },
+      "note": "Root-relative elements cannot be proven behind an unknown base."
+    },
+    {
+      "id": "dynamic-validate/base-non-root-prefix",
+      "ruleId": "scope.dynamic-validate",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "kind": "route-decl",
+          "method": "GET",
+          "pathAnchor": "base",
+          "dynamic": true,
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/admin"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "id": "dynamic-applies/unscoped-any-call",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "GET"
+        },
+        "probe": {
+          "template": "/anything",
+          "method": "DELETE",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": true
+      },
+      "note": "A dynamic declaration without dynamicScope is a gap for every call (backward compatible), even of another method."
+    },
+    {
+      "id": "dynamic-applies/prefix-inside",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "ANY",
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/admin"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/admin/users/{}",
+          "method": "POST",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "dynamic-applies/prefix-outside",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "ANY",
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/admin"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/administrator",
+          "method": "POST",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": false
+      },
+      "note": "Prefixes are segment-bounded."
+    },
+    {
+      "id": "dynamic-applies/prefix-case-and-slash-folded",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "ANY",
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/admin"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/Admin/",
+          "method": "GET",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "dynamic-applies/declaration-method-bounds",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "GET",
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/admin"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/admin/users",
+          "method": "POST",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": false
+      },
+      "note": "With a dynamicScope, a non-ANY declaration only serves its own method."
+    },
+    {
+      "id": "dynamic-applies/declaration-method-head-as-get",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "GET",
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/admin"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/admin/users",
+          "method": "HEAD",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "dynamic-applies/declaration-method-options",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "POST",
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/admin"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/admin/users",
+          "method": "OPTIONS",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "dynamic-applies/scope-methods-exclude",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "ANY",
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/"
+            ],
+            "methods": [
+              "GET",
+              "HEAD"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/api/orders",
+          "method": "PUT",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": false
+      }
+    },
+    {
+      "id": "dynamic-applies/dynamic-verb-call",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "ANY",
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/"
+            ],
+            "methods": [
+              "GET"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/api/orders",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": true
+      },
+      "note": "A call with a non-literal verb may use any method."
+    },
+    {
+      "id": "dynamic-applies/partial-segment-template",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "ANY",
+          "dynamicScope": {
+            "templates": [
+              "/legacy/{}.php"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/legacy/index.php",
+          "method": "GET",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "dynamic-applies/partial-segment-other",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "ANY",
+          "dynamicScope": {
+            "templates": [
+              "/legacy/{}.php"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/legacy/index.html",
+          "method": "GET",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": false
+      }
+    },
+    {
+      "id": "dynamic-applies/base-call-unknown-lead",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "ANY",
+          "dynamicScope": {
+            "templatePrefixes": [
+              "/admin"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/users",
+          "method": "GET",
+          "pathAnchor": "base"
+        }
+      },
+      "expect": {
+        "applies": true
+      },
+      "note": "A base-anchored call has an unknown leading part, so it may fall under any prefix."
+    },
+    {
+      "id": "dynamic-applies/suffix-tail",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "GET",
+          "dynamicScope": {
+            "templateSuffixes": [
+              "/reports/{}"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/v2/reports/7",
+          "method": "GET",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": true
+      }
+    },
+    {
+      "id": "dynamic-applies/suffix-other-tail",
+      "ruleId": "scope.dynamic-applies",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#dynamic-선언의-스코프-dynamicscope",
+      "appliesTo": [
+        "consumer",
+        "producer"
+      ],
+      "input": {
+        "declaration": {
+          "method": "GET",
+          "dynamicScope": {
+            "templateSuffixes": [
+              "/reports/{}"
+            ]
+          }
+        },
+        "probe": {
+          "template": "/v2/orders/7",
+          "method": "GET",
+          "pathAnchor": "root"
+        }
+      },
+      "expect": {
+        "applies": false
       }
     }
   ]

@@ -455,6 +455,11 @@ public struct ReachabilityAnalyzer: Sendable {
             guard Self.synthesizedReaderProtocolUSRs.contains(reference.targetUSR) else { continue }
             hidden.insert(NodeID(reference.sourceUSR))
         }
+        // 프로젝트 프로토콜을 거친 준수(`protocol APIRequest: Encodable` 뒤의 `struct Login: APIRequest`)도
+        // 합성 구현이 저장 프로퍼티를 읽는다. 보존 판정과 같은 폐포를 써서 assign-only 판정이 어긋나지 않게 한다.
+        for usr in RetentionPolicy.synthesizedConformances(in: snapshot).keys {
+            hidden.insert(NodeID(usr))
+        }
         for node in graph.sortedNodes {
             let attrs = node.attributes
             if attrs.contains(.codable) || attrs.contains(.runtimeManaged)
@@ -477,6 +482,7 @@ public struct ReachabilityAnalyzer: Sendable {
     /// 합성 본문은 소스 위치가 없어 인덱스에 읽기 참조가 남지 않는다.
     static let synthesizedReaderProtocolUSRs: Set<String> = [
         "s:SQ",  // Equatable
+        "s:SL",  // Comparable — Equatable 을 상속하므로 합성 `==` 가 저장 프로퍼티를 읽는다.
         "s:SH",  // Hashable
         "s:SE",  // Encodable
         "s:Se",  // Decodable
@@ -1199,6 +1205,7 @@ public struct ReachabilityAnalyzer: Sendable {
                 isReexported: fact.isReexported,
                 isIgnored: false,
                 isIgnoredOnlyByFileComment: false,
+                fileHasConditionalCompilation: fact.fileHasConditionalCompilation,
                 location: fact.location
             )
         }

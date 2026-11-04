@@ -408,8 +408,11 @@ private struct ImpactSummaries {
 
     private static let runtimeReasons: Set<RetentionReason> = [
         .objectiveCAccessible, .interfaceBuilder, .dynamicDispatch, .externalConformance, .externalOverride,
-        .rawRepresentableEnumCase, .caseIterableEnumCase, .codingKey, .codableProperty, .runtimeManaged,
+        .rawRepresentableEnumCase, .caseIterableEnumCase, .codingKey, .codableProperty, .codableEnumCase,
+        .runtimeManaged,
         .propertyWrapperRequirement, .resultBuilderRequirement, .externalBridge, .preview,
+        // 호출자가 Git 이 무시한 컴파일 소스(생성 코드)에 있어 그래프의 영향 경로에 나타나지 않는다.
+        .ignoredSourceReference,
     ]
 
     private static func runtimeReview(

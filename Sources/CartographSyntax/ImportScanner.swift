@@ -13,7 +13,9 @@ struct ImportScanner {
     func scan(tree: SourceFileSyntax, path: String, converter: SourceLocationConverter) -> [IndexedImport] {
         let collector = Collector(path: path, converter: converter)
         collector.walk(tree)
-        return collector.imports
+        // `#if` 는 파일 어디에 있든 이 인덱스가 보지 못한 구성의 사용처를 숨길 수 있다.
+        guard collector.sawConditionalCompilation else { return collector.imports }
+        return collector.imports.map { $0.inConditionallyCompiledFile() }
     }
 }
 
@@ -23,6 +25,8 @@ private final class Collector: SyntaxVisitor {
     private(set) var imports: [IndexedImport] = []
     /// `#if` 절의 중첩 깊이 — 안쪽 import는 현재 플랫폼 빌드에 없을 수 있다.
     private var conditionalDepth = 0
+    /// 파일 어딘가에 `#if` 가 있었는지. import 보다 뒤에 나와도 센다.
+    private(set) var sawConditionalCompilation = false
 
     init(path: String, converter: SourceLocationConverter) {
         self.path = path
@@ -32,6 +36,7 @@ private final class Collector: SyntaxVisitor {
 
     override func visit(_: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
         conditionalDepth += 1
+        sawConditionalCompilation = true
         return .visitChildren
     }
     override func visitPost(_: IfConfigDeclSyntax) { conditionalDepth -= 1 }

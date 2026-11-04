@@ -21,7 +21,7 @@ public struct SwiftSyntaxAnalyzer: Sendable {
     ///
     /// 툴체인(SwiftSyntax) 교체는 이 값으로 잡히지 않는다. 그때는 캐시 디렉터리를
     /// 지우면 된다. 릴리스 간 이동은 도구 버전이 함께 키에 들어가 자동으로 갈린다.
-    public static let analysisRevision = 25
+    public static let analysisRevision = 26
 
     /// XCTestCase 외에 테스트 기반 클래스로 볼 이름들.
     ///
@@ -529,14 +529,15 @@ final class DeclarationCollector: SyntaxVisitor {
         isEnum: Bool
     ) -> Set<SymbolAttribute> {
         guard let clause else { return [] }
-        let inherited = clause.inheritedTypes.map { $0.type.trimmedDescription }
+        let inherited = clause.inheritedTypes.flatMap { protocolNames(in: $0.type.trimmedDescription) }
         var result: Set<SymbolAttribute> = []
 
         if inherited.contains(where: codableProtocols.contains) { result.insert(.codable) }
         if inherited.contains("CodingKey") { result.insert(.codingKey) }
         // 합성된 `==`/`hash(into:)` 도 저장 프로퍼티를 읽는다. 소스 범위가 없어
         // 인덱스에 읽기가 남지 않으므로 준수 사실을 표식으로 남긴다.
-        if inherited.contains("Equatable") { result.insert(.equatable) }
+        // Comparable 은 Equatable 을 상속하므로 준수만으로 `==` 가 합성된다.
+        if inherited.contains("Equatable") || inherited.contains("Comparable") { result.insert(.equatable) }
         if inherited.contains("Hashable") { result.insert(.hashable) }
         // 케이스를 소스에서 한 번도 이름으로 부르지 않고 `allCases` 로만 쓰는 것은 흔하다.
         // 합성된 `allCases` 의 몸통은 소스 범위가 없어 인덱스에 참조를 남기지 않는다.
@@ -554,6 +555,20 @@ final class DeclarationCollector: SyntaxVisitor {
     }
 
     static let codableProtocols: Set<String> = ["Codable", "Encodable", "Decodable"]
+
+    /// 상속 절의 한 항목을 비교할 프로토콜 이름들로 편다.
+    ///
+    /// `Swift.Codable` 처럼 모듈로 한정하거나 `Codable & Hashable` 처럼 조합해 쓴 준수는 글자 비교에서
+    /// 빠져, 합성 코딩·비교가 읽는 저장 프로퍼티가 미사용으로 보고됐다. 인덱스 관계가 같은 사실을 따로
+    /// 확인하지만(`RetentionPolicy`), 소스만 읽는 경로도 같은 답을 내도록 여기서도 정규화한다.
+    static func protocolNames(in written: String) -> [String] {
+        written.split(separator: "&").map { part in
+            var name = part
+            while name.first?.isWhitespace == true { name.removeFirst() }
+            while name.last?.isWhitespace == true { name.removeLast() }
+            return name.hasPrefix("Swift.") ? String(name.dropFirst("Swift.".count)) : String(name)
+        }
+    }
     /// 열거형 원시값으로 흔히 쓰이는 타입들.
     static let rawValueTypes: Set<String> = [
         "String", "Int", "Int8", "Int16", "Int32", "Int64",

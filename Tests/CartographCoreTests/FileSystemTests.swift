@@ -14,6 +14,16 @@ struct FileSystemTests {
         #expect(throws: (any Error).self) { try fileSystem.realPath(at: "/tmp\0ignored") }
     }
 
+    @Test("스크래치 빌드 디렉터리 판정은 .build 와 .build- 접두사만 고른다")
+    func buildScratchNames() {
+        #expect(BuildArtifactDirectories.isBuildScratch(".build"))
+        #expect(BuildArtifactDirectories.isBuildScratch(".build-fresh"))
+        #expect(!BuildArtifactDirectories.isBuildScratch(".buildkite"))
+        #expect(!BuildArtifactDirectories.isBuildScratch("build"))
+        #expect(!BuildArtifactDirectories.isBuildScratch("Pods"))
+        #expect(!BuildArtifactDirectories.shouldDescend(into: "/p/.build-fresh"))
+    }
+
     @Test("메모리 파일 시스템은 파일과 디렉터리를 구분한다")
     func inMemoryDistinguishesFilesAndDirectories() {
         let fileSystem = InMemoryFileSystem(files: ["/p/Sources/A.swift": "// a"])

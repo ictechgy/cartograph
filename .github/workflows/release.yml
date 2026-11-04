@@ -88,6 +88,12 @@ jobs:
             echo "태그($version)와 Cartograph.version($declared)이 다릅니다." >&2
             exit 1
           fi
+          # 플러그인 캐시는 매니페스트 버전으로 갱신을 판단할 수 있다. 낡은 버전이면 새 스킬이 설치본에 닿지 않는다.
+          plugin="$(grep -oE '"version": "[^"]+"' .claude-plugin/plugin.json | head -1 | cut -d'"' -f4)"
+          if [ "$plugin" != "$version" ]; then
+            echo "태그($version)와 .claude-plugin/plugin.json 버전($plugin)이 다릅니다." >&2
+            exit 1
+          fi
 
       # 리뷰를 거쳐 main에 머지된 커밋만 게시한다. 태그 push와 수동 실행 모두 같고, 핫픽스 브랜치도 예외가 없다.
       # SHA로 고정한 checkout은 그 커밋 하나만 얕게 받아 origin/main이 없다. 잘린 이력에 기대지 않도록 main까지

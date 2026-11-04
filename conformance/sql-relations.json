@@ -1,0 +1,250 @@
+{
+  "format": "isthmus-conformance",
+  "version": 1,
+  "suite": "sql-relations",
+  "description": "Shared producer rules for reading relation names from SQL text into relation-use facts: a FROM inside function arguments (EXTRACT, TRIM, SUBSTRING), statement-scoped CTE names, and IS [NOT] DISTINCT FROM operands are not relations, while a FROM inside a subquery still names one. relations is the set of names a producer extracts: compare it without order or duplicates (the order, repetition, and action kinds of emitted facts follow each producer's existing rules). Case ids are stable; producers vendor this file with its sha256 from SHA256SUMS.",
+  "contract": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+  "cases": [
+    {
+      "id": "cte/simple",
+      "ruleId": "relations.cte",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "WITH recent AS (SELECT * FROM orders) SELECT * FROM recent"
+      },
+      "expect": {
+        "relations": [
+          "orders"
+        ]
+      }
+    },
+    {
+      "id": "cte/recursive-with-columns",
+      "ruleId": "relations.cte",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "WITH RECURSIVE tree(id, parent_id) AS (SELECT id, parent_id FROM nodes UNION ALL SELECT n.id, n.parent_id FROM nodes n JOIN tree t ON n.parent_id = t.id) SELECT * FROM tree"
+      },
+      "expect": {
+        "relations": [
+          "nodes"
+        ]
+      }
+    },
+    {
+      "id": "cte/multiple-materialized",
+      "ruleId": "relations.cte",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "WITH a AS (SELECT 1), b AS MATERIALIZED (SELECT * FROM orders) SELECT * FROM a JOIN b ON true"
+      },
+      "expect": {
+        "relations": [
+          "orders"
+        ]
+      }
+    },
+    {
+      "id": "cte/not-materialized",
+      "ruleId": "relations.cte",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "WITH c AS NOT MATERIALIZED (SELECT * FROM orders) SELECT * FROM c"
+      },
+      "expect": {
+        "relations": [
+          "orders"
+        ]
+      }
+    },
+    {
+      "id": "cte/insert-select",
+      "ruleId": "relations.cte",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "WITH staged AS (SELECT * FROM imports) INSERT INTO orders SELECT * FROM staged"
+      },
+      "expect": {
+        "relations": [
+          "imports",
+          "orders"
+        ]
+      }
+    },
+    {
+      "id": "cte/scope-is-one-statement",
+      "ruleId": "relations.cte",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "WITH recent AS (SELECT 1) SELECT * FROM recent; SELECT * FROM recent"
+      },
+      "expect": {
+        "relations": [
+          "recent"
+        ]
+      }
+    },
+    {
+      "id": "function-from/extract",
+      "ruleId": "relations.function-from",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "SELECT EXTRACT(YEAR FROM created_at) FROM orders"
+      },
+      "expect": {
+        "relations": [
+          "orders"
+        ]
+      }
+    },
+    {
+      "id": "function-from/trim",
+      "ruleId": "relations.function-from",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "SELECT TRIM(BOTH ' ' FROM name) FROM users"
+      },
+      "expect": {
+        "relations": [
+          "users"
+        ]
+      }
+    },
+    {
+      "id": "function-from/substring",
+      "ruleId": "relations.function-from",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "SELECT SUBSTRING(name FROM 2 FOR 3) FROM users"
+      },
+      "expect": {
+        "relations": [
+          "users"
+        ]
+      }
+    },
+    {
+      "id": "subquery/derived-table-still-fires",
+      "ruleId": "relations.function-from",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "SELECT * FROM (SELECT * FROM orders) AS sub"
+      },
+      "expect": {
+        "relations": [
+          "orders"
+        ]
+      }
+    },
+    {
+      "id": "subquery/scalar-still-fires",
+      "ruleId": "relations.function-from",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "SELECT (SELECT max(id) FROM users) FROM orders"
+      },
+      "expect": {
+        "relations": [
+          "users",
+          "orders"
+        ]
+      }
+    },
+    {
+      "id": "subquery/in-select-still-fires",
+      "ruleId": "relations.function-from",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "SELECT * FROM orders WHERE id IN (SELECT order_id FROM payments)"
+      },
+      "expect": {
+        "relations": [
+          "orders",
+          "payments"
+        ]
+      }
+    },
+    {
+      "id": "distinct-from/is",
+      "ruleId": "relations.distinct-from",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "SELECT * FROM events WHERE a IS DISTINCT FROM b"
+      },
+      "expect": {
+        "relations": [
+          "events"
+        ]
+      }
+    },
+    {
+      "id": "distinct-from/is-not",
+      "ruleId": "relations.distinct-from",
+      "provenance": "contract",
+      "source": "docs/GRAPH-EXCHANGE.md#sql-텍스트의-관계-이름",
+      "appliesTo": [
+        "producer"
+      ],
+      "input": {
+        "sql": "SELECT * FROM events WHERE a IS NOT DISTINCT FROM b"
+      },
+      "expect": {
+        "relations": [
+          "events"
+        ]
+      }
+    }
+  ]
+}

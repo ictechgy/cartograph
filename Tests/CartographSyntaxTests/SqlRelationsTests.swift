@@ -1,4 +1,5 @@
 @testable import CartographSyntax
+import Foundation
 import Testing
 
 /// kartograph·rustograph와 동일한 관계 추출 계약을 Swift 포트가 지키는지 검증한다.
@@ -247,3 +248,37 @@ private let sharedSqlRelationCases: [SharedSqlRelationCase] = [
         sql: "SELECT * FROM events WHERE a IS NOT DISTINCT FROM b",
         relations: ["events"]),
 ]
+
+/// isthmus 공유 벡터(`conformance/sql-relations.json`)를 제품 추출로 실행한다.
+///
+/// 위의 인라인 사례는 같은 SQL 을 손으로 옮긴 것이라, 벡터가 바뀌어도 함께 바뀌지 않으면 아무도 모른다.
+/// 이 테스트는 잠금 파일(`conformance/conformance.lock`)로 고정한 벡터 자체를 읽는다. 해시 대조는
+/// `HTTPConformanceTests.vendoredFilesMatchLock` 이 한다.
+@Suite("SQL 관계 공유 적합성 벡터")
+struct SqlRelationsConformanceTests {
+    private static let vector = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("conformance/sql-relations.json")
+
+    @Test("생산자 케이스의 관계 이름 집합이 벡터와 같다")
+    func producerCasesPass() throws {
+        let document = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: Self.vector)) as? [String: Any])
+        #expect(document["format"] as? String == "isthmus-conformance")
+        #expect(document["suite"] as? String == "sql-relations")
+        let cases = try #require(document["cases"] as? [[String: Any]])
+        var executed = 0
+        for testCase in cases where (testCase["appliesTo"] as? [String] ?? []).contains("producer") {
+            let id = testCase["id"] as? String ?? "?"
+            let input = try #require(testCase["input"] as? [String: Any], "\(id): input")
+            let expect = try #require(testCase["expect"] as? [String: Any], "\(id): expect")
+            let sql = try #require(input["sql"] as? String, "\(id): sql")
+            let expected = try #require(expect["relations"] as? [String], "\(id): relations")
+            // 순서·중복은 각 생산자의 기존 규칙이라 집합으로 비교한다(벡터 설명).
+            #expect(Set(sqlRelations(sql).relations.map(\.name)) == Set(expected), "\(id)")
+            executed += 1
+        }
+        // 생산자 케이스가 조용히 0건이 되면 이 테스트는 아무것도 증명하지 않는다.
+        #expect(executed >= 14)
+    }
+}

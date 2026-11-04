@@ -83,8 +83,8 @@ brew install ictechgy/tap/cartograph
 ```
 
 The [tap formula](https://github.com/ictechgy/homebrew-tap/blob/main/Formula/cartograph.rb) is updated
-separately from GitHub Releases. Its [0.28.0 update](https://github.com/ictechgy/homebrew-tap/pull/63)
-passed public archive installation and formula tests on macOS arm64. Verify `cartograph --version`
+separately from GitHub Releases, so it can lag the newest release. Each release's [CHANGELOG](CHANGELOG.md)
+entry records whether its Homebrew installation and formula tests passed. Verify `cartograph --version`
 after installing or upgrading; a published release and tap update do not upgrade your local binary.
 
 **Mint** — builds from source, no tap to add:
@@ -318,7 +318,8 @@ recovered from the index; the `c:@M@M` marker an `import` itself leaves behind n
 usage. Because usage can also arrive through a re-export, reporting is deliberately
 conservative: an import is reported only when the file's usage evidence is complete — no
 unattributable references (clang/Objective-C USRs carry no module) and no referenced module the
-file never imported. Conditional (`#if`) imports, re-exporting imports (`@_exported`,
+file never imported. Every import in a file that contains `#if` anywhere (the index sees one build
+configuration, so a use in another branch is invisible), re-exporting imports (`@_exported`,
 `public import`), and imports marked `// cartograph:ignore` are never reported. Scoped imports
 like `import struct Foundation.Bundle` are judged by their head module — a use of anything in
 `Foundation` counts as use of the import — and the diagnostic spells the full form. Like the
@@ -494,8 +495,9 @@ $ cartograph query UserService
 Five things this output does deliberately:
 
 - **It never says a declaration is safe to delete.** `state` is a fact about the graph —
-  `retained`, `retainedByMember`, `reachable`, `unreachable`. Whether that means deletable is a
-  judgement, and the retention reason is given as a value (`"reason": "interfaceBuilder"`) so the
+  `retained`, `retainedByMember`, `reachable`, `unreachable`, or `unknown` when the declaration is
+  not in the symbol-level reachability graph (treat it like missing evidence, never as unused).
+  Whether that means deletable is a judgement, and the retention reason is given as a value (`"reason": "interfaceBuilder"`) so the
   caller can make it.
 - **Every answer carries what the analysis cannot see**, including `notFound` — asking about a name
   that is declared in Objective-C and being told only "no such thing" would hide the difference
@@ -1654,16 +1656,15 @@ one:
 - `name` is the declaration name **and** its module-qualified name (`App.Networking`). A name
   pattern such as `Network*` therefore still matches every declaration of a module named
   `NetworkKit`; use `match_on: module` for module rules.
-- `path` is the absolute and the project-relative file path. A pattern without `/` is matched
-  gitignore-style against each component of those paths — every directory and the file name. So
-  `*Network*` with `match_on: path` still places anything under a `Network/` directory and a type
-  declared in a file that carries its name (`NetworkError.swift`), and because the absolute path
-  is a candidate, it places every node when a directory above the project root matches (a project
-  under `~/NetworkApps/`). What it stops is the pattern matching a declaration's name — a type
-  `NetworkError` declared in `Domain/Errors.swift` is no longer caught, as long as no directory on
-  that file's absolute path matches. For a directory rule, prefer a pattern anchored at the project
-  root such as `Network/**`: `**/Network/**` and slash-less patterns are also compared against the
-  absolute path, directories above the project root included.
+- `path` is the project-relative file path; files outside the project are matched by their absolute
+  path. A pattern without `/` is matched gitignore-style against each component of that path — every
+  directory and the file name. So `*Network*` with `match_on: path` still places anything under a
+  `Network/` directory and a type declared in a file that carries its name (`NetworkError.swift`).
+  What it stops is the pattern matching a declaration's name — a type `NetworkError` declared in
+  `Domain/Errors.swift` is not caught. Directories above the project root are not candidates, so a
+  checkout under `~/NetworkApps/` does not place every node; write an absolute pattern
+  (`/Users/me/NetworkApps/**`) when you do mean the absolute path. For a directory rule, prefer a
+  pattern anchored at the project root such as `Network/**`.
 
 A layer without `match_on` matches exactly as before. A `path`-only layer never matches a module
 node, which has no source location. An unknown value, an empty list or an empty `match_on:` is a
@@ -1884,7 +1885,8 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | `wrappedValue`, `projectedValue` on `@propertyWrapper` types | wrapper contract |
 | `build*` on `@resultBuilder` types | builder contract |
 | Stored properties of `Codable` types | synthesized coding leaves no reference |
-| Stored properties of `Equatable`/`Hashable` types | synthesized `==`/`hash(into:)` leaves no reference |
+| Cases of `Codable` enums without raw values (`retain_codable_properties`) | synthesized decoding creates them by name |
+| Stored properties of `Equatable`/`Hashable` (and `Comparable`) types | synthesized `==`/`hash(into:)` leaves no reference |
 | Members that override or satisfy a declaration outside the analyzed code | the framework calls them — the owning type is not kept by this rule |
 | `subscript(dynamicMember:)`, `@_dynamicReplacement`, `dynamic` | dynamic dispatch |
 | Compiler-synthesized declarations | you cannot delete them — they do not keep their type alive either |
@@ -1892,6 +1894,7 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | `retained_names`, `retained_files` globs | you said so |
 | Declarations whose source cannot be read (permissions or I/O failure) | retention annotations are unknown (`sourceUnavailable`); restore access and rerun |
 | Declarations named in `--external-retentions` | another platform calls them across a bridge; `--explain` quotes the evidence |
+| Declarations used by a Git-ignored source the compiler indexed (gitignored R.swift, SwiftGen or Sourcery output) | the caller is outside the analysis scope (`ignoredSourceReference`) |
 
 Compiler requirements and runtime use are separate. A compiler-observed macro reference keeps
 the macro even when its annotated owner is unreachable. Likewise, an annotation still present
@@ -1910,6 +1913,12 @@ leaves no index evidence, so keeping it is the conservative side; turn them off 
 properties reported. These two reasons apply only when the containing type is reachable.
 A nested, never-created `Equatable` or `Hashable` type cannot retain an otherwise unused outer
 type through its stored properties. `Codable` and explicit retention rules remain separate.
+
+These conformances are read from the compiler index as well as the inheritance clause, so they also
+apply when written as `Swift.Codable`, as a composition (`Codable & Hashable`), through a type alias
+(`typealias Model = Codable & Hashable`), or through a project protocol (`protocol APIRequest:
+Encodable` followed by `struct Login: APIRequest`). A superclass's conformance does not reach
+properties a subclass adds, because synthesized coding does not read them.
 
 Protocol requirements are handled by walking override relations in reverse: if a requirement is
 called, every implementation of it is reachable — but only once the implementing type itself is
@@ -2282,6 +2291,12 @@ The description also participates in session invalidation; absence of a warning 
 
 Git-ignored untracked sources and nested repositories are excluded from discovery; tracked files
 take precedence over ignore rules. Exclusions are reported and do not prove build completeness.
+When Git cannot list a repository (a 5-second limit, a 16 MiB output budget or a Git error), every
+source under the root is walked instead and `source-discovery-git-unavailable` reports why, because
+ignored files are then included and results can differ from a run where Git succeeded.
+When the compiler indexed an ignored source (gitignored generated code), the declarations it uses
+are retained as `ignoredSourceReference`; the ignored file itself still adds no findings, cycles or
+layer edges.
 Generated DI files can connect real callers. After reviewing their role, use
 `retention.retained_files: ["Sources/Generated/**"]` to retain declarations without discarding edges.
 A generated-looking name or a human-maintained design-token file is not automatically hidden.

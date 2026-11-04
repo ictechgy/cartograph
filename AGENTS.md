@@ -22,8 +22,14 @@
 **지금 어디까지 왔고 다음이 무엇인지는 [HANDOFF.md](HANDOFF.md)에 있습니다.** 세션을 이어받을 때 먼저 읽으세요.
 
 자매 프로젝트가 바탕화면에 있습니다: [kartograph](../kartograph)(Kotlin/Android) ·
-[dartograph](../dartograph)(Dart/Flutter) · [isthmus](../isthmus)(언어 경계 조인).
-이들의 `query` 출력 스키마와 스킬 문장은 이 저장소와 같아야 합니다. 여기서 바꾸면 그쪽에도 알리세요.
+[dartograph](../dartograph)(Dart/Flutter) · [gartograph](../gartograph)(Go) ·
+[rustograph](../rustograph)(Rust) · [pythograph](../pythograph)(Python) ·
+[tsograph](../tsograph)(TypeScript/JavaScript) · [schemagraph](../schemagraph)(DB 스키마) ·
+[isthmus](../isthmus)(언어 경계 조인, 교환 형식과 공유 적합성 벡터의 정본).
+kartograph·dartograph의 `query` 출력 스키마와 스킬 문장은 이 저장소와 같아야 합니다. 여기서 바꾸면 그쪽에도 알리세요.
+gartograph·rustograph의 `query`는 각 저장소 고유의 공개 계약이며(`dependedBy`, `neighbors[]`) 이 셋과 맞추지
+않기로 했습니다. 공유하는 것은 출력 철학입니다: `state`는 판정이 아닌 그래프 사실, 이웃에 닿는 간선 종류 전부,
+실제로 센 `limitations`, 잘림 표시.
 브리지 교환 형식은 `../isthmus/docs/GRAPH-EXCHANGE.md`가 정본입니다. 형식 변경은
 `BridgeFactsDocument`와 자매 저장소에 함께 반영합니다.
 
@@ -107,7 +113,8 @@ swift build \
 에이전트는 판정을 곧바로 편집으로 옮기고, 산문보다 데이터를 믿습니다. 그래서 규칙이 다릅니다.
 
 - **삭제 판정을 내지 마세요.** `deletable: true` 같은 필드는 영원히 없습니다. `state`는 그래프
-  사실(`retained`·`retainedByMember`·`reachable`·`unreachable`)이고 `reason`은 값입니다.
+  사실(`retained`·`retainedByMember`·`reachable`·`unreachable`, 그래프에 정점이 없으면 `unknown`)이고
+  `reason`은 값입니다.
   CLI 산문이 "지워도 된다"가 아니라 "보존 루트에서 도달할 수 없다"고 말하듯, JSON도 그보다
   확신하면 안 됩니다.
 - **분석 한계를 모든 응답에 싣습니다.** `limitations`는 README를 복사하는 것이 아니라 **그 프로젝트에서

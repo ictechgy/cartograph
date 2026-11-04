@@ -126,6 +126,22 @@ struct MCPToolsTests {
         #expect(CartographMCPTools.definitions.allSatisfy { $0.readOnly && !$0.destructive })
     }
 
+    @Test("스킬 문서는 공개한 MCP 도구를 하나도 빠뜨리지 않는다")
+    func skillNamesEveryPublishedTool() throws {
+        // 도구만 추가하고 스킬을 고치지 않으면 에이전트는 그 도구가 있는 줄 모른다. 실제로
+        // cartograph_prepare 가 0.30.0 에 들어가고도 스킬의 도구 목록에 없었다. 사본과 템플릿이
+        // 같은지는 AgentSkillTemplateTests 가 따로 확인한다.
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let skillPath = root.appendingPathComponent("Skills/cartograph/SKILL.md")
+        let skill = try String(contentsOf: skillPath, encoding: .utf8)
+        for name in CartographMCPTools.definitions.map(\.name) {
+            #expect(skill.contains("`\(name)`"), "\(name) is missing from the skill's MCP tool list")
+        }
+    }
+
     @Test("고정 Core Data 근거를 못 읽으면 런타임 도구만 실패하고 기본 query는 유지한다")
     func rejectsMissingFixedBuildEvidenceWithoutChangingQuery() throws {
         let tools = CartographMCPTools(makeSession: makeSession,

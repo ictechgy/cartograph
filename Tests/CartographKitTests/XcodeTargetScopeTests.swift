@@ -122,6 +122,20 @@ struct XcodeTargetScopeTests {
         return file
     }
 
+    @Test("Xcode 입력 인벤토리는 스크래치 빌드 디렉터리만 건너뛰고 Pods 프로젝트는 입력으로 센다")
+    func inventorySkipsScratchButKeepsPodsProject() throws {
+        // Pods/Pods.xcodeproj 는 workspace 빌드의 입력이다. 공용 가지치기 목록으로 건너뛰면 그 변경을 못 보고
+        // 낡은 증명을 받아들인다. .build-fresh 는 이전 SwiftPM 실행이 남긴 스크래치라 입력이 아니다.
+        let fs = InMemoryFileSystem(currentDirectoryPath: "/p", files: [
+            "/p/App/App.swift": "func app() {}",
+            "/p/Pods/Pods.xcodeproj/project.pbxproj": "// pods",
+            "/p/.build/debug/Old.swift": "func old() {}",
+            "/p/.build-fresh/checkouts/Dep/Dep.swift": "func dep() {}",
+        ])
+        let inventory = try XcodeTargetScopeStore(fileSystem: fs).inventory(root: "/p")
+        #expect(inventory.keys.sorted() == ["App/App.swift", "Pods/Pods.xcodeproj/project.pbxproj"])
+    }
+
     @Test("SDK 이름만으로 framework를 인증하지 않고 실제 경계와 stub 바이트를 재검증한다")
     func systemFrameworkBoundaryAndBytes() throws {
         var fixture = try fixture()
