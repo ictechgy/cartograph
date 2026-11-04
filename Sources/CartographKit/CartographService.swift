@@ -136,7 +136,8 @@ public struct CartographService: Sendable {
         let (raw, ignoredSourceTargets) = try measureQueryPhase(
             .rawSnapshot, observer: environment.queryPhaseObserver
         ) {
-            (try source.provider.loadSnapshot(), try ignoredSourceReferenceTargets(inventory: inventory))
+            (try source.provider.loadSnapshot(),
+             try ignoredSourceReferenceTargets(inventory: inventory, storePath: source.storePath))
         }
         return try measureQueryPhase(.syntaxContext, observer: environment.queryPhaseObserver) {
             let marked = IgnoredSourceReferences.marking(raw, targets: ignoredSourceTargets)
@@ -167,9 +168,14 @@ public struct CartographService: Sendable {
     ///
     /// 무시 소스가 없으면 인덱스를 다시 읽지 않는다. 있으면 그 파일만 따로 읽어(`supplementalSnapshot`) 본 분석의
     /// 범위와 섞지 않는다.
-    private func ignoredSourceReferenceTargets(inventory: ProjectFileInventory) throws -> Set<String> {
-        guard !inventory.ignoredSourceFiles.isEmpty else { return [] }
-        return IgnoredSourceReferences.targets(in: try supplementalSnapshot(sourcePaths: inventory.ignoredSourceFiles))
+    /// 본 분석이 고른 스토어(`storePath`)를 그대로 읽어 `--index-store` 가드를 우회하지 않는다.
+    private func ignoredSourceReferenceTargets(
+        inventory: ProjectFileInventory, storePath: String
+    ) throws -> Set<String> {
+        let sources = IgnoredSourceReferences.untrackedSources(
+            ignored: inventory.ignoredSourceFiles, tracked: inventory.sourceFiles)
+        guard !sources.isEmpty else { return [] }
+        return IgnoredSourceReferences.targets(in: try supplementalSnapshot(sourcePaths: sources, storePath: storePath))
     }
 
     /// 탈출구를 켜고 아무것도 분석하지 않은 실행이면, 요약 줄에 붙일 단서.
@@ -2024,14 +2030,19 @@ public struct CartographService: Sendable {
     }
 
     /// 명시한 생성 소스만 기존 인덱스 스토어에서 읽어 기본 분석 범위와 분리한다.
-    func supplementalSnapshot(sourcePaths: [String]) throws -> IndexSnapshot {
+    ///
+    /// `storePath` 를 주면 그 스토어를 다시 고르지 않고 읽는다. 본 분석이 고른(그리고 `--index-store` 가드를
+    /// 통과한) 스토어와 다른 스토어를 자동 탐색이 집으면 두 스냅샷의 출처가 갈리기 때문이다.
+    func supplementalSnapshot(sourcePaths: [String], storePath: String? = nil) throws -> IndexSnapshot {
         let allowed = Set(sourcePaths.map(LocalFileSystem.canonicalPath))
         guard !allowed.isEmpty else { return IndexSnapshot() }
         let source = try makeIndexSource(
             includeExternalSymbols: true,
             includeSelfReferences: true,
             sourceRoots: allowed.sorted(),
-            pathFilter: .passthrough
+            pathFilter: .passthrough,
+            selectedStorePath: storePath,
+            dependencyRoots: storePath.map { _ in [projectPath] }
         )
         let loaded = try source.provider.loadSnapshot()
         let local = loaded.symbols.filter {
@@ -2065,7 +2076,9 @@ public struct CartographService: Sendable {
         includeSelfReferences: Bool = false,
         sourceRoots: [String]? = nil,
         pathFilter: PathFilter? = nil,
-        inventory: ProjectFileInventory? = nil
+        inventory: ProjectFileInventory? = nil,
+        selectedStorePath: String? = nil,
+        dependencyRoots: [String]? = nil
     ) throws -> IndexSource {
         if let override = environment.indexProviderOverride {
             // 주입된 공급자에는 스토어가 없다. 모르는 것을 아는 척하지 않는다.
@@ -2079,12 +2092,27 @@ public struct CartographService: Sendable {
         }
 
         let locator = IndexStoreLocator(fileSystem: environment.fileSystem)
-        let selection = try locator.selection(
-            explicitPath: configuration.indexStorePath,
-            projectPath: projectPath,
-            derivedDataPath: configuration.derivedDataPath ?? environment.derivedDataPath
-        )
-        let storePath = selection.path
+        // 이미 고른 스토어가 있으면 다시 고르지 않는다. 선택 한계는 처음 고른 쪽이 이미 실었다.
+        let storePath: String
+        var selectionLimitations: [String] = []
+        if let selectedStorePath {
+            storePath = selectedStorePath
+        } else {
+            let selection = try locator.selection(
+                explicitPath: configuration.indexStorePath,
+                projectPath: projectPath,
+                derivedDataPath: configuration.derivedDataPath ?? environment.derivedDataPath
+            )
+            storePath = selection.path
+            if !selection.explicit && selection.candidateCount > 1 {
+                selectionLimitations = [
+                    "index-selection: selected \(String(reflecting: storePath)) from \(selection.candidateCount) "
+                        + "existing candidates using newest store/unit-directory timestamp (lexical path tie-break). "
+                        + "Recency does not prove source, target, or local package coverage; compare coverage and "
+                        + "use --index-store to select the intended build explicitly."
+                ]
+            }
+        }
         let libraryPath = try locator.locateLibrary(
             explicitPath: nil,
             developerDirectory: environment.developerDirectory
@@ -2105,7 +2133,7 @@ public struct CartographService: Sendable {
                 includeObjectiveCSources: includeObjectiveCSources,
                 includeSelfReferences: includeSelfReferences,
                 readerMode: .raw,
-                dependencyRoots: inventory.map { _ in [projectPath] }
+                dependencyRoots: dependencyRoots ?? inventory.map { _ in [projectPath] }
             ),
             fileSystem: environment.fileSystem
         )
@@ -2115,12 +2143,7 @@ public struct CartographService: Sendable {
             libraryPath: libraryPath,
             origin: storeOrigin(of: storePath),
             inventory: inventory,
-            selectionLimitations: !selection.explicit && selection.candidateCount > 1 ? [
-                "index-selection: selected \(String(reflecting: storePath)) from \(selection.candidateCount) "
-                    + "existing candidates using newest store/unit-directory timestamp (lexical path tie-break). "
-                    + "Recency does not prove source, target, or local package coverage; compare coverage and "
-                    + "use --index-store to select the intended build explicitly."
-            ] : []
+            selectionLimitations: selectionLimitations
         )
     }
 

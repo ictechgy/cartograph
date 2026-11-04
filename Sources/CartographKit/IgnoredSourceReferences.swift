@@ -24,6 +24,15 @@ enum IgnoredSourceReferences {
         })
     }
 
+    /// 무시 경로 중 링크를 풀어도 추적 소스가 아닌 것.
+    ///
+    /// 무시된 심볼릭 링크가 추적 파일을 가리키면 그 파일은 본 분석이 이미 읽는다. 보조 근거로 다시 세면 죽은 추적
+    /// 코드가 부르는 선언까지 "무시 소스가 쓴다" 로 살아남는다. 순서는 입력을 따른다.
+    static func untrackedSources(ignored: [String], tracked: [String]) -> [String] {
+        let trackedFiles = Set(tracked.map(LocalFileSystem.canonicalPath))
+        return ignored.filter { !trackedFiles.contains(LocalFileSystem.canonicalPath($0)) }
+    }
+
     /// 대상 선언에 `referencedFromIgnoredSource` 표식을 붙인 사본. 대상이 없으면 그대로 돌려준다.
     static func marking(_ snapshot: IndexSnapshot, targets: Set<String>) -> IndexSnapshot {
         guard !targets.isEmpty else { return snapshot }

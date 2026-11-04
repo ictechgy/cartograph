@@ -324,6 +324,25 @@ struct RetentionPolicyTests {
         #expect(retained["unused"] == nil)
     }
 
+    @Test("무시된 소스의 참조는 이미 근거가 있는 선언의 근거를 바꾸지 않는다")
+    func ignoredSourceReferenceNeverReplacesAnExistingReason() {
+        // 마지막 폴백이어야 한다. 앞서 판정하면 publicAPI 가 바뀌어 redundant-public 이, 진입점·테스트 루트가
+        // 생산 루트로 바뀌어 다른 분석이 새 경고를 낸다. 근거가 없던 선언만 살려야 "새 판정은 없다"가 사실이 된다.
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint, .referencedFromIgnoredSource])
+        builder.symbol("Generated", kind: .structType, attributes: [.implicit, .referencedFromIgnoredSource])
+        builder.symbol("API", kind: .structType, accessibility: .publicLevel,
+            attributes: [.referencedFromIgnoredSource])
+        builder.symbol("Tests", kind: .classType, attributes: [.unitTest, .referencedFromIgnoredSource])
+        var options = RetentionOptions.default
+        options.retainPublic = true
+        let retained = reasons(builder.build(), options: options)
+        #expect(retained["App"] == .entryPoint)
+        #expect(retained["Generated"] == .compilerSynthesized)
+        #expect(retained["API"] == .publicAPI)
+        #expect(retained["Tests"] == .xcTest)
+    }
+
     @Test("Equatable 타입의 저장 프로퍼티를 보존하고 끌 수 있다")
     func equatablePropertiesAreRetained() {
         var builder = SnapshotBuilder()

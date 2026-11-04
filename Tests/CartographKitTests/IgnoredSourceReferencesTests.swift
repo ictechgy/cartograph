@@ -21,6 +21,26 @@ struct IgnoredSourceReferencesTests {
         #expect(IgnoredSourceReferences.targets(in: builder.build()) == ["helper", "Model", "Requestable"])
     }
 
+    @Test("링크를 풀면 추적 소스인 무시 경로는 보조 근거에서 뺀다")
+    func ignoredLinksToTrackedSourcesAreExcluded() throws {
+        // 무시된 링크가 추적 파일을 가리키면 그 파일은 본 분석이 이미 읽는다. 다시 세면 죽은 추적 코드가 부르는
+        // 선언까지 "무시 소스가 쓴다" 로 살아남는다.
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ignored-links-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let tracked = directory.appendingPathComponent("Tracked.swift")
+        let generated = directory.appendingPathComponent("Generated.swift")
+        let link = directory.appendingPathComponent("Linked.swift")
+        try "struct Tracked {}\n".write(to: tracked, atomically: true, encoding: .utf8)
+        try "struct Generated {}\n".write(to: generated, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: tracked)
+
+        let kept = IgnoredSourceReferences.untrackedSources(
+            ignored: [generated.path, link.path], tracked: [tracked.path])
+        #expect(kept == [generated.path])
+    }
+
     @Test("대상 선언에만 표식을 붙이고 대상이 없으면 스냅샷을 그대로 둔다")
     func marksOnlyTargets() {
         var builder = SnapshotBuilder()

@@ -27,6 +27,18 @@ struct ImpactReviewFactsTests {
         #expect(!facts.contains(.ignoreComment))
     }
 
+    @Test("Git 이 무시한 컴파일 소스의 사용처는 다른 근거와 함께 검토 근거로 남는다")
+    func ignoredSourceReferenceIsAReviewFact() {
+        // 그 호출자는 그래프에 없어 영향 경로로는 보이지 않는다. 보존 근거가 다른 것이어도 검토자는 알아야 한다.
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint, .referencedFromIgnoredSource])
+        builder.symbol("helper", kind: .function, attributes: [.referencedFromIgnoredSource])
+
+        let facts = review(builder.build())
+        #expect(facts[NodeID("App")] == [.entryPoint, .ignoredSourceReference])
+        #expect(facts[NodeID("helper")] == [.ignoredSourceReference])
+    }
+
     @Test("진입점은 소스를 읽지 못해도 근거로 남는다")
     func entryPointSurvivesSourceUnavailableMask() {
         var builder = SnapshotBuilder()

@@ -140,8 +140,6 @@ public struct RetentionPolicy: Sendable {
            ) != nil {
             return .externalBridge
         }
-        // 무시됐지만 컴파일된 소스(생성 코드)가 부른다. 그 소스는 분석 범위 밖이라 그래프에 간선이 없다.
-        if node.attributes.contains(.referencedFromIgnoredSource) { return .ignoredSourceReference }
         if node.attributes.contains(.implicit) { return .compilerSynthesized }
         if node.kind == .macro, node.attributes.contains(.compileTimeReference) { return .compileTimeReference }
         if node.attributes.contains(.entryPoint) { return .entryPoint }
@@ -169,6 +167,10 @@ public struct RetentionPolicy: Sendable {
             typeWitnesses: typeWitnesses) {
             return reason
         }
+        // 무시됐지만 컴파일된 소스(생성 코드)가 부른다. 그 소스는 분석 범위 밖이라 그래프에 간선이 없다.
+        // 마지막 폴백이다. 앞에 두면 publicAPI·진입점·테스트 근거가 이 근거로 바뀌어 redundant-public 과
+        // 테스트 루트 분류가 달라진다. 근거가 없던 선언만 살려야 이 근거가 새 판정을 만들지 않는다.
+        if node.attributes.contains(.referencedFromIgnoredSource) { return .ignoredSourceReference }
         return nil
     }
 
@@ -194,6 +196,8 @@ public struct RetentionPolicy: Sendable {
         }
         if isDynamicallyDispatched(node) { reasons.insert(.dynamicDispatch) }
         if node.attributes.contains(.runtimeManaged) { reasons.insert(.runtimeManaged) }
+        // 무시된 컴파일 소스의 호출자는 그래프에 없다. impact 가 그 사용처를 검토 근거로 알려야 한다.
+        if node.attributes.contains(.referencedFromIgnoredSource) { reasons.insert(.ignoredSourceReference) }
         reasons.formUnion(parentDrivenReasons(for: node, in: graph, synthesizedConformances: synthesizedConformances))
         if !node.kind.isTypeDeclaration, node.kind != .extensionDeclaration {
             reasons.formUnion(externalRelationFacts[node.usr ?? ""] ?? [])
