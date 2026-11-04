@@ -45,8 +45,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `struct Login: APIRequest`); these were reported as unused although synthesized coding reads them.
   `Comparable` now counts as `Equatable`. A superclass conformance still does not reach subclass
   properties. Retention only widens, so findings can disappear but not appear.
-- Cases of `Codable` enums without raw values are retained (`codableEnumCase`, governed by
-  `retain_codable_properties`): synthesized decoding creates them by name.
+- Cases of `Codable` enums without raw values are retained while the enum itself is used
+  (`codableEnumCase`, governed by `retain_codable_properties`): synthesized decoding creates them by
+  name. Like the synthesized `Equatable`/`Hashable` properties, the cases do not keep their enum alive,
+  so a `Codable` enum nobody uses is still reported.
 - Target-scope capture inventories (SwiftPM and Xcode) now skip SwiftPM scratch directories such as
   `.build-fresh` the way they already skipped `.build`. Dependency checkouts under a leftover scratch
   path were hashed as project inputs and could exceed the inventory budget, refusing the capture.

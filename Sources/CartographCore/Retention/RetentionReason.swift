@@ -96,7 +96,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     /// 소유 타입의 사용을 전제로 하며, 프로퍼티 자체가 타입 사용의 근거는 아니다.
     public var needsReachableOwner: Bool {
         switch self {
-        case .externalConformance, .externalOverride, .equatableProperty, .hashableProperty: true
+        // 합성 디코딩이 만드는 Codable 열거형 케이스도 그 열거형을 누군가 디코딩할 때만 필요하다.
+        case .externalConformance, .externalOverride, .equatableProperty, .hashableProperty, .codableEnumCase: true
         default: false
         }
     }
@@ -114,7 +115,7 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     public var retainsContainingType: Bool {
         switch self {
         case .compilerSynthesized, .compileTimeReference, .externalConformance, .externalOverride,
-             .equatableProperty, .hashableProperty: false
+             .equatableProperty, .hashableProperty, .codableEnumCase: false
         default: true
         }
     }

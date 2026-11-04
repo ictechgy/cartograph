@@ -135,7 +135,7 @@ struct RetentionReasonPropagationTests {
         // 때문에 다시 영원히 살아남는다.
         let doNotPropagate = Set(RetentionReason.allCases.filter { !$0.retainsContainingType })
         #expect(doNotPropagate == [.compilerSynthesized, .compileTimeReference, .externalConformance,
-                                  .externalOverride, .equatableProperty, .hashableProperty])
+                                  .externalOverride, .equatableProperty, .hashableProperty, .codableEnumCase])
     }
 }
 
