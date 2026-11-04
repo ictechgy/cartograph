@@ -41,8 +41,8 @@ _Last updated: 2026-11-04 by Claude_
   - B4 에이전트 플러그인: `.claude-plugin`이 스킬만 담고 MCP 선언은 없다.
   - B5 삭제 가능 LOC 요약: `--file-summary`가 개수만 센다.
   - C 편집 뒤 인덱스 낡음: `cartograph_prepare`와 `index-staleness` 한계까지만 있다.
-- **계열 결정 대기**: gartograph·rustograph의 `query` 응답 스키마가 이 저장소·kartograph·dartograph와 다르다.
-  통일하면 공개 JSON 계약이 깨지므로 사용자 결정이 필요하다.
+- **계열 결정(2026-11-04)**: gartograph·rustograph의 `query` 응답 스키마는 맞추지 않고 각자 고유의 공개 계약으로
+  둔다. 공유하는 것은 출력 철학뿐이다. AGENTS.md 규칙을 이 현실에 맞게 고쳤다.
 
 ## Important Context / Avoid
 

@@ -27,8 +27,9 @@
 [tsograph](../tsograph)(TypeScript/JavaScript) · [schemagraph](../schemagraph)(DB 스키마) ·
 [isthmus](../isthmus)(언어 경계 조인, 교환 형식과 공유 적합성 벡터의 정본).
 kartograph·dartograph의 `query` 출력 스키마와 스킬 문장은 이 저장소와 같아야 합니다. 여기서 바꾸면 그쪽에도 알리세요.
-gartograph·rustograph의 `query`는 현재 키 구성이 다릅니다(`dependedBy`, `neighbors`). 통일은 공개 계약 변경이라
-별도 결정이 필요하니, 이 저장소의 스키마를 바꿀 때 그 차이를 넓히지 마세요.
+gartograph·rustograph의 `query`는 각 저장소 고유의 공개 계약이며(`dependedBy`, `neighbors[]`) 이 셋과 맞추지
+않기로 했습니다. 공유하는 것은 출력 철학입니다: `state`는 판정이 아닌 그래프 사실, 이웃에 닿는 간선 종류 전부,
+실제로 센 `limitations`, 잘림 표시.
 브리지 교환 형식은 `../isthmus/docs/GRAPH-EXCHANGE.md`가 정본입니다. 형식 변경은
 `BridgeFactsDocument`와 자매 저장소에 함께 반영합니다.
 
