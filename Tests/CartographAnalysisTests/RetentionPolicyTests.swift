@@ -296,6 +296,17 @@ struct RetentionPolicyTests {
         #expect(reasons(builder.build())["User.id"] == .hashableProperty)
     }
 
+    @Test("인덱스가 Comparable 준수만 기록해도 합성 == 가 읽는 저장 프로퍼티를 보존한다")
+    func comparableConformanceCountsAsEquatable() {
+        // Comparable 은 Equatable 을 상속한다. 상속 절에 Comparable 만 쓰면 인덱스도 s:SL 만 남길 수 있다.
+        var builder = SnapshotBuilder()
+        builder.symbol("Rank", kind: .structType)
+        builder.symbol("Rank.value", name: "value", kind: .property, parent: "Rank")
+        builder.reference(from: "Rank", to: "s:SL", kind: .conformance)
+
+        #expect(reasons(builder.build())["Rank.value"] == .equatableProperty)
+    }
+
     @Test("원시값 없는 Codable 열거형의 케이스를 보존하고 Codable 설정으로 끌 수 있다")
     func codableEnumCasesAreRetained() {
         // 합성 디코딩은 케이스 이름으로 값을 만든다. 소스에서 한 번도 만들지 않는 케이스도 응답으로 들어온다.

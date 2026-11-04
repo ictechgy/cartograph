@@ -436,6 +436,9 @@ public struct RetentionPolicy: Sendable {
         "s:SE": .codable,  // Encodable
         "s:Se": .codable,  // Decodable
         "s:SQ": .equatable,  // Equatable
+        // Comparable 은 Equatable 을 상속한다. 상속 절에 Comparable 만 쓰면 인덱스도 그것만 기록할 수 있는데,
+        // 이때도 합성 `==` 가 저장 프로퍼티를 읽는다.
+        "s:SL": .equatable,  // Comparable
         "s:SH": .hashable,  // Hashable
     ]
 
