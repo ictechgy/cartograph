@@ -317,8 +317,9 @@ Swift USR은 소유 모듈을 담고 있으므로, 파일이 실제로 참조한
 복원합니다. `import` 자체가 남기는 `c:@M@M` 표식은 사용으로 세지 않습니다. 사용이 재수출을
 타고 올 수도 있기 때문에 보고는 보수적입니다 — 귀속하지 못한 참조(clang/Objective-C USR은
 모듈을 담지 않음)가 있거나, import 없이 참조된 모듈이 있는 파일처럼 사용 근거가
-불완전하면 억제합니다. 조건부(`#if`) import, 재수출하는 import(`@_exported`,
-`public import`), `// cartograph:ignore` 표시가 붙은 import는 보고하지 않습니다.
+불완전하면 억제합니다. `#if`가 어디든 있는 파일의 모든 import(인덱스는 빌드 구성 하나만 보므로 다른
+분기의 사용은 보이지 않음), 재수출하는 import(`@_exported`, `public import`), `// cartograph:ignore`
+표시가 붙은 import는 보고하지 않습니다.
 `import struct Foundation.Bundle`처럼 종류를 좁힌 import는 탑레벨 모듈 기준으로 판정합니다 —
 `Foundation`의 무엇이든 쓰면 사용으로 셉니다 — 그리고 진단에는 좁힌 형태 그대로를 적습니다.
 다른 경고 규칙과 마찬가지로 `unused-import`는 `--strict` 계산에 넣지 않습니다.

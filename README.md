@@ -318,7 +318,8 @@ recovered from the index; the `c:@M@M` marker an `import` itself leaves behind n
 usage. Because usage can also arrive through a re-export, reporting is deliberately
 conservative: an import is reported only when the file's usage evidence is complete — no
 unattributable references (clang/Objective-C USRs carry no module) and no referenced module the
-file never imported. Conditional (`#if`) imports, re-exporting imports (`@_exported`,
+file never imported. Every import in a file that contains `#if` anywhere (the index sees one build
+configuration, so a use in another branch is invisible), re-exporting imports (`@_exported`,
 `public import`), and imports marked `// cartograph:ignore` are never reported. Scoped imports
 like `import struct Foundation.Bundle` are judged by their head module — a use of anything in
 `Foundation` counts as use of the import — and the diagnostic spells the full form. Like the
