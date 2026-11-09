@@ -34,9 +34,8 @@ struct ProjectFileInventory: Sendable, Equatable {
         var externalLinks: [String] = []
         var exclusions: Set<String> = []
         var ignoredSources: Set<String> = []
-        let selection = GitSourceInventory.select(fileSystem: fileSystem, projectPath: projectPath)
-        let git: GitSourceInventory?
-        if case let .selected(inventory) = selection { git = inventory } else { git = nil }
+        let selection = GitSourceSelection.select(fileSystem: fileSystem, projectPath: projectPath)
+        let git = selection.inventory
         if case let .unavailable(reason) = selection {
             gitSelectionUnavailableReason = reason
         } else {

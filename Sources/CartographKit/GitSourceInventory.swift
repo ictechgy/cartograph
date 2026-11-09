@@ -2,33 +2,37 @@ import CartographCore
 import Foundation
 
 /// Git이 직접 해석한 추적 파일과 비무시 파일 목록. ignore 문법을 별도로 흉내 내지 않는다.
+///
+/// 값만 담는다. 선택 절차는 `GitSourceSelection` 에 있다 — 둘을 한 타입에 두면 선택 결과가 목록을 싣고
+/// 목록이 선택 결과를 돌려주어 타입 그래프에 순환이 생긴다(`cycles --level type --strict` 가 잡았다).
 struct GitSourceInventory: Equatable {
+    /// 추적되거나 무시되지 않은 파일의 절대 경로.
     let paths: Set<String>
+}
 
-    /// Git 선택을 시도한 결과.
-    ///
-    /// 실패를 nil 하나로 접으면 "저장소가 아니다"와 "저장소인데 시간·크기 상한에 걸렸다"가 구분되지 않는다.
-    /// 후자는 전체 walk 로 폴백해 무시 파일까지 섞이므로, 같은 커밋에서 실행마다 결과가 흔들린다. 그 사실을
-    /// 한계로 알리려면 이유가 필요하다.
-    enum Selection: Equatable {
-        /// 추적 파일과 무시되지 않은 파일 목록.
-        case selected(GitSourceInventory)
-        /// 선택을 시도하지 않았다 — 주입된 파일 시스템이거나 Git 저장소 밖이다. 실패가 아니다.
-        case notApplicable
-        /// 저장소 안인데 선택을 끝내지 못했다. 호출자는 전체 walk 로 폴백한다.
-        case unavailable(reason: String)
-    }
+/// Git 선택을 시도한 결과.
+///
+/// 실패를 nil 하나로 접으면 "저장소가 아니다"와 "저장소인데 시간·크기 상한에 걸렸다"가 구분되지 않는다.
+/// 후자는 전체 walk 로 폴백해 무시 파일까지 섞이므로, 같은 커밋에서 실행마다 결과가 흔들린다. 그 사실을
+/// 한계로 알리려면 이유가 필요하다.
+enum GitSourceSelection: Equatable {
+    /// 추적 파일과 무시되지 않은 파일 목록.
+    case selected(GitSourceInventory)
+    /// 선택을 시도하지 않았다 — 주입된 파일 시스템이거나 Git 저장소 밖이다. 실패가 아니다.
+    case notApplicable
+    /// 저장소 안인데 선택을 끝내지 못했다. 호출자는 전체 walk 로 폴백한다.
+    case unavailable(reason: String)
 
-    /// 주입된 파일 시스템에는 호스트 프로세스를 실행하지 않는다. 실패는 전체 walk로 폴백한다.
-    static func load(fileSystem: any FileSystem, projectPath: String) -> GitSourceInventory? {
-        guard case let .selected(inventory) = select(fileSystem: fileSystem, projectPath: projectPath) else {
-            return nil
-        }
+    /// 선택에 성공했을 때의 목록. 시도하지 않았거나 실패했으면 nil 이고, 호출자는 전체 walk 로 폴백한다.
+    var inventory: GitSourceInventory? {
+        guard case let .selected(inventory) = self else { return nil }
         return inventory
     }
 
     /// Git 선택을 시도하고, 끝내지 못했으면 그 이유를 돌려준다.
-    static func select(fileSystem: any FileSystem, projectPath: String, timeoutSeconds: Double = 5) -> Selection {
+    static func select(
+        fileSystem: any FileSystem, projectPath: String, timeoutSeconds: Double = 5
+    ) -> GitSourceSelection {
         guard fileSystem is LocalFileSystem else { return .notApplicable }
         guard isInsideRepository(projectPath, fileSystem: fileSystem) else { return .notApplicable }
         let process = Process()
@@ -71,7 +75,7 @@ struct GitSourceInventory: Equatable {
     private static func selection(
         from data: Data, process: Process, exceededOutputBudget: Bool, timeoutSeconds: Double,
         projectPath: String, fileSystem: any FileSystem
-    ) -> Selection {
+    ) -> GitSourceSelection {
         if exceededOutputBudget { return .unavailable(reason: "git ls-files output exceeded 16 MiB") }
         if process.terminationReason == .uncaughtSignal {
             return .unavailable(reason: "git ls-files was stopped after \(Int(timeoutSeconds)) seconds or by a signal")

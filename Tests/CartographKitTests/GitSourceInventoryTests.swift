@@ -57,7 +57,7 @@ struct GitSourceInventoryTests {
         // 손상된 index 는 `git ls-files` 를 결정적으로 실패시킨다. 시간 상한처럼 실행마다 흔들리지 않는다.
         try repository.write(".git/index", "not an index")
         let fileSystem = LocalFileSystem()
-        let selection = GitSourceInventory.select(fileSystem: fileSystem, projectPath: repository.path)
+        let selection = GitSourceSelection.select(fileSystem: fileSystem, projectPath: repository.path)
         guard case let .unavailable(reason) = selection else {
             Issue.record("a corrupt index must make Git selection unavailable, got \(selection)")
             return
@@ -85,10 +85,18 @@ struct GitSourceInventoryTests {
         defer { repository.remove() }
         try repository.write("App.swift")
         let fileSystem = LocalFileSystem()
-        #expect(GitSourceInventory.select(fileSystem: fileSystem, projectPath: repository.path) == .notApplicable)
+        #expect(GitSourceSelection.select(fileSystem: fileSystem, projectPath: repository.path) == .notApplicable)
         let inventory = ProjectFileInventory(
             fileSystem: fileSystem, projectPath: repository.path, pathFilter: .passthrough)
         #expect(inventory.gitSelectionUnavailableReason == nil)
+    }
+
+    @Test("선택에 성공했을 때만 목록을 돌려주고, 시도하지 않았거나 실패했으면 전체 walk 로 폴백하게 한다")
+    func inventoryIsPresentOnlyWhenSelected() {
+        let listed = GitSourceInventory(paths: ["/project/App.swift"])
+        #expect(GitSourceSelection.selected(listed).inventory == listed)
+        #expect(GitSourceSelection.notApplicable.inventory == nil)
+        #expect(GitSourceSelection.unavailable(reason: "git could not be started").inventory == nil)
     }
 }
 
