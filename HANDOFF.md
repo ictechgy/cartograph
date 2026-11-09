@@ -39,7 +39,8 @@ _Last updated: 2026-11-09 by Claude (PR #237 최종 상태)_
   - fix 검증 하네스의 실패 스위치를 `#if` 제외 대상 밖 파일로 옮겼다(`3f9c4a2`).
   - native 관측의 `ci.yml` 고정값(바이트·sha256·blob)을 갱신했다(`f9bca67`). 전례는 `7dc7f74`다.
   - 보존 측정 기준선 어댑터가 `.codableEnumCase`를 남기고 C-P1-3 두 플래그만 되돌린다(`644abc8`).
-- **코퍼스**: FalsePositiveCorpus에 다음 오탐 계열을 넣었다. 기대 파일은 바꾸지 않았다(`bc8d1a6`).
+- **코퍼스**: FalsePositiveCorpus에 다음 오탐 계열을 넣었다(`bc8d1a6`). 새 finding은 없고, 기대 파일 4개의
+  `unindexed-sources:` 분모만 소스 파일 2개 추가로 52→54가 됐다(자기 분석 CI가 잡음).
   - 프로토콜 상속·별칭으로 얻은 Codable
   - Codable 열거형 케이스
   - `#if`만 있는 import
