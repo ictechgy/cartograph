@@ -206,7 +206,8 @@ enum CommandSupport {
         "external-retentions-unmatched", "external-retentions-upstream", "header-projection",
         "incomplete-runtime-analysis", "index-selection", "index-staleness", "interface-builder-documents",
         "local-function-projection", "missing-sources", "objective-c-sources", "public-api-not-retained",
-        "source-attribution", "source-discovery-exclusions", "symlinked-directories-outside-root",
+        "source-attribution", "source-discovery-exclusions", "source-discovery-git-unavailable",
+        "symlinked-directories-outside-root",
         "test-target-assumption", "uncertain-test-identity", "unindexed-sources", "unknown-clang-module",
         "unreadable-sources", "unresolved-impact-inputs", "dispatch-receiver-uncertainty", "unverified-test-markers",
     ]

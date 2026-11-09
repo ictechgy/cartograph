@@ -53,6 +53,23 @@ struct UnusedImportAnalyzerTests {
         #expect(analyze(builder.build()).map(\.module) == ["Reported"])
     }
 
+    @Test("#if 가 있는 파일의 import는 다른 구성의 사용처를 몰라 보고하지 않는다")
+    func skipsImportsInConditionallyCompiledFiles() {
+        // 무조건 `import Combine` 과 `#if os(iOS)` 안에만 있는 사용처 — macOS 인덱스에는 흔적이 없다.
+        // 보고하면 `fix --apply` 가 지우고 iOS 빌드가 깨진다.
+        var builder = SnapshotBuilder()
+        builder.symbol("s:3App1SV", module: "App")
+        builder.importDecl("Combine", line: 1, fileHasConditionalCompilation: true)
+        builder.fileModuleUsage(owningModule: "App", referencedModules: ["App"])
+        #expect(analyze(builder.build()).isEmpty)
+
+        var plain = SnapshotBuilder()
+        plain.symbol("s:3App1SV", module: "App")
+        plain.importDecl("Combine", line: 1)
+        plain.fileModuleUsage(owningModule: "App", referencedModules: ["App"])
+        #expect(analyze(plain.build()).map(\.module) == ["Combine"])
+    }
+
     @Test("귀속 못 한 참조가 있는 파일의 import는 보고하지 않는다")
     func suppressesWhenUnattributed() {
         // Objective-C/clang 심볼은 USR에 모듈이 없다 — 그 참조가 바로 보고

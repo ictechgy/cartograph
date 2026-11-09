@@ -60,6 +60,21 @@ struct ImportScannerTests {
         #expect(facts.map(\.isConditional) == [false, true, true])
     }
 
+    @Test("파일 어딘가에 #if 가 있으면 무조건 import 도 그 사실을 싣는다")
+    func marksImportsInConditionallyCompiledFiles() {
+        let facts = imports(in: """
+            import Combine
+            func make() {
+                #if os(iOS)
+                _ = PassthroughSubject<Int, Never>()
+                #endif
+            }
+            """)
+        #expect(facts.map(\.isConditional) == [false])
+        #expect(facts.map(\.fileHasConditionalCompilation) == [true])
+        #expect(imports(in: "import Foundation\n").map(\.fileHasConditionalCompilation) == [nil])
+    }
+
     @Test("무시 주석이 붙은 import를 표시한다")
     func marksIgnoredImports() {
         let facts = imports(in: "import Foundation // cartograph:ignore\nimport CartographCore\n")

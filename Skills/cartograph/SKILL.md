@@ -88,9 +88,12 @@ visibility, check external library consumers and public interface requirements. 
 ## Efficient MCP queries
 
 When a Cartograph MCP server is connected, reuse it instead of launching one process per
-question. Its tools are `cartograph_status`, `cartograph_query`, `cartograph_impact`, `cartograph_affected`,
-`cartograph_check`, and `cartograph_runtime_discover`. Analysis tools return `{session, result}`; inspect the metadata of
-the same result instead of issuing an extra status call after every question.
+question. Its tools are `cartograph_prepare`, `cartograph_status`, `cartograph_query`, `cartograph_impact`,
+`cartograph_affected`, `cartograph_check`, and `cartograph_runtime_discover`. Analysis tools return
+`{session, result}`; inspect the metadata of the same result instead of issuing an extra status call after
+every question. On a large project, call `cartograph_prepare` with `action: "start"` once, poll it with
+`action: "status"` (status never loads inputs) until `state` is `ready`, and then ask. A cancelled
+generation's late result is discarded, and cancellation does not interrupt a native index read in progress.
 
 `cartograph_query` accepts a batch of symbols. Keep `symbol count × limit` at or below
 1000; split larger batches. `cartograph_check` bounds displayed diagnostics while keeping

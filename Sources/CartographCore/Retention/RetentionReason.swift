@@ -27,6 +27,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     case codingKey
     /// Codable 타입의 저장 프로퍼티. 합성된 인코딩/디코딩이 참조를 남기지 않는다.
     case codableProperty
+    /// 원시값 없는 `Codable` 열거형의 케이스. 합성 디코딩이 케이스 이름으로 만든다.
+    case codableEnumCase
     /// Equatable 타입의 저장 프로퍼티. 합성된 `==` 가 읽지만 인덱스에 남지 않는다.
     case equatableProperty
     /// Hashable 타입의 저장 프로퍼티. 합성된 `hash(into:)` 가 읽지만 인덱스에 남지 않는다.
@@ -56,6 +58,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     /// 인덱스는 Dart 나 JavaScript 를 보지 못한다. 근거는 `--external-retentions` 파일에
     /// 있고 `dead --explain` 이 그것을 문장으로 만든다.
     case externalBridge
+    /// Git 이 무시하지만 컴파일러가 색인한 소스가 쓰는 선언. 생성 코드(R.swift·SwiftGen·Sourcery)가 흔한 출처다.
+    case ignoredSourceReference
 
     /// 생산 코드가 아니라 테스트나 프리뷰가 살려 둔 뿌리인지 여부.
     ///
@@ -92,7 +96,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     /// 소유 타입의 사용을 전제로 하며, 프로퍼티 자체가 타입 사용의 근거는 아니다.
     public var needsReachableOwner: Bool {
         switch self {
-        case .externalConformance, .externalOverride, .equatableProperty, .hashableProperty: true
+        // 합성 디코딩이 만드는 Codable 열거형 케이스도 그 열거형을 누군가 디코딩할 때만 필요하다.
+        case .externalConformance, .externalOverride, .equatableProperty, .hashableProperty, .codableEnumCase: true
         default: false
         }
     }
@@ -110,7 +115,7 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
     public var retainsContainingType: Bool {
         switch self {
         case .compilerSynthesized, .compileTimeReference, .externalConformance, .externalOverride,
-             .equatableProperty, .hashableProperty: false
+             .equatableProperty, .hashableProperty, .codableEnumCase: false
         default: true
         }
     }
@@ -134,6 +139,7 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         case .caseIterableEnumCase: "a case of a CaseIterable enum, enumerated by allCases"
         case .codingKey: "a CodingKey case used by synthesized Codable conformance"
         case .codableProperty: "a stored property of a Codable type, read by synthesized coding"
+        case .codableEnumCase: "a case of a Codable enum, created by name by synthesized decoding"
         case .equatableProperty: "a stored property of an Equatable type, read by the synthesized =="
         case .hashableProperty: "a stored property of a Hashable type, read by the synthesized hash(into:)"
         case .runtimeManaged: "stored and read by a runtime (Core Data, SwiftData or Observation)"
@@ -147,6 +153,8 @@ public enum RetentionReason: String, Codable, Sendable, CaseIterable {
         case .ignoreComment: "marked with a // cartograph:ignore comment"
         case .sourceUnavailable: "kept conservatively because its source could not be read; restore access and rebuild"
         case .externalBridge: "called from another platform across a bridge, per the external retentions file"
+        case .ignoredSourceReference:
+            "referenced from a Git-ignored source file the compiler indexed, such as generated code"
         }
     }
 }

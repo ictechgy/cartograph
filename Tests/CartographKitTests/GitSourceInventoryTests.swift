@@ -39,5 +39,93 @@ struct GitSourceInventoryTests {
         #expect(Set(inventory.sourceFiles.map { URL(fileURLWithPath: $0).lastPathComponent }) == ["App.swift", "Tracked.swift"])
         #expect(!inventory.discoveryExclusions.isEmpty)
         #expect(inventory.discoveryExclusions.contains { $0.hasSuffix("/nested") })
+        // 무시된 소스 파일은 분석 범위 밖이지만, 색인됐다면 그 참조를 따라가도록 따로 기록한다. 중첩 저장소는 아니다.
+        let ignored = Set(inventory.ignoredSourceFiles.map { URL(fileURLWithPath: $0).lastPathComponent })
+        #expect(ignored == ["Ignored.swift", "Info.swift", "Noise.swift"])
+        #expect(!inventory.ignoredSourceFiles.contains { $0.contains("/nested/") })
     }
+
+    @Test("저장소인데 Git 이 목록을 내지 못하면 전체 walk 로 폴백하고 그 사실을 한계로 남긴다")
+    func reportsUnavailableGitSelection() throws {
+        let repository = try TemporaryRepository()
+        defer { repository.remove() }
+        try repository.git(["init", "-q"])
+        try repository.write(".gitignore", ".claude/\n")
+        try repository.write("App.swift")
+        try repository.write(".claude/worktrees/copy/Noise.swift")
+        try repository.git(["add", "App.swift"])
+        // 손상된 index 는 `git ls-files` 를 결정적으로 실패시킨다. 시간 상한처럼 실행마다 흔들리지 않는다.
+        try repository.write(".git/index", "not an index")
+        let fileSystem = LocalFileSystem()
+        let selection = GitSourceSelection.select(fileSystem: fileSystem, projectPath: repository.path)
+        guard case let .unavailable(reason) = selection else {
+            Issue.record("a corrupt index must make Git selection unavailable, got \(selection)")
+            return
+        }
+        #expect(reason.contains("exited with status"))
+
+        let inventory = ProjectFileInventory(
+            fileSystem: fileSystem, projectPath: repository.path, pathFilter: .passthrough)
+        #expect(inventory.gitSelectionUnavailableReason == reason)
+        // 폴백은 무시 파일까지 센다 — 그래서 답이 흔들릴 수 있다고 알려야 한다.
+        let names = Set(inventory.sourceFiles.map { URL(fileURLWithPath: $0).lastPathComponent })
+        #expect(names == ["App.swift", "Noise.swift"])
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = repository.path
+        let limitations = AnalysisLimitationCollector(
+            configuration: configuration, fileSystem: fileSystem, projectPath: repository.path,
+            storeDate: nil, inventory: inventory
+        ).collect(context: nil, symbolGraph: nil, emptyIndexCounts: nil)
+        #expect(limitations.contains { $0.hasPrefix("source-discovery-git-unavailable: ") && $0.contains(reason) })
+    }
+
+    @Test("저장소 밖 프로젝트는 Git 선택을 시도하지 않고 한계도 남기지 않는다")
+    func outsideRepositoryIsNotAFailure() throws {
+        let repository = try TemporaryRepository()
+        defer { repository.remove() }
+        try repository.write("App.swift")
+        let fileSystem = LocalFileSystem()
+        #expect(GitSourceSelection.select(fileSystem: fileSystem, projectPath: repository.path) == .notApplicable)
+        let inventory = ProjectFileInventory(
+            fileSystem: fileSystem, projectPath: repository.path, pathFilter: .passthrough)
+        #expect(inventory.gitSelectionUnavailableReason == nil)
+    }
+
+    @Test("선택에 성공했을 때만 목록을 돌려주고, 시도하지 않았거나 실패했으면 전체 walk 로 폴백하게 한다")
+    func inventoryIsPresentOnlyWhenSelected() {
+        let listed = GitSourceInventory(paths: ["/project/App.swift"])
+        #expect(GitSourceSelection.selected(listed).inventory == listed)
+        #expect(GitSourceSelection.notApplicable.inventory == nil)
+        #expect(GitSourceSelection.unavailable(reason: "git could not be started").inventory == nil)
+    }
+}
+
+/// 테스트마다 새로 만드는 임시 디렉터리. Git 저장소로 만들지는 호출자가 정한다.
+private struct TemporaryRepository {
+    let root: URL
+    var path: String { root.path }
+
+    init() throws {
+        root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    func write(_ relativePath: String, _ text: String = "struct Example {}") throws {
+        let url = root.appendingPathComponent(relativePath)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(text.utf8).write(to: url)
+    }
+
+    func git(_ arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-c", "core.hooksPath=/dev/null", "-C", root.path] + arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+        #expect(process.terminationStatus == 0)
+    }
+
+    func remove() { try? FileManager.default.removeItem(at: root) }
 }

@@ -16,12 +16,15 @@ import sys
 import zipfile
 
 REASON = "Sources/CartographCore/Retention/RetentionReason.swift"
+# Only the two C-P1-3 flags are reversed. `.codableEnumCase` became owner-conditional in the same
+# candidate but is not part of this measurement, so the baseline keeps it and the delta stays C-P1-3 only.
 REVERSALS = (
-    ("case .externalConformance, .externalOverride, .equatableProperty, .hashableProperty: true",
-     "case .externalConformance, .externalOverride: true"),
+    ("case .externalConformance, .externalOverride, .equatableProperty, .hashableProperty, .codableEnumCase: true",
+     "case .externalConformance, .externalOverride, .codableEnumCase: true"),
     ("case .compilerSynthesized, .compileTimeReference, .externalConformance, .externalOverride,\n"
-     "             .equatableProperty, .hashableProperty: false",
-     "case .compilerSynthesized, .compileTimeReference, .externalConformance, .externalOverride: false"),
+     "             .equatableProperty, .hashableProperty, .codableEnumCase: false",
+     "case .compilerSynthesized, .compileTimeReference, .externalConformance, .externalOverride,\n"
+     "             .codableEnumCase: false"),
 )
 # The public revisions/scopes already used in docs/evaluation/2026-09-15-comparison.md.
 PROJECTS = (

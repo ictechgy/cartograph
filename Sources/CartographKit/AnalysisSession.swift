@@ -901,7 +901,8 @@ private struct AnalysisInputFingerprinter {
     /// 전체 소스 walk는 기존 캐시를 쓰고, Git의 유한한 경로 목록만 새로 읽는다.
     private func addGitSourceSelection(to accumulator: inout FingerprintAccumulator) {
         let fileSystem = (environment.fileSystem as? CachedListingFileSystem)?.base ?? environment.fileSystem
-        guard let inventory = GitSourceInventory.load(fileSystem: fileSystem, projectPath: projectPath) else {
+        let selection = GitSourceSelection.select(fileSystem: fileSystem, projectPath: projectPath)
+        guard let inventory = selection.inventory else {
             accumulator.addText("git-source-selection:unavailable")
             return
         }

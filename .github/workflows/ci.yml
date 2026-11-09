@@ -53,6 +53,18 @@ jobs:
           python3 Scripts/verify-prepared-actual-arm.py
           python3 Scripts/verify-prepared-query-admission.py
           python3 Scripts/verify-prepared-comparison-workflow.py
+          python3 Scripts/verify-xcode-ios-inputs.py
+
+      # 릴리스 태그에서야 드러나던 버전 드리프트를 PR에서 먼저 잡는다. 플러그인 매니페스트가 0.19.0에 머문 채
+      # 0.30.0이 발행된 적이 있다.
+      - name: Verify plugin manifest version
+        run: |
+          declared="$(grep -oE 'version = "[^"]+"' Sources/CartographCore/Cartograph.swift | head -1 | cut -d'"' -f2)"
+          plugin="$(grep -oE '"version": "[^"]+"' .claude-plugin/plugin.json | head -1 | cut -d'"' -f4)"
+          if [ -z "$declared" ] || [ "$plugin" != "$declared" ]; then
+            echo "Cartograph.version($declared) and .claude-plugin/plugin.json version($plugin) differ." >&2
+            exit 1
+          fi
 
   prepare-comparison-candidate:
     name: Prepare exact candidate executable

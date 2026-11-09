@@ -60,6 +60,26 @@ struct SynthesizedPropertyOwnerTests {
         #expect(analyze(builder.build()).unused.map(\.name) == ["Outer"])
     }
 
+    @Test("쓰이지 않는 Codable 열거형은 자기 케이스 때문에 살아남지 않는다")
+    func unusedCodableEnumIsReportedWhileALiveOneKeepsItsCases() {
+        // 케이스 보존은 합성 디코딩을 근거로 한다. 그 열거형을 아무도 디코딩하지 않으면 근거가 없다.
+        for live in [false, true] {
+            var builder = SnapshotBuilder()
+            builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+            builder.symbol("Event", kind: .enumType, attributes: [.codable])
+            builder.symbol("Event.opened", name: "opened", kind: .enumCase, parent: "Event")
+            if live { builder.reference(from: "App", to: "Event", kind: .reference) }
+            let report = analyze(builder.build())
+            if live {
+                #expect(report.unused.isEmpty)
+                #expect(report.retentions["Event.opened"] == .codableEnumCase)
+            } else {
+                #expect(report.unused.map(\.name) == ["Event"])
+                #expect(report.retentions["Event.opened"] == nil)
+            }
+        }
+    }
+
     @Test("명시적 보존과 Codable의 기존 조상 전파는 바꾸지 않는다")
     func unrelatedRetentionReasonsRemainUnchanged() {
         for reason in [RetentionReason.interfaceBuilder, .userConfigured, .codableProperty] {

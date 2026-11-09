@@ -24,6 +24,13 @@ public struct IndexedImport: Codable, Sendable, Equatable {
     /// 있는 import 는 파일 주석을 떼도 무시가 남아야 하는데, 출처를 구분하지
     /// 않으면 주석이 억제하지도 않는 보고를 떠받치는 것으로 오판한다.
     public let isIgnoredOnlyByFileComment: Bool
+    /// 파일 어딘가에 `#if` 가 있으면 true. 이 import 의 사용처가 인덱스가 만들어지지 않은 빌드 구성의
+    /// 분기에만 있을 수 있다.
+    ///
+    /// 인덱스는 한 구성만 본다. 무조건 `import Combine` 이 있고 사용처가 `#if os(iOS)` 안에만 있는 파일을
+    /// macOS 인덱스로 보면 사용 흔적이 없어, 미사용으로 보고하고 `fix --apply` 가 지우면 다른 구성의 빌드가
+    /// 깨진다. nil 은 `#if` 가 없거나 이 사실을 기록하지 않은 이전 문서다(키가 없어도 읽힌다).
+    public let fileHasConditionalCompilation: Bool?
     /// `import` 키워드의 위치.
     public let location: SourceLocation
 
@@ -34,6 +41,7 @@ public struct IndexedImport: Codable, Sendable, Equatable {
         isReexported: Bool = false,
         isIgnored: Bool = false,
         isIgnoredOnlyByFileComment: Bool = false,
+        fileHasConditionalCompilation: Bool? = nil,
         location: SourceLocation
     ) {
         self.modulePath = modulePath
@@ -42,7 +50,17 @@ public struct IndexedImport: Codable, Sendable, Equatable {
         self.isReexported = isReexported
         self.isIgnored = isIgnored
         self.isIgnoredOnlyByFileComment = isIgnoredOnlyByFileComment
+        self.fileHasConditionalCompilation = fileHasConditionalCompilation
         self.location = location
+    }
+
+    /// `#if` 가 있는 파일의 import 로 표시한 사본.
+    public func inConditionallyCompiledFile() -> IndexedImport {
+        IndexedImport(
+            modulePath: modulePath, scopedKind: scopedKind, isConditional: isConditional,
+            isReexported: isReexported, isIgnored: isIgnored, isIgnoredOnlyByFileComment: isIgnoredOnlyByFileComment,
+            fileHasConditionalCompilation: true, location: location
+        )
     }
 
     /// 경로의 첫 구성요소 — 탑레벨 모듈 이름.

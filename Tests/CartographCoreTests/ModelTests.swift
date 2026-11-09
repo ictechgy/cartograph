@@ -135,7 +135,7 @@ struct RetentionReasonPropagationTests {
         // 때문에 다시 영원히 살아남는다.
         let doNotPropagate = Set(RetentionReason.allCases.filter { !$0.retainsContainingType })
         #expect(doNotPropagate == [.compilerSynthesized, .compileTimeReference, .externalConformance,
-                                  .externalOverride, .equatableProperty, .hashableProperty])
+                                  .externalOverride, .equatableProperty, .hashableProperty, .codableEnumCase])
     }
 }
 
@@ -185,6 +185,7 @@ struct RetentionReasonSentenceTests {
             .caseIterableEnumCase: "a case of a CaseIterable enum, enumerated by allCases",
             .codingKey: "a CodingKey case used by synthesized Codable conformance",
             .codableProperty: "a stored property of a Codable type, read by synthesized coding",
+            .codableEnumCase: "a case of a Codable enum, created by name by synthesized decoding",
             .equatableProperty: "a stored property of an Equatable type, read by the synthesized ==",
             .hashableProperty:
                 "a stored property of a Hashable type, read by the synthesized hash(into:)",
@@ -200,6 +201,8 @@ struct RetentionReasonSentenceTests {
             .sourceUnavailable:
                 "kept conservatively because its source could not be read; restore access and rebuild",
             .externalBridge: "called from another platform across a bridge, per the external retentions file",
+            .ignoredSourceReference:
+                "referenced from a Git-ignored source file the compiler indexed, such as generated code",
         ]
         #expect(expected.count == RetentionReason.allCases.count, "새 근거가 표에 없다")
         for reason in RetentionReason.allCases {

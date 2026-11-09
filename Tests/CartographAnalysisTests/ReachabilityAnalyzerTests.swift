@@ -1039,7 +1039,7 @@ struct AssignOnlyPropertyTests {
     func synthesizedConformanceReadersHideAccess() {
         // 합성 ==·hash·init(from:)·encode(to:) 는 저장 프로퍼티를 읽지만
         // 소스 위치가 없어 인덱스에 읽기가 남지 않는다.
-        for usr in ["s:SQ", "s:SH", "s:SE", "s:Se"] {
+        for usr in ["s:SQ", "s:SL", "s:SH", "s:SE", "s:Se"] {
             var builder = SnapshotBuilder()
             builder.symbol("App", kind: .structType, attributes: [.entryPoint])
             builder.symbol("Key", kind: .structType)
@@ -1053,6 +1053,24 @@ struct AssignOnlyPropertyTests {
             let report = analyze(builder.build())
             #expect(report.assignOnly.isEmpty, "conformance to \(usr) should hide accesses")
         }
+    }
+
+    @Test("프로젝트 프로토콜을 거친 합성 준수도 저장 프로퍼티 접근을 숨긴다")
+    func protocolMediatedConformanceHidesAccess() {
+        // `protocol APIRequest: Encodable` 뒤의 `struct Key: APIRequest` — 직접 참조는 APIRequest 로만 남는다.
+        var builder = SnapshotBuilder()
+        builder.symbol("App", kind: .structType, attributes: [.entryPoint])
+        builder.symbol("APIRequest", kind: .protocolType)
+        builder.symbol("Key", kind: .structType)
+        builder.symbol("Key.x", name: "x", kind: .property, line: 10, parent: "Key")
+        builder.reference(from: "Key", to: "Key.x", kind: .member)
+        builder.reference(from: "APIRequest", to: "s:SE", kind: .conformance)
+        builder.reference(from: "Key", to: "APIRequest", kind: .conformance)
+        builder.reference(from: "App", to: "Key", kind: .reference)
+        builder.reference(from: "App", to: "Key.x", kind: .reference)
+        builder.propertyAccess("Key.x", write: true)
+
+        #expect(analyze(builder.build()).assignOnly.isEmpty)
     }
 
     @Test("익스텐션에 선언된 합성 준수도 확장 대상 타입의 프로퍼티를 숨긴다")

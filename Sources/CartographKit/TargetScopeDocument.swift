@@ -140,7 +140,11 @@ struct TargetScopeStore {
         return Verified(selected: receipt.selectedTargets.sorted(), closure: closure, owners: owners)
     }
 
-    /// Git ignore와 분석 filter를 적용하지 않는다. 빌드 산출물 두 디렉터리 외의 새 소스도 무효화한다.
+    /// Git ignore와 분석 filter를 적용하지 않는다. `.git`과 스크래치 빌드 디렉터리 외의 새 소스도 무효화한다.
+    ///
+    /// 공용 가지치기 목록(`BuildArtifactDirectories.prunedNames`)을 쓰지 않는 것은 의도다. `Pods` 나 체크아웃의
+    /// 소스는 빌드 입력일 수 있다. `.build-fresh` 같은 스크래치만 `.build` 와 같이 건너뛴다 — 그 안의 의존성
+    /// 체크아웃이 항목 예산을 넘겨 증명 자체를 거부하게 만들었다.
     func inventory(root: String) throws -> [String: String] {
         var paths: [String] = []
         var pending = [root]
@@ -152,7 +156,7 @@ struct TargetScopeStore {
                 guard entriesSeen <= 50_000 else { throw invalid("Inventory entry budget exceeded.") }
                 let name = (entry.path as NSString).lastPathComponent
                 guard !entry.isSymbolicLink else { throw invalid("Symlinked inventories are unsupported.") }
-                if entry.isDirectory && [".build", ".git"].contains(name) { continue }
+                if entry.isDirectory && (name == ".git" || BuildArtifactDirectories.isBuildScratch(name)) { continue }
                 if entry.isDirectory { pending.append(entry.path); continue }
                 let source = [".swift", ".m", ".mm", ".h", ".xib", ".storyboard"].contains {
                     entry.path.hasSuffix($0)

@@ -313,24 +313,30 @@ struct LayerRuleEvaluatorTests {
         let otherFile = GraphNode(id: "e2", name: "NetworkError", kind: .structType, module: "App",
             location: .init(path: "/p/Domain/Errors.swift", line: 1, column: 1))
         #expect(byPath.layer(of: sameFile) == "Net")
-        #expect(byPath.assignment(of: sameFile).match?.candidate == "/p/Domain/NetworkError.swift")
+        #expect(byPath.assignment(of: sameFile).match?.candidate == "Domain/NetworkError.swift")
         #expect(byPath.layer(of: otherFile) == nil)
 
         // 디렉터리 요소도 맞는다. 프로젝트 안의 `Network/` 아래 파일은 이름과 무관하게 배정된다.
         let underDirectory = GraphNode(id: "d1", name: "Client", kind: .classType, module: "App",
             location: .init(path: "/p/Network/Client.swift", line: 1, column: 1))
         #expect(byPath.layer(of: underDirectory) == "Net")
-        #expect(byPath.assignment(of: underDirectory).match?.candidate == "/p/Network/Client.swift")
+        #expect(byPath.assignment(of: underDirectory).match?.candidate == "Network/Client.swift")
 
-        // 절대 경로도 후보라 프로젝트 루트 위의 디렉터리 이름에도 맞는다. 바꾸지 않은 기존 동작을 고정한다 —
-        // 고치면(상대 경로만 보기 등) 이 기대가 바뀌어야 한다. 루트에 고정한 `Network/**` 는 걸리지 않는다.
+        // 프로젝트 안 파일의 절대 경로는 절대 패턴에만 댄다. 프로젝트 루트 위의 디렉터리 이름(`NetworkApps`)이
+        // `*Network*` 에 걸려 모든 정점이 한 레이어로 들어가던 동작을 바꿨다 — 같은 커밋이 체크아웃 위치에
+        // 따라 다른 답을 냈다. 루트에 고정한 `Network/**` 는 그대로 프로젝트 안 디렉터리에만 맞는다.
         let ancestorRoot = "/Users/me/NetworkApps/project"
         let ancestor = GraphNode(id: "d2", name: "Validator", kind: .structType, module: "App",
             location: .init(path: ancestorRoot + "/Domain/Validator.swift", line: 1, column: 1))
         let underAncestor = LayerRuleEvaluator(layers: [
             LayerDefinition(name: "Net", patterns: ["*Network*"], matchTargets: [.path]),
         ], rules: [], projectPath: ancestorRoot)
-        #expect(underAncestor.layer(of: ancestor) == "Net")
+        #expect(underAncestor.layer(of: ancestor) == nil)
+        #expect(underAncestor.assignment(of: ancestor).candidates.contains(ancestorRoot + "/Domain/Validator.swift"))
+        let absolute = LayerRuleEvaluator(layers: [
+            LayerDefinition(name: "Net", patterns: ["/Users/me/NetworkApps/**"], matchTargets: [.path]),
+        ], rules: [], projectPath: ancestorRoot)
+        #expect(absolute.layer(of: ancestor) == "Net")
         let anchored = LayerRuleEvaluator(layers: [
             LayerDefinition(name: "Net", patterns: ["Network/**"], matchTargets: [.path]),
         ], rules: [], projectPath: ancestorRoot)

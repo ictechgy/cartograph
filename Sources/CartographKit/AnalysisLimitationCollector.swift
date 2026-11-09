@@ -67,7 +67,11 @@ struct AnalysisLimitationCollector {
 
         var result: [String] = context?.indexSelectionLimitations ?? []
         if let inventory, !inventory.discoveryExclusions.isEmpty {
-            result += Self.sourceDiscoveryLimitation(inventory.discoveryExclusions, projectPath: projectPath).map { [$0] } ?? []
+            result += Self.sourceDiscoveryLimitation(inventory.discoveryExclusions, projectPath: projectPath,
+                followsIgnoredSourceReferences: !inventory.ignoredSourceFiles.isEmpty).map { [$0] } ?? []
+        }
+        if let inventory, let reason = inventory.gitSelectionUnavailableReason {
+            result.append(Self.gitSelectionLimitation(reason))
         }
         // 탈출구를 켠 채로 도는 실행은 아무것도 분석하지 않는다. 그 답을 받은 쪽이
         // "발견 없음"을 깨끗함으로 읽지 않도록, 답 자체에 그 사실을 싣는다.
@@ -231,13 +235,30 @@ struct AnalysisLimitationCollector {
     static let maximumDiagnosticPathBytes = 8_192
 
     /// 모든 분석/교환 경로가 동일한 누락 범위를 전달한다. 무시 규칙은 빌드 소속 근거가 아니다.
-    static func sourceDiscoveryLimitation(_ paths: [String], projectPath: String) -> String? {
+    ///
+    /// 분석 응답은 무시됐지만 색인된 소스의 참조를 따라간다는 문장을 덧붙인다. 교환 문서의 구문 스캔은 그 파일을
+    /// 읽지 않으므로 같은 문장을 쓰면 거짓이 된다 — 그래서 기본값은 꺼짐이다.
+    static func sourceDiscoveryLimitation(
+        _ paths: [String], projectPath: String, followsIgnoredSourceReferences: Bool = false
+    ) -> String? {
         guard !paths.isEmpty else { return nil }
         var resolver = PathResolver(canonicalize: { $0 }, projectPath: projectPath)
         return "source-discovery-exclusions: \(paths.count) source/resource path(s) or nested repositories "
             + "excluded by Git ignore rules or repository boundaries; tracked files take precedence over ignore rules. "
             + "This does not prove build-target coverage."
+            + (followsIgnoredSourceReferences
+                ? " Declarations used by ignored sources the compiler indexed are retained (ignoredSourceReference)."
+                : "")
             + encodedDiagnosticPaths(paths.compactMap { resolver.relativeDiagnosticPath($0) })
+    }
+
+    /// Git 선택이 실패해 전체 walk 로 폴백했다는 한계. 커버리지 공백이 아니라 결과가 흔들릴 수 있다는 알림이다.
+    ///
+    /// 폴백은 무시 파일을 더 넣는 쪽이라 닫힌 세계 판정(`openWorldLimitationPrefixes`)에는 넣지 않는다.
+    static func gitSelectionLimitation(_ reason: String) -> String {
+        "source-discovery-git-unavailable: Git source selection did not complete (\(reason)); every source under "
+            + "the project root was walked instead, so Git-ignored files may be included and results can differ "
+            + "from a run where Git selection succeeds. Fix the Git error, then rerun."
     }
 
     /// 경고마다 최대 64개·JSON 배열 8 KiB만 내보낸다. 남은 경로 수는 숨기지 않는다.

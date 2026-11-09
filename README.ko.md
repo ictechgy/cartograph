@@ -91,8 +91,8 @@ brew install ictechgy/tap/cartograph
 ```
 
 [tap formula](https://github.com/ictechgy/homebrew-tap/blob/main/Formula/cartograph.rb)는 GitHub Releases와
-별도로 갱신됩니다. [0.28.0 갱신](https://github.com/ictechgy/homebrew-tap/pull/63)은 macOS arm64에서
-공개 archive 설치와 formula 테스트를 통과했습니다. 설치하거나 업그레이드한 뒤 `cartograph --version`을
+별도로 갱신되므로 최신 릴리스보다 늦을 수 있습니다. 릴리스마다 Homebrew 설치·formula 테스트를 통과했는지는
+[변경 기록](CHANGELOG.md)의 해당 버전 항목에 적습니다. 설치하거나 업그레이드한 뒤 `cartograph --version`을
 확인하세요. 릴리스와 tap 갱신만으로 로컬 바이너리가 업그레이드되지는 않습니다.
 
 **Mint** — 소스에서 빌드되며, tap을 추가할 필요가 없습니다.
@@ -317,8 +317,9 @@ Swift USR은 소유 모듈을 담고 있으므로, 파일이 실제로 참조한
 복원합니다. `import` 자체가 남기는 `c:@M@M` 표식은 사용으로 세지 않습니다. 사용이 재수출을
 타고 올 수도 있기 때문에 보고는 보수적입니다 — 귀속하지 못한 참조(clang/Objective-C USR은
 모듈을 담지 않음)가 있거나, import 없이 참조된 모듈이 있는 파일처럼 사용 근거가
-불완전하면 억제합니다. 조건부(`#if`) import, 재수출하는 import(`@_exported`,
-`public import`), `// cartograph:ignore` 표시가 붙은 import는 보고하지 않습니다.
+불완전하면 억제합니다. `#if`가 어디든 있는 파일의 모든 import(인덱스는 빌드 구성 하나만 보므로 다른
+분기의 사용은 보이지 않음), 재수출하는 import(`@_exported`, `public import`), `// cartograph:ignore`
+표시가 붙은 import는 보고하지 않습니다.
 `import struct Foundation.Bundle`처럼 종류를 좁힌 import는 탑레벨 모듈 기준으로 판정합니다 —
 `Foundation`의 무엇이든 쓰면 사용으로 셉니다 — 그리고 진단에는 좁힌 형태 그대로를 적습니다.
 다른 경고 규칙과 마찬가지로 `unused-import`는 `--strict` 계산에 넣지 않습니다.
@@ -489,7 +490,8 @@ $ cartograph query UserService
 이 출력이 일부러 지키는 다섯 가지가 있습니다.
 
 - **지워도 된다고 말하지 않습니다.** `state`는 그래프에 대한 사실입니다 — `retained`,
-  `retainedByMember`, `reachable`, `unreachable`. 그것이 삭제 가능을 뜻하는지는 판단의
+  `retainedByMember`, `reachable`, `unreachable`, 그리고 선언이 심볼 레벨 도달성 그래프에 없을 때의
+  `unknown`(근거가 없다는 뜻이지 미사용이 아닙니다). 그것이 삭제 가능을 뜻하는지는 판단의
   영역이며, 보존 근거는 값으로 줍니다(`"reason": "interfaceBuilder"`). 판단은 받는 쪽의
   몫입니다.
 - **모든 답에 이 분석이 보지 못한 것을 싣습니다** — `notFound`에도 싣습니다. Objective-C로
@@ -1586,14 +1588,14 @@ layers:
 - `name`은 선언 이름**과** 모듈을 붙인 정규화 이름(`App.Networking`)입니다. 그래서 `Network*` 같은
   이름 패턴은 `NetworkKit` 모듈의 모든 선언에도 여전히 맞습니다. 모듈 규칙에는 `match_on: module`을
   쓰세요.
-- `path`는 절대 경로와 프로젝트 기준 상대 경로입니다. `/`가 없는 패턴은 gitignore 처럼 그 경로의
-  각 요소 — 모든 디렉터리와 파일 이름 — 에 대조됩니다. 그래서 `*Network*`에 `match_on: path`를 줘도
-  `Network/` 디렉터리 아래의 모든 것과 이름을 딴 파일(`NetworkError.swift`)에 선언된 타입은 그대로
-  배정되고, 절대 경로도 후보이므로 프로젝트 루트 위의 디렉터리가 맞으면(`~/NetworkApps/` 아래의
-  프로젝트) 모든 정점이 배정됩니다. 막아 주는 것은 선언 이름에 맞는 경우입니다 — 그 파일의 절대 경로에
-  맞는 디렉터리가 없는 한, `Domain/Errors.swift`에 선언된 `NetworkError` 타입은 더 이상 잡히지
-  않습니다. 디렉터리 규칙에는 `Network/**`처럼 프로젝트 루트에 고정된 패턴을 쓰세요. `**/Network/**`와
-  `/`가 없는 패턴은 프로젝트 루트 위의 디렉터리까지 포함한 절대 경로에도 대조됩니다.
+- `path`는 프로젝트 기준 상대 경로입니다. 프로젝트 밖의 파일만 절대 경로로 대조합니다. `/`가 없는
+  패턴은 gitignore 처럼 그 경로의 각 요소 — 모든 디렉터리와 파일 이름 — 에 대조됩니다. 그래서
+  `*Network*`에 `match_on: path`를 줘도 `Network/` 디렉터리 아래의 모든 것과 이름을 딴 파일
+  (`NetworkError.swift`)에 선언된 타입은 그대로 배정됩니다. 막아 주는 것은 선언 이름에 맞는 경우입니다
+  — `Domain/Errors.swift`에 선언된 `NetworkError` 타입은 잡히지 않습니다. 프로젝트 루트 위의 디렉터리는
+  후보가 아니므로 `~/NetworkApps/` 아래에 체크아웃해도 모든 정점이 배정되지 않습니다. 절대 경로를
+  뜻한다면 절대 패턴(`/Users/me/NetworkApps/**`)으로 쓰세요. 디렉터리 규칙에는 `Network/**`처럼
+  프로젝트 루트에 고정된 패턴을 쓰세요.
 
 `match_on`이 없는 레이어는 예전과 똑같이 판정합니다. `path`만 보는 레이어는 소스 위치가 없는 모듈
 정점에는 맞지 않습니다. 알 수 없는 값, 빈 목록, 값을 비운 `match_on:`은 설정 오류입니다.
@@ -1809,7 +1811,8 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 | `@propertyWrapper`의 `wrappedValue`, `projectedValue` | 래퍼 규약 |
 | `@resultBuilder`의 `build*` | 빌더 규약 |
 | `Codable` 타입의 저장 프로퍼티 | 합성된 인코딩이 참조를 남기지 않음 |
-| `Equatable`/`Hashable` 타입의 저장 프로퍼티 | 합성된 `==`/`hash(into:)`가 참조를 남기지 않음 |
+| 원시값 없는 `Codable` 열거형의 케이스(`retain_codable_properties`) | 합성 디코딩이 케이스 이름으로 만듦 |
+| `Equatable`/`Hashable`(그리고 `Comparable`) 타입의 저장 프로퍼티 | 합성된 `==`/`hash(into:)`가 참조를 남기지 않음 |
 | 분석 범위 밖 선언을 오버라이드하거나 준수하는 **멤버** | 프레임워크가 호출. 이 규칙만으로 소유 타입까지 살리지는 않음 |
 | `subscript(dynamicMember:)`, `@_dynamicReplacement`, `dynamic` | 동적 디스패치 |
 | 컴파일러 합성 선언 | 지울 수 없음. 그것을 담은 타입까지 살리지도 않음 |
@@ -1817,6 +1820,7 @@ Interface Builder 연결, 원시값 열거형의 동적 생성은 전부 보이�
 | `retained_names`, `retained_files` 글롭 | 사용자가 지정 |
 | 권한·I/O 오류로 소스를 읽지 못한 선언 | 보존 정보가 불완전함(`sourceUnavailable`). 접근을 복구하고 다시 분석 |
 | `--external-retentions`가 지목한 선언 | 다른 플랫폼이 브리지를 넘어 호출. `--explain`이 근거를 인용 |
+| 컴파일러가 색인한 Git 무시 소스(gitignore 한 R.swift·SwiftGen·Sourcery 출력)가 쓰는 선언 | 호출자가 분석 범위 밖에 있음(`ignoredSourceReference`) |
 
 컴파일에 필요한 선언과 런타임 사용은 별개입니다. 컴파일러가 관측한 매크로 참조는 적용된
 소유 타입이 도달 불가능해도 매크로를 보존합니다. 마찬가지로 소스에 남은 annotation은
@@ -1835,6 +1839,11 @@ Periphery는 둘 다 꺼져 있습니다. 합성된 `==`나 `hash(into:)`만 읽
 끄세요. 이 두 보존 이유는 소유 타입이 도달 가능한 경우에만 적용됩니다. 생성되지 않는
 중첩 `Equatable`/`Hashable` 타입의 저장 프로퍼티가 미사용 바깥 타입을 보존하지 않습니다.
 `Codable`과 명시적 보존 규칙은 별도로 유지됩니다.
+
+이 준수들은 상속 절뿐 아니라 컴파일러 인덱스에서도 읽습니다. 그래서 `Swift.Codable`, 조합
+(`Codable & Hashable`), 타입 별칭(`typealias Model = Codable & Hashable`), 프로젝트 프로토콜 경유
+(`protocol APIRequest: Encodable` 뒤의 `struct Login: APIRequest`)로 써도 적용됩니다. 상위 클래스의
+준수는 하위 클래스가 더한 프로퍼티에 적용하지 않습니다. 합성 코딩이 그 프로퍼티를 읽지 않기 때문입니다.
 
 프로토콜 요구사항은 오버라이드 관계를 역방향으로 따라가며 처리합니다. 요구사항이 호출되면
 그 구현이 전부 도달 가능해집니다 — 단, 구현을 소유한 타입 자체가 도달 가능할 때만이어서,
@@ -2185,7 +2194,12 @@ missing으로 분류하지 않으며 Xcode store와 compiler `out` override에�
 설명 파일도 세션 무효화 입력에 포함하지만 경고가 없다는 사실은 coverage 통과가 아닙니다.
 
 Git ignored인 미추적 소스와 중첩 저장소는 탐색에서 제외하며 추적 파일은 ignore보다
-우선합니다. 제외 경고가 없어졌다고 빌드 범위가 완전해진 것은 아닙니다. 생성된 DI 파일은
+우선합니다. 제외 경고가 없어졌다고 빌드 범위가 완전해진 것은 아닙니다. Git이 저장소 목록을 내지
+못하면(5초 제한, 16 MiB 출력 예산, Git 오류) 루트 아래 소스를 전부 걷고
+`source-discovery-git-unavailable`이 이유를 알립니다. 그때는 무시 파일도 섞여 Git이 성공한 실행과
+답이 달라질 수 있기 때문입니다. 컴파일러가 색인한 무시 소스(gitignore 한 생성 코드)가 쓰는 선언은
+`ignoredSourceReference`로 보존합니다. 무시 파일 자체는 여전히 발견·순환·레이어 간선을 더하지 않습니다.
+생성된 DI 파일은
 호출 관계를 연결하므로 역할을 검토한 뒤 `retention.retained_files: ["Sources/Generated/**"]`로
 선언을 보존하고 간선을 유지할 수 있습니다. 생성물처럼 보이는 이름이나 사람이 관리하는
 디자인 token 파일을 자동 숨기지 않습니다.

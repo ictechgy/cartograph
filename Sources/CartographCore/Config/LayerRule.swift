@@ -39,6 +39,11 @@ public struct LayerDefinition: Sendable, Codable, Equatable {
     ///
     /// 후보는 이미 `matchTargets` 로 고른 것이어야 한다. 문자열만으로는 그것이 이름인지 경로인지
     /// 알 수 없다 — 대상별 후보를 고르는 일은 `LayerRuleEvaluator` 가 한다.
+    ///
+    /// `rules` 의 판정은 더 이상 이 함수를 쓰지 않는다. 평가기는 프로젝트 안 파일의 절대 경로를 절대 패턴에만
+    /// 대는데(체크아웃 위치의 조상 디렉터리 이름이 상대 패턴에 걸리지 않도록), 이 함수는 모든 후보를 모든
+    /// 패턴에 댄다. 절대 경로를 후보로 넘기면 예전 판정이 나온다. 공개 API 라 지우지 않고 표시만 한다.
+    @available(*, deprecated, message: "rules no longer match absolute paths to relative patterns; pass relative paths")
     public func matches(candidates: [String]) -> Bool {
         candidates.contains { patterns.matchesAny($0) }
     }

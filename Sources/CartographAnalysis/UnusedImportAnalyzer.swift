@@ -51,8 +51,9 @@ public enum UnusedImportAnalyzer {
                 .subtracting(importedHeads)
                 .subtracting(implicit)
             for fact in fileImports {
-                guard !fact.isConditional, !fact.isReexported, !fact.isIgnored,
-                      !fact.module.isEmpty,
+                // 파일에 `#if` 가 있으면 다른 구성의 분기가 이 모듈을 쓸 수 있다. 인덱스는 그 분기를 보지 못한다.
+                guard !fact.isConditional, fact.fileHasConditionalCompilation != true,
+                      !fact.isReexported, !fact.isIgnored, !fact.module.isEmpty,
                       !usage.referencedModules.contains(fact.module)
                 else { continue }
                 // 귀속을 못 한 참조가 이 모듈의 선언일 수 있다.

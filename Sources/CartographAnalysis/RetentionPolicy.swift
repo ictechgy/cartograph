@@ -55,6 +55,7 @@ public struct RetentionPolicy: Sendable {
         let externalRelations = outsideGraphRelations(in: snapshot, graph: graph)
         let externalBases = Set(externalRelations.map(\.sourceUSR))
         let typeWitnesses = Self.associatedTypeWitnesses(externalRelations, in: graph)
+        let synthesized = Self.synthesizedConformances(in: snapshot)
         var decisions: [NodeID: RetentionReason] = [:]
         // 같은 파일의 정점은 수백 개다. retained_files 판정은 파일의 성질이지
         // 정점의 성질이 아니므로 경로별로 한 번만 답한다.
@@ -63,7 +64,8 @@ public struct RetentionPolicy: Sendable {
         for node in graph.sortedNodes {
             if let reason = reason(
                 for: node, in: graph, symbolsWithExternalBase: externalBases, typeWitnesses: typeWitnesses,
-                pathDecisions: &pathDecisions, honoringIgnoreComments: honoringIgnoreComments
+                pathDecisions: &pathDecisions, honoringIgnoreComments: honoringIgnoreComments,
+                synthesizedConformances: synthesized
             ) {
                 decisions[node.id] = reason
             }
@@ -82,10 +84,11 @@ public struct RetentionPolicy: Sendable {
         let externalRelations = outsideGraphRelations(in: snapshot, graph: graph)
         let externalRelationFacts = Self.externalRelationFacts(externalRelations)
         let typeWitnesses = Self.associatedTypeWitnesses(externalRelations, in: graph)
+        let synthesized = Self.synthesizedConformances(in: snapshot)
         var results: [NodeID: Set<RetentionReason>] = [:]
         for node in graph.sortedNodes {
             let reasons = reviewReasons(for: node, in: graph, externalRelationFacts: externalRelationFacts,
-                typeWitnesses: typeWitnesses)
+                typeWitnesses: typeWitnesses, synthesizedConformances: synthesized)
             if !reasons.isEmpty { results[node.id] = reasons }
         }
         return results
@@ -121,7 +124,8 @@ public struct RetentionPolicy: Sendable {
         symbolsWithExternalBase: Set<String>,
         typeWitnesses: Set<String>,
         pathDecisions: inout [String: Bool],
-        honoringIgnoreComments: Bool = true
+        honoringIgnoreComments: Bool = true,
+        synthesizedConformances: [String: Set<SymbolAttribute>] = [:]
     ) -> RetentionReason? {
         // 구문 누락을 설명해야 하므로 이미 있던 근거보다 우선한다.
         // 테스트 전용 판정도 소스 접근을 복구하기 전에는 보수적으로 억제한다.
@@ -156,11 +160,17 @@ public struct RetentionPolicy: Sendable {
         if isDynamicallyDispatched(node) { return .dynamicDispatch }
         if node.attributes.contains(.runtimeManaged) { return .runtimeManaged }
 
-        if let reason = parentDrivenReason(for: node, in: graph) { return reason }
+        if let reason = parentDrivenReason(for: node, in: graph, synthesizedConformances: synthesizedConformances) {
+            return reason
+        }
         if let reason = externalRelationReason(for: node, symbolsWithExternalBase: symbolsWithExternalBase,
             typeWitnesses: typeWitnesses) {
             return reason
         }
+        // 무시됐지만 컴파일된 소스(생성 코드)가 부른다. 그 소스는 분석 범위 밖이라 그래프에 간선이 없다.
+        // 마지막 폴백이다. 앞에 두면 publicAPI·진입점·테스트 근거가 이 근거로 바뀌어 redundant-public 과
+        // 테스트 루트 분류가 달라진다. 근거가 없던 선언만 살려야 이 근거가 새 판정을 만들지 않는다.
+        if node.attributes.contains(.referencedFromIgnoredSource) { return .ignoredSourceReference }
         return nil
     }
 
@@ -168,7 +178,8 @@ public struct RetentionPolicy: Sendable {
         for node: GraphNode,
         in graph: CodeGraph,
         externalRelationFacts: [String: Set<RetentionReason>],
-        typeWitnesses: Set<String>
+        typeWitnesses: Set<String>,
+        synthesizedConformances: [String: Set<SymbolAttribute>]
     ) -> Set<RetentionReason> {
         var reasons: Set<RetentionReason> = []
         if node.attributes.contains(.entryPoint) || Self.isTopLevelCodeDeclaration(node, in: graph) {
@@ -185,7 +196,9 @@ public struct RetentionPolicy: Sendable {
         }
         if isDynamicallyDispatched(node) { reasons.insert(.dynamicDispatch) }
         if node.attributes.contains(.runtimeManaged) { reasons.insert(.runtimeManaged) }
-        reasons.formUnion(parentDrivenReasons(for: node, in: graph))
+        // 무시된 컴파일 소스의 호출자는 그래프에 없다. impact 가 그 사용처를 검토 근거로 알려야 한다.
+        if node.attributes.contains(.referencedFromIgnoredSource) { reasons.insert(.ignoredSourceReference) }
+        reasons.formUnion(parentDrivenReasons(for: node, in: graph, synthesizedConformances: synthesizedConformances))
         if !node.kind.isTypeDeclaration, node.kind != .extensionDeclaration {
             reasons.formUnion(externalRelationFacts[node.usr ?? ""] ?? [])
         }
@@ -264,11 +277,14 @@ public struct RetentionPolicy: Sendable {
     ///
     /// 원시값 열거형의 케이스, CodingKey, 프로퍼티 래퍼/결과 빌더의 규약 멤버,
     /// Codable 타입의 저장 프로퍼티가 여기에 해당한다.
-    private func parentDrivenReason(for node: GraphNode, in graph: CodeGraph) -> RetentionReason? {
-        parentDrivenReasons(for: node, in: graph).first { reason in
+    private func parentDrivenReason(
+        for node: GraphNode, in graph: CodeGraph, synthesizedConformances: [String: Set<SymbolAttribute>]
+    ) -> RetentionReason? {
+        parentDrivenReasons(for: node, in: graph, synthesizedConformances: synthesizedConformances).first { reason in
             switch reason {
             case .rawRepresentableEnumCase: options.retainRawRepresentableEnumCases
-            case .codableProperty: options.retainCodableProperties
+            // 케이스도 합성 코딩이 만드는 대상이라 프로퍼티와 같은 설정을 따른다(README 보존 규칙 표).
+            case .codableProperty, .codableEnumCase: options.retainCodableProperties
             case .equatableProperty: options.retainEquatableProperties
             case .hashableProperty: options.retainHashableProperties
             default: true
@@ -277,9 +293,12 @@ public struct RetentionPolicy: Sendable {
     }
 
     /// 부모 선언이 만들어 내는 모든 런타임 근거를 대표 사유 순서로 수집한다.
-    private func parentDrivenReasons(for node: GraphNode, in graph: CodeGraph) -> [RetentionReason] {
+    private func parentDrivenReasons(
+        for node: GraphNode, in graph: CodeGraph, synthesizedConformances: [String: Set<SymbolAttribute>]
+    ) -> [RetentionReason] {
         guard let parent = parent(of: node, in: graph) else { return [] }
-        let conformances = conformanceAttributes(of: parent, in: graph)
+        let conformances = conformanceAttributes(
+            of: parent, in: graph, synthesizedConformances: synthesizedConformances)
         var reasons: [RetentionReason] = []
 
         // @main 타입의 static main() 은 런타임이 부르므로 코드 어디에도 참조가 없다.
@@ -290,6 +309,9 @@ public struct RetentionPolicy: Sendable {
             if conformances.contains(.codingKey) { reasons.append(.codingKey) }
             if conformances.contains(.caseIterable) { reasons.append(.caseIterableEnumCase) }
             if conformances.contains(.rawRepresentable) { reasons.append(.rawRepresentableEnumCase) }
+            // 원시값 없는 Codable 열거형도 합성 디코딩이 케이스 이름으로 값을 만든다(SE-0295). 소스에서 한 번도
+            // 만들지 않는 케이스가 서버 응답으로 들어온다. 원시값이 있으면 위 근거가 먼저 설명한다.
+            if conformances.contains(.codable) { reasons.append(.codableEnumCase) }
         }
         if parent.attributes.contains(.propertyWrapper) {
             // 래퍼를 붙이는 자리에서 컴파일러가 부르는 init(wrappedValue:)는
@@ -385,11 +407,70 @@ public struct RetentionPolicy: Sendable {
     ///
     /// 상속/준수 절에서만 나오는 표식으로 한정한다. `@main`, `@propertyWrapper`
     /// 같은 것은 익스텐션에 붙을 수 없어 옮겨 올 이유가 없다.
-    private func conformanceAttributes(of parent: GraphNode, in graph: CodeGraph) -> Set<SymbolAttribute> {
-        var result = parent.attributes.intersection(Self.conformanceDerivedAttributes)
+    private func conformanceAttributes(
+        of parent: GraphNode, in graph: CodeGraph, synthesizedConformances: [String: Set<SymbolAttribute>]
+    ) -> Set<SymbolAttribute> {
+        var declarations = [parent]
         for edge in graph.incomingEdges(to: parent.id) where edge.kind == .extends {
             guard let extensionNode = graph.node(edge.source) else { continue }
-            result.formUnion(extensionNode.attributes.intersection(Self.conformanceDerivedAttributes))
+            declarations.append(extensionNode)
+        }
+        var result: Set<SymbolAttribute> = []
+        for declaration in declarations {
+            result.formUnion(declaration.attributes.intersection(Self.conformanceDerivedAttributes))
+        }
+        // 프로토콜 요구사항은 저장 프로퍼티도 케이스도 아니다. 인덱스가 증명한 준수는 준수하는 타입에만 옮긴다.
+        guard parent.kind != .protocolType else { return result }
+        for declaration in declarations {
+            result.formUnion(declaration.usr.flatMap { synthesizedConformances[$0] } ?? [])
+        }
+        return result
+    }
+
+    /// 합성 구현이 저장 프로퍼티나 케이스를 읽는 표준 프로토콜의 USR 과, 그 준수가 뜻하는 표식.
+    ///
+    /// `ReachabilityAnalyzer.synthesizedReaderProtocolUSRs` 와 같은 근거다. `Codable` 자체가 별칭이라
+    /// 인덱스는 상속 절의 별칭을 실제 프로토콜 준수로 풀어 기록한다. 그래서 구문의 글자 비교가 놓치는
+    /// 사용자 별칭(`typealias Model = Codable & Hashable`)과 한정 이름도 여기서 잡힌다.
+    static let synthesizedConformanceAttributes: [String: SymbolAttribute] = [
+        "s:SE": .codable,  // Encodable
+        "s:Se": .codable,  // Decodable
+        "s:SQ": .equatable,  // Equatable
+        // Comparable 은 Equatable 을 상속한다. 상속 절에 Comparable 만 쓰면 인덱스도 그것만 기록할 수 있는데,
+        // 이때도 합성 `==` 가 저장 프로퍼티를 읽는다.
+        "s:SL": .equatable,  // Comparable
+        "s:SH": .hashable,  // Hashable
+    ]
+
+    /// 선언(타입·익스텐션·프로토콜) USR 마다 인덱스가 증명한 합성 준수 표식. 프로토콜을 거친 준수를 포함한다.
+    ///
+    /// `protocol APIRequest: Encodable {}` 뒤의 `struct Login: APIRequest { let password: String }` 은 상속 절에
+    /// Encodable 이 없어도 합성 `encode(to:)` 가 `password` 를 읽는다. 지우면 전송 페이로드가 바뀐다.
+    /// conformance 참조는 대상이 프로토콜일 때만 생기므로(클래스 상속은 inheritance) 상위 클래스의 준수를
+    /// 하위 클래스 프로퍼티로 옮기지 않는다 — 합성 코딩은 하위 클래스 프로퍼티를 읽지 않는다.
+    /// 사용자가 간선 종류를 걸러도 답이 같도록 그래프 간선이 아니라 스냅샷 참조를 따라간다.
+    static func synthesizedConformances(in snapshot: IndexSnapshot) -> [String: Set<SymbolAttribute>] {
+        var direct: [String: Set<SymbolAttribute>] = [:]
+        var conformsTo: [String: [String]] = [:]
+        for reference in snapshot.references where reference.kind == .conformance {
+            if let attribute = synthesizedConformanceAttributes[reference.targetUSR] {
+                direct[reference.sourceUSR, default: []].insert(attribute)
+            } else {
+                conformsTo[reference.sourceUSR, default: []].append(reference.targetUSR)
+            }
+        }
+        var result: [String: Set<SymbolAttribute>] = [:]
+        for source in Set(direct.keys).union(conformsTo.keys) {
+            var attributes: Set<SymbolAttribute> = []
+            var visited: Set<String> = [source]
+            var pending = [source]
+            while let next = pending.popLast() {
+                attributes.formUnion(direct[next] ?? [])
+                for target in conformsTo[next] ?? [] where visited.insert(target).inserted {
+                    pending.append(target)
+                }
+            }
+            if !attributes.isEmpty { result[source] = attributes }
         }
         return result
     }
