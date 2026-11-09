@@ -29,7 +29,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fallback: a declaration that already had one (entry point, test, public API, synthesized) keeps it, so
   `redundant-public` and test-root classification do not change; `impact` lists such declarations under
   runtime review because their ignored callers never appear on an impact path. The supplemental read reuses the store the main analysis selected, so it obeys
-  `--index-store` and adds one restricted read of the ignored files' units only when such files exist.
+  `--index-store`, and runs only when such files exist: it opens every unit to scan its dependency list and reads
+  records only for the ignored files.
 - When Git source selection fails inside a repository (5-second limit, 16 MiB output budget, or a Git
   error such as a corrupt index), analysis responses now carry a `source-discovery-git-unavailable`
   limitation with the reason. The fallback walks every source, including Git-ignored files, so the same
