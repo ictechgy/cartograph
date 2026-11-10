@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-09 by Claude (PR #237 최종 상태)_
+_Last updated: 2026-11-10 by Claude (PR #237 머지 이후 상태)_
 
 작업 규칙은 [AGENTS.md](AGENTS.md), 이전 원문은 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 있다
 (2026-09-25 기록은 그 파일 끝 절로 옮겼다). 이력의 오래된 버전·Next Steps는 현재 지시로 되살리지 않는다.
@@ -8,8 +8,10 @@ _Last updated: 2026-11-09 by Claude (PR #237 최종 상태)_
 ## Current Status
 
 - 최신 발행은 **0.30.0**(2026-11-03, CHANGELOG)이다. 0.23.0~0.30.0의 내용은 CHANGELOG의 해당 절이 정본이다.
-- 계열 9개 저장소 점검(2026-11-03)에서 나온 수정은 브랜치 `ccr-37904670-hxdjsx`의 **PR #237**에 있다.
-  CHANGELOG `[Unreleased]`에 정리했고 아직 발행하지 않았다. 아래가 이 PR의 최종 상태다.
+- 계열 9개 저장소 점검(2026-11-03)에서 나온 수정은 **PR #237**로 `main`에 스쿼시 머지됐다
+  (2026-11-09, `f892ddb`). CHANGELOG `[Unreleased]`에 정리돼 있고 아직 발행하지 않았다.
+  아래 절의 커밋 해시는 PR 브랜치의 것이며, `main`에는 `f892ddb` 하나로 합쳐졌다.
+- `main` `f892ddb`의 CI 체크 12개(자기 분석, synthesized-property 보존 측정 포함)가 모두 성공했다(2026-11-10 확인).
 
 ### PR #237 — 처리한 것
 
@@ -60,22 +62,21 @@ _Last updated: 2026-11-09 by Claude (PR #237 최종 상태)_
 ### 컴파일 근거와 리뷰 방식
 
 - **이 PR을 작성한 세션에는 Swift 툴체인이 없었다**(Linux 컨테이너, Core의 `import Darwin`). 따라서 다음의
-  유일한 근거는 PR #237의 macOS CI다. 로컬에서는 Python 하네스와 정적 대조만 돌렸다.
+  유일한 근거는 PR #237과 `main` `f892ddb`의 macOS CI다. 로컬에서는 Python 하네스와 정적 대조만 돌렸다.
   - 컴파일과 `swift test`
   - `coverage.sh`·`verify-cli-contract.sh`·`verify-fixtures.sh`
   - 자기 분석(dead·cycles·type cycles·rules)
   - 새 테스트의 돌연변이 확인
 - **GLM 리뷰 대체**: AGENTS가 요구하는 `packet-ask` GLM 리뷰는 이 환경에서 쓸 수 없었다. 대신 전체 diff를
-  독립 Claude 리뷰로 검토했다. 지적과 처리 결과는 PR 본문에 있다. 머지 전에 GLM 리뷰를 받을 수 있으면 받는다.
+  독립 Claude 리뷰로 검토했다. 지적과 처리 결과는 PR 본문에 있다. GLM 리뷰 없이 머지됐으므로, GLM 리뷰를 받을 수
+  있는 환경이 되면 이 변경을 후속 리뷰한다.
 
-### 머지 뒤 다음 할 일
+### 다음 할 일 (PR #237 머지 이후)
 
-1. PR #237의 macOS CI가 모두 녹색인지 확인한다. 실패하면 로컬 macOS에서 재현한다.
-   "Measure synthesized-property retention"과 "Analyze this repository with itself"도 포함이다.
-2. 로컬 macOS에서 새 보존 테스트의 돌연변이 확인을 한 번 돌린다(CI는 통과만 보여 준다).
-3. 무시 컴파일 소스 하위 코퍼스와 검증기를 만든다(위 제외 항목).
-4. 보조 인덱스 읽기 비용을 HealthMap 등 실제 프로젝트에서 잰다.
-5. 발행은 지시가 있을 때만 한다. 이때 `[Unreleased]`를 버전 절로 옮기고 플러그인 매니페스트 버전도 함께 올린다.
+1. 로컬 macOS에서 새 보존 테스트의 돌연변이 확인을 한 번 돌린다(CI는 통과만 보여 준다).
+2. 무시 컴파일 소스 하위 코퍼스와 검증기를 만든다(위 제외 항목).
+3. 보조 인덱스 읽기 비용을 HealthMap 등 실제 프로젝트에서 잰다.
+4. 발행은 지시가 있을 때만 한다. 이때 `[Unreleased]`를 버전 절로 옮기고 플러그인 매니페스트 버전도 함께 올린다.
 
 | 발행물 | 상태 |
 |---|---|
@@ -112,7 +113,7 @@ _Last updated: 2026-11-09 by Claude (PR #237 최종 상태)_
 
 ## Resume Prompt
 
-저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 Git 상태를 확인해줘. PR #237이 머지됐는지,
-macOS CI(coverage·fixtures·자기 분석)가 통과했는지 먼저 확인해. 그다음 "머지 뒤 다음 할 일"을 이어 가고,
+저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 Git 상태를 확인해줘. PR #237은 `main`에 스쿼시
+머지됐고(`f892ddb`) 아직 발행하지 않았어. "다음 할 일 (PR #237 머지 이후)"를 이어 가고,
 남은 후보는 내가 고른 뒤 착수해.
 발행·태그는 따로 지시가 있을 때만 해.
