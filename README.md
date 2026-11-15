@@ -1584,10 +1584,18 @@ started by name, so install the CLI first (Homebrew or a release archive, see [I
 and check that `cartograph --version` works on the `PATH` Claude Code runs with. Without it the
 plugin's server fails to start and the skill's commands fail the same way. The server is whichever
 `cartograph` comes first on that `PATH`, so its tools follow that binary's version, not the
-plugin's. `${CLAUDE_PROJECT_DIR}` is the directory Claude Code opened, and `--project` takes
-precedence over `project_path` in `.cartograph.yml`. When the Xcode project sits in a subdirectory
-(`ios/` in a Flutter or React Native app), turn the plugin's server off in `/mcp` and add your own
-`serve` entry with `--project ios`.
+plugin's.
+
+The plugin's server analyzes `${CLAUDE_PROJECT_DIR}`, the project root where the session started,
+which stays put when the session enters a git worktree. In a git worktree or another directory, run
+the CLI with `--project <that directory>`. `--project` also takes precedence over `project_path` in
+`.cartograph.yml`, so when the Xcode project sits in a subdirectory (`ios/` in a Flutter or React
+Native app), add your own `serve` entry with `--project ios`. Claude Code connects a server that is
+configured more than once only once, preferring local, project and user scope over a plugin, and it
+matches a plugin's server to yours by its command; the documentation does not say whether arguments
+are compared, so if both appear in `/mcp`, turn the plugin's off there. A plugin installed for all
+your projects also starts the server in projects without Swift code. It loads nothing until a tool
+is called, and its analysis tools return an error there instead of an answer.
 
 ### `metrics` — architecture metrics
 
