@@ -36,7 +36,7 @@ percentage, then merges profiles from the instrumented CLI contract, automatic d
 collection and MCP harnesses. `--unit-only` retains the original unit measurement. Integration
 profiles count actual execution of the same production code; no production files are removed to
 reach the threshold. Dependency discovery recall and false positives remain separate metrics.
-`--skip-test` rejects newer source, test, fixture, skill, harness, binary or unit-profile timestamps; rerun the full
+`--skip-test` rejects newer source, test, fixture, skill, plugin-manifest, harness, binary or unit-profile timestamps; rerun the full
 command after changes. `python3 Scripts/verify-coverage-inputs.py` verifies this reuse contract with
 isolated stub tools. Those stub values are never included in the product's coverage measurement.
 

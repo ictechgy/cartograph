@@ -145,7 +145,8 @@ import sys
 unit, selected = map(Path, sys.argv[1:3])
 try:
     inputs = [Path(value) for value in sys.argv[4:]]
-    for name in ["Sources", "Tests", "Scripts", "Skills"]:
+    # MCP 하네스는 .claude-plugin/plugin.json 의 선언으로 서버를 띄우므로 매니페스트도 실행 입력이다.
+    for name in ["Sources", "Tests", "Scripts", "Skills", ".claude-plugin"]:
         directory = Path(name)
         if directory.exists():
             inputs.extend([directory, *directory.rglob("*")])
