@@ -11,6 +11,7 @@ configurations substitute `${CLAUDE_PROJECT_DIR}` in `command`, `args` and `env`
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import unittest
 
@@ -27,8 +28,10 @@ EXPECTED_SERVERS = {
         "args": ["serve", "--project", "${CLAUDE_PROJECT_DIR}"],
     }
 }
-# 선언한 하위 명령과 옵션이 바이너리를 만드는 CLI 소스에 실제로 있는지 본다. 이름이 바뀌면 플러그인
-# 서버는 시작하자마자 사용 오류(64)로 끝나고, 사용자는 /mcp 에서 실패만 보게 된다.
+# 소스 텍스트 경보선(tripwire)이다. 선언한 하위 명령과 옵션의 문자열이 CLI 소스에 남아 있는지만 grep 한다.
+# 바이너리가 그 인자를 받는다는 증명은 아니다 — 그것은 verify-mcp.py 가 실제 바이너리를 이 선언 그대로 띄워
+# 확인한다(macOS CI·릴리스 게이트). 이 경보선은 빌드 없이 첫 CI 잡과 Linux 에서도 돌아, 이름을 바꾼 PR 에
+# 매니페스트를 함께 고치라고 일찍 알린다. 표기만 바꿔도 울릴 수 있고, 그때는 아래 문자열을 고친다.
 CLI_FACTS = (
     ("Sources/cartograph/Serve.swift", 'commandName: "serve"', "the serve subcommand"),
     ("Sources/cartograph/Serve.swift", "@OptionGroup var options: GlobalOptions", "serve's global options"),
@@ -58,13 +61,33 @@ def manifest_problems(root):
     if not (root / SKILLS / "cartograph/SKILL.md").is_file():
         problems.append("Skills/cartograph/SKILL.md is missing")
     problems += server_problems(manifest.get("mcpServers"))
-    if (root / ".mcp.json").exists():
-        # 플러그인 루트가 저장소 루트라 이 파일은 저장소를 여는 기여자의 프로젝트 MCP 설정이기도 하다.
-        # 매니페스트와 병합되며 같은 이름이면 매니페스트가 덮으므로, 두 번째 선언은 조용히 갈라진다.
-        problems.append(".mcp.json at the plugin root must not exist; declare MCP servers only in "
-                        f"{MANIFEST} mcpServers")
-    problems += cli_problems(root)
+    problems += root_declaration_problems(root)
+    problems += cli_source_tripwires(root)
     return problems
+
+
+def root_declaration_problems(root):
+    """Refuse a root `.mcp.json` that the plugin would ship.
+
+    The plugin root is the repository root, so a tracked `.mcp.json` is also the project MCP configuration of
+    everyone who opens this repository, and Claude Code merges it with the manifest, where a server of the same
+    name replaces it. A second declaration would drift silently. An untracked file is not distributed.
+    """
+    declaration = root / ".mcp.json"
+    try:
+        listed = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--", ".mcp.json"],
+                                capture_output=True, check=False)
+    except FileNotFoundError:
+        listed = None
+    if listed is None or listed.returncode != 0:
+        # 추적 여부를 알 수 없으면 있는 것만으로 거부한다. 모르는 것을 통과로 읽지 않는다.
+        if declaration.exists():
+            return ["cannot tell whether .mcp.json at the plugin root is tracked (not a git work tree); "
+                    f"remove it and declare MCP servers only in {MANIFEST} mcpServers"]
+        return []
+    if listed.stdout:
+        return [f".mcp.json at the plugin root is tracked; declare MCP servers only in {MANIFEST} mcpServers"]
+    return []
 
 
 def server_problems(servers):
@@ -84,17 +107,17 @@ def server_problems(servers):
     return problems
 
 
-def cli_problems(root):
+def cli_source_tripwires(root):
     problems = []
     for relative, fact, meaning in CLI_FACTS:
         try:
             source = (root / relative).read_text(encoding="utf-8")
         except FileNotFoundError:
-            problems.append(f"{relative} is missing; cannot confirm {meaning}")
+            problems.append(f"{relative} is missing; the source-text tripwire cannot find {meaning}")
             continue
         if fact not in source:
-            problems.append(f"{relative} no longer contains {fact!r} ({meaning}); "
-                            f"update {MANIFEST} mcpServers with the CLI")
+            problems.append(f"source-text tripwire: {relative} no longer contains {fact!r} ({meaning}); "
+                            f"update {MANIFEST} mcpServers with the CLI, or this fact if only the spelling changed")
     return problems
 
 
@@ -157,9 +180,20 @@ class PluginManifestTests(unittest.TestCase):
                 self.write_manifest({**self.manifest(), "mcpServers": servers})
                 self.assert_refused(fragment)
 
-    def test_a_second_declaration_at_the_plugin_root_is_refused(self):
+    def test_a_second_declaration_at_the_plugin_root_is_refused_only_when_tracked(self):
+        # 플러그인은 GitHub 저장소에서 설치되므로 배포되는 것은 추적 파일이다. 기여자가 자기 작업 트리에
+        # 둔 추적되지 않는 .mcp.json 은 플러그인에 실리지 않으므로 막지 않는다.
+        subprocess.run(["git", "-c", "init.templateDir=", "init", "--quiet", str(self.root)], check=True)
+        declaration = self.root / ".mcp.json"
+        declaration.write_text(json.dumps({"mcpServers": EXPECTED_SERVERS}), encoding="utf-8")
+        self.assertEqual(manifest_problems(self.root), [])
+        subprocess.run(["git", "-C", str(self.root), "add", "--", ".mcp.json"], check=True)
+        self.assert_refused(".mcp.json at the plugin root is tracked")
+
+    def test_a_root_declaration_outside_a_git_work_tree_is_refused(self):
+        # 추적 여부를 알 수 없으면 있는 것만으로 거부한다. 모르는 것을 통과로 읽지 않는다.
         (self.root / ".mcp.json").write_text(json.dumps({"mcpServers": EXPECTED_SERVERS}), encoding="utf-8")
-        self.assert_refused(".mcp.json at the plugin root must not exist")
+        self.assert_refused("cannot tell whether .mcp.json at the plugin root is tracked")
 
     def test_the_skill_pointer_is_kept(self):
         self.write_manifest({**self.manifest(), "skills": "./skills"})
@@ -168,7 +202,7 @@ class PluginManifestTests(unittest.TestCase):
         (self.root / "Skills/cartograph/SKILL.md").unlink()
         self.assert_refused("Skills/cartograph/SKILL.md is missing")
 
-    def test_cli_without_the_declared_subcommand_or_option_is_refused(self):
+    def test_cli_source_without_the_declared_subcommand_or_option_trips(self):
         for relative, fact, _ in CLI_FACTS:
             with self.subTest(fact=fact):
                 path = self.root / relative

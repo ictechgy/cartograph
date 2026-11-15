@@ -17,8 +17,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   not in a root `.mcp.json`, which would also act as a project MCP server for anyone working in this
   repository. `--project` takes precedence over `project_path` in `.cartograph.yml`; for an Xcode
   project in a subdirectory such as `ios/`, turn the plugin's server off in `/mcp` and configure
-  `serve` yourself. CI fails when the declaration is missing or different, or when the CLI no longer
-  has the declared `serve` and `--project` (`Scripts/verify-plugin-manifest.py`), and the MCP harness
+  `serve` yourself. CI fails when the declaration is missing or different, when a root `.mcp.json` is
+  tracked, or when the CLI source no longer contains the declared `serve` and `--project` (a source-text
+  tripwire in `Scripts/verify-plugin-manifest.py`). The execution guarantee is the MCP harness, which
   starts its first server from the declaration, so CI and the release gate run it with the real binary.
 
 ### Changed
