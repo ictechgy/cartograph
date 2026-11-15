@@ -18,6 +18,8 @@ from typing import Any
 
 MAX_LINE = 1_048_576
 VERSION = "2026-07-28"
+# Claude Code 플러그인이 선언한 서버. 첫 서버를 이 선언 그대로 띄워, 통과가 곧 플러그인 호출의 근거가 되게 한다.
+PLUGIN_MANIFEST = Path(__file__).resolve().parents[1] / ".claude-plugin" / "plugin.json"
 
 
 def request(request_id: int | str | None, method: str, params: dict[str, Any] | None = None) -> bytes:
@@ -41,9 +43,12 @@ def modern_params(**extra: Any) -> dict[str, Any]:
 
 
 class MCPProcess:
-    def __init__(self, binary: Path, project: Path, stderr_path: Path, extra_arguments: list[str] | None = None):
+    def __init__(self, binary: Path, project: Path, stderr_path: Path, extra_arguments: list[str] | None = None,
+                 server_arguments: list[str] | None = None):
+        if server_arguments is None:
+            server_arguments = ["serve", "--project", str(project)]
         self.process = subprocess.Popen(
-            [str(binary), "serve", "--project", str(project)] + (extra_arguments or []),
+            [str(binary)] + server_arguments + (extra_arguments or []),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=stderr_path.open("wb"),
@@ -119,6 +124,17 @@ def assert_true(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
+def plugin_server_arguments(project: Path) -> list[str]:
+    """Arguments the plugin manifest gives `cartograph`, with the project directory Claude Code substitutes."""
+    # 플러그인은 PATH 의 cartograph 를 이름으로 띄운다. 그 자리에 검증 대상 바이너리를 넣고,
+    # Claude Code 가 치환하는 ${CLAUDE_PROJECT_DIR} 는 임시 패키지로 바꾼다. 선언이 빠지면 여기서 실패한다.
+    servers = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8")).get("mcpServers")
+    server = servers.get("cartograph") if isinstance(servers, dict) else None
+    assert_true(isinstance(server, dict), f"{PLUGIN_MANIFEST} declares no cartograph MCP server")
+    assert_true(server.get("command") == "cartograph", "plugin MCP server does not start cartograph from PATH")
+    return [str(argument).replace("${CLAUDE_PROJECT_DIR}", str(project)) for argument in server.get("args", [])]
+
+
 def legacy_payload(response: dict[str, Any]) -> dict[str, Any]:
     result = response["result"]
     assert_true("structuredContent" not in result, "legacy result duplicated its JSON payload")
@@ -149,7 +165,9 @@ def main() -> int:
         evidence["steps"].append({name + "Ms": round(elapsed * 1000, 2)})
 
     try:
-        legacy = MCPProcess(binary, package, output / "legacy.stderr.log")
+        plugin_arguments = plugin_server_arguments(package)
+        evidence["pluginServerArguments"] = plugin_arguments
+        legacy = MCPProcess(binary, package, output / "legacy.stderr.log", server_arguments=plugin_arguments)
         processes.append(legacy)
         started = time.perf_counter()
         initialize = legacy.request(1, "initialize", {
