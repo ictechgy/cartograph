@@ -66,7 +66,7 @@ let fileSystem = InMemoryFileSystem(files: ["/p/.cartograph.yml": "level: type"]
 `coverage.sh`는 단위 테스트 비율을 따로 표시한 뒤, 계측된 CLI 계약·자동 발견·Core Data 버전·실행 수집·MCP
 하네스의 실제 실행 프로파일을 합칩니다. `--unit-only`로 원래 단위 수치도 확인할 수 있습니다.
 발견 재현율·오탐과 라인 커버리지는 별도 지표입니다. 전체 통합 수치만으로 빠진 단위 경로를 숨기지 마세요.
-`--skip-test`는 소스·테스트·fixture·스킬·검증 스크립트·바이너리·단위 프로파일이 더 새로워졌으면 코드 2로 거부합니다.
+`--skip-test`는 소스·테스트·fixture·스킬·플러그인 매니페스트·검증 스크립트·바이너리·단위 프로파일이 더 새로워졌으면 코드 2로 거부합니다.
 재사용 검사의 회귀는 `python3 Scripts/verify-coverage-inputs.py`로 확인합니다. 이 하네스의 stub 수치는
 재사용 여부를 검사하기 위한 것으로 실제 제품 커버리지에 합치지 않습니다.
 

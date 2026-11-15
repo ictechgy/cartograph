@@ -152,6 +152,16 @@ swift build \
 exit 0으로 건너뜁니다. 공개 asset의 해시, 실제 formula의 URL·해시, 설치 버전과 `brew test`를 확인하세요.
 README가 참조하는 계약 문서도 archive에 포함하고 압축을 푼 파일을 검증합니다.
 
+**`ci.yml`을 고치면 native 관측 고정값 세 곳을 함께 갱신합니다.** native-environment 관측이
+`.github/workflows/ci.yml`을 바이트·sha256·Git blob으로 고정하기 때문입니다. 세 곳은 검증기
+`Scripts/validate-native-environment-observation.py`의 `CI_PIN`·blob,
+`Scripts/benchmark-inputs/native_environment_probe_manifest.json`의 ci.yml 항목,
+`Scripts/benchmark-inputs/test_native_environment_observation.py`의 blob 단언입니다. 단언을 고치면
+테스트 파일 자신의 manifest 항목도 바뀝니다. 빠뜨리면 "Verify comparison contracts" 단계의
+benchmark-inputs 스위트가 `source-pin-mismatch`로 실패하고, 이 함정에 세 번 걸렸습니다
+(`7dc7f74`, PR #237, PR #239). 갱신 뒤 `python3 -m unittest discover -s Scripts/benchmark-inputs`
+(311건)를 돌리세요. 소스 지문 검사와 변조 대조군은 고치지 않습니다.
+
 ## 커밋
 
 Conventional Commits, 본문은 한국어. 스코프는 모듈 이름을 씁니다

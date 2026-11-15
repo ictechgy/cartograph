@@ -66,6 +66,11 @@ jobs:
             exit 1
           fi
 
+      # 플러그인이 스킬만 싣고 MCP 서버를 빠뜨리거나, CLI에 없는 하위 명령으로 서버를 띄우는 선언을 PR에서 막는다.
+      # 선언한 호출이 실제 바이너리로 동작하는지는 MCP 하네스(verify-mcp.py, CI·릴리스 게이트)가 같은 선언으로 서버를 띄워 확인한다.
+      - name: Verify plugin MCP server declaration
+        run: python3 Scripts/verify-plugin-manifest.py
+
   prepare-comparison-candidate:
     name: Prepare exact candidate executable
     runs-on: macos-latest

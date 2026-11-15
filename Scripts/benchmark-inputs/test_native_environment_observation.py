@@ -1274,7 +1274,7 @@ class NativeEnvironmentObservationTests(unittest.TestCase):
         body = (ROOT / self.D.CI_NAME).read_bytes()
         self.assertEqual(self.S.record(body), self.D.CI_PIN)
         manifest = json.loads((ROOT / self.D.MANIFEST_NAME).read_text())
-        self.assertEqual(manifest['sources'][self.D.CI_NAME]['blob'], '9f14044cec5e85e06c27164601aa85b227d40db0')
+        self.assertEqual(manifest['sources'][self.D.CI_NAME]['blob'], '9043090d7ea6ed5ebd0975066f733872ce5aaf98')
         self.D.source_bracket(manifest)
         for field, value in (('sha256', '0' * 64), ('bytes', 1), ('mode', '100755'), ('blob', '0' * 40)):
             altered = copy.deepcopy(manifest); altered['sources'][self.D.CI_NAME][field] = value

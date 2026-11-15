@@ -2,12 +2,12 @@
   "$schema": "https://code.claude.com/schemas/marketplace.json",
   "name": "cartograph",
   "owner": { "name": "ictechgy", "url": "https://github.com/ictechgy" },
-  "description": "Skills that teach a coding agent to ask cartograph before touching Swift code.",
+  "description": "A skill and an MCP server for asking cartograph before a coding agent touches Swift code.",
   "plugins": [
     {
       "name": "cartograph",
       "displayName": "cartograph",
-      "description": "Ask the compiler index before deleting a Swift declaration: who uses it, what it uses, whether it is reachable, and what the analysis cannot see.",
+      "description": "Ask the compiler index before deleting a Swift declaration: who uses it, what it uses, whether it is reachable, and what the analysis cannot see. Ships the skill and the MCP server; requires the cartograph CLI on PATH.",
       "source": { "source": "github", "repo": "ictechgy/cartograph" },
       "category": "code-quality",
       "keywords": ["swift", "ios", "dead-code", "flutter", "react-native"]

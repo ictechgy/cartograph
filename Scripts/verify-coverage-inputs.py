@@ -37,6 +37,11 @@ def main():
         skills.mkdir()
         skill = skills / "SKILL.md"
         skill.write_text("fixture skill\n")
+        # MCP 하네스가 플러그인 매니페스트의 선언으로 서버를 띄우므로 이 파일도 실행 입력이다.
+        plugin_directory = root / ".claude-plugin"
+        plugin_directory.mkdir()
+        plugin = plugin_directory / "plugin.json"
+        plugin.write_text("{}\n")
         (root / ".gitignore").write_text(".build/\n")
         subprocess.run(["git", "-c", "init.templateDir=", "init", "--quiet", str(root)], check=True)
         product = root / "products"
@@ -95,7 +100,7 @@ cat "$TEST_EXPORT_PATH"
 
         def reset():
             stamp(root / ".gitignore", 0)
-            for directory in [sources, tests, scripts, root / "Fixtures", skills]:
+            for directory in [sources, tests, scripts, root / "Fixtures", skills, plugin_directory]:
                 for path in [directory, *directory.rglob("*")]:
                     stamp(path, 0)
             stamp(executable, 10)
@@ -111,6 +116,7 @@ cat "$TEST_EXPORT_PATH"
             ("new harness", False, scripts / "coverage.sh", 2),
             ("new fixture", False, fixture, 2),
             ("new skill", True, skill, 2),
+            ("new plugin manifest", False, plugin, 2),
             ("ignored fixture build", False, artifact, 0),
             ("new test binary", False, executable, 2),
             ("new CLI binary", False, cli, 2),
