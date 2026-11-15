@@ -7,6 +7,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- The Claude Code plugin now declares the MCP server as well as the skill. Enabling it starts
+  `cartograph serve --project ${CLAUDE_PROJECT_DIR}`, so the MCP tools the skill tells agents to reuse
+  are there without configuring a server by hand. The plugin contains no binary: it runs the
+  `cartograph` found on `PATH` (Homebrew or a release archive), the tools follow that binary's version,
+  and without it the server fails to start. The declaration is inline in `.claude-plugin/plugin.json`,
+  not in a root `.mcp.json`, which would also act as a project MCP server for anyone working in this
+  repository. `--project` takes precedence over `project_path` in `.cartograph.yml`; for an Xcode
+  project in a subdirectory such as `ios/`, turn the plugin's server off in `/mcp` and configure
+  `serve` yourself. CI fails when the declaration is missing or different, or when the CLI no longer
+  has the declared `serve` and `--project` (`Scripts/verify-plugin-manifest.py`), and the MCP harness
+  starts its first server from the declaration, so CI and the release gate run it with the real binary.
+
 ### Changed
 
 - **Upgrade note:** layer `path` matching now uses only the project-relative path for files inside the

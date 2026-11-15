@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-10 by Claude (PR #237 머지 이후 상태)_
+_Last updated: 2026-11-15 by Claude (B4 플러그인 MCP 선언 브랜치, 미머지)_
 
 작업 규칙은 [AGENTS.md](AGENTS.md), 이전 원문은 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 있다
 (2026-09-25 기록은 그 파일 끝 절로 옮겼다). 이력의 오래된 버전·Next Steps는 현재 지시로 되살리지 않는다.
@@ -12,6 +12,31 @@ _Last updated: 2026-11-10 by Claude (PR #237 머지 이후 상태)_
   (2026-11-09, `f892ddb`). CHANGELOG `[Unreleased]`에 정리돼 있고 아직 발행하지 않았다.
   아래 절의 커밋 해시는 PR 브랜치의 것이며, `main`에는 `f892ddb` 하나로 합쳐졌다.
 - `main` `f892ddb`의 CI 체크 12개(자기 분석, synthesized-property 보존 측정 포함)가 모두 성공했다(2026-11-10 확인).
+- 후보 **B4**(플러그인 MCP 선언)를 브랜치 `ccr-37904670-hxdjsx`에서 처리했다(2026-11-15, `main` `5b73a48` 기준).
+  아직 PR·머지 전이다. 아래 "B4 — 처리한 것" 절을 본다.
+
+### B4 — 처리한 것 (2026-11-15, 미머지)
+
+커밋 해시는 이 브랜치의 것이다. 스쿼시 머지되면 바뀐다.
+
+- **선언**: `.claude-plugin/plugin.json`에 인라인 `mcpServers.cartograph`를 넣었다(`5492331`).
+  명령은 PATH의 `cartograph`, 인자는 `serve --project ${CLAUDE_PROJECT_DIR}`다.
+  - 근거 문서: code.claude.com/docs/en/plugins-reference의 `mcpServers` 절(인라인 맵·파일·번들·배열, 루트 `.mcp.json`과
+    병합되고 같은 이름은 뒤 선언이 덮음), code.claude.com/docs/en/mcp의 "Plugin-provided MCP servers"
+    (`.mcp.json` 또는 `plugin.json` 인라인, 플러그인 설정은 `${CLAUDE_PROJECT_DIR}`를 기본값 없이 바로 치환).
+  - 두 형식 모두 문서화돼 있다. 루트 `.mcp.json`을 고르지 않은 이유는 플러그인 루트가 저장소 루트라서다.
+    이 저장소를 여는 기여자에게 프로젝트 MCP 서버로도 읽힌다.
+  - 플러그인 MCP 서버의 작업 디렉터리는 문서에 없다. 그래서 README 예시의 `--project .` 대신
+    `${CLAUDE_PROJECT_DIR}`를 쓴다. `--project`는 `.cartograph.yml`의 `project_path`보다 우선한다.
+  - 매니페스트 `version`은 설치자를 그 버전에 묶는다(같은 문서 `version` 절). 0.30.0을 설치한 사용자는 다음 발행에서
+    버전을 올려야 이 선언을 받는다. 버전 대조 검사가 있으므로 발행 절차대로 올리면 된다.
+- **검사**: `Scripts/verify-plugin-manifest.py`(CI `comparison-contracts` 잡)가 선언을 고정하고, 루트 `.mcp.json`을
+  거부하고, CLI 소스에 `serve`·`--project`가 있는지 본다(`8702540`, 선언 전에는 실패하는 것을 확인함).
+  `verify-mcp.py`는 첫 서버를 이 선언 그대로 띄운다. 다른 하네스가 쓰는 `MCPProcess` 기본 인자는 그대로다.
+- **문서**: 스킬 템플릿·사본, README 두 벌의 `skill` 절, 플러그인·마켓플레이스 설명에 PATH 전제를 적었다(`20bde1c`).
+- **이 환경에서 못 돌린 것**(Linux, Swift 툴체인 없음): 컴파일·`swift test`(특히 `AgentSkillTemplateTests` 바이트 일치),
+  `verify-mcp.py` 실제 실행, coverage·CLI 계약·fixtures, 자기 분석 네 가지. 근거는 이 브랜치 PR의 macOS CI다.
+  `claude plugin validate`도 이 환경에 없어 돌리지 않았다.
 
 ### PR #237 — 처리한 것
 
@@ -77,6 +102,9 @@ _Last updated: 2026-11-10 by Claude (PR #237 머지 이후 상태)_
 2. 무시 컴파일 소스 하위 코퍼스와 검증기를 만든다(위 제외 항목).
 3. 보조 인덱스 읽기 비용을 HealthMap 등 실제 프로젝트에서 잰다.
 4. 발행은 지시가 있을 때만 한다. 이때 `[Unreleased]`를 버전 절로 옮기고 플러그인 매니페스트 버전도 함께 올린다.
+5. B4 브랜치는 PR을 연 뒤 macOS CI에서 `AgentSkillTemplateTests`·`verify-mcp.py`·`verify-plugin-manifest.py`와
+   완료 검증 네 가지를 확인한다. `claude plugin validate .`(v2.1.281 이상이면 MCP 항목도 검사)를 돌릴 수 있는
+   환경이면 함께 돌린다.
 
 | 발행물 | 상태 |
 |---|---|
@@ -94,8 +122,9 @@ _Last updated: 2026-11-10 by Claude (PR #237 머지 이후 상태)_
   - B2 연결 안 된 `@IBOutlet`/`@IBAction` 개별 보고. 보존을 좁히는 변경이라 CONTRIBUTING의 "Narrowing one"
     (반대 방향 코퍼스 + 실제 프로젝트 3곳 델타)을 통과해야 한다.
   - B3 redundant protocol conformance.
+- **처리함(미머지)**
+  - B4 에이전트 플러그인: 매니페스트가 스킬과 함께 MCP 서버를 선언한다(위 "B4 — 처리한 것", 2026-11-15).
 - **부분 구현**
-  - B4 에이전트 플러그인: `.claude-plugin`이 스킬만 담고 MCP 선언은 없다.
   - B5 삭제 가능 LOC 요약: `--file-summary`가 개수만 센다.
   - C 편집 뒤 인덱스 낡음: `cartograph_prepare`와 `index-staleness` 한계까지만 있다.
 - **계열 결정(2026-11-04)**: gartograph·rustograph의 `query` 응답 스키마는 맞추지 않고 각자 고유의 공개 계약으로
@@ -114,6 +143,7 @@ _Last updated: 2026-11-10 by Claude (PR #237 머지 이후 상태)_
 ## Resume Prompt
 
 저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 Git 상태를 확인해줘. PR #237은 `main`에 스쿼시
-머지됐고(`f892ddb`) 아직 발행하지 않았어. "다음 할 일 (PR #237 머지 이후)"를 이어 가고,
+머지됐고(`f892ddb`) 아직 발행하지 않았어. B4는 브랜치 `ccr-37904670-hxdjsx`에서 처리했고 PR CI 확인이
+남았어. "다음 할 일 (PR #237 머지 이후)"를 이어 가고,
 남은 후보는 내가 고른 뒤 착수해.
 발행·태그는 따로 지시가 있을 때만 해.
