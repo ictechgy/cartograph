@@ -1502,6 +1502,22 @@ cartograph skill
 `suppressedByBaseline`은 팀이 이미 내린 결정이라는 것, 그리고 `graph --format json`을 통째로
 컨텍스트에 밀어 넣어도 `query`로 답할 수 없는 질문에는 답하지 못한다는 것.
 
+이 저장소는 Claude Code 플러그인이기도 합니다. 같은 스킬을 싣고 `serve`의 MCP 서버를 선언합니다.
+
+```
+/plugin marketplace add ictechgy/cartograph
+/plugin install cartograph@cartograph
+```
+
+플러그인에는 바이너리가 없습니다. 서버는 `cartograph serve --project ${CLAUDE_PROJECT_DIR}`이고
+`cartograph`를 이름으로 띄우므로, CLI를 먼저 설치하고(Homebrew나 릴리스 압축 파일, [설치](#설치)
+참고) Claude Code가 쓰는 `PATH`에서 `cartograph --version`이 동작하는지 확인하세요. 없으면 플러그인의 서버가
+시작하지 못하고 스킬의 명령도 같은 이유로 실패합니다. 서버는 그 `PATH`에서 처음 찾은
+`cartograph`이므로 도구는 플러그인 버전이 아니라 그 바이너리의 버전을 따릅니다.
+`${CLAUDE_PROJECT_DIR}`는 Claude Code가 연 디렉터리이고, `--project`는 `.cartograph.yml`의
+`project_path`보다 우선합니다. Xcode 프로젝트가 하위 디렉터리에 있으면(Flutter·React Native 앱의
+`ios/`) `/mcp`에서 플러그인의 서버를 끄고 `--project ios`를 준 `serve` 항목을 직접 추가하세요.
+
 ### `metrics` — 아키텍처 지표
 
 ```bash

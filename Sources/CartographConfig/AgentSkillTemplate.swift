@@ -116,6 +116,14 @@ public enum AgentSkillTemplate {
         `action: "status"` (status never loads inputs) until `state` is `ready`, and then ask. A cancelled
         generation's late result is discarded, and cancellation does not interrupt a native index read in progress.
 
+        The Claude Code plugin declares this server for the directory Claude Code opened. Neither the
+        plugin nor this skill contains the binary: the server and every command here run the
+        `cartograph` found on `PATH`, so the tools follow that binary's `cartograph --version`, not the
+        plugin version. If the tools are missing or `cartograph` is not found, say so and ask the user
+        to install the CLI (Homebrew or a release archive); `grep` cannot answer what this skill asks
+        the index. When the Xcode project sits in a subdirectory such as `ios/`, run the CLI with
+        `--project ios` instead of relying on the plugin's server.
+
         `cartograph_query` accepts a batch of symbols. Keep `symbol count × limit` at or below
         1000; split larger batches. `cartograph_check` bounds displayed diagnostics while keeping
         full counts and a `truncated` flag. An impact tool can also accept an inline

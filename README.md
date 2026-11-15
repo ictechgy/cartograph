@@ -1571,6 +1571,24 @@ fact about the graph rather than permission to delete, that `limitations` must b
 breath, that `suppressedByBaseline` means the team already decided, and that dumping
 `graph --format json` into a context window answers nothing `query` could not.
 
+The repository is also a Claude Code plugin. It ships the same skill and declares the MCP server
+from `serve`:
+
+```
+/plugin marketplace add ictechgy/cartograph
+/plugin install cartograph@cartograph
+```
+
+The plugin contains no binary. Its server is `cartograph serve --project ${CLAUDE_PROJECT_DIR}`,
+started by name, so install the CLI first (Homebrew or a release archive, see [Install](#install))
+and check that `cartograph --version` works on the `PATH` Claude Code runs with. Without it the
+plugin's server fails to start and the skill's commands fail the same way. The server is whichever
+`cartograph` comes first on that `PATH`, so its tools follow that binary's version, not the
+plugin's. `${CLAUDE_PROJECT_DIR}` is the directory Claude Code opened, and `--project` takes
+precedence over `project_path` in `.cartograph.yml`. When the Xcode project sits in a subdirectory
+(`ios/` in a Flutter or React Native app), turn the plugin's server off in `/mcp` and add your own
+`serve` entry with `--project ios`.
+
 ### `metrics` — architecture metrics
 
 ```bash
