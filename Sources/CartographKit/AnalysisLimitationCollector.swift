@@ -68,7 +68,8 @@ struct AnalysisLimitationCollector {
         var result: [String] = context?.indexSelectionLimitations ?? []
         if let inventory, !inventory.discoveryExclusions.isEmpty {
             result += Self.sourceDiscoveryLimitation(inventory.discoveryExclusions, projectPath: projectPath,
-                followsIgnoredSourceReferences: !inventory.ignoredSourceFiles.isEmpty).map { [$0] } ?? []
+                followsIgnoredSourceReferences: !inventory.ignoredSourceFiles.isEmpty,
+                ignoredSourcesOutsideScope: inventory.ignoredSourcesOutsideScope).map { [$0] } ?? []
         }
         if let inventory, let reason = inventory.gitSelectionUnavailableReason {
             result.append(Self.gitSelectionLimitation(reason))
@@ -238,8 +239,12 @@ struct AnalysisLimitationCollector {
     ///
     /// 분석 응답은 무시됐지만 색인된 소스의 참조를 따라간다는 문장을 덧붙인다. 교환 문서의 구문 스캔은 그 파일을
     /// 읽지 않으므로 같은 문장을 쓰면 거짓이 된다 — 그래서 기본값은 꺼짐이다.
+    /// include/exclude 가 거른 무시 소스(`ignoredSourcesOutsideScope`)는 따라가지 않으므로, 그런 파일이 있으면
+    /// 보존 문장과 별개로 개수·걸린 패턴·고치는 방법을 덧붙인다. 없으면 문장도 없다. 둘 중 하나라도 실리면
+    /// 탐색이 걷지 않는 빌드 디렉터리는 살펴보지 않는다는 문장도 붙인다.
     static func sourceDiscoveryLimitation(
-        _ paths: [String], projectPath: String, followsIgnoredSourceReferences: Bool = false
+        _ paths: [String], projectPath: String, followsIgnoredSourceReferences: Bool = false,
+        ignoredSourcesOutsideScope: IgnoredSourcesOutsideScope = .none
     ) -> String? {
         guard !paths.isEmpty else { return nil }
         var resolver = PathResolver(canonicalize: { $0 }, projectPath: projectPath)
@@ -249,7 +254,49 @@ struct AnalysisLimitationCollector {
             + (followsIgnoredSourceReferences
                 ? " Declarations used by ignored sources the compiler indexed are retained (ignoredSourceReference)."
                 : "")
+            + ignoredSourcesOutsideScopeSentence(ignoredSourcesOutsideScope)
+            + (followsIgnoredSourceReferences || !ignoredSourcesOutsideScope.paths.isEmpty
+                ? Self.unwalkedBuildDirectoriesSentence : "")
             + encodedDiagnosticPaths(paths.compactMap { resolver.relativeDiagnosticPath($0) })
+    }
+
+    /// 무시 소스 문장 뒤에 붙는다. 앞에 공백을 둔다.
+    ///
+    /// `BuildArtifactDirectories.prunedNames` 의 디렉터리는 걷지 않아 그 안의 생성 파일(SwiftPM·Xcode 빌드 도구 플러그인
+    /// 출력)은 무시 소스로 세지도 따라가지도 않는다. 앞 문장들이 R.swift 같은 생성 코드를 다룬다고 읽히므로 경계를 밝힌다.
+    static let unwalkedBuildDirectoriesSentence = " Generated sources inside build directories that discovery does not "
+        + "walk (such as .build and DerivedData, where build-tool plugins write their output) are not examined."
+
+    /// include/exclude 가 거른 무시 소스가 있을 때만 붙는 문장. 앞에 공백을 둔다.
+    ///
+    /// 기본 제외 글롭이 생성기의 흔한 출력 경로와 겹쳐, 이 문장이 없으면 "보존한다" 는 앞 문장이 그 파일들에도
+    /// 해당하는 것으로 읽힌다. 실제로는 그 파일만 쓰는 선언이 미사용으로 보고된다. 사용자 `exclude` 는 기본값을
+    /// 대체하므로 기본 패턴이 아니라 실제로 걸린 패턴을 적고, 고치는 방법도 걸린 쪽(exclude·include)만 말한다.
+    static func ignoredSourcesOutsideScopeSentence(_ outside: IgnoredSourcesOutsideScope) -> String {
+        guard !outside.paths.isEmpty else { return "" }
+        var reasons: [String] = []
+        var fixes: [String] = []
+        if !outside.excludePatterns.isEmpty {
+            reasons.append("matched by exclude patterns " + encodedPatterns(outside.excludePatterns))
+            fixes.append("remove the matching exclude pattern")
+        }
+        if outside.missesInclude {
+            reasons.append("not matched by include")
+            fixes.append("widen include")
+        }
+        return " \(outside.paths.count) ignored source file(s) are outside the include/exclude scope ("
+            + reasons.joined(separator: "; ") + "), so declarations used only by them are not retained and can be "
+            + "reported as unused; " + fixes.joined(separator: " or ") + " to follow them."
+    }
+
+    /// 설정 글롭을 경로 목록과 같은 방식(JSON, 제어 문자 이스케이프)으로 적는다. 설정 값이 출력 행을 바꾸지 못하게 한다.
+    private static func encodedPatterns(_ patterns: [String]) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let items = patterns.compactMap { pattern in
+            (try? encoder.encode(pattern)).flatMap { String(data: $0, encoding: .utf8) }.map(escapedDiagnosticControls)
+        }
+        return "[" + items.joined(separator: ",") + "]"
     }
 
     /// Git 선택이 실패해 전체 walk 로 폴백했다는 한계. 커버리지 공백이 아니라 결과가 흔들릴 수 있다는 알림이다.

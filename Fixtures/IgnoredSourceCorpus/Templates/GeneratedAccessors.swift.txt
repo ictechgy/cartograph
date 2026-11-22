@@ -1,0 +1,17 @@
+// Sourcery·SwiftGen 출력처럼 .gitignore 에 두고 빌드 때 만드는 생성 파일. 검증기가 복사한다.
+enum GeneratedAccessors {
+    static var screenTitle: String { Screen.fallbackTitle }
+
+    static func touchHelper() {
+        Helper.usedByGenerated()
+    }
+
+    // 무시 파일 자신의 선언은 아무도 쓰지 않아도 보고되지 않는다.
+    static func generatedButUnused() {}
+}
+
+struct GeneratedConformer: AdoptedByGenerated {}
+
+extension ExtendedOnly {
+    static var generatedName: String { "extended" }
+}

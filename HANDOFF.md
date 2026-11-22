@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-22 by Claude (계열 점검 3차 PR #240: 임계값 범위 검사와 리뷰 반영, PR #237 돌연변이 확인, Linux 스크래치 검증)_
+_Last updated: 2026-11-22 by Claude (계열 점검 4차: 무시 소스 한계 문장 정정, 무시 컴파일 소스 하위 코퍼스·검증기, Linux 스크래치 검증)_
 
 작업 규칙은 [AGENTS.md](AGENTS.md), 이전 원문은 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 있다
 (2026-09-25 기록은 그 파일 끝 절로 옮겼다). 이력의 오래된 버전·Next Steps는 현재 지시로 되살리지 않는다.
@@ -15,7 +15,98 @@ _Last updated: 2026-11-22 by Claude (계열 점검 3차 PR #240: 임계값 범�
 - 후보 **B4**(플러그인 MCP 선언)는 **PR #239**에서 처리했다(2026-11-15, `main` `5b73a48` 기준).
   아래 "PR #239 — B4 처리" 절을 본다. 이 PR도 CHANGELOG `[Unreleased]`에 들어가며 발행은 따로 지시가 있을 때 한다.
   PR #239는 `main` `8f6a1c3`로 스쿼시 머지됐고 그 커밋의 CI도 성공했다.
-- 계열 점검 3차(2026-11-22)는 브랜치 `ccr-37904670-hxdjsx`(`main` `8f6a1c3` 기준, PR #240)에 있다. 아래 "3차 점검" 절을 본다.
+- 계열 점검 3차(2026-11-22)는 PR #240으로 `main` `e56eac8`에 스쿼시 머지됐다. 아래 "3차 점검" 절을 본다.
+- 계열 점검 4차(2026-11-22)는 브랜치 `ccr-37904670-hxdjsx`(`main` `e56eac8` 기준)에 있다. 아래 "4차 점검" 절을 본다.
+
+### 4차 점검 (2026-11-22, `main` `e56eac8` 기준)
+
+커밋 해시는 브랜치의 것이다.
+
+- **무시 소스 한계 문장 정정** (`4b7bfde`): `source-discovery-exclusions`는 "Declarations used by ignored sources the
+  compiler indexed are retained (ignoredSourceReference)."라고만 말했다. 그런데 `include`/`exclude`가 거른 무시 소스는
+  보조 읽기 대상이 아니다(`ProjectFileInventory.ignoredSourceFiles`가 경로 필터를 건다). 기본 제외 `**/*.generated.swift`·
+  `**/Generated/**`가 R.swift 기본 출력 `R.generated.swift`와 흔한 Sourcery·SwiftGen 출력 경로에 맞아, 기본 설정에서 그 파일만
+  쓰는 선언은 색인돼 있어도 미사용으로 보고됐고 한계는 반대로 읽혔다(재현: 아래 하위 코퍼스의 `usedOnlyByExcludedGenerated()`).
+  이제 거른 무시 소스가 있으면 그 개수와 고치는 방법(해당 `exclude` 패턴 빼기)을 덧붙이고, 따라가는 무시 소스가 없으면 보존
+  문장을 싣지 않는다(이전 동작 그대로). 판정은 바꾸지 않았다 — 발견 목록은 전후가 같다.
+  CHANGELOG `[Unreleased]`의 해당 `Fixed` 항목과 README 두 벌(보존 표, 소스 발견 절)에 경계를 적었다.
+- **무시 컴파일 소스 하위 코퍼스와 검증기** (`01eafe9`, 다음 할 일 2): `Fixtures/IgnoredSourceCorpus`와
+  `Scripts/verify-ignored-sources.py`. 무시 파일은 커밋할 수 없어 `Templates/*.txt`를 사본에 옮기고 `git init` 뒤 Git이 정확히
+  그 경로만 무시하는지 확인한 다음 새 스크래치 경로로 빌드한다. 기대 미사용 목록 7건은 소스에서 정했다. 따라가는 생성 파일,
+  기본 제외에 걸린 생성 파일, 컴파일되지 않는 작업 사본, 익스텐션만 하는 사용, 추적된 죽은 코드를 가리키는 무시 링크,
+  준수·이름 참조를 한 패키지에 둔다. 무시 파일에서 나온 발견·정점·순환이 없는지, 한계의 경로 4개와 두 문장, `query` 상태·근거,
+  `--explain` 문장도 본다. 대조군으로 같은 인덱스에서 생성 파일의 무시를 풀면 타입 순환과 그 파일의 미사용 타입이 나타난다.
+  `verify-fixtures.sh` 끝에서 돈다(CI·릴리스 게이트가 이미 이 스크립트를 돌리므로 `ci.yml`과 native 관측 고정값은 그대로다).
+- **돌연변이 확인**: 검증기는 Linux 스크래치 빌드의 변이 다섯 개를 모두 잡았다 — `IgnoredSourceReferences.targets`가
+  빈 집합(`Helper`·`Screen`·`AdoptedByGenerated`가 새로 보고), `untrackedSources` 미필터(`DeadCallee`가 사라짐), 무시 소스의 경로
+  필터 제거(`usedOnlyByExcludedGenerated()`가 사라짐), `extends`를 사용으로 셈(`ExtendedOnly`가 사라짐), 범위 밖 문장 제거(한계
+  검사 실패). `main` 소스로 만든 바이너리는 한계 문장 검사에서만 실패하고 나머지 판정은 모두 통과한다 — 보존 동작 자체는 PR #237
+  그대로라는 뜻이다. 새 단위 테스트 `GitSourceInventoryTests`의 범위 밖 문장 검사는 문장 가드를 뒤집은 변이에서 실패했다.
+- **Linux 스크래치 검증**: 3차와 같은 방법(Docker Hub `swift:6.4.3-noble` 툴체인 레이어, 이번에는 Docker Hub 요청 한도 때문에 같은
+  digest를 `mirror.gcr.io`에서 받아 sha256 대조)이다. 사본 shim은 3차와 조금 다르다 — `Darwin` 대신 `LinuxDarwinShim` 모듈 이름을 쓴다
+  (`Darwin`이라는 모듈이 있으면 indexstore-db의 `#if canImport(Darwin)`가 켜져 블록 API로 컴파일하다 실패한다).
+  - `swift test`: Core 236·Config 36·Syntax 631·Analysis 546·Export 73 통과. Kit·CLI·IndexStore의 실패 테스트 59개는 `main`
+    소스로 같은 사본을 돌린 실패 목록과 이름까지 같다(전부 `xcrun`·`/private/tmp`·프로세스 그룹·시뮬레이터 전제). 3차의 48개와
+    수가 다른 것은 shim 차이(`proc_listpgrppids`를 0으로 두는 등) 때문이며 이번 변경과 무관하다.
+  - 자기 분석 네 가지 모두 exit 0. `dead` 경고 22건은 `main` 기준선과 줄까지 같고 정점만 2개 늘었다(새 프로퍼티·함수). 순환 없음,
+    `rules` 발견 없음. 사본 동기화가 같은 내용을 다시 써서 생긴 `index-staleness`는 mtime을 되돌려 없앴다.
+  - `verify-cli-contract.sh`: 276 ok, `xcrun swiftc`로 인덱스를 만드는 2건만 FAIL(3차와 같음).
+  - `verify-ignored-sources.py`: 통과(경로 4개, 미사용 7건). `python3 -m unittest discover -s Scripts/benchmark-inputs` 311 OK,
+    `verify-plugin-manifest.py` OK, `verify-release-workflow.py` 18 OK. `verify-coverage-inputs.py`는 GNU `mktemp -t`가 `X` 없는 템플릿을
+    거부해 실패한다(`coverage.sh`의 BSD 전제, 이번 변경과 무관).
+  - 실제 프로젝트 전후 비교(`main` 바이너리 대 브랜치 바이너리, 같은 인덱스): Yams 5.4.0(기본 183건, `--retain-public` 9건),
+    swift-argument-parser 1.8.2(309건, 81건), cartograph 자기 분석 모두 진단과 limitations가 같다. 세 곳 모두 범위 밖 무시 소스가 없어서다.
+  - 적대 입력(한 패키지·한 인덱스에 설정만 바꿔 `main`과 대조): 기본 제외 `R.generated.swift`·`Generated/`·한글과 공백이 든
+    `생성 코드.generated.swift`, 대문자 `R.Generated.swift`(글롭이 대소문자를 가려 따라감), 사용자 `exclude`, 좁힌 `include`(무시 소스 8개
+    전부 범위 밖, 보존 문장 없이 개수만), `.git/info/exclude`, 강제 추가된 추적 파일(무시 소스로 세지 않음), 추적 파일을 가리키는
+    무시 링크(범위 안에서는 세지 않음, 제외돼도 리뷰 반영 뒤에는 세지 않음), 저장소 밖(한계 없음), 손상된 Git index(폴백, 문장 없음). 모든 경우
+    발견 목록은 `main`과 같았고, 센 개수와 실제로 보고된 선언이 일치했다.
+  - 못 돌린 것: `coverage.sh`(`xcrun llvm-cov`·`.xctest`), `verify-fixtures.sh` 전체(SwiftUI·Objective-C 코퍼스와 macOS 인덱스 전제 —
+    새 검증기는 그 스크립트 끝에서 돌고 단독으로는 Linux에서 통과), macOS 전용 테스트. 근거는 macOS CI다. GLM 리뷰도 이 환경에서
+    쓸 수 없었다.
+- **리뷰 반영** (PR #241 독립 리뷰, 차단 항목 없음, 코드 `55e3abd`, 문서는 그다음 커밋):
+  - 검증기 환경 격리: 공유 `run`이 호출자의 `GIT_*`를 그대로 넘겼다. 버린 저장소를 `GIT_DIR`로 지정해 옛 검증기를 돌리니
+    `git -C <사본> init`이 그 바깥 저장소의 `.git` 파일 2개를 바꾸고 사본에는 `.git`이 생기지 않았으며, 빌드를 다 한 뒤에야
+    엉뚱한 미사용 목록 불일치로 실패했다. 이제 `main()`과 `materialize()` 처음에 `GIT_*`를 지우고(Cartograph의 Git 호출 두 곳은
+    이미 스스로 지운다), 사본 지역 설정에 `core.excludesFile=/dev/null`을 두고, 사본이 자기 저장소인지 확인한다. 같은 조건에서 새
+    검증기는 통과하고 바깥 저장소는 그대로다. 전역 gitignore에 `Package.swift`를 둔 HOME으로도 옛 검증기는 빌드 뒤 경로 목록
+    불일치로 실패하고 새 검증기는 통과한다. 드리프트 검사는 모든 `.swift`와 `Package.swift`로 넓혀, `.gitignore`에
+    `/Package.swift`를 더한 변이를 빌드 전에(0초) 잡는다(옛 검사는 빌드 뒤 11초에 다른 이유로 실패).
+  - 빌드 디렉터리: `BuildArtifactDirectories.prunedNames`(`.build`·`DerivedData` 등)는 걷지 않는다. Linux에서 SwiftPM 빌드 도구
+    플러그인이 `.build/plugins/outputs/.../PluginGenerated.swift`에 `Helper.usedByPlugin()` 호출을 생성하게 하니
+    `dead --retain-public`이 `usedByPlugin()`을 미사용으로 보고했고 어느 한계도 그 파일을 말하지 않았다. README 두 벌·CHANGELOG·
+    코퍼스 README에 적고, 무시 소스 문장이 실릴 때 "Generated sources inside build directories that discovery does not walk … are not
+    examined." 문장을 붙인다. 플러그인 출력을 따라가는 것은 아래 D2다.
+  - 패턴 이름: 괄호 안의 기본 패턴 이름을 늘 붙이던 것을, 범위 밖 파일에 실제로 걸린 `exclude` 패턴(JSON, 제어 문자 이스케이프)과
+    include 누락으로 바꾸고 고치는 방법도 걸린 쪽만 말한다. 사용자 `exclude`는 기본값을 대체하고 `init` 템플릿에는
+    `**/Generated/**`가 없다.
+  - 과다 계수: 추적 파일(범위 밖 포함)을 가리키는 무시 링크는 범위 밖 수에서 뺀다(`untrackedSources`, 추적 목록은 `allSourceFiles`).
+    무시 소스 분할은 `IgnoredSourceReferences.partition` 한 번으로 한다.
+  - 문서: 아래 "다음 할 일" 2의 "마지막 줄"을 고쳤다(ok 줄 뒤에 빈 줄과 "통과"가 온다). D1에 추적 생성 파일 사정을, 아래에 물려받은
+    한계를 적었다. 코퍼스 README에 출처(R.swift 빌드 단계의 `R.generated.swift`, Sourcery의 `<Template>.generated.swift`, SwiftGen의
+    `Generated/`, 에이전트 작업 사본)를 적었다.
+  - 돌연변이(`GitSourceInventoryTests`, Linux 스크래치): 모든 exclude 패턴을 적음(5 issues), 추적 파일 링크를 셈(2), 빌드 디렉터리
+    문장을 빼거나 늘 붙임(2·1), include 누락을 무시(2) — 다섯 개 모두 실패한다. 검증기는 리뷰 전 바이너리를 범위 밖 문장 검사에서
+    잡는다(이제 걸린 패턴 `["**/*.generated.swift"]`과 빌드 디렉터리 문장까지 문자열로 본다).
+  - 재검증: `swift test` 실패 59개가 `main` 기준선과 이름까지 같다(Kit의 issue 하나 차이는 이미 실패하는
+    `MechanicalFixVerificationTests` 프로세스 그룹 테스트 안의 타이밍). 자기 분석 네 가지 exit 0, `dead` 경고 22건 동일(정점 9803).
+    CLI 계약 276 ok·2 FAIL(`xcrun swiftc`). 검증기 통과. 적대 입력 재실행: 기본 설정 3건(패턴 두 개 이름), 사용자 `exclude` 1건(사용자
+    패턴만, 추적 파일 링크 빠짐 — 전에는 2건), 좁힌 `include` 7건(전에는 8건, include 누락 함께 표시). 발견 목록은 리뷰 전 바이너리와
+    모두 같다. Yams·swift-argument-parser도 진단·limitations가 같다.
+- **물려받은 한계(리뷰가 지적, 이번에 고치지 않음)**:
+  - 저장소 안 디렉터리 링크: 링크로 먼저 걷고 Git 목록과 대조한다는 지적이다. Linux에서 `ZMirror -> Sources/Lib/Core`(링크가 먼저 걸리는
+    순서)로 재현하지 못했다 — `directoryEntries`가 링크 디렉터리의 자식을 실제 경로로 적어 Git 목록과 맞는다. macOS에서 다시 볼 것.
+  - 대소문자만 바꾼 이름 변경: 대소문자를 가리지 않는 파일 시스템에서 `mv Foo.swift foo.swift` 뒤 Git 색인에는 `Foo.swift`가 남고 걷기는
+    `foo.swift`를 낸다. `git.paths.contains`는 대소문자를 가리므로 그 파일이 무시 소스로 세지고 분석에서 빠질 수 있다(코드 판독, Linux
+    ext4에서는 재현 불가).
+  - MCP 세션 지문: 세션 재사용 판단이 범위 안 경로만 보면 범위 밖 무시 파일이 생기거나 사라져도 개수가 낡을 수 있다는 지적이다.
+    이 세션에서 확인하지 않았다(`AnalysisSession.walk`의 캐시 키와 `ProjectFileInventory`의 관계를 볼 것).
+- **제외한 것**:
+  - 범위 밖 무시 소스를 따라가 보존하는 것(아래 "남은 후보" D1). 보존을 넓히는 쪽이지만 `exclude`의 뜻을 바꾼다. 추적되는 제외 파일은
+    지금도 간선을 버리므로, 무시 파일만 따라가면 같은 `R.generated.swift`가 추적 여부에 따라 다른 답을 낸다.
+  - 빌드 도구 플러그인 출력을 따라가는 것(아래 D2).
+  - B1·B3·B5·C(사용자 선택), B2(Narrowing 절차), 보조 인덱스 읽기 비용 측정(실제 프로젝트 필요), `assign-only` 문구 고정,
+    `accessHidingOwners` 첫 루프 정리, `CartographKit` 임베더 `Thresholds` 검사(API 동작 변경).
 
 ### 3차 점검 (2026-11-22, `main` `8f6a1c3` 기준)
 
@@ -175,8 +266,8 @@ _Last updated: 2026-11-22 by Claude (계열 점검 3차 PR #240: 임계값 범�
 
 1. ~~새 보존 테스트의 돌연변이 확인~~ — 3차 점검에서 Linux 스크래치 빌드로 했다(변이 20개 중 18개 검출, 2개는 동작이
    같은 변이). 이 테스트들은 손으로 만든 스냅샷 위의 순수 분석이라 플랫폼과 무관하다.
-2. 무시 컴파일 소스 하위 코퍼스와 검증기를 만든다(위 제외 항목). 실제 인덱스에서 보존이 동작하는 것은 3차 점검에서
-   일회성으로 확인했다.
+2. ~~무시 컴파일 소스 하위 코퍼스와 검증기~~ — 4차 점검에서 `Fixtures/IgnoredSourceCorpus`와 `verify-ignored-sources.py`로
+   했다. macOS CI의 `verify-fixtures.sh` 로그 끝부분, "통과" 바로 앞의 ok 줄 "무시 컴파일 소스 경계 4개 경로·미사용 7건"을 확인한다.
 3. 보조 인덱스 읽기 비용을 HealthMap 등 실제 프로젝트에서 잰다.
 4. 발행은 지시가 있을 때만 한다. 이때 `[Unreleased]`를 버전 절로 옮기고 플러그인 매니페스트 버전도 함께 올린다.
 5. PR #239(B4)의 macOS CI에서 `AgentSkillTemplateTests`·`verify-mcp.py`·`verify-plugin-manifest.py`와 완료 검증
@@ -199,6 +290,16 @@ _Last updated: 2026-11-22 by Claude (계열 점검 3차 PR #240: 임계값 범�
   - B2 연결 안 된 `@IBOutlet`/`@IBAction` 개별 보고. 보존을 좁히는 변경이라 CONTRIBUTING의 "Narrowing one"
     (반대 방향 코퍼스 + 실제 프로젝트 3곳 델타)을 통과해야 한다.
   - B3 redundant protocol conformance.
+- **결정 필요(4차 점검에서 발견)**
+  - D1 `include`/`exclude`가 거른 Git 무시 소스도 따라갈지. 지금은 따라가지 않고 한계가 개수를 센다(`4b7bfde`). 기본 제외가
+    R.swift·Sourcery·SwiftGen 출력과 겹쳐 기본 설정의 생성 파일 대부분이 해당한다. 무시 파일 자신은 어차피 분석 범위 밖이라 제외가
+    더할 것이 없다는 점은 따라가는 쪽의 근거다. 추적되는 제외 파일은 간선을 버리는 현재 계약과 어긋난다는 점은 반대 근거다.
+    그 계약 쪽도 조용하다: 기본 제외에 걸린 **추적** 생성 파일(`Forced.generated.swift`)은 호출자를 잃는데 아무 한계도 붙지 않는다
+    (`configured-path-filter`는 기본값보다 좁힐 때만 실린다, `narrowsPathsBeyondDefaults`). 4차 적대 입력에서 확인했다.
+  - D2 빌드 도구 플러그인 출력(`.build/plugins/outputs`, Xcode는 DerivedData)이 쓰는 선언을 보존할지. 탐색이 그 디렉터리를 걷지 않아
+    지금은 미사용으로 보고되고 한계도 없다(무시 소스 문장이 실릴 때만 경계를 말한다). R.swift 7·SwiftGen·Sourcery 플러그인
+    사용자에게 같은 오탐 계열이다. 스토어에서 플러그인 출력 유닛을 찾아 보조로 읽는 방식이 후보이며, 무시 소스와 같은 보존 근거를
+    쓸지·한계로만 둘지를 정해야 한다.
 - **처리함**
   - B4 에이전트 플러그인: PR #239에서 처리. 매니페스트가 스킬과 함께 MCP 서버를 선언한다(위 "PR #239 — B4 처리").
 - **부분 구현**
@@ -221,6 +322,5 @@ _Last updated: 2026-11-22 by Claude (계열 점검 3차 PR #240: 임계값 범�
 
 저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 Git 상태를 확인해줘. PR #237은 `main`에 스쿼시
 머지됐고(`f892ddb`) 아직 발행하지 않았어. B4는 PR #239에서 처리했어. "다음 할 일 (PR #237 머지 이후)"를
-이어 가고,
-남은 후보는 내가 고른 뒤 착수해.
+이어 가고, 남은 후보(4차 점검의 D1·D2 포함)는 내가 고른 뒤 착수해.
 발행·태그는 따로 지시가 있을 때만 해.

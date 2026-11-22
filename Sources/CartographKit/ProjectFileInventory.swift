@@ -24,6 +24,8 @@ struct ProjectFileInventory: Sendable, Equatable {
     /// 컴파일러가 이 중 일부를 색인했다면 그 파일이 쓰는 선언을 보존 근거로 삼는다(`IgnoredSourceReferences`).
     /// 생성 파일을 무시 목록에 두는 팀이 흔해, 빼기만 하면 생성 코드만 부르는 앱 코드가 미사용으로 보고됐다.
     let ignoredSourceFiles: [String]
+    /// Git 이 무시한 소스 중 include/exclude 가 걸러 참조를 따라가지 않는 것과 걸린 패턴. 한계 문장이 이 값으로 갈린다.
+    let ignoredSourcesOutsideScope: IgnoredSourcesOutsideScope
     /// Git 저장소인데 선택을 끝내지 못해 전체 walk 로 폴백한 이유. nil 이면 선택했거나 시도할 필요가 없었다.
     ///
     /// 폴백하면 무시 파일까지 섞여, 같은 커밋에서도 선택이 성공한 실행과 답이 달라진다. 이 값이 그 사실을
@@ -70,7 +72,8 @@ struct ProjectFileInventory: Sendable, Equatable {
         limitationFiles = Set(sourceFiles + headers + interfaceBuilderFiles).sorted()
         externalDirectoryLinks = Self.inScope(externalLinks, pathFilter: pathFilter)
         discoveryExclusions = exclusions.sorted()
-        ignoredSourceFiles = ignoredSources.filter(pathFilter.allows).sorted()
+        (ignoredSourceFiles, ignoredSourcesOutsideScope) = IgnoredSourceReferences.partition(
+            ignored: ignoredSources, tracked: allSourceFiles, pathFilter: pathFilter)
     }
 
     /// 제외 글롭에 걸리지 않는 위치의 링크만 남긴다.

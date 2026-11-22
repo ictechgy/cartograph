@@ -285,5 +285,9 @@ assert items[0]["location"]["path"].endswith("LocalFunctions.swift") and items[0
 PYTHON
 echo "  ok  notFound도 미분석 지역 함수의 이름·위치·원인·조치를 제공함"
 
+# Git 이 무시하지만 컴파일된 생성 소스의 보존 경계. 무시 파일은 커밋할 수 없어 이 코퍼스에 넣지 않고,
+# 전용 하위 코퍼스의 사본에서 만들어 따로 빌드한다. 그래야 위 기대 파일들의 limitations 가 바뀌지 않는다.
+python3 "$REPO_ROOT/Scripts/verify-ignored-sources.py" --cartograph "$CARTOGRAPH"
+
 echo
 echo "통과"
