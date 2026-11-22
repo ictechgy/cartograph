@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-22 by Claude (계열 점검 3차: 임계값 범위 검사, PR #237 돌연변이 확인, Linux 스크래치 검증)_
+_Last updated: 2026-11-22 by Claude (계열 점검 3차 PR #240: 임계값 범위 검사와 리뷰 반영, PR #237 돌연변이 확인, Linux 스크래치 검증)_
 
 작업 규칙은 [AGENTS.md](AGENTS.md), 이전 원문은 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 있다
 (2026-09-25 기록은 그 파일 끝 절로 옮겼다). 이력의 오래된 버전·Next Steps는 현재 지시로 되살리지 않는다.
@@ -15,7 +15,7 @@ _Last updated: 2026-11-22 by Claude (계열 점검 3차: 임계값 범위 검사
 - 후보 **B4**(플러그인 MCP 선언)는 **PR #239**에서 처리했다(2026-11-15, `main` `5b73a48` 기준).
   아래 "PR #239 — B4 처리" 절을 본다. 이 PR도 CHANGELOG `[Unreleased]`에 들어가며 발행은 따로 지시가 있을 때 한다.
   PR #239는 `main` `8f6a1c3`로 스쿼시 머지됐고 그 커밋의 CI도 성공했다.
-- 계열 점검 3차(2026-11-22)는 브랜치 `ccr-37904670-hxdjsx`(`main` `8f6a1c3` 기준)에 있다. 아래 "3차 점검" 절을 본다.
+- 계열 점검 3차(2026-11-22)는 브랜치 `ccr-37904670-hxdjsx`(`main` `8f6a1c3` 기준, PR #240)에 있다. 아래 "3차 점검" 절을 본다.
 
 ### 3차 점검 (2026-11-22, `main` `8f6a1c3` 기준)
 
@@ -24,7 +24,8 @@ _Last updated: 2026-11-22 by Claude (계열 점검 3차: 임계값 범위 검사
 - **임계값 범위 검사** (`0aba669`): `max_efferent_coupling`만 음수를 거부했다. 음수 `max_cycles`·
   `max_unused_symbols`·`max_rule_violations`는 발견 0건인 실행도 실패시켰고("found 0, allowed at most -1", exit 1),
   `max_instability: 90`(백분율)이나 `.nan`은 아무 정점도 걸지 못해 `metrics --strict`가 exit 0으로 통과했다.
-  이제 개수는 0 이상, 비율은 0과 1 사이만 받고 그 밖은 키·값·이유를 담은 설정 오류(exit 2)다. 0과 1은 그대로 받는다.
+  이제 개수는 0 이상, 비율은 0 이상 1 이하만 받고 그 밖은 키·값·원인·고치는 방법을 담은 설정 오류(exit 2)다.
+  0과 1(정수 표기 포함)은 그대로 받는다. 문구는 아래 "리뷰 반영"에서 고쳤다.
   CHANGELOG `Fixed`에 업그레이드 노트, README 두 벌의 지표 절에 범위를 적었다. 새 테스트 9건(키·값 조합)은 수정 전
   코드에서 전부 실패했다.
 - **계약 스크립트** (`400f026`): 빈 인덱스 픽스처에 `--allow-empty-index`를 주고 두 경우가 exit 2인지 본다. 수정 전
@@ -51,16 +52,32 @@ _Last updated: 2026-11-22 by Claude (계열 점검 3차: 임계값 범위 검사
   파일 두 개(`BoundedInputReadTests`, `CoreDataSessionInvalidationTests`)를 뺐다. C 헤더는 `-Xcc/-Xcxx -I<toolchain>/usr/lib/swift`
   (와 `.../Block`)로 찾는다. `DEVELOPER_DIR`에 `Toolchains/XcodeDefault.xctoolchain/usr/lib/libIndexStore.dylib` 링크(→ `.so`)를
   두면 CLI가 Linux 인덱스(`.build/out`)를 읽는다. 이 shim은 커밋하지 않는다.
-  - 결과: 테스트 타깃 8개 중 Core·Config·Syntax·Analysis·Export 다섯이 통과하고, Kit·IndexStore·CLI에서 47건이 실패한다.
+  - 결과: 테스트 타깃 8개 중 Core·Config·Syntax·Analysis·Export 다섯이 통과하고, Kit·IndexStore·CLI에서 48건이 실패한다.
     전부 `xcrun`·시뮬레이터·`/tmp` 별칭·macOS libIndexStore 경로에 걸리는 macOS 전용이며, 수정 전후 실패 목록이 새 테스트
     두 개를 빼고 같다. 자기 분석은 네 가지 모두 exit 0이다(`dead` 경고 26건 = macOS CI의 22건 + shim 모듈 4건, 순환 없음,
-    `rules`는 shim 모듈 세 개의 레이어 미지정 정보 3건). CLI 계약은 275건 통과, `xcrun swiftc`로 인덱스를 만드는 2건만 실패.
+    `rules`는 shim 모듈 세 개의 레이어 미지정 정보 3건). CLI 계약은 리뷰 반영 뒤 276건 통과(기존 271 + 임계값 5줄),
+    `xcrun swiftc`로 인덱스를 만드는 2건만 실패. 처음 보고한 "47건 실패·275건 통과"는 셈을 잘못한 것이다(출력이 섞인
+    실패 줄 하나를 놓쳤고, 통과 줄은 273이었다).
   - 못 돌린 것: `coverage.sh`(`xcrun llvm-cov`·`.xctest` 번들 전제), `verify-fixtures.sh`(Objective-C 코퍼스와 macOS
     인덱스 전제), 위 macOS 전용 테스트. 근거는 macOS CI다. GLM 리뷰도 이 환경에서 쓸 수 없었다.
 - **제외한 것**: B1·B3·B5·C는 아래 "남은 후보"대로 사용자가 고른 뒤 착수한다. B2는 Narrowing 절차가 필요하다.
   Encodable만 준수하는 열거형의 케이스도 `codableEnumCase`로 살지만(디코딩이 없어 케이스를 만들지 않는다) 보존을 좁히는
   변경이라 반대 방향 코퍼스와 실제 프로젝트 근거 없이 하지 않는다. `unused-parameter` 문구에 소유 타입을 넣는 것은 출력 변경이라
   코퍼스 기대 파일 갱신과 함께 따로 다룬다.
+- **리뷰 반영** (PR #240 독립 리뷰, 차단 항목 없음):
+  - 문구(`3a1138e`): AGENTS.md는 오류에 원인과 해결 방향을 함께 담으라고 한다. 비율 오류는 원인만 말했으므로
+    "Write a percentage as a fraction (0.9 for 90%), or remove the key to turn the check off."를, 새로 검사하는 세 개수 키는
+    "Set 0 to allow none, or remove the key to turn the check off."를 붙였다. 비율 범위는 "from 0 to 1 inclusive"로 쓴다.
+    `max_efferent_coupling` 문구는 발행된 그대로 두고("must be 0 or greater"가 고칠 범위를 말한다) 테스트가 바이트로 고정한다.
+  - 테스트(`3a1138e`): 값("(got -3)", "(got 90.0)", "(got nan)", "(got -inf)" 등)과 원인·고치는 방법까지 단언한다.
+    `#expect(throws:)`의 반환값을 쓴다(클로저 매처 형태는 Swift Testing이 soft-deprecated로 표시했다). 경계값은 두 비율 키 모두
+    0과 1(YAML 정수)로 돈다. 돌연변이 — "(got …)" 삭제(개수·비율), 고치는 방법 삭제(개수·비율), `limit <= 0` — 를 모두 잡는다.
+  - 계약(`10c6624`): 종료 코드만 보던 두 줄에 `expect_output` 문구 확인을 더하고, 경계값 설정으로 `metrics --strict`가
+    0으로 끝나는 대조군을 넣었다. 문구를 "invalid threshold"로 바꾼 변이는 문구 줄이, 개수 0을 거부하는 변이는 대조군이 잡는다.
+  - 문서(`7ac4108`): README 두 벌의 설정 참조 블록, `cartograph init` 템플릿, `Thresholds` 문서 주석에 범위를 적었다.
+  - 기록만 하는 것: `CartographKit` 임베더가 코드로 만든 `Thresholds`는 로더를 거치지 않아 범위 검사를 받지 않는다
+    (`ArchitectureMetricsTests`가 `maxEfferentCoupling: -1`을 코드로 넣어 쓴다). `assign-only` 진단 문구는 어느 테스트·코퍼스
+    기대 파일도 고정하지 않는다 — README 예시를 바꾼 근거는 `AnalysisDiagnostics.assignOnlyDiagnostics` 코드다.
 
 ### PR #239 — B4 처리 (2026-11-15)
 
