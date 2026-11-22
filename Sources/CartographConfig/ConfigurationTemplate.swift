@@ -73,11 +73,11 @@ public enum ConfigurationTemplate {
         #  - from: Domain
         #    allow: []
 
-        thresholds: {}
+        thresholds: {}                   # counts 0 or greater, ratios 0 to 1 inclusive
         #  max_cycles: 0
         #  max_unused_symbols: 0
         #  max_rule_violations: 0
-        #  max_instability: 0.8
+        #  max_instability: 0.8          # a fraction, not a percentage (0.8, not 80)
         #  max_distance: 0.7
         #  max_efferent_coupling: 8      # distinct nodes one node may depend on (Ce)
 
