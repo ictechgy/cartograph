@@ -1925,7 +1925,7 @@ fill that gap, and every one of them records *why* so `--explain` can answer for
 | `retained_names`, `retained_files` globs | you said so |
 | Declarations whose source cannot be read (permissions or I/O failure) | retention annotations are unknown (`sourceUnavailable`); restore access and rerun |
 | Declarations named in `--external-retentions` | another platform calls them across a bridge; `--explain` quotes the evidence |
-| Declarations used by a Git-ignored source the compiler indexed (gitignored R.swift, SwiftGen or Sourcery output) | the caller is outside the analysis scope (`ignoredSourceReference`) |
+| Declarations used by a Git-ignored source the compiler indexed (gitignored R.swift, SwiftGen or Sourcery output) inside the `include`/`exclude` scope | the caller is outside the analysis scope (`ignoredSourceReference`) |
 
 Compiler requirements and runtime use are separate. A compiler-observed macro reference keeps
 the macro even when its annotated owner is unreachable. Likewise, an annotation still present
@@ -2327,7 +2327,11 @@ source under the root is walked instead and `source-discovery-git-unavailable` r
 ignored files are then included and results can differ from a run where Git succeeded.
 When the compiler indexed an ignored source (gitignored generated code), the declarations it uses
 are retained as `ignoredSourceReference`; the ignored file itself still adds no findings, cycles or
-layer edges.
+layer edges. An ignored file that `include`/`exclude` filters out is not followed. The default
+excludes `**/*.generated.swift` and `**/Generated/**` match R.swift's `R.generated.swift` and common
+Sourcery and SwiftGen outputs, so declarations used only there are still reported, and
+`source-discovery-exclusions` counts such files. To follow them, set `exclude` without the matching
+pattern; tracked files that match it are then analyzed too.
 Generated DI files can connect real callers. After reviewing their role, use
 `retention.retained_files: ["Sources/Generated/**"]` to retain declarations without discarding edges.
 A generated-looking name or a human-maintained design-token file is not automatically hidden.

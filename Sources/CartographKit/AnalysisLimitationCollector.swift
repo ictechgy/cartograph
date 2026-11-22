@@ -68,7 +68,8 @@ struct AnalysisLimitationCollector {
         var result: [String] = context?.indexSelectionLimitations ?? []
         if let inventory, !inventory.discoveryExclusions.isEmpty {
             result += Self.sourceDiscoveryLimitation(inventory.discoveryExclusions, projectPath: projectPath,
-                followsIgnoredSourceReferences: !inventory.ignoredSourceFiles.isEmpty).map { [$0] } ?? []
+                followsIgnoredSourceReferences: !inventory.ignoredSourceFiles.isEmpty,
+                ignoredSourcesOutsideScope: inventory.ignoredSourceFilesOutsideScope.count).map { [$0] } ?? []
         }
         if let inventory, let reason = inventory.gitSelectionUnavailableReason {
             result.append(Self.gitSelectionLimitation(reason))
@@ -238,8 +239,11 @@ struct AnalysisLimitationCollector {
     ///
     /// 분석 응답은 무시됐지만 색인된 소스의 참조를 따라간다는 문장을 덧붙인다. 교환 문서의 구문 스캔은 그 파일을
     /// 읽지 않으므로 같은 문장을 쓰면 거짓이 된다 — 그래서 기본값은 꺼짐이다.
+    /// include/exclude 가 거른 무시 소스(`ignoredSourcesOutsideScope`)는 따라가지 않으므로, 그런 파일이 있으면
+    /// 보존 문장과 별개로 개수와 고치는 방법을 덧붙인다. 없으면 문장도 없다.
     static func sourceDiscoveryLimitation(
-        _ paths: [String], projectPath: String, followsIgnoredSourceReferences: Bool = false
+        _ paths: [String], projectPath: String, followsIgnoredSourceReferences: Bool = false,
+        ignoredSourcesOutsideScope: Int = 0
     ) -> String? {
         guard !paths.isEmpty else { return nil }
         var resolver = PathResolver(canonicalize: { $0 }, projectPath: projectPath)
@@ -249,7 +253,19 @@ struct AnalysisLimitationCollector {
             + (followsIgnoredSourceReferences
                 ? " Declarations used by ignored sources the compiler indexed are retained (ignoredSourceReference)."
                 : "")
+            + ignoredSourcesOutsideScopeSentence(ignoredSourcesOutsideScope)
             + encodedDiagnosticPaths(paths.compactMap { resolver.relativeDiagnosticPath($0) })
+    }
+
+    /// include/exclude 가 거른 무시 소스가 있을 때만 붙는 문장. 앞에 공백을 둔다.
+    ///
+    /// 기본 제외 글롭이 생성기의 흔한 출력 경로와 겹쳐, 이 문장이 없으면 "보존한다" 는 앞 문장이 그 파일들에도
+    /// 해당하는 것으로 읽힌다. 실제로는 그 파일만 쓰는 선언이 미사용으로 보고된다.
+    static func ignoredSourcesOutsideScopeSentence(_ count: Int) -> String {
+        guard count > 0 else { return "" }
+        return " \(count) ignored source file(s) are outside the include/exclude scope (the default exclude patterns "
+            + "include **/*.generated.swift and **/Generated/**), so declarations used only by them are not retained "
+            + "and can be reported as unused; widen include or remove the matching exclude pattern to follow them."
     }
 
     /// Git 선택이 실패해 전체 walk 로 폴백했다는 한계. 커버리지 공백이 아니라 결과가 흔들릴 수 있다는 알림이다.

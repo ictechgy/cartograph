@@ -91,6 +91,59 @@ struct GitSourceInventoryTests {
         #expect(inventory.gitSelectionUnavailableReason == nil)
     }
 
+    @Test("include/exclude 가 거른 무시 소스는 따라가지 않으므로 한계가 그 개수를 따로 말하고 보존을 주장하지 않는다")
+    func ignoredSourcesOutsideScopeAreNotClaimedAsRetained() throws {
+        // R.swift 의 기본 출력 이름과 SwiftGen 의 흔한 출력 폴더는 기본 제외 글롭에 걸린다. 이 파일들이 쓰는 선언은
+        // 색인됐어도 보존되지 않는데, 한계는 "보존한다" 는 문장만 실어 그 파일들에도 해당하는 것처럼 읽혔다.
+        let repository = try TemporaryRepository()
+        defer { repository.remove() }
+        try repository.git(["init", "-q"])
+        try repository.write(".gitignore", "Followed.swift\nR.generated.swift\nGenerated/\n")
+        for name in ["App.swift", "Followed.swift", "R.generated.swift", "Generated/Strings.swift"] {
+            try repository.write(name)
+        }
+        let fileSystem = LocalFileSystem()
+        let root = try fileSystem.realPath(at: repository.path)
+        func limitation(projectPath: String) throws -> String {
+            var configuration = CartographConfiguration.default
+            configuration.projectPath = projectPath
+            let inventory = ProjectFileInventory(
+                fileSystem: fileSystem, projectPath: projectPath, pathFilter: configuration.pathFilter)
+            let limitations = AnalysisLimitationCollector(
+                configuration: configuration, fileSystem: fileSystem, projectPath: projectPath,
+                storeDate: nil, inventory: inventory
+            ).collect(context: nil, symbolGraph: nil, emptyIndexCounts: nil)
+            return try #require(limitations.first { $0.hasPrefix("source-discovery-exclusions: ") })
+        }
+        let retained = "Declarations used by ignored sources the compiler indexed are retained "
+            + "(ignoredSourceReference)."
+        let outside = " 2 ignored source file(s) are outside the include/exclude scope (the default exclude patterns "
+            + "include **/*.generated.swift and **/Generated/**), so declarations used only by them are not retained "
+            + "and can be reported as unused; widen include or remove the matching exclude pattern to follow them."
+
+        var configuration = CartographConfiguration.default
+        configuration.projectPath = root
+        let inventory = ProjectFileInventory(
+            fileSystem: fileSystem, projectPath: root, pathFilter: configuration.pathFilter)
+        #expect(inventory.ignoredSourceFiles == [root + "/Followed.swift"])
+        #expect(inventory.ignoredSourceFilesOutsideScope
+            == [root + "/Generated/Strings.swift", root + "/R.generated.swift"])
+        let mixed = try limitation(projectPath: root)
+        #expect(mixed.contains(retained) && mixed.contains(outside))
+
+        // 따라가는 무시 소스가 없으면 보존 문장은 빠지고, 거른 개수만 남는다.
+        try FileManager.default.removeItem(atPath: root + "/Followed.swift")
+        let onlyOutside = try limitation(projectPath: root)
+        #expect(!onlyOutside.contains(retained) && onlyOutside.contains(outside))
+
+        // 거른 무시 소스가 없으면 그 문장도 없다. 매번 붙는 경보는 읽히지 않는다.
+        try repository.write("Followed.swift")
+        try FileManager.default.removeItem(atPath: root + "/R.generated.swift")
+        try FileManager.default.removeItem(atPath: root + "/Generated/Strings.swift")
+        let onlyFollowed = try limitation(projectPath: root)
+        #expect(onlyFollowed.contains(retained) && !onlyFollowed.contains("outside the include/exclude scope"))
+    }
+
     @Test("선택에 성공했을 때만 목록을 돌려주고, 시도하지 않았거나 실패했으면 전체 walk 로 폴백하게 한다")
     func inventoryIsPresentOnlyWhenSelected() {
         let listed = GitSourceInventory(paths: ["/project/App.swift"])
