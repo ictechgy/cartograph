@@ -399,12 +399,21 @@ fi
 expect_status 2 "출력 파일 쓰기 실패"  graph --project "$EMPTY" --allow-empty-index -o "$EMPTY"
 # 범위 밖 임계값은 분석 전에 설정 오류(2)다. 음수 개수는 발견 0건인 실행도 실패시켰고(1), 백분율로 쓴 비율
 # 상한은 아무것도 걸지 못해 --strict 가 통과했다(0). 빈 인덱스 탈출구로 두 경우 모두 판정 단계까지 간다.
+# 종료 코드만 보면 다른 이유의 2 도 통과하므로 어느 키가 왜 거부됐는지 문구로 확인한다.
 printf 'thresholds:\n  max_cycles: -1\n' > "$EMPTY/negative-count.yml"
 printf 'thresholds:\n  max_instability: 90\n' > "$EMPTY/percent-ratio.yml"
-expect_status 2 "음수 개수 임계값"        cycles --strict --project "$EMPTY" --allow-empty-index \
-    --config "$EMPTY/negative-count.yml"
-expect_status 2 "백분율로 쓴 비율 임계값" metrics --strict --project "$EMPTY" --allow-empty-index \
-    --config "$EMPTY/percent-ratio.yml"
+NEGATIVE_COUNT_ARGS=(cycles --strict --project "$EMPTY" --allow-empty-index --config "$EMPTY/negative-count.yml")
+PERCENT_RATIO_ARGS=(metrics --strict --project "$EMPTY" --allow-empty-index --config "$EMPTY/percent-ratio.yml")
+expect_status 2 "음수 개수 임계값"        "${NEGATIVE_COUNT_ARGS[@]}"
+expect_output "thresholds.max_cycles must be 0 or greater (got -1)" "음수 개수 임계값 문구" "${NEGATIVE_COUNT_ARGS[@]}"
+expect_status 2 "백분율로 쓴 비율 임계값" "${PERCENT_RATIO_ARGS[@]}"
+expect_output "thresholds.max_instability must be from 0 to 1 inclusive (got 90.0)" "백분율로 쓴 비율 임계값 문구" \
+    "${PERCENT_RATIO_ARGS[@]}"
+# 대조군: 경계값(개수 0, 비율 0·1 — 비율 키에 YAML 정수)은 그대로 받아 빈 그래프의 --strict 가 통과한다.
+printf 'thresholds:\n  max_cycles: 0\n  max_unused_symbols: 0\n  max_rule_violations: 0\n' > "$EMPTY/boundary.yml"
+printf '  max_efferent_coupling: 0\n  max_instability: 1\n  max_distance: 0\n' >> "$EMPTY/boundary.yml"
+expect_status 0 "경계값 임계값은 받는다"   metrics --strict --project "$EMPTY" --allow-empty-index \
+    --config "$EMPTY/boundary.yml"
 
 # 설정 파일의 baseline_path 는 읽기 위치일 뿐, 쓰기 목적지가 아니다. 분석 대상
 # 저장소의 설정에 절대 경로를 심어 두고 baseline 을 돌리면 그 파일이 덮여써졌다.
