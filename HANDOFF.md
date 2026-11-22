@@ -1,6 +1,6 @@
 # Handoff
 
-_Last updated: 2026-11-15 by Claude (PR #239, 후보 B4 플러그인 MCP 선언)_
+_Last updated: 2026-11-22 by Claude (계열 점검 3차: 임계값 범위 검사, PR #237 돌연변이 확인, Linux 스크래치 검증)_
 
 작업 규칙은 [AGENTS.md](AGENTS.md), 이전 원문은 [HANDOFF-HISTORY.md](HANDOFF-HISTORY.md)에 있다
 (2026-09-25 기록은 그 파일 끝 절로 옮겼다). 이력의 오래된 버전·Next Steps는 현재 지시로 되살리지 않는다.
@@ -14,6 +14,53 @@ _Last updated: 2026-11-15 by Claude (PR #239, 후보 B4 플러그인 MCP 선언)
 - `main` `f892ddb`의 CI 체크 12개(자기 분석, synthesized-property 보존 측정 포함)가 모두 성공했다(2026-11-10 확인).
 - 후보 **B4**(플러그인 MCP 선언)는 **PR #239**에서 처리했다(2026-11-15, `main` `5b73a48` 기준).
   아래 "PR #239 — B4 처리" 절을 본다. 이 PR도 CHANGELOG `[Unreleased]`에 들어가며 발행은 따로 지시가 있을 때 한다.
+  PR #239는 `main` `8f6a1c3`로 스쿼시 머지됐고 그 커밋의 CI도 성공했다.
+- 계열 점검 3차(2026-11-22)는 브랜치 `ccr-37904670-hxdjsx`(`main` `8f6a1c3` 기준)에 있다. 아래 "3차 점검" 절을 본다.
+
+### 3차 점검 (2026-11-22, `main` `8f6a1c3` 기준)
+
+커밋 해시는 브랜치의 것이다.
+
+- **임계값 범위 검사** (`0aba669`): `max_efferent_coupling`만 음수를 거부했다. 음수 `max_cycles`·
+  `max_unused_symbols`·`max_rule_violations`는 발견 0건인 실행도 실패시켰고("found 0, allowed at most -1", exit 1),
+  `max_instability: 90`(백분율)이나 `.nan`은 아무 정점도 걸지 못해 `metrics --strict`가 exit 0으로 통과했다.
+  이제 개수는 0 이상, 비율은 0과 1 사이만 받고 그 밖은 키·값·이유를 담은 설정 오류(exit 2)다. 0과 1은 그대로 받는다.
+  CHANGELOG `Fixed`에 업그레이드 노트, README 두 벌의 지표 절에 범위를 적었다. 새 테스트 9건(키·값 조합)은 수정 전
+  코드에서 전부 실패했다.
+- **계약 스크립트** (`400f026`): 빈 인덱스 픽스처에 `--allow-empty-index`를 주고 두 경우가 exit 2인지 본다. 수정 전
+  바이너리로는 1과 0이 나와 두 줄 모두 실패하는 것을 확인했다.
+- **README 예시** (`2cdadcc`): `unused-parameter`·`assign-only` 예시가 실제로 나오지 않는 형식(`'Net.Client.fetch(...)'`,
+  `of 'Net.Client'`)이었다. 실제 문구는 함수의 모듈 한정 이름과 소유 타입의 짧은 이름이다(코퍼스 기대 파일과 자기 분석
+  출력이 근거). 진단 문구 자체는 바꾸지 않았다.
+- **PR #237 새 테스트의 돌연변이 확인**(아래 다음 할 일 1, 코드 변경 없음): Linux 스크래치 빌드에서 변이 20개를 하나씩
+  넣고 해당 스위트를 돌렸다. 18개는 의도한 테스트가 실패했다 — 프로토콜 폐포 제거, `s:SL`(보존), 프로토콜 요구사항
+  가드, `codableEnumCase` 근거, 무시 소스 근거의 순서·제거·impact 검토 근거, assign-only 폐포, 상위 클래스 inheritance
+  포함, `#if` 파일 import(분석·스캐너), 레이어 절대 경로 후보, 구문 쪽 `Comparable`·`Swift.` 한정, 무시 소스의 `extends`
+  포함·추적 링크 제외·저장소 밖 Git 미실행. 나머지 2개는 동작이 같은 변이다. `codableEnumCase`를
+  `retainsContainingType`에서 빼도 이 근거는 `needsReachableOwner`라 조건부로 분류돼 `inheritedRetentions`(무조건
+  근거만 받음)에 닿지 않는다. `ReachabilityAnalyzer.synthesizedReaderProtocolUSRs`에서 `s:SL`을 빼도
+  `accessHidingOwners`의 둘째 루프(`RetentionPolicy.synthesizedConformances`, 같은 다섯 USR의 직접 준수 포함)가
+  같은 정점을 숨긴다. 즉 첫 루프는 지금 둘째 루프에 포함된다(정리 후보, 손대지 않음).
+- **무시 컴파일 소스의 실제 인덱스 확인**(다음 할 일 2의 일부, 코드 변경 없음): Git 저장소에 무시된
+  `Generated.swift`만 부르는 `Helper.usedByGenerated()`와 아무도 안 부르는 `Helper.neverCalled()`를 두고 Linux에서
+  빌드해 `dead`를 돌렸다. `neverCalled`만 보고되고, `--explain usedByGenerated`는 "referenced from a Git-ignored source
+  file the compiler indexed"로 답했다. `source-discovery-exclusions` 한계도 그 경로를 싣는다. 동결 코퍼스·검증기는 아직이다.
+- **Linux 스크래치 검증 방법**: swift.org 다운로드 호스트가 막혀 Docker Hub 공식 `swift:6.4.3-noble` 이미지의 툴체인
+  레이어(digest 대조, 이미지 빌드가 swift.org 서명을 검증한 tarball)를 스크래치에 풀었다. 저장소 사본에서만 `import Darwin`을
+  Glibc 기반 shim으로, `CryptoKit`(SHA-256만)·`CoreData`(컴파일 모델 읽기 불가)를 shim 모듈로 바꾸고 macOS 전용 테스트
+  파일 두 개(`BoundedInputReadTests`, `CoreDataSessionInvalidationTests`)를 뺐다. C 헤더는 `-Xcc/-Xcxx -I<toolchain>/usr/lib/swift`
+  (와 `.../Block`)로 찾는다. `DEVELOPER_DIR`에 `Toolchains/XcodeDefault.xctoolchain/usr/lib/libIndexStore.dylib` 링크(→ `.so`)를
+  두면 CLI가 Linux 인덱스(`.build/out`)를 읽는다. 이 shim은 커밋하지 않는다.
+  - 결과: 테스트 타깃 8개 중 Core·Config·Syntax·Analysis·Export 다섯이 통과하고, Kit·IndexStore·CLI에서 47건이 실패한다.
+    전부 `xcrun`·시뮬레이터·`/tmp` 별칭·macOS libIndexStore 경로에 걸리는 macOS 전용이며, 수정 전후 실패 목록이 새 테스트
+    두 개를 빼고 같다. 자기 분석은 네 가지 모두 exit 0이다(`dead` 경고 26건 = macOS CI의 22건 + shim 모듈 4건, 순환 없음,
+    `rules`는 shim 모듈 세 개의 레이어 미지정 정보 3건). CLI 계약은 275건 통과, `xcrun swiftc`로 인덱스를 만드는 2건만 실패.
+  - 못 돌린 것: `coverage.sh`(`xcrun llvm-cov`·`.xctest` 번들 전제), `verify-fixtures.sh`(Objective-C 코퍼스와 macOS
+    인덱스 전제), 위 macOS 전용 테스트. 근거는 macOS CI다. GLM 리뷰도 이 환경에서 쓸 수 없었다.
+- **제외한 것**: B1·B3·B5·C는 아래 "남은 후보"대로 사용자가 고른 뒤 착수한다. B2는 Narrowing 절차가 필요하다.
+  Encodable만 준수하는 열거형의 케이스도 `codableEnumCase`로 살지만(디코딩이 없어 케이스를 만들지 않는다) 보존을 좁히는
+  변경이라 반대 방향 코퍼스와 실제 프로젝트 근거 없이 하지 않는다. `unused-parameter` 문구에 소유 타입을 넣는 것은 출력 변경이라
+  코퍼스 기대 파일 갱신과 함께 따로 다룬다.
 
 ### PR #239 — B4 처리 (2026-11-15)
 
@@ -109,8 +156,10 @@ _Last updated: 2026-11-15 by Claude (PR #239, 후보 B4 플러그인 MCP 선언)
 
 ### 다음 할 일 (PR #237 머지 이후)
 
-1. 로컬 macOS에서 새 보존 테스트의 돌연변이 확인을 한 번 돌린다(CI는 통과만 보여 준다).
-2. 무시 컴파일 소스 하위 코퍼스와 검증기를 만든다(위 제외 항목).
+1. ~~새 보존 테스트의 돌연변이 확인~~ — 3차 점검에서 Linux 스크래치 빌드로 했다(변이 20개 중 18개 검출, 2개는 동작이
+   같은 변이). 이 테스트들은 손으로 만든 스냅샷 위의 순수 분석이라 플랫폼과 무관하다.
+2. 무시 컴파일 소스 하위 코퍼스와 검증기를 만든다(위 제외 항목). 실제 인덱스에서 보존이 동작하는 것은 3차 점검에서
+   일회성으로 확인했다.
 3. 보조 인덱스 읽기 비용을 HealthMap 등 실제 프로젝트에서 잰다.
 4. 발행은 지시가 있을 때만 한다. 이때 `[Unreleased]`를 버전 절로 옮기고 플러그인 매니페스트 버전도 함께 올린다.
 5. PR #239(B4)의 macOS CI에서 `AgentSkillTemplateTests`·`verify-mcp.py`·`verify-plugin-manifest.py`와 완료 검증
