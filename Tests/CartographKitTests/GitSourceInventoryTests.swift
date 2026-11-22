@@ -102,46 +102,94 @@ struct GitSourceInventoryTests {
         for name in ["App.swift", "Followed.swift", "R.generated.swift", "Generated/Strings.swift"] {
             try repository.write(name)
         }
-        let fileSystem = LocalFileSystem()
-        let root = try fileSystem.realPath(at: repository.path)
-        func limitation(projectPath: String) throws -> String {
-            var configuration = CartographConfiguration.default
-            configuration.projectPath = projectPath
-            let inventory = ProjectFileInventory(
-                fileSystem: fileSystem, projectPath: projectPath, pathFilter: configuration.pathFilter)
-            let limitations = AnalysisLimitationCollector(
-                configuration: configuration, fileSystem: fileSystem, projectPath: projectPath,
-                storeDate: nil, inventory: inventory
-            ).collect(context: nil, symbolGraph: nil, emptyIndexCounts: nil)
-            return try #require(limitations.first { $0.hasPrefix("source-discovery-exclusions: ") })
-        }
-        let retained = "Declarations used by ignored sources the compiler indexed are retained "
-            + "(ignoredSourceReference)."
-        let outside = " 2 ignored source file(s) are outside the include/exclude scope (the default exclude patterns "
-            + "include **/*.generated.swift and **/Generated/**), so declarations used only by them are not retained "
-            + "and can be reported as unused; widen include or remove the matching exclude pattern to follow them."
+        let root = try LocalFileSystem().realPath(at: repository.path)
+        let outside = " 2 ignored source file(s) are outside the include/exclude scope (matched by exclude patterns "
+            + #"["**/*.generated.swift","**/Generated/**"]), so declarations used only by them are not retained "#
+            + "and can be reported as unused; remove the matching exclude pattern to follow them."
 
-        var configuration = CartographConfiguration.default
-        configuration.projectPath = root
-        let inventory = ProjectFileInventory(
-            fileSystem: fileSystem, projectPath: root, pathFilter: configuration.pathFilter)
+        let inventory = Self.inventory(root: root, configuration: CartographConfiguration(projectPath: root))
         #expect(inventory.ignoredSourceFiles == [root + "/Followed.swift"])
-        #expect(inventory.ignoredSourceFilesOutsideScope
-            == [root + "/Generated/Strings.swift", root + "/R.generated.swift"])
-        let mixed = try limitation(projectPath: root)
-        #expect(mixed.contains(retained) && mixed.contains(outside))
+        #expect(inventory.ignoredSourcesOutsideScope == IgnoredSourcesOutsideScope(
+            paths: [root + "/Generated/Strings.swift", root + "/R.generated.swift"],
+            excludePatterns: ["**/*.generated.swift", "**/Generated/**"], missesInclude: false))
+        let mixed = try Self.exclusionLimitation(root: root)
+        #expect(mixed.contains(Self.retained) && mixed.contains(outside) && mixed.contains(Self.unwalked))
 
-        // 따라가는 무시 소스가 없으면 보존 문장은 빠지고, 거른 개수만 남는다.
+        // 따라가는 무시 소스가 없으면 보존 문장은 빠지고, 거른 개수와 걸린 패턴만 남는다.
         try FileManager.default.removeItem(atPath: root + "/Followed.swift")
-        let onlyOutside = try limitation(projectPath: root)
-        #expect(!onlyOutside.contains(retained) && onlyOutside.contains(outside))
+        let onlyOutside = try Self.exclusionLimitation(root: root)
+        #expect(!onlyOutside.contains(Self.retained) && onlyOutside.contains(outside))
+        #expect(onlyOutside.contains(Self.unwalked))
 
         // 거른 무시 소스가 없으면 그 문장도 없다. 매번 붙는 경보는 읽히지 않는다.
         try repository.write("Followed.swift")
         try FileManager.default.removeItem(atPath: root + "/R.generated.swift")
         try FileManager.default.removeItem(atPath: root + "/Generated/Strings.swift")
-        let onlyFollowed = try limitation(projectPath: root)
-        #expect(onlyFollowed.contains(retained) && !onlyFollowed.contains("outside the include/exclude scope"))
+        let onlyFollowed = try Self.exclusionLimitation(root: root)
+        #expect(onlyFollowed.contains(Self.retained) && !onlyFollowed.contains("outside the include/exclude scope"))
+
+        // 무시 소스가 하나도 없으면(중첩 저장소만 제외) 빌드 디렉터리 문장도 없다.
+        try FileManager.default.removeItem(atPath: root + "/Followed.swift")
+        try repository.write("nested/.git", "gitdir: /nonexistent")
+        let noIgnoredSources = try Self.exclusionLimitation(root: root)
+        #expect(!noIgnoredSources.contains(Self.retained) && !noIgnoredSources.contains(Self.unwalked))
+    }
+
+    @Test("사용자 exclude 는 기본값을 대체하므로 실제로 걸린 패턴과 include 누락만 말하고 추적 파일 링크는 세지 않는다")
+    func outsideScopeNamesTheMatchingPatternsAndSkipsLinksToTrackedFiles() throws {
+        // 기본 패턴 이름을 늘 붙이면 `exclude` 를 직접 쓴 프로젝트에서 없는 패턴을 고치라고 말한다. 추적 파일을 가리키는
+        // 무시 링크는 따라가도 아무것도 더하지 않으므로(untrackedSources) 세면 고쳐도 달라지지 않는 파일을 알린다.
+        let repository = try TemporaryRepository()
+        defer { repository.remove() }
+        try repository.git(["init", "-q"])
+        try repository.write(".gitignore", "Gen/\nOther/\nLinks/\nR.generated.swift\n")
+        for name in ["Sources/App.swift", "Gen/Custom.swift", "Other/Outside.swift", "R.generated.swift"] {
+            try repository.write(name)
+        }
+        try repository.git(["add", "Sources/App.swift"])
+        let root = try LocalFileSystem().realPath(at: repository.path)
+        try FileManager.default.createDirectory(atPath: root + "/Links", withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: root + "/Links/App.swift",
+                                                   withDestinationPath: "../Sources/App.swift")
+        var configuration = CartographConfiguration(projectPath: root)
+        configuration.include = ["Sources/**", "Gen/**", "Links/**", "R.generated.swift"]
+        configuration.exclude = ["Gen/**", "Links/**"]
+
+        let inventory = Self.inventory(root: root, configuration: configuration)
+        // R.generated.swift 는 기본 패턴이 대체돼 범위 안이다. Other 는 include 밖, Gen 은 사용자 exclude 에 걸린다.
+        #expect(inventory.ignoredSourceFiles == [root + "/R.generated.swift"])
+        #expect(inventory.ignoredSourcesOutsideScope == IgnoredSourcesOutsideScope(
+            paths: [root + "/Gen/Custom.swift", root + "/Other/Outside.swift"],
+            excludePatterns: ["Gen/**"], missesInclude: true))
+        let limitation = try Self.exclusionLimitation(root: root, configuration: configuration)
+        #expect(limitation.contains(" 2 ignored source file(s) are outside the include/exclude scope (matched by "
+            + #"exclude patterns ["Gen/**"]; not matched by include), so declarations used only by them are not "#
+            + "retained and can be reported as unused; remove the matching exclude pattern or widen include to "
+            + "follow them."))
+        #expect(!limitation.contains("**/*.generated.swift"))
+    }
+
+    /// 무시 소스 보존 문장. 따라가는 무시 소스가 하나라도 있을 때만 실린다.
+    private static let retained = "Declarations used by ignored sources the compiler indexed are retained "
+        + "(ignoredSourceReference)."
+    /// 무시 소스 문장이 실릴 때 함께 붙는, 걷지 않는 빌드 디렉터리 문장.
+    private static let unwalked = AnalysisLimitationCollector.unwalkedBuildDirectoriesSentence
+
+    private static func inventory(root: String, configuration: CartographConfiguration) -> ProjectFileInventory {
+        ProjectFileInventory(fileSystem: LocalFileSystem(), projectPath: root, pathFilter: configuration.pathFilter)
+    }
+
+    /// 실제 저장소를 걸어 모은 한계 중 `source-discovery-exclusions` 한 줄.
+    private static func exclusionLimitation(
+        root: String, configuration: CartographConfiguration? = nil
+    ) throws -> String {
+        let configuration = configuration ?? CartographConfiguration(projectPath: root)
+        let fileSystem = LocalFileSystem()
+        let limitations = AnalysisLimitationCollector(
+            configuration: configuration, fileSystem: fileSystem, projectPath: root,
+            storeDate: nil, inventory: inventory(root: root, configuration: configuration)
+        ).collect(context: nil, symbolGraph: nil, emptyIndexCounts: nil)
+        return try #require(limitations.first { $0.hasPrefix("source-discovery-exclusions: ") })
     }
 
     @Test("선택에 성공했을 때만 목록을 돌려주고, 시도하지 않았거나 실패했으면 전체 walk 로 폴백하게 한다")

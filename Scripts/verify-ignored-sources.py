@@ -35,7 +35,16 @@ IGNORED_FILES = {
 IGNORED_LINKS = {"Links/DeadChain.swift": "../Sources/IgnoredSources/DeadChain.swift"}
 EXCLUSION_PREFIX = "source-discovery-exclusions: "
 RETAINED_SENTENCE = "Declarations used by ignored sources the compiler indexed are retained (ignoredSourceReference)."
-OUTSIDE_SCOPE_SENTENCE = " 1 ignored source file(s) are outside the include/exclude scope"
+# 기본 제외만 쓰는 코퍼스라 R.generated.swift 하나가 기본 패턴 하나에 걸린다. 걸리지 않은 기본 패턴은 이름이 없어야 한다.
+OUTSIDE_SCOPE_SENTENCE = (
+    ' 1 ignored source file(s) are outside the include/exclude scope (matched by exclude patterns '
+    '["**/*.generated.swift"]), so declarations used only by them are not retained and can be reported as unused; '
+    "remove the matching exclude pattern to follow them."
+)
+UNWALKED_SENTENCE = (
+    " Generated sources inside build directories that discovery does not walk (such as .build and DerivedData, "
+    "where build-tool plugins write their output) are not examined."
+)
 # 선언 이름 → 기대 도달성 상태와 보존 근거. 무시 소스가 쓰는 선언만 ignoredSourceReference 로 남는다.
 EXPECTED_STATES = {
     "usedByGenerated": ("retained", "ignoredSourceReference"),
@@ -49,14 +58,37 @@ EXPECTED_STATES = {
 }
 
 
+def isolate_git_environment() -> None:
+    """호출자의 `GIT_*` 변수를 이 프로세스와 모든 자식(Git·SwiftPM·Cartograph)에서 지운다.
+
+    Git 훅은 `GIT_DIR` 을 내보낸다. 그 상태로 `git -C <사본> init` 을 하면 사본이 아니라 바깥 저장소를 다시
+    초기화하고 사본에는 `.git` 이 생기지 않는다. 제품도 `GitSourceSelection.select` 에서 같은 변수를 지운다.
+    """
+    for key in [key for key in os.environ if key.startswith("GIT_")]:
+        del os.environ[key]
+
+
 def git(project: Path, output: Path, name: str, arguments: list[str], expected: int = 0) -> str:
     """훅을 끄고 Git 을 실행한다. 무시 판정은 제품이 쓰는 `--exclude-standard` 와 같은 규칙을 따른다."""
     command = ["git", "-c", "core.hooksPath=/dev/null", "-C", str(project)]
     return run([*command, *arguments], project, output, name, expected=expected)
 
 
+def init_repository(project: Path, output: Path) -> None:
+    """사본만의 저장소를 만들고, 사용자의 전역 무시 파일이 판정을 바꾸지 못하게 지역 설정으로 끈다.
+
+    제품의 `git ls-files --exclude-standard` 도 저장소 지역 설정의 `core.excludesFile` 을 읽으므로 둘이 같은 규칙을 본다.
+    """
+    git(project, output, "git-init", ["init", "-q"])
+    git(project, output, "git-config-excludes", ["config", "core.excludesFile", "/dev/null"])
+    top = git(project, output, "git-toplevel", ["rev-parse", "--show-toplevel"]).strip()
+    require((project / ".git").is_dir() and Path(top).resolve() == project.resolve(),
+            f"Git did not initialise the fixture copy as its own repository (top level {top!r})")
+
+
 def materialize(project: Path, output: Path) -> list[str]:
     """무시 파일과 링크를 만들고 Git 이 실제로 무시하는지 확인한다. 무시 경로를 정렬해 돌려준다."""
+    isolate_git_environment()
     for template, destination in IGNORED_FILES.items():
         target = project / destination
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -64,15 +96,17 @@ def materialize(project: Path, output: Path) -> list[str]:
     for link, destination in IGNORED_LINKS.items():
         (project / link).parent.mkdir(parents=True, exist_ok=True)
         (project / link).symlink_to(destination)
-    git(project, output, "git-init", ["init", "-q"])
+    init_repository(project, output)
     ignored = sorted([*IGNORED_FILES.values(), *IGNORED_LINKS])
     for index, path in enumerate(ignored):
         git(project, output, f"git-check-ignored-{index}", ["check-ignore", "-q", path])
     listed = git(project, output, "git-ls-files", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"])
     selected = {path for path in listed.split("\0") if path}
-    # 무시 규칙이 바뀌어 추적 소스까지 숨기면 아래 기대 목록 전체가 다른 이유로 맞거나 틀린다.
-    tracked = {path.relative_to(project).as_posix() for path in (project / "Sources").rglob("*.swift")} - set(ignored)
-    require(tracked <= selected and not selected & set(ignored), f"Git selection drifted: {sorted(selected)}")
+    # 무시 규칙이 바뀌어 추적 소스나 매니페스트까지 숨기면 아래 기대 목록 전체가 다른 이유로 맞거나 틀린다.
+    swift = {path.relative_to(project).as_posix() for path in project.rglob("*.swift") if ".git" not in path.parts}
+    expected = (swift | {"Package.swift"}) - set(ignored)
+    require(expected <= selected and not selected & set(ignored),
+            f"Git selection drifted: expected {sorted(expected)} selected, {ignored} ignored; got {sorted(selected)}")
     return ignored
 
 
@@ -98,6 +132,7 @@ def verify_findings(harness: shared.Harness, project: Path, ignored: list[str]) 
     require(limitation.startswith(f"{EXCLUSION_PREFIX}{len(ignored)} "), f"Wrong exclusion count: {limitation}")
     require(RETAINED_SENTENCE in limitation, f"Limitation lost the retention sentence: {limitation}")
     require(OUTSIDE_SCOPE_SENTENCE in limitation, f"Limitation hid the excluded ignored source: {limitation}")
+    require(UNWALKED_SENTENCE in limitation, f"Limitation lost the unwalked build directory sentence: {limitation}")
     graph = harness.document("graph", ["graph", "--level", "symbol", "--format", "json"])
     located = {node["location"]["path"] for node in graph["nodes"] if node.get("location")}
     require(located and not any(path.endswith(tuple(ignored)) for path in located), f"Ignored nodes: {located}")
@@ -149,6 +184,7 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, help="New or empty directory for logs, workspace and index.")
     parser.add_argument("--swiftpm-flags", default=os.environ.get("SWIFTPM_FLAGS", ""))
     args = parser.parse_args()
+    isolate_git_environment()
     binary = args.cartograph.expanduser().resolve()
     if binary.is_dir():
         binary /= "cartograph"
