@@ -397,6 +397,14 @@ else
 fi
 # 목적지를 디렉터리로 준다. 파일로 못 쓰는 자리이므로 이 실패는 진짜 쓰기 실패다.
 expect_status 2 "출력 파일 쓰기 실패"  graph --project "$EMPTY" --allow-empty-index -o "$EMPTY"
+# 범위 밖 임계값은 분석 전에 설정 오류(2)다. 음수 개수는 발견 0건인 실행도 실패시켰고(1), 백분율로 쓴 비율
+# 상한은 아무것도 걸지 못해 --strict 가 통과했다(0). 빈 인덱스 탈출구로 두 경우 모두 판정 단계까지 간다.
+printf 'thresholds:\n  max_cycles: -1\n' > "$EMPTY/negative-count.yml"
+printf 'thresholds:\n  max_instability: 90\n' > "$EMPTY/percent-ratio.yml"
+expect_status 2 "음수 개수 임계값"        cycles --strict --project "$EMPTY" --allow-empty-index \
+    --config "$EMPTY/negative-count.yml"
+expect_status 2 "백분율로 쓴 비율 임계값" metrics --strict --project "$EMPTY" --allow-empty-index \
+    --config "$EMPTY/percent-ratio.yml"
 
 # 설정 파일의 baseline_path 는 읽기 위치일 뿐, 쓰기 목적지가 아니다. 분석 대상
 # 저장소의 설정에 절대 경로를 심어 두고 baseline 을 돌리면 그 파일이 덮여써졌다.
