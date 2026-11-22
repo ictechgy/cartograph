@@ -200,64 +200,70 @@ struct ConfigurationLoaderTests {
         #expect(!result.warnings.contains { $0.contains("rationale") || $0.contains("hint") })
     }
 
-    @Test("음수 원심 결합도 상한은 경로와 이유를 담은 설정 오류가 된다")
+    @Test("음수 원심 결합도 상한은 발행된 문구 그대로의 설정 오류가 된다")
     func rejectsNegativeEfferentCouplingLimit() {
         let yaml = """
             thresholds:
               max_efferent_coupling: -1
             """
-        #expect {
+        let error = #expect(throws: CartographError.self) {
             try ConfigurationLoader().load(yaml: yaml, path: "/p/.cartograph.yml")
-        } throws: { error in
-            let message = (error as? CartographError)?.errorDescription ?? ""
-            return message.contains("/p/.cartograph.yml") && message.contains("max_efferent_coupling must be 0 or greater")
         }
+        // 다른 개수 상한과 검사를 합치면서 이 키의 문구가 바뀌지 않았는지 바이트로 고정한다.
+        #expect(error?.errorDescription == "Invalid configuration at /p/.cartograph.yml: "
+            + "thresholds.max_efferent_coupling must be 0 or greater (got -1); "
+            + "it counts the distinct nodes one node may depend on")
     }
 
-    @Test("음수 개수 상한은 키마다 경로와 이유를 담은 설정 오류가 된다", arguments: [
+    @Test("음수 개수 상한은 키마다 값과 고치는 방법을 담은 설정 오류가 된다", arguments: [
         "max_cycles", "max_unused_symbols", "max_rule_violations",
     ])
     func rejectsNegativeCountLimits(_ key: String) {
         // 음수 상한은 발견이 0건이어도 "0 > -1" 이라 모든 실행을 실패시킨다.
-        #expect {
-            try ConfigurationLoader().load(yaml: "thresholds:\n  \(key): -1\n", path: "/p/.cartograph.yml")
-        } throws: { error in
-            let message = (error as? CartographError)?.errorDescription ?? ""
-            return message.contains("/p/.cartograph.yml") && message.contains("thresholds.\(key) must be 0 or greater")
+        let error = #expect(throws: CartographError.self) {
+            try ConfigurationLoader().load(yaml: "thresholds:\n  \(key): -3\n", path: "/p/.cartograph.yml")
         }
+        let message = error?.errorDescription ?? ""
+        #expect(message.hasPrefix("Invalid configuration at /p/.cartograph.yml: "))
+        #expect(message.contains("thresholds.\(key) must be 0 or greater (got -3); "))
+        #expect(message.contains("a negative limit fails every run, even one with no findings"))
+        #expect(message.hasSuffix("Set 0 to allow none, or remove the key to turn the check off."))
     }
 
-    @Test("비율 상한이 0과 1 사이가 아니면 설정 오류가 된다", arguments: [
-        ("max_instability", "90"), ("max_instability", "-0.5"), ("max_instability", ".nan"),
-        ("max_distance", "1.5"), ("max_distance", "-.inf"), ("max_distance", ".nan"),
+    @Test("비율 상한이 0 이상 1 이하가 아니면 값과 고치는 방법을 담은 설정 오류가 된다", arguments: [
+        ("max_instability", "90", "90.0"), ("max_instability", "-0.5", "-0.5"), ("max_instability", ".nan", "nan"),
+        ("max_distance", "1.5", "1.5"), ("max_distance", "-.inf", "-inf"), ("max_distance", ".nan", "nan"),
     ])
-    func rejectsOutOfRangeRatioLimits(_ key: String, _ value: String) {
+    func rejectsOutOfRangeRatioLimits(_ key: String, _ written: String, _ shown: String) {
         // 지표는 0...1 이라 1 을 넘는 상한(백분율로 쓴 90)과 NaN 은 아무것도 걸지 않은 채 통과하고,
         // 음수 상한은 고립되지 않은 모든 정점을 건다.
-        #expect {
-            try ConfigurationLoader().load(yaml: "thresholds:\n  \(key): \(value)\n", path: "/p/.cartograph.yml")
-        } throws: { error in
-            let message = (error as? CartographError)?.errorDescription ?? ""
-            return message.contains("/p/.cartograph.yml")
-                && message.contains("thresholds.\(key) must be between 0 and 1")
+        let error = #expect(throws: CartographError.self) {
+            try ConfigurationLoader().load(yaml: "thresholds:\n  \(key): \(written)\n", path: "/p/.cartograph.yml")
         }
+        let message = error?.errorDescription ?? ""
+        #expect(message.hasPrefix("Invalid configuration at /p/.cartograph.yml: "))
+        #expect(message.contains("thresholds.\(key) must be from 0 to 1 inclusive (got \(shown)); "))
+        #expect(message.contains("a limit above 1 or NaN never fires and a negative one flags every connected node"))
+        #expect(message.hasSuffix(
+            "Write a percentage as a fraction (0.9 for 90%), or remove the key to turn the check off."))
     }
 
-    @Test("경계값 0 과 1 인 상한은 그대로 읽힌다")
-    func acceptsBoundaryLimits() throws {
+    @Test("경계값 0 과 1 은 두 비율 키 모두에서, 개수 0 은 모든 개수 키에서 그대로 읽힌다", arguments: [0, 1])
+    func acceptsBoundaryLimits(_ ratio: Int) throws {
+        // 비율 키에 정수로 쓴 0·1 도 받는다(YAML 정수가 Double 로 읽힌다).
         let yaml = """
             thresholds:
               max_cycles: 0
               max_unused_symbols: 0
               max_rule_violations: 0
               max_efferent_coupling: 0
-              max_instability: 1
-              max_distance: 0
+              max_instability: \(ratio)
+              max_distance: \(ratio)
             """
         let thresholds = try ConfigurationLoader().load(yaml: yaml, path: "/p/.cartograph.yml").configuration.thresholds
         #expect(thresholds == Thresholds(
             maxCycles: 0, maxUnusedSymbols: 0, maxRuleViolations: 0,
-            maxInstability: 1, maxDistanceFromMainSequence: 0, maxEfferentCoupling: 0
+            maxInstability: Double(ratio), maxDistanceFromMainSequence: Double(ratio), maxEfferentCoupling: 0
         ))
     }
 
