@@ -59,14 +59,52 @@ _Last updated: 2026-11-22 by Claude (계열 점검 4차: 무시 소스 한계 �
   - 적대 입력(한 패키지·한 인덱스에 설정만 바꿔 `main`과 대조): 기본 제외 `R.generated.swift`·`Generated/`·한글과 공백이 든
     `생성 코드.generated.swift`, 대문자 `R.Generated.swift`(글롭이 대소문자를 가려 따라감), 사용자 `exclude`, 좁힌 `include`(무시 소스 8개
     전부 범위 밖, 보존 문장 없이 개수만), `.git/info/exclude`, 강제 추가된 추적 파일(무시 소스로 세지 않음), 추적 파일을 가리키는
-    무시 링크(범위 안에서는 세지 않고 제외되면 범위 밖으로 셈), 저장소 밖(한계 없음), 손상된 Git index(폴백, 문장 없음). 모든 경우
+    무시 링크(범위 안에서는 세지 않음, 제외돼도 리뷰 반영 뒤에는 세지 않음), 저장소 밖(한계 없음), 손상된 Git index(폴백, 문장 없음). 모든 경우
     발견 목록은 `main`과 같았고, 센 개수와 실제로 보고된 선언이 일치했다.
   - 못 돌린 것: `coverage.sh`(`xcrun llvm-cov`·`.xctest`), `verify-fixtures.sh` 전체(SwiftUI·Objective-C 코퍼스와 macOS 인덱스 전제 —
     새 검증기는 그 스크립트 끝에서 돌고 단독으로는 Linux에서 통과), macOS 전용 테스트. 근거는 macOS CI다. GLM 리뷰도 이 환경에서
     쓸 수 없었다.
+- **리뷰 반영** (PR #241 독립 리뷰, 차단 항목 없음, 코드 `55e3abd`, 문서는 그다음 커밋):
+  - 검증기 환경 격리: 공유 `run`이 호출자의 `GIT_*`를 그대로 넘겼다. 버린 저장소를 `GIT_DIR`로 지정해 옛 검증기를 돌리니
+    `git -C <사본> init`이 그 바깥 저장소의 `.git` 파일 2개를 바꾸고 사본에는 `.git`이 생기지 않았으며, 빌드를 다 한 뒤에야
+    엉뚱한 미사용 목록 불일치로 실패했다. 이제 `main()`과 `materialize()` 처음에 `GIT_*`를 지우고(Cartograph의 Git 호출 두 곳은
+    이미 스스로 지운다), 사본 지역 설정에 `core.excludesFile=/dev/null`을 두고, 사본이 자기 저장소인지 확인한다. 같은 조건에서 새
+    검증기는 통과하고 바깥 저장소는 그대로다. 전역 gitignore에 `Package.swift`를 둔 HOME으로도 옛 검증기는 빌드 뒤 경로 목록
+    불일치로 실패하고 새 검증기는 통과한다. 드리프트 검사는 모든 `.swift`와 `Package.swift`로 넓혀, `.gitignore`에
+    `/Package.swift`를 더한 변이를 빌드 전에(0초) 잡는다(옛 검사는 빌드 뒤 11초에 다른 이유로 실패).
+  - 빌드 디렉터리: `BuildArtifactDirectories.prunedNames`(`.build`·`DerivedData` 등)는 걷지 않는다. Linux에서 SwiftPM 빌드 도구
+    플러그인이 `.build/plugins/outputs/.../PluginGenerated.swift`에 `Helper.usedByPlugin()` 호출을 생성하게 하니
+    `dead --retain-public`이 `usedByPlugin()`을 미사용으로 보고했고 어느 한계도 그 파일을 말하지 않았다. README 두 벌·CHANGELOG·
+    코퍼스 README에 적고, 무시 소스 문장이 실릴 때 "Generated sources inside build directories that discovery does not walk … are not
+    examined." 문장을 붙인다. 플러그인 출력을 따라가는 것은 아래 D2다.
+  - 패턴 이름: 괄호 안의 기본 패턴 이름을 늘 붙이던 것을, 범위 밖 파일에 실제로 걸린 `exclude` 패턴(JSON, 제어 문자 이스케이프)과
+    include 누락으로 바꾸고 고치는 방법도 걸린 쪽만 말한다. 사용자 `exclude`는 기본값을 대체하고 `init` 템플릿에는
+    `**/Generated/**`가 없다.
+  - 과다 계수: 추적 파일(범위 밖 포함)을 가리키는 무시 링크는 범위 밖 수에서 뺀다(`untrackedSources`, 추적 목록은 `allSourceFiles`).
+    무시 소스 분할은 `IgnoredSourceReferences.partition` 한 번으로 한다.
+  - 문서: 아래 "다음 할 일" 2의 "마지막 줄"을 고쳤다(ok 줄 뒤에 빈 줄과 "통과"가 온다). D1에 추적 생성 파일 사정을, 아래에 물려받은
+    한계를 적었다. 코퍼스 README에 출처(R.swift 빌드 단계의 `R.generated.swift`, Sourcery의 `<Template>.generated.swift`, SwiftGen의
+    `Generated/`, 에이전트 작업 사본)를 적었다.
+  - 돌연변이(`GitSourceInventoryTests`, Linux 스크래치): 모든 exclude 패턴을 적음(5 issues), 추적 파일 링크를 셈(2), 빌드 디렉터리
+    문장을 빼거나 늘 붙임(2·1), include 누락을 무시(2) — 다섯 개 모두 실패한다. 검증기는 리뷰 전 바이너리를 범위 밖 문장 검사에서
+    잡는다(이제 걸린 패턴 `["**/*.generated.swift"]`과 빌드 디렉터리 문장까지 문자열로 본다).
+  - 재검증: `swift test` 실패 59개가 `main` 기준선과 이름까지 같다(Kit의 issue 하나 차이는 이미 실패하는
+    `MechanicalFixVerificationTests` 프로세스 그룹 테스트 안의 타이밍). 자기 분석 네 가지 exit 0, `dead` 경고 22건 동일(정점 9803).
+    CLI 계약 276 ok·2 FAIL(`xcrun swiftc`). 검증기 통과. 적대 입력 재실행: 기본 설정 3건(패턴 두 개 이름), 사용자 `exclude` 1건(사용자
+    패턴만, 추적 파일 링크 빠짐 — 전에는 2건), 좁힌 `include` 7건(전에는 8건, include 누락 함께 표시). 발견 목록은 리뷰 전 바이너리와
+    모두 같다. Yams·swift-argument-parser도 진단·limitations가 같다.
+- **물려받은 한계(리뷰가 지적, 이번에 고치지 않음)**:
+  - 저장소 안 디렉터리 링크: 링크로 먼저 걷고 Git 목록과 대조한다는 지적이다. Linux에서 `ZMirror -> Sources/Lib/Core`(링크가 먼저 걸리는
+    순서)로 재현하지 못했다 — `directoryEntries`가 링크 디렉터리의 자식을 실제 경로로 적어 Git 목록과 맞는다. macOS에서 다시 볼 것.
+  - 대소문자만 바꾼 이름 변경: 대소문자를 가리지 않는 파일 시스템에서 `mv Foo.swift foo.swift` 뒤 Git 색인에는 `Foo.swift`가 남고 걷기는
+    `foo.swift`를 낸다. `git.paths.contains`는 대소문자를 가리므로 그 파일이 무시 소스로 세지고 분석에서 빠질 수 있다(코드 판독, Linux
+    ext4에서는 재현 불가).
+  - MCP 세션 지문: 세션 재사용 판단이 범위 안 경로만 보면 범위 밖 무시 파일이 생기거나 사라져도 개수가 낡을 수 있다는 지적이다.
+    이 세션에서 확인하지 않았다(`AnalysisSession.walk`의 캐시 키와 `ProjectFileInventory`의 관계를 볼 것).
 - **제외한 것**:
   - 범위 밖 무시 소스를 따라가 보존하는 것(아래 "남은 후보" D1). 보존을 넓히는 쪽이지만 `exclude`의 뜻을 바꾼다. 추적되는 제외 파일은
     지금도 간선을 버리므로, 무시 파일만 따라가면 같은 `R.generated.swift`가 추적 여부에 따라 다른 답을 낸다.
+  - 빌드 도구 플러그인 출력을 따라가는 것(아래 D2).
   - B1·B3·B5·C(사용자 선택), B2(Narrowing 절차), 보조 인덱스 읽기 비용 측정(실제 프로젝트 필요), `assign-only` 문구 고정,
     `accessHidingOwners` 첫 루프 정리, `CartographKit` 임베더 `Thresholds` 검사(API 동작 변경).
 
@@ -229,7 +267,7 @@ _Last updated: 2026-11-22 by Claude (계열 점검 4차: 무시 소스 한계 �
 1. ~~새 보존 테스트의 돌연변이 확인~~ — 3차 점검에서 Linux 스크래치 빌드로 했다(변이 20개 중 18개 검출, 2개는 동작이
    같은 변이). 이 테스트들은 손으로 만든 스냅샷 위의 순수 분석이라 플랫폼과 무관하다.
 2. ~~무시 컴파일 소스 하위 코퍼스와 검증기~~ — 4차 점검에서 `Fixtures/IgnoredSourceCorpus`와 `verify-ignored-sources.py`로
-   했다. macOS CI의 `verify-fixtures.sh` 로그에서 마지막 줄 "무시 컴파일 소스 경계 4개 경로·미사용 7건"을 확인한다.
+   했다. macOS CI의 `verify-fixtures.sh` 로그 끝부분, "통과" 바로 앞의 ok 줄 "무시 컴파일 소스 경계 4개 경로·미사용 7건"을 확인한다.
 3. 보조 인덱스 읽기 비용을 HealthMap 등 실제 프로젝트에서 잰다.
 4. 발행은 지시가 있을 때만 한다. 이때 `[Unreleased]`를 버전 절로 옮기고 플러그인 매니페스트 버전도 함께 올린다.
 5. PR #239(B4)의 macOS CI에서 `AgentSkillTemplateTests`·`verify-mcp.py`·`verify-plugin-manifest.py`와 완료 검증
@@ -256,6 +294,12 @@ _Last updated: 2026-11-22 by Claude (계열 점검 4차: 무시 소스 한계 �
   - D1 `include`/`exclude`가 거른 Git 무시 소스도 따라갈지. 지금은 따라가지 않고 한계가 개수를 센다(`4b7bfde`). 기본 제외가
     R.swift·Sourcery·SwiftGen 출력과 겹쳐 기본 설정의 생성 파일 대부분이 해당한다. 무시 파일 자신은 어차피 분석 범위 밖이라 제외가
     더할 것이 없다는 점은 따라가는 쪽의 근거다. 추적되는 제외 파일은 간선을 버리는 현재 계약과 어긋난다는 점은 반대 근거다.
+    그 계약 쪽도 조용하다: 기본 제외에 걸린 **추적** 생성 파일(`Forced.generated.swift`)은 호출자를 잃는데 아무 한계도 붙지 않는다
+    (`configured-path-filter`는 기본값보다 좁힐 때만 실린다, `narrowsPathsBeyondDefaults`). 4차 적대 입력에서 확인했다.
+  - D2 빌드 도구 플러그인 출력(`.build/plugins/outputs`, Xcode는 DerivedData)이 쓰는 선언을 보존할지. 탐색이 그 디렉터리를 걷지 않아
+    지금은 미사용으로 보고되고 한계도 없다(무시 소스 문장이 실릴 때만 경계를 말한다). R.swift 7·SwiftGen·Sourcery 플러그인
+    사용자에게 같은 오탐 계열이다. 스토어에서 플러그인 출력 유닛을 찾아 보조로 읽는 방식이 후보이며, 무시 소스와 같은 보존 근거를
+    쓸지·한계로만 둘지를 정해야 한다.
 - **처리함**
   - B4 에이전트 플러그인: PR #239에서 처리. 매니페스트가 스킬과 함께 MCP 서버를 선언한다(위 "PR #239 — B4 처리").
 - **부분 구현**
@@ -278,5 +322,5 @@ _Last updated: 2026-11-22 by Claude (계열 점검 4차: 무시 소스 한계 �
 
 저장소 루트에서 HANDOFF.md와 적용 AGENTS.md를 읽고 Git 상태를 확인해줘. PR #237은 `main`에 스쿼시
 머지됐고(`f892ddb`) 아직 발행하지 않았어. B4는 PR #239에서 처리했어. "다음 할 일 (PR #237 머지 이후)"를
-이어 가고, 남은 후보(4차 점검의 D1 포함)는 내가 고른 뒤 착수해.
+이어 가고, 남은 후보(4차 점검의 D1·D2 포함)는 내가 고른 뒤 착수해.
 발행·태그는 따로 지시가 있을 때만 해.

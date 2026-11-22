@@ -10,8 +10,16 @@ An ignored file cannot be committed, and adding one to `FalsePositiveCorpus` wou
 `limitations` in its frozen JSON expectations. So this package lives on its own. The files it needs
 are in `Templates/` as `.txt` files. `Scripts/verify-ignored-sources.py` copies the package, writes the
 templates and an ignored link into the copy, runs `git init`, and checks that Git really ignores
-exactly those paths. Then it builds a fresh index with `swift build --scratch-path` and runs the CLI.
+exactly those paths. It also checks that every other `.swift` file, including `Package.swift`, stays
+selected. Then it builds a fresh index with `swift build --scratch-path` and runs the CLI.
 `Scripts/verify-fixtures.sh` runs it after the false-positive corpus.
+
+Two things in the caller's environment could change the result, so the verifier removes them first:
+
+- It removes every `GIT_*` variable from its own environment and its children. Git hooks export
+  `GIT_DIR`, and with it set, `git -C <copy> init` reinitialised the outer repository instead of the copy.
+- It sets `core.excludesFile=/dev/null` in the copy, so a developer's global gitignore cannot hide or
+  add files. The product's `git ls-files` reads the same local setting.
 
 The package does not compile without the generated file. `Screen.title` reads
 `GeneratedAccessors.screenTitle`, as app code reads `R`.
@@ -34,8 +42,12 @@ source and not from Cartograph output. The verifier also checks these things:
 
 - No finding and no graph node comes from an ignored file.
 - There is no cycle at type or symbol level. The real code has one, `Screen` ↔ `GeneratedAccessors`.
-- The `source-discovery-exclusions` limitation lists exactly the four ignored paths. It says that
-  ignored sources are followed, and it counts the one ignored file outside the include/exclude scope.
+- The `source-discovery-exclusions` limitation lists exactly the four ignored paths and says three
+  things:
+  - ignored sources are followed;
+  - one ignored file is outside the include/exclude scope, matched by the exclude pattern
+    `**/*.generated.swift`;
+  - build directories such as `.build` and `DerivedData` are not examined.
 - `query` gives the state and reason above for each declaration, and `dead --explain` names the
   ignored source.
 - Control: on the same index, un-ignoring `GeneratedAccessors.swift` makes the type cycle and that
@@ -44,12 +56,29 @@ source and not from Cartograph output. The verifier also checks these things:
 
 ## Provenance
 
-The 2026-11-03 family review found the missing callers. The fix shipped in PR #237. In the third
-review, a one-off Linux build confirmed it end to end: a helper called only from a Git-ignored
-`Generated.swift` was retained, and an uncalled helper was still reported. That check was not
-frozen. The default-exclude boundary is new here. R.swift writes `R.generated.swift` by default.
-Under the default `exclude`, its uses were not followed, while the limitation said ignored sources
-were followed.
+The fixture copies no project's code. Its files follow how real generators lay out their output
+when a team keeps it out of Git:
+
+- R.swift's documented build-phase setup writes `$SRCROOT/R.generated.swift`, and teams add that file to
+  `.gitignore`. `Templates/R.generated.swift.txt` uses that name. The default exclude
+  `**/*.generated.swift` matches it.
+- Sourcery names a template's output `<Template>.generated.swift` when the output is a directory.
+  This is the same default-exclude case.
+- SwiftGen writes to configured paths, and a `Generated/` folder is a common choice; `**/Generated/**`
+  matches it. `GeneratedAccessors.swift` stands for a generated file at a path that no default
+  pattern matches, which is the case that is followed.
+- Agent and editor worktrees under `.claude/worktrees/` hold Git-ignored copies of the whole project
+  that are not compiled. `WorktreeCaller.swift` mirrors such a copy.
+
+The 2026-11-03 family review found the missing callers as a class of false positives, and the fix
+shipped in PR #237. In the third review, a one-off Linux build confirmed it end to end: a helper called
+only from a Git-ignored `Generated.swift` was retained, and an uncalled helper was still reported. That
+check was not frozen. The default-exclude boundary is new here. Under the default `exclude`, the uses
+in `R.generated.swift` were not followed, while the limitation said ignored sources were followed.
+
+Generated sources that build-tool plugins (the R.swift, SwiftGen and Sourcery plugins) write under
+`.build` or `DerivedData` are out of this corpus. Discovery never walks those directories, so such files
+are neither followed nor counted.
 
 ## Run
 
