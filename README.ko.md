@@ -280,7 +280,7 @@ cartograph dead --explain UserRepository
 경고로 보고합니다:
 
 ```console
-Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.Client.fetch(_:retry:)' is never used
+Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.fetch(_:retry:)' is never used
 ```
 
 인덱스는 지역 심볼의 참조를 기록하지 않으므로, 사용 여부는 함수 본문을 직접 스캔해
@@ -292,7 +292,7 @@ Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.Client.fetch(
 보고합니다:
 
 ```console
-Sources/Net/Client.swift:17:9: warning: property 'cacheKey' of 'Net.Client' is assigned but never read
+Sources/Net/Client.swift:17:9: warning: property 'cacheKey' of 'Client' is assigned but never read
 ```
 
 인덱스가 프로퍼티 참조마다 read/write 역할을 남기므로 이 검사는 소스 스캔이 필요 없습니다.
@@ -426,7 +426,7 @@ cartograph fix --apply --verify-command '["swift","build","--build-tests"]'
 ```console
 $ cartograph fix
 Sources/Net/Client.swift:3:1: import 'Combine' is never used
-Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.Client.fetch(_:retry:)' is never used
+Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.fetch(_:retry:)' is never used
 2 fix(es) in 1 file(s) — dry run; pass --apply to write
 ```
 

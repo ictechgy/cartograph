@@ -279,7 +279,7 @@ declarations that only reference each other has plenty of references and is stil
 `unused-parameter` rule:
 
 ```console
-Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.Client.fetch(_:retry:)' is never used
+Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.fetch(_:retry:)' is never used
 ```
 
 The index does not record references to local symbols, so usage is proven by scanning the
@@ -292,7 +292,7 @@ name, not a deletion.
 `assign-only` rule:
 
 ```console
-Sources/Net/Client.swift:17:9: warning: property 'cacheKey' of 'Net.Client' is assigned but never read
+Sources/Net/Client.swift:17:9: warning: property 'cacheKey' of 'Client' is assigned but never read
 ```
 
 The index records a read/write role on every property reference, so this check needs no source
@@ -431,7 +431,7 @@ file, and findings already accepted in the baseline (`baseline` records both cla
 ```console
 $ cartograph fix
 Sources/Net/Client.swift:3:1: import 'Combine' is never used
-Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.Client.fetch(_:retry:)' is never used
+Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.fetch(_:retry:)' is never used
 2 fix(es) in 1 file(s) — dry run; pass --apply to write
 ```
 
