@@ -1,0 +1,6 @@
+// R.swift 의 기본 출력 이름. 무시되고 컴파일되지만 기본 제외 글롭 **/*.generated.swift 에 걸린다.
+enum R {
+    static func touchHelper() {
+        Helper.usedOnlyByExcludedGenerated()
+    }
+}

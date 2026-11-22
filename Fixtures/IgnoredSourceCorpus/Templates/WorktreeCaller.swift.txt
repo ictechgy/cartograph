@@ -1,0 +1,6 @@
+// 에이전트 작업 사본처럼 무시되었지만 컴파일되지 않는 파일. 인덱스 레코드가 없으므로 아무것도 살리지 않는다.
+enum WorktreeCaller {
+    static func touchHelper() {
+        Helper.usedOnlyByUncompiledCopy()
+    }
+}

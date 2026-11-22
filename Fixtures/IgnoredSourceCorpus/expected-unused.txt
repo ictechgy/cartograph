@@ -1,0 +1,7 @@
+enum 'IgnoredSources.DeadCallee' is never used
+function 'IgnoredSources.deadCaller()' is never used
+method 'IgnoredSources.neverCalled()' is never used
+method 'IgnoredSources.usedOnlyByExcludedGenerated()' is never used
+method 'IgnoredSources.usedOnlyByUncompiledCopy()' is never used
+property 'IgnoredSources.title' is never used
+struct 'IgnoredSources.ExtendedOnly' is never used

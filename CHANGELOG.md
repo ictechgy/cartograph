@@ -56,7 +56,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `redundant-public` and test-root classification do not change; `impact` lists such declarations under
   runtime review because their ignored callers never appear on an impact path. The supplemental read reuses the store the main analysis selected, so it obeys
   `--index-store`, and runs only when such files exist: it opens every unit to scan its dependency list and reads
-  records only for the ignored files.
+  records only for the ignored files. An ignored file outside the `include`/`exclude` scope is not followed, and the
+  default exclude patterns `**/*.generated.swift` and `**/Generated/**` cover R.swift's default
+  `R.generated.swift` and common Sourcery and SwiftGen output paths: declarations used only by such a file are
+  still reported. The `source-discovery-exclusions` limitation counts these files and says how to follow them
+  (remove the matching `exclude` pattern) instead of stating only that ignored sources are followed, which read as
+  if it covered them too. `Scripts/verify-fixtures.sh` now builds a dedicated corpus
+  (`Fixtures/IgnoredSourceCorpus`) that pins both directions on a real compiler index: a followed generated file,
+  an excluded one, an uncompiled worktree copy, an extension-only use and an ignored link to tracked dead code.
 - When Git source selection fails inside a repository (5-second limit, 16 MiB output budget, or a Git
   error such as a corrupt index), analysis responses now carry a `source-discovery-git-unavailable`
   limitation with the reason. The fallback walks every source, including Git-ignored files, so the same

@@ -1,0 +1,4 @@
+# 상위 저장소의 공개 API 보존 정책을 이 회귀 코퍼스에 적용하지 않는다.
+# exclude 는 일부러 쓰지 않는다. 기본 제외 글롭(**/*.generated.swift 등)에 걸린 무시 파일의 경계도 함께 고정한다.
+retention:
+  retain_public: false

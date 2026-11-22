@@ -1,0 +1,6 @@
+# 검증기가 Templates/ 에서 만들어 빌드하는 생성 파일과, 컴파일되지 않는 에이전트 작업 사본·링크.
+# 이 저장소 안에서는 아무것도 가리키지 않는다. 복사본에서 `git init` 한 뒤 같은 규칙으로 무시된다.
+/Sources/IgnoredSources/GeneratedAccessors.swift
+/Sources/IgnoredSources/R.generated.swift
+/.claude/
+/Links/
