@@ -71,7 +71,7 @@ public struct ConfigurationLoader: Sendable {
         }
 
         try configuration.validate()
-        try Self.validateCountThresholds(configuration.thresholds, path: path)
+        try Self.validateThresholds(configuration.thresholds, path: path)
         return LoadResult(
             configuration: configuration,
             warnings: try Self.unknownKeyWarnings(in: yaml, path: path),
@@ -93,17 +93,48 @@ public struct ConfigurationLoader: Sendable {
         "retain_hashable_properties", "retain_raw_representable_enum_cases",
         "retained_names", "retained_files", "external_test_case_classes",
     ]
-    /// 개수 상한은 0 이상이어야 한다.
+    /// 개수 상한은 0 이상, 비율 상한은 0 과 1 사이여야 한다.
     ///
     /// 음수 `max_efferent_coupling` 은 의존이 하나도 없는 정점까지 "0 > -1" 로 걸어,
-    /// 설정 실수가 모든 제공자 모듈의 경고와 `--strict` 실패로 바뀐다. 조용히 받지 않는다.
-    private static func validateCountThresholds(_ thresholds: Thresholds, path: String) throws {
-        guard let limit = thresholds.maxEfferentCoupling, limit < 0 else { return }
-        throw CartographError.invalidConfiguration(
-            path: path,
-            reason: "thresholds.max_efferent_coupling must be 0 or greater (got \(limit)); "
-                + "it counts the distinct nodes one node may depend on"
-        )
+    /// 설정 실수가 모든 제공자 모듈의 경고와 `--strict` 실패로 바뀐다. 음수 `max_cycles` 등도 같아서
+    /// 발견이 0건인 실행까지 실패시킨다. 불안정도와 주계열 거리는 0...1 이라, 백분율로 쓴 `90` 이나
+    /// `.nan` 은 어떤 정점도 걸지 못한 채 초록으로 통과한다 — 보호가 하나도 없는데 CI 가 초록인 상태다.
+    /// 어느 쪽이든 조용히 받지 않는다.
+    private static func validateThresholds(_ thresholds: Thresholds, path: String) throws {
+        for (key, limit, meaning) in countLimits(of: thresholds) where limit < 0 {
+            throw CartographError.invalidConfiguration(
+                path: path, reason: "thresholds.\(key) must be 0 or greater (got \(limit)); \(meaning)"
+            )
+        }
+        for (key, limit) in ratioLimits(of: thresholds) where !(0...1).contains(limit) {
+            throw CartographError.invalidConfiguration(
+                path: path,
+                reason: "thresholds.\(key) must be between 0 and 1 (got \(limit)); the metric is a ratio, "
+                    + "so a limit above 1 or NaN never fires and a negative one flags every connected node"
+            )
+        }
+    }
+
+    /// 설정된 개수 상한과, 오류 문구에 붙일 그 값의 뜻. 순서는 오류가 먼저 나는 순서다.
+    private static func countLimits(of thresholds: Thresholds) -> [(key: String, limit: Int, meaning: String)] {
+        let negativeFailsEveryRun = "a negative limit fails every run, even one with no findings"
+        let entries: [(String, Int?, String)] = [
+            ("max_cycles", thresholds.maxCycles, negativeFailsEveryRun),
+            ("max_unused_symbols", thresholds.maxUnusedSymbols, negativeFailsEveryRun),
+            ("max_rule_violations", thresholds.maxRuleViolations, negativeFailsEveryRun),
+            ("max_efferent_coupling", thresholds.maxEfferentCoupling,
+             "it counts the distinct nodes one node may depend on"),
+        ]
+        return entries.compactMap { key, limit, meaning in limit.map { (key, $0, meaning) } }
+    }
+
+    /// 설정된 비율 상한. 순서는 오류가 먼저 나는 순서다.
+    private static func ratioLimits(of thresholds: Thresholds) -> [(key: String, limit: Double)] {
+        let entries: [(String, Double?)] = [
+            ("max_instability", thresholds.maxInstability),
+            ("max_distance", thresholds.maxDistanceFromMainSequence),
+        ]
+        return entries.compactMap { key, limit in limit.map { (key, $0) } }
     }
 
     private static let knownThresholdKeys: Set<String> = [

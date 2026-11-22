@@ -214,6 +214,53 @@ struct ConfigurationLoaderTests {
         }
     }
 
+    @Test("음수 개수 상한은 키마다 경로와 이유를 담은 설정 오류가 된다", arguments: [
+        "max_cycles", "max_unused_symbols", "max_rule_violations",
+    ])
+    func rejectsNegativeCountLimits(_ key: String) {
+        // 음수 상한은 발견이 0건이어도 "0 > -1" 이라 모든 실행을 실패시킨다.
+        #expect {
+            try ConfigurationLoader().load(yaml: "thresholds:\n  \(key): -1\n", path: "/p/.cartograph.yml")
+        } throws: { error in
+            let message = (error as? CartographError)?.errorDescription ?? ""
+            return message.contains("/p/.cartograph.yml") && message.contains("thresholds.\(key) must be 0 or greater")
+        }
+    }
+
+    @Test("비율 상한이 0과 1 사이가 아니면 설정 오류가 된다", arguments: [
+        ("max_instability", "90"), ("max_instability", "-0.5"), ("max_instability", ".nan"),
+        ("max_distance", "1.5"), ("max_distance", "-.inf"), ("max_distance", ".nan"),
+    ])
+    func rejectsOutOfRangeRatioLimits(_ key: String, _ value: String) {
+        // 지표는 0...1 이라 1 을 넘는 상한(백분율로 쓴 90)과 NaN 은 아무것도 걸지 않은 채 통과하고,
+        // 음수 상한은 고립되지 않은 모든 정점을 건다.
+        #expect {
+            try ConfigurationLoader().load(yaml: "thresholds:\n  \(key): \(value)\n", path: "/p/.cartograph.yml")
+        } throws: { error in
+            let message = (error as? CartographError)?.errorDescription ?? ""
+            return message.contains("/p/.cartograph.yml")
+                && message.contains("thresholds.\(key) must be between 0 and 1")
+        }
+    }
+
+    @Test("경계값 0 과 1 인 상한은 그대로 읽힌다")
+    func acceptsBoundaryLimits() throws {
+        let yaml = """
+            thresholds:
+              max_cycles: 0
+              max_unused_symbols: 0
+              max_rule_violations: 0
+              max_efferent_coupling: 0
+              max_instability: 1
+              max_distance: 0
+            """
+        let thresholds = try ConfigurationLoader().load(yaml: yaml, path: "/p/.cartograph.yml").configuration.thresholds
+        #expect(thresholds == Thresholds(
+            maxCycles: 0, maxUnusedSymbols: 0, maxRuleViolations: 0,
+            maxInstability: 1, maxDistanceFromMainSequence: 0, maxEfferentCoupling: 0
+        ))
+    }
+
     @Test("잘못된 타입은 고칠 위치를 알려 주는 오류가 된다")
     func typeMismatchReportsPath() {
         #expect(throws: CartographError.self) {

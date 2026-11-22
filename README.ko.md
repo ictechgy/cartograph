@@ -1556,6 +1556,9 @@ cartograph              0   3  1.00  0.00  0.00  main-sequence
 계층에 손을 뻗는 모듈을 잡는 것은 절대 개수입니다. 고립 정점은 판정하지 않으며, 경고가 남으면
 `metrics --strict`가 실행을 실패시킵니다.
 `check`는 지표 임계값을 평가하지 않으므로 CI에서는 `metrics --strict`를 별도 단계로 돌리세요.
+개수 상한(`max_cycles`, `max_unused_symbols`, `max_rule_violations`, `max_efferent_coupling`)은 0 이상,
+두 비율 상한은 0과 1 사이여야 하고, 그 밖의 값은 설정 오류(종료 코드 2)입니다. 음수 개수는 모든 실행을
+실패시키고, 백분율로 쓴 비율 상한(`90`)이나 `.nan`은 아무것도 걸지 못합니다.
 
 ### `rules` — CI에서 아키텍처 강제
 

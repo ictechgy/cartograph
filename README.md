@@ -1628,6 +1628,10 @@ Instability is a ratio, so a module that depends on three others and one that de
 can both read 1.00; the absolute count is what catches a module reaching into every layer.
 Isolated nodes are never flagged, and `metrics --strict` fails the run when a warning remains.
 `check` does not evaluate metric thresholds; run `metrics --strict` as its own CI step.
+Count limits (`max_cycles`, `max_unused_symbols`, `max_rule_violations`, `max_efferent_coupling`) must
+be 0 or greater and the two ratio limits must lie between 0 and 1; anything else is a configuration
+error (exit 2). A negative count fails every run, and a ratio limit written as a percentage (`90`) or
+`.nan` would never fire.
 
 ### `rules` — enforce architecture in CI
 
