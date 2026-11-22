@@ -279,7 +279,7 @@ declarations that only reference each other has plenty of references and is stil
 `unused-parameter` rule:
 
 ```console
-Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.Client.fetch(_:retry:)' is never used
+Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.fetch(_:retry:)' is never used
 ```
 
 The index does not record references to local symbols, so usage is proven by scanning the
@@ -292,7 +292,7 @@ name, not a deletion.
 `assign-only` rule:
 
 ```console
-Sources/Net/Client.swift:17:9: warning: property 'cacheKey' of 'Net.Client' is assigned but never read
+Sources/Net/Client.swift:17:9: warning: property 'cacheKey' of 'Client' is assigned but never read
 ```
 
 The index records a read/write role on every property reference, so this check needs no source
@@ -431,7 +431,7 @@ file, and findings already accepted in the baseline (`baseline` records both cla
 ```console
 $ cartograph fix
 Sources/Net/Client.swift:3:1: import 'Combine' is never used
-Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.Client.fetch(_:retry:)' is never used
+Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.fetch(_:retry:)' is never used
 2 fix(es) in 1 file(s) — dry run; pass --apply to write
 ```
 
@@ -1628,6 +1628,11 @@ Instability is a ratio, so a module that depends on three others and one that de
 can both read 1.00; the absolute count is what catches a module reaching into every layer.
 Isolated nodes are never flagged, and `metrics --strict` fails the run when a warning remains.
 `check` does not evaluate metric thresholds; run `metrics --strict` as its own CI step.
+Every threshold is range-checked when the configuration loads, so this applies to every command, not
+only `metrics`: count limits (`max_cycles`, `max_unused_symbols`, `max_rule_violations`,
+`max_efferent_coupling`) must be 0 or greater, and `max_instability` and `max_distance` must be from 0
+to 1 inclusive. Anything else is a configuration error (exit 2) that names the key, because a negative
+count fails every run and a ratio limit written as a percentage (`90`) or `.nan` would never fire.
 
 ### `rules` — enforce architecture in CI
 
@@ -1862,11 +1867,11 @@ retention:
   retained_names: ["*.shared"]
   retained_files: ["Sources/Generated/**"]
 
-thresholds:
+thresholds:                  # counts 0 or greater, ratios 0 to 1 inclusive (exit 2 otherwise)
   max_cycles: 0
   max_unused_symbols: 0
   max_rule_violations: 0
-  max_instability: 0.9
+  max_instability: 0.9       # a fraction, not a percentage (0.9, not 90)
   max_distance: 0.8
   max_efferent_coupling: 8   # distinct nodes one node may depend on (Ce)
 

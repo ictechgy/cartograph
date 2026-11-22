@@ -280,7 +280,7 @@ cartograph dead --explain UserRepository
 경고로 보고합니다:
 
 ```console
-Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.Client.fetch(_:retry:)' is never used
+Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.fetch(_:retry:)' is never used
 ```
 
 인덱스는 지역 심볼의 참조를 기록하지 않으므로, 사용 여부는 함수 본문을 직접 스캔해
@@ -292,7 +292,7 @@ Sources/Net/Client.swift:42:30: warning: parameter 'retry' of 'Net.Client.fetch(
 보고합니다:
 
 ```console
-Sources/Net/Client.swift:17:9: warning: property 'cacheKey' of 'Net.Client' is assigned but never read
+Sources/Net/Client.swift:17:9: warning: property 'cacheKey' of 'Client' is assigned but never read
 ```
 
 인덱스가 프로퍼티 참조마다 read/write 역할을 남기므로 이 검사는 소스 스캔이 필요 없습니다.
@@ -426,7 +426,7 @@ cartograph fix --apply --verify-command '["swift","build","--build-tests"]'
 ```console
 $ cartograph fix
 Sources/Net/Client.swift:3:1: import 'Combine' is never used
-Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.Client.fetch(_:retry:)' is never used
+Sources/Net/Client.swift:42:30: parameter 'retry' of 'Net.fetch(_:retry:)' is never used
 2 fix(es) in 1 file(s) — dry run; pass --apply to write
 ```
 
@@ -1556,6 +1556,11 @@ cartograph              0   3  1.00  0.00  0.00  main-sequence
 계층에 손을 뻗는 모듈을 잡는 것은 절대 개수입니다. 고립 정점은 판정하지 않으며, 경고가 남으면
 `metrics --strict`가 실행을 실패시킵니다.
 `check`는 지표 임계값을 평가하지 않으므로 CI에서는 `metrics --strict`를 별도 단계로 돌리세요.
+모든 임계값은 설정을 읽을 때 범위를 검사하므로 `metrics`만이 아니라 모든 명령에 적용됩니다. 개수
+상한(`max_cycles`, `max_unused_symbols`, `max_rule_violations`, `max_efferent_coupling`)은 0 이상,
+`max_instability`와 `max_distance`는 0 이상 1 이하여야 합니다. 그 밖의 값은 키 이름을 담은 설정
+오류(종료 코드 2)입니다. 음수 개수는 모든 실행을 실패시키고, 백분율로 쓴 비율 상한(`90`)이나 `.nan`은
+아무것도 걸지 못하기 때문입니다.
 
 ### `rules` — CI에서 아키텍처 강제
 
@@ -1785,11 +1790,11 @@ retention:
   retained_names: ["*.shared"]
   retained_files: ["Sources/Generated/**"]
 
-thresholds:
+thresholds:                  # 개수는 0 이상, 비율은 0 이상 1 이하(아니면 종료 코드 2)
   max_cycles: 0
   max_unused_symbols: 0
   max_rule_violations: 0
-  max_instability: 0.9
+  max_instability: 0.9       # 백분율이 아니라 비율(90이 아니라 0.9)
   max_distance: 0.8
   max_efferent_coupling: 8   # 정점 하나가 의존해도 되는 서로 다른 정점 수(Ce)
 

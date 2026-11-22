@@ -36,6 +36,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `.cartograph.yml` thresholds outside their range are now configuration errors (exit 2) for every
+  command, as a negative `max_efferent_coupling` already was (its message is unchanged). The message names
+  the key and the value and says how to fix it. A negative `max_cycles`, `max_unused_symbols` or
+  `max_rule_violations` failed every run, even one with no findings ("found 0, allowed at most -1").
+  `max_instability` and `max_distance` bound ratios from 0 to 1 inclusive, so a limit written as a
+  percentage (`max_instability: 90`) or `.nan` never fired and `metrics --strict` passed with no
+  protection, while a negative one flagged every connected node. **Upgrade note:** a configuration that
+  set such a value now stops before analysis; write the ratio as a fraction (`0.9`) or remove the key.
+  `0` and `1` are still accepted, also written as integers. Thresholds built in code by `CartographKit`
+  embedders are not checked.
 - Declarations used only by Git-ignored sources that the compiler indexed (gitignored R.swift, SwiftGen
   or Sourcery output) are no longer reported as unreachable. Source discovery excludes ignored files,
   so their callers vanished and `retained_files` could not help because the files were never read. The

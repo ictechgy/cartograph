@@ -71,12 +71,63 @@ public struct ConfigurationLoader: Sendable {
         }
 
         try configuration.validate()
-        try Self.validateCountThresholds(configuration.thresholds, path: path)
+        try Self.validateThresholds(configuration.thresholds, path: path)
         return LoadResult(
             configuration: configuration,
             warnings: try Self.unknownKeyWarnings(in: yaml, path: path),
             path: path
         )
+    }
+
+    // MARK: - 임계값 범위 검사
+
+    /// 개수 상한은 0 이상, 비율 상한은 0 이상 1 이하여야 한다.
+    ///
+    /// 음수 `max_efferent_coupling` 은 의존이 하나도 없는 정점까지 "0 > -1" 로 걸어,
+    /// 설정 실수가 모든 제공자 모듈의 경고와 `--strict` 실패로 바뀐다. 음수 `max_cycles` 등도 같아서
+    /// 발견이 0건인 실행까지 실패시킨다. 불안정도와 주계열 거리는 0...1 이라, 백분율로 쓴 `90` 이나
+    /// `.nan` 은 어떤 정점도 걸지 못한 채 초록으로 통과한다 — 보호가 하나도 없는데 CI 가 초록인 상태다.
+    /// 어느 쪽이든 조용히 받지 않고, 원인과 고치는 방법을 함께 알린다.
+    private static func validateThresholds(_ thresholds: Thresholds, path: String) throws {
+        for (key, limit, explanation) in countLimits(of: thresholds) where limit < 0 {
+            throw CartographError.invalidConfiguration(
+                path: path, reason: "thresholds.\(key) must be 0 or greater (got \(limit)); \(explanation)"
+            )
+        }
+        for (key, limit) in ratioLimits(of: thresholds) where !(0...1).contains(limit) {
+            throw CartographError.invalidConfiguration(
+                path: path,
+                reason: "thresholds.\(key) must be from 0 to 1 inclusive (got \(limit)); the metric is a ratio, "
+                    + "so a limit above 1 or NaN never fires and a negative one flags every connected node. "
+                    + "Write a percentage as a fraction (0.9 for 90%), or remove the key to turn the check off."
+            )
+        }
+    }
+
+    /// 설정된 개수 상한과, 오류 문구에 붙일 원인·고치는 방법. 순서는 오류가 먼저 나는 순서다.
+    ///
+    /// `max_efferent_coupling` 의 문구는 이미 발행된 그대로 둔다. "must be 0 or greater" 가 고칠 범위를 말하고
+    /// 뒤 절이 그 값의 뜻을 말한다. 새로 검사하는 세 키는 음수가 무엇을 망치는지와 고치는 방법을 함께 적는다.
+    private static func countLimits(of thresholds: Thresholds) -> [(key: String, limit: Int, explanation: String)] {
+        let negativeFailsEveryRun = "a negative limit fails every run, even one with no findings. "
+            + "Set 0 to allow none, or remove the key to turn the check off."
+        let entries: [(String, Int?, String)] = [
+            ("max_cycles", thresholds.maxCycles, negativeFailsEveryRun),
+            ("max_unused_symbols", thresholds.maxUnusedSymbols, negativeFailsEveryRun),
+            ("max_rule_violations", thresholds.maxRuleViolations, negativeFailsEveryRun),
+            ("max_efferent_coupling", thresholds.maxEfferentCoupling,
+             "it counts the distinct nodes one node may depend on"),
+        ]
+        return entries.compactMap { key, limit, explanation in limit.map { (key, $0, explanation) } }
+    }
+
+    /// 설정된 비율 상한. 순서는 오류가 먼저 나는 순서다.
+    private static func ratioLimits(of thresholds: Thresholds) -> [(key: String, limit: Double)] {
+        let entries: [(String, Double?)] = [
+            ("max_instability", thresholds.maxInstability),
+            ("max_distance", thresholds.maxDistanceFromMainSequence),
+        ]
+        return entries.compactMap { key, limit in limit.map { (key, $0) } }
     }
 
     // MARK: - 알 수 없는 키 경고
@@ -93,19 +144,6 @@ public struct ConfigurationLoader: Sendable {
         "retain_hashable_properties", "retain_raw_representable_enum_cases",
         "retained_names", "retained_files", "external_test_case_classes",
     ]
-    /// 개수 상한은 0 이상이어야 한다.
-    ///
-    /// 음수 `max_efferent_coupling` 은 의존이 하나도 없는 정점까지 "0 > -1" 로 걸어,
-    /// 설정 실수가 모든 제공자 모듈의 경고와 `--strict` 실패로 바뀐다. 조용히 받지 않는다.
-    private static func validateCountThresholds(_ thresholds: Thresholds, path: String) throws {
-        guard let limit = thresholds.maxEfferentCoupling, limit < 0 else { return }
-        throw CartographError.invalidConfiguration(
-            path: path,
-            reason: "thresholds.max_efferent_coupling must be 0 or greater (got \(limit)); "
-                + "it counts the distinct nodes one node may depend on"
-        )
-    }
-
     private static let knownThresholdKeys: Set<String> = [
         "max_cycles", "max_unused_symbols", "max_rule_violations", "max_instability", "max_distance",
         "max_efferent_coupling",
