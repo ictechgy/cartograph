@@ -286,8 +286,9 @@ extension FileSystem {
     /// 아래로 잘못 본다. 소스 발견은 그 링크로는 내려가(`App/Lib/.git` 이 없다) 그 파일을 센다.
     ///
     /// 같은 실제 디렉터리를 경계 안팎 두 길로 걸을 수 있으므로 켜면 방문 기록을 둘로 나눈다. 경계 안에서 먼저 걸었다고 경계
-    /// 밖 길을 건너뛰면 그 파일이 경계 밖으로 한 번도 보이지 않는다. 결과 목록은 같은 파일을 한 번만 담으므로 두 번 걸어도
-    /// 그대로다. 끄면 앞의 함수와 같다.
+    /// 밖 길을 건너뛰면 그 파일이 경계 밖으로 한 번도 보이지 않는다. 결과 목록은 같은 파일을 한 번만 담고, 디렉터리·버려진
+    /// 링크·루트 밖 디렉터리 링크 콜백도 경로마다 한 번만 부른다 — 두 번 부르면 그 목록을 지문에 싣는 호출자의 답이 끈
+    /// 때와 달라진다(중첩 저장소 안의 `up -> ../..` 하나로 루트 전체를 두 번 걷는다). 끄면 앞의 함수와 같다.
     public func recursiveFiles(
         under root: String,
         separatesNestedRepositories: Bool,
@@ -313,6 +314,9 @@ extension FileSystem {
         var visited: Set<String> = []
         var visitedInsideNested: Set<String> = []
         var visitedFiles: Set<String> = []
+        // 끄면 같은 경로를 두 번 걷지 않으므로 이 기록은 아무것도 거르지 않는다.
+        var reportedDirectories: Set<String> = []
+        var reportedLinks: Set<String> = []
         // 루트는 해석된 철자로 열거한다. 예전 Foundation 구현이 돌려준 경로는
         // realpath 수준으로 풀린 철자였기 때문에 `/var`·`/tmp`처럼 링크가 끼어든
         // 조상 아래에서도 실제 경로가 반환됐다 — 인덱스 스토어가 기록한 철자와
@@ -327,7 +331,7 @@ extension FileSystem {
                 ? visitedInsideNested.insert(directory.key).inserted
                 : visited.insert(directory.key).inserted
             guard firstVisit else { continue }
-            onDirectory(directory.path)
+            if reportedDirectories.insert(directory.path).inserted { onDirectory(directory.path) }
             guard let entries = try? directoryEntries(at: directory.path)
             else { continue }
             let insideNested = directory.insideNested
@@ -349,7 +353,7 @@ extension FileSystem {
                     // 열거하게 만들고 그 소스의 경로·문자열이 분석 출력에 섞였다. 링크가 아닌
                     // 항목은 부모가 루트 안이면 그대로 안이므로 링크만 판정한다.
                     guard !entry.isSymbolicLink || isPath(key, within: resolvedRoot) else {
-                        onExternalDirectoryLink(entry.path)
+                        if reportedLinks.insert(entry.path).inserted { onExternalDirectoryLink(entry.path) }
                         continue
                     }
                     pending.append((entry.path, key, insideNested, false))
@@ -360,7 +364,9 @@ extension FileSystem {
                     guard visitedFiles.insert(visitKey()).inserted else {
                         // 버려진 이름도 나중에 다른 파일을 가리킬 수 있다 — 재지정은
                         // 부모 디렉터리 지문에는 드러나지 않으니 따로 감시한다.
-                        if entry.isSymbolicLink { onDiscardedLink(entry.path) }
+                        if entry.isSymbolicLink, reportedLinks.insert(entry.path).inserted {
+                            onDiscardedLink(entry.path)
+                        }
                         continue
                     }
                     result.append(entry.path)

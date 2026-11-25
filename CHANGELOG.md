@@ -83,9 +83,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the scope that are only reached through a nested repository, submodule or worktree (the limitation counts
   each of those as one excluded directory, and the fingerprint already watched its `.git` entry), still do
   not refresh a session. Nesting follows the walked path as discovery does, so a file reached through an
-  in-root directory link into such a repository is still fingerprinted. Files inside the scope are
-  fingerprinted by content even inside a nested repository, as before, although discovery skips them.
-  Projects without such files keep the same fingerprint. **Upgrade note:** in projects that have them, a
+  in-root directory link to a directory below such a repository's root is still fingerprinted, while a link
+  to the repository root itself is skipped like the repository. Files inside the scope are fingerprinted by
+  content even inside a nested repository, as before, although discovery skips them. Each Git-ignored
+  symbolic link outside the scope is resolved with `realpath` on every check, because discovery decides by
+  canonical path; on a Linux release build 20,000 such links made a warm check take 0.47–0.61 s, against
+  0.12–0.13 s for as many ignored files. Projects without such files keep the same fingerprint. **Upgrade note:** in projects that have them, a
   target-scope capture for `affected --target-scope` recorded by an earlier version no longer matches the
   input fingerprint and is treated like any stale capture; capture it again. The reason of a failed Git
   selection is still not part of the fingerprint.
