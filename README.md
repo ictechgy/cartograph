@@ -1049,8 +1049,12 @@ non-ASCII strings. Empty expected values are allowed.
 Warm sessions cache file digests after checking device/inode, size, nanosecond modification and
 change times, permissions and resolved path. Filesystems without these stamps are rehashed.
 Sources and index-unit timestamps also participate in the input fingerprint so freshness reports
-are refreshed. File enumeration still occurs; this is cached preparation, not incremental graph
-analysis or an automatic compiler build.
+are refreshed. Sources, headers and Interface Builder or Core Data resources outside the
+`include`/`exclude` scope that Git does not list (ignored files, and files inside a nested repository)
+take part by path only, because the `source-discovery-exclusions` limitation counts the ignored ones:
+creating or deleting such a file, or untracking and ignoring one, starts a new generation. Tracked or
+untracked-but-not-ignored files outside the scope do not. File enumeration still occurs; this is
+cached preparation, not incremental graph analysis or an automatic compiler build.
 
 Within one generation the analysis limitations, the `cartograph_check` result and the test
 lifecycle and name/file indexes behind `cartograph_impact` and `cartograph_affected` are computed
