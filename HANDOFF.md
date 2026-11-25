@@ -61,7 +61,8 @@ _Last updated: 2026-11-25 by Claude (계열 점검 5차: 범위 밖 무시 파�
 - **리뷰 반영** (PR #242 독립 리뷰, 차단 항목 없음, `485e477` 위에 커밋. 바꾼 두 Swift 파일은 스크래치 사본과 바이트까지 같다):
   - S1 중첩 저장소·서브모듈·worktree: Git 목록은 이것들을 디렉터리나 gitlink 하나로만 내므로, `485e477`에서는 그 안의 범위 밖 후보가 전부
     지문에 들어가 `include: ["Sources/**"]`인 이 저장소에서 `.claude/worktrees/<n>`의 파일을 만들거나 지울 때마다 세대가 바뀌었다(답은 같음).
-    이제 탐색 때 루트가 아닌 `.git` 항목이 있는 디렉터리 아래의 범위 밖 후보를 뺀다(`outsideNestedRepositories`). 경계는 전처럼
+    이제 탐색 때 루트가 아닌 `.git` 항목이 있는 디렉터리 아래의 범위 밖 후보를 뺀다(처음에는 실제 경로 접두사로 했고 2차 리뷰 F1에서
+    걸은 길 기준으로 바꿨다, 아래). 경계는 전처럼
     `source-repository-boundary:`가 맡는다. 스크래치 cartograph에 worktree(.swift 683개)를 두고 파일 하나를 만들면 `485e477` 지문은
     바뀌고 새 지문은 그대로다.
   - S2 범위 밖 무시 링크: 링크가 Git이 고른 소스를 가리키면 범위 밖 무시 소스로 세지 않는다(`untrackedSources`). 재지정이나 대상 삭제는
@@ -86,6 +87,31 @@ _Last updated: 2026-11-25 by Claude (계열 점검 5차: 범위 밖 무시 파�
     더해 50개). 자기 분석 네 가지 exit 0, `dead` 26건이 `485e477` 바이너리와 같고 정점 9853. CLI 계약 276 ok·실패 3건(`xcrun`) 동일,
     `verify-mcp.py`·`verify-ignored-sources.py` 통과. cartograph·Yams·swift-argument-parser 지문·한계가 `485e477` 바이너리와 같다.
     디버그 빌드 따뜻한 호출 비교(`485e477` 대 새, N=2,000/20,000 추적·무시)는 잡음 안이다(무시 N=20,000: 766 대 747 ms).
+- **2차 리뷰 반영** (`35f9b55` 재검토, 고칠 것 하나와 잔지적 셋, `35f9b55` 위에 커밋):
+  - F1 중첩 저장소 안을 가리키는 루트 안 디렉터리 링크: `35f9b55`는 중첩 여부를 실제 경로 접두사(`Vendor/Lib/` 아래)로 정했다. 소스 발견은
+    `Vendor/Lib`로는 내려가지 않지만 `App/Lib -> ../Vendor/Lib/Sources`로는 내려가고(`App/Lib/.git`이 없다) 자식을 실제 경로
+    `Vendor/Lib/Sources/X.swift`로 적어 범위 밖 무시 소스로 센다. 그래서 그 디렉터리에 파일을 더하거나 빼면 개수는 바뀌는데 세대는
+    그대로였다(`485e477`에서는 바뀌었다). 이제 `recursiveFiles(under:separatesNestedRepositories:isIncluded:…)`(Core)가 걸은 길을 따라
+    "루트 아닌 `.git` 항목이 있는 디렉터리 아래로 걸어 들어왔는지"를 파일마다 넘기고(판정은 이미 읽은 목록으로, 끊어진 `.git` 링크는
+    경계가 아니다 — 발견의 `fileExists || directoryExists`와 같다), 같은 실제 디렉터리를 경계 안팎 두 길로 걸을 수 있게 방문 기록을 둘로
+    나눈다. 끄면(기존 호출자 전부) 예전과 같다. `outsideNestedRepositories`(접두사 대조, 잔지적 N-b의 O(후보×경계))는 없앴다.
+    재현: 실제 `serve`에서 `Sources/VLib -> ../Vendor/Lib/Pkg` 단계 셋이 `35f9b55`는 모두 다르고 새 바이너리는 모두 같다.
+    새 테스트("중첩 저장소 안을 가리키는 루트 안 디렉터리 링크로 걸은 범위 밖 파일은 소스 발견처럼 지문에 남는다")는 `35f9b55`에서 4건
+    실패한다. 변이: 방문 기록을 하나로 합침 → 이 테스트 4건, 중첩 표시를 무시함 → 이 테스트와 worktree 테스트에서 4건.
+  - N-a 링크마다 `realpath`: 바꾸지 않았다. 인벤토리는 링크의 정규 경로가 Git이 고른 소스의 정규 경로인지로 센다
+    (`untrackedSources`). `readlink` 문자열과 대상 stat(dev·ino·mode)은 링크 경로 중간의 디렉터리 링크가 같은 파일의 다른 이름(하드
+    링크)으로 재지정되면 정규 경로가 바뀌어도 그대로라 판정이 같지 않다. 비용은 실측했다 — 디버그 빌드 따뜻한 호출에서 범위 밖 무시
+    링크 20,000개가 같은 수의 무시 파일보다 약 1.3초(2,000개: 약 0.15초) 더 든다. 링크마다 (readlink 문자열, 대상 부모 디렉터리 식별)로
+    결과를 메모하는 방식이 후보다.
+  - N-b: F1 재설계로 해당 함수가 없어졌다. 경계 판정은 디렉터리마다 이미 읽은 목록에서 한 번이다.
+  - N-c 문구: README.md·CHANGELOG의 영어 문장에 "outside the scope"를 넣고, 범위 안 파일은 중첩 저장소 안이어도 내용까지 지문에 들어가
+    (발견은 건너뛰지만) 필요 없는 새 세대를 만들 수 있다는 이전부터의 과대 근사를 적었다. README.ko.md도 같은 내용으로 맞췄다.
+  - 재검증: `swift test` 실패 이름 48개가 이전과 같다(Kit 이슈 15·CLI 26·IndexStore 15, 새 테스트 통과, Core 236 통과). `35f9b55` 사본은
+    새 테스트를 더해 Kit 19 이슈다(로그가 섞여 컴파일러 테스트 셋의 결과 줄이 빠졌지만 이슈 수는 같다). 자기 분석 네 가지 exit 0, `dead`
+    26건이 `35f9b55` 바이너리와 같고 정점 9854. CLI 계약 276 ok·실패 3건(`xcrun`) 동일, `verify-mcp.py`·`verify-ignored-sources.py` 통과.
+    실제 `serve` 21단계 0건 불일치, 재현 5단계 모두 같음, 리뷰 시퀀스(F1 세 단계 포함 19단계)는 13·16단계(처음부터 끊어진 링크, 남은 틈)만
+    다르다. cartograph·Yams·swift-argument-parser 지문·한계가 `35f9b55` 바이너리와 같고, cartograph worktree 편집은 두 바이너리 모두 지문을
+    바꾸지 않는다. 디버그 빌드 따뜻한 호출(`35f9b55` 대 새)은 잡음 안이다(무시 N=20,000: 849 대 805 ms, 링크 N=20,000: 2,123 대 2,108 ms).
 - **검증**(Linux 스크래치, 4차와 같은 방법: `mirror.gcr.io`의 `swift:6.4.3-noble` amd64 툴체인 레이어 `sha256:ec37e35b…`를 매니페스트와
   대조): 이번 사본 shim은 4차보다 많다 — `FoundationXML` import, `posix_spawn*_t` 비옵셔널, `siginfo_t._sifields`, `proc_listpgrppids`(0),
   `CFGetTypeID` 대체, `autoreleasepool`(Linux Foundation에 없음, 별도 파일), 테스트의 `st_atim`·`AnyObject.isEqual`. 바꾼 두 파일은 사본과
